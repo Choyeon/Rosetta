@@ -1,0 +1,138 @@
+---
+import fs from "node:fs";
+import path from "node:path";
+import sanitizeHtml from "sanitize-html";
+import { footerConfig, profileConfig as staticProfileConfig } from "@/config";
+import { loadDynamicConfig } from "@/utils/dynamic-config";
+import { url } from "@/utils/url-utils";
+
+const currentYear = new Date().getFullYear();
+
+// 从后端 API 加载配置（失败时使用静态配置兜底）
+const config = await loadDynamicConfig();
+
+// ===== 自定义页脚 HTML：优先使用后端 API 配置，留空则回退到本地 FooterConfig.html =====
+let customFooterHtml = "";
+const apiFooterHtml = (config.footer.customHtml || "").trim();
+if (apiFooterHtml) {
+	// 对后端存储的 HTML 消毒，防止存储型 XSS
+	customFooterHtml = sanitizeHtml(apiFooterHtml, {
+		allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+			"img",
+			"span",
+			"p",
+			"div",
+			"br",
+			"hr",
+			"h1",
+			"h2",
+			"h3",
+			"h4",
+			"h5",
+			"h6",
+			"table",
+			"thead",
+			"tbody",
+			"tr",
+			"th",
+			"td",
+		]),
+		allowedAttributes: {
+			...sanitizeHtml.defaults.allowedAttributes,
+			"*": ["class", "style", "id"],
+			img: ["src", "alt", "title", "width", "height", "loading"],
+			a: ["href", "target", "rel", "title"],
+		},
+		allowedSchemes: ["http", "https", "mailto"],
+	});
+} else if (footerConfig.enable) {
+	try {
+		const footerConfigPath = path.join(
+			process.cwd(),
+			"src",
+			"config",
+			"FooterConfig.html",
+		);
+		customFooterHtml = fs.readFileSync(footerConfigPath, "utf-8");
+		// 移除HTML注释
+		customFooterHtml = customFooterHtml.replace(/<!--[\s\S]*?-->/g, "").trim();
+	} catch (error) {
+		console.warn(
+			"FooterConfig.html文件读取失败:",
+			error instanceof Error ? error.message : String(error),
+		);
+	}
+}
+
+// 页脚版权所有者姓名：优先使用后端 API 配置的作者名
+const authorName = config.profile.name || staticProfileConfig.name || "ROSETTA";
+---
+
+
+<div
+  class="transition border-t border-black/10 dark:border-white/15 my-10 border-dashed mx-32"
+>
+</div>
+
+<div
+  class="transition border-dashed border-[oklch(85%_0.01_var(--hue))] dark:border-white/15 rounded-2xl mb-12 flex flex-col items-center justify-center px-6"
+>
+  <!-- WCAG AA 4.5:1 修复：
+       正文文字旧版用 text-50 (rgba(0,0,0,0.5))，对比度仅3.94 不达标。
+       改为自定义 color 变量：
+       - text-black/65 → #595959，白底对比度 ≥ 5.75 达标
+       - dark:text-white/80 → #ccc，暗底对比度远高于 4.5 -->
+  <div class="transition text-sm text-center wrap text-black/65 dark:text-white/80">
+    <div class="mb-2">
+      {customFooterHtml && <div set:html={customFooterHtml} />}
+    </div>
+    <div class="m-0.5 flex gap-x-4 gap-y-2 justify-center flex-wrap items-center py-1">
+      &copy; <span id="copyright-year">{currentYear}</span>
+      {authorName}. All Rights Reserved.
+      <span aria-hidden="true">/</span>
+      <a
+        class="transition link inline-flex items-center justify-center min-h-[28px] min-w-[40px] px-2 rounded-md hover:bg-(--btn-plain-bg-hover)"
+        style="color: var(--antd-text-primary, rgba(0,0,0,0.88)); font-weight: 600;"
+        target="_blank"
+        rel="noopener noreferrer"
+        href={url("/rss.xml")}
+        aria-label="RSS Feed (opens in a new tab)">RSS</a
+      >
+      <span aria-hidden="true">/</span>
+      <a
+        class="transition link inline-flex items-center justify-center min-h-[28px] min-w-[64px] px-2 rounded-md hover:bg-(--btn-plain-bg-hover)"
+        style="color: var(--antd-text-primary, rgba(0,0,0,0.88)); font-weight: 600;"
+        target="_blank"
+        rel="noopener noreferrer"
+        href={url("/sitemap-index.xml")}
+        aria-label="Sitemap (opens in a new tab)">Sitemap</a
+      >
+    </div>
+    <div class="m-0.5 flex gap-x-4 gap-y-2 justify-center flex-wrap items-center py-1">
+      <span>Powered by</span>
+      <a
+        class="transition link inline-flex items-center justify-center min-h-[28px] min-w-[48px] px-2 rounded-md hover:bg-(--btn-plain-bg-hover)"
+        style="color: var(--antd-text-primary, rgba(0,0,0,0.88)); font-weight: 600;"
+        target="_blank"
+        rel="noopener noreferrer"
+        href="https://github.com/withastro/astro"
+        aria-label="Astro (opens in a new tab)">Astro</a
+      >
+      <span aria-hidden="true">&</span>
+      <a
+        class="transition link inline-flex items-center justify-center min-h-[28px] min-w-[72px] px-2 rounded-md hover:bg-(--btn-plain-bg-hover)"
+        style="color: var(--antd-text-primary, rgba(0,0,0,0.88)); font-weight: 600;"
+        target="_blank"
+        rel="noopener noreferrer"
+        href="https://github.com/CuteLeaf/ROSETTA"
+        aria-label="ROSETTA (opens in a new tab)">ROSETTA</a
+      >
+    </div>
+    <!-- 
+      注意：请勿随意修改或删除 "Powered by Astro & ROSETTA" 部分，这是对开源项目的尊重和支持。
+      如果您需要在底部增加内容，请通过后端站点设置中的 footer_custom_html 字段配置，
+      或在 src/config/footerConfig.ts 中将 enable 属性改为 true，然后编辑 src/config/FooterConfig.html 文件。
+      您可以随意在 src/config/FooterConfig.html 中随意添加自定义内容，不需要修改 Footer.astro 文件。
+    -->
+  </div>
+</div>

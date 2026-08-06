@@ -1,0 +1,27 @@
+---
+import Layout from "@layouts/Layout.astro";
+import OobeWizard from "@/components/oobe/OobeWizard.svelte";
+---
+
+<Layout title="Rosetta 安装向导" description="欢迎使用 Rosetta 博客系统安装向导">
+	<OobeWizard client:load />
+</Layout>
+
+<script>
+	import { apiGet } from "@/api/client";
+
+	(async () => {
+		try {
+			const data = await apiGet<any>("/oobe/status");
+			const complete =
+				data?.oobe_complete === true ||
+				data?.data?.oobe_complete === true ||
+				(typeof data === "object" && data !== null && (data as any).code === 0 && ((data as any).data?.oobe_complete === true || (data as any).data?.installed === true));
+			if (complete) {
+				location.replace("/");
+			}
+		} catch {
+			/* ignore network errors */
+		}
+	})();
+</script>

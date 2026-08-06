@@ -1,0 +1,129 @@
+---
+import I18nKey from "@i18n/i18nKey";
+import { i18n } from "@i18n/translation";
+/**
+ * /posts/ 列表路由（补齐 trailingSlash:always 下的前台路由，避免访问 /posts 时 404）。
+ * 项目中原本没有前台 posts/index 路由，导致 trailing slash 重定向后仍找不到页面。
+ * 这里直接复用 getSortedPosts() + archive 列表风格，展示所有文章，作为兜底首页。
+ */
+import MainGridLayout from "@layouts/MainGridLayout.astro";
+import { getSortedPosts } from "@utils/content-utils";
+import { getCategoryUrl, getPostUrlBySlug, getTagUrl } from "@utils/url-utils";
+import { Icon } from "astro-icon/components";
+import CoverImage from "@/components/common/CoverImage.astro";
+import { formatDateI18n } from "@/utils/date-utils";
+
+export async function getStaticPaths() {
+	return [{ params: {}, props: {} }];
+}
+
+const posts = (await getSortedPosts()).filter((p) => !p.data.draft);
+---
+
+<MainGridLayout title={i18n(I18nKey.archive)}>
+  <div class="card-wrapper overflow-hidden">
+    <div class="card-body p-5 md:p-8">
+      <div class="flex items-center gap-2 mb-5">
+        <Icon is:inline name="material-symbols:article" class="text-(--primary) text-xl" />
+        <h1 class="text-lg md:text-xl font-bold">
+          {i18n(I18nKey.postList)}
+        </h1>
+        <span class="text-xs text-neutral-500 dark:text-neutral-400 ml-auto">
+          {i18n(I18nKey.postsCount)}: {posts.length}
+        </span>
+      </div>
+
+      <ul class="flex flex-col divide-y divide-neutral-200/60 dark:divide-neutral-800/60">
+        {posts.map((post) => {
+          const title = post.data.title;
+          const summary = post.data.description || post.data.summary || "";
+          return (
+            <li class="py-4 first:pt-0 last:pb-0">
+              <a
+                href={getPostUrlBySlug(post.slug || post.id)}
+                class="group flex flex-col sm:flex-row sm:items-start gap-4 rounded-xl p-3 -mx-3 transition-colors hover:bg-neutral-100/60 dark:hover:bg-neutral-800/40"
+              >
+                {post.data.cover?.src || post.data.image ? (
+                  <div class="w-full sm:w-40 md:w-48 flex-shrink-0">
+                    <div class="aspect-video overflow-hidden rounded-md">
+                      <CoverImage
+                        src={post.data.cover?.src || post.data.image || ""}
+                        alt={title}
+                        class="h-full w-full"
+                      />
+                    </div>
+                  </div>
+                ) : null}
+                <div class="flex-1 min-w-0 flex flex-col gap-2">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <h2 class="text-base md:text-lg font-bold truncate group-hover:text-(--primary) transition-colors">
+                      {title}
+                    </h2>
+                  </div>
+                  {summary ? (
+                    <p class="line-clamp-2 text-sm text-neutral-600 dark:text-neutral-300/80 leading-relaxed">
+                      {summary}
+                    </p>
+                  ) : null}
+                  <div class="mt-auto pt-1 flex flex-wrap items-center gap-3 text-xs text-neutral-500 dark:text-neutral-400">
+                    <Icon is:inline name="material-symbols:schedule-outline" class="text-[0.95rem]" />
+                    <span>{formatDateI18n(post.data.published)}</span>
+                    {post.data.author ? (
+                      <>
+                        <Icon is:inline name="material-symbols:person-outline" class="text-[0.95rem]" />
+                        <span>{post.data.author}</span>
+                      </>
+                    ) : null}
+                    {post.data.views != null ? (
+                      <>
+                        <Icon is:inline name="material-symbols:visibility-outline" class="text-[0.95rem]" />
+                        <span>{post.data.views}</span>
+                      </>
+                    ) : null}
+                    {post.data.likes != null ? (
+                      <>
+                        <Icon is:inline name="material-symbols:favorite-outline" class="text-[0.95rem]" />
+                        <span>{post.data.likes}</span>
+                      </>
+                    ) : null}
+                    {post.data.words != null ? (
+                      <>
+                        <Icon is:inline name="material-symbols:description-outline" class="text-[0.95rem]" />
+                        <span>{post.data.words}</span>
+                      </>
+                    ) : null}
+                    {post.data.readingTime != null ? (
+                      <>
+                        <Icon is:inline name="material-symbols:timer-outline" class="text-[0.95rem]" />
+                        <span>{post.data.readingTime}min</span>
+                      </>
+                    ) : null}
+                    <div class="flex flex-wrap items-center gap-1.5 w-full mt-1">
+                      {(post.data.tags || []).slice(0, 4).map((t: string) => (
+                        <a
+                          href={getTagUrl(t)}
+                          class="px-2 py-0.5 rounded-full bg-neutral-100/60 dark:bg-neutral-800/60 hover:bg-(--primary)/10 hover:text-(--primary) transition-colors"
+                        ># {t}</a>
+                      ))}
+                      {post.data.category ? (
+                        <a
+                          href={getCategoryUrl(post.data.category)}
+                          class="px-2 py-0.5 rounded-full bg-neutral-100/60 dark:bg-neutral-800/60 hover:bg-(--primary)/10 hover:text-(--primary) transition-colors"
+                        >📁 {post.data.category}</a>
+                      ) : null}
+                    </div>
+                  </div>
+                </div>
+              </a>
+            </li>
+          );
+        })}
+        {posts.length === 0 ? (
+          <li class="py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">
+            {i18n(I18nKey.archive)} — 0 {i18n(I18nKey.postsCount)}
+          </li>
+        ) : null}
+      </ul>
+    </div>
+  </div>
+</MainGridLayout>

@@ -1,0 +1,241 @@
+---
+import { Icon } from "astro-icon/components";
+import { getSiteStats } from "@/api/blog";
+import WidgetLayout from "@/components/common/WidgetLayout.astro";
+import { siteConfig as defaultSiteConfig } from "@/config";
+import I18nKey from "@/i18n/i18nKey";
+import { i18n } from "@/i18n/translation";
+import type { WidgetComponentConfig } from "@/types/config";
+import {
+	getCategoryList,
+	getSortedPosts,
+	getTagList,
+} from "@/utils/content-utils";
+import { loadDynamicConfig } from "@/utils/dynamic-config";
+
+interface Props {
+	class?: string;
+	style?: string;
+	widgetConfig?: WidgetComponentConfig;
+}
+
+const { class: className, style, widgetConfig } = Astro.props;
+
+const showTitle = widgetConfig?.showTitle !== false;
+
+// 从后端 API 加载配置（失败时使用静态配置兜底）
+const config = await loadDynamicConfig();
+
+// 从配置中获取站点开始日期（优先使用后端 API 配置）
+const siteStartDate =
+	config.site.siteStartDate || defaultSiteConfig.siteStartDate || "2025-01-01";
+
+// 获取所有文章
+const posts = await getSortedPosts();
+const categories = await getCategoryList();
+const tags = await getTagList();
+
+// 计算总字数（作为 API 失败时的回退）
+let fallbackTotalWords = 0;
+for (const post of posts) {
+	if (post.body) {
+		// 移除代码块和内联代码后计算字数
+		let text = post.body
+			.replace(/```[\s\S]*?```/g, "") // 移除代码块
+			.replace(/`[^`]*`/g, "") // 移除内联代码
+			.replace(/\s+/g, " ") // 合并空白
+			.trim();
+
+		// 分别计算中文字符和英文字符
+		const chineseChars = text.match(/[\u4e00-\u9fa5]/g) || [];
+		const englishChars = text.match(/[a-zA-Z]/g) || [];
+
+		fallbackTotalWords += chineseChars.length + englishChars.length;
+	}
+}
+
+// 优先从后端 API 获取统计数据，失败时回退到本地计算
+let totalWords = fallbackTotalWords;
+let totalPosts = posts.length;
+let totalCategories = categories.length;
+let totalTags = tags.length;
+try {
+	const stats = await getSiteStats();
+	if (stats && typeof stats === "object") {
+		totalWords = stats.totalWords ?? fallbackTotalWords;
+		totalPosts = stats.totalPosts ?? posts.length;
+		totalCategories = stats.totalCategories ?? categories.length;
+		totalTags = stats.totalTags ?? tags.length;
+	}
+} catch (e) {
+	console.warn("[SiteStats] getSiteStats failed, using fallback:", e);
+}
+
+// 格式化数字（添加千位分隔符）
+function formatNumber(num: number): string {
+	return num.toLocaleString();
+}
+
+function validDate(d: unknown): d is Date {
+	return d instanceof Date && !Number.isNaN(d.getTime());
+}
+
+// 获取「最后活动」时间：取每篇文章 published 与 updated 中较新的那个，再从全站所有文章里取最大值。这样新发文章和修改老文章都会刷新该字段。
+const getActivityDate = (post: (typeof posts)[number]): Date | null => {
+	const { published, updated } = post.data;
+	const pu = validDate(published) ? published : null;
+	const ud = validDate(updated) ? updated : null;
+	if (pu && ud) return ud > pu ? ud : pu;
+	return pu ?? ud;
+};
+
+const lastActivityDate = posts.reduce<Date | null>((latest, post) => {
+	const current = getActivityDate(post);
+	if (!current) return latest;
+	if (!latest || current > latest) return current;
+	return latest;
+}, null);
+
+const lastPostDate =
+	lastActivityDate && validDate(lastActivityDate)
+		? lastActivityDate.toISOString()
+		: null;
+
+const todayText = i18n(I18nKey.today);
+
+const stats = [
+	{
+		icon: "material-symbols:article-outline",
+		label: i18n(I18nKey.siteStatsPostCount),
+		value: totalPosts,
+	},
+	{
+		icon: "material-symbols:folder-outline",
+		label: i18n(I18nKey.siteStatsCategoryCount),
+		value: totalCategories,
+	},
+	{
+		icon: "material-symbols:label-outline",
+		label: i18n(I18nKey.siteStatsTagCount),
+		value: totalTags,
+	},
+	{
+		icon: "material-symbols:text-ad-outline-rounded",
+		label: i18n(I18nKey.siteStatsTotalWords),
+		value: totalWords,
+		formatted: true,
+	},
+	{
+		icon: "material-symbols:calendar-clock-outline",
+		label: i18n(I18nKey.siteStatsRunningDays),
+		value: 0, // 将由客户端更新
+		suffix: i18n(I18nKey.siteStatsDays).replace("{days}", ""),
+		dynamic: true,
+		id: "running-days",
+	},
+	{
+		icon: "mingcute:heartbeat-line",
+		label: i18n(I18nKey.siteStatsLastUpdate),
+		value: 0, // 将由客户端更新
+		suffix: i18n(I18nKey.siteStatsDaysAgo).replace("{days}", ""),
+		dynamic: true,
+		id: "last-update",
+	},
+];
+---
+
+<WidgetLayout name={i18n(I18nKey.siteStats)} showTitle={showTitle} id="site-stats" class={className} style={style}>
+  <div class="flex flex-col gap-2">
+    {stats.map((stat) => (
+      <div class="flex items-center justify-between px-3 py-1.5">
+        <div class="flex items-center gap-2.5">
+          <div class="text-(--primary) text-xl">
+            <Icon is:inline name={stat.icon} />
+          </div>
+          <span class="text-neutral-700 dark:text-neutral-300 font-medium text-sm">
+            {stat.label}
+          </span>
+        </div>
+        <div class="flex items-center">
+          <span
+            class="text-base font-bold text-neutral-900 dark:text-neutral-100"
+            data-stat-id={stat.id}
+          >
+            {stat.formatted ? formatNumber(stat.value) : stat.value}
+          </span>
+          {stat.suffix && (
+            <span class="ml-1 text-sm text-neutral-500 dark:text-neutral-400">
+              {stat.suffix}
+            </span>
+          )}
+        </div>
+      </div>
+    ))}
+  </div>
+</WidgetLayout>
+
+<script is:inline define:vars={{ siteStartDate, lastPostDate, todayText }}>
+  function updateDynamicStats() {
+    const today = new Date();
+
+    // 更新运行天数
+    const startDate = new Date(siteStartDate);
+    const diffTime = Math.abs(today.getTime() - startDate.getTime());
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    const runningDaysElements = document.querySelectorAll('[data-stat-id="running-days"]');
+    runningDaysElements.forEach((element) => {
+      element.textContent = diffDays.toString();
+    });
+
+    // 更新最后活动时间
+    if (lastPostDate) {
+      const lastPost = new Date(lastPostDate);
+      const timeSinceLastPost = Math.abs(today.getTime() - lastPost.getTime());
+      const daysSinceLastUpdate = Math.floor(timeSinceLastPost / (1000 * 60 * 60 * 24));
+
+      const lastUpdateElements = document.querySelectorAll('[data-stat-id="last-update"]');
+      lastUpdateElements.forEach((element) => {
+        if (daysSinceLastUpdate === 0) {
+          element.textContent = todayText;
+          if (element.nextElementSibling) {
+            element.nextElementSibling.style.display = 'none';
+          }
+        } else {
+          element.textContent = daysSinceLastUpdate.toString();
+          if (element.nextElementSibling) {
+            element.nextElementSibling.style.display = '';
+          }
+        }
+      });
+    }
+  }
+
+  // 页面加载时更新
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', updateDynamicStats);
+  } else {
+    updateDynamicStats();
+  }
+
+  // 页面切换时重新更新（Swup 新旧事件名都兜底，保证跨页刷新后统计显示一致）
+  document.addEventListener("swup:contentReplaced", () => {
+    setTimeout(updateDynamicStats, 0);
+  });
+  // Swup 4.x 标准钩子（content:replace 触发后 DOM 已更新）
+  function bindSwupHooks() {
+    if (window.swup && window.swup.hooks) {
+      window.swup.hooks.on('content:replace', function() {
+        setTimeout(updateDynamicStats, 0);
+      });
+      return true;
+    }
+    return false;
+  }
+  if (!bindSwupHooks()) {
+    document.addEventListener('swup:enable', function onceSwupEnable() {
+      bindSwupHooks();
+      document.removeEventListener('swup:enable', onceSwupEnable);
+    });
+  }
+</script>

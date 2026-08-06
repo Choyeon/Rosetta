@@ -1,0 +1,424 @@
+---
+import { Icon } from "astro-icon/components";
+import {
+	createGuestbookEntry,
+	type GuestbookEntry,
+	getGuestbookEntries,
+	likeGuestbookEntry,
+} from "@/api/site";
+import { loadDynamicConfig } from "@/utils/dynamic-config";
+
+const dynamicCfg = await loadDynamicConfig();
+const commentConfig = dynamicCfg.comment;
+const siteConfig = dynamicCfg.site;
+
+import I18nKey from "@/i18n/i18nKey";
+import { i18n } from "@/i18n/translation";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+
+const PAGE_SIZE = 20;
+
+let entries: GuestbookEntry[] = [];
+let total = 0;
+try {
+	const result = await getGuestbookEntries({
+		page: 1,
+		page_size: PAGE_SIZE,
+		status: "approved",
+	});
+	entries = result.items || [];
+	total = result.total || 0;
+} catch (e) {
+	console.warn("[guestbook] fetch failed:", e);
+}
+
+const title = "留言板 💬";
+const subtitle = "在这里留下你的脚印，我们会一一回复。";
+const description = subtitle;
+
+function renderCard(e: GuestbookEntry) {
+	const authorWebsite = e.author_website;
+	const websiteLabel = authorWebsite
+		? authorWebsite.replace(/^https?:\/\//, "").replace(/\/$/, "")
+		: "";
+
+	return `
+		<div class="gb-card p-4 sm:p-5 rounded-2xl transition-all duration-200" data-id="${e.id}">
+			<div class="flex items-start gap-3.5">
+				<img src="${(e as any).resolved_avatar_url ?? e.author_avatar ?? "/favicon/rosetta-256.png"}" alt="" loading="lazy" class="w-11 h-11 sm:w-12 sm:h-12 rounded-xl object-cover flex-shrink-0 border border-(--line-divider) bg-neutral-100 dark:bg-neutral-800" />
+				<div class="flex-1 min-w-0">
+					<!-- Header: name, badges, meta -->
+					<div class="flex flex-wrap items-start gap-x-2 gap-y-1.5 mb-2">
+						<div class="flex items-center gap-2 min-w-0">
+							<span class="font-semibold text-[0.95rem] text-neutral-900 dark:text-neutral-100 truncate max-w-[180px]">
+								${escapeHtml(e.author_name)}
+							</span>
+							${
+								authorWebsite
+									? `<a href="${authorWebsite}" target="_blank" rel="noopener noreferrer" class="text-xs text-cyan-600 dark:text-cyan-400 hover:underline truncate max-w-[180px]">${escapeHtml(websiteLabel)}</a>`
+									: ""
+							}
+						</div>
+						<div class="flex flex-wrap items-center gap-1.5">
+							${
+								e.is_pinned
+									? `<span class="badge badge-pin"><Icon class="w-3 h-3 mr-0.5" is:inline name="material-symbols:pin-rounded"/>置顶</span>`
+									: ""
+							}
+							${
+								e.is_featured
+									? `<span class="badge badge-featured"><Icon class="w-3 h-3 mr-0.5" is:inline name="material-symbols:star-rounded"/>精华</span>`
+									: ""
+							}
+							${renderStatusBadge(e.status)}
+						</div>
+					</div>
+					<!-- Content -->
+					<div class="gb-content text-[0.95rem] leading-relaxed text-neutral-800 dark:text-neutral-200 whitespace-pre-wrap break-words">${renderContent(e.content)}</div>
+					<!-- Footer: time + like -->
+					<div class="mt-3 flex flex-wrap items-center justify-between gap-2">
+						<span class="text-xs text-neutral-500 dark:text-neutral-400 font-mono tabular-nums">${formatDate(e.created_at)}</span>
+						<button class="gb-like-btn inline-flex items-center gap-1 text-xs text-neutral-500 dark:text-neutral-400 hover:text-pink-500 dark:hover:text-pink-400 transition-colors py-1 px-2 rounded-lg hover:bg-pink-500/10" data-like-id="${e.id}">
+							<Icon is:inline name="material-symbols:favorite-outline-rounded" class="w-4 h-4" data-like-icon="${e.id}"/>
+							<span data-like-count="${e.id}">${e.likes_count}</span>
+						</button>
+					</div>
+				</div>
+			</div>
+		</div>
+	`;
+}
+
+function renderStatusBadge(status: string) {
+	if (status === "approved") return "";
+	if (status === "pending")
+		return `<span class="badge badge-pending">待审核</span>`;
+	if (status === "rejected")
+		return `<span class="badge badge-rejected">已拒绝</span>`;
+	if (status === "spam") return `<span class="badge badge-spam">垃圾</span>`;
+	return "";
+}
+
+function escapeHtml(s: string): string {
+	return s
+		.replace(/&/g, "&amp;")
+		.replace(/</g, "&lt;")
+		.replace(/>/g, "&gt;")
+		.replace(/"/g, "&quot;")
+		.replace(/'/g, "&#039;");
+}
+
+function renderContent(raw: string): string {
+	let out = escapeHtml(raw);
+	out = out.replace(
+		/(https?:\/\/[^\s<]+)/g,
+		(url) =>
+			`<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-(--primary) underline decoration-(--primary)/30 hover:decoration-(--primary) underline-offset-2 transition-all">${url.length > 60 ? `${url.slice(0, 58)}…` : url}</a>`,
+	);
+	return out;
+}
+
+function formatDate(s: string): string {
+	try {
+		const d = new Date(s);
+		const pad = (n: number) => n.toString().padStart(2, "0");
+		return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+	} catch {
+		return s;
+	}
+}
+---
+
+<MainGridLayout title={title} description={description}>
+	<!-- Hero Banner -->
+	<div class="guestbook-hero relative overflow-hidden rounded-(--radius-large) mb-6 px-6 py-8 sm:px-10 sm:py-10">
+		<div class="hero-bg absolute inset-0 -z-10"></div>
+		<svg class="hero-cloud hero-cloud-1 absolute -z-10 opacity-40" viewBox="0 0 120 60" fill="none">
+			<path d="M30,45 C10,45 5,30 15,20 C15,10 30,5 40,12 C45,3 60,3 65,12 C75,5 90,10 90,22 C110,25 115,40 100,47 C105,55 85,58 75,52 L30,45 Z" fill="white" />
+		</svg>
+		<svg class="hero-cloud hero-cloud-2 absolute -z-10 opacity-30" viewBox="0 0 120 60" fill="none">
+			<path d="M30,45 C10,45 5,30 15,20 C15,10 30,5 40,12 C45,3 60,3 65,12 C75,5 90,10 90,22 C110,25 115,40 100,47 C105,55 85,58 75,52 L30,45 Z" fill="white" />
+		</svg>
+		<div class="relative z-10">
+			<div class="flex items-center gap-2 text-sm text-(--primary) font-medium mb-3">
+				<Icon is:inline name="material-symbols:home" class="w-4 h-4" />
+				<a href="/" class="hover:underline">首页</a>
+				<span class="opacity-50">/</span>
+				<a href="/archive/" class="hover:underline opacity-80">博客</a>
+				<span class="opacity-50">/</span>
+				<span class="opacity-90">留言板</span>
+			</div>
+			<h1 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-neutral-900 dark:text-white mb-2">
+				{title}
+			</h1>
+			<p class="text-base sm:text-lg text-neutral-700 dark:text-neutral-200/80 max-w-xl leading-relaxed">
+				{subtitle}
+			</p>
+		</div>
+	</div>
+
+	<!-- Content Card -->
+	<div class="card-base rounded-(--radius-large) overflow-hidden">
+		<div class="px-6 py-6 sm:px-8 sm:py-7">
+			<!-- Stats Row -->
+			<div class="flex flex-wrap items-center justify-between gap-3 mb-6 pb-5 border-b border-(--line-divider)">
+				<div class="flex items-center gap-2">
+					<div class="w-8 h-8 rounded-lg bg-gradient-to-br from-cyan-500/20 to-sky-500/20 flex items-center justify-center">
+						<Icon is:inline name="material-symbols:chat-bubble-outline-rounded" class="w-5 h-5 text-cyan-600 dark:text-cyan-400" />
+					</div>
+					<div class="flex items-baseline gap-2">
+						<span class="text-2xl font-bold text-neutral-900 dark:text-white" id="gb-total">{total}</span>
+						<span class="text-sm text-neutral-500 dark:text-neutral-400">条留言</span>
+					</div>
+				</div>
+				<button id="gb-refresh" class="btn btn-ghost btn-sm gap-1.5">
+					<Icon is:inline name="material-symbols:refresh-rounded" class="w-4 h-4" />
+					<span>刷新</span>
+				</button>
+			</div>
+
+			<!-- Form -->
+			<div class="mb-7 p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-cyan-50/60 to-sky-50/40 dark:from-cyan-500/5 dark:to-sky-500/5 border border-cyan-100/80 dark:border-cyan-500/10">
+				<div class="flex items-center gap-2 mb-4">
+					<Icon is:inline name="material-symbols:edit-note-rounded" class="text-cyan-600 dark:text-cyan-400 w-5 h-5" />
+					<span class="font-semibold text-neutral-800 dark:text-neutral-100">发表留言</span>
+				</div>
+				<div class="flex items-center gap-3 mb-4 text-xs text-neutral-500 dark:text-neutral-400">
+					<div class="shrink-0 w-10 h-10 rounded-xl overflow-hidden ring-1 ring-cyan-200/60 dark:ring-cyan-500/20 bg-cyan-50 dark:bg-cyan-500/10 flex items-center justify-center">
+						<img id="gb-avatar-preview"
+							 src="/favicon/rosetta-256.png"
+							 alt=""
+							 class="w-full h-full object-cover"
+							 onerror="this.style.display='none'" />
+					</div>
+					<span>实时预览你的头像（支持 QQ / GitHub / Gravatar 自动识别，优先级 GitHub > QQ > Gravatar）</span>
+				</div>
+				<form id="gb-form" class="space-y-3">
+					<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+						<input
+							type="text"
+							name="author_name"
+							id="gb-author"
+							maxlength="30"
+							placeholder="昵称（必填）"
+							class="gb-input"
+						/>
+						<input
+							type="email"
+							name="author_email"
+							id="gb-email"
+							maxlength="254"
+							placeholder="邮箱（选填，用于 Gravatar 头像）"
+							class="gb-input"
+						/>
+						<input
+							type="url"
+							name="author_website"
+							id="gb-website"
+							maxlength="200"
+							placeholder="网站（选填，https:// 开头）"
+							class="gb-input"
+						/>
+					</div>
+					<!-- 新增：QQ + GitHub 第二行 -->
+					<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+						<input
+							type="text"
+							inputmode="numeric"
+							pattern="\d{5,11}"
+							name="author_qq"
+							id="gb-qq"
+							maxlength="11"
+							placeholder="QQ（选填，自动拉头像）"
+							class="gb-input"
+						/>
+						<input
+							type="text"
+							name="author_github"
+							id="gb-github"
+							maxlength="64"
+							placeholder="GitHub（选填，@用户名或完整链接，头像优先级最高）"
+							class="gb-input"
+						/>
+					</div>
+					<textarea
+						name="content"
+						id="gb-content"
+						rows="4"
+						minlength="2"
+						maxlength="3000"
+						placeholder="写下你的留言...（2-3000字）"
+						class="gb-textarea"
+						required
+					></textarea>
+					<div class="flex flex-wrap items-center justify-between gap-3 pt-1">
+						<div class="text-xs text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
+							<Icon is:inline name="material-symbols:verified-user-rounded" class="w-3.5 h-3.5" />
+							<span>支持敏感词自动审核，支持 Markdown 链接。</span>
+						</div>
+						<button type="submit" id="gb-submit" class="btn btn-primary btn-sm gap-1.5">
+							<Icon is:inline name="material-symbols:send-rounded" class="w-4 h-4" />
+							<span>提交留言</span>
+						</button>
+					</div>
+				</form>
+				<div id="gb-alert" class="hidden mt-3"></div>
+			</div>
+
+			<!-- List -->
+			<div id="gb-list" class="space-y-3.5">
+				{entries.length === 0 ? (
+					<div class="py-14 flex flex-col items-center justify-center text-center">
+						<div class="w-20 h-20 rounded-full bg-gradient-to-br from-cyan-100/60 to-sky-100/60 dark:from-cyan-500/10 dark:to-sky-500/10 flex items-center justify-center mb-4">
+							<Icon is:inline name="material-symbols:chat-bubble-outline-rounded" class="w-10 h-10 text-cyan-500 dark:text-cyan-400" />
+						</div>
+						<p class="text-base font-semibold text-neutral-800 dark:text-neutral-100 mb-1">成为第一个留言的人吧！</p>
+						<p class="text-sm text-neutral-500 dark:text-neutral-400">在上方表单留下你的想法 💫</p>
+					</div>
+				) : (
+					entries.map((e) => <div class="gb-card-wrapper" set:html={renderCard(e)} />)
+				)}
+			</div>
+
+			<!-- Pagination -->
+			<div id="gb-pagination" class="mt-8 flex items-center justify-center">
+				{
+					total > PAGE_SIZE && (
+						<div class="flex items-center gap-1">
+							<button class="page-btn" disabled>
+								<svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg>
+							</button>
+							<button class="page-btn active">1</button>
+							{total > PAGE_SIZE * 2 ? (
+								<button class="page-btn" id="gb-page-2">2</button>
+							) : null}
+							<button class="page-btn" id="gb-page-next">
+								<svg style="width:14px;height:14px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg>
+							</button>
+						</div>
+					)
+				}
+			</div>
+		</div>
+	</div>
+</MainGridLayout>
+
+<script>
+  import "@/scripts/guestbook-client.ts";
+</script>
+
+<style is:global>
+	.guestbook-hero {
+		background: linear-gradient(135deg, #ecfeff 0%, #e0f2fe 42%, #ede9fe 100%);
+	}
+	html.dark .guestbook-hero {
+		background: linear-gradient(135deg, #083344 0%, #0c4a6e 42%, #1e1b4b 100%);
+	}
+	.hero-bg {
+		background:
+			radial-gradient(ellipse at 15% 10%, rgba(34,211,238,0.28), transparent 50%),
+			radial-gradient(ellipse at 85% 30%, rgba(99,102,241,0.22), transparent 55%),
+			radial-gradient(ellipse at 50% 100%, rgba(56,189,248,0.18), transparent 60%);
+	}
+	html.dark .hero-bg {
+		background:
+			radial-gradient(ellipse at 15% 10%, rgba(6,182,212,0.25), transparent 50%),
+			radial-gradient(ellipse at 85% 30%, rgba(129,140,248,0.22), transparent 55%),
+			radial-gradient(ellipse at 50% 100%, rgba(56,189,248,0.18), transparent 60%);
+	}
+	.hero-cloud-1 { top: 6%;  right: 6%;  width: 130px; height: auto; animation: heroCloudFloat1 12s ease-in-out infinite; }
+	.hero-cloud-2 { bottom: 10%; left: 8%; width: 90px;  height: auto; animation: heroCloudFloat2 16s ease-in-out infinite; }
+	@keyframes heroCloudFloat1 { 0%,100% { transform: translateY(0) translateX(0); } 50% { transform: translateY(-8px) translateX(6px); } }
+	@keyframes heroCloudFloat2 { 0%,100% { transform: translateY(0) translateX(0); } 50% { transform: translateY(10px) translateX(-6px); } }
+
+	.gb-input {
+		width: 100%;
+		padding: 0.7rem 0.9rem;
+		border-radius: 0.85rem;
+		border: 1px solid var(--line-divider);
+		background: transparent;
+		color: inherit;
+		font-size: 0.875rem;
+		outline: none;
+		transition: all 0.2s ease;
+	}
+	.gb-input:focus {
+		border-color: var(--primary);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 16%, transparent);
+	}
+	.gb-textarea {
+		width: 100%;
+		min-height: 110px;
+		padding: 0.75rem 0.9rem;
+		border-radius: 0.85rem;
+		border: 1px solid var(--line-divider);
+		background: transparent;
+		color: inherit;
+		font-size: 0.9rem;
+		line-height: 1.65;
+		resize: vertical;
+		outline: none;
+		transition: all 0.2s ease;
+	}
+	.gb-textarea:focus {
+		border-color: var(--primary);
+		box-shadow: 0 0 0 3px color-mix(in oklab, var(--primary) 16%, transparent);
+	}
+	.gb-card {
+		border: 1px solid var(--line-divider);
+		background: var(--card-bg, #fff);
+	}
+	.gb-card:hover {
+		border-color: color-mix(in oklab, var(--primary) 40%, var(--line-divider));
+		transform: translateY(-1px);
+		box-shadow: 0 10px 30px -18px color-mix(in oklab, var(--primary) 30%, transparent);
+	}
+	.badge {
+		display: inline-flex;
+		align-items: center;
+		height: 22px;
+		padding: 0 9px;
+		font-size: 11.5px;
+		font-weight: 600;
+		border-radius: 999px;
+		white-space: nowrap;
+	}
+	.badge-pin {
+		background: color-mix(in oklab, #10b981 14%, transparent);
+		color: #059669;
+		border: 1px solid color-mix(in oklab, #10b981 30%, transparent);
+	}
+	html.dark .badge-pin { color: #34d399; }
+	.badge-featured {
+		background: color-mix(in oklab, #f59e0b 14%, transparent);
+		color: #d97706;
+		border: 1px solid color-mix(in oklab, #f59e0b 30%, transparent);
+	}
+	html.dark .badge-featured { color: #fbbf24; }
+	.badge-pending {
+		background: color-mix(in oklab, #3b82f6 14%, transparent);
+		color: #2563eb;
+		border: 1px solid color-mix(in oklab, #3b82f6 30%, transparent);
+	}
+	html.dark .badge-pending { color: #60a5fa; }
+	.badge-rejected {
+		background: color-mix(in oklab, #f43f5e 14%, transparent);
+		color: #e11d48;
+		border: 1px solid color-mix(in oklab, #f43f5e 30%, transparent);
+	}
+	html.dark .badge-rejected { color: #fb7185; }
+	.badge-spam {
+		background: color-mix(in oklab, #64748b 14%, transparent);
+		color: #475569;
+		border: 1px solid color-mix(in oklab, #64748b 30%, transparent);
+	}
+	html.dark .badge-spam { color: #cbd5e1; }
+
+	.gb-content :deep(a) { word-break: break-all; }
+
+	/* Narrow 360px */
+	@media (max-width: 380px) {
+		.guestbook-hero { padding: 1.25rem 1rem !important; }
+		.gb-card { padding: 0.85rem !important; }
+	}
+</style>

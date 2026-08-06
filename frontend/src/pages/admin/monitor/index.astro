@@ -1,0 +1,122 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="系统监控">
+	<div class="stats-grid">
+		<div class="stat-card">
+			<div class="stat-icon primary">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+			</div>
+			<div class="stat-body">
+				<div class="stat-label">CPU 使用率</div>
+				<div class="stat-value" id="cpu-usage">--%</div>
+				<div class="stat-change up">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="18,15 12,9 6,15"/></svg>
+					实时
+				</div>
+			</div>
+		</div>
+		<div class="stat-card">
+			<div class="stat-icon info">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+			</div>
+			<div class="stat-body">
+				<div class="stat-label">内存使用率</div>
+				<div class="stat-value" id="mem-usage">--%</div>
+				<div class="stat-change up">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="18,15 12,9 6,15"/></svg>
+					实时
+				</div>
+			</div>
+		</div>
+		<div class="stat-card">
+			<div class="stat-icon success">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+			</div>
+			<div class="stat-body">
+				<div class="stat-label">数据库状态</div>
+				<div class="stat-value" id="db-status">--</div>
+				<div class="stat-change up">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="18,15 12,9 6,15"/></svg>
+					连接正常
+				</div>
+			</div>
+		</div>
+		<div class="stat-card">
+			<div class="stat-icon warning">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12,6 12,12 16,14"/></svg>
+			</div>
+			<div class="stat-body">
+				<div class="stat-label">运行时间</div>
+				<div class="stat-value" id="uptime">--</div>
+				<div class="stat-change up">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="12" height="12"><polyline points="18,15 12,9 6,15"/></svg>
+					持续运行
+				</div>
+			</div>
+		</div>
+	</div>
+
+	<div class="card" style="margin-bottom:20px;">
+		<div class="card-header">
+			<h3 class="card-title">系统日志</h3>
+		</div>
+		<div class="card-body">
+			<div id="logs-container" style="background:hsl(var(--b2));border-radius:var(--admin-radius-md);padding:16px;max-height:400px;overflow-y:auto;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;font-size:0.8125rem;line-height:1.7;">
+				加载中...
+			</div>
+		</div>
+	</div>
+</AdminLayout>
+
+<script>
+	// @ts-nocheck
+	import { getSystemHealth, getSystemLogs } from "@api/site";
+
+	async function loadHealth() {
+		try {
+			const health = await getSystemHealth() as any;
+			(document.getElementById("cpu-usage") as HTMLElement).textContent = (health.cpu_percent || 0).toFixed(1) + '%';
+			(document.getElementById("mem-usage") as HTMLElement).textContent = (health.memory_percent || 0).toFixed(1) + '%';
+			(document.getElementById("db-status") as HTMLElement).textContent = health.database === 'connected' ? '正常' : '异常';
+			const uptime = health.uptime_seconds || 0;
+			const hours = Math.floor(uptime / 3600);
+			const mins = Math.floor((uptime % 3600) / 60);
+			(document.getElementById("uptime") as HTMLElement).textContent = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+		} catch (e) {
+			console.error("Health check failed:", e);
+		}
+	}
+
+	async function loadLogs() {
+		const container = document.getElementById("logs-container") as HTMLElement;
+		try {
+			const logs = await getSystemLogs({ limit: 100 }) as any;
+			const items = logs.items || logs || [];
+			if (items.length === 0) {
+				container.textContent = "暂无操作日志";
+				return;
+			}
+			container.innerHTML = items.map((log: any) => {
+				const status = log.status || 'success';
+				const colors: Record<string, string> = { error: 'hsl(var(--er))', failed: 'hsl(var(--er))', warning: 'hsl(var(--wa))', success: 'hsl(var(--in))', info: 'hsl(var(--in))' };
+				const user = log.user ? `${log.user.nickname || log.user.username}` : 'system';
+				const detail = log.detail ? typeof log.detail === 'string' ? log.detail : JSON.stringify(log.detail) : '';
+				return `<div style="color:${colors[status] || 'hsl(var(--bc))'};padding:4px 0;border-bottom:1px solid hsl(var(--b3));">
+					<span style="color:hsl(var(--bc)/0.5)">[${log.created_at || ''}]</span>
+					<span style="color:var(--cyan-500);font-weight:600">[${user}]</span>
+					<span style="color:${colors[status] || 'hsl(var(--bc))'};font-weight:500">[${log.action || status}]</span>
+					<span style="color:hsl(var(--bc)/0.7)">${log.resource_type || ''}${log.resource_id ? ' #' + log.resource_id : ''}</span>
+					${detail ? `<span style="color:hsl(var(--bc)/0.6);margin-left:8px">${detail}</span>` : ''}
+				</div>`;
+			}).join("");
+			container.scrollTop = 0;
+		} catch (e) {
+			container.textContent = "加载日志失败: " + (e as Error).message;
+		}
+	}
+
+	loadHealth();
+	loadLogs();
+	setInterval(loadHealth, 5000);
+</script>

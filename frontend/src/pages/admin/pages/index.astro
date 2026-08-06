@@ -1,0 +1,109 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="自定义页面">
+	<div class="content-actions" slot="actions">
+		<a href="/admin/pages/new/" class="btn btn-primary btn-sm">
+			<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+			新建页面
+		</a>
+	</div>
+
+	<div class="table-wrapper">
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<h3 class="table-title">所有页面</h3>
+				<span class="badge badge-ghost" id="pages-count">0 个</span>
+			</div>
+		</div>
+		<div class="table-scroll">
+			<table class="table">
+				<thead>
+					<tr>
+						<th style="padding-left:24px;">标题</th>
+						<th>Slug</th>
+						<th>模板</th>
+						<th>状态</th>
+						<th>创建时间</th>
+						<th style="width:130px;padding-right:24px;">操作</th>
+					</tr>
+				</thead>
+				<tbody id="list-body">
+					<tr>
+						<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--bc)/0.5);">
+							<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+								<svg style="width:36px;height:36px;opacity:0.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+								<span>加载中...</span>
+							</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</AdminLayout>
+<script>
+	// @ts-nocheck
+	import { getPages, deletePage } from "@api/admin";
+	async function loadList() {
+		const tbody = document.getElementById("list-body") as HTMLElement;
+		try {
+			const items = await getPages();
+			const count = items.length || 0;
+			const countEl = document.getElementById("pages-count");
+			if (countEl) countEl.textContent = `${count} 个`;
+
+			if (!items || items.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="6" style="text-align:center;padding:56px 24px;">
+							<div class="empty-state">
+								<div class="empty-title">暂无页面</div>
+								<div class="empty-desc">点击右上角创建第一个页面</div>
+								<a href="/admin/pages/new/" class="btn btn-primary btn-sm" style="margin-top:8px;">
+									<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+									新建页面
+								</a>
+							</div>
+						</td>
+					</tr>
+				`;
+				return;
+			}
+			tbody.innerHTML = items.map((p: any) => `
+				<tr>
+					<td style="padding-left:24px;">
+						<span style="font-weight:600;">${p.title}</span>
+					</td>
+					<td style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:12.5px;color:hsl(var(--bc)/0.55);">/${p.slug}</td>
+					<td><span class="badge badge-ghost">${p.template || 'default'}</span></td>
+					<td>${p.is_published ? '<span class="badge badge-success">已发布</span>' : '<span class="badge badge-warning">草稿</span>'}</td>
+					<td style="font-size:12.5px;color:hsl(var(--bc)/0.6);">${new Date(p.created_at).toLocaleDateString()}</td>
+					<td style="padding-right:24px;">
+						<div class="action-buttons">
+							<a href="/admin/pages/${p.id}/" class="btn btn-ghost btn-icon btn-sm" title="编辑">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+							</a>
+							<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="del(${p.id})" title="删除">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+							</button>
+						</div>
+					</td>
+				</tr>
+			`).join("");
+		} catch (e) {
+			tbody.innerHTML = `
+				<tr>
+					<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--er));">
+						<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+							<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+							<span>加载失败，请刷新重试</span>
+						</div>
+					</td>
+				</tr>
+			`;
+		}
+	}
+	window.del = async (id: number) => { if (confirm("确定删除？")) { await deletePage(id); loadList(); } };
+	loadList();
+</script>

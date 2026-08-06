@@ -1,0 +1,260 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="友情链接">
+	<fragment slot="actions">
+		<div class="table-actions">
+			<button class="btn btn-primary btn-sm" onclick="showAddModal()">
+				<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+				新建友链
+			</button>
+		</div>
+	</fragment>
+
+	<div class="table-wrapper">
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<h3 class="table-title">所有友链</h3>
+				<span class="badge badge-ghost" id="friends-count">0 个</span>
+			</div>
+		</div>
+		<div class="table-scroll">
+			<table class="table">
+				<thead>
+					<tr>
+						<th style="padding-left:24px;">名称</th>
+						<th>链接</th>
+						<th>描述</th>
+						<th>状态</th>
+						<th>排序</th>
+						<th style="width:160px;padding-right:24px;">操作</th>
+					</tr>
+				</thead>
+				<tbody id="list-body">
+					<tr>
+						<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--bc)/0.5);">
+							<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+								<svg style="width:36px;height:36px;opacity:0.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+								<span>加载中...</span>
+							</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</AdminLayout>
+
+<div class="admin-modal-overlay" id="friend-modal">
+	<div class="admin-modal">
+		<div class="admin-modal-header">
+			<h3 class="admin-modal-title" id="modal-title">新建友链</h3>
+			<button class="admin-modal-close" onclick="closeModal()" type="button">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			</button>
+		</div>
+		<div class="admin-modal-body">
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="f-name">名称 <span style="color:hsl(var(--er));">*</span></label>
+				<input type="text" id="f-name" class="admin-input" placeholder="友链名称">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="f-url">链接 <span style="color:hsl(var(--er));">*</span></label>
+				<input type="text" id="f-url" class="admin-input" placeholder="https://">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="f-logo">Logo URL <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选）</span></label>
+				<input type="text" id="f-logo" class="admin-input" placeholder="https://">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="f-desc">描述 <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选）</span></label>
+				<textarea id="f-desc" class="admin-input" placeholder="站点描述" rows="2"></textarea>
+			</div>
+			<div class="admin-form-group" style="display:flex;gap:24px;flex-wrap:wrap;">
+				<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+					<input type="checkbox" id="f-active" checked>
+					<span>启用</span>
+				</label>
+				<label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+					<input type="checkbox" id="f-blank">
+					<span>新窗口打开</span>
+				</label>
+				<div style="display:flex;align-items:center;gap:8px;">
+					<label for="f-order" style="margin:0;">排序：</label>
+					<input type="number" id="f-order" class="admin-input" style="width:80px;padding:4px 8px;" value="0" min="0">
+				</div>
+			</div>
+		</div>
+		<div class="admin-modal-footer">
+			<button class="btn btn-ghost btn-sm" onclick="closeModal()" type="button">取消</button>
+			<button class="btn btn-primary btn-sm" onclick="saveFriend()" type="button">保存</button>
+		</div>
+	</div>
+</div>
+
+<script>
+	// @ts-nocheck
+	import { getFriends, createFriend, updateFriend, deleteFriend } from "@api/admin";
+	let editingId: number | null = null;
+
+	function getName(item: any): string {
+		if (!item) return "";
+		if (typeof item.name === "object" && item.name !== null) {
+			return item.name.zh || item.name.en || Object.values(item.name)[0] || "";
+		}
+		return item.name || "";
+	}
+
+	function getDesc(item: any): string {
+		if (!item || !item.description) return "";
+		if (typeof item.description === "object") {
+			return item.description.zh || item.description.en || Object.values(item.description)[0] || "";
+		}
+		return item.description || "";
+	}
+
+	async function loadList() {
+		const tbody = document.getElementById("list-body") as HTMLElement;
+		try {
+			const items = await getFriends(true);
+			const count = items?.length || 0;
+			const countEl = document.getElementById("friends-count");
+			if (countEl) countEl.textContent = `${count} 个`;
+
+			if (!items || items.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="6" style="text-align:center;padding:56px 24px;">
+							<div class="empty-state">
+								<div class="empty-title">暂无友链</div>
+								<div class="empty-desc">点击右上角创建第一个友链</div>
+								<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="showAddModal()">
+									<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+									新建友链
+								</button>
+							</div>
+						</td>
+					</tr>
+				`;
+				return;
+			}
+			tbody.innerHTML = items.map((f: any) => {
+				const name = getName(f);
+				const desc = getDesc(f);
+				return `
+				<tr>
+					<td style="padding-left:24px;">
+						<div style="display:flex;align-items:center;gap:12px;">
+							${f.logo ? `<img src="${f.logo}" style="width:36px;height:36px;border-radius:10px;object-fit:cover;">` : `<div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:hsl(var(--b2));color:hsl(var(--bc)/0.6);font-weight:700;font-size:13px;">${name.charAt(0).toUpperCase()}</div>`}
+							<span style="font-weight:600;">${name}</span>
+						</div>
+					</td>
+					<td><a href="${f.url}" target="_blank" style="color:var(--cyan-600);font-size:12.5px;text-decoration:none;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;">${f.url}</a></td>
+					<td style="font-size:13px;color:hsl(var(--bc)/0.65);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${desc}">${desc || '-'}</td>
+					<td>${f.is_active ? '<span class="badge badge-success">正常</span>' : '<span class="badge badge-warning">禁用</span>'}</td>
+					<td><span class="badge badge-ghost">${f.order ?? 0}</span></td>
+					<td style="padding-right:24px;">
+						<div class="action-buttons">
+							<button class="btn btn-ghost btn-icon btn-sm" onclick="editItem(${f.id})" title="编辑">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+							</button>
+							<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="del(${f.id})" title="删除">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+							</button>
+						</div>
+					</td>
+				</tr>
+			`}).join("");
+		} catch (e: any) {
+			console.error("加载友链失败:", e);
+			tbody.innerHTML = `
+				<tr>
+					<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--er));">
+						<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+							<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+							<span>加载失败：${e.message || "请刷新重试"}</span>
+						</div>
+					</td>
+				</tr>
+			`;
+		}
+	}
+
+	window.showAddModal = () => {
+		editingId = null;
+		(document.getElementById("modal-title") as HTMLElement).textContent = "新建友链";
+		(document.getElementById("f-name") as HTMLInputElement).value = "";
+		(document.getElementById("f-url") as HTMLInputElement).value = "";
+		(document.getElementById("f-logo") as HTMLInputElement).value = "";
+		(document.getElementById("f-desc") as HTMLTextAreaElement).value = "";
+		(document.getElementById("f-active") as HTMLInputElement).checked = true;
+		(document.getElementById("f-blank") as HTMLInputElement).checked = false;
+		(document.getElementById("f-order") as HTMLInputElement).value = "0";
+		(document.getElementById("friend-modal") as HTMLElement).classList.add("open");
+	};
+
+	window.editItem = async (id: number) => {
+		try {
+			const items = await getFriends(true);
+			const item = items?.find((f: any) => f.id === id);
+			if (!item) return;
+			
+			editingId = id;
+			(document.getElementById("modal-title") as HTMLElement).textContent = "编辑友链";
+			(document.getElementById("f-name") as HTMLInputElement).value = getName(item);
+			(document.getElementById("f-url") as HTMLInputElement).value = item.url || "";
+			(document.getElementById("f-logo") as HTMLInputElement).value = item.logo || "";
+			(document.getElementById("f-desc") as HTMLTextAreaElement).value = getDesc(item);
+			(document.getElementById("f-active") as HTMLInputElement).checked = item.is_active !== false;
+			(document.getElementById("f-blank") as HTMLInputElement).checked = item.target_blank === true;
+			(document.getElementById("f-order") as HTMLInputElement).value = String(item.order ?? 0);
+			(document.getElementById("friend-modal") as HTMLElement).classList.add("open");
+		} catch (e) {
+			console.error("加载友链详情失败:", e);
+			alert("加载失败");
+		}
+	};
+
+	window.closeModal = () => {
+		(document.getElementById("friend-modal") as HTMLElement).classList.remove("open");
+	};
+
+	window.saveFriend = async () => {
+		const name = (document.getElementById("f-name") as HTMLInputElement).value.trim();
+		const url = (document.getElementById("f-url") as HTMLInputElement).value.trim();
+		const logo = (document.getElementById("f-logo") as HTMLInputElement).value.trim();
+		const description = (document.getElementById("f-desc") as HTMLTextAreaElement).value.trim();
+		const is_active = (document.getElementById("f-active") as HTMLInputElement).checked;
+		const target_blank = (document.getElementById("f-blank") as HTMLInputElement).checked;
+		const order = parseInt((document.getElementById("f-order") as HTMLInputElement).value) || 0;
+		
+		if (!name || !url) { alert("请填写名称和链接"); return; }
+		
+		const data = { name, url, logo: logo || undefined, description: description || undefined, is_active, target_blank, order };
+		
+		try {
+			if (editingId) {
+				await updateFriend(editingId, data);
+			} else {
+				await createFriend(data);
+			}
+			closeModal(); 
+			loadList();
+		} catch (e: any) {
+			alert("保存失败：" + (e.message || "请稍后重试"));
+		}
+	};
+
+	window.del = async (id: number) => { 
+		if (confirm("确定删除这个友链？")) { 
+			try {
+				await deleteFriend(id); 
+				loadList(); 
+			} catch (e: any) {
+				alert("删除失败：" + (e.message || "请稍后重试"));
+			}
+		} 
+	};
+
+	loadList();
+</script>

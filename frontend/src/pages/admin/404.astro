@@ -1,0 +1,128 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+
+<AdminLayout title="页面未找到">
+	<div class="admin-error-page">
+		<div class="error-content">
+			<div class="error-code">404</div>
+			<div class="error-icon">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+					<circle cx="12" cy="12" r="10"/>
+					<path d="M12 8v4"/>
+					<path d="M12 16h.01"/>
+				</svg>
+			</div>
+			<h1 class="error-title">页面未找到</h1>
+			<p class="error-desc">您访问的页面不存在或已被移除。</p>
+			<div class="error-actions">
+				<a href="/admin/" class="btn btn-primary">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<rect x="3" y="3" width="7" height="7" rx="1.5"/>
+						<rect x="14" y="3" width="7" height="9" rx="1.5"/>
+						<rect x="14" y="16" width="7" height="5" rx="1.5"/>
+						<rect x="3" y="14" width="7" height="7" rx="1.5"/>
+					</svg>
+					返回仪表盘
+				</a>
+				<button onclick="history.back()" class="btn btn-ghost">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+						<polyline points="15 18 9 12 15 6"/>
+					</svg>
+					返回上一页
+				</button>
+			</div>
+		</div>
+	</div>
+</AdminLayout>
+
+<style>
+	.admin-error-page {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		min-height: 60vh;
+	}
+	.error-content {
+		text-align: center;
+		max-width: 480px;
+	}
+	.error-code {
+		font-size: clamp(120px, 25vw, 200px);
+		font-weight: 800;
+		line-height: 1;
+		background: linear-gradient(135deg, var(--cyan-400), var(--cyan-600));
+		-webkit-background-clip: text;
+		-webkit-text-fill-color: transparent;
+		background-clip: text;
+		opacity: 0.9;
+		margin-bottom: 8px;
+	}
+	.error-icon {
+		width: 72px;
+		height: 72px;
+		margin: 0 auto 24px;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		border-radius: 20px;
+		background: rgb(14 165 165 / 0.12);
+		color: var(--cyan-500);
+	}
+	.error-icon svg {
+		width: 36px;
+		height: 36px;
+	}
+	.error-title {
+		font-size: 28px;
+		font-weight: 700;
+		color: hsl(var(--bc));
+		margin: 0 0 12px;
+		letter-spacing: -0.02em;
+	}
+	.error-desc {
+		font-size: 15px;
+		color: hsl(var(--bc) / 0.6);
+		margin: 0 0 32px;
+		line-height: 1.6;
+	}
+	.error-actions {
+		display: flex;
+		gap: 12px;
+		justify-content: center;
+		flex-wrap: wrap;
+	}
+	.error-actions .btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 8px;
+		padding: 12px 24px;
+		border-radius: 12px;
+		font-size: 14px;
+		font-weight: 600;
+		cursor: pointer;
+		transition: all 0.2s;
+		border: none;
+		text-decoration: none;
+	}
+	.error-actions .btn svg {
+		width: 16px;
+		height: 16px;
+	}
+	.error-actions .btn-primary {
+		background: linear-gradient(135deg, var(--cyan-500), var(--cyan-600));
+		color: white;
+		box-shadow: 0 4px 14px rgb(14 165 165 / 0.35);
+	}
+	.error-actions .btn-primary:hover {
+		transform: translateY(-1px);
+		box-shadow: 0 6px 20px rgb(14 165 165 / 0.45);
+	}
+	.error-actions .btn-ghost {
+		background: hsl(var(--b2));
+		color: hsl(var(--bc) / 0.85);
+	}
+	.error-actions .btn-ghost:hover {
+		background: hsl(var(--b3));
+	}
+</style>

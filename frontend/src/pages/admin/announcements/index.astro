@@ -1,0 +1,160 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="公告管理">
+	<fragment slot="actions">
+		<div class="table-actions">
+			<button class="btn btn-primary btn-sm" onclick="showAddModal()">
+				<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+				新建公告
+			</button>
+		</div>
+	</fragment>
+
+	<div class="table-wrapper">
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<h3 class="table-title">所有公告</h3>
+				<span class="badge badge-ghost" id="announcements-count">0 个</span>
+			</div>
+		</div>
+		<div class="table-scroll">
+			<table class="table">
+				<thead>
+					<tr>
+						<th style="padding-left:24px;">标题</th>
+						<th>内容预览</th>
+						<th>类型</th>
+						<th>状态</th>
+						<th>发布时间</th>
+						<th style="width:130px;padding-right:24px;">操作</th>
+					</tr>
+				</thead>
+				<tbody id="list-body">
+					<tr>
+						<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--bc)/0.5);">
+							<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+								<svg style="width:36px;height:36px;opacity:0.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+								<span>加载中...</span>
+							</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</AdminLayout>
+
+<div class="admin-modal-overlay" id="announcement-modal">
+	<div class="admin-modal">
+		<div class="admin-modal-header">
+			<h3 class="admin-modal-title">新建公告</h3>
+			<button class="admin-modal-close" onclick="closeModal()" type="button">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			</button>
+		</div>
+		<div class="admin-modal-body">
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="an-title">标题</label>
+				<input type="text" id="an-title" class="admin-input" placeholder="公告标题">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="an-content">内容</label>
+				<textarea id="an-content" class="admin-textarea" placeholder="公告内容" rows="3"></textarea>
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="an-type">类型</label>
+				<select id="an-type" class="admin-select">
+					<option value="info">信息</option>
+					<option value="warning">警告</option>
+					<option value="success">成功</option>
+					<option value="error">错误</option>
+				</select>
+			</div>
+		</div>
+		<div class="admin-modal-footer">
+			<button class="btn btn-ghost btn-sm" onclick="closeModal()" type="button">取消</button>
+			<button class="btn btn-primary btn-sm" onclick="saveAnnouncement()" type="button">发布</button>
+		</div>
+	</div>
+</div>
+
+<script>
+	// @ts-nocheck
+	import { getAnnouncements, createAnnouncement, deleteAnnouncement } from "@api/admin";
+	const typeBadges: Record<string,string> = { info:'badge-info', warning:'badge-warning', success:'badge-success', error:'badge-error' };
+	const typeLabels: Record<string,string> = { info:'信息', warning:'警告', success:'成功', error:'错误' };
+	async function loadList() {
+		const tbody = document.getElementById("list-body") as HTMLElement;
+		try {
+			const items = await getAnnouncements();
+			const count = items?.length || 0;
+			const countEl = document.getElementById("announcements-count");
+			if (countEl) countEl.textContent = `${count} 个`;
+
+			if (!items || items.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="6" style="text-align:center;padding:56px 24px;">
+							<div class="empty-state">
+								<div class="empty-title">暂无公告</div>
+								<div class="empty-desc">点击右上角创建第一个公告</div>
+								<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="showAddModal()">
+									<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+									新建公告
+								</button>
+							</div>
+						</td>
+					</tr>
+				`;
+				return;
+			}
+			tbody.innerHTML = items.map((a: any) => `
+				<tr>
+					<td style="padding-left:24px;">
+						<span style="font-weight:600;">${a.title}</span>
+					</td>
+					<td style="font-size:13px;color:hsl(var(--bc)/0.65);max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${a.content}</td>
+					<td><span class="badge ${typeBadges[a.type] || 'badge-ghost'}">${typeLabels[a.type] || a.type}</span></td>
+					<td>${a.is_active ? '<span class="badge badge-success">显示中</span>' : '<span class="badge badge-ghost">已隐藏</span>'}</td>
+					<td style="font-size:12.5px;color:hsl(var(--bc)/0.6);">${new Date(a.created_at).toLocaleDateString('zh-CN')}</td>
+					<td style="padding-right:24px;">
+						<div class="action-buttons">
+							<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="del(${a.id})" title="删除">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+							</button>
+						</div>
+					</td>
+				</tr>
+			`).join("");
+		} catch (e) {
+			tbody.innerHTML = `
+				<tr>
+					<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--er));">
+						<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+							<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+							<span>加载失败，请刷新重试</span>
+						</div>
+					</td>
+				</tr>
+			`;
+		}
+	}
+	window.showAddModal = () => {
+		(document.getElementById("an-title") as HTMLInputElement).value = "";
+		(document.getElementById("an-content") as HTMLTextAreaElement).value = "";
+		(document.getElementById("an-type") as HTMLSelectElement).value = "info";
+		(document.getElementById("announcement-modal") as HTMLElement).classList.add("open");
+	};
+	window.closeModal = () => {
+		(document.getElementById("announcement-modal") as HTMLElement).classList.remove("open");
+	};
+	window.saveAnnouncement = async () => {
+		const title = (document.getElementById("an-title") as HTMLInputElement).value;
+		if (!title) { alert("请输入标题"); return; }
+		await createAnnouncement({ title, content: (document.getElementById("an-content") as HTMLTextAreaElement).value, type: (document.getElementById("an-type") as HTMLSelectElement).value, is_active: true });
+		closeModal(); loadList();
+	};
+	window.del = async (id: number) => { if (confirm("确定要删除这个公告吗？此操作无法撤销。")) { await deleteAnnouncement(id); loadList(); } };
+	loadList();
+</script>

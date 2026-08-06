@@ -1,0 +1,70 @@
+---
+import { Icon } from "astro-icon/components";
+import I18nKey from "@/i18n/i18nKey";
+import { i18n } from "@/i18n/translation";
+import MainGridLayout from "@/layouts/MainGridLayout.astro";
+import { url } from "@/utils/url-utils";
+---
+
+<MainGridLayout title={i18n(I18nKey.serverError)} description={i18n(I18nKey.serverErrorDescription)}>
+    <div class="flex w-full rounded-(--radius-large) overflow-hidden relative min-h-96">
+        <div class="card-base z-10 px-9 py-12 relative w-full flex flex-col items-center justify-center text-center">
+            <div class="text-8xl md:text-9xl font-bold text-(--primary) opacity-20 mb-4">
+                500
+            </div>
+            
+            <div class="mb-6">
+                <Icon is:inline name="material-symbols:bug-report-outline" class="text-6xl text-(--primary)" />
+            </div>
+            
+            <div class="text-3xl md:text-4xl font-bold mb-4 text-90">
+                {i18n(I18nKey.serverErrorTitle)}
+            </div>
+            
+            <p class="text-lg text-75 mb-8 max-w-md">
+                {i18n(I18nKey.serverErrorDescription)}
+            </p>
+            
+            <div class="flex flex-wrap items-center justify-center gap-4">
+                <a 
+                    href={url("/")}
+                    class="inline-flex items-center gap-2 px-6 py-3 bg-(--primary) text-white rounded-(--radius-large) hover:bg-(--btn-content) transition-colors duration-200 font-medium"
+                >
+                    <Icon is:inline name="material-symbols:home" class="text-xl" />
+                    {i18n(I18nKey.backToHome)}
+                </a>
+                <button 
+                    onclick="window.location.reload()"
+                    class="inline-flex items-center gap-2 px-6 py-3 bg-(--btn-regular-bg) text-(--btn-content) rounded-(--radius-large) hover:bg-(--enter-btn-bg) transition-colors duration-200 font-medium"
+                >
+                    <Icon is:inline name="material-symbols:refresh" class="text-xl" />
+                    {i18n(I18nKey.retry)}
+                </button>
+            </div>
+            
+            <div class="absolute top-4 left-4 opacity-10">
+                <Icon is:inline name="material-symbols:construction" class="text-4xl text-(--primary)" />
+            </div>
+            <div class="absolute bottom-4 right-4 opacity-10">
+                <Icon is:inline name="material-symbols:warning-rounded" class="text-4xl text-(--primary)" />
+            </div>
+        </div>
+    </div>
+</MainGridLayout>
+
+<style>
+    .card-base {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

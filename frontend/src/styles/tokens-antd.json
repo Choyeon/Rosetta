@@ -1,0 +1,194 @@
+{
+	"color": {
+		"primary": {
+			"50": {
+				"$value": "#e6f4ff",
+				"$type": "color",
+				"$description": "主色最浅（悬浮背景）"
+			},
+			"100": {
+				"$value": "#bae0ff",
+				"$type": "color",
+				"$description": "主色浅"
+			},
+			"200": { "$value": "#91caff", "$type": "color" },
+			"300": { "$value": "#69b1ff", "$type": "color" },
+			"400": {
+				"$value": "#4096ff",
+				"$type": "color",
+				"$description": "主色悬浮"
+			},
+			"500": {
+				"$value": "#1677ff",
+				"$type": "color",
+				"$description": "品牌主色（Ant Design Blue）"
+			},
+			"600": {
+				"$value": "#0958d9",
+				"$type": "color",
+				"$description": "主色按下"
+			},
+			"700": { "$value": "#003eb3", "$type": "color" },
+			"800": { "$value": "#002c8c", "$type": "color" },
+			"900": { "$value": "#001d66", "$type": "color" }
+		},
+		"success": {
+			"500": {
+				"$value": "#52c41a",
+				"$type": "color",
+				"$description": "成功色"
+			},
+			"600": { "$value": "#389e0d", "$type": "color" },
+			"100": { "$value": "#d9f7be", "$type": "color" },
+			"50": { "$value": "#f6ffed", "$type": "color" }
+		},
+		"warning": {
+			"500": {
+				"$value": "#faad14",
+				"$type": "color",
+				"$description": "警告色"
+			},
+			"600": { "$value": "#d48806", "$type": "color" },
+			"100": { "$value": "#ffe7ba", "$type": "color" },
+			"50": { "$value": "#fffbe6", "$type": "color" }
+		},
+		"error": {
+			"500": {
+				"$value": "#ff4d4f",
+				"$type": "color",
+				"$description": "错误/危险色"
+			},
+			"600": { "$value": "#cf1322", "$type": "color" },
+			"100": { "$value": "#ffa39e", "$type": "color" },
+			"50": { "$value": "#fff2f0", "$type": "color" }
+		},
+		"info": {
+			"500": {
+				"$value": "#1677ff",
+				"$type": "color",
+				"$description": "信息色（同主色）"
+			},
+			"50": { "$value": "#e6f4ff", "$type": "color" }
+		},
+		"neutral": {
+			"text": {
+				"primary": { "$value": "rgba(0, 0, 0, 0.88)", "$type": "color" },
+				"secondary": { "$value": "rgba(0, 0, 0, 0.65)", "$type": "color" },
+				"tertiary": { "$value": "rgba(0, 0, 0, 0.45)", "$type": "color" },
+				"quaternary": { "$value": "rgba(0, 0, 0, 0.25)", "$type": "color" }
+			},
+			"fill": {
+				"default": { "$value": "rgba(0, 0, 0, 0.15)", "$type": "color" },
+				"hover": { "$value": "rgba(0, 0, 0, 0.06)", "$type": "color" },
+				"active": { "$value": "rgba(0, 0, 0, 0.09)", "$type": "color" },
+				"quaternary": { "$value": "rgba(0, 0, 0, 0.04)", "$type": "color" }
+			},
+			"border": {
+				"default": { "$value": "#d9d9d9", "$type": "color" },
+				"secondary": { "$value": "#f0f0f0", "$type": "color" }
+			},
+			"bg": {
+				"container": { "$value": "#ffffff", "$type": "color" },
+				"elevated": { "$value": "#ffffff", "$type": "color" },
+				"layout": { "$value": "#f5f5f5", "$type": "color" },
+				"spot": { "$value": "#fafafa", "$type": "color" },
+				"mask": { "$value": "rgba(0, 0, 0, 0.45)", "$type": "color" }
+			}
+		}
+	},
+	"fontFamily": {
+		"sans": {
+			"$value": "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+			"$type": "fontFamily",
+			"$description": "Ant Design 标准无衬线字体栈"
+		},
+		"mono": {
+			"$value": "'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, Courier, monospace",
+			"$type": "fontFamily"
+		}
+	},
+	"fontSize": {
+		"h1": { "$value": "38px", "$type": "dimension" },
+		"h2": { "$value": "30px", "$type": "dimension" },
+		"h3": { "$value": "24px", "$type": "dimension" },
+		"h4": { "$value": "20px", "$type": "dimension" },
+		"lg": { "$value": "16px", "$type": "dimension" },
+		"md": {
+			"$value": "14px",
+			"$type": "dimension",
+			"$description": "默认字号"
+		},
+		"sm": { "$value": "12px", "$type": "dimension" }
+	},
+	"lineHeight": {
+		"md": { "$value": 1.5714, "$type": "number", "$description": "14/22 行高" },
+		"lg": { "$value": 1.5, "$type": "number" }
+	},
+	"spacing": {
+		"xxs": { "$value": "4px", "$type": "dimension" },
+		"xs": { "$value": "8px", "$type": "dimension" },
+		"sm": { "$value": "12px", "$type": "dimension" },
+		"md": {
+			"$value": "16px",
+			"$type": "dimension",
+			"$description": "基准间距"
+		},
+		"lg": { "$value": "20px", "$type": "dimension" },
+		"xl": { "$value": "24px", "$type": "dimension" },
+		"2xl": { "$value": "32px", "$type": "dimension" },
+		"3xl": { "$value": "48px", "$type": "dimension" }
+	},
+	"borderRadius": {
+		"xs": { "$value": "2px", "$type": "dimension" },
+		"sm": {
+			"$value": "4px",
+			"$type": "dimension",
+			"$description": "Ant Design 默认圆角"
+		},
+		"md": { "$value": "6px", "$type": "dimension" },
+		"lg": { "$value": "8px", "$type": "dimension" },
+		"xl": { "$value": "16px", "$type": "dimension" },
+		"full": { "$value": "9999px", "$type": "dimension" }
+	},
+	"boxShadow": {
+		"xs": {
+			"$value": "0 1px 2px 0 rgba(0, 0, 0, 0.03)",
+			"$type": "shadow"
+		},
+		"sm": {
+			"$value": "0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px 0 rgba(0, 0, 0, 0.02)",
+			"$type": "shadow"
+		},
+		"md": {
+			"$value": "0 4px 16px 0 rgba(0, 0, 0, 0.08), 0 2px 4px -2px rgba(0, 0, 0, 0.06)",
+			"$type": "shadow",
+			"$description": "默认卡片/浮层阴影"
+		},
+		"lg": {
+			"$value": "0 6px 24px 0 rgba(0, 0, 0, 0.12), 0 3px 6px -4px rgba(0, 0, 0, 0.06)",
+			"$type": "shadow",
+			"$description": "下拉/抽屉阴影"
+		},
+		"xl": {
+			"$value": "0 12px 40px 0 rgba(0, 0, 0, 0.16), 0 6px 12px -8px rgba(0, 0, 0, 0.08)",
+			"$type": "shadow"
+		}
+	},
+	"motion": {
+		"easeOut": {
+			"$value": "cubic-bezier(0.215, 0.61, 0.355, 1)",
+			"$type": "other"
+		},
+		"easeInOut": {
+			"$value": "cubic-bezier(0.645, 0.045, 0.355, 1)",
+			"$type": "other"
+		},
+		"durationFast": { "$value": "100ms", "$type": "duration" },
+		"durationMid": {
+			"$value": "200ms",
+			"$type": "duration",
+			"$description": "默认过渡时长"
+		},
+		"durationSlow": { "$value": "300ms", "$type": "duration" }
+	}
+}

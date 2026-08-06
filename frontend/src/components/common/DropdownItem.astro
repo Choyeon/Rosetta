@@ -1,0 +1,79 @@
+---
+/**
+ * 公共下拉面板选项组件
+ * 用于下拉面板中的选项项
+ */
+interface Props {
+	href?: string;
+	target?: string;
+	isActive?: boolean;
+	isLast?: boolean;
+	class?: string;
+	onclick?: string;
+	rel?: string;
+}
+
+const {
+	href,
+	target,
+	isActive = false,
+	isLast = false,
+	class: className,
+	onclick,
+	rel,
+} = Astro.props;
+
+const baseClasses =
+	"flex transition whitespace-nowrap items-center justify-start! w-full btn-plain scale-animation rounded-lg h-9 px-3 font-medium active:scale-95";
+const spacingClass = isLast ? "" : "mb-0.5";
+const activeClass = isActive ? "current-theme-btn" : "";
+const allClasses =
+	`${baseClasses} ${spacingClass} ${activeClass} ${className || ""}`.trim();
+
+const Tag = href ? "a" : "button";
+
+// ============ 路由边界：前台 ↔ 后台 / 登录 / OOBE / 错误页
+// 这些页面使用完全不同的外壳布局（MainGridLayout vs admin.astro vs login.astro），
+// 若被 Swup 接管只会替换 #swup-container，旧外壳的 navbar/sidebar/topbar 不会卸载，
+// 导致「后台管理页面在前台主内容区域渲染」这种视觉异常。
+// 因此命中下面白名单的链接必须强制整页刷新（data-no-swup）。
+// 注意：站点可能被部署在子路径 (base path) 下，url() 返回形如 /rosetta/admin/ 。
+// 因此不能只判断 startsWith("/admin")，要按路径段 (segment) 判断。
+function shouldBypassSwup(targetHref: string | undefined): boolean {
+	if (!targetHref) return false;
+	try {
+		const u = new URL(targetHref, "http://x");
+		const p = u.pathname || "";
+		const segments = p.split("/").filter((s) => s.length > 0);
+		const first = segments[0] || "";
+		const last = segments[segments.length - 1] || "";
+		const hasAdmin = segments.some((s) => s === "admin");
+		const hasLogin = segments.some((s) => s === "login");
+		const hasOobe = segments.some((s) => s === "oobe");
+		const isError =
+			last === "404" ||
+			last === "403" ||
+			last === "500" ||
+			first === "404" ||
+			first === "403" ||
+			first === "500";
+		return hasAdmin || hasLogin || hasOobe || isError;
+	} catch {
+		return false;
+	}
+}
+const bypassSwup = shouldBypassSwup(href);
+const defaultRel = target === "_blank" ? "noopener noreferrer" : undefined;
+const finalRel = rel ?? defaultRel;
+---
+
+<Tag 
+	href={href}
+	target={target}
+	rel={finalRel}
+	class={allClasses}
+	onclick={onclick}
+	data-no-swup={bypassSwup || undefined}
+>
+	<slot />
+</Tag>

@@ -1,0 +1,169 @@
+---
+import { Icon } from "astro-icon/components";
+import type { NavBarLink } from "@/types/config";
+import { url } from "@/utils/url-utils";
+
+interface Props {
+	links: NavBarLink[];
+}
+
+const processedLinks = Astro.props.links;
+
+const toTitlesAttr = (l: NavBarLink) =>
+	l.i18n_titles ? JSON.stringify(l.i18n_titles) : undefined;
+
+// ============ 路由边界：前台 ↔ 后台 / 登录 / OOBE / 错误页
+// 命中时不交给 Swup，强制整页刷新，避免「后台在前台主内容渲染」。
+// 注意：站点可能被部署在子路径 (base path) 下，url() 返回形如 /rosetta/admin/ 。
+// 因此不能只判断 startsWith("/admin")，要按路径段 (segment) 判断。
+function shouldBypassSwup(
+	hrefRaw: string | undefined,
+	external: boolean | undefined,
+): boolean {
+	if (external || !hrefRaw) return false;
+	try {
+		const u = new URL(hrefRaw, "http://x");
+		const p = u.pathname || "";
+		// 按斜杠切段，避免 base path 干扰。'' 开头的空段去掉后逐段匹配。
+		const segments = p.split("/").filter((s) => s.length > 0);
+		const first = segments[0] || "";
+		const last = segments[segments.length - 1] || "";
+		const hasAdmin = segments.some((s) => s === "admin");
+		const hasLogin = segments.some((s) => s === "login");
+		const hasOobe = segments.some((s) => s === "oobe");
+		const isError =
+			last === "404" ||
+			last === "403" ||
+			last === "500" ||
+			first === "404" ||
+			first === "403" ||
+			first === "500";
+		return hasAdmin || hasLogin || hasOobe || isError;
+	} catch {
+		return false;
+	}
+}
+---
+<div id="nav-menu-panel" class:list={["float-panel float-panel-closed transition-all fixed right-4 px-2 py-2 max-h-[80vh] overflow-y-auto"]}>
+    {processedLinks.map((link) => {
+        const titles = toTitlesAttr(link);
+        // 预先计算普通（无子菜单）分支的值，避免在 JSX 中 IIFE 破坏结构
+        const plainHref = link.external ? link.url : url(link.url);
+        const plainBypass = shouldBypassSwup(plainHref, link.external);
+        return (
+        <div class="mobile-menu-item">
+            {link.children && link.children.length > 0 ? (
+                /* 有子菜单的项目 */
+                <div class="mobile-dropdown" data-mobile-dropdown>
+                    <button
+                        class="group flex justify-between items-center py-2 pl-3 pr-1 rounded-lg gap-8 w-full text-left
+                            hover:bg-(--btn-plain-bg-hover) active:bg-(--btn-plain-bg-active) transition"
+                        data-mobile-dropdown-trigger
+                        aria-expanded="false"
+                    >
+                        <div class="flex items-center transition text-black/75 dark:text-white/75 font-bold group-hover:text-(--primary) group-active:text-(--primary)">
+							{link.icon && <Icon is:inline name={link.icon} class="text-[1.1rem] mr-2" />}
+                            <span class="i18n-nav-title" data-i18n-titles={titles} aria-label={link.name}>{link.name}</span>
+                        </div>
+                        <Icon is:inline name="material-symbols:keyboard-arrow-down-rounded"
+                              class="transition text-[1.25rem] text-(--primary) mobile-dropdown-arrow duration-200"
+                        />
+                    </button>
+                    <div class="mobile-submenu" data-mobile-submenu>
+                        {link.children.map((child) => {
+                            const childTitles = toTitlesAttr(child);
+                            const childHref = child.external ? child.url : url(child.url);
+                            const childBypass = shouldBypassSwup(childHref, child.external);
+                            return (
+                            <a href={childHref}
+                               class="group flex justify-between items-center py-2 pl-6 pr-1 rounded-lg gap-8
+                                   hover:bg-(--btn-plain-bg-hover) active:bg-(--btn-plain-bg-active) transition"
+                               target={child.external ? "_blank" : null}
+                               rel={child.external ? "noopener noreferrer" : undefined}
+                               data-no-swup={childBypass || undefined}
+                            >
+                                <div class="flex items-center transition text-black/60 dark:text-white/60 font-medium group-hover:text-(--primary) group-active:text-(--primary)">
+									{child.icon && <Icon is:inline name={child.icon} class="text-[1.1rem] mr-2" />}
+                                    <span class="i18n-nav-title" data-i18n-titles={childTitles} aria-label={child.name}>{child.name}</span>
+                                </div>
+                                {child.external && <Icon is:inline name="fa7-solid:arrow-up-right-from-square"
+                                      class="transition text-[0.75rem] text-black/25 dark:text-white/25 -translate-x-1"
+                                />}
+                            </a>
+                        )})}
+                    </div>
+                </div>
+            ) : (
+                /* 普通链接项目 */
+                <a href={plainHref} class="group flex justify-between items-center py-2 pl-3 pr-1 rounded-lg gap-8
+                    hover:bg-(--btn-plain-bg-hover) active:bg-(--btn-plain-bg-active) transition
+                "
+                   target={link.external ? "_blank" : null}
+                   rel={link.external ? "noopener noreferrer" : undefined}
+                   data-no-swup={plainBypass || undefined}
+                >
+                    <div class="flex items-center transition text-black/75 dark:text-white/75 font-bold group-hover:text-(--primary) group-active:text-(--primary)">
+						{link.icon && <Icon is:inline name={link.icon} class="text-[1.1rem] mr-2" />}
+                        <span class="i18n-nav-title" data-i18n-titles={titles} aria-label={link.name}>{link.name}</span>
+                    </div>
+					{!link.external && <Icon is:inline name="material-symbols:chevron-right-rounded"
+                          class="transition text-[1.25rem] text-(--primary)"
+                    />}
+					{link.external && <Icon is:inline name="fa7-solid:arrow-up-right-from-square"
+                          class="transition text-[0.75rem] text-black/25 dark:text-white/25 -translate-x-1"
+                    />}
+                </a>
+            )}
+        </div>
+    )})}
+</div>
+
+<style>
+    @reference "../../styles/main.css";
+
+    .mobile-submenu {
+        @apply max-h-0 overflow-hidden transition-all duration-300 ease-in-out;
+    }
+
+    .mobile-dropdown[data-expanded="true"] .mobile-submenu {
+        @apply max-h-96;
+    }
+
+    .mobile-dropdown[data-expanded="true"] .mobile-dropdown-arrow {
+        @apply rotate-180;
+    }
+</style>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const mobileDropdowns = document.querySelectorAll('[data-mobile-dropdown]');
+
+        mobileDropdowns.forEach(dropdown => {
+            const trigger = dropdown.querySelector('[data-mobile-dropdown-trigger]');
+            const submenu = dropdown.querySelector('[data-mobile-submenu]');
+
+            if (!trigger || !submenu) return;
+
+            trigger.addEventListener('click', function(e) {
+                e.preventDefault();
+                const isExpanded = dropdown.getAttribute('data-expanded') === 'true';
+
+                // 关闭其他打开的下拉菜单
+                mobileDropdowns.forEach(otherDropdown => {
+                    if (otherDropdown !== dropdown) {
+                        otherDropdown.setAttribute('data-expanded', 'false');
+                        const otherTrigger = otherDropdown.querySelector('[data-mobile-dropdown-trigger]');
+                        if (otherTrigger) {
+                            otherTrigger.setAttribute('aria-expanded', 'false');
+                        }
+                    }
+                });
+
+                // 切换当前下拉菜单
+                const newState = !isExpanded;
+                dropdown.setAttribute('data-expanded', newState.toString());
+                trigger.setAttribute('aria-expanded', newState.toString());
+            });
+        });
+    });
+</script>

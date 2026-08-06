@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="rosetta-logo-grad" x1="10%" y1="0%" x2="90%" y2="100%" gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#1DA1FF"/>
+      <stop offset="42%"  stop-color="#3B82F6"/>
+      <stop offset="72%"  stop-color="#7C3AED"/>
+      <stop offset="100%" stop-color="#C026D3"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <path d="M564 80 C 432 70 308 90 202 150 L 136 186
+             C 106 202 82 236 70 274 L 16 480
+             C 2 536 -4 598 14 660 L 54 808
+             C 66 848 92 882 128 900 L 264 966
+             C 326 996 398 1012 474 1016 L 566 1020
+             C 642 1016 714 1002 776 974 L 908 910
+             C 946 892 976 856 990 814 L 1010 702
+             C 1024 632 1022 560 1002 494
+             L 944 308 C 926 252 892 204 846 172
+             L 758 110 C 704 74 640 62 564 80 Z"
+          fill="url(#rosetta-logo-grad)"/>
+    <path d="M390 214 L 522 214
+             C 586 214 638 244 666 294
+             C 694 344 694 404 666 454
+             L 524 712 L 330 712 L 440 514 L 386 514 L 212 816 L 110 760
+             L 308 414 L 190 414 L 190 336 L 346 336
+             L 390 260 C 390 238 388 214 390 214 Z
+             M 390 336 L 466 336 L 430 404 L 390 404 Z
+             M 440 600 L 608 600
+             C 626 574 638 546 646 518
+             C 654 490 656 462 650 434
+             C 646 406 634 382 616 362
+             C 598 342 572 330 538 326 L 440 326 Z"
+          fill="#FFFFFF"/>
+  </g>
+</svg>

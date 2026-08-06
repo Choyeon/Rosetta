@@ -1,0 +1,723 @@
+@import 'tailwindcss';
+@import './tokens-antd.css';
+@import './layout-styles.css';
+@import './navbar.css';
+@import './banner-title.css';
+@import './waves.css';
+@import './transition.css';
+@import './custom-scrollbar.css';
+@import './gallery.css';
+@import './anime-bangumi.css';
+@import './tags.css';
+@import './display-settings.css';
+@import './categories.css';
+
+@plugin '@tailwindcss/typography';
+
+/* 暗色模式选择器配置 */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Tailwind v4 配置 - 从 tailwind.config.cjs 迁移 */
+@theme {
+  --font-sans:
+    'Roboto', 'sans-serif', ui-sans-serif, system-ui, sans-serif,
+    'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol', 'Noto Color Emoji';
+}
+
+/* 自定义工具类 - Tailwind v4 使用 @utility 定义 */
+@utility expand-animation {
+  position: relative;
+  z-index: 0;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    scale: 0.85;
+    z-index: -10;
+    transition: all 0.15s ease-out;
+  }
+  &:hover::before {
+    background-color: var(--btn-plain-bg-hover);
+    scale: 1;
+  }
+  &:active::before {
+    background-color: var(--btn-plain-bg-active);
+  }
+  &:active {
+    background: none;
+  }
+}
+
+/* =========================================================
+   Global Design Tokens — 语义别名（完全基于首页 variables.styl 的 hue 驱动体系）
+   让 OOBE / Admin / Widgets 全部继承【首页的同一套色相】，保持与 blog 首页配色完全一致
+
+   重要：
+   1. :root 与 :root.dark 的所有 --paper / --ink / --surface / --hairline / --input
+      直接 alias 到首页的 --page-bg / --card-bg / --float-panel-bg / --deep-text
+      / --line-color / --content-meta / --btn-regular-bg；
+   2. 默认为 :root 注入 --hue: 250（与 setting-utils.ts getDefaultHue fallback 一致），
+      避免"用户没进入过首页/OOBE/Admin 先加载"场景下 oklch(.. var(--hue)) 无值导致
+      页面透明/全部黑的问题；随后组件会用 localStorage 或后端 config 覆盖。
+   ========================================================= */
+:root {
+  /* 默认 hue（首次加载无任何存储时，保证所有 oklch(... var(--hue)) 有确定值） */
+  --hue: 250;
+
+  /* ===== WCAG AA 4.5:1 对比度强制兜底 =====
+     首页 variables.styl（Layout.astro:50 import）由于 Vite HMR 时序有时
+     会沿用旧 --primary（oklch 0.70 / 对比度 3.67），这里以同 specificity
+     规则【后声明覆盖先声明】保证 --primary / --btn-content / --toc-item-active
+     / --l2d-msg-bg / --title-active 全部使用满足 AA 的更暗值：
+     - --primary oklch(0.58 0.14 var(--hue)) 在 #fff 上 ≥ 5.0 达标
+     - --btn-content 0.53 → ≥ 6.1 达标
+     - --toc-item-active / --title-active 相应降低 L 值
+     ================================================================ */
+  --primary:              oklch(0.58 0.14 var(--hue));
+  --btn-content:          oklch(0.53 0.12 var(--hue));
+  --title-active:         oklch(0.55 0.10 var(--hue));
+  --toc-item-active:      oklch(0.65 0.12 var(--hue));
+  --l2d-msg-bg:           oklch(0.65 0.13 var(--hue));
+
+  /* 基色语义：直接复用首页 variables.styl 的 hue 驱动 oklch */
+  --paper-50:  var(--page-bg);
+  --paper-100: var(--page-bg);
+  --paper-200: color-mix(in oklch, var(--page-bg) 92%, black 8%);
+  --paper-300: color-mix(in oklch, var(--page-bg) 84%, black 16%);
+  --paper-400: color-mix(in oklch, var(--page-bg) 72%, black 28%);
+
+  /* 墨色文字（亮/暗都用 --deep-text；淡灰文字改为优先使用 --content-meta 不是 --muted）
+     暗色里 --muted 仍然是接近页面背景的颜色，绝对不能拿来写文字 */
+  --ink-900: var(--deep-text);
+  --ink-700: color-mix(in oklch, var(--deep-text) 82%, transparent);
+  --ink-500: color-mix(in oklch, var(--content-meta, var(--deep-text)) 100%, transparent);
+
+  /* 语义色（accent = 首页 primary） */
+  --ochre-50:  var(--btn-regular-bg);
+  --ochre-100: var(--btn-regular-bg);
+  --ochre-200: var(--btn-regular-bg-hover);
+  --ochre-300: var(--btn-regular-bg-active);
+  --ochre-400: var(--title-active);
+  --ochre-500: var(--primary, var(--btn-content));
+  --ochre-600: color-mix(in oklch, var(--primary, var(--btn-content)) 88%, black 12%);
+  --ochre-700: color-mix(in oklch, var(--primary, var(--btn-content)) 72%, black 28%);
+  --ochre-800: color-mix(in oklch, var(--primary, var(--btn-content)) 56%, black 44%);
+  --ochre-900: color-mix(in oklch, var(--primary, var(--btn-content)) 38%, black 62%);
+
+  /* 胡桃木 · 竹青 · 靛青：在主 hue 附近做色相偏移，保持整体色调统一但有层次 */
+  --walnut-50:  color-mix(in oklch, var(--paper-100) 92%, var(--primary, var(--btn-content)) 8%);
+  --walnut-100: color-mix(in oklch, var(--paper-100) 84%, var(--primary, var(--btn-content)) 16%);
+  --walnut-200: color-mix(in oklch, var(--paper-200) 76%, var(--primary, var(--btn-content)) 24%);
+  --walnut-300: color-mix(in oklch, var(--content-meta, var(--deep-text)) 62%, var(--primary, var(--btn-content)) 38%);
+  --walnut-400: color-mix(in oklch, var(--content-meta, var(--deep-text)) 70%, var(--primary, var(--btn-content)) 30%);
+  --walnut-500: color-mix(in oklch, var(--deep-text) 78%, var(--primary, var(--btn-content)) 22%);
+  --walnut-600: color-mix(in oklch, var(--deep-text) 82%, var(--primary, var(--btn-content)) 18%);
+  --walnut-700: color-mix(in oklch, var(--deep-text) 90%, var(--primary, var(--btn-content)) 10%);
+  --walnut-800: color-mix(in oklch, var(--deep-text) 94%, var(--primary, var(--btn-content)) 6%);
+  --walnut-900: color-mix(in oklch, #000 82%, var(--primary, var(--btn-content)) 18%);
+
+  --sage-50:    color-mix(in oklch, var(--paper-100) 88%, hsl(170 30% 45%) 12%);
+  --sage-100:   color-mix(in oklch, var(--paper-200) 82%, hsl(170 30% 45%) 18%);
+  --sage-200:   color-mix(in oklch, var(--content-meta, var(--deep-text)) 72%, hsl(170 40% 50%) 28%);
+  --sage-300:   color-mix(in oklch, var(--content-meta, var(--deep-text)) 58%, hsl(170 45% 50%) 42%);
+  --sage-400:   color-mix(in oklch, var(--primary, var(--btn-content)) 62%, hsl(170 50% 42%) 38%);
+  --sage-500:   color-mix(in oklch, var(--primary, var(--btn-content)) 72%, hsl(170 60% 38%) 28%);
+  --sage-600:   color-mix(in oklch, var(--primary, var(--btn-content)) 80%, hsl(170 60% 32%) 20%);
+  --sage-700:   color-mix(in oklch, var(--deep-text) 86%, hsl(170 40% 32%) 14%);
+  --sage-800:   color-mix(in oklch, var(--deep-text) 90%, hsl(170 40% 30%) 10%);
+  --sage-900:   color-mix(in oklch, #000 88%, hsl(170 40% 30%) 12%);
+
+  --indigo-50:  color-mix(in oklch, var(--paper-100) 88%, hsl(240 45% 55%) 12%);
+  --indigo-100: color-mix(in oklch, var(--paper-200) 80%, hsl(240 45% 55%) 20%);
+  --indigo-200: color-mix(in oklch, var(--content-meta, var(--deep-text)) 70%, hsl(240 50% 60%) 30%);
+  --indigo-300: color-mix(in oklch, var(--content-meta, var(--deep-text)) 50%, hsl(240 55% 68%) 50%);
+  --indigo-400: color-mix(in oklch, var(--primary, var(--btn-content)) 60%, hsl(240 55% 58%) 40%);
+  --indigo-500: color-mix(in oklch, var(--primary, var(--btn-content)) 70%, hsl(240 60% 50%) 30%);
+  --indigo-600: color-mix(in oklch, var(--primary, var(--btn-content)) 78%, hsl(240 55% 42%) 22%);
+  --indigo-700: color-mix(in oklch, var(--deep-text) 82%, hsl(240 45% 42%) 18%);
+  --indigo-800: color-mix(in oklch, var(--deep-text) 88%, hsl(240 45% 40%) 12%);
+  --indigo-900: color-mix(in oklch, #000 86%, hsl(240 45% 40%) 14%);
+
+  /* 语义语义色（与首页 primary 对齐） */
+  --accent:       var(--primary, var(--btn-content));
+  --accent-deep:  color-mix(in oklch, var(--primary, var(--btn-content)) 90%, black 10%);
+  --accent-soft:  color-mix(in oklch, var(--primary, var(--btn-content)) 12%, transparent);
+  --accent-ring:  color-mix(in oklch, var(--primary, var(--btn-content)) 42%, transparent);
+  --accent-grad:  linear-gradient(
+                    135deg,
+                    color-mix(in oklch, var(--primary, var(--btn-content)) 92%, white 8%) 0%,
+                    var(--primary, var(--btn-content)) 48%,
+                    color-mix(in oklch, var(--primary, var(--btn-content)) 72%, hsl(170 50% 45%) 28%) 100%
+                  );
+
+  --success:      color-mix(in oklch, var(--primary, var(--btn-content)) 66%, hsl(155 60% 40%) 34%);
+  --warning:      color-mix(in oklch, var(--primary, var(--btn-content)) 78%, hsl(36 90% 48%) 22%);
+  --danger:       hsl(6 65% 55%);
+
+  /* 表面 / 边框 / 阴影 — 复用首页 card-bg / line-color / meta-divider / float-panel-bg */
+  --surface:      color-mix(in oklch, var(--card-bg) 96%, transparent);
+  --surface-stk:  var(--card-bg);
+  --hairline:     var(--line-color);
+  --input-bg:     var(--float-panel-bg, var(--card-bg));
+  --input-border: color-mix(in oklch, var(--line-color) 85%, transparent);
+  --input-focus:  color-mix(in oklch, var(--primary, var(--btn-content)) 50%, transparent);
+  --input-ring:   color-mix(in oklch, var(--primary, var(--btn-content)) 12%, transparent);
+
+  --shadow-sm: 0 1px 2px color-mix(in oklch, var(--walnut-900) 6%, transparent),
+               0 10px 26px -14px color-mix(in oklch, var(--primary, var(--btn-content)) 22%, transparent);
+  --shadow-md: 0 8px 24px -10px color-mix(in oklch, var(--walnut-900) 12%, transparent),
+               0 2px 6px -2px color-mix(in oklch, var(--walnut-900) 8%, transparent);
+  --shadow-lg: 0 30px 80px -32px color-mix(in oklch, var(--primary, var(--btn-content)) 32%, transparent),
+               0 6px 24px -10px color-mix(in oklch, var(--walnut-900) 12%, transparent);
+
+  /* 圆形 reveal：使用真实的 page-bg（亮/暗分别取值） */
+  --circle-reveal-light: var(--page-bg);
+  --circle-reveal-dark:  var(--page-bg);
+}
+
+:root.dark {
+  /* 兜底：强制覆盖暗色核心色（防止 variables.styl 加载时序导致 --deep-text 仍是亮色黑色值）
+     这是 OOBE / Admin "暗色内容不可见" 的二级保险防线 */
+  --deep-text: oklch(0.92 0.012 var(--hue));
+  --title-active: oklch(0.8 0.1 var(--hue));
+
+  /* 明确在暗色再次注入语义别名，避免某些运行时切换后属性未同步 */
+  --paper-50:  var(--page-bg);
+  --paper-100: var(--page-bg);
+  --paper-200: color-mix(in oklch, var(--page-bg) 88%, white 12%);
+  --paper-300: color-mix(in oklch, var(--page-bg) 78%, white 22%);
+  --paper-400: color-mix(in oklch, var(--page-bg) 64%, white 36%);
+
+  --surface:    color-mix(in oklch, var(--card-bg) 96%, transparent);
+  --surface-stk: var(--card-bg);
+  --hairline:   var(--line-color);
+  --input-bg:   var(--float-panel-bg, var(--card-bg));
+  --input-border: color-mix(in oklch, var(--line-color) 90%, transparent);
+
+  --ink-900: var(--deep-text);
+  --ink-700: color-mix(in oklch, var(--deep-text) 86%, transparent);
+  --ink-500: color-mix(in oklch, var(--content-meta, var(--deep-text)) 100%, transparent);
+
+  --circle-reveal-dark:  var(--page-bg);
+  --circle-reveal-light: var(--page-bg);
+}
+
+/* 确保平滑滚动 */
+html {
+    scroll-behavior: smooth;
+}
+
+/* 页面顶部渐变高光效果 - 已禁用（改为纯白背景） */
+.top-gradient-highlight {
+    display: none;
+}
+
+@layer components {
+    /* View Transitions API 主题切换动画 — 由 transition.css 统一管理 */
+    /* 确保边框和分隔线元素在主题切换时有更明确的过渡时长 */
+    .transition,
+    [class*="border"],
+    [class*="transition"] {
+        transition-property: color, background-color, border-color, text-decoration-color, fill, stroke;
+        transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+        transition-duration: 0.15s;
+    }
+    
+    /* 主题过渡保护类 - 仅在非 View Transitions 模式下使用 */
+    /* 当使用 View Transitions API 时，浏览器会自动处理过渡，不需要禁用 transition */
+    .is-theme-transitioning:not(.use-view-transition) *,
+    .is-theme-transitioning:not(.use-view-transition) *::before,
+    .is-theme-transitioning:not(.use-view-transition) *::after {
+        transition: none !important;
+        animation: none !important;
+    }
+    
+    /* 在主题切换时禁用代码块的复杂效果以提升性能 */
+    /* 使用 View Transitions 时也需要禁用代码块动画，因为它们太多了 */
+    .is-theme-transitioning .expressive-code,
+    .is-theme-transitioning .expressive-code * {
+        transition: none !important;
+        animation: none !important;
+        will-change: auto !important;
+    }
+    
+    /* 禁用复杂选择器元素的过渡 - 仅在非 View Transitions 模式下 */
+    .is-theme-transitioning:not(.use-view-transition) .float-panel,
+    .is-theme-transitioning:not(.use-view-transition) .float-panel *,
+    .is-theme-transitioning:not(.use-view-transition) .music-player,
+    .is-theme-transitioning:not(.use-view-transition) .music-player *,
+    .is-theme-transitioning:not(.use-view-transition) .widget,
+    .is-theme-transitioning:not(.use-view-transition) .widget *,
+    .is-theme-transitioning:not(.use-view-transition) .dropdown-content,
+    .is-theme-transitioning:not(.use-view-transition) .dropdown-content * {
+        transition: none !important;
+        animation: none !important;
+    }
+    
+    /* 强制使用 contain 隔离渲染上下文 - 仅在非 View Transitions 模式下 */
+    .is-theme-transitioning:not(.use-view-transition) .post-card,
+    .is-theme-transitioning:not(.use-view-transition) .widget,
+    .is-theme-transitioning:not(.use-view-transition) .float-panel {
+        contain: layout style paint !important;
+    }
+    
+    /* 水波纹效果精确同步处理 - 仅在非 View Transitions 模式下 */
+    .is-theme-transitioning:not(.use-view-transition) svg use {
+        /* 禁用过渡但保持动画 */
+        transition: none;
+        /* 强制立即继承页面背景色 */
+        fill: currentColor;
+    }
+    
+    /* 导航栏主题切换保护 - 仅在非 View Transitions 模式下禁用过渡 */
+    .is-theme-transitioning:not(.use-view-transition) #navbar > div,
+    .is-theme-transitioning:not(.use-view-transition) #navbar[data-transparent-mode] > div,
+    .is-theme-transitioning:not(.use-view-transition) #navbar[data-transparent-mode].scrolled > div,
+    .is-theme-transitioning:not(.use-view-transition) body.wallpaper-transparent #navbar > div,
+    .is-theme-transitioning:not(.use-view-transition) body.wallpaper-transparent #navbar[data-transparent-mode] > div,
+    .is-theme-transitioning:not(.use-view-transition) body.wallpaper-transparent #navbar[data-transparent-mode].scrolled > div,
+    .is-theme-transitioning:not(.use-view-transition) #wallpaper-wrapper ~ * #navbar > div,
+    .is-theme-transitioning:not(.use-view-transition) #wallpaper-wrapper ~ * #navbar[data-transparent-mode] > div,
+    .is-theme-transitioning:not(.use-view-transition) body:has(#wallpaper-wrapper) #navbar > div,
+    .is-theme-transitioning:not(.use-view-transition) body:has(#wallpaper-wrapper) #navbar[data-transparent-mode] > div {
+        transition: none !important;
+        backdrop-filter: none !important;
+    }
+    
+    /* 导航栏相关浮动面板的过渡禁用 */
+    .is-theme-transitioning .dropdown-content,
+    .is-theme-transitioning .float-panel,
+    .is-theme-transitioning #display-setting,
+    .is-theme-transitioning #nav-menu-panel,
+    .is-theme-transitioning #translate-panel,
+    .is-theme-transitioning #mobile-toc-panel,
+    .is-theme-transitioning #search-panel {
+        transition: none !important;
+        backdrop-filter: none !important;
+    }
+    
+    .card-base {
+        @apply rounded-(--radius-large) overflow-hidden bg-(--card-bg) transition-colors duration-150;
+    }
+    .card-base-transparent {
+        @apply rounded-(--radius-large) overflow-hidden bg-(--card-bg-transparent) transition-colors duration-150;
+    }
+
+    /* LQIP 占位渐变 */
+    .lqip-placeholder {
+        z-index: 0;
+        transition: opacity 0.5s ease-out;
+    }
+    .lqip-placeholder.loaded {
+        opacity: 0;
+    }
+
+
+    /* 开启边框和阴影效果时的样式 */
+    .enable-card-border .card-base {
+        @apply transition-all duration-300 border border-(--line-divider) shadow-xs;
+    }
+    .enable-card-border .card-base-transparent {
+        @apply transition-all duration-300 border border-(--line-divider) shadow-xs;
+    }
+    .enable-card-border .btn-card {
+        @apply transition-all duration-300 border border-(--line-divider) shadow-xs;
+    }
+
+    /* 导航栏样式适配 */
+    .enable-card-border #navbar > div:not(.absolute) {
+        @apply transition-all duration-300 border shadow-xs;
+        border-color: var(--line-divider) !important;
+    }
+
+    /* 壁纸模式切换期间禁止导航栏边框和阴影闪现 */
+    .is-wallpaper-transitioning #navbar > div {
+        border-color: transparent !important;
+        box-shadow: none !important;
+        transition: none !important;
+    }
+
+    /* 壁纸模式切换期间禁止 #main-grid 的 transform 过渡动画，防止抖动 */
+    /* .is-wallpaper-transitioning #main-grid {
+        transition: none !important;
+    } */
+
+    /* 全屏壁纸模式下的半透明效果 */
+    .wallpaper-transparent .card-base {
+        background-color: var(--card-bg-transparent) !important;
+    }
+ 
+    
+    .wallpaper-transparent #navbar > div {
+        background-color: var(--card-bg-transparent) !important;
+    }
+
+    /* Overlay 模式下，滚动后提高导航栏背景模糊度，增强与正文区分 */
+    .wallpaper-transparent #navbar.navbar-sticky-shadow > div {
+        backdrop-filter: blur(20px) !important;
+     
+    }
+
+    :root.dark .wallpaper-transparent #navbar.navbar-sticky-shadow > div {
+        backdrop-filter: blur(20px) !important;
+    }
+    
+    .wallpaper-transparent .btn-card {
+        background-color: var(--card-bg-transparent) !important;
+    }
+
+    .wallpaper-transparent .bg-\(--card-bg\) {
+        background-color: var(--card-bg-transparent) !important;
+    }
+
+    h1, h2, h3, h4, h5, h6, p, a, span, li, ul, ol, blockquote, code, pre, table, th, td, strong {
+        @apply transition-colors duration-150;
+    }
+    .card-shadow {
+        @apply drop-shadow-[0_2px_4px_rgba(0,0,0,0.005)]
+    }
+    .link {
+        @apply transition-colors duration-150 rounded-md p-1 -m-1 expand-animation;
+    }
+    .link-lg {
+        @apply transition-colors duration-150 rounded-md p-1.5 -m-1.5 expand-animation;
+    }
+    .float-panel {
+        @apply top-21 rounded-(--radius-large) overflow-hidden bg-(--card-bg) transition-colors duration-150 shadow-xl border border-black/5 dark:border-white/10
+    }
+    .float-panel-closed {
+        @apply -translate-y-1 opacity-0 pointer-events-none
+    }
+    .float-panel-closed * {
+        @apply pointer-events-none
+    }
+    .search-panel mark {
+        @apply bg-transparent text-(--primary)
+    }
+
+    .btn-card {
+        @apply transition-colors duration-150 flex items-center justify-center bg-(--card-bg) hover:bg-(--btn-card-bg-hover)
+        active:bg-(--btn-card-bg-active)
+    }
+    .btn-card.disabled {
+        @apply pointer-events-none text-black/10 dark:text-white/10
+    }
+    .btn-plain {
+        @apply transition-colors duration-150 relative flex items-center justify-center bg-none
+        text-black/75 hover:text-(--primary) dark:text-white/75 dark:hover:text-(--primary);
+        &:not(.scale-animation) {
+            @apply hover:bg-(--btn-plain-bg-hover) active:bg-(--btn-plain-bg-active)
+        }
+        &.scale-animation {
+            @apply expand-animation;
+        }
+    }
+    .current-theme-btn {
+        @apply bg-(--btn-plain-bg-hover) text-(--primary);
+    }
+    .btn-regular {
+        @apply transition-colors duration-150 flex items-center justify-center bg-(--btn-regular-bg) hover:bg-(--btn-regular-bg-hover) active:bg-(--btn-regular-bg-active)
+        text-(--btn-content) dark:text-white/75
+    }
+
+    .link-underline {
+        @apply transition-colors duration-150 underline decoration-2 decoration-dashed decoration-(--link-underline)
+        hover:decoration-(--link-hover) active:decoration-(--link-active) underline-offset-[0.25rem]
+    }
+
+    .toc-hide,
+    .toc-not-ready {
+        @apply opacity-0 pointer-events-none
+    }
+
+    /* #toc-inner-wrapper {
+        mask-image: linear-gradient(to bottom, transparent 0%, black 2rem, black calc(100% - 2rem), transparent 100%);
+    } */
+
+    .hide-scrollbar {
+        scrollbar-width: none;
+    }
+    .hide-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+
+
+    .text-90 {
+        @apply text-black/90 dark:text-white/90
+    }
+    .text-75 {
+        @apply text-black/75 dark:text-white/75
+    }
+    .text-50 {
+        @apply text-black/50 dark:text-white/50
+    }
+    .text-30 {
+        @apply text-black/30 dark:text-white/30
+    }
+    .text-25 {
+        @apply text-black/25 dark:text-white/25
+    }
+
+    /* 下拉菜单样式 */
+    .dropdown-container {
+        @apply relative;
+    }
+
+    .dropdown-menu {
+        @apply absolute top-full left-0 pt-2 opacity-0 invisible pointer-events-none transition-all duration-200 ease-out transform translate-y-[-8px] z-50;
+    }
+
+    .dropdown-container:hover .dropdown-menu,
+    .dropdown-container:focus-within .dropdown-menu {
+        @apply opacity-100 visible pointer-events-auto translate-y-0;
+    }
+
+    .dropdown-container:hover .dropdown-arrow,
+    .dropdown-container:focus-within .dropdown-arrow {
+        @apply rotate-180;
+    }
+
+    .dropdown-content {
+        @apply bg-(--card-bg) rounded-(--radius-large) shadow-xl border border-black/5 dark:border-white/10 py-2 min-w-48;
+    }
+
+    .dropdown-item {
+        @apply flex items-center justify-between px-4 py-2.5 text-black/75 dark:text-white/75 hover:text-(--primary) hover:bg-(--btn-plain-bg-hover) transition-colors duration-150 font-medium;
+    }
+
+    .dropdown-item:first-child {
+        @apply rounded-t-[calc(var(--radius-large)-0.5rem)];
+    }
+
+    .dropdown-item:last-child {
+        @apply rounded-b-[calc(var(--radius-large)-0.5rem)];
+    }
+
+    /* 移动端菜单样式 */
+    .mobile-submenu {
+        @apply max-h-0 overflow-hidden transition-all duration-300 ease-in-out;
+    }
+    
+    .mobile-dropdown[data-expanded="true"] .mobile-submenu {
+        @apply max-h-96;
+    }
+    
+    .mobile-dropdown[data-expanded="true"] .mobile-dropdown-arrow {
+        @apply rotate-180;
+    }
+
+    /* 响应式隐藏 */
+    @media (max-width: 768px) {
+        .dropdown-container {
+            @apply hidden;
+        }
+    }
+
+    /* 无障碍支持 */
+    .dropdown-container:focus-within .dropdown-menu {
+        @apply opacity-100 visible pointer-events-auto translate-y-0;
+    }
+
+    .dropdown-item:focus {
+        @apply outline-hidden;
+    }
+
+    .mobile-dropdown button:focus {
+        @apply outline-hidden;
+    }
+
+    .meta-icon {
+        @apply w-8 h-8 transition-colors duration-150 rounded-md flex items-center justify-center bg-(--btn-regular-bg)
+        text-(--btn-content) mr-2
+    }
+    .with-divider {
+        @apply before:content-['/'] before:ml-1.5 before:mr-1.5 before:text-(--meta-divider) before:text-sm
+        before:font-medium before:first-of-type:hidden before:transition-colors before:duration-150
+    }
+
+    .btn-regular-dark {
+        @apply flex items-center justify-center
+        bg-[oklch(0.45_0.01_var(--hue))] hover:bg-[oklch(0.50_0.01_var(--hue))] active:bg-[oklch(0.55_0.01_var(--hue))]
+        dark:bg-[oklch(0.30_0.02_var(--hue))] dark:hover:bg-[oklch(0.35_0.03_var(--hue))] dark:active:bg-[oklch(0.40_0.03_var(--hue))]
+    }
+    .btn-regular-dark.success {
+        @apply bg-[oklch(0.75_0.14_var(--hue))] dark:bg-[oklch(0.75_0.14_var(--hue))]
+    }
+}
+
+.custom-md img, #post-cover img {
+    @apply cursor-zoom-in
+}
+
+::selection {
+    background-color: var(--selection-bg)
+}
+
+.dash-line {
+    position: relative;
+}
+
+.dash-line::before {
+    content: "";
+    position: absolute;
+    width: 10%;
+    height: 100%;
+    left: calc(50% - 1px);
+    border-left: 2px dashed var(--line-color);
+    pointer-events: none;
+    transition: all 0.3s;
+    transform: translateY(-50%);
+}
+
+
+/*剧透效果*/
+.custom-md spoiler {
+  --_spoiler-mask: var(--primary);
+  @apply hover:bg-transparent px-1 py-0.5 overflow-hidden rounded-md transition-all duration-150;
+  background-color: var(--_spoiler-mask);
+  box-decoration-break: clone;
+  &:not(:hover) {
+   color: transparent;
+    * {
+       opacity: 0;
+    }
+  }
+}
+
+/* 浅色模式：使用更浅的主题色且完全不透明 */
+:root:not(.dark) .custom-md spoiler {
+  --_spoiler-mask: color-mix(in oklch, var(--primary) 55%, white 45%);
+}
+
+/* 文章列表布局切换样式 */
+.post-list-layout-switch {
+  @apply flex items-center gap-2 mb-6 p-3 bg-(--card-bg) rounded-lg border border-(--line-divider);
+}
+
+.post-list-layout-switch span {
+  @apply text-sm text-(--text-secondary);
+}
+
+.post-list-layout-switch .layout-buttons {
+  @apply flex gap-1;
+}
+
+.post-list-layout-switch button {
+  @apply px-3 py-1.5 text-sm rounded-md transition-colors;
+}
+
+.post-list-layout-switch button.active {
+  @apply bg-(--primary) text-white;
+}
+
+.post-list-layout-switch button:not(.active) {
+  @apply bg-(--bg-secondary) text-(--text-secondary) hover:bg-(--bg-hover);
+}
+
+/* 网格模式下的文章卡片样式调整 */
+.post-list-container.grid-mode .post-card-item {
+  @apply w-full;
+}
+
+.post-list-container.grid-mode .post-card-item a[href] {
+  @apply text-xl before:h-4 before:top-[28px] before:left-[-18px] truncate;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+  max-height: 2.8em; /* 2行的高度 */
+}
+
+.post-list-container.grid-mode .post-card-item a[aria-label] {
+  @apply hidden;
+}
+
+.post-list-container.grid-mode .post-card-item .btn-regular {
+  @apply hidden;
+}
+
+.post-list-container.grid-mode .post-card-item .line-clamp-1 {
+  @apply line-clamp-2;
+}
+
+/* 网格模式下的卡片内容区域调整 */
+.post-list-container.grid-mode .post-card-item > div {
+  @apply p-4;
+}
+
+/* 网格模式下的元数据样式调整 */
+.post-list-container.grid-mode .post-card-item .post-meta {
+  @apply mb-2;
+}
+
+/* 网格模式下的描述文本调整 */
+.post-list-container.grid-mode .post-card-item .description {
+  @apply text-sm mb-2 line-clamp-2;
+}
+
+/* 网格模式下的统计信息调整 */
+.post-list-container.grid-mode .post-card-item .stats {
+  @apply text-xs;
+}
+
+/* 响应式分页样式 */
+.device-mobile .pagination-info {
+  @apply text-xs;
+}
+
+.device-tablet .pagination-info {
+  @apply text-sm;
+}
+
+.device-desktop .pagination-info {
+  @apply text-base;
+}
+
+/* 分页信息样式 */
+.pagination-info {
+  @apply text-sm text-(--text-secondary) text-center mb-2;
+}
+
+/* ============ 前台卡片整体扁平化 AntD 风格 ============ */
+.card-base,
+.widget-container {
+    background: #ffffff;
+    background-color: var(--card-bg, #ffffff);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 8px;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -2px rgba(0, 0, 0, 0.02);
+    overflow: hidden;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+}
+
+.card-base:hover,
+.widget-container:hover {
+    box-shadow: 0 4px 8px -2px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+/* 暗色模式 */
+html.dark .card-base,
+html.dark .widget-container {
+    background-color: var(--card-bg, #1f1f1f);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+html.dark .card-base:hover,
+html.dark .widget-container:hover {
+    border-color: rgba(255, 255, 255, 0.14);
+}
+
+/* 移除 widget-title 多余::before 渐变残留防御性清理 */
+.widget-title::before {
+    display: none !important;
+}
+
+.post-card-title::before {
+    display: none !important;
+}
+

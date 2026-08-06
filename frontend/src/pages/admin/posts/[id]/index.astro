@@ -1,0 +1,80 @@
+---
+export const prerender = false;
+import { getPosts, type Post } from "@api/blog";
+import PostEditorForm from "@components/admin/PostEditorForm.svelte";
+import AdminLayout from "@layouts/admin.astro";
+
+/**
+ * 构建时预生成文章路径（让 Vite/Astro 知道存在这些路由，避免 SSR 首调 404）。
+ * SSR 环境下 admin API 可能无鉴权 → 失败时 fallback 只生成空数组（浏览器访问时
+ * Astro 会走 SSR/dynamic route 也没问题）。
+ */
+export async function getStaticPaths() {
+	try {
+		const allPosts: Post[] = [];
+		let page = 1;
+		const pageSize = 100;
+
+		while (true) {
+			const result: any = await getPosts({
+				page,
+				page_size: pageSize,
+				status: "all",
+			});
+			const items = result?.items || [];
+			allPosts.push(...items);
+			if (
+				!result ||
+				items.length < pageSize ||
+				page >= (result?.total_pages || 1)
+			)
+				break;
+			page++;
+		}
+
+		const paths = allPosts.map((post) => ({
+			params: { id: String(post.id) },
+		}));
+		// "new" 路由已经在 posts/new.astro 里，这里不重复声明
+		return paths;
+	} catch (e) {
+		console.warn(
+			"[admin/posts/[id]] getStaticPaths failed (SSR no-auth?):",
+			(e as Error)?.message || e,
+		);
+		return [];
+	}
+}
+
+const rawId = Astro.params.id;
+const isNew = rawId === "new" || !rawId;
+const pageTitle = isNew ? "新建文章" : "编辑文章";
+
+// 数字 id 注入到客户端让其懒加载；"new" 交给 new.astro 处理
+const numericId: number | null =
+	!isNew && /^\d+$/.test(String(rawId)) ? Number(rawId) : null;
+---
+<AdminLayout title={pageTitle}>
+	<!--
+		关键：SSR 只注入 { isNew, postId }，不拉具体文章详情，
+		因为：
+		1) Admin API 需鉴权 token（在 localStorage 里，SSR 拿不到会 401）
+		2) 文章数据可能在 build 后已变，用 build 时快照会导致编辑旧内容
+		→ PostEditorForm onMount 时从注入的 postId 自行调 getPostById。
+	-->
+	<script
+		type="application/json"
+		id="rosetta-editor-initial"
+		is:inline
+	>{JSON.stringify(isNew ? { isNew: true } : numericId != null ? { isNew: false, postId: numericId } : { isNew: false })}</script>
+
+	<main class="pef-astro-shell">
+		<PostEditorForm client:only="svelte" />
+	</main>
+</AdminLayout>
+
+<style>
+	.pef-astro-shell {
+		min-height: calc(100vh - var(--admin-header-h, 64px));
+	}
+</style>

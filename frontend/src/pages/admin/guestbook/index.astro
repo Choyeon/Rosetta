@@ -1,0 +1,412 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="留言板管理">
+	<div class="table-wrapper">
+		<!-- Batch action bar -->
+		<div id="batch-bar" class="batch-bar" style="display:none;">
+			<div class="batch-bar-left">
+				<label class="admin-checkbox-wrapper">
+					<input type="checkbox" id="select-all-top" class="admin-checkbox">
+					<span class="admin-checkmark"></span>
+				</label>
+				<span class="batch-title" id="batch-count">已选择 0 条</span>
+			</div>
+			<div class="batch-bar-right">
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('approve')" style="color:rgb(22 163 74);">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20,6 9,17 4,12"/></svg>
+					<span>通过</span>
+				</button>
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('reject')" style="color:hsl(var(--er));">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+					<span>拒绝</span>
+				</button>
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('spam')" style="color:hsl(var(--bc)/0.55);">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l3 1m0 0l-3 9a5.002 5.002 0 0 0 6.001 0M6 7l3 9M6 7l6-2m6 2l3-1m-333-333 0c-1.1046 0-2 .8954-2 2zM67 20c0-1.1046.8954-2 2-2h12c1.1046 0 2 .8954 2 2v36c0 1.1046-.8954 2-2 2h-12c-1.1046 0-2-.8954-2-2z"/></svg>
+					<span>垃圾</span>
+				</button>
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('pin')" style="color:#10b981;">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+					<span>置顶</span>
+				</button>
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('feature')" style="color:#d97706;">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+					<span>精华</span>
+				</button>
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('trash')">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+					<span>回收站</span>
+				</button>
+				<button class="btn btn-sm btn-ghost" onclick="batchAction('restore')" style="color:rgb(59 130 246);">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+					<span>恢复</span>
+				</button>
+				<button class="btn btn-sm btn-danger" onclick="batchAction('delete')">
+					<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+					<span>永久删除</span>
+				</button>
+			</div>
+		</div>
+
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<label class="admin-checkbox-wrapper">
+					<input type="checkbox" id="select-all" class="admin-checkbox">
+					<span class="admin-checkmark"></span>
+				</label>
+				<h3 class="table-title">所有留言</h3>
+				<span class="badge badge-ghost" id="gb-count">0 条</span>
+			</div>
+			<div class="table-actions">
+				<select id="status-filter" class="admin-select admin-select-sm" style="min-width:130px;">
+					<option value="all">全部</option>
+					<option value="pending">待审核</option>
+					<option value="approved">已通过</option>
+					<option value="rejected">已拒绝</option>
+					<option value="spam">垃圾</option>
+					<option value="trashed">回收站</option>
+				</select>
+				<div class="admin-search-wrap" style="position:relative;">
+					<svg style="position:absolute;left:11px;top:50%;transform:translateY(-50%);width:15px;height:15px;opacity:0.45;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+					<input id="search-input" type="text" placeholder="搜索内容或作者..." class="input input-sm" style="padding-left:34px;min-width:220px;" />
+				</div>
+			</div>
+		</div>
+		<div class="table-scroll">
+			<table class="table">
+				<thead>
+					<tr>
+						<th style="width:44px;padding-left:24px;"><span style="display:none;">选择</span></th>
+						<th>作者</th>
+						<th style="max-width:420px;">内容预览</th>
+						<th>状态</th>
+						<th>置顶</th>
+						<th>精华</th>
+						<th>时间</th>
+						<th style="width:260px;padding-right:24px;">操作</th>
+					</tr>
+				</thead>
+				<tbody id="gb-table-body">
+					<!-- Skeleton 10 rows -->
+					{Array.from({ length: 10 }).map((_, i) => (
+						<tr>
+							<td style="padding-left:24px;"><div style="height:18px;width:18px;border-radius:5px;background:hsl(var(--b3));opacity:0.5;"></div></td>
+							<td><div style="display:flex;align-items:center;gap:12px;"><div style="width:36px;height:36px;border-radius:10px;background:hsl(var(--b3));opacity:0.5;"></div><div style="display:flex;flex-direction:column;gap:6px;"><div style="height:13px;width:110px;border-radius:4px;background:hsl(var(--b3));opacity:0.5;"></div><div style="height:11px;width:140px;border-radius:4px;background:hsl(var(--b3));opacity:0.35;"></div></div></div></td>
+							<td><div style="height:14px;width:92%;border-radius:4px;background:hsl(var(--b3));opacity:0.4;"></div><div style="height:12px;width:70%;border-radius:4px;background:hsl(var(--b3));opacity:0.3;margin-top:6px;"></div></td>
+							<td><div style="height:22px;width:56px;border-radius:999px;background:hsl(var(--b3));opacity:0.4;"></div></td>
+							<td><div style="height:22px;width:42px;border-radius:10px;background:hsl(var(--b3));opacity:0.35;"></div></td>
+							<td><div style="height:22px;width:42px;border-radius:10px;background:hsl(var(--b3));opacity:0.35;"></div></td>
+							<td><div style="height:12px;width:110px;border-radius:4px;background:hsl(var(--b3));opacity:0.4;"></div></td>
+							<td style="padding-right:24px;"><div style="display:flex;gap:5px;"><div style="height:34px;width:34px;border-radius:10px;background:hsl(var(--b3));opacity:0.35;"></div><div style="height:34px;width:34px;border-radius:10px;background:hsl(var(--b3));opacity:0.3;"></div><div style="height:34px;width:34px;border-radius:10px;background:hsl(var(--b3));opacity:0.3;"></div></div></td>
+						</tr>
+					))}
+				</tbody>
+			</table>
+		</div>
+		<div class="pagination">
+			<span class="pagination-info" id="pagination-info">显示 0 条</span>
+			<div class="pagination-buttons" id="pagination"></div>
+		</div>
+	</div>
+</AdminLayout>
+
+<script>
+	// @ts-nocheck
+	import {
+		getAdminGuestbook,
+		toggleGuestbookPin,
+		toggleGuestbookFeature,
+		approveGuestbook,
+		rejectGuestbook,
+		markGuestbookSpam,
+		batchGuestbook,
+		type AdminGuestbookEntry,
+	} from "@/api/site";
+
+	let currentPage = 1;
+	let currentStatus = "all";
+	let currentSearch = "";
+	let pageSize = 20;
+	let totalItems = 0;
+	let searchTimer: number | null = null;
+
+	function fmtDate(dateStr: string): string {
+		if (!dateStr) return "-";
+		const d = new Date(dateStr);
+		const p = (n: number) => n.toString().padStart(2, "0");
+		return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+	}
+	function escHtml(s: string): string {
+		return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+	}
+	function truncate(s: string, n: number): string {
+		if (!s) return "";
+		return s.length > n ? s.slice(0, n) + "…" : s;
+	}
+	function statusBadge(status: string, deleted: boolean): string {
+		if (deleted) return '<span class="badge badge-ghost" style="background:hsl(var(--b3));">已删除</span>';
+		switch (status) {
+			case "pending": return '<span class="badge badge-warning">待审核</span>';
+			case "approved": return '<span class="badge badge-success">已通过</span>';
+			case "rejected": return '<span class="badge badge-error">已拒绝</span>';
+			case "spam": return '<span class="badge badge-error">垃圾</span>';
+			default: return '<span class="badge badge-ghost">' + status + "</span>";
+		}
+	}
+	function boolBadge(v: boolean, onLabel: string, offLabel: string, colorCls: string): string {
+		return v
+			? `<span class="badge ${colorCls}" style="font-size:11.5px;">${onLabel}</span>`
+			: `<span class="badge badge-ghost" style="font-size:11.5px;opacity:0.55;">${offLabel}</span>`;
+	}
+
+	async function loadData() {
+		const tbody = document.getElementById("gb-table-body") as HTMLElement;
+		const batchBar = document.getElementById("batch-bar") as HTMLElement;
+		const selTop = document.getElementById("select-all-top") as HTMLInputElement | null;
+		const sel = document.getElementById("select-all") as HTMLInputElement | null;
+		if (selTop) selTop.checked = false;
+		if (sel) sel.checked = false;
+		if (batchBar) batchBar.style.display = "none";
+		try {
+			const params: any = { page: currentPage, page_size: pageSize };
+			if (currentStatus !== "all") params.status = currentStatus;
+			if (currentSearch.trim()) params.search = currentSearch.trim();
+			const r = await getAdminGuestbook(params);
+			const items: AdminGuestbookEntry[] = r.items || [];
+			totalItems = r.total || 0;
+			const cEl = document.getElementById("gb-count");
+			if (cEl) cEl.textContent = `${totalItems} 条`;
+
+			if (items.length === 0) {
+				const emptyLabel =
+					currentStatus === "pending" ? "暂无待审核留言" :
+					currentStatus === "trashed" ? "回收站为空" :
+					currentStatus === "spam" ? "暂无垃圾留言" :
+					currentSearch ? "没有匹配的留言" : "暂无留言";
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="8" style="text-align:center;padding:56px 24px;">
+							<div class="empty-state">
+								<div class="empty-title">${emptyLabel}</div>
+								<div class="empty-desc">留言板内容将显示在这里</div>
+							</div>
+						</td>
+					</tr>`;
+				updatePagination();
+				return;
+			}
+			tbody.innerHTML = items.map((e) => {
+				const deleted = !!e.deleted_at;
+				return `
+					<tr>
+						<td style="padding-left:24px;">
+							<label class="admin-checkbox-wrapper">
+								<input type="checkbox" class="admin-checkbox gb-checkbox" data-id="${e.id}">
+								<span class="admin-checkmark"></span>
+							</label>
+						</td>
+						<td>
+							<div style="display:flex;align-items:center;gap:12px;">
+								<img src="${e.author_avatar || ""}" alt="" style="width:36px;height:36px;border-radius:10px;object-fit:cover;flex-shrink:0;border:1px solid hsl(var(--b3));background:hsl(var(--b2));" />
+								<div style="min-width:0;">
+									<div style="font-weight:600;font-size:13.5px;color:hsl(var(--bc));white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">${escHtml(e.author_name)}</div>
+									${e.author_email ? `<div style="font-size:12px;color:hsl(var(--bc)/0.45);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:180px;">${escHtml(e.author_email)}</div>` : ""}
+								</div>
+							</div>
+						</td>
+						<td style="max-width:420px;">
+							<div style="font-size:13.5px;line-height:1.55;color:hsl(var(--bc)/0.85);white-space:pre-wrap;word-break:break-word;">${escHtml(truncate(e.content, 80))}</div>
+						</td>
+						<td>${statusBadge(e.status, deleted)}</td>
+						<td>${boolBadge(e.is_pinned, "📌 是", "否", "badge-success")}</td>
+						<td>${boolBadge(e.is_featured, "⭐ 是", "否", "badge-warning")}</td>
+						<td style="font-size:12.5px;color:hsl(var(--bc)/0.6);white-space:nowrap;">${fmtDate(e.created_at)}</td>
+						<td style="padding-right:24px;">
+							<div class="action-buttons">
+								<button class="btn btn-ghost btn-icon btn-sm" style="${e.is_pinned ? "color:#10b981;" : ""}" onclick="togglePin(${e.id})" title="切换置顶">
+									<svg viewBox="0 0 24 24" fill="${e.is_pinned ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+								</button>
+								<button class="btn btn-ghost btn-icon btn-sm" style="${e.is_featured ? "color:#d97706;" : ""}" onclick="toggleFeature(${e.id})" title="切换精华">
+									<svg viewBox="0 0 24 24" fill="${e.is_featured ? "currentColor" : "none"}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+								</button>
+								${!deleted && e.status !== "approved" ? `
+									<button class="btn btn-ghost btn-icon btn-sm" style="color:rgb(22 163 74);" onclick="approve(${e.id})" title="通过">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20,6 9,17 4,12"/></svg>
+									</button>
+								` : ""}
+								${!deleted && e.status !== "rejected" ? `
+									<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="reject(${e.id})" title="拒绝">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+									</button>
+								` : ""}
+								${!deleted && e.status !== "spam" ? `
+									<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--bc)/0.55);" onclick="markSpam(${e.id})" title="标记垃圾">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+									</button>
+								` : ""}
+								${!deleted ? `
+									<button class="btn btn-ghost btn-icon btn-sm" onclick="trashOne(${e.id})" title="移到回收站">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+									</button>
+								` : `
+									<button class="btn btn-ghost btn-icon btn-sm" style="color:rgb(59 130 246);" onclick="restoreOne(${e.id})" title="恢复">
+										<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+									</button>
+								`}
+								<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="deletePermanent(${e.id})" title="永久删除">
+									<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+								</button>
+							</div>
+						</td>
+					</tr>
+				`;
+			}).join("");
+			updatePagination();
+			bindCheckboxes();
+		} catch (e: any) {
+			console.error(e);
+			tbody.innerHTML = `
+				<tr>
+					<td colspan="8" style="text-align:center;padding:48px 24px;color:hsl(var(--er));">
+						<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+							<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+							<span>加载失败，请刷新重试（${escHtml(e?.message || "未知错误")}）</span>
+						</div>
+					</td>
+				</tr>`;
+		}
+	}
+	function updatePagination() {
+		const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+		const paginationEl = document.getElementById("pagination") as HTMLElement;
+		const infoEl = document.getElementById("pagination-info") as HTMLElement;
+		const start = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
+		const end = Math.min(currentPage * pageSize, totalItems);
+		if (infoEl) infoEl.textContent = `显示 ${start}-${end} 条，共 ${totalItems} 条`;
+		if (totalPages <= 1) { paginationEl.innerHTML = ""; return; }
+		let html = "";
+		html += `<button class="page-btn" ${currentPage === 1 ? "disabled" : ""} onclick="changePage(${currentPage - 1})"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15,18 9,12 15,6"/></svg></button>`;
+		const maxVisible = 5;
+		let s = Math.max(1, currentPage - Math.floor(maxVisible / 2));
+		let e = Math.min(totalPages, s + maxVisible - 1);
+		if (e - s + 1 < maxVisible) s = Math.max(1, e - maxVisible + 1);
+		if (s > 1) { html += `<button class="page-btn" onclick="changePage(1)">1</button>`; if (s > 2) html += `<span class="page-btn" style="pointer-events:none;border:none;background:transparent;">...</span>`; }
+		for (let i = s; i <= e; i++) html += `<button class="page-btn ${i === currentPage ? "active" : ""}" onclick="changePage(${i})">${i}</button>`;
+		if (e < totalPages) { if (e < totalPages - 1) html += `<span class="page-btn" style="pointer-events:none;border:none;background:transparent;">...</span>`; html += `<button class="page-btn" onclick="changePage(${totalPages})">${totalPages}</button>`; }
+		html += `<button class="page-btn" ${currentPage === totalPages ? "disabled" : ""} onclick="changePage(${currentPage + 1})"><svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9,18 15,12 9,6"/></svg></button>`;
+		paginationEl.innerHTML = html;
+	}
+	function getSelectedIds(): number[] {
+		return Array.from(document.querySelectorAll<HTMLInputElement>(".gb-checkbox:checked")).map((c) => Number(c.dataset.id)).filter(Boolean);
+	}
+	function updateBatchBar() {
+		const ids = getSelectedIds();
+		const countEl = document.getElementById("batch-count");
+		const batchBar = document.getElementById("batch-bar") as HTMLElement;
+		if (countEl) countEl.textContent = `已选择 ${ids.length} 条`;
+		if (batchBar) batchBar.style.display = ids.length > 0 ? "flex" : "none";
+		const selAll = document.getElementById("select-all") as HTMLInputElement | null;
+		const selAllTop = document.getElementById("select-all-top") as HTMLInputElement | null;
+		const all = Array.from(document.querySelectorAll<HTMLInputElement>(".gb-checkbox"));
+		const allChecked = all.length > 0 && all.every((c) => c.checked);
+		if (selAll) selAll.checked = allChecked;
+		if (selAllTop) selAllTop.checked = allChecked;
+	}
+	function bindCheckboxes() {
+		document.querySelectorAll<HTMLInputElement>(".gb-checkbox").forEach((c) => {
+			c.onchange = updateBatchBar;
+		});
+	}
+	// Window globals
+	(window as any).changePage = (p: number) => { currentPage = p; loadData(); };
+	(window as any).togglePin = async (id: number) => { await toggleGuestbookPin(id); loadData(); };
+	(window as any).toggleFeature = async (id: number) => { await toggleGuestbookFeature(id); loadData(); };
+	(window as any).approve = async (id: number) => { await approveGuestbook(id); loadData(); };
+	(window as any).reject = async (id: number) => { await rejectGuestbook(id); loadData(); };
+	(window as any).markSpam = async (id: number) => { await markGuestbookSpam(id); loadData(); };
+	(window as any).trashOne = async (id: number) => { if (confirm("确定移到回收站？")) await batchGuestbook([id], "trash"); loadData(); };
+	(window as any).restoreOne = async (id: number) => { await batchGuestbook([id], "restore"); loadData(); };
+	(window as any).deletePermanent = async (id: number) => { if (confirm("确定永久删除？此操作不可恢复。")) await batchGuestbook([id], "delete"); loadData(); };
+	(window as any).batchAction = async (action: string) => {
+		const ids = getSelectedIds();
+		if (!ids.length) return;
+		const actionLabels: Record<string, string> = { approve: "通过", reject: "拒绝", spam: "标记垃圾", pin: "切换置顶", feature: "切换精华", trash: "移到回收站", restore: "恢复", delete: "永久删除" };
+		if (action === "delete" && !confirm(`确定永久删除 ${ids.length} 条？此操作不可恢复。`)) return;
+		if (action === "trash" && !confirm(`确定将 ${ids.length} 条移到回收站？`)) return;
+		await batchGuestbook(ids, action as any);
+		loadData();
+		void actionLabels;
+	};
+
+	// Events
+	document.getElementById("status-filter")?.addEventListener("change", (ev) => {
+		currentStatus = (ev.target as HTMLSelectElement).value;
+		currentPage = 1;
+		loadData();
+	});
+	const searchInput = document.getElementById("search-input") as HTMLInputElement | null;
+	searchInput?.addEventListener("input", (ev) => {
+		const val = (ev.target as HTMLInputElement).value;
+		if (searchTimer) window.clearTimeout(searchTimer);
+		searchTimer = window.setTimeout(() => { currentSearch = val; currentPage = 1; loadData(); }, 280);
+	});
+	function wireSelectAll(id: string) {
+		document.getElementById(id)?.addEventListener("change", (ev) => {
+			const checked = (ev.target as HTMLInputElement).checked;
+			document.querySelectorAll<HTMLInputElement>(".gb-checkbox").forEach((c) => { c.checked = checked; });
+			updateBatchBar();
+		});
+	}
+	wireSelectAll("select-all");
+	wireSelectAll("select-all-top");
+
+	// Boot
+	loadData();
+</script>
+
+<style is:global>
+	.batch-bar {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		gap: 12px;
+		padding: 14px 24px;
+		margin-bottom: 16px;
+		border-radius: 16px;
+		background: linear-gradient(135deg, hsl(var(--cyan-500) / 0.14) 0%, hsl(var(--b2)) 100%);
+		border: 1px solid hsl(var(--cyan-500) / 0.3);
+		flex-wrap: wrap;
+	}
+	.batch-bar-left { display: flex; align-items: center; gap: 12px; }
+	.batch-bar-right { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+	.batch-title { font-size: 13.5px; font-weight: 600; color: hsl(var(--bc)); }
+	.admin-select {
+		padding: 9px 32px 9px 12px;
+		background: hsl(var(--b2));
+		border: 1px solid hsl(var(--b3));
+		border-radius: 12px;
+		color: hsl(var(--bc));
+		font-size: 13px;
+		outline: none;
+		appearance: none;
+		background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' style='opacity:0.5'><polyline points='6 9 12 15 18 9'/></svg>");
+		background-repeat: no-repeat;
+		background-position: right 8px center;
+		background-size: 15px 15px;
+		cursor: pointer;
+		transition: all 0.2s;
+	}
+	.admin-select:focus {
+		border-color: var(--cyan-400);
+		background-color: hsl(var(--b1));
+		box-shadow: 0 0 0 4px hsl(var(--cyan-500) / 0.12);
+	}
+	.admin-select-sm { padding: 7px 28px 7px 10px; font-size: 12.5px; border-radius: 10px; }
+	.admin-checkbox-wrapper { display: inline-flex; align-items: center; justify-content: center; position: relative; cursor: pointer; width: 18px; height: 18px; }
+	.admin-checkbox { opacity: 0; position: absolute; width: 100%; height: 100%; cursor: pointer; z-index: 1; }
+	.admin-checkmark { width: 18px; height: 18px; border: 1.5px solid hsl(var(--b3)); border-radius: 5px; background: hsl(var(--b1)); transition: all 0.15s cubic-bezier(0.4,0,0.2,1); display: flex; align-items: center; justify-content: center; }
+	.admin-checkbox:checked + .admin-checkmark { background: linear-gradient(135deg, var(--cyan-500), var(--cyan-600)); border-color: transparent; }
+	.admin-checkbox:checked + .admin-checkmark::after { content: ""; width: 5px; height: 9px; border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg) translate(-1px,-1px); }
+	.admin-checkbox:hover + .admin-checkmark { border-color: var(--cyan-400); }
+	.admin-checkbox:focus + .admin-checkmark { box-shadow: 0 0 0 4px hsl(var(--cyan-500) / 0.15); border-color: var(--cyan-400); }
+</style>

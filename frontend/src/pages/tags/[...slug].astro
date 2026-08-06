@@ -1,0 +1,35 @@
+---
+/**
+ * 标签详情页 → 重定向到归档页并带上 tag 筛选参数
+ *  - /tags/Vue/           → /archive/?tag=Vue
+ *  - /tags/javascript/    → /archive/?tag=javascript
+ *  - /tags/a/b/           → 多段 slug 视为非法，重定向到 /tags/
+ *
+ * 策略：与分类详情页保持一致，通过 302 重定向统一复用归档筛选页的 UI，
+ * 既兼容旧链接 / 搜索引擎收录，又避免重复实现筛选逻辑。
+ */
+export const prerender = false;
+
+import { url } from "@/utils/url-utils";
+
+// REST 参数 [...slug]：在 Astro 某些版本下会以 string 或 string[] 返回
+const raw: unknown = (Astro.params as any)?.slug;
+let slugArr: string[];
+if (typeof raw === "string") slugArr = [raw];
+else if (Array.isArray(raw)) slugArr = raw as string[];
+else slugArr = [];
+
+let redirectTarget: string;
+if (slugArr.length === 1 && slugArr[0]) {
+	const encoded = encodeURIComponent(slugArr[0]);
+	redirectTarget = url(`/archive/?tag=${encoded}`);
+} else if (slugArr.length === 0) {
+	// /tags/ (无 slug) → 由 tags/index.astro 处理
+	redirectTarget = url("/tags/");
+} else {
+	// 多段或空的非法路径 → 回到标签列表首页
+	redirectTarget = url("/tags/");
+}
+
+return Astro.redirect(redirectTarget, 302);
+---

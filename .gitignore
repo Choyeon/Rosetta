@@ -1,0 +1,208 @@
+# =======================================================
+# Rosetta Project Git Ignore
+# =======================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# --- Virtual Environment ---
+.venv/
+venv/
+ENV/
+env/
+
+# --- PyInstaller ---
+*.manifest
+*.spec
+
+# --- Installer logs ---
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Unit test / coverage reports ---
+.coverage
+.coverage.*
+htmlcov/
+.pytest_cache/
+coverage.xml
+*.cover
+.hypothesis/
+test_results.json
+junit/
+.tox/
+.nox/
+
+# --- MyPy / Pyre / Pytype / Ruff ---
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+
+# --- Database ---
+# Database files (never commit these)
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-shm
+*.sqlite3-wal
+*.db
+*.db-shm
+*.db-wal
+
+# Database migration files are COMMITTED (keep them!)
+# Only ignore compiled migration cache
+backend/migrations/**/__pycache__/
+
+# --- Environment & Secrets ---
+.env
+.env.*
+!.env.example
+.secrets
+*.pem
+*.key
+
+# --- IDE & Editors ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+*.sublime-workspace
+
+# --- OS generated ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+.directory
+ehthumbs.db
+
+# --- Testing & Coverage ---
+# (duplicate guard)
+
+# --- Frontend (Node/Astro) ---
+node_modules/
+.astro/
+.cache/
+.pnpm-store/
+.npm
+.eslintcache
+.parcel-cache/
+.stylelintcache
+.vite/
+.output/
+.next/
+.nuxt/
+.svelte-kit/
+.turbo/
+
+# Package manager logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*-debug.log*
+
+# --- Astro build output ---
+frontend/dist/
+frontend/.astro/
+frontend/server/
+frontend/client/
+frontend/.output/
+
+# Pagefind (search index built at runtime)
+frontend/src/.pagefind/
+frontend/public/pagefind/
+frontend/public/pagefind
+.pagefind/
+
+# Tailwind / PostCSS
+.tailwindcss/
+
+# --- Logs ---
+logs/
+*.log
+*.log.*
+
+# --- Trae/AI IDE ---
+.trae/
+.shared/
+.kiro/
+.clinerules/
+
+# --- Media Files (user uploads, runtime generated) ---
+media/
+uploads/
+static/uploads/
+
+# --- Temporary Files ---
+tmp/
+temp/
+*.tmp
+*.temp
+*.bak
+*.orig
+*.rej
+
+# --- OOBE State (local configuration) ---
+.oobe_complete
+.oobe_state.json
+rosetta.json
+
+# --- Lock Files ---
+# Keep lockfiles for reproducible builds:
+# pnpm-lock.yaml (COMMITTED)
+# uv.lock        (COMMITTED)
+
+# --- Vercel ---
+.vercel
+
+# --- Cloudflare / Wrangler ---
+.wrangler/
+.wrangler2/
+.wrangler.toml.local
+.dev.vars
+.cmf/
+
+# --- Local tool scratch files (never commit) ---
+*.local
+astro-full.txt
+astro-check-latest.txt
+astro-check-out.txt
+astro-check-output.txt
+_coverage_baseline.txt
+_cov2.txt
+_cov.txt
+*.pid
+*.seed
+*.pid.lock
+
+# --- Debug ---
+npm-debug.log
+yarn-error.log
+
+# --- Editor swap (guard) ---
+*.swp!

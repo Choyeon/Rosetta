@@ -1,0 +1,1345 @@
+---
+import Layout from "@layouts/Layout.astro";
+import { Icon } from "astro-icon/components";
+import {
+	fetchBingWallpaperByIndex,
+	loadDynamicConfig,
+} from "@/utils/dynamic-config";
+
+const siteConfig = (await loadDynamicConfig()).site;
+const wallpaper = (await loadDynamicConfig()).wallpaper;
+// SSR 先拿默认 Bing 今日 meta（title + copyright）——用于右下角灰色块展示，客户端切换时再覆写）
+const _loginBingMetaP = fetchBingWallpaperByIndex(0, "zh-CN").catch(() => ({
+	idx: 0,
+	url: "",
+	copyright: "",
+	title: "",
+	startdate: "",
+}));
+const loginBingMeta = await _loginBingMetaP;
+// 登录背景逻辑（优先级：临时覆盖 > 后台单独配置 login_bg > 全局壁纸 desktop）
+// 注意：这里先取全局 wallpaper，客户端 JS 会再按 login_bg_override_type 覆盖。
+const defaultDesktopBg =
+	typeof (wallpaper.src as any)?.desktop === "string" &&
+	(wallpaper.src as any)?.desktop
+		? (wallpaper.src as any).desktop
+		: "/assets/images/DesktopWallpaper/d1.avif";
+// SSR 默认背景若有 Bing 今日图则优先用 Bing 今日（和首页一致）
+const loginBingUrl = loginBingMeta?.url?.trim() || "";
+const initialBgUrl = loginBingUrl || defaultDesktopBg;
+const loginBingTitle = String(
+	loginBingMeta?.title || wallpaper?.bingMeta?.title || "",
+).trim();
+const loginBingCopyright = String(
+	loginBingMeta?.copyright || wallpaper?.bingMeta?.copyright || "",
+).trim();
+---
+
+<Layout title="后台管理登录">
+	<div class="login-page">
+		<div
+			id="login-bg"
+			class="login-bg"
+			style={`background-image: url(${initialBgUrl})`}
+			aria-hidden="true"
+		></div>
+		<div class="login-vignette" aria-hidden="true"></div>
+		<div class="login-grain" aria-hidden="true"></div>
+
+		<!-- ============ Bing meta（右下角灰色块，位置与主页一致，加厚毛玻璃不透明度） ============ -->
+		{loginBingTitle || loginBingCopyright ? (
+			<div id="login-bing-meta" class="login-bing-meta absolute bottom-24 right-3 md:bottom-32 md:right-5 z-40 pointer-events-none transition-opacity duration-500 max-w-[62vw] md:max-w-[32vw]">
+				<div class="bing-wallpaper-meta-inner bg-black/60 dark:bg-black/72 backdrop-blur-xl saturate-[180%] px-3.5 py-2 rounded-lg text-white/90 text-xs md:text-sm shadow-2xl leading-snug border border-white/10">
+					{loginBingTitle ? (
+						<div class="bing-wallpaper-title font-semibold truncate">{loginBingTitle}</div>
+					) : null}
+					{loginBingCopyright ? (
+						<div class="bing-wallpaper-copyright text-white/78 truncate text-[10.5px] md:text-xs mt-0.5">
+							{loginBingCopyright}
+						</div>
+					) : null}
+				</div>
+			</div>
+		) : (
+			// SSR 暂时没有 meta 时占位容器（等客户端脚本填入真实数据，避免后续动态插入闪烁）
+			<div id="login-bing-meta" class="login-bing-meta absolute bottom-24 right-3 md:bottom-32 md:right-5 z-40 pointer-events-none transition-opacity duration-500 max-w-[62vw] md:max-w-[32vw]"></div>
+		)}
+
+		<!-- 粒子层（暖石色系） -->
+		<div class="particles" id="particles" aria-hidden="true"></div>
+
+		<!-- 右上角壁纸来源切换器（Bing每日 / 自定义后台 / 本地默认 / 随机第三方Bing） -->
+		<div class="bg-switcher" title="切换登录背景">
+			<button type="button" class="bg-switcher-btn" id="bg-switcher-btn" aria-label="切换登录壁纸">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="bg-switcher-icon"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+				<span class="bg-switcher-label" id="bg-switcher-label">Bing每日</span>
+			</button>
+			<div class="bg-switcher-menu" id="bg-switcher-menu" role="menu">
+				<!-- ============ 新增：Bing 历史日期导航（仅当当前 bgtype=bing / mirror 时可点，其他模式下灰掉） ============ -->
+				<div class="bing-days-row" role="group" aria-label="Bing 日期切换">
+					<button type="button" class="bing-day-btn prev" id="bing-day-prev" aria-label="前一天 Bing 壁纸">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+					</button>
+					<button type="button" class="bing-day-label" id="bing-day-label" aria-label="Bing 日期（今日=0）">
+						Day 0 · Today
+					</button>
+					<button type="button" class="bing-day-btn next" id="bing-day-next" aria-label="后一天 Bing 壁纸">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+					</button>
+				</div>
+				<div class="bg-switcher-divider"></div>
+				<button type="button" class="bg-switcher-item" data-bgtype="bing" role="menuitem">
+					<span class="dot bing"></span>Bing 每日壁纸
+				</button>
+				<button type="button" class="bg-switcher-item" data-bgtype="custom" role="menuitem">
+					<span class="dot custom"></span>后台自定义
+				</button>
+				<button type="button" class="bg-switcher-item" data-bgtype="mirror" role="menuitem">
+					<span class="dot mirror"></span>随机 Bing 镜像
+				</button>
+				<button type="button" class="bg-switcher-item" data-bgtype="default" role="menuitem">
+					<span class="dot default"></span>本地默认
+				</button>
+			</div>
+		</div>
+
+		<div class="login-content">
+			<div class="brand-section">
+				<div class="brand-mark">
+					<img src="/favicon/rosetta-256.png" alt={siteConfig.title} class="brand-icon-img" />
+				</div>
+				<div class="brand-text">
+					<h1 class="brand-title">{siteConfig.title}</h1>
+					<p class="brand-sub">Admin Console</p>
+					<div class="brand-divider"></div>
+					<p class="brand-desc">管理你的内容世界<br/>Create · Share · Inspire.</p>
+				</div>
+			</div>
+
+			<div class="login-card-wrap">
+			<div class="login-card">
+				<div class="card-header">
+						<span class="card-eyebrow">WELCOME</span>
+						<h2>欢迎回来</h2>
+						<p>请登录以继续管理您的内容</p>
+					</div>
+
+					<form id="login-form" class="login-form">
+						<div class="field">
+							<label for="username" class="sr-only">用户名</label>
+							<div class="input-wrapper">
+								<Icon name="material-symbols:person-rounded" class="input-icon" />
+								<input
+									type="text"
+									id="username"
+									name="username"
+									required
+									autocomplete="username"
+									placeholder="请输入用户名"
+								/>
+								<span class="input-focus-ring"></span>
+							</div>
+						</div>
+
+						<div class="field">
+							<label for="password" class="sr-only">密码</label>
+							<div class="input-wrapper">
+								<Icon name="material-symbols:lock" class="input-icon" />
+								<input
+									type="password"
+									id="password"
+									name="password"
+									required
+									autocomplete="current-password"
+									placeholder="请输入密码"
+								/>
+								<button type="button" id="toggle-password" class="toggle-password" aria-label="切换密码可见性">
+									<Icon name="material-symbols:visibility-rounded" id="eye-icon" />
+								</button>
+								<span class="input-focus-ring"></span>
+							</div>
+						</div>
+
+						<div class="form-error" id="login-error"></div>
+
+						<div class="form-options">
+							<label class="remember-me">
+								<input type="checkbox" id="remember-me" name="remember" />
+								<span class="checkmark"></span>
+								<span>记住账号密码</span>
+							</label>
+						</div>
+
+						<button type="submit" class="submit-btn" id="submit-btn">
+							<span class="btn-text">登 录</span>
+							<svg class="btn-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<line x1="5" y1="12" x2="19" y2="12"/>
+								<polyline points="12 5 19 12 12 19"/>
+							</svg>
+						</button>
+					</form>
+
+					<div class="card-footer">
+						<a href="/" class="back-link">
+							<svg class="back-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+								<line x1="19" y1="12" x2="5" y2="12"/>
+								<polyline points="12 19 5 12 12 5"/>
+							</svg>
+							<span>返回首页</span>
+						</a>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</Layout>
+
+<style>
+	.login-page {
+		position: relative;
+		min-height: calc(100vh - 80px);
+		margin: 0 -2rem -2rem;
+		overflow: hidden;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 2rem;
+	}
+
+	.login-bg {
+		position: absolute;
+		inset: -4%;
+		background-size: cover;
+		background-position: center;
+		filter: brightness(0.76) saturate(1.08);
+		animation: slowZoom 20s ease-in-out infinite alternate;
+		transition: background-image 0.8s ease, filter 0.6s ease;
+	}
+
+	@keyframes slowZoom {
+		from { transform: scale(1); }
+		to { transform: scale(1.08); }
+	}
+
+	/* ============ OOBE 青蓝紫色系 Vignette（收敛暗角，避免脏色） ============ */
+	.login-vignette {
+		position: absolute;
+		inset: 0;
+		background:
+			radial-gradient(ellipse at 30% 20%, hsla(210, 96%, 72%, 0.14) 0%, transparent 45%),
+			radial-gradient(ellipse at 80% 85%, hsla(262, 88%, 64%, 0.18) 0%, transparent 46%),
+			radial-gradient(ellipse at center, transparent 52%, rgba(6, 10, 28, 0.52) 100%);
+		pointer-events: none;
+	}
+
+	.login-grain {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		opacity: 0.09;
+		mix-blend-mode: overlay;
+		background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+	}
+
+	/* ============ 壁纸来源切换器（右上角，毛玻璃加厚不透明度） ============ */
+	.bg-switcher {
+		position: absolute;
+		top: 1.5rem;
+		right: 1.5rem;
+		z-index: 20;
+	}
+	.bg-switcher-btn {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.55rem;
+		padding: 0.55rem 0.95rem;
+		border-radius: 9999px;
+		background: linear-gradient(120deg, hsla(216, 60%, 98%, 0.36), hsla(258, 58%, 96%, 0.34));
+		border: 1px solid hsla(216, 70%, 98%, 0.52);
+		backdrop-filter: blur(20px) saturate(180%);
+		-webkit-backdrop-filter: blur(20px) saturate(180%);
+		color: rgba(248, 252, 255, 0.92);
+		font-size: 0.78rem;
+		font-weight: 650;
+		letter-spacing: 0.04em;
+		cursor: pointer;
+		transition: all 0.2s ease;
+		box-shadow:
+			0 10px 28px rgba(12, 18, 44, 0.36),
+			inset 0 1px 0 rgba(255, 255, 255, 0.28);
+	}
+	.bg-switcher-btn:hover {
+		background: linear-gradient(120deg, hsla(216, 70%, 98%, 0.46), hsla(258, 66%, 96%, 0.44));
+		color: #fff;
+		transform: translateY(-1px);
+		border-color: hsla(216, 80%, 98%, 0.66);
+	}
+	.bg-switcher-icon {
+		width: 16px;
+		height: 16px;
+		flex-shrink: 0;
+	}
+	.bg-switcher-menu {
+		position: absolute;
+		top: calc(100% + 12px);
+		right: 0;
+		min-width: 210px;
+		background: linear-gradient(160deg, hsla(216, 50%, 98%, 0.50) 0%, hsla(250, 48%, 96%, 0.44) 60%, hsla(258, 50%, 96%, 0.40) 100%);
+		border: 1px solid hsla(216, 66%, 98%, 0.52);
+		backdrop-filter: blur(26px) saturate(190%);
+		-webkit-backdrop-filter: blur(26px) saturate(190%);
+		border-radius: 16px;
+		padding: 7px;
+		box-shadow:
+			0 24px 56px rgba(8, 14, 40, 0.48),
+			inset 0 1px 0 rgba(255, 255, 255, 0.34);
+		opacity: 0;
+		visibility: hidden;
+		transform: translateY(6px) scale(0.97);
+		transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+		z-index: 30;
+	}
+	.bg-switcher-menu.open {
+		opacity: 1;
+		visibility: visible;
+		transform: translateY(0) scale(1);
+	}
+	.bg-switcher-item {
+		display: flex;
+		align-items: center;
+		gap: 0.7rem;
+		width: 100%;
+		padding: 0.6rem 0.8rem;
+		border-radius: 11px;
+		background: transparent;
+		border: none;
+		color: rgba(246, 252, 255, 0.88);
+		font-size: 0.84rem;
+		font-weight: 550;
+		text-align: left;
+		cursor: pointer;
+		transition: all 0.16s ease;
+	}
+	.bg-switcher-item:hover {
+		background: hsla(216, 70%, 98%, 0.20);
+		color: #ffffff;
+	}
+	.bg-switcher-item.active {
+		background: linear-gradient(120deg, hsla(216, 92%, 62%, 0.42), hsla(258, 84%, 66%, 0.36));
+		color: #ffffff;
+		border: 1px solid hsla(236, 92%, 72%, 0.36);
+		box-shadow: 0 4px 16px hsla(240, 82%, 60%, 0.24);
+	}
+	.dot {
+		width: 9px;
+		height: 9px;
+		border-radius: 9999px;
+		flex-shrink: 0;
+		box-shadow: 0 0 0 2px rgba(255,255,255,0.12);
+	}
+	.dot.bing    { background: hsl(214, 92%, 62%); }
+	.dot.custom  { background: hsl(34, 88%, 62%); }
+	.dot.mirror  { background: hsl(192, 78%, 58%); }
+	.dot.default { background: hsl(258, 80%, 68%); }
+
+	/* Bing 历史日期导航（< Day X · Today >）——加厚毛玻璃 */
+	.bing-days-row {
+		display: flex;
+		align-items: center;
+		gap: 7px;
+		padding: 6px;
+		border-radius: 13px;
+		background: linear-gradient(120deg, hsla(216, 60%, 98%, 0.26), hsla(258, 60%, 96%, 0.22));
+		border: 1px solid hsla(216, 70%, 98%, 0.34);
+		backdrop-filter: blur(16px) saturate(180%);
+		-webkit-backdrop-filter: blur(16px) saturate(180%);
+		color: rgba(246, 252, 255, 0.90);
+		margin-bottom: 4px;
+	}
+	.bing-day-btn {
+		flex: 0 0 auto;
+		width: 30px;
+		height: 30px;
+		border-radius: 11px;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		background: hsla(216, 70%, 98%, 0.24);
+		border: 1px solid hsla(216, 70%, 98%, 0.30);
+		color: rgba(246, 252, 255, 0.88);
+		cursor: pointer;
+		transition: all 0.18s ease;
+	}
+	.bing-day-btn svg { width: 14px; height: 14px; }
+	.bing-day-btn:hover:not(:disabled) {
+		background: linear-gradient(120deg, hsla(216, 92%, 62%, 0.40), hsla(258, 84%, 66%, 0.34));
+		color: #fff;
+		border-color: hsla(236, 92%, 72%, 0.50);
+		box-shadow: 0 6px 18px hsla(240, 82%, 60%, 0.22);
+	}
+	.bing-day-btn:disabled {
+		opacity: 0.38;
+		cursor: not-allowed;
+	}
+	.bing-day-label {
+		flex: 1 1 auto;
+		min-width: 0;
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		height: 30px;
+		padding: 0 8px;
+		border-radius: 11px;
+		background: linear-gradient(120deg, hsla(216, 92%, 62%, 0.26), hsla(258, 84%, 66%, 0.22));
+		border: 1px solid hsla(236, 92%, 72%, 0.36);
+		color: rgba(248, 252, 255, 0.94);
+		font-size: 0.8rem;
+		font-weight: 650;
+		letter-spacing: 0.03em;
+		cursor: pointer;
+		transition: all 0.18s ease;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.bing-day-label:hover {
+		background: linear-gradient(120deg, hsla(216, 92%, 62%, 0.42), hsla(258, 84%, 66%, 0.36));
+		color: #fff;
+		border-color: hsla(236, 92%, 72%, 0.50);
+	}
+	.bg-switcher-divider {
+		height: 1px;
+		margin: 6px 4px 8px;
+		background: linear-gradient(90deg, transparent, hsla(216, 70%, 98%, 0.34), hsla(258, 70%, 98%, 0.30), transparent);
+	}
+
+	.particles {
+		position: absolute;
+		inset: 0;
+		pointer-events: none;
+		overflow: hidden;
+	}
+
+	.particle {
+		position: absolute;
+		width: 3px;
+		height: 3px;
+		background: #fff;
+		border-radius: 50%;
+		opacity: 0;
+		box-shadow:
+			0 0 6px 1px hsla(220, 88%, 72%, 0.92),
+			0 0 14px 2px hsla(258, 82%, 74%, 0.38);
+		animation: float linear infinite;
+	}
+
+	@keyframes float {
+		0% {
+			opacity: 0;
+			transform: translateY(100vh) scale(0);
+		}
+		10% { opacity: 0.9; }
+		90% { opacity: 0.65; }
+		100% {
+			opacity: 0;
+			transform: translateY(-20vh) scale(1);
+		}
+	}
+
+	.login-content {
+		position: relative;
+		z-index: 2;
+		display: flex;
+		align-items: center;
+		gap: 5rem;
+		width: 100%;
+		max-width: 960px;
+	}
+
+	.brand-section {
+		flex: 1;
+		color: white;
+		animation: slideInLeft 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
+	}
+
+	@keyframes slideInLeft {
+		from {
+			opacity: 0;
+			transform: translateX(-40px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+
+	.brand-mark {
+		margin-bottom: 1.75rem;
+		filter:
+			drop-shadow(0 2px 10px hsla(216, 78%, 58%, 0.32))
+			drop-shadow(0 8px 30px hsla(256, 70%, 58%, 0.24));
+	}
+
+	.brand-icon-img {
+		width: 92px;
+		height: 92px;
+		object-fit: contain;
+		image-rendering: -webkit-optimize-contrast;
+		image-rendering: crisp-edges;
+		-webkit-font-smoothing: antialiased;
+	}
+
+	/* ============ Brand标题：暖石→青蓝紫渐变（更贴合新LOGO色调） ============ */
+	.brand-text h1 {
+		margin: 0;
+		font-size: 3.25rem;
+		font-weight: 700;
+		letter-spacing: 0.08em;
+		line-height: 1.1;
+		background: linear-gradient(135deg, #fffdf5 0%, #e9f2ff 48%, #d9dcff 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		-webkit-text-fill-color: transparent;
+		text-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+	}
+
+	.brand-sub {
+		margin: 0.5rem 0 0;
+		font-size: 0.85rem;
+		font-weight: 500;
+		letter-spacing: 0.4em;
+		opacity: 0.82;
+		color: rgba(233, 242, 255, 0.82);
+		text-transform: uppercase;
+	}
+
+	/* ============ Brand分隔线：青蓝→紫渐变 ============ */
+	.brand-divider {
+		width: 56px;
+		height: 3px;
+		margin: 1.5rem 0;
+		background: linear-gradient(90deg, hsl(208, 88%, 62%) 0%, hsl(258, 72%, 62%) 100%);
+		border-radius: 3px;
+	}
+
+	.brand-desc {
+		margin: 0;
+		font-size: 0.98rem;
+		line-height: 1.85;
+		opacity: 0.86;
+		color: rgba(238, 245, 255, 0.88);
+	}
+
+	.login-card-wrap {
+		flex: 0 0 400px;
+		position: relative;
+		animation: slideInRight 0.9s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+	}
+
+	@keyframes slideInRight {
+		from {
+			opacity: 0;
+			transform: translateX(40px);
+		}
+		to {
+			opacity: 1;
+			transform: translateX(0);
+		}
+	}
+
+	.login-card {
+		position: relative;
+		background: linear-gradient(160deg, hsla(216, 40%, 98%, 0.48) 0%, hsla(248, 38%, 96%, 0.42) 55%, hsla(28, 28%, 96%, 0.38) 100%);
+		backdrop-filter: blur(30px) saturate(190%);
+		-webkit-backdrop-filter: blur(30px) saturate(190%);
+		border: 1px solid hsla(216, 50%, 98%, 0.48);
+		border-radius: 1.35rem;
+		padding: 2.5rem 2rem;
+		box-shadow:
+			0 36px 96px rgba(14, 20, 44, 0.42),
+			0 12px 32px rgba(14, 20, 44, 0.26),
+			inset 0 1px 0 rgba(255, 255, 255, 0.42),
+			inset 0 0 0 1px rgba(255, 253, 245, 0.04);
+		overflow: hidden;
+	}
+	/* 卡片微光：左上角青色+右下角紫色 */
+	.login-card::before {
+		content: "";
+		position: absolute;
+		inset: -30% -20% auto auto;
+		width: 280px;
+		height: 280px;
+		background: radial-gradient(circle at 70% 30%, hsla(212, 96%, 68%, 0.32) 0%, transparent 62%);
+		pointer-events: none;
+		z-index: 0;
+	}
+	.login-card::after {
+		content: "";
+		position: absolute;
+		inset: auto auto -40% -10%;
+		width: 320px;
+		height: 320px;
+		background: radial-gradient(circle at 30% 70%, hsla(260, 86%, 70%, 0.28) 0%, transparent 60%);
+		pointer-events: none;
+		z-index: 0;
+	}
+	.login-card > * { position: relative; z-index: 1; }
+
+	.card-header {
+		text-align: left;
+		margin-bottom: 2rem;
+	}
+
+	/* ============ Eyebrow：青蓝→紫渐变（与LOGO色调一致，饱和度加深） ============ */
+	.card-eyebrow {
+		display: inline-block;
+		font-size: 0.72rem;
+		font-weight: 800;
+		letter-spacing: 0.3em;
+		background: linear-gradient(90deg, hsl(212, 86%, 48%) 0%, hsl(258, 78%, 56%) 100%);
+		-webkit-background-clip: text;
+		background-clip: text;
+		color: transparent;
+		margin-bottom: 0.6rem;
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.4);
+	}
+
+	.card-header h2 {
+		margin: 0 0 0.35rem;
+		font-size: 1.58rem;
+		font-weight: 720;
+		color: hsl(244, 34%, 16%);
+		letter-spacing: 0.01em;
+		text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+	}
+
+	.card-header p {
+		margin: 0;
+		font-size: 0.92rem;
+		color: hsl(246, 18%, 38%);
+		font-weight: 500;
+	}
+
+	.sr-only {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	.login-form {
+		display: flex;
+		flex-direction: column;
+		gap: 1rem;
+	}
+
+	.field {
+		position: relative;
+	}
+
+	.input-wrapper {
+		position: relative;
+		display: flex;
+		align-items: center;
+	}
+
+	.input-icon {
+		position: absolute;
+		left: 1rem;
+		top: 50%;
+		transform: translateY(-50%);
+		font-size: 1.15rem;
+		color: hsl(246, 16%, 46%);
+		pointer-events: none;
+		z-index: 1;
+		transition: color 0.25s ease;
+	}
+
+	.field input {
+		width: 100%;
+		padding: 0.98rem 1rem 0.98rem 2.85rem;
+		border: 1px solid hsla(244, 22%, 32%, 0.22);
+		border-radius: 0.8rem;
+		background: linear-gradient(180deg, rgba(252, 254, 255, 0.62) 0%, rgba(244, 248, 255, 0.54) 100%);
+		color: hsl(244, 32%, 14%);
+		font-size: 0.95rem;
+		font-weight: 550;
+		transition: all 0.25s ease;
+		box-sizing: border-box;
+		backdrop-filter: blur(10px) saturate(180%);
+		-webkit-backdrop-filter: blur(10px) saturate(180%);
+		box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset, 0 1px 2px rgba(24, 30, 68, 0.06);
+	}
+
+	.field input::placeholder {
+		color: hsl(246, 12%, 52%);
+		font-weight: 480;
+	}
+
+	.field input:hover {
+		background: linear-gradient(180deg, rgba(252, 254, 255, 0.72) 0%, rgba(244, 248, 255, 0.64) 100%);
+		border-color: hsla(244, 30%, 40%, 0.34);
+	}
+
+	/* ============ Input聚焦光晕：青蓝→紫渐变 ============ */
+	.field input:focus {
+		outline: none;
+		background: linear-gradient(180deg, rgba(252, 254, 255, 0.82) 0%, rgba(244, 248, 255, 0.74) 100%);
+		border-color: hsla(222, 82%, 56%, 0.72);
+		box-shadow:
+			0 0 0 3px hsla(222, 82%, 62%, 0.22),
+			0 0 24px hsla(258, 78%, 60%, 0.18),
+			0 1px 0 rgba(255, 255, 255, 0.8) inset;
+	}
+
+	.input-wrapper:focus-within .input-icon {
+		color: hsl(222, 78%, 52%);
+	}
+
+	.toggle-password {
+		position: absolute;
+		right: 0.6rem;
+		top: 50%;
+		transform: translateY(-50%);
+		background: rgba(24, 30, 68, 0.06);
+		border: 1px solid rgba(24, 30, 68, 0.10);
+		padding: 0.4rem;
+		cursor: pointer;
+		color: hsl(246, 16%, 48%);
+		border-radius: 0.6rem;
+		transition: all 0.2s;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 2;
+		backdrop-filter: blur(8px) saturate(160%);
+		-webkit-backdrop-filter: blur(8px) saturate(160%);
+	}
+
+	.toggle-password:hover {
+		color: hsl(222, 76%, 44%);
+		background: rgba(24, 30, 68, 0.10);
+		border-color: rgba(24, 30, 68, 0.16);
+	}
+
+	.form-error {
+		color: hsl(0 86% 76%);
+		font-size: 0.84rem;
+		min-height: 1.35rem;
+		padding: 0.4rem 0.85rem;
+		border-radius: 0.55rem;
+		background: linear-gradient(100deg, hsla(0, 82%, 62%, 0.22), hsla(320, 70%, 60%, 0.18));
+		border: 1px solid hsla(0, 90%, 70%, 0.32);
+		backdrop-filter: blur(10px) saturate(160%);
+		-webkit-backdrop-filter: blur(10px) saturate(160%);
+	}
+
+	.form-error:empty {
+		display: none;
+	}
+
+	.form-options {
+		display: flex;
+		align-items: center;
+		justify-content: flex-start;
+		margin: -0.25rem 0 0.25rem;
+	}
+
+	.remember-me {
+		display: flex;
+		align-items: center;
+		gap: 0.55rem;
+		cursor: pointer;
+		font-size: 0.88rem;
+		color: hsl(244, 28%, 22%);
+		font-weight: 620;
+		user-select: none;
+	}
+
+	.remember-me input[type="checkbox"] {
+		display: none;
+	}
+
+	.checkmark {
+		width: 20px;
+		height: 20px;
+		border: 1.6px solid hsla(244, 24%, 36%, 0.48);
+		border-radius: 0.42rem;
+		background: rgba(252, 254, 255, 0.52);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		transition: all 0.2s ease;
+		position: relative;
+		backdrop-filter: blur(8px) saturate(160%);
+		-webkit-backdrop-filter: blur(8px) saturate(160%);
+		box-shadow: 0 1px 0 rgba(255, 255, 255, 0.7) inset;
+	}
+
+	.remember-me:hover .checkmark {
+		border-color: hsla(244, 32%, 34%, 0.68);
+		background: rgba(252, 254, 255, 0.62);
+	}
+
+	/* ============ Checkbox选中：青蓝→紫渐变（与LOGO一致） ============ */
+	.remember-me input[type="checkbox"]:checked + .checkmark {
+		background: linear-gradient(135deg, hsl(212, 90%, 62%) 0%, hsl(258, 80%, 64%) 100%);
+		border-color: transparent;
+		box-shadow: 0 4px 18px hsla(240, 82%, 60%, 0.38);
+	}
+
+	.remember-me input[type="checkbox"]:checked + .checkmark::after {
+		content: "";
+		width: 6px;
+		height: 10px;
+		border: solid #fbfdff;
+		border-width: 0 2.2px 2.2px 0;
+		transform: rotate(45deg) translate(-1px, -1px);
+	}
+
+	/* ============ 主按钮：青蓝→紫渐变（与LOGO色调一致） ============ */
+	.submit-btn {
+		position: relative;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 0.6rem;
+		width: 100%;
+		padding: 0.98rem 1.3rem;
+		margin-top: 0.6rem;
+		background: linear-gradient(120deg, hsl(214, 92%, 58%) 0%, hsl(258, 80%, 62%) 100%);
+		color: #fbfdff;
+		border: 1px solid hsla(236, 92%, 72%, 0.4);
+		border-radius: 0.85rem;
+		font-size: 0.96rem;
+		font-weight: 650;
+		letter-spacing: 0.09em;
+		cursor: pointer;
+		transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+		box-shadow:
+			0 6px 22px hsla(240, 80%, 50%, 0.32),
+			0 1px 0 rgba(255, 255, 255, 0.28) inset,
+			0 -1px 0 rgba(0, 0, 0, 0.12) inset;
+	}
+
+	.submit-btn::before {
+		content: "";
+		position: absolute;
+		inset: 0;
+		border-radius: inherit;
+		background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0));
+		opacity: 0.6;
+		pointer-events: none;
+	}
+
+	.submit-btn:hover {
+		transform: translateY(-1.5px);
+		background: linear-gradient(120deg, hsl(214, 92%, 54%) 0%, hsl(258, 80%, 58%) 100%);
+		box-shadow:
+			0 10px 28px hsla(240, 80%, 52%, 0.42),
+			0 1px 0 rgba(255, 255, 255, 0.32) inset,
+			0 -1px 0 rgba(0, 0, 0, 0.14) inset;
+	}
+
+	.submit-btn:active {
+		transform: translateY(0);
+	}
+
+	.submit-btn:disabled {
+		opacity: 0.58;
+		cursor: not-allowed;
+		transform: none;
+		box-shadow: 0 4px 18px hsla(240, 60%, 50%, 0.22);
+	}
+
+	.submit-btn:focus-visible {
+		outline: none;
+		box-shadow:
+			0 0 0 4px hsla(240, 90%, 68%, 0.32),
+			0 6px 22px hsla(240, 80%, 50%, 0.32);
+	}
+
+	.btn-arrow {
+		width: 16px;
+		height: 16px;
+		transition: transform 0.25s ease;
+	}
+
+	.submit-btn:hover .btn-arrow {
+		transform: translateX(3px);
+	}
+
+	.card-footer {
+		margin-top: 1.75rem;
+		padding-top: 1.25rem;
+		border-top: 1px solid hsla(244, 24%, 34%, 0.16);
+		display: flex;
+		justify-content: center;
+	}
+
+	.back-link {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.42rem;
+		color: hsl(246, 18%, 42%);
+		text-decoration: none;
+		font-size: 0.86rem;
+		font-weight: 600;
+		padding: 0.4rem 0.85rem;
+		border-radius: 0.6rem;
+		border: 1px solid hsla(244, 24%, 34%, 0.12);
+		background: rgba(252, 254, 255, 0.38);
+		backdrop-filter: blur(8px) saturate(160%);
+		-webkit-backdrop-filter: blur(8px) saturate(160%);
+		transition: all 0.22s;
+	}
+
+	.back-link:hover {
+		color: hsl(244, 32%, 18%);
+		background: rgba(252, 254, 255, 0.54);
+		border-color: hsla(244, 30%, 34%, 0.22);
+	}
+
+	.back-icon {
+		width: 14px;
+		height: 14px;
+	}
+
+	@media (max-width: 880px) {
+		.bg-switcher {
+			top: 1rem;
+			right: 1rem;
+		}
+		.login-content {
+			flex-direction: column;
+			gap: 3rem;
+			text-align: center;
+		}
+		.brand-section {
+			display: flex;
+			flex-direction: column;
+			align-items: center;
+		}
+		.brand-text h1 {
+			font-size: 2.5rem;
+		}
+		.brand-icon-img {
+			width: 82px;
+			height: 82px;
+		}
+		.login-card-wrap {
+			flex: 0 0 auto;
+			width: 100%;
+			max-width: 400px;
+		}
+	}
+
+	@media (max-width: 480px) {
+		.login-page {
+			padding: 1.25rem;
+		}
+		.login-card {
+			padding: 2rem 1.5rem;
+			border-radius: 1.2rem;
+		}
+		.brand-text h1 {
+			font-size: 2.1rem;
+		}
+		.brand-icon-img {
+			width: 72px;
+			height: 72px;
+		}
+		.bg-switcher-label {
+			display: none;
+		}
+		.bg-switcher-btn {
+			padding: 0.5rem;
+		}
+	}
+</style>
+
+<script>
+	// @ts-nocheck
+	import { login } from "@api/auth";
+	import { fetchBingWallpaperByIndex } from "@/utils/dynamic-config";
+
+	const REMEMBER_KEY = "rosetta_remember_credentials";
+	const BG_OVERRIDE_KEY = "rosetta_login_bg_override";
+	const BING_IDX_KEY = "rosetta_login_bing_idx";
+	const form = document.getElementById("login-form") || null;
+	const errorEl = document.getElementById("login-error");
+	const submitBtn = document.getElementById("submit-btn");
+	const togglePasswordBtn = document.getElementById("toggle-password");
+	const passwordInput = document.getElementById("password") || null;
+	const eyeIcon = document.getElementById("eye-icon") || null;
+	const particlesContainer = document.getElementById("particles");
+	const rememberCheckbox = document.getElementById("remember-me") || null;
+	const usernameInput = document.getElementById("username") || null;
+	const bgEl = document.getElementById("login-bg");
+	const bgSwitcherBtn = document.getElementById("bg-switcher-btn");
+	const bgSwitcherMenu = document.getElementById("bg-switcher-menu");
+	const bgSwitcherLabel = document.getElementById("bg-switcher-label");
+	const bgItems = document.querySelectorAll(".bg-switcher-item");
+	// 新增：Bing 历史日期导航控件
+	const bingDayPrev = document.getElementById("bing-day-prev") as HTMLButtonElement | null;
+	const bingDayNext = document.getElementById("bing-day-next") as HTMLButtonElement | null;
+	const bingDayLabel = document.getElementById("bing-day-label") as HTMLButtonElement | null;
+	const loginBingMetaEl = document.getElementById("login-bing-meta");
+
+	const BG_LABELS = {
+		bing: "Bing每日",
+		custom: "后台自定义",
+		mirror: "随机Bing",
+		default: "本地默认",
+	};
+
+	// 当前 Bing 日期索引（0=今日 1=昨日 ... 7=7 天前）；非 Bing 模式下为 -1
+	let currentBingIdx = 0;
+	// 当前 bg 类型（用于控制日期导航按钮的可用性）
+	let currentBgType: string = "bing";
+	let bingMetaLast: { url: string; title: string; copyright: string; startdate: string } | null = null;
+
+	// ============ 工具：更新右下角 Bing meta（登录版，加厚毛玻璃 + 青蓝紫色调）============
+	function renderLoginBingMeta(title: string, copyright: string) {
+		if (!loginBingMetaEl) return;
+		const hasAny = !!(title || copyright);
+		// 没有内容时直接占位（保持占位容器存在即可）
+		let innerHtml = "";
+		if (hasAny) {
+			innerHtml =
+				'<div class="bing-wallpaper-meta-inner" style="background:linear-gradient(135deg,rgba(12,20,44,0.68),rgba(22,16,54,0.62));backdrop-filter:blur(22px) saturate(180%);-webkit-backdrop-filter:blur(22px) saturate(180%);padding:0.5rem 0.85rem;border-radius:0.625rem;color:rgba(252,254,255,0.92);font-size:0.8rem;line-height:1.55;box-shadow:0 18px 44px rgba(6,10,28,0.52),0 1px 0 rgba(255,255,255,0.08) inset;border:1px solid rgba(236,245,255,0.14);">';
+			if (title) {
+				innerHtml +=
+					'<div class="bing-wallpaper-title" style="font-weight:650;letter-spacing:0.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' +
+					title.replace(/"/g, "&quot;") +
+					"</div>";
+			}
+			if (copyright) {
+				innerHtml +=
+					'<div class="bing-wallpaper-copyright" style="color:rgba(236,245,255,0.78);font-size:0.72rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:0.2rem;">' +
+					copyright.replace(/"/g, "&quot;") +
+					"</div>";
+			}
+			innerHtml += "</div>";
+		}
+		loginBingMetaEl.innerHTML = innerHtml;
+		loginBingMetaEl.style.opacity = hasAny ? "1" : "0";
+	}
+
+	// ============ 工具：根据 startdate (YYYYMMDD) 转「MM/DD」 显示 ============
+	function formatBingStartDate(s: string): string {
+		if (!s || !/^\d{8}$/.test(s)) return "";
+		const y = s.substring(0, 4);
+		const m = s.substring(4, 6);
+		const d = s.substring(6, 8);
+		// 今日
+		const today = new Date();
+		const t8 =
+			String(today.getFullYear()) +
+			String(today.getMonth() + 1).padStart(2, "0") +
+			String(today.getDate()).padStart(2, "0");
+		if (s === t8) return `${y}/${m}/${d} · Today`;
+		return `${y}/${m}/${d}`;
+	}
+
+	// ============ 工具：刷新 Bing 日期导航按钮可用状态 + 文本 ============
+	function updateBingDaysUI() {
+		const isBingMode = currentBgType === "bing" || currentBgType === "mirror";
+		const maxIdx = 7;
+		// 按钮禁用条件：非 Bing 模式 或 抵达边界
+		if (bingDayPrev) bingDayPrev.disabled = !isBingMode || currentBingIdx >= maxIdx;
+		if (bingDayNext) bingDayNext.disabled = !isBingMode || currentBingIdx <= 0;
+		if (bingDayLabel) {
+			const dateLabel = bingMetaLast?.startdate
+				? formatBingStartDate(bingMetaLast.startdate)
+				: "";
+			const idxText =
+				currentBingIdx === 0
+					? "Day 0 · Today"
+					: `Day ${currentBingIdx} · ${currentBingIdx}d ago`;
+			bingDayLabel.textContent = dateLabel ? `${idxText}  ·  ${dateLabel}` : idxText;
+			bingDayLabel.title =
+				currentBgType === "bing" || currentBgType === "mirror"
+					? "点击跳回今日 Bing 壁纸"
+					: "请先选择「Bing 每日壁纸」或「随机 Bing 镜像」再切换日期";
+		}
+	}
+
+	// ============ 解析 Bing 代理接口返回的第一张图（title/copyright/url） ============
+	function parseBingApi(data: any) {
+		const first = Array.isArray(data?.images) && data.images.length > 0 ? data.images[0] : null;
+		if (!first) return null;
+		const title = typeof first?.title === "string" ? first.title : "";
+		const copyright = typeof first?.copyright === "string" ? first.copyright : "";
+		const startdate = typeof first?.startdate === "string" ? first.startdate : "";
+		let rawUrl = "";
+		if (typeof first?.full_url === "string" && first.full_url) rawUrl = first.full_url;
+		else if (typeof first?.url === "string" && first.url) rawUrl = first.url;
+		let url = "";
+		if (rawUrl) {
+			if (/^https?:\/\//i.test(rawUrl)) url = rawUrl;
+			else if (rawUrl.startsWith("/")) url = "https://www.bing.com" + rawUrl;
+			else url = "https://www.bing.com/" + rawUrl;
+		}
+		return { url, copyright, title, startdate };
+	}
+
+	// ============ 切换到某个 Bing 日期 idx ============
+	async function applyBingByIdx(idx: number, persist = true, mkt = "zh-CN") {
+		const safeIdx = Math.max(0, Math.min(7, Number(idx) || 0));
+		currentBingIdx = safeIdx;
+		let resolved: { url: string; title: string; copyright: string; startdate: string } | null = null;
+		// 优先后端代理
+		try {
+			const r = await fetch(
+				`/api/media/bing-wallpaper?idx=${safeIdx}&n=1&mkt=${encodeURIComponent(mkt)}`,
+				{ credentials: "same-origin" },
+			);
+			if (r.ok) {
+				const data = await r.json();
+				resolved = parseBingApi(data);
+			}
+		} catch (e) {
+			console.warn("[login] bing idx=" + safeIdx + " proxy failed, fallback:", e);
+		}
+		// 后端失败则调用 fetchBingWallpaperByIndex（会自己 fallback 第三方镜像）
+		if (!resolved || !resolved.url) {
+			try {
+				const r2 = await fetchBingWallpaperByIndex(safeIdx, mkt);
+				resolved = {
+					url: r2.url,
+					title: r2.title || "",
+					copyright: r2.copyright || "",
+					startdate: r2.startdate || "",
+				};
+			} catch (_) { /* ignore */ }
+		}
+		if (!resolved) return;
+		bingMetaLast = resolved;
+		if (resolved.url && bgEl) bgEl.style.backgroundImage = "url(" + resolved.url + ")";
+		renderLoginBingMeta(resolved.title, resolved.copyright);
+		updateBingDaysUI();
+		if (persist) {
+			try {
+				localStorage.setItem(BING_IDX_KEY, String(safeIdx));
+			} catch (_) { /* ignore */ }
+		}
+	}
+
+	// ============ 背景源解析（支持设置覆盖 + 本地临时偏好 + Bing idx 切换） ============
+	async function resolveBgUrl(type: string): Promise<string> {
+		try {
+			if (type === "bing") {
+				// 走 applyBingByIdx，返回空串由 applyBg 统一处理
+				return "";
+			}
+			if (type === "mirror") {
+				return `https://bing.img.run/?day=${Math.floor(Math.random() * 30)}`;
+			}
+			if (type === "custom") {
+				// 尝试从 /api/site 拿自定义登录背景；失败则fallback Bing
+				try {
+					const cfg = await fetch("/api/site", { credentials: "same-origin" });
+					if (cfg.ok) {
+						const j = await cfg.json();
+						const raw = j?.login_bg_url || j?.wallpaper_desktop || j?.hero_bg_image;
+						if (typeof raw === "string" && raw.trim()) return raw;
+					}
+				} catch { /* ignore */ }
+				return `https://bing.img.run/?day=${Math.floor(Math.random() * 30)}`;
+			}
+			return "/assets/images/DesktopWallpaper/d1.avif";
+		} catch (e) {
+			console.warn("[login] bg resolve failed, fallback default:", e);
+			return "/assets/images/DesktopWallpaper/d1.avif";
+		}
+	}
+
+	async function applyBg(type: string, persist = true, useSavedBingIdx: number | null = null) {
+		currentBgType = type;
+		let finalUrl: string | null = null;
+		// Bing 模式 → 按 idx 切换（包含 meta 写入）
+		if (type === "bing") {
+			let startIdx = 0;
+			if (typeof useSavedBingIdx === "number") startIdx = useSavedBingIdx;
+			else {
+				try {
+					const raw = localStorage.getItem(BING_IDX_KEY);
+					if (raw) startIdx = Math.max(0, Math.min(7, parseInt(raw, 10) || 0));
+				} catch (_) { /* ignore */ }
+			}
+			await applyBingByIdx(startIdx, persist);
+			updateBingDaysUI();
+		} else {
+			// 非 Bing 模式：清空 Bing meta 相关（meta 留空或保留最后一次 Bing 结果显示）
+			const url = await resolveBgUrl(type);
+			if (url && bgEl) bgEl.style.backgroundImage = "url(" + url + ")";
+			// 非 Bing：让日期控件置灰
+			updateBingDaysUI();
+		}
+		if (bgSwitcherLabel) {
+			let label: string = BG_LABELS[type] || "Bing每日";
+			if (type === "bing") {
+				label =
+					currentBingIdx === 0
+						? "Bing·今日"
+						: `Bing·${currentBingIdx}d前`;
+			}
+			bgSwitcherLabel.textContent = label;
+		}
+		bgItems.forEach((el: any) => {
+			el.classList.toggle("active", el.dataset.bgtype === type);
+		});
+		if (persist) {
+			try { localStorage.setItem(BG_OVERRIDE_KEY, type); } catch { /* ignore */ }
+		}
+	}
+
+	// 启动时应用本地覆盖，若无则默认Bing
+	(function initBg() {
+		let savedType: any = "bing";
+		let savedIdx: number | null = null;
+		try {
+			savedType = localStorage.getItem(BG_OVERRIDE_KEY) || "bing";
+			const raw = localStorage.getItem(BING_IDX_KEY);
+			if (raw) savedIdx = Math.max(0, Math.min(7, parseInt(raw, 10) || 0));
+		} catch { /* ignore */ }
+		applyBg(savedType, false, savedIdx);
+	})();
+
+	// 壁纸切换器交互
+	if (bgSwitcherBtn && bgSwitcherMenu) {
+		bgSwitcherBtn.addEventListener("click", (e) => {
+			e.stopPropagation();
+			bgSwitcherMenu.classList.toggle("open");
+		});
+		document.addEventListener("click", (e) => {
+			if (!bgSwitcherMenu.contains(e.target as Node) && e.target !== bgSwitcherBtn) {
+				bgSwitcherMenu.classList.remove("open");
+			}
+		});
+	}
+	bgItems.forEach((el: any) => {
+		el.addEventListener("click", () => {
+			const t = el.dataset.bgtype || "bing";
+			applyBg(t, true);
+			bgSwitcherMenu?.classList.remove("open");
+		});
+	});
+
+	// ============ 新增：Bing 日期 < / > / 跳回今日 交互 ============
+	if (bingDayPrev) {
+		bingDayPrev.addEventListener("click", (ev) => {
+			ev.preventDefault();
+			ev.stopPropagation();
+			const nextIdx = Math.min(7, currentBingIdx + 1);
+			if (currentBgType === "bing") applyBingByIdx(nextIdx, true);
+			// mirror 模式：不切换全局类型，临时按 idx 拉 Bing 作为等价随机
+			else if (currentBgType === "mirror") applyBingByIdx(nextIdx, true);
+		});
+	}
+	if (bingDayNext) {
+		bingDayNext.addEventListener("click", (ev) => {
+			ev.preventDefault();
+			ev.stopPropagation();
+			const nextIdx = Math.max(0, currentBingIdx - 1);
+			if (currentBgType === "bing") applyBingByIdx(nextIdx, true);
+			else if (currentBgType === "mirror") applyBingByIdx(nextIdx, true);
+		});
+	}
+	if (bingDayLabel) {
+		bingDayLabel.addEventListener("click", (ev) => {
+			ev.preventDefault();
+			ev.stopPropagation();
+			if (currentBgType === "bing" || currentBgType === "mirror") applyBingByIdx(0, true);
+		});
+	}
+
+	// 记住的账号密码恢复
+	try {
+		const saved = localStorage.getItem(REMEMBER_KEY);
+		if (saved && rememberCheckbox && usernameInput && passwordInput) {
+			const creds = JSON.parse(saved);
+			usernameInput.value = creds.username || "";
+			passwordInput.value = creds.password || "";
+			rememberCheckbox.checked = true;
+		}
+	} catch {
+		/* ignore */
+	}
+
+	// 粒子（暖石色系：赭石→胡桃木→靛青 hue 区间 25~245）
+	if (particlesContainer) {
+		const particleCount = 24;
+		for (let i = 0; i < particleCount; i++) {
+			const p = document.createElement("div");
+			p.className = "particle";
+			p.style.left = Math.random() * 100 + "%";
+			p.style.animationDuration = (8 + Math.random() * 10) + "s";
+			p.style.animationDelay = (Math.random() * 12) + "s";
+			const size = 2 + Math.random() * 3;
+			p.style.width = size + "px";
+			p.style.height = size + "px";
+			const hue = 25 + Math.random() * 220; // 25（赭石）..245（靛青）
+			p.style.boxShadow = `0 0 ${4 + size * 2}px ${size / 2}px hsla(${hue}, 68%, 70%, 0.72)`;
+			particlesContainer.appendChild(p);
+		}
+	}
+
+	togglePasswordBtn?.addEventListener("click", () => {
+		if (!passwordInput) return;
+		const isPassword = passwordInput.type === "password";
+		passwordInput.type = isPassword ? "text" : "password";
+		if (eyeIcon) {
+			eyeIcon.setAttribute(
+				"name",
+				isPassword ? "material-symbols:visibility-off-rounded" : "material-symbols:visibility-rounded",
+			);
+		}
+	});
+
+	form?.addEventListener("submit", async (e) => {
+		e.preventDefault();
+		if (!form) return;
+
+		const formData = new FormData(form);
+		const username = formData.get("username") as string;
+		const password = formData.get("password") as string;
+		const remember = formData.get("remember") === "on";
+
+		if (errorEl) errorEl.textContent = "";
+		if (submitBtn) {
+			submitBtn.disabled = true;
+			submitBtn.style.opacity = "0.7";
+			submitBtn.style.cursor = "not-allowed";
+		}
+
+		try {
+			await login({ username, password });
+
+			if (remember) {
+				localStorage.setItem(REMEMBER_KEY, JSON.stringify({ username, password }));
+			} else {
+				localStorage.removeItem(REMEMBER_KEY);
+			}
+
+			window.location.href = "/admin/";
+		} catch (err: any) {
+			if (errorEl) {
+				errorEl.textContent = err?.message || "登录失败，请检查用户名和密码";
+			}
+		} finally {
+			if (submitBtn) {
+				submitBtn.disabled = false;
+				submitBtn.style.opacity = "1";
+				submitBtn.style.cursor = "pointer";
+			}
+		}
+	});
+</script>

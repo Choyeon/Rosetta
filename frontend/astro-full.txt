@@ -1,0 +1,165 @@
+
+> rosetta@2.0.0 astro D:\WebProjects\Rosetta\frontend
+> astro "check"
+
+[2m06:29:54[22m [34m[content][39m Syncing content
+[2m06:29:54[22m [34m[content][39m Synced content
+[2m06:29:54[22m [34m[types][39m Generated [2m347ms[22m
+[2m06:29:54[22m [34m[check][39m Getting diagnostics for Astro files in D:\WebProjects\Rosetta\frontend...
+[96msrc/components/comment/index.astro[0m:[93m27[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'type' is declared but its value is never read.
+
+[7m27[0m const { type } = commentConfig;
+[7m  [0m [93m      ~~~~~~~~[0m
+
+[96msrc/components/common/ImageWrapper.astro[0m:[93m244[0m:[93m90[0m - [93mwarning[0m[90m ts(6385): [0m'event' is deprecated.
+
+[7m244[0m             onload="(function(e){var t=(e&&e.currentTarget)||this;t.style.opacity='1';})(event)"
+[7m   [0m [93m                                                                                         ~~~~~[0m
+[96msrc/components/common/ImageWrapper.astro[0m:[93m243[0m:[93m106[0m - [93mwarning[0m[90m ts(6385): [0m'event' is deprecated.
+
+[7m243[0m             onerror="(function(e){var t=(e&&e.currentTarget)||this;t.style.opacity='1';t.onerror=null;})(event)"
+[7m   [0m [93m                                                                                                         ~~~~~[0m
+
+[96msrc/components/layout/ConfigCarrier.astro[0m:[93m17[0m:[93m11[0m - [93mwarning[0m[90m ts(6133): [0m'WALLPAPER_BANNER' is declared but its value is never read.
+
+[7m17[0m     const WALLPAPER_BANNER = "banner";
+[7m  [0m [93m          ~~~~~~~~~~~~~~~~[0m
+
+[96msrc/components/layout/DropdownMenu.astro[0m:[93m90[0m:[93m13[0m - [93mwarning[0m[90m ts(6133): [0m'childBypass' is declared but its value is never read.
+
+[7m90[0m       const childBypass = shouldBypassSwup(childHref, child.external);
+[7m  [0m [93m            ~~~~~~~~~~~[0m
+
+[96msrc/components/widget/Announcement.astro[0m:[93m73[0m:[93m31[0m - [93mwarning[0m[90m ts(6133): [0m'idx' is declared but its value is never read.
+
+[7m73[0m       announcements.map((ann, idx) => {
+[7m  [0m [93m                              ~~~[0m
+
+[96msrc/components/widget/Calendar.astro[0m:[93m60[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'calendarDataUrl' is declared but its value is never read.
+
+[7m60[0m const calendarDataUrl = url("/api/allPostMeta.json");
+[7m  [0m [93m      ~~~~~~~~~~~~~~~[0m
+
+[96msrc/layouts/MainGridLayout.astro[0m:[93m14[0m:[93m1[0m - [93mwarning[0m[90m ts(6133): [0m'TypewriterText' is declared but its value is never read.
+
+[7m14[0m import TypewriterText from "@/components/features/TypewriterText.astro";
+[7m  [0m [93m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/layouts/MainGridLayout.astro[0m:[93m1425[0m:[93m23[0m - [93mwarning[0m[90m ts(80006): [0mThis may be converted to an async function.
+
+[7m1425[0m                 .then(function () {
+[7m    [0m [93m                      ~~~~~~~~[0m
+
+[96msrc/layouts/admin.astro[0m:[93m3227[0m:[93m11[0m - [93mwarning[0m[90m ts(6133): [0m'modeTitle' is declared but its value is never read.
+
+[7m3227[0m  function modeTitle(mode: string): string {
+[7m    [0m [93m          ~~~~~~~~~[0m
+[96msrc/layouts/admin.astro[0m:[93m3084[0m:[93m8[0m - [93mwarning[0m[90m ts(6133): [0m'app' is declared but its value is never read.
+
+[7m3084[0m  const app = document.querySelector("[data-admin-app]") as HTMLElement;
+[7m    [0m [93m       ~~~[0m
+
+[96msrc/pages/[...page].astro[0m:[93m83[0m:[93m3[0m - [91merror[0m[90m ts(2739): [0mType '{ prev: string | undefined; next: string | undefined; current: string; }' is missing the following properties from type '{ current: string; prev: string | undefined; next: string | undefined; first: string | undefined; last: string | undefined; }': first, last
+
+[7m83[0m   url: {
+[7m  [0m [91m  ~~~[0m
+
+[96msrc/pages/guestbook.astro[0m:[93m16[0m:[93m1[0m - [93mwarning[0m[90m ts(6133): [0m'i18n' is declared but its value is never read.
+
+[7m16[0m import { i18n } from "@/i18n/translation";
+[7m  [0m [93m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/pages/guestbook.astro[0m:[93m15[0m:[93m1[0m - [93mwarning[0m[90m ts(6133): [0m'I18nKey' is declared but its value is never read.
+
+[7m15[0m import I18nKey from "@/i18n/i18nKey";
+[7m  [0m [93m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/pages/guestbook.astro[0m:[93m13[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'siteConfig' is declared but its value is never read.
+
+[7m13[0m const siteConfig = dynamicCfg.site;
+[7m  [0m [93m      ~~~~~~~~~~[0m
+[96msrc/pages/guestbook.astro[0m:[93m12[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'commentConfig' is declared but its value is never read.
+
+[7m12[0m const commentConfig = dynamicCfg.comment;
+[7m  [0m [93m      ~~~~~~~~~~~~~[0m
+[96msrc/pages/guestbook.astro[0m:[93m7[0m:[93m2[0m - [93mwarning[0m[90m ts(6133): [0m'likeGuestbookEntry' is declared but its value is never read.
+
+[7m7[0m  likeGuestbookEntry,
+[7m [0m [93m ~~~~~~~~~~~~~~~~~~[0m
+[96msrc/pages/guestbook.astro[0m:[93m4[0m:[93m2[0m - [93mwarning[0m[90m ts(6133): [0m'createGuestbookEntry' is declared but its value is never read.
+
+[7m4[0m  createGuestbookEntry,
+[7m [0m [93m ~~~~~~~~~~~~~~~~~~~~[0m
+
+[96msrc/pages/index.astro[0m:[93m97[0m:[93m3[0m - [91merror[0m[90m ts(2739): [0mType '{ prev: undefined; next: string | undefined; current: string; }' is missing the following properties from type '{ current: string; prev: string | undefined; next: string | undefined; first: string | undefined; last: string | undefined; }': first, last
+
+[7m97[0m   url: {
+[7m  [0m [91m  ~~~[0m
+[96msrc/pages/index.astro[0m:[93m50[0m:[93m3[0m - [91merror[0m[90m ts(2739): [0mType '{ prev: undefined; next: string | undefined; current: string; }' is missing the following properties from type '{ current: string; prev: string | undefined; next: string | undefined; first: string | undefined; last: string | undefined; }': first, last
+
+[7m50[0m   url: {
+[7m  [0m [91m  ~~~[0m
+[96msrc/pages/index.astro[0m:[93m62[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'siteConfig' is declared but its value is never read.
+
+[7m62[0m const siteConfig = {
+[7m  [0m [93m      ~~~~~~~~~~[0m
+
+[96msrc/pages/admin/guestbook/index.astro[0m:[93m91[0m:[93m42[0m - [93mwarning[0m[90m ts(6133): [0m'i' is declared but its value is never read.
+
+[7m91[0m      {Array.from({ length: 10 }).map((_, i) => (
+[7m  [0m [93m                                         ~[0m
+
+[96msrc/pages/admin/logs/index.astro[0m:[93m326[0m:[93m8[0m - [93mwarning[0m[90m ts(6133): [0m'ACTION_OPTIONS' is declared but its value is never read.
+
+[7m326[0m  const ACTION_OPTIONS = ["create", "update", "delete", "login", "logout", "permission", "settings", "publish", "approve", "reject", "upload", "download", "batch", "schedule"];
+[7m   [0m [93m       ~~~~~~~~~~~~~~[0m
+
+[96msrc/pages/admin/posts/[id]/index.astro[0m:[93m53[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'numericId' is declared but its value is never read.
+
+[7m53[0m const numericId: number | null =
+[7m  [0m [93m      ~~~~~~~~~[0m
+
+[96msrc/pages/categories/[...slug].astro[0m:[93m22[0m:[93m5[0m - [93mwarning[0m[90m ts(6133): [0m'redirectTarget' is declared but its value is never read.
+
+[7m22[0m let redirectTarget: string;
+[7m  [0m [93m    ~~~~~~~~~~~~~~[0m
+
+[96msrc/pages/notifications/index.astro[0m:[93m9[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'siteName' is declared but its value is never read.
+
+[7m9[0m const siteName = siteConfig?.title || "Rosetta";
+[7m [0m [93m      ~~~~~~~~[0m
+
+[96msrc/pages/posts/[...slug].astro[0m:[93m145[0m:[93m34[0m - [91merror[0m[90m ts(2345): [0mArgument of type 'string | undefined' is not assignable to parameter of type 'string'.
+  Type 'undefined' is not assignable to type 'string'.
+
+[7m145[0m   fullPost = await getPostBySlug(apiPost?.slug);
+[7m   [0m [91m                                 ~~~~~~~~~~~~~[0m
+[96msrc/pages/posts/[...slug].astro[0m:[93m156[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'headings' is declared but its value is never read.
+
+[7m156[0m const headings = rendered.headings;
+[7m   [0m [93m      ~~~~~~~~[0m
+[96msrc/pages/posts/[...slug].astro[0m:[93m139[0m:[93m7[0m - [93mwarning[0m[90m ts(6133): [0m'resolvedPost' is declared but its value is never read.
+
+[7m139[0m const resolvedPost = apiPost;
+[7m   [0m [93m      ~~~~~~~~~~~~[0m
+[96msrc/pages/posts/[...slug].astro[0m:[93m23[0m:[93m2[0m - [93mwarning[0m[90m ts(6133): [0m'getPosts' is declared but its value is never read.
+
+[7m23[0m  getPosts,
+[7m  [0m [93m ~~~~~~~~[0m
+[96msrc/pages/posts/[...slug].astro[0m:[93m14[0m:[93m2[0m - [93mwarning[0m[90m ts(6133): [0m'removeFileExtension' is declared but its value is never read.
+
+[7m14[0m  removeFileExtension,
+[7m  [0m [93m ~~~~~~~~~~~~~~~~~~~[0m
+[96msrc/pages/posts/[...slug].astro[0m:[93m3[0m:[93m1[0m - [93mwarning[0m[90m ts(6133): [0m'Markdown' is declared but its value is never read.
+
+[7m3[0m import Markdown from "@components/common/Markdown.astro";
+[7m [0m [93m~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~[0m
+
+[96msrc/pages/tags/[...slug].astro[0m:[93m22[0m:[93m5[0m - [93mwarning[0m[90m ts(6133): [0m'redirectTarget' is declared but its value is never read.
+
+[7m22[0m let redirectTarget: string;
+[7m  [0m [93m    ~~~~~~~~~~~~~~[0m
+
+Result (242 files): 
+- 4 errors
+- 0 warnings
+- 29 hints
+
+ ELIFECYCLE  Command failed with exit code 1.

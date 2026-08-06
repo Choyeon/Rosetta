@@ -1,0 +1,51 @@
+{
+	/* Astro 最佳实践：对于中大型项目推荐 strict（不是 strictest）。
+	   strictest = strict + noUncheckedIndexedAccess + exactOptionalPropertyTypes
+	   后两者对于大型复杂的博客系统来说过于苛刻（会产生 170+ 的冗余错误：
+	   数组索引访问可能undefined、可选属性 ≠ undefined 联合的名义不同等）。
+	   选择 strict 仍然保持了 strictNullChecks/noImplicitAny/functionTypes 等核心严格类型检查，
+	   同时兼顾了 Astro/Svelte 5 Hydration 和内容收集器的运行时产物兼容性。 */
+	"extends": "astro/tsconfigs/strict",
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "bundler",
+		"jsx": "react-jsx",
+		"jsxImportSource": "react",
+		"strictNullChecks": true,
+		"noImplicitAny": true,
+		// 以下两项保持兼容 —— Astro 内容收集器与既有代码大量使用 allowJs/declaration 的产物
+		"allowJs": false,
+		"declaration": true,
+		// Astro/Svelte 5 的客户端 Hydration 常见使用非 side-effect 导入，保持兼容：
+		"noUncheckedSideEffectImports": false,
+		// 严格导入（import type / type-only），避免运行时多余依赖：
+		"verbatimModuleSyntax": false,
+		// Node 互操作与 ESM 兼容：
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"forceConsistentCasingInFileNames": true,
+		"useDefineForClassFields": true,
+		"skipLibCheck": true,
+		"resolveJsonModule": true,
+		"isolatedModules": true,
+		"plugins": [
+			{
+				"name": "@astrojs/ts-plugin"
+			}
+		],
+		"paths": {
+			"@components/*": ["./src/components/*"],
+			"@assets/*": ["./src/assets/*"],
+			"@constants/*": ["./src/constants/*"],
+			"@utils/*": ["./src/utils/*"],
+			"@i18n": ["./src/i18n/index.ts"],
+			"@i18n/*": ["./src/i18n/*"],
+			"@layouts/*": ["./src/layouts/*"],
+			"@api/*": ["./src/api/*"],
+			"@/*": ["./src/*"]
+		}
+	},
+	"include": [".astro/types.d.ts", "src/**/*"],
+	"exclude": ["dist"]
+}

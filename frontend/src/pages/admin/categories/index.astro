@@ -1,0 +1,217 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="分类管理">
+	<fragment slot="actions">
+		<div class="table-actions">
+			<button class="btn btn-primary btn-sm" onclick="showAddModal()">
+				<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+				新建分类
+			</button>
+		</div>
+	</fragment>
+
+	<div class="table-wrapper">
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<h3 class="table-title">所有分类</h3>
+				<span class="badge badge-ghost" id="categories-count">0 个</span>
+			</div>
+		</div>
+		<div class="table-scroll">
+			<table class="table">
+				<thead>
+					<tr>
+						<th style="padding-left:24px;">名称</th>
+						<th>Slug</th>
+						<th>描述</th>
+						<th>文章数</th>
+						<th>创建时间</th>
+						<th style="width:130px;padding-right:24px;">操作</th>
+					</tr>
+				</thead>
+				<tbody id="categories-table-body">
+					<tr>
+						<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--bc)/0.5);">
+							<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+								<svg style="width:36px;height:36px;opacity:0.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+								<span>加载中...</span>
+							</div>
+						</td>
+					</tr>
+				</tbody>
+			</table>
+		</div>
+	</div>
+</AdminLayout>
+
+<!-- Modal -->
+<div class="admin-modal-overlay" id="category-modal">
+	<div class="admin-modal">
+		<div class="admin-modal-header">
+			<h3 class="admin-modal-title" id="modal-title">新建分类</h3>
+			<button class="admin-modal-close" onclick="closeModal()" type="button">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			</button>
+		</div>
+		<div class="admin-modal-body">
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="cat-name">名称</label>
+				<input type="text" id="cat-name" class="admin-input" placeholder="分类名称">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="cat-slug">Slug <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选，留空自动生成）</span></label>
+				<input type="text" id="cat-slug" class="admin-input" placeholder="例如: technology">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="cat-desc">描述 <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选）</span></label>
+				<textarea id="cat-desc" class="admin-textarea" placeholder="分类描述" rows="3"></textarea>
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="cat-color">颜色 <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选）</span></label>
+				<input type="color" id="cat-color" class="admin-input admin-input-color" value="#06b6d4">
+			</div>
+		</div>
+		<div class="admin-modal-footer">
+			<button class="btn btn-ghost btn-sm" onclick="closeModal()" type="button">取消</button>
+			<button class="btn btn-primary btn-sm" onclick="saveCategory()" type="button">保存</button>
+		</div>
+	</div>
+</div>
+
+<script>
+	// @ts-nocheck
+	import { getCategories, createCategory, updateCategory, deleteCategory, type Category } from "@api/blog";
+
+	let editingId: number | null = null;
+
+	function formatDate(dateStr: string): string {
+		if (!dateStr) return "-";
+		return new Date(dateStr).toLocaleDateString('zh-CN');
+	}
+
+	async function loadCategories() {
+		const tbody = document.getElementById("categories-table-body") as HTMLElement;
+		try {
+			const categories = await getCategories();
+			const count = categories.length || 0;
+			const countEl = document.getElementById("categories-count");
+			if (countEl) countEl.textContent = `${count} 个`;
+
+			if (categories.length === 0) {
+				tbody.innerHTML = `
+					<tr>
+						<td colspan="6" style="text-align:center;padding:56px 24px;">
+							<div class="empty-state">
+								<div class="empty-title">暂无分类</div>
+								<div class="empty-desc">点击右上角创建第一个分类</div>
+								<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="showAddModal()">
+									<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+									新建分类
+								</button>
+							</div>
+						</td>
+					</tr>
+				`;
+				return;
+			}
+
+			tbody.innerHTML = categories.map((c: Category) => `
+				<tr>
+					<td style="padding-left:24px;">
+						<div style="display:flex;align-items:center;gap:12px;">
+							<div style="width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;background:${c.color || 'hsl(var(--b2))'};color:white;font-weight:700;font-size:13px;">
+								${c.name.charAt(0).toUpperCase()}
+							</div>
+							<span style="font-weight:600;">${c.name}</span>
+						</div>
+					</td>
+					<td style="font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;font-size:12.5px;color:hsl(var(--bc)/0.55);">${c.slug}</td>
+					<td style="font-size:13px;color:hsl(var(--bc)/0.65);max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${c.description || '-'}</td>
+					<td><span class="badge badge-ghost">${c.post_count || 0}</span></td>
+					<td style="font-size:12.5px;color:hsl(var(--bc)/0.6);">${formatDate(c.created_at)}</td>
+					<td style="padding-right:24px;">
+						<div class="action-buttons">
+							<button class="btn btn-ghost btn-icon btn-sm" onclick="editCategory(${c.id}, ${JSON.stringify(c.name).replace(/"/g, '&quot;')}, ${JSON.stringify(c.slug).replace(/"/g, '&quot;')}, ${JSON.stringify(c.description || '').replace(/"/g, '&quot;')}, ${JSON.stringify(c.color || '#06b6d4').replace(/"/g, '&quot;')})" title="编辑">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+							</button>
+							<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="deleteCat(${c.id})" title="删除">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+							</button>
+						</div>
+					</td>
+				</tr>
+			`).join("");
+		} catch (e) {
+			console.error(e);
+			tbody.innerHTML = `
+				<tr>
+					<td colspan="6" style="text-align:center;padding:48px 24px;color:hsl(var(--er));">
+						<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+							<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+							<span>加载失败，请刷新重试</span>
+						</div>
+					</td>
+				</tr>
+			`;
+		}
+	}
+
+	window.showAddModal = () => {
+		editingId = null;
+		(document.getElementById("modal-title") as HTMLElement).textContent = "新建分类";
+		(document.getElementById("cat-name") as HTMLInputElement).value = "";
+		(document.getElementById("cat-slug") as HTMLInputElement).value = "";
+		(document.getElementById("cat-desc") as HTMLTextAreaElement).value = "";
+		(document.getElementById("cat-color") as HTMLInputElement).value = "#06b6d4";
+		(document.getElementById("category-modal") as HTMLElement).classList.add("open");
+	};
+
+	window.editCategory = (id: number, name: string, slug: string, desc: string, color: string) => {
+		editingId = id;
+		(document.getElementById("modal-title") as HTMLElement).textContent = "编辑分类";
+		(document.getElementById("cat-name") as HTMLInputElement).value = name;
+		(document.getElementById("cat-slug") as HTMLInputElement).value = slug;
+		(document.getElementById("cat-desc") as HTMLTextAreaElement).value = desc;
+		(document.getElementById("cat-color") as HTMLInputElement).value = color;
+		(document.getElementById("category-modal") as HTMLElement).classList.add("open");
+	};
+
+	window.closeModal = () => {
+		(document.getElementById("category-modal") as HTMLElement).classList.remove("open");
+	};
+
+	window.saveCategory = async () => {
+		const name = (document.getElementById("cat-name") as HTMLInputElement).value;
+		if (!name) { alert("请输入分类名称"); return; }
+		const data = {
+			name,
+			slug: (document.getElementById("cat-slug") as HTMLInputElement).value || undefined,
+			description: (document.getElementById("cat-desc") as HTMLTextAreaElement).value || undefined,
+			color: (document.getElementById("cat-color") as HTMLInputElement).value,
+		};
+		try {
+			if (editingId) {
+				await updateCategory(editingId, data);
+			} else {
+				await createCategory(data);
+			}
+			closeModal();
+			loadCategories();
+		} catch (e) {
+			alert("保存失败");
+		}
+	};
+
+	window.deleteCat = async (id: number) => {
+		if (!confirm("确定要删除这个分类吗？此操作无法撤销。")) return;
+		try {
+			await deleteCategory(id);
+			loadCategories();
+		} catch (e) {
+			alert("删除失败");
+		}
+	};
+
+	loadCategories();
+</script>

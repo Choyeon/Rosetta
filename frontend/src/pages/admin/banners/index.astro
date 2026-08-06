@@ -1,0 +1,136 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="轮播图管理">
+	<fragment slot="actions">
+		<div class="table-actions">
+			<button class="btn btn-primary btn-sm" onclick="showAddModal()">
+				<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+				新建轮播
+			</button>
+		</div>
+	</fragment>
+
+	<div class="table-wrapper">
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<h3 class="table-title">所有轮播图</h3>
+				<span class="badge badge-ghost" id="banners-count">0 个</span>
+			</div>
+		</div>
+		<div style="padding:24px;">
+			<div id="banner-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px;">
+				<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:hsl(var(--bc)/0.5);">
+					<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+						<svg style="width:36px;height:36px;opacity:0.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+						<span>加载中...</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</AdminLayout>
+
+<!-- Modal -->
+<div class="admin-modal-overlay" id="banner-modal">
+	<div class="admin-modal">
+		<div class="admin-modal-header">
+			<h3 class="admin-modal-title" id="modal-title">新建轮播图</h3>
+			<button class="admin-modal-close" onclick="closeModal()" type="button">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+			</button>
+		</div>
+		<div class="admin-modal-body">
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="b-title">标题</label>
+				<input type="text" id="b-title" class="admin-input" placeholder="轮播图标题">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="b-image">图片URL</label>
+				<input type="text" id="b-image" class="admin-input" placeholder="https://">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="b-link">链接 <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选）</span></label>
+				<input type="text" id="b-link" class="admin-input" placeholder="https://">
+			</div>
+			<div class="admin-form-group">
+				<label class="admin-form-label" for="b-desc">描述 <span style="color:hsl(var(--bc)/0.4);font-weight:400;">（可选）</span></label>
+				<input type="text" id="b-desc" class="admin-input" placeholder="轮播图描述">
+			</div>
+		</div>
+		<div class="admin-modal-footer">
+			<button class="btn btn-ghost btn-sm" onclick="closeModal()" type="button">取消</button>
+			<button class="btn btn-primary btn-sm" onclick="saveBanner()" type="button">保存</button>
+		</div>
+	</div>
+</div>
+
+<script>
+	// @ts-nocheck
+	import { getBanners, createBanner, deleteBanner } from "@api/admin";
+	async function loadList() {
+		const grid = document.getElementById("banner-grid") as HTMLElement;
+		try {
+			const items = await getBanners();
+			const count = items.length || 0;
+			const countEl = document.getElementById("banners-count");
+			if (countEl) countEl.textContent = `${count} 个`;
+
+			if (!items || items.length === 0) {
+				grid.innerHTML = `
+					<div style="grid-column:1/-1;">
+						<div class="empty-state">
+							<div class="empty-title">暂无轮播图</div>
+							<div class="empty-desc">点击右上角创建第一个轮播图</div>
+							<button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="showAddModal()">
+								<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+								新建轮播
+							</button>
+						</div>
+					</div>
+				`;
+				return;
+			}
+			grid.innerHTML = items.map((b: any) => `
+				<div class="card" style="overflow:hidden;display:flex;flex-direction:column;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);">
+					<div style="aspect-ratio:21/9;background:hsl(var(--b2));overflow:hidden;"><img src="${b.image}" alt="${b.title}" style="width:100%;height:100%;object-fit:cover;transition:filter 0.35s ease, opacity 0.35s ease;" class="admin-banner-img"></div>
+					<div class="card-body" style="padding:16px;flex:1;display:flex;flex-direction:column;gap:8px;">
+						<div style="font-weight:600;font-size:14px;color:hsl(var(--bc));letter-spacing:-0.01em;">${b.title}</div>
+						${b.description ? `<div style="font-size:12.5px;color:hsl(var(--bc)/0.6);line-height:1.5;">${b.description}</div>` : ''}
+						<div style="font-size:11.5px;color:hsl(var(--bc)/0.45);margin-top:auto;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${b.link || '无链接'}</div>
+						<div class="action-buttons" style="margin-top:8px;padding-top:12px;border-top:1px solid hsl(var(--b3));justify-content:flex-end;">
+							<button class="btn btn-ghost btn-icon btn-sm" style="color:hsl(var(--er));" onclick="del(${b.id})" title="删除">
+								<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3,6 5,6 21,6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+							</button>
+						</div>
+					</div>
+				</div>
+			`).join("");
+		} catch (e) {
+			grid.innerHTML = `
+				<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:hsl(var(--er));">
+					<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+						<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+						<span>加载失败，请刷新重试</span>
+					</div>
+				</div>
+			`;
+		}
+	}
+	window.showAddModal = () => {
+		["b-title","b-image","b-link","b-desc"].forEach(id => (document.getElementById(id) as HTMLInputElement).value = "");
+		(document.getElementById("banner-modal") as HTMLElement).classList.add("open");
+	};
+	window.closeModal = () => {
+		(document.getElementById("banner-modal") as HTMLElement).classList.remove("open");
+	};
+	window.saveBanner = async () => {
+		const title = (document.getElementById("b-title") as HTMLInputElement).value;
+		const image = (document.getElementById("b-image") as HTMLInputElement).value;
+		if (!title || !image) { alert("请填写标题和图片"); return; }
+		await createBanner({ title, image, link: (document.getElementById("b-link") as HTMLInputElement).value, description: (document.getElementById("b-desc") as HTMLInputElement).value, is_active: true, sort_order: 0 });
+		closeModal(); loadList();
+	};
+	window.del = async (id: number) => { if (confirm("确定要删除这个轮播图吗？此操作无法撤销。")) { await deleteBanner(id); loadList(); } };
+	loadList();
+</script>

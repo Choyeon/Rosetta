@@ -1,0 +1,51 @@
+---
+import type { DisqusConfig } from "@/utils/dynamic-config";
+
+interface Props {
+	identifier: string;
+	url: string;
+	title: string;
+	disqusCfg?: DisqusConfig;
+}
+
+const { identifier, url, title } = Astro.props;
+
+const disqusCfg = Astro.props.disqusCfg;
+const disqus =
+	disqusCfg ??
+	(await (await import("@/utils/dynamic-config")).loadDynamicConfig()).comment
+		.disqus;
+
+if (!disqus) {
+	throw new Error("Disqus comments are not configured");
+}
+const shortname = disqus.shortname;
+---
+
+<div id="disqus_thread"></div>
+
+<script is:inline define:vars={{ shortname, identifier, url, title }}>
+  const requestedPath = new URLSearchParams(window.location.search).get("path")
+  let effectiveIdentifier = identifier
+  let effectiveUrl = url
+  if (requestedPath) {
+    effectiveIdentifier = requestedPath.replace(/^\/+|\/+$/g, "")
+    effectiveUrl = new URL(requestedPath, window.location.origin).href
+  }
+  // @ts-ignore
+  window.disqus_config = function () {
+    this.page.url = effectiveUrl
+    this.page.identifier = effectiveIdentifier
+    this.page.title = title
+  }
+
+  ;(function () {
+    var d = document,
+      s = d.createElement('script')
+    s.src = 'https://' + shortname + '.disqus.com/embed.js'
+    s.setAttribute('data-timestamp', new Date().toString())
+    ;(d.head || d.body).appendChild(s)
+  })()
+</script>
+<noscript>Please enable JavaScript to view the <a href="https://disqus.com/?ref_noscript">comments powered by Disqus.</a></noscript>
+<style is:global></style>

@@ -1,0 +1,76 @@
+---
+import AdminLayout from "@layouts/admin.astro";
+---
+<AdminLayout title="相册管理">
+	<div class="table-wrapper">
+		<div class="table-header">
+			<div style="display:flex;align-items:center;gap:14px;">
+				<h3 class="table-title">相册管理</h3>
+				<span class="badge badge-ghost" id="albums-count">0 个</span>
+			</div>
+			<div class="table-actions">
+				<button class="btn btn-primary btn-sm" type="button">
+					<svg style="width:15px;height:15px" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+					新建相册
+				</button>
+			</div>
+		</div>
+		<div style="padding:24px;">
+			<div id="albums-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:18px;">
+				<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:hsl(var(--bc)/0.5);">
+					<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+						<svg style="width:36px;height:36px;opacity:0.4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+						<span>加载中...</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+</AdminLayout>
+<script>
+	// @ts-nocheck
+	import { getAlbums } from "@api/content";
+	(async () => {
+		try {
+			const albums = await getAlbums() || [];
+			const body = document.getElementById("albums-body");
+			const countEl = document.getElementById("albums-count");
+			if (countEl) countEl.textContent = `${albums.length} 个`;
+			if (!body) return;
+			if (!albums.length) {
+				body.innerHTML = `
+					<div style="grid-column:1/-1;">
+						<div class="empty-state">
+							<div class="empty-title">暂无相册</div>
+							<div class="empty-desc">点击右上角创建第一个相册</div>
+						</div>
+					</div>
+				`;
+				return;
+			}
+			body.innerHTML = albums.map((a: any) => `
+				<div class="card" style="overflow:hidden;display:flex;flex-direction:column;transition:all 0.3s cubic-bezier(0.4,0,0.2,1);cursor:pointer;" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='0 6px 12px -4px rgb(0 0 0 / 0.10), 0 3px 6px -3px rgb(0 0 0 / 0.06)';" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='none';">
+					<div style="aspect-ratio:4/3;background:linear-gradient(135deg,hsl(var(--color-accent-hue) 70% 60%),hsl(calc(var(--color-accent-hue) + 30) 70% 60%));overflow:hidden;display:flex;align-items:center;justify-content:center;">
+						${a.cover ? `<img src="${a.cover}" style="width:100%;height:100%;object-fit:cover;"/>` : '<span style="font-size:2.5rem;">🖼️</span>'}
+					</div>
+					<div style="padding:14px 16px;display:flex;flex-direction:column;gap:4px;">
+						<div style="font-weight:600;font-size:14px;color:hsl(var(--bc));letter-spacing:-0.01em;">${a.title}</div>
+						<div style="font-size:12.5px;color:hsl(var(--bc)/0.55);">${a.photos_count || 0} 张照片</div>
+					</div>
+				</div>
+			`).join("");
+		} catch (e) {
+			const body = document.getElementById("albums-body");
+			if (body) {
+				body.innerHTML = `
+					<div style="grid-column:1/-1;text-align:center;padding:48px 24px;color:hsl(var(--er));">
+						<div style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+							<svg style="width:36px;height:36px;opacity:0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+							<span>加载失败，请刷新重试</span>
+						</div>
+					</div>
+				`;
+			}
+		}
+	})();
+</script>
