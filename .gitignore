@@ -146,6 +146,9 @@ frontend/public/pagefind
 logs/
 *.log
 *.log.*
+# 临时产物：安全审计 / pip-audit / gh CLI 输出
+.audit-*.json
+.audit-backend.log
 
 # --- Trae/AI IDE ---
 .trae/
