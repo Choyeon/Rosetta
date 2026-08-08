@@ -14,7 +14,7 @@ import {
 	displaySettingsConfig,
 } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor } from "@/i18n/translation";
 import type { NavBarLink } from "@/types/config";
 import { loadDynamicConfig } from "@/utils/dynamic-config";
 import { getFallbackFormat, getImageFormats } from "@/utils/image-utils";
@@ -67,6 +67,13 @@ const isWallpaperSwitchable = displaySettingsConfig.wallpaperModeSwitchable;
 const allowLayoutSwitch = displaySettingsConfig.layoutSwitchable;
 const hasDisplaySettings =
 	showThemeColor || isWallpaperSwitchable || allowLayoutSwitch;
+
+// SSR 语言：优先读取 Astro cookie 的 rosetta_lang，否则 siteConfig.lang
+// 然后给导航栏的 i18nFor(...) 翻译，保证 aria-label / 按钮文字在 SSR 阶段就是用户偏好语言，
+// 避免客户端再闪切。
+const ssrLangCookie = Astro.cookies.get("rosetta_lang")?.value;
+const ssrLang = ssrLangCookie || defaultSiteConfig.lang;
+const tSSR = (key: I18nKey) => i18nFor(key, ssrLang);
 
 // 从后端API获取导航栏链接，如果失败则回退到静态配置
 const currentLang = (
@@ -216,30 +223,32 @@ const logoVariants = await Promise.all(
                     client:load
                 />
                 {musicPlayerConfig.showInNavbar && (
-                    <button aria-label={i18n(I18nKey.music)} class="btn-plain scale-animation rounded-lg h-9 w-9 md:h-11 md:w-11 active:scale-90" id="music-player-switch">
+                    <button aria-label={tSSR(I18nKey.music)} data-i18n-aria-key="music" class="btn-plain scale-animation rounded-lg h-9 w-9 md:h-11 md:w-11 active:scale-90" id="music-player-switch">
                         <Icon is:inline name="material-symbols:music-note-rounded" class="text-[1.25rem]"></Icon>
                     </button>
                 )}
                 {backgroundWallpaper.playerEnable && backgroundWallpaper.mode !== "none" && (
                     <button
-                        aria-label={i18n(I18nKey.videoPlay)}
+                        aria-label={tSSR(I18nKey.videoPlay)}
                         class="btn-plain scale-animation rounded-lg h-9 w-9 md:h-11 md:w-11 active:scale-90"
                         id="bg-player-toggle"
-                        data-i18n-play={i18n(I18nKey.videoPlay)}
-                        data-i18n-pause={i18n(I18nKey.videoPause)}
+                        data-i18n-text-key-play={I18nKey.videoPlay}
+                        data-i18n-text-key-pause={I18nKey.videoPause}
+                        data-i18n-play={tSSR(I18nKey.videoPlay)}
+                        data-i18n-pause={tSSR(I18nKey.videoPause)}
                     >
                         <span class="bg-player-icon-play"><Icon is:inline name="material-symbols:play-arrow-rounded" class="text-[1.5rem]" /></span>
                         <span class="bg-player-icon-pause hidden"><Icon is:inline name="material-symbols:pause-rounded" class="text-[1.5rem]" /></span>
                     </button>
                 )}
                 {hasDisplaySettings && (
-                        <button aria-label="Display Settings" class="btn-plain scale-animation rounded-lg h-9 w-9 md:h-11 md:w-11 active:scale-90" id="display-settings-switch">
+                        <button aria-label={tSSR(I18nKey.displaySettings)} data-i18n-aria-key="displaySettings" class="btn-plain scale-animation rounded-lg h-9 w-9 md:h-11 md:w-11 active:scale-90" id="display-settings-switch">
                             <Icon is:inline name="material-symbols:palette-outline" class="text-[1.25rem]"></Icon>
                         </button>
                 )}
                 {/* @ts-ignore */}
                 <LightDarkSwitch client:load></LightDarkSwitch>
-                <LangSwitcher client:only="svelte"></LangSwitcher>
+                <LangSwitcher client:load></LangSwitcher>
                 <button aria-label="Menu" name="Nav Menu" class="btn-plain scale-animation rounded-lg w-9 h-9 md:w-11 md:h-11 active:scale-90 lg:hidden!" id="nav-menu-switch">
                     <Icon is:inline name="material-symbols:menu-rounded" class="text-[1.25rem]"></Icon>
                 </button>
@@ -421,130 +430,92 @@ if (document.readyState === 'loading') {
 }
 
 // ============================================================
-// 客户端多语言导航文字实时同步（LangSwitcher 切换语言时触发）
+// 客户端多语言导航 / 元属性同步（LangSwitcher 切换语言、Swup 导航时触发）
+//   - i18n 文案：translation.ts 已经负责三条链路（DOMContentLoaded / swup 钩子 / rosetta-lang-change）
+//     全量调用 applyI18nTitlesAnywhere()，这里不再重复跑文案替换。
+//   - 本脚本只做两件必要的同步工作：
+//     1) Swup 导航后（文章 → 主页等）把 html 根的 data-lang / lang / data-theme 拉回一致状态，
+//        防止被某些页的局部脚本覆写；
+//     2) bg-player-toggle 每次语言变更后重刷一次 aria-label（按当前 isPlaying 选 play/pause）
 // ============================================================
 (function initNavI18nSync() {
-    const LANG_KEY_MAP: Record<string, string> = {
-        zh: "zh",
-        zh_cn: "zh",
-        "zh-cn": "zh",
-        zhs: "zh",
-        en: "en",
-        en_us: "en",
-        "en-us": "en",
-        ja: "ja",
-        jp: "ja",
-        ja_jp: "ja",
-        "ja-jp": "ja",
-        zh_tw: "zh_Hant",
-        "zh-tw": "zh_Hant",
-        zh_hk: "zh_Hant",
-        "zh-hk": "zh_Hant",
-        zh_hant: "zh_Hant",
-        "zh-hant": "zh_Hant",
-        zht: "zh_Hant",
-    };
-
-    function resolveKey(raw: string): string {
-        return LANG_KEY_MAP[raw.toLowerCase()] || "zh";
-    }
-
-    function getDisplayTitle(
-        titles: Record<string, string> | string | null | undefined,
-        backendLangOrKey: string,
-    ): string {
-        if (!titles) return "";
-        if (typeof titles === "string") return titles;
-        const key = resolveKey(backendLangOrKey);
-        const fallback =
-            titles.zh ||
-            titles.en ||
-            (Object.values(titles).find((v) => !!v) as string | undefined) ||
-            "";
-        return titles[key] || fallback;
-    }
-
-    // 解码 data 属性中常见的 HTML 实体（Astro 将属性中的 " 渲染为 &quot;）
-    function _decodeAttrHtmlEntities(raw: string): string {
-        if (raw.indexOf("&") === -1) return raw;
-        // 用 textarea 解析是最稳的浏览器原生实现
-        try {
-            const ta = document.createElement("textarea");
-            ta.innerHTML = raw;
-            const v = ta.value;
-            // 安全：如果解析后明显不对（无 { 开头），则回退到手动替换常见实体
-            if (v && v.trim().startsWith("{")) return v;
-        } catch (_e) { /* ignore */ }
-        return raw
-            .replace(/&quot;/g, '"')
-            .replace(/&#34;/g, '"')
-            .replace(/&amp;/g, "&")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&#39;/g, "'");
-    }
-
-    function applyI18nTitles(langHint: string) {
-        const nodes = document.querySelectorAll<HTMLElement>(
-            ".i18n-nav-title[data-i18n-titles], [data-i18n-titles]",
-        );
-        nodes.forEach((el) => {
-            const raw = el.getAttribute("data-i18n-titles");
-            if (!raw) return;
-            try {
-                const decoded = _decodeAttrHtmlEntities(raw);
-                const titles = JSON.parse(decoded) as Record<string, string> | string;
-                const text = getDisplayTitle(titles, langHint);
-                if (text) {
-                    el.textContent = text;
-                    if (el.hasAttribute("aria-label")) {
-                        el.setAttribute("aria-label", text);
-                    }
-                }
-            } catch (_e) {
-                /* ignore invalid JSON */
-            }
-        });
-    }
-
-    function initialLangFromCookieOrLocalStorage(): string {
+    function readHint(): string {
         try {
             const m = /(?:^|;\s*)rosetta_lang=([^;]+)/.exec(document.cookie || "");
             if (m) return decodeURIComponent(m[1]);
+        } catch (_e) { /* ignore */ }
+        try {
             const ls = localStorage.getItem("lang");
             if (ls) return ls;
-        } catch (_e) {
-            /* ignore */
+        } catch (_e) { /* ignore */ }
+        return document.documentElement.getAttribute("data-lang") || document.documentElement.lang || "zh_CN";
+    }
+
+    function normalizeFrontLang(raw: string): { front: string; html: string } {
+        const r = String(raw || "").toLowerCase().replace(/-/g, "_");
+        if (r.startsWith("zh_hant") || r === "zh_tw" || r === "zh_hk" || r === "zh_mo") {
+            return { front: "zh_TW", html: "zh-TW" };
         }
-        return (
-            document.documentElement.getAttribute("data-lang") ||
-            document.documentElement.lang ||
-            "zh"
-        );
+        if (r.startsWith("zh")) {
+            return { front: "zh_CN", html: "zh-CN" };
+        }
+        if (r.startsWith("en")) return { front: "en", html: "en" };
+        if (r.startsWith("ja")) return { front: "ja", html: "ja" };
+        return { front: "zh_CN", html: "zh-CN" };
     }
 
-    // 首次渲染兜底（防止 SSR 语言与当前浏览器不一致）
+    function syncDocMeta() {
+        try {
+            const { front, html } = normalizeFrontLang(readHint());
+            document.documentElement.setAttribute("data-lang", front);
+            document.documentElement.setAttribute("lang", html);
+            // 同步主题（如果被某些临时状态类覆盖）
+            const theme = localStorage.getItem("theme");
+            if (theme === "light" || theme === "dark") {
+                document.documentElement.setAttribute("data-theme", theme);
+            }
+        } catch (_e) { /* ignore */ }
+    }
+
+    function syncBgPlayerLabel() {
+        try {
+            const btn = document.getElementById("bg-player-toggle") as HTMLElement | null;
+            if (!btn) return;
+            const i18nPlay = btn.getAttribute("data-i18n-play") || "";
+            const i18nPause = btn.getAttribute("data-i18n-pause") || "";
+            const isPlaying = document.documentElement.hasAttribute("data-bg-video-playing");
+            const label = isPlaying ? i18nPause || i18nPlay : i18nPlay || i18nPause;
+            if (label) {
+                btn.setAttribute("aria-label", label);
+                btn.setAttribute("title", label);
+            }
+        } catch (_e) { /* ignore */ }
+    }
+
+    // 1) 首次加载立即同步一次（SSR 渲染完的 html[data-lang] 可能比 cookie 旧）
     if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", function applyOnce() {
-            applyI18nTitles(initialLangFromCookieOrLocalStorage());
-        });
+        document.addEventListener("DOMContentLoaded", () => { syncDocMeta(); syncBgPlayerLabel(); }, { once: true });
     } else {
-        applyI18nTitles(initialLangFromCookieOrLocalStorage());
+        syncDocMeta();
+        syncBgPlayerLabel();
     }
 
-    // 监听 LangSwitcher 派发的全局事件
-    window.addEventListener(
-        "rosetta-lang-change",
-        function (e: Event) {
-            const ce = e as CustomEvent<{
-                lang?: string;
-                backendLang?: string;
-            }>;
-            const hint = ce.detail?.backendLang || ce.detail?.lang || "zh";
-            applyI18nTitles(hint);
-        },
-        false,
-    );
+    // 2) Swup 内容替换后同步文档属性（translation.ts 负责文案）
+    function hookOnto(w: any) {
+        if (!w || !w.swup || !w.swup.hooks || typeof w.swup.hooks.on !== "function") return false;
+        w.swup.hooks.on("content:replace", syncDocMeta);
+        w.swup.hooks.on("page:view", () => { syncDocMeta(); syncBgPlayerLabel(); });
+        return true;
+    }
+    if (!hookOnto(window)) {
+        document.addEventListener("swup:enable", () => hookOnto(window), { once: true });
+    }
+
+    // 3) 监听 rosetta-lang-change（LangSwitcher 派发），同步文档属性 + 背景按钮文案
+    window.addEventListener("rosetta-lang-change", function () {
+        syncDocMeta();
+        syncBgPlayerLabel();
+    }, false);
 })();
 </script>
 

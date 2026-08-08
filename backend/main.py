@@ -44,12 +44,12 @@ from backend.api import (
     comments,
     core,
     favorite,
-    gallery,
     guestbook,
     hero,
     import_export,
     media,
     messages,
+    migration,
     monitoring,
     notification,
     oobe,
@@ -473,6 +473,7 @@ Authorization: Bearer <access_token>
     app.include_router(core.router, prefix="/api", tags=["核心"])
     app.include_router(media.router, prefix="/api/media", tags=["媒体"])
     app.include_router(avatar_proxy.router, prefix="/api", tags=["媒体"])
+    app.include_router(migration.router, prefix="/api/admin", tags=["数据库迁移"])
     app.include_router(guestbook.router, prefix="/api", tags=["留言板"])
     app.include_router(voting.router, prefix="/api/voting", tags=["投票"])
     app.include_router(notification.router, prefix="/api/notifications", tags=["通知"])

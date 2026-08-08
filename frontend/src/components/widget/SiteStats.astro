@@ -4,7 +4,8 @@ import { getSiteStats } from "@/api/blog";
 import WidgetLayout from "@/components/common/WidgetLayout.astro";
 import { siteConfig as defaultSiteConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor } from "@/i18n/translation";
+import { readEffectiveLangHintRaw } from "@/i18n/translation";
 import type { WidgetComponentConfig } from "@/types/config";
 import {
 	getCategoryList,
@@ -22,6 +23,10 @@ interface Props {
 const { class: className, style, widgetConfig } = Astro.props;
 
 const showTitle = widgetConfig?.showTitle !== false;
+
+// SSR 下用 cookie 语言翻译，保证切语言后服务端渲染文案一致
+const ssrLang = readEffectiveLangHintRaw(Astro);
+const t = (k: I18nKey, vars?: Record<string, string | number>) => i18nFor(k, ssrLang, vars);
 
 // 从后端 API 加载配置（失败时使用静态配置兜底）
 const config = await loadDynamicConfig();
@@ -80,7 +85,7 @@ function validDate(d: unknown): d is Date {
 	return d instanceof Date && !Number.isNaN(d.getTime());
 }
 
-// 获取「最后活动」时间：取每篇文章 published 与 updated 中较新的那个，再从全站所有文章里取最大值。这样新发文章和修改老文章都会刷新该字段。
+// 获取「最后活动」时间：取每篇文章 published 与 updated 中较新的那个，再从全站所有文章里取最大值。
 const getActivityDate = (post: (typeof posts)[number]): Date | null => {
 	const { published, updated } = post.data;
 	const pu = validDate(published) ? published : null;
@@ -101,50 +106,73 @@ const lastPostDate =
 		? lastActivityDate.toISOString()
 		: null;
 
-const todayText = i18n(I18nKey.today);
+const todayText = t(I18nKey.lastActivityToday);
+
+// 站点统计每一项 label 的 i18n key 映射，用于写 data-i18n-text-key 让客户端切语言时同步刷新
+const labelKeyMap: Record<string, I18nKey> = {
+	[I18nKey.siteStatsPostCount]: I18nKey.siteStatsPostCount,
+	[I18nKey.siteStatsCategoryCount]: I18nKey.siteStatsCategoryCount,
+	[I18nKey.siteStatsTagCount]: I18nKey.siteStatsTagCount,
+	[I18nKey.siteStatsTotalWords]: I18nKey.siteStatsTotalWords,
+	[I18nKey.siteStatsRunningDays]: I18nKey.siteStatsRunningDays,
+	[I18nKey.siteStatsLastUpdate]: I18nKey.siteStatsLastUpdate,
+};
 
 const stats = [
 	{
 		icon: "material-symbols:article-outline",
-		label: i18n(I18nKey.siteStatsPostCount),
+		labelKey: I18nKey.siteStatsPostCount,
+		label: t(I18nKey.siteStatsPostCount),
 		value: totalPosts,
 	},
 	{
 		icon: "material-symbols:folder-outline",
-		label: i18n(I18nKey.siteStatsCategoryCount),
+		labelKey: I18nKey.siteStatsCategoryCount,
+		label: t(I18nKey.siteStatsCategoryCount),
 		value: totalCategories,
 	},
 	{
 		icon: "material-symbols:label-outline",
-		label: i18n(I18nKey.siteStatsTagCount),
+		labelKey: I18nKey.siteStatsTagCount,
+		label: t(I18nKey.siteStatsTagCount),
 		value: totalTags,
 	},
 	{
 		icon: "material-symbols:text-ad-outline-rounded",
-		label: i18n(I18nKey.siteStatsTotalWords),
+		labelKey: I18nKey.siteStatsTotalWords,
+		label: t(I18nKey.siteStatsTotalWords),
 		value: totalWords,
 		formatted: true,
 	},
 	{
 		icon: "material-symbols:calendar-clock-outline",
-		label: i18n(I18nKey.siteStatsRunningDays),
+		labelKey: I18nKey.siteStatsRunningDays,
+		label: t(I18nKey.siteStatsRunningDays),
 		value: 0, // 将由客户端更新
-		suffix: i18n(I18nKey.siteStatsDays).replace("{days}", ""),
+		suffix: t(I18nKey.siteStatsDays).replace("{days}", ""),
 		dynamic: true,
 		id: "running-days",
 	},
 	{
 		icon: "mingcute:heartbeat-line",
-		label: i18n(I18nKey.siteStatsLastUpdate),
+		labelKey: I18nKey.siteStatsLastUpdate,
+		label: t(I18nKey.siteStatsLastUpdate),
 		value: 0, // 将由客户端更新
-		suffix: i18n(I18nKey.siteStatsDaysAgo).replace("{days}", ""),
+		suffix: t(I18nKey.siteStatsDaysAgo).replace("{days}", ""),
 		dynamic: true,
 		id: "last-update",
 	},
 ];
 ---
 
-<WidgetLayout name={i18n(I18nKey.siteStats)} showTitle={showTitle} id="site-stats" class={className} style={style}>
+<WidgetLayout
+  name={t(I18nKey.siteStats)}
+  nameI18nKey={I18nKey.siteStats}
+  showTitle={showTitle}
+  id="site-stats"
+  class={className}
+  style={style}
+>
   <div class="flex flex-col gap-2">
     {stats.map((stat) => (
       <div class="flex items-center justify-between px-3 py-1.5">
@@ -152,7 +180,10 @@ const stats = [
           <div class="text-(--primary) text-xl">
             <Icon is:inline name={stat.icon} />
           </div>
-          <span class="text-neutral-700 dark:text-neutral-300 font-medium text-sm">
+          <span
+            class="text-neutral-700 dark:text-neutral-300 font-medium text-sm"
+            data-i18n-text-key={stat.labelKey}
+          >
             {stat.label}
           </span>
         </div>
@@ -160,11 +191,16 @@ const stats = [
           <span
             class="text-base font-bold text-neutral-900 dark:text-neutral-100"
             data-stat-id={stat.id}
+            data-stat-today-key={stat.id === "last-update" ? I18nKey.lastActivityToday : undefined}
           >
             {stat.formatted ? formatNumber(stat.value) : stat.value}
           </span>
           {stat.suffix && (
-            <span class="ml-1 text-sm text-neutral-500 dark:text-neutral-400">
+            <span
+              class="ml-1 text-sm text-neutral-500 dark:text-neutral-400"
+              data-stat-suffix={stat.id}
+              data-i18n-days-suffix={stat.id === "last-update" ? "siteStatsDaysAgo" : "siteStatsDays"}
+            >
               {stat.suffix}
             </span>
           )}
@@ -175,6 +211,13 @@ const stats = [
 </WidgetLayout>
 
 <script is:inline define:vars={{ siteStartDate, lastPostDate, todayText }}>
+  function readRawI18nVal(key, fallback) {
+    try {
+      // 尝试走 translation.ts 的 window i18n（由 rosetta 注入）
+      if (typeof window.__rosettaRawI18n === 'function') return window.__rosettaRawI18n(key) || fallback;
+    } catch (_e) { /* ignore */ }
+    return fallback;
+  }
   function updateDynamicStats() {
     const today = new Date();
 

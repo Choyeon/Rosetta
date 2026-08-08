@@ -45,6 +45,11 @@ import "@/styles/expressive-code.css";
 
 interface Props {
 	title?: string;
+	/** 静态导航类页面（归档/分类/标签等）的 Banner 标题 i18n Key，
+	 *  用于 SSR 渲染 data-i18n-text-key 声明，保证切语言 + Swup 路由切换后
+	 *  translation.applyI18nTitlesAnywhere 能捕获并同步刷新 Banner 文案。
+	 *  如果不传（文章页、相册页等内容型标题），则仅保留 SSR 输出的 title 值作为默认值。 */
+	titleI18nKey?: I18nKey;
 	banner?: string;
 	description?: string;
 	lang?: string;
@@ -67,6 +72,7 @@ const backgroundImages = getBackgroundImages();
 
 const {
 	title,
+	titleI18nKey,
 	banner,
 	description,
 	lang,
@@ -659,7 +665,7 @@ const hasMultipleImages =
                     subtitleElement.textContent = window.ROSETTACachedSubtitle;
                 }
             } catch (e) {
-                console.error("Failed to parse subtitles", e);
+                console.warn("[Banner] 副标题数据解析失败，跳过：", e);
             }
         }
 
@@ -676,7 +682,11 @@ const hasMultipleImages =
         <div class="w-4/5 lg:w-3/4 text-center mb-0">
             <div class="banner-page-title font-bold text-white leading-tight inline-flex items-center justify-center gap-3">
                 {/* <Icon is:inline name="material-symbols:bookmark-rounded" class="banner-page-title-icon" /> */}
-                <span class="banner-page-title-text" data-default-title={title ?? ""}>{title}</span>
+                <span
+                    class="banner-page-title-text"
+                    data-default-title={title ?? ""}
+                    data-i18n-text-key={titleI18nKey}
+                >{title}</span>
             </div>
         </div>
     </div>
@@ -1072,6 +1082,25 @@ const hasMultipleImages =
             return /^\/posts\//i.test(location.pathname);
         }
 
+        function readRawI18n(key, fallback) {
+            try {
+                if (typeof window.__rosettaRawI18n === 'function') {
+                    var v = window.__rosettaRawI18n(key);
+                    if (v) return v;
+                }
+            } catch (_e) { /* ignore */ }
+            return fallback;
+        }
+        function resolveBannerDefaultText(spanEl) {
+            if (!spanEl) return '';
+            var keyAttr = spanEl.getAttribute('data-i18n-text-key');
+            var def = spanEl.getAttribute('data-default-title') || '';
+            if (keyAttr) {
+                var translated = readRawI18n(keyAttr, '');
+                if (translated) return translated;
+            }
+            return def;
+        }
         function resetBannerState() {
             // 1) 还原 .banner-page-title-text 到 SSR 默认值
             //    例外：当前是带筛选参数的归档页（/archive?category=xxx 或 /archive?tag=xxx）
@@ -1080,13 +1109,13 @@ const hasMultipleImages =
             var bannerTitleSpan = document.querySelector('.banner-page-title-text');
             var isFilteredArchive = isArchivePageNow();
             if (bannerTitleSpan && !isFilteredArchive) {
-                var def = bannerTitleSpan.getAttribute('data-default-title') || '';
+                var def = resolveBannerDefaultText(bannerTitleSpan);
                 bannerTitleSpan.textContent = def;
             } else if (bannerTitleSpan && isFilteredArchive) {
                 // 筛选归档页：让 ArchivePanel 有机会先写入，50ms 后如 span 仍是默认值就再检查一次
                 // （极端情况下 ArchivePanel 没初始化也会显示默认标题）
                 (function(bannerTitleSpan0){
-                    var def0 = bannerTitleSpan0.getAttribute('data-default-title') || '';
+                    var def0 = resolveBannerDefaultText(bannerTitleSpan0);
                     setTimeout(function(){
                         var params = new URLSearchParams(location.search);
                         var hasFilter = params.has('tag') || params.has('category') || params.has('uncategorized');
@@ -1234,8 +1263,15 @@ const hasMultipleImages =
                 >
                 {/* 携带网格布局类名，用于JS更新父容器 */}
                 <div id="grid-class-carrier" data-grid-class={gridCols} class="hidden"></div>
-                {/* 为每个页面提供一个隐藏的h1标题，用于SEO和可访问性 */}
-                <h1 class="sr-only">{title}</h1>
+                {/* 为每个页面提供一个隐藏的h1标题，用于SEO和可访问性
+                    —— 同时挂 data-i18n-text-key，让 translation.ts / resetBannerState 能
+                    在切语言 / Swup content:replace 时同步刷新文本，避免 SSR 默认语言
+                    (zh_CN) 输出之后，客户端跳其他语言时 sr-only 文本滞后导致快照/爬虫读错。 */}
+                <h1
+                    class="sr-only"
+                    data-default-title={title ?? ""}
+                    data-i18n-text-key={titleI18nKey}
+                >{title}</h1>
                 <div id="content-wrapper" class="onload-animation transition-leaving">
                     <slot></slot>
                 </div>

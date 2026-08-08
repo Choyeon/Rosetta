@@ -10,7 +10,6 @@ import logging
 import platform
 import subprocess
 import sys
-from typing import Any
 
 logger = logging.getLogger(__name__)
 

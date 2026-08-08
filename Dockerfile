@@ -108,8 +108,12 @@ COPY --from=frontend-builder /build/dist /usr/share/nginx/html
 # 复制 nginx 配置
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
+# 加一个真正可用的健康检查工具（curl），并安装 wget 以便脚本使用
+RUN apk add --no-cache curl wget 2>/dev/null || true
+
+# /health 由 nginx 配置中 location 直接返回，避免回落到 404 导致 healthy 判定
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:80/ || exit 1
+    CMD curl -fsS http://127.0.0.1/health >/dev/null || wget -q -O /dev/null --spider http://127.0.0.1/health || exit 1
 
 EXPOSE 80
 

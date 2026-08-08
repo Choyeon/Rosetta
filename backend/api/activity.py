@@ -16,12 +16,10 @@ from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import cache, make_cache_key
-from backend.core.i18n import (
-    DEFAULT_LANGUAGE,
-    get_language_from_request,
-    normalize_language,
-)
 from backend.core.deps import CurrentUserOptional
+from backend.core.i18n import (
+    get_language_from_request,
+)
 from backend.models.activity import Activity
 from backend.models.user import User
 from backend.schemas import BaseResponse, PaginatedResponse

@@ -16,8 +16,9 @@ from datetime import datetime
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
+from backend.api._user_response_helper import build_user_detail_response, build_user_response
 from backend.core.auth import DB, CurrentStaff, CurrentSuperUser
 from backend.core.concurrency import concurrent_query
 from backend.models.blog import Category, Comment, Post
@@ -31,7 +32,6 @@ from backend.schemas import (
     UserDetailResponse,
     UserResponse,
 )
-from backend.api._user_response_helper import build_user_response, build_user_detail_response
 from backend.services.user_service import get_user_service
 
 router = APIRouter(tags=["后台管理"])
@@ -116,7 +116,8 @@ async def admin_list_users(
     # 批量计算 posts_count / comments_count（避免 N+1）
     user_ids = [u.id for u in users]
     if user_ids:
-        from backend.models.blog import Post as _Post, Comment as _Comment
+        from backend.models.blog import Comment as _Comment
+        from backend.models.blog import Post as _Post
 
         post_counts_q = (
             select(_Post.author_id, func.count(_Post.id).label("c"))
@@ -211,7 +212,8 @@ async def admin_get_user(
             detail="用户不存在",
         )
 
-    from backend.models.blog import Post as _Post, Comment as _Comment
+    from backend.models.blog import Comment as _Comment
+    from backend.models.blog import Post as _Post
 
     pc, cc = await concurrent_query(
         db.scalar(select(func.count(_Post.id)).where(_Post.author_id == user_id)) or 0,
@@ -379,8 +381,9 @@ async def admin_delete_user(
 
     # Bug#X3：删除用户（软/硬删除）前，先把其关联的评论 user_id 置空，
     # 避免评论被 CASCADE 删除 或 仍指向已删除用户造成引用脏数据。
-    from backend.models.blog import Comment as BlogComment
     from sqlalchemy import update as _sa_update
+
+    from backend.models.blog import Comment as BlogComment
 
     await db.execute(
         _sa_update(BlogComment)

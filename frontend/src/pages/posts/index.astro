@@ -1,6 +1,6 @@
 ---
 import I18nKey from "@i18n/i18nKey";
-import { i18n } from "@i18n/translation";
+import { i18nFor } from "@i18n/translation";
 /**
  * /posts/ 列表路由（补齐 trailingSlash:always 下的前台路由，避免访问 /posts 时 404）。
  * 项目中原本没有前台 posts/index 路由，导致 trailing slash 重定向后仍找不到页面。
@@ -9,9 +9,14 @@ import { i18n } from "@i18n/translation";
 import MainGridLayout from "@layouts/MainGridLayout.astro";
 import { getSortedPosts } from "@utils/content-utils";
 import { getCategoryUrl, getPostUrlBySlug, getTagUrl } from "@utils/url-utils";
+import { applyAstroLangContext } from "@utils/ssrLangContext";
 import { Icon } from "astro-icon/components";
 import CoverImage from "@/components/common/CoverImage.astro";
 import { formatDateI18n } from "@/utils/date-utils";
+
+applyAstroLangContext(Astro);
+const ssrLang = Astro.cookies.get("rosetta_lang")?.value || "zh_CN";
+const tSSR = (k: I18nKey) => i18nFor(k, ssrLang);
 
 export async function getStaticPaths() {
 	return [{ params: {}, props: {} }];
@@ -20,16 +25,16 @@ export async function getStaticPaths() {
 const posts = (await getSortedPosts()).filter((p) => !p.data.draft);
 ---
 
-<MainGridLayout title={i18n(I18nKey.archive)}>
+<MainGridLayout title={tSSR(I18nKey.archive)} titleI18nKey={I18nKey.archive}>
   <div class="card-wrapper overflow-hidden">
     <div class="card-body p-5 md:p-8">
       <div class="flex items-center gap-2 mb-5">
         <Icon is:inline name="material-symbols:article" class="text-(--primary) text-xl" />
         <h1 class="text-lg md:text-xl font-bold">
-          {i18n(I18nKey.postList)}
+          {tSSR(I18nKey.postList)}
         </h1>
         <span class="text-xs text-neutral-500 dark:text-neutral-400 ml-auto">
-          {i18n(I18nKey.postsCount)}: {posts.length}
+          {tSSR(I18nKey.postsCount)}: {posts.length}
         </span>
       </div>
 
@@ -120,7 +125,7 @@ const posts = (await getSortedPosts()).filter((p) => !p.data.draft);
         })}
         {posts.length === 0 ? (
           <li class="py-10 text-center text-sm text-neutral-500 dark:text-neutral-400">
-            {i18n(I18nKey.archive)} — 0 {i18n(I18nKey.postsCount)}
+            {tSSR(I18nKey.archive)} — 0 {tSSR(I18nKey.postsCount)}
           </li>
         ) : null}
       </ul>

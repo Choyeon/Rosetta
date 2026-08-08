@@ -10,10 +10,12 @@ export const profileConfig: ProfileConfig = {
 	avatar: "",
 
 	// 名字
-	name: "ROSETTA",
+	// 注意：此处仅为前端硬编码 fallback，实际请在 OOBE 一键安装或后台「基础设置 → 作者资料」修改，
+	// 后端会通过 /api/config 下发 author_name 覆盖此默认值。
+	name: "Choyeon",
 
 	// 个人签名
-	bio: "Hello, I'm ROSETTA.",
+	bio: "Full-Stack Development",
 
 	// 链接配置
 	// 已经预装的图标集：fa7-brands，fa7-regular，fa7-solid，material-symbols，simple-icons
@@ -31,7 +33,7 @@ export const profileConfig: ProfileConfig = {
 		{
 			name: "GitHub",
 			icon: "fa7-brands:github",
-			url: "https://github.com/CuteLeaf",
+			url: "https://github.com/Choyeon",
 			showName: false,
 		},
 		{

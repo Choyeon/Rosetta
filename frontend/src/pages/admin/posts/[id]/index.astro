@@ -69,7 +69,7 @@ const numericId: number | null =
 	>{JSON.stringify(isNew ? { isNew: true } : numericId != null ? { isNew: false, postId: numericId } : { isNew: false })}</script>
 
 	<main class="pef-astro-shell">
-		<PostEditorForm client:only="svelte" />
+		<PostEditorForm client:load />
 	</main>
 </AdminLayout>
 

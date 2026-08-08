@@ -42,9 +42,23 @@ enum I18nKey {
 	dynamicViewImage = "dynamicViewImage",
 	dynamicSelectImage = "dynamicSelectImage",
 
+	// 导航栏（顶部大项 / 下拉 / 菜单）
+	posts = "posts",
+	social = "social",
+	mine = "mine",
+
+	// 显示设置面板 / 通用重置按钮
+	displaySettings = "displaySettings",
+	resetToDefault = "resetToDefault",
+
+	// 语言切换器按钮的 title / aria-label
+	switchLang = "switchLang",
+
 	// 公告栏
 	announcement = "announcement",
 	announcementClose = "announcementClose",
+	announcementContentPlaceholder = "announcementContentPlaceholder",
+	announcementLearnMore = "announcementLearnMore",
 
 	comments = "comments",
 	commentSection = "commentSection",
@@ -92,6 +106,7 @@ enum I18nKey {
 	systemMode = "systemMode",
 
 	more = "more",
+	expand = "expand",
 	collapse = "collapse",
 	all = "all",
 
@@ -383,7 +398,11 @@ enum I18nKey {
 	calendarDecember = "calendarDecember",
 	calendar = "calendar",
 	calendarHeatmapWeek = "calendarHeatmapWeek",
+	calendarPrevMonth = "calendarPrevMonth",
+	calendarNextMonth = "calendarNextMonth",
+	calendarResetToToday = "calendarResetToToday",
 	advertisement = "advertisement",
+	advertisementClose = "advertisementClose",
 
 	shareArticle = "shareArticle",
 	generatingPoster = "generatingPoster",
@@ -422,6 +441,17 @@ enum I18nKey {
 	videoPrev = "videoPrev",
 	videoNext = "videoNext",
 	videoLoadError = "videoLoadError",
+
+	// Profile 资料卡片（左侧作者信息）
+	profileAvatarAlt = "profileAvatarAlt",
+	profileGoAbout = "profileGoAbout",
+	goAboutPage = "goAboutPage",
+
+	// 文章辅助文案
+	readPost = "readPost",
+	viewAllPostsInCategory = "viewAllPostsInCategory",
+	viewAllPostsWithTag = "viewAllPostsWithTag",
+	lastActivityToday = "lastActivityToday",
 
 	// ========== 后台管理 Admin ==========
 	// 导航分组

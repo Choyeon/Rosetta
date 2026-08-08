@@ -7,6 +7,6 @@ import AdminCommentList from "@/components/admin/comments/AdminCommentList.svelt
 		<button class="btn btn-outline btn-sm" type="button" onclick="window.location.reload()">刷新</button>
 	</fragment>
 	<main slot="content">
-		<AdminCommentList client:only="svelte" />
+		<AdminCommentList client:load />
 	</main>
 </AdminLayout>

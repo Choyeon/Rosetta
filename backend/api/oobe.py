@@ -14,9 +14,6 @@ OOBE (Out-of-Box Experience) API 路由
 import asyncio
 import json
 import logging
-import os
-import platform
-import secrets
 import shutil
 import subprocess
 import sys
@@ -42,10 +39,8 @@ from backend.core.i18n import t
 from backend.core.oobe_constants import (
     FEATURE_FLAG_DB_KEY_MAP,
     PASSWORD_MIN_LENGTH,
-    USERNAME_MIN_LENGTH,
     USERNAME_MAX_LENGTH,
-    USERNAME_PATTERN,
-    EMAIL_PATTERN,
+    USERNAME_MIN_LENGTH,
 )
 from backend.core.paths import BASE_DIR, CONFIG_FILE, ENV_FILE, OOBE_LOCK_FILE, STATE_FILE
 from backend.core.setup_config import ConfigService, Environment
@@ -77,25 +72,32 @@ class CombinedInstallRequest(BaseModel):
     redis_port: int = 6379
     redis_password: str = ""
 
-    admin_username: str = Field(..., min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH)
-    admin_email: str
-    admin_password: str = Field(..., min_length=PASSWORD_MIN_LENGTH)
-    admin_nickname: str = ""
+    admin_username: str = Field(default="Choyeon", min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH)
+    admin_email: str = "choyeon@foxmail.com"
+    admin_password: str = Field(default="Choyeon@2025", min_length=PASSWORD_MIN_LENGTH)
+    admin_nickname: str = "Choyeon"
+
+    # 管理员扩展资料（简介 / QQ / GitHub / 个人网站）
+    admin_bio: str = "Full-Stack Development"
+    admin_qq: str = "952223950"
+    admin_github: str = "Choyeon"
+    admin_website: str = "https://rosetta.choyeon.cc"
+    admin_avatar_source: str = "auto"
 
     site_name: str = "Rosetta"
-    site_description: str = ""
-    site_url: str = "http://localhost:4321"
+    site_description: str = "一个功能齐全、主题优雅、开箱即用的现代博客引擎"
+    site_url: str = "https://rosetta.choyeon.cc"
     site_keywords: str = ""
     site_author: str = ""
     site_email: str = ""
 
-    enable_comments: bool = False
-    enable_registration: bool = False
-    enable_rss: bool = False
-    enable_bing_wallpaper: bool = False
-    enable_pagefind_search: bool = False
+    enable_comments: bool = True
+    enable_registration: bool = True
+    enable_rss: bool = True
+    enable_bing_wallpaper: bool = True
+    enable_pagefind_search: bool = True
     enable_encrypted_posts: bool = False
-    enable_music_player: bool = False
+    enable_music_player: bool = True
 
     environment: Literal["development", "production"] = "production"
 
@@ -516,6 +518,15 @@ async def _run_combined_install(req: CombinedInstallRequest):
                     email=req.admin_email,
                     password_hash=get_password_hash(req.admin_password),
                     nickname=req.admin_nickname or req.admin_username,
+                    bio=getattr(req, "admin_bio", None) or None,
+                    qq=getattr(req, "admin_qq", None) or None,
+                    github=(
+                        f"https://github.com/{req.admin_github}"
+                        if getattr(req, "admin_github", None) and "://" not in req.admin_github
+                        else (getattr(req, "admin_github", None) or None)
+                    ),
+                    website=getattr(req, "admin_website", None) or None,
+                    avatar_source=getattr(req, "admin_avatar_source", "auto") or "auto",
                     is_active=True,
                     is_staff=True,
                     is_superuser=True,
@@ -542,6 +553,11 @@ async def _run_combined_install(req: CombinedInstallRequest):
             ("enable_encrypted_posts", str(req.enable_encrypted_posts).lower(), "启用加密文章"),
             ("enable_music_player", str(req.enable_music_player).lower(), "启用音乐播放器"),
             ("default_cover_image", full_config["default_cover_image"], "默认封面图"),
+            # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐，避免前端 fallback 为 ROSETTA 示例文案
+            ("author_name", full_config.get("author_name") or req.admin_nickname or req.admin_username, "作者昵称"),
+            ("author_bio", full_config.get("author_bio") or getattr(req, "admin_bio", "") or "", "作者签名"),
+            ("author_avatar", full_config.get("author_avatar", "") or "", "作者头像"),
+            ("author_links_json", full_config.get("author_links_json", "[]") or "[]", "作者社交链接"),
             ("enable_pio", "false", "启用看板娘(Pio)"),
         ]
         async with async_session_maker() as session:
@@ -1001,6 +1017,27 @@ async def complete_oobe(db: AsyncSession = Depends(get_db)):
                 key="default_cover_image",
                 value=config_dict["default_cover_image"],
                 description="默认封面图",
+            ),
+            # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐
+            DbSiteConfig(
+                key="author_name",
+                value=config_dict.get("author_name") or config_dict.get("admin_nickname") or "",
+                description="作者昵称",
+            ),
+            DbSiteConfig(
+                key="author_bio",
+                value=config_dict.get("author_bio", "") or "",
+                description="作者签名",
+            ),
+            DbSiteConfig(
+                key="author_avatar",
+                value=config_dict.get("author_avatar", "") or "",
+                description="作者头像",
+            ),
+            DbSiteConfig(
+                key="author_links_json",
+                value=config_dict.get("author_links_json", "[]") or "[]",
+                description="作者社交链接",
             ),
         ]
         for sc in site_configs:

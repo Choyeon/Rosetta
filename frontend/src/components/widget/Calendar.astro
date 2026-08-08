@@ -6,7 +6,7 @@ import { loadDynamicConfig } from "@/utils/dynamic-config";
 const siteConfig = (await loadDynamicConfig()).site;
 
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor, readEffectiveLangHintRaw } from "@/i18n/translation";
 import type { WidgetComponentConfig } from "@/types/config";
 import { url } from "@/utils/url-utils";
 
@@ -21,38 +21,42 @@ const { class: className, style, widgetConfig } = Astro.props;
 const showHeatmap = widgetConfig?.specificConfig?.calendar?.showHeatmap ?? true;
 const showTitle = widgetConfig?.showTitle !== false;
 
+// SSR 下用 cookie 语言翻译，保证切语言后服务端渲染文案一致
+const ssrLang = readEffectiveLangHintRaw(Astro);
+const t = (k: I18nKey, vars?: Record<string, string | number>) => i18nFor(k, ssrLang, vars);
+
 // 月份名称（使用 i18n）
 const monthNames = [
-	i18n(I18nKey.calendarJanuary),
-	i18n(I18nKey.calendarFebruary),
-	i18n(I18nKey.calendarMarch),
-	i18n(I18nKey.calendarApril),
-	i18n(I18nKey.calendarMay),
-	i18n(I18nKey.calendarJune),
-	i18n(I18nKey.calendarJuly),
-	i18n(I18nKey.calendarAugust),
-	i18n(I18nKey.calendarSeptember),
-	i18n(I18nKey.calendarOctober),
-	i18n(I18nKey.calendarNovember),
-	i18n(I18nKey.calendarDecember),
+	t(I18nKey.calendarJanuary),
+	t(I18nKey.calendarFebruary),
+	t(I18nKey.calendarMarch),
+	t(I18nKey.calendarApril),
+	t(I18nKey.calendarMay),
+	t(I18nKey.calendarJune),
+	t(I18nKey.calendarJuly),
+	t(I18nKey.calendarAugust),
+	t(I18nKey.calendarSeptember),
+	t(I18nKey.calendarOctober),
+	t(I18nKey.calendarNovember),
+	t(I18nKey.calendarDecember),
 ];
 
 // 星期名称（简写，使用 i18n）
 const weekDays = [
-	i18n(I18nKey.calendarSunday),
-	i18n(I18nKey.calendarMonday),
-	i18n(I18nKey.calendarTuesday),
-	i18n(I18nKey.calendarWednesday),
-	i18n(I18nKey.calendarThursday),
-	i18n(I18nKey.calendarFriday),
-	i18n(I18nKey.calendarSaturday),
+	t(I18nKey.calendarSunday),
+	t(I18nKey.calendarMonday),
+	t(I18nKey.calendarTuesday),
+	t(I18nKey.calendarWednesday),
+	t(I18nKey.calendarThursday),
+	t(I18nKey.calendarFriday),
+	t(I18nKey.calendarSaturday),
 ];
 
 // 年份文本
-const yearText = i18n(I18nKey.year);
+const yearText = t(I18nKey.year);
 
 // 热力图周数文本模板
-const heatmapWeekTemplate = i18n(I18nKey.calendarHeatmapWeek);
+const heatmapWeekTemplate = t(I18nKey.calendarHeatmapWeek);
 
 // 获取当前语言
 const currentLang = siteConfig.lang || "en";
@@ -61,18 +65,33 @@ const calendarDataUrl = url("/api/allPostMeta.json");
 const postUrlPrefix = url("/posts/");
 ---
 
-<WidgetLayout name={i18n(I18nKey.calendar)} showTitle={showTitle} id="calendar-widget" class={className} style={style}>
+<WidgetLayout name={t(I18nKey.calendar)} nameI18nKey={I18nKey.calendar} showTitle={showTitle} id="calendar-widget" class={className} style={style}>
   <div class="calendar-container">
     <div class="flex justify-between items-center mb-2">
-        <button id="prev-month-btn" class="btn-plain rounded-lg w-8 h-8 flex items-center justify-center hover:bg-(--btn-plain-bg-hover) transition-colors" aria-label="Previous Month">
+        <button id="prev-month-btn" class="btn-plain rounded-lg w-8 h-8 flex items-center justify-center hover:bg-(--btn-plain-bg-hover) transition-colors"
+          aria-label={t(I18nKey.calendarPrevMonth)}
+          data-i18n-aria-key="calendarPrevMonth"
+          title={t(I18nKey.calendarPrevMonth)}
+          data-i18n-title-key="calendarPrevMonth"
+        >
             <Icon is:inline name="fa7-solid:chevron-left" class="text-sm" />
         </button>
         <div id="current-month-display" class="text-lg font-bold text-neutral-900 dark:text-neutral-100 cursor-pointer hover:text-(--primary) transition-colors select-none"></div>
         <div class="flex gap-2">
-            <button id="reset-month-btn" class="btn-plain rounded-lg w-8 h-8 flex items-center justify-center hover:bg-(--btn-plain-bg-hover) transition-colors" aria-label="Back to Today">
+            <button id="reset-month-btn" class="btn-plain rounded-lg w-8 h-8 flex items-center justify-center hover:bg-(--btn-plain-bg-hover) transition-colors"
+              aria-label={t(I18nKey.calendarResetToToday)}
+              data-i18n-aria-key="calendarResetToToday"
+              title={t(I18nKey.calendarResetToToday)}
+              data-i18n-title-key="calendarResetToToday"
+            >
                 <Icon is:inline name="fa7-solid:arrow-rotate-left" class="text-sm" />
             </button>
-            <button id="next-month-btn" class="btn-plain rounded-lg w-8 h-8 flex items-center justify-center hover:bg-(--btn-plain-bg-hover) transition-colors" aria-label="Next Month">
+            <button id="next-month-btn" class="btn-plain rounded-lg w-8 h-8 flex items-center justify-center hover:bg-(--btn-plain-bg-hover) transition-colors"
+              aria-label={t(I18nKey.calendarNextMonth)}
+              data-i18n-aria-key="calendarNextMonth"
+              title={t(I18nKey.calendarNextMonth)}
+              data-i18n-title-key="calendarNextMonth"
+            >
                 <Icon is:inline name="fa7-solid:chevron-right" class="text-sm" />
             </button>
         </div>
@@ -223,7 +242,7 @@ const postUrlPrefix = url("/posts/");
       
       renderCalendar();
     } catch (error) {
-      console.error("Failed to fetch calendar data", error);
+      console.warn("[Calendar] 获取日历热图失败，已降级隐藏：", error);
     }
   }
 

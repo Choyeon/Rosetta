@@ -101,9 +101,10 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 	],
 
 	// 右侧边栏组件配置列表
+	// 注意：widget-layout（最新动态组件）排在最上方，站点信息组件排在最下方
 	rightComponents: [
 		{
-			// 组件类型：最新动态组件
+			// 组件类型：最新动态组件（WidgetLayout 包装）
 			type: "dynamic",
 			// 是否启用该组件
 			enable: true,
@@ -115,7 +116,7 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			specificConfig: {
 				dynamic: {
 					// 显示的最新动态数量
-					limit: 2,
+					limit: 3,
 				},
 			},
 		},
@@ -128,23 +129,6 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			position: "top",
 			// 是否在文章详情页显示
 			showOnPostPage: false,
-		},
-		{
-			// 组件类型：站点信息组件
-			type: "siteInfo",
-			// 是否启用该组件
-			enable: true,
-			// 组件位置
-			position: "top",
-			// 是否在文章详情页显示
-			showOnPostPage: true,
-			// 组件专属配置
-			specificConfig: {
-				siteInfo: {
-					// 未能识别的构建平台回退显示文本，可自定义
-					unknownBuildPlatform: "Unknown CI",
-				},
-			},
 		},
 		{
 			// 组件类型：日历组件
@@ -233,11 +217,44 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 				},
 			},
 		},
+		{
+			// 组件类型：站点信息组件（站点信息放在最下方）
+			type: "siteInfo",
+			// 是否启用该组件
+			enable: true,
+			// 组件位置
+			position: "sticky",
+			// 是否在文章详情页显示
+			showOnPostPage: true,
+			// 组件专属配置
+			specificConfig: {
+				siteInfo: {
+					// 未能识别的构建平台回退显示文本，可自定义
+					unknownBuildPlatform: "Unknown CI",
+				},
+			},
+		},
 	],
 
 	// 移动端底部组件配置列表
 	// 这些组件只在移动端(<768px)显示在页面底部，独立于左右侧边栏配置
+	// 同样保持：最新动态排在最前，站点信息排在最后
 	mobileBottomComponents: [
+		{
+			// 组件类型：最新动态组件
+			type: "dynamic",
+			// 是否启用该组件
+			enable: true,
+			// 是否在文章详情页显示
+			showOnPostPage: true,
+			// 组件专属配置
+			specificConfig: {
+				dynamic: {
+					// 显示的最新动态数量
+					limit: 3,
+				},
+			},
+		},
 		{
 			// 组件类型：用户资料组件
 			type: "profile",
@@ -278,21 +295,6 @@ export const sidebarLayoutConfig: SidebarLayoutConfig = {
 			specificConfig: {
 				// 折叠阈值：当标签数量超过20个时自动折叠
 				collapseThreshold: 10,
-			},
-		},
-		{
-			// 组件类型：最新动态组件
-			type: "dynamic",
-			// 是否启用该组件
-			enable: true,
-			// 是否在文章详情页显示
-			showOnPostPage: true,
-			// 组件专属配置
-			specificConfig: {
-				dynamic: {
-					// 显示的最新动态数量
-					limit: 2,
-				},
 			},
 		},
 		{

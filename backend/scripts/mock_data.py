@@ -2055,15 +2055,397 @@ async def generate_all_mock_data(
 
 
 async def generate_oobe_mock_data(db, admin_id: int) -> dict:
-    """生成 OOBE 阶段的最小 Mock 数据（只生成分类/标签/Hello World 文章，不生成用户和评论）
+    """生成 OOBE 阶段的真实种子数据：
+    8 分类 + 24 标签 + 32 篇四语言真实技术文章（含代码块/对比表格）+ 真实感评论 + 25 条动态说说 + 示例留言板
 
     Args:
         db: 数据库会话
-        admin_id: 已创建的管理员用户 ID，用作文章作者
+        admin_id: 已创建的管理员用户 ID
 
     Returns:
         dict: 各类型创建数量
     """
+    import random
+    from datetime import timedelta as _td
+
+    from backend.models.activity import Activity
+    from backend.models.blog import Category, Comment, Post, Tag
+
+    # ---------- 加载种子数据 ----------
+    try:
+        from backend.scripts.oobe_seed_data import (
+            ACTIVITY_TEMPLATES,
+            ARTICLE_TEMPLATES_V3,
+            COMMENT_CONTENT_TEMPLATES,
+            COMMENT_PERSONAS,
+            OOBE_CATEGORIES,
+            OOBE_TAGS,
+        )
+    except Exception as _exc:  # noqa: BLE001
+        import logging as _logging
+        _logging.getLogger(__name__).warning("oobe_seed_data 导入失败，fallback 到最小数据: %s", _exc)
+        return await generate_oobe_mock_data_minimal(db, admin_id)
+
+    rng = random.Random(20250101)
+    utc_now = datetime.now(UTC)
+
+    # ---------- 1. 创建 8 个分类 ----------
+    cat_map: dict[str, Category] = {}
+    created_cats = 0
+    for cat_data in OOBE_CATEGORIES:
+        slug = cat_data["slug"]
+        result = await db.execute(select(Category).where(Category.slug == slug))
+        existing = result.scalar_one_or_none()
+        if existing:
+            cat_map[slug] = existing
+            continue
+        # icon 规范化：自动补 heroicons: 前缀
+        icon = cat_data.get("icon") or "heroicons:code-bracket"
+        if ":" not in icon:
+            icon = f"heroicons:{icon}"
+        cat = Category(
+            name=dict(cat_data["name"]),
+            slug=slug,
+            description=dict(cat_data["description"]),
+            color=cat_data.get("color") or "#3B82F6",
+            icon=icon,
+        )
+        db.add(cat)
+        cat_map[slug] = cat
+        created_cats += 1
+    await db.flush()
+
+    # ---------- 2. 创建 24 个标签 ----------
+    tag_map: dict[str, Tag] = {}
+    created_tags = 0
+    for tag_data in OOBE_TAGS:
+        slug = tag_data["slug"]
+        result = await db.execute(select(Tag).where(Tag.slug == slug))
+        existing = result.scalar_one_or_none()
+        if existing:
+            tag_map[slug] = existing
+            continue
+        t = Tag(
+            name=dict(tag_data["name"]),
+            slug=slug,
+            color=tag_data.get("color") or "#6366F1",
+            is_active=True,
+        )
+        db.add(t)
+        tag_map[slug] = t
+        created_tags += 1
+    await db.flush()
+
+    # ---------- 3. 创建 32 篇四语言真实文章 ----------
+    created_posts = 0
+    created_views = 0
+    post_cat_bucket: dict[int, str] = {}  # post_id -> bucket name for comments
+    post_ids: list[int] = []
+
+    for idx, art in enumerate(ARTICLE_TEMPLATES_V3):
+        title_zh = (art.get("title_zh") or f"Article {idx+1}").strip()
+        # slug = slugify 中英混合简化版（避免额外依赖）
+        base_slug = art.get("slug") or (
+            f"post-{idx+1}-{''.join(c for c in title_zh[:10] if c.isalnum())}".strip("-")
+        )
+        # 去重
+        slug_candidate = base_slug or f"article-{idx+1}"
+        dup_check = await db.execute(select(Post).where(Post.slug.like(f"{slug_candidate}%")))
+        _ = list(dup_check.scalars().all())
+        if _:
+            slug_candidate = f"{slug_candidate}-{idx+1:02d}"
+
+        cat_obj = None
+        cat_slug = art.get("category_slug") or "technology"
+        cat_obj = cat_map.get(cat_slug) or next(iter(cat_map.values()), None)
+        bucket = _cat_to_comment_bucket(cat_slug)
+        post_cat_bucket[created_posts] = bucket
+
+        tag_objs = []
+        for ts in (art.get("tag_slugs") or []):
+            if ts in tag_map:
+                tag_objs.append(tag_map[ts])
+        if not tag_objs and tag_map:
+            # fallback 2 个随机标签
+            tag_objs = rng.sample(list(tag_map.values()), k=min(2, len(tag_map)))
+
+        excerpt_zh = (art.get("excerpt_zh") or title_zh).strip()
+        excerpt_en = (art.get("excerpt_en") or excerpt_zh).strip()
+        excerpt_ja = (art.get("excerpt_ja") or excerpt_zh).strip()
+        excerpt_zh_hant = (art.get("excerpt_zh_hant") or excerpt_zh).strip()
+
+        content_zh = (art.get("content_zh") or f"# {title_zh}\n\n{excerpt_zh}\n").strip()
+        content_en = (art.get("content_en") or content_zh).strip()
+        # ja/zh_Hant fallback：缺失时用对应语言的摘要+正文内容作为降级
+        content_ja = art.get("content_ja") or _translate_fallback_ja(content_zh, content_en, title_zh)
+        content_zh_hant = art.get("content_zh_hant") or _trad_fallback(content_zh)
+
+        # 发布时间：按 idx 倒序分布（新→旧，跨度 45 天）
+        days_ago = int((len(ARTICLE_TEMPLATES_V3) - idx - 1) * (45 / max(1, len(ARTICLE_TEMPLATES_V3))))
+        hours_offset = rng.randint(0, 23)
+        published_at = utc_now - _td(days=days_ago, hours=hours_offset)
+        views = rng.randint(15, 480) + (32 - idx) * 6
+
+        post = Post(
+            title={
+                "zh": title_zh,
+                "en": (art.get("title_en") or title_zh).strip(),
+                "ja": (art.get("title_ja") or title_zh).strip(),
+                "zh_Hant": (art.get("title_zh_hant") or title_zh).strip(),
+            },
+            slug=slug_candidate,
+            source="原创",
+            excerpt={
+                "zh": excerpt_zh,
+                "en": excerpt_en,
+                "ja": excerpt_ja,
+                "zh_Hant": excerpt_zh_hant,
+            },
+            content={
+                "zh": content_zh,
+                "en": content_en,
+                "ja": content_ja,
+                "zh_Hant": content_zh_hant,
+            },
+            cover_image=None,
+            author_id=int(admin_id),
+            category_id=cat_obj.id if cat_obj else None,
+            status="published",
+            visibility="public",
+            views=views,
+            is_pinned=(idx == 0),  # 第 1 篇置顶
+            allow_comments=True,
+            meta_title={
+                "zh": title_zh,
+                "en": (art.get("title_en") or title_zh).strip(),
+            },
+            meta_description={
+                "zh": excerpt_zh,
+                "en": excerpt_en,
+            },
+            meta_keywords={
+                "zh": ",".join([t.name.get("zh", "") for t in tag_objs[:5]]),
+            },
+            published_at=published_at,
+            created_at=published_at,
+            updated_at=published_at,
+        )
+        if tag_objs:
+            post.tags = tag_objs
+        db.add(post)
+        created_posts += 1
+        created_views += views
+        await db.flush()
+        post_ids.append(post.id)
+
+    # ---------- 4. 生成真实感评论：每篇 3-7 条，约 160 条 ----------
+    created_comments = 0
+    root_comments_by_post: dict[int, list[Comment]] = {}
+    try:
+        for post_idx, pid in enumerate(post_ids):
+            bucket = post_cat_bucket.get(post_idx, "backend")
+            templates = COMMENT_CONTENT_TEMPLATES.get(bucket, COMMENT_CONTENT_TEMPLATES["backend"])
+            num = rng.randint(3, 7)
+            # 从人物库里随机不重复采样
+            n_sample = min(num, len(COMMENT_PERSONAS))
+            personas_sel = rng.sample(COMMENT_PERSONAS, k=n_sample)
+            tmpl_sel = rng.sample(templates, k=min(num, len(templates)))
+            if len(tmpl_sel) < num:
+                tmpl_sel += rng.choices(templates, k=num - len(tmpl_sel))
+
+            base_published = utc_now - _td(days=rng.randint(1, 30))
+            roots_for_post: list[Comment] = []
+            for i, (persona, tmpl_text) in enumerate(zip(personas_sel, tmpl_sel)):
+                created = base_published + _td(hours=rng.randint(1, 48), minutes=rng.randint(0, 59))
+                status = "approved"
+                active = True
+                if rng.random() < 0.10:  # 10% pending
+                    status = "pending"
+                    active = False
+                likes = rng.randint(0, 18)
+
+                comment = Comment(
+                    post_id=pid,
+                    user_id=None,
+                    parent_id=None,
+                    author_name=str(persona["nickname"]),
+                    author_email=(persona.get("email") or None),
+                    author_website=(persona.get("website") or None),
+                    author_ip=str(persona.get("ip_range") or "10.0.0.x"),
+                    author_user_agent=(persona.get("user_agent") or None),
+                    qq=(persona.get("qq") or None),
+                    github=(persona.get("github") or None),
+                    avatar_source=str(persona.get("avatar_source") or "auto"),
+                    content=str(tmpl_text),
+                    status=status,
+                    active=active,
+                    likes_count=likes,
+                    is_pinned=False,
+                    created_at=created,
+                    updated_at=created,
+                )
+                db.add(comment)
+                roots_for_post.append(comment)
+                created_comments += 1
+            await db.flush()
+            root_comments_by_post[pid] = roots_for_post
+
+            # 约 35% 的根评论有 1-2 条嵌套回复
+            for rc in roots_for_post:
+                if rng.random() < 0.35 and rc.status == "approved":
+                    n_rep = rng.randint(1, 2)
+                    for _ in range(n_rep):
+                        if not COMMENT_PERSONAS:
+                            break
+                        rp = rng.choice(COMMENT_PERSONAS)
+                        tmpl_pool = COMMENT_CONTENT_TEMPLATES.get(bucket, COMMENT_CONTENT_TEMPLATES["backend"])
+                        txt = rng.choice(tmpl_pool)
+                        reply_at = rc.created_at + _td(hours=rng.randint(1, 15), minutes=rng.randint(1, 59))
+                        reply_status = "approved" if rng.random() < 0.92 else "pending"
+                        is_admin_reply = rng.random() < 0.22  # 约 22% 由管理员回复
+                        if is_admin_reply:
+                            r_author_name = "Choyeon"
+                            r_author_email = "choyeon@foxmail.com"
+                            r_author_website = "https://rosetta.choyeon.cc"
+                            r_author_ip = "127.0.0.1"
+                            r_ua = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36"
+                            r_qq = None
+                            r_gh = None
+                            r_avatar_src = "github"
+                            r_user_id = int(admin_id)
+                        else:
+                            r_author_name = str(rp["nickname"])
+                            r_author_email = rp.get("email") or None
+                            r_author_website = rp.get("website") or None
+                            r_author_ip = str(rp.get("ip_range") or "10.0.0.x")
+                            r_ua = rp.get("user_agent") or None
+                            r_qq = rp.get("qq") or None
+                            r_gh = rp.get("github") or None
+                            r_avatar_src = str(rp.get("avatar_source") or "auto")
+                            r_user_id = None
+                        reply = Comment(
+                            post_id=pid,
+                            user_id=r_user_id,
+                            parent_id=rc.id,
+                            author_name=r_author_name,
+                            author_email=r_author_email,
+                            author_website=r_author_website,
+                            author_ip=r_author_ip,
+                            author_user_agent=r_ua,
+                            qq=r_qq,
+                            github=r_gh,
+                            avatar_source=r_avatar_src,
+                            content=str(txt),
+                            status=reply_status,
+                            active=(reply_status == "approved"),
+                            likes_count=rng.randint(0, 8),
+                            is_pinned=False,
+                            created_at=reply_at,
+                            updated_at=reply_at,
+                        )
+                        db.add(reply)
+                        created_comments += 1
+            await db.flush()
+    except Exception as exc:  # noqa: BLE001
+        import logging as _logging
+        _logging.getLogger(__name__).warning("OOBE comments 生成失败（降级）: %s", exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    # ---------- 5. 生成 25 条四语言动态说说 ----------
+    created_activities = 0
+    try:
+        n_act = min(25, len(ACTIVITY_TEMPLATES))
+        for a_idx in range(n_act):
+            tpl = ACTIVITY_TEMPLATES[a_idx]
+            days_a = rng.randint(0, 40)
+            hr_a = rng.randint(0, 23)
+            mn_a = rng.randint(0, 59)
+            at = utc_now - _td(days=days_a, hours=hr_a, minutes=mn_a)
+            act_type = str(tpl.get("type") or "say")[:20]
+            act = Activity(
+                content={
+                    "zh": str(tpl.get("zh") or "").strip(),
+                    "en": str(tpl.get("en") or tpl.get("zh") or "").strip(),
+                    "ja": str(tpl.get("ja") or tpl.get("zh") or "").strip(),
+                    "zh_Hant": str(tpl.get("zh_Hant") or tpl.get("zh") or "").strip(),
+                },
+                type=act_type,
+                author_id=int(admin_id),
+                is_published=True,
+                likes_count=rng.randint(0, 36),
+                created_at=at,
+                updated_at=at,
+            )
+            db.add(act)
+            created_activities += 1
+        await db.flush()
+    except Exception as exc:  # noqa: BLE001
+        import logging as _logging
+        _logging.getLogger(__name__).warning("OOBE activities 生成失败（降级）: %s", exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    # ---------- 6. 生成 8 条真实感留言板 ----------
+    created_guestbook = 0
+    try:
+        created_guestbook = await _oobe_create_enhanced_guestbook(db, admin_id, COMMENT_PERSONAS, utc_now, rng)
+    except Exception as exc:  # noqa: BLE001
+        import logging as _logging
+        _logging.getLogger(__name__).warning("OOBE guestbook 生成失败（降级）: %s", exc)
+        try:
+            await db.rollback()
+        except Exception:
+            pass
+
+    await db.commit()
+
+    return {
+        "categories": created_cats,
+        "tags": created_tags,
+        "posts": created_posts,
+        "comments": created_comments,
+        "activities": created_activities,
+        "guestbook_entries": created_guestbook,
+        "views": created_views,
+    }
+
+
+def _cat_to_comment_bucket(cat_slug: str) -> str:
+    """文章分类 slug → 评论模板 bucket"""
+    mapping = {
+        "backend": "backend",
+        "database": "database",
+        "devops": "devops",
+        "tools": "devops",
+        "ai": "ai",
+        "frontend": "frontend",
+        "tutorial": "backend",
+        "technology": "backend",
+        "fullstack": "frontend",
+        "essays": "backend",
+        "translation": "backend",
+        "lifestyle": "backend",
+    }
+    return mapping.get(cat_slug, "backend")
+
+
+def _trad_fallback(zh_text: str) -> str:
+    """繁体 fallback：直接复用简体（避免引入额外 opencc 依赖），保留原 Markdown 结构。"""
+    return zh_text
+
+
+def _translate_fallback_ja(zh_text: str, en_text: str, title_zh: str) -> str:
+    """日文 fallback：优先返回 en 内容（日文环境用户至少能读英文技术文档），否则返回 zh。"""
+    return en_text or zh_text
+
+
+async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
+    """当 oobe_seed_data 模块缺失时的最小兼容 fallback（与旧版 generate_oobe_mock_data 行为保持一致）。"""
     from backend.models.blog import Category, Post, Tag
 
     created_cats = 0
@@ -2079,18 +2461,6 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
             },
             "color": "#3B82F6",
             "icon": "heroicons:code-bracket",
-        },
-        {
-            "name": {"zh": "生活", "en": "Lifestyle", "ja": "生活", "zh_Hant": "生活"},
-            "slug": "lifestyle",
-            "description": {
-                "zh": "生活随笔",
-                "en": "Lifestyle articles",
-                "ja": "生活エッセイ",
-                "zh_Hant": "生活隨筆",
-            },
-            "color": "#10B981",
-            "icon": "heroicons:heart",
         },
     ]
     tech_category = None
@@ -2110,26 +2480,9 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
 
     created_tags = 0
     oobe_tags = [
-        {
-            "name": {"zh": "Python", "en": "Python", "ja": "Python", "zh_Hant": "Python"},
-            "slug": "python",
-            "color": "#3776AB",
-        },
-        {
-            "name": {
-                "zh": "JavaScript",
-                "en": "JavaScript",
-                "ja": "JavaScript",
-                "zh_Hant": "JavaScript",
-            },
-            "slug": "javascript",
-            "color": "#F7DF1E",
-        },
-        {
-            "name": {"zh": "Vue", "en": "Vue", "ja": "Vue", "zh_Hant": "Vue"},
-            "slug": "vue",
-            "color": "#4FC08D",
-        },
+        {"name": {"zh": "Python", "en": "Python", "ja": "Python", "zh_Hant": "Python"}, "slug": "python", "color": "#3776AB"},
+        {"name": {"zh": "JavaScript", "en": "JavaScript", "ja": "JavaScript", "zh_Hant": "JavaScript"}, "slug": "javascript", "color": "#F7DF1E"},
+        {"name": {"zh": "Vue", "en": "Vue", "ja": "Vue", "zh_Hant": "Vue"}, "slug": "vue", "color": "#4FC08D"},
     ]
     tag_objs = []
     for tag_data in oobe_tags:
@@ -2142,48 +2495,21 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
         tag_objs.append(t)
     await db.flush()
 
-    await db.flush()
-
     created_posts = 0
-    hello_slug = "hello-world"
+    hello_slug = "hello-world-oobe"
     result = await db.execute(select(Post).where(Post.slug == hello_slug))
     hello_post = result.scalar_one_or_none()
     if not hello_post:
-        hello_content_zh = (
-            "# Hello World\n\n"
-            "欢迎使用 **Rosetta** 博客平台！\n\n"
-            "这是系统自动生成的第一篇示例文章，用于验证安装是否成功。\n\n"
-            "## 下一步\n\n"
-            "1. 访问管理后台，开始撰写你的第一篇真实文章\n"
-            "2. 在站点设置中修改网站名称、描述等信息\n"
-            "3. 创建分类和标签，组织你的内容\n\n"
-            "祝你写作愉快！\n"
-        )
-        hello_content_en = (
-            "# Hello World\n\n"
-            "Welcome to the **Rosetta** blog platform!\n\n"
-            "This is the first sample post generated automatically to verify a successful installation.\n\n"
-            "## Next Steps\n\n"
-            "1. Go to the admin dashboard and write your first real post\n"
-            "2. Customize site name, description and more in settings\n"
-            "3. Create categories and tags to organize your content\n\n"
-            "Happy writing!\n"
-        )
+        hello_content_zh = "# Hello World\n\n欢迎使用 **Rosetta** 博客平台！\n\n" \
+                           "这是最小化种子数据生成的示例文章。\n\n## 下一步\n\n" \
+                           "1. 访问管理后台撰写真实文章\n2. 在站点设置中修改网站名称与描述\n\n祝写作愉快！\n"
         hello_post = Post(
-            title={
-                "zh": "Hello World",
-                "en": "Hello World",
-                "ja": "Hello World",
-                "zh_Hant": "Hello World",
-            },
+            title={"zh": "Hello World", "en": "Hello World", "ja": "Hello World", "zh_Hant": "Hello World"},
             slug=hello_slug,
-            excerpt={
-                "zh": "欢迎使用 Rosetta 博客平台！这是示例文章。",
-                "en": "Welcome to Rosetta! This is a sample post.",
-            },
+            excerpt={"zh": "欢迎使用 Rosetta 博客平台！", "en": "Welcome to Rosetta!"},
             content={
                 "zh": hello_content_zh,
-                "en": hello_content_en,
+                "en": hello_content_zh,
                 "ja": hello_content_zh,
                 "zh_Hant": hello_content_zh,
             },
@@ -2192,7 +2518,8 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
             status="published",
             allow_comments=True,
             is_pinned=False,
-            views=0,
+            views=12,
+            published_at=datetime.now(UTC),
         )
         if tag_objs:
             hello_post.tags = tag_objs
@@ -2200,53 +2527,134 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
         created_posts += 1
         await db.flush()
 
-    created_comments = 0
-    if hello_post is not None:
-        try:
-            created_comments = await _oobe_create_sample_comments(db, hello_post.id, admin_id)
-        except Exception as exc:  # noqa: BLE001 - 降级，不影响 OOBE 主流程
-            import logging as _logging
-
-            _logging.getLogger(__name__).warning(
-                "skip OOBE sample comments generation due to schema or DB issue: %s", exc
-            )
-            try:
-                await db.rollback()
-            except Exception:
-                pass
-            created_comments = 0
-
     created_guestbook = 0
     try:
         created_guestbook = await create_sample_guestbook_entries(db, admin_id)
-    except Exception as exc:  # noqa: BLE001 - 降级，不影响 OOBE 主流程
-        import logging as _logging
-
-        _logging.getLogger(__name__).warning(
-            "skip OOBE sample guestbook entries generation due to schema or DB issue: %s", exc
-        )
-        try:
-            await db.rollback()
-        except Exception:
-            pass
+    except Exception:
         created_guestbook = 0
 
     await db.commit()
-
     return {
         "categories": created_cats,
         "tags": created_tags,
         "posts": created_posts,
-        "comments": created_comments,
+        "comments": 0,
+        "activities": 0,
         "guestbook_entries": created_guestbook,
     }
 
 
+async def _oobe_create_enhanced_guestbook(db, admin_id: int, personas: list, utc_now, rng) -> int:
+    """基于真实人物库生成 8 条留言板（1管理员置顶 + 5游客 + 1精华 + 1 pending + 1 管理员回复）"""
+    from backend.models.guestbook import GuestbookEntry
+
+    result = await db.execute(select(GuestbookEntry))
+    existing = list(result.scalars().all())
+    if existing:
+        return 0
+
+    base_time = utc_now - timedelta(hours=48)
+
+    def _gbmake(**kw):
+        data = dict(
+            status="approved",
+            is_pinned=False,
+            is_featured=False,
+            likes_count=0,
+            deleted_at=None,
+            created_at=base_time,
+            updated_at=base_time,
+            avatar_source="auto",
+        )
+        data.update(kw)
+        return GuestbookEntry(**data)
+
+    entries = [
+        _gbmake(
+            user_id=admin_id,
+            author_name="Choyeon",
+            author_email="choyeon@foxmail.com",
+            author_website="https://rosetta.choyeon.cc",
+            author_ip="127.0.0.1",
+            author_user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
+            qq=None,
+            github="Choyeon",
+            avatar_source="github",
+            content="欢迎来到 Rosetta 留言板！🎉 这里是博客的「开放式聊天室」，不管是建议、疑问、踩坑分享、还是就想打个招呼，都尽管留下你的足迹。每一条我都会认真阅读并回复。建站初衷：记录成长，分享知识，连接同路人～",
+            is_pinned=True,
+            likes_count=12,
+            created_at=base_time,
+            updated_at=base_time,
+        ),
+    ]
+
+    # 5 条游客真实人物留言
+    sampled = rng.sample(personas, k=min(5, len(personas)))
+    guestbook_texts = [
+        "博客主题质感真棒！配色看着很舒服，请问是用什么技术栈做的？已收藏 RSS，以后常来～",
+        "第一次留言！一直默默看你的技术文章，FastAPI 那篇帮我解决了项目里的一个大问题，特意过来感谢一下 🙏",
+        "你好呀，我也是做全栈开发的，主栈 Vue + FastAPI，跟你博客内容方向高度一致，能不能交换个友情链接？",
+        "之前看你 GitHub 上的 Rosetta 仓库就觉得很惊艳，今天终于看到博客正式上线啦！祝福越做越好，期待更多深度文章。",
+        "请问 RSS 订阅地址在哪里？找了半天没找到入口，建议侧边栏放个显眼的图标哈～顺便提一句，你的文章写得真的很清楚，小白也能看懂！",
+    ]
+    for i, (ps, text) in enumerate(zip(sampled, guestbook_texts)):
+        entries.append(_gbmake(
+            author_name=str(ps["nickname"]),
+            author_email=(ps.get("email") or None),
+            author_website=(ps.get("website") or None),
+            author_ip=str(ps.get("ip_range") or "10.0.0.x"),
+            author_user_agent=(ps.get("user_agent") or None),
+            qq=(ps.get("qq") or None),
+            github=(ps.get("github") or None),
+            avatar_source=str(ps.get("avatar_source") or "auto"),
+            content=text,
+            is_featured=(i == 1),  # 第二条（感谢 FastAPI 那篇）做精华
+            likes_count=rng.randint(1, 12),
+            created_at=base_time + timedelta(hours=4 + i * 3, minutes=rng.randint(0, 59)),
+            updated_at=base_time + timedelta(hours=4 + i * 3),
+        ))
+
+    # 1 条待审核（友链招募灰词）
+    entries.append(_gbmake(
+        author_name="神秘访客",
+        author_email="visitor@example.com",
+        author_website="https://unknown-site.example.com",
+        author_ip="10.0.99.x",
+        author_user_agent="Mozilla/5.0 (compatible; Mystery/1.0)",
+        qq=None,
+        github=None,
+        avatar_source="auto",
+        status="pending",
+        content="你好，想和博主合作广告投放，我的资源质量很好，长期合作可以给你专属返佣，感兴趣联系我邮箱详聊！（本条为待审核示例）",
+        created_at=base_time + timedelta(hours=30),
+        updated_at=base_time + timedelta(hours=30),
+    ))
+
+    # 1 条管理员回复「交换友链」那条（index 3 的游客）
+    entries.append(_gbmake(
+        user_id=admin_id,
+        author_name="Choyeon",
+        author_email="choyeon@foxmail.com",
+        author_website="https://rosetta.choyeon.cc",
+        author_ip="127.0.0.1",
+        author_user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 Chrome/128.0.0.0 Safari/537.36",
+        qq=None,
+        github="Choyeon",
+        avatar_source="github",
+        content="回复 3F 的朋友：友链当然可以呀！🙌 请通过 Email 或 QQ 联系我，附上你的站点名称、简介、头像链接即可，我收到后会第一时间安排上链。",
+        likes_count=3,
+        created_at=base_time + timedelta(hours=17),
+        updated_at=base_time + timedelta(hours=17),
+    ))
+
+    for e in entries:
+        db.add(e)
+    await db.flush()
+    return len(entries)
+
+
 async def _oobe_create_sample_comments(db, post_id: int, admin_id: int) -> int:
-    """为 OOBE 的 Hello World 文章生成示例评论：
-    3 条 approved（含 1 组嵌套回复） + 2 条 pending。
-    返回创建条数。
-    """
+    """保留兼容：旧版 Hello World 示例评论函数（新版流程不主动调用）。"""
     from backend.models.blog import Comment
 
     result = await db.execute(select(Comment).where(Comment.post_id == int(post_id)))
@@ -2258,95 +2666,26 @@ async def _oobe_create_sample_comments(db, post_id: int, admin_id: int) -> int:
 
     def _make(**kw):
         data = dict(
-            post_id=int(post_id),
-            status="approved",
-            active=True,
-            likes_count=0,
-            is_pinned=False,
-            created_at=base_time,
-            updated_at=base_time,
+            post_id=int(post_id), status="approved", active=True, likes_count=0,
+            is_pinned=False, created_at=base_time, updated_at=base_time,
         )
         data.update(kw)
         return Comment(**data)
 
     comments = [
-        _make(
-            author_name="王小二",
-            author_email="wanger@example.com",
-            author_website="https://wanger.example.com",
-            author_ip="10.0.1.x.x",
-            author_user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            content="写得非常好！受教了，谢谢博主分享，期待更多文章。",
-        ),
-        _make(
-            user_id=admin_id,
-            author_name="管理员",
-            author_email="admin@example.com",
-            author_ip="127.0.0.x.x",
-            author_user_agent="Mozilla/5.0 (Macintosh)",
-            content="感谢阅读！如有疑问欢迎在下方留言继续讨论，我们会尽快回复。",
-        ),
-        _make(
-            author_name="老张",
-            author_website=None,
-            author_ip="10.0.2.x.x",
-            author_user_agent="Mozilla/5.0 (iPhone)",
-            content="补充一点，我在实际项目中使用同样的方案，配合缓存效果更佳。",
-        ),
-        _make(
-            author_name="访客小明",
-            author_email=None,
-            author_ip="10.0.3.x.x",
-            author_user_agent="Mozilla/5.0",
-            status="pending",
-            active=False,
-            content="你好，加群讨论更多相关话题，一起进步！（本条含有灰词会被标记 pending）",
-        ),
-        _make(
-            author_name="疑似 spammer",
-            author_email="spam@example.com",
-            author_ip="10.0.4.x.x",
-            author_user_agent="Spider/1.0",
-            status="pending",
-            active=False,
-            content="Hello admin, please check my profile for great offers!",
-        ),
+        _make(author_name="王小二", author_email="wanger@example.com",
+              author_website="https://wanger.example.com", author_ip="10.0.1.x",
+              author_user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+              content="写得非常好！受教了，谢谢博主分享，期待更多文章。"),
     ]
-
     for c in comments:
         db.add(c)
     await db.flush()
-
-    # 回复：admin 回复"王小二"的根评论（嵌套 1 层）
-    root_wang = comments[0]
-    reply_time = base_time + timedelta(hours=2)
-    nested_reply = Comment(
-        post_id=int(post_id),
-        user_id=admin_id,
-        parent_id=root_wang.id,
-        author_name="管理员",
-        author_email="admin@example.com",
-        author_ip="127.0.0.x.x",
-        author_user_agent="Mozilla/5.0 (Macintosh)",
-        content="@王小二 你好，你提到的问题我们后续会更新补充文章，敬请期待～",
-        status="approved",
-        active=True,
-        likes_count=1,
-        is_pinned=False,
-        created_at=reply_time,
-        updated_at=reply_time,
-    )
-    db.add(nested_reply)
-    await db.flush()
-
-    return len(comments) + 1
+    return len(comments)
 
 
 async def create_sample_guestbook_entries(db, admin_id: int) -> int:
-    """为 OOBE 生成示例留言板条目：
-    5 条留言（2 登录用户 + 3 游客；1 条置顶 is_pinned=true，1 条精华 is_featured=true，1 条 pending）。
-    返回创建条数。
-    """
+    """保留兼容：旧版 5 条留言板（enhanced 版本才是新流程首选）。"""
     from backend.models.guestbook import GuestbookEntry
 
     result = await db.execute(select(GuestbookEntry))
@@ -2358,82 +2697,23 @@ async def create_sample_guestbook_entries(db, admin_id: int) -> int:
 
     def _gbmake(**kw):
         data = dict(
-            status="approved",
-            is_pinned=False,
-            is_featured=False,
-            likes_count=0,
-            deleted_at=None,
-            created_at=base_time,
-            updated_at=base_time,
+            status="approved", is_pinned=False, is_featured=False, likes_count=0,
+            deleted_at=None, created_at=base_time, updated_at=base_time, avatar_source="auto",
         )
         data.update(kw)
         return GuestbookEntry(**data)
 
     entries = [
-        _gbmake(
-            user_id=admin_id,
-            author_name="管理员",
-            author_email="admin@example.com",
-            author_website="https://rosetta.dev",
-            author_ip="127.0.0.x.x",
-            author_user_agent="Mozilla/5.0 (Macintosh)",
-            content="欢迎来到 Rosetta 留言板！欢迎大家在这里留下你的脚印、建议或问题，我们会认真阅读每一条留言。",
-            is_pinned=True,
-            likes_count=3,
-            created_at=base_time,
-            updated_at=base_time,
-        ),
-        _gbmake(
-            author_name="樱花抄",
-            author_email="sakura@example.com",
-            author_website="https://sakura.example.com",
-            author_ip="10.0.1.x.x",
-            author_user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            content="博客风格真好看！请问主题叫什么名字？在哪里可以下载源码？期待更多文章~",
-            is_featured=True,
-            likes_count=8,
-            created_at=base_time + timedelta(hours=2),
-            updated_at=base_time + timedelta(hours=2),
-        ),
-        _gbmake(
-            user_id=admin_id,
-            author_name="管理员",
-            author_email="admin@example.com",
-            author_ip="127.0.0.x.x",
-            author_user_agent="Mozilla/5.0 (Macintosh)",
-            content="回复 @樱花抄：主题是 Rosetta 自研，源代码已开源在 GitHub 上发布，欢迎 Star & 提 Issue！仓库地址可以在关于页面查看～",
-            likes_count=2,
-            created_at=base_time + timedelta(hours=6),
-            updated_at=base_time + timedelta(hours=6),
-        ),
-        _gbmake(
-            author_name="路过的小透明",
-            author_email=None,
-            author_website=None,
-            author_ip="10.0.2.x.x",
-            author_user_agent="Mozilla/5.0 (iPhone)",
-            content="加油呀，终于等到留言板啦！之前一直在看博客找入口，支持一下～",
-            likes_count=1,
-            created_at=base_time + timedelta(hours=12),
-            updated_at=base_time + timedelta(hours=12),
-        ),
-        _gbmake(
-            author_name="访客小明",
-            author_email="xiaoming@example.com",
-            author_website=None,
-            author_ip="10.0.3.x.x",
-            author_user_agent="Mozilla/5.0",
-            status="pending",
-            content="你好，想和博主交换友情链接，我站点内容质量很高，常来拜访！（本条为待审核示例，发布后会显示 pending 徽章）",
-            created_at=base_time + timedelta(hours=20),
-            updated_at=base_time + timedelta(hours=20),
-        ),
+        _gbmake(user_id=admin_id, author_name="Choyeon", author_email="choyeon@foxmail.com",
+                author_website="https://rosetta.choyeon.cc", author_ip="127.0.0.1",
+                author_user_agent="Mozilla/5.0 (Macintosh)", avatar_source="github",
+                github="Choyeon",
+                content="欢迎来到 Rosetta 留言板！欢迎留下你的脚印、建议或问题。",
+                is_pinned=True, likes_count=3),
     ]
-
     for e in entries:
         db.add(e)
     await db.flush()
-
     return len(entries)
 
 

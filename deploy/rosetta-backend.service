@@ -1,0 +1,31 @@
+# 由 deploy/linux-install.sh 自动参数化填充到 /etc/systemd/system/rosetta-backend.service
+[Unit]
+Description=Rosetta Blog Backend (FastAPI + uvicorn)
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target postgresql.service redis-server.service
+
+[Service]
+Type=simple
+User=__USER__
+Group=__USER__
+WorkingDirectory=__INSTALL_DIR__
+EnvironmentFile=__INSTALL_DIR__/.env
+
+ExecStart=__VENV_PY__ -m uvicorn backend.main:app \
+    --host 127.0.0.1 \
+    --port 8000 \
+    --workers 4 \
+    --log-level info
+
+Restart=on-failure
+RestartSec=5s
+LimitNOFILE=65536
+StandardOutput=journal
+StandardError=journal
+
+# 硬限资源
+MemoryMax=2G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target

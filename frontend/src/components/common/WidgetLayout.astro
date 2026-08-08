@@ -6,6 +6,8 @@ import { i18n } from "@/i18n/translation";
 interface Props {
 	id: string;
 	name?: string;
+	/** 如果提供，会在 widget-name 上写入 data-i18n-text-key，客户端切语言时同步刷新 */
+	nameI18nKey?: I18nKey;
 	showTitle?: boolean;
 	isCollapsed?: boolean;
 	collapsedHeight?: string;
@@ -18,6 +20,7 @@ interface Props {
 const {
 	id,
 	name,
+	nameI18nKey,
 	showTitle = true,
 	isCollapsed,
 	collapsedHeight,
@@ -37,7 +40,10 @@ const className = Astro.props.class;
 >
     {name && showTitle && (
         <div class="widget-title font-bold transition text-lg text-neutral-900 dark:text-neutral-100 mt-4 mb-2 flex items-center justify-between px-4">
-            <span class="widget-name">{name}</span>
+            <span
+                class="widget-name"
+                data-i18n-text-key={nameI18nKey}
+            >{name}</span>
             <slot name="title-icon" />
         </div>
     )}
@@ -50,10 +56,11 @@ const className = Astro.props.class;
                 href={moreUrl}
                 class="btn-plain rounded-lg w-full h-9 flex items-center justify-center"
                 title={i18n(I18nKey.more)}
+                data-i18n-title-key="more"
             >
                 <div class="text-(--primary) flex items-center justify-center gap-2 -translate-x-2">
                     <Icon is:inline name="material-symbols:more-horiz" class="text-[1.75rem]" aria-hidden="true"></Icon>
-                    <span>{i18n(I18nKey.more)}</span>
+                    <span data-i18n-text-key="more">{i18n(I18nKey.more)}</span>
                 </div>
             </a>
         ) : (
@@ -64,11 +71,15 @@ const className = Astro.props.class;
                 data-show-more={i18n(I18nKey.more)}
                 data-show-less={i18n(I18nKey.collapse)}
                 data-expanded="false"
+                data-i18n-title-key="more"
+                data-i18n-aria-key="more"
+                data-i18n-more-key="more"
+                data-i18n-less-key="collapse"
             >
                 <div class="text-(--primary) flex items-center justify-center gap-2 -translate-x-2">
                     <Icon is:inline name="material-symbols:more-horiz" class="toggle-icon-more text-[1.75rem]" aria-hidden="true"></Icon>
                     <Icon is:inline name="material-symbols:keyboard-arrow-up-rounded" class="toggle-icon-less hidden text-[1.75rem]" aria-hidden="true"></Icon>
-                    <span class="toggle-text">{i18n(I18nKey.more)}</span>
+                    <span class="toggle-text" data-i18n-text-key="more">{i18n(I18nKey.more)}</span>
                 </div>
             </button>
         )}
@@ -76,7 +87,16 @@ const className = Astro.props.class;
 </widget-layout>
 
 <style define:vars={{ collapsedHeight }}>
-    widget-layout {
+    /*
+     * 显式声明 widget-layout 的默认盒模型（自定义元素默认 display: inline，
+     * 会导致 tailwind 的 block/flex 布局样式失效）。
+     *
+     * 注意：必须以 `:not(.hidden)` 为前置条件，否则选择器特异性会覆盖
+     * Tailwind 的 `.hidden { display: none }` 工具类，导致首页 TOC / 公告等
+     * 通过 `.hidden` 隐藏的侧边栏组件仍然可见（scoped 样式等价于带
+     * `[data-astro-cid-*]` 属性选择器，特异性略高于 Tailwind utilities）。
+     */
+    widget-layout:not(.hidden) {
         display: block;
     }
     .collapsed {

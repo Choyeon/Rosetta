@@ -4,6 +4,6 @@ import AdminNavTree from "@/components/admin/nav/AdminNavTree.svelte";
 ---
 <AdminLayout title="导航管理">
 	<main slot="content">
-		<AdminNavTree client:only="svelte" />
+		<AdminNavTree client:load />
 	</main>
 </AdminLayout>

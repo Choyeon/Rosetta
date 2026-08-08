@@ -3,7 +3,7 @@ import { Icon } from "astro-icon/components";
 import WidgetLayout from "@/components/common/WidgetLayout.astro";
 import DynamicSidebar from "@/components/widget/DynamicSidebar.svelte";
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor, readEffectiveLangHintRaw } from "@/i18n/translation";
 import type { WidgetComponentConfig } from "@/types/config";
 import { loadDynamicConfig } from "@/utils/dynamic-config";
 import { url } from "@/utils/url-utils";
@@ -31,12 +31,17 @@ const memos = dynamicCfg.memos;
 // 使用后端 sidebar.showDynamics 作为显示开关，兜底 pages.dynamic
 const showDynamicWidget =
 	config.sidebar?.showDynamics ?? config.pages.dynamic ?? true;
+
+// SSR 下用 cookie 语言翻译，保证切语言后服务端渲染文案一致
+const ssrLang = readEffectiveLangHintRaw(Astro);
+const t = (k: I18nKey, vars?: Record<string, string | number>) => i18nFor(k, ssrLang, vars);
 ---
 
 {
 	showDynamicWidget && (
 		<WidgetLayout
-			name={i18n(I18nKey.latestDynamics)}
+			name={t(I18nKey.latestDynamics)}
+			nameI18nKey={I18nKey.latestDynamics}
 			showTitle={showTitle}
 			id="latest-dynamics"
 			class={className}
@@ -47,6 +52,7 @@ const showDynamicWidget =
 				class="btn-plain mt-2 flex items-center justify-center gap-1 rounded-lg p-1.5
 					text-sm text-(--primary)"
 				href={url("/dynamic/")}
+        data-i18n-text-key={I18nKey.moreDynamics}
 			>
 				<Icon
 					is:inline
@@ -54,7 +60,7 @@ const showDynamicWidget =
 					class="size-4.5"
 					aria-hidden="true"
 				/>
-				<span>{i18n(I18nKey.moreDynamics)}</span>
+				<span data-i18n-text-key={I18nKey.moreDynamics}>{t(I18nKey.moreDynamics)}</span>
 				<span data-dynamic-count class="opacity-60"></span>
 			</a>
 		</WidgetLayout>

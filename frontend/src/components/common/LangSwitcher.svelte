@@ -5,7 +5,9 @@ import {
 	type Lang,
 	SUPPORTED_LANGS,
 	setLang,
+	i18n,
 } from "../../i18n/translation";
+import Key from "../../i18n/i18nKey";
 
 let isOpen = false;
 const dispatch = createEventDispatcher();
@@ -118,8 +120,8 @@ onMount(() => {
 			e.stopPropagation();
 			toggle(e);
 		}}
-		title="切换语言 / Switch Language"
-		aria-label="切换语言 / Switch Language"
+		title={i18n(Key.switchLang)}
+		aria-label={i18n(Key.switchLang)}
 		aria-haspopup="listbox"
 		aria-expanded={isOpen}
 	>
@@ -146,7 +148,6 @@ onMount(() => {
 						{@html FLAG_SVG[lang.code as Lang]}
 					</span>
 					<span class="lang-native">{lang.nativeLabel}</span>
-					<span class="lang-eng">{lang.label}</span>
 					{#if $currentLang === lang.code}
 						<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
 							<polyline points="20 6 9 17 4 12"></polyline>
@@ -176,7 +177,7 @@ onMount(() => {
 		position: absolute;
 		top: calc(100% + 8px);
 		right: 0;
-		min-width: 200px;
+		min-width: 170px;
 		max-height: 320px;
 		overflow-y: auto;
 		background: var(--card-bg, #fff);
@@ -189,6 +190,10 @@ onMount(() => {
 		padding: 6px;
 		animation: dropdownIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
 		transform-origin: top right;
+		/* 强制纵向单列排列，避免被导航容器的 flex/nowrap 挤成一行 */
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 	}
 
 	.lang-switcher .lang-dropdown .lang-option {
@@ -196,6 +201,8 @@ onMount(() => {
 		align-items: center;
 		gap: 12px;
 		width: 100%;
+		min-width: 0;
+		box-sizing: border-box;
 		padding: 10px 12px;
 		border: none;
 		background: transparent;
@@ -206,6 +213,8 @@ onMount(() => {
 		font-size: 14px;
 		border-radius: 10px;
 		position: relative;
+		/* 避免被父级 nowrap 强制 inline */
+		flex: 0 0 auto;
 	}
 
 	.lang-switcher .lang-dropdown .lang-option:hover {
@@ -236,18 +245,11 @@ onMount(() => {
 
 	.lang-switcher .lang-dropdown .lang-native {
 		font-weight: 500;
-		flex-shrink: 0;
+		flex: 1 1 auto;
 	}
 
 	.lang-switcher .lang-dropdown .lang-option.active .lang-native {
 		font-weight: 700;
-	}
-
-	.lang-switcher .lang-dropdown .lang-eng {
-		margin-left: auto;
-		font-size: 12px;
-		color: var(--text-tertiary, #999);
-		opacity: 0.8;
 	}
 
 	.lang-switcher .lang-dropdown .lang-option svg {

@@ -19,7 +19,6 @@ Example:
     >>>     pass
 """
 
-from pathlib import Path
 from typing import Annotated, TypeVar
 
 from fastapi import Depends, Query

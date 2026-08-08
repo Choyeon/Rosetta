@@ -25,10 +25,8 @@ from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_ke
 from backend.core.concurrency import concurrent_query
 from backend.core.config import settings
 from backend.core.i18n import (
-    DEFAULT_LANGUAGE,
     get_i18n_value,
     get_language_from_request,
-    normalize_language,
 )
 from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_tags
 from backend.models.user import User

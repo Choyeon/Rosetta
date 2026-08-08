@@ -13,6 +13,7 @@ import {
 	getPostUrlBySlug,
 	removeFileExtension,
 } from "@utils/url-utils";
+import { applyAstroLangContext } from "@utils/ssrLangContext";
 import { Icon } from "astro-icon/components";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
@@ -27,6 +28,8 @@ import PostMetadata from "@/components/layout/PostMeta.astro";
 import RecommendedPost from "@/components/misc/RecommendedPost.astro";
 import SharePoster from "@/components/misc/SharePoster.svelte";
 import { loadDynamicConfig } from "@/utils/dynamic-config";
+
+applyAstroLangContext(Astro);
 
 const dynamicCfg = await loadDynamicConfig();
 const coverImageConfig = dynamicCfg.coverImage;

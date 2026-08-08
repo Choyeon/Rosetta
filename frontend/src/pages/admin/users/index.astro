@@ -16,6 +16,6 @@ import AdminLayout from "@layouts/admin.astro";
 		</div>
 	</fragment>
 	<main slot="content">
-		<AdminUserList client:only="svelte" />
+		<AdminUserList client:load />
 	</main>
 </AdminLayout>

@@ -48,15 +48,15 @@ export const OOBE_FEATURE_DEFAULTS: Record<string, boolean> = {
 	enable_bing_wallpaper: true,
 	enable_pagefind_search: true,
 	enable_encrypted_posts: false,
-	enable_music_player: false,
+	enable_music_player: true,
 	enable_pio: false,
 	enable_hero: false,
-	enable_announcement: false,
-	enable_friend_links: false,
-	enable_sidebar_widgets: false,
-	enable_gallery: false,
-	enable_bangumi: false,
-	enable_anime: false,
+	enable_announcement: true,
+	enable_friend_links: true,
+	enable_sidebar_widgets: true,
+	enable_gallery: true,
+	enable_bangumi: true,
+	enable_anime: true,
 };
 
 export const OOBE_FEATURE_META: Record<string, { icon: string; desc: string }> =

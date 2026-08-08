@@ -5,6 +5,12 @@ export const zh_CN: Translation = {
 	[Key.home]: "主页",
 	[Key.about]: "关于我",
 	[Key.archive]: "归档",
+	[Key.posts]: "文章",
+	[Key.social]: "社交",
+	[Key.mine]: "我的",
+	[Key.displaySettings]: "显示设置",
+	[Key.resetToDefault]: "恢复默认",
+	[Key.switchLang]: "切换语言",
 	[Key.search]: "搜索",
 	[Key.searchNoResults]: "找不到相关结果。",
 	[Key.searchTypeSomething]: "请输入搜索关键词。",
@@ -65,6 +71,8 @@ export const zh_CN: Translation = {
 	// 公告栏
 	[Key.announcement]: "公告",
 	[Key.announcementClose]: "关闭",
+	[Key.announcementContentPlaceholder]: "欢迎来到我的博客！",
+	[Key.announcementLearnMore]: "了解更多",
 
 	[Key.comments]: "评论",
 	[Key.commentSection]: "评论区",
@@ -98,6 +106,7 @@ export const zh_CN: Translation = {
 	[Key.systemMode]: "跟随系统",
 
 	[Key.more]: "更多",
+	[Key.expand]: "展开",
 	[Key.collapse]: "收起",
 
 	[Key.author]: "作者",
@@ -385,7 +394,11 @@ export const zh_CN: Translation = {
 	[Key.calendarDecember]: "12月",
 	[Key.calendar]: "站点日历",
 	[Key.calendarHeatmapWeek]: "{month}月第{week}周，{count}篇文章",
+	[Key.calendarPrevMonth]: "上个月",
+	[Key.calendarNextMonth]: "下个月",
+	[Key.calendarResetToToday]: "回到今天",
 	[Key.advertisement]: "广告",
+	[Key.advertisementClose]: "关闭广告",
 
 	[Key.shareArticle]: "分享",
 	[Key.generatingPoster]: "海报生成中...",
@@ -424,6 +437,17 @@ export const zh_CN: Translation = {
 	[Key.videoPrev]: "上一个视频",
 	[Key.videoNext]: "下一个视频",
 	[Key.videoLoadError]: "视频加载失败",
+
+	// Profile 资料卡片（左侧作者信息）
+	[Key.profileAvatarAlt]: "作者头像",
+	[Key.profileGoAbout]: "前往关于页面",
+	[Key.goAboutPage]: "跳转关于页",
+
+	// 文章辅助文案
+	[Key.readPost]: "阅读文章",
+	[Key.viewAllPostsInCategory]: "查看该分类下所有文章",
+	[Key.viewAllPostsWithTag]: "查看所有带此标签的文章",
+	[Key.lastActivityToday]: "今天",
 
 	// ========== 后台管理 Admin ==========
 	// 导航分组

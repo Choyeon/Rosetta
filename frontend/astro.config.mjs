@@ -15,7 +15,6 @@ import { pluginLineNumbers } from "@expressive-code/plugin-line-numbers";
 import swup from "@swup/astro";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig, fontProviders } from "astro/config";
-import expressiveCode from "astro-expressive-code";
 import icon from "astro-icon";
 import { pluginLanguageLogo } from "ec-lang-logo"; /* Language Logo */
 import { pluginCollapsible } from "expressive-code-collapsible"; /* Collapsible */
@@ -26,10 +25,12 @@ import rehypeAutolinkHeadings from "rehype-autolink-headings";
 import rehypeCallouts from "rehype-callouts";
 import rehypeCodeGroup from "rehype-code-group"; /* Tab 代码块 */
 import rehypeComponents from "rehype-components"; /* Render the custom directive content */
+import rehypeExpressiveCode from "rehype-expressive-code";
 import rehypeKatex from "rehype-katex";
 import rehypeSlug from "rehype-slug";
 import remarkAdmonitionToBlockquoteCallout from "remark-admonition-to-blockquote-callout";
 import remarkDirective from "remark-directive"; /* Handle directives */
+import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import remarkSectionize from "remark-sectionize";
 import {
@@ -63,11 +64,12 @@ if (process.env.NODE_ENV === "development") {
 	setMaxListeners(20);
 }
 
-const adapter = process.env.CF_WORKERS
-	? cloudflare({
-			prerenderEnvironment: "node",
-		})
-	: undefined;
+// Astro SSR 适配器：统一使用 Cloudflare（cloudflare pages/platform 兼容性最佳）。
+// 如需本地 Node 运行，可改用 @astrojs/node：
+//   import node from "@astrojs/node"; adapter: node({ mode: "standalone" })
+const adapter = cloudflare({
+	prerenderEnvironment: "node",
+});
 
 // https://astro.build/config
 export default defineConfig({
@@ -75,6 +77,33 @@ export default defineConfig({
 
 	base: "/",
 	trailingSlash: "always",
+
+	// Astro v7 最佳实践：显式声明 output: "server" 全量 SSR
+	output: "server",
+
+	// HTML 压缩：生产默认 true，显式声明便于审计；关闭属性引号去除避免意外
+	compressHTML: true,
+
+	// Scoped 样式策略：:where() 包裹 scoped 选择器，零额外特异性，
+	// 解决 [astro-xxx] 属性策略导致的 Tailwind 类名被 scoped 权重覆盖问题。
+	// 参考 https://docs.astro.build/en/reference/configuration-reference/#scopedstylestrategy
+	scopedStyleStrategy: "where",
+
+	// 预取：保持默认 true，可显式指定策略；
+	// 目前 Swup 内置 preload 已开启，Astro 原生 prefetch 用于 Swup 未覆盖的普通链接
+	prefetch: {
+		defaultStrategy: "hover",
+	},
+
+	// Dev 模式下显示工具栏
+	devToolbar: {
+		enabled: true,
+	},
+
+	// 安全：SSR 模式下 POST/表单提交校验 Origin
+	security: {
+		checkOrigin: true,
+	},
 
 	// 字体配置 - 只加载实际使用的字体，跳过未引用的以加快构建
 	fonts: (() => {
@@ -166,80 +195,6 @@ export default defineConfig({
 				"heroicons-solid": ["*"],
 			},
 		}),
-		expressiveCode({
-			themes: [expressiveCodeConfig.darkTheme, expressiveCodeConfig.lightTheme],
-			useDarkModeMediaQuery: false,
-			themeCssSelector: (theme) => `[data-theme='${theme.name}']`,
-			plugins: [
-				// pluginLanguageBadge 配置 - 从expressiveCodeConfig读取设置
-				...(expressiveCodeConfig.pluginLanguageBadge?.enable === true
-					? [pluginLanguageBadge()]
-					: []),
-				// pluginLanguageLogo 配置 - 从expressiveCodeConfig读取设置
-				...(expressiveCodeConfig.pluginLanguageLogo?.enable === true
-					? [
-							pluginLanguageLogo({
-								color: expressiveCodeConfig.pluginLanguageLogo.color ?? "mono",
-								excludedLangs:
-									expressiveCodeConfig.pluginLanguageLogo.excludedLangs ?? [],
-							}),
-						]
-					: []),
-				pluginCollapsibleSections(),
-				pluginLineNumbers(),
-				// pluginCollapsible 配置 - 从expressiveCodeConfig读取设置，使用i18n文本
-				...(expressiveCodeConfig.pluginCollapsible?.enable === true
-					? [
-							pluginCollapsible({
-								lineThreshold:
-									expressiveCodeConfig.pluginCollapsible.lineThreshold || 15,
-								previewLines:
-									expressiveCodeConfig.pluginCollapsible.previewLines || 8,
-								defaultCollapsed:
-									expressiveCodeConfig.pluginCollapsible.defaultCollapsed ??
-									true,
-								expandButtonText: i18n(I18nKey.codeCollapsibleShowMore),
-								collapseButtonText: i18n(I18nKey.codeCollapsibleShowLess),
-								expandedAnnouncement: i18n(I18nKey.codeCollapsibleExpanded),
-								collapsedAnnouncement: i18n(I18nKey.codeCollapsibleCollapsed),
-							}),
-						]
-					: []),
-			],
-			defaultProps: {
-				wrap: false,
-				overridesByLang: {
-					shellsession: {
-						showLineNumbers: false,
-					},
-				},
-			},
-			styleOverrides: {
-				borderRadius: "0.75rem",
-				codeFontSize: "0.875rem",
-				codeFontFamily:
-					"var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-				codeLineHeight: "1.5rem",
-				frames: {},
-				textMarkers: {
-					delHue: 0,
-					insHue: 180,
-					markHue: 250,
-				},
-				languageBadge: {
-					fontSize: "0.75rem",
-					fontWeight: "bold",
-					borderRadius: "0.25rem",
-					opacity: "1",
-					borderWidth: "0px",
-					borderColor: "transparent",
-				},
-			},
-			frames: {
-				// 保留原生复制按钮，外观由 src/styles/expressive-code.css 覆盖成主题风格
-				showCopyToClipboardButton: true,
-			},
-		}),
 		svelte(),
 		sitemap({
 			filter: (page) => {
@@ -276,8 +231,8 @@ export default defineConfig({
 	markdown: {
 		processor: unified({
 			remarkPlugins: [
-				...(siteConfig.post.rehypeCallouts.enablePythonMarkdownAdmonitions !==
-				false
+				remarkGfm,
+				...(siteConfig.post.rehypeCallouts.enablePythonMarkdownAdmonitions !== false
 					? [remarkAdmonitionToBlockquoteCallout]
 					: []),
 				remarkMath,
@@ -334,6 +289,86 @@ export default defineConfig({
 									value: "#",
 								},
 							],
+						},
+					},
+				],
+				// Expressive Code（成熟的代码高亮 + 复制按钮 + 行号 + 折叠 + 语言徽标 + 双主题）
+				// 必须放在 rehype 管道末尾，在其它插件完成对 pre/code 的处理后再渲染
+				[
+					rehypeExpressiveCode,
+					{
+						themes: [expressiveCodeConfig.darkTheme, expressiveCodeConfig.lightTheme],
+						useDarkModeMediaQuery: false,
+						// 与站点 <html data-theme="one-light/one-dark-pro"> 同步切换
+						themeCssSelector: (theme) => `[data-theme='${theme.name}']`,
+						plugins: [
+							// pluginLanguageBadge 配置 - 从expressiveCodeConfig读取设置
+							...(expressiveCodeConfig.pluginLanguageBadge?.enable === true
+								? [pluginLanguageBadge()]
+								: []),
+							// pluginLanguageLogo 配置 - 从expressiveCodeConfig读取设置
+							...(expressiveCodeConfig.pluginLanguageLogo?.enable === true
+								? [
+										pluginLanguageLogo({
+											color: expressiveCodeConfig.pluginLanguageLogo.color ?? "mono",
+											excludedLangs:
+												expressiveCodeConfig.pluginLanguageLogo.excludedLangs ?? [],
+										}),
+									]
+								: []),
+							pluginCollapsibleSections(),
+							pluginLineNumbers(),
+							// pluginCollapsible 配置 - 从expressiveCodeConfig读取设置，使用i18n文本
+							...(expressiveCodeConfig.pluginCollapsible?.enable === true
+								? [
+										pluginCollapsible({
+											lineThreshold:
+												expressiveCodeConfig.pluginCollapsible.lineThreshold || 15,
+											previewLines:
+												expressiveCodeConfig.pluginCollapsible.previewLines || 8,
+											defaultCollapsed:
+												expressiveCodeConfig.pluginCollapsible.defaultCollapsed ??
+												true,
+											expandButtonText: i18n(I18nKey.codeCollapsibleShowMore),
+											collapseButtonText: i18n(I18nKey.codeCollapsibleShowLess),
+											expandedAnnouncement: i18n(I18nKey.codeCollapsibleExpanded),
+											collapsedAnnouncement: i18n(I18nKey.codeCollapsibleCollapsed),
+										}),
+									]
+								: []),
+						],
+						defaultProps: {
+							wrap: false,
+							overridesByLang: {
+								shellsession: {
+									showLineNumbers: false,
+								},
+							},
+						},
+						styleOverrides: {
+							borderRadius: "0.75rem",
+							codeFontSize: "0.875rem",
+							codeFontFamily:
+								"var(--font-jetbrains-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+							codeLineHeight: "1.5rem",
+							frames: {},
+							textMarkers: {
+								delHue: 0,
+								insHue: 180,
+								markHue: 250,
+							},
+							languageBadge: {
+								fontSize: "0.75rem",
+								fontWeight: "bold",
+								borderRadius: "0.25rem",
+								opacity: "1",
+								borderWidth: "0px",
+								borderColor: "transparent",
+							},
+						},
+						frames: {
+							// 保留原生复制按钮，外观由 src/styles/expressive-code.css 覆盖成主题风格
+							showCopyToClipboardButton: true,
 						},
 					},
 				],
@@ -453,6 +488,30 @@ export default defineConfig({
 					target: process.env.API_BASE_URL || "http://127.0.0.1:8000",
 					changeOrigin: true,
 					secure: false,
+					/**
+					 * Bypass 规则：部分 /api/... 是 Astro pages 路由（本地 pages/api/*.ts），
+					 * 不能被代理给后端，否则触发 ERR_ABORTED / 404 / 503（OOBE 未完成时）。
+					 *  - pages/api/allPostMeta.json.ts → /api/allPostMeta.json
+					 *  - pages/api/dynamic.json.ts   → /api/dynamic.json
+					 *  - pages/og/[...slug].ts       → /api/og/* 是 pages 路由（非后端 API）
+					 * bypass(req): return 非 null/undefined 字符串 → 走 Vite 本地（不代理），
+					 *              return undefined/null → 正常走代理到后端
+					 */
+					bypass(req) {
+						const path = (req && req.url) || "/";
+						const file = path.split("?")[0];
+						if (!file || file.startsWith("/api")) {
+							// 白名单：这几个 /api/xxx 是 Astro 本地 pages API，不代理
+							if (
+								file === "/api/allPostMeta.json" ||
+								file === "/api/dynamic.json" ||
+								file.startsWith("/api/og/")
+							) {
+								return file; // 返回本地路径 → Vite 处理
+							}
+						}
+						return undefined; // 其它 /api/* 正常代理到后端
+					},
 				},
 				"/media": {
 					target: process.env.API_BASE_URL || "http://127.0.0.1:8000",
@@ -494,6 +553,15 @@ export default defineConfig({
 					}
 					warn(warning);
 				},
+			},
+			// Rolldown 兼容（Vite 8 + Astro 7 底层 Rolldown 不按 Node 条件 exports 解析 wasm）
+			// satteri/browser.js 运行时会根据环境动态加载 wasm，这里 external 避免构建时报
+			// "Rolldown failed to resolve import @bruits/satteri-wasm32-wasi"。
+			rolldownOptions: {
+				external: [
+					"@bruits/satteri-wasm32-wasi",
+					"@bruits/satteri-wasm32-wasi/satteri_wasm.wasm",
+				],
 			},
 			// CSS 优化
 			cssCodeSplit: true,

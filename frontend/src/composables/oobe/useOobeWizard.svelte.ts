@@ -142,18 +142,18 @@ class OobeWizardState {
 		},
 		site: {
 			siteName: "Rosetta",
-			siteUrl: "http://localhost:4321",
-			siteDescription: "一个现代化的开源博客系统",
-			siteKeywords: "",
-			siteAuthor: "Admin",
-			siteEmail: "",
+			siteUrl: "https://rosetta.choyeon.cc",
+			siteDescription: "一个功能齐全、主题优雅、开箱即用的现代博客引擎",
+			siteKeywords: "Rosetta,博客,技术,全栈",
+			siteAuthor: "Choyeon",
+			siteEmail: "choyeon@foxmail.com",
 		},
 		admin: {
-			adminUsername: "",
-			adminEmail: "",
-			adminNickname: "",
-			adminPassword: "",
-			confirmAdminPassword: "",
+			adminUsername: "Choyeon",
+			adminEmail: "choyeon@foxmail.com",
+			adminNickname: "Choyeon",
+			adminPassword: "Choyeon@2025",
+			confirmAdminPassword: "Choyeon@2025",
 		},
 		features: { ...OOBE_FEATURE_DEFAULTS },
 	});
@@ -919,6 +919,12 @@ class OobeWizardState {
 			admin_email: this.draft.admin?.adminEmail ?? "",
 			admin_nickname: this.draft.admin?.adminNickname ?? "",
 			admin_password: this.draft.admin?.adminPassword ?? "",
+			// 管理员扩展资料（与后端 CombinedInstallRequest 对应）
+			admin_bio: "Full-Stack Development",
+			admin_qq: "952223950",
+			admin_github: "Choyeon",
+			admin_website: "https://rosetta.choyeon.cc",
+			admin_avatar_source: "auto",
 			...f,
 		};
 	}
@@ -1114,6 +1120,33 @@ class OobeWizardState {
 	currentLangShort(): string {
 		const item = OOBE_LANGS.find((L) => L.code === this.currentLang);
 		return item ? item.short : "简中";
+	}
+
+	// ===== Quick Install (一键 OOBE) =====
+	/**
+	 * 一键 OOBE：跳过分步向导，直接使用 draft 中预填的配置启动安装。
+	 * 会先探活后端、校验必填项，然后跳转到完成步骤并执行安装。
+	 */
+	async quickInstall(): Promise<boolean> {
+		if (this.installStartLock || this.installing || this.installResult) return false;
+
+		const reachable = await this.checkBackendConnectivity(true);
+		if (!reachable) {
+			this.showToast("error", this.backendLastError || "无法连接后端服务器");
+			return false;
+		}
+		if (!this.validateSiteAdmin()) {
+			this.showToast("error", "管理员信息不完整，请检查用户名/邮箱/密码");
+			return false;
+		}
+		// 跳到第 6 步（完成），然后启动安装
+		this.animDir = "next";
+		this.stepVisible = false;
+		this.saveDraft();
+		await new Promise((r) => setTimeout(r, 220));
+		this.currentStep = 6;
+		this.stepVisible = true;
+		return this.startInstall();
 	}
 
 	// ===== Init =====

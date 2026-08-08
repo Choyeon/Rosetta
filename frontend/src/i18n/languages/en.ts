@@ -5,6 +5,12 @@ export const en: Translation = {
 	[Key.home]: "Home",
 	[Key.about]: "About",
 	[Key.archive]: "Archive",
+	[Key.posts]: "Posts",
+	[Key.social]: "Social",
+	[Key.mine]: "Mine",
+	[Key.displaySettings]: "Display Settings",
+	[Key.resetToDefault]: "Reset to Default",
+	[Key.switchLang]: "Switch Language",
 	[Key.search]: "Search",
 	[Key.searchNoResults]: "No results found.",
 	[Key.searchTypeSomething]: "Type something to search...",
@@ -65,6 +71,8 @@ export const en: Translation = {
 	// Announcement
 	[Key.announcement]: "Announcement",
 	[Key.announcementClose]: "Close",
+	[Key.announcementContentPlaceholder]: "Welcome to my blog!",
+	[Key.announcementLearnMore]: "Learn more",
 
 	[Key.comments]: "Comments",
 	[Key.commentSection]: "Comments",
@@ -100,6 +108,7 @@ export const en: Translation = {
 	[Key.systemMode]: "System",
 
 	[Key.more]: "More",
+	[Key.expand]: "Expand",
 	[Key.collapse]: "Collapse",
 
 	[Key.author]: "Author",
@@ -396,7 +405,11 @@ export const en: Translation = {
 	[Key.calendarDecember]: "Dec",
 	[Key.calendar]: "Site Calendar",
 	[Key.calendarHeatmapWeek]: "Week {week} of {month}, {count} posts",
+	[Key.calendarPrevMonth]: "Previous Month",
+	[Key.calendarNextMonth]: "Next Month",
+	[Key.calendarResetToToday]: "Back to Today",
 	[Key.advertisement]: "Advertisement",
+	[Key.advertisementClose]: "Close Advertisement",
 
 	[Key.shareArticle]: "Share",
 	[Key.generatingPoster]: "Generating Poster...",
@@ -437,6 +450,17 @@ export const en: Translation = {
 	[Key.videoPrev]: "Previous video",
 	[Key.videoNext]: "Next video",
 	[Key.videoLoadError]: "Video failed to load",
+
+	// Profile (sidebar author card)
+	[Key.profileAvatarAlt]: "Profile Image of the Author",
+	[Key.profileGoAbout]: "Go to About Page",
+	[Key.goAboutPage]: "View author bio & site info",
+
+	// Post helpers
+	[Key.readPost]: "Read article",
+	[Key.viewAllPostsInCategory]: "View all posts in the {category} category",
+	[Key.viewAllPostsWithTag]: "View all posts with the {tag} tag",
+	[Key.lastActivityToday]: "Today",
 
 	// ========== Admin Panel ==========
 	// Navigation Groups

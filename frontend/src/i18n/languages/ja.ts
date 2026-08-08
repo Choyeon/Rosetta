@@ -5,6 +5,12 @@ export const ja: Translation = {
 	[Key.home]: "ホーム",
 	[Key.about]: "について",
 	[Key.archive]: "アーカイブ",
+	[Key.posts]: "投稿",
+	[Key.social]: "ソーシャル",
+	[Key.mine]: "マイページ",
+	[Key.displaySettings]: "表示設定",
+	[Key.resetToDefault]: "デフォルトに戻す",
+	[Key.switchLang]: "言語を切り替え",
 	[Key.search]: "検索",
 	[Key.searchNoResults]: "結果が見つかりません。",
 	[Key.searchTypeSomething]: "検索キーワードを入力してください。",
@@ -65,6 +71,8 @@ export const ja: Translation = {
 	// お知らせ
 	[Key.announcement]: "お知らせ",
 	[Key.announcementClose]: "閉じる",
+	[Key.announcementContentPlaceholder]: "ブログへようこそ！",
+	[Key.announcementLearnMore]: "詳しく見る",
 
 	[Key.comments]: "コメント",
 	[Key.commentSection]: "コメント欄",
@@ -100,6 +108,7 @@ export const ja: Translation = {
 	[Key.systemMode]: "システム",
 
 	[Key.more]: "もっと",
+	[Key.expand]: "展開する",
 	[Key.collapse]: "折りたたむ",
 
 	[Key.author]: "著者",
@@ -395,7 +404,11 @@ export const ja: Translation = {
 	[Key.calendarDecember]: "12月",
 	[Key.calendar]: "サイトカレンダー",
 	[Key.calendarHeatmapWeek]: "{month}月第{week}週、{count}記事",
+	[Key.calendarPrevMonth]: "前月",
+	[Key.calendarNextMonth]: "翌月",
+	[Key.calendarResetToToday]: "今日に戻る",
 	[Key.advertisement]: "広告",
+	[Key.advertisementClose]: "広告を閉じる",
 
 	[Key.shareArticle]: "共有",
 	[Key.generatingPoster]: "ポスター生成中...",
@@ -436,6 +449,17 @@ export const ja: Translation = {
 	[Key.videoPrev]: "前の動画",
 	[Key.videoNext]: "次の動画",
 	[Key.videoLoadError]: "動画の読み込みに失敗しました",
+
+	// Profile（サイドバー作者カード）
+	[Key.profileAvatarAlt]: "作者のプロフィール画像",
+	[Key.profileGoAbout]: "Aboutページへ",
+	[Key.goAboutPage]: "作者紹介・サイト情報を見る",
+
+	// 記事補助文言
+	[Key.readPost]: "記事を読む",
+	[Key.viewAllPostsInCategory]: "{category} カテゴリの記事一覧",
+	[Key.viewAllPostsWithTag]: "タグ {tag} の記事一覧",
+	[Key.lastActivityToday]: "今日",
 
 	// ========== 管理画面 Admin ==========
 	// ナビゲーショングループ

@@ -76,18 +76,83 @@ export function getBackendLang(frontendLang: string): string {
 	return LANG_MAP_FRONTEND_TO_BACKEND[key] || "zh";
 }
 
+/**
+ * SSR 请求上下文（可选）：在 Astro 页面 SSR 渲染阶段，由页面显式注入
+ * `Astro.cookies.get("rosetta_lang")` 与 `Astro.request.headers.get("Accept-Language")`，
+ * 让 SSR 直连后端时的 ?lang= 参数与浏览器请求（带 cookie / header）拿到一致的内容。
+ *
+ * 生命周期：单次 SSR 渲染过程中写入、构建完成后由 Astro GC，不会跨用户污染。
+ */
+type SSRRequestContext = {
+	cookieRosettaLang?: string | null;
+	acceptLanguage?: string | null;
+};
+let ssrCtx: SSRRequestContext | null = null;
+export function setSSRRequestContext(ctx: SSRRequestContext | null): void {
+	ssrCtx = ctx ?? null;
+}
+
+function readCookieLangRaw(): string | null {
+	// 1) SSR：优先取注入的 cookie rosetta_lang（由 Astro.cookies 传入，最准确）
+	if (ssrCtx?.cookieRosettaLang) return ssrCtx.cookieRosettaLang;
+	// 2) 浏览器：从 document.cookie 读取
+	if (typeof document !== "undefined") {
+		try {
+			const m = /(?:^|;\s*)rosetta_lang=([^;]+)/.exec(document.cookie || "");
+			if (m && m[1]) return decodeURIComponent(m[1]);
+		} catch (_e) { /* ignore */ }
+	}
+	return null;
+}
+
+function readHtmlDataLang(): string | null {
+	if (typeof document !== "undefined") {
+		const attr = document.documentElement.getAttribute("data-lang");
+		if (attr) return attr;
+	}
+	return null;
+}
+
+function readAcceptLang(): string | null {
+	if (ssrCtx?.acceptLanguage) return ssrCtx.acceptLanguage;
+	return null;
+}
+
 export function getCurrentLang(): string {
-	// 优先从 localStorage 读取（支持前端实时语言切换）
+	// 1. Cookie（用户持久化偏好）
+	const cookie = readCookieLangRaw();
+	if (cookie) {
+		const mapped = getBackendLang(cookie);
+		if (mapped) return mapped;
+	}
+	// 2. localStorage（LangSwitcher 会同步写，兼容老数据）
 	try {
 		if (typeof localStorage !== "undefined") {
 			const saved = localStorage.getItem("lang");
 			if (saved) {
-				return getBackendLang(saved);
+				const mapped = getBackendLang(saved);
+				if (mapped) return mapped;
 			}
 		}
 	} catch {
 		/* ignore */
 	}
+	// 3. html[data-lang]（SSR 注入的当前语言）
+	const html = readHtmlDataLang();
+	if (html) {
+		const mapped = getBackendLang(html);
+		if (mapped) return mapped;
+	}
+	// 4. Accept-Language（SSR 注入的请求头，或后端自己也会读，这里兜底）
+	const accept = readAcceptLang();
+	if (accept) {
+		const first = accept.split(",")[0]?.trim()?.split(";")[0];
+		if (first) {
+			const mapped = getBackendLang(first);
+			if (mapped) return mapped;
+		}
+	}
+	// 5. siteConfig.lang（site-level 默认）
 	try {
 		if (siteConfig && typeof siteConfig.lang === "string") {
 			return getBackendLang(siteConfig.lang);

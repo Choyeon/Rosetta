@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+from backend.api._user_response_helper import build_user_response
 from backend.core.auth import (
     DB,
     CurrentUser,
@@ -48,7 +49,6 @@ from backend.schemas import (
     UserResponse,
     UserUpdate,
 )
-from backend.api._user_response_helper import build_user_response
 from backend.services.user_service import get_user_service
 from backend.utils.compat import UTC
 

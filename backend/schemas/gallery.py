@@ -5,10 +5,8 @@
 """
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
-
 
 # ================= Album =================
 
@@ -17,8 +15,8 @@ class AlbumBase(BaseModel):
     """相册基础字段"""
 
     title: str = Field(..., min_length=1, max_length=200, description="相册标题")
-    description: Optional[str] = Field(None, max_length=2000, description="相册描述")
-    cover: Optional[str] = Field(None, max_length=500, description="封面 URL")
+    description: str | None = Field(None, max_length=2000, description="相册描述")
+    cover: str | None = Field(None, max_length=500, description="封面 URL")
     sort_order: int = Field(0, ge=0, description="排序权重（越小越靠前）")
     is_published: bool = Field(True, description="是否公开")
 
@@ -32,11 +30,11 @@ class AlbumCreate(AlbumBase):
 class AlbumUpdate(BaseModel):
     """更新相册请求（所有字段可选）"""
 
-    title: Optional[str] = Field(None, min_length=1, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
-    cover: Optional[str] = Field(None, max_length=500)
-    sort_order: Optional[int] = Field(None, ge=0)
-    is_published: Optional[bool] = None
+    title: str | None = Field(None, min_length=1, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    cover: str | None = Field(None, max_length=500)
+    sort_order: int | None = Field(None, ge=0)
+    is_published: bool | None = None
 
 
 class AlbumResponse(AlbumBase):
@@ -62,8 +60,8 @@ class AlbumDetailResponse(AlbumResponse):
 class PhotoBase(BaseModel):
     """照片基础字段"""
 
-    title: Optional[str] = Field(None, max_length=200, description="照片标题")
-    description: Optional[str] = Field(None, max_length=2000, description="照片描述")
+    title: str | None = Field(None, max_length=200, description="照片标题")
+    description: str | None = Field(None, max_length=2000, description="照片描述")
     url: str = Field(..., min_length=1, max_length=500, description="照片 URL")
     sort_order: int = Field(0, ge=0, description="排序权重")
 
@@ -77,11 +75,11 @@ class PhotoCreate(PhotoBase):
 class PhotoUpdate(BaseModel):
     """更新照片请求（所有字段可选）"""
 
-    title: Optional[str] = Field(None, max_length=200)
-    description: Optional[str] = Field(None, max_length=2000)
-    url: Optional[str] = Field(None, min_length=1, max_length=500)
-    sort_order: Optional[int] = Field(None, ge=0)
-    album_id: Optional[int] = Field(None, ge=1)
+    title: str | None = Field(None, max_length=200)
+    description: str | None = Field(None, max_length=2000)
+    url: str | None = Field(None, min_length=1, max_length=500)
+    sort_order: int | None = Field(None, ge=0)
+    album_id: int | None = Field(None, ge=1)
 
 
 class PhotoResponse(PhotoBase):

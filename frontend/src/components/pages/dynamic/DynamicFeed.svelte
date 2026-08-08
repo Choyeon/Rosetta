@@ -65,6 +65,19 @@ let searchInput: HTMLInputElement | null = null;
 let yearSelect: HTMLSelectElement | null = null;
 let restoreAnchorAfterRender = false;
 
+// 与 DynamicSidebar 同一套保护机制：
+//   rosetta-lang-change.willReload → 立即 cancel 所有请求 + 排期 + 拒绝后续 I/O
+//   beforeunload/pagehide → 同样 abort
+// 避免浏览器控制台出现 "ERR_ABORTED" 网络错误日志。
+let feedLoadController: AbortController | null = null;
+let feedUnloadingSoon = false;
+
+function isFeedGlobalUnloadingSoon(): boolean {
+	if (typeof window === "undefined") return false;
+	const w = window as Window & { __rosettaUnloadingSoon?: boolean };
+	return !!w.__rosettaUnloadingSoon;
+}
+
 function resolveContent(content: any, backendLang: string): string {
 	if (typeof content === "string") return content || "";
 	if (typeof content === "object" && content !== null) {
@@ -301,9 +314,28 @@ onMount(() => {
 	searchInput?.addEventListener("input", filter);
 	yearSelect?.addEventListener("change", filter);
 
+	const cleanupAbort = () => {
+		feedUnloadingSoon = true;
+		if (feedLoadController) {
+			try { feedLoadController.abort(); } catch (_e) { /* ignore */ }
+			feedLoadController = null;
+		}
+	};
+
+	const onLangChange = (e: Event) => {
+		const willReload = Boolean((e as CustomEvent)?.detail?.willReload);
+		if (!willReload) return;
+		cleanupAbort();
+	};
+	window.addEventListener("rosetta-lang-change", onLangChange);
+	window.addEventListener("beforeunload", cleanupAbort);
+	window.addEventListener("pagehide", cleanupAbort);
+
 	const load = async () => {
+		if (feedUnloadingSoon || isFeedGlobalUnloadingSoon()) return;
 		try {
 			if (memos?.enable) {
+				if (feedUnloadingSoon || isFeedGlobalUnloadingSoon()) return;
 				entries = await fetchMemos(memos.apiUrl, { parent: memos.parent });
 			} else {
 				const backendLang = getBackendLang(
@@ -327,39 +359,50 @@ onMount(() => {
 					const sep = source.includes("?") ? "&" : "?";
 					requestUrl = `${source}${sep}page=1&page_size=${MAX_PAGE_SIZE}&lang=${encodeURIComponent(backendLang)}`;
 				}
-				const response = await fetch(requestUrl, {
-					credentials: "same-origin",
-				});
-				if (!response.ok) throw new Error(`HTTP ${response.status}`);
-				const result = await response.json();
-				// 正确处理分页对象：{ items: [...], total, page }
-				const rawItems = Array.isArray(result?.items)
-					? result.items
-					: Array.isArray(result)
-						? result
-						: [];
-				entries = rawItems.map((d: any) => ({
-					id: String(d.id ?? ""),
-					published: d.created_at
-						? new Date(d.created_at).getTime()
-						: d.published || Date.now(),
-					html: resolveContent(d.content ?? d.html, backendLang),
-					images: Array.isArray(d.images)
-						? d.images.map((img: any) =>
-								typeof img === "string"
-									? { alt: "", src: img }
-									: {
-											alt: img.alt || "",
-											src: img.src || "",
-											title: img.title,
-										},
-							)
-						: [],
-					searchText: "",
-					pinned: !!d.is_pinned || !!d.pinned,
-					location: typeof d.location === "string" ? d.location : undefined,
-				}));
+				if (feedUnloadingSoon || isFeedGlobalUnloadingSoon()) return;
+				const ctrl = new AbortController();
+				feedLoadController = ctrl;
+				try {
+					const response = await fetch(requestUrl, {
+						credentials: "same-origin",
+						signal: ctrl.signal,
+					});
+					if (feedUnloadingSoon || isFeedGlobalUnloadingSoon()) return;
+					if (!response.ok) throw new Error(`HTTP ${response.status}`);
+					const result = await response.json();
+					if (feedUnloadingSoon || isFeedGlobalUnloadingSoon()) return;
+					// 正确处理分页对象：{ items: [...], total, page }
+					const rawItems = Array.isArray(result?.items)
+						? result.items
+						: Array.isArray(result)
+							? result
+							: [];
+					entries = rawItems.map((d: any) => ({
+						id: String(d.id ?? ""),
+						published: d.created_at
+							? new Date(d.created_at).getTime()
+							: d.published || Date.now(),
+						html: resolveContent(d.content ?? d.html, backendLang),
+						images: Array.isArray(d.images)
+							? d.images.map((img: any) =>
+									typeof img === "string"
+										? { alt: "", src: img }
+										: {
+												alt: img.alt || "",
+												src: img.src || "",
+												title: img.title,
+											},
+								)
+							: [],
+						searchText: "",
+						pinned: !!d.is_pinned || !!d.pinned,
+						location: typeof d.location === "string" ? d.location : undefined,
+					}));
+				} finally {
+					feedLoadController = null;
+				}
 			}
+			if (feedUnloadingSoon || isFeedGlobalUnloadingSoon()) return;
 			// 更新页面计数
 			const countEl = document.querySelector("[data-dynamic-page-count]");
 			if (countEl) countEl.textContent = String(entries.length);
@@ -379,17 +422,35 @@ onMount(() => {
 				}
 			}
 		} catch (error) {
-			console.error("Failed to load dynamics", error);
-			failed = true;
+			const isAbort = (error as any)?.name === "AbortError" || (error as any)?.code === 20;
+			if (isAbort || feedUnloadingSoon || isFeedGlobalUnloadingSoon()) {
+				// 即将 reload / 主动 abort：静默，不输出任何错误日志，避免 ERR_ABORTED 噪音
+				failed = false;
+			} else {
+				console.error("Failed to load dynamics", error);
+				failed = true;
+			}
 		} finally {
-			loading = false;
+			if (!feedUnloadingSoon && !isFeedGlobalUnloadingSoon()) loading = false;
 		}
 	};
+	if (isFeedGlobalUnloadingSoon()) {
+		cleanupAbort();
+		return () => {
+			window.removeEventListener("rosetta-lang-change", onLangChange);
+			window.removeEventListener("beforeunload", cleanupAbort);
+			window.removeEventListener("pagehide", cleanupAbort);
+		};
+	}
 	void load();
 
 	return () => {
+		window.removeEventListener("rosetta-lang-change", onLangChange);
+		window.removeEventListener("beforeunload", cleanupAbort);
+		window.removeEventListener("pagehide", cleanupAbort);
 		searchInput?.removeEventListener("input", filter);
 		yearSelect?.removeEventListener("change", filter);
+		cleanupAbort();
 	};
 });
 </script>

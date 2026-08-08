@@ -12,7 +12,7 @@ export const siteConfig: SiteConfig = {
 	subtitle: "Demo site",
 
 	// 站点 URL
-	site_url: "https://ROSETTA.cuteleaf.cn",
+	site_url: "https://rosetta.choyeon.cc",
 
 	// 站点描述
 	description:

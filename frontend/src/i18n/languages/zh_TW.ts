@@ -5,6 +5,12 @@ export const zh_TW: Translation = {
 	[Key.home]: "首頁",
 	[Key.about]: "關於我",
 	[Key.archive]: "歸檔",
+	[Key.posts]: "文章",
+	[Key.social]: "社交",
+	[Key.mine]: "我的",
+	[Key.displaySettings]: "顯示設定",
+	[Key.resetToDefault]: "恢復預設",
+	[Key.switchLang]: "切換語言",
 	[Key.search]: "搜尋",
 	[Key.searchNoResults]: "找不到相關結果。",
 	[Key.searchTypeSomething]: "請輸入搜尋關鍵字。",
@@ -65,6 +71,8 @@ export const zh_TW: Translation = {
 	// 公告欄
 	[Key.announcement]: "公告",
 	[Key.announcementClose]: "關閉",
+	[Key.announcementContentPlaceholder]: "歡迎來到我的部落格！",
+	[Key.announcementLearnMore]: "了解更多",
 
 	[Key.comments]: "評論",
 	[Key.commentSection]: "評論區",
@@ -98,6 +106,7 @@ export const zh_TW: Translation = {
 	[Key.systemMode]: "跟隨系統",
 
 	[Key.more]: "更多",
+	[Key.expand]: "展開",
 	[Key.collapse]: "收起",
 
 	[Key.author]: "作者",
@@ -387,7 +396,11 @@ export const zh_TW: Translation = {
 	[Key.calendarDecember]: "12月",
 	[Key.calendar]: "站點日曆",
 	[Key.calendarHeatmapWeek]: "{month}月第{week}週，{count}篇文章",
+	[Key.calendarPrevMonth]: "上個月",
+	[Key.calendarNextMonth]: "下個月",
+	[Key.calendarResetToToday]: "回到今天",
 	[Key.advertisement]: "廣告",
+	[Key.advertisementClose]: "關閉廣告",
 
 	[Key.shareArticle]: "分享",
 	[Key.generatingPoster]: "海報生成中...",
@@ -426,6 +439,17 @@ export const zh_TW: Translation = {
 	[Key.videoPrev]: "上一個影片",
 	[Key.videoNext]: "下一個影片",
 	[Key.videoLoadError]: "影片載入失敗",
+
+	// Profile 資料卡片（左側作者資訊）
+	[Key.profileAvatarAlt]: "作者頭像",
+	[Key.profileGoAbout]: "前往關於頁面",
+	[Key.goAboutPage]: "跳轉關於頁",
+
+	// 文章輔助文案
+	[Key.readPost]: "閱讀文章",
+	[Key.viewAllPostsInCategory]: "查看該分類下所有文章",
+	[Key.viewAllPostsWithTag]: "查看所有帶此標籤的文章",
+	[Key.lastActivityToday]: "今天",
 
 	// ========== 後台管理 Admin ==========
 	// 導航分組

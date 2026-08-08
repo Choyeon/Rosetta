@@ -4,7 +4,7 @@
  * 支持自定义 API 地址，方便接入第三方后端
  */
 import I18nKey from "@i18n/i18nKey";
-import { i18n } from "@i18n/translation";
+import { currentLang, i18n } from "@i18n/translation";
 import { onMount } from "svelte";
 import { formatDynamicDate } from "@/utils/date-utils";
 import { url } from "@/utils/url-utils";
@@ -37,15 +37,36 @@ let totalCount = $state(0);
 let loading = $state(true);
 let error = $state(false);
 
+// 让 Svelte 模板里 `i18n(...)` 的调用响应语言切换：
+// i18n() 本身是纯函数，不追踪 store；这里显式订阅 currentLang 触发模板重渲染。
+// 注意：变量名不能用 "$" —— Svelte 中 "$" 前缀是保留字（rune / store 解包），
+// vite-plugin-svelte 会报 "dollar_binding_invalid"。改用合法名字 langChangeTick。
+const langChangeTick = $derived($currentLang);
+
 function getBackendLang(): string {
-	const lang = (
-		typeof localStorage !== "undefined"
-			? localStorage.getItem("lang") || "zh_CN"
-			: "zh_CN"
-	).toLowerCase();
-	if (lang === "zh_tw" || lang === "zh_hant") return "zh_Hant";
-	if (lang === "en") return "en";
-	if (lang === "ja") return "ja";
+	// 与 translation.ts readEffectiveLangHintRaw 保持一致：
+	// cookie rosetta_lang → localStorage.lang → html[data-lang] → siteConfig.lang 最后兜底 zh_CN → "zh"
+	const direct: string[] = [];
+	if (typeof document !== "undefined") {
+		const m = /(?:^|;\s*)rosetta_lang=([^;]+)/.exec(document.cookie || "");
+		if (m && m[1]) {
+			try { direct.push(decodeURIComponent(m[1])); } catch (_e) { /* ignore */ }
+		}
+		const attr = document.documentElement.getAttribute("data-lang");
+		if (attr) direct.push(attr);
+	}
+	if (typeof localStorage !== "undefined") {
+		const fromLs = localStorage.getItem("lang");
+		if (fromLs) direct.push(fromLs);
+	}
+	for (const raw of direct) {
+		const lang = String(raw || "").toLowerCase();
+		if (!lang) continue;
+		if (lang === "zh_tw" || lang === "zh_hant") return "zh_Hant";
+		if (lang === "en") return "en";
+		if (lang === "ja") return "ja";
+		if (lang.startsWith("zh")) return "zh";
+	}
 	return "zh";
 }
 
@@ -67,55 +88,154 @@ function resolveContent(content: any, backendLang: string): string {
 	return "";
 }
 
+// 动态请求控制器：切语言 / 页面卸载 时 abort 未完成请求，避免浏览器刷 ERR_ABORTED 日志
+let loadController: AbortController | null = null;
+let reloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+function isGlobalUnloadingSoon(): boolean {
+	if (typeof window === "undefined") return false;
+	const w = window as Window & { __rosettaUnloadingSoon?: boolean };
+	return !!w.__rosettaUnloadingSoon;
+}
+
+// 收到 rosetta-lang-change 且 detail.willReload=true 时置位，
+// 代表整页 reload 即将发生（LangSwitcher.svelte 约 30ms 后调用 location.replace），
+// 后续任何逻辑都不能再发新请求 / 排期 debounce，
+// 同时必须立即 abort 进行中的请求，避免浏览器记录 ERR_ABORTED 日志。
+// 注意：必须声明在 loadDynamics() 之前，以便函数内早期 return 生效。
+let unloadingSoon = false;
+
 async function loadDynamics() {
+	if (unloadingSoon || isGlobalUnloadingSoon()) return;
+	// 若之前的请求还没完成，先 cancel，避免旧结果覆盖新结果
+	if (loadController) {
+		try { loadController.abort(); } catch (_e) { /* ignore */ }
+		loadController = null;
+	}
+	if (unloadingSoon || isGlobalUnloadingSoon()) return;
 	loading = true;
 	error = false;
 	try {
 		let data: DynamicEntry[];
 		if (memos?.enable) {
+			if (unloadingSoon || isGlobalUnloadingSoon()) return;
 			const { fetchMemos } = await import("@/utils/memos-adapter");
 			data = await fetchMemos(memos.apiUrl, { parent: memos.parent });
 		} else {
 			const backendLang = getBackendLang();
-			const res = await fetch(
-				`/api/activities?page=1&page_size=50&lang=${encodeURIComponent(backendLang)}`,
-				{ credentials: "same-origin" },
-			);
-			if (!res.ok) {
-				data = [];
-			} else {
-				const result = await res.json();
-				const dynamics = Array.isArray(result?.items) ? result.items : [];
-				data = dynamics.map((d: any) => ({
-					id: String(d.id),
-					published: new Date(d.created_at).getTime(),
-					html: resolveContent(d.content, backendLang),
-					images: Array.isArray(d.images)
-						? d.images.map((src: string) => ({ alt: "", src }))
-						: [],
-					searchText: "",
-					pinned: !!d.is_pinned,
-				}));
+			if (unloadingSoon || isGlobalUnloadingSoon()) return;
+			const ctrl = new AbortController();
+			loadController = ctrl;
+			// 后端可能没启动（纯 SSG mock 数据模式本地开发），
+			// 这里给 6s 超时，避免挂太久；超时/被代理拒绝都按空数组兜底。
+			const timeoutId = setTimeout(() => {
+				try { ctrl.abort(); } catch (_e) { /* ignore */ }
+			}, 6000);
+			try {
+				if (unloadingSoon || isGlobalUnloadingSoon()) {
+					try { ctrl.abort(); } catch (_e) { /* ignore */ }
+					return;
+				}
+				const res = await fetch(
+					`/api/activities?page=1&page_size=50&lang=${encodeURIComponent(backendLang)}`,
+					{ credentials: "same-origin", signal: ctrl.signal },
+				);
+				if (unloadingSoon || isGlobalUnloadingSoon()) return;
+				if (!res.ok) {
+					data = [];
+				} else {
+					const result = await res.json();
+					const dynamics = Array.isArray(result?.items) ? result.items : [];
+					data = dynamics.map((d: any) => ({
+						id: String(d.id),
+						published: new Date(d.created_at).getTime(),
+						html: resolveContent(d.content, backendLang),
+						images: Array.isArray(d.images)
+							? d.images.map((src: string) => ({ alt: "", src }))
+							: [],
+						searchText: "",
+						pinned: !!d.is_pinned,
+					}));
+				}
+			} finally {
+				clearTimeout(timeoutId);
 			}
 		}
 
+		if (unloadingSoon || isGlobalUnloadingSoon()) return;
 		totalCount = data.length;
 		entries = data.slice(0, limit);
 		updateCountBadge();
-	} catch (e) {
-		console.warn("[DynamicSidebar] Failed to load dynamics:", e);
+	} catch (e: any) {
+		// AbortError / 后端未启动代理拒绝 / 网络超时 → 全部静默兜底，
+		// 不把 "没后端" 的诊断噪音抛到用户控制台。
+		const isAbort = e?.name === "AbortError" || (e as any)?.code === 20;
+		if (!isAbort && !unloadingSoon && !isGlobalUnloadingSoon()) {
+			console.debug("[DynamicSidebar] dynamics fallback to empty:", e?.message || e);
+		}
 		error = false;
+		entries = [];
+		totalCount = 0;
 	} finally {
-		loading = false;
+		loadController = null;
+		if (!unloadingSoon && !isGlobalUnloadingSoon()) loading = false;
 	}
 }
 
 onMount(() => {
+	if (isGlobalUnloadingSoon()) {
+		unloadingSoon = true;
+		loading = false;
+		return;
+	}
 	loadDynamics();
-	// 监听语言切换，重新加载动态内容
-	window.addEventListener("rosetta-lang-change", loadDynamics);
+	let rafId: number | null = null;
+	const onLangChange = (e: Event) => {
+		const willReload = Boolean((e as CustomEvent)?.detail?.willReload);
+		// 即将整页 reload：
+		//   - 清空所有已排期的定时器
+		//   - 立即中断正在进行的 fetch
+		//   - 置位 unloadingSoon，后续永远不再发起新请求
+		if (willReload) {
+			unloadingSoon = true;
+			if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+			if (rafId != null) { cancelAnimationFrame(rafId); rafId = null; }
+			if (loadController) {
+				try { loadController.abort(); } catch (_e) { /* ignore */ }
+				loadController = null;
+			}
+			return;
+		}
+		// 非 reload 场景（纯前端运行时语言切换，目前项目里不会出现）：
+		// 走 250ms debounce + pendingReload 检测，再发请求。
+		if (unloadingSoon || isGlobalUnloadingSoon()) return;
+		if (reloadTimer) clearTimeout(reloadTimer);
+		if (rafId != null) cancelAnimationFrame(rafId);
+		reloadTimer = setTimeout(() => {
+			rafId = requestAnimationFrame(() => {
+				if (unloadingSoon || isGlobalUnloadingSoon()) return;
+				const pendingReload = /[?&]_lang_reload=/.test(window.location.search);
+				if (!pendingReload) loadDynamics();
+			});
+		}, 250);
+	};
+	window.addEventListener("rosetta-lang-change", onLangChange);
+	// 页面卸载 / 隐藏 时中断未完成请求，减少 Abort 噪音
+	const cleanup = () => {
+		unloadingSoon = true;
+		if (reloadTimer) { clearTimeout(reloadTimer); reloadTimer = null; }
+		if (loadController) {
+			try { loadController.abort(); } catch (_e) { /* ignore */ }
+			loadController = null;
+		}
+	};
+	window.addEventListener("beforeunload", cleanup);
+	window.addEventListener("pagehide", cleanup);
 	return () => {
-		window.removeEventListener("rosetta-lang-change", loadDynamics);
+		window.removeEventListener("rosetta-lang-change", onLangChange);
+		window.removeEventListener("beforeunload", cleanup);
+		window.removeEventListener("pagehide", cleanup);
+		cleanup();
 	};
 });
 
@@ -159,7 +279,10 @@ function formatDate(timestamp: number): string {
 			</svg>
 		</div>
 	{:else if error || entries.length === 0}
-		<p class="m-0 p-3 text-center text-sm text-neutral-500">
+		<p
+			class="m-0 p-3 text-center text-sm text-neutral-500"
+			data-i18n-text-key={I18nKey.dynamicEmpty}
+		>
 			{i18n(I18nKey.dynamicEmpty)}
 		</p>
 	{:else}
@@ -185,9 +308,13 @@ function formatDate(timestamp: number): string {
 							{formatDate(entry.published)}
 						</time>
 						{#if entry.pinned}
-							<span class="ml-auto inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-(--primary)/10 text-(--primary) font-medium">
+							<span
+								class="ml-auto inline-flex items-center gap-0.5 text-[10px] px-1 py-0.5 rounded bg-(--primary)/10 text-(--primary) font-medium"
+								title={i18n(I18nKey.pinned)}
+								data-i18n-title-key={I18nKey.pinned}
+							>
 								<svg class="size-3" fill="currentColor" viewBox="0 0 24 24"><path d="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z"/></svg>
-								{i18n(I18nKey.pinned)}
+								<span data-i18n-text-key={I18nKey.pinned}>{i18n(I18nKey.pinned)}</span>
 							</span>
 						{/if}
 					</div>

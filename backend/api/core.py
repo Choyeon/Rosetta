@@ -749,7 +749,7 @@ async def get_site_config(db: DB):
             site_name="Rosetta",
             site_description="Rosetta开源博客系统",
             site_keywords="Rosetta, Blog",
-            site_author="Rosetta Team",
+            site_author="Choyeon",
             site_email="",
             footer_text="Powered by Rosetta",
             enable_comments=True,
@@ -780,9 +780,9 @@ async def get_site_config(db: DB):
             about_content="",
             # 友链申请区域自定义 HTML 内容
             friends_apply_html="",
-            # 作者/侧边栏资料设置
-            author_name="ROSETTA",
-            author_bio="Hello, I'm ROSETTA.",
+            # 作者/侧边栏资料设置（与一键 OOBE 默认管理员昵称/bio 对齐，避免显示 ROSETTA 示例文案）
+            author_name="Choyeon",
+            author_bio="Full-Stack Development",
             author_avatar="",
             author_links_json="[]",
             # ===== 新增字段 =====
@@ -1303,19 +1303,19 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                 SiteSettingItem(
                     key="AUTHOR_NAME",
                     label="作者名称",
-                    description="侧边栏资料卡片显示的名字，留空使用 profileConfig 中的默认名字。",
+                    description="侧边栏资料卡片显示的名字，留空使用一键 OOBE 的管理员昵称。",
                     type="text",
-                    value=get_val("AUTHOR_NAME", "ROSETTA"),
-                    default="ROSETTA",
-                    placeholder="ROSETTA",
+                    value=get_val("AUTHOR_NAME", "Choyeon"),
+                    default="Choyeon",
+                    placeholder="Choyeon",
                 ),
                 SiteSettingItem(
                     key="AUTHOR_BIO",
                     label="作者简介 / 签名",
                     description="侧边栏资料卡片上显示的一句个性签名或简介。",
                     type="textarea",
-                    value=get_val("AUTHOR_BIO", "Hello, I'm ROSETTA."),
-                    default="Hello, I'm ROSETTA.",
+                    value=get_val("AUTHOR_BIO", "Full-Stack Development"),
+                    default="Full-Stack Development",
                     rows=2,
                 ),
                 SiteSettingItem(

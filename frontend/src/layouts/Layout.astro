@@ -18,7 +18,53 @@ import {
 } from "@/config";
 import { loadDynamicConfig } from "@/utils/dynamic-config";
 
+// =============================================================
+// OOBE 保护（SSR 级跳转已经在 src/middleware.ts 的 onRequest 中完成）
+//   - middleware 在响应流开始前执行，能安全调用 context.redirect 302
+//   - 这里只在 frontmatter 里读一次 oobe status，传给前端内联脚本
+//     用作 cookie 快速路径判断 + 浏览器端再次兜底跳转
+// =============================================================
+const pathname = Astro.url.pathname;
+const isOobePage = pathname === "/oobe/" || pathname === "/oobe";
+let oobeComplete = true;
+try {
+	const SSR_API_BASE =
+		process.env.API_BASE_URL_SSR ||
+		process.env.API_BASE_URL ||
+		"http://127.0.0.1:8000";
+	const oobeResp = await fetch(`${SSR_API_BASE}/api/oobe/status`, {
+		method: "GET",
+		headers: { Accept: "application/json" },
+		signal: (typeof AbortSignal !== "undefined" && (AbortSignal as any).timeout)
+			? (AbortSignal as any).timeout(1500)
+			: undefined,
+	} as any).catch(() => null);
+	if (oobeResp && oobeResp.ok) {
+		try {
+			const json: any = await oobeResp.json();
+			oobeComplete = !!json?.oobe_complete;
+		} catch (_) { /* ignore */ }
+	}
+} catch (_) { /* 后端不可达：留给前端兜底处理，SSR 不阻塞 */ }
+
 const dynamicCfg = await loadDynamicConfig();
+
+// SSR 阶段先通过 Astro.cookies / Cookie 请求头读取 rosetta_lang，避免默认 zh_CN
+// 导致整站 SSR 出来的文案都是中文、然后 hydrate 后再闪切到目标语言的体验问题。
+// PS. localStorage 在 SSR 中不存在（typeof localStorage === "undefined"），
+// 所以旧代码里 `localStorage.getItem("lang") || "zh_CN"` 的分支永远走不到，
+// 等于把 siteConfig.lang 硬编码成了 zh_CN。改为优先通过 readEffectiveLangHintRaw。
+import {
+	normalizeLangOrFallback,
+	readEffectiveLangHintRaw,
+} from "@/i18n/translation";
+
+const _ssrRawLang = readEffectiveLangHintRaw(Astro);
+const _ssrEffectiveLang = normalizeLangOrFallback(
+	_ssrRawLang ?? null,
+	"zh_CN",
+);
+
 const siteConfig = {
 	title: dynamicCfg.site.title,
 	subtitle: dynamicCfg.site.subtitle || "",
@@ -41,10 +87,9 @@ const siteConfig = {
 		menuAlign: "center" as const,
 		stickyNavbar: true,
 	},
-	lang:
-		typeof localStorage !== "undefined"
-			? localStorage.getItem("lang") || "zh_CN"
-			: "zh_CN",
+	// siteConfig.lang 是前端 Lang 枚举：zh_CN / zh_TW / en / ja。
+	// SSR 阶段必须从 rosetta_lang cookie 解析，不能从 localStorage（不可用）读。
+	lang: _ssrEffectiveLang,
 	imageOptimization: dynamicCfg.imageOpt,
 	post: {
 		generateOgImages: false,
@@ -135,6 +180,60 @@ const siteLang = lang.replace("_", "-");
     <meta charset="UTF-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=edge" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <!-- ======= OOBE 前端兜底跳转（SSR 跳转之后，浏览器端再校验一次） =======
+         1. 先从快速路径（cookie rosetta_oobe=1）判断：已完成则跳过
+         2. 若当前路径本身就是 /oobe[/]，跳过
+         3. 否则 fetch /api/oobe/status，oobe_complete=false 立即 location.replace 跳 /oobe/
+         4. 把后端结果写回 cookie（SameSite=Lax，max-age=600 秒，允许短期不重复请求） -->
+    <script is:inline define:vars={{ _pathname: pathname, _oobeComplete: oobeComplete }}>
+      (function () {
+        try {
+          var OOBE_KEY = 'rosetta_oobe';
+          var path = _pathname;
+          var isOobePage = (path === '/oobe/' || path === '/oobe');
+          if (isOobePage) return;
+
+          // 快速 cookie 判断
+          function readCookie(name) {
+            try {
+              var m = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '=([^;]*)'));
+              return m ? decodeURIComponent(m[1]) : null;
+            } catch (_) { return null; }
+          }
+          function writeCookie(name, value, maxAgeSec) {
+            try {
+              document.cookie = name + '=' + encodeURIComponent(value) + '; path=/; SameSite=Lax; Max-Age=' + maxAgeSec;
+            } catch (_) {}
+          }
+
+          // SSR 已判定为 complete，写一次 cookie 避免额外请求
+          if (_oobeComplete === true) { writeCookie(OOBE_KEY, '1', 600); return; }
+
+          // 兜底：再查一次后端
+          var fast = readCookie(OOBE_KEY);
+          if (fast === '1') return;
+
+          // 阻塞式跳转（不等待其它资源加载，避免首页正文闪一下再跳走）
+          try {
+            fetch('/api/oobe/status', {
+              method: 'GET',
+              credentials: 'same-origin',
+              cache: 'no-store',
+              headers: { 'Accept': 'application/json' }
+            }).then(function (r) {
+              if (!r || !r.ok) return null;
+              return r.json();
+            }).then(function (d) {
+              if (d && d.oobe_complete) {
+                writeCookie(OOBE_KEY, '1', 600);
+              } else {
+                try { window.location.replace('/oobe/'); } catch (_) { window.location.href = '/oobe/'; }
+              }
+            }).catch(function () { /* 后端不可达，先不跳，等用户刷新重试 */ });
+          } catch (_) {}
+        } catch (_) {}
+      })();
+    </script>
     <!-- 语言检测和初始化 -->
     <script is:inline>
       (function() {
@@ -259,7 +358,6 @@ const siteLang = lang.replace("_", "-");
       content={description || siteConfig.description || pageTitle}
     />
 
-    <meta name="viewport" content="width=device-width" />
     <meta name="generator" content={Astro.generator} />
     {
       favicons.map((favicon) => (
@@ -1230,6 +1328,94 @@ function disableAnimation() {
         mainEl.style.setProperty("margin-top", "0", "important");
       }
 
+      // ============================================================
+      // Scoped 样式保护 + 恢复（同时支持 Astro scope 和 Svelte scoped）
+      // ------------------------------------------------------------
+      // 根因：client:load/client:only 的 Svelte 组件 scoped style 和 Astro 自身
+      // scoped style 可能被 Swup HeadPlugin 误判为「新页面没有使用」而移除。
+      // 保护策略：
+      //   1. 扫描 <head> 里所有 <style>，按 (Astro|Svelte) scoped hash 特征做注册表
+      //   2. 扫描 DOM 使用到的 hash（astro-xxx / svelte-xxx），缺少 style 时补回
+      // ============================================================
+      (function protectScopedStyles() {
+        try {
+          const W = window as any;
+          if (!W.__rosettaScopedStyleRegistry) {
+            W.__rosettaScopedStyleRegistry = new Map();
+          }
+          const reg = W.__rosettaScopedStyleRegistry;
+
+          const styleEls = document.querySelectorAll<HTMLStyleElement>(
+            'head style, body style',
+          );
+          const extractHashes = (css: string): string[] => {
+            const hashes = new Set<string>();
+            // Astro scope: astro-<hash>
+            const astro = css.match(/astro-[a-z0-9]{7,}/gi);
+            if (astro) astro.forEach((h) => hashes.add(h.toLowerCase()));
+            // Svelte scope: svelte-<hash>
+            const svelte = css.match(/svelte-[a-z0-9]+/gi);
+            if (svelte) svelte.forEach((h) => hashes.add(h.toLowerCase()));
+            return Array.from(hashes);
+          };
+          styleEls.forEach((s) => {
+            const txt = s.textContent || '';
+            const hashes = extractHashes(txt);
+            if (hashes.length === 0) return;
+            s.setAttribute('data-swup-keep', '1');
+            s.setAttribute('data-scoped-keeper', '1');
+            hashes.forEach((hash) => {
+              const existed = reg.get(hash);
+              if (!existed || txt.length > existed.css.length) {
+                reg.set(hash, { css: txt, source: s.id || s.dataset.owner || 'auto' });
+              }
+            });
+            // 把首个 hash 作为 data-scoped-hash 方便后面去重
+            if (!s.hasAttribute('data-scoped-hash')) {
+              s.setAttribute('data-scoped-hash', hashes[0]);
+            }
+          });
+
+          // 扫描 DOM 引用到的 astro-xxx / svelte-xxx hash
+          const usedHashes = new Set<string>();
+          document.querySelectorAll<HTMLElement>('*').forEach((el) => {
+            const cls = (el.getAttribute('class') || '') + ' ' + (el.getAttribute('astro-scope') || '');
+            if (typeof cls !== 'string') return;
+            const astro = cls.match(/astro-[a-z0-9]{7,}/gi) || [];
+            const svelte = cls.match(/svelte-[a-z0-9]+/gi) || [];
+            astro.forEach((h) => usedHashes.add(h.toLowerCase()));
+            svelte.forEach((h) => usedHashes.add(h.toLowerCase()));
+          });
+
+          // 构建已存在 hash 集合：所有 style 的 data-scoped-hash + 自身内容包含的 hash
+          const existingHashes = new Set<string>();
+          document
+            .querySelectorAll<HTMLStyleElement>('head style, body style')
+            .forEach((s) => {
+              const txt = s.textContent || '';
+              extractHashes(txt).forEach((h) => existingHashes.add(h));
+              const attr = s.getAttribute('data-scoped-hash');
+              if (attr) existingHashes.add(attr.toLowerCase());
+            });
+
+          usedHashes.forEach((hash) => {
+            if (existingHashes.has(hash)) return;
+            const entry = reg.get(hash);
+            if (!entry || !entry.css) return;
+            const restored = document.createElement('style');
+            restored.setAttribute('data-scoped-hash', hash);
+            restored.setAttribute('data-swup-keep', '1');
+            restored.setAttribute('data-scoped-keeper', '1');
+            restored.setAttribute('data-scoped-restored', '1');
+            restored.setAttribute('data-from-registry', '1');
+            restored.textContent = entry.css;
+            document.head.appendChild(restored);
+          });
+        } catch (_e) {
+          /* 忽略：最坏情况只是某个 scoped 样式丢失，不影响整体渲染 */
+        }
+      })();
+
       // 更新侧边栏组件的可见性（根据新页面的 URL）
       updateSidebarComponentsVisibility();
 
@@ -1949,6 +2135,124 @@ function disableAnimation() {
   document.addEventListener('swup:contentReplaced', () => {
     requestAnimationFrame(initImageLoadFadeIn);
   });
+
+  // ============================================================
+  // Scoped 样式保护（首屏 + Swup / Astro 事件双保险）
+  // ------------------------------------------------------------
+  // 同时支持 Astro scope（astro-<hash>）和 Svelte scoped（svelte-<hash>）。
+  //
+  // 根因：
+  //   - Astro 组件的 scoped style 在 SSR 时产出，被 Swup HeadPlugin 路由切换时
+  //     误判为"新页面未使用"而被移除，导致文章卡片/元信息等 Astro 渲染的组件样式丢失。
+  //   - client:load Svelte 组件的动态 scoped style 也可能因时序错配被误删，
+  //     导致 LangSwitcher / 搜索按钮等 Svelte 组件样式丢失。
+  //
+  // 保护策略：
+  //   1. 在 DOMContentLoaded、astro:page-load、swup:contentReplaced 三个事件都扫描
+  //      <head> 中所有 <style>，建立 hash → CSS 注册表；
+  //   2. 再扫描 DOM 使用到的 astro-xxx / svelte-xxx hash，若对应 style 缺失则
+  //      从注册表补回，并打 data-swup-keep 标记防后续再次被删。
+  // ============================================================
+  (function installScopedStyleProtectionRoot() {
+    const W = window as any;
+    if (!W.__rosettaScopedStyleRegistry) {
+      W.__rosettaScopedStyleRegistry = new Map();
+    }
+    const reg = W.__rosettaScopedStyleRegistry;
+
+    function extractHashes(css: string): string[] {
+      const hashes = new Set<string>();
+      const astro = css.match(/astro-[a-z0-9]{7,}/gi);
+      if (astro) astro.forEach((h) => hashes.add(h.toLowerCase()));
+      const svelte = css.match(/svelte-[a-z0-9]+/gi);
+      if (svelte) svelte.forEach((h) => hashes.add(h.toLowerCase()));
+      return Array.from(hashes);
+    }
+
+    function protect() {
+      try {
+        // 1) 登记所有已存在的 (Astro|Svelte) scoped style
+        const styleEls = document.querySelectorAll<HTMLStyleElement>(
+          'head style, body style',
+        );
+        styleEls.forEach((s) => {
+          const txt = s.textContent || '';
+          const hashes = extractHashes(txt);
+          if (hashes.length === 0) return;
+          s.setAttribute('data-swup-keep', '1');
+          s.setAttribute('data-scoped-keeper', '1');
+          hashes.forEach((hash) => {
+            const existed = reg.get(hash);
+            if (!existed || txt.length > existed.css.length) {
+              reg.set(hash, { css: txt, source: s.dataset.owner || 'auto' });
+            }
+          });
+          if (!s.hasAttribute('data-scoped-hash')) {
+            s.setAttribute('data-scoped-hash', hashes[0]);
+          }
+        });
+
+        // 2) 扫描 DOM 使用到的 astro-xxx / svelte-xxx hash，缺失时补回
+        const usedHashes = new Set<string>();
+        document.querySelectorAll<HTMLElement>('*').forEach((el) => {
+          const cls =
+            (el.getAttribute('class') || '') +
+            ' ' +
+            (el.getAttribute('astro-scope') || '');
+          if (typeof cls !== 'string') return;
+          const astro = cls.match(/astro-[a-z0-9]{7,}/gi) || [];
+          const svelte = cls.match(/svelte-[a-z0-9]+/gi) || [];
+          astro.forEach((h) => usedHashes.add(h.toLowerCase()));
+          svelte.forEach((h) => usedHashes.add(h.toLowerCase()));
+        });
+
+        const existingHashes = new Set<string>();
+        document
+          .querySelectorAll<HTMLStyleElement>('head style, body style')
+          .forEach((s) => {
+            const txt = s.textContent || '';
+            extractHashes(txt).forEach((h) => existingHashes.add(h));
+            const attr = s.getAttribute('data-scoped-hash');
+            if (attr) existingHashes.add(attr.toLowerCase());
+          });
+
+        usedHashes.forEach((hash) => {
+          if (existingHashes.has(hash)) return;
+          const entry = reg.get(hash);
+          if (!entry || !entry.css) return;
+          const restored = document.createElement('style');
+          restored.setAttribute('data-scoped-hash', hash);
+          restored.setAttribute('data-swup-keep', '1');
+          restored.setAttribute('data-scoped-keeper', '1');
+          restored.setAttribute('data-scoped-restored', '1');
+          restored.setAttribute('data-from-registry', '1');
+          restored.textContent = entry.css;
+          document.head.appendChild(restored);
+        });
+      } catch (_e) {
+        /* no-op */
+      }
+    }
+
+    W.__rosettaProtectScopedStyles = protect;
+
+    // 首屏启动：DOM 就绪后立刻跑一次（此时 SSR 样式已在 head，作为注册表数据源）
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', protect, { once: true });
+    } else {
+      protect();
+    }
+    // Astro view transition：astro:page-load 是每一页（包括首屏）的完成事件
+    document.addEventListener('astro:page-load', () => {
+      setTimeout(protect, 0);
+      requestAnimationFrame(() => protect());
+    });
+    // Swup 事件兜底（和 content:replace 钩子互补，双重保险）
+    document.addEventListener('swup:contentReplaced', () => {
+      setTimeout(protect, 0);
+      requestAnimationFrame(() => protect());
+    });
+  })();
 
   
 </script>

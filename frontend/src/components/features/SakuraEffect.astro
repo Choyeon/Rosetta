@@ -548,13 +548,13 @@
 		const storedEnabled = localStorage.getItem("sakuraEnabled");
 		const isEnabled =
 			storedEnabled !== null ? storedEnabled === "true" : sakuraConfig.enable;
-		const cfg: SakuraConfig = Object.assign({}, sakuraConfig, {
+		const cfg = Object.assign({}, sakuraConfig, {
 			enable: isEnabled,
 		}) as unknown as SakuraConfig;
 		initSakura(cfg);
 
 		// 监听设置面板的樱花特效切换事件(放在守卫内,避免重复注册)
-		window.addEventListener("sakuraToggle", (e: Event) => {
+		window.addEventListener("sakuraToggle", (e) => {
 			const detail = (e as CustomEvent<{ enabled: boolean }>).detail;
 			if (!detail) return;
 			const mgr = window.sakuraManager;

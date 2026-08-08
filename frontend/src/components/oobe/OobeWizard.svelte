@@ -271,7 +271,7 @@ $: {
 			>
 
 				{#if oobe.currentStep === 1}
-					<WelcomeStep />
+					<WelcomeStep on:quick={() => void oobe.quickInstall()} installing={oobe.installing || !!oobe.installResult} />
 				{:else if oobe.currentStep === 2}
 					<EnvCheckStep />
 				{:else if oobe.currentStep === 3}

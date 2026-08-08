@@ -1,7 +1,10 @@
 """Avatar 工具：解析 + 包装代理 URL（给 comment/guestbook/user 三个 service 复用）。"""
 from __future__ import annotations
+
 import base64
-from backend.services.avatar_resolver import AvatarInput, resolve as _resolve_avatar
+
+from backend.services.avatar_resolver import AvatarInput
+from backend.services.avatar_resolver import resolve as _resolve_avatar
 
 _PROXY_PREFIX = "/api/media/avatar?src="
 

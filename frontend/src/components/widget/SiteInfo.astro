@@ -6,7 +6,7 @@ import ci from "ci-info";
 import WidgetLayout from "@/components/common/WidgetLayout.astro";
 import { siteConfig as defaultSiteConfig, licenseConfig } from "@/config";
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor, readEffectiveLangHintRaw } from "@/i18n/translation";
 import type { WidgetComponentConfig } from "@/types/config";
 import { detectBuildPlatform } from "@/utils/build-platform";
 import { formatDateI18nWithTime } from "@/utils/date-utils";
@@ -22,6 +22,10 @@ interface Props {
 const { class: className, style, widgetConfig } = Astro.props;
 
 const showTitle = widgetConfig?.showTitle !== false;
+
+// SSR 下用 cookie 语言翻译，保证切语言后服务端渲染文案一致
+const ssrLang = readEffectiveLangHintRaw(Astro);
+const t = (k: I18nKey, vars?: Record<string, string | number>) => i18nFor(k, ssrLang, vars);
 
 // 从后端 API 加载配置（失败时使用静态配置兜底）
 const config = await loadDynamicConfig();
@@ -107,18 +111,21 @@ const BRAND_LOGO_TOKEN = "__brand_logo__";
 const mainItems = [
 	{
 		icon: "material-symbols:cloud-outline",
-		label: i18n(I18nKey.siteInfoBuildPlatform),
+		labelKey: I18nKey.siteInfoBuildPlatform,
+		label: t(I18nKey.siteInfoBuildPlatform),
 		value: buildPlatform,
 	},
 	{
 		icon: BRAND_LOGO_TOKEN, // 用品牌自定义图标替换 mdi:clover
-		label: i18n(I18nKey.siteInfoBlogVersion),
+		labelKey: I18nKey.siteInfoBlogVersion,
+		label: t(I18nKey.siteInfoBlogVersion),
 		value: `ROSETTA v${blogVersion}`,
 		href: "https://github.com/CuteLeaf/ROSETTA",
 	},
 	{
 		icon: "material-symbols:copyright-outline",
-		label: i18n(I18nKey.siteInfoLicense),
+		labelKey: I18nKey.siteInfoLicense,
+		label: t(I18nKey.siteInfoLicense),
 		value: licenseName,
 	},
 ];
@@ -130,10 +137,12 @@ const detailItems: {
 	label: string;
 	value: string;
 	fullWidth?: boolean;
+	labelKey?: I18nKey;
 }[] = [
 	{
 		icon: "material-symbols:language",
-		label: i18n(I18nKey.siteInfoDomain),
+		labelKey: I18nKey.siteInfoDomain,
+		label: t(I18nKey.siteInfoDomain),
 		value: siteDomain,
 		fullWidth: true,
 	},
@@ -144,28 +153,33 @@ const detailItems: {
 	},
 	{
 		icon: "material-symbols:rocket-launch-outline",
-		label: i18n(I18nKey.siteInfoAstroVersion),
+		labelKey: I18nKey.siteInfoAstroVersion,
+		label: t(I18nKey.siteInfoAstroVersion),
 		value: `v${astroVersion}`,
 	},
 	{
 		icon: "fa7-brands:node-js",
-		label: i18n(I18nKey.siteInfoNodeVersion),
+		labelKey: I18nKey.siteInfoNodeVersion,
+		label: t(I18nKey.siteInfoNodeVersion),
 		value: nodeVersion,
 	},
 	{
 		icon: "simple-icons:pnpm",
-		label: i18n(I18nKey.siteInfoPnpmVersion),
+		labelKey: I18nKey.siteInfoPnpmVersion,
+		label: t(I18nKey.siteInfoPnpmVersion),
 		value: pnpmVersion,
 	},
 	{
 		icon: "material-symbols:build-outline",
-		label: i18n(I18nKey.siteInfoBuildTime),
+		labelKey: I18nKey.siteInfoBuildTime,
+		label: t(I18nKey.siteInfoBuildTime),
 		value: buildTime,
 		fullWidth: true,
 	},
 	{
 		icon: "material-symbols:computer-outline",
-		label: i18n(I18nKey.siteInfoSystem),
+		labelKey: I18nKey.siteInfoSystem,
+		label: t(I18nKey.siteInfoSystem),
 		value: systemInfo,
 		fullWidth: true,
 	},
@@ -173,7 +187,8 @@ const detailItems: {
 ---
 
 <WidgetLayout
-  name={i18n(I18nKey.siteInfo)}
+  name={t(I18nKey.siteInfo)}
+  nameI18nKey={I18nKey.siteInfo}
   showTitle={showTitle}
   id="site-info"
   class={className}
@@ -183,7 +198,7 @@ const detailItems: {
     {/* 始终显示的项目（列表卡片） */}
     <div class="flex flex-col gap-2">
       {
-        mainItems.map((item: { icon: string; label: string; value: string; href?: string }) => (
+        mainItems.map((item: { icon: string; label: string; value: string; href?: string; labelKey?: I18nKey }) => (
           <div class="flex items-center justify-between px-3 py-2 rounded-lg bg-neutral-100/60 dark:bg-neutral-800/50">
             <div class="flex items-center gap-2.5">
               <div class="text-(--primary) text-lg flex items-center justify-center" style="width:1.25rem;height:1.25rem;">
@@ -194,7 +209,10 @@ const detailItems: {
                   <Icon is:inline name={item.icon} />
                 )}
               </div>
-              <span class="text-neutral-700 dark:text-neutral-300 font-medium text-sm">
+              <span
+                class="text-neutral-700 dark:text-neutral-300 font-medium text-sm"
+                data-i18n-text-key={item.labelKey}
+              >
                 {item.label}
               </span>
             </div>
@@ -223,14 +241,16 @@ const detailItems: {
 
     {/* 可折叠区域（格子布局） */}
     <site-info-collapse
-      data-expand-text={i18n(I18nKey.siteInfoExpand)}
-      data-collapse-text={i18n(I18nKey.siteInfoCollapse)}
+      data-expand-text={t(I18nKey.siteInfoExpand)}
+      data-collapse-text={t(I18nKey.siteInfoCollapse)}
+      data-i18n-expand-key="siteInfoExpand"
+      data-i18n-collapse-key="siteInfoCollapse"
     >
       <div class="site-info-detail overflow-hidden collapsed">
         <div class="grid grid-cols-2 gap-2">
           {
             detailItems.map(
-              (item: { icon: string; label: string; value: string; fullWidth?: boolean }) => (
+              (item: { icon: string; label: string; value: string; fullWidth?: boolean; labelKey?: I18nKey }) => (
                 <div class:list={[
                   "flex flex-col items-center gap-1 py-2 px-1 rounded-lg bg-neutral-100/60 dark:bg-neutral-800/50",
                   { "col-span-2": item.fullWidth }
@@ -243,7 +263,10 @@ const detailItems: {
                       <Icon is:inline name={item.icon} />
                     )}
                   </div>
-                  <span class="text-xs text-neutral-500 dark:text-neutral-400">
+                  <span
+                    class="text-xs text-neutral-500 dark:text-neutral-400"
+                    data-i18n-text-key={item.labelKey}
+                  >
                     {item.label}
                   </span>
                   <span

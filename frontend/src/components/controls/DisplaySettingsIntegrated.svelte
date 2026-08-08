@@ -777,7 +777,7 @@ $effect(() => {
 		<div class="">
 			<div class="section-title">
 				{i18n(I18nKey.themeColor)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={hue === defaultHue} class:pointer-events-none={hue === defaultHue} onclick={resetHue}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
@@ -800,7 +800,7 @@ $effect(() => {
 		<div class="">
 			<div class="section-title">
 				{i18n(I18nKey.postListLayout)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={currentLayout === effectiveDefaultLayout} class:pointer-events-none={currentLayout === effectiveDefaultLayout} onclick={resetLayout}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
@@ -845,7 +845,7 @@ $effect(() => {
 		<div>
 			<div class="section-title">
 				{i18n(I18nKey.cardSettings)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={cardSettingsIsDefault} class:pointer-events-none={cardSettingsIsDefault} onclick={resetCardSettings}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
@@ -899,7 +899,7 @@ $effect(() => {
 		<div>
 			<div class="section-title">
 				{i18n(I18nKey.wallpaperMode)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={wallpaperMode === defaultWallpaperMode} class:pointer-events-none={wallpaperMode === defaultWallpaperMode} onclick={resetWallpaperMode}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
@@ -1012,7 +1012,7 @@ $effect(() => {
 		<div class="">
 			<div class="section-title">
 				{i18n(I18nKey.overlaySettings)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={overlaySettingsIsDefault} class:pointer-events-none={overlaySettingsIsDefault} onclick={resetOverlaySettings}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
@@ -1049,7 +1049,7 @@ $effect(() => {
 		<div class="">
 			<div class="section-title">
 				{i18n(I18nKey.wallpaperSettings)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={bannerSettingsIsDefault} class:pointer-events-none={bannerSettingsIsDefault} onclick={resetBannerSettings}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>
@@ -1140,7 +1140,7 @@ $effect(() => {
 		<div class="">
 			<div class="section-title">
 				{i18n(I18nKey.effectsSettings)}
-				<button aria-label="Reset to Default" class="btn-regular rounded-md active:scale-90"
+				<button aria-label={i18n(I18nKey.resetToDefault)} class="btn-regular rounded-md active:scale-90"
 						class:opacity-0={sakuraEnabled === defaultSakuraEnabled} class:pointer-events-none={sakuraEnabled === defaultSakuraEnabled} onclick={() => { sakuraEnabled = defaultSakuraEnabled; setSakuraEnabled(defaultSakuraEnabled); }}>
 					<div class="text-(--btn-content)">
 						<Icon icon="fa7-solid:arrow-rotate-left" class="text-[0.75rem]"></Icon>

@@ -12,6 +12,6 @@ const userId = Number(Astro.params.id);
 		is:inline
 	>{JSON.stringify({ userId })}</script>
 	<main slot="content">
-		<AdminUserDetailDrawer client:only="svelte" userId={userId} open={true} />
+		<AdminUserDetailDrawer client:load userId={userId} open={true} />
 	</main>
 </AdminLayout>

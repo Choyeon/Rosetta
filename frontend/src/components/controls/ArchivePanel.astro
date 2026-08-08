@@ -5,9 +5,14 @@ const dynamicCfg = await loadDynamicConfig();
 const siteConfig = { foldArticle: dynamicCfg.archiveFoldOldArticles };
 
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor } from "@/i18n/translation";
+import { readEffectiveLangHintRaw } from "@/i18n/translation";
 import { getSortedPostsList } from "@/utils/content-utils";
 import { getPostUrlBySlug, url } from "@/utils/url-utils";
+
+// SSR 下用 cookie 语言翻译，保证切语言后服务端渲染文案一致
+const __ssrLang = readEffectiveLangHintRaw(Astro);
+const t = (k: I18nKey, vars?: Record<string, string | number>) => i18nFor(k, __ssrLang, vars);
 
 // 归档列表：全量按年分组，服务端渲染。筛选（?tag=/?category=/?uncategorized）
 // 与年份折叠由客户端脚本处理——数据本身在构建期已全部就绪。
@@ -43,13 +48,13 @@ function formatTag(tagList: string[]) {
 	return tagList.map((t) => `#${t}`).join(" ");
 }
 
-// 传给客户端脚本的 i18n 文案与配置
+// 传给客户端脚本的 i18n 文案与配置（切语言时 translation.ts 会覆写 __i18nStrings）
 const i18nStrings = {
-	categories: i18n(I18nKey.categories),
-	tags: i18n(I18nKey.tags),
-	uncategorized: i18n(I18nKey.uncategorized),
-	postCount: i18n(I18nKey.postCount),
-	postsCount: i18n(I18nKey.postsCount),
+	categories: t(I18nKey.categories),
+	tags: t(I18nKey.tags),
+	uncategorized: t(I18nKey.uncategorized),
+	postCount: t(I18nKey.postCount),
+	postsCount: t(I18nKey.postsCount),
 };
 const tagsBaseUrl = url("/tags/");
 const categoriesBaseUrl = url("/categories/");
@@ -87,6 +92,7 @@ const resolveMaps = buildResolveMaps();
 <archive-panel
   class="card-base px-8 py-6"
   data-fold={foldOnFilter ? "true" : "false"}
+  data-i18n-keyset="archivePanel"
 >
   {/* 筛选头部：默认隐藏，客户端在有筛选时填充并显示 */}
   <div id="archive-filter-header" class="mb-5 hidden">
@@ -111,6 +117,10 @@ const resolveMaps = buildResolveMaps();
           class="archive-year-toggle flex flex-row w-full items-center h-15 cursor-pointer rounded-lg
                  hover:bg-(--btn-plain-bg-hover) transition-colors group/yr"
           aria-expanded={collapsed ? "false" : "true"}
+          aria-label={collapsed ? `${t(I18nKey.expand)} ${group.year}` : `${t(I18nKey.collapse)} ${group.year}`}
+          data-i18n-expand-key={I18nKey.expand}
+          data-i18n-collapse-key={I18nKey.collapse}
+          data-year-value={group.year}
         >
           <div class="w-[15%] md:w-[10%] transition text-2xl font-bold text-right text-75
                       group-hover/yr:text-(--primary)">
@@ -124,7 +134,10 @@ const resolveMaps = buildResolveMaps();
                       group-hover/yr:text-(--primary)">
             <span class="archive-year-count">{group.posts.length}</span>
             {" "}
-            <span class="archive-year-count-label">{i18n(group.posts.length === 1 ? I18nKey.postCount : I18nKey.postsCount)}</span>
+            <span
+              class="archive-year-count-label"
+              data-i18n-postcount-key={group.posts.length === 1 ? "postCount" : "postsCount"}
+            >{t(group.posts.length === 1 ? I18nKey.postCount : I18nKey.postsCount)}</span>
             <span class="archive-arrow" style={collapsed ? "transform: rotate(-90deg)" : ""}>
               <svg class="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3">
                 <path d="M6 9l6 6 6-6" stroke-linecap="round" stroke-linejoin="round" />
@@ -203,6 +216,9 @@ const resolveMaps = buildResolveMaps();
       // 避免 swup 重复初始化
       if (this.dataset.initialized === "true") return;
       this.dataset.initialized = "true";
+      // 把 i18nStrings 绑到 DOM 元素，切语言时 translation.ts applyI18nTitlesAnywhere
+      // 会用新语言文案覆盖 this.__i18nStrings，保证后续筛选/计数逻辑取到新语言文案。
+      this.__i18nStrings = i18nStrings;
       this.init();
     }
 
@@ -245,6 +261,7 @@ const resolveMaps = buildResolveMaps();
       const blocks = Array.from(this.querySelectorAll(".archive-year-block"));
       let totalVisible = 0;
       const visibleBlocks = [];
+      const i18n = this.__i18nStrings || i18nStrings;
 
       // 归一化比较值：URL decode + 去掉首尾空格 + 转小写（支持大小写不敏感匹配）
       const normalize = (s) => {
@@ -299,7 +316,7 @@ const resolveMaps = buildResolveMaps();
         if (countEl) countEl.textContent = String(visibleCount);
         if (labelEl) {
           labelEl.textContent =
-            visibleCount === 1 ? i18nStrings.postCount : i18nStrings.postsCount;
+            visibleCount === 1 ? i18n.postCount : i18n.postsCount;
         }
 
         // 隐藏没有可见文章的年份块
@@ -334,15 +351,16 @@ const resolveMaps = buildResolveMaps();
     renderFilterHeader(tags, categories, uncategorized, count) {
       const header = this.querySelector("#archive-filter-header");
       if (!header) return;
+      const i18n = this.__i18nStrings || i18nStrings;
 
       // 构造筛选项（tag 优先作为主筛选，镜像原逻辑）
       const filters = [];
       if (categories.length > 0)
-        filters.push({ label: i18nStrings.categories, values: categories, isTag: false });
+        filters.push({ label: i18n.categories, values: categories, isTag: false });
       if (uncategorized)
-        filters.push({ label: i18nStrings.categories, values: [i18nStrings.uncategorized], isTag: false });
+        filters.push({ label: i18n.categories, values: [i18n.uncategorized], isTag: false });
       if (tags.length > 0)
-        filters.push({ label: i18nStrings.tags, values: tags, isTag: true });
+        filters.push({ label: i18n.tags, values: tags, isTag: true });
 
       const primary =
         filters.find((f) => f.isTag) || filters[0] || null;
@@ -380,7 +398,7 @@ const resolveMaps = buildResolveMaps();
       if (countEl) countEl.textContent = String(count);
       if (countLabelEl) {
         countLabelEl.textContent =
-          count === 1 ? i18nStrings.postCount : i18nStrings.postsCount;
+          count === 1 ? i18n.postCount : i18n.postsCount;
       }
 
       header.classList.remove("hidden");
@@ -389,12 +407,13 @@ const resolveMaps = buildResolveMaps();
     updateBannerTitle(tags, categories, uncategorized) {
       const bannerTitle = document.querySelector(".banner-page-title-text");
       if (!bannerTitle) return;
+      const i18n = this.__i18nStrings || i18nStrings;
 
       let newTitle = "";
       if (categories.length > 0) {
         newTitle = categories.map((v) => this.resolveDisplay("category", v)).join(" / ");
       } else if (uncategorized) {
-        newTitle = i18nStrings.uncategorized;
+        newTitle = i18n.uncategorized;
       } else if (tags.length > 0) {
         newTitle = tags.map((t) => `#${this.resolveDisplay("tag", t)}`).join(" / ");
       }

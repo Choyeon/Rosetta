@@ -5,31 +5,38 @@ import { loadDynamicConfig } from "@/utils/dynamic-config";
 const musicPlayerConfig = (await loadDynamicConfig()).music;
 
 import I18nKey from "@/i18n/i18nKey";
-import { i18n } from "@/i18n/translation";
+import { i18nFor } from "@/i18n/translation";
+import { readEffectiveLangHintRaw } from "@/i18n/translation";
 
 interface Props {
 	class?: string;
 	style?: string;
 	id?: string;
+	/** SSR 传入的 cookie 语言偏好（外层 Music.astro 已解析好），如果没传则兜底从 Astro 全局读 */
+	ssrLang?: string;
 }
-const { class: className, style, id } = Astro.props;
+const { class: className, style, id, ssrLang: ssrLangProp } = Astro.props;
 
 const config = musicPlayerConfig;
+
+// SSR 下用 cookie 语言翻译，保证切语言后服务端渲染文案一致
+const __ssrLang = ssrLangProp || readEffectiveLangHintRaw(Astro);
+const t = (k: I18nKey, vars?: Record<string, string | number>) => i18nFor(k, __ssrLang, vars);
 
 const viewConfigStr = JSON.stringify({
 	showLyrics: config.showLyrics ?? true,
 	i18n: {
-		noPlaying: i18n(I18nKey.musicNoPlaying),
-		lyrics: i18n(I18nKey.musicLyrics),
-		noLyrics: i18n(I18nKey.musicNoLyrics),
-		loadingLyrics: i18n(I18nKey.musicLoadingLyrics),
-		failedLyrics: i18n(I18nKey.musicFailedLyrics),
-		noSongs: i18n(I18nKey.musicNoSongs),
-		error: i18n(I18nKey.musicError),
-		play: i18n(I18nKey.musicPlay),
-		pause: i18n(I18nKey.musicPause),
-		noCover: i18n(I18nKey.musicNoCover),
-		music: i18n(I18nKey.music),
+		noPlaying: t(I18nKey.musicNoPlaying),
+		lyrics: t(I18nKey.musicLyrics),
+		noLyrics: t(I18nKey.musicNoLyrics),
+		loadingLyrics: t(I18nKey.musicLoadingLyrics),
+		failedLyrics: t(I18nKey.musicFailedLyrics),
+		noSongs: t(I18nKey.musicNoSongs),
+		error: t(I18nKey.musicError),
+		play: t(I18nKey.musicPlay),
+		pause: t(I18nKey.musicPause),
+		noCover: t(I18nKey.musicNoCover),
+		music: t(I18nKey.music),
 	},
 });
 
@@ -37,7 +44,14 @@ const widgetId =
 	id || `music-widget-${Math.random().toString(36).substring(2, 9)}`;
 ---
 
-<div id={widgetId} class:list={["music-player-widget w-full relative transition-all duration-300", className]} style={style} role="region" aria-label={i18n(I18nKey.music)}>
+<div
+  id={widgetId}
+  class:list={["music-player-widget w-full relative transition-all duration-300", className]}
+  style={style}
+  role="region"
+  aria-label={t(I18nKey.music)}
+  data-i18n-aria-key="music"
+>
 
     <!-- Top Row: Cover & Info -->
 <div class="flex items-center gap-2 mb-2 px-1">
@@ -45,7 +59,13 @@ const widgetId =
     <div class="relative shrink-0 w-14 h-14 group">
             <div class="w-full h-full rounded-full overflow-hidden shadow-lg border-2 border-white dark:border-neutral-700 relative z-10 bg-(--primary)/10 flex items-center justify-center">
             <Icon is:inline name="material-symbols:music-note-rounded" class="text-2xl text-(--primary) opacity-40 absolute" aria-hidden="true" />
-            <img class="music-cover w-full h-full object-cover animate-spin-slow relative z-10 opacity-0 transition-opacity duration-300" src="" alt={i18n(I18nKey.musicCover)} style="animation-play-state: paused;" />
+            <img
+                class="music-cover w-full h-full object-cover animate-spin-slow relative z-10 opacity-0 transition-opacity duration-300"
+                src=""
+                alt={t(I18nKey.musicCover)}
+                data-i18n-alt-key="musicCover"
+                style="animation-play-state: paused;"
+            />
             </div>
     </div>
 
@@ -53,20 +73,32 @@ const widgetId =
     <div class="flex-1 min-w-0 flex flex-col overflow-hidden">
         <div class="flex items-center justify-between overflow-hidden gap-2">
             <div class="flex-1 min-w-0 overflow-hidden relative">
-                <h3 class="music-title font-bold text-base text-neutral-800 dark:text-neutral-100 leading-tight truncate">
-                    {i18n(I18nKey.music)}
+                <h3
+                    class="music-title font-bold text-base text-neutral-800 dark:text-neutral-100 leading-tight truncate"
+                    data-i18n-text-key="music"
+                >
+                    {t(I18nKey.music)}
                 </h3>
             </div>
             <!-- Top Right: Lyric Toggle -->
-            <button class={`btn-lrc-toggle hover:text-(--primary) transition-all duration-300 p-0.5 pr-2 transform active:scale-95 text-neutral-400 shrink-0 ${!config.showLyrics ? 'hidden' : ''}`} title={i18n(I18nKey.musicLyrics)} aria-label={i18n(I18nKey.musicLyrics)}>
+            <button
+                class={`btn-lrc-toggle hover:text-(--primary) transition-all duration-300 p-0.5 pr-2 transform active:scale-95 text-neutral-400 shrink-0 ${!config.showLyrics ? 'hidden' : ''}`}
+                title={t(I18nKey.musicLyrics)}
+                aria-label={t(I18nKey.musicLyrics)}
+                data-i18n-title-key="musicLyrics"
+                data-i18n-aria-key="musicLyrics"
+            >
                 <Icon is:inline name="material-symbols:subtitles-off-outline-rounded" class="icon-lrc-off text-xl" aria-hidden="true" />
                 <Icon is:inline name="material-symbols:subtitles-outline-rounded" class="icon-lrc-on text-xl hidden" aria-hidden="true" />
             </button>
         </div>
 
         <div class="min-w-0 overflow-hidden">
-            <p class="music-artist text-xs font-medium text-neutral-500 dark:text-neutral-400 truncate">
-                {i18n(I18nKey.musicNoPlaying)}
+            <p
+                class="music-artist text-xs font-medium text-neutral-500 dark:text-neutral-400 truncate"
+                data-i18n-text-key="musicNoPlaying"
+            >
+                {t(I18nKey.musicNoPlaying)}
             </p>
         </div>
 
@@ -76,8 +108,14 @@ const widgetId =
                 <Icon is:inline name="material-symbols:music-off-rounded" class="text-lg" aria-hidden="true" />
             </div>
             <div class="flex-1 min-w-0 flex flex-col gap-0.5">
-                <span class="text-xs font-semibold text-(--primary) truncate">暂无音乐</span>
-                <span class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate">请在后台添加歌单后显示</span>
+                <span
+                    class="text-xs font-semibold text-(--primary) truncate"
+                    data-i18n-text-key="musicNoSongs"
+                >{t(I18nKey.musicNoSongs)}</span>
+                <span
+                    class="text-[10px] text-neutral-500 dark:text-neutral-400 truncate"
+                    data-i18n-text-key="musicError"
+                >{t(I18nKey.musicError)}</span>
             </div>
         </div>
 
@@ -91,12 +129,26 @@ const widgetId =
 
             <!-- Volume (Always visible) -->
             <div class="flex items-center gap-1 bg-transparent ml-auto">
-                <button class="btn-mute hover:text-(--primary) transition-colors p-0.5 rounded-md flex items-center" title={i18n(I18nKey.musicVolume)} aria-label={i18n(I18nKey.musicVolume)}>
+                <button
+                    class="btn-mute hover:text-(--primary) transition-colors p-0.5 rounded-md flex items-center"
+                    title={t(I18nKey.musicVolume)}
+                    aria-label={t(I18nKey.musicVolume)}
+                    data-i18n-title-key="musicVolume"
+                    data-i18n-aria-key="musicVolume"
+                >
                     <Icon is:inline name="material-symbols:volume-up-rounded" class=" icon-vol-high text-lg" aria-hidden="true" />
                     <Icon is:inline name="material-symbols:volume-off-rounded" class="icon-vol-mute text-lg hidden" aria-hidden="true" />
                 </button>
                 <div class="w-16 transition-all duration-300 ease-out flex items-center">
-                    <div class="vol-container h-1 w-16 bg-neutral-300/50 dark:bg-neutral-500/40 rounded-full cursor-pointer relative ml-1" role="slider" aria-label={i18n(I18nKey.musicVolume)} aria-valuemin="0" aria-valuemax="100" aria-valuenow="70">
+                    <div
+                        class="vol-container h-1 w-16 bg-neutral-300/50 dark:bg-neutral-500/40 rounded-full cursor-pointer relative ml-1"
+                        role="slider"
+                        aria-label={t(I18nKey.musicVolume)}
+                        aria-valuemin="0"
+                        aria-valuemax="100"
+                        aria-valuenow="70"
+                        data-i18n-aria-key="musicVolume"
+                    >
                         <div class="vol-bar absolute left-0 top-0 h-full bg-(--primary) rounded-full w-[70%]"></div>
                     </div>
                 </div>
@@ -107,7 +159,15 @@ const widgetId =
 
 <!-- Progress Bar (Slim) -->
 <div class="px-1">
-    <div class="progress-container relative w-full h-1 bg-neutral-300/60 dark:bg-neutral-500/40 rounded-full cursor-pointer touch-none mb-2 group mt-2" role="slider" aria-label={i18n(I18nKey.musicProgress)} aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+    <div
+        class="progress-container relative w-full h-1 bg-neutral-300/60 dark:bg-neutral-500/40 rounded-full cursor-pointer touch-none mb-2 group mt-2"
+        role="slider"
+        aria-label={t(I18nKey.musicProgress)}
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="0"
+        data-i18n-aria-key="musicProgress"
+    >
         <div class="progress-bar absolute left-0 top-0 h-full bg-(--primary) rounded-full w-0 transition-[width] duration-100"></div>
         <!-- Hover Thumb -->
         <div class="progress-thumb absolute top-1/2 -mt-1.5 -ml-1.5 w-3 h-3 bg-(--primary) ring-2 ring-white dark:ring-neutral-800 rounded-full shadow-sm scale-0 group-hover:scale-100 transition-transform duration-200"></div>
@@ -117,30 +177,65 @@ const widgetId =
 <!-- Controls Row -->
 <div class="flex items-center justify-between px-1 select-none">
     <!-- Repeat Mode -->
-    <button class="btn-repeat text-neutral-300 dark:text-neutral-600 hover:text-(--primary) transition-colors p-2 active:scale-95" title={i18n(I18nKey.musicPlayMode)} aria-label={i18n(I18nKey.musicPlayMode)}>
+    <button
+        class="btn-repeat text-neutral-300 dark:text-neutral-600 hover:text-(--primary) transition-colors p-2 active:scale-95"
+        title={t(I18nKey.musicPlayMode)}
+        aria-label={t(I18nKey.musicPlayMode)}
+        data-i18n-title-key="musicPlayMode"
+        data-i18n-aria-key="musicPlayMode"
+    >
         <Icon is:inline name="material-symbols:repeat-rounded" class="icon-repeat text-xl" aria-hidden="true" />
         <Icon is:inline name="material-symbols:repeat-one-rounded" class="icon-repeat-one text-xl hidden" aria-hidden="true" />
         <Icon is:inline name="material-symbols:shuffle-rounded" class="icon-shuffle text-xl hidden" aria-hidden="true" />
     </button>
 
     <!-- Prev -->
-    <button class="btn-prev music-disabled text-neutral-600 dark:text-neutral-300 hover:text-(--primary) transition-colors p-2 active:scale-95" title={i18n(I18nKey.musicPrev)} aria-label={i18n(I18nKey.musicPrev)} disabled>
+    <button
+        class="btn-prev music-disabled text-neutral-600 dark:text-neutral-300 hover:text-(--primary) transition-colors p-2 active:scale-95"
+        title={t(I18nKey.musicPrev)}
+        aria-label={t(I18nKey.musicPrev)}
+        data-i18n-title-key="musicPrev"
+        data-i18n-aria-key="musicPrev"
+        disabled
+    >
         <Icon is:inline name="material-symbols:skip-previous-rounded" class="text-3xl" aria-hidden="true" />
     </button>
 
     <!-- Play/Pause (Feature) -->
-    <button class="btn-play music-disabled w-12 h-12 bg-(--btn-regular-bg) hover:bg-(--btn-regular-bg-hover) active:bg-(--btn-regular-bg-active) text-(--primary) rounded-full flex items-center justify-center transition-all duration-300" title={i18n(I18nKey.musicPlay)} aria-label={i18n(I18nKey.musicPlay)} disabled>
+    <button
+        class="btn-play music-disabled w-12 h-12 bg-(--btn-regular-bg) hover:bg-(--btn-regular-bg-hover) active:bg-(--btn-regular-bg-active) text-(--primary) rounded-full flex items-center justify-center transition-all duration-300"
+        title={t(I18nKey.musicPlay)}
+        aria-label={t(I18nKey.musicPlay)}
+        data-i18n-title-key="musicPlay"
+        data-i18n-aria-key="musicPlay"
+        data-music-play-key="musicPlay"
+        data-music-pause-key="musicPause"
+        disabled
+    >
         <Icon is:inline name="material-symbols:play-arrow-rounded" class="icon-play text-3xl ml-0.5" aria-hidden="true" />
         <Icon is:inline name="material-symbols:pause-rounded" class="icon-pause text-3xl hidden" aria-hidden="true" />
     </button>
 
     <!-- Next -->
-    <button class="btn-next music-disabled text-neutral-600 dark:text-neutral-300 hover:text-(--primary) transition-colors p-2 active:scale-95" title={i18n(I18nKey.musicNext)} aria-label={i18n(I18nKey.musicNext)} disabled>
+    <button
+        class="btn-next music-disabled text-neutral-600 dark:text-neutral-300 hover:text-(--primary) transition-colors p-2 active:scale-95"
+        title={t(I18nKey.musicNext)}
+        aria-label={t(I18nKey.musicNext)}
+        data-i18n-title-key="musicNext"
+        data-i18n-aria-key="musicNext"
+        disabled
+    >
         <Icon is:inline name="material-symbols:skip-next-rounded" class="text-3xl" aria-hidden="true" />
     </button>
 
     <!-- Playlist Toggle Arrow -->
-    <button class="btn-drawer-toggle text-neutral-400 hover:text-(--primary) transition-all duration-300 p-2 transform active:scale-95" title={i18n(I18nKey.musicPlaylist)} aria-label={i18n(I18nKey.musicPlaylist)}>
+    <button
+        class="btn-drawer-toggle text-neutral-400 hover:text-(--primary) transition-all duration-300 p-2 transform active:scale-95"
+        title={t(I18nKey.musicPlaylist)}
+        aria-label={t(I18nKey.musicPlaylist)}
+        data-i18n-title-key="musicPlaylist"
+        data-i18n-aria-key="musicPlaylist"
+    >
         <Icon is:inline name="mdi:playlist-music" class="text-xl" aria-hidden="true" />
     </button>
 </div>
@@ -149,8 +244,17 @@ const widgetId =
 <div class="lrc-drawer grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] grid-rows-[0fr] opacity-0">
     <div class="overflow-hidden min-h-0">
         <div class="mt-2 pt-2 border-t border-neutral-100 dark:border-white/5 mx-1">
-            <div class="lrc-container h-48 overflow-y-auto custom-scrollbar flex flex-col items-center gap-2 p-4 py-24 text-center relative scroll-smooth" role="listbox" aria-label={i18n(I18nKey.musicLyrics)}>
-                <div class="text-neutral-400 text-sm py-10" role="option">{i18n(I18nKey.musicNoLyrics)}</div>
+            <div
+                class="lrc-container h-48 overflow-y-auto custom-scrollbar flex flex-col items-center gap-2 p-4 py-24 text-center relative scroll-smooth"
+                role="listbox"
+                aria-label={t(I18nKey.musicLyrics)}
+                data-i18n-aria-key="musicLyrics"
+            >
+                <div
+                    class="text-neutral-400 text-sm py-10"
+                    role="option"
+                    data-i18n-text-key="musicNoLyrics"
+                >{t(I18nKey.musicNoLyrics)}</div>
             </div>
         </div>
     </div>
@@ -160,7 +264,12 @@ const widgetId =
 <div class="playlist-drawer grid transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)] grid-rows-[0fr] opacity-0">
     <div class="overflow-hidden min-h-0">
             <div class="mt-2 pt-2 border-t border-neutral-100 dark:border-white/5 mx-1">
-            <div class="playlist-container max-h-48 overflow-y-auto custom-scrollbar pr-1 pb-1 relative" role="listbox" aria-label={i18n(I18nKey.musicPlaylist)}>
+            <div
+                class="playlist-container max-h-48 overflow-y-auto custom-scrollbar pr-1 pb-1 relative"
+                role="listbox"
+                aria-label={t(I18nKey.musicPlaylist)}
+                data-i18n-aria-key="musicPlaylist"
+            >
                 <!-- Items -->
             </div>
         </div>
@@ -201,6 +310,9 @@ const widgetId =
     var cfg = JSON.parse(viewConfigStr);
     var widget = document.getElementById(widgetId);
     if (!widget) return;
+    // 把 cfg 绑到 DOM 元素上，切语言时 translation.ts applyI18nTitlesAnywhere
+    // 会用新语言文案覆盖 cfg.i18n，保证后续 play/pause 切换取到新语言文案。
+    widget.__musicCfg = cfg;
 
     var mgr = window.__ROSETTAMusic;
     if (!mgr) return;
