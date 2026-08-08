@@ -78,8 +78,10 @@ export default defineConfig({
 	base: "/",
 	trailingSlash: "always",
 
-	// Astro v7 最佳实践：显式声明 output: "server" 全量 SSR
-	output: "server",
+	// Astro v7: output: "static" 默认（等同老的 hybrid）—— 页面默认 prerender 为静态 HTML，
+	// 需 SSR 的页面前置 `export const prerender = false` 即可走 Cloudflare adapter 的函数执行。
+	// 这样 Pagefind / SEO / 首屏速度最佳，同时保留 admin/oobe 的鉴权逻辑。
+	output: "static",
 
 	// HTML 压缩：生产默认 true，显式声明便于审计；关闭属性引号去除避免意外
 	compressHTML: true,

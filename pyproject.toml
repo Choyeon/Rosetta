@@ -238,3 +238,9 @@ exclude_lines = [
 ]
 precision = 2
 skip_covered = true
+
+[dependency-groups]
+dev = [
+    "pip>=26.2.1",
+    "pip-audit>=2.10.1",
+]

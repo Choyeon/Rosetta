@@ -604,3 +604,8 @@ export const client = {
 	delete: (u: string, opts?: AxiosOpts) =>
 		clientRequest("DELETE", u, undefined, opts),
 };
+
+// Admin 面板专用快捷引用（目前直接复用 client 实现；保留符号以便后续加鉴权/刷新/日志拦截）
+export const adminApi = client;
+export const blogApi = client;
+export const userApi = client;
