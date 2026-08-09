@@ -271,6 +271,23 @@ export interface PaginatedResponse<T> {
 
 function buildUrl(path: string, params?: Record<string, any>): string {
 	let url = path.startsWith("http") ? path : `${API_BASE}${path}`;
+	// Astro output: static + trailingSlash: "always" → 开发代理上不带尾斜杠的 API 请求
+	// 会被 Astro 前端路由层当作前端页面处理，抛出前端 404（"Do you want to go to /xxx/? instead?"）。
+	// 这里将所有"无文件扩展名"的路径规范化为以 / 结尾（在 query string 之前添加），
+	// 确保 Vite 代理的 "/api" 路由能正确命中、FastAPI 路由也对末尾斜杠宽容。
+	try {
+		const dummyBase = url.startsWith("http") ? undefined : "http://127.0.0.1";
+		const u = new URL(url, dummyBase);
+		const pn = u.pathname;
+		const lastSegment = pn.split("/").pop() ?? "";
+		const hasExtension = lastSegment.includes(".");
+		if (!pn.endsWith("/") && !hasExtension) {
+			u.pathname = pn + "/";
+		}
+		url = url.startsWith("http") ? u.toString() : u.pathname + u.search + u.hash;
+	} catch {
+		/* URL parse 失败时保持原样（兜底，避免破坏请求） */
+	}
 	const qs = new URLSearchParams();
 	let hasLang = false;
 	const normParams = params ? snakeizeKeys(params) : undefined;

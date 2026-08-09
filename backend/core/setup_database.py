@@ -504,15 +504,31 @@ class DatabaseService:
 
 
 def generate_database_url(config: dict) -> str:
-    """生成数据库连接 URL"""
+    """生成数据库连接 URL
+
+    SQLite 路径解析规则（db_path 优先，确保 OOBE 请求体中的 db_path 字段能真正生效）：
+      1. 若 db_path 为绝对路径，直接使用
+      2. 若 db_path 是相对路径或 db_path 缺失 → 以项目根 BASE_DIR 为基准解析
+      3. 若最终路径不携带 .db 后缀则自动补 .db
+    """
     from urllib.parse import quote_plus
+
+    from backend.core.paths import BASE_DIR
 
     db_type = config.get("db_type", "postgresql")
     if db_type == "sqlite":
-        db_name = config.get("db_name", "rosetta")
-        if not db_name.endswith(".db"):
-            db_name = f"{db_name}.db"
-        return f"sqlite+aiosqlite:///{db_name}"
+        db_path = (config.get("db_path") or "").strip()
+        db_name_cfg = (config.get("db_name") or "rosetta").strip()
+        if db_path:
+            candidate = Path(db_path)
+            if not candidate.is_absolute():
+                candidate = BASE_DIR / candidate
+        else:
+            candidate = BASE_DIR / db_name_cfg
+        if candidate.suffix.lower() != ".db":
+            candidate = candidate.with_suffix(".db")
+        # aiosqlite 的 URL 里必须使用 POSIX 风格路径，否则 Windows 盘符会被当作 hostname
+        return f"sqlite+aiosqlite:///{candidate.as_posix()}"
 
     if db_type == "postgresql":
         db_user = config.get("db_user", "")

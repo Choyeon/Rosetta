@@ -6,6 +6,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const _src = _resolve(__dirname, "src");
 
 import cloudflare from "@astrojs/cloudflare";
+import node from "@astrojs/node";
 import { unified } from "@astrojs/markdown-remark";
 import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
@@ -64,12 +65,15 @@ if (process.env.NODE_ENV === "development") {
 	setMaxListeners(20);
 }
 
-// Astro SSR 适配器：统一使用 Cloudflare（cloudflare pages/platform 兼容性最佳）。
-// 如需本地 Node 运行，可改用 @astrojs/node：
-//   import node from "@astrojs/node"; adapter: node({ mode: "standalone" })
-const adapter = cloudflare({
-	prerenderEnvironment: "node",
-});
+// Astro SSR 适配器：
+//   - 开发模式：使用 @astrojs/node（Windows + 本地 Linux 均开箱可用 SSR，
+//     避免 @astrojs/cloudflare 的 dev workers runtime 在 Windows 上抛出
+//     "module is not defined" 导致所有 SSR 页面（oobe/login/admin/...）渲染失败）
+//   - 生产构建：保持 Cloudflare Pages/Platform 兼容最佳的 cloudflare adapter
+// 如需强制使用 cloudflare dev adapter，可显式设 FORCE_CF_ADAPTER=1
+const adapter = (process.env.NODE_ENV === "production" && !process.env.FORCE_NODE_ADAPTER) || process.env.FORCE_CF_ADAPTER
+  ? cloudflare({ prerenderEnvironment: "node" })
+  : node({ mode: "standalone" });
 
 // https://astro.build/config
 export default defineConfig({

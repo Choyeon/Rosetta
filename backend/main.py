@@ -322,6 +322,9 @@ Authorization: Bearer <access_token>
             )
             allowed_exact = (
                 "/health",
+                "/health/",
+                "/api/health",
+                "/api/health/",
                 "/docs",
                 "/openapi.json",
                 "/redoc",

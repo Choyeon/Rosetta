@@ -841,7 +841,13 @@ async def create_post(
 
     if post_data.tag_ids:
         tags = await db.execute(select(Tag).where(Tag.id.in_(post_data.tag_ids)))
-        post.tags = list(tags.scalars().all())
+        tag_list = list(tags.scalars().all())
+        try:
+            post.tags.clear()
+        except Exception:
+            post.tags = []
+        post.tags.extend(tag_list)
+        await db.flush()
 
     await invalidate_cache("posts")
 
@@ -939,7 +945,12 @@ async def update_post(
 
     if post_data.tag_ids is not None:
         tags = await db.execute(select(Tag).where(Tag.id.in_(post_data.tag_ids)))
-        post.tags = list(tags.scalars().all())
+        tag_list = list(tags.scalars().all())
+        try:
+            post.tags.clear()
+        except Exception:
+            post.tags = []
+        post.tags.extend(tag_list)
 
     await db.flush()
 
