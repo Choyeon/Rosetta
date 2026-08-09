@@ -26,9 +26,18 @@ from datetime import datetime
 from typing import Annotated, Any
 
 import bcrypt
+import jwt
+from argon2 import PasswordHasher, Type
+from argon2.exceptions import (
+    InvalidHash as Argon2InvalidHash,
+)
+from argon2.exceptions import (
+    VerificationError,
+    VerifyMismatchError,
+)
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -39,6 +48,100 @@ from backend.models.user import User
 from backend.utils.compat import UTC, timedelta
 
 logger = logging.getLogger(__name__)
+
+JWTError = PyJWTError  # 兼容旧 jose 的 except JWTError
+
+# ==========================
+# Argon2id (OWASP 首推) + bcrypt 兼容层
+# ==========================
+# - 新密码一律使用 argon2id（抗 GPU/ASIC 暴力破解，强度 > bcrypt 一个数量级）
+# - 现存 bcrypt hash ($2a$/$2b$/$2y$) 继续可用，登录成功后自动 rehash 升级
+# - bcrypt < 5 的密码在 >72 字节处原算法会截断；我们和之前保持一致：
+#   长密码先 SHA-256 + base64 再喂给 bcrypt
+
+_ARGON2_HASHER = PasswordHasher(
+    time_cost=3,
+    memory_cost=65536,  # 64 MiB
+    parallelism=4,
+    type=Type.ID,
+)
+
+
+def _prehash_for_bcrypt(password_bytes: bytes) -> bytes:
+    if len(password_bytes) > 72:
+        return base64.b64encode(hashlib.sha256(password_bytes).digest())
+    return password_bytes
+
+
+def _looks_like_bcrypt(hashed_password: str) -> bool:
+    return bool(hashed_password) and hashed_password.startswith(("$2a$", "$2b$", "$2y$"))
+
+
+def _looks_like_argon2(hashed_password: str) -> bool:
+    return bool(hashed_password) and hashed_password.startswith(("$argon2id$", "$argon2i$", "$argon2d$"))
+
+
+def get_password_hash(password: str) -> str:
+    """
+    生成密码哈希（统一使用 Argon2id）。
+
+    注意：文章访问密码和用户登录密码共用同一 hash 工具函数，
+    之前的 bcrypt hash 仍可验证，但不再生成新的 bcrypt hash。
+    """
+    # argon2-cffi 内部会转 UTF-8，且没有 72 字节限制，不需要 prehash
+    return _ARGON2_HASHER.hash(password)
+
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """验证密码（向后兼容 argon2 / bcrypt 两种格式），仅返回是否匹配。"""
+    ok, _ = verify_password_with_rehash(plain_password, hashed_password)
+    return ok
+
+
+def verify_password_with_rehash(
+    plain_password: str, hashed_password: str
+) -> tuple[bool, bool]:
+    """
+    验证密码并提示是否需要升级为 argon2。
+
+    Returns:
+        (匹配成功, 是否建议 rehash 升级到 argon2)
+    """
+    if not plain_password or not hashed_password:
+        return False, False
+
+    # ---------- Argon2 ----------
+    if _looks_like_argon2(hashed_password):
+        try:
+            _ARGON2_HASHER.verify(hashed_password, plain_password)
+        except VerifyMismatchError:
+            return False, False
+        except (VerificationError, Argon2InvalidHash):
+            logger.warning("argon2 验证异常，视为失败")
+            return False, False
+        # 若参数升级（比如未来把 memory_cost 调大）也能自动重算
+        try:
+            need = _ARGON2_HASHER.check_needs_rehash(hashed_password)
+        except Exception:  # noqa: BLE001
+            need = False
+        return True, need
+
+    # ---------- bcrypt (向后兼容) ----------
+    if _looks_like_bcrypt(hashed_password):
+        try:
+            password_bytes = _prehash_for_bcrypt(plain_password.encode("utf-8"))
+            hashed_bytes = hashed_password.encode("utf-8")
+            ok = bcrypt.checkpw(password_bytes, hashed_bytes)
+        except ValueError:
+            return False, False
+        if not ok:
+            return False, False
+        # 验证通过，但 bcrypt → 必须升级为 argon2id
+        return True, True
+
+    # 未知格式（不抛异常，只视为失败，避免 500）
+    logger.warning("password_hash 使用未知格式，拒绝登录")
+    return False, False
 
 security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
@@ -98,61 +201,14 @@ async def _is_jti_blacklisted(jti: str) -> bool:
         return jti in MEMORY_REFRESH_BLACKLIST
 
 
-def get_password_hash(password: str) -> str:
-    """
-    生成密码哈希
-
-    使用 bcrypt 算法生成安全的密码哈希。
-    bcrypt 5.0.0+ 要求密码不超过 72 字节。
-    对于超长密码，先使用 SHA-256 哈希后再用 bcrypt 处理。
-
-    Args:
-        password: 明文密码
-
-    Returns:
-        str: 哈希后的密码
-    """
-    password_bytes = password.encode("utf-8")
-
-    if len(password_bytes) > 72:
-        password_bytes = base64.b64encode(hashlib.sha256(password_bytes).digest())
-
-    salt = bcrypt.gensalt(rounds=12)
-    hashed = bcrypt.hashpw(password_bytes, salt)
-
-    return hashed.decode("utf-8")
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """
-    验证密码
-
-    Args:
-        plain_password: 明文密码
-        hashed_password: 哈希密码
-
-    Returns:
-        bool: 密码匹配返回 True
-    """
-    password_bytes = plain_password.encode("utf-8")
-    hashed_bytes = hashed_password.encode("utf-8")
-
-    if len(password_bytes) > 72:
-        password_bytes = base64.b64encode(hashlib.sha256(password_bytes).digest())
-
-    return bcrypt.checkpw(password_bytes, hashed_bytes)
-
-
 def create_access_token(data: dict[str, Any], expires_delta: timedelta | None = None) -> str:
     """
-    创建访问令牌
+    创建访问令牌（PyJWT）。
 
-    Args:
-        data: 要编码的数据，通常包含用户 ID
-        expires_delta: 自定义过期时间
-
-    Returns:
-        str: JWT 访问令牌
+    jose → PyJWT 迁移说明：
+    - 两者 encode/decode 签名兼容：payload / key / algorithm / headers / algorithms
+    - 均自动将 datetime 转换为 unix timestamp，并默认校验 exp
+    - PyJWT 不再主动维护 python-jose（2023 年停更），修复安全补丁更快
     """
     to_encode = data.copy()
 
@@ -185,22 +241,8 @@ def create_refresh_token(
     expires_delta: timedelta | None = None,
 ) -> tuple[str, str]:
     """
-    创建刷新令牌
-
-    刷新令牌有效期更长，用于获取新的访问令牌。
-    每次生成会携带：
-      - version: user.token_version（密码变更时自增）
-      - type: "refresh"
-      - jti: uuid，一次性令牌标识
-      - iat / exp
-
-    Args:
-        data: 要编码的数据，通常包含用户 ID
-        user_token_version: 用户的 token_version 字段值
-        expires_delta: 自定义过期时间
-
-    Returns:
-        tuple[str, str]: (refresh_token, jti)
+    创建刷新令牌（PyJWT）。有效期更长，用于换取新的访问令牌。
+    每次生成携带 version（user.token_version，密码变更时自增）、jti（一次性）。
     """
     to_encode = data.copy()
 
@@ -236,16 +278,20 @@ def create_refresh_token(
 
 def decode_token(token: str) -> dict[str, Any] | None:
     """
-    解码 JWT 令牌
-
-    Args:
-        token: JWT 令牌字符串
-
-    Returns:
-        dict | None: 解码后的数据，解码失败返回 None
+    解码 JWT 令牌（PyJWT）。默认校验签名与 exp/iat。
+    失败返回 None（不抛 500），并记录 warning。
     """
     try:
-        payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
+        payload = jwt.decode(
+            token,
+            settings.secret_key,
+            algorithms=[settings.algorithm],
+            options={
+                "verify_signature": True,
+                "verify_exp": True,
+                "verify_iat": True,
+            },
+        )
         return payload
     except JWTError as e:
         logger.warning(f"JWT decode error: {e}")

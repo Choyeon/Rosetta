@@ -16,8 +16,8 @@ from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Any
 
+import jwt
 from fastapi import APIRouter, HTTPException, status
-from jose import jwt
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 

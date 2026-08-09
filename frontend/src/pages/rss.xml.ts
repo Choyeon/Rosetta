@@ -9,7 +9,7 @@ import { formatDateI18nWithTime } from "@utils/date-utils";
 import { url } from "@utils/url-utils";
 import type { APIContext } from "astro";
 import { experimental_AstroContainer as AstroContainer } from "astro/container";
-import sanitizeHtml from "sanitize-html";
+import sanitizeHtml from "@/utils/sanitize";
 // RSS生成在构建时，暂时用静态配置
 import { siteConfig } from "@/config";
 

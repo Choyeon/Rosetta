@@ -1,4 +1,4 @@
-import * as pako from "pako";
+import { deflateSync } from "fflate";
 
 /**
  * PlantUML 编码字母表：`0-9A-Za-z-_`。
@@ -76,7 +76,10 @@ export function encodePlantUML(source) {
 		);
 	}
 	const utf8Bytes = new TextEncoder().encode(source);
-	const deflated = pako.deflateRaw(utf8Bytes, { level: 9 });
+	// PlantUML 要求 raw DEFLATE（无 zlib header / trailer）：fflate.deflateSync
+	// 默认输出 zlib 格式（带 2 字节 header + adler32 trailer），传 raw: true
+	// 对应 pako.deflateRaw。
+	const deflated = deflateSync(utf8Bytes, { level: 9, raw: true });
 	return encode64(deflated);
 }
 

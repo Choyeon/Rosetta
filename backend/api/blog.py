@@ -646,11 +646,10 @@ async def get_post(
         ):
             can_access_content = True
         elif password:
-            # 验证密码
-            from passlib.context import CryptContext
+            # 验证密码（argon2id + bcrypt 双识别，平滑升级）
+            from backend.core.auth import verify_password as verify_post_password
 
-            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-            can_access_content = pwd_context.verify(password, post.password)
+            can_access_content = verify_post_password(password, post.password)
         else:
             can_access_content = False
 
@@ -791,10 +790,9 @@ async def create_post(
     # 处理密码加密
     password = None
     if post_data.password:
-        from passlib.context import CryptContext
+        from backend.core.auth import get_password_hash as hash_post_password
 
-        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-        password = pwd_context.hash(post_data.password)
+        password = hash_post_password(post_data.password)
 
     status_value = post_data.status
     scheduled_at_value = post_data.scheduled_at
@@ -903,10 +901,9 @@ async def update_post(
 
     if post_data.password is not None:
         if post_data.password:
-            from passlib.context import CryptContext
+            from backend.core.auth import get_password_hash as hash_post_password
 
-            pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-            post.password = pwd_context.hash(post_data.password)
+            post.password = hash_post_password(post_data.password)
         else:
             post.password = None
 

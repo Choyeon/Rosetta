@@ -22,6 +22,7 @@ from backend.core.auth import (
     decode_token,
     get_password_hash,
     verify_password,
+    verify_password_with_rehash,
 )
 from backend.core.config import settings
 from backend.models.user import User, UserPreference
@@ -168,8 +169,17 @@ class UserService:
         if user is None:
             raise ValueError("用户名或密码错误")
 
-        if not verify_password(password, user.password_hash):
+        pwd_ok, need_rehash = verify_password_with_rehash(password, user.password_hash)
+        if not pwd_ok:
             raise ValueError("用户名或密码错误")
+
+        # bcrypt → argon2id 平滑升级：首次登录成功就重新保存为 argon2 哈希
+        if need_rehash:
+            try:
+                user.password_hash = get_password_hash(password)
+                await self._db.flush()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"用户 {user.id} 密码 rehash (bcrypt→argon2id) 失败：{e}")
 
         if not user.is_active:
             raise ValueError("用户账号未激活")

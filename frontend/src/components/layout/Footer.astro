@@ -1,7 +1,7 @@
 ---
 import fs from "node:fs";
 import path from "node:path";
-import sanitizeHtml from "sanitize-html";
+import sanitizeHtml from "@/utils/sanitize";
 import { footerConfig, profileConfig as staticProfileConfig } from "@/config";
 import { loadDynamicConfig } from "@/utils/dynamic-config";
 import { url } from "@/utils/url-utils";
