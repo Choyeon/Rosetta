@@ -51,6 +51,53 @@ export default defineNuxtConfig({
   ],
 
   // ============================================================
+  // @nuxt/content v3 — 替代 Astro Content Collections
+  //   目录约定：content/posts/*.md   → 路由 /posts/<slug>
+  //            content/spec/*.md    → 路由 /spec/<slug>（独立页面内容层，pages 层可覆盖）
+  //            content/dynamic/*.md → 路由 /dynamic/<date>
+  //   frontmatter schema 与 Astro src/content.config.ts 1:1 对齐
+  // ============================================================
+  content: {
+    // 开发期文件变更实时热更
+    watch: true,
+    // 自动生成 content 侧边导航 /tags, /categories 等可直接用 <ContentNavigation>
+    navigation: {
+      fields: ["published", "pinned", "category", "tags", "image", "author", "description", "draft", "lang"],
+    },
+    // Markdown 解析 + TOC 深度（匹配 Astro toc-max-level: 4）
+    markdown: {
+      anchorLinks: true,
+      toc: { depth: 2, searchDepth: 4 },
+      // MDC 语法（Astro 里的 ::github{repo="..."} 也支持）
+      mdc: true,
+      remarkPlugins: [],
+      rehypePlugins: [],
+    },
+    // Shiki 代码高亮 — 匹配 main.css 的 one-light / one-dark-pro 两套 data-theme
+    highlight: {
+      theme: {
+        default: "one-light",
+        "one-dark-pro": "one-dark-pro",
+      },
+      langs: [
+        "md","mdc","markdown","json","yaml","yml","toml","bash","powershell","cmd",
+        "ts","tsx","js","jsx","vue","svelte","astro","html","css","scss","sass","stylus",
+        "python","go","rust","java","kotlin","c","cpp","cs","sql","dockerfile","nginx","diff","graphql",
+      ],
+      preload: ["ts","js","vue","python","bash","yaml","json","md"],
+    },
+    // Content 数据源（如未来接入 CMS，可扩展）
+    sources: {
+      content: {
+        driver: "fs",
+        base: "./content",
+      },
+    },
+    // 支持 .md / .mdx / .yml / .json / .csv
+    contentHead: true,
+  },
+
+  // ============================================================
   // Nitro（服务端 / 构建引擎）
   // ============================================================
   nitro: {
