@@ -1,0 +1,238 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* ========================================================
+   Tailwind v4 @theme 自定义设计 Token（100% 对齐 tokens-antd.json）
+   用法：class="bg-primary-500 text-primary hover:bg-primary-400 shadow-md rounded-md"
+   ======================================================== */
+@theme {
+  /* ---------- Colors: Primary ---------- */
+  --color-primary-50: #e6f4ff;
+  --color-primary-100: #bae0ff;
+  --color-primary-200: #91caff;
+  --color-primary-300: #69b1ff;
+  --color-primary-400: #4096ff;
+  --color-primary-500: #1677ff;
+  --color-primary-600: #0958d9;
+  --color-primary-700: #003eb3;
+  --color-primary-800: #002c8c;
+  --color-primary-900: #001d66;
+
+  /* ---------- Colors: Semantic ---------- */
+  --color-success-50: #f6ffed;
+  --color-success-100: #d9f7be;
+  --color-success-500: #52c41a;
+  --color-success-600: #389e0d;
+  --color-warning-50: #fffbe6;
+  --color-warning-100: #ffe7ba;
+  --color-warning-500: #faad14;
+  --color-warning-600: #d48806;
+  --color-error-50: #fff2f0;
+  --color-error-100: #ffa39e;
+  --color-error-500: #ff4d4f;
+  --color-error-600: #cf1322;
+  --color-info-50: #e6f4ff;
+  --color-info-500: #1677ff;
+
+  /* ---------- Colors: Neutral Text ---------- */
+  --color-neutral-text-primary: rgba(0, 0, 0, 0.88);
+  --color-neutral-text-secondary: rgba(0, 0, 0, 0.65);
+  --color-neutral-text-tertiary: rgba(0, 0, 0, 0.45);
+  --color-neutral-text-quaternary: rgba(0, 0, 0, 0.25);
+
+  /* ---------- Colors: Neutral Fill ---------- */
+  --color-neutral-fill-default: rgba(0, 0, 0, 0.15);
+  --color-neutral-fill-hover: rgba(0, 0, 0, 0.06);
+  --color-neutral-fill-active: rgba(0, 0, 0, 0.09);
+  --color-neutral-fill-quaternary: rgba(0, 0, 0, 0.04);
+
+  /* ---------- Colors: Neutral Border ---------- */
+  --color-neutral-border-default: #d9d9d9;
+  --color-neutral-border-secondary: #f0f0f0;
+
+  /* ---------- Colors: Neutral Bg ---------- */
+  --color-neutral-bg-container: #ffffff;
+  --color-neutral-bg-elevated: #ffffff;
+  --color-neutral-bg-layout: #f5f5f5;
+  --color-neutral-bg-spot: #fafafa;
+  --color-neutral-bg-mask: rgba(0, 0, 0, 0.45);
+
+  /* ---------- Rosetta Signature Colors ---------- */
+  --color-rosetta-gold: #d4a34e;
+  --color-rosetta-gold-dark: #b88532;
+  --color-nebula-blue: #3a5fcd;
+  --color-nebula-blue-dark: #2a47a0;
+
+  /* ---------- Font Families ---------- */
+  --font-family-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, "PingFang SC", "Hiragino Sans GB",
+    "Microsoft YaHei", sans-serif;
+  --font-family-serif: Georgia, Cambria, "Times New Roman", Times, serif;
+  --font-family-mono: "JetBrains Mono", "SFMono-Regular", Consolas,
+    "Liberation Mono", Menlo, Courier, monospace;
+
+  /* ---------- Font Sizes ---------- */
+  --font-size-h1: 2.375rem; /* 38px */
+  --font-size-h2: 1.875rem; /* 30px */
+  --font-size-h3: 1.5rem;   /* 24px */
+  --font-size-h4: 1.25rem;  /* 20px */
+  --font-size-lg: 1rem;     /* 16px */
+  --font-size-base: 0.875rem; /* 14px — 基准字号（AntD 标准） */
+  --font-size-sm: 0.75rem;  /* 12px */
+  --font-size-xs: 0.6875rem; /* 11px */
+
+  /* ---------- Line Heights ---------- */
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;      /* 16/24 */
+  --line-height-relaxed: 1.5714;  /* 14/22（AntD 默认） */
+  --line-height-loose: 1.75;
+
+  /* ---------- Spacing ---------- */
+  --spacing-xxs: 0.25rem;   /* 4px */
+  --spacing-xs: 0.5rem;     /* 8px */
+  --spacing-sm: 0.75rem;    /* 12px */
+  --spacing-md: 1rem;       /* 16px（基准） */
+  --spacing-lg: 1.25rem;    /* 20px */
+  --spacing-xl: 1.5rem;     /* 24px */
+  --spacing-2xl: 2rem;      /* 32px */
+  --spacing-3xl: 3rem;      /* 48px */
+  --spacing-4xl: 4rem;      /* 64px */
+
+  /* ---------- Border Radius ---------- */
+  --radius-xs: 2px;
+  --radius-sm: 4px;   /* AntD 默认 */
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 16px;
+  --radius-2xl: 24px;
+
+  /* ---------- Box Shadows (AntD) ---------- */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.03),
+               0 1px 6px -1px rgba(0, 0, 0, 0.02),
+               0 2px 4px 0 rgba(0, 0, 0, 0.02);
+  --shadow-md: 0 4px 16px 0 rgba(0, 0, 0, 0.08),
+               0 2px 4px -2px rgba(0, 0, 0, 0.06);   /* 默认卡片 */
+  --shadow-lg: 0 6px 24px 0 rgba(0, 0, 0, 0.12),
+               0 3px 6px -4px rgba(0, 0, 0, 0.06);   /* 下拉/抽屉 */
+  --shadow-xl: 0 12px 40px 0 rgba(0, 0, 0, 0.16),
+               0 6px 12px -8px rgba(0, 0, 0, 0.08);  /* 浮层 */
+
+  /* ---------- Motion / Transitions ---------- */
+  --ease-out: cubic-bezier(0.215, 0.61, 0.355, 1);
+  --ease-in-out: cubic-bezier(0.645, 0.045, 0.355, 1);
+  --animate-duration-fast: 100ms;
+  --animate-duration-normal: 200ms;  /* 默认 */
+  --animate-duration-slow: 300ms;
+
+  /* ---------- Breakpoints ---------- */
+  --breakpoint-xxs: 360px;
+  --breakpoint-xs: 480px;
+  --breakpoint-sm: 576px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 992px;
+  --breakpoint-xl: 1200px;
+  --breakpoint-2xl: 1600px;
+
+  /* ---------- Z-Index Scale ---------- */
+  --z-dropdown: 1000;
+  --z-sticky: 1020;
+  --z-fixed: 1030;
+  --z-modal-backdrop: 1040;
+  --z-modal: 1050;
+  --z-popover: 1060;
+  --z-tooltip: 1070;
+  --z-notification: 1080;
+}
+
+/* ========================================================
+   全局默认基础样式
+   ======================================================== */
+@layer base {
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    font-family: var(--font-family-sans);
+    font-size: var(--font-size-base);
+    line-height: var(--line-height-relaxed);
+    color: var(--color-neutral-text-primary);
+    background: var(--color-neutral-bg-layout);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    line-height: var(--line-height-snug);
+    color: var(--color-neutral-text-primary);
+  }
+  h1 { font-size: var(--font-size-h1); }
+  h2 { font-size: var(--font-size-h2); }
+  h3 { font-size: var(--font-size-h3); }
+  h4 { font-size: var(--font-size-h4); }
+
+  a {
+    color: var(--color-primary-500);
+    text-decoration: none;
+    transition: color var(--animate-duration-fast) var(--ease-out);
+    &:hover { color: var(--color-primary-400); text-decoration: underline; }
+  }
+  code, kbd, pre, samp {
+    font-family: var(--font-family-mono);
+    font-size: 0.9em;
+  }
+}
+
+/* ========================================================
+   页面 / 布局 过渡（对应 app.pageTransition + layoutTransition）
+   ======================================================== */
+@layer components {
+  .page-enter-active, .page-leave-active,
+  .layout-enter-active, .layout-leave-active {
+    transition: all var(--animate-duration-slow) var(--ease-in-out);
+  }
+  .page-enter-from, .page-leave-to { opacity: 0; transform: translateY(6px); }
+  .layout-enter-from, .layout-leave-to { opacity: 0; }
+}
+
+/* ========================================================
+   Typography Prose 修饰（@tailwindcss/typography）
+   与 Rosetta Markdown 视觉对齐
+   ======================================================== */
+@layer components {
+  .prose-rosetta {
+    @apply prose prose-slate max-w-none;
+    --tw-prose-links: var(--color-primary-500);
+    --tw-prose-headings: var(--color-neutral-text-primary);
+    --tw-prose-code: var(--color-primary-700);
+  }
+}
+
+/* ========================================================
+   Dark Mode (data-theme 切换，与 Nuxt color-mode 配置一致)
+   ======================================================== */
+@layer base {
+  [data-theme="one-dark-pro"] {
+    color-scheme: dark;
+    --color-neutral-text-primary: rgba(255, 255, 255, 0.92);
+    --color-neutral-text-secondary: rgba(255, 255, 255, 0.72);
+    --color-neutral-text-tertiary: rgba(255, 255, 255, 0.5);
+    --color-neutral-text-quaternary: rgba(255, 255, 255, 0.28);
+    --color-neutral-bg-container: #1e1f29;
+    --color-neutral-bg-elevated: #282a36;
+    --color-neutral-bg-layout: #181821;
+    --color-neutral-bg-spot: #1e1f29;
+    --color-neutral-bg-mask: rgba(0, 0, 0, 0.6);
+    --color-neutral-border-default: #3a3d4a;
+    --color-neutral-border-secondary: #2e303c;
+    --color-neutral-fill-hover: rgba(255, 255, 255, 0.08);
+    --color-neutral-fill-active: rgba(255, 255, 255, 0.12);
+    background: var(--color-neutral-bg-layout);
+    color: var(--color-neutral-text-primary);
+  }
+  [data-theme="one-dark-pro"] a {
+    color: var(--color-primary-400);
+  }
+}
