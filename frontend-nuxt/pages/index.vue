@@ -1,181 +1,139 @@
+<script setup lang="ts">
+definePageMeta({ layout: "default" });
+useHead({
+  title: "Rosetta — 以内容与体验为核心的现代化博客引擎",
+  meta: [
+    { name: "description", content: "Rosetta：Nuxt 4 + FastAPI 驱动的现代化博客系统。支持 Markdown、分类/标签、多语言、站内搜索、评论、媒体管理与 SEO。" },
+    { property: "og:title", content: "Rosetta — 现代化博客引擎" },
+    { property: "og:description", content: "以内容与体验为核心的现代化博客引擎。" },
+    { property: "og:type", content: "website" },
+  ],
+});
+
+// 置顶 + 最近文章：API → 本地 content 回退
+interface Post { slug: string; title: string; description?: string; image?: string; published?: string; category?: string; tags?: string[]; pinned?: boolean }
+const { data: feed } = await useFetch<any>("/api/posts", {
+  query: { pinnedFirst: true, pageSize: 10, _timeout: 8000 },
+  default: () => ({ items: [] }),
+  lazy: true,
+  server: true,
+});
+const { data: local } = await useAsyncData("home-posts", () =>
+  queryContent<Post>("/posts").where({ draft: { $ne: true } }).sort({ pinned: -1, published: -1 }).limit(10).find()
+);
+const posts = computed<Post[]>(() => (feed.value?.items?.length ? feed.value.items : local.value || []));
+const pinned = computed(() => posts.value.filter(p => p.pinned).slice(0, 2));
+const recent = computed(() => posts.value.slice(0, 8));
+
+const categories = ["前端开发", "后端开发", "项目实战", "迁移笔记", "文章示例"];
+</script>
+
 <template>
-  <!-- 首页占位（阶段 5 会完整迁移 PostList + 搜索 + 分类条） -->
   <div class="space-y-2xl">
-    <!-- Hero 区 -->
-    <section
-      class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 via-nebula-blue-75/80 to-rosetta-gold-dark shadow-lg p-2xl md:p-3xl text-white"
-    >
-      <div
-        class="pointer-events-none absolute inset-0 opacity-20"
-        aria-hidden
-        style="background-image: radial-gradient(circle at 20% 20%, #fff 1px, transparent 1px), radial-gradient(circle at 80% 80%, #fff 1px, transparent 1px); background-size: 24px 24px;"
-      />
+    <!-- Hero -->
+    <section class="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 via-nebula-blue-75/80 to-rosetta-gold-dark shadow-lg p-2xl md:p-3xl text-white">
+      <div class="pointer-events-none absolute inset-0 opacity-20" aria-hidden style="background-image: radial-gradient(circle at 20% 20%, #fff 1px, transparent 1px), radial-gradient(circle at 80% 80%, #fff 1px, transparent 1px); background-size: 24px 24px;"/>
       <div class="relative max-w-3xl">
-        <p class="text-sm font-medium uppercase tracking-[0.24em] text-white/80 mb-sm">
-          Rosetta — Lightweight Blog System
-        </p>
+        <p class="text-sm font-medium uppercase tracking-[0.24em] text-white/80 mb-sm">Rosetta · Lightweight Blog System</p>
         <h1 class="text-[clamp(2rem,4vw,3rem)] font-bold leading-[1.15] mb-md">
-          以<span class="text-rosetta-gold">内容</span>与
-          <span class="text-rosetta-gold">体验</span>为核心的
-          <br class="hidden md:block" />
-          现代化博客引擎
+          以<span class="text-rosetta-gold">内容</span>与<span class="text-rosetta-gold">体验</span>为核心的
+          <br class="hidden md:block"/>现代化博客引擎
         </h1>
         <p class="text-white/90 max-w-2xl leading-relaxed text-[15px]">
-          正在从 Astro 7 迁移到 Nuxt 4 最新版 — 保留全部文章、标签、分类、
-          管理后台、Markdown 生态与交互特性，同时带来更流畅的 SSR、
-          更清晰的组件边界与更强的类型安全。
+          前端已全面迁移至 <strong>Nuxt 4 + Vue 3 + Tailwind v4</strong>，配合
+          <strong>FastAPI + PostgreSQL</strong> 后端，提供 SSR、增量静态生成、
+          结构化 SEO、标签 / 分类 / 归档、全文搜索、Markdown 编辑器和媒体管理等能力。
         </p>
         <div class="mt-xl flex flex-wrap gap-xs">
-          <NuxtLink
-            to="/posts"
-            class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-white text-primary-700 font-semibold shadow-sm hover:bg-neutral-bg-spot active:translate-y-px transition-all duration-fast ease-out focus-visible:outline-none focus-visible:ring-2 ring-white"
-          >
-            <Icon name="material-symbols:menu-book-rounded" class="w-5 h-5" />
-            浏览文章
+          <NuxtLink to="/posts" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-white text-primary-700 font-semibold shadow-sm hover:bg-neutral-bg-spot active:translate-y-px transition-all duration-fast">
+            <Icon name="material-symbols:menu-book-rounded" class="w-5 h-5"/>浏览文章
           </NuxtLink>
-          <NuxtLink
-            to="/about"
-            class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-white/10 backdrop-blur-sm hover:bg-white/15 text-white font-medium border border-white/20 transition-all duration-fast ease-out focus-visible:outline-none focus-visible:ring-2 ring-white"
-          >
-            <Icon name="material-symbols:info-rounded" class="w-5 h-5" />
-            关于项目
+          <NuxtLink to="/archive" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-white/10 backdrop-blur-sm hover:bg-white/15 text-white font-medium border border-white/20 transition-all">
+            <Icon name="material-symbols:calendar-month-rounded" class="w-5 h-5"/>时间归档
           </NuxtLink>
-          <NuxtLink
-            to="/admin"
-            class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-rosetta-gold text-neutral-text-primary font-semibold shadow-sm hover:bg-rosetta-gold-dark hover:text-white transition-all duration-fast ease-out"
-          >
-            <Icon name="material-symbols:dashboard-customize-rounded" class="w-5 h-5" />
-            进入后台
+          <NuxtLink to="/about" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-lg bg-rosetta-gold text-neutral-text-primary font-semibold shadow-sm hover:bg-rosetta-gold-dark hover:text-white transition-all">
+            <Icon name="material-symbols:info-rounded" class="w-5 h-5"/>关于项目
           </NuxtLink>
         </div>
       </div>
     </section>
 
-    <!-- 迁移进度卡片 -->
-    <section
-      class="grid grid-cols-1 md:grid-cols-3 gap-lg"
-      aria-label="迁移进度"
-    >
-      <ProgressCard
-        title="已完成初始化"
-        :percent="25"
-        subtitle="阶段 2 · 项目骨架 / 依赖 / Nuxt 配置"
-        :ok="['Nuxt 4.5.2 初始化','@nuxt/ui + Pinia + VueUse 就绪','Tailwind v4 设计 Tokens 同步','i18n/API/Auth 工具迁移中']"
-        :pending="['Content Collections','路由与页面','管理后台 20+ 页','OOBE Wizard','搜索与评论集成']"
-        class="md:col-span-1"
-      />
-      <ProgressCard
-        title="功能等价迁移"
-        :percent="0"
-        subtitle="阶段 4 · 内容层与数据层"
-        :ok="[]"
-        :pending="['posts/spec/dynamic 内容库','64 篇真实测试文章','站点级配置映射','分类/标签/归档数据管线','图片优化与 Fuse 搜索']"
-        class="md:col-span-1"
-      />
-      <ProgressCard
-        title="集成验证"
-        :percent="0"
-        subtitle="阶段 8 · 启动、构建与回归"
-        :ok="[]"
-        :pending="['pnpm dev 全链路冒烟','pnpm build 产物可运行','前端/后端 API 契约 OK','替换原 frontend 路径','打包脚本同步更新']"
-        class="md:col-span-1"
-      />
+    <!-- Category strip -->
+    <section class="flex flex-wrap gap-xs" aria-label="分类导航">
+      <NuxtLink v-for="c in categories" :key="c"
+        :to="{ path: '/categories', query: undefined }"
+        @click="navigateTo(`/categories/${encodeURIComponent(c)}`)"
+        class="group inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-neutral-border-secondary bg-neutral-bg-container text-sm text-neutral-text-secondary hover:text-primary-500 hover:border-primary-500/40 hover:shadow-sm transition-all"
+      >
+        <span class="w-2 h-2 rounded-full bg-gradient-to-r from-primary-500 to-rosetta-gold opacity-70 group-hover:opacity-100"/>
+        {{ c }}
+      </NuxtLink>
+    </section>
+
+    <!-- Pinned -->
+    <section v-if="pinned.length" class="space-y-sm">
+      <div class="flex items-end justify-between">
+        <h2 class="text-xl font-bold text-neutral-text-primary inline-flex items-center gap-xs">
+          <Icon name="material-symbols:push-pin-rounded" class="w-5 h-5 text-warning-500"/>置顶推荐
+        </h2>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-md">
+        <NuxtLink
+          v-for="p in pinned"
+          :key="p.slug"
+          :to="`/posts/${p.slug}`"
+          class="group relative rounded-2xl overflow-hidden bg-neutral-bg-container border border-warning-500/30 hover:border-primary-500/40 hover:shadow-md transition-all"
+        >
+          <div class="h-40 md:h-48 bg-gradient-to-br from-primary-500/20 via-nebula-blue/10 to-rosetta-gold/20 relative overflow-hidden">
+            <NuxtImg v-if="p.image" :src="p.image" :alt="p.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-normal" format="avif" loading="lazy"/>
+            <div v-else class="absolute inset-0 flex items-center justify-center text-primary-500/40"><Icon name="material-symbols:article-rounded" class="w-16 h-16"/></div>
+            <span class="absolute top-xs left-xs px-2 py-0.5 rounded bg-warning-500/90 text-white text-[10px] font-bold shadow-xs">PIN</span>
+          </div>
+          <div class="p-md">
+            <div class="flex items-center gap-xs text-xs text-neutral-text-tertiary">
+              <span v-if="p.category" class="text-primary-500 font-medium">#{{ p.category }}</span>
+              <span>·</span><Icon name="material-symbols:calendar-month-rounded" class="w-3.5 h-3.5"/>
+              {{ p.published ? new Date(p.published).toLocaleDateString() : '—' }}
+            </div>
+            <h3 class="mt-xs text-lg font-semibold text-neutral-text-primary group-hover:text-primary-500 line-clamp-2">{{ p.title }}</h3>
+            <p class="mt-xs text-sm text-neutral-text-secondary line-clamp-2 leading-relaxed">{{ p.description }}</p>
+          </div>
+        </NuxtLink>
+      </div>
+    </section>
+
+    <!-- Recent articles -->
+    <section class="space-y-md">
+      <div class="flex items-end justify-between">
+        <h2 class="text-xl font-bold text-neutral-text-primary inline-flex items-center gap-xs">
+          <Icon name="material-symbols:bolt-rounded" class="w-5 h-5 text-primary-500"/>最新文章
+        </h2>
+        <NuxtLink to="/posts" class="text-sm text-primary-500 hover:text-primary-400 inline-flex items-center gap-0.5">
+          查看全部 <Icon name="material-symbols:chevron-right-rounded" class="w-4 h-4"/>
+        </NuxtLink>
+      </div>
+      <div class="space-y-sm">
+        <NuxtLink
+          v-for="p in recent"
+          :key="p.slug"
+          :to="`/posts/${p.slug}`"
+          class="group flex items-start gap-md p-md bg-neutral-bg-container border border-neutral-border-secondary rounded-xl hover:-translate-y-0.5 hover:shadow-md hover:border-primary-500/30 transition-all duration-fast ease-out"
+        >
+          <div class="w-28 h-20 shrink-0 rounded-lg bg-gradient-to-br from-primary-500/10 to-rosetta-gold/20 overflow-hidden relative">
+            <NuxtImg v-if="p.image" :src="p.image" :alt="p.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-normal" format="avif" loading="lazy"/>
+            <div v-else class="absolute inset-0 flex items-center justify-center text-primary-500/40"><Icon name="material-symbols:article-rounded" class="w-10 h-10"/></div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-xs flex-wrap text-xs">
+              <span v-if="p.category" class="text-primary-500 font-medium">#{{ p.category }}</span>
+              <span v-for="t in p.tags?.slice?.(0,2)" :key="t" class="text-neutral-text-tertiary">{{ t }}</span>
+            </div>
+            <h3 class="mt-xs text-base font-semibold text-neutral-text-primary group-hover:text-primary-500 line-clamp-1">{{ p.title }}</h3>
+            <p class="mt-xs text-sm text-neutral-text-secondary line-clamp-2 leading-relaxed">{{ p.description }}</p>
+            <p class="mt-xs text-xs text-neutral-text-quaternary">{{ p.published ? new Date(p.published).toLocaleDateString() : '' }}</p>
+          </div>
+        </NuxtLink>
+      </div>
     </section>
   </div>
 </template>
-
-<script setup lang="ts">
-const ProgressCard = defineComponent({
-  name: "ProgressCard",
-  props: {
-    title: String,
-    percent: Number,
-    subtitle: String,
-    ok: { type: Array as () => string[], default: () => [] },
-    pending: { type: Array as () => string[], default: () => [] },
-  },
-  setup(props) {
-    return () =>
-      h(
-        "section",
-        {
-          class:
-            "bg-neutral-bg-container rounded-2xl p-xl border border-neutral-border-secondary shadow-sm flex flex-col gap-md",
-        },
-        [
-          h("div", { class: "flex items-start justify-between gap-md" }, [
-            h("div", {}, [
-              h("h2", { class: "text-lg font-semibold text-neutral-text-primary" }, props.title),
-              h(
-                "p",
-                { class: "text-xs text-neutral-text-tertiary mt-0.5" },
-                props.subtitle || ""
-              ),
-            ]),
-            h(
-              "span",
-              {
-                class:
-                  "shrink-0 text-sm font-semibold text-primary-500 bg-primary-50 px-2.5 py-1 rounded-md",
-              },
-              `${props.percent}%`
-            ),
-          ]),
-          h(
-            "div",
-            {
-              class:
-                "h-2 w-full rounded-full overflow-hidden bg-neutral-fill-quaternary",
-            },
-            [
-              h("div", {
-                class: "h-full bg-gradient-to-r from-primary-500 to-rosetta-gold transition-all",
-                style: { width: `${props.percent}%` },
-              }),
-            ]
-          ),
-          ...(props.ok?.length
-            ? [
-                h("ul", { class: "space-y-xs text-sm" }, [
-                  ...props.ok.map((t) =>
-                    h(
-                      "li",
-                      { class: "flex items-start gap-xs text-neutral-text-secondary" },
-                      [
-                        h(
-                          "span",
-                          { class: "mt-0.5 text-success-500" },
-                          "✓"
-                        ),
-                        t,
-                      ]
-                    )
-                  ),
-                ]),
-              ]
-            : []),
-          ...(props.pending?.length
-            ? [
-                h("ul", { class: "space-y-xs text-sm" }, [
-                  ...props.pending.map((t) =>
-                    h(
-                      "li",
-                      { class: "flex items-start gap-xs text-neutral-text-tertiary" },
-                      [
-                        h(
-                          "span",
-                          { class: "mt-0.5 text-neutral-text-quaternary" },
-                          "○"
-                        ),
-                        t,
-                      ]
-                    )
-                  ),
-                ]),
-              ]
-            : []),
-        ]
-      );
-  },
-});
-</script>
