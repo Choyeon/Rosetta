@@ -8,9 +8,12 @@
     - data-testid / aria 完备
 -->
 <script setup lang="ts">
-import { useModal } from "#imports"; // @vueuse/core 的 useModal 或自行实现；这里直接原生实现
+// @vueuse/core 的 useModal 或自行实现；这里直接原生实现（#imports 仅在 Nuxt 运行时可用，避免显式 import 引发 ESM 静态分析）
 
-const props = defineProps<{
+/** 仅客户端渲染阶段启用 Teleport，SSR 直接输出到原位（避免文档节点不存在） */
+const IS_CLIENT = import.meta.client;
+
+const props = withDefaults(defineProps<{
   /** 双向绑定：是否打开 */
   open?: boolean;
   title?: string;
@@ -24,19 +27,18 @@ const props = defineProps<{
   wrapperClass?: string;
   /** data-testid 前缀 */
   testid?: string;
-}>();
-const emit = defineEmits<{
-  "update:open": [v: boolean];
-  close: [];
-  open: [];
-}>();
-withDefaults(props, {
+}>(), {
   closable: true,
   closeOnMask: true,
   closeOnEsc: true,
   size: "md",
   testid: "base-modal",
 });
+const emit = defineEmits<{
+  "update:open": [v: boolean];
+  close: [];
+  open: [];
+}>();
 
 const visible = defineModel<boolean>("open", { default: false });
 watch(visible, (v) => {
@@ -77,7 +79,7 @@ const sizeClass = computed(() => ({
 </script>
 
 <template>
-  <Teleport to="body" :disabled="!import.meta.client">
+  <Teleport to="body" :disabled="!IS_CLIENT">
     <Transition name="modal-backdrop" appear @after-leave="() => {}">
       <div
         v-if="visible"

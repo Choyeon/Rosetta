@@ -101,14 +101,24 @@ if ($adminPwd -and -not (Test-Path "backend\.oobe_complete")) {
     & $venvPy -m backend.scripts.auto_oobe 2>&1 | Out-Host
 }
 
-Write-Banner "前端构建"
+Write-Banner "前端构建 (Nuxt 4, frontend-nuxt)"
 if (-not $NoFrontendBuild) {
-    Push-Location frontend
+    $frontDir = Join-Path $ROOT "frontend-nuxt"
+    if (-not (Test-Path $frontDir)) {
+        # legacy fallback: 原 Astro frontend 目录
+        $frontDir = Join-Path $ROOT "frontend"
+    }
+    Push-Location $frontDir
     try {
-        if (-not (Test-Path "node_modules")) { pnpm install --frozen-lockfile }
+        if (-not (Test-Path "node_modules")) {
+            if (Test-Path "pnpm-lock.yaml") { pnpm install --frozen-lockfile }
+            else { pnpm install }
+        }
+        # Nuxt 预生成类型（postinstall 已在 install 阶段做 nuxt prepare；如缺失补跑一次）
+        if (Test-Path "nuxt.config.ts" -and -not (Test-Path ".nuxt")) { pnpm run postinstall 2>&1 | Out-Host }
         pnpm run build 2>&1 | Out-Host
-        if ($LASTEXITCODE -ne 0) { throw "pnpm build 失败" }
-        Write-Ok "前端构建完成"
+        if ($LASTEXITCODE -ne 0) { throw "前端 pnpm build 失败" }
+        Write-Ok "前端构建完成 (目录: $(Split-Path $frontDir -Leaf))"
     } finally { Pop-Location }
 }
 
@@ -118,13 +128,15 @@ Write-Host @"
 
   * 开发模式：
     - 后端(新 terminal):   $venvPy -m uvicorn backend.main:app --reload --port 8000
-    - 前端(新 terminal):   cd frontend ; pnpm dev
-    - 浏览器:              http://localhost:4321
+    - 前端(新 terminal):   cd frontend-nuxt ; pnpm dev
+    - 浏览器:              http://localhost:3000
 
   * 生产模式（IIS / 自托管）：
     - 后端:               $venvPy -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 --workers 4
-    - 前端:               cd frontend ; pnpm preview --host --port 4321
-    - 推荐:               使用 Nginx 反代 8000/api + 4321 静态/页面
+    - 前端:               cd frontend-nuxt ; pnpm preview --host --port 3000
+    - 推荐:               使用 Nginx 反代 8000/api + 3000 静态/页面
+
+  * 旧版 Astro 已保留为 legacy：目录 frontend/ (legacy-astro)
 
 数据库迁移 (SQLite → PostgreSQL):
     $venvPy -m backend.scripts.migrate_database --from sqlite+aiosqlite:///./rosetta.db --to postgresql+asyncpg://user:pass@localhost:5432/rosetta

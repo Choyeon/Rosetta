@@ -26,24 +26,24 @@ function del(j: Job) { if (!confirm(`删除任务 ${j.name}?`)) return; jobs.val
     </header>
 
     <section v-if="editing" class="bg-neutral-bg-container border border-primary-500/40 rounded-2xl p-lg shadow-lg ring-4 ring-primary-500/10 max-w-2xl">
-      <h3 class="font-semibold mb-sm text-neutral-text-primary">{{ (editing as any).id ? '编辑' : '新建' }}</h3>
+      <h3 class="font-semibold mb-sm text-neutral-text-primary">{{ editing.id ? '编辑' : '新建' }}</h3>
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-sm text-sm">
         <label class="sm:col-span-2"><span class="text-xs text-neutral-text-tertiary mb-1 block">任务名</span>
-          <input v-model="(editing as any).name" class="w-full h-10 px-3 rounded-lg bg-neutral-bg-layout border border-neutral-border-secondary"/></label>
+          <input v-model="editing.name" class="w-full h-10 px-3 rounded-lg bg-neutral-bg-layout border border-neutral-border-secondary"/></label>
         <label><span class="text-xs text-neutral-text-tertiary mb-1 block">Cron（5 字段）</span>
-          <input v-model="(editing as any).cron" class="w-full h-10 px-3 rounded-lg bg-neutral-bg-layout border border-neutral-border-secondary font-mono"/></label>
+          <input v-model="editing.cron" class="w-full h-10 px-3 rounded-lg bg-neutral-bg-layout border border-neutral-border-secondary font-mono"/></label>
         <label class="self-end">
           <span class="text-xs text-neutral-text-tertiary block mb-1">常用：</span>
           <div class="flex flex-wrap gap-xs">
             <button v-for="c in ['* * * * *','0 * * * *','0 0 * * *','30 2 * * 0','0 9-18 * * 1-5']" :key="c"
-              @click="(editing as any).cron = c"
+              @click="editing.cron = c"
               class="px-2 py-1 text-xs rounded bg-neutral-fill-hover hover:bg-primary-500 hover:text-white transition-colors font-mono">{{ c }}</button>
           </div>
         </label>
       </div>
       <div class="mt-md flex justify-end gap-xs">
         <button @click="editing = null" class="px-4 h-9 rounded-lg bg-neutral-fill-hover hover:bg-neutral-fill-active text-sm">取消</button>
-        <button @click="jobs.value.push(editing as Job); editing = null" class="px-4 h-9 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-400">保存</button>
+        <button @click="if(editing) jobs.value.push(editing); editing = null" class="px-4 h-9 rounded-lg bg-primary-500 text-white text-sm font-medium hover:bg-primary-400">保存</button>
       </div>
     </section>
 

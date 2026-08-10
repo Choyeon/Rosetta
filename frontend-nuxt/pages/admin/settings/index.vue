@@ -149,16 +149,15 @@ const tabs = [
           </div>
         </section>
 
-        <!-- SEO -->
         <section v-show="tab === 'seo'" class="bg-neutral-bg-container border border-neutral-border-secondary rounded-2xl p-lg shadow-sm space-y-md text-sm">
           <h2 class="font-semibold text-neutral-text-primary">SEO & 搜索</h2>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-sm">
-            <label v-for="(k,i) in [['openGraph','Open Graph (Facebook/微信分享)'],['twitterCard','Twitter Card'],['jsonLd','JSON-LD 结构化'],['sitemapAuto','自动生成 Sitemap'],['rssAuto','自动生成 RSS / Atom'],['imageLazy','图片懒加载'],['avifWebp','自动 AVIF/WebP']]" :key="k"
+            <label v-for="row in [['openGraph','Open Graph (Facebook/微信分享)'],['twitterCard','Twitter Card'],['jsonLd','JSON-LD 结构化'],['sitemapAuto','自动生成 Sitemap'],['rssAuto','自动生成 RSS / Atom'],['imageLazy','图片懒加载'],['avifWebp','自动 AVIF/WebP']]" :key="row[0]"
               class="flex items-center gap-xs p-xs rounded-lg hover:bg-neutral-fill-hover cursor-pointer select-none">
-              <input v-model="(seo as any)[k]" type="checkbox" class="w-4 h-4 text-primary-500 rounded"/>
+              <input v-model="seo[row[0]]" type="checkbox" class="w-4 h-4 text-primary-500 rounded"/>
               <div>
-                <p class="text-sm font-medium text-neutral-text-primary">{{ i.split('（')[0] }}</p>
-                <p v-if="i.includes('（')" class="text-xs text-neutral-text-quaternary">{{ i.slice(i.indexOf('（')+1, -1) }}</p>
+                <p class="text-sm font-medium text-neutral-text-primary">{{ row[1].split('（')[0] }}</p>
+                <p v-if="row[1].includes('（')" class="text-xs text-neutral-text-quaternary">{{ row[1].slice(row[1].indexOf('（')+1, -1) }}</p>
               </div>
             </label>
             <label class="sm:col-span-2"><span class="text-xs text-neutral-text-tertiary mb-1 block">默认分享缩略图 (og:image)</span>
@@ -193,7 +192,7 @@ const tabs = [
               </select>
             </label>
             <label><span class="text-xs text-neutral-text-tertiary mb-1 block">站内搜索</span>
-              <select v-model="features.search ? 'local' : 'off'" @change="(e: any) => features.search = (e.target.value === 'local')" class="w-full h-10 px-3 rounded-lg bg-neutral-bg-layout border border-neutral-border-secondary">
+              <select :value="features.search ? 'local' : 'off'" @change="(e: Event) => features.search = ((e.target as HTMLSelectElement).value === 'local')" class="w-full h-10 px-3 rounded-lg bg-neutral-bg-layout border border-neutral-border-secondary">
                 <option value="local">本地索引 + /api/posts 回退</option>
                 <option value="off">关闭</option>
               </select>

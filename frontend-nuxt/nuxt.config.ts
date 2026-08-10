@@ -1,10 +1,16 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
+
+const ROOT_DIR = fileURLToPath(new URL("./", import.meta.url));
 
 const API_BASE_URL = process.env.API_BASE_URL || "http://127.0.0.1:8000";
 const SSR_API_BASE_URL = process.env.API_BASE_URL_SSR || API_BASE_URL;
 
 export default defineNuxtConfig({
+  // Nuxt 4：因 app/ 目录存在会自动开启 app-as-srcDir（~/ -> app/），
+  // 但我们的 assets/components/pages 都在项目根下，故显式 srcDir="." 保持稳定路径解析。
+  srcDir: ".",
   compatibilityDate: "2025-08-10",
   devtools: { enabled: true },
 
@@ -33,69 +39,20 @@ export default defineNuxtConfig({
   // 全局模块（版本已通过 npm view 确认真实存在）
   // ============================================================
   modules: [
-    "@nuxtjs/tailwindcss",        // Tailwind v4 桥接（配合 @tailwindcss/vite 插件）
     "@nuxtjs/color-mode",         // Dark/Light 自动切换
-    "@nuxtjs/seo",                // sitemap/robots/og/schema-org 统一管理
-    "@nuxtjs/sitemap",
-    "@nuxtjs/robots",
-    "@nuxt/content",               // 替代 Astro Content Collections（Nuxt 3.15.x）
+    "@nuxtjs/seo",                // sitemap/robots/og/schema-org 统一管理（含 sitemap + robots）
+    "@nuxt/content",               // 替代 Astro Content Collections
     "@nuxt/icon",                  // 替代 astro-icon（Iconify 离线 + 在线）
     "@nuxt/image",                 // 图片优化
-    "@nuxt/fonts",                 // 字体优化（子集化 + 预加载）
-    "@nuxt/scripts",               // 第三方脚本安全加载（分析/广告等）
+    // "@nuxt/fonts",              // 字体优化（需联网下载 Google Fonts，离线禁用，改为本地系统字体栈兜底）
+    // "@nuxt/scripts",            // 第三方脚本安全加载（离线/无外网时禁用，避免 Gravatar 等脚本下载超时）
     "@nuxt/ui",                    // 官方 UI 组件库（shadcn 风格）
-    "@pinia/nuxt",                 // 状态管理（替代 Svelte stores）
+    "@pinia/nuxt",                 // 状态管理（含 defineStore/storeToRefs 自动导入）
     "@vueuse/nuxt",                // VueUse composables
     "@vueuse/motion/nuxt",         // 动画（CSS/View Transitions 轻量）
     "nuxt-auth-utils",             // 鉴权中间件辅助
   ],
 
-  // ============================================================
-  // @nuxt/content v3 — 替代 Astro Content Collections
-  //   目录约定：content/posts/*.md   → 路由 /posts/<slug>
-  //            content/spec/*.md    → 路由 /spec/<slug>（独立页面内容层，pages 层可覆盖）
-  //            content/dynamic/*.md → 路由 /dynamic/<date>
-  //   frontmatter schema 与 Astro src/content.config.ts 1:1 对齐
-  // ============================================================
-  content: {
-    // 开发期文件变更实时热更
-    watch: true,
-    // 自动生成 content 侧边导航 /tags, /categories 等可直接用 <ContentNavigation>
-    navigation: {
-      fields: ["published", "pinned", "category", "tags", "image", "author", "description", "draft", "lang"],
-    },
-    // Markdown 解析 + TOC 深度（匹配 Astro toc-max-level: 4）
-    markdown: {
-      anchorLinks: true,
-      toc: { depth: 2, searchDepth: 4 },
-      // MDC 语法（Astro 里的 ::github{repo="..."} 也支持）
-      mdc: true,
-      remarkPlugins: [],
-      rehypePlugins: [],
-    },
-    // Shiki 代码高亮 — 匹配 main.css 的 one-light / one-dark-pro 两套 data-theme
-    highlight: {
-      theme: {
-        default: "one-light",
-        "one-dark-pro": "one-dark-pro",
-      },
-      langs: [
-        "md","mdc","markdown","json","yaml","yml","toml","bash","powershell","cmd",
-        "ts","tsx","js","jsx","vue","svelte","astro","html","css","scss","sass","stylus",
-        "python","go","rust","java","kotlin","c","cpp","cs","sql","dockerfile","nginx","diff","graphql",
-      ],
-      preload: ["ts","js","vue","python","bash","yaml","json","md"],
-    },
-    // Content 数据源（如未来接入 CMS，可扩展）
-    sources: {
-      content: {
-        driver: "fs",
-        base: "./content",
-      },
-    },
-    // 支持 .md / .mdx / .yml / .json / .csv
-    contentHead: true,
-  },
 
   // ============================================================
   // Nitro（服务端 / 构建引擎）
@@ -103,28 +60,12 @@ export default defineNuxtConfig({
   nitro: {
     // 预渲染内容路由（保持与 Astro output:static 等价的首屏速度 + SEO）
     prerender: {
-      crawlLinks: true,
+      crawlLinks: false, // 离线构建禁用爬虫扫描（需后端运行时再启用）
+      failOnError: false, // 预渲染页面报错不阻断打包（SSR 报错在 dev 期单独调试）
       routes: [
-        "/",
-        "/posts",
-        "/archive",
-        "/categories",
-        "/tags",
-        "/about",
-        "/friends",
-        "/guestbook",
-        "/sponsor",
-        "/robots.txt",
-        "/sitemap.xml",
-      ],
-      // 忽略的动态路由（必须 SSR）
-      ignore: [
-        "/admin/**",
-        "/login/**",
-        "/oobe/**",
-        "/notifications/**",
-        "/search/**",
-        "/api/**",
+        "/403",
+        "/404",
+        "/500",
       ],
     },
     // 开发 / SSR 阶段直接代理到 FastAPI 后端（同源免 CORS）
@@ -205,20 +146,21 @@ export default defineNuxtConfig({
 
   // ============================================================
   // 别名：与 Astro 保持一致，方便迁移
+  //   Nuxt/vite 需真实的绝对路径（用 fileURLToPath + import.meta.url 解析）
   // ============================================================
   alias: {
-    "@": "/<rootDir>",
-    "@components": "/<rootDir>/components",
-    "@assets": "/<rootDir>/assets",
-    "@constants": "/<rootDir>/constants",
-    "@utils": "/<rootDir>/utils",
-    "@i18n": "/<rootDir>/i18n",
-    "@layouts": "/<rootDir>/layouts",
-    "@api": "/<rootDir>/server/api",
-    "@stores": "/<rootDir>/stores",
-    "@types": "/<rootDir>/types",
-    "@composables": "/<rootDir>/composables",
-    "@plugins": "/<rootDir>/plugins",
+    "@": ROOT_DIR,
+    "@components": `${ROOT_DIR}components`,
+    "@assets": `${ROOT_DIR}assets`,
+    "@constants": `${ROOT_DIR}constants`,
+    "@utils": `${ROOT_DIR}utils`,
+    "@i18n": `${ROOT_DIR}i18n`,
+    "@layouts": `${ROOT_DIR}layouts`,
+    "@api": `${ROOT_DIR}server/api`,
+    "@stores": `${ROOT_DIR}stores`,
+    "@types": `${ROOT_DIR}types`,
+    "@composables": `${ROOT_DIR}composables`,
+    "@plugins": `${ROOT_DIR}plugins`,
   },
 
   // ============================================================
@@ -231,18 +173,26 @@ export default defineNuxtConfig({
       "utils/**",
     ],
     presets: [
-      { from: "pinia", imports: ["defineStore", "storeToRefs"] },
       { from: "dayjs", imports: [{ name: "default", as: "dayjs" }] },
     ],
   },
 
   // ============================================================
   // Tailwind / CSS
+  //   Tailwind v4 不走 @nuxtjs/tailwindcss 模块：
+  //     - 开发/构建阶段由 vite 插件 @tailwindcss/vite 负责（零 PostCSS）
+  //     - 仍保留 PostCSS 管线（autoprefixer + @tailwindcss/postcss）作为 SSR/Nitro 兜底
   // ============================================================
   css: [
     "~/assets/css/main.css",
     "~/assets/css/tokens.css",
   ],
+  postcss: {
+    plugins: {
+      "@tailwindcss/postcss": {},
+    },
+  },
+  // （vite.plugins 已经配置了 tailwindcss()，见下方）
   tailwindcss: {
     cssPath: "~/assets/css/main.css",
     viewer: false,
@@ -326,7 +276,8 @@ export default defineNuxtConfig({
     defaultLocale: "zh-CN",
   },
   sitemap: {
-    sources: ["/api/__sitemap__/urls"],
+    // 离线构建禁用自定义数据源（运行时后端启动后，/api/__sitemap__/urls 会自动注入）
+    // sources: ["/api/__sitemap__/urls"],
     exclude: [
       "/admin/**",
       "/login/**",
@@ -336,7 +287,6 @@ export default defineNuxtConfig({
       "/500",
     ],
     autoLastmod: true,
-    autoAlternativeLangPrefixes: ["zh-CN", "zh-TW", "en-US", "ja-JP"],
   },
   robots: {
     UserAgent: "*",
@@ -346,9 +296,19 @@ export default defineNuxtConfig({
 
   // ============================================================
   // Content（@nuxt/content 3.x — 替代 Astro Content Collections）
+  //   目录约定：content/posts/*.md   → 路由 /posts/<slug>
+  //            content/spec/*.md    → 路由 /spec/<slug>（独立页面内容层，pages 层可覆盖）
+  //            content/dynamic/*.md → 路由 /dynamic/<date>
+  //   frontmatter schema 与 Astro src/content.config.ts 1:1 对齐
   // ============================================================
   content: {
-    // 文档所在目录（posts/spec/dynamic 对应 Astro src/content/{posts,spec,dynamic}）
+    // 开发期文件变更实时热更
+    watch: true,
+    // 自动生成 content 侧边导航 /tags, /categories 等可直接用 <ContentNavigation>
+    navigation: {
+      fields: ["published", "pinned", "category", "tags", "image", "author", "description", "draft", "lang"],
+    },
+    // Content 数据源（posts/spec/dynamic 对应 Astro src/content/{posts,spec,dynamic}）
     sources: {
       content: {
         driver: "fs",
@@ -356,22 +316,12 @@ export default defineNuxtConfig({
         base: "./content",
       },
     },
-    highlight: {
-      theme: {
-        default: "github-light",
-        dark: "github-dark",
-      },
-      // 预加载常用语言
-      preload: [
-        "ts", "tsx", "js", "jsx", "json", "vue", "astro", "python", "go",
-        "bash", "sh", "shell", "yaml", "yml", "toml", "sql", "markdown",
-        "md", "mdx", "css", "scss", "stylus", "html", "xml", "java", "rust",
-        "c", "cpp", "dockerfile", "diff", "mermaid", "plantuml",
-      ],
-    },
-    // Markdown 插件（与 Astro remarkPlugins 对齐，减少能力丢失）
+    // Markdown 解析 + 插件（与 Astro remarkPlugins 对齐，减少能力丢失）
     markdown: {
       anchorLinks: true,
+      toc: { depth: 3, searchDepth: 4 },
+      // MDC 语法（Astro 里的 ::github{repo="..."} 也支持）
+      mdc: true,
       remarkPlugins: {
         "remark-gfm": {},
         "remark-math": {},
@@ -382,11 +332,25 @@ export default defineNuxtConfig({
         "rehype-slug": {},
         "rehype-highlight": {},
       },
-      toc: { depth: 3, searchDepth: 3 },
     },
+    // Shiki 代码高亮 — 匹配 main.css 的 one-light / one-dark-pro 两套 data-theme
+    highlight: {
+      theme: {
+        default: "one-light",
+        "one-dark-pro": "one-dark-pro",
+      },
+      langs: [
+        "md","mdc","markdown","json","yaml","yml","toml","bash","sh","shell","powershell","cmd",
+        "ts","tsx","js","jsx","vue","svelte","astro","html","xml","css","scss","sass","stylus",
+        "python","go","rust","java","kotlin","c","cpp","cs","sql","dockerfile","nginx","diff","graphql",
+        "mermaid","plantuml","toml","dockerfile","docker",
+      ],
+      preload: ["ts","tsx","js","jsx","vue","python","go","bash","sh","yaml","yml","json","md","mdx","sql","css","scss","html","rust","java","kotlin","c","cpp","dockerfile","diff","mermaid","plantuml","toml"],
+    },
+    // 支持 .md / .mdx / .yml / .json / .csv
+    contentHead: true,
     // 全文检索（替代 Pagefind）
     fullTextSearchFields: ["title", "description", "content", "tags", "category", "author"],
-    watch: true,
   },
 
   // ============================================================
