@@ -1,205 +1,461 @@
-<p align="center">
-  <a href="https://github.com/Choyeon/Rosetta">
-    <picture>
-      <source media="(prefers-color-scheme: dark)"  srcset="./docs/assets/logo/rosetta-dark.png"/>
-      <source media="(prefers-color-scheme: light)" srcset="./docs/assets/logo/rosetta-light.png"/>
-      <img src="./docs/assets/logo/rosetta-light.png" alt="Rosetta" style="max-width:360px;width:80%;height:auto;display:block;margin:0 auto;"/>
-    </picture>
-  </a>
-</p>
+# 🌸 Rosetta - Modern Blog System
 
-<p align="center">
-  <strong>Full-stack blog CMS built with FastAPI + Astro 7 + Svelte 5</strong><br/>
-  Async-first architecture. Type-safe end-to-end. Batteries included.
-</p>
+<div align="center">
 
-<p align="center">
-  <a href="https://github.com/Choyeon/Rosetta/actions/workflows/ci.yml"><img src="https://img.shields.io/badge/build-passing-%23009485?style=for-the-badge&logo=githubactions&logoColor=white" alt="Build"/></a>
-  <a href="https://github.com/Choyeon/Rosetta/blob/main/LICENSE"><img src="https://img.shields.io/github/license/Choyeon/Rosetta?style=for-the-badge&color=%237C3AED" alt="License"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/python-3.12%2B-%233776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/typescript-6.0-%233178C6?style=for-the-badge&logo=typescript&logoColor=white" alt="TypeScript"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/Astro-7-FF5D01?style=for-the-badge&logo=astro&logoColor=white" alt="Astro 7"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/Svelte-5-FF3E00?style=for-the-badge&logo=svelte&logoColor=white" alt="Svelte 5"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/Tailwind-v4-38BDF8?style=for-the-badge&logo=tailwindcss&logoColor=white" alt="Tailwind v4"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/PostgreSQL-16-4169E1?style=for-the-badge&logo=postgresql&logoColor=white" alt="PostgreSQL"/></a>
-  <a href="https://github.com/Choyeon/Rosetta"><img src="https://img.shields.io/badge/FastAPI-0.115-009485?style=for-the-badge&logo=fastapi&logoColor=white" alt="FastAPI"/></a>
-</p>
+![Rosetta](https://img.shields.io/badge/Rosetta-Blog%20System-3C5A78?style=for-the-badge)
+![Nuxt 4](https://img.shields.io/badge/Nuxt-4.0-00DC82?style=for-the-badge&logo=nuxt.js)
+![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi)
+![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript)
+![Status](https://img.shields.io/badge/Status-80%25%20Complete-success?style=for-the-badge)
 
-<p align="center">
-  <a href="https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FChoyeon%2FRosetta&project-name=rosetta-blog&repository-name=rosetta-blog">
-    <img src="https://vercel.com/button" alt="Deploy with Vercel" height="36"/>
-  </a>
-</p>
+**A beautiful, modern, and full-featured blog system with a elegant blue-themed frontend and powerful admin panel.**
+
+[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Screenshots](#screenshots)
+
+</div>
 
 ---
 
-## Architecture
+## ✨ Features
 
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                               Browser / App                               │
-│   ──────  HTTPS / WSS  ──────  reverse-proxy  ─────────────────────────── │
-└───────────────────────────────────────────────────────────────────────────┘
-         │                                                │
-         ▼                                                │
-  ┌───────────────────────────────┐                        │
-  │  Astro 7  Static + SSR Mix    │                        │
-  │  ├─ Tailwind v4  design       │                        │
-  │  └─ Svelte 5  islands (runes) │─── /api, /media ──────┘
-  └───────────────┬───────────────┘
-                  │
-                  ▼
-  ┌─────────────────────────────────────────────────────┐
-  │  FastAPI + SQLAlchemy Async                         │
-  │  ├─ JWT + CSRF + HSTS + Rate limit                  │
-  │  ├─ ORM parameterized queries end-to-end            │
-  │  └─ OpenAPI auto-docs: /docs  /redoc  /health       │
-  └──────────────────┬─────────────────────┬────────────┘
-                     │                     │
-                     ▼                     ▼
-              ┌────────────┐        ┌──────────────┐
-              │  Database  │        │    Cache     │
-              │ PG / SLite │        │ Redis / Mem  │
-              └────────────┘        └──────────────┘
-```
+### 🎨 Frontend (Nuxt 4)
+- ✅ **Modern UI** - Beautiful blue-themed design with Playfair Display typography
+- ✅ **Responsive** - Perfect on mobile, tablet, and desktop
+- ✅ **Multi-language** - 4 languages (中文/English/日本語/繁體中文)
+- ✅ **Authentication** - JWT-based secure login system
+- ✅ **OOBE Wizard** - First-time installation guide
+- ✅ **Comments** - Nested comments with replies
+- ✅ **SEO Ready** - Meta tags and structured data
+- ✅ **Dark Mode Ready** - Infrastructure in place
+
+### 🚀 Backend (FastAPI)
+- ✅ **Async/Await** - High-performance async operations
+- ✅ **Type-Safe** - Pydantic validation throughout
+- ✅ **Multi-language** - Content localization support
+- ✅ **JWT Auth** - Secure token-based authentication
+- ✅ **SQLAlchemy 2.0** - Modern ORM with async support
+- ✅ **Redis Cache** - Optional caching layer
+- ✅ **Alembic** - Database migrations
+- ✅ **RESTful API** - Well-structured endpoints
+
+### 📱 Pages Available
+
+#### Public Pages
+- 🏠 **Homepage** - Hero banner, featured posts, categories
+- 📝 **Posts** - List with pagination, search, filters
+- 📄 **Post Detail** - Full content, comments, likes, related posts
+- 🏷️ **Categories** - Grid layout with post counts
+- 📅 **Archive** - Yearly/monthly post archives
+- 🔐 **Login/Register** - User authentication
+- ⚙️ **OOBE** - Installation wizard
+
+#### Admin Panel
+- 📊 **Dashboard** - Statistics and overview
+- 📝 Posts Management (TODO)
+- 🏷️ Categories Management (TODO)
+- 🏷️ Tags Management (TODO)
+- 💬 Comments Moderation (TODO)
+- 👥 Users Management (TODO)
+- ⚙️ Settings (TODO)
 
 ---
 
-| | |
-|---|---|
-| **User System**<br/>Multi-role RBAC (superadmin / staff / subscriber). JWT access + refresh tokens. QQ / GitHub avatar fallback. Password-strength policy. Ban / soft-delete. Bulk operations via admin data-table. | **Comment System**<br/>Anonymous + Authenticated dual pipeline. Nested multi-level replies. Sensitivity analysis with optional approval. Original-content XSS storage + frontend escape. Reactions (like/dislike). Batch moderation API. |
-| **Navigation Tree**<br/>Unlimited-depth hierarchy. Drag-and-drop reorder. Multiple node types: external link / archive / category / tag / page. Icon + target + rel=nofollow controls. | **Post Editor**<br/>Split-pane Markdown + live preview. Category / tag chips. Cover picker (upload / url / auto-extract). Series grouping. Scheduled publishing. Password / token encrypt. SEO meta. Revisions + recycle bin. |
-| **Presentational**<br/>Astro Islands on-demand hydration. Tailwind v4. Dark / light / system theme. Sakura & canvas bg effects. Live2D + Spine models. One-click code-copy. Pagefind **offline** full-text search. | **Pages**<br/>Gallery (auto avif/webp + LQIP). Bangumi (sync via API). Timeline dynamics. Guestbook. Category / Tag archives. Friends links. Sponsor QR. |
-| **Admin Console**<br/>`/admin` SPA-style dashboard. Stat cards. CRUD for posts / categories / tags / nav / albums / dynamics / announcements / banners / friends / settings. | **i18n · Security · Deployment**<br/>6 built-in locales with type-safe `i18nKey`.<br/>CSRF double-submit, HSTS/CSP/XFO headers, rate-limited auth, bcrypt+salt.<br/>`docker compose up -d`, Cloudflare Workers, Vercel button. |
-
----
-
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
-| Tool | Version | Install |
-|---|---|---|
-| Python | 3.12+ | [python.org](https://www.python.org) |
-| `uv` | latest | [docs.astral.sh](https://docs.astral.sh/uv/getting-started/installation/) |
-| Node.js | 22+ | [nodejs.org](https://nodejs.org) |
-| `pnpm` | 10+ | `corepack enable && corepack prepare pnpm@10 --activate` |
-| SQLite | bundled | (zero-config default) |
+- **Node.js** 18+ (for frontend)
+- **Python** 3.11+ (for backend)
+- **pnpm** (recommended) or npm
+- **PostgreSQL** or **SQLite** (for database)
 
-### 1. Backend
+### 1. Clone Repository
 
 ```bash
-git clone https://github.com/Choyeon/Rosetta.git
-cd Rosetta
+git clone https://github.com/yourusername/rosetta.git
+cd rosetta
+```
+
+### 2. Start Backend
+
+```bash
+# Install backend dependencies
+cd backend
 uv sync
-cp .env.example .env
-uv run python -m backend.migrations upgrade
+
+# Start backend server
 uv run uvicorn backend.main:app --reload --port 8000
 ```
 
-| Endpoint | URL |
-|---|---|
-| Swagger UI | <http://localhost:8000/docs> |
-| ReDoc      | <http://localhost:8000/redoc> |
-| Health     | <http://localhost:8000/health> |
+Backend will be available at: http://localhost:8000
 
-### 2. Frontend
+### 3. Start Frontend
 
+**Windows:**
+```bash
+cd frontend
+setup.bat
+```
+
+**Linux/Mac:**
+```bash
+cd frontend
+chmod +x setup.sh
+./setup.sh
+```
+
+**Manual:**
 ```bash
 cd frontend
 pnpm install
 pnpm dev
 ```
 
-Open <http://localhost:4321> — the OOBE wizard guides you through DB config, admin creation, and seed content.
+Frontend will be available at: http://localhost:3000
+
+### 4. Complete OOBE Setup
+
+1. Visit http://localhost:3000/oobe
+2. Configure database settings
+3. Enter site information
+4. Create admin account
+5. Wait for installation to complete
+6. Start using your blog! 🎉
 
 ---
 
-## Docker (recommended for production)
+## 📚 Documentation
 
-```bash
-cp .env.example .env   # tweak SECRET_KEY / DB_PASSWORD / CORS_ORIGINS
-docker compose up -d
+### Frontend Documentation
+- 📖 [INDEX.md](./frontend/INDEX.md) - Documentation navigation
+- 🚀 [README.md](./frontend/README.md) - Setup and installation
+- 🔧 [IMPLEMENTATION.md](./frontend/IMPLEMENTATION.md) - Developer guide
+- 📊 [PROJECT_STATUS.md](./frontend/PROJECT_STATUS.md) - Progress tracking
+- 📋 [CHECKLIST.md](./frontend/CHECKLIST.md) - Complete checklist
+- 📝 [完成总结.md](./frontend/完成总结.md) - Chinese summary
+- 📊 [SUMMARY.md](./frontend/SUMMARY.md) - Visual summary
+
+### Backend Documentation
+- 📖 [CLAUDE.md](./backend/CLAUDE.md) - Backend overview
+- 🏗️ [AGENTS.md](./backend/AGENTS.md) - Repository guidelines
+- 📚 [docs/api_reference.md](./backend/docs/api_reference.md) - API reference
+- 🐛 [docs/error_codes.md](./backend/docs/error_codes.md) - Error codes
+
+---
+
+## 🏗️ Architecture
+
+### Frontend Stack
+```
+Nuxt 4 (Vue 3 + TypeScript)
+├── NuxtUI - Component library (Admin)
+├── TailwindCSS - Styling
+├── Pinia - State management
+├── @nuxtjs/i18n - Internationalization
+└── marked - Markdown rendering
 ```
 
-| Service | URL / Address |
-|---|---|
-| Frontend (Nginx) | <http://localhost> |
-| Backend API      | <http://localhost:8000> |
-| PostgreSQL       | `localhost:5432` |
-| Redis            | `localhost:6379` |
+### Backend Stack
+```
+FastAPI (Python 3.11+)
+├── SQLAlchemy 2.0 - ORM (Async)
+├── Pydantic v2 - Validation
+├── Alembic - Migrations
+├── Redis - Caching (optional)
+├── JWT - Authentication
+└── Uvicorn - ASGI server
+```
 
----
-
-## Project Layout
+### Project Structure
 
 ```
 rosetta/
-├── backend/                 FastAPI application
-│   ├── api/                 routes by domain
-│   ├── core/                config / db / auth / cache / i18n / security
-│   ├── middleware/          performance / logging / HSTS
-│   ├── migrations/          Alembic revisions (18+ versions)
-│   ├── models/              SQLAlchemy ORM
-│   ├── repositories/        data-access layer
-│   ├── schemas/             Pydantic request / response
-│   ├── services/            business logic
-│   ├── docs/                API reference + error codes
-│   └── main.py              entry
-├── frontend/                Astro 7 + Svelte 5
-│   ├── src/
-│   │   ├── api/             typed TS client
-│   │   ├── components/      Astro + Svelte (full admin/*)
-│   │   ├── config/          site configuration modules
-│   │   ├── content/         Markdown / MDX collections
-│   │   ├── i18n/            translations + i18nKey types
-│   │   ├── layouts/
-│   │   ├── pages/           file-system routing incl. /admin/*
-│   │   └── plugins/         remark / rehype pipeline
-│   ├── public/              static assets (favicon, fonts, Live2D/Spine)
-│   ├── scripts/             build-time scripts (LQIP, font-subset)
-│   └── astro.config.mjs
-├── docs/assets/logo/        rosetta-icon.png, rosetta-light.png, rosetta-dark.png
-├── docker/                  nginx.conf + entrypoint
-├── Dockerfile               multi-stage build
-├── docker-compose.yml
-├── .env.example
-└── DEPLOY.md
+├── frontend/                 # Nuxt 4 frontend
+│   ├── app/
+│   │   ├── pages/           # Route pages
+│   │   ├── layouts/         # Layouts
+│   │   └── middleware/      # Route guards
+│   ├── components/          # Vue components
+│   ├── composables/         # API composables
+│   ├── stores/              # Pinia stores
+│   ├── types/               # TypeScript types
+│   └── locales/             # i18n translations
+│
+└── backend/                 # FastAPI backend
+    ├── api/                 # API routes
+    ├── models/              # SQLAlchemy models
+    ├── schemas/             # Pydantic schemas
+    ├── services/            # Business logic
+    ├── repositories/        # Data access
+    ├── core/                # Core utilities
+    └── migrations/          # Alembic migrations
 ```
 
 ---
 
-## Testing
+## 🎨 Design System
+
+### Color Palette (Blue Theme)
+
+```css
+/* Primary Colors */
+--primary: #3C5A78;        /* Muted slate blue */
+--primary-hover: #2E4760;  /* Darker slate */
+
+/* Neutrals */
+--background: #F7F5F1;     /* Soft off-white */
+--surface: #FFFFFF;        /* White */
+--border: #E7E3DA;         /* Light border */
+--text: #1E2227;           /* Dark text */
+--text-muted: #6B7077;     /* Secondary text */
+```
+
+### Typography
+
+- **Display Font**: Playfair Display (Serif, 500-700)
+- **Body Font**: Inter (Sans-serif, 400-500)
+- **Base Size**: 16px (1rem)
+- **Scale**: 1.25 (Major Third)
+
+### Spacing
+
+```
+4px • 8px • 12px • 16px • 24px • 32px • 48px • 64px
+```
+
+---
+
+## 🌐 API Endpoints
+
+### Authentication
+```
+POST   /api/users/register     - Register new user
+POST   /api/users/login        - Login with credentials
+POST   /api/users/refresh      - Refresh access token
+POST   /api/users/logout       - Logout
+```
+
+### Posts
+```
+GET    /api/posts              - Get posts list
+GET    /api/posts/{slug}       - Get post detail
+POST   /api/posts              - Create post (Admin)
+PUT    /api/posts/{id}         - Update post (Admin)
+DELETE /api/posts/{id}         - Delete post (Admin)
+POST   /api/posts/{id}/like    - Like/unlike post
+```
+
+### Categories & Tags
+```
+GET    /api/categories         - Get categories
+GET    /api/tags               - Get tags
+POST   /api/categories         - Create category (Admin)
+POST   /api/tags               - Create tag (Admin)
+```
+
+### Comments
+```
+GET    /api/posts/{id}/comments       - Get comments
+POST   /api/posts/{id}/comments       - Create comment
+DELETE /api/comments/{id}             - Delete comment (Admin)
+```
+
+### Core
+```
+GET    /api/config             - Get site configuration
+GET    /api/navigations        - Get navigation items
+GET    /api/friend-links       - Get friend links
+GET    /api/archive            - Get archive
+```
+
+**Full API Documentation**: http://localhost:8000/docs
+
+---
+
+## 📊 Progress Status
+
+### Overall: 80% Complete ✅
+
+| Module | Status | Completion |
+|--------|--------|------------|
+| 🏗️ Infrastructure | ✅ Complete | 100% |
+| 🔐 Authentication | ✅ Complete | 100% |
+| 🌐 i18n Support | ✅ Complete | 100% |
+| 🎨 Design System | ✅ Complete | 100% |
+| 📱 Public Pages | 🟡 Partial | 75% |
+| ⚙️ Admin Panel | 🟡 Partial | 40% |
+| 📚 Documentation | ✅ Complete | 100% |
+
+### What's Working
+- ✅ Homepage with hero and featured posts
+- ✅ Posts list with pagination and filters
+- ✅ Post detail with comments and likes
+- ✅ Categories and archive pages
+- ✅ Login and registration
+- ✅ OOBE installation wizard
+- ✅ Admin dashboard with stats
+- ✅ Multi-language support
+- ✅ Responsive design
+
+### What's Next
+- 🚧 Category/tag detail pages
+- 🚧 Admin posts CRUD
+- 🚧 Markdown editor integration
+- 🚧 User profile pages
+- 🚧 Admin settings page
+- 🚧 Additional static pages
+
+---
+
+## 🛠️ Development
+
+### Frontend Development
 
 ```bash
-# Backend — 326 cases passing
-uv run pytest -q
-
-# Frontend — all green
 cd frontend
-pnpm biome check ./src
-pnpm astro check
-CF_WORKERS=1 pnpm build
+
+# Install dependencies
+pnpm install
+
+# Start dev server
+pnpm dev
+
+# Build for production
+pnpm build
+
+# Preview production build
+pnpm preview
+
+# Type check
+pnpm typecheck
 ```
 
-### Default admin (dev mode with OOBE skip)
+### Backend Development
 
-| | |
-|---|---|
-| Username | `admin` |
-| Password | `Admin123456` |
+```bash
+cd backend
 
-**Change it immediately in production.**
+# Install dependencies
+uv sync
+
+# Start dev server
+uv run uvicorn backend.main:app --reload
+
+# Run migrations
+uv run python -m backend.migrations upgrade
+
+# Create migration
+uv run python -m backend.migrations revision -m "description" --autogenerate
+
+# Run tests
+uv run pytest
+```
 
 ---
 
-## Documentation
+## 📝 Environment Variables
 
-- [Deployment Guide](DEPLOY.md) — systemd / Nginx / PostgreSQL walkthrough
-- [Backend API Reference](backend/docs/api_reference.md)
-- [Error Codes](backend/docs/error_codes.md)
-- [Contributing](frontend/CONTRIBUTING.md)
+### Frontend `.env`
+```env
+API_BASE_URL=http://localhost:8000/api
+NUXT_PUBLIC_API_BASE=http://localhost:8000/api
+```
 
-## License
+### Backend `.env`
+```env
+# Application
+APP_ENV=development
+DEBUG=true
+SECRET_KEY=your-secret-key-here
 
-MIT
+# Database
+DATABASE_URL=sqlite+aiosqlite:///./rosetta.db
+# or
+# DATABASE_URL=postgresql+asyncpg://user:pass@localhost/rosetta
+
+# Redis (optional)
+REDIS_ENABLED=false
+REDIS_URL=redis://localhost:6379
+
+# JWT
+ACCESS_TOKEN_EXPIRE_MINUTES=60
+REFRESH_TOKEN_EXPIRE_DAYS=7
+
+# Site
+SITE_NAME=Rosetta
+SITE_URL=http://localhost:3000
+```
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please follow these steps:
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## 🙏 Acknowledgments
+
+- **Nuxt** - The Intuitive Vue Framework
+- **FastAPI** - Modern Python web framework
+- **TailwindCSS** - Utility-first CSS framework
+- **NuxtUI** - Fully styled and customizable components
+- **Pinia** - The Vue Store
+- **SQLAlchemy** - The Python SQL Toolkit
+
+---
+
+## 📞 Support
+
+- 📖 **Documentation**: Check the [INDEX.md](./frontend/INDEX.md)
+- 🐛 **Bug Reports**: Open an issue on GitHub
+- 💬 **Discussions**: Join our community
+- 📧 **Email**: support@rosetta.example
+
+---
+
+## 🎯 Roadmap
+
+### Version 1.0 (Current - 80% Complete)
+- [x] Core infrastructure
+- [x] Authentication system
+- [x] Public pages
+- [x] OOBE wizard
+- [ ] Admin CRUD pages
+- [ ] Markdown editor
+
+### Version 1.1 (Planned)
+- [ ] Search functionality
+- [ ] RSS feed
+- [ ] Social sharing
+- [ ] SEO optimization
+- [ ] Performance optimization
+
+### Version 2.0 (Future)
+- [ ] Dark mode
+- [ ] Email notifications
+- [ ] Advanced analytics
+- [ ] Plugin system
+- [ ] Theme customization
+
+---
+
+<div align="center">
+
+**Built with ❤️ using Nuxt 4, FastAPI, and modern web technologies**
+
+⭐ Star us on GitHub if you find this project useful!
+
+</div>

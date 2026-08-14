@@ -1,140 +1,223 @@
-<!--
-  AppHeader — 对应 Astro src/components/Header.astro + Layout.astro Header
-  Nav links（首页/文章/分类/标签/归档/关于/功能菜单） + 搜索 + ColorSchemeToggle + 后台入口
--->
 <script setup lang="ts">
-import { Icon } from "#components";
-const navs = [
-  { to: "/", label: "首页" },
-  { to: "/posts", label: "文章" },
-  { to: "/categories", label: "分类" },
-  { to: "/tags", label: "标签" },
-  { to: "/archive", label: "归档" },
-  { to: "/about", label: "关于" },
-];
-const featureMenu = [
-  { to: "/dynamic", label: "动态", icon: "material-symbols:bolt-rounded" },
-  { to: "/bangumi", label: "番剧", icon: "material-symbols:movie-creation-rounded" },
-  { to: "/anime", label: "动漫", icon: "material-symbols:live-tv-rounded" },
-  { to: "/gallery", label: "相册", icon: "material-symbols:photo-library-rounded" },
-  { to: "/friends", label: "友情链接", icon: "material-symbols:link-rounded" },
-];
-const openMobile = ref(false);
-const openFeature = ref(false);
+import { computed } from 'vue'
+import { Menu, Search, Rocket, LogOut, User, ChevronDown } from '@lucide/vue'
+import { Button } from '~~/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuSeparator
+} from '~~/components/ui/dropdown-menu'
+import {
+  Sheet,
+  SheetTrigger,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetClose
+} from '~~/components/ui/sheet'
+import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import { Separator } from '~~/components/ui/separator'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
+import { useAuthStore } from '~~/stores/auth'
+import { useI18n } from 'vue-i18n'
+import ThemeToggle from '~~/components/ThemeToggle.vue'
+import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
+
+const { t } = useI18n()
+const authStore = useAuthStore()
+const route = useRoute()
+
+const navItems = computed(() => [
+  { label: t('nav.home'), to: '/' },
+  { label: t('nav.posts'), to: '/posts' },
+  { label: t('nav.categories'), to: '/categories' },
+  { label: t('nav.archive'), to: '/archive' },
+  { label: t('nav.friends'), to: '/friends' },
+  { label: t('nav.gallery'), to: '/gallery' },
+  { label: t('nav.guestbook'), to: '/guestbook' },
+  { label: t('nav.activity'), to: '/activity' },
+  { label: t('nav.about'), to: '/about' }
+])
+
+const isActive = (to: string) => {
+  if (to === '/') return route.path === '/'
+  return route.path === to || route.path.startsWith(to + '/')
+}
+
+const handleLogout = async () => {
+  await authStore.logout()
+  navigateTo('/')
+}
+
+const handleLogin = () => navigateTo('/login')
+const handleRegister = () => navigateTo('/register')
+const handleAdmin = () => navigateTo('/admin')
 </script>
 
 <template>
-  <header
-    class="sticky top-0 z-sticky backdrop-blur-sm bg-neutral-bg-container/90 border-b border-neutral-border-secondary shadow-xs"
-  >
-    <nav
-      class="max-w-7xl mx-auto px-4 sm:px-6 xl:px-8 h-16 flex items-center justify-between gap-3"
-      aria-label="主导航"
-    >
-      <AppLogo :show-tagline="true" size="md" clickable />
+  <header class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+    <div class="container mx-auto flex h-16 items-center justify-between gap-4">
+      <NuxtLink to="/" class="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+        Rosetta
+      </NuxtLink>
 
-      <!-- Desktop Nav -->
-      <ul class="hidden md:flex items-center gap-0.5">
-        <li v-for="n in navs" :key="n.to">
-          <NuxtLink
-            :to="n.to"
-            class="px-3 py-2 rounded-md text-sm font-medium text-neutral-text-secondary hover:text-neutral-text-primary hover:bg-neutral-fill-hover transition-colors duration-fast ease-out"
-            active-class="!text-primary-500 !bg-primary-500/10"
-          >{{ n.label }}</NuxtLink>
-        </li>
-        <li class="relative">
-          <button
-            type="button"
-            class="px-3 py-2 rounded-md text-sm font-medium text-neutral-text-secondary hover:text-neutral-text-primary hover:bg-neutral-fill-hover inline-flex items-center gap-1 transition-colors duration-fast ease-out"
-            @click="openFeature = !openFeature"
-            @blur="setTimeout(() => openFeature = false, 120)"
-          >
-            功能
-            <svg class="w-3.5 h-3.5 transition-transform duration-fast" :class="openFeature ? 'rotate-180' : ''" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-          </button>
-          <Transition name="dropdown">
-            <ul
-              v-show="openFeature"
-              class="absolute right-0 top-full mt-1 w-44 rounded-xl shadow-lg border border-neutral-border-secondary bg-neutral-bg-container py-1 z-popover"
-            >
-              <li v-for="m in featureMenu" :key="m.to">
-                <NuxtLink
-                  :to="m.to"
-                  class="flex items-center gap-2 px-3 py-2 text-sm text-neutral-text-secondary hover:bg-neutral-fill-hover hover:text-primary-500"
-                >
-                  <Icon :name="m.icon" class="w-4 h-4" />
-                  {{ m.label }}
-                </NuxtLink>
-              </li>
-            </ul>
-          </Transition>
-        </li>
-      </ul>
-
-      <!-- Actions -->
-      <div class="flex items-center gap-1 sm:gap-2">
-        <!-- 搜索（阶段 5 替换为 AdvancedSearch 弹窗） -->
-        <button
-          type="button"
-          class="w-9 h-9 rounded-md flex items-center justify-center text-neutral-text-secondary hover:bg-neutral-fill-hover hover:text-primary-500 transition-colors duration-fast ease-out"
-          aria-label="搜索内容"
-        >
-          <Icon name="material-symbols:search-rounded" class="w-5 h-5" />
-        </button>
-        <client-only>
-          <ColorSchemeToggle />
-        </client-only>
+      <nav class="md:flex hidden items-center gap-1">
         <NuxtLink
-          to="/admin"
-          class="hidden sm:inline-flex items-center gap-1.5 px-3 py-2 rounded-md bg-primary-500 text-white text-sm font-medium shadow-sm hover:bg-primary-400 active:bg-primary-600 transition-colors duration-fast ease-out focus-visible:outline-none focus-visible:ring-2 ring-primary-500 ring-offset-2 ring-offset-neutral-bg-container"
+          v-for="item in navItems"
+          :key="item.to"
+          :to="item.to"
+          :class="[
+            'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+            isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
+          ]"
         >
-          <Icon name="material-symbols:dashboard-customize-rounded" class="w-4 h-4" />
-          后台
+          {{ item.label }}
         </NuxtLink>
-        <!-- Mobile menu -->
-        <button
-          class="md:hidden w-9 h-9 rounded-md flex items-center justify-center text-neutral-text-secondary hover:bg-neutral-fill-hover"
-          aria-label="展开导航菜单"
-          @click="openMobile = !openMobile"
-        >
-          <Icon v-if="!openMobile" name="material-symbols:menu-rounded" class="w-5 h-5" />
-          <Icon v-else name="material-symbols:close-rounded" class="w-5 h-5" />
-        </button>
-      </div>
-    </nav>
+      </nav>
 
-    <!-- Mobile menu -->
-    <Transition name="collapse">
-      <div v-show="openMobile" class="md:hidden border-t border-neutral-border-secondary bg-neutral-bg-container">
-        <nav class="max-w-7xl mx-auto px-4 py-3 grid grid-cols-2 gap-1">
-          <NuxtLink
-            v-for="n in navs"
-            :key="n.to"
-            :to="n.to"
-            class="px-3 py-2 rounded-md text-sm font-medium text-neutral-text-secondary hover:text-neutral-text-primary hover:bg-neutral-fill-hover"
-            @click="openMobile = false"
-          >{{ n.label }}</NuxtLink>
-          <NuxtLink
-            v-for="m in featureMenu"
-            :key="m.to"
-            :to="m.to"
-            class="px-3 py-2 rounded-md text-sm font-medium text-neutral-text-secondary hover:text-neutral-text-primary hover:bg-neutral-fill-hover flex items-center gap-1.5"
-            @click="openMobile = false"
-          >
-            <Icon :name="m.icon" class="w-4 h-4" />{{ m.label }}
-          </NuxtLink>
-          <NuxtLink to="/admin" class="px-3 py-2 rounded-md bg-primary-500 text-white text-sm font-medium col-span-2 mt-2 text-center">进入后台</NuxtLink>
-        </nav>
+      <div class="flex items-center gap-1">
+        <Tooltip>
+          <TooltipTrigger as-child>
+            <Button variant="ghost" size="icon" :aria-label="t('common.search') || '搜索'">
+              <Search class="h-[1.2rem] w-[1.2rem]" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>{{ t('common.search') || '搜索' }}</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <LocaleSwitcher />
+        <ThemeToggle />
+
+        <div v-if="!authStore.isAuthenticated" class="ml-1 flex items-center gap-2">
+          <Button variant="outline" size="sm" @click="handleLogin">
+            {{ t('auth.login') || '登录' }}
+          </Button>
+          <Button variant="default" size="sm" @click="handleRegister">
+            <Rocket class="mr-2 h-4 w-4" />
+            {{ t('auth.startCreate') || '开始创作' }}
+          </Button>
+        </div>
+
+        <DropdownMenu v-else>
+          <DropdownMenuTrigger as-child>
+            <Button variant="ghost" size="icon" class="relative rounded-full h-9 w-9 p-0">
+              <Avatar class="h-8 w-8">
+                <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user.name || authStore.user.username || ''" />
+                <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+              </Avatar>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" class="w-56">
+            <DropdownMenuLabel class="font-normal p-3">
+              <div class="flex items-center gap-3">
+                <Avatar class="h-10 w-10">
+                  <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user.name || authStore.user.username || ''" />
+                  <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+                </Avatar>
+                <div class="space-y-0.5 min-w-0">
+                  <div class="text-sm font-medium truncate">{{ authStore.user?.name || authStore.user?.username }}</div>
+                  <div v-if="authStore.user?.email" class="text-xs text-muted-foreground truncate">{{ authStore.user.email }}</div>
+                </div>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem @click="handleAdmin">
+                <User class="mr-2 h-4 w-4" />
+                <span>{{ t('common.dashboard') || 'Dashboard' }}</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem @click="handleAdmin">
+                <ChevronDown class="mr-2 h-4 w-4" />
+                <span>{{ t('common.settings') || '设置' }}</span>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem class="text-red-600 dark:text-red-400" @click="handleLogout">
+              <LogOut class="mr-2 h-4 w-4" />
+              <span>{{ t('auth.logout') || '退出登录' }}</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        <Sheet>
+          <SheetTrigger as-child>
+            <Button variant="ghost" size="icon" class="md:hidden" :aria-label="t('common.menu') || '菜单'">
+              <Menu class="h-[1.2rem] w-[1.2rem]" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" class="w-[85%] max-w-sm flex flex-col">
+            <SheetHeader class="text-left mb-4">
+              <SheetTitle class="sr-only">{{ t('common.menu') || '菜单' }}</SheetTitle>
+              <NuxtLink to="/" class="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+                Rosetta
+              </NuxtLink>
+            </SheetHeader>
+            <Separator class="mb-4" />
+            <nav class="flex flex-col gap-1 mb-6">
+              <SheetClose v-for="item in navItems" :key="item.to" as-child>
+                <NuxtLink
+                  :to="item.to"
+                  :class="[
+                    'px-3 py-2.5 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+                    isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
+                  ]"
+                >
+                  {{ item.label }}
+                </NuxtLink>
+              </SheetClose>
+            </nav>
+            <Separator class="mb-4" />
+            <div class="mb-6">
+              <template v-if="authStore.isAuthenticated">
+                <div class="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-accent mb-2">
+                  <Avatar class="h-10 w-10">
+                    <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user.name || authStore.user.username || ''" />
+                    <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+                  </Avatar>
+                  <div class="min-w-0">
+                    <div class="text-sm font-medium truncate">{{ authStore.user?.name || authStore.user?.username }}</div>
+                    <div v-if="authStore.user?.email" class="text-xs text-muted-foreground truncate">{{ authStore.user.email }}</div>
+                  </div>
+                </div>
+                <div class="flex flex-col gap-1">
+                  <SheetClose as-child>
+                    <Button variant="ghost" size="sm" class="justify-start" @click="handleAdmin">
+                      <User class="mr-2 h-4 w-4" />
+                      {{ t('common.dashboard') || 'Dashboard' }}
+                    </Button>
+                  </SheetClose>
+                  <Button variant="ghost" size="sm" class="justify-start text-red-600 dark:text-red-400" @click="handleLogout">
+                    <LogOut class="mr-2 h-4 w-4" />
+                    {{ t('auth.logout') || '退出登录' }}
+                  </Button>
+                </div>
+              </template>
+              <template v-else>
+                <div class="flex flex-col gap-2">
+                  <Button variant="outline" class="w-full" @click="handleLogin">
+                    {{ t('auth.login') || '登录' }}
+                  </Button>
+                  <Button variant="default" class="w-full" @click="handleRegister">
+                    <Rocket class="mr-2 h-4 w-4" />
+                    {{ t('auth.startCreate') || '开始创作' }}
+                  </Button>
+                </div>
+              </template>
+            </div>
+            <Separator class="mb-4" />
+            <div class="flex items-center justify-between">
+              <LocaleSwitcher />
+              <ThemeToggle />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
-    </Transition>
+    </div>
   </header>
 </template>
-
-<style scoped>
-.dropdown-enter-active, .dropdown-leave-active { transition: opacity 120ms ease, transform 120ms ease; }
-.dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-4px); }
-
-.collapse-enter-active, .collapse-leave-active { transition: max-height 200ms ease, opacity 200ms ease; overflow: hidden; }
-.collapse-enter-from, .collapse-leave-to { max-height: 0; opacity: 0; }
-.collapse-enter-to, .collapse-leave-from { max-height: 600px; opacity: 1; }
-</style>
