@@ -51,7 +51,7 @@ export const useScrollReveal = (rootSelector = 'body') => {
   if (!import.meta.client) return { observe: () => {}, unobserveAll: () => {} }
 
   let observer: IntersectionObserver | null = null
-  let observedEls = new WeakSet<Element>()
+  const observedEls = new WeakSet<Element>()
 
   const start = () => {
     if (observer) return
@@ -67,7 +67,7 @@ export const useScrollReveal = (rootSelector = 'body') => {
       { rootMargin: '0px 0px -48px 0px', threshold: 0.12 }
     )
     const root = document.querySelector(rootSelector) ?? document.body
-    root.querySelectorAll<HTMLElement>('.scroll-reveal').forEach((el) => observe(el))
+    root.querySelectorAll<HTMLElement>('.scroll-reveal').forEach(el => observe(el))
   }
 
   const observe = (el: Element | null | undefined) => {
@@ -118,7 +118,7 @@ export const useReadingProgress = (scope = () => document.documentElement) => {
 
   const reset = () => {
     progress.value = 0
-    window.scrollTo({ top: 0, behavior: 'instant' as any })
+    window.scrollTo({ top: 0, behavior: 'instant' })
     compute()
   }
 
@@ -153,7 +153,7 @@ const slugify = (text: string, existing: Set<string>): string => {
     .toLowerCase()
     .trim()
     .replace(/[\s]+/g, '-')
-    .replace(/[^\p{Letter}\p{Number}\-]/gu, '')
+    .replace(/[^\p{Letter}\p{Number}-]/gu, '')
   if (!base) base = 'section'
   let id = base
   let i = 1

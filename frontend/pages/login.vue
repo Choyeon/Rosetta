@@ -107,14 +107,15 @@
             @submit.prevent="handleLogin"
           >
             <div class="space-y-2">
-              <Label for="email">{{ t('auth.email') }}</Label>
+              <Label for="username">{{ t('auth.usernameOrEmail') }}</Label>
               <div class="relative">
                 <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
                 <Input
-                  id="email"
-                  v-model="form.email"
-                  type="email"
-                  :placeholder="t('auth.emailPlaceholder')"
+                  id="username"
+                  v-model="form.username"
+                  type="text"
+                  autocomplete="username"
+                  :placeholder="t('auth.usernamePlaceholder')"
                   class="pl-9 h-11"
                 />
               </div>
@@ -236,7 +237,7 @@ const { t } = useI18n()
 const authStore = useAuthStore()
 
 const form = reactive({
-  email: '',
+  username: '',
   password: '',
   rememberMe: false
 })
@@ -254,15 +255,15 @@ const safeRedirect = (raw: unknown): string => {
 }
 
 const handleLogin = async () => {
-  if (!form.email.trim() || !form.password) {
-    toast.error(t('auth.fillRequired', '请填写邮箱和密码'))
+  if (!form.username.trim() || !form.password) {
+    toast.error(t('auth.fillRequired', '请填写用户名和密码'))
     return
   }
   loading.value = true
   errorMessage.value = ''
 
   try {
-    await authStore.login(form.email.trim(), form.password)
+    await authStore.login(form.username.trim(), form.password)
     navigateTo(safeRedirect(route.query.redirect))
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('auth.loginFailed', '登录失败')

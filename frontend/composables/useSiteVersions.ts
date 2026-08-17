@@ -19,7 +19,7 @@ export const useSiteVersions = () => {
     npm: '11.16.0',
     python: '3.10.11',
     fastapi: '0.141.1',
-    pnpm: (globalThis as any).__pnpm_version || '9.16.0'
+    pnpm: (globalThis as { __pnpm_version?: string }).__pnpm_version || '9.16.0'
   }))
 
   return { buildInfo }

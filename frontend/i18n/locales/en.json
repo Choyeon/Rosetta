@@ -37,9 +37,6 @@
     "hoursAgo": "h ago",
     "daysAgo": "d ago",
     "dashboard": "Dashboard",
-<<<<<<< Updated upstream
-    "settings": "Settings"
-=======
     "settings": "Settings",
     "palette": "Palette",
     "paletteHint": "Choose a brand palette",
@@ -55,7 +52,6 @@
       "about": "About",
       "admin": "Admin"
     }
->>>>>>> Stashed changes
   },
   "nav": {
     "home": "Home",
@@ -83,10 +79,6 @@
     "readingTime": "Reading time",
     "minutes": "min",
     "minRead": "min read",
-<<<<<<< Updated upstream
-    "relatedPosts": "Related posts",
-    "toc": "Table of contents",
-=======
     "commentPlaceholder": "Write a comment…",
     "submitting": "Submitting…",
     "submitComment": "Post Comment",
@@ -96,7 +88,6 @@
     "relatedPosts": "Related posts",
     "toc": "Table of contents",
     "noExcerpt": "No excerpt available",
->>>>>>> Stashed changes
     "share": "Share",
     "copyLink": "Copy link",
     "passwordProtected": "This post is password-protected",
@@ -114,13 +105,10 @@
     "title": "Comments",
     "placeholder": "Leave a comment...",
     "submit": "Post Comment",
-<<<<<<< Updated upstream
-=======
     "justNow": "just now",
     "minutesAgo": " min ago",
     "hoursAgo": " h ago",
     "daysAgo": " d ago",
->>>>>>> Stashed changes
     "reply": "Reply",
     "replyTo": "Reply to",
     "noComments": "No comments yet. Be the first!",
@@ -128,6 +116,8 @@
   },
   "auth": {
     "username": "Username",
+    "usernameOrEmail": "Username or Email",
+    "usernamePlaceholder": "Enter username or email",
     "email": "Email",
     "password": "Password",
     "confirmPassword": "Confirm Password",
@@ -136,6 +126,7 @@
     "register": "Register",
     "logout": "Logout",
     "forgotPassword": "Forgot Password",
+    "forgotPasswordDisabled": "Password reset is not available yet. Please contact the administrator.",
     "resetPassword": "Reset Password",
     "rememberMe": "Remember Me",
     "noAccount": "Don't have an account?",
@@ -182,7 +173,16 @@
     "passwordMismatch": "Passwords do not match",
     "registerFailed": "Registration failed, please try again later",
     "loginFailed": "Login failed, please check your credentials",
+    "fillRequired": "Please enter both username and password",
     "startCreate": "Start Writing"
+  },
+  "error": {
+    "notFoundTitle": "Page Not Found",
+    "notFoundDesc": "The page you are looking for may have been moved, deleted, or never existed.",
+    "serverErrorTitle": "Server Error",
+    "serverErrorDesc": "The service is temporarily unavailable. Please try again later.",
+    "backHome": "Back to Home",
+    "retry": "Retry"
   },
   "user": {
     "profile": "Profile",
@@ -197,15 +197,6 @@
     "joinedAt": "Joined"
   },
   "admin": {
-<<<<<<< Updated upstream
-    "dashboard": "Dashboard",
-    "posts": "Posts",
-    "categories": "Categories",
-    "tags": "Tags",
-    "comments": "Comments",
-    "users": "Users",
-    "settings": "Settings",
-=======
     "posts": {
       "title": "Posts",
       "desc": "{total} posts in total",
@@ -337,7 +328,6 @@
       }
     },
     "tags": "Tags",
->>>>>>> Stashed changes
     "navigations": "Navigations",
     "friendLinks": "Friend Links",
     "pages": "Pages",
@@ -356,9 +346,6 @@
     "operationFailed": "Operation failed",
     "loading": "Loading...",
     "upload": "Upload",
-<<<<<<< Updated upstream
-    "selectImage": "Select Image"
-=======
     "selectImage": "Select Image",
     "dashboard": {
       "title": "Dashboard",
@@ -590,7 +577,6 @@
         "footer": "Footer"
       }
     }
->>>>>>> Stashed changes
   },
   "oobe": {
     "welcome": "Welcome to Rosetta",
@@ -605,18 +591,6 @@
     },
     "step1Title": "System Check",
     "step1Desc": "Check server environment and dependencies",
-<<<<<<< Updated upstream
-    "step1LongDesc": "We'll automatically detect PHP version, required extensions, and directory permissions to ensure your server meets Rosetta's minimum requirements.",
-    "step2Title": "Database Setup",
-    "step2Desc": "Fill in your database connection info",
-    "step2LongDesc": "Rosetta supports MySQL, PostgreSQL, and SQLite. Prepare an empty database with a user that has read/write privileges — the installer will create all tables automatically.",
-    "step3Title": "Site & Admin",
-    "step3Desc": "Configure site info and the admin account",
-    "step3LongDesc": "Enter your site name, description, default language, and the admin credentials for logging into the dashboard. These can be changed later in settings.",
-    "step4Title": "Finish Install",
-    "step4Desc": "Run the installation process",
-    "step4LongDesc": "Review the summary and click \"Start Installation\". The whole process usually takes under a minute: migrations, config file generation, and default data seeding will run in sequence.",
-=======
     "step1LongDesc": "We'll automatically detect Python version, required dependencies, and directory permissions to ensure your server meets Rosetta's minimum requirements.",
     "step1EmptyHint": "Click the button on the right to start system environment detection",
     "step2Title": "Admin Account",
@@ -628,7 +602,6 @@
     "step4Title": "Finish Installation",
     "step4Desc": "Review and complete the setup",
     "step4LongDesc": "Review the summary below and click \"Go to Admin\" to finalize. The installer will run migrations, write the config, and seed default data — usually under a minute.",
->>>>>>> Stashed changes
     "database": {
       "type": "Database Type",
       "host": "Host",
@@ -658,35 +631,24 @@
     "adminEmailPlaceholder": "admin{'@'}example.com",
     "adminPassword": "Admin Password",
     "adminPasswordPlaceholder": "At least 8 chars with uppercase, lowercase and digits",
-<<<<<<< Updated upstream
-=======
     "adminPasswordHint": "At least 8 characters",
->>>>>>> Stashed changes
     "adminConfirmPassword": "Confirm Password",
     "adminConfirmPasswordPlaceholder": "Re-enter the password",
     "siteName": "Site Name",
     "siteNamePlaceholder": "e.g. My Tech Blog",
     "siteDescription": "Site Description",
     "siteDescriptionPlaceholder": "A short one-liner about your blog",
-<<<<<<< Updated upstream
-=======
     "siteUrl": "Site URL",
     "siteUrlPlaceholder": "e.g. http://localhost:3000",
     "siteUrlDesc": "Used for generating RSS links, OpenGraph cards, and email links",
->>>>>>> Stashed changes
     "defaultLanguage": "Default Language",
     "seoKeywords": "SEO Keywords",
     "seoKeywordsPlaceholder": "Comma separated, e.g. blog,tech,programming",
     "completeTitle": "Ready to install",
     "completeDesc": "Please review the details below before starting. Do not close or refresh the page during installation.",
     "completeSummary1": "System environment checks passed",
-<<<<<<< Updated upstream
-    "completeSummary2": "Database connection configured",
-    "completeSummary3": "Site and admin info filled in",
-=======
     "completeSummary2": "Admin account created",
     "completeSummary3": "Site settings saved",
->>>>>>> Stashed changes
     "prev": "Previous",
     "checking": "Checking...",
     "recheck": "Re-check",
@@ -696,9 +658,6 @@
     "installing": "Installing...",
     "installComplete": "Installation Complete!",
     "visitSite": "Visit Site",
-<<<<<<< Updated upstream
-    "visitAdmin": "Visit Admin"
-=======
     "visitAdmin": "Visit Admin",
     "sidebarHint1": "Rosetta Setup Wizard · Out of the box",
     "sidebarHint2": "SQLite is used by default, no extra database service required",
@@ -724,7 +683,6 @@
     "envAvail": "Available",
     "envDisk": "Total Disk",
     "envFree": "Free"
->>>>>>> Stashed changes
   },
   "archive": {
     "title": "Archive",
@@ -836,15 +794,6 @@
   "home": {
     "release": "Stable",
     "multiLang": "Multi-language",
-<<<<<<< Updated upstream
-    "heroTitle": "Write. Think. Settle.",
-    "heroSubtitle": "A minimal blog for engineers and creators. Craft words in your language, at your terminal's pace.",
-    "startReading": "Start Reading",
-    "startWriting": "Start Writing",
-    "statPosts": "posts",
-    "statCategories": "categories",
-    "statReaders": "readers",
-=======
     "tagline": "Crossing the boundaries of language",
     "heroTitle": "Write. Think. Settle.",
     "heroSubtitle": "A minimal blog for engineers and creators. Sharing frontend, backend, AI, design explorations and personal notes.",
@@ -861,7 +810,6 @@
     "copyright": "COPYRIGHT",
     "featured": "Featured",
     "latest": "Latest",
->>>>>>> Stashed changes
     "featuredPosts": "Featured",
     "latestPosts": "Latest",
     "viewAll": "View all →",
@@ -872,17 +820,11 @@
     "commentsCount": "Comments",
     "popularCategories": "Popular categories",
     "tagCloud": "Tag cloud",
-<<<<<<< Updated upstream
-=======
     "techStack": "Tech Stack",
->>>>>>> Stashed changes
     "newsletterTitle": "Subscribe for updates",
     "newsletterSubtitle": "Get new posts in your inbox. No spam, ever.",
     "emailPlaceholder": "your{'@'}email.com",
     "subscribe": "Subscribe",
-<<<<<<< Updated upstream
-    "subscribeSuccess": "Subscribed — thanks for following along!"
-=======
     "subscribeSuccess": "Subscribed — thanks for following along!",
     "featuredLabel": "Editor's Pick",
     "latestLabel": "Fresh Off the Press",
@@ -916,6 +858,5 @@
     "rssLabel": "RSS",
     "privacy": "Guestbook",
     "terms": "About"
->>>>>>> Stashed changes
   }
 }

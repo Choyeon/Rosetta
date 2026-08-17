@@ -5,38 +5,40 @@
  * - 已安装：禁止回到 /oobe（重定向首页）
  * - 检查结果用进程内变量缓存，避免每次路由切换都请求后端
  */
-import { useOOBE } from '~~/composables/useOOBE'
-
 let cachedStatus: boolean | null = null
 let inFlight: Promise<boolean> | null = null
 const STATIC_OR_API_RE = /^\/(?:favicon|api|media|_nuxt|_ipx|site\.webmanifest|logo|assets|apple-touch-icon)/
 
 function shouldSkipRoute(path: string): boolean {
   if (STATIC_OR_API_RE.test(path)) return true
-  if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg') ||
-      path.endsWith('.svg') || path.endsWith('.ico') || path.endsWith('.webp')) return true
+  if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg')
+    || path.endsWith('.svg') || path.endsWith('.ico') || path.endsWith('.webp')) return true
   return false
 }
 
 /**
- * 获取 oobe 完成状态（带缓存和并发合并）
+ * 获取 oobe 完成状态（带缓存和并发合并）。
+ * 注意：中间件在初始导航期间执行，此时组件 setup 上下文不可用，
+ * 不能调用 useOOBE()（内部依赖 useI18n/Pinia 等 setup 绑定的 composable），
+ * 必须使用无上下文要求的 $fetch。
  */
 async function resolveOOBEComplete(): Promise<boolean> {
   if (cachedStatus !== null) return cachedStatus
   if (inFlight) return inFlight
   inFlight = (async () => {
     try {
-      const { getOOBEStatus } = useOOBE()
-      const { data, error } = await getOOBEStatus()
-      if (error.value) {
-        cachedStatus = false
-        return false
-      }
-      const complete = Boolean((data.value as { oobe_complete?: boolean })?.oobe_complete)
+      const apiBase = useRuntimeConfig().public.apiBase as string
+      const res = await $fetch<{ success?: boolean, oobe_complete?: boolean }>('/oobe/status', {
+        baseURL: apiBase
+      })
+      const complete = Boolean(res?.oobe_complete)
       cachedStatus = complete
       return complete
-    } catch {
-      cachedStatus = false
+    } catch (e) {
+      // 后端不可达/异常：本次视为未完成，但不落缓存，
+      // 避免后端恢复后仍被锁死在 /oobe（下次路由切换会重试）
+      if (import.meta.dev) console.warn('[oobe.middleware] status fetch failed:', e)
+      cachedStatus = null
       return false
     } finally {
       inFlight = null

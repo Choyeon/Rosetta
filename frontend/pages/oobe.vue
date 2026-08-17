@@ -943,6 +943,7 @@ import {
 } from '~~/components/ui/select'
 import { Label } from '~~/components/ui/label'
 import { useOOBE, type DepProgressEvt, type InstallProgressEvt } from '~~/composables/useOOBE'
+import { resetOOBECache } from '~~/middleware/oobe.global'
 import { useI18n } from 'vue-i18n'
 import {
   RefreshCw,
@@ -1045,6 +1046,9 @@ onMounted(async () => {
     const result = await getOOBEStatus()
     const payload = result?.data?.value as { oobe_complete?: boolean } | null | undefined
     if (payload?.oobe_complete === true) {
+      // 后端已完成安装：同步刷新全局中间件缓存，
+      // 否则中间件仍持有旧值 false，会与本页重定向形成 / ↔ /oobe 死循环
+      resetOOBECache(true)
       try {
         await navigateTo('/', { replace: true })
       } catch {
@@ -1379,6 +1383,9 @@ const finishSetup = async () => {
     installStepList.forEach(s => (s.done = true))
     installPercent.value = 100
     installed.value = true
+    // 安装成功后立即刷新全局中间件缓存，
+    // 让「进入后台」的客户端路由导航不被旧的 false 缓存弹回 /oobe
+    resetOOBECache(true)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e)
     console.error('OOBE finish error:', e)

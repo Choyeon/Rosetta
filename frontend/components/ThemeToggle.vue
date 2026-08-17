@@ -1,10 +1,4 @@
 <template>
-<<<<<<< Updated upstream
-  <Button variant="ghost" size="icon" @click="toggleTheme" :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'">
-    <Sun v-if="isDark" class="size-5" />
-    <Moon v-else class="size-5" />
-  </Button>
-=======
   <div class="theme-toggle-root relative inline-flex">
     <!-- Expansion overlay: fills with opposite theme color from click position -->
     <div
@@ -28,40 +22,21 @@
       class="relative overflow-hidden"
       @click="handleToggle"
     >
-      <Sun v-if="isDark" class="size-5" />
-      <Moon v-else class="size-5" />
+      <Sun
+        v-if="isDark"
+        class="size-5"
+      />
+      <Moon
+        v-else
+        class="size-5"
+      />
     </Button>
   </div>
->>>>>>> Stashed changes
 </template>
 
 <script setup lang="ts">
 import { Button } from '~~/components/ui/button'
 import { Sun, Moon } from '@lucide/vue'
-<<<<<<< Updated upstream
-
-const isDark = ref(false)
-
-const toggleTheme = () => {
-  isDark.value = !isDark.value
-  if (isDark.value) {
-    document.documentElement.classList.add('dark')
-  } else {
-    document.documentElement.classList.remove('dark')
-  }
-}
-
-onMounted(() => {
-  const stored = localStorage.getItem('theme')
-  if (stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
-})
-
-watch(isDark, (val) => {
-  localStorage.setItem('theme', val ? 'dark' : 'light')
-=======
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
@@ -132,7 +107,7 @@ const handleToggle = async (e: MouseEvent) => {
     originX = e.clientX
     originY = e.clientY
   } else {
-    const el = (buttonRef.value as any)?.$el as HTMLElement | undefined
+    const el = buttonRef.value?.$el as HTMLElement | undefined
     const btn = el || document.body
     const r = btn.getBoundingClientRect()
     originX = r.left + r.width / 2
@@ -184,6 +159,5 @@ onMounted(() => {
 
 watch(isDark, (val) => {
   if (import.meta.client) localStorage.setItem('theme', val ? 'dark' : 'light')
->>>>>>> Stashed changes
 })
 </script>

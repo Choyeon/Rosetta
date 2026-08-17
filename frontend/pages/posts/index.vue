@@ -21,7 +21,10 @@
               />
             </div>
             <div class="md:w-56">
-              <Select v-model="selectedCategory" @update:model-value="handleFilter">
+              <Select
+                v-model="selectedCategory"
+                @update:model-value="handleFilter"
+              >
                 <SelectTrigger class="h-10">
                   <SelectValue :placeholder="t('posts.selectCategory')" />
                 </SelectTrigger>
@@ -29,13 +32,20 @@
                   <SelectItem value="__all">
                     {{ t('posts.allCategories') }}
                   </SelectItem>
-                  <SelectItem v-for="cat in categories" :key="cat.id" :value="cat.slug">
+                  <SelectItem
+                    v-for="cat in categories"
+                    :key="cat.id"
+                    :value="cat.slug"
+                  >
                     {{ pickLocalized(cat.name) }}
                   </SelectItem>
                 </SelectContent>
               </Select>
             </div>
-            <Button variant="default" @click="handleSearch">
+            <Button
+              variant="default"
+              @click="handleSearch"
+            >
               <Filter class="size-4 mr-2" />
               {{ t('posts.filter') }}
             </Button>
@@ -46,12 +56,20 @@
 
     <template v-if="loading && posts.length === 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Skeleton v-for="i in 6" :key="i" class="aspect-[4/5] rounded-2xl" />
+        <Skeleton
+          v-for="i in 6"
+          :key="i"
+          class="aspect-[4/5] rounded-2xl"
+        />
       </div>
     </template>
     <template v-else-if="posts.length > 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <PostCard v-for="post in posts" :key="post.id" :post="post" />
+        <PostCard
+          v-for="post in posts"
+          :key="post.id"
+          :post="post"
+        />
       </div>
     </template>
     <template v-else>
@@ -59,19 +77,30 @@
         <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
           <Search class="size-8 text-muted-foreground" />
         </div>
-        <h3 class="font-display text-xl font-semibold">{{ t('posts.noPosts') }}</h3>
-        <p class="text-muted-foreground mt-1">{{ t('posts.noPostsDesc') }}</p>
+        <h3 class="font-display text-xl font-semibold">
+          {{ t('posts.noPosts') }}
+        </h3>
+        <p class="text-muted-foreground mt-1">
+          {{ t('posts.noPostsDesc') }}
+        </p>
       </div>
     </template>
 
-    <div class="flex justify-center mt-12" v-if="totalPages > 1">
-      <nav class="flex items-center gap-2" role="navigation" aria-label="pagination">
+    <div
+      v-if="totalPages > 1"
+      class="flex justify-center mt-12"
+    >
+      <nav
+        class="flex items-center gap-2"
+        role="navigation"
+        aria-label="pagination"
+      >
         <Button
           variant="outline"
           size="icon"
           :disabled="currentPage <= 1"
-          @click="handlePageChange(currentPage - 1)"
           aria-label="Go to previous page"
+          @click="handlePageChange(currentPage - 1)"
         >
           <ChevronLeft class="h-4 w-4" />
         </Button>
@@ -89,8 +118,8 @@
           variant="outline"
           size="icon"
           :disabled="currentPage >= totalPages"
-          @click="handlePageChange(currentPage + 1)"
           aria-label="Go to next page"
+          @click="handlePageChange(currentPage + 1)"
         >
           <ChevronRight class="h-4 w-4" />
         </Button>
@@ -106,6 +135,7 @@ import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
+import type { Post } from '~~/types/api'
 import { usePosts } from '~~/composables/usePosts'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
@@ -114,7 +144,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 
-const pickLocalized = (val: any): string => {
+const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''
   if (typeof val === 'string') return val
   if (typeof val === 'object') {
@@ -141,9 +171,9 @@ const categories = [
   { id: 6, name: '运维', slug: 'devops' }
 ]
 
-const posts = ref<any[]>([])
+const posts = ref<Post[]>([])
 const loading = ref(false)
-const error = ref<any>(null)
+const error = ref<unknown>(null)
 const total = ref(0)
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
@@ -152,7 +182,7 @@ const visiblePages = computed(() => {
   const pages: number[] = []
   const max = 5
   let start = Math.max(1, currentPage.value - Math.floor(max / 2))
-  let end = Math.min(totalPages.value, start + max - 1)
+  const end = Math.min(totalPages.value, start + max - 1)
   if (end - start + 1 < max) {
     start = Math.max(1, end - max + 1)
   }

@@ -6,7 +6,10 @@
       <div class="absolute bottom-1/2 right-0 translate-x-1/4 size-[24rem] rounded-full bg-primary/15 blur-3xl" />
 
       <div class="relative">
-        <NuxtLink to="/" class="inline-flex items-center gap-2 font-display text-2xl font-bold tracking-tight">
+        <NuxtLink
+          to="/"
+          class="inline-flex items-center gap-2 font-display text-2xl font-bold tracking-tight"
+        >
           <Rocket class="size-6 text-primary" />
           <span>Rosetta</span>
         </NuxtLink>
@@ -26,8 +29,12 @@
               <UserPlus class="size-4 text-primary/80" />
             </div>
             <div>
-              <div class="font-semibold text-sm">{{ t('auth.feature1') }}</div>
-              <div class="text-xs text-white/60">{{ t('auth.feature1Desc') }}</div>
+              <div class="font-semibold text-sm">
+                {{ t('auth.feature1') }}
+              </div>
+              <div class="text-xs text-white/60">
+                {{ t('auth.feature1Desc') }}
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
@@ -35,8 +42,12 @@
               <Palette class="size-4 text-primary/80" />
             </div>
             <div>
-              <div class="font-semibold text-sm">{{ t('auth.feature2') }}</div>
-              <div class="text-xs text-white/60">{{ t('auth.feature2Desc') }}</div>
+              <div class="font-semibold text-sm">
+                {{ t('auth.feature2') }}
+              </div>
+              <div class="text-xs text-white/60">
+                {{ t('auth.feature2Desc') }}
+              </div>
             </div>
           </div>
           <div class="flex items-center gap-3 p-3 rounded-xl bg-white/5 border border-white/10">
@@ -44,8 +55,12 @@
               <Globe2 class="size-4 text-success/80" />
             </div>
             <div>
-              <div class="font-semibold text-sm">{{ t('auth.feature3') }}</div>
-              <div class="text-xs text-white/60">{{ t('auth.feature3Desc') }}</div>
+              <div class="font-semibold text-sm">
+                {{ t('auth.feature3') }}
+              </div>
+              <div class="text-xs text-white/60">
+                {{ t('auth.feature3Desc') }}
+              </div>
             </div>
           </div>
         </div>
@@ -72,7 +87,11 @@
         </CardHeader>
 
         <CardContent>
-          <Alert v-if="errorMessage" variant="destructive" class="mb-5">
+          <Alert
+            v-if="errorMessage"
+            variant="destructive"
+            class="mb-5"
+          >
             <AlertTitle>{{ t('auth.error') }}</AlertTitle>
             <AlertDescription>{{ errorMessage }}</AlertDescription>
           </Alert>
@@ -121,11 +140,17 @@
                   <button
                     type="button"
                     class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    @click="showPassword = !showPassword"
                     tabindex="-1"
+                    @click="showPassword = !showPassword"
                   >
-                    <Eye v-if="!showPassword" class="size-4" />
-                    <EyeOff v-else class="size-4" />
+                    <Eye
+                      v-if="!showPassword"
+                      class="size-4"
+                    />
+                    <EyeOff
+                      v-else
+                      class="size-4"
+                    />
                   </button>
                 </div>
               </div>
@@ -144,23 +169,42 @@
                   <button
                     type="button"
                     class="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    @click="showConfirmPassword = !showConfirmPassword"
                     tabindex="-1"
+                    @click="showConfirmPassword = !showConfirmPassword"
                   >
-                    <Eye v-if="!showConfirmPassword" class="size-4" />
-                    <EyeOff v-else class="size-4" />
+                    <Eye
+                      v-if="!showConfirmPassword"
+                      class="size-4"
+                    />
+                    <EyeOff
+                      v-else
+                      class="size-4"
+                    />
                   </button>
                 </div>
               </div>
             </div>
 
             <div class="flex items-start gap-2 pt-1">
-              <Checkbox v-model="form.agreeTerms" id="agree" class="mt-0.5" />
-              <Label for="agree" class="text-sm leading-normal cursor-pointer">
+              <Checkbox
+                id="agree"
+                v-model="form.agreeTerms"
+                class="mt-0.5"
+              />
+              <Label
+                for="agree"
+                class="text-sm leading-normal cursor-pointer"
+              >
                 {{ t('auth.agreeTermsPrefix') }}
-                <a href="#" class="text-primary hover:underline underline-offset-2">{{ t('auth.terms') }}</a>
+                <a
+                  href="#"
+                  class="text-primary hover:underline underline-offset-2"
+                >{{ t('auth.terms') }}</a>
                 {{ t('auth.agreeTermsAnd') }}
-                <a href="#" class="text-primary hover:underline underline-offset-2">{{ t('auth.privacy') }}</a>
+                <a
+                  href="#"
+                  class="text-primary hover:underline underline-offset-2"
+                >{{ t('auth.privacy') }}</a>
               </Label>
             </div>
 
@@ -170,7 +214,10 @@
               :disabled="!isFormValid || loading"
               @click="handleRegister"
             >
-              <Loader2 v-if="loading" class="size-4 animate-spin mr-2" />
+              <Loader2
+                v-if="loading"
+                class="size-4 animate-spin mr-2"
+              />
               {{ loading ? t('auth.registering') : t('auth.createAccount') }}
             </Button>
           </div>
@@ -178,7 +225,10 @@
 
         <CardFooter class="flex justify-center pt-0 text-sm">
           <span class="text-muted-foreground">{{ t('auth.hasAccount') }}</span>
-          <NuxtLink to="/login" class="ml-1.5 font-medium text-primary hover:underline underline-offset-2">
+          <NuxtLink
+            to="/login"
+            class="ml-1.5 font-medium text-primary hover:underline underline-offset-2"
+          >
             {{ t('auth.goLogin') }}
           </NuxtLink>
         </CardFooter>
@@ -222,7 +272,6 @@ import {
 
 definePageMeta({ layout: false })
 
-const router = useRouter()
 const { t } = useI18n()
 const authStore = useAuthStore()
 
@@ -241,12 +290,12 @@ const showConfirmPassword = ref(false)
 
 const isFormValid = computed(() => {
   return (
-    form.name.trim() &&
-    form.email.trim() &&
-    form.password &&
-    form.password === form.confirmPassword &&
-    form.password.length >= 6 &&
-    form.agreeTerms
+    form.name.trim()
+    && form.email.trim()
+    && form.password
+    && form.password === form.confirmPassword
+    && form.password.length >= 6
+    && form.agreeTerms
   )
 })
 
@@ -263,8 +312,8 @@ const handleRegister = async () => {
   try {
     await authStore.register(form.email, form.email, form.password, form.name)
     navigateTo('/login')
-  } catch (error: any) {
-    errorMessage.value = error.message || t('auth.registerFailed')
+  } catch (error: unknown) {
+    errorMessage.value = (error as Error).message || t('auth.registerFailed')
   } finally {
     loading.value = false
   }

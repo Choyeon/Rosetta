@@ -2,10 +2,10 @@
 export interface BaseResponse {
   success: boolean
   message: string
-  data?: any
+  data?: unknown
 }
 
-export interface PaginatedResponse<T = any> {
+export interface PaginatedResponse<T = unknown> {
   items: T[]
   total: number
   page: number
@@ -254,8 +254,8 @@ export interface SiteConfig {
 export interface OOBEStatus {
   oobe_complete: boolean
   has_config: boolean
-  state?: any
-  config?: any
+  state?: unknown
+  config?: unknown
 }
 
 export interface OOBEInstallRequest {
@@ -388,7 +388,7 @@ export interface Activity {
   target_id?: number
   target_title?: string
   target_url?: string
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   likes_count: number
   comments_count: number
   is_public: boolean
@@ -415,11 +415,8 @@ export interface ViewTrend {
   count: number
 }
 
-<<<<<<< Updated upstream
-=======
 export type ViewTrendPoint = ViewTrend
 
->>>>>>> Stashed changes
 export interface CategoryStat {
   id: number
   name: string
@@ -462,7 +459,7 @@ export interface MediaItem {
   height?: number
   duration?: number
   storage: 'local' | 's3' | 'oss' | 'cos' | 'other'
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   is_active: boolean
   created_at: string
   updated_at?: string
@@ -479,7 +476,7 @@ export interface Notification {
   target_id?: number
   target_url?: string
   sender?: User
-  metadata?: Record<string, any>
+  metadata?: Record<string, unknown>
   is_read: boolean
   created_at: string
   read_at?: string
@@ -489,7 +486,7 @@ export interface Notification {
 export interface PageSetting {
   id: number
   key: string
-  value: any
+  value: unknown
   type: 'string' | 'number' | 'boolean' | 'json'
   group: string
   description?: string

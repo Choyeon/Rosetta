@@ -27,8 +27,17 @@
                 class="size-12 shrink-0 rounded-xl flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 to-zinc-200 dark:from-slate-800 dark:to-zinc-700 transition-transform duration-300 group-hover:scale-105"
                 :style="friend.bgColor ? { background: friend.bgColor } : {}"
               >
-                <img v-if="friend.logo" :src="friend.logo" :alt="friend.name" class="w-full h-full object-cover" loading="lazy" />
-                <span v-else class="font-display text-lg font-bold text-slate-600 dark:text-slate-300">
+                <img
+                  v-if="friend.logo"
+                  :src="friend.logo"
+                  :alt="friend.name"
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                >
+                <span
+                  v-else
+                  class="font-display text-lg font-bold text-slate-600 dark:text-slate-300"
+                >
                   {{ friend.name?.[0]?.toUpperCase() }}
                 </span>
               </div>
@@ -55,11 +64,16 @@
       </a>
     </div>
 
-    <div v-if="displayLinks.length === 0" class="text-center py-20">
+    <div
+      v-if="displayLinks.length === 0"
+      class="text-center py-20"
+    >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <Link2 class="size-8 text-muted-foreground" />
       </div>
-      <h3 class="font-display text-xl font-semibold">{{ t('friends.noLinks') }}</h3>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('friends.noLinks') }}
+      </h3>
     </div>
   </div>
 </template>
@@ -142,7 +156,6 @@ const defaultLinks: FriendLink[] = [
 ]
 
 const links = ref<FriendLink[]>([])
-const loading = ref(false)
 
 const displayLinks = computed(() => {
   return links.value && links.value.length > 0 ? links.value : defaultLinks

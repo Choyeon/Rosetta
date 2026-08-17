@@ -1,4 +1,4 @@
-import type { PaginatedResponse } from '~~/types/api'
+import type { Activity, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useAPI'
 
 export function useActivity() {
@@ -8,7 +8,7 @@ export function useActivity() {
     type?: string
     user_id?: number
   }) => {
-    return useAPI<PaginatedResponse<any>>('/activity', {
+    return useAPI<PaginatedResponse<Activity>>('/activity', {
       query: {
         page: params?.page,
         page_size: params?.pageSize,
@@ -19,17 +19,17 @@ export function useActivity() {
   }
 
   const likeActivity = (id: number) => {
-    return useAPI<any>(`/activity/${id}/like`, {
+    return useAPI<unknown>(`/activity/${id}/like`, {
       method: 'POST'
     })
   }
 
   const createActivity = (
     type: string,
-    payload: any,
+    payload: unknown,
     visibility: string
   ) => {
-    return useAPI<any>('/activity', {
+    return useAPI<unknown>('/activity', {
       method: 'POST',
       body: {
         type,
@@ -40,13 +40,13 @@ export function useActivity() {
   }
 
   const deleteActivity = (id: number) => {
-    return useAPI<any>(`/activity/${id}`, {
+    return useAPI<unknown>(`/activity/${id}`, {
       method: 'DELETE'
     })
   }
 
   const getActivityStats = () => {
-    return useAPI<any>('/activity/stats')
+    return useAPI<unknown>('/activity/stats')
   }
 
   return {

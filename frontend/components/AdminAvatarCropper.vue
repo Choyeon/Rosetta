@@ -1,5 +1,8 @@
 <template>
-  <Dialog :open="modelValue" @update:open="emit('update:modelValue', $event)">
+  <Dialog
+    :open="modelValue"
+    @update:open="emit('update:modelValue', $event)"
+  >
     <DialogContent class="sm:max-w-2xl">
       <DialogHeader>
         <DialogTitle class="flex items-center gap-2">
@@ -12,32 +15,49 @@
       </DialogHeader>
 
       <!-- Step 1: pick a file -->
-      <div v-if="!imageSrc" class="space-y-3">
+      <div
+        v-if="!imageSrc"
+        class="space-y-3"
+      >
         <label class="block cursor-pointer group">
           <div class="border-2 border-dashed border-border rounded-xl p-10 flex flex-col items-center justify-center text-center hover:bg-muted/60 hover:border-primary/60 transition-colors group-active:scale-[0.99]">
             <ImagePlus class="size-10 text-muted-foreground mb-3 group-hover:text-primary transition-colors" />
             <p class="font-medium">点击选择本地图片</p>
             <p class="text-xs text-muted-foreground mt-1">支持 JPG · PNG · WEBP · GIF，建议正方形，最大 10MB</p>
           </div>
-          <input type="file" accept="image/*" class="hidden" @change="handleFileChange" />
+          <input
+            type="file"
+            accept="image/*"
+            class="hidden"
+            @change="handleFileChange"
+          >
         </label>
 
         <div class="grid grid-cols-3 gap-2">
           <button
             v-for="preset in avatarPresets"
             :key="preset.label"
-            @click="applyPreset(preset.url)"
             class="group aspect-square rounded-lg overflow-hidden border border-border hover:border-primary/60 transition-colors"
             :title="preset.label"
+            @click="applyPreset(preset.url)"
           >
-            <img :src="preset.url" class="w-full h-full object-cover group-hover:scale-105 transition-transform" :alt="preset.label" />
+            <img
+              :src="preset.url"
+              class="w-full h-full object-cover group-hover:scale-105 transition-transform"
+              :alt="preset.label"
+            >
           </button>
         </div>
-        <p class="text-[11px] text-muted-foreground text-center">或快速使用上方预设头像</p>
+        <p class="text-[11px] text-muted-foreground text-center">
+          或快速使用上方预设头像
+        </p>
       </div>
 
       <!-- Step 2: crop + preview -->
-      <div v-else class="space-y-4">
+      <div
+        v-else
+        class="space-y-4"
+      >
         <div class="grid grid-cols-1 md:grid-cols-[1fr_180px] gap-4">
           <!-- Cropper (with circular stencil overlay) -->
           <div class="relative w-full aspect-square md:aspect-auto md:h-[380px] max-h-[480px] bg-muted rounded-lg overflow-hidden shadow-inner border border-border">
@@ -58,34 +78,57 @@
 
           <!-- Preview column: 3 sizes to show real avatar sizes -->
           <div class="flex flex-col items-center gap-4 pt-2">
-            <div class="text-xs text-muted-foreground">预览效果</div>
+            <div class="text-xs text-muted-foreground">
+              预览效果
+            </div>
             <div class="space-y-4">
               <div class="flex items-center gap-3">
                 <div class="size-24 rounded-full overflow-hidden ring-4 ring-border bg-muted">
-                  <img v-if="previewUrl" :src="previewUrl" class="size-full object-cover" />
-                  <div v-else class="size-full bg-muted-foreground/10 animate-pulse"></div>
+                  <img
+                    v-if="previewUrl"
+                    :src="previewUrl"
+                    class="size-full object-cover"
+                  >
+                  <div
+                    v-else
+                    class="size-full bg-muted-foreground/10 animate-pulse"
+                  />
                 </div>
                 <div class="text-xs text-muted-foreground space-y-1">
                   <div>96×96 大号</div>
-                  <div class="text-[10px] opacity-70">个人资料页</div>
+                  <div class="text-[10px] opacity-70">
+                    个人资料页
+                  </div>
                 </div>
               </div>
               <div class="flex items-center gap-3">
                 <div class="size-12 rounded-full overflow-hidden ring-2 ring-border bg-muted">
-                  <img v-if="previewUrl" :src="previewUrl" class="size-full object-cover" />
+                  <img
+                    v-if="previewUrl"
+                    :src="previewUrl"
+                    class="size-full object-cover"
+                  >
                 </div>
                 <div class="text-xs text-muted-foreground space-y-1">
                   <div>48×48 中号</div>
-                  <div class="text-[10px] opacity-70">顶部导航</div>
+                  <div class="text-[10px] opacity-70">
+                    顶部导航
+                  </div>
                 </div>
               </div>
               <div class="flex items-center gap-3">
                 <div class="size-8 rounded-full overflow-hidden ring-2 ring-border bg-muted">
-                  <img v-if="previewUrl" :src="previewUrl" class="size-full object-cover" />
+                  <img
+                    v-if="previewUrl"
+                    :src="previewUrl"
+                    class="size-full object-cover"
+                  >
                 </div>
                 <div class="text-xs text-muted-foreground space-y-1">
                   <div>32×32 小号</div>
-                  <div class="text-[10px] opacity-70">评论 / 作者栏</div>
+                  <div class="text-[10px] opacity-70">
+                    评论 / 作者栏
+                  </div>
                 </div>
               </div>
             </div>
@@ -95,18 +138,36 @@
 
       <DialogFooter class="flex-col sm:flex-row sm:justify-between gap-2 mt-4">
         <div class="flex gap-2">
-          <Button v-if="imageSrc" variant="ghost" @click="resetAll" :disabled="uploading">
+          <Button
+            v-if="imageSrc"
+            variant="ghost"
+            :disabled="uploading"
+            @click="resetAll"
+          >
             <RotateCcw class="size-4 mr-2" />
             重新选择
           </Button>
         </div>
         <div class="flex gap-2 justify-end">
-          <Button variant="ghost" @click="closeDialog" :disabled="uploading">
+          <Button
+            variant="ghost"
+            :disabled="uploading"
+            @click="closeDialog"
+          >
             取消
           </Button>
-          <Button :disabled="!imageSrc || uploading" @click="confirmAndUpload">
-            <Loader2 v-if="uploading" class="size-4 mr-2 animate-spin" />
-            <Upload v-else class="size-4 mr-2" />
+          <Button
+            :disabled="!imageSrc || uploading"
+            @click="confirmAndUpload"
+          >
+            <Loader2
+              v-if="uploading"
+              class="size-4 mr-2 animate-spin"
+            />
+            <Upload
+              v-else
+              class="size-4 mr-2"
+            />
             {{ uploading ? '上传中...' : '确认上传' }}
           </Button>
         </div>
@@ -116,7 +177,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { ref, watch } from 'vue'
 import { Cropper, CircleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
 import { toast } from 'vue-sonner'
@@ -139,7 +200,12 @@ const emit = defineEmits<{ 'update:modelValue': [val: boolean] }>()
 const authStore = useAuthStore()
 
 const imageSrc = ref<string | null>(null)
-const cropperRef = ref<any>(null)
+
+interface CropperInstance {
+  getResult?: (options?: { maxWidth?: number, maxHeight?: number }) => { canvas?: HTMLCanvasElement | null }
+  reset?: () => void
+}
+const cropperRef = ref<CropperInstance | null>(null)
 const previewUrl = ref<string | null>(null)
 const uploading = ref(false)
 
@@ -196,12 +262,17 @@ const generatePreview = () => {
     if (canvas instanceof HTMLCanvasElement) {
       previewUrl.value = canvas.toDataURL('image/png')
     }
-  } catch {}
+  } catch {
+    // ignore
+  }
 }
 
 let previewTimer: ReturnType<typeof setInterval> | null = null
 watch(() => props.modelValue, (open) => {
-  if (previewTimer) { clearInterval(previewTimer); previewTimer = null }
+  if (previewTimer) {
+    clearInterval(previewTimer)
+    previewTimer = null
+  }
   if (open) {
     previewTimer = setInterval(generatePreview, 300)
   }
@@ -211,7 +282,11 @@ const resetAll = () => {
   imageSrc.value = null
   previewUrl.value = null
   if (cropperRef.value) {
-    try { cropperRef.value.reset?.() } catch {}
+    try {
+      cropperRef.value.reset?.()
+    } catch {
+      // ignore
+    }
   }
 }
 
@@ -233,7 +308,7 @@ const confirmAndUpload = async () => {
       if (canvas instanceof HTMLCanvasElement) {
         uploadableBlob = await new Promise<Blob>((resolve, reject) =>
           canvas.toBlob(
-            (b) => (b ? resolve(b) : reject(new Error('toBlob returned null'))),
+            b => (b ? resolve(b) : reject(new Error('toBlob returned null'))),
             'image/png',
             0.92
           )

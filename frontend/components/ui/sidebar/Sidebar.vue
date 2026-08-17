@@ -1,17 +1,17 @@
 <script setup lang="ts">
-import type { SidebarProps } from "."
-import { cn } from "~~/lib/utils"
+import type { SidebarProps } from '.'
+import { cn } from '~~/lib/utils'
 import { Sheet, SheetContent } from '~~/components/ui/sheet'
-import { SIDEBAR_WIDTH_MOBILE, useSidebar } from "./utils"
+import { SIDEBAR_WIDTH_MOBILE, useSidebar } from './utils'
 
 defineOptions({
-  inheritAttrs: false,
+  inheritAttrs: false
 })
 
 const props = withDefaults(defineProps<SidebarProps>(), {
-  side: "left",
-  variant: "sidebar",
-  collapsible: "offcanvas",
+  side: 'left',
+  variant: 'sidebar',
+  collapsible: 'offcanvas'
 })
 
 const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
@@ -26,14 +26,19 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
     <slot />
   </div>
 
-  <Sheet v-else-if="isMobile" :open="openMobile" v-bind="$attrs" @update:open="setOpenMobile">
+  <Sheet
+    v-else-if="isMobile"
+    :open="openMobile"
+    v-bind="$attrs"
+    @update:open="setOpenMobile"
+  >
     <SheetContent
       data-sidebar="sidebar"
       data-mobile="true"
       :side="side"
       class="w-(--sidebar-width) bg-sidebar p-0 text-sidebar-foreground [&>button]:hidden"
       :style="{
-        '--sidebar-width': SIDEBAR_WIDTH_MOBILE,
+        '--sidebar-width': SIDEBAR_WIDTH_MOBILE
       }"
     >
       <div class="flex h-full w-full flex-col">
@@ -43,7 +48,8 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
   </Sheet>
 
   <div
-    v-else class="group peer hidden md:block"
+    v-else
+    class="group peer hidden md:block"
     :data-state="state"
     :data-collapsible="state === 'collapsed' ? collapsible : ''"
     :data-variant="variant"
@@ -57,7 +63,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
         'group-data-[side=right]:rotate-180',
         variant === 'floating' || variant === 'inset'
           ? 'group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]'
-          : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)',
+          : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon)'
       )"
     />
     <div
@@ -70,7 +76,7 @@ const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
         variant === 'floating' || variant === 'inset'
           ? 'p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+_2px)]'
           : 'group-data-[collapsible=icon]:w-(--sidebar-width-icon) group-data-[side=left]:border-r group-data-[side=right]:border-l',
-        props.class,
+        props.class
       )"
       v-bind="$attrs"
     >

@@ -10,7 +10,7 @@ export function useComments() {
   const comment = ref<Comment | null>(null)
   const loading = ref(false)
   const loadingSingle = ref(false)
-  const error = ref<any>(null)
+  const error = ref<unknown>(null)
   const total = ref(0)
   const pageSize = ref(20)
 
@@ -64,49 +64,49 @@ export function useComments() {
   }
 
   const likeComment = (id: number | string) => {
-    return useAPI<any>(`/comments/${id}/like`, {
+    return useAPI<unknown>(`/comments/${id}/like`, {
       method: 'POST'
     })
   }
 
   const addCommentReaction = (id: number | string, emoji: string) => {
-    return useAPI<any>(`/comments/${id}/reactions`, {
+    return useAPI<unknown>(`/comments/${id}/reactions`, {
       method: 'POST',
       body: { emoji }
     })
   }
 
   const removeCommentReaction = (id: number | string, emoji: string) => {
-    return useAPI<any>(`/comments/${id}/reactions`, {
+    return useAPI<unknown>(`/comments/${id}/reactions`, {
       method: 'DELETE',
       body: { emoji }
     })
   }
 
   const getCommentReactions = (id: number | string) => {
-    return useAPI<any>(`/comments/${id}/reactions`)
+    return useAPI<unknown>(`/comments/${id}/reactions`)
   }
 
   const approveComment = (id: number | string) => {
-    return useAPI<any>(`/admin/comments/${id}/approve`, {
+    return useAPI<unknown>(`/admin/comments/${id}/approve`, {
       method: 'POST'
     })
   }
 
   const rejectComment = (id: number | string) => {
-    return useAPI<any>(`/admin/comments/${id}/reject`, {
+    return useAPI<unknown>(`/admin/comments/${id}/reject`, {
       method: 'POST'
     })
   }
 
   const spamComment = (id: number | string) => {
-    return useAPI<any>(`/admin/comments/${id}/spam`, {
+    return useAPI<unknown>(`/admin/comments/${id}/spam`, {
       method: 'POST'
     })
   }
 
   const batchComments = (ids: (number | string)[], action: string) => {
-    return useAPI<any>('/admin/comments/batch', {
+    return useAPI<unknown>('/admin/comments/batch', {
       method: 'POST',
       body: { ids, action }
     })
@@ -135,7 +135,7 @@ export function useComments() {
       }
       pageSize.value = pageSize_
       return comments.value
-    } catch (e: any) {
+    } catch (e) {
       error.value = e
       throw e
     } finally {

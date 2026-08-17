@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Menu, Search, Rocket, LogOut, User, ChevronDown } from '@lucide/vue'
+import { Menu, Search, LogOut, User, ChevronDown } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import {
   DropdownMenu,
@@ -61,7 +61,10 @@ const handleAdmin = () => navigateTo('/admin')
 <template>
   <header class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
     <div class="container mx-auto flex h-16 items-center justify-between gap-4">
-      <NuxtLink to="/" class="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+      <NuxtLink
+        to="/"
+        class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
+      >
         Rosetta
       </NuxtLink>
 
@@ -82,7 +85,11 @@ const handleAdmin = () => navigateTo('/admin')
       <div class="flex items-center gap-1">
         <Tooltip>
           <TooltipTrigger as-child>
-            <Button variant="ghost" size="icon" :aria-label="t('common.search') || '搜索'">
+            <Button
+              variant="ghost"
+              size="icon"
+              :aria-label="t('common.search') || '搜索'"
+            >
               <Search class="h-[1.2rem] w-[1.2rem]" />
             </Button>
           </TooltipTrigger>
@@ -94,39 +101,67 @@ const handleAdmin = () => navigateTo('/admin')
         <LocaleSwitcher />
         <ThemeToggle />
 
-        <div v-if="!authStore.isAuthenticated" class="ml-1 flex items-center gap-2">
-          <Button variant="outline" size="sm" @click="handleLogin">
+        <div
+          v-if="!authStore.isAuthenticated"
+          class="ml-1 flex items-center gap-2"
+        >
+          <Button
+            variant="outline"
+            size="sm"
+            @click="handleLogin"
+          >
             {{ t('auth.login') || '登录' }}
           </Button>
-          <Button variant="default" size="sm" @click="handleRegister">
-<<<<<<< Updated upstream
-            <Rocket class="mr-2 h-4 w-4" />
-            {{ t('auth.startCreate') || '开始创作' }}
-=======
+          <Button
+            variant="default"
+            size="sm"
+            @click="handleRegister"
+          >
             {{ t('auth.register') || '注册' }}
->>>>>>> Stashed changes
           </Button>
         </div>
 
         <DropdownMenu v-else>
           <DropdownMenuTrigger as-child>
-            <Button variant="ghost" size="icon" class="relative rounded-full h-9 w-9 p-0">
+            <Button
+              variant="ghost"
+              size="icon"
+              class="relative rounded-full h-9 w-9 p-0"
+            >
               <Avatar class="h-8 w-8">
-                <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user.name || authStore.user.username || ''" />
+                <AvatarImage
+                  v-if="authStore.user?.avatar"
+                  :src="authStore.user.avatar"
+                  :alt="authStore.user.name || authStore.user.username || ''"
+                />
                 <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" class="w-56">
+          <DropdownMenuContent
+            align="end"
+            class="w-56"
+          >
             <DropdownMenuLabel class="font-normal p-3">
               <div class="flex items-center gap-3">
                 <Avatar class="h-10 w-10">
-                  <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user.name || authStore.user.username || ''" />
+                  <AvatarImage
+                    v-if="authStore.user?.avatar"
+                    :src="authStore.user.avatar"
+                    :alt="authStore.user.name || authStore.user.username || ''"
+                  />
                   <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
                 </Avatar>
                 <div class="space-y-0.5 min-w-0">
-                  <div class="text-sm font-medium truncate">{{ authStore.user?.name || authStore.user?.username }}</div>
-                  <div v-if="authStore.user?.email" class="text-xs text-muted-foreground truncate">{{ authStore.user.email }}</div>
+                  <div class="text-sm font-medium truncate">
+                    {{ authStore.user?.name || authStore.user?.username }}
+                  </div>
+                  <div
+                    v-if="authStore.user?.email"
+                    class="text-xs text-muted-foreground truncate"
+                  >
+                    {{ authStore.user.email }}
+                  </div>
                 </div>
               </div>
             </DropdownMenuLabel>
@@ -142,11 +177,10 @@ const handleAdmin = () => navigateTo('/admin')
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-<<<<<<< Updated upstream
-            <DropdownMenuItem class="text-red-600 dark:text-red-400" @click="handleLogout">
-=======
-            <DropdownMenuItem class="text-error" @click="handleLogout">
->>>>>>> Stashed changes
+            <DropdownMenuItem
+              class="text-error"
+              @click="handleLogout"
+            >
               <LogOut class="mr-2 h-4 w-4" />
               <span>{{ t('auth.logout') || '退出登录' }}</span>
             </DropdownMenuItem>
@@ -155,20 +189,37 @@ const handleAdmin = () => navigateTo('/admin')
 
         <Sheet>
           <SheetTrigger as-child>
-            <Button variant="ghost" size="icon" class="md:hidden" :aria-label="t('common.menu') || '菜单'">
+            <Button
+              variant="ghost"
+              size="icon"
+              class="md:hidden"
+              :aria-label="t('common.menu') || '菜单'"
+            >
               <Menu class="h-[1.2rem] w-[1.2rem]" />
             </Button>
           </SheetTrigger>
-          <SheetContent side="left" class="w-[85%] max-w-sm flex flex-col">
+          <SheetContent
+            side="left"
+            class="w-[85%] max-w-sm flex flex-col"
+          >
             <SheetHeader class="text-left mb-4">
-              <SheetTitle class="sr-only">{{ t('common.menu') || '菜单' }}</SheetTitle>
-              <NuxtLink to="/" class="flex items-center gap-2 font-display text-xl font-bold tracking-tight">
+              <SheetTitle class="sr-only">
+                {{ t('common.menu') || '菜单' }}
+              </SheetTitle>
+              <NuxtLink
+                to="/"
+                class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
+              >
                 Rosetta
               </NuxtLink>
             </SheetHeader>
             <Separator class="mb-4" />
             <nav class="flex flex-col gap-1 mb-6">
-              <SheetClose v-for="item in navItems" :key="item.to" as-child>
+              <SheetClose
+                v-for="item in navItems"
+                :key="item.to"
+                as-child
+              >
                 <NuxtLink
                   :to="item.to"
                   :class="[
@@ -185,26 +236,43 @@ const handleAdmin = () => navigateTo('/admin')
               <template v-if="authStore.isAuthenticated">
                 <div class="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-accent mb-2">
                   <Avatar class="h-10 w-10">
-                    <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user.name || authStore.user.username || ''" />
+                    <AvatarImage
+                      v-if="authStore.user?.avatar"
+                      :src="authStore.user.avatar"
+                      :alt="authStore.user.name || authStore.user.username || ''"
+                    />
                     <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
                   </Avatar>
                   <div class="min-w-0">
-                    <div class="text-sm font-medium truncate">{{ authStore.user?.name || authStore.user?.username }}</div>
-                    <div v-if="authStore.user?.email" class="text-xs text-muted-foreground truncate">{{ authStore.user.email }}</div>
+                    <div class="text-sm font-medium truncate">
+                      {{ authStore.user?.name || authStore.user?.username }}
+                    </div>
+                    <div
+                      v-if="authStore.user?.email"
+                      class="text-xs text-muted-foreground truncate"
+                    >
+                      {{ authStore.user.email }}
+                    </div>
                   </div>
                 </div>
                 <div class="flex flex-col gap-1">
                   <SheetClose as-child>
-                    <Button variant="ghost" size="sm" class="justify-start" @click="handleAdmin">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      class="justify-start"
+                      @click="handleAdmin"
+                    >
                       <User class="mr-2 h-4 w-4" />
                       {{ t('common.dashboard') || 'Dashboard' }}
                     </Button>
                   </SheetClose>
-<<<<<<< Updated upstream
-                  <Button variant="ghost" size="sm" class="justify-start text-red-600 dark:text-red-400" @click="handleLogout">
-=======
-                  <Button variant="ghost" size="sm" class="justify-start text-error" @click="handleLogout">
->>>>>>> Stashed changes
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    class="justify-start text-error"
+                    @click="handleLogout"
+                  >
                     <LogOut class="mr-2 h-4 w-4" />
                     {{ t('auth.logout') || '退出登录' }}
                   </Button>
@@ -212,33 +280,29 @@ const handleAdmin = () => navigateTo('/admin')
               </template>
               <template v-else>
                 <div class="flex flex-col gap-2">
-                  <Button variant="outline" class="w-full" @click="handleLogin">
+                  <Button
+                    variant="outline"
+                    class="w-full"
+                    @click="handleLogin"
+                  >
                     {{ t('auth.login') || '登录' }}
                   </Button>
-                  <Button variant="default" class="w-full" @click="handleRegister">
-<<<<<<< Updated upstream
-                    <Rocket class="mr-2 h-4 w-4" />
-                    {{ t('auth.startCreate') || '开始创作' }}
-=======
+                  <Button
+                    variant="default"
+                    class="w-full"
+                    @click="handleRegister"
+                  >
                     {{ t('auth.register') || '注册' }}
->>>>>>> Stashed changes
                   </Button>
                 </div>
               </template>
             </div>
             <Separator class="mb-4" />
-<<<<<<< Updated upstream
-            <div class="flex items-center justify-between">
+            <div class="flex items-center justify-end gap-1 ml-auto">
               <LocaleSwitcher />
               <ThemeToggle />
             </div>
           </SheetContent>
-=======
-            <div class="flex items-center justify-end gap-1 ml-auto">
-              <LocaleSwitcher />
-              <ThemeToggle />
-            </div></SheetContent>
->>>>>>> Stashed changes
         </Sheet>
       </div>
     </div>

@@ -16,13 +16,27 @@
     </header>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-      <div v-for="album in albums" :key="album.id">
-        <Card class="h-full group transition-all hover:shadow-soft hover:-translate-y-0.5 duration-300 overflow-hidden cursor-pointer" @click="openAlbum = album.id">
+      <div
+        v-for="album in albums"
+        :key="album.id"
+      >
+        <Card
+          class="h-full group transition-all hover:shadow-soft hover:-translate-y-0.5 duration-300 overflow-hidden cursor-pointer"
+          @click="openAlbum = album.id"
+        >
           <div class="relative aspect-[4/3] overflow-hidden bg-muted">
-            <img :src="album.cover" :alt="album.title" class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105" loading="lazy" />
+            <img
+              :src="album.cover"
+              :alt="album.title"
+              class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              loading="lazy"
+            >
             <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
             <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-              <Badge variant="secondary" class="bg-white/90 dark:bg-black/50 backdrop-blur-sm border-0">
+              <Badge
+                variant="secondary"
+                class="bg-white/90 dark:bg-black/50 backdrop-blur-sm border-0"
+              >
                 <ImageIcon class="size-3 mr-1.5" />
                 {{ album.photosCount }} {{ t('gallery.photos') }}
               </Badge>
@@ -42,7 +56,10 @@
         </Card>
 
         <Sheet v-model:open="localSheetOpen[album.id]">
-          <SheetContent side="right" class="w-full sm:max-w-3xl p-0 flex flex-col">
+          <SheetContent
+            side="right"
+            class="w-full sm:max-w-3xl p-0 flex flex-col"
+          >
             <SheetHeader class="p-6 pb-4 border-b shrink-0">
               <SheetTitle class="font-display text-xl flex items-center gap-2">
                 <ImageIcon class="size-5 text-primary" />
@@ -69,7 +86,7 @@
                       :alt="`${album.title} ${idx + 1}`"
                       class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                       loading="lazy"
-                    />
+                    >
                     <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
                     <div class="absolute bottom-2 right-2 size-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                       <ZoomIn class="size-4" />
@@ -84,18 +101,38 @@
     </div>
 
     <div class="mt-12">
-      <Accordion type="multiple" class="w-full space-y-4">
-        <AccordionItem v-for="album in albums" :key="`acc-${album.id}`" :value="`album-${album.id}`" class="border rounded-xl overflow-hidden px-0">
+      <Accordion
+        type="multiple"
+        class="w-full space-y-4"
+      >
+        <AccordionItem
+          v-for="album in albums"
+          :key="`acc-${album.id}`"
+          :value="`album-${album.id}`"
+          class="border rounded-xl overflow-hidden px-0"
+        >
           <AccordionTrigger class="px-6 py-4 hover:no-underline hover:bg-muted/40 transition-colors">
             <div class="flex items-center gap-4 w-full text-left">
               <div class="size-12 shrink-0 rounded-lg overflow-hidden bg-muted">
-                <img :src="album.cover" :alt="album.title" class="w-full h-full object-cover" loading="lazy" />
+                <img
+                  :src="album.cover"
+                  :alt="album.title"
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                >
               </div>
               <div class="flex-1 min-w-0">
-                <div class="font-medium">{{ album.title }}</div>
-                <div class="text-sm text-muted-foreground truncate">{{ album.description }}</div>
+                <div class="font-medium">
+                  {{ album.title }}
+                </div>
+                <div class="text-sm text-muted-foreground truncate">
+                  {{ album.description }}
+                </div>
               </div>
-              <Badge variant="secondary" class="shrink-0">
+              <Badge
+                variant="secondary"
+                class="shrink-0"
+              >
                 {{ album.photosCount }}
               </Badge>
             </div>
@@ -116,7 +153,7 @@
                   :alt="`${album.title} ${idx + 1}`"
                   class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                   loading="lazy"
-                />
+                >
                 <div class="absolute bottom-1.5 right-1.5 size-5 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
                   <ZoomIn class="size-3" />
                 </div>
@@ -127,11 +164,16 @@
       </Accordion>
     </div>
 
-    <div v-if="albums.length === 0" class="text-center py-20">
+    <div
+      v-if="albums.length === 0"
+      class="text-center py-20"
+    >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <Images class="size-8 text-muted-foreground" />
       </div>
-      <h3 class="font-display text-xl font-semibold">{{ t('gallery.noAlbums') }}</h3>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('gallery.noAlbums') }}
+      </h3>
     </div>
   </div>
 </template>
@@ -159,7 +201,7 @@ const { t } = useI18n()
 
 // --- viewer.js lightbox instances per container key -------------------------
 type ViewerInstance = InstanceType<typeof Viewer>
-interface ViewerRecord { instance: ViewerInstance; element: WeakRef<Element> }
+interface ViewerRecord { instance: ViewerInstance, element: WeakRef<Element> }
 const viewerRegistry = new Map<string, ViewerRecord>()
 
 const setGalleryRef = (key: string, el: Element | null) => {
@@ -169,7 +211,9 @@ const setGalleryRef = (key: string, el: Element | null) => {
   if (existing) {
     const oldEl = existing.element.deref?.()
     if (el && oldEl === el) return
-    try { existing.instance.destroy() } catch { /* noop */ }
+    try {
+      existing.instance.destroy()
+    } catch { /* noop */ }
     viewerRegistry.delete(key)
   }
   if (!el) return
@@ -239,7 +283,9 @@ const getHighRes = (url: string) => {
 
 onBeforeUnmount(() => {
   for (const r of viewerRegistry.values()) {
-    try { r.instance.destroy() } catch { /* noop */ }
+    try {
+      r.instance.destroy()
+    } catch { /* noop */ }
   }
   viewerRegistry.clear()
 })

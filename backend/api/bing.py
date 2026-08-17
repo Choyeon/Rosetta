@@ -33,14 +33,34 @@ class BingWallpaperResponse(BaseModel):
     date: str = Field(..., description="壁纸日期 YYYY-MM-DD")
 
 
-async def _fetch_bing_wallpaper(market: str = "zh-CN") -> dict[str, Any]:
+class BingWallpaperItem(BaseModel):
+    """Bing 多日壁纸列表项（对齐前端 useBingWallpaper 所需字段）"""
+
+    url: str = Field(default="", description="相对图片路径")
+    urlbase: str = Field(default="", description="图片基础路径（可拼缩略图/UHD）")
+    full_url: str = Field(default="", description="完整图片 URL")
+    uhd_url: str = Field(default="", description="UHD 高清图 URL")
+    title: str = Field(default="", description="壁纸标题")
+    copyright: str = Field(default="", description="版权信息")
+    copyright_link: str = Field(default="", description="版权链接")
+    startdate: str = Field(default="", description="开始日期 YYYYMMDD")
+    enddate: str = Field(default="", description="结束日期 YYYYMMDD")
+
+
+class BingWallpaperListResponse(BaseModel):
+    """Bing 多日壁纸响应"""
+
+    images: list[BingWallpaperItem] = Field(default_factory=list, description="壁纸列表")
+
+
+async def _fetch_bing_wallpaper(market: str = "zh-CN", n: int = 1) -> dict[str, Any]:
     """从 Bing API 获取每日壁纸"""
     import httpx
 
     params = {
         "format": "js",
         "idx": 0,
-        "n": 1,
+        "n": n,
         "mkt": market,
     }
 
@@ -120,4 +140,55 @@ async def get_bing_wallpaper(
     # 写入缓存
     await cache.set(cache_key, result.model_dump(mode="json"), BING_CACHE_TTL)
 
+    return result
+
+
+@router.get(
+    "/wallpapers",
+    response_model=BingWallpaperListResponse,
+    summary="获取最近多天的 Bing 壁纸列表",
+    description="代理 Bing HPImageArchive 接口，一次返回最近 n 天（1-8）的壁纸数据，供前端规避 CORS 直连限制。结果缓存 1 小时。",
+)
+async def get_bing_wallpapers(
+    n: int = Query(default=8, ge=1, le=8, description="返回天数（1-8）"),
+    market: str = Query(default="zh-CN", description="地区市场，如 zh-CN、en-US、ja-JP"),
+) -> BingWallpaperListResponse:
+    """获取最近多天的 Bing 壁纸列表（前端代理）"""
+    cache_key = make_cache_key("bing_wallpapers", market, n)
+
+    cached = await cache.get(cache_key)
+    if cached:
+        return BingWallpaperListResponse(**cached)
+
+    data = await _fetch_bing_wallpaper(market, n=n)
+
+    raw_images = data.get("images") or []
+    if not raw_images:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Bing API 未返回壁纸数据",
+        )
+
+    items: list[BingWallpaperItem] = []
+    for image in raw_images:
+        url = image.get("url", "")
+        urlbase = image.get("urlbase", "")
+        uhd_url = f"https://www.bing.com{urlbase}_UHD.jpg" if urlbase else ""
+        full_url = f"https://www.bing.com{url}" if url and not url.startswith("http") else url
+        items.append(
+            BingWallpaperItem(
+                url=url,
+                urlbase=urlbase,
+                full_url=full_url,
+                uhd_url=uhd_url,
+                title=image.get("title", ""),
+                copyright=image.get("copyright", ""),
+                copyright_link=image.get("copyrightlink", ""),
+                startdate=str(image.get("startdate", "")),
+                enddate=str(image.get("enddate", "")),
+            )
+        )
+
+    result = BingWallpaperListResponse(images=items)
+    await cache.set(cache_key, result.model_dump(mode="json"), BING_CACHE_TTL)
     return result

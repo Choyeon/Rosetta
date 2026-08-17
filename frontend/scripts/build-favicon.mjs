@@ -29,7 +29,7 @@ const PUBLIC_DIR = path.join(FRONTEND, 'public')
 const LOGO_DEST = path.join(PUBLIC_DIR, 'logo')
 const SOURCE_PNG = path.join(LOGO_SRC, 'rosetta-primary-icon.png')
 
-const ensureDir = (p) => fs.mkdirSync(p, { recursive: true })
+const ensureDir = p => fs.mkdirSync(p, { recursive: true })
 ensureDir(LOGO_DEST)
 ensureDir(PUBLIC_DIR)
 
@@ -37,7 +37,7 @@ ensureDir(PUBLIC_DIR)
 // 1) Copy ALL source logo assets (PNG) to public/logo/
 // ---------------------------------------------------------------
 console.log('[1/4] Copy logo assets to public/logo/ ...')
-const copyList = fs.readdirSync(LOGO_SRC).filter((f) => /\.(png|svg|jpg|jpeg|webp)$/i.test(f))
+const copyList = fs.readdirSync(LOGO_SRC).filter(f => /\.(png|svg|jpg|jpeg|webp)$/i.test(f))
 for (const name of copyList) {
   const src = path.join(LOGO_SRC, name)
   const dst = path.join(LOGO_DEST, name)
@@ -92,7 +92,7 @@ for (const size of ICO_SIZES) {
   }
 }
 
-const icoInputs = ICO_SIZES.map((s) => fs.readFileSync(resizedFiles[s]))
+const icoInputs = ICO_SIZES.map(s => fs.readFileSync(resizedFiles[s]))
 const icoBuffer = await pngToIco(icoInputs)
 const icoPath = path.join(PUBLIC_DIR, 'favicon.ico')
 fs.writeFileSync(icoPath, icoBuffer)

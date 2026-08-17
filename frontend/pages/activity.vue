@@ -16,37 +16,61 @@
       <div class="relative pl-8">
         <div class="absolute left-3 top-2 bottom-2 w-px bg-border" />
 
-        <div v-for="(item, idx) in activityList" :key="item.id" class="relative mb-8 last:mb-0">
+        <div
+          v-for="item in activityList"
+          :key="item.id"
+          class="relative mb-8 last:mb-0"
+        >
           <div
             class="absolute -left-8 top-1.5 size-6 rounded-full border-2 border-background flex items-center justify-center shrink-0"
             :class="iconBgClass(item.type)"
           >
-            <component :is="iconFor(item.type)" :class="['size-3', iconClass(item.type)]" />
+            <component
+              :is="iconFor(item.type)"
+              :class="['size-3', iconClass(item.type)]"
+            />
           </div>
 
           <Card class="transition-all hover:shadow-soft duration-300">
             <CardContent class="p-5">
               <div class="flex items-start justify-between gap-3 mb-3">
                 <div class="flex items-center gap-2 flex-wrap">
-                  <Badge :variant="badgeVariant(item.type)" class="text-xs">
-                    <component :is="iconFor(item.type)" class="size-3 mr-1.5" />
+                  <Badge
+                    :variant="badgeVariant(item.type)"
+                    class="text-xs"
+                  >
+                    <component
+                      :is="iconFor(item.type)"
+                      class="size-3 mr-1.5"
+                    />
                     {{ t(`activity.type_${item.type}`) }}
                   </Badge>
-                  <span v-if="item.author" class="text-sm font-medium">{{ item.author }}</span>
+                  <span
+                    v-if="item.author"
+                    class="text-sm font-medium"
+                  >{{ item.author }}</span>
                 </div>
                 <span class="text-xs text-muted-foreground shrink-0 whitespace-nowrap">{{ formatDate(item.createdAt) }}</span>
               </div>
 
               <template v-if="item.type === 'post'">
                 <div class="font-medium text-base leading-snug mb-1.5 line-clamp-1">
-                  <a v-if="item.link" :href="item.link" class="hover:underline underline-offset-4">{{ item.title }}</a>
+                  <a
+                    v-if="item.link"
+                    :href="item.link"
+                    class="hover:underline underline-offset-4"
+                  >{{ item.title }}</a>
                   <span v-else>{{ item.title }}</span>
                 </div>
-                <p class="text-sm text-muted-foreground line-clamp-2 leading-relaxed">{{ item.content }}</p>
+                <p class="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+                  {{ item.content }}
+                </p>
               </template>
 
               <template v-else-if="item.type === 'card'">
-                <div class="font-medium text-base leading-snug mb-1.5">{{ item.title }}</div>
+                <div class="font-medium text-base leading-snug mb-1.5">
+                  {{ item.title }}
+                </div>
                 <div class="rounded-xl bg-muted/50 overflow-hidden mt-3">
                   <div class="aspect-[16/6] bg-gradient-to-br from-indigo-200 via-purple-200 to-pink-200 dark:from-indigo-900/40 dark:via-purple-900/40 dark:to-pink-900/40" />
                 </div>
@@ -58,7 +82,9 @@
                     <span class="text-sm font-medium">{{ item.replyTo ? `${item.author} → ${item.replyTo}` : item.author }}</span>
                     <span class="text-xs text-muted-foreground">{{ item.title }}</span>
                   </div>
-                  <p class="text-sm text-foreground/90 leading-relaxed line-clamp-3">{{ item.content }}</p>
+                  <p class="text-sm text-foreground/90 leading-relaxed line-clamp-3">
+                    {{ item.content }}
+                  </p>
                 </div>
               </template>
 
@@ -82,11 +108,16 @@
       </div>
     </div>
 
-    <div v-if="activityList.length === 0" class="text-center py-20">
+    <div
+      v-if="activityList.length === 0"
+      class="text-center py-20"
+    >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <Zap class="size-8 text-muted-foreground" />
       </div>
-      <h3 class="font-display text-xl font-semibold">{{ t('activity.noActivity') }}</h3>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('activity.noActivity') }}
+      </h3>
     </div>
   </div>
 </template>
@@ -226,7 +257,10 @@ const generateActivities = (): ActivityItem[] => {
     let type: ActivityType = 'like'
     for (let j = 0; j < types.length; j++) {
       cumulative += weights[j] ?? 0
-      if (rand < cumulative) { type = types[j] ?? 'like'; break }
+      if (rand < cumulative) {
+        type = types[j] ?? 'like'
+        break
+      }
     }
 
     const offset = Math.floor(Math.random() * 86400000 * 14) + 3600000 * i * 2

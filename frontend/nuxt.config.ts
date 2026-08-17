@@ -1,6 +1,4 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-<<<<<<< Updated upstream
-=======
 import { spawn } from 'node:child_process'
 import { existsSync, watch } from 'node:fs'
 import { resolve, dirname, join } from 'node:path'
@@ -19,7 +17,10 @@ function isPortTaken(host: string, port: number): Promise<boolean> {
       res(true)
     })
     sock.on('error', () => res(false))
-    sock.on('timeout', () => { sock.destroy(); res(false) })
+    sock.on('timeout', () => {
+      sock.destroy()
+      res(false)
+    })
   })
 }
 
@@ -112,7 +113,9 @@ function createBackendStarter(projectRoot: string) {
 
   const cleanup = () => {
     if (watcher) {
-      try { watcher.close() } catch { /* ignore */ }
+      try {
+        watcher.close()
+      } catch { /* ignore */ }
     }
     if (backendProcess) {
       killProcessTree(backendProcess.pid)
@@ -182,46 +185,37 @@ const spawnBackendModule: NuxtModule = function (_inlineOptions, nuxt) {
   })
 }
 
->>>>>>> Stashed changes
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
     '@nuxtjs/tailwindcss',
     '@nuxtjs/i18n',
-<<<<<<< Updated upstream
-    '@pinia/nuxt'
-  ],
-
-  alias: {
-    '@': '.',
-    '@@': '.'
-  },
-
-=======
     '@pinia/nuxt',
     spawnBackendModule
   ],
 
->>>>>>> Stashed changes
+  ssr: false,
+
+  components: [
+    { path: './components', pathPrefix: false, ignore: ['**/index.ts'] }
+  ],
+
+  imports: {
+    dirs: [
+      './composables',
+      './composables/**',
+      './stores'
+    ]
+  },
+
   devtools: {
     enabled: true
   },
 
-<<<<<<< Updated upstream
-  // css 路径: ~/assets = app/assets（已存在）
-  css: ['~/assets/css/main.css'],
-
-  runtimeConfig: {
-    public: {
-      apiBase: process.env.API_BASE_URL || 'http://localhost:8000/api'
-    }
-  },
-
-  // 显式声明自动导入目录（相对路径相对于 rootDir = frontend/）
-=======
-  css: ['~/assets/css/main.css'],
-
   app: {
+    // Nuxt 原生页面过渡：由框架在 NuxtPage 内部正确挂载，
+    // 避免在 app.vue 手动嵌套 Transition/Suspense 引发渲染死锁
+    pageTransition: { name: 'page-fade', mode: 'out-in' },
     head: {
       title: 'Rosetta',
       htmlAttrs: { lang: 'zh-CN' },
@@ -244,17 +238,22 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
         { rel: 'icon', type: 'image/png', sizes: '48x48', href: '/favicon-48x48.png' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
-        { rel: 'manifest', href: '/site.webmanifest' },
-        { rel: 'preload', as: 'image', href: '/logo/rosetta-primary-icon.png' }
+        { rel: 'manifest', href: '/site.webmanifest' }
       ]
     }
   },
+
+  css: ['~/assets/css/main.css'],
 
   runtimeConfig: {
     public: {
       apiBase: process.env.API_BASE_URL || '/api'
     }
   },
+
+  routeRules: {},
+
+  compatibilityDate: '2026-06-30',
 
   nitro: {
     devProxy: {
@@ -265,83 +264,12 @@ export default defineNuxtConfig({
     }
   },
 
->>>>>>> Stashed changes
-  imports: {
-    dirs: [
-      './composables',
-      './composables/**',
-      './stores'
-    ]
-  },
-
-<<<<<<< Updated upstream
-  // 显式声明组件目录
-  components: [
-    { path: './components', pathPrefix: false },
-    { path: './app/components', pathPrefix: false }
-  ],
-
-  // layouts / plugins 目录（相对 rootDir）
-  dir: {
-    layouts: './layouts',
-    plugins: './plugins'
-  },
-
-=======
-  components: [
-    { path: './components', pathPrefix: false, ignore: ['**/index.ts'] }
-  ],
-
->>>>>>> Stashed changes
-  i18n: {
-    locales: [
-      { code: 'zh', name: '简体中文', file: 'zh.json' },
-      { code: 'en', name: 'English', file: 'en.json' },
-      { code: 'ja', name: '日本語', file: 'ja.json' },
-      { code: 'zh_Hant', name: '繁體中文', file: 'zh_Hant.json' }
-    ],
-    defaultLocale: 'zh',
-<<<<<<< Updated upstream
-    // @nuxtjs/i18n v10 中 langDir/vueI18n 路径均相对 srcDir/i18n/ 目录（模块的 base 目录）
-    // 因此 frontend/i18n/locales/ → './locales/' ; frontend/i18n/index.ts → './index.ts'
-    langDir: './locales/',
-=======
-    langDir: './locales',
->>>>>>> Stashed changes
-    vueI18n: './index.ts',
-    strategy: 'no_prefix',
-    detectBrowserLanguage: {
-      useCookie: true,
-<<<<<<< Updated upstream
-      cookieKey: 'i18n_redirected',
-=======
-      cookieKey: 'rosetta_lang',
->>>>>>> Stashed changes
-      redirectOn: 'root'
-    }
-  },
-
-<<<<<<< Updated upstream
-  // 全局关闭 SSR（纯 SPA），避免 Pinia store payload 序列化和 useFetch 服务端渲染问题
-=======
->>>>>>> Stashed changes
-  ssr: false,
-
   postcss: {
     plugins: {
       tailwindcss: {},
       autoprefixer: {}
     }
   },
-
-<<<<<<< Updated upstream
-  routeRules: {
-  },
-=======
-  routeRules: {},
->>>>>>> Stashed changes
-
-  compatibilityDate: '2026-06-30',
 
   eslint: {
     config: {
@@ -350,22 +278,23 @@ export default defineNuxtConfig({
         braceStyle: '1tbs'
       }
     }
-<<<<<<< Updated upstream
   },
 
-  app: {
-    head: {
-      title: 'Rosetta',
-      meta: [
-        { charset: 'utf-8' },
-        { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'Rosetta - Modern Blog System' }
-      ],
-      link: [
-        { rel: 'icon', type: 'image/x-icon', href: '/favicon.ico' }
-      ]
+  i18n: {
+    locales: [
+      { code: 'zh', name: '简体中文', file: 'zh.json' },
+      { code: 'en', name: 'English', file: 'en.json' },
+      { code: 'ja', name: '日本語', file: 'ja.json' },
+      { code: 'zh_Hant', name: '繁體中文', file: 'zh_Hant.json' }
+    ],
+    defaultLocale: 'zh',
+    langDir: './locales',
+    vueI18n: './index.ts',
+    strategy: 'no_prefix',
+    detectBrowserLanguage: {
+      useCookie: true,
+      cookieKey: 'rosetta_lang',
+      redirectOn: 'root'
     }
-=======
->>>>>>> Stashed changes
   }
 })

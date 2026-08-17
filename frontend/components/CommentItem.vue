@@ -1,7 +1,11 @@
 <template>
   <div class="flex gap-3 p-4 rounded-xl border bg-card">
     <Avatar class="size-9 shrink-0">
-      <AvatarImage v-if="comment.author?.avatar" :src="comment.author.avatar" :alt="comment.author.name" />
+      <AvatarImage
+        v-if="comment.author?.avatar"
+        :src="comment.author.avatar"
+        :alt="comment.author.name"
+      />
       <AvatarFallback>{{ comment.author?.name?.[0] || 'U' }}</AvatarFallback>
     </Avatar>
 
@@ -11,7 +15,12 @@
           <span class="font-semibold text-sm truncate">{{ comment.author?.name || 'Anonymous' }}</span>
           <span class="text-xs text-muted-foreground shrink-0">{{ formatRelativeTime(comment.createdAt) }}</span>
         </div>
-        <Button variant="ghost" size="sm" class="shrink-0 h-7 px-2" @click="$emit('reply', comment.id)">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="shrink-0 h-7 px-2"
+          @click="$emit('reply', comment.id)"
+        >
           <ArrowLeft class="size-3.5 mr-1 rotate-180" />
           <span class="text-xs">{{ t('comment.reply') }}</span>
         </Button>
@@ -22,14 +31,15 @@
       </p>
 
       <div class="flex items-center gap-1 mt-3">
-        <Button variant="ghost" size="sm" class="h-7 px-2" @click="handleLike">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2"
+          @click="handleLike"
+        >
           <svg
             class="size-3.5 mr-1"
-<<<<<<< Updated upstream
-            :class="{ 'fill-rose-500 text-rose-500': isLiked }"
-=======
             :class="{ 'fill-error text-error': isLiked }"
->>>>>>> Stashed changes
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -41,7 +51,12 @@
           </svg>
           <span class="text-xs tabular-nums">{{ comment.likesCount ?? 0 }}</span>
         </Button>
-        <Button variant="ghost" size="sm" class="h-7 px-2" @click="$emit('reply', comment.id)">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2"
+          @click="$emit('reply', comment.id)"
+        >
           <MessageSquare class="size-3.5 mr-1" />
           <span class="text-xs">{{ t('comment.reply') }}</span>
         </Button>
@@ -73,7 +88,7 @@ interface Props {
   depth?: number
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   depth: 0
 })
 
@@ -86,15 +101,10 @@ const isLiked = ref(false)
 
 const formatRelativeTime = (date: string) => {
   try {
-<<<<<<< Updated upstream
-    const now = new Date()
-    const then = new Date(date)
-=======
     if (!date) return ''
     const now = new Date()
     const then = new Date(date)
     if (isNaN(then.getTime())) return ''
->>>>>>> Stashed changes
     const diffMs = now.getTime() - then.getTime()
     const diffSecs = Math.floor(diffMs / 1000)
     const diffMins = Math.floor(diffSecs / 60)
@@ -112,11 +122,7 @@ const formatRelativeTime = (date: string) => {
       day: 'numeric'
     })
   } catch {
-<<<<<<< Updated upstream
-    return date
-=======
     return ''
->>>>>>> Stashed changes
   }
 }
 

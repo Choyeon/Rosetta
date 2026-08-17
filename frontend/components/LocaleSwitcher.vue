@@ -18,15 +18,6 @@ interface LocaleOption {
   code: string
   name: string
   nativeName: string
-<<<<<<< Updated upstream
-}
-
-const displayLocales: LocaleOption[] = [
-  { code: 'zh', name: 'Chinese (Simplified)', nativeName: '简体中文' },
-  { code: 'en', name: 'English', nativeName: 'English' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語' },
-  { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文' }
-=======
   /** ISO 3166-1 alpha-2 country code for flag-icons library */
   flag: string
 }
@@ -36,24 +27,18 @@ const displayLocales: LocaleOption[] = [
   { code: 'en', name: 'English', nativeName: 'English', flag: 'us' },
   { code: 'ja', name: 'Japanese', nativeName: '日本語', flag: 'jp' },
   { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文', flag: 'tw' }
->>>>>>> Stashed changes
 ]
 
 const resolveName = (code: string) => {
-  const hit = displayLocales.find((l) => l.code === code)
+  const hit = displayLocales.find(l => l.code === code)
   return hit?.nativeName || code
 }
 
-<<<<<<< Updated upstream
-const handleSetLocale = async (code: string) => {
-  await setLocale(code)
-=======
 const flagOf = (code: string) =>
-  displayLocales.find((l) => l.code === code)?.flag || 'un'
+  displayLocales.find(l => l.code === code)?.flag || 'un'
 
 const handleSetLocale = async (code: string) => {
-  await setLocale(code as "zh"|"en"|"ja"|"zh_Hant")
->>>>>>> Stashed changes
+  await setLocale(code as 'zh' | 'en' | 'ja' | 'zh_Hant')
   try {
     if (import.meta.client) {
       document.cookie = `i18n_redirected=${code}; path=/; max-age=31536000; SameSite=Lax`
@@ -67,14 +52,6 @@ const handleSetLocale = async (code: string) => {
 <template>
   <DropdownMenu>
     <DropdownMenuTrigger as-child>
-<<<<<<< Updated upstream
-      <Button variant="ghost" size="icon" :aria-label="t('common.language') || '语言'">
-        <Globe class="h-[1.2rem] w-[1.2rem]" />
-      </Button>
-    </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-48">
-      <DropdownMenuLabel>{{ t('common.language') || '语言' }}</DropdownMenuLabel>
-=======
       <Button
         variant="ghost"
         size="icon"
@@ -90,23 +67,19 @@ const handleSetLocale = async (code: string) => {
         />
       </Button>
     </DropdownMenuTrigger>
-    <DropdownMenuContent align="end" class="w-56">
+    <DropdownMenuContent
+      align="end"
+      class="w-56"
+    >
       <DropdownMenuLabel class="flex items-center gap-2">
         <Globe class="size-3.5 text-muted-foreground" />
         {{ t('common.language') || 'Language' }}
       </DropdownMenuLabel>
->>>>>>> Stashed changes
       <DropdownMenuSeparator />
       <DropdownMenuGroup>
         <DropdownMenuItem
           v-for="loc in displayLocales"
           :key="loc.code"
-<<<<<<< Updated upstream
-          :class="locale === loc.code ? 'bg-accent text-accent-foreground' : ''"
-          @click="handleSetLocale(loc.code)"
-        >
-          {{ resolveName(loc.code) }}
-=======
           :class="[
             'flex items-center gap-3 cursor-pointer',
             locale === loc.code ? 'bg-accent text-accent-foreground' : ''
@@ -136,7 +109,6 @@ const handleSetLocale = async (code: string) => {
               clip-rule="evenodd"
             />
           </svg>
->>>>>>> Stashed changes
         </DropdownMenuItem>
       </DropdownMenuGroup>
     </DropdownMenuContent>

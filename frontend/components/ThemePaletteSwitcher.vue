@@ -40,7 +40,10 @@
         </TooltipContent>
       </Tooltip>
 
-      <DropdownMenuContent align="end" class="w-52 p-2">
+      <DropdownMenuContent
+        align="end"
+        class="w-52 p-2"
+      >
         <div class="mb-1 px-2 pb-1 pt-0.5 text-xs text-muted-foreground">
           {{ t('common.paletteHint') || '选择主题色' }}
         </div>
@@ -96,7 +99,7 @@ import {
 const { t } = useI18n()
 const { palette, palettes, applyPalette, hydratePalette, findPalette } = useThemePalette()
 
-const triggerRef = ref<any>(null)
+const triggerRef = ref<InstanceType<typeof DropdownMenuTrigger> | null>(null)
 const easing = 'cubic-bezier(0.22, 1, 0.36, 1)'
 
 const currentSwatch = computed(() => findPalette(palette.value).swatch)
@@ -148,7 +151,7 @@ const choosePalette = async (nextId: typeof palette.value, e: MouseEvent) => {
     originX = e.clientX
     originY = e.clientY
   } else {
-    const el = (triggerRef.value as any)?.$el as HTMLElement | undefined
+    const el = triggerRef.value?.$el as HTMLElement | undefined
     const rect = (el || document.body).getBoundingClientRect()
     originX = rect.left + rect.width / 2
     originY = rect.top + rect.height / 2

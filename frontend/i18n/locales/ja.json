@@ -31,9 +31,6 @@
     "themeLight": "ダークモードへ切り替え",
     "language": "言語",
     "menuOpen": "メニューを開く",
-<<<<<<< Updated upstream
-    "menuClose": "メニューを閉じる"
-=======
     "menuClose": "メニューを閉じる",
     "menu": {
       "posts": "投稿",
@@ -46,7 +43,6 @@
       "about": "このサイトについて",
       "admin": "管理画面"
     }
->>>>>>> Stashed changes
   },
   "nav": {
     "home": "ホーム",
@@ -90,6 +86,8 @@
   },
   "auth": {
     "username": "ユーザー名",
+    "usernameOrEmail": "ユーザー名またはメールアドレス",
+    "usernamePlaceholder": "ユーザー名またはメールアドレスを入力",
     "email": "メールアドレス",
     "password": "パスワード",
     "confirmPassword": "パスワード確認",
@@ -98,15 +96,40 @@
     "register": "登録",
     "logout": "ログアウト",
     "forgotPassword": "パスワードを忘れた",
+    "forgotPasswordDisabled": "パスワードリセットは未実装です。管理者にお問い合わせください。",
     "resetPassword": "パスワードをリセット",
     "rememberMe": "ログイン状態を保持",
     "noAccount": "アカウントをお持ちでない方",
     "hasAccount": "既にアカウントをお持ちの方",
     "goToRegister": "今すぐ登録",
+    "goRegister": "今すぐ登録",
     "goToLogin": "ログイン",
     "loginSuccess": "ログイン成功",
     "registerSuccess": "登録成功",
-    "logoutSuccess": "ログアウトしました"
+    "logoutSuccess": "ログアウトしました",
+    "welcomeBack": "おかえりなさい",
+    "welcomeBackDesc": "サインインして執筆を続けましょう",
+    "testimonial": "Rosetta はブログ管理を驚くほどシンプルにしてくれました。執筆体験は純粋でエレガントです。",
+    "testimonialAuthor": "Alex Chen",
+    "testimonialRole": "フルスタックエンジニア / インディーデベロッパー",
+    "loginDesc": "アカウント情報を入力して続行",
+    "loggingIn": "ログイン中…",
+    "registerDesc": "Rosetta アカウントを作成",
+    "creatingAccount": "アカウント作成中…",
+    "passwordPlaceholder": "パスワードを入力",
+    "emailPlaceholder": "you{'@'}example.com",
+    "nicknamePlaceholder": "ニックネームを入力",
+    "error": "エラー",
+    "fillRequired": "ユーザー名とパスワードを入力してください",
+    "loginFailed": "ログインに失敗しました。認証情報を確認してください"
+  },
+  "error": {
+    "notFoundTitle": "ページが見つかりません",
+    "notFoundDesc": "アクセスしたページは移動または削除された可能性があります。",
+    "serverErrorTitle": "サーバーエラーが発生しました",
+    "serverErrorDesc": "サービスが一時的に利用できません。しばらくしてからもう一度お試しください。",
+    "backHome": "ホームに戻る",
+    "retry": "再試行"
   },
   "user": {
     "profile": "プロフィール",
@@ -121,15 +144,6 @@
     "joinedAt": "参加日"
   },
   "admin": {
-<<<<<<< Updated upstream
-    "dashboard": "ダッシュボード",
-    "posts": "投稿管理",
-    "categories": "カテゴリ管理",
-    "tags": "タグ管理",
-    "comments": "コメント管理",
-    "users": "ユーザー管理",
-    "settings": "設定",
-=======
     "posts": {
       "title": "投稿管理",
       "desc": "合計 {total} 件の投稿",
@@ -261,16 +275,12 @@
       }
     },
     "tags": "タグ管理",
->>>>>>> Stashed changes
     "navigations": "ナビゲーション",
     "friendLinks": "友達リンク",
     "pages": "ページ",
     "createPost": "投稿作成",
     "editPost": "投稿編集",
     "createCategory": "カテゴリ作成",
-<<<<<<< Updated upstream
-    "createTag": "タグ作成"
-=======
     "createTag": "タグ作成",
     "dashboard": {
       "title": "ダッシュボード",
@@ -502,24 +512,18 @@
         "footer": "フッター"
       }
     }
->>>>>>> Stashed changes
   },
   "oobe": {
     "welcome": "Rosettaへようこそ",
     "subtitle": "ブログシステムを設定しましょう",
-<<<<<<< Updated upstream
-=======
     "step": "ステップ",
     "stepN": "ステップ {n}/{total}",
->>>>>>> Stashed changes
     "steps": {
       "database": "データベース設定",
       "site": "サイト情報",
       "admin": "管理者アカウント",
       "complete": "インストール完了"
     },
-<<<<<<< Updated upstream
-=======
     "step1Title": "システムチェック",
     "step1Desc": "サーバー環境と依存関係を確認",
     "step1LongDesc": "Python バージョン、必要な依存パッケージ、ディレクトリ権限を自動的に検出し、サーバーが Rosetta の最小要件を満たしていることを確認します。",
@@ -533,7 +537,6 @@
     "step4Title": "インストール完了",
     "step4Desc": "確認してセットアップを完了",
     "step4LongDesc": "以下の概要を確認し、「管理画面へ」をクリックして完了してください。インストーラーはデータベースマイグレーション、設定ファイルの生成、デフォルトデータの投入を順次実行します。通常1分以内に完了します。",
->>>>>>> Stashed changes
     "database": {
       "type": "データベースタイプ",
       "host": "ホスト",
@@ -556,12 +559,6 @@
       "password": "管理者パスワード",
       "nickname": "ニックネーム"
     },
-<<<<<<< Updated upstream
-    "installing": "インストール中...",
-    "installComplete": "インストール完了！",
-    "visitSite": "サイトを訪問",
-    "visitAdmin": "管理画面へ"
-=======
     "adminName": "管理者ユーザー名",
     "adminNamePlaceholder": "管理画面ログイン用のユーザー名",
     "adminNameDesc": "英字、数字、アンダースコアのみ、3〜20文字",
@@ -621,7 +618,6 @@
     "envAvail": "空き",
     "envDisk": "合計ディスク",
     "envFree": "空き"
->>>>>>> Stashed changes
   },
   "archive": {
     "title": "アーカイブ",
@@ -650,8 +646,6 @@
     "totalTags": "タグ数",
     "totalViews": "総閲覧数",
     "totalComments": "コメント数"
-<<<<<<< Updated upstream
-=======
   },
   "home": {
     "release": "安定版",
@@ -720,6 +714,5 @@
     "rssLabel": "RSS",
     "privacy": "ゲストブック",
     "terms": "このサイトについて"
->>>>>>> Stashed changes
   }
 }

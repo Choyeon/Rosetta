@@ -21,11 +21,26 @@
       </CardHeader>
       <CardContent>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-          <Input v-model="form.nickname" :placeholder="t('guestbook.nickname')" />
-          <Input v-model="form.email" type="email" :placeholder="t('guestbook.email')" />
-          <Input v-model="form.website" :placeholder="t('guestbook.website')" />
+          <Input
+            v-model="form.nickname"
+            :placeholder="t('guestbook.nickname')"
+          />
+          <Input
+            v-model="form.email"
+            type="email"
+            :placeholder="t('guestbook.email')"
+          />
+          <Input
+            v-model="form.website"
+            :placeholder="t('guestbook.website')"
+          />
         </div>
-        <Textarea v-model="form.content" :placeholder="t('guestbook.contentPlaceholder')" rows="4" class="resize-none mb-4" />
+        <Textarea
+          v-model="form.content"
+          :placeholder="t('guestbook.contentPlaceholder')"
+          rows="4"
+          class="resize-none mb-4"
+        />
         <div class="flex justify-end">
           <Button @click="submitGuestbook">
             <Send class="size-4 mr-2" />
@@ -36,67 +51,141 @@
     </Card>
 
     <div class="space-y-6">
-      <div v-for="item in guestbookList" :key="item.id" class="relative">
+      <div
+        v-for="item in guestbookList"
+        :key="item.id"
+        class="relative"
+      >
         <Card class="transition-all hover:shadow-soft duration-300">
           <CardContent class="p-6">
             <div class="flex gap-4">
               <Avatar class="size-10 shrink-0">
-                <AvatarImage :src="item.avatar ?? ''" :alt="item.nickname ?? ''" />
+                <AvatarImage
+                  :src="item.avatar ?? ''"
+                  :alt="item.nickname ?? ''"
+                />
                 <AvatarFallback>{{ item.nickname?.[0]?.toUpperCase() || 'G' }}</AvatarFallback>
               </Avatar>
               <div class="flex-1 min-w-0">
                 <div class="flex flex-wrap items-center gap-2 mb-1">
                   <span class="font-medium">{{ item.nickname }}</span>
-                  <a v-if="item.website" :href="item.website" target="_blank" rel="noopener noreferrer" class="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[200px]">
+                  <a
+                    v-if="item.website"
+                    :href="item.website"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[200px]"
+                  >
                     {{ item.website.replace(/^https?:\/\//, '') }}
                   </a>
                   <span class="text-xs text-muted-foreground">{{ formatDate(item.createdAt) }}</span>
                 </div>
-                <p class="text-foreground/90 leading-relaxed whitespace-pre-wrap">{{ item.content }}</p>
+                <p class="text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                  {{ item.content }}
+                </p>
                 <div class="flex items-center gap-4 mt-3">
-                  <button class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors" @click="toggleLike(item)">
+                  <button
+                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    @click="toggleLike(item)"
+                  >
                     <Heart :class="['size-4', item.liked ? 'fill-error text-error' : '']" />
                     <span>{{ item.likesCount || 0 }}</span>
                   </button>
-                  <button class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors" @click="toggleReplyInput(item)">
+                  <button
+                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    @click="toggleReplyInput(item)"
+                  >
                     <MessageCircle class="size-4" />
                     <span>{{ t('comment.reply') }}</span>
                   </button>
                 </div>
 
-                <div v-if="replyOpenId === item.id" class="mt-4 space-y-3 p-4 rounded-xl bg-muted/40 border border-border/50">
+                <div
+                  v-if="replyOpenId === item.id"
+                  class="mt-4 space-y-3 p-4 rounded-xl bg-muted/40 border border-border/50"
+                >
                   <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Input v-model="replyForm.nickname" :placeholder="t('guestbook.nickname')" size="sm" />
-                    <Input v-model="replyForm.email" type="email" :placeholder="t('guestbook.email')" size="sm" />
-                    <Input v-model="replyForm.website" :placeholder="t('guestbook.website')" size="sm" />
+                    <Input
+                      v-model="replyForm.nickname"
+                      :placeholder="t('guestbook.nickname')"
+                      size="sm"
+                    />
+                    <Input
+                      v-model="replyForm.email"
+                      type="email"
+                      :placeholder="t('guestbook.email')"
+                      size="sm"
+                    />
+                    <Input
+                      v-model="replyForm.website"
+                      :placeholder="t('guestbook.website')"
+                      size="sm"
+                    />
                   </div>
-                  <Textarea v-model="replyForm.content" :placeholder="t('guestbook.replyPlaceholder')" rows="2" class="resize-none" />
+                  <Textarea
+                    v-model="replyForm.content"
+                    :placeholder="t('guestbook.replyPlaceholder')"
+                    rows="2"
+                    class="resize-none"
+                  />
                   <div class="flex justify-end gap-2">
-                    <Button variant="ghost" size="sm" @click="replyOpenId = null">{{ t('common.cancel') }}</Button>
-                    <Button size="sm" @click="submitReply(item)">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      @click="replyOpenId = null"
+                    >
+                      {{ t('common.cancel') }}
+                    </Button>
+                    <Button
+                      size="sm"
+                      @click="submitReply(item)"
+                    >
                       <Send class="size-3.5 mr-2" />
                       {{ t('comment.reply') }}
                     </Button>
                   </div>
                 </div>
 
-                <div v-if="item.replies?.length" class="mt-4 space-y-4 pl-4 border-l-2 border-border/60">
-                  <div v-for="reply in item.replies" :key="reply.id" class="flex gap-3">
+                <div
+                  v-if="item.replies?.length"
+                  class="mt-4 space-y-4 pl-4 border-l-2 border-border/60"
+                >
+                  <div
+                    v-for="reply in item.replies"
+                    :key="reply.id"
+                    class="flex gap-3"
+                  >
                     <Avatar class="size-8 shrink-0">
-                      <AvatarImage :src="reply.avatar ?? ''" :alt="reply.nickname ?? ''" />
-                      <AvatarFallback class="text-xs">{{ reply.nickname?.[0]?.toUpperCase() || 'R' }}</AvatarFallback>
+                      <AvatarImage
+                        :src="reply.avatar ?? ''"
+                        :alt="reply.nickname ?? ''"
+                      />
+                      <AvatarFallback class="text-xs">
+                        {{ reply.nickname?.[0]?.toUpperCase() || 'R' }}
+                      </AvatarFallback>
                     </Avatar>
                     <div class="flex-1 min-w-0">
                       <div class="flex flex-wrap items-center gap-2 mb-1">
                         <span class="font-medium text-sm">{{ reply.nickname }}</span>
-                        <a v-if="reply.website" :href="reply.website" target="_blank" rel="noopener noreferrer" class="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[160px]">
+                        <a
+                          v-if="reply.website"
+                          :href="reply.website"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[160px]"
+                        >
                           {{ reply.website.replace(/^https?:\/\//, '') }}
                         </a>
                         <span class="text-xs text-muted-foreground">{{ formatDate(reply.createdAt) }}</span>
                       </div>
-                      <p class="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">{{ reply.content }}</p>
+                      <p class="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
+                        {{ reply.content }}
+                      </p>
                       <div class="flex items-center gap-4 mt-2">
-                        <button class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors" @click="toggleReplyLike(reply)">
+                        <button
+                          class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          @click="toggleReplyLike(reply)"
+                        >
                           <Heart :class="['size-3.5', reply.liked ? 'fill-error text-error' : '']" />
                           <span>{{ reply.likesCount || 0 }}</span>
                         </button>
@@ -111,11 +200,16 @@
       </div>
     </div>
 
-    <div v-if="guestbookList.length === 0" class="text-center py-20">
+    <div
+      v-if="guestbookList.length === 0"
+      class="text-center py-20"
+    >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <MessageSquare class="size-8 text-muted-foreground" />
       </div>
-      <h3 class="font-display text-xl font-semibold">{{ t('guestbook.noMessages') }}</h3>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('guestbook.noMessages') }}
+      </h3>
     </div>
   </div>
 </template>
@@ -213,7 +307,7 @@ const guestbookList = ref<GuestbookItem[]>([
     nickname: 'Alex Chen',
     website: 'https://alexchen.io',
     avatar: '',
-    content: "Found this blog via a friend's recommendation. The content quality is outstanding — especially the architecture posts. Looking forward to more deep dives!",
+    content: 'Found this blog via a friend\'s recommendation. The content quality is outstanding — especially the architecture posts. Looking forward to more deep dives!',
     createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
     likesCount: 21
   },

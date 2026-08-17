@@ -1,4 +1,4 @@
-import type { PaginatedResponse } from '~~/types/api'
+import type { Gallery, GalleryItem, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useAPI'
 
 export function useGallery() {
@@ -9,7 +9,7 @@ export function useGallery() {
     pageSize?: number
     lang?: string
   }) => {
-    return useAPI<PaginatedResponse<any>>('/gallery', {
+    return useAPI<PaginatedResponse<Gallery>>('/gallery', {
       query: {
         page: params?.page,
         page_size: params?.pageSize,
@@ -19,7 +19,7 @@ export function useGallery() {
   }
 
   const getGallery = (slug: string) => {
-    return useAPI<any>(`/gallery/slug/${slug}`)
+    return useAPI<Gallery>(`/gallery/slug/${slug}`)
   }
 
   const createGallery = (
@@ -28,7 +28,7 @@ export function useGallery() {
     description: string,
     cover?: string
   ) => {
-    return useAPI<any>('/gallery', {
+    return useAPI<Gallery>('/gallery', {
       method: 'POST',
       body: {
         title,
@@ -39,15 +39,15 @@ export function useGallery() {
     })
   }
 
-  const updateGallery = (id: number, data: any) => {
-    return useAPI<any>(`/gallery/${id}`, {
+  const updateGallery = (id: number, data: Partial<Gallery>) => {
+    return useAPI<Gallery>(`/gallery/${id}`, {
       method: 'PUT',
       body: data
     })
   }
 
   const deleteGallery = (id: number) => {
-    return useAPI<any>(`/gallery/${id}`, {
+    return useAPI<unknown>(`/gallery/${id}`, {
       method: 'DELETE'
     })
   }
@@ -57,7 +57,7 @@ export function useGallery() {
     page?: number,
     pageSize?: number
   ) => {
-    return useAPI<PaginatedResponse<any>>(`/gallery/${galleryId}/photos`, {
+    return useAPI<PaginatedResponse<GalleryItem>>(`/gallery/${galleryId}/photos`, {
       query: {
         page,
         page_size: pageSize
@@ -66,27 +66,27 @@ export function useGallery() {
   }
 
   const addPhotos = (galleryId: number, formData: FormData) => {
-    return useAPI<any>(`/gallery/${galleryId}/photos`, {
+    return useAPI<unknown>(`/gallery/${galleryId}/photos`, {
       method: 'POST',
       body: formData
     })
   }
 
   const reorderPhotos = (galleryId: number, order: number[]) => {
-    return useAPI<any>(`/gallery/${galleryId}/photos/reorder`, {
+    return useAPI<unknown>(`/gallery/${galleryId}/photos/reorder`, {
       method: 'PUT',
       body: { order }
     })
   }
 
   const deletePhoto = (photoId: number) => {
-    return useAPI<any>(`/gallery/photos/${photoId}`, {
+    return useAPI<unknown>(`/gallery/photos/${photoId}`, {
       method: 'DELETE'
     })
   }
 
   const likeGallery = (id: number) => {
-    return useAPI<any>(`/gallery/${id}/like`, {
+    return useAPI<unknown>(`/gallery/${id}/like`, {
       method: 'POST'
     })
   }

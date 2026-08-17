@@ -1,4 +1,4 @@
-import type { PaginatedResponse } from '~~/types/api'
+import type { GuestbookEntry, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useAPI'
 
 export function useGuestbook() {
@@ -7,7 +7,7 @@ export function useGuestbook() {
     pageSize?: number
     status?: string
   }) => {
-    return useAPI<PaginatedResponse<any>>('/guestbook', {
+    return useAPI<PaginatedResponse<GuestbookEntry>>('/guestbook', {
       query: {
         page: params?.page,
         page_size: params?.pageSize,
@@ -17,7 +17,7 @@ export function useGuestbook() {
   }
 
   const getMessage = (id: number) => {
-    return useAPI<any>(`/guestbook/${id}`)
+    return useAPI<GuestbookEntry>(`/guestbook/${id}`)
   }
 
   const createMessage = (
@@ -27,7 +27,7 @@ export function useGuestbook() {
     email?: string,
     site?: string
   ) => {
-    return useAPI<any>('/guestbook', {
+    return useAPI<GuestbookEntry>('/guestbook', {
       method: 'POST',
       body: {
         content,
@@ -40,27 +40,27 @@ export function useGuestbook() {
   }
 
   const likeMessage = (id: number) => {
-    return useAPI<any>(`/guestbook/${id}/like`, {
+    return useAPI<unknown>(`/guestbook/${id}/like`, {
       method: 'POST'
     })
   }
 
   const replyMessage = (id: number, content: string) => {
-    return useAPI<any>(`/guestbook/${id}/reply`, {
+    return useAPI<GuestbookEntry>(`/guestbook/${id}/reply`, {
       method: 'POST',
       body: { content }
     })
   }
 
   const updateMessage = (id: number, content: string) => {
-    return useAPI<any>(`/guestbook/${id}`, {
+    return useAPI<GuestbookEntry>(`/guestbook/${id}`, {
       method: 'PUT',
       body: { content }
     })
   }
 
   const deleteMessage = (id: number) => {
-    return useAPI<any>(`/guestbook/${id}`, {
+    return useAPI<unknown>(`/guestbook/${id}`, {
       method: 'DELETE'
     })
   }
@@ -70,7 +70,7 @@ export function useGuestbook() {
     page?: number,
     pageSize?: number
   ) => {
-    return useAPI<PaginatedResponse<any>>(`/guestbook/${parentId}/replies`, {
+    return useAPI<PaginatedResponse<GuestbookEntry>>(`/guestbook/${parentId}/replies`, {
       query: {
         page,
         page_size: pageSize
@@ -79,19 +79,19 @@ export function useGuestbook() {
   }
 
   const approveMessage = (id: number) => {
-    return useAPI<any>(`/admin/guestbook/${id}/approve`, {
+    return useAPI<unknown>(`/admin/guestbook/${id}/approve`, {
       method: 'POST'
     })
   }
 
   const rejectMessage = (id: number) => {
-    return useAPI<any>(`/admin/guestbook/${id}/reject`, {
+    return useAPI<unknown>(`/admin/guestbook/${id}/reject`, {
       method: 'POST'
     })
   }
 
   const batchAction = (ids: number[], action: string) => {
-    return useAPI<any>('/admin/guestbook/batch', {
+    return useAPI<unknown>('/admin/guestbook/batch', {
       method: 'POST',
       body: { ids, action }
     })

@@ -58,14 +58,10 @@ function readUint32BE(buf, o) {
   return (buf[o] * 0x1000000) + (buf[o + 1] << 16) + (buf[o + 2] << 8) + buf[o + 3]
 }
 function writeUint32BE(buf, o, v) {
-  buf[o]     = (v >>> 24) & 0xff
+  buf[o] = (v >>> 24) & 0xff
   buf[o + 1] = (v >>> 16) & 0xff
-  buf[o + 2] = (v >>> 8)  & 0xff
+  buf[o + 2] = (v >>> 8) & 0xff
   buf[o + 3] = v & 0xff
-}
-function writeUint16BE(buf, o, v) {
-  buf[o]     = (v >>> 8) & 0xff
-  buf[o + 1] = v & 0xff
 }
 function crc32(buf, start, end) {
   let c
@@ -90,18 +86,20 @@ function crc32(buf, start, end) {
  */
 function decodePng(pngBuf) {
   // 8-byte signature
-  if (pngBuf[0] !== 0x89 || pngBuf[1] !== 0x50 || pngBuf[2] !== 0x4E || pngBuf[3] !== 0x47 ||
-      pngBuf[4] !== 0x0D || pngBuf[5] !== 0x0A || pngBuf[6] !== 0x1A || pngBuf[7] !== 0x0A) {
+  if (pngBuf[0] !== 0x89 || pngBuf[1] !== 0x50 || pngBuf[2] !== 0x4E || pngBuf[3] !== 0x47
+    || pngBuf[4] !== 0x0D || pngBuf[5] !== 0x0A || pngBuf[6] !== 0x1A || pngBuf[7] !== 0x0A) {
     throw new Error('Not a valid PNG (bad signature)')
   }
   let off = 8
-  let width = 0, height = 0, bitDepth = 0, colorType = 0
+  let width = 0, height = 0, bitDepth, colorType = 0
   let idatChunks = []
   let palette = null
   let tRNS = null
   while (off < pngBuf.length) {
-    const length = readUint32BE(pngBuf, off); off += 4
-    const type = pngBuf.toString('ascii', off, off + 4); off += 4
+    const length = readUint32BE(pngBuf, off)
+    off += 4
+    const type = pngBuf.toString('ascii', off, off + 4)
+    off += 4
     const dataStart = off
     const dataEnd = off + length
     if (type === 'IHDR') {
@@ -119,7 +117,7 @@ function decodePng(pngBuf) {
     } else if (type === 'IDAT') {
       idatChunks.push(Buffer.from(pngBuf.slice(dataStart, dataEnd)))
     } else if (type === 'IEND') {
-      off = dataEnd + 4; break
+      break
     }
     // skip CRC
     off = dataEnd + 4
@@ -134,7 +132,9 @@ function decodePng(pngBuf) {
   let dst = 0
   const prev = new Uint8Array(stride)
   for (let y = 0; y < height; y++) {
-    const filter = raw[src++]; const row = raw.subarray(src, src + stride); src += stride
+    const filter = raw[src++]
+    const row = raw.subarray(src, src + stride)
+    src += stride
     // Reconstruct
     for (let i = 0; i < stride; i++) {
       let x = row[i]
@@ -143,10 +143,18 @@ function decodePng(pngBuf) {
       const c = i >= channels ? prev[i - channels] : 0
       switch (filter) {
         case 0: break // None
-        case 1: x = (x + a) & 0xff; break // Sub
-        case 2: x = (x + b) & 0xff; break // Up
-        case 3: x = (x + ((a + b) >> 1)) & 0xff; break // Average
-        case 4: x = (x + paeth(a, b, c)) & 0xff; break
+        case 1:
+          x = (x + a) & 0xff // Sub
+          break
+        case 2:
+          x = (x + b) & 0xff // Up
+          break
+        case 3:
+          x = (x + ((a + b) >> 1)) & 0xff // Average
+          break
+        case 4:
+          x = (x + paeth(a, b, c)) & 0xff
+          break
         default: throw new Error('Unknown filter ' + filter)
       }
       row[i] = x
@@ -202,7 +210,8 @@ function encodePng(width, height, pixels) {
   const comp = zlib.deflateSync(raw, { level: 9 })
   // Build chunks
   function chunk(type, data) {
-    const len = Buffer.alloc(4); writeUint32BE(len, 0, data.length)
+    const len = Buffer.alloc(4)
+    writeUint32BE(len, 0, data.length)
     const tbuf = Buffer.from(type, 'ascii')
     const crcBuf = Buffer.alloc(4)
     const body = Buffer.concat([tbuf, data])
@@ -213,9 +222,11 @@ function encodePng(width, height, pixels) {
   const ihdr = Buffer.alloc(13)
   writeUint32BE(ihdr, 0, width)
   writeUint32BE(ihdr, 4, height)
-  ihdr[8] = 8   // bit depth
-  ihdr[9] = 6   // color type RGBA
-  ihdr[10] = 0; ihdr[11] = 0; ihdr[12] = 0
+  ihdr[8] = 8 // bit depth
+  ihdr[9] = 6 // color type RGBA
+  ihdr[10] = 0
+  ihdr[11] = 0
+  ihdr[12] = 0
   return Buffer.concat([
     sig,
     chunk('IHDR', ihdr),
@@ -236,7 +247,10 @@ function nearestNeighbor(src, sw, sh, dw, dh) {
     for (let x = 0; x < dw; x++) {
       const sx = Math.min(sw - 1, Math.floor(x * xScale)) * 4
       const i = sy + sx, j = dy + x * 4
-      out[j] = src[i]; out[j + 1] = src[i + 1]; out[j + 2] = src[i + 2]; out[j + 3] = src[i + 3]
+      out[j] = src[i]
+      out[j + 1] = src[i + 1]
+      out[j + 2] = src[i + 2]
+      out[j + 3] = src[i + 3]
     }
   }
   return out
@@ -317,15 +331,18 @@ function main() {
     const dw = sz, dh = sz
     const resampled = nearestNeighbor(pixels, sw, sh, dw, dh)
     const png = encodePng(dw, dh, resampled)
-    const fname = sz === 180 ? `apple-touch-icon.png` :
-                  sz === 192 ? `android-chrome-192x192.png` :
-                  sz === 512 ? `android-chrome-512x512.png` :
-                  `favicon-${sz}x${sz}.png`
+    const fname = sz === 180
+      ? `apple-touch-icon.png`
+      : sz === 192
+        ? `android-chrome-192x192.png`
+        : sz === 512
+          ? `android-chrome-512x512.png`
+          : `favicon-${sz}x${sz}.png`
     const destPath = path.join(PUBLIC_DIR, fname)
     fs.writeFileSync(destPath, png)
     sizesProduced.push({ fname, sizeBytes: png.length })
   }
-  console.log('[favicon] PNG icons written:', sizesProduced.map(s => `${s.fname} (${Math.round(s.sizeBytes/1024)} KB)`).join(', '))
+  console.log('[favicon] PNG icons written:', sizesProduced.map(s => `${s.fname} (${Math.round(s.sizeBytes / 1024)} KB)`).join(', '))
 
   // 4) Build favicon.ico: multi-size entries. We encode the source at
   //    resampled sizes so each ICO entry truly contains the declared size.
@@ -363,6 +380,6 @@ function main() {
 try {
   main()
 } catch (e) {
-  console.error('[favicon] ❌ Failed:', e && e.stack || e)
+  console.error('[favicon] ❌ Failed:', (e && e.stack) || e)
   process.exit(1)
 }

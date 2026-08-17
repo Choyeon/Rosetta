@@ -31,9 +31,6 @@
     "themeLight": "切換為暗色模式",
     "language": "語言",
     "menuOpen": "開啟主選單",
-<<<<<<< Updated upstream
-    "menuClose": "關閉主選單"
-=======
     "menuClose": "關閉主選單",
     "menu": {
       "posts": "文章",
@@ -46,7 +43,6 @@
       "about": "關於本站",
       "admin": "管理後台"
     }
->>>>>>> Stashed changes
   },
   "nav": {
     "home": "首頁",
@@ -90,6 +86,8 @@
   },
   "auth": {
     "username": "使用者名稱",
+    "usernameOrEmail": "使用者名稱或電子郵件",
+    "usernamePlaceholder": "輸入使用者名稱或電子郵件",
     "email": "電子郵件",
     "password": "密碼",
     "confirmPassword": "確認密碼",
@@ -98,15 +96,40 @@
     "register": "註冊",
     "logout": "登出",
     "forgotPassword": "忘記密碼",
+    "forgotPasswordDisabled": "重設密碼功能暫未開放，請聯絡管理員",
     "resetPassword": "重設密碼",
     "rememberMe": "記住我",
     "noAccount": "還沒有帳號？",
     "hasAccount": "已有帳號？",
     "goToRegister": "立即註冊",
+    "goRegister": "立即註冊",
     "goToLogin": "立即登入",
     "loginSuccess": "登入成功",
     "registerSuccess": "註冊成功",
-    "logoutSuccess": "已登出"
+    "logoutSuccess": "已登出",
+    "welcomeBack": "歡迎回來",
+    "welcomeBackDesc": "登入以繼續你的創作之旅",
+    "testimonial": "Rosetta 讓部落格管理變得無比簡單，寫作體驗純粹而優雅。",
+    "testimonialAuthor": "Alex Chen",
+    "testimonialRole": "全棧工程師 / 獨立開發者",
+    "loginDesc": "輸入帳號資訊以繼續",
+    "loggingIn": "登入中…",
+    "registerDesc": "建立你的 Rosetta 帳號",
+    "creatingAccount": "建立帳號中…",
+    "passwordPlaceholder": "輸入密碼",
+    "emailPlaceholder": "you{'@'}example.com",
+    "nicknamePlaceholder": "輸入暱稱",
+    "error": "錯誤",
+    "fillRequired": "請填寫使用者名稱和密碼",
+    "loginFailed": "登入失敗，請檢查帳號資訊"
+  },
+  "error": {
+    "notFoundTitle": "頁面不存在",
+    "notFoundDesc": "你造訪的頁面可能已被移動、刪除，或從未存在。",
+    "serverErrorTitle": "伺服器發生錯誤",
+    "serverErrorDesc": "服務暫時不可用，請稍後重試。",
+    "backHome": "返回首頁",
+    "retry": "重試"
   },
   "user": {
     "profile": "個人資料",
@@ -121,15 +144,6 @@
     "joinedAt": "加入時間"
   },
   "admin": {
-<<<<<<< Updated upstream
-    "dashboard": "儀表板",
-    "posts": "文章管理",
-    "categories": "分類管理",
-    "tags": "標籤管理",
-    "comments": "留言管理",
-    "users": "使用者管理",
-    "settings": "站點設定",
-=======
     "posts": {
       "title": "文章管理",
       "desc": "共 {total} 篇文章",
@@ -261,16 +275,12 @@
       }
     },
     "tags": "標籤管理",
->>>>>>> Stashed changes
     "navigations": "導航管理",
     "friendLinks": "友鏈管理",
     "pages": "頁面管理",
     "createPost": "建立文章",
     "editPost": "編輯文章",
     "createCategory": "建立分類",
-<<<<<<< Updated upstream
-    "createTag": "建立標籤"
-=======
     "createTag": "建立標籤",
     "dashboard": {
       "title": "儀表板",
@@ -502,24 +512,18 @@
         "footer": "頁尾"
       }
     }
->>>>>>> Stashed changes
   },
   "oobe": {
     "welcome": "歡迎使用 Rosetta",
     "subtitle": "讓我們開始設定您的部落格系統",
-<<<<<<< Updated upstream
-=======
     "step": "步驟",
     "stepN": "第 {n}/{total} 步",
->>>>>>> Stashed changes
     "steps": {
       "database": "資料庫設定",
       "site": "站點資訊",
       "admin": "管理員帳戶",
       "complete": "完成安裝"
     },
-<<<<<<< Updated upstream
-=======
     "step1Title": "系統檢測",
     "step1Desc": "檢查伺服器環境與依賴",
     "step1LongDesc": "我們將自動偵測 Python 版本、所需依賴套件與目錄權限，確保您的伺服器滿足 Rosetta 的最低執行需求。",
@@ -533,7 +537,6 @@
     "step4Title": "完成安裝",
     "step4Desc": "確認並完成初始化",
     "step4LongDesc": "請於下方核對安裝摘要後點擊「進入後台」，安裝程式將依序執行資料遷移、設定寫入與預設資料初始化，通常不到一分鐘即可完成。",
->>>>>>> Stashed changes
     "database": {
       "type": "資料庫類型",
       "host": "主機位址",
@@ -556,12 +559,6 @@
       "password": "管理員密碼",
       "nickname": "暱稱"
     },
-<<<<<<< Updated upstream
-    "installing": "正在安裝...",
-    "installComplete": "安裝完成！",
-    "visitSite": "造訪網站",
-    "visitAdmin": "造訪後台"
-=======
     "adminName": "管理員使用者名稱",
     "adminNamePlaceholder": "用於後台登入的使用者名稱",
     "adminNameDesc": "僅支援字母、數字與底線，長度 3-20 個字元",
@@ -621,7 +618,6 @@
     "envAvail": "可用",
     "envDisk": "磁碟總量",
     "envFree": "可用"
->>>>>>> Stashed changes
   },
   "archive": {
     "title": "文章彙整",
@@ -650,8 +646,6 @@
     "totalTags": "標籤數",
     "totalViews": "總瀏覽量",
     "totalComments": "留言數"
-<<<<<<< Updated upstream
-=======
   },
   "home": {
     "release": "穩定版",
@@ -720,6 +714,5 @@
     "rssLabel": "RSS",
     "privacy": "留言板",
     "terms": "關於本站"
->>>>>>> Stashed changes
   }
 }

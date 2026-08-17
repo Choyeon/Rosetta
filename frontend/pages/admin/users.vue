@@ -242,13 +242,13 @@
             v-for="(item, index) in items"
             :key="index"
           >
-            <PaginationListItem
+            <PaginationItem
               v-if="item.type === 'page'"
               :value="item.value"
               :is-active="item.value === page"
             >
               {{ item.value }}
-            </PaginationListItem>
+            </PaginationItem>
             <PaginationEllipsis v-else />
           </template>
           <PaginationNext />
@@ -338,7 +338,7 @@ import {
   Pagination,
   PaginationContent,
   PaginationEllipsis,
-  PaginationListItem,
+  PaginationItem,
   PaginationNext,
   PaginationPrevious
 } from '~~/components/ui/pagination'
@@ -454,9 +454,9 @@ async function load(): Promise<void> {
     totalPages.value = res.total_pages
   } catch (err) {
     const e = err as { data?: { message?: string, detail?: unknown } }
-    loadError.value = e?.data?.message
-      ?? (typeof e?.data?.detail === 'string' ? e.data.detail : '')
-      || (err instanceof Error ? err.message : String(err))
+    loadError.value = (e?.data?.message
+      ?? (typeof e?.data?.detail === 'string' ? e.data.detail : ''))
+    || (err instanceof Error ? err.message : String(err))
   } finally {
     loading.value = false
   }

@@ -14,10 +14,7 @@ import type {
   MockDataConfig,
   UnusedImage,
   BackupInfo,
-<<<<<<< Updated upstream
-=======
   BackupItem,
->>>>>>> Stashed changes
   RestoreRequest,
   BaseResponse
 } from '~~/types/api'
@@ -211,14 +208,14 @@ export const useAdminExport = () => {
 }
 
 export const useAdminImport = () => {
-  const importPosts = (data: FormData | any) => {
+  const importPosts = (data: FormData | unknown) => {
     return useAPI<BaseResponse>('/admin/import/posts', {
       method: 'POST',
       body: data
     })
   }
 
-  const importMarkdown = (data: FormData | any) => {
+  const importMarkdown = (data: FormData | unknown) => {
     return useAPI<BaseResponse>('/admin/import/markdown', {
       method: 'POST',
       body: data

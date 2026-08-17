@@ -45,11 +45,16 @@
       </NuxtLink>
     </div>
 
-    <div v-if="categories.length === 0" class="text-center py-20">
+    <div
+      v-if="categories.length === 0"
+      class="text-center py-20"
+    >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <FolderOpen class="size-8 text-muted-foreground" />
       </div>
-      <h3 class="font-display text-xl font-semibold">{{ t('categories.noCategories') }}</h3>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('categories.noCategories') }}
+      </h3>
     </div>
   </div>
 </template>
@@ -70,7 +75,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 
-const pickLocalized = (val: any): string => {
+const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''
   if (typeof val === 'string') return val
   if (typeof val === 'object') {
@@ -82,9 +87,9 @@ const pickLocalized = (val: any): string => {
   }
   return String(val)
 }
-const getCatName = (c: any) => pickLocalized(c?.name)
-const getCatDesc = (c: any) => pickLocalized(c?.description)
-const getPostsCount = (c: any) => c?.post_count ?? c?.postsCount ?? 0
+const getCatName = (c: { name?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.name)
+const getCatDesc = (c: { description?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.description)
+const getPostsCount = (c: { post_count?: number, postsCount?: number } | null | undefined) => c?.post_count ?? c?.postsCount ?? 0
 
 const categories = ref([
   {

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Loader2 } from '@lucide/vue'
 import { Toaster } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '~/composables/useTheme'
@@ -37,19 +36,10 @@ useHead({
 <template>
   <!-- eslint-disable-next-line vue/no-deprecated-filter -- TS 联合类型的 | 被规则误判为 Vue2 filter -->
   <NuxtLayout :name="(route.meta.layout ?? 'default') as 'default' | false">
-    <Suspense>
-      <Transition name="page-fade" mode="out-in">
-        <NuxtPage :key="route.fullPath" />
-      </Transition>
-      <template #fallback>
-        <div class="flex items-center justify-center min-h-[50vh]">
-          <div class="inline-flex items-center gap-2 rounded-full border border-border/60 bg-background/80 px-5 py-2 text-sm text-muted-foreground backdrop-blur animate-in">
-            <Loader2 class="size-4 animate-spin" />
-            Loading...
-          </div>
-        </div>
-      </template>
-    </Suspense>
+    <!-- 页面过渡由 nuxt.config 的 app.pageTransition 驱动（Nuxt 原生机制）。
+         不要在此手动包裹 <Transition> / <Suspense>：旧结构在链式重定向时
+         out-in 过渡与异步页面组件相互等待，导致渲染管线静默死锁（页面空白）。 -->
+    <NuxtPage />
 
     <Toaster
       position="bottom-right"

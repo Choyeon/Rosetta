@@ -67,7 +67,7 @@
                   loading="lazy"
                   @load="setThumbnailState(day.index, true)"
                   @error="setThumbnailState(day.index, false)"
-                />
+                >
               </button>
             </div>
           </div>
@@ -80,7 +80,10 @@
             rel="noreferrer noopener"
             class="rounded-2xl border border-white/15 bg-black/45 backdrop-blur-xl px-4 py-3 max-w-lg sm:text-right text-xs sm:text-sm text-white/85 hover:text-white transition-colors shadow-2xl shadow-black/40 hover:bg-black/60"
           >
-            <div v-if="currentWallpaper.title" class="text-sm sm:text-base font-semibold text-white leading-snug mb-1">
+            <div
+              v-if="currentWallpaper.title"
+              class="text-sm sm:text-base font-semibold text-white leading-snug mb-1"
+            >
               {{ currentWallpaper.title }}
             </div>
             <span
@@ -104,7 +107,10 @@
             {{ t('home.featuredPosts') }}
           </h2>
         </div>
-        <Badge variant="secondary" class="text-xs shadow-sm">
+        <Badge
+          variant="secondary"
+          class="text-xs shadow-sm"
+        >
           Editor's Pick
         </Badge>
       </div>
@@ -112,21 +118,50 @@
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         <!-- Large featured card -->
         <div class="lg:col-span-7">
-          <Skeleton v-if="loading && featuredPosts.length === 0" class="aspect-[16/10] rounded-2xl" />
-          <PostCard v-else-if="featuredPosts[0]" :post="featuredPosts[0]" :is-featured="true" />
-          <PostCard v-else :post="mockFeatured[0]!" :is-featured="true" />
+          <Skeleton
+            v-if="loading && featuredPosts.length === 0"
+            class="aspect-[16/10] rounded-2xl"
+          />
+          <PostCard
+            v-else-if="featuredPosts[0]"
+            :post="featuredPosts[0]"
+            :is-featured="true"
+          />
+          <PostCard
+            v-else
+            :post="mockFeatured[0]!"
+            :is-featured="true"
+          />
         </div>
         <!-- Stacked featured cards -->
         <div class="lg:col-span-5 flex flex-col gap-6">
           <div>
-            <Skeleton v-if="loading && featuredPosts.length === 0" class="aspect-[16/10] rounded-2xl" />
-            <PostCard v-else-if="featuredPosts[1]" :post="featuredPosts[1]" />
-            <PostCard v-else :post="mockFeatured[1]!" />
+            <Skeleton
+              v-if="loading && featuredPosts.length === 0"
+              class="aspect-[16/10] rounded-2xl"
+            />
+            <PostCard
+              v-else-if="featuredPosts[1]"
+              :post="featuredPosts[1]"
+            />
+            <PostCard
+              v-else
+              :post="mockFeatured[1]!"
+            />
           </div>
           <div>
-            <Skeleton v-if="loading && featuredPosts.length === 0" class="aspect-[16/10] rounded-2xl" />
-            <PostCard v-else-if="featuredPosts[2]" :post="featuredPosts[2]" />
-            <PostCard v-else :post="mockFeatured[2]!" />
+            <Skeleton
+              v-if="loading && featuredPosts.length === 0"
+              class="aspect-[16/10] rounded-2xl"
+            />
+            <PostCard
+              v-else-if="featuredPosts[2]"
+              :post="featuredPosts[2]"
+            />
+            <PostCard
+              v-else
+              :post="mockFeatured[2]!"
+            />
           </div>
         </div>
       </div>
@@ -146,7 +181,10 @@
                 {{ t('home.latestPosts') }}
               </h2>
             </div>
-            <NuxtLink to="/posts" class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors">
+            <NuxtLink
+              to="/posts"
+              class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+            >
               {{ t('home.viewAll') }}
               <ArrowRight class="size-3.5" />
             </NuxtLink>
@@ -154,13 +192,27 @@
 
           <div class="flex flex-col gap-5">
             <template v-if="loading && latestPosts.length === 0">
-              <Skeleton v-for="i in 4" :key="i" class="h-[200px] rounded-2xl" />
+              <Skeleton
+                v-for="i in 4"
+                :key="i"
+                class="h-[200px] rounded-2xl"
+              />
             </template>
             <template v-else-if="latestPosts.length > 0">
-              <PostCard v-for="post in latestPosts" :key="post.id" :post="post" variant="compact" />
+              <PostCard
+                v-for="post in latestPosts"
+                :key="post.id"
+                :post="post"
+                variant="compact"
+              />
             </template>
             <template v-else>
-              <PostCard v-for="post in mockLatest" :key="post.id" :post="post" variant="compact" />
+              <PostCard
+                v-for="post in mockLatest"
+                :key="post.id"
+                :post="post"
+                variant="compact"
+              />
             </template>
           </div>
         </div>
@@ -178,20 +230,36 @@
             <CardContent>
               <div class="grid grid-cols-2 gap-3">
                 <div class="rounded-xl bg-muted/50 p-4">
-                  <div class="text-2xl font-bold font-display">{{ totalPostsDisplay }}</div>
-                  <div class="text-xs text-muted-foreground mt-1">{{ t('home.postsCount') }}</div>
+                  <div class="text-2xl font-bold font-display">
+                    {{ totalPostsDisplay }}
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-1">
+                    {{ t('home.postsCount') }}
+                  </div>
                 </div>
                 <div class="rounded-xl bg-muted/50 p-4">
-                  <div class="text-2xl font-bold font-display">{{ totalCategoriesDisplay }}</div>
-                  <div class="text-xs text-muted-foreground mt-1">{{ t('home.categoriesCount') }}</div>
+                  <div class="text-2xl font-bold font-display">
+                    {{ totalCategoriesDisplay }}
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-1">
+                    {{ t('home.categoriesCount') }}
+                  </div>
                 </div>
                 <div class="rounded-xl bg-muted/50 p-4">
-                  <div class="text-2xl font-bold font-display">{{ totalTagsDisplay }}</div>
-                  <div class="text-xs text-muted-foreground mt-1">{{ t('home.tagsCount') }}</div>
+                  <div class="text-2xl font-bold font-display">
+                    {{ totalTagsDisplay }}
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-1">
+                    {{ t('home.tagsCount') }}
+                  </div>
                 </div>
                 <div class="rounded-xl bg-muted/50 p-4">
-                  <div class="text-2xl font-bold font-display">{{ totalViewsDisplay }}</div>
-                  <div class="text-xs text-muted-foreground mt-1">{{ t('home.commentsCount') }}</div>
+                  <div class="text-2xl font-bold font-display">
+                    {{ totalViewsDisplay }}
+                  </div>
+                  <div class="text-xs text-muted-foreground mt-1">
+                    {{ t('home.commentsCount') }}
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -207,17 +275,26 @@
             </CardHeader>
             <CardContent>
               <div class="space-y-2.5 text-sm">
-                <template v-for="(row, idx) in techRows" :key="row.key">
+                <template
+                  v-for="(row, idx) in techRows"
+                  :key="row.key"
+                >
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-2 min-w-0">
-                      <span class="shrink-0 size-2 rounded-full" :class="row.color" />
+                      <span
+                        class="shrink-0 size-2 rounded-full"
+                        :class="row.color"
+                      />
                       <span class="text-muted-foreground truncate">{{ row.label }}</span>
                     </div>
                     <code class="font-mono text-xs px-2 py-0.5 rounded-md bg-muted/70 text-foreground/90 truncate max-w-[55%] tabular-nums">
                       v{{ buildInfo[row.key] }}
                     </code>
                   </div>
-                  <div v-if="idx === 4 || idx === 6" class="my-2 border-t border-border" />
+                  <div
+                    v-if="idx === 4 || idx === 6"
+                    class="my-2 border-t border-border"
+                  />
                 </template>
               </div>
             </CardContent>
@@ -286,11 +363,18 @@
               {{ t('home.ctaSubtitle') }}
             </p>
             <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-              <Button size="lg" @click="navigateTo('/guestbook')">
+              <Button
+                size="lg"
+                @click="navigateTo('/guestbook')"
+              >
                 <Send class="size-4 mr-2" />
                 {{ t('home.goGuestbook') }}
               </Button>
-              <Button size="lg" variant="outline" @click="navigateTo('/about')">
+              <Button
+                size="lg"
+                variant="outline"
+                @click="navigateTo('/about')"
+              >
                 <UserCircle class="size-4 mr-2" />
                 {{ t('home.goAbout') }}
               </Button>
@@ -308,13 +392,13 @@ import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
+import type { Post } from '~~/types/api'
 import { usePosts } from '~~/composables/usePosts'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import {
   ArrowRight,
-  Sparkles,
   FolderOpen,
   Tag,
   BarChart3,
@@ -333,7 +417,7 @@ const { buildInfo } = useSiteVersions()
 
 // Inline tech rows — no defineComponent() with runtime string-template,
 // which breaks Vue runtime + Nuxt auto-injection on Windows.
-interface TechRowItem { label: string; key: keyof typeof buildInfo.value; color: string }
+interface TechRowItem { label: string, key: keyof typeof buildInfo.value, color: string }
 const techRows: TechRowItem[] = [
   { label: 'Nuxt', key: 'nuxt', color: 'bg-emerald-500' },
   { label: 'Vue', key: 'vue', color: 'bg-teal-500' },
@@ -348,7 +432,6 @@ const techRows: TechRowItem[] = [
 
 // ===== Bing wallpaper =====
 const {
-  loading: bingLoading,
   currentImage,
   currentIdx,
   recentDays,
@@ -378,10 +461,12 @@ const CARD_GRADIENTS = [
 const wallpaperCardGradient = (i: number) =>
   CARD_GRADIENTS[((i % CARD_GRADIENTS.length) + CARD_GRADIENTS.length) % CARD_GRADIENTS.length]
 
-onMounted(() => { fetchWallpapers() })
+onMounted(() => {
+  fetchWallpapers()
+})
 
 // ===== i18n helpers =====
-const pickLocalized = (val: any): string => {
+const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''
   if (typeof val === 'string') return val
   if (typeof val === 'object') {
@@ -529,7 +614,7 @@ const mockTags = [
   { id: 15, name: 'Git', slug: 'git' }
 ]
 
-const posts = ref<any[]>([])
+const posts = ref<Post[]>([])
 const loading = ref(false)
 
 const featuredPosts = computed(() => posts.value.slice(0, 3))
@@ -542,7 +627,7 @@ const totalPostsDisplay = computed(() => {
 const totalCategoriesDisplay = computed(() => mockCategories.length)
 const totalTagsDisplay = computed(() => mockTags.length)
 const totalViewsDisplay = computed(() => {
-  const fromPosts = posts.value.reduce((acc, p) => acc + ((p.views ?? p.views_count) || 0), 0)
+  const fromPosts = posts.value.reduce((acc, p: { views?: number, views_count?: number }) => acc + ((p.views ?? p.views_count) || 0), 0)
   if (fromPosts > 0) return fromPosts >= 1000 ? `${(fromPosts / 1000).toFixed(1)}k` : String(fromPosts)
   return '2.4k'
 })

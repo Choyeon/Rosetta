@@ -298,9 +298,9 @@ async function load(): Promise<void> {
     syncDraft()
   } catch (err) {
     const e = err as { data?: { message?: string, detail?: unknown } }
-    loadError.value = e?.data?.message
-      ?? (typeof e?.data?.detail === 'string' ? e.data.detail : '')
-      || (err instanceof Error ? err.message : String(err))
+    loadError.value = (e?.data?.message
+      ?? (typeof e?.data?.detail === 'string' ? e.data.detail : ''))
+    || (err instanceof Error ? err.message : String(err))
   } finally {
     loading.value = false
   }

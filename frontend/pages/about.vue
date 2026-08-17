@@ -17,7 +17,10 @@
         <CardContent class="p-8 md:p-10">
           <div class="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8">
             <Avatar class="size-28 md:size-32 shrink-0 ring-4 ring-background shadow-xl">
-              <AvatarImage src="" alt="Author" />
+              <AvatarImage
+                src=""
+                alt="Author"
+              />
               <AvatarFallback class="text-3xl md:text-4xl font-display bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
                 R
               </AvatarFallback>
@@ -26,9 +29,16 @@
               <div class="font-display text-2xl md:text-3xl font-bold tracking-tight mb-1">
                 {{ t('about.authorName') }}
               </div>
-              <div class="text-muted-foreground mb-4">{{ t('about.authorRole') }}</div>
+              <div class="text-muted-foreground mb-4">
+                {{ t('about.authorRole') }}
+              </div>
               <div class="flex flex-wrap gap-2 justify-center md:justify-start">
-                <Badge v-for="tag in profileTags" :key="tag" variant="outline" class="text-xs px-3 py-1">
+                <Badge
+                  v-for="tag in profileTags"
+                  :key="tag"
+                  variant="outline"
+                  class="text-xs px-3 py-1"
+                >
                   {{ tag }}
                 </Badge>
               </div>
@@ -37,21 +47,36 @@
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="bio" class="w-full">
+      <Tabs
+        default-value="bio"
+        class="w-full"
+      >
         <TabsList class="grid grid-cols-4 mb-8">
-          <TabsTrigger value="bio" class="data-[state=active]:shadow-none">
+          <TabsTrigger
+            value="bio"
+            class="data-[state=active]:shadow-none"
+          >
             <UserCircle2 class="size-4 mr-2 hidden sm:block" />
             {{ t('about.tabBio') }}
           </TabsTrigger>
-          <TabsTrigger value="skills" class="data-[state=active]:shadow-none">
+          <TabsTrigger
+            value="skills"
+            class="data-[state=active]:shadow-none"
+          >
             <Wrench class="size-4 mr-2 hidden sm:block" />
             {{ t('about.tabSkills') }}
           </TabsTrigger>
-          <TabsTrigger value="oss" class="data-[state=active]:shadow-none">
+          <TabsTrigger
+            value="oss"
+            class="data-[state=active]:shadow-none"
+          >
             <GitFork class="size-4 mr-2 hidden sm:block" />
             {{ t('about.tabOSS') }}
           </TabsTrigger>
-          <TabsTrigger value="contact" class="data-[state=active]:shadow-none">
+          <TabsTrigger
+            value="contact"
+            class="data-[state=active]:shadow-none"
+          >
             <Mail class="size-4 mr-2 hidden sm:block" />
             {{ t('about.tabContact') }}
           </TabsTrigger>
@@ -68,7 +93,9 @@
                   <Quote class="size-4 text-primary" />
                   {{ t('about.mottoLabel') }}
                 </div>
-                <p class="text-foreground/80 italic">{{ t('about.motto') }}</p>
+                <p class="text-foreground/80 italic">
+                  {{ t('about.motto') }}
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -85,19 +112,35 @@
             </CardHeader>
             <CardContent class="pt-0">
               <div class="flex flex-wrap gap-2 mb-8">
-                <Badge v-for="tech in techStack" :key="tech.name" :style="{ background: tech.bg, color: tech.color }" class="text-sm px-4 py-1.5 font-medium shadow-sm border-0">
+                <Badge
+                  v-for="tech in techStack"
+                  :key="tech.name"
+                  :style="{ background: tech.bg, color: tech.color }"
+                  class="text-sm px-4 py-1.5 font-medium shadow-sm border-0"
+                >
                   {{ tech.name }}
                 </Badge>
               </div>
 
               <div class="space-y-5">
-                <div v-for="group in skillGroups" :key="group.title">
+                <div
+                  v-for="group in skillGroups"
+                  :key="group.title"
+                >
                   <div class="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
-                    <component :is="group.icon" class="size-4" />
+                    <component
+                      :is="group.icon"
+                      class="size-4"
+                    />
                     {{ group.title }}
                   </div>
                   <div class="flex flex-wrap gap-2">
-                    <Badge v-for="skill in group.items" :key="skill" variant="secondary" class="text-xs">
+                    <Badge
+                      v-for="skill in group.items"
+                      :key="skill"
+                      variant="secondary"
+                      class="text-xs"
+                    >
                       {{ skill }}
                     </Badge>
                   </div>
@@ -110,7 +153,14 @@
         <TabsContent value="oss">
           <Card>
             <CardContent class="p-6 md:p-8 space-y-4">
-              <a v-for="repo in ossProjects" :key="repo.name" :href="repo.url" target="_blank" rel="noopener noreferrer" class="block group rounded-xl border border-border/60 p-5 hover:shadow-soft hover:border-border transition-all duration-300">
+              <a
+                v-for="repo in ossProjects"
+                :key="repo.name"
+                :href="repo.url"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="block group rounded-xl border border-border/60 p-5 hover:shadow-soft hover:border-border transition-all duration-300"
+              >
                 <div class="flex items-start justify-between gap-3 mb-2">
                   <div class="flex items-center gap-2">
                     <FolderGit2 class="size-4.5 text-primary shrink-0" />
@@ -129,7 +179,12 @@
                 </div>
                 <p class="text-sm text-muted-foreground leading-relaxed mb-3">{{ repo.desc }}</p>
                 <div class="flex flex-wrap gap-1.5">
-                  <Badge v-for="tag in repo.tags" :key="tag" variant="outline" class="text-[11px]">
+                  <Badge
+                    v-for="tag in repo.tags"
+                    :key="tag"
+                    variant="outline"
+                    class="text-[11px]"
+                  >
                     {{ tag }}
                   </Badge>
                 </div>
@@ -142,9 +197,22 @@
           <Card>
             <CardContent class="p-6 md:p-8">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <a v-for="contact in contacts" :key="contact.label" :href="contact.href" target="_blank" rel="noopener noreferrer" class="flex items-center gap-4 p-4 rounded-xl border border-border/60 hover:shadow-soft hover:bg-accent/30 transition-all duration-300">
-                  <div class="size-11 shrink-0 rounded-xl flex items-center justify-center" :style="{ background: contact.bg }">
-                    <component :is="contact.icon" :class="['size-5', contact.color]" />
+                <a
+                  v-for="contact in contacts"
+                  :key="contact.label"
+                  :href="contact.href"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="flex items-center gap-4 p-4 rounded-xl border border-border/60 hover:shadow-soft hover:bg-accent/30 transition-all duration-300"
+                >
+                  <div
+                    class="size-11 shrink-0 rounded-xl flex items-center justify-center"
+                    :style="{ background: contact.bg }"
+                  >
+                    <component
+                      :is="contact.icon"
+                      :class="['size-5', contact.color]"
+                    />
                   </div>
                   <div class="min-w-0">
                     <div class="text-xs text-muted-foreground mb-0.5">{{ contact.label }}</div>
@@ -157,8 +225,12 @@
                 <div class="flex items-start gap-3">
                   <Coffee class="size-5 shrink-0 text-warning mt-0.5" />
                   <div>
-                    <div class="font-medium mb-1.5">{{ t('about.buyMeCoffee') }}</div>
-                    <p class="text-sm text-muted-foreground leading-relaxed">{{ t('about.buyMeCoffeeDesc') }}</p>
+                    <div class="font-medium mb-1.5">
+                      {{ t('about.buyMeCoffee') }}
+                    </div>
+                    <p class="text-sm text-muted-foreground leading-relaxed">
+                      {{ t('about.buyMeCoffeeDesc') }}
+                    </p>
                   </div>
                 </div>
               </div>

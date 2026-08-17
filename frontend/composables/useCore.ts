@@ -8,23 +8,6 @@ import type {
   SiteStats,
   Page,
   Sponsor,
-  AdminStats,
-<<<<<<< Updated upstream
-  ViewTrend,
-=======
->>>>>>> Stashed changes
-  CategoryStat,
-  GuestbookEntry,
-  Gallery,
-  GalleryItem,
-  Activity,
-  MediaItem,
-  Notification,
-  PageSetting,
-  Announcement,
-  HeroCarouselItem,
-  PostSeries,
-  RankingItem,
   PaginatedResponse
 } from '~~/types/api'
 import { useAPI } from '~~/composables/useAPI'
@@ -61,7 +44,7 @@ export const useCategories = () => {
   }
 
   const deleteCategory = (categoryId: number) => {
-    return useAPI<void>(`/blog/categories/${categoryId}`, {
+    return useAPI<unknown>(`/blog/categories/${categoryId}`, {
       method: 'DELETE'
     })
   }
@@ -107,7 +90,7 @@ export const useTags = () => {
   }
 
   const deleteTag = (tagId: number) => {
-    return useAPI<void>(`/blog/tags/${tagId}`, {
+    return useAPI<unknown>(`/blog/tags/${tagId}`, {
       method: 'DELETE'
     })
   }
@@ -122,8 +105,6 @@ export const useTags = () => {
 }
 
 export const useSiteConfig = () => {
-  const { locale } = useI18n()
-
   const getSiteConfig = () => {
     return useAPI<SiteConfig>('/config')
   }
@@ -134,8 +115,6 @@ export const useSiteConfig = () => {
 }
 
 export const useNavigations = () => {
-  const { locale } = useI18n()
-
   const getNavigations = (location?: string) => {
     return useAPI<Navigation[]>('/navigations', {
       query: location ? { location } : {}
@@ -161,7 +140,7 @@ export const useNavigations = () => {
   }
 
   const deleteNavigation = (navId: number) => {
-    return useAPI<void>(`/navigations/${navId}`, {
+    return useAPI<unknown>(`/navigations/${navId}`, {
       method: 'DELETE'
     })
   }
@@ -195,7 +174,7 @@ export const useFriendLinks = () => {
   }
 
   const deleteFriendLink = (linkId: number) => {
-    return useAPI<void>(`/friend-links/${linkId}`, {
+    return useAPI<unknown>(`/friend-links/${linkId}`, {
       method: 'DELETE'
     })
   }
@@ -261,7 +240,7 @@ export const useSiteStats = () => {
 export const usePages = () => {
   const { locale } = useI18n()
 
-  const getPages = (params?: { page?: number; pageSize?: number }) => {
+  const getPages = (params?: { page?: number, pageSize?: number }) => {
     return useAPI<PaginatedResponse<Page>>('/pages', {
       query: {
         lang: locale.value,
@@ -293,7 +272,7 @@ export const usePages = () => {
   }
 
   const deletePage = (pageId: number) => {
-    return useAPI<void>(`/pages/${pageId}`, {
+    return useAPI<unknown>(`/pages/${pageId}`, {
       method: 'DELETE'
     })
   }
@@ -308,7 +287,7 @@ export const usePages = () => {
 }
 
 export const useSponsors = () => {
-  const getSponsors = (params?: { page?: number; pageSize?: number }) => {
+  const getSponsors = (params?: { page?: number, pageSize?: number }) => {
     return useAPI<PaginatedResponse<Sponsor>>('/sponsors', {
       query: params
     })
@@ -331,11 +310,11 @@ export const useSearchPlaceholders = () => {
 
 export const useSiteFullConfig = () => {
   const getSiteFullConfig = () => {
-    return useAPI<Record<string, any>>('/config/full')
+    return useAPI<Record<string, unknown>>('/config/full')
   }
 
-  const updateSettings = (settings: Record<string, any>) => {
-    return useAPI<void>('/admin/settings', {
+  const updateSettings = (settings: Record<string, unknown>) => {
+    return useAPI<unknown>('/admin/settings', {
       method: 'POST',
       body: settings
     })

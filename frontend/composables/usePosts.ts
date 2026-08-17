@@ -1,4 +1,4 @@
-import type { Post, PaginatedResponse } from '~~/types/api'
+import type { Post, PostCreate, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useAPI'
 
 export const usePosts = () => {
@@ -8,7 +8,7 @@ export const usePosts = () => {
   const posts = ref<Post[]>([])
   const post = ref<Post | null>(null)
   const loading = ref(false)
-  const error = ref<any>(null)
+  const error = ref<unknown>(null)
   const total = ref(0)
 
   const getPosts = (params?: {
@@ -54,7 +54,7 @@ export const usePosts = () => {
         total.value = (data.value as PaginatedResponse<Post>)?.total ?? posts.value.length
       }
       return posts.value
-    } catch (e: any) {
+    } catch (e) {
       error.value = e
       throw e
     } finally {
@@ -79,7 +79,7 @@ export const usePosts = () => {
       if (err.value) throw err.value
       post.value = data.value || null
       return post.value
-    } catch (e: any) {
+    } catch (e) {
       error.value = e
       throw e
     } finally {
@@ -112,7 +112,7 @@ export const usePosts = () => {
     })
   }
 
-  const createPost = (postData: any) => {
+  const createPost = (postData: PostCreate) => {
     return useAPI<Post>('/blog/posts', {
       method: 'POST',
       body: postData,
@@ -122,7 +122,7 @@ export const usePosts = () => {
     })
   }
 
-  const updatePost = (postId: number, postData: any) => {
+  const updatePost = (postId: number, postData: Partial<PostCreate>) => {
     return useAPI<Post>(`/blog/posts/${postId}`, {
       method: 'PUT',
       body: postData,

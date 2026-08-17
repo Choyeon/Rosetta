@@ -19,10 +19,21 @@ export interface BingImage {
   dayOffset: number
 }
 
+/** Bing HPImageArchive 接口返回的原始图片字段 */
+interface BingRawImage {
+  url?: string
+  urlbase?: string
+  copyright?: string
+  copyrightlink?: string
+  title?: string
+  startdate?: string
+  enddate?: string
+}
+
 export const useBingWallpaper = () => {
   const images = ref<BingImage[]>([])
   const loading = ref(false)
-  const error = ref<any>(null)
+  const error = ref<unknown>(null)
   const currentIdx = ref(0)
 
   const currentImage = computed<BingImage | null>(() => {
@@ -59,7 +70,9 @@ export const useBingWallpaper = () => {
   const selectDay = (i: number) => {
     if (i >= 0 && i < images.value.length) {
       currentIdx.value = i
-      try { localStorage.setItem('bing_wallpaper_idx', String(i)) } catch { /* ignore */ }
+      try {
+        localStorage.setItem('bing_wallpaper_idx', String(i))
+      } catch { /* ignore */ }
     }
   }
 
@@ -89,8 +102,8 @@ export const useBingWallpaper = () => {
     return { main: d, sub: `${parseInt(m, 10)}月` } as const
   }
 
-  const parseImages = (rawImages: any[]): BingImage[] => {
-    return (rawImages || []).map((img: any, i: number) => {
+  const parseImages = (rawImages: BingRawImage[]): BingImage[] => {
+    return (rawImages || []).map((img: BingRawImage, i: number) => {
       const url = img.url || ''
       const uhdUrl = (img.urlbase || '') + '_UHD.jpg'
       const fullUrl = url.startsWith('http') ? url : `https://www.bing.com${url}`
@@ -151,26 +164,69 @@ export const useBingWallpaper = () => {
         if (saved != null) currentIdx.value = Math.max(0, Math.min(7, parseInt(saved, 10) || 0))
       } catch { /* ignore */ }
 
-      // Bing API 偶尔跨域会被拦截，用超时兜底
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 6000)
-      try {
-        const resp = await fetch(
-          'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN',
-          { signal: controller.signal }
-        )
-        clearTimeout(timeoutId)
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        const data = await resp.json()
-        const list = parseImages(data.images)
-        if (list.length === 0) throw new Error('empty')
-        images.value = list
-      } catch (e) {
-        console.warn('[bing-wallpaper] API unavailable, using local fallback images.', e)
-        images.value = loadMockFallback()
-      } finally {
-        clearTimeout(timeoutId)
+      // 优先走后端代理（无 CORS 问题，且带缓存）；失败再回退直连 Bing，最后本地兜底
+      const loadFromBackend = async (): Promise<BingImage[]> => {
+        const apiBase = useRuntimeConfig().public.apiBase as string
+        interface ProxyImage {
+          url?: string
+          urlbase?: string
+          full_url?: string
+          uhd_url?: string
+          title?: string
+          copyright?: string
+          copyright_link?: string
+          startdate?: string
+          enddate?: string
+        }
+        const data = await $fetch<{ images?: ProxyImage[] }>('/bing/wallpapers', {
+          baseURL: apiBase,
+          query: { n: 8, market: 'zh-CN' }
+        })
+        return (data.images || []).map((img, i) => ({
+          url: img.url || '',
+          urlbase: img.urlbase || '',
+          copyright: img.copyright || '',
+          copyrightlink: img.copyright_link || '',
+          title: img.title || '',
+          startdate: img.startdate || '',
+          enddate: img.enddate || '',
+          fullUrl: img.full_url || '',
+          uhdUrl: img.uhd_url || '',
+          dayOffset: i
+        }))
       }
+
+      const loadFromBingDirect = async (): Promise<BingImage[]> => {
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => controller.abort(), 6000)
+        try {
+          const resp = await fetch(
+            'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN',
+            { signal: controller.signal }
+          )
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
+          const data = await resp.json()
+          const list = parseImages(data.images)
+          if (list.length === 0) throw new Error('empty')
+          return list
+        } finally {
+          clearTimeout(timeoutId)
+        }
+      }
+
+      let list: BingImage[] = []
+      try {
+        list = await loadFromBackend()
+      } catch {
+        // 后端代理不可用（如 OOBE 阶段后端未启动）：回退直连
+        try {
+          list = await loadFromBingDirect()
+        } catch (e) {
+          console.warn('[bing-wallpaper] API unavailable, using local fallback images.', e)
+        }
+      }
+      if (list.length === 0) list = loadMockFallback()
+      images.value = list
     } catch (e) {
       error.value = e
       images.value = loadMockFallback()

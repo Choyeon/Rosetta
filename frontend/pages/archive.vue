@@ -17,11 +17,18 @@
     </header>
 
     <div class="space-y-12">
-      <section v-for="group in groupedByYear" :key="group.year" class="scroll-mt-24">
+      <section
+        v-for="group in groupedByYear"
+        :key="group.year"
+        class="scroll-mt-24"
+      >
         <div class="flex items-end justify-between mb-4">
           <h2 class="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
             {{ group.year }}
-            <Badge variant="secondary" class="text-xs font-medium">
+            <Badge
+              variant="secondary"
+              class="text-xs font-medium"
+            >
               {{ group.posts.length }} {{ t('archive.posts') }}
             </Badge>
           </h2>
@@ -34,7 +41,10 @@
             class="flex justify-between items-center py-3 border-b last:border-b-0 group/item"
           >
             <div class="flex items-center gap-3 min-w-0 flex-1">
-              <Badge variant="outline" class="shrink-0 font-mono text-xs tabular-nums">
+              <Badge
+                variant="outline"
+                class="shrink-0 font-mono text-xs tabular-nums"
+              >
                 {{ formatMonthDay(getPublishedAt(post)) }}
               </Badge>
               <NuxtLink
@@ -45,7 +55,10 @@
               </NuxtLink>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3 text-xs text-muted-foreground">
-              <span v-if="getCategoryName(post)" class="hidden sm:inline-flex items-center gap-1">
+              <span
+                v-if="getCategoryName(post)"
+                class="hidden sm:inline-flex items-center gap-1"
+              >
                 <FolderOpen class="size-3" />
                 {{ getCategoryName(post) }}
               </span>
@@ -59,11 +72,16 @@
       </section>
     </div>
 
-    <div v-if="groupedByYear.length === 0" class="text-center py-20">
+    <div
+      v-if="groupedByYear.length === 0"
+      class="text-center py-20"
+    >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
         <CalendarDays class="size-8 text-muted-foreground" />
       </div>
-      <h3 class="font-display text-xl font-semibold">{{ t('archive.noPosts') }}</h3>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('archive.noPosts') }}
+      </h3>
     </div>
   </div>
 </template>
@@ -83,8 +101,11 @@ interface PostItem {
   slug: string
   title: string
   publishedAt: string
+  published_at?: string
+  created_at?: string
   views?: number
-  category?: { id: number | string; name: string; slug: string }
+  views_count?: number
+  category?: { id: number | string, name: string, slug: string }
 }
 
 const allPosts = ref<PostItem[]>([
@@ -162,7 +183,7 @@ const allPosts = ref<PostItem[]>([
   }
 ])
 
-const pickLocalized = (val: any): string => {
+const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''
   if (typeof val === 'string') return val
   if (typeof val === 'object') {
@@ -175,15 +196,15 @@ const pickLocalized = (val: any): string => {
   return String(val)
 }
 
-const getPublishedAt = (post: any) =>
+const getPublishedAt = (post: PostItem): string =>
   post?.published_at || post?.publishedAt || post?.created_at || ''
-const getPostTitle = (post: any) => pickLocalized(post?.title)
-const getCategoryName = (post: any) => pickLocalized(post?.category?.name)
-const getViews = (post: any) => post?.views ?? post?.views_count ?? 0
+const getPostTitle = (post: PostItem) => pickLocalized(post?.title)
+const getCategoryName = (post: PostItem) => pickLocalized(post?.category?.name)
+const getViews = (post: PostItem) => post?.views ?? post?.views_count ?? 0
 
 const groupedByYear = computed(() => {
-  const map = new Map<number, any[]>()
-  const sorted = [...allPosts.value].sort((a: any, b: any) => {
+  const map = new Map<number, PostItem[]>()
+  const sorted = [...allPosts.value].sort((a, b) => {
     const da = new Date(getPublishedAt(b)).getTime()
     const db = new Date(getPublishedAt(a)).getTime()
     return da - db
