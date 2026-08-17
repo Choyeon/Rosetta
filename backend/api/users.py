@@ -11,7 +11,6 @@
 """
 
 import math
-import random
 import secrets
 import string
 from datetime import datetime, timedelta
@@ -77,7 +76,7 @@ class _PasswordChangeBody(BaseModel):
 async def _gen_reset_code_and_token(user: User) -> tuple[str, str]:
     """生成 6 位 code + 32 位 token 并写入缓存 15 分钟"""
     digits = string.digits
-    code = "".join(random.choices(digits, k=6))
+    code = "".join(secrets.choice(digits) for _ in range(6))
     token = secrets.token_hex(16)
     ttl = 15 * 60
 

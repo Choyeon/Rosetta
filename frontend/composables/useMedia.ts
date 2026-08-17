@@ -109,7 +109,11 @@ export const useMediaLibrary = () => {
   }
 }
 
+<<<<<<< Updated upstream
 export const useBingWallpaper = (count = 1) => {
+=======
+export const useServerBingWallpaper = (count = 1) => {
+>>>>>>> Stashed changes
   return useAPI<BingWallpaperItem[]>('/media/bing-wallpaper', {
     query: { count }
   })

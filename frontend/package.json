@@ -17,13 +17,26 @@
     "@vee-validate/zod": "^4.15.1",
     "@vueuse/core": "^11.3.0",
     "@vueuse/shared": "^14.4.0",
+<<<<<<< Updated upstream
     "lucide-vue-next": "^1.0.0",
     "marked": "^18.0.9",
+=======
+    "dompurify": "^3.4.13",
+    "highlight.js": "^11.12.0",
+    "lucide-vue-next": "^1.0.0",
+    "marked": "^18.0.9",
+    "marked-highlight": "^2.2.4",
+>>>>>>> Stashed changes
     "nuxt": "^4.5.1",
     "pinia": "^2.2.8",
     "radix-vue": "^1.9.17",
     "reka-ui": "^2.10.3",
     "vee-validate": "^4.15.1",
+<<<<<<< Updated upstream
+=======
+    "viewerjs": "^1.11.8",
+    "vue-advanced-cropper": "^2.8.9",
+>>>>>>> Stashed changes
     "vue-sonner": "^2.0.9",
     "zod": "^3.24.1"
   },

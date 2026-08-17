@@ -9,7 +9,10 @@ import type {
   Page,
   Sponsor,
   AdminStats,
+<<<<<<< Updated upstream
   ViewTrend,
+=======
+>>>>>>> Stashed changes
   CategoryStat,
   GuestbookEntry,
   Gallery,

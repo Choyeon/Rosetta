@@ -121,12 +121,28 @@ _INSTALL_STREAM_QUEUES: dict[str, asyncio.Queue] = {}
 _INSTALL_STREAM_BUFFER: list[dict] = []
 _INSTALL_STREAM_BUFFER_MAX = 200
 
+_DEP_STREAM_QUEUES: dict[str, asyncio.Queue] = {}
+_DEP_STREAM_BUFFER: list[dict] = []
+_DEP_STREAM_BUFFER_MAX = 500
+
 
 def _append_progress(evt: dict):
     _INSTALL_STREAM_BUFFER.append(evt)
     if len(_INSTALL_STREAM_BUFFER) > _INSTALL_STREAM_BUFFER_MAX:
         _INSTALL_STREAM_BUFFER[:] = _INSTALL_STREAM_BUFFER[-_INSTALL_STREAM_BUFFER_MAX:]
     for q in list(_INSTALL_STREAM_QUEUES.values()):
+        try:
+            q.put_nowait(evt)
+        except Exception:
+            pass
+
+
+def _append_dep_progress(evt: dict):
+    """依赖安装流式日志广播（SSE 共享同一缓冲语义）"""
+    _DEP_STREAM_BUFFER.append(evt)
+    if len(_DEP_STREAM_BUFFER) > _DEP_STREAM_BUFFER_MAX:
+        _DEP_STREAM_BUFFER[:] = _DEP_STREAM_BUFFER[-_DEP_STREAM_BUFFER_MAX:]
+    for q in list(_DEP_STREAM_QUEUES.values()):
         try:
             q.put_nowait(evt)
         except Exception:
@@ -255,8 +271,9 @@ async def get_system_info():
     return {
         "success": True,
         "os_name": info.system,
-        "os_version": info.release,
+        "os_version": info.version,
         "os_type": info.platform,
+        "processor": info.processor,
         "python_version": info.python_version,
         "architecture": info.machine,
         "total_memory_mb": round(resources.memory_total / (1024 * 1024)),
@@ -265,6 +282,7 @@ async def get_system_info():
         "disk_free_gb": round(resources.disk_available / (1024 * 1024 * 1024)),
         "python_path": sys.executable,
         "cpu_count": resources.cpu_count,
+        "hostname": info.hostname,
     }
 
 
@@ -363,11 +381,96 @@ async def check_dependencies():
 
 @router.post("/install-dependencies")
 async def install_dependencies():
-    """安装缺失的依赖"""
+    """安装缺失的依赖（工具链 + 后端 + 前端），对标 WordPress 一键安装
+
+    触发时会在 HTTP 响应返回前立即开始执行；同时通过
+    GET /api/oobe/install-dependencies/stream 广播实时日志。
+    """
     await require_oobe_incomplete()
-    results = dependency_service.install_missing()
-    summary = dependency_service.get_install_summary(results)
-    return {"success": True, **summary}
+
+    # 将 DependencyService 的回调接到 SSE 广播，前端可实时看日志
+    dep_logs: list[str] = []
+
+    def _on_progress(name: str, status: str, message: str):
+        _append_dep_progress({
+            "type": "progress",
+            "name": name,
+            "status": status,
+            "message": message,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    def _on_log(message: str):
+        dep_logs.append(message)
+        _append_dep_progress({
+            "type": "log",
+            "message": message,
+            "timestamp": datetime.now().isoformat(),
+        })
+
+    dependency_service.set_progress_callback(_on_progress)
+    dependency_service.set_log_callback(_on_log)
+
+    try:
+        loop = asyncio.get_running_loop()
+        # 注意：install_all 内部会做长时间 subprocess 调用，放到线程池中避免阻塞事件循环
+        results = await loop.run_in_executor(None, dependency_service.install_all)
+        summary = dependency_service.get_install_summary(results)
+        # 广播最终 done
+        all_ok = summary.get("all_success", False)
+        _append_dep_progress({
+            "type": "done",
+            "success": all_ok,
+            "summary": {k: v for k, v in summary.items() if k != "logs"},
+            "timestamp": datetime.now().isoformat(),
+        })
+        return {"success": True, **summary}
+    finally:
+        dependency_service.set_progress_callback(None)
+        dependency_service.set_log_callback(None)
+
+
+@router.get("/install-dependencies/stream")
+async def install_dependencies_stream(sid: str = Query(default_factory=lambda: _uuid.uuid4().hex)):
+    """依赖安装进度 SSE 流（与 install-dependencies 配对）
+
+    客户端在点击「一键安装」后立即连接此端点，实时接收：
+      - event: connected    → 握手成功，含 buffered 数量
+      - data: {...progress} → 单依赖进度回调
+      - data: {...log}      → 实时命令行输出
+      - data: {...done}     → 全部完成（success + summary）
+    """
+
+    async def _event_generator():
+        q: asyncio.Queue = asyncio.Queue(maxsize=1000)
+        _DEP_STREAM_QUEUES[sid] = q
+        try:
+            yield (
+                f"event: connected\n"
+                f"data: {json.dumps({'sid': sid, 'buffered': len(_DEP_STREAM_BUFFER)}, ensure_ascii=False)}\n\n"
+            )
+            for past in _DEP_STREAM_BUFFER:
+                yield f"data: {json.dumps(past, ensure_ascii=False)}\n\n"
+            while True:
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    yield ": ping\n\n"
+                    continue
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                if evt.get("type") == "done" or evt.get("type") == "error":
+                    break
+        finally:
+            _DEP_STREAM_QUEUES.pop(sid, None)
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/environment")

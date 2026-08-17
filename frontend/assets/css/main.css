@@ -1,0 +1,604 @@
+@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =========================================================
+   Rosetta 全站统一主题令牌
+   ---------------------------------------------------------
+   所有颜色集中管理，只改这一处，全站统一生效：
+   - 主色 primary：天青 sky 201°（6 套调色板 html.palette-* 可覆盖）
+   - 语义状态色 info / success / warning / error
+     → 与 primary 同色系，明/暗各自一套，对比度符合 WCAG AA
+   - destructive = error 别名（与 shadcn 默认命名保持一致）
+   → 后端 Swagger / OOBE 邮件样式若接入，也应同步这套 HSL 值
+   ========================================================= */
+@layer base {
+  :root {
+    /* ---- 基色 ---- */
+    --background: 0 0% 100%;
+    --foreground: 222 47% 11%;
+
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+
+    /* ---- 主色：天青 ---- */
+    --primary: 201 96% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+
+    --ring: 201 96% 52%;
+    --radius: 0.75rem;
+
+    /* ---- 语义状态色：由天青推导演算 ---- */
+    /* info：主色直接衍生，更淡更清爽的提示色 */
+    --info: 199 89% 56%;
+    --info-foreground: 0 0% 100%;
+    --info-muted: 199 90% 94%;
+    --info-muted-foreground: 199 74% 22%;
+
+    /* success：青绿 172°，与天青同冷色，和谐不突兀 */
+    --success: 172 76% 45%;
+    --success-foreground: 0 0% 100%;
+    --success-muted: 172 70% 94%;
+    --success-muted-foreground: 172 80% 24%;
+
+    /* warning：琥珀 38°，降低饱和贴合天青整体干净感 */
+    --warning: 38 92% 53%;
+    --warning-foreground: 30 40% 12%;
+    --warning-muted: 38 92% 94%;
+    --warning-muted-foreground: 38 70% 26%;
+
+    /* error / destructive：玫瑰红 355°，一个名字双入口兼容 */
+    --error: 355 82% 62%;
+    --error-foreground: 0 0% 100%;
+    --error-muted: 355 80% 95%;
+    --error-muted-foreground: 355 70% 28%;
+    --destructive: 355 82% 62%;
+    --destructive-foreground: 0 0% 100%;
+    --destructive-muted: 355 80% 95%;
+    --destructive-muted-foreground: 355 70% 28%;
+
+    /* ---- Sidebar ---- */
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 240 5% 26%;
+    --sidebar-primary: 201 96% 54%;
+    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-accent: 240 5% 96%;
+    --sidebar-accent-foreground: 240 6% 10%;
+    --sidebar-border: 220 13% 91%;
+    --sidebar-ring: 202 98% 70%;
+
+    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  }
+
+  /* ---- 暗色模式：对应每一个亮色 token，确保色相关系一致，对比 AA ---- */
+  .dark {
+    --background: 224 71% 4%;
+    --foreground: 213 31% 91%;
+
+    --muted: 223 47% 11%;
+    --muted-foreground: 215 16% 57%;
+
+    --popover: 224 71% 4%;
+    --popover-foreground: 215 20% 65%;
+
+    --card: 224 71% 4%;
+    --card-foreground: 213 31% 91%;
+
+    --border: 216 34% 17%;
+    --input: 216 34% 17%;
+
+    --primary: 201 98% 76%;
+    --primary-foreground: 224 71% 4%;
+
+    --secondary: 222 47% 11%;
+    --secondary-foreground: 210 40% 98%;
+
+    --accent: 216 34% 17%;
+    --accent-foreground: 210 40% 98%;
+
+    --ring: 201 98% 76%;
+
+    --info: 199 88% 70%;
+    --info-foreground: 224 71% 4%;
+    --info-muted: 199 48% 20%;
+    --info-muted-foreground: 199 92% 90%;
+
+    --success: 172 72% 62%;
+    --success-foreground: 224 71% 4%;
+    --success-muted: 172 42% 18%;
+    --success-muted-foreground: 172 88% 86%;
+
+    --warning: 38 95% 68%;
+    --warning-foreground: 30 40% 10%;
+    --warning-muted: 38 48% 20%;
+    --warning-muted-foreground: 38 96% 90%;
+
+    --error: 355 84% 72%;
+    --error-foreground: 224 71% 4%;
+    --error-muted: 355 44% 22%;
+    --error-muted-foreground: 355 92% 90%;
+    --destructive: 355 84% 72%;
+    --destructive-foreground: 224 71% 4%;
+    --destructive-muted: 355 44% 22%;
+    --destructive-muted-foreground: 355 92% 90%;
+
+    --sidebar-background: 240 6% 10%;
+    --sidebar-foreground: 240 5% 96%;
+    --sidebar-primary: 201 98% 72%;
+    --sidebar-primary-foreground: 224 71% 4%;
+    --sidebar-accent: 240 4% 16%;
+    --sidebar-accent-foreground: 240 5% 96%;
+    --sidebar-border: 240 4% 16%;
+    --sidebar-ring: 201 98% 76%;
+  }
+}
+
+/* ---------- Theme Palettes (6 brand colors) ----------
+   顶层规则，权重高于 @layer base，保证调色板切换一定生效。
+   每一个 palette 都只改 primary/accent/ring/sidebar-primary 一套，
+   语义状态色（info/success/warning/error）保持恒定，与品牌色解耦。 */
+
+html.palette-indigo {
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 262 83% 96%;
+  --accent-foreground: 262 83% 12%;
+  --ring: 262 83% 58%;
+  --sidebar-primary: 262 83% 62%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 263 91% 72%;
+}
+html.dark.palette-indigo {
+  --primary: 263 88% 76%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 262 41% 24%;
+  --accent-foreground: 263 91% 90%;
+  --ring: 263 88% 76%;
+  --sidebar-primary: 263 88% 70%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 263 88% 76%;
+}
+
+html.palette-emerald {
+  --primary: 158 64% 46%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 158 64% 95%;
+  --accent-foreground: 158 64% 10%;
+  --ring: 158 64% 46%;
+  --sidebar-primary: 158 64% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 158 88% 68%;
+}
+html.dark.palette-emerald {
+  --primary: 158 72% 65%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 158 42% 20%;
+  --accent-foreground: 158 92% 90%;
+  --ring: 158 72% 65%;
+  --sidebar-primary: 158 72% 60%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 158 72% 65%;
+}
+
+html.palette-amber {
+  --primary: 42 96% 55%;
+  --primary-foreground: 30 40% 10%;
+  --accent: 42 96% 93%;
+  --accent-foreground: 30 40% 10%;
+  --ring: 42 96% 55%;
+  --sidebar-primary: 42 96% 55%;
+  --sidebar-primary-foreground: 30 40% 10%;
+  --sidebar-ring: 42 98% 65%;
+}
+html.dark.palette-amber {
+  --primary: 42 97% 70%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 35 50% 22%;
+  --accent-foreground: 42 100% 92%;
+  --ring: 42 97% 70%;
+  --sidebar-primary: 42 97% 65%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 42 97% 70%;
+}
+
+html.palette-rose {
+  --primary: 346 77% 60%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 346 77% 96%;
+  --accent-foreground: 346 77% 12%;
+  --ring: 346 77% 60%;
+  --sidebar-primary: 346 77% 62%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 346 91% 75%;
+}
+html.dark.palette-rose {
+  --primary: 346 85% 78%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 346 42% 24%;
+  --accent-foreground: 346 100% 92%;
+  --ring: 346 85% 78%;
+  --sidebar-primary: 346 85% 72%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 346 85% 78%;
+}
+
+html.palette-violet {
+  --primary: 271 91% 65%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 271 91% 96%;
+  --accent-foreground: 271 91% 12%;
+  --ring: 271 91% 65%;
+  --sidebar-primary: 271 91% 66%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 272 95% 76%;
+}
+html.dark.palette-violet {
+  --primary: 271 96% 80%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 271 50% 26%;
+  --accent-foreground: 271 96% 92%;
+  --ring: 271 96% 80%;
+  --sidebar-primary: 271 96% 76%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 271 96% 80%;
+}
+
+html.palette-sky {
+  --primary: 201 96% 52%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 201 96% 95%;
+  --accent-foreground: 201 96% 12%;
+  --ring: 201 96% 52%;
+  --sidebar-primary: 201 96% 54%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 202 98% 70%;
+}
+html.dark.palette-sky {
+  --primary: 201 98% 76%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 201 48% 22%;
+  --accent-foreground: 201 98% 92%;
+  --ring: 201 98% 76%;
+  --sidebar-primary: 201 98% 72%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 201 98% 76%;
+}
+
+/* =========================================================
+   Base reset + 排版
+   ========================================================= */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply scroll-smooth antialiased;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: 'rlig' 1, 'calt' 1;
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+  h1 {
+    font-size: clamp(2.25rem, 4.5vw, 3.75rem);
+    font-weight: 700;
+    line-height: 1.05;
+  }
+  h2 {
+    font-size: clamp(1.75rem, 3vw, 2.5rem);
+    font-weight: 700;
+    line-height: 1.15;
+  }
+  h3 {
+    font-size: clamp(1.35rem, 2vw, 1.75rem);
+    font-weight: 600;
+    line-height: 1.25;
+  }
+  .font-display {
+    font-family: var(--font-display);
+  }
+}
+
+/* =========================================================
+   统一动画：页面切换 / 元素进场 / 阅读进度条 / TOC
+   - 尊重 prefers-reduced-motion
+   ========================================================= */
+@layer base {
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      animation-duration: 0.001ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.001ms !important;
+    }
+  }
+}
+
+@layer components {
+  /* ---- 页面过渡：<Transition name="page-fade" /> ---- */
+  .page-fade-enter-active,
+  .page-fade-leave-active {
+    transition: opacity 280ms ease, transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .page-fade-enter-from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  .page-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  /* ---- 元素进场：给任何需要的组件加 animate-in + stagger 类 ---- */
+  .animate-in {
+    animation: fade-in-up 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .stagger-1 { animation-delay: 60ms; }
+  .stagger-2 { animation-delay: 120ms; }
+  .stagger-3 { animation-delay: 180ms; }
+  .stagger-4 { animation-delay: 240ms; }
+  .stagger-5 { animation-delay: 300ms; }
+  .stagger-6 { animation-delay: 360ms; }
+
+  /* ---- 滚动显示：IntersectionObserver 触发 is-visible ---- */
+  .scroll-reveal {
+    opacity: 0;
+    transform: translateY(14px);
+    transition: opacity 520ms cubic-bezier(0.22, 1, 0.36, 1),
+                transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    will-change: opacity, transform;
+  }
+  .scroll-reveal.is-visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  /* ---- Hover 抬升：卡片统一交互 ---- */
+  .lift-hover {
+    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
+                box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
+                border-color 260ms ease;
+  }
+  .lift-hover:hover {
+    transform: translateY(-2px);
+    @apply shadow-soft border-primary/30;
+  }
+
+  /* ---- Prose（Markdown 排版） ---- */
+  .prose-shadcn {
+    max-width: 72ch;
+    line-height: 1.75;
+  }
+  .prose-shadcn p {
+    margin: 1.25rem 0;
+  }
+  .prose-shadcn h1,
+  .prose-shadcn h2,
+  .prose-shadcn h3,
+  .prose-shadcn h4 {
+    scroll-margin-top: 5.5rem;
+  }
+  .prose-shadcn h1,
+  .prose-shadcn h2,
+  .prose-shadcn h3 {
+    margin: 2rem 0 1rem;
+  }
+  .prose-shadcn pre {
+    @apply bg-muted rounded-lg p-4 overflow-x-auto text-sm my-6;
+  }
+  .prose-shadcn code {
+    @apply bg-muted px-1.5 py-0.5 rounded text-[0.9em] font-mono;
+  }
+  .prose-shadcn pre code {
+    background: transparent;
+    padding: 0;
+  }
+  .prose-shadcn blockquote {
+    @apply border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-6;
+  }
+  .prose-shadcn a {
+    @apply underline decoration-primary/40 decoration-2 underline-offset-4 hover:text-primary hover:decoration-primary transition-colors;
+  }
+  .prose-shadcn ul,
+  .prose-shadcn ol {
+    padding-left: 1.75rem;
+    margin: 1.25rem 0;
+  }
+  .prose-shadcn ul { list-style: disc; }
+  .prose-shadcn ol { list-style: decimal; }
+  .prose-shadcn li { margin: 0.5rem 0; }
+  .prose-shadcn img {
+    @apply rounded-xl my-8;
+  }
+  .prose-shadcn hr {
+    @apply my-12 border-border;
+  }
+  .prose-shadcn table {
+    @apply w-full text-sm my-8;
+  }
+  .prose-shadcn th,
+  .prose-shadcn td {
+    @apply border border-border px-4 py-2;
+  }
+  .prose-shadcn th {
+    @apply bg-muted;
+  }
+}
+
+/* =========================================================
+   highlight.js 语法高亮
+   ========================================================= */
+@layer components {
+  .prose-shadcn pre code.hljs {
+    display: block;
+    overflow-x: auto;
+    padding: 0;
+    background: transparent;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    font-size: 0.875em;
+    line-height: 1.6;
+  }
+  .hljs-emphasis { font-style: italic; }
+  .hljs-strong { font-weight: 700; }
+  .hljs-link { text-decoration: underline; }
+
+  /* Light: github-inspired */
+  .hljs-doctag, .hljs-keyword, .hljs-meta .hljs-keyword,
+  .hljs-template-tag, .hljs-template-variable,
+  .hljs-type, .hljs-variable.language_ { color: #d73a49; }
+  .hljs-title, .hljs-title.class_, .hljs-title.class_.inherited__,
+  .hljs-title.function_ { color: #6f42c1; }
+  .hljs-attr, .hljs-attribute, .hljs-literal, .hljs-meta,
+  .hljs-number, .hljs-operator, .hljs-selector-attr,
+  .hljs-selector-class, .hljs-selector-id, .hljs-variable { color: #005cc5; }
+  .hljs-regexp, .hljs-string, .hljs-meta .hljs-string { color: #032f62; }
+  .hljs-built_in, .hljs-symbol { color: #e36209; }
+  .hljs-comment, .hljs-code, .hljs-formula { color: #6a737d; }
+  .hljs-name, .hljs-quote, .hljs-selector-tag,
+  .hljs-selector-pseudo { color: #22863a; }
+  .hljs-section { color: #005cc5; font-weight: 700; }
+  .hljs-bullet { color: #735c0f; }
+  .hljs-addition {
+    background-color: hsl(var(--success-muted));
+    color: hsl(var(--success-muted-foreground));
+    display: inline-block;
+    width: 100%;
+  }
+  .hljs-deletion {
+    background-color: hsl(var(--error-muted));
+    color: hsl(var(--error-muted-foreground));
+    display: inline-block;
+    width: 100%;
+  }
+
+  /* Dark: github-dark-inspired */
+  html.dark .hljs-doctag, html.dark .hljs-keyword, html.dark .hljs-meta .hljs-keyword,
+  html.dark .hljs-template-tag, html.dark .hljs-template-variable,
+  html.dark .hljs-type, html.dark .hljs-variable.language_ { color: #ff7b72; }
+  html.dark .hljs-title, html.dark .hljs-title.class_, html.dark .hljs-title.class_.inherited__,
+  html.dark .hljs-title.function_ { color: #d2a8ff; }
+  html.dark .hljs-attr, html.dark .hljs-attribute, html.dark .hljs-literal,
+  html.dark .hljs-meta, html.dark .hljs-number, html.dark .hljs-operator,
+  html.dark .hljs-selector-attr, html.dark .hljs-selector-class,
+  html.dark .hljs-selector-id, html.dark .hljs-variable { color: #79c0ff; }
+  html.dark .hljs-regexp, html.dark .hljs-string,
+  html.dark .hljs-meta .hljs-string { color: #a5d6ff; }
+  html.dark .hljs-built_in, html.dark .hljs-symbol { color: #ffa657; }
+  html.dark .hljs-comment, html.dark .hljs-code,
+  html.dark .hljs-formula { color: #8b949e; }
+  html.dark .hljs-name, html.dark .hljs-quote, html.dark .hljs-selector-tag,
+  html.dark .hljs-selector-pseudo { color: #7ee787; }
+  html.dark .hljs-section { color: #1f6feb; font-weight: 700; }
+  html.dark .hljs-bullet { color: #f2cc60; }
+  html.dark .hljs-addition {
+    background-color: hsla(120 80% 35% / 0.2);
+    color: #aff5b4;
+  }
+  html.dark .hljs-deletion {
+    background-color: hsla(360 100% 40% / 0.2);
+    color: #ffa198;
+  }
+}
+
+/* =========================================================
+   vue-sonner Toast 样式：用统一主题色覆盖
+   ========================================================= */
+@layer components {
+  [data-sonner-toaster] {
+    --normal-bg: hsl(var(--popover));
+    --normal-text: hsl(var(--popover-foreground));
+    --normal-border: hsl(var(--border));
+
+    --success-bg: hsl(var(--success-muted));
+    --success-text: hsl(var(--success-muted-foreground));
+    --success-border: hsl(var(--success) / 0.3);
+
+    --info-bg: hsl(var(--info-muted));
+    --info-text: hsl(var(--info-muted-foreground));
+    --info-border: hsl(var(--info) / 0.3);
+
+    --warning-bg: hsl(var(--warning-muted));
+    --warning-text: hsl(var(--warning-muted-foreground));
+    --warning-border: hsl(var(--warning) / 0.3);
+
+    --error-bg: hsl(var(--error-muted));
+    --error-text: hsl(var(--error-muted-foreground));
+    --error-border: hsl(var(--error) / 0.3);
+
+    --toast-icon-margin-start: -3px;
+    --toast-icon-margin-end: 6px;
+  }
+
+  [data-sonner-toast][data-styled='true'] {
+    backdrop-filter: blur(8px);
+    border-radius: var(--radius);
+    box-shadow: 0 10px 30px -12px rgba(15, 23, 42, 0.28);
+  }
+
+  [data-sonner-toast][data-type='success'] svg {
+    color: hsl(var(--success));
+  }
+  [data-sonner-toast][data-type='error'] svg,
+  [data-sonner-toast][data-type='info'][data-rich-colors='false'] svg {
+    color: hsl(var(--error));
+  }
+  [data-sonner-toast][data-type='warning'] svg {
+    color: hsl(var(--warning));
+  }
+  [data-sonner-toast][data-type='info'] svg {
+    color: hsl(var(--info));
+  }
+}
+
+@layer utilities {
+  .gradient-text {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground/70 to-foreground bg-[length:200%_auto];
+  }
+  .hero-gradient {
+    background:
+      radial-gradient(1200px 600px at 10% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, hsl(var(--ring) / 0.06), transparent 60%),
+      linear-gradient(180deg, transparent, hsl(var(--background)) 80%);
+  }
+  .dark .hero-gradient {
+    background:
+      radial-gradient(1200px 600px at 10% -10%, hsl(var(--primary) / 0.22), transparent 60%),
+      radial-gradient(1000px 500px at 110% 10%, hsl(var(--ring) / 0.14), transparent 60%);
+  }
+  .card-surface {
+    @apply rounded-xl border border-border bg-card shadow-sm lift-hover;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors;
+  }
+}
+
+@keyframes fade-in-up {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

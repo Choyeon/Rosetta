@@ -854,8 +854,24 @@ class DependencyService:
         self._report_progress("backend", "installing", "正在安装后端依赖...")
         self._log("===== 安装后端依赖 =====")
 
-        uv_path = self._find_executable("uv")
-        if not uv_path:
+        # 优先使用 python -m uv，确保使用当前环境的 uv
+        uv_cmd = None
+        try:
+            result = subprocess.run(
+                [sys.executable, "-m", "uv", "--version"],
+                capture_output=True, text=True, timeout=10,
+            )
+            if result.returncode == 0:
+                uv_cmd = [sys.executable, "-m", "uv"]
+        except Exception:
+            pass
+
+        if not uv_cmd:
+            uv_path = self._find_executable("uv")
+            if uv_path:
+                uv_cmd = [uv_path]
+
+        if not uv_cmd:
             duration = time.time() - start_time
             self._report_progress("backend", "failed", "uv 未安装")
             self._log("[FAIL] uv 未安装，请先安装 uv")
@@ -867,6 +883,7 @@ class DependencyService:
             )
 
         pyproject_file = self.base_dir / "pyproject.toml"
+        lock_file = self.base_dir / "uv.lock"
         if not pyproject_file.exists():
             duration = time.time() - start_time
             self._report_progress("backend", "failed", "pyproject.toml 不存在")
@@ -878,9 +895,17 @@ class DependencyService:
                 duration=duration,
             )
 
-        self._log("使用 uv sync 安装后端依赖...")
+        # 如果 lock 文件存在且不是刚安装的 uv，使用 --frozen 确保可重复构建
+        # 否则使用普通 sync 来生成/更新 lock 文件
+        sync_cmd = uv_cmd + ["sync"]
+        if lock_file.exists():
+            sync_cmd.append("--frozen")
+            self._log("检测到 uv.lock，使用 --frozen 模式安装...")
+        else:
+            self._log("未检测到 uv.lock，执行普通 sync 生成 lock 文件...")
+
         code = self._run_command_streaming(
-            [uv_path, "sync", "--frozen"],
+            sync_cmd,
             cwd=str(self.base_dir),
             timeout=600,
         )
@@ -896,6 +921,25 @@ class DependencyService:
                 duration=duration,
             )
         else:
+            # 如果 --frozen 失败（lock 文件过时），尝试不使用 --frozen
+            if "--frozen" in sync_cmd:
+                self._log("[WARN] --frozen 模式失败，尝试更新 lock 文件后重新安装...")
+                code = self._run_command_streaming(
+                    uv_cmd + ["sync"],
+                    cwd=str(self.base_dir),
+                    timeout=600,
+                )
+                duration = time.time() - start_time
+                if code == 0:
+                    self._report_progress("backend", "success", "后端依赖安装成功")
+                    self._log("[OK] 后端依赖安装成功")
+                    return InstallResult(
+                        name="backend",
+                        status=InstallStatus.SUCCESS,
+                        message="后端依赖安装成功",
+                        duration=duration,
+                    )
+
             self._report_progress("backend", "failed", "后端依赖安装失败")
             self._log("[FAIL] 后端依赖安装失败")
             return InstallResult(

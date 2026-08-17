@@ -275,7 +275,9 @@ async def test_stats_returns_schema(
         headers=admin_headers,
     )
     assert resp.status_code == 200, f"GET stats 失败 {resp.status_code} {resp.text}"
-    payload = resp.json()
+    resp_body = resp.json()
+    assert resp_body.get("success") is True, f"缺少 success=true; body={resp_body}"
+    payload = resp_body["data"]
 
     # 1. 顶层键检查
     for required in ("timeseries", "top_articles", "active_commenters", "system_health", "summary"):

@@ -2148,12 +2148,19 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
         base_slug = art.get("slug") or (
             f"post-{idx+1}-{''.join(c for c in title_zh[:10] if c.isalnum())}".strip("-")
         )
-        # 去重
+        # 去重：循环探测直到 slug 可用（重复安装/重置重装场景下 -01 也会冲突）
         slug_candidate = base_slug or f"article-{idx+1}"
-        dup_check = await db.execute(select(Post).where(Post.slug.like(f"{slug_candidate}%")))
-        _ = list(dup_check.scalars().all())
-        if _:
-            slug_candidate = f"{slug_candidate}-{idx+1:02d}"
+        probe = slug_candidate
+        counter = 1
+        while True:
+            dup_row = (
+                await db.execute(select(Post.id).where(Post.slug == probe).limit(1))
+            ).scalar_one_or_none()
+            if dup_row is None:
+                break
+            probe = f"{slug_candidate}-{counter:02d}"
+            counter += 1
+        slug_candidate = probe
 
         cat_obj = None
         cat_slug = art.get("category_slug") or "technology"

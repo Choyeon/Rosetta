@@ -415,6 +415,11 @@ export interface ViewTrend {
   count: number
 }
 
+<<<<<<< Updated upstream
+=======
+export type ViewTrendPoint = ViewTrend
+
+>>>>>>> Stashed changes
 export interface CategoryStat {
   id: number
   name: string

@@ -1,184 +1,145 @@
-# CLAUDE.md
+# Rosetta 后端速查
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+详细规范见 [backend/AGENTS.md](file:///d:/WebProjects/Rosetta/backend/AGENTS.md)。本文件聚焦 AI 助手最常需要的入口与命令。
 
-## Project Overview
+## 工程信息
 
-ROSETTA 后端是基于 **FastAPI** + **SQLAlchemy 2.0 (async)** + **Pydantic v2** 构建的现代化博客平台 API 服务。采用分层架构（API → Service → Repository → Model），支持多语言（zh / en / ja / zh_Hant）、JWT 认证、Redis 缓存、Alembic 迁移、OOBE 引导流程。前端为 Astro 站点，通过 Vite 代理将 `/api/*` 请求转发到本服务。
+- 语言/版本：Python 3.11+
+- 框架：FastAPI + SQLAlchemy 2.0 async + Pydantic v2
+- 包管理：`uv`（根目录 `pyproject.toml` + `uv.lock`）
+- 迁移：Alembic（封装在 `backend.migrations.cli`）
+- 测试：pytest + pytest-asyncio，文件位于 `tests/test_*.py`
 
-## Commands
+## 关键文件
 
-| Command | Purpose |
-|---|---|
-| `uvicorn backend.main:app --reload --port 8000` | 开发服务器，监听 `localhost:8000` |
-| `uvicorn backend.main:app --host 0.0.0.0 --port 8000` | 生产服务器 |
-| `python -m backend.migrations upgrade` | 升级数据库到 head |
-| `python -m backend.migrations downgrade -1` | 回退一个版本 |
-| `python -m backend.migrations revision -m "msg" --autogenerate` | 自动生成迁移 |
-| `python -m backend.migrations current` | 查看当前数据库版本 |
-| `python -m backend.migrations history` | 查看迁移历史 |
-| `python -m backend.migrations status` | 数据库状态 + 版本对比 |
-| `python -m backend.migrations init` | 初始化所有表并标记到 head |
-| `python -m backend.migrations reset --force` | 清空并重建数据库（危险） |
-| `python -m backend.scripts.mock_data` | 生成测试数据 |
+| 内容 | 路径 |
+|------|------|
+| 应用入口 / 中间件 / 路由装配 / 异常处理器 | `backend/main.py` |
+| Settings（环境变量，lru_cache 单例） | `backend/core/config.py` |
+| 引擎 & 会话 & `init_db` / `check_db_connection` / `close_db` | `backend/core/database.py` |
+| JWT 签发、hash、依赖别名 `CurrentUser / CurrentStaff / DB` | `backend/core/auth.py` |
+| 双后端缓存（Redis/Memory）与 `cached` 装饰器 | `backend/core/cache.py` |
+| `AppException` + 错误码常量（`POST_NOT_FOUND` 等） | `backend/core/exceptions.py` |
+| OOBE 完成判定、通用依赖（分页等） | `backend/core/deps.py` |
+| 通用 CRUD 基类 | `backend/core/crud.py` |
+| SiteConfig（音乐/壁纸等运行时配置） | `backend/core/site_config.py` |
+| i18n 中间件：parse_accept_language + contextvars | `backend/core/i18n.py` |
+| Base Model 导出 | `backend/models/__init__.py` |
+| 用户/角色模型 | `backend/models/user.py` |
+| 文章/分类/标签/评论/系列 模型 | `backend/models/blog.py` |
+| 其余：log / voting / message / gallery / hero / monitoring / activity / guestbook / post_series / comment_reaction / revision | `backend/models/*.py` |
+| Pydantic 模型 barrel 导出 | `backend/schemas/__init__.py` |
+| 数据访问层（Repository） | `backend/repositories/base.py` / `post.py` / `user.py` |
+| 业务逻辑层：Post/User/Email/Cache/Recommendation | `backend/services/*.py` |
+| 所有路由模块 | `backend/api/*.py` |
+| 迁移版本目录 | `backend/migrations/versions/` |
+| 前端可复用的 TS 类型定义 | `backend/docs/types.ts` |
+| 错误码说明 | `backend/docs/error_codes.md` |
 
-从**项目根目录**运行所有命令（而非 `backend/` 目录内）。Python 3.11+ 必需。
-
-开发模式下访问 `http://localhost:8000/docs` 查看 Swagger，`/redoc` 查看 ReDoc，`/health` 健康检查，`/` 返回 API 元信息。
-
-## Architecture
-
-### 分层架构
-
-```
-API (backend/api/)        → 路由、请求校验、依赖注入
-  ↓
-Service (backend/services/) → 业务逻辑、跨模型编排
-  ↓
-Repository (backend/repositories/) → 数据访问、查询封装
-  ↓
-Model (backend/models/)    → SQLAlchemy ORM
-  ↓
-Schema (backend/schemas/)  → Pydantic 请求/响应模型
-```
-
-### 应用入口
-
-`backend/main.py` 的 `create_application()` 工厂函数组装：
-- 中间件链：CORS → Maintenance → i18n（按 Accept-Language 切换语言）→ Request Logging → Performance
-- 异常处理器：`StarletteHTTPException` / `RequestValidationError` / `AppException` / 兜底 `Exception`
-- 路由注册：所有 `APIRouter` 通过 `include_router(prefix="/api/...")` 挂载
-- 静态文件：`/media` 挂载到本地 `media/` 目录
-- 生命周期：`lifespan` 检查 OOBE 状态 → 初始化 DB → 关闭时清理连接池与缓存
-
-### 认证体系
-
-- **JWT** 双令牌：access token（1 小时）+ refresh token（7 天），`HS256` 算法
-- **密码哈希**：bcrypt，超 72 字节先 SHA-256 预处理
-- **依赖注入别名**（`backend/core/auth.py`）：
-  - `CurrentUser` — 必须登录
-  - `CurrentUserOptional` — 可选登录
-  - `CurrentStaff` — 必须管理员
-  - `DB` — 异步数据库会话
-- 使用方式：`async def handler(user: CurrentUser, db: DB)`
-
-### 数据库与缓存
-
-- **SQLAlchemy 2.0 async**，`DeclarativeBase` + `Mapped[T]` + `mapped_column()`
-- 开发环境 SQLite + `NullPool`；生产环境 PostgreSQL + `AsyncAdaptedQueuePool`（含 `pool_pre_ping`、`pool_recycle`）
-- **缓存层**（`backend/core/cache.py`）双后端：Redis（生产）/ Memory（开发），通过 `settings.redis_enabled` 切换
-- `CACHE_TTL` 字典定义各业务键的 TTL（site_config=3600s、post_detail=600s 等），`make_cache_key()` 生成命名空间键
-- `get_or_set_with_null()` 支持空值缓存防穿透，`cached()` 装饰器简化缓存模式
-
-### 国际化
-
-- `backend/core/i18n.py` 支持 `zh`、`en`、`ja`、`zh_Hant` 四种语言
-- `I18nContext` 基于 `contextvars` 在请求中间件中设置语言
-- 模型字段使用 `dict[str, str]` 存储多语言（如 `{"zh": "技术", "en": "Technology"}`）
-- `get_i18n_value(data, lang)` 按 lang 取值，`LocalizedResponse.from_model()` 转换本地化响应
-
-### 关键模块
-
-- `backend/core/config.py` — `Settings` 类（Pydantic Settings），从 `.env` 加载，`lru_cache` 单例
-- `backend/core/site_config.py` — `SiteConfig` 模型与配置管理（含 music/wallpaper 字段）
-- `backend/core/maintenance.py` — 维护模式中间件，拒绝写入请求
-- `backend/core/rate_limit.py` — 速率限制
-- `backend/core/distributed_lock.py` — 分布式锁（Redis）
-- `backend/middleware/performance.py` — 采样记录请求耗时到 `PerformanceMetric` 表
-- `backend/api/oobe.py` — 开箱引导流程，写入 `.oobe_complete` 锁文件与 `rosetta.json`
-
-### API 路由总览
-
-所有路由统一前缀 `/api`，按模块分组：
-
-| 模块 | 前缀 | 说明 |
-|---|---|---|
-| users | `/api/users` | 注册、登录、刷新令牌、个人资料 |
-| blog | `/api/blog` | 文章、分类、标签、评论 |
-| core | `/api` | 站点配置、导航、友链、页面、搜索占位符 |
-| media | `/api/media` | 图片/文件上传 |
-| admin | `/api/admin` | 后台管理、用户称号、性能监控、导入导出 |
-| bing | `/api` | Bing 每日壁纸 |
-| oobe | `/api` | 引导流程 |
-| monitoring | `/api/monitoring` | 访问日志、统计 |
-| 其他 | `/api/{name}` | guestbook、voting、notification、favorite、webhook、seo、toc、captcha、messages、translate、announcement、activity、hero、post_series、post_encryption、scheduled_posts、comment_reactions、ranking、performance |
-
-### OOBE 流程
-
-首次启动时无 `.oobe_complete` 锁文件，`lifespan` 跳过 DB 初始化，前端 `/api/config` 返回内置默认配置。完成引导后写入 `rosetta.json` 与 `.oobe_complete`，重启后正常加载。
-
-### 关键目录
-
-- `backend/migrations/versions/` — Alembic 迁移文件，命名 `hash_描述.py`
-- `backend/docs/` — `api_reference.md`、`error_codes.md`、`types.ts`（前端类型定义）
-- `backend/scripts/mock_data.py` — 测试数据生成
-- `backend/utils/compat.py` — Python 3.11 前的 `UTC`、`timedelta` 兼容
-
-## Code Style
-
-- **Python 3.11+**，使用 `str | None` 现代联合类型语法
-- **PEP 8**，4 空格缩进
-- 双引号字符串
-- `async`/`await` 全异步 I/O
-- `Annotated[T, Depends(...)]` 依赖注入风格
-- `Field(...)` 显式声明 Pydantic 字段约束与描述
-- API 端点必须包含 `summary`、`description`、`response_model`
-- 模块/类/公共函数必须有三引号 docstring
-- 完整类型注解
-- **Conventional Commits**（`feat:`、`fix:`、`chore:`、`docs:`、`refactor:`、`perf:`）
-
-## Environment Configuration
-
-通过 `.env` 文件配置（参考 `.env.example`），关键变量：
-
-- `APP_ENV` — `development` / `staging` / `production`
-- `DEBUG` — 开启 API 文档与详细错误
-- `DATABASE_URL` — `sqlite+aiosqlite:///./rosetta.db` 或 `postgresql+asyncpg://...`
-- `REDIS_ENABLED` / `REDIS_URL` — 缓存后端
-- `SECRET_KEY` — JWT 签名密钥（生产必改，≥32 字符）
-- `ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS`
-- `CORS_ORIGINS` — JSON 数组格式的允许来源
-- `SITE_NAME` / `SITE_URL` / `SITE_EMAIL`
-- `MAX_UPLOAD_SIZE` / `ALLOWED_EXTENSIONS`
-
-生产环境：`DEBUG=false`、PostgreSQL、Redis、强 `SECRET_KEY`、显式 `CORS_ORIGINS`、`TrustedHostMiddleware` 生效。
-
-## Database Migration
-
-修改 `backend/models/` 下的模型后：
+## 命令（从项目根目录执行）
 
 ```bash
-python -m backend.migrations revision -m "描述变更" --autogenerate
-# 检查 versions/ 下新生成的文件
-python -m backend.migrations upgrade
-python -m backend.migrations status
+# 依赖
+uv sync                                       # 根据 uv.lock 创建/同步 .venv
+uv sync --frozen --no-dev                     # 生产部署（只装运行时依赖）
+
+# 启动
+uv run uvicorn backend.main:app --reload --port 8000      # 开发
+uv run uvicorn backend.main:app --host 0.0.0.0 --port 8000   # 生产
+
+# 迁移
+uv run python -m backend.migrations upgrade                # 升级到 head
+uv run python -m backend.migrations downgrade -1           # 回退一版
+uv run python -m backend.migrations revision -m "msg" --autogenerate
+uv run python -m backend.migrations init                   # 首次初始化（全部建表 + 标记 head）
+uv run python -m backend.migrations reset --force          # 清空重建（危险）
+uv run python -m backend.migrations status                 # 版本校验
+
+# 脚本
+uv run python -m backend.scripts.mock_data                 # 写入示例数据
+
+# 校验（提交前必跑）
+uv run python -c "from backend.main import app"
+uv run python -m backend.migrations status
 ```
 
-迁移文件使用 alembic hash 前缀 + 中文描述命名（如 `b7f2a9d3c4e1_add_activities_table.py`）。`cli.py` 的 `_clear_pycache()` 会在每次命令前清理 `__pycache__` 确保使用最新代码。
+## 路由前缀总览
 
-## Caching Patterns
+在 `main.py` 的 `create_application()` 中注册：
+
+| Router | 前缀 |
+|--------|------|
+| users | `/api/users` |
+| blog | `/api/blog` |
+| core | `/api` |
+| media | `/api/media` |
+| admin | `/api/admin`（含 stats / performance / admin_logs / migration / import_export / title） |
+| monitoring | `/api/monitoring` |
+| gallery（公开） | `/api` |
+| gallery（管理） | `/api` |
+| 其余：guestbook / voting / notifications / favorites / webhook / seo / advanced / toc / captcha / messages / translate / oobe / announcement / activity / hero / post_series / post_encryption / post_crypto / scheduled_posts / comment_reactions / ranking / settings_groups / bing / comments / avatar_proxy | `/api` 或各自前缀 |
+
+静态媒体挂载：`/media → media/`（应用内创建）。
+
+## 中间件顺序（main.py）
+
+1. `CORSMiddleware`
+2. `SecurityHeadersMiddleware`
+3. `MaintenanceMiddleware`
+4. 生产环境加 `TrustedHostMiddleware`
+5. i18n context（`Accept-Language` → `I18nContext`）
+6. OOBE 状态守卫（未完成时 503）
+7. Request 日志 + `record_visit`
+8. 性能采样 `performance_middleware`
+
+## 响应结构与常见错误码
+
+成功：`{ success: true, data: T?, message?: str }`
+
+失败：`{ success: false, error_code: str|int, message: str, errors?: [{field, message, type}] }`
+
+常用错误码（见 `backend/core/exceptions.py`）：
+- `UNAUTHORIZED` 401 — 未登录或 token 失效
+- `FORBIDDEN` 403 — 无权限
+- `NOT_FOUND` 404
+- `VALIDATION_ERROR` 422 — 表单字段校验失败，附带 `errors` 数组
+- `OOBE_REQUIRED` 503 — 未完成安装
+- `RATE_LIMITED` 429
+- `MAINTENANCE_MODE` 503
+
+## 编码模板
+
+端点写法：
 
 ```python
-# 简单缓存
-await cache.set(key, value, ttl=300)
-cached = await cache.get(key)
+from fastapi import APIRouter, Depends
+from backend.core.auth import CurrentUser, DB
 
-# 装饰器缓存
-@cache.cached("posts", ttl=600, key_builder=lambda slug: f"posts:{slug}")
-async def get_post(slug: str): ...
+router = APIRouter()
 
-# 防穿透
-result = await get_or_set_with_null(
-    key,
-    fetch_func=lambda: db.execute(...),
-    ttl=300,
-    null_ttl=60,
+@router.get(
+    "/ping",
+    summary="健康测试",
+    description="返回 pong，用于心跳。",
+    response_model=dict[str, str],
 )
-
-# 失效
-await invalidate_cache("posts:*")
+async def ping(user: CurrentUser, db: DB) -> dict[str, str]:
+    return {"message": "pong"}
 ```
 
-## Frontend Integration
+异常：
 
-前端 Astro 项目通过 `frontend/astro.config.mjs` 的 Vite 代理将 `/api/*` 转发到 `http://localhost:8000`（可通过 `API_BASE_URL` 环境变量覆盖）。前端 `src/api/client.ts` 使用 `ROSETTA_API_BASE` 环境变量或默认 `http://localhost:8000/api`。动态配置通过 `/api/config` 端点加载，含音乐播放器、壁纸、Bing 壁纸等设置。
+```python
+from backend.core.exceptions import AppException, POST_NOT_FOUND
+
+raise AppException(status_code=404, error_code=POST_NOT_FOUND, message="文章不存在")
+```
+
+## 典型坑
+
+- OOBE 未完成时 `lifespan` 跳过 DB 初始化；不要对数据库相关接口抓不到表就以为迁移挂了。
+- SQLite + 异步连接下默认池为 `NullPool`，不要假设会话间共享状态；生产 PostgreSQL 使用 `AsyncAdaptedQueuePool` + `pool_pre_ping`。
+- Alembic autogenerate 对 JSON 字段、部分 index 重命名、枚举变更不严谨；每次生成后必须打开迁移文件人工核对。
+- 缓存层对 `None` 也会缓存（防穿透）。当数据源返回值语义变更时，记得显式 `invalidate_cache("pattern:*")`。
+- JWT access token 1h、refresh token 7d（`ACCESS_TOKEN_EXPIRE_MINUTES` / `REFRESH_TOKEN_EXPIRE_DAYS` 可配置）。
+- 密码长度超过 72 字节时先 SHA-256 再 bcrypt，避免被截断。

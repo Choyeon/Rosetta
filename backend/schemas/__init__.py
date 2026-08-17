@@ -758,7 +758,7 @@ class PostEditResponse(BaseModel):
     cover_image: str | None = None
     status: str
     visibility: str
-    password: str | None = None
+    has_password: bool = False
     published_at: datetime | None = None
     category: dict[str, Any] | None = None
     tags: list[dict[str, Any]] = []
@@ -796,7 +796,7 @@ class PostEditResponse(BaseModel):
             cover_image=post.cover_image,
             status=post.status or "draft",
             visibility=post.visibility or "public",
-            password=post.password,
+            has_password=bool(post.password),
             published_at=post.published_at,
             category=category,
             tags=tags,
@@ -1103,7 +1103,7 @@ class CommentPagedResponse(BaseModel):
 class CommentBatchAction(BaseModel):
     """管理员批量评论操作"""
 
-    ids: list[int] = Field(..., min_length=1, max_length=500)
+    ids: list[int] = Field(..., min_length=1, max_length=100)
     action: str = Field(..., pattern="^(approve|reject|spam|delete)$")
 
 

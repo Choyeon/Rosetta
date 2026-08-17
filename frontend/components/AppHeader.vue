@@ -99,8 +99,12 @@ const handleAdmin = () => navigateTo('/admin')
             {{ t('auth.login') || '登录' }}
           </Button>
           <Button variant="default" size="sm" @click="handleRegister">
+<<<<<<< Updated upstream
             <Rocket class="mr-2 h-4 w-4" />
             {{ t('auth.startCreate') || '开始创作' }}
+=======
+            {{ t('auth.register') || '注册' }}
+>>>>>>> Stashed changes
           </Button>
         </div>
 
@@ -138,7 +142,11 @@ const handleAdmin = () => navigateTo('/admin')
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
+<<<<<<< Updated upstream
             <DropdownMenuItem class="text-red-600 dark:text-red-400" @click="handleLogout">
+=======
+            <DropdownMenuItem class="text-error" @click="handleLogout">
+>>>>>>> Stashed changes
               <LogOut class="mr-2 h-4 w-4" />
               <span>{{ t('auth.logout') || '退出登录' }}</span>
             </DropdownMenuItem>
@@ -192,7 +200,11 @@ const handleAdmin = () => navigateTo('/admin')
                       {{ t('common.dashboard') || 'Dashboard' }}
                     </Button>
                   </SheetClose>
+<<<<<<< Updated upstream
                   <Button variant="ghost" size="sm" class="justify-start text-red-600 dark:text-red-400" @click="handleLogout">
+=======
+                  <Button variant="ghost" size="sm" class="justify-start text-error" @click="handleLogout">
+>>>>>>> Stashed changes
                     <LogOut class="mr-2 h-4 w-4" />
                     {{ t('auth.logout') || '退出登录' }}
                   </Button>
@@ -204,18 +216,29 @@ const handleAdmin = () => navigateTo('/admin')
                     {{ t('auth.login') || '登录' }}
                   </Button>
                   <Button variant="default" class="w-full" @click="handleRegister">
+<<<<<<< Updated upstream
                     <Rocket class="mr-2 h-4 w-4" />
                     {{ t('auth.startCreate') || '开始创作' }}
+=======
+                    {{ t('auth.register') || '注册' }}
+>>>>>>> Stashed changes
                   </Button>
                 </div>
               </template>
             </div>
             <Separator class="mb-4" />
+<<<<<<< Updated upstream
             <div class="flex items-center justify-between">
               <LocaleSwitcher />
               <ThemeToggle />
             </div>
           </SheetContent>
+=======
+            <div class="flex items-center justify-end gap-1 ml-auto">
+              <LocaleSwitcher />
+              <ThemeToggle />
+            </div></SheetContent>
+>>>>>>> Stashed changes
         </Sheet>
       </div>
     </div>

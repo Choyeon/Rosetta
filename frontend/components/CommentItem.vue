@@ -25,7 +25,11 @@
         <Button variant="ghost" size="sm" class="h-7 px-2" @click="handleLike">
           <svg
             class="size-3.5 mr-1"
+<<<<<<< Updated upstream
             :class="{ 'fill-rose-500 text-rose-500': isLiked }"
+=======
+            :class="{ 'fill-error text-error': isLiked }"
+>>>>>>> Stashed changes
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -82,8 +86,15 @@ const isLiked = ref(false)
 
 const formatRelativeTime = (date: string) => {
   try {
+<<<<<<< Updated upstream
     const now = new Date()
     const then = new Date(date)
+=======
+    if (!date) return ''
+    const now = new Date()
+    const then = new Date(date)
+    if (isNaN(then.getTime())) return ''
+>>>>>>> Stashed changes
     const diffMs = now.getTime() - then.getTime()
     const diffSecs = Math.floor(diffMs / 1000)
     const diffMins = Math.floor(diffSecs / 60)
@@ -101,7 +112,11 @@ const formatRelativeTime = (date: string) => {
       day: 'numeric'
     })
   } catch {
+<<<<<<< Updated upstream
     return date
+=======
+    return ''
+>>>>>>> Stashed changes
   }
 }
 

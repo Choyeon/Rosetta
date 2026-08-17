@@ -77,7 +77,7 @@ async def export_posts(
             "views": post.views,
             "is_pinned": post.is_pinned,
             "allow_comments": post.allow_comments,
-            "password": post.password,
+            "has_password": bool(post.password),
             "category": {"id": post.category.id, "slug": post.category.slug}
             if post.category
             else None,
@@ -386,7 +386,7 @@ async def import_posts(
                 views=post_data.get("views", 0),
                 is_pinned=post_data.get("is_pinned", False),
                 allow_comments=post_data.get("allow_comments", True),
-                password=post_data.get("password"),
+                password=None,  # 不信任备份中的密码 hash，新文章不写入
                 author_id=current_user.id,
                 category_id=category.id if category else None,
             )
@@ -673,7 +673,7 @@ async def backup_full(
             "tag_slugs": [t.slug for t in p.tags],
             "status": p.status,
             "visibility": p.visibility,
-            "password": p.password,
+            "has_password": bool(p.password),
             "views": p.views,
             "is_pinned": p.is_pinned,
             "allow_comments": p.allow_comments,
@@ -1303,7 +1303,7 @@ async def backup_restore(
                     existing_post.cover_image = item.get("cover_image", existing_post.cover_image)
                     existing_post.status = item.get("status", existing_post.status)
                     existing_post.visibility = item.get("visibility", existing_post.visibility)
-                    existing_post.password = item.get("password", existing_post.password)
+                    # 不信任备份中的 password hash：已存在文章保留库中原值
                     existing_post.views = item.get("views", existing_post.views)
                     existing_post.is_pinned = item.get("is_pinned", existing_post.is_pinned)
                     existing_post.allow_comments = item.get(
@@ -1373,7 +1373,7 @@ async def backup_restore(
                 category_id=category.id if category else None,
                 status=item.get("status", "draft"),
                 visibility=item.get("visibility", "public"),
-                password=item.get("password"),
+                password=None,  # 不信任备份中的密码 hash，新文章不写入
                 views=item.get("views", 0),
                 is_pinned=item.get("is_pinned", False),
                 allow_comments=item.get("allow_comments", True),

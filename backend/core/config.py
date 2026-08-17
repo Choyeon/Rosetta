@@ -17,7 +17,7 @@ Example:
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, field_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -323,22 +323,32 @@ class Settings(BaseSettings):
         description="Sentry DSN，用于错误监控",
     )
 
-    @field_validator("secret_key")
-    @classmethod
-    def validate_secret_key(cls, v: str) -> str:
+    @model_validator(mode="after")
+    def validate_secret_key(self) -> "Settings":
         """
         验证密钥安全性
 
-        在生产环境中，密钥必须是强密钥。
+        开发/staging 环境仅告警；生产环境下使用默认值或长度不足 32 时拒绝启动。
         """
-        if len(v) < 32:
+        default_secret = "your-secret-key-change-in-production"
+        if self.environment == "production":
+            if self.secret_key == default_secret:
+                raise ValueError(
+                    "生产环境禁止使用默认 SECRET_KEY：请设置 SECRET_KEY 环境变量为"
+                    "至少 32 字符的随机字符串（例如 openssl rand -hex 32 生成）"
+                )
+            if len(self.secret_key) < 32:
+                raise ValueError(
+                    "SECRET_KEY 长度不足 32 字符：请通过 SECRET_KEY 环境变量设置强密钥"
+                )
+        elif len(self.secret_key) < 32:
             import warnings
 
             warnings.warn(
                 "Secret key is too short. Use a strong key with at least 32 characters.",
                 UserWarning,
             )
-        return v
+        return self
 
     @property
     def is_production(self) -> bool:

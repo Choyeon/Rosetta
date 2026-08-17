@@ -306,27 +306,31 @@ async def get_admin_stats(
     system_health = await _get_system_health(db)
 
     return {
-        "timeseries": {
-            "labels": labels,
-            "datasets": [
-                {"key": "pv", "values": pv_series},
-                {"key": "uv", "values": uv_series},
-                {"key": "comments", "values": comments_series},
-                {"key": "posts", "values": posts_series},
-                {"key": "users", "values": users_series},
-            ],
+        "success": True,
+        "data": {
+            "timeseries": {
+                "labels": labels,
+                "datasets": [
+                    {"key": "pv", "values": pv_series},
+                    {"key": "uv", "values": uv_series},
+                    {"key": "comments", "values": comments_series},
+                    {"key": "posts", "values": posts_series},
+                    {"key": "users", "values": users_series},
+                ],
+            },
+            "top_articles": top_articles,
+            "active_commenters": active_commenters,
+            "system_health": system_health,
+            "summary": {
+                "total_posts": int(total_posts or 0),
+                "total_drafts": int(total_drafts or 0),
+                "total_published": int(total_published or 0),
+                "total_comments": int(total_comments or 0),
+                "total_pending_comments": int(total_pending or 0),
+                "total_users": int(total_users or 0),
+                "total_views_today": int(total_views_today or 0),
+                "total_comments_today": int(total_comments_today or 0),
+            },
         },
-        "top_articles": top_articles,
-        "active_commenters": active_commenters,
-        "system_health": system_health,
-        "summary": {
-            "total_posts": int(total_posts or 0),
-            "total_drafts": int(total_drafts or 0),
-            "total_published": int(total_published or 0),
-            "total_comments": int(total_comments or 0),
-            "total_pending_comments": int(total_pending or 0),
-            "total_users": int(total_users or 0),
-            "total_views_today": int(total_views_today or 0),
-            "total_comments_today": int(total_comments_today or 0),
-        },
+        "message": "获取仪表盘统计成功",
     }

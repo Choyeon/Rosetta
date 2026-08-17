@@ -5,8 +5,13 @@
 
       <Breadcrumb>
         <BreadcrumbList>
+<<<<<<< Updated upstream
           <BreadcrumbItem v-for="(item, index) in breadcrumbItems" :key="index">
             <template v-if="index === breadcrumbItems.length - 1">
+=======
+          <BreadcrumbItem v-for="(item, index) in (breadcrumbItems ?? [])" :key="index">
+            <template v-if="index === (breadcrumbItems ?? []).length - 1">
+>>>>>>> Stashed changes
               <BreadcrumbPage>{{ item.label }}</BreadcrumbPage>
             </template>
             <template v-else>
@@ -34,12 +39,20 @@
         <span class="absolute top-2 right-2 size-2 bg-destructive rounded-full ring-2 ring-background" />
       </Button>
 
+<<<<<<< Updated upstream
+=======
+      <ThemePaletteSwitcher />
+>>>>>>> Stashed changes
       <ThemeToggle />
 
       <DropdownMenu>
         <DropdownMenuTrigger as-child>
           <Button variant="ghost" size="icon" class="relative rounded-full">
             <Avatar size="sm">
+<<<<<<< Updated upstream
+=======
+              <AvatarImage v-if="authStore.user?.avatar" :src="authStore.user.avatar" :alt="authStore.user?.name ?? authStore.user?.username ?? 'avatar'" />
+>>>>>>> Stashed changes
               <AvatarFallback>{{ authStore.user?.name?.[0] ?? authStore.user?.username?.[0] ?? 'A' }}</AvatarFallback>
             </Avatar>
           </Button>
@@ -57,9 +70,15 @@
           </DropdownMenuLabel>
           <DropdownMenuSeparator />
           <DropdownMenuGroup>
+<<<<<<< Updated upstream
             <DropdownMenuItem>
               <User class="mr-2 size-4" />
               <span>个人资料</span>
+=======
+            <DropdownMenuItem @select.prevent="avatarDialogOpen = true">
+              <User class="mr-2 size-4" />
+              <span>个人资料 / 更换头像</span>
+>>>>>>> Stashed changes
             </DropdownMenuItem>
             <DropdownMenuItem>
               <Settings2 class="mr-2 size-4" />
@@ -74,10 +93,19 @@
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+<<<<<<< Updated upstream
+=======
+
+    <AdminAvatarCropper v-model="avatarDialogOpen" />
+>>>>>>> Stashed changes
   </header>
 </template>
 
 <script setup lang="ts">
+<<<<<<< Updated upstream
+=======
+import { ref } from 'vue'
+>>>>>>> Stashed changes
 import { Button } from '~~/components/ui/button'
 import {
   SidebarTrigger
@@ -100,7 +128,11 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '~~/components/ui/dropdown-menu'
+<<<<<<< Updated upstream
 import { Avatar, AvatarFallback } from '~~/components/ui/avatar'
+=======
+import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+>>>>>>> Stashed changes
 import {
   Search,
   Bell,
@@ -109,6 +141,11 @@ import {
   LogOut
 } from '@lucide/vue'
 import ThemeToggle from './ThemeToggle.vue'
+<<<<<<< Updated upstream
+=======
+import ThemePaletteSwitcher from './ThemePaletteSwitcher.vue'
+import AdminAvatarCropper from './AdminAvatarCropper.vue'
+>>>>>>> Stashed changes
 import { useAuthStore } from '~~/stores/auth'
 
 interface BreadcrumbItem {
@@ -121,6 +158,10 @@ defineProps<{
 }>()
 
 const authStore = useAuthStore()
+<<<<<<< Updated upstream
+=======
+const avatarDialogOpen = ref(false)
+>>>>>>> Stashed changes
 
 const handleLogout = async () => {
   await authStore.logout()

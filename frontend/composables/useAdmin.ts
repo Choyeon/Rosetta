@@ -14,6 +14,10 @@ import type {
   MockDataConfig,
   UnusedImage,
   BackupInfo,
+<<<<<<< Updated upstream
+=======
+  BackupItem,
+>>>>>>> Stashed changes
   RestoreRequest,
   BaseResponse
 } from '~~/types/api'

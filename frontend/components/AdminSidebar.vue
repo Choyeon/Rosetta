@@ -15,13 +15,30 @@
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="/admin" :active="$route.path === '/admin'">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="/admin"
+                :active="$route.path === '/admin'"
+              >
+>>>>>>> Stashed changes
                 <LayoutDashboard class="size-4" />
                 <span>仪表盘</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="#">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="#"
+              >
+>>>>>>> Stashed changes
                 <LineChart class="size-4" />
                 <span>数据分析</span>
               </SidebarMenuButton>
@@ -42,13 +59,31 @@
               </SidebarMenuButton>
               <SidebarMenuSub>
                 <SidebarMenuSubItem>
+<<<<<<< Updated upstream
                   <SidebarMenuSubButton as="component" :is="'NuxtLink'" to="#">
+=======
+                  <SidebarMenuSubButton
+                    :is="'NuxtLink'"
+                    as="component"
+                    to="/admin/posts"
+                    :active="$route.path === '/admin/posts' || ($route.path.startsWith('/admin/posts/') && !$route.path.startsWith('/admin/posts/new'))"
+                  >
+>>>>>>> Stashed changes
                     <FileEdit class="size-4" />
                     <span>所有文章</span>
                   </SidebarMenuSubButton>
                 </SidebarMenuSubItem>
                 <SidebarMenuSubItem>
+<<<<<<< Updated upstream
                   <SidebarMenuSubButton as="component" :is="'NuxtLink'" to="#">
+=======
+                  <SidebarMenuSubButton
+                    :is="'NuxtLink'"
+                    as="component"
+                    to="/admin/posts/new"
+                    :active="$route.path === '/admin/posts/new'"
+                  >
+>>>>>>> Stashed changes
                     <Plus class="size-4" />
                     <span>新建文章</span>
                   </SidebarMenuSubButton>
@@ -56,19 +91,45 @@
               </SidebarMenuSub>
             </SidebarMenuItem>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="#">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="/admin/categories"
+                :active="$route.path.startsWith('/admin/categories')"
+              >
+>>>>>>> Stashed changes
                 <FolderOpen class="size-4" />
                 <span>分类</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="#">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="#"
+              >
+>>>>>>> Stashed changes
                 <Tags class="size-4" />
                 <span>标签</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="#">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="/admin/comments"
+                :active="$route.path.startsWith('/admin/comments')"
+              >
+>>>>>>> Stashed changes
                 <MessageSquare class="size-4" />
                 <span>评论</span>
               </SidebarMenuButton>
@@ -82,13 +143,31 @@
         <SidebarGroupContent>
           <SidebarMenu>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="#">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="/admin/users"
+                :active="$route.path.startsWith('/admin/users')"
+              >
+>>>>>>> Stashed changes
                 <Users class="size-4" />
                 <span>用户</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
             <SidebarMenuItem>
+<<<<<<< Updated upstream
               <SidebarMenuButton as="component" :is="'NuxtLink'" to="#">
+=======
+              <SidebarMenuButton
+                :is="'NuxtLink'"
+                as="component"
+                to="/admin/settings"
+                :active="$route.path.startsWith('/admin/settings')"
+              >
+>>>>>>> Stashed changes
                 <Settings2 class="size-4" />
                 <span>设置</span>
               </SidebarMenuButton>

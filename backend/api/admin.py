@@ -12,9 +12,10 @@
 
 import math
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -41,6 +42,14 @@ class AdminUserUpdate(BaseModel):
     is_staff: bool | None = None
     is_active: bool | None = None
     is_banned: bool | None = None
+
+
+class CommentAdminUpdate(BaseModel):
+    """管理员更新评论请求体"""
+
+    status: Literal["approved", "pending", "rejected", "spam"] | None = None
+    active: bool | None = None
+    content: str | None = Field(default=None, max_length=5000)
 
 
 class CommentResponse(BaseModel):
@@ -683,7 +692,7 @@ async def admin_list_comments(
 @router.patch("/comments/{comment_id}")
 async def admin_update_comment(
     comment_id: int,
-    data: dict,
+    data: CommentAdminUpdate,
     current_user: CurrentStaff,
     db: DB,
 ):
@@ -714,9 +723,9 @@ async def admin_update_comment(
         )
 
     # --- 1. 应用字段更新（status ↔ active 双向同步） ---
-    new_status = data.get("status")
-    new_active = data.get("active")
-    new_content = data.get("content")
+    new_status = data.status
+    new_active = data.active
+    new_content = data.content
 
     if new_status is not None:
         comment.status = new_status

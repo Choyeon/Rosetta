@@ -189,9 +189,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
         if engine is None:
             engine = create_async_engine(settings.database_url)
-        db_session_factory = async_sessionmaker(
-            engine, class_=AsyncSession if False else None, expire_on_commit=False
-        )
         from sqlalchemy.ext.asyncio import AsyncSession as _AsyncSession
 
         db_session_factory = async_sessionmaker(
@@ -210,8 +207,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
         scheduler_task.cancel()
         try:
             await scheduler_task
-        except (_asyncio.CancelledError, Exception):
+        except _asyncio.CancelledError:
             pass
+        except Exception:
+            logger.exception("[scheduler] 关闭时出现异常")
 
     logger.info(f"正在关闭 {settings.app_name}...")
     await close_db()
@@ -262,9 +261,12 @@ Authorization: Bearer <access_token>
 ```
         """,
         version="1.0.0",
-        docs_url="/docs" if settings.debug else None,
-        redoc_url="/redoc" if settings.debug else None,
-        openapi_url="/openapi.json" if settings.debug else None,
+        # 文档端点开关：
+        # - production 环境：严格依赖 DEBUG=true 才开启（默认关闭，避免接口泄露）
+        # - development/staging 环境：即便 DEBUG=false 也默认开启，便于联调与 OOBE 安装后自查
+        docs_url="/docs" if (settings.debug or settings.environment != "production") else None,
+        redoc_url="/redoc" if (settings.debug or settings.environment != "production") else None,
+        openapi_url="/openapi.json" if (settings.debug or settings.environment != "production") else None,
         lifespan=lifespan,
     )
 
@@ -280,11 +282,25 @@ Authorization: Bearer <access_token>
 
     app.add_middleware(MaintenanceMiddleware)
 
+    # 生产环境受信任主机保护：OOBE 未完成前不限制（站点 URL 尚未写入，默认 localhost 过于狭窄）
     if settings.is_production:
-        app.add_middleware(
-            TrustedHostMiddleware,
-            allowed_hosts=[settings.site_url.replace("https://", "").replace("http://", "")],
-        )
+        from backend.core.deps import is_oobe_complete
+
+        oobe_done = is_oobe_complete()
+        if oobe_done:
+            raw = settings.site_url or ""
+            host = raw.replace("https://", "").replace("http://", "").split("/")[0].split(":")[0]
+            allowed = [host]
+            # 本地调试/回退保护：允许 localhost / 127.0.0.1 访问生产构建
+            if host not in ("localhost", "127.0.0.1"):
+                allowed.extend(["localhost", "127.0.0.1"])
+            app.add_middleware(
+                TrustedHostMiddleware,
+                allowed_hosts=allowed,
+            )
+        else:
+            # OOBE 期间不做 host 限制；安装完成后 .oobe_complete 文件写入，重启后生效
+            logger.info("OOBE incomplete: skipping TrustedHostMiddleware until install completes")
 
     @app.middleware("http")
     async def i18n_middleware(request: Request, call_next):
@@ -460,16 +476,19 @@ Authorization: Bearer <access_token>
         description="检查服务是否正常运行",
     )
     async def health_check():
-        """健康检查端点"""
+        """健康检查端点（数据库不可用时返回 503）"""
         db_connected = await check_db_connection()
 
-        return {
-            "status": "healthy" if db_connected else "unhealthy",
-            "app_name": settings.app_name,
-            "version": "1.0.0",
-            "environment": settings.environment,
-            "database": "connected" if db_connected else "disconnected",
-        }
+        return JSONResponse(
+            status_code=200 if db_connected else 503,
+            content={
+                "status": "healthy" if db_connected else "unhealthy",
+                "app_name": settings.app_name,
+                "version": "1.0.0",
+                "environment": settings.environment,
+                "database": "connected" if db_connected else "disconnected",
+            },
+        )
 
     app.include_router(users.router, prefix="/api/users", tags=["用户"])
     app.include_router(blog.router, prefix="/api/blog", tags=["博客"])

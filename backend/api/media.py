@@ -49,6 +49,8 @@ CHUNK_SIZE = 64 * 1024
 UPLOAD_MAGIC_MISMATCH = "UPLOAD_MAGIC_MISMATCH"
 UPLOAD_PATH_TRAVERSAL = "UPLOAD_PATH_TRAVERSAL"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+# 单文件上传上限 10MB（upload_image / upload_image_stream 使用）
+MAX_FILE_SIZE = 10 * 1024 * 1024
 
 MAGIC_SIGNATURES: dict[str, tuple[tuple[bytes, ...], ...]] = {
     ".jpg": ((b"\xff\xd8\xff",),),
@@ -668,10 +670,14 @@ async def get_media_stats(
         }
 
     return {
-        "total_count": total_count or 0,
-        "total_size": total_size or 0,
-        "total_size_formatted": format_file_size(total_size or 0),
-        "type_stats": type_statistics,
+        "success": True,
+        "data": {
+            "total_count": total_count or 0,
+            "total_size": total_size or 0,
+            "total_size_formatted": format_file_size(total_size or 0),
+            "type_stats": type_statistics,
+        },
+        "message": "获取媒体库统计成功",
     }
 
 
@@ -940,6 +946,23 @@ async def batch_delete_media(
 # ==================== 图片文件访问 API ====================
 
 
+def _resolve_category_filepath(category: str, filename: str) -> Path:
+    """净化文件名并校验最终路径位于 MEDIA_DIR/category 之内，防止路径穿越。"""
+    safe_name = _sanitize_filename(filename)
+    target_dir_resolved = (MEDIA_DIR / category).resolve()
+    final_path = (target_dir_resolved / safe_name).resolve()
+    if not final_path.is_relative_to(target_dir_resolved):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "message": "非法文件路径",
+                "error_code": UPLOAD_PATH_TRAVERSAL,
+            },
+        )
+    return final_path
+
+
 @router.get("/{category}/{filename}", summary="获取图片")
 async def get_image(category: str, filename: str):
     """获取图片文件"""
@@ -947,7 +970,7 @@ async def get_image(category: str, filename: str):
     if category not in valid_categories:
         raise HTTPException(status_code=404, detail="图片不存在")
 
-    filepath = MEDIA_DIR / category / filename
+    filepath = _resolve_category_filepath(category, filename)
     if not await async_file_exists(filepath):
         raise HTTPException(status_code=404, detail="图片不存在")
 
@@ -975,7 +998,7 @@ async def delete_image(
     if category not in valid_categories:
         raise HTTPException(status_code=404, detail="图片不存在")
 
-    filepath = MEDIA_DIR / category / filename
+    filepath = _resolve_category_filepath(category, filename)
     if not await async_file_exists(filepath):
         raise HTTPException(status_code=404, detail="图片不存在")
 

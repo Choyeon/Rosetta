@@ -2,8 +2,8 @@
 系统环境检测服务
 
 提供全面的系统环境检测功能：
-- 操作系统信息
-- 硬件资源检测
+- 操作系统信息（正确识别 Windows 11 等）
+- 硬件资源检测（CPU 型号、内存、磁盘）
 - 端口检测
 - 权限检测
 - 自动修复建议
@@ -48,9 +48,83 @@ class SystemInfo:
     release: str
     version: str
     machine: str
+    processor: str  # CPU 品牌/型号名称
     python_version: str
     hostname: str
     resources: SystemResource
+
+
+def _get_windows_version_display() -> str:
+    """正确识别 Windows 版本（区分 Win10/Win11 通过 build 号）"""
+    ver = platform.version()
+    try:
+        parts = ver.split(".")
+        if len(parts) >= 3:
+            build = int(parts[2])
+            if build >= 22000:
+                return "11"
+    except (ValueError, IndexError):
+        pass
+    return platform.release()
+
+
+def _get_processor_name() -> str:
+    """获取 CPU 品牌/型号名称"""
+    system = platform.system()
+    try:
+        if system == "Windows":
+            import winreg  # type: ignore
+
+            key_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
+            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
+                name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+                return str(name).strip()
+        elif system == "Darwin":
+            r = subprocess.run(
+                ["sysctl", "-n", "machdep.cpu.brand_string"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if r.returncode == 0 and r.stdout.strip():
+                return r.stdout.strip()
+        elif system == "Linux":
+            from pathlib import Path
+
+            cpuinfo = Path("/proc/cpuinfo")
+            if cpuinfo.exists():
+                for line in cpuinfo.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("model name"):
+                        return line.split(":", 1)[1].strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return platform.machine()
+
+
+def _get_os_display_name() -> str:
+    """获取友好的操作系统名称"""
+    system = platform.system()
+    if system == "Windows":
+        return f"Windows {_get_windows_version_display()}"
+    elif system == "Darwin":
+        mac_ver = platform.mac_ver()[0]
+        if mac_ver:
+            return f"macOS {mac_ver}"
+        return f"macOS {platform.release()}"
+    elif system == "Linux":
+        try:
+            from pathlib import Path
+
+            os_release = Path("/etc/os-release")
+            if os_release.exists():
+                for line in os_release.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("PRETTY_NAME="):
+                        return line.split("=", 1)[1].strip('"')
+        except Exception:  # noqa: BLE001
+            pass
+        return f"Linux {platform.release()}"
+    else:
+        return f"{system} {platform.release()}"
 
 
 class SystemService:
@@ -65,10 +139,11 @@ class SystemService:
         """获取系统信息"""
         return SystemInfo(
             platform=platform.system(),
-            system=platform.system(),
+            system=_get_os_display_name(),
             release=platform.release(),
             version=platform.version(),
             machine=platform.machine(),
+            processor=_get_processor_name(),
             python_version=platform.python_version(),
             hostname=socket.gethostname(),
             resources=self.get_system_resources(),
@@ -77,7 +152,7 @@ class SystemService:
     def get_system_resources(self) -> SystemResource:
         """获取系统资源信息"""
         try:
-            import psutil
+            import psutil  # type: ignore
 
             cpu_count = psutil.cpu_count() or 1
             cpu_percent = psutil.cpu_percent(interval=0.1)

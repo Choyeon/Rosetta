@@ -16,7 +16,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, Query, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, status
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
@@ -288,7 +288,7 @@ async def list_posts(
     request: Request,
     db: DB,
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(12, ge=1, le=1000, description="每页数量"),
+    page_size: int = Query(12, ge=1, le=100, description="每页数量"),
     category: str | None = Query(None, description="分类 slug"),
     tag: str | None = Query(None, description="标签 slug"),
     search: str | None = Query(None, description="搜索关键词"),
@@ -562,7 +562,14 @@ async def get_post(
     request: Request,
     db: DB,
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
-    password: str | None = Query(None, description="文章访问密码"),
+    x_post_password: str | None = Header(
+        None, alias="X-Post-Password", description="文章访问密码（推荐通过 Header 传输）"
+    ),
+    password: str | None = Query(
+        None,
+        description="文章访问密码（兼容旧参数，建议改用 X-Post-Password Header）",
+        deprecated=True,
+    ),
     current_user: CurrentUserOptional = None,
 ):
     """获取文章详情，支持多语言和缓存
@@ -645,11 +652,12 @@ async def get_post(
             current_user.id == post.author_id or current_user.is_staff or current_user.is_superuser
         ):
             can_access_content = True
-        elif password:
-            # 验证密码（argon2id + bcrypt 双识别，平滑升级）
+        elif x_post_password or password:
+            # 验证密码（argon2id + bcrypt 双识别，平滑升级）；Header 优先，Query 兼容
             from backend.core.auth import verify_password as verify_post_password
 
-            can_access_content = verify_post_password(password, post.password)
+            provided_password = x_post_password or password
+            can_access_content = verify_post_password(provided_password, post.password)
         else:
             can_access_content = False
 
@@ -2095,10 +2103,10 @@ async def get_post_by_id(
 
 
 @router.get(
-    "/posts/{post_id}",
+    "/posts/{post_id}/edit",
     response_model=PostEditResponse,
     summary="获取文章用于编辑",
-    description="根据文章ID获取完整的多语言内容，用于文章编辑页面。",
+    description="根据文章ID获取完整的多语言内容，用于文章编辑页面。使用 /edit 后缀避免被 GET /posts/{slug} 路由遮蔽。",
 )
 async def get_post_for_edit(
     post_id: int,
@@ -2273,9 +2281,13 @@ async def get_my_stats(
     )
 
     return {
-        "posts": posts_count,
-        "comments": comments_count,
-        "likes": likes_received,
+        "success": True,
+        "data": {
+            "posts": posts_count,
+            "comments": comments_count,
+            "likes": likes_received,
+        },
+        "message": "获取统计成功",
     }
 
 
@@ -2429,7 +2441,7 @@ async def clear_my_history(
     )
     await db.flush()
 
-    return {"message": "阅读历史已清空"}
+    return {"success": True, "data": None, "message": "阅读历史已清空"}
 
 
 @router.get(
