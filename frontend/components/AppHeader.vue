@@ -65,7 +65,12 @@ const handleAdmin = () => navigateTo('/admin')
         to="/"
         class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
       >
-        Rosetta
+        <img
+          src="/logo/rosetta-primary-icon.png"
+          alt="Rosetta"
+          class="h-7 w-auto object-contain"
+        >
+        <span>Rosetta</span>
       </NuxtLink>
 
       <nav class="md:flex hidden items-center gap-1">
@@ -210,7 +215,12 @@ const handleAdmin = () => navigateTo('/admin')
                 to="/"
                 class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
               >
-                Rosetta
+                <img
+                  src="/logo/rosetta-primary-icon.png"
+                  alt="Rosetta"
+                  class="h-7 w-auto object-contain"
+                >
+                <span>Rosetta</span>
               </NuxtLink>
             </SheetHeader>
             <Separator class="mb-4" />

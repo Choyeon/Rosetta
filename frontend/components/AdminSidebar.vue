@@ -2,8 +2,12 @@
   <Sidebar collapsible="icon">
     <SidebarHeader>
       <div class="flex items-center gap-2 font-display text-xl font-bold">
-        <div class="flex items-center justify-center size-8 rounded-md bg-primary text-primary-foreground">
-          <Home class="size-5" />
+        <div class="flex items-center justify-center size-8 rounded-md bg-primary/10 ring-1 ring-primary/20">
+          <img
+            src="/logo/rosetta-primary-icon.png"
+            alt="Rosetta"
+            class="size-6 object-contain"
+          >
         </div>
         <span>Rosetta Admin</span>
       </div>
