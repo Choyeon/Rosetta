@@ -79,7 +79,8 @@ interface HotPost {
   title: string
   views: number
   comments: number
-  trend: number
+  /** 真实接口暂无此字段，改为 null（避免 Math.random 假趋势） */
+  trend: number | null
   slug: string
 }
 const hotPosts = ref<HotPost[]>([])
@@ -131,12 +132,13 @@ async function loadAll() {
     }
 
     // 2) 热门文章：后端 top_articles（按浏览量排序）
-    hotPosts.value = (statsRaw.top_articles || []).map((p, i) => ({
+    hotPosts.value = (statsRaw.top_articles || []).map((p) => ({
       id: p.id,
       title: p.title,
       views: p.views ?? 0,
       comments: p.comments_count ?? 0,
-      trend: i === 0 ? 18 : Math.max(-8, Math.round(Math.random() * 22 - 4)),
+      // 后端未返回真实的"相比上期趋势"字段，保持 null 不伪造
+      trend: null,
       slug: ''
     }))
 
@@ -196,10 +198,15 @@ async function loadAll() {
       }
 
       if (actRes.status === 'fulfilled' && actRes.value?.items?.length) {
+        let fallbackSeq = 0
         for (const a of actRes.value.items.slice(0, 3) as AdminActivity[]) {
           const content: string = (a as any).content ?? (a as any).text ?? (a as any).message ?? '发布了新动态'
+          fallbackSeq += 1
+          const idN = Number((a as any).id)
           merged.push({
-            id: 30000 + Number((a as any).id ?? Math.random()),
+            id: Number.isFinite(idN) && idN > 0
+              ? 30000 + idN
+              : 3000000 + fallbackSeq,
             icon: 'system',
             text: content.slice(0, 60),
             time: timeAgo((a as any).created_at),
@@ -315,15 +322,14 @@ const pillFor = (a: ActivityItem['accent']) => ({
       </div>
     </section>
 
-    <!-- 4 统计卡 -->
+    <!-- 4 统计卡：去掉所有硬编码的假趋势/trend，只保留后端/计算可证实的 viewsTrend 与 待审评论状态 -->
     <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
       <StatCard
         title="文章总数"
         :value="summary.postsCount"
         :icon="FileText"
-        accent="ochre"
+        accent="primary"
         :sub-value="`已发布 ${summary.publishedCount} / 草稿 ${summary.draftCount}`"
-        :trend="{ direction: 'up', value: '+2 本周' }"
         :loading="loading"
         action-label="管理文章"
         @action="navigateTo('/admin/content/posts')"
@@ -332,7 +338,7 @@ const pillFor = (a: ActivityItem['accent']) => ({
         title="24 小时浏览"
         :value="summary.views24h.toLocaleString()"
         :icon="Eye"
-        accent="sage"
+        accent="info"
         :sub-value="`7 日合计 ${summary.views7d.toLocaleString()}`"
         :trend="viewsTrend.d === 'flat' ? { direction: 'flat', value: viewsTrend.v } : viewsTrend"
         :hint="'vs 日均'"
@@ -353,9 +359,8 @@ const pillFor = (a: ActivityItem['accent']) => ({
         title="注册用户"
         :value="summary.usersCount"
         :icon="Users"
-        accent="indigo"
+        accent="success"
         :sub-value="authStore.isAdmin ? '您拥有全部权限' : '普通用户权限'"
-        :trend="{ direction: 'up', value: '+1 今日' }"
         :loading="loading"
         action-label="用户列表"
         @action="navigateTo('/admin/users')"
@@ -418,6 +423,7 @@ const pillFor = (a: ActivityItem['accent']) => ({
                   </p>
                 </div>
                 <Badge
+                  v-if="p.trend != null"
                   class="rounded-full h-5 px-2 text-[11px]"
                   :variant="p.trend >= 0 ? 'default' : 'secondary'"
                   :class="p.trend >= 0 ? 'bg-success-muted text-success-muted-foreground' : ''"

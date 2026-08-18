@@ -393,10 +393,26 @@
             >
               <CheckCircle class="size-4" />
               <AlertTitle>导入完成</AlertTitle>
-              <AlertDescription>
-                成功导入 <b>{{ importResult.success }}</b> 篇
-                <span v-if="importResult.failed > 0">，失败 <b class="text-error">{{ importResult.failed }}</b> 篇</span>
-                <span class="text-muted-foreground">，查看日志...</span>
+              <AlertDescription class="space-y-1">
+                <div>
+                  成功导入 <b>{{ importResult.created }}</b> 篇
+                  <span v-if="importResult.skipped > 0">，跳过 <b class="text-muted-foreground">{{ importResult.skipped }}</b> 篇</span>
+                  <span v-if="importResult.failed > 0">，失败 <b class="text-error">{{ importResult.failed }}</b> 篇</span>
+                </div>
+                <p v-if="importResult.message" class="text-xs text-muted-foreground">
+                  {{ importResult.message }}
+                </p>
+                <ul
+                  v-if="importResult.errors.length"
+                  class="text-[11px] text-muted-foreground list-disc pl-4 mt-2 space-y-0.5"
+                >
+                  <li v-for="(err, i) in importResult.errors.slice(0, 5)" :key="i">
+                    {{ err }}
+                  </li>
+                  <li v-if="importResult.errors.length > 5" class="italic opacity-70">
+                    另有 {{ importResult.errors.length - 5 }} 条错误未展示...
+                  </li>
+                </ul>
               </AlertDescription>
             </Alert>
           </CardContent>
@@ -462,7 +478,13 @@ const exportForm = reactive({
 
 const importing = ref(false)
 const importProgress = ref(0)
-const importResult = ref<{ success: number, failed: number } | null>(null)
+const importResult = ref<{
+  created: number
+  skipped: number
+  failed: number
+  message: string
+  errors: string[]
+} | null>(null)
 const dragging = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
@@ -556,22 +578,21 @@ async function handleImport() {
   }
   importing.value = true
   importResult.value = null
-  importProgress.value = 0
-  const stages = [20, 50, 100]
-  for (const p of stages) {
-    await new Promise(r => setTimeout(r, 500))
-    importProgress.value = p
-  }
+  importProgress.value = 10
   try {
-    await importAdminPosts(importForm.format, importForm.file)
+    const r = await importAdminPosts(importForm.format, importForm.file)
+    importProgress.value = 100
     importResult.value = {
-      success: Math.floor(Math.random() * 20) + 10,
-      failed: Math.floor(Math.random() * 3)
+      created: Number(r?.created_count ?? 0) || 0,
+      skipped: Number(r?.skipped_count ?? 0) || 0,
+      failed: Number(r?.error_count ?? 0) || 0,
+      message: r?.message || '导入完成',
+      errors: Array.isArray(r?.errors) ? r.errors.filter((e) => e && typeof e === 'string') as string[] : []
     }
-    toast.success('导入完成')
+    toast.success(importResult.value.message || '导入完成')
   } catch (e) {
     importProgress.value = 0
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'importAdminPosts'}`)
+    toast.error(`导入失败: ${e instanceof Error ? e.message : 'importAdminPosts'}`)
   } finally {
     importing.value = false
   }

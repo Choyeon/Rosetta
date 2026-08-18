@@ -80,7 +80,7 @@ const groups = reactive<MenuGroup[]>([
     title: '内容管理',
     icon: FileText,
     items: [
-      { label: '文章管理', path: '/admin/content/posts', icon: FileText, badge: '热', badgeVariant: 'secondary' },
+      { label: '文章管理', path: '/admin/content/posts', icon: FileText },
       { label: '分类管理', path: '/admin/content/categories', icon: FolderKanban },
       { label: '标签管理', path: '/admin/content/tags', icon: Tags },
       { label: '系列管理', path: '/admin/content/series', icon: BookOpen },
@@ -112,7 +112,7 @@ const groups = reactive<MenuGroup[]>([
     title: '媒体资源',
     icon: Image,
     items: [
-      { label: '媒体库', path: '/admin/media/library', icon: Image, badge: 'NEW', badgeVariant: 'outline' },
+      { label: '媒体库', path: '/admin/media/library', icon: Image },
       { label: '相册管理', path: '/admin/media/gallery', icon: Album }
     ]
   },
@@ -121,7 +121,7 @@ const groups = reactive<MenuGroup[]>([
     title: '系统配置',
     icon: Settings,
     items: [
-      { label: '站点设置', path: '/admin/system/settings', icon: Settings, badge: '17组', badgeVariant: 'secondary' },
+      { label: '站点设置', path: '/admin/system/settings', icon: Settings },
       { label: '导航菜单', path: '/admin/system/navigation', icon: Globe },
       { label: '友情链接', path: '/admin/system/friendlinks', icon: LinkIcon },
       { label: 'Webhook 配置', path: '/admin/system/webhooks', icon: PlugZap }

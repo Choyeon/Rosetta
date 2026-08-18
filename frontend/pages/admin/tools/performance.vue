@@ -379,10 +379,21 @@
                   <BarChart3 class="size-7" />
                 </div>
                 <div class="font-semibold text-foreground/90">
-                  图表接入中
+                  24 小时错误率
                 </div>
-                <div class="text-sm text-muted-foreground">
-                  占位：30 天错误率折线（<span class="tabular-nums">0.12% → 0.06%</span>）
+                <div class="text-sm tabular-nums text-muted-foreground">
+                  <span
+                    class="font-semibold"
+                    :class="Number(summary.error_rate_24h) * 100 >= 1 ? 'text-error' : 'text-success'"
+                  >
+                    {{ (Number(summary.error_rate_24h) * 100).toFixed(2) }}%
+                  </span>
+                  <span class="opacity-70">
+                    · 共 {{ Number(summary.total_requests_24h).toLocaleString() }} 请求
+                  </span>
+                </div>
+                <div class="text-[11px] text-muted-foreground/70 mt-1">
+                  30 天趋势折线图：等待后端提供 timeseries 数据
                 </div>
               </div>
             </div>

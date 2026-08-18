@@ -834,10 +834,22 @@ export function exportAdminPosts(format: string): Promise<Blob> {
   return apiFetch<Blob>(`/import-export/export?format=${encodeURIComponent(format)}`, { method: 'GET', responseType: 'blob' })
 }
 
-export function importAdminPosts(format: string, file: File): Promise<ApiMessage> {
+export interface AdminImportResult {
+  success: boolean
+  message: string
+  created_count: number
+  skipped_count: number
+  error_count: number
+  errors?: string[]
+}
+
+export function importAdminPosts(format: string, file: File): Promise<AdminImportResult> {
   const fd = new FormData()
   fd.append('file', file)
-  return apiFetch<ApiMessage>(`/import-export/import?format=${encodeURIComponent(format)}`, { method: 'POST', body: fd as unknown as Record<string, unknown> })
+  return apiFetch<AdminImportResult>(`/import-export/import?format=${encodeURIComponent(format)}`, {
+    method: 'POST',
+    body: fd as unknown as Record<string, unknown>
+  })
 }
 
 // ==================== SEO 工具 ====================
@@ -970,4 +982,67 @@ export function fetchAdminCacheStatus(): Promise<AdminCacheStatus> {
 
 export function flushAdminCache(mode: AdminCacheFlushMode): Promise<ApiMessage> {
   return apiFetch<ApiMessage>('/advanced/cache/flush', { method: 'POST', body: { mode } })
+}
+
+// ==================== 站内通知 Notifications ====================
+// 接口路径: GET/POST /api/notifications/* （非 admin 前缀，按 recipient_id = 当前用户隔离）
+
+export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
+
+export interface AdminNotification {
+  id: number
+  level: NotificationLevel
+  title: string
+  message?: string | null
+  verb?: string | null
+  link?: string | null
+  is_read: boolean
+  actor?: { id: number, username: string, nickname?: string | null, avatar?: string | null } | null
+  created_at: string | null
+}
+
+export interface NotificationsListResponse {
+  items: AdminNotification[]
+  total: number
+  unread_count: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
+export interface NotificationsStats {
+  unread_count: number
+  total_count: number
+  type_distribution: Record<string, number>
+}
+
+/** GET /api/notifications —— 当前登录用户的通知列表（附带 unread_count） */
+export function fetchNotifications(params: {
+  page?: number
+  page_size?: number
+  unread_only?: boolean
+} = {}): Promise<NotificationsListResponse> {
+  return apiFetch<NotificationsListResponse>('/notifications', {
+    query: { page: 1, page_size: 10, unread_only: false, ...params }
+  })
+}
+
+/** GET /api/notifications/stats —— 未读统计（用于铃铛 badge，轻量） */
+export function fetchNotificationStats(): Promise<NotificationsStats> {
+  return apiFetch<ApiEnvelope<NotificationsStats>>('/notifications/stats').then(r => r.data)
+}
+
+/** POST /api/notifications/{id}/read —— 标记单条已读 */
+export function markNotificationRead(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/notifications/${id}/read`, { method: 'POST' })
+}
+
+/** POST /api/notifications/clear —— 清空（全部标记已读） */
+export function clearAllNotifications(): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/notifications/clear', { method: 'POST' })
+}
+
+/** DELETE /api/notifications/{id} */
+export function deleteNotification(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/notifications/${id}`, { method: 'DELETE' })
 }
