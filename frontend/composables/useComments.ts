@@ -1,6 +1,6 @@
 import { ref } from 'vue'
 import type { Comment, PaginatedResponse } from '~~/types/api'
-import { useAPI } from '~~/composables/useAPI'
+import { useAPI, apiFetch, type ApiFetchOptions } from '~~/composables/useAPI'
 
 export function useComments() {
   const { locale } = useI18n()
@@ -14,14 +14,14 @@ export function useComments() {
   const total = ref(0)
   const pageSize = ref(20)
 
-  // ===== Core API wrappers (stateless) =====
+  // ===== Setup-level AsyncData wrappers (useFetch based, MUST call at setup top-level) =====
   const getComments = (
     post_id: number | string,
     page = 1,
     pageSize_ = 20,
     lang?: string
   ) => {
-    return useAPI<PaginatedResponse<Comment>>(`/blog/posts/${post_id}/comments`, {
+    return useAPI<PaginatedResponse<Comment>>(`/posts/${post_id}/comments`, {
       query: {
         page,
         page_size: pageSize_,
@@ -43,6 +43,11 @@ export function useComments() {
     })
   }
 
+  const getCommentReactions = (id: number | string) => {
+    return useAPI<unknown>(`/comments/${id}/reactions`)
+  }
+
+  // ===== Imperative wrappers ($fetch based, safe anywhere: callbacks, onMounted, watch) =====
   const createComment = (
     post_id: number | string,
     content: string,
@@ -51,8 +56,9 @@ export function useComments() {
     email?: string,
     site?: string
   ) => {
-    return useAPI<Comment>(`/blog/posts/${post_id}/comments`, {
+    return apiFetch<Comment>(`/posts/${post_id}/comments`, {
       method: 'POST',
+      query: { lang: locale.value },
       body: {
         content,
         parent_id,
@@ -64,55 +70,51 @@ export function useComments() {
   }
 
   const likeComment = (id: number | string) => {
-    return useAPI<unknown>(`/comments/${id}/like`, {
+    return apiFetch<unknown>(`/comments/${id}/like`, {
       method: 'POST'
     })
   }
 
   const addCommentReaction = (id: number | string, emoji: string) => {
-    return useAPI<unknown>(`/comments/${id}/reactions`, {
+    return apiFetch<unknown>(`/comments/${id}/reactions`, {
       method: 'POST',
       body: { emoji }
     })
   }
 
   const removeCommentReaction = (id: number | string, emoji: string) => {
-    return useAPI<unknown>(`/comments/${id}/reactions`, {
+    return apiFetch<unknown>(`/comments/${id}/reactions`, {
       method: 'DELETE',
       body: { emoji }
     })
   }
 
-  const getCommentReactions = (id: number | string) => {
-    return useAPI<unknown>(`/comments/${id}/reactions`)
-  }
-
   const approveComment = (id: number | string) => {
-    return useAPI<unknown>(`/admin/comments/${id}/approve`, {
+    return apiFetch<unknown>(`/admin/comments/${id}/approve`, {
       method: 'POST'
     })
   }
 
   const rejectComment = (id: number | string) => {
-    return useAPI<unknown>(`/admin/comments/${id}/reject`, {
+    return apiFetch<unknown>(`/admin/comments/${id}/reject`, {
       method: 'POST'
     })
   }
 
   const spamComment = (id: number | string) => {
-    return useAPI<unknown>(`/admin/comments/${id}/spam`, {
+    return apiFetch<unknown>(`/admin/comments/${id}/spam`, {
       method: 'POST'
     })
   }
 
   const batchComments = (ids: (number | string)[], action: string) => {
-    return useAPI<unknown>('/admin/comments/batch', {
+    return apiFetch<unknown>('/admin/comments/batch', {
       method: 'POST',
       body: { ids, action }
     })
   }
 
-  // ===== Stateful fetch helpers =====
+  // ===== Stateful fetch helpers ($fetch based, safe anywhere) =====
   const fetchComments = async (
     post_id: number | string,
     page = 1,
@@ -121,17 +123,31 @@ export function useComments() {
     loading.value = true
     error.value = null
     try {
-      const { data, error: err } = await getComments(post_id, page, pageSize_)
-      if (err.value) throw err.value
-      if (data.value) {
-        const res = data.value as PaginatedResponse<Comment>
-        if (res && Array.isArray(res.items)) {
-          comments.value = res.items
-          total.value = res.total ?? res.items.length
-        } else if (Array.isArray(data.value)) {
-          comments.value = data.value as Comment[]
-          total.value = comments.value.length
+      const opts: ApiFetchOptions = {
+        query: {
+          page,
+          page_size: pageSize_,
+          lang: locale.value
         }
+      }
+      const res = await apiFetch<PaginatedResponse<Comment> | Comment[]>(`/posts/${post_id}/comments`, opts)
+      if (res) {
+        if (Array.isArray(res)) {
+          comments.value = res as Comment[]
+          total.value = res.length
+        } else {
+          const paginated = res as PaginatedResponse<Comment>
+          if (Array.isArray(paginated.items)) {
+            comments.value = paginated.items
+            total.value = paginated.total ?? paginated.items.length
+          } else {
+            comments.value = []
+            total.value = 0
+          }
+        }
+      } else {
+        comments.value = []
+        total.value = 0
       }
       pageSize.value = pageSize_
       return comments.value
@@ -146,11 +162,16 @@ export function useComments() {
   const fetchReplies = async (commentId: number | string, page = 1, pageSize_ = 20) => {
     loadingSingle.value = true
     try {
-      const { data, error: err } = await getCommentReplies(commentId, page, pageSize_)
-      if (err.value) throw err.value
-      if (data.value) {
-        const res = data.value as PaginatedResponse<Comment>
-        return (res && res.items) || (Array.isArray(data.value) ? (data.value as Comment[]) : [])
+      const opts: ApiFetchOptions = {
+        query: {
+          page,
+          page_size: pageSize_
+        }
+      }
+      const res = await apiFetch<PaginatedResponse<Comment> | Comment[]>(`/comments/${commentId}/replies`, opts)
+      if (Array.isArray(res)) return res
+      if (res && Array.isArray((res as PaginatedResponse<Comment>).items)) {
+        return (res as PaginatedResponse<Comment>).items
       }
       return []
     } finally {
@@ -167,14 +188,15 @@ export function useComments() {
     error,
     total,
     pageSize,
-    // stateless API
+    // setup-level AsyncData wrappers
     getComments,
     getCommentReplies,
+    getCommentReactions,
+    // imperative wrappers
     createComment,
     likeComment,
     addCommentReaction,
     removeCommentReaction,
-    getCommentReactions,
     approveComment,
     rejectComment,
     spamComment,
