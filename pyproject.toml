@@ -247,3 +247,14 @@ dev = [
     "pip>=26.2.1",
     "pip-audit>=2.10.1",
 ]
+
+# 便捷启动入口（只依赖系统 PowerShell，不引入 Python 子包）
+#   用法（在项目根目录）:
+#     pwsh -File dev.ps1        # 同时启动后端 (:8000) + 前端 (:3000)   ← 推荐
+#     powershell -File dev.ps1  # 同上，用 Windows PowerShell 5.1
+#     ./dev.bat                 # cmd / 双击 (自动选 pwsh→powershell 降级)
+#     .\dev.ps1 -NoFrontend     # 只启后端
+#     .\dev.ps1 -NoBackend      # 只启前端
+#
+#   注意: 不再使用 [tool.uv.scripts]，因当前安装的 uv 版本未支持此字段会报错:
+#           "unknown field `scripts` under `[tool.uv]`"
