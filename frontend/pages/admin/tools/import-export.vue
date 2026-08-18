@@ -57,15 +57,19 @@
           <CardContent>
             <Select
               v-model="exportForm.format"
-              :options="[
-                { label: 'WordPress (XML WXR)', value: 'wordpress' },
-                { label: 'Halo 导出包', value: 'halo' },
-                { label: 'Typecho (Markdown/HTML)', value: 'typecho' },
-                { label: 'Markdown 打包', value: 'markdown' },
-                { label: 'Rosetta JSON', value: 'json' }
-              ]"
-              class="max-w-md rounded-xl"
-            />
+              class="max-w-md"
+            >
+              <SelectTrigger class="rounded-xl">
+                <SelectValue placeholder="选择导出格式" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wordpress">WordPress (XML WXR)</SelectItem>
+                <SelectItem value="halo">Halo 导出包</SelectItem>
+                <SelectItem value="typecho">Typecho (Markdown/HTML)</SelectItem>
+                <SelectItem value="markdown">Markdown 打包</SelectItem>
+                <SelectItem value="json">Rosetta JSON</SelectItem>
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
@@ -225,15 +229,19 @@
           <CardContent>
             <Select
               v-model="importForm.format"
-              :options="[
-                { label: 'WordPress (XML WXR)', value: 'wordpress' },
-                { label: 'Halo 导出包 (.zip/.json)', value: 'halo' },
-                { label: 'Typecho 导出', value: 'typecho' },
-                { label: 'Markdown 压缩包 (.zip)', value: 'markdown' },
-                { label: 'Rosetta JSON', value: 'json' }
-              ]"
-              class="max-w-md rounded-xl"
-            />
+              class="max-w-md"
+            >
+              <SelectTrigger class="rounded-xl">
+                <SelectValue placeholder="选择导入格式" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="wordpress">WordPress (XML WXR)</SelectItem>
+                <SelectItem value="halo">Halo 导出包 (.zip/.json)</SelectItem>
+                <SelectItem value="typecho">Typecho 导出</SelectItem>
+                <SelectItem value="markdown">Markdown 压缩包 (.zip)</SelectItem>
+                <SelectItem value="json">Rosetta JSON</SelectItem>
+              </SelectContent>
+            </Select>
           </CardContent>
         </Card>
 
@@ -403,10 +411,10 @@
                   {{ importResult.message }}
                 </p>
                 <ul
-                  v-if="importResult.errors.length"
+                  v-if="importResult.errors && importResult.errors.length"
                   class="text-[11px] text-muted-foreground list-disc pl-4 mt-2 space-y-0.5"
                 >
-                  <li v-for="(err, i) in importResult.errors.slice(0, 5)" :key="i">
+                  <li v-for="(err, i) in importResult.errors.slice(0, 5)" :key="`err-${i}-${err}`">
                     {{ err }}
                   </li>
                   <li v-if="importResult.errors.length > 5" class="italic opacity-70">
@@ -443,7 +451,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/co
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
-import { Select } from '~~/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Checkbox } from '~~/components/ui/checkbox'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 

@@ -11,7 +11,8 @@ import {
   CheckCheck,
   Inbox,
   ChevronRight,
-  Loader2
+  Loader2,
+  Trash2
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -34,6 +35,7 @@ import {
   fetchNotifications,
   fetchNotificationStats,
   markNotificationRead,
+  markAllNotificationsRead,
   clearAllNotifications,
   type AdminNotification,
   type NotificationLevel
@@ -98,7 +100,6 @@ const currentPage = computed(() => crumbMap[route.path] || route.path.split('/')
 // ==================== 用户信息 ====================
 const userDisplayName = computed(() => authStore.user?.username || '未登录')
 const userAvatar = computed(() => authStore.user?.avatar || '')
-const userFallback = computed(() => (userDisplayName.value || 'U').slice(0, 1).toUpperCase())
 
 const logout = () => {
   authStore.clearTokens()
@@ -168,15 +169,17 @@ async function handleOpenItem(n: AdminNotification) {
   // 先标记已读（异步不阻塞跳转），badge 立刻 -1 给即时反馈
   if (!n.is_read && unreadCount.value > 0) unreadCount.value -= 1
   const localId = n.id
-  markNotificationRead(localId).catch(() => {
-    // 失败则回滚 UI 状态
-    if (!n.is_read) unreadCount.value += 1
-    toast.warning('标记已读失败，请稍后再试')
-  })
+  // markNotificationRead 已改用 silentApiFetch，不再抛；此处只做乐观回滚 UI
+  const wasRead = n.is_read
+  markNotificationRead(localId).then(() => { /* noop */ })
+  setTimeout(() => {
+    // 若 2s 后后端仍未反馈，尝试重拉 badge 校正（避免永久偏差）
+    loadBadge(true).catch(() => {})
+  }, 2000)
   if (n.link && typeof n.link === 'string' && n.link.trim()) {
     const target = n.link.trim()
     if (/^https?:\/\//i.test(target)) {
-      window.open(target, '_blank', 'noopener')
+      if (import.meta.client) window.open(target, '_blank', 'noopener')
     } else {
       await navigateTo(target)
     }
@@ -188,15 +191,27 @@ async function handleOpenItem(n: AdminNotification) {
   if (hit) hit.is_read = true
 }
 
+/** 全部标记为已读（不删除） */
+async function handleMarkAllRead() {
+  markingClearing.value = true
+  try {
+    await markAllNotificationsRead()
+    unreadCount.value = 0
+    items.value = items.value.map((i) => ({ ...i, is_read: true }))
+    toast.success('已全部标记为已读')
+  } finally {
+    markingClearing.value = false
+  }
+}
+
+/** 清空全部通知（物理删除） */
 async function handleClearAll() {
   markingClearing.value = true
   try {
     await clearAllNotifications()
     unreadCount.value = 0
-    items.value = items.value.map((i) => ({ ...i, is_read: true }))
-    toast.success('已全部标记为已读')
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '清空失败')
+    items.value = []
+    toast.success('通知已清空')
   } finally {
     markingClearing.value = false
   }
@@ -329,11 +344,21 @@ watch(
               size="sm"
               class="h-7 px-2 rounded-lg text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
               :disabled="markingClearing || unreadCount === 0"
-              @click="handleClearAll"
+              @click="handleMarkAllRead"
             >
               <CheckCheck v-if="!markingClearing" class="size-3.5 mr-1" />
               <Loader2 v-else class="size-3.5 mr-1 animate-spin" />
               全部已读
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-7 px-2 rounded-lg text-xs text-muted-foreground hover:text-destructive disabled:opacity-50"
+              :disabled="markingClearing || items.length === 0"
+              @click="handleClearAll"
+            >
+              <Trash2 class="size-3.5 mr-1" />
+              清空
             </Button>
           </div>
           <DropdownMenuSeparator class="my-1" />
@@ -368,14 +393,19 @@ watch(
               </template>
 
               <template v-else>
-                <DropdownMenuGroup class="p-0.5">
-                  <DropdownMenuItem
-                    v-for="n in items"
-                    :key="n.id"
-                    class="h-auto w-full p-3 my-0.5 rounded-[10px] flex items-start gap-3 cursor-pointer focus:bg-accent/60"
-                    :class="{ 'bg-accent/20': !n.is_read }"
-                    @click="handleOpenItem(n)"
-                  >
+                <!--
+                  注意：不要用 DropdownMenuGroup 包裹 v-for DropdownMenuItem；
+                  reka-ui 在 DropdownMenuContent 的离开 transition（afterLeave -> move）
+                  阶段如果 Group + v-for 列表内部节点变化，会触发 insertBefore "not a child of this node"
+                  错误，改为直接平铺 v-for 即可。
+                -->
+                <DropdownMenuItem
+                  v-for="n in items"
+                  :key="`n-${n.id}`"
+                  class="h-auto w-full p-3 my-0.5 mx-0.5 rounded-[10px] flex items-start gap-3 cursor-pointer focus:bg-accent/60"
+                  :class="{ 'bg-accent/20': !n.is_read }"
+                  @click="handleOpenItem(n)"
+                >
                     <!-- level 小圆点 -->
                     <span
                       class="mt-1 shrink-0 size-2 rounded-full inline-flex items-center justify-center"
@@ -428,8 +458,7 @@ watch(
                       </div>
                     </div>
                   </DropdownMenuItem>
-                </DropdownMenuGroup>
-              </template>
+                </template>
             </ScrollArea>
           </div>
         </DropdownMenuContent>
@@ -448,10 +477,22 @@ watch(
             <Avatar class="size-7 ring-2 ring-border">
               <AvatarImage :src="userAvatar" />
               <AvatarFallback
-                class="text-[11px] font-semibold text-[hsl(var(--primary-foreground))]"
+                class="text-[hsl(var(--primary-foreground))] flex items-center justify-center"
                 style="background: linear-gradient(135deg,#0EA5E9,#0369A1);"
               >
-                {{ userFallback }}
+                <svg
+                  viewBox="0 0 24 24"
+                  class="h-3.5 w-3.5"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8" />
+                </svg>
               </AvatarFallback>
             </Avatar>
             <span class="hidden md:block text-sm font-medium truncate max-w-[120px]">
@@ -476,9 +517,21 @@ watch(
                 <AvatarImage :src="userAvatar" />
                 <AvatarFallback
                   style="background: linear-gradient(135deg,#0EA5E9,#0369A1);"
-                  class="text-[hsl(var(--primary-foreground))]"
+                  class="text-[hsl(var(--primary-foreground))] flex items-center justify-center"
                 >
-                  {{ userFallback }}
+                  <svg
+                    viewBox="0 0 24 24"
+                    class="h-4 w-4"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <circle cx="12" cy="8" r="4" />
+                    <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8" />
+                  </svg>
                 </AvatarFallback>
               </Avatar>
               <div class="flex flex-col min-w-0">

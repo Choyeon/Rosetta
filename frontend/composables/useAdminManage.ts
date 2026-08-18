@@ -6,7 +6,7 @@
  * 全部基于 useAPI.ts 的 apiFetch（自动注入 Authorization 与 Accept-Language），
  * 不依赖 useAdmin.ts（其解包方式与当前后端格式不完全一致）。
  */
-import { apiFetch } from '~~/composables/useApi'
+import { apiFetch, silentApiFetch } from '~~/composables/useApi'
 
 // ==================== 通用类型 ====================
 
@@ -1013,36 +1013,67 @@ export interface NotificationsListResponse {
 export interface NotificationsStats {
   unread_count: number
   total_count: number
-  type_distribution: Record<string, number>
+  read?: number
+  type_distribution?: Record<string, number>
 }
 
-/** GET /api/notifications —— 当前登录用户的通知列表（附带 unread_count） */
+/**
+ * GET /api/notifications —— 当前登录用户的通知列表（裸 dict，非 ApiEnvelope）
+ * 降级策略：后端暂缺 / 权限不足时返回空列表，不抛错不 toast。
+ */
 export function fetchNotifications(params: {
   page?: number
   page_size?: number
   unread_only?: boolean
 } = {}): Promise<NotificationsListResponse> {
-  return apiFetch<NotificationsListResponse>('/notifications', {
+  return silentApiFetch<NotificationsListResponse>('/notifications', {
     query: { page: 1, page_size: 10, unread_only: false, ...params }
+  }).then(r => r ?? {
+    items: [],
+    total: 0,
+    unread_count: 0,
+    page: params.page ?? 1,
+    page_size: params.page_size ?? 10,
+    total_pages: 0
   })
 }
 
-/** GET /api/notifications/stats —— 未读统计（用于铃铛 badge，轻量） */
+/**
+ * GET /api/notifications/stats —— 未读统计（用于铃铛 badge，轻量）
+ * 注意：后端返回裸 dict（无 success/data 包裹），404/5xx 时降级为 0 保证 badge 不误导。
+ */
 export function fetchNotificationStats(): Promise<NotificationsStats> {
-  return apiFetch<ApiEnvelope<NotificationsStats>>('/notifications/stats').then(r => r.data)
+  return silentApiFetch<NotificationsStats>('/notifications/stats').then(r => {
+    if (r && (typeof r.unread_count === 'number' || typeof r.total_count === 'number')) {
+      return {
+        unread_count: Number(r.unread_count) || 0,
+        total_count: Number(r.total_count ?? 0) || 0,
+        read: Number((r as any).read ?? 0) || 0,
+        type_distribution: r.type_distribution && typeof r.type_distribution === 'object'
+          ? (r.type_distribution as Record<string, number>)
+          : {}
+      }
+    }
+    return { unread_count: 0, total_count: 0, read: 0, type_distribution: {} }
+  })
 }
 
-/** POST /api/notifications/{id}/read —— 标记单条已读 */
-export function markNotificationRead(id: number): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>(`/notifications/${id}/read`, { method: 'POST' })
+/** POST /api/notifications/{id}/read —— 标记单条已读（静默失败） */
+export function markNotificationRead(id: number): Promise<void> {
+  return silentApiFetch(`/notifications/${id}/read`, { method: 'POST' }).then(() => undefined)
 }
 
-/** POST /api/notifications/clear —— 清空（全部标记已读） */
-export function clearAllNotifications(): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>('/notifications/clear', { method: 'POST' })
+/** POST /api/notifications/read-all —— 全部标记已读（静默失败） */
+export function markAllNotificationsRead(): Promise<void> {
+  return silentApiFetch('/notifications/read-all', { method: 'POST' }).then(() => undefined)
 }
 
-/** DELETE /api/notifications/{id} */
-export function deleteNotification(id: number): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>(`/notifications/${id}`, { method: 'DELETE' })
+/** DELETE /api/notifications —— 清空所有通知（静默失败） */
+export function clearAllNotifications(): Promise<void> {
+  return silentApiFetch('/notifications', { method: 'DELETE' }).then(() => undefined)
+}
+
+/** DELETE /api/notifications/{id} —— 删除单条（静默失败） */
+export function deleteNotification(id: number): Promise<void> {
+  return silentApiFetch(`/notifications/${id}`, { method: 'DELETE' }).then(() => undefined)
 }

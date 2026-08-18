@@ -187,3 +187,57 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
     throw err
   }
 }
+
+/**
+ * 静默版 apiFetch：出错不 toast（由调用方自行降级），仅用于"可缺失"的辅助功能，
+ * 例如站内通知 badge，后端暂未实现或升级中时保持 UI 稳定不报错。
+ */
+export async function silentApiFetch<T = unknown>(url: string, options: ApiFetchOptions = {}): Promise<T | null> {
+  const config = useRuntimeConfig()
+  const authStore = useAuthStore()
+
+  const buildHeaders = (): Record<string, string> => {
+    const h: Record<string, string> = { ...options.headers, 'Accept-Language': currentLocale() }
+    if (authStore.accessToken) {
+      h.Authorization = `Bearer ${authStore.accessToken}`
+    }
+    return h
+  }
+
+  const doFetch = () => $fetch<T>(url, {
+    ...options,
+    baseURL: config.public.apiBase,
+    headers: buildHeaders()
+  })
+
+  try {
+    return await doFetch()
+  } catch (err) {
+    const e = err as { status?: number, statusCode?: number, data?: unknown }
+    const status = e.status ?? e.statusCode ?? 0
+
+    if (isOobeRequired(status, e.data) && import.meta.client) {
+      await navigateTo('/oobe')
+      return null
+    }
+
+    if (status === 401) {
+      if (import.meta.client) {
+        const refreshed = await authStore.refreshAccessToken()
+        if (refreshed) {
+          try { return await doFetch() } catch { /* swallow */ return null }
+        }
+        authStore.clearTokens()
+        await navigateTo('/login')
+      } else {
+        authStore.clearTokens()
+      }
+      return null
+    }
+
+    // 其余错误：静默降级，避免 console 外还要 toast
+    // eslint-disable-next-line no-console
+    console.debug(`[silentApiFetch] ${options.method || 'GET'} ${url} -> ${status}`, extractErrorMessage(e.data, 'silent failure'))
+    return null
+  }
+}
