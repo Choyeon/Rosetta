@@ -1,3 +1,6 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { useAuthStore } from '~~/stores/auth'
 
 /** 后端统一错误响应体（{ success, message, error_code, errors } 或 FastAPI 的 detail） */

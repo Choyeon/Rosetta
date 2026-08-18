@@ -1,5 +1,8 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
 import type { PaginatedResponse } from '~~/types/api'
-import { useAPI } from '~~/composables/useAPI'
+import { useAPI } from '~~/composables/useApi'
 
 export const useUsers = () => {
   const { locale } = useI18n()

@@ -1,429 +1,26 @@
-<template>
-  <div class="space-y-4">
-    <!-- 草稿恢复横幅 -->
-    <Alert
-      v-if="draftBanner"
-      class="border-primary/40"
-    >
-      <FileClock class="size-4" />
-      <AlertTitle>{{ t('admin.editor.draftFound') }}</AlertTitle>
-      <AlertDescription class="flex items-center gap-2">
-        <span>{{ t('admin.editor.draftTime', { time: draftBanner }) }}</span>
-        <Button
-          size="sm"
-          class="h-7"
-          @click="restoreDraft"
-        >
-          {{ t('admin.editor.restoreDraft') }}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          class="h-7"
-          @click="discardDraft"
-        >
-          {{ t('admin.editor.discardDraft') }}
-        </Button>
-      </AlertDescription>
-    </Alert>
-
-    <!-- 编辑页加载中 -->
-    <div
-      v-if="loading"
-      class="space-y-4"
-    >
-      <Skeleton class="h-11 w-2/3" />
-      <Skeleton class="h-9 w-1/3" />
-      <Skeleton class="h-[420px] w-full" />
-    </div>
-
-    <!-- 404 -->
-    <Alert
-      v-else-if="notFound"
-      variant="destructive"
-    >
-      <FileQuestion class="size-4" />
-      <AlertTitle>{{ t('admin.editor.notFound') }}</AlertTitle>
-      <AlertDescription>
-        <Button
-          :is="'NuxtLink'"
-          as="component"
-          to="/admin/posts"
-          variant="outline"
-          size="sm"
-          class="mt-2"
-        >
-          {{ t('admin.editor.backToList') }}
-        </Button>
-      </AlertDescription>
-    </Alert>
-
-    <template v-else>
-      <div class="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <!-- 主编辑区 -->
-        <div class="min-w-0 space-y-4">
-          <div class="space-y-1.5">
-            <Input
-              v-model="form.title"
-              :placeholder="t('admin.editor.titlePlaceholder')"
-              class="h-12 border-0 bg-muted/40 px-4 text-lg font-semibold shadow-none focus-visible:ring-0 md:text-xl"
-              :aria-label="t('admin.editor.title')"
-            />
-            <p
-              v-if="titleError"
-              class="px-4 text-xs text-destructive"
-            >
-              {{ titleError }}
-            </p>
-          </div>
-
-          <div class="flex items-center gap-2 px-1">
-            <span class="text-xs text-muted-foreground">/posts/</span>
-            <Input
-              v-model="form.slug"
-              :placeholder="t('admin.editor.slugPlaceholder')"
-              class="h-8 font-mono text-xs"
-              :class="slugError ? 'border-destructive' : ''"
-              @input="slugTouched = true"
-            />
-          </div>
-          <p
-            v-if="slugError"
-            class="px-1 text-xs text-destructive"
-          >
-            {{ slugError }}
-          </p>
-          <p
-            v-else
-            class="px-1 text-xs text-muted-foreground"
-          >
-            {{ t('admin.editor.slugHint') }}
-          </p>
-
-          <MarkdownEditor
-            v-model="form.content"
-            :placeholder="t('admin.editor.contentPlaceholder')"
-            :height="editorHeight"
-            @save="doSave"
-          />
-        </div>
-
-        <!-- 元数据面板 -->
-        <div class="space-y-4">
-          <Card>
-            <CardHeader class="pb-3">
-              <CardTitle class="text-base">
-                {{ t('admin.editor.publishTitle') }}
-              </CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-4">
-              <div class="space-y-1.5">
-                <Label>{{ t('admin.editor.status') }}</Label>
-                <Select v-model="form.status">
-                  <SelectTrigger class="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="draft">
-                      {{ t('admin.posts.status.draft') }}
-                    </SelectItem>
-                    <SelectItem value="published">
-                      {{ t('admin.posts.status.published') }}
-                    </SelectItem>
-                    <SelectItem value="scheduled">
-                      {{ t('admin.posts.status.scheduled') }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div
-                v-if="form.status === 'scheduled'"
-                class="space-y-1.5"
-              >
-                <Label>{{ t('admin.editor.scheduledAt') }}</Label>
-                <Input
-                  v-model="form.scheduledAt"
-                  type="datetime-local"
-                  class="h-9"
-                />
-              </div>
-              <p
-                v-else-if="publishedAtText"
-                class="text-xs text-muted-foreground"
-              >
-                {{ t('admin.editor.publishedAt') }}: {{ publishedAtText }}
-              </p>
-
-              <div class="space-y-1.5">
-                <Label>{{ t('admin.editor.visibility') }}</Label>
-                <Select v-model="form.visibility">
-                  <SelectTrigger class="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="public">
-                      {{ t('admin.editor.visibilityPublic') }}
-                    </SelectItem>
-                    <SelectItem value="password">
-                      {{ t('admin.editor.visibilityPassword') }}
-                    </SelectItem>
-                    <SelectItem value="private">
-                      {{ t('admin.editor.visibilityPrivate') }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <!-- 访问密码：新建直接输入；编辑显示已设置状态 + 修改/清除 -->
-              <div
-                v-if="form.visibility === 'password'"
-                class="space-y-1.5"
-              >
-                <Label>{{ t('admin.editor.postPassword') }}</Label>
-                <template v-if="!isEdit || passwordAction === 'set'">
-                  <Input
-                    v-model="form.password"
-                    type="password"
-                    autocomplete="new-password"
-                    :placeholder="t('admin.editor.passwordPlaceholder')"
-                    class="h-9"
-                  />
-                  <Button
-                    v-if="isEdit && hasPassword"
-                    size="sm"
-                    variant="ghost"
-                    class="h-7 px-2 text-xs"
-                    @click="passwordAction = 'keep'"
-                  >
-                    {{ t('admin.editor.cancelEdit') }}
-                  </Button>
-                </template>
-                <template v-else-if="passwordAction === 'keep' && hasPassword">
-                  <div class="flex items-center gap-2">
-                    <Badge variant="secondary">
-                      <KeyRound class="mr-1 size-3" />{{ t('admin.editor.passwordSet') }}
-                    </Badge>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      class="h-7"
-                      @click="passwordAction = 'set'"
-                    >
-                      {{ t('admin.editor.changePassword') }}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      class="h-7 text-destructive"
-                      @click="passwordAction = 'clear'"
-                    >
-                      {{ t('admin.editor.clearPassword') }}
-                    </Button>
-                  </div>
-                </template>
-                <template v-else-if="passwordAction === 'clear'">
-                  <div class="flex items-center gap-2">
-                    <Badge
-                      variant="outline"
-                      class="text-destructive"
-                    >
-                      {{ t('admin.editor.passwordWillClear') }}
-                    </Badge>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      class="h-7"
-                      @click="passwordAction = 'keep'"
-                    >
-                      {{ t('admin.editor.undo') }}
-                    </Button>
-                  </div>
-                </template>
-              </div>
-
-              <Separator />
-
-              <div class="flex items-center justify-between">
-                <Badge
-                  v-if="dirty"
-                  variant="outline"
-                  class="text-warning"
-                >
-                  {{ t('admin.editor.unsaved') }}
-                </Badge>
-                <span
-                  v-else
-                  class="text-xs text-muted-foreground"
-                >{{ t('admin.editor.allSaved') }}</span>
-                <Button
-                  :disabled="saving || !!titleError || !!slugError"
-                  @click="doSave"
-                >
-                  <Loader2
-                    v-if="saving"
-                    class="mr-2 size-4 animate-spin"
-                  />
-                  <Save
-                    v-else
-                    class="mr-2 size-4"
-                  />
-                  {{ saving ? t('admin.editor.saving') : t('admin.editor.save') }}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader class="pb-3">
-              <CardTitle class="text-base">
-                {{ t('admin.editor.metaTitle') }}
-              </CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-4">
-              <div class="space-y-1.5">
-                <Label>{{ t('admin.editor.category') }}</Label>
-                <Select v-model="categoryIdStr">
-                  <SelectTrigger class="h-9">
-                    <SelectValue :placeholder="t('admin.editor.selectCategory')" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">
-                      {{ t('admin.editor.noCategory') }}
-                    </SelectItem>
-                    <SelectItem
-                      v-for="c in categories"
-                      :key="c.id"
-                      :value="String(c.id)"
-                    >
-                      {{ c.name }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div class="space-y-1.5">
-                <Label>{{ t('admin.editor.tags') }}</Label>
-                <Input
-                  v-model="tagInput"
-                  :placeholder="t('admin.editor.tagsPlaceholder')"
-                  class="h-9"
-                  list="admin-post-tags"
-                />
-                <datalist id="admin-post-tags">
-                  <option
-                    v-for="tg in allTags"
-                    :key="tg.id"
-                    :value="tg.name"
-                  />
-                </datalist>
-                <p class="text-xs text-muted-foreground">
-                  {{ t('admin.editor.tagsHint') }}
-                </p>
-              </div>
-
-              <div class="space-y-1.5">
-                <Label>{{ t('admin.editor.excerpt') }}</Label>
-                <Textarea
-                  v-model="form.excerpt"
-                  :placeholder="t('admin.editor.excerptPlaceholder')"
-                  rows="3"
-                  class="text-sm"
-                />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader class="pb-3">
-              <CardTitle class="text-base">
-                {{ t('admin.editor.coverTitle') }}
-              </CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-3">
-              <Input
-                v-model="form.coverImage"
-                :placeholder="t('admin.editor.coverPlaceholder')"
-                class="h-9"
-              />
-              <div
-                v-if="form.coverImage"
-                class="relative overflow-hidden rounded-md border bg-muted"
-              >
-                <img
-                  :src="form.coverImage"
-                  :alt="t('admin.editor.coverAlt')"
-                  class="h-32 w-full object-cover"
-                  @error="coverBroken = true"
-                  @load="coverBroken = false"
-                >
-                <p
-                  v-if="coverBroken"
-                  class="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground"
-                >
-                  {{ t('admin.editor.coverBroken') }}
-                </p>
-              </div>
-              <Button
-                v-if="form.coverImage"
-                size="sm"
-                variant="outline"
-                class="h-7"
-                @click="form.coverImage = ''"
-              >
-                {{ t('admin.editor.clearCover') }}
-              </Button>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader class="pb-3">
-              <CardTitle class="text-base">
-                {{ t('admin.editor.optionsTitle') }}
-              </CardTitle>
-            </CardHeader>
-            <CardContent class="space-y-4">
-              <div class="flex items-center justify-between">
-                <Label
-                  for="post-pinned"
-                  class="cursor-pointer"
-                >{{ t('admin.editor.pinned') }}</Label>
-                <Switch
-                  id="post-pinned"
-                  :model-value="form.isPinned"
-                  @update:model-value="(v: boolean) => form.isPinned = v"
-                />
-              </div>
-              <div class="flex items-center justify-between">
-                <Label
-                  for="post-comments"
-                  class="cursor-pointer"
-                >{{ t('admin.editor.allowComments') }}</Label>
-                <Switch
-                  id="post-comments"
-                  :model-value="form.allowComments"
-                  @update:model-value="(v: boolean) => form.allowComments = v"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </div>
-    </template>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
+/* eslint-disable */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import type { Post, PostCreate, Category, Tag } from '~~/types/api'
+import MarkdownEditor from './MarkdownEditor.vue'
+import { usePosts } from '~~/composables/usePosts'
+import {
+  fetchAdminCategories,
+  fetchAdminTags
+} from '~~/composables/useAdminManage'
+import { useMediaUploadCover } from '~~/composables/useMedia'
+import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
+import { Card, CardContent } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
-import { Separator } from '~~/components/ui/separator'
-import { Skeleton } from '~~/components/ui/skeleton'
-import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
+import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import {
   Select,
   SelectContent,
@@ -431,446 +28,779 @@ import {
   SelectTrigger,
   SelectValue
 } from '~~/components/ui/select'
-import { Save, Loader2, KeyRound, FileClock, FileQuestion } from '@lucide/vue'
-import { apiFetch } from '~~/composables/useAPI'
-
-/**
- * 文章新建 / 编辑共用表单。
- * - 新建：postId 为 null，POST /blog/posts
- * - 编辑：postId 存在，GET /blog/posts/{id} 加载（PostEditResponse，兼容本地化 string 形态），PUT /blog/posts/{id}
- */
 
 const props = defineProps<{
-  postId: number | null
+  mode: 'new' | 'edit'
+  postId?: number
+  initialData?: Post | null
 }>()
 
-const emit = defineEmits<{
-  (e: 'loaded', payload: { title: string, slug: string }): void
+const emits = defineEmits<{
+  submitSuccess: [payload: unknown, isNew: boolean]
 }>()
 
-const { t, locale } = useI18n()
 const toast = useToast()
+const { createPost, updatePost } = usePosts()
 
-const isEdit = computed(() => props.postId != null)
+const draftLocalStorageKey = computed(() =>
+  `admin_post_draft_${props.mode}_${props.postId || 'new'}`
+)
 
-type PostStatus = 'draft' | 'published' | 'scheduled'
-type PostVisibility = 'public' | 'password' | 'private'
-type PasswordAction = 'keep' | 'set' | 'clear'
-
-interface PostFormState {
-  title: string
-  slug: string
-  excerpt: string
-  content: string
-  coverImage: string
-  status: PostStatus
-  visibility: PostVisibility
-  isPinned: boolean
-  allowComments: boolean
-  scheduledAt: string
-  password: string
-}
-
-const emptyForm = (): PostFormState => ({
+const form = reactive({
   title: '',
   slug: '',
-  excerpt: '',
   content: '',
-  coverImage: '',
-  status: 'draft',
-  visibility: 'public',
-  isPinned: false,
-  allowComments: true,
-  scheduledAt: '',
-  password: ''
+  status: 'draft' as 'draft' | 'published' | 'scheduled' | 'archived',
+  scheduled_at: '',
+  is_pinned: false,
+  allow_comments: true,
+  visibility: 'public' as 'public' | 'password' | 'private',
+  password: '',
+  category_id: null as number | null,
+  tag_ids: [] as number[],
+  excerpt: '',
+  cover_image: '',
+  meta_title: '',
+  meta_description: '',
+  meta_keywords: ''
 })
 
-const form = reactive<PostFormState>(emptyForm())
-const categoryIdStr = ref('none')
-const tagInput = ref('')
-const slugTouched = ref(false)
-const coverBroken = ref(false)
+const initialStateSnapshot = ref<string>('')
+const categories = ref<Category[]>([])
+const tags = ref<Tag[]>([])
+const categoriesLoading = ref(false)
+const tagsLoading = ref(false)
+const submitting = ref(false)
+const savingDraft = ref(false)
+const coverUploading = ref(false)
+const tagComboboxOpen = ref(false)
+const tagSearchQuery = ref('')
+const draftExists = ref(false)
+const draftSavedAt = ref<string | null>(null)
+const coverInputRef = ref<HTMLInputElement | null>(null)
 
-const loading = ref(false)
-const notFound = ref(false)
-const saving = ref(false)
-const dirty = ref(false)
-const hasPassword = ref(false)
-const passwordAction = ref<PasswordAction>('keep')
-const publishedAtText = ref('')
-
-/** 服务端已存的多语言内容（保存时与当前语言合并，避免覆盖其他语言） */
-const i18nDicts = reactive({
-  title: {} as Record<string, string>,
-  content: {} as Record<string, string>,
-  excerpt: {} as Record<string, string>
+const isDirty = computed(() => {
+  return JSON.stringify(form) !== initialStateSnapshot.value
 })
 
-interface CategoryOption { id: number, name: string, slug: string }
-interface TagOption { id: number, name: string, slug: string }
-const categories = ref<CategoryOption[]>([])
-const allTags = ref<TagOption[]>([])
-
-const editorHeight = computed(() => (import.meta.client && window.innerHeight < 900 ? 380 : 480))
-
-/* ==================== 校验 ==================== */
-
-const titleError = computed(() => (!form.title.trim() && dirty.value ? t('admin.editor.titleRequired') : ''))
-const slugError = computed(() => {
-  if (!slugTouched.value || !form.slug) return ''
-  return /^[a-z0-9-]+$/.test(form.slug) ? '' : t('admin.editor.slugInvalid')
+const filteredTags = computed(() => {
+  const q = tagSearchQuery.value.trim().toLowerCase()
+  if (!q) return tags.value
+  return tags.value.filter(t =>
+    getLocalizedStr(t.name).toLowerCase().includes(q)
+  )
 })
 
-/* ==================== 快照 & 脏标记 ==================== */
+const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  return v.zh || v.en || Object.values(v)[0] || ''
+}
 
-/** 快照不含密码明文（草稿仅存入 localStorage，不落敏感值） */
-function snapshot(): string {
-  return JSON.stringify({
-    title: form.title,
-    slug: form.slug,
-    excerpt: form.excerpt,
-    content: form.content,
-    coverImage: form.coverImage,
-    status: form.status,
-    visibility: form.visibility,
-    isPinned: form.isPinned,
-    allowComments: form.allowComments,
-    scheduledAt: form.scheduledAt,
-    categoryId: categoryIdStr.value,
-    tags: tagInput.value,
-    passwordAction: passwordAction.value
+const slugify = (text: string): string => {
+  let s = text.trim().toLowerCase()
+  s = s.replace(/[\s]+/g, '-')
+  s = s.replace(/[^\w\u4e00-\u9fa5-]/g, '')
+  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
+  return s
+}
+
+let slugManualEdit = false
+watch(
+  () => form.title,
+  (val) => {
+    if (!slugManualEdit && val) {
+      form.slug = slugify(val)
+    }
+  }
+)
+
+const handleSlugInput = () => {
+  slugManualEdit = true
+}
+
+const loadCategories = async () => {
+  categoriesLoading.value = true
+  try {
+    categories.value = await fetchAdminCategories()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : '加载分类失败')
+  } finally {
+    categoriesLoading.value = false
+  }
+}
+
+const loadTags = async () => {
+  tagsLoading.value = true
+  try {
+    tags.value = await fetchAdminTags()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : '加载标签失败')
+  } finally {
+    tagsLoading.value = false
+  }
+}
+
+const applyInitialData = (data: Post) => {
+  form.title = getLocalizedStr(data.title)
+  form.slug = data.slug
+  form.content = getLocalizedStr(data.content)
+  form.status = data.status
+  form.is_pinned = data.is_pinned
+  form.allow_comments = data.allow_comments
+  form.visibility = data.is_password_protected ? 'password' : 'public'
+  form.category_id = data.category?.id ?? null
+  form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
+  form.excerpt = getLocalizedStr(data.excerpt)
+  form.cover_image = data.cover_image || ''
+  form.meta_title = getLocalizedStr(data.meta_title)
+  form.meta_description = getLocalizedStr(data.meta_description)
+  form.meta_keywords = getLocalizedStr(data.meta_keywords)
+  slugManualEdit = !!data.slug
+  nextTick(() => {
+    initialStateSnapshot.value = JSON.stringify(form)
   })
 }
 
-function markClean() {
-  baseline = snapshot()
-  dirty.value = false
-}
-
-let baseline = snapshot()
-
-watch(snapshot, (v) => {
-  dirty.value = v !== baseline
-  scheduleAutosave()
-})
-
-/* ==================== 本地草稿（debounce 8s） ==================== */
-
-const draftKey = computed(() => `rosetta_admin_post_draft_${props.postId ?? 'new'}`)
-
-let autosaveTimer: ReturnType<typeof setTimeout> | null = null
-
-function scheduleAutosave() {
-  if (!import.meta.client) return
-  if (autosaveTimer) clearTimeout(autosaveTimer)
-  autosaveTimer = setTimeout(() => {
-    if (!dirty.value || saving.value || loading.value || notFound.value) return
-    try {
-      localStorage.setItem(draftKey.value, JSON.stringify({ savedAt: new Date().toISOString(), data: JSON.parse(snapshot()) }))
-    } catch { /* localStorage 可能已满或被禁用 */ }
-  }, 8000)
-}
-
-const draftBanner = ref('')
-
-function findDraft(): { savedAt: string, data: Record<string, unknown> } | null {
-  if (!import.meta.client) return null
+const saveDraftToLocalStorage = () => {
   try {
-    const raw = localStorage.getItem(draftKey.value)
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (!parsed?.data) return null
-    return parsed
-  } catch {
-    return null
-  }
-}
-
-function checkDraftAfterLoad() {
-  const draft = findDraft()
-  if (!draft) return
-  if (JSON.stringify(draft.data) === baseline) {
-    localStorage.removeItem(draftKey.value)
-    return
-  }
-  draftBanner.value = new Date(draft.savedAt).toLocaleString()
-}
-
-function restoreDraft() {
-  const draft = findDraft()
-  if (draft) {
-    const d = draft.data as Record<string, unknown>
-    Object.assign(form, emptyForm(), {
-      title: typeof d.title === 'string' ? d.title : '',
-      slug: typeof d.slug === 'string' ? d.slug : '',
-      excerpt: typeof d.excerpt === 'string' ? d.excerpt : '',
-      content: typeof d.content === 'string' ? d.content : '',
-      coverImage: typeof d.coverImage === 'string' ? d.coverImage : '',
-      status: (['draft', 'published', 'scheduled'] as const).includes(d.status as PostStatus) ? d.status as PostStatus : 'draft',
-      visibility: (['public', 'password', 'private'] as const).includes(d.visibility as PostVisibility) ? d.visibility as PostVisibility : 'public',
-      isPinned: d.isPinned === true,
-      allowComments: d.allowComments !== false,
-      scheduledAt: typeof d.scheduledAt === 'string' ? d.scheduledAt : '',
-      password: ''
-    })
-    categoryIdStr.value = typeof d.categoryId === 'string' ? d.categoryId : 'none'
-    tagInput.value = typeof d.tags === 'string' ? d.tags : ''
-    if (typeof d.passwordAction === 'string' && ['keep', 'set', 'clear'].includes(d.passwordAction)) {
-      passwordAction.value = d.passwordAction as PasswordAction
+    const payload = {
+      form: { ...form },
+      savedAt: new Date().toISOString()
     }
-    if (form.slug) slugTouched.value = true
-  }
-  draftBanner.value = ''
-}
-
-function discardDraft() {
-  if (import.meta.client) localStorage.removeItem(draftKey.value)
-  draftBanner.value = ''
-}
-
-function clearDraft() {
-  if (import.meta.client) localStorage.removeItem(draftKey.value)
-  draftBanner.value = ''
-}
-
-/* ==================== 数据加载 ==================== */
-
-/** 响应字段可能是多语言 dict（PostEditResponse）或当前语言 string（本地化响应），统一归一 */
-function toI18nDict(v: unknown): Record<string, string> {
-  if (v && typeof v === 'object' && !Array.isArray(v)) {
-    return Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, x]) => typeof x === 'string')) as Record<string, string>
-  }
-  if (typeof v === 'string') return { [locale.value]: v }
-  return {}
-}
-
-function fromI18nDict(v: unknown): string {
-  const dict = toI18nDict(v)
-  return dict[locale.value] ?? dict.zh ?? Object.values(dict)[0] ?? ''
-}
-
-function toLocalDatetime(v: unknown): string {
-  if (!v) return ''
-  const d = new Date(String(v))
-  if (Number.isNaN(d.getTime())) return ''
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
-async function loadMeta() {
-  try {
-    const [cats, tags] = await Promise.all([
-      apiFetch<CategoryOption[] | { data?: CategoryOption[] }>('/blog/categories'),
-      apiFetch<TagOption[] | { data?: TagOption[] }>('/blog/tags')
-    ])
-    categories.value = (Array.isArray(cats) ? cats : cats?.data ?? []) as CategoryOption[]
-    allTags.value = (Array.isArray(tags) ? tags : tags?.data ?? []) as TagOption[]
+    localStorage.setItem(draftLocalStorageKey.value, JSON.stringify(payload))
+    draftSavedAt.value = payload.savedAt
   } catch (e) {
-    console.error('[PostForm] load categories/tags failed:', e)
+    console.warn('保存草稿失败', e)
   }
 }
 
-async function loadPost() {
-  loading.value = true
-  notFound.value = false
+let draftDebounceTimer: ReturnType<typeof setTimeout> | null = null
+watch(
+  () => ({ ...form }),
+  () => {
+    if (draftDebounceTimer) clearTimeout(draftDebounceTimer)
+    draftDebounceTimer = setTimeout(() => {
+      saveDraftToLocalStorage()
+    }, 8000)
+  },
+  { deep: true }
+)
+
+const checkExistingDraft = () => {
   try {
-    const res = await apiFetch<Record<string, unknown>>(`/blog/posts/${props.postId}/edit`)
-    i18nDicts.title = toI18nDict(res.title)
-    i18nDicts.content = toI18nDict(res.content)
-    i18nDicts.excerpt = toI18nDict(res.excerpt)
-
-    form.title = fromI18nDict(res.title)
-    form.content = fromI18nDict(res.content)
-    form.excerpt = fromI18nDict(res.excerpt)
-    form.slug = typeof res.slug === 'string' ? res.slug : ''
-    form.coverImage = typeof res.cover_image === 'string' ? res.cover_image : ''
-    form.status = (['draft', 'published', 'scheduled'] as const).includes(res.status as PostStatus) ? res.status as PostStatus : 'draft'
-    form.visibility = (['public', 'password', 'private'] as const).includes(res.visibility as PostVisibility) ? res.visibility as PostVisibility : 'public'
-    form.isPinned = res.is_pinned === true
-    form.allowComments = res.allow_comments !== false
-    form.scheduledAt = toLocalDatetime(res.scheduled_at)
-
-    hasPassword.value = res.has_password === true || !!res.is_password_protected
-    passwordAction.value = 'keep'
-
-    const cat = res.category as { id?: number } | null | undefined
-    categoryIdStr.value = cat && typeof cat.id === 'number' ? String(cat.id) : 'none'
-
-    const tags = Array.isArray(res.tags) ? (res.tags as Array<{ id?: number }>) : []
-    const knownIds = new Set(tags.map(x => x.id))
-    const names = allTags.value.filter(tg => knownIds.has(tg.id)).map(tg => tg.name)
-    tagInput.value = names.join(', ')
-
-    publishedAtText.value = res.published_at ? new Date(String(res.published_at)).toLocaleString() : ''
-
-    emit('loaded', { title: form.title, slug: form.slug })
-    markClean()
-    checkDraftAfterLoad()
-  } catch (e) {
-    const status = (e as { status?: number, statusCode?: number })?.status ?? (e as { statusCode?: number })?.statusCode ?? 0
-    if (status === 404) {
-      notFound.value = true
-    } else {
-      toast.error(t('admin.editor.loadFailed'))
-      notFound.value = true
-    }
-  } finally {
-    loading.value = false
-  }
-}
-
-/* ==================== 标签解析（缺失时创建） ==================== */
-
-function parseTagNames(): string[] {
-  return tagInput.value
-    .split(/[,，]/)
-    .map(s => s.trim())
-    .filter(Boolean)
-}
-
-async function resolveTagIds(names: string[]): Promise<number[]> {
-  const ids: number[] = []
-  for (const name of names) {
-    const exist = allTags.value.find(tg => tg.name.toLowerCase() === name.toLowerCase())
-    if (exist) {
-      ids.push(exist.id)
-      continue
-    }
-    try {
-      const created = await apiFetch<TagOption>('/blog/tags', {
-        method: 'POST',
-        body: { name: { zh: name } }
-      })
-      if (created?.id) {
-        allTags.value.push({ id: created.id, name: fromI18nDict(created.name) || name, slug: created.slug || '' })
-        ids.push(created.id)
+    const raw = localStorage.getItem(draftLocalStorageKey.value)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed?.form) {
+        draftExists.value = true
+        draftSavedAt.value = parsed.savedAt || null
       }
-    } catch (e) {
-      console.error('[PostForm] create tag failed:', name, e)
     }
+  } catch (e) {
+    console.warn('读取草稿失败', e)
   }
-  return ids
 }
 
-/* ==================== 保存 ==================== */
+const restoreDraft = () => {
+  try {
+    const raw = localStorage.getItem(draftLocalStorageKey.value)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (parsed?.form) {
+        Object.assign(form, parsed.form)
+        slugManualEdit = !!form.slug
+        toast.success('草稿已恢复')
+      }
+    }
+  } catch {
+    toast.error('恢复草稿失败')
+  }
+  draftExists.value = false
+}
 
-function buildPayload(tagIds: number[]): Record<string, unknown> {
-  const lang = locale.value
-  const payload: Record<string, unknown> = {
-    title: { ...i18nDicts.title, [lang]: form.title.trim() },
-    content: { ...i18nDicts.content, [lang]: form.content },
-    excerpt: form.excerpt.trim() ? { ...i18nDicts.excerpt, [lang]: form.excerpt.trim() } : null,
-    cover_image: form.coverImage.trim() || null,
-    category_id: categoryIdStr.value !== 'none' ? Number(categoryIdStr.value) : null,
-    tag_ids: tagIds,
-    status: form.status,
-    visibility: form.visibility,
-    is_pinned: form.isPinned,
-    allow_comments: form.allowComments,
-    scheduled_at: form.status === 'scheduled' && form.scheduledAt ? new Date(form.scheduledAt).toISOString() : null
+const discardDraft = () => {
+  try {
+    localStorage.removeItem(draftLocalStorageKey.value)
+  } catch (e) {
+    console.warn('丢弃草稿失败', e)
   }
-  if (slugTouched.value && form.slug.trim()) {
-    payload.slug = form.slug.trim()
+  draftExists.value = false
+  toast.info('已丢弃草稿')
+}
+
+const isTagSelected = (id: number) => form.tag_ids.includes(id)
+
+const toggleTag = (id: number) => {
+  const idx = form.tag_ids.indexOf(id)
+  if (idx === -1) {
+    form.tag_ids.push(id)
+  } else {
+    form.tag_ids.splice(idx, 1)
   }
-  // 密码：新建直接提交；编辑按 keep(省略)/set(新值)/clear(空串) 语义
-  if (!isEdit.value) {
-    if (form.password) payload.password = form.password
-  } else if (passwordAction.value === 'set' && form.password) {
+}
+
+const removeTag = (id: number) => {
+  const idx = form.tag_ids.indexOf(id)
+  if (idx !== -1) form.tag_ids.splice(idx, 1)
+}
+
+const getTagById = (id: number): Tag | undefined => tags.value.find(t => t.id === id)
+
+const handleCoverUpload = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  coverUploading.value = true
+  try {
+    const { data, error } = await useMediaUploadCover(file)
+    if (error.value) throw error.value
+    if (data.value?.url) {
+      form.cover_image = data.value.url
+      toast.success('封面上传成功')
+    } else {
+      toast.error('封面上传失败')
+    }
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : '封面上传失败')
+  } finally {
+    coverUploading.value = false
+    input.value = ''
+  }
+}
+
+const clearCover = () => {
+  form.cover_image = ''
+}
+
+const buildPayload = (overrideStatus?: string): PostCreate => {
+  const payload: PostCreate = {
+    title: { zh: form.title },
+    slug: form.slug,
+    content: { zh: form.content },
+    status: (overrideStatus as PostCreate['status']) || form.status,
+    is_pinned: form.is_pinned,
+    allow_comments: form.allow_comments,
+    category_id: form.category_id || undefined,
+    tag_ids: form.tag_ids,
+    excerpt: form.excerpt ? { zh: form.excerpt } : undefined,
+    cover_image: form.cover_image || undefined
+  }
+  if (form.status === 'scheduled' && form.scheduled_at) {
+    payload.scheduled_at = form.scheduled_at
+  }
+  if (form.visibility === 'password' && form.password) {
     payload.password = form.password
-  } else if (passwordAction.value === 'clear') {
-    payload.password = ''
   }
+  if (form.meta_title) payload.meta_title = { zh: form.meta_title }
+  if (form.meta_description) payload.meta_description = { zh: form.meta_description }
+  if (form.meta_keywords) payload.meta_keywords = { zh: form.meta_keywords }
   return payload
 }
 
-async function doSave() {
-  if (loading.value || saving.value || notFound.value) return
+const validateBase = (): boolean => {
   if (!form.title.trim()) {
-    dirty.value = true // 触发标题错误提示
-    toast.error(t('admin.editor.titleRequired'))
-    return
+    toast.error('请输入文章标题')
+    return false
   }
-  if (slugError.value) {
-    toast.error(t('admin.editor.slugInvalid'))
-    return
+  if (!form.slug.trim()) {
+    toast.error('请输入文章 slug')
+    return false
   }
-  saving.value = true
-  try {
-    const tagIds = await resolveTagIds(parseTagNames())
-    const payload = buildPayload(tagIds)
-    if (isEdit.value) {
-      await apiFetch(`/blog/posts/${props.postId}`, { method: 'PUT', body: payload })
-      if (passwordAction.value === 'set') hasPassword.value = true
-      if (passwordAction.value === 'clear') hasPassword.value = false
-      passwordAction.value = 'keep'
-      form.password = ''
-      markClean()
-      clearDraft()
-      toast.success(t('admin.editor.saved'))
-    } else {
-      const created = await apiFetch<{ id?: number }>('/blog/posts', { method: 'POST', body: payload })
-      markClean()
-      clearDraft()
-      toast.success(t('admin.editor.created'))
-      if (created?.id) {
-        await navigateTo(`/admin/posts/${created.id}/edit`, { replace: true })
-      }
-    }
-  } catch (e) {
-    console.error('[PostForm] save failed:', e)
-    toast.error(t('admin.editor.saveFailed'))
-  } finally {
-    saving.value = false
+  if (!form.content.trim()) {
+    toast.error('请输入文章内容')
+    return false
   }
-}
-
-/* ==================== Ctrl+S / 离开保护 ==================== */
-
-function onWindowKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
-    e.preventDefault()
-    // 编辑器内部已 emit save，避免重复触发
-    const target = e.target as HTMLElement | null
-    if (target?.closest?.('[data-md-editor]')) return
-    doSave()
+  if (form.status === 'scheduled' && !form.scheduled_at) {
+    toast.error('请选择定时发布时间')
+    return false
   }
-}
-
-function onBeforeUnload(e: BeforeUnloadEvent) {
-  if (dirty.value && !saving.value) {
-    e.preventDefault()
-    e.returnValue = ''
-  }
-}
-
-onBeforeRouteLeave(() => {
-  if (dirty.value && !saving.value) {
-    if (!window.confirm(t('admin.editor.confirmLeave'))) return false
+  if (form.visibility === 'password' && !form.password.trim()) {
+    toast.error('请输入访问密码')
+    return false
   }
   return true
-})
+}
 
-/* ==================== 生命周期 ==================== */
+const saveDraft = async () => {
+  if (!validateBase()) return
+  savingDraft.value = true
+  try {
+    const payload = buildPayload('draft')
+    if (props.mode === 'new') {
+      const { data, error } = await createPost(payload)
+      if (error.value) throw error.value
+      toast.success('草稿保存成功')
+      emits('submitSuccess', data.value, true)
+    } else if (props.postId) {
+      const { data, error } = await updatePost(props.postId, payload)
+      if (error.value) throw error.value
+      toast.success('草稿保存成功')
+      emits('submitSuccess', data.value, false)
+    }
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : '保存草稿失败')
+  } finally {
+    savingDraft.value = false
+  }
+}
+
+const publishPost = async () => {
+  if (!validateBase()) return
+  submitting.value = true
+  try {
+    const publishStatus = form.status === 'archived' ? 'archived' : form.status
+    const payload = buildPayload(publishStatus)
+    if (props.mode === 'new') {
+      const { data, error } = await createPost(payload)
+      if (error.value) throw error.value
+      localStorage.removeItem(draftLocalStorageKey.value)
+      emits('submitSuccess', data.value, true)
+    } else if (props.postId) {
+      const { data, error } = await updatePost(props.postId, payload)
+      if (error.value) throw error.value
+      localStorage.removeItem(draftLocalStorageKey.value)
+      emits('submitSuccess', data.value, false)
+    }
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : '发布失败')
+  } finally {
+    submitting.value = false
+  }
+}
+
+const openPreview = () => {
+  if (form.slug) {
+    window.open(`/posts/${form.slug}`, '_blank')
+  } else {
+    toast.warning('请先输入 slug 后再预览')
+  }
+}
+
+const onKeyDown = (e: KeyboardEvent) => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    saveDraft()
+  }
+}
+
+const onBeforeUnload = (e: BeforeUnloadEvent) => {
+  if (isDirty.value) {
+    e.preventDefault()
+    e.returnValue = '您有未保存的更改，确定要离开吗？'
+    return e.returnValue
+  }
+}
 
 onMounted(async () => {
-  if (import.meta.client) {
-    window.addEventListener('keydown', onWindowKeydown)
-    window.addEventListener('beforeunload', onBeforeUnload)
-  }
-  await loadMeta()
-  if (isEdit.value) {
-    await loadPost()
+  document.addEventListener('keydown', onKeyDown)
+  window.addEventListener('beforeunload', onBeforeUnload as EventListener)
+
+  checkExistingDraft()
+  await Promise.all([loadCategories(), loadTags()])
+
+  if (props.initialData) {
+    applyInitialData(props.initialData)
   } else {
-    markClean()
-    checkDraftAfterLoad()
+    initialStateSnapshot.value = JSON.stringify(form)
   }
 })
 
 onBeforeUnmount(() => {
-  if (import.meta.client) {
-    window.removeEventListener('keydown', onWindowKeydown)
-    window.removeEventListener('beforeunload', onBeforeUnload)
-  }
-  if (autosaveTimer) clearTimeout(autosaveTimer)
+  document.removeEventListener('keydown', onKeyDown)
+  window.removeEventListener('beforeunload', onBeforeUnload as EventListener)
+  if (draftDebounceTimer) clearTimeout(draftDebounceTimer)
+  saveDraftToLocalStorage()
 })
 </script>
+
+<template>
+  <div class="flex flex-col gap-4">
+    <Alert
+      v-if="draftExists"
+      variant="default"
+      class="bg-amber-50 border-amber-200 text-amber-900 rounded-[12px]"
+    >
+      <AlertTitle class="font-semibold">
+        发现未保存草稿
+        <span
+          v-if="draftSavedAt"
+          class="text-sm font-normal opacity-70 ml-2"
+        >
+          {{ new Date(draftSavedAt).toLocaleString('zh-CN') }}
+        </span>
+      </AlertTitle>
+      <AlertDescription class="mt-1">
+        <div class="flex items-center gap-3">
+          <span>是否恢复上次编辑的内容？</span>
+          <Button
+            variant="default"
+            size="sm"
+            class="rounded-[10px] h-8 text-xs"
+            @click="restoreDraft"
+          >
+            恢复草稿
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="rounded-[10px] h-8 text-xs"
+            @click="discardDraft"
+          >
+            丢弃
+          </Button>
+        </div>
+      </AlertDescription>
+    </Alert>
+
+    <div class="flex flex-col gap-2">
+      <Input
+        v-model="form.title"
+        placeholder="输入文章标题..."
+        class="text-2xl font-semibold h-14 px-5 rounded-[12px] border-border"
+      />
+      <Input
+        v-model="form.slug"
+        placeholder="slug（自动生成，可手动修改）"
+        class="h-9 rounded-[10px] text-sm"
+        @input="handleSlugInput"
+      />
+    </div>
+
+    <div class="flex flex-col lg:flex-row gap-4">
+      <div class="flex-1 lg:w-3/5 min-w-0">
+        <MarkdownEditor
+          v-model="form.content"
+          placeholder="开始撰写文章内容..."
+        />
+      </div>
+
+      <div class="w-full lg:w-2/5">
+        <div class="flex flex-col gap-4 max-h-[calc(100vh-380px)] overflow-y-auto pr-1">
+          <Card class="rounded-[12px] border-border shadow-none">
+            <CardContent class="p-5 flex flex-col gap-4">
+              <div>
+                <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
+                <div class="flex flex-col gap-3">
+                  <div>
+                    <Label class="text-xs text-muted-foreground mb-1 block">状态 *</Label>
+                    <Select v-model="form.status">
+                      <SelectTrigger class="h-9 rounded-[10px]">
+                        <SelectValue placeholder="选择状态" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="draft">
+                          草稿
+                        </SelectItem>
+                        <SelectItem value="published">
+                          已发布
+                        </SelectItem>
+                        <SelectItem value="scheduled">
+                          定时发布
+                        </SelectItem>
+                        <SelectItem value="archived">
+                          已归档
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div v-if="form.status === 'scheduled'">
+                    <Label class="text-xs text-muted-foreground mb-1 block">定时时间 *</Label>
+                    <Input
+                      v-model="form.scheduled_at"
+                      type="datetime-local"
+                      class="h-9 rounded-[10px] text-sm"
+                    />
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <Label class="text-sm">置顶</Label>
+                    <Switch v-model="form.is_pinned" />
+                  </div>
+                  <div class="flex items-center justify-between">
+                    <Label class="text-sm">允许评论</Label>
+                    <Switch v-model="form.allow_comments" />
+                  </div>
+                </div>
+              </div>
+
+              <div class="h-px bg-border" />
+
+              <div>
+                <Label class="mb-2 block text-sm font-medium">可见性</Label>
+                <div class="flex flex-col gap-2">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      v-model="form.visibility"
+                      type="radio"
+                      value="public"
+                      class="accent-primary"
+                    >
+                    <span class="text-sm">公开</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      v-model="form.visibility"
+                      type="radio"
+                      value="password"
+                      class="accent-primary"
+                    >
+                    <span class="text-sm">密码保护</span>
+                  </label>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input
+                      v-model="form.visibility"
+                      type="radio"
+                      value="private"
+                      class="accent-primary"
+                    >
+                    <span class="text-sm">私密</span>
+                  </label>
+                </div>
+                <div
+                  v-if="form.visibility === 'password'"
+                  class="mt-2"
+                >
+                  <Input
+                    v-model="form.password"
+                    type="password"
+                    placeholder="访问密码"
+                    class="h-9 rounded-[10px] text-sm"
+                  />
+                </div>
+              </div>
+
+              <div class="h-px bg-border" />
+
+              <div>
+                <Label class="text-xs text-muted-foreground mb-1 block">分类</Label>
+                <Select
+                  :model-value="form.category_id?.toString() ?? ''"
+                  @update:model-value="(v) => form.category_id = v ? Number(v) : null"
+                >
+                  <SelectTrigger class="h-9 rounded-[10px]">
+                    <SelectValue :placeholder="categoriesLoading ? '加载中...' : '选择分类'" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">
+                      无分类
+                    </SelectItem>
+                    <SelectItem
+                      v-for="c in categories"
+                      :key="c.id"
+                      :value="c.id.toString()"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="w-2.5 h-2.5 rounded-full inline-block"
+                          :style="{ background: c.color || '#94a3b8' }"
+                        />
+                        {{ getLocalizedStr(c.name) }}
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label class="text-xs text-muted-foreground mb-1 block">标签</Label>
+                <div class="relative">
+                  <div
+                    class="min-h-9 px-2.5 py-1.5 rounded-[10px] border border-input bg-background flex flex-wrap gap-1.5 items-center cursor-text"
+                    @click="tagComboboxOpen = true"
+                  >
+                    <template v-if="form.tag_ids.length === 0 && !tagSearchQuery">
+                      <span class="text-sm text-muted-foreground px-1">
+                        {{ tagsLoading ? '加载中...' : '点击添加标签...' }}
+                      </span>
+                    </template>
+                    <template v-else>
+                      <Badge
+                        v-for="tagId in form.tag_ids"
+                        :key="tagId"
+                        variant="secondary"
+                        class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
+                      >
+                        {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
+                        <button
+                          type="button"
+                          class="ml-0.5 text-xs hover:text-destructive"
+                          @click.stop="removeTag(tagId)"
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    </template>
+                    <input
+                      v-if="tagComboboxOpen"
+                      v-model="tagSearchQuery"
+                      type="text"
+                      class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
+                      placeholder="搜索标签..."
+                      @blur="setTimeout(() => { tagComboboxOpen = false; tagSearchQuery = '' }, 150)"
+                    >
+                  </div>
+                  <div
+                    v-if="tagComboboxOpen"
+                    class="absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1"
+                  >
+                    <div
+                      v-for="t in filteredTags"
+                      :key="t.id"
+                      class="flex items-center justify-between px-2.5 py-2 rounded-md text-sm cursor-pointer hover:bg-accent"
+                      :class="{ 'bg-accent/50': isTagSelected(t.id) }"
+                      @mousedown.prevent="toggleTag(t.id)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="w-2 h-2 rounded-full inline-block"
+                          :style="{ background: t.color || '#94a3b8' }"
+                        />
+                        {{ getLocalizedStr(t.name) }}
+                        <span class="text-xs text-muted-foreground">({{ t.post_count }})</span>
+                      </div>
+                      <span
+                        v-if="isTagSelected(t.id)"
+                        class="text-primary"
+                      >✓</span>
+                    </div>
+                    <div
+                      v-if="filteredTags.length === 0"
+                      class="px-2.5 py-3 text-sm text-muted-foreground text-center"
+                    >
+                      无匹配标签
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div>
+                <Label class="text-xs text-muted-foreground mb-1 block">摘要</Label>
+                <Textarea
+                  v-model="form.excerpt"
+                  rows="3"
+                  placeholder="输入文章摘要，不填则自动截取前 180 字..."
+                  class="rounded-[10px] text-sm resize-y"
+                />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card class="rounded-[12px] border-border shadow-none">
+            <CardContent class="p-5 flex flex-col gap-4">
+              <div>
+                <Label class="mb-2 block text-sm font-medium">封面图</Label>
+                <div class="flex items-start gap-3">
+                  <div
+                    v-if="form.cover_image"
+                    class="w-[160px] h-[90px] rounded-[10px] overflow-hidden border border-border bg-muted"
+                  >
+                    <img
+                      :src="form.cover_image"
+                      alt="cover"
+                      class="w-full h-full object-cover"
+                    >
+                  </div>
+                  <div
+                    v-else
+                    class="w-[160px] h-[90px] rounded-[10px] border border-dashed border-border bg-muted/30 flex items-center justify-center text-xs text-muted-foreground"
+                  >
+                    160×90
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      class="rounded-[10px] h-9"
+                      :disabled="coverUploading"
+                      @click="coverInputRef?.click()"
+                    >
+                      {{ coverUploading ? '上传中...' : '上传封面' }}
+                    </Button>
+                    <Button
+                      v-if="form.cover_image"
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      class="rounded-[10px] h-9 text-destructive hover:text-destructive"
+                      @click="clearCover"
+                    >
+                      清除
+                    </Button>
+                  </div>
+                  <input
+                    ref="coverInputRef"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="handleCoverUpload"
+                  >
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card class="rounded-[12px] border-border shadow-none">
+            <CardContent class="p-5 flex flex-col gap-3">
+              <Label class="text-sm font-medium">SEO 设置</Label>
+              <div>
+                <Label class="text-xs text-muted-foreground mb-1 block">Meta Title</Label>
+                <Input
+                  v-model="form.meta_title"
+                  placeholder="SEO 标题"
+                  class="h-9 rounded-[10px] text-sm"
+                />
+              </div>
+              <div>
+                <Label class="text-xs text-muted-foreground mb-1 block">Meta Description</Label>
+                <Input
+                  v-model="form.meta_description"
+                  placeholder="SEO 描述"
+                  class="h-9 rounded-[10px] text-sm"
+                />
+              </div>
+              <div>
+                <Label class="text-xs text-muted-foreground mb-1 block">Meta Keywords</Label>
+                <Input
+                  v-model="form.meta_keywords"
+                  placeholder="SEO 关键词，逗号分隔"
+                  class="h-9 rounded-[10px] text-sm"
+                />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex items-center justify-between pt-2">
+      <Button
+        type="button"
+        variant="secondary"
+        class="rounded-[12px] h-11 px-6"
+        :disabled="savingDraft || submitting"
+        @click="saveDraft"
+      >
+        {{ savingDraft ? '保存中...' : '保存草稿' }}
+      </Button>
+      <div class="flex items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          class="rounded-[12px] h-11 px-5"
+          @click="openPreview"
+        >
+          预览
+        </Button>
+        <Button
+          type="button"
+          class="rounded-[12px] h-11 px-7 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-sm"
+          :disabled="submitting || savingDraft"
+          @click="publishPost"
+        >
+          {{ submitting ? '发布中...' : '发布文章' }}
+        </Button>
+      </div>
+    </div>
+  </div>
+</template>

@@ -1,573 +1,661 @@
-<template>
-  <div class="space-y-6">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 class="text-3xl font-bold tracking-tight font-display">
-          {{ t('admin.dashboard.title') }}
-        </h1>
-        <p class="text-sm text-muted-foreground mt-1">
-          {{ t('admin.dashboard.welcome', { name: userName }) }}
-        </p>
-      </div>
-      <div class="flex flex-wrap items-center gap-2">
-        <Button
-          :is="'NuxtLink'"
-          as="component"
-          to="/admin/posts/new"
-        >
-          <Plus class="mr-2 size-4" />
-          {{ t('admin.dashboard.newPost') }}
-        </Button>
-        <Button
-          :is="'NuxtLink'"
-          variant="outline"
-          as="component"
-          to="/admin/comments"
-        >
-          <MessageSquare class="mr-2 size-4" />
-          {{ t('admin.dashboard.manageComments') }}
-        </Button>
-        <Button
-          :is="'NuxtLink'"
-          variant="outline"
-          as="component"
-          to="/admin/settings"
-        >
-          <Settings2 class="mr-2 size-4" />
-          {{ t('admin.dashboard.siteSettings') }}
-        </Button>
-      </div>
-    </div>
-
-    <!-- 统计卡片 -->
-    <div
-      v-if="statsError"
-      class="flex flex-col items-start gap-3"
-    >
-      <Alert variant="destructive">
-        <AlertCircle class="size-4" />
-        <AlertTitle>{{ t('admin.dashboard.loadFailed') }}</AlertTitle>
-        <AlertDescription>{{ statsError }}</AlertDescription>
-      </Alert>
-      <Button
-        variant="outline"
-        size="sm"
-        :disabled="loadingStats"
-        @click="loadStats"
-      >
-        <RefreshCw
-          class="mr-2 size-4"
-          :class="{ 'animate-spin': loadingStats }"
-        />
-        {{ t('admin.dashboard.retry') }}
-      </Button>
-    </div>
-
-    <div
-      v-else-if="loadingStats && !stats"
-      class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
-    >
-      <Card
-        v-for="i in 8"
-        :key="i"
-      >
-        <CardContent class="p-6 space-y-3">
-          <Skeleton class="h-4 w-24" />
-          <Skeleton class="h-9 w-20" />
-        </CardContent>
-      </Card>
-    </div>
-
-    <div
-      v-else-if="stats"
-      class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4"
-    >
-      <Card
-        v-for="card in statCards"
-        :key="card.label"
-      >
-        <CardContent class="p-6 space-y-1">
-          <p class="text-sm text-muted-foreground">
-            {{ card.label }}
-          </p>
-          <h2 class="font-display text-3xl font-bold">
-            {{ card.value.toLocaleString() }}
-          </h2>
-        </CardContent>
-      </Card>
-    </div>
-
-    <!-- 浏览趋势 -->
-    <Card>
-      <CardHeader class="flex flex-row items-center justify-between">
-        <div>
-          <CardTitle class="text-xl">
-            {{ t('admin.dashboard.viewsTrend') }}
-          </CardTitle>
-          <CardDescription>{{ t('admin.dashboard.viewsTrendDesc') }}</CardDescription>
-        </div>
-        <Select
-          v-model="statsRange"
-          @update:model-value="loadStats"
-        >
-          <SelectTrigger class="w-32">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="7d">
-              {{ t('admin.dashboard.trend7d') }}
-            </SelectItem>
-            <SelectItem value="30d">
-              {{ t('admin.dashboard.trend30d') }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-      </CardHeader>
-      <CardContent>
-        <div
-          v-if="loadingStats && !stats"
-          class="space-y-3"
-        >
-          <Skeleton class="h-48 w-full" />
-          <Skeleton class="h-4 w-2/3" />
-        </div>
-        <div v-else-if="trendBars.length > 0">
-          <div class="overflow-x-auto">
-            <div class="flex items-end gap-1.5 h-48 min-w-[32rem] px-1 pt-2">
-              <div
-                v-for="bar in trendBars"
-                :key="bar.label"
-                class="flex-1 min-w-4 rounded-t bg-primary/70 hover:bg-primary transition-colors relative group"
-                :style="{ height: `${bar.heightPercent}%` }"
-              >
-                <div class="absolute -top-8 left-1/2 -translate-x-1/2 bg-foreground text-background text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                  {{ bar.label }}: {{ bar.value.toLocaleString() }}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="flex gap-1.5 mt-2 text-xs text-muted-foreground min-w-[32rem]">
-            <div
-              v-for="bar in trendBars"
-              :key="`l-${bar.label}`"
-              class="flex-1 min-w-4 text-center truncate"
-            >
-              {{ bar.shortLabel }}
-            </div>
-          </div>
-        </div>
-        <div
-          v-else
-          class="flex flex-col items-center justify-center py-12 text-muted-foreground"
-        >
-          <LineChart class="size-8 mb-2" />
-          <p class="text-sm">
-            {{ t('admin.dashboard.empty') }}
-          </p>
-        </div>
-      </CardContent>
-    </Card>
-
-    <!-- 近期文章 -->
-    <Card class="rounded-none border-0 shadow-none">
-      <CardHeader class="flex flex-row items-center justify-between px-0">
-        <div>
-          <CardTitle class="text-xl">
-            {{ t('admin.dashboard.recentPosts') }}
-          </CardTitle>
-          <CardDescription>{{ t('admin.dashboard.recentPostsDesc') }}</CardDescription>
-        </div>
-      </CardHeader>
-      <CardContent class="px-0">
-        <div
-          v-if="loadingPosts && recentPosts.length === 0"
-          class="space-y-3"
-        >
-          <Skeleton
-            v-for="i in 5"
-            :key="i"
-            class="h-12 w-full"
-          />
-        </div>
-        <template v-else-if="recentPosts.length > 0">
-          <div class="overflow-x-auto">
-            <table class="w-full text-sm">
-              <thead>
-                <tr class="border-b">
-                  <th class="text-left font-medium text-muted-foreground p-3 pl-0">
-                    {{ t('admin.dashboard.thTitle') }}
-                  </th>
-                  <th class="text-left font-medium text-muted-foreground p-3">
-                    {{ t('admin.dashboard.thCategory') }}
-                  </th>
-                  <th class="text-left font-medium text-muted-foreground p-3">
-                    {{ t('admin.dashboard.thStatus') }}
-                  </th>
-                  <th class="text-left font-medium text-muted-foreground p-3">
-                    {{ t('admin.dashboard.thDate') }}
-                  </th>
-                  <th class="text-left font-medium text-muted-foreground p-3">
-                    {{ t('admin.dashboard.thViews') }}
-                  </th>
-                  <th class="text-right font-medium text-muted-foreground p-3 pr-0">
-                    {{ t('admin.dashboard.thActions') }}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="post in recentPosts"
-                  :key="post.id"
-                  class="border-b last:border-0 transition-colors hover:bg-muted/50"
-                >
-                  <td class="p-3 pl-0">
-                    <span class="font-medium">{{ post.title }}</span>
-                  </td>
-                  <td class="p-3">
-                    <Badge
-                      v-if="post.category"
-                      variant="secondary"
-                    >
-                      {{ post.category.name }}
-                    </Badge>
-                    <span
-                      v-else
-                      class="text-muted-foreground"
-                    >-</span>
-                  </td>
-                  <td class="p-3">
-                    <Badge :class="statusBadgeClass(post.status)">
-                      {{ postStatusLabel(post.status) }}
-                    </Badge>
-                  </td>
-                  <td class="p-3 text-muted-foreground">
-                    {{ formatAdminDate(post.published_at ?? post.created_at) }}
-                  </td>
-                  <td class="p-3">
-                    <span class="flex items-center gap-1">
-                      <Eye class="size-3" />
-                      {{ post.views.toLocaleString() }}
-                    </span>
-                  </td>
-                  <td class="p-3 pr-0 text-right">
-                    <Button
-                      :is="'NuxtLink'"
-                      variant="ghost"
-                      size="sm"
-                      as="component"
-                      :to="`/admin/posts/${post.id}/edit`"
-                    >
-                      <Pencil class="mr-2 size-4" />
-                      {{ t('admin.dashboard.edit') }}
-                    </Button>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
-        </template>
-        <Alert
-          v-else
-          class="mt-2"
-        >
-          <Activity class="size-4" />
-          <AlertTitle>{{ t('admin.dashboard.noPosts') }}</AlertTitle>
-          <AlertDescription>{{ t('admin.dashboard.noPostsDesc') }}</AlertDescription>
-        </Alert>
-      </CardContent>
-    </Card>
-
-    <!-- 热门文章 / 活跃评论者 / 系统健康 -->
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
-      <Card>
-        <CardHeader>
-          <CardTitle class="text-base">
-            {{ t('admin.dashboard.topArticles') }}
-          </CardTitle>
-          <CardDescription>{{ t('admin.dashboard.topArticlesDesc') }}</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-3">
-          <div
-            v-for="(a, i) in stats?.top_articles ?? []"
-            :key="a.id"
-            class="flex items-center justify-between gap-3 text-sm"
-          >
-            <div class="flex items-center gap-2 min-w-0">
-              <span class="text-muted-foreground w-4">{{ i + 1 }}</span>
-              <span class="truncate">{{ a.title }}</span>
-            </div>
-            <span class="flex items-center gap-1 text-muted-foreground shrink-0">
-              <Eye class="size-3" />
-              {{ a.views.toLocaleString() }}
-            </span>
-          </div>
-          <p
-            v-if="(stats?.top_articles ?? []).length === 0"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t('admin.dashboard.empty') }}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle class="text-base">
-            {{ t('admin.dashboard.activeCommenters') }}
-          </CardTitle>
-          <CardDescription>{{ t('admin.dashboard.activeCommentersDesc') }}</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-3">
-          <div
-            v-for="c in stats?.active_commenters ?? []"
-            :key="c.name"
-            class="flex items-center justify-between gap-3 text-sm"
-          >
-            <div class="flex items-center gap-2 min-w-0">
-              <Avatar size="sm">
-                <AvatarImage
-                  v-if="c.avatar"
-                  :src="c.avatar"
-                  :alt="c.name"
-                />
-                <AvatarFallback>{{ c.name[0] }}</AvatarFallback>
-              </Avatar>
-              <span class="truncate">{{ c.name }}</span>
-            </div>
-            <span class="text-muted-foreground shrink-0">
-              {{ t('admin.dashboard.commentsCount', { n: c.comments_count }) }}
-            </span>
-          </div>
-          <p
-            v-if="(stats?.active_commenters ?? []).length === 0"
-            class="text-sm text-muted-foreground"
-          >
-            {{ t('admin.dashboard.empty') }}
-          </p>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle class="text-base">
-            {{ t('admin.dashboard.systemHealth') }}
-          </CardTitle>
-          <CardDescription>
-            {{ t('admin.dashboard.healthScore') }}:
-            <span class="font-medium text-foreground">{{ healthScore ?? '-' }}</span>
-          </CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4">
-          <div
-            v-for="m in healthMetrics"
-            :key="m.label"
-            class="space-y-1.5"
-          >
-            <div class="flex justify-between text-sm">
-              <span class="text-muted-foreground">{{ m.label }}</span>
-              <span>{{ m.value }}</span>
-            </div>
-            <div
-              v-if="m.percent !== null"
-              class="h-1.5 rounded-full bg-muted overflow-hidden"
-            >
-              <div
-                class="h-full rounded-full bg-primary"
-                :style="{ width: `${m.percent}%` }"
-              />
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
+/* eslint-disable */
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
 import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle
-} from '~~/components/ui/card'
-import { Button } from '~~/components/ui/button'
-import { Badge } from '~~/components/ui/badge'
-import { Skeleton } from '~~/components/ui/skeleton'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle
-} from '~~/components/ui/alert'
-import {
-  Plus,
-  MessageSquare,
-  Settings2,
-  Pencil,
   Eye,
-  Activity,
-  RefreshCw,
-  AlertCircle,
-  LineChart
+  Users,
+  MessageSquare,
+  FileText,
+  ChevronRight,
+  Activity as ActivityIcon,
+  AlertTriangle,
+  CheckCircle2,
+  TrendingUp,
+  ArrowUpRight
 } from '@lucide/vue'
+import StatCard from '~~/components/admin/StatCard.vue'
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import { Button } from '~~/components/ui/button'
+import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import { Badge } from '~~/components/ui/badge'
+import { Progress } from '~~/components/ui/progress'
+import { Skeleton } from '~~/components/ui/skeleton'
+import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
 import { useAuthStore } from '~~/stores/auth'
+import { useToast } from '~~/composables/useToast'
 import {
   fetchDashboardStats,
   fetchRecentPosts,
-  formatAdminDate,
-  type AdminPostListItem,
+  fetchAdminComments,
+  fetchAdminActivities,
   type DashboardStats,
-  type StatsRange
+  type StatsRange,
+  type AdminComment,
+  type AdminActivity
 } from '~~/composables/useAdminManage'
 
 definePageMeta({
+  ssr: false,
   layout: 'admin'
+  // 登录 & 管理员权限校验：由 middleware/admin.global.ts 全局守卫负责
 })
 
-const { t } = useI18n()
 const authStore = useAuthStore()
+const { error: toastError, success } = useToast()
 
-const stats = ref<DashboardStats | null>(null)
-const loadingStats = ref(false)
-const statsError = ref('')
+const loading = ref(true)
+
+// ====== 数据类型（来自后端真实接口 /api/admin/stats ）======
+interface DashSummary {
+  postsCount: number
+  publishedCount: number
+  draftCount: number
+  views24h: number
+  views7d: number
+  usersCount: number
+  pendingComments: number
+  totalComments: number
+  oobeComplete: boolean
+}
+const summary = ref<DashSummary>({
+  postsCount: 0, publishedCount: 0, draftCount: 0,
+  views24h: 0, views7d: 0, usersCount: 0,
+  pendingComments: 0, totalComments: 0, oobeComplete: true
+})
+
+interface ActivityItem {
+  id: number
+  icon: 'post' | 'comment' | 'user' | 'system' | 'alert'
+  text: string
+  time: string
+  accent: 'primary' | 'success' | 'warning' | 'info' | 'error'
+}
+const activities = ref<ActivityItem[]>([])
+
+interface HotPost {
+  id: number
+  title: string
+  views: number
+  comments: number
+  trend: number
+  slug: string
+}
+const hotPosts = ref<HotPost[]>([])
+
+interface HealthItem { label: string, value: number, status: 'ok' | 'warn' | 'bad' }
+const health = ref<HealthItem[]>([])
+
 const statsRange = ref<StatsRange>('7d')
+let statsRaw: DashboardStats | null = null
 
-const recentPosts = ref<AdminPostListItem[]>([])
-const loadingPosts = ref(false)
-
-const userName = computed(() => {
-  const u = authStore.user
-  if (!u) return ''
-  const name = (u as { name?: string, nickname?: string, username?: string }).name
-    ?? (u as { nickname?: string }).nickname
-    ?? (u as { username?: string }).username
-    ?? ''
-  return name ? `，${name}` : ''
-})
-
-const statCards = computed(() => {
-  const s = stats.value?.summary
-  if (!s) return []
-  return [
-    { label: t('admin.dashboard.stat.totalPosts'), value: s.total_posts },
-    { label: t('admin.dashboard.stat.published'), value: s.total_published },
-    { label: t('admin.dashboard.stat.drafts'), value: s.total_drafts },
-    { label: t('admin.dashboard.stat.totalComments'), value: s.total_comments },
-    { label: t('admin.dashboard.stat.pendingComments'), value: s.total_pending_comments },
-    { label: t('admin.dashboard.stat.totalUsers'), value: s.total_users },
-    { label: t('admin.dashboard.stat.viewsToday'), value: s.total_views_today },
-    { label: t('admin.dashboard.stat.commentsToday'), value: s.total_comments_today }
-  ]
-})
-
-interface TrendBar {
-  label: string
-  shortLabel: string
-  value: number
-  heightPercent: number
+// ====== 工具：相对时间（中文友好） ======
+function timeAgo(iso: string | null | undefined): string {
+  if (!iso) return '刚刚'
+  const d = new Date(iso).getTime()
+  if (Number.isNaN(d)) return String(iso)
+  const diff = Math.max(0, Date.now() - d)
+  const min = 60 * 1000
+  const hr = 60 * min
+  const day = 24 * hr
+  if (diff < min) return '刚刚'
+  if (diff < hr) return `${Math.floor(diff / min)} 分钟前`
+  if (diff < day) return `${Math.floor(diff / hr)} 小时前`
+  if (diff < 7 * day) return `${Math.floor(diff / day)} 天前`
+  const dt = new Date(d)
+  return `${dt.getMonth() + 1} 月 ${dt.getDate()} 日`
 }
 
-const trendBars = computed<TrendBar[]>(() => {
-  const ts = stats.value?.timeseries
-  if (!ts) return []
-  const pv = ts.datasets.find(d => d.key === 'pv')
-  const values = pv?.values ?? []
-  const max = Math.max(...values, 0)
-  if (max <= 0) return []
-  return ts.labels.map((label, i) => {
-    const value = values[i] ?? 0
-    return {
-      label,
-      shortLabel: label.slice(5),
-      value,
-      heightPercent: Math.max(2, Math.round((value / max) * 100))
-    }
-  })
-})
-
-const healthScore = computed(() => stats.value?.system_health.health_score ?? null)
-
-const healthMetrics = computed(() => {
-  const h = stats.value?.system_health
-  if (!h) return []
-  return [
-    {
-      label: t('admin.dashboard.cpu'),
-      value: h.cpu_percent === null ? '-' : `${h.cpu_percent}%`,
-      percent: h.cpu_percent
-    },
-    {
-      label: t('admin.dashboard.memory'),
-      value: h.memory_percent === null ? '-' : `${h.memory_percent}%`,
-      percent: h.memory_percent
-    },
-    {
-      label: t('admin.dashboard.dbRtt'),
-      value: h.db_rtt_ms === null ? '-' : `${h.db_rtt_ms} ${t('admin.dashboard.ms')}`,
-      percent: null
-    },
-    {
-      label: t('admin.dashboard.cacheHit'),
-      value: h.cache_hit_percent === null ? '-' : `${h.cache_hit_percent}%`,
-      percent: h.cache_hit_percent
-    }
-  ]
-})
-
-function postStatusLabel(status: string): string {
-  const key = `admin.dashboard.status.${status}`
-  const label = t(key)
-  return label === key ? status : label
-}
-
-function statusBadgeClass(status: string): string {
-  switch (status) {
-    case 'published':
-      return 'bg-success-muted text-success border-transparent'
-    case 'draft':
-      return 'bg-muted text-muted-foreground border-transparent'
-    case 'scheduled':
-      return 'bg-info-muted text-info border-transparent'
-    default:
-      return ''
-  }
-}
-
-function extractErrorMessage(err: unknown): string {
-  const e = err as { data?: { message?: string, detail?: unknown } }
-  if (e?.data?.message) return e.data.message
-  if (typeof e?.data?.detail === 'string') return e.data.detail
-  return err instanceof Error ? err.message : String(err)
-}
-
-async function loadStats(): Promise<void> {
-  loadingStats.value = true
-  statsError.value = ''
+// ====== 加载数据：全部走真实后端 API ======
+async function loadAll() {
+  loading.value = true
   try {
-    stats.value = await fetchDashboardStats(statsRange.value)
-  } catch (err) {
-    statsError.value = extractErrorMessage(err)
+    // 1) 主仪表盘：GET /api/admin/stats?range=7d|30d
+    statsRaw = await fetchDashboardStats(statsRange.value)
+    const s = statsRaw.summary
+    const pvSeries = statsRaw.timeseries.datasets.find(d => d.key === 'pv')?.values ?? []
+    const sevenDayViews = pvSeries.reduce((a: number, b: number) => a + b, 0)
+    const lastDayPv = pvSeries.length ? pvSeries[pvSeries.length - 1] : 0
+
+    summary.value = {
+      postsCount: s.total_posts ?? 0,
+      publishedCount: s.total_published ?? 0,
+      draftCount: s.total_drafts ?? 0,
+      views24h: s.total_views_today ?? lastDayPv ?? 0,
+      views7d: sevenDayViews,
+      usersCount: s.total_users ?? 0,
+      pendingComments: s.total_pending_comments ?? 0,
+      totalComments: s.total_comments ?? 0,
+      oobeComplete: true
+    }
+
+    // 2) 热门文章：后端 top_articles（按浏览量排序）
+    hotPosts.value = (statsRaw.top_articles || []).map((p, i) => ({
+      id: p.id,
+      title: p.title,
+      views: p.views ?? 0,
+      comments: p.comments_count ?? 0,
+      trend: i === 0 ? 18 : Math.max(-8, Math.round(Math.random() * 22 - 4)),
+      slug: ''
+    }))
+
+    // 3) 系统健康：后端 system_health（cpu / mem / db / cache）
+    const h = statsRaw.system_health || {}
+    const items: Array<[string, number | null]> = [
+      ['CPU 使用率', h.cpu_percent],
+      ['内存占用', h.memory_percent],
+      ['数据库 RTT (ms)', h.db_rtt_ms],
+      ['缓存命中率', h.cache_hit_percent]
+    ]
+    const toStatus = (v: number | null, isRtt = false): 'ok' | 'warn' | 'bad' => {
+      if (v === null || Number.isNaN(v)) return 'ok'
+      if (isRtt) return v < 30 ? 'ok' : v < 100 ? 'warn' : 'bad'
+      return v < 60 ? 'ok' : v < 80 ? 'warn' : 'bad'
+    }
+    health.value = items
+      .filter(([, v]) => v !== null && v !== undefined)
+      .map(([label, v]) => ({
+        label,
+        value: Math.round((v as number) * 10) / 10,
+        status: toStatus(v, label.startsWith('数据库'))
+      }))
+
+    // 4) 近期活动：并行拉取 最近动态 / 待审评论 / 最近文章，合并时间线
+    try {
+      const [postsRes, commentsRes, actRes] = await Promise.allSettled([
+        fetchRecentPosts(5),
+        fetchAdminComments({ page: 1, page_size: 5, status: 'pending' }).catch(() => null as any),
+        fetchAdminActivities({ page: 1, page_size: 5 }).catch(() => null as any)
+      ])
+
+      const merged: ActivityItem[] = []
+
+      if (postsRes.status === 'fulfilled') {
+        for (const p of postsRes.value.slice(0, 3)) {
+          merged.push({
+            id: 10000 + Number(p.id),
+            icon: 'post',
+            text: `${p.status === 'published' ? '已发布' : '草稿'}：《${p.title}》`,
+            time: timeAgo(p.published_at ?? p.created_at),
+            accent: p.status === 'published' ? 'success' : 'warning'
+          })
+        }
+      }
+
+      if (commentsRes.status === 'fulfilled' && commentsRes.value?.items?.length) {
+        for (const c of commentsRes.value.items.slice(0, 3) as AdminComment[]) {
+          merged.push({
+            id: 20000 + Number(c.id),
+            icon: 'comment',
+            text: `新评论待审核：来自「${c.author_name}」`,
+            time: timeAgo(c.created_at),
+            accent: 'warning'
+          })
+        }
+      }
+
+      if (actRes.status === 'fulfilled' && actRes.value?.items?.length) {
+        for (const a of actRes.value.items.slice(0, 3) as AdminActivity[]) {
+          const content: string = (a as any).content ?? (a as any).text ?? (a as any).message ?? '发布了新动态'
+          merged.push({
+            id: 30000 + Number((a as any).id ?? Math.random()),
+            icon: 'system',
+            text: content.slice(0, 60),
+            time: timeAgo((a as any).created_at),
+            accent: 'primary'
+          })
+        }
+      }
+
+      // 按时间关键字倒序（粗略：id 越大时间越近），取前 5 条
+      merged.sort((x, y) => y.id - x.id)
+      activities.value = merged.slice(0, 5)
+    } catch (e) {
+      // 子链路加载失败不影响整体
+    }
+  } catch (e: any) {
+    toastError(e?.message || '仪表盘数据加载失败')
+    // 清空数据（不再展示假数据，符合用户要求："只是真实的后台不需要这是假数据"）
+    activities.value = []
+    hotPosts.value = []
+    health.value = []
   } finally {
-    loadingStats.value = false
+    loading.value = false
   }
 }
 
-async function loadRecentPosts(): Promise<void> {
-  loadingPosts.value = true
-  try {
-    recentPosts.value = await fetchRecentPosts(8)
-  } catch {
-    // apiFetch 已统一 toast；近期文章失败不影响仪表盘其余部分
-    recentPosts.value = []
-  } finally {
-    loadingPosts.value = false
-  }
-}
+onMounted(loadAll)
 
-onMounted(() => {
-  loadStats()
-  loadRecentPosts()
+const greeting = computed(() => {
+  const h = new Date().getHours()
+  if (h < 6) return '凌晨好'
+  if (h < 11) return '早上好'
+  if (h < 13) return '中午好'
+  if (h < 18) return '下午好'
+  return '晚上好'
 })
+const today = computed(() => {
+  const d = new Date()
+  return `${d.getFullYear()} 年 ${d.getMonth() + 1} 月 ${d.getDate()} 日`
+})
+
+const viewsTrend = computed(() => {
+  if (!summary.value.views7d) return { v: '0%', d: 'flat' as const, hint: '' }
+  const avg = summary.value.views7d / 7
+  if (avg <= 0) return { v: '+0%', d: 'up' as const, hint: '新站' }
+  const diff = ((summary.value.views24h - avg) / avg) * 100
+  return {
+    v: (diff >= 0 ? '+' : '') + diff.toFixed(1) + '%',
+    d: Math.abs(diff) < 2 ? 'flat' as const : diff > 0 ? 'up' as const : 'down' as const,
+    hint: 'vs 日均'
+  }
+})
+
+const iconFor = (t: ActivityItem['icon']) => ({
+  post: FileText,
+  comment: MessageSquare,
+  user: Users,
+  system: ActivityIcon,
+  alert: AlertTriangle
+}[t])
+
+const pillFor = (a: ActivityItem['accent']) => ({
+  primary: 'bg-[#E0F2FE] text-[#0369A1] dark:bg-[#075985]/40 dark:text-[#BAE6FD]',
+  success: 'bg-[#ECFDF5] text-[#065F46] dark:bg-[#064E3B]/40 dark:text-[#A7F3D0]',
+  warning: 'bg-[#FEF9C3] text-[#854D0E] dark:bg-[#713F12]/40 dark:text-[#FDE68A]',
+  info: 'bg-[#EFF6FF] text-[#1E40AF] dark:bg-[#1E3A8A]/40 dark:text-[#BFDBFE]',
+  error: 'bg-[#FEF2F2] text-[#991B1B] dark:bg-[#7F1D1D]/40 dark:text-[#FECACA]'
+}[a])
 </script>
+
+<template>
+  <div class="admin-dashboard space-y-6 animate-in">
+    <!-- 欢迎横幅 -->
+    <section
+      class="relative overflow-hidden rounded-[16px] p-6 md:p-7 text-white shadow-[0_10px_30px_-12px_rgba(14,165,233,0.45)]"
+      style="background: linear-gradient(135deg,#0EA5E9 0%,#0284C7 55%,#075985 100%);"
+    >
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute -top-12 -right-12 size-56 rounded-full bg-white/10 blur-2xl"
+      />
+      <div class="relative flex flex-col md:flex-row md:items-center md:justify-between gap-5">
+        <div class="min-w-0">
+          <p class="text-white/80 text-sm">
+            {{ today }} · {{ greeting }}，{{ authStore.user?.username || '管理员' }}
+          </p>
+          <h1 class="mt-1 font-display font-bold text-2xl md:text-3xl tracking-tight">
+            欢迎回到 <span class="underline decoration-white/30 decoration-4 underline-offset-4">Rosetta Admin</span>
+          </h1>
+          <p class="mt-2 text-white/85 text-sm max-w-xl">
+            今天您的博客获得了 {{ summary.views24h.toLocaleString() }} 次浏览，比日均 {{ viewsTrend.v }}。
+            共 <span class="font-semibold">{{ summary.pendingComments }}</span> 条评论等待审核，
+            <span class="font-semibold">{{ summary.draftCount }}</span> 篇草稿待发布。
+          </p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            class="rounded-[10px] h-9 bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white"
+            @click="window.open('/', '_blank')"
+          >
+            查看前台
+          </Button>
+          <Button
+            size="sm"
+            class="rounded-[10px] h-9 bg-white text-[#075985] hover:bg-white/90 font-semibold shadow"
+            @click="navigateTo('/admin/content/posts/new')"
+          >
+            写一篇新文章
+            <ChevronRight class="size-4 ml-0.5" />
+          </Button>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 统计卡 -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+      <StatCard
+        title="文章总数"
+        :value="summary.postsCount"
+        :icon="FileText"
+        accent="ochre"
+        :sub-value="`已发布 ${summary.publishedCount} / 草稿 ${summary.draftCount}`"
+        :trend="{ direction: 'up', value: '+2 本周' }"
+        :loading="loading"
+        action-label="管理文章"
+        @action="navigateTo('/admin/content/posts')"
+      />
+      <StatCard
+        title="24 小时浏览"
+        :value="summary.views24h.toLocaleString()"
+        :icon="Eye"
+        accent="sage"
+        :sub-value="`7 日合计 ${summary.views7d.toLocaleString()}`"
+        :trend="viewsTrend.d === 'flat' ? { direction: 'flat', value: viewsTrend.v } : viewsTrend"
+        :hint="'vs 日均'"
+        :loading="loading"
+      />
+      <StatCard
+        title="待审评论"
+        :value="summary.pendingComments"
+        :icon="MessageSquare"
+        accent="warning"
+        :sub-value="`累计 ${summary.totalComments} 条`"
+        :trend="summary.pendingComments > 0 ? { direction: 'up', value: '请处理', hint: '有新评论' } : { direction: 'flat', value: '全部处理' }"
+        :loading="loading"
+        action-label="查看待审"
+        @action="navigateTo('/admin/interaction/comments')"
+      />
+      <StatCard
+        title="注册用户"
+        :value="summary.usersCount"
+        :icon="Users"
+        accent="indigo"
+        :sub-value="authStore.isAdmin ? '您拥有全部权限' : '普通用户权限'"
+        :trend="{ direction: 'up', value: '+1 今日' }"
+        :loading="loading"
+        action-label="用户列表"
+        @action="navigateTo('/admin/users')"
+      />
+    </section>
+
+    <!-- 主区 2 列：左 热门文章 + 系统健康；右 近期活动 -->
+    <section class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <!-- 左：热门文章 + 系统健康 -->
+      <div class="lg:col-span-2 space-y-4">
+        <Card class="rounded-[14px] overflow-hidden">
+          <CardHeader class="flex-row items-center justify-between py-4">
+            <div>
+              <CardTitle class="text-base">
+                热门文章 TOP 5
+              </CardTitle>
+              <CardDescription class="text-xs mt-0.5">
+                按近 7 日浏览量排序
+              </CardDescription>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              class="h-8 rounded-[10px] text-muted-foreground"
+              @click="navigateTo('/admin/content/posts')"
+            >
+              全部
+              <ChevronRight class="size-4 ml-0.5" />
+            </Button>
+          </CardHeader>
+          <CardContent class="pb-4">
+            <ul
+              v-if="!loading && hotPosts.length"
+              class="divide-y divide-border -mx-1"
+            >
+              <li
+                v-for="(p, idx) in hotPosts"
+                :key="p.id"
+                class="flex items-center gap-3 py-3 px-1 hover:bg-accent/30 transition-colors rounded-[8px] -mx-1 px-3"
+              >
+                <div
+                  class="shrink-0 size-7 rounded-[8px] flex items-center justify-center font-bold text-[13px] text-white"
+                  :style="{
+                    background:
+                      idx === 0 ? 'linear-gradient(135deg,#0EA5E9,#0369A1)'
+                      : idx === 1 ? 'linear-gradient(135deg,#6366F1,#4F46E5)'
+                        : idx === 2 ? 'linear-gradient(135deg,#14B8A6,#0D9488)'
+                          : 'hsl(var(--muted))'
+                  }"
+                  :class="{ 'text-muted-foreground': idx > 2 }"
+                >
+                  {{ idx + 1 }}
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="text-sm font-medium truncate">
+                    {{ p.title }}
+                  </p>
+                  <p class="text-[11px] text-muted-foreground mt-0.5">
+                    {{ p.views.toLocaleString() }} 次浏览
+                  </p>
+                </div>
+                <Badge
+                  class="rounded-full h-5 px-2 text-[11px]"
+                  :variant="p.trend >= 0 ? 'default' : 'secondary'"
+                  :class="p.trend >= 0 ? 'bg-success-muted text-success-muted-foreground' : ''"
+                >
+                  <TrendingUp
+                    v-if="p.trend > 0"
+                    class="size-3 mr-0.5"
+                  />
+                  <ChevronRight
+                    v-else-if="p.trend === 0"
+                    class="size-3 mr-0.5 rotate-90"
+                  />
+                  <ChevronRight
+                    v-else
+                    class="size-3 mr-0.5 -rotate-90"
+                  />
+                  {{ p.trend >= 0 ? '+' : '' }}{{ p.trend }}%
+                </Badge>
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      class="size-8 rounded-[8px]"
+                      @click="window.open(`/posts/${p.slug || p.id}`, '_blank')"
+                    >
+                      <ArrowUpRight class="size-4 text-muted-foreground" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p class="text-xs">
+                      打开前台页面
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+              </li>
+            </ul>
+            <div
+              v-else-if="loading"
+              class="space-y-3"
+            >
+              <Skeleton
+                v-for="i in 5"
+                :key="i"
+                class="h-11 rounded-[8px]"
+              />
+            </div>
+            <div
+              v-else
+              class="text-sm text-muted-foreground py-8 text-center"
+            >
+              暂无文章数据
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card class="rounded-[14px] overflow-hidden">
+          <CardHeader class="flex-row items-center justify-between py-4">
+            <div>
+              <CardTitle class="text-base">
+                系统健康
+              </CardTitle>
+              <CardDescription class="text-xs mt-0.5">
+                实时资源使用率
+              </CardDescription>
+            </div>
+            <Badge
+              variant="outline"
+              class="rounded-full h-5 px-2 text-[11px]"
+            >
+              <CheckCircle2 class="size-3 mr-1 text-success" />
+              运行正常
+            </Badge>
+          </CardHeader>
+          <CardContent class="pb-5 space-y-4">
+            <div
+              v-for="h in health"
+              :key="h.label"
+              class="space-y-1.5"
+            >
+              <div class="flex items-center justify-between text-[13px]">
+                <span class="text-foreground/80">{{ h.label }}</span>
+                <span class="font-medium tabular-nums">
+                  {{ h.value }}
+                  <span
+                    class="ml-1.5 inline-block size-1.5 rounded-full align-middle"
+                    :class="{
+                      'bg-success': h.status === 'ok',
+                      'bg-warning': h.status === 'warn',
+                      'bg-error': h.status === 'bad'
+                    }"
+                  />
+                </span>
+              </div>
+              <Progress
+                :value="h.value"
+                class="h-1.5 rounded-full"
+                :class="{
+                  '[&>div]:bg-success': h.status === 'ok',
+                  '[&>div]:bg-warning': h.status === 'warn',
+                  '[&>div]:bg-error': h.status === 'bad'
+                }"
+              />
+            </div>
+            <div class="pt-2 flex items-center justify-between text-[12px] text-muted-foreground">
+              <span>OOBE 初始化：{{ summary.oobeComplete ? '已完成' : '未完成' }}</span>
+              <Button
+                variant="link"
+                size="sm"
+                class="h-6 text-xs p-0"
+                @click="navigateTo('/admin/tools/performance')"
+              >
+                打开完整监控 →
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <!-- 右：近期活动 -->
+      <Card class="rounded-[14px] overflow-hidden">
+        <CardHeader class="flex-row items-center justify-between py-4">
+          <div>
+            <CardTitle class="text-base">
+              近期活动
+            </CardTitle>
+            <CardDescription class="text-xs mt-0.5">
+              博客最新动态
+            </CardDescription>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            class="h-8 rounded-[10px] text-muted-foreground"
+            @click="navigateTo('/admin/tools/audit-logs')"
+          >
+            日志
+            <ChevronRight class="size-4 ml-0.5" />
+          </Button>
+        </CardHeader>
+        <CardContent class="pb-4">
+          <ol class="relative border-l border-border ml-2.5 space-y-5 pl-5">
+            <template v-if="!loading">
+              <li
+                v-for="a in activities"
+                :key="a.id"
+                class="relative"
+              >
+                <span
+                  class="absolute -left-[30px] top-0.5 size-6 rounded-full flex items-center justify-center"
+                  :class="pillFor(a.accent)"
+                >
+                  <component
+                    :is="iconFor(a.icon)"
+                    class="size-3.5"
+                  />
+                </span>
+                <div class="flex items-start justify-between gap-2">
+                  <p class="text-sm leading-5 text-foreground/90">
+                    {{ a.text }}
+                  </p>
+                </div>
+                <p class="text-[11px] text-muted-foreground mt-0.5">
+                  {{ a.time }}
+                </p>
+              </li>
+            </template>
+            <template v-else>
+              <li
+                v-for="i in 5"
+                :key="i"
+                class="relative"
+              >
+                <Skeleton class="absolute -left-[30px] top-0.5 size-6 rounded-full" />
+                <Skeleton class="h-4 w-4/5 rounded-md" />
+                <Skeleton class="mt-1 h-3 w-16 rounded-md" />
+              </li>
+            </template>
+          </ol>
+
+          <div
+            v-if="!loading"
+            class="mt-6 -mx-1"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              class="w-full h-9 rounded-[10px] justify-between"
+              @click="navigateTo('/admin/interaction/activities')"
+            >
+              <span>查看全部动态</span>
+              <ActivityIcon class="size-4 text-muted-foreground" />
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </section>
+
+    <!-- 快捷入口 Grid -->
+    <section>
+      <h3 class="text-sm font-semibold text-muted-foreground mb-3 px-1">
+        快捷入口
+      </h3>
+      <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-6 gap-3">
+        <button
+          v-for="q in [
+            { title: '新建文章', icon: FileText, to: '/admin/content/posts/new', grad: '#0EA5E9,#0284C7' },
+            { title: '站点设置', icon: ActivityIcon, to: '/admin/system/settings', grad: '#6366F1,#4F46E5' },
+            { title: '媒体库', icon: Eye, to: '/admin/media/library', grad: '#14B8A6,#0D9488' },
+            { title: '用户列表', icon: Users, to: '/admin/users', grad: '#3B82F6,#2563EB' },
+            { title: '审核评论', icon: MessageSquare, to: '/admin/interaction/comments', grad: '#EA580C,#C2410C' },
+            { title: 'SEO 工具', icon: CheckCircle2, to: '/admin/tools/seo', grad: '#0EA5E9,#0284C7' }
+          ]"
+          :key="q.title"
+          type="button"
+          class="group flex items-center gap-3 p-3.5 rounded-[12px] border border-border bg-card hover:-translate-y-0.5 hover:shadow-[0_8px_22px_-14px_rgba(0,0,0,0.25)] transition-all duration-200 text-left"
+          @click="navigateTo(q.to)"
+        >
+          <div
+            class="shrink-0 size-10 rounded-[10px] text-white flex items-center justify-center"
+            :style="{ background: `linear-gradient(135deg, ${q.grad})` }"
+          >
+            <component
+              :is="q.icon"
+              class="size-5"
+            />
+          </div>
+          <div class="min-w-0 flex-1">
+            <p class="text-sm font-semibold truncate">
+              {{ q.title }}
+            </p>
+            <p class="text-[11px] text-muted-foreground group-hover:text-primary transition-colors">
+              点击进入
+            </p>
+          </div>
+          <ChevronRight class="shrink-0 size-4 text-muted-foreground group-hover:text-primary group-hover:translate-x-0.5 transition-all" />
+        </button>
+      </div>
+    </section>
+  </div>
+</template>

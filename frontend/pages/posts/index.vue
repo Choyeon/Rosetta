@@ -136,7 +136,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
 import type { Post, PaginatedResponse } from '~~/types/api'
-import { useAPI } from '~~/composables/useAPI'
+import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
 

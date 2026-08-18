@@ -1,302 +1,331 @@
 <template>
   <div class="min-h-screen relative overflow-hidden isolate font-sans antialiased">
-    <!-- 背景层：Bing 每日壁纸（加载失败回退渐变色，支持明/暗主题） -->
+    <!-- 背景：整屏 Bing 每日壁纸（Bing/Unsplash 失败时后面的渐变兜底自动可见） -->
+    <div
+      class="absolute inset-0 -z-20 bg-gradient-to-br from-sky-950 via-indigo-950 to-slate-900"
+    />
     <div
       class="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat transition-opacity duration-700"
-      :style="wallpaperLoaded ? { backgroundImage: `url(${bwp?.url})` } : {}"
+      :style="wallpaperUrl ? { backgroundImage: `url(${wallpaperUrl})` } : {}"
     />
-    <div
-      v-if="!wallpaperLoaded || !bwp"
-      class="absolute inset-0 -z-20 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900"
-    />
+    <!-- 非常克制的暗角：只提升前景可读性，不改变壁纸本身观感 -->
+    <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-t from-black/60 via-black/20 to-black/10" />
 
-    <!-- 多层叠加：渐变光晕 + 暗角 + 颗粒 -->
-    <div class="pointer-events-none absolute inset-0 -z-10 mix-blend-normal">
-      <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_top_left,rgba(14,165,233,0.28),transparent_55%)]" />
-      <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_right,rgba(99,102,241,0.25),transparent_55%)]" />
-      <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-black/20 to-black/10 dark:from-black/75 dark:via-black/35 dark:to-black/20" />
-      <div class="absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:40px_40px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_75%)]" />
-    </div>
-
-    <!-- 主体：大屏双栏，移动端单栏竖排 -->
-    <div class="relative z-10 min-h-screen grid lg:grid-cols-2">
-      <!-- 左栏：品牌 / 标语 / 徽章 / 引言 -->
-      <div class="hidden lg:flex flex-col justify-between p-12 xl:p-16 text-white">
-        <NuxtLink
-          to="/"
-          class="inline-flex items-center gap-3 font-display text-2xl font-bold tracking-tight"
-        >
+    <!-- 内容区：单栏居中（全尺寸都是居中，没有双栏） -->
+    <div class="relative z-10 min-h-screen w-full flex flex-col items-center justify-center px-5 py-10 gap-7">
+      <!-- 彩色方形 Logo（仅图标，不带文字） + 标题 -->
+      <NuxtLink
+        to="/"
+        class="group inline-flex flex-col items-center gap-3 select-none"
+      >
+        <div class="relative">
+          <div class="absolute -inset-2.5 rounded-[18px] bg-white/10 blur-xl opacity-70 group-hover:opacity-90 transition-opacity" />
           <img
-            src="/logo/rosetta-monochrome-icon.png"
-            alt="Rosetta"
-            class="size-7 object-contain drop-shadow-[0_0_12px_rgba(14,165,233,0.35)]"
+            src="/logo/rosetta-primary-icon.png"
+            alt="Rosetta — 彩色方形 Logo"
+            class="relative h-14 w-14 object-contain drop-shadow-[0_8px_30px_rgba(0,0,0,0.55)]"
           >
-          <span class="bg-clip-text text-transparent bg-gradient-to-br from-white via-white to-white/70">
-            Rosetta
-          </span>
-        </NuxtLink>
-
-        <div class="relative max-w-lg">
-          <div class="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/8 text-white/80 text-xs backdrop-blur-md border border-white/10 mb-8">
-            <span class="size-1.5 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,0.9)]" />
-            Nuxt 4 · FastAPI · 渐进式 SSR
-          </div>
-          <h1 class="font-display text-5xl xl:text-6xl font-bold leading-[1.05] tracking-tight">
-            <span class="block">{{ t('auth.welcomeBack') }}</span>
-            <span
-              class="mt-4 block bg-clip-text text-transparent bg-gradient-to-r from-sky-300 via-indigo-200 to-fuchsia-300"
-            >
-              {{ t('auth.welcomeBackTagline', '穿越语言的边界') }}
-            </span>
-          </h1>
-          <p class="mt-6 text-white/70 text-lg leading-relaxed max-w-md">
-            {{ t('auth.welcomeBackDesc') }}
-          </p>
-
-          <div class="mt-12 flex flex-wrap gap-2">
-            <Badge
-              variant="outline"
-              class="bg-white/8 text-white border-white/12 hover:bg-white/12 backdrop-blur-md"
-            >
-              Vue 3.5
-            </Badge>
-            <Badge
-              variant="outline"
-              class="bg-white/8 text-white border-white/12 hover:bg-white/12 backdrop-blur-md"
-            >
-              Nuxt 4
-            </Badge>
-            <Badge
-              variant="outline"
-              class="bg-white/8 text-white border-white/12 hover:bg-white/12 backdrop-blur-md"
-            >
-              Tailwind CSS
-            </Badge>
-            <Badge
-              variant="outline"
-              class="bg-white/8 text-white border-white/12 hover:bg-white/12 backdrop-blur-md"
-            >
-              shadcn-vue
-            </Badge>
-          </div>
         </div>
+        <div class="font-display text-[26px] md:text-3xl font-bold tracking-tight text-white drop-shadow-[0_2px_10px_rgba(0,0,0,0.55)]">
+          Rosetta
+        </div>
+      </NuxtLink>
 
-        <!-- 引言卡片：轻度毛玻璃 -->
-        <div class="relative max-w-md">
-          <div class="rounded-3xl p-6 border border-white/10 bg-white/6 backdrop-blur-xl shadow-2xl shadow-black/40">
-            <div class="border-l-2 border-sky-300/50 pl-5 py-1">
-              <p class="text-white/85 italic leading-relaxed text-[15px]">
-                "{{ t('auth.testimonial') }}"
+      <!-- 欢迎语：只保留"欢迎回来"标题 -->
+      <div class="text-center max-w-md">
+        <h1 class="font-display text-3xl md:text-4xl font-bold text-white tracking-tight drop-shadow-[0_2px_12px_rgba(0,0,0,0.55)]">
+          {{ t('auth.welcomeBack') }}
+        </h1>
+      </div>
+
+      <!-- 亚克力毛玻璃登录表单 Card（无实边框版本：软玻璃质感，靠投影+渐变高光环+内阴影建立边界） -->
+      <div class="w-full max-w-md relative">
+        <!-- 外层柔和投影（贴近 Card 的黑色软阴影） -->
+        <div
+          class="absolute inset-x-4 bottom-[-20px] top-[30%] rounded-[28px] bg-black/50 blur-[36px] -z-10"
+          aria-hidden="true"
+        />
+        <!-- 外层远距离投影（模拟悬浮于空气中的玻璃片） -->
+        <div
+          class="absolute inset-x-1 bottom-[-30px] top-[20%] rounded-[28px] bg-slate-950/45 blur-[70px] -z-10"
+          aria-hidden="true"
+        />
+        <div class="relative group">
+          <!-- 顶部+左上的渐变高光环（替代实线 border，柔和有机） -->
+          <div
+            class="absolute inset-0 rounded-[28px] p-px"
+            aria-hidden="true"
+          >
+            <div
+              class="h-full w-full rounded-[27px] opacity-90"
+              style="background: linear-gradient(135deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.16) 22%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0.04) 60%, rgba(255,255,255,0.08) 80%, rgba(255,255,255,0.20) 100%);"
+            />
+          </div>
+          <!-- 真正的 Card 主体：无 border，靠多层阴影 + 内阴影 + 高光伪元素保持边界 -->
+          <div
+            class="relative rounded-[27px] p-7 md:p-8 text-white"
+            style="
+              background: linear-gradient(155deg, rgba(255,255,255,0.095) 0%, rgba(255,255,255,0.055) 45%, rgba(255,255,255,0.08) 100%);
+              backdrop-filter: blur(42px) saturate(240%);
+              -webkit-backdrop-filter: blur(42px) saturate(240%);
+              box-shadow:
+                inset 0 1px 0 0 rgba(255,255,255,0.18),
+                inset 0 0 40px 0 rgba(255,255,255,0.025),
+                0 1px 2px 0 rgba(0,0,0,0.30),
+                0 30px 70px -22px rgba(0,0,0,0.85),
+                0 22px 45px -18px rgba(0,0,0,0.65);
+            "
+          >
+            <div class="mb-5">
+              <h2 class="font-display text-2xl font-semibold tracking-tight">
+                {{ t('auth.login') }}
+              </h2>
+              <p class="mt-1 text-sm text-white/70 leading-relaxed">
+                {{ t('auth.loginDesc', '使用账号进入后台管理或访问站点的更多功能。') }}
               </p>
-              <div class="flex items-center gap-3 mt-5">
-                <Avatar class="size-10 border border-white/15 bg-gradient-to-br from-sky-400/70 to-indigo-500/70">
-                  <AvatarFallback class="bg-transparent text-white">
-                    Z
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <div class="font-semibold text-sm text-white">
-                    {{ t('auth.testimonialAuthor') }}
-                  </div>
-                  <div class="text-xs text-white/55">
-                    {{ t('auth.testimonialRole') }}
-                  </div>
+            </div>
+
+            <!-- 错误提示：显式红（无实 border，靠背景+内阴影+顶部高光） -->
+            <div
+              v-if="errorMessage"
+              role="alert"
+              class="mb-5 rounded-xl text-red-50 px-4 py-3 backdrop-blur-md text-sm"
+              style="
+                background: linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(220,38,38,0.12) 100%);
+                box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(248,113,113,0.22), 0 8px 22px -10px rgba(220,38,38,0.55);
+              "
+            >
+              <div class="font-semibold text-red-100">
+                {{ t('auth.error') }}
+              </div>
+              <div class="mt-0.5 text-red-100/95">
+                {{ errorMessage }}
+              </div>
+            </div>
+
+            <form
+              class="flex flex-col gap-4"
+              @submit.prevent="handleLogin"
+            >
+              <div class="space-y-2">
+                <label
+                  for="username"
+                  class="block text-sm font-medium text-white/85"
+                >{{ t('auth.usernameOrEmail') }}</label>
+                <div class="relative">
+                  <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/60" />
+                  <input
+                    id="username"
+                    v-model="form.username"
+                    type="text"
+                    autocomplete="username"
+                    :placeholder="t('auth.usernamePlaceholder')"
+                    class="block w-full h-11 rounded-lg pl-10 pr-3.5 text-white placeholder:text-white/40 backdrop-blur-md transition-all outline-none"
+                    style="
+                      background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
+                      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 2px 6px rgba(0,0,0,0.14);
+                    "
+                    @focusin="handleInputFocus"
+                    @focusout="handleInputBlur"
+                  >
                 </div>
+              </div>
+
+              <div class="space-y-2">
+                <label
+                  for="password"
+                  class="block text-sm font-medium text-white/85"
+                >{{ t('auth.password') }}</label>
+                <div class="relative">
+                  <ShieldCheck class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/60" />
+                  <input
+                    id="password"
+                    v-model="form.password"
+                    :type="showPassword ? 'text' : 'password'"
+                    autocomplete="current-password"
+                    :placeholder="t('auth.passwordPlaceholder')"
+                    class="block w-full h-11 rounded-lg pl-10 pr-11 text-white placeholder:text-white/40 backdrop-blur-md transition-all outline-none"
+                    style="
+                      background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
+                      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 2px 6px rgba(0,0,0,0.14);
+                    "
+                    @focusin="handleInputFocus"
+                    @focusout="handleInputBlur"
+                  >
+                  <button
+                    type="button"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 size-7 inline-flex items-center justify-center rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    tabindex="-1"
+                    @click="showPassword = !showPassword"
+                    :title="showPassword ? t('auth.hidePassword', '隐藏密码') : t('auth.showPassword', '显示密码')"
+                  >
+                    <Eye v-if="!showPassword" class="size-4" />
+                    <EyeOff v-else class="size-4" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- 记住我 / 忘记密码 -->
+              <div class="flex justify-between items-center pt-1">
+                <label class="inline-flex items-center gap-2 cursor-pointer select-none">
+                  <span
+                    class="relative inline-flex items-center justify-center size-[18px] rounded-[6px] transition-colors"
+                    :style="form.rememberMe
+                      ? 'background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 14px -8px rgba(14,165,233,0.8);'
+                      : 'background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.12);'"
+                  >
+                    <input
+                      v-model="form.rememberMe"
+                      type="checkbox"
+                      class="absolute inset-0 opacity-0 cursor-pointer"
+                    >
+                    <svg
+                      v-if="form.rememberMe"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="white"
+                      stroke-width="3.2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="size-3.5 drop-shadow-[0_1px_1px_rgba(0,0,0,0.35)]"
+                    >
+                      <polyline points="20 6 9 17 4 12" />
+                    </svg>
+                  </span>
+                  <span class="text-sm text-white/80">{{ t('auth.rememberMe') }}</span>
+                </label>
+                <span
+                  class="text-sm text-white/55 cursor-not-allowed select-none"
+                  :title="t('auth.forgotPasswordDisabled', '忘记密码功能暂未开放，请联系管理员')"
+                  aria-disabled="true"
+                >
+                  {{ t('auth.forgotPassword') }}
+                </span>
+              </div>
+
+              <!-- 登录按钮：白底黑字高对比，绝对可见 -->
+              <button
+                type="submit"
+                class="relative mt-2 w-full h-11 rounded-lg font-semibold text-zinc-900 bg-white hover:bg-white/95 active:bg-white/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                style="
+                  box-shadow:
+                    inset 0 1px 0 0 rgba(255,255,255,0.8),
+                    inset 0 -2px 0 0 rgba(0,0,0,0.06),
+                    0 1px 2px 0 rgba(0,0,0,0.18),
+                    0 12px 28px -14px rgba(255,255,255,0.55),
+                    0 8px 20px -12px rgba(0,0,0,0.55);
+                "
+                :disabled="loading"
+              >
+                <Loader2
+                  v-if="loading"
+                  class="size-4 animate-spin"
+                />
+                {{ loading ? t('auth.loggingIn') : t('auth.login') }}
+              </button>
+            </form>
+
+            <!-- 注册跳转（无实 border-t：用渐变透明分隔条） -->
+            <div class="mt-6 flex flex-col items-center justify-center text-sm">
+              <div
+                class="mb-4 w-full h-px opacity-80"
+                style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.22) 50%, transparent 100%);"
+                aria-hidden="true"
+              />
+              <div class="flex items-center justify-center">
+                <span class="text-white/70">{{ t('auth.noAccount') }}</span>
+                <NuxtLink
+                  to="/register"
+                  class="ml-1.5 font-semibold text-white hover:text-sky-200 underline-offset-2 hover:underline transition-colors"
+                >
+                  {{ t('auth.goRegister') }}
+                </NuxtLink>
               </div>
             </div>
           </div>
         </div>
       </div>
-
-      <!-- 右栏：登录 Card（高模糊毛玻璃） -->
-      <div class="flex items-center justify-center p-6 lg:p-12">
-        <div class="w-full max-w-md relative">
-          <!-- 移动端品牌位 -->
-          <div class="lg:hidden flex items-center justify-center gap-2 font-display text-2xl font-bold mb-8 text-white">
-            <img
-              src="/logo/rosetta-monochrome-icon.png"
-              alt="Rosetta"
-              class="size-7 object-contain"
-            >
-            <span>Rosetta</span>
-          </div>
-
-          <div
-            class="relative rounded-[28px] p-[1px] bg-gradient-to-br from-white/25 via-white/10 to-white/5 shadow-[0_30px_80px_-20px_rgba(0,0,0,0.6)]"
-          >
-            <div class="rounded-[27px] p-7 md:p-9 bg-white/[0.08] text-foreground backdrop-blur-[32px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/95 border border-white/10">
-              <CardHeader class="pb-3 px-0">
-                <CardTitle class="text-2xl md:text-[26px] font-display tracking-tight text-white">
-                  {{ t('auth.login') }}
-                </CardTitle>
-                <CardDescription class="mt-1.5 text-white/65">
-                  {{ t('auth.loginDesc') }}
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent class="px-0">
-                <Alert
-                  v-if="errorMessage"
-                  variant="destructive"
-                  class="mb-5 bg-red-500/15 border-red-400/25 text-red-50 backdrop-blur-md [&_svg]:text-red-200"
-                >
-                  <AlertTitle>{{ t('auth.error') }}</AlertTitle>
-                  <AlertDescription>{{ errorMessage }}</AlertDescription>
-                </Alert>
-
-                <form
-                  class="flex flex-col gap-4"
-                  @submit.prevent="handleLogin"
-                >
-                  <div class="space-y-2">
-                    <Label for="username" class="text-white/80">{{ t('auth.usernameOrEmail') }}</Label>
-                    <div class="relative">
-                      <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/55" />
-                      <Input
-                        id="username"
-                        v-model="form.username"
-                        type="text"
-                        autocomplete="username"
-                        :placeholder="t('auth.usernamePlaceholder')"
-                        class="pl-9 h-11 bg-white/[0.07] border-white/12 text-white placeholder:text-white/35 focus-visible:ring-sky-300/50 focus-visible:border-sky-300/40 backdrop-blur-md"
-                      />
-                    </div>
-                  </div>
-
-                  <div class="space-y-2">
-                    <Label for="password" class="text-white/80">{{ t('auth.password') }}</Label>
-                    <div class="relative">
-                      <ShieldCheck class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/55" />
-                      <Input
-                        id="password"
-                        v-model="form.password"
-                        :type="showPassword ? 'text' : 'password'"
-                        :placeholder="t('auth.passwordPlaceholder')"
-                        class="pl-9 pr-9 h-11 bg-white/[0.07] border-white/12 text-white placeholder:text-white/35 focus-visible:ring-sky-300/50 focus-visible:border-sky-300/40 backdrop-blur-md"
-                      />
-                      <button
-                        type="button"
-                        class="absolute right-3 top-1/2 -translate-y-1/2 text-white/55 hover:text-white transition-colors"
-                        tabindex="-1"
-                        @click="showPassword = !showPassword"
-                      >
-                        <Eye
-                          v-if="!showPassword"
-                          class="size-4"
-                        />
-                        <EyeOff
-                          v-else
-                          class="size-4"
-                        />
-                      </button>
-                    </div>
-                  </div>
-
-                  <div class="flex justify-between items-center mt-1">
-                    <div class="flex items-center gap-2">
-                      <Checkbox
-                        id="remember"
-                        v-model="form.rememberMe"
-                        class="border-white/20 data-[state=checked]:bg-sky-400/60 data-[state=checked]:text-white data-[state=checked]:border-transparent"
-                      />
-                      <Label
-                        for="remember"
-                        class="text-sm cursor-pointer text-white/75"
-                      >{{ t('auth.rememberMe') }}</Label>
-                    </div>
-                    <span
-                      class="text-sm text-white/55 cursor-not-allowed select-none"
-                      :title="t('auth.forgotPasswordDisabled', '忘记密码功能暂未开放，请联系管理员')"
-                      aria-disabled="true"
-                    >
-                      {{ t('auth.forgotPassword') }}
-                    </span>
-                  </div>
-
-                  <Button
-                    type="submit"
-                    class="w-full mt-4 h-11 bg-white text-slate-900 hover:bg-white/90 shadow-lg shadow-sky-900/20 backdrop-blur-none"
-                    :disabled="loading"
-                  >
-                    <Loader2
-                      v-if="loading"
-                      class="size-4 animate-spin mr-2"
-                    />
-                    {{ loading ? t('auth.loggingIn') : t('auth.login') }}
-                  </Button>
-                </form>
-              </CardContent>
-
-              <CardFooter class="flex justify-center pt-1 pb-0 px-0 text-sm text-white/65">
-                <span>{{ t('auth.noAccount') }}</span>
-                <NuxtLink
-                  to="/register"
-                  class="ml-1.5 font-medium text-white hover:text-sky-200 hover:underline underline-offset-2 transition-colors"
-                >
-                  {{ t('auth.goRegister') }}
-                </NuxtLink>
-              </CardFooter>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
 
-    <!-- 底部：版权 + 换壁纸控件 -->
-    <div class="absolute bottom-0 inset-x-0 z-20 flex flex-wrap items-end justify-between gap-3 p-5 md:p-7 pointer-events-none">
-      <!-- Bing 版权元数据 -->
-      <div
-        v-if="bwp?.copyright"
-        class="pointer-events-auto flex items-center gap-2.5 rounded-full pl-2 pr-4 py-1.5 bg-black/40 text-white/85 text-xs backdrop-blur-2xl border border-white/10 max-w-full shadow-lg shadow-black/30"
+    <!-- 底部：版权胶囊 + 切壁纸控件（与注册页/OOBE 一致） -->
+    <div class="fixed bottom-0 inset-x-0 z-40 flex flex-wrap items-end justify-between gap-3 p-5 md:p-6 pointer-events-none">
+      <!-- Bing 版权 + 缩略图小预览 -->
+      <a
+        v-if="currentImage?.copyright"
+        :href="currentImage?.copyrightlink || 'https://www.bing.com'"
+        target="_blank"
+        rel="noopener noreferrer nofollow"
+        class="pointer-events-auto group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-black/40 border border-white/12 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-black/60 hover:border-white/20 transition-colors"
       >
-        <a
-          :href="bwp?.copyrightLink || 'https://www.bing.com'"
-          target="_blank"
-          rel="noreferrer"
-          class="size-5 rounded-full overflow-hidden shrink-0 ring-1 ring-white/20"
-          :title="bwp?.title || 'Bing daily wallpaper'"
+        <span
+          v-show="!thumbError"
+          class="shrink-0 size-8 rounded-full overflow-hidden ring-1 ring-white/15"
+          :title="currentImage?.title || 'Bing daily wallpaper'"
         >
           <img
-            :src="thumbUrl"
-            :alt="bwp?.title || 'Bing wallpaper thumbnail'"
+            :src="currentThumbUrl"
+            :alt="currentImage?.title || 'Bing wallpaper thumbnail'"
             class="size-full object-cover"
             loading="lazy"
+            @error="thumbError = true"
           >
-        </a>
-        <span class="truncate max-w-[72vw] md:max-w-md">{{ bwp?.copyright }}</span>
-      </div>
+        </span>
+        <span
+          v-show="thumbError"
+          class="shrink-0 size-8 rounded-full overflow-hidden ring-1 ring-white/15 bg-gradient-to-br from-sky-500/30 via-indigo-500/30 to-fuchsia-500/30 inline-flex items-center justify-center"
+          :title="currentImage?.title || 'Bing daily wallpaper'"
+        >
+          <img
+            src="/logo/rosetta-app-icon.png"
+            alt="Rosetta"
+            class="size-6 object-contain"
+          >
+        </span>
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-400/25 text-sky-100 border border-sky-300/30">
+            Bing · Daily
+          </span>
+          <span class="truncate text-xs text-white/90">
+            {{ currentImage?.copyright }}
+          </span>
+        </div>
+      </a>
 
-      <!-- 换壁纸（在可用归档 8 天范围内切换） -->
-      <div class="pointer-events-auto flex items-center gap-2 rounded-full bg-white/[0.08] text-white/80 text-xs backdrop-blur-2xl border border-white/10 pl-1 pr-3 py-1 shadow-lg shadow-black/30">
+      <!-- 切壁纸控件：8 天内切换 + 刷新当前 -->
+      <div class="pointer-events-auto flex items-center gap-1 rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.08] border border-white/12 p-1 shadow-lg shadow-black/40">
         <button
-          class="size-7 rounded-full flex items-center justify-center hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          :disabled="wallpaperIdx >= (bwp?.totalDays ?? 8) - 1 || wallpaperPending"
-          @click="cycleWallpaper(+1)"
+          type="button"
+          class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          :disabled="!canGoBackward || wallpaperLoading"
+          @click="selectDay(currentIdx + 1)"
           title="上一天"
         >
-          <ChevronLeft class="size-4" />
+          <ChevronLeft class="size-[18px]" />
         </button>
-        <span class="tabular-nums px-1 text-white/60">
-          {{ (wallpaperIdx ?? 0) + 1 }} / {{ bwp?.totalDays ?? 8 }}
+        <span class="tabular-nums px-1.5 text-xs text-white/70 min-w-[48px] text-center">
+          {{ Math.min(currentIdx + 1, totalDays) }} / {{ totalDays }}
         </span>
         <button
-          class="size-7 rounded-full flex items-center justify-center hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
-          :disabled="(wallpaperIdx ?? 0) === 0 || wallpaperPending"
-          @click="cycleWallpaper(-1)"
+          type="button"
+          class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+          :disabled="currentIdx === 0 || wallpaperLoading"
+          @click="selectDay(currentIdx - 1)"
           title="下一天（越新）"
         >
-          <ChevronRight class="size-4" />
+          <ChevronRight class="size-[18px]" />
         </button>
-        <span class="mx-1 h-3 w-px bg-white/15" />
+        <span class="mx-1 h-4 w-px bg-white/15" aria-hidden="true" />
         <button
-          class="inline-flex items-center gap-1.5 rounded-full hover:bg-white/10 px-2 py-1 -mr-2 transition-colors disabled:opacity-40"
-          :disabled="wallpaperPending"
-          @click="reloadWallpaper()"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-full text-white/85 hover:bg-white/15 px-2.5 py-1 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          :disabled="wallpaperLoading"
+          @click="handleReloadWallpaper"
           title="刷新当前壁纸"
         >
           <RefreshCw
             class="size-3.5"
-            :class="{ 'animate-spin': wallpaperPending }"
+            :class="{ 'animate-spin': wallpaperLoading }"
           />
           <span class="hidden sm:inline">{{ t('auth.switchWallpaper', '切换壁纸') }}</span>
         </button>
@@ -306,27 +335,9 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '~~/components/ui/card'
-import { Button } from '~~/components/ui/button'
-import { Input } from '~~/components/ui/input'
-import { Checkbox } from '~~/components/ui/checkbox'
-import { Label } from '~~/components/ui/label'
-import {
-  Alert,
-  AlertDescription,
-  AlertTitle
-} from '~~/components/ui/alert'
-import { Badge } from '~~/components/ui/badge'
-import { Avatar, AvatarFallback } from '~~/components/ui/avatar'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
+import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import {
   ChevronLeft,
   ChevronRight,
@@ -339,16 +350,6 @@ import {
 } from '@lucide/vue'
 
 definePageMeta({ layout: false, ssr: false })
-
-interface BingWallpaper {
-  url: string
-  title: string
-  copyright: string
-  copyrightLink: string
-  startDate: string
-  idx: number
-  totalDays: number
-}
 
 const route = useRoute()
 const { t } = useI18n()
@@ -372,57 +373,105 @@ const safeRedirect = (raw: unknown): string => {
   return raw
 }
 
-// ── Bing 每日壁纸：BFF /bing-wallpaper ──────────────────────────
-const wallpaperIdx = ref(0)
-const wallpaperLoaded = ref(false)
-const wallpaperPending = ref(false)
+// ── 输入聚焦/失焦（统一 style 更新，避免 template 内写长内联） ──
+const handleInputFocus = (e: Event) => {
+  const el = e.currentTarget as HTMLElement
+  el.style.setProperty(
+    'box-shadow',
+    'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 0 0 1px rgba(186,230,253,0.35), inset 0 2px 6px rgba(0,0,0,0.14), 0 0 0 3px rgba(125,211,252,0.18)'
+  )
+  el.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.09) 100%)'
+}
+const handleInputBlur = (e: Event) => {
+  const el = e.currentTarget as HTMLElement
+  el.style.setProperty(
+    'box-shadow',
+    'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 2px 6px rgba(0,0,0,0.14)'
+  )
+  el.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)'
+}
 
+// ── Bing 每日壁纸：复用已验证可用的 useBingWallpaper（后端代理→直连→Unsplash 三重兜底）
 const {
-  data: bwp,
-  refresh: refreshWallpaper,
-  pending: fetchPending
-} = await useFetch<BingWallpaper>('/api/bing-wallpaper', {
-  // 登录页 ssr: false，保持 immediate=true 在客户端首帧触发即可
-  query: computed(() => ({ idx: wallpaperIdx.value, mkt: 'zh-CN' })),
-  key: computed(() => `bwp:${wallpaperIdx.value}`),
-  server: false,
-  default: () => null as unknown as BingWallpaper,
-  lazy: false,
-  watch: [wallpaperIdx]
+  images,
+  loading: wallpaperLoading,
+  currentIdx,
+  currentImage,
+  fetchWallpapers,
+  selectDay
+} = useBingWallpaper()
+
+const wallpaperLoaded = ref(false)
+const thumbError = ref(false)
+
+// 首次进入拉取（ssr:false，客户端拉即可）
+onMounted(async () => {
+  try {
+    await fetchWallpapers()
+  } catch {
+    /* composable 内部已经做了兜底 */
+  }
+
+  // 登录态检查（放在同一个 onMounted 里，避免两次）
+  await authStore.initialize()
+  if (authStore.isAuthenticated) {
+    navigateTo('/admin')
+  }
 })
 
-// 当 fetchPending 改变时更新 pending 按钮状态
-watchEffect(() => { wallpaperPending.value = !!fetchPending.value })
+const totalDays = computed(() => Math.max(1, images.value.length))
+const canGoBackward = computed(() => currentIdx.value + 1 < totalDays.value)
 
-// 图片 URL 预加载：避免切换瞬间闪白
+// 最终用于背景的大图 URL
+const wallpaperUrl = computed(() => {
+  const img = currentImage.value
+  if (!img) return ''
+  return img.uhdUrl || img.fullUrl || ''
+})
+
+// 版权胶囊里的小缩略图：Bing 官方支持的尺寸；失败时 <img @error> 自动回退 logo 占位
+const currentThumbUrl = computed(() => {
+  const img = currentImage.value
+  if (!img) return ''
+  if (img.urlbase) return `https://www.bing.com${img.urlbase}_150x150.jpg`
+  // Unsplash/Picsum 等源：缩宽度
+  let u = img.fullUrl || img.uhdUrl || (img as unknown as { url?: string }).url
+  if (!u) return ''
+  if (u.includes('w=')) u = u.replace(/w=\d+/, 'w=320')
+  else if (u.includes('unsplash') || u.includes('picsum')) u += (u.includes('?') ? '&' : '?') + 'w=320&q=60'
+  return u
+})
+
+// 每次换图：先重置缩略图错误，再预加载背景大图避免瞬间白
 watch(
-  () => bwp.value?.url,
-  (u) => {
-    if (!u) return
-    const img = new Image()
-    img.onload = () => { wallpaperLoaded.value = true }
-    img.onerror = () => { wallpaperLoaded.value = false }
-    img.src = u
+  () => wallpaperUrl.value,
+  (u, old) => {
+    thumbError.value = false
+    if (!u || u === old) return
+    wallpaperLoaded.value = false
+    if (import.meta.client) {
+      const img = new Image()
+      img.onload = () => {
+        wallpaperLoaded.value = true
+      }
+      img.onerror = () => {
+        wallpaperLoaded.value = false
+      }
+      img.src = u
+    } else {
+      wallpaperLoaded.value = true
+    }
   },
   { immediate: true }
 )
 
-// 缩略图版权条小预览：把 UHD 替换成 150x84，体积很小
-const thumbUrl = computed(() => {
-  if (!bwp.value?.url) return ''
-  return bwp.value.url.replace('_UHD.jpg', '_150x84.jpg').replace('_UHD.jpeg', '_150x84.jpeg')
-})
-
-const cycleWallpaper = (step: -1 | 1) => {
-  const total = bwp.value?.totalDays ?? 8
-  const next = wallpaperIdx.value + (step * -1) // idx=0 最新，越大越旧
-  wallpaperIdx.value = Math.max(0, Math.min(total - 1, next))
+const handleReloadWallpaper = async () => {
   wallpaperLoaded.value = false
-}
-
-const reloadWallpaper = () => {
-  wallpaperLoaded.value = false
-  refreshWallpaper().catch(() => {})
+  try {
+    await fetchWallpapers()
+  } catch {
+    /* ignore */
+  }
 }
 
 // ── 登录 ──────────────────────────────────────────────────────
@@ -433,7 +482,6 @@ const handleLogin = async () => {
   }
   loading.value = true
   errorMessage.value = ''
-
   try {
     await authStore.login(form.username.trim(), form.password)
     navigateTo(safeRedirect(route.query.redirect))
@@ -443,11 +491,4 @@ const handleLogin = async () => {
     loading.value = false
   }
 }
-
-onMounted(async () => {
-  await authStore.initialize()
-  if (authStore.isAuthenticated) {
-    navigateTo('/admin')
-  }
-})
 </script>

@@ -281,6 +281,35 @@ html.dark.palette-sky {
   --sidebar-ring: 201 98% 76%;
 }
 
+/* ---- Warm Stone 赭石暖色调（Admin 后台默认启用）---- */
+html.palette-warm-stone {
+  --primary: 32 94% 44%;           /* 赭石 D97706 */
+  --primary-foreground: 30 40% 10%;
+  --accent: 40 96% 92%;           /* 赭石淡米 */
+  --accent-foreground: 30 40% 12%;
+  --ring: 32 94% 44%;
+  --sidebar-primary: 32 94% 48%;
+  --sidebar-primary-foreground: 30 40% 10%;
+  --sidebar-ring: 34 98% 52%;
+  /* 语义色微调，与赭石更和谐：竹青+天蓝保留，warning 用琥珀 */
+  --success: 172 70% 40%;
+  --info: 219 88% 60%;
+  --warning: 40 90% 50%;
+}
+html.dark.palette-warm-stone {
+  --primary: 34 96% 64%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 30 45% 24%;
+  --accent-foreground: 40 100% 92%;
+  --ring: 34 96% 64%;
+  --sidebar-primary: 34 96% 60%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 34 96% 64%;
+  --success: 172 70% 55%;
+  --info: 219 90% 72%;
+  --warning: 40 92% 66%;
+}
+
 /* =========================================================
    Base reset + 排版
    ========================================================= */
@@ -601,4 +630,21 @@ html.dark.palette-sky {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ===== Admin 语义 Badge（variant=outline 叠加 class 驱动）===== */
+.admin-badge-info {
+  background: hsl(var(--info-muted));
+  color: hsl(var(--info-muted-foreground));
+  border-color: hsl(var(--info) / 0.25);
+}
+.admin-badge-success {
+  background: hsl(var(--success-muted));
+  color: hsl(var(--success-muted-foreground));
+  border-color: hsl(var(--success) / 0.25);
+}
+.admin-badge-warning {
+  background: hsl(var(--warning-muted));
+  color: hsl(var(--warning-muted-foreground));
+  border-color: hsl(var(--warning) / 0.25);
 }

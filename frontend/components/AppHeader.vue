@@ -139,7 +139,7 @@ const handleAdmin = () => navigateTo('/admin')
                   :src="authStore.user.avatar"
                   :alt="authStore.user.name || authStore.user.username || ''"
                 />
-                <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+                <AvatarFallback>{{ String((authStore.user as any)?.name || authStore.user?.username || '').charAt(0).toUpperCase() || 'U' }}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
@@ -155,7 +155,7 @@ const handleAdmin = () => navigateTo('/admin')
                     :src="authStore.user.avatar"
                     :alt="authStore.user.name || authStore.user.username || ''"
                   />
-                  <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+                  <AvatarFallback>{{ String((authStore.user as any)?.name || authStore.user?.username || '').charAt(0).toUpperCase() || 'U' }}</AvatarFallback>
                 </Avatar>
                 <div class="space-y-0.5 min-w-0">
                   <div class="text-sm font-medium truncate">
@@ -251,7 +251,7 @@ const handleAdmin = () => navigateTo('/admin')
                       :src="authStore.user.avatar"
                       :alt="authStore.user.name || authStore.user.username || ''"
                     />
-                    <AvatarFallback>{{ authStore.user?.name?.[0]?.toUpperCase() || authStore.user?.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+                    <AvatarFallback>{{ String((authStore.user as any)?.name || authStore.user?.username || '').charAt(0).toUpperCase() || 'U' }}</AvatarFallback>
                   </Avatar>
                   <div class="min-w-0">
                     <div class="text-sm font-medium truncate">

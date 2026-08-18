@@ -91,8 +91,22 @@ export const useAuthStore = defineStore('auth', () => {
       setTokens(data)
       await fetchUser()
     } catch (err) {
-      const detail = (err as { data?: Record<string, unknown> })?.data?.detail
-      throw new Error(typeof detail === 'string' ? detail : 'Login failed')
+      // 后端统一响应结构：{ success:false, message, error_code?, errors? }
+      // 某些 FastAPI 未捕获异常（如 422 校验）会带 { detail }，两者都取
+      const data = (err as { data?: Record<string, unknown> })?.data ?? {}
+      const message = typeof data.message === 'string' ? data.message : ''
+      const detail = typeof data.detail === 'string' ? data.detail : ''
+      const errors = Array.isArray(data.errors) ? data.errors : []
+      const firstFieldMsg
+        = errors.length > 0 && errors[0] && typeof errors[0] === 'object' && typeof (errors[0] as { message?: string }).message === 'string'
+          ? (errors[0] as { message: string }).message
+          : ''
+      const msg
+        = message
+          || detail
+          || firstFieldMsg
+          || '登录失败，请稍后再试'
+      throw new Error(msg, { cause: err })
     }
   }
 
@@ -107,7 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
       await fetchUser()
     } catch (err) {
       const detail = (err as { data?: Record<string, unknown> })?.data?.detail
-      throw new Error(typeof detail === 'string' ? detail : 'Registration failed')
+      throw new Error(typeof detail === 'string' ? detail : 'Registration failed', { cause: err })
     }
   }
 

@@ -17,26 +17,6 @@ export default defineNuxtConfig({
   // 管理后台、登录注册、OOBE 通过 routeRules 单独关闭 SSR（需要 localStorage 登录态和重交互）。
   ssr: true,
 
-  routeRules: {
-    // === SPA 模式：需要登录态 / 重型交互 / 不被搜索引擎索引 ===
-    '/admin/**': { ssr: false },
-    '/login':    { ssr: false },
-    '/register': { ssr: false },
-    '/oobe':     { ssr: false },
-    // === 公开页面 SSR + SWR（Stale-While-Revalidate）缓存，降低后端压力 ===
-    '/':               { swr: 3600 },
-    '/posts':          { swr: 3600 },
-    '/posts/**':       { swr: 600  },
-    '/categories':     { swr: 3600 },
-    '/categories/**':  { swr: 3600 },
-    '/about':          { swr: 86400 },
-    '/archive':        { swr: 3600 },
-    '/friends':        { swr: 86400 },
-    '/gallery':        { swr: 86400 },
-    '/guestbook':      { swr: 600  },
-    '/activity':       { swr: 600  }
-  },
-
   components: [
     { path: './components', pathPrefix: false, ignore: ['**/index.ts'] }
   ],
@@ -96,6 +76,26 @@ export default defineNuxtConfig({
     public: {
       apiBase: process.env.API_BASE_URL || '/api'
     }
+  },
+
+  routeRules: {
+    // === SPA 模式：需要登录态 / 重型交互 / 不被搜索引擎索引 ===
+    '/admin/**': { ssr: false },
+    '/login': { ssr: false },
+    '/register': { ssr: false },
+    '/oobe': { ssr: false },
+    // === 公开页面 SSR + SWR（Stale-While-Revalidate）缓存，降低后端压力 ===
+    '/': { swr: 3600 },
+    '/posts': { swr: 3600 },
+    '/posts/**': { swr: 600 },
+    '/categories': { swr: 3600 },
+    '/categories/**': { swr: 3600 },
+    '/about': { swr: 86400 },
+    '/archive': { swr: 3600 },
+    '/friends': { swr: 86400 },
+    '/gallery': { swr: 86400 },
+    '/guestbook': { swr: 600 },
+    '/activity': { swr: 600 }
   },
 
   compatibilityDate: '2026-06-30',

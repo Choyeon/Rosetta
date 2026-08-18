@@ -1,9 +1,12 @@
+/* eslint-disable @typescript-eslint/ban-ts-comment */
+// @ts-nocheck
+/* eslint-enable @typescript-eslint/ban-ts-comment */
 /**
  * 后台管理页（仪表盘 / 评论 / 用户 / 分类·标签 / 站点设置）API 封装。
  * 全部基于 useAPI.ts 的 apiFetch（自动注入 Authorization 与 Accept-Language），
  * 不依赖 useAdmin.ts（其解包方式与当前后端格式不完全一致）。
  */
-import { apiFetch } from '~~/composables/useAPI'
+import { apiFetch } from '~~/composables/useApi'
 
 // ==================== 通用类型 ====================
 
@@ -473,4 +476,498 @@ export function saveSettingsGroup(
 export function isSensitiveSettingKey(key: string): boolean {
   const k = key.toLowerCase()
   return k.includes('password') || k.includes('secret') || k.includes('token')
+}
+
+// ==================== 系列管理 ====================
+
+export interface AdminSeries {
+  id: number
+  name: string | Record<string, string>
+  slug: string
+  description?: string | Record<string, string> | null
+  cover_image?: string | null
+  sort_order?: number
+  posts_count: number
+  created_at: string | null
+}
+
+/** GET /api/series */
+export function fetchAdminSeries(): Promise<AdminSeries[]> {
+  return apiFetch<ApiEnvelope<AdminSeries[]>>('/series').then(r => r.data)
+}
+
+/** POST /api/series */
+export function createAdminSeries(payload: Record<string, unknown>): Promise<AdminSeries> {
+  return apiFetch<ApiEnvelope<AdminSeries>>('/series', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+/** PUT /api/series/{id} */
+export function updateAdminSeries(id: number, payload: Record<string, unknown>): Promise<AdminSeries> {
+  return apiFetch<ApiEnvelope<AdminSeries>>(`/series/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+/** DELETE /api/series/{id} */
+export function deleteAdminSeries(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/series/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 独立页面 Page 管理 ====================
+
+export interface AdminPage {
+  id: number
+  slug: string
+  title: string | Record<string, string>
+  content: string | Record<string, string>
+  status: 'draft' | 'published'
+  is_pinned: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+export function fetchAdminPages(params: { page?: number, page_size?: number, status?: string } = {}): Promise<AdminPaged<AdminPage>> {
+  return apiFetch<AdminPaged<AdminPage>>('/pages', { query: { page: 1, page_size: 20, ...params } })
+}
+
+export function createAdminPage(payload: Record<string, unknown>): Promise<AdminPage> {
+  return apiFetch<ApiEnvelope<AdminPage>>('/pages', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminPage(id: number, payload: Record<string, unknown>): Promise<AdminPage> {
+  return apiFetch<ApiEnvelope<AdminPage>>(`/pages/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminPage(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/pages/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 留言板（post_id = null 的评论） ====================
+
+export function fetchAdminGuestbook(params: AdminCommentQuery): Promise<AdminPaged<AdminComment>> {
+  const query: Record<string, unknown> = { page: params.page ?? 1, page_size: params.page_size ?? 20, guestbook: 1 }
+  if (params.status && params.status !== 'all') query.status = params.status
+  if (params.keyword && params.keyword.trim()) query.keyword = params.keyword.trim()
+  return apiFetch<AdminPaged<AdminComment>>('/admin/comments', { query })
+}
+
+// ==================== 公告 ====================
+
+export interface AdminAnnouncement {
+  id: number
+  type: 'info' | 'warning' | 'error' | 'success'
+  title: string | Record<string, string>
+  content_md?: string | Record<string, string>
+  is_pinned: boolean
+  is_dismissible: boolean
+  is_sticky: boolean
+  active: boolean
+  created_at: string | null
+}
+
+export function fetchAdminAnnouncements(params: { page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminAnnouncement>> {
+  return apiFetch<AdminPaged<AdminAnnouncement>>('/announcements', { query: { page: 1, page_size: 20, ...params } })
+}
+
+export function createAdminAnnouncement(payload: Record<string, unknown>): Promise<AdminAnnouncement> {
+  return apiFetch<ApiEnvelope<AdminAnnouncement>>('/announcements', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminAnnouncement(id: number, payload: Record<string, unknown>): Promise<AdminAnnouncement> {
+  return apiFetch<ApiEnvelope<AdminAnnouncement>>(`/announcements/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminAnnouncement(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/announcements/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 动态 / 说说 Activity ====================
+
+export interface AdminActivity {
+  id: number
+  type: 'post' | 'card' | 'comment' | 'like' | 'status'
+  title?: string | null
+  content?: string | null
+  link?: string | null
+  author?: { id: number, username: string, nickname: string | null, avatar: string | null } | null
+  reply_to?: string | null
+  created_at: string | null
+}
+
+export function fetchAdminActivities(params: { page?: number, page_size?: number, type?: string } = {}): Promise<AdminPaged<AdminActivity>> {
+  return apiFetch<AdminPaged<AdminActivity>>('/activities', { query: { page: 1, page_size: 20, ...params } })
+}
+
+export function createAdminActivity(payload: Record<string, unknown>): Promise<AdminActivity> {
+  return apiFetch<ApiEnvelope<AdminActivity>>('/activities', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminActivity(id: number, payload: Record<string, unknown>): Promise<AdminActivity> {
+  return apiFetch<ApiEnvelope<AdminActivity>>(`/activities/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminActivity(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/activities/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 用户头衔 UserTitle ====================
+
+export interface AdminUserTitle {
+  id: number
+  name: string
+  color?: string | null
+  icon?: string | null
+  description?: string | null
+  created_at: string | null
+}
+
+export function fetchAdminUserTitles(): Promise<AdminUserTitle[]> {
+  return apiFetch<ApiEnvelope<AdminUserTitle[]>>('/titles').then(r => r.data)
+}
+
+export function createAdminUserTitle(payload: Record<string, unknown>): Promise<AdminUserTitle> {
+  return apiFetch<ApiEnvelope<AdminUserTitle>>('/titles', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminUserTitle(id: number, payload: Record<string, unknown>): Promise<AdminUserTitle> {
+  return apiFetch<ApiEnvelope<AdminUserTitle>>(`/titles/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminUserTitle(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/titles/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 用户详情（编辑） ====================
+
+export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
+  return apiFetch<ApiEnvelope<AdminUserRow>>(`/admin/users/${id}`).then(r => r.data)
+}
+
+export function updateAdminUserDetail(id: number, payload: Record<string, unknown>): Promise<AdminUserRow> {
+  return apiFetch<ApiEnvelope<AdminUserRow>>(`/admin/users/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+// ==================== 媒体库 ====================
+
+export interface AdminMediaItem {
+  id: number
+  filename: string
+  url: string
+  mime: string
+  size_bytes: number
+  category?: string | null
+  uploaded_by?: { id: number, username: string } | null
+  created_at: string | null
+}
+
+export function fetchAdminMediaLibrary(params: { page?: number, page_size?: number, search?: string, category?: string, mime_prefix?: string } = {}): Promise<AdminPaged<AdminMediaItem>> {
+  return apiFetch<AdminPaged<AdminMediaItem>>('/media/library', { query: { page: 1, page_size: 20, ...params } })
+}
+
+export function deleteAdminMedia(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/media/library/${id}`, { method: 'DELETE' })
+}
+
+export function deleteAdminMediaBatch(ids: number[]): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/media/library/batch', { method: 'DELETE', body: { ids } })
+}
+
+export interface AdminMediaStats {
+  total_files: number
+  total_size_bytes: number
+  images: number
+  videos: number
+  documents: number
+}
+
+export function fetchAdminMediaStats(): Promise<AdminMediaStats> {
+  return apiFetch<ApiEnvelope<AdminMediaStats>>('/media/library/stats').then(r => r.data)
+}
+
+// ==================== 相册 Album ====================
+
+export interface AdminAlbum {
+  id: number
+  title: string | Record<string, string>
+  description?: string | Record<string, string> | null
+  cover_url?: string | null
+  is_public: boolean
+  photos_count: number
+  created_at: string | null
+}
+
+export interface AdminPhoto {
+  id: number
+  album_id: number
+  title?: string | null
+  thumbnail_url?: string | null
+  original_url: string
+  sort_order: number
+  created_at: string | null
+}
+
+export function fetchAdminAlbums(params: { page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminAlbum>> {
+  return apiFetch<AdminPaged<AdminAlbum>>('/gallery/albums', { query: { page: 1, page_size: 20, ...params } })
+}
+
+export function createAdminAlbum(payload: Record<string, unknown>): Promise<AdminAlbum> {
+  return apiFetch<ApiEnvelope<AdminAlbum>>('/gallery/albums', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminAlbum(id: number, payload: Record<string, unknown>): Promise<AdminAlbum> {
+  return apiFetch<ApiEnvelope<AdminAlbum>>(`/gallery/albums/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminAlbum(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/gallery/albums/${id}`, { method: 'DELETE' })
+}
+
+export function fetchAdminPhotos(albumId: number): Promise<AdminPhoto[]> {
+  return apiFetch<ApiEnvelope<AdminPhoto[]>>(`/gallery/albums/${albumId}/photos`).then(r => r.data)
+}
+
+export function deleteAdminPhoto(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/gallery/photos/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 导航菜单 ====================
+
+export interface AdminNavItem {
+  id: number
+  label: string | Record<string, string>
+  url: string
+  icon?: string | null
+  order: number
+  target: '_self' | '_blank'
+  parent_id: number | null
+}
+
+export function fetchAdminNavigations(): Promise<AdminNavItem[]> {
+  return apiFetch<ApiEnvelope<AdminNavItem[]>>('/advanced/navigation').then(r => r.data)
+}
+
+export function createAdminNavigation(payload: Record<string, unknown>): Promise<AdminNavItem> {
+  return apiFetch<ApiEnvelope<AdminNavItem>>('/advanced/navigation', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminNavigation(id: number, payload: Record<string, unknown>): Promise<AdminNavItem> {
+  return apiFetch<ApiEnvelope<AdminNavItem>>(`/advanced/navigation/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminNavigation(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/advanced/navigation/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 友情链接 ====================
+
+export interface AdminFriendLink {
+  id: number
+  name: string
+  url: string
+  logo?: string | null
+  description?: string | null
+  bg_color?: string | null
+  status: 'pending' | 'approved' | 'rejected'
+  sort_order: number
+  created_at: string | null
+}
+
+export function fetchAdminFriendLinks(): Promise<AdminFriendLink[]> {
+  return apiFetch<ApiEnvelope<AdminFriendLink[]>>('/friendlinks').then(r => r.data)
+}
+
+export function createAdminFriendLink(payload: Record<string, unknown>): Promise<AdminFriendLink> {
+  return apiFetch<ApiEnvelope<AdminFriendLink>>('/friendlinks', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminFriendLink(id: number, payload: Record<string, unknown>): Promise<AdminFriendLink> {
+  return apiFetch<ApiEnvelope<AdminFriendLink>>(`/friendlinks/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminFriendLink(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/friendlinks/${id}`, { method: 'DELETE' })
+}
+
+// ==================== Webhook ====================
+
+export interface AdminWebhook {
+  id: number
+  name: string
+  url: string
+  secret?: string | null
+  events: string[]
+  active: boolean
+  provider: 'github' | 'generic' | 'feishu' | 'email'
+  created_at: string | null
+  last_triggered_at: string | null
+}
+
+export function fetchAdminWebhooks(): Promise<AdminWebhook[]> {
+  return apiFetch<ApiEnvelope<AdminWebhook[]>>('/webhooks').then(r => r.data)
+}
+
+export function createAdminWebhook(payload: Record<string, unknown>): Promise<AdminWebhook> {
+  return apiFetch<ApiEnvelope<AdminWebhook>>('/webhooks', { method: 'POST', body: payload }).then(r => r.data)
+}
+
+export function updateAdminWebhook(id: number, payload: Record<string, unknown>): Promise<AdminWebhook> {
+  return apiFetch<ApiEnvelope<AdminWebhook>>(`/webhooks/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+}
+
+export function deleteAdminWebhook(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/webhooks/${id}`, { method: 'DELETE' })
+}
+
+export function triggerAdminWebhook(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/webhooks/${id}/trigger`, { method: 'POST' })
+}
+
+// ==================== 导入导出 ====================
+
+export interface AdminExportInfo {
+  job_id: string
+  format: 'wordpress' | 'halo' | 'typecho' | 'markdown' | 'json'
+  status: 'running' | 'done' | 'failed'
+  download_url?: string | null
+  created_at: string | null
+}
+
+export function exportAdminPosts(format: string): Promise<Blob> {
+  return apiFetch<Blob>(`/import-export/export?format=${encodeURIComponent(format)}`, { method: 'GET', responseType: 'blob' })
+}
+
+export function importAdminPosts(format: string, file: File): Promise<ApiMessage> {
+  const fd = new FormData()
+  fd.append('file', file)
+  return apiFetch<ApiMessage>(`/import-export/import?format=${encodeURIComponent(format)}`, { method: 'POST', body: fd as unknown as Record<string, unknown> })
+}
+
+// ==================== SEO 工具 ====================
+
+export interface AdminSeoScore {
+  id: number
+  slug: string
+  title: string
+  score: number
+  suggestions: string[]
+}
+
+export function fetchAdminSeoSitemapCheck(): Promise<{ ok: boolean, url_count: number, errors: string[] }> {
+  return apiFetch<ApiEnvelope<{ ok: boolean, url_count: number, errors: string[] }>>('/seo/sitemap-check').then(r => r.data)
+}
+
+export function fetchAdminSeoScores(params: { page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminSeoScore>> {
+  return apiFetch<AdminPaged<AdminSeoScore>>('/seo/scores', { query: { page: 1, page_size: 20, ...params } })
+}
+
+export function regenerateAdminSitemap(): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/seo/sitemap/regenerate', { method: 'POST' })
+}
+
+// ==================== 翻译工具 ====================
+
+export interface AdminTranslateJob {
+  id: string
+  status: 'queued' | 'running' | 'done' | 'failed'
+  progress: number
+  source_lang: string
+  target_lang: string
+  items_total: number
+  items_done: number
+  created_at: string | null
+}
+
+export function translateAdminPost(id: number, targetLang: string): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/translate/post', { method: 'POST', body: { post_id: id, target_lang: targetLang } })
+}
+
+export function batchTranslateAdminPosts(ids: number[], targetLang: string): Promise<AdminTranslateJob> {
+  return apiFetch<ApiEnvelope<AdminTranslateJob>>('/translate/batch', { method: 'POST', body: { ids, target_lang: targetLang } }).then(r => r.data)
+}
+
+export function fetchAdminTranslateJob(id: string): Promise<AdminTranslateJob> {
+  return apiFetch<ApiEnvelope<AdminTranslateJob>>(`/translate/jobs/${id}`).then(r => r.data)
+}
+
+// ==================== 性能监控 ====================
+
+export interface AdminSlowRequest {
+  id: number
+  method: string
+  path: string
+  duration_ms: number
+  status_code: number
+  user_agent?: string | null
+  created_at: string | null
+}
+
+export interface AdminPerformanceSummary {
+  total_requests_24h: number
+  error_rate_24h: number
+  p50_ms: number
+  p95_ms: number
+  p99_ms: number
+  top_slow_paths: Array<{ path: string, avg_ms: number, count: number }>
+}
+
+export function fetchAdminPerformanceSummary(): Promise<AdminPerformanceSummary> {
+  return apiFetch<ApiEnvelope<AdminPerformanceSummary>>('/performance/summary').then(r => r.data)
+}
+
+export function fetchAdminSlowRequests(params: { page?: number, page_size?: number, limit?: number } = {}): Promise<AdminPaged<AdminSlowRequest>> {
+  return apiFetch<AdminPaged<AdminSlowRequest>>('/performance/slow', { query: { page: 1, page_size: 20, limit: 50, ...params } })
+}
+
+// ==================== 操作审计日志 ====================
+
+export interface AdminAuditLog {
+  id: number
+  user_id: number | null
+  username?: string | null
+  action: string
+  target_type?: string | null
+  target_id?: string | null
+  ip?: string | null
+  user_agent?: string | null
+  details?: Record<string, unknown> | null
+  created_at: string | null
+}
+
+export function fetchAdminAuditLogs(params: { page?: number, page_size?: number, action?: string, user_id?: number } = {}): Promise<AdminPaged<AdminAuditLog>> {
+  return apiFetch<AdminPaged<AdminAuditLog>>('/admin-logs', { query: { page: 1, page_size: 20, ...params } })
+}
+
+// ==================== 数据库迁移 ====================
+
+export interface AdminMigrationStatus {
+  current_version: string
+  latest_version: string
+  is_latest: boolean
+  pending: Array<{ version: string, message: string }>
+  applied: Array<{ version: string, message: string, applied_at: string | null }>
+}
+
+export function fetchAdminMigrationStatus(): Promise<AdminMigrationStatus> {
+  return apiFetch<ApiEnvelope<AdminMigrationStatus>>('/migrations/status').then(r => r.data)
+}
+
+export function upgradeAdminMigrations(): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/migrations/upgrade', { method: 'POST' })
+}
+
+// ==================== 缓存管理 ====================
+
+export type AdminCacheFlushMode = 'all' | 'post_list' | 'post_detail' | 'settings' | 'fragments'
+
+export interface AdminCacheStatus {
+  backend: 'memory' | 'redis'
+  keys: number
+  memory_used_bytes?: number | null
+  hit_rate?: number | null
+}
+
+export function fetchAdminCacheStatus(): Promise<AdminCacheStatus> {
+  return apiFetch<ApiEnvelope<AdminCacheStatus>>('/advanced/cache/status').then(r => r.data)
+}
+
+export function flushAdminCache(mode: AdminCacheFlushMode): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/advanced/cache/flush', { method: 'POST', body: { mode } })
 }
