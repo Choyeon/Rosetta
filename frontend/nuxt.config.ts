@@ -67,6 +67,8 @@ export default defineNuxtConfig({
         { name: 'theme-color', content: '#0ea5e9', media: '(prefers-color-scheme: light)' },
         { name: 'theme-color', content: '#0c4a6e', media: '(prefers-color-scheme: dark)' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
+        // 标准 W3C mobile-web-app-capable：替换已废弃的 apple-mobile-web-app-capable（旧 iOS 仍需要上面那条，所以保留两条）
+        { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         { name: 'apple-mobile-web-app-title', content: 'Rosetta' },
         { name: 'application-name', content: 'Rosetta' },
