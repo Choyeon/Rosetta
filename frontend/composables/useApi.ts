@@ -157,6 +157,19 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
       throw err
     }
 
+    if (status === 404) {
+      // 404 在前端开发阶段很常见：后端路由还没补齐 / 拼写错误；不要打断用户工作流，
+      // 只在控制台打印具体 URL 方便定位，然后抛错（让调用方自己决定是否降级）。
+      // eslint-disable-next-line no-console
+      console.warn('[useAPI] 404 Not Found', {
+        method: options.method || 'GET',
+        url,
+        data: e.data
+      })
+      const msg = extractErrorMessage(e.data, `Not Found: ${url}`)
+      throw Object.assign(new Error(msg), { status, data: e.data, code: 'NOT_FOUND' })
+    }
+
     if (status === 401) {
       const refreshed = await authStore.refreshAccessToken()
       if (refreshed) {
