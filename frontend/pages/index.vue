@@ -392,8 +392,8 @@ import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
-import type { Post } from '~~/types/api'
-import { usePosts } from '~~/composables/usePosts'
+import type { Post, PaginatedResponse } from '~~/types/api'
+import { useAPI } from '~~/composables/useAPI'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
@@ -614,8 +614,29 @@ const mockTags = [
   { id: 15, name: 'Git', slug: 'git' }
 ]
 
-const posts = ref<Post[]>([])
-const loading = ref(false)
+// ===== Data Fetching (SSR-friendly, no onMounted) =====
+const { data, pending, error, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+  query: { lang: locale.value, page: 1, page_size: 7 },
+  // 独立 key，避免和 /posts 列表页共用 URL 时 cache key 冲突，导致 SSR payload 数据丢失
+  key: 'home:posts:preview:' + locale.value
+})
+
+// 兜底：和 posts 列表页一样，首次挂载 + keep-alive 激活都 refresh 一次，
+// 防止 Nitro SSR 阶段 useFetch 因为某种原因卡住或没注入 payload 数据造成首页空，
+// 以及"从文章详情点首页导航 → 首页空白"的复现 bug（因为首页组件被 keep-alive 缓存时走 onActivated 不走 onMounted）。
+const fallbackRefresh = () => {
+  setTimeout(() => {
+    refresh()
+  }, 50)
+}
+onMounted(fallbackRefresh)
+onActivated(fallbackRefresh)
+
+const fallbackPosts = computed<Post[]>(() => [...mockFeatured, ...mockLatest] as unknown as Post[])
+const hasApiData = computed(() => !error.value && data.value && Array.isArray(data.value.items) && data.value.items.length > 0)
+
+const posts = computed<Post[]>(() => hasApiData.value ? data.value!.items : fallbackPosts.value)
+const loading = computed(() => pending.value && !hasApiData.value)
 
 const featuredPosts = computed(() => posts.value.slice(0, 3))
 const latestPosts = computed(() => posts.value.slice(3, 7))
@@ -632,19 +653,65 @@ const totalViewsDisplay = computed(() => {
   return '2.4k'
 })
 
-onMounted(async () => {
-  loading.value = true
+// ===== SEO =====
+const requestURL = useRequestURL()
+const canonical = computed(() => requestURL.href)
+const origin = computed(() => requestURL.origin)
+
+const tagline = computed(() => t('home.tagline'))
+const siteTitle = computed(() => tagline.value ? `Rosetta · ${tagline.value}` : 'Rosetta · 穿越语言的边界')
+const siteDescription = computed(() => {
+  const hero = t('home.heroSubtitle')
+  if (hero && !hero.startsWith('home.')) return hero
+  const footer = t('footer.description')
+  if (footer && !footer.startsWith('footer.')) return footer
+  return '穿越语言的边界 · 现代个人博客系统'
+})
+const ogImage = computed(() => {
+  const firstPost = hasApiData.value ? data.value!.items[0] : null
+  const coverFromData = firstPost
+    ? (firstPost.cover_image || (firstPost.cover_image === undefined ? (firstPost as unknown as { coverImage?: string }).coverImage : undefined))
+    : null
+  const raw = coverFromData || mockFeatured[0]!.coverImage
+  // og:image 必须是绝对 URL（http:// 或 https:// 开头），否则搜索引擎爬不到封面
+  if (raw && raw.startsWith('http')) return raw
   try {
-    const postsComposable = usePosts()
-    if (postsComposable.fetchPosts) {
-      await postsComposable.fetchPosts({ page: 1, pageSize: 7 })
-      posts.value = postsComposable.posts?.value || []
-      loading.value = postsComposable.loading?.value ?? false
-    }
-  } catch (e) {
-    console.error('[index] fetch posts error:', e)
-  } finally {
-    loading.value = false
+    return new URL(raw || '/favicon-32x32.png', origin.value).href
+  } catch {
+    return raw || ''
   }
+})
+
+useSeoMeta({
+  title: siteTitle,
+  description: siteDescription,
+  ogTitle: siteTitle,
+  ogDescription: siteDescription,
+  ogImage: ogImage,
+  ogType: 'website',
+  ogUrl: canonical,
+  twitterCard: 'summary_large_image',
+  twitterTitle: siteTitle,
+  twitterDescription: siteDescription,
+  twitterImage: ogImage
+})
+
+useHead({
+  link: [
+    { rel: 'canonical', href: canonical }
+  ],
+  script: [
+    {
+      type: 'application/ld+json',
+      // 关键：JSON.stringify 里每个字段必须取 .value（纯字符串/数值），
+      // 否则传入 computed/ref 会被展开内部响应式结构，触发 "circular ComputedRefImpl" 序列化崩溃
+      innerHTML: JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        'name': 'Rosetta',
+        'url': origin.value
+      })
+    }
+  ]
 })
 </script>

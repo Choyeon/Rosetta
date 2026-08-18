@@ -129,7 +129,6 @@ lerna-debug.log*
 # --- Astro build output ---
 frontend/dist/
 frontend/.astro/
-frontend/server/
 frontend/client/
 frontend/.output/
 

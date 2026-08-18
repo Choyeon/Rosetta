@@ -1,4 +1,11 @@
 import type { TokenResponse } from '~~/types/api'
+// Pinia skipHydrate：标记某些 state 为「不需要参与 SSR → 客户端的 payload 序列化/反序列化」
+// 因为 token/user 的 source of truth 永远是 localStorage，
+// SSR 阶段它们都是 null，序列化不但没有意义，还会因为 @pinia/nuxt payload-plugin
+// 在极端情况下（值为 null + devalue stringify 遍历 Object.create(null) 形对象）
+// 抛出 "obj.hasOwnProperty is not a function"，导致整个 payload 序列化崩溃、
+// 所有页面的 useFetch 数据都进不了 payload（表现为"列表页空、首页碰巧能显示"）。
+import { skipHydrate } from 'pinia'
 
 export interface AuthUser {
   id: number
@@ -200,9 +207,10 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   return {
-    accessToken,
-    refreshToken,
-    user,
+    // 认证相关状态：从 localStorage 恢复，不参与 SSR payload hydrate
+    accessToken: skipHydrate(accessToken),
+    refreshToken: skipHydrate(refreshToken),
+    user: skipHydrate(user),
     isAuthenticated,
     isAdmin,
     setTokens,

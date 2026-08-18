@@ -79,8 +79,8 @@ def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_titl
         item = SubElement(channel, "item")
         title = get_i18n_value(post.title, language)
         SubElement(item, "title").text = title
-        SubElement(item, "link").text = f"{site_url}/post/{post.slug}"
-        SubElement(item, "guid", isPermaLink="true").text = f"{site_url}/post/{post.slug}"
+        SubElement(item, "link").text = f"{site_url}/posts/{post.slug}"
+        SubElement(item, "guid", isPermaLink="true").text = f"{site_url}/posts/{post.slug}"
 
         if post.published_at:
             pub_date = post.published_at
@@ -2488,21 +2488,23 @@ def generate_sitemap(
 
     for post in posts:
         url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/post/{post.slug}"
+        SubElement(url, "loc").text = f"{site_url}/posts/{post.slug}"
         if post.updated_at:
             SubElement(url, "lastmod").text = post.updated_at.strftime("%Y-%m-%d")
         SubElement(url, "changefreq").text = "weekly"
         SubElement(url, "priority").text = "0.8"
 
+    # 仅为前端真实存在的路由生成 sitemap loc
+    # categories 列表页：/categories，单分类筛选：/posts?category=slug
     for category in categories:
         url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/category/{category.slug}"
+        SubElement(url, "loc").text = f"{site_url}/posts?category={category.slug}"
         SubElement(url, "changefreq").text = "weekly"
         SubElement(url, "priority").text = "0.6"
 
     for tag in tags:
         url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/tag/{tag.slug}"
+        SubElement(url, "loc").text = f"{site_url}/posts?tag={tag.slug}"
         SubElement(url, "changefreq").text = "monthly"
         SubElement(url, "priority").text = "0.5"
 

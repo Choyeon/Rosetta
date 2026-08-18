@@ -194,7 +194,31 @@ export default defineNuxtConfig({
     spawnBackendModule
   ],
 
-  ssr: false,
+  // 全局开启 SSR：公开页面数据在服务端渲染到 HTML，
+  //   1) 彻底解决"从详情返回首页/列表空白"：数据跟着 HTML 一起下发，不再依赖 onMounted 才拉；
+  //   2) 让搜索引擎直接抓到正文，解决 SEO 空壳问题。
+  // 管理后台、登录注册、OOBE 通过 routeRules 单独关闭 SSR（需要 localStorage 登录态和重交互）。
+  ssr: true,
+
+  routeRules: {
+    // === SPA 模式：需要登录态 / 重型交互 / 不被搜索引擎索引 ===
+    '/admin/**': { ssr: false },
+    '/login':    { ssr: false },
+    '/register': { ssr: false },
+    '/oobe':     { ssr: false },
+    // === 公开页面 SSR + SWR（Stale-While-Revalidate）缓存，降低后端压力 ===
+    '/':               { swr: 3600 },
+    '/posts':          { swr: 3600 },
+    '/posts/**':       { swr: 600  },
+    '/categories':     { swr: 3600 },
+    '/categories/**':  { swr: 3600 },
+    '/about':          { swr: 86400 },
+    '/archive':        { swr: 3600 },
+    '/friends':        { swr: 86400 },
+    '/gallery':        { swr: 86400 },
+    '/guestbook':      { swr: 600  },
+    '/activity':       { swr: 600  }
+  },
 
   components: [
     { path: './components', pathPrefix: false, ignore: ['**/index.ts'] }
@@ -238,7 +262,11 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
         { rel: 'icon', type: 'image/png', sizes: '48x48', href: '/favicon-48x48.png' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
-        { rel: 'manifest', href: '/site.webmanifest' }
+        { rel: 'manifest', href: '/site.webmanifest' },
+        // RSS 订阅：让浏览器 / RSS 阅读器自动发现
+        { rel: 'alternate', type: 'application/rss+xml', title: 'Rosetta · RSS Feed', href: '/api/blog/rss' },
+        // Sitemap 提示
+        { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: '/api/blog/sitemap.xml' }
       ]
     }
   },

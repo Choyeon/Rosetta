@@ -153,8 +153,8 @@ async def get_robots_txt():
     robots_content = await get_site_config_value("ROBOTS_TXT")
 
     if not robots_content:
-        # 生成默认 robots.txt
-        site_url = settings.SITE_URL if hasattr(settings, "SITE_URL") else "http://localhost:4321"
+        # 生成默认 robots.txt（与前端 /sitemap.xml Nitro 路由对齐）
+        site_url = getattr(settings, "site_url", None) or "http://localhost:3000"
         robots_content = f"""User-agent: *
 Allow: /
 
@@ -165,8 +165,8 @@ Disallow: /api/admin/
 # 禁止访问用户私密页面
 Disallow: /users/me/
 
-# Sitemap
-Sitemap: {site_url}/api/blog/sitemap.xml
+# Sitemap（前端 Nitro server route 根级映射，非 /api 嵌套）
+Sitemap: {site_url}/sitemap.xml
 
 # Crawl-delay
 Crawl-delay: 1

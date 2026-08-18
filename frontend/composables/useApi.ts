@@ -74,21 +74,40 @@ export function useAPI<T>(url: string, options?: UseFetchOptions<T>) {
   }
 
   return useFetch<T>(url, {
-    server: false, // 纯 SPA：禁止在服务端执行 useFetch，避免 SSR 相关 payload / 序列化崩溃
+    // 默认在 SSR 时执行（配合全局 ssr:true + 公开页面），
+    // 调用方可通过 options.server: false 显式关闭（如管理后台需要登录态、只在客户端拉的场景）。
+    // 这是修复"从文章详情返回列表/首页页面空白"的关键一环：
+    // 旧版强制 server:false + onMounted 调用 useFetch 导致：
+    //   1) SSR 不执行，首屏 HTML 无数据（搜索引擎爬不到，解决 SEO 空白）；
+    //   2) 客户端组件复用时 onMounted 不再触发 + useFetch 丢失上下文，
+    //      返回的 AsyncData 仍为空，出现"路由跳转后页面空白、刷新才恢复"。
     ...options,
     baseURL: config.public.apiBase,
     headers,
     async onResponseError({ response }) {
       const body = response._data as unknown
-      if (isOobeRequired(response.status, body)) {
-        await navigateTo('/oobe')
-        return
-      }
-      if (response.status === 401 && authStore.refreshToken) {
-        const refreshed = await authStore.refreshAccessToken()
-        if (!refreshed) {
+      // 注意：SSR 服务器端的 onResponseError 绝不能调用 navigateTo（客户端路由 API），
+      // 否则会在 Nitro 渲染线程中抛异常或让 Promise 永远 pending，
+      // 导致 useFetch 卡住、结果永远 pending=true、客户端 hydration 后不重试，页面永久空白。
+      if (import.meta.client) {
+        if (isOobeRequired(response.status, body)) {
+          await navigateTo('/oobe')
+          return
+        }
+        if (response.status === 401 && authStore.refreshToken) {
+          const refreshed = await authStore.refreshAccessToken()
+          if (!refreshed) {
+            authStore.clearTokens()
+            await navigateTo('/login')
+          }
+        } else if (response.status === 401) {
           authStore.clearTokens()
           await navigateTo('/login')
+        }
+      } else {
+        // SSR 端：401 / 503 只清理内部状态，不尝试路由跳转（跳转没有意义）
+        if (response.status === 401) {
+          authStore.clearTokens()
         }
       }
     }

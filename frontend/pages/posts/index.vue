@@ -135,8 +135,8 @@ import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
-import type { Post } from '~~/types/api'
-import { usePosts } from '~~/composables/usePosts'
+import type { Post, PaginatedResponse } from '~~/types/api'
+import { useAPI } from '~~/composables/useAPI'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
 
@@ -171,10 +171,53 @@ const categories = [
   { id: 6, name: '运维', slug: 'devops' }
 ]
 
-const posts = ref<Post[]>([])
-const loading = ref(false)
-const error = ref<unknown>(null)
-const total = ref(0)
+const fetchQuery = computed(() => ({
+  lang: locale.value,
+  page: currentPage.value,
+  page_size: pageSize,
+  category: (selectedCategory.value && selectedCategory.value !== '__all') ? selectedCategory.value : undefined,
+  search: searchQuery.value || undefined
+}))
+
+// TEMP 临时用 plain object（非 computed）测试 SSR payload 是否正常注入
+// 注意：Nuxt useFetch 在 SSR 下 query 如果传 computed/ref ，可能不被序列化为 payload.data key
+//      导致客户端 hydration 拿到 undefined，不会自动重试。
+const { data, pending, error, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+  // 不用 computed 直接传值，确保 SSR 端能生成正确的 cache key 并写入 payload
+  query: {
+    lang: locale.value,
+    page: currentPage.value,
+    page_size: pageSize,
+    category: (selectedCategory.value && selectedCategory.value !== '__all') ? selectedCategory.value : undefined,
+    search: searchQuery.value || undefined
+  },
+  // 指定独一无二的 key，避免与首页 /blog/posts 调用互相去重（否则 payload 标记冲突会导致某一页拿到空结果）
+  key: 'posts:list:page:' + locale.value
+})
+
+// 手动监听搜索/分类/语言/分页变化并刷新（替代 watch: [] 选项，避免副作用干扰 SSR payload 写入）
+watch([currentPage, searchQuery, selectedCategory, locale], () => {
+  if (import.meta.client) {
+    refresh()
+  }
+})
+
+// === 防空白兜底：客户端挂载/激活后强制重新拉取一次，彻底杜绝"跳转到这页空、刷新才恢复"。
+//     触发原因：
+//       1) SSR 阶段 Nitro 渲染时 useFetch Promise 可能因为某种原因未返回或 payload 序列化丢失
+//       2) 从详情页 history.back() 返回时，posts 列表页被 keep-alive 缓存复用，不会再触发 onMounted
+//     解决：onMounted（首次进入） + onActivated（keep-alive 激活/浏览器 Back 回来）两条钩子都调用 refresh()
+const fallbackRefresh = () => {
+  setTimeout(() => {
+    refresh()
+  }, 50)
+}
+onMounted(fallbackRefresh)
+onActivated(fallbackRefresh)
+
+const posts = computed<Post[]>(() => data.value?.items || [])
+const total = computed(() => data.value?.total || 0)
+const loading = computed(() => pending.value && posts.value.length === 0)
 
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
 
@@ -192,44 +235,38 @@ const visiblePages = computed(() => {
   return pages
 })
 
-const fetchData = async () => {
-  loading.value = true
-  try {
-    const postsComposable = usePosts()
-    if (postsComposable.fetchPosts) {
-      await postsComposable.fetchPosts({
-        page: currentPage.value,
-        pageSize,
-        category: (selectedCategory.value && selectedCategory.value !== '__all') ? selectedCategory.value : undefined,
-        search: searchQuery.value || undefined
-      })
-      posts.value = postsComposable.posts?.value || []
-      total.value = postsComposable.total?.value || 0
-    }
-  } catch (e) {
-    console.error('[posts/index] fetch error:', e)
-    error.value = e
-  } finally {
-    loading.value = false
-  }
-}
-
-onMounted(fetchData)
-
 const handleSearch = () => {
   currentPage.value = 1
-  fetchData()
 }
 
 const handleFilter = () => {
   currentPage.value = 1
-  fetchData()
 }
 
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
-  fetchData()
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
 }
+
+// ===== SEO =====
+const requestURL = useRequestURL()
+const origin = computed(() => requestURL.origin)
+const canonical = computed(() => `${origin.value}/posts?page=${currentPage.value}`)
+
+useSeoMeta({
+  title: () => `${t('posts.allPosts')} · Rosetta`,
+  description: () => t('posts.allPostsDesc'),
+  ogType: 'website',
+  ogUrl: canonical,
+  twitterCard: 'summary'
+})
+
+useHead({
+  link: [
+    { rel: 'canonical', href: canonical }
+  ]
+})
 </script>

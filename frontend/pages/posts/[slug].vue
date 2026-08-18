@@ -1,11 +1,12 @@
 <template>
-  <!-- eslint-disable vue/no-multiple-template-root, vue/no-v-html -- Vue 3 多根模板：阅读进度条 + 内容区；文章 HTML 已用 DOMPurify 净化 -->
-  <div class="fixed top-0 left-0 right-0 z-[60] h-[3px] bg-transparent pointer-events-none">
-    <div
-      class="h-full bg-gradient-to-r from-primary via-sky-400 to-primary origin-left shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
-      :style="{ width: `${progress}%`, transition: 'width 120ms linear' }"
-    />
-  </div>
+  <div>
+    <!-- eslint-disable vue/no-v-html -- Vue 3；文章 HTML 已用 DOMPurify 净化 -->
+    <div class="fixed top-0 left-0 right-0 z-[60] h-[3px] bg-transparent pointer-events-none">
+      <div
+        class="h-full bg-gradient-to-r from-primary via-sky-400 to-primary origin-left shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
+        :style="{ width: `${progress}%`, transition: 'width 120ms linear' }"
+      />
+    </div>
   <div class="relative container mx-auto px-4 md:px-6 py-16 max-w-7xl">
     <div class="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-10 lg:gap-12">
       <div class="min-w-0">
@@ -291,6 +292,7 @@
       </aside>
     </div>
   </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -343,6 +345,9 @@ const route = useRoute()
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 
+// composables 必须在 setup 顶层调用：Transition 依赖单根 + 保持上下文
+const commentsAPI = useComments()
+
 const { progress } = useReadingProgress()
 
 interface PostDetailTag {
@@ -389,9 +394,7 @@ type PostComment = {
   likesCount?: number
 }
 
-const post = ref<PostDetail | null>(null)
 const comments = ref<PostComment[]>([])
-const loadingPost = ref(false)
 const loadingComments = ref(false)
 const submittingComment = ref(false)
 const commentContent = ref('')
@@ -401,6 +404,23 @@ const articleEl = ref<HTMLElement | null>(null)
 const { activeId, scrollTo } = useTOCScrollSpy(() => tocItems.value)
 
 const slug = computed(() => route.params.slug as string)
+const requestURL = useRequestURL()
+const siteOrigin = computed(() => requestURL.origin)
+
+const mockPost = ref<PostDetail | null>(null)
+
+const { data: postData, pending: loadingPost, error: fetchError, refresh } = useAPI<PostDetail>(
+  `/blog/posts/${slug.value}`,
+  {
+    key: 'post:detail:' + locale.value + ':' + (typeof route.params.slug === 'string' ? route.params.slug : ''),
+    query: {
+      lang: locale.value
+    }
+  }
+)
+
+const post = computed(() => postData.value ?? mockPost.value ?? null)
+const loadError = computed(() => !!fetchError.value && !mockPost.value)
 
 const pickLocalized = (val: unknown): string => {
   if (val == null) return ''
@@ -443,6 +463,39 @@ const normalizedTags = computed(() => {
   })).filter(tag => tag.id && tag.slug)
 })
 
+const seoTitle = computed(() => `${pickLocalized(post.value?.title) || displayPostTitle.value} · Rosetta`)
+const seoExcerpt = computed(() => pickLocalized((post.value as any)?.excerpt))
+const seoDescription = computed(() => seoExcerpt.value || pickLocalized(post.value?.content || '').slice(0, 180))
+
+const defaultCoverUrl = computed(() => `${siteOrigin.value}/logo/rosetta-horizontal.png`)
+const absoluteCoverImage = computed(() => {
+  const cover = coverImage.value
+  if (!cover) return defaultCoverUrl.value
+  if (cover.startsWith('http://') || cover.startsWith('https://')) return cover
+  return `${siteOrigin.value}${cover.startsWith('/') ? '' : '/'}${cover}`
+})
+
+const tagNames = computed(() => normalizedTags.value.map(t => t.name))
+
+useSeoMeta({
+  title: () => seoTitle.value,
+  description: () => seoDescription.value,
+  ogTitle: () => seoTitle.value,
+  ogDescription: () => seoDescription.value,
+  ogImage: () => absoluteCoverImage.value,
+  ogType: 'article',
+  articlePublishedTime: () => publishedAt.value,
+  articleModifiedTime: () => updatedAt.value,
+  articleAuthor: () => authorName.value ? [authorName.value] : [],
+  articleTag: () => tagNames.value,
+  twitterCard: 'summary_large_image',
+  twitterTitle: () => seoTitle.value,
+  twitterDescription: () => seoDescription.value,
+  twitterImage: () => absoluteCoverImage.value
+})
+
+const canonicalUrl = computed(() => requestURL.href)
+
 /**
  * Markdown renderer with mature highlight.js syntax highlighting.
  * - Uses highlight.js as the tokenizer (190+ built-in languages)
@@ -466,14 +519,17 @@ const mdRenderer = new Marked(
 
 const renderedContent = computed(() => {
   if (!post.value?.content) return ''
-  // DOMPurify 依赖浏览器 DOM；当前 ssr:false 仅客户端渲染，
-  // 未来渐进开启 SSR 时服务端返回空串，避免 Node 侧崩溃
-  if (import.meta.server) return ''
   const raw = pickLocalized(post.value.content)
   try {
-    return DOMPurify.sanitize(mdRenderer.parse(raw) as string)
+    const html = mdRenderer.parse(raw) as string
+    // DOMPurify 依赖浏览器 DOM；SSR 时直接返回 marked 输出的 HTML，
+    // 这样搜索引擎能在 SSR 的 HTML 里抓到正文结构，不至于浪费 SSR 开启的好处。
+    // 客户端（浏览器）阶段用 DOMPurify 再净化一遍，避免 XSS。
+    if (import.meta.server) return html
+    return DOMPurify.sanitize(html)
   } catch (e) {
     console.error('Markdown parse error:', e)
+    if (import.meta.server) return raw
     return DOMPurify.sanitize(raw)
   }
 })
@@ -486,6 +542,48 @@ const readingStats = computed(() => {
 const readingTime = computed(() => readingStats.value.minutes)
 const wordCount = computed(() => readingStats.value.words)
 const charCount = computed(() => readingStats.value.chars)
+
+useHead(() => {
+  const title = pickLocalized(post.value?.title) || displayPostTitle.value
+  const description = seoDescription.value
+  const coverImageAbs = absoluteCoverImage.value
+  const publishedAtVal = publishedAt.value
+  const updatedAtVal = updatedAt.value
+  const author = authorName.value
+  const keywords = tagNames.value.join(',')
+  const words = wordCount.value
+
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BlogPosting',
+    headline: title,
+    image: [coverImageAbs],
+    datePublished: publishedAtVal,
+    dateModified: updatedAtVal,
+    author: {
+      '@type': 'Person',
+      name: author
+    },
+    keywords,
+    wordCount: words,
+    description
+  }
+
+  return {
+    link: [
+      {
+        rel: 'canonical',
+        href: canonicalUrl.value
+      }
+    ],
+    script: [
+      {
+        type: 'application/ld+json',
+        innerHTML: JSON.stringify(jsonLd)
+      }
+    ]
+  }
+})
 
 const formatDate = (date: string) => {
   if (!date) return ''
@@ -502,40 +600,37 @@ const formatDate = (date: string) => {
   }
 }
 
-const loadError = ref(false)
-
-onMounted(async () => {
-  loadingPost.value = true
+// 兜底：首次挂载 + keep-alive 激活都 refresh 一次文章主体 + 评论
+// 防止 SSR 阶段 useFetch Promise pending 卡住、或"从详情 A → 列表 → 详情 B（组件复用不重 mount）
+// → 内容仍是 A"这类因为 keep-alive 导致的旧数据残留。
+let didFirstMount = false
+const fallbackDetailRefresh = async () => {
+  if (!import.meta.client) return
+  try {
+    await refresh()
+  } catch (e) {
+    console.warn('[post detail] forced refresh failed:', e)
+  }
   loadingComments.value = true
   try {
-    const postsComp = usePosts()
-    if (postsComp.fetchPost) {
-      await postsComp.fetchPost(slug.value)
-      post.value = postsComp.post || null
-    }
-
     if (post.value?.id) {
-      const commentsComp = useComments()
-      if (commentsComp.fetchComments) {
-        await commentsComp.fetchComments(post.value.id)
-        comments.value = (commentsComp.comments?.value || []) as unknown as PostComment[]
+      if (commentsAPI.fetchComments) {
+        await commentsAPI.fetchComments(post.value.id)
+        comments.value = (commentsAPI.comments?.value || []) as unknown as PostComment[]
       }
     }
   } catch (e) {
-    console.warn('[post detail] fetch error:', e)
+    console.warn('[post detail] comments fetch error:', e)
   } finally {
-    // 开发环境：后端不可用时填充 mock 数据便于调试 UI；
-    // 生产环境：显示错误状态，不静默伪造文章内容
-    if (!post.value || typeof post.value !== 'object' || Object.keys(post.value).length === 0) {
-      if (import.meta.dev) {
-        post.value = buildMockDetailPost(slug.value, displayPostTitle.value)
-      } else {
-        loadError.value = true
-      }
-    }
-    loadingPost.value = false
     loadingComments.value = false
   }
+}
+onMounted(async () => {
+  didFirstMount = true
+  await fallbackDetailRefresh()
+})
+onActivated(async () => {
+  await fallbackDetailRefresh()
 })
 
 watch([() => post.value, renderedContent, loadingPost], async () => {
@@ -725,19 +820,26 @@ def get_post(slug: str, db: Session = Depends(deps.get_db)):
   }
 }
 
+watch([fetchError, postData], () => {
+  if (import.meta.client && fetchError.value && !postData.value) {
+    if (import.meta.dev) {
+      mockPost.value = buildMockDetailPost(slug.value, displayPostTitle.value)
+    }
+  }
+}, { immediate: true })
+
 const handleSubmitComment = async () => {
   if (!post.value?.id || !commentContent.value.trim()) return
   submittingComment.value = true
   try {
-    const commentsComp = useComments()
-    if (commentsComp.createComment) {
+    if (commentsAPI.createComment) {
       const pid = (replyingTo.value == null) ? undefined : Number(replyingTo.value)
-      await commentsComp.createComment(post.value.id, commentContent.value, pid)
+      await commentsAPI.createComment(post.value.id, commentContent.value, pid)
       commentContent.value = ''
       replyingTo.value = null
-      if (commentsComp.fetchComments) {
-        await commentsComp.fetchComments(post.value.id)
-        comments.value = (commentsComp.comments?.value || []) as unknown as PostComment[]
+      if (commentsAPI.fetchComments) {
+        await commentsAPI.fetchComments(post.value.id)
+        comments.value = (commentsAPI.comments?.value || []) as unknown as PostComment[]
       }
     }
   } catch (e) {
