@@ -249,6 +249,7 @@
                     : 'background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.12);'"
                 >
                   <input
+                    id="agreeTermsLabel"
                     v-model="form.agreeTerms"
                     type="checkbox"
                     class="absolute inset-0 opacity-0 cursor-pointer"
