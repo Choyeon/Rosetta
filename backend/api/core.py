@@ -905,6 +905,91 @@ async def get_site_config(db: DB):
         oobe_kwargs.update(_sidebar_dict_to_flat(default_sidebar))
         return SiteConfigResponse(**oobe_kwargs)
 
+
+    # 合并 settings_groups 表中 17 组 JSON（admin 编辑保存的）进入 /api/config 返回值。
+    # 优先级：site_configs 扁平 key → settings_groups JSON（覆盖/补充） → 环境 fallback
+    def _apply_settings_groups(cfg_base: dict[str, Any]) -> dict[str, Any]:
+        import json as _json_
+        try:
+            # basic
+            raw_basic = configs.get("basic")
+            if raw_basic:
+                parsed = _json_.loads(raw_basic)
+                if isinstance(parsed, dict):
+                    if parsed.get("site_name"):
+                        cfg_base["site_name"] = str(parsed["site_name"])
+                    if parsed.get("subtitle") is not None:
+                        cfg_base["site_subtitle"] = str(parsed["subtitle"])
+                    if parsed.get("description"):
+                        cfg_base["site_description"] = str(parsed["description"])
+                    if parsed.get("keywords") is not None:
+                        cfg_base["site_keywords"] = str(parsed["keywords"])
+                    if parsed.get("site_url"):
+                        cfg_base["site_url"] = str(parsed["site_url"])
+                    if parsed.get("logo"):
+                        cfg_base["site_logo"] = str(parsed["logo"])
+                    if parsed.get("icp_number") is not None:
+                        cfg_base["icp_number"] = str(parsed["icp_number"]) or None
+                    if parsed.get("about_content") is not None:
+                        cfg_base["about_content"] = str(parsed["about_content"])
+            # seo
+            raw_seo = configs.get("seo")
+            if raw_seo:
+                parsed = _json_.loads(raw_seo)
+                if isinstance(parsed, dict):
+                    if parsed.get("default_description"):
+                        cfg_base["site_description"] = str(parsed["default_description"])
+                    if parsed.get("default_keywords"):
+                        cfg_base["site_keywords"] = str(parsed["default_keywords"])
+                    if parsed.get("og_image"):
+                        cfg_base["default_og_image"] = str(parsed["og_image"])
+            # appearance
+            raw_appearance = configs.get("appearance")
+            if raw_appearance:
+                parsed = _json_.loads(raw_appearance)
+                if isinstance(parsed, dict):
+                    if parsed.get("primary_color"):
+                        cfg_base["primary_color"] = str(parsed["primary_color"])
+                        cfg_base["theme_primary"] = str(parsed["primary_color"])
+                    if parsed.get("accent_color"):
+                        cfg_base["theme_accent"] = str(parsed["accent_color"])
+                        cfg_base["accent_color"] = str(parsed["accent_color"])
+                    if parsed.get("default_theme"):
+                        cfg_base["default_theme"] = str(parsed["default_theme"])
+                    if parsed.get("code_theme"):
+                        cfg_base["code_theme"] = str(parsed["code_theme"])
+                    if parsed.get("code_theme_dark"):
+                        cfg_base["code_theme_dark"] = str(parsed["code_theme_dark"])
+                    if parsed.get("font_family"):
+                        cfg_base["font_family"] = str(parsed["font_family"])
+            # footer
+            raw_footer = configs.get("footer")
+            if raw_footer:
+                parsed = _json_.loads(raw_footer)
+                if isinstance(parsed, dict):
+                    if parsed.get("text") is not None:
+                        cfg_base["footer_text"] = str(parsed["text"])
+                    if parsed.get("slogan") is not None:
+                        cfg_base["footer_slogan"] = str(parsed["slogan"])
+                    if parsed.get("copyright") is not None:
+                        cfg_base["copyright_text"] = str(parsed["copyright"])
+                    if parsed.get("icp_number") is not None:
+                        cfg_base["icp_number"] = str(parsed["icp_number"]) or None
+                    if parsed.get("police_icp_number") is not None:
+                        cfg_base["police_icp_number"] = str(parsed["police_icp_number"]) or None
+            # sidebar（已经由后续 _sidebar_dict_to_flat 读取默认，这里覆盖）
+            raw_sb = configs.get("sidebar")
+            if raw_sb:
+                parsed_sb = _json_.loads(raw_sb)
+                if isinstance(parsed_sb, dict):
+                    for k, v in parsed_sb.items():
+                        if k == "widget_order" and isinstance(v, list):
+                            cfg_base["sidebar_widget_order"] = v
+                        else:
+                            cfg_base[f"sidebar_{k}"] = bool(v) if isinstance(v, bool) else v
+        except Exception as exc:  # 任何合并异常不影响核心配置返回
+            logger.warning("merge settings_groups into /config failed: %s", exc)
+        return cfg_base
     cache_key = make_cache_key("site_config")
     cached = await cache.get(cache_key)
     if cached:
@@ -1007,7 +1092,12 @@ async def get_site_config(db: DB):
         code_theme_dark=get_str("CODE_THEME_DARK", "github-dark") or "github-dark",
         default_theme=get_str("DEFAULT_THEME", "system") or "system",
         primary_color=get_str("PRIMARY_COLOR", "#3B82F6") or "#3B82F6",
+        accent_color=get_str("ACCENT_COLOR", "#0284C7") or "#0284C7",
+        theme_primary=get_str("THEME_PRIMARY", "#0EA5A9") or "#0EA5A9",
+        theme_accent=get_str("THEME_ACCENT", "#0284C7") or "#0284C7",
         font_family=get_str("FONT_FAMILY"),
+        default_og_image=get_str("DEFAULT_OG_IMAGE"),
+        site_subtitle=get_str("SITE_SUBTITLE", "") or "",
         # 维护模式
         maintenance_mode=get_bool("MAINTENANCE_MODE", "false"),
         maintenance_message=get_str("MAINTENANCE_MESSAGE", "Site is under maintenance"),
@@ -1202,6 +1292,8 @@ async def get_site_config(db: DB):
         plantuml_server_url=get_str("PLANTUML_SERVER_URL", "https://www.plantuml.com/plantuml") or "https://www.plantuml.com/plantuml",
     )
     response_dict.update(_sidebar_dict_to_flat(sidebar))
+    # 把后台 17 组 settings 合并进 /api/config 公开返回
+    response_dict = _apply_settings_groups(response_dict)
     response = SiteConfigResponse(**response_dict)
 
     # 异步设置缓存（不阻塞响应）

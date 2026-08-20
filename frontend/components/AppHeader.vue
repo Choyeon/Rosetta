@@ -31,6 +31,12 @@ const { t } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
 
+// ===== 站点品牌：后台 settings.basic.site_name / logo 驱动 =====
+const site = useSite()
+site.ensureLoaded().catch(() => {})
+const brandName = computed(() => site.basic.value.site_name || 'Rosetta')
+const brandLogo = computed(() => site.basic.value.logo || '/logo/rosetta-primary-icon.png')
+
 const navItems = computed(() => [
   { label: t('nav.home'), to: '/' },
   { label: t('nav.posts'), to: '/posts' },
@@ -66,11 +72,11 @@ const handleAdmin = () => navigateTo('/admin')
         class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
       >
         <img
-          src="/logo/rosetta-primary-icon.png"
-          alt="Rosetta"
+          :src="brandLogo"
+          :alt="brandName"
           class="h-7 w-auto object-contain"
         >
-        <span>Rosetta</span>
+        <span>{{ brandName }}</span>
       </NuxtLink>
 
       <nav class="md:flex hidden items-center gap-1">

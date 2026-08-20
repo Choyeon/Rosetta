@@ -647,6 +647,9 @@
     "totalViews": "総閲覧数",
     "totalComments": "コメント数"
   },
+  "posts": {
+    "pinned": "ピン留め"
+  },
   "home": {
     "release": "安定版",
     "multiLang": "多言語対応",
@@ -704,6 +707,7 @@
     "linkRepo": "ソースコード",
     "linkPrivacy": "ゲストブック",
     "linkTerms": "このサイトについて",
+    "linkSitemap": "サイトマップ",
     "newsletter": "ニュースレター",
     "newsletterDesc": "毎週の厳選記事をお届け · 広告なし、いつでも解除可能。",
     "emailPlaceholder": "mail{'@'}example.com",

@@ -352,7 +352,7 @@ const toolbarButtons = [
 
 <template>
   <div
-    class="flex flex-col rounded-[12px] border border-border bg-card text-card-foreground overflow-hidden"
+    class="card-surface flex flex-col text-card-foreground overflow-hidden"
     :class="{ 'fixed inset-4 z-50 shadow-2xl': isFullscreen }"
   >
     <div class="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">

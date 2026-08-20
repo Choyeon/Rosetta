@@ -81,7 +81,7 @@
       <div
         v-for="link in filtered"
         :key="link.id"
-        class="group relative rounded-2xl border border-border overflow-hidden bg-card transition-all hover:shadow-soft hover:-translate-y-0.5"
+        class="card-surface lift-hover group relative overflow-hidden transition-all"
         :style="link.bg_color ? { background: link.bg_color + '22', borderColor: link.bg_color + '44' } : ''"
       >
         <div class="absolute top-3 right-3 z-10">

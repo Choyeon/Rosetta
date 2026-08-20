@@ -1,5 +1,5 @@
 <template>
-  <div class="flex gap-3 p-4 rounded-xl border bg-card">
+  <div class="card-surface flex gap-3 p-4">
     <Avatar class="size-9 shrink-0">
       <AvatarImage
         v-if="comment.author?.avatar"

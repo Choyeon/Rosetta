@@ -4,9 +4,7 @@
     <section
       class="relative min-h-[80vh] md:min-h-[86vh] overflow-hidden"
       :style="{
-        backgroundImage: currentWallpaper
-          ? `url(${currentWallpaper.fullUrl})`
-          : 'linear-gradient(135deg, #0f172a 0%, #1e293b 40%, #312e81 100%)',
+        backgroundImage: currentWallpaper ? `url(${currentWallpaper.fullUrl})` : undefined,
         backgroundSize: 'cover',
         backgroundPosition: 'center center',
         backgroundRepeat: 'no-repeat',
@@ -42,13 +40,6 @@
                 :title="day.title || day.label"
                 @click="selectWallpaper(day.index)"
               >
-                <!-- Elegant per-card gradient fallback (always rendered as base layer) -->
-                <div
-                  class="absolute inset-0"
-                  :class="wallpaperCardGradient(day.index)"
-                  aria-hidden="true"
-                />
-                <!-- Compact date overlay (always visible above gradient) -->
                 <div class="absolute inset-0 z-10 flex flex-col items-center justify-center text-white">
                   <span class="text-[15px] sm:text-[17px] font-bold leading-none tracking-tight drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
                     {{ day.dateCompact.main }}
@@ -63,10 +54,7 @@
                   :src="day.thumbnail"
                   :alt="day.title || day.label"
                   class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-20"
-                  :class="thumbnailLoaded[day.index] === true ? 'opacity-100' : 'opacity-0 pointer-events-none'"
                   loading="lazy"
-                  @load="setThumbnailState(day.index, true)"
-                  @error="setThumbnailState(day.index, false)"
                 >
               </button>
             </div>
@@ -95,75 +83,50 @@
       </div>
     </section>
 
-    <!-- ===== FEATURED POSTS ===== -->
     <section class="container py-14 md:py-20">
       <div class="flex items-end justify-between mb-8 gap-6 flex-wrap">
         <div>
           <div class="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
             <span class="size-1.5 rounded-full bg-warning" />
-            {{ t('home.featuredLabel') }}
+            {{ t('posts.pinned') }}
           </div>
           <h2 class="mt-2 font-display text-2xl md:text-3xl font-bold tracking-tight">
-            {{ t('home.featuredPosts') }}
+            {{ t('posts.pinned') }}
           </h2>
         </div>
-        <Badge
-          variant="secondary"
-          class="text-xs shadow-sm"
-        >
-          Editor's Pick
-        </Badge>
       </div>
 
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <!-- Large featured card -->
-        <div class="lg:col-span-7">
-          <Skeleton
-            v-if="loading && featuredPosts.length === 0"
-            class="aspect-[16/10] rounded-2xl"
-          />
-          <PostCard
-            v-else-if="featuredPosts[0]"
-            :post="featuredPosts[0]"
-            :is-featured="true"
-          />
-          <PostCard
-            v-else
-            :post="mockFeatured[0]!"
-            :is-featured="true"
-          />
-        </div>
-        <!-- Stacked featured cards -->
-        <div class="lg:col-span-5 flex flex-col gap-6">
-          <div>
-            <Skeleton
-              v-if="loading && featuredPosts.length === 0"
-              class="aspect-[16/10] rounded-2xl"
-            />
-            <PostCard
-              v-else-if="featuredPosts[1]"
-              :post="featuredPosts[1]"
-            />
-            <PostCard
-              v-else
-              :post="mockFeatured[1]!"
-            />
-          </div>
-          <div>
-            <Skeleton
-              v-if="loading && featuredPosts.length === 0"
-              class="aspect-[16/10] rounded-2xl"
-            />
-            <PostCard
-              v-else-if="featuredPosts[2]"
-              :post="featuredPosts[2]"
-            />
-            <PostCard
-              v-else
-              :post="mockFeatured[2]!"
-            />
-          </div>
-        </div>
+      <div
+        v-if="postsError"
+        class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
+      >
+        {{ t('admin.posts.loadFailed') }}
+      </div>
+      <div
+        v-else-if="postsPending && pinnedPosts.length === 0"
+        class="grid grid-cols-1 lg:grid-cols-3 gap-6"
+      >
+        <Skeleton
+          v-for="i in 3"
+          :key="i"
+          class="aspect-[16/10] rounded-2xl"
+        />
+      </div>
+      <div
+        v-else-if="pinnedPosts.length === 0"
+        class="rounded-xl border bg-muted/30 p-6 text-sm text-muted-foreground"
+      >
+        {{ t('admin.posts.empty') }}
+      </div>
+      <div
+        v-else
+        class="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start"
+      >
+        <PostCard
+          v-for="post in pinnedPosts"
+          :key="post.id"
+          :post="post"
+        />
       </div>
     </section>
 
@@ -175,7 +138,7 @@
             <div>
               <div class="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
                 <span class="size-1.5 rounded-full bg-primary" />
-                {{ t('home.latestLabel') }}
+                {{ t('home.latestPosts') }}
               </div>
               <h2 class="mt-2 font-display text-2xl font-bold tracking-tight">
                 {{ t('home.latestPosts') }}
@@ -191,7 +154,13 @@
           </div>
 
           <div class="flex flex-col gap-5">
-            <template v-if="loading && latestPosts.length === 0">
+            <div
+              v-if="postsError"
+              class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
+            >
+              {{ t('admin.posts.loadFailed') }}
+            </div>
+            <template v-else-if="postsPending && latestPosts.length === 0">
               <Skeleton
                 v-for="i in 4"
                 :key="i"
@@ -206,14 +175,12 @@
                 variant="compact"
               />
             </template>
-            <template v-else>
-              <PostCard
-                v-for="post in mockLatest"
-                :key="post.id"
-                :post="post"
-                variant="compact"
-              />
-            </template>
+            <div
+              v-else
+              class="rounded-xl border bg-muted/30 p-6 text-sm text-muted-foreground"
+            >
+              {{ t('admin.posts.empty') }}
+            </div>
           </div>
         </div>
 
@@ -228,10 +195,29 @@
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div class="grid grid-cols-2 gap-3">
+              <div
+                v-if="siteStatsError"
+                class="text-sm text-destructive"
+              >
+                {{ t('admin.posts.loadFailed') }}
+              </div>
+              <div
+                v-else-if="siteStatsPending"
+                class="grid grid-cols-2 gap-3"
+              >
+                <Skeleton
+                  v-for="i in 4"
+                  :key="i"
+                  class="h-24 rounded-xl"
+                />
+              </div>
+              <div
+                v-else-if="siteStats"
+                class="grid grid-cols-2 gap-3"
+              >
                 <div class="rounded-xl bg-muted/50 p-4">
                   <div class="text-2xl font-bold font-display">
-                    {{ totalPostsDisplay }}
+                    {{ siteStats.total_posts }}
                   </div>
                   <div class="text-xs text-muted-foreground mt-1">
                     {{ t('home.postsCount') }}
@@ -239,7 +225,7 @@
                 </div>
                 <div class="rounded-xl bg-muted/50 p-4">
                   <div class="text-2xl font-bold font-display">
-                    {{ totalCategoriesDisplay }}
+                    {{ siteStats.total_categories }}
                   </div>
                   <div class="text-xs text-muted-foreground mt-1">
                     {{ t('home.categoriesCount') }}
@@ -247,7 +233,7 @@
                 </div>
                 <div class="rounded-xl bg-muted/50 p-4">
                   <div class="text-2xl font-bold font-display">
-                    {{ totalTagsDisplay }}
+                    {{ siteStats.total_tags }}
                   </div>
                   <div class="text-xs text-muted-foreground mt-1">
                     {{ t('home.tagsCount') }}
@@ -255,12 +241,18 @@
                 </div>
                 <div class="rounded-xl bg-muted/50 p-4">
                   <div class="text-2xl font-bold font-display">
-                    {{ totalViewsDisplay }}
+                    {{ siteStats.total_words }}
                   </div>
                   <div class="text-xs text-muted-foreground mt-1">
-                    {{ t('home.commentsCount') }}
+                    {{ t('post.words') }}
                   </div>
                 </div>
+              </div>
+              <div
+                v-else
+                class="text-sm text-muted-foreground"
+              >
+                {{ t('noData') }}
               </div>
             </CardContent>
           </Card>
@@ -300,30 +292,53 @@
             </CardContent>
           </Card>
 
-          <!-- Popular categories -->
           <Card>
             <CardHeader>
               <CardTitle class="text-lg flex items-center gap-2">
                 <FolderOpen class="size-4 text-warning" />
-                {{ t('home.popularCategories') }}
+                {{ t('nav.categories') }}
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div class="flex flex-wrap gap-2">
+              <div
+                v-if="categoriesError"
+                class="text-sm text-destructive"
+              >
+                {{ t('admin.posts.loadFailed') }}
+              </div>
+              <div
+                v-else-if="categoriesPending"
+                class="flex flex-wrap gap-2"
+              >
+                <Skeleton
+                  v-for="i in 4"
+                  :key="i"
+                  class="h-6 w-16 rounded-full"
+                />
+              </div>
+              <div
+                v-else-if="categories.length"
+                class="flex flex-wrap gap-2"
+              >
                 <Badge
-                  v-for="cat in mockCategories"
-                  :key="cat.id"
+                  v-for="category in categories"
+                  :key="category.id"
                   variant="secondary"
                   class="cursor-pointer hover:bg-secondary/80 transition-colors"
-                  @click="navigateTo(`/posts?category=${cat.slug}`)"
+                  @click="navigateTo(`/posts?category=${category.slug}`)"
                 >
-                  {{ pickLocalized(cat.name) }}
+                  {{ pickLocalized(category.name) }}
                 </Badge>
+              </div>
+              <div
+                v-else
+                class="text-sm text-muted-foreground"
+              >
+                {{ t('noData') }}
               </div>
             </CardContent>
           </Card>
 
-          <!-- Tag cloud -->
           <Card>
             <CardHeader>
               <CardTitle class="text-lg flex items-center gap-2">
@@ -332,9 +347,28 @@
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div class="flex flex-wrap gap-1.5">
+              <div
+                v-if="tagsError"
+                class="text-sm text-destructive"
+              >
+                {{ t('admin.posts.loadFailed') }}
+              </div>
+              <div
+                v-else-if="tagsPending"
+                class="flex flex-wrap gap-1.5"
+              >
+                <Skeleton
+                  v-for="i in 6"
+                  :key="i"
+                  class="h-6 w-14 rounded-full"
+                />
+              </div>
+              <div
+                v-else-if="tags.length"
+                class="flex flex-wrap gap-1.5"
+              >
                 <Badge
-                  v-for="tag in mockTags"
+                  v-for="tag in tags"
                   :key="tag.id"
                   variant="outline"
                   class="cursor-pointer hover:bg-accent transition-colors"
@@ -342,6 +376,12 @@
                 >
                   #{{ pickLocalized(tag.name) }}
                 </Badge>
+              </div>
+              <div
+                v-else
+                class="text-sm text-muted-foreground"
+              >
+                {{ t('noData') }}
               </div>
             </CardContent>
           </Card>
@@ -355,7 +395,6 @@
         <CardContent class="p-10 md:p-14 text-center max-w-2xl mx-auto relative">
           <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.08),transparent_70%)] pointer-events-none" />
           <div class="relative">
-            <MessageSquareHeart class="size-12 mx-auto text-primary mb-4" />
             <h2 class="font-display text-2xl md:text-3xl font-bold tracking-tight">
               {{ t('home.ctaTitle') }}
             </h2>
@@ -367,7 +406,6 @@
                 size="lg"
                 @click="navigateTo('/guestbook')"
               >
-                <Send class="size-4 mr-2" />
                 {{ t('home.goGuestbook') }}
               </Button>
               <Button
@@ -375,7 +413,6 @@
                 variant="outline"
                 @click="navigateTo('/about')"
               >
-                <UserCircle class="size-4 mr-2" />
                 {{ t('home.goAbout') }}
               </Button>
             </div>
@@ -392,25 +429,25 @@ import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
-import type { Post, PaginatedResponse } from '~~/types/api'
+import type { Category, PaginatedResponse, Post, SiteStats, Tag as BlogTag } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
-import {
-  ArrowRight,
-  FolderOpen,
-  Tag,
-  BarChart3,
-  Server,
-  MessageSquareHeart,
-  Send,
-  UserCircle
-} from '@lucide/vue'
+import { ArrowRight, BarChart3, FolderOpen, Server, Tag } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+
+// ===== 站点动态配置：<title>/hero/SEO/颜色都来自 settings（/api/settings + /api/config fallback）
+const site = useSite()
+await site.ensureLoaded()
+const heroTitle = computed(() => site.pickI18n(site.hero.value.title))
+const heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
+const heroCaption = computed(() => site.pickI18n(site.hero.value.caption))
+const heroCtaText = computed(() => site.pickI18n(site.hero.value.cta_text))
+const heroCtaUrl = computed(() => String(site.hero.value.cta_url || '/posts'))
 
 // ===== Tech versions =====
 const { buildInfo } = useSiteVersions()
@@ -441,26 +478,6 @@ const {
 
 const currentWallpaper = computed(() => currentImage.value)
 
-// ===== Thumbnail state + elegant fallback cards =====
-const thumbnailLoaded = reactive<Record<number, boolean>>({})
-const setThumbnailState = (i: number, ok: boolean) => {
-  thumbnailLoaded[i] = ok
-}
-
-// 8 elegant gradient palettes cycled per card index
-const CARD_GRADIENTS = [
-  'bg-gradient-to-br from-indigo-500 via-violet-500 to-fuchsia-500',
-  'bg-gradient-to-br from-amber-500 via-orange-500 to-rose-500',
-  'bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-500',
-  'bg-gradient-to-br from-slate-700 via-slate-500 to-sky-500',
-  'bg-gradient-to-br from-pink-500 via-rose-500 to-red-500',
-  'bg-gradient-to-br from-lime-500 via-green-500 to-emerald-500',
-  'bg-gradient-to-br from-blue-600 via-indigo-500 to-purple-500',
-  'bg-gradient-to-br from-yellow-600 via-amber-500 to-orange-500'
-]
-const wallpaperCardGradient = (i: number) =>
-  CARD_GRADIENTS[((i % CARD_GRADIENTS.length) + CARD_GRADIENTS.length) % CARD_GRADIENTS.length]
-
 onMounted(() => {
   fetchWallpapers()
 })
@@ -479,207 +496,50 @@ const pickLocalized = (val: string | Record<string, string> | null | undefined):
   return String(val)
 }
 
-// ===== Mock data =====
-const mockFeatured = [
-  {
-    id: 1,
-    slug: 'featured-1',
-    title: {
-      zh: '探索 Vue 3 组合式 API 的优雅设计模式',
-      en: 'Exploring Elegant Design Patterns in Vue 3 Composition API'
-    },
-    excerpt: {
-      zh: '深入理解 Composition API 背后的设计理念，以及如何在大型项目中构建可维护、可复用的组件逻辑。',
-      en: 'Dive deep into the design philosophy behind Composition API and build maintainable, reusable logic for large projects.'
-    },
-    coverImage: 'https://images.unsplash.com/photo-1555066931-4365d14bab8c?w=1200&q=80',
-    category: { id: 1, name: { zh: '前端开发', en: 'Frontend' }, slug: 'frontend' },
-    author: { id: 1, name: 'Chuyu', nickname: 'Chuyu', avatar: '' },
-    publishedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
-    views: 2341,
-    commentsCount: 42
-  },
-  {
-    id: 2,
-    slug: 'featured-2',
-    title: {
-      zh: '现代 CSS 布局完全指南',
-      en: 'The Complete Guide to Modern CSS Layout'
-    },
-    excerpt: {
-      zh: '从 Flexbox 到 Grid，再到最新的容器查询，全面掌握现代 CSS 布局的核心技巧。',
-      en: 'From Flexbox to Grid and Container Queries — master the core of modern CSS layout.'
-    },
-    coverImage: 'https://images.unsplash.com/photo-1523437113738-bbd3cc89fb19?w=1000&q=80',
-    category: { id: 2, name: { zh: 'CSS', en: 'CSS' }, slug: 'css' },
-    author: { id: 2, name: 'Chuyu', nickname: 'Chuyu', avatar: '' },
-    publishedAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-    views: 1823,
-    commentsCount: 28
-  },
-  {
-    id: 3,
-    slug: 'featured-3',
-    title: {
-      zh: 'TypeScript 类型体操进阶',
-      en: 'Advanced TypeScript Type Gymnastics'
-    },
-    excerpt: {
-      zh: '高级类型编程实战：条件类型、映射类型与模板字面量的创造性应用。',
-      en: 'Hands-on advanced type programming: conditional types, mapped types and template literals.'
-    },
-    coverImage: 'https://images.unsplash.com/photo-1516116216624-53e697fedbea?w=1000&q=80',
-    category: { id: 3, name: { zh: 'TypeScript', en: 'TypeScript' }, slug: 'typescript' },
-    author: { id: 3, name: 'Chuyu', nickname: 'Chuyu', avatar: '' },
-    publishedAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-    views: 1567,
-    commentsCount: 35
-  }
-]
-
-const mockLatest = [
-  {
-    id: 4,
-    slug: 'latest-1',
-    title: { zh: '构建高性能 Nuxt 应用的 10 个技巧', en: '10 Tips to Build High-Performance Nuxt Apps' },
-    excerpt: {
-      zh: '从服务端渲染优化到客户端 hydration，深度剖析性能优化的每一个关键点。',
-      en: 'From SSR tuning to client hydration — dissect every performance knob.'
-    },
-    coverImage: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=800&q=80',
-    category: { id: 1, name: { zh: '前端开发', en: 'Frontend' }, slug: 'frontend' },
-    author: { id: 1, name: 'Chuyu', nickname: 'Chuyu', avatar: '' },
-    publishedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-    views: 892,
-    commentsCount: 15
-  },
-  {
-    id: 5,
-    slug: 'latest-2',
-    title: { zh: 'Tailwind CSS 自定义主题系统实战', en: 'Building a Custom Tailwind Theme System' },
-    excerpt: {
-      zh: '从零构建一套可扩展、可维护的设计系统，让你的项目风格统一而灵活。',
-      en: 'Build a scalable, maintainable design system for consistent and flexible project styling.'
-    },
-    coverImage: 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?w=800&q=80',
-    category: { id: 2, name: { zh: 'CSS', en: 'CSS' }, slug: 'css' },
-    author: { id: 4, name: 'Chuyu', nickname: 'Chuyu', avatar: '' },
-    publishedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    views: 756,
-    commentsCount: 12
-  },
-  {
-    id: 6,
-    slug: 'latest-3',
-    title: { zh: '状态管理新纪元：Pinia 实战模式', en: 'A New Era of State Management: Pinia Patterns' },
-    excerpt: {
-      zh: '深入 Pinia 的模块化状态管理，理解最佳实践与迁移策略。',
-      en: 'Deep dive into Pinia modular state — best practices and migration strategies.'
-    },
-    coverImage: 'https://images.unsplash.com/photo-1517694712202-14dd9538aa97?w=800&q=80',
-    category: { id: 4, name: { zh: '架构', en: 'Architecture' }, slug: 'architecture' },
-    author: { id: 2, name: 'Chuyu', nickname: 'Chuyu', avatar: '' },
-    publishedAt: new Date(Date.now() - 86400000 * 4).toISOString(),
-    views: 634,
-    commentsCount: 19
-  }
-]
-
-const mockCategories = [
-  { id: 1, name: { zh: '前端开发', en: 'Frontend' }, slug: 'frontend' },
-  { id: 2, name: { zh: '后端开发', en: 'Backend' }, slug: 'backend' },
-  { id: 3, name: { zh: 'CSS', en: 'CSS' }, slug: 'css' },
-  { id: 4, name: { zh: 'TypeScript', en: 'TypeScript' }, slug: 'typescript' },
-  { id: 5, name: { zh: '架构', en: 'Architecture' }, slug: 'architecture' },
-  { id: 6, name: { zh: '运维', en: 'DevOps' }, slug: 'devops' },
-  { id: 7, name: { zh: '数据库', en: 'Database' }, slug: 'database' },
-  { id: 8, name: { zh: '人工智能', en: 'AI / ML' }, slug: 'ai' }
-]
-
-const mockTags = [
-  { id: 1, name: 'Vue3', slug: 'vue3' },
-  { id: 2, name: 'React', slug: 'react' },
-  { id: 3, name: 'Node.js', slug: 'nodejs' },
-  { id: 4, name: 'Nuxt', slug: 'nuxt' },
-  { id: 5, name: 'Next.js', slug: 'nextjs' },
-  { id: 6, name: 'Tailwind', slug: 'tailwind' },
-  { id: 7, name: 'Docker', slug: 'docker' },
-  { id: 8, name: 'GraphQL', slug: 'graphql' },
-  { id: 9, name: 'REST', slug: 'rest' },
-  { id: 10, name: 'Jest', slug: 'jest' },
-  { id: 11, name: 'Vitest', slug: 'vitest' },
-  { id: 12, name: 'Webpack', slug: 'webpack' },
-  { id: 13, name: 'Vite', slug: 'vite' },
-  { id: 14, name: 'Linux', slug: 'linux' },
-  { id: 15, name: 'Git', slug: 'git' }
-]
-
-// ===== Data Fetching (SSR-friendly, no onMounted) =====
-const { data, pending, error, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
-  query: { lang: locale.value, page: 1, page_size: 7 },
-  // 独立 key，避免和 /posts 列表页共用 URL 时 cache key 冲突，导致 SSR payload 数据丢失
-  key: 'home:posts:preview:' + locale.value
+const { data: postsData, pending: postsPending, error: postsError } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+  query: { lang: locale.value, page: 1, page_size: 20 },
+  key: 'home:posts:' + locale.value
 })
 
-// 兜底：和 posts 列表页一样，首次挂载 + keep-alive 激活都 refresh 一次，
-// 防止 Nitro SSR 阶段 useFetch 因为某种原因卡住或没注入 payload 数据造成首页空，
-// 以及"从文章详情点首页导航 → 首页空白"的复现 bug（因为首页组件被 keep-alive 缓存时走 onActivated 不走 onMounted）。
-const fallbackRefresh = () => {
-  setTimeout(() => {
-    refresh()
-  }, 50)
-}
-onMounted(fallbackRefresh)
-onActivated(fallbackRefresh)
-
-const fallbackPosts = computed<Post[]>(() => [...mockFeatured, ...mockLatest] as unknown as Post[])
-const hasApiData = computed(() => !error.value && data.value && Array.isArray(data.value.items) && data.value.items.length > 0)
-
-const posts = computed<Post[]>(() => hasApiData.value ? data.value!.items : fallbackPosts.value)
-const loading = computed(() => pending.value && !hasApiData.value)
-
-const featuredPosts = computed(() => posts.value.slice(0, 3))
-const latestPosts = computed(() => posts.value.slice(3, 7))
-
-const totalPostsDisplay = computed(() => {
-  const n = posts.value.length || mockFeatured.length + mockLatest.length
-  return n < 100 ? String(n) : '128'
+const { data: categoriesData, pending: categoriesPending, error: categoriesError } = await useAPI<Category[]>('/blog/categories', {
+  query: { lang: locale.value },
+  key: 'home:categories:' + locale.value
 })
-const totalCategoriesDisplay = computed(() => mockCategories.length)
-const totalTagsDisplay = computed(() => mockTags.length)
-const totalViewsDisplay = computed(() => {
-  const fromPosts = posts.value.reduce((acc, p: { views?: number, views_count?: number }) => acc + ((p.views ?? p.views_count) || 0), 0)
-  if (fromPosts > 0) return fromPosts >= 1000 ? `${(fromPosts / 1000).toFixed(1)}k` : String(fromPosts)
-  return '2.4k'
+
+const { data: tagsData, pending: tagsPending, error: tagsError } = await useAPI<BlogTag[]>('/blog/tags', {
+  query: { lang: locale.value },
+  key: 'home:tags:' + locale.value
 })
+
+const { data: siteStats, pending: siteStatsPending, error: siteStatsError } = await useAPI<SiteStats>('/blog/site-stats', {
+  key: 'home:site-stats'
+})
+
+const posts = computed<Post[]>(() => postsData.value?.items ?? [])
+const pinnedPosts = computed(() => posts.value.filter(post => post.is_pinned))
+const latestPosts = computed(() => posts.value.filter(post => !post.is_pinned))
+const categories = computed<Category[]>(() => categoriesData.value ?? [])
+const tags = computed<BlogTag[]>(() => tagsData.value ?? [])
 
 // ===== SEO =====
 const requestURL = useRequestURL()
 const canonical = computed(() => requestURL.href)
 const origin = computed(() => requestURL.origin)
 
-const tagline = computed(() => t('home.tagline'))
-const siteTitle = computed(() => tagline.value ? `Rosetta · ${tagline.value}` : 'Rosetta · 穿越语言的边界')
-const siteDescription = computed(() => {
-  const hero = t('home.heroSubtitle')
-  if (hero && !hero.startsWith('home.')) return hero
-  const footer = t('footer.description')
-  if (footer && !footer.startsWith('footer.')) return footer
-  return '穿越语言的边界 · 现代个人博客系统'
-})
-const ogImage = computed(() => {
-  const firstPost = hasApiData.value ? data.value!.items[0] : null
-  const coverFromData = firstPost
-    ? (firstPost.cover_image || (firstPost.cover_image === undefined ? (firstPost as unknown as { coverImage?: string }).coverImage : undefined))
-    : null
-  const raw = coverFromData || mockFeatured[0]!.coverImage
-  // og:image 必须是绝对 URL（http:// 或 https:// 开头），否则搜索引擎爬不到封面
-  if (raw && raw.startsWith('http')) return raw
-  try {
-    return new URL(raw || '/favicon-32x32.png', origin.value).href
-  } catch {
-    return raw || ''
+// 用 useSite 动态标题/描述，不再硬编码 "Rosetta · ..."
+const siteTitle = computed(() => site.withSuffix())
+const siteDescription = computed(() => site.siteDescription.value)
+const siteKeywords = computed(() => site.siteKeywords.value)
+const seoOgImage = computed(() => {
+  const configured = site.seo.value.og_image
+  if (configured) {
+    const raw = String(configured)
+    if (raw.startsWith('http')) return raw
+    try { return new URL(raw, origin.value).href } catch { return raw }
   }
+  const raw = posts.value[0]?.cover_image || '/favicon-32x32.png'
+  if (raw.startsWith('http')) return raw
+  try { return new URL(raw, origin.value).href } catch { return raw }
 })
 
 useSeoMeta({
@@ -687,28 +547,31 @@ useSeoMeta({
   description: siteDescription,
   ogTitle: siteTitle,
   ogDescription: siteDescription,
-  ogImage: ogImage,
+  ogImage: seoOgImage,
   ogType: 'website',
   ogUrl: canonical,
   twitterCard: 'summary_large_image',
   twitterTitle: siteTitle,
   twitterDescription: siteDescription,
-  twitterImage: ogImage
+  twitterImage: seoOgImage
 })
-
 useHead({
+  meta: [
+    { name: 'keywords', content: siteKeywords }
+  ],
   link: [
     { rel: 'canonical', href: canonical }
   ],
   script: [
     {
       type: 'application/ld+json',
-      // 关键：JSON.stringify 里每个字段必须取 .value（纯字符串/数值），
-      // 否则传入 computed/ref 会被展开内部响应式结构，触发 "circular ComputedRefImpl" 序列化崩溃
       innerHTML: JSON.stringify({
         '@context': 'https://schema.org',
         '@type': 'WebSite',
-        'name': 'Rosetta',
+        'name': site.siteTitle.value || 'Rosetta',
+        'alternateName': site.siteSubtitle.value || undefined,
+        'description': siteDescription.value || undefined,
+        'keywords': siteKeywords.value || undefined,
         'url': origin.value
       })
     }

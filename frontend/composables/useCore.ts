@@ -159,7 +159,9 @@ export const useNavigations = () => {
 
 export const useFriendLinks = () => {
   const getFriendLinks = () => {
-    return useAPI<FriendLink[]>('/friend-links')
+    return useAPI<FriendLink[]>('/friend-links', {
+      default: () => []
+    })
   }
 
   const createFriendLink = (data: Partial<FriendLink>) => {

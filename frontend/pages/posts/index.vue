@@ -14,7 +14,7 @@
             <div class="flex-1 relative">
               <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
-                v-model="searchQuery"
+                v-model="searchInput"
                 :placeholder="t('posts.searchPlaceholder')"
                 class="pl-9 h-10"
                 @keyup.enter="handleSearch"
@@ -135,7 +135,7 @@ import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
-import type { Post, PaginatedResponse } from '~~/types/api'
+import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
@@ -157,42 +157,31 @@ const pickLocalized = (val: string | Record<string, string> | null | undefined):
   return String(val)
 }
 
+const searchInput = ref('')
 const searchQuery = ref('')
 const selectedCategory = ref('')
 const currentPage = ref(1)
 const pageSize = 9
 
-const categories = [
-  { id: 1, name: '前端开发', slug: 'frontend' },
-  { id: 2, name: '后端开发', slug: 'backend' },
-  { id: 3, name: 'CSS', slug: 'css' },
-  { id: 4, name: 'TypeScript', slug: 'typescript' },
-  { id: 5, name: '架构', slug: 'architecture' },
-  { id: 6, name: '运维', slug: 'devops' }
-]
-
-const fetchQuery = computed(() => ({
-  lang: locale.value,
-  page: currentPage.value,
-  page_size: pageSize,
-  category: (selectedCategory.value && selectedCategory.value !== '__all') ? selectedCategory.value : undefined,
-  search: searchQuery.value || undefined
-}))
+const { data: categories } = await useAPI<Category[]>('/blog/categories', {
+  query: { lang: locale.value },
+  key: `posts:categories:${locale.value}`,
+  default: () => []
+})
 
 // TEMP 临时用 plain object（非 computed）测试 SSR payload 是否正常注入
 // 注意：Nuxt useFetch 在 SSR 下 query 如果传 computed/ref ，可能不被序列化为 payload.data key
 //      导致客户端 hydration 拿到 undefined，不会自动重试。
-const { data, pending, error, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+const { data, pending, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
   // 不用 computed 直接传值，确保 SSR 端能生成正确的 cache key 并写入 payload
-  query: {
+  query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
     page_size: pageSize,
     category: (selectedCategory.value && selectedCategory.value !== '__all') ? selectedCategory.value : undefined,
     search: searchQuery.value || undefined
-  },
-  // 指定独一无二的 key，避免与首页 /blog/posts 调用互相去重（否则 payload 标记冲突会导致某一页拿到空结果）
-  key: 'posts:list:page:' + locale.value
+  })),
+  key: 'posts:list'
 })
 
 // 手动监听搜索/分类/语言/分页变化并刷新（替代 watch: [] 选项，避免副作用干扰 SSR payload 写入）
@@ -236,6 +225,7 @@ const visiblePages = computed(() => {
 })
 
 const handleSearch = () => {
+  searchQuery.value = searchInput.value.trim()
   currentPage.value = 1
 }
 

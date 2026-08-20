@@ -464,15 +464,46 @@ html.dark.palette-warm-stone {
     transform: translateY(0);
   }
 
-  /* ---- Hover 抬升：卡片统一交互 ---- */
+  /* ---- Hover 抬升：卡片统一交互 ----
+     新版不依赖 1px border 硬边框 + 大圆角，改走：
+     · 柔和的两级阴影（ambient + focused）
+     · 极淡的内发光（顶部光照条，体现"玻璃边"质感）
+     · hover 时轻微抬升 + 顶部出现 accent highlight（editorial 风） */
   .lift-hover {
-    transition: transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
-                box-shadow 260ms cubic-bezier(0.22, 1, 0.36, 1),
-                border-color 260ms ease;
+    position: relative;
+    transition:
+      transform 360ms var(--card-ease),
+      box-shadow 360ms var(--card-ease),
+      border-color 360ms var(--card-ease),
+      filter 360ms var(--card-ease);
+    will-change: transform, box-shadow, filter;
+  }
+  .lift-hover::before {
+    /* hover 渐显的顶部 accent 条：极窄，1.5px，居中 40% 宽，editorial/magazine 感 */
+    content: "";
+    position: absolute;
+    inset: -1px 30% auto 30%;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(
+      90deg,
+      hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 0),
+      hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 1) 50%,
+      hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 0)
+    );
+    opacity: 0;
+    transform: translateY(1px);
+    transition: opacity 280ms var(--card-ease), transform 280ms var(--card-ease);
+    pointer-events: none;
   }
   .lift-hover:hover {
-    transform: translateY(-2px);
-    @apply shadow-soft border-primary/30;
+    transform: translateY(-3px) translateZ(0);
+    box-shadow: var(--card-shadow-lg) !important;
+    filter: saturate(1.04);
+  }
+  .lift-hover:hover::before {
+    opacity: 1;
+    transform: translateY(0);
   }
 
   /* ---- Prose（Markdown 排版） ---- */
@@ -672,7 +703,50 @@ html.dark.palette-warm-stone {
   }
 }
 
-@layer utilities {
+
+/* =========================================================
+   新卡片 tokens（"Editorial Magazine" 视觉方向）
+   设计意图：
+     · 不画边框（border），改靠深度/阴影分层；
+     · 内阴影做 subtle 高光（光照下的"玻璃边"），外阴影分两档；
+     · 用 site.primary_color 把 --primary/accent/ring 全系列覆写（不
+       支持自定义时 fallback 到 palette 里默认值）。
+   ========================================================= */
+:root {
+  /* 主色与强调色：后端 appearance.primary_color/accent_color 覆盖写入 */
+  --theme-accent-hue: 201;
+  --theme-accent-sat: 96%;
+  --theme-accent-light: 52%;
+
+  /* 卡片表面（覆盖 --card，使其不等于 background，有一点层次） */
+  --card-surface: hsl(0 0% 98% / 0.72);
+  --card-surface-dark: hsl(224 71% 6% / 0.55);
+  --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.6) inset,
+                  0 -1px 0 hsl(224 71% 4% / 0.06) inset;
+
+  /* 柔和阴影两档：card-sm（小面板）/card-lg（post 卡 hero） */
+  --card-shadow-sm:
+    0 1px 2px hsl(222 47% 11% / 0.04),
+    0 8px 24px -12px hsl(222 47% 11% / 0.08),
+    0 1px 0 hsl(222 47% 11% / 0.02);
+  --card-shadow-lg:
+    0 2px 6px hsl(222 47% 11% / 0.05),
+    0 32px 60px -28px hsl(222 47% 11% / 0.15),
+    0 2px 0 hsl(222 47% 11% / 0.02);
+
+  /* 动画曲线：卡片抬升 + 顶部 accent 条高亮渐显（hover 时） */
+  --card-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+html.dark {
+  --card-shadow-sm:
+    0 1px 0 hsl(0 0% 100% / 0.04),
+    0 12px 36px -16px hsl(0 0% 0% / 0.55);
+  --card-shadow-lg:
+    0 2px 0 hsl(0 0% 100% / 0.03),
+    0 40px 80px -32px hsl(0 0% 0% / 0.7);
+  --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.06) inset,
+                  0 -1px 0 hsl(0 0% 0% / 0.4) inset;
+}@layer utilities {
   .gradient-text {
     @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground via-foreground/70 to-foreground bg-[length:200%_auto];
   }
@@ -688,12 +762,45 @@ html.dark.palette-warm-stone {
       radial-gradient(1000px 500px at 110% 10%, hsl(var(--ring) / 0.14), transparent 60%);
   }
   .card-surface {
-    @apply rounded-xl border border-border bg-card shadow-sm lift-hover;
+    /* 新版 Editorial 风：去掉硬 border，靠阴影 + 微内发光分层；
+       表面半透明（88~92%），带极弱 saturate。 */
+    position: relative;
+    border-radius: 14px;
+    background:
+      linear-gradient(180deg, hsl(var(--background) / 0.92), hsl(var(--muted) / 0.55) 120%),
+      hsl(var(--card));
+    box-shadow: var(--card-shadow-sm);
+    backdrop-filter: saturate(1.05) blur(4px);
+    -webkit-backdrop-filter: saturate(1.05) blur(4px);
+  }
+  .card-surface::after {
+    /* 顶部高光 + 底部柔暗：模拟"玻璃边"质感，而不是 1px 线框 */
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    box-shadow: var(--card-ambient);
+    mix-blend-mode: soft-light;
+  }
+  html.dark .card-surface {
+    background:
+      linear-gradient(180deg, hsl(var(--background) / 0.78), hsl(var(--muted) / 0.35) 120%),
+      hsl(var(--card));
   }
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors;
   }
-}
+  /* 标签 Chip：当后端给 color 时，内联 style="--tag-color:#xx" 会渲染到
+     .tag-colored 上，保持文字对比度（用 WCAG 自动选择白/黑前景）。
+     不再渲染 "#" 前缀（在组件层去掉）。 */
+  .tag-colored {
+    position: relative;
+    color: hsl(var(--foreground));
+    background: color-mix(in oklab, hsl(var(--tag-color, var(--primary))) 16%, hsl(var(--muted)));
+    border: 1px solid color-mix(in oklab, hsl(var(--tag-color, var(--primary))) 26%, transparent);
+  }
+  .tag-colored::selection { background: hsl(var(--tag-color, var(--primary)) / 0.3); }
 
 @keyframes fade-in-up {
   0% {

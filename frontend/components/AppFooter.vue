@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent } from '~~/components/ui/card'
-import { Input } from '~~/components/ui/input'
 import { Separator } from '~~/components/ui/separator'
+import type { Category } from '~~/types/api'
+import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 
-const { t, setLocale } = useI18n()
+const { t, locale, setLocale } = useI18n()
 
 const currentYear = new Date().getFullYear()
 
@@ -15,24 +15,26 @@ interface FooterLink {
   href?: string
 }
 
-// NOTE: specific category slugs (frontend/backend etc.) are dynamic content.
-// Without pages/categories/[slug].vue we fall back to the general /categories browse page.
-const categoryLinks: FooterLink[] = [
-  { labelKey: 'footer.linkFrontend', to: '/categories' },
-  { labelKey: 'footer.linkBackend', to: '/categories' },
-  { labelKey: 'footer.linkAI', to: '/categories' },
-  { labelKey: 'footer.linkDesign', to: '/categories' },
-  { labelKey: 'footer.linkThoughts', to: '/categories' }
-]
+const { data: categories } = await useAPI<Category[]>('/blog/categories', {
+  query: { lang: locale.value },
+  key: `footer:categories:${locale.value}`,
+  default: () => []
+})
 
-// Valid pages that actually exist. Non-existent (/docs, /rss, /privacy, /terms)
-// are redirected to available pages or external sources.
+const pickLocalized = (value: string | Record<string, string>): string => {
+  if (typeof value === 'string') return value
+  return value[locale.value] || value.zh || Object.values(value)[0] || ''
+}
+
+const categoryLinks = computed<FooterLink[]>(() => (categories.value || []).map(category => ({
+  labelKey: pickLocalized(category.name),
+  to: `/posts?category=${encodeURIComponent(category.slug)}`
+})))
+
 const resourceLinks: FooterLink[] = [
-  { labelKey: 'footer.linkDocs', to: '/about' },
-  { labelKey: 'footer.linkRSS', href: 'https://github.com/ChuyuChoyeon/Rosetta' },
-  { labelKey: 'footer.linkRepo', href: 'https://github.com/ChuyuChoyeon/Rosetta' },
-  { labelKey: 'footer.linkPrivacy', to: '/guestbook' },
-  { labelKey: 'footer.linkTerms', to: '/about' }
+  { labelKey: 'footer.linkRSS', href: '/rss.xml' },
+  { labelKey: 'footer.linkSitemap', href: '/sitemap.xml' },
+  { labelKey: 'footer.linkRepo', href: 'https://github.com/ChuyuChoyeon/Rosetta' }
 ]
 
 const quickLocales = [
@@ -41,9 +43,6 @@ const quickLocales = [
   { code: 'ja', label: '日本語', flag: 'jp' },
   { code: 'zh_Hant', label: '繁體中文', flag: 'tw' }
 ]
-
-const email = ref('')
-const subscribed = ref(false)
 
 const handleSetLocale = async (code: string) => {
   await setLocale(code as 'zh' | 'en' | 'ja' | 'zh_Hant')
@@ -54,15 +53,6 @@ const handleSetLocale = async (code: string) => {
   } catch {
     /* ignore */
   }
-}
-
-const handleSubscribe = () => {
-  if (!email.value) return
-  subscribed.value = true
-  setTimeout(() => {
-    subscribed.value = false
-    email.value = ''
-  }, 2400)
 }
 </script>
 
@@ -116,28 +106,7 @@ const handleSubscribe = () => {
               as-child
             >
               <a
-                href="https://twitter.com"
-                target="_blank"
-                rel="noreferrer"
-                :aria-label="t('footer.twitterLabel', 'Twitter')"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-              </a>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              as-child
-            >
-              <a
-                href="/rss"
+                href="/rss.xml"
                 :aria-label="t('footer.rssLabel', 'RSS')"
               >
                 <svg
@@ -170,7 +139,7 @@ const handleSubscribe = () => {
                 :to="link.to!"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {{ t(link.labelKey) }}
+                {{ link.labelKey }}
               </NuxtLink>
             </li>
           </ul>
@@ -191,7 +160,7 @@ const handleSubscribe = () => {
                 :to="link.to"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {{ t(link.labelKey) }}
+                {{ t(link.labelKey, link.labelKey) }}
               </NuxtLink>
               <a
                 v-else
@@ -200,49 +169,10 @@ const handleSubscribe = () => {
                 rel="noreferrer"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {{ t(link.labelKey) }}
+                {{ t(link.labelKey, link.labelKey) }}
               </a>
             </li>
           </ul>
-        </div>
-
-        <!-- Newsletter -->
-        <div class="lg:col-span-3">
-          <h4 class="font-bold uppercase tracking-wider text-xs text-muted-foreground mb-4">
-            {{ t('footer.newsletter', 'NEWSLETTER') }}
-          </h4>
-          <p class="text-sm text-muted-foreground mb-4 leading-relaxed">
-            {{ t('footer.newsletterDesc', '每周一封精选 · 无广告、可随时退订。') }}
-          </p>
-          <Card>
-            <CardContent class="p-2">
-              <form
-                class="flex items-center gap-2"
-                @submit.prevent="handleSubscribe"
-              >
-                <Input
-                  v-model="email"
-                  type="email"
-                  :placeholder="t('footer.emailPlaceholder', 'you@example.com')"
-                  class="border-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 px-2"
-                />
-                <Button
-                  type="submit"
-                  size="sm"
-                  class="shrink-0"
-                  :disabled="subscribed"
-                >
-                  {{ subscribed ? t('footer.subscribedOK', '已订阅 ✓') : t('footer.subscribe', '订阅') }}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-          <p
-            v-if="subscribed"
-            class="text-xs text-success mt-2"
-          >
-            {{ t('footer.subscribedOK', '已订阅 ✓') }}
-          </p>
         </div>
       </div>
 
@@ -268,20 +198,7 @@ const handleSubscribe = () => {
           </button>
         </div>
         <div class="text-xs text-muted-foreground text-center md:text-right">
-          © {{ currentYear }} Rosetta ·
-          <NuxtLink
-            to="/guestbook"
-            class="hover:text-foreground transition-colors"
-          >
-            {{ t('footer.privacy', '留言板') }}
-          </NuxtLink>
-          <span class="mx-2">·</span>
-          <NuxtLink
-            to="/about"
-            class="hover:text-foreground transition-colors"
-          >
-            {{ t('footer.terms', '关于本站') }}
-          </NuxtLink>
+          © {{ currentYear }} Rosetta
         </div>
       </div>
     </div>

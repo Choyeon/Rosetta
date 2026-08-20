@@ -37,7 +37,7 @@ import {
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const router = useRouter()
-const { fetchPosts, deletePost } = usePosts()
+const { fetchPosts, deletePost, batchUpdatePostStatus } = usePosts()
 const toast = useToast()
 
 const posts = ref<Post[]>([])
@@ -198,8 +198,22 @@ const doBatchDelete = async () => {
   loadPosts()
 }
 
-const batchChangeStatus = async (status: string) => {
-  toast.info(`批量修改状态为「${statusLabel(status)}」功能待后端接口完善`)
+const batchChangeStatus = async (status: 'published' | 'draft' | 'scheduled') => {
+  const ids = [...selectedIds.value]
+
+  try {
+    const { data, error } = await batchUpdatePostStatus(ids, status)
+    if (error.value) throw error.value
+
+    const updatedCount = data.value?.data.updated_count ?? 0
+    const unavailableCount = ids.length - updatedCount
+    if (unavailableCount === 0) toast.success(`已批量修改 ${updatedCount} 篇文章状态`)
+    else toast.warning(`成功修改 ${updatedCount} 篇，未授权或不存在 ${unavailableCount} 篇`)
+    selectedIds.value = []
+    await loadPosts()
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : '批量修改文章状态失败')
+  }
 }
 
 const goToPage = (p: number) => {

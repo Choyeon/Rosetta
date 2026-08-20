@@ -110,7 +110,7 @@ const TrendIcon = computed(() => {
 
 <template>
   <div
-    class="stat-card relative overflow-hidden rounded-[12px] border border-border bg-card p-5 transition-all duration-200 hover:shadow-[0_10px_30px_-14px_rgba(0,0,0,0.15)] hover:-translate-y-0.5"
+    class="card-surface lift-hover relative overflow-hidden p-5"
     :class="{ 'opacity-60 pointer-events-none': loading }"
   >
     <!-- 装饰光晕 -->

@@ -63,9 +63,9 @@ export default defineNuxtConfig({
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
         { rel: 'manifest', href: '/site.webmanifest' },
         // RSS 订阅：让浏览器 / RSS 阅读器自动发现
-        { rel: 'alternate', type: 'application/rss+xml', title: 'Rosetta · RSS Feed', href: '/api/blog/rss' },
+        { rel: 'alternate', type: 'application/rss+xml', title: 'Rosetta · RSS Feed', href: '/rss.xml' },
         // Sitemap 提示
-        { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: '/api/blog/sitemap.xml' }
+        { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: '/sitemap.xml' }
       ]
     }
   },
@@ -73,6 +73,9 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   runtimeConfig: {
+    // SSR（服务端）直连后端 127.0.0.1:8000/api，
+    // 不走 devProxy（devProxy 只对外来 HTTP 请求生效）。
+    apiBase: process.env.SSR_API_BASE_URL || `http://${BACKEND_HOST}:${BACKEND_PORT}/api`,
     public: {
       apiBase: process.env.API_BASE_URL || '/api'
     }

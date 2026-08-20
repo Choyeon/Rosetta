@@ -726,7 +726,8 @@
     "searchPlaceholder": "Search titles or keywords…",
     "selectCategory": "Select category",
     "filter": "Filter",
-    "allCategories": "All categories"
+    "allCategories": "All categories",
+    "pinned": "Pinned"
   },
   "categories": {
     "title": "Categories",
@@ -851,6 +852,7 @@
     "linkRepo": "Source Code",
     "linkPrivacy": "Guestbook",
     "linkTerms": "About",
+    "linkSitemap": "Sitemap",
     "newsletter": "NEWSLETTER",
     "newsletterDesc": "Weekly digest curated by the author · No ads, unsubscribe anytime.",
     "emailPlaceholder": "you{'@'}example.com",

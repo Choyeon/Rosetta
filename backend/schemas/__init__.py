@@ -701,6 +701,15 @@ class PostUpdate(BaseModel):
     meta_keywords: dict[str, str] | None = None
 
 
+class BatchPostStatusUpdate(BaseModel):
+    post_ids: list[int] = Field(..., min_length=1)
+    status: Literal["draft", "published", "scheduled"]
+
+
+class BatchPostStatusResponse(BaseResponse):
+    data: dict[str, int]
+
+
 class PostResponse(BaseModel):
     """文章响应模型"""
 
@@ -1458,7 +1467,12 @@ class SiteConfigResponse(BaseModel):
     code_theme_dark: str = "github-dark"
     default_theme: str = "system"
     primary_color: str = "#3B82F6"
+    accent_color: str = "#0284C7"
+    theme_primary: str = "#0EA5A9"
+    theme_accent: str = "#0284C7"
     font_family: str | None = None
+    default_og_image: str | None = None
+    site_subtitle: str = ""
 
     # 维护模式
     maintenance_mode: bool = False
@@ -1766,7 +1780,12 @@ class SiteConfigUpdate(BaseModel):
     code_theme_dark: str | None = Field(None, max_length=50)
     default_theme: str | None = Field(None, max_length=20)
     primary_color: str | None = Field(None, max_length=20)
+    accent_color: str | None = Field(None, max_length=20)
+    theme_primary: str | None = Field(None, max_length=20)
+    theme_accent: str | None = Field(None, max_length=20)
     font_family: str | None = Field(None, max_length=100)
+    default_og_image: str | None = Field(None, max_length=500)
+    site_subtitle: str | None = Field(None, max_length=200)
 
     # 维护模式
     maintenance_mode: bool | None = None

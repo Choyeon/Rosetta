@@ -20,11 +20,10 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'content-type', 'application/xml; charset=utf-8')
     setHeader(event, 'cache-control', 'public, max-age=3600, s-maxage=3600')
     return res._data ?? res.body
-  } catch (err) {
+  } catch {
     throw createError({
       statusCode: 502,
-      statusMessage: 'Sitemap upstream unavailable',
-      data: String(err)
+      statusMessage: 'Sitemap upstream unavailable'
     })
   }
 })

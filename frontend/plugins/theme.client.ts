@@ -1,12 +1,15 @@
-// Client-only plugin: apply persisted dark-mode + palette ASAP to avoid FOUC
-// (runs before component onMounted hooks that hydrate the same state)
-import { PALETTE_STORAGE_KEY, ALL_PALETTE_CLASSES, DEFAULT_PALETTE, isPaletteId } from '~~/composables/useThemePalette'
+import { ALL_PALETTE_CLASSES, DEFAULT_PALETTE } from '~~/composables/useThemePalette'
 
 export default defineNuxtPlugin(() => {
   if (!import.meta.client) return
   const root = document.documentElement
 
-  // --- 1) Dark / light mode ---
+  const stalePaletteClasses: string[] = []
+  for (const cls of root.classList) {
+    if (cls.startsWith('palette-')) stalePaletteClasses.push(cls)
+  }
+  for (const cls of stalePaletteClasses) root.classList.remove(cls)
+
   let isDark: boolean
   try {
     const stored = localStorage.getItem('theme')
@@ -18,16 +21,9 @@ export default defineNuxtPlugin(() => {
   if (isDark) root.classList.add('dark')
   else root.classList.remove('dark')
 
-  // --- 2) Color palette (brand tint) ---
-  let palette: string = DEFAULT_PALETTE
-  try {
-    const raw = localStorage.getItem(PALETTE_STORAGE_KEY)
-    if (isPaletteId(raw)) palette = raw
-  } catch { /* noop */ }
   for (const cls of ALL_PALETTE_CLASSES) root.classList.remove(cls)
-  root.classList.add(`palette-${palette}`)
+  root.classList.add(`palette-${DEFAULT_PALETTE}`)
 
-  // --- 3) theme-color meta for mobile browser chrome ---
   const meta = document.querySelector('meta[name="theme-color"]') as HTMLMetaElement | null
   if (meta) {
     const bg = getComputedStyle(root).getPropertyValue('--background').trim()

@@ -647,6 +647,9 @@
     "totalViews": "總瀏覽量",
     "totalComments": "留言數"
   },
+  "posts": {
+    "pinned": "置頂"
+  },
   "home": {
     "release": "穩定版",
     "multiLang": "多語言支援",
@@ -704,6 +707,7 @@
     "linkRepo": "原始碼",
     "linkPrivacy": "留言板",
     "linkTerms": "關於本站",
+    "linkSitemap": "網站地圖",
     "newsletter": "訂閱電子報",
     "newsletterDesc": "每週一封作者精選 · 無廣告、可隨時取消訂閱。",
     "emailPlaceholder": "you{'@'}example.com",

@@ -10,7 +10,10 @@
  * - 后端 include_router 前缀在 backend/main.py 统一装配
  * - 前端 apiFetch 的相对路径（不带 /api 前缀）将自动拼接 useRuntimeConfig().public.apiBase
  */
-import { apiFetch, silentApiFetch } from '~~/composables/useApi'
+import {
+  apiFetch,
+  silentApiFetch
+} from '~~/composables/useApi'
 
 // ==================== 通用类型 ====================
 
@@ -342,9 +345,7 @@ export function resetAdminUserPassword(userId: number, newPassword: string): Pro
  * 静默降级：提示"请使用命令行删除用户"，避免 404 toast。
  */
 export function deleteAdminUser(userId: number): Promise<ApiMessage> {
-  return silentApiFetch<ApiMessage>(`/admin/users/${userId}`, { method: 'DELETE' }).then(r =>
-    r ?? { success: false, message: '后端暂未开放删除用户接口，请通过命令行或数据库操作' }
-  )
+  return apiFetch<ApiMessage>(`/admin/users/${userId}`, { method: 'DELETE' })
 }
 
 // ==================== 用户详情（编辑） ====================
@@ -410,6 +411,7 @@ function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
   if (payload.icon && payload.icon.trim()) body.icon = payload.icon.trim()
   if (payload.color && payload.color.trim()) body.color = payload.color.trim()
   if (payload.is_active !== undefined) body.is_active = payload.is_active
+  if (payload.sort_order !== undefined) body.sort_order = payload.sort_order
   return body
 }
 
@@ -566,21 +568,15 @@ export function fetchAdminPages(params: { page?: number, page_size?: number, sta
  * 以下三个接口静默降级，避免 404 toast 红条；等后端补齐后再删除这层降级。
  */
 export function createAdminPage(payload: Record<string, unknown>): Promise<AdminPage> {
-  return silentApiFetch<ApiEnvelope<AdminPage>>('/pages', { method: 'POST', body: payload }).then(r =>
-    (r?.data ?? Promise.reject(new Error('后端暂未开放独立页面创建接口'))) as AdminPage
-  )
+  return apiFetch<AdminPage>('/pages', { method: 'POST', body: payload })
 }
 
 export function updateAdminPage(id: number, payload: Record<string, unknown>): Promise<AdminPage> {
-  return silentApiFetch<ApiEnvelope<AdminPage>>(`/pages/${id}`, { method: 'PUT', body: payload }).then(r =>
-    (r?.data ?? Promise.reject(new Error('后端暂未开放独立页面更新接口'))) as AdminPage
-  )
+  return apiFetch<AdminPage>(`/pages/${id}`, { method: 'PUT', body: payload })
 }
 
 export function deleteAdminPage(id: number): Promise<ApiMessage> {
-  return silentApiFetch<ApiMessage>(`/pages/${id}`, { method: 'DELETE' }).then(r =>
-    r ?? { success: false, message: '后端暂未开放独立页面删除接口' }
-  )
+  return apiFetch<ApiMessage>(`/pages/${id}`, { method: 'DELETE' })
 }
 
 // ==================== 留言板（post_id = null 的评论） ====================
@@ -614,7 +610,7 @@ export function fetchAdminAnnouncements(params: { page?: number, page_size?: num
   // 后端 /admin/announcements 返回 list（非分页），前端包装成 AdminPaged 结构。
   return silentApiFetch<AdminAnnouncement[]>('/admin/announcements', {
     query: { page: 1, page_size: 20, ...params }
-  }).then(list => {
+  }).then((list) => {
     const items = list ?? []
     return {
       items,
@@ -732,17 +728,26 @@ export interface AdminMediaItem {
   created_at: string | null
 }
 
+interface AdminMediaQuery {
+  page?: number
+  page_size?: number
+  search?: string
+  category?: string
+  mime_prefix?: string
+  file_type?: string
+}
+
 /**
  * GET /api/media/library —— media.router 挂在 /api/media，内部 @router.get("/library")
  * = /api/media/library ✔
  */
-export function fetchAdminMediaLibrary(params: { page?: number, page_size?: number, search?: string, category?: string, mime_prefix?: string } = {}): Promise<AdminPaged<AdminMediaItem>> {
+export function fetchAdminMediaLibrary(params: AdminMediaQuery = {}): Promise<AdminPaged<AdminMediaItem>> {
   const query: Record<string, unknown> = { page: 1, page_size: 20, ...params }
   // 后端参数名是 file_type 而非 mime_prefix；做一次兼容映射
-  if ((params as any).mime_prefix && !(params as any).file_type) {
-    query.file_type = (params as any).mime_prefix
+  if (params.mime_prefix && !params.file_type) {
+    query.file_type = params.mime_prefix
   }
-  if ((params as any).search) query.search = (params as any).search
+  if (params.search) query.search = params.search
   return apiFetch<AdminPaged<AdminMediaItem>>('/media/library', { query })
 }
 
@@ -815,8 +820,16 @@ export function deleteAdminAlbum(id: number): Promise<ApiMessage> {
 }
 
 /** GET /api/admin/gallery/albums/{albumId}/photos */
-export function fetchAdminPhotos(albumId: number): Promise<AdminPhoto[]> {
-  return apiFetch<ApiEnvelope<AdminPhoto[]>>(`/admin/gallery/albums/${albumId}/photos`).then(r => r.data)
+export function fetchAdminPhotos(albumId: number): Promise<AdminPaged<AdminPhoto>> {
+  return apiFetch<AdminPaged<AdminPhoto>>(`/admin/gallery/albums/${albumId}/photos`)
+}
+
+export function createAdminPhoto(payload: Record<string, unknown>): Promise<AdminPhoto> {
+  return apiFetch<AdminPhoto>('/admin/gallery/photos', { method: 'POST', body: payload })
+}
+
+export function updateAdminPhoto(id: number, payload: Record<string, unknown>): Promise<AdminPhoto> {
+  return apiFetch<AdminPhoto>(`/admin/gallery/photos/${id}`, { method: 'PUT', body: payload })
 }
 
 /** DELETE /api/admin/gallery/photos/{id} —— gallery_admin_router */
@@ -842,34 +855,54 @@ export interface AdminNavItem {
  */
 export async function fetchAdminNavigations(): Promise<AdminNavItem[]> {
   try {
-    const list = await apiFetch<AdminNavItem[]>('/admin/navigations')
+    const list = await apiFetch<Array<Record<string, unknown>>>('/admin/navigations')
     if (!Array.isArray(list)) return []
     // 字段标准化：后端返回的是 NavigationResponse 结构（title/url/icon/parent_id/order/target_blank/is_active）
-    return list.map((x: any, i: number) => ({
-      id: Number(x.id ?? (i + 1)),
-      label: x.title ?? x.label ?? `导航项 ${i + 1}`,
-      url: String(x.url ?? x.link ?? ''),
-      icon: typeof x.icon === 'string' ? x.icon : null,
-      order: Number(x.order ?? x.sort_order ?? i) || i,
-      target: (String(x.target ?? x.target_blank ?? '_self') === '_blank' ? '_blank' : '_self'),
-      parent_id: Number(x.parent_id ?? null) || null
-    }))
+    return list.map((x: Record<string, unknown>, i: number) => {
+      const label = x.title ?? x.label
+      const localizedLabel = label !== null && typeof label === 'object'
+        ? Object.fromEntries(
+          Object.entries(label as Record<string, unknown>)
+            .filter(([, value]) => typeof value === 'string')
+        ) as Record<string, string>
+        : null
+      return {
+        id: Number(x.id ?? (i + 1)),
+        label: typeof label === 'string' ? label : (localizedLabel ?? `导航项 ${i + 1}`),
+        url: String(x.url ?? x.link ?? ''),
+        icon: typeof x.icon === 'string' ? x.icon : null,
+        order: Number(x.order ?? x.sort_order ?? i) || i,
+        target: (String(x.target ?? x.target_blank ?? '_self') === '_blank' ? '_blank' : '_self'),
+        parent_id: Number(x.parent_id ?? null) || null
+      }
+    })
   } catch {
     return []
   }
 }
 
 /** POST /api/navigations —— core.router @router.post("/navigations") */
+function navigationBody(payload: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...payload }
+  if ('label' in body) {
+    body.title = body.label
+    delete body.label
+  }
+  if ('target' in body) {
+    body.target_blank = body.target === '_blank'
+    delete body.target
+  }
+  return body
+}
+
 export function createAdminNavigation(payload: Record<string, unknown>): Promise<AdminNavItem> {
-  return apiFetch<AdminNavItem>('/navigations', { method: 'POST', body: payload })
+  return apiFetch<AdminNavItem>('/navigations', { method: 'POST', body: navigationBody(payload) })
 }
 
-/** PUT /api/navigations/{id} —— core.router @router.put("/navigations/{nav_id}") */
 export function updateAdminNavigation(id: number, payload: Record<string, unknown>): Promise<AdminNavItem> {
-  return apiFetch<AdminNavItem>(`/navigations/${id}`, { method: 'PUT', body: payload })
+  return apiFetch<AdminNavItem>(`/navigations/${id}`, { method: 'PUT', body: navigationBody(payload) })
 }
 
-/** DELETE /api/navigations/{id} —— core.router @router.delete("/navigations/{nav_id}") */
 export function deleteAdminNavigation(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/navigations/${id}`, { method: 'DELETE' })
 }
@@ -882,31 +915,37 @@ export interface AdminFriendLink {
   url: string
   logo?: string | null
   description?: string | null
-  bg_color?: string | null
-  status: 'pending' | 'approved' | 'rejected'
   sort_order: number
+  status: 'pending' | 'approved' | 'rejected'
   created_at: string | null
 }
 
-/**
- * GET /api/friend-links —— core.router 挂在 /api，@router.get("/friend-links")
- * 注意：是 friend-links（连字符）不是 friendlinks，这是之前 [useAPI] Not Found 的主要来源。
- */
+function friendLinkBody(payload: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...payload }
+  if ('sort_order' in body) {
+    body.order = body.sort_order
+    delete body.sort_order
+  }
+  if ('status' in body) {
+    body.is_active = body.status === 'approved'
+    delete body.status
+  }
+  delete body.bg_color
+  return body
+}
+
 export function fetchAdminFriendLinks(): Promise<AdminFriendLink[]> {
-  return apiFetch<ApiEnvelope<AdminFriendLink[]>>('/friend-links').then(r => r.data)
+  return apiFetch<AdminFriendLink[]>('/friend-links?all=true')
 }
 
-/** POST /api/friend-links —— core.router @router.post("/friend-links") */
 export function createAdminFriendLink(payload: Record<string, unknown>): Promise<AdminFriendLink> {
-  return apiFetch<ApiEnvelope<AdminFriendLink>>('/friend-links', { method: 'POST', body: payload }).then(r => r.data)
+  return apiFetch<AdminFriendLink>('/friend-links', { method: 'POST', body: friendLinkBody(payload) })
 }
 
-/** PUT /api/friend-links/{id} */
 export function updateAdminFriendLink(id: number, payload: Record<string, unknown>): Promise<AdminFriendLink> {
-  return apiFetch<ApiEnvelope<AdminFriendLink>>(`/friend-links/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+  return apiFetch<AdminFriendLink>(`/friend-links/${id}`, { method: 'PUT', body: friendLinkBody(payload) })
 }
 
-/** DELETE /api/friend-links/{id} */
 export function deleteAdminFriendLink(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/friend-links/${id}`, { method: 'DELETE' })
 }
@@ -1045,65 +1084,20 @@ export function regenerateAdminSitemap(): Promise<ApiMessage> {
 
 // ==================== 翻译工具 ====================
 
-export interface AdminTranslateJob {
-  id: string
-  status: 'queued' | 'running' | 'done' | 'failed'
-  progress: number
-  source_lang: string
-  target_lang: string
-  items_total: number
-  items_done: number
-  created_at: string | null
+export interface AdminTranslateResponse {
+  translations: Record<string, string>
 }
 
-/**
- * POST /api/translate —— translate.router 挂在 /api, prefix="/translate"，@router.post("")
- * 后端只有同步翻译文本接口（返回 translations dict），无 /post、/batch 异步任务，也无 /jobs 查询。
- * translateAdminPost：仍然尝试调用，失败时静默降级为"请手动翻译"。
- */
-export function translateAdminPost(id: number, targetLang: string): Promise<ApiMessage> {
-  return silentApiFetch<ApiMessage>('/translate', {
+export function translateAdminText(
+  text: string,
+  sourceLang: string,
+  targetLangs: string[]
+): Promise<AdminTranslateResponse> {
+  return apiFetch<AdminTranslateResponse>('/translate', {
     method: 'POST',
-    body: { post_id: id, target_lang: targetLang }
-  }).then(r => r ?? { success: false, message: '后端暂未开放文章翻译接口，请手动翻译' })
+    body: { text, source_lang: sourceLang, target_langs: targetLangs }
+  })
 }
-
-/**
- * 批量翻译：后端无 /translate/batch 异步任务。封装一个轮询式的同步调用。
- */
-export function batchTranslateAdminPosts(ids: number[], targetLang: string): Promise<AdminTranslateJob> {
-  return silentApiFetch<ApiEnvelope<AdminTranslateJob>>('/translate', {
-    method: 'POST',
-    body: { ids, target_lang: targetLang, batch: true }
-  }).then(r => (r?.data ?? {
-    id: 'sync-' + Date.now(),
-    status: 'failed',
-    progress: 0,
-    source_lang: 'zh',
-    target_lang: targetLang,
-    items_total: ids.length,
-    items_done: 0,
-    created_at: null
-  }))
-}
-
-/**
- * 查询翻译任务：后端无 /translate/jobs。返回固定 failed。
- */
-export function fetchAdminTranslateJob(id: string): Promise<AdminTranslateJob> {
-  return silentApiFetch<ApiEnvelope<AdminTranslateJob>>(`/translate/jobs/${id}`).then(r => (r?.data ?? {
-    id,
-    status: 'failed',
-    progress: 0,
-    source_lang: 'zh',
-    target_lang: 'en',
-    items_total: 0,
-    items_done: 0,
-    created_at: null
-  }))
-}
-
-// ==================== 性能监控 ====================
 
 export interface AdminSlowRequest {
   id: number
@@ -1137,7 +1131,7 @@ export function fetchAdminSlowRequests(params: { page?: number, page_size?: numb
   // 后端 /performance/slow 返回 list（非分页），包装成 AdminPaged。
   return silentApiFetch<AdminSlowRequest[]>('/admin/performance/slow', {
     query: { page: 1, page_size: 20, limit: 50, ...params }
-  }).then(list => {
+  }).then((list) => {
     const items = Array.isArray(list) ? list : []
     return {
       items,
@@ -1287,14 +1281,15 @@ export function fetchNotifications(params: {
  * 同时后端还有 @router.get("/unread-count")，这里使用 /stats 信息更全。
  */
 export function fetchNotificationStats(): Promise<NotificationsStats> {
-  return silentApiFetch<NotificationsStats>('/notifications/stats').then(r => {
-    if (r && (typeof r.unread_count === 'number' || typeof r.total_count === 'number')) {
+  return silentApiFetch<NotificationsStats>('/notifications/stats').then((r) => {
+    const stats = r as Record<string, unknown> | null
+    if (stats && (typeof stats.unread_count === 'number' || typeof stats.total_count === 'number')) {
       return {
-        unread_count: Number(r.unread_count) || 0,
-        total_count: Number(r.total_count ?? 0) || 0,
-        read: Number((r as any).read ?? 0) || 0,
-        type_distribution: r.type_distribution && typeof r.type_distribution === 'object'
-          ? (r.type_distribution as Record<string, number>)
+        unread_count: Number(stats.unread_count) || 0,
+        total_count: Number(stats.total_count ?? 0) || 0,
+        read: Number(stats.read ?? 0) || 0,
+        type_distribution: stats.type_distribution && typeof stats.type_distribution === 'object'
+          ? stats.type_distribution as Record<string, number>
           : {}
       }
     }

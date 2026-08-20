@@ -620,3 +620,37 @@ async def test_csrf_token_mismatch(client, monkeypatch):
         follow_redirects=True,
     )
     assert r.status_code in (200, 401, 403, 405, 422)
+
+
+@pytest.mark.asyncio
+async def test_batch_update_post_status_publishes_editable_posts(
+    client, admin_headers, admin_user, db_session
+):
+    from backend.models.blog import Post
+
+    posts = [
+        Post(
+            title={"zh": f"批量状态测试文章 {index}"},
+            slug=f"batch-status-test-{index}",
+            content={"zh": "批量状态测试内容"},
+            author_id=admin_user.id,
+            status="draft",
+        )
+        for index in range(2)
+    ]
+    db_session.add_all(posts)
+    await db_session.flush()
+
+    response = await client.post(
+        "/api/blog/posts/batch-status",
+        json={"post_ids": [post.id for post in posts], "status": "published"},
+        headers=admin_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["updated_count"] == len(posts)
+
+    for post in posts:
+        detail_response = await client.get(f"/api/blog/posts/id/{post.id}")
+        assert detail_response.status_code == 200
+        assert detail_response.json()["status"] == "published"

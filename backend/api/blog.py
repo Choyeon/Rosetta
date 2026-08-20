@@ -32,6 +32,8 @@ from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_t
 from backend.models.user import User
 from backend.schemas import (
     BaseResponse,
+    BatchPostStatusResponse,
+    BatchPostStatusUpdate,
     CategoryCreate,
     CategoryLocalizedResponse,
     CategoryUpdate,
@@ -873,6 +875,46 @@ async def create_post(
     response = PostLocalizedResponse.from_post(post, language, likes_count=0, comments_count=0)
     response.is_password_protected = bool(password)
     return response
+
+
+@router.post(
+    "/posts/batch-status",
+    response_model=BatchPostStatusResponse,
+    summary="批量更新文章状态",
+    description="批量更新当前用户可操作文章的状态，仅作者或超级管理员可操作。",
+)
+async def batch_update_post_status(
+    post_data: BatchPostStatusUpdate,
+    current_user: CurrentStaff,
+    db: DB,
+):
+    result = await db.execute(select(Post).where(Post.id.in_(post_data.post_ids)))
+    posts = [
+        post
+        for post in result.scalars().all()
+        if post.author_id == current_user.id or current_user.is_superuser
+    ]
+    now = datetime.now(UTC)
+
+    for post in posts:
+        post.status = post_data.status
+        if post_data.status == "published":
+            post.scheduled_at = None
+            if not post.published_at:
+                post.published_at = now
+        elif post_data.status == "draft":
+            post.scheduled_at = None
+
+    await db.flush()
+
+    for post in posts:
+        await invalidate_cache(f"post:{post.slug}")
+    await invalidate_cache("posts")
+
+    return BatchPostStatusResponse(
+        message="文章状态已批量更新",
+        data={"updated_count": len(posts)},
+    )
 
 
 @router.put(

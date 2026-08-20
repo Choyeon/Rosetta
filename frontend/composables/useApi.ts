@@ -63,7 +63,7 @@ function currentLocale(): string {
  * 限制：useFetch 的错误钩子内无法重试当前请求（递归 useFetch 不会让调用方拿到新结果），
  * 401 时仅尝试刷新 token 供后续请求使用；需要"刷新后自动重试"请使用 apiFetch。
  */
-export function useAPI<T>(url: string, options?: UseFetchOptions<T>) {
+export function useAPI<T>(url: string | (() => string), options?: UseFetchOptions<T>) {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
   const { locale } = useI18n()
@@ -76,6 +76,12 @@ export function useAPI<T>(url: string, options?: UseFetchOptions<T>) {
     headers.Authorization = `Bearer ${authStore.accessToken}`
   }
 
+  // 关键：SSR 环境下，Nitro 内部路由与 devProxy 是两套机制，
+  // 若用 config.public.apiBase（值为 '/api' 相对路径），会走 Nitro 自身
+  // 内部路由匹配命中 404，导致前端页面 SSR 渲染为加载错误态。
+  // 因此服务端用 config.apiBase（绝对地址直连后端），客户端继续用
+  // 相对地址 /api，经浏览器请求走 devProxy 反向代理到 FastAPI。
+  const ssrSafeBase = import.meta.server ? config.apiBase : config.public.apiBase
   return useFetch<T>(url, {
     // 默认在 SSR 时执行（配合全局 ssr:true + 公开页面），
     // 调用方可通过 options.server: false 显式关闭（如管理后台需要登录态、只在客户端拉的场景）。
@@ -85,7 +91,7 @@ export function useAPI<T>(url: string, options?: UseFetchOptions<T>) {
     //   2) 客户端组件复用时 onMounted 不再触发 + useFetch 丢失上下文，
     //      返回的 AsyncData 仍为空，出现"路由跳转后页面空白、刷新才恢复"。
     ...options,
-    baseURL: config.public.apiBase,
+    baseURL: ssrSafeBase,
     headers,
     async onResponseError({ response }) {
       const body = response._data as unknown

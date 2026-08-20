@@ -141,6 +141,16 @@ export const usePosts = () => {
     })
   }
 
+  const batchUpdatePostStatus = (postIds: number[], status: 'published' | 'draft' | 'scheduled') => {
+    return useAPI<{ success: boolean, message: string, data: { updated_count: number } }>('/blog/posts/batch-status', {
+      method: 'POST',
+      body: {
+        post_ids: postIds,
+        status
+      }
+    })
+  }
+
   return {
     // state
     posts,
@@ -160,6 +170,7 @@ export const usePosts = () => {
     likePost,
     createPost,
     updatePost,
-    deletePost
+    deletePost,
+    batchUpdatePostStatus
   }
 }

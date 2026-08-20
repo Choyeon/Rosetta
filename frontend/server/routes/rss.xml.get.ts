@@ -20,11 +20,10 @@ export default defineEventHandler(async (event) => {
     setHeader(event, 'content-type', 'application/rss+xml; charset=utf-8')
     setHeader(event, 'cache-control', 'public, max-age=1800, s-maxage=1800')
     return res._data ?? res.body
-  } catch (err) {
+  } catch {
     throw createError({
       statusCode: 502,
-      statusMessage: 'RSS upstream unavailable',
-      data: String(err)
+      statusMessage: 'RSS upstream unavailable'
     })
   }
 })

@@ -701,7 +701,8 @@
     "searchPlaceholder": "搜索标题或关键字…",
     "selectCategory": "选择分类",
     "filter": "筛选",
-    "allCategories": "全部分类"
+    "allCategories": "全部分类",
+    "pinned": "置顶"
   },
   "categories": {
     "title": "文章分类",
@@ -833,7 +834,8 @@
     "linkRSS": "RSS 订阅",
     "linkRepo": "源代码",
     "linkPrivacy": "隐私说明",
-    "linkTerms": "使用条款"
+    "linkTerms": "使用条款",
+    "linkSitemap": "网站地图"
   },
   "adminNav": {
     "overview": "总览",
