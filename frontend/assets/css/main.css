@@ -1,5 +1,19 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
 
+/* 主题切换圆形扩散/收缩动画需要驱动的 CSS 属性。
+   使用 @property 将 progress 注册为 <number>，这样浏览器可以直接在
+   clip-path 里用 calc(progress * maxr) 过渡，避免首帧从 0% 瞬切到 radius 产生闪屏。 */
+@property --theme-ripple-progress {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 0;
+}
+@property --theme-ripple-fade {
+  syntax: '<number>';
+  inherits: false;
+  initial-value: 1;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -362,6 +376,49 @@ html.dark.palette-warm-stone {
   }
 }
 
+/* =========================================================
+   主题切换圆形扩散 / 收缩 mask
+   - 亮色 → 暗色：圆形从点击点向外扩散，circle(0→R)
+   - 暗色 → 亮色：圆形从全屏向内收缩到点击点，circle(R→0)
+   - 遮罩始终用「目标主题的 background」填充，底层 DOM 在扩散过半
+     / 收缩开始前切换 .dark 类，避免看到“底层已切但遮罩还没跟上”的错色。
+   ========================================================= */
+@layer components {
+  .theme-ripple-overlay {
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    z-index: 99999;
+    mix-blend-mode: normal;
+    opacity: var(--theme-ripple-fade, 1);
+    --theme-ripple-progress: 0;
+    --theme-ripple-maxr: 2000;
+    --theme-ripple-cx: 50vw;
+    --theme-ripple-cy: 50vh;
+    clip-path: circle(
+      calc(var(--theme-ripple-progress) * var(--theme-ripple-maxr) * 1px)
+      at var(--theme-ripple-cx) var(--theme-ripple-cy)
+    );
+    -webkit-clip-path: circle(
+      calc(var(--theme-ripple-progress) * var(--theme-ripple-maxr) * 1px)
+      at var(--theme-ripple-cx) var(--theme-ripple-cy)
+    );
+    will-change: clip-path, -webkit-clip-path, opacity;
+    transition:
+      clip-path 960ms cubic-bezier(0.22, 1, 0.36, 1),
+      -webkit-clip-path 960ms cubic-bezier(0.22, 1, 0.36, 1),
+      --theme-ripple-progress 960ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 220ms ease,
+      --theme-ripple-fade 220ms ease;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .theme-ripple-overlay {
+      transition-duration: 1ms, 1ms, 1ms, 1ms, 1ms !important;
+    }
+  }
+}
+
 @layer components {
   /* ---- 页面过渡：<Transition name="page-fade" /> ---- */
   .page-fade-enter-active,
@@ -415,35 +472,25 @@ html.dark.palette-warm-stone {
   /* ---- Prose（Markdown 排版） ---- */
   .prose-shadcn {
     max-width: 72ch;
+    color: hsl(var(--foreground));
+    font-size: 1rem;
     line-height: 1.75;
   }
-  .prose-shadcn p {
-    margin: 1.25rem 0;
-  }
+  .prose-shadcn p { margin: 1.25rem 0; }
   .prose-shadcn h1,
   .prose-shadcn h2,
   .prose-shadcn h3,
   .prose-shadcn h4 {
     scroll-margin-top: 5.5rem;
+    font-weight: 700;
+    line-height: 1.2;
   }
   .prose-shadcn h1,
   .prose-shadcn h2,
-  .prose-shadcn h3 {
-    margin: 2rem 0 1rem;
-  }
-  .prose-shadcn pre {
-    @apply bg-muted rounded-lg p-4 overflow-x-auto text-sm my-6;
-  }
-  .prose-shadcn code {
-    @apply bg-muted px-1.5 py-0.5 rounded text-[0.9em] font-mono;
-  }
-  .prose-shadcn pre code {
-    background: transparent;
-    padding: 0;
-  }
-  .prose-shadcn blockquote {
-    @apply border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-6;
-  }
+  .prose-shadcn h3 { margin: 2rem 0 1rem; }
+  .prose-shadcn h2 { font-size: 1.6rem; }
+  .prose-shadcn h3 { font-size: 1.3rem; }
+  .prose-shadcn h4 { font-size: 1.1rem; }
   .prose-shadcn a {
     @apply underline decoration-primary/40 decoration-2 underline-offset-4 hover:text-primary hover:decoration-primary transition-colors;
   }
@@ -455,22 +502,42 @@ html.dark.palette-warm-stone {
   .prose-shadcn ul { list-style: disc; }
   .prose-shadcn ol { list-style: decimal; }
   .prose-shadcn li { margin: 0.5rem 0; }
-  .prose-shadcn img {
-    @apply rounded-xl my-8;
+  .prose-shadcn ul li::marker { color: hsl(var(--primary)); }
+  .prose-shadcn blockquote {
+    @apply border-l-4 border-primary/30 pl-4 italic text-muted-foreground my-6;
   }
-  .prose-shadcn hr {
-    @apply my-12 border-border;
+  .prose-shadcn code {
+    @apply rounded bg-muted px-1.5 py-0.5 font-mono text-[0.9em];
+    color: hsl(var(--foreground));
   }
-  .prose-shadcn table {
-    @apply w-full text-sm my-8;
+  .prose-shadcn pre {
+    margin: 1.5rem 0;
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid hsl(var(--border));
+    border-radius: 0.75rem;
+    background: hsl(var(--muted));
+    padding: 1.1rem 1.25rem;
+    color: hsl(var(--foreground));
+    white-space: pre;
+    overflow-wrap: normal;
+    -webkit-overflow-scrolling: touch;
   }
+  .prose-shadcn pre code {
+    display: block;
+    min-width: max-content;
+    background: transparent;
+    padding: 0;
+    color: inherit;
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+  .prose-shadcn img { @apply rounded-xl my-8; }
+  .prose-shadcn hr { @apply my-12 border-border; }
+  .prose-shadcn table { @apply w-full text-sm my-8; }
   .prose-shadcn th,
-  .prose-shadcn td {
-    @apply border border-border px-4 py-2;
-  }
-  .prose-shadcn th {
-    @apply bg-muted;
-  }
+  .prose-shadcn td { @apply border border-border px-4 py-2; }
+  .prose-shadcn th { @apply bg-muted; }
 }
 
 /* =========================================================
@@ -485,34 +552,35 @@ html.dark.palette-warm-stone {
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
     font-size: 0.875em;
     line-height: 1.6;
+    color: hsl(var(--foreground));
   }
-  .hljs-emphasis { font-style: italic; }
-  .hljs-strong { font-weight: 700; }
-  .hljs-link { text-decoration: underline; }
+  .prose-shadcn .hljs-emphasis { font-style: italic; }
+  .prose-shadcn .hljs-strong { font-weight: 700; }
+  .prose-shadcn .hljs-link { text-decoration: underline; }
 
   /* Light: github-inspired */
-  .hljs-doctag, .hljs-keyword, .hljs-meta .hljs-keyword,
-  .hljs-template-tag, .hljs-template-variable,
-  .hljs-type, .hljs-variable.language_ { color: #d73a49; }
-  .hljs-title, .hljs-title.class_, .hljs-title.class_.inherited__,
-  .hljs-title.function_ { color: #6f42c1; }
-  .hljs-attr, .hljs-attribute, .hljs-literal, .hljs-meta,
-  .hljs-number, .hljs-operator, .hljs-selector-attr,
-  .hljs-selector-class, .hljs-selector-id, .hljs-variable { color: #005cc5; }
-  .hljs-regexp, .hljs-string, .hljs-meta .hljs-string { color: #032f62; }
-  .hljs-built_in, .hljs-symbol { color: #e36209; }
-  .hljs-comment, .hljs-code, .hljs-formula { color: #6a737d; }
-  .hljs-name, .hljs-quote, .hljs-selector-tag,
-  .hljs-selector-pseudo { color: #22863a; }
-  .hljs-section { color: #005cc5; font-weight: 700; }
-  .hljs-bullet { color: #735c0f; }
-  .hljs-addition {
+  .prose-shadcn .hljs-doctag, .prose-shadcn .hljs-keyword, .prose-shadcn .hljs-meta .hljs-keyword,
+  .prose-shadcn .hljs-template-tag, .prose-shadcn .hljs-template-variable,
+  .prose-shadcn .hljs-type, .prose-shadcn .hljs-variable.language_ { color: #d73a49; }
+  .prose-shadcn .hljs-title, .prose-shadcn .hljs-title.class_, .prose-shadcn .hljs-title.class_.inherited__,
+  .prose-shadcn .hljs-title.function_ { color: #6f42c1; }
+  .prose-shadcn .hljs-attr, .prose-shadcn .hljs-attribute, .prose-shadcn .hljs-literal, .prose-shadcn .hljs-meta,
+  .prose-shadcn .hljs-number, .prose-shadcn .hljs-operator, .prose-shadcn .hljs-selector-attr,
+  .prose-shadcn .hljs-selector-class, .prose-shadcn .hljs-selector-id, .prose-shadcn .hljs-variable { color: #005cc5; }
+  .prose-shadcn .hljs-regexp, .prose-shadcn .hljs-string, .prose-shadcn .hljs-meta .hljs-string { color: #032f62; }
+  .prose-shadcn .hljs-built_in, .prose-shadcn .hljs-symbol { color: #e36209; }
+  .prose-shadcn .hljs-comment, .prose-shadcn .hljs-code, .prose-shadcn .hljs-formula { color: #6a737d; }
+  .prose-shadcn .hljs-name, .prose-shadcn .hljs-quote, .prose-shadcn .hljs-selector-tag,
+  .prose-shadcn .hljs-selector-pseudo { color: #22863a; }
+  .prose-shadcn .hljs-section { color: #005cc5; font-weight: 700; }
+  .prose-shadcn .hljs-bullet { color: #735c0f; }
+  .prose-shadcn .hljs-addition {
     background-color: hsl(var(--success-muted));
     color: hsl(var(--success-muted-foreground));
     display: inline-block;
     width: 100%;
   }
-  .hljs-deletion {
+  .prose-shadcn .hljs-deletion {
     background-color: hsl(var(--error-muted));
     color: hsl(var(--error-muted-foreground));
     display: inline-block;
@@ -520,29 +588,29 @@ html.dark.palette-warm-stone {
   }
 
   /* Dark: github-dark-inspired */
-  html.dark .hljs-doctag, html.dark .hljs-keyword, html.dark .hljs-meta .hljs-keyword,
-  html.dark .hljs-template-tag, html.dark .hljs-template-variable,
-  html.dark .hljs-type, html.dark .hljs-variable.language_ { color: #ff7b72; }
-  html.dark .hljs-title, html.dark .hljs-title.class_, html.dark .hljs-title.class_.inherited__,
-  html.dark .hljs-title.function_ { color: #d2a8ff; }
-  html.dark .hljs-attr, html.dark .hljs-attribute, html.dark .hljs-literal,
-  html.dark .hljs-meta, html.dark .hljs-number, html.dark .hljs-operator,
-  html.dark .hljs-selector-attr, html.dark .hljs-selector-class,
-  html.dark .hljs-selector-id, html.dark .hljs-variable { color: #79c0ff; }
-  html.dark .hljs-regexp, html.dark .hljs-string,
-  html.dark .hljs-meta .hljs-string { color: #a5d6ff; }
-  html.dark .hljs-built_in, html.dark .hljs-symbol { color: #ffa657; }
-  html.dark .hljs-comment, html.dark .hljs-code,
-  html.dark .hljs-formula { color: #8b949e; }
-  html.dark .hljs-name, html.dark .hljs-quote, html.dark .hljs-selector-tag,
-  html.dark .hljs-selector-pseudo { color: #7ee787; }
-  html.dark .hljs-section { color: #1f6feb; font-weight: 700; }
-  html.dark .hljs-bullet { color: #f2cc60; }
-  html.dark .hljs-addition {
+  html.dark .prose-shadcn .hljs-doctag, html.dark .prose-shadcn .hljs-keyword, html.dark .prose-shadcn .hljs-meta .hljs-keyword,
+  html.dark .prose-shadcn .hljs-template-tag, html.dark .prose-shadcn .hljs-template-variable,
+  html.dark .prose-shadcn .hljs-type, html.dark .prose-shadcn .hljs-variable.language_ { color: #ff7b72; }
+  html.dark .prose-shadcn .hljs-title, html.dark .prose-shadcn .hljs-title.class_, html.dark .prose-shadcn .hljs-title.class_.inherited__,
+  html.dark .prose-shadcn .hljs-title.function_ { color: #d2a8ff; }
+  html.dark .prose-shadcn .hljs-attr, html.dark .prose-shadcn .hljs-attribute, html.dark .prose-shadcn .hljs-literal,
+  html.dark .prose-shadcn .hljs-meta, html.dark .prose-shadcn .hljs-number, html.dark .prose-shadcn .hljs-operator,
+  html.dark .prose-shadcn .hljs-selector-attr, html.dark .prose-shadcn .hljs-selector-class,
+  html.dark .prose-shadcn .hljs-selector-id, html.dark .prose-shadcn .hljs-variable { color: #79c0ff; }
+  html.dark .prose-shadcn .hljs-regexp, html.dark .prose-shadcn .hljs-string,
+  html.dark .prose-shadcn .hljs-meta .hljs-string { color: #a5d6ff; }
+  html.dark .prose-shadcn .hljs-built_in, html.dark .prose-shadcn .hljs-symbol { color: #ffa657; }
+  html.dark .prose-shadcn .hljs-comment, html.dark .prose-shadcn .hljs-code,
+  html.dark .prose-shadcn .hljs-formula { color: #8b949e; }
+  html.dark .prose-shadcn .hljs-name, html.dark .prose-shadcn .hljs-quote, html.dark .prose-shadcn .hljs-selector-tag,
+  html.dark .prose-shadcn .hljs-selector-pseudo { color: #7ee787; }
+  html.dark .prose-shadcn .hljs-section { color: #1f6feb; font-weight: 700; }
+  html.dark .prose-shadcn .hljs-bullet { color: #f2cc60; }
+  html.dark .prose-shadcn .hljs-addition {
     background-color: hsla(120 80% 35% / 0.2);
     color: #aff5b4;
   }
-  html.dark .hljs-deletion {
+  html.dark .prose-shadcn .hljs-deletion {
     background-color: hsla(360 100% 40% / 0.2);
     color: #ffa198;
   }

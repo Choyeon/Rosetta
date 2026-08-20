@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useTheme } from '~/composables/useTheme'
 import { useScrollReveal } from '~/composables/useReadingUX'
 import { useAuthStore } from '~~/stores/auth'
+import ThemeRippleOverlay from '~~/components/ThemeRippleOverlay.vue'
 
 const route = useRoute()
 const { locale } = useI18n()
@@ -49,5 +50,11 @@ useHead({
       :toast-options="{ class: 'backdrop-blur-md' }"
       theme="light"
     />
+
+    <!-- 全局单例：圆形扩散/收缩主题切换遮罩。
+         由 useTheme().toggle(origin, buttonRef) 驱动，保证无论在桌面 header /
+         移动端 drawer / admin header / oobe navbar 点击切换按钮，都只渲染同一份 mask，
+         彻底避免多实例并发动画导致的白/黑屏一闪。 -->
+    <ThemeRippleOverlay />
   </NuxtLayout>
 </template>
