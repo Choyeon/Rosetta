@@ -30,7 +30,17 @@
     "themeDark": "切换为亮色模式",
     "themeLight": "切换为暗色模式",
     "language": "语言",
-    "menu": "菜单",
+    "menu": {
+      "posts": "文章",
+      "categories": "分类",
+      "tags": "标签",
+      "archive": "归档",
+      "friends": "友链",
+      "guestbook": "留言板",
+      "gallery": "相册",
+      "about": "关于",
+      "admin": "管理后台"
+    },
     "menuOpen": "打开主菜单",
     "menuClose": "关闭主菜单",
     "justNow": "刚刚",
@@ -557,7 +567,19 @@
         "sidebar": "侧边栏",
         "footer": "页脚"
       }
-    }
+    },
+    "saveSuccess": "[简]:Saved successfully",
+    "deleteConfirm": "[简]:Are you sure you want to delete? This cannot be undone.",
+    "publish": "[简]:Publish",
+    "draft": "[简]:Draft",
+    "searchPlaceholder": "[简]:Search...",
+    "noResults": "[简]:No matching results found",
+    "confirmDelete": "[简]:Confirm Delete",
+    "operationSuccess": "[简]:Operation succeeded",
+    "operationFailed": "[简]:Operation failed",
+    "loading": "[简]:Loading...",
+    "upload": "[简]:Upload",
+    "selectImage": "[简]:Select Image"
   },
   "oobe": {
     "welcome": "欢迎使用 Rosetta",
@@ -683,7 +705,10 @@
       "10": "十月",
       "11": "十一月",
       "12": "十二月"
-    }
+    },
+    "desc": "[简]:Browse everything published, organized by date",
+    "posts": "[简]:posts",
+    "noPosts": "[简]:No archived posts yet"
   },
   "stats": {
     "totalPosts": "文章总数",
@@ -814,7 +839,9 @@
     "ctaSubtitle": "有问题、想法，或者只是想聊聊天？欢迎在留言板留言，或通过关于页认识我。",
     "goGuestbook": "去留言板",
     "goAbout": "关于作者",
-    "startWriting": "开始创作"
+    "startWriting": "开始创作",
+    "featured": "[简]:Featured",
+    "latest": "[简]:Latest"
   },
   "footer": {
     "description": "穿越语言的边界 · 现代个人博客系统",
@@ -954,8 +981,5 @@
       "inactive": "未启用",
       "banned": "已封禁"
     }
-  },
-  "dashboard": {
-    "title": "仪表盘"
   }
 }

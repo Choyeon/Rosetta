@@ -42,7 +42,16 @@
       "gallery": "ギャラリー",
       "about": "このサイトについて",
       "admin": "管理画面"
-    }
+    },
+    "justNow": "[JA]:just now",
+    "minutesAgo": "[JA]:min ago",
+    "hoursAgo": "[JA]:h ago",
+    "daysAgo": "[JA]:d ago",
+    "dashboard": "[JA]:Dashboard",
+    "settings": "[JA]:Settings",
+    "palette": "[JA]:Palette",
+    "paletteHint": "[JA]:Choose a brand palette",
+    "error": "[JA]:Operation failed"
   },
   "nav": {
     "home": "ホーム",
@@ -53,7 +62,9 @@
     "friends": "友達",
     "guestbook": "ゲストブック",
     "about": "概要",
-    "admin": "管理"
+    "admin": "管理",
+    "gallery": "[JA]:Gallery",
+    "activity": "[JA]:Activity"
   },
   "post": {
     "title": "タイトル",
@@ -73,7 +84,22 @@
     "copyLink": "リンクをコピー",
     "passwordProtected": "この投稿はパスワードで保護されています",
     "enterPassword": "パスワードを入力",
-    "incorrectPassword": "パスワードが正しくありません"
+    "incorrectPassword": "パスワードが正しくありません",
+    "minRead": "[JA]:min read",
+    "commentPlaceholder": "[JA]:Write a comment…",
+    "submitting": "[JA]:Submitting…",
+    "submitComment": "[JA]:Post Comment",
+    "untitled": "[JA]:Untitled Post",
+    "words": "[JA]:words",
+    "chars": "[JA]:chars",
+    "noExcerpt": "[JA]:No excerpt available",
+    "home": "[JA]:Home",
+    "posts": "[JA]:Posts",
+    "loading": "[JA]:Loading…",
+    "noComments": "[JA]:No comments yet. Leave the first word.",
+    "loginRequired": "[JA]:Sign in to engage",
+    "loginToComment": "[JA]:Please sign in before posting a comment.",
+    "goLogin": "[JA]:Go to login"
   },
   "comment": {
     "title": "コメント",
@@ -82,7 +108,11 @@
     "reply": "返信",
     "replyTo": "返信先",
     "noComments": "まだコメントがありません。最初のコメントを残しましょう！",
-    "loginToComment": "コメントするにはログインしてください"
+    "loginToComment": "コメントするにはログインしてください",
+    "justNow": "[JA]:just now",
+    "minutesAgo": "[JA]: min ago",
+    "hoursAgo": "[JA]: h ago",
+    "daysAgo": "[JA]: d ago"
   },
   "auth": {
     "username": "ユーザー名",
@@ -121,7 +151,33 @@
     "nicknamePlaceholder": "ニックネームを入力",
     "error": "エラー",
     "fillRequired": "ユーザー名とパスワードを入力してください",
-    "loginFailed": "ログインに失敗しました。認証情報を確認してください"
+    "loginFailed": "ログインに失敗しました。認証情報を確認してください",
+    "goLogin": "[JA]:Go to Login",
+    "welcomeBackTagline": "[JA]:Crossing the boundaries of language",
+    "openBeta": "[JA]:Open Beta — Join Today",
+    "confirmPasswordPlaceholder": "[JA]:Re-enter your password",
+    "agreeTerms": "[JA]:I have read and agree to the",
+    "agreeTermsDesc": "[JA]:By registering, you agree to our Terms of Service and Privacy Policy",
+    "joinUs": "[JA]:Join the Rosetta Community",
+    "joinUsTagline": "[JA]:Multilingual content. One home.",
+    "joinUsDesc": "[JA]:Write your story alongside thousands of creators",
+    "feature1": "[JA]:Minimal Writing",
+    "feature1Desc": "[JA]:Focus on content, not a clunky editor",
+    "feature2": "[JA]:Multi-language",
+    "feature2Desc": "[JA]:Built-in i18n for a global audience",
+    "feature3": "[JA]:High Performance",
+    "feature3Desc": "[JA]:Modern architecture with blazing fast loads",
+    "rightsReserved": "[JA]:All rights reserved",
+    "agreeTermsPrefix": "[JA]:I have read and agree to the",
+    "terms": "[JA]:Terms of Service",
+    "agreeTermsAnd": "[JA]:and",
+    "privacy": "[JA]:Privacy Policy",
+    "registering": "[JA]:Registering...",
+    "createAccount": "[JA]:Create Account",
+    "passwordMismatch": "[JA]:Passwords do not match",
+    "registerFailed": "[JA]:Registration failed, please try again later",
+    "switchWallpaper": "[JA]:Switch wallpaper",
+    "startCreate": "[JA]:Start Writing"
   },
   "error": {
     "notFoundTitle": "ページが見つかりません",
@@ -511,7 +567,19 @@
         "sidebar": "サイドバー",
         "footer": "フッター"
       }
-    }
+    },
+    "saveSuccess": "[JA]:Saved successfully",
+    "deleteConfirm": "[JA]:Are you sure you want to delete? This cannot be undone.",
+    "publish": "[JA]:Publish",
+    "draft": "[JA]:Draft",
+    "searchPlaceholder": "[JA]:Search...",
+    "noResults": "[JA]:No matching results found",
+    "confirmDelete": "[JA]:Confirm Delete",
+    "operationSuccess": "[JA]:Operation succeeded",
+    "operationFailed": "[JA]:Operation failed",
+    "loading": "[JA]:Loading...",
+    "upload": "[JA]:Upload",
+    "selectImage": "[JA]:Select Image"
   },
   "oobe": {
     "welcome": "Rosettaへようこそ",
@@ -637,7 +705,10 @@
       "10": "10月",
       "11": "11月",
       "12": "12月"
-    }
+    },
+    "desc": "[JA]:Browse everything published, organized by date",
+    "posts": "[JA]:posts",
+    "noPosts": "[JA]:No archived posts yet"
   },
   "stats": {
     "totalPosts": "総投稿数",
@@ -648,7 +719,15 @@
     "totalComments": "コメント数"
   },
   "posts": {
-    "pinned": "ピン留め"
+    "pinned": "ピン留め",
+    "allPosts": "[JA]:All posts",
+    "allPostsDesc": "[JA]:Everything published, in reverse chronological order.",
+    "noPosts": "[JA]:No posts yet",
+    "noPostsDesc": "[JA]:The author is cooking up new content — check back soon.",
+    "searchPlaceholder": "[JA]:Search titles or keywords…",
+    "selectCategory": "[JA]:Select category",
+    "filter": "[JA]:Filter",
+    "allCategories": "[JA]:All categories"
   },
   "home": {
     "release": "安定版",
@@ -830,5 +909,77 @@
       "inactive": "無効",
       "banned": "BAN済み"
     }
+  },
+  "categories": {
+    "title": "[JA]:Categories",
+    "desc": "[JA]:Browse content by topic",
+    "posts": "[JA]:posts",
+    "noDesc": "[JA]:No description",
+    "browsePosts": "[JA]:Browse posts",
+    "noCategories": "[JA]:No categories yet"
+  },
+  "tags": {
+    "title": "[JA]:All Tags",
+    "desc": "[JA]:Explore tags to find related content. Larger tiles mean more posts.",
+    "posts": "[JA]:posts",
+    "noTags": "[JA]:No tags yet"
+  },
+  "guestbook": {
+    "title": "[JA]:Guestbook",
+    "desc": "[JA]:Leave a note, drop a footprint. Every voice is carefully read.",
+    "writeMessage": "[JA]:Write a message",
+    "nickname": "[JA]:Nickname",
+    "email": "[JA]:Email (kept private)",
+    "website": "[JA]:Website (optional)",
+    "contentPlaceholder": "[JA]:Type something here…",
+    "replyPlaceholder": "[JA]:Reply to this message…",
+    "noMessages": "[JA]:No messages yet. Be the first to say hi!"
+  },
+  "gallery": {
+    "title": "[JA]:Gallery",
+    "desc": "[JA]:Travels, daily life, light and shadow. Slices of time frozen through the lens.",
+    "photos": "[JA]:photos",
+    "noDesc": "[JA]:No description",
+    "noAlbums": "[JA]:No albums yet"
+  },
+  "friends": {
+    "title": "[JA]:Friends",
+    "desc": "[JA]:Wonderful folks and their sites, worth sharing with more readers.",
+    "visit": "[JA]:Visit",
+    "noDesc": "[JA]:No description",
+    "noLinks": "[JA]:No friend links yet"
+  },
+  "activity": {
+    "title": "[JA]:Activity",
+    "desc": "[JA]:A pulse of this little site — new posts, comments, shares.",
+    "type_post": "[JA]:New Post",
+    "type_card": "[JA]:New Card",
+    "type_comment": "[JA]:New Comment",
+    "type_like": "[JA]:Like",
+    "liked": "[JA]:liked the post",
+    "noActivity": "[JA]:No activity yet"
+  },
+  "about": {
+    "title": "[JA]:About",
+    "desc": "[JA]:About the author behind this site, the tech stack, and everything.",
+    "authorName": "[JA]:Rosetta",
+    "authorRole": "[JA]:Indie Developer · Blogger",
+    "tag1": "[JA]:Full-stack Engineer",
+    "tag2": "[JA]:Open Source Lover",
+    "tag3": "[JA]:Photography Hobbyist",
+    "tag4": "[JA]:Coffee-driven",
+    "tabBio": "[JA]:Bio",
+    "tabSkills": "[JA]:Skills",
+    "tabOSS": "[JA]:Open Source",
+    "tabContact": "[JA]:Contact",
+    "bioP1": "[JA]:Hi, I'm the maintainer behind Rosetta. I write product code by day, hack on open-source projects by night, and wander around with a camera on weekends. This blog is where I keep engineering notes, reading notes, and bits of life — a simple place for thoughts to leave footprints.",
+    "bioP2": "[JA]:My focus is mainly on Web frontend architecture, developer experience, and toolchains that just feel good to use. Minimalism is my taste — I seek balance through restraint, both in code and in design.",
+    "bioP3": "[JA]:If anything here resonates with you, feel free to drop a note in the guestbook, or reach out via email or social links below. Link exchanges are always welcome — let's keep the indie web woven together.",
+    "mottoLabel": "[JA]:Motto",
+    "motto": "[JA]:Stay hungry, stay foolish. Write code, write life.",
+    "techStack": "[JA]:Tech Stack",
+    "techStackDesc": "[JA]:Core technologies and tools powering this site and my daily work",
+    "buyMeCoffee": "[JA]:Buy Me a Coffee",
+    "buyMeCoffeeDesc": "[JA]:If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for."
   }
 }

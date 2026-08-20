@@ -42,7 +42,16 @@
       "gallery": "相簿",
       "about": "關於本站",
       "admin": "管理後台"
-    }
+    },
+    "justNow": "[繁]:just now",
+    "minutesAgo": "[繁]:min ago",
+    "hoursAgo": "[繁]:h ago",
+    "daysAgo": "[繁]:d ago",
+    "dashboard": "[繁]:Dashboard",
+    "settings": "[繁]:Settings",
+    "palette": "[繁]:Palette",
+    "paletteHint": "[繁]:Choose a brand palette",
+    "error": "[繁]:Operation failed"
   },
   "nav": {
     "home": "首頁",
@@ -53,7 +62,9 @@
     "friends": "友鏈",
     "guestbook": "留言板",
     "about": "關於",
-    "admin": "後台管理"
+    "admin": "後台管理",
+    "gallery": "[繁]:Gallery",
+    "activity": "[繁]:Activity"
   },
   "post": {
     "title": "標題",
@@ -73,7 +84,22 @@
     "copyLink": "複製連結",
     "passwordProtected": "該文章需要密碼存取",
     "enterPassword": "請輸入存取密碼",
-    "incorrectPassword": "密碼錯誤"
+    "incorrectPassword": "密碼錯誤",
+    "minRead": "[繁]:min read",
+    "commentPlaceholder": "[繁]:Write a comment…",
+    "submitting": "[繁]:Submitting…",
+    "submitComment": "[繁]:Post Comment",
+    "untitled": "[繁]:Untitled Post",
+    "words": "[繁]:words",
+    "chars": "[繁]:chars",
+    "noExcerpt": "[繁]:No excerpt available",
+    "home": "[繁]:Home",
+    "posts": "[繁]:Posts",
+    "loading": "[繁]:Loading…",
+    "noComments": "[繁]:No comments yet. Leave the first word.",
+    "loginRequired": "[繁]:Sign in to engage",
+    "loginToComment": "[繁]:Please sign in before posting a comment.",
+    "goLogin": "[繁]:Go to login"
   },
   "comment": {
     "title": "留言",
@@ -82,7 +108,11 @@
     "reply": "回覆",
     "replyTo": "回覆給",
     "noComments": "暫無留言，來發表第一條留言吧！",
-    "loginToComment": "登入後才能留言"
+    "loginToComment": "登入後才能留言",
+    "justNow": "[繁]:just now",
+    "minutesAgo": "[繁]: min ago",
+    "hoursAgo": "[繁]: h ago",
+    "daysAgo": "[繁]: d ago"
   },
   "auth": {
     "username": "使用者名稱",
@@ -121,7 +151,33 @@
     "nicknamePlaceholder": "輸入暱稱",
     "error": "錯誤",
     "fillRequired": "請填寫使用者名稱和密碼",
-    "loginFailed": "登入失敗，請檢查帳號資訊"
+    "loginFailed": "登入失敗，請檢查帳號資訊",
+    "goLogin": "[繁]:Go to Login",
+    "welcomeBackTagline": "[繁]:Crossing the boundaries of language",
+    "openBeta": "[繁]:Open Beta — Join Today",
+    "confirmPasswordPlaceholder": "[繁]:Re-enter your password",
+    "agreeTerms": "[繁]:I have read and agree to the",
+    "agreeTermsDesc": "[繁]:By registering, you agree to our Terms of Service and Privacy Policy",
+    "joinUs": "[繁]:Join the Rosetta Community",
+    "joinUsTagline": "[繁]:Multilingual content. One home.",
+    "joinUsDesc": "[繁]:Write your story alongside thousands of creators",
+    "feature1": "[繁]:Minimal Writing",
+    "feature1Desc": "[繁]:Focus on content, not a clunky editor",
+    "feature2": "[繁]:Multi-language",
+    "feature2Desc": "[繁]:Built-in i18n for a global audience",
+    "feature3": "[繁]:High Performance",
+    "feature3Desc": "[繁]:Modern architecture with blazing fast loads",
+    "rightsReserved": "[繁]:All rights reserved",
+    "agreeTermsPrefix": "[繁]:I have read and agree to the",
+    "terms": "[繁]:Terms of Service",
+    "agreeTermsAnd": "[繁]:and",
+    "privacy": "[繁]:Privacy Policy",
+    "registering": "[繁]:Registering...",
+    "createAccount": "[繁]:Create Account",
+    "passwordMismatch": "[繁]:Passwords do not match",
+    "registerFailed": "[繁]:Registration failed, please try again later",
+    "switchWallpaper": "[繁]:Switch wallpaper",
+    "startCreate": "[繁]:Start Writing"
   },
   "error": {
     "notFoundTitle": "頁面不存在",
@@ -511,7 +567,19 @@
         "sidebar": "側邊欄",
         "footer": "頁尾"
       }
-    }
+    },
+    "saveSuccess": "[繁]:Saved successfully",
+    "deleteConfirm": "[繁]:Are you sure you want to delete? This cannot be undone.",
+    "publish": "[繁]:Publish",
+    "draft": "[繁]:Draft",
+    "searchPlaceholder": "[繁]:Search...",
+    "noResults": "[繁]:No matching results found",
+    "confirmDelete": "[繁]:Confirm Delete",
+    "operationSuccess": "[繁]:Operation succeeded",
+    "operationFailed": "[繁]:Operation failed",
+    "loading": "[繁]:Loading...",
+    "upload": "[繁]:Upload",
+    "selectImage": "[繁]:Select Image"
   },
   "oobe": {
     "welcome": "歡迎使用 Rosetta",
@@ -637,7 +705,10 @@
       "10": "十月",
       "11": "十一月",
       "12": "十二月"
-    }
+    },
+    "desc": "[繁]:Browse everything published, organized by date",
+    "posts": "[繁]:posts",
+    "noPosts": "[繁]:No archived posts yet"
   },
   "stats": {
     "totalPosts": "文章總數",
@@ -648,7 +719,15 @@
     "totalComments": "留言數"
   },
   "posts": {
-    "pinned": "置頂"
+    "pinned": "置頂",
+    "allPosts": "[繁]:All posts",
+    "allPostsDesc": "[繁]:Everything published, in reverse chronological order.",
+    "noPosts": "[繁]:No posts yet",
+    "noPostsDesc": "[繁]:The author is cooking up new content — check back soon.",
+    "searchPlaceholder": "[繁]:Search titles or keywords…",
+    "selectCategory": "[繁]:Select category",
+    "filter": "[繁]:Filter",
+    "allCategories": "[繁]:All categories"
   },
   "home": {
     "release": "穩定版",
@@ -830,5 +909,77 @@
       "inactive": "未啟用",
       "banned": "已停權"
     }
+  },
+  "categories": {
+    "title": "[繁]:Categories",
+    "desc": "[繁]:Browse content by topic",
+    "posts": "[繁]:posts",
+    "noDesc": "[繁]:No description",
+    "browsePosts": "[繁]:Browse posts",
+    "noCategories": "[繁]:No categories yet"
+  },
+  "tags": {
+    "title": "[繁]:All Tags",
+    "desc": "[繁]:Explore tags to find related content. Larger tiles mean more posts.",
+    "posts": "[繁]:posts",
+    "noTags": "[繁]:No tags yet"
+  },
+  "guestbook": {
+    "title": "[繁]:Guestbook",
+    "desc": "[繁]:Leave a note, drop a footprint. Every voice is carefully read.",
+    "writeMessage": "[繁]:Write a message",
+    "nickname": "[繁]:Nickname",
+    "email": "[繁]:Email (kept private)",
+    "website": "[繁]:Website (optional)",
+    "contentPlaceholder": "[繁]:Type something here…",
+    "replyPlaceholder": "[繁]:Reply to this message…",
+    "noMessages": "[繁]:No messages yet. Be the first to say hi!"
+  },
+  "gallery": {
+    "title": "[繁]:Gallery",
+    "desc": "[繁]:Travels, daily life, light and shadow. Slices of time frozen through the lens.",
+    "photos": "[繁]:photos",
+    "noDesc": "[繁]:No description",
+    "noAlbums": "[繁]:No albums yet"
+  },
+  "friends": {
+    "title": "[繁]:Friends",
+    "desc": "[繁]:Wonderful folks and their sites, worth sharing with more readers.",
+    "visit": "[繁]:Visit",
+    "noDesc": "[繁]:No description",
+    "noLinks": "[繁]:No friend links yet"
+  },
+  "activity": {
+    "title": "[繁]:Activity",
+    "desc": "[繁]:A pulse of this little site — new posts, comments, shares.",
+    "type_post": "[繁]:New Post",
+    "type_card": "[繁]:New Card",
+    "type_comment": "[繁]:New Comment",
+    "type_like": "[繁]:Like",
+    "liked": "[繁]:liked the post",
+    "noActivity": "[繁]:No activity yet"
+  },
+  "about": {
+    "title": "[繁]:About",
+    "desc": "[繁]:About the author behind this site, the tech stack, and everything.",
+    "authorName": "[繁]:Rosetta",
+    "authorRole": "[繁]:Indie Developer · Blogger",
+    "tag1": "[繁]:Full-stack Engineer",
+    "tag2": "[繁]:Open Source Lover",
+    "tag3": "[繁]:Photography Hobbyist",
+    "tag4": "[繁]:Coffee-driven",
+    "tabBio": "[繁]:Bio",
+    "tabSkills": "[繁]:Skills",
+    "tabOSS": "[繁]:Open Source",
+    "tabContact": "[繁]:Contact",
+    "bioP1": "[繁]:Hi, I'm the maintainer behind Rosetta. I write product code by day, hack on open-source projects by night, and wander around with a camera on weekends. This blog is where I keep engineering notes, reading notes, and bits of life — a simple place for thoughts to leave footprints.",
+    "bioP2": "[繁]:My focus is mainly on Web frontend architecture, developer experience, and toolchains that just feel good to use. Minimalism is my taste — I seek balance through restraint, both in code and in design.",
+    "bioP3": "[繁]:If anything here resonates with you, feel free to drop a note in the guestbook, or reach out via email or social links below. Link exchanges are always welcome — let's keep the indie web woven together.",
+    "mottoLabel": "[繁]:Motto",
+    "motto": "[繁]:Stay hungry, stay foolish. Write code, write life.",
+    "techStack": "[繁]:Tech Stack",
+    "techStackDesc": "[繁]:Core technologies and tools powering this site and my daily work",
+    "buyMeCoffee": "[繁]:Buy Me a Coffee",
+    "buyMeCoffeeDesc": "[繁]:If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for."
   }
 }
