@@ -252,7 +252,7 @@
                 v-else
                 class="text-sm text-muted-foreground"
               >
-                {{ t('noData') }}
+                {{ t('common.noData') }}
               </div>
             </CardContent>
           </Card>
@@ -334,7 +334,7 @@
                 v-else
                 class="text-sm text-muted-foreground"
               >
-                {{ t('noData') }}
+                {{ t('common.noData') }}
               </div>
             </CardContent>
           </Card>
@@ -381,7 +381,7 @@
                 v-else
                 class="text-sm text-muted-foreground"
               >
-                {{ t('noData') }}
+                {{ t('common.noData') }}
               </div>
             </CardContent>
           </Card>

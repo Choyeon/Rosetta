@@ -204,7 +204,7 @@ const handleAdmin = () => navigateTo('/admin')
               variant="ghost"
               size="icon"
               class="md:hidden"
-              :aria-label="t('common.menu') || '菜单'"
+              :aria-label="t('common.titleMenu') || 'Menu'"
             >
               <Menu class="h-[1.2rem] w-[1.2rem]" />
             </Button>
@@ -215,7 +215,7 @@ const handleAdmin = () => navigateTo('/admin')
           >
             <SheetHeader class="text-left mb-4">
               <SheetTitle class="sr-only">
-                {{ t('common.menu') || '菜单' }}
+                {{ t('common.titleMenu') || 'Menu' }}
               </SheetTitle>
               <NuxtLink
                 to="/"
