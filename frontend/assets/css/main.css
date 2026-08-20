@@ -383,38 +383,62 @@ html.dark.palette-warm-stone {
    - 遮罩始终用「目标主题的 background」填充，底层 DOM 在扩散过半
      / 收缩开始前切换 .dark 类，避免看到“底层已切但遮罩还没跟上”的错色。
    ========================================================= */
-@layer components {
-  .theme-ripple-overlay {
-    pointer-events: none;
-    position: fixed;
+/* =========================================================
+   View Transition API 主题切换（首选方案 = 浏览器自动截图锁定）
+   - Chrome/Edge 111+ 调用 document.startViewTransition(() => applyTheme(next)) 时，
+     浏览器会先抓「当前主题」的像素帧，再执行 applyTheme，然后抓「新主题」的像素帧。
+     两层都不是纯色，而是完整页面像素 —— 这正是「截图锁定」的语义。
+   - 我们只需要把 ::view-transition-new(root) 用 circle 揭示动画裁剪即可：
+       expand（light→dark）：circle(0 → R) 从点击点扩散出新主题。
+       shrink（dark→light）：circle(R → 0) 向点击点收缩掉旧主题（底下新主题透出）。
+   - 当 VT 不可用时，走我们自己的 snapshotThemePage() + 两层 before/after overlay；
+     那时候组件内部已经带样式，不需要下面这段 VT keyframes。
+   ========================================================= */
+@supports (view-transition-name: root) {
+  /* ===== 关掉默认的交叉淡入淡出 ===== */
+  html::view-transition-old(root),
+  html::view-transition-new(root) {
     inset: 0;
-    z-index: 99999;
     mix-blend-mode: normal;
-    opacity: var(--theme-ripple-fade, 1);
-    --theme-ripple-progress: 0;
-    --theme-ripple-maxr: 2000;
-    --theme-ripple-cx: 50vw;
-    --theme-ripple-cy: 50vh;
-    clip-path: circle(
-      calc(var(--theme-ripple-progress) * var(--theme-ripple-maxr) * 1px)
-      at var(--theme-ripple-cx) var(--theme-ripple-cy)
-    );
-    -webkit-clip-path: circle(
-      calc(var(--theme-ripple-progress) * var(--theme-ripple-maxr) * 1px)
-      at var(--theme-ripple-cx) var(--theme-ripple-cy)
-    );
-    will-change: clip-path, -webkit-clip-path, opacity;
-    transition:
-      clip-path 960ms cubic-bezier(0.22, 1, 0.36, 1),
-      -webkit-clip-path 960ms cubic-bezier(0.22, 1, 0.36, 1),
-      --theme-ripple-progress 960ms cubic-bezier(0.22, 1, 0.36, 1),
-      opacity 220ms ease,
-      --theme-ripple-fade 220ms ease;
+    animation: none;
+  }
+  html::view-transition-group(root) {
+    animation-duration: 520ms;
+    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
-  @media (prefers-reduced-motion: reduce) {
-    .theme-ripple-overlay {
-      transition-duration: 1ms, 1ms, 1ms, 1ms, 1ms !important;
+  /* ===== 扩散模式（light -> dark：new 在上，从点击点 circle 扩大）===== */
+  html.theme-grow::view-transition-old(root) { z-index: 1; }
+  html.theme-grow::view-transition-new(root) {
+    z-index: 9999;
+    animation: vt-theme-grow 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+
+  /* ===== 收回模式（dark -> light：old 在上，从全屏 circle 收缩到点击点）===== */
+  html.theme-shrink::view-transition-old(root) {
+    z-index: 9999;
+    animation: vt-theme-shrink 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  }
+  html.theme-shrink::view-transition-new(root) { z-index: 1; }
+
+  @keyframes vt-theme-grow {
+    from {
+      clip-path: circle(0px at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+      -webkit-clip-path: circle(0px at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+    }
+    to {
+      clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+      -webkit-clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+    }
+  }
+  @keyframes vt-theme-shrink {
+    from {
+      clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+      -webkit-clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+    }
+    to {
+      clip-path: circle(0px at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
+      -webkit-clip-path: circle(0px at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
     }
   }
 }
@@ -716,3 +740,5 @@ html.dark.palette-warm-stone {
   color: hsl(var(--warning-muted-foreground));
   border-color: hsl(var(--warning) / 0.25);
 }
+
+
