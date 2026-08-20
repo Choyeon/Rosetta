@@ -407,6 +407,7 @@ const { activeId, scrollTo } = useTOCScrollSpy(() => tocItems.value)
 const slug = computed(() => route.params.slug as string)
 const requestURL = useRequestURL()
 const siteOrigin = computed(() => requestURL.origin)
+const site = useSite()
 
 // useFetch 的 URL/query 通过 computed 函数 / Ref 自动响应式，不再显式 watch。
 // 关键点：避免 SSR 下 watch: [...] 让 useFetch 认为"只依赖 watch 触发"而跳过初始请求，
@@ -473,7 +474,7 @@ const normalizedTags = computed(() => {
   })).filter(tag => tag.id && tag.slug)
 })
 
-const seoTitle = computed(() => `${pickLocalized(post.value?.title) || displayPostTitle.value} · Rosetta`)
+const seoTitle = computed(() => pickLocalized(post.value?.title) || displayPostTitle.value || '')
 const seoExcerpt = computed(() => pickLocalized(post.value?.excerpt))
 const seoDescription = computed(() => seoExcerpt.value || pickLocalized(post.value?.content || '').slice(0, 180))
 
@@ -487,10 +488,22 @@ const absoluteCoverImage = computed(() => {
 
 const tagNames = computed(() => normalizedTags.value.map(t => t.name))
 
+const fullTitle = computed(() => {
+  const t = seoTitle.value
+  const s = site.siteTitle.value
+  if (!t) return s || ''
+  if (!s) return t
+  if (t === s) {
+    const sub = site.siteSubtitle.value
+    return sub ? `${s} · ${sub}` : s
+  }
+  return `${t} · ${s}`
+})
+
 useSeoMeta({
   title: () => seoTitle.value,
   description: () => seoDescription.value,
-  ogTitle: () => seoTitle.value,
+  ogTitle: () => fullTitle.value,
   ogDescription: () => seoDescription.value,
   ogImage: () => absoluteCoverImage.value,
   ogType: 'article',
@@ -499,7 +512,7 @@ useSeoMeta({
   articleAuthor: () => authorName.value ? [authorName.value] : [],
   articleTag: () => tagNames.value,
   twitterCard: 'summary_large_image',
-  twitterTitle: () => seoTitle.value,
+  twitterTitle: () => fullTitle.value,
   twitterDescription: () => seoDescription.value,
   twitterImage: () => absoluteCoverImage.value
 })

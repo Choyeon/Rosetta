@@ -247,7 +247,7 @@ const origin = computed(() => requestURL.origin)
 const canonical = computed(() => `${origin.value}/posts?page=${currentPage.value}`)
 
 useSeoMeta({
-  title: () => `${t('posts.allPosts')} · Rosetta`,
+  title: () => t('posts.allPosts'),
   description: () => t('posts.allPostsDesc'),
   ogType: 'website',
   ogUrl: canonical,

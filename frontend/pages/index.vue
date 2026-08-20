@@ -527,9 +527,12 @@ const canonical = computed(() => requestURL.href)
 const origin = computed(() => requestURL.origin)
 
 // 用 useSite 动态标题/描述，不再硬编码 "Rosetta · ..."
-const siteTitle = computed(() => site.withSuffix())
+// titleTemplate（plugins/site-title.global.ts）会统一拼 "单页标题 · 站点名"；
+// 首页是"无单页标题"情形，titleTemplate 会退化为 "站点名 · 副标题"。
+const homeTitle = computed(() => site.siteSubtitle.value || '')
 const siteDescription = computed(() => site.siteDescription.value)
 const siteKeywords = computed(() => site.siteKeywords.value)
+const siteTitle = computed(() => site.withSuffix())
 const seoOgImage = computed(() => {
   const configured = site.seo.value.og_image
   if (configured) {
@@ -543,7 +546,7 @@ const seoOgImage = computed(() => {
 })
 
 useSeoMeta({
-  title: siteTitle,
+  title: homeTitle,
   description: siteDescription,
   ogTitle: siteTitle,
   ogDescription: siteDescription,
