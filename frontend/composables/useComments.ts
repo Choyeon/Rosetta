@@ -24,7 +24,7 @@ export function useComments() {
     pageSize_ = 20,
     lang?: string
   ) => {
-    return useAPI<PaginatedResponse<Comment>>(`/posts/${post_id}/comments`, {
+    return useAPI<PaginatedResponse<Comment>>(`/blog/posts/${post_id}/comments`, {
       query: {
         page,
         page_size: pageSize_,
@@ -59,7 +59,7 @@ export function useComments() {
     email?: string,
     site?: string
   ) => {
-    return apiFetch<Comment>(`/posts/${post_id}/comments`, {
+    return apiFetch<Comment>(`/blog/posts/${post_id}/comments`, {
       method: 'POST',
       query: { lang: locale.value },
       body: {
@@ -133,7 +133,7 @@ export function useComments() {
           lang: locale.value
         }
       }
-      const res = await apiFetch<PaginatedResponse<Comment> | Comment[]>(`/posts/${post_id}/comments`, opts)
+      const res = await apiFetch<PaginatedResponse<Comment> | Comment[]>(`/blog/posts/${post_id}/comments`, opts)
       if (res) {
         if (Array.isArray(res)) {
           comments.value = res as Comment[]

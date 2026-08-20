@@ -7,8 +7,14 @@
     class="relative overflow-hidden"
     @click="handleToggle"
   >
-    <Sun v-if="isDark" class="size-5" />
-    <Moon v-else class="size-5" />
+    <Sun
+      v-if="isDark"
+      class="size-5"
+    />
+    <Moon
+      v-else
+      class="size-5"
+    />
   </Button>
 </template>
 

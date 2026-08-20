@@ -62,7 +62,32 @@ function currentLocale(): string {
  *
  * 限制：useFetch 的错误钩子内无法重试当前请求（递归 useFetch 不会让调用方拿到新结果），
  * 401 时仅尝试刷新 token 供后续请求使用；需要"刷新后自动重试"请使用 apiFetch。
+ *
+ * 关键 Hydration 保障：
+ *   - 服务端 baseURL 是绝对地址（config.apiBase → http://127.0.0.1:8000/api）
+ *   - 客户端 baseURL 是相对地址（config.public.apiBase → /api）
+ *   Nuxt useFetch 默认会把 baseURL 计入内部缓存 key 的 hash，导致 SSR 序列化的结果
+ *   与客户端 Hydrate 查找的 key 不一致，两端 state/payload 对不上 → pending=true
+ *   + data=null，触发 Skeleton/h1、fallback title/真实 title 等一系列 mismatch。
+ *   所以这里显式生成一个"只依赖相对路径 + query"的稳定字符串作为 key，
+ *   让 SSR ↔ Client 两端无论 baseURL 如何不同，都能命中同一条缓存 payload。
  */
+function stableUseFetchKey(url: string | (() => string), query?: Record<string, unknown> | undefined): string {
+  const raw = typeof url === 'function' ? '__fn__' + url.toString().slice(0, 80).replace(/\s+/g, '') : url
+  try {
+    const qs = query
+      ? '::' + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(query).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
+        ) as unknown as Record<string, string>
+      ).toString()
+      : ''
+    return 'api::' + raw + qs
+  } catch {
+    return 'api::' + raw
+  }
+}
+
 export function useAPI<T>(url: string | (() => string), options?: UseFetchOptions<T>) {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
@@ -82,6 +107,8 @@ export function useAPI<T>(url: string | (() => string), options?: UseFetchOption
   // 因此服务端用 config.apiBase（绝对地址直连后端），客户端继续用
   // 相对地址 /api，经浏览器请求走 devProxy 反向代理到 FastAPI。
   const ssrSafeBase = import.meta.server ? config.apiBase : config.public.apiBase
+  // 如果调用方未传自定义 key，则生成稳定 key；若已传则以调用方为准。
+  const stableKey = options?.key ?? stableUseFetchKey(url, options?.query as Record<string, unknown> | undefined)
   return useFetch<T>(url, {
     // 默认在 SSR 时执行（配合全局 ssr:true + 公开页面），
     // 调用方可通过 options.server: false 显式关闭（如管理后台需要登录态、只在客户端拉的场景）。
@@ -91,6 +118,7 @@ export function useAPI<T>(url: string | (() => string), options?: UseFetchOption
     //   2) 客户端组件复用时 onMounted 不再触发 + useFetch 丢失上下文，
     //      返回的 AsyncData 仍为空，出现"路由跳转后页面空白、刷新才恢复"。
     ...options,
+    key: stableKey,
     baseURL: ssrSafeBase,
     headers,
     async onResponseError({ response }) {
@@ -146,9 +174,12 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
     return h
   }
 
+  // SSR-safe：服务端直连 FastAPI 绝对地址（不走 Nitro 内部路由匹配 404）
+  const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+
   const doFetch = () => $fetch<T>(url, {
     ...options,
-    baseURL: config.public.apiBase,
+    baseURL,
     headers: buildHeaders()
   })
 
@@ -166,7 +197,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
     if (status === 404) {
       // 404 在前端开发阶段很常见：后端路由还没补齐 / 拼写错误；不要打断用户工作流，
       // 只在控制台打印具体 URL 方便定位，然后抛错（让调用方自己决定是否降级）。
-      // eslint-disable-next-line no-console
+
       console.warn('[useAPI] 404 Not Found', {
         method: options.method || 'GET',
         url,
@@ -223,9 +254,12 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
     return h
   }
 
+  // SSR-safe：服务端直连 FastAPI 绝对地址（不走 Nitro 内部路由匹配 404）
+  const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+
   const doFetch = () => $fetch<T>(url, {
     ...options,
-    baseURL: config.public.apiBase,
+    baseURL,
     headers: buildHeaders()
   })
 
@@ -244,7 +278,12 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
       if (import.meta.client) {
         const refreshed = await authStore.refreshAccessToken()
         if (refreshed) {
-          try { return await doFetch() } catch { /* swallow */ return null }
+          try {
+            return await doFetch()
+          } catch {
+            /* swallow */
+            return null
+          }
         }
         authStore.clearTokens()
         await navigateTo('/login')
@@ -255,7 +294,7 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
     }
 
     // 其余错误：静默降级，避免 console 外还要 toast
-    // eslint-disable-next-line no-console
+
     console.debug(`[silentApiFetch] ${options.method || 'GET'} ${url} -> ${status}`, extractErrorMessage(e.data, 'silent failure'))
     return null
   }

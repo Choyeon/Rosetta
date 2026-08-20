@@ -19,13 +19,13 @@ import { useThemeRipple } from '~~/composables/useTheme'
 
 const { state, progress, fade } = useThemeRipple()
 
-const overlayStyle = computed<Record<string, any>>(() => ({
+const overlayStyle = computed<Record<string, string | number>>(() => ({
   '--theme-ripple-progress': progress.value,
   '--theme-ripple-fade': fade.value,
   '--theme-ripple-maxr': state.maxRadius,
   '--theme-ripple-cx': state.cx + 'px',
   '--theme-ripple-cy': state.cy + 'px',
-  backgroundColor: state.background
+  'backgroundColor': state.background
 }))
 </script>
 

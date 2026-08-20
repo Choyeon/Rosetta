@@ -182,7 +182,7 @@ function doReset() {
           :value="localStart ?? ''"
           :max="startMax"
           @change="updateDate($event, 'start')"
-        />
+        >
         <span class="text-muted-foreground text-sm">至</span>
         <input
           type="date"
@@ -191,7 +191,7 @@ function doReset() {
           :min="endMin"
           :max="endMax"
           @change="updateDate($event, 'end')"
-        />
+        >
       </div>
 
       <slot name="extraFilters" />

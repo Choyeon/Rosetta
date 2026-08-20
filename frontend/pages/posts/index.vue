@@ -184,25 +184,12 @@ const { data, pending, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/
   key: 'posts:list'
 })
 
-// 手动监听搜索/分类/语言/分页变化并刷新（替代 watch: [] 选项，避免副作用干扰 SSR payload 写入）
+// 手动监听搜索/分类/语言/分页变化并刷新（仅客户端触发）。
 watch([currentPage, searchQuery, selectedCategory, locale], () => {
   if (import.meta.client) {
     refresh()
   }
 })
-
-// === 防空白兜底：客户端挂载/激活后强制重新拉取一次，彻底杜绝"跳转到这页空、刷新才恢复"。
-//     触发原因：
-//       1) SSR 阶段 Nitro 渲染时 useFetch Promise 可能因为某种原因未返回或 payload 序列化丢失
-//       2) 从详情页 history.back() 返回时，posts 列表页被 keep-alive 缓存复用，不会再触发 onMounted
-//     解决：onMounted（首次进入） + onActivated（keep-alive 激活/浏览器 Back 回来）两条钩子都调用 refresh()
-const fallbackRefresh = () => {
-  setTimeout(() => {
-    refresh()
-  }, 50)
-}
-onMounted(fallbackRefresh)
-onActivated(fallbackRefresh)
 
 const posts = computed<Post[]>(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)

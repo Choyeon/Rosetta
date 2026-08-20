@@ -115,7 +115,7 @@ const filledCount = computed(() =>
       </Badge>
     </div>
 
-    <Tabs defaultValue="zh">
+    <Tabs default-value="zh">
       <TabsList class="grid grid-cols-4 w-full h-9 rounded-[10px]">
         <TabsTrigger
           v-for="l in LOCALES"

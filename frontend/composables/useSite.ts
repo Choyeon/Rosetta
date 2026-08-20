@@ -12,13 +12,39 @@
  */
 import { computed } from 'vue'
 import { fetchAllSettings } from '~~/composables/useAdminManage'
-import { useSiteConfig } from '~~/composables/useCore'
+import { apiFetch } from '~~/composables/useApi'
 
-type GroupKeys =
-  | 'basic' | 'seo' | 'appearance' | 'hero' | 'footer'
-  | 'notice' | 'sidebar' | 'reading' | 'features'
-  | 'friendlinks' | 'navigation' | 'media' | 'comments'
-  | 'cache' | 'cdn' | 'email' | 'security'
+/**
+ * 与 GET /api/config 返回值完全一致的首屏默认值。
+ * 关键原则：即使 SSR 或客户端首渲染前 apiFetch('/config') 偶发失败，
+ * 两端使用同一份默认值，也能绝对保证 SSR HTML 与客户端 vdom 首渲染一致，
+ * 从而避免 Hydration mismatch。真正的数据填充后会覆盖这些默认值。
+ */
+const PUBLIC_CONFIG_FALLBACK: Record<string, unknown> = {
+  site_name: 'Rosetta Blog',
+  site_subtitle: '',
+  site_description: 'Rosetta开源博客系统',
+  site_keywords: 'Rosetta, FastAPI, Astro, Svelte, Blog',
+  site_url: '',
+  site_logo: null,
+  icp_number: null,
+  about_content: '',
+  footer_text: 'Powered by Rosetta',
+  footer_slogan: 'Share knowledge, inspire creativity',
+  theme_primary: '#0EA5A9',
+  theme_accent: '#0284C7'
+}
+
+const mergePublic = (p: Record<string, unknown> | null | undefined): Record<string, unknown> => ({
+  ...PUBLIC_CONFIG_FALLBACK,
+  ...(p && typeof p === 'object' && !Array.isArray(p) ? p : {})
+})
+
+type GroupKeys
+  = | 'basic' | 'seo' | 'appearance' | 'hero' | 'footer'
+    | 'notice' | 'sidebar' | 'reading' | 'features'
+    | 'friendlinks' | 'navigation' | 'media' | 'comments'
+    | 'cache' | 'cdn' | 'email' | 'security'
 
 interface UseSiteState {
   loaded: boolean
@@ -33,7 +59,7 @@ const useStateRef = () =>
     publicConfig: null
   }))
 
-function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
+function hexToHsl(hex: string): { h: number, s: number, l: number } | null {
   if (!hex) return null
   const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim())
   if (!m) return null
@@ -49,9 +75,18 @@ function hexToHsl(hex: string): { h: number; s: number; l: number } | null {
     const d = max - min
     s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
     switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break
-      case g: h = (b - r) / d + 2; break
-      case b: h = (r - g) / d + 4; break
+      case r: {
+        h = (g - b) / d + (g < b ? 6 : 0)
+        break
+      }
+      case g: {
+        h = (b - r) / d + 2
+        break
+      }
+      case b: {
+        h = (r - g) / d + 4
+        break
+      }
     }
     h *= 60
   }
@@ -71,17 +106,56 @@ function readGroup<T extends Record<string, unknown>>(
 export function useSite() {
   const state = useStateRef()
 
-  const basic = computed(() => readGroup(state.value, 'basic', {
-    site_name: (state.value.publicConfig?.site_name as string) || 'Rosetta',
-    subtitle: (state.value.publicConfig?.site_subtitle as string) || 'Share knowledge, inspire creativity',
-    description: (state.value.publicConfig?.site_description as string) ||
-                 'Rosetta — A modern open-source multilingual blog.',
-    keywords: (state.value.publicConfig?.site_keywords as string) || 'Rosetta,Blog,FastAPI,Nuxt',
-    site_url: (state.value.publicConfig?.site_url as string) || '',
-    logo: '',
-    icp_number: '',
-    about_content: ''
-  }))
+  /**
+   * 公开基础信息（site_name / subtitle / logo 等）：
+   * —— 公开页面 & SSR 阶段一律走 publicConfig（来自 /api/config，匿名也能拿到），
+   *    保证 SSR 输出 & 客户端首渲染值字节级一致。
+   *
+   * 为什么不能优先用 groups.basic？
+   *   - groups.basic 来自 GET /api/settings（需要 admin 权限）
+   *   - SSR 服务端是匿名请求，拿不到浏览器 cookie，groups 为空
+   *   - 客户端已登录时能取到 groups.basic，site_name 可能是 "Rosetta Blog"
+   *   - 结果 SSR HTML 里是 "Rosetta"，客户端 vdom 是 "Rosetta Blog" → mismatch
+   *
+   * 策略：
+   *   - SSR（import.meta.server === true）：只用 publicConfig + 默认值（两端一致）
+   *   - 公开页面客户端：只用 publicConfig + 默认值（和 SSR 一致，避免 Hydrate 前状态差）
+   *   - 管理后台（ssr:false）：groups.basic 优先，publicConfig 兜底（表单编辑需要完整值）
+   *
+   *  —— 注意：所有 publicConfig 派生值必须写在 computed 内部，否则 useSite() 首次调用
+   *    时 publicConfig 还未被 ensureLoaded() 异步填充，就永远固化成 fallback 了。
+   */
+  const basic = computed(() => {
+    const p = mergePublic(state.value.publicConfig)
+    const publicName = (p.site_name as string) || 'Rosetta Blog'
+    const publicSubtitle = (p.site_subtitle as string) || (p.footer_slogan as string) || 'Share knowledge, inspire creativity'
+    const publicDesc = (p.site_description as string) || 'Rosetta开源博客系统'
+    const publicKw = (p.site_keywords as string) || 'Rosetta, FastAPI, Astro, Svelte, Blog'
+    const publicUrl = (p.site_url as string) || ''
+    const publicLogo = (p.site_logo as string) || ''
+    const publicIcp = (p.icp_number as string) || ''
+    const publicAbout = (p.about_content as string) || ''
+    // 永远只用 publicConfig（/api/config）作为全站品牌信息的唯一权威来源。
+    // 理由：
+    //  1. groups.basic 来自 GET /api/settings（需要管理员权限），SSR 匿名请求拿不到，
+    //     若优先读 groups 会导致 SSR=默认值 vs 客户端已登录态=真实值，Hydration mismatch。
+    //  2. 后端 GET /api/config 已经做了 settings_groups.basic → publicConfig 字段
+    //     映射（subtitle → site_subtitle, description → site_description, keywords →
+    //     site_keywords, primary_color → theme_primary, accent_color → theme_accent），
+    //     管理员在后台保存的 basic/appearance 组保存后会立即通过公开接口透出。
+    //  3. admin 设置页不通过 useSite.basic 写回表单，它直接调用 fetchAllSettings /
+    //     saveSettingsGroup，因此完全不需要在 useSite 里读 groups.basic。
+    return {
+      site_name: publicName,
+      subtitle: publicSubtitle,
+      description: publicDesc,
+      keywords: publicKw,
+      site_url: publicUrl,
+      logo: publicLogo,
+      icp_number: publicIcp,
+      about_content: publicAbout
+    }
+  })
 
   const seo = computed(() => readGroup(state.value, 'seo', {
     default_title: basic.value.subtitle,
@@ -153,11 +227,11 @@ export function useSite() {
     if (value == null) return ''
     if (typeof value === 'string') return value
     if (typeof value !== 'object') return ''
-    return (value as Record<string, string>)[loc] ||
-           (value as Record<string, string>).zh ||
-           (value as Record<string, string>).en ||
-           Object.values(value as Record<string, string>)[0] ||
-           ''
+    return (value as Record<string, string>)[loc]
+      || (value as Record<string, string>).zh
+      || (value as Record<string, string>).en
+      || Object.values(value as Record<string, string>)[0]
+      || ''
   }
 
   const applyAppearanceTokens = () => {
@@ -186,10 +260,14 @@ export function useSite() {
     await Promise.all([
       (async () => {
         try {
-          const { getSiteConfig } = useSiteConfig()
-          const cfg = await getSiteConfig() as unknown as Record<string, unknown>
-          state.value.publicConfig = cfg || null
-        } catch { /* OOBE/offline */ }
+          // 注意：这里必须用 apiFetch（Promise<T>），不能用 useAPI / useFetch 返回的
+          // AsyncData 对象——后者包含 .refresh / execute 等函数，塞到 payload state
+          // 里会让 devalue 抛出 "Cannot stringify a function"，导致 / 路由 500。
+          const cfg = await apiFetch<Record<string, unknown>>('/config', { method: 'GET' })
+          state.value.publicConfig = cfg && typeof cfg === 'object' && !Array.isArray(cfg)
+            ? (cfg as Record<string, unknown>)
+            : null
+        } catch { /* OOBE / backend unreachable → use defaults */ }
       })(),
       (async () => {
         try {

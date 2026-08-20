@@ -6,21 +6,24 @@
  *        const vt = document.startViewTransition(() => { isDark = !isDark })
  *      浏览器会自动「截图锁定」旧帧（::view-transition-old）与新帧（::view-transition-new），
  *      我们只需要给 ::view-transition-* 两个伪元素用 clip-path: circle() 做圆形扩散/收缩。
- *      这就是用户要的「动画过程中不是纯黑/纯白，而是真实页面内容」的效果 —— 因为那两层是
- *      浏览器抓的真实像素，而不是我们自己画的纯色遮罩。
  *
  *   2. 方向：
  *        light -> dark：theme-grow   新主题在上（z-index 9999），circle(0 → 150%) 扩散
  *        dark -> light：theme-shrink 旧主题在上（z-index 9999），circle(150% → 0) 收缩
  *
  *   3. 常见坑全部按博客规避：
- *        - 纯 CSS @keyframes，不用 JS animate()（避免 ::view-transition-old 在某些 Chromium 不播放）
+ *        - 纯 CSS @keyframes，不用 JS animate()
  *        - animation 带 forwards（防止 shrink 收尾瞬间回弹旧主题闪白/闪黑）
- *        - finished.then(...) 清 class，不用 ready（ready 会刚启动就清 z-index，动画直接消失）
+ *        - finished.then(...) 清 class，不用 ready
  *        - remove class → void root.offsetWidth → add class，强制 reflow 避免 class 变更被合并
  *
- *   4. 不支持 startViewTransition 的浏览器（Firefox 等）：直接切 class，不做花哨动画（比
- *      之前那种 iframe/foreignObject 截图失败导致闪屏的代码要稳）。
+ *  4. Hydration 安全（重要）：
+ *        - isDark / themeMode 必须走 Nuxt 共享的 useState，两端初始值统一 light/false，
+ *          SSR 输出与客户端首渲染 DOM 字节级一致。
+ *        - 不允许在 composable 顶层直接读 localStorage / matchMedia 并修改首渲染状态，
+ *          否则 ThemeToggle 的 v-if 会导致 SVG 节点（Sun vs Moon）mismatch。
+ *        - 真实用户偏好的应用时机：由 plugins/theme.client.ts 在 Hydrate 完成后调用
+ *          initFromStorageAndApply() 同步更新 state + DOM classList（走 Vue patch，不触发 mismatch）。
  *
  * 存储：localStorage.theme 只存 'light' | 'dark'；旧值 'system' / 'rosetta-theme' 迁移。
  */
@@ -79,8 +82,14 @@ function createRippleState() {
     })
 
   const clearTimers = () => {
-    if (runningTimer !== null) { window.clearTimeout(runningTimer); runningTimer = null }
-    if (fadeTimer !== null) { window.clearTimeout(fadeTimer); fadeTimer = null }
+    if (runningTimer !== null) {
+      window.clearTimeout(runningTimer)
+      runningTimer = null
+    }
+    if (fadeTimer !== null) {
+      window.clearTimeout(fadeTimer)
+      fadeTimer = null
+    }
   }
 
   const play = async (opts: {
@@ -144,7 +153,7 @@ export function useThemeRipple() {
   return __themeRippleSingleton!
 }
 
-function probeAbsoluteBackground(): { light: string; dark: string } {
+function probeAbsoluteBackground(): { light: string, dark: string } {
   if (!import.meta.client || typeof document === 'undefined') return { light: '#ffffff', dark: '#0b1020' }
   const root = document.documentElement
   const wasDark = root.classList.contains('dark')
@@ -157,7 +166,9 @@ function probeAbsoluteBackground(): { light: string; dark: string } {
     const m = raw.match(/rgba?\(([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/)
     if (!m) return fallback
     const toHex = (v: number) => Math.min(255, Math.max(0, Math.round(v))).toString(16).padStart(2, '0')
-    const r = Number(m[1]); const g = Number(m[2]); const b = Number(m[3])
+    const r = Number(m[1])
+    const g = Number(m[2])
+    const b = Number(m[3])
     return '#' + toHex(r) + toHex(g) + toHex(b)
   }
   root.classList.remove('dark')
@@ -166,16 +177,20 @@ function probeAbsoluteBackground(): { light: string; dark: string } {
   root.classList.add('dark')
   const darkHsl = getComputedStyle(root).getPropertyValue('--background').trim() || '224 71% 4%'
   const dark = hslToHex(darkHsl, '#0b1020')
-  if (wasDark) root.classList.add('dark'); else root.classList.remove('dark')
+  if (wasDark) {
+    root.classList.add('dark')
+  } else {
+    root.classList.remove('dark')
+  }
   return { light, dark }
 }
 
 export function resolveRippleOrigin(
   origin?: RippleOrigin | MouseEvent | null,
   fallbackEl?: Element | ComponentPublicInstance | null
-): { cx: number; cy: number } {
+): { cx: number, cy: number } {
   if (!import.meta.client || typeof window === 'undefined') return { cx: 720, cy: 450 }
-  if (origin && typeof origin === 'object' && Number.isFinite((origin as any).clientX)) {
+  if (origin && typeof origin === 'object' && Number.isFinite((origin as { clientX: unknown }).clientX)) {
     return {
       cx: Math.max(0, Math.min(window.innerWidth, (origin as RippleOrigin).clientX)),
       cy: Math.max(0, Math.min(window.innerHeight, (origin as RippleOrigin).clientY))
@@ -184,7 +199,7 @@ export function resolveRippleOrigin(
   let el: Element | null = null
   if (fallbackEl) {
     if (fallbackEl instanceof Element) el = fallbackEl
-    else if ((fallbackEl as any).$el instanceof Element) el = (fallbackEl as any).$el as Element
+    else if ((fallbackEl as { $el: unknown }).$el instanceof Element) el = (fallbackEl as { $el: Element }).$el
   }
   if (el) {
     const r = el.getBoundingClientRect()
@@ -194,11 +209,12 @@ export function resolveRippleOrigin(
 }
 
 export function useTheme() {
-  const isDark = ref(false)
-  const themeMode = ref<ThemeMode>('light')
+  // SSR & 客户端首渲染 统一用 false / 'light'，保证字节级一致
+  const isDark = useState<boolean>('theme-dark', () => false)
+  const themeMode = useState<ThemeMode>('theme-mode', () => 'light')
   const ripple = useThemeRipple()
 
-  const getSystemDark = () => {
+  const _getSystemDark = () => {
     if (import.meta.client && typeof window !== 'undefined' && window.matchMedia) {
       return window.matchMedia('(prefers-color-scheme: dark)').matches
     }
@@ -213,50 +229,96 @@ export function useTheme() {
     meta.content = bg ? 'hsl(' + bg + ')' : dark ? '#0b1020' : '#ffffff'
   }
 
+  /**
+   * 同步应用主题到：① 共享 useState（驱动 Vue 组件重渲染/切换图标）
+   *                  ② <html>.classList（驱动 Tailwind dark: 选择器与 CSS 变量）
+   *                  ③ theme-color meta
+   * Hydrate 完成后调用是安全的：Vue 会走 patch，不会触发 mismatch。
+   */
   const applyTheme = (dark: boolean) => {
+    isDark.value = dark
+    themeMode.value = dark ? 'dark' : 'light'
     if (import.meta.client && typeof document !== 'undefined') {
       const root = document.documentElement
-      if (dark) root.classList.add('dark'); else root.classList.remove('dark')
+      if (dark) {
+        root.classList.add('dark')
+      } else {
+        root.classList.remove('dark')
+      }
       syncMetaThemeColor(dark)
     }
-    isDark.value = dark
   }
 
   const persist = () => {
     if (import.meta.client && typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, themeMode.value)
-      try { localStorage.removeItem('rosetta-theme') } catch { /* noop */ }
+      try {
+        localStorage.removeItem('rosetta-theme')
+      } catch {
+        /* noop */
+      }
     }
   }
 
   const setLight = () => {
-    themeMode.value = 'light'
     ripple.stop()
     applyTheme(false)
     persist()
   }
   const setDark = () => {
-    themeMode.value = 'dark'
     ripple.stop()
     applyTheme(true)
     persist()
   }
 
   /**
-   * 完全按参考博客实现主题切换：
+   * 在 Hydrate 完成后调用：读取用户偏好 → 同步写入共享 useState & DOM classList。
+   * 由 plugins/theme.client.ts 调用（在 window.load / setTimeout 0 之后）。
+   */
+  const initFromStorageAndApply = () => {
+    if (!import.meta.client) return
+    let prefersDark = false
+    try {
+      prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches
+    } catch {
+      prefersDark = prefersDark || false
+    }
+    let stored: string | null
+    try {
+      const legacy = localStorage.getItem('rosetta-theme')
+      stored = localStorage.getItem(STORAGE_KEY)
+      if (!stored && legacy) stored = legacy
+    } catch {
+      stored = null
+    }
+    if (stored === undefined) stored = null
+
+    const nextDark = stored === 'dark' || (stored !== 'light' && prefersDark)
+    applyTheme(nextDark)
+    persist()
+  }
+
+  /**
+   * 完全按参考博客实现主题切换动画：
    *   enableTransitions = startViewTransition 存在 且 prefers-reduced-motion 未开启
    *   willBeDark 提前取（切换后 isDark 会被改写，判断会反）
    *   --reveal-cx / --reveal-cy：点击坐标写 root style
-   *   remove grow/shrink → void offsetWidth → add 目标方向 class（强制 reflow，避免 class 合并）
-   *   const vt = document.startViewTransition(() => { isDark.value = !isDark.value })
-   *   vt.finished.then(cleanup) —— 注意是 finished 不是 ready！
+   *   remove grow/shrink → void offsetWidth → add 目标方向 class
+   *   vt.finished.then(cleanup)
    */
   const toggle = async (origin?: RippleOrigin | MouseEvent | null, fallbackEl?: Element | ComponentPublicInstance | null) => {
-    if (!import.meta.client) { if (isDark.value) setLight(); else setDark(); return }
+    if (!import.meta.client) {
+      if (isDark.value) {
+        setLight()
+      } else {
+        setDark()
+      }
+      return
+    }
     const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
-    const enableTransitions = typeof (document as any).startViewTransition === 'function' && !reducedMotion
+    const enableTransitions = typeof (document as Document & { startViewTransition?: unknown }).startViewTransition === 'function' && !reducedMotion
 
-    // 非 VT 环境：走最简单的「纯色 mask 遮罩」兜底（不做截图，避免 iframe/foreignObject 那些不稳定的实现）
+    // 非 VT 环境：走最简单的「纯色 mask 遮罩」兜底
     if (!enableTransitions) {
       const wasDark = isDark.value
       const nextDark = !wasDark
@@ -276,34 +338,27 @@ export function useTheme() {
         target: nextMode,
         flipTheme: () => {
           applyTheme(nextDark)
-          themeMode.value = nextMode
           persist()
         }
       })
       return
     }
 
-    // —— 下面这段 1:1 复制博客写法 —— //
+    // 1:1 复制博客写法
     const willBeDark = !isDark.value
     const root = document.documentElement as HTMLElement
     const { cx, cy } = resolveRippleOrigin(origin, fallbackEl)
 
-    // 写坐标变量；博客里用的是 --theme-x / --theme-y，我们这里用 --reveal-cx/cy，
-    // 对应 CSS 段里的 var(--reveal-cx, 50%)。
     root.style.setProperty('--reveal-cx', cx + 'px')
     root.style.setProperty('--reveal-cy', cy + 'px')
 
     root.classList.remove('theme-grow', 'theme-shrink')
-    // 强制 reflow：不做的话 add 紧跟着 remove，浏览器可能合并，方向 class 不生效
-    void root.offsetWidth
+    void root.offsetWidth // 强制 reflow
     root.classList.add(willBeDark ? 'theme-grow' : 'theme-shrink')
 
-    // 同步更新 Pinia / DOM / localStorage（博客里是 isDark.value = !isDark.value 包在 callback 里）
-    const transition = (document as any).startViewTransition(() => {
+    const transition = (document as Document & { startViewTransition?: (fn: () => void) => void }).startViewTransition!(() => {
       applyTheme(willBeDark)
-      themeMode.value = willBeDark ? 'dark' : 'light'
       persist()
-      // Vue 组件里状态变化后，下一帧才能渲染出更新后的 DOM 作为新帧截图
       return nextTick()
     })
 
@@ -314,23 +369,5 @@ export function useTheme() {
     }).catch(() => { /* noop */ })
   }
 
-  const init = () => {
-    if (!import.meta.client) return
-    try {
-      const legacy = localStorage.getItem('rosetta-theme')
-      let stored = localStorage.getItem(STORAGE_KEY) as ThemeMode | string | null
-      if (!stored && legacy) stored = legacy
-      if (stored === 'dark') themeMode.value = 'dark'
-      else if (stored === 'light') themeMode.value = 'light'
-      else themeMode.value = getSystemDark() ? 'dark' : 'light'
-    } catch {
-      themeMode.value = getSystemDark() ? 'dark' : 'light'
-    }
-    applyTheme(themeMode.value === 'dark')
-    persist()
-  }
-
-  init()
-
-  return { isDark, toggle, setLight, setDark }
+  return { isDark, themeMode, toggle, setLight, setDark, initFromStorageAndApply }
 }

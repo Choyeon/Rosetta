@@ -526,11 +526,15 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   return { label, type: 'string', long, sensitive, help: help[key] }
 }
 
-/** 在 appearance 组中被 CSS token 统一管理、因此不允许用户在后台修改的字段 */
+/**
+ * 在 appearance 组中被 CSS token 统一管理、因此不允许用户在后台修改的字段。
+ * 说明：
+ *   - primary_color / accent_color 不再屏蔽 —— 前端已实现
+ *     `theme_primary` / `theme_accent` 动态注入 CSS 变量，
+ *     后台修改后立即影响全站主色/强调色，是"站点设置"核心能力。
+ */
 const APPEARANCE_BLOCK_KEYS = new Set([
-  'primary_color',   // 天青主色已在 main.css / palette 中统一，改了也无效
-  'accent_color',    // 强调色同上
-  'font_family'      // 字体族由 Tailwind preset 管理
+  'font_family'  // 字体族由 Tailwind preset（@theme/typography）管理
 ])
 
 /** default_theme 允许的值（不再支持 system） */
@@ -559,7 +563,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     cache: { enable: true, backend: 'memory', default_ttl: 3600, site_config_ttl: 3600, post_list_ttl: 600, flush_on_post_update: true },
     security: { require_email_verification: false, allow_password_reset: true, session_timeout_sec: 3600, max_login_attempts: 5, lockout_duration_sec: 1800, enable_rate_limit: true, allowed_hosts: '*', cors_origins: '*' },
     features: { enable_comments: true, enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true },
-    appearance: { code_theme: '', code_theme_dark: '', default_theme: 'light', page_width_px: 1200, show_copyright: true, show_powered_by: true },
+    appearance: { code_theme: '', code_theme_dark: '', default_theme: 'light', page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
     navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true, custom_links: [] },
     friendlinks: { enable: true, links: [], auto_approve: false },
     hero: { enable: true, title: {}, subtitle: {}, caption: '', cta_text: {}, cta_url: '', bg_image: '', bg_gradient: '' },

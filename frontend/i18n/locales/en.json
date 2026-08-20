@@ -737,6 +737,12 @@
     "browsePosts": "Browse posts",
     "noCategories": "No categories yet"
   },
+  "tags": {
+    "title": "All Tags",
+    "desc": "Explore tags to find related content. Larger tiles mean more posts.",
+    "posts": "posts",
+    "noTags": "No tags yet"
+  },
   "guestbook": {
     "title": "Guestbook",
     "desc": "Leave a note, drop a footprint. Every voice is carefully read.",

@@ -974,7 +974,10 @@
         <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/90">
           Bing · Daily
         </div>
-        <div class="text-xs text-white/90 truncate drop-shadow-[0_1px_0_rgba(0,0,0,0.5)]" :title="bwp?.copyright">
+        <div
+          class="text-xs text-white/90 truncate drop-shadow-[0_1px_0_rgba(0,0,0,0.5)]"
+          :title="bwp?.copyright"
+        >
           {{ bwp?.copyright }}
         </div>
       </div>
@@ -1108,7 +1111,7 @@ const wallpaperLoaded = ref(false)
 const {
   data: bwp,
   pending: bwpFetching,
-  refresh: refreshBwp
+  refresh: _refreshBwp
 } = await useFetch<BingWallpaperPayload>(
   () => `/api/bing-wallpaper?idx=${bwpIdx.value}&mkt=zh-CN`,
   {
@@ -1122,8 +1125,12 @@ const {
       if (uhd && typeof Image !== 'undefined') {
         wallpaperLoaded.value = false
         const pre = new Image()
-        pre.onload = () => { wallpaperLoaded.value = true }
-        pre.onerror = () => { wallpaperLoaded.value = true }
+        pre.onload = () => {
+          wallpaperLoaded.value = true
+        }
+        pre.onerror = () => {
+          wallpaperLoaded.value = true
+        }
         pre.src = uhd
       } else {
         wallpaperLoaded.value = true
@@ -1507,7 +1514,9 @@ const onInstallProgress = (evt: InstallProgressEvt) => {
     if (idx > installStepIndex.value) installStepIndex.value = idx
     installPercent.value = typeof percent === 'number' ? percent : Math.round(((installStepIndex.value + 1) / installStepList.length) * 100)
   } else if (evt.type === 'done') {
-    installStepList.forEach(s => { s.done = true })
+    installStepList.forEach((s) => {
+      s.done = true
+    })
     installStepIndex.value = installStepList.length
     installPercent.value = 100
     installed.value = true
@@ -1523,14 +1532,18 @@ const finishSetup = async () => {
   installStepIndex.value = 0
   installPercent.value = 10
   installStepMessage.value = t('oobe.isStarting', '准备安装任务…')
-  installStepList.forEach(s => { s.done = false })
+  installStepList.forEach((s) => {
+    s.done = false
+  })
 
   try {
     // finishOOBE(onProgress)：异步回调 SSE 进度，最终 Promise<Record<string, unknown> | null>
     await finishOOBE(onInstallProgress)
     // 防御性兜底：即便上游 done 事件丢失，也按完成处理
     if (!installed.value) {
-      installStepList.forEach(s => { s.done = true })
+      installStepList.forEach((s) => {
+        s.done = true
+      })
       installStepIndex.value = installStepList.length
       installPercent.value = 100
       installed.value = true

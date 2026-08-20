@@ -156,11 +156,17 @@
                     type="button"
                     class="absolute right-2.5 top-1/2 -translate-y-1/2 size-7 inline-flex items-center justify-center rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                     tabindex="-1"
-                    @click="showPassword = !showPassword"
                     :title="showPassword ? t('auth.hidePassword', '隐藏密码') : t('auth.showPassword', '显示密码')"
+                    @click="showPassword = !showPassword"
                   >
-                    <Eye v-if="!showPassword" class="size-4" />
-                    <EyeOff v-else class="size-4" />
+                    <Eye
+                      v-if="!showPassword"
+                      class="size-4"
+                    />
+                    <EyeOff
+                      v-else
+                      class="size-4"
+                    />
                   </button>
                 </div>
               </div>
@@ -298,8 +304,8 @@
           type="button"
           class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           :disabled="!canGoBackward || wallpaperLoading"
-          @click="selectDay(currentIdx + 1)"
           title="上一天"
+          @click="selectDay(currentIdx + 1)"
         >
           <ChevronLeft class="size-[18px]" />
         </button>
@@ -310,18 +316,21 @@
           type="button"
           class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           :disabled="currentIdx === 0 || wallpaperLoading"
-          @click="selectDay(currentIdx - 1)"
           title="下一天（越新）"
+          @click="selectDay(currentIdx - 1)"
         >
           <ChevronRight class="size-[18px]" />
         </button>
-        <span class="mx-1 h-4 w-px bg-white/15" aria-hidden="true" />
+        <span
+          class="mx-1 h-4 w-px bg-white/15"
+          aria-hidden="true"
+        />
         <button
           type="button"
           class="inline-flex items-center gap-1.5 rounded-full text-white/85 hover:bg-white/15 px-2.5 py-1 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="wallpaperLoading"
-          @click="handleReloadWallpaper"
           title="刷新当前壁纸"
+          @click="handleReloadWallpaper"
         >
           <RefreshCw
             class="size-3.5"

@@ -7,7 +7,6 @@ import {
   User as UserIcon,
   Settings as SettingsIcon,
   ExternalLink,
-  MessageSquare,
   CheckCheck,
   Inbox,
   ChevronRight,
@@ -47,7 +46,7 @@ defineProps<{
 }>()
 
 const authStore = useAuthStore()
-const router = useRouter()
+const _router = useRouter()
 const route = useRoute()
 const toast = useToast()
 
@@ -153,7 +152,7 @@ async function loadList() {
     const r = await fetchNotifications({ page: 1, page_size: 10 })
     items.value = r?.items ?? []
     if (typeof r?.unread_count === 'number') unreadCount.value = r.unread_count
-  } catch (e) {
+  } catch {
     items.value = []
     unreadCount.value = 0
   } finally {
@@ -170,7 +169,7 @@ async function handleOpenItem(n: AdminNotification) {
   if (!n.is_read && unreadCount.value > 0) unreadCount.value -= 1
   const localId = n.id
   // markNotificationRead 已改用 silentApiFetch，不再抛；此处只做乐观回滚 UI
-  const wasRead = n.is_read
+  const _wasRead = n.is_read
   markNotificationRead(localId).then(() => { /* noop */ })
   setTimeout(() => {
     // 若 2s 后后端仍未反馈，尝试重拉 badge 校正（避免永久偏差）
@@ -187,7 +186,7 @@ async function handleOpenItem(n: AdminNotification) {
     return
   }
   // 无 link 时，仅在本地把这一条翻为已读
-  const hit = items.value.find((i) => i.id === localId)
+  const hit = items.value.find(i => i.id === localId)
   if (hit) hit.is_read = true
 }
 
@@ -197,7 +196,7 @@ async function handleMarkAllRead() {
   try {
     await markAllNotificationsRead()
     unreadCount.value = 0
-    items.value = items.value.map((i) => ({ ...i, is_read: true }))
+    items.value = items.value.map(i => ({ ...i, is_read: true }))
     toast.success('已全部标记为已读')
   } finally {
     markingClearing.value = false
@@ -240,7 +239,10 @@ watch(
   () => authStore.isAuthenticated,
   (loggedIn) => {
     if (loggedIn) loadBadge(true)
-    else { unreadCount.value = 0; items.value = [] }
+    else {
+      unreadCount.value = 0
+      items.value = []
+    }
   },
   { immediate: false }
 )
@@ -304,8 +306,14 @@ watch(
             :disabled="loadingBadge"
             aria-label="通知中心"
           >
-            <Bell v-if="!loadingBadge" class="size-[18px]" />
-            <Loader2 v-else class="size-[18px] animate-spin opacity-60" />
+            <Bell
+              v-if="!loadingBadge"
+              class="size-[18px]"
+            />
+            <Loader2
+              v-else
+              class="size-[18px] animate-spin opacity-60"
+            />
             <span
               v-if="unreadCount > 0"
               class="absolute top-1.5 right-1.5 min-w-[16px] h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center bg-error text-error-foreground shadow"
@@ -346,8 +354,14 @@ watch(
               :disabled="markingClearing || unreadCount === 0"
               @click="handleMarkAllRead"
             >
-              <CheckCheck v-if="!markingClearing" class="size-3.5 mr-1" />
-              <Loader2 v-else class="size-3.5 mr-1 animate-spin" />
+              <CheckCheck
+                v-if="!markingClearing"
+                class="size-3.5 mr-1"
+              />
+              <Loader2
+                v-else
+                class="size-3.5 mr-1 animate-spin"
+              />
               全部已读
             </Button>
             <Button
@@ -406,59 +420,62 @@ watch(
                   :class="{ 'bg-accent/20': !n.is_read }"
                   @click="handleOpenItem(n)"
                 >
-                    <!-- level 小圆点 -->
-                    <span
-                      class="mt-1 shrink-0 size-2 rounded-full inline-flex items-center justify-center"
-                      :class="{
-                        'bg-sky-500': n.level === 'info',
-                        'bg-emerald-500': n.level === 'success',
-                        'bg-amber-500': n.level === 'warning',
-                        'bg-rose-500': n.level === 'error' || !n.level
-                      }"
-                    />
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-start justify-between gap-2">
-                        <div class="min-w-0 flex items-center gap-1.5">
-                          <span
-                            class="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
-                            :class="levelToClass[n.level] || levelToClass.info"
-                          >
-                            {{ levelLabel[n.level] || levelLabel.info }}
-                          </span>
-                          <span class="text-[13px] font-semibold leading-snug truncate text-foreground">
-                            {{ n.title }}
-                          </span>
-                        </div>
-                        <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                          {{ fmtTime(n.created_at) }}
-                        </span>
-                      </div>
-                      <p class="mt-0.5 text-[12px] leading-snug text-muted-foreground line-clamp-2">
-                        {{ n.message || n.verb || '' }}
-                      </p>
-                      <div class="mt-1 flex items-center justify-between gap-2">
-                        <div v-if="n.actor" class="flex items-center gap-1.5 min-w-0">
-                          <Avatar class="size-4 shrink-0">
-                            <AvatarImage :src="n.actor.avatar || ''" />
-                            <AvatarFallback class="text-[9px]">
-                              {{ (n.actor.nickname || n.actor.username || '?').slice(0, 1).toUpperCase() }}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span class="text-[11px] text-muted-foreground truncate">
-                            {{ n.actor.nickname || n.actor.username }}
-                          </span>
-                        </div>
+                  <!-- level 小圆点 -->
+                  <span
+                    class="mt-1 shrink-0 size-2 rounded-full inline-flex items-center justify-center"
+                    :class="{
+                      'bg-sky-500': n.level === 'info',
+                      'bg-emerald-500': n.level === 'success',
+                      'bg-amber-500': n.level === 'warning',
+                      'bg-rose-500': n.level === 'error' || !n.level
+                    }"
+                  />
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-start justify-between gap-2">
+                      <div class="min-w-0 flex items-center gap-1.5">
                         <span
-                          v-if="n.link"
-                          class="ml-auto inline-flex items-center text-[11px] text-primary shrink-0"
+                          class="shrink-0 inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-semibold"
+                          :class="levelToClass[n.level] || levelToClass.info"
                         >
-                          查看详情
-                          <ChevronRight class="size-3 ml-0.5" />
+                          {{ levelLabel[n.level] || levelLabel.info }}
+                        </span>
+                        <span class="text-[13px] font-semibold leading-snug truncate text-foreground">
+                          {{ n.title }}
                         </span>
                       </div>
+                      <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                        {{ fmtTime(n.created_at) }}
+                      </span>
                     </div>
-                  </DropdownMenuItem>
-                </template>
+                    <p class="mt-0.5 text-[12px] leading-snug text-muted-foreground line-clamp-2">
+                      {{ n.message || n.verb || '' }}
+                    </p>
+                    <div class="mt-1 flex items-center justify-between gap-2">
+                      <div
+                        v-if="n.actor"
+                        class="flex items-center gap-1.5 min-w-0"
+                      >
+                        <Avatar class="size-4 shrink-0">
+                          <AvatarImage :src="n.actor.avatar || ''" />
+                          <AvatarFallback class="text-[9px]">
+                            {{ (n.actor.nickname || n.actor.username || '?').slice(0, 1).toUpperCase() }}
+                          </AvatarFallback>
+                        </Avatar>
+                        <span class="text-[11px] text-muted-foreground truncate">
+                          {{ n.actor.nickname || n.actor.username }}
+                        </span>
+                      </div>
+                      <span
+                        v-if="n.link"
+                        class="ml-auto inline-flex items-center text-[11px] text-primary shrink-0"
+                      >
+                        查看详情
+                        <ChevronRight class="size-3 ml-0.5" />
+                      </span>
+                    </div>
+                  </div>
+                </DropdownMenuItem>
+              </template>
             </ScrollArea>
           </div>
         </DropdownMenuContent>
@@ -490,7 +507,11 @@ watch(
                   stroke-linejoin="round"
                   aria-hidden="true"
                 >
-                  <circle cx="12" cy="8" r="4" />
+                  <circle
+                    cx="12"
+                    cy="8"
+                    r="4"
+                  />
                   <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8" />
                 </svg>
               </AvatarFallback>
@@ -529,7 +550,11 @@ watch(
                     stroke-linejoin="round"
                     aria-hidden="true"
                   >
-                    <circle cx="12" cy="8" r="4" />
+                    <circle
+                      cx="12"
+                      cy="8"
+                      r="4"
+                    />
                     <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8" />
                   </svg>
                 </AvatarFallback>

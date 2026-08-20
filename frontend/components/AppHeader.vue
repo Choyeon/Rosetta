@@ -31,9 +31,9 @@ const { t } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
 
-// ===== 站点品牌：后台 settings.basic.site_name / logo 驱动 =====
+// ===== 站点品牌：layouts/default.vue 里已经 await useSite().ensureLoaded() =====
+// 所以这里 state 已填充完毕；SSR 和客户端首渲染的 brandName/brandLogo 字节级一致。
 const site = useSite()
-site.ensureLoaded().catch(() => {})
 const brandName = computed(() => site.basic.value.site_name || 'Rosetta')
 const brandLogo = computed(() => site.basic.value.logo || '/logo/rosetta-primary-icon.png')
 
@@ -222,11 +222,11 @@ const handleAdmin = () => navigateTo('/admin')
                 class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
               >
                 <img
-                  src="/logo/rosetta-primary-icon.png"
-                  alt="Rosetta"
+                  :src="brandLogo"
+                  :alt="brandName"
                   class="h-7 w-auto object-contain"
                 >
-                <span>Rosetta</span>
+                <span>{{ brandName }}</span>
               </NuxtLink>
             </SheetHeader>
             <Separator class="mb-4" />

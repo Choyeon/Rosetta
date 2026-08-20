@@ -2,7 +2,17 @@
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
       <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 dark:from-violet-900/30 dark:to-indigo-900/30 mb-5">
-        <Zap class="size-7 text-primary" />
+        <svg
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="size-7 text-primary"
+        >
+          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
+        </svg>
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
         {{ t('activity.title') }}
@@ -25,10 +35,54 @@
             class="absolute -left-8 top-1.5 size-6 rounded-full border-2 border-background flex items-center justify-center shrink-0"
             :class="iconBgClass(item.type)"
           >
-            <component
-              :is="iconFor(item.type)"
-              :class="['size-3', iconClass(item.type)]"
-            />
+            <svg
+              v-if="item.type === 'post'"
+              :viewBox="ICONS.post.viewBox"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :class="['size-3 shrink-0', iconClass(item.type)]"
+            >
+              <path :d="ICONS.post.d" />
+            </svg>
+            <svg
+              v-else-if="item.type === 'card'"
+              :viewBox="ICONS.card.viewBox"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :class="['size-3 shrink-0', iconClass(item.type)]"
+            >
+              <path :d="ICONS.card.d" />
+            </svg>
+            <svg
+              v-else-if="item.type === 'comment'"
+              :viewBox="ICONS.comment.viewBox"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="2"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :class="['size-3 shrink-0', iconClass(item.type)]"
+            >
+              <path :d="ICONS.comment.d" />
+            </svg>
+            <svg
+              v-else-if="item.type === 'like'"
+              :viewBox="ICONS.like.viewBox"
+              fill="currentColor"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              :class="['size-3 shrink-0', iconClass(item.type)]"
+            >
+              <path :d="ICONS.like.d" />
+            </svg>
           </div>
 
           <Card class="transition-all hover:shadow-soft duration-300">
@@ -39,10 +93,54 @@
                     :variant="badgeVariant(item.type)"
                     class="text-xs"
                   >
-                    <component
-                      :is="iconFor(item.type)"
-                      class="size-3 mr-1.5"
-                    />
+                    <svg
+                      v-if="item.type === 'post'"
+                      :viewBox="ICONS.post.viewBox"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="size-3 mr-1.5 inline -mt-0.5"
+                    >
+                      <path :d="ICONS.post.d" />
+                    </svg>
+                    <svg
+                      v-else-if="item.type === 'card'"
+                      :viewBox="ICONS.card.viewBox"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="size-3 mr-1.5 inline -mt-0.5"
+                    >
+                      <path :d="ICONS.card.d" />
+                    </svg>
+                    <svg
+                      v-else-if="item.type === 'comment'"
+                      :viewBox="ICONS.comment.viewBox"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="size-3 mr-1.5 inline -mt-0.5"
+                    >
+                      <path :d="ICONS.comment.d" />
+                    </svg>
+                    <svg
+                      v-else-if="item.type === 'like'"
+                      :viewBox="ICONS.like.viewBox"
+                      fill="currentColor"
+                      stroke="currentColor"
+                      stroke-width="1.5"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      class="size-3 mr-1.5 inline -mt-0.5"
+                    >
+                      <path :d="ICONS.like.d" />
+                    </svg>
                     {{ t(`activity.type_${item.type}`) }}
                   </Badge>
                   <span
@@ -90,7 +188,17 @@
 
               <template v-else-if="item.type === 'like'">
                 <div class="flex items-center gap-2">
-                  <Heart class="size-4 fill-error text-error shrink-0" />
+                  <svg
+                    :viewBox="ICONS.like.viewBox"
+                    fill="currentColor"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    class="size-4 shrink-0 fill-error text-error"
+                  >
+                    <path :d="ICONS.like.d" />
+                  </svg>
                   <span class="text-sm text-foreground/90 leading-relaxed">
                     <span class="font-medium">{{ item.author }}</span>
                     {{ t('activity.liked') }}
@@ -113,7 +221,17 @@
       class="text-center py-20"
     >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
-        <Zap class="size-8 text-muted-foreground" />
+        <svg
+          :viewBox="ICONS.zap.viewBox"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="2"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          class="size-8 text-muted-foreground"
+        >
+          <path :d="ICONS.zap.d" />
+        </svg>
       </div>
       <h3 class="font-display text-xl font-semibold">
         {{ t('activity.noActivity') }}
@@ -126,7 +244,34 @@
 import { Card, CardContent } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
 import { useI18n } from 'vue-i18n'
-import { FileText, Image, MessageCircle, Heart, Zap } from '@lucide/vue'
+
+/**
+ * 注意：这里为避免 Hydration 阶段 @lucide/vue 组件在 SSR 端串台
+ * （同名工厂 createLucideIcon 复用导致 SVG d 属性被渲染成其他图标），
+ * 直接使用内联 SVG 常量，保证服务端/客户端输出逐字节一致。
+ */
+const ICONS = {
+  post: {
+    viewBox: '0 0 24 24',
+    d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2H6Zm0-2h12V8h-3.6a.4.4 0 0 1-.4-.4V4H6v16Zm2-11h8v2H8v-2Zm0 4h8v2H8v-2Zm0 4h5v2H8v-2Z'
+  },
+  card: {
+    viewBox: '0 0 24 24',
+    d: 'M2 6a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6Zm2 0v2h16V6H4Zm0 4v8h16v-8H4Zm2 2h6v2H6v-2Z'
+  },
+  comment: {
+    viewBox: '0 0 24 24',
+    d: 'M21 12a8.001 8.001 0 0 0-8-8A8.001 8.001 0 0 0 5 8.122 6.95 6.95 0 0 0 3 12a6.95 6.95 0 0 0 .309 2A8.001 8.001 0 0 0 3 20l2-1.185A7.96 7.96 0 0 0 13 20a8.001 8.001 0 0 0 8-8ZM8 10h8v2H8v-2Zm0 3h5v2H8v-2Z'
+  },
+  like: {
+    viewBox: '0 0 24 24',
+    d: 'M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6.5 5.5 5.5 0 0 1 21.5 12c-2.5 4.5-9.5 9-9.5 9Z'
+  },
+  zap: {
+    viewBox: '0 0 24 24',
+    d: 'M13 2 3 14h7l-1 8 10-12h-7l1-8Z'
+  }
+}
 
 definePageMeta({ layout: 'default' })
 
@@ -143,11 +288,6 @@ interface ActivityItem {
   author?: string
   replyTo?: string
   createdAt: string
-}
-
-const iconFor = (type: ActivityType) => {
-  const map = { post: FileText, card: Image, comment: MessageCircle, like: Heart }
-  return map[type]
 }
 
 const iconBgClass = (type: ActivityType) => {
@@ -180,16 +320,29 @@ const badgeVariant = (type: ActivityType) => {
   return map[type]
 }
 
+/**
+ * 使用静态月名（避免 SSR 端与客户端 `toLocaleString` 因语言环境不一致
+ * 导致 Hydration 文本不匹配）。
+ */
+const MONTH_NAMES: Record<string, string[]> = {
+  zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+}
 const formatDate = (dateStr: string) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return ''
-  return date.toLocaleString(undefined, {
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })
+  const { locale } = useI18n()
+  const loc = String(locale.value || 'zh')
+  const months = (MONTH_NAMES[loc] || MONTH_NAMES.en || []) as string[]
+  const pad = (n: number) => n < 10 ? `0${n}` : String(n)
+  const month = months[date.getMonth()] ?? ''
+  const day = date.getDate()
+  const hh = pad(date.getHours())
+  const mm = pad(date.getMinutes())
+  return `${month} ${day} ${hh}:${mm}`
 }
 
 const authors = ['林清远', '沈砚之', '苏半夏', '墨白', 'Alex Chen', '陈星遥', '陆展', '叶知秋', '江晚', '阮青黛']
@@ -245,14 +398,25 @@ const postContents = [
   '服务端渲染优化、客户端 hydration、bundle 分割、预取策略，深度剖析每一个性能关键点...'
 ]
 
+/**
+ * 基于整数种子的确定性伪随机（返回 [0,1)）。
+ * 确保 SSR 与客户端首渲染 activityList 完全一致 → 避免 Hydration mismatch。
+ */
+const seededRand = (seed: number): number => {
+  let t = seed + 0x6d2b79f5
+  t = Math.imul(t ^ (t >>> 15), t | 1)
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61)
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
 const generateActivities = (): ActivityItem[] => {
   const result: ActivityItem[] = []
-  const now = Date.now()
+  const now = new Date('2026-08-17T12:00:00.000Z').getTime()
   const types: ActivityType[] = ['post', 'card', 'comment', 'like']
   const weights = [0.2, 0.15, 0.35, 0.3]
 
   for (let i = 0; i < 22; i++) {
-    const rand = Math.random()
+    const rand = seededRand(i * 7919 + 13)
     let cumulative = 0
     let type: ActivityType = 'like'
     for (let j = 0; j < types.length; j++) {
@@ -263,7 +427,8 @@ const generateActivities = (): ActivityItem[] => {
       }
     }
 
-    const offset = Math.floor(Math.random() * 86400000 * 14) + 3600000 * i * 2
+    const r2 = seededRand(i * 104729 + 37)
+    const offset = Math.floor(r2 * 86400000 * 14) + 3600000 * i * 2
 
     const base: ActivityItem = {
       id: i + 1,
@@ -282,7 +447,8 @@ const generateActivities = (): ActivityItem[] => {
     } else if (type === 'comment') {
       base.title = `评论于《${postTitles[i % postTitles.length]}》`
       base.author = authors[i % authors.length]
-      base.replyTo = Math.random() > 0.5 ? replyTos[i % replyTos.length] : undefined
+      const r3 = seededRand(i * 31 + 97)
+      base.replyTo = r3 > 0.5 ? replyTos[i % replyTos.length] : undefined
       base.content = commentContents[i % commentContents.length]
     } else {
       base.title = likeTitles[i % likeTitles.length]

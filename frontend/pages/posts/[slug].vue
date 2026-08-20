@@ -43,12 +43,11 @@
             </BreadcrumbList>
           </Breadcrumb>
 
-          <Skeleton
-            v-if="loadingPost && !post"
-            class="mt-4 h-12 w-3/4 rounded"
-          />
+          <!--
+            h1 始终渲染（无条件输出）：保证 SSR → Hydrate 两端 DOM 节点结构完全一致。
+            路由复用加载期间，标题会短暂显示 fallback 文本，内容替换无闪烁。
+          -->
           <h1
-            v-else
             class="font-display text-3xl md:text-4xl lg:text-5xl font-bold tracking-tight mt-4 leading-tight"
           >
             {{ displayPostTitle }}
@@ -114,53 +113,52 @@
           </div>
 
           <article
-            v-if="post"
+            v-show="!!post"
             ref="articleEl"
             class="prose-shadcn prose-shadcn-dark mt-12 mx-auto max-w-none"
-            v-html="renderedContent"
+            v-html="post ? renderedContent : ''"
           />
-          <Skeleton
-            v-else-if="loadingPost"
-            class="mt-12 h-[400px] w-full rounded-2xl"
-          />
-          <Alert
-            v-else-if="loadError"
-            variant="destructive"
-            class="mt-12"
-          >
-            <AlertTitle class="flex items-center gap-2">
-              <ShieldCheck class="size-4" />
-              {{ t('post.loadFailed', '文章加载失败') }}
-            </AlertTitle>
-            <AlertDescription>
-              {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
-              <NuxtLink
-                to="/posts"
-                class="text-primary underline underline-offset-2 ml-1"
-              >
-                {{ t('post.backToList', '返回文章列表') }}
-              </NuxtLink>
-            </AlertDescription>
-          </Alert>
+          <ClientOnly>
+            <template #fallback>
+              <span class="hidden" />
+            </template>
+            <Skeleton
+              v-if="loadingPost && !post"
+              class="mt-12 h-[400px] w-full rounded-2xl"
+            />
+            <Alert
+              v-else-if="loadError && !post"
+              variant="destructive"
+              class="mt-12"
+            >
+              <AlertTitle class="flex items-center gap-2">
+                <ShieldCheck class="size-4" />
+                {{ t('post.loadFailed', '文章加载失败') }}
+              </AlertTitle>
+              <AlertDescription>
+                {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
+                <NuxtLink
+                  to="/posts"
+                  class="text-primary underline underline-offset-2 ml-1"
+                >
+                  {{ t('post.backToList', '返回文章列表') }}
+                </NuxtLink>
+              </AlertDescription>
+            </Alert>
+          </ClientOnly>
 
           <div
             v-if="normalizedTags.length"
             class="mt-12 flex flex-wrap gap-2"
           >
-            <NuxtLink
+            <TagBadge
               v-for="tag in normalizedTags"
               :key="tag.id"
+              :color="tag.color"
+              :label="tag.name"
               :to="`/posts?tag=${tag.slug}`"
-            >
-              <Badge
-                variant="secondary"
-                class="tag-colored cursor-pointer border-transparent hover:brightness-[0.98] transition-all"
-                :style="{ '--tag-color': tag.color || '' }"
-              >
-                <Tag class="size-3 mr-1 opacity-70" />
-                {{ tag.name }}
-              </Badge>
-            </NuxtLink>
+              show-icon
+            />
           </div>
 
           <Separator class-name="my-12" />
@@ -307,12 +305,12 @@ import {
 } from '~~/components/ui/breadcrumb'
 import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { Card, CardContent } from '~~/components/ui/card'
-import { Badge } from '~~/components/ui/badge'
 import { Separator } from '~~/components/ui/separator'
 import { Textarea } from '~~/components/ui/textarea'
 import { Button } from '~~/components/ui/button'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
+import TagBadge from '~~/components/TagBadge.vue'
 import CommentItem from '~~/components/CommentItem.vue'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
@@ -326,7 +324,6 @@ import {
   Clock3,
   Eye,
   MessageSquare,
-  Tag,
   ShieldCheck,
   Send,
   Globe2,
@@ -354,6 +351,7 @@ interface PostDetailTag {
   id: number
   slug: string
   name: unknown
+  color?: string | null
 }
 
 interface PostDetail {
@@ -415,20 +413,42 @@ const site = useSite()
 const postSlug = computed(() =>
   typeof route.params.slug === 'string' ? route.params.slug : ''
 )
-const postFetchLocale = computed(() => locale.value || 'zh')
-const postFetchKey = computed(
-  () => `post:detail:${postSlug.value}:${postFetchLocale.value}`
-)
+const postFetchLocaleStr = locale.value || 'zh'
 
-const { data: postData, pending: loadingPost, error: fetchError } = useAPI<PostDetail>(
-  () => `/blog/posts/${postSlug.value}`,
-  {
-    key: postFetchKey.value,
-    query: {
-      lang: postFetchLocale
+// —— SSR / Hydrate 一致性的最终稳定解法：
+//    不用 useAPI/useFetch 封装，直接用 useAsyncData。
+//    key 是"只与路由参数有关的纯 ASCII + 中文"的确定性字符串，
+//    Nuxt 两端都能精确命中同一条 payload 缓存，不依赖 baseURL / headers /
+//    函数 toString 等会变化的输入。handler 内直接 $fetch 走正确的 baseURL。
+const cacheKey = `post:detail:${postSlug.value || ''}:${postFetchLocaleStr}`
+const config = useRuntimeConfig()
+const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
+  = await useAsyncData<PostDetail>(
+    cacheKey,
+    () => {
+      const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+      const headers: Record<string, string> = {
+        'Accept-Language': postFetchLocaleStr
+      }
+      if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
+      // 解包 useAPI 返回的 { success, data, message } 统一结构
+      return $fetch<{ success: boolean, data: PostDetail, message?: string }>(
+        `/blog/posts/${postSlug.value}`,
+        {
+          baseURL,
+          headers,
+          query: { lang: postFetchLocaleStr }
+        }
+      ).then(unwrap => (unwrap && typeof unwrap === 'object' && 'data' in unwrap) ? (unwrap.data as PostDetail) : unwrap as unknown as PostDetail)
+    },
+    {
+      // 路由复用切换时，watch slug 自动重新拉
+      watch: [postSlug]
     }
-  }
-)
+  )
+// 同步暴露给其他页面/组件（如 related articles）使用
+const _postFetchKey = computed(() => `post:detail:${postSlug.value}:${postFetchLocaleStr}`)
+void refreshPost
 const post = computed(() => postData.value ?? null)
 const loadError = computed(() => !!fetchError.value)
 
@@ -443,10 +463,27 @@ const pickLocalized = (val: unknown): string => {
   return String(val)
 }
 
+// SSR → Hydration 文本一致性锚点：
+// 同步写共享 useState（不是依赖 watchEffect），确保 Nuxt 在序列化 payload 时一定包含该值。
+// 客户端 Hydrate 首渲染阶段：即使异步 postData 还没同步到 ref，ssrPostTitle 也已经
+// 通过 payload 拿到与 SSR 完全一致的真实标题，避免 fallback slug 文本 mismatch。
+const ssrPostTitle = useState<string>(
+  `post-detail-title:${postSlug.value || (route.params.slug as string)}`,
+  () => ''
+)
+const _hydrationTitleSeed = pickLocalized(postData.value?.title)
+if (_hydrationTitleSeed) ssrPostTitle.value = _hydrationTitleSeed
+// 路由复用时（客户端）：post 变化后同步更新共享标题，供自身或相关组件读取
+watch(post, (next) => {
+  const nt = pickLocalized(next?.title)
+  if (nt) ssrPostTitle.value = nt
+})
+
 const postTitle = computed(() => pickLocalized(post.value?.title))
 const displayPostTitle = computed(() => {
   if (postTitle.value) return postTitle.value
-  // Fallback: decode slug & strip trailing -<number> suffix for a clean human-readable title
+  // Hydrate 安全回退：SSR 序列化的共享标题
+  if (ssrPostTitle.value) return ssrPostTitle.value
   try {
     const raw = decodeURIComponent(slug.value || '')
     return raw.replace(/-[0-9]+$/, '').replace(/-/g, ' ') || t('post.untitled', '未命名文章')
@@ -470,7 +507,7 @@ const normalizedTags = computed(() => {
     id: tag.id,
     slug: tag.slug,
     name: pickLocalized(tag.name),
-    color: (tag as { color?: string } | undefined)?.color || ''
+    color: (tag.color ?? null) as string | null
   })).filter(tag => tag.id && tag.slug)
 })
 

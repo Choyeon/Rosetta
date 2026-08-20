@@ -238,7 +238,7 @@ export interface ReplyCommentResult {
 }
 
 /**
- * POST /api/posts/{postId}/comments —— comments.router 挂在 /api，
+ * POST /api/blog/posts/{postId}/comments —— blog.router 挂在 /api/blog，
  * 内部 @router.post("/posts/{post_id_or_slug}/comments")
  * 后端嵌套回复限制 1 层：目标一律为根评论（parent_id 为空时用自身 id）。
  */
@@ -247,7 +247,7 @@ export function replyToComment(
   rootCommentId: number,
   content: string
 ): Promise<ReplyCommentResult> {
-  return apiFetch<ReplyCommentResult>(`/posts/${postId}/comments`, {
+  return apiFetch<ReplyCommentResult>(`/blog/posts/${postId}/comments`, {
     method: 'POST',
     body: { content, parent_id: rootCommentId }
   })

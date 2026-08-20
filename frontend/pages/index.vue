@@ -443,11 +443,11 @@ const { t, locale } = useI18n()
 // ===== 站点动态配置：<title>/hero/SEO/颜色都来自 settings（/api/settings + /api/config fallback）
 const site = useSite()
 await site.ensureLoaded()
-const heroTitle = computed(() => site.pickI18n(site.hero.value.title))
-const heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
-const heroCaption = computed(() => site.pickI18n(site.hero.value.caption))
-const heroCtaText = computed(() => site.pickI18n(site.hero.value.cta_text))
-const heroCtaUrl = computed(() => String(site.hero.value.cta_url || '/posts'))
+const _heroTitle = computed(() => site.pickI18n(site.hero.value.title))
+const _heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
+const _heroCaption = computed(() => site.pickI18n(site.hero.value.caption))
+const _heroCtaText = computed(() => site.pickI18n(site.hero.value.cta_text))
+const _heroCtaUrl = computed(() => String(site.hero.value.cta_url || '/posts'))
 
 // ===== Tech versions =====
 const { buildInfo } = useSiteVersions()
@@ -538,11 +538,19 @@ const seoOgImage = computed(() => {
   if (configured) {
     const raw = String(configured)
     if (raw.startsWith('http')) return raw
-    try { return new URL(raw, origin.value).href } catch { return raw }
+    try {
+      return new URL(raw, origin.value).href
+    } catch {
+      return raw
+    }
   }
   const raw = posts.value[0]?.cover_image || '/favicon-32x32.png'
   if (raw.startsWith('http')) return raw
-  try { return new URL(raw, origin.value).href } catch { return raw }
+  try {
+    return new URL(raw, origin.value).href
+  } catch {
+    return raw
+  }
 })
 
 useSeoMeta({

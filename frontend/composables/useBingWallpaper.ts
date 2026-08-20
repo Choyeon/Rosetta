@@ -30,6 +30,18 @@ interface BingRawImage {
   enddate?: string
 }
 
+const WALLPAPER_MONTHS_LABEL: Record<string, string[]> = {
+  zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+}
+
+const WALLPAPER_MONTHS_COMPACT_EN: string[] = [
+  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
+]
+
 export const useBingWallpaper = () => {
   const images = ref<BingImage[]>([])
   const loading = ref(false)
@@ -40,6 +52,50 @@ export const useBingWallpaper = () => {
     if (images.value.length === 0) return null
     return images.value[Math.min(currentIdx.value, images.value.length - 1)] || null
   })
+
+  const formatDayLabel = (enddate: string, offset: number) => {
+    if (!enddate || enddate.length < 8) {
+      return offset === 0 ? '今天' : `-${offset}天`
+    }
+    const m = enddate.substring(4, 6)
+    const d = enddate.substring(6, 8)
+    const locale = (useI18n?.()?.locale?.value as string) || 'zh'
+    const months = (WALLPAPER_MONTHS_LABEL[locale] || WALLPAPER_MONTHS_LABEL.en || []) as string[]
+    const monthStr = months[parseInt(m, 10) - 1] || m
+    const dayNum = String(parseInt(d, 10))
+    switch (locale) {
+      case 'zh':
+      case 'zh_Hant':
+      case 'ja':
+        return `${monthStr}${dayNum}日`
+      case 'en':
+      default:
+        return `${monthStr} ${dayNum}`
+    }
+  }
+
+  const formatDateCompact = (enddate: string, offset: number) => {
+    if (offset === 0) return { main: '今', sub: 'Today' } as const
+    if (!enddate || enddate.length < 8) {
+      return { main: String(offset), sub: 'days ago' } as const
+    }
+    const m = enddate.substring(4, 6)
+    const d = enddate.substring(6, 8)
+    const locale = (useI18n?.()?.locale?.value as string) || 'zh'
+    const monthInt = parseInt(m, 10)
+    let sub: string
+    switch (locale) {
+      case 'zh':
+      case 'zh_Hant':
+      case 'ja':
+        sub = `${monthInt}月`
+        break
+      case 'en':
+      default:
+        sub = WALLPAPER_MONTHS_COMPACT_EN[monthInt - 1] || String(monthInt)
+    }
+    return { main: String(parseInt(d, 10)), sub } as const
+  }
 
   const recentDays = computed(() => {
     return images.value.slice(0, 8).map((img, i) => {
@@ -74,32 +130,6 @@ export const useBingWallpaper = () => {
         localStorage.setItem('bing_wallpaper_idx', String(i))
       } catch { /* ignore */ }
     }
-  }
-
-  const formatDayLabel = (enddate: string, offset: number) => {
-    if (!enddate || enddate.length < 8) {
-      return offset === 0 ? '今天' : `-${offset}天`
-    }
-    const y = enddate.substring(0, 4)
-    const m = enddate.substring(4, 6)
-    const d = enddate.substring(6, 8)
-    const locale = (useI18n?.()?.locale?.value as string) || 'zh'
-    try {
-      const date = new Date(`${y}-${m}-${d}`)
-      return date.toLocaleDateString(locale, { month: 'short', day: 'numeric' })
-    } catch {
-      return `${m}/${d}`
-    }
-  }
-
-  const formatDateCompact = (enddate: string, offset: number) => {
-    if (offset === 0) return { main: '今', sub: 'Today' } as const
-    if (!enddate || enddate.length < 8) {
-      return { main: String(offset), sub: 'days ago' } as const
-    }
-    const m = enddate.substring(4, 6)
-    const d = enddate.substring(6, 8)
-    return { main: d, sub: `${parseInt(m, 10)}月` } as const
   }
 
   const parseImages = (rawImages: BingRawImage[]): BingImage[] => {

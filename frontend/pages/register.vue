@@ -133,7 +133,10 @@
 
                 <div class="flex flex-col gap-4">
                   <div class="space-y-2">
-                    <Label for="nickname" class="text-white/80">{{ t('auth.nickname') }}</Label>
+                    <Label
+                      for="nickname"
+                      class="text-white/80"
+                    >{{ t('auth.nickname') }}</Label>
                     <div class="relative">
                       <UserPlus class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/55" />
                       <Input
@@ -147,7 +150,10 @@
                   </div>
 
                   <div class="space-y-2">
-                    <Label for="email" class="text-white/80">{{ t('auth.email') }}</Label>
+                    <Label
+                      for="email"
+                      class="text-white/80"
+                    >{{ t('auth.email') }}</Label>
                     <div class="relative">
                       <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/55" />
                       <Input
@@ -162,7 +168,10 @@
 
                   <div class="grid grid-cols-2 gap-3">
                     <div class="space-y-2">
-                      <Label for="password" class="text-white/80">{{ t('auth.password') }}</Label>
+                      <Label
+                        for="password"
+                        class="text-white/80"
+                      >{{ t('auth.password') }}</Label>
                       <div class="relative">
                         <ShieldCheck class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/55" />
                         <Input
@@ -178,14 +187,23 @@
                           tabindex="-1"
                           @click="showPassword = !showPassword"
                         >
-                          <Eye v-if="!showPassword" class="size-4" />
-                          <EyeOff v-else class="size-4" />
+                          <Eye
+                            v-if="!showPassword"
+                            class="size-4"
+                          />
+                          <EyeOff
+                            v-else
+                            class="size-4"
+                          />
                         </button>
                       </div>
                     </div>
 
                     <div class="space-y-2">
-                      <Label for="confirmPassword" class="text-white/80">{{ t('auth.confirmPassword') }}</Label>
+                      <Label
+                        for="confirmPassword"
+                        class="text-white/80"
+                      >{{ t('auth.confirmPassword') }}</Label>
                       <div class="relative">
                         <CheckCircle2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-white/55" />
                         <Input
@@ -201,8 +219,14 @@
                           tabindex="-1"
                           @click="showConfirmPassword = !showConfirmPassword"
                         >
-                          <Eye v-if="!showConfirmPassword" class="size-4" />
-                          <EyeOff v-else class="size-4" />
+                          <Eye
+                            v-if="!showConfirmPassword"
+                            class="size-4"
+                          />
+                          <EyeOff
+                            v-else
+                            class="size-4"
+                          />
                         </button>
                       </div>
                     </div>
@@ -237,7 +261,10 @@
                     :disabled="!isFormValid || loading"
                     @click="handleRegister"
                   >
-                    <Loader2 v-if="loading" class="size-4 animate-spin mr-2" />
+                    <Loader2
+                      v-if="loading"
+                      class="size-4 animate-spin mr-2"
+                    />
                     {{ loading ? t('auth.registering') : t('auth.createAccount') }}
                   </Button>
                 </div>
@@ -285,8 +312,8 @@
         <button
           class="size-7 rounded-full flex items-center justify-center hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           :disabled="wallpaperIdx >= (bwp?.totalDays ?? 8) - 1 || wallpaperPending"
-          @click="cycleWallpaper(+1)"
           title="上一天"
+          @click="cycleWallpaper(+1)"
         >
           <ChevronLeft class="size-4" />
         </button>
@@ -296,8 +323,8 @@
         <button
           class="size-7 rounded-full flex items-center justify-center hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-all"
           :disabled="(wallpaperIdx ?? 0) === 0 || wallpaperPending"
-          @click="cycleWallpaper(-1)"
           title="下一天（越新）"
+          @click="cycleWallpaper(-1)"
         >
           <ChevronRight class="size-4" />
         </button>
@@ -305,8 +332,8 @@
         <button
           class="inline-flex items-center gap-1.5 rounded-full hover:bg-white/10 px-2 py-1 -mr-2 transition-colors disabled:opacity-40"
           :disabled="wallpaperPending"
-          @click="reloadWallpaper()"
           title="刷新当前壁纸"
+          @click="reloadWallpaper()"
         >
           <RefreshCw
             class="size-3.5"
@@ -320,14 +347,6 @@
 </template>
 
 <script setup lang="ts">
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Checkbox } from '~~/components/ui/checkbox'
@@ -411,15 +430,21 @@ const {
   watch: [wallpaperIdx]
 })
 
-watchEffect(() => { wallpaperPending.value = !!fetchPending.value })
+watchEffect(() => {
+  wallpaperPending.value = !!fetchPending.value
+})
 
 watch(
   () => bwp.value?.url,
   (u) => {
     if (!u) return
     const img = new Image()
-    img.onload = () => { wallpaperLoaded.value = true }
-    img.onerror = () => { wallpaperLoaded.value = false }
+    img.onload = () => {
+      wallpaperLoaded.value = true
+    }
+    img.onerror = () => {
+      wallpaperLoaded.value = false
+    }
     img.src = u
   },
   { immediate: true }

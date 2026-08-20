@@ -63,11 +63,21 @@
                 <SelectValue placeholder="选择导出格式" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wordpress">WordPress (XML WXR)</SelectItem>
-                <SelectItem value="halo">Halo 导出包</SelectItem>
-                <SelectItem value="typecho">Typecho (Markdown/HTML)</SelectItem>
-                <SelectItem value="markdown">Markdown 打包</SelectItem>
-                <SelectItem value="json">Rosetta JSON</SelectItem>
+                <SelectItem value="wordpress">
+                  WordPress (XML WXR)
+                </SelectItem>
+                <SelectItem value="halo">
+                  Halo 导出包
+                </SelectItem>
+                <SelectItem value="typecho">
+                  Typecho (Markdown/HTML)
+                </SelectItem>
+                <SelectItem value="markdown">
+                  Markdown 打包
+                </SelectItem>
+                <SelectItem value="json">
+                  Rosetta JSON
+                </SelectItem>
               </SelectContent>
             </Select>
           </CardContent>
@@ -235,11 +245,21 @@
                 <SelectValue placeholder="选择导入格式" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wordpress">WordPress (XML WXR)</SelectItem>
-                <SelectItem value="halo">Halo 导出包 (.zip/.json)</SelectItem>
-                <SelectItem value="typecho">Typecho 导出</SelectItem>
-                <SelectItem value="markdown">Markdown 压缩包 (.zip)</SelectItem>
-                <SelectItem value="json">Rosetta JSON</SelectItem>
+                <SelectItem value="wordpress">
+                  WordPress (XML WXR)
+                </SelectItem>
+                <SelectItem value="halo">
+                  Halo 导出包 (.zip/.json)
+                </SelectItem>
+                <SelectItem value="typecho">
+                  Typecho 导出
+                </SelectItem>
+                <SelectItem value="markdown">
+                  Markdown 压缩包 (.zip)
+                </SelectItem>
+                <SelectItem value="json">
+                  Rosetta JSON
+                </SelectItem>
               </SelectContent>
             </Select>
           </CardContent>
@@ -407,17 +427,26 @@
                   <span v-if="importResult.skipped > 0">，跳过 <b class="text-muted-foreground">{{ importResult.skipped }}</b> 篇</span>
                   <span v-if="importResult.failed > 0">，失败 <b class="text-error">{{ importResult.failed }}</b> 篇</span>
                 </div>
-                <p v-if="importResult.message" class="text-xs text-muted-foreground">
+                <p
+                  v-if="importResult.message"
+                  class="text-xs text-muted-foreground"
+                >
                   {{ importResult.message }}
                 </p>
                 <ul
                   v-if="importResult.errors && importResult.errors.length"
                   class="text-[11px] text-muted-foreground list-disc pl-4 mt-2 space-y-0.5"
                 >
-                  <li v-for="(err, i) in importResult.errors.slice(0, 5)" :key="`err-${i}-${err}`">
+                  <li
+                    v-for="(err, i) in importResult.errors.slice(0, 5)"
+                    :key="`err-${i}-${err}`"
+                  >
                     {{ err }}
                   </li>
-                  <li v-if="importResult.errors.length > 5" class="italic opacity-70">
+                  <li
+                    v-if="importResult.errors.length > 5"
+                    class="italic opacity-70"
+                  >
                     另有 {{ importResult.errors.length - 5 }} 条错误未展示...
                   </li>
                 </ul>
