@@ -177,7 +177,12 @@
     "loginFailed": "Login failed, please check your credentials",
     "fillRequired": "Please enter both username and password",
     "switchWallpaper": "Switch wallpaper",
-    "startCreate": "Start Writing"
+    "startCreate": "Start Writing",
+    "showPassword": "Show Password",
+    "hidePassword": "Hide Password",
+    "passwordTooShort": "Password must be at least 6 characters",
+    "pleaseAgreeTerms": "Please accept the Terms of Service and Privacy Policy first",
+    "cannotDeriveUsername": "Unable to derive a valid username from email/nickname. Please use a different email/nickname."
   },
   "error": {
     "notFoundTitle": "Page Not Found",

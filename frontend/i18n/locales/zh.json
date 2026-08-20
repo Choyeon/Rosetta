@@ -177,7 +177,12 @@
     "fillRequired": "请填写用户名和密码",
     "switchWallpaper": "切换壁纸",
     "error": "错误",
-    "startCreate": "开始创作"
+    "startCreate": "开始创作",
+    "showPassword": "显示密码",
+    "hidePassword": "隐藏密码",
+    "passwordTooShort": "密码至少需要 6 位字符",
+    "pleaseAgreeTerms": "请先勾选同意服务条款与隐私政策",
+    "cannotDeriveUsername": "无法从邮箱或昵称派生出合法用户名，请更换邮箱或完善昵称后重试。"
   },
   "error": {
     "notFoundTitle": "页面不存在",

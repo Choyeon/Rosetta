@@ -1105,39 +1105,184 @@ onBeforeUnmount(() => {
 })
 
 // ====== Bing 每日壁纸（后台风格：emerald/teal/cyan 三束光 + 毛玻璃） ======
+// —— 使用 FastAPI /api/bing/wallpapers，与 login/register 的 useBingWallpaper 同源，
+//    避免 devProxy 抢走 Nitro /api/bing-wallpaper 路由导致 404。请求失败时自动回退直连 Bing，最后本地占位。
 const bwpIdx = ref(0)
 const wallpaperLoaded = ref(false)
+const bwpFetching = ref(false)
+const bwpList = ref<Array<{ url: string, urlbase: string, title: string, copyright: string, copyrightlink: string, startdate: string, full_url: string, uhd_url: string }>>([])
 
-const {
-  data: bwp,
-  pending: bwpFetching,
-  refresh: _refreshBwp
-} = await useFetch<BingWallpaperPayload>(
-  () => `/api/bing-wallpaper?idx=${bwpIdx.value}&mkt=zh-CN`,
-  {
-    server: false,
-    lazy: true,
-    immediate: true,
-    default: () => null as unknown as BingWallpaperPayload,
-    watch: [bwpIdx],
-    onResponse({ response }) {
-      const uhd = response?._data?.url
-      if (uhd && typeof Image !== 'undefined') {
-        wallpaperLoaded.value = false
-        const pre = new Image()
-        pre.onload = () => {
-          wallpaperLoaded.value = true
+const UNSPLASH_FALLBACKS: Array<{ url: string, copyright: string, title: string }> = [
+  { url: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?w=1920&q=80', copyright: '© Unsplash / Eberhard Grossgasteiger', title: '山川湖泊' },
+  { url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1920&q=80', copyright: '© Unsplash / Noah Silliman', title: '松林雾霭' },
+  { url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1920&q=80', copyright: '© Unsplash / Eberhard Grossgasteiger', title: '秋色山谷' },
+  { url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1920&q=80', copyright: '© Unsplash / Robert Lukeman', title: '海岸灯塔' },
+  { url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=80', copyright: '© Unsplash / Federico Beccari', title: '雪岭之巅' },
+  { url: 'https://images.unsplash.com/photo-1433086966358-54859d0ed716?w=1920&q=80', copyright: '© Unsplash / Eberhard Grossgasteiger', title: '森林瀑布' },
+  { url: 'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=1920&q=80', copyright: '© Unsplash / Luke Stackpoole', title: '极光之夜' },
+  { url: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=1920&q=80', copyright: '© Unsplash / Casey Horner', title: '林间小径' }
+]
+
+const fetchBwp = async () => {
+  bwpFetching.value = true
+  type BwpImage = {
+    url?: string
+    urlbase?: string
+    title?: string
+    copyright?: string
+    copyrightlink?: string
+    copyright_link?: string
+    startdate?: string
+    enddate?: string
+    full_url?: string
+    fullUrl?: string
+    uhd_url?: string
+    uhdUrl?: string
+  }
+  try {
+    const cfg = useRuntimeConfig()
+    const apiBase = (cfg.public?.apiBase as string) || '/api'
+    // 1) FastAPI 代理（缓存 1h，推荐源）
+    try {
+      const r = await $fetch<{ success: boolean, data?: { images?: BwpImage[] }, images?: BwpImage[] }>('/bing/wallpapers', {
+        baseURL: apiBase,
+        query: { n: 8, market: 'zh-CN' }
+      })
+      const arr: BwpImage[] = r?.data?.images || r?.images || []
+      if (Array.isArray(arr) && arr.length > 0) {
+        bwpList.value = arr.map((img: BwpImage) => {
+          const u = img?.url || ''
+          const ub = img?.urlbase || ''
+          const normalizedFullUrl
+            = img?.full_url
+              || img?.fullUrl
+              || (u && !u.startsWith('http') ? `https://www.bing.com${u}` : u || '')
+          const normalizedUhdUrl
+            = img?.uhd_url
+              || img?.uhdUrl
+              || (ub ? `https://www.bing.com${ub}_UHD.jpg` : '')
+          return {
+            url: u,
+            urlbase: ub,
+            title: img?.title || '',
+            copyright: img?.copyright || '',
+            copyrightlink: img?.copyright_link || img?.copyrightlink || '',
+            startdate: img?.startdate || img?.enddate || '',
+            full_url: normalizedFullUrl,
+            uhd_url: normalizedUhdUrl
+          }
+        })
+      }
+    } catch {
+      // 2) 回退：直连 Bing（6s 超时）
+      try {
+        const ctrl = new AbortController()
+        const t = setTimeout(() => ctrl.abort(), 6000)
+        try {
+          const r = await fetch('https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN', { signal: ctrl.signal })
+          if (r.ok) {
+            const body = (await r.json()) as { images?: BwpImage[] }
+            const arr: BwpImage[] = body?.images || []
+            bwpList.value = arr.map((img: BwpImage) => {
+              const u = img?.url || ''
+              const ub = img?.urlbase || ''
+              const full = u && !u.startsWith('http') ? `https://www.bing.com${u}` : u
+              return {
+                url: u,
+                urlbase: ub,
+                title: img?.title || '',
+                copyright: img?.copyright || '',
+                copyrightlink: img?.copyrightlink || '',
+                startdate: img?.startdate || img?.enddate || '',
+                full_url: full,
+                uhd_url: ub ? `https://www.bing.com${ub}_UHD.jpg` : full
+              }
+            })
+          }
+        } finally {
+          clearTimeout(t)
         }
-        pre.onerror = () => {
-          wallpaperLoaded.value = true
-        }
-        pre.src = uhd
-      } else {
-        wallpaperLoaded.value = true
+      } catch {
+        // 3) 最终本地兜底
       }
     }
+    if (!bwpList.value || bwpList.value.length === 0) {
+      const now = Date.now()
+      bwpList.value = UNSPLASH_FALLBACKS.map((p, idx) => {
+        const d = new Date(now - idx * 86400 * 1000)
+        const ymd = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
+        return {
+          url: p.url,
+          urlbase: '',
+          title: p.title,
+          copyright: p.copyright,
+          copyrightlink: 'https://unsplash.com/',
+          startdate: ymd,
+          full_url: p.url,
+          uhd_url: p.url
+        }
+      })
+    }
+    if (bwpIdx.value >= bwpList.value.length) {
+      bwpIdx.value = 0
+    }
+    const uhd = bwp.value?.url
+    if (uhd && typeof Image !== 'undefined') {
+      wallpaperLoaded.value = false
+      const pre = new Image()
+      pre.onload = () => {
+        wallpaperLoaded.value = true
+      }
+      pre.onerror = () => {
+        wallpaperLoaded.value = true
+      }
+      pre.src = uhd
+    } else {
+      wallpaperLoaded.value = true
+    }
+  } finally {
+    bwpFetching.value = false
   }
-)
+}
+
+const bwp = computed<BingWallpaperPayload | null>(() => {
+  const list = bwpList.value
+  if (!list || list.length === 0) return null
+  const i = Math.min(bwpIdx.value, list.length - 1)
+  const item = list[i]
+  if (!item) return null
+  return {
+    url: item.uhd_url || item.full_url || item.url,
+    title: item.title || '',
+    copyright: item.copyright || '',
+    copyrightLink: item.copyrightlink || 'https://www.bing.com',
+    startDate: item.startdate || '',
+    idx: i,
+    totalDays: list.length
+  }
+})
+
+// 首拉 + idx 变更重新 preload
+watch(bwpIdx, () => {
+  const uhd = bwp.value?.url
+  if (uhd && typeof Image !== 'undefined') {
+    wallpaperLoaded.value = false
+    const pre = new Image()
+    pre.onload = () => {
+      wallpaperLoaded.value = true
+    }
+    pre.onerror = () => {
+      wallpaperLoaded.value = true
+    }
+    pre.src = uhd
+  } else {
+    wallpaperLoaded.value = true
+  }
+})
+
+onMounted(async () => {
+  await fetchBwp()
+})
 
 const thumbUrl = (url?: string) => {
   if (!url) return ''

@@ -177,7 +177,12 @@
     "passwordMismatch": "[繁]:Passwords do not match",
     "registerFailed": "[繁]:Registration failed, please try again later",
     "switchWallpaper": "[繁]:Switch wallpaper",
-    "startCreate": "[繁]:Start Writing"
+    "startCreate": "[繁]:Start Writing",
+    "showPassword": "[繁] 顯示密碼",
+    "hidePassword": "[繁] 隱藏密碼",
+    "passwordTooShort": "[繁] 密碼至少需要 6 位字元",
+    "pleaseAgreeTerms": "[繁] 請先勾選同意服務條款與隱私政策",
+    "cannotDeriveUsername": "[繁] 無法從信箱或暱稱派生出合法使用者名稱，請更換信箱或完善暱稱後重試。"
   },
   "error": {
     "notFoundTitle": "頁面不存在",

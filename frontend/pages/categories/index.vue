@@ -136,4 +136,3 @@ const categories = ref([
   }
 ])
 </script>
-

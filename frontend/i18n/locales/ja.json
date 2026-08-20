@@ -177,7 +177,12 @@
     "passwordMismatch": "[JA]:Passwords do not match",
     "registerFailed": "[JA]:Registration failed, please try again later",
     "switchWallpaper": "[JA]:Switch wallpaper",
-    "startCreate": "[JA]:Start Writing"
+    "startCreate": "[JA]:Start Writing",
+    "showPassword": "[JA] パスワードを表示",
+    "hidePassword": "[JA] パスワードを非表示",
+    "passwordTooShort": "[JA] パスワードは 6 文字以上必要です",
+    "pleaseAgreeTerms": "[JA] 利用規約とプライバシーポリシーに先に同意してください",
+    "cannotDeriveUsername": "[JA] メールアドレスまたはニックネームから有効なユーザー名を作成できません。別の値を使用してください。"
   },
   "error": {
     "notFoundTitle": "ページが見つかりません",
