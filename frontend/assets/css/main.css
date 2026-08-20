@@ -1,18 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
 
-/* 主题切换圆形扩散/收缩动画需要驱动的 CSS 属性。
-   使用 @property 将 progress 注册为 <number>，这样浏览器可以直接在
-   clip-path 里用 calc(progress * maxr) 过渡，避免首帧从 0% 瞬切到 radius 产生闪屏。 */
-@property --theme-ripple-progress {
-  syntax: '<number>';
-  inherits: false;
-  initial-value: 0;
-}
-@property --theme-ripple-fade {
-  syntax: '<number>';
-  inherits: false;
-  initial-value: 1;
-}
 
 @tailwind base;
 @tailwind components;
@@ -377,22 +364,17 @@ html.dark.palette-warm-stone {
 }
 
 /* =========================================================
-   主题切换圆形扩散 / 收缩 mask
-   - 亮色 → 暗色：圆形从点击点向外扩散，circle(0→R)
-   - 暗色 → 亮色：圆形从全屏向内收缩到点击点，circle(R→0)
-   - 遮罩始终用「目标主题的 background」填充，底层 DOM 在扩散过半
-     / 收缩开始前切换 .dark 类，避免看到“底层已切但遮罩还没跟上”的错色。
-   ========================================================= */
-/* =========================================================
-   View Transition API 主题切换（首选方案 = 浏览器自动截图锁定）
-   - Chrome/Edge 111+ 调用 document.startViewTransition(() => applyTheme(next)) 时，
-     浏览器会先抓「当前主题」的像素帧，再执行 applyTheme，然后抓「新主题」的像素帧。
-     两层都不是纯色，而是完整页面像素 —— 这正是「截图锁定」的语义。
-   - 我们只需要把 ::view-transition-new(root) 用 circle 揭示动画裁剪即可：
-       expand（light→dark）：circle(0 → R) 从点击点扩散出新主题。
-       shrink（dark→light）：circle(R → 0) 向点击点收缩掉旧主题（底下新主题透出）。
-   - 当 VT 不可用时，走我们自己的 snapshotThemePage() + 两层 before/after overlay；
-     那时候组件内部已经带样式，不需要下面这段 VT keyframes。
+   View Transition API 主题切换（完全参考 w2xiaoyu 的实现）
+   - document.startViewTransition(() => 切换 dark 类) 时，浏览器自动：
+       ::view-transition-old(root) ← 旧主题截图（像素锁定，非纯色）
+       ::view-transition-new(root) ← 新主题截图（像素锁定，非纯色）
+     两层都是真实页面，因此动画期间不会再出现纯黑/纯白。
+   - 纯 CSS @keyframes 驱动，绝对不用 JS animate()（否则 shrink 在某些 Chromium 不播）
+   - 动画 fill-mode: forwards（否则 shrink 收尾回弹，闪白/闪黑）
+   - finished.then 清理 class（不是 ready；ready 刚启动就清 z-index，动画瞬间消失）
+   - 两个方向 class 控制 z-index：
+       theme-grow  ：new 在上层，circle(0 → 150%) 扩散。
+       theme-shrink：old 在上层，circle(150% → 0) 收缩。
    ========================================================= */
 @supports (view-transition-name: root) {
   /* ===== 关掉默认的交叉淡入淡出 ===== */
@@ -403,7 +385,7 @@ html.dark.palette-warm-stone {
     animation: none;
   }
   html::view-transition-group(root) {
-    animation-duration: 520ms;
+    animation-duration: 420ms;
     animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
   }
 
@@ -411,17 +393,17 @@ html.dark.palette-warm-stone {
   html.theme-grow::view-transition-old(root) { z-index: 1; }
   html.theme-grow::view-transition-new(root) {
     z-index: 9999;
-    animation: vt-theme-grow 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: theme-grow 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
 
   /* ===== 收回模式（dark -> light：old 在上，从全屏 circle 收缩到点击点）===== */
   html.theme-shrink::view-transition-old(root) {
     z-index: 9999;
-    animation: vt-theme-shrink 520ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: theme-shrink 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
   }
   html.theme-shrink::view-transition-new(root) { z-index: 1; }
 
-  @keyframes vt-theme-grow {
+  @keyframes theme-grow {
     from {
       clip-path: circle(0px at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
       -webkit-clip-path: circle(0px at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
@@ -431,7 +413,7 @@ html.dark.palette-warm-stone {
       -webkit-clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
     }
   }
-  @keyframes vt-theme-shrink {
+  @keyframes theme-shrink {
     from {
       clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
       -webkit-clip-path: circle(150% at var(--reveal-cx, 50%) var(--reveal-cy, 50%));
