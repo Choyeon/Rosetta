@@ -13,7 +13,7 @@
     </header>
 
     <!-- 标签云：按文章数倒序，数量越多字号越大 -->
-    <div class="card-surface rounded-2xl p-8 mb-10">
+    <div class="card-surface no-glow rounded-2xl p-8 mb-10">
       <div class="flex flex-wrap items-center justify-center gap-3">
         <NuxtLink
           v-for="tag in sortedTags"
@@ -49,7 +49,7 @@
         :to="`/tags/${tag.slug}`"
         class="no-underline group"
       >
-        <div class="card-surface h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
+        <div class="card-surface glow-ring h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
           <div class="flex items-center justify-between mb-3">
             <div
               class="size-8 rounded-lg flex items-center justify-center"

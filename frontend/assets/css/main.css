@@ -1,6 +1,34 @@
 @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
 
 
+/* ========================================================================
+   可动画 CSS 属性：Glow Ring 旋转角度
+   —— 让 conic-gradient 可以沿着卡片边缘平滑地转一圈
+   —— 不支持 @property 的浏览器降级为"静止天青色发光条"（依然可见效果）
+   ======================================================================== */
+@supports (background: conic-gradient(from 0deg, #000, #fff)) {
+  @property --gr-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+}
+@keyframes gr-spin {
+  to { --gr-angle: 360deg; }
+}
+/* 轻微呼吸：让发光的最亮处在 ±12% 之间脉动，像"活着"的能量环 */
+@keyframes gr-pulse {
+  0%, 100% { --gr-bright: 1.00; }
+  50%      { --gr-bright: 1.14; }
+}
+@supports (background: conic-gradient(from 0deg, #000, #fff)) {
+  @property --gr-bright {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 1;
+  }
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -786,6 +814,8 @@ html.dark {
     box-shadow: var(--card-shadow-sm);
     backdrop-filter: saturate(1.05) blur(4px);
     -webkit-backdrop-filter: saturate(1.05) blur(4px);
+    /* Glow Ring 依赖 mask-composite 与独立绘制层 */
+    isolation: isolate;
   }
   .card-surface::after {
     /* 顶部高光 + 底部柔暗：模拟"玻璃边"质感，而不是 1px 线框 */
@@ -802,6 +832,155 @@ html.dark {
       linear-gradient(180deg, hsl(var(--background) / 0.78), hsl(var(--muted) / 0.35) 120%),
       hsl(var(--card));
   }
+
+  /* ================================================================
+     Glow Ring · 天青色沿卡片转一圈的彗星发光边（hover / focus 触发）
+     ----------------------------------------------------------------
+     覆盖范围：
+       · 任何 .card-surface：hover / focus-within 自动触发
+       · 任何 .glow-ring  ：手动 opt-in（哪怕它不是 card-surface）
+       · .no-glow         ：显式禁用（表单容器 / 结构性盒子使用）
+     实现细节：
+       · 复用 ::after 槽位 —— 平常它是 ambient 内发光（soft-light），
+         hover 时被完全替换为 conic-gradient 描边；离开再平滑过渡回来。
+       · conic-gradient 是一条"彗星"：
+           0° 起点：#67e8f9 超亮天青白彗核
+           → 2°→ 6°：#22d3ee → #06b6d4 亮天青彗头
+           → 10°→ 22°：hsl(ring) 渐弱拖尾
+           → 30°：淡出为透明
+           → 180°：微弱回声小弧 4° wide（追光感，非对称能量感）
+       · 两个动画叠加：
+           gr-spin  2.2s linear infinite   → 角度转一圈
+           gr-pulse 1.8s ease-in-out inf. → 亮度 ±14% 呼吸
+       · mask-composite: exclude → 只在 padding 的 2.5px 外圈着色，中间全透明
+     浏览器兼容：
+       · @property 支持（Chrome/Edge/Safari 16.4+）→ 完整流畅旋转
+       · 不支持 → 静止的天青色发光弧（依然可见，优雅降级）
+     ================================================================ */
+  .glow-ring {
+    position: relative;
+    isolation: isolate;
+  }
+
+  /* ---------- 基础态（未 hover）：padding / mask / 透明 ---------- */
+  .card-surface::after,
+  .glow-ring::after {
+    padding: 2.5px;
+    box-sizing: border-box;
+    background:
+      conic-gradient(
+        from var(--gr-angle, 0deg),
+        /* ☄️ 彗核：极亮天青白（爆闪） */
+        #a5f3fc 0%,
+        #67e8f9 1.5%,
+        /* 彗头：核心亮蓝 */
+        #22d3ee 3.5%,
+        #06b6d4 6%,
+        #0ea5e9 9%,
+        /* 彗尾：拖出柔和渐隐尾 */
+        hsl(199 95% 60% / 0.85) 12%,
+        hsl(var(--ring) / 0.72) 16%,
+        hsl(var(--ring) / 0.48) 20%,
+        hsl(var(--ring) / 0.22) 25%,
+        transparent 30%,
+        /* ✨ 中段全空 */
+        transparent 178%,
+        /* 🌙 180° 弱回声：非常微弱的第二道弧 */
+        hsl(var(--ring) / 0.38) 180%,
+        hsl(var(--ring) / 0.18) 182.5%,
+        transparent 185%,
+        /* 尾部全空，回到彗核前 */
+        transparent 360%
+      );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+            mask-composite: exclude;
+    mix-blend-mode: normal !important;
+    opacity: 0;
+    transition:
+      opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter  320ms cubic-bezier(0.22, 1, 0.36, 1);
+    filter:
+      brightness(var(--gr-bright, 1))
+      drop-shadow(0 0 0 hsl(199 89% 55% / 0));
+    z-index: 5;
+  }
+
+  /* ---------- 触发态（hover / focus-within）：不透明 + 双动画 ---------- */
+  .card-surface:hover::after,
+  .card-surface:focus-within::after,
+  .glow-ring:hover::after,
+  .glow-ring:focus-within::after {
+    opacity: 1;
+    /* 旋转 + 呼吸 并行：旋转周期略长于呼吸，产生永不重复的组合相位 */
+    animation:
+      gr-spin  2.2s linear infinite,
+      gr-pulse 1.8s ease-in-out infinite;
+  }
+
+  /* --- 亮色主题：中等强度的青蓝光晕，干净克制 --- */
+  .card-surface:hover::after,
+  .card-surface:focus-within::after,
+  .glow-ring:hover::after,
+  .glow-ring:focus-within::after {
+    filter:
+      brightness(var(--gr-bright, 1))
+      drop-shadow(0 0 1.5px hsl(199 98% 72% / 0.92))
+      drop-shadow(0 0 5px   hsl(197 96% 62% / 0.62))
+      drop-shadow(0 0 12px  hsl(198 95% 58% / 0.34))
+      drop-shadow(0 0 24px  hsl(200 95% 55% / 0.14));
+  }
+
+  /* --- 暗色主题：光晕更亮 + 扩散更大，能量感拉满 --- */
+  html.dark .card-surface:hover::after,
+  html.dark .card-surface:focus-within::after,
+  html.dark .glow-ring:hover::after,
+  html.dark .glow-ring:focus-within::after {
+    filter:
+      brightness(calc(var(--gr-bright, 1) * 1.05))
+      drop-shadow(0 0 1.5px hsl(190 100% 85% / 0.95))
+      drop-shadow(0 0 5px   hsl(194 100% 76% / 0.72))
+      drop-shadow(0 0 13px  hsl(199 100% 66% / 0.46))
+      drop-shadow(0 0 26px  hsl(202 100% 62% / 0.26));
+  }
+
+  /* ---------- 退出机制：.no-glow 可以在任意层级禁用 ---------- */
+  .no-glow::after,
+  .no-glow > *::after,
+  .no-glow:hover::after,
+  .no-glow:focus-within::after {
+    opacity: 0 !important;
+    animation: none !important;
+    filter: none !important;
+    padding: 0 !important;
+  }
+
+  /* 让卡片抬升的大阴影也"染上一点点青色"，和发光边呼应（lift-hover 显式 + 普通 card-surface 全部） */
+  .card-surface.lift-hover:hover,
+  .card-surface.lift-hover:focus-within,
+  .glow-ring:hover,
+  .glow-ring:focus-within,
+  .card-surface:hover,
+  .card-surface:focus-within {
+    box-shadow:
+      var(--card-shadow-lg),
+      0 0 0 1px hsl(var(--ring) / 0.18),
+      0 10px 40px -18px hsl(199 95% 55% / 0.28) !important;
+  }
+  html.dark .card-surface.lift-hover:hover,
+  html.dark .card-surface.lift-hover:focus-within,
+  html.dark .glow-ring:hover,
+  html.dark .glow-ring:focus-within,
+  html.dark .card-surface:hover,
+  html.dark .card-surface:focus-within {
+    box-shadow:
+      var(--card-shadow-lg),
+      0 0 0 1px hsl(var(--ring) / 0.28),
+      0 18px 60px -22px hsl(200 100% 62% / 0.32) !important;
+  }
+
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors;
   }

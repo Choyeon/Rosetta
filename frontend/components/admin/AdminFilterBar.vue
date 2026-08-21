@@ -127,7 +127,7 @@ function doReset() {
 </script>
 
 <template>
-  <div class="card-surface flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 md:p-4">
+  <div class="card-surface no-glow flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 md:p-4">
     <!-- 左：关键字 + 状态 + 日期范围 -->
     <div class="flex flex-col sm:flex-row gap-3 flex-1 flex-wrap items-stretch sm:items-center">
       <div class="relative sm:min-w-[240px] flex-1 max-w-md">

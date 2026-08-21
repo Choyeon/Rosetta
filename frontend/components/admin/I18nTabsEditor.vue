@@ -91,7 +91,7 @@ const filledCount = computed(() =>
 </script>
 
 <template>
-  <div class="card-surface space-y-2 p-3 md:p-4">
+  <div class="card-surface no-glow space-y-2 p-3 md:p-4">
     <div class="flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 min-w-0">
         <Label
