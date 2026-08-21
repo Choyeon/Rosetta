@@ -152,38 +152,6 @@ export const useBingWallpaper = () => {
     })
   }
 
-  const loadMockFallback = (): BingImage[] => {
-    // 无网络时的占位：返回几张高质量 Unsplash 照片 + 假版权
-    const placeholders = [
-      { url: 'https://images.unsplash.com/photo-1470770841072-f978cf4d019e?w=1920&q=80', title: '山川湖泊', copyright: '© Unsplash / Eberhard Grossgasteiger' },
-      { url: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?w=1920&q=80', title: '松林雾霭', copyright: '© Unsplash / Noah Silliman' },
-      { url: 'https://images.unsplash.com/photo-1472214103451-9374bd1c798e?w=1920&q=80', title: '秋色山谷', copyright: '© Unsplash / Eberhard Grossgasteiger' },
-      { url: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?w=1920&q=80', title: '海岸灯塔', copyright: '© Unsplash / Robert Lukeman' },
-      { url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?w=1920&q=80', title: '雪岭之巅', copyright: '© Unsplash / Federico Beccari' },
-      { url: 'https://images.unsplash.com/photo-1433086966358-54859d0ed716?w=1920&q=80', title: '森林瀑布', copyright: '© Unsplash / Eberhard Grossgasteiger' },
-      { url: 'https://images.unsplash.com/photo-1475924156734-496f6cac6ec1?w=1920&q=80', title: '极光之夜', copyright: '© Unsplash / Luke Stackpoole' },
-      { url: 'https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?w=1920&q=80', title: '林间小径', copyright: '© Unsplash / Casey Horner' }
-    ]
-    const now = new Date()
-    return placeholders.map((p, i) => {
-      const d = new Date(now)
-      d.setDate(now.getDate() - i)
-      const enddate = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`
-      return {
-        url: p.url,
-        urlbase: '',
-        copyright: p.copyright,
-        copyrightlink: 'https://unsplash.com/',
-        title: p.title,
-        startdate: enddate,
-        enddate,
-        fullUrl: p.url,
-        uhdUrl: p.url,
-        dayOffset: i
-      }
-    })
-  }
-
   const fetchWallpapers = async () => {
     loading.value = true
     error.value = null
@@ -194,7 +162,7 @@ export const useBingWallpaper = () => {
         if (saved != null) currentIdx.value = Math.max(0, Math.min(7, parseInt(saved, 10) || 0))
       } catch { /* ignore */ }
 
-      // 优先走后端代理（无 CORS 问题，且带缓存）；失败再回退直连 Bing，最后本地兜底
+      // 优先走后端代理（无 CORS 问题，且带缓存）；失败再回退直连 Bing
       const loadFromBackend = async (): Promise<BingImage[]> => {
         const apiBase = useRuntimeConfig().public.apiBase as string
         interface ProxyImage {
@@ -252,14 +220,13 @@ export const useBingWallpaper = () => {
         try {
           list = await loadFromBingDirect()
         } catch (e) {
-          console.warn('[bing-wallpaper] API unavailable, using local fallback images.', e)
+          console.warn('[bing-wallpaper] API unavailable, hero will fall back to gradient.', e)
         }
       }
-      if (list.length === 0) list = loadMockFallback()
       images.value = list
     } catch (e) {
       error.value = e
-      images.value = loadMockFallback()
+      images.value = []
     } finally {
       loading.value = false
     }

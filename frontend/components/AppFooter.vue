@@ -13,6 +13,7 @@ interface FooterLink {
   labelKey: string
   to?: string
   href?: string
+  external?: boolean
 }
 
 const { data: categories } = await useAPI<Category[]>('/blog/categories', {
@@ -31,11 +32,144 @@ const categoryLinks = computed<FooterLink[]>(() => (categories.value || []).map(
   to: `/posts?category=${encodeURIComponent(category.slug)}`
 })))
 
+/** 真实存在的前台页面（pages/* 路由），严禁引用不存在路径。 */
+interface SiteLink extends FooterLink {
+  /** 兜底文案（多语言）；当 i18n 尚未热更新或 key 丢失时直接显示，避免 SSR 出现 footer.home 裸 key。 */
+  fallbacks: Record<string, string>
+}
+const FALLBACK_LOCALE = 'zh'
+const localeLabelFallback = (key: string, fallbacks?: Record<string, string>): string => {
+  const code = String(locale.value || FALLBACK_LOCALE)
+  if (fallbacks && fallbacks[code]) return fallbacks[code]
+  if (fallbacks && fallbacks[FALLBACK_LOCALE]) return fallbacks[FALLBACK_LOCALE]
+  // 末尾兜底：从已有 common / nav 命名空间取近似值（对老环境友好）
+  const compact = t(`nav.${key.split('.').pop() ?? ''}`, '')
+  if (compact) return compact
+  return t(key, '')
+}
+const siteLinks: SiteLink[] = [
+  {
+    labelKey: 'footer.home', to: '/',
+    fallbacks: { zh: '首页', en: 'Home', ja: 'ホーム', zh_Hant: '首頁' }
+  },
+  {
+    labelKey: 'footer.posts', to: '/posts',
+    fallbacks: { zh: '文章', en: 'Posts', ja: '記事', zh_Hant: '文章' }
+  },
+  {
+    labelKey: 'footer.categories', to: '/categories',
+    fallbacks: { zh: '分类', en: 'Categories', ja: 'カテゴリ', zh_Hant: '分類' }
+  },
+  {
+    labelKey: 'footer.tags', to: '/tags',
+    fallbacks: { zh: '标签', en: 'Tags', ja: 'タグ', zh_Hant: '標籤' }
+  },
+  {
+    labelKey: 'footer.archive', to: '/archive',
+    fallbacks: { zh: '归档', en: 'Archive', ja: 'アーカイブ', zh_Hant: '封存' }
+  },
+  {
+    labelKey: 'footer.about', to: '/about',
+    fallbacks: { zh: '关于', en: 'About', ja: 'このサイトについて', zh_Hant: '關於' }
+  },
+  {
+    labelKey: 'footer.gallery', to: '/gallery',
+    fallbacks: { zh: '相册', en: 'Gallery', ja: 'ギャラリー', zh_Hant: '相簿' }
+  },
+  {
+    labelKey: 'footer.guestbook', to: '/guestbook',
+    fallbacks: { zh: '留言板', en: 'Guestbook', ja: 'ゲストブック', zh_Hant: '留言板' }
+  },
+  {
+    labelKey: 'footer.activity', to: '/activity',
+    fallbacks: { zh: '动态', en: 'Activity', ja: 'アクティビティ', zh_Hant: '動態' }
+  },
+  {
+    labelKey: 'footer.friends', to: '/friends',
+    fallbacks: { zh: '友链', en: 'Friends', ja: 'フレンド', zh_Hant: '友站連結' }
+  }
+]
+/** 对每个 siteLink 先查 i18n，查不到走多语言兜底。 */
+const siteLabel = (link: SiteLink) => {
+  const fromI18n = t(link.labelKey, '')
+  if (fromI18n && fromI18n !== link.labelKey) return fromI18n
+  return localeLabelFallback(link.labelKey, link.fallbacks)
+}
+
+const sectionTitle = (key: string, fallbacks: Record<string, string>) => {
+  const fromI18n = t(key, '')
+  if (fromI18n && fromI18n !== key) return fromI18n
+  return localeLabelFallback(key, fallbacks)
+}
+
 const resourceLinks: FooterLink[] = [
   { labelKey: 'footer.linkRSS', href: '/rss.xml' },
-  { labelKey: 'footer.linkSitemap', href: '/sitemap.xml' },
-  { labelKey: 'footer.linkRepo', href: 'https://github.com/ChuyuChoyeon/Rosetta' }
+  { labelKey: 'footer.linkSitemap', href: '/sitemap.xml' }
 ]
+const RESOURCE_FALLBACKS: Record<string, Record<string, string>> = {
+  'footer.linkRSS': { zh: 'RSS 订阅', en: 'RSS Feed', ja: 'RSS', zh_Hant: 'RSS 訂閱' },
+  'footer.linkSitemap': { zh: '网站地图', en: 'Sitemap', ja: 'サイトマップ', zh_Hant: '網站地圖' }
+}
+const SOCIAL_FALLBACKS: Record<string, Record<string, string>> = {
+  'footer.socialGithub': { zh: 'GitHub', en: 'GitHub', ja: 'GitHub', zh_Hant: 'GitHub' },
+  'footer.socialX': { zh: 'X (Twitter)', en: 'X', ja: 'X', zh_Hant: 'X' },
+  'footer.socialBilibili': { zh: 'B 站', en: 'Bilibili', ja: 'ビリビリ', zh_Hant: 'B 站' },
+  'footer.socialWeibo': { zh: '微博', en: 'Weibo', ja: '微博', zh_Hant: '微博' },
+  'footer.socialZhihu': { zh: '知乎', en: 'Zhihu', ja: '知乎', zh_Hant: '知乎' },
+  'footer.socialYoutube': { zh: 'YouTube', en: 'YouTube', ja: 'YouTube', zh_Hant: 'YouTube' },
+  'footer.socialLinkedin': { zh: 'LinkedIn', en: 'LinkedIn', ja: 'LinkedIn', zh_Hant: 'LinkedIn' },
+  'footer.socialTelegram': { zh: 'Telegram', en: 'Telegram', ja: 'Telegram', zh_Hant: 'Telegram' }
+}
+const resourceLabel = (labelKey: string) => sectionTitle(labelKey, RESOURCE_FALLBACKS[labelKey] ?? {})
+const socialLabel = (labelKey: string) => sectionTitle(labelKey, SOCIAL_FALLBACKS[labelKey] ?? {})
+
+interface SiteConfigLite {
+  site_name?: string
+  site_author?: string
+  site_description?: string
+  site_logo?: string | null
+  footer_slogan?: string | null
+  copyright_text?: string | null
+  icp_number?: string | null
+  github_url?: string | null
+  x_url?: string | null
+  bilibili_url?: string | null
+  weibo_url?: string | null
+  zhihu_url?: string | null
+  youtube_url?: string | null
+  linkedin_url?: string | null
+  telegram_url?: string | null
+}
+
+const { data: cfgResp } = await useAPI<SiteConfigLite>('/config', {
+  query: { lang: locale.value },
+  key: `footer:config:${locale.value}`,
+  default: () => ({})
+})
+
+const siteConfig = computed<SiteConfigLite>(() => {
+  // useAPI 返回值可能直接是 T 或 { data: T } 包装
+  const raw = cfgResp.value as unknown
+  const obj
+    = raw && typeof raw === 'object' && 'data' in raw
+      ? (raw as { data?: SiteConfigLite }).data
+      : (raw as SiteConfigLite | undefined)
+  return obj || {}
+})
+
+const socialLinks = computed<FooterLink[]>(() => {
+  const cfg = siteConfig.value
+  const list: FooterLink[] = []
+  if (cfg.github_url) list.push({ labelKey: 'footer.socialGithub', href: cfg.github_url, external: true })
+  if (cfg.x_url) list.push({ labelKey: 'footer.socialX', href: cfg.x_url, external: true })
+  if (cfg.bilibili_url) list.push({ labelKey: 'footer.socialBilibili', href: cfg.bilibili_url, external: true })
+  if (cfg.weibo_url) list.push({ labelKey: 'footer.socialWeibo', href: cfg.weibo_url, external: true })
+  if (cfg.zhihu_url) list.push({ labelKey: 'footer.socialZhihu', href: cfg.zhihu_url, external: true })
+  if (cfg.youtube_url) list.push({ labelKey: 'footer.socialYoutube', href: cfg.youtube_url, external: true })
+  if (cfg.linkedin_url) list.push({ labelKey: 'footer.socialLinkedin', href: cfg.linkedin_url, external: true })
+  if (cfg.telegram_url) list.push({ labelKey: 'footer.socialTelegram', href: cfg.telegram_url, external: true })
+  return list
+})
 
 const quickLocales = [
   { code: 'zh', label: '简体中文', flag: 'cn' },
@@ -73,19 +207,24 @@ const handleSetLocale = async (code: string) => {
               loading="lazy"
               @error="(e: any) => { e.currentTarget.style.display = 'none' }"
             >
-            Rosetta
+            {{ siteConfig.site_name || t('footer.brand', 'Rosetta') }}
           </NuxtLink>
           <p class="text-sm text-muted-foreground leading-relaxed mb-6 max-w-sm">
-            {{ t('footer.description', '穿越语言的边界 · Modern Blog System') }}
+            {{
+              siteConfig.footer_slogan
+                || siteConfig.site_description
+                || t('footer.description', '穿越语言的边界 · Modern Blog System')
+            }}
           </p>
           <div class="flex items-center gap-2 mb-6">
             <Button
+              v-if="siteConfig.github_url"
               variant="ghost"
               size="icon"
               as-child
             >
               <a
-                href="https://github.com/ChuyuChoyeon/Rosetta"
+                :href="siteConfig.github_url"
                 target="_blank"
                 rel="noreferrer"
                 :aria-label="t('footer.githubLabel', 'GitHub')"
@@ -121,14 +260,48 @@ const handleSetLocale = async (code: string) => {
             </Button>
           </div>
           <p class="text-xs text-muted-foreground">
-            © {{ currentYear }} Rosetta · {{ t('footer.rightsReserved', 'All rights reserved.') }}
+            {{ siteConfig.copyright_text || `© ${currentYear} ${siteConfig.site_author || siteConfig.site_name || 'Rosetta'} · ${t('footer.rightsReserved', 'All rights reserved.')}` }}
           </p>
         </div>
 
-        <!-- Categories -->
+        <!-- Navigation (真实存在的页面) -->
+        <div class="lg:col-span-3">
+          <h4 class="font-bold uppercase tracking-wider text-xs text-muted-foreground mb-4">
+            {{
+              sectionTitle('footer.navigation', {
+                zh: '网站导航',
+                en: 'NAVIGATION',
+                ja: 'ナビゲーション',
+                zh_Hant: '網站導覽'
+              })
+            }}
+          </h4>
+          <ul class="space-y-3">
+            <li
+              v-for="link in siteLinks"
+              :key="link.to"
+            >
+              <NuxtLink
+                :to="link.to!"
+                class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {{ siteLabel(link) }}
+              </NuxtLink>
+            </li>
+          </ul>
+        </div>
+
+        <!-- Categories (真实后端分类接口) -->
         <div class="lg:col-span-2">
           <h4 class="font-bold uppercase tracking-wider text-xs text-muted-foreground mb-4">
-            {{ t('footer.categories', 'CATEGORIES') }}
+            {{
+              sectionTitle('footer.categories', {
+                zh: '内容分类',
+                en: 'CATEGORIES',
+                ja: 'カテゴリ',
+                zh_Hant: '內容分類'
+              })
+            }}
           </h4>
           <ul class="space-y-3">
             <li
@@ -142,34 +315,49 @@ const handleSetLocale = async (code: string) => {
                 {{ link.labelKey }}
               </NuxtLink>
             </li>
+            <li v-if="categoryLinks.length === 0">
+              <span class="text-sm text-muted-foreground/60">
+                {{ t('footer.noCategories', '暂无分类') }}
+              </span>
+            </li>
           </ul>
         </div>
 
-        <!-- Resources -->
+        <!-- Resources + Socials -->
         <div class="lg:col-span-3">
           <h4 class="font-bold uppercase tracking-wider text-xs text-muted-foreground mb-4">
-            {{ t('footer.resources', 'RESOURCES') }}
+            {{
+              sectionTitle('footer.resources', {
+                zh: '快速导航',
+                en: 'RESOURCES',
+                ja: 'リソース',
+                zh_Hant: '快速導覽'
+              })
+            }}
           </h4>
           <ul class="space-y-3">
             <li
               v-for="link in resourceLinks"
-              :key="link.to || link.href"
+              :key="link.href"
             >
-              <NuxtLink
-                v-if="link.to"
-                :to="link.to"
+              <a
+                :href="link.href"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {{ t(link.labelKey, link.labelKey) }}
-              </NuxtLink>
+                {{ resourceLabel(link.labelKey) }}
+              </a>
+            </li>
+            <li
+              v-for="link in socialLinks"
+              :key="link.href"
+            >
               <a
-                v-else
                 :href="link.href"
                 target="_blank"
                 rel="noreferrer"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {{ t(link.labelKey, link.labelKey) }}
+                {{ socialLabel(link.labelKey) }}
               </a>
             </li>
           </ul>
@@ -179,6 +367,10 @@ const handleSetLocale = async (code: string) => {
       <Separator class="my-10" />
 
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+        <div class="text-xs text-muted-foreground text-center md:text-left">
+          <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
+          © {{ currentYear }} {{ siteConfig.site_author || siteConfig.site_name || 'Rosetta' }}
+        </div>
         <!-- Quick locale switch (with flags) -->
         <div class="flex items-center gap-2 flex-wrap">
           <button
@@ -196,9 +388,6 @@ const handleSetLocale = async (code: string) => {
             />
             <span>{{ loc.label }}</span>
           </button>
-        </div>
-        <div class="text-xs text-muted-foreground text-center md:text-right">
-          © {{ currentYear }} Rosetta
         </div>
       </div>
     </div>

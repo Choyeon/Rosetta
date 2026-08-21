@@ -586,6 +586,42 @@ const normalizeMarkdownFences = (raw: string): string => raw
   .replace(/\r\n/g, '\n')
   .replace(/(^|\n)```(\w*)\n```\w*\n/g, '$1```$2\n')
 
+const hljsSanitizeConfig: Parameters<typeof DOMPurify.sanitize>[1] | undefined = (() => {
+  if (!import.meta.client) return undefined
+  // 显式放行 hljs 高亮 <span class="hljs-*"> 及其它 inline 语义标签，
+  // 避免默认严格模式把 token span 全部剥离，导致只剩纯文本代码块。
+  const hljsClassRe = /^(hljs|hljs-[a-z0-9_-]+|language-[a-z0-9_-]+)$/i
+  return {
+    ADD_TAGS: ['pre', 'code', 'span', 'mark', 'kbd', 'samp', 'var'],
+    ADD_ATTR: ['class'],
+    ALLOW_UNKNOWN_PROTOCOLS: false,
+    WHOLE_DOCUMENT: false,
+    FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick', 'onmouseover', 'onfocus', 'onblur'],
+    FORBID_TAGS: ['style', 'script', 'iframe', 'object', 'embed', 'form', 'input', 'button', 'link', 'meta'],
+    IN_PLACE: true,
+    SANITIZE_DOM: true,
+    /** 只允许 class 命中 hljs/language-* 白名单，防止任意样式注入 */
+
+    HOOKS: {
+      uponSanitizeElement(node: Element, _data: unknown) {
+        if (node.tagName === 'SPAN' || node.tagName === 'CODE' || node.tagName === 'PRE') {
+          const cls = node.getAttribute('class') || ''
+          if (!cls) return
+          const allowed = cls
+            .split(/\s+/)
+            .filter(c => hljsClassRe.test(c))
+            .join(' ')
+          if (allowed) node.setAttribute('class', allowed)
+          else node.removeAttribute('class')
+        }
+      }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } as Record<string, any>
+  } as Parameters<typeof DOMPurify.sanitize>[1]
+})()
+
+// 高亮单一来源：只使用 marked-highlight 插件做一次 hljs。
+// 自定义 renderer.code 仅负责剥 fence 与包 <pre><code>，不再重复调用 hljs，避免双重转义/重复 class。
 const mdRenderer = new Marked(
   {
     renderer: {
@@ -593,33 +629,18 @@ const mdRenderer = new Marked(
         return escapeHtml(text)
       },
       code({ text, lang, escaped }) {
-        if (escaped) return `<pre><code class="hljs">${escapeHtml(text)}</code></pre>`
         const rawLanguage = (lang || '').trim().toLowerCase()
         const cleaned = stripLeadingFenceFromCode(text, rawLanguage)
-        const language = rawLanguage && hljs.getLanguage(rawLanguage) ? rawLanguage : ''
-        let highlighted: string
-        if (language) {
-          try {
-            highlighted = hljs.highlight(cleaned, { language, ignoreIllegals: true }).value
-          } catch {
-            highlighted = escapeHtml(cleaned)
-          }
-        } else {
-          try {
-            highlighted = hljs.highlightAuto(cleaned).value
-          } catch {
-            highlighted = escapeHtml(cleaned)
-          }
-        }
-        const langClass = language ? ` language-${language}` : ''
-        return `<pre><code class="hljs${langClass}">${highlighted}</code></pre>`
+        const code = escaped ? cleaned : escapeHtml(cleaned)
+        const langClass = rawLanguage && hljs.getLanguage(rawLanguage) ? ` hljs language-${rawLanguage}` : ' hljs'
+        return `<pre><code class="${langClass.trim()}">${code}</code></pre>`
       }
     }
   },
   markedHighlight({
     langPrefix: 'hljs language-',
     highlight(code: string, lang: string) {
-      const language = lang.trim().toLowerCase()
+      const language = (lang || '').trim().toLowerCase()
       const cleaned = stripLeadingFenceFromCode(code, language)
       if (!language || !hljs.getLanguage(language)) {
         try {
@@ -643,10 +664,12 @@ const renderedContent = computed(() => {
   try {
     const html = mdRenderer.parse(raw) as string
     if (import.meta.server) return html
-    return DOMPurify.sanitize(html)
+    return DOMPurify.sanitize(html, hljsSanitizeConfig ?? undefined)
   } catch (e) {
     console.error('Markdown parse error:', e)
-    return import.meta.server ? escapeHtml(raw) : DOMPurify.sanitize(escapeHtml(raw))
+    const fallback = escapeHtml(raw)
+    if (import.meta.server) return fallback
+    return DOMPurify.sanitize(fallback, hljsSanitizeConfig ?? undefined)
   }
 })
 

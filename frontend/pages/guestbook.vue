@@ -1,8 +1,8 @@
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
-      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-slate-100 to-zinc-200 dark:from-slate-900/30 dark:to-zinc-800/40 mb-5">
-        <MessageSquare class="size-7 text-slate-700 dark:text-slate-300" />
+      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-primary/10 mb-5">
+        <MessageSquare class="size-7 text-primary" />
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
         {{ t('guestbook.title') }}
@@ -22,17 +22,20 @@
       <CardContent>
         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           <Input
-            v-model="form.nickname"
+            v-model="form.author_name"
             :placeholder="t('guestbook.nickname')"
+            :disabled="submitting"
           />
           <Input
-            v-model="form.email"
+            v-model="form.author_email"
             type="email"
             :placeholder="t('guestbook.email')"
+            :disabled="submitting"
           />
           <Input
-            v-model="form.website"
+            v-model="form.author_website"
             :placeholder="t('guestbook.website')"
+            :disabled="submitting"
           />
         </div>
         <Textarea
@@ -40,17 +43,77 @@
           :placeholder="t('guestbook.contentPlaceholder')"
           rows="4"
           class="resize-none mb-4"
+          :disabled="submitting"
         />
         <div class="flex justify-end">
-          <Button @click="submitGuestbook">
-            <Send class="size-4 mr-2" />
-            {{ t('common.submit') }}
+          <Button
+            :disabled="submitting"
+            @click="submitGuestbook"
+          >
+            <Send
+              v-if="!submitting"
+              class="size-4 mr-2"
+            />
+            <svg
+              v-else
+              class="animate-spin size-4 mr-2"
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <circle
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                stroke-width="3"
+                class="opacity-25"
+              />
+              <path
+                fill="currentColor"
+                d="M4 12a8 8 0 0 1 8-8V0C5.37 0 0 5.37 0 12h4Z"
+              />
+            </svg>
+            {{ submitting ? (t('common.submitting') || '提交中…') : t('common.submit') }}
           </Button>
         </div>
+        <p
+          v-if="submitError"
+          class="text-sm text-error mt-3"
+        >
+          {{ submitError }}
+        </p>
       </CardContent>
     </Card>
 
-    <div class="space-y-6">
+    <div
+      v-if="pending && guestbookList.length === 0"
+      class="space-y-6 mb-10"
+    >
+      <div
+        v-for="i in 3"
+        :key="i"
+        class="p-6 rounded-xl bg-card border border-border/60 animate-pulse"
+      >
+        <div class="flex gap-4">
+          <div class="size-10 rounded-full bg-muted shrink-0" />
+          <div class="flex-1 space-y-3">
+            <div class="flex items-center gap-2">
+              <div class="w-24 h-4 rounded-full bg-muted" />
+              <div class="w-16 h-3 rounded-full bg-muted" />
+            </div>
+            <div class="space-y-2">
+              <div class="w-full h-4 rounded-full bg-muted" />
+              <div class="w-4/5 h-4 rounded-full bg-muted" />
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-else
+      class="space-y-6"
+    >
       <div
         v-for="item in guestbookList"
         :key="item.id"
@@ -78,120 +141,34 @@
                   >
                     {{ item.website.replace(/^https?:\/\//, '') }}
                   </a>
-                  <span class="text-xs text-muted-foreground">{{ formatDate(item.createdAt) }}</span>
+                  <span class="text-xs text-muted-foreground">{{ formatDate(item.created_at) }}</span>
+                  <Badge
+                    v-if="item.is_pinned"
+                    variant="default"
+                    class="text-[10px] px-1.5 py-0.5"
+                  >
+                    {{ t('common.pinned') || '置顶' }}
+                  </Badge>
+                  <Badge
+                    v-else-if="item.is_featured"
+                    variant="secondary"
+                    class="text-[10px] px-1.5 py-0.5"
+                  >
+                    {{ t('common.featured') || '精华' }}
+                  </Badge>
                 </div>
                 <p class="text-foreground/90 leading-relaxed whitespace-pre-wrap">
                   {{ item.content }}
                 </p>
                 <div class="flex items-center gap-4 mt-3">
                   <button
-                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    :disabled="!!item.liking"
                     @click="toggleLike(item)"
                   >
                     <Heart :class="['size-4', item.liked ? 'fill-error text-error' : '']" />
                     <span>{{ item.likesCount || 0 }}</span>
                   </button>
-                  <button
-                    class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                    @click="toggleReplyInput(item)"
-                  >
-                    <MessageCircle class="size-4" />
-                    <span>{{ t('comment.reply') }}</span>
-                  </button>
-                </div>
-
-                <div
-                  v-if="replyOpenId === item.id"
-                  class="mt-4 space-y-3 p-4 rounded-xl bg-muted/40 border border-border/50"
-                >
-                  <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Input
-                      v-model="replyForm.nickname"
-                      :placeholder="t('guestbook.nickname')"
-                      size="sm"
-                    />
-                    <Input
-                      v-model="replyForm.email"
-                      type="email"
-                      :placeholder="t('guestbook.email')"
-                      size="sm"
-                    />
-                    <Input
-                      v-model="replyForm.website"
-                      :placeholder="t('guestbook.website')"
-                      size="sm"
-                    />
-                  </div>
-                  <Textarea
-                    v-model="replyForm.content"
-                    :placeholder="t('guestbook.replyPlaceholder')"
-                    rows="2"
-                    class="resize-none"
-                  />
-                  <div class="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      @click="replyOpenId = null"
-                    >
-                      {{ t('common.cancel') }}
-                    </Button>
-                    <Button
-                      size="sm"
-                      @click="submitReply(item)"
-                    >
-                      <Send class="size-3.5 mr-2" />
-                      {{ t('comment.reply') }}
-                    </Button>
-                  </div>
-                </div>
-
-                <div
-                  v-if="item.replies?.length"
-                  class="mt-4 space-y-4 pl-4 border-l-2 border-border/60"
-                >
-                  <div
-                    v-for="reply in item.replies"
-                    :key="reply.id"
-                    class="flex gap-3"
-                  >
-                    <Avatar class="size-8 shrink-0">
-                      <AvatarImage
-                        :src="reply.avatar ?? ''"
-                        :alt="reply.nickname ?? ''"
-                      />
-                      <AvatarFallback class="text-xs">
-                        {{ reply.nickname?.[0]?.toUpperCase() || 'R' }}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div class="flex-1 min-w-0">
-                      <div class="flex flex-wrap items-center gap-2 mb-1">
-                        <span class="font-medium text-sm">{{ reply.nickname }}</span>
-                        <a
-                          v-if="reply.website"
-                          :href="reply.website"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          class="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[160px]"
-                        >
-                          {{ reply.website.replace(/^https?:\/\//, '') }}
-                        </a>
-                        <span class="text-xs text-muted-foreground">{{ formatDate(reply.createdAt) }}</span>
-                      </div>
-                      <p class="text-sm text-foreground/90 leading-relaxed whitespace-pre-wrap">
-                        {{ reply.content }}
-                      </p>
-                      <div class="flex items-center gap-4 mt-2">
-                        <button
-                          class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-                          @click="toggleReplyLike(reply)"
-                        >
-                          <Heart :class="['size-3.5', reply.liked ? 'fill-error text-error' : '']" />
-                          <span>{{ reply.likesCount || 0 }}</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
                 </div>
               </div>
             </div>
@@ -201,7 +178,7 @@
     </div>
 
     <div
-      v-if="guestbookList.length === 0"
+      v-if="!pending && guestbookList.length === 0"
       class="text-center py-20"
     >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
@@ -219,199 +196,175 @@ import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
+import { Badge } from '~~/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { useI18n } from 'vue-i18n'
-import { MessageSquare, PenLine, Send, Heart, MessageCircle } from '@lucide/vue'
+import { MessageSquare, PenLine, Send, Heart } from '@lucide/vue'
+import { useAPI } from '~~/composables/useApi'
 
 definePageMeta({ layout: 'default' })
 
 const { t } = useI18n()
 
-// TODO: 替换为真实 composable
-// const { guestbookList, loading, fetchGuestbook, submitGuestbook: submitGB } = useGuestbook()
-
-const form = reactive({
-  nickname: '',
-  email: '',
-  website: '',
-  content: ''
-})
-
-const replyForm = reactive({
-  nickname: '',
-  email: '',
-  website: '',
-  content: ''
-})
-
-const replyOpenId = ref<number | null>(null)
-
-interface ReplyItem {
-  id: number
-  nickname: string
-  email?: string
-  website?: string
-  avatar?: string
-  content: string
-  createdAt: string
-  likesCount: number
-  liked?: boolean
-}
-
 interface GuestbookItem {
   id: number
   nickname: string
-  email?: string
+  author_email?: string
   website?: string
   avatar?: string
   content: string
-  createdAt: string
+  created_at: string
   likesCount: number
   liked?: boolean
-  replies?: ReplyItem[]
+  liking?: boolean
+  is_pinned?: boolean
+  is_featured?: boolean
+  status?: string
 }
 
-const guestbookList = ref<GuestbookItem[]>([
-  {
-    id: 1,
-    nickname: '林清远',
-    email: 'lin@example.com',
-    website: 'https://linqingyuan.dev',
-    avatar: '',
-    content: '博客风格真不错，极简的设计让阅读体验非常舒服。最近也在折腾自己的小站，有空来串门呀～',
-    createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-    likesCount: 12,
-    liked: false,
-    replies: [
-      {
-        id: 101,
-        nickname: 'Rosetta',
-        website: 'https://rosetta.dev',
-        avatar: '',
-        content: '感谢支持！常来常往 👋',
-        createdAt: new Date(Date.now() - 3600000 * 1.5).toISOString(),
-        likesCount: 3
-      }
-    ]
-  },
-  {
-    id: 2,
-    nickname: '沈砚之',
-    avatar: '',
-    content: '从你的 Vue 3 组合式 API 那篇文章过来的，写得非常清晰。顺便问一句，站点用的什么字体？显示效果很惊艳。',
-    createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-    likesCount: 8
-  },
-  {
-    id: 3,
-    nickname: 'Alex Chen',
-    website: 'https://alexchen.io',
-    avatar: '',
-    content: 'Found this blog via a friend\'s recommendation. The content quality is outstanding — especially the architecture posts. Looking forward to more deep dives!',
-    createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-    likesCount: 21
-  },
-  {
-    id: 4,
-    nickname: '墨白',
-    avatar: '',
-    content: '收藏夹 +1，以后常来。',
-    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(),
-    likesCount: 5
-  },
-  {
-    id: 5,
-    nickname: '苏半夏',
-    website: 'https://banxia.me',
-    avatar: '',
-    content: '友链已加，求互链～ 我的站点是 banxia.me，做独立开发随笔的。',
-    createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
-    likesCount: 6,
-    replies: [
-      {
-        id: 102,
-        nickname: 'Rosetta',
-        avatar: '',
-        content: '已收到，稍后会在友链页添加上 👍',
-        createdAt: new Date(Date.now() - 86400000 * 6.8).toISOString(),
-        likesCount: 2
-      }
-    ]
-  }
-])
+interface Paginated<T> {
+  items: T[]
+  total?: number
+  page?: number
+  page_size?: number
+  total_pages?: number
+}
 
+const form = reactive({
+  author_name: '',
+  author_email: '',
+  author_website: '',
+  content: ''
+})
+
+const submitting = ref(false)
+const submitError = ref<string | null>(null)
+
+const { locale } = useI18n()
+
+// 真实接口：GET /api/guestbook?page=1&page_size=30&status=approved
+const {
+  data: gbResp,
+  pending,
+  refresh
+} = await useAPI<Paginated<unknown>>('/guestbook', {
+  query: {
+    page: 1,
+    page_size: 30,
+    status: 'approved',
+    lang: locale
+  }
+})
+
+const guestbookList = computed<GuestbookItem[]>(() => {
+  const items = (gbResp.value?.items ?? []) as unknown[]
+  return items.map((raw) => {
+    const r = (raw ?? {}) as Record<string, unknown>
+    const pickStr = (k: string, fallback = '') => (typeof r[k] === 'string' ? r[k] : fallback)
+    const pickNum = (k: string, fallback = 0) => (typeof r[k] === 'number' ? r[k] : fallback)
+    return {
+      id: pickNum('id', 0),
+      nickname: pickStr('author_name') || pickStr('nickname'),
+      author_email: pickStr('author_email') || undefined,
+      website: pickStr('author_website') || pickStr('website') || undefined,
+      avatar: pickStr('resolved_avatar_url') || pickStr('author_avatar') || pickStr('avatar') || undefined,
+      content: pickStr('content'),
+      created_at: pickStr('created_at') || new Date().toISOString(),
+      likesCount: pickNum('likes_count', 0),
+      liked: false,
+      is_pinned: !!r.is_pinned,
+      is_featured: !!r.is_featured,
+      status: pickStr('status') || undefined
+    }
+  })
+})
+
+const MONTH_NAMES: Record<string, string[]> = {
+  zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
+  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+  zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
+}
 const formatDate = (dateStr: string) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return ''
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-  if (diffMins < 1) return t('common.justNow') || '刚刚'
-  if (diffMins < 60) return `${diffMins} ${t('common.minutesAgo') || '分钟前'}`
-  if (diffHours < 24) return `${diffHours} ${t('common.hoursAgo') || '小时前'}`
-  if (diffDays < 30) return `${diffDays} ${t('common.daysAgo') || '天前'}`
-  return date.toLocaleDateString()
+  const loc = String(locale.value || 'zh')
+  const months = (MONTH_NAMES[loc] || MONTH_NAMES.en || []) as string[]
+  const pad = (n: number) => n < 10 ? `0${n}` : String(n)
+  const month = months[date.getMonth()] ?? ''
+  const day = date.getDate()
+  const hh = pad(date.getHours())
+  const mm = pad(date.getMinutes())
+  return `${month} ${day} ${hh}:${mm}`
 }
 
-const submitGuestbook = () => {
-  if (!form.nickname.trim() || !form.content.trim()) return
-  const newItem: GuestbookItem = {
-    id: Date.now(),
-    nickname: form.nickname,
-    email: form.email,
-    website: form.website,
-    content: form.content,
-    createdAt: new Date().toISOString(),
-    likesCount: 0,
-    replies: []
+const submitGuestbook = async () => {
+  if (submitting.value) return
+  if (!form.author_name.trim() || !form.content.trim()) return
+  submitting.value = true
+  submitError.value = null
+  try {
+    const payload: Record<string, string> = {
+      author_name: form.author_name.trim(),
+      content: form.content.trim()
+    }
+    if (form.author_email.trim()) payload.author_email = form.author_email.trim()
+    if (form.author_website.trim()) payload.author_website = form.author_website.trim()
+
+    await $fetch('/api/guestbook', {
+      method: 'POST',
+      baseURL: import.meta.client ? '' : (useRuntimeConfig().apiBase as string || ''),
+      body: payload,
+      headers: {
+        'Accept-Language': locale.value || 'zh'
+      }
+    })
+
+    form.author_name = ''
+    form.author_email = ''
+    form.author_website = ''
+    form.content = ''
+    // 留言会先进入审核队列，不必立即插入前端列表，刷新拉取已审核列表
+    await refresh()
+  } catch (err: unknown) {
+    const e = (err ?? {}) as Record<string, unknown>
+    const data = (e.data ?? {}) as Record<string, unknown>
+    const msg
+      = (typeof data.message === 'string' && data.message)
+        || (typeof e.message === 'string' && e.message)
+        || (t('guestbook.submitFailed') as string)
+        || '提交失败，请稍后再试'
+    submitError.value = String(msg)
+  } finally {
+    submitting.value = false
   }
-  guestbookList.value.unshift(newItem)
-  form.nickname = ''
-  form.email = ''
-  form.website = ''
-  form.content = ''
 }
 
-const toggleLike = (item: GuestbookItem) => {
-  item.liked = !item.liked
-  item.likesCount += item.liked ? 1 : -1
-}
-
-const toggleReplyLike = (reply: ReplyItem) => {
-  reply.liked = !reply.liked
-  reply.likesCount += reply.liked ? 1 : -1
-}
-
-const toggleReplyInput = (item: GuestbookItem) => {
-  replyOpenId.value = replyOpenId.value === item.id ? null : item.id
-  if (replyOpenId.value) {
-    replyForm.nickname = ''
-    replyForm.email = ''
-    replyForm.website = ''
-    replyForm.content = ''
+const toggleLike = async (item: GuestbookItem) => {
+  if (item.liking) return
+  item.liking = true
+  try {
+    // 点赞响应结构在运行时确定，返回 unknown 以便后续守卫
+    const resp = await $fetch<unknown>(`/api/guestbook/${item.id}/like`, {
+      method: 'POST',
+      baseURL: import.meta.client ? '' : (useRuntimeConfig().apiBase as string || '')
+    })
+    const r = (resp ?? {}) as Record<string, unknown>
+    const rd = (r.data ?? {}) as Record<string, unknown>
+    const countRaw
+      = (typeof r.likes_count === 'number' ? r.likes_count : undefined)
+        ?? (typeof rd.likes_count === 'number' ? rd.likes_count : undefined)
+        ?? (item.likesCount + (item.liked ? -1 : 1))
+    const count = typeof countRaw === 'number' ? countRaw : item.likesCount
+    if (!item.liked) {
+      item.liked = true
+      item.likesCount = count
+    }
+  } catch {
+    // 静默失败
+  } finally {
+    item.liking = false
   }
-}
-
-const submitReply = (item: GuestbookItem) => {
-  if (!replyForm.nickname.trim() || !replyForm.content.trim()) return
-  const newReply: ReplyItem = {
-    id: Date.now(),
-    nickname: replyForm.nickname,
-    email: replyForm.email,
-    website: replyForm.website,
-    content: replyForm.content,
-    createdAt: new Date().toISOString(),
-    likesCount: 0
-  }
-  if (!item.replies) item.replies = []
-  item.replies.push(newReply)
-  replyOpenId.value = null
-  replyForm.nickname = ''
-  replyForm.email = ''
-  replyForm.website = ''
-  replyForm.content = ''
 }
 </script>

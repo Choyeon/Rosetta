@@ -90,7 +90,12 @@ export const usePosts = () => {
     }
   }
 
-  const getRecommendedPosts = (page = 1, pageSize = 12) => {
+  /**
+   * 相似/推荐型文章内部 helper（基于后端推荐算法）。
+   * 仅用于文章详情"相关文章"等单篇关联场景；不在前台主页作为"推荐"概念对外暴露。
+   * @internal
+   */
+  const _getRecommendedPosts = (page = 1, pageSize = 12) => {
     return useAPI<PaginatedResponse<Post>>('/blog/posts/recommended', {
       query: {
         lang: locale.value,
@@ -99,6 +104,10 @@ export const usePosts = () => {
       }
     })
   }
+  // 兼容别名（供内部未来可能调用的"相似推荐"逻辑使用，避免 breakage）
+
+  const _getRecommendedPostsAlias = _getRecommendedPosts
+  void _getRecommendedPostsAlias
 
   const getSimilarPosts = (postId: number, limit = 5) => {
     return useAPI<Post[]>(`/blog/posts/${postId}/similar`, {
@@ -161,7 +170,6 @@ export const usePosts = () => {
     // raw AsyncData methods
     getPosts,
     getPost,
-    getRecommendedPosts,
     getSimilarPosts,
     // stateful fetch methods
     fetchPosts,

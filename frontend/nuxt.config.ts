@@ -121,7 +121,29 @@ export default defineNuxtConfig({
     '/friends': { swr: 86400 },
     '/gallery': { swr: 86400 },
     '/guestbook': { swr: 600 },
-    '/activity': { swr: 600 }
+    '/activity': { swr: 600 },
+    // === 静态产物：SEO/RSS/Robots server routes 缓存头 + SWR ===
+    '/rss.xml': {
+      swr: 1800,
+      headers: {
+        'content-type': 'application/rss+xml; charset=utf-8',
+        'cache-control': 'public, max-age=1800, s-maxage=1800'
+      }
+    },
+    '/sitemap.xml': {
+      swr: 3600,
+      headers: {
+        'content-type': 'application/xml; charset=utf-8',
+        'cache-control': 'public, max-age=3600, s-maxage=3600'
+      }
+    },
+    '/robots.txt': {
+      swr: 3600,
+      headers: {
+        'content-type': 'text/plain; charset=utf-8',
+        'cache-control': 'public, max-age=3600, s-maxage=3600'
+      }
+    }
   },
 
   compatibilityDate: '2026-06-30',

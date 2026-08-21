@@ -5,7 +5,8 @@
  */
 
 export const useSiteVersions = () => {
-  // 内联写入已知稳定常量（离线可用，无构建步骤依赖）
+  // 仅保留构建时能静态得知的前端技术栈版本（避免编造运行环境信息）。
+  // Python/Node/FastAPI 等运行环境信息如需展示，应新增后端真实接口返回。
   const buildInfo = computed(() => ({
     rosetta: '1.0.0',
     nuxt: '4.5.1',
@@ -14,12 +15,7 @@ export const useSiteVersions = () => {
     vite: '8.1.5',
     pinia: '2.2.8',
     tailwindcss: '3.4.19',
-    i18n: '10.6.0',
-    node: import.meta.client ? navigator.userAgent.match(/Node\.js\/([\d.]+)/)?.[1] || (process?.versions?.node || '24.18.0') : '24.18.0',
-    npm: '11.16.0',
-    python: '3.10.11',
-    fastapi: '0.141.1',
-    pnpm: (globalThis as { __pnpm_version?: string }).__pnpm_version || '9.16.0'
+    i18n: '10.6.0'
   }))
 
   return { buildInfo }

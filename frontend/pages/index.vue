@@ -3,12 +3,14 @@
     <!-- ===== HERO: Bing Daily Wallpaper Section (pure wallpaper, no text) ===== -->
     <section
       class="relative min-h-[80vh] md:min-h-[86vh] overflow-hidden"
-      :style="{
-        backgroundImage: currentWallpaper ? `url(${currentWallpaper.fullUrl})` : undefined,
+      :style="currentWallpaper ? {
+        backgroundImage: `url(${currentWallpaper.fullUrl})`,
         backgroundSize: 'cover',
         backgroundPosition: 'center center',
         backgroundRepeat: 'no-repeat',
         backgroundAttachment: 'local'
+      } : {
+        backgroundImage: 'linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary)/0.35))'
       }"
     >
       <!-- Subtle depth overlays (no text → lighter gradients, just cinematic framing) -->
@@ -189,9 +191,13 @@
           <!-- Site stats -->
           <Card>
             <CardHeader>
-              <CardTitle class="text-lg flex items-center gap-2">
-                <BarChart3 class="size-4 text-primary" />
-                {{ t('home.siteStats') }}
+              <CardTitle class="text-lg">
+                <span class="inline-flex items-center gap-2">
+                  <span class="size-1.5 rounded-full bg-primary" />
+                  <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
+                    {{ t('home.siteStats') }}
+                  </span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -260,9 +266,13 @@
           <!-- Tech stack versions -->
           <Card>
             <CardHeader>
-              <CardTitle class="text-lg flex items-center gap-2">
-                <Server class="size-4 text-success" />
-                {{ t('home.techStack') }}
+              <CardTitle class="text-lg">
+                <span class="inline-flex items-center gap-2">
+                  <span class="size-1.5 rounded-full bg-success" />
+                  <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
+                    {{ t('home.techStack') }}
+                  </span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -284,7 +294,7 @@
                     </code>
                   </div>
                   <div
-                    v-if="idx === 4 || idx === 6"
+                    v-if="idx === 3 || idx === 5"
                     class="my-2 border-t border-border"
                   />
                 </template>
@@ -294,9 +304,13 @@
 
           <Card>
             <CardHeader>
-              <CardTitle class="text-lg flex items-center gap-2">
-                <FolderOpen class="size-4 text-warning" />
-                {{ t('nav.categories') }}
+              <CardTitle class="text-lg">
+                <span class="inline-flex items-center gap-2">
+                  <span class="size-1.5 rounded-full bg-warning" />
+                  <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
+                    {{ t('nav.categories') }}
+                  </span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -341,9 +355,13 @@
 
           <Card>
             <CardHeader>
-              <CardTitle class="text-lg flex items-center gap-2">
-                <Tag class="size-4 text-success" />
-                {{ t('home.tagCloud') }}
+              <CardTitle class="text-lg">
+                <span class="inline-flex items-center gap-2">
+                  <span class="size-1.5 rounded-full bg-primary" />
+                  <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
+                    {{ t('home.tagCloud') }}
+                  </span>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -434,7 +452,7 @@ import { useAPI } from '~~/composables/useApi'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight, BarChart3, FolderOpen, Server, Tag } from '@lucide/vue'
+import { ArrowRight } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -461,10 +479,9 @@ const techRows: TechRowItem[] = [
   { label: 'Vite', key: 'vite', color: 'bg-violet-500' },
   { label: 'Tailwind', key: 'tailwindcss', color: 'bg-sky-500' },
   { label: 'Pinia', key: 'pinia', color: 'bg-yellow-500' },
-  { label: 'Node', key: 'node', color: 'bg-green-600' },
-  { label: 'npm', key: 'npm', color: 'bg-red-500' },
-  { label: 'Python', key: 'python', color: 'bg-blue-500' },
-  { label: 'FastAPI', key: 'fastapi', color: 'bg-cyan-500' }
+  { label: 'i18n', key: 'i18n', color: 'bg-rose-500' },
+  { label: 'Nitro', key: 'nitro', color: 'bg-cyan-500' },
+  { label: 'Rosetta', key: 'rosetta', color: 'bg-primary' }
 ]
 
 // ===== Bing wallpaper =====

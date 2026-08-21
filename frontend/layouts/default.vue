@@ -14,6 +14,27 @@ const authStore = useAuthStore()
 const site = useSite()
 await site.ensureLoaded()
 
+const siteTitleForHead = computed(() => site.siteTitle.value || 'Rosetta')
+useHead(() => {
+  const title = siteTitleForHead.value
+  return {
+    link: [
+      {
+        rel: 'alternate',
+        type: 'application/rss+xml',
+        title: `${title} · RSS`,
+        href: '/rss.xml'
+      },
+      {
+        rel: 'sitemap',
+        type: 'application/xml',
+        title: `${title} · Sitemap`,
+        href: '/sitemap.xml'
+      }
+    ]
+  }
+})
+
 onMounted(() => {
   authStore.initialize()
 })
