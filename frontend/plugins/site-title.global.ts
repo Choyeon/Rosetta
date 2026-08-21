@@ -68,9 +68,16 @@ async function loadBrand(): Promise<BrandInfo> {
   if (!import.meta.client) return fallback
   try {
     // 客户端相对路径 /api/config，经浏览器 devProxy → FastAPI :8000
+    // timeout + signal：保证 devProxy 异常（空 host/port、后端未就绪）时 10s 内 reject，
+    // 避免 defineNuxtPlugin(async) 永远 pending 导致整个 SPA 白屏。
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 10000)
     const cfg = await $fetch<Record<string, unknown>>('/api/config', {
-      headers: { 'Accept-Language': document.documentElement.lang || navigator.language || 'zh-CN' }
+      headers: { 'Accept-Language': document.documentElement.lang || navigator.language || 'zh-CN' },
+      signal: ctrl.signal,
+      timeout: 10000
     })
+    clearTimeout(timer)
     if (cfg && typeof cfg === 'object') {
       if (typeof cfg.site_name === 'string' && cfg.site_name) fallback.siteName = cfg.site_name
       const sub = (cfg.site_subtitle ?? ((cfg as Record<string, unknown>).subtitle)) as unknown
@@ -78,7 +85,7 @@ async function loadBrand(): Promise<BrandInfo> {
       if (typeof cfg.theme_primary === 'string') fallback.primary = cfg.theme_primary
       if (typeof cfg.theme_accent === 'string') fallback.accent = cfg.theme_accent
     }
-  } catch { /* 后端不可用或 OOBE：使用默认值 */ }
+  } catch { /* 后端不可用 / OOBE / 超时：使用默认值 */ }
   return fallback
 }
 

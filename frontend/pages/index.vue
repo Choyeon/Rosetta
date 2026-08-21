@@ -532,7 +532,20 @@ const { data: siteStats, pending: siteStatsPending, error: siteStatsError } = aw
   key: 'home:site-stats'
 })
 
-const posts = computed<Post[]>(() => postsData.value?.items ?? [])
+// ===== 去重兜底：按 slug 唯一化（即使后端出现重复，也只保留第一条） =====
+const posts = computed<Post[]>(() => {
+  const raw = postsData.value?.items ?? []
+  const seen = new Set<string>()
+  const deduped: Post[] = []
+  let fallbackIdx = 0
+  for (const p of raw) {
+    const key = p.slug ? `s:${p.slug}` : p.id ? `i:${p.id}` : `f:${fallbackIdx++}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    deduped.push(p)
+  }
+  return deduped
+})
 const pinnedPosts = computed(() => posts.value.filter(post => post.is_pinned))
 const latestPosts = computed(() => posts.value.filter(post => !post.is_pinned))
 const categories = computed<Category[]>(() => categoriesData.value ?? [])

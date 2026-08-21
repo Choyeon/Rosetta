@@ -476,18 +476,45 @@ class ConfigService:
         return config
 
     def generate_env_content(self, config: dict) -> str:
-        """生成 .env 文件内容"""
+        """生成 .env 文件内容
+
+        ⚠️ SQLite DATABASE_URL 必须写成绝对路径（sqlite+aiosqlite:////abs/path/rosetta.db，
+        即 4 个斜杠），否则不同工作目录下的进程（dev.ps1 的后端、Nitro、迁移脚本、OOBE 等）
+        会各自访问到不同的 <cwd>/.db 文件，导致"DB 明明有数据但前端读到 0 篇文章 / 重复文章"
+        这类诡异问题。BASE_DIR 固定为 backend/core 的 parent.parent（项目根目录）。
+        """
         from urllib.parse import quote_plus
+
+        from backend.core.paths import BASE_DIR
 
         env = config["environment"]
         db_type = config.get("db_type", "postgresql")
 
         db_password = config.get("db_password", "")
         if db_type == "sqlite":
-            db_name = config.get("db_name", "rosetta")
-            if not db_name.endswith(".db"):
-                db_name = f"{db_name}.db"
-            database_url = f"sqlite+aiosqlite:///{db_name}"
+            db_name_raw = config.get("db_name", "rosetta")
+            # ⚠️ 历史误写 db_name=".db" 会导致 stem 为空（或因 Path 无法正确识别而被套后缀），
+            # 先按字符串级判空，空值回退到 rosetta.db。
+            name = (db_name_raw or "").strip()
+            if name.endswith((".db", ".DB")):
+                stem_no_ext = name[:-3]
+            else:
+                stem_no_ext = name
+            if not stem_no_ext or stem_no_ext == ".":
+                candidate = BASE_DIR / "rosetta.db"
+            else:
+                if config.get("db_path"):
+                    candidate = Path(config["db_path"])
+                    if not candidate.is_absolute():
+                        candidate = BASE_DIR / candidate
+                else:
+                    candidate = BASE_DIR / name
+                if not (str(candidate).endswith((".db", ".DB"))):
+                    candidate = candidate.with_suffix(".db")
+                candidate = candidate.resolve()
+            candidate.parent.mkdir(parents=True, exist_ok=True)
+            # aiosqlite 对绝对路径用 URL 形式：sqlite+aiosqlite:///X:/foo/bar.db
+            database_url = f"sqlite+aiosqlite:///{candidate.as_posix()}"
         else:
             password_part = f":{quote_plus(db_password)}" if db_password else ""
             database_url = f"postgresql+asyncpg://{config['db_user']}{password_part}@{config['db_host']}:{config['db_port']}/{config['db_name']}"

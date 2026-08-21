@@ -1,10 +1,12 @@
 /**
  * Bing 每日壁纸组合式函数
- * API: https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN
- * idx: 起始偏移 (0=今天, 1=昨天, ...7=7天前)
- * n: 返回数量 (最多 8，即最近 8 天)
- * 返回字段：{ images: [{ url, copyright, title, enddate, startdate, ... }] }
- * 图片 URL 相对域名为 https://www.bing.com
+ *
+ * 注意：
+ *  1. useRuntimeConfig / useI18n 必须在 composable 顶层（setup/顶层上下文）直接调用，
+ *     不能嵌套在 async 内部函数里，否则 Nuxt 会抛 NUXT_E1001（"composable called
+ *     outside a plugin / Nuxt hook / Nuxt middleware / Vue setup"），
+ *     严重时会打断 hydration，导致整页白屏。
+ *  2. localStorage / fetch 直连 Bing 仅客户端可用，使用 import.meta.client 守卫。
  */
 export interface BingImage {
   url: string
@@ -43,6 +45,11 @@ const WALLPAPER_MONTHS_COMPACT_EN: string[] = [
 ]
 
 export const useBingWallpaper = () => {
+  // ===== Nuxt / Vue 上下文必须在 composable 顶层调用，避免 NUXT_E1001 =====
+  const runtimeConfig = useRuntimeConfig()
+  const { locale: i18nLocale } = useI18n()
+  const apiBase = computed(() => (runtimeConfig.public.apiBase as string) || '')
+
   const images = ref<BingImage[]>([])
   const loading = ref(false)
   const error = ref<unknown>(null)
@@ -59,7 +66,7 @@ export const useBingWallpaper = () => {
     }
     const m = enddate.substring(4, 6)
     const d = enddate.substring(6, 8)
-    const locale = (useI18n?.()?.locale?.value as string) || 'zh'
+    const locale = (i18nLocale.value as string) || 'zh'
     const months = (WALLPAPER_MONTHS_LABEL[locale] || WALLPAPER_MONTHS_LABEL.en || []) as string[]
     const monthStr = months[parseInt(m, 10) - 1] || m
     const dayNum = String(parseInt(d, 10))
@@ -81,7 +88,9 @@ export const useBingWallpaper = () => {
     }
     const m = enddate.substring(4, 6)
     const d = enddate.substring(6, 8)
-    const locale = (useI18n?.()?.locale?.value as string) || 'zh'
+    // ⚠️ 必须复用顶层 i18nLocale（已经在 composable 开头通过 useI18n() 拿到），
+    //    禁止再次调用 useI18n()，避免离开 setup 上下文时触发 NUXT_E1001。
+    const locale = (i18nLocale.value as string) || 'zh'
     const monthInt = parseInt(m, 10)
     let sub: string
     switch (locale) {
@@ -126,9 +135,11 @@ export const useBingWallpaper = () => {
   const selectDay = (i: number) => {
     if (i >= 0 && i < images.value.length) {
       currentIdx.value = i
-      try {
-        localStorage.setItem('bing_wallpaper_idx', String(i))
-      } catch { /* ignore */ }
+      if (import.meta.client) {
+        try {
+          localStorage.setItem('bing_wallpaper_idx', String(i))
+        } catch { /* ignore */ }
+      }
     }
   }
 
@@ -156,15 +167,16 @@ export const useBingWallpaper = () => {
     loading.value = true
     error.value = null
     try {
-      // 尝试读取上次选择
-      try {
-        const saved = localStorage.getItem('bing_wallpaper_idx')
-        if (saved != null) currentIdx.value = Math.max(0, Math.min(7, parseInt(saved, 10) || 0))
-      } catch { /* ignore */ }
+      // 尝试读取上次选择（客户端守卫，避免 SSR/localStorage 不可用）
+      if (import.meta.client) {
+        try {
+          const saved = localStorage.getItem('bing_wallpaper_idx')
+          if (saved != null) currentIdx.value = Math.max(0, Math.min(7, parseInt(saved, 10) || 0))
+        } catch { /* ignore */ }
+      }
 
       // 优先走后端代理（无 CORS 问题，且带缓存）；失败再回退直连 Bing
       const loadFromBackend = async (): Promise<BingImage[]> => {
-        const apiBase = useRuntimeConfig().public.apiBase as string
         interface ProxyImage {
           url?: string
           urlbase?: string
@@ -177,7 +189,7 @@ export const useBingWallpaper = () => {
           enddate?: string
         }
         const data = await $fetch<{ images?: ProxyImage[] }>('/bing/wallpapers', {
-          baseURL: apiBase,
+          baseURL: apiBase.value,
           query: { n: 8, market: 'zh-CN' }
         })
         return (data.images || []).map((img, i) => ({
@@ -195,6 +207,7 @@ export const useBingWallpaper = () => {
       }
 
       const loadFromBingDirect = async (): Promise<BingImage[]> => {
+        if (!import.meta.client) return []
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 6000)
         try {

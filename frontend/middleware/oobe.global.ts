@@ -28,9 +28,15 @@ async function resolveOOBEComplete(): Promise<boolean> {
   inFlight = (async () => {
     try {
       const apiBase = useRuntimeConfig().public.apiBase as string
+      // 带超时 + AbortController 兜底：devProxy/后端不可用时不要把导航卡死（空白页）
+      const ctrl = new AbortController()
+      const timer = setTimeout(() => ctrl.abort(), 8000)
       const res = await $fetch<{ success?: boolean, oobe_complete?: boolean }>('/oobe/status', {
-        baseURL: apiBase
+        baseURL: apiBase,
+        signal: ctrl.signal,
+        timeout: 8000
       })
+      clearTimeout(timer)
       const complete = Boolean(res?.oobe_complete)
       cachedStatus = complete
       return complete

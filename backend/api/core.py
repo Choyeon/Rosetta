@@ -910,9 +910,17 @@ async def get_site_config(db: DB):
     # 优先级：site_configs 扁平 key → settings_groups JSON（覆盖/补充） → 环境 fallback
     def _apply_settings_groups(cfg_base: dict[str, Any]) -> dict[str, Any]:
         import json as _json_
+
+        def _cfg_raw(k: str) -> str | None:
+            """settings_groups 读键的大小写兼容（basic/seo/appearance 等可能是小写分组名）"""
+            v = configs.get(k)
+            if v is not None:
+                return v
+            return _configs_ci.get(k.upper()) if "_configs_ci" in dir() else None
+
         try:
             # basic
-            raw_basic = configs.get("basic")
+            raw_basic = _cfg_raw("basic")
             if raw_basic:
                 parsed = _json_.loads(raw_basic)
                 if isinstance(parsed, dict):
@@ -933,7 +941,7 @@ async def get_site_config(db: DB):
                     if parsed.get("about_content") is not None:
                         cfg_base["about_content"] = str(parsed["about_content"])
             # seo
-            raw_seo = configs.get("seo")
+            raw_seo = _cfg_raw("seo")
             if raw_seo:
                 parsed = _json_.loads(raw_seo)
                 if isinstance(parsed, dict):
@@ -944,7 +952,7 @@ async def get_site_config(db: DB):
                     if parsed.get("og_image"):
                         cfg_base["default_og_image"] = str(parsed["og_image"])
             # appearance
-            raw_appearance = configs.get("appearance")
+            raw_appearance = _cfg_raw("appearance")
             if raw_appearance:
                 parsed = _json_.loads(raw_appearance)
                 if isinstance(parsed, dict):
@@ -963,7 +971,7 @@ async def get_site_config(db: DB):
                     if parsed.get("font_family"):
                         cfg_base["font_family"] = str(parsed["font_family"])
             # footer
-            raw_footer = configs.get("footer")
+            raw_footer = _cfg_raw("footer")
             if raw_footer:
                 parsed = _json_.loads(raw_footer)
                 if isinstance(parsed, dict):
@@ -978,7 +986,7 @@ async def get_site_config(db: DB):
                     if parsed.get("police_icp_number") is not None:
                         cfg_base["police_icp_number"] = str(parsed["police_icp_number"]) or None
             # sidebar（已经由后续 _sidebar_dict_to_flat 读取默认，这里覆盖）
-            raw_sb = configs.get("sidebar")
+            raw_sb = _cfg_raw("sidebar")
             if raw_sb:
                 parsed_sb = _json_.loads(raw_sb)
                 if isinstance(parsed_sb, dict):
@@ -999,10 +1007,14 @@ async def get_site_config(db: DB):
     result = await db.execute(select(SiteConfig))
     rows = result.scalars().all()
     configs: dict[str, str] = {c.key: c.value for c in rows}
+    # ⚠️ 大小写不敏感查找：OOBE 脚本历史上混用小写键（site_name / enable_bing_wallpaper 等），
+    # 而 /api/config 读取习惯用大写键（SITE_NAME、ENABLE_COMMENTS）。
+    # 这里构建一份全大写 key 的镜像表，保证 get_* 系列函数无论传入哪种大小写都能命中。
+    _configs_ci: dict[str, str] = {k.upper(): v for k, v in configs.items()}
 
     # 尝试读取 settings_groups 中保存的 sidebar 分组（JSON 格式）
     sidebar = dict(default_sidebar)
-    raw_sidebar_json = configs.get("sidebar")
+    raw_sidebar_json = configs.get("sidebar") or _configs_ci.get("SIDEBAR")
     if raw_sidebar_json:
         try:
             import json as _json
@@ -1016,9 +1028,9 @@ async def get_site_config(db: DB):
             pass
 
     # 从 basic 分组 JSON 中读取 about_content
-    about_content = configs.get("ABOUT_CONTENT", "")
+    about_content = _configs_ci.get("ABOUT_CONTENT", "") or configs.get("ABOUT_CONTENT", "")
     if not about_content:
-        raw_basic_json = configs.get("basic")
+        raw_basic_json = configs.get("basic") or _configs_ci.get("BASIC")
         if raw_basic_json:
             try:
                 import json as _json
@@ -1030,13 +1042,13 @@ async def get_site_config(db: DB):
                 pass
 
     def get_bool(key: str, default: str = "true") -> bool:
-        return configs.get(key, default).lower() == "true"
+        return _configs_ci.get(key.upper(), default).lower() == "true"
 
     def get_int(key: str, default: str = "0") -> int:
-        return int(configs.get(key, default))
+        return int(_configs_ci.get(key.upper(), default))
 
     def get_str(key: str, default: str = "") -> str | None:
-        return configs.get(key, default) or None
+        return _configs_ci.get(key.upper(), default) or None
 
     response_dict: dict[str, Any] = dict(
         # 基础信息
@@ -1084,6 +1096,15 @@ async def get_site_config(db: DB):
         enable_like_button=get_bool("ENABLE_LIKE_BUTTON", "true"),
         enable_share_buttons=get_bool("ENABLE_SHARE_BUTTONS", "true"),
         enable_toc=get_bool("ENABLE_TOC", "true"),
+        # OOBE 种子里额外写入的一组能力开关（与上面 17 组 settings_groups 里的独立域做兼容）
+        enable_bing_wallpaper=get_bool("ENABLE_BING_WALLPAPER", "true"),
+        enable_pagefind_search=get_bool("ENABLE_PAGEFIND_SEARCH", "true"),
+        enable_encrypted_posts=get_bool("ENABLE_ENCRYPTED_POSTS", "false"),
+        enable_music_player=get_bool("ENABLE_MUSIC_PLAYER", "true"),
+        # OOBE 兼容别名：前端有些地方用 enable_rss，有些用 enable_rss_feed，统一暴露
+        enable_rss=get_bool("ENABLE_RSS_FEED", "true"),
+        # 默认封面图（OOBE 种子写 default_cover_image）
+        default_cover_image=get_str("DEFAULT_COVER_IMAGE", "") or "",
         # 分页设置
         pagination_page_size=get_int("PAGINATION_PAGE_SIZE", "12"),
         pagination_max_page_size=get_int("PAGINATION_MAX_PAGE_SIZE", "100"),
@@ -1143,7 +1164,7 @@ async def get_site_config(db: DB):
         music_show_in_navbar=get_bool("MUSIC_SHOW_IN_NAVBAR", "true"),
         music_show_in_sidebar=get_bool("MUSIC_SHOW_IN_SIDEBAR", "true"),
         music_mode=get_str("MUSIC_MODE", "meting") or "meting",
-        music_volume=float(configs.get("MUSIC_VOLUME", "0.7")),
+        music_volume=float(_configs_ci.get("MUSIC_VOLUME", "0.7")),
         music_play_mode=get_str("MUSIC_PLAY_MODE", "list") or "list",
         music_show_lyrics=get_bool("MUSIC_SHOW_LYRICS", "true"),
         music_meting_api=get_str(
@@ -1162,7 +1183,7 @@ async def get_site_config(db: DB):
         wallpaper_video=get_str("WALLPAPER_VIDEO", "") or "",
         wallpaper_use_bing=get_bool("WALLPAPER_USE_BING", "true"),
         wallpaper_bing_days=get_int("WALLPAPER_BING_DAYS", "30"),
-        wallpaper_dim_opacity=float(configs.get("WALLPAPER_DIM_OPACITY", "0.2")),
+        wallpaper_dim_opacity=float(_configs_ci.get("WALLPAPER_DIM_OPACITY", "0.2")),
         wallpaper_home_title=get_str("WALLPAPER_HOME_TITLE", "Welcome") or "Welcome",
         wallpaper_home_subtitle=get_str("WALLPAPER_HOME_SUBTITLE", "") or "",
         # 关于页面内容
@@ -1272,15 +1293,15 @@ async def get_site_config(db: DB):
         # ========== 樱花特效配置 ==========
         sakura_enable=get_bool("SAKURA_ENABLE", "false"),
         sakura_count=get_int("SAKURA_COUNT", "21"),
-        sakura_min_scale=float(configs.get("SAKURA_MIN_SCALE", "0.5")),
-        sakura_max_scale=float(configs.get("SAKURA_MAX_SCALE", "1.1")),
-        sakura_min_opacity=float(configs.get("SAKURA_MIN_OPACITY", "0.3")),
-        sakura_max_opacity=float(configs.get("SAKURA_MAX_OPACITY", "0.9")),
+        sakura_min_scale=float(_configs_ci.get("SAKURA_MIN_SCALE", "0.5")),
+        sakura_max_scale=float(_configs_ci.get("SAKURA_MAX_SCALE", "1.1")),
+        sakura_min_opacity=float(_configs_ci.get("SAKURA_MIN_OPACITY", "0.3")),
+        sakura_max_opacity=float(_configs_ci.get("SAKURA_MAX_OPACITY", "0.9")),
         sakura_z_index=get_int("SAKURA_Z_INDEX", "100"),
         # ========== 看板娘/Spine模型配置 ==========
         pio_spine_enable=get_bool("PIO_SPINE_ENABLE", "false"),
         pio_spine_model_path=get_str("PIO_SPINE_MODEL_PATH", "") or "",
-        pio_spine_scale=float(configs.get("PIO_SPINE_SCALE", "1.0")),
+        pio_spine_scale=float(_configs_ci.get("PIO_SPINE_SCALE", "1.0")),
         pio_spine_position_corner=get_str("PIO_SPINE_POSITION_CORNER", "bottom-left") or "bottom-left",
         pio_spine_width=get_int("PIO_SPINE_WIDTH", "135"),
         pio_spine_height=get_int("PIO_SPINE_HEIGHT", "165"),
@@ -1311,8 +1332,13 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
     """获取完整站点配置（带分组）"""
     result = await db.execute(select(SiteConfig))
     configs = {c.key: c.value for c in result.scalars().all()}
+    # 与公开 /config 接口保持一致：大小写不敏感读取（OOBE 种子只写入小写键）
+    _configs_ci: dict[str, str] = {k.upper(): v for k, v in configs.items()}
 
     def get_val(key: str, default: str = "") -> str:
+        v = _configs_ci.get(key.upper())
+        if v is not None:
+            return v
         return configs.get(key, default)
 
     def get_bool_val(key: str, default: str = "false") -> bool:

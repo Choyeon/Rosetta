@@ -27,7 +27,10 @@ logger = logging.getLogger("rosetta.auto_oobe")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s")
 
 ROOT = Path(__file__).resolve().parent.parent.parent
-OOBE_LOCK = ROOT / "backend" / ".oobe_complete"
+# ⚠️ 必须与 backend/core/paths.py OOBE_LOCK_FILE、backend/api/core.py 保持一致（项目根目录下）。
+# 历史上这里误写为 ROOT / "backend" / ".oobe_complete"，导致 /api/config 读取时判定 OOBE 未完成
+# 并返回 "Rosetta Blog" 等硬编码默认值（站点名、壁纸开关均被覆盖）。
+OOBE_LOCK = ROOT / ".oobe_complete"
 
 
 def _env(name: str, default: str = "") -> str:
@@ -143,14 +146,14 @@ async def _main() -> int:
         "admin_email": _env("ADMIN_EMAIL", "admin@example.com"),
         "admin_password": admin_password,
         "admin_nickname": _env("ADMIN_NICKNAME", admin_username),
-        # Features (默认较保守)
+        # Features
         "enable_comments": _env_bool("ENABLE_COMMENTS", True),
         "enable_registration": _env_bool("ENABLE_REGISTRATION", True),
         "enable_rss": _env_bool("ENABLE_RSS_FEED", True),
-        "enable_bing_wallpaper": False,
-        "enable_pagefind_search": False,
-        "enable_encrypted_posts": False,
-        "enable_music_player": False,
+        "enable_bing_wallpaper": _env_bool("ENABLE_BING_WALLPAPER", True),
+        "enable_pagefind_search": _env_bool("ENABLE_PAGEFIND_SEARCH", False),
+        "enable_encrypted_posts": _env_bool("ENABLE_ENCRYPTED_POSTS", False),
+        "enable_music_player": _env_bool("ENABLE_MUSIC_PLAYER", False),
     }
     req = CombinedInstallRequest(**payload)
 

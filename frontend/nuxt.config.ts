@@ -151,8 +151,11 @@ export default defineNuxtConfig({
   nitro: {
     devProxy: {
       '/api': {
-        target: `http://${BACKEND_HOST}:${BACKEND_PORT}/api`,
-        changeOrigin: true
+        // 缺失环境变量时回退到开发约定 127.0.0.1:8000，保证 devProxy 不会因为空 host/port 挂起
+        target: `http://${BACKEND_HOST || '127.0.0.1'}:${BACKEND_PORT || '8000'}/api`,
+        changeOrigin: true,
+        // 后端没准备好或代理失败时快速返回（5xx），避免 ofetch 永远 pending 卡死 Nuxt 客户端插件/中间件
+        proxyTimeout: 15000
       }
     }
   },

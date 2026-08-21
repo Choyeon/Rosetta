@@ -512,6 +512,7 @@ def generate_database_url(config: dict) -> str:
       3. 若最终路径不携带 .db 后缀则自动补 .db
     """
     from urllib.parse import quote_plus
+    from pathlib import Path
 
     from backend.core.paths import BASE_DIR
 
@@ -523,10 +524,24 @@ def generate_database_url(config: dict) -> str:
             candidate = Path(db_path)
             if not candidate.is_absolute():
                 candidate = BASE_DIR / candidate
+            # 路径后缀处理（无论 db_path 相对/绝对，最终都强制落地为 .db 文件）
+            if candidate.suffix.lower() != ".db":
+                candidate = candidate.with_suffix(".db")
         else:
-            candidate = BASE_DIR / db_name_cfg
-        if candidate.suffix.lower() != ".db":
-            candidate = candidate.with_suffix(".db")
+            # ⚠️ 兼容 OOBE 历史误写 db_name=".db" / "" / "." 的情况：
+            # ".db" 在 pathlib 中 suffix=''、stem='.db'（是隐藏文件的整体名字），
+            # 需要通过"文件名去掉 .db 后是否为空串"这个更准确的判据。
+            name = (db_name_cfg or "").strip()
+            if name.endswith((".db", ".DB")):
+                stem_no_ext = name[:-3]
+            else:
+                stem_no_ext = name
+            if not stem_no_ext or stem_no_ext == ".":
+                candidate = BASE_DIR / "rosetta.db"
+            else:
+                candidate = BASE_DIR / name
+                if not (name.endswith((".db", ".DB"))):
+                    candidate = candidate.with_suffix(".db")
         # aiosqlite 的 URL 里必须使用 POSIX 风格路径，否则 Windows 盘符会被当作 hostname
         return f"sqlite+aiosqlite:///{candidate.as_posix()}"
 
