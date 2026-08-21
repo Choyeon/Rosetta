@@ -27,7 +27,7 @@ import { useI18n } from 'vue-i18n'
 import ThemeToggle from '~~/components/ThemeToggle.vue'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
 
@@ -37,17 +37,66 @@ const site = useSite()
 const brandName = computed(() => site.basic.value.site_name || 'Rosetta')
 const brandLogo = computed(() => site.basic.value.logo || '/logo/rosetta-primary-icon.png')
 
-const navItems = computed(() => [
-  { label: t('nav.home'), to: '/' },
-  { label: t('nav.posts'), to: '/posts' },
-  { label: t('nav.categories'), to: '/categories' },
-  { label: t('nav.archive'), to: '/archive' },
-  { label: t('nav.friends'), to: '/friends' },
-  { label: t('nav.gallery'), to: '/gallery' },
-  { label: t('nav.guestbook'), to: '/guestbook' },
-  { label: t('nav.activity'), to: '/activity' },
-  { label: t('nav.about'), to: '/about' }
-])
+interface NavApiRow {
+  id?: number | string
+  label?: string | Record<string, string>
+  title?: string | Record<string, string>
+  name?: string | Record<string, string>
+  to?: string
+  url?: string
+  href?: string
+  path?: string
+  slug?: string
+  link_type?: string
+  is_external?: boolean
+  target?: string
+  sort_order?: number
+}
+
+// 内置兜底（极简、无示例数据）——当后端 /api/navigations 为空或请求失败时使用。
+// 仅保留站点核心必要页面路由，不延伸任何推荐性菜单。
+const FALLBACK_NAV: { label: string, to: string }[] = [
+  { label: t('nav.home') || '首页', to: '/' },
+  { label: t('nav.posts') || '文章', to: '/posts' },
+  { label: t('nav.categories') || '分类', to: '/categories' },
+  { label: t('nav.tags') || '标签', to: '/tags' },
+  { label: t('nav.archive') || '归档', to: '/archive' }
+]
+
+const { data: navRowsRef } = await useAPI<NavApiRow[]>('/navigations', {
+  key: 'public:navigations',
+  default: () => []
+})
+
+const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: string): string => {
+  if (v == null) return fb
+  if (typeof v === 'string') return v || fb
+  const l = locale.value as string
+  if (l && v[l]) return v[l] || fb
+  const keys = Object.keys(v)
+  const first = keys[0]
+  return (first ? v[first] : '') || fb
+}
+
+const navItems = computed(() => {
+  const raw = navRowsRef.value
+  if (!Array.isArray(raw) || raw.length === 0) return FALLBACK_NAV
+  const out: { label: string, to: string, external?: boolean }[] = []
+  for (const row of raw) {
+    const labelRaw = row.label ?? row.title ?? row.name ?? ''
+    const label = pickNavStr(labelRaw as string | Record<string, string> | null | undefined, '')
+    if (!label) continue
+    const path = (row.to ?? row.url ?? row.href ?? row.path ?? row.slug ?? '') as string
+    if (!path) continue
+    const external = Boolean(row.is_external || row.link_type === 'external' || row.target === '_blank' || /^https?:\/\//i.test(path))
+    if (external) {
+      // 外链不进入 navItems（避免内部路由解析出错），前台 header 暂不渲染外链
+      continue
+    }
+    out.push({ label, to: path })
+  }
+  return out.length > 0 ? out : FALLBACK_NAV
+})
 
 const isActive = (to: string) => {
   if (to === '/') return route.path === '/'

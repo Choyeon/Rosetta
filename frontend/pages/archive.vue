@@ -99,89 +99,48 @@ const { t, locale } = useI18n()
 interface PostItem {
   id: number | string
   slug: string
-  title: string
-  publishedAt: string
+  title?: string | Record<string, string>
+  publishedAt?: string
   published_at?: string
   created_at?: string
   views?: number
   views_count?: number
-  category?: { id: number | string, name: string, slug: string }
+  category?: { id: number | string, name?: string | Record<string, string>, slug: string }
+}
+interface ArchiveGroupItem {
+  year: number
+  month?: number
+  count?: number
+  posts?: PostItem[]
 }
 
-const allPosts = ref<PostItem[]>([
-  {
-    id: 1,
-    slug: 'post-1',
-    title: '探索 Vue 3 组合式 API 的优雅设计模式',
-    publishedAt: '2025-12-15T08:00:00Z',
-    views: 2341,
-    category: { id: 1, name: '前端开发', slug: 'frontend' }
-  },
-  {
-    id: 2,
-    slug: 'post-2',
-    title: '构建高性能 Nuxt 应用的 10 个技巧',
-    publishedAt: '2025-12-10T08:00:00Z',
-    views: 1823,
-    category: { id: 1, name: '前端开发', slug: 'frontend' }
-  },
-  {
-    id: 3,
-    slug: 'post-3',
-    title: '现代 CSS 布局完全指南：从 Flex 到 Grid',
-    publishedAt: '2025-11-28T08:00:00Z',
-    views: 1567,
-    category: { id: 3, name: 'CSS', slug: 'css' }
-  },
-  {
-    id: 4,
-    slug: 'post-4',
-    title: 'TypeScript 类型体操进阶：条件类型与映射类型',
-    publishedAt: '2025-11-15T08:00:00Z',
-    views: 1289,
-    category: { id: 4, name: 'TypeScript', slug: 'typescript' }
-  },
-  {
-    id: 5,
-    slug: 'post-5',
-    title: 'Docker 容器化部署最佳实践',
-    publishedAt: '2025-10-22T08:00:00Z',
-    views: 987,
-    category: { id: 6, name: '运维', slug: 'devops' }
-  },
-  {
-    id: 6,
-    slug: 'post-6',
-    title: '微服务架构中的服务发现与负载均衡',
-    publishedAt: '2025-10-08T08:00:00Z',
-    views: 756,
-    category: { id: 5, name: '架构', slug: 'architecture' }
-  },
-  {
-    id: 7,
-    slug: 'post-7',
-    title: 'Tailwind CSS 自定义主题系统实战',
-    publishedAt: '2025-09-20T08:00:00Z',
-    views: 634,
-    category: { id: 3, name: 'CSS', slug: 'css' }
-  },
-  {
-    id: 8,
-    slug: 'post-8',
-    title: '状态管理新纪元：Pinia vs Vuex 深度对比',
-    publishedAt: '2025-08-15T08:00:00Z',
-    views: 512,
-    category: { id: 5, name: '架构', slug: 'architecture' }
-  },
-  {
-    id: 9,
-    slug: 'post-9',
-    title: 'Node.js 性能调优：从事件循环到内存管理',
-    publishedAt: '2025-07-05T08:00:00Z',
-    views: 428,
-    category: { id: 2, name: '后端开发', slug: 'backend' }
+// ===== 真实接口：GET /api/blog/archive → [{year,month,count,posts:[...]}]
+// 空数组作为 SSR/客户端统一兜底；绝不内置任何示例文章。
+const { data: archiveData, pending: _pending } = await useAPI<ArchiveGroupItem[]>('/blog/archive', {
+  query: { lang: locale.value, limit_per_month: 100 },
+  key: 'archive:list:' + (locale.value || 'zh'),
+  default: () => []
+})
+
+// 扁平化：后端返回已按年月分组，但需要兼容旧格式（单 posts 平铺）
+const allPosts = computed<PostItem[]>(() => {
+  const groups = (archiveData.value || []) as ArchiveGroupItem[]
+  if (!Array.isArray(groups)) return []
+  const result: PostItem[] = []
+  for (const g of groups) {
+    if (g && Array.isArray(g.posts)) {
+      for (const p of g.posts) {
+        // 归档接口里有 created_at；其他页面用 published_at / publishedAt
+        const post = p as PostItem
+        if (!post.publishedAt && !post.published_at && post.created_at) {
+          post.published_at = post.created_at
+        }
+        result.push(post)
+      }
+    }
   }
-])
+  return result
+})
 
 const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''

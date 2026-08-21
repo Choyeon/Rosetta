@@ -11,6 +11,8 @@ import type {
   SiteStats,
   Page,
   Sponsor,
+  HeroCarouselItem,
+  RankingItem,
   PaginatedResponse
 } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
@@ -328,5 +330,92 @@ export const useSiteFullConfig = () => {
   return {
     getSiteFullConfig,
     updateSettings
+  }
+}
+
+// ==================== Hero 轮播：GET /api/hero/slides（公开，仅活跃） ====================
+export const useHeroSlides = () => {
+  const getHeroSlides = () => {
+    // 后端返回原生 Array<HeroSlide>；字段与 HeroCarouselItem 大体兼容，失败回空数组
+    return useAPI<HeroCarouselItem[]>('/hero/slides', {
+      key: 'hero:slides',
+      default: () => []
+    })
+  }
+
+  return {
+    getHeroSlides
+  }
+}
+
+// ==================== 热门排行：GET /api/ranking/posts?period=&limit= ====================
+export const useRanking = () => {
+  const getTopPosts = (params?: { period?: 'day' | 'week' | 'month' | 'all', limit?: number }) => {
+    return useAPI<{ ranking?: RankingItem[], posts?: RankingItem[] } | RankingItem[]>('/ranking/posts', {
+      key: `ranking:posts:${params?.period ?? 'week'}:${params?.limit ?? 10}`,
+      query: params ?? { period: 'week', limit: 10 },
+      default: () => []
+    })
+  }
+
+  return {
+    getTopPosts
+  }
+}
+
+// ==================== 投票 Polls：公开只读列表 / 详情 / 投票 ====================
+export interface PollOption {
+  id: number
+  label: string
+  votes: number
+}
+export interface Poll {
+  id: number
+  title: string
+  description?: string
+  options: PollOption[]
+  total_votes: number
+  is_active: boolean
+  end_at?: string
+  voted_option_id?: number | null
+}
+export const useVotingPolls = () => {
+  const listPolls = (params?: { page?: number, page_size?: number }) => {
+    return useAPI<PaginatedResponse<Poll> | Poll[]>('/voting/polls', {
+      key: `polls:list:${params?.page ?? 1}`,
+      query: params,
+      default: () => []
+    })
+  }
+  const getPoll = (id: number | string) => {
+    return useAPI<Poll>(`/voting/polls/${id}`, {
+      key: `polls:${id}`
+    })
+  }
+  return {
+    listPolls,
+    getPoll
+  }
+}
+
+// ==================== SEO 公开：Open Graph / JSON-LD Schema ====================
+export const useSeoPublic = () => {
+  /** GET /api/seo/open-graph/{resource_type}/{resource_id}（返回 OG meta 键值对，供 useHead 合并） */
+  const getOpenGraph = (resourceType: string, resourceId: string | number) => {
+    return useAPI<Record<string, string | undefined>>(`/seo/open-graph/${encodeURIComponent(resourceType)}/${encodeURIComponent(String(resourceId))}`, {
+      key: `seo:og:${resourceType}:${resourceId}`,
+      default: () => ({})
+    })
+  }
+  /** GET /api/seo/schema/{resource_type}/{resource_id}（返回 JSON-LD 结构化对象，渲染到 <script type="application/ld+json">） */
+  const getSchema = (resourceType: string, resourceId: string | number) => {
+    return useAPI<Record<string, unknown> | null>(`/seo/schema/${encodeURIComponent(resourceType)}/${encodeURIComponent(String(resourceId))}`, {
+      key: `seo:schema:${resourceType}:${resourceId}`,
+      default: () => null
+    })
+  }
+  return {
+    getOpenGraph,
+    getSchema
   }
 }

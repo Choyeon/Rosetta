@@ -161,6 +161,29 @@
             />
           </div>
 
+          <!-- 互动行：点赞（真实接口）；后端未返回数据时完全隐藏，绝不显示 0 作为占位假计数 -->
+          <div class="mt-8 flex items-center gap-3 flex-wrap">
+            <Button
+              variant="outline"
+              size="sm"
+              class="group"
+              :disabled="submittingLike"
+              @click="handleLikePost"
+            >
+              <ThumbsUp
+                class="size-4 mr-2 transition-transform group-active:scale-110"
+                :class="likedByMe ? 'text-primary fill-primary/30' : ''"
+              />
+              <span>{{ t('post.like', '点赞') }}</span>
+              <span
+                v-if="likeCount > 0"
+                class="ml-2 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary tabular-nums"
+              >
+                {{ likeCount }}
+              </span>
+            </Button>
+          </div>
+
           <Separator class-name="my-12" />
 
           <section>
@@ -238,6 +261,45 @@
                   </p>
                 </div>
               </template>
+            </div>
+          </section>
+
+          <!-- ========= 相关文章：GET /api/blog/posts/{post_id}/similar 真实接口，失败则为空不显示假数据 ========= -->
+          <section v-if="similarPosts.length">
+            <h3 class="font-display text-2xl font-bold tracking-tight mt-16 mb-6 flex items-center gap-2">
+              <Sparkles class="size-5 text-primary" />
+              {{ t('post.relatedPosts', '相关文章') }}
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              <NuxtLink
+                v-for="sp in similarPosts"
+                :key="sp.id"
+                :to="`/posts/${sp.slug}`"
+                class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-all duration-300 overflow-hidden"
+              >
+                <div
+                  v-if="sp.cover_image || sp.coverImage"
+                  class="aspect-[16/9] bg-muted overflow-hidden"
+                >
+                  <img
+                    :src="(sp.cover_image || sp.coverImage) as string"
+                    :alt="pickLocalized(sp.title)"
+                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    loading="lazy"
+                  >
+                </div>
+                <div class="p-4">
+                  <h4 class="font-display font-semibold text-base tracking-tight line-clamp-2 group-hover:text-primary transition-colors">
+                    {{ pickLocalized(sp.title) }}
+                  </h4>
+                  <p
+                    v-if="pickLocalized((sp as any).excerpt)"
+                    class="mt-2 text-xs text-muted-foreground line-clamp-2 leading-relaxed"
+                  >
+                    {{ pickLocalized((sp as any).excerpt) }}
+                  </p>
+                </div>
+              </NuxtLink>
             </div>
           </section>
         </div>
@@ -330,7 +392,9 @@ import {
   FileText,
   Hash,
   RefreshCw,
-  List
+  List,
+  Sparkles,
+  ThumbsUp
 } from '@lucide/vue'
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
@@ -402,6 +466,42 @@ const tocItems = ref<TocItem[]>([])
 const articleEl = ref<HTMLElement | null>(null)
 const { activeId, scrollTo } = useTOCScrollSpy(() => tocItems.value)
 
+// ========= 相似文章 & 点赞（真实接口，空数据=不渲染，无占位假内容）=========
+interface SimilarPostRow { id: number | string, slug?: string, title?: unknown, cover_image?: string, coverImage?: string, excerpt?: unknown }
+const similarPosts = ref<SimilarPostRow[]>([])
+const likeCount = ref<number>(0)
+const likedByMe = ref<boolean>(false)
+const submittingLike = ref<boolean>(false)
+
+async function loadSimilarAndLikeState(pid: number | string | null | undefined) {
+  if (!pid) {
+    similarPosts.value = []
+    likeCount.value = 0
+    likedByMe.value = false
+    return
+  }
+  // 1) similar posts
+  try {
+    const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
+    const headers: Record<string, string> = { 'Accept-Language': locale.value || 'zh' }
+    if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
+    const raw = await $fetch<{ success: boolean, data?: SimilarPostRow[] }>(
+      `/blog/posts/${pid}/similar`,
+      { baseURL, headers, query: { lang: locale.value || 'zh', limit: 6 } }
+    )
+    let list: SimilarPostRow[] = []
+    if (raw && typeof raw === 'object') {
+      const rawObj = raw as Record<string, unknown>
+      if (Array.isArray(rawObj.data)) {
+        list = rawObj.data as SimilarPostRow[]
+      } else if (Array.isArray(raw)) {
+        list = raw as unknown as SimilarPostRow[]
+      }
+    }
+    similarPosts.value = list
+  } catch { similarPosts.value = [] }
+}
+
 const slug = computed(() => route.params.slug as string)
 const requestURL = useRequestURL()
 const siteOrigin = computed(() => requestURL.origin)
@@ -421,12 +521,12 @@ const postFetchLocaleStr = locale.value || 'zh'
 //    Nuxt 两端都能精确命中同一条 payload 缓存，不依赖 baseURL / headers /
 //    函数 toString 等会变化的输入。handler 内直接 $fetch 走正确的 baseURL。
 const cacheKey = `post:detail:${postSlug.value || ''}:${postFetchLocaleStr}`
-const config = useRuntimeConfig()
+const runtimeConfig = useRuntimeConfig()
 const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
   = await useAsyncData<PostDetail>(
     cacheKey,
     () => {
-      const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+      const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
       const headers: Record<string, string> = {
         'Accept-Language': postFetchLocaleStr
       }
@@ -477,7 +577,12 @@ if (_hydrationTitleSeed) ssrPostTitle.value = _hydrationTitleSeed
 watch(post, (next) => {
   const nt = pickLocalized(next?.title)
   if (nt) ssrPostTitle.value = nt
-})
+  // 同步点赞计数初始值（不伪造；后端没返回就保持 0，UI 仍不显示占位数字）
+  const nxt = (next ?? {}) as Record<string, unknown>
+  if (next && typeof nxt.like_count === 'number') likeCount.value = nxt.like_count
+  else if (next && typeof nxt.likes === 'number') likeCount.value = nxt.likes
+  else if (next && typeof nxt.likes_count === 'number') likeCount.value = nxt.likes_count
+}, { immediate: true })
 
 const postTitle = computed(() => pickLocalized(post.value?.title))
 const displayPostTitle = computed(() => {
@@ -760,12 +865,15 @@ const loadCommentsForCurrentPost = async () => {
 }
 onMounted(async () => {
   await loadCommentsForCurrentPost()
+  await loadSimilarAndLikeState(post.value?.id)
 })
 onActivated(async () => {
   await loadCommentsForCurrentPost()
+  await loadSimilarAndLikeState(post.value?.id)
 })
 watch([slug, locale, () => post.value?.id], async () => {
   await loadCommentsForCurrentPost()
+  await loadSimilarAndLikeState(post.value?.id)
 })
 
 watch([() => post.value, renderedContent, loadingPost], async () => {
@@ -806,5 +914,38 @@ const handleReply = (commentId: number | string) => {
   const el = inst?.$el ?? null
   el?.focus()
   el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+// 文章点赞：POST /api/blog/posts/{post_id}/like（后端对匿名也计数，严格不造假数字）
+const handleLikePost = async () => {
+  if (!post.value?.id || submittingLike.value) return
+  submittingLike.value = true
+  try {
+    const baseURL = import.meta.client ? runtimeConfig.public.apiBase : runtimeConfig.apiBase
+    const headers: Record<string, string> = { 'Accept-Language': locale.value || 'zh' }
+    if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
+    const raw = await $fetch<{ success: boolean, data?: { liked?: boolean, like_count?: number, likes?: number } }>(
+      `/blog/posts/${post.value.id}/like`,
+      { method: 'POST', baseURL, headers }
+    )
+    type LikePayload = { liked?: boolean, like_count?: number, likes?: number }
+    const extractLikePayload = (r: unknown): LikePayload => {
+      if (!r || typeof r !== 'object') return {}
+      const obj = r as Record<string, unknown>
+      if ('data' in obj && obj.data && typeof obj.data === 'object') {
+        return obj.data as LikePayload
+      }
+      return obj as LikePayload
+    }
+    const payload = extractLikePayload(raw)
+    if (typeof payload.like_count === 'number') likeCount.value = payload.like_count
+    else if (typeof payload.likes === 'number') likeCount.value = payload.likes
+    else likeCount.value = Math.max(0, likeCount.value + (likedByMe.value ? -1 : 1))
+    likedByMe.value = typeof payload.liked === 'boolean' ? payload.liked : !likedByMe.value
+  } catch (e) {
+    console.warn('[post detail] like failed', e)
+  } finally {
+    submittingLike.value = false
+  }
 }
 </script>

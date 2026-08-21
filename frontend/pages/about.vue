@@ -385,39 +385,14 @@ const profileTags = computed(() => {
   return Array.from(new Set(base)).slice(0, 6)
 })
 
-const techStack = [
-  { name: 'Nuxt', bg: 'linear-gradient(135deg, #00dc82, #003428)', color: '#ffffff' },
-  { name: 'Vue', bg: 'linear-gradient(135deg, #42b883, #35495e)', color: '#ffffff' },
-  { name: 'Tailwind', bg: 'linear-gradient(135deg, #38bdf8, #0284c7)', color: '#ffffff' },
-  { name: 'Shadcn', bg: 'linear-gradient(135deg, #0f172a, #334155)', color: '#ffffff' },
-  { name: 'FastAPI', bg: 'linear-gradient(135deg, #009688, #006064)', color: '#ffffff' },
-  { name: 'PostgreSQL', bg: 'linear-gradient(135deg, #336791, #002a4c)', color: '#ffffff' },
-  { name: 'Redis', bg: 'linear-gradient(135deg, #dc382d, #8b1e1a)', color: '#ffffff' },
-  { name: 'Docker', bg: 'linear-gradient(135deg, #2496ed, #0d3b66)', color: '#ffffff' }
-]
+// 技术栈与技能组：后端暂无专门返回该类数据的 API，
+// 为避免编造"个人履历"，这里严格不写死任何示例项。
+// 后续如果 settings 组增加 "about_tech_stack" 字段，可直接接入。
+interface TechChip { name: string, bg?: string, color?: string }
+interface SkillGroupItem { title: string, items: string[], icon?: Component }
 
-const skillGroups = [
-  {
-    title: 'Frontend',
-    icon: Layers,
-    items: ['Vue 3', 'React 18', 'TypeScript', 'Nuxt 3', 'Next.js', 'Tailwind CSS', 'Vite', 'Pinia', 'VueUse']
-  },
-  {
-    title: 'Backend',
-    icon: Wrench,
-    items: ['Python / FastAPI', 'Node.js', 'Go', 'PostgreSQL', 'MySQL', 'Redis', 'SQLAlchemy', 'Prisma']
-  },
-  {
-    title: 'DevOps',
-    icon: Globe,
-    items: ['Docker', 'GitHub Actions', 'Nginx', 'Linux', 'Prometheus', 'Grafana']
-  },
-  {
-    title: 'Tools',
-    icon: Wrench,
-    items: ['Git', 'VSCode', 'Figma', 'Postman', 'pnpm', 'ESLint', 'Prettier']
-  }
-]
+const techStack: TechChip[] = []
+const skillGroups: SkillGroupItem[] = []
 
 interface ContactItem {
   label: string

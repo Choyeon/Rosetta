@@ -16,7 +16,7 @@
       <NuxtLink
         v-for="cat in categories"
         :key="cat.id"
-        :to="`/posts?category=${cat.slug}`"
+        :to="`/categories/${cat.slug}`"
       >
         <Card class="h-full group transition-all hover:shadow-soft hover:-translate-y-0.5 duration-300 overflow-hidden">
           <CardHeader class="p-6 pb-4">
@@ -91,48 +91,25 @@ const getCatName = (c: { name?: string | Record<string, string> } | null | undef
 const getCatDesc = (c: { description?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.description)
 const getPostsCount = (c: { post_count?: number, postsCount?: number } | null | undefined) => c?.post_count ?? c?.postsCount ?? 0
 
-const categories = ref([
-  {
-    id: 1,
-    slug: 'frontend',
-    name: '前端开发',
-    description: '涵盖 Vue、React、CSS、浏览器原理等前端技术的深度探索与实战经验分享。',
-    postsCount: 42
-  },
-  {
-    id: 2,
-    slug: 'backend',
-    name: '后端开发',
-    description: 'Node.js、PHP、Python、Go 等后端语言与框架的技术讨论与最佳实践。',
-    postsCount: 38
-  },
-  {
-    id: 3,
-    slug: 'css',
-    name: 'CSS',
-    description: '现代 CSS 布局、动画、设计系统与视觉实现技巧集锦。',
-    postsCount: 24
-  },
-  {
-    id: 4,
-    slug: 'typescript',
-    name: 'TypeScript',
-    description: '类型体操、类型系统设计、大型项目中的 TS 最佳实践。',
-    postsCount: 18
-  },
-  {
-    id: 5,
-    slug: 'architecture',
-    name: '架构设计',
-    description: '系统架构、微服务、领域驱动设计、代码质量与工程化思考。',
-    postsCount: 15
-  },
-  {
-    id: 6,
-    slug: 'devops',
-    name: '运维与部署',
-    description: 'Docker、Kubernetes、CI/CD、监控告警与性能优化实战。',
-    postsCount: 12
-  }
-])
+interface CategoryRow {
+  id: number | string
+  slug: string
+  name?: string | Record<string, string>
+  description?: string | Record<string, string>
+  post_count?: number
+  postsCount?: number
+}
+
+// 真实接口：GET /api/blog/categories。SSR + 客户端同源，失败时回退空数组，不显示示例分类。
+const { data: catsData } = await useAPI<CategoryRow[]>('/blog/categories', {
+  query: { lang: locale.value },
+  key: 'categories:list:' + (locale.value || 'zh'),
+  default: () => []
+})
+
+const categories = computed<CategoryRow[]>(() => {
+  const raw = catsData.value
+  if (!Array.isArray(raw)) return []
+  return raw
+})
 </script>

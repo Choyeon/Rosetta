@@ -18,7 +18,7 @@
         <NuxtLink
           v-for="tag in sortedTags"
           :key="tag.id"
-          :to="`/posts?tag=${tag.slug}`"
+          :to="`/tags/${tag.slug}`"
           class="no-underline"
           :style="cloudStyle(tag)"
         >
@@ -46,7 +46,7 @@
       <NuxtLink
         v-for="tag in sortedTags"
         :key="tag.id"
-        :to="`/posts?tag=${tag.slug}`"
+        :to="`/tags/${tag.slug}`"
         class="no-underline group"
       >
         <div class="card-surface h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
@@ -79,6 +79,8 @@ import TagBadge from '~~/components/TagBadge.vue'
 
 definePageMeta({ layout: 'default' })
 
+const { t, locale } = useI18n()
+
 interface TagRow {
   id: number | string
   slug: string
@@ -88,24 +90,19 @@ interface TagRow {
   postsCount?: number
 }
 
-// SSR 与客户端首渲染使用同一份常量占位列表（避免 Hydration 不匹配 / 500）。
-// 挂载后再用 useAPI 拉真实后端数据覆盖。
-const INITIAL_TAGS: TagRow[] = [
-  { id: 1, slug: 'python', name: 'Python', color: '#3776AB', post_count: 11 },
-  { id: 2, slug: 'fastapi', name: 'FastAPI', color: '#009688', post_count: 5 },
-  { id: 3, slug: 'vue', name: 'Vue', color: '#42B883', post_count: 5 },
-  { id: 4, slug: 'react', name: 'React', color: '#61DAFB', post_count: 4 },
-  { id: 5, slug: 'typescript', name: 'TypeScript', color: '#3178C6', post_count: 12 },
-  { id: 6, slug: 'javascript', name: 'JavaScript', color: '#F7DF1E', post_count: 6 },
-  { id: 7, slug: 'nodejs', name: 'Node.js', color: '#339933', post_count: 6 },
-  { id: 8, slug: 'docker', name: 'Docker', color: '#2496ED', post_count: 4 },
-  { id: 9, slug: 'css', name: 'CSS', color: '#2563EB', post_count: 9 },
-  { id: 10, slug: 'astro', name: 'Astro', color: '#FF5D01', post_count: 2 }
-]
+// SSR 与客户端首渲染统一为空数组（空 = 无标签占位，避免显示假数据）。
+// 首屏渲染用 useSSR 友好的 useAPI，失败或空都保持空态，绝不回退到示例标签。
+const { data: tagsData, pending: _tagsLoading } = await useAPI<TagRow[]>('/blog/tags', {
+  query: { lang: locale.value },
+  key: 'tags:list:' + (locale.value || 'zh'),
+  default: () => []
+})
 
-const tags = ref<TagRow[]>([...INITIAL_TAGS])
-
-const { t, locale } = useI18n()
+const tags = computed<TagRow[]>(() => {
+  const raw = tagsData.value
+  if (!Array.isArray(raw)) return []
+  return raw
+})
 
 const tagName = (tag: TagRow): string => {
   const v = tag.name
@@ -202,18 +199,5 @@ const tagTextColor = (tag: TagRow): string => {
   return lum > 0.55 ? '#0f172a' : lum > 0.3 ? '#0f172a' : '#ffffff'
 }
 
-// 客户端挂载后再拉真实数据，避免 SSR 阶段触发 config / payload 序列化问题。
-onMounted(async () => {
-  try {
-    const localeKey = String(locale.value || 'zh')
-    const fetched = await $fetch<TagRow[]>('/api/blog/tags', {
-      query: { lang: localeKey }
-    })
-    if (Array.isArray(fetched) && fetched.length > 0) {
-      tags.value = fetched
-    }
-  } catch {
-    // 失败时保留初始占位，不抛错
-  }
-})
+// useAPI 已在顶层 await 进行 SSR 安全拉取；失败时自动回退空数组 default() => []，无示例标签残留。
 </script>

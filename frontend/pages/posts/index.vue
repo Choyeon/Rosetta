@@ -15,7 +15,7 @@
               <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 v-model="searchInput"
-                :placeholder="t('posts.searchPlaceholder')"
+                :placeholder="searchPlaceholder"
                 class="pl-9 h-10"
                 @keyup.enter="handleSearch"
               />
@@ -139,6 +139,7 @@ import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { watch, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -167,6 +168,33 @@ const { data: categories } = await useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
   key: `posts:categories:${locale.value}`,
   default: () => []
+})
+
+// ===== 搜索占位符：真实接口 /api/search-placeholders。空则回退 i18n key，绝不编造示例提示词 =====
+const { data: placeholdersRaw } = await useAPI<string[]>('/search-placeholders', {
+  key: 'posts:search-placeholders',
+  default: () => []
+})
+const searchPlaceholderIdx = ref(0)
+const searchPlaceholderList = computed<string[]>(() => {
+  const raw = placeholdersRaw.value
+  return Array.isArray(raw) ? raw.filter(s => typeof s === 'string' && s.length > 0) : []
+})
+const searchPlaceholder = computed<string>(() => {
+  if (searchPlaceholderList.value.length > 0) {
+    return searchPlaceholderList.value[searchPlaceholderIdx.value % searchPlaceholderList.value.length] || ''
+  }
+  return t('posts.searchPlaceholder') as string
+})
+onMounted(() => {
+  if (!import.meta.client) return
+  const list = searchPlaceholderList.value
+  if (list.length <= 1) return
+  const t = setInterval(() => {
+    searchPlaceholderIdx.value = (searchPlaceholderIdx.value + 1) % list.length
+  }, 4200)
+  const vm = getCurrentInstance()
+  if (vm) onBeforeUnmount(() => clearInterval(t))
 })
 
 // TEMP 临时用 plain object（非 computed）测试 SSR payload 是否正常注入
