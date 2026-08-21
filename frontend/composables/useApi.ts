@@ -2,43 +2,17 @@
 // @ts-nocheck
 /* eslint-enable @typescript-eslint/ban-ts-comment */
 import { useAuthStore } from '~~/stores/auth'
+import {
+  extractApiErrorMessage,
+  isOobeRequiredError,
+  stableApiKey,
+  type ApiErrorBody,
+  type ApiFetchOptions
+} from '~~/lib/utils'
 
-/** 后端统一错误响应体（{ success, message, error_code, errors } 或 FastAPI 的 detail） */
-interface ApiErrorBody {
-  message?: string
-  error_code?: string
-  errors?: Array<{ field?: string, message?: string }>
-  detail?: unknown
-  [k: string]: unknown
-}
-
-/** apiFetch 的请求选项（透传给 $fetch） */
-export interface ApiFetchOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD'
-  body?: unknown
-  query?: Record<string, unknown>
-  headers?: Record<string, string>
-  [k: string]: unknown
-}
-
-/** 从错误响应体中提取用户可读信息 */
-function extractErrorMessage(body: unknown, fallback: string): string {
-  if (body && typeof body === 'object') {
-    const b = body as ApiErrorBody
-    if (typeof b.message === 'string' && b.message) return b.message
-    if (typeof b.detail === 'string' && b.detail) return b.detail
-    if (Array.isArray(b.errors) && b.errors.length) {
-      const first = b.errors[0]
-      if (first && typeof first.message === 'string') return first.message
-    }
-  }
-  return fallback
-}
-
-/** 后端 OOBE 未完成：503 + error_code: OOBE_REQUIRED */
-function isOobeRequired(status: number, body: unknown): boolean {
-  return status === 503 && (body as ApiErrorBody | null | undefined)?.error_code === 'OOBE_REQUIRED'
-}
+/** 后端统一错误响应体 & 请求项结构：纯声明在 lib/utils.ts，组件侧复用即可。 */
+export type { ApiFetchOptions }
+export type { ApiErrorBody }
 
 /** useToast / useI18n 依赖组件上下文；脱离上下文（事件回调链）时降级，不中断流程 */
 function safeToastError(message: string) {
@@ -54,37 +28,6 @@ function currentLocale(): string {
     return useI18n().locale.value
   } catch {
     return 'zh'
-  }
-}
-
-/**
- * useFetch 封装：自动注入 baseURL / Authorization / Accept-Language。
- *
- * 限制：useFetch 的错误钩子内无法重试当前请求（递归 useFetch 不会让调用方拿到新结果），
- * 401 时仅尝试刷新 token 供后续请求使用；需要"刷新后自动重试"请使用 apiFetch。
- *
- * 关键 Hydration 保障：
- *   - 服务端 baseURL 是绝对地址（config.apiBase → http://127.0.0.1:8000/api）
- *   - 客户端 baseURL 是相对地址（config.public.apiBase → /api）
- *   Nuxt useFetch 默认会把 baseURL 计入内部缓存 key 的 hash，导致 SSR 序列化的结果
- *   与客户端 Hydrate 查找的 key 不一致，两端 state/payload 对不上 → pending=true
- *   + data=null，触发 Skeleton/h1、fallback title/真实 title 等一系列 mismatch。
- *   所以这里显式生成一个"只依赖相对路径 + query"的稳定字符串作为 key，
- *   让 SSR ↔ Client 两端无论 baseURL 如何不同，都能命中同一条缓存 payload。
- */
-function stableUseFetchKey(url: string | (() => string), query?: Record<string, unknown> | undefined): string {
-  const raw = typeof url === 'function' ? '__fn__' + url.toString().slice(0, 80).replace(/\s+/g, '') : url
-  try {
-    const qs = query
-      ? '::' + new URLSearchParams(
-        Object.fromEntries(
-          Object.entries(query).map(([k, v]) => [k, typeof v === 'object' ? JSON.stringify(v) : String(v)])
-        ) as unknown as Record<string, string>
-      ).toString()
-      : ''
-    return 'api::' + raw + qs
-  } catch {
-    return 'api::' + raw
   }
 }
 
@@ -108,7 +51,7 @@ export function useAPI<T>(url: string | (() => string), options?: UseFetchOption
   // 相对地址 /api，经浏览器请求走 devProxy 反向代理到 FastAPI。
   const ssrSafeBase = import.meta.server ? config.apiBase : config.public.apiBase
   // 如果调用方未传自定义 key，则生成稳定 key；若已传则以调用方为准。
-  const stableKey = options?.key ?? stableUseFetchKey(url, options?.query as Record<string, unknown> | undefined)
+  const stableKey = options?.key ?? stableApiKey(url, options?.query as Record<string, unknown> | undefined)
   return useFetch<T>(url, {
     // 默认在 SSR 时执行（配合全局 ssr:true + 公开页面），
     // 调用方可通过 options.server: false 显式关闭（如管理后台需要登录态、只在客户端拉的场景）。
@@ -127,7 +70,7 @@ export function useAPI<T>(url: string | (() => string), options?: UseFetchOption
       // 否则会在 Nitro 渲染线程中抛异常或让 Promise 永远 pending，
       // 导致 useFetch 卡住、结果永远 pending=true、客户端 hydration 后不重试，页面永久空白。
       if (import.meta.client) {
-        if (isOobeRequired(response.status, body)) {
+        if (isOobeRequiredError(response.status, body)) {
           await navigateTo('/oobe')
           return
         }
@@ -189,7 +132,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
     const e = err as { status?: number, statusCode?: number, data?: unknown }
     const status = e.status ?? e.statusCode ?? 0
 
-    if (isOobeRequired(status, e.data)) {
+    if (isOobeRequiredError(status, e.data)) {
       await navigateTo('/oobe')
       throw err
     }
@@ -203,7 +146,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
         url,
         data: e.data
       })
-      const msg = extractErrorMessage(e.data, `Not Found: ${url}`)
+      const msg = extractApiErrorMessage(e.data, `Not Found: ${url}`)
       throw Object.assign(new Error(msg), { status, data: e.data, code: 'NOT_FOUND' })
     }
 
@@ -215,7 +158,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
         } catch (retryErr) {
           const re = retryErr as { status?: number, statusCode?: number, data?: unknown }
           const retryStatus = re.status ?? re.statusCode ?? 0
-          if (isOobeRequired(retryStatus, re.data)) {
+          if (isOobeRequiredError(retryStatus, re.data)) {
             await navigateTo('/oobe')
             throw retryErr
           }
@@ -224,7 +167,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
             await navigateTo('/login')
             throw retryErr
           }
-          safeToastError(extractErrorMessage(re.data, '请求失败'))
+          safeToastError(extractApiErrorMessage(re.data, '请求失败'))
           throw retryErr
         }
       }
@@ -233,7 +176,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
       throw err
     }
 
-    safeToastError(extractErrorMessage(e.data, '请求失败'))
+    safeToastError(extractApiErrorMessage(e.data, '请求失败'))
     throw err
   }
 }
@@ -295,7 +238,7 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
 
     // 其余错误：静默降级，避免 console 外还要 toast
 
-    console.debug(`[silentApiFetch] ${options.method || 'GET'} ${url} -> ${status}`, extractErrorMessage(e.data, 'silent failure'))
+    console.debug(`[silentApiFetch] ${options.method || 'GET'} ${url} -> ${status}`, extractApiErrorMessage(e.data, 'silent failure'))
     return null
   }
 }

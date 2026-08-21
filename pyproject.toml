@@ -54,7 +54,7 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_classes = ["Test*"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short --cov=backend --cov-report=term-missing:skip-covered --cov-append --strict-config"
 markers = [
     "unit: 单元测试",
     "integration: 集成测试",
@@ -69,100 +69,73 @@ omit = [
     "*/tests/*",
     "*/__pycache__/*",
 
-    # --- 迁移 & 开发脚本（零业务价值，不参与覆盖率
+    # --- 迁移 & 脚本（初始化专用，零业务分支参与覆盖率）
     "backend/migrations/*",
     "backend/scripts/*",
 
-    # --- 初始化基础设施 setup_*：首次部署流程
+    # --- 首次部署 / 基础设施初始化（单次运行，无业务分支）
     "backend/core/setup_database.py",
     "backend/core/setup_dependency.py",
     "backend/core/setup_progress.py",
     "backend/core/setup_system.py",
     "backend/core/setup_config.py",
 
-    # --- 分布式 / DB/缓存/并发原语
+    # --- 分布式 / DB / 缓存并发原语（无业务分支，需 Redis 集群环境）
     "backend/core/distributed_lock.py",
     "backend/core/concurrency.py",
     "backend/core/cache.py",
     "backend/core/cache_v2.py",
     "backend/core/cache_warmer.py",
     "backend/core/rate_limit.py",
-    "backend/core/i18n.py",
-    "backend/core/tasks.py",
     "backend/core/crud.py",
-    "backend/core/oobe_utils.py",
-    "backend/core/database.py",
     "backend/core/maintenance.py",
-    "backend/core/site_config.py",
     "backend/core/logging_middleware.py",
+    "backend/core/search_indexer.py",
+    "backend/core/session.py",
 
-    # --- 外围 beta feature API
-    "backend/api/oobe.py",
+    # --- 仓储层（纯转发无决策分支；由 Service / API 联合断言覆盖）
+    "backend/repositories/*",
+
+    # --- 真正实验性 / 可裁剪功能模块（启用需 feature flag）
     "backend/api/performance.py",
     "backend/api/post_crypto.py",
     "backend/api/post_encryption.py",
     "backend/api/post_series.py",
     "backend/api/ranking.py",
     "backend/api/scheduled_posts.py",
-    "backend/api/seo.py",
     "backend/api/settings_groups.py",
-    "backend/api/stats.py",
     "backend/api/title.py",
     "backend/api/toc.py",
     "backend/api/translate.py",
     "backend/api/voting.py",
-    "backend/api/webhook.py",
-    "backend/api/activity.py",
     "backend/api/admin_logs.py",
     "backend/api/advanced.py",
     "backend/api/announcement.py",
     "backend/api/avatar_proxy.py",
-    "backend/api/bing.py",
-    "backend/api/blog.py",
-    "backend/api/captcha.py",
     "backend/api/comment_reactions.py",
-    "backend/api/core.py",
-    "backend/api/favorite.py",
-    "backend/api/gallery.py",
-    "backend/api/hero.py",
     "backend/api/import_export.py",
-    "backend/api/media.py",
     "backend/api/messages.py",
-    "backend/api/monitoring.py",
     "backend/api/notification.py",
+    "backend/api/webhook.py",
 
-    # --- 仓储层
-    "backend/repositories/*",
-
-    # --- 外围服务（非核心业务路径）
-    "backend/services/recommendation.py",
-    "backend/services/post_service.py",
-    "backend/services/cache_service.py",
-    "backend/services/email_service.py",
-
-    # --- Schema I18N (0%)
+    # --- Schema I18N（纯声明，0 分支）
     "backend/schemas/i18n.py",
 
-    # --- 大体积业务文件（覆盖率 < 70%，作为 Phase 6 补充测试对象）
-    "backend/api/admin.py",
-    "backend/api/users.py",
-    "backend/api/comments.py",
-    "backend/api/guestbook.py",
-    "backend/main.py",
-    "backend/services/user_service.py",
-    "backend/services/comment_service.py",
-    "backend/services/guestbook_service.py",
-
-    # --- 其余非核心（依赖 Redis / 外部服务的 utils 等）
-    "backend/core/search_indexer.py",
-    "backend/core/session.py",
-    "backend/core/i18n.py",
+    # --- ORM Models（SQLAlchemy 列声明，0 业务分支）
     "backend/models/blog.py",
     "backend/models/core.py",
     "backend/models/activity.py",
+    "backend/models/i18n.py",
 ]
 
 [tool.coverage.report]
+show_missing = true
+skip_covered = true
+precision = 2
+# 覆盖率低水位（CI 不允许跌破此线，防止重构/新模块越改覆盖越低）。
+# 历史基线（2026-08-20 Brooks F-06 改造后初次真实值）= 45.67%。
+# 每次补完测试后同步上调此数字（目标 60%+）。低于基线会让 pytest 直接失败。
+fail_under = 45
 exclude_lines = [
     "pragma: no cover",
     "def __repr__",
@@ -239,8 +212,6 @@ exclude_lines = [
     "return max\\(1, word_count // 500\\)",
     "\\bword_count = len\\(content\\)",
 ]
-precision = 2
-skip_covered = true
 
 [dependency-groups]
 dev = [

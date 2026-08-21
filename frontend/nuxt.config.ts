@@ -1,7 +1,23 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+//
+// 后端连接配置（单源，不要再在源码各处散落写默认 127.0.0.1/localhost:3000）：
+//   - BACKEND_HOST / BACKEND_PORT：Nitro（server routes）连 FastAPI 的地址
+//   - SSR_API_BASE_URL：完整覆盖（含协议/端口/api 前缀），生产多网卡部署时直接写即可
+//   - SITE_URL：对外公开域名（生成 RSS/sitemap/robots/邮件链接用），如 https://blog.example.com
+// 生产部署必须显式声明；本地开发缺失时使用 SSR 请求 Host 推导，禁止写死 localhost 字面量。
+const BACKEND_PORT = process.env.BACKEND_PORT || ''
+const BACKEND_HOST = process.env.BACKEND_HOST || ''
+const SSR_API_BASE = process.env.SSR_API_BASE_URL || ''
+const SITE_URL = process.env.SITE_URL || ''
 
-const BACKEND_PORT = process.env.BACKEND_PORT || '8000'
-const BACKEND_HOST = process.env.BACKEND_HOST || '127.0.0.1'
+function resolveSsrApiBase(): string {
+  if (SSR_API_BASE) return SSR_API_BASE
+  if (BACKEND_HOST && BACKEND_PORT) return `http://${BACKEND_HOST}:${BACKEND_PORT}/api`
+  // 开发模式 Nuxt 约定后端监听 127.0.0.1:8000（但通过 runtime 配置暴露，不散落写在源码）
+  if (process.env.NODE_ENV !== 'production') return 'http://127.0.0.1:8000/api'
+  // 生产缺配置 → 留空触发 server routes 的错误页（避免偷偷请求 127.0.0.1）
+  return ''
+}
 
 export default defineNuxtConfig({
   modules: [
@@ -73,11 +89,18 @@ export default defineNuxtConfig({
   css: ['~/assets/css/main.css'],
 
   runtimeConfig: {
-    // SSR（服务端）直连后端 127.0.0.1:8000/api，
-    // 不走 devProxy（devProxy 只对外来 HTTP 请求生效）。
-    apiBase: process.env.SSR_API_BASE_URL || `http://${BACKEND_HOST}:${BACKEND_PORT}/api`,
+    // 单源：后端地址（服务端私有，不会泄漏到客户端 bundle）
+    backendHost: BACKEND_HOST,
+    backendPort: BACKEND_PORT,
+    // SSR（服务端）直连后端，不走 devProxy（devProxy 只对外来 HTTP 请求生效）
+    apiBase: resolveSsrApiBase(),
+    // 对外公开域名（生成 RSS/邮件/OG 链接用）
+    siteUrl: SITE_URL,
     public: {
-      apiBase: process.env.API_BASE_URL || '/api'
+      apiBase: process.env.API_BASE_URL || '/api',
+      // 对外公开域名（客户端可读取，用于 OOBE 表单默认值 / 前端跳转拼装）
+      // 空字符串表示应由 SSR 请求 Host 动态推导或用户手动设置
+      siteUrl: SITE_URL
     }
   },
 

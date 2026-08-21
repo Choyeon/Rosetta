@@ -1403,8 +1403,16 @@ const adminForm = reactive({
   confirmPassword: ''
 })
 
-const defaultOrigin = typeof location !== 'undefined' ? location.origin : 'http://localhost:3000'
 const { locale: currentLocale } = useI18n()
+// OOBE 路由固定 ssr:false → 必在浏览器内。统一走 runtimeConfig.public.siteUrl → location.origin，
+// 禁止散落写默认 http://localhost:3000 / 127.0.0.1 字面量。
+const runtimeCfg = useRuntimeConfig()
+const defaultOrigin = computed(() => {
+  const fromCfg = String(runtimeCfg.public.siteUrl || '').trim()
+  if (fromCfg) return fromCfg.replace(/\/$/, '')
+  if (import.meta.client && typeof location !== 'undefined') return location.origin.replace(/\/$/, '')
+  return ''
+})
 interface SiteForm {
   name: string
   description: string
@@ -1436,7 +1444,7 @@ const siteForm = reactive<SiteForm>({
   description: '',
   locale: (currentLocale.value === 'zh_Hant' ? 'zh_Hant' : currentLocale.value === 'ja' ? 'ja' : currentLocale.value === 'en' ? 'en' : 'zh'),
   keywords: 'blog, rosetta, nuxt, fastapi',
-  siteUrl: defaultOrigin,
+  siteUrl: defaultOrigin.value,
   databaseType: 'sqlite',
   dbHost: 'localhost',
   dbPort: 5432,

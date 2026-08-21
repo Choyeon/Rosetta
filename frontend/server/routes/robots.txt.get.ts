@@ -1,16 +1,26 @@
+/**
+ * robots.txt (Nitro BFF → FastAPI).
+ *
+ * 后端连接单源：统一读 runtimeConfig，禁止本地默认 127.0.0.1。
+ */
+function resolveBackendEndpoint(runtime: ReturnType<typeof useRuntimeConfig>, path: string): string {
+  const priv = runtime as unknown as { apiBase?: string, backendHost?: string, backendPort?: string }
+  if (priv.apiBase) {
+    const base = String(priv.apiBase).replace(/\/$/, '')
+    return `${base}${path}`
+  }
+  if (priv.backendHost && priv.backendPort) {
+    return `http://${String(priv.backendHost)}:${String(priv.backendPort)}/api${path}`
+  }
+  throw createError({
+    statusCode: 503,
+    statusMessage: 'Server not configured: set SSR_API_BASE_URL or BACKEND_HOST + BACKEND_PORT'
+  })
+}
+
 export default defineEventHandler(async (event) => {
   const runtime = useRuntimeConfig(event)
-  const pub = runtime.public || {}
-  const apiBase = pub.apiBase as string | undefined || '/api'
-  const backendHost = process.env.BACKEND_HOST || '127.0.0.1'
-  const backendPort = process.env.BACKEND_PORT || '8000'
-
-  let target: string
-  if (apiBase.startsWith('http://') || apiBase.startsWith('https://')) {
-    target = `${apiBase.replace(/\/$/, '')}/seo/robots.txt`
-  } else {
-    target = `http://${backendHost}:${backendPort}/api/seo/robots.txt`
-  }
+  const target = resolveBackendEndpoint(runtime, '/seo/robots.txt')
 
   try {
     const res = await $fetch.raw(target, {

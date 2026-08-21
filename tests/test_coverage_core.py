@@ -662,7 +662,7 @@ class TestAuthPureFunctions:
 
         # Case 2：type 不是 access（造一个 type=refresh 的 payload）
         from backend.core.config import settings
-        from jose import jwt
+        import jwt
 
         payload_refresh = {
             "sub": 999999,
@@ -759,7 +759,7 @@ class TestAuthPureFunctions:
             get_password_hash,
         )
         from backend.models.user import User
-        from jose import jwt
+        import jwt
         from backend.core.config import settings
 
         # 无凭据
@@ -881,7 +881,7 @@ class TestAuthPureFunctions:
     async def test_validate_token_branches(self, db_session, admin_user):
         from backend.core.auth import create_access_token, validate_token
         from backend.core.config import settings
-        from jose import jwt
+        import jwt
 
         # None payload
         assert await validate_token("garbage", db_session) is None

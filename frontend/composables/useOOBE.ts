@@ -572,10 +572,14 @@ export const useOOBE = () => {
       const adminUser: OOBEAdminUser = st.adminUser ?? {}
       const siteSettings: OOBESiteSettings = st.siteSettings ?? {}
       let siteUrl = (siteSettings.siteUrl ?? '').trim()
+      // OOBE 路由固定 ssr:false → 必然运行在浏览器内，location 一定存在
       if (!siteUrl && typeof location !== 'undefined') {
         siteUrl = location.origin
       }
-      if (!siteUrl) siteUrl = 'http://localhost:3000'
+      if (!siteUrl) {
+        const cfgSiteUrl = String(useRuntimeConfig().public.siteUrl || '').trim()
+        if (cfgSiteUrl) siteUrl = cfgSiteUrl
+      }
 
       const author = adminUser.nickname ?? adminUser.username ?? ''
       const payload: OOBEInstallRequest & Record<string, unknown> = {
