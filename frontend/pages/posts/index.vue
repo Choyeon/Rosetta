@@ -139,7 +139,7 @@ import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
-import { watch, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
+import { watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -164,9 +164,9 @@ const selectedCategory = ref('')
 const currentPage = ref(1)
 const pageSize = 9
 
-const { data: categories } = await useAPI<Category[]>('/blog/categories', {
+const { data: categories, refresh: refreshCategories } = await useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: `posts:categories:${locale.value}`,
+  key: computed(() => `posts:categories:${locale.value}`),
   default: () => []
 })
 
@@ -216,6 +216,7 @@ const { data, pending, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/
 watch([currentPage, searchQuery, selectedCategory, locale], () => {
   if (import.meta.client) {
     refresh()
+    refreshCategories()
   }
 })
 

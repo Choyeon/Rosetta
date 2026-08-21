@@ -31,6 +31,7 @@ import { Tabs, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { useAuthStore } from '~~/stores/auth'
 import { useToast } from '~~/composables/useToast'
 import { useTheme } from '~~/composables/useTheme'
+import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
 import {
   fetchDashboardStats,
   fetchRecentPosts,
@@ -1694,7 +1695,10 @@ const pillFor = (a: ActivityItem['accent']) =>
                 {{ idx + 1 }}
               </div>
               <Avatar class="size-9 shrink-0 ring-2 ring-background shadow-sm">
-                <AvatarImage :src="c.avatar ?? ''" />
+                <AvatarImage
+                  :src="resolveAvatarUrl(c.avatar)"
+                  :alt="c.name"
+                />
                 <AvatarFallback class="text-xs font-semibold bg-primary/10 text-primary">
                   {{ c.name.slice(0, 1).toUpperCase() }}
                 </AvatarFallback>

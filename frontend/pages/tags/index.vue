@@ -76,6 +76,7 @@
 <script setup lang="ts">
 import { Tags, Hash } from '@lucide/vue'
 import TagBadge from '~~/components/TagBadge.vue'
+import { watch, computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -92,11 +93,12 @@ interface TagRow {
 
 // SSR 与客户端首渲染统一为空数组（空 = 无标签占位，避免显示假数据）。
 // 首屏渲染用 useSSR 友好的 useAPI，失败或空都保持空态，绝不回退到示例标签。
-const { data: tagsData, pending: _tagsLoading } = await useAPI<TagRow[]>('/blog/tags', {
+const { data: tagsData, pending: _tagsLoading, refresh: refreshTags } = await useAPI<TagRow[]>('/blog/tags', {
   query: { lang: locale.value },
-  key: 'tags:list:' + (locale.value || 'zh'),
+  key: computed(() => 'tags:list:' + (locale.value || 'zh')),
   default: () => []
 })
+watch(locale, () => void refreshTags())
 
 const tags = computed<TagRow[]>(() => {
   const raw = tagsData.value

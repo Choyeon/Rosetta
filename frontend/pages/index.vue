@@ -453,6 +453,7 @@ import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '@lucide/vue'
+import { watch, computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -513,19 +514,29 @@ const pickLocalized = (val: string | Record<string, string> | null | undefined):
   return String(val)
 }
 
-const { data: postsData, pending: postsPending, error: postsError } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+const { data: postsData, pending: postsPending, error: postsError, refresh: refreshPosts } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: { lang: locale.value, page: 1, page_size: 20 },
-  key: 'home:posts:' + locale.value
+  key: computed(() => 'home:posts:' + locale.value)
 })
 
-const { data: categoriesData, pending: categoriesPending, error: categoriesError } = await useAPI<Category[]>('/blog/categories', {
+const { data: categoriesData, pending: categoriesPending, error: categoriesError, refresh: refreshCategories } = await useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: 'home:categories:' + locale.value
+  key: computed(() => 'home:categories:' + locale.value)
 })
 
-const { data: tagsData, pending: tagsPending, error: tagsError } = await useAPI<BlogTag[]>('/blog/tags', {
+const { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags } = await useAPI<BlogTag[]>('/blog/tags', {
   query: { lang: locale.value },
-  key: 'home:tags:' + locale.value
+  key: computed(() => 'home:tags:' + locale.value)
+})
+
+// 语言切换时：重新以新的 lang 参数与缓存键请求后端数据，
+// 避免显示旧语言缓存，以及分类/标签本地化 JSON key 解析不更新。
+watch(locale, async () => {
+  await Promise.all([
+    refreshPosts(),
+    refreshCategories(),
+    refreshTags()
+  ])
 })
 
 const { data: siteStats, pending: siteStatsPending, error: siteStatsError } = await useAPI<SiteStats>('/blog/site-stats', {

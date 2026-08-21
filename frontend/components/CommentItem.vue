@@ -2,9 +2,9 @@
   <div class="card-surface flex gap-3 p-4">
     <Avatar class="size-9 shrink-0">
       <AvatarImage
-        v-if="comment.author?.avatar"
-        :src="comment.author.avatar"
-        :alt="comment.author.name"
+        v-if="avatarImg"
+        :src="avatarImg"
+        :alt="comment.author?.name || 'avatar'"
       />
       <AvatarFallback>{{ comment.author?.name?.[0] || 'U' }}</AvatarFallback>
     </Avatar>
@@ -70,6 +70,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { Button } from '~~/components/ui/button'
 import { ArrowLeft, MessageSquare } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
 
 interface Props {
   comment: {
@@ -88,7 +89,7 @@ interface Props {
   depth?: number
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   depth: 0
 })
 
@@ -99,6 +100,7 @@ defineEmits<{
 const { t, locale } = useI18n()
 const isLiked = ref(false)
 
+const avatarImg = useResolvedAvatar(() => props.comment?.author?.avatar)
 const formatRelativeTime = (date: string) => {
   try {
     if (!date) return ''

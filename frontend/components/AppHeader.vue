@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { watch, computed } from 'vue'
 import { Menu, Search, LogOut, User, ChevronDown } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import {
@@ -26,10 +26,25 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import ThemeToggle from '~~/components/ThemeToggle.vue'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
+import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
+
+const userAvatar = useResolvedAvatar(
+  () => (authStore.user as Record<string, unknown> | null)?.resolved_avatar_url as string | undefined,
+  () => (authStore.user as Record<string, unknown> | null)?.avatar as string | undefined
+)
+
+const userAlt = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return String(u?.name ?? u?.username ?? '')
+})
+const userFallback = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return String((u?.name ?? u?.username ?? '') as string).charAt(0).toUpperCase() || 'U'
+})
 
 // ===== 站点品牌：layouts/default.vue 里已经 await useSite().ensureLoaded() =====
 // 所以这里 state 已填充完毕；SSR 和客户端首渲染的 brandName/brandLogo 字节级一致。
@@ -63,10 +78,12 @@ const FALLBACK_NAV: { label: string, to: string }[] = [
   { label: t('nav.archive') || '归档', to: '/archive' }
 ]
 
-const { data: navRowsRef } = await useAPI<NavApiRow[]>('/navigations', {
-  key: 'public:navigations',
+const { data: navRowsRef, refresh: refreshNav } = await useAPI<NavApiRow[]>('/navigations', {
+  key: computed(() => `public:navigations:${locale.value}`),
   default: () => []
 })
+// 语言切换时，用新的 Accept-Language 头重新拉导航（否则导航仍缓存旧语言的 label/i18n）
+watch(locale, () => void refreshNav())
 
 const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: string): string => {
   if (v == null) return fb
@@ -78,7 +95,39 @@ const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: s
   return (first ? v[first] : '') || fb
 }
 
+/**
+ * 规范化后端导航菜单返回的内部 URL 路径。
+ * — 历史兼容：旧 Astro 站点和老数据会保存 "/page/about"、"/page/guestbook"
+ *   等带 "/page/" 前缀的路径。Nuxt 前端静态页位于 pages/about.vue、
+ *   pages/guestbook.vue 等（不含前缀）。需要移除前缀才能命中真实路由。
+ * — 独立页 slug：当 link_type==="page" 且字段含 slug 时，按 "/<slug>" 归一化。
+ * — 末尾 "/"：除首页 "/" 外统一去重，避免 "/posts/" 和 "/posts" 被视为不同激活。
+ */
+const normalizeNavPath = (row: NavApiRow): string => {
+  let raw: string = ''
+  if (row.link_type === 'page' && row.slug) {
+    raw = `/${String(row.slug).replace(/^\/+/, '')}`
+  } else {
+    raw = String(row.to ?? row.url ?? row.href ?? row.path ?? row.slug ?? '').trim()
+  }
+  if (!raw) return ''
+  if (/^https?:\/\//i.test(raw)) return raw
+
+  // 规范化：相对路径按内部路由处理，统一前缀 "/"
+  if (!raw.startsWith('/') && !raw.startsWith('#')) {
+    raw = `/${raw}`
+  }
+  // 兼容 "/page/<slug>" 旧前缀 → 折去 "/page"
+  if (raw.startsWith('/page/')) raw = raw.slice('/page'.length) || '/'
+  else if (raw === '/page') raw = '/'
+
+  // 去重末尾斜杠（首页保留）
+  if (raw.length > 1 && raw.endsWith('/')) raw = raw.slice(0, -1)
+  return raw
+}
+
 const navItems = computed(() => {
+  const _ = locale.value // 显式建立响应式依赖：语言切换 → 标签重新 pickNavStr
   const raw = navRowsRef.value
   if (!Array.isArray(raw) || raw.length === 0) return FALLBACK_NAV
   const out: { label: string, to: string, external?: boolean }[] = []
@@ -86,7 +135,7 @@ const navItems = computed(() => {
     const labelRaw = row.label ?? row.title ?? row.name ?? ''
     const label = pickNavStr(labelRaw as string | Record<string, string> | null | undefined, '')
     if (!label) continue
-    const path = (row.to ?? row.url ?? row.href ?? row.path ?? row.slug ?? '') as string
+    const path = normalizeNavPath(row)
     if (!path) continue
     const external = Boolean(row.is_external || row.link_type === 'external' || row.target === '_blank' || /^https?:\/\//i.test(path))
     if (external) {
@@ -190,11 +239,11 @@ const handleAdmin = () => navigateTo('/admin')
             >
               <Avatar class="h-8 w-8">
                 <AvatarImage
-                  v-if="authStore.user?.avatar"
-                  :src="authStore.user.avatar"
-                  :alt="authStore.user.name || authStore.user.username || ''"
+                  v-if="userAvatar"
+                  :src="userAvatar"
+                  :alt="userAlt"
                 />
-                <AvatarFallback>{{ String((authStore.user as any)?.name || authStore.user?.username || '').charAt(0).toUpperCase() || 'U' }}</AvatarFallback>
+                <AvatarFallback>{{ userFallback }}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
@@ -206,11 +255,11 @@ const handleAdmin = () => navigateTo('/admin')
               <div class="flex items-center gap-3">
                 <Avatar class="h-10 w-10">
                   <AvatarImage
-                    v-if="authStore.user?.avatar"
-                    :src="authStore.user.avatar"
-                    :alt="authStore.user.name || authStore.user.username || ''"
+                    v-if="userAvatar"
+                    :src="userAvatar"
+                    :alt="userAlt"
                   />
-                  <AvatarFallback>{{ String((authStore.user as any)?.name || authStore.user?.username || '').charAt(0).toUpperCase() || 'U' }}</AvatarFallback>
+                  <AvatarFallback>{{ userFallback }}</AvatarFallback>
                 </Avatar>
                 <div class="space-y-0.5 min-w-0">
                   <div class="text-sm font-medium truncate">

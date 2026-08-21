@@ -70,6 +70,7 @@ import {
 import { Badge } from '~~/components/ui/badge'
 import { useI18n } from 'vue-i18n'
 import { FolderOpen, ArrowRight } from '@lucide/vue'
+import { watch, computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -101,11 +102,12 @@ interface CategoryRow {
 }
 
 // 真实接口：GET /api/blog/categories。SSR + 客户端同源，失败时回退空数组，不显示示例分类。
-const { data: catsData } = await useAPI<CategoryRow[]>('/blog/categories', {
+const { data: catsData, refresh: refreshCats } = await useAPI<CategoryRow[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: 'categories:list:' + (locale.value || 'zh'),
+  key: computed(() => 'categories:list:' + (locale.value || 'zh')),
   default: () => []
 })
+watch(locale, () => void refreshCats())
 
 const categories = computed<CategoryRow[]>(() => {
   const raw = catsData.value

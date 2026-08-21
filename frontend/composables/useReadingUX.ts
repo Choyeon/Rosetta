@@ -145,7 +145,10 @@ export interface TocItem {
   id: string
   text: string
   level: 1 | 2 | 3 | 4
+  /** 初次提取时记录的参考偏移（可能因图片加载失效）；运行时会重新计算 */
   offsetTop: number
+  /** 缓存的 DOM 元素引用，仅客户端可用；方便 update() 重算真实位置 */
+  _el?: Element | null
 }
 
 const slugify = (text: string, existing: Set<string>): string => {
@@ -173,7 +176,8 @@ export const extractTOC = (container: HTMLElement | null): TocItem[] => {
       id: h.id,
       text: (h.textContent || '').trim(),
       level: Number(h.tagName[1]) as TocItem['level'],
-      offsetTop: Math.round(h.getBoundingClientRect().top + window.scrollY - 88)
+      offsetTop: Math.round(h.getBoundingClientRect().top + window.scrollY - 88),
+      _el: h
     })
   })
   return items
@@ -186,13 +190,29 @@ export const useTOCScrollSpy = (items: () => TocItem[]) => {
   const activeId = ref<string | null>(null)
   let raf = 0
 
+  /**
+   * 获取某个 TOC 项的真实 offsetTop（相对于 document，减去 header sticky 高度）。
+   * — 优先使用上次缓存的 _el；若找不到则 document.getElementById 重查。
+   * — 这样可以避免字体/图片 lazy load 导致的布局飘移使得初次记录的值永久过时。
+   */
+  const realOffset = (it: TocItem): number => {
+    let el: Element | null = it._el || null
+    if (!el) {
+      el = document.getElementById(it.id)
+      it._el = el
+    }
+    if (!el) return it.offsetTop
+    const rect = (el as HTMLElement).getBoundingClientRect()
+    return Math.round(rect.top + window.scrollY - 88)
+  }
+
   const update = () => {
     const list = items()
     if (!list.length) return
     const scroll = window.scrollY + 100
     let current: TocItem | null = null
     for (const it of list) {
-      if (it.offsetTop <= scroll) current = it
+      if (realOffset(it) <= scroll) current = it
       else break
     }
     if (!current && list.length) current = list[0] ?? null

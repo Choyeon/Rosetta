@@ -143,9 +143,64 @@ const groups = reactive<MenuGroup[]>([
   }
 ])
 
+/**
+ * 判断某个菜单项是否应当高亮。
+ *
+ * 关键点：**不要使用 startsWith(path + '/')** —— 它会把「父项」与「同前缀兄弟子项」
+ * 一起误激活。典型的反例：
+ *   path = /admin/users，当前路由 = /admin/users/titles
+ *   → startsWith('/admin/users/') === true → 用户列表也错误地被染成激活色
+ *
+ * 新规则（按优先级）：
+ *   1) /admin（仪表盘）：精确匹配 /admin 或 /admin/
+ *   2) 其它菜单项：
+ *      - 精确匹配 path → 激活
+ *      - 以「path + "/"」开头，并且紧接着的段为数字或通用 id 段
+ *        （如 /admin/content/posts/42/edit、/admin/users/12/edit）→ 激活
+ *      - 同前缀下出现了「其它菜单的 path 段」（如 /admin/users/titles 中
+ *        「titles」是另一个真实菜单项，并非数字/id 段）→ **不** 算作激活
+ */
 const isActive = (path: string) => {
-  if (path === '/admin') return route.path === '/admin' || route.path === '/admin/'
-  return route.path === path || route.path.startsWith(path + '/')
+  const rp = route.path
+  if (path === '/admin') return rp === '/admin' || rp === '/admin/'
+  if (rp === path) return true
+  const prefix = path + '/'
+  if (!rp.startsWith(prefix)) return false
+
+  const rest = rp.slice(prefix.length) // e.g. "titles" | "42/edit" | ""
+  if (rest === '') return true
+
+  // 取 '/' 分隔的第一段
+  const firstSeg = rest.split('/')[0] ?? ''
+  if (firstSeg === '') return true
+
+  // 数字 id 段 → 认定为子资源（posts/:id、users/:id 等编辑页）
+  if (/^\d+$/.test(firstSeg)) return true
+
+  // UUID / nanoid / slug 样式（仅包含字母数字和 -）且长度足够像 id 也算
+  if (/^[A-Za-z0-9_-]{8,}$/.test(firstSeg) && !/[A-Z]/.test(firstSeg.slice(1, 4))) {
+    // 但要排除掉已知的菜单项 label，稳妥做法：再看该段是否恰好是
+    // 同组里"其它菜单项"相对于 path 的子路径
+    const isGroupSibling = groups.some(g =>
+      g.items.some(it => {
+        if (it.path === path) return false
+        const prefixOfOther = path + '/'
+        return it.path.startsWith(prefixOfOther) &&
+               it.path.slice(prefixOfOther.length).split('/')[0] === firstSeg
+      })
+    )
+    if (isGroupSibling) return false
+    return true
+  }
+
+  // 如果第一段正好对应同组的兄弟菜单项 → 说明"用户点到另一个菜单去了"，当前不应激活
+  const isSiblingLabel = groups.some(g =>
+    g.items.some(it => it.path !== path && it.path.startsWith(prefix) &&
+      it.path.slice(prefix.length).split('/')[0] === firstSeg)
+  )
+  if (isSiblingLabel) return false
+
+  return true
 }
 
 const go = (path: string) => navigateTo(path)
@@ -224,30 +279,46 @@ const go = (path: string) => navigateTo(path)
                 <TooltipTrigger as-child>
                   <button
                     type="button"
-                    class="w-full group flex items-center gap-2.5 px-2.5 h-9 rounded-[10px] relative transition-all duration-200"
+                    class="sb-item w-full group flex items-center gap-2.5 px-2.5 h-[38px] rounded-[11px] relative isolate transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
                     :class="[
                       isActive(item.path)
-                        ? 'bg-gradient-to-r from-[hsl(var(--primary)/0.18)] to-[hsl(var(--primary)/0.06)] text-sidebar-foreground font-medium shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.25)]'
-                        : 'text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground'
+                        ? 'sb-item-active text-[hsl(var(--sidebar-active-foreground,var(--primary)))] font-semibold'
+                        : 'sb-item-idle text-sidebar-foreground/75 hover:text-sidebar-foreground'
                     ]"
                     @click="go(item.path)"
                   >
+                    <!-- Hover / Active 底衬：iOS26 风格的柔和胶囊 + 天青光晕 -->
+                    <span
+                      class="absolute inset-0 rounded-[11px] -z-10 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
+                      :class="[
+                        isActive(item.path)
+                          ? 'sb-bg-active'
+                          : 'opacity-0 group-hover:opacity-100 sb-bg-hover'
+                      ]"
+                      aria-hidden="true"
+                    />
+                    <!-- 左侧激活指示条：iOS 样式细长胶囊，带呼吸光晕 -->
                     <span
                       v-if="isActive(item.path)"
-                      class="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 rounded-r-sm bg-primary"
+                      class="sb-indicator absolute left-0 top-1/2 -translate-y-1/2 -ml-[1px] w-[3px] h-[22px] rounded-r-full"
                       aria-hidden="true"
                     />
                     <component
                       :is="item.icon"
-                      class="shrink-0 size-[18px]"
-                      :class="isActive(item.path) ? 'text-primary' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
+                      class="shrink-0 size-[18px] transition-colors duration-300"
+                      :class="isActive(item.path) ? 'sb-icon-active' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
                     />
                     <span
                       v-if="!collapsed"
-                      class="flex-1 min-w-0 text-sm truncate text-left"
+                      class="flex-1 min-w-0 text-[13.5px] truncate text-left tracking-[0.01em]"
                     >
                       {{ item.label }}
                     </span>
+                    <ChevronRight
+                      v-if="isActive(item.path) && !collapsed"
+                      class="shrink-0 size-3.5 opacity-70 sb-chevron"
+                      aria-hidden="true"
+                    />
                     <Badge
                       v-if="!collapsed && item.badge"
                       :variant="item.badgeVariant || 'outline'"
@@ -300,11 +371,119 @@ const go = (path: string) => navigateTo(path)
 <style scoped>
 .fade-collapsed-enter-active,
 .fade-collapsed-leave-active {
-  transition: opacity 220ms ease, transform 220ms ease;
+  transition: opacity 240ms cubic-bezier(0.22, 1, 0.36, 1), transform 240ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 .fade-collapsed-enter-from,
 .fade-collapsed-leave-to {
   opacity: 0;
-  transform: translateX(-4px);
+  transform: translateX(-6px);
+}
+
+/* ======= 侧边栏菜单：iOS26 · 天青 PRO 风格 ======= */
+
+/* —— 激活胶囊：青蓝→天青的玻璃渐变，内嵌高光描边 + 外缘柔和光晕 —— */
+.sb-bg-active {
+  background:
+    linear-gradient(135deg,
+      color-mix(in oklab, hsl(var(--primary) / 0.26) 90%, white) 0%,
+      color-mix(in oklab, hsl(var(--primary) / 0.12) 80%, transparent) 45%,
+      color-mix(in oklab, hsl(var(--primary) / 0.20) 90%, white) 100%);
+  box-shadow:
+    inset 0 0 0 1px color-mix(in oklab, hsl(var(--primary) / 0.45), transparent),
+    inset 0 1px 0 color-mix(in oklab, white 35%, hsl(var(--primary) / 0.4)),
+    0 6px 18px -8px hsl(var(--primary) / 0.55),
+    0 2px 8px -4px hsl(var(--primary) / 0.25);
+}
+
+/* —— Hover 胶囊：轻抬升 + 半透明底色，与激活态共享缓动曲线 —— */
+.sb-bg-hover {
+  background:
+    linear-gradient(180deg,
+      hsl(var(--sidebar-accent, var(--accent)) / 0.95),
+      hsl(var(--sidebar-accent, var(--accent)) / 0.75));
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--foreground) / 0.06),
+    0 4px 12px -8px hsl(var(--foreground) / 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  .sb-bg-active {
+    background:
+      linear-gradient(135deg,
+        color-mix(in oklab, hsl(var(--primary) / 0.38), hsl(var(--sidebar-background))) 0%,
+        color-mix(in oklab, hsl(var(--primary) / 0.18), hsl(var(--sidebar-background))) 55%,
+        color-mix(in oklab, hsl(var(--primary) / 0.30), hsl(var(--sidebar-background))) 100%);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in oklab, hsl(var(--primary) / 0.55), transparent),
+      inset 0 1px 0 hsl(var(--primary) / 0.18),
+      0 8px 22px -10px hsl(var(--primary) / 0.65),
+      0 3px 10px -5px hsl(var(--primary) / 0.35);
+  }
+  .sb-bg-hover {
+    background:
+      linear-gradient(180deg,
+        hsl(var(--sidebar-accent) / 0.9),
+        hsl(var(--sidebar-accent) / 0.6));
+    box-shadow:
+      inset 0 0 0 1px hsl(var(--foreground) / 0.08),
+      0 4px 14px -9px hsl(0 0% 0% / 0.6);
+  }
+}
+
+/* —— 微抬升动画：hover 时 Y 轴轻微上移 1px，激活态不移 —— */
+.sb-item-idle:hover {
+  transform: translateY(-0.5px);
+}
+.sb-item-active {
+  transform: translateX(0);
+}
+
+/* —— 激活指示条：渐变 + 光晕（天青→浅青→蓝白彗尾） —— */
+.sb-indicator {
+  background: linear-gradient(180deg,
+    hsl(var(--primary)) 0%,
+    color-mix(in oklab, hsl(var(--primary)) 70%, #67e8f9) 100%);
+  box-shadow:
+    0 0 0 1px color-mix(in oklab, white 35%, hsl(var(--primary) / 0.35)),
+    0 0 10px 2px hsl(var(--primary) / 0.55),
+    0 0 18px 5px hsl(var(--primary) / 0.25);
+  animation: sb-indicator-pulse 2.2s ease-in-out infinite;
+}
+@keyframes sb-indicator-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, white 35%, hsl(var(--primary) / 0.35)),
+      0 0 10px 2px hsl(var(--primary) / 0.55),
+      0 0 18px 5px hsl(var(--primary) / 0.25);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklab, white 55%, hsl(var(--primary) / 0.45)),
+      0 0 14px 3px hsl(var(--primary) / 0.7),
+      0 0 26px 8px hsl(var(--primary) / 0.32);
+  }
+}
+
+/* —— 激活图标：天青填充 + 外发光 —— */
+.sb-icon-active {
+  color: hsl(var(--primary));
+  filter: drop-shadow(0 0 4px hsl(var(--primary) / 0.45))
+          drop-shadow(0 1px 0 hsl(var(--primary) / 0.25));
+}
+
+/* —— 激活项右箭头：从 -4px 滑入，渐显 —— */
+.sb-chevron {
+  color: hsl(var(--primary));
+  animation: sb-chevron-slide 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes sb-chevron-slide {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 0.75;
+    transform: translateX(0);
+  }
 }
 </style>

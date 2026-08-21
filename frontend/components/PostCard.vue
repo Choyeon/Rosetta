@@ -196,6 +196,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { CalendarDays, Eye, MessageSquare, FolderOpen } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
+import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
 
 type PostCardVariant = 'default' | 'compact'
 
@@ -258,7 +259,10 @@ const authorName = computed(() => {
   const a = props.post.author
   return a?.nickname || a?.name || a?.username || 'Anonymous'
 })
-const authorAvatar = computed(() => props.post.author?.avatar || '')
+const authorAvatar = useResolvedAvatar(
+  () => props.post.author?.avatar,
+  () => props.post.author?.avatar
+)
 
 function resolveLocalized(
   value: string | Record<string, string> | undefined,

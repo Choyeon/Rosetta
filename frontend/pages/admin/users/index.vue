@@ -128,8 +128,11 @@
                 <th class="text-left font-medium p-4">
                   最近登录
                 </th>
+                <th class="text-left font-medium p-4">
+                  头衔
+                </th>
                 <th class="text-left font-medium p-4 text-center">
-                  文章/评论
+                  贡献
                 </th>
                 <th class="text-right font-medium p-4">
                   操作
@@ -144,12 +147,12 @@
               >
                 <td class="p-4">
                   <div class="flex items-center gap-3">
-                    <Avatar class="size-9 shrink-0">
+                    <Avatar class="size-9 shrink-0 ring-1 ring-border/60">
                       <AvatarImage
-                        :src="u.resolved_avatar_url ?? ''"
-                        :alt="u.username"
+                        :src="resolveAvatarUrl(u.resolved_avatar_url, u.avatar)"
+                        :alt="u.nickname || u.username"
                       />
-                      <AvatarFallback>{{ u.username?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
+                      <AvatarFallback>{{ userAvatarFallback(u) }}</AvatarFallback>
                     </Avatar>
                     <div class="min-w-0">
                       <div class="font-medium truncate">
@@ -184,16 +187,38 @@
                 <td class="p-4 text-muted-foreground whitespace-nowrap">
                   {{ formatAdminDateTime(u.last_login) }}
                 </td>
+                <td class="p-4">
+                  <div class="inline-flex items-center gap-2">
+                    <Avatar
+                      class="size-8 shrink-0 ring-1 ring-border/60"
+                      :title="u.nickname || u.username"
+                    >
+                      <AvatarImage
+                        :src="resolveAvatarUrl(u.resolved_avatar_url, u.avatar)"
+                        :alt="u.nickname || u.username"
+                      />
+                      <AvatarFallback>{{ userAvatarFallback(u) }}</AvatarFallback>
+                    </Avatar>
+                    <span
+                      class="text-sm font-medium text-foreground truncate max-w-[120px]"
+                      :title="u.nickname || u.username || u.email"
+                    >
+                      {{ u.nickname || u.username || u.email }}
+                    </span>
+                  </div>
+                </td>
                 <td class="p-4 text-center">
-                  <div class="inline-flex items-center gap-3 text-xs">
-                    <span class="inline-flex items-center gap-1">
-                      <FileText class="size-3.5 text-muted-foreground" />
-                      {{ u.posts_count || 0 }}
-                    </span>
-                    <span class="inline-flex items-center gap-1">
-                      <MessageSquare class="size-3.5 text-muted-foreground" />
-                      {{ u.comments_count || 0 }}
-                    </span>
+                  <div class="inline-flex flex-col items-center gap-1">
+                    <div class="inline-flex items-center gap-3 text-xs text-muted-foreground">
+                      <span class="inline-flex items-center gap-1">
+                        <FileText class="size-3.5" />
+                        {{ u.posts_count || 0 }}
+                      </span>
+                      <span class="inline-flex items-center gap-1">
+                        <MessageSquare class="size-3.5" />
+                        {{ u.comments_count || 0 }}
+                      </span>
+                    </div>
                   </div>
                 </td>
                 <td class="p-4 text-right">
@@ -502,6 +527,7 @@ import {
   formatAdminDateTime,
   type AdminUserRow
 } from '~~/composables/useAdminManage'
+import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -574,6 +600,11 @@ function statusText(u: AdminUserRow): string {
   if (u.is_banned) return '已封禁'
   if (u.is_active) return '已激活'
   return '未激活'
+}
+
+function userAvatarFallback(u: AdminUserRow): string {
+  const base = (u.nickname || u.username || u.email || 'U').trim()
+  return base ? base[0]!.toUpperCase() : 'U'
 }
 
 async function fetchData() {

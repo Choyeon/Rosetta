@@ -399,6 +399,7 @@ import {
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
 import type { TocItem } from '~~/composables/useReadingUX'
+import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
 
 definePageMeta({ layout: 'default' })
 
@@ -605,7 +606,9 @@ const authorName = computed(() => {
   if (!a) return 'Anonymous'
   return a.nickname || a.name || a.username || 'Anonymous'
 })
-const authorAvatar = computed(() => post.value?.author?.avatar || '')
+const authorAvatar = useResolvedAvatar(
+  () => post.value?.author?.avatar
+)
 const normalizedTags = computed(() => {
   const tags = post.value?.tags || []
   return tags.map(tag => ({
@@ -866,6 +869,12 @@ const loadCommentsForCurrentPost = async () => {
 onMounted(async () => {
   await loadCommentsForCurrentPost()
   await loadSimilarAndLikeState(post.value?.id)
+  await rebuildTOC()
+  if (import.meta.client && typeof window !== 'undefined') {
+    // 字体 / 懒加载图片导致布局变化后的兜底刷新（3 秒内再补几次）。
+    const retries = [400, 1200, 3000]
+    retries.forEach(delay => setTimeout(() => void rebuildTOC(), delay))
+  }
 })
 onActivated(async () => {
   await loadCommentsForCurrentPost()
@@ -876,14 +885,59 @@ watch([slug, locale, () => post.value?.id], async () => {
   await loadSimilarAndLikeState(post.value?.id)
 })
 
-watch([() => post.value, renderedContent, loadingPost], async () => {
-  if (loadingPost.value || !post.value) return
+/**
+ * TOC 重建：
+ *  - 只在客户端执行（SSR 没有 DOM，extractTOC 只能取空）
+ *  - 依赖"文章对象 + Markdown 渲染字符串 + 不是在 pending loading"三个条件
+ *  - v-html 注入后需要 nextTick（Vue 更新真实 DOM）再等待一次 rAF + 16ms（浏览器 layout）
+ *  - 如果文章正文里含有 <img>，需要等所有 <img> onload 再重算一次，
+ *    否则 offsetTop 会因为图片加载前高度为 0 而集体偏上，导致目录项激活锚点全部错位。
+ */
+const rebuildTOC = async () => {
   if (!import.meta.client) return
+  if (loadingPost.value || !post.value) return
   await nextTick()
-  const el = document.querySelector('article.prose-shadcn')
-  articleEl.value = el as HTMLElement | null
-  tocItems.value = extractTOC(el as HTMLElement | null)
-}, { immediate: true })
+  // 等一次渲染帧 + 一帧余量，让 hljs 代码块尺寸 / 字体 / 图片占位先进入 layout。
+  await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
+  const el = articleEl.value ?? (document.querySelector('article.prose-shadcn') as HTMLElement | null)
+  if (!el) return
+  articleEl.value = el
+  tocItems.value = extractTOC(el)
+
+  // 若文章正文有 <img>：全部解码完再更新一次 TOC 位置（scroll-spy 内部使用 realOffset）。
+  const imgs = Array.from(el.querySelectorAll<HTMLImageElement>('img'))
+  if (imgs.length) {
+    await Promise.all(
+      imgs.map((img) => {
+        if (img.complete && (img.naturalWidth > 0 || img.src.startsWith('data:'))) return
+        return new Promise<void>((resolve) => {
+          const done = () => {
+            resolve()
+            img.removeEventListener('load', done)
+            img.removeEventListener('error', done)
+          }
+          img.addEventListener('load', done, { once: true })
+          img.addEventListener('error', done, { once: true })
+        })
+      })
+    )
+    // scroll-spy update() 会在下次 scroll/resize/下帧通过 realOffset 重新取到新位置；
+    // 这里主动跑一次，保证首次渲染后滚动高亮立即正确。
+    const list = tocItems.value
+    if (list.length) {
+      // 触发一次刷新 activeId：realOffset 是 scroll-spy 内部函数，外部通过 scrollTo 或滚动事件触发；
+      // 我们手动触发 scroll 即可（不实际滚动，只是让 spy 的 update 跑一次）。
+      window.dispatchEvent(new Event('scroll'))
+    }
+  }
+}
+
+watch(
+  [() => post.value, () => renderedContent.value, () => loadingPost.value, () => locale.value],
+  rebuildTOC,
+  // 不使用 immediate: true。SSR 没有 DOM，我们在 onMounted 里手动触发一次。
+  { flush: 'post' }
+)
 
 const handleSubmitComment = async () => {
   if (!post.value?.id || !commentContent.value.trim()) return
