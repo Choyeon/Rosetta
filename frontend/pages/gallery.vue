@@ -256,7 +256,8 @@ type ViewerInstance = InstanceType<typeof Viewer>
 interface ViewerRecord { instance: ViewerInstance, element: WeakRef<Element> }
 const viewerRegistry = new Map<string, ViewerRecord>()
 
-const setGalleryRef = (key: string, el: Element | null) => {
+// 基础 ref 注册函数
+function baseSetGalleryRef(key: string, el: Element | null) {
   if (!import.meta.client) return
   const existing = viewerRegistry.get(key)
   if (existing) {
@@ -433,7 +434,7 @@ const openAlbumSheet = (id: number) => {
 
 // setGalleryRef 包装：acc-* key 触发相册详情懒加载
 const accLoaderKeys = new Set<string>()
-const _origSetGalleryRef = setGalleryRef
+let setGalleryRef: (key: string, el: Element | null) => void = baseSetGalleryRef
 const setGalleryRefPatched = (key: string, el: Element | null) => {
   if (key.startsWith('acc-')) {
     const id = Number(key.replace('acc-', ''))
@@ -442,8 +443,7 @@ const setGalleryRefPatched = (key: string, el: Element | null) => {
       loadAlbumDetail(id).catch(() => undefined)
     }
   }
-  return _origSetGalleryRef(key, el)
+  return baseSetGalleryRef(key, el)
 }
-// @ts-expect-error 重写 const 函数引用以注入相册详情懒加载，运行时有效
 setGalleryRef = setGalleryRefPatched
 </script>
