@@ -52,7 +52,10 @@
     "palette": "[JA]:Palette",
     "paletteHint": "[JA]:Choose a brand palette",
     "error": "[JA]:Operation failed",
-    "titleMenu": "メニュー"
+    "titleMenu": "メニュー",
+    "pinned": "固定",
+    "featured": "おすすめ",
+    "submitting": "送信中…"
   },
   "nav": {
     "home": "ホーム",
@@ -957,6 +960,7 @@
     "create": "新規",
     "refresh": "更新",
     "reset": "リセット",
+    "sortOrder": "並び順",
     "loading": "読み込み中…",
     "loadFailed": "読み込みに失敗しました",
     "apiNotFound": "API が準備できていません",
@@ -1011,14 +1015,16 @@
     "website": "[JA]:Website (optional)",
     "contentPlaceholder": "[JA]:Type something here…",
     "replyPlaceholder": "[JA]:Reply to this message…",
-    "noMessages": "[JA]:No messages yet. Be the first to say hi!"
+    "noMessages": "[JA]:No messages yet. Be the first to say hi!",
+    "submitFailed": "[JA]:Submit failed, please try again later"
   },
   "gallery": {
     "title": "[JA]:Gallery",
     "desc": "[JA]:Travels, daily life, light and shadow. Slices of time frozen through the lens.",
     "photos": "[JA]:photos",
     "noDesc": "[JA]:No description",
-    "noAlbums": "[JA]:No albums yet"
+    "noAlbums": "[JA]:No albums yet",
+    "photosCountHint": "[JA]:{count} photos · sorted by {sortOrder}"
   },
   "friends": {
     "title": "[JA]:Friends",

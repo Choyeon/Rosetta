@@ -30,6 +30,7 @@ import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Skeleton } from '~~/components/ui/skeleton'
 import ThemeToggle from '~~/components/ThemeToggle.vue'
 import { useAuthStore } from '~~/stores/auth'
+import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
 import {
   fetchNotifications,
   fetchNotificationStats,
@@ -97,8 +98,25 @@ const currentGroup = computed(() => {
 const currentPage = computed(() => crumbMap[route.path] || route.path.split('/').pop() || '')
 
 // ==================== 用户信息 ====================
-const userDisplayName = computed(() => authStore.user?.username || '未登录')
-const userAvatar = computed(() => authStore.user?.avatar || '')
+// 兼容读取 nickname / name / username，优先展示"昵称"而不是登录名
+const userDisplayName = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return String((u?.nickname ?? u?.name ?? u?.username ?? '') as string) || '未登录'
+})
+// 使用统一头像解析：resolved_avatar_url 优先，再 avatar，最终经后端 media 代理
+const userAvatar = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return resolveAvatarUrl(
+    u?.resolved_avatar_url as string | undefined,
+    u?.avatar as string | undefined
+  )
+})
+// 头像的 fallback 文字：取昵称/姓名首字母，不再渲染用户图形 SVG（避免"占位头像"观感）
+const userFallback = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  const name = String((u?.nickname ?? u?.name ?? u?.username ?? 'U') as string)
+  return name.charAt(0).toUpperCase()
+})
 
 const logout = () => {
   authStore.clearTokens()
@@ -492,28 +510,16 @@ watch(
             class="h-9 px-1.5 pl-1 pr-3 rounded-full gap-2 hover:bg-accent"
           >
             <Avatar class="size-7 ring-2 ring-border">
-              <AvatarImage :src="userAvatar" />
+              <AvatarImage
+                v-if="userAvatar"
+                :src="userAvatar"
+                :alt="userDisplayName"
+              />
               <AvatarFallback
-                class="text-[hsl(var(--primary-foreground))] flex items-center justify-center"
+                class="text-[hsl(var(--primary-foreground))] font-semibold text-[13px] flex items-center justify-center"
                 style="background: linear-gradient(135deg,#0EA5E9,#0369A1);"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-3.5 w-3.5"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  aria-hidden="true"
-                >
-                  <circle
-                    cx="12"
-                    cy="8"
-                    r="4"
-                  />
-                  <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8" />
-                </svg>
+                {{ userFallback }}
               </AvatarFallback>
             </Avatar>
             <span class="hidden md:block text-sm font-medium truncate max-w-[120px]">
@@ -535,28 +541,16 @@ watch(
           <DropdownMenuLabel class="px-2.5 py-2">
             <div class="flex items-center gap-2.5 min-w-0">
               <Avatar class="size-9 shrink-0">
-                <AvatarImage :src="userAvatar" />
+                <AvatarImage
+                  v-if="userAvatar"
+                  :src="userAvatar"
+                  :alt="userDisplayName"
+                />
                 <AvatarFallback
                   style="background: linear-gradient(135deg,#0EA5E9,#0369A1);"
-                  class="text-[hsl(var(--primary-foreground))] flex items-center justify-center"
+                  class="text-[hsl(var(--primary-foreground))] font-semibold text-[15px] flex items-center justify-center"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    class="h-4 w-4"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    aria-hidden="true"
-                  >
-                    <circle
-                      cx="12"
-                      cy="8"
-                      r="4"
-                    />
-                    <path d="M4 21c0-4.418 3.582-8 8-8s8 3.582 8 8" />
-                  </svg>
+                  {{ userFallback }}
                 </AvatarFallback>
               </Avatar>
               <div class="flex flex-col min-w-0">

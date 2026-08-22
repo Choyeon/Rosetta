@@ -1,8 +1,8 @@
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
-      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-amber-100 to-orange-100 dark:from-amber-900/30 dark:to-orange-900/30 mb-5">
-        <FolderOpen class="size-7 text-warning" />
+      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-primary/10 mb-5">
+        <FolderOpen class="size-7 text-primary" />
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
         {{ t('categories.title') }}
@@ -22,7 +22,7 @@
           <CardHeader class="p-6 pb-4">
             <div class="flex items-start justify-between mb-4">
               <div
-                class="size-12 rounded-xl flex items-center justify-center bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-900/40 dark:to-purple-900/40 transition-transform duration-300 group-hover:scale-110"
+                class="size-12 rounded-xl flex items-center justify-center bg-primary/10 transition-transform duration-300 group-hover:scale-110"
               >
                 <FolderOpen class="size-6 text-primary" />
               </div>

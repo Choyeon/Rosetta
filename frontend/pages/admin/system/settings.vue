@@ -3,8 +3,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div
-          class="size-10 rounded-xl flex items-center justify-center"
-          style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
         >
           <Settings class="size-5 text-white" />
         </div>
@@ -30,8 +29,7 @@
         </Badge>
         <Button
           :disabled="!isDirty || saving"
-          class="text-white"
-          style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+          class="shadow-sm"
           @click="handleSaveCurrentGroup"
         >
           <Save
@@ -83,9 +81,8 @@
             :key="g.key"
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left"
             :class="activeGroup === g.key
-              ? 'text-white shadow-md'
+              ? 'bg-primary text-primary-foreground shadow-md'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-            :style="activeGroup === g.key ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
             @click="activeGroup = g.key"
           >
             <component

@@ -3,8 +3,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div
-          class="size-10 rounded-xl flex items-center justify-center"
-          style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
         >
           <Link2 class="size-5 text-white" />
         </div>
@@ -24,9 +23,8 @@
             :key="s.key"
             class="px-3 py-1.5 rounded-lg text-xs font-medium transition-all"
             :class="filter === s.key
-              ? 'text-white shadow-sm'
+              ? 'bg-primary text-primary-foreground shadow-sm'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-            :style="filter === s.key ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
             @click="filter = s.key"
           >
             {{ s.label }}
@@ -40,8 +38,7 @@
           </button>
         </div>
         <Button
-          class="text-white"
-          style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+          class="shadow-sm"
           @click="openCreate()"
         >
           <Plus class="size-4" /> 新建友链
@@ -109,8 +106,7 @@
             </div>
             <div
               v-else
-              class="size-12 rounded-xl shrink-0 flex items-center justify-center font-bold text-white text-lg"
-              :style="`background: linear-gradient(135deg, ${gradientFor(link.name, 0)} 0%, ${gradientFor(link.name, 1)} 100%);`"
+              class="size-12 rounded-xl shrink-0 flex items-center justify-center font-bold text-white text-lg bg-primary/90"
             >
               {{ link.name?.[0]?.toUpperCase() || '?' }}
             </div>
@@ -246,7 +242,7 @@
               />
             </div>
             <div class="space-y-2">
-              <Label class="text-sm font-medium">排序 sort_order</Label>
+              <Label class="text-sm font-medium">{{ t('adminCommon.sortOrder') }}</Label>
               <Input
                 v-model.number="form.sort_order"
                 type="number"
@@ -265,8 +261,7 @@
           </Button>
           <Button
             :disabled="submitting"
-            class="text-white rounded-xl"
-            style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%);"
+            class="rounded-xl"
             @click="handleSubmit"
           >
             <Loader2
@@ -337,6 +332,7 @@ import { useToast } from '~~/composables/useToast'
 import {
   Link2, Plus, Pencil, Trash2, Save, Loader2, Info
 } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 import { Button } from '~~/components/ui/button'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Badge } from '~~/components/ui/badge'
@@ -353,6 +349,7 @@ import type { BadgeVariants } from '~~/components/ui/badge'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
+const { t } = useI18n()
 const toast = useToast()
 
 const statusFilters = [

@@ -224,7 +224,7 @@ onMounted(() => {
       <Dialog v-model:open="dialogOpen">
         <DialogTrigger as-child>
           <Button
-            class="rounded-[12px] h-10 px-5 bg-gradient-to-r from-cyan-500 to-sky-500 text-white hover:from-cyan-600 hover:to-sky-600 shadow-sm"
+            class="rounded-[12px] h-10 px-5 shadow-sm"
             @click="openNew"
           >
             + 新建页面

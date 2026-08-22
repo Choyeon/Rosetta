@@ -3,8 +3,7 @@
     <div class="flex items-center justify-between">
       <div class="flex items-center gap-3">
         <div
-          class="size-10 rounded-xl flex items-center justify-center"
-          style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
         >
           <Menu class="size-5 text-white" />
         </div>
@@ -18,8 +17,7 @@
         </div>
       </div>
       <Button
-        class="text-white"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+        class="shadow-sm"
         @click="openCreate()"
       >
         <Plus class="size-4" /> 新建菜单项
@@ -236,8 +234,7 @@
           </Button>
           <Button
             :disabled="submitting"
-            class="text-white rounded-xl"
-            style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%);"
+            class="rounded-xl shadow-sm"
             @click="handleSubmit"
           >
             <Loader2

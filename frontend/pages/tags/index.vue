@@ -1,8 +1,8 @@
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
-      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-sky-100 to-cyan-100 dark:from-sky-900/30 dark:to-cyan-900/30 mb-5">
-        <Tags class="size-7 text-cyan-600 dark:text-cyan-300" />
+      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-primary/10 mb-5">
+        <Tags class="size-7 text-primary" />
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
         {{ t('tags.title') }}

@@ -2,8 +2,7 @@
   <div class="p-6 space-y-6">
     <div class="flex items-center gap-3">
       <div
-        class="size-10 rounded-xl flex items-center justify-center"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
       >
         <Gauge class="size-5 text-white" />
       </div>
@@ -68,21 +67,21 @@
         <TabsTrigger
           value="overview"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'overview' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'overview' ? 'bg-primary text-primary-foreground' : ''"
         >
           <BarChart3 class="size-4 mr-1.5" /> 概览
         </TabsTrigger>
         <TabsTrigger
           value="slow"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'slow' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'slow' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Clock class="size-4 mr-1.5" /> 慢请求 Top
         </TabsTrigger>
         <TabsTrigger
           value="trend"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'trend' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'trend' ? 'bg-primary text-primary-foreground' : ''"
         >
           <TrendingUp class="size-4 mr-1.5" /> 错误率趋势
         </TabsTrigger>
@@ -150,11 +149,11 @@
                       class="h-full rounded-full"
                       :style="{
                         width: `${Math.min(100, p.avg_ms / 5)}%`,
-                        background: p.avg_ms > 500
-                          ? 'linear-gradient(90deg, #EF4444, #DC2626)'
+                        backgroundColor: p.avg_ms > 500
+                          ? 'hsl(var(--destructive))'
                           : p.avg_ms > 200
-                            ? 'linear-gradient(90deg, #0EA5E9, #0284C7)'
-                            : 'linear-gradient(90deg, #10B981, #059669)'
+                            ? 'hsl(var(--primary))'
+                            : 'hsl(var(--success))'
                       }"
                     />
                   </div>
@@ -313,8 +312,7 @@
           </CardHeader>
           <CardContent>
             <div
-              class="h-72 rounded-2xl relative overflow-hidden"
-              style="background: linear-gradient(135deg, rgba(14,165,233,0.08) 0%, rgba(139,92,246,0.06) 50%, rgba(14,165,169,0.08) 100%);"
+              class="h-72 rounded-2xl relative overflow-hidden bg-primary/5"
             >
               <svg
                 class="absolute inset-0 w-full h-full opacity-30"

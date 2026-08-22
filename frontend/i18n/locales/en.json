@@ -52,7 +52,10 @@
       "about": "About",
       "admin": "Admin"
     },
-    "titleMenu": "Menu"
+    "titleMenu": "Menu",
+    "pinned": "Pinned",
+    "featured": "Featured",
+    "submitting": "Submitting…"
   },
   "nav": {
     "home": "Home",
@@ -810,14 +813,16 @@
     "website": "Website (optional)",
     "contentPlaceholder": "Type something here…",
     "replyPlaceholder": "Reply to this message…",
-    "noMessages": "No messages yet. Be the first to say hi!"
+    "noMessages": "No messages yet. Be the first to say hi!",
+    "submitFailed": "Submit failed, please try again later"
   },
   "gallery": {
     "title": "Gallery",
     "desc": "Travels, daily life, light and shadow. Slices of time frozen through the lens.",
     "photos": "photos",
     "noDesc": "No description",
-    "noAlbums": "No albums yet"
+    "noAlbums": "No albums yet",
+    "photosCountHint": "{count} photos · sorted by {sortOrder}"
   },
   "friends": {
     "title": "Friends",
@@ -1029,6 +1034,7 @@
     "create": "Create",
     "refresh": "Refresh",
     "reset": "Reset",
+    "sortOrder": "Sort order",
     "loading": "Loading…",
     "loadFailed": "Load failed, please retry",
     "apiNotFound": "API not ready yet",

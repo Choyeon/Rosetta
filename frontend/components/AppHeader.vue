@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { watch, computed } from 'vue'
+import { watch, computed, onMounted } from 'vue'
 import { Menu, Search, LogOut, User, ChevronDown } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import {
@@ -37,13 +37,33 @@ const userAvatar = useResolvedAvatar(
   () => (authStore.user as Record<string, unknown> | null)?.avatar as string | undefined
 )
 
-const userAlt = computed(() => {
+// 显示名：优先 nickname → name → username，避免出现"用户名/登录名"而非昵称
+const userDisplayName = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
-  return String(u?.name ?? u?.username ?? '')
+  return String((u?.nickname ?? u?.name ?? u?.username ?? '') as string) || ''
 })
+const userAlt = computed(() => userDisplayName.value)
 const userFallback = computed(() => {
-  const u = authStore.user as Record<string, unknown> | null
-  return String((u?.name ?? u?.username ?? '') as string).charAt(0).toUpperCase() || 'U'
+  const name = userDisplayName.value || 'U'
+  return name.charAt(0).toUpperCase() || 'U'
+})
+
+// Hydration 安全守卫：SSR 时 authStore 没有 localStorage 回填，渲染纯 fallback
+// 客户端 window.load 后再读真实头像/昵称，保证 SSR 与客户端首渲染 DOM 一致
+const userInfoReady = useState('appheader-user-info-ready', () => false)
+onMounted(() => {
+  // 延后一帧，避免同一微任务内切换导致的客户端立即替换
+  requestAnimationFrame(() => {
+    userInfoReady.value = true
+  })
+})
+
+// SSR 与客户端首帧（ready=false）统一输出空值 → 两者 DOM 一致，无 mismatch
+const safeUserAvatar = computed(() => (userInfoReady.value ? userAvatar.value : ''))
+const safeDisplayName = computed(() => (userInfoReady.value ? userDisplayName.value : ''))
+const safeUserFallback = computed(() => {
+  if (!userInfoReady.value) return 'U'
+  return userFallback.value
 })
 
 // ===== 站点品牌：layouts/default.vue 里已经 await useSite().ensureLoaded() =====
@@ -239,11 +259,11 @@ const handleAdmin = () => navigateTo('/admin')
             >
               <Avatar class="h-8 w-8">
                 <AvatarImage
-                  v-if="userAvatar"
-                  :src="userAvatar"
+                  v-if="safeUserAvatar"
+                  :src="safeUserAvatar"
                   :alt="userAlt"
                 />
-                <AvatarFallback>{{ userFallback }}</AvatarFallback>
+                <AvatarFallback>{{ safeUserFallback }}</AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
@@ -255,15 +275,15 @@ const handleAdmin = () => navigateTo('/admin')
               <div class="flex items-center gap-3">
                 <Avatar class="h-10 w-10">
                   <AvatarImage
-                    v-if="userAvatar"
-                    :src="userAvatar"
+                    v-if="safeUserAvatar"
+                    :src="safeUserAvatar"
                     :alt="userAlt"
                   />
-                  <AvatarFallback>{{ userFallback }}</AvatarFallback>
+                  <AvatarFallback>{{ safeUserFallback }}</AvatarFallback>
                 </Avatar>
                 <div class="space-y-0.5 min-w-0">
                   <div class="text-sm font-medium truncate">
-                    {{ authStore.user?.name || authStore.user?.username }}
+                    {{ safeDisplayName || '未登录' }}
                   </div>
                   <div
                     v-if="authStore.user?.email"

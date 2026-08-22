@@ -236,7 +236,7 @@ onMounted(() => {
       <Dialog v-model:open="dialogOpen">
         <DialogTrigger as-child>
           <Button
-            class="rounded-[12px] h-10 px-5 bg-gradient-to-r from-rose-500 to-pink-500 text-white hover:from-rose-600 hover:to-pink-600 shadow-sm"
+            class="rounded-[12px] h-10 px-5 shadow-sm"
             @click="openNew"
           >
             + 新建系列
@@ -293,7 +293,7 @@ onMounted(() => {
                 </div>
                 <div
                   v-else
-                  class="w-[180px] h-[100px] rounded-[10px] border border-dashed border-border bg-gradient-to-br from-rose-100 via-amber-50 to-orange-100 flex items-center justify-center text-xs text-muted-foreground"
+                  class="w-[180px] h-[100px] rounded-[10px] border border-dashed border-border bg-muted flex items-center justify-center text-xs text-muted-foreground"
                 >
                   无封面
                 </div>
@@ -401,7 +401,7 @@ onMounted(() => {
             >
             <div
               v-else
-              class="w-full h-full bg-gradient-to-br from-rose-400 via-amber-400 to-orange-400 cursor-pointer"
+              class="w-full h-full bg-primary/85 cursor-pointer"
             />
             <div class="absolute top-3 left-3 flex items-center gap-2">
               <Badge

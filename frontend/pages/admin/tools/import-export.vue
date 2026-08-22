@@ -2,8 +2,7 @@
   <div class="p-6 space-y-6">
     <div class="flex items-center gap-3">
       <div
-        class="size-10 rounded-xl flex items-center justify-center"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
       >
         <ArrowLeftRight class="size-5 text-white" />
       </div>
@@ -25,14 +24,14 @@
         <TabsTrigger
           value="export"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'export' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'export' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Upload class="size-4 mr-1.5" /> 导出
         </TabsTrigger>
         <TabsTrigger
           value="import"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'import' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'import' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Download class="size-4 mr-1.5" /> 导入
         </TabsTrigger>
@@ -102,9 +101,8 @@
                 :key="s.key"
                 class="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all"
                 :class="exportForm.scope === s.key
-                  ? 'text-white shadow-sm'
+                  ? 'bg-primary text-primary-foreground shadow-sm'
                   : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                :style="exportForm.scope === s.key ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
                 @click="exportForm.scope = s.key"
               >
                 {{ s.label }}
@@ -166,8 +164,7 @@
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <Button
                 :disabled="exporting"
-                class="text-white sm:w-auto w-full"
-                style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+                class="sm:w-auto w-full shadow-sm"
                 @click="handleExport"
               >
                 <Loader2
@@ -294,8 +291,7 @@
                 @change="handleFileSelect"
               >
               <div
-                class="size-16 rounded-2xl mx-auto mb-4 flex items-center justify-center"
-                style="background: linear-gradient(135deg, #FED7AA 0%, #FDBA74 100%);"
+                class="size-16 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-primary text-primary-foreground"
               >
                 <CloudUpload class="size-8 text-white" />
               </div>
@@ -373,7 +369,7 @@
               <div class="h-2.5 rounded-full bg-muted overflow-hidden">
                 <div
                   class="h-full rounded-full transition-all duration-500"
-                  :style="{ width: `${importProgress}%`, background: importProgress < 100 ? 'linear-gradient(90deg, #0EA5E9, #38BDF8)' : 'linear-gradient(90deg, #10B981, #059669)' }"
+                  :style="{ width: `${importProgress}%`, backgroundColor: importProgress < 100 ? 'hsl(var(--primary))' : 'hsl(var(--success))' }"
                 />
               </div>
             </div>
@@ -398,8 +394,7 @@
               </p>
               <Button
                 :disabled="importing || !importForm.file"
-                class="text-white sm:w-auto w-full"
-                style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+                class="sm:w-auto w-full shadow-sm"
                 @click="handleImport"
               >
                 <Loader2

@@ -2,8 +2,7 @@
   <div class="p-6 space-y-6">
     <div class="flex items-center gap-3">
       <div
-        class="size-10 rounded-xl flex items-center justify-center"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
       >
         <HardDrive class="size-5 text-white" />
       </div>
@@ -130,9 +129,9 @@
                   class="h-full rounded-full transition-all"
                   :style="{
                     width: `${hitPct}%`,
-                    background: hitRateWarning
-                      ? 'linear-gradient(90deg, #0EA5E9, #0284C7)'
-                      : 'linear-gradient(90deg, #10B981, #059669)'
+                    backgroundColor: hitRateWarning
+                      ? 'hsl(var(--primary))'
+                      : 'hsl(var(--success))'
                   }"
                 />
               </div>

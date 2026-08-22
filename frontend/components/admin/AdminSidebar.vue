@@ -297,12 +297,6 @@ const go = (path: string) => navigateTo(path)
                       ]"
                       aria-hidden="true"
                     />
-                    <!-- 左侧激活指示条：iOS 样式细长胶囊，带呼吸光晕 -->
-                    <span
-                      v-if="isActive(item.path)"
-                      class="sb-indicator absolute left-0 top-1/2 -translate-y-1/2 -ml-[1px] w-[3px] h-[22px] rounded-r-full"
-                      aria-hidden="true"
-                    />
                     <component
                       :is="item.icon"
                       class="shrink-0 size-[18px] transition-colors duration-300"
@@ -379,111 +373,51 @@ const go = (path: string) => navigateTo(path)
   transform: translateX(-6px);
 }
 
-/* ======= 侧边栏菜单：iOS26 · 天青 PRO 风格 ======= */
+/* ======= 侧边栏菜单：朴素低调激活态 ======= */
 
-/* —— 激活胶囊：青蓝→天青的玻璃渐变，内嵌高光描边 + 外缘柔和光晕 —— */
+/* —— 激活胶囊：仅使用淡主题色底色 + 细描边，与 hover 强度接近，避免侵略性 —— */
 .sb-bg-active {
-  background:
-    linear-gradient(135deg,
-      color-mix(in oklab, hsl(var(--primary) / 0.26) 90%, white) 0%,
-      color-mix(in oklab, hsl(var(--primary) / 0.12) 80%, transparent) 45%,
-      color-mix(in oklab, hsl(var(--primary) / 0.20) 90%, white) 100%);
+  background: hsl(var(--primary) / 0.12);
   box-shadow:
-    inset 0 0 0 1px color-mix(in oklab, hsl(var(--primary) / 0.45), transparent),
-    inset 0 1px 0 color-mix(in oklab, white 35%, hsl(var(--primary) / 0.4)),
-    0 6px 18px -8px hsl(var(--primary) / 0.55),
-    0 2px 8px -4px hsl(var(--primary) / 0.25);
+    inset 0 0 0 1px hsl(var(--primary) / 0.22);
 }
 
-/* —— Hover 胶囊：轻抬升 + 半透明底色，与激活态共享缓动曲线 —— */
+/* —— Hover 胶囊：与激活态观感接近，仅底色略深 + 极细描边 —— */
 .sb-bg-hover {
-  background:
-    linear-gradient(180deg,
-      hsl(var(--sidebar-accent, var(--accent)) / 0.95),
-      hsl(var(--sidebar-accent, var(--accent)) / 0.75));
+  background: hsl(var(--sidebar-accent, var(--accent)) / 0.9);
   box-shadow:
-    inset 0 0 0 1px hsl(var(--foreground) / 0.06),
-    0 4px 12px -8px hsl(var(--foreground) / 0.18);
+    inset 0 0 0 1px hsl(var(--foreground) / 0.05);
 }
 
 @media (prefers-color-scheme: dark) {
   .sb-bg-active {
-    background:
-      linear-gradient(135deg,
-        color-mix(in oklab, hsl(var(--primary) / 0.38), hsl(var(--sidebar-background))) 0%,
-        color-mix(in oklab, hsl(var(--primary) / 0.18), hsl(var(--sidebar-background))) 55%,
-        color-mix(in oklab, hsl(var(--primary) / 0.30), hsl(var(--sidebar-background))) 100%);
+    background: hsl(var(--primary) / 0.18);
     box-shadow:
-      inset 0 0 0 1px color-mix(in oklab, hsl(var(--primary) / 0.55), transparent),
-      inset 0 1px 0 hsl(var(--primary) / 0.18),
-      0 8px 22px -10px hsl(var(--primary) / 0.65),
-      0 3px 10px -5px hsl(var(--primary) / 0.35);
+      inset 0 0 0 1px hsl(var(--primary) / 0.30);
   }
   .sb-bg-hover {
-    background:
-      linear-gradient(180deg,
-        hsl(var(--sidebar-accent) / 0.9),
-        hsl(var(--sidebar-accent) / 0.6));
+    background: hsl(var(--sidebar-accent) / 0.85);
     box-shadow:
-      inset 0 0 0 1px hsl(var(--foreground) / 0.08),
-      0 4px 14px -9px hsl(0 0% 0% / 0.6);
+      inset 0 0 0 1px hsl(var(--foreground) / 0.06);
   }
 }
 
-/* —— 微抬升动画：hover 时 Y 轴轻微上移 1px，激活态不移 —— */
+/* —— 微抬升动画：hover 与激活都不做激进位移 —— */
 .sb-item-idle:hover {
-  transform: translateY(-0.5px);
+  transform: none;
 }
 .sb-item-active {
-  transform: translateX(0);
+  transform: none;
 }
 
-/* —— 激活指示条：渐变 + 光晕（天青→浅青→蓝白彗尾） —— */
-.sb-indicator {
-  background: linear-gradient(180deg,
-    hsl(var(--primary)) 0%,
-    color-mix(in oklab, hsl(var(--primary)) 70%, #67e8f9) 100%);
-  box-shadow:
-    0 0 0 1px color-mix(in oklab, white 35%, hsl(var(--primary) / 0.35)),
-    0 0 10px 2px hsl(var(--primary) / 0.55),
-    0 0 18px 5px hsl(var(--primary) / 0.25);
-  animation: sb-indicator-pulse 2.2s ease-in-out infinite;
-}
-@keyframes sb-indicator-pulse {
-  0%, 100% {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, white 35%, hsl(var(--primary) / 0.35)),
-      0 0 10px 2px hsl(var(--primary) / 0.55),
-      0 0 18px 5px hsl(var(--primary) / 0.25);
-  }
-  50% {
-    box-shadow:
-      0 0 0 1px color-mix(in oklab, white 55%, hsl(var(--primary) / 0.45)),
-      0 0 14px 3px hsl(var(--primary) / 0.7),
-      0 0 26px 8px hsl(var(--primary) / 0.32);
-  }
-}
-
-/* —— 激活图标：天青填充 + 外发光 —— */
+/* —— 激活图标：仅主题色填充，去掉外缘发光滤镜（避免侵略性） —— */
 .sb-icon-active {
   color: hsl(var(--primary));
-  filter: drop-shadow(0 0 4px hsl(var(--primary) / 0.45))
-          drop-shadow(0 1px 0 hsl(var(--primary) / 0.25));
 }
 
-/* —— 激活项右箭头：从 -4px 滑入，渐显 —— */
+/* —— 激活项右箭头：弱化，不做滑入动画 —— */
 .sb-chevron {
-  color: hsl(var(--primary));
-  animation: sb-chevron-slide 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes sb-chevron-slide {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  to {
-    opacity: 0.75;
-    transform: translateX(0);
-  }
+  color: hsl(var(--primary) / 0.7);
+  opacity: 0.7;
 }
 </style>

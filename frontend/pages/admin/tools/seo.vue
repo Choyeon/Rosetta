@@ -2,8 +2,7 @@
   <div class="p-6 space-y-6">
     <div class="flex items-center gap-3">
       <div
-        class="size-10 rounded-xl flex items-center justify-center"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
       >
         <Search class="size-5 text-white" />
       </div>
@@ -25,21 +24,21 @@
         <TabsTrigger
           value="sitemap"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'sitemap' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'sitemap' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Map class="size-4 mr-1.5" /> 站点地图
         </TabsTrigger>
         <TabsTrigger
           value="score"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'score' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'score' ? 'bg-primary text-primary-foreground' : ''"
         >
           <LineChart class="size-4 mr-1.5" /> SEO 评分
         </TabsTrigger>
         <TabsTrigger
           value="links"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :style="activeTab === 'links' ? 'background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);' : ''"
+          :class="activeTab === 'links' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Link2 class="size-4 mr-1.5" /> 死链检查
         </TabsTrigger>
@@ -112,8 +111,7 @@
               </div>
               <Button
                 :disabled="regenerating"
-                class="text-white sm:w-auto w-full"
-                style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+                class="sm:w-auto w-full shadow-sm"
                 @click="handleRegenerate"
               >
                 <Loader2
@@ -223,11 +221,11 @@
                             class="h-full rounded-full transition-all"
                             :style="{
                               width: `${s.score}%`,
-                              background: s.score >= 80
-                                ? 'linear-gradient(90deg, #10B981, #059669)'
+                              backgroundColor: s.score >= 80
+                                ? 'hsl(var(--success))'
                                 : s.score >= 60
-                                  ? 'linear-gradient(90deg, #0EA5E9, #0284C7)'
-                                  : 'linear-gradient(90deg, #EF4444, #DC2626)'
+                                  ? 'hsl(var(--primary))'
+                                  : 'hsl(var(--destructive))'
                             }"
                           />
                         </div>
@@ -318,8 +316,7 @@
               </div>
               <Button
                 :disabled="checking"
-                class="text-white sm:w-auto w-full"
-                style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 6px 20px -8px rgba(14,165,233,0.55);"
+                class="sm:w-auto w-full shadow-sm"
                 @click="handleCheck"
               >
                 <Loader2

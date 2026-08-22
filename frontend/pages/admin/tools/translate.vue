@@ -2,8 +2,7 @@
   <div class="p-6 space-y-6">
     <div class="flex items-center gap-3">
       <div
-        class="size-10 rounded-xl flex items-center justify-center"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
       >
         <Languages class="size-5 text-white" />
       </div>
@@ -155,8 +154,7 @@
           </div>
           <Button
             :disabled="batchSubmitting || form.postIds.length === 0 || form.targetLangs.length === 0"
-            class="text-white w-full"
-            style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%);"
+            class="text-white w-full shadow-sm bg-primary hover:bg-primary/90"
             @click="handleBatchTranslate"
           >
             <Loader2

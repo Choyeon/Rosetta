@@ -157,6 +157,107 @@ export async function fetchRecentPosts(limit = 8): Promise<AdminPostListItem[]> 
   return merged.sort((a, b) => timeOf(b) - timeOf(a)).slice(0, limit)
 }
 
+export interface FetchAdminPostsParams {
+  page?: number
+  page_size?: number
+  search?: string
+  status?: 'all' | 'published' | 'draft' | 'scheduled' | 'archived'
+  category?: string
+}
+
+export interface FetchAdminPostsResult<T> {
+  items: T[]
+  total: number
+}
+
+/**
+ * 后台文章管理列表数据加载（基于 GET /api/blog/posts，需 staff 登录态）：
+ * - status=具体值：服务端按该 status 过滤并分页
+ * - status='all'：并行请求 4 种 status（published / draft / scheduled / archived），
+ *   客户端合并去重、应用 search/category 过滤，再按时间倒序做本地分页。
+ *   单个请求失败不阻断其他状态数据合并，避免整片列表为空。
+ */
+export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
+  params: FetchAdminPostsParams
+): Promise<FetchAdminPostsResult<T>> {
+  const page = Math.max(1, params.page ?? 1)
+  const pageSize = Math.max(1, params.page_size ?? 10)
+  const qSearch = params.search?.trim() || ''
+  const qCategory = params.category && params.category !== 'all' ? params.category : undefined
+
+  const statuses: Array<'published' | 'draft' | 'scheduled' | 'archived'>
+    = !params.status || params.status === 'all'
+      ? ['published', 'draft', 'scheduled', 'archived']
+      : [params.status as 'published' | 'draft' | 'scheduled' | 'archived']
+
+  // 特定单 status：直接走服务端分页，简单高效
+  if (statuses.length === 1) {
+    const paged = await apiFetch<AdminPaged<T>>('/blog/posts', {
+      query: {
+        page,
+        page_size: pageSize,
+        status: statuses[0],
+        search: qSearch || undefined,
+        category: qCategory
+      }
+    })
+    return { items: paged.items ?? [], total: paged.total ?? 0 }
+  }
+
+  // status='all' 合并模式：每种 status 拉取足够大的一页，客户端统一处理
+  const bigBatch = Math.max(200, pageSize * 20)
+  const results = await Promise.allSettled(
+    statuses.map(s =>
+      apiFetch<AdminPaged<T>>('/blog/posts', {
+        query: {
+          page: 1,
+          page_size: bigBatch,
+          status: s,
+          search: qSearch || undefined,
+          category: qCategory
+        }
+      })
+    )
+  )
+
+  const seen = new Set<number>()
+  const merged: T[] = []
+  for (const r of results) {
+    if (r.status !== 'fulfilled') continue
+    for (const item of (r.value.items ?? []) as T[]) {
+      if (seen.has(item.id)) continue
+      seen.add(item.id)
+      merged.push(item)
+    }
+  }
+
+  const getLocalized = (v: string | Record<string, string> | null | undefined): string => {
+    if (v == null) return ''
+    if (typeof v === 'string') return v
+    return Object.values(v)[0] || ''
+  }
+
+  // 客户端 search 兜底（服务端对非 published 的 search 可能不稳定）
+  let filtered = merged
+  if (qSearch) {
+    const q = qSearch.toLowerCase()
+    filtered = merged.filter((p) => {
+      const title = getLocalized(p.title as unknown as string | Record<string, string> | null | undefined).toLowerCase()
+      const slug = String(p.slug ?? '').toLowerCase()
+      return title.includes(q) || slug.includes(q)
+    })
+  }
+
+  // 时间倒序：优先 published_at，其次 created_at
+  const timeOf = (p: T): number => new Date(p.published_at ?? p.created_at ?? 0).getTime() || 0
+  filtered.sort((a, b) => timeOf(b) - timeOf(a))
+
+  const total = filtered.length
+  const start = (page - 1) * pageSize
+  const items = filtered.slice(start, start + pageSize)
+  return { items, total }
+}
+
 // ==================== 评论管理 ====================
 
 export type AdminCommentStatus = 'approved' | 'pending' | 'rejected' | 'spam'

@@ -5,7 +5,7 @@
         头衔管理
       </h1>
       <Button
-        class="bg-gradient-to-r from-primary to-primary/70 hover:from-primary/90 hover:to-primary/60"
+        class="rounded-xl shadow-sm"
         @click="openCreate"
       >
         <Plus class="size-4 mr-2" />

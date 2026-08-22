@@ -46,7 +46,7 @@ const pendingDeleteId = ref<number | null>(null)
 const form = reactive({
   name: '',
   slug: '',
-  color: '#a78bfa',
+  color: '#0EA5E9',
   icon: '',
   is_active: true
 })
@@ -103,7 +103,7 @@ const openNew = () => {
   editingId.value = null
   form.name = ''
   form.slug = ''
-  form.color = '#a78bfa'
+  form.color = '#0EA5E9'
   form.icon = ''
   form.is_active = true
   slugManualEdit = false
@@ -115,7 +115,7 @@ const openEdit = (t: AdminTag) => {
   editingId.value = t.id
   form.name = getLocalizedStr(t.name)
   form.slug = t.slug
-  form.color = t.color || '#a78bfa'
+  form.color = t.color || '#0EA5E9'
   form.icon = t.icon || ''
   form.is_active = t.is_active
   slugManualEdit = true
@@ -198,7 +198,7 @@ onMounted(() => {
         <Dialog v-model:open="dialogOpen">
           <DialogTrigger as-child>
             <Button
-              class="rounded-[12px] h-10 px-5 bg-gradient-to-r from-violet-500 to-purple-500 text-white hover:from-violet-600 hover:to-purple-600 shadow-sm"
+              class="rounded-[12px] h-10 px-5 shadow-sm"
               @click="openNew"
             >
               + 新建标签
@@ -316,8 +316,8 @@ onMounted(() => {
             :key="t.id"
             class="relative rounded-[14px] border px-3 py-3 cursor-pointer transition-all select-none group"
             :style="{
-              background: `linear-gradient(135deg, ${t.color}18 0%, #ffffff 95%)`,
-              borderColor: `${t.color}40`,
+              background: `color-mix(in oklab, ${t.color || '#0EA5E9'} 14%, hsl(var(--card)))`,
+              borderColor: `${t.color || '#0EA5E9'}40`,
               opacity: t.is_active ? 1 : 0.5
             }"
             :class="{ 'ring-2 ring-offset-1': hoveredId === t.id }"

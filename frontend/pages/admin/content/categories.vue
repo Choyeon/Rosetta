@@ -25,7 +25,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  DialogTrigger
 } from '~~/components/ui/dialog'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -38,6 +39,10 @@ const saving = ref(false)
 const editingId = ref<number | null>(null)
 const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
+
+// 编辑/新建：使用 Dialog 弹窗，与标签管理保持一致的 UX
+const dialogOpen = ref(false)
+const dialogMode = ref<'new' | 'edit'>('new')
 
 const form = reactive({
   name: '',
@@ -95,7 +100,14 @@ const resetForm = () => {
   slugManualEdit = false
 }
 
-const setEditing = (cat: AdminCategory) => {
+const openNew = () => {
+  dialogMode.value = 'new'
+  resetForm()
+  dialogOpen.value = true
+}
+
+const openEdit = (cat: AdminCategory) => {
+  dialogMode.value = 'edit'
   form.name = getLocalizedStr(cat.name)
   form.slug = cat.slug
   form.description = getLocalizedStr(cat.description)
@@ -104,6 +116,7 @@ const setEditing = (cat: AdminCategory) => {
   form.sort_order = (cat as unknown as { sort_order?: number }).sort_order ?? 0
   editingId.value = cat.id
   slugManualEdit = true
+  dialogOpen.value = true
 }
 
 const save = async () => {
@@ -129,6 +142,7 @@ const save = async () => {
       toast.success('创建成功')
     }
     resetForm()
+    dialogOpen.value = false
     await loadData()
   } catch (e) {
     toast.error(e instanceof Error ? e.message : '保存失败')
@@ -165,164 +179,39 @@ onMounted(() => {
 
 <template>
   <div class="flex flex-col gap-5 p-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold tracking-tight">
-        分类管理
-      </h1>
-      <Badge
-        variant="secondary"
-        class="rounded-[10px] px-3 py-1 bg-stone-100 text-stone-700 border-stone-200"
-      >
-        共 {{ categories.length }} 个分类
-      </Badge>
-    </div>
-
-    <div class="flex flex-col xl:flex-row gap-5">
-      <div class="flex-1 xl:w-7/10 min-w-0">
-        <div class="rounded-[12px] border border-border bg-card overflow-hidden">
-          <div class="overflow-x-auto">
-            <div class="min-w-[700px]">
-              <div class="grid grid-cols-[auto,1.2fr,1fr,1.4fr,90px,80px,130px] bg-stone-50/80 border-b border-border text-xs font-medium text-muted-foreground">
-                <div class="p-3 w-16">
-                  ID
-                </div>
-                <div class="p-3">
-                  名称
-                </div>
-                <div class="p-3">
-                  Slug
-                </div>
-                <div class="p-3">
-                  描述
-                </div>
-                <div class="p-3 text-center">
-                  文章数
-                </div>
-                <div class="p-3 text-center">
-                  排序
-                </div>
-                <div class="p-3 text-center">
-                  操作
-                </div>
-              </div>
-
-              <template v-if="loading">
-                <div
-                  v-for="i in 5"
-                  :key="`sk-${i}`"
-                  class="grid grid-cols-[auto,1.2fr,1fr,1.4fr,90px,80px,130px] border-b border-border/50"
-                >
-                  <div class="p-3 w-16">
-                    <Skeleton class="h-4 w-8 rounded" />
-                  </div>
-                  <div class="p-3">
-                    <Skeleton class="h-5 w-3/4 rounded" />
-                  </div>
-                  <div class="p-3">
-                    <Skeleton class="h-5 w-2/3 rounded" />
-                  </div>
-                  <div class="p-3">
-                    <Skeleton class="h-5 w-full rounded" />
-                  </div>
-                  <div class="p-3">
-                    <Skeleton class="h-4 w-10 rounded mx-auto" />
-                  </div>
-                  <div class="p-3">
-                    <Skeleton class="h-4 w-10 rounded mx-auto" />
-                  </div>
-                  <div class="p-3 flex gap-2 justify-center">
-                    <Skeleton class="h-8 w-14 rounded" /><Skeleton class="h-8 w-14 rounded" />
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="categories.length === 0">
-                <div class="py-20 text-center text-muted-foreground">
-                  <div class="text-5xl mb-3 opacity-30">
-                    📁
-                  </div>
-                  <div class="text-sm">
-                    暂无分类，在右侧表单创建第一个吧
-                  </div>
-                </div>
-              </template>
-
-              <template v-else>
-                <div
-                  v-for="(c, idx) in categories"
-                  :key="c.id"
-                  class="grid grid-cols-[auto,1.2fr,1fr,1.4fr,90px,80px,130px] border-b border-border/50 text-sm"
-                  :class="{ 'bg-stone-50/40': idx % 2 === 1, 'bg-amber-50/30': editingId === c.id }"
-                >
-                  <div class="p-3 w-16 text-muted-foreground text-xs">
-                    #{{ c.id }}
-                  </div>
-                  <div class="p-3">
-                    <div class="flex items-center gap-2">
-                      <span
-                        class="w-3 h-3 rounded-full inline-block border border-white shadow-sm"
-                        :style="{ background: c.color || '#94a3b8' }"
-                      />
-                      <span class="font-medium">{{ getLocalizedStr(c.name) }}</span>
-                      <span
-                        v-if="c.icon"
-                        class="text-muted-foreground"
-                      >{{ c.icon }}</span>
-                    </div>
-                  </div>
-                  <div class="p-3 text-muted-foreground truncate">
-                    {{ c.slug }}
-                  </div>
-                  <div
-                    class="p-3 text-muted-foreground text-xs truncate"
-                    :title="getLocalizedStr(c.description)"
-                  >
-                    {{ getLocalizedStr(c.description) || '-' }}
-                  </div>
-                  <div class="p-3 text-center">
-                    <Badge
-                      variant="secondary"
-                      class="rounded-[10px]"
-                    >
-                      {{ c.post_count }}
-                    </Badge>
-                  </div>
-                  <div class="p-3 text-center text-muted-foreground text-xs">
-                    {{ (c as any).sort_order ?? 0 }}
-                  </div>
-                  <div class="p-3 flex items-center justify-center gap-1.5">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="h-8 rounded-[10px] text-xs px-3"
-                      @click="setEditing(c)"
-                    >
-                      编辑
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
-                      @click="confirmDelete(c.id)"
-                    >
-                      删除
-                    </Button>
-                  </div>
-                </div>
-              </template>
-            </div>
-          </div>
-        </div>
+    <!-- Header + 新建按钮 + 表单 Dialog -->
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <h1 class="text-2xl font-bold tracking-tight">
+          分类管理
+        </h1>
+        <Badge
+          variant="secondary"
+          class="rounded-[10px] px-3 py-1 bg-stone-100 text-stone-700 border-stone-200"
+        >
+          共 {{ categories.length }} 个分类
+        </Badge>
       </div>
 
-      <div class="w-full xl:w-3/10">
-        <Card class="rounded-[12px] border-border shadow-none sticky top-6">
-          <CardHeader class="pb-2">
-            <CardTitle class="text-lg">
-              {{ editingId ? '编辑分类' : '新建分类' }}
-            </CardTitle>
-          </CardHeader>
-          <CardContent class="flex flex-col gap-4">
+      <Dialog v-model:open="dialogOpen">
+        <DialogTrigger as-child>
+          <Button
+            class="rounded-[12px] h-10 px-5 shadow-sm"
+            @click="openNew"
+          >
+            + 新建分类
+          </Button>
+        </DialogTrigger>
+        <DialogContent class="rounded-[12px] max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {{ dialogMode === 'edit' ? '编辑分类' : '新建分类' }}
+            </DialogTitle>
+            <DialogDescription>
+              分类用于文章的主题组织，支持颜色与图标快速区分。
+            </DialogDescription>
+          </DialogHeader>
+          <div class="flex flex-col gap-4 py-4">
             <div>
               <Label class="mb-1 block text-xs text-muted-foreground">
                 名称 <span class="text-destructive">*</span>
@@ -383,28 +272,164 @@ onMounted(() => {
                 class="h-9 rounded-[10px]"
               />
             </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              class="rounded-[10px]"
+              @click="dialogOpen = false"
+            >
+              取消
+            </Button>
+            <Button
+              class="rounded-[10px] shadow-sm"
+              :disabled="saving"
+              @click="save"
+            >
+              {{ saving ? '保存中...' : (editingId ? '更新' : '保存') }}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
 
-            <div class="flex gap-2 pt-2">
-              <Button
-                class="flex-1 rounded-[12px] bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-sm"
-                :disabled="saving"
-                @click="save"
-              >
-                {{ saving ? '保存中...' : (editingId ? '更新' : '保存') }}
-              </Button>
-              <Button
-                variant="outline"
-                class="rounded-[12px]"
-                @click="resetForm"
-              >
-                清空重置
-              </Button>
+    <!-- 分类列表：全宽显示（不再有右侧常驻表单列） -->
+    <div class="rounded-[12px] border border-border bg-card overflow-hidden">
+      <div class="overflow-x-auto">
+        <div class="min-w-[700px]">
+          <div class="grid grid-cols-[auto,1.2fr,1fr,1.4fr,90px,80px,130px] bg-stone-50/80 border-b border-border text-xs font-medium text-muted-foreground">
+            <div class="p-3 w-16">
+              ID
             </div>
-          </CardContent>
-        </Card>
+            <div class="p-3">
+              名称
+            </div>
+            <div class="p-3">
+              Slug
+            </div>
+            <div class="p-3">
+              描述
+            </div>
+            <div class="p-3 text-center">
+              文章数
+            </div>
+            <div class="p-3 text-center">
+              排序
+            </div>
+            <div class="p-3 text-center">
+              操作
+            </div>
+          </div>
+
+          <template v-if="loading">
+            <div
+              v-for="i in 5"
+              :key="`sk-${i}`"
+              class="grid grid-cols-[auto,1.2fr,1fr,1.4fr,90px,80px,130px] border-b border-border/50"
+            >
+              <div class="p-3 w-16">
+                <Skeleton class="h-4 w-8 rounded" />
+              </div>
+              <div class="p-3">
+                <Skeleton class="h-5 w-3/4 rounded" />
+              </div>
+              <div class="p-3">
+                <Skeleton class="h-5 w-2/3 rounded" />
+              </div>
+              <div class="p-3">
+                <Skeleton class="h-5 w-full rounded" />
+              </div>
+              <div class="p-3">
+                <Skeleton class="h-4 w-10 rounded mx-auto" />
+              </div>
+              <div class="p-3">
+                <Skeleton class="h-4 w-10 rounded mx-auto" />
+              </div>
+              <div class="p-3 flex gap-2 justify-center">
+                <Skeleton class="h-8 w-14 rounded" /><Skeleton class="h-8 w-14 rounded" />
+              </div>
+            </div>
+          </template>
+
+          <template v-else-if="categories.length === 0">
+            <div class="py-20 text-center text-muted-foreground">
+              <div class="text-5xl mb-3 opacity-30">
+                📁
+              </div>
+              <div class="text-sm">
+                暂无分类，点击右上角「新建分类」创建第一个吧
+              </div>
+            </div>
+          </template>
+
+          <template v-else>
+            <div
+              v-for="(c, idx) in categories"
+              :key="c.id"
+              class="grid grid-cols-[auto,1.2fr,1fr,1.4fr,90px,80px,130px] border-b border-border/50 text-sm"
+              :class="{ 'bg-stone-50/40': idx % 2 === 1 }"
+            >
+              <div class="p-3 w-16 text-muted-foreground text-xs">
+                #{{ c.id }}
+              </div>
+              <div class="p-3">
+                <div class="flex items-center gap-2">
+                  <span
+                    class="w-3 h-3 rounded-full inline-block border border-white shadow-sm"
+                    :style="{ background: c.color || '#94a3b8' }"
+                  />
+                  <span class="font-medium">{{ getLocalizedStr(c.name) }}</span>
+                  <span
+                    v-if="c.icon"
+                    class="text-muted-foreground"
+                  >{{ c.icon }}</span>
+                </div>
+              </div>
+              <div class="p-3 text-muted-foreground truncate">
+                {{ c.slug }}
+              </div>
+              <div
+                class="p-3 text-muted-foreground text-xs truncate"
+                :title="getLocalizedStr(c.description)"
+              >
+                {{ getLocalizedStr(c.description) || '-' }}
+              </div>
+              <div class="p-3 text-center">
+                <Badge
+                  variant="secondary"
+                  class="rounded-[10px]"
+                >
+                  {{ c.post_count }}
+                </Badge>
+              </div>
+              <div class="p-3 text-center text-muted-foreground text-xs">
+                {{ (c as any).sort_order ?? 0 }}
+              </div>
+              <div class="p-3 flex items-center justify-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 rounded-[10px] text-xs px-3"
+                  @click="openEdit(c)"
+                >
+                  编辑
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+                  @click="confirmDelete(c.id)"
+                >
+                  删除
+                </Button>
+              </div>
+            </div>
+          </template>
+        </div>
       </div>
     </div>
 
+    <!-- 删除确认 Dialog -->
     <Dialog v-model:open="deleteDialogOpen">
       <DialogContent class="rounded-[12px] max-w-md">
         <DialogHeader>

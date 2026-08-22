@@ -52,7 +52,10 @@
     "palette": "[繁]:Palette",
     "paletteHint": "[繁]:Choose a brand palette",
     "error": "[繁]:Operation failed",
-    "titleMenu": "選單"
+    "titleMenu": "選單",
+    "pinned": "置頂",
+    "featured": "精華",
+    "submitting": "提交中…"
   },
   "nav": {
     "home": "首頁",
@@ -957,6 +960,7 @@
     "create": "新建",
     "refresh": "重新整理",
     "reset": "重設",
+    "sortOrder": "排序號",
     "loading": "載入中…",
     "loadFailed": "載入失敗，請稍後重試",
     "apiNotFound": "介面尚未就緒或呼叫失敗",
@@ -1011,14 +1015,16 @@
     "website": "[繁]:Website (optional)",
     "contentPlaceholder": "[繁]:Type something here…",
     "replyPlaceholder": "[繁]:Reply to this message…",
-    "noMessages": "[繁]:No messages yet. Be the first to say hi!"
+    "noMessages": "[繁]:No messages yet. Be the first to say hi!",
+    "submitFailed": "[繁]:Submit failed, please try again later"
   },
   "gallery": {
     "title": "[繁]:Gallery",
     "desc": "[繁]:Travels, daily life, light and shadow. Slices of time frozen through the lens.",
     "photos": "[繁]:photos",
     "noDesc": "[繁]:No description",
-    "noAlbums": "[繁]:No albums yet"
+    "noAlbums": "[繁]:No albums yet",
+    "photosCountHint": "[繁]:共 {count} 張照片 · 按 {sortOrder} 排序"
   },
   "friends": {
     "title": "[繁]:Friends",

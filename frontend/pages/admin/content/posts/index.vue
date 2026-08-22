@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router'
 import { usePosts } from '~~/composables/usePosts'
 import {
   fetchAdminCategories,
+  fetchAdminPostsPaged,
   formatAdminDateTime,
   type AdminCategory
 } from '~~/composables/useAdminManage'
@@ -37,7 +38,7 @@ import {
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const router = useRouter()
-const { fetchPosts, deletePost, batchUpdatePostStatus } = usePosts()
+const { deletePost, batchUpdatePostStatus } = usePosts()
 const toast = useToast()
 
 const posts = ref<Post[]>([])
@@ -99,16 +100,15 @@ watch([statusFilter, categoryFilter, page, pageSize], () => {
 const loadPosts = async () => {
   loading.value = true
   try {
-    const data = await fetchPosts({
+    const result = await fetchAdminPostsPaged<Post>({
       page: page.value,
       page_size: pageSize.value,
       search: searchQuery.value.trim() || undefined,
-      status: statusFilter.value !== 'all' ? statusFilter.value : undefined,
+      status: statusFilter.value !== 'all' ? statusFilter.value : 'all',
       category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined
     })
-    posts.value = Array.isArray(data) ? data : []
-    const postsStore = usePosts()
-    total.value = postsStore.total.value || posts.value.length
+    posts.value = result.items ?? []
+    total.value = result.total ?? 0
     totalPages.value = Math.max(1, Math.ceil(total.value / pageSize.value))
   } catch (e) {
     toast.error(e instanceof Error ? e.message : '加载文章列表失败')
@@ -270,7 +270,7 @@ onMounted(() => {
           </Badge>
         </div>
         <Button
-          class="rounded-[12px] h-11 px-5 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-sm"
+          class="rounded-[12px] h-11 px-5 shadow-sm"
           @click="router.push('/admin/content/posts/new')"
         >
           + 新建文章
@@ -336,9 +336,9 @@ onMounted(() => {
 
     <div
       v-if="selectedIds.length > 0"
-      class="flex items-center justify-between rounded-[12px] border border-amber-200 bg-amber-50 px-5 py-3"
+      class="flex items-center justify-between rounded-[12px] border border-primary/30 bg-primary/5 px-5 py-3"
     >
-      <span class="text-sm text-amber-800">
+      <span class="text-sm text-primary/90">
         已选择 <strong>{{ selectedIds.length }}</strong> 条记录
       </span>
       <div class="flex items-center gap-2">
@@ -603,7 +603,7 @@ onMounted(() => {
               variant="ghost"
               size="sm"
               class="h-9 w-9 rounded-[10px] p-0"
-              :class="{ 'bg-amber-500 text-white hover:bg-amber-500 hover:text-white': pn === page }"
+              :class="{ 'bg-primary/15 text-primary hover:bg-primary/20': pn === page }"
               @click="goToPage(pn as number)"
             >
               {{ pn }}

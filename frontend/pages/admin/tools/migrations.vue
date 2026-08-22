@@ -2,8 +2,7 @@
   <div class="p-6 space-y-6">
     <div class="flex items-center gap-3">
       <div
-        class="size-10 rounded-xl flex items-center justify-center"
-        style="background: linear-gradient(135deg, #0EA5E9 0%, #0284C7 100%);"
+        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
       >
         <Database class="size-5 text-white" />
       </div>
@@ -225,8 +224,7 @@
             <Button
               :disabled="upgrading || status.is_latest"
               size="lg"
-              class="text-white sm:w-auto w-full rounded-2xl !px-8"
-              style="background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); box-shadow: 0 10px 30px -12px rgba(14,165,233,0.55);"
+              class="sm:w-auto w-full rounded-2xl !px-8 shadow-md"
               @click="handleUpgrade"
             >
               <Loader2

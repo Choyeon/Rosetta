@@ -52,7 +52,10 @@
     "palette": "主题色",
     "paletteHint": "选择品牌主题色",
     "error": "操作失败",
-    "titleMenu": "菜单"
+    "titleMenu": "菜单",
+    "pinned": "置顶",
+    "featured": "精华",
+    "submitting": "提交中…"
   },
   "nav": {
     "home": "首页",
@@ -810,14 +813,16 @@
     "website": "网站（可选）",
     "contentPlaceholder": "在这里输入你想说的话…",
     "replyPlaceholder": "回复这条留言…",
-    "noMessages": "还没有留言，来写下第一条吧！"
+    "noMessages": "还没有留言，来写下第一条吧！",
+    "submitFailed": "提交失败，请稍后再试"
   },
   "gallery": {
     "title": "相册",
     "desc": "旅途、日常、光影。用镜头定格的每一片时间切片。",
     "photos": "张",
     "noDesc": "暂无描述",
-    "noAlbums": "还没有上传相册"
+    "noAlbums": "还没有上传相册",
+    "photosCountHint": "共 {count} 张照片 · 按 {sortOrder} 排序"
   },
   "friends": {
     "title": "友链",
@@ -1029,6 +1034,7 @@
     "create": "新建",
     "refresh": "刷新",
     "reset": "重置",
+    "sortOrder": "排序号",
     "loading": "加载中…",
     "loadFailed": "加载失败，请稍后重试",
     "apiNotFound": "接口暂未实现或调用失败",
