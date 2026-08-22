@@ -5,6 +5,7 @@ import { useTheme } from '~/composables/useTheme'
 import { useScrollReveal } from '~/composables/useReadingUX'
 import { useAuthStore } from '~~/stores/auth'
 import ThemeRippleOverlay from '~~/components/ThemeRippleOverlay.vue'
+import { TooltipProvider } from '~~/components/ui/tooltip'
 
 const route = useRoute()
 const { locale } = useI18n()
@@ -55,26 +56,32 @@ useHead(() => ({
 </script>
 
 <template>
-  <!-- eslint-disable-next-line vue/no-deprecated-filter -- TS 联合类型的 | 被规则误判为 Vue2 filter -->
-  <NuxtLayout :name="(route.meta.layout ?? 'default') as 'default' | false">
-    <!-- 页面过渡由 nuxt.config 的 app.pageTransition 驱动（Nuxt 原生机制）。
-         不要在此手动包裹 <Transition> / <Suspense>：旧结构在链式重定向时
-         out-in 过渡与异步页面组件相互等待，导致渲染管线静默死锁（页面空白）。 -->
-    <NuxtPage />
+  <!-- 全局 TooltipProvider：保证无论 layout 是否启用（login/oobe/register = layout:false），
+       所有 <Tooltip>/<TooltipTrigger> 都能拿到注入上下文，避免 reka-ui 报错。
+       layouts/default.vue / admin.vue 中的 TooltipProvider 是冗余的第二层：
+       reka-ui 的 Provider 支持嵌套覆盖 delay-duration，不会冲突。 -->
+  <TooltipProvider :delay-duration="0">
+    <!-- eslint-disable-next-line vue/no-deprecated-filter -- TS 联合类型的 | 被规则误判为 Vue2 filter -->
+    <NuxtLayout :name="(route.meta.layout ?? 'default') as 'default' | false">
+      <!-- 页面过渡由 nuxt.config 的 app.pageTransition 驱动（Nuxt 原生机制）。
+           不要在此手动包裹 <Transition> / <Suspense>：旧结构在链式重定向时
+           out-in 过渡与异步页面组件相互等待，导致渲染管线静默死锁（页面空白）。 -->
+      <NuxtPage />
 
-    <Toaster
-      position="bottom-right"
-      :duration="3600"
-      :close-button="true"
-      :rich-colors="false"
-      :toast-options="{ class: 'backdrop-blur-md' }"
-      theme="light"
-    />
+      <Toaster
+        position="bottom-right"
+        :duration="3600"
+        :close-button="true"
+        :rich-colors="false"
+        :toast-options="{ class: 'backdrop-blur-md' }"
+        theme="light"
+      />
 
-    <!-- 全局单例：圆形扩散/收缩主题切换遮罩。
-         由 useTheme().toggle(origin, buttonRef) 驱动，保证无论在桌面 header /
-         移动端 drawer / admin header / oobe navbar 点击切换按钮，都只渲染同一份 mask，
-         彻底避免多实例并发动画导致的白/黑屏一闪。 -->
-    <ThemeRippleOverlay />
-  </NuxtLayout>
+      <!-- 全局单例：圆形扩散/收缩主题切换遮罩。
+           由 useTheme().toggle(origin, buttonRef) 驱动，保证无论在桌面 header /
+           移动端 drawer / admin header / oobe navbar 点击切换按钮，都只渲染同一份 mask，
+           彻底避免多实例并发动画导致的白/黑屏一闪。 -->
+      <ThemeRippleOverlay />
+    </NuxtLayout>
+  </TooltipProvider>
 </template>
