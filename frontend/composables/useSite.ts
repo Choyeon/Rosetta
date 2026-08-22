@@ -29,8 +29,11 @@ const PUBLIC_CONFIG_FALLBACK: Record<string, unknown> = {
   site_logo: null,
   icp_number: null,
   about_content: '',
+  about_page_html: '',
   footer_text: 'Powered by Rosetta',
   footer_slogan: 'Share knowledge, inspire creativity',
+  copyright_text: null,
+  footer_custom_html: '',
   theme_primary: '#0EA5A9',
   theme_accent: '#0284C7'
 }
@@ -135,16 +138,9 @@ export function useSite() {
     const publicLogo = (p.site_logo as string) || ''
     const publicIcp = (p.icp_number as string) || ''
     const publicAbout = (p.about_content as string) || ''
-    // 永远只用 publicConfig（/api/config）作为全站品牌信息的唯一权威来源。
-    // 理由：
-    //  1. groups.basic 来自 GET /api/settings（需要管理员权限），SSR 匿名请求拿不到，
-    //     若优先读 groups 会导致 SSR=默认值 vs 客户端已登录态=真实值，Hydration mismatch。
-    //  2. 后端 GET /api/config 已经做了 settings_groups.basic → publicConfig 字段
-    //     映射（subtitle → site_subtitle, description → site_description, keywords →
-    //     site_keywords, primary_color → theme_primary, accent_color → theme_accent），
-    //     管理员在后台保存的 basic/appearance 组保存后会立即通过公开接口透出。
-    //  3. admin 设置页不通过 useSite.basic 写回表单，它直接调用 fetchAllSettings /
-    //     saveSettingsGroup，因此完全不需要在 useSite 里读 groups.basic。
+    // 关于页完整 HTML 内容：admin 在 basic.about_page_html 字段里用 HTML 方式直接编辑
+    // 前台 /about 页面若此字段非空，直接 v-html 渲染；为空时展示 about.vue 默认 Tab 结构
+    const publicAboutHtml = (p.about_page_html as string) || ''
     return {
       site_name: publicName,
       subtitle: publicSubtitle,
@@ -153,7 +149,8 @@ export function useSite() {
       site_url: publicUrl,
       logo: publicLogo,
       icp_number: publicIcp,
-      about_content: publicAbout
+      about_content: publicAbout,
+      about_page_html: publicAboutHtml
     }
   })
 

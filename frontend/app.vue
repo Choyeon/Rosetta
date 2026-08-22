@@ -19,7 +19,27 @@ onMounted(() => {
   }
 })
 
-useHead({
+// ====== 全局站点配置：提前加载，保证 titleTemplate 里的站点名是真实数据 ======
+const site = useSite()
+// 注意：app.vue 没有 await（Nuxt root 组件本身不阻塞）
+// 真实站点名由 layouts/default.vue 的 ensureLoaded 与 publicConfig 共同保证；
+// 这里 titleTemplate 写成 computed → 依赖变化时会自动更新 HTML title。
+const defaultTitles = computed(() => ({
+  name: site.siteTitle.value || 'Rosetta Blog',
+  sub: site.siteSubtitle.value || ''
+}))
+
+useHead(() => ({
+  // 页面标题模板：页面 title 如果有，显示 "页面 · 站点名"；否则 "站点名 · 副标题"
+  titleTemplate: (titleChunk?: string | null) => {
+    const name = defaultTitles.value.name || 'Rosetta Blog'
+    const sub = defaultTitles.value.sub || ''
+    if (titleChunk && String(titleChunk).trim()) {
+      return `${String(titleChunk).trim()} · ${name}`
+    }
+    if (sub) return `${name} · ${sub}`
+    return name
+  },
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' },
     { name: 'theme-color', content: 'hsl(201 96% 52%)' }
@@ -31,7 +51,7 @@ useHead({
   htmlAttrs: {
     lang: () => locale.value || 'zh'
   }
-})
+}))
 </script>
 
 <template>

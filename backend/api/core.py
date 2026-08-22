@@ -940,6 +940,8 @@ async def get_site_config(db: DB):
                         cfg_base["icp_number"] = str(parsed["icp_number"]) or None
                     if parsed.get("about_content") is not None:
                         cfg_base["about_content"] = str(parsed["about_content"])
+                    if parsed.get("about_page_html") is not None:
+                        cfg_base["about_page_html"] = str(parsed["about_page_html"])
             # seo
             raw_seo = _cfg_raw("seo")
             if raw_seo:
@@ -1188,6 +1190,12 @@ async def get_site_config(db: DB):
         wallpaper_home_subtitle=get_str("WALLPAPER_HOME_SUBTITLE", "") or "",
         # 关于页面内容
         about_content=about_content or "",
+        # 关于页面 HTML（优先从 basic 组 JSON 中读取 about_page_html；空时回退扁平 key）
+        about_page_html=(
+            _configs_ci.get("ABOUT_PAGE_HTML", "")
+            or configs.get("about_page_html", "")
+            or ""
+        ),
         # 友链申请区域自定义 HTML 内容
         friends_apply_html=get_str("FRIENDS_APPLY_HTML", "") or "",
         # 作者/侧边栏资料设置

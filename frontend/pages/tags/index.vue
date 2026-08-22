@@ -81,6 +81,23 @@ import { watch, computed } from 'vue'
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const site = useSite()
+
+// ===== SEO：基于 i18n + 站点设置（titleTemplate 自动拼 "标签 · 站点名"）=====
+const requestURL = useRequestURL()
+const canonical = computed(() => requestURL.href)
+useSeoMeta({
+  title: () => String(t('tags.title') || '标签'),
+  description: () =>
+    String(t('tags.desc') || '') || site.siteDescription.value,
+  ogType: 'website',
+  ogUrl: canonical,
+  twitterCard: 'summary'
+})
+useHead({
+  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
+  link: [{ rel: 'canonical', href: canonical }]
+})
 
 interface TagRow {
   id: number | string

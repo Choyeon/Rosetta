@@ -614,31 +614,92 @@ export function isSensitiveSettingKey(key: string): boolean {
 
 export interface AdminSeries {
   id: number
+  /** 前端内部统一用 name；后端字段实际叫 title，在 fetch 层做映射 */
   name: string | Record<string, string>
   slug: string
   description?: string | Record<string, string> | null
   cover_image?: string | null
+  is_active?: boolean
   sort_order?: number
+  /** 前端统一 posts_count；后端字段是 post_count，在 fetch 层做映射 */
   posts_count: number
   created_at: string | null
+  updated_at?: string | null
+}
+
+/** 后端 PostSeriesResponse → 前端 AdminSeries 的字段翻译：title→name / post_count→posts_count */
+function _toAdminSeries(raw: Record<string, unknown> | AdminSeries | null | undefined): AdminSeries {
+  if (!raw) {
+    return {
+      id: 0,
+      name: '',
+      slug: '',
+      description: '',
+      cover_image: '',
+      is_active: true,
+      sort_order: 0,
+      posts_count: 0,
+      created_at: null,
+      updated_at: null
+    }
+  }
+  const r = raw as Record<string, unknown>
+  return {
+    id: Number(r.id) || 0,
+    name:
+      (r.name as AdminSeries['name'])
+      ?? (r.title as AdminSeries['name'])
+      ?? '',
+    slug: String(r.slug ?? ''),
+    description: (r.description as AdminSeries['description']) ?? null,
+    cover_image: (r.cover_image as AdminSeries['cover_image']) ?? null,
+    is_active: typeof r.is_active === 'boolean' ? r.is_active : true,
+    sort_order: typeof r.sort_order === 'number' ? r.sort_order : 0,
+    posts_count:
+      Number(r.posts_count ?? r.post_count ?? 0),
+    created_at: (r.created_at as string | null) ?? null,
+    updated_at: (r.updated_at as string | null) ?? null
+  }
 }
 
 /**
  * GET /api/admin/series —— post_series.router 挂在 /api，管理接口前缀 /admin/series
  * 公开接口是 /series；管理 CRUD 一律走 /admin/series
+ *
+ * 后端返回格式：直接是 list[PostSeriesResponse]（不包 {success,data,message} 信封），
+ * 字段名用 title / post_count；这里翻译为前端 name / posts_count。
  */
-export function fetchAdminSeries(): Promise<AdminSeries[]> {
-  return apiFetch<ApiEnvelope<AdminSeries[]>>('/admin/series').then(r => r.data)
+export async function fetchAdminSeries(): Promise<AdminSeries[]> {
+  const raw = await apiFetch<Record<string, unknown>[]>('/admin/series')
+  return Array.isArray(raw) ? raw.map(r => _toAdminSeries(r)) : []
 }
 
-/** POST /api/admin/series */
-export function createAdminSeries(payload: Record<string, unknown>): Promise<AdminSeries> {
-  return apiFetch<ApiEnvelope<AdminSeries>>('/admin/series', { method: 'POST', body: payload }).then(r => r.data)
+/** POST /api/admin/series —— 前端 name→后端 title；后端直接返回 PostSeriesResponse */
+export async function createAdminSeries(payload: Record<string, unknown>): Promise<AdminSeries> {
+  const body: Record<string, unknown> = { ...payload }
+  if ('name' in body) {
+    body.title = body.name
+    delete body.name
+  }
+  const raw = await apiFetch<Record<string, unknown>>('/admin/series', {
+    method: 'POST',
+    body
+  })
+  return _toAdminSeries(raw)
 }
 
-/** PUT /api/admin/series/{id} */
-export function updateAdminSeries(id: number, payload: Record<string, unknown>): Promise<AdminSeries> {
-  return apiFetch<ApiEnvelope<AdminSeries>>(`/admin/series/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+/** PUT /api/admin/series/{id} —— 前端 name→后端 title；后端直接返回 PostSeriesResponse */
+export async function updateAdminSeries(id: number, payload: Record<string, unknown>): Promise<AdminSeries> {
+  const body: Record<string, unknown> = { ...payload }
+  if ('name' in body) {
+    body.title = body.name
+    delete body.name
+  }
+  const raw = await apiFetch<Record<string, unknown>>(`/admin/series/${id}`, {
+    method: 'PUT',
+    body
+  })
+  return _toAdminSeries(raw)
 }
 
 /** DELETE /api/admin/series/{id} */
@@ -659,9 +720,41 @@ export interface AdminPage {
   updated_at: string | null
 }
 
-/** GET /api/pages —— core.router 挂在 /api，@router.get("/pages") 返回分页 */
-export function fetchAdminPages(params: { page?: number, page_size?: number, status?: string } = {}): Promise<AdminPaged<AdminPage>> {
-  return apiFetch<AdminPaged<AdminPage>>('/pages', { query: { page: 1, page_size: 20, ...params } })
+/**
+ * GET /api/pages —— core.router 挂在 /api，@router.get("/pages") 返回分页。
+ * 支持 exclude_slugs：前端在拿到数据后过滤 about / guestbook 这两个"固定页面"，
+ * 避免它们出现在"独立页面"管理列表里（关于页内容走站点设置，留言板是固定路由）。
+ */
+export async function fetchAdminPages(
+  params: {
+    page?: number
+    page_size?: number
+    status?: string
+    exclude_slugs?: string[]
+  } = {}
+): Promise<AdminPaged<AdminPage>> {
+  const { exclude_slugs, ...rest } = params
+  const raw = await apiFetch<AdminPaged<AdminPage>>('/pages', {
+    query: { page: 1, page_size: 20, ...rest }
+  })
+  if (exclude_slugs && exclude_slugs.length > 0 && Array.isArray(raw.items)) {
+    const block = new Set(exclude_slugs.map(s => String(s).toLowerCase()))
+    const filtered = raw.items.filter(p => !block.has(String(p.slug || '').toLowerCase()))
+    const removed = raw.items.length - filtered.length
+    return {
+      ...raw,
+      items: filtered,
+      total: Math.max(0, (raw.total ?? raw.items.length) - removed),
+      total_pages: Math.max(
+        1,
+        Math.ceil(
+          Math.max(0, (raw.total ?? raw.items.length) - removed)
+          / Math.max(1, raw.page_size ?? 20)
+        )
+      )
+    }
+  }
+  return raw
 }
 
 /**

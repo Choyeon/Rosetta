@@ -109,6 +109,22 @@ import { Link2, ExternalLink } from '@lucide/vue'
 definePageMeta({ layout: 'default' })
 
 const { t } = useI18n()
+const site = useSite()
+
+// ===== SEO：基于 i18n + 站点设置 =====
+const requestURL = useRequestURL()
+const canonical = computed(() => requestURL.href)
+useSeoMeta({
+  title: () => String(t('friends.title') || '友情链接'),
+  description: () => site.siteDescription.value,
+  ogType: 'website',
+  ogUrl: canonical,
+  twitterCard: 'summary'
+})
+useHead({
+  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
+  link: [{ rel: 'canonical', href: canonical }]
+})
 
 const { getFriendLinks } = useFriendLinks()
 

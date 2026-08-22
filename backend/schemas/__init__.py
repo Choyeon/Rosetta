@@ -1556,6 +1556,8 @@ class SiteConfigResponse(BaseModel):
 
     # 关于页面内容（支持 Markdown）
     about_content: str = ""
+    # 关于页面内容（HTML 直接渲染版，站点设置 basic 组中以 HTML 编辑器维护）
+    about_page_html: str = ""
 
     # 友链申请区域自定义 HTML 内容（留空则使用前端默认模板）
     friends_apply_html: str = ""

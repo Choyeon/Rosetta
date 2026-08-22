@@ -123,38 +123,70 @@ const SOCIAL_FALLBACKS: Record<string, Record<string, string>> = {
 const resourceLabel = (labelKey: string) => sectionTitle(labelKey, RESOURCE_FALLBACKS[labelKey] ?? {})
 const socialLabel = (labelKey: string) => sectionTitle(labelKey, SOCIAL_FALLBACKS[labelKey] ?? {})
 
+// ===== 使用 useSite() 统一读取站点配置（数据来源：/api/config + /api/settings） =====
+// 避免 footer 再单独请求 /api/config，保证站点名、版权、ICP、logo、社交链接等与
+// AppHeader、页面 title 等位置使用完全一致的数据源与 fallback 行为。
 interface SiteConfigLite {
-  site_name?: string
-  site_author?: string
-  site_description?: string
-  site_logo?: string | null
-  footer_slogan?: string | null
-  copyright_text?: string | null
-  icp_number?: string | null
-  github_url?: string | null
-  x_url?: string | null
-  bilibili_url?: string | null
-  weibo_url?: string | null
-  zhihu_url?: string | null
-  youtube_url?: string | null
-  linkedin_url?: string | null
-  telegram_url?: string | null
+  site_name: string
+  site_author: string
+  site_description: string
+  site_logo: string
+  footer_slogan: string
+  copyright_text: string | null
+  footer_custom_html: string
+  icp_number: string
+  github_url: string | null
+  x_url: string | null
+  bilibili_url: string | null
+  weibo_url: string | null
+  zhihu_url: string | null
+  youtube_url: string | null
+  linkedin_url: string | null
+  telegram_url: string | null
 }
 
-const { data: cfgResp } = await useAPI<SiteConfigLite>('/config', {
-  query: { lang: locale.value },
-  key: `footer:config:${locale.value}`,
-  default: () => ({})
-})
-
+// useSite 由 layouts/default.vue 提前 ensureLoaded()，这里 state 已填充完毕
+const site = useSite()
 const siteConfig = computed<SiteConfigLite>(() => {
-  // useAPI 返回值可能直接是 T 或 { data: T } 包装
-  const raw = cfgResp.value as unknown
-  const obj
-    = raw && typeof raw === 'object' && 'data' in raw
-      ? (raw as { data?: SiteConfigLite }).data
-      : (raw as SiteConfigLite | undefined)
-  return obj || {}
+  const publicCfg = (site.state.value.publicConfig || {}) as Record<string, unknown>
+  const b = site.basic.value
+  const f = site.footer.value
+
+  const readStr = (key: string, fb = ''): string => {
+    const v = publicCfg[key]
+    if (v == null) return fb
+    return String(v || fb)
+  }
+  const readNullable = (key: string): string | null => {
+    const v = publicCfg[key]
+    if (v == null || v === '') return null
+    return String(v)
+  }
+
+  const siteName = b.site_name || readStr('site_name', 'Rosetta Blog')
+  const siteDescription = b.description || readStr('site_description', 'Rosetta开源博客系统')
+  const footerSlogan = f.slogan || f.text || readStr('footer_slogan', siteDescription)
+  const copyrightText = (publicCfg.copyright_text as string | null) ?? null
+  const footerCustomHtml = (publicCfg.footer_custom_html as string) || ''
+
+  return {
+    site_name: siteName,
+    site_author: readStr('site_author', siteName),
+    site_description: siteDescription,
+    site_logo: b.logo || readStr('site_logo', '') || '/logo/rosetta-monochrome-icon.png',
+    footer_slogan: footerSlogan,
+    copyright_text: copyrightText && String(copyrightText).trim() ? String(copyrightText) : null,
+    footer_custom_html: footerCustomHtml,
+    icp_number: b.icp_number || f.icp_number || readStr('icp_number', ''),
+    github_url: readNullable('github_url'),
+    x_url: readNullable('x_url'),
+    bilibili_url: readNullable('bilibili_url'),
+    weibo_url: readNullable('weibo_url'),
+    zhihu_url: readNullable('zhihu_url'),
+    youtube_url: readNullable('youtube_url'),
+    linkedin_url: readNullable('linkedin_url'),
+    telegram_url: readNullable('telegram_url')
+  }
 })
 
 const socialLinks = computed<FooterLink[]>(() => {
@@ -169,6 +201,13 @@ const socialLinks = computed<FooterLink[]>(() => {
   if (cfg.linkedin_url) list.push({ labelKey: 'footer.socialLinkedin', href: cfg.linkedin_url, external: true })
   if (cfg.telegram_url) list.push({ labelKey: 'footer.socialTelegram', href: cfg.telegram_url, external: true })
   return list
+})
+
+// 最终显示的版权文字：站点设置 copyright_text 优先 → 否则生成默认格式
+const copyrightLine = computed(() => {
+  if (siteConfig.value.copyright_text) return siteConfig.value.copyright_text
+  const owner = siteConfig.value.site_author || siteConfig.value.site_name || 'Rosetta'
+  return `© ${currentYear} ${owner} · ${t('footer.rightsReserved', 'All rights reserved.')}`
 })
 
 const quickLocales = [
@@ -201,21 +240,23 @@ const handleSetLocale = async (code: string) => {
             class="inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight mb-4"
           >
             <img
-              src="/logo/rosetta-monochrome-icon.png"
-              alt="Rosetta"
-              class="size-6 h-6 w-6 dark:contrast-0 dark:brightness-200"
+              :src="siteConfig.site_logo"
+              :alt="siteConfig.site_name"
+              class="size-6 h-6 w-6 dark:contrast-0 dark:brightness-200 object-contain"
               loading="lazy"
               @error="(e: any) => { e.currentTarget.style.display = 'none' }"
             >
-            {{ siteConfig.site_name || t('footer.brand', 'Rosetta') }}
+            {{ siteConfig.site_name }}
           </NuxtLink>
           <p class="text-sm text-muted-foreground leading-relaxed mb-6 max-w-sm">
-            {{
-              siteConfig.footer_slogan
-                || siteConfig.site_description
-                || t('footer.description', '穿越语言的边界 · Modern Blog System')
-            }}
+            {{ siteConfig.footer_slogan || siteConfig.site_description || t('footer.description', '穿越语言的边界 · Modern Blog System') }}
           </p>
+          <!-- 管理员在站点设置 footer_custom_html 注入的自定义 HTML 片段（统计脚本、验证标签等） -->
+          <div
+            v-if="siteConfig.footer_custom_html"
+            class="mb-6 text-sm text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2"
+            v-html="siteConfig.footer_custom_html"
+          />
           <div class="flex items-center gap-2 mb-6">
             <Button
               v-if="siteConfig.github_url"
@@ -260,7 +301,7 @@ const handleSetLocale = async (code: string) => {
             </Button>
           </div>
           <p class="text-xs text-muted-foreground">
-            {{ siteConfig.copyright_text || `© ${currentYear} ${siteConfig.site_author || siteConfig.site_name || 'Rosetta'} · ${t('footer.rightsReserved', 'All rights reserved.')}` }}
+            {{ copyrightLine }}
           </p>
         </div>
 
@@ -369,7 +410,7 @@ const handleSetLocale = async (code: string) => {
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div class="text-xs text-muted-foreground text-center md:text-left">
           <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
-          © {{ currentYear }} {{ siteConfig.site_author || siteConfig.site_name || 'Rosetta' }}
+          © {{ currentYear }} {{ siteConfig.site_author || siteConfig.site_name }}
         </div>
         <!-- Quick locale switch (with flags) -->
         <div class="flex items-center gap-2 flex-wrap">

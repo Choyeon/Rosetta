@@ -402,7 +402,8 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   const label = {
     site_name: '站点名称', subtitle: '站点副标题', logo: 'Logo 图片 URL',
     description: '站点描述', keywords: 'SEO 关键词（逗号分隔）', site_url: '站点首页 URL',
-    icp_number: 'ICP 备案号', about_content: '关于页面简介正文',
+    icp_number: 'ICP 备案号', about_content: '关于页面简介正文（纯文字/Markdown 片段）',
+    about_page_html: '关于页面完整 HTML（直接渲染，优先级高于默认 Tabs 结构）',
     posts_per_page: '每页文章数', show_reading_time: '显示预估阅读时间',
     show_word_count: '显示字数统计', show_toc: '启用文章目录',
     toc_depth: '目录最大层级深度', line_height: '正文行高（倍）',
@@ -510,7 +511,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     return { label, type: 'color' }
   }
   const sensitive = isSensitiveSettingKey(key)
-  const longKeys = ['description', 'about_content', 'robots_txt', 'content_md', 'custom_links', 'widget_order', 'links']
+  const longKeys = ['description', 'about_content', 'about_page_html', 'robots_txt', 'content_md', 'custom_links', 'widget_order', 'links']
   const long = longKeys.includes(key) || (typeof value === 'string' && value.length > 80)
   const help: Record<string, string> = {
     site_url: '建议包含协议前缀，如 https://example.com',
@@ -550,7 +551,7 @@ const currentGroupSchemas = computed(() => {
 
 function getDefaultsFor(group: string): Record<string, SettingsValue> {
   const m: Record<string, Record<string, SettingsValue>> = {
-    basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_content: '' },
+    basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_content: '', about_page_html: '' },
     reading: { posts_per_page: 12, show_reading_time: true, show_word_count: true, show_toc: true, toc_depth: 3, line_height: 1.7, font_size: 16 },
     comments: { enable: true, require_approval: false, allow_guest: false, max_length: 1000, enable_antispam: true, enable_nested: true, max_nested_depth: 3 },
     media: { max_upload_size: 10485760, allowed_image_types: '', allowed_file_types: '', default_post_cover: '', default_avatar: '', use_cdn: false, cdn_prefix: '' },

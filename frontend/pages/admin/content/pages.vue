@@ -103,7 +103,14 @@ const statusLabel = (status: string): string => {
 const loadData = async () => {
   loading.value = true
   try {
-    const res = await fetchAdminPages({ page: page.value, page_size: pageSize.value })
+    const res = await fetchAdminPages({
+      page: page.value,
+      page_size: pageSize.value,
+      // 关于页内容走站点设置 basic.about_page_html（直接 HTML 编辑）
+      // 留言板是 pages/guestbook.vue 固定页面
+      // 两者都不在"独立页面"管理列表中显示，避免混淆
+      exclude_slugs: ['about', 'guestbook']
+    })
     pages.value = res.items || []
     total.value = res.total || pages.value.length
     totalPages.value = res.total_pages || Math.max(1, Math.ceil(total.value / pageSize.value))

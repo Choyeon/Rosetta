@@ -204,7 +204,24 @@ import { useAPI } from '~~/composables/useApi'
 
 definePageMeta({ layout: 'default' })
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
+const site = useSite()
+
+// ===== SEO：基于 i18n + 站点设置 =====
+const requestURL = useRequestURL()
+const canonical = computed(() => requestURL.href)
+useSeoMeta({
+  title: () => String(t('guestbook.title') || '留言板'),
+  description: () =>
+    String(t('guestbook.desc') || '') || site.siteDescription.value,
+  ogType: 'website',
+  ogUrl: canonical,
+  twitterCard: 'summary'
+})
+useHead({
+  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
+  link: [{ rel: 'canonical', href: canonical }]
+})
 
 interface GuestbookItem {
   id: number
@@ -239,8 +256,6 @@ const form = reactive({
 
 const submitting = ref(false)
 const submitError = ref<string | null>(null)
-
-const { locale } = useI18n()
 
 // 真实接口：GET /api/guestbook?page=1&page_size=30&status=approved
 const {

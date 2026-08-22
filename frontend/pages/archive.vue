@@ -95,6 +95,22 @@ import { CalendarDays, Eye, FolderOpen } from '@lucide/vue'
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const site = useSite()
+
+// ===== SEO：基于 i18n + 站点设置 =====
+const requestURL = useRequestURL()
+const canonical = computed(() => requestURL.href)
+useSeoMeta({
+  title: () => String(t('archive.title') || '归档'),
+  description: () => site.siteDescription.value,
+  ogType: 'website',
+  ogUrl: canonical,
+  twitterCard: 'summary'
+})
+useHead({
+  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
+  link: [{ rel: 'canonical', href: canonical }]
+})
 
 interface PostItem {
   id: number | string
