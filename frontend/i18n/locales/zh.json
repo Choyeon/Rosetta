@@ -55,7 +55,8 @@
     "titleMenu": "菜单",
     "pinned": "置顶",
     "featured": "精华",
-    "submitting": "提交中…"
+    "submitting": "提交中…",
+    "open": "打开"
   },
   "nav": {
     "home": "首页",
@@ -106,7 +107,8 @@
     "goLogin": "前往登录",
     "backToList": "返回文章列表",
     "loadFailed": "文章加载失败",
-    "loadFailedDesc": "找不到对应文章或已被移除，点击下方按钮返回列表。"
+    "loadFailedDesc": "找不到对应文章或已被移除，点击下方按钮返回列表。",
+    "like": "点赞"
   },
   "comment": {
     "title": "评论",
@@ -822,7 +824,9 @@
     "photos": "张",
     "noDesc": "暂无描述",
     "noAlbums": "还没有上传相册",
-    "photosCountHint": "共 {count} 张照片 · 按 {sortOrder} 排序"
+    "photosCountHint": "共 {count} 张照片 · 按 {sortOrder} 排序",
+    "hint": "点击任意图片可放大查看。",
+    "clickToZoom": "点击图片可放大"
   },
   "friends": {
     "title": "友链",
@@ -862,7 +866,12 @@
     "techStack": "核心技术栈",
     "techStackDesc": "本站点与日常工作中主要使用的技术与工具",
     "buyMeCoffee": "请我喝杯咖啡",
-    "buyMeCoffeeDesc": "如果这里的文章或代码对你有帮助，欢迎通过下方方式支持我继续创作。当然你的点赞、留言与分享，已经是最好的咖啡。"
+    "buyMeCoffeeDesc": "如果这里的文章或代码对你有帮助，欢迎通过下方方式支持我继续创作。当然你的点赞、留言与分享，已经是最好的咖啡。",
+    "tabRss": "订阅",
+    "noContacts": "管理员暂未公开联系方式。",
+    "rssFeed": "RSS 订阅",
+    "sitemap": "站点地图 Sitemap",
+    "rssHint": "通过 RSS 或站点地图，可以及时获取最新文章更新，或被搜索引擎正常收录。"
   },
   "home": {
     "release": "发布",
@@ -1065,5 +1074,28 @@
       "inactive": "未启用",
       "banned": "已封禁"
     }
+  },
+  "pages": {
+    "notFound": "无法加载该页面，可能已被删除或尚未发布。",
+    "backHome": "返回首页",
+    "page": "页面"
+  },
+  "series": {
+    "home": "首页",
+    "all": "系列",
+    "notFoundTitle": "系列不存在",
+    "notFoundDesc": "该系列可能尚未发布或已被移除。",
+    "backToList": "返回系列列表",
+    "postsCount": "{n} 篇文章",
+    "chapters": "系列目录",
+    "chaptersHint": "按推荐顺序阅读，循序渐进。",
+    "noPostsYet": "本系列暂无已发布文章。",
+    "title": "系列文章",
+    "desc": "按主题深度组织的系列专题，循序渐进地学习某一技术方向。",
+    "noSeries": "暂无系列",
+    "noSeriesHint": "作者尚未组织专题系列，敬请期待。",
+    "posts": "篇",
+    "noDesc": "暂无描述",
+    "viewAll": "查看全部"
   }
 }

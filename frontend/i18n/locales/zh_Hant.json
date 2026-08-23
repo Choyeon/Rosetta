@@ -55,7 +55,8 @@
     "titleMenu": "選單",
     "pinned": "置頂",
     "featured": "精華",
-    "submitting": "提交中…"
+    "submitting": "提交中…",
+    "open": "打開"
   },
   "nav": {
     "home": "首頁",
@@ -106,7 +107,8 @@
     "goLogin": "[繁]:Go to login",
     "backToList": "返回文章列表",
     "loadFailed": "文章載入失敗",
-    "loadFailedDesc": "找不到對應文章或已被移除，點擊下方按鈕返回列表。"
+    "loadFailedDesc": "找不到對應文章或已被移除，點擊下方按鈕返回列表。",
+    "like": "點讚"
   },
   "comment": {
     "title": "留言",
@@ -1024,7 +1026,9 @@
     "photos": "[繁]:photos",
     "noDesc": "[繁]:No description",
     "noAlbums": "[繁]:No albums yet",
-    "photosCountHint": "[繁]:共 {count} 張照片 · 按 {sortOrder} 排序"
+    "photosCountHint": "[繁]:共 {count} 張照片 · 按 {sortOrder} 排序",
+    "hint": "點擊任意圖片可放大查看。",
+    "clickToZoom": "點擊圖片可放大"
   },
   "friends": {
     "title": "[繁]:Friends",
@@ -1064,6 +1068,34 @@
     "techStack": "[繁]:Tech Stack",
     "techStackDesc": "[繁]:Core technologies and tools powering this site and my daily work",
     "buyMeCoffee": "[繁]:Buy Me a Coffee",
-    "buyMeCoffeeDesc": "[繁]:If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for."
+    "buyMeCoffeeDesc": "[繁]:If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for.",
+    "tabRss": "訂閱",
+    "noContacts": "管理員尚未公開聯絡方式。",
+    "rssFeed": "RSS 訂閱",
+    "sitemap": "站點地圖 Sitemap",
+    "rssHint": "透過 RSS 或站點地圖，可以及時取得最新文章更新，或被搜尋引擎正常收錄。"
+  },
+  "pages": {
+    "notFound": "無法載入該頁面，可能已被刪除或尚未發布。",
+    "backHome": "返回首頁",
+    "page": "頁面"
+  },
+  "series": {
+    "home": "首頁",
+    "all": "系列",
+    "notFoundTitle": "系列不存在",
+    "notFoundDesc": "該系列可能尚未發布或已被移除。",
+    "backToList": "返回系列列表",
+    "postsCount": "{n} 篇文章",
+    "chapters": "系列目錄",
+    "chaptersHint": "按推薦順序閱讀，循序漸進。",
+    "noPostsYet": "本系列暫無已發布文章。",
+    "title": "系列文章",
+    "desc": "按主題深度組織的系列專題，循序漸進地學習某一技術方向。",
+    "noSeries": "暫無系列",
+    "noSeriesHint": "作者尚未組織專題系列，敬請期待。",
+    "posts": "篇",
+    "noDesc": "暫無描述",
+    "viewAll": "查看全部"
   }
 }

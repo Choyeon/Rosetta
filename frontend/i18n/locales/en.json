@@ -55,7 +55,8 @@
     "titleMenu": "Menu",
     "pinned": "Pinned",
     "featured": "Featured",
-    "submitting": "Submitting…"
+    "submitting": "Submitting…",
+    "open": "Open"
   },
   "nav": {
     "home": "Home",
@@ -106,7 +107,8 @@
     "goLogin": "Go to login",
     "backToList": "Back to posts",
     "loadFailed": "Failed to load this post",
-    "loadFailedDesc": "The post you're looking for doesn't exist or has been removed. Use the button below to return to the list."
+    "loadFailedDesc": "The post you're looking for doesn't exist or has been removed. Use the button below to return to the list.",
+    "like": "Like"
   },
   "comment": {
     "title": "Comments",
@@ -822,7 +824,9 @@
     "photos": "photos",
     "noDesc": "No description",
     "noAlbums": "No albums yet",
-    "photosCountHint": "{count} photos · sorted by {sortOrder}"
+    "photosCountHint": "{count} photos · sorted by {sortOrder}",
+    "hint": "Click any photo to view it enlarged.",
+    "clickToZoom": "Click to zoom"
   },
   "friends": {
     "title": "Friends",
@@ -862,7 +866,12 @@
     "techStack": "Tech Stack",
     "techStackDesc": "Core technologies and tools powering this site and my daily work",
     "buyMeCoffee": "Buy Me a Coffee",
-    "buyMeCoffeeDesc": "If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for."
+    "buyMeCoffeeDesc": "If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for.",
+    "tabRss": "Subscribe",
+    "noContacts": "The administrator has not made any contact information public.",
+    "rssFeed": "RSS Feed",
+    "sitemap": "Sitemap",
+    "rssHint": "Use RSS or the sitemap to stay up to date with new posts and help search engines index the site correctly."
   },
   "home": {
     "release": "Stable",
@@ -1065,5 +1074,28 @@
       "inactive": "Inactive",
       "banned": "Banned"
     }
+  },
+  "pages": {
+    "notFound": "This page cannot be loaded — it may have been deleted or is not yet published.",
+    "backHome": "Back to Home",
+    "page": "Page"
+  },
+  "series": {
+    "home": "Home",
+    "all": "Series",
+    "notFoundTitle": "Series not found",
+    "notFoundDesc": "This series may not be published yet or has been removed.",
+    "backToList": "Back to series list",
+    "postsCount": "{n} posts",
+    "chapters": "Table of contents",
+    "chaptersHint": "Read in the recommended order for a step-by-step journey.",
+    "noPostsYet": "No published posts in this series yet.",
+    "title": "Series",
+    "desc": "Deep, topic-driven series organized to help you learn one subject step by step.",
+    "noSeries": "No series yet",
+    "noSeriesHint": "The author has not organized any topic series yet. Stay tuned.",
+    "posts": "posts",
+    "noDesc": "No description",
+    "viewAll": "View all posts"
   }
 }
