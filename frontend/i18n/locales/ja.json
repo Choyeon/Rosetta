@@ -55,7 +55,8 @@
     "titleMenu": "メニュー",
     "pinned": "固定",
     "featured": "おすすめ",
-    "submitting": "送信中…"
+    "submitting": "送信中…",
+    "open": "開く"
   },
   "nav": {
     "home": "ホーム",
@@ -106,7 +107,8 @@
     "goLogin": "[JA]:Go to login",
     "backToList": "記事一覧に戻る",
     "loadFailed": "記事の読み込みに失敗しました",
-    "loadFailedDesc": "お探しの記事は存在しないか、削除されています。下のボタンで一覧に戻ってください。"
+    "loadFailedDesc": "お探しの記事は存在しないか、削除されています。下のボタンで一覧に戻ってください。",
+    "like": "いいね"
   },
   "comment": {
     "title": "コメント",
@@ -1024,7 +1026,9 @@
     "photos": "[JA]:photos",
     "noDesc": "[JA]:No description",
     "noAlbums": "[JA]:No albums yet",
-    "photosCountHint": "[JA]:{count} photos · sorted by {sortOrder}"
+    "photosCountHint": "[JA]:{count} photos · sorted by {sortOrder}",
+    "hint": "画像をクリックすると拡大表示できます。",
+    "clickToZoom": "クリックで拡大"
   },
   "friends": {
     "title": "[JA]:Friends",
@@ -1064,6 +1068,34 @@
     "techStack": "[JA]:Tech Stack",
     "techStackDesc": "[JA]:Core technologies and tools powering this site and my daily work",
     "buyMeCoffee": "[JA]:Buy Me a Coffee",
-    "buyMeCoffeeDesc": "[JA]:If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for."
+    "buyMeCoffeeDesc": "[JA]:If any article or code here helped you, consider supporting me through the links below. A like, comment, or share is already the best coffee I could ask for.",
+    "tabRss": "購読",
+    "noContacts": "管理者より連絡先の公開はありません。",
+    "rssFeed": "RSS フィード",
+    "sitemap": "サイトマップ",
+    "rssHint": "RSS またはサイトマップを利用すると、最新の記事更新をすぐに取得でき、検索エンジンにも正しく登録されます。"
+  },
+  "pages": {
+    "notFound": "このページを読み込めません。削除されたか、まだ公開されていない可能性があります。",
+    "backHome": "ホームに戻る",
+    "page": "ページ"
+  },
+  "series": {
+    "home": "ホーム",
+    "all": "シリーズ",
+    "notFoundTitle": "シリーズが存在しません",
+    "notFoundDesc": "このシリーズはまだ公開されていないか、削除された可能性があります。",
+    "backToList": "シリーズ一覧に戻る",
+    "postsCount": "{n} 件の記事",
+    "chapters": "シリーズ目次",
+    "chaptersHint": "推奨順に読むと、段階的に理解が深まります。",
+    "noPostsYet": "このシリーズにはまだ公開記事がありません。",
+    "title": "シリーズ記事",
+    "desc": "テーマごとに深く掘り下げたシリーズ特集。段階を追って技術を学べます。",
+    "noSeries": "まだシリーズはありません",
+    "noSeriesHint": "作者よりシリーズ特集はまだ作成されていません。今後にご期待ください。",
+    "posts": "記事",
+    "noDesc": "説明はありません",
+    "viewAll": "すべて見る"
   }
 }
