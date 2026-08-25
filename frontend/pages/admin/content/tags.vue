@@ -13,6 +13,7 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
 import { Skeleton } from '~~/components/ui/skeleton'
+import { Search, Plus, Pencil, Trash2, Tag } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -168,16 +169,20 @@ onMounted(() => {
   >
     <template #toolbar>
       <div class="flex items-center gap-3">
-        <Input
-          v-model="searchQuery"
-          placeholder="🔍 搜索标签..."
-          class="h-10 w-64 rounded-[12px]"
-        />
+        <div class="relative">
+          <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+          <Input
+            v-model="searchQuery"
+            placeholder="搜索标签..."
+            class="h-10 w-64 rounded-[12px] pl-9"
+          />
+        </div>
         <Button
-          class="rounded-[12px] h-10 px-5 shadow-sm"
+          class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
           @click="openNew"
         >
-          + 新建标签
+          <Plus class="size-4" />
+          <span>新建标签</span>
         </Button>
       </div>
     </template>
@@ -195,8 +200,8 @@ onMounted(() => {
 
       <template v-else-if="filteredTags.length === 0">
         <div class="py-20 text-center text-muted-foreground">
-          <div class="text-5xl mb-3 opacity-30">
-            🏷️
+          <div class="text-5xl mb-3 opacity-30 size-12 mx-auto text-foreground">
+            <Tag class="size-12" />
           </div>
           <div class="text-sm">
             {{ searchQuery ? '无匹配的标签' : '暂无标签，点击右上角「新建标签」创建吧' }}
@@ -231,7 +236,7 @@ onMounted(() => {
                   title="编辑"
                   @click.stop="openEdit(t)"
                 >
-                  ✎
+                  <Pencil class="size-3.5" />
                 </button>
                 <button
                   type="button"
@@ -239,7 +244,7 @@ onMounted(() => {
                   title="删除"
                   @click.stop="confirmDelete(t.id)"
                 >
-                  🗑
+                  <Trash2 class="size-3.5" />
                 </button>
               </div>
             </div>

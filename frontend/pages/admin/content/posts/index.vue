@@ -14,6 +14,7 @@ import type { Post } from '~~/types/api'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Badge } from '~~/components/ui/badge'
+import { Search, RefreshCw, Plus } from '@lucide/vue'
 import {
   Select,
   SelectContent,
@@ -201,20 +202,22 @@ onMounted(() => {
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-11 px-5 shadow-sm"
+        class="rounded-[12px] h-11 px-5 shadow-sm gap-2"
         @click="router.push('/admin/content/posts/new')"
       >
-        + 新建文章
+        <Plus class="size-4.5" />
+        <span>新建文章</span>
       </Button>
     </template>
 
     <template #toolbar>
       <div class="flex flex-wrap items-center gap-3">
-        <div class="flex-1 min-w-64">
+        <div class="flex-1 min-w-64 relative">
+          <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
           <Input
             v-model="searchQuery"
-            placeholder="🔍 搜索标题 / slug / 摘要"
-            class="h-10 rounded-[12px] pl-4"
+            placeholder="搜索标题 / slug / 摘要"
+            class="h-10 rounded-[12px] pl-9"
           />
         </div>
         <Select v-model="statusFilter">
@@ -258,10 +261,11 @@ onMounted(() => {
         </Select>
         <Button
           variant="outline"
-          class="h-10 rounded-[12px]"
+          class="h-10 rounded-[12px] gap-2"
           @click="refresh"
         >
-          🔄 刷新
+          <RefreshCw class="size-4" />
+          <span>刷新</span>
         </Button>
       </div>
     </template>

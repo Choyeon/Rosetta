@@ -28,7 +28,6 @@ import { Button } from '~~/components/ui/button'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { translateAdminText } from '~~/composables/useAdminManage'
 import { Languages, Loader2 } from '@lucide/vue'
-
 type I18nValue = string | null | Record<string, string | null>
 
 const props = withDefaults(defineProps<{
@@ -60,12 +59,12 @@ const LOCALES = [
 ] as const
 
 // 归一化：把 string | null | 已有 dict 统一为 dict 形式
-function normalize(v: I18nValue | undefined): Record<string, string | null> {
+function normalize(v: I18nValue | undefined): Record<string, string> {
   if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
   if (typeof v === 'string') {
     return { zh: v, en: '', ja: '', zh_Hant: '' }
   }
-  const obj = v as Record<string, string | null>
+  const obj = v as Record<string, string | null | undefined>
   return {
     zh: obj.zh ?? '',
     en: obj.en ?? '',
@@ -74,27 +73,34 @@ function normalize(v: I18nValue | undefined): Record<string, string | null> {
   }
 }
 
-const state = ref<Record<string, string | null>>(normalize(props.modelValue))
+const state = ref<Record<string, string>>(normalize(props.modelValue))
 
+// 外部 modelValue 变化时同步到 state（仅当值确有差异时，避免覆盖用户正在编辑的内容）
 watch(
   () => props.modelValue,
   (nv) => {
     const next = normalize(nv)
-    // 仅在外部确实变化了才覆盖（避免用户输入中的内容被重新初始化）
+    const cur = state.value
+    let changed = false
     for (const k of Object.keys(next)) {
-      if (state.value[k] !== next[k]) {
-        state.value = next
+      if ((cur[k] ?? '') !== (next[k] ?? '')) {
+        changed = true
         break
       }
     }
+    if (changed) state.value = next
   },
   { deep: true }
 )
 
-function setLocale(lang: string, val: string | number) {
-  state.value = { ...state.value, [lang]: String(val) }
-  emit('update:modelValue', state.value)
-}
+// 内部 state 变化时同步回父组件
+watch(
+  state,
+  (v) => {
+    emit('update:modelValue', { ...v })
+  },
+  { deep: true }
+)
 
 const filledCount = computed(() =>
   LOCALES.filter(l => typeof state.value[l.key] === 'string' && String(state.value[l.key]).trim() !== '').length
@@ -117,7 +123,7 @@ async function translateLocale(lang: string) {
     const res = await translateAdminText(String(state.value.zh ?? ''), 'zh', [lang])
     const translated = res?.translations?.[lang]
     if (translated && translated.trim()) {
-      setLocale(lang, translated)
+      state.value = { ...state.value, [lang]: translated }
     }
   } catch {
     // 静默失败：不打断编辑流；按钮仍可用重试
@@ -197,22 +203,19 @@ async function translateLocale(lang: string) {
           </div>
           <Input
             v-if="kind === 'text'"
-            :value="(state[l.key] ?? '') as string"
+            v-model="state[l.key]"
             :placeholder="placeholder ? `${placeholder}（${l.label}）` : `${l.label}`"
-            @update:model-value="(v: string | number) => setLocale(l.key, v)"
           />
           <Textarea
             v-else-if="kind === 'textarea'"
-            :value="(state[l.key] ?? '') as string"
+            v-model="state[l.key]"
             :placeholder="placeholder ? `${placeholder}（${l.label}）` : `${l.label}`"
             :rows="rows"
-            @update:model-value="(v: string | number) => setLocale(l.key, v)"
           />
           <MarkdownEditor
             v-else
-            :model-value="(state[l.key] ?? '') as string"
+            v-model="state[l.key]"
             :placeholder="placeholder ? `${placeholder}（${l.label}）` : `${l.label}`"
-            @update:model-value="(v: string) => setLocale(l.key, v)"
           />
         </TabsContent>
       </div>

@@ -1431,7 +1431,7 @@ const pillFor = (a: ActivityItem['accent']) =>
     <!-- =============== 主图表区 Row 1 =============== -->
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <!-- Traffic Overview (col 8/12) -->
-      <Card class="xl:col-span-8 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-8 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-4">
           <div>
             <CardTitle class="text-[15px] flex items-center gap-2">
@@ -1510,7 +1510,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       </Card>
 
       <!-- Content Donut (col 4/12) -->
-      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1548,7 +1548,7 @@ const pillFor = (a: ActivityItem['accent']) =>
     <!-- =============== 主图表区 Row 2 =============== -->
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <!-- Top Articles (col 5/12) -->
-      <Card class="xl:col-span-5 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-5 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1594,7 +1594,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       </Card>
 
       <!-- System Health: Radar + Gauge (col 4/12) -->
-      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1668,7 +1668,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       </Card>
 
       <!-- Active Commenters (col 3/12) -->
-      <Card class="xl:col-span-3 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-3 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1786,7 +1786,7 @@ const pillFor = (a: ActivityItem['accent']) =>
 
     <!-- =============== Row 3: 近期活动 + 快捷入口 =============== -->
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
-      <Card class="xl:col-span-8 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-8 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1853,7 +1853,7 @@ const pillFor = (a: ActivityItem['accent']) =>
         </CardContent>
       </Card>
 
-      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm">
+      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="py-4">
           <CardTitle class="text-[15px]">
             快捷入口

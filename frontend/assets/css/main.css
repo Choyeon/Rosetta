@@ -937,9 +937,11 @@ html.dark {
     z-index: 5;
   }
 
-  /* ---------- 触发态（hover / focus-within）：不透明 + 双动画 ---------- */
-  .card-surface:hover::after,
-  .card-surface:focus-within::after,
+  /* ---------- 触发态（hover / focus-within）：不透明 + 双动画 ----------
+     仅在显式开启 lift-hover（抬升卡片）或 glow-ring（发光容器）时触发彗星发光边；
+     普通 card-surface（表单/列表面板）保持静态，避免"内容/互动/用户/媒体/系统/工具"页面卡片误触发视觉动效。 */
+  .card-surface.lift-hover:hover::after,
+  .card-surface.lift-hover:focus-within::after,
   .glow-ring:hover::after,
   .glow-ring:focus-within::after {
     opacity: 1;
@@ -950,8 +952,8 @@ html.dark {
   }
 
   /* --- 亮色主题：中等强度的青蓝光晕，干净克制 --- */
-  .card-surface:hover::after,
-  .card-surface:focus-within::after,
+  .card-surface.lift-hover:hover::after,
+  .card-surface.lift-hover:focus-within::after,
   .glow-ring:hover::after,
   .glow-ring:focus-within::after {
     filter:
@@ -986,13 +988,11 @@ html.dark {
     padding: 0 !important;
   }
 
-  /* 让卡片抬升的大阴影也"染上一点点青色"，和发光边呼应（lift-hover 显式 + 普通 card-surface 全部） */
+  /* 让卡片抬升的大阴影也"染上一点点青色"，和发光边呼应（仅 lift-hover / glow-ring） */
   .card-surface.lift-hover:hover,
   .card-surface.lift-hover:focus-within,
   .glow-ring:hover,
-  .glow-ring:focus-within,
-  .card-surface:hover,
-  .card-surface:focus-within {
+  .glow-ring:focus-within {
     box-shadow:
       var(--card-shadow-lg),
       0 0 0 1px hsl(var(--ring) / 0.18),
@@ -1001,9 +1001,7 @@ html.dark {
   html.dark .card-surface.lift-hover:hover,
   html.dark .card-surface.lift-hover:focus-within,
   html.dark .glow-ring:hover,
-  html.dark .glow-ring:focus-within,
-  html.dark .card-surface:hover,
-  html.dark .card-surface:focus-within {
+  html.dark .glow-ring:focus-within {
     box-shadow:
       var(--card-shadow-lg),
       0 0 0 1px hsl(var(--ring) / 0.28),
