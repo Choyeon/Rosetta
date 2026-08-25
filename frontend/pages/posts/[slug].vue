@@ -379,7 +379,7 @@ import { useComments } from '~~/composables/useComments'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js'
-import DOMPurify from 'dompurify'
+import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
 import {
   CalendarDays,
@@ -694,8 +694,8 @@ const normalizeMarkdownFences = (raw: string): string => raw
   .replace(/\r\n/g, '\n')
   .replace(/(^|\n)```(\w*)\n```\w*\n/g, '$1```$2\n')
 
-const hljsSanitizeConfig: Parameters<typeof DOMPurify.sanitize>[1] | undefined = (() => {
-  if (!import.meta.client) return undefined
+const hljsSanitizeConfig: Parameters<typeof DOMPurify.sanitize>[1] = (() => {
+  // isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch
   // 显式放行 hljs 高亮 <span class="hljs-*"> 及其它 inline 语义标签，
   // 避免默认严格模式把 token span 全部剥离，导致只剩纯文本代码块。
   const hljsClassRe = /^(hljs|hljs-[a-z0-9_-]+|language-[a-z0-9_-]+)$/i
@@ -771,13 +771,11 @@ const renderedContent = computed(() => {
   const raw = normalizeMarkdownFences(pickLocalized(post.value.content))
   try {
     const html = mdRenderer.parse(raw) as string
-    if (import.meta.server) return html
-    return DOMPurify.sanitize(html, hljsSanitizeConfig ?? undefined)
+    return DOMPurify.sanitize(html, hljsSanitizeConfig)
   } catch (e) {
     console.error('Markdown parse error:', e)
     const fallback = escapeHtml(raw)
-    if (import.meta.server) return fallback
-    return DOMPurify.sanitize(fallback, hljsSanitizeConfig ?? undefined)
+    return DOMPurify.sanitize(fallback, hljsSanitizeConfig)
   }
 })
 
