@@ -4,7 +4,7 @@ import { Button } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { useAPI } from '~~/composables/useApi'
 import { Marked } from 'marked'
-import DOMPurify from 'dompurify'
+import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
 
 /**
@@ -73,21 +73,22 @@ const loadError = computed(() => !!error.value || !page.value)
 const title = computed(() => pickLocalized(page.value?.title) || slug.value)
 
 const md = new Marked()
+// isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch
+const SANITIZE_CONFIG = {
+  ADD_TAGS: ['pre', 'code', 'span', 'kbd', 'mark', 'samp', 'var', 'img'],
+  ADD_ATTR: ['class', 'src', 'alt', 'loading'],
+  ALLOW_UNKNOWN_PROTOCOLS: false,
+  WHOLE_DOCUMENT: false,
+  FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'style', 'form', 'input', 'button'],
+  FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
+  IN_PLACE: true
+} as const
 const renderedContent = computed(() => {
   const rawContent = pickLocalized(page.value?.content)
   if (!rawContent) return ''
   try {
     const html = md.parse(rawContent) as string
-    if (!import.meta.client) return html
-    return DOMPurify.sanitize(html, {
-      ADD_TAGS: ['pre', 'code', 'span', 'kbd', 'mark', 'samp', 'var', 'img'],
-      ADD_ATTR: ['class', 'src', 'alt', 'loading'],
-      ALLOW_UNKNOWN_PROTOCOLS: false,
-      WHOLE_DOCUMENT: false,
-      FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'style', 'form', 'input', 'button'],
-      FORBID_ATTR: ['onerror', 'onload', 'onclick', 'onmouseover', 'style'],
-      IN_PLACE: true
-    })
+    return DOMPurify.sanitize(html, SANITIZE_CONFIG as unknown as Parameters<typeof DOMPurify.sanitize>[1])
   } catch (e) {
     console.warn('[compat/page/slug] markdown render failed', e)
     return ''
