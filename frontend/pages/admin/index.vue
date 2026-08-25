@@ -1,8 +1,5 @@
 <script setup lang="ts">
 import {
-  Eye,
-  Users,
-  MessageSquare,
   FileText,
   ChevronRight,
   Activity as ActivityIcon,
@@ -19,7 +16,12 @@ import {
   Sparkles,
   CalendarDays,
   MessageCircleMore,
-  PenTool
+  PenTool,
+  Trophy,
+  Medal,
+  Eye,
+  Users,
+  MessageSquare
 } from '@lucide/vue'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
@@ -50,7 +52,7 @@ definePageMeta({
 
 // ============== 基础依赖 ==============
 const authStore = useAuthStore()
-const { error: toastError } = useToast()
+useToast() // 统一 toast 封装（apiFetch 自动 toast，页面无需手动调用 error）
 const { isDark } = useTheme()
 
 // ============== 图表调色板（亮/暗自适应） ==============
@@ -153,21 +155,48 @@ function openHomepage() {
 async function loadAll() {
   loading.value = true
   try {
-    statsRaw.value = await fetchDashboardStats(statsRange.value)
+    const raw = await fetchDashboardStats(statsRange.value)
+    // 防御性：规范化 API 返回 shape，避免 summary/timeseries/system_health 等字段缺失导致崩溃
+    // 注意：默认值写在前面，API 展开在后面，避免 TS2783 重复字段告警
+    const defaultSummary = {
+      total_posts: 0,
+      total_published: 0,
+      total_drafts: 0,
+      total_views_today: 0,
+      total_users: 0,
+      total_pending_comments: 0,
+      total_comments: 0,
+      total_comments_today: 0
+    }
+    const defaultTimeseries = { labels: [] as string[], datasets: [] as Array<{ key: string, values: number[] }> }
+    const defaultHealth = {
+      cpu_percent: null as number | null,
+      memory_percent: null as number | null,
+      db_rtt_ms: null as number | null,
+      cache_hit_percent: null as number | null,
+      health_score: 0
+    }
+    statsRaw.value = {
+      summary: { ...defaultSummary, ...(raw?.summary ?? {}) },
+      timeseries: { ...defaultTimeseries, ...(raw?.timeseries ?? {}) },
+      top_articles: Array.isArray(raw?.top_articles) ? raw.top_articles : [],
+      active_commenters: Array.isArray(raw?.active_commenters) ? raw.active_commenters : [],
+      system_health: { ...defaultHealth, ...(raw?.system_health ?? {}) }
+    }
     const s = statsRaw.value.summary
-    const pvSeries = statsRaw.value.timeseries.datasets.find(d => d.key === 'pv')?.values ?? []
+    const pvSeries = statsRaw.value.timeseries.datasets?.find(d => d.key === 'pv')?.values ?? []
     const sevenDayViews = pvSeries.reduce((a: number, b: number) => a + b, 0)
     const lastDayPv = pvSeries.length ? pvSeries[pvSeries.length - 1] : 0
     summary.value = {
-      postsCount: s.total_posts ?? 0,
-      publishedCount: s.total_published ?? 0,
-      draftCount: s.total_drafts ?? 0,
-      views24h: s.total_views_today ?? lastDayPv ?? 0,
+      postsCount: (s.total_posts as number) ?? 0,
+      publishedCount: (s.total_published as number) ?? 0,
+      draftCount: (s.total_drafts as number) ?? 0,
+      views24h: ((s.total_views_today as number) ?? lastDayPv) ?? 0,
       views7d: sevenDayViews,
-      usersCount: s.total_users ?? 0,
-      pendingComments: s.total_pending_comments ?? 0,
-      totalComments: s.total_comments ?? 0,
-      totalCommentsToday: s.total_comments_today ?? 0,
+      usersCount: (s.total_users as number) ?? 0,
+      pendingComments: (s.total_pending_comments as number) ?? 0,
+      totalComments: (s.total_comments as number) ?? 0,
+      totalCommentsToday: (s.total_comments_today as number) ?? 0,
       oobeComplete: true
     }
 
@@ -246,10 +275,8 @@ async function loadAll() {
     } catch {
       activities.value = []
     }
-  } catch (e: unknown) {
-    const msg
-      = typeof e === 'object' && e !== null && 'message' in e ? String((e as { message: unknown }).message) : ''
-    toastError(msg || '仪表盘数据加载失败')
+  } catch {
+    // 错误已由 apiFetch 统一 toast，此处仅做状态兜底
     activities.value = []
   } finally {
     loading.value = false
@@ -1208,7 +1235,7 @@ const pillFor = (a: ActivityItem['accent']) =>
                 健康分数
               </p>
               <p class="mt-0.5 text-3xl font-bold tabular-nums tracking-tight">
-                {{ Number(statsRaw?.system_health.health_score ?? 0) }}
+                {{ Number(statsRaw?.system_health?.health_score ?? 0) }}
                 <span class="text-sm font-semibold text-white/70 ml-0.5">/ 100</span>
               </p>
             </div>
@@ -1581,9 +1608,9 @@ const pillFor = (a: ActivityItem['accent']) =>
             variant="outline"
             class="rounded-full h-5 px-2 text-[11px]"
             :class="
-              Number(statsRaw?.system_health.health_score ?? 0) >= 85
+              Number(statsRaw?.system_health?.health_score ?? 0) >= 85
                 ? 'text-success border-success/30 bg-success/5'
-                : Number(statsRaw?.system_health.health_score ?? 0) >= 60
+                : Number(statsRaw?.system_health?.health_score ?? 0) >= 60
                   ? 'text-warning border-warning/30 bg-warning/5'
                   : 'text-destructive border-destructive/30 bg-destructive/5'
             "
@@ -1632,7 +1659,7 @@ const pillFor = (a: ActivityItem['accent']) =>
                 "
               >
                 {{ r.label === '数据库' && statsRaw?.system_health?.db_rtt_ms != null
-                  ? `${Number(statsRaw.system_health.db_rtt_ms).toFixed(1)} ms`
+                  ? `${Number(statsRaw?.system_health?.db_rtt_ms).toFixed(1)} ms`
                   : `${r.value}%` }}
               </span>
             </div>
@@ -1680,8 +1707,9 @@ const pillFor = (a: ActivityItem['accent']) =>
               :key="c.name"
               class="flex items-center gap-3"
             >
+              <!-- 排名徽章：前 3 名使用 Lucide 奖杯/奖牌 icon，第 4+ 名用有序数字圆形 -->
               <div
-                class="shrink-0 size-6 rounded-full flex items-center justify-center text-[11px] font-bold tabular-nums"
+                class="shrink-0 size-7 rounded-full flex items-center justify-center"
                 :class="
                   idx === 0
                     ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
@@ -1692,7 +1720,20 @@ const pillFor = (a: ActivityItem['accent']) =>
                         : 'bg-muted text-muted-foreground'
                 "
               >
-                {{ idx + 1 }}
+                <Trophy
+                  v-if="idx === 0"
+                  class="size-3.5"
+                />
+                <Medal
+                  v-else-if="idx === 1 || idx === 2"
+                  class="size-3.5"
+                />
+                <span
+                  v-else
+                  class="text-[11px] font-bold tabular-nums"
+                >
+                  {{ idx + 1 }}
+                </span>
               </div>
               <Avatar class="size-9 shrink-0 ring-2 ring-background shadow-sm">
                 <AvatarImage
@@ -1704,15 +1745,17 @@ const pillFor = (a: ActivityItem['accent']) =>
                 </AvatarFallback>
               </Avatar>
               <div class="flex-1 min-w-0">
-                <div class="flex items-center justify-between">
-                  <p class="text-sm font-medium truncate">
+                <!-- 名称 + 评论数：保证 icon / 姓名 / 数值在同一行，不会换行错位 -->
+                <div class="flex items-center justify-between w-full">
+                  <p class="text-sm font-medium truncate min-w-0">
                     {{ c.name }}
                   </p>
-                  <span class="text-xs font-semibold tabular-nums text-muted-foreground ml-2 shrink-0">
+                  <span class="text-xs font-semibold tabular-nums text-muted-foreground ml-2 shrink-0 inline-flex items-center gap-1">
+                    <MessageSquare class="size-3 opacity-70" />
                     {{ c.comments_count }}
                   </span>
                 </div>
-                <div class="mt-1 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                <div class="mt-1.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
                   <div
                     class="h-full rounded-full transition-all duration-700 ease-out"
                     :style="{

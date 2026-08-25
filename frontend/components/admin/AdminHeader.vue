@@ -41,6 +41,7 @@ import {
   type NotificationLevel
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { findMenuItem, findMenuGroup } from '~~/config/admin-menu'
 
 defineProps<{
   sidebarCollapsed: boolean
@@ -51,51 +52,18 @@ const _router = useRouter()
 const route = useRoute()
 const toast = useToast()
 
-// ==================== 面包屑 ====================
-const crumbMap: Record<string, string> = {
-  '/admin': '仪表盘',
-  '/admin/content/posts': '文章管理',
-  '/admin/content/categories': '分类管理',
-  '/admin/content/tags': '标签管理',
-  '/admin/content/series': '系列管理',
-  '/admin/content/pages': '独立页面',
-  '/admin/interaction/comments': '评论管理',
-  '/admin/interaction/guestbook': '留言板',
-  '/admin/interaction/announcements': '公告管理',
-  '/admin/interaction/activities': '动态说说',
-  '/admin/users': '用户列表',
-  '/admin/users/titles': '头衔称号',
-  '/admin/media/library': '媒体库',
-  '/admin/media/gallery': '相册管理',
-  '/admin/system/settings': '站点设置',
-  '/admin/system/navigation': '导航菜单',
-  '/admin/system/friendlinks': '友情链接',
-  '/admin/system/webhooks': 'Webhook 配置',
-  '/admin/tools/import-export': '导入导出',
-  '/admin/tools/seo': 'SEO 工具',
-  '/admin/tools/translate': '翻译工具',
-  '/admin/tools/performance': '性能监控',
-  '/admin/tools/audit-logs': '审计日志',
-  '/admin/tools/migrations': '数据库迁移',
-  '/admin/tools/cache': '缓存管理'
-}
-
-const groupMap: Record<string, string> = {
-  content: '内容管理',
-  interaction: '互动管理',
-  users: '用户与权限',
-  media: '媒体资源',
-  system: '系统配置',
-  tools: '工具与运维'
-}
-
+// ==================== 面包屑（读 admin-menu config，避免死链/不同步） ====================
 const currentGroup = computed(() => {
-  const segs = route.path.split('/')
-  const seg2: string | undefined = segs[2]
-  if (seg2 === undefined) return '总览'
-  return groupMap[seg2] || '未命名分组'
+  const grp = findMenuGroup(route.path)
+  return grp?.label ?? '总览'
 })
-const currentPage = computed(() => crumbMap[route.path] || route.path.split('/').pop() || '')
+const currentPage = computed(() => {
+  const item = findMenuItem(route.path)
+  if (item) return item.label
+  // 动态子路由（如 /admin/users/12/edit）：回退到父菜单项名称
+  const parent = findMenuItem('/' + route.path.split('/').slice(0, 4).join('/'))
+  return parent?.label || route.path.split('/').pop() || ''
+})
 
 // ==================== 用户信息 ====================
 // 兼容读取 nickname / name / username，优先展示"昵称"而不是登录名
@@ -136,11 +104,12 @@ const loadingBadge = ref(false)
 const markingClearing = ref(false)
 const dropdownOpen = ref(false)
 
+// 使用主题语义色（与 toast 主题一致，亮/暗自动联动）
 const levelToClass: Record<NotificationLevel, string> = {
-  info: 'bg-sky-500/10 text-sky-600 dark:text-sky-400 ring-1 ring-inset ring-sky-500/20',
-  success: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 ring-1 ring-inset ring-emerald-500/20',
-  warning: 'bg-amber-500/10 text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20',
-  error: 'bg-rose-500/10 text-rose-600 dark:text-rose-400 ring-1 ring-inset ring-rose-500/20'
+  info: 'bg-[hsl(var(--info-muted))] text-[hsl(var(--info-muted-foreground))] ring-1 ring-inset ring-[hsl(var(--info)/0.25)]',
+  success: 'bg-[hsl(var(--success-muted))] text-[hsl(var(--success-muted-foreground))] ring-1 ring-inset ring-[hsl(var(--success)/0.25)]',
+  warning: 'bg-[hsl(var(--warning-muted))] text-[hsl(var(--warning-muted-foreground))] ring-1 ring-inset ring-[hsl(var(--warning)/0.25)]',
+  error: 'bg-[hsl(var(--error-muted))] text-[hsl(var(--error-muted-foreground))] ring-1 ring-inset ring-[hsl(var(--error)/0.25)]'
 }
 const levelLabel: Record<NotificationLevel, string> = {
   info: '通知',
@@ -442,10 +411,10 @@ watch(
                   <span
                     class="mt-1 shrink-0 size-2 rounded-full inline-flex items-center justify-center"
                     :class="{
-                      'bg-sky-500': n.level === 'info',
-                      'bg-emerald-500': n.level === 'success',
-                      'bg-amber-500': n.level === 'warning',
-                      'bg-rose-500': n.level === 'error' || !n.level
+                      'bg-[hsl(var(--info))]': n.level === 'info',
+                      'bg-[hsl(var(--success))]': n.level === 'success',
+                      'bg-[hsl(var(--warning))]': n.level === 'warning',
+                      'bg-[hsl(var(--error))]': n.level === 'error' || !n.level
                     }"
                   />
                   <div class="flex-1 min-w-0">
@@ -499,7 +468,7 @@ watch(
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <!-- 主题切换（保留，无 navbar 调色板） -->
+      <!-- 明暗主题切换（已移除调色盘切换，按项目规范锁定天青蓝调色板） -->
       <ThemeToggle />
 
       <!-- 用户菜单 -->
@@ -517,7 +486,7 @@ watch(
               />
               <AvatarFallback
                 class="text-[hsl(var(--primary-foreground))] font-semibold text-[13px] flex items-center justify-center"
-                style="background: linear-gradient(135deg,#0EA5E9,#0369A1);"
+                style="background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));"
               >
                 {{ userFallback }}
               </AvatarFallback>
@@ -547,7 +516,7 @@ watch(
                   :alt="userDisplayName"
                 />
                 <AvatarFallback
-                  style="background: linear-gradient(135deg,#0EA5E9,#0369A1);"
+                  style="background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));"
                   class="text-[hsl(var(--primary-foreground))] font-semibold text-[15px] flex items-center justify-center"
                 >
                   {{ userFallback }}
