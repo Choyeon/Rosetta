@@ -23,10 +23,21 @@
             <Label class="text-sm font-medium">操作类型</Label>
             <Select
               v-model="filters.action"
-              :options="actionOptions"
-              placeholder="全部类型"
               class="rounded-xl"
-            />
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="全部类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="o in actionOptions"
+                  :key="o.value"
+                  :value="o.value"
+                >
+                  {{ o.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
             <Label class="text-sm font-medium">用户 ID 搜索</Label>
@@ -223,10 +234,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, reactive, onMounted } from 'vue'
 import {
   fetchAdminAuditLogs,
@@ -242,7 +249,9 @@ import { Button } from '~~/components/ui/button'
 import { Card, CardContent } from '~~/components/ui/card'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
-import { Select } from '~~/components/ui/select'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '~~/components/ui/select'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Badge } from '~~/components/ui/badge'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
@@ -265,7 +274,7 @@ const actionOptions = [
 
 function actionLabel(a: string): string {
   const find = actionOptions.find(o => o.value === a)
-  if (find) return find.label.split(' ')[0]
+  if (find) return find.label.split(' ')[0] ?? a
   const map: Record<string, string> = {
     login: '登录', create: '创建', update: '更新', delete: '删除',
     export: '导出', import: '导入', ban: '封禁', unban: '解封',
@@ -299,7 +308,7 @@ const expandedId = ref<number | null>(null)
 
 const filters = reactive({
   action: '',
-  userId: null as number | null,
+  userId: undefined as number | undefined,
   fromDate: '',
   toDate: ''
 })
@@ -310,7 +319,7 @@ function toggleExpand(id: number) {
 
 function resetFilters() {
   filters.action = ''
-  filters.userId = null
+  filters.userId = undefined
   filters.fromDate = ''
   filters.toDate = ''
   page.value = 1
@@ -331,7 +340,6 @@ async function loadLogs() {
     total.value = r?.total ?? 0
     totalPages.value = r?.total_pages ?? 1
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminAuditLogs'}`)
     logs.value = []
   } finally {
     loading.value = false

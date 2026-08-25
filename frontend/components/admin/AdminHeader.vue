@@ -72,9 +72,16 @@ const userDisplayName = computed(() => {
   return String((u?.nickname ?? u?.name ?? u?.username ?? '') as string) || '未登录'
 })
 // 使用统一头像解析：resolved_avatar_url 优先，再 avatar，最终经后端 media 代理
+// 若没有头像则按 {username|email + nickname} 生成 DiceBear 稳定默认头像（identicon 风格）
 const userAvatar = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
+  const seed = [
+    u?.username,
+    u?.email,
+    u?.nickname
+  ].filter(Boolean).join('|') || undefined
   return resolveAvatarUrl(
+    { seed },
     u?.resolved_avatar_url as string | undefined,
     u?.avatar as string | undefined
   )

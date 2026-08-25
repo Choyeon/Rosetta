@@ -447,10 +447,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, onMounted } from 'vue'
 import {
   fetchAdminSeoSitemapCheck,
@@ -497,7 +493,6 @@ async function handleRegenerate() {
     toast.success('已重新生成 sitemap.xml 与 robots.txt')
     await refreshSitemap()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'regenerateAdminSitemap'}`)
   } finally {
     regenerating.value = false
   }
@@ -525,7 +520,6 @@ async function loadScores() {
     scoresTotal.value = r?.total ?? 0
     scoresTotalPages.value = r?.total_pages ?? 1
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminSeoScores'}`)
     scores.value = []
   } finally {
     scoresLoading.value = false
@@ -547,7 +541,6 @@ async function handleCheck() {
       toast.success('扫描完成，未发现死链')
     }
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminSeoSitemapCheck'}`)
   } finally {
     checking.value = false
   }

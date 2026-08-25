@@ -455,10 +455,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, computed } from 'vue'
 import {
   exportAdminPosts,
@@ -585,7 +581,6 @@ async function handleExport() {
     }
     toast.success('导出文件已生成')
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'exportAdminPosts'}`)
   } finally {
     exporting.value = false
   }

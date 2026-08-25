@@ -55,10 +55,10 @@
               <Avatar class="size-20 shrink-0 border-4 border-muted">
                 <AvatarImage
                   :src="form.avatar ?? ''"
-                  :alt="form.nickname || form.username"
+                  :alt="form.nickname || user?.username || ''"
                 />
                 <AvatarFallback class="text-2xl">
-                  {{ (form.nickname || form.username)?.[0]?.toUpperCase() || 'U' }}
+                  {{ (form.nickname || user?.username)?.[0]?.toUpperCase() || 'U' }}
                 </AvatarFallback>
               </Avatar>
               <div class="space-y-2">
@@ -307,8 +307,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -341,7 +339,7 @@ const auth = useAuthStore()
 
 const userId = computed(() => {
   const raw = route.params.id
-  if (Array.isArray(raw)) return parseInt(raw[0], 10)
+  if (Array.isArray(raw)) return parseInt(raw[0] ?? '', 10)
   return parseInt(raw as string, 10)
 })
 
@@ -355,12 +353,12 @@ const user = ref<AdminUserRow | null>(null)
 const titles = ref<AdminUserTitle[]>([])
 
 const form = reactive({
-  nickname: '' as string | null,
+  nickname: '',
   email: '',
-  website: '' as string | null,
-  github: '' as string | null,
-  qq: '' as string | null,
-  bio: '' as string | null,
+  website: '',
+  github: '',
+  qq: '',
+  bio: '',
   avatar: '' as string | null,
   title_id: 0 as number,
   is_staff: false,
@@ -409,7 +407,6 @@ async function loadUser() {
       is_banned: data.is_banned
     })
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载用户详情失败')
   } finally {
     loading.value = false
   }
@@ -420,7 +417,6 @@ async function loadTitles() {
   try {
     titles.value = await fetchAdminUserTitles()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载头衔失败')
     titles.value = []
   } finally {
     titlesLoading.value = false
@@ -443,7 +439,8 @@ async function onAvatarFileChange(ev: Event) {
       toast.success('头像上传成功')
     }
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '头像上传失败')
+    const msg = err instanceof Error ? err.message : '头像上传失败'
+    toast.error(msg)
   } finally {
     if (avatarInputRef.value) avatarInputRef.value.value = ''
   }
@@ -486,7 +483,6 @@ async function saveAll() {
     toast.success('保存成功')
     router.push('/admin/users')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '保存失败')
   } finally {
     saving.value = false
   }

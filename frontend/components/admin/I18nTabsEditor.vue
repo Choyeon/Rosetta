@@ -8,33 +8,44 @@
  *
  * 用法：
  *   <I18nTabsEditor v-model="post.title" kind="text" label="标题" placeholder="请输入标题" />
- *   <I18nTabsEditor v-model="post.content_md" kind="textarea" label="正文 Markdown" />
+ *   <I18nTabsEditor v-model="post.content_md" kind="markdown" label="正文 Markdown" />
  *   <I18nTabsEditor v-model="category.description" kind="textarea" rows="4" />
  *
- * 本组件是"受控模式下的纯 Form field 组件"：它不对外发起 API，只负责把 modelValue 在 4 种语言之间同步。
+ * kind:
+ *   - text: 单行输入
+ *   - textarea: 多行输入
+ *   - markdown: Markdown 编辑器（带工具栏，复用 MarkdownEditor）
+ *
+ * translatable: 开启后每个非 zh tab 提供「一键翻译」按钮（基于 zh 值调用 /api/translate 填充）
  */
-import { computed, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
+import { Button } from '~~/components/ui/button'
+import MarkdownEditor from './MarkdownEditor.vue'
+import { translateAdminText } from '~~/composables/useAdminManage'
+import { Languages, Loader2 } from '@lucide/vue'
 
 type I18nValue = string | null | Record<string, string | null>
 
 const props = withDefaults(defineProps<{
   modelValue?: I18nValue
-  kind?: 'text' | 'textarea'
+  kind?: 'text' | 'textarea' | 'markdown'
   label?: string
   placeholder?: string
   rows?: number
   required?: boolean
+  translatable?: boolean
 }>(), {
   kind: 'text',
   label: '',
   placeholder: '',
   rows: 3,
-  required: false
+  required: false,
+  translatable: true
 })
 
 const emit = defineEmits<{
@@ -88,6 +99,32 @@ function setLocale(lang: string, val: string | number) {
 const filledCount = computed(() =>
   LOCALES.filter(l => typeof state.value[l.key] === 'string' && String(state.value[l.key]).trim() !== '').length
 )
+
+// ===== 一键翻译（基于 zh 源文本，填充目标语言）=====
+const translatingLang = ref<string | null>(null)
+
+const canTranslate = (lang: string): boolean => {
+  if (!props.translatable || lang === 'zh') return false
+  const zhVal = String(state.value.zh ?? '').trim()
+  const targetVal = String(state.value[lang] ?? '').trim()
+  return zhVal !== '' && targetVal === ''
+}
+
+async function translateLocale(lang: string) {
+  if (!canTranslate(lang) || translatingLang.value) return
+  translatingLang.value = lang
+  try {
+    const res = await translateAdminText(String(state.value.zh ?? ''), 'zh', [lang])
+    const translated = res?.translations?.[lang]
+    if (translated && translated.trim()) {
+      setLocale(lang, translated)
+    }
+  } catch {
+    // 静默失败：不打断编辑流；按钮仍可用重试
+  } finally {
+    translatingLang.value = null
+  }
+}
 </script>
 
 <template>
@@ -136,6 +173,28 @@ const filledCount = computed(() =>
           :value="l.key"
           class="mt-3"
         >
+          <div
+            v-if="canTranslate(l.key)"
+            class="flex justify-end mb-1.5"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="translatingLang !== null"
+              class="h-7 rounded-[8px] text-xs gap-1"
+              @click="translateLocale(l.key)"
+            >
+              <Loader2
+                v-if="translatingLang === l.key"
+                class="size-3.5 animate-spin"
+              />
+              <Languages
+                v-else
+                class="size-3.5"
+              />
+              从简体中文翻译
+            </Button>
+          </div>
           <Input
             v-if="kind === 'text'"
             :value="(state[l.key] ?? '') as string"
@@ -143,11 +202,17 @@ const filledCount = computed(() =>
             @update:model-value="(v: string | number) => setLocale(l.key, v)"
           />
           <Textarea
-            v-else
+            v-else-if="kind === 'textarea'"
             :value="(state[l.key] ?? '') as string"
             :placeholder="placeholder ? `${placeholder}（${l.label}）` : `${l.label}`"
             :rows="rows"
             @update:model-value="(v: string | number) => setLocale(l.key, v)"
+          />
+          <MarkdownEditor
+            v-else
+            :model-value="(state[l.key] ?? '') as string"
+            :placeholder="placeholder ? `${placeholder}（${l.label}）` : `${l.label}`"
+            @update:model-value="(v: string) => setLocale(l.key, v)"
           />
         </TabsContent>
       </div>

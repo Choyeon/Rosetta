@@ -149,7 +149,7 @@
                   <div class="flex items-center gap-3">
                     <Avatar class="size-9 shrink-0 ring-1 ring-border/60">
                       <AvatarImage
-                        :src="resolveAvatarUrl(u.resolved_avatar_url, u.avatar)"
+                        :src="resolveAvatarUrl({ seed: `${u.username}|${u.email}|${u.nickname || ''}` }, u.resolved_avatar_url, u.avatar)"
                         :alt="u.nickname || u.username"
                       />
                       <AvatarFallback>{{ userAvatarFallback(u) }}</AvatarFallback>
@@ -194,7 +194,7 @@
                       :title="u.nickname || u.username"
                     >
                       <AvatarImage
-                        :src="resolveAvatarUrl(u.resolved_avatar_url, u.avatar)"
+                        :src="resolveAvatarUrl({ seed: `${u.username}|${u.email}|${u.nickname || ''}` }, u.resolved_avatar_url, u.avatar)"
                         :alt="u.nickname || u.username"
                       />
                       <AvatarFallback>{{ userAvatarFallback(u) }}</AvatarFallback>
@@ -315,7 +315,7 @@
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
                 class="h-9 w-9"
-                @click="page !== p && (page = p, fetchData())"
+                @click="page !== p && (page = Number(p), fetchData())"
               >
                 {{ p }}
               </Button>
@@ -495,8 +495,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -618,7 +616,6 @@ async function fetchData() {
     allUsers.value = res.items ?? []
     total.value = res.total ?? 0
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载用户失败')
     allUsers.value = []
     total.value = 0
   } finally {
@@ -645,7 +642,6 @@ async function toggleStaff(u: AdminUserRow, toStaff: boolean) {
     u.is_staff = toStaff
     toast.success(toStaff ? '已设为管理员' : '已撤销管理员')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '操作失败')
   }
 }
 
@@ -662,7 +658,6 @@ async function toggleBan(u: AdminUserRow, ev: unknown) {
       toast.success('已解封')
     }
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '操作失败')
   }
 }
 
@@ -673,7 +668,6 @@ async function doActivate(u: AdminUserRow) {
     u.is_banned = false
     toast.success('已激活')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '激活失败')
   }
 }
 
@@ -683,7 +677,6 @@ async function doBan(u: AdminUserRow) {
     u.is_banned = true
     toast.success('已封禁')
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '封禁失败')
   }
 }
 
@@ -723,7 +716,6 @@ async function doResetPwd() {
     toast.success('密码重置成功')
     resetPwdDialogOpen.value = false
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '重置失败')
   } finally {
     resettingPwd.value = false
   }
@@ -749,7 +741,6 @@ async function doDeleteUser() {
     deleteDialogOpen.value = false
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '删除失败')
   } finally {
     deleting.value = false
   }

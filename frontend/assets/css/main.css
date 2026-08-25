@@ -339,6 +339,35 @@ html.dark.palette-warm-stone {
   --warning: 40 92% 66%;
 }
 
+/* ---- Minimal 极简中性灰（无强品牌色，最大留白，明暗双模）---- */
+html.palette-minimal {
+  --primary: 220 9% 46%;           /* 中性灰 6b7280 */
+  --primary-foreground: 0 0% 100%;
+  --accent: 220 14% 96%;           /* 极浅灰底 */
+  --accent-foreground: 220 13% 22%;
+  --ring: 220 9% 46%;
+  --sidebar-primary: 220 9% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 220 10% 60%;
+  /* 语义色压低饱和，保持极简调性 */
+  --success: 160 8% 40%;
+  --info: 220 9% 50%;
+  --warning: 38 30% 46%;
+}
+html.dark.palette-minimal {
+  --primary: 0 0% 92%;             /* 近白，暗底上最干净的主色 */
+  --primary-foreground: 240 6% 10%;
+  --accent: 0 0% 18%;              /* 暗灰底 */
+  --accent-foreground: 0 0% 92%;
+  --ring: 0 0% 92%;
+  --sidebar-primary: 0 0% 88%;
+  --sidebar-primary-foreground: 240 6% 10%;
+  --sidebar-ring: 0 0% 80%;
+  --success: 150 6% 60%;
+  --info: 0 0% 80%;
+  --warning: 40 12% 64%;
+}
+
 /* =========================================================
    Base reset + 排版
    ========================================================= */

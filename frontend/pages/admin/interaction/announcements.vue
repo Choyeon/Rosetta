@@ -90,16 +90,6 @@
                   {{ displayField(a.title) }}
                 </td>
                 <td class="p-4">
-                  <Pin
-                    v-if="a.is_pinned"
-                    class="size-4 text-warning"
-                  />
-                  <span
-                    v-else
-                    class="text-muted-foreground"
-                  >-</span>
-                </td>
-                <td class="p-4">
                   <Check
                     v-if="a.is_dismissible"
                     class="size-4 text-success"
@@ -110,18 +100,8 @@
                   >-</span>
                 </td>
                 <td class="p-4">
-                  <Check
-                    v-if="a.is_sticky"
-                    class="size-4 text-success"
-                  />
-                  <span
-                    v-else
-                    class="text-muted-foreground"
-                  >-</span>
-                </td>
-                <td class="p-4">
                   <Switch
-                    :model-value="a.active"
+                    :model-value="a.is_active"
                     @change="toggleActive(a, $event)"
                   />
                 </td>
@@ -163,6 +143,7 @@
         <PaginationContent>
           <PaginationItem :value="1" />
           <PaginationPrevious
+            :value="1"
             :disabled="page <= 1"
             @click="page > 1 && (page--, fetchData())"
           />
@@ -170,22 +151,23 @@
             v-for="p in visiblePages"
             :key="p"
           >
-            <PaginationItem v-if="p !== '...'">
+            <PaginationItem v-if="p !== '...'" :value="typeof p === 'number' ? p : 1">
               <Button
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
                 class="h-9 w-9"
-                @click="page !== p && (page = p, fetchData())"
+                @click="page !== p && (page = Number(p), fetchData())"
               >
                 {{ p }}
               </Button>
             </PaginationItem>
-            <PaginationItem v-else>
+            <PaginationItem v-else :value="1">
               <PaginationEllipsis :value="1" />
             </PaginationItem>
           </template>
           <PaginationItem :value="1" />
           <PaginationNext
+            :value="1"
             :disabled="page >= totalPages"
             @click="page < totalPages && (page++, fetchData())"
           />
@@ -246,17 +228,6 @@
             <div class="flex items-center justify-between rounded-xl border p-3">
               <div>
                 <div class="text-sm font-medium">
-                  置顶
-                </div>
-                <div class="text-xs text-muted-foreground">
-                  固定在最上方
-                </div>
-              </div>
-              <Switch v-model="form.is_pinned" />
-            </div>
-            <div class="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <div class="text-sm font-medium">
                   可关闭
                 </div>
                 <div class="text-xs text-muted-foreground">
@@ -264,17 +235,6 @@
                 </div>
               </div>
               <Switch v-model="form.is_dismissible" />
-            </div>
-            <div class="flex items-center justify-between rounded-xl border p-3">
-              <div>
-                <div class="text-sm font-medium">
-                  粘性
-                </div>
-                <div class="text-xs text-muted-foreground">
-                  滚动时保持显示
-                </div>
-              </div>
-              <Switch v-model="form.is_sticky" />
             </div>
             <div class="flex items-center justify-between rounded-xl border p-3">
               <div>
@@ -339,8 +299,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -390,9 +348,7 @@ const form = reactive({
   type: 'info' as AnnType,
   title: '',
   content_md: '',
-  is_pinned: false,
   is_dismissible: true,
-  is_sticky: false,
   active: true
 })
 
@@ -460,7 +416,6 @@ async function fetchData() {
     announcements.value = res.items ?? []
     total.value = res.total ?? 0
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载公告失败')
     announcements.value = []
     total.value = 0
   } finally {
@@ -474,9 +429,7 @@ function openCreate() {
     type: 'info',
     title: '',
     content_md: '',
-    is_pinned: false,
     is_dismissible: true,
-    is_sticky: false,
     active: true
   })
   formDialogOpen.value = true
@@ -487,11 +440,9 @@ function openEdit(a: AdminAnnouncement) {
   Object.assign(form, {
     type: a.type,
     title: displayField(a.title),
-    content_md: displayField(a.content_md),
-    is_pinned: a.is_pinned,
+    content_md: displayField(a.content),
     is_dismissible: a.is_dismissible,
-    is_sticky: a.is_sticky,
-    active: a.active
+    active: a.is_active
   })
   formDialogOpen.value = true
 }
@@ -499,11 +450,10 @@ function openEdit(a: AdminAnnouncement) {
 async function toggleActive(a: AdminAnnouncement, ev: unknown) {
   const checked = ev === true || (ev as { checked?: boolean })?.checked === true
   try {
-    await updateAdminAnnouncement(a.id, { active: checked })
+    await updateAdminAnnouncement(a.id, { is_active: checked })
     toast.success('状态已更新')
-    a.active = checked
+    a.is_active = checked
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '更新失败')
   }
 }
 
@@ -515,12 +465,10 @@ async function submitForm() {
   submitting.value = true
   const payload: Record<string, unknown> = {
     type: form.type,
-    title: { zh: form.title.trim() },
-    content_md: { zh: form.content_md },
-    is_pinned: form.is_pinned,
+    title: form.title.trim(),
+    content: form.content_md,
     is_dismissible: form.is_dismissible,
-    is_sticky: form.is_sticky,
-    active: form.active
+    is_active: form.active
   }
   try {
     if (editingId.value) {
@@ -533,7 +481,6 @@ async function submitForm() {
     formDialogOpen.value = false
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '保存失败')
   } finally {
     submitting.value = false
   }
@@ -553,7 +500,6 @@ async function doDelete() {
     deleteTargetId.value = null
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '删除失败')
   }
 }
 

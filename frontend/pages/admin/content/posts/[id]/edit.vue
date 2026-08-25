@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Post } from '~~/types/api'
@@ -32,7 +28,7 @@ const loadData = async () => {
   loadError.value = null
   const id = postId.value
   try {
-    let found: Post | null = null
+    let found: Post | null | undefined = null
     try {
       const res = await apiFetch<{ items?: Post[] } | Post[]>('/blog/posts', {
         query: { id, page: 1, page_size: 1 }
@@ -46,8 +42,7 @@ const loadData = async () => {
     }
     if (!found) {
       try {
-        const { data } = await getPost(String(id))
-        if (data.value) found = data.value as Post
+        found = await getPost(String(id))
       } catch {
         /* swallow */
       }

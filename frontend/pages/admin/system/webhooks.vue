@@ -215,14 +215,18 @@
               <Label class="text-sm font-medium">Provider <span class="text-error">*</span></Label>
               <Select
                 v-model="form.provider"
-                :options="[
-                  { label: '通用 Generic', value: 'generic' },
-                  { label: 'GitHub', value: 'github' },
-                  { label: '飞书 Feishu', value: 'feishu' },
-                  { label: '邮件 Email', value: 'email' }
-                ]"
                 class="rounded-xl"
-              />
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择 Provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="generic">通用 Generic</SelectItem>
+                  <SelectItem value="github">GitHub</SelectItem>
+                  <SelectItem value="feishu">飞书 Feishu</SelectItem>
+                  <SelectItem value="email">邮件 Email</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div class="space-y-2">
@@ -352,10 +356,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, onMounted } from 'vue'
 import {
   fetchAdminWebhooks,
@@ -383,7 +383,9 @@ import {
 } from '~~/components/ui/dialog'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
-import { Select } from '~~/components/ui/select'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger
@@ -457,7 +459,6 @@ async function loadAll() {
   try {
     items.value = await fetchAdminWebhooks()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminWebhooks'}`)
     items.value = []
   } finally {
     loading.value = false
@@ -515,7 +516,6 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : (editingId.value ? 'updateAdminWebhook' : 'createAdminWebhook')}`)
   } finally {
     submitting.value = false
   }
@@ -528,7 +528,6 @@ async function toggleActive(w: AdminWebhook, val: boolean) {
     w.active = val
     toast.success(val ? '已启用' : '已停用')
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'updateAdminWebhook'}`)
     w.active = !val
   } finally {
     togglingId.value = null
@@ -541,7 +540,6 @@ async function handleTrigger(w: AdminWebhook) {
     await triggerAdminWebhook(w.id)
     toast.success('已触发，请查看目标端点')
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'triggerAdminWebhook'}`)
   } finally {
     triggeringId.value = null
   }
@@ -561,7 +559,6 @@ async function confirmDelete() {
     toast.success('Webhook 已删除')
     confirmOpen.value = false
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'deleteAdminWebhook'}`)
   } finally {
     deleting.value = false
   }

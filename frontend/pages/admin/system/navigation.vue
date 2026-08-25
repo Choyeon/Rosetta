@@ -216,12 +216,23 @@
           </div>
           <div class="space-y-2">
             <Label class="text-sm font-medium">父级菜单（可选，做二级菜单）</Label>
-            <Select
-              v-model="form.parent_id"
-              :options="parentOptions"
-              placeholder="无（一级菜单）"
-              class="rounded-xl"
-            />
+            <Select v-model="form.parent_id">
+              <SelectTrigger class="rounded-xl">
+                <SelectValue placeholder="无（一级菜单）" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem :value="null">
+                  无（一级菜单）
+                </SelectItem>
+                <SelectItem
+                  v-for="opt in parentOptions"
+                  :key="opt.value"
+                  :value="opt.value"
+                >
+                  {{ opt.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
         <DialogFooter>
@@ -261,7 +272,7 @@
           <Button
             variant="outline"
             class="rounded-xl"
-            disabled="deleting"
+            :disabled="deleting"
             @click="confirmOpen = false"
           >
             取消
@@ -269,7 +280,7 @@
           <Button
             variant="destructive"
             class="rounded-xl"
-            disabled="deleting"
+            :disabled="deleting"
             @click="confirmDelete"
           >
             <Loader2
@@ -291,8 +302,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted } from 'vue'
 import {
   fetchAdminNavigations,
@@ -316,7 +325,7 @@ import {
 } from '~~/components/ui/dialog'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
-import { Select } from '~~/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -352,7 +361,7 @@ const parentOptions = computed(() =>
 
 function extractZh(label: AdminNavItem['label']): string {
   if (typeof label === 'string') return label
-  if (label && typeof label === 'object' && 'zh' in label) return (label as Record<string, string>).zh
+  if (label && typeof label === 'object' && 'zh' in label) return (label as Record<string, string>).zh ?? ''
   if (label) return Object.values(label as Record<string, string>)[0] || ''
   return ''
 }
@@ -371,12 +380,12 @@ function labelToPayload(label: string): string | Record<string, string> {
 
 function isFirst(item: AdminNavItem): boolean {
   const list = sortedItems.value
-  return list.length === 0 || list[0].id === item.id
+  return list.length === 0 || list[0]!.id === item.id
 }
 
 function isLast(item: AdminNavItem): boolean {
   const list = sortedItems.value
-  return list.length === 0 || list[list.length - 1].id === item.id
+  return list.length === 0 || list[list.length - 1]!.id === item.id
 }
 
 async function swapOrder(a: AdminNavItem, b: AdminNavItem) {
@@ -391,20 +400,19 @@ async function swapOrder(a: AdminNavItem, b: AdminNavItem) {
     b.order = origA
     toast.success('排序已更新')
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'updateAdminNavigation'}`)
   }
 }
 
 function moveUp(item: AdminNavItem) {
   const idx = sortedItems.value.findIndex(i => i.id === item.id)
   if (idx <= 0) return
-  swapOrder(item, sortedItems.value[idx - 1])
+  swapOrder(item, sortedItems.value[idx - 1]!)
 }
 
 function moveDown(item: AdminNavItem) {
   const idx = sortedItems.value.findIndex(i => i.id === item.id)
   if (idx < 0 || idx >= sortedItems.value.length - 1) return
-  swapOrder(item, sortedItems.value[idx + 1])
+  swapOrder(item, sortedItems.value[idx + 1]!)
 }
 
 async function loadAll() {
@@ -412,7 +420,6 @@ async function loadAll() {
   try {
     items.value = await fetchAdminNavigations()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminNavigations'}`)
     items.value = []
   } finally {
     loading.value = false
@@ -438,7 +445,7 @@ function openEdit(item: AdminNavItem) {
     parent_id: item.parent_id
   }
   if (typeof item.label === 'object' && (item.label as Record<string, string>).zh) {
-    form.value.label = (item.label as Record<string, string>).zh
+    form.value.label = (item.label as Record<string, string>).zh ?? ''
   }
   dialogOpen.value = true
 }
@@ -469,7 +476,6 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : (editingId.value ? 'updateAdminNavigation' : 'createAdminNavigation')}`)
   } finally {
     submitting.value = false
   }
@@ -489,7 +495,6 @@ async function confirmDelete() {
     toast.success('菜单项已删除')
     confirmOpen.value = false
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'deleteAdminNavigation'}`)
   } finally {
     deleting.value = false
   }

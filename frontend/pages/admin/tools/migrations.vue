@@ -245,10 +245,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, onMounted, watch } from 'vue'
 import {
   fetchAdminMigrationStatus,
@@ -302,7 +298,6 @@ async function loadStatus() {
     const r = await fetchAdminMigrationStatus()
     status.value = r || emptyStatus()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminMigrationStatus'}`)
     status.value = emptyStatus()
   } finally {
     loading.value = false
@@ -325,7 +320,6 @@ async function handleUpgrade() {
       }
     }, 1000)
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'upgradeAdminMigrations'}`)
   } finally {
     upgrading.value = false
   }

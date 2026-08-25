@@ -143,6 +143,19 @@ export const useBingWallpaper = () => {
     }
   }
 
+  // 把 Bing 图片 URL 改写为后端本地缓存代理（首次下载并持久化到 media/bing/，
+  // 之后直接返回本地静态文件，刷新不再重复请求 bing.com）。
+  const proxiedBingUrl = (rawUrl: string): string => {
+    if (!rawUrl) return ''
+    const abs = rawUrl.startsWith('http') ? rawUrl : `https://www.bing.com${rawUrl}`
+    try {
+      const encoded = btoa(unescape(encodeURIComponent(abs)))
+      return `${apiBase.value || '/api'}/bing/image?src=${encoded}`
+    } catch {
+      return abs
+    }
+  }
+
   const parseImages = (rawImages: BingRawImage[]): BingImage[] => {
     return (rawImages || []).map((img: BingRawImage, i: number) => {
       const url = img.url || ''
@@ -156,8 +169,8 @@ export const useBingWallpaper = () => {
         title: img.title || '',
         startdate: img.startdate || '',
         enddate: img.enddate || '',
-        fullUrl,
-        uhdUrl: uhdUrl.startsWith('http') ? uhdUrl : `https://www.bing.com${uhdUrl}`,
+        fullUrl: proxiedBingUrl(fullUrl),
+        uhdUrl: proxiedBingUrl(uhdUrl),
         dayOffset: i
       }
     })
@@ -200,8 +213,8 @@ export const useBingWallpaper = () => {
           title: img.title || '',
           startdate: img.startdate || '',
           enddate: img.enddate || '',
-          fullUrl: img.full_url || '',
-          uhdUrl: img.uhd_url || '',
+          fullUrl: proxiedBingUrl(img.full_url || ''),
+          uhdUrl: proxiedBingUrl(img.uhd_url || ''),
           dayOffset: i
         }))
       }

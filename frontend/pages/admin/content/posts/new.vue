@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { useRouter } from 'vue-router'
 import PostForm from '~~/components/admin/PostForm.vue'
 import { useToast } from '~~/composables/useToast'

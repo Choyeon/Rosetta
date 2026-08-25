@@ -1,42 +1,74 @@
 /* eslint-disable @typescript-eslint/ban-ts-comment */
 // @ts-nocheck
 /* eslint-enable @typescript-eslint/ban-ts-comment */
+import { toast as sonnerToast } from 'vue-sonner'
 import { useAuthStore } from '~~/stores/auth'
 import {
   extractApiErrorMessage,
   isOobeRequiredError,
   stableApiKey,
-  type ApiErrorBody,
-  type ApiFetchOptions
+  type ApiErrorBody
 } from '~~/lib/utils'
 
-/** 后端统一错误响应体 & 请求项结构：纯声明在 lib/utils.ts，组件侧复用即可。 */
-export type { ApiFetchOptions }
+/**
+ * 统一请求选项。
+ * `silentToast`：为 true 时，apiFetch 出错**不**自动弹 toast（由调用方自行处理），
+ * 用于避免"apiFetch 自动弹 + 页面 catch 再弹"造成同一错误弹两条的问题。
+ * 默认 false：apiFetch 作为唯一自动 toaster，保证错误只弹一次。
+ */
+export interface ApiFetchOptions {
+  method?: string
+  headers?: Record<string, string>
+  body?: unknown
+  query?: Record<string, unknown>
+  baseURL?: string
+  server?: boolean
+  key?: string
+  silentToast?: boolean
+  [key: string]: unknown
+}
+
+/** 后端统一错误响应体类型（透传 lib/utils 的定义）。 */
 export type { ApiErrorBody }
 
-/** useToast / useI18n 依赖组件上下文；脱离上下文（事件回调链）时降级，不中断流程 */
+/**
+ * vue-sonner 的全局 toast 函数不依赖 Vue setup 上下文，
+ * 因此在事件回调 / Promise catch / 异步链中也能正常弹出提示。
+ */
 function safeToastError(message: string) {
   try {
-    useToast().error(message)
+    sonnerToast.error(message)
   } catch {
+    // 极端降级：连 sonner 都不可用，至少保留控制台信息
     console.error('[useAPI]', message)
   }
 }
 
+/** 尽量从本地存储/浏览器取语言，避免在 setup 外调用 useI18n */
 function currentLocale(): string {
-  try {
-    return useI18n().locale.value
-  } catch {
-    return 'zh'
+  if (import.meta.client) {
+    try {
+      const stored = localStorage.getItem('locale')
+      if (stored) return stored
+    } catch {
+      /* storage disabled */
+    }
+    const nav = navigator.language || navigator.userLanguage
+    if (nav?.startsWith('en')) return 'en'
+    if (nav?.startsWith('ja')) return 'ja'
+    if (nav?.startsWith('zh-Hant') || nav?.startsWith('zh-TW') || nav?.startsWith('zh-HK')) return 'zh_Hant'
   }
+  return 'zh'
 }
 
 export function useAPI<T>(url: string | (() => string), options?: UseFetchOptions<T>) {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
-  const { locale } = useI18n()
+  // 避免在 setup 之外/异步链中调用 useI18n() 触发
+  // "Must be called at the top of a setup function"
+  const locale = currentLocale()
 
-  const headers: Record<string, string> = { 'Accept-Language': locale.value }
+  const headers: Record<string, string> = { 'Accept-Language': locale }
   if (options?.headers && typeof options.headers === 'object' && !Array.isArray(options.headers)) {
     Object.assign(headers, options.headers as Record<string, string>)
   }
@@ -167,7 +199,9 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
             await navigateTo('/login')
             throw retryErr
           }
-          safeToastError(extractApiErrorMessage(re.data, '请求失败'))
+          if (!options.silentToast) {
+            safeToastError(extractApiErrorMessage(re.data, '请求失败'))
+          }
           throw retryErr
         }
       }
@@ -176,7 +210,9 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
       throw err
     }
 
-    safeToastError(extractApiErrorMessage(e.data, '请求失败'))
+    if (!options.silentToast) {
+      safeToastError(extractApiErrorMessage(e.data, '请求失败'))
+    }
     throw err
   }
 }

@@ -18,44 +18,44 @@
 
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <StatCard
-        loading="summaryLoading"
+        :loading="summaryLoading"
         label="24h 请求总数"
         icon="Activity"
         color="info"
         :value="summary.total_requests_24h"
-        :format="(v) => Number(v).toLocaleString('zh-CN')"
+        :format="(v: unknown) => Number(v).toLocaleString('zh-CN')"
       />
       <StatCard
-        loading="summaryLoading"
+        :loading="summaryLoading"
         label="24h 错误率"
         icon="AlertTriangle"
         color="error"
         :value="summary.error_rate_24h"
-        :format="(v) => `${(Number(v) * 100).toFixed(2)}%`"
+        :format="(v: unknown) => `${(Number(v) * 100).toFixed(2)}%`"
       />
       <StatCard
-        loading="summaryLoading"
+        :loading="summaryLoading"
         label="P50 延迟"
         icon="Timer"
         color="primary"
         :value="summary.p50_ms"
-        :format="(v) => `${v} ms`"
+        :format="(v: unknown) => `${v} ms`"
       />
       <StatCard
-        loading="summaryLoading"
+        :loading="summaryLoading"
         label="P95 延迟"
         icon="TimerReset"
         color="warning"
         :value="summary.p95_ms"
-        :format="(v) => `${v} ms`"
+        :format="(v: unknown) => `${v} ms`"
       />
       <StatCard
-        loading="summaryLoading"
+        :loading="summaryLoading"
         label="P99 延迟"
         icon="Zap"
         color="danger"
         :value="summary.p99_ms"
-        :format="(v) => `${v} ms`"
+        :format="(v: unknown) => `${v} ms`"
       />
     </div>
 
@@ -403,10 +403,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, reactive, onMounted, computed, defineComponent, h, type Component } from 'vue'
 import {
   fetchAdminPerformanceSummary,
@@ -504,7 +500,6 @@ async function loadSummary() {
     const r = await fetchAdminPerformanceSummary()
     Object.assign(summary, r)
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminPerformanceSummary'}`)
   } finally {
     summaryLoading.value = false
   }
@@ -518,7 +513,6 @@ async function loadSlow() {
     slowTotal.value = r?.total ?? 0
     slowTotalPages.value = r?.total_pages ?? 1
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminSlowRequests'}`)
     slowList.value = []
   } finally {
     slowLoading.value = false

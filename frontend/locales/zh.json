@@ -203,6 +203,17 @@
     "filter": "筛选",
     "allCategories": "全部分类"
   },
+  "search": {
+    "title": "搜索",
+    "desc": "在全站文章中检索你感兴趣的内容",
+    "placeholder": "输入关键词，回车搜索…",
+    "submit": "搜索",
+    "startPrompt": "开始你的搜索",
+    "startDesc": "在上方输入框中输入关键词，即可检索文章标题与正文。",
+    "resultCount": "找到 {count} 篇与「{keyword}」相关的文章",
+    "noResults": "没有找到相关文章",
+    "noResultsDesc": "没有与「{keyword}」匹配的文章，换个关键词试试？"
+  },
   "categories": {
     "title": "文章分类",
     "desc": "按分类浏览不同主题的内容",

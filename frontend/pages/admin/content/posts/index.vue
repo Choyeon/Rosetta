@@ -1,8 +1,4 @@
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePosts } from '~~/composables/usePosts'
@@ -10,15 +6,14 @@ import {
   fetchAdminCategories,
   fetchAdminPostsPaged,
   formatAdminDateTime,
-  type AdminCategory
+  type AdminCategory,
+  type AdminPostListItem
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import type { Post } from '~~/types/api'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Badge } from '~~/components/ui/badge'
-import { Checkbox } from '~~/components/ui/checkbox'
-import { Skeleton } from '~~/components/ui/skeleton'
 import {
   Select,
   SelectContent,
@@ -26,14 +21,7 @@ import {
   SelectTrigger,
   SelectValue
 } from '~~/components/ui/select'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle
-} from '~~/components/ui/dialog'
+import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -41,12 +29,11 @@ const router = useRouter()
 const { deletePost, batchUpdatePostStatus } = usePosts()
 const toast = useToast()
 
-const posts = ref<Post[]>([])
+const posts = ref<AdminPostListItem[]>([])
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(10)
-const totalPages = ref(0)
 
 const searchQuery = ref('')
 const statusFilter = ref<string>('all')
@@ -64,25 +51,17 @@ const getLocalizedStr = (v: string | Record<string, string> | null | undefined):
   return v.zh || v.en || Object.values(v)[0] || ''
 }
 
-const statusBadgeVariant = (status: string): string => {
-  switch (status) {
-    case 'published': return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    case 'draft': return 'bg-amber-100 text-amber-700 border-amber-200'
-    case 'scheduled': return 'bg-indigo-100 text-indigo-700 border-indigo-200'
-    case 'archived': return 'bg-slate-100 text-slate-600 border-slate-200'
-    default: return 'bg-slate-100 text-slate-600 border-slate-200'
-  }
-}
-
-const statusLabel = (status: string): string => {
-  switch (status) {
-    case 'published': return '已发布'
-    case 'draft': return '草稿'
-    case 'scheduled': return '定时'
-    case 'archived': return '已归档'
-    default: return status
-  }
-}
+const columns: Column[] = [
+  { key: 'id', title: 'ID', class: 'w-16 text-muted-foreground text-xs' },
+  { key: 'title', title: '标题' },
+  { key: 'category', title: '分类', class: 'w-28' },
+  { key: 'status', title: '状态', class: 'w-24' },
+  { key: 'views', title: '浏览', align: 'center', class: 'w-20' },
+  { key: 'likes_count', title: '点赞', align: 'center', class: 'w-20' },
+  { key: 'comments_count', title: '评论', align: 'center', class: 'w-20' },
+  { key: 'is_pinned', title: '置顶', align: 'center', class: 'w-16' },
+  { key: 'published_at', title: '发布时间', class: 'w-44 text-xs text-muted-foreground' }
+]
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(searchQuery, () => {
@@ -100,21 +79,18 @@ watch([statusFilter, categoryFilter, page, pageSize], () => {
 const loadPosts = async () => {
   loading.value = true
   try {
-    const result = await fetchAdminPostsPaged<Post>({
+    const result = await fetchAdminPostsPaged<AdminPostListItem>({
       page: page.value,
       page_size: pageSize.value,
       search: searchQuery.value.trim() || undefined,
-      status: statusFilter.value !== 'all' ? statusFilter.value : 'all',
+      status: statusFilter.value !== 'all' ? statusFilter.value as 'published' | 'draft' | 'scheduled' | 'archived' : undefined,
       category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined
     })
     posts.value = result.items ?? []
     total.value = result.total ?? 0
-    totalPages.value = Math.max(1, Math.ceil(total.value / pageSize.value))
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '加载文章列表失败')
+  } catch {
     posts.value = []
     total.value = 0
-    totalPages.value = 1
   } finally {
     loading.value = false
   }
@@ -155,38 +131,36 @@ const toggleSelectAll = () => {
   }
 }
 
-const confirmDelete = (id: number) => {
+function confirmDelete(id: number) {
   pendingDeleteId.value = id
   deleteDialogOpen.value = true
 }
 
-const doDelete = async () => {
+async function doDelete() {
   if (pendingDeleteId.value == null) return
   const id = pendingDeleteId.value
   try {
-    const { error } = await deletePost(id)
-    if (error.value) throw error.value
+    await deletePost(id)
     toast.success('删除成功')
     deleteDialogOpen.value = false
     pendingDeleteId.value = null
     selectedIds.value = selectedIds.value.filter(x => x !== id)
     loadPosts()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '删除失败')
+  } catch {
+    /* apiFetch 已统一 toast */
   }
 }
 
-const confirmBatchDelete = () => {
+function confirmBatchDelete() {
   batchDeleteDialogOpen.value = true
 }
 
-const doBatchDelete = async () => {
+async function doBatchDelete() {
   const ids = [...selectedIds.value]
   let failed = 0
   for (const id of ids) {
     try {
-      const { error } = await deletePost(id)
-      if (error.value) throw error.value
+      await deletePost(id)
       selectedIds.value = selectedIds.value.filter(x => x !== id)
     } catch {
       failed++
@@ -200,53 +174,18 @@ const doBatchDelete = async () => {
 
 const batchChangeStatus = async (status: 'published' | 'draft' | 'scheduled') => {
   const ids = [...selectedIds.value]
-
   try {
-    const { data, error } = await batchUpdatePostStatus(ids, status)
-    if (error.value) throw error.value
-
-    const updatedCount = data.value?.data.updated_count ?? 0
+    const data = await batchUpdatePostStatus(ids, status)
+    const updatedCount = data?.data?.updated_count ?? 0
     const unavailableCount = ids.length - updatedCount
     if (unavailableCount === 0) toast.success(`已批量修改 ${updatedCount} 篇文章状态`)
     else toast.warning(`成功修改 ${updatedCount} 篇，未授权或不存在 ${unavailableCount} 篇`)
     selectedIds.value = []
     await loadPosts()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '批量修改文章状态失败')
+  } catch {
+    /* apiFetch 已统一 toast */
   }
 }
-
-const goToPage = (p: number) => {
-  if (p < 1 || p > totalPages.value) return
-  page.value = p
-}
-
-const pageNumbers = computed(() => {
-  const total = totalPages.value
-  const cur = page.value
-  const pages: (number | string)[] = []
-  const push = (v: number | string) => pages.push(v)
-  if (total <= 7) {
-    for (let i = 1; i <= total; i++) push(i)
-  } else {
-    if (cur <= 4) {
-      for (let i = 1; i <= 5; i++) push(i)
-      push('...')
-      push(total)
-    } else if (cur >= total - 3) {
-      push(1)
-      push('...')
-      for (let i = total - 4; i <= total; i++) push(i)
-    } else {
-      push(1)
-      push('...')
-      for (let i = cur - 1; i <= cur + 1; i++) push(i)
-      push('...')
-      push(total)
-    }
-  }
-  return pages
-})
 
 onMounted(() => {
   loadCategories()
@@ -255,28 +194,21 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 p-6">
-    <div class="flex flex-col gap-3">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <h1 class="text-2xl font-bold tracking-tight">
-            文章管理
-          </h1>
-          <Badge
-            variant="secondary"
-            class="rounded-[10px] px-3 py-1 bg-stone-100 text-stone-700 border-stone-200"
-          >
-            共 {{ total }} 篇
-          </Badge>
-        </div>
-        <Button
-          class="rounded-[12px] h-11 px-5 shadow-sm"
-          @click="router.push('/admin/content/posts/new')"
-        >
-          + 新建文章
-        </Button>
-      </div>
+  <AdminListPage
+    title="文章管理"
+    description="管理博客文章，支持搜索、筛选、批量操作。"
+    :count="total"
+  >
+    <template #actions>
+      <Button
+        class="rounded-[12px] h-11 px-5 shadow-sm"
+        @click="router.push('/admin/content/posts/new')"
+      >
+        + 新建文章
+      </Button>
+    </template>
 
+    <template #toolbar>
       <div class="flex flex-wrap items-center gap-3">
         <div class="flex-1 min-w-64">
           <Input
@@ -332,7 +264,7 @@ onMounted(() => {
           🔄 刷新
         </Button>
       </div>
-    </div>
+    </template>
 
     <div
       v-if="selectedIds.length > 0"
@@ -369,315 +301,114 @@ onMounted(() => {
       </div>
     </div>
 
-    <div class="rounded-[12px] border border-border bg-card overflow-hidden">
-      <div class="overflow-x-auto">
-        <div class="min-w-[1100px]">
-          <div class="grid grid-cols-[auto,auto,1fr,120px,110px,80px,80px,90px,70px,160px,130px] bg-stone-50/80 border-b border-border text-xs font-medium text-muted-foreground">
-            <div class="p-3 flex items-center justify-center w-11">
-              <Checkbox
-                :checked="isAllSelected"
-                :indeterminate="isSomeSelected"
-                @update:checked="toggleSelectAll"
-              />
-            </div>
-            <div class="p-3 w-16">
-              ID
-            </div>
-            <div class="p-3">
-              标题
-            </div>
-            <div class="p-3">
-              分类
-            </div>
-            <div class="p-3">
-              状态
-            </div>
-            <div class="p-3 text-center">
-              浏览
-            </div>
-            <div class="p-3 text-center">
-              点赞
-            </div>
-            <div class="p-3 text-center">
-              评论
-            </div>
-            <div class="p-3 text-center">
-              置顶
-            </div>
-            <div class="p-3">
-              发布时间
-            </div>
-            <div class="p-3 text-center">
-              操作
-            </div>
+    <AdminDataTable
+      :columns="columns"
+      :data="posts"
+      :loading="loading"
+      row-key="id"
+      selectable
+      :selected-ids="selectedIds"
+      @update:selected-ids="(ids) => selectedIds = ids as number[]"
+    >
+      <template #cell-id="{ row }">
+        #{{ (row as Post).id }}
+      </template>
+      <template #cell-title="{ row }">
+        <div class="min-w-0">
+          <div
+            class="font-medium text-foreground truncate"
+            :title="getLocalizedStr((row as Post).title)"
+          >
+            {{ getLocalizedStr((row as Post).title) || '(无标题)' }}
           </div>
-
-          <template v-if="loading">
-            <div
-              v-for="i in 5"
-              :key="`sk-${i}`"
-              class="grid grid-cols-[auto,auto,1fr,120px,110px,80px,80px,90px,70px,160px,130px] border-b border-border/50"
-            >
-              <div class="p-3 w-11 flex items-center justify-center">
-                <Skeleton class="h-4 w-4 rounded" />
-              </div>
-              <div class="p-3 w-16">
-                <Skeleton class="h-4 w-8 rounded" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-5 w-3/4 rounded mb-1" /><Skeleton class="h-3 w-1/2 rounded" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-5 w-20 rounded-full" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-5 w-16 rounded-full" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-4 w-10 rounded mx-auto" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-4 w-10 rounded mx-auto" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-4 w-10 rounded mx-auto" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-4 w-8 rounded mx-auto" />
-              </div>
-              <div class="p-3">
-                <Skeleton class="h-4 w-32 rounded" />
-              </div>
-              <div class="p-3 flex gap-2 justify-center">
-                <Skeleton class="h-8 w-14 rounded" /><Skeleton class="h-8 w-14 rounded" />
-              </div>
-            </div>
-          </template>
-
-          <template v-else-if="posts.length === 0">
-            <div class="py-20 text-center text-muted-foreground">
-              <div class="text-5xl mb-3 opacity-30">
-                📝
-              </div>
-              <div class="text-sm">
-                暂无文章数据
-              </div>
-            </div>
-          </template>
-
-          <template v-else>
-            <div
-              v-for="(p, idx) in posts"
-              :key="p.id"
-              class="grid grid-cols-[auto,auto,1fr,120px,110px,80px,80px,90px,70px,160px,130px] border-b border-border/50 text-sm"
-              :class="{ 'bg-stone-50/40': idx % 2 === 1 }"
-            >
-              <div class="p-3 flex items-center justify-center w-11">
-                <Checkbox
-                  :checked="isSelected(p.id)"
-                  @update:checked="toggleSelected(p.id)"
-                />
-              </div>
-              <div class="p-3 w-16 text-muted-foreground text-xs">
-                #{{ p.id }}
-              </div>
-              <div class="p-3 min-w-0">
-                <div
-                  class="font-medium text-foreground truncate"
-                  :title="getLocalizedStr(p.title)"
-                >
-                  {{ getLocalizedStr(p.title) || '(无标题)' }}
-                </div>
-                <div class="text-xs text-muted-foreground truncate mt-0.5">
-                  /{{ p.slug }}
-                </div>
-              </div>
-              <div class="p-3">
-                <template v-if="p.category">
-                  <Badge
-                    variant="secondary"
-                    class="rounded-[10px] font-normal"
-                    :style="{
-                      background: (p.category?.color ? `${p.category.color}20` : '#f5f5f4'),
-                      color: p.category?.color || '#78716c',
-                      border: p.category?.color ? `1px solid ${p.category.color}40` : '1px solid #e7e5e4'
-                    }"
-                  >
-                    {{ getLocalizedStr(p.category?.name) }}
-                  </Badge>
-                </template>
-                <span
-                  v-else
-                  class="text-xs text-muted-foreground"
-                >未分类</span>
-              </div>
-              <div class="p-3">
-                <Badge
-                  class="rounded-[10px] border font-normal"
-                  :class="statusBadgeVariant(p.status)"
-                >
-                  {{ statusLabel(p.status) }}
-                </Badge>
-              </div>
-              <div class="p-3 text-center text-muted-foreground">
-                {{ p.views }}
-              </div>
-              <div class="p-3 text-center text-muted-foreground">
-                {{ p.likes_count }}
-              </div>
-              <div class="p-3 text-center text-muted-foreground">
-                {{ p.comments_count }}
-              </div>
-              <div class="p-3 text-center">
-                <span
-                  v-if="p.is_pinned"
-                  class="text-amber-500"
-                >★</span>
-              </div>
-              <div class="p-3 text-xs text-muted-foreground">
-                {{ formatAdminDateTime(p.published_at ?? p.created_at) }}
-              </div>
-              <div class="p-3 flex items-center justify-center gap-1.5">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-8 rounded-[10px] text-xs px-3"
-                  @click="router.push(`/admin/content/posts/${p.id}/edit`)"
-                >
-                  编辑
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
-                  @click="confirmDelete(p.id)"
-                >
-                  删除
-                </Button>
-              </div>
-            </div>
-          </template>
+          <div class="text-xs text-muted-foreground truncate mt-0.5">
+            /{{ (row as Post).slug }}
+          </div>
         </div>
-      </div>
+      </template>
+      <template #cell-category="{ row }">
+        <template v-if="(row as Post).category">
+          <Badge
+            variant="secondary"
+            class="rounded-[10px] font-normal"
+            :style="{
+              background: ((row as Post).category?.color ? `${(row as Post).category!.color}20` : '#f5f5f4'),
+              color: (row as Post).category?.color || '#78716c',
+              border: (row as Post).category?.color ? `1px solid ${(row as Post).category!.color}40` : '1px solid #e7e5e4'
+            }"
+          >
+            {{ getLocalizedStr((row as Post).category?.name) }}
+          </Badge>
+        </template>
+        <span
+          v-else
+          class="text-xs text-muted-foreground"
+        >未分类</span>
+      </template>
+      <template #cell-status="{ row }">
+        <Badge
+          class="rounded-[10px] border font-normal"
+          :class="{
+            'bg-emerald-100 text-emerald-700 border-emerald-200': (row as Post).status === 'published',
+            'bg-amber-100 text-amber-700 border-amber-200': (row as Post).status === 'draft',
+            'bg-indigo-100 text-indigo-700 border-indigo-200': (row as Post).status === 'scheduled',
+            'bg-slate-100 text-slate-600 border-slate-200': (row as Post).status === 'archived'
+          }"
+        >
+          {{ { published: '已发布', draft: '草稿', scheduled: '定时', archived: '已归档' }[(row as Post).status] ?? (row as Post).status }}
+        </Badge>
+      </template>
+      <template #cell-is_pinned="{ row }">
+        <span
+          v-if="(row as Post).is_pinned"
+          class="text-amber-500"
+        >★</span>
+      </template>
+      <template #cell-published_at="{ row }">
+        {{ formatAdminDateTime((row as Post).published_at ?? (row as Post).created_at) }}
+      </template>
+      <template #actions="{ row }">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-8 rounded-[10px] text-xs px-3"
+          @click="router.push(`/admin/content/posts/${(row as Post).id}/edit`)"
+        >
+          编辑
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+          @click="confirmDelete((row as Post).id)"
+        >
+          删除
+        </Button>
+      </template>
+    </AdminDataTable>
 
-      <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-3 border-t border-border bg-stone-50/50">
-        <div class="flex items-center gap-2 text-sm">
-          <span class="text-muted-foreground">每页</span>
-          <Select
-            v-model="pageSize"
-            @update:model-value="() => { page.value = 1 }"
-          >
-            <SelectTrigger class="h-9 w-20 rounded-[10px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="10">
-                10
-              </SelectItem>
-              <SelectItem value="20">
-                20
-              </SelectItem>
-              <SelectItem value="50">
-                50
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <span class="text-muted-foreground">条，共 {{ total }} 条</span>
-        </div>
-        <div class="flex items-center gap-1">
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-9 rounded-[10px] px-3"
-            :disabled="page <= 1"
-            @click="goToPage(page - 1)"
-          >
-            上一页
-          </Button>
-          <template
-            v-for="(pn, i) in pageNumbers"
-            :key="i"
-          >
-            <Button
-              v-if="pn !== '...'"
-              variant="ghost"
-              size="sm"
-              class="h-9 w-9 rounded-[10px] p-0"
-              :class="{ 'bg-primary/15 text-primary hover:bg-primary/20': pn === page }"
-              @click="goToPage(pn as number)"
-            >
-              {{ pn }}
-            </Button>
-            <span
-              v-else
-              class="px-1 text-muted-foreground"
-            >...</span>
-          </template>
-          <Button
-            variant="outline"
-            size="sm"
-            class="h-9 rounded-[10px] px-3"
-            :disabled="page >= totalPages"
-            @click="goToPage(page + 1)"
-          >
-            下一页
-          </Button>
-        </div>
-      </div>
-    </div>
+    <template #pagination>
+      <AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+      />
+    </template>
 
-    <Dialog v-model:open="deleteDialogOpen">
-      <DialogContent class="rounded-[12px] max-w-md">
-        <DialogHeader>
-          <DialogTitle>确认删除文章</DialogTitle>
-          <DialogDescription>
-            此操作不可撤销，确定要删除这篇文章吗？
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter class="mt-4">
-          <Button
-            variant="outline"
-            class="rounded-[10px]"
-            @click="deleteDialogOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            class="rounded-[10px]"
-            @click="doDelete"
-          >
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <AdminConfirmDialog
+      v-model:open="deleteDialogOpen"
+      title="确认删除文章"
+      description="此操作不可撤销，确定要删除这篇文章吗？"
+      confirm-text="确认删除"
+      @confirm="doDelete"
+    />
 
-    <Dialog v-model:open="batchDeleteDialogOpen">
-      <DialogContent class="rounded-[12px] max-w-md">
-        <DialogHeader>
-          <DialogTitle>确认批量删除</DialogTitle>
-          <DialogDescription>
-            即将删除 <strong>{{ selectedIds.length }}</strong> 篇文章，此操作不可撤销，确定继续吗？
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter class="mt-4">
-          <Button
-            variant="outline"
-            class="rounded-[10px]"
-            @click="batchDeleteDialogOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            class="rounded-[10px]"
-            @click="doBatchDelete"
-          >
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </div>
+    <AdminConfirmDialog
+      v-model:open="batchDeleteDialogOpen"
+      title="确认批量删除"
+      :description="`即将删除 ${selectedIds.length} 篇文章，此操作不可撤销，确定继续吗？`"
+      confirm-text="确认删除"
+      @confirm="doBatchDelete"
+    />
+  </AdminListPage>
 </template>

@@ -5,7 +5,7 @@
 /* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import type { Post, PostCreate, Category, Tag } from '~~/types/api'
-import MarkdownEditor from './MarkdownEditor.vue'
+import I18nTabsEditor from './I18nTabsEditor.vue'
 import { usePosts } from '~~/composables/usePosts'
 import {
   fetchAdminCategories,
@@ -47,9 +47,9 @@ const draftLocalStorageKey = computed(() =>
 )
 
 const form = reactive({
-  title: '',
+  title: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   slug: '',
-  content: '',
+  content: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   status: 'draft' as 'draft' | 'published' | 'scheduled' | 'archived',
   scheduled_at: '',
   is_pinned: false,
@@ -58,11 +58,11 @@ const form = reactive({
   password: '',
   category_id: null as number | null,
   tag_ids: [] as number[],
-  excerpt: '',
+  excerpt: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   cover_image: '',
-  meta_title: '',
-  meta_description: '',
-  meta_keywords: ''
+  meta_title: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  meta_description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  meta_keywords: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>
 })
 
 const initialStateSnapshot = ref<string>('')
@@ -97,6 +97,27 @@ const getLocalizedStr = (v: string | Record<string, string> | null | undefined):
   return v.zh || v.en || Object.values(v)[0] || ''
 }
 
+// i18n dict 归一化：string 视为 zh；dict 补全 4 语言键（缺的补空串）
+const normalizeI18n = (v: string | Record<string, string> | null | undefined): Record<string, string> => {
+  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
+  return {
+    zh: v.zh ?? '',
+    en: v.en ?? '',
+    ja: v.ja ?? '',
+    zh_Hant: v.zh_Hant ?? ''
+  }
+}
+
+// i18n dict → 提交 payload：过滤空语言，全部为空则返回 undefined
+const toI18nPayload = (v: Record<string, string>): Record<string, string> | undefined => {
+  const out: Record<string, string> = {}
+  for (const [lang, val] of Object.entries(v)) {
+    if (val && val.trim()) out[lang] = val
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 const slugify = (text: string): string => {
   let s = text.trim().toLowerCase()
   s = s.replace(/[\s]+/g, '-')
@@ -107,7 +128,7 @@ const slugify = (text: string): string => {
 
 let slugManualEdit = false
 watch(
-  () => form.title,
+  () => form.title.zh,
   (val) => {
     if (!slugManualEdit && val) {
       form.slug = slugify(val)
@@ -142,20 +163,20 @@ const loadTags = async () => {
 }
 
 const applyInitialData = (data: Post) => {
-  form.title = getLocalizedStr(data.title)
+  form.title = normalizeI18n(data.title)
   form.slug = data.slug
-  form.content = getLocalizedStr(data.content)
+  form.content = normalizeI18n(data.content)
   form.status = data.status
   form.is_pinned = data.is_pinned
   form.allow_comments = data.allow_comments
   form.visibility = data.is_password_protected ? 'password' : 'public'
   form.category_id = data.category?.id ?? null
   form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
-  form.excerpt = getLocalizedStr(data.excerpt)
+  form.excerpt = normalizeI18n(data.excerpt)
   form.cover_image = data.cover_image || ''
-  form.meta_title = getLocalizedStr(data.meta_title)
-  form.meta_description = getLocalizedStr(data.meta_description)
-  form.meta_keywords = getLocalizedStr(data.meta_keywords)
+  form.meta_title = normalizeI18n(data.meta_title)
+  form.meta_description = normalizeI18n(data.meta_description)
+  form.meta_keywords = normalizeI18n(data.meta_keywords)
   slugManualEdit = !!data.slug
   nextTick(() => {
     initialStateSnapshot.value = JSON.stringify(form)
@@ -209,6 +230,13 @@ const restoreDraft = () => {
       const parsed = JSON.parse(raw)
       if (parsed?.form) {
         Object.assign(form, parsed.form)
+        // 兼容旧格式草稿（单语 string）：i18n 字段统一归一化为 dict
+        form.title = normalizeI18n(form.title)
+        form.content = normalizeI18n(form.content)
+        form.excerpt = normalizeI18n(form.excerpt)
+        form.meta_title = normalizeI18n(form.meta_title)
+        form.meta_description = normalizeI18n(form.meta_description)
+        form.meta_keywords = normalizeI18n(form.meta_keywords)
         slugManualEdit = !!form.slug
         toast.success('草稿已恢复')
       }
@@ -253,10 +281,9 @@ const handleCoverUpload = async (e: Event) => {
   if (!file) return
   coverUploading.value = true
   try {
-    const { data, error } = await useMediaUploadCover(file)
-    if (error.value) throw error.value
-    if (data.value?.url) {
-      form.cover_image = data.value.url
+    const res = await useMediaUploadCover(file)
+    if (res?.url) {
+      form.cover_image = res.url
       toast.success('封面上传成功')
     } else {
       toast.error('封面上传失败')
@@ -275,15 +302,15 @@ const clearCover = () => {
 
 const buildPayload = (overrideStatus?: string): PostCreate => {
   const payload: PostCreate = {
-    title: { zh: form.title },
+    title: (toI18nPayload(form.title) ?? { zh: form.title.zh }) as Record<string, string>,
     slug: form.slug,
-    content: { zh: form.content },
+    content: (toI18nPayload(form.content) ?? { zh: form.content.zh }) as Record<string, string>,
     status: (overrideStatus as PostCreate['status']) || form.status,
     is_pinned: form.is_pinned,
     allow_comments: form.allow_comments,
     category_id: form.category_id || undefined,
     tag_ids: form.tag_ids,
-    excerpt: form.excerpt ? { zh: form.excerpt } : undefined,
+    excerpt: toI18nPayload(form.excerpt),
     cover_image: form.cover_image || undefined
   }
   if (form.status === 'scheduled' && form.scheduled_at) {
@@ -292,23 +319,23 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
   if (form.visibility === 'password' && form.password) {
     payload.password = form.password
   }
-  if (form.meta_title) payload.meta_title = { zh: form.meta_title }
-  if (form.meta_description) payload.meta_description = { zh: form.meta_description }
-  if (form.meta_keywords) payload.meta_keywords = { zh: form.meta_keywords }
+  payload.meta_title = toI18nPayload(form.meta_title)
+  payload.meta_description = toI18nPayload(form.meta_description)
+  payload.meta_keywords = toI18nPayload(form.meta_keywords)
   return payload
 }
 
 const validateBase = (): boolean => {
-  if (!form.title.trim()) {
-    toast.error('请输入文章标题')
+  if (!form.title.zh?.trim()) {
+    toast.error('请输入文章标题（简体中文为主语言）')
     return false
   }
   if (!form.slug.trim()) {
     toast.error('请输入文章 slug')
     return false
   }
-  if (!form.content.trim()) {
-    toast.error('请输入文章内容')
+  if (!form.content.zh?.trim()) {
+    toast.error('请输入文章内容（简体中文为主语言）')
     return false
   }
   if (form.status === 'scheduled' && !form.scheduled_at) {
@@ -328,15 +355,13 @@ const saveDraft = async () => {
   try {
     const payload = buildPayload('draft')
     if (props.mode === 'new') {
-      const { data, error } = await createPost(payload)
-      if (error.value) throw error.value
+      const data = await createPost(payload)
       toast.success('草稿保存成功')
-      emits('submitSuccess', data.value, true)
+      emits('submitSuccess', data, true)
     } else if (props.postId) {
-      const { data, error } = await updatePost(props.postId, payload)
-      if (error.value) throw error.value
+      const data = await updatePost(props.postId, payload)
       toast.success('草稿保存成功')
-      emits('submitSuccess', data.value, false)
+      emits('submitSuccess', data, false)
     }
   } catch (e) {
     toast.error(e instanceof Error ? e.message : '保存草稿失败')
@@ -352,15 +377,13 @@ const publishPost = async () => {
     const publishStatus = form.status === 'archived' ? 'archived' : form.status
     const payload = buildPayload(publishStatus)
     if (props.mode === 'new') {
-      const { data, error } = await createPost(payload)
-      if (error.value) throw error.value
+      const data = await createPost(payload)
       localStorage.removeItem(draftLocalStorageKey.value)
-      emits('submitSuccess', data.value, true)
+      emits('submitSuccess', data, true)
     } else if (props.postId) {
-      const { data, error } = await updatePost(props.postId, payload)
-      if (error.value) throw error.value
+      const data = await updatePost(props.postId, payload)
       localStorage.removeItem(draftLocalStorageKey.value)
-      emits('submitSuccess', data.value, false)
+      emits('submitSuccess', data, false)
     }
   } catch (e) {
     toast.error(e instanceof Error ? e.message : '发布失败')
@@ -392,6 +415,21 @@ const onBeforeUnload = (e: BeforeUnloadEvent) => {
   }
 }
 
+// 防御性兜底：若父组件异步传入 initialData（如编辑页先 loading 再赋值），
+// 在 onMounted 之后才就绪，需用 watch 补触发一次初始化，避免内容丢失。
+watch(
+  () => props.initialData,
+  (val) => {
+    if (val && !hasAppliedInitial.value) {
+      applyInitialData(val)
+      hasAppliedInitial.value = true
+    }
+  },
+  { immediate: false }
+)
+
+const hasAppliedInitial = ref(false)
+
 onMounted(async () => {
   document.addEventListener('keydown', onKeyDown)
   window.addEventListener('beforeunload', onBeforeUnload as EventListener)
@@ -401,6 +439,7 @@ onMounted(async () => {
 
   if (props.initialData) {
     applyInitialData(props.initialData)
+    hasAppliedInitial.value = true
   } else {
     initialStateSnapshot.value = JSON.stringify(form)
   }
@@ -454,10 +493,12 @@ onBeforeUnmount(() => {
     </Alert>
 
     <div class="flex flex-col gap-2">
-      <Input
+      <I18nTabsEditor
         v-model="form.title"
-        placeholder="输入文章标题..."
-        class="text-2xl font-semibold h-14 px-5 rounded-[12px] border-border"
+        kind="text"
+        label="标题"
+        placeholder="输入文章标题"
+        required
       />
       <Input
         v-model="form.slug"
@@ -469,9 +510,12 @@ onBeforeUnmount(() => {
 
     <div class="flex flex-col lg:flex-row gap-4">
       <div class="flex-1 lg:w-3/5 min-w-0">
-        <MarkdownEditor
+        <I18nTabsEditor
           v-model="form.content"
-          placeholder="开始撰写文章内容..."
+          kind="markdown"
+          label="正文"
+          placeholder="开始撰写文章内容"
+          required
         />
       </div>
 
@@ -675,11 +719,11 @@ onBeforeUnmount(() => {
 
               <div>
                 <Label class="text-xs text-muted-foreground mb-1 block">摘要</Label>
-                <Textarea
+                <I18nTabsEditor
                   v-model="form.excerpt"
-                  rows="3"
-                  placeholder="输入文章摘要，不填则自动截取前 180 字..."
-                  class="rounded-[10px] text-sm resize-y"
+                  kind="textarea"
+                  :rows="3"
+                  placeholder="输入文章摘要，不填则自动截取前 180 字"
                 />
               </div>
             </CardContent>
@@ -743,30 +787,24 @@ onBeforeUnmount(() => {
           <Card class="rounded-[12px] border-border shadow-none">
             <CardContent class="p-5 flex flex-col gap-3">
               <Label class="text-sm font-medium">SEO 设置</Label>
-              <div>
-                <Label class="text-xs text-muted-foreground mb-1 block">Meta Title</Label>
-                <Input
-                  v-model="form.meta_title"
-                  placeholder="SEO 标题"
-                  class="h-9 rounded-[10px] text-sm"
-                />
-              </div>
-              <div>
-                <Label class="text-xs text-muted-foreground mb-1 block">Meta Description</Label>
-                <Input
-                  v-model="form.meta_description"
-                  placeholder="SEO 描述"
-                  class="h-9 rounded-[10px] text-sm"
-                />
-              </div>
-              <div>
-                <Label class="text-xs text-muted-foreground mb-1 block">Meta Keywords</Label>
-                <Input
-                  v-model="form.meta_keywords"
-                  placeholder="SEO 关键词，逗号分隔"
-                  class="h-9 rounded-[10px] text-sm"
-                />
-              </div>
+              <I18nTabsEditor
+                v-model="form.meta_title"
+                kind="text"
+                label="Meta Title"
+                placeholder="SEO 标题"
+              />
+              <I18nTabsEditor
+                v-model="form.meta_description"
+                kind="text"
+                label="Meta Description"
+                placeholder="SEO 描述"
+              />
+              <I18nTabsEditor
+                v-model="form.meta_keywords"
+                kind="text"
+                label="Meta Keywords"
+                placeholder="SEO 关键词，逗号分隔"
+              />
             </CardContent>
           </Card>
         </div>

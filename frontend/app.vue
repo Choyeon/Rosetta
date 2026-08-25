@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { useTheme } from '~/composables/useTheme'
 import { useScrollReveal } from '~/composables/useReadingUX'
 import { useAuthStore } from '~~/stores/auth'
+import { useToast } from '~~/composables/useToast'
 import ThemeRippleOverlay from '~~/components/ThemeRippleOverlay.vue'
 import { TooltipProvider } from '~~/components/ui/tooltip'
 
@@ -13,6 +14,19 @@ useTheme()
 useScrollReveal()
 
 const authStore = useAuthStore()
+const toast = useToast()
+
+onErrorCaptured((err) => {
+  if (import.meta.client) {
+    const msg = err instanceof Error ? err.message : String(err)
+    // 防止重复提示：由 error-handler.client.ts 插件处理的错误已经会弹 toast
+    if (!msg.includes('Must be called at the top of a `setup` function')) {
+      toast.error(msg || '发生未知错误')
+    }
+  }
+  // 不阻止错误继续向上传播，保留控制台堆栈
+  return false
+})
 
 onMounted(() => {
   if (import.meta.client) {

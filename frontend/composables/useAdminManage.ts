@@ -205,7 +205,9 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
   }
 
   // status='all' 合并模式：每种 status 拉取足够大的一页，客户端统一处理
-  const bigBatch = Math.max(200, pageSize * 20)
+  // 注意：后端 list_posts 的 page_size 上限为 le=100（PaginatedResponse 同为 le=100），
+  // 超过会 422。这里封顶 100，避免触发参数校验失败。
+  const bigBatch = Math.min(100, Math.max(50, pageSize * 20))
   const results = await Promise.allSettled(
     statuses.map(s =>
       apiFetch<AdminPaged<T>>('/blog/posts', {
@@ -366,6 +368,7 @@ export interface AdminUserRow {
   is_active: boolean
   is_staff: boolean
   is_superuser: boolean
+  role?: string | null
   is_banned: boolean
   created_at: string | null
   last_login: string | null
@@ -373,10 +376,28 @@ export interface AdminUserRow {
   comments_count: number
 }
 
+/** RBAC 角色定义（应与后端 backend.core.rbac 保持一致） */
+export const RBAC_ROLES = [
+  { value: 'super_admin', label: '超级管理员' },
+  { value: 'admin', label: '管理员' },
+  { value: 'editor', label: '编辑' },
+  { value: 'author', label: '作者' },
+  { value: 'contributor', label: '投稿者' },
+  { value: 'subscriber', label: '订阅者' }
+] as const
+
+export type RbacRoleValue = (typeof RBAC_ROLES)[number]['value']
+
+export function rbacRoleLabel(role?: string | null): string {
+  return RBAC_ROLES.find((r) => r.value === role)?.label ?? '订阅者'
+}
+
 export interface AdminUserQuery {
   page?: number
   page_size?: number
   search?: string
+  sort?: string
+  order?: string
 }
 
 /** GET /api/users —— users.router 挂在 /api/users，@router.get("/") 分页列表 */
@@ -386,6 +407,8 @@ export function fetchAdminUsers(params: AdminUserQuery): Promise<AdminPaged<Admi
     page_size: params.page_size ?? 20
   }
   if (params.search && params.search.trim()) query.search = params.search.trim()
+  if (params.sort) query.sort = params.sort
+  if (params.order) query.order = params.order
   return apiFetch<AdminPaged<AdminUserRow>>('/users', { query })
 }
 
@@ -398,6 +421,7 @@ export interface AdminUserPatchResult {
   is_active: boolean
   is_staff: boolean
   is_superuser: boolean
+  role?: string | null
   is_banned: boolean
 }
 
@@ -415,6 +439,17 @@ export function updateAdminUserFlags(
   return apiFetch<AdminUserPatchResult>(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: flags
+  })
+}
+
+/** PATCH /api/admin/users/{id} 设置 RBAC 角色（后端 admin.router 已支持 role 字段） */
+export function updateAdminUserRole(
+  userId: number,
+  role: string
+): Promise<AdminUserPatchResult> {
+  return apiFetch<AdminUserPatchResult>(`/admin/users/${userId}`, {
+    method: 'PATCH',
+    body: { role }
   })
 }
 
@@ -456,16 +491,16 @@ export function deleteAdminUser(userId: number): Promise<ApiMessage> {
  * 注意：不要走 /admin/users/{id}，admin.router 当前未提供 GET 详情端点。
  */
 export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
-  return apiFetch<ApiEnvelope<AdminUserRow>>(`/users/${id}`).then(r => r.data)
+  return apiFetch<AdminUserRow>(`/users/${id}`)
 }
 
 /**
- * PUT /api/admin/users/{id} —— 后端 admin.router 当前仅提供 PATCH（标志位更新），未提供 PUT（全量信息更新）。
- * 降级：仍然尝试 PATCH 主字段（nickname/email 等可能不被后端接受，但比 404 好）；
- * 真正的 profile 更新应在用户自身的 /users/me 端点完成。
+ * PUT /api/admin/users/{id} —— 后端 admin.router 提供 PUT 全量更新（admin_update_user_full）。
+ * 接受 AdminUserUpdateFull：nickname/email/website/github/qq/bio/avatar/title_id/
+ * is_staff/is_superuser/is_active/is_banned/role/username。
  */
 export function updateAdminUserDetail(id: number, payload: Record<string, unknown>): Promise<AdminUserRow> {
-  return apiFetch<ApiEnvelope<AdminUserRow>>(`/admin/users/${id}`, { method: 'PATCH', body: payload }).then(r => r.data)
+  return apiFetch<AdminUserRow>(`/admin/users/${id}`, { method: 'PUT', body: payload })
 }
 
 // ==================== 分类 / 标签管理 ====================
@@ -477,6 +512,7 @@ export interface AdminCategory {
   description: string | null
   icon: string | null
   color: string | null
+  sort_order: number
   created_at: string | null
   post_count: number
 }
@@ -492,23 +528,44 @@ export interface AdminTag {
   post_count: number
 }
 
+/** 多语言值：后端以 dict {zh,en,ja,zh_Hant} 存储；前端可传纯 zh 字符串（兼容旧逻辑）或完整 dict */
+export type I18nValue = string | Record<string, string>
+
 export interface AdminTaxonomyPayload {
-  /** 名称；后端为多语言 dict，这里以 zh 为主语言发送 */
-  name: string
+  /** 名称；后端为多语言 dict。可传 zh 字符串或完整 {zh,en,ja,zh_Hant} dict */
+  name: I18nValue
   slug?: string
-  description?: string
+  description?: I18nValue
   icon?: string
   color?: string
   is_active?: boolean
+  sort_order?: number
 }
 
-/** 多语言字段包装：{ zh: name } */
-function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
-  const body: Record<string, unknown> = { name: { zh: payload.name } }
-  if (payload.slug && payload.slug.trim()) body.slug = payload.slug.trim()
-  if (payload.description && payload.description.trim()) {
-    body.description = { zh: payload.description.trim() }
+/** 把多语言字段规整为后端期望的 dict：收到 string 视为 zh，收到 dict 原样保留（不覆盖其他语言） */
+function toI18nDict(v: I18nValue | undefined, fallback = ''): Record<string, string> | undefined {
+  if (v == null) {
+    return fallback ? { zh: fallback } : undefined
   }
+  if (typeof v === 'string') {
+    return v.trim() ? { zh: v.trim() } : (fallback ? { zh: fallback } : undefined)
+  }
+  // dict：过滤空值，全部为空则回退
+  const out: Record<string, string> = {}
+  for (const [k, val] of Object.entries(v)) {
+    if (val && String(val).trim()) out[k] = String(val).trim()
+  }
+  return Object.keys(out).length > 0 ? out : (fallback ? { zh: fallback } : undefined)
+}
+
+/** 多语言字段包装：name/description 直接发 dict（兼容全语言），不再强制只用 zh 覆盖 */
+function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
+  const body: Record<string, unknown> = {}
+  const nameDict = toI18nDict(payload.name)
+  if (nameDict) body.name = nameDict
+  if (payload.slug && payload.slug.trim()) body.slug = payload.slug.trim()
+  const descDict = toI18nDict(payload.description)
+  if (descDict) body.description = descDict
   if (payload.icon && payload.icon.trim()) body.icon = payload.icon.trim()
   if (payload.color && payload.color.trim()) body.color = payload.color.trim()
   if (payload.is_active !== undefined) body.is_active = payload.is_active
@@ -788,11 +845,10 @@ export interface AdminAnnouncement {
   id: number
   type: 'info' | 'warning' | 'error' | 'success'
   title: string | Record<string, string>
-  content_md?: string | Record<string, string>
-  is_pinned: boolean
+  content?: string | Record<string, string>
+  is_active: boolean
   is_dismissible: boolean
-  is_sticky: boolean
-  active: boolean
+  sort_order: number
   created_at: string | null
 }
 
@@ -818,12 +874,14 @@ export function fetchAdminAnnouncements(params: { page?: number, page_size?: num
 
 /** POST /api/admin/announcements */
 export function createAdminAnnouncement(payload: Record<string, unknown>): Promise<AdminAnnouncement> {
-  return apiFetch<ApiEnvelope<AdminAnnouncement>>('/admin/announcements', { method: 'POST', body: payload }).then(r => r.data)
+  return apiFetch<Record<string, unknown>>('/admin/announcements', { method: 'POST', body: payload })
+    .then(r => (r?.data as AdminAnnouncement) ?? (r as AdminAnnouncement))
 }
 
 /** PUT /api/admin/announcements/{id} */
 export function updateAdminAnnouncement(id: number, payload: Record<string, unknown>): Promise<AdminAnnouncement> {
-  return apiFetch<ApiEnvelope<AdminAnnouncement>>(`/admin/announcements/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+  return apiFetch<Record<string, unknown>>(`/admin/announcements/${id}`, { method: 'PUT', body: payload })
+    .then(r => (r?.data as AdminAnnouncement) ?? (r as AdminAnnouncement))
 }
 
 /** DELETE /api/admin/announcements/{id} */
@@ -854,12 +912,14 @@ export function fetchAdminActivities(params: { page?: number, page_size?: number
 
 /** POST /api/admin/activities */
 export function createAdminActivity(payload: Record<string, unknown>): Promise<AdminActivity> {
-  return apiFetch<ApiEnvelope<AdminActivity>>('/admin/activities', { method: 'POST', body: payload }).then(r => r.data)
+  return apiFetch<Record<string, unknown>>('/admin/activities', { method: 'POST', body: payload })
+    .then(r => (r?.data as AdminActivity) ?? (r as AdminActivity))
 }
 
 /** PUT /api/admin/activities/{id} */
 export function updateAdminActivity(id: number, payload: Record<string, unknown>): Promise<AdminActivity> {
-  return apiFetch<ApiEnvelope<AdminActivity>>(`/admin/activities/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+  return apiFetch<Record<string, unknown>>(`/admin/activities/${id}`, { method: 'PUT', body: payload })
+    .then(r => (r?.data as AdminActivity) ?? (r as AdminActivity))
 }
 
 /** DELETE /api/admin/activities/{id} */
@@ -883,15 +943,15 @@ export interface AdminUserTitle {
  * = /api/admin/titles ✔
  */
 export function fetchAdminUserTitles(): Promise<AdminUserTitle[]> {
-  return apiFetch<ApiEnvelope<AdminUserTitle[]>>('/admin/titles').then(r => r.data)
+  return apiFetch<AdminUserTitle[]>('/admin/titles')
 }
 
 export function createAdminUserTitle(payload: Record<string, unknown>): Promise<AdminUserTitle> {
-  return apiFetch<ApiEnvelope<AdminUserTitle>>('/admin/titles', { method: 'POST', body: payload }).then(r => r.data)
+  return apiFetch<AdminUserTitle>('/admin/titles', { method: 'POST', body: payload })
 }
 
 export function updateAdminUserTitle(id: number, payload: Record<string, unknown>): Promise<AdminUserTitle> {
-  return apiFetch<ApiEnvelope<AdminUserTitle>>(`/admin/titles/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+  return apiFetch<AdminUserTitle>(`/admin/titles/${id}`, { method: 'PUT', body: payload })
 }
 
 export function deleteAdminUserTitle(id: number): Promise<ApiMessage> {
@@ -995,17 +1055,18 @@ export interface AdminPhoto {
  * 公开接口在 /api/gallery/albums，管理 CRUD 一律走 /api/admin/gallery/*
  */
 export function fetchAdminAlbums(params: { page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminAlbum>> {
-  return apiFetch<AdminPaged<AdminAlbum>>('/admin/gallery/albums', { query: { page: 1, page_size: 20, ...params } })
+  return apiFetch<AdminPaged<Record<string, unknown>>>('/admin/gallery/albums', { query: { page: 1, page_size: 20, ...params } })
+    .then(raw => ({ ...raw, items: (raw.items ?? []).map(mapAlbum) }))
 }
 
 /** POST /api/admin/gallery/albums */
 export function createAdminAlbum(payload: Record<string, unknown>): Promise<AdminAlbum> {
-  return apiFetch<ApiEnvelope<AdminAlbum>>('/admin/gallery/albums', { method: 'POST', body: payload }).then(r => r.data)
+  return apiFetch<Record<string, unknown>>('/admin/gallery/albums', { method: 'POST', body: albumBody(payload) }).then(mapAlbum)
 }
 
 /** PUT /api/admin/gallery/albums/{id} */
 export function updateAdminAlbum(id: number, payload: Record<string, unknown>): Promise<AdminAlbum> {
-  return apiFetch<ApiEnvelope<AdminAlbum>>(`/admin/gallery/albums/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+  return apiFetch<Record<string, unknown>>(`/admin/gallery/albums/${id}`, { method: 'PUT', body: albumBody(payload) }).then(mapAlbum)
 }
 
 /** DELETE /api/admin/gallery/albums/{id} */
@@ -1129,19 +1190,88 @@ function friendLinkBody(payload: Record<string, unknown>): Record<string, unknow
 }
 
 export function fetchAdminFriendLinks(): Promise<AdminFriendLink[]> {
-  return apiFetch<AdminFriendLink[]>('/friend-links?all=true')
+  return apiFetch<Record<string, unknown>[]>('/friend-links?all=true').then(list => (list ?? []).map(mapFriendLink))
 }
 
 export function createAdminFriendLink(payload: Record<string, unknown>): Promise<AdminFriendLink> {
-  return apiFetch<AdminFriendLink>('/friend-links', { method: 'POST', body: friendLinkBody(payload) })
+  return apiFetch<Record<string, unknown>>('/friend-links', { method: 'POST', body: friendLinkBody(payload) }).then(mapFriendLink)
 }
 
 export function updateAdminFriendLink(id: number, payload: Record<string, unknown>): Promise<AdminFriendLink> {
-  return apiFetch<AdminFriendLink>(`/friend-links/${id}`, { method: 'PUT', body: friendLinkBody(payload) })
+  return apiFetch<Record<string, unknown>>(`/friend-links/${id}`, { method: 'PUT', body: friendLinkBody(payload) }).then(mapFriendLink)
 }
 
 export function deleteAdminFriendLink(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/friend-links/${id}`, { method: 'DELETE' })
+}
+
+// ==================== 响应形状适配（后端 → 前端约定） ====================
+// 后端部分接口返回裸对象 / 裸列表 / {success, webhook|job} 等非标准信封，
+// 这里统一映射为前端页面期望的形状，避免页面拿到 undefined / 字段错位。
+
+function mapWebhook(raw: Record<string, unknown>): AdminWebhook {
+  const r = raw as Record<string, unknown>
+  return {
+    id: Number(r.id) || 0,
+    name: String(r.name ?? ''),
+    url: String(r.url ?? ''),
+    secret: (r.secret as string | null) ?? null,
+    events: Array.isArray(r.events) ? (r.events as string[]) : [],
+    active: typeof r.is_active === 'boolean' ? r.is_active : Boolean(r.active),
+    provider: (r.provider as AdminWebhook['provider']) ?? 'generic',
+    created_at: (r.created_at as string | null) ?? null,
+    last_triggered_at: (r.last_triggered_at as string | null) ?? null
+  }
+}
+
+function mapAlbum(raw: Record<string, unknown>): AdminAlbum {
+  const r = raw as Record<string, unknown>
+  return {
+    id: Number(r.id) || 0,
+    title: (r.title as AdminAlbum['title']) ?? '',
+    description: (r.description as AdminAlbum['description']) ?? null,
+    cover_url: (r.cover as string | null) ?? null,
+    is_public: typeof r.is_published === 'boolean' ? r.is_published : true,
+    photos_count: Number(r.photo_count ?? 0),
+    created_at: (r.created_at as string | null) ?? null
+  }
+}
+
+function albumBody(payload: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...payload }
+  if ('cover_url' in body) { body.cover = body.cover_url; delete body.cover_url }
+  if ('is_public' in body) { body.is_published = body.is_public; delete body.is_public }
+  if (body.title && typeof body.title === 'object') {
+    const t = body.title as Record<string, string>
+    body.title = t.zh ?? Object.values(t)[0] ?? ''
+  }
+  if (body.description && typeof body.description === 'object') {
+    const d = body.description as Record<string, string>
+    body.description = d.zh ?? Object.values(d)[0] ?? null
+  }
+  return body
+}
+
+function mapFriendLink(raw: Record<string, unknown>): AdminFriendLink {
+  const r = raw as Record<string, unknown>
+  let name = ''
+  const nr = r.name
+  if (typeof nr === 'string') name = nr
+  else if (nr && typeof nr === 'object') {
+    const o = nr as Record<string, string>
+    name = o.zh ?? o.en ?? Object.values(o)[0] ?? ''
+  }
+  const isActive = typeof r.is_active === 'boolean' ? r.is_active : false
+  return {
+    id: Number(r.id) || 0,
+    name,
+    url: String(r.url ?? ''),
+    logo: (r.logo as string | null) ?? null,
+    description: (r.description as string | null) ?? null,
+    sort_order: Number(r.order ?? r.sort_order ?? 0),
+    status: isActive ? 'approved' : 'pending',
+    created_at: (r.created_at as string | null) ?? null
+  }
 }
 
 // ==================== Webhook ====================
@@ -1160,17 +1290,19 @@ export interface AdminWebhook {
 
 /** GET /api/webhooks —— webhook.router 挂在 /api/webhooks，@router.get("") */
 export function fetchAdminWebhooks(): Promise<AdminWebhook[]> {
-  return apiFetch<ApiEnvelope<AdminWebhook[]>>('/webhooks').then(r => r.data)
+  return apiFetch<AdminPaged<Record<string, unknown>>>('/webhooks').then(r => (r.items ?? []).map(mapWebhook))
 }
 
-/** POST /api/webhooks */
+/** POST /api/webhooks —— 后端返回 {success, message, webhook} */
 export function createAdminWebhook(payload: Record<string, unknown>): Promise<AdminWebhook> {
-  return apiFetch<ApiEnvelope<AdminWebhook>>('/webhooks', { method: 'POST', body: payload }).then(r => r.data)
+  return apiFetch<{ success: boolean, webhook: Record<string, unknown> }>('/webhooks', { method: 'POST', body: payload })
+    .then(r => mapWebhook(r.webhook))
 }
 
-/** PUT /api/webhooks/{id} */
-export function updateAdminWebhook(id: number, payload: Record<string, unknown>): Promise<AdminWebhook> {
-  return apiFetch<ApiEnvelope<AdminWebhook>>(`/webhooks/${id}`, { method: 'PUT', body: payload }).then(r => r.data)
+/** PUT /api/webhooks/{id} —— 后端仅返回 {success, message}，无 webhook 体，返回 undefined 由页面刷新列表 */
+export function updateAdminWebhook(id: number, payload: Record<string, unknown>): Promise<AdminWebhook | undefined> {
+  return apiFetch<{ success: boolean, webhook?: Record<string, unknown>, message?: string }>(`/webhooks/${id}`, { method: 'PUT', body: payload })
+    .then(r => (r.webhook ? mapWebhook(r.webhook) : undefined))
 }
 
 /** DELETE /api/webhooks/{id} */
@@ -1317,7 +1449,25 @@ export interface AdminPerformanceSummary {
  * 内部 @router.get("/performance/summary") = /api/admin/performance/summary ✔
  */
 export function fetchAdminPerformanceSummary(): Promise<AdminPerformanceSummary> {
-  return apiFetch<ApiEnvelope<AdminPerformanceSummary>>('/admin/performance/summary').then(r => r.data)
+  // 后端返回裸对象 { last_24h: {...}, last_7d: {...}, timestamp }，与页面期望的扁平结构不同，这里做映射。
+  return apiFetch<Record<string, unknown>>('/admin/performance/summary').then((raw) => {
+    const d = (raw?.last_24h ?? {}) as Record<string, unknown>
+    const eps = Array.isArray(d.slow_endpoints) ? (d.slow_endpoints as Array<Record<string, unknown>>) : []
+    return {
+      total_requests_24h: Number(d.total_requests ?? 0),
+      // 后端 error_rate 已是百分比数值（如 13.29），页面会再 ×100，故存为小数。
+      error_rate_24h: Number(d.error_rate ?? 0) / 100,
+      // 后端无 p50，用 avg 近似
+      p50_ms: Number(d.avg_response_time_ms ?? 0),
+      p95_ms: Number(d.p95_response_time_ms ?? 0),
+      p99_ms: Number(d.p99_response_time_ms ?? 0),
+      top_slow_paths: eps.map(e => ({
+        path: String(e.endpoint ?? ''),
+        count: Number(e.request_count ?? 0),
+        avg_ms: Number(e.avg_response_time_ms ?? 0)
+      }))
+    }
+  })
 }
 
 /** GET /api/admin/performance/slow —— performance.router @router.get("/performance/slow") */
@@ -1373,7 +1523,18 @@ export interface AdminMigrationStatus {
  * 注意：这里的"迁移"是跨库数据迁移（Migration Manager），不是 Alembic schema 迁移。
  */
 export function fetchAdminMigrationStatus(): Promise<AdminMigrationStatus> {
-  return apiFetch<ApiEnvelope<AdminMigrationStatus>>('/admin/migration/status').then(r => r.data)
+  // 后端返回 {success, job}（跨库迁移任务管理器，非 Alembic 版本），job 通常为 null。
+  return apiFetch<{ success: boolean, job: Record<string, unknown> | null }>('/admin/migration/status')
+    .then(r => {
+      const job = (r.job ?? {}) as Record<string, unknown>
+      return {
+        current_version: String(job.current_version ?? ''),
+        latest_version: String(job.latest_version ?? ''),
+        is_latest: Boolean(job.is_latest ?? true),
+        pending: (Array.isArray(job.pending) ? job.pending : []) as AdminMigrationStatus['pending'],
+        applied: (Array.isArray(job.applied) ? job.applied : []) as AdminMigrationStatus['applied']
+      }
+    })
 }
 
 /**
@@ -1475,19 +1636,18 @@ export function fetchNotifications(params: {
  * 同时后端还有 @router.get("/unread-count")，这里使用 /stats 信息更全。
  */
 export function fetchNotificationStats(): Promise<NotificationsStats> {
-  return silentApiFetch<NotificationsStats>('/notifications/stats').then((r) => {
-    const stats = r as Record<string, unknown> | null
-    if (stats && (typeof stats.unread_count === 'number' || typeof stats.total_count === 'number')) {
-      return {
-        unread_count: Number(stats.unread_count) || 0,
-        total_count: Number(stats.total_count ?? 0) || 0,
-        read: Number(stats.read ?? 0) || 0,
-        type_distribution: stats.type_distribution && typeof stats.type_distribution === 'object'
-          ? stats.type_distribution as Record<string, number>
-          : {}
-      }
+  return silentApiFetch<Record<string, unknown>>('/notifications/stats').then((r) => {
+    const s = (r ?? {}) as Record<string, unknown>
+    const num = (v: unknown, d = 0): number => (typeof v === 'number' ? v : Number(v ?? d)) || d
+    return {
+      // 后端返回 {total, unread, read}，页面读取 unread_count/total_count
+      unread_count: num(s.unread_count ?? s.unread ?? 0),
+      total_count: num(s.total_count ?? s.total ?? 0),
+      read: num(s.read ?? 0),
+      type_distribution: (s.type_distribution && typeof s.type_distribution === 'object'
+        ? s.type_distribution
+        : {}) as Record<string, number>
     }
-    return { unread_count: 0, total_count: 0, read: 0, type_distribution: {} }
   })
 }
 
