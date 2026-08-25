@@ -20,7 +20,9 @@ const forwardedProps = useForwardProps(delegatedProps)
       props.class
     )"
   >
-    <span class="truncate">
+    <!-- 容器：inline-flex，保证 icon + label 始终同一行；子 span 内部 truncate 处理超长文本。
+         修复：原 class="truncate" 是 block，会把前/后 icon 挤到另一行造成垂直堆叠 -->
+    <span class="inline-flex items-center gap-1 min-w-0 max-w-full leading-none align-middle">
       <slot />
     </span>
   </TabsTrigger>
