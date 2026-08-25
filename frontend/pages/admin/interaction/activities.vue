@@ -25,7 +25,10 @@
         ]"
         @click="setType(opt.value)"
       >
-        <span>{{ opt.icon }}</span>
+        <component
+          :is="opt.icon"
+          class="size-4"
+        />
         <span>{{ opt.label }}</span>
       </div>
     </div>
@@ -81,11 +84,14 @@
         <div class="relative z-10 shrink-0">
           <div
             :class="[
-              'size-10 rounded-full flex items-center justify-center text-lg border-2 border-background',
+              'size-10 rounded-full flex items-center justify-center border-2 border-background',
               typeBgClass(a.type)
             ]"
           >
-            {{ typeIcon(a.type) }}
+            <component
+              :is="typeIcon(a.type)"
+              class="size-4.5"
+            />
           </div>
         </div>
 
@@ -312,7 +318,8 @@ import { Separator } from '~~/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Label } from '~~/components/ui/label'
 import {
-  Plus, Info, Pencil, Trash2, ExternalLink, Loader2
+  Plus, Info, Pencil, Trash2, ExternalLink, Loader2,
+  List, FileText, Image as ImageIcon, MessageCircle, ThumbsUp, MessageSquareQuote
 } from '@lucide/vue'
 import {
   fetchAdminActivities,
@@ -328,12 +335,12 @@ definePageMeta({ ssr: false, layout: 'admin' })
 const toast = useToast()
 
 const typeOptions = [
-  { value: '', label: '全部', icon: '📋' },
-  { value: 'post', label: '文章', icon: '📄' },
-  { value: 'card', label: '卡片', icon: '🖼' },
-  { value: 'comment', label: '评论', icon: '💬' },
-  { value: 'like', label: '点赞', icon: '👍' },
-  { value: 'status', label: '说说', icon: '💭' }
+  { value: '', label: '全部', icon: List },
+  { value: 'post', label: '文章', icon: FileText },
+  { value: 'card', label: '卡片', icon: ImageIcon },
+  { value: 'comment', label: '评论', icon: MessageCircle },
+  { value: 'like', label: '点赞', icon: ThumbsUp },
+  { value: 'status', label: '说说', icon: MessageSquareQuote }
 ]
 
 const loading = ref(false)
@@ -379,14 +386,14 @@ function displayField(v: unknown): string {
   return String(v)
 }
 
-function typeIcon(t: string): string {
+function typeIcon(t: string) {
   switch (t) {
-    case 'post': return '📄'
-    case 'card': return '🖼'
-    case 'comment': return '💬'
-    case 'like': return '👍'
-    case 'status': return '💭'
-    default: return '💭'
+    case 'post': return FileText
+    case 'card': return ImageIcon
+    case 'comment': return MessageCircle
+    case 'like': return ThumbsUp
+    case 'status': return MessageSquareQuote
+    default: return MessageSquareQuote
   }
 }
 

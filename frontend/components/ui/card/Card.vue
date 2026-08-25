@@ -11,7 +11,7 @@ const props = defineProps<{
   <div
     :class="
       cn(
-        'card-surface lift-hover overflow-hidden text-card-foreground',
+        'card-surface overflow-hidden text-card-foreground',
         props.class
       )
     "

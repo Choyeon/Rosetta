@@ -83,7 +83,8 @@
               >
                 <td class="p-4">
                   <Badge :class="typeBadgeClass(a.type)">
-                    {{ typeIcon(a.type) }} {{ typeText(a.type) }}
+                    <component :is="typeIcon(a.type)" class="size-3.5 mr-1" />
+                    {{ typeText(a.type) }}
                   </Badge>
                 </td>
                 <td class="p-4 font-medium">
@@ -200,7 +201,10 @@
                 ]"
                 @click="form.type = t.value"
               >
-                <span class="text-2xl">{{ t.icon }}</span>
+                <component
+                  :is="t.icon"
+                  class="size-6"
+                />
                 <span class="text-xs">{{ t.label }}</span>
               </button>
             </div>
@@ -311,7 +315,8 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Label } from '~~/components/ui/label'
 import {
-  Plus, Pin, Check, Pencil, Trash2, Info, Loader2
+  Plus, Pin, Check, Pencil, Trash2, Info, Loader2,
+  AlertTriangle, XCircle, CheckCircle, Megaphone
 } from '@lucide/vue'
 import {
   fetchAdminAnnouncements,
@@ -329,10 +334,10 @@ const toast = useToast()
 type AnnType = 'info' | 'warning' | 'error' | 'success'
 
 const announcementTypes = [
-  { value: 'info' as AnnType, label: '信息', icon: 'ℹ️' },
-  { value: 'warning' as AnnType, label: '警告', icon: '⚠️' },
-  { value: 'error' as AnnType, label: '错误', icon: '❌' },
-  { value: 'success' as AnnType, label: '成功', icon: '✅' }
+  { value: 'info' as AnnType, label: '信息', icon: Info },
+  { value: 'warning' as AnnType, label: '警告', icon: AlertTriangle },
+  { value: 'error' as AnnType, label: '错误', icon: XCircle },
+  { value: 'success' as AnnType, label: '成功', icon: CheckCircle }
 ]
 
 const loading = ref(false)
@@ -389,13 +394,13 @@ function typeBadgeClass(t: string): string {
   }
 }
 
-function typeIcon(t: string): string {
+function typeIcon(t: string) {
   switch (t) {
-    case 'info': return 'ℹ️'
-    case 'warning': return '⚠️'
-    case 'error': return '❌'
-    case 'success': return '✅'
-    default: return '📢'
+    case 'info': return Info
+    case 'warning': return AlertTriangle
+    case 'error': return XCircle
+    case 'success': return CheckCircle
+    default: return Megaphone
   }
 }
 

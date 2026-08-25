@@ -271,7 +271,11 @@
                     :value="t.id"
                   >
                     <span class="inline-flex items-center gap-2">
-                      <span>{{ t.icon || '🏷' }}</span>
+                      <Tag
+                        v-if="!t.icon"
+                        class="size-3.5 text-muted-foreground"
+                      />
+                      <span v-else>{{ t.icon }}</span>
                       <span>{{ t.name }}</span>
                     </span>
                   </SelectItem>
@@ -318,7 +322,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Label } from '~~/components/ui/label'
 import { Skeleton } from '~~/components/ui/skeleton'
 import {
-  ArrowLeft, User, Shield, Upload, Loader2
+  ArrowLeft, User, Shield, Upload, Loader2, Tag
 } from '@lucide/vue'
 import {
   fetchAdminUserDetail,
