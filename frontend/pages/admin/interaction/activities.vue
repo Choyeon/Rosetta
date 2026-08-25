@@ -168,6 +168,7 @@
         <PaginationContent>
           <PaginationItem :value="1" />
           <PaginationPrevious
+            :value="1"
             :disabled="page <= 1"
             @click="page > 1 && (page--, fetchData())"
           />
@@ -175,22 +176,23 @@
             v-for="p in visiblePages"
             :key="p"
           >
-            <PaginationItem v-if="p !== '...'">
+            <PaginationItem v-if="p !== '...'" :value="typeof p === 'number' ? p : 1">
               <Button
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
                 class="h-9 w-9"
-                @click="page !== p && (page = p, fetchData())"
+                @click="page !== p && (page = Number(p), fetchData())"
               >
                 {{ p }}
               </Button>
             </PaginationItem>
-            <PaginationItem v-else>
+            <PaginationItem v-else :value="1">
               <PaginationEllipsis :value="1" />
             </PaginationItem>
           </template>
           <PaginationItem :value="1" />
           <PaginationNext
+            :value="1"
             :disabled="page >= totalPages"
             @click="page < totalPages && (page++, fetchData())"
           />
@@ -297,7 +299,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
 import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -428,7 +429,6 @@ async function fetchData() {
     activities.value = res.items ?? []
     total.value = res.total ?? 0
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载动态失败')
     activities.value = []
     total.value = 0
   } finally {
@@ -477,7 +477,6 @@ async function submitForm() {
     formDialogOpen.value = false
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '保存失败')
   } finally {
     submitting.value = false
   }
@@ -497,7 +496,6 @@ async function doDelete() {
     deleteTargetId.value = null
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '删除失败')
   }
 }
 

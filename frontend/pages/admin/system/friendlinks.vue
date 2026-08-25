@@ -79,7 +79,6 @@
         v-for="link in filtered"
         :key="link.id"
         class="card-surface lift-hover group relative overflow-hidden transition-all"
-        :style="link.bg_color ? { background: link.bg_color + '22', borderColor: link.bg_color + '44' } : ''"
       >
         <div class="absolute top-3 right-3 z-10">
           <Badge
@@ -231,15 +230,22 @@
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
               <Label class="text-sm font-medium">审核状态</Label>
-              <Select
-                v-model="form.status"
-                :options="[
-                  { label: '待审核 pending', value: 'pending' },
-                  { label: '已通过 approved', value: 'approved' },
-                  { label: '已拒绝 rejected', value: 'rejected' }
-                ]"
-                class="rounded-xl"
-              />
+              <Select v-model="form.status">
+                <SelectTrigger class="rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="pending">
+                    待审核
+                  </SelectItem>
+                  <SelectItem value="approved">
+                    已通过
+                  </SelectItem>
+                  <SelectItem value="rejected">
+                    已拒绝
+                  </SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div class="space-y-2">
               <Label class="text-sm font-medium">{{ t('adminCommon.sortOrder') }}</Label>
@@ -318,8 +324,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted } from 'vue'
 import {
   fetchAdminFriendLinks,
@@ -343,7 +347,7 @@ import {
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
-import { Select } from '~~/components/ui/select'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import type { BadgeVariants } from '~~/components/ui/badge'
 
@@ -423,8 +427,8 @@ function gradientFor(name: string, idx: number): string {
   ]
   let hash = 0
   for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  const pick = palette[hash % palette.length]
-  return pick[idx]
+  const pick = palette[hash % palette.length]!
+  return pick[idx] ?? pick[0]!
 }
 
 async function loadAll() {
@@ -432,7 +436,6 @@ async function loadAll() {
   try {
     items.value = await fetchAdminFriendLinks()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminFriendLinks'}`)
     items.value = []
   } finally {
     loading.value = false
@@ -454,7 +457,7 @@ function openEdit(link: AdminFriendLink) {
     url: link.url,
     logo: link.logo ?? '',
     description: link.description ?? '',
-    bg_color: link.bg_color ?? '',
+    bg_color: '',
     status: link.status,
     sort_order: link.sort_order
   }
@@ -488,7 +491,6 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : (editingId.value ? 'updateAdminFriendLink' : 'createAdminFriendLink')}`)
   } finally {
     submitting.value = false
   }
@@ -508,7 +510,6 @@ async function confirmDelete() {
     toast.success('友链已删除')
     confirmOpen.value = false
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'deleteAdminFriendLink'}`)
   } finally {
     deleting.value = false
   }

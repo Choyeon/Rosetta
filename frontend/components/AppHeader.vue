@@ -180,6 +180,7 @@ const handleLogout = async () => {
 const handleLogin = () => navigateTo('/login')
 const handleRegister = () => navigateTo('/register')
 const handleAdmin = () => navigateTo('/admin')
+const handleSearchClick = () => navigateTo('/search')
 </script>
 
 <template>
@@ -218,6 +219,7 @@ const handleAdmin = () => navigateTo('/admin')
               variant="ghost"
               size="icon"
               :aria-label="t('common.search') || '搜索'"
+              @click="handleSearchClick"
             >
               <Search class="h-[1.2rem] w-[1.2rem]" />
             </Button>
@@ -371,9 +373,9 @@ const handleAdmin = () => navigateTo('/admin')
                 <div class="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-accent mb-2">
                   <Avatar class="h-10 w-10">
                     <AvatarImage
-                      v-if="authStore.user?.avatar"
-                      :src="authStore.user.avatar"
-                      :alt="authStore.user.name || authStore.user.username || ''"
+                      v-if="userAvatar"
+                      :src="userAvatar"
+                      :alt="(authStore.user as any)?.name || (authStore.user as any)?.username || ''"
                     />
                     <AvatarFallback>{{ String((authStore.user as any)?.name || authStore.user?.username || '').charAt(0).toUpperCase() || 'U' }}</AvatarFallback>
                   </Avatar>

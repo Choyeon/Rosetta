@@ -78,10 +78,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import CommentListContent from './_parts/CommentListContent.vue'
 

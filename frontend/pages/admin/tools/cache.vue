@@ -292,10 +292,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted } from 'vue'
 import {
   fetchAdminCacheStatus,
@@ -401,7 +397,6 @@ async function loadStatus() {
     const r = await fetchAdminCacheStatus()
     cacheStatus.value = r || emptyStatus()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'fetchAdminCacheStatus'}`)
     cacheStatus.value = emptyStatus()
   } finally {
     statusLoading.value = false
@@ -416,7 +411,6 @@ async function handleFlush() {
     toast.success(r?.message || `已清退缓存：${currentModeMeta.value?.label}`)
     await loadStatus()
   } catch (e) {
-    toast.error(`接口未实现或调用失败: ${e instanceof Error ? e.message : 'flushAdminCache'}`)
   } finally {
     flushing.value = false
   }

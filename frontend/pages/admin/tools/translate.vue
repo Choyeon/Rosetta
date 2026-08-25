@@ -29,9 +29,21 @@
             <Label class="text-sm font-medium">源语言</Label>
             <Select
               v-model="form.sourceLang"
-              :options="langOptions"
               class="rounded-xl"
-            />
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="选择源语言" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="lang in langOptions"
+                  :key="lang.value"
+                  :value="lang.value"
+                >
+                  {{ lang.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div class="space-y-2">
             <Label class="text-sm font-medium">目标语言（可多选）</Label>
@@ -183,7 +195,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/co
 import { Checkbox } from '~~/components/ui/checkbox'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
-import { Select } from '~~/components/ui/select'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue
+} from '~~/components/ui/select'
 import { Separator } from '~~/components/ui/separator'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -234,7 +248,6 @@ async function handleQuickTranslate() {
     toast.success(`已完成 ${success} 个语言翻译`)
     quickPostId.value = undefined
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : '翻译失败')
   } finally {
     translatingQuick.value = false
   }
@@ -251,7 +264,6 @@ async function handleBatchTranslate() {
     translatedCount.value += success
     toast.success(`翻译完成，成功 ${success} 项`)
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : '翻译失败')
   } finally {
     batchSubmitting.value = false
   }
@@ -261,7 +273,6 @@ onMounted(async () => {
   try {
     posts.value = await fetchRecentPosts(50)
   } catch (error) {
-    toast.error(error instanceof Error ? error.message : '文章加载失败')
   } finally {
     postsLoading.value = false
   }

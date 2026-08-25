@@ -2,7 +2,7 @@
 // @ts-nocheck
 /* eslint-enable @typescript-eslint/ban-ts-comment */
 import type { Post, PostCreate, PaginatedResponse } from '~~/types/api'
-import { useAPI } from '~~/composables/useApi'
+import { apiFetch } from '~~/composables/useApi'
 
 export const usePosts = () => {
   const { locale } = useI18n()
@@ -14,7 +14,7 @@ export const usePosts = () => {
   const error = ref<unknown>(null)
   const total = ref(0)
 
-  const getPosts = (params?: {
+  const getPosts = async (params?: {
     page?: number
     page_size?: number
     category?: string
@@ -22,7 +22,7 @@ export const usePosts = () => {
     search?: string
     status?: string
   }) => {
-    return useAPI<PaginatedResponse<Post>>('/blog/posts', {
+    return apiFetch<PaginatedResponse<Post>>('/blog/posts', {
       query: {
         lang: locale.value,
         ...params
@@ -50,12 +50,9 @@ export const usePosts = () => {
         search: params?.search,
         status: params?.status
       }
-      const { data, error: err } = await getPosts(query)
-      if (err.value) throw err.value
-      if (data.value) {
-        posts.value = data.value.items || (Array.isArray(data.value) ? data.value as Post[] : [])
-        total.value = (data.value as PaginatedResponse<Post>)?.total ?? posts.value.length
-      }
+      const data = await getPosts(query)
+      posts.value = data.items || (Array.isArray(data) ? data as Post[] : [])
+      total.value = (data as PaginatedResponse<Post>)?.total ?? posts.value.length
       return posts.value
     } catch (e) {
       error.value = e
@@ -65,8 +62,8 @@ export const usePosts = () => {
     }
   }
 
-  const getPost = (slug: string, password?: string) => {
-    return useAPI<Post>(`/blog/posts/${slug}`, {
+  const getPost = async (slug: string, password?: string) => {
+    return apiFetch<Post>(`/blog/posts/${slug}`, {
       query: {
         lang: locale.value,
         password
@@ -78,9 +75,8 @@ export const usePosts = () => {
     loading.value = true
     error.value = null
     try {
-      const { data, error: err } = await getPost(slug, password)
-      if (err.value) throw err.value
-      post.value = data.value || null
+      const data = await getPost(slug, password)
+      post.value = data || null
       return post.value
     } catch (e) {
       error.value = e
@@ -95,22 +91,8 @@ export const usePosts = () => {
    * 仅用于文章详情"相关文章"等单篇关联场景；不在前台主页作为"推荐"概念对外暴露。
    * @internal
    */
-  const _getRecommendedPosts = (page = 1, pageSize = 12) => {
-    return useAPI<PaginatedResponse<Post>>('/blog/posts/recommended', {
-      query: {
-        lang: locale.value,
-        page,
-        page_size: pageSize
-      }
-    })
-  }
-  // 兼容别名（供内部未来可能调用的"相似推荐"逻辑使用，避免 breakage）
-
-  const _getRecommendedPostsAlias = _getRecommendedPosts
-  void _getRecommendedPostsAlias
-
-  const getSimilarPosts = (postId: number, limit = 5) => {
-    return useAPI<Post[]>(`/blog/posts/${postId}/similar`, {
+  const getSimilarPosts = async (postId: number, limit = 5) => {
+    return apiFetch<Post[]>(`/blog/posts/${postId}/similar`, {
       query: {
         lang: locale.value,
         limit
@@ -118,14 +100,14 @@ export const usePosts = () => {
     })
   }
 
-  const likePost = (postId: number) => {
-    return useAPI(`/blog/posts/${postId}/like`, {
+  const likePost = async (postId: number) => {
+    return apiFetch(`/blog/posts/${postId}/like`, {
       method: 'POST'
     })
   }
 
-  const createPost = (postData: PostCreate) => {
-    return useAPI<Post>('/blog/posts', {
+  const createPost = async (postData: PostCreate) => {
+    return apiFetch<Post>('/blog/posts', {
       method: 'POST',
       body: postData,
       query: {
@@ -134,8 +116,8 @@ export const usePosts = () => {
     })
   }
 
-  const updatePost = (postId: number, postData: Partial<PostCreate>) => {
-    return useAPI<Post>(`/blog/posts/${postId}`, {
+  const updatePost = async (postId: number, postData: Partial<PostCreate>) => {
+    return apiFetch<Post>(`/blog/posts/${postId}`, {
       method: 'PUT',
       body: postData,
       query: {
@@ -144,14 +126,14 @@ export const usePosts = () => {
     })
   }
 
-  const deletePost = (postId: number) => {
-    return useAPI(`/blog/posts/${postId}`, {
+  const deletePost = async (postId: number) => {
+    return apiFetch(`/blog/posts/${postId}`, {
       method: 'DELETE'
     })
   }
 
-  const batchUpdatePostStatus = (postIds: number[], status: 'published' | 'draft' | 'scheduled') => {
-    return useAPI<{ success: boolean, message: string, data: { updated_count: number } }>('/blog/posts/batch-status', {
+  const batchUpdatePostStatus = async (postIds: number[], status: 'published' | 'draft' | 'scheduled') => {
+    return apiFetch<{ success: boolean, message: string, data: { updated_count: number } }>('/blog/posts/batch-status', {
       method: 'POST',
       body: {
         post_ids: postIds,
@@ -167,13 +149,12 @@ export const usePosts = () => {
     loading,
     error,
     total,
-    // raw AsyncData methods
+    // fetch methods
     getPosts,
-    getPost,
-    getSimilarPosts,
-    // stateful fetch methods
     fetchPosts,
+    getPost,
     fetchPost,
+    getSimilarPosts,
     // mutations
     likePost,
     createPost,

@@ -47,7 +47,7 @@
         :key="album.id"
       >
         <Card
-          class="h-full group transition-all hover:shadow-soft hover:-translate-y-0.5 duration-300 overflow-hidden cursor-pointer"
+          class="h-full group lift-hover overflow-hidden cursor-pointer"
           @click="openAlbumSheet(album.id)"
         >
           <div class="relative aspect-[4/3] overflow-hidden bg-muted">
@@ -55,7 +55,7 @@
               v-if="album.cover"
               :src="album.cover"
               :alt="album.title"
-              class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+              class="w-full h-full object-cover transition-transform duration-520 ease-out group-hover:scale-[1.04]"
               loading="lazy"
             >
             <div

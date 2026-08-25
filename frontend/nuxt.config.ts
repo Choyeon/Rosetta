@@ -148,6 +148,9 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2026-06-30',
 
+  // 禁用 Nuxt 遥测，避免 nostics 在 Vite 热链路上反复触发 NUXT_E1001 警告
+  telemetry: false,
+
   nitro: {
     devProxy: {
       '/api': {
@@ -155,6 +158,13 @@ export default defineNuxtConfig({
         target: `http://${BACKEND_HOST || '127.0.0.1'}:${BACKEND_PORT || '8000'}/api`,
         changeOrigin: true,
         // 后端没准备好或代理失败时快速返回（5xx），避免 ofetch 永远 pending 卡死 Nuxt 客户端插件/中间件
+        proxyTimeout: 15000
+      },
+      // 后端 /media 静态目录（Bing 壁纸缓存、上传资源等）在开发模式下代理到 FastAPI，
+      // 否则后端 307 重定向到 /media/bing/<sha1>.jpg 会被浏览器解析到 :3000 而 404。
+      '/media': {
+        target: `http://${BACKEND_HOST || '127.0.0.1'}:${BACKEND_PORT || '8000'}/media`,
+        changeOrigin: true,
         proxyTimeout: 15000
       }
     }

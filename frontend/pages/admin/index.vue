@@ -1451,17 +1451,17 @@ const pillFor = (a: ActivityItem['accent']) =>
               <TabsList class="h-8 rounded-lg">
                 <TabsTrigger
                   value="overview"
-                  class="h-7 px-3 text-xs data-[state=active]:shadow-sm"
+                  class="h-7 px-3 text-xs data-[state=active]:shadow-sm inline-flex items-center gap-1 whitespace-nowrap"
                 >
-                  <Eye class="size-3.5 mr-1" />
-                  流量总览
+                  <Eye class="size-3.5 shrink-0" />
+                  <span>流量总览</span>
                 </TabsTrigger>
                 <TabsTrigger
                   value="content"
-                  class="h-7 px-3 text-xs data-[state=active]:shadow-sm"
+                  class="h-7 px-3 text-xs data-[state=active]:shadow-sm inline-flex items-center gap-1 whitespace-nowrap"
                 >
-                  <MessageCircleMore class="size-3.5 mr-1" />
-                  互动 & 内容
+                  <MessageCircleMore class="size-3.5 shrink-0" />
+                  <span>互动 & 内容</span>
                 </TabsTrigger>
               </TabsList>
             </Tabs>
@@ -1737,7 +1737,7 @@ const pillFor = (a: ActivityItem['accent']) =>
               </div>
               <Avatar class="size-9 shrink-0 ring-2 ring-background shadow-sm">
                 <AvatarImage
-                  :src="resolveAvatarUrl(c.avatar)"
+                  :src="resolveAvatarUrl({ seed: c.name }, c.avatar)"
                   :alt="c.name"
                 />
                 <AvatarFallback class="text-xs font-semibold bg-primary/10 text-primary">

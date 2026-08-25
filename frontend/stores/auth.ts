@@ -140,7 +140,8 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Replace user's avatar URL locally and notify backend via PUT /me/avatar.
+   * Replace user's avatar URL locally and notify backend via PUT /users/me/avatar.
+   * Backend reads the avatar from the `avatar` query parameter (see backend/api/users.py).
    * Backend call is best-effort: even when offline the UI reflects the new avatar
    * so user can see crop + upload result visually immediately.
    */
@@ -151,10 +152,10 @@ export const useAuthStore = defineStore('auth', () => {
       user.value = { ...user.value, avatar: url }
     }
     try {
-      await $fetch('/me/avatar', {
+      await $fetch('/users/me/avatar', {
         baseURL: apiBase,
         method: 'PUT',
-        body: { avatar: url },
+        query: { avatar: url },
         headers: accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}
       })
     } catch (err) {

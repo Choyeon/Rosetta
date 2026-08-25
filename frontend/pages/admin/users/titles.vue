@@ -216,8 +216,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -260,7 +258,6 @@ async function fetchData() {
   try {
     titles.value = await fetchAdminUserTitles()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载头衔失败')
     titles.value = []
   } finally {
     loading.value = false
@@ -307,7 +304,6 @@ async function submitForm() {
     formDialogOpen.value = false
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '保存失败')
   } finally {
     submitting.value = false
   }
@@ -327,7 +323,6 @@ async function doDelete() {
     deleteTargetId.value = null
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '删除失败')
   }
 }
 

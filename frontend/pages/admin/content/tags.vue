@@ -1,9 +1,5 @@
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, watch, computed, onMounted } from 'vue'
 import {
   fetchAdminTags,
   createAdminTag,
@@ -16,17 +12,7 @@ import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
-import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger
-} from '~~/components/ui/dialog'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -62,12 +48,12 @@ const getLocalizedStr = (v: string | Record<string, string> | null | undefined):
 const slugify = (text: string): string => {
   let s = text.trim().toLowerCase()
   s = s.replace(/[\s]+/g, '-')
-  s = s.replace(/[^\w\u4e00-\u9fa5-]/g, '')
+  s = s.replace(/[^\w一-龥-]/g, '')
   s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
   return s
 }
 
-let slugManualEdit = false
+let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
@@ -90,8 +76,7 @@ const loadData = async () => {
   loading.value = true
   try {
     tags.value = await fetchAdminTags()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '加载标签失败')
+  } catch {
     tags.value = []
   } finally {
     loading.value = false
@@ -145,19 +130,19 @@ const save = async () => {
     }
     dialogOpen.value = false
     await loadData()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '保存失败')
+  } catch {
+    /* apiFetch 已统一 toast */
   } finally {
     saving.value = false
   }
 }
 
-const confirmDelete = (id: number) => {
+function confirmDelete(id: number) {
   pendingDeleteId.value = id
   deleteDialogOpen.value = true
 }
 
-const doDelete = async () => {
+async function doDelete() {
   if (pendingDeleteId.value == null) return
   try {
     await deleteAdminTag(pendingDeleteId.value)
@@ -165,8 +150,8 @@ const doDelete = async () => {
     deleteDialogOpen.value = false
     pendingDeleteId.value = null
     await loadData()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '删除失败')
+  } catch {
+    /* apiFetch 已统一 toast */
   }
 }
 
@@ -176,125 +161,35 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 p-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-bold tracking-tight">
-          标签管理
-        </h1>
-        <Badge
-          variant="secondary"
-          class="rounded-[10px] px-3 py-1 bg-stone-100 text-stone-700 border-stone-200"
-        >
-          共 {{ tags.length }} 个标签
-        </Badge>
-      </div>
+  <AdminListPage
+    title="标签管理"
+    description="标签可用于文章的快速分类与搜索聚合。"
+    :count="tags.length"
+  >
+    <template #toolbar>
       <div class="flex items-center gap-3">
         <Input
           v-model="searchQuery"
           placeholder="🔍 搜索标签..."
           class="h-10 w-64 rounded-[12px]"
         />
-        <Dialog v-model:open="dialogOpen">
-          <DialogTrigger as-child>
-            <Button
-              class="rounded-[12px] h-10 px-5 shadow-sm"
-              @click="openNew"
-            >
-              + 新建标签
-            </Button>
-          </DialogTrigger>
-          <DialogContent class="rounded-[12px] max-w-md">
-            <DialogHeader>
-              <DialogTitle>{{ dialogMode === 'edit' ? '编辑标签' : '新建标签' }}</DialogTitle>
-              <DialogDescription>
-                标签可用于文章的快速分类与搜索聚合。
-              </DialogDescription>
-            </DialogHeader>
-            <div class="flex flex-col gap-4 py-4">
-              <div>
-                <Label class="mb-1 block text-xs text-muted-foreground">
-                  名称 <span class="text-destructive">*</span>
-                </Label>
-                <Input
-                  v-model="form.name"
-                  placeholder="标签名称"
-                  class="h-9 rounded-[10px]"
-                />
-              </div>
-              <div>
-                <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
-                <Input
-                  v-model="form.slug"
-                  placeholder="自动生成，可修改"
-                  class="h-9 rounded-[10px]"
-                  @input="slugManualEdit = true"
-                />
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <Label class="mb-1 block text-xs text-muted-foreground">颜色</Label>
-                  <div class="flex gap-2">
-                    <input
-                      v-model="form.color"
-                      type="color"
-                      class="h-9 w-11 rounded-[10px] border border-input bg-background cursor-pointer"
-                    >
-                    <Input
-                      v-model="form.color"
-                      class="h-9 rounded-[10px] flex-1 font-mono text-xs"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label class="mb-1 block text-xs text-muted-foreground">图标</Label>
-                  <Input
-                    v-model="form.icon"
-                    placeholder="emoji 或 icon"
-                    class="h-9 rounded-[10px]"
-                  />
-                </div>
-              </div>
-              <div class="flex items-center justify-between rounded-[10px] border border-border bg-muted/20 px-4 py-3">
-                <div>
-                  <Label class="text-sm font-medium">启用状态</Label>
-                  <div class="text-xs text-muted-foreground mt-0.5">
-                    关闭后标签不再显示在前台
-                  </div>
-                </div>
-                <Switch v-model="form.is_active" />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button
-                variant="outline"
-                class="rounded-[10px]"
-                @click="dialogOpen = false"
-              >
-                取消
-              </Button>
-              <Button
-                class="rounded-[10px]"
-                :disabled="saving"
-                @click="save"
-              >
-                {{ saving ? '保存中...' : '保存' }}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+        <Button
+          class="rounded-[12px] h-10 px-5 shadow-sm"
+          @click="openNew"
+        >
+          + 新建标签
+        </Button>
       </div>
-    </div>
+    </template>
 
-    <div class="rounded-[12px] border border-border bg-card p-5">
+    <div class="p-5">
       <template v-if="loading">
         <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          <div
+          <Skeleton
             v-for="i in 24"
             :key="`sk-${i}`"
-          >
-            <Skeleton class="h-14 rounded-[14px]" />
-          </div>
+            class="h-14 rounded-[14px]"
+          />
         </div>
       </template>
 
@@ -372,31 +267,75 @@ onMounted(() => {
       </template>
     </div>
 
-    <Dialog v-model:open="deleteDialogOpen">
-      <DialogContent class="rounded-[12px] max-w-md">
-        <DialogHeader>
-          <DialogTitle>确认删除标签</DialogTitle>
-          <DialogDescription>
-            删除标签不会删除关联文章，只是解除文章与该标签的关联。此操作不可撤销。
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter class="mt-4">
-          <Button
-            variant="outline"
-            class="rounded-[10px]"
-            @click="deleteDialogOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            class="rounded-[10px]"
-            @click="doDelete"
-          >
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  </div>
+    <AdminCrudDialog
+      v-model:open="dialogOpen"
+      :title="dialogMode === 'edit' ? '编辑标签' : '新建标签'"
+      :loading="saving"
+      :submit-text="dialogMode === 'edit' ? '更新' : '保存'"
+      @submit="save"
+    >
+      <div class="flex flex-col gap-4">
+        <div>
+          <Label class="mb-1 block text-xs text-muted-foreground">
+            名称 <span class="text-destructive">*</span>
+          </Label>
+          <Input
+            v-model="form.name"
+            placeholder="标签名称"
+            class="h-9 rounded-[10px]"
+          />
+        </div>
+        <div>
+          <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
+          <Input
+            v-model="form.slug"
+            placeholder="自动生成，可修改"
+            class="h-9 rounded-[10px]"
+            @input="slugManualEdit = true"
+          />
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <Label class="mb-1 block text-xs text-muted-foreground">颜色</Label>
+            <div class="flex gap-2">
+              <input
+                v-model="form.color"
+                type="color"
+                class="h-9 w-11 rounded-[10px] border border-input bg-background cursor-pointer"
+              >
+              <Input
+                v-model="form.color"
+                class="h-9 rounded-[10px] flex-1 font-mono text-xs"
+              />
+            </div>
+          </div>
+          <div>
+            <Label class="mb-1 block text-xs text-muted-foreground">图标</Label>
+            <Input
+              v-model="form.icon"
+              placeholder="emoji 或 icon"
+              class="h-9 rounded-[10px]"
+            />
+          </div>
+        </div>
+        <div class="flex items-center justify-between rounded-[10px] border border-border bg-muted/20 px-4 py-3">
+          <div>
+            <Label class="text-sm font-medium">启用状态</Label>
+            <div class="text-xs text-muted-foreground mt-0.5">
+              关闭后标签不再显示在前台
+            </div>
+          </div>
+          <Switch v-model="form.is_active" />
+        </div>
+      </div>
+    </AdminCrudDialog>
+
+    <AdminConfirmDialog
+      v-model:open="deleteDialogOpen"
+      title="确认删除标签"
+      description="删除标签不会删除关联文章，只是解除文章与该标签的关联。此操作不可撤销。"
+      confirm-text="确认删除"
+      @confirm="doDelete"
+    />
+  </AdminListPage>
 </template>

@@ -203,6 +203,17 @@
     "filter": "Filter",
     "allCategories": "All categories"
   },
+  "search": {
+    "title": "Search",
+    "desc": "Search across all posts for what interests you",
+    "placeholder": "Type a keyword and press Enter…",
+    "submit": "Search",
+    "startPrompt": "Start searching",
+    "startDesc": "Enter a keyword above to search post titles and content.",
+    "resultCount": "Found {count} posts related to \"{keyword}\"",
+    "noResults": "No posts found",
+    "noResultsDesc": "No posts match \"{keyword}\". Try a different keyword?"
+  },
   "categories": {
     "title": "Categories",
     "desc": "Browse content by topic",

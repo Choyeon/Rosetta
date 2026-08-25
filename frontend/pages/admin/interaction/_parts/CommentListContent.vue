@@ -116,7 +116,7 @@
         v-for="comment in comments"
         :key="comment.id"
         :class="[
-          'rounded-xl border bg-card p-4 transition-all hover:shadow-sm',
+          'rounded-xl border bg-card p-4',
           comment.parent_id ? 'ml-8 border-l-4 border-l-muted-foreground/20' : ''
         ]"
       >
@@ -260,8 +260,9 @@
     >
       <Pagination :items-per-page="pageSize ?? 10">
         <PaginationContent>
-          <PaginationItem>
+          <PaginationItem :value="1">
             <PaginationPrevious
+              :value="1"
               :disabled="page <= 1"
               @click="page > 1 && (page--, fetchData())"
             />
@@ -270,22 +271,23 @@
             v-for="p in visiblePages"
             :key="p"
           >
-            <PaginationItem v-if="p !== '...'">
+            <PaginationItem v-if="p !== '...'" :value="typeof p === 'number' ? p : 1">
               <Button
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
                 class="h-9 w-9"
-                @click="page !== p && (page = p, fetchData())"
+                @click="page !== p && (page = Number(p), fetchData())"
               >
                 {{ p }}
               </Button>
             </PaginationItem>
-            <PaginationItem v-else>
+            <PaginationItem v-else :value="1">
               <PaginationEllipsis :value="1" />
             </PaginationItem>
           </template>
-          <PaginationItem>
+          <PaginationItem :value="1">
             <PaginationNext
+              :value="1"
               :disabled="page >= totalPages"
               @click="page < totalPages && (page++, fetchData())"
             />
@@ -324,8 +326,6 @@
 <script setup lang="ts">
 /* eslint-disable */
 /* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -426,7 +426,6 @@ async function fetchData() {
     comments.value = res.items ?? []
     total.value = res.total ?? 0
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '加载评论失败')
     comments.value = []
     total.value = 0
   } finally {
@@ -459,7 +458,6 @@ async function updateStatus(id: number, status: AdminCommentStatus) {
     toast.success('状态更新成功')
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '操作失败')
   }
 }
 
@@ -477,7 +475,6 @@ async function doDelete() {
     deleteTargetId.value = null
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '删除失败')
   }
 }
 
@@ -490,7 +487,6 @@ async function batchAction(action: CommentBatchActionType) {
     selectedIds.value = []
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '批量操作失败')
   }
 }
 
@@ -525,7 +521,6 @@ async function submitReply(comment: AdminComment) {
     replyContent.value = ''
     fetchData()
   } catch (err) {
-    toast.error(err instanceof Error ? err.message : '回复失败')
   }
 }
 

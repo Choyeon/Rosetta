@@ -6,7 +6,6 @@ import type {
   MediaLibraryParams,
   MediaUpdate,
   MediaStats,
-  PaginatedResponse,
   BingWallpaperItem,
   MediaAvatarOptions,
   BaseResponse
@@ -26,10 +25,10 @@ export async function useMediaUpload(file: File, category?: string): Promise<Med
   return apiFetch<MediaItem>('/media/upload', { method: 'POST', body: formData })
 }
 
-export const useMediaUploadStream = () => {
-  return useAPI<MediaItem>('/media/upload/stream', {
-    method: 'POST'
-  })
+export async function useMediaUploadStream(file: File): Promise<MediaItem> {
+  const formData = new FormData()
+  formData.append('file', file)
+  return apiFetch<MediaItem>('/media/upload/stream', { method: 'POST', body: formData })
 }
 
 export async function useMediaUploadAvatar(file: File): Promise<{ url: string }> {
@@ -45,7 +44,7 @@ export async function useMediaUploadCover(file: File): Promise<{ url: string }> 
 }
 
 export const useMediaLibrary = () => {
-  const getMediaList = (params?: MediaLibraryParams) => {
+  const getMediaList = async (params?: MediaLibraryParams) => {
     const query = {
       page: params?.page,
       page_size: params?.page_size ?? params?.pageSize,
@@ -53,44 +52,44 @@ export const useMediaLibrary = () => {
       category: params?.category,
       type: params?.type
     }
-    return useAPI<PaginatedResponse<MediaItem>>('/media/library', { query })
+    return apiFetch<{ items: MediaItem[], total: number }>('/media/library', { query })
   }
 
-  const getMediaStats = () => {
-    return useAPI<MediaStats>('/media/library/stats')
+  const getMediaStats = async () => {
+    return apiFetch<MediaStats>('/media/library/stats')
   }
 
-  const uploadMedia = (file: File, category?: string) => {
+  const uploadMedia = async (file: File, category?: string) => {
     const formData = new FormData()
     formData.append('file', file)
     if (category) {
       formData.append('category', category)
     }
-    return useAPI<MediaItem>('/media/library', {
+    return apiFetch<MediaItem>('/media/library', {
       method: 'POST',
       body: formData
     })
   }
 
-  const getMediaDetail = (mediaId: number) => {
-    return useAPI<MediaItem>(`/media/library/${mediaId}`)
+  const getMediaDetail = async (mediaId: number) => {
+    return apiFetch<MediaItem>(`/media/library/${mediaId}`)
   }
 
-  const updateMedia = (mediaId: number, data: MediaUpdate) => {
-    return useAPI<MediaItem>(`/media/library/${mediaId}`, {
+  const updateMedia = async (mediaId: number, data: MediaUpdate) => {
+    return apiFetch<MediaItem>(`/media/library/${mediaId}`, {
       method: 'PUT',
       body: data
     })
   }
 
-  const deleteMedia = (mediaId: number) => {
-    return useAPI<BaseResponse>(`/media/library/${mediaId}`, {
+  const deleteMedia = async (mediaId: number) => {
+    return apiFetch<BaseResponse>(`/media/library/${mediaId}`, {
       method: 'DELETE'
     })
   }
 
-  const deleteMediaBatch = (ids: number[]) => {
-    return useAPI<BaseResponse>('/media/library/batch', {
+  const deleteMediaBatch = async (ids: number[]) => {
+    return apiFetch<BaseResponse>('/media/library/batch', {
       method: 'DELETE',
       body: { ids }
     })
@@ -108,6 +107,7 @@ export const useMediaLibrary = () => {
 }
 
 export const useServerBingWallpaper = (count = 1) => {
+  // 仅用于 setup 顶层声明式调用；若要在事件回调中使用请改用 apiFetch('/media/bing-wallpaper')
   return useAPI<BingWallpaperItem[]>('/media/bing-wallpaper', {
     query: { count }
   })
@@ -129,8 +129,8 @@ export const useMediaAvatar = (options?: MediaAvatarOptions) => {
 
   return {
     getAvatarUrl,
-    fetchAvatar: () => {
-      return useAPI<string>('/media/avatar', {
+    fetchAvatar: async () => {
+      return apiFetch<string>('/media/avatar', {
         query: {
           username: options?.username,
           email: options?.email,

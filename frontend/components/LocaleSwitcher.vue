@@ -29,6 +29,9 @@ const handleSetLocale = async (code: string) => {
   await setLocale(code as 'zh' | 'en' | 'ja' | 'zh_Hant')
   if (!import.meta.client) return
   try {
+    // 写入 rosetta_lang cookie，使后端内容级 i18n（三级解析优先 cookie）跟随切换，
+    // 覆盖 SSR 首屏与无 lang 参数的请求路径。
+    document.cookie = 'rosetta_lang=' + code + '; path=/; max-age=31536000; SameSite=Lax'
     document.cookie = 'i18n_redirected=' + code + '; path=/; max-age=31536000; SameSite=Lax'
   } catch { /* ignore */ }
 }
