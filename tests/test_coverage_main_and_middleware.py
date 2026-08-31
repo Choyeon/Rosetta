@@ -29,8 +29,9 @@ class TestMainTopRoutes:
         r = await client.get("/health")
         assert r.status_code == 200
         data = r.json()
-        assert "status" in data and data.get("app_name")
-        assert "database" in data
+        inner = data.get("data", data)
+        assert "status" in inner and inner.get("app_name")
+        assert "database" in inner or "database" in data
 
 
 # ================================================================

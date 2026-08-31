@@ -58,6 +58,43 @@ def role_from_flags(is_staff: bool, is_superuser: bool) -> str:
     return "subscriber"
 
 
+def normalize_role(role: object) -> str | None:
+    """把多种角色输入（str/int/flag）统一为规范角色字符串。
+
+    - 字符串忽略大小写并忽略下划线/空格变体
+    - 整数按层级数值匹配：10→subscriber, 20→contributor, ..., 100→super_admin
+    - 无法识别时返回 None（让调用方决定是 subscriber 还是报错）
+    """
+    if role is None:
+        return None
+
+    # 字符串路径
+    if isinstance(role, str):
+        normalized = role.strip().lower().replace(" ", "_").replace("-", "_")
+        if normalized in ALL_ROLES:
+            return normalized
+        # 数值字符串
+        if normalized.isdigit():
+            return normalize_role(int(normalized))
+        return None
+
+    # 整数/层级值路径
+    if isinstance(role, int):
+        # 精确匹配
+        for canonical, level in _ROLE_LEVELS.items():
+            if level == role:
+                return canonical
+        # 取最接近的合法层级（向上取整）
+        levels_sorted = sorted(_ROLE_LEVELS.items(), key=lambda kv: kv[1])
+        for canonical, level in levels_sorted:
+            if role <= level:
+                return canonical
+        return None
+
+    # 其他类型：尝试字符串化
+    return normalize_role(str(role))
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 能力（Capability）枚举
 # ─────────────────────────────────────────────────────────────────────────────

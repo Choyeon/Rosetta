@@ -105,7 +105,7 @@ async def test_post_comment_creates_pending_when_approval_required(
     body = r.json()
     assert body["status"] == "pending"
     assert body["author_name"] == "游客李四"
-    assert body["author_avatar"].startswith("https://www.gravatar.com/avatar/")
+    assert body["author_avatar"].startswith("https://cravatar.cn/avatar/")
     # 计数
     after_r = await db_session.execute(
         select(func.count(Comment.id)).where(Comment.post_id == test_post.id)

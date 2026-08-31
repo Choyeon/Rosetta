@@ -18,7 +18,8 @@ class TestHealthCheck:
         response = await client.get("/health")
         assert response.status_code == 200
         data = response.json()
-        assert "status" in data
+        assert "status" in data.get("data", data)
+        assert data.get("data", {}).get("status") == "healthy"
 
 
 class TestSiteConfig:

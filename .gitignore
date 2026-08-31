@@ -1,238 +1,118 @@
 # =======================================================
-# Rosetta Project Git Ignore
+# Rosetta — Git Ignore
 # =======================================================
 
-# --- Python ---
+# --- Python cache & build ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-/lib/
-/lib64/
-parts/
-sdist/
-var/
-wheels/
 *.egg-info/
 *.egg
-pip-wheel-metadata/
-
-# --- Virtual Environment ---
-.venv/
-venv/
-ENV/
-env/
-
-# --- PyInstaller ---
+build/
+dist/
 *.manifest
 *.spec
 
-# --- Installer logs ---
-pip-log.txt
-pip-delete-this-directory.txt
+# --- Virtual environment ---
+.venv/
+venv/
+ENV/
+/lib/
+/lib64/
 
-# --- Unit test / coverage reports ---
+# --- Test / coverage ---
+.pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
-.pytest_cache/
 coverage.xml
 *.cover
 .hypothesis/
-test_results.json
-junit/
 .tox/
 .nox/
 
-# --- MyPy / Pyre / Pytype / Ruff ---
+# --- Python tool caches ---
 .ruff_cache/
 .mypy_cache/
-.dmypy.json
-dmypy.json
 .pyre/
 .pytype/
 
-# --- Database ---
-# Database files (never commit these)
-*.sqlite3
-*.sqlite3-journal
-*.sqlite3-shm
-*.sqlite3-wal
+# --- Database (runtime state) ---
+*.sqlite3*
 *.db
-*.db-shm
-*.db-wal
+*.db-*
+rosetta.db
+rosetta.json
+.oobe_complete
+.oobe_state.json
 
-# Database migration files are COMMITTED (keep them!)
-# Only ignore compiled migration cache
-backend/migrations/**/__pycache__/
-
-# --- Environment & Secrets ---
+# --- Environment & secrets ---
 .env
 .env.*
 !.env.example
-.secrets
+.secrets/
 *.pem
 *.key
 
-# --- IDE & Editors ---
+# --- Node / Frontend ---
+node_modules/
+frontend/node_modules/
+.pnpm-store/
+.pnpm-store*/
+.npm-cache/
+.pnpm-home/
+
+frontend/.nuxt/
+frontend/.output/
+frontend/.cache/
+frontend/.pnpm-store*/
+frontend/.eslintcache
+frontend/.dev_server.log
+
+# --- Logs ---
+*.log
+*.log.*
+logs/
+npm-debug.log*
+pnpm-debug.log*
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# --- IDE ---
 .idea/
 .vscode/
 *.swp
 *.swo
-*~
-.project
-.classpath
-.settings/
 *.sublime-workspace
+.settings/
 
-# --- OS generated ---
-.DS_Store
-Thumbs.db
-Desktop.ini
-.directory
-ehthumbs.db
-
-# --- Testing & Coverage ---
-# (duplicate guard)
-
-# --- Frontend (Node/Astro) ---
-node_modules/
-.astro/
-.cache/
-.pnpm-store/
-.npm
-.eslintcache
-.parcel-cache/
-.stylelintcache
-.vite/
-.output/
-.next/
-.nuxt/
-.svelte-kit/
-.turbo/
-
-# Package manager logs
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-*-debug.log*
-
-# --- Astro build output ---
-frontend/dist/
-frontend/.astro/
-frontend/client/
-frontend/.output/
-
-# Pagefind (search index built at runtime)
-frontend/src/.pagefind/
-frontend/public/pagefind/
-frontend/public/pagefind
-.pagefind/
-
-# Tailwind / PostCSS
-.tailwindcss/
-
-# --- Logs ---
-logs/
-*.log
-*.log.*
-# 临时产物：安全审计 / pip-audit / gh CLI 输出
-.audit-*.json
-.audit-backend.log
-
-# --- Trae/AI IDE ---
-.trae/
-.shared/
-.kiro/
-.clinerules/
-
-# --- Media Files (user uploads, runtime generated) ---
+# --- Media & uploads (runtime generated) ---
 media/
 uploads/
-static/uploads/
+frontend/pages/admin/media/
 
-# --- Temporary Files ---
+# --- Local tool scratch files ---
 tmp/
 temp/
 *.tmp
 *.temp
 *.bak
 *.orig
-*.rej
-
-# --- OOBE State (local configuration) ---
-.oobe_complete
-.oobe_state.json
-rosetta.json
-
-# --- Lock Files ---
-# Keep lockfiles for reproducible builds:
-# pnpm-lock.yaml (COMMITTED)
-# uv.lock        (COMMITTED)
-
-# --- Vercel ---
-.vercel
-
-# --- Cloudflare / Wrangler ---
-.wrangler/
-.wrangler2/
-.wrangler.toml.local
-.dev.vars
-.cmf/
-
-# --- Local tool scratch files (never commit) ---
 *.local
-astro-full.txt
-astro-check-latest.txt
-astro-check-out.txt
-astro-check-output.txt
-_coverage_baseline.txt
-_cov2.txt
-_cov.txt
 *.pid
 *.seed
-*.pid.lock
 
-# --- Debug ---
-npm-debug.log
-yarn-error.log
+# --- Vercel / deployment ---
+.vercel/
+.wrangler/
 
-# --- Editor swap (guard) ---
-*.swp!
-
-# local package-manager cache workaround dirs
-.pnpm-store*/
-.pnpm-home/
-.npm-cache/
-
-# --- AI Agent / Debug Temp Files ---
-.tmp_*
-tmp_*
-scripts_fix_*.py
-scripts_test_*.py
-tmp-shots/
+# --- AI / IDE workspace files ---
+.trae/
+.clinerules/
+.kiro/
 .workbuddy/
-frontend/.tmp_tc*
-tmp_*.py
-tmp_*.json
-.tmp_*.txt
-_qa/
-frontend/_navtest.cjs
-frontend/scripts/smoke-admin.mjs
-backend/scripts/_dump_*.py
-backend/scripts/_i18n_*.py
-backend/scripts/_reset_*.py
-backend/scripts/_run_*.py
-backend/scripts/_schema_*.py
-backend/scripts/_tmp_*.py
-backend/scripts/audit_*.py
-backend/tests/
+.backups/
