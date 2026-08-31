@@ -50,7 +50,7 @@
                 <img
                   v-if="friend.logo"
                   :src="friend.logo"
-                  :alt="friend.name"
+                  :alt="pickLocalized(friend.name)"
                   class="w-full h-full object-cover"
                   loading="lazy"
                 >
@@ -58,17 +58,17 @@
                   v-else
                   class="font-display text-lg font-bold text-slate-600 dark:text-slate-300"
                 >
-                  {{ friend.name?.[0]?.toUpperCase() }}
+                  {{ pickLocalized(friend.name)?.[0]?.toUpperCase() }}
                 </span>
               </div>
               <div class="flex-1 min-w-0">
                 <CardTitle class="font-display text-base tracking-tight group-hover:underline underline-offset-4 truncate">
-                  {{ friend.name }}
+                  {{ pickLocalized(friend.name) }}
                 </CardTitle>
               </div>
             </div>
             <CardDescription class="line-clamp-3 text-sm leading-relaxed min-h-[3.75rem]">
-              {{ friend.description || t('friends.noDesc') }}
+              {{ pickLocalized(friend.description) || t('friends.noDesc') }}
             </CardDescription>
           </CardHeader>
           <CardFooter class="p-5 pt-0 flex items-center justify-between text-sm border-t mt-2">
@@ -108,23 +108,28 @@ import { Link2, ExternalLink } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const site = useSite()
 
+const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
+  if (val == null) return ''
+  if (typeof val === 'string') return val
+  const v = val as Record<string, string>
+  const key = locale.value as string
+  return v[key] ?? v.zh ?? Object.values(v)[0] ?? ''
+}
+
 // ===== SEO：基于 i18n + 站点设置 =====
-const requestURL = useRequestURL()
-const canonical = computed(() => requestURL.href)
-useSeoMeta({
-  title: () => String(t('friends.title') || '友情链接'),
-  description: () => site.siteDescription.value,
-  ogType: 'website',
-  ogUrl: canonical,
-  twitterCard: 'summary'
+useSeo({
+  title: computed(() => String(t('nav.friends') || t('friends.title') || '友情链接')),
+  description: computed(() => site.siteDescription.value),
+  type: 'website'
 })
-useHead({
-  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
-  link: [{ rel: 'canonical', href: canonical }]
-})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home') as string, url: '/' },
+  { name: t('nav.friends') as string, url: '/friends' }
+])
 
 const { getFriendLinks } = useFriendLinks()
 

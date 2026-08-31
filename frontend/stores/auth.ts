@@ -197,14 +197,46 @@ export const useAuthStore = defineStore('auth', () => {
   let initialized = false
   let initPromise: Promise<void> | null = null
 
-  // Initialize from localStorage on client; idempotent & concurrency-safe
+  /**
+   * 从 localStorage 恢复登录态。
+   *
+   * ⚠️ Hydration 安全：
+   *  SSR 永远渲染为「未登录」（没有 localStorage / cookie 存 JWT）。
+   *  如果客户端首屏在 hydrate 完成前同步读取 localStorage 并赋值 accessToken / user，
+   *  会让 Header 从「登录按钮」变「用户头像」，触发大面积 Hydration mismatch
+   *  （Vue 报错 "Hydration completed but contains mismatches."）。
+   *
+   *  因此：客户端首屏时必须 defer 到 app:mounted（hydrate 完成）之后，
+   *  再从 localStorage 恢复 token；SPA 导航的后续调用则立即执行。
+   */
   function initialize(): Promise<void> {
     if (!import.meta.client) return Promise.resolve()
     if (initialized) return Promise.resolve()
     if (initPromise) return initPromise
 
+    // 判断是否仍处于首屏 hydration 阶段：
+    //   document.readyState === 'loading' → 还在解析 HTML，必是首屏 hydrating
+    //   或 window.__NUXT_HYDRATED__ 未打标 → 仍在 hydrate 过程中
+    const isHydrating
+      = (typeof document !== 'undefined' && document.readyState === 'loading')
+        || !(typeof window !== 'undefined' && (window as { __NUXT_HYDRATED__?: boolean }).__NUXT_HYDRATED__)
+
     initPromise = (async () => {
       try {
+        // 首屏阶段 → 等 Vue/Nuxt 挂载完成（hydrate 结束）再改状态，避免 mismatch
+        if (isHydrating) {
+          const nuxtApp = useNuxtApp()
+          await new Promise<void>((resolve) => {
+            // app:mounted = Vue app 实例已挂载（hydrate 完成）
+            const offMounted = nuxtApp.hook('app:mounted', () => {
+              offMounted()
+              resolve()
+            })
+            // 兜底：app:mounted 因异常未触发，超时 1.5s 后直接放行
+            setTimeout(resolve, 1500)
+          })
+        }
+
         const storedAccessToken = localStorage.getItem('access_token')
         const storedRefreshToken = localStorage.getItem('refresh_token')
 
@@ -216,6 +248,9 @@ export const useAuthStore = defineStore('auth', () => {
       } finally {
         initialized = true
         initPromise = null
+        if (import.meta.client && typeof window !== 'undefined') {
+          ;(window as { __NUXT_HYDRATED__?: boolean }).__NUXT_HYDRATED__ = true
+        }
       }
     })()
     return initPromise

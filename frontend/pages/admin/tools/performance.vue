@@ -91,12 +91,16 @@
         value="overview"
         class="mt-6"
       >
-        <Card class="rounded-2xl">
-          <CardHeader>
-            <CardTitle>慢路径 Top 排名</CardTitle>
-            <CardDescription>按平均响应耗时排序的接口路径，建议优先优化红色与赭色条目</CardDescription>
-          </CardHeader>
-          <CardContent class="p-0">
+        <AdminCard>
+          <div class="space-y-1.5 mb-4">
+            <h3 class="text-base font-semibold">
+              慢路径 Top 排名
+            </h3>
+            <p class="text-sm text-muted-foreground">
+              按平均响应耗时排序的接口路径，建议优先优化红色与赭色条目
+            </p>
+          </div>
+          <div class="p-0">
             <div
               v-if="summaryLoading"
               class="p-5 space-y-3"
@@ -166,16 +170,16 @@
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
 
       <TabsContent
         value="slow"
         class="mt-6"
       >
-        <Card class="rounded-2xl overflow-hidden">
-          <CardContent class="p-0">
+        <AdminCard class="overflow-hidden">
+          <div class="p-0">
             <div
               v-if="slowLoading"
               class="p-6 space-y-3"
@@ -297,20 +301,24 @@
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
 
       <TabsContent
         value="trend"
         class="mt-6"
       >
-        <Card class="rounded-2xl">
-          <CardHeader>
-            <CardTitle>近 30 天错误率趋势</CardTitle>
-            <CardDescription>展示每日按请求数加权的 4xx / 5xx 比例，接入图表库后自动替换为真实曲线</CardDescription>
-          </CardHeader>
-          <CardContent>
+        <AdminCard>
+          <div class="space-y-1.5 mb-4">
+            <h3 class="text-base font-semibold">
+              近 30 天错误率趋势
+            </h3>
+            <p class="text-sm text-muted-foreground">
+              展示每日按请求数加权的 4xx / 5xx 比例，接入图表库后自动替换为真实曲线
+            </p>
+          </div>
+          <div>
             <div
               class="h-72 rounded-2xl relative overflow-hidden bg-primary/5"
             >
@@ -395,15 +403,15 @@
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
     </Tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, defineComponent, h, type Component } from 'vue'
+import { ref, reactive, onMounted, defineComponent, h, type Component } from 'vue'
 import {
   fetchAdminPerformanceSummary,
   fetchAdminSlowRequests,
@@ -417,7 +425,7 @@ import {
   TrendingUp, Info, Loader2 as LucideSkeleton, ChevronLeft, ChevronRight
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
@@ -425,7 +433,7 @@ import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
-const toast = useToast()
+const _toast = useToast()
 
 const iconMap: Record<string, Component> = {
   Activity, AlertTriangle, Timer, TimerReset, Zap
@@ -499,7 +507,8 @@ async function loadSummary() {
   try {
     const r = await fetchAdminPerformanceSummary()
     Object.assign(summary, r)
-  } catch (e) {
+  } catch {
+    // 失败时保持空 summary
   } finally {
     summaryLoading.value = false
   }
@@ -512,7 +521,7 @@ async function loadSlow() {
     slowList.value = r?.items ?? []
     slowTotal.value = r?.total ?? 0
     slowTotalPages.value = r?.total_pages ?? 1
-  } catch (e) {
+  } catch {
     slowList.value = []
   } finally {
     slowLoading.value = false

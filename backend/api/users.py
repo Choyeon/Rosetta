@@ -580,6 +580,7 @@ async def get_my_preferences(current_user: CurrentUser, db: DB):
     preference = UserPreference(user_id=current_user.id)
     db.add(preference)
     await db.flush()
+    await db.refresh(preference)
     return UserPreferenceResponse.model_validate(preference)
 
 
@@ -723,6 +724,8 @@ async def list_users(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     search: str | None = Query(None, description="搜索关键词"),
+    sort: str = Query("created_at", description="排序字段：created_at|last_login|username"),
+    order: str = Query("desc", description="排序方向：asc|desc"),
 ):
     """
     获取用户列表
@@ -740,13 +743,21 @@ async def list_users(
             | User.email.ilike(f"%{search}%")
         )
 
+    # 排序
+    sort_col = {
+        "created_at": User.created_at,
+        "last_login": User.last_login,
+        "username": User.username,
+    }.get(sort, User.created_at)
+    query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
+
     # 并发执行计数和列表查询
     count_query = select(func.count()).select_from(query.subquery())
 
     total, result = await concurrent_query(
         db.scalar(count_query),
         db.execute(
-            query.offset((page - 1) * page_size).limit(page_size).order_by(User.created_at.desc())
+            query.offset((page - 1) * page_size).limit(page_size)
         ),
     )
 

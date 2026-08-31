@@ -21,10 +21,10 @@
         <Badge
           v-if="categoryName"
           variant="secondary"
-          class="text-[11px] h-5 px-2"
+          class="text-[11px] h-5 px-2 inline-flex items-center gap-1"
           :style="categoryBadgeStyle"
         >
-          <FolderOpen class="size-3 mr-1" />
+          <FolderOpen class="size-3" />
           {{ categoryName }}
         </Badge>
         <Badge
@@ -55,17 +55,20 @@
 
       <div class="mt-auto pt-3 flex items-center justify-between text-xs text-muted-foreground gap-3">
         <div class="flex items-center gap-2 min-w-0">
-          <Avatar class="size-5">
-            <AvatarImage
-              v-if="authorAvatar"
-              :src="authorAvatar"
-              :alt="authorName"
-            />
-            <AvatarFallback class="text-[10px]">
-              {{ authorName[0] || 'U' }}
-            </AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            :avatar="post.author?.avatar"
+            :seed="authorName"
+            :name="authorName"
+            :title="post.author?.title || null"
+            :size="20"
+            :show-title="true"
+          />
           <span class="font-medium text-foreground truncate">{{ authorName }}</span>
+          <TitleBadge
+            v-if="post.author?.title"
+            :title="post.author?.title as { id?: number; name: string; icon?: string; color?: string }"
+            size="sm"
+          />
           <span
             v-if="publishedAt"
             class="shrink-0"
@@ -117,9 +120,10 @@
         <Badge
           v-if="categoryName"
           variant="secondary"
+          class="inline-flex items-center gap-1"
           :style="categoryBadgeStyle"
         >
-          <FolderOpen class="size-3 mr-1" />
+          <FolderOpen class="size-3" />
           {{ categoryName }}
         </Badge>
         <Badge
@@ -153,15 +157,20 @@
       style="border-top:1px solid color-mix(in oklab, hsl(var(--foreground)) 6%, transparent)"
     >
       <div class="flex items-center gap-2 min-w-0">
-        <Avatar class="size-6">
-          <AvatarImage
-            v-if="authorAvatar"
-            :src="authorAvatar"
-            :alt="authorName"
-          />
-          <AvatarFallback>{{ authorName[0] || 'U' }}</AvatarFallback>
-        </Avatar>
+        <UserAvatar
+          :avatar="post.author?.avatar"
+          :seed="authorName"
+          :name="authorName"
+          :title="post.author?.title || null"
+          :size="24"
+          :show-title="true"
+        />
         <span class="font-medium text-foreground truncate">{{ authorName }}</span>
+        <TitleBadge
+          v-if="post.author?.title"
+          :title="post.author?.title as { id?: number; name: string; icon?: string; color?: string }"
+          size="sm"
+        />
         <span
           v-if="publishedAt"
           class="shrink-0"
@@ -192,11 +201,13 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Badge } from '~~/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import UserAvatar from '~~/components/UserAvatar.vue'
+import TitleBadge from '~~/components/TitleBadge.vue'
 import { CalendarDays, Eye, MessageSquare, FolderOpen } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
-import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
+import { useI18nHelpers } from '~~/composables/useI18nHelpers'
+import { hexToHslTriple } from '~~/lib/utils'
 
 type PostCardVariant = 'default' | 'compact'
 
@@ -228,6 +239,12 @@ interface Props {
       nickname?: string
       username?: string
       avatar?: string
+      title?: {
+        id?: number
+        name: string
+        icon?: string
+        color?: string
+      } | null
     }
     created_at?: string
     published_at?: string
@@ -248,7 +265,8 @@ const props = withDefaults(defineProps<Props>(), {
   variant: 'default'
 })
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
+const { resolveLocalized, formatDate } = useI18nHelpers()
 
 const coverImage = computed(() => props.post.cover_image || props.post.coverImage || '')
 const publishedAt = computed(() => props.post.published_at || props.post.publishedAt || props.post.created_at || '')
@@ -259,57 +277,9 @@ const authorName = computed(() => {
   const a = props.post.author
   return a?.nickname || a?.name || a?.username || 'Anonymous'
 })
-const authorAvatar = useResolvedAvatar(
-  () => props.post.author?.avatar,
-  () => props.post.author?.avatar
-)
-
-function resolveLocalized(
-  value: string | Record<string, string> | undefined,
-  fallback = ''
-): string {
-  if (!value) return fallback
-  if (typeof value === 'string') return value
-  const v = value as Record<string, string>
-  return (v[locale.value as string] ?? Object.values(v)[0] ?? fallback) as string
-}
 
 const categoryName = computed(() => resolveLocalized(props.post.category?.name))
 const categoryColor = computed(() => props.post.category?.color ?? null)
-
-/**
- * 将 hex (#RRGGBB) 颜色转换为 HSL 空格三元组（如 "181 84% 36%"）。
- * 用于直接拼到 hsl(...) 颜色函数中，参与 color-mix 计算。
- */
-function hexToHslTriple(hex: string): string | null {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim())
-  if (!m) return null
-  const r = parseInt(m[1] ?? '00', 16) / 255
-  const g = parseInt(m[2] ?? '00', 16) / 255
-  const b = parseInt(m[3] ?? '00', 16) / 255
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  let h = 0
-  let s = 0
-  const l = (max + min) / 2
-  if (max !== min) {
-    const d = max - min
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r:
-        h = (g - b) / d + (g < b ? 6 : 0)
-        break
-      case g:
-        h = (b - r) / d + 2
-        break
-      case b:
-        h = (r - g) / d + 4
-        break
-    }
-    h *= 60
-  }
-  return `${h} ${s * 100}% ${l * 100}%`
-}
 
 /** 分类 Badge：当后端返回了 category.color 时，融合成柔和底色。 */
 const categoryBadgeStyle = computed<Record<string, string> | undefined>(() => {
@@ -340,45 +310,4 @@ const normalizedTags = computed<Array<{ id: number | string, slug: string, name:
 
 /** 紧凑卡片：最多 4 个 Tag，避免挤占正文空间。 */
 const compactTags = computed(() => normalizedTags.value.slice(0, 4))
-
-/**
- * SSR-safe 日期格式化（PostCard）。
- *
- * —— 为什么不用 toLocaleDateString？ ——
- * Node SSR 的 Intl 实现（在没有 full-icu 的情况下）会把 zh/ja 等 locale 回退到 en-US，
- * 生成类似 "Aug 20, 2025" 的字符串，而浏览器端按中文 locale 生成 "2025年8月20日"。
- * 服务端 HTML 文本与客户端首次渲染文本不一致 → Vue Hydration mismatch。
- *
- * 这里用静态月份名表 + 模板拼接，保证 SSR 与浏览器两端输出字节级一致。
- */
-const POSTCARD_MONTHS: Record<string, string[]> = {
-  zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-  zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
-}
-
-const formatDate = (date: string) => {
-  try {
-    if (!date) return ''
-    const d = new Date(date)
-    if (isNaN(d.getTime())) return ''
-    const loc = locale.value as string
-    const months = (POSTCARD_MONTHS[loc] || POSTCARD_MONTHS.en || []) as string[]
-    const y = d.getFullYear()
-    const m = months[d.getMonth()] ?? ''
-    const day = d.getDate()
-    switch (loc) {
-      case 'zh':
-      case 'zh_Hant':
-      case 'ja':
-        return `${y}年${m}${day}日`
-      case 'en':
-      default:
-        return `${m} ${day}, ${y}`
-    }
-  } catch {
-    return ''
-  }
-}
 </script>

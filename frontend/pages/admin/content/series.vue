@@ -11,10 +11,11 @@ import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import { BookOpen, ChevronDown, Plus } from 'lucide-vue-next'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -32,10 +33,12 @@ const dialogMode = ref<'new' | 'edit'>('new')
 const saving = ref(false)
 const coverUploading = ref(false)
 
+type I18nDict = Record<string, string>
+
 const form = reactive({
-  name: '',
+  name: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
   slug: '',
-  description: '',
+  description: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
   cover_image: '',
   sort_order: 0
 })
@@ -46,6 +49,20 @@ const getLocalizedStr = (v: string | Record<string, string> | null | undefined):
   if (v == null) return ''
   if (typeof v === 'string') return v
   return v.zh || v.en || Object.values(v)[0] || ''
+}
+
+const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): Record<string, string> => {
+  const base = { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (v == null) return base
+  if (typeof v === 'string') {
+    return { ...base, zh: v }
+  }
+  return {
+    zh: v.zh ?? '',
+    en: v.en ?? '',
+    ja: v.ja ?? '',
+    zh_Hant: v.zh_Hant ?? ''
+  }
 }
 
 const slugify = (text: string): string => {
@@ -60,17 +77,21 @@ let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
-    if (!slugManualEdit && val) {
-      form.slug = slugify(val)
+    const zhVal = String(val?.zh ?? '')
+    if (!slugManualEdit && zhVal) {
+      form.slug = slugify(zhVal)
     }
-  }
+  },
+  { deep: true }
 )
 
 const loadData = async () => {
   loading.value = true
   try {
     seriesList.value = await fetchAdminSeries()
-  } catch {
+  } catch (e) {
+    console.error('[series] loadData failed:', e)
+    toast.error('加载系列列表失败')
     seriesList.value = []
   } finally {
     loading.value = false
@@ -80,9 +101,9 @@ const loadData = async () => {
 const openNew = () => {
   dialogMode.value = 'new'
   editingId.value = null
-  form.name = ''
+  form.name = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.slug = ''
-  form.description = ''
+  form.description = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.cover_image = ''
   form.sort_order = 0
   slugManualEdit = false
@@ -92,9 +113,9 @@ const openNew = () => {
 const openEdit = (s: AdminSeries) => {
   dialogMode.value = 'edit'
   editingId.value = s.id
-  form.name = getLocalizedStr(s.name)
+  form.name = normalizeI18nDict(s.name)
   form.slug = s.slug
-  form.description = getLocalizedStr(s.description)
+  form.description = normalizeI18nDict(s.description)
   form.cover_image = s.cover_image || ''
   form.sort_order = s.sort_order ?? 0
   slugManualEdit = true
@@ -114,8 +135,9 @@ const handleCoverUpload = async (e: Event) => {
     } else {
       toast.error('封面上传失败')
     }
-  } catch {
-    /* 错误已由 composable 处理 */
+  } catch (e) {
+    console.error('[series] handleCoverUpload failed:', e)
+    toast.error('封面上传失败')
   } finally {
     coverUploading.value = false
     input.value = ''
@@ -127,16 +149,18 @@ const clearCover = () => {
 }
 
 const save = async () => {
-  if (!form.name.trim()) {
+  if (!String(form.name.zh ?? '').trim()) {
     toast.error('请输入系列标题')
     return
   }
   saving.value = true
   try {
+    const descHasValue = String(form.description.zh ?? '') || String(form.description.en ?? '')
+      || String(form.description.ja ?? '') || String(form.description.zh_Hant ?? '')
     const payload: Record<string, unknown> = {
-      name: { zh: form.name },
+      name: form.name,
       slug: form.slug || undefined,
-      description: form.description ? { zh: form.description } : undefined,
+      description: descHasValue ? form.description : undefined,
       cover_image: form.cover_image || undefined,
       sort_order: form.sort_order
     }
@@ -149,8 +173,9 @@ const save = async () => {
     }
     dialogOpen.value = false
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
+  } catch (e) {
+    console.error('[series] save failed:', e)
+    toast.error(editingId.value ? '更新系列失败' : '创建系列失败')
   } finally {
     saving.value = false
   }
@@ -174,8 +199,9 @@ async function doDelete() {
     pendingDeleteId.value = null
     if (expandedId.value === pendingDeleteId.value) expandedId.value = null
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
+  } catch (e) {
+    console.error('[series] doDelete failed:', e)
+    toast.error('删除系列失败')
   }
 }
 
@@ -192,10 +218,11 @@ onMounted(() => {
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-10 px-5 shadow-sm"
+        class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
         @click="openNew"
       >
-        + 新建系列
+        <Plus class="size-4" />
+        <span>新建系列</span>
       </Button>
     </template>
 
@@ -212,8 +239,8 @@ onMounted(() => {
 
       <template v-else-if="seriesList.length === 0">
         <div class="rounded-[12px] border border-border bg-card py-24 text-center text-muted-foreground">
-          <div class="text-6xl mb-4 opacity-30">
-            📚
+          <div class="mb-4 opacity-30 flex items-center justify-center">
+            <BookOpen class="size-16" />
           </div>
           <div class="text-sm mb-2">
             暂无系列
@@ -250,8 +277,11 @@ onMounted(() => {
                   {{ s.posts_count }} 篇
                 </Badge>
               </div>
-              <div class="absolute top-3 right-3 text-white/90 text-lg opacity-80 hover:opacity-100 transition-opacity cursor-pointer">
-                <span :class="{ 'rotate-180 inline-block transition-transform': expandedId === s.id }">▼</span>
+              <div class="absolute top-3 right-3 text-white/90 opacity-80 hover:opacity-100 transition-opacity cursor-pointer">
+                <ChevronDown
+                  class="size-5 transition-transform"
+                  :class="{ 'rotate-180': expandedId === s.id }"
+                />
               </div>
             </div>
             <div class="p-4">
@@ -317,16 +347,13 @@ onMounted(() => {
       @submit="save"
     >
       <div class="flex flex-col gap-4">
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">
-            标题 <span class="text-destructive">*</span>
-          </Label>
-          <Input
-            v-model="form.name"
-            placeholder="系列标题"
-            class="h-9 rounded-[10px]"
-          />
-        </div>
+        <I18nTabsEditor
+          v-model="form.name"
+          kind="text"
+          label="标题"
+          placeholder="系列标题"
+          :required="true"
+        />
         <div>
           <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
           <Input
@@ -336,15 +363,13 @@ onMounted(() => {
             @input="slugManualEdit = true"
           />
         </div>
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">描述</Label>
-          <Textarea
-            v-model="form.description"
-            rows="3"
-            placeholder="系列描述（可选）"
-            class="rounded-[10px] text-sm resize-y"
-          />
-        </div>
+        <I18nTabsEditor
+          v-model="form.description"
+          kind="textarea"
+          label="描述"
+          placeholder="系列描述（可选）"
+          :rows="3"
+        />
         <div>
           <Label class="mb-1.5 block text-xs text-muted-foreground">封面图</Label>
           <div class="flex items-start gap-3">

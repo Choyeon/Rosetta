@@ -21,7 +21,24 @@ import re
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Literal, TypeVar
 
-from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator, model_validator, AfterValidator
+from typing import Annotated
+import re
+
+# 仅校验"格式合法"，不评判域名是否可解析 / 是否为 special-use 域名。
+# Pydantic EmailStr 默认会做 DNS 可达性与 special-use 域名（.local / example.com 等）
+# 校验，导致 UserResponse 等响应模型在序列化存储值（如 dev 环境的 .local 邮箱）时
+# 抛 500，使后台用户列表整页崩溃。应用层只需要格式校验即可。
+_EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+def _relaxed_email_validator(value: str) -> str:
+    if not isinstance(value, str) or not _EMAIL_RE.match(value):
+        raise ValueError("邮箱格式无效")
+    return value
+
+
+RelaxedEmailStr = Annotated[str, AfterValidator(_relaxed_email_validator)]
 
 from backend.core.i18n import LANGUAGE_CODES, get_i18n_value, normalize_language
 from backend.schemas.activity import (
@@ -47,6 +64,19 @@ from backend.schemas.gallery import (
     PhotoCreate,
     PhotoResponse,
     PhotoUpdate,
+)
+from backend.schemas.extensions import (
+    PluginBase,
+    PluginOut,
+    PluginActivateIn,
+    PluginConfigIn,
+    PluginBulkIn,
+    PluginInstallFrom,
+    ThemeBase,
+    ThemeOut,
+    ThemeModsIn,
+    ThemeActivateIn,
+    BulkOperationOut,
 )
 
 T = TypeVar("T")
@@ -87,7 +117,7 @@ class PaginatedResponse(BaseModel, Generic[T]):
     items: list[T]
     total: int = Field(..., ge=0, description="总记录数")
     page: int = Field(..., ge=1, description="当前页码")
-    page_size: int = Field(..., ge=1, le=100, description="每页大小")
+    page_size: int = Field(..., ge=1, le=200, description="每页大小")
     total_pages: int = Field(..., ge=0, description="总页数")
 
 
@@ -140,7 +170,7 @@ class UserBase(BaseModel):
         pattern=r"^[a-zA-Z0-9_-]+$",
         description="用户名（只允许字母、数字、下划线和连字符）",
     )
-    email: EmailStr = Field(..., description="邮箱地址")
+    email: RelaxedEmailStr = Field(..., description="邮箱地址")
     nickname: str | None = Field(None, max_length=50, description="昵称")
     bio: str | None = Field(None, max_length=500, description="个人简介")
     website: str | None = Field(None, max_length=200, description="个人网站")
@@ -226,12 +256,22 @@ class UserResponse(UserBase):
     用于返回用户信息。
     """
 
+    # 响应模型只用于序列化已存在的用户数据，不应拒绝历史上已写入的短用户名
+    # （如 2 字符用户名），因此覆盖 UserBase 的输入级约束，避免列表/详情接口 500。
+    username: str = Field(
+        ...,
+        min_length=1,
+        max_length=150,
+        description="用户名",
+    )
+
     id: int
     avatar: str | None = None
     cover_image: str | None = None
     is_active: bool
     is_staff: bool
     is_superuser: bool
+    role: str | None = None
     title: "UserTitleResponse | None" = None
     qq: str | None = None
     github: str | None = None
@@ -250,10 +290,10 @@ class UserTitleResponse(BaseModel):
     """
 
     id: int
-    name: str
+    name: dict[str, str]
     color: str
     icon: str | None = None
-    description: str | None = None
+    description: dict[str, str] | None = None
 
     model_config = {"from_attributes": True}
 
@@ -359,7 +399,7 @@ class AdminUserCreate(BaseModel):
         pattern=r"^[a-zA-Z0-9_-]+$",
         description="用户名（只允许字母、数字、下划线和连字符）",
     )
-    email: EmailStr = Field(..., description="邮箱地址")
+    email: RelaxedEmailStr = Field(..., description="邮箱地址")
     password: str = Field(
         ...,
         min_length=8,
@@ -370,7 +410,11 @@ class AdminUserCreate(BaseModel):
     bio: str | None = Field(None, max_length=500, description="个人简介")
     website: str | None = Field(None, max_length=200, description="个人网站")
     github: str | None = Field(None, max_length=200, description="GitHub 主页")
-    is_staff: bool = Field(default=False, description="是否为管理员")
+    is_staff: bool = Field(default=False, description="是否为管理员（兼容字段，创建后会同步 role）")
+    role: str | None = Field(
+        None,
+        description="RBAC 角色：super_admin/admin/editor/author/contributor/subscriber。为空时由 is_staff/is_superuser 派生。",
+    )
     is_active: bool = Field(default=True, description="是否激活")
 
     @field_validator("password")
@@ -403,8 +447,8 @@ class AdminUserUpdateFull(BaseModel):
     用于管理员更新用户的所有信息。
     """
 
-    username: str | None = Field(None, min_length=3, max_length=150, pattern=r"^[a-zA-Z0-9_-]+$")
-    email: EmailStr | None = None
+    username: str | None = Field(None, min_length=1, max_length=150, description="用户名（可选，留空则不修改）")
+    email: RelaxedEmailStr | None = None
     nickname: str | None = Field(None, max_length=50)
     bio: str | None = Field(None, max_length=500)
     website: str | None = Field(None, max_length=200)
@@ -414,6 +458,10 @@ class AdminUserUpdateFull(BaseModel):
     is_staff: bool | None = None
     is_active: bool | None = None
     is_banned: bool | None = None
+    role: str | None = Field(
+        None,
+        description="RBAC 角色：super_admin/admin/editor/author/contributor/subscriber。为空时不变更。",
+    )
 
     @field_validator("website", "github")
     @classmethod
@@ -1029,7 +1077,7 @@ class CommentBase(BaseModel):
     content: str = Field(..., min_length=2, max_length=3000)
     parent_id: int | None = None
     author_name: str | None = Field(None, min_length=2, max_length=30)
-    author_email: EmailStr | None = Field(None, max_length=254)
+    author_email: RelaxedEmailStr | None = Field(None, max_length=254)
     author_website: str | None = Field(None, max_length=200)
     hcaptcha_token: str | None = None
 
@@ -1265,6 +1313,20 @@ class NavigationLocalizedResponse(BaseModel):
 # ==================== 友情链接相关模型 ====================
 
 
+_VALID_FRIEND_STATUSES = {"pending", "approved", "rejected"}
+
+
+def _status_to_active(status: str | None, is_active: bool | None) -> tuple[str, bool]:
+    """status 和 is_active 双向归一化：以 status 为主，is_active 作为兼容镜像"""
+    if status is not None:
+        s = status if status in _VALID_FRIEND_STATUSES else ("approved" if is_active else "pending")
+        return s, s == "approved"
+    if is_active is not None:
+        s = "approved" if is_active else "pending"
+        return s, is_active
+    return "pending", False
+
+
 class FriendLinkBase(BaseModel):
     """友情链接基础模型"""
 
@@ -1275,18 +1337,24 @@ class FriendLinkBase(BaseModel):
     )
     logo: str | None = Field(None, max_length=500)
     order: int = Field(default=0, ge=0)
+    status: str = Field(default="pending", pattern=r"^(pending|approved|rejected)$", description="审核状态：pending待审核 / approved已通过 / rejected已拒绝")
     is_active: bool = True
     target_blank: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def normalize_i18n_fields(cls, data):
-        """将字符串字段转换为多语言格式"""
         if isinstance(data, dict):
             if "name" in data and isinstance(data["name"], str):
                 data["name"] = {"zh": data["name"], "en": data["name"]}
             if "description" in data and isinstance(data["description"], str):
                 data["description"] = {"zh": data["description"], "en": data["description"]}
+            st, act = _status_to_active(
+                data.get("status") if "status" in data else None,
+                data.get("is_active") if "is_active" in data else None,
+            )
+            data["status"] = st
+            data["is_active"] = act
         return data
 
 
@@ -1304,18 +1372,25 @@ class FriendLinkUpdate(BaseModel):
     description: dict[str, str] | str | None = None
     logo: str | None = Field(None, max_length=500)
     order: int | None = Field(None, ge=0)
+    status: str | None = Field(None, pattern=r"^(pending|approved|rejected)$")
     is_active: bool | None = None
     target_blank: bool | None = None
 
     @model_validator(mode="before")
     @classmethod
     def normalize_i18n_fields(cls, data):
-        """将字符串字段转换为多语言格式"""
         if isinstance(data, dict):
             if "name" in data and isinstance(data["name"], str):
                 data["name"] = {"zh": data["name"], "en": data["name"]}
             if "description" in data and isinstance(data["description"], str):
                 data["description"] = {"zh": data["description"], "en": data["description"]}
+            if "status" in data or "is_active" in data:
+                st, act = _status_to_active(
+                    data.get("status") if "status" in data else None,
+                    data.get("is_active") if "is_active" in data else None,
+                )
+                data["status"] = st
+                data["is_active"] = act
         return data
 
 
@@ -1328,11 +1403,30 @@ class FriendLinkResponse(BaseModel):
     description: dict[str, str] | None = None
     logo: str | None = None
     order: int
+    status: str
     is_active: bool
     target_blank: bool
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="before")
+    @classmethod
+    def sync_status_active(cls, data):
+        if isinstance(data, dict):
+            st = data.get("status")
+            act = data.get("is_active")
+            if not st or st not in _VALID_FRIEND_STATUSES:
+                st = "approved" if act else "pending"
+                data["status"] = st
+            data["is_active"] = st == "approved"
+        elif hasattr(data, "status"):
+            st = getattr(data, "status", None)
+            act = getattr(data, "is_active", False)
+            if not st or st not in _VALID_FRIEND_STATUSES:
+                setattr(data, "status", "approved" if act else "pending")
+            setattr(data, "is_active", getattr(data, "status") == "approved")
+        return data
 
 
 class FriendLinkLocalizedResponse(BaseModel):
@@ -1344,12 +1438,16 @@ class FriendLinkLocalizedResponse(BaseModel):
     description: str | None = None
     logo: str | None = None
     order: int
+    status: str
     is_active: bool
     target_blank: bool
     created_at: datetime
 
     @classmethod
     def from_friend_link(cls, link, lang: str = "zh") -> "FriendLinkLocalizedResponse":
+        st = getattr(link, "status", None)
+        if st not in _VALID_FRIEND_STATUSES:
+            st = "approved" if getattr(link, "is_active", False) else "pending"
         """从友链模型创建本地化响应"""
         return cls(
             id=link.id,
@@ -1358,7 +1456,8 @@ class FriendLinkLocalizedResponse(BaseModel):
             description=get_i18n_value(link.description, lang) if link.description else None,
             logo=link.logo,
             order=link.order,
-            is_active=link.is_active,
+            status=st,
+            is_active=st == "approved",
             target_blank=link.target_blank,
             created_at=link.created_at,
         )
@@ -2101,7 +2200,7 @@ class GuestbookEntryBase(BaseModel):
 
     content: str = Field(..., min_length=2, max_length=3000)
     author_name: str | None = Field(None, min_length=2, max_length=30)
-    author_email: EmailStr | None = Field(None, max_length=254)
+    author_email: RelaxedEmailStr | None = Field(None, max_length=254)
     author_website: str | None = Field(None, max_length=200)
 
     @field_validator("author_website")
@@ -2142,6 +2241,7 @@ class GuestbookEntryResponse(BaseModel):
     is_featured: bool = False
     likes_count: int = 0
     created_at: datetime
+    title: "UserTitleResponse | None" = None
 
     model_config = {"from_attributes": True}
 

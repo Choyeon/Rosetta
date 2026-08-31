@@ -481,6 +481,7 @@ async def move_favorite_by_post(
     favorite.folder_id = folder_id
 
     await db.flush()
+    await db.refresh(favorite)
 
     return favorite
 
@@ -512,6 +513,7 @@ async def update_favorite_note_by_post(
 
     favorite.note = note
     await db.flush()
+    await db.refresh(favorite)
 
     return favorite
 

@@ -28,6 +28,7 @@ import { Button } from '~~/components/ui/button'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { translateAdminText } from '~~/composables/useAdminManage'
 import { Languages, Loader2 } from '@lucide/vue'
+
 type I18nValue = string | null | Record<string, string | null>
 
 const props = withDefaults(defineProps<{
@@ -134,7 +135,7 @@ async function translateLocale(lang: string) {
 </script>
 
 <template>
-  <div class="card-surface no-glow space-y-2 p-3 md:p-4">
+  <div class="card-surface no-glow flex flex-col gap-2 p-3 md:p-4">
     <div class="flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 min-w-0">
         <Label

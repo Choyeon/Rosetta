@@ -1,4 +1,9 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
+import { fileURLToPath } from 'node:url'
+import { dirname, resolve } from 'node:path'
+
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = dirname(__filename)
 //
 // 后端连接配置（单源，不要再在源码各处散落写默认 127.0.0.1/localhost:3000）：
 //   - BACKEND_HOST / BACKEND_PORT：Nitro（server routes）连 FastAPI 的地址
@@ -27,11 +32,27 @@ export default defineNuxtConfig({
     '@pinia/nuxt'
   ],
 
-  // 全局开启 SSR：公开页面数据在服务端渲染到 HTML，
-  //   1) 彻底解决"从详情返回首页/列表空白"：数据跟着 HTML 一起下发，不再依赖 onMounted 才拉；
-  //   2) 让搜索引擎直接抓到正文，解决 SEO 空壳问题。
-  // 管理后台、登录注册、OOBE 通过 routeRules 单独关闭 SSR（需要 localStorage 登录态和重交互）。
-  ssr: true,
+  // ============================================================
+  //  SSR 策略（严格遵循 AGENTS.md：「从 SPA 模式渐进式开启 SSR，不做一次性全量切换」）
+  //   - 全局基线 ssr: false → 所有页面按 SPA 运行，规避 reka-ui Primitive/Tooltip/PopperAnchor
+  //     等组件在 SSR 下输出 span/button/PrimitiveSlot undefined 的 hydration mismatch。
+  //   - 对 SEO 强相关页面（文章列表/详情/分类/标签/归档等），通过 routeRules 或页面内部
+  //     definePageMeta({ ssr: true }) 逐个渐进式开启 SSR，调试通过后再放开下一个。
+  //   - 管理后台 / login / register / oobe 等页面始终 ssr: false（需要 localStorage 登录态
+  //     与重度交互，SSR 既无收益也容易出问题）。
+  // ============================================================
+  ssr: false,
+
+  // 渐进式 SSR：逐个对 SEO 敏感页面开启（需要配合各页面首屏 DOM 审计后再添加条目，
+  // 确保 reka-ui 组件已被 ClientOnly 隔离或首屏渲染路径完全不经过它们）。
+  // routeRules: {
+  //   '/posts/**':        { ssr: true },
+  //   '/posts/[slug]/**': { ssr: true },
+  //   '/categories/**':   { ssr: true },
+  //   '/tags/**':         { ssr: true },
+  //   '/archive':         { ssr: true },
+  //   '/':                { ssr: true },
+  // },
 
   components: [
     { path: './components', pathPrefix: false, ignore: ['**/index.ts'] }
@@ -45,8 +66,12 @@ export default defineNuxtConfig({
     ]
   },
 
+  // 禁用 Nuxt DevTools（v3.4.0 与 Vite 8 的 WebSocket HMR 客户端不兼容，
+  // 会反复抛 `this.connection.on is not a function` 异常；该 ws connection 是
+  // 原生 WebSocket 实例而非 EventEmitter 包装，缺少 on() 方法导致。
+  // 稳定后如需调试可临时改为 { enabled: true, vscode: {} } 启动独立 DevTools。
   devtools: {
-    enabled: true
+    enabled: false
   },
 
   app: {
@@ -105,23 +130,38 @@ export default defineNuxtConfig({
   },
 
   routeRules: {
+    // === Vite 内部虚拟文件：禁止 swr/ssr 缓存与 spa-fallback 拦截，
+    // 否则 Nuxt 会把 /@vite/client 当作不存在的页面路由返回 404（"Page not found: /@vite/client"），
+    // 触发 Vite HMR 客户端初始化失败。
+    '/@vite/**': { ssr: false, swr: false, headers: { 'cache-control': 'no-store' } },
+    '/@id/**': { ssr: false, swr: false, headers: { 'cache-control': 'no-store' } },
+    '/@fs/**': { ssr: false, swr: false, headers: { 'cache-control': 'no-store' } },
+    '/_nuxt/**': { ssr: false, swr: false, headers: { 'cache-control': 'public, max-age=31536000, immutable' } },
     // === SPA 模式：需要登录态 / 重型交互 / 不被搜索引擎索引 ===
     '/admin/**': { ssr: false },
     '/login': { ssr: false },
     '/register': { ssr: false },
     '/oobe': { ssr: false },
     // === 公开页面 SSR + SWR（Stale-While-Revalidate）缓存，降低后端压力 ===
-    '/': { swr: 3600 },
-    '/posts': { swr: 3600 },
-    '/posts/**': { swr: 600 },
-    '/categories': { swr: 3600 },
-    '/categories/**': { swr: 3600 },
-    '/about': { swr: 86400 },
-    '/archive': { swr: 3600 },
-    '/friends': { swr: 86400 },
-    '/gallery': { swr: 86400 },
-    '/guestbook': { swr: 600 },
-    '/activity': { swr: 600 },
+    // 已完成组件首屏 DOM 审计：PostCard/PostList 等首屏路径不依赖 reka-ui Primitive
+    // 的 mounted-only 特性，LocaleSwitcher/DropdownMenu 在 SSR 路径下渲染为"关闭态"
+    // （默认未设置 default-open），无 hydration mismatch 风险。
+    '/': { ssr: true, swr: 3600 },
+    '/posts': { ssr: true, swr: 3600 },
+    '/posts/**': { ssr: true, swr: 600 },
+    '/categories': { ssr: true, swr: 3600 },
+    '/categories/**': { ssr: true, swr: 3600 },
+    '/tags': { ssr: true, swr: 3600 },
+    '/tags/**': { ssr: true, swr: 3600 },
+    '/series': { ssr: true, swr: 3600 },
+    '/series/**': { ssr: true, swr: 3600 },
+    '/archive': { ssr: true, swr: 3600 },
+    '/about': { ssr: true, swr: 86400 },
+    '/friends': { ssr: true, swr: 86400 },
+    '/gallery': { ssr: true, swr: 86400 },
+    '/guestbook': { ssr: true, swr: 600 },
+    '/activity': { ssr: true, swr: 600 },
+    '/page/**': { ssr: true, swr: 3600 },
     // === 静态产物：SEO/RSS/Robots server routes 缓存头 + SWR ===
     '/rss.xml': {
       swr: 1800,
@@ -148,10 +188,19 @@ export default defineNuxtConfig({
 
   compatibilityDate: '2026-06-30',
 
-  // 禁用 Nuxt 遥测，避免 nostics 在 Vite 热链路上反复触发 NUXT_E1001 警告
-  telemetry: false,
-
   nitro: {
+    // ===== 主题静态资源挂载：将 frontend/themes/<slug>/* 暴露到站点根路径 /themes/<slug>/*
+    // 让 manifest 里的 screenshot_urls 写相对路径（例：screenshot.png）以及 useFrontendTheme
+    // 注入的 /themes/{slug}/style.css 在开发 & 构建产物中都能直接访问，无需后端二次代理。
+    // 注意：Nitro dev server 的 publicAssets.dir 必须使用绝对路径；相对 ./themes 会返回 404。
+    publicAssets: [
+      {
+        baseURL: '/themes',
+        dir: resolve(__dirname, 'themes'),
+        maxAge: 60 * 60,
+        fallthrough: false
+      }
+    ],
     devProxy: {
       '/api': {
         // 缺失环境变量时回退到开发约定 127.0.0.1:8000，保证 devProxy 不会因为空 host/port 挂起
@@ -176,6 +225,9 @@ export default defineNuxtConfig({
       autoprefixer: {}
     }
   },
+
+  // 禁用 Nuxt 遥测，避免 nostics 在 Vite 热链路上反复触发 NUXT_E1001 警告
+  telemetry: false,
 
   eslint: {
     config: {

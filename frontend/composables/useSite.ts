@@ -11,8 +11,8 @@
  *   GET /api/config    (public, fallback)
  */
 import { computed } from 'vue'
-import { fetchAllSettings } from '~~/composables/useAdminManage'
-import { apiFetch } from '~~/composables/useApi'
+import type { AllSettingsGroups } from '~~/composables/useAdminManage'
+import { apiFetch, currentLocale } from '~~/composables/useApi'
 
 /**
  * 与 GET /api/config 返回值完全一致的首屏默认值。
@@ -108,6 +108,8 @@ function readGroup<T extends Record<string, unknown>>(
 
 export function useSite() {
   const state = useStateRef()
+  const theme = useFrontendTheme()
+  const themeOverrides = theme.override
 
   /**
    * 公开基础信息（site_name / subtitle / logo 等）：
@@ -167,38 +169,92 @@ export function useSite() {
     robots_txt: 'User-agent: *\nAllow: /'
   }))
 
-  const appearance = computed(() => readGroup(state.value, 'appearance', {
-    code_theme: 'github',
-    code_theme_dark: 'github-dark',
-    default_theme: 'system',
-    primary_color: (state.value.publicConfig?.theme_primary as string) || '#0EA5A9',
-    accent_color: (state.value.publicConfig?.theme_accent as string) || '#0284C7',
-    font_family: '',
-    page_width_px: 1200,
-    show_copyright: true,
-    show_powered_by: true
-  }))
+  const appearance = computed(() => {
+    const base = readGroup(state.value, 'appearance', {
+      code_theme: 'github',
+      code_theme_dark: 'github-dark',
+      default_theme: 'system',
+      primary_color: (state.value.publicConfig?.theme_primary as string) || '#0EA5A9',
+      accent_color: (state.value.publicConfig?.theme_accent as string) || '#0284C7',
+      font_family: '',
+      page_width_px: 1200,
+      show_copyright: true,
+      show_powered_by: true
+    })
+    // ====== 主题 Customizer 去重覆盖 ======
+    // 主色 / 强调色 / 内容区宽度：若当前激活主题在 mods 里显式配置，则优先生效。
+    // 对应站点设置页面里的"外观主题"组已移除这三项（避免双入口冲突）。
+    if (themeOverrides.primary_color.value) base.primary_color = themeOverrides.primary_color.value
+    if (themeOverrides.accent_color.value) base.accent_color = themeOverrides.accent_color.value
+    if (themeOverrides.layout_width.value != null) base.page_width_px = themeOverrides.layout_width.value
+    return base
+  })
 
-  const hero = computed(() => readGroup(state.value, 'hero', {
-    enable: true,
-    title: { zh: basic.value.site_name, en: basic.value.site_name },
-    subtitle: { zh: basic.value.subtitle, en: basic.value.subtitle },
-    caption: '',
-    cta_text: { zh: '开始阅读', en: 'Start Reading' },
-    cta_url: '/posts',
-    bg_image: '',
-    bg_gradient: ''
-  }))
+  const hero = computed(() => {
+    // Hero 文案优先级：
+    //   1) settings.hero.* (管理员手动在后台配置，多语言 i18n dict)
+    //   2) theme mods：hero_title / hero_subtitle（主题 Customizer，纯字符串 → 被写成多语言副本）
+    //   3) i18n home.heroTitle / home.heroSubtitle（四种语言都有，兜底不会出现 site_name 当大标题）
+    const { t, locale } = useI18n()
+    const fallbackTitle = {
+      zh: String(t('home.heroTitle') || '代码、文字、光与影'),
+      en: String(t('home.heroTitle') || 'Write. Think. Settle.'),
+      ja: String(t('home.heroTitle') || 'コードと思考の記録'),
+      zh_Hant: String(t('home.heroTitle') || '程式碼與思考的足跡')
+    }
+    const fallbackSubtitle = {
+      zh: String(t('home.heroSubtitle') || basic.value.subtitle || '互联网上的一个私人角落：工程笔记、阅读心得、日常生活切片。用心书写，耐心阅读。'),
+      en: String(t('home.heroSubtitle') || basic.value.subtitle || 'A minimal blog for engineers and creators.'),
+      ja: String(t('home.heroSubtitle') || basic.value.subtitle || '個人の技術ブログへようこそ。'),
+      zh_Hant: String(t('home.heroSubtitle') || basic.value.subtitle || '歡迎來到我的個人技術部落格。')
+    }
+    const base = readGroup(state.value, 'hero', {
+      enable: true,
+      title: fallbackTitle as Record<string, string>,
+      subtitle: fallbackSubtitle as Record<string, string>,
+      caption: '',
+      cta_text: {
+        zh: String(t('home.startReading') || '开始阅读'),
+        en: 'Start Reading',
+        ja: '読書開始',
+        zh_Hant: '開始閱讀'
+      } as Record<string, string>,
+      cta_url: '/posts',
+      bg_image: '',
+      bg_gradient: ''
+    })
+    // ====== 主题 Customizer 去重覆盖 ======
+    if (themeOverrides.hero_title.value) {
+      const v = String(themeOverrides.hero_title.value)
+      base.title = { zh: v, en: v, ja: v, zh_Hant: v } as Record<string, string>
+    } else if (!base.title || typeof base.title !== 'object' || !String(base.title[locale.value] || base.title.zh || '').trim()) {
+      base.title = fallbackTitle as Record<string, string>
+    }
+    if (themeOverrides.hero_subtitle.value) {
+      const v = String(themeOverrides.hero_subtitle.value)
+      base.subtitle = { zh: v, en: v, ja: v, zh_Hant: v } as Record<string, string>
+    } else if (!base.subtitle || typeof base.subtitle !== 'object' || !String(base.subtitle[locale.value] || base.subtitle.zh || '').trim()) {
+      base.subtitle = fallbackSubtitle as Record<string, string>
+    }
+    return base
+  })
 
-  const footer = computed(() => readGroup(state.value, 'footer', {
-    text: basic.value.subtitle,
-    slogan: basic.value.subtitle,
-    copyright: `© ${new Date().getFullYear()} ${basic.value.site_name}`,
-    icp_number: basic.value.icp_number,
-    police_icp_number: '',
-    show_social_links: true,
-    show_back_to_top: true
-  }))
+  const footer = computed(() => {
+    const base = readGroup(state.value, 'footer', {
+      text: basic.value.subtitle,
+      slogan: basic.value.subtitle,
+      copyright: `© ${new Date().getFullYear()} ${basic.value.site_name}`,
+      icp_number: basic.value.icp_number,
+      police_icp_number: '',
+      show_social_links: true,
+      show_back_to_top: true
+    })
+    // ====== 主题 Customizer 去重覆盖 ======
+    // 主题 mods.footer_text 若定义 → 直接覆盖 settings 的 copyright 文案（设置页里"页脚"
+    // 组的版权字段已隐藏，避免双入口冲突）。
+    if (themeOverrides.footer_text.value) base.copyright = themeOverrides.footer_text.value
+    return base
+  })
 
   const siteTitle = computed(() => basic.value.site_name)
   const siteSubtitle = computed(() => basic.value.subtitle || seo.value.default_title)
@@ -267,17 +323,52 @@ export function useSite() {
         } catch { /* OOBE / backend unreachable → use defaults */ }
       })(),
       (async () => {
+        // ===== 关键：不走 apiFetch()，避免其内部遇到 401 自动 navigateTo('/login') =====
+        // /api/settings 是 admin-only 接口，匿名访客访问必然 401；这是预期行为，
+        // 绝不应该因此把公开页面（首页/文章详情/关于/...）的用户强行踢去登录页。
+        // 用 raw $fetch + 手动捕获 401 并静默，让 groups 保持空对象，
+        // computed 派生值会自动走 publicConfig（L131-155）作为兜底。
         try {
-          const groups = await fetchAllSettings()
-          if (groups && typeof groups === 'object') {
-            state.value.groups = groups as UseSiteState['groups']
+          const config = useRuntimeConfig()
+          const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+          const headers: Record<string, string> = { 'Accept-Language': currentLocale() }
+          try {
+            const auth = useAuthStore()
+            if (auth.accessToken) headers.Authorization = `Bearer ${auth.accessToken}`
+          } catch { /* store unavailable in SSR edge cases */ }
+          const raw = await $fetch<{ groups?: AllSettingsGroups }>('/settings', {
+            baseURL,
+            headers,
+            method: 'GET'
+          })
+          if (raw && typeof raw === 'object' && raw.groups && typeof raw.groups === 'object') {
+            state.value.groups = raw.groups as UseSiteState['groups']
           }
-        } catch { /* guest/401, fall back to publicConfig */ }
+        } catch (e) {
+          const status = (e as { status?: number })?.status ?? 0
+          // 401 = 未登录（访客访问公开页），静默降级即可。
+          // 其它错误也不中断页面渲染，仍然用 publicConfig fallback。
+          if (status !== 401 && status !== 403) {
+            console.debug('[useSite] /settings fetch skipped:', status || 'network')
+          }
+          /* guest/401/403 → empty groups, fall back to publicConfig */
+        }
+      })(),
+      (async () => {
+        // ====== 主题 Customizer 预载 ======
+        // 与站点 settings 并行加载，保证 computed 派生时 override.*.value 已就绪；
+        // 失败则 theme 保持默认值，settings 继续兜底，用户永远不会看到空样式。
+        try {
+          await theme.ensureLoaded({ force: opts?.force })
+        } catch { /* ignore */ }
       })()
     ])
 
     state.value.loaded = true
+    // 先应用 settings 默认 token；theme 显式覆盖的颜色在 theme.ensureLoaded 中会再 apply 一遍
+    // （比这里更晚），保证优先级顺序：theme > settings > CSS 定义。
     applyAppearanceTokens()
+    theme.applyThemeColorTokens()
     return state.value
   }
 

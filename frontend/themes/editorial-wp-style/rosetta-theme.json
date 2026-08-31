@@ -1,0 +1,38 @@
+{
+  "manifest_version": "1.0",
+  "name": "默认主题",
+  "slug": "editorial-wp-style",
+  "version": "1.0.0",
+  "requires_rosetta": ">=1.0.0",
+  "description": "Rosetta 默认主题：经典 Editorial 杂志风格，完整支持 Customizer 颜色、布局、侧边栏、Hero 文案等 11 项自定义。",
+  "author_name": "Rosetta Themes",
+  "author": {"name":"Rosetta Themes", "uri": "https://rosetta.dev/themes"},
+  "theme_uri": "https://rosetta.dev/themes/editorial-wp-style",
+  "textdomain": "editorial-wp-style",
+  "tags": ["color:sky", "layout:magazine", "subject:blog", "feature:custom-header", "feature:customizer"],
+  "parent_theme": null,
+  "mods_schema": {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "hero_title": {"type":"string","title":"Hero 大标题","default":"Welcome to Rosetta"},
+      "hero_subtitle": {"type":"string","title":"Hero 副标题","default":"Sharing ideas that matter"},
+      "primary_color": {"type":"string","title":"主题主色 Primary","format":"color","default":"#0EA5A9"},
+      "accent_color": {"type":"string","title":"主题强调色 Accent","format":"color","default":"#0284C7"},
+      "layout_width": {"type":"integer","title":"内容区域宽度 (px)","minimum":800,"maximum":1600,"default":1200},
+      "show_sidebar": {"type":"boolean","title":"显示侧边栏","default":true},
+      "sidebar_position": {"type":"string","title":"侧边栏位置","enum":["left","right"],"default":"right"},
+      "posts_per_row": {"type":"integer","title":"首页每行文章数","enum":[2,3,4],"default":3},
+      "show_author_box": {"type":"boolean","title":"文章底部作者信息卡","default":true},
+      "show_related_posts": {"type":"boolean","title":"相关文章区块","default":true},
+      "footer_text": {"type":"string","title":"页脚版权文字","format":"textarea","default":"© 2026 Rosetta Blog · Powered by Rosetta"}
+    },
+    "additionalProperties": false
+  },
+  "screenshot_urls": ["screenshot.svg"],
+  "features": ["custom-header", "customizer", "widgets-block"],
+  "color_palette": [
+    {"name":"Primary", "slug":"primary", "color":"#0EA5A9"},
+    {"name":"Accent", "slug":"accent", "color":"#0284C7"}
+  ]
+}

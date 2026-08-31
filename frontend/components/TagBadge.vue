@@ -5,12 +5,12 @@
     class="no-underline"
   >
     <span
-      class="tag-chip inline-flex select-none items-center"
+      class="tag-chip inline-flex select-none items-center gap-1"
       :style="chipStyle"
     >
       <TagIcon
         v-if="showIcon"
-        class="size-3 mr-1 opacity-75"
+        class="size-3 opacity-75"
         :style="{ color: fg }"
       />
       <slot>{{ label }}</slot>
@@ -18,12 +18,12 @@
   </NuxtLink>
   <span
     v-else
-    class="tag-chip inline-flex select-none items-center"
+    class="tag-chip inline-flex select-none items-center gap-1"
     :style="chipStyle"
   >
     <TagIcon
       v-if="showIcon"
-      class="size-3 mr-1 opacity-75"
+      class="size-3 opacity-75"
       :style="{ color: fg }"
     />
     <slot>{{ label }}</slot>
@@ -33,6 +33,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Tag as TagIcon } from '@lucide/vue'
+import { hexToHsl, hexRelativeLuminance } from '~~/lib/utils'
 
 interface Props {
   /** 十六进制颜色值（示例：#0EA5A9）。为空则使用主题 primary 色。 */
@@ -54,56 +55,6 @@ const props = withDefaults(defineProps<Props>(), {
   showIcon: false,
   size: 'md'
 })
-
-/**
- * #RRGGBB → HSL 三元组（仅纯数字，不带单位）。
- * 之所以要转成 HSL 三元：main.css 中 .tag-colored /
- * 本组件 style 均使用 color-mix(in oklab, hsl(...) X%, ...)
- * 语法，hsl() 必须接收空格分隔的 "h s l" 三个纯数字。
- */
-function hexToHsl(hex: string): { h: number, s: number, l: number } | null {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim())
-  if (!m) return null
-  const r = parseInt(m[1] ?? '00', 16) / 255
-  const g = parseInt(m[2] ?? '00', 16) / 255
-  const b = parseInt(m[3] ?? '00', 16) / 255
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  let h = 0
-  let s = 0
-  const l = (max + min) / 2
-  if (max !== min) {
-    const d = max - min
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r:
-        h = (g - b) / d + (g < b ? 6 : 0)
-        break
-      case g:
-        h = (b - r) / d + 2
-        break
-      case b:
-        h = (r - g) / d + 4
-        break
-    }
-    h *= 60
-  }
-  return { h, s: s * 100, l: l * 100 }
-}
-
-/**
- * 根据背景色相对亮度计算前景色（WCAG 对比度友好）。
- * 浅色底 → 深色字；深色底 → 白色字。
- */
-function hexRelativeLuminance(hex: string): number {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim())
-  if (!m) return 0.5
-  const toLin = (v: number) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)
-  const r = toLin(parseInt(m[1] ?? '00', 16) / 255)
-  const g = toLin(parseInt(m[2] ?? '00', 16) / 255)
-  const b = toLin(parseInt(m[3] ?? '00', 16) / 255)
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
 
 const hsl = computed(() => (props.color ? hexToHsl(props.color) : null))
 

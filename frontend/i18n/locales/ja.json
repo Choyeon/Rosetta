@@ -56,7 +56,8 @@
     "pinned": "固定",
     "featured": "おすすめ",
     "submitting": "送信中…",
-    "open": "開く"
+    "open": "開く",
+    "by": "作者："
   },
   "nav": {
     "home": "ホーム",
@@ -593,7 +594,78 @@
     "operationFailed": "[JA]:Operation failed",
     "loading": "[JA]:Loading...",
     "upload": "[JA]:Upload",
-    "selectImage": "[JA]:Select Image"
+    "selectImage": "[JA]:Select Image",
+    "actions": {
+      "refresh": "更新",
+      "cancel": "キャンセル",
+      "save": "保存"
+    },
+    "pagination": {
+      "page": "{page} ページ目",
+      "pageSuffix": "ページ",
+      "prev": "前へ",
+      "next": "次へ"
+    },
+    "plugins": {
+      "title": "プラグイン管理",
+      "desc": "Rosetta プラグインのインストール・有効化・設定・アップグレード",
+      "searchPlaceholder": "プラグイン名 / 説明で検索…",
+      "scan": "ローカルをスキャン",
+      "install": "新規プラグインをインストール",
+      "bulkActions": "一括操作",
+      "perPage": "1 ページあたりの表示件数：",
+      "selectAll": "このページをすべて選択",
+      "col": {
+        "plugin": "プラグイン",
+        "status": "ステータス",
+        "actions": "操作"
+      },
+      "status": {
+        "active": "有効",
+        "inactive": "無効",
+        "error": "エラー"
+      },
+      "settings": "設定",
+      "upgrade": "アップグレード",
+      "delete": "削除",
+      "settingsTitle": "プラグイン設定：{name}",
+      "settingsDesc": "プラグイン機能の有効化や設定を行います。変更は即座に反映されます。",
+      "saveSuccess": "プラグイン設定を保存しました",
+      "activate": "有効化",
+      "deactivate": "無効化",
+      "upload": "プラグインをアップロード",
+      "empty": "インストール済みのプラグインはありません。「ローカルをスキャン」または「新規プラグインをインストール」してください。",
+      "bulkActivate": "一括有効化",
+      "bulkDeactivate": "一括無効化",
+      "bulkDelete": "一括削除",
+      "selectedCount": "{count} 個のプラグインを選択中"
+    },
+    "themes": {
+      "title": "テーマ管理",
+      "desc": "Rosetta ブログの外観を切り替え・カスタマイズ",
+      "searchPlaceholder": "テーマ名やタグで検索…",
+      "scan": "ローカルをスキャン",
+      "install": "新規テーマをインストール",
+      "filter": {
+        "all": "すべて",
+        "active": "使用中",
+        "available": "利用可能"
+      },
+      "current": "現在のテーマ",
+      "preview": "プレビュー",
+      "customize": "カスタマイズ",
+      "livePreview": "ライブプレビュー",
+      "delete": "削除",
+      "isActive": "使用中",
+      "activate": "有効化",
+      "cannotDeleteActive": "使用中のテーマは削除できません",
+      "customizeTitle": "テーマをカスタマイズ：{name}",
+      "customizeDesc": "配色・レイアウト・モジュールを調整します。保存後、フロントエンドに即座に反映されます。",
+      "modsSaved": "テーマのカスタマイズを保存しました",
+      "upload": "テーマをアップロード",
+      "empty": "該当するテーマがありません。",
+      "noThemes": "テーマがインストールされていません。スキャンまたはインストールしてください。"
+    }
   },
   "oobe": {
     "welcome": "Rosettaへようこそ",
@@ -1037,6 +1109,17 @@
     "noDesc": "[JA]:No description",
     "noLinks": "[JA]:No friend links yet"
   },
+  "search": {
+    "title": "[JA]:Search",
+    "desc": "[JA]:Find articles by title, content, tags or categories — full-text at your fingertips.",
+    "placeholder": "[JA]:Type keywords and press Enter or click Search…",
+    "submit": "[JA]:Search",
+    "startPrompt": "[JA]:Start searching",
+    "startDesc": "[JA]:Enter keywords above to search across titles, bodies, tags and categories.",
+    "resultCount": "[JA]:Found {count} result(s) related to \"{keyword}\"",
+    "noResults": "[JA]:No matches found",
+    "noResultsDesc": "[JA]:No articles contain \"{keyword}\". Try another keyword or clear the search to see everything."
+  },
   "activity": {
     "title": "[JA]:Activity",
     "desc": "[JA]:A pulse of this little site — new posts, comments, shares.",
@@ -1044,6 +1127,11 @@
     "type_card": "[JA]:New Card",
     "type_comment": "[JA]:New Comment",
     "type_like": "[JA]:Like",
+    "type_say": "[JA]:Thought",
+    "type_article": "[JA]:Article Update",
+    "type_update": "[JA]:Site Update",
+    "type_notice": "[JA]:Announcement",
+    "type_link": "[JA]:Link Share",
     "liked": "[JA]:liked the post",
     "noActivity": "[JA]:No activity yet"
   },

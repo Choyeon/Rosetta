@@ -461,6 +461,7 @@ class ConfigService:
             "db_host": state.database_config.get("db_host", "localhost"),
             "db_port": state.database_config.get("db_port", 5432),
             "db_name": state.database_config.get("db_name", "rosetta"),
+            "db_path": state.database_config.get("db_path", ""),
             "db_user": state.database_config.get("db_user", ""),
             "db_password": state.database_config.get("db_password", ""),
             "redis_host": state.database_config.get("redis_host", "localhost"),

@@ -98,7 +98,7 @@
             >
               <img
                 :src="link.logo"
-                :alt="link.name"
+                :alt="getLocalizedStr(link.name)"
                 class="w-full h-full object-cover"
                 @error="($event.currentTarget as HTMLImageElement).style.display = 'none'"
               >
@@ -107,11 +107,11 @@
               v-else
               class="size-12 rounded-xl shrink-0 flex items-center justify-center font-bold text-white text-lg bg-primary/90"
             >
-              {{ link.name?.[0]?.toUpperCase() || '?' }}
+              {{ getLocalizedStr(link.name)?.[0]?.toUpperCase() || '?' }}
             </div>
             <div class="flex-1 min-w-0 pt-1">
               <h3 class="font-semibold truncate">
-                {{ link.name }}
+                {{ getLocalizedStr(link.name) }}
               </h3>
               <a
                 :href="link.url"
@@ -129,7 +129,7 @@
             class="text-sm text-muted-foreground leading-relaxed"
             style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"
           >
-            {{ link.description || '（暂无描述）' }}
+            {{ getLocalizedStr(link.description) || '（暂无描述）' }}
           </p>
         </div>
 
@@ -170,14 +170,13 @@
         </DialogHeader>
         <div class="space-y-4 py-2">
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
-              <Label class="text-sm font-medium">名称 <span class="text-error">*</span></Label>
-              <Input
-                v-model="form.name"
-                placeholder="如：Rosetta Blog"
-                class="rounded-xl"
-              />
-            </div>
+            <I18nTabsEditor
+              v-model="form.name"
+              kind="text"
+              label="名称"
+              placeholder="如：Rosetta Blog"
+              :required="true"
+            />
             <div class="space-y-2">
               <Label class="text-sm font-medium">URL <span class="text-error">*</span></Label>
               <Input
@@ -218,15 +217,13 @@
               </div>
             </div>
           </div>
-          <div class="space-y-2">
-            <Label class="text-sm font-medium">描述</Label>
-            <Textarea
-              v-model="form.description"
-              rows="3"
-              class="rounded-xl resize-none"
-              placeholder="一句话介绍你的站点..."
-            />
-          </div>
+          <I18nTabsEditor
+            v-model="form.description"
+            kind="textarea"
+            label="描述"
+            placeholder="一句话介绍你的站点..."
+            :rows="3"
+          />
           <div class="grid grid-cols-2 gap-4">
             <div class="space-y-2">
               <Label class="text-sm font-medium">审核状态</Label>
@@ -322,8 +319,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted } from 'vue'
 import {
   fetchAdminFriendLinks,
@@ -346,9 +341,9 @@ import {
 } from '~~/components/ui/dialog'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import type { BadgeVariants } from '~~/components/ui/badge'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -374,10 +369,10 @@ const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminFriendLink | null>(null)
 
 const emptyForm = () => ({
-  name: '',
+  name: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   url: '',
   logo: '',
-  description: '',
+  description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   bg_color: '',
   status: 'pending' as 'pending' | 'approved' | 'rejected',
   sort_order: 0
@@ -415,7 +410,27 @@ function stripProtocol(url: string): string {
   return url.replace(/^https?:\/\//, '').replace(/\/$/, '')
 }
 
-function gradientFor(name: string, idx: number): string {
+function getLocalizedStr(v: string | Record<string, string> | null | undefined): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  return v.zh || v.en || Object.values(v)[0] || ''
+}
+
+function normalizeI18nDict(v: string | Record<string, string> | null | undefined): Record<string, string> {
+  const base = { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (v == null) return base
+  if (typeof v === 'string') {
+    return { ...base, zh: v }
+  }
+  return {
+    zh: v.zh ?? '',
+    en: v.en ?? '',
+    ja: v.ja ?? '',
+    zh_Hant: v.zh_Hant ?? ''
+  }
+}
+
+function _gradientFor(name: string, idx: number): string {
   const palette = [
     ['#0EA5E9', '#0284C7'],
     ['#0EA5A9', '#0891B2'],
@@ -436,6 +451,8 @@ async function loadAll() {
   try {
     items.value = await fetchAdminFriendLinks()
   } catch (e) {
+    console.error('[friendlinks] loadAll failed:', e)
+    toast.error('加载友链列表失败')
     items.value = []
   } finally {
     loading.value = false
@@ -453,10 +470,10 @@ function openCreate() {
 function openEdit(link: AdminFriendLink) {
   editingId.value = link.id
   form.value = {
-    name: link.name,
+    name: normalizeI18nDict(link.name),
     url: link.url,
     logo: link.logo ?? '',
-    description: link.description ?? '',
+    description: normalizeI18nDict(link.description),
     bg_color: '',
     status: link.status,
     sort_order: link.sort_order
@@ -465,16 +482,18 @@ function openEdit(link: AdminFriendLink) {
 }
 
 async function handleSubmit() {
-  if (!form.value.name.trim() || !form.value.url.trim()) {
+  if (!String(form.value.name.zh ?? '').trim() || !form.value.url.trim()) {
     toast.warning('请填写名称与 URL')
     return
   }
   submitting.value = true
+  const descHasValue = String(form.value.description.zh ?? '') || String(form.value.description.en ?? '')
+    || String(form.value.description.ja ?? '') || String(form.value.description.zh_Hant ?? '')
   const payload = {
-    name: form.value.name.trim(),
+    name: form.value.name,
     url: form.value.url.trim(),
     logo: form.value.logo.trim() || null,
-    description: form.value.description.trim() || null,
+    description: descHasValue ? form.value.description : null,
     bg_color: form.value.bg_color.trim() || null,
     status: form.value.status,
     sort_order: Number(form.value.sort_order) || 0
@@ -491,6 +510,8 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
+    console.error('[friendlinks] handleSubmit failed:', e)
+    toast.error(editingId.value ? '更新友链失败' : '创建友链失败')
   } finally {
     submitting.value = false
   }
@@ -510,6 +531,8 @@ async function confirmDelete() {
     toast.success('友链已删除')
     confirmOpen.value = false
   } catch (e) {
+    console.error('[friendlinks] confirmDelete failed:', e)
+    toast.error('删除友链失败')
   } finally {
     deleting.value = false
   }

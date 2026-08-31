@@ -24,13 +24,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger
 } from '~~/components/ui/dropdown-menu'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { Badge } from '~~/components/ui/badge'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Skeleton } from '~~/components/ui/skeleton'
 import ThemeToggle from '~~/components/ThemeToggle.vue'
+import UserAvatar from '~~/components/UserAvatar.vue'
 import { useAuthStore } from '~~/stores/auth'
-import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
 import {
   fetchNotifications,
   fetchNotificationStats,
@@ -71,26 +70,21 @@ const userDisplayName = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
   return String((u?.nickname ?? u?.name ?? u?.username ?? '') as string) || '未登录'
 })
-// 使用统一头像解析：resolved_avatar_url 优先，再 avatar，最终经后端 media 代理
-// 若没有头像则按 {username|email + nickname} 生成 DiceBear 稳定默认头像（identicon 风格）
-const userAvatar = computed(() => {
+const userSeed = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
-  const seed = [
+  return [
     u?.username,
     u?.email,
     u?.nickname
-  ].filter(Boolean).join('|') || undefined
-  return resolveAvatarUrl(
-    { seed },
-    u?.resolved_avatar_url as string | undefined,
-    u?.avatar as string | undefined
-  )
+  ].filter(Boolean).join('|') || 'user'
 })
-// 头像的 fallback 文字：取昵称/姓名首字母，不再渲染用户图形 SVG（避免"占位头像"观感）
-const userFallback = computed(() => {
+const userAvatarUrl = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
-  const name = String((u?.nickname ?? u?.name ?? u?.username ?? 'U') as string)
-  return name.charAt(0).toUpperCase()
+  return (u?.avatar as string | null) ?? null
+})
+const userResolvedAvatarUrl = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return (u?.resolved_avatar_url as string | null) ?? null
 })
 
 const logout = () => {
@@ -123,6 +117,38 @@ const levelLabel: Record<NotificationLevel, string> = {
   success: '成功',
   warning: '提醒',
   error: '异常'
+}
+
+// ==================== 通知 title/message 文本兼容层 ====================
+// 历史数据/系统通知：title/message 是 i18n dict（{zh,en,ja,zh_Hant}）
+// 新UGC通知（留言/评论）：title/message 直接是纯字符串（用户要求不对UGC自动翻译）
+// 本函数按优先级解析两种格式，避免 JSON 被直接 toString 裸露。
+const i18n = typeof useI18n !== 'undefined' ? useI18n() : null
+const I18N_FALLBACK_ORDER: Array<'zh' | 'en' | 'ja' | 'zh_Hant'> = ['zh', 'en', 'ja', 'zh_Hant']
+function resolveNotifText(raw: unknown): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw
+  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
+  if (typeof raw === 'object') {
+    const obj = raw as Record<string, unknown>
+    // 1) 优先当前 locale（如果 i18n 可用且存在对应 key）
+    if (i18n) {
+      const cur = String(i18n.locale.value || 'zh')
+      const v = obj[cur] ?? obj[cur.replace('-', '_')]
+      if (typeof v === 'string' && v.length) return v
+    }
+    // 2) 固定 fallback 顺序
+    for (const k of I18N_FALLBACK_ORDER) {
+      const v = obj[k]
+      if (typeof v === 'string' && v.length) return v
+    }
+    // 3) 取第一个字符串值兜底
+    for (const v of Object.values(obj)) {
+      if (typeof v === 'string' && v.length) return v
+    }
+    return ''
+  }
+  return ''
 }
 
 /** 拉取 badge 数字（后台 header 初始化后立刻拉一次；后台操作成功后可再刷新） */
@@ -223,16 +249,30 @@ function fmtTime(iso: string | null): string {
   return `${d.getMonth() + 1}/${String(d.getDate()).padStart(2, '0')}`
 }
 
-// 登录完成后第一次拉 badge；组件卸载时跳过
-onMounted(async () => {
-  if (authStore.isAuthenticated) await loadBadge(true)
+// 登录完成后第一次拉 badge —— 延迟到浏览器空闲时间执行，
+// 避免与进入后台首屏（仪表盘/用户编辑等）的关键数据请求竞争带宽，
+// 从而减少"进入页面慢"的感知。
+function scheduleLoadBadge() {
+  if (!import.meta.client) return
+  const runner = () => loadBadge(true).catch(() => {})
+  // 现代浏览器：requestIdleCallback 在主线程空闲时触发，不阻塞渲染/交互
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(runner, { timeout: 3000 })
+  } else {
+    // 兜底：300ms 后再发，保证页面首屏关键请求先出队
+    setTimeout(runner, 300)
+  }
+}
+
+onMounted(() => {
+  if (authStore.isAuthenticated) scheduleLoadBadge()
 })
 
 // authStore 登录态变化时（从 login → /admin 跳转）再拉一次
 watch(
   () => authStore.isAuthenticated,
   (loggedIn) => {
-    if (loggedIn) loadBadge(true)
+    if (loggedIn) scheduleLoadBadge()
     else {
       unreadCount.value = 0
       items.value = []
@@ -434,7 +474,7 @@ watch(
                           {{ levelLabel[n.level] || levelLabel.info }}
                         </span>
                         <span class="text-[13px] font-semibold leading-snug truncate text-foreground">
-                          {{ n.title }}
+                          {{ resolveNotifText(n.title) }}
                         </span>
                       </div>
                       <span class="shrink-0 text-[10px] tabular-nums text-muted-foreground">
@@ -442,19 +482,21 @@ watch(
                       </span>
                     </div>
                     <p class="mt-0.5 text-[12px] leading-snug text-muted-foreground line-clamp-2">
-                      {{ n.message || n.verb || '' }}
+                      {{ resolveNotifText(n.message) || n.verb || '' }}
                     </p>
                     <div class="mt-1 flex items-center justify-between gap-2">
                       <div
                         v-if="n.actor"
                         class="flex items-center gap-1.5 min-w-0"
                       >
-                        <Avatar class="size-4 shrink-0">
-                          <AvatarImage :src="n.actor.avatar || ''" />
-                          <AvatarFallback class="text-[9px]">
-                            {{ (n.actor.nickname || n.actor.username || '?').slice(0, 1).toUpperCase() }}
-                          </AvatarFallback>
-                        </Avatar>
+                        <UserAvatar
+                          :avatar="n.actor.avatar || null"
+                          :seed="n.actor.username"
+                          :name="n.actor.nickname || n.actor.username"
+                          :size="16"
+                          :show-title="false"
+                          class="shrink-0"
+                        />
                         <span class="text-[11px] text-muted-foreground truncate">
                           {{ n.actor.nickname || n.actor.username }}
                         </span>
@@ -485,19 +527,14 @@ watch(
             variant="ghost"
             class="h-9 px-1.5 pl-1 pr-3 rounded-full gap-2 hover:bg-accent"
           >
-            <Avatar class="size-7 ring-2 ring-border">
-              <AvatarImage
-                v-if="userAvatar"
-                :src="userAvatar"
-                :alt="userDisplayName"
-              />
-              <AvatarFallback
-                class="text-[hsl(var(--primary-foreground))] font-semibold text-[13px] flex items-center justify-center"
-                style="background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));"
-              >
-                {{ userFallback }}
-              </AvatarFallback>
-            </Avatar>
+            <UserAvatar
+              :avatar="userAvatarUrl"
+              :resolved-avatar-url="userResolvedAvatarUrl"
+              :seed="userSeed"
+              :name="userDisplayName"
+              :size="28"
+              :show-title="false"
+            />
             <span class="hidden md:block text-sm font-medium truncate max-w-[120px]">
               {{ userDisplayName }}
             </span>
@@ -516,19 +553,15 @@ watch(
         >
           <DropdownMenuLabel class="px-2.5 py-2">
             <div class="flex items-center gap-2.5 min-w-0">
-              <Avatar class="size-9 shrink-0">
-                <AvatarImage
-                  v-if="userAvatar"
-                  :src="userAvatar"
-                  :alt="userDisplayName"
-                />
-                <AvatarFallback
-                  style="background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.7));"
-                  class="text-[hsl(var(--primary-foreground))] font-semibold text-[15px] flex items-center justify-center"
-                >
-                  {{ userFallback }}
-                </AvatarFallback>
-              </Avatar>
+              <UserAvatar
+                :avatar="userAvatarUrl"
+                :resolved-avatar-url="userResolvedAvatarUrl"
+                :seed="userSeed"
+                :name="userDisplayName"
+                :size="36"
+                :show-title="false"
+                class="shrink-0"
+              />
               <div class="flex flex-col min-w-0">
                 <span class="text-sm font-semibold truncate">{{ userDisplayName }}</span>
                 <span class="text-[11px] text-muted-foreground truncate">

@@ -119,19 +119,25 @@
         :key="item.id"
         class="relative"
       >
-        <Card class="transition-all hover:shadow-soft duration-300">
+        <Card class="card-surface transition-all hover:shadow-soft duration-300">
           <CardContent class="p-6">
             <div class="flex gap-4">
-              <Avatar class="size-10 shrink-0">
-                <AvatarImage
-                  :src="item.avatar ?? ''"
-                  :alt="item.nickname ?? ''"
-                />
-                <AvatarFallback>{{ item.nickname?.[0]?.toUpperCase() || 'G' }}</AvatarFallback>
-              </Avatar>
+              <UserAvatar
+                :avatar="item.avatar"
+                :seed="item.nickname"
+                :name="item.nickname || 'Guest'"
+                :title="item.title || null"
+                :size="40"
+                :show-title="true"
+              />
               <div class="flex-1 min-w-0">
                 <div class="flex flex-wrap items-center gap-2 mb-1">
                   <span class="font-medium">{{ item.nickname }}</span>
+                  <TitleBadge
+                    v-if="item.title"
+                    :title="item.title"
+                    size="sm"
+                  />
                   <a
                     v-if="item.website"
                     :href="item.website"
@@ -192,12 +198,13 @@
 </template>
 
 <script setup lang="ts">
-import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
+import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Badge } from '~~/components/ui/badge'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import UserAvatar from '~~/components/UserAvatar.vue'
+import TitleBadge from '~~/components/TitleBadge.vue'
 import { useI18n } from 'vue-i18n'
 import { MessageSquare, PenLine, Send, Heart } from '@lucide/vue'
 import { useAPI } from '~~/composables/useApi'
@@ -208,20 +215,16 @@ const { t, locale } = useI18n()
 const site = useSite()
 
 // ===== SEO：基于 i18n + 站点设置 =====
-const requestURL = useRequestURL()
-const canonical = computed(() => requestURL.href)
-useSeoMeta({
-  title: () => String(t('guestbook.title') || '留言板'),
-  description: () =>
-    String(t('guestbook.desc') || '') || site.siteDescription.value,
-  ogType: 'website',
-  ogUrl: canonical,
-  twitterCard: 'summary'
+useSeo({
+  title: computed(() => String(t('nav.guestbook') || t('guestbook.title') || '留言板')),
+  description: computed(() => String(t('guestbook.desc') || '') || site.siteDescription.value),
+  type: 'website'
 })
-useHead({
-  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
-  link: [{ rel: 'canonical', href: canonical }]
-})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home') as string, url: '/' },
+  { name: t('nav.guestbook') as string, url: '/guestbook' }
+])
 
 interface GuestbookItem {
   id: number
@@ -229,6 +232,12 @@ interface GuestbookItem {
   author_email?: string
   website?: string
   avatar?: string
+  title?: {
+    id?: number
+    name: string
+    icon?: string
+    color?: string
+  } | null
   content: string
   created_at: string
   likesCount: number
@@ -277,12 +286,23 @@ const guestbookList = computed<GuestbookItem[]>(() => {
     const r = (raw ?? {}) as Record<string, unknown>
     const pickStr = (k: string, fallback = '') => (typeof r[k] === 'string' ? r[k] : fallback)
     const pickNum = (k: string, fallback = 0) => (typeof r[k] === 'number' ? r[k] : fallback)
+    // title 字段可能是对象（后端 UserTitleResponse）或 null
+    const rawTitle = r.title
+    const mappedTitle = rawTitle && typeof rawTitle === 'object'
+      ? {
+          id: (rawTitle as Record<string, unknown>).id as number | undefined,
+          name: String((rawTitle as Record<string, unknown>).name ?? ''),
+          icon: String((rawTitle as Record<string, unknown>).icon ?? ''),
+          color: String((rawTitle as Record<string, unknown>).color ?? '#3b82f6')
+        }
+      : null
     return {
       id: pickNum('id', 0),
       nickname: pickStr('author_name') || pickStr('nickname'),
       author_email: pickStr('author_email') || undefined,
       website: pickStr('author_website') || pickStr('website') || undefined,
       avatar: pickStr('resolved_avatar_url') || pickStr('author_avatar') || pickStr('avatar') || undefined,
+      title: mappedTitle,
       content: pickStr('content'),
       created_at: pickStr('created_at') || new Date().toISOString(),
       likesCount: pickNum('likes_count', 0),

@@ -138,21 +138,23 @@ def reset_engine(database_url: str | None = None) -> None:
     重置数据库引擎
 
     用于在运行时切换数据库连接（如 OOBE 阶段写入新的 .env 后）。
-    会重新创建全局 engine 和 async_session_maker。
+
+    重要：本函数**不重新创建** `async_session_maker` 对象，而是就地更新其
+    ``kw["bind"]`` 指向的新 engine。原因：项目中有大量代码通过
+    ``from backend.core.database import async_session_maker`` 静态导入了该对象，
+    若重新赋值模块级变量，这些旧引用仍指向旧 engine，导致运行时切换数据库后
+    写入/读取仍落在旧库（典型症状：OOBE install 把数据写进仓库 rosetta.db 而非
+    请求体指定的 db_path）。通过原地替换 bind，所有静态导入的引用会自动生效。
 
     Args:
         database_url: 新的数据库连接 URL，默认使用当前 settings.database_url
     """
-    global engine, async_session_maker
+    global engine
 
-    engine = create_engine(database_url)
-    async_session_maker = async_sessionmaker(
-        engine,
-        class_=AsyncSession,
-        expire_on_commit=False,
-        autocommit=False,
-        autoflush=False,
-    )
+    new_engine = create_engine(database_url)
+    engine = new_engine
+    # 原地替换 session maker 的 bind，保持对象身份不变（关键修复）
+    async_session_maker.kw["bind"] = engine
     logger.info(f"数据库引擎已重置: {database_url or settings.database_url}")
 
 

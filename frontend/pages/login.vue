@@ -256,10 +256,10 @@
 
     <!-- 底部：版权胶囊 + 切壁纸控件（与注册页/OOBE 一致） -->
     <div class="fixed bottom-0 inset-x-0 z-40 flex flex-wrap items-end justify-between gap-3 p-5 md:p-6 pointer-events-none">
-      <!-- Bing 版权 + 缩略图小预览 -->
+      <!-- Bing 版权 + 缩略图小预览。点击整张 meta 胶囊跳 Bing 官方搜索页，不提供下载按钮。 -->
       <a
         v-if="currentImage?.copyright"
-        :href="currentImage?.copyrightlink || 'https://www.bing.com'"
+        :href="getBingOfficialLink(currentImage)"
         target="_blank"
         rel="noopener noreferrer nofollow"
         class="pointer-events-auto group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-black/40 border border-white/12 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-black/60 hover:border-white/20 transition-colors"
@@ -407,7 +407,8 @@ const {
   currentIdx,
   currentImage,
   fetchWallpapers,
-  selectDay
+  selectDay,
+  getBingOfficialLink
 } = useBingWallpaper()
 
 const wallpaperLoaded = ref(false)

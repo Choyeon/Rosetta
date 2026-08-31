@@ -26,7 +26,7 @@ from sqlalchemy import func, select, text
 from backend.core.auth import DB, CurrentStaff
 from backend.core.concurrency import concurrent_query
 from backend.models.blog import Comment, Post
-from backend.models.user import User
+from backend.models.user import User, UserTitle
 from backend.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -258,7 +258,7 @@ async def get_admin_stats(
 
     act_q = (
         select(
-            User.id, User.nickname, User.username, User.avatar, func.count(Comment.id).label("c")
+            User.id, User.nickname, User.username, User.avatar, User.title_id, func.count(Comment.id).label("c")
         )
         .join(Comment, Comment.user_id == User.id)
         .group_by(User.id)
@@ -266,14 +266,27 @@ async def get_admin_stats(
         .limit(5)
     )
     act_rows = (await db.execute(act_q)).all()
+    
+    # 批量查询用户头衔
+    user_ids = [r.id for r in act_rows]
+    title_map: dict[int, dict | None] = {}
+    if user_ids:
+        titles_q = select(UserTitle).where(UserTitle.id.in_(
+            [r.title_id for r in act_rows if r.title_id is not None]
+        ))
+        title_rows = (await db.execute(titles_q)).scalars().all()
+        title_map = {t.id: {"id": t.id, "name": t.name, "icon": t.icon, "color": t.color} for t in title_rows}
+    
     active_commenters: list[dict] = []
     for r in act_rows:
         name = r.nickname or r.username or "User"
+        title_data = title_map.get(r.title_id) if r.title_id else None
         active_commenters.append(
             {
                 "name": name,
                 "avatar": r.avatar or None,
                 "comments_count": int(r.c),
+                "title": title_data,
             }
         )
 
@@ -284,6 +297,7 @@ async def get_admin_stats(
                     "name": ["Alice", "Bob", "Carol", "Dave", "Eve"][i],
                     "avatar": None,
                     "comments_count": [18, 12, 9, 7, 5][i],
+                    "title": None,
                 }
             )
     if not top_articles:

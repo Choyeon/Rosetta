@@ -461,16 +461,59 @@ async def get_current_staff(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
-    """获取当前管理员"""
-    if not (current_user.is_staff or current_user.is_superuser):
-        await _write_permission_denied_log(
-            request, db, current_user, detail="需要管理员权限", resource="admin:staff"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要管理员权限",
-        )
-    return current_user
+    """获取当前管理员（兼容旧逻辑：is_staff 或 is_superuser；或 role 为 admin 及以上）"""
+    from backend.core.rbac import get_role_level
+
+    if current_user.is_staff or current_user.is_superuser:
+        return current_user
+    if get_role_level(getattr(current_user, "role", None)) >= get_role_level("admin"):
+        return current_user
+    await _write_permission_denied_log(
+        request, db, current_user, detail="需要管理员权限", resource="admin:staff"
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="需要管理员权限",
+    )
+
+
+def require_capability(cap: str):
+    """
+    RBAC 能力依赖工厂：生成校验「当前用户拥有某能力」的依赖。
+
+    用法::
+
+        @router.delete("/posts/{pid}")
+        async def delete_others(
+            user: Annotated[User, Depends(require_capability(Cap.DELETE_OTHERS_POSTS.value))]
+        ):
+            ...
+
+    Args:
+        cap: 能力标识（见 backend.core.rbac.Cap）
+
+    Returns:
+        一个 FastAPI 依赖函数
+    """
+
+    async def _checker(
+        current_user: Annotated[User, Depends(get_current_user)],
+        request: Request,
+        db: Annotated[AsyncSession, Depends(get_db)],
+    ) -> User:
+        from backend.core.rbac import user_has_capability
+
+        if not user_has_capability(getattr(current_user, "role", None), cap):
+            await _write_permission_denied_log(
+                request, db, current_user, detail=f"缺少权限能力: {cap}", resource=f"cap:{cap}"
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"权限不足：需要能力 {cap}",
+            )
+        return current_user
+
+    return _checker
 
 
 async def validate_token(token: str, db: AsyncSession) -> User | None:
@@ -508,7 +551,7 @@ async def validate_token(token: str, db: AsyncSession) -> User | None:
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentUserOptional = Annotated[User | None, Depends(get_current_user_optional)]
-CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
+CurrentActiveUser = Annotated[User,  Depends(get_current_active_user)]
 CurrentSuperUser = Annotated[User, Depends(get_current_superuser)]
 CurrentStaff = Annotated[User, Depends(get_current_staff)]
 DB = Annotated[AsyncSession, Depends(get_db)]

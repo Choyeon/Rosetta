@@ -16,16 +16,16 @@
       </div>
     </div>
 
-    <Card class="rounded-2xl">
-      <CardContent class="pt-6 pb-4">
-        <div class="grid md:grid-cols-4 gap-4">
+    <AdminCard>
+      <div class="pt-6 pb-4">
+        <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div class="space-y-2">
             <Label class="text-sm font-medium">操作类型</Label>
             <Select
               v-model="filters.action"
               class="rounded-xl"
             >
-              <SelectTrigger>
+              <SelectTrigger class="rounded-xl">
                 <SelectValue placeholder="全部类型" />
               </SelectTrigger>
               <SelectContent>
@@ -51,45 +51,103 @@
               />
             </div>
           </div>
-          <div class="space-y-2">
-            <Label class="text-sm font-medium">开始日期</Label>
-            <Input
-              v-model="filters.fromDate"
-              type="date"
-              class="rounded-xl"
-            />
-          </div>
-          <div class="space-y-2">
-            <Label class="text-sm font-medium">结束日期</Label>
-            <Input
-              v-model="filters.toDate"
-              type="date"
-              class="rounded-xl"
-            />
+          <div class="space-y-2 md:col-span-2 xl:col-span-2">
+            <Label class="text-sm font-medium flex items-center gap-1.5">
+              <CalendarDays class="size-3.5 text-primary" />
+              日期范围
+              <span class="text-xs text-muted-foreground font-normal ml-1">
+                （选完开始会自动弹出结束，结束不能早于开始）
+              </span>
+            </Label>
+            <div class="flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2">
+              <div class="relative group flex-1">
+                <input
+                  v-model="filters.fromDate"
+                  type="date"
+                  class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
+                  :max="startMax"
+                  placeholder="开始日期"
+                  @change="onFromDateChange"
+                >
+                <button
+                  v-if="filters.fromDate"
+                  type="button"
+                  class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+                  title="清除开始日期"
+                  @click="filters.fromDate = ''"
+                >
+                  <X class="size-3.5" />
+                </button>
+              </div>
+              <ChevronRight class="size-4 text-muted-foreground shrink-0" />
+              <div class="relative group flex-1">
+                <input
+                  ref="toDateInputRef"
+                  v-model="filters.toDate"
+                  type="date"
+                  class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
+                  :min="endMin"
+                  :max="endMax"
+                  placeholder="结束日期"
+                  @change="onToDateChange"
+                >
+                <button
+                  v-if="filters.toDate"
+                  type="button"
+                  class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+                  title="清除结束日期"
+                  @click="filters.toDate = ''"
+                >
+                  <X class="size-3.5" />
+                </button>
+              </div>
+              <div
+                v-if="dateRangeError"
+                class="shrink-0 pl-2"
+              >
+                <Tooltip>
+                  <TooltipTrigger as-child>
+                    <AlertTriangle class="size-4 text-warning shrink-0" />
+                  </TooltipTrigger>
+                  <TooltipContent class="text-xs">
+                    {{ dateRangeError }}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="mt-4 flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            class="rounded-xl"
-            @click="resetFilters"
+        <div class="mt-4 flex items-center justify-between gap-2">
+          <div
+            v-if="appliedSummary"
+            class="text-xs text-muted-foreground flex items-center gap-1.5"
           >
-            <RotateCcw class="size-4 mr-1.5" /> 重置
-          </Button>
-          <Button
-            class="rounded-xl shadow-sm"
-            :disabled="loading"
-            @click="loadLogs"
-          >
-            <Filter class="size-4 mr-1.5" />
-            应用筛选
-          </Button>
+            <Filter class="size-3.5 text-primary" />
+            <span>{{ appliedSummary }}</span>
+          </div>
+          <div class="ml-auto flex items-center gap-2">
+            <Button
+              variant="outline"
+              class="rounded-xl"
+              @click="resetFilters"
+            >
+              <RotateCcw class="size-4 mr-1.5" /> 重置
+            </Button>
+            <Button
+              class="rounded-xl shadow-sm"
+              :disabled="loading"
+              @click="loadLogs"
+            >
+              <Filter class="size-4 mr-1.5" />
+              应用筛选
+            </Button>
+          </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
-    <Card class="rounded-2xl overflow-hidden">
-      <CardContent class="p-0">
+    <AdminCard class="overflow-hidden">
+      <div class="p-0">
         <div
           v-if="loading"
           class="p-6 space-y-3"
@@ -112,15 +170,13 @@
           >
             <div class="flex items-start gap-4">
               <div class="pt-1">
-                <Avatar class="size-9 border border-border">
-                  <AvatarImage
-                    v-if="log.username"
-                    :src="avatarOf(log)"
-                  />
-                  <AvatarFallback class="text-xs font-bold bg-[#0EA5E9]/15 text-[#0369A1]">
-                    {{ (log.username?.[0]?.toUpperCase()) || 'U' }}
-                  </AvatarFallback>
-                </Avatar>
+                <UserAvatar
+                  :seed="`${log.username || 'user'}|${log.user_id ?? ''}`"
+                  :name="log.username || `User #${log.user_id ?? '-'}`"
+                  :size="36"
+                  :show-title="false"
+                  class="border border-border"
+                />
               </div>
               <div class="flex-1 min-w-0">
                 <div class="flex flex-wrap items-center gap-2">
@@ -228,13 +284,13 @@
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, watch, computed, nextTick } from 'vue'
 import {
   fetchAdminAuditLogs,
   formatAdminDateTime,
@@ -243,10 +299,10 @@ import {
 import { useToast } from '~~/composables/useToast'
 import {
   FileSearch, Search, Filter, RotateCcw, Clock, Globe, Monitor, Info,
-  ChevronLeft, ChevronRight, ChevronDown
+  ChevronLeft, ChevronRight, ChevronDown, X, CalendarDays, AlertTriangle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
 import {
@@ -255,11 +311,14 @@ import {
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Badge } from '~~/components/ui/badge'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import {
+  Tooltip, TooltipContent, TooltipTrigger
+} from '~~/components/ui/tooltip'
+import UserAvatar from '~~/components/UserAvatar.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
-const toast = useToast()
+const _toast = useToast()
 
 const actionOptions = [
   { label: '登录 login', value: 'login' },
@@ -292,13 +351,6 @@ function actionClass(a: string): string {
   return 'bg-muted text-muted-foreground'
 }
 
-function avatarOf(log: AdminAuditLog): string {
-  const u = log.username || 'user'
-  const hue = Array.from(u).reduce((s, c) => s + c.charCodeAt(0), 0) % 360
-  const letter = encodeURIComponent(u[0]?.toUpperCase() || 'U')
-  return `https://api.dicebear.com/7.x/initials/svg?seed=${letter}-${log.user_id ?? 0}&backgroundColor=hsl(${hue},70%,90%)`
-}
-
 const loading = ref(true)
 const logs = ref<AdminAuditLog[]>([])
 const page = ref(1)
@@ -306,12 +358,72 @@ const total = ref(0)
 const totalPages = ref(1)
 const expandedId = ref<number | null>(null)
 
+const toDateInputRef = ref<HTMLInputElement | null>(null)
+
 const filters = reactive({
   action: '',
   userId: undefined as number | undefined,
   fromDate: '',
   toDate: ''
 })
+
+const todayStr = computed(() => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+})
+const startMax = computed(() => filters.toDate || todayStr.value)
+const endMin = computed(() => filters.fromDate || '')
+const endMax = todayStr
+
+const dateRangeError = computed(() => {
+  if (filters.fromDate && filters.toDate && filters.fromDate > filters.toDate) {
+    return '结束日期不能早于开始日期，已自动修正为开始日期。'
+  }
+  return ''
+})
+
+const appliedSummary = computed(() => {
+  const parts: string[] = []
+  if (filters.action) {
+    const o = actionOptions.find(x => x.value === filters.action)
+    parts.push(`类型：${o?.label ?? filters.action}`)
+  }
+  if (filters.userId) parts.push(`用户 ID：${filters.userId}`)
+  if (filters.fromDate || filters.toDate) {
+    const s = filters.fromDate || '不限'
+    const e = filters.toDate || '不限'
+    parts.push(`日期：${s} 至 ${e}`)
+  }
+  return parts.length ? `当前筛选：${parts.join('，')}` : ''
+})
+
+watch(() => filters.fromDate, (val) => {
+  if (!val) return
+  if (filters.toDate && val > filters.toDate) {
+    filters.toDate = val
+  }
+  nextTick(() => {
+    if (!filters.toDate && toDateInputRef.value) {
+      toDateInputRef.value.showPicker?.()
+      toDateInputRef.value.focus()
+    }
+  })
+})
+
+function onFromDateChange(_e: Event) {
+  // v-model 已完成同步，watch 负责联动 & 自动弹出
+}
+
+function onToDateChange(_e: Event) {
+  if (filters.toDate && filters.fromDate && filters.toDate < filters.fromDate) {
+    // 二次拦截：如果用户绕过 min 限制（例如通过键盘输入），自动拉平并 toast
+    filters.toDate = filters.fromDate
+    _toast.warning('结束日期不能早于开始日期，已自动调整。')
+  }
+}
 
 function toggleExpand(id: number) {
   expandedId.value = expandedId.value === id ? null : id
@@ -329,18 +441,22 @@ function resetFilters() {
 async function loadLogs() {
   loading.value = true
   try {
-    const params: { page?: number, page_size?: number, action?: string, user_id?: number } = {
+    const params: Parameters<typeof fetchAdminAuditLogs>[0] = {
       page: page.value,
       page_size: 15
     }
     if (filters.action) params.action = filters.action
     if (filters.userId) params.user_id = filters.userId
+    if (filters.fromDate) params.from = filters.fromDate
+    if (filters.toDate) params.to = filters.toDate
     const r = await fetchAdminAuditLogs(params)
     logs.value = r?.items ?? []
     total.value = r?.total ?? 0
     totalPages.value = r?.total_pages ?? 1
   } catch (e) {
     logs.value = []
+    const msg = e instanceof Error ? e.message : '加载日志失败'
+    _toast.error(msg)
   } finally {
     loading.value = false
   }

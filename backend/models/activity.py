@@ -23,7 +23,7 @@ class Activity(Base):
 
     Attributes:
         content: 多语言内容，如 {"zh": "内容", "en": "Content", "ja": "コンテンツ", "zh_Hant": "內容"}
-        type: 动态类型：say（说说）/article（文章发布）/update（更新）/notice（通知）
+        type: 动态类型：say（说说）/article（文章发布）/update（更新）/notice（通知）/link（友情链接推荐）
         author_id: 作者ID
         author: 作者对象
         is_published: 是否已发布

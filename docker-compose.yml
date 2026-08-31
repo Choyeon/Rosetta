@@ -116,14 +116,12 @@ services:
     networks:
       - rosetta-network
 
-  # 前端 Web 服务(Astro 静态站点 + nginx)
+  # 前端 Web 服务(Nuxt 4 / Nitro 服务器 + nginx 反代)
   frontend:
     build:
       context: .
       target: frontend
       dockerfile: Dockerfile
-      args:
-        ASTRO_API_BASE_URL: http://backend:8000
     container_name: rosetta-frontend
     restart: unless-stopped
     depends_on:
@@ -136,7 +134,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
     networks:
       - rosetta-network
 

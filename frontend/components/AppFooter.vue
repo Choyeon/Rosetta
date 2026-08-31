@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
@@ -203,8 +202,12 @@ const socialLinks = computed<FooterLink[]>(() => {
   return list
 })
 
-// 最终显示的版权文字：站点设置 copyright_text 优先 → 否则生成默认格式
+// 最终显示的版权文字：主题 footer_text（Customizer 入口） > 站点 settings.copyright_text > 默认格式
 const copyrightLine = computed(() => {
+  const themeCopyright = (site.footer.value && 'copyright' in site.footer.value)
+    ? (site.footer.value as { copyright?: string }).copyright
+    : null
+  if (themeCopyright && String(themeCopyright).trim()) return String(themeCopyright).trim()
   if (siteConfig.value.copyright_text) return siteConfig.value.copyright_text
   const owner = siteConfig.value.site_author || siteConfig.value.site_name || 'Rosetta'
   return `© ${currentYear} ${owner} · ${t('footer.rightsReserved', 'All rights reserved.')}`
@@ -257,48 +260,39 @@ const handleSetLocale = async (code: string) => {
             class="mb-6 text-sm text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2"
             v-html="siteConfig.footer_custom_html"
           />
+          <!-- 社交链接：不使用 Button asChild 组合，避免 SSR 渲染 <a> 但客户端
+               asChild slot 透传时序问题导致 undefined → Hydration mismatch。
+               直接使用原生 <a> 并手写与 Button(ghost,icon) 相同的 class，SSR/客户端字节级一致。 -->
           <div class="flex items-center gap-2 mb-6">
-            <Button
+            <a
               v-if="siteConfig.github_url"
-              variant="ghost"
-              size="icon"
-              as-child
+              :href="siteConfig.github_url"
+              target="_blank"
+              rel="noreferrer"
+              :aria-label="t('footer.githubLabel', 'GitHub')"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
             >
-              <a
-                :href="siteConfig.github_url"
-                target="_blank"
-                rel="noreferrer"
-                :aria-label="t('footer.githubLabel', 'GitHub')"
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M12 .587c-6.627 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.776.419-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23a11.507 11.507 0 013.003-.404c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .315.217.695.825.577 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
-                </svg>
-              </a>
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              as-child
+                <path d="M12 .587c-6.627 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.387.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.108-.776.419-1.305.762-1.605-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23a11.507 11.507 0 013.003-.404c1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222 0 1.606-.015 2.896-.015 3.286 0 .315.217.695.825.577 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
+              </svg>
+            </a>
+            <a
+              href="/rss.xml"
+              :aria-label="t('footer.rssLabel', 'RSS')"
+              class="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
             >
-              <a
-                href="/rss.xml"
-                :aria-label="t('footer.rssLabel', 'RSS')"
+              <svg
+                viewBox="0 0 24 24"
+                fill="currentColor"
+                aria-hidden="true"
               >
-                <svg
-                  viewBox="0 0 24 24"
-                  class="h-4 w-4"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path d="M5 3a1 1 0 00-1 1v2a15 15 0 0115 15h2a1 1 0 001-1A18 18 0 005 3zm0 6a1 1 0 00-1 1v2a9 9 0 019 9h2a1 1 0 001-1A12 12 0 005 9zm2.5 6a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" />
-                </svg>
-              </a>
-            </Button>
+                <path d="M5 3a1 1 0 00-1 1v2a15 15 0 0115 15h2a1 1 0 001-1A18 18 0 005 3zm0 6a1 1 0 00-1 1v2a9 9 0 019 9h2a1 1 0 001-1A12 12 0 005 9zm2.5 6a2.5 2.5 0 100 5 2.5 2.5 0 000-5z" />
+              </svg>
+            </a>
           </div>
           <p class="text-xs text-muted-foreground">
             {{ copyrightLine }}
@@ -317,7 +311,7 @@ const handleSetLocale = async (code: string) => {
               })
             }}
           </h4>
-          <ul class="space-y-3">
+          <ul class="flex flex-col gap-3">
             <li
               v-for="link in siteLinks"
               :key="link.to"
@@ -344,7 +338,7 @@ const handleSetLocale = async (code: string) => {
               })
             }}
           </h4>
-          <ul class="space-y-3">
+          <ul class="flex flex-col gap-3">
             <li
               v-for="link in categoryLinks"
               :key="link.to"
@@ -376,7 +370,7 @@ const handleSetLocale = async (code: string) => {
               })
             }}
           </h4>
-          <ul class="space-y-3">
+          <ul class="flex flex-col gap-3">
             <li
               v-for="link in resourceLinks"
               :key="link.href"

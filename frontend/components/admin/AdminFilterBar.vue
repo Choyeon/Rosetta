@@ -22,9 +22,10 @@
  *   - 开始日期 max = 已选的结束日期（避免 start > end）
  *   - 两者的最大可选日期都 ≤ 今天（防止未来时间瞎选）
  *   - start 更新后若 end < start → 自动把 end 拉到 start 的值
+ *   - 选完 start 后自动把焦点交给 end（如果 end 还没填）
  *   - 日期值统一格式 YYYY-MM-DD（字符串），传给后端 created_start / created_end
  */
-import { Search, X, Calendar } from '@lucide/vue'
+import { Search, X, Calendar, RotateCcw } from '@lucide/vue'
 import { Input } from '~~/components/ui/input'
 import { Button } from '~~/components/ui/button'
 import {
@@ -79,6 +80,8 @@ const localStatus = defineModel<TStatus | 'all'>('status', { default: 'all' })
 const localStart = defineModel<string | null>('createdStart', { default: null })
 const localEnd = defineModel<string | null>('createdEnd', { default: null })
 
+const endInputRef = ref<HTMLInputElement | null>(null)
+
 const todayStr = computed(() => {
   const d = new Date()
   const y = d.getFullYear()
@@ -93,10 +96,18 @@ const endMin = computed(() => localStart.value)
 const endMax = todayStr
 
 watch(localStart, (val) => {
+  if (!val) return
   // 开始日期大于结束日期 → 自动把结束日期拉齐（不允许 end < start）
-  if (val && localEnd.value && val > localEnd.value) {
+  if (localEnd.value && val > localEnd.value) {
     localEnd.value = val
   }
+  // 选完开始后，如果结束还没填，自动 focus 结束输入框
+  nextTick(() => {
+    if (!localEnd.value && endInputRef.value) {
+      endInputRef.value.showPicker?.()
+      endInputRef.value.focus()
+    }
+  })
 })
 
 function updateKeyword(value: string | number) {
@@ -109,8 +120,23 @@ function updateStatus(value: string | undefined) {
 
 function updateDate(event: Event, target: 'start' | 'end') {
   const value = (event.target as HTMLInputElement).value
-  if (target === 'start') localStart.value = value || null
-  else localEnd.value = value || null
+  if (target === 'start') {
+    localStart.value = value || null
+  } else {
+    if (value && localStart.value && value < localStart.value) {
+      // 显式拦截：用户手动选的结束时间早于开始 → 自动拉平到开始
+      localEnd.value = localStart.value
+    } else {
+      localEnd.value = value || null
+    }
+  }
+}
+
+function clearStart() {
+  localStart.value = null
+}
+function clearEnd() {
+  localEnd.value = null
 }
 
 function doSearch() {
@@ -127,7 +153,7 @@ function doReset() {
 </script>
 
 <template>
-  <div class="card-surface no-glow flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 md:p-4">
+  <div class="card-surface no-glow flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 md:p-4 rounded-[14px] border border-border/60 bg-card/60 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
     <!-- 左：关键字 + 状态 + 日期范围 -->
     <div class="flex flex-col sm:flex-row gap-3 flex-1 flex-wrap items-stretch sm:items-center">
       <div class="relative sm:min-w-[240px] flex-1 max-w-md">
@@ -162,36 +188,67 @@ function doReset() {
 
       <div
         v-if="showDateRange"
-        class="flex items-center gap-2"
+        class="flex flex-col sm:flex-row gap-2 sm:items-center rounded-[12px] border border-border/60 bg-background/60 px-3 py-2"
       >
         <Tooltip>
           <TooltipTrigger as-child>
-            <div class="flex items-center gap-1 text-muted-foreground">
-              <Calendar class="size-4" />
+            <div class="flex items-center gap-1.5 shrink-0">
+              <Calendar class="size-4 text-primary" />
+              <span class="text-xs font-medium text-muted-foreground hidden sm:inline">日期</span>
             </div>
           </TooltipTrigger>
           <TooltipContent>
             <p class="text-xs">
-              日期范围：结束日期不能早于开始日期
+              结束日期不能早于开始日期；选择开始后会自动弹出结束日期
             </p>
           </TooltipContent>
         </Tooltip>
-        <input
-          type="date"
-          class="h-9 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-          :value="localStart ?? ''"
-          :max="startMax"
-          @change="updateDate($event, 'start')"
-        >
-        <span class="text-muted-foreground text-sm">至</span>
-        <input
-          type="date"
-          class="h-9 rounded-[10px] border border-input bg-background px-3 text-sm text-foreground shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50"
-          :value="localEnd ?? ''"
-          :min="endMin"
-          :max="endMax"
-          @change="updateDate($event, 'end')"
-        >
+
+        <div class="flex items-center gap-1.5 min-w-[160px]">
+          <div class="relative group flex-1">
+            <input
+              type="date"
+              class="h-8 min-w-0 flex-1 rounded-[8px] border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+              :value="localStart ?? ''"
+              :max="startMax"
+              placeholder="开始"
+              @change="updateDate($event, 'start')"
+            >
+            <button
+              v-if="localStart"
+              type="button"
+              class="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="清除开始日期"
+              @click="clearStart"
+            >
+              <X class="size-3.5" />
+            </button>
+          </div>
+
+          <span class="text-muted-foreground text-xs shrink-0 select-none px-0.5">→</span>
+
+          <div class="relative group flex-1">
+            <input
+              ref="endInputRef"
+              type="date"
+              class="h-8 min-w-0 flex-1 rounded-[8px] border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+              :value="localEnd ?? ''"
+              :min="endMin"
+              :max="endMax"
+              placeholder="结束"
+              @change="updateDate($event, 'end')"
+            >
+            <button
+              v-if="localEnd"
+              type="button"
+              class="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+              title="清除结束日期"
+              @click="clearEnd"
+            >
+              <X class="size-3.5" />
+            </button>
+          </div>
+        </div>
       </div>
 
       <slot name="extraFilters" />
@@ -206,7 +263,7 @@ function doReset() {
         :disabled="loading"
         @click="doReset"
       >
-        <X class="size-4 mr-1.5" />
+        <RotateCcw class="size-4 mr-1.5" />
         重置
       </Button>
       <Button

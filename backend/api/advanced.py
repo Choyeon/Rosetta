@@ -5,6 +5,7 @@
 """
 
 import json
+import logging
 import math
 from datetime import datetime
 
@@ -20,7 +21,22 @@ from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
 from backend.utils.compat import UTC, timedelta
 
-router = APIRouter(prefix="/admin", tags=["高级管理"])
+router = APIRouter(prefix="/admin", tags=["高级功能"])
+
+logger = logging.getLogger(__name__)
+
+
+def _parse_date_param(s: str | None) -> datetime | None:
+    """解析 ISO 日期字符串（兼容 YYYY-MM-DD 和带 T/Z 的完整 ISO）"""
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=UTC)
+        return d
+    except Exception:
+        return None
 
 
 # ==================== 回收站 API ====================
@@ -632,8 +648,13 @@ async def list_operation_logs(
     user_id: int | None = Query(None, description="用户 ID"),
     action: str | None = Query(None, description="操作类型"),
     resource_type: str | None = Query(None, description="资源类型"),
+    from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
+    to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
+    q: str | None = Query(None, description="关键词搜索(details/error_code/ip)"),
 ):
     """获取操作日志列表"""
+    from sqlalchemy import or_, cast, String as SAString
+
     query = select(OperationLog).options(selectinload(OperationLog.user))
 
     if user_id:
@@ -642,6 +663,26 @@ async def list_operation_logs(
         query = query.where(OperationLog.action == action)
     if resource_type:
         query = query.where(OperationLog.resource_type == resource_type)
+
+    from_dt = _parse_date_param(from_date)
+    to_dt = _parse_date_param(to_date)
+    if from_dt:
+        query = query.where(OperationLog.created_at >= from_dt)
+    if to_dt:
+        # 结束日期若只是 YYYY-MM-DD（零点），扩展到当天 23:59:59.999 以包含整天
+        if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
+            to_dt = to_dt + timedelta(days=1) - timedelta(microseconds=1)
+        query = query.where(OperationLog.created_at <= to_dt)
+
+    if q:
+        like = f"%{q}%"
+        query = query.where(
+            or_(
+                cast(OperationLog.detail, SAString).ilike(like),
+                OperationLog.error_code.ilike(like) if hasattr(OperationLog, 'error_code') else False,
+                OperationLog.ip_address.ilike(like),
+            )
+        )
 
     query = query.order_by(OperationLog.created_at.desc())
 
@@ -753,6 +794,8 @@ async def export_operation_logs(
     user_id: int | None = Query(None, description="用户 ID"),
     action: str | None = Query(None, description="操作类型"),
     resource_type: str | None = Query(None, description="资源类型"),
+    from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
+    to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
 ):
     """导出操作日志"""
     from fastapi.responses import Response
@@ -765,6 +808,15 @@ async def export_operation_logs(
         query = query.where(OperationLog.action == action)
     if resource_type:
         query = query.where(OperationLog.resource_type == resource_type)
+
+    from_dt = _parse_date_param(from_date)
+    to_dt = _parse_date_param(to_date)
+    if from_dt:
+        query = query.where(OperationLog.created_at >= from_dt)
+    if to_dt:
+        if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
+            to_dt = to_dt + timedelta(days=1) - timedelta(microseconds=1)
+        query = query.where(OperationLog.created_at <= to_dt)
 
     query = query.order_by(OperationLog.created_at.desc()).limit(1000)
 

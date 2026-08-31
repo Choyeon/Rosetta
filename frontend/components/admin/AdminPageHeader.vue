@@ -13,11 +13,14 @@ defineProps<Props>()
 
 <template>
   <div :class="cn('flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between', $props.class)">
-    <div class="space-y-1">
+    <div class="flex flex-col gap-1">
       <h1 class="text-2xl font-bold tracking-tight">
         {{ title }}
       </h1>
-      <p v-if="description" class="text-sm text-muted-foreground">
+      <p
+        v-if="description"
+        class="text-sm text-muted-foreground"
+      >
         {{ description }}
       </p>
     </div>

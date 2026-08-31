@@ -476,8 +476,8 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
 
 
 async def create_mock_data(num_posts: int = 20, num_users: int = 10, num_comments: int = 50) -> dict:
-    from backend.core.database import async_session_factory
-    async with async_session_factory() as session:
+    from backend.core.database import async_session_maker
+    async with async_session_maker() as session:
         return await generate_all_mock_data(
             session,
             posts_count=num_posts,
@@ -503,10 +503,10 @@ async def main() -> None:
     parser.add_argument("--admin-id", type=int, default=1)
     args = parser.parse_args()
 
-    from backend.core.database import async_session_factory, init_db
+    from backend.core.database import async_session_maker, init_db
 
     await init_db()
-    async with async_session_factory() as db:
+    async with async_session_maker() as db:
         if args.oobe:
             result = await generate_oobe_mock_data(db, admin_id=args.admin_id)
             print("[OOBE mock]", result)

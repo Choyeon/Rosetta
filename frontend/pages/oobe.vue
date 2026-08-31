@@ -952,10 +952,11 @@
       </div>
     </div>
 
-    <!-- ========== 左下角：版权 Meta 胶囊 ========== -->
+    <!-- ========== 左下角：版权 Meta 胶囊 ==========
+         点击整张卡片跳 Bing 官方搜索页；不单独提供下载 icon 按钮（版权图由用户浏览器另存为即可）。 -->
     <a
       v-if="bwp?.copyright"
-      :href="bwp?.copyrightLink || 'https://www.bing.com'"
+      :href="getBwpOfficialLink(bwp)"
       target="_blank"
       rel="noopener noreferrer nofollow"
       class="fixed bottom-5 left-5 z-40 group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.07] border border-white/10 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-white/[0.11] hover:border-white/15 transition-colors"
@@ -1065,7 +1066,7 @@ import {
   ChevronRight,
   ExternalLink
 } from '@lucide/vue'
-import { markRaw, nextTick, onBeforeUnmount, onMounted } from 'vue'
+import { markRaw, nextTick, onMounted } from 'vue'
 
 definePageMeta({ layout: false })
 
@@ -1082,27 +1083,6 @@ interface BingWallpaperPayload {
 const { t } = useI18n()
 const oobe = useOOBE()
 const { systemChecks, systemSummary, loading, checkSystem, createAdmin, saveSiteSettings, finishOOBE, getOOBEStatus, installDependencies, subscribeDependencyStream } = oobe
-
-// 品牌色：OOBE 向导强制移除用户自定义调色板类（保持 emerald 主色系统）
-const PALETTE_RE = /^palette-/
-let removedPaletteClass: string | null = null
-onMounted(() => {
-  if (typeof document === 'undefined') return
-  const classes = Array.from(document.documentElement.classList)
-  for (const cls of classes) {
-    if (PALETTE_RE.test(cls)) {
-      removedPaletteClass = cls
-      document.documentElement.classList.remove(cls)
-    }
-  }
-})
-onBeforeUnmount(() => {
-  if (typeof document === 'undefined') return
-  if (removedPaletteClass) {
-    document.documentElement.classList.add(removedPaletteClass)
-    removedPaletteClass = null
-  }
-})
 
 // ====== Bing 每日壁纸（后台风格：emerald/teal/cyan 三束光 + 毛玻璃） ======
 // —— 使用 FastAPI /api/bing/wallpapers，与 login/register 的 useBingWallpaper 同源，
@@ -1261,6 +1241,24 @@ const bwp = computed<BingWallpaperPayload | null>(() => {
     totalDays: list.length
   }
 })
+
+/**
+ * 生成 Bing 官方「当前壁纸」跳转链接。
+ *  1) 优先用 Bing API 返回的 copyrightLink / copyrightlink（精确的搜索页）
+ *  2) 无版权链接时，按 title 拼 https://www.bing.com/search?q={title}
+ *  3) 最后兜底 bing.com 首页
+ * 点击整张 Meta 版权卡片即跳官方界面，不再单独提供下载 icon 按钮（用户浏览器另存为即可）。
+ */
+function getBwpOfficialLink(img: BingWallpaperPayload | null | { copyrightlink?: string, copyrightLink?: string, title?: string } | null): string {
+  if (!img) return 'https://www.bing.com'
+  const raw = (img as { copyrightLink?: unknown }).copyrightLink ?? (img as { copyrightlink?: unknown }).copyrightlink
+  if (typeof raw === 'string' && raw.startsWith('http')) return raw
+  const title = (img as { title?: unknown }).title
+  if (typeof title === 'string' && title.trim()) {
+    return `https://www.bing.com/search?q=${encodeURIComponent(title.trim())}`
+  }
+  return 'https://www.bing.com'
+}
 
 // 首拉 + idx 变更重新 preload
 watch(bwpIdx, () => {

@@ -1,0 +1,12 @@
+/*
+Theme Name: Editorial WP-Style
+Theme URI: https://rosetta.dev/themes/editorial-wp-style
+Author: Rosetta Themes
+Author URI: https://rosetta.dev
+Description: Classic Editorial magazine layout for Rosetta. Full customizer support.
+Version: 1.0.0
+Requires Rosetta: >=1.0.0
+Tags: color:sky, layout:magazine, custom-header, customizer
+Text Domain: editorial-wp-style
+*/
+/* Note: actual theme styles are compiled in frontend/assets/css/main.css; this file is used only for manifest metadata per WP convention. */

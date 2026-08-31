@@ -58,7 +58,7 @@
           />
         </div>
       </ScrollArea>
-      <Card class="p-6">
+      <AdminCard>
         <Skeleton class="h-8 w-48 rounded mb-6" />
         <div class="space-y-4">
           <Skeleton
@@ -67,7 +67,7 @@
             class="h-14 rounded-lg"
           />
         </div>
-      </Card>
+      </AdminCard>
     </div>
 
     <div
@@ -95,7 +95,9 @@
       </ScrollArea>
 
       <ScrollArea class="rounded-xl border border-border bg-card">
-        <div class="p-6 space-y-6">
+        <div
+          class="p-6 space-y-6"
+        >
           <div class="space-y-1">
             <h2 class="text-lg font-bold">
               {{ currentGroupMeta?.label }}
@@ -131,12 +133,12 @@
                 <div class="space-y-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <div class="relative">
-                  <Input
-                    v-model="strRef(key).value"
-                    :type="showSensitive[key] ? 'text' : 'password'"
-                    :placeholder="schema.placeholder || ''"
-                    class="rounded-xl pr-11"
-                  />
+                    <Input
+                      v-model="strRef(key).value"
+                      :type="showSensitive[key] ? 'text' : 'password'"
+                      :placeholder="schema.placeholder || ''"
+                      class="rounded-xl pr-11"
+                    />
                     <button
                       type="button"
                       class="absolute right-2 top-1/2 -translate-y-1/2 size-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
@@ -260,119 +262,6 @@
                 </div>
               </template>
             </template>
-
-            <!-- 站点级主题色（调色板）：写入 Site.theme_key -->
-            <div
-              v-if="activeGroup === 'appearance'"
-              class="mt-2 rounded-xl border border-dashed border-border bg-muted/30 p-4"
-            >
-              <div class="flex items-center justify-between">
-                <div>
-                  <Label class="text-sm font-medium">站点主题色（默认皮肤）</Label>
-                  <p class="text-xs text-muted-foreground mt-0.5">
-                    设置后作为全站默认调色板；登录用户可在右上角用调色板按钮覆盖个人选择。
-                  </p>
-                </div>
-                <span
-                  v-if="themeSaving"
-                  class="size-4 rounded-full border-2 border-primary border-t-transparent animate-spin"
-                />
-              </div>
-              <div class="mt-3 flex flex-wrap gap-2">
-                <button
-                  v-for="opt in themeOptions"
-                  :key="opt.id"
-                  type="button"
-                  class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-all"
-                  :class="currentThemeKey === opt.id
-                    ? 'border-primary bg-primary/5 text-foreground shadow-sm'
-                    : 'border-border bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground'"
-                  @click="saveSiteTheme(opt.id)"
-                >
-                  <span
-                    class="size-4 rounded-full ring-1 ring-border"
-                    :style="{ background: opt.swatch }"
-                  />
-                  {{ opt.label }}
-                </button>
-              </div>
-              <p
-                v-if="themeOptions.length === 0"
-                class="text-xs text-muted-foreground mt-2"
-              >
-                主题色清单加载中或暂不可用…
-              </p>
-            </div>
-
-            <!-- 插件演示：公告条（announce-bar）配置 -->
-            <div
-              class="mt-2 rounded-xl border border-dashed border-border bg-muted/30 p-4"
-            >
-              <div class="flex items-center justify-between">
-                <div>
-                  <Label class="text-sm font-medium">插件 · 公告条 Announce Bar</Label>
-                  <p class="text-xs text-muted-foreground mt-0.5">
-                    由 demo 插件 announce-bar 提供。配置存于站点配置表，监听文章发布事件。
-                  </p>
-                </div>
-                <span
-                  v-if="pluginSaving"
-                  class="size-4 rounded-full border-2 border-primary border-t-transparent animate-spin"
-                />
-              </div>
-              <div class="mt-3 space-y-3">
-                <div class="flex items-center justify-between rounded-lg border border-border p-3 bg-card">
-                  <div class="space-y-0.5">
-                    <Label class="text-sm font-medium">启用公告条</Label>
-                    <p class="text-xs text-muted-foreground">关闭后前台不渲染公告条</p>
-                  </div>
-                  <Switch v-model="pluginEnabled" />
-                </div>
-                <div class="space-y-1">
-                  <Label class="text-sm font-medium">公告正文</Label>
-                  <Input
-                    v-model="pluginText"
-                    class="rounded-xl"
-                    placeholder="输入公告内容…"
-                  />
-                </div>
-                <div class="space-y-1">
-                  <Label class="text-sm font-medium">颜色类型</Label>
-                  <div class="flex gap-2">
-                    <button
-                      v-for="t in pluginTypes"
-                      :key="t"
-                      type="button"
-                      class="rounded-lg border px-3 py-1.5 text-sm capitalize transition-all"
-                      :class="pluginType === t
-                        ? 'border-primary bg-primary/5 text-foreground shadow-sm'
-                        : 'border-border bg-card text-muted-foreground hover:bg-accent'"
-                      @click="pluginType = t"
-                    >
-                      {{ t }}
-                    </button>
-                  </div>
-                </div>
-                <div class="flex items-center gap-3 pt-1">
-                  <Button
-                    size="sm"
-                    class="shadow-sm"
-                    :disabled="pluginSaving"
-                    @click="savePluginConfig"
-                  >
-                    <Save v-if="!pluginSaving" class="size-4" />
-                    <Loader2 v-else class="size-4 animate-spin" />
-                    保存插件配置
-                  </Button>
-                  <span
-                    v-if="pluginPublishedCount > 0"
-                    class="text-xs text-muted-foreground"
-                  >
-                    已捕获 post.published 事件：{{ pluginPublishedCount }} 次
-                  </span>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
       </ScrollArea>
@@ -391,7 +280,7 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref, computed, watch, onMounted, type WritableComputedRef } from 'vue'
+import { reactive, ref, computed, onMounted, type WritableComputedRef } from 'vue'
 import {
   fetchAllSettings,
   saveSettingsGroup,
@@ -409,7 +298,7 @@ import {
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
-import { Card } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Label } from '~~/components/ui/label'
@@ -497,7 +386,7 @@ function parseJsonInput(key: string, raw: string) {
   }
   try {
     formState[activeGroup.value]![key] = JSON.parse(raw)
-  } catch (e) {
+  } catch {
     toast.warning('JSON 格式有误，请检查语法')
     formState[activeGroup.value]![key] = raw
   }
@@ -682,25 +571,69 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
 }
 
 /**
- * 在 appearance 组中被 CSS token 统一管理、因此不允许用户在后台修改的字段。
- * 说明：
- *   - primary_color / accent_color 不再屏蔽 —— 前端已实现
- *     `theme_primary` / `theme_accent` 动态注入 CSS 变量，
- *     后台修改后立即影响全站主色/强调色，是"站点设置"核心能力。
+ * 去重：站点设置中与"主题 Customizer"重复的字段统一屏蔽。
+ * 外观颜色 / 宽度、Hero 文案 / CTA、页脚版权文字、侧边栏显示 / 位置、
+ * 首页每行文章数、作者卡、相关文章等均由"主题自定义"作为唯一入口管理。
+ * appearance 里仅保留：代码高亮主题、明/暗默认主题（非调色板）、
+ * 显示版权 / Powered by 标识等不与 Customizer 冲突的全局视觉开关。
  */
-const APPEARANCE_BLOCK_KEYS = new Set([
-  'font_family'  // 字体族由 Tailwind preset（@theme/typography）管理
+const APPEARANCE_BLOCK_KEYS = new Set<string>([
+  'font_family', // 字体族由 Tailwind preset 管理
+  'primary_color', // 主色 → 主题 Customizer（accent_color 也在 mods）
+  'accent_color', // 强调色 → 主题 Customizer
+  'page_width_px' // 内容区宽度 → 主题 Customizer（layout_width）
 ])
+
+/**
+ * hero 组里与主题 Customizer 重复的字段：
+ *   - title / subtitle 文案由 theme.hero_title / hero_subtitle 管理
+ *   - 仍保留 enable / caption / cta / bg 等主题 Customizer 未覆盖的交互设置
+ */
+const HERO_BLOCK_KEYS = new Set<string>(['title', 'subtitle'])
+
+/**
+ * footer 组里与主题 Customizer 重复的字段：
+ *   - copyright → theme.footer_text 管理
+ *   - 仍保留 slogan / icp / social / back_to_top 等站点级设置
+ */
+const FOOTER_BLOCK_KEYS = new Set<string>(['copyright'])
+
+/**
+ * sidebar 组里与主题 Customizer 重复的字段：
+ *   - 全局显示/隐藏由 theme.show_sidebar / sidebar_position 控制（字段在 mods 里），
+ *     站点 settings 侧不再暴露侧边栏"整组级"的主控开关；
+ *   - 组件级开关（show_profile / show_categories / ...）仍保留在站点设置。
+ * 注：Customizer 里 mods 没有单独字段会覆盖"具体组件"，所以这里只做占位；
+ *     若未来新增 show_sidebar_total 字段名，可加到此处。
+ */
+const SIDEBAR_BLOCK_KEYS = new Set<string>([])
+
+/**
+ * reading 组里与主题 Customizer 重复的字段：
+ *   - show_author_box / show_related_posts 由主题 mods 控制
+ *     （reading 里的字段名可不同，但 reading 组目前不存在这些键 ——
+ *      仅作防御性声明，避免后端后续加字段时前台形成双入口。）
+ */
+const READING_BLOCK_KEYS = new Set<string>([])
 
 /** default_theme 允许的值（不再支持 system） */
 const ALLOWED_DEFAULT_THEMES = new Set(['light', 'dark'])
 
+const GROUP_BLOCK_KEYS: Record<string, Set<string>> = {
+  appearance: APPEARANCE_BLOCK_KEYS,
+  hero: HERO_BLOCK_KEYS,
+  footer: FOOTER_BLOCK_KEYS,
+  sidebar: SIDEBAR_BLOCK_KEYS,
+  reading: READING_BLOCK_KEYS
+}
+
 const currentGroupSchemas = computed(() => {
   const data = formState[activeGroup.value] || {}
   const defaults = getDefaultsFor(activeGroup.value)
+  const blocks = GROUP_BLOCK_KEYS[activeGroup.value]
   const out: Record<string, FieldSchema> = {}
   for (const [k, v] of Object.entries(data)) {
-    if (activeGroup.value === 'appearance' && APPEARANCE_BLOCK_KEYS.has(k)) continue
+    if (blocks && blocks.has(k)) continue
     out[k] = inferSchema(k, v, defaults)
   }
   return out
@@ -738,6 +671,8 @@ async function loadAll() {
       formState[k] = v as SettingsGroupData
     }
   } catch (e) {
+    console.error('[settings] loadGroupData failed:', e)
+    toast.error('加载站点配置失败')
   } finally {
     loading.value = false
   }
@@ -751,8 +686,20 @@ async function handleSaveCurrentGroup() {
   try {
     // 清洗 payload，避免无意义或被禁止的字段被后端接收
     const payload: SettingsGroupData = { ...raw }
+    // 去重：主题 Customizer 中已接管的字段在"站点设置"保存时强制剥离，
+    // 防止"先在 Customizer 调过颜色 → 再保存站点设置 → 把主题色覆盖"的双写冲突。
+    const blocks = GROUP_BLOCK_KEYS[groupKey]
+    if (blocks) {
+      for (const k of blocks) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete payload[k]
+      }
+    }
     if (groupKey === 'appearance') {
-      for (const k of APPEARANCE_BLOCK_KEYS) delete payload[k]
+      for (const k of APPEARANCE_BLOCK_KEYS) {
+        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+        delete payload[k]
+      }
       if (typeof payload.default_theme === 'string') {
         payload.default_theme = ALLOWED_DEFAULT_THEMES.has(payload.default_theme)
           ? payload.default_theme
@@ -763,115 +710,14 @@ async function handleSaveCurrentGroup() {
     originalState.value[groupKey] = JSON.parse(JSON.stringify(r.data))
     toast.success(`已保存：${currentGroupMeta.value?.label ?? groupKey}`)
   } catch (e) {
+    console.error('[settings] handleSaveCurrentGroup failed:', e)
+    toast.error('保存配置失败')
   } finally {
     saving.value = false
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// 站点级主题色（调色板）：读写 Site.theme_key（GET/PUT /api/themes/current）
-// 与用户 localStorage 选择相互独立：用户级优先覆盖，站点级为默认。
-// ─────────────────────────────────────────────────────────────────────────────
-interface ThemeOption {
-  id: string
-  name: string
-  label: string
-  swatch: string
-}
-const themeOptions = ref<ThemeOption[]>([])
-const currentThemeKey = ref<string>('sky')
-const themeLoading = ref(false)
-const themeSaving = ref(false)
-
-async function loadThemes() {
-  try {
-    const res = await fetch('/api/themes')
-    if (!res.ok) return
-    const data = await res.json()
-    themeOptions.value = (data.items || []).map((i: any) => ({
-      id: i.id, name: i.name, label: i.label, swatch: i.swatch
-    }))
-    currentThemeKey.value = data.default || 'sky'
-    const cur = await fetch('/api/themes/current')
-    if (cur.ok) {
-      const cd = await cur.json()
-      if (cd.theme_key) currentThemeKey.value = cd.theme_key
-    }
-  } catch (e) {
-    /* 非致命：主题色切换区不可用但不阻塞设置页 */
-  }
-}
-
-async function saveSiteTheme(key: string) {
-  themeSaving.value = true
-  try {
-    const res = await fetch('/api/themes/current', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ theme_key: key })
-    })
-    if (!res.ok) throw new Error('保存失败')
-    const data = await res.json()
-    currentThemeKey.value = data.theme_key
-    toast.success(`站点主题色已设为：${themeOptions.value.find(t => t.id === data.theme_key)?.label ?? data.theme_key}`)
-  } catch (e) {
-    toast.error('站点主题色保存失败')
-  } finally {
-    themeSaving.value = false
-  }
-}
-
 onMounted(() => {
   loadAll()
-  loadThemes()
-  loadPluginConfig()
 })
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 插件 announce-bar 演示配置：调用插件自带 REST 接口
-// ─────────────────────────────────────────────────────────────────────────────
-const pluginEnabled = ref(true)
-const pluginText = ref('')
-const pluginType = ref('info')
-const pluginTypes = ['info', 'success', 'warning', 'error']
-const pluginSaving = ref(false)
-const pluginPublishedCount = ref(0)
-
-async function loadPluginConfig() {
-  try {
-    const [cfg, stats] = await Promise.all([
-      fetch('/api/plugins/announce-bar/config').then(r => r.ok ? r.json() : null),
-      fetch('/api/plugins/announce-bar/stats').then(r => r.ok ? r.json() : null)
-    ])
-    if (cfg) {
-      pluginEnabled.value = cfg.enabled !== false
-      pluginText.value = cfg.text || ''
-      pluginType.value = cfg.type || 'info'
-    }
-    if (stats) pluginPublishedCount.value = stats.published_count || 0
-  } catch (e) {
-    /* 非致命 */
-  }
-}
-
-async function savePluginConfig() {
-  pluginSaving.value = true
-  try {
-    const res = await fetch('/api/plugins/announce-bar/config', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        enabled: pluginEnabled.value,
-        text: pluginText.value,
-        type: pluginType.value
-      })
-    })
-    if (!res.ok) throw new Error('保存失败')
-    toast.success('插件配置已保存')
-  } catch (e) {
-    toast.error('插件配置保存失败')
-  } finally {
-    pluginSaving.value = false
-  }
-}
 </script>

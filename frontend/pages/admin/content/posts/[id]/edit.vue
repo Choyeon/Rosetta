@@ -3,7 +3,6 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import type { Post } from '~~/types/api'
 import PostForm from '~~/components/admin/PostForm.vue'
-import { usePosts } from '~~/composables/usePosts'
 import { useToast } from '~~/composables/useToast'
 import { apiFetch } from '~~/composables/useApi'
 import { Button } from '~~/components/ui/button'
@@ -14,7 +13,6 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 const route = useRoute()
 const router = useRouter()
-const { fetchPost, getPost } = usePosts()
 const toast = useToast()
 
 const loading = ref(true)
@@ -28,40 +26,20 @@ const loadData = async () => {
   loadError.value = null
   const id = postId.value
   try {
-    let found: Post | null | undefined = null
-    try {
-      const res = await apiFetch<{ items?: Post[] } | Post[]>('/blog/posts', {
-        query: { id, page: 1, page_size: 1 }
-      })
-      const items = 'items' in res && res.items ? res.items : (Array.isArray(res) ? res : [])
-      if (items && items.length > 0) {
-        found = items[0]
-      }
-    } catch {
-      /* swallow */
-    }
-    if (!found) {
-      try {
-        found = await getPost(String(id))
-      } catch {
-        /* swallow */
-      }
-    }
-    if (!found) {
-      try {
-        const res = await fetchPost(String(id))
-        if (res) found = res as unknown as Post
-      } catch {
-        /* swallow */
-      }
-    }
+    // 后端 /blog/posts/{slug} 支持智能识别：纯数字自动按 ID 查询
+    // silentToast=true：页面自行处理错误提示，避免 apiFetch 自动弹错后重复弹出
+    const found = await apiFetch<Post>(`/blog/posts/${id}`, {
+      silentToast: true
+    })
     if (found) {
       post.value = found
     } else {
-      loadError.value = '无法加载文章数据，请稍后重试'
+      loadError.value = '文章不存在或已被删除'
+      toast.error(loadError.value)
     }
   } catch (e) {
-    loadError.value = e instanceof Error ? e.message : '加载失败'
+    loadError.value = e instanceof Error ? e.message : '加载失败，请稍后重试'
+    toast.error(loadError.value)
   } finally {
     loading.value = false
   }

@@ -1,11 +1,11 @@
-"""
+﻿"""
 头像解析器（纯函数，无 DB/HTTP IO）。
 
 Avatar 选择优先级（当 avatar_source == "auto" 时，从高到低）：
   1) custom 且 avatar URL 非空 → 直接用 avatar
   2) github 非空 → "https://github.com/{github}.png?size=160"
   3) qq 非空 → "https://q1.qlogo.cn/g?b=qq&nk={qq}&s=160"
-  4) email 非空 → Gravatar MD5 + d=mp + s=160
+  4) email 非空 → Gravatar MD5 + d=mp + s=160（默认国内镜像，可通过 settings 覆盖）
   5) 否则 → None（由前端 fallback 到首字母色块 / rosetta-256.png）
 
 当 avatar_source 强制指定（qq/github/gravatar/custom）时，直接走对应分支，若失败返回 None。
@@ -17,12 +17,19 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
+from backend.core.config import settings
+
 AvatarSource = Literal["auto", "custom", "github", "qq", "gravatar"]
 
 GITHUB_USERNAME_RE = re.compile(r"^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$")
 QQ_RE = re.compile(r"^\d{5,11}$")
 WEBSITE_URL_RE = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def _gravatar_base() -> str:
+    raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
+    return raw or "https://cravatar.cn/avatar"
 
 
 @dataclass(frozen=True)
@@ -61,8 +68,8 @@ def _gravatar_url(email: str | None, size: int = 160) -> str | None:
     if not m:
         return None
     digest = hashlib.md5(email.strip().lower().encode("utf-8")).hexdigest()
-    # 直接返回 gravatar 原始 URL；是否加代理由外层 Response 包装器决定
-    return f"https://www.gravatar.com/avatar/{digest}?s={size}&d=mp&r=g"
+    # 默认使用国内镜像（sdn.geekzu.org / cravatar.cn 等），可通过 settings 覆盖
+    return f"{_gravatar_base()}/{digest}?s={size}&d=mp&r=g"
 
 
 def validate_input(inp: AvatarInput) -> dict[str, str | None]:

@@ -21,6 +21,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+from backend.core.tenant import TenantMixin
 
 if TYPE_CHECKING:
     from backend.models.user import User
@@ -110,7 +111,8 @@ class FriendLink(Base):
     description: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # 多语言网站描述
     logo: Mapped[str | None] = mapped_column(String(500), nullable=True)  # 网站 Logo
     order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)  # 排序权重
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)  # 是否启用
+    status: Mapped[str] = mapped_column(String(20), default="pending", nullable=False)  # pending / approved / rejected
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)  # 是否启用（兼容旧字段，status=approved时为True）
     target_blank: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)  # 新窗口打开
 
     created_at: Mapped[datetime] = mapped_column(
@@ -119,7 +121,7 @@ class FriendLink(Base):
 
     def __repr__(self) -> str:
         name = self.name.get("zh", "Unnamed") if self.name else "Unnamed"
-        return f"<FriendLink(id={self.id}, name='{name}')>"
+        return f"<FriendLink(id={self.id}, name='{name}', status='{self.status}')>"
 
 
 class SearchPlaceholder(Base):
@@ -146,7 +148,7 @@ class SearchPlaceholder(Base):
         return f"<SearchPlaceholder(id={self.id}, text='{text}')>"
 
 
-class Media(Base):
+class Media(Base, TenantMixin):
     """
     媒体文件
 
@@ -167,6 +169,13 @@ class Media(Base):
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 标题
     alt_text: Mapped[str | None] = mapped_column(String(255), nullable=True)  # 替代文本
     description: Mapped[str | None] = mapped_column(Text, nullable=True)  # 描述
+
+    # 图片尺寸与多尺寸缩略图（对标 WordPress 的 image sizes）
+    width: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="原始宽度（图片）")
+    height: Mapped[int | None] = mapped_column(Integer, nullable=True, comment="原始高度（图片）")
+    sizes: Mapped[dict | None] = mapped_column(
+        JSON, nullable=True, comment="多尺寸缩略图：{thumbnail:{url,w,h}, medium:{...}, large:{...}}"
+    )
 
     # 上传者
     uploaded_by_id: Mapped[int | None] = mapped_column(

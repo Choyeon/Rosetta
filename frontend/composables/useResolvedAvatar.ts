@@ -26,6 +26,44 @@ export interface ResolveAvatarOptions {
 const KNOWN_ABSOLUTE_RE = /^https?:\/\//i
 const API_MEDIA_RE = /^\/api\/media\//i
 
+/**
+ * 明显无效/占位的头像 URL 黑名单：
+ * - IANA 保留域名 (example.com / example.org)
+ * - RFC 2606 测试域名 (test / invalid / localhost)
+ * - 空的占位协议 (data: 之前已经在下方分支处理，所以不列在此)
+ */
+const BAD_HOST_RE = /(^|\.)(example\.(com|org|net)|invalid|localhost|test|example\.edu)(:\d+)?$/i
+
+function _isInvalidAvatarAbsoluteUrl(v: string): boolean {
+  if (!KNOWN_ABSOLUTE_RE.test(v)) return false
+  try {
+    const u = new URL(v)
+    if (BAD_HOST_RE.test(u.hostname)) return true
+    // 空路径或者 avatar.png 这种 RDF/占位文件名，通常是 mock_data 里遗留
+    const path = u.pathname.toLowerCase()
+    if (path === '' || path === '/' || path.endsWith('avatar.png')) {
+      // 进一步：若 hostname 属于无效/占位域，直接判定为无效
+      if (BAD_HOST_RE.test(u.hostname)) return true
+    }
+    // 私有 IP / 内网地址，跨域加载大多失败
+    const h = u.hostname
+    if (
+      h === '0.0.0.0'
+      || h.startsWith('127.')
+      || h.startsWith('10.')
+      || /^192\.168\./.test(h)
+      || /^172\.(1[6-9]|2\d|3[01])\./.test(h)
+      || h === '::1'
+      || h.includes('[::')
+    ) {
+      return true
+    }
+    return false
+  } catch {
+    return true
+  }
+}
+
 /** 稳定的 32bit 字符串哈希（FNV-1a），避免把用户名直接暴露在 URL 中 */
 function fnv1aHash(text: string): string {
   let h = 0x811c9dc5
@@ -85,11 +123,13 @@ export function resolveAvatarUrl(
     if (!v || v === 'null' || v === 'undefined') continue
     if (API_MEDIA_RE.test(v)) return v
     if (KNOWN_ABSOLUTE_RE.test(v)) {
+      // 无效 URL（example.com / 内网）：跳过，不尝试代理，避免 ORB
+      if (_isInvalidAvatarAbsoluteUrl(v)) continue
       try {
         const encoded = btoa(unescape(encodeURIComponent(v)))
         return `${apiBase}/media/avatar?src=${encoded}&fallback=1`
       } catch {
-        return v
+        continue
       }
     }
     if (v.startsWith('/')) {
@@ -97,11 +137,7 @@ export function resolveAvatarUrl(
       return `${apiBase}${v}`
     }
     if (v.startsWith('data:')) return v
-    try {
-      return `${apiBase}/media/avatar?src=${btoa(unescape(encodeURIComponent(v)))}&fallback=1`
-    } catch {
-      /* 编码失败继续下一个候选 */
-    }
+    // 未知格式的裸串（例如 "/avatar.png"）：可能是占位，跳过，不包装
   }
 
   // 全部候选失败 → 使用 DiceBear 生成稳定的默认头像（不再返回 ''）

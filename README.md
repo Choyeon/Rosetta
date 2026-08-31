@@ -1,379 +1,114 @@
-# 🌸 Rosetta - Modern Blog System
+# Rosetta 🌸
+
+**前后端分离的现代化博客系统 — WordPress 风格主题与插件架构 + 极简 Admin + 渐进式 SSR**
 
 <div align="center">
 
-![Rosetta](https://img.shields.io/badge/Rosetta-Blog%20System-3C5A78?style=for-the-badge)
-![Nuxt 4](https://img.shields.io/badge/Nuxt-4.0-00DC82?style=for-the-badge&logo=nuxt.js)
+![Nuxt 4](https://img.shields.io/badge/Nuxt-4.5-00DC82?style=for-the-badge&logo=nuxt.js)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Python-009688?style=for-the-badge&logo=fastapi)
-![TypeScript](https://img.shields.io/badge/TypeScript-5.0-3178C6?style=for-the-badge&logo=typescript)
-![Status](https://img.shields.io/badge/Status-80%25%20Complete-success?style=for-the-badge)
+![SQLAlchemy 2.0](https://img.shields.io/badge/SQLAlchemy-2.0-111111?style=for-the-badge)
+![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=for-the-badge&logo=typescript)
+![Python](https://img.shields.io/badge/Python-3.11%2B-3776AB?style=for-the-badge&logo=python)
 
-**A beautiful, modern, and full-featured blog system with a elegant blue-themed frontend and powerful admin panel.**
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
 
-[Features](#features) • [Quick Start](#quick-start) • [Documentation](#documentation) • [Screenshots](#screenshots)
+*两套可切换主题 · WordPress 风格插件引擎 · shadcn-vue Admin · Gravatar 代理*
 
 </div>
 
 ---
 
-## ✨ Features
+## ✨ 核心特性
 
-### 🎨 Frontend (Nuxt 4)
-- ✅ **Modern UI** - Beautiful blue-themed design with Playfair Display typography
-- ✅ **Responsive** - Perfect on mobile, tablet, and desktop
-- ✅ **Multi-language** - 4 languages (中文/English/日本語/繁體中文)
-- ✅ **Authentication** - JWT-based secure login system
-- ✅ **OOBE Wizard** - First-time installation guide
-- ✅ **Comments** - Nested comments with replies
-- ✅ **SEO Ready** - Meta tags and structured data
-- ✅ **Dark Mode Ready** - Infrastructure in place
+### 🎨 双主题系统（可热切换）
+- **Editorial WP-Style**（默认）：Magazine 风格，衬线字体 + 天青色 glow ring 卡片动效 + Hero 渐变
+- **Minimal Paper**（复刻 Astro Paper）：窄栏 760px + 衬线标题 + 底线分隔的文章列表 + 图标化导航项
+- 两个主题通过 `data-rosetta-theme` + `data-layout-scope="frontend"` 四层防御确保**切换不影响后台 Admin UI**
+- 主题目录：`frontend/themes/{slug}/style.css`，支持独立 manifest.json + 资源文件
 
-### 🚀 Backend (FastAPI)
-- ✅ **Async/Await** - High-performance async operations
-- ✅ **Type-Safe** - Pydantic validation throughout
-- ✅ **Multi-language** - Content localization support
-- ✅ **JWT Auth** - Secure token-based authentication
-- ✅ **SQLAlchemy 2.0** - Modern ORM with async support
-- ✅ **Redis Cache** - Optional caching layer
-- ✅ **Alembic** - Database migrations
-- ✅ **RESTful API** - Well-structured endpoints
+### 🔌 WordPress 风格插件系统
+- 钩子引擎（actions / filters / 短代码解析）
+- 清单扫描器自动发现 `plugin.json`
+- 路由 / 中间件 / 内容注入全部可扩展
+- 已内置：`hello-rosetta`（演示钩子）/ `guestbook-rss`（留言板 RSS）
 
-### 📱 Pages Available
+### 🛠️ 后台 Admin
+- shadcn-vue 原生组件（Card / Button / Input / Dialog / Table ...）
+- 仪表盘 + 文章 / 分类 / 标签 / 评论 / 留言板 / 友情链接 / 媒体 / 用户 / 主题 / 插件 / 设置 全模块
+- 站点设置 17 个分组（basic / appearance / security / comments / media / reading / features / email ...）
 
-#### Public Pages
-- 🏠 **Homepage** - Hero banner, featured posts, categories
-- 📝 **Posts** - List with pagination, search, filters
-- 📄 **Post Detail** - Full content, comments, likes, related posts
-- 🏷️ **Categories** - Grid layout with post counts
-- 📅 **Archive** - Yearly/monthly post archives
-- 🔐 **Login/Register** - User authentication
-- ⚙️ **OOBE** - Installation wizard
+### 👤 头像代理（国内友好）
+- 默认 `https://cravatar.cn/avatar`（2026-08 实测存活、速度最快）
+- 白名单域名（Gravatar 官方 + 国内镜像 + GitHub + DiceBear + QQ）307 直跳
+- 非白名单走服务端流式代理 + MIME 校验 + 错误兜底
+- SSRF 防护：私有 IP / IANA 保留域 / localhost 一律跳过
 
-#### Admin Panel
-- 📊 **Dashboard** - Statistics and overview
-- 📝 Posts Management (TODO)
-- 🏷️ Categories Management (TODO)
-- 🏷️ Tags Management (TODO)
-- 💬 Comments Moderation (TODO)
-- 👥 Users Management (TODO)
-- ⚙️ Settings (TODO)
+### 🌐 i18n
+- 四种语言：中文 / English / 日本語 / 繁體中文
+- 后端 contextvars 多语言上下文 + 前端 @nuxtjs/i18n v10
+- 模型文本字段 `dict[str, str]` 存多语言
+
+### 🖥️ 渐进式 SSR
+- SPA 起步，`ssr: false` 稳定可运行
+- 公开页面按优先级逐个打开 SSR（`routeRules: { swr: N }`）
+- Admin / Login / OOBE 保持 SPA
+
+### 🔐 安全
+- JWT（access 1h / refresh 7d）+ bcrypt 密码哈希
+- CSRF / rate_limit / distributed_lock 中间件
+- AppException 统一错误码，前端收到稳定 `error_code`
+- OOBE 中间件：未完成安装时 `/api/*` 返回 503 + `OOBE_REQUIRED`
+- TrustedHostMiddleware 生产环境校验 Host
 
 ---
 
-## 🚀 Quick Start
+## 🚀 快速开始
 
-### Prerequisites
+### 环境要求
+- **Node.js** 20+（前端）
+- **Python** 3.11+（后端）
+- **pnpm** 11（前端包管理）
+- **uv**（后端包管理）
+- 数据库：开发默认 SQLite，生产推荐 PostgreSQL
 
-- **Node.js** 18+ (for frontend)
-- **Python** 3.11+ (for backend)
-- **pnpm** (recommended) or npm
-- **PostgreSQL** or **SQLite** (for database)
-
-### 1. Clone Repository
+### 一键启动（开发模式）
 
 ```bash
-git clone https://github.com/yourusername/rosetta.git
+# 克隆
+git clone https://github.com/<your-org>/rosetta.git
 cd rosetta
-```
 
-### 2. Start Backend
-
-```bash
-# Install backend dependencies
-cd backend
+# 后端依赖 + 启动
 uv sync
-
-# Start backend server
 uv run uvicorn backend.main:app --reload --port 8000
-```
 
-Backend will be available at: http://localhost:8000
-
-### 3. Start Frontend
-
-**Windows:**
-```bash
-cd frontend
-setup.bat
-```
-
-**Linux/Mac:**
-```bash
-cd frontend
-chmod +x setup.sh
-./setup.sh
-```
-
-**Manual:**
-```bash
+# 前端依赖 + 启动（会自动 spawn 后端，若 8000 空闲）
 cd frontend
 pnpm install
 pnpm dev
 ```
 
-Frontend will be available at: http://localhost:3000
+- 前端：http://localhost:3001
+- 后端：http://localhost:8000 （Swagger 在 `/docs`）
+- OOBE：http://localhost:3001/oobe
 
-### 4. Complete OOBE Setup
+首次启动走 OOBE 向导（5 步）完成站点初始化，或用 `uv run python -m backend.scripts.mock_data` 写入演示数据。
 
-1. Visit http://localhost:3000/oobe
-2. Configure database settings
-3. Enter site information
-4. Create admin account
-5. Wait for installation to complete
-6. Start using your blog! 🎉
+### 环境变量（可选）
 
----
-
-## 📚 Documentation
-
-### Frontend Documentation
-- 📖 [INDEX.md](./frontend/INDEX.md) - Documentation navigation
-- 🚀 [README.md](./frontend/README.md) - Setup and installation
-- 🔧 [IMPLEMENTATION.md](./frontend/IMPLEMENTATION.md) - Developer guide
-- 📊 [PROJECT_STATUS.md](./frontend/PROJECT_STATUS.md) - Progress tracking
-- 📋 [CHECKLIST.md](./frontend/CHECKLIST.md) - Complete checklist
-- 📝 [完成总结.md](./frontend/完成总结.md) - Chinese summary
-- 📊 [SUMMARY.md](./frontend/SUMMARY.md) - Visual summary
-
-### Backend Documentation
-- 📖 [CLAUDE.md](./backend/CLAUDE.md) - Backend overview
-- 🏗️ [AGENTS.md](./backend/AGENTS.md) - Repository guidelines
-- 📚 [docs/api_reference.md](./backend/docs/api_reference.md) - API reference
-- 🐛 [docs/error_codes.md](./backend/docs/error_codes.md) - Error codes
-
----
-
-## 🏗️ Architecture
-
-### Frontend Stack
-```
-Nuxt 4 (Vue 3 + TypeScript)
-├── NuxtUI - Component library (Admin)
-├── TailwindCSS - Styling
-├── Pinia - State management
-├── @nuxtjs/i18n - Internationalization
-└── marked - Markdown rendering
-```
-
-### Backend Stack
-```
-FastAPI (Python 3.11+)
-├── SQLAlchemy 2.0 - ORM (Async)
-├── Pydantic v2 - Validation
-├── Alembic - Migrations
-├── Redis - Caching (optional)
-├── JWT - Authentication
-└── Uvicorn - ASGI server
-```
-
-### Project Structure
-
-```
-rosetta/
-├── frontend/                 # Nuxt 4 frontend
-│   ├── app/
-│   │   ├── pages/           # Route pages
-│   │   ├── layouts/         # Layouts
-│   │   └── middleware/      # Route guards
-│   ├── components/          # Vue components
-│   ├── composables/         # API composables
-│   ├── stores/              # Pinia stores
-│   ├── types/               # TypeScript types
-│   └── locales/             # i18n translations
-│
-└── backend/                 # FastAPI backend
-    ├── api/                 # API routes
-    ├── models/              # SQLAlchemy models
-    ├── schemas/             # Pydantic schemas
-    ├── services/            # Business logic
-    ├── repositories/        # Data access
-    ├── core/                # Core utilities
-    └── migrations/          # Alembic migrations
-```
-
----
-
-## 🎨 Design System
-
-### Color Palette (Blue Theme)
-
-```css
-/* Primary Colors */
---primary: #3C5A78;        /* Muted slate blue */
---primary-hover: #2E4760;  /* Darker slate */
-
-/* Neutrals */
---background: #F7F5F1;     /* Soft off-white */
---surface: #FFFFFF;        /* White */
---border: #E7E3DA;         /* Light border */
---text: #1E2227;           /* Dark text */
---text-muted: #6B7077;     /* Secondary text */
-```
-
-### Typography
-
-- **Display Font**: Playfair Display (Serif, 500-700)
-- **Body Font**: Inter (Sans-serif, 400-500)
-- **Base Size**: 16px (1rem)
-- **Scale**: 1.25 (Major Third)
-
-### Spacing
-
-```
-4px • 8px • 12px • 16px • 24px • 32px • 48px • 64px
-```
-
----
-
-## 🌐 API Endpoints
-
-### Authentication
-```
-POST   /api/users/register     - Register new user
-POST   /api/users/login        - Login with credentials
-POST   /api/users/refresh      - Refresh access token
-POST   /api/users/logout       - Logout
-```
-
-### Posts
-```
-GET    /api/posts              - Get posts list
-GET    /api/posts/{slug}       - Get post detail
-POST   /api/posts              - Create post (Admin)
-PUT    /api/posts/{id}         - Update post (Admin)
-DELETE /api/posts/{id}         - Delete post (Admin)
-POST   /api/posts/{id}/like    - Like/unlike post
-```
-
-### Categories & Tags
-```
-GET    /api/categories         - Get categories
-GET    /api/tags               - Get tags
-POST   /api/categories         - Create category (Admin)
-POST   /api/tags               - Create tag (Admin)
-```
-
-### Comments
-```
-GET    /api/posts/{id}/comments       - Get comments
-POST   /api/posts/{id}/comments       - Create comment
-DELETE /api/comments/{id}             - Delete comment (Admin)
-```
-
-### Core
-```
-GET    /api/config             - Get site configuration
-GET    /api/navigations        - Get navigation items
-GET    /api/friend-links       - Get friend links
-GET    /api/archive            - Get archive
-```
-
-**Full API Documentation**: http://localhost:8000/docs
-
----
-
-## 📊 Progress Status
-
-### Overall: 80% Complete ✅
-
-| Module | Status | Completion |
-|--------|--------|------------|
-| 🏗️ Infrastructure | ✅ Complete | 100% |
-| 🔐 Authentication | ✅ Complete | 100% |
-| 🌐 i18n Support | ✅ Complete | 100% |
-| 🎨 Design System | ✅ Complete | 100% |
-| 📱 Public Pages | 🟡 Partial | 75% |
-| ⚙️ Admin Panel | 🟡 Partial | 40% |
-| 📚 Documentation | ✅ Complete | 100% |
-
-### What's Working
-- ✅ Homepage with hero and featured posts
-- ✅ Posts list with pagination and filters
-- ✅ Post detail with comments and likes
-- ✅ Categories and archive pages
-- ✅ Login and registration
-- ✅ OOBE installation wizard
-- ✅ Admin dashboard with stats
-- ✅ Multi-language support
-- ✅ Responsive design
-
-### What's Next
-- 🚧 Category/tag detail pages
-- 🚧 Admin posts CRUD
-- 🚧 Markdown editor integration
-- 🚧 User profile pages
-- 🚧 Admin settings page
-- 🚧 Additional static pages
-
----
-
-## 🛠️ Development
-
-### Frontend Development
-
-```bash
-cd frontend
-
-# Install dependencies
-pnpm install
-
-# Start dev server
-pnpm dev
-
-# Build for production
-pnpm build
-
-# Preview production build
-pnpm preview
-
-# Type check
-pnpm typecheck
-```
-
-### Backend Development
-
-```bash
-cd backend
-
-# Install dependencies
-uv sync
-
-# Start dev server
-uv run uvicorn backend.main:app --reload
-
-# Run migrations
-uv run python -m backend.migrations upgrade
-
-# Create migration
-uv run python -m backend.migrations revision -m "description" --autogenerate
-
-# Run tests
-uv run pytest
-```
-
----
-
-## 📝 Environment Variables
-
-### Frontend `.env`
+**后端 `.env`**（所有后端配置也可写进 SiteConfig 表）：
 ```env
-API_BASE_URL=http://localhost:8000/api
-NUXT_PUBLIC_API_BASE=http://localhost:8000/api
-```
-
-### Backend `.env`
-```env
-# Application
 APP_ENV=development
 DEBUG=true
-SECRET_KEY=your-secret-key-here
-
-# Database
+SECRET_KEY=<32+字节随机串>
 DATABASE_URL=sqlite+aiosqlite:///./rosetta.db
-# or
+# 或 PostgreSQL:
 # DATABASE_URL=postgresql+asyncpg://user:pass@localhost/rosetta
 
-# Redis (optional)
+# Gravatar CDN（国内推荐 Cravatar）
+GRAVATAR_CDN_BASE=https://cravatar.cn/avatar
+
+# Redis（可选，不启用则开发用内存缓存）
 REDIS_ENABLED=false
 REDIS_URL=redis://localhost:6379
 
@@ -381,81 +116,157 @@ REDIS_URL=redis://localhost:6379
 ACCESS_TOKEN_EXPIRE_MINUTES=60
 REFRESH_TOKEN_EXPIRE_DAYS=7
 
-# Site
+# 站点
 SITE_NAME=Rosetta
-SITE_URL=http://localhost:3000
+SITE_URL=http://localhost:3001
+
+# CORS 生产仅列明确域名
+CORS_ORIGINS=["http://localhost:3001"]
+```
+
+**前端 `.env`**：
+```env
+NUXT_PUBLIC_API_BASE=http://localhost:8000/api
 ```
 
 ---
 
-## 🤝 Contributing
+## 📂 项目结构
 
-We welcome contributions! Please follow these steps:
+```
+Rosetta/
+├── backend/                      FastAPI 后端
+│   ├── main.py                   create_application() 入口
+│   ├── api/                      API 路由（users / blog / comments / plugins / themes / avatar_proxy / settings_groups ...）
+│   ├── core/                     基础设施（config / database / auth / cache / exceptions ...）
+│   ├── models/                   SQLAlchemy ORM 模型
+│   ├── services/                 业务层（avatar_resolver / plugin_engine / theme_manager ...）
+│   ├── migrations/               Alembic 版本化迁移
+│   └── scripts/                  mock_data.py
+│
+├── frontend/                     Nuxt 4.5 前端
+│   ├── app/pages/                路由页面
+│   ├── components/               Vue 组件（AppHeader / PostCard / admin/*）
+│   ├── components/ui/            shadcn-vue 原子组件
+│   ├── composables/              useApi / useTheme / useFrontendTheme / useAvatar ...
+│   ├── layouts/                  default.vue / admin.vue
+│   ├── middleware/               layout-scope.global.ts / oobe.global.ts
+│   ├── server/                   Nitro BFF
+│   ├── themes/                   editorial-wp-style / astro-paper-inspired
+│   ├── assets/css/main.css       Tailwind + 共享组件类（.prose-shadcn / .card-surface）
+│   └── i18n/locales/             zh / en / ja / zh_Hant
+│
+├── pyproject.toml                Python 依赖
+├── package.json                  JS 依赖（frontend/pnpm）
+├── AGENTS.md                      项目级规范（面向 AI）
+├── backend/AGENTS.md              后端规范
+├── frontend/AGENTS.md             前端规范
+└── README.md
+```
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+---
+
+## 🧩 API 契约
+
+所有 HTTP 2xx：
+```json
+{ "success": true, "data": {...}, "message": "可选" }
+```
+失败：
+```json
+{ "success": false, "error_code": "INVALID_CREDENTIALS", "message": "...", "errors": [...] }
+```
+
+主要端点（完整列表见 `/docs`）：
+| 模块 | 路由 | 说明 |
+|------|------|------|
+| 认证 | `POST /api/users/login` | 登录返回 access + refresh token |
+| 认证 | `POST /api/users/refresh` | 刷新 access token |
+| 博客 | `GET /api/blog/posts` | 文章列表（分页 + 分类/标签过滤） |
+| 博客 | `GET /api/blog/posts/{slug}` | 文章详情 |
+| 评论 | `GET /api/comments?post_id=N` | 嵌套评论 |
+| 头像 | `GET /api/media/avatar?src=<b64>` | 代理头像 |
+| 插件 | `GET /api/plugins` / `POST /api/plugins/{slug}/activate` | 插件管理 |
+| 主题 | `GET /api/themes` / `POST /api/themes/{slug}/activate` | 主题切换 |
+| 设置 | `GET /api/settings` / `PATCH /api/settings/{group}` | 17 组站点设置 |
+| Admin | `GET /api/admin/stats` | 仪表盘统计 |
+
+---
+
+## 🛠️ 开发命令速查
+
+### 后端（项目根目录）
+```bash
+uv sync
+uv run uvicorn backend.main:app --reload --port 8000
+uv run python -m backend.migrations upgrade
+uv run python -m backend.migrations revision -m "msg" --autogenerate
+uv run python -m backend.migrations status
+uv run python -m backend.scripts.mock_data     # 写演示数据
+```
+
+### 前端（frontend/ 目录）
+```bash
+pnpm install
+pnpm dev            # 自动 spawn 后端
+pnpm typecheck      # vue-tsc
+pnpm lint           # ESLint
+pnpm build && pnpm preview
+```
+
+### 验证清单
+**后端**：`uv run python -c "from backend.main import app"` + `/health` 返回 healthy
+**前端**：`pnpm typecheck` + 明/暗主题 ✓ 四语言 ✓ 移动端 ✓ 无 hydrate mismatch
+
+### 提交规范（Conventional Commits）
+```
+feat: 头像代理新增 DiceBear fallback
+fix: 修复 Minimal Paper 主题 navbar 竖排断行
+refactor: avatar_resolver 统一 comment/guestbook 的 _gravatar_base 副本
+perf: 文章列表缓存 ttl 从 300s 提升到 600s
+chore: Alembic 迁移 upgrade
+i18n: 补全日语设置页翻译
+```
+
+---
+
+## 🎨 设计系统
+
+### 主题令牌（HSL，由 main.css `:root` 定义）
+| Token | 默认值 | 说明 |
+|-------|--------|------|
+| `--primary` | 201 96% 52% | 天青主色 |
+| `--accent` | 210 40% 96% | 浅灰强调 |
+| `--ring` | 201 96% 52% | 焦点环 |
+| `--card-surface` | hsl(0 0% 98% / 0.72) | Editorial 卡片半透明底 |
+| `--radius` | 0.75rem | shadcn 默认圆角 |
+
+主题通过覆盖这些 CSS 变量 + 注入自定义 style.css 实现风格切换。
+
+### Typography
+- Editorial：Fraunces（衬线 display）+ Geist（sans-serif body）
+- Minimal Paper：Iowan Old Style（衬线标题复刻 Astro Paper）
+- 统一 16px base，1.25 Major Third 比例
+
+---
+
+## 🔗 文档索引
+
+- **面向 AI / 开发者**：
+  - [项目级规范](AGENTS.md)
+  - [后端规范](backend/AGENTS.md)
+  - [前端规范](frontend/AGENTS.md)
+- **OpenAPI 文档**：启动后端后访问 `/docs`（DEBUG=true 时可用）
+- **错误码**：`backend/core/exceptions.py` 的 `ERROR_CODES` 字典
 
 ---
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- **Nuxt** - The Intuitive Vue Framework
-- **FastAPI** - Modern Python web framework
-- **TailwindCSS** - Utility-first CSS framework
-- **NuxtUI** - Fully styled and customizable components
-- **Pinia** - The Vue Store
-- **SQLAlchemy** - The Python SQL Toolkit
-
----
-
-## 📞 Support
-
-- 📖 **Documentation**: Check the [INDEX.md](./frontend/INDEX.md)
-- 🐛 **Bug Reports**: Open an issue on GitHub
-- 💬 **Discussions**: Join our community
-- 📧 **Email**: support@rosetta.example
-
----
-
-## 🎯 Roadmap
-
-### Version 1.0 (Current - 80% Complete)
-- [x] Core infrastructure
-- [x] Authentication system
-- [x] Public pages
-- [x] OOBE wizard
-- [ ] Admin CRUD pages
-- [ ] Markdown editor
-
-### Version 1.1 (Planned)
-- [ ] Search functionality
-- [ ] RSS feed
-- [ ] Social sharing
-- [ ] SEO optimization
-- [ ] Performance optimization
-
-### Version 2.0 (Future)
-- [ ] Dark mode
-- [ ] Email notifications
-- [ ] Advanced analytics
-- [ ] Plugin system
-- [ ] Theme customization
+MIT — 见 [LICENSE](LICENSE) 文件。
 
 ---
 
 <div align="center">
-
-**Built with ❤️ using Nuxt 4, FastAPI, and modern web technologies**
-
-⭐ Star us on GitHub if you find this project useful!
-
+Built with ❤️ using Nuxt 4.5, FastAPI, SQLAlchemy 2.0, and modern web tech.
 </div>

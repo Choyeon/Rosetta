@@ -83,21 +83,17 @@ definePageMeta({ layout: 'default' })
 const { t, locale } = useI18n()
 const site = useSite()
 
-// ===== SEO：基于 i18n + 站点设置（titleTemplate 自动拼 "标签 · 站点名"）=====
-const requestURL = useRequestURL()
-const canonical = computed(() => requestURL.href)
-useSeoMeta({
-  title: () => String(t('tags.title') || '标签'),
-  description: () =>
-    String(t('tags.desc') || '') || site.siteDescription.value,
-  ogType: 'website',
-  ogUrl: canonical,
-  twitterCard: 'summary'
+// ===== SEO：基于 i18n + 站点设置 =====
+useSeo({
+  title: computed(() => String(t('nav.tags') || t('tags.title') || '标签')),
+  description: computed(() => String(t('tags.desc') || '') || site.siteDescription.value),
+  type: 'website'
 })
-useHead({
-  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
-  link: [{ rel: 'canonical', href: canonical }]
-})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home') as string, url: '/' },
+  { name: t('nav.tags') as string, url: '/tags' }
+])
 
 interface TagRow {
   id: number | string

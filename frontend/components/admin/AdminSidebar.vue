@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, Globe } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, Globe, Puzzle } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
 import { Badge } from '~~/components/ui/badge'
 import { adminMenu } from '~~/config/admin-menu'
+import { usePluginMenuGroup } from '~~/composables/usePluginMenu'
 
 const props = defineProps<{
   collapsed?: boolean
@@ -20,6 +21,58 @@ const collapsed = computed({
 })
 
 const route = useRoute()
+
+// ── 插件菜单：拉取一次后缓存 ───────────────────────────────────────────
+const { group: pluginGroup } = usePluginMenuGroup()
+const { load: loadPluginMenu } = usePluginMenuGroup()
+onMounted(() => {
+  loadPluginMenu().catch(() => { /* 已在 composable 内静默处理 */ })
+})
+
+// 在 adminMenu 的 system 组之前插入「插件」分组（仅当有可渲染项时）。
+// 保持对原 adminMenu 的无副作用 —— 不修改 config 原对象，只在展示时合并。
+const mergedMenu = computed(() => {
+  const groups: Array<{
+    key: string
+    label: string
+    items: Array<{
+      path: string
+      label: string
+      icon?: unknown
+      iconName?: string
+      badge?: string | number
+      slug?: string
+    }>
+  }> = adminMenu.map(g => ({
+    key: g.key,
+    label: g.label,
+    items: g.items.map(it => ({ ...it, icon: it.icon }))
+  }))
+  const insertIndex = groups.findIndex(g => g.key === 'system')
+  const pluginItems = (pluginGroup.value.items ?? []).filter(it => it && it.path && it.label)
+  if (pluginItems.length > 0) {
+    const extraGroup = {
+      key: 'plugins',
+      label: pluginGroup.value.label || '插件',
+      items: pluginItems.map(it => ({
+        path: it.path,
+        label: it.label,
+        badge: it.badge,
+        slug: it.slug,
+        // 约定：Sidebar 渲染时优先用 icon（lucide component），
+        // 插件提供的是字符串图标名 → 存到 iconName，渲染分支统一走 Puzzle 占位
+        // （避免在前端代码中按字符串动态 import lucide 图标，包体不可控）。
+        iconName: it.iconName
+      }))
+    }
+    if (insertIndex >= 0) {
+      groups.splice(insertIndex, 0, extraGroup)
+    } else {
+      groups.push(extraGroup)
+    }
+  }
+  return groups
+})
 
 /**
  * 高亮判断（与旧逻辑等价，但菜单数据来自 config）：
@@ -40,14 +93,20 @@ const isActive = (path: string) => {
   if (firstSeg === '') return true
   if (/^\d+$/.test(firstSeg)) return true
 
-  const isSibling = adminMenu.some(g =>
+  const isSibling = mergedMenu.value.some(g =>
     g.items.some(it =>
-      it.path !== path &&
-      it.path.startsWith(prefix) &&
-      it.path.slice(prefix.length).split('/')[0] === firstSeg
+      it.path !== path
+      && it.path.startsWith(prefix)
+      && it.path.slice(prefix.length).split('/')[0] === firstSeg
     )
   )
   return !isSibling
+}
+
+// 选择图标：内置项的 icon 是 lucide component；插件项默认 Puzzle（拼图）图标。
+function resolveIcon(item: { icon?: unknown }) {
+  if (item.icon && typeof item.icon !== 'string') return item.icon
+  return Puzzle
 }
 
 const go = (path: string) => navigateTo(path)
@@ -65,12 +124,11 @@ const go = (path: string) => navigateTo(path)
         to="/admin"
         class="flex items-center gap-2.5 min-w-0"
       >
-        <div
-          class="shrink-0 size-9 rounded-[10px] flex items-center justify-center font-bold text-white shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.6)]"
-          style="background: linear-gradient(135deg,#0EA5E9 0%,#0284C7 60%,#0369A1 100%);"
+        <img
+          src="/logo/rosetta-primary-icon.png"
+          alt="Rosetta Admin"
+          class="shrink-0 size-9 rounded-[10px] object-contain drop-shadow-[0_6px_16px_rgba(14,165,233,0.45)]"
         >
-          <span class="font-display text-lg tracking-tight">R</span>
-        </div>
         <Transition
           name="fade-collapsed"
           mode="out-in"
@@ -99,7 +157,7 @@ const go = (path: string) => navigateTo(path)
     <ScrollArea class="flex-1 py-3 px-2">
       <nav class="flex flex-col gap-1">
         <template
-          v-for="(group, gi) in adminMenu"
+          v-for="(group, gi) in mergedMenu"
           :key="group.key"
         >
           <div
@@ -141,7 +199,7 @@ const go = (path: string) => navigateTo(path)
                       aria-hidden="true"
                     />
                     <component
-                      :is="item.icon"
+                      :is="resolveIcon(item)"
                       class="shrink-0 size-[18px] transition-colors duration-300"
                       :class="isActive(item.path) ? 'sb-icon-active' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
                     />

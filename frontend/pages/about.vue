@@ -25,15 +25,14 @@
         <Card class="mb-10 overflow-hidden border-0 shadow-soft bg-gradient-to-br from-slate-50 via-white to-primary/5 dark:from-slate-900 dark:via-background dark:to-primary/10">
           <CardContent class="p-8 md:p-10">
             <div class="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8">
-              <Avatar class="size-28 md:size-32 shrink-0 ring-4 ring-background shadow-xl">
-                <AvatarImage
-                  :src="avatarUrl || ''"
-                  alt="Author"
-                />
-                <AvatarFallback class="text-3xl md:text-4xl font-display bg-gradient-to-br from-primary to-accent text-white">
-                  {{ authorInitial }}
-                </AvatarFallback>
-              </Avatar>
+              <UserAvatar
+                :avatar="avatarUrl"
+                :seed="authorName"
+                :name="authorName"
+                :size="112"
+                :show-title="false"
+                class="ring-4 ring-background shadow-xl"
+              />
               <div class="flex-1 text-center md:text-left">
                 <div class="font-display text-2xl md:text-3xl font-bold tracking-tight mb-1">
                   {{ authorName }}
@@ -278,8 +277,7 @@
 <script setup lang="ts">
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
-import { Button } from '~~/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import UserAvatar from '~~/components/UserAvatar.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { useI18n } from 'vue-i18n'
 import type { Component } from 'vue'
@@ -368,11 +366,6 @@ const config = computed<SiteConfigLite>(() => {
 const authorName = computed(() => {
   const author = config.value.site_author || config.value.site_name || (t('about.authorName') as string)
   return author || 'Author'
-})
-
-const authorInitial = computed(() => {
-  const name = String(authorName.value || 'R').trim()
-  return name.slice(0, 1).toUpperCase()
 })
 
 const avatarUrl = computed(() => {
@@ -502,4 +495,15 @@ const contacts = computed<ContactItem[]>(() => {
   }
   return list
 })
+
+useSeo({
+  title: computed(() => t('about.title') as string || '关于'),
+  description: computed(() => site.basic.value.description || t('about.desc') as string),
+  type: 'profile'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.about', '关于') as string, url: '/about' }
+])
 </script>

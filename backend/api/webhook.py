@@ -4,11 +4,14 @@ Webhook 系统
 支持事件推送和外部集成。
 """
 
+import asyncio
 import hashlib
 import hmac
 import json
+import logging
 from datetime import datetime
 
+import httpx
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, select
@@ -17,6 +20,11 @@ from sqlalchemy.orm import Mapped, mapped_column
 from backend.core.auth import DB, CurrentStaff, CurrentUser
 from backend.core.database import Base
 from backend.utils.compat import UTC
+
+logger = logging.getLogger(__name__)
+
+# webhook 投递超时（秒）
+WEBHOOK_TIMEOUT = 10.0
 
 
 class WebhookEndpoint(Base):
@@ -310,7 +318,11 @@ async def trigger_webhook(event_type: str, payload: dict, db):
     """
     触发 Webhook
 
-    内部函数，用于在事件发生时触发 Webhook。
+    内部函数，用于在事件发生时把事件推送到所有订阅了该事件的活跃 webhook 端点。
+    每个端点的投递互相隔离：单个端点失败不影响其他端点，也不阻塞事件总线。
+
+    该函数只负责创建投递记录并发起异步 HTTP 请求，错误通过 delivery.error 记录，
+    不会向上抛出异常（避免拖垮调用方，例如插件总线的 do_action）。
     """
 
     # 查找订阅此事件的 Webhook
@@ -329,14 +341,17 @@ async def trigger_webhook(event_type: str, payload: dict, db):
             "data": payload,
         }
 
-        # 生成签名
+        # 生成签名（HMAC-SHA256，放在 X-Rosetta-Signature 头）
+        headers = {"Content-Type": "application/json"}
+        signature = None
         if webhook.secret:
             payload_str = json.dumps(request_body, separators=(",", ":"))
-            hmac.new(
+            signature = hmac.new(
                 webhook.secret.encode(),
                 payload_str.encode(),
                 hashlib.sha256,
             ).hexdigest()
+            headers["X-Rosetta-Signature"] = f"sha256={signature}"
 
         # 创建投递记录
         delivery = WebhookDelivery(
@@ -345,6 +360,26 @@ async def trigger_webhook(event_type: str, payload: dict, db):
             payload=json.dumps(request_body),
         )
         db.add(delivery)
+        await db.flush()
+        await db.refresh(delivery)
+
+        # 真正发起 HTTP 请求（隔离异常）
+        try:
+            async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+                resp = await client.post(
+                    webhook.url,
+                    content=json.dumps(request_body).encode("utf-8"),
+                    headers=headers,
+                )
+                delivery.status_code = resp.status_code
+                delivery.response_body = resp.text[:2000]
+                delivery.delivered_at = datetime.now(UTC)
+                delivery.error = None if resp.status_code < 500 else f"HTTP {resp.status_code}"
+        except Exception as e:
+            logger.warning(f"Webhook 投递失败 endpoint={webhook.id} event={event_type}: {e}")
+            delivery.error = str(e)[:500]
+            delivery.delivered_at = datetime.now(UTC)
+
         await db.flush()
 
 

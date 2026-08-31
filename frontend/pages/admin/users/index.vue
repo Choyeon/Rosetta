@@ -77,8 +77,8 @@
       </Button>
     </div>
 
-    <Card>
-      <CardContent class="p-0">
+    <AdminCard>
+      <div class="p-0">
         <div
           v-if="loading"
           class="p-4 space-y-3"
@@ -147,13 +147,14 @@
               >
                 <td class="p-4">
                   <div class="flex items-center gap-3">
-                    <Avatar class="size-9 shrink-0 ring-1 ring-border/60">
-                      <AvatarImage
-                        :src="resolveAvatarUrl({ seed: `${u.username}|${u.email}|${u.nickname || ''}` }, u.resolved_avatar_url, u.avatar)"
-                        :alt="u.nickname || u.username"
-                      />
-                      <AvatarFallback>{{ userAvatarFallback(u) }}</AvatarFallback>
-                    </Avatar>
+                    <UserAvatar
+                      :avatar="u.avatar"
+                      :seed="u.username"
+                      :name="u.nickname || u.username"
+                      :size="36"
+                      :show-title="true"
+                      :title="u.title || null"
+                    />
                     <div class="min-w-0">
                       <div class="font-medium truncate">
                         {{ u.nickname || u.username }}
@@ -189,16 +190,14 @@
                 </td>
                 <td class="p-4">
                   <div class="inline-flex items-center gap-2">
-                    <Avatar
-                      class="size-8 shrink-0 ring-1 ring-border/60"
-                      :title="u.nickname || u.username"
-                    >
-                      <AvatarImage
-                        :src="resolveAvatarUrl({ seed: `${u.username}|${u.email}|${u.nickname || ''}` }, u.resolved_avatar_url, u.avatar)"
-                        :alt="u.nickname || u.username"
-                      />
-                      <AvatarFallback>{{ userAvatarFallback(u) }}</AvatarFallback>
-                    </Avatar>
+                    <UserAvatar
+                      :avatar="u.avatar"
+                      :seed="u.username"
+                      :name="u.nickname || u.username"
+                      :size="32"
+                      :show-title="true"
+                      :title="u.title || null"
+                    />
                     <span
                       class="text-sm font-medium text-foreground truncate max-w-[120px]"
                       :title="u.nickname || u.username || u.email"
@@ -288,8 +287,8 @@
             </tbody>
           </table>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
     <div
       v-if="totalPages > 1"
@@ -494,11 +493,11 @@
 
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import { Card, CardContent } from '~~/components/ui/card'
+ 
+import AdminCard from '~~/components/admin/AdminCard.vue'
+import UserAvatar from '~~/components/UserAvatar.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~~/components/ui/dialog'
@@ -525,7 +524,6 @@ import {
   formatAdminDateTime,
   type AdminUserRow
 } from '~~/composables/useAdminManage'
-import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -600,11 +598,6 @@ function statusText(u: AdminUserRow): string {
   return '未激活'
 }
 
-function userAvatarFallback(u: AdminUserRow): string {
-  const base = (u.nickname || u.username || u.email || 'U').trim()
-  return base ? base[0]!.toUpperCase() : 'U'
-}
-
 async function fetchData() {
   loading.value = true
   try {
@@ -642,6 +635,8 @@ async function toggleStaff(u: AdminUserRow, toStaff: boolean) {
     u.is_staff = toStaff
     toast.success(toStaff ? '已设为管理员' : '已撤销管理员')
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '操作失败'
+    toast.error(msg)
   }
 }
 
@@ -658,6 +653,8 @@ async function toggleBan(u: AdminUserRow, ev: unknown) {
       toast.success('已解封')
     }
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '操作失败'
+    toast.error(msg)
   }
 }
 
@@ -668,6 +665,8 @@ async function doActivate(u: AdminUserRow) {
     u.is_banned = false
     toast.success('已激活')
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '激活失败'
+    toast.error(msg)
   }
 }
 
@@ -677,6 +676,8 @@ async function doBan(u: AdminUserRow) {
     u.is_banned = true
     toast.success('已封禁')
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '封禁失败'
+    toast.error(msg)
   }
 }
 
@@ -716,6 +717,8 @@ async function doResetPwd() {
     toast.success('密码重置成功')
     resetPwdDialogOpen.value = false
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '密码重置失败'
+    toast.error(msg)
   } finally {
     resettingPwd.value = false
   }
@@ -741,6 +744,8 @@ async function doDeleteUser() {
     deleteDialogOpen.value = false
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '删除失败'
+    toast.error(msg)
   } finally {
     deleting.value = false
   }

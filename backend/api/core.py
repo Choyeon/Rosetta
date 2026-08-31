@@ -26,12 +26,9 @@ from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_ke
 from backend.models.core import FriendLink, Navigation, Page, SearchPlaceholder, SiteConfig
 
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
-OOBE_LOCK_FILE = BASE_DIR / ".oobe_complete"
-CONFIG_FILE = BASE_DIR / "rosetta.json"
 
-
-def is_oobe_complete() -> bool:
-    return OOBE_LOCK_FILE.exists() and CONFIG_FILE.exists()
+# OOBE 状态判断统一委托给 backend.core.deps（见 backend/api/blog.py 的说明）。
+from backend.core.deps import is_oobe_complete  # noqa: E402
 
 
 from backend.schemas import (
@@ -149,6 +146,7 @@ async def create_page(data: PageCreate, current_user: CurrentStaff, db: DB):
     )
     db.add(page)
     await db.flush()
+    await db.refresh(page)
 
     return PageResponse.model_validate(page)
 
@@ -176,6 +174,7 @@ async def update_page(page_id: int, data: PageUpdate, current_user: CurrentStaff
         setattr(page, field, value)
 
     await db.flush()
+    await db.refresh(page)
     return PageResponse.model_validate(page)
 
 
@@ -434,6 +433,7 @@ async def create_navigation(data: NavigationCreate, current_user: CurrentStaff, 
     )
     db.add(nav)
     await db.flush()
+    await db.refresh(nav)
 
     await invalidate_cache("navigations")
 
@@ -464,6 +464,7 @@ async def update_navigation(
         setattr(nav, field, value)
 
     await db.flush()
+    await db.refresh(nav)
     await invalidate_cache("navigations")
 
     return NavigationResponse.model_validate(nav)
@@ -566,11 +567,13 @@ async def create_friend_link(data: FriendLinkCreate, current_user: CurrentStaff,
         description=data.description,
         logo=data.logo,
         order=data.order,
+        status=data.status,
         is_active=data.is_active,
         target_blank=data.target_blank,
     )
     db.add(link)
     await db.flush()
+    await db.refresh(link)
 
     await invalidate_cache("friend_links")
 
@@ -627,6 +630,7 @@ async def update_friend_link(
         setattr(link, field, value)
 
     await db.flush()
+    await db.refresh(link)
     await invalidate_cache("friend_links")
 
     return FriendLinkResponse.model_validate(link)

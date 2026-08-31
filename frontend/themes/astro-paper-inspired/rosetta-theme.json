@@ -1,0 +1,39 @@
+{
+  "manifest_version": "1.0",
+  "id": "io.github.rosetta.astro-paper-inspired",
+  "name": "Minimal Paper",
+  "slug": "astro-paper-inspired",
+  "version": "0.1.0",
+  "requires_rosetta": ">=1.0.0",
+  "type": "blog",
+  "description": "极简印刷风格：760px 窄栏居中、无大图 Hero、竖排列表、极细分割线。以排版和留白为主，无多余装饰。",
+  "author_name": "Rosetta Themes",
+  "author": {"name":"Rosetta Themes", "uri": "https://rosetta.dev/themes"},
+  "theme_uri": "https://rosetta.dev/themes/astro-paper-inspired",
+  "textdomain": "astro-paper-inspired",
+  "tags": ["color:mono", "layout:single-column", "subject:blog", "feature:customizer", "inspired:astro-paper"],
+  "parent_theme": null,
+  "entry_css": "style.css",
+  "screenshot": "screenshot.svg",
+  "screenshot_urls": ["screenshot.svg"],
+  "features": ["single-column", "customizer", "astro-paper-style"],
+  "mods_schema": {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "posts_per_row":  { "type": "integer", "default": 1, "enum": [1, 2], "title": "首页每行文章数" },
+      "show_avatar":    { "type": "boolean", "default": true, "title": "显示作者头像" },
+      "accent_color":   { "type": "string",  "default": "#4f46e5", "format": "color", "title": "强调色" },
+      "layout_width":   { "type": "integer", "default": 760, "minimum": 640, "maximum": 960, "title": "内容区域宽度 (px)" },
+      "hero_title":     { "type": "string",  "default": "Sharing ideas, one post at a time.", "title": "首页主标题" },
+      "hero_subtitle":  { "type": "string",  "default": "A quiet place for writings on software, design, and the craft of building things.", "title": "首页副标题" },
+      "footer_text":    { "type": "string",  "default": "© 2026 Rosetta · Built with the Minimal Paper theme.", "title": "页脚版权文字" }
+    },
+    "additionalProperties": false
+  },
+  "color_palette": [
+    {"name": "Ink", "slug": "fg", "color": "#111827"},
+    {"name": "Muted", "slug": "muted", "color": "#6b7280"},
+    {"name": "Accent", "slug": "accent", "color": "#4f46e5"}
+  ]
+}

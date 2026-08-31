@@ -16,16 +16,15 @@
       </div>
     </div>
 
-    <Card
+    <AdminCard
       v-if="loading"
-      class="rounded-2xl"
     >
-      <CardContent class="p-6 space-y-4">
+      <div class="p-6 space-y-4">
         <Skeleton class="h-32 rounded-2xl" />
         <Skeleton class="h-40 rounded-2xl" />
         <Skeleton class="h-40 rounded-2xl" />
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
     <template v-else>
       <div class="grid md:grid-cols-3 gap-4">
@@ -74,15 +73,17 @@
       </div>
 
       <div class="grid md:grid-cols-2 gap-5">
-        <Card class="rounded-2xl">
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
+        <AdminCard>
+          <div class="space-y-1.5 mb-4">
+            <h3 class="flex items-center gap-2 text-base font-semibold">
               <History class="size-5 text-success" />
               已应用迁移（{{ status.applied?.length ?? 0 }}）
-            </CardTitle>
-            <CardDescription>历史上已成功执行的迁移脚本</CardDescription>
-          </CardHeader>
-          <CardContent class="p-0">
+            </h3>
+            <p class="text-sm text-muted-foreground">
+              历史上已成功执行的迁移脚本
+            </p>
+          </div>
+          <div class="p-0">
             <ScrollArea class="max-h-80 rounded-b-2xl">
               <div
                 v-if="!status.applied || status.applied.length === 0"
@@ -123,18 +124,20 @@
                 </div>
               </div>
             </ScrollArea>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
+        <AdminCard>
+          <div class="space-y-1.5 mb-4">
+            <h3 class="flex items-center gap-2 text-base font-semibold">
               <PackageOpen class="size-5 text-warning" />
               待应用迁移（{{ status.pending?.length ?? 0 }}）
-            </CardTitle>
-            <CardDescription>点击右侧按钮可立即执行单个迁移</CardDescription>
-          </CardHeader>
-          <CardContent class="p-0">
+            </h3>
+            <p class="text-sm text-muted-foreground">
+              点击右侧按钮可立即执行单个迁移
+            </p>
+          </div>
+          <div class="p-0">
             <ScrollArea class="max-h-80 rounded-b-2xl">
               <div
                 v-if="!status.pending || status.pending.length === 0"
@@ -184,12 +187,12 @@
                 </div>
               </div>
             </ScrollArea>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </div>
 
-      <Card class="rounded-2xl">
-        <CardContent class="pt-6 space-y-5">
+      <AdminCard>
+        <div class="pt-6 space-y-5">
           <div
             v-if="upgradeResult"
             class="rounded-xl border border-success/40 bg-success-muted/40 p-5"
@@ -238,14 +241,14 @@
               {{ upgrading ? '正在执行迁移...' : `升级到最新版本` }}
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import {
   fetchAdminMigrationStatus,
   upgradeAdminMigrations,
@@ -258,7 +261,7 @@ import {
   Clock, PartyPopper, Play, ArrowUpCircle, Loader2, Info
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { ScrollArea } from '~~/components/ui/scroll-area'
@@ -286,7 +289,10 @@ const status = ref<AdminMigrationStatus>(emptyStatus())
 let countdownTimer: number | null = null
 
 function stopCountdown() {
-  if (countdownTimer) { clearInterval(countdownTimer); countdownTimer = null }
+  if (countdownTimer) {
+    clearInterval(countdownTimer)
+    countdownTimer = null
+  }
 }
 
 async function loadStatus() {
@@ -297,7 +303,7 @@ async function loadStatus() {
   try {
     const r = await fetchAdminMigrationStatus()
     status.value = r || emptyStatus()
-  } catch (e) {
+  } catch {
     status.value = emptyStatus()
   } finally {
     loading.value = false
@@ -320,6 +326,8 @@ async function handleUpgrade() {
       }
     }, 1000)
   } catch (e) {
+    const msg = e instanceof Error ? e.message : '数据库迁移失败'
+    toast.error(msg)
   } finally {
     upgrading.value = false
   }

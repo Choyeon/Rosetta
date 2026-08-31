@@ -1,0 +1,127 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" width="1200" height="900" role="img" aria-label="Rosetta 默认主题预览：杂志风壁纸 Hero 与三栏文章列表">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F9D98A"/>
+      <stop offset="38%" stop-color="#F0B2A8"/>
+      <stop offset="60%" stop-color="#BF98C7"/>
+      <stop offset="100%" stop-color="#5A7AAE"/>
+    </linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#3B5A90" stop-opacity="0.92"/>
+      <stop offset="100%" stop-color="#172A4E" stop-opacity="0.98"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FBF8F2"/>
+      <stop offset="100%" stop-color="#F0E7D6"/>
+    </linearGradient>
+    <linearGradient id="chip" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#0EA5A9"/>
+      <stop offset="100%" stop-color="#0284C7"/>
+    </linearGradient>
+    <pattern id="lines" width="22" height="22" patternUnits="userSpaceOnUse" patternTransform="rotate(12)">
+      <rect width="22" height="22" fill="transparent"/>
+      <path d="M0,11 L22,11" stroke="#E7DDC8" stroke-width="1" opacity="0.55"/>
+    </pattern>
+  </defs>
+
+  <!-- 外框 -->
+  <rect width="1200" height="900" fill="#E7DCC5"/>
+  <rect x="40" y="40" width="1120" height="820" rx="12" fill="url(#paper)" stroke="#DDD1BA"/>
+  <rect x="40" y="40" width="1120" height="820" rx="12" fill="url(#lines)"/>
+
+  <!-- 顶部品牌 + 期号 -->
+  <line x1="92" y1="114" x2="1108" y2="114" stroke="#2B2418" stroke-width="2"/>
+  <text x="600" y="164" text-anchor="middle" font-family="Georgia, 'Noto Serif CJK SC', 'Source Han Serif SC', 'Times New Roman', serif" font-size="76" font-weight="700" fill="#1E190F" letter-spacing="-1">Rosetta</text>
+  <text x="600" y="198" text-anchor="middle" font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif" font-size="11" fill="#6B5E49" letter-spacing="0.55em">VOLUME 1 - ISSUE 1 - AUGUST 2026</text>
+  <line x1="92" y1="222" x2="1108" y2="222" stroke="#2B2418" stroke-width="1.2"/>
+
+  <!-- 导航条 -->
+  <g font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif" font-size="12" fill="#3E3527" letter-spacing="0.22em">
+    <text x="92" y="252">HOME</text>
+    <text x="182" y="252">POSTS</text>
+    <text x="280" y="252">CATEGORIES</text>
+    <text x="410" y="252">TAGS</text>
+    <text x="486" y="252">ARCHIVE</text>
+    <text x="584" y="252">ABOUT</text>
+    <text x="666" y="252">GUESTBOOK</text>
+    <text x="1016" y="252" text-anchor="end">SIGN IN</text>
+  </g>
+
+  <!-- Hero 壁纸区（Editorial 主题特性：仅壁纸 + HUD，无标题覆盖） -->
+  <g transform="translate(92, 282)">
+    <rect x="0" y="0" width="1016" height="478" rx="6" fill="url(#sky)"/>
+    <!-- 太阳光晕 -->
+    <circle cx="766" cy="218" r="170" fill="#FFE09A" opacity="0.22"/>
+    <circle cx="766" cy="218" r="112" fill="#FFF1CF" opacity="0.88"/>
+    <!-- 云朵 -->
+    <g opacity="0.6" fill="#FFF9EA">
+      <ellipse cx="212" cy="148" rx="80" ry="10"/>
+      <ellipse cx="284" cy="136" rx="58" ry="8"/>
+      <ellipse cx="372" cy="178" rx="70" ry="9"/>
+    </g>
+    <!-- 海平线与海面 -->
+    <rect x="0" y="322" width="1016" height="156" fill="url(#sea)"/>
+    <g opacity="0.5">
+      <rect x="0" y="360" width="1016" height="2" fill="#F6D36B"/>
+      <rect x="0" y="386" width="1016" height="1.2" fill="#ECA7A6"/>
+      <rect x="0" y="418" width="1016" height="1" fill="#C19CC9" opacity="0.9"/>
+      <rect x="0" y="450" width="1016" height="0.8" fill="#9EBEE6" opacity="0.85"/>
+    </g>
+    <!-- 码头剪影 -->
+    <polygon points="130,322 134,262 142,262 146,322" fill="#16233F" opacity="0.75"/>
+    <polygon points="146,286 180,322 130,322" fill="#16233F" opacity="0.68"/>
+    <circle cx="138" cy="246" r="6" fill="#16233F" opacity="0.65"/>
+    <polygon points="130,262 130,246 152,246 152,262" fill="#16233F" opacity="0.55"/>
+    <!-- 远山轮廓 -->
+    <path d="M532,322 C560,302 600,288 640,306 C680,324 720,308 760,322 Z" fill="#1E3461" opacity="0.55"/>
+    <path d="M326,322 C360,300 420,296 476,322 Z" fill="#2C4880" opacity="0.42"/>
+
+    <!-- HUD：底部双胶囊信息 -->
+    <g font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif">
+      <rect x="28" y="390" width="322" height="68" rx="14" fill="#000000" opacity="0.32"/>
+      <text x="50" y="422" font-size="14" font-weight="600" fill="#FAF2DD" opacity="0.94">A Quiet Evening by the Shore</text>
+      <text x="50" y="444" font-size="11" fill="#FAF2DD" opacity="0.78">Editorial Theme - Custom Bing Wallpaper HUD</text>
+      <rect x="666" y="390" width="322" height="68" rx="14" fill="#000000" opacity="0.32"/>
+      <text x="964" y="422" font-size="14" font-weight="600" text-anchor="end" fill="#FAF2DD" opacity="0.94">Coastal Rosetta</text>
+      <text x="964" y="444" font-size="11" text-anchor="end" fill="#FAF2DD" opacity="0.78">Copyright 2026 Rosetta Blog</text>
+    </g>
+  </g>
+
+  <!-- 列表：3 张文章卡片（posts_per_row=3 默认） -->
+  <g transform="translate(92, 800)" font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif">
+    <g transform="translate(0,0)">
+      <rect width="324" height="70" rx="7" fill="#FFFFFF" stroke="#E5D9BF"/>
+      <rect x="16" y="15" width="86" height="9" rx="4.5" fill="#0EA5A9" opacity="0.78"/>
+      <rect x="16" y="32" width="240" height="7" rx="3.5" fill="#3E3527" opacity="0.88"/>
+      <rect x="16" y="46" width="180" height="5.5" rx="2.75" fill="#3E3527" opacity="0.3"/>
+    </g>
+    <g transform="translate(346,0)">
+      <rect width="324" height="70" rx="7" fill="#FFFFFF" stroke="#E5D9BF"/>
+      <rect x="16" y="15" width="86" height="9" rx="4.5" fill="url(#chip)" opacity="0.9"/>
+      <rect x="16" y="32" width="250" height="7" rx="3.5" fill="#3E3527" opacity="0.88"/>
+      <rect x="16" y="46" width="146" height="5.5" rx="2.75" fill="#3E3527" opacity="0.3"/>
+    </g>
+    <g transform="translate(692,0)">
+      <rect width="324" height="70" rx="7" fill="#FFFFFF" stroke="#E5D9BF"/>
+      <rect x="16" y="15" width="86" height="9" rx="4.5" fill="#0284C7" opacity="0.8"/>
+      <rect x="16" y="32" width="220" height="7" rx="3.5" fill="#3E3527" opacity="0.88"/>
+      <rect x="16" y="46" width="164" height="5.5" rx="2.75" fill="#3E3527" opacity="0.3"/>
+    </g>
+  </g>
+
+  <!-- 默认主题徽章 -->
+  <g transform="translate(1024, 116)" font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif">
+    <rect width="72" height="24" rx="12" fill="url(#chip)"/>
+    <text x="36" y="16.5" text-anchor="middle" font-size="10.5" font-weight="600" fill="#FFFFFF" letter-spacing="0.1em">DEFAULT</text>
+  </g>
+  <!-- Rosetta 品牌标志（左上） -->
+  <g transform="translate(92, 78)" font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif">
+    <rect width="30" height="22" rx="6" fill="#1E190F"/>
+    <text x="15" y="15.5" text-anchor="middle" font-size="11.5" font-weight="700" fill="#FBF8F2" letter-spacing="-0.02em">R</text>
+    <text x="40" y="16" font-size="12" fill="#1E190F" opacity="0.65">rosetta.dev</text>
+  </g>
+  <!-- 角标：关于 & 主题说明 -->
+  <g transform="translate(92, 78)" font-family="system-ui, 'PingFang SC', 'Segoe UI', sans-serif" opacity="0.7">
+    <text x="926" y="16" text-anchor="end" font-size="10.5" fill="#3E3527" letter-spacing="0.14em">EDITORIAL MAGAZINE</text>
+  </g>
+</svg>

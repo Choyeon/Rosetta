@@ -15,6 +15,37 @@ import {
   silentApiFetch
 } from '~~/composables/useApi'
 
+// ========= 轻量级内存缓存（短 TTL） =========
+// 用于用户编辑页、头衔选择等"同一轮交互内反复读取、数据基本不变"的场景。
+// 避免进入页面时并行发起多条相同的 GET，给人"加载慢"的感知。
+type CacheEntry<T> = { value: T, expiresAt: number }
+const MEM_CACHE = new Map<string, CacheEntry<unknown>>()
+const MEM_TTL_MS = 60 * 1000 // 1 分钟内不重复打后端
+
+function cachedGet<T>(key: string, loader: () => Promise<T>, ttl = MEM_TTL_MS): Promise<T> {
+  const now = Date.now()
+  const cached = MEM_CACHE.get(key) as CacheEntry<T> | undefined
+  if (cached && cached.expiresAt > now) return Promise.resolve(cached.value)
+  const p = loader().then((v) => {
+    MEM_CACHE.set(key, { value: v, expiresAt: Date.now() + ttl })
+    return v
+  })
+  // 同时让并发请求共享同一个 Promise，避免重复请求
+  MEM_CACHE.set(key, { value: p as unknown as T, expiresAt: Date.now() + Math.min(ttl, 10000) })
+  return p
+}
+
+/** 清理某条缓存（写操作后调用，确保下次读拿到最新值） */
+export function invalidateMemCache(keyPrefix?: string) {
+  if (!keyPrefix) {
+    MEM_CACHE.clear()
+    return
+  }
+  for (const k of Array.from(MEM_CACHE.keys())) {
+    if (k.startsWith(keyPrefix)) MEM_CACHE.delete(k)
+  }
+}
+
 // ==================== 通用类型 ====================
 
 /** 后端统一 { success, data, message } 包装 */
@@ -163,6 +194,8 @@ export interface FetchAdminPostsParams {
   search?: string
   status?: 'all' | 'published' | 'draft' | 'scheduled' | 'archived'
   category?: string
+  created_start?: string | null
+  created_end?: string | null
 }
 
 export interface FetchAdminPostsResult<T> {
@@ -184,11 +217,20 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
   const pageSize = Math.max(1, params.page_size ?? 10)
   const qSearch = params.search?.trim() || ''
   const qCategory = params.category && params.category !== 'all' ? params.category : undefined
+  const qCreatedStart = params.created_start || undefined
+  const qCreatedEnd = params.created_end || undefined
 
   const statuses: Array<'published' | 'draft' | 'scheduled' | 'archived'>
     = !params.status || params.status === 'all'
       ? ['published', 'draft', 'scheduled', 'archived']
       : [params.status as 'published' | 'draft' | 'scheduled' | 'archived']
+
+  const commonQuery = {
+    search: qSearch || undefined,
+    category: qCategory,
+    created_start: qCreatedStart,
+    created_end: qCreatedEnd
+  }
 
   // 特定单 status：直接走服务端分页，简单高效
   if (statuses.length === 1) {
@@ -197,8 +239,7 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
         page,
         page_size: pageSize,
         status: statuses[0],
-        search: qSearch || undefined,
-        category: qCategory
+        ...commonQuery
       }
     })
     return { items: paged.items ?? [], total: paged.total ?? 0 }
@@ -215,8 +256,7 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
           page: 1,
           page_size: bigBatch,
           status: s,
-          search: qSearch || undefined,
-          category: qCategory
+          ...commonQuery
         }
       })
     )
@@ -243,10 +283,20 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
   let filtered = merged
   if (qSearch) {
     const q = qSearch.toLowerCase()
-    filtered = merged.filter((p) => {
+    filtered = filtered.filter((p) => {
       const title = getLocalized(p.title as unknown as string | Record<string, string> | null | undefined).toLowerCase()
       const slug = String(p.slug ?? '').toLowerCase()
       return title.includes(q) || slug.includes(q)
+    })
+  }
+
+  // 客户端日期范围兜底（合并模式下对多 status 结果再做一次本地校验）
+  if (qCreatedStart || qCreatedEnd) {
+    const startTs = qCreatedStart ? new Date(qCreatedStart + 'T00:00:00').getTime() : -Infinity
+    const endTs = qCreatedEnd ? new Date(qCreatedEnd + 'T23:59:59.999').getTime() : Infinity
+    filtered = filtered.filter((p) => {
+      const t = new Date(p.created_at ?? p.published_at ?? 0).getTime() || 0
+      return t >= startTs && t <= endTs
     })
   }
 
@@ -285,6 +335,7 @@ export interface AdminComment {
   reply_total: number
   created_at: string | null
   post_ref: AdminCommentPostRef | null
+  title?: { id?: number, name: string, icon?: string, color?: string } | null
 }
 
 export interface AdminCommentQuery {
@@ -374,6 +425,8 @@ export interface AdminUserRow {
   last_login: string | null
   posts_count: number
   comments_count: number
+  title?: AdminUserTitle | null
+  title_id?: number | null
 }
 
 /** RBAC 角色定义（应与后端 backend.core.rbac 保持一致） */
@@ -389,7 +442,7 @@ export const RBAC_ROLES = [
 export type RbacRoleValue = (typeof RBAC_ROLES)[number]['value']
 
 export function rbacRoleLabel(role?: string | null): string {
-  return RBAC_ROLES.find((r) => r.value === role)?.label ?? '订阅者'
+  return RBAC_ROLES.find(r => r.value === role)?.label ?? '订阅者'
 }
 
 export interface AdminUserQuery {
@@ -409,7 +462,12 @@ export function fetchAdminUsers(params: AdminUserQuery): Promise<AdminPaged<Admi
   if (params.search && params.search.trim()) query.search = params.search.trim()
   if (params.sort) query.sort = params.sort
   if (params.order) query.order = params.order
-  return apiFetch<AdminPaged<AdminUserRow>>('/users', { query })
+  const qs = new URLSearchParams(query as Record<string, string>).toString()
+  return cachedGet(
+    `admin:users:list:${qs || 'default'}`,
+    () => apiFetch<AdminPaged<AdminUserRow>>('/users', { query }),
+    20 * 1000 // 用户列表短暂缓存，避免进入编辑页再回列表时重复拉
+  )
 }
 
 export interface AdminUserPatchResult {
@@ -436,6 +494,8 @@ export function updateAdminUserFlags(
   userId: number,
   flags: AdminUserFlags
 ): Promise<AdminUserPatchResult> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<AdminUserPatchResult>(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: flags
@@ -447,6 +507,8 @@ export function updateAdminUserRole(
   userId: number,
   role: string
 ): Promise<AdminUserPatchResult> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<AdminUserPatchResult>(`/admin/users/${userId}`, {
     method: 'PATCH',
     body: { role }
@@ -455,43 +517,55 @@ export function updateAdminUserRole(
 
 /** POST /api/admin/users/{id}/activate —— admin.router @router.post("/users/{user_id}/activate") */
 export function activateAdminUser(userId: number): Promise<ApiMessage> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<ApiMessage>(`/admin/users/${userId}/activate`, { method: 'POST' })
 }
 
 /** POST /api/admin/users/{id}/ban —— admin.router @router.post("/users/{user_id}/ban") */
 export function banAdminUser(userId: number): Promise<ApiMessage> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<ApiMessage>(`/admin/users/${userId}/ban`, { method: 'POST' })
 }
 
 /** POST /api/admin/users/{id}/unban —— admin.router @router.post("/users/{user_id}/unban") */
 export function unbanAdminUser(userId: number): Promise<ApiMessage> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<ApiMessage>(`/admin/users/${userId}/unban`, { method: 'POST' })
 }
 
 /** POST /api/admin/users/{id}/reset-password —— admin.router @router.post("/users/{user_id}/reset-password") */
 export function resetAdminUserPassword(userId: number, newPassword: string): Promise<ApiMessage> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
   return apiFetch<ApiMessage>(`/admin/users/${userId}/reset-password`, {
     method: 'POST',
     body: { new_password: newPassword }
   })
 }
 
-/**
- * DELETE /api/admin/users/{id} —— 后端 admin.router / users.router 当前未提供 DELETE 用户的 HTTP 端点。
- * 静默降级：提示"请使用命令行删除用户"，避免 404 toast。
- */
+/** DELETE /api/admin/users/{id} —— admin.router @router.delete("/users/{user_id}") */
 export function deleteAdminUser(userId: number): Promise<ApiMessage> {
+  invalidateMemCache(`admin:users:detail:${userId}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<ApiMessage>(`/admin/users/${userId}`, { method: 'DELETE' })
 }
 
 // ==================== 用户详情（编辑） ====================
 
 /**
- * GET /api/users/{id} —— users.router 挂在 /api/users，@router.get("/{user_id}")
- * 注意：不要走 /admin/users/{id}，admin.router 当前未提供 GET 详情端点。
+ * GET /api/admin/users/{id} —— admin.router 提供管理员详情端点
+ * (admin.py admin_get_user → response_model=UserDetailResponse)，
+ * 包含：bio / website / github / qq / avatar_source / resolved_avatar_url /
+ *       posts_count / comments_count / is_banned / updated_at / title 等。
  */
 export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
-  return apiFetch<AdminUserRow>(`/users/${id}`)
+  return cachedGet(
+    `admin:users:detail:${id}`,
+    () => apiFetch<AdminUserRow>(`/admin/users/${id}`),
+    10 * 1000 // 短缓存：避免连续进入同一编辑页、或多组件同时读取时重复请求
+  )
 }
 
 /**
@@ -500,6 +574,8 @@ export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
  * is_staff/is_superuser/is_active/is_banned/role/username。
  */
 export function updateAdminUserDetail(id: number, payload: Record<string, unknown>): Promise<AdminUserRow> {
+  invalidateMemCache(`admin:users:detail:${id}`)
+  invalidateMemCache('admin:users:list:')
   return apiFetch<AdminUserRow>(`/admin/users/${id}`, { method: 'PUT', body: payload })
 }
 
@@ -930,12 +1006,12 @@ export function deleteAdminActivity(id: number): Promise<ApiMessage> {
 // ==================== 用户头衔 UserTitle ====================
 
 export interface AdminUserTitle {
-  id: number
+  id?: number
   name: string
   color?: string | null
   icon?: string | null
   description?: string | null
-  created_at: string | null
+  created_at?: string | null
 }
 
 /**
@@ -943,18 +1019,25 @@ export interface AdminUserTitle {
  * = /api/admin/titles ✔
  */
 export function fetchAdminUserTitles(): Promise<AdminUserTitle[]> {
-  return apiFetch<AdminUserTitle[]>('/admin/titles')
+  return cachedGet(
+    'admin:titles:all',
+    () => apiFetch<AdminUserTitle[]>('/admin/titles'),
+    5 * 60 * 1000 // 头衔列表变化极少，缓存 5 分钟；写操作统一 invalidate
+  )
 }
 
 export function createAdminUserTitle(payload: Record<string, unknown>): Promise<AdminUserTitle> {
+  invalidateMemCache('admin:titles:')
   return apiFetch<AdminUserTitle>('/admin/titles', { method: 'POST', body: payload })
 }
 
 export function updateAdminUserTitle(id: number, payload: Record<string, unknown>): Promise<AdminUserTitle> {
+  invalidateMemCache('admin:titles:')
   return apiFetch<AdminUserTitle>(`/admin/titles/${id}`, { method: 'PUT', body: payload })
 }
 
 export function deleteAdminUserTitle(id: number): Promise<ApiMessage> {
+  invalidateMemCache('admin:titles:')
   return apiFetch<ApiMessage>(`/admin/titles/${id}`, { method: 'DELETE' })
 }
 
@@ -1109,31 +1192,27 @@ export interface AdminNavItem {
  * 公开 GET /navigations 只返回激活项；管理端需要全量（包括非激活）走 /admin/navigations
  */
 export async function fetchAdminNavigations(): Promise<AdminNavItem[]> {
-  try {
-    const list = await apiFetch<Array<Record<string, unknown>>>('/admin/navigations')
-    if (!Array.isArray(list)) return []
-    // 字段标准化：后端返回的是 NavigationResponse 结构（title/url/icon/parent_id/order/target_blank/is_active）
-    return list.map((x: Record<string, unknown>, i: number) => {
-      const label = x.title ?? x.label
-      const localizedLabel = label !== null && typeof label === 'object'
-        ? Object.fromEntries(
-          Object.entries(label as Record<string, unknown>)
-            .filter(([, value]) => typeof value === 'string')
-        ) as Record<string, string>
-        : null
-      return {
-        id: Number(x.id ?? (i + 1)),
-        label: typeof label === 'string' ? label : (localizedLabel ?? `导航项 ${i + 1}`),
-        url: String(x.url ?? x.link ?? ''),
-        icon: typeof x.icon === 'string' ? x.icon : null,
-        order: Number(x.order ?? x.sort_order ?? i) || i,
-        target: (String(x.target ?? x.target_blank ?? '_self') === '_blank' ? '_blank' : '_self'),
-        parent_id: Number(x.parent_id ?? null) || null
-      }
-    })
-  } catch {
-    return []
-  }
+  const list = await apiFetch<Array<Record<string, unknown>>>('/admin/navigations')
+  if (!Array.isArray(list)) return []
+  // 字段标准化：后端返回的是 NavigationResponse 结构（title/url/icon/parent_id/order/target_blank/is_active）
+  return list.map((x: Record<string, unknown>, i: number) => {
+    const label = x.title ?? x.label
+    const localizedLabel = label !== null && typeof label === 'object'
+      ? Object.fromEntries(
+        Object.entries(label as Record<string, unknown>)
+          .filter(([, value]) => typeof value === 'string')
+      ) as Record<string, string>
+      : null
+    return {
+      id: Number(x.id ?? (i + 1)),
+      label: typeof label === 'string' ? label : (localizedLabel ?? `导航项 ${i + 1}`),
+      url: String(x.url ?? x.link ?? ''),
+      icon: typeof x.icon === 'string' ? x.icon : null,
+      order: Number(x.order ?? x.sort_order ?? i) || i,
+      target: (String(x.target ?? x.target_blank ?? '_self') === '_blank' ? '_blank' : '_self'),
+      parent_id: Number(x.parent_id ?? null) || null
+    }
+  })
 }
 
 /** POST /api/navigations —— core.router @router.post("/navigations") */
@@ -1166,10 +1245,10 @@ export function deleteAdminNavigation(id: number): Promise<ApiMessage> {
 
 export interface AdminFriendLink {
   id: number
-  name: string
+  name: string | Record<string, string>
   url: string
   logo?: string | null
-  description?: string | null
+  description?: string | Record<string, string> | null
   sort_order: number
   status: 'pending' | 'approved' | 'rejected'
   created_at: string | null
@@ -1181,9 +1260,10 @@ function friendLinkBody(payload: Record<string, unknown>): Record<string, unknow
     body.order = body.sort_order
     delete body.sort_order
   }
-  if ('status' in body) {
+  // 后端 Schema 支持 status 三态，同时 is_active 作为兼容字段也需要同步
+  if ('status' in body && typeof body.status === 'string') {
     body.is_active = body.status === 'approved'
-    delete body.status
+    // 保留 status 字段，不删除
   }
   delete body.bg_color
   return body
@@ -1239,8 +1319,14 @@ function mapAlbum(raw: Record<string, unknown>): AdminAlbum {
 
 function albumBody(payload: Record<string, unknown>): Record<string, unknown> {
   const body: Record<string, unknown> = { ...payload }
-  if ('cover_url' in body) { body.cover = body.cover_url; delete body.cover_url }
-  if ('is_public' in body) { body.is_published = body.is_public; delete body.is_public }
+  if ('cover_url' in body) {
+    body.cover = body.cover_url
+    delete body.cover_url
+  }
+  if ('is_public' in body) {
+    body.is_published = body.is_public
+    delete body.is_public
+  }
   if (body.title && typeof body.title === 'object') {
     const t = body.title as Record<string, string>
     body.title = t.zh ?? Object.values(t)[0] ?? ''
@@ -1254,22 +1340,34 @@ function albumBody(payload: Record<string, unknown>): Record<string, unknown> {
 
 function mapFriendLink(raw: Record<string, unknown>): AdminFriendLink {
   const r = raw as Record<string, unknown>
-  let name = ''
+  let name: AdminFriendLink['name'] = ''
   const nr = r.name
   if (typeof nr === 'string') name = nr
   else if (nr && typeof nr === 'object') {
-    const o = nr as Record<string, string>
-    name = o.zh ?? o.en ?? Object.values(o)[0] ?? ''
+    name = { ...(nr as Record<string, string>) }
   }
+  let description: AdminFriendLink['description'] = null
+  const dr = r.description
+  if (typeof dr === 'string') description = dr
+  else if (dr && typeof dr === 'object') {
+    description = { ...(dr as Record<string, string>) }
+  }
+  // 优先使用后端返回的 status 字段（三态：pending/approved/rejected），
+  // 兼容旧数据：若 status 缺失，则根据 is_active 推导 approved / pending。
+  const rawStatus = typeof r.status === 'string' ? r.status : ''
   const isActive = typeof r.is_active === 'boolean' ? r.is_active : false
+  const status: AdminFriendLink['status']
+    = (rawStatus === 'approved' || rawStatus === 'pending' || rawStatus === 'rejected')
+      ? rawStatus
+      : (isActive ? 'approved' : 'pending')
   return {
     id: Number(r.id) || 0,
     name,
     url: String(r.url ?? ''),
     logo: (r.logo as string | null) ?? null,
-    description: (r.description as string | null) ?? null,
+    description,
     sort_order: Number(r.order ?? r.sort_order ?? 0),
-    status: isActive ? 'approved' : 'pending',
+    status,
     created_at: (r.created_at as string | null) ?? null
   }
 }
@@ -1334,12 +1432,17 @@ export interface AdminExportInfo {
  *   @router.get("/export/markdown")   → Markdown ZIP
  * 后端没有 /import-export/* 路径，format=markdown → /admin/export/markdown，其它走 /admin/export/posts。
  */
-export function exportAdminPosts(format: string): Promise<Blob> {
+export function exportAdminPosts(format: string, opts?: { from?: string, to?: string, scope?: string }): Promise<Blob> {
   const subPath = (format === 'markdown') ? 'markdown' : 'posts'
+  const query: Record<string, string> = {}
+  if (format !== 'markdown' && format !== 'json') query.format = format
+  if (opts?.from) query.from = opts.from
+  if (opts?.to) query.to = opts.to
+  if (opts?.scope) query.scope = opts.scope
   return apiFetch<Blob>(`/admin/export/${subPath}`, {
     method: 'GET',
     responseType: 'blob',
-    query: (format !== 'markdown' && format !== 'json') ? { format } : undefined
+    query: Object.keys(query).length ? query : undefined
   })
 }
 
@@ -1502,9 +1605,34 @@ export interface AdminAuditLog {
   created_at: string | null
 }
 
-/** GET /api/admin/logs —— admin_logs.router 挂在 /api/admin，@router.get("/logs") */
-export function fetchAdminAuditLogs(params: { page?: number, page_size?: number, action?: string, user_id?: number } = {}): Promise<AdminPaged<AdminAuditLog>> {
-  return apiFetch<AdminPaged<AdminAuditLog>>('/admin/logs', { query: { page: 1, page_size: 20, ...params } })
+/**
+ * GET /api/admin/logs
+ * 注意：后端 advanced.py（prefix=/admin）与 admin_logs.py 都挂载了同名端点，实际命中 advanced.py，
+ * 其返回结构是嵌套 user: {id, username, nickname}，并使用 resource_type / resource_id / ip_address / detail。
+ * 这里做一次"字段归一化"，把两种可能的结构统一映射成 AdminAuditLog 的扁平字段，防止前端取值错位。
+ */
+export function fetchAdminAuditLogs(params: { page?: number, page_size?: number, action?: string, user_id?: number, from?: string, to?: string } = {}): Promise<AdminPaged<AdminAuditLog>> {
+  return apiFetch<AdminPaged<Record<string, unknown>>>('/admin/logs', { query: { page: 1, page_size: 20, ...params } })
+    .then((resp) => {
+      const normalized = (resp?.items ?? []).map((raw: Record<string, unknown>) => {
+        const userObj = (raw.user ?? null) as { id?: number, username?: string, nickname?: string } | null
+        const uid = userObj?.id ?? (raw.user_id as number | null | undefined) ?? null
+        const uname = userObj?.username ?? (raw.username as string | null | undefined) ?? (raw.user_name as string | null | undefined) ?? null
+        return {
+          id: raw.id as number,
+          user_id: uid,
+          username: uname,
+          action: raw.action as string,
+          target_type: (raw.target_type ?? raw.resource_type ?? null) as string | null,
+          target_id: (raw.target_id ?? raw.resource_id ?? null) as string | number | null,
+          ip: (raw.ip ?? raw.ip_address ?? null) as string | null,
+          user_agent: (raw.user_agent ?? null) as string | null,
+          details: (raw.details ?? raw.detail ?? null) as Record<string, unknown> | null,
+          created_at: (raw.created_at ?? null) as string | null
+        } satisfies AdminAuditLog
+      })
+      return { ...resp, items: normalized }
+    })
 }
 
 // ==================== 数据库迁移 ====================
@@ -1518,23 +1646,27 @@ export interface AdminMigrationStatus {
 }
 
 /**
- * GET /api/admin/migration/status —— migration.router 挂在 /api/admin + 内部 prefix="/migration"
- * + @router.get("/status") = /api/admin/migration/status ✔
- * 注意：这里的"迁移"是跨库数据迁移（Migration Manager），不是 Alembic schema 迁移。
+ * GET /api/admin/alembic/status —— 2026-08 新增后端端点，用于显示 Alembic schema 迁移的：
+ *   current_version / latest_version / is_latest / applied / pending
+ * 注意：/api/admin/migration/status 是"跨库数据迁移任务管理器"（Job）与本页面无关。
+ * 失败时静默回退为 emptyStatus，保证界面可用。
  */
 export function fetchAdminMigrationStatus(): Promise<AdminMigrationStatus> {
-  // 后端返回 {success, job}（跨库迁移任务管理器，非 Alembic 版本），job 通常为 null。
-  return apiFetch<{ success: boolean, job: Record<string, unknown> | null }>('/admin/migration/status')
-    .then(r => {
-      const job = (r.job ?? {}) as Record<string, unknown>
+  return silentApiFetch<ApiEnvelope<AdminMigrationStatus> | AdminMigrationStatus>('/admin/alembic/status')
+    .then((raw) => {
+      const r = (raw && (raw as ApiEnvelope<AdminMigrationStatus>).data)
+        ? (raw as ApiEnvelope<AdminMigrationStatus>).data
+        : (raw as AdminMigrationStatus | null | undefined)
+      if (!r) return emptyStatus()
       return {
-        current_version: String(job.current_version ?? ''),
-        latest_version: String(job.latest_version ?? ''),
-        is_latest: Boolean(job.is_latest ?? true),
-        pending: (Array.isArray(job.pending) ? job.pending : []) as AdminMigrationStatus['pending'],
-        applied: (Array.isArray(job.applied) ? job.applied : []) as AdminMigrationStatus['applied']
+        current_version: String(r.current_version ?? ''),
+        latest_version: String(r.latest_version ?? ''),
+        is_latest: Boolean(r.is_latest ?? true),
+        pending: (Array.isArray(r.pending) ? r.pending : []) as AdminMigrationStatus['pending'],
+        applied: (Array.isArray(r.applied) ? r.applied : []) as AdminMigrationStatus['applied']
       }
     })
+    .catch(() => emptyStatus())
 }
 
 /**
@@ -1560,19 +1692,27 @@ export interface AdminCacheStatus {
 }
 
 /**
- * advanced.router 挂载于 /api + prefix="/admin"，当前仅提供回收站 / 修订版本 / 批量操作，
- * 没有 /cache/status 或 /cache/flush 的 HTTP 端点。缓存清理通过重启进程或 Redis CLI 直接操作。
- * 两个缓存接口一律静默降级。
+ * GET /api/admin/cache/status —— 2026-08 新增后端端点（admin_tools.router）。
+ * 兼容统一响应格式 {success, data} 与直接裸对象两种包法。
  */
 export function fetchAdminCacheStatus(): Promise<AdminCacheStatus> {
-  return silentApiFetch<ApiEnvelope<AdminCacheStatus>>('/admin/cache/status').then(r =>
-    r?.data ?? { backend: 'memory', keys: 0, memory_used_bytes: null, hit_rate: null }
-  )
+  return silentApiFetch<ApiEnvelope<AdminCacheStatus> | AdminCacheStatus>('/admin/cache/status').then((raw) => {
+    const r = (raw && (raw as ApiEnvelope<AdminCacheStatus>).data)
+      ? (raw as ApiEnvelope<AdminCacheStatus>).data
+      : (raw as AdminCacheStatus | null | undefined)
+    if (!r) return { backend: 'memory', keys: 0, memory_used_bytes: null, hit_rate: null }
+    return {
+      backend: r.backend === 'redis' ? 'redis' : 'memory',
+      keys: Number(r.keys ?? 0),
+      memory_used_bytes: r.memory_used_bytes ?? null,
+      hit_rate: r.hit_rate ?? null
+    } satisfies AdminCacheStatus
+  })
 }
 
 export function flushAdminCache(mode: AdminCacheFlushMode): Promise<ApiMessage> {
-  return silentApiFetch<ApiMessage>('/admin/cache/flush', { method: 'POST', body: { mode } }).then(r =>
-    r ?? { success: false, message: '缓存清理暂未开放 HTTP 接口，请重启服务或清空 Redis 键。' }
+  return apiFetch<ApiMessage>('/admin/cache/flush', { method: 'POST', body: { mode } }).then(r =>
+    r ?? { success: true, message: '缓存已清退' }
   )
 }
 

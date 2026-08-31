@@ -24,6 +24,9 @@ import { Sun, Moon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '~~/composables/useTheme'
 
+// SSR & 客户端首渲染 统一 isDark=false，由 useState('theme-dark', () => false) 保证字节级一致
+// 用户偏好（localStorage / matchMedia）在 Hydrate 完成后由 plugins/theme.client.ts 异步 apply，
+// 此时 Vue 走 patch，不触发 hydration mismatch。
 const { t } = useI18n()
 const { isDark, toggle } = useTheme()
 const buttonRef = ref<InstanceType<typeof Button> | null>(null)

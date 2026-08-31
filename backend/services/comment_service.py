@@ -1,4 +1,4 @@
-"""
+﻿"""
 Rosetta 评论服务模块
 
 封装评论 CRUD、审核、点赞、敏感词、频控校验、通知与邮件异步发送等业务逻辑。
@@ -24,7 +24,7 @@ from backend.models.blog import Comment, Post
 from backend.models.core import Notification
 from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
-from backend.services._avatar_helpers import resolved_for_comment
+from backend.services._avatar_helpers import resolved_for_comment, _user_relationship_safe
 
 if TYPE_CHECKING:
     pass
@@ -32,7 +32,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 HTTP_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
-GRAVATAR_BASE = "https://www.gravatar.com/avatar"
+
+
+def _gravatar_base() -> str:
+    raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
+    return raw or "https://cravatar.cn/avatar"
+
+
 AUTO_REJECT_ON_SENSITIVE_DEFAULT = True
 
 
@@ -61,14 +67,14 @@ def mask_ip(ip: str | None) -> str | None:
 
 
 def gravatar_avatar(email: str | None, author_name: str | None) -> str:
-    """生成 Gravatar 头像 URL，绝不暴露 email 明文"""
+    """生成 Gravatar 头像 URL（默认国内镜像），绝不暴露 email 明文"""
     source = ""
     if email:
         source = email.strip().lower()
     if not source:
         source = (author_name or "guest").strip().lower()
     h = hashlib.md5(source.encode("utf-8")).hexdigest()
-    return f"{GRAVATAR_BASE}/{h}?d=mp&s=64"
+    return f"{_gravatar_base()}/{h}?d=mp&s=64"
 
 
 def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
@@ -84,17 +90,34 @@ def _status_to_active(status: str) -> bool:
 def _comment_to_response(
     c: Comment, replies: list[Comment] | None = None, reply_total: int | None = None
 ) -> CommentResponse:
-    """把 ORM Comment 转成对外响应（填充 author_avatar、replies、reply_total）"""
-    email = c.author_email
-    avatar = gravatar_avatar(email, c.author_name)
+    """把 ORM Comment 转成对外响应（填充 author_avatar、replies、reply_total）。
+
+    author_* 字段优先级：评论行自身存储 > 关联 User 的 nickname/email。
+    未 eager load User 关系时不访问关系属性，避免 async SQLAlchemy greenlet IO 错误。
+    """
+    if c.author_name and c.author_email:
+        author_name = c.author_name
+        author_email = c.author_email
+        author_website = c.author_website
+    else:
+        user: User | None = _user_relationship_safe(c)
+        author_name = (
+            c.author_name
+            or (getattr(user, "nickname", None) if user else None)
+            or (getattr(user, "username", None) if user else None)
+            or "匿名"
+        )
+        author_email = c.author_email or (getattr(user, "email", None) if user else None) or ""
+        author_website = c.author_website
+    avatar = gravatar_avatar(author_email, author_name)
     return CommentResponse(
         id=c.id,
         post_id=c.post_id,
         user_id=c.user_id,
         parent_id=c.parent_id,
-        author_name=c.author_name,
+        author_name=author_name,
         author_avatar=avatar,
-        author_website=c.author_website if HTTP_URL_RE.match(c.author_website or "") else None,
+        author_website=author_website if HTTP_URL_RE.match(author_website or "") else None,
         content=c.content,
         status=c.status,
         is_pinned=c.is_pinned,
@@ -564,14 +587,16 @@ class CommentService:
                 written_notif_ids: list[int] = []
                 for rid, verb, msg_zh in recipients:
                     try:
+                        # UGC 评论通知：title + message 统一纯字符串（msg_zh 已包含用户原文），
+                        # 不再包装 i18n dict，避免前端直接 toString 裸露 JSON。
                         notif = Notification(
                             recipient_id=rid,
                             actor_id=resolved_actor,
                             verb=verb,
                             content_type="Comment",
                             object_id=comment_id,
-                            title={"zh": "评论通知", "en": "Comment"},
-                            message={"zh": msg_zh, "en": msg_zh},
+                            title="评论通知",  # type: ignore[arg-type]
+                            message=msg_zh,  # type: ignore[arg-type]
                             level="info",
                         )
                         adb.add(notif)

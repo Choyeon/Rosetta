@@ -69,11 +69,11 @@ const endOffset = computed(() => Math.min(props.total, props.page * props.pageSi
 </script>
 
 <template>
-  <div class="space-y-4">
+  <div class="flex flex-col gap-4">
     <!-- 加载骨架 -->
     <div
       v-if="loading"
-      class="space-y-3"
+      class="flex flex-col gap-3"
     >
       <Skeleton
         v-for="i in skeletonCount"

@@ -16,18 +16,11 @@
       v-if="pending && seriesList.length === 0"
       class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
     >
-      <div
+      <PostSkeleton
         v-for="i in 3"
         :key="i"
-        class="rounded-2xl overflow-hidden"
-      >
-        <Skeleton class="aspect-[16/9] w-full" />
-        <div class="p-5 space-y-3 mt-2">
-          <Skeleton class="h-5 w-2/3" />
-          <Skeleton class="h-4 w-full" />
-          <Skeleton class="h-4 w-4/5" />
-        </div>
-      </div>
+        variant="compact"
+      />
     </div>
 
     <div
@@ -107,7 +100,7 @@ import {
   CardTitle
 } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
-import { Skeleton } from '~~/components/ui/skeleton'
+import PostSkeleton from '~~/components/PostSkeleton.vue'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default' })
@@ -150,4 +143,15 @@ const seriesList = computed<SeriesRow[]>(() => {
   if (!Array.isArray(raw)) return []
   return raw
 })
+
+useSeo({
+  title: computed(() => t('series.title', '系列文章') as string),
+  description: computed(() => t('series.desc', '按主题深度组织的系列专题，循序渐进地学习某一技术方向。') as string),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.series', '系列') as string, url: '/series' }
+])
 </script>

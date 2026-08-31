@@ -296,3 +296,20 @@ async def admin_batch(_staff: CurrentStaff, body: GuestbookBatchAction, db: DB):
         await db.rollback()
         raise _service_err_to_http(e) from e
     return BaseResponse(success=True, message=f"已处理 {result.get('processed', 0)} 条")
+
+
+@router.delete(
+    "/admin/guestbook/{entry_id}",
+    response_model=BaseResponse,
+    summary="【管理员】单条删除留言",
+)
+async def admin_delete_entry(_staff: CurrentStaff, entry_id: int, db: DB):
+    try:
+        result = await GuestbookService.admin_batch(db, [entry_id], "delete")
+        await db.commit()
+    except ValueError as e:
+        await db.rollback()
+        raise _service_err_to_http(e) from e
+    if result.get("processed", 0) == 0:
+        raise HTTPException(status_code=404, detail=f"留言 {entry_id} 不存在或已被删除")
+    return BaseResponse(success=True, message="留言已删除")

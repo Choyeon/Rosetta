@@ -31,6 +31,7 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentUser, get_current_user
 from backend.core.concurrency import concurrent_query
 from backend.models.core import Media
+from backend.services.media_service import apply_watermark, build_media_url, generate_thumbnails
 
 logger = logging.getLogger(__name__)
 
@@ -346,11 +347,20 @@ async def process_and_save_image(
 
     def _process_image():
         output = io.BytesIO()
-        if image.mode in ("RGBA", "P"):
-            converted_image = image.convert("RGB")
+        # JPEG 不支持 alpha 通道，保存前必须去掉透明/调色板模式
+        # Pillow 支持的 JPEG 安全模式：1 / L / RGB / CMYK / YCbCr / I / I;16 / F
+        # 其他模式（RGBA / RGBa / LA / PA / P 等）统一转 RGB，避免
+        # "cannot write mode LA as JPEG" / "cannot write mode RGBA as JPEG" 类错误。
+        save_format = (format or "JPEG").upper()
+        if save_format in {"JPEG", "JPG"}:
+            jpeg_safe = {"1", "L", "RGB", "CMYK", "YCbCr", "I", "I;16", "F"}
+            if image.mode not in jpeg_safe:
+                converted_image = image.convert("RGB")
+            else:
+                converted_image = image
         else:
             converted_image = image
-        converted_image.save(output, format=format, quality=quality)
+        converted_image.save(output, format=save_format, quality=quality)
         output.seek(0)
         return output.getvalue(), converted_image.width, converted_image.height
 
@@ -609,6 +619,9 @@ async def list_media_library(
                 "title": media.title,
                 "alt_text": media.alt_text,
                 "description": media.description,
+                "width": media.width,
+                "height": media.height,
+                "sizes": media.sizes,
                 "uploaded_by": {
                     "id": media.uploaded_by.id,
                     "username": media.uploaded_by.username,
@@ -681,29 +694,25 @@ async def get_media_stats(
     }
 
 
-@router.post(
-    "/library/upload",
-    summary="上传到媒体库",
-    description="上传文件到媒体库，支持图片、视频、音频等。",
-)
-async def upload_to_library(
-    db: DB,
-    current_user: CurrentUser,
-    file: UploadFile = File(...),
-    title: str | None = Form(None, description="标题"),
-    alt_text: str | None = Form(None, description="替代文本"),
-    description: str | None = Form(None, description="描述"),
-):
+async def _save_media_to_library(
+    db: Any,
+    current_user: Any,
+    file: UploadFile,
+    *,
+    category: str | None = None,
+    title: str | None = None,
+    alt_text: str | None = None,
+    description: str | None = None,
+) -> dict[str, Any]:
     """
-    上传文件到媒体库
+    内部实现：将上传文件写入媒体库。
 
-    支持：
-    - 图片：jpg, jpeg, png, gif, webp, svg
-    - 视频：mp4, webm, mov
-    - 音频：mp3, wav, ogg
-    - 文档：pdf, doc, docx, xls, xlsx
+    参数：
+    - category：前端传来的业务分类（gallery/post-cover/avatar 等），仅用于创建 AdminPhoto
+      等上层业务关联，**不**写入 Media 表（Media 表以 file_type 区分文件格式）。
+    返回：扁平化的 MediaItem-like 字典，与前端 types/api.ts 的 MediaItem 对齐。
     """
-    # 验证文件类型
+    # 允许的文件类型与扩展名映射
     allowed_types = {
         "image": ["jpg", "jpeg", "png", "gif", "webp", "svg"],
         "video": ["mp4", "webm", "mov"],
@@ -711,39 +720,90 @@ async def upload_to_library(
         "document": ["pdf", "doc", "docx", "xls", "xlsx"],
     }
 
-    # 获取文件扩展名
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="文件名不能为空",
         )
 
+    # 校验单文件大小：20MB（含非图片文件），避免 uvicorn 被大文件打爆连接
+    size_hint = getattr(file, "size", None)
+    if isinstance(size_hint, int) and size_hint > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件过大，最大允许 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+        )
+
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
 
-    # 确定文件类型
+    # 确定文件格式分类
     file_type = "other"
     for ftype, extensions in allowed_types.items():
         if ext in extensions:
             file_type = ftype
             break
 
-    # 生成文件名
     timestamp = datetime.now().strftime("%Y%m%d")
     unique_id = uuid.uuid4().hex[:8]
     new_filename = f"{timestamp}_{unique_id}.{ext}"
 
-    # 保存文件
+    # 物理落盘
     upload_dir = MEDIA_DIR / "uploads" / file_type
     upload_dir.mkdir(parents=True, exist_ok=True)
     filepath = upload_dir / new_filename
 
     content = await file.read()
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=f"文件过大，最大允许 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+        )
+    if not content:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="上传文件内容为空",
+        )
     await async_write_file(filepath, content)
 
-    # URL 路径
-    file_url = f"/media/uploads/{file_type}/{new_filename}"
+    cdn_prefix = await _read_cdn_prefix(db)
+    file_url = build_media_url(f"/media/uploads/{file_type}/{new_filename}", cdn_prefix)
 
-    # 创建数据库记录
+    # 图片：生成多尺寸缩略图 + 可选水印
+    width: int | None = None
+    height: int | None = None
+    sizes: dict | None = None
+    thumbnail_url: str | None = None
+    mime_type = file.content_type or f"application/octet-stream"
+    if file_type == "image" and ext.lower() not in ("svg",):
+        try:
+            from PIL import Image
+
+            pil_image = await asyncio.to_thread(lambda: Image.open(filepath))
+            width, height = pil_image.size
+            mime_type = getattr(pil_image, "get_format_mimetype", lambda: mime_type)() or mime_type
+            watermark_text = await _read_watermark_text(db)
+            if watermark_text:
+                pil_image = await apply_watermark(pil_image, watermark_text)
+                await async_write_file(filepath, _pil_to_bytes(pil_image, ext))
+            sizes = await generate_thumbnails(
+                pil_image, upload_dir, f"{timestamp}_{unique_id}", f".{ext}", cdn_prefix
+            )
+            # 取 thumbnail / medium / large 第一个可用 URL 做缩略图
+            for key in ("thumbnail", "medium", "large"):
+                if sizes and isinstance(sizes, dict) and sizes.get(key) and isinstance(sizes[key], dict):
+                    maybe_url = sizes[key].get("url")
+                    if maybe_url:
+                        thumbnail_url = str(maybe_url)
+                        break
+        except Exception as e:
+            logger.warning(f"图片后处理失败（缩略图/水印），仅保存原图: {e}")
+
+    # category：若前端传入则优先使用（例如 gallery）；否则回退 file_type
+    final_category = category or file_type
+    valid_categories = {"image", "video", "audio", "document", "other", "gallery", "post-cover", "avatar", "cover"}
+    if final_category not in valid_categories:
+        final_category = file_type
+
     media = Media(
         file=file_url,
         filename=file.filename,
@@ -752,6 +812,9 @@ async def upload_to_library(
         title=title,
         alt_text=alt_text,
         description=description,
+        width=width,
+        height=height,
+        sizes=sizes,
         uploaded_by_id=current_user.id,
     )
     db.add(media)
@@ -759,19 +822,98 @@ async def upload_to_library(
     await db.refresh(media)
 
     return {
-        "success": True,
-        "message": "文件上传成功",
-        "media": {
-            "id": media.id,
-            "file": media.file,
-            "filename": media.filename,
-            "file_type": media.file_type,
-            "file_size": media.file_size,
-            "title": media.title,
-            "alt_text": media.alt_text,
-            "description": media.description,
+        "id": media.id,
+        "title": media.title,
+        "description": media.description,
+        "alt_text": media.alt_text,
+        "filename": media.filename or new_filename,
+        "original_name": file.filename,
+        "url": media.file,
+        "thumbnail_url": thumbnail_url or media.file,
+        "category": final_category,  # type: ignore[arg-type]
+        "mime_type": mime_type,
+        "size": media.file_size,
+        "width": media.width,
+        "height": media.height,
+        "duration": None,
+        "storage": "local",
+        "metadata": {
+            "sizes": sizes,
+            "file_type": file_type,
         },
+        "is_active": True,
+        "created_at": media.created_at.isoformat() if media.created_at else "",
+        "updated_at": media.updated_at.isoformat() if media.updated_at else "",
     }
+
+
+@router.post(
+    "/library",
+    summary="上传到媒体库（REST 主路径）",
+    description="与 GET /library 配对：上传文件到媒体库。category 用于业务分类（gallery/post-cover 等）。",
+)
+async def upload_library_rest(
+    db: DB,
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+    category: str | None = Form(None, description="业务分类：gallery / post-cover / avatar / cover 等"),
+    title: str | None = Form(None, description="标题"),
+    alt_text: str | None = Form(None, description="替代文本"),
+    description: str | None = Form(None, description="描述"),
+):
+    """REST 风格：POST /api/media/library"""
+    try:
+        return await _save_media_to_library(
+            db,
+            current_user,
+            file,
+            category=category,
+            title=title,
+            alt_text=alt_text,
+            description=description,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:  # pragma: no cover - 防御性兜底
+        logger.exception("媒体库上传失败")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"上传失败：{e}",
+        )
+
+
+@router.post(
+    "/library/upload",
+    summary="上传到媒体库（别名路径）",
+    description="兼容旧客户端的别名路径，参数与 POST /library 一致。",
+)
+async def upload_to_library(
+    db: DB,
+    current_user: CurrentUser,
+    file: UploadFile = File(...),
+    category: str | None = Form(None, description="业务分类：gallery / post-cover / avatar / cover 等"),
+    title: str | None = Form(None, description="标题"),
+    alt_text: str | None = Form(None, description="替代文本"),
+    description: str | None = Form(None, description="描述"),
+):
+    try:
+        return await _save_media_to_library(
+            db,
+            current_user,
+            file,
+            category=category,
+            title=title,
+            alt_text=alt_text,
+            description=description,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:  # pragma: no cover
+        logger.exception("媒体库上传失败 (别名路径)")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"上传失败：{e}",
+        )
 
 
 @router.get(
@@ -805,6 +947,9 @@ async def get_media_detail(
         "title": media.title,
         "alt_text": media.alt_text,
         "description": media.description,
+        "width": media.width,
+        "height": media.height,
+        "sizes": media.sizes,
         "uploaded_by": {
             "id": media.uploaded_by.id,
             "username": media.uploaded_by.username,
@@ -849,6 +994,7 @@ async def update_media(
         media.description = description
 
     await db.flush()
+    await db.refresh(media)
 
     return {
         "success": True,
@@ -858,6 +1004,9 @@ async def update_media(
             "title": media.title,
             "alt_text": media.alt_text,
             "description": media.description,
+            "width": media.width,
+            "height": media.height,
+            "sizes": media.sizes,
         },
     }
 
@@ -974,6 +1123,20 @@ async def get_image(category: str, filename: str):
     if not await async_file_exists(filepath):
         raise HTTPException(status_code=404, detail="图片不存在")
 
+    # 按扩展名推断 MIME，避免把 png/svg/webp 硬标成 image/jpeg 导致浏览器渲染异常
+    suffix = Path(filename).suffix.lower().lstrip(".")
+    _MIME_MAP = {
+        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "png": "image/png",
+        "gif": "image/gif",
+        "webp": "image/webp",
+        "svg": "image/svg+xml",
+        "bmp": "image/bmp",
+        "avif": "image/avif",
+        "ico": "image/x-icon",
+    }
+    media_type = _MIME_MAP.get(suffix, "application/octet-stream")
+
     # 异步读取文件内容
     content = await async_read_file(filepath)
 
@@ -982,7 +1145,7 @@ async def get_image(category: str, filename: str):
 
     return StreamingResponse(
         iter_content(),
-        media_type="image/jpeg",
+        media_type=media_type,
         headers={"Cache-Control": "public, max-age=31536000"},
     )
 
@@ -1014,6 +1177,55 @@ def format_file_size(size: int) -> str:
             return f"{size:.2f} {unit}"
         size /= 1024
     return f"{size:.2f} PB"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 媒体高级能力辅助：从 site_configs 读 media 组配置（CDN / 水印）
+# ─────────────────────────────────────────────────────────────────────────────
+
+async def _read_media_settings(db: DB) -> dict:
+    """读取 site_configs 中 key='media' 的 JSON 配置。"""
+    from backend.models.core import SiteConfig
+
+    result = await db.execute(select(SiteConfig).where(SiteConfig.key == "media"))
+    row = result.scalar_one_or_none()
+    if not row or not row.value:
+        return {}
+    try:
+        import json
+
+        return json.loads(row.value)
+    except Exception:
+        return {}
+
+
+async def _read_cdn_prefix(db: DB) -> str | None:
+    """返回启用的 CDN 前缀，未启用返回 None。"""
+    cfg = await _read_media_settings(db)
+    if not cfg.get("use_cdn"):
+        return None
+    prefix = (cfg.get("cdn_prefix") or "").strip()
+    return prefix or None
+
+
+async def _read_watermark_text(db: DB) -> str | None:
+    """返回水印文字（media 组 watermark_text 非空时启用），否则 None。"""
+    cfg = await _read_media_settings(db)
+    text = (cfg.get("watermark_text") or "").strip()
+    return text or None
+
+
+def _pil_to_bytes(image: Any, ext: str) -> bytes:
+    """把 PIL.Image 序列化为字节（用于回写加了水印的原图）。"""
+    from PIL import Image
+
+    out = io.BytesIO()
+    save_format = "JPEG" if ext.lower() in ("jpg", "jpeg", "webp") else "PNG"
+    img = image
+    if img.mode in ("RGBA", "P", "LA") and save_format == "JPEG":
+        img = img.convert("RGB")
+    img.save(out, format=save_format, quality=90)
+    return out.getvalue()
 
 
 # ==================== Bing 每日壁纸代理 API ====================

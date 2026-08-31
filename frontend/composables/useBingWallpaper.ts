@@ -156,7 +156,7 @@ export const useBingWallpaper = () => {
     }
   }
 
-  const parseImages = (rawImages: BingRawImage[]): BingImage[] => {
+  const _parseImages = (rawImages: BingRawImage[]): BingImage[] => {
     return (rawImages || []).map((img: BingRawImage, i: number) => {
       const url = img.url || ''
       const uhdUrl = (img.urlbase || '') + '_UHD.jpg'
@@ -219,35 +219,13 @@ export const useBingWallpaper = () => {
         }))
       }
 
-      const loadFromBingDirect = async (): Promise<BingImage[]> => {
-        if (!import.meta.client) return []
-        const controller = new AbortController()
-        const timeoutId = setTimeout(() => controller.abort(), 6000)
-        try {
-          const resp = await fetch(
-            'https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN',
-            { signal: controller.signal }
-          )
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-          const data = await resp.json()
-          const list = parseImages(data.images)
-          if (list.length === 0) throw new Error('empty')
-          return list
-        } finally {
-          clearTimeout(timeoutId)
-        }
-      }
-
       let list: BingImage[] = []
       try {
         list = await loadFromBackend()
-      } catch {
-        // 后端代理不可用（如 OOBE 阶段后端未启动）：回退直连
-        try {
-          list = await loadFromBingDirect()
-        } catch (e) {
-          console.warn('[bing-wallpaper] API unavailable, hero will fall back to gradient.', e)
-        }
+      } catch (e) {
+        // 后端代理不可用（OOBE、网络异常等）：静默走 gradient 兜底
+        // 不允许浏览器直连 Bing（会出现 CORS / ERR_FAILED 控制台错误）
+        console.warn('[bing-wallpaper] backend proxy unavailable, hero will fall back to gradient.', e)
       }
       images.value = list
     } catch (e) {
@@ -267,6 +245,26 @@ export const useBingWallpaper = () => {
     currentImage,
     recentDays,
     selectDay,
-    fetchWallpapers
+    fetchWallpapers,
+    /**
+     * 生成 Bing 官方「当前壁纸」跳转链接。
+     * 优先级：
+     *  1) Bing API 原生返回的 copyrightlink（通常是 bing.com/search?q=… 搜索页，最精确）
+     *  2) 有 title 时拼 https://www.bing.com/search?q={encodeURIComponent(title)} （Bing 搜索该壁纸关键词）
+     *  3) 兜底 https://www.bing.com 首页
+     *
+     * 用于 Meta 版权卡片点击跳转：点击后一定打开 Bing 官方界面，而不是 '#' 空锚。
+     */
+    getBingOfficialLink: (img: BingRawImage | BingImage | null | undefined): string => {
+      if (!img) return 'https://www.bing.com'
+      const raw = (img as { copyrightlink?: unknown }).copyrightlink
+        ?? (img as { copyright_link?: unknown }).copyright_link
+      if (typeof raw === 'string' && raw.startsWith('http')) return raw
+      const title = (img as { title?: unknown }).title
+      if (typeof title === 'string' && title.trim()) {
+        return `https://www.bing.com/search?q=${encodeURIComponent(title.trim())}`
+      }
+      return 'https://www.bing.com'
+    }
   }
 }

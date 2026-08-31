@@ -15,6 +15,12 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
+import sys
+
+import backend.api.oobe as _oobe
+import backend.core.deps as _deps
+import backend.core.paths as _paths
+from backend.core.setup_config import ConfigService
 from backend.main import create_application
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -56,26 +62,57 @@ DEFAULT_INSTALL_PAYLOAD = {
 }
 
 
-def _cleanup_oobe_files():
-    for p in [ROSETTA_JSON, OOBE_COMPLETE, OOBE_STATE]:
-        try:
-            if p.exists():
-                p.unlink()
-        except Exception:
-            pass
-    test_db = BASE_DIR / "rosetta_oobe_test.db"
-    for p in [test_db]:
-        try:
-            if p.exists():
-                p.unlink()
-        except Exception:
-            pass
+def _safe_unlink(p: Path):
+    try:
+        if p.exists():
+            p.unlink()
+    except Exception:
+        pass
 
 
 @pytest_asyncio.fixture(scope="function")
-async def oobe_client() -> AsyncGenerator[AsyncClient, None]:
-    """OOBE 专用测试客户端 - 不带依赖覆盖，走真实 engine + init_db 路径"""
-    _cleanup_oobe_files()
+async def oobe_client(monkeypatch, tmp_path) -> AsyncGenerator[AsyncClient, None]:
+    """OOBE 专用测试客户端。
+
+    将 OOBE 状态文件重定向到 tmp_path，原因有二：
+    1. 仓库目录下的删除会被 safe-delete 拦截（windows 回收站不可用 → fail-closed），
+       导致 fixture 无法清理标记文件、测试间状态泄漏；
+    2. tmp 路径在 safe-delete 白名单内走原生删除，天然隔离且不污染仓库。
+    """
+    tmp_cfg = tmp_path / "rosetta.json"
+    tmp_lock = tmp_path / "oobe_complete"
+    tmp_state = tmp_path / ".oobe_state.json"
+    tmp_env = tmp_path / ".env"
+    tmp_db = tmp_path / "rosetta_oobe_test.db"
+
+    for name, val in [
+        ("CONFIG_FILE", tmp_cfg),
+        ("OOBE_LOCK_FILE", tmp_lock),
+        ("STATE_FILE", tmp_state),
+        ("ENV_FILE", tmp_env),
+    ]:
+        monkeypatch.setattr(_paths, name, val)
+    # oobe_middleware 通过 deps.is_oobe_complete 读取这两个模块级常量
+    monkeypatch.setattr(_deps, "CONFIG_FILE", tmp_cfg)
+    monkeypatch.setattr(_deps, "OOBE_LOCK_FILE", tmp_lock)
+    # oobe.py 模块级导入的常量与 config_service 实例
+    monkeypatch.setattr(_oobe, "CONFIG_FILE", tmp_cfg)
+    monkeypatch.setattr(_oobe, "OOBE_LOCK_FILE", tmp_lock)
+    monkeypatch.setattr(_oobe, "STATE_FILE", tmp_state)
+    monkeypatch.setattr(_oobe, "ENV_FILE", tmp_env)
+    monkeypatch.setattr(_oobe, "config_service", ConfigService())
+    # 安装用的数据库也落在 tmp，避免仓库内残留
+    monkeypatch.setitem(DEFAULT_INSTALL_PAYLOAD, "db_path", str(tmp_db))
+
+    # 测试断言使用的全局常量同步重定向到 tmp
+    self_mod = sys.modules[__name__]
+    monkeypatch.setattr(self_mod, "ROSETTA_JSON", tmp_cfg)
+    monkeypatch.setattr(self_mod, "OOBE_COMPLETE", tmp_lock)
+    monkeypatch.setattr(self_mod, "OOBE_STATE", tmp_state)
+    monkeypatch.setattr(self_mod, "ENV_FILE", tmp_env)
+
+    for p in (tmp_cfg, tmp_lock, tmp_state, tmp_env, tmp_db):
+        _safe_unlink(p)
 
     app = create_application()
 
@@ -89,7 +126,8 @@ async def oobe_client() -> AsyncGenerator[AsyncClient, None]:
         await ac.aclose()
     except Exception:
         pass
-    _cleanup_oobe_files()
+    for p in (tmp_cfg, tmp_lock, tmp_state, tmp_env, tmp_db):
+        _safe_unlink(p)
 
 
 @pytest.mark.asyncio

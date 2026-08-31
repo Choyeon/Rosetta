@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master, develop]
+  pull_request:
+    branches: [main, master, develop]
+
+jobs:
+  backend:
+    name: Backend tests (FastAPI + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install backend dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install fastapi "sqlalchemy[asyncio]" "alembic>=1.13.0" python-multipart \
+            dnspython pydantic uvicorn "python-jose[cryptography]" passlib bcrypt \
+            pillow "httpx>=0.27.0" "pytest>=9.0.3" "pytest-asyncio>=0.23.0" "pytest-cov>=4.1.0" redis
+
+      - name: Run backend tests
+        env:
+          # 测试使用独立临时 SQLite，不依赖外部服务
+          ROSETTA_ENV: test
+        run: |
+          python -m pytest tests/ -q --no-cov
+
+  frontend:
+    name: Frontend typecheck & lint (Nuxt 4)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint

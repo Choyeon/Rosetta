@@ -1,0 +1,615 @@
+/*
+Theme Name: Minimal Paper
+Theme URI: https://rosetta.dev/themes/astro-paper-inspired
+Author: Rosetta Themes
+Author URI: https://rosetta.dev
+Description: 760px 窄栏居中、无壁纸 Hero、竖排列表、极细分割线 — 极简印刷风格博客主题。
+Version: 0.1.0
+Requires Rosetta: >=1.0.0
+Tags: color:mono, layout:single-column, customizer, minimal-paper
+Text Domain: astro-paper-inspired
+*/
+
+/* =========================================================
+   Theme: astro-paper-inspired (Minimal Paper)
+   选择器同时兼容两种属性前缀：
+     · :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"]        — 旧约定 / 与明暗模式 data-theme=slug 无冲突时
+     · [data-rosetta-theme="astro-paper-inspired"] — Rosetta 新独立属性，避免与明暗主题 (light/dark) 冲突
+   统一用 :is() 组合包装，保证只激活其一也能覆盖所有规则。
+   · 760px 窄栏居中
+   · 纯文字 Hero，无背景图 / 渐变 / 色块
+   · 列表项之间只有 1px 极细分隔线 (hairline)
+   · 标题采用衬线字体；正文使用无衬线保持可读性
+   · 链接无默认下划线，hover 才显现
+   ========================================================= */
+
+@charset "UTF-8";
+
+/* 组合前缀宏（后文使用 $P 替换为以下 :is(...) 组合）：
+     $P ≡ :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"]
+   为了保持 CSS 原生可读、不依赖预处理器，下面每条规则显式展开。 */
+
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] {
+  color-scheme: light dark;
+  --ap-accent: #4f46e5;
+  --ap-hairline: hsl(var(--border) / 0.55);
+  --ap-fg: hsl(var(--foreground));
+  --ap-muted: hsl(var(--muted-foreground));
+  --ap-bg: hsl(var(--background));
+  background: var(--ap-bg);
+  color: var(--ap-fg);
+}
+
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] body {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI",
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC",
+    "Noto Sans SC", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: 0;
+}
+
+/* ===== 标题采用衬线 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] h1,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] h2,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] h3,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] h4,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] h5,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-role="display-font"] {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC",
+    "Source Han Serif SC", "Noto Serif SC", "Times New Roman", serif !important;
+  letter-spacing: -0.01em;
+  font-feature-settings: "ss01", "cv11";
+}
+
+/* ===== 容器：统一 760px 窄栏居中 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main .container,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] #app-layout-main > .container,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main > [data-layout="page-root"] > .container,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] body > div > .container {
+  max-width: 760px !important;
+  padding-left: 1.25rem !important;
+  padding-right: 1.25rem !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+}
+@media (min-width: 768px) {
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main .container,
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] #app-layout-main > .container {
+    padding-left: 1.5rem !important;
+    padding-right: 1.5rem !important;
+  }
+}
+
+/* ===== 顶栏：只保留底部 1px 极细线 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-layout="app-header"] {
+  background: transparent !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-bottom: 1px solid var(--ap-hairline) !important;
+  box-shadow: none !important;
+}
+
+/* ===== 页脚：只保留顶部 1px 极细线 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] footer,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-layout="app-footer"] {
+  background: transparent !important;
+  border-top: 1px solid var(--ap-hairline) !important;
+  box-shadow: none !important;
+}
+
+/* ===== Hero 区：纯文字，无任何容器 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-hero],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero {
+  padding-top: 4.5rem;
+  padding-bottom: 3rem;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+@media (min-width: 768px) {
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-hero],
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero {
+    padding-top: 6rem;
+    padding-bottom: 3.5rem;
+  }
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-hero] h1,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero h1,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero-title {
+  color: var(--ap-fg);
+  margin: 0 0 0.75rem 0;
+  font-weight: 700;
+  font-size: clamp(1.8rem, 4vw, 2.5rem);
+  line-height: 1.15;
+  text-align: left;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-hero] p,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero p,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero-subtitle {
+  color: var(--ap-muted);
+  margin: 0;
+  max-width: 62ch;
+  line-height: 1.7;
+  text-align: left;
+}
+
+/* ===== Section 标题：底线 1px ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-section-title,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-section-title] {
+  border-bottom: 1px solid var(--ap-hairline) !important;
+  padding: 0 0 0.55rem 0 !important;
+  margin: 0 0 1.8rem 0 !important;
+  color: var(--ap-fg);
+  background: transparent !important;
+  font-weight: 600;
+  font-size: 1.1rem;
+}
+
+/* ===== 文章列表：竖排，每项之间只有 1px 分割线 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-post-list,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] {
+  list-style: none;
+  padding: 0 !important;
+  margin: 0 !important;
+  background: transparent !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-post-item,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] > li {
+  padding: 0.25rem 0 1.9rem 0 !important;
+  margin: 0 0 0.25rem 0 !important;
+  border-bottom: 1px solid var(--ap-hairline) !important;
+  background: transparent !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-post-item:last-child,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] > li:last-child {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+/* 日期：小号 uppercase + tabular 数字 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-post-date,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] time,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] [class*="date"] {
+  display: inline-block;
+  color: var(--ap-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin: 0 0 0.1rem 0;
+}
+
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-post-title,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] h2,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] h3 {
+  color: var(--ap-fg);
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+  font-size: 1.35rem;
+  line-height: 1.35;
+}
+
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-post-excerpt,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] [class*="excerpt"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] [class*="summary"] {
+  color: var(--ap-muted);
+  margin: 0.45rem 0 0 0;
+  line-height: 1.7;
+  font-size: 0.95rem;
+}
+
+/* ===== 链接：默认无下划线，hover 才显现 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] a {
+  color: inherit;
+  text-decoration: none;
+  transition: text-decoration-color 120ms ease;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] a:hover {
+  text-decoration: underline;
+  text-decoration-thickness: 1.25px;
+  text-underline-offset: 3px;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] a[class*="ap-post"]:hover .ap-post-title,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] a:hover h2,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-post-list] a:hover h3 {
+  text-decoration: underline;
+  text-decoration-thickness: 1.5px;
+  text-underline-offset: 4px;
+}
+
+/* ===== 卡片：去容器化，无底、无阴影、无边框 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="card-surface"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="Card"][class*="root"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="shadow-soft"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="bg-card"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CardHeader"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CardContent"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CardFooter"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CardHeader"] { padding-top: 0 !important; padding-bottom: 0 !important; }
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CardFooter"] { padding-top: 0 !important; padding-bottom: 0 !important; }
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CardContent"] { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+
+/* ===== 强制单列 —— 仅限于文章列表 PostCard 容器，排除分类/标签/归档/系列 =====
+   原 blanket grid-cols 强制单列会误伤 categories/tags/series/search 等非文章列表页面。 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"]
+  main [data-post-list],
+  main [class*="PostList"],
+  main [class*="post-list"] {
+  > .grid[class*="grid-cols-"],
+  > div > .grid[class*="grid-cols-"] {
+    grid-template-columns: 1fr !important;
+    gap: 0 !important;
+    row-gap: 0 !important;
+    column-gap: 0 !important;
+  }
+}
+
+/* ===== PostCard 组件 → 去卡片化 + 竖排列表项 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] a[href*="/posts/"] > [class*="root"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  padding: 0 0 1.9rem 0 !important;
+  margin: 0 0 0.25rem 0 !important;
+  border-bottom: 1px solid var(--ap-hairline) !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"]:last-child {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="cover"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] img[class*="cover"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="aspect-"] {
+  display: none !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] h1,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] h2,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] h3,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="title"] {
+  font-weight: 600 !important;
+  font-size: 1.35rem !important;
+  line-height: 1.35 !important;
+  letter-spacing: -0.01em !important;
+  color: var(--ap-fg) !important;
+  margin: 0.25rem 0 0 0 !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="date"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] time {
+  color: var(--ap-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="excerpt"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="summary"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="PostCard"] [class*="card-description"] {
+  color: var(--ap-muted);
+  margin: 0.45rem 0 0 0 !important;
+  line-height: 1.7 !important;
+  font-size: 0.95rem;
+}
+
+/* ===== 文章详情：隐藏侧边栏 TOC 与封面 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main aside,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main [class*="sticky"] {
+  display: none !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main [class*="lg:grid-cols-[1fr_240px]"] {
+  grid-template-columns: 1fr !important;
+  gap: 0 !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main article > img,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main div[class*="aspect-"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="detail-cover"] {
+  display: none !important;
+}
+
+/* ===== 评论/留言板：去卡片化 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main [class*="CommentItem"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main [class*="CommentList"] [class*="card-surface"] {
+  background: transparent !important;
+  border-radius: 0 !important;
+  padding: 0 0 1.5rem 0 !important;
+  margin: 0 0 0.25rem 0 !important;
+  border-bottom: 1px solid var(--ap-hairline) !important;
+  border-left: none !important;
+  border-right: none !important;
+  border-top: none !important;
+  box-shadow: none !important;
+}
+
+/* ===== 彩色渐变、装饰盒透明化 —— 仅限 Hero 封面 / 空态图形，不影响按钮 Pill =====
+   原 blanket main 下全部 shadow-/rounded-xl/ring-/bg-gradient 会把分类标签云、
+   搜索筛选区、分页按钮 pill 的圆角/阴影一并干掉，严重破坏其他页面观感。 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"]
+  main [class*="cover"] img,
+  main [class*="detail-cover"],
+  main [class*="aspect-"],
+  main > div > [class*="bg-gradient"],
+  main header[class*="hero-gradient"],
+  main div[class*="size-16"].rounded-2xl,
+  main div[class*="inline-flex"][class*="size-16"],
+  main .empty-state [class*="rounded-2xl"],
+  main .empty-state [class*="rounded-xl"]:not(button):not([class*="Button"]),
+  main .empty-state [class*="shadow-"],
+  main .empty-state [class*="ring-"] {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 0 !important;
+  border: none !important;
+}
+
+/* ===== 页面标题区：左对齐衬线大字 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main header h1 {
+  font-size: clamp(1.8rem, 4vw, 2.5rem) !important;
+  line-height: 1.12 !important;
+  font-weight: 700 !important;
+  text-align: left !important;
+  letter-spacing: -0.015em !important;
+  margin-bottom: 0.5rem !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main header p {
+  text-align: left !important;
+  color: var(--ap-muted);
+  max-width: 62ch;
+}
+
+/* ===== 分页：顶部加呼吸空间 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main nav[aria-label="pagination"] {
+  padding-top: 2rem;
+}
+
+/* ===== 骨架屏：保持色块但去圆角 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main [class*="Skeleton"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main [class*="skeleton"] {
+  border-radius: 0 !important;
+}
+
+/* ===== 分类/系列/友链：竖排列表，每项一条细分隔线 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main div[class*="grid-cols-"] > a[href*="/categories/"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main div[class*="grid-cols-"] > a[href*="/series/"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main div[class*="grid-cols-"] > a[href^="http"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main div[class*="grid-cols-"] > a[href*="/tags/"]:not([class*="no-underline grid"]) {
+  display: block;
+  padding: 0 0 1.5rem 0 !important;
+  margin: 0 0 0.25rem 0 !important;
+  border-bottom: 1px solid var(--ap-hairline) !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] main div[class*="grid-cols-"] > a:last-child {
+  border-bottom: none !important;
+}
+
+/* ===== 标签胶囊：去线框去背景 ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="Badge"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="TagBadge"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="CategoryBadge"] {
+  padding: 0 0.35rem !important;
+  margin: 0 0.15rem 0 0 !important;
+  background: transparent !important;
+  border: none !important;
+  font-size: 0.75rem !important;
+  color: var(--ap-muted) !important;
+  box-shadow: none !important;
+}
+
+/* ===== Hero 封面图隐藏 (与"无大图 Hero"对应) ===== */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-hero] img,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] .ap-hero img,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [class*="hero-cover"] {
+  display: none !important;
+}
+
+/* =========================================================
+   Minimal Navbar — 极简印刷风顶栏（760px 窄栏 / 去阴影 / 去胶囊）
+   · Header 容器 760px，与正文内容同宽，左右留白与正文一致
+   · Logo 品牌名用衬线字体 + 更轻的字重，无 uppercase
+   · 导航链接去 rounded-md 胶囊背景，激活态只有 underline + 加粗
+   · Header 无 backdrop-blur、无 bg-background/80，hairline 底线 1px
+   · 右侧控件按钮：ghost 去背景 hover 只显示下划线或文字变化
+   ========================================================= */
+
+/* Header 外层：已有 L86-93 去背景/模糊 + hairline，这里只做语义 token 升级 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header#app-header,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] body > header:first-of-type {
+  background: var(--ap-bg) !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-bottom: 1px solid var(--ap-hairline) !important;
+  box-shadow: none !important;
+}
+
+/* Header 内部容器：760px 窄栏，与 main .container 一致；桌面端 ~72px 高度（复刻 Astro Paper 81px） */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header > .container,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-navbar="root"] > .container {
+  max-width: 760px !important;
+  padding-left: 1rem !important;     /* 移动端 16px —— 对齐 Astro Paper 16px 基线 */
+  padding-right: 1rem !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  height: 64px !important;            /* 移动端 ~64px，与之前 h-16 相同 */
+}
+@media (min-width: 640px) {
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header > .container,
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] [data-navbar="root"] > .container {
+    height: 72px !important;           /* 桌面端 72px，接近 Astro Paper 81px */
+    padding-left: 20px !important;     /* 桌面端 px-5 20px，和 Astro Paper 内层 nav ms-2 gap 一致 */
+    padding-right: 20px !important;
+  }
+}
+
+/* Logo 品牌名：衬线字体 + 600/700 字重（复刻 Astro Paper: font-semibold text-2xl 桌面 / text-xl 移动端） */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header a[href="/"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="brand"] {
+  font-family: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC",
+    "Source Han Serif SC", "Noto Serif SC", "Times New Roman", serif !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.01em !important;
+  font-size: 1.25rem !important;       /* 20px —— 移动端 xl，匹配 Astro Paper text-xl(1.25rem) */
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+  margin-left: 0 !important;
+}
+@media (min-width: 640px) {
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header a[href="/"],
+  :is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="brand"] {
+    font-size: 1.5rem !important;      /* 24px —— 桌面端 sm:text-2xl，完全匹配 Astro Paper 24px */
+    padding: 0 !important;
+  }
+}
+
+/* Logo 图片：极简主题下与 24px 品牌字高对齐（img 元素本身独立于文字外，不需更大） */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header[data-navbar-minimal="minimal"] img[role="brand-logo"] {
+  height: 24px !important;
+  width: auto !important;
+  max-height: 24px !important;
+}
+
+/* 图标组容器：gap-x-4 = 16px 间距，ml-2 相对文字组 8px 起始 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-group] {
+  gap: 1rem !important;   /* 16px，和 Astro Paper 图标按钮并排的呼吸感一致 */
+  margin-left: 0.5rem !important;
+  display: inline-flex !important;
+  align-items: center;
+}
+
+/* 导航菜单容器：复刻 Astro Paper 的 gap-x-5 间距，统一走 gap，不给 a 写 margin 避免挤压 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="menu"] {
+  gap: 1.25rem !important; /* gap-x-5 ≈ 20px，与 Astro Paper 一致 */
+  row-gap: 0.25rem;
+  column-gap: 1.25rem !important;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-left: 0.5rem !important; /* nav 相对 logo 的起始边距 = sm:ms-2 (8px) */
+}
+
+/* 导航链接：复刻 Astro Paper px-2 py-1 极小 padding，0 margin，16px 中号字 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav > a,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="menu"] a {
+  border-radius: 0 !important;
+  padding: 0.25rem 0.5rem !important;   /* py-1 px-2 = 4px 8px，与 Astro Paper 完全一致 */
+  margin: 0 !important;                   /* 0 margin — 全部间距交给 nav 容器 gap，避免挤压断行 */
+  background: transparent !important;
+  color: var(--ap-fg) !important;
+  font-weight: 500 !important;
+  font-size: 1rem !important;             /* 16px base，与 Astro Paper 相同，不再 0.95rem 过小 */
+  letter-spacing: -0.005em;
+  position: relative;
+  white-space: nowrap !important;         /* ★ 关键：中文不能在链接内断行 → 不会出现"单行一个字" */
+  transition: color 120ms ease;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav > a:hover,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="menu"] a:hover {
+  background: transparent !important;
+  color: var(--ap-fg) !important;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1.25px;
+}
+/* 激活态：不用 bg-accent 彩色胶囊，只用底线 + 文字加粗 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav > a.bg-accent,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav > a[aria-current="page"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="menu"] a.bg-accent {
+  background: transparent !important;
+  color: var(--ap-fg) !important;
+  font-weight: 700 !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav > a.bg-accent::after,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header nav > a[aria-current="page"]::after,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="menu"] a.bg-accent::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5px;
+  background: currentColor;
+}
+
+/* 图标菜单（仅文字 2-3 个，其余转 SVG 图标）：复刻 Astro Paper 的 32×32 纯图标按钮 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"] {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem !important;     /* 32px，与 Astro Paper sm:size-8 一致 */
+  height: 2rem !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"] span.sr,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"] [data-text] {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"] svg,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"] img {
+  width: 1.5rem;
+  height: 1.5rem;
+  stroke-width: 2;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"]:hover {
+  text-decoration: none;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar-icon-menu] a[data-navbar-role="icon-only"]:hover svg {
+  stroke: var(--ap-accent);
+}
+
+/* 右侧控件 Button：统一去圆角 + 去背景，极简 ghost 风格 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="actions"] [class*="Button"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="actions"] button[class*="variant-ghost"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="actions"] button[class*="variant-outline"],
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="actions"] button[class*="variant-default"] {
+  border-radius: 0 !important;
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0.45rem 0.55rem !important;
+  color: var(--ap-fg) !important;
+  font-weight: 500 !important;
+  font-size: 0.9rem !important;
+}
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="actions"] button[class*="variant-default"]:hover,
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header [data-navbar="actions"] button[class*="variant-outline"]:hover {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  background: transparent !important;
+  color: var(--ap-fg) !important;
+}
+
+/* 极简风不使用 Logo 图片时，隐藏 logo img 元素（让纯文字衬线品牌独占视觉） */
+/* → 由 AppHeader.vue data-attr 控制；默认保留图片以保持现有站点定制能力。 */
+:is([data-theme="astro-paper-inspired"],[data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"] header[data-navbar-minimal="text-only"] img[role="brand-logo"] {
+  display: none !important;
+}

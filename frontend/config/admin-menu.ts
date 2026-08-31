@@ -18,7 +18,6 @@ import {
   Megaphone,
   Activity as ActivityIcon,
   Users,
-  UserCog,
   Award,
   Image as ImageIcon,
   Images,
@@ -32,7 +31,10 @@ import {
   Gauge,
   ScrollText,
   Database,
-  Trash2
+  Trash2,
+  Puzzle,
+  Brush,
+  BookOpen
 } from '@lucide/vue'
 
 import type { Component } from 'vue'
@@ -104,6 +106,8 @@ export const adminMenu: AdminMenuGroup[] = [
     label: '系统',
     items: [
       { path: '/admin/system/settings', label: '站点设置', icon: Settings },
+      { path: '/admin/system/themes', label: '主题平台', icon: Brush },
+      { path: '/admin/system/plugins', label: '插件管理', icon: Puzzle },
       { path: '/admin/system/navigation', label: '导航菜单', icon: MenuIcon },
       { path: '/admin/system/friendlinks', label: '友情链接', icon: Link2 },
       { path: '/admin/system/webhooks', label: 'Webhook', icon: Webhook }
@@ -120,6 +124,13 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/tools/audit-logs', label: '审计日志', icon: ScrollText },
       { path: '/admin/tools/migrations', label: '数据库迁移', icon: Database },
       { path: '/admin/tools/cache', label: '缓存管理', icon: Trash2 }
+    ]
+  },
+  {
+    key: 'docs',
+    label: '开发文档',
+    items: [
+      { path: '/admin/docs/index', label: '开发文档', icon: BookOpen }
     ]
   }
 ]

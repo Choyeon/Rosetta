@@ -1,4 +1,4 @@
-"""
+﻿"""
 Rosetta 留言板服务模块
 
 封装留言板 CRUD、审核、置顶/精华切换、点赞、敏感词、频控校验、通知等业务逻辑。
@@ -28,7 +28,13 @@ from backend.services._avatar_helpers import resolved_for_guestbook
 logger = logging.getLogger(__name__)
 
 HTTP_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
-GRAVATAR_BASE = "https://www.gravatar.com/avatar"
+
+
+def _gravatar_base() -> str:
+    raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
+    return raw or "https://cravatar.cn/avatar"
+
+
 AUTO_REJECT_ON_SENSITIVE_DEFAULT = True
 
 
@@ -54,14 +60,14 @@ def mask_ip(ip: str | None) -> str | None:
 
 
 def gravatar_avatar(email: str | None, author_name: str | None) -> str:
-    """生成 Gravatar 头像 URL，绝不暴露 email 明文"""
+    """生成 Gravatar 头像 URL（默认国内镜像），绝不暴露 email 明文"""
     source = ""
     if email:
         source = email.strip().lower()
     if not source:
         source = (author_name or "guest").strip().lower()
     h = hashlib.md5(source.encode("utf-8")).hexdigest()
-    return f"{GRAVATAR_BASE}/{h}?d=mp&s=64"
+    return f"{_gravatar_base()}/{h}?d=mp&s=64"
 
 
 def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
@@ -71,9 +77,23 @@ def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
 
 
 def _entry_to_response(e: GuestbookEntry) -> GuestbookEntryResponse:
-    """把 ORM GuestbookEntry 转成对外响应（填充 author_avatar）"""
+    """把 ORM GuestbookEntry 转成对外响应（填充 author_avatar + title）"""
+    from backend.schemas import UserTitleResponse
+    
     email = e.author_email
     avatar = gravatar_avatar(email, e.author_name)
+    
+    # 获取用户头衔
+    title_data = None
+    if e.user and e.user.title:
+        title_data = UserTitleResponse(
+            id=e.user.title.id,
+            name=e.user.title.name,
+            color=e.user.title.color or "#3B82F6",
+            icon=e.user.title.icon,
+            description=e.user.title.description,
+        )
+    
     return GuestbookEntryResponse(
         id=e.id,
         user_id=e.user_id,
@@ -90,6 +110,7 @@ def _entry_to_response(e: GuestbookEntry) -> GuestbookEntryResponse:
         github=getattr(e, "github", None),
         avatar_source=getattr(e, "avatar_source", None),
         resolved_avatar_url=resolved_for_guestbook(e),
+        title=title_data,
     )
 
 
@@ -308,6 +329,14 @@ class GuestbookService:
 
                 resolved_actor = actor_user_id or 1
 
+                # UGC 类通知（留言/评论）不做多语言包装：用户输入什么语言就显示什么。
+                # title 使用统一的中文标签（管理员后台面向中文运维），避免 i18n dict 被
+                # 前端直接 toString 而裸露 JSON 的历史坑；后续如需国际化通过前端按 verb 翻译。
+                title_plain = "留言板通知"
+                message_plain = f"留言板收到 {actor_display_name} 的新留言：{content_preview}"
+                if entry_status != "approved":
+                    message_plain += f"（当前状态：{entry_status}，需审核后公开展示）"
+
                 for admin in admins:
                     try:
                         notif = Notification(
@@ -316,11 +345,8 @@ class GuestbookService:
                             verb="guestbook_entry_received",
                             content_type="GuestbookEntry",
                             object_id=entry_id,
-                            title={"zh": "留言板通知", "en": "Guestbook"},
-                            message={
-                                "zh": f"留言板收到 {actor_display_name} 的新留言：{content_preview}",
-                                "en": f"Guestbook received new message from {actor_display_name}: {content_preview}",
-                            },
+                            title=title_plain,  # type: ignore[arg-type]
+                            message=message_plain,  # type: ignore[arg-type]
                             level="info",
                         )
                         adb.add(notif)

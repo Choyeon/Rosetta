@@ -54,7 +54,13 @@ class BingWallpaperListResponse(BaseModel):
 
 
 async def _fetch_bing_wallpaper(market: str = "zh-CN", n: int = 1) -> dict[str, Any]:
-    """从 Bing API 获取每日壁纸"""
+    """从 Bing API 获取每日壁纸。若不可达返回 {} 由上层走兜底。
+
+    保持默认 trust_env=True 让 httpx 自动读取 HTTP_PROXY / HTTPS_PROXY 环境变量：
+    - 有代理（本地 clash/7897）时自动走代理
+    - 无代理时直连
+    不强制挂载 transport，避免本地代理未启动时直接报错。
+    """
     import httpx
 
     params = {
@@ -65,22 +71,18 @@ async def _fetch_bing_wallpaper(market: str = "zh-CN", n: int = 1) -> dict[str, 
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        timeout_cfg = httpx.Timeout(10.0, connect=5.0)
+        async with httpx.AsyncClient(timeout=timeout_cfg, follow_redirects=True, trust_env=True) as client:
             response = await client.get(BING_API_URL, params=params)
             if response.status_code != 200:
-                raise HTTPException(
-                    status_code=status.HTTP_502_BAD_GATEWAY,
-                    detail=f"Bing API 返回错误: {response.status_code}",
-                )
+                logger.warning(f"Bing API HTTP {response.status_code}, 将走兜底")
+                return {}
             return response.json()
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"获取 Bing 壁纸失败: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="获取 Bing 壁纸失败，请稍后重试",
-        )
+        logger.warning(f"获取 Bing 壁纸失败（网络或代理不可用）: {e}，将走兜底")
+        return {}
 
 
 @router.get(
@@ -106,13 +108,20 @@ async def get_bing_wallpaper(
     # 从 Bing API 获取
     data = await _fetch_bing_wallpaper(market)
 
-    if not data.get("images") or len(data["images"]) == 0:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Bing API 未返回壁纸数据",
+    images = data.get("images") or []
+    if not images:
+        # Bing 不可达时返回占位条目，保证前端不崩（前端会用 fullUrl 代理，失败再走 gradient fallback）
+        return BingWallpaperResponse(
+            url="",
+            full_url="",
+            title="Bing 壁纸暂不可用",
+            description="",
+            copyright="",
+            copyright_link="",
+            date=date.today().isoformat(),
         )
 
-    image = data["images"][0]
+    image = images[0]
 
     url = image.get("url", "")
     full_url = f"https://www.bing.com{url}" if url and not url.startswith("http") else url
@@ -164,10 +173,8 @@ async def get_bing_wallpapers(
 
     raw_images = data.get("images") or []
     if not raw_images:
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Bing API 未返回壁纸数据",
-        )
+        # Bing 不可达时返回空列表，不抛 502；前端 detect 空后自动走 gradient fallback，不打断页面
+        return BingWallpaperListResponse(images=[])
 
     items: list[BingWallpaperItem] = []
     for image in raw_images:

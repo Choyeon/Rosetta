@@ -126,19 +126,25 @@
             class="mt-1"
             @change="toggleSelect(comment.id, $event)"
           />
-          <Avatar class="size-10 shrink-0">
-            <AvatarImage
-              :src="comment.resolved_avatar_url ?? ''"
-              :alt="comment.author_name"
-            />
-            <AvatarFallback>{{ comment.author_name?.[0]?.toUpperCase() || 'U' }}</AvatarFallback>
-          </Avatar>
+          <UserAvatar
+            :avatar="comment.resolved_avatar_url"
+            :seed="comment.author_name"
+            :name="comment.author_name"
+            :title="comment.title || null"
+            :size="40"
+            :show-title="true"
+          />
 
           <div class="flex-1 min-w-0">
             <div class="flex items-start justify-between gap-2">
               <div class="min-w-0">
                 <div class="flex items-center gap-2 flex-wrap">
                   <span class="font-medium truncate">{{ comment.author_name }}</span>
+                  <TitleBadge
+                    v-if="comment.title"
+                    :title="comment.title"
+                    size="sm"
+                  />
                   <span
                     v-if="comment.author_email"
                     class="text-xs text-muted-foreground truncate"
@@ -271,7 +277,10 @@
             v-for="p in visiblePages"
             :key="p"
           >
-            <PaginationItem v-if="p !== '...'" :value="typeof p === 'number' ? p : 1">
+            <PaginationItem
+              v-if="p !== '...'"
+              :value="typeof p === 'number' ? p : 1"
+            >
               <Button
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
@@ -281,7 +290,10 @@
                 {{ p }}
               </Button>
             </PaginationItem>
-            <PaginationItem v-else :value="1">
+            <PaginationItem
+              v-else
+              :value="1"
+            >
               <PaginationEllipsis :value="1" />
             </PaginationItem>
           </template>
@@ -325,12 +337,13 @@
 
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import { Card, CardContent } from '~~/components/ui/card'
+ 
+import AdminCard from '~~/components/admin/AdminCard.vue'
+import UserAvatar from '~~/components/UserAvatar.vue'
+import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { Badge } from '~~/components/ui/badge'
 import { Checkbox } from '~~/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '~~/components/ui/dropdown-menu'
@@ -458,6 +471,8 @@ async function updateStatus(id: number, status: AdminCommentStatus) {
     toast.success('状态更新成功')
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '状态更新失败'
+    toast.error(msg)
   }
 }
 
@@ -475,6 +490,8 @@ async function doDelete() {
     deleteTargetId.value = null
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '删除失败'
+    toast.error(msg)
   }
 }
 
@@ -487,6 +504,8 @@ async function batchAction(action: CommentBatchActionType) {
     selectedIds.value = []
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '批量操作失败'
+    toast.error(msg)
   }
 }
 
@@ -521,6 +540,8 @@ async function submitReply(comment: AdminComment) {
     replyContent.value = ''
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '回复失败'
+    toast.error(msg)
   }
 }
 

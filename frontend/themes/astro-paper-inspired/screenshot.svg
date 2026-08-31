@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="600" height="450">
+  <defs>
+    <style>
+      .bg { fill: #fafafa; }
+      .fg { fill: #111827; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; }
+      .muted { fill: #6b7280; font-family: Inter, system-ui, sans-serif; }
+      .accent { fill: #4f46e5; }
+      .hairline { stroke: #e5e7eb; stroke-width: 0.5; }
+    </style>
+  </defs>
+  <!-- 背景 -->
+  <rect class="bg" width="600" height="450"/>
+  <!-- 内容区域 760px 缩放到 520px 居中 -->
+  <g transform="translate(40, 0)">
+    <!-- 顶部细线 -->
+    <line class="hairline" x1="0" y1="72" x2="520" y2="72"/>
+    <!-- Logo / 导航文字 -->
+    <text class="fg" x="0" y="58" font-size="15" font-weight="700">rosetta</text>
+    <text class="muted" x="440" y="58" font-size="12">about · posts · tags</text>
+
+    <!-- Hero: 纯文字标题 -->
+    <text class="fg" x="0" y="140" font-size="32" font-weight="700">Sharing ideas, one post</text>
+    <text class="fg" x="0" y="176" font-size="32" font-weight="700">at a time.</text>
+    <text class="muted" x="0" y="208" font-size="13">A quiet place for writings on software, design, and the craft.</text>
+
+    <!-- 分割线 -->
+    <line class="hairline" x1="0" y1="236" x2="520" y2="236"/>
+
+    <!-- 文章列表 竖排列 -->
+    <!-- Item 1 -->
+    <text class="muted" x="0" y="264" font-size="10" letter-spacing="1.5">AUG 28 · 2026</text>
+    <text class="fg" x="0" y="288" font-size="18" font-weight="600">On building minimalist blog themes that last</text>
+    <text class="muted" x="0" y="308" font-size="12">Thoughts on typography, whitespace, and why 760px feels just right...</text>
+    <!-- 分割线 -->
+    <line class="hairline" x1="0" y1="324" x2="520" y2="324"/>
+    <!-- Item 2 -->
+    <text class="muted" x="0" y="348" font-size="10" letter-spacing="1.5">AUG 22 · 2026</text>
+    <text class="fg" x="0" y="372" font-size="18" font-weight="600">The power of plugin hooks in small CMS engines</text>
+    <text class="muted" x="0" y="392" font-size="12">How a tiny action/filter system can grow into a whole marketplace...</text>
+    <!-- 底部分割线 -->
+    <line class="hairline" x1="0" y1="414" x2="520" y2="414"/>
+    <text class="muted" x="0" y="436" font-size="11">© 2026 · Astro Paper Inspired theme</text>
+    <circle class="accent" cx="508" cy="430" r="3"/>
+  </g>
+</svg>

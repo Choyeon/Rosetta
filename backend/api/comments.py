@@ -43,6 +43,7 @@ from backend.schemas import (
     CommentResponse,
 )
 from backend.services.comment_service import CommentService
+from backend.core.plugin_bus import bus
 
 logger = logging.getLogger(__name__)
 
@@ -193,6 +194,7 @@ async def create_comment(
             current_user=current_user,
         )
         await db.commit()
+        await bus.do_action("comment.created", resp, db=db)
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
@@ -240,6 +242,7 @@ async def admin_approve(_staff: CurrentStaff, comment_id: int, db: DB):
     try:
         r = await CommentService.admin_approve(db, comment_id)
         await db.commit()
+        await bus.do_action("comment.approved", r, db=db)
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
@@ -270,6 +273,7 @@ async def admin_spam(_staff: CurrentStaff, comment_id: int, db: DB):
     try:
         r = await CommentService.admin_spam(db, comment_id)
         await db.commit()
+        await bus.do_action("comment.spam", r, db=db)
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e

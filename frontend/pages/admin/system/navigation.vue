@@ -24,8 +24,8 @@
       </Button>
     </div>
 
-    <Card class="rounded-2xl">
-      <CardContent class="p-0">
+    <AdminCard>
+      <div class="p-0">
         <div
           v-if="loading"
           class="p-6 space-y-3"
@@ -142,8 +142,8 @@
             </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
     <Dialog v-model:open="dialogOpen">
       <DialogContent class="max-w-xl rounded-2xl">
@@ -154,17 +154,12 @@
           </DialogDescription>
         </DialogHeader>
         <div class="space-y-4 py-2">
-          <div class="space-y-2">
-            <Label class="text-sm font-medium">显示名称 <span class="text-error">*</span></Label>
-            <Input
-              v-model="form.label"
-              placeholder="多语言支持可传 JSON，当前填写中文即可"
-              class="rounded-xl"
-            />
-            <p class="text-xs text-muted-foreground">
-              示例：首页；若需多语言可填 { "zh": "首页", "en": "Home" }
-            </p>
-          </div>
+          <I18nTabsEditor
+            v-model="form.label"
+            kind="text"
+            label="显示名称"
+            :required="true"
+          />
           <div class="space-y-2">
             <Label class="text-sm font-medium">链接 URL <span class="text-error">*</span></Label>
             <Input
@@ -300,8 +295,6 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
 import { ref, computed, onMounted } from 'vue'
 import {
   fetchAdminNavigations,
@@ -316,7 +309,7 @@ import {
   Pencil, Trash2, Save, Loader2, Info
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Badge } from '~~/components/ui/badge'
 import {
@@ -327,6 +320,7 @@ import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -342,7 +336,7 @@ const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminNavItem | null>(null)
 
 const emptyForm = () => ({
-  label: '',
+  label: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   url: '',
   icon: '',
   target: '_self' as '_self' | '_blank',
@@ -366,16 +360,19 @@ function extractZh(label: AdminNavItem['label']): string {
   return ''
 }
 
-function labelToPayload(label: string): string | Record<string, string> {
-  const trimmed = label.trim()
-  if (!trimmed) return { zh: '' }
-  if (trimmed.startsWith('{')) {
-    try {
-      const parsed = JSON.parse(trimmed)
-      if (parsed && typeof parsed === 'object') return parsed
-    } catch { /* ignore */ }
+function normalizeLabel(label: AdminNavItem['label']): Record<string, string> {
+  const base = { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (label == null) return base
+  if (typeof label === 'string') {
+    return { ...base, zh: label }
   }
-  return { zh: trimmed }
+  const obj = label as Record<string, string | null | undefined>
+  return {
+    zh: obj.zh ?? '',
+    en: obj.en ?? '',
+    ja: obj.ja ?? '',
+    zh_Hant: obj.zh_Hant ?? ''
+  }
 }
 
 function isFirst(item: AdminNavItem): boolean {
@@ -400,6 +397,8 @@ async function swapOrder(a: AdminNavItem, b: AdminNavItem) {
     b.order = origA
     toast.success('排序已更新')
   } catch (e) {
+    console.error('[navigation] swapOrder failed:', e)
+    toast.error('更新排序失败')
   }
 }
 
@@ -420,6 +419,8 @@ async function loadAll() {
   try {
     items.value = await fetchAdminNavigations()
   } catch (e) {
+    console.error('[navigation] loadAll failed:', e)
+    toast.error('加载导航列表失败')
     items.value = []
   } finally {
     loading.value = false
@@ -437,27 +438,24 @@ function openCreate() {
 function openEdit(item: AdminNavItem) {
   editingId.value = item.id
   form.value = {
-    label: typeof item.label === 'string' ? item.label : JSON.stringify(item.label ?? ''),
+    label: normalizeLabel(item.label),
     url: item.url,
     icon: item.icon ?? '',
     target: item.target || '_self',
     order: item.order,
     parent_id: item.parent_id
   }
-  if (typeof item.label === 'object' && (item.label as Record<string, string>).zh) {
-    form.value.label = (item.label as Record<string, string>).zh ?? ''
-  }
   dialogOpen.value = true
 }
 
 async function handleSubmit() {
-  if (!form.value.label.trim() || !form.value.url.trim()) {
+  if (!String(form.value.label.zh ?? '').trim() || !form.value.url.trim()) {
     toast.warning('请填写名称与 URL')
     return
   }
   submitting.value = true
   const payload = {
-    label: labelToPayload(form.value.label),
+    label: form.value.label,
     url: form.value.url.trim(),
     icon: form.value.icon.trim() || null,
     target: form.value.target,
@@ -476,6 +474,8 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
+    console.error('[navigation] handleSubmit failed:', e)
+    toast.error(editingId.value ? '更新导航失败' : '创建导航失败')
   } finally {
     submitting.value = false
   }
@@ -495,6 +495,8 @@ async function confirmDelete() {
     toast.success('菜单项已删除')
     confirmOpen.value = false
   } catch (e) {
+    console.error('[navigation] confirmDelete failed:', e)
+    toast.error('删除导航失败')
   } finally {
     deleting.value = false
   }

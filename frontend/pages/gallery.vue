@@ -446,4 +446,15 @@ const setGalleryRefPatched = (key: string, el: Element | null) => {
   return baseSetGalleryRef(key, el)
 }
 setGalleryRef = setGalleryRefPatched
+
+useSeo({
+  title: computed(() => t('gallery.title') as string || '相册'),
+  description: computed(() => t('gallery.desc') as string),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.gallery', '相册') as string, url: '/gallery' }
+])
 </script>

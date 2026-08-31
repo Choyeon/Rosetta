@@ -1,0 +1,31 @@
+{
+  "manifest_version": "1.0",
+  "name": "SEO Toolkit",
+  "slug": "seo-toolkit",
+  "version": "1.0.0",
+  "requires_rosetta": ">=1.0.0",
+  "description": "示例插件：为文章内容注入结构化 meta 标签占位符与 Article JSON-LD 钩子",
+  "author_name": "Rosetta Team",
+  "author": {"name":"Rosetta Team", "uri": "https://rosetta.dev"},
+  "plugin_uri": "https://rosetta.dev/plugins/seo-toolkit",
+  "author_uri": "https://rosetta.dev",
+  "textdomain": "seo-toolkit",
+  "tags": ["seo", "json-ld", "meta"],
+  "category": "seo",
+  "settings_schema": {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "enable_open_graph": {"type":"boolean","title":"启用 Open Graph","default":true},
+      "enable_twitter_card": {"type":"boolean","title":"启用 Twitter Card","default":true},
+      "enable_json_ld_article": {"type":"boolean","title":"启用 Article JSON-LD","default":true},
+      "default_twitter_handle": {"type":"string","title":"默认 Twitter @handle","default":""},
+      "enable_auto_keywords": {"type":"boolean","title":"从正文自动提取关键词","default":false},
+      "additional_head_html": {"type":"string","title":"自定义 <head> 片段","format":"textarea","default":""}
+    }
+  },
+  "screenshot_urls": [],
+  "dependencies": [],
+  "entry": "plugin.py",
+  "hooks": ["post.published", "the_content"]
+}
