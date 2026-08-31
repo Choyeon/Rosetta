@@ -59,7 +59,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generate Nuxt types
-        run: pnpm prepare
+        run: npx nuxi prepare
 
       - name: Type check
         run: pnpm typecheck
