@@ -10,9 +10,6 @@ jobs:
   backend:
     name: Backend tests (FastAPI + pytest)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: backend
     steps:
       - uses: actions/checkout@v4
 
@@ -22,19 +19,20 @@ jobs:
           python-version: "3.11"
           cache: pip
 
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
       - name: Install backend dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install fastapi "sqlalchemy[asyncio]" "alembic>=1.13.0" python-multipart \
-            dnspython pydantic uvicorn "python-jose[cryptography]" passlib bcrypt \
-            pillow "httpx>=0.27.0" "pytest>=9.0.3" "pytest-asyncio>=0.23.0" "pytest-cov>=4.1.0" redis
+          export PATH="$HOME/.local/bin:$PATH"
+          uv sync --extra dev
 
       - name: Run backend tests
         env:
           # 测试使用独立临时 SQLite，不依赖外部服务
           ROSETTA_ENV: test
         run: |
-          python -m pytest tests/ -q --no-cov
+          uv run pytest -q --no-cov
 
   frontend:
     name: Frontend typecheck & lint (Nuxt 4)
