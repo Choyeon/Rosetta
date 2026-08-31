@@ -27,8 +27,12 @@ export default defineNuxtRouteMiddleware((to) => {
   let scope: 'admin' | 'frontend' | 'public-auth'
   if (path.startsWith('/admin')) {
     scope = 'admin'
-  } else if (['/login', '/register', '/oobe'].includes(path) ||
-             path.startsWith('/login/') || path.startsWith('/register/') || path.startsWith('/oobe/')) {
+  } else if (
+    ['/login', '/register', '/oobe'].includes(path)
+    || path.startsWith('/login/')
+    || path.startsWith('/register/')
+    || path.startsWith('/oobe/')
+  ) {
     scope = 'public-auth'
   } else {
     scope = 'frontend'
@@ -59,7 +63,7 @@ export default defineNuxtRouteMiddleware((to) => {
         document.querySelectorAll('link[rel="stylesheet"][href^="/themes/"]').forEach(
           el => el.remove()
         )
-      } catch (_) {
+      } catch {
         /* middleware 层绝不抛异常，失败了 layout 层仍会兜底清理 */
       }
     })

@@ -1,4 +1,4 @@
-﻿"""
+"""
 Rosetta 评论服务模块
 
 封装评论 CRUD、审核、点赞、敏感词、频控校验、通知与邮件异步发送等业务逻辑。
@@ -37,6 +37,10 @@ HTTP_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
 def _gravatar_base() -> str:
     raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
     return raw or "https://cravatar.cn/avatar"
+
+
+# 模块级常量，供外部测试/调用方直接 import
+GRAVATAR_BASE: str = _gravatar_base()
 
 
 AUTO_REJECT_ON_SENSITIVE_DEFAULT = True
