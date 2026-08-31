@@ -59,10 +59,17 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Generate Nuxt types
-        run: npx nuxi prepare
+        run: |
+          pnpm exec nuxi prepare
+          echo "=== tsconfig.app.json paths ==="
+          cat .nuxt/tsconfig.app.json | python3 -c "import sys,json; d=json.load(sys.stdin); print(json.dumps(d.get('compilerOptions',{}).get('paths',{}), indent=2))"
+          echo "=== lib/utils.ts exists? ==="
+          ls -la lib/utils.ts
+          echo "=== vue-tsc version ==="
+          npx vue-tsc --version
 
       - name: Type check
-        run: npx vue-tsc --noEmit -p .nuxt/tsconfig.app.json
+        run: pnpm typecheck
 
       - name: Lint
         run: pnpm lint
