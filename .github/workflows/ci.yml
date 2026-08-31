@@ -58,6 +58,9 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Generate Nuxt types
+        run: pnpm prepare
+
       - name: Type check
         run: pnpm typecheck
 
