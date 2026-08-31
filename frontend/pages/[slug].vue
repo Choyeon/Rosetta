@@ -149,4 +149,23 @@ useHead(() => ({
   title: title.value,
   meta: [{ name: 'description', content: renderedContent.value.slice(0, 180) }]
 }))
+
+useSeo({
+  title,
+  description: computed(() => renderedContent.value.slice(0, 180)),
+  type: 'article'
+})
+useArticleJsonLd({
+  slug,
+  title,
+  'headline': title,
+  'description': computed(() => renderedContent.value.slice(0, 180)),
+  'publishedAt': computed(() => (page.value?.created_at || page.value?.createdAt || '') as string),
+  'updatedAt': computed(() => (page.value?.updated_at || page.value?.updatedAt || '') as string),
+  '@type': 'Article'
+})
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: title.value || slug.value, url: `/${slug.value}` }
+])
 </script>

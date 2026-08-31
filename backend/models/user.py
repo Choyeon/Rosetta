@@ -27,13 +27,16 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    JSON,
     String,
     Text,
     func,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+from backend.core.tenant import TenantMixin
 from backend.utils.compat import UTC
 
 if TYPE_CHECKING:
@@ -71,10 +74,10 @@ class UserTitle(Base):
         autoincrement=True,
         comment="头衔ID",
     )
-    name: Mapped[str] = mapped_column(
-        String(50),
+    name: Mapped[dict[str, str]] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
         nullable=False,
-        comment="头衔名称",
+        comment="头衔名称（多语言）",
     )
     color: Mapped[str] = mapped_column(
         String(20),
@@ -86,10 +89,10 @@ class UserTitle(Base):
         nullable=True,
         comment="图标",
     )
-    description: Mapped[str | None] = mapped_column(
-        String(200),
+    description: Mapped[dict[str, str] | None] = mapped_column(
+        JSON().with_variant(JSONB(), "postgresql"),
         nullable=True,
-        comment="头衔描述",
+        comment="头衔描述（多语言）",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -109,7 +112,7 @@ class UserTitle(Base):
         return f"<UserTitle(id={self.id}, name='{self.name}')>"
 
 
-class User(Base):
+class User(Base, TenantMixin):
     """
     用户模型
 
@@ -128,8 +131,9 @@ class User(Base):
         github: GitHub 主页
         title_id: 头衔ID
         is_active: 是否激活
-        is_staff: 是否为管理员
-        is_superuser: 是否为超级管理员
+        is_staff: 是否为管理员（兼容旧逻辑，等价于 admin 及以上）
+        is_superuser: 是否为超级管理员（兼容旧逻辑，等价于 super_admin）
+        role: 角色（super_admin/admin/editor/author/contributor/subscriber）
         is_banned: 是否被封禁
         last_login: 最后登录时间
         created_at: 创建时间
@@ -250,6 +254,15 @@ class User(Base):
         default=False,
         nullable=False,
         comment="是否为超级管理员",
+    )
+    # RBAC 角色：单一权限来源，向后兼容 is_staff/is_superuser 布尔
+    # 约定：super_admin >= admin > editor > author > contributor > subscriber
+    role: Mapped[str] = mapped_column(
+        String(length=20),
+        default="subscriber",
+        server_default="subscriber",
+        nullable=False,
+        comment="RBAC 角色：super_admin/admin/editor/author/contributor/subscriber",
     )
     is_banned: Mapped[bool] = mapped_column(
         Boolean,

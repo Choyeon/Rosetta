@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
 import { cn } from '~~/lib/utils'
-import { Card, CardContent } from '~~/components/ui/card'
+import AdminCard from './AdminCard.vue'
 
 interface Props {
   title: string
@@ -17,7 +17,10 @@ const props = defineProps<Props>()
 <template>
   <div :class="cn('flex flex-col gap-5 p-6', props.class)">
     <!-- 页头：标题 + 描述 + 操作区 -->
-    <AdminPageHeader :title="title" :description="description">
+    <AdminPageHeader
+      :title="title"
+      :description="description"
+    >
       <Badge
         v-if="count !== undefined"
         variant="secondary"
@@ -31,12 +34,10 @@ const props = defineProps<Props>()
     <!-- 工具栏（搜索 / 筛选 / 批量操作） -->
     <slot name="toolbar" />
 
-    <!-- 内容卡片 -->
-    <Card class="rounded-[12px] border-border overflow-hidden">
-      <CardContent class="p-0">
-        <slot />
-      </CardContent>
-    </Card>
+    <!-- 内容卡片（AdminCard 无 hover 效果，用于列表页面） -->
+    <AdminCard class="p-0 overflow-hidden">
+      <slot />
+    </AdminCard>
 
     <!-- 分页（可选） -->
     <slot name="pagination" />

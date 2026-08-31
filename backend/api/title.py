@@ -8,7 +8,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import String, func, select, update
 from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff, CurrentUser
@@ -20,29 +20,29 @@ router = APIRouter(tags=["用户称号"])
 class UserTitleCreate(BaseModel):
     """用户称号创建模型"""
 
-    name: str = Field(..., min_length=1, max_length=50, description="称号名称")
+    name: dict[str, str] = Field(..., description="称号名称（多语言）")
     color: str = Field(default="#3B82F6", description="显示颜色")
     icon: str | None = Field(None, description="图标类名")
-    description: str | None = Field(None, max_length=200, description="称号描述")
+    description: dict[str, str] | None = Field(None, description="称号描述（多语言）")
 
 
 class UserTitleUpdate(BaseModel):
     """用户称号更新模型"""
 
-    name: str | None = Field(None, min_length=1, max_length=50, description="称号名称")
+    name: dict[str, str] | None = Field(None, description="称号名称（多语言）")
     color: str | None = Field(None, description="显示颜色")
     icon: str | None = Field(None, description="图标类名")
-    description: str | None = Field(None, max_length=200, description="称号描述")
+    description: dict[str, str] | None = Field(None, description="称号描述（多语言）")
 
 
 class UserTitleResponse(BaseModel):
     """用户称号响应模型"""
 
     id: int
-    name: str
+    name: dict[str, str]
     color: str
     icon: str | None = None
-    description: str | None = None
+    description: dict[str, str] | None = None
     created_at: datetime
     users_count: int = 0
 
@@ -107,7 +107,12 @@ async def create_title(
     current_user: CurrentStaff,
 ):
     """创建新称号"""
-    existing = await db.execute(select(UserTitle).where(UserTitle.name == data.name))
+    name_for_check = data.name.get("zh") if isinstance(data.name, dict) else str(data.name)
+    existing = await db.execute(
+        select(UserTitle).where(
+            func.cast(UserTitle.name, String).like(f"%{name_for_check}%")
+        )
+    )
     if existing.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -172,6 +177,12 @@ async def get_title(
     )
 
 
+@router.put(
+    "/titles/{title_id}",
+    response_model=UserTitleResponse,
+    summary="更新称号",
+    description="更新称号信息，需要管理员权限。",
+)
 @router.patch(
     "/titles/{title_id}",
     response_model=UserTitleResponse,

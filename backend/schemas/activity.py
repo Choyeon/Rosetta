@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from backend.schemas import UserResponse
 
 
-ActivityType = Literal["say", "article", "update", "notice"]
+ActivityType = Literal["say", "article", "update", "notice", "link"]
 
 
 class ActivityBase(BaseModel):

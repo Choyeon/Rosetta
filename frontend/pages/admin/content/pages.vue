@@ -15,6 +15,7 @@ import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
+import { Pin } from '@lucide/vue'
 import {
   Select,
   SelectContent,
@@ -229,10 +230,10 @@ onMounted(() => {
         </Badge>
       </template>
       <template #cell-is_pinned="{ row }">
-        <span
+        <Pin
           v-if="(row as AdminPage).is_pinned"
-          class="text-amber-500"
-        >★</span>
+          class="size-3.5 text-amber-500"
+        />
       </template>
       <template #cell-updated_at="{ row }">
         {{ formatAdminDateTime((row as AdminPage).updated_at ?? (row as AdminPage).created_at) }}

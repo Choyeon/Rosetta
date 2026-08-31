@@ -24,8 +24,8 @@
       </Button>
     </div>
 
-    <Card class="rounded-2xl overflow-hidden">
-      <CardContent class="p-0">
+    <AdminCard class="overflow-hidden">
+      <div class="p-0">
         <div
           v-if="loading"
           class="p-6 space-y-3"
@@ -192,8 +192,8 @@
             </tbody>
           </table>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
     <Dialog v-model:open="dialogOpen">
       <DialogContent class="max-w-xl rounded-2xl">
@@ -221,10 +221,18 @@
                   <SelectValue placeholder="选择 Provider" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="generic">通用 Generic</SelectItem>
-                  <SelectItem value="github">GitHub</SelectItem>
-                  <SelectItem value="feishu">飞书 Feishu</SelectItem>
-                  <SelectItem value="email">邮件 Email</SelectItem>
+                  <SelectItem value="generic">
+                    通用 Generic
+                  </SelectItem>
+                  <SelectItem value="github">
+                    GitHub
+                  </SelectItem>
+                  <SelectItem value="feishu">
+                    飞书 Feishu
+                  </SelectItem>
+                  <SelectItem value="email">
+                    邮件 Email
+                  </SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -372,7 +380,7 @@ import {
   Eye, EyeOff, Mail, GitBranch, BellRing, Globe
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
@@ -459,6 +467,8 @@ async function loadAll() {
   try {
     items.value = await fetchAdminWebhooks()
   } catch (e) {
+    console.error('[webhooks] loadAll failed:', e)
+    toast.error('加载 Webhook 列表失败')
     items.value = []
   } finally {
     loading.value = false
@@ -516,6 +526,8 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
+    console.error('[webhooks] handleSubmit failed:', e)
+    toast.error(editingId.value ? '更新 Webhook 失败' : '创建 Webhook 失败')
   } finally {
     submitting.value = false
   }
@@ -528,6 +540,8 @@ async function toggleActive(w: AdminWebhook, val: boolean) {
     w.active = val
     toast.success(val ? '已启用' : '已停用')
   } catch (e) {
+    console.error('[webhooks] toggleActive failed:', e)
+    toast.error(val ? '启用失败' : '停用失败')
     w.active = !val
   } finally {
     togglingId.value = null
@@ -540,6 +554,8 @@ async function handleTrigger(w: AdminWebhook) {
     await triggerAdminWebhook(w.id)
     toast.success('已触发，请查看目标端点')
   } catch (e) {
+    console.error('[webhooks] handleTrigger failed:', e)
+    toast.error('触发 Webhook 失败')
   } finally {
     triggeringId.value = null
   }
@@ -559,6 +575,8 @@ async function confirmDelete() {
     toast.success('Webhook 已删除')
     confirmOpen.value = false
   } catch (e) {
+    console.error('[webhooks] confirmDelete failed:', e)
+    toast.error('删除 Webhook 失败')
   } finally {
     deleting.value = false
   }

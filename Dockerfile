@@ -72,7 +72,7 @@ EXPOSE 8000
 ENTRYPOINT ["/entrypoint.sh"]
 
 # ============================================================
-# 阶段 3: 前端构建(Astro 静态站点)
+# 阶段 3: 前端构建(Nuxt 4 / Nitro 通用服务器)
 # ============================================================
 FROM node:22-alpine AS frontend-builder
 
@@ -89,32 +89,36 @@ RUN pnpm install --frozen-lockfile
 
 COPY frontend/ .
 
-# Astro 构建参数(运行时通过 Vite 代理或 nginx 反向代理访问后端)
-ARG ASTRO_API_BASE_URL=http://localhost:8000
-ENV API_BASE_URL=${ASTRO_API_BASE_URL}
+# 生产代理目标（由 compose 注入 backend 服务名）
+# 注意：nitro.devProxy 仅 dev 生效，生产 /api 由前端容器内的 nginx 反向代理到 backend
+ARG NUXT_API_BASE_URL=http://localhost:8000
+ENV NUXT_PUBLIC_API_BASE_URL=${NUXT_API_BASE_URL}
 
 RUN pnpm run build
 
 # ============================================================
-# 阶段 4: 前端运行时(nginx 服务静态文件 + 反向代理后端)
+# 阶段 4: 前端运行时(nginx 反代 Nitro 服务器 + 后端 API)
 # ============================================================
 FROM nginx:alpine AS frontend
 
-WORKDIR /usr/share/nginx/html
-
-# 复制 Astro 构建产物
-COPY --from=frontend-builder /build/dist /usr/share/nginx/html
+# Nitro 服务器产物（含 public 静态资源与 server 运行时）
+COPY --from=frontend-builder /build/.output /var/www/rosetta/.output
+WORKDIR /var/www/rosetta
 
 # 复制 nginx 配置
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 
-# 加一个真正可用的健康检查工具（curl），并安装 wget 以便脚本使用
+# 安装健康检查工具
 RUN apk add --no-cache curl wget 2>/dev/null || true
 
-# /health 由 nginx 配置中 location 直接返回，避免回落到 404 导致 healthy 判定
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+# 启动脚本：先起 Nitro 服务器（node .output/server/index.mjs，监听 3000），再起 nginx
+RUN printf '#!/bin/sh\nset -e\ncd /var/www/rosetta\nnode .output/server/index.mjs &\nnginx -g "daemon off;"\n' > /start.sh \
+    && chmod +x /start.sh
+
+# /health 由 nginx 配置直接返回，避免回落到 404 导致 healthy 判定失败
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -fsS http://127.0.0.1/health >/dev/null || wget -q -O /dev/null --spider http://127.0.0.1/health || exit 1
 
 EXPOSE 80
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["/start.sh"]

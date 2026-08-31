@@ -48,10 +48,9 @@
 
     <template v-else-if="pending && posts.length === 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Skeleton
+        <PostSkeleton
           v-for="i in 6"
           :key="i"
-          class="aspect-[4/5] rounded-2xl"
         />
       </div>
     </template>
@@ -129,8 +128,8 @@
 import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
+import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
@@ -198,4 +197,20 @@ watch(
     currentPage.value = 1
   }
 )
+
+useSeo({
+  title: computed(() => {
+    const q = (route.query.q as string) || ''
+    return q
+      ? (t('search.resultCount', { count: total.value, keyword: q }) as string)
+      : (t('search.title') as string || '搜索')
+  }),
+  description: computed(() => t('search.desc') as string),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.search', '搜索') as string, url: '/search' }
+])
 </script>

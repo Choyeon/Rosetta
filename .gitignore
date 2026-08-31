@@ -213,3 +213,26 @@ yarn-error.log
 .pnpm-store*/
 .pnpm-home/
 .npm-cache/
+
+# --- AI Agent / Debug Temp Files ---
+.tmp_*
+tmp_*
+scripts_fix_*.py
+scripts_test_*.py
+tmp-shots/
+.workbuddy/
+frontend/.tmp_tc*
+tmp_*.py
+tmp_*.json
+.tmp_*.txt
+_qa/
+frontend/_navtest.cjs
+frontend/scripts/smoke-admin.mjs
+backend/scripts/_dump_*.py
+backend/scripts/_i18n_*.py
+backend/scripts/_reset_*.py
+backend/scripts/_run_*.py
+backend/scripts/_schema_*.py
+backend/scripts/_tmp_*.py
+backend/scripts/audit_*.py
+backend/tests/

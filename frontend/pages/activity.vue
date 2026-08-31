@@ -286,4 +286,15 @@ const activityList = computed<ActivityItem[]>(() => {
 watch(locale, () => {
   refresh().catch(() => undefined)
 })
+
+useSeo({
+  title: computed(() => t('activity.title') as string || '动态'),
+  description: computed(() => t('activity.desc') as string),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.activity', '动态') as string, url: '/activity' }
+])
 </script>

@@ -56,7 +56,8 @@
     "pinned": "置頂",
     "featured": "精華",
     "submitting": "提交中…",
-    "open": "打開"
+    "open": "打開",
+    "by": "由"
   },
   "nav": {
     "home": "首頁",
@@ -593,7 +594,78 @@
     "operationFailed": "[繁]:Operation failed",
     "loading": "[繁]:Loading...",
     "upload": "[繁]:Upload",
-    "selectImage": "[繁]:Select Image"
+    "selectImage": "[繁]:Select Image",
+    "actions": {
+      "refresh": "重新整理",
+      "cancel": "取消",
+      "save": "儲存"
+    },
+    "pagination": {
+      "page": "第 {page} 頁",
+      "pageSuffix": "頁",
+      "prev": "上一頁",
+      "next": "下一頁"
+    },
+    "plugins": {
+      "title": "外掛管理",
+      "desc": "安裝、啟用、設定並升級你的 Rosetta 外掛",
+      "searchPlaceholder": "搜尋外掛名稱 / 描述...",
+      "scan": "掃描本機",
+      "install": "安裝新外掛",
+      "bulkActions": "批次操作",
+      "perPage": "每頁顯示：",
+      "selectAll": "全選目前頁面",
+      "col": {
+        "plugin": "外掛",
+        "status": "狀態",
+        "actions": "操作"
+      },
+      "status": {
+        "active": "已啟用",
+        "inactive": "已停用",
+        "error": "錯誤"
+      },
+      "settings": "設定",
+      "upgrade": "升級",
+      "delete": "刪除",
+      "settingsTitle": "外掛設定：{name}",
+      "settingsDesc": "啟用或設定外掛功能；變更後立即生效。",
+      "saveSuccess": "外掛設定已儲存",
+      "activate": "啟用",
+      "deactivate": "停用",
+      "upload": "上傳外掛",
+      "empty": "目前沒有已安裝的外掛，點擊「掃描本機」或「安裝新外掛」開始。",
+      "bulkActivate": "批次啟用",
+      "bulkDeactivate": "批次停用",
+      "bulkDelete": "批次刪除",
+      "selectedCount": "已選取 {count} 個外掛"
+    },
+    "themes": {
+      "title": "佈景主題管理",
+      "desc": "切換與自訂 Rosetta 部落格外觀",
+      "searchPlaceholder": "依名稱或標籤搜尋...",
+      "scan": "掃描本機",
+      "install": "安裝新佈景主題",
+      "filter": {
+        "all": "全部",
+        "active": "已啟用",
+        "available": "可用"
+      },
+      "current": "目前主題",
+      "preview": "預覽",
+      "customize": "自訂",
+      "livePreview": "即時預覽",
+      "delete": "刪除",
+      "isActive": "已啟用",
+      "activate": "啟用",
+      "cannotDeleteActive": "目前啟用的主題無法刪除",
+      "customizeTitle": "自訂主題：{name}",
+      "customizeDesc": "調整色彩、版面與模組，儲存後立即套用到前台。",
+      "modsSaved": "主題自訂已儲存",
+      "upload": "上傳主題",
+      "empty": "沒有符合的主題。",
+      "noThemes": "尚未安裝任何主題，請先掃描或安裝。"
+    }
   },
   "oobe": {
     "welcome": "歡迎使用 Rosetta",
@@ -1037,6 +1109,17 @@
     "noDesc": "[繁]:No description",
     "noLinks": "[繁]:No friend links yet"
   },
+  "search": {
+    "title": "[繁]:搜尋",
+    "desc": "[繁]:從標題、內容、標籤、分類中快速找到你想看的文章。",
+    "placeholder": "[繁]:輸入關鍵詞，按回車或點擊搜尋…",
+    "submit": "[繁]:搜尋",
+    "startPrompt": "[繁]:開始搜尋",
+    "startDesc": "[繁]:在上方輸入關鍵詞，支援標題、正文、標籤和分類全文檢索。",
+    "resultCount": "[繁]:找到 {count} 條與「{keyword}」相關的結果",
+    "noResults": "[繁]:沒有找到匹配的內容",
+    "noResultsDesc": "[繁]:沒有包含「{keyword}」的文章，試試換一個關鍵詞，或者清除搜尋查看全部。"
+  },
   "activity": {
     "title": "[繁]:Activity",
     "desc": "[繁]:A pulse of this little site — new posts, comments, shares.",
@@ -1044,6 +1127,11 @@
     "type_card": "[繁]:New Card",
     "type_comment": "[繁]:New Comment",
     "type_like": "[繁]:Like",
+    "type_say": "[繁]:Thought",
+    "type_article": "[繁]:Article Update",
+    "type_update": "[繁]:Site Update",
+    "type_notice": "[繁]:Announcement",
+    "type_link": "[繁]:Link Share",
     "liked": "[繁]:liked the post",
     "noActivity": "[繁]:No activity yet"
   },

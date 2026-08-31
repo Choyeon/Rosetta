@@ -5,19 +5,22 @@ import {
   createAdminCategory,
   updateAdminCategory,
   deleteAdminCategory,
-  type AdminCategory
+  type AdminCategory,
+  type AdminTaxonomyPayload
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
+
+type I18nDict = { zh: string, en: string, ja: string, zh_Hant: string }
 
 const categories = ref<AdminCategory[]>([])
 const loading = ref(false)
@@ -27,10 +30,17 @@ const editingId = ref<number | null>(null)
 const dialogOpen = ref(false)
 const dialogMode = ref<'new' | 'edit'>('new')
 
-const form = reactive({
-  name: '',
+const form = reactive<{
+  name: I18nDict
+  slug: string
+  description: I18nDict
+  color: string
+  icon: string
+  sort_order: number
+}>({
+  name: { zh: '', en: '', ja: '', zh_Hant: '' },
   slug: '',
-  description: '',
+  description: { zh: '', en: '', ja: '', zh_Hant: '' },
   color: '#94a3b8',
   icon: '',
   sort_order: 0
@@ -40,6 +50,17 @@ const getLocalizedStr = (v: string | Record<string, string> | null | undefined):
   if (v == null) return ''
   if (typeof v === 'string') return v
   return v.zh || v.en || Object.values(v)[0] || ''
+}
+
+const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): I18nDict => {
+  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
+  return {
+    zh: v.zh ?? '',
+    en: v.en ?? '',
+    ja: v.ja ?? '',
+    zh_Hant: v.zh_Hant ?? ''
+  }
 }
 
 const slugify = (text: string): string => {
@@ -54,8 +75,9 @@ let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
-    if (!slugManualEdit && val) {
-      form.slug = slugify(val)
+    const nameStr = getLocalizedStr(val)
+    if (!slugManualEdit && nameStr) {
+      form.slug = slugify(nameStr)
     }
   }
 )
@@ -73,7 +95,9 @@ const loadData = async () => {
   loading.value = true
   try {
     categories.value = await fetchAdminCategories()
-  } catch {
+  } catch (err) {
+    console.error('load categories error', err)
+    toast.error('加载分类列表失败')
     categories.value = []
   } finally {
     loading.value = false
@@ -81,9 +105,9 @@ const loadData = async () => {
 }
 
 const resetForm = () => {
-  form.name = ''
+  form.name = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.slug = ''
-  form.description = ''
+  form.description = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.color = '#94a3b8'
   form.icon = ''
   form.sort_order = 0
@@ -99,9 +123,9 @@ const openNew = () => {
 
 const openEdit = (cat: AdminCategory) => {
   dialogMode.value = 'edit'
-  form.name = getLocalizedStr(cat.name)
+  form.name = normalizeI18nDict(cat.name)
   form.slug = cat.slug
-  form.description = getLocalizedStr(cat.description)
+  form.description = normalizeI18nDict(cat.description)
   form.color = cat.color || '#94a3b8'
   form.icon = cat.icon || ''
   form.sort_order = (cat as unknown as { sort_order?: number }).sort_order ?? 0
@@ -111,16 +135,16 @@ const openEdit = (cat: AdminCategory) => {
 }
 
 const save = async () => {
-  if (!form.name.trim()) {
+  if (!getLocalizedStr(form.name).trim()) {
     toast.error('请输入分类名称')
     return
   }
   saving.value = true
   try {
-    const payload = {
+    const payload: AdminTaxonomyPayload = {
       name: form.name,
       slug: form.slug || undefined,
-      description: form.description || undefined,
+      description: form.description,
       color: form.color || undefined,
       icon: form.icon || undefined,
       sort_order: form.sort_order
@@ -135,8 +159,9 @@ const save = async () => {
     resetForm()
     dialogOpen.value = false
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
+  } catch (err) {
+    console.error('save category error', err)
+    toast.error(editingId.value ? '更新分类失败' : '创建分类失败')
   } finally {
     saving.value = false
   }
@@ -159,8 +184,9 @@ async function doDelete() {
     pendingDeleteId.value = null
     if (editingId.value === pendingDeleteId.value) resetForm()
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
+  } catch (err) {
+    console.error('delete category error', err)
+    toast.error('删除分类失败')
   }
 }
 
@@ -215,7 +241,9 @@ onMounted(() => {
         </span>
       </template>
       <template #cell-post_count="{ row }">
-        <Badge variant="secondary">{{ (row as AdminCategory).post_count }}</Badge>
+        <Badge variant="secondary">
+          {{ (row as AdminCategory).post_count }}
+        </Badge>
       </template>
       <template #cell-sort_order="{ row }">
         <span class="text-muted-foreground text-xs">{{ (row as AdminCategory).sort_order ?? 0 }}</span>
@@ -249,16 +277,12 @@ onMounted(() => {
       @submit="save"
     >
       <div class="flex flex-col gap-4">
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">
-            名称 <span class="text-destructive">*</span>
-          </Label>
-          <Input
-            v-model="form.name"
-            placeholder="分类名称"
-            class="h-9 rounded-[10px]"
-          />
-        </div>
+        <I18nTabsEditor
+          v-model="form.name"
+          kind="text"
+          label="名称"
+          required
+        />
         <div>
           <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
           <Input
@@ -268,15 +292,12 @@ onMounted(() => {
             @input="slugManualEdit = true"
           />
         </div>
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">描述</Label>
-          <Textarea
-            v-model="form.description"
-            rows="3"
-            placeholder="分类描述（可选）"
-            class="rounded-[10px] text-sm resize-y"
-          />
-        </div>
+        <I18nTabsEditor
+          v-model="form.description"
+          kind="textarea"
+          label="描述"
+          :rows="3"
+        />
         <div class="grid grid-cols-2 gap-3">
           <div>
             <Label class="mb-1 block text-xs text-muted-foreground">颜色</Label>

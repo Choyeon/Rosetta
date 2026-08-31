@@ -22,6 +22,7 @@ from sqlalchemy.orm import joinedload, selectinload
 from backend.api._user_response_helper import build_user_detail_response, build_user_response
 from backend.core.auth import DB, CurrentStaff, CurrentSuperUser
 from backend.core.concurrency import concurrent_query
+from backend.core.plugin_bus import bus
 from backend.models.blog import Category, Comment, Post
 from backend.models.user import User
 from backend.schemas import (
@@ -193,7 +194,37 @@ async def admin_create_user(
     user = result["user"]
     user.is_staff = data.is_staff
     user.is_active = data.is_active
+
+    # RBAC：若显式传入 role，则与旧布尔字段保持一致；否则由布尔派生
+    from backend.core.rbac import (
+        ALL_ROLES,
+        get_role_level,
+        normalize_role,
+        role_from_flags,
+    )
+
+    if data.role is not None:
+        role = normalize_role(data.role)
+        if role not in ALL_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"非法角色：{data.role}",
+            )
+        if get_role_level(current_user.role) < get_role_level(role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权分配高于自身层级的角色",
+            )
+        user.role = role
+        # 同步旧布尔字段，保持向后兼容
+        user.is_superuser = role == "super_admin"
+        user.is_staff = get_role_level(role) >= get_role_level("admin")
+    else:
+        # 未传 role 时由布尔派生，保持旧行为
+        user.role = role_from_flags(user.is_staff, user.is_superuser)
+
     await db.flush()
+    await db.refresh(user)
 
     return build_user_response(user)
 
@@ -223,14 +254,37 @@ async def admin_get_user(
 
     from backend.models.blog import Comment as _Comment
     from backend.models.blog import Post as _Post
+    from backend.core.cache import cache as _cache
 
-    pc, cc = await concurrent_query(
-        db.scalar(select(func.count(_Post.id)).where(_Post.author_id == user_id)) or 0,
-        db.scalar(select(func.count(_Comment.id)).where(_Comment.user_id == user_id)) or 0,
-    )
+    # —— 性能优化：文章数 / 评论数 按用户维度缓存 30 秒 ——
+    # 管理员"刷一下编辑页"这类高频场景下，避免每次都跑两次 COUNT(*)。
+    # 注意：COUNT(*) 在 SQLAlchemy 里返回 int | None，统一转 int 避免下游 None 比较。
+    cache_key_pc = f"admin:user:{user_id}:posts_count"
+    cache_key_cc = f"admin:user:{user_id}:comments_count"
+
+    cached_pc: int | None = await _cache.get(cache_key_pc)
+    cached_cc: int | None = await _cache.get(cache_key_cc)
+
+    if cached_pc is not None and cached_cc is not None:
+        pc: int = int(cached_pc)
+        cc: int = int(cached_cc)
+    else:
+        raw_pc, raw_cc = await concurrent_query(
+            db.scalar(select(func.count(_Post.id)).where(_Post.author_id == user_id)),
+            db.scalar(select(func.count(_Comment.id)).where(_Comment.user_id == user_id)),
+        )
+        pc = int(raw_pc or 0)
+        cc = int(raw_cc or 0)
+        try:
+            await _cache.set(cache_key_pc, pc, ttl=30)
+            await _cache.set(cache_key_cc, cc, ttl=30)
+        except Exception:
+            # 缓存失败不影响主流程
+            pass
+
     d = build_user_detail_response(user)
-    d.posts_count = int(pc or 0)
-    d.comments_count = int(cc or 0)
+    d.posts_count = pc
+    d.comments_count = cc
     return d
 
 
@@ -247,6 +301,8 @@ async def admin_update_user_full(
     db: DB,
 ):
     """管理员完整更新用户信息"""
+    from backend.core.rbac import get_role_level
+
     if current_user.id == user_id:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -269,10 +325,12 @@ async def admin_update_user_full(
             detail="用户不存在",
         )
 
-    if user.is_superuser:
+    # 仅禁止修改「自己」；允许超级管理员修改其他用户（含其他超级管理员），
+    # 以支撑单管理员/个人博客场景下正常的账号资料维护。
+    if user.is_superuser and current_user.id != user_id and get_role_level(current_user.role) < get_role_level("super_admin"):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="不能修改超级管理员",
+            detail="无权修改超级管理员",
         )
 
     if data.username and data.username != user.username:
@@ -296,8 +354,36 @@ async def admin_update_user_full(
             )
 
     update_data = data.model_dump(exclude_unset=True)
+
+    # RBAC：角色变更需单独校验（actor 层级 >= target 层级），并同步旧布尔字段
+    role_value = update_data.pop("role", None)
+    if role_value is not None:
+        from backend.core.rbac import (
+            ALL_ROLES,
+            get_role_level,
+            normalize_role,
+        )
+
+        new_role = normalize_role(role_value)
+        if new_role not in ALL_ROLES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"非法角色：{role_value}",
+            )
+        if get_role_level(current_user.role) < get_role_level(new_role):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="无权分配高于自身层级的角色",
+            )
+        update_data["role"] = new_role
+
     for field, value in update_data.items():
         setattr(user, field, value)
+
+    # 若本次设置了 role，反向同步 is_staff/is_superuser 保持向后兼容
+    if role_value is not None:
+        user.is_superuser = user.role == "super_admin"
+        user.is_staff = get_role_level(user.role) >= get_role_level("admin")
 
     await db.flush()
     await db.commit()
@@ -576,7 +662,7 @@ async def admin_list_comments(
     from backend.services._avatar_helpers import resolved_for_comment
 
     base_q = select(Comment).options(
-        joinedload(Comment.user),
+        joinedload(Comment.user).selectinload(User.title),
         joinedload(Comment.post),
         joinedload(Comment.parent),
     )
@@ -647,6 +733,18 @@ async def admin_list_comments(
             }
         # 直接构造成普通 dict：完全绕开 CommentResponse/PaginatedResponse 的
         # Generic[T] + from_attributes 的链式重新序列化问题
+        title_data = None
+        if c.user and c.user.title:
+            title_data = {
+                "id": c.user.title.id,
+                "name": c.user.title.name,
+                "icon": c.user.title.icon,
+                "color": c.user.title.color,
+            }
+        elif c.author_name and not c.user:
+            # 匿名评论用户：检查是否有上传的头衔（通常没有，但预留扩展）
+            pass
+            
         items_dicts.append(
             {
                 "id": c.id,
@@ -663,6 +761,7 @@ async def admin_list_comments(
                 "avatar_source": getattr(c, "avatar_source", None) or getattr(c, "author_avatar_source", None),
                 "resolved_avatar_url": resolved,
                 "content": c.content,
+                "title": title_data,
                 # 11-Bug#1：直接取 c.status 的真实值，不再基于 active 坍缩
                 "status": c.status or ("approved" if c.active else "rejected"),
                 "active": bool(c.active),
@@ -745,6 +844,9 @@ async def admin_update_comment(
     await db.flush()
     await db.refresh(comment)
 
+    if comment.status == "approved":
+        await bus.do_action("comment.approved", comment, current_user=current_user, db=db)
+
     # --- 2. 组装严格对齐 CommentResponse schema 的返回 ---
     user_data = None
     if comment.user:
@@ -823,6 +925,7 @@ async def admin_delete_comment(
         )
 
     await db.delete(comment)
+    await bus.do_action("comment.deleted", comment, current_user=current_user, db=db)
     return BaseResponse(message="评论已删除")
 
 
@@ -872,7 +975,12 @@ async def list_unused_images(
     """扫描并列出未使用的图片"""
     from pathlib import Path
 
-    media_dir = Path("media")
+    from backend.core.config import get_settings
+    from backend.core.paths import BASE_DIR
+
+    # 用 settings 的 media_dir 解析为绝对目录，避免依赖启动 cwd（否则
+    # relative_to(Path.cwd()) 在 cwd 不匹配时会抛 ValueError -> 500）。
+    media_dir = (BASE_DIR / get_settings().media_dir).resolve()
     if not media_dir.exists():
         return {"images": [], "total_size": 0}
 
@@ -907,8 +1015,8 @@ async def list_unused_images(
 
     for f in media_dir.rglob("*"):
         if f.is_file() and f.suffix.lower() in image_extensions:
-            file_url = f"/{f.as_posix()}"
-            rel_path = f.relative_to(Path.cwd()).as_posix()
+            file_url = f"/{f.relative_to(media_dir).as_posix()}"
+            rel_path = f.relative_to(media_dir).as_posix()
             if file_url not in content_refs and f"/{rel_path}" not in content_refs:
                 size = f.stat().st_size
                 total_size += size

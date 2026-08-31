@@ -55,8 +55,8 @@ async function main() {
       page.on('console', (msg) => {
         if (msg.type() === 'error') consoleErrors.push(msg.text())
       })
-      page.on('pageerror', (err) => pageErrors.push(err.message))
-      page.on('vue:error', (err) => appErrors.push(err.message))
+      page.on('pageerror', err => pageErrors.push(err.message))
+      page.on('vue:error', err => appErrors.push(err.message))
 
       let status = 'OK'
       let httpStatus = 'unknown'
@@ -80,15 +80,15 @@ async function main() {
 
         // Classify what actually rendered
         renderState = await page.evaluate(() => {
-          if (document.querySelector('nuxt-error-page') ||
-              document.querySelector('[data-fatal-error]') ||
-              document.body.textContent?.includes('Internal Server Error') ||
-              document.body.textContent?.includes('Application error')) {
+          if (document.querySelector('nuxt-error-page')
+            || document.querySelector('[data-fatal-error]')
+            || document.body.textContent?.includes('Internal Server Error')
+            || document.body.textContent?.includes('Application error')) {
             return 'APP_ERROR'
           }
           // Login screen (auth-gated routes) is a valid render
-          if (document.body.textContent?.includes('登录') ||
-              document.body.textContent?.includes('输入账号信息以继续')) {
+          if (document.body.textContent?.includes('登录')
+            || document.body.textContent?.includes('输入账号信息以继续')) {
             return 'LOGIN'
           }
           if ((document.body?.innerText?.length || 0) > 20) return 'RENDERED'
@@ -102,10 +102,10 @@ async function main() {
 
       // Filter out benign errors (e.g. favicon 404 in dev, HMR)
       const realConsoleErrors = consoleErrors.filter(e =>
-        !e.includes('favicon') &&
-        !e.includes('[vite]') &&
-        !e.toLowerCase().includes('net::err_aborted') &&
-        !e.toLowerCase().includes('err_connection_closed')
+        !e.includes('favicon')
+        && !e.includes('[vite]')
+        && !e.toLowerCase().includes('net::err_aborted')
+        && !e.toLowerCase().includes('err_connection_closed')
       )
 
       if (isVerify) {
@@ -135,8 +135,8 @@ async function main() {
   for (const r of results) {
     // A route is "clean" if it rendered (RENDERED/LOGIN) with no JS errors.
     // LOGIN = auth-gated, app correctly redirected to login screen.
-    const hasIssues = r.status !== 'OK' || r.consoleErrors.length > 0 ||
-      r.pageErrors.length > 0 || r.appErrors.length > 0
+    const hasIssues = r.status !== 'OK' || r.consoleErrors.length > 0
+      || r.pageErrors.length > 0 || r.appErrors.length > 0
     if (hasIssues) failCount++
     const flag = hasIssues ? '❌' : '✅'
     console.log(`${flag} ${r.route} [${r.status}] HTTP:${r.httpStatus} state:${r.renderState}`)
@@ -148,7 +148,7 @@ async function main() {
   process.exit(failCount > 0 ? 1 : 0)
 }
 
-main().catch(e => {
+main().catch((e) => {
   console.error('Smoke test crashed:', e)
   process.exit(2)
 })

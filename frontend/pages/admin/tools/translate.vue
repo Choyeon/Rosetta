@@ -17,14 +17,16 @@
     </div>
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
-      <Card class="rounded-2xl">
-        <CardHeader>
-          <CardTitle class="text-base">
+      <AdminCard>
+        <div class="space-y-1.5 mb-4">
+          <h3 class="text-base font-semibold">
             语言设置
-          </CardTitle>
-          <CardDescription>选择源语言和目标翻译语言</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4">
+          </h3>
+          <p class="text-sm text-muted-foreground">
+            选择源语言和目标翻译语言
+          </p>
+        </div>
+        <div class="space-y-4">
           <div class="space-y-2">
             <Label class="text-sm font-medium">源语言</Label>
             <Select
@@ -63,17 +65,19 @@
               </label>
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
-      <Card class="rounded-2xl">
-        <CardHeader>
-          <CardTitle class="text-base">
+      <AdminCard>
+        <div class="space-y-1.5 mb-4">
+          <h3 class="text-base font-semibold">
             选择文章
-          </CardTitle>
-          <CardDescription>从最近文章中选择单篇或多篇</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4">
+          </h3>
+          <p class="text-sm text-muted-foreground">
+            从最近文章中选择单篇或多篇
+          </p>
+        </div>
+        <div class="space-y-4">
           <div class="space-y-2">
             <Label class="text-sm font-medium">单篇快速翻译</Label>
             <div class="flex gap-2">
@@ -123,33 +127,36 @@
             >
               {{ postSearch ? '未找到匹配的文章' : '暂无文章' }}
             </div>
-            <label
-              v-for="post in filteredPosts"
-              v-else
-              :key="post.id"
-              class="flex items-start gap-2 p-3 hover:bg-muted transition-colors cursor-pointer border-b last:border-b-0 border-border/50"
-            >
-              <Checkbox
-                :model-value="form.postIds.includes(post.id)"
-                @update:model-value="togglePost(post.id, $event)"
-              />
-              <div class="flex-1 min-w-0">
-                <div class="font-medium truncate text-sm">{{ post.title }}</div>
-                <div class="text-xs text-muted-foreground font-mono">#{{ post.id }}</div>
-              </div>
-            </label>
+            <template v-else>
+              <label
+                v-for="post in filteredPosts"
+                :key="post.id"
+                class="flex items-start gap-2 p-3 hover:bg-muted transition-colors cursor-pointer border-b last:border-b-0 border-border/50"
+              >
+                <Checkbox
+                  :model-value="form.postIds.includes(post.id)"
+                  @update:model-value="togglePost(post.id, $event)"
+                />
+                <div class="flex-1 min-w-0">
+                  <div class="font-medium truncate text-sm">{{ post.title }}</div>
+                  <div class="text-xs text-muted-foreground font-mono">#{{ post.id }}</div>
+                </div>
+              </label>
+            </template>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
-      <Card class="rounded-2xl">
-        <CardHeader>
-          <CardTitle class="text-base">
+      <AdminCard>
+        <div class="space-y-1.5 mb-4">
+          <h3 class="text-base font-semibold">
             开始翻译
-          </CardTitle>
-          <CardDescription>按文章和目标语言逐项同步执行</CardDescription>
-        </CardHeader>
-        <CardContent class="space-y-4 h-full flex flex-col">
+          </h3>
+          <p class="text-sm text-muted-foreground">
+            按文章和目标语言逐项同步执行
+          </p>
+        </div>
+        <div class="space-y-4 h-full flex flex-col">
           <div class="rounded-xl p-4 space-y-2 bg-muted/30 flex-1">
             <div class="flex items-center justify-between text-sm">
               <span class="text-muted-foreground">源语言</span><span class="font-medium">{{ labelOf(form.sourceLang) }}</span>
@@ -179,8 +186,8 @@
             />
             {{ batchSubmitting ? '正在翻译...' : '开始翻译' }}
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
     </div>
   </div>
 </template>
@@ -191,7 +198,7 @@ import { fetchRecentPosts, translateAdminText, type AdminPostListItem } from '~~
 import { useToast } from '~~/composables/useToast'
 import { Languages, Loader2, Search, Send, Zap } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Checkbox } from '~~/components/ui/checkbox'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
@@ -248,6 +255,8 @@ async function handleQuickTranslate() {
     toast.success(`已完成 ${success} 个语言翻译`)
     quickPostId.value = undefined
   } catch (error) {
+    const msg = error instanceof Error ? error.message : '翻译失败'
+    toast.error(msg)
   } finally {
     translatingQuick.value = false
   }
@@ -264,6 +273,8 @@ async function handleBatchTranslate() {
     translatedCount.value += success
     toast.success(`翻译完成，成功 ${success} 项`)
   } catch (error) {
+    const msg = error instanceof Error ? error.message : '批量翻译失败'
+    toast.error(msg)
   } finally {
     batchSubmitting.value = false
   }
@@ -272,7 +283,8 @@ onMounted(async () => {
   postsLoading.value = true
   try {
     posts.value = await fetchRecentPosts(50)
-  } catch (error) {
+  } catch {
+    // 文章列表加载失败时保持空列表
   } finally {
     postsLoading.value = false
   }

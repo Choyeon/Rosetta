@@ -65,6 +65,10 @@ class CacheBackend(ABC):
         """递减计数器"""
         pass
 
+    async def get_stats(self) -> dict[str, Any]:
+        """返回后端状态快照：keys 数量、内存使用字节数（如有）、命中率。默认实现返回空字典，子类可重写。"""
+        return {}
+
 
 class MemoryCacheBackend(CacheBackend):
     """
@@ -80,6 +84,8 @@ class MemoryCacheBackend(CacheBackend):
         import time
 
         self._time = time.time
+        self._hits: int = 0
+        self._misses: int = 0
 
     def _is_expired(self, expires_at: float | None) -> bool:
         """检查是否过期"""
@@ -90,8 +96,11 @@ class MemoryCacheBackend(CacheBackend):
     async def get(self, key: str) -> Any | None:
         value, expires_at = self._store.get(key, (None, None))
         if self._is_expired(expires_at):
-            del self._store[key]
+            if key in self._store:
+                del self._store[key]
+            self._misses += 1
             return None
+        self._hits += 1
         return value
 
     async def set(self, key: str, value: Any, ttl: int | None = None) -> bool:
@@ -139,6 +148,31 @@ class MemoryCacheBackend(CacheBackend):
             self._counters[key] = 0
         self._counters[key] -= amount
         return self._counters[key]
+
+    async def get_stats(self) -> dict[str, Any]:
+        # 清理一次过期键，keys 数更准确
+        expired_keys = [k for k, (_, exp) in self._store.items() if self._is_expired(exp)]
+        for k in expired_keys:
+            del self._store[k]
+        total = self._hits + self._misses
+        hit_rate = (self._hits / total) if total > 0 else 0.0
+        # 粗略估算内存占用：每个 entry 按 (key 长度 + pickle value 字节数) 近似
+        size_bytes: int | None = None
+        try:
+            import sys
+
+            size_bytes = sys.getsizeof(self._store)
+            for k, (v, _) in self._store.items():
+                size_bytes += sys.getsizeof(k) + sys.getsizeof(v)
+        except Exception:
+            size_bytes = None
+        return {
+            "keys": len(self._store),
+            "memory_used_bytes": size_bytes,
+            "hits": self._hits,
+            "misses": self._misses,
+            "hit_rate": hit_rate,
+        }
 
 
 class RedisCacheBackend(CacheBackend):
@@ -272,6 +306,39 @@ class RedisCacheBackend(CacheBackend):
             logger.error(f"Redis decr 错误: {e}")
             return 0
 
+    async def get_stats(self) -> dict[str, Any]:
+        try:
+            client = await self._get_client()
+            if not self._connected:
+                return {"keys": 0, "memory_used_bytes": None, "hit_rate": None, "connected": False}
+            info = await client.info("stats")
+            db_info = await client.info("keyspace")
+            db_key = next((k for k in db_info.keys() if k.startswith("db")), None)
+            total_keys: int = 0
+            if db_key and isinstance(db_info[db_key], dict):
+                total_keys = int(db_info[db_key].get("keys", 0) or 0)
+            hits = int((info or {}).get("keyspace_hits", 0) or 0)
+            misses = int((info or {}).get("keyspace_misses", 0) or 0)
+            total = hits + misses
+            hit_rate = (hits / total) if total > 0 else 0.0
+            memory: int | None = None
+            try:
+                mem_info = await client.info("memory")
+                memory = int((mem_info or {}).get("used_memory", 0) or 0)
+            except Exception:
+                memory = None
+            return {
+                "keys": total_keys,
+                "memory_used_bytes": memory,
+                "hits": hits,
+                "misses": misses,
+                "hit_rate": hit_rate,
+                "connected": True,
+            }
+        except Exception as e:
+            logger.warning(f"Redis stats 读取失败: {e}")
+            return {"keys": 0, "memory_used_bytes": None, "hit_rate": None, "connected": False, "error": str(e)}
+
     async def close(self):
         """关闭 Redis 连接"""
         if self._client:
@@ -334,6 +401,9 @@ class CacheService:
 
     async def decr(self, key: str, amount: int = 1) -> int:
         return await self._backend.decr(key, amount)
+
+    async def get_stats(self) -> dict[str, Any]:
+        return await self._backend.get_stats()
 
     def cached(
         self,

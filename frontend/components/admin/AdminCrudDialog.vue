@@ -34,7 +34,10 @@ function submit() {
 </script>
 
 <template>
-  <Dialog :open="open" @update:open="(v: boolean) => emit('update:open', v)">
+  <Dialog
+    :open="open"
+    @update:open="(v: boolean) => emit('update:open', v)"
+  >
     <DialogContent class="max-w-2xl max-h-[85vh] overflow-y-auto">
       <DialogHeader>
         <DialogTitle>{{ title }}</DialogTitle>

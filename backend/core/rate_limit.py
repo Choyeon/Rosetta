@@ -101,9 +101,13 @@ class RateLimiter:
         self._lock = asyncio.Lock()
 
     def _get_redis_client(self):
-        """获取 Redis 客户端（如果可用）"""
-        if hasattr(cache.backend, "_get_client"):
-            return cache.backend
+        """获取 Redis 客户端（仅当已实际连上时返回，否则回退内存存储）"""
+        backend = getattr(cache, "backend", None)
+        if backend is None:
+            return None
+        # 必须同时满足：声明启用 + 拥有客户端方法 + 真正建立连接
+        if settings.redis_enabled and hasattr(backend, "_get_client") and getattr(backend, "_connected", False):
+            return backend
         return None
 
     async def _get_sliding_window_data(self, key: str) -> list[float]:
@@ -669,18 +673,18 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
 DEFAULT_RATE_LIMIT_RULES = {
     "/api/users/login": RateLimitRule(
-        requests=5,
-        window_seconds=900,
+        requests=5 if settings.is_production else 30,
+        window_seconds=900 if settings.is_production else 60,
         key_prefix="login",
     ),
     "/api/users/register": RateLimitRule(
-        requests=3,
-        window_seconds=3600,
+        requests=3 if settings.is_production else 20,
+        window_seconds=3600 if settings.is_production else 60,
         key_prefix="register",
     ),
     "/api/users/password-reset": RateLimitRule(
-        requests=3,
-        window_seconds=3600,
+        requests=3 if settings.is_production else 20,
+        window_seconds=3600 if settings.is_production else 60,
         key_prefix="password_reset",
     ),
     "/api/media/upload": RateLimitRule(

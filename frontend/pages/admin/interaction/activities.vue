@@ -95,8 +95,8 @@
           </div>
         </div>
 
-        <Card class="flex-1 min-w-0">
-          <CardContent class="p-4">
+        <AdminCard class="flex-1 min-w-0">
+          <div class="p-4">
             <div class="flex items-start justify-between gap-3 mb-2">
               <div class="flex items-center gap-2 flex-wrap min-w-0">
                 <span class="font-medium">{{ a.author?.nickname || a.author?.username || '系统' }}</span>
@@ -161,8 +161,8 @@
                 <span class="truncate">{{ a.link }}</span>
               </a>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </div>
     </div>
 
@@ -182,7 +182,10 @@
             v-for="p in visiblePages"
             :key="p"
           >
-            <PaginationItem v-if="p !== '...'" :value="typeof p === 'number' ? p : 1">
+            <PaginationItem
+              v-if="p !== '...'"
+              :value="typeof p === 'number' ? p : 1"
+            >
               <Button
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
@@ -192,7 +195,10 @@
                 {{ p }}
               </Button>
             </PaginationItem>
-            <PaginationItem v-else :value="1">
+            <PaginationItem
+              v-else
+              :value="1"
+            >
               <PaginationEllipsis :value="1" />
             </PaginationItem>
           </template>
@@ -304,8 +310,8 @@
 
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import { Card, CardContent } from '~~/components/ui/card'
+ 
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'

@@ -12,9 +12,8 @@ import {
 import { useToast } from '~~/composables/useToast'
 import type { Post } from '~~/types/api'
 import { Button } from '~~/components/ui/button'
-import { Input } from '~~/components/ui/input'
 import { Badge } from '~~/components/ui/badge'
-import { Search, RefreshCw, Plus } from '@lucide/vue'
+import { RefreshCw, Plus, Pin } from '@lucide/vue'
 import {
   Select,
   SelectContent,
@@ -23,6 +22,7 @@ import {
   SelectValue
 } from '~~/components/ui/select'
 import type { AdminColumn as Column } from '~~/types/admin'
+import AdminFilterBar from '~~/components/admin/AdminFilterBar.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -37,14 +37,24 @@ const page = ref(1)
 const pageSize = ref(10)
 
 const searchQuery = ref('')
-const statusFilter = ref<string>('all')
+const statusFilter = ref<'all' | 'published' | 'draft' | 'scheduled' | 'archived'>('all')
 const categoryFilter = ref<string>('all')
+const createdStart = ref<string | null>(null)
+const createdEnd = ref<string | null>(null)
 
 const categories = ref<AdminCategory[]>([])
 const selectedIds = ref<number[]>([])
 const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
 const batchDeleteDialogOpen = ref(false)
+
+const statusOptions = [
+  { value: 'all' as const, label: '全部状态' },
+  { value: 'published' as const, label: '已发布' },
+  { value: 'draft' as const, label: '草稿' },
+  { value: 'scheduled' as const, label: '定时' },
+  { value: 'archived' as const, label: '已归档' }
+]
 
 const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
   if (v == null) return ''
@@ -64,16 +74,7 @@ const columns: Column[] = [
   { key: 'published_at', title: '发布时间', class: 'w-44 text-xs text-muted-foreground' }
 ]
 
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-watch(searchQuery, () => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    page.value = 1
-    loadPosts()
-  }, 500)
-})
-
-watch([statusFilter, categoryFilter, page, pageSize], () => {
+watch([page, pageSize], () => {
   loadPosts()
 })
 
@@ -84,8 +85,10 @@ const loadPosts = async () => {
       page: page.value,
       page_size: pageSize.value,
       search: searchQuery.value.trim() || undefined,
-      status: statusFilter.value !== 'all' ? statusFilter.value as 'published' | 'draft' | 'scheduled' | 'archived' : undefined,
-      category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined
+      status: statusFilter.value !== 'all' ? statusFilter.value : undefined,
+      category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined,
+      created_start: createdStart.value,
+      created_end: createdEnd.value
     })
     posts.value = result.items ?? []
     total.value = result.total ?? 0
@@ -105,12 +108,23 @@ const loadCategories = async () => {
   }
 }
 
+const onSearch = () => {
+  page.value = 1
+  loadPosts()
+}
+
+const onReset = () => {
+  categoryFilter.value = 'all'
+  page.value = 1
+  loadPosts()
+}
+
 const refresh = () => {
   loadPosts()
 }
 
 const isSelected = (id: number) => selectedIds.value.includes(id)
-const toggleSelected = (id: number) => {
+const _toggleSelected = (id: number) => {
   const idx = selectedIds.value.indexOf(id)
   if (idx === -1) selectedIds.value.push(id)
   else selectedIds.value.splice(idx, 1)
@@ -120,11 +134,11 @@ const isAllSelected = computed(() => {
   return posts.value.length > 0 && posts.value.every(p => isSelected(p.id))
 })
 
-const isSomeSelected = computed(() => {
+const _isSomeSelected = computed(() => {
   return posts.value.some(p => isSelected(p.id)) && !isAllSelected.value
 })
 
-const toggleSelectAll = () => {
+const _toggleSelectAll = () => {
   if (isAllSelected.value) {
     selectedIds.value = []
   } else {
@@ -211,62 +225,47 @@ onMounted(() => {
     </template>
 
     <template #toolbar>
-      <div class="flex flex-wrap items-center gap-3">
-        <div class="flex-1 min-w-64 relative">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-          <Input
-            v-model="searchQuery"
-            placeholder="搜索标题 / slug / 摘要"
-            class="h-10 rounded-[12px] pl-9"
-          />
-        </div>
-        <Select v-model="statusFilter">
-          <SelectTrigger class="h-10 w-36 rounded-[12px]">
-            <SelectValue placeholder="状态" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">
-              全部状态
-            </SelectItem>
-            <SelectItem value="published">
-              已发布
-            </SelectItem>
-            <SelectItem value="draft">
-              草稿
-            </SelectItem>
-            <SelectItem value="scheduled">
-              定时
-            </SelectItem>
-            <SelectItem value="archived">
-              已归档
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <Select v-model="categoryFilter">
-          <SelectTrigger class="h-10 w-40 rounded-[12px]">
-            <SelectValue placeholder="分类" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">
-              全部分类
-            </SelectItem>
-            <SelectItem
-              v-for="c in categories"
-              :key="c.id"
-              :value="c.slug || c.id.toString()"
-            >
-              {{ getLocalizedStr(c.name) }}
-            </SelectItem>
-          </SelectContent>
-        </Select>
-        <Button
-          variant="outline"
-          class="h-10 rounded-[12px] gap-2"
-          @click="refresh"
+      <div class="space-y-3">
+        <AdminFilterBar
+          v-model:keyword="searchQuery"
+          v-model:status="statusFilter"
+          v-model:created-start="createdStart"
+          v-model:created-end="createdEnd"
+          :status-options="statusOptions"
+          search-placeholder="搜索标题 / slug / 摘要"
+          :loading="loading"
+          @search="onSearch"
+          @reset="onReset"
         >
-          <RefreshCw class="size-4" />
-          <span>刷新</span>
-        </Button>
+          <template #extraFilters>
+            <Select v-model="categoryFilter">
+              <SelectTrigger class="h-9 w-[160px] rounded-[10px]">
+                <SelectValue placeholder="分类" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  全部分类
+                </SelectItem>
+                <SelectItem
+                  v-for="c in categories"
+                  :key="c.id"
+                  :value="c.slug || c.id.toString()"
+                >
+                  {{ getLocalizedStr(c.name) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <Button
+              variant="outline"
+              size="sm"
+              class="h-9 rounded-[10px]"
+              @click="refresh"
+            >
+              <RefreshCw class="size-4 mr-1.5" />
+              刷新
+            </Button>
+          </template>
+        </AdminFilterBar>
       </div>
     </template>
 
@@ -363,10 +362,10 @@ onMounted(() => {
         </Badge>
       </template>
       <template #cell-is_pinned="{ row }">
-        <span
+        <Pin
           v-if="(row as Post).is_pinned"
-          class="text-amber-500"
-        >★</span>
+          class="size-3.5 text-amber-500"
+        />
       </template>
       <template #cell-published_at="{ row }">
         {{ formatAdminDateTime((row as Post).published_at ?? (row as Post).created_at) }}

@@ -233,4 +233,19 @@ const postsList = computed<SeriesPostRow[]>(() => {
   if (!Array.isArray(items)) return []
   return items
 })
+
+useSeo({
+  title: computed(() => {
+    const sName = pickStr(series.value?.title) || pickStr(series.value?.name || '') || params.slug || ''
+    return sName ? `${sName} · ${t('series.all', '系列')}` : t('series.all', '系列')
+  }),
+  description: computed(() => pickStr(series.value?.description)),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.series', '系列') as string, url: '/series' },
+  { name: pickStr(series.value?.title) || pickStr(series.value?.name || '') || params.slug || '', url: `/series/${params.slug || ''}` }
+])
 </script>

@@ -20,8 +20,8 @@
       v-if="loading"
       class="grid grid-cols-1 lg:grid-cols-2 gap-6"
     >
-      <Card>
-        <CardContent class="p-6 space-y-6">
+      <AdminCard>
+        <div class="p-6 space-y-6">
           <div class="flex items-center gap-4">
             <Skeleton class="size-20 rounded-full" />
             <Skeleton class="h-9 w-28 rounded-lg" />
@@ -31,36 +31,34 @@
             <Skeleton class="h-10 w-full rounded-lg" />
             <Skeleton class="h-10 w-full rounded-lg" />
           </div>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent class="p-6 space-y-6">
+        </div>
+      </AdminCard>
+      <AdminCard>
+        <div class="p-6 space-y-6">
           <Skeleton class="h-20 w-full rounded-lg" />
           <Skeleton class="h-20 w-full rounded-lg" />
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
     </div>
 
     <template v-else>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <User class="size-5 text-muted-foreground" />
-              基本资料
-            </CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-6">
+        <AdminCard>
+          <div class="flex items-center gap-2 mb-4">
+            <User class="size-5 text-muted-foreground" />
+            <span class="text-lg font-semibold">基本资料</span>
+          </div>
+          <div class="space-y-6">
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
-              <Avatar class="size-20 shrink-0 border-4 border-muted">
-                <AvatarImage
-                  :src="form.avatar ?? ''"
-                  :alt="form.nickname || user?.username || ''"
-                />
-                <AvatarFallback class="text-2xl">
-                  {{ (form.nickname || user?.username)?.[0]?.toUpperCase() || 'U' }}
-                </AvatarFallback>
-              </Avatar>
+              <UserAvatar
+                :avatar="form.avatar || null"
+                :seed="user?.username"
+                :name="form.nickname || user?.username"
+                :title="user?.title || null"
+                :size="80"
+                :show-title="true"
+                class="shrink-0 border-4 border-muted"
+              />
               <div class="space-y-2">
                 <Button
                   variant="outline"
@@ -136,17 +134,15 @@
                 />
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card>
-          <CardHeader>
-            <CardTitle class="flex items-center gap-2">
-              <Shield class="size-5 text-muted-foreground" />
-              账号安全
-            </CardTitle>
-          </CardHeader>
-          <CardContent class="space-y-6">
+        <AdminCard>
+          <div class="flex items-center gap-2 mb-4">
+            <Shield class="size-5 text-muted-foreground" />
+            <span class="text-lg font-semibold">账号安全</span>
+          </div>
+          <div class="space-y-6">
             <div class="space-y-3">
               <div class="text-sm font-medium">
                 角色权限
@@ -268,7 +264,7 @@
                   <SelectItem
                     v-for="t in titles"
                     :key="t.id"
-                    :value="t.id"
+                    :value="t.id ?? 0"
                   >
                     <span class="inline-flex items-center gap-2">
                       <Tag
@@ -282,8 +278,8 @@
                 </SelectContent>
               </Select>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </div>
 
       <div class="flex justify-end gap-3 pt-4">
@@ -310,12 +306,12 @@
 
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
+ 
+import AdminCard from '~~/components/admin/AdminCard.vue'
+import UserAvatar from '~~/components/UserAvatar.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import { Switch } from '~~/components/ui/switch'
 import { Separator } from '~~/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
@@ -392,6 +388,8 @@ function validatePassword(pwd: string): boolean {
 }
 
 async function loadUser() {
+  // loading 只控制"骨架屏 vs 表单"的切换，不要阻塞 titles 先显示下拉框骨架；
+  // 关键数据：用户详情 —— 拿到后立即解锁表单。
   loading.value = true
   try {
     const data = await fetchAdminUserDetail(userId.value)
@@ -404,19 +402,24 @@ async function loadUser() {
       qq: (data as unknown as { qq?: string | null }).qq ?? '',
       bio: (data as unknown as { bio?: string | null }).bio ?? '',
       avatar: data.resolved_avatar_url ?? data.avatar ?? '',
-      title_id: (data as unknown as { title_id?: number }).title_id ?? 0,
+      // 后端 title_id 可能从嵌套 title.id 里取；兼容两种形态
+      title_id: (data as unknown as { title_id?: number }).title_id
+        ?? ((data as unknown as { title?: { id?: number } | null }).title?.id)
+        ?? 0,
       is_staff: data.is_staff,
       is_superuser: data.is_superuser,
       is_active: data.is_active,
       is_banned: data.is_banned
     })
   } catch (err) {
+    // 失败时保持 loading = false 让骨架退出，UI 可点取消返回
   } finally {
     loading.value = false
   }
 }
 
 async function loadTitles() {
+  // titles 与用户详情并行拉；即使失败也不阻塞编辑页主体（下拉为空而已）。
   titlesLoading.value = true
   try {
     titles.value = await fetchAdminUserTitles()
@@ -487,6 +490,8 @@ async function saveAll() {
     toast.success('保存成功')
     router.push('/admin/users')
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '保存失败'
+    toast.error(msg)
   } finally {
     saving.value = false
   }

@@ -5,7 +5,8 @@ import {
   createAdminTag,
   updateAdminTag,
   deleteAdminTag,
-  type AdminTag
+  type AdminTag,
+  type AdminTaxonomyPayload
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
@@ -13,11 +14,14 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
 import { Skeleton } from '~~/components/ui/skeleton'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import { Search, Plus, Pencil, Trash2, Tag } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
+
+type I18nDict = { zh: string, en: string, ja: string, zh_Hant: string }
 
 const tags = ref<AdminTag[]>([])
 const loading = ref(false)
@@ -30,8 +34,14 @@ const saving = ref(false)
 const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
 
-const form = reactive({
-  name: '',
+const form = reactive<{
+  name: I18nDict
+  slug: string
+  color: string
+  icon: string
+  is_active: boolean
+}>({
+  name: { zh: '', en: '', ja: '', zh_Hant: '' },
   slug: '',
   color: '#0EA5E9',
   icon: '',
@@ -46,6 +56,17 @@ const getLocalizedStr = (v: string | Record<string, string> | null | undefined):
   return v.zh || v.en || Object.values(v)[0] || ''
 }
 
+const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): I18nDict => {
+  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
+  return {
+    zh: v.zh ?? '',
+    en: v.en ?? '',
+    ja: v.ja ?? '',
+    zh_Hant: v.zh_Hant ?? ''
+  }
+}
+
 const slugify = (text: string): string => {
   let s = text.trim().toLowerCase()
   s = s.replace(/[\s]+/g, '-')
@@ -58,10 +79,12 @@ let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
-    if (!slugManualEdit && val) {
-      form.slug = slugify(val)
+    const nameZh = getLocalizedStr(val)
+    if (!slugManualEdit && nameZh) {
+      form.slug = slugify(nameZh)
     }
-  }
+  },
+  { deep: true }
 )
 
 const filteredTags = computed(() => {
@@ -77,7 +100,9 @@ const loadData = async () => {
   loading.value = true
   try {
     tags.value = await fetchAdminTags()
-  } catch {
+  } catch (err) {
+    console.error('load tags error', err)
+    toast.error('加载标签列表失败')
     tags.value = []
   } finally {
     loading.value = false
@@ -87,7 +112,7 @@ const loadData = async () => {
 const openNew = () => {
   dialogMode.value = 'new'
   editingId.value = null
-  form.name = ''
+  form.name = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.slug = ''
   form.color = '#0EA5E9'
   form.icon = ''
@@ -99,7 +124,7 @@ const openNew = () => {
 const openEdit = (t: AdminTag) => {
   dialogMode.value = 'edit'
   editingId.value = t.id
-  form.name = getLocalizedStr(t.name)
+  form.name = normalizeI18nDict(t.name)
   form.slug = t.slug
   form.color = t.color || '#0EA5E9'
   form.icon = t.icon || ''
@@ -109,13 +134,13 @@ const openEdit = (t: AdminTag) => {
 }
 
 const save = async () => {
-  if (!form.name.trim()) {
+  if (!getLocalizedStr(form.name).trim()) {
     toast.error('请输入标签名称')
     return
   }
   saving.value = true
   try {
-    const payload = {
+    const payload: AdminTaxonomyPayload = {
       name: form.name,
       slug: form.slug || undefined,
       color: form.color || undefined,
@@ -131,8 +156,9 @@ const save = async () => {
     }
     dialogOpen.value = false
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
+  } catch (err) {
+    console.error('save tag error', err)
+    toast.error(editingId.value ? '更新标签失败' : '创建标签失败')
   } finally {
     saving.value = false
   }
@@ -151,8 +177,9 @@ async function doDelete() {
     deleteDialogOpen.value = false
     pendingDeleteId.value = null
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
+  } catch (err) {
+    console.error('delete tag error', err)
+    toast.error('删除标签失败')
   }
 }
 
@@ -280,16 +307,12 @@ onMounted(() => {
       @submit="save"
     >
       <div class="flex flex-col gap-4">
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">
-            名称 <span class="text-destructive">*</span>
-          </Label>
-          <Input
-            v-model="form.name"
-            placeholder="标签名称"
-            class="h-9 rounded-[10px]"
-          />
-        </div>
+        <I18nTabsEditor
+          v-model="form.name"
+          kind="text"
+          label="名称"
+          required
+        />
         <div>
           <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
           <Input

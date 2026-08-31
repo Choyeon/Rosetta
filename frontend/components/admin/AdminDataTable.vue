@@ -63,7 +63,10 @@ const alignClass: Record<string, string> = {
   <Table>
     <TableHeader>
       <TableRow class="hover:bg-transparent">
-        <TableHead v-if="selectable" class="w-10">
+        <TableHead
+          v-if="selectable"
+          class="w-10"
+        >
           <Checkbox
             v-model="allSelected"
             aria-label="全选"

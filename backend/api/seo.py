@@ -4,9 +4,10 @@ SEO 优化 API
 提供 robots.txt、结构化数据、Open Graph、SEO 配置、Sitemap 生成 等 SEO 功能。
 """
 
-from fastapi import APIRouter, Body, HTTPException
+from fastapi import APIRouter, Body, HTTPException, Query
 from fastapi.responses import PlainTextResponse, Response
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
 from backend.core.auth import CurrentStaff
 from backend.core.cache import CACHE_TTL, cache, make_cache_key
@@ -43,6 +44,15 @@ async def _get_all_seo_config() -> dict[str, str]:
         if v is not None:
             result[key] = v
     return result
+
+
+def _pick(value) -> str:
+    """从多语言 dict 中取出 zh / en 文本；非 dict 直接转字符串。"""
+    if isinstance(value, dict):
+        return value.get("zh") or value.get("en") or value.get("ja") or value.get("zh_Hant") or ""
+    if value is None:
+        return ""
+    return str(value)
 
 
 @router.get(
@@ -101,6 +111,122 @@ async def generate_sitemap_cache(_staff: CurrentStaff):
     await cache.delete_pattern(make_cache_key("sitemap", "*"))
     await cache.delete_pattern(make_cache_key("blog", "sitemap*"))
     return {"success": True, "message": "Sitemap 缓存已清除，下次访问将重新生成"}
+
+
+@router.get(
+    "/sitemap-check",
+    summary="【管理员】校验 Sitemap 健康度",
+    description="检查已发布文章是否具备 SEO 必要字段（标题 / 摘要 / 封面），返回校验结果与问题清单。",
+)
+async def sitemap_check(_staff: CurrentStaff, db: DB):
+    posts = (
+        await db.execute(
+            select(Post).where(Post.status == "published").order_by(Post.published_at.desc())
+        )
+    ).scalars().all()
+
+    errors: list[str] = []
+    for p in posts:
+        title = _pick(p.title)
+        if not title:
+            errors.append(f"文章 #{p.id} 缺少标题")
+        if not _pick(p.excerpt):
+            errors.append(f"文章 #{p.id} 缺少摘要")
+        if not p.cover_image:
+            errors.append(f"文章 #{p.id} 缺少封面图")
+
+    return {
+        "success": True,
+        "data": {
+            "ok": len(errors) == 0,
+            "url_count": len(posts),
+            "errors": errors[:50],
+        },
+    }
+
+
+@router.get(
+    "/scores",
+    summary="【管理员】文章 SEO 评分",
+    description="对已发布文章进行 SEO 评分（标题长度、摘要、封面、内容长度、标签），分页返回。",
+)
+async def seo_scores(
+    _staff: CurrentStaff,
+    db: DB,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    posts = (
+        await db.execute(
+            select(Post)
+            .options(selectinload(Post.tags))
+            .where(Post.status == "published")
+            .order_by(Post.published_at.desc())
+        )
+    ).scalars().all()
+
+    def _score(p: Post) -> tuple[int, list[str]]:
+        score = 0
+        suggestions: list[str] = []
+        title = _pick(p.title) or ""
+        if not title:
+            suggestions.append("补充文章标题")
+        elif 10 <= len(title) <= 60:
+            score += 25
+        else:
+            score += 10
+            suggestions.append("标题长度建议控制在 10–60 字符")
+
+        if _pick(p.excerpt):
+            score += 20
+        else:
+            suggestions.append("补充文章摘要（excerpt）")
+
+        if p.cover_image:
+            score += 20
+        else:
+            suggestions.append("添加封面图以提升点击率")
+
+        body = _pick(p.content) or ""
+        if len(body) >= 300:
+            score += 20
+        elif len(body) >= 100:
+            score += 10
+            suggestions.append("正文偏短，建议不少于 300 字")
+        else:
+            suggestions.append("正文过短，建议不少于 300 字")
+
+        if p.tags:
+            score += 15
+        else:
+            suggestions.append("为文章添加至少一个标签")
+
+        return min(score, 100), suggestions
+
+    scored = []
+    for p in posts:
+        s, sug = _score(p)
+        scored.append(
+            {
+                "id": p.id,
+                "slug": p.slug,
+                "title": _pick(p.title) or f"#{p.id}",
+                "score": s,
+                "suggestions": sug,
+            }
+        )
+    scored.sort(key=lambda x: x["score"])
+
+    total = len(scored)
+    start = (page - 1) * page_size
+    items = scored[start : start + page_size]
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "total_pages": (total + page_size - 1) // page_size if total else 0,
+    }
 
 
 @router.get(
@@ -194,12 +320,11 @@ async def get_schema_data(
     """
     from sqlalchemy import select
 
-    from backend.core.database import async_session
     from backend.models.blog import Category, Post
     from backend.models.user import User
 
-    if resource_type == "article":
-        async with async_session() as db:
+    if resource_type in ("article", "post"):
+        async with async_session_maker() as db:
             result = await db.execute(select(Post).where(Post.id == resource_id))
             post = result.scalar_one_or_none()
 
@@ -221,7 +346,7 @@ async def get_schema_data(
                 category = cat_result.scalar_one_or_none()
 
             site_url = (
-                settings.SITE_URL if hasattr(settings, "SITE_URL") else "http://localhost:4321"
+                getattr(settings, "site_url", "http://localhost:4321")
             )
 
             # 构建 Article 结构化数据
@@ -253,7 +378,7 @@ async def get_schema_data(
             return schema
 
     elif resource_type == "person":
-        async with async_session() as db:
+        async with async_session_maker() as db:
             result = await db.execute(select(User).where(User.id == resource_id))
             user = result.scalar_one_or_none()
 
@@ -261,7 +386,7 @@ async def get_schema_data(
                 return {"error": "Person not found"}
 
             site_url = (
-                settings.SITE_URL if hasattr(settings, "SITE_URL") else "http://localhost:4321"
+                getattr(settings, "site_url", "http://localhost:4321")
             )
 
             schema = {
@@ -284,7 +409,7 @@ async def get_schema_data(
             return schema
 
     elif resource_type == "website":
-        site_url = settings.SITE_URL if hasattr(settings, "SITE_URL") else "http://localhost:4321"
+        site_url = getattr(settings, "site_url", "http://localhost:4321")
         from backend.core.site_config import get_site_config_value
 
         site_name = await get_site_config_value("SITE_NAME") or "Rosetta Blog"
@@ -334,15 +459,14 @@ async def get_open_graph_data(
     """
     from sqlalchemy import select
 
-    from backend.core.database import async_session
     from backend.core.site_config import get_site_config_value
     from backend.models.blog import Post
 
-    site_url = settings.SITE_URL if hasattr(settings, "SITE_URL") else "http://localhost:4321"
+    site_url = getattr(settings, "site_url", "http://localhost:4321")
     site_name = await get_site_config_value("SITE_NAME") or "Rosetta Blog"
 
-    if resource_type == "article":
-        async with async_session() as db:
+    if resource_type in ("article", "post"):
+        async with async_session_maker() as db:
             result = await db.execute(select(Post).where(Post.id == resource_id))
             post = result.scalar_one_or_none()
 

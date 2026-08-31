@@ -13,8 +13,8 @@
       </Button>
     </div>
 
-    <Card>
-      <CardContent class="p-0">
+    <AdminCard>
+      <div class="p-0">
         <div
           v-if="loading"
           class="p-4 space-y-3"
@@ -83,7 +83,10 @@
               >
                 <td class="p-4">
                   <Badge :class="typeBadgeClass(a.type)">
-                    <component :is="typeIcon(a.type)" class="size-3.5 mr-1" />
+                    <component
+                      :is="typeIcon(a.type)"
+                      class="size-3.5 mr-1"
+                    />
                     {{ typeText(a.type) }}
                   </Badge>
                 </td>
@@ -133,8 +136,8 @@
             </tbody>
           </table>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
     <div
       v-if="totalPages > 1"
@@ -152,7 +155,10 @@
             v-for="p in visiblePages"
             :key="p"
           >
-            <PaginationItem v-if="p !== '...'" :value="typeof p === 'number' ? p : 1">
+            <PaginationItem
+              v-if="p !== '...'"
+              :value="typeof p === 'number' ? p : 1"
+            >
               <Button
                 :variant="p === page ? 'default' : 'ghost'"
                 size="icon"
@@ -162,7 +168,10 @@
                 {{ p }}
               </Button>
             </PaginationItem>
-            <PaginationItem v-else :value="1">
+            <PaginationItem
+              v-else
+              :value="1"
+            >
               <PaginationEllipsis :value="1" />
             </PaginationItem>
           </template>
@@ -302,8 +311,8 @@
 
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-import { Card, CardContent } from '~~/components/ui/card'
+ 
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
@@ -459,6 +468,8 @@ async function toggleActive(a: AdminAnnouncement, ev: unknown) {
     toast.success('状态已更新')
     a.is_active = checked
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '状态更新失败'
+    toast.error(msg)
   }
 }
 
@@ -486,6 +497,8 @@ async function submitForm() {
     formDialogOpen.value = false
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : (editingId.value ? '修改失败' : '创建失败')
+    toast.error(msg)
   } finally {
     submitting.value = false
   }
@@ -505,6 +518,8 @@ async function doDelete() {
     deleteTargetId.value = null
     fetchData()
   } catch (err) {
+    const msg = err instanceof Error ? err.message : '删除失败'
+    toast.error(msg)
   }
 }
 

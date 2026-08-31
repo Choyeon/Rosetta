@@ -48,16 +48,18 @@
         value="sitemap"
         class="mt-6 space-y-5"
       >
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-info-muted flex items-center justify-center text-info-foreground">
               <Activity class="size-5" />
             </div>
             <div class="flex-1">
-              <CardTitle class="text-base">
+              <h3 class="text-base font-semibold">
                 sitemap.xml 当前状态
-              </CardTitle>
-              <CardDescription>与真实爬虫视图保持一致</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                与真实爬虫视图保持一致
+              </p>
             </div>
             <Badge
               v-if="sitemapStatus"
@@ -66,8 +68,8 @@
             >
               {{ sitemapStatus.isStale ? '可能过期' : '最新' }}
             </Badge>
-          </CardHeader>
-          <CardContent class="grid md:grid-cols-3 gap-4">
+          </div>
+          <div class="grid md:grid-cols-3 gap-4">
             <div class="rounded-xl border border-border p-4 bg-muted/20 space-y-1">
               <p class="text-xs text-muted-foreground uppercase tracking-wide">
                 上次生成时间
@@ -95,11 +97,11 @@
                 {{ sitemapStatus?.isStale ? '是，建议重新生成' : '否' }}
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardContent class="pt-6 space-y-5">
+        <AdminCard>
+          <div class="pt-6 space-y-5">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 class="font-semibold">
@@ -158,20 +160,24 @@
                 <ExternalLink class="size-4 ml-auto text-muted-foreground" />
               </a>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
 
       <TabsContent
         value="score"
         class="mt-6 space-y-5"
       >
-        <Card class="rounded-2xl">
-          <CardHeader>
-            <CardTitle>文章 SEO 质量评分</CardTitle>
-            <CardDescription>基于标题、关键词、内链、图片 ALT 等维度打分（满分 100）</CardDescription>
-          </CardHeader>
-          <CardContent class="p-0">
+        <AdminCard>
+          <div class="space-y-1.5 mb-4">
+            <h3 class="text-base font-semibold">
+              文章 SEO 质量评分
+            </h3>
+            <p class="text-sm text-muted-foreground">
+              基于标题、关键词、内链、图片 ALT 等维度打分（满分 100）
+            </p>
+          </div>
+          <div class="p-0">
             <div
               v-if="scoresLoading"
               class="p-5 space-y-3"
@@ -295,16 +301,16 @@
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
 
       <TabsContent
         value="links"
         class="mt-6 space-y-5"
       >
-        <Card class="rounded-2xl">
-          <CardContent class="pt-6 space-y-5">
+        <AdminCard>
+          <div class="pt-6 space-y-5">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 class="font-semibold">
@@ -330,11 +336,11 @@
                 {{ checking ? '扫描中...' : '运行死链检查' }}
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardContent class="p-0">
+        <AdminCard class="overflow-hidden">
+          <div class="p-0">
             <div
               v-if="!checkResult && !checking"
               class="p-12"
@@ -439,8 +445,8 @@
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
     </Tabs>
   </div>
@@ -461,7 +467,7 @@ import {
   XCircle, ChevronLeft, ChevronRight
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
@@ -493,6 +499,8 @@ async function handleRegenerate() {
     toast.success('已重新生成 sitemap.xml 与 robots.txt')
     await refreshSitemap()
   } catch (e) {
+    const msg = e instanceof Error ? e.message : '重新生成 sitemap 失败'
+    toast.error(msg)
   } finally {
     regenerating.value = false
   }
@@ -519,7 +527,7 @@ async function loadScores() {
     scores.value = r?.items ?? []
     scoresTotal.value = r?.total ?? 0
     scoresTotalPages.value = r?.total_pages ?? 1
-  } catch (e) {
+  } catch {
     scores.value = []
   } finally {
     scoresLoading.value = false
@@ -541,6 +549,8 @@ async function handleCheck() {
       toast.success('扫描完成，未发现死链')
     }
   } catch (e) {
+    const msg = e instanceof Error ? e.message : '死链扫描失败'
+    toast.error(msg)
   } finally {
     checking.value = false
   }

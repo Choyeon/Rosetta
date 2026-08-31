@@ -31,10 +31,9 @@
 
     <template v-if="pending && posts.length === 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Skeleton
+        <PostSkeleton
           v-for="i in 6"
           :key="i"
-          class="aspect-[4/5] rounded-2xl"
         />
       </div>
     </template>
@@ -111,7 +110,7 @@
 <script setup lang="ts">
 import { useAPI } from '~~/composables/useApi'
 import PostCard from '~~/components/PostCard.vue'
-import { Skeleton } from '~~/components/ui/skeleton'
+import PostSkeleton from '~~/components/PostSkeleton.vue'
 import { Button } from '~~/components/ui/button'
 import { ChevronLeft, ChevronRight, FolderOpen } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -219,4 +218,16 @@ useHead(() => ({
   title: categoryName.value ? `${categoryName.value} · ${t('categories.title', '分类')}` : t('categories.title', '分类'),
   meta: categoryDesc.value ? [{ name: 'description', content: categoryDesc.value }] : []
 }))
+
+useSeo({
+  title: computed(() => categoryName.value ? `${categoryName.value} · ${t('categories.title', '分类')}` : t('categories.title', '分类')),
+  description: computed(() => categoryDesc.value),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home', '首页') as string, url: '/' },
+  { name: t('nav.categories', '分类') as string, url: '/categories' },
+  { name: categoryName.value || slug.value, url: `/categories/${slug.value}` }
+])
 </script>

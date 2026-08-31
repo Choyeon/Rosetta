@@ -78,20 +78,16 @@ const { t, locale } = useI18n()
 const site = useSite()
 
 // ===== SEO：基于 i18n + 站点设置 =====
-const requestURL = useRequestURL()
-const canonical = computed(() => requestURL.href)
-useSeoMeta({
-  title: () => String(t('categories.title') || '分类'),
-  description: () =>
-    String(t('categories.desc') || '') || site.siteDescription.value,
-  ogType: 'website',
-  ogUrl: canonical,
-  twitterCard: 'summary'
+useSeo({
+  title: computed(() => String(t('nav.categories') || t('categories.title') || '分类')),
+  description: computed(() => String(t('categories.desc') || '') || site.siteDescription.value),
+  type: 'website'
 })
-useHead({
-  meta: [{ name: 'keywords', content: site.siteKeywords.value }],
-  link: [{ rel: 'canonical', href: canonical }]
-})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home') as string, url: '/' },
+  { name: t('nav.categories') as string, url: '/categories' }
+])
 
 const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''

@@ -134,6 +134,26 @@ class Settings(BaseSettings):
             "http://127.0.0.1:4321",
             "http://localhost:3000",
             "http://127.0.0.1:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3001",
+            "http://localhost:3002",
+            "http://127.0.0.1:3002",
+            "http://localhost:3003",
+            "http://127.0.0.1:3003",
+            "http://localhost:3004",
+            "http://127.0.0.1:3004",
+            "http://localhost:3005",
+            "http://127.0.0.1:3005",
+            "http://localhost:3006",
+            "http://127.0.0.1:3006",
+            "http://localhost:3007",
+            "http://127.0.0.1:3007",
+            "http://localhost:3008",
+            "http://127.0.0.1:3008",
+            "http://localhost:3009",
+            "http://127.0.0.1:3009",
+            "http://localhost:3010",
+            "http://127.0.0.1:3010",
         ],
         description="允许的 CORS 源列表",
     )
@@ -315,6 +335,40 @@ class Settings(BaseSettings):
     supported_languages: list[str] = Field(
         default=["zh", "en", "ja", "zh_Hant"],
         description="支持的语言列表",
+    )
+
+    # ── 插件/主题市场与包安装（Task A） ────────────────────────────────
+    PLUGINS_MARKET_BASE_URL: str = Field(
+        default="https://market.rosetta.dev/plugins",
+        description="官方插件市场索引基础 URL",
+    )
+    THEMES_MARKET_BASE_URL: str = Field(
+        default="https://market.rosetta.dev/themes",
+        description="官方主题市场索引基础 URL",
+    )
+    UPLOAD_MAX_PACKAGE_SIZE_MB: int = Field(
+        default=30,
+        ge=1,
+        le=500,
+        description="插件/主题 zip 上传最大体积（MB），1~500 合法区间",
+    )
+    PACKAGE_ALLOW_PUBLISH_SCOPE: str = Field(
+        default="*",
+        description="允许从远程 URL 下载的 host 通配范围；* 表示不做 host 白名单过滤（保留）",
+    )
+
+    # ── Gravatar / 头像上游 CDN ─────────────────────────────────────────
+    # 默认使用 Cravatar 国内镜像（实测 2026-08 存活速度最快），避免 gravatar.com 在中国大陆被墙导致 ERR_CONNECTION_TIMED_OUT。
+    # 如需切换，可通过环境变量 GRAVATAR_CDN_BASE 覆盖，或在站点设置 → 基本配置中修改。
+    # 推荐可用值（国内）：
+    #   - "https://cravatar.cn/avatar"        (Cravatar，国内首选 ✅ 2026-08 实测存活)
+    #   - "https://gravatar.cat.net/avatar"   (Cat.net 镜像 ✅ 2026-08 实测存活)
+    #   - "https://gravatar.loli.net/avatar"  (Loli.net 镜像 ✅ 2026-08 实测存活)
+    #   - "https://sdn.geekzu.org/avatar"     (GeekZu ⚠ 2026-08 偶发超时，作为 fallback)
+    #   - "https://www.gravatar.com/avatar"   (官方国际 CDN，国内常超时，海外部署首选)
+    gravatar_cdn_base: str = Field(
+        default="https://cravatar.cn/avatar",
+        description="Gravatar 头像 CDN Base URL（国内部署推荐 Cravatar/Cat.net/Loli.net；海外部署推荐官方）",
     )
 
     # 监控配置

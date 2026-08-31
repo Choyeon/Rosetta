@@ -9,7 +9,7 @@ import json
 import zipfile
 from datetime import datetime
 
-from fastapi import APIRouter, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import select
@@ -18,9 +18,22 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentStaff
 from backend.models.blog import Category, Post, Tag
 from backend.models.log import OperationLog
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, timedelta
 
-router = APIRouter(tags=["导入导出"])
+router = APIRouter(prefix="/admin", tags=["导入导出"])
+
+
+def _parse_iso_date(s: str | None) -> datetime | None:
+    """解析 ISO 日期字符串为 UTC datetime。"""
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=UTC)
+        return d
+    except Exception:
+        return None
 
 
 # ==================== 导出 API ====================
@@ -36,6 +49,9 @@ async def export_posts(
     current_user: CurrentStaff,
     include_drafts: bool = False,
     include_content: bool = True,
+    scope: str | None = Query(None, description="范围过滤：published=仅已发布，其余视为 all"),
+    from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
+    to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
 ):
     """
     导出文章数据
@@ -47,8 +63,17 @@ async def export_posts(
     """
     # 查询文章
     query = select(Post).options(selectinload(Post.category), selectinload(Post.tags))
-    if not include_drafts:
+    if not include_drafts or scope == "published":
         query = query.where(Post.status == "published")
+
+    from_dt = _parse_iso_date(from_date)
+    to_dt = _parse_iso_date(to_date)
+    if from_dt:
+        query = query.where(Post.created_at >= from_dt)
+    if to_dt:
+        if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
+            to_dt = to_dt + timedelta(days=1) - timedelta(microseconds=1)
+        query = query.where(Post.created_at <= to_dt)
 
     result = await db.execute(query.order_by(Post.created_at.desc()))
     posts = result.unique().scalars().all()
@@ -169,6 +194,8 @@ async def export_markdown(
     db: DB,
     current_user: CurrentStaff,
     lang: str = "zh",
+    from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
+    to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
 ):
     """
     导出文章为 Markdown 格式
@@ -176,12 +203,22 @@ async def export_markdown(
     每篇文章一个 .md 文件，包含 frontmatter。
     """
     # 查询已发布文章
-    result = await db.execute(
+    query = (
         select(Post)
         .where(Post.status == "published")
         .options(selectinload(Post.category), selectinload(Post.tags))
-        .order_by(Post.created_at.desc())
     )
+    from_dt = _parse_iso_date(from_date)
+    to_dt = _parse_iso_date(to_date)
+    if from_dt:
+        query = query.where(Post.created_at >= from_dt)
+    if to_dt:
+        if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
+            to_dt = to_dt + timedelta(days=1) - timedelta(microseconds=1)
+        query = query.where(Post.created_at <= to_dt)
+    query = query.order_by(Post.created_at.desc())
+
+    result = await db.execute(query)
     posts = result.unique().scalars().all()
 
     # 创建 ZIP 文件

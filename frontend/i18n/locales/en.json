@@ -56,7 +56,8 @@
     "pinned": "Pinned",
     "featured": "Featured",
     "submitting": "Submitting…",
-    "open": "Open"
+    "open": "Open",
+    "by": "By"
   },
   "nav": {
     "home": "Home",
@@ -593,6 +594,77 @@
         "sidebar": "Sidebar",
         "footer": "Footer"
       }
+    },
+    "actions": {
+      "refresh": "Refresh",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "pagination": {
+      "page": "Page {page}",
+      "pageSuffix": "",
+      "prev": "Previous",
+      "next": "Next"
+    },
+    "plugins": {
+      "title": "Plugins",
+      "desc": "Install, activate, configure and upgrade your Rosetta plugins",
+      "searchPlaceholder": "Search plugins by name / description…",
+      "scan": "Scan local",
+      "install": "Install new plugin",
+      "bulkActions": "Bulk actions",
+      "perPage": "Per page:",
+      "selectAll": "Select all on this page",
+      "col": {
+        "plugin": "Plugin",
+        "status": "Status",
+        "actions": "Actions"
+      },
+      "status": {
+        "active": "Active",
+        "inactive": "Inactive",
+        "error": "Error"
+      },
+      "settings": "Settings",
+      "upgrade": "Upgrade",
+      "delete": "Delete",
+      "settingsTitle": "Plugin settings: {name}",
+      "settingsDesc": "Enable or configure plugin features; changes take effect immediately.",
+      "saveSuccess": "Plugin settings saved",
+      "activate": "Activate",
+      "deactivate": "Deactivate",
+      "upload": "Upload plugin",
+      "empty": "No plugins installed yet. Click “Scan local” or “Install new plugin” to start.",
+      "bulkActivate": "Bulk activate",
+      "bulkDeactivate": "Bulk deactivate",
+      "bulkDelete": "Bulk delete",
+      "selectedCount": "{count} plugins selected"
+    },
+    "themes": {
+      "title": "Themes",
+      "desc": "Switch and customize the appearance of your Rosetta blog",
+      "searchPlaceholder": "Search themes by name or tag…",
+      "scan": "Scan local",
+      "install": "Install new theme",
+      "filter": {
+        "all": "All",
+        "active": "Active",
+        "available": "Available"
+      },
+      "current": "Current theme",
+      "preview": "Preview",
+      "customize": "Customize",
+      "livePreview": "Live preview",
+      "delete": "Delete",
+      "isActive": "Active",
+      "activate": "Activate",
+      "cannotDeleteActive": "The active theme cannot be deleted",
+      "customizeTitle": "Customize theme: {name}",
+      "customizeDesc": "Tune colors, layout and modules; changes apply to the frontend immediately after save.",
+      "modsSaved": "Theme customization saved",
+      "upload": "Upload theme",
+      "empty": "No matching themes.",
+      "noThemes": "No themes installed yet. Scan or install one first."
     }
   },
   "oobe": {
@@ -835,6 +907,17 @@
     "noDesc": "No description",
     "noLinks": "No friend links yet"
   },
+  "search": {
+    "title": "Search",
+    "desc": "Find articles by title, content, tags or categories — full-text at your fingertips.",
+    "placeholder": "Type keywords and press Enter or click Search…",
+    "submit": "Search",
+    "startPrompt": "Start searching",
+    "startDesc": "Enter keywords above to search across titles, bodies, tags and categories.",
+    "resultCount": "Found {count} result(s) related to \"{keyword}\"",
+    "noResults": "No matches found",
+    "noResultsDesc": "No articles contain \"{keyword}\". Try another keyword or clear the search to see everything."
+  },
   "activity": {
     "title": "Activity",
     "desc": "A pulse of this little site — new posts, comments, shares.",
@@ -842,6 +925,11 @@
     "type_card": "New Card",
     "type_comment": "New Comment",
     "type_like": "Like",
+    "type_say": "Thought",
+    "type_article": "Article Update",
+    "type_update": "Site Update",
+    "type_notice": "Announcement",
+    "type_link": "Link Share",
     "liked": "liked the post",
     "noActivity": "No activity yet"
   },

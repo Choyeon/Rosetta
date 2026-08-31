@@ -41,19 +41,21 @@
         value="export"
         class="mt-6 space-y-5"
       >
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-warning-muted flex items-center justify-center text-warning-foreground">
               <FileJson class="size-5" />
             </div>
-            <div>
-              <CardTitle class="text-base">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold">
                 步骤 1 · 选择导出格式
-              </CardTitle>
-              <CardDescription>兼容主流博客平台的格式标准</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                兼容主流博客平台的格式标准
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div>
             <Select
               v-model="exportForm.format"
               class="max-w-md"
@@ -79,22 +81,24 @@
                 </SelectItem>
               </SelectContent>
             </Select>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-info-muted flex items-center justify-center text-info-foreground">
               <Filter class="size-5" />
             </div>
-            <div>
-              <CardTitle class="text-base">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold">
                 步骤 2 · 选择范围
-              </CardTitle>
-              <CardDescription>筛选需要导出的文章范围</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                筛选需要导出的文章范围
+              </p>
             </div>
-          </CardHeader>
-          <CardContent class="space-y-4">
+          </div>
+          <div class="space-y-4">
             <div class="inline-flex rounded-xl border border-border p-1 bg-card">
               <button
                 v-for="s in scopes"
@@ -127,40 +131,82 @@
                 </label>
               </div>
             </div>
-            <div class="grid md:grid-cols-2 gap-4">
+            <div class="grid md:grid-cols-1 gap-4">
               <div class="space-y-2">
-                <Label class="text-sm">开始日期</Label>
-                <Input
-                  v-model="exportForm.fromDate"
-                  type="date"
-                  class="rounded-xl"
-                />
-              </div>
-              <div class="space-y-2">
-                <Label class="text-sm">结束日期</Label>
-                <Input
-                  v-model="exportForm.toDate"
-                  type="date"
-                  class="rounded-xl"
-                />
+                <Label class="text-sm flex items-center gap-1.5">
+                  <CalendarDays class="size-3.5 text-primary" />
+                  按创建日期范围筛选（选完开始会自动弹出结束）
+                </Label>
+                <div class="flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2.5">
+                  <div class="relative group flex-1">
+                    <input
+                      v-model="exportForm.fromDate"
+                      type="date"
+                      class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
+                      :max="startMax"
+                      placeholder="开始日期（含）"
+                      @change="onFromChange"
+                    >
+                    <button
+                      v-if="exportForm.fromDate"
+                      type="button"
+                      class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+                      title="清除开始日期"
+                      @click="exportForm.fromDate = ''"
+                    >
+                      <X class="size-3.5" />
+                    </button>
+                  </div>
+                  <ChevronRight class="size-4 text-muted-foreground shrink-0" />
+                  <div class="relative group flex-1">
+                    <input
+                      ref="exportToDateInputRef"
+                      v-model="exportForm.toDate"
+                      type="date"
+                      class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
+                      :min="endMin"
+                      :max="endMax"
+                      placeholder="结束日期（含）"
+                      @change="onToChange"
+                    >
+                    <button
+                      v-if="exportForm.toDate"
+                      type="button"
+                      class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+                      title="清除结束日期"
+                      @click="exportForm.toDate = ''"
+                    >
+                      <X class="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+                <p
+                  v-if="dateRangeHint"
+                  class="text-xs text-muted-foreground flex items-center gap-1.5"
+                >
+                  <Info class="size-3.5 text-primary" />
+                  {{ dateRangeHint }}
+                </p>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-success-muted flex items-center justify-center text-success-foreground">
               <Rocket class="size-5" />
             </div>
-            <div>
-              <CardTitle class="text-base">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold">
                 步骤 3 · 生成导出文件
-              </CardTitle>
-              <CardDescription>根据上述配置打包为可下载文件</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                根据上述配置打包为可下载文件
+              </p>
             </div>
-          </CardHeader>
-          <CardContent class="space-y-4">
+          </div>
+          <div class="space-y-4">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <Button
                 :disabled="exporting"
@@ -213,27 +259,29 @@
                 </div>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
 
       <TabsContent
         value="import"
         class="mt-6 space-y-5"
       >
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-primary-muted flex items-center justify-center text-primary-foreground">
               <FileInput class="size-5" />
             </div>
-            <div>
-              <CardTitle class="text-base">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold">
                 选择导入格式
-              </CardTitle>
-              <CardDescription>兼容 WordPress XML / Halo 导出包 / Typecho / Markdown 压缩包 / JSON</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                兼容 WordPress XML / Halo 导出包 / Typecho / Markdown 压缩包 / JSON
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div>
             <Select
               v-model="importForm.format"
               class="max-w-md"
@@ -259,22 +307,24 @@
                 </SelectItem>
               </SelectContent>
             </Select>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-warning-muted flex items-center justify-center text-warning-foreground">
               <UploadCloud class="size-5" />
             </div>
-            <div>
-              <CardTitle class="text-base">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold">
                 上传文件
-              </CardTitle>
-              <CardDescription>拖入文件或点击选择，最大 256MB</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                拖入文件或点击选择，最大 256MB
+              </p>
             </div>
-          </CardHeader>
-          <CardContent>
+          </div>
+          <div>
             <div
               class="rounded-2xl border-2 border-dashed border-border hover:border-[#0EA5E9]/50 bg-muted/20 hover:bg-muted/40 transition-all p-8 text-center cursor-pointer"
               :class="{ 'border-[#0EA5E9] bg-[#0EA5E9]/5': dragging }"
@@ -326,22 +376,24 @@
                 </Button>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardHeader class="flex-row items-center gap-3 space-y-0">
+        <AdminCard>
+          <div class="flex-row items-center gap-3 space-y-0 flex">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
               <Settings2 class="size-5" />
             </div>
-            <div>
-              <CardTitle class="text-base">
+            <div class="flex-1">
+              <h3 class="text-base font-semibold">
                 导入选项
-              </CardTitle>
-              <CardDescription>控制导入时的行为模式</CardDescription>
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                控制导入时的行为模式
+              </p>
             </div>
-          </CardHeader>
-          <CardContent class="space-y-3">
+          </div>
+          <div class="space-y-3">
             <label
               v-for="opt in importOptions"
               :key="opt.key"
@@ -356,11 +408,11 @@
                 <div class="text-sm text-muted-foreground">{{ opt.desc }}</div>
               </div>
             </label>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
 
-        <Card class="rounded-2xl">
-          <CardContent class="space-y-5 pt-6">
+        <AdminCard>
+          <div class="space-y-5 pt-6">
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <span class="font-medium">导入进度</span>
@@ -447,15 +499,15 @@
                 </ul>
               </AlertDescription>
             </Alert>
-          </CardContent>
-        </Card>
+          </div>
+        </AdminCard>
       </TabsContent>
     </Tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, reactive, computed, watch, nextTick } from 'vue'
 import {
   exportAdminPosts,
   importAdminPosts
@@ -464,13 +516,12 @@ import { useToast } from '~~/composables/useToast'
 import {
   ArrowLeftRight, Upload, Download, FileJson, FileInput, Filter, Rocket,
   Package, Check, CloudUpload, UploadCloud, Settings2, Play, X, Loader2,
-  CheckCircle
+  CheckCircle, ChevronRight, CalendarDays, Info
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Label } from '~~/components/ui/label'
-import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Checkbox } from '~~/components/ui/checkbox'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
@@ -497,12 +548,56 @@ const importOptions = [
 const exporting = ref(false)
 const downloadReady = ref<{ fileName: string, size: string, time: string, blob: Blob } | null>(null)
 
+const exportToDateInputRef = ref<HTMLInputElement | null>(null)
+
 const exportForm = reactive({
   format: 'json',
   scope: 'all' as 'all' | 'published' | 'category',
   fromDate: '',
   toDate: ''
 })
+
+const todayStr = computed(() => {
+  const d = new Date()
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+})
+const startMax = computed(() => exportForm.toDate || todayStr.value)
+const endMin = computed(() => exportForm.fromDate || '')
+const endMax = todayStr
+
+const dateRangeHint = computed(() => {
+  if (exportForm.fromDate && exportForm.toDate) {
+    return `已选择范围：${exportForm.fromDate} ～ ${exportForm.toDate}（含边界）`
+  }
+  if (exportForm.fromDate) {
+    return `已选开始日期：${exportForm.fromDate}，请选择结束日期（已自动弹出）`
+  }
+  return ''
+})
+
+watch(() => exportForm.fromDate, (val) => {
+  if (!val) return
+  if (exportForm.toDate && val > exportForm.toDate) {
+    exportForm.toDate = val
+  }
+  nextTick(() => {
+    if (!exportForm.toDate && exportToDateInputRef.value) {
+      exportToDateInputRef.value.showPicker?.()
+      exportToDateInputRef.value.focus()
+    }
+  })
+})
+
+function onFromChange() { /* watch 负责联动 */ }
+function onToChange() {
+  if (exportForm.toDate && exportForm.fromDate && exportForm.toDate < exportForm.fromDate) {
+    exportForm.toDate = exportForm.fromDate
+    toast.warning('结束日期不能早于开始日期，已自动调整。')
+  }
+}
 
 const importing = ref(false)
 const importProgress = ref(0)
@@ -565,7 +660,11 @@ async function handleExport() {
   exporting.value = true
   downloadReady.value = null
   try {
-    const blob = await exportAdminPosts(exportForm.format)
+    const opts: { from?: string, to?: string, scope?: string } = {}
+    if (exportForm.fromDate) opts.from = exportForm.fromDate
+    if (exportForm.toDate) opts.to = exportForm.toDate
+    if (exportForm.scope !== 'all') opts.scope = exportForm.scope
+    const blob = await exportAdminPosts(exportForm.format, opts)
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
     const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
@@ -581,6 +680,8 @@ async function handleExport() {
     }
     toast.success('导出文件已生成')
   } catch (e) {
+    const msg = e instanceof Error ? e.message : '导出失败'
+    toast.error(msg)
   } finally {
     exporting.value = false
   }
@@ -614,7 +715,7 @@ async function handleImport() {
       skipped: Number(r?.skipped_count ?? 0) || 0,
       failed: Number(r?.error_count ?? 0) || 0,
       message: r?.message || '导入完成',
-      errors: Array.isArray(r?.errors) ? r.errors.filter((e) => e && typeof e === 'string') as string[] : []
+      errors: Array.isArray(r?.errors) ? r.errors.filter(e => e && typeof e === 'string') as string[] : []
     }
     toast.success(importResult.value.message || '导入完成')
   } catch (e) {

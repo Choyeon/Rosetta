@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { HTMLAttributes } from 'vue'
-import { computed } from 'vue'
 import { cn } from '~~/lib/utils'
 import { Skeleton } from '~~/components/ui/skeleton'
 
@@ -9,9 +8,9 @@ const props = defineProps<{
   class?: HTMLAttributes['class']
 }>()
 
-const width = computed(() => {
-  return `${Math.floor(Math.random() * 40) + 50}%`
-})
+// 不要在这里用 Math.random() / computed 随机：SSR 与客户端渲染值不同会触发
+// Hydration mismatch。骨架屏宽度固定即可，视觉差异足够。
+const WIDTH = '72%'
 </script>
 
 <template>
@@ -28,7 +27,7 @@ const width = computed(() => {
     <Skeleton
       class="h-4 flex-1 max-w-(--skeleton-width)"
       data-sidebar="menu-skeleton-text"
-      :style="{ '--skeleton-width': width }"
+      :style="{ '--skeleton-width': WIDTH }"
     />
   </div>
 </template>

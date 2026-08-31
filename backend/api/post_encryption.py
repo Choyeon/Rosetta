@@ -154,6 +154,7 @@ async def encrypt_post(
     post.password = get_password_hash(data.password)
 
     await db.flush()
+    await db.refresh(post)
 
     return BaseResponse(message="加密内容已设置")
 
@@ -239,6 +240,7 @@ async def update_post_encryption(
     post.password = get_password_hash(data.new_password)
 
     await db.flush()
+    await db.refresh(post)
 
     return BaseResponse(message="加密内容已更新")
 
@@ -276,5 +278,6 @@ async def disable_post_encryption(
     post.password = None
 
     await db.flush()
+    await db.refresh(post)
 
     return BaseResponse(message="已关闭内容加密")

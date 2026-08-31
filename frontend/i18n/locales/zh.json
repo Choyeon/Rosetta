@@ -56,7 +56,8 @@
     "pinned": "置顶",
     "featured": "精华",
     "submitting": "提交中…",
-    "open": "打开"
+    "open": "打开",
+    "common.by": "由"
   },
   "nav": {
     "home": "首页",
@@ -593,7 +594,78 @@
     "operationFailed": "[简]:Operation failed",
     "loading": "[简]:Loading...",
     "upload": "[简]:Upload",
-    "selectImage": "[简]:Select Image"
+    "selectImage": "[简]:Select Image",
+    "actions": {
+      "refresh": "刷新",
+      "cancel": "取消",
+      "save": "保存"
+    },
+    "pagination": {
+      "page": "第 {page} 页",
+      "pageSuffix": "页",
+      "prev": "上一页",
+      "next": "下一页"
+    },
+    "plugins": {
+      "title": "插件管理",
+      "desc": "安装、启用、配置并升级你的 Rosetta 插件",
+      "searchPlaceholder": "搜索插件名 / 描述...",
+      "scan": "扫描本地",
+      "install": "安装新插件",
+      "bulkActions": "批量操作",
+      "perPage": "每页显示：",
+      "selectAll": "全选当前页",
+      "col": {
+        "plugin": "插件",
+        "status": "状态",
+        "actions": "操作"
+      },
+      "status": {
+        "active": "已启用",
+        "inactive": "已禁用",
+        "error": "错误"
+      },
+      "settings": "设置",
+      "upgrade": "升级",
+      "delete": "删除",
+      "settingsTitle": "插件设置：{name}",
+      "settingsDesc": "启用或配置插件功能；修改后立即生效。",
+      "saveSuccess": "插件设置已保存",
+      "activate": "启用",
+      "deactivate": "禁用",
+      "upload": "上传插件",
+      "empty": "暂无已安装的插件，点击「扫描本地」或「安装新插件」开始。",
+      "bulkActivate": "批量启用",
+      "bulkDeactivate": "批量禁用",
+      "bulkDelete": "批量删除",
+      "selectedCount": "已选择 {count} 个插件"
+    },
+    "themes": {
+      "title": "主题管理",
+      "desc": "切换与自定义 Rosetta 博客外观",
+      "searchPlaceholder": "按名称或标签搜索...",
+      "scan": "扫描本地",
+      "install": "安装新主题",
+      "filter": {
+        "all": "全部",
+        "active": "已激活",
+        "available": "可用"
+      },
+      "current": "当前主题",
+      "preview": "预览",
+      "customize": "自定义",
+      "livePreview": "实时预览",
+      "delete": "删除",
+      "isActive": "已激活",
+      "activate": "启用",
+      "cannotDeleteActive": "当前激活的主题无法删除",
+      "customizeTitle": "自定义主题：{name}",
+      "customizeDesc": "调整颜色、布局和模块，保存后立即应用于前台。",
+      "modsSaved": "主题自定义已保存",
+      "upload": "上传主题",
+      "empty": "没有匹配的主题。",
+      "noThemes": "尚未安装任何主题，请先扫描或安装。"
+    }
   },
   "oobe": {
     "welcome": "欢迎使用 Rosetta",
@@ -835,6 +907,17 @@
     "noDesc": "暂无描述",
     "noLinks": "还没有友链"
   },
+  "search": {
+    "title": "搜索",
+    "desc": "从标题、内容、标签、分类中快速找到你想看的文章。",
+    "placeholder": "输入关键词，按回车或点击搜索…",
+    "submit": "搜索",
+    "startPrompt": "开始搜索",
+    "startDesc": "在上方输入关键词，支持标题、正文、标签和分类全文检索。",
+    "resultCount": "找到 {count} 条与「{keyword}」相关的结果",
+    "noResults": "没有找到匹配的内容",
+    "noResultsDesc": "没有包含「{keyword}」的文章，试试换一个关键词，或者清除搜索查看全部。"
+  },
   "activity": {
     "title": "站点动态",
     "desc": "记录这片小站的每一次脉动 — 新文章、新留言、新分享。",
@@ -842,6 +925,11 @@
     "type_card": "新卡片",
     "type_comment": "新评论",
     "type_like": "点赞",
+    "type_say": "碎碎念",
+    "type_article": "文章更新",
+    "type_update": "站点更新",
+    "type_notice": "公告",
+    "type_link": "友链推荐",
     "liked": "点赞了文章",
     "noActivity": "暂无动态"
   },

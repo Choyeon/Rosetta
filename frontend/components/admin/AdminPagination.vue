@@ -24,11 +24,10 @@ const props = withDefaults(defineProps<Props>(), {
 })
 
 const emit = defineEmits<{
-  (e: 'update:page', value: number): void
-  (e: 'update:pageSize', value: number): void
+  (e: 'update:page' | 'update:pageSize', value: number): void
 }>()
 
-const totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
+const _totalPages = computed(() => Math.max(1, Math.ceil(props.total / props.pageSize)))
 
 const currentPage = computed({
   get: () => props.page,
@@ -57,7 +56,10 @@ const rangeLabel = computed(() => {
     <div class="flex items-center gap-4">
       <div class="flex items-center gap-2">
         <span class="text-sm text-muted-foreground">每页</span>
-        <Select :model-value="String(pageSize)" @update:model-value="onPageSizeChange">
+        <Select
+          :model-value="String(pageSize)"
+          @update:model-value="onPageSizeChange"
+        >
           <SelectTrigger class="h-9 w-[80px]">
             <SelectValue />
           </SelectTrigger>
@@ -73,7 +75,7 @@ const rangeLabel = computed(() => {
         </Select>
       </div>
       <Pagination
-        v-slot="{ page }"
+        v-slot="{ page: slotPage }"
         :total="total"
         :items-per-page="pageSize"
         :sibling-count="1"
@@ -81,10 +83,16 @@ const rangeLabel = computed(() => {
         :model-page="currentPage"
         @update:page="(p: number) => emit('update:page', p)"
       >
-        <PaginationContent class="flex items-center gap-1" v-slot="{ items }">
+        <PaginationContent
+          v-slot="{ items }"
+          class="flex items-center gap-1"
+        >
           <PaginationFirst />
           <PaginationPrevious />
-          <template v-for="(item, index) in items" :key="index">
+          <template
+            v-for="(item, index) in items"
+            :key="index"
+          >
             <PaginationItem
               v-if="item.type === 'page'"
               :value="item.value"
@@ -92,7 +100,7 @@ const rangeLabel = computed(() => {
               <Button
                 size="icon"
                 class="size-9"
-                :variant="item.value === page ? 'default' : 'outline'"
+                :variant="item.value === slotPage ? 'default' : 'outline'"
               >
                 {{ item.value }}
               </Button>

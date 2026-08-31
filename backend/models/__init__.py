@@ -6,6 +6,7 @@ from backend.models.activity import Activity
 from backend.models.announcement import Announcement
 from backend.models.blog import Category, Comment, Post, PostViewHistory, Tag, post_likes, post_tags
 from backend.models.comment_reaction import CommentReaction
+from backend.models.content_type import ContentField, ContentTypeDefinition
 from backend.models.core import (
     FriendLink,
     Media,
@@ -15,6 +16,7 @@ from backend.models.core import (
     SearchPlaceholder,
     SiteConfig,
 )
+from backend.models.extensions import Plugin, Theme
 from backend.models.gallery import Album, Photo
 from backend.models.guestbook import GuestbookEntry
 from backend.models.hero import HeroSlide
@@ -22,6 +24,7 @@ from backend.models.message import PrivateMessage
 from backend.models.monitoring import VisitLog
 from backend.models.performance_metric import PerformanceMetric
 from backend.models.post_series import PostSeries
+from backend.models.site import Site
 from backend.models.user import RefreshToken, User, UserPreference, UserTitle
 from backend.models.voting import Choice, Poll, Vote
 
@@ -44,6 +47,8 @@ __all__ = [
     "Media",
     "Notification",
     "SiteConfig",
+    "Plugin",
+    "Theme",
     "Poll",
     "Choice",
     "Vote",
@@ -54,6 +59,9 @@ __all__ = [
     "CommentReaction",
     "PerformanceMetric",
     "PostSeries",
+    "ContentTypeDefinition",
+    "ContentField",
+    "Site",
     "Activity",
     "VisitLog",
     "Album",

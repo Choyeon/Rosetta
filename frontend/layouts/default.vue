@@ -1,20 +1,46 @@
 <script setup lang="ts">
-import { TooltipProvider } from '~~/components/ui/tooltip'
 import AppHeader from '~~/components/AppHeader.vue'
 import AppFooter from '~~/components/AppFooter.vue'
 import { useTheme } from '~~/composables/useTheme'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import { Bell, X, ExternalLink } from '@lucide/vue'
+import { useFrontendTheme } from '~~/composables/useFrontendTheme'
 
 // 初始化 useTheme 共享状态（不调用任何会影响首渲染 DOM 的逻辑；真实偏好延后到 Hydrate 后）
 useTheme()
 const authStore = useAuthStore()
+const ft = useFrontendTheme()
 const { locale } = useI18n()
+const route = useRoute()
 
 // 保证 SSR & 客户端首渲染 使用同一份从后端拉到的站点配置
 const site = useSite()
 await site.ensureLoaded()
+
+/**
+ * 前台布局守卫：
+ *   · 写 data-layout-scope=frontend（admin 会写 admin，作为主题 CSS 的双重作用域）
+ *   · 重新应用 Rosetta 主题视觉层（SPA 从后台切回前台时，前台的 data-theme 被 clear 掉了，
+ *     必须根据已缓存的 state.slug 重新挂回去）。
+ *
+ * 触发：onMounted + watch route.path。
+ */
+const applyFrontendShell = () => {
+  if (!import.meta.client) return
+  document.documentElement.setAttribute('data-layout-scope', 'frontend')
+  // 如果 state.loaded 已经为真（例如在首页 /index.vue ensureLoaded 之后），直接用缓存的 slug 重挂视觉层
+  // 否则留给具体页面里的 ensureLoaded 去做（避免页面未加载数据时我们用 slug=null 空跑）。
+  if (ft.state.value.loaded) {
+    ft.applyThemeVisual(route.path)
+  }
+}
+onMounted(() => {
+  authStore.initialize()
+  applyFrontendShell()
+})
+// SPA 从 /admin 返回前台时需要重新挂上主题属性；同时从前台不同路径间切换时也修正布局作用域。
+watch(() => route.path, () => applyFrontendShell(), { flush: 'post' })
 
 const siteTitleForHead = computed(() => site.siteTitle.value || 'Rosetta')
 useHead(() => {
@@ -99,65 +125,63 @@ const annContent = (a: AnnouncementRow) => {
 
 <template>
   <div class="min-h-screen bg-background font-sans antialiased flex flex-col">
-    <TooltipProvider :delay-duration="0">
-      <AppHeader />
+    <AppHeader />
 
-      <!-- 公告条：仅后端返回真实公告时渲染。后端返回空数组 / 失败 → 整块不出现。 -->
-      <div
-        v-for="ann in visibleAnns"
-        :key="ann.id"
-        :class="['px-4 py-2.5 text-sm', variantClass(ann.type)]"
-      >
-        <div class="container mx-auto flex items-start gap-3">
-          <Bell class="size-4 shrink-0 mt-0.5 opacity-80" />
-          <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-            <strong
-              v-if="annTitle(ann)"
-              class="font-medium truncate"
-            >{{ annTitle(ann) }}</strong>
-            <span
-              v-if="annContent(ann)"
-              class="truncate opacity-90"
-            >{{ annContent(ann) }}</span>
-            <template v-if="annHref(ann)">
-              <a
-                v-if="annIsExternal(ann)"
-                :href="annHref(ann)"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:opacity-90"
-              >
-                {{ '查看详情' }}
-                <ExternalLink class="size-3" />
-              </a>
-              <NuxtLink
-                v-else
-                :to="annHref(ann)"
-                class="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:opacity-90"
-              >
-                {{ '前往' }}
-              </NuxtLink>
-            </template>
-          </div>
-          <button
-            v-if="annCanDismiss(ann)"
-            type="button"
-            class="shrink-0 p-1 -m-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
-            :aria-label="'关闭公告'"
-            @click="dismissAnn(ann.id)"
-          >
-            <X class="size-4" />
-          </button>
+    <!-- 公告条：仅后端返回真实公告时渲染。后端返回空数组 / 失败 → 整块不出现。 -->
+    <div
+      v-for="ann in visibleAnns"
+      :key="ann.id"
+      :class="['px-4 py-2.5 text-sm', variantClass(ann.type)]"
+    >
+      <div class="container mx-auto flex items-start gap-3">
+        <Bell class="size-4 shrink-0 mt-0.5 opacity-80" />
+        <div class="min-w-0 flex-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+          <strong
+            v-if="annTitle(ann)"
+            class="font-medium truncate"
+          >{{ annTitle(ann) }}</strong>
+          <span
+            v-if="annContent(ann)"
+            class="truncate opacity-90"
+          >{{ annContent(ann) }}</span>
+          <template v-if="annHref(ann)">
+            <a
+              v-if="annIsExternal(ann)"
+              :href="annHref(ann)"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:opacity-90"
+            >
+              {{ '查看详情' }}
+              <ExternalLink class="size-3" />
+            </a>
+            <NuxtLink
+              v-else
+              :to="annHref(ann)"
+              class="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:opacity-90"
+            >
+              {{ '前往' }}
+            </NuxtLink>
+          </template>
         </div>
+        <button
+          v-if="annCanDismiss(ann)"
+          type="button"
+          class="shrink-0 p-1 -m-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          :aria-label="'关闭公告'"
+          @click="dismissAnn(ann.id)"
+        >
+          <X class="size-4" />
+        </button>
       </div>
+    </div>
 
-      <main
-        id="main-content"
-        class="flex-1"
-      >
-        <slot />
-      </main>
-      <AppFooter />
-    </TooltipProvider>
+    <main
+      id="main-content"
+      class="flex-1"
+    >
+      <slot />
+    </main>
+    <AppFooter />
   </div>
 </template>

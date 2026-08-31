@@ -37,7 +37,7 @@
    Rosetta 全站统一主题令牌
    ---------------------------------------------------------
    所有颜色集中管理，只改这一处，全站统一生效：
-   - 主色 primary：天青 sky 201°（6 套调色板 html.palette-* 可覆盖）
+   - 主色 primary：天青 sky 201°（明/暗双主题由 html.dark 切换）
    - 语义状态色 info / success / warning / error
      → 与 primary 同色系，明/暗各自一套，对比度符合 WCAG AA
    - destructive = error 别名（与 shadcn 默认命名保持一致）
@@ -179,194 +179,7 @@
   }
 }
 
-/* ---------- Theme Palettes (6 brand colors) ----------
-   顶层规则，权重高于 @layer base，保证调色板切换一定生效。
-   每一个 palette 都只改 primary/accent/ring/sidebar-primary 一套，
-   语义状态色（info/success/warning/error）保持恒定，与品牌色解耦。 */
 
-html.palette-indigo {
-  --primary: 262 83% 58%;
-  --primary-foreground: 0 0% 100%;
-  --accent: 262 83% 96%;
-  --accent-foreground: 262 83% 12%;
-  --ring: 262 83% 58%;
-  --sidebar-primary: 262 83% 62%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 263 91% 72%;
-}
-html.dark.palette-indigo {
-  --primary: 263 88% 76%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 262 41% 24%;
-  --accent-foreground: 263 91% 90%;
-  --ring: 263 88% 76%;
-  --sidebar-primary: 263 88% 70%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 263 88% 76%;
-}
-
-html.palette-emerald {
-  --primary: 158 64% 46%;
-  --primary-foreground: 0 0% 100%;
-  --accent: 158 64% 95%;
-  --accent-foreground: 158 64% 10%;
-  --ring: 158 64% 46%;
-  --sidebar-primary: 158 64% 50%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 158 88% 68%;
-}
-html.dark.palette-emerald {
-  --primary: 158 72% 65%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 158 42% 20%;
-  --accent-foreground: 158 92% 90%;
-  --ring: 158 72% 65%;
-  --sidebar-primary: 158 72% 60%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 158 72% 65%;
-}
-
-html.palette-amber {
-  --primary: 42 96% 55%;
-  --primary-foreground: 30 40% 10%;
-  --accent: 42 96% 93%;
-  --accent-foreground: 30 40% 10%;
-  --ring: 42 96% 55%;
-  --sidebar-primary: 42 96% 55%;
-  --sidebar-primary-foreground: 30 40% 10%;
-  --sidebar-ring: 42 98% 65%;
-}
-html.dark.palette-amber {
-  --primary: 42 97% 70%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 35 50% 22%;
-  --accent-foreground: 42 100% 92%;
-  --ring: 42 97% 70%;
-  --sidebar-primary: 42 97% 65%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 42 97% 70%;
-}
-
-html.palette-rose {
-  --primary: 346 77% 60%;
-  --primary-foreground: 0 0% 100%;
-  --accent: 346 77% 96%;
-  --accent-foreground: 346 77% 12%;
-  --ring: 346 77% 60%;
-  --sidebar-primary: 346 77% 62%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 346 91% 75%;
-}
-html.dark.palette-rose {
-  --primary: 346 85% 78%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 346 42% 24%;
-  --accent-foreground: 346 100% 92%;
-  --ring: 346 85% 78%;
-  --sidebar-primary: 346 85% 72%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 346 85% 78%;
-}
-
-html.palette-violet {
-  --primary: 271 91% 65%;
-  --primary-foreground: 0 0% 100%;
-  --accent: 271 91% 96%;
-  --accent-foreground: 271 91% 12%;
-  --ring: 271 91% 65%;
-  --sidebar-primary: 271 91% 66%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 272 95% 76%;
-}
-html.dark.palette-violet {
-  --primary: 271 96% 80%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 271 50% 26%;
-  --accent-foreground: 271 96% 92%;
-  --ring: 271 96% 80%;
-  --sidebar-primary: 271 96% 76%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 271 96% 80%;
-}
-
-html.palette-sky {
-  --primary: 201 96% 52%;
-  --primary-foreground: 0 0% 100%;
-  --accent: 201 96% 95%;
-  --accent-foreground: 201 96% 12%;
-  --ring: 201 96% 52%;
-  --sidebar-primary: 201 96% 54%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 202 98% 70%;
-}
-html.dark.palette-sky {
-  --primary: 201 98% 76%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 201 48% 22%;
-  --accent-foreground: 201 98% 92%;
-  --ring: 201 98% 76%;
-  --sidebar-primary: 201 98% 72%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 201 98% 76%;
-}
-
-/* ---- Warm Stone 赭石暖色调（Admin 后台默认启用）---- */
-html.palette-warm-stone {
-  --primary: 32 94% 44%;           /* 赭石 D97706 */
-  --primary-foreground: 30 40% 10%;
-  --accent: 40 96% 92%;           /* 赭石淡米 */
-  --accent-foreground: 30 40% 12%;
-  --ring: 32 94% 44%;
-  --sidebar-primary: 32 94% 48%;
-  --sidebar-primary-foreground: 30 40% 10%;
-  --sidebar-ring: 34 98% 52%;
-  /* 语义色微调，与赭石更和谐：竹青+天蓝保留，warning 用琥珀 */
-  --success: 172 70% 40%;
-  --info: 219 88% 60%;
-  --warning: 40 90% 50%;
-}
-html.dark.palette-warm-stone {
-  --primary: 34 96% 64%;
-  --primary-foreground: 224 71% 4%;
-  --accent: 30 45% 24%;
-  --accent-foreground: 40 100% 92%;
-  --ring: 34 96% 64%;
-  --sidebar-primary: 34 96% 60%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-ring: 34 96% 64%;
-  --success: 172 70% 55%;
-  --info: 219 90% 72%;
-  --warning: 40 92% 66%;
-}
-
-/* ---- Minimal 极简中性灰（无强品牌色，最大留白，明暗双模）---- */
-html.palette-minimal {
-  --primary: 220 9% 46%;           /* 中性灰 6b7280 */
-  --primary-foreground: 0 0% 100%;
-  --accent: 220 14% 96%;           /* 极浅灰底 */
-  --accent-foreground: 220 13% 22%;
-  --ring: 220 9% 46%;
-  --sidebar-primary: 220 9% 50%;
-  --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 220 10% 60%;
-  /* 语义色压低饱和，保持极简调性 */
-  --success: 160 8% 40%;
-  --info: 220 9% 50%;
-  --warning: 38 30% 46%;
-}
-html.dark.palette-minimal {
-  --primary: 0 0% 92%;             /* 近白，暗底上最干净的主色 */
-  --primary-foreground: 240 6% 10%;
-  --accent: 0 0% 18%;              /* 暗灰底 */
-  --accent-foreground: 0 0% 92%;
-  --ring: 0 0% 92%;
-  --sidebar-primary: 0 0% 88%;
-  --sidebar-primary-foreground: 240 6% 10%;
-  --sidebar-ring: 0 0% 80%;
-  --success: 150 6% 60%;
-  --info: 0 0% 80%;
-  --warning: 40 12% 64%;
-}
 
 /* =========================================================
    Base reset + 排版
@@ -964,9 +777,9 @@ html.dark {
       drop-shadow(0 0 24px  hsl(200 95% 55% / 0.14));
   }
 
-  /* --- 暗色主题：光晕更亮 + 扩散更大，能量感拉满 --- */
-  html.dark .card-surface:hover::after,
-  html.dark .card-surface:focus-within::after,
+  /* --- 暗色主题：光晕更亮 + 扩散更大，能量感拉满（仅限显式开启 lift-hover 的卡片） --- */
+  html.dark .card-surface.lift-hover:hover::after,
+  html.dark .card-surface.lift-hover:focus-within::after,
   html.dark .glow-ring:hover::after,
   html.dark .glow-ring:focus-within::after {
     filter:
@@ -1021,6 +834,50 @@ html.dark {
     border: 1px solid color-mix(in oklab, hsl(var(--tag-color, var(--primary))) 26%, transparent);
   }
   .tag-colored::selection { background: hsl(var(--tag-color, var(--primary)) / 0.3); }
+}
+
+/* ⚠ NOTICE: Minimal Paper (Astro Paper 风格) 的主题专属样式不再存放于全局 main.css。
+   为确保与默认 Editorial WP-Style 主题完全解耦，全部 CSS 已迁移到：
+     frontend/themes/minimal-brutalist/style.css
+   通过 useFrontendTheme.applyThemeVisual 在激活主题时以 <link rel=stylesheet> 动态挂载，
+   切换主题时移除该 link，完全与 main.css 的默认主题隔离。
+   若未来再扩展 Minimal Paper，请只改 themes/minimal-brutalist/style.css。 */
+
+/* =========================================================
+   Skeleton / Shimmer 骨架屏动画
+   - shimmer 斜向扫光渐变动画（优于纯 pulse：更有"加载中"时间感）
+   - prefers-reduced-motion 自动降级为静态色块
+   ========================================================= */
+@keyframes skeleton-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@layer utilities {
+  .skeleton-shimmer {
+    background-color: hsl(var(--muted));
+    background-image: linear-gradient(
+      105deg,
+      hsl(var(--muted)) 0%,
+      hsl(var(--muted)) 40%,
+      color-mix(in oklab, hsl(var(--muted-foreground) / 0.18), hsl(var(--muted))) 50%,
+      hsl(var(--muted)) 60%,
+      hsl(var(--muted)) 100%
+    );
+    background-size: 200% 100%;
+    background-repeat: no-repeat;
+    animation: skeleton-shimmer 1.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none !important;
+  }
 }
 
 @keyframes fade-in-up {

@@ -19,7 +19,7 @@ interface Props {
   destructive?: boolean
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   title: '确认操作',
   description: '此操作不可撤销，确定要继续吗？',
   confirmText: '确认',

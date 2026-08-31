@@ -1,18 +1,23 @@
 <template>
   <div class="card-surface flex gap-3 p-4">
-    <Avatar class="size-9 shrink-0">
-      <AvatarImage
-        v-if="avatarImg"
-        :src="avatarImg"
-        :alt="comment.author?.name || 'avatar'"
-      />
-      <AvatarFallback>{{ comment.author?.name?.[0] || 'U' }}</AvatarFallback>
-    </Avatar>
+    <UserAvatar
+      :avatar="comment.author?.avatar"
+      :seed="comment.author?.name"
+      :name="comment.author?.name || 'Anonymous'"
+      :title="comment.author?.title || null"
+      :size="36"
+      :show-title="true"
+    />
 
     <div class="flex-1 min-w-0">
       <div class="flex items-start justify-between gap-2 mb-1">
         <div class="flex items-center gap-2 min-w-0">
           <span class="font-semibold text-sm truncate">{{ comment.author?.name || 'Anonymous' }}</span>
+          <TitleBadge
+            v-if="comment.author?.title"
+            :title="comment.author?.title"
+            size="sm"
+          />
           <span class="text-xs text-muted-foreground shrink-0">{{ formatRelativeTime(comment.createdAt) }}</span>
         </div>
         <Button
@@ -66,11 +71,11 @@
 </template>
 
 <script setup lang="ts">
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import UserAvatar from '~~/components/UserAvatar.vue'
+import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
 import { ArrowLeft, MessageSquare } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
-import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
 
 interface Props {
   comment: {
@@ -80,6 +85,12 @@ interface Props {
       name: string
       avatar?: string
       email?: string
+      title?: {
+        id?: number
+        name: string
+        icon?: string
+        color?: string
+      } | null
     }
     content: string
     createdAt: string
@@ -89,7 +100,7 @@ interface Props {
   depth?: number
 }
 
-const props = withDefaults(defineProps<Props>(), {
+withDefaults(defineProps<Props>(), {
   depth: 0
 })
 
@@ -99,8 +110,6 @@ defineEmits<{
 
 const { t, locale } = useI18n()
 const isLiked = ref(false)
-
-const avatarImg = useResolvedAvatar(() => props.comment?.author?.avatar)
 const formatRelativeTime = (date: string) => {
   try {
     if (!date) return ''

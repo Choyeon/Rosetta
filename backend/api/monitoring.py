@@ -59,11 +59,11 @@ class PerformanceMetrics(BaseModel):
 
 async def record_visit(request: Request, status_code: int, response_time_ms: float):
     """记录访问日志"""
-    from backend.core.database import async_session_factory
+    from backend.core.database import async_session_maker
     from backend.models.monitoring import VisitLog
 
     try:
-        async with async_session_factory() as db:
+        async with async_session_maker() as db:
             visit = VisitLog(
                 path=request.url.path[:500],
                 method=request.method,

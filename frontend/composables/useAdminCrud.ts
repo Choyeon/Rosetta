@@ -10,7 +10,6 @@
  */
 import { ref, reactive } from 'vue'
 import { useToast } from '~~/composables/useToast'
-import { apiFetch } from '~~/composables/useApi'
 
 export interface UseAdminCrudOptions<T, TCreate = Partial<T>, TUpdate = Partial<T>> {
   /** 加载列表，返回 { items, total } */
@@ -19,7 +18,7 @@ export interface UseAdminCrudOptions<T, TCreate = Partial<T>, TUpdate = Partial<
     pageSize: number
     search?: string
     [key: string]: unknown
-  }) => Promise<{ items: T[]; total: number }>
+  }) => Promise<{ items: T[], total: number }>
   /** 创建（可选，无则不支持新建） */
   create?: (payload: TCreate) => Promise<unknown>
   /** 更新（可选） */
@@ -183,6 +182,3 @@ export function useAdminCrud<T, TCreate = Partial<T>, TUpdate = Partial<T>>(
     getId
   }
 }
-
-/** 便捷导出，供页面直接 import 使用 */
-export { apiFetch }

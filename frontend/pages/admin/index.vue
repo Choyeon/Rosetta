@@ -25,7 +25,7 @@ import {
 } from '@lucide/vue'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import UserAvatar from '~~/components/UserAvatar.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
@@ -33,7 +33,6 @@ import { Tabs, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { useAuthStore } from '~~/stores/auth'
 import { useToast } from '~~/composables/useToast'
 import { useTheme } from '~~/composables/useTheme'
-import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
 import {
   fetchDashboardStats,
   fetchRecentPosts,
@@ -55,7 +54,58 @@ const authStore = useAuthStore()
 useToast() // 统一 toast 封装（apiFetch 自动 toast，页面无需手动调用 error）
 const { isDark } = useTheme()
 
-// ============== 图表调色板（亮/暗自适应） ==============
+// ============== Hero 头部卡片 · 双主题渐变配色 ==============
+const heroBgStyle = computed(() => {
+  if (isDark.value) {
+    // 暗色：冷蓝紫 + 靛青多光球深度渐变（Glow + Grain 风格）
+    return {
+      background:
+        'radial-gradient(900px 300px at 0% -20%, rgba(56,189,248,0.30) 0%, transparent 60%),'
+        + 'radial-gradient(700px 260px at 100% -10%, rgba(129,140,248,0.24) 0%, transparent 55%),'
+        + 'radial-gradient(620px 300px at 60% 130%, rgba(45,212,191,0.12) 0%, transparent 55%),'
+        + 'linear-gradient(135deg, oklch(0.29 0.12 240) 0%, oklch(0.23 0.10 250) 48%, oklch(0.17 0.04 260) 100%)'
+    }
+  }
+  // 亮色：暖白纸质 + 天蓝/紫丁香柔光渐变（Editorial 质感）
+  return {
+    background:
+      'radial-gradient(900px 300px at 0% -20%, rgba(56,189,248,0.22) 0%, transparent 60%),'
+      + 'radial-gradient(700px 260px at 100% -10%, rgba(167,139,250,0.20) 0%, transparent 55%),'
+      + 'radial-gradient(500px 260px at 50% 130%, rgba(20,184,166,0.10) 0%, transparent 55%),'
+      + 'linear-gradient(135deg, oklch(0.985 0.012 230) 0%, oklch(0.968 0.022 235) 50%, oklch(0.948 0.030 240) 100%)'
+  }
+})
+const heroShadowClass = computed(() =>
+  isDark.value
+    ? 'shadow-[0_22px_45px_-18px_rgba(14,165,233,0.55)] border-white/10'
+    : 'shadow-[0_18px_38px_-20px_rgba(14,165,233,0.35)] border-sky-200/60'
+)
+// 主色（标题强调色 · 圆点分隔符）
+const heroAccent = computed(() => (isDark.value ? 'text-sky-300' : 'text-sky-600'))
+const heroTextPrimary = computed(() => (isDark.value ? 'text-white' : 'text-slate-900'))
+const heroTextSecondary = computed(() =>
+  isDark.value ? 'text-white/75' : 'text-slate-600'
+)
+// SVG 光球颜色（亮暗切换）
+const orbColors = computed(() => {
+  if (isDark.value) {
+    return {
+      o1Center: '#38BDF8',
+      o1Opacity: '0.42',
+      o2Center: '#818CF8',
+      o2Opacity: '0.32',
+      mixBlend: 'mix-blend-screen'
+    }
+  }
+  return {
+    o1Center: '#0EA5E9',
+    o1Opacity: '0.22',
+    o2Center: '#A78BFA',
+    o2Opacity: '0.18',
+    mixBlend: 'mix-blend-multiply opacity-70'
+  }
+})
+
 const palette = computed(() => {
   if (isDark.value) {
     return {
@@ -902,8 +952,13 @@ const healthRows = computed<HealthRow[]>(() => {
   if (h.cache_hit_percent != null)
     rows.push({ label: '缓存', value: Math.round(Number(h.cache_hit_percent)) })
   if (rows.length < 4) {
-    // 补齐 4 轴显示（用已存在的 + fallback: 空占位会变形，所以重复补齐第一项）
-    while (rows.length < 4) rows.push(rows[0] ?? { label: 'N/A', value: 0 })
+    // 补齐 4 轴显示（空占位会变形；不能重复 push rows[0] 同一对象引用，
+    // 否则 v-for :key=r.label 出现 duplicate key 警告）
+    const fillers = ['N/A-1', 'N/A-2', 'N/A-3', 'N/A-4']
+    let i = 0
+    while (rows.length < 4) {
+      rows.push({ label: fillers[i++] ?? `N/A-${rows.length + 1}`, value: 0 })
+    }
   }
   return rows
 })
@@ -1030,7 +1085,7 @@ const healthGaugeOption = computed(() => {
 })
 
 // 4.4 活跃评论者 Leaderboard：头像 + 进度条（无图表库，直接纯 UI，性能好）
-type CommenterRow = { name: string, avatar: string | null, comments_count: number }
+type CommenterRow = { name: string, avatar: string | null, comments_count: number, title?: { id?: number, name: string, icon?: string, color?: string } | null }
 const commenters = computed<CommenterRow[]>(
   () => (statsRaw.value?.active_commenters ?? []) as CommenterRow[]
 )
@@ -1059,15 +1114,17 @@ const pillFor = (a: ActivityItem['accent']) =>
   <div class="admin-dashboard-v2 space-y-5 py-1 animate-in">
     <!-- =============== HERO =============== -->
     <section
-      class="relative overflow-hidden rounded-2xl p-6 md:p-7 text-white shadow-[0_22px_45px_-18px_rgba(14,165,233,0.55)] border border-white/10"
-      style="background: radial-gradient(1200px 320px at 10% 0%, rgba(125,211,252,0.35) 0%, transparent 55%), linear-gradient(135deg,#0284C7 0%,#0369A1 45%,#0F172A 100%);"
+      class="relative overflow-hidden rounded-2xl p-6 md:p-7 border"
+      :class="heroShadowClass"
+      :style="heroBgStyle"
     >
       <!-- decorative orbs -->
       <svg
         aria-hidden="true"
         viewBox="0 0 600 260"
         preserveAspectRatio="none"
-        class="pointer-events-none absolute inset-0 w-full h-full opacity-60 mix-blend-screen"
+        class="pointer-events-none absolute inset-0 w-full h-full opacity-60"
+        :class="orbColors.mixBlend"
       >
         <defs>
           <radialGradient
@@ -1078,12 +1135,12 @@ const pillFor = (a: ActivityItem['accent']) =>
           >
             <stop
               offset="0%"
-              stop-color="#38BDF8"
-              stop-opacity="0.45"
+              :stop-color="orbColors.o1Center"
+              :stop-opacity="orbColors.o1Opacity"
             />
             <stop
               offset="100%"
-              stop-color="#38BDF8"
+              :stop-color="orbColors.o1Center"
               stop-opacity="0"
             />
           </radialGradient>
@@ -1095,12 +1152,12 @@ const pillFor = (a: ActivityItem['accent']) =>
           >
             <stop
               offset="0%"
-              stop-color="#818CF8"
-              stop-opacity="0.35"
+              :stop-color="orbColors.o2Center"
+              :stop-opacity="orbColors.o2Opacity"
             />
             <stop
               offset="100%"
-              stop-color="#818CF8"
+              :stop-color="orbColors.o2Center"
               stop-opacity="0"
             />
           </radialGradient>
@@ -1122,8 +1179,8 @@ const pillFor = (a: ActivityItem['accent']) =>
           cy="130"
           r="82"
           fill="none"
-          stroke="#fff"
-          stroke-opacity="0.08"
+          :stroke="isDark ? '#fff' : '#0F172A'"
+          :stroke-opacity="isDark ? 0.08 : 0.12"
           stroke-width="1"
           stroke-dasharray="3 5"
         />
@@ -1132,37 +1189,62 @@ const pillFor = (a: ActivityItem['accent']) =>
           cy="130"
           r="54"
           fill="none"
-          stroke="#fff"
-          stroke-opacity="0.1"
+          :stroke="isDark ? '#fff' : '#0F172A'"
+          :stroke-opacity="isDark ? 0.1 : 0.15"
           stroke-width="1"
         />
       </svg>
 
       <div class="relative flex flex-col md:flex-row md:items-stretch md:justify-between gap-6">
         <div class="min-w-0 flex-1">
-          <p class="text-white/75 text-sm flex items-center gap-2">
+          <p
+            class="text-sm flex items-center gap-2"
+            :class="heroTextSecondary"
+          >
             <CalendarDays class="size-4 opacity-80" />
             {{ today }} · {{ weekday }} · {{ greeting }}，
             <span class="font-semibold">{{ authStore.user?.nickname || authStore.user?.username || '管理员' }}</span>
           </p>
-          <h1 class="mt-2 font-display font-bold text-2xl md:text-[30px] tracking-tight leading-[1.2]">
-            Rosetta 控制台 <span class="text-sky-300">·</span> 一切尽在掌握
+          <h1
+            class="mt-2 font-display font-bold text-2xl md:text-[30px] tracking-tight leading-[1.2]"
+            :class="heroTextPrimary"
+          >
+            Rosetta 控制台 <span :class="heroAccent">·</span> 一切尽在掌握
           </h1>
-          <p class="mt-2 text-white/80 text-sm max-w-2xl leading-relaxed">
+          <p
+            class="mt-2 text-sm max-w-2xl leading-relaxed"
+            :class="isDark ? 'text-white/80' : 'text-slate-700'"
+          >
             今日博客获
-            <span class="font-semibold text-white">{{ summary.views24h.toLocaleString() }}</span>
+            <span
+              class="font-semibold"
+              :class="heroTextPrimary"
+            >{{ summary.views24h.toLocaleString() }}</span>
             次浏览 ·
-            <span class="font-semibold text-white">{{ summary.totalCommentsToday }}</span>
+            <span
+              class="font-semibold"
+              :class="heroTextPrimary"
+            >{{ summary.totalCommentsToday }}</span>
             条新评论 ·
-            <span class="font-semibold text-white">{{ summary.pendingComments }}</span>
+            <span
+              class="font-semibold"
+              :class="heroTextPrimary"
+            >{{ summary.pendingComments }}</span>
             条评论等待审核 ·
-            <span class="font-semibold text-white">{{ summary.draftCount }}</span>
+            <span
+              class="font-semibold"
+              :class="heroTextPrimary"
+            >{{ summary.draftCount }}</span>
             篇草稿待发布。
           </p>
           <div class="mt-5 flex items-center gap-2.5 flex-wrap">
+            <!-- 主按钮：暗色=白底蓝字 / 亮色=sky 深蓝底白字 -->
             <Button
               size="sm"
-              class="h-9 rounded-xl bg-white text-[#075985] hover:bg-white/90 font-semibold shadow-lg shadow-black/10"
+              class="h-9 rounded-xl font-semibold shadow-lg"
+              :class="isDark
+                ? 'bg-white text-[#075985] hover:bg-white/90 shadow-black/10'
+                : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/25'"
               @click="navigateTo('/admin/content/posts/new')"
             >
               <PencilLine class="size-4 mr-1" />
@@ -1171,7 +1253,10 @@ const pillFor = (a: ActivityItem['accent']) =>
             <Button
               size="sm"
               variant="outline"
-              class="h-9 rounded-xl bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white backdrop-blur"
+              class="h-9 rounded-xl backdrop-blur"
+              :class="isDark
+                ? 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white'
+                : 'bg-white/60 border-slate-300/70 text-slate-800 hover:bg-white hover:text-slate-900 hover:border-sky-400'"
               @click="openHomepage"
             >
               <LayoutDashboard class="size-4 mr-1" />
@@ -1180,7 +1265,10 @@ const pillFor = (a: ActivityItem['accent']) =>
             <Button
               size="sm"
               variant="outline"
-              class="h-9 rounded-xl bg-white/5 border-white/15 text-white/90 hover:bg-white/15 hover:text-white backdrop-blur"
+              class="h-9 rounded-xl backdrop-blur"
+              :class="isDark
+                ? 'bg-white/5 border-white/15 text-white/90 hover:bg-white/15 hover:text-white'
+                : 'bg-white/40 border-slate-300/60 text-slate-700 hover:bg-white/80 hover:text-slate-900 hover:border-sky-400'"
               @click="navigateTo('/admin/tools/seo')"
             >
               <Search class="size-4 mr-1" />
@@ -1196,53 +1284,79 @@ const pillFor = (a: ActivityItem['accent']) =>
               {
                 label: '已发布',
                 value: summary.publishedCount,
-                grad: 'from-sky-300/30 to-sky-500/30',
-                ring: 'ring-sky-300/40'
+                dark: { grad: 'from-sky-300/30 to-sky-500/30', ring: 'ring-sky-300/40' },
+                light: { grad: 'from-sky-400/20 to-sky-600/18', ring: 'ring-sky-300/50' }
               },
               {
                 label: '今日评论',
                 value: summary.totalCommentsToday,
-                grad: 'from-indigo-300/30 to-indigo-500/30',
-                ring: 'ring-indigo-300/40'
+                dark: { grad: 'from-indigo-300/30 to-indigo-500/30', ring: 'ring-indigo-300/40' },
+                light: { grad: 'from-indigo-400/22 to-indigo-600/18', ring: 'ring-indigo-300/55' }
               },
               {
                 label: '注册用户',
                 value: summary.usersCount,
-                grad: 'from-teal-300/30 to-teal-500/30',
-                ring: 'ring-teal-300/40'
+                dark: { grad: 'from-teal-300/30 to-teal-500/30', ring: 'ring-teal-300/40' },
+                light: { grad: 'from-teal-400/22 to-teal-600/18', ring: 'ring-teal-300/55' }
               }
             ]"
             :key="tile.label"
-            class="relative rounded-xl p-3.5 bg-white/5 backdrop-blur ring-1 ring-inset border border-white/10"
-            :class="tile.ring"
+            class="relative rounded-xl p-3.5 ring-1 ring-inset backdrop-blur"
+            :class="[
+              isDark
+                ? 'bg-white/5 border border-white/10 text-white'
+                : 'bg-white/70 border border-slate-200/80 text-slate-900 shadow-sm',
+              (isDark ? tile.dark.ring : tile.light.ring)
+            ]"
           >
             <div
-              class="absolute inset-0 rounded-xl bg-gradient-to-br opacity-60 pointer-events-none"
-              :class="tile.grad"
+              class="absolute inset-0 rounded-xl bg-gradient-to-br pointer-events-none"
+              :class="[isDark ? 'opacity-60' : 'opacity-70', isDark ? tile.dark.grad : tile.light.grad]"
             />
-            <p class="relative text-[11px] text-white/70">
+            <p
+              class="relative text-[11px]"
+              :class="isDark ? 'text-white/70' : 'text-slate-500'"
+            >
               {{ tile.label }}
             </p>
-            <p class="relative mt-1 text-2xl font-bold tabular-nums tracking-tight text-white drop-shadow-sm">
+            <p
+              class="relative mt-1 text-2xl font-bold tabular-nums tracking-tight"
+              :class="isDark ? 'text-white drop-shadow-sm' : 'text-slate-900'"
+            >
               {{ Number(tile.value).toLocaleString() }}
             </p>
           </div>
           <div
-            class="col-span-3 rounded-xl p-3.5 bg-black/15 backdrop-blur border border-white/10 flex items-center justify-between"
+            class="col-span-3 rounded-xl p-3.5 backdrop-blur flex items-center justify-between border"
+            :class="isDark
+              ? 'bg-black/15 border-white/10 text-white'
+              : 'bg-white/80 border-slate-200/70 text-slate-900 shadow-sm'"
           >
             <div class="min-w-0">
-              <p class="text-[11px] text-white/70">
+              <p
+                class="text-[11px]"
+                :class="isDark ? 'text-white/70' : 'text-slate-500'"
+              >
                 健康分数
               </p>
-              <p class="mt-0.5 text-3xl font-bold tabular-nums tracking-tight">
+              <p
+                class="mt-0.5 text-3xl font-bold tabular-nums tracking-tight"
+                :class="heroTextPrimary"
+              >
                 {{ Number(statsRaw?.system_health?.health_score ?? 0) }}
-                <span class="text-sm font-semibold text-white/70 ml-0.5">/ 100</span>
+                <span
+                  class="text-sm font-semibold ml-0.5"
+                  :class="isDark ? 'text-white/70' : 'text-slate-500'"
+                >/ 100</span>
               </p>
             </div>
             <div class="shrink-0 flex items-center gap-2">
               <Badge
                 variant="outline"
-                class="rounded-full border-white/30 text-white/90 bg-white/5 backdrop-blur"
+                class="rounded-full backdrop-blur"
+                :class="isDark
+                  ? 'border-white/30 text-white/90 bg-white/5'
+                  : 'border-sky-400/40 text-sky-700 bg-sky-50/80'"
               >
                 <CheckCircle2 class="size-3 mr-1" />
                 实时监控
@@ -1735,15 +1849,14 @@ const pillFor = (a: ActivityItem['accent']) =>
                   {{ idx + 1 }}
                 </span>
               </div>
-              <Avatar class="size-9 shrink-0 ring-2 ring-background shadow-sm">
-                <AvatarImage
-                  :src="resolveAvatarUrl({ seed: c.name }, c.avatar)"
-                  :alt="c.name"
-                />
-                <AvatarFallback class="text-xs font-semibold bg-primary/10 text-primary">
-                  {{ c.name.slice(0, 1).toUpperCase() }}
-                </AvatarFallback>
-              </Avatar>
+              <UserAvatar
+                :avatar="c.avatar"
+                :seed="c.name"
+                :name="c.name"
+                :title="c.title || null"
+                :size="36"
+                :show-title="true"
+              />
               <div class="flex-1 min-w-0">
                 <!-- 名称 + 评论数：保证 icon / 姓名 / 数值在同一行，不会换行错位 -->
                 <div class="flex items-center justify-between w-full">

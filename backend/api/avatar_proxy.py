@@ -24,15 +24,28 @@ router = APIRouter(tags=["媒体"])
 
 # 允许的上游域名白名单（可以 307 直跳，不需要代理流式；同时防止 SSRF 打内网）
 _ALLOWED_HOST_SUFFIXES = (
-    "github.com",
-    "githubusercontent.com",
+    # ── 官方 & 国际 ──
     "gravatar.com",
     "gravatar.cn",
     "wp.com",  # Gravatar 0.gravatar.com 等别名 CNAME 最终走 wp.com
+    "github.com",
+    "githubusercontent.com",
+    # ── DiceBear（矢量 fallback 头像） ──
+    "dicebear.com",
+    "dicebear.me",
+    # ── Gravatar 国内镜像（Rosetta 默认使用 cravatar.cn 替代被墙的 gravatar.com）──
+    # 实测 2026-08 存活：Cravatar ✅ | Cat.net ✅ | Loli.net ✅ | GeekZu ⚠ 偶发 | V2ex ⚠
+    "cravatar.cn",
+    "cravatar.com",
+    "gravatar.cat.net",
+    "gravatar.loli.net",
+    "geekzu.org",
+    "v2ex.com",
+    "cdn.v2ex.com",
+    "i.pfx.cc",
+    # ── QQ / 腾讯云 ──
     "qlogo.cn",
     "qpic.cn",
-    "dicebear.com",  # v7/v8/v9 默认头像 API（identicon/avataaars 等矢量 SVG）
-    "dicebear.me",  # DiceBear 短链
 )
 
 # 永久 fallback 图片（本地静态资源；走 CDN/browser 缓存，保证必返回 image/*）

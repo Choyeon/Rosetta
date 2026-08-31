@@ -1,0 +1,43 @@
+{
+  "manifest_version": "1.0",
+  "id": "io.github.rosetta.hello-rosetta",
+  "name": "Hello Rosetta",
+  "slug": "hello-rosetta",
+  "version": "0.1.0",
+  "requires_rosetta": ">=1.0.0",
+  "description": "示例插件：覆盖 action / filter / shortcode 三类扩展点 —— 在文章末尾插入签名、给标题追加后缀、并提供 [hello] 短代码。",
+  "author_name": "Rosetta Team",
+  "author": {"name":"Rosetta Team", "uri": "https://rosetta.dev"},
+  "plugin_uri": "https://rosetta.dev/plugins/hello-rosetta",
+  "author_uri": "https://rosetta.dev",
+  "textdomain": "hello-rosetta",
+  "tags": ["sample", "hello-world", "shortcode", "action", "filter"],
+  "category": "utility",
+  "entry": "plugin.py",
+  "entrypoint": "plugin:register",
+  "hooks": ["post.rendered", "post.title"],
+  "shortcodes": ["hello"],
+  "settings_schema": {
+    "$schema": "https://json-schema.org/draft-07/schema",
+    "type": "object",
+    "properties": {
+      "default_greeting_to": {
+        "type": "string",
+        "title": "默认 [hello] 短代码的 greet 对象",
+        "default": "Rosetta"
+      },
+      "enable_title_suffix": {
+        "type": "boolean",
+        "title": "启用文章标题后缀",
+        "default": true
+      },
+      "enable_signature": {
+        "type": "boolean",
+        "title": "启用文章底部签名",
+        "default": true
+      }
+    }
+  },
+  "screenshot_urls": [],
+  "dependencies": []
+}

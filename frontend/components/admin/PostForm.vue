@@ -17,7 +17,7 @@ import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
-import { Card, CardContent } from '~~/components/ui/card'
+import AdminCard from './AdminCard.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
@@ -521,10 +521,9 @@ onBeforeUnmount(() => {
 
       <div class="w-full lg:w-2/5">
         <div class="flex flex-col gap-4 max-h-[calc(100vh-380px)] overflow-y-auto pr-1">
-          <Card class="rounded-[12px] border-border shadow-none">
-            <CardContent class="p-5 flex flex-col gap-4">
-              <div>
-                <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
+          <AdminCard class="p-5 flex flex-col gap-4">
+            <div>
+              <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
                 <div class="flex flex-col gap-3">
                   <div>
                     <Label class="text-xs text-muted-foreground mb-1 block">状态 *</Label>
@@ -726,13 +725,11 @@ onBeforeUnmount(() => {
                   placeholder="输入文章摘要，不填则自动截取前 180 字"
                 />
               </div>
-            </CardContent>
-          </Card>
+          </AdminCard>
 
-          <Card class="rounded-[12px] border-border shadow-none">
-            <CardContent class="p-5 flex flex-col gap-4">
-              <div>
-                <Label class="mb-2 block text-sm font-medium">封面图</Label>
+          <AdminCard class="p-5 flex flex-col gap-4">
+            <div>
+              <Label class="mb-2 block text-sm font-medium">封面图</Label>
                 <div class="flex items-start gap-3">
                   <div
                     v-if="form.cover_image"
@@ -781,12 +778,10 @@ onBeforeUnmount(() => {
                   >
                 </div>
               </div>
-            </CardContent>
-          </Card>
+          </AdminCard>
 
-          <Card class="rounded-[12px] border-border shadow-none">
-            <CardContent class="p-5 flex flex-col gap-3">
-              <Label class="text-sm font-medium">SEO 设置</Label>
+          <AdminCard class="p-5 flex flex-col gap-3">
+            <Label class="text-sm font-medium">SEO 设置</Label>
               <I18nTabsEditor
                 v-model="form.meta_title"
                 kind="text"
@@ -805,8 +800,7 @@ onBeforeUnmount(() => {
                 label="Meta Keywords"
                 placeholder="SEO 关键词，逗号分隔"
               />
-            </CardContent>
-          </Card>
+            </AdminCard>
         </div>
       </div>
     </div>

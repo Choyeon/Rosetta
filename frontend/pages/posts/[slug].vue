@@ -54,15 +54,20 @@
           </h1>
 
           <div class="flex flex-wrap items-center gap-3 mt-6 text-sm text-muted-foreground">
-            <Avatar class="size-8">
-              <AvatarImage
-                v-if="authorAvatar"
-                :src="authorAvatar"
-                :alt="authorName"
-              />
-              <AvatarFallback>{{ authorName[0] || 'U' }}</AvatarFallback>
-            </Avatar>
+            <UserAvatar
+              :avatar="post?.author?.avatar"
+              :seed="authorName"
+              :name="authorName"
+              :title="post?.author?.title || null"
+              :size="32"
+              :show-title="true"
+            />
             <span class="font-medium text-foreground">{{ authorName }}</span>
+            <TitleBadge
+              v-if="post?.author?.title"
+              :title="post?.author?.title"
+              size="sm"
+            />
             <span v-if="publishedAt">·</span>
             <span
               v-if="publishedAt"
@@ -365,7 +370,8 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator
 } from '~~/components/ui/breadcrumb'
-import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
+import UserAvatar from '~~/components/UserAvatar.vue'
+import TitleBadge from '~~/components/TitleBadge.vue'
 import { Card, CardContent } from '~~/components/ui/card'
 import { Separator } from '~~/components/ui/separator'
 import { Textarea } from '~~/components/ui/textarea'
@@ -399,7 +405,6 @@ import {
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
 import type { TocItem } from '~~/composables/useReadingUX'
-import { useResolvedAvatar } from '~~/composables/useResolvedAvatar'
 
 definePageMeta({ layout: 'default' })
 
@@ -438,6 +443,12 @@ interface PostDetail {
     name?: string
     username?: string
     avatar?: string
+    title?: {
+      id?: number
+      name: string
+      icon?: string
+      color?: string
+    } | null
   }
   tags: PostDetailTag[]
 }
@@ -505,8 +516,6 @@ async function loadSimilarAndLikeState(pid: number | string | null | undefined) 
 
 const slug = computed(() => route.params.slug as string)
 const requestURL = useRequestURL()
-const siteOrigin = computed(() => requestURL.origin)
-const site = useSite()
 
 // useFetch 的 URL/query 通过 computed 函数 / Ref 自动响应式，不再显式 watch。
 // 关键点：避免 SSR 下 watch: [...] 让 useFetch 认为"只依赖 watch 触发"而跳过初始请求，
@@ -606,9 +615,6 @@ const authorName = computed(() => {
   if (!a) return 'Anonymous'
   return a.nickname || a.name || a.username || 'Anonymous'
 })
-const authorAvatar = useResolvedAvatar(
-  () => post.value?.author?.avatar
-)
 const normalizedTags = computed(() => {
   const tags = post.value?.tags || []
   return tags.map(tag => ({
@@ -623,43 +629,68 @@ const seoTitle = computed(() => pickLocalized(post.value?.title) || displayPostT
 const seoExcerpt = computed(() => pickLocalized(post.value?.excerpt))
 const seoDescription = computed(() => seoExcerpt.value || pickLocalized(post.value?.content || '').slice(0, 180))
 
-const defaultCoverUrl = computed(() => `${siteOrigin.value}/logo/rosetta-horizontal.png`)
-const absoluteCoverImage = computed(() => {
-  const cover = coverImage.value
-  if (!cover) return defaultCoverUrl.value
-  if (cover.startsWith('http://') || cover.startsWith('https://')) return cover
-  return `${siteOrigin.value}${cover.startsWith('/') ? '' : '/'}${cover}`
+// ===== SEO（useSeo composable）：全部使用 ComputedRef，useSeo/useArticleJsonLd 内部响应式追踪 =====
+// 从响应式 post 中安全提取未类型化的字段（API 响应结构在运行时确认）
+function extractPostField<T = unknown>(post: unknown, field: string): T {
+  if (typeof post !== 'object' || !post) return undefined as T
+  const p = post as Record<string, unknown>
+  return p[field] as T
+}
+
+const seoExtraMeta = computed(() => {
+  const pa = publishedAt.value
+  const ua = updatedAt.value
+  const result: Array<Record<string, string>> = []
+  if (pa) result.push({ property: 'article:published_time', content: new Date(pa).toISOString() })
+  if (ua) result.push({ property: 'article:modified_time', content: new Date(ua).toISOString() })
+  return result
 })
-
-const tagNames = computed(() => normalizedTags.value.map(t => t.name))
-
-const fullTitle = computed(() => {
-  const t = seoTitle.value
-  const s = site.siteTitle.value
-  if (!t) return s || ''
-  if (!s) return t
-  if (t === s) {
-    const sub = site.siteSubtitle.value
-    return sub ? `${s} · ${sub}` : s
+const seoCategoryName = computed(() => {
+  const c = extractPostField(post.value, 'category')
+  if (typeof c === 'object' && c) {
+    const name = (c as Record<string, unknown>).name
+    return pickLocalized(name as unknown as never)
   }
-  return `${t} · ${s}`
+  return undefined
+})
+const seoKeywords = computed(() =>
+  normalizedTags.value.map(t => t.name)
+)
+const seoAuthorAvatar = computed<string | undefined>(() => {
+  const author = extractPostField(post.value, 'author')
+  if (typeof author === 'object' && author) {
+    const avatar = (author as Record<string, unknown>).avatar
+    return typeof avatar === 'string' ? avatar : undefined
+  }
+  return undefined
+})
+const seoPostSlug = computed(() => String(route.params.slug))
+
+useSeo({
+  title: seoTitle,
+  description: seoDescription,
+  image: coverImage,
+  type: 'article',
+  url: seoPostSlug,
+  extraMeta: seoExtraMeta
 })
 
-useSeoMeta({
-  title: () => seoTitle.value,
-  description: () => seoDescription.value,
-  ogTitle: () => fullTitle.value,
-  ogDescription: () => seoDescription.value,
-  ogImage: () => absoluteCoverImage.value,
-  ogType: 'article',
-  articlePublishedTime: () => publishedAt.value,
-  articleModifiedTime: () => updatedAt.value,
-  articleAuthor: () => authorName.value ? [authorName.value] : [],
-  articleTag: () => tagNames.value,
-  twitterCard: 'summary_large_image',
-  twitterTitle: () => fullTitle.value,
-  twitterDescription: () => seoDescription.value,
-  twitterImage: () => absoluteCoverImage.value
+useArticleJsonLd({
+  slug: seoPostSlug,
+  title: seoTitle,
+  headline: seoTitle,
+  description: seoDescription,
+  cover: coverImage,
+  publishedAt,
+  updatedAt,
+  // 始终传入 author 对象，内部字段均为 ComputedRef（响应式）。
+  // 当 author 未加载时 name/avatar 回退为空，useArticleJsonLd 会自动跳过 name 为空的 author。
+  author: {
+    name: authorName,
+    avatar: seoAuthorAvatar
+  },
+  category: seoCategoryName,
+  keywords: seoKeywords
 })
 
 const canonicalUrl = computed(() => requestURL.href)
@@ -788,47 +819,15 @@ const readingTime = computed(() => readingStats.value.minutes)
 const wordCount = computed(() => readingStats.value.words)
 const charCount = computed(() => readingStats.value.chars)
 
-useHead(() => {
-  const title = pickLocalized(post.value?.title) || displayPostTitle.value
-  const description = seoDescription.value
-  const coverImageAbs = absoluteCoverImage.value
-  const publishedAtVal = publishedAt.value
-  const updatedAtVal = updatedAt.value
-  const author = authorName.value
-  const keywords = tagNames.value.join(',')
-  const words = wordCount.value
-
-  const jsonLd = {
-    '@context': 'https://schema.org',
-    '@type': 'BlogPosting',
-    'headline': title,
-    'image': [coverImageAbs],
-    'datePublished': publishedAtVal,
-    'dateModified': updatedAtVal,
-    'author': {
-      '@type': 'Person',
-      'name': author
-    },
-    keywords,
-    'wordCount': words,
-    description
-  }
-
-  return {
-    link: [
-      {
-        rel: 'canonical',
-        href: canonicalUrl.value
-      }
-    ],
-    script: [
-      {
-        type: 'application/ld+json',
-        innerHTML: JSON.stringify(jsonLd)
-      }
-    ]
-  }
-})
+// ===== 补充 SEO：canonical（useSeoMeta / useArticleJsonLd 不处理此项）=====
+useHead(() => ({
+  link: [
+    {
+      rel: 'canonical',
+      href: canonicalUrl.value
+    }
+  ]
+}))
 
 const formatDate = (date: string) => {
   if (!date) return ''

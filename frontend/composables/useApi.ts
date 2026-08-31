@@ -44,16 +44,45 @@ function safeToastError(message: string) {
   }
 }
 
-/** 尽量从本地存储/浏览器取语言，避免在 setup 外调用 useI18n */
-function currentLocale(): string {
-  if (import.meta.client) {
+/**
+ * 尽量从 Nuxt i18n 上下文取当前语言（SSR/客户端初始一致，避免 hydrate mismatch）。
+ *
+ * ⚠️ 关键约束：
+ *  1. SSR 环境下不允许读 localStorage / navigator，否则 SSR 永远得到 zh，
+ *     客户端 setup 同步阶段得到 en/ja/zh_Hant，两端 useFetch key 与 query 对不上，
+ *     导致整页 Hydration mismatch + 首屏重复请求。
+ *  2. 客户端「在 Nuxt 上下文里」调用（setup/plugin/middleware/useFetch 同步阶段）
+ *     也必须走 $i18n.locale，因为 @nuxtjs/i18n 通过 cookie 保证 SSR 与客户端初始
+ *     locale 完全一致。此时绝对不能读 localStorage，否则两边计算的 useFetch key
+ *     对不上，Nuxt 会报 Cache key mismatch。
+ *  3. 仅当「不在 Nuxt 上下文」（事件回调、独立工具函数）且是客户端时，才允许
+ *     退化到 localStorage / navigator。
+ */
+export function currentLocale(): string {
+  // 1) 最优先：在 Nuxt 上下文内（setup / plugin / middleware / useFetch options 同步计算阶段）
+  //    → 通过 Nuxt i18n 注入的 $i18n.locale 拿值，SSR / 客户端初始完全一致。
+  try {
+    const i18n = useNuxtApp().$i18n as { locale?: Ref<string> } | undefined
+    if (i18n?.locale?.value) {
+      return i18n.locale.value
+    }
+  } catch {
+    /* not inside Nuxt setup context; fall through */
+  }
+
+  // 2) SSR 兜底：不可能走到 localStorage / navigator，直接返回 'zh'。
+  const serverSide = typeof import.meta !== 'undefined' && !!(import.meta as ImportMeta).server
+  if (serverSide) return 'zh'
+
+  // 3) 不在 Nuxt 上下文且是客户端：事件回调 / 独立工具函数里才允许读本地。
+  if (typeof window !== 'undefined') {
     try {
       const stored = localStorage.getItem('locale')
       if (stored) return stored
     } catch {
       /* storage disabled */
     }
-    const nav = navigator.language || navigator.userLanguage
+    const nav = navigator.language || (navigator as { userLanguage?: string }).userLanguage
     if (nav?.startsWith('en')) return 'en'
     if (nav?.startsWith('ja')) return 'ja'
     if (nav?.startsWith('zh-Hant') || nav?.startsWith('zh-TW') || nav?.startsWith('zh-HK')) return 'zh_Hant'
@@ -161,8 +190,22 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
   try {
     return await doFetch()
   } catch (err) {
-    const e = err as { status?: number, statusCode?: number, data?: unknown }
+    const e = err as { status?: number, statusCode?: number, data?: unknown, cause?: unknown, message?: string }
     const status = e.status ?? e.statusCode ?? 0
+
+    // —— 网络层错误（status === 0）：ERR_CONNECTION_RESET / timeout / abort / DNS 失败等
+    // 这些错误没有 HTTP response body，必须特殊处理以给出明确 toast
+    if (status === 0) {
+      const raw = (e.message || '') + ' ' + String(e.cause ?? '')
+      let hint = '网络连接失败，请检查后端服务是否正常'
+      if (/abort/i.test(raw)) hint = '请求已取消（上传超时），请重试或上传更小的文件'
+      else if (/timeout|timed?\s*out/i.test(raw)) hint = '请求超时，请检查网络或稍后重试'
+      else if (/connection\s*reset|ECONNRESET|network/i.test(raw)) hint = '连接被重置，后端可能正在重启或文件过大，请稍后重试'
+      else if (/Failed to fetch/i.test(raw)) hint = '无法连接到后端服务，请确认已启动后端或检查网络'
+      console.error('[useAPI] 网络层错误', { method: options.method || 'GET', url, err })
+      if (!options.silentToast) safeToastError(hint)
+      throw Object.assign(new Error(hint), { status: 0, code: 'NETWORK_ERROR', cause: err })
+    }
 
     if (isOobeRequiredError(status, e.data)) {
       await navigateTo('/oobe')
@@ -170,16 +213,22 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
     }
 
     if (status === 404) {
-      // 404 在前端开发阶段很常见：后端路由还没补齐 / 拼写错误；不要打断用户工作流，
-      // 只在控制台打印具体 URL 方便定位，然后抛错（让调用方自己决定是否降级）。
-
+      // 404：后端路由缺失 / 拼写错误 / 资源不存在，管理员执行 CRUD 时遇到就是操作失败，
+      // 必须给出明确 toast，不能静默（否则用户以为"保存成功了"实际根本没写入）。
       console.warn('[useAPI] 404 Not Found', {
         method: options.method || 'GET',
         url,
         data: e.data
       })
-      const msg = extractApiErrorMessage(e.data, `Not Found: ${url}`)
+      const msg = extractApiErrorMessage(e.data, `接口不存在 (404): ${url}`)
+      if (!options.silentToast) safeToastError(msg)
       throw Object.assign(new Error(msg), { status, data: e.data, code: 'NOT_FOUND' })
+    }
+
+    if (status === 413) {
+      const msg = extractApiErrorMessage(e.data, '文件过大，超过服务器允许的上传大小')
+      if (!options.silentToast) safeToastError(msg)
+      throw Object.assign(new Error(msg), { status, data: e.data, code: 'PAYLOAD_TOO_LARGE' })
     }
 
     if (status === 401) {
@@ -188,8 +237,15 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
         try {
           return await doFetch()
         } catch (retryErr) {
-          const re = retryErr as { status?: number, statusCode?: number, data?: unknown }
+          const re = retryErr as { status?: number, statusCode?: number, data?: unknown, cause?: unknown, message?: string }
           const retryStatus = re.status ?? re.statusCode ?? 0
+          // 重试后若再次出现网络层错误，也要给 toast
+          if (retryStatus === 0) {
+            const hint = '重试时网络中断，请检查后端服务状态'
+            console.error('[useAPI] 401 重试后网络错误', { url, retryErr })
+            if (!options.silentToast) safeToastError(hint)
+            throw Object.assign(new Error(hint), { status: 0, code: 'NETWORK_ERROR', cause: retryErr })
+          }
           if (isOobeRequiredError(retryStatus, re.data)) {
             await navigateTo('/oobe')
             throw retryErr

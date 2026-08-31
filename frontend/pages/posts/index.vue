@@ -56,10 +56,9 @@
 
     <template v-if="loading && posts.length === 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <Skeleton
+        <PostSkeleton
           v-for="i in 6"
           :key="i"
-          class="aspect-[4/5] rounded-2xl"
         />
       </div>
     </template>
@@ -133,8 +132,8 @@ import { Card, CardContent } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
-import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
+import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
@@ -144,6 +143,25 @@ import { watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const site = useSite()
+
+// ===== SEO（useSeo composable）=====
+const listTitle = computed(() => t('nav.posts'))
+const listDescription = computed(
+  () =>
+    site.siteDescription.value
+    || t('posts.allPosts')
+    || '浏览全部文章')
+useSeo({
+  title: listTitle,
+  description: listDescription,
+  type: 'website',
+  url: '/posts'
+})
+useBreadcrumbJsonLd([
+  { name: String(t('nav.home') || '首页'), url: '/' },
+  { name: String(t('nav.posts') || listTitle.value || '文章'), url: '/posts' }
+])
 
 const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
   if (val == null) return ''
@@ -257,18 +275,10 @@ const handlePageChange = (page: number) => {
   }
 }
 
-// ===== SEO =====
+// ===== 补充 SEO：canonical（useSeoMeta 不处理此项）=====
 const requestURL = useRequestURL()
 const origin = computed(() => requestURL.origin)
 const canonical = computed(() => `${origin.value}/posts?page=${currentPage.value}`)
-
-useSeoMeta({
-  title: () => t('posts.allPosts'),
-  description: () => t('posts.allPostsDesc'),
-  ogType: 'website',
-  ogUrl: canonical,
-  twitterCard: 'summary'
-})
 
 useHead({
   link: [

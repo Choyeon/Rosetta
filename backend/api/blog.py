@@ -16,7 +16,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import APIRouter, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import String, cast, func, or_, select, update
 from sqlalchemy.orm import selectinload
 
@@ -24,18 +24,42 @@ from backend.core.auth import DB, CurrentStaff, CurrentUser, CurrentUserOptional
 from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
 from backend.core.concurrency import concurrent_query
 from backend.core.config import settings
+from backend.core.plugin_bus import bus
 from backend.core.i18n import (
     get_i18n_value,
     get_language_from_request,
 )
+from backend.core.shortcodes import do_shortcode
 from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_tags
 from backend.models.user import User
+from backend.utils.compat import UTC
+
+
+def _parse_iso_date(s: str | None) -> datetime | None:
+    """解析 ISO 日期字符串为 UTC datetime。结束日期会扩展到当天 23:59:59.999 以包含整天。"""
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=UTC)
+        return d
+    except (ValueError, TypeError):
+        stripped = s.strip()
+        if len(stripped) == 10:  # YYYY-MM-DD
+            try:
+                d = datetime.strptime(stripped, "%Y-%m-%d").replace(tzinfo=UTC)
+                return d
+            except ValueError:
+                return None
+        return None
 from backend.schemas import (
     BaseResponse,
     BatchPostStatusResponse,
     BatchPostStatusUpdate,
     CategoryCreate,
     CategoryLocalizedResponse,
+    CategoryResponse,
     CategoryUpdate,
     CommentCreate,
     CommentResponse,
@@ -47,19 +71,17 @@ from backend.schemas import (
     PostUpdate,
     TagCreate,
     TagLocalizedResponse,
+    TagResponse,
     TagUpdate,
 )
+from backend.services.comment_service import _comment_to_response
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["博客"])
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-OOBE_LOCK_FILE = BASE_DIR / ".oobe_complete"
-CONFIG_FILE = BASE_DIR / "rosetta.json"
-
-
-def is_oobe_complete() -> bool:
-    return OOBE_LOCK_FILE.exists() and CONFIG_FILE.exists()
+# OOBE 状态判断统一委托给 backend.core.deps，避免各模块重复定义常量导致
+# 状态源不一致（以及测试时无法统一重定向路径）。
+from backend.core.deps import is_oobe_complete  # noqa: E402
 
 
 def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_title: str) -> str:
@@ -91,9 +113,9 @@ def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_titl
         SubElement(item, "pubDate").text = pub_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
 
         if post.excerpt:
-            description = get_i18n_value(post.excerpt, language)
+            description = do_shortcode(get_i18n_value(post.excerpt, language))
         else:
-            content = get_i18n_value(post.content, language)
+            content = do_shortcode(get_i18n_value(post.content, language))
             description = content[:200] + "..." if len(content) > 200 else content
         SubElement(item, "description").text = description
 
@@ -177,6 +199,16 @@ def _build_author_data(author: User | None) -> dict | None:
     """构建作者数据字典"""
     if not author:
         return None
+    # 序列化头衔为纯 dict（避免 SQLAlchemy ORM 对象在 JSON 序列化时出问题）
+    title_data = None
+    if author.title:
+        title_data = {
+            "id": author.title.id,
+            "name": author.title.name,
+            "icon": author.title.icon,
+            "color": author.title.color,
+            "description": author.title.description,
+        }
     return {
         "id": author.id,
         "username": author.username,
@@ -190,7 +222,7 @@ def _build_author_data(author: User | None) -> dict | None:
         "is_active": author.is_active,
         "is_staff": author.is_staff,
         "is_superuser": author.is_superuser,
-        "title": author.title,
+        "title": title_data,
         "created_at": author.created_at,
         "last_login": author.last_login,
     }
@@ -205,14 +237,17 @@ def _build_post_list_item_from_row(
     likes_count = row.likes_count or 0
     comments_count = row.comments_count or 0
 
-    content = get_i18n_value(post.content, language)
+    raw_content = get_i18n_value(post.content, language)
+    content = do_shortcode(raw_content)
+    raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
+    excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
     return PostListItemLocalized(
         id=post.id,
         title=get_i18n_value(post.title, language),
         subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
         slug=post.slug,
-        excerpt=get_i18n_value(post.excerpt, language) if post.excerpt else None,
+        excerpt=excerpt,
         cover_image=post.cover_image,
         author=_build_author_data(post.author),
         category=CategoryLocalizedResponse.from_category(post.category, language)
@@ -226,7 +261,7 @@ def _build_post_list_item_from_row(
         is_pinned=post.is_pinned,
         created_at=post.created_at,
         published_at=post.published_at,
-        reading_time=calculate_reading_time(content),
+        reading_time=calculate_reading_time(raw_content),
     )
 
 
@@ -252,14 +287,17 @@ async def _build_post_list_item(
     likes_count = likes_count or 0
     comments_count = comments_count or 0
 
-    content = get_i18n_value(post.content, language)
+    raw_content = get_i18n_value(post.content, language)
+    content = do_shortcode(raw_content)
+    raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
+    excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
     return {
         "id": post.id,
         "title": get_i18n_value(post.title, language),
         "subtitle": get_i18n_value(post.subtitle, language) if post.subtitle else None,
         "slug": post.slug,
-        "excerpt": get_i18n_value(post.excerpt, language) if post.excerpt else None,
+        "excerpt": excerpt,
         "cover_image": post.cover_image,
         "author": _build_author_data(post.author),
         "category": CategoryLocalizedResponse.from_category(post.category, language).model_dump()
@@ -273,7 +311,7 @@ async def _build_post_list_item(
         "is_pinned": post.is_pinned,
         "created_at": post.created_at,
         "published_at": post.published_at,
-        "reading_time": calculate_reading_time(content),
+        "reading_time": calculate_reading_time(raw_content),
     }
 
 
@@ -290,12 +328,15 @@ async def list_posts(
     request: Request,
     db: DB,
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(12, ge=1, le=100, description="每页数量"),
+    page_size: int = Query(12, ge=1, le=200, description="每页数量"),
     category: str | None = Query(None, description="分类 slug"),
     tag: str | None = Query(None, description="标签 slug"),
     search: str | None = Query(None, description="搜索关键词"),
     status_filter: str | None = Query(None, alias="status", description="文章状态（需管理员权限）"),
+    post_type: str | None = Query(None, description="内容类型（自定义文章类型 key，默认 post）"),
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+    created_start: str | None = Query(None, alias="created_start", description="创建开始日期 ISO（含边界）"),
+    created_end: str | None = Query(None, alias="created_end", description="创建结束日期 ISO（含边界）"),
     current_user: CurrentUserOptional = None,
 ):
     """获取文章列表，支持多语言和缓存
@@ -316,7 +357,7 @@ async def list_posts(
     is_admin = (
         status_filter and current_user and (current_user.is_staff or current_user.is_superuser)
     )
-    use_cache = not is_admin and not search
+    use_cache = not is_admin and not search and not created_start and not created_end
 
     if use_cache:
         cache_key = await _get_post_list_cache_key(
@@ -367,6 +408,23 @@ async def list_posts(
 
     if tag:
         query = query.join(Post.tags).where(Tag.slug == tag)
+
+    # 内容类型过滤：不传时默认只列博客文章（post），保持向后兼容
+    if post_type:
+        query = query.where(Post.post_type == post_type)
+    else:
+        query = query.where(Post.post_type == "post")
+
+    # 创建日期范围过滤
+    from_dt = _parse_iso_date(created_start)
+    to_dt = _parse_iso_date(created_end)
+    if from_dt:
+        query = query.where(Post.created_at >= from_dt)
+    if to_dt:
+        # 结束日期扩展到当天 23:59:59.999 以包含整天
+        from backend.utils.compat import timedelta as _td
+        end_of_day = to_dt + _td(days=1) - _td(microseconds=1)
+        query = query.where(Post.created_at <= end_of_day)
 
     if search:
         search_term = f"%{search}%"
@@ -457,7 +515,10 @@ async def get_recommended_posts(
             ),
         )
 
-        content = get_i18n_value(post.content, language)
+        raw_content = get_i18n_value(post.content, language)
+        _content = do_shortcode(raw_content)
+        raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
+        excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
         items.append(
             PostListItemLocalized(
@@ -465,7 +526,7 @@ async def get_recommended_posts(
                 title=get_i18n_value(post.title, language),
                 subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
                 slug=post.slug,
-                excerpt=get_i18n_value(post.excerpt, language) if post.excerpt else None,
+                excerpt=excerpt,
                 cover_image=post.cover_image,
                 author=_build_author_data(post.author),
                 category=CategoryLocalizedResponse.from_category(post.category, language)
@@ -479,7 +540,7 @@ async def get_recommended_posts(
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
-                reading_time=calculate_reading_time(content),
+                reading_time=calculate_reading_time(raw_content),
             )
         )
 
@@ -524,7 +585,10 @@ async def get_similar_posts(
             ),
         )
 
-        content = get_i18n_value(post.content, language)
+        raw_content = get_i18n_value(post.content, language)
+        _content = do_shortcode(raw_content)
+        raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
+        excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
         items.append(
             PostListItemLocalized(
@@ -532,7 +596,7 @@ async def get_similar_posts(
                 title=get_i18n_value(post.title, language),
                 subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
                 slug=post.slug,
-                excerpt=get_i18n_value(post.excerpt, language) if post.excerpt else None,
+                excerpt=excerpt,
                 cover_image=post.cover_image,
                 author=_build_author_data(post.author),
                 category=CategoryLocalizedResponse.from_category(post.category, language)
@@ -546,7 +610,7 @@ async def get_similar_posts(
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
-                reading_time=calculate_reading_time(content),
+                reading_time=calculate_reading_time(raw_content),
             )
         )
 
@@ -848,6 +912,7 @@ async def create_post(
 
     db.add(post)
     await db.flush()
+    await db.refresh(post)
 
     if post_data.tag_ids:
         tags = await db.execute(select(Tag).where(Tag.id.in_(post_data.tag_ids)))
@@ -858,6 +923,7 @@ async def create_post(
             post.tags = []
         post.tags.extend(tag_list)
         await db.flush()
+        await db.refresh(post)
 
     await invalidate_cache("posts")
 
@@ -874,6 +940,7 @@ async def create_post(
 
     response = PostLocalizedResponse.from_post(post, language, likes_count=0, comments_count=0)
     response.is_password_protected = bool(password)
+    await bus.do_action("post.created", post, current_user=current_user, db=db)
     return response
 
 
@@ -1003,6 +1070,7 @@ async def update_post(
         post.tags.extend(tag_list)
 
     await db.flush()
+    await db.refresh(post)
 
     await cache.delete(make_cache_key("post", post.slug, language))
     await invalidate_cache("posts")
@@ -1032,6 +1100,7 @@ async def update_post(
     )
     post = result.scalar_one()
 
+    await bus.do_action("post.updated", post, current_user=current_user, db=db)
     return PostLocalizedResponse.from_post(
         post, language, likes_count=likes_count, comments_count=comments_count
     )
@@ -1062,6 +1131,7 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
 
     await db.delete(post)
     await invalidate_cache("posts")
+    await bus.do_action("post.deleted", post, current_user=current_user, db=db)
 
     return BaseResponse(message="文章已删除")
 
@@ -1100,28 +1170,23 @@ async def toggle_like(post_id: int, current_user: CurrentUser, db: DB):
 
 @router.get(
     "/categories",
-    response_model=list[CategoryLocalizedResponse],
+    response_model=list[CategoryResponse],
     summary="分类列表",
-    description="获取所有分类及其文章数量。支持多语言返回。",
+    description="获取所有分类及其文章数量（返回多语言原始dict，前端自行本地化显示）。",
 )
 async def list_categories(
     request: Request,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant），保留参数，返回时不裁剪语言"),
 ):
-    """获取分类列表，支持多语言和缓存
-
-    优化：使用 GROUP BY 批量统计文章数，避免 N+1 查询
-    """
+    """获取分类列表，返回 i18n 原始 dict 供后台编辑 / 前端 getLocalized 统一处理"""
     if not is_oobe_complete():
         return []
 
-    language = get_language_from_request(request, lang)
-
-    cache_key = make_cache_key("categories", language)
+    # 统一返回完整 i18n dict（不再按 lang 裁剪），前后端都能正确渲染
+    cache_key = make_cache_key("categories", "raw-i18n")
     cached = await cache.get(cache_key)
     if cached:
-        # 直接返回缓存的列表，不需要再验证
         return cached
 
     result = await db.execute(
@@ -1136,13 +1201,11 @@ async def list_categories(
     rows = result.all()
 
     items = [
-        CategoryLocalizedResponse(
+        CategoryResponse(
             id=row.Category.id,
-            name=get_i18n_value(row.Category.name, language),
+            name=row.Category.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
             slug=row.Category.slug,
-            description=get_i18n_value(row.Category.description, language)
-            if row.Category.description
-            else None,
+            description=row.Category.description or None,
             icon=row.Category.icon,
             color=row.Category.color,
             cover_image=row.Category.cover_image,
@@ -1161,19 +1224,15 @@ async def list_categories(
 
 @router.get(
     "/categories/slug/{slug}",
-    response_model=CategoryLocalizedResponse,
+    response_model=CategoryResponse,
     summary="获取分类详情",
-    description="根据 slug 获取分类详情。",
+    description="根据 slug 获取分类详情（返回完整 i18n dict）。",
 )
 async def get_category_by_slug(
     slug: str,
-    request: Request,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
 ):
     """按 slug 获取分类"""
-    language = get_language_from_request(request, lang)
-
     result = await db.execute(select(Category).where(Category.slug == slug))
     category = result.scalar_one_or_none()
 
@@ -1185,13 +1244,11 @@ async def get_category_by_slug(
 
     post_count = await db.scalar(select(func.count()).where(Post.category_id == category.id)) or 0
 
-    return CategoryLocalizedResponse(
+    return CategoryResponse(
         id=category.id,
-        name=get_i18n_value(category.name, language),
+        name=category.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         slug=category.slug,
-        description=get_i18n_value(category.description, language)
-        if category.description
-        else None,
+        description=category.description or None,
         icon=category.icon,
         color=category.color,
         cover_image=category.cover_image,
@@ -1202,20 +1259,18 @@ async def get_category_by_slug(
 
 @router.post(
     "/categories",
-    response_model=CategoryLocalizedResponse,
+    response_model=CategoryResponse,
     status_code=status.HTTP_201_CREATED,
     summary="创建分类",
-    description="创建新分类，需要管理员权限。支持多语言内容。",
+    description="创建新分类，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
 )
 async def create_category(
     request: Request,
     data: CategoryCreate,
     current_user: CurrentStaff,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
 ):
-    """创建分类，支持多语言"""
-    language = get_language_from_request(request, lang)
+    """创建分类，支持多语言，返回原始 i18n dict"""
 
     zh_name = data.name.get("zh", "") if isinstance(data.name, dict) else data.name
     slug = data.slug or generate_slug(zh_name)
@@ -1236,16 +1291,15 @@ async def create_category(
     )
     db.add(category)
     await db.flush()
+    await db.refresh(category)
 
     await invalidate_cache("categories")
 
-    return CategoryLocalizedResponse(
+    return CategoryResponse(
         id=category.id,
-        name=get_i18n_value(category.name, language),
+        name=category.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         slug=category.slug,
-        description=get_i18n_value(category.description, language)
-        if category.description
-        else None,
+        description=category.description or None,
         icon=category.icon,
         color=category.color,
         cover_image=category.cover_image,
@@ -1259,28 +1313,25 @@ async def create_category(
 
 @router.get(
     "/tags",
-    response_model=list[TagLocalizedResponse],
+    response_model=list[TagResponse],
     summary="标签列表",
-    description="获取所有激活的标签及其文章数量。支持多语言返回。",
+    description="获取所有激活的标签及其文章数量（返回多语言原始dict）。",
 )
 async def list_tags(
     request: Request,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+    lang: str | None = Query(None, description="保留参数，返回时不裁剪语言"),
 ):
-    """获取标签列表，支持多语言和缓存
+    """获取标签列表，统一返回原始 i18n dict
 
     优化：使用 GROUP BY 批量统计文章数，避免 N+1 查询
     """
     if not is_oobe_complete():
         return []
 
-    language = get_language_from_request(request, lang)
-
-    cache_key = make_cache_key("tags", language)
+    cache_key = make_cache_key("tags", "raw-i18n")
     cached = await cache.get(cache_key)
     if cached:
-        # 直接返回缓存的列表，不需要再验证
         return cached
 
     result = await db.execute(
@@ -1296,9 +1347,9 @@ async def list_tags(
     rows = result.all()
 
     items = [
-        TagLocalizedResponse(
+        TagResponse(
             id=row.Tag.id,
-            name=get_i18n_value(row.Tag.name, language),
+            name=row.Tag.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
             slug=row.Tag.slug,
             color=row.Tag.color,
             icon=row.Tag.icon,
@@ -1316,19 +1367,15 @@ async def list_tags(
 
 @router.get(
     "/tags/slug/{slug}",
-    response_model=TagLocalizedResponse,
+    response_model=TagResponse,
     summary="获取标签详情",
-    description="根据 slug 获取标签详情。",
+    description="根据 slug 获取标签详情（返回完整 i18n dict）。",
 )
 async def get_tag_by_slug(
     slug: str,
-    request: Request,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
 ):
     """按 slug 获取标签"""
-    language = get_language_from_request(request, lang)
-
     result = await db.execute(select(Tag).where(Tag.slug == slug))
     tag = result.scalar_one_or_none()
 
@@ -1345,9 +1392,9 @@ async def get_tag_by_slug(
         or 0
     )
 
-    return TagLocalizedResponse(
+    return TagResponse(
         id=tag.id,
-        name=get_i18n_value(tag.name, language),
+        name=tag.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         slug=tag.slug,
         color=tag.color,
         icon=tag.icon,
@@ -1359,20 +1406,18 @@ async def get_tag_by_slug(
 
 @router.post(
     "/tags",
-    response_model=TagLocalizedResponse,
+    response_model=TagResponse,
     status_code=status.HTTP_201_CREATED,
     summary="创建标签",
-    description="创建新标签，需要管理员权限。支持多语言内容。",
+    description="创建新标签，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
 )
 async def create_tag(
     request: Request,
     data: TagCreate,
     current_user: CurrentStaff,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
 ):
-    """创建标签，支持多语言"""
-    language = get_language_from_request(request, lang)
+    """创建标签，返回原始 i18n dict"""
 
     zh_name = data.name.get("zh", "") if isinstance(data.name, dict) else data.name
     slug = data.slug or generate_slug(zh_name)
@@ -1393,12 +1438,13 @@ async def create_tag(
     )
     db.add(tag)
     await db.flush()
+    await db.refresh(tag)
 
     await invalidate_cache("tags")
 
-    return TagLocalizedResponse(
+    return TagResponse(
         id=tag.id,
-        name=get_i18n_value(tag.name, language),
+        name=tag.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         slug=tag.slug,
         color=tag.color,
         icon=tag.icon,
@@ -1418,33 +1464,40 @@ async def create_tag(
     description="获取文章的评论树形结构。",
 )
 async def list_comments(post_id: int, db: DB):
-    """获取文章评论"""
-    result = await db.execute(
+    """获取文章评论（树形结构）。
+
+    一次性扁平查询所有相关评论 + eager-load user，避免 ORM 多级 replies
+    关系 lazy-load 触发 async greenlet 同步 IO 错误。
+    """
+    # 1) 取所有目标 post 下激活的评论，eager-load user（一次性，不分层）
+    all_stmt = (
         select(Comment)
         .options(
             selectinload(Comment.user).selectinload(User.title),
-            selectinload(Comment.replies).selectinload(Comment.user).selectinload(User.title),
         )
-        .where(Comment.post_id == post_id, Comment.active.is_(True), Comment.parent_id.is_(None))
-        .order_by(Comment.created_at.desc())
+        .where(Comment.post_id == post_id, Comment.active.is_(True))
     )
-    comments = result.scalars().unique().all()
+    all_res = await db.execute(all_stmt)
+    all_comments: list[Comment] = list(all_res.scalars().all())
 
-    def build_comment_tree(comment: Comment) -> CommentResponse:
-        """递归构建评论树"""
-        replies = [build_comment_tree(r) for r in comment.replies if r.active]
-        return CommentResponse(
-            id=comment.id,
-            post_id=comment.post_id,
-            user=comment.user,
-            parent_id=comment.parent_id,
-            content=comment.content,
-            active=comment.active,
-            created_at=comment.created_at,
-            replies=replies,
-        )
+    # 2) 按 parent_id 分组到内存映射，完全不访问 .replies 关系属性
+    by_parent: dict[int | None, list[Comment]] = {}
+    for c in all_comments:
+        by_parent.setdefault(c.parent_id, []).append(c)
 
-    return [build_comment_tree(c) for c in comments]
+    # 3) 递归构造树（纯内存操作，无 SQL 触发）
+    def build(parent_pid: int | None) -> list[CommentResponse]:
+        nodes = by_parent.get(parent_pid, [])
+        result: list[CommentResponse] = []
+        # 按创建时间倒序
+        for c in sorted(nodes, key=lambda x: x.created_at, reverse=True):
+            children = build(c.id)
+            resp = _comment_to_response(c, reply_total=len(children))
+            resp.replies = children
+            result.append(resp)
+        return result
+
+    return build(None)
 
 
 @router.post(
@@ -1498,20 +1551,16 @@ async def create_comment(
         parent_id=data.parent_id,
         content=data.content,
         active=not settings.comment_require_approval,
+        # 从登录态回填 author 字段：兼容 Comment NOT NULL 约束与对外响应
+        author_name=getattr(current_user, "nickname", None) or getattr(current_user, "username", "匿名"),
+        author_email=getattr(current_user, "email", None),
+        author_website=None,
     )
     db.add(comment)
     await db.flush()
+    await db.refresh(comment)
 
-    return CommentResponse(
-        id=comment.id,
-        post_id=comment.post_id,
-        user=current_user,
-        parent_id=comment.parent_id,
-        content=comment.content,
-        active=comment.active,
-        created_at=comment.created_at,
-        replies=[],
-    )
+    return _comment_to_response(comment)
 
 
 # ==================== 归档 API ====================
@@ -1898,20 +1947,17 @@ async def get_archive_by_month(
 
 @router.put(
     "/categories/{category_id}",
-    response_model=CategoryLocalizedResponse,
+    response_model=CategoryResponse,
     summary="更新分类",
-    description="更新分类信息，需要管理员权限。",
+    description="更新分类信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
 )
 async def update_category(
     category_id: int,
-    request: Request,
     data: CategoryUpdate,
     current_user: CurrentStaff,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
 ):
-    """更新分类"""
-    language = get_language_from_request(request, lang)
+    """更新分类，返回原始 i18n dict"""
 
     result = await db.execute(select(Category).where(Category.id == category_id))
     category = result.scalar_one_or_none()
@@ -1927,17 +1973,16 @@ async def update_category(
         setattr(category, field, value)
 
     await db.flush()
+    await db.refresh(category)
     await invalidate_cache("categories")
 
     post_count = await db.scalar(select(func.count()).where(Post.category_id == category.id)) or 0
 
-    return CategoryLocalizedResponse(
+    return CategoryResponse(
         id=category.id,
-        name=get_i18n_value(category.name, language),
+        name=category.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         slug=category.slug,
-        description=get_i18n_value(category.description, language)
-        if category.description
-        else None,
+        description=category.description or None,
         icon=category.icon,
         color=category.color,
         cover_image=category.cover_image,
@@ -1978,20 +2023,17 @@ async def delete_category(
 
 @router.put(
     "/tags/{tag_id}",
-    response_model=TagLocalizedResponse,
+    response_model=TagResponse,
     summary="更新标签",
-    description="更新标签信息，需要管理员权限。",
+    description="更新标签信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
 )
 async def update_tag(
     tag_id: int,
-    request: Request,
     data: TagUpdate,
     current_user: CurrentStaff,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
 ):
-    """更新标签"""
-    language = get_language_from_request(request, lang)
+    """更新标签，返回原始 i18n dict"""
 
     result = await db.execute(select(Tag).where(Tag.id == tag_id))
     tag = result.scalar_one_or_none()
@@ -2007,6 +2049,7 @@ async def update_tag(
         setattr(tag, field, value)
 
     await db.flush()
+    await db.refresh(tag)
     await invalidate_cache("tags")
 
     post_count = (
@@ -2016,9 +2059,9 @@ async def update_tag(
         or 0
     )
 
-    return TagLocalizedResponse(
+    return TagResponse(
         id=tag.id,
-        name=get_i18n_value(tag.name, language),
+        name=tag.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         slug=tag.slug,
         color=tag.color,
         icon=tag.icon,
@@ -2104,7 +2147,10 @@ async def get_post_by_id(
         or 0
     )
 
-    content = get_i18n_value(post.content, language)
+    raw_content = get_i18n_value(post.content, language)
+    content = do_shortcode(raw_content)
+    raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
+    excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
     return PostLocalizedResponse(
         id=post.id,
@@ -2117,7 +2163,7 @@ async def get_post_by_id(
         video=post.video,
         video_url=post.video_url,
         content=content,
-        excerpt=get_i18n_value(post.excerpt, language) if post.excerpt else None,
+        excerpt=excerpt,
         cover_image=post.cover_image,
         author=_build_author_data(post.author),
         category=CategoryLocalizedResponse.from_category(post.category, language)
@@ -2520,10 +2566,27 @@ async def get_rss_feed(
     return Response(content=rss_content, media_type="application/rss+xml")
 
 
+# Sitemap 每页最大 URL 数（sitemaps.org 协议建议单文件不超过 5 万，这里取保守值）
+SITEMAP_PAGE_SIZE = 1000
+
+
+def _xml_escape(text: str) -> str:
+    """转义 XML 文本中的特殊字符。"""
+    return (
+        text.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+    )
+
+
 def generate_sitemap(
-    posts: list[Post], categories: list[Category], tags: list[Tag], site_url: str
+    posts: list[Post],
+    categories: list[Category],
+    tags: list[Tag],
+    site_url: str,
 ) -> str:
-    """生成 Sitemap XML"""
+    """生成 Sitemap XML（单页，向后兼容）。"""
     from xml.etree.ElementTree import Element, SubElement, tostring
 
     urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
@@ -2553,31 +2616,132 @@ def generate_sitemap(
     return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
 
 
+def generate_post_sitemap_page(posts: list[Post], site_url: str) -> str:
+    """生成单页文章 sitemap（用于分页）。"""
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    for post in posts:
+        url = SubElement(urlset, "url")
+        SubElement(url, "loc").text = f"{site_url}/posts/{post.slug}"
+        if post.updated_at:
+            SubElement(url, "lastmod").text = post.updated_at.strftime("%Y-%m-%d")
+        SubElement(url, "changefreq").text = "weekly"
+        SubElement(url, "priority").text = "0.8"
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
+
+
+def generate_taxonomy_sitemap(
+    categories: list[Category], tags: list[Tag], site_url: str
+) -> str:
+    """生成分类/标签 sitemap（合并到一个文件）。"""
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    for category in categories:
+        url = SubElement(urlset, "url")
+        SubElement(url, "loc").text = f"{site_url}/posts?category={category.slug}"
+        SubElement(url, "changefreq").text = "weekly"
+        SubElement(url, "priority").text = "0.6"
+    for tag in tags:
+        url = SubElement(urlset, "url")
+        SubElement(url, "loc").text = f"{site_url}/posts?tag={tag.slug}"
+        SubElement(url, "changefreq").text = "monthly"
+        SubElement(url, "priority").text = "0.5"
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
+
+
+def generate_sitemap_index(entries: list[tuple[str, str]], site_url: str) -> str:
+    """
+    生成 sitemap 索引 XML。
+
+    Args:
+        entries: [(loc_url, lastmod_str), ...]
+        site_url: 站点根 URL（用于拼接相对路径，若 loc 已是绝对则直接用）
+    """
+    from xml.etree.ElementTree import Element, SubElement, tostring
+
+    smi = Element("sitemapindex", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    for loc, lastmod in entries:
+        sitemap = SubElement(smi, "sitemap")
+        SubElement(sitemap, "loc").text = loc
+        if lastmod:
+            SubElement(sitemap, "lastmod").text = lastmod
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(smi, encoding="unicode")
+
+
 @router.get(
     "/sitemap.xml",
-    summary="Sitemap",
-    description="获取站点地图 XML。",
+    summary="Sitemap 索引",
+    description="获取站点地图索引（列出 posts 分页、taxonomies 子表）。对标 WordPress 的 sitemap-index.xml。",
 )
-async def get_sitemap(
+async def get_sitemap_index(
     db: DB,
+    request: Request,
 ):
-    """获取 Sitemap XML"""
-    from fastapi.responses import Response
+    """获取 Sitemap 索引 XML"""
+    # 索引与子表应在同一服务域名下（搜索引擎抓取的入口即当前服务）
+    base = str(request.base_url).rstrip("/")
 
+    # 统计已发布文章总数 → 计算分页
+    total_result = await db.execute(
+        select(func.count()).select_from(Post).where(Post.status == "published")
+    )
+    total_posts = total_result.scalar() or 0
+    total_pages = max(1, (total_posts + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE)
+
+    entries: list[tuple[str, str]] = []
+    for page in range(1, total_pages + 1):
+        entries.append((f"{base}/api/blog/sitemap-posts.xml?page={page}", ""))
+
+    # 分类/标签合并为一个子表
+    entries.append((f"{base}/api/blog/sitemap-taxonomies.xml", ""))
+
+    content = generate_sitemap_index(entries, base)
+    return Response(content=content, media_type="application/xml")
+
+
+@router.get(
+    "/sitemap-posts.xml",
+    summary="文章 Sitemap（分页）",
+    description="按 page 参数返回单页文章 sitemap，每页最多 1000 条。",
+)
+async def get_sitemap_posts(
+    db: DB,
+    page: int = Query(1, ge=1, description="页码，从 1 开始"),
+):
+    """获取分页文章 Sitemap XML"""
     from backend.core.config import settings
 
+    site_url = settings.site_url.rstrip("/")
+    offset = (page - 1) * SITEMAP_PAGE_SIZE
     posts_result = await db.execute(
-        select(Post).where(Post.status == "published").order_by(Post.published_at.desc())
+        select(Post)
+        .where(Post.status == "published")
+        .order_by(Post.published_at.desc())
+        .offset(offset)
+        .limit(SITEMAP_PAGE_SIZE)
     )
     posts = posts_result.scalars().all()
+    content = generate_post_sitemap_page(posts, site_url)
+    return Response(content=content, media_type="application/xml")
 
+
+@router.get(
+    "/sitemap-taxonomies.xml",
+    summary="分类/标签 Sitemap",
+    description="返回分类与标签的 sitemap（合并文件）。",
+)
+async def get_sitemap_taxonomies(
+    db: DB,
+):
+    """获取分类/标签 Sitemap XML"""
+    from backend.core.config import settings
+
+    site_url = settings.site_url.rstrip("/")
     categories_result = await db.execute(select(Category))
     categories = categories_result.scalars().all()
-
     tags_result = await db.execute(select(Tag).where(Tag.is_active.is_(True)))
     tags = tags_result.scalars().all()
-
-    site_url = settings.site_url
-    sitemap_content = generate_sitemap(posts, categories, tags, site_url)
-
-    return Response(content=sitemap_content, media_type="application/xml")
+    content = generate_taxonomy_sitemap(categories, tags, site_url)
+    return Response(content=content, media_type="application/xml")

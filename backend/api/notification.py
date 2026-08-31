@@ -193,7 +193,7 @@ async def get_notification_stats(
 
     type_distribution = {}
     for row in type_stats:
-        type_distribution[row.notification_type] = row.count
+        type_distribution[row.verb] = row.count
 
     return {
         "total": total_count,

@@ -31,6 +31,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.config import settings
 from backend.core.database import Base
+from backend.core.tenant import TenantMixin
 
 JSON_TYPE = JSONB if settings.is_postgresql else JSON
 
@@ -53,7 +54,7 @@ post_likes = Table(
 )
 
 
-class Category(Base):
+class Category(Base, TenantMixin):
     """
     文章分类
 
@@ -102,7 +103,7 @@ class Category(Base):
         return f"<Category(id={self.id}, name='{name}')>"
 
 
-class Tag(Base):
+class Tag(Base, TenantMixin):
     """
     文章标签
 
@@ -135,7 +136,7 @@ class Tag(Base):
         return f"<Tag(id={self.id}, name='{name}')>"
 
 
-class Post(Base):
+class Post(Base, TenantMixin):
     """
     文章模型
 
@@ -220,6 +221,13 @@ class Post(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
+    # 内容类型（自定义文章类型 CPT 的 key；默认 'post' 为博客文章）
+    post_type: Mapped[str] = mapped_column(
+        String(50), default="post", nullable=False, index=True
+    )
+    # 自定义字段（ACF）键值对，按所属内容类型定义动态读写
+    meta_fields: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
+
     comments: Mapped[list["Comment"]] = relationship(
         "Comment", back_populates="post", cascade="all, delete-orphan"
     )
@@ -237,7 +245,7 @@ class Post(Base):
         return f"<Post(id={self.id}, title='{title}')>"
 
 
-class Comment(Base):
+class Comment(Base, TenantMixin):
     """
     评论模型
 

@@ -17,8 +17,8 @@
     </div>
 
     <div class="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-4">
-      <Card class="rounded-2xl">
-        <CardContent class="p-5 space-y-3">
+      <AdminCard class="rounded-2xl">
+        <div class="p-5 space-y-3">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               缓存后端
@@ -45,11 +45,11 @@
               {{ cacheStatus.backend === 'redis' ? '分布式 Redis 缓存' : '进程内 Memory 缓存' }}
             </div>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
-      <Card class="rounded-2xl">
-        <CardContent class="p-5 space-y-3">
+      <AdminCard class="rounded-2xl">
+        <div class="p-5 space-y-3">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               Keys 数量
@@ -68,11 +68,11 @@
             v-else
             class="h-8 w-24 rounded-lg"
           />
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
-      <Card class="rounded-2xl">
-        <CardContent class="p-5 space-y-3">
+      <AdminCard class="rounded-2xl">
+        <div class="p-5 space-y-3">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               内存占用
@@ -96,11 +96,11 @@
             v-else
             class="h-8 w-28 rounded-lg"
           />
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
 
-      <Card class="rounded-2xl">
-        <CardContent class="p-5 space-y-3">
+      <AdminCard class="rounded-2xl">
+        <div class="p-5 space-y-3">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               命中率
@@ -160,20 +160,21 @@
             v-else
             class="h-8 w-full rounded-lg"
           />
-        </CardContent>
-      </Card>
+        </div>
+      </AdminCard>
     </div>
 
-    <Card class="rounded-2xl">
-      <CardHeader>
-        <CardTitle class="flex items-center gap-2">
-          <Shovel class="size-5" /> 缓存清退模式
-        </CardTitle>
-        <CardDescription>
+    <AdminCard class="rounded-2xl">
+      <div class="mb-4">
+        <div class="flex items-center gap-2 mb-2">
+          <Shovel class="size-5" />
+          <span class="text-lg font-semibold">缓存清退模式</span>
+        </div>
+        <p class="text-sm text-muted-foreground">
           选择需要清退的缓存范围。除「全部」外，其他模式不会影响彼此的内容；清退后首次访问会变慢。
-        </CardDescription>
-      </CardHeader>
-      <CardContent class="space-y-5">
+        </p>
+      </div>
+      <div class="space-y-5">
         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
           <label
             v-for="m in modes"
@@ -238,8 +239,8 @@
             立即执行清退
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </AdminCard>
 
     <Dialog v-model:open="confirmFlushOpen">
       <DialogContent class="max-w-md rounded-2xl">
@@ -306,7 +307,7 @@ import {
   Boxes, BookOpen, FileText, Settings as SettingsIcon, Puzzle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Separator } from '~~/components/ui/separator'
 import {
@@ -396,7 +397,7 @@ async function loadStatus() {
   try {
     const r = await fetchAdminCacheStatus()
     cacheStatus.value = r || emptyStatus()
-  } catch (e) {
+  } catch {
     cacheStatus.value = emptyStatus()
   } finally {
     statusLoading.value = false
@@ -410,7 +411,8 @@ async function handleFlush() {
     confirmFlushOpen.value = false
     toast.success(r?.message || `已清退缓存：${currentModeMeta.value?.label}`)
     await loadStatus()
-  } catch (e) {
+  } catch (err) {
+    toast.error((err as { message?: string })?.message || '清退缓存失败')
   } finally {
     flushing.value = false
   }
