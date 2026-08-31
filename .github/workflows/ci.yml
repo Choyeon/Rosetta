@@ -62,7 +62,7 @@ jobs:
         run: npx nuxi prepare
 
       - name: Type check
-        run: pnpm typecheck
+        run: npx vue-tsc --noEmit -p .nuxt/tsconfig.app.json
 
       - name: Lint
         run: pnpm lint
