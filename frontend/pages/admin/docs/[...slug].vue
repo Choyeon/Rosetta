@@ -14,10 +14,27 @@ import { fetchDocsCatalog, fetchDocsDoc, groupByCategory, type DocsCatalogItem }
 import { Skeleton } from '~~/components/ui/skeleton'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { useDocsCatalog as useCatalogExport } from '~~/composables/useDocsCatalog'
+
+// 后台布局内渲染：带侧边栏/面包屑，可随时跳转其他 Admin 页面
+definePageMeta({
+  ssr: false,
+  layout: 'admin'
+})
+
 // 重新导出给 Vue 模板：
 const _ = useCatalogExport
 
 const route = useRoute()
+
+/** 当前文档元信息（用于页面头标题/副标题，目录未加载完时给兜底值） */
+const currentDocMeta = computed<DocsCatalogItem | undefined>(() =>
+  catalogState.value.items.find(it => it.slug === slug.value)
+)
+const displayTitle = computed(() =>
+  currentDocMeta.value?.title
+  || (slug.value === 'index' ? '开发文档首页' : docState.value.title)
+  || '开发文档'
+)
 
 const slug = computed<string>(() => {
   const raw = route.params.slug
@@ -157,25 +174,26 @@ onMounted(async () => {
   await Promise.all([loadCatalog(), loadDoc()])
 })
 
-// slug 切换：只刷新文档
+// slug 切换：只刷新文档；页面滚动模式下需手动回到顶部
 watch(slug, () => {
+  window.scrollTo({ top: 0, behavior: 'smooth' })
   loadDoc().catch(() => { /* 错误已写入 docState.error */ })
 })
 </script>
 
 <template>
-  <div class="docs-shell flex flex-col gap-4 lg:gap-6 lg:flex-row h-[calc(100vh-8rem)] lg:h-auto min-h-[calc(100vh-8rem)]">
-    <!-- 侧边栏：文档目录 -->
-    <aside class="shrink-0 w-full lg:w-[260px] xl:w-[280px]">
-      <div class="sticky top-2 rounded-xl border bg-card/60 backdrop-blur-md text-card-foreground shadow-sm">
-        <div class="flex items-center gap-2 px-4 py-3 border-b">
+  <div class="docs-shell flex flex-col gap-4 lg:gap-5 lg:flex-row lg:items-start">
+    <!-- 侧边栏：文档目录（页面滚动时吸顶，目录过长时卡片内部滚动） -->
+    <aside class="shrink-0 w-full lg:w-[260px] xl:w-[280px] lg:sticky lg:top-4 lg:max-h-[calc(100dvh-6.5rem)]">
+      <div class="rounded-xl border border-border/80 bg-card/60 backdrop-blur-md text-card-foreground shadow-soft/60 flex flex-col max-h-full lg:h-full overflow-hidden">
+        <div class="flex items-center gap-2 px-4 py-3 border-b shrink-0">
           <span class="font-semibold text-sm">开发文档</span>
           <span class="text-[11px] text-muted-foreground">zh-CN</span>
         </div>
-        <ScrollArea class="max-h-[calc(100vh-12rem)] lg:max-h-[640px]">
+        <ScrollArea class="max-h-[320px] lg:flex-1 lg:min-h-0 lg:max-h-none">
           <div
             v-if="catalogState.loading"
-            class="p-3 space-y-2"
+            class="flex flex-col gap-2 p-3"
           >
             <Skeleton
               v-for="i in 6"
@@ -194,7 +212,7 @@ watch(slug, () => {
               <div class="px-2 pt-3 pb-1 text-[11px] uppercase tracking-[0.12em] font-semibold text-muted-foreground/80">
                 {{ g.category }}
               </div>
-              <ul class="space-y-0.5 pb-1">
+              <ul class="flex flex-col gap-0.5 pb-1">
                 <li
                   v-for="it in g.items"
                   :key="it.slug"
@@ -228,39 +246,49 @@ watch(slug, () => {
       </div>
     </aside>
 
-    <!-- 正文 -->
+    <!-- 正文：随页面整体滚动，不做内部滚动条 -->
     <section class="flex-1 min-w-0">
-      <div class="rounded-xl border bg-card text-card-foreground shadow-sm">
-        <header class="px-5 md:px-8 py-4 border-b flex items-center gap-3">
-          <h1
-            v-if="!docState.loading"
-            class="text-xl md:text-2xl font-bold tracking-tight truncate"
+      <div class="rounded-xl border border-border/80 bg-card text-card-foreground shadow-soft/60">
+        <header class="px-5 md:px-8 py-4 border-b flex flex-wrap items-center gap-x-3 gap-y-1">
+          <div class="flex items-center gap-2.5 min-w-0">
+            <h1 class="text-xl md:text-2xl font-semibold tracking-tight font-display truncate">
+              {{ displayTitle }}
+            </h1>
+            <span
+              v-if="currentDocMeta?.category"
+              class="shrink-0 text-[11px] px-1.5 py-0.5 rounded-md bg-primary/10 text-primary font-medium"
+            >
+              {{ currentDocMeta.category }}
+            </span>
+          </div>
+          <p
+            v-if="currentDocMeta?.description"
+            class="w-full text-xs text-muted-foreground truncate"
           >
-            {{ docState.title }}
-          </h1>
-          <Skeleton
-            v-else
-            class="h-8 w-1/2 rounded-md"
-          />
+            {{ currentDocMeta.description }}
+          </p>
         </header>
 
-        <div
-          v-if="docState.loading"
-          class="p-5 md:p-8 space-y-3"
-        >
-          <Skeleton class="h-5 w-4/5 rounded-md" />
-          <Skeleton class="h-5 w-11/12 rounded-md" />
-          <Skeleton class="h-5 w-2/3 rounded-md" />
-          <Skeleton class="h-5 w-3/4 rounded-md" />
-          <Skeleton class="h-5 w-5/6 rounded-md" />
-          <Skeleton class="h-32 w-full rounded-md mt-4" />
-        </div>
+        <div>
+          <div
+            v-if="docState.loading"
+            class="flex flex-col gap-3 p-5 md:p-8"
+          >
+            <Skeleton class="h-5 w-4/5 rounded-md" />
+            <Skeleton class="h-5 w-11/12 rounded-md" />
+            <Skeleton class="h-5 w-2/3 rounded-md" />
+            <Skeleton class="h-5 w-3/4 rounded-md" />
+            <Skeleton class="h-5 w-5/6 rounded-md" />
+            <Skeleton class="h-32 w-full rounded-md mt-4" />
+          </div>
 
-        <article
-          v-else
-          class="prose-docs px-5 md:px-8 py-6 md:py-8 max-w-none"
-          v-html="docState.html"
-        />
+          <!-- eslint-disable-next-line vue/no-v-html -->
+          <article
+            v-else
+            class="prose-docs px-5 md:px-8 py-6 md:py-8 max-w-none"
+            v-html="docState.html"
+          />
+        </div>
       </div>
     </section>
   </div>
@@ -272,6 +300,10 @@ watch(slug, () => {
   color: hsl(var(--foreground));
   line-height: 1.75;
   font-size: 15px;
+}
+/* 正文首行 H1 与页面头标题重复，隐藏之 */
+:deep(.prose-docs > h1:first-child) {
+  display: none;
 }
 :deep(.prose-docs h1),
 :deep(.prose-docs h2),

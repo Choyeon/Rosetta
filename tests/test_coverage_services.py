@@ -5,9 +5,8 @@
 - user_service：UserService 公开方法（register / change_password / etc.）的成功/失败分支
 - guestbook_service：mask_ip / gravatar_avatar / truncate_ua 等辅助 + GuestbookService 公开方法
 """
-from __future__ import annotations
 
-import re
+from __future__ import annotations
 
 import pytest
 
@@ -165,6 +164,7 @@ class TestAvatarHelpers:
         from backend.services._avatar_helpers import resolved_for_user
 
         assert resolved_for_user(None) is None
+
         # Fake user：纯属性对象，email 合法 → gravatar 分支
         class U:
             avatar_source = "auto"
@@ -176,11 +176,14 @@ class TestAvatarHelpers:
         out = resolved_for_user(U())
         assert out is not None and "avatar?src=" in out
 
-    @pytest.mark.xfail(reason="NoInspectionAvailable: SA 2.0 模型无法以普通 Python 类 standin 替代", strict=False)
+    @pytest.mark.xfail(
+        reason="NoInspectionAvailable: SA 2.0 模型无法以普通 Python 类 standin 替代", strict=False
+    )
     def test_resolved_for_comment_user_first(self):
-        from backend.services._avatar_helpers import resolved_for_comment
-        from urllib.parse import urlparse, parse_qs
         import base64
+        from urllib.parse import parse_qs, urlparse
+
+        from backend.services._avatar_helpers import resolved_for_comment
 
         def _safe_b64decode(s: str) -> str:
             rem = len(s) % 4
@@ -218,11 +221,14 @@ class TestAvatarHelpers:
         out2 = resolved_for_comment(C2())
         assert out2 is not None
 
-    @pytest.mark.xfail(reason="NoInspectionAvailable: SA 2.0 模型无法以普通 Python 类 standin 替代", strict=False)
+    @pytest.mark.xfail(
+        reason="NoInspectionAvailable: SA 2.0 模型无法以普通 Python 类 standin 替代", strict=False
+    )
     def test_resolved_for_guestbook_user_then_anon(self):
-        from backend.services._avatar_helpers import resolved_for_guestbook
-        from urllib.parse import urlparse, parse_qs
         import base64
+        from urllib.parse import parse_qs, urlparse
+
+        from backend.services._avatar_helpers import resolved_for_guestbook
 
         def _safe_b64decode(s: str) -> str:
             # urlsafe base64 with padding fix
@@ -347,7 +353,9 @@ async def test_cs_get_post_by_any_id_and_slug_and_missing(db_session, test_post)
 
 
 @pytest.mark.asyncio
-async def test_cs_list_root_published_vs_unapproved(db_session, test_post, admin_user, make_comments):
+async def test_cs_list_root_published_vs_unapproved(
+    db_session, test_post, admin_user, make_comments
+):
     from backend.services.comment_service import CommentService
 
     await make_comments(test_post, 8)
@@ -373,9 +381,7 @@ async def test_cs_list_root_published_vs_unapproved(db_session, test_post, admin
 async def test_cs_get_replies_nonexistent_root_returns_empty(db_session):
     from backend.services.comment_service import CommentService
 
-    items, total, post_ref = await CommentService.get_replies(
-        db_session, comment_id=9_999_999
-    )
+    items, total, post_ref = await CommentService.get_replies(db_session, comment_id=9_999_999)
     assert items == [] and total == 0 and post_ref is None
 
 

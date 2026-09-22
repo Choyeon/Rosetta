@@ -35,7 +35,7 @@ export interface User {
 
 export interface UserTitle {
   id: number
-  name: string
+  name: string | Record<string, string>
   color: string
   icon?: string
 }

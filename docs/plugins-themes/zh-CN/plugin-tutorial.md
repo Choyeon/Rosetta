@@ -1,384 +1,538 @@
 # Rosetta 插件开发教程
 
-> 版本：1.0.0 · 最后更新：2026-08-28 · 语言：zh-CN
+> 版本：2.0.0 · 最后更新：2026-09 · 语言：zh-CN · 对应 Rosetta `v2.1.x`
 
-Rosetta 的插件系统基于 **钩子引擎（Hooks: Action / Filter）+ 短代码引擎（Shortcode）+ 独立路由注册 + 插件设置 KV 存储** 五件套构建。
-每个插件是 `backend/plugins/<slug>/` 下的一个 Python 包，注册入口为单个异步函数 `register(ctx)`。
-本文以 **`guestbook-rss`** 示例插件为主线，完整演示五类扩展点的最小代码写法，并给出安全提示与打包规范。
+Rosetta 插件系统由**五大子系统**构成：
+
+| 子系统 | 模块 | 作用 |
+| --- | --- | --- |
+| Hook 引擎 | `backend/core/hooks.py` | Action（副作用）/ Filter（值变换），全进程**唯一**注册表 |
+| Shortcode 引擎 | `backend/core/shortcodes.py` | 在文章中以 `[tag]` 语法嵌入动态 HTML，输出白名单消毒 |
+| 路由注册表 | `backend/core/routing_registry.py` | 集中暂存插件 APIRouter 与后台菜单，统一挂载 |
+| 插件管理器 | `backend/core/extensions.py` | 安装 / 激活 / 停用 / 删除 / 升级的生命周期与 KV 设置 |
+| 兼容门面 | `backend/core/plugin_bus.py` | `PluginBus` 薄门面，核心代码 `bus.do_action()` 统一汇入 hooks |
+
+每个插件是 `backend/plugins/<slug>/` 下的一个 Python 包，入口为 `plugin.py` 中的
+`register()` 函数（**同步或异步均可**）。
+
+> **本次重构的关键变化**：历史上 `PluginBus` 与 hooks 模块各持一份互不相通的注册表，
+> 插件监听的钩子在真实请求中永远不会被触发。重构后所有注册 / 触发 / 摘除全部汇入
+> `backend/core/hooks.py` 的唯一注册表，插件钩子在真实请求路径中可靠生效。
 
 ---
 
-## 1. 目录规范
+## 1. 30 秒最小插件
+
+```python
+# backend/plugins/hello-world/plugin.py
+from __future__ import annotations
+import logging
+
+logger = logging.getLogger("hello-world")
+PLUGIN_SLUG = "hello-world"
+
+
+def on_post_published(post_id, post=None, **_kw):
+    logger.info("文章已发布: id=%s slug=%s", post_id, getattr(post, "slug", "?"))
+
+
+def register(*args, **kwargs):
+    from backend.core.hooks import add_action, remove_action
+    remove_action("post.published", on_post_published)   # 幂等：先摘后挂
+    add_action("post.published", on_post_published, priority=10, plugin=PLUGIN_SLUG)
+```
+
+```json
+// backend/plugins/hello-world/rosetta-plugin.json
+{
+  "manifest_version": "1.0",
+  "name": "Hello World",
+  "slug": "hello-world",
+  "version": "0.1.0",
+  "description": "最小插件示例：监听文章发布。",
+  "entry": "plugin.py"
+}
+```
+
+在后台「插件管理」点扫描 → 启用即可。文章发布时日志中会出现上述记录。
+
+---
+
+## 2. 目录规范
 
 ```
 backend/plugins/
-  guestbook-rss/
-    __init__.py           ← 空文件即可；使插件成为 Python 包
-    plugin.py             ← register(ctx) 实现所在；由 entrypoint 指定
-    rosetta-plugin.json   ← 必填：插件清单（manifest）
-    README.md             ← 可选：使用说明
-    requirements.txt      ← 可选：第三方依赖清单（建议锁定版本）
+  <slug>/
+    __init__.py           ← 空文件；使插件成为 Python 包
+    plugin.py             ← register() 所在（文件名由 manifest.entry 指定，默认 plugin.py）
+    rosetta-plugin.json   ← 必填：插件清单
+    README.md             ← 可选：使用说明（不进入后台文档浏览器）
+    requirements.txt      ← 可选：第三方依赖，建议锁定精确版本
 ```
 
-- 目录名 = `slug`，正则：`^[a-z][a-z0-9\-]{1,48}$`
-- `rosetta-plugin.json` 通过 `RosettaPluginManifest` 校验（见 `backend/schemas/manifest.py`）
-- Python 入口通过 `entrypoint: "module:callable"` 指定，通常写为 `plugin:register`
+- 目录名 = `slug`，规范：`^[a-z0-9-]{3,64}$`（小写字母、数字、连字符）
+- 内建插件位于 `backend/plugins/`；ZIP / 市场安装的插件解压到同一目录
 
-### rosetta-plugin.json 示例（guestbook-rss）
+---
+
+## 3. 插件清单 rosetta-plugin.json
+
+清单由 `RosettaPluginManifest`（`backend/schemas/manifest.py`）校验。
+
+### 3.1 完整字段参考
+
+| 字段 | 必填 | 类型 / 默认 | 说明 |
+| --- | --- | --- | --- |
+| `manifest_version` | | `"1.0"` | 清单格式版本 |
+| **`name`** | ✅ | string | 显示名 |
+| **`slug`** | ✅ | `^[a-z0-9-]{3,64}$` | 与目录名一致 |
+| **`version`** | ✅ | semver `x.y.z` | 语义化版本，支持预发布后缀 |
+| `requires_rosetta` | | `">=1.0.0"` | 所需 Rosetta 版本范围（PEP 440 风格） |
+| `description` | | string | 一句话描述 |
+| `description_i18n` | | `{lang: string}` | 多语言描述（`zh/en/ja/zh_Hant`） |
+| `author` | | `{"name", "uri"}` | 作者对象 |
+| `author_name` | | string | 作者名简写 |
+| `plugin_uri` | | string | 插件主页 |
+| `author_uri` | | string | 作者主页 |
+| `textdomain` | | 默认 = `slug` | 翻译文本域 |
+| `tags` | | string[] | 关键词 |
+| `category` | | enum | `seo/performance/content/social/media/security/utility/integration/publishing/customization/editorial` |
+| `settings_schema` | | JSON Schema | 插件设置结构，见 §10 |
+| `screenshot_urls` | | string[] | 截图地址 |
+| `dependencies` | | object[] | 依赖插件，元素形如 `{"slug": "other-plugin"}` |
+| `entry` | | `"plugin.py"` | 入口文件 |
+| `hooks` | | string[] | **声明性文档**：本插件使用的钩子名（供市场/审计展示，不参与注册） |
+| `admin_menu` | | object | 后台菜单项，见 §7.5 |
+
+> **关于旧字段**：`id`、`entrypoint`、`license`、`compatibility`、`conflicts`、
+> 菜单中的 `iconName` 均**不是**当前 schema 字段（校验策略为 `extra="ignore"`，
+> 写了也会被忽略）。请改用 `requires_rosetta`、`admin_menu.icon` 等当前字段。
+
+### 3.2 清单示例
 
 ```json
 {
-  "id": "io.github.rosetta.guestbook-rss",
-  "slug": "guestbook-rss",
-  "name": "Guestbook RSS",
+  "manifest_version": "1.0",
+  "name": "My Plugin",
+  "slug": "my-plugin",
   "version": "0.1.0",
-  "description": "为 Rosetta 留言板生成 RSS 2.0 订阅源，并提供一个后台设置页。",
-  "author": "Rosetta",
-  "license": "MIT",
-  "entrypoint": "plugin:register",
-  "dependencies": [],
+  "requires_rosetta": ">=2.1.0",
+  "description": "插件用途的一句话描述。",
+  "author": { "name": "Your Name", "uri": "https://example.com" },
+  "category": "utility",
+  "tags": ["sample"],
+  "entry": "plugin.py",
+  "hooks": ["post.published", "the_content"],
   "settings_schema": {
     "type": "object",
     "properties": {
-      "feed_title":    { "type": "string", "default": "Rosetta 留言板 RSS" },
-      "feed_language": { "type": "string", "default": "zh-cn" },
-      "max_items":     { "type": "integer", "default": 50, "minimum": 10, "maximum": 500 },
-      "enable_ttl":    { "type": "boolean", "default": true }
-    },
-    "additionalProperties": false
+      "my_option": { "type": "string", "default": "hello" }
+    }
   },
   "admin_menu": {
-    "label": "留言板 RSS",
-    "iconName": "rss",
-    "path": "/admin/plugins/guestbook-rss/settings",
-    "badge": "new"
-  },
-  "tags": ["rss", "guestbook", "syndication"],
-  "compatibility": {
-    "min_rosetta": "1.0.0"
+    "label": "我的插件",
+    "icon": "material-symbols:settings",
+    "path": "/admin/plugins/my-plugin/settings"
   }
 }
 ```
 
-清单字段（必含加粗）：
+---
 
-| 字段 | 说明 |
+## 4. 注册入口 register()
+
+### 4.1 签名：同步 / 异步均可
+
+激活插件时，管理器调用 `plugin.py` 中的 `register`。以下写法都被支持：
+
+```python
+def register(*args, **kwargs): ...      # 同步（推荐：注册钩子无需 IO）
+async def register(*args, **kwargs): ... # 异步（需要启动期 IO 时使用）
+```
+
+调用约定（管理器按函数签名自动适配）：
+
+- `register(ctx)` —— 新风格，收到 `PluginContext`
+- `register(app, bus)` —— 历史风格，收到 FastAPI app 与 PluginBus
+- 参数名显式包含 `ctx` / `app` / `bus` 时按名注入
+
+> 推荐统一使用 **`def register(*args, **kwargs)`** 并忽略入参——钩子直接注册到全局
+> 引擎，不依赖 ctx 传递；需要路由时再从参数中识别 ctx（参考内建 `guestbook-rss`）。
+
+### 4.2 幂等铁律
+
+Rosetta 存在两条加载路径（启动期 legacy 扫描 + 激活时沙箱导入），`register()` 可能被
+调用多次。**所有注册都必须幂等**：
+
+```python
+from backend.core.hooks import add_action, remove_action
+
+def register(*args, **kwargs):
+    remove_action("post.published", handler)   # 先按函数引用摘除
+    add_action("post.published", handler, priority=10, plugin=PLUGIN_SLUG)
+```
+
+- Action / Filter：把处理器定义为**模块级函数**，注册前先 `remove_action/remove_filter`
+- Shortcode：注册即 dict 覆盖，天然幂等
+- 路由：路由注册表按 slug 去重，重复注册自动跳过
+
+---
+
+## 5. PluginContext API 参考
+
+`register(ctx)` 收到的上下文对象（`backend/core/plugin_loader.py:PluginContext`）。
+
+### 5.1 属性
+
+| 属性 | 说明 |
 | --- | --- |
-| `id` | 反向域名式唯一 ID |
-| **`slug`** | 与目录名一致 |
-| **`name`** | 显示名 |
-| **`version`** | 语义化版本 |
-| **`description`** | 一句话描述 |
-| **`author`** | 作者 |
-| **`license`** | SPDX 协议 |
-| **`entrypoint`** | `module:async_func` 形式，默认为 `plugin:register` |
-| `dependencies` | 依赖的其它插件 slug 数组；激活时按顺序自动激活 |
-| `settings_schema` | JSON Schema；插件设置 PUT/PATCH 时由后端校验 |
-| `admin_menu` | 后台侧边栏菜单项（Sidebar 由 `usePluginMenuGroup` 拉取渲染） |
-| `tags` | 关键词数组 |
-| `compatibility.min_rosetta / max_rosetta` | 兼容性 |
+| `ctx.slug` | 插件 slug |
+| `ctx.manifest` | 清单字典（来自 rosetta-plugin.json） |
+| `ctx.app` | FastAPI 应用实例（只读） |
+| `ctx.bus` | PluginBus 兼容门面 |
+
+### 5.2 方法（10 个）
+
+| # | 方法 | 说明 |
+| --- | --- | --- |
+| 1 | `ctx.add_action(hook, fn, *, priority=10)` | 注册 action（自动标记 plugin=slug） |
+| 2 | `ctx.add_filter(hook, fn, *, priority=10)` | 注册 filter |
+| 3 | `ctx.register_shortcode(name, fn)` | 注册短代码（默认成对模式） |
+| 4 | `ctx.register_admin_router(router)` | 挂到 `/api/admin/plugins/{slug}`，**自动注入管理员鉴权** |
+| 5 | `ctx.register_public_router(router)` | 挂到 `/api/plugins/{slug}`，公开访问 |
+| 6 | `ctx.register_admin_menu(item)` | 后台侧边栏「插件」分组加菜单项 |
+| 7 | `ctx.settings` | 属性：读取设置快照（DB 不可用时返回 `{}`） |
+| 8 | `await ctx.set_settings(payload)` | 校验并写入设置 |
+| 9 | `await ctx.do_action(hook, *args, **kwargs)` | 主动触发 action |
+| 10 | `await ctx.apply_filters(hook, value, *args, **kwargs)` | 主动应用 filter 链 |
 
 ---
 
-## 2. `register(ctx)` 提供的 11 个能力
+## 6. 扩展点开发指南
 
-插件启动（`bootstrap_extensions` 扫描 → 激活 → import → 调用 entrypoint）时，
-Rosetta 会把一个 `PluginContext` 对象作为唯一参数传给 `register(ctx)`。该上下文是插件与平台交互的唯一通道，提供以下 11 个能力：
-
-| # | 能力 | 方法签名 | 说明 |
-| --- | --- | --- | --- |
-| 1 | 注册 Action | `ctx.add_action(hook: str, fn, priority: int = 10)` | 在某个执行点触发副作用 |
-| 2 | 注册 Filter | `ctx.add_filter(hook: str, fn, priority: int = 10)` | 对某个值做变换并返回 |
-| 3 | 注册 Shortcode | `ctx.register_shortcode(tag: str, fn, *, has_paired: bool = True, description=None)` | 注册 `[tag]...[/tag]` 或 `[tag /]` |
-| 4 | 注册后台路由 | `ctx.register_admin_router(router: APIRouter)` | 路由自动挂到 `/api/admin/plugins/<slug>/`，并注入管理员鉴权依赖 |
-| 5 | 注册前台路由 | `ctx.register_public_router(router: APIRouter)` | 路由自动挂到 `/api/plugins/<slug>/`，公开访问 |
-| 6 | 注册后台菜单 | `ctx.register_admin_menu({label, iconName, path, badge})` | Sidebar 「插件」分组中显示一个菜单项 |
-| 7 | 读取设置 | `await ctx.get_settings(db) -> dict` | 读取插件 KV 设置（已包含 schema defaults） |
-| 8 | 写入设置 | `await ctx.set_settings(db, payload: dict)` | 按 settings_schema 校验后写入 |
-| 9 | 读取当前主题 mods | `await ctx.get_mods(db, slug?) -> dict` | 读取指定主题或当前激活主题的 mods |
-| 10 | 触发 Action | `ctx.do_action(hook, *args, **kwargs)` | 主动触发一个钩子广播 |
-| 11 | 应用 Filter | `ctx.apply_filters(hook, value, *args, **kwargs)` | 主动把值通过过滤器链跑一遍 |
-
-> 注意：`register()` 是 **async** 函数。如需做耗时 IO（建表、拉 HTTP），
-> 建议用 `asyncio.create_task` 放到后台，避免阻塞应用启动。
-
----
-
-## 3. 五类扩展点各自最小示例
-
-### 3.1 Action（动作：做副作用，返回值被忽略）
+### 6.1 Action（副作用，返回值忽略）
 
 ```python
-# plugin.py
-from __future__ import annotations
-import logging
+def on_comment_created(comment, db=None, **_kw):
+    # 同步回调：禁止阻塞 IO；如需 IO 请定义 async 函数
+    print("新评论:", getattr(comment, "id", "?"))
 
-log = logging.getLogger(__name__)
-
-async def register(ctx):
-    async def on_post_published(post, **_):
-        log.info("[guestbook-rss] 文章已发布: %s", getattr(post, "slug", "?"))
-    ctx.add_action("post.published", on_post_published, priority=20)
+def register(*args, **kwargs):
+    from backend.core.hooks import add_action, remove_action
+    remove_action("comment.created", on_comment_created)
+    add_action("comment.created", on_comment_created, priority=10, plugin=PLUGIN_SLUG)
 ```
 
-常见内置钩子：`post.published / post.rendered / plugin.installed / theme.activated / shutdown`。
+- 处理器可以是同步或异步；同步函数在线程池中执行，不会阻塞事件循环
+- 所有处理器在**沙箱**中调用，异常只记录日志，不冒泡到主请求链路
+- 处理器显式返回 `False` 可短路后续同钩子 action（扩展语义）
+- 执行顺序：priority 升序，同优先级按注册顺序（FIFO）
 
-### 3.2 Filter（过滤器：必须返回变换后的值）
+### 6.2 Filter（值变换，必须返回值）
 
 ```python
-async def register(ctx):
-    def title_suffix(title: str, post, **_) -> str:
-        return f"{title} · RSS 订阅可用"
-    ctx.add_filter("post.title", title_suffix, priority=10)
+def add_suffix(title, post=None, language=None, context=None, **_kw):
+    if not isinstance(title, str) or title.endswith(" · NEW"):
+        return title
+    return title + " · NEW"
+
+def register(*args, **kwargs):
+    from backend.core.hooks import add_filter, remove_filter
+    remove_filter("the_title", add_suffix)
+    add_filter("the_title", add_suffix, priority=10, plugin=PLUGIN_SLUG)
 ```
 
-Filter 回调的第一个参数永远是「待变换的值」；后续参数是上下文（如 `post`、`site_id` 等）。**必须返回同类型值**，否则破坏链式语义。
+规则：
 
-### 3.3 Shortcode（短代码）
+- 第一个参数永远是**待变换的值**，必须返回该值（同类型）
+- 内容类钩子同时支持 **canonical 名（WordPress 风格）与历史别名**，挂任一即可：
+
+| 内容 | canonical（推荐） | 历史别名 |
+| --- | --- | --- |
+| 标题 | `the_title` | `post.title` |
+| 正文 | `the_content` | `post.content` |
+| 摘要 | `the_excerpt` | `post.excerpt` |
+
+- 回调异常时该处理器被跳过，保留当前值继续传递，不会破坏页面
+
+### 6.3 Shortcode（短代码）
+
+在文章里写 `[hello to="World" /]` 即可展开为动态 HTML。
 
 ```python
-from __future__ import annotations
-import html
+import html as _html
 
-async def register(ctx):
-    def rss_link(href="#", text="订阅留言板 RSS", **_):
-        safe_href = html.escape(href, quote=True)
-        safe_text = html.escape(text)
-        return f'<a href="{safe_href}" rel="noopener" class="rss-link">{safe_text}</a>'
-    ctx.register_shortcode("rss-link", rss_link, has_paired=False,
-                           description="[rss-link href=/api/plugins/guestbook-rss/feed.xml /]")
+def hello_shortcode(to="World", content="", ctx=None, **_kw):
+    return f'<p>Hello, <b>{_html.escape(str(to))}</b>!</p>'
+
+def register(*args, **kwargs):
+    from backend.core.shortcodes import register_shortcode
+    # 需要 has_paired / description 等完整参数时，直接调用全局注册函数
+    register_shortcode("hello", hello_shortcode, plugin=PLUGIN_SLUG,
+                       has_paired=False, description='[hello to="World" /]')
 ```
 
-短代码可以自闭合 `[rss-link /]`，也可以成对 `[warning]...[/warning]`；
-**函数参数名 = 短代码属性名**；内容对的内部文本以关键字参数 `content` 传入（当 `has_paired=True`）。
+语法（WordPress 兼容子集）：
 
-### 3.4 独立后台页
+- 自闭合：`[hello to="World" /]`
+- 成对：`[box cls="warning"]正文[/box]`，内部文本以关键字参数 `content` 传入
+- 属性：`k=v` / `k="v"` / `k='v'`；裸词 `flag` 视为 `"True"`
+- 名称：`^[A-Za-z_][\w\-]*$`
 
-```python
-from __future__ import annotations
-from fastapi import APIRouter, Depends
-from backend.core.auth import CurrentStaff
-from backend.core.database import AsyncSession as DB
+**安全模型**：
 
-async def register(ctx):
-    admin = APIRouter(tags=["Guestbook RSS Admin"])
+1. 所有短代码输出强制经过**白名单消毒**（零 bleach 依赖，纯 stdlib 实现）：
+   允许 `a/blockquote/code/div/h1~h6/hr/img/li/ol/p/pre/span/strong/table` 等结构标签；
+   `script/style/iframe/object` 等整段剥离，`onxxx` 事件属性与 `javascript:` 伪协议删除
+2. **未注册的短代码原样保留**，不丢弃用户内容
 
-    @admin.get("/settings")
-    async def get_settings(db: DB, _: CurrentStaff):
-        return {"success": True, "data": await ctx.get_settings(db)}
-
-    @admin.put("/settings")
-    async def put_settings(payload: dict, db: DB, _: CurrentStaff):
-        await ctx.set_settings(db, payload)
-        return {"success": True}
-
-    ctx.register_admin_router(admin)
-    ctx.register_admin_menu(ctx.manifest.get("admin_menu") or {
-        "label": "留言板 RSS",
-        "path": "/admin/plugins/guestbook-rss/settings",
-        "iconName": "rss"
-    })
-```
-
-- 路由前缀自动拼接为 `/api/admin/plugins/guestbook-rss/settings`
-- 自动注入管理员依赖（`require_admin`），无需手动写 Depends
-- 前端统一承载页为 `frontend/pages/admin/plugins/[slug]/[...catchall].vue`（iframe / 代理均可）
-
-### 3.5 独立前台路由
+### 6.4 独立路由（前台 / 后台）
 
 ```python
-from __future__ import annotations
 from fastapi import APIRouter
 from fastapi.responses import Response
-from sqlalchemy import select
-from backend.core.database import async_session_maker
-from backend.models.guestbook import Guestbook
 
-async def register(ctx):
-    public = APIRouter(tags=["Guestbook RSS Public"])
+def _build():
+    public = APIRouter(tags=["My Plugin"])
 
-    @public.get("/feed.xml", response_class=Response)
+    @public.get("/feed.xml")
     async def feed():
-        settings = ctx.settings or {}
-        limit = int(settings.get("max_items", 50))
-        async with async_session_maker() as db:
-            rows = (await db.execute(
-                select(Guestbook)
-                .order_by(Guestbook.created_at.desc())
-                .limit(limit)
-            )).scalars().all()
-        xml = _build_rss(rows, settings)
-        return Response(xml, media_type="application/rss+xml; charset=utf-8")
+        return Response("<rss/>", media_type="application/rss+xml")
 
-    ctx.register_public_router(public)
+    admin = APIRouter(tags=["My Plugin Admin"])
+
+    @admin.get("/stats")
+    async def stats():
+        return {"success": True, "data": {"hits": 1}}
+
+    return public, admin
+
+
+async def register(ctx=None, **_kwargs):
+    if ctx is None:                       # 旧签名 register(app, bus) 兜底
+        from backend.core.routing_registry import routing_registry
+        public, admin = _build()
+        routing_registry.register_public_router(PLUGIN_SLUG, public)
+        routing_registry.register_admin_router(PLUGIN_SLUG, admin)
+        return
+    public, admin = _build()
+    ctx.register_public_router(public)    # → /api/plugins/my-plugin/feed.xml
+    ctx.register_admin_router(admin)      # → /api/admin/plugins/my-plugin/stats
 ```
 
-路由自动挂载为 `/api/plugins/guestbook-rss/feed.xml`，对外公开可访问。
+- 后台路由自动加 `get_current_staff` 管理员依赖，无需手写 `Depends`
+- 统一挂载之后注册的路由会立即挂载（插件在 lifespan 中加载，晚于核心路由）
+
+### 6.5 后台菜单（admin 侧边栏）
+
+**推荐方式：在 manifest 中声明**，激活时自动注册：
+
+```json
+"admin_menu": {
+  "label": "我的插件",
+  "icon": "material-symbols:settings",
+  "path": "/admin/plugins/my-plugin/settings",
+  "badge": "new"
+}
+```
+
+也可在 `register()` 中调用 `ctx.register_admin_menu({...})`（至少含 `label` / `path`）。
+
+- 前端侧边栏通过 `GET /api/admin/plugins/menu-registry` 拉取，在「插件」分组下渲染
+  （`composables/usePluginMenu.ts` + `components/admin/AdminSidebar.vue`）
+- 菜单 `path` 指向前端页面，例如内建插件 guestbook-rss 的原生设置页
+  `/admin/plugins/guestbook-rss/settings`
 
 ---
 
-## 4. 安全提示
+## 7. 钩子目录（完整参考）
 
-Rosetta 插件拥有与主应用相同的 Python 进程权限，插件本身即是「可信扩展」而非浏览器沙箱脚本。
-为了减少供应链风险，作者与站点管理员请遵守以下实践：
+以下为当前核心代码真实触发的全部钩子（参数为关键字传参，处理器应使用 `**_kw` 兜底）。
 
-### 4.1 代码安全清单
+### 7.1 内容 / 文章（Action）
 
-- ✅ 不要 `eval(...)` / `exec(...)` settings 或用户输入，包括 `ast.literal_eval` 之外的动态编译
-- ✅ 不要在 settings 里保存密钥（access token / SMTP 密码等），建议写入 `.env` 并通过 `settings.read_secrets()` 读取
-- ✅ SQL 查询统一使用 SQLAlchemy ORM / Core（`select(...)`），严禁拼接 SQL 字符串
-- ✅ 所有短代码输出必须对用户输入做 `html.escape`；核心引擎外层会走 bleach 白名单，但内层转义能降低疏忽带来的 XSS 风险
-- ✅ 对文件系统写入：限定目录在 `BACKEND_ROOT/data/plugins/<slug>/` 内，使用 `Path.resolve().is_relative_to()` 做 `..` 越权检测
-- ✅ 第三方依赖尽量锁定精确版本（`requirements.txt` 写 `httpx==0.27.0`，不要写 `httpx>=0.20`）
-
-### 4.2 高风险模块建议避免 / 最少权限使用
-
-| 模块 | 风险等级 | 建议 |
+| 钩子 | 触发时机 | 参数 |
 | --- | --- | --- |
-| `subprocess` | 极高 | 仅在确需调用可执行文件（如 image magick）时使用，且参数必须用 `shlex.quote` 或列表形式传参 |
-| `os.system` / `popen` | 极高 | 一律替换为 `subprocess.run([...], shell=False)` |
-| `sys` | 中 | 只读 `sys.version` / `sys.platform` 可以；不要 `sys.exit` / `sys.modules[...] = ...` 动态改模块表 |
-| `ctypes` / `cffi` | 高 | 避免；除非确实需要调用原生库 |
-| 动态 `importlib.import_module(name)` | 中高 | `name` 必须限制为白名单字符串，不可来自用户输入 / settings |
-| `pickle.loads(...)` | 极高 | 严禁；JSON 替代序列化 |
+| `post.created` | 文章新建 | `post`, `current_user`, `db` |
+| `post.published` | 文章发布（新建即发布 / 状态切到发布） | 位置参数 `post_id`；`post`, `current_user`, `db` |
+| `post.updated` | 文章更新 | `post`, `current_user`, `db` |
+| `post.deleted` | 文章删除 | `post`, `current_user`, `db` |
+| `post.rendered` | 文章详情渲染完成（纯通知） | `post`, `language`, `title`, `content`, `excerpt`, `context` |
 
-### 4.3 插件激活前的边界检查
+### 7.2 评论（Action）
 
-后端 `PluginManager.activate()` 会做：
-1. manifest schema 校验
-2. 依赖 plugins 的激活顺序与存在性检查
-3. 互斥性（若有 `conflicts` 声明则拒绝）
-4. `settings_schema` 校验默认值并初始化 KV 行
+| 钩子 | 触发时机 | 参数 |
+| --- | --- | --- |
+| `comment.created` | 新评论提交 | `comment`, `db` |
+| `comment.approved` | 评论审核通过 | `comment`, (`current_user`), `db` |
+| `comment.spam` | 评论标记垃圾 | `comment`, `db` |
+| `comment.deleted` | 评论删除 | `comment`, `current_user`, `db` |
 
-但 **不会** 拦截插件代码内部的高风险调用；这需要通过代码审计 + 只从官方市场安装来规避。
+### 7.3 插件生命周期（Action）
+
+| 钩子 | 参数 |
+| --- | --- |
+| `plugins.scanned` | `added`, `updated`, `slugs` |
+| `plugin.installed` | `slug`, `manifest`, `version` |
+| `plugin.activated` | `slug`, `row` |
+| `plugin.deactivated` | `slug`, `row` |
+| `plugin.upgraded` | `slug`, `row` |
+| `plugin.deleted` | `slug` |
+
+### 7.4 主题生命周期（Action）
+
+| 钩子 | 参数 |
+| --- | --- |
+| `themes.scanned` | `added`, `updated` |
+| `theme.installed` | `slug`, `manifest`, `version` |
+| `theme.activated` | `slug`, `previous` |
+| `theme.deleted` | `slug` |
+| `theme.upgraded` | `slug`, `row` |
+| `theme.mods_saved` | `slug`, `mods` |
+
+### 7.5 Filter
+
+| 钩子（canonical / 别名） | 变换的值 | 上下文参数 |
+| --- | --- | --- |
+| `the_title` / `post.title` | 标题字符串 | `post`, `language`, `context` |
+| `the_content` / `post.content` | 正文 HTML | `post`, `language`, `context` |
+| `the_excerpt` / `post.excerpt` | 摘要 HTML | `post`, `language`, `context` |
+
+> 新增钩子命名约定：action 用 `{domain}.{verb}`（如 `post.published`）；
+> filter 用 `the_{name}` 或 `{domain}_{property}_filter`。
 
 ---
 
-## 5. 完整示例（guestbook-rss）
+## 8. 生命周期与清理契约
 
-把前述的 manifest + 五类扩展点示例合并，得到一个覆盖所有扩展点的 `plugin.py`：
-
-```python
-"""guestbook-rss 插件：Action + Filter + Shortcode + 后台页 + 前台路由 全覆盖。"""
-from __future__ import annotations
-
-import html
-import logging
-from xml.sax.saxutils import escape as xml_escape
-
-from fastapi import APIRouter, Depends
-from fastapi.responses import Response
-from sqlalchemy import select
-
-from backend.core.auth import CurrentStaff
-from backend.core.database import AsyncSession as DB, async_session_maker
-from backend.models.guestbook import Guestbook
-
-log = logging.getLogger(__name__)
-
-
-def _build_rss(rows, settings: dict) -> str:
-    title = xml_escape(settings.get("feed_title") or "Rosetta 留言板 RSS")
-    lang = xml_escape(settings.get("feed_language") or "zh-cn")
-    items_xml = []
-    for r in rows:
-        ts = (r.created_at.isoformat() if hasattr(r, "created_at") and r.created_at else "")
-        items_xml.append(
-            "<item>"
-            f"<title>#{getattr(r, 'id', '?')} · {xml_escape(str(getattr(r, 'nickname', '')))}</title>"
-            f"<description>{xml_escape(str(getattr(r, 'content', '') or ''))}</description>"
-            f"<pubDate>{ts}</pubDate>"
-            f"<guid>guestbook-{getattr(r, 'id', '?')}</guid>"
-            "</item>"
-        )
-    return (
-        '<?xml version="1.0" encoding="UTF-8"?>\n'
-        '<rss version="2.0"><channel>'
-        f"<title>{title}</title>"
-        f"<language>{lang}</language>"
-        + ("".join(items_xml))
-        + "</channel></rss>"
-    )
-
-
-async def register(ctx):
-    # 1) Action：文章发布时打日志
-    async def on_post_published(post, **_):
-        log.info("[guestbook-rss] 新文章发布: slug=%s", getattr(post, "slug", "?"))
-    ctx.add_action("post.published", on_post_published, priority=20)
-
-    # 2) Filter：统一在站点副标题末尾加 RSS 提示
-    def site_subtitle_suffix(value: str, **_) -> str:
-        if "RSS" in (value or ""):
-            return value
-        return f"{value or ''} · 留言板支持 RSS 订阅"
-    ctx.add_filter("site.subtitle", site_subtitle_suffix)
-
-    # 3) Shortcode：[rss-link href=/api/plugins/guestbook-rss/feed.xml text=订阅 /]
-    def sc_rss_link(href: str = "/api/plugins/guestbook-rss/feed.xml",
-                    text: str = "订阅留言板 RSS", **_):
-        return (
-            f'<a class="rss-link" href="{html.escape(href, quote=True)}" '
-            f'rel="noopener noreferrer" target="_blank">'
-            f'{html.escape(text)}</a>'
-        )
-    ctx.register_shortcode("rss-link", sc_rss_link, has_paired=False)
-
-    # 4) 后台路由 + 菜单
-    admin = APIRouter(tags=["Guestbook RSS Admin"])
-
-    @admin.get("/settings")
-    async def get_settings(db: DB, _: CurrentStaff):
-        return {"success": True, "data": await ctx.get_settings(db)}
-
-    @admin.put("/settings")
-    async def put_settings(payload: dict, db: DB, _: CurrentStaff):
-        await ctx.set_settings(db, payload)
-        return {"success": True}
-
-    ctx.register_admin_router(admin)
-    ctx.register_admin_menu(
-        ctx.manifest.get("admin_menu")
-        or {
-            "label": "留言板 RSS",
-            "iconName": "rss",
-            "path": "/admin/plugins/guestbook-rss/settings",
-            "badge": "new",
-        }
-    )
-
-    # 5) 公开前台路由：RSS XML
-    public = APIRouter(tags=["Guestbook RSS Public"])
-
-    @public.get("/feed.xml", response_class=Response)
-    async def feed():
-        settings = ctx.settings or {}
-        limit = int(settings.get("max_items", 50))
-        async with async_session_maker() as db:
-            rows = (
-                await db.execute(
-                    select(Guestbook)
-                    .order_by(Guestbook.created_at.desc())
-                    .limit(limit)
-                )
-            ).scalars().all()
-        return Response(_build_rss(rows, settings),
-                        media_type="application/rss+xml; charset=utf-8")
-
-    ctx.register_public_router(public)
-    log.info("[guestbook-rss] 插件注册完成")
+```
+扫描 scan  →  安装 install  →  激活 activate  →  运行
+                                         ↓
+                    停用 deactivate  →  删除 delete
 ```
 
-### 打包发布
+| 阶段 | 行为 |
+| --- | --- |
+| 安装 | 解压 / 登记清单，状态 `installed`；触发 `plugin.installed` |
+| 激活 | 导入入口 → 调用 `register()`；状态 `active`；触发 `plugin.activated` |
+| 停用 | **按 plugin=slug 摘除全部 action/filter**，摘除其全部 shortcode；状态 `inactive`；触发 `plugin.deactivated` |
+| 删除 | 停用（若需要）→ 删除目录与 DB 行；触发 `plugin.deleted` |
+| 进程关闭 | `unload_plugins` 对每个插件尽力调用 `deactivate(app, bus)`，再按 slug 兜底摘除钩子 |
 
-1. 打包为 ZIP（根目录下只有 `<slug>/` 一层）：
+**插件作者注意**：
 
-   ```bash
-   cd backend/plugins
-   zip -r guestbook-rss-0.1.0.zip guestbook-rss
-   ```
+- 停用时钩子与短代码由平台按 slug 自动清理，无需插件自己处理；若插件在 `register()`
+  中创建了后台任务 / 打开了资源，可定义 `def deactivate(app, bus): ...`（同步/异步均可）
+  做资源回收
+- 路由卸载是「尽力而为」：FastAPI 未公开 `remove_router`，停用后已注册的 URL 仍存在，
+  但可在路由内部自行检查启用状态
 
-2. 通过后台「插件管理 → ZIP 上传」或官方市场提交后，即可一键安装。
+### 冷启动双重加载防护
 
-> 本插件是 Rosetta 内置示例插件的完整参考，位于 `backend/plugins/guestbook-rss/`。
-> 开发新插件时可直接复制该目录改名为你的 slug，再替换清单文件即可。
+启动期 legacy 扫描可能已注册钩子/路由；此时激活路径只更新 DB 状态，**不再重复导入**，
+避免重复回调与 Duplicate Operation ID。这也是 `register()` 必须幂等的原因。
+
+---
+
+## 9. 去耦合保证
+
+插件与核心通过钩子契约交互，重构保证：
+
+1. 核心请求代码只调用 `bus.do_action()`，不感知插件是否存在；无插件时零开销（一次 dict 查找）
+2. 内容渲染统一走 `backend/services/content_renderer.py`（短代码 → filter 链 → action 通知），
+   渲染器不依赖 ORM、不修改传入的 post 对象
+3. 插件回调异常一律由沙箱隔离，**任何插件错误都不会导致页面 500**
+4. 路由 / 菜单 / 设置均经注册表与管理器，插件不直接操作 FastAPI 路由表
+5. 插件不提供前台 CSS（避免污染主题与 Admin）；需要样式时由短代码输出内联样式或类名，
+   由当前主题承载
+
+---
+
+## 10. 插件设置（KV 存储）
+
+在清单中声明 `settings_schema`（标准 JSON Schema）：
+
+```json
+"settings_schema": {
+  "type": "object",
+  "properties": {
+    "max_items": { "type": "integer", "minimum": 1, "maximum": 200, "default": 50 },
+    "enabled":   { "type": "boolean", "default": true }
+  },
+  "additionalProperties": false
+}
+```
+
+读取 / 写入：
+
+- REST：`GET /api/admin/plugins/{slug}/settings`、`PUT`（全量替换，先补默认值）、
+  `PATCH`（增量合并）
+- 代码内：`await plugin_manager.get_settings(db, slug)` / `set_settings(db, slug, payload)`
+- 写入按 schema 校验，非法值返回 `400 PLUGIN_SETTINGS_INVALID`
+
+> 密钥（token / 密码）禁止存入 settings，应写入 `.env` 经后端配置读取。
+
+---
+
+## 11. 安全规范
+
+插件与主应用共享 Python 进程权限，属于「可信扩展」。请遵守：
+
+### 11.1 代码清单
+
+- ✅ 禁止 `eval / exec` 处理用户输入或 settings
+- ✅ SQL 一律使用 SQLAlchemy `select(...)`，禁止拼接 SQL 字符串
+- ✅ 短代码输出对用户输入做 `html.escape`（引擎外层还有白名单消毒）
+- ✅ 文件写入限定在插件数据目录，用 `Path.resolve()` + `is_relative_to()` 防 `..` 越权
+- ✅ 第三方依赖锁定精确版本（`httpx==0.27.0`）
+
+### 11.2 高风险模块
+
+| 模块 | 建议 |
+| --- | --- |
+| `subprocess` | 仅在必要时使用，参数以列表传递、`shell=False` |
+| `os.system` / `popen` | 一律替换为 `subprocess.run([...])` |
+| `pickle.loads` | 严禁，用 JSON 替代 |
+| `ctypes` / `cffi` | 避免，除非确需原生库 |
+| 动态 `importlib.import_module` | 名称必须来自白名单，不可来自用户输入 |
+
+---
+
+## 12. 打包与分发
+
+### 12.1 ZIP 包结构（根目录只有 `<slug>/` 一层）
+
+```
+my-plugin-0.1.0.zip
+└── my-plugin/
+    ├── __init__.py
+    ├── plugin.py
+    └── rosetta-plugin.json
+```
+
+```powershell
+Compress-Archive -Path backend/plugins/my-plugin -DestinationPath my-plugin-0.1.0.zip
+```
+
+### 12.2 三种安装来源
+
+| 来源 | 接口 |
+| --- | --- |
+| 本地目录 | `POST /api/admin/plugins?source=local`（body 带 slug，先扫描） |
+| ZIP 上传 | `POST /api/admin/plugins?source=upload`（multipart，字段 `file`） |
+| 市场远程 | `POST /api/admin/plugins?source=remote`（body 带 `remote.url`，可选 SHA-256 校验）；或 `POST /api/admin/plugins/market/{slug}/install` |
+
+完整请求 / 响应字段与错误码见《[REST API 参考](/admin/docs/rest-api)》。
+
+---
+
+## 13. 内建插件参考实现
+
+| 插件 | 覆盖扩展点 | 位置 |
+| --- | --- | --- |
+| `hello-rosetta` | Filter `the_title` / `the_content`、Action `post.rendered`、Shortcode `[hello]` | `backend/plugins/hello-rosetta/` |
+| `guestbook-rss` | 前台路由 feed.xml、后台路由 settings、admin_menu | `backend/plugins/guestbook-rss/` |
+| `seo-toolkit` | Action `post.published`、Filter `the_content` | `backend/plugins/seo-toolkit/` |
+
+开发新插件时建议复制 `hello-rosetta`（钩子型）或 `guestbook-rss`（路由型）目录改名，
+再替换清单与处理器。

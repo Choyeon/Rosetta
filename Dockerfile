@@ -58,6 +58,9 @@ COPY --from=backend-builder /build/.venv /app/.venv
 
 # 复制后端源码
 COPY backend/ ./backend/
+# 静态兜底资源（头像代理 _FINAL_FALLBACK 指向 /favicon/rosetta-256.png）
+# 必须随镜像发布，否则容器内 /app/static 为空 → 兜底 307 落 404 → 前端破图
+COPY static/ ./static/
 COPY pyproject.toml uv.lock ./
 COPY docker/backend-entrypoint.sh /entrypoint.sh
 

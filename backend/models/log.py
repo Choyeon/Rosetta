@@ -4,12 +4,18 @@
 记录系统中的重要操作，用于审计和问题追踪。
 """
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+
+if TYPE_CHECKING:
+    from backend.models.user import User
 
 
 class OperationLog(Base):
@@ -27,7 +33,7 @@ class OperationLog(Base):
     user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
-    user: Mapped["User | None"] = relationship("User")
+    user: Mapped[User | None] = relationship("User")
 
     # 操作类型
     action: Mapped[str] = mapped_column(
@@ -82,7 +88,7 @@ class TrashItem(Base):
     deleted_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    deleted_by: Mapped["User | None"] = relationship("User")
+    deleted_by: Mapped[User | None] = relationship("User")
 
     # 自动清理时间
     auto_delete_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

@@ -2,7 +2,6 @@
 import type { AccordionTriggerProps } from 'reka-ui'
 import type { HTMLAttributes } from 'vue'
 import { reactiveOmit } from '@vueuse/core'
-import { ChevronDown } from '@lucide/vue'
 import {
   AccordionHeader,
   AccordionTrigger
@@ -27,9 +26,20 @@ const delegatedProps = reactiveOmit(props, 'class')
     >
       <slot />
       <slot name="icon">
-        <ChevronDown
+        <!-- SSR 安全：原生 inline SVG ChevronDown（禁止 Vue defineComponent 图标包装） -->
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+          stroke-width="2"
+          stroke="currentColor"
           class="h-4 w-4 shrink-0 transition-transform duration-200"
-        />
+          aria-hidden="true"
+        >
+          <path d="m6 9 6 6 6-6" />
+        </svg>
       </slot>
     </AccordionTrigger>
   </AccordionHeader>

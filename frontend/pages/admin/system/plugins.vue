@@ -1,7 +1,5 @@
 <template>
-  <div class="p-6">
-    <PluginManager />
-  </div>
+  <PluginManager />
 </template>
 
 <script setup lang="ts">

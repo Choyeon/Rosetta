@@ -46,15 +46,22 @@ def _apply_global_settings_patches() -> None:
     # HSTS：测试环境默认关闭，但具体单测需要时会 patch 为 True
     if hasattr(_s, "force_hsts"):
         _s.force_hsts = False
+    # 受信反代：httpx 0.28 ASGITransport 的 peer host 默认为 127.0.0.1
+    # （旧版本为 "testclient"，两个都加上以兼容），
+    # 将其设为受信反代后，测试可通过 X-Forwarded-For 模拟不同访客 IP
+    if hasattr(_s, "trusted_proxy_ips"):
+        _s.trusted_proxy_ips = ["testclient", "127.0.0.1"]
     # cache_v2 后端置空
     try:
         import backend.core.cache_v2 as _cv2
+
         _cv2.redis_backend = None  # type: ignore[attr-defined]
     except Exception:
         pass
     # cache 模块 backend 置空
     try:
         import backend.core.cache as _cc
+
         if hasattr(_cc, "backend"):
             _cc.backend = None  # type: ignore[attr-defined]
     except Exception:
@@ -106,9 +113,7 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(
-    db_session: AsyncSession, monkeypatch
-) -> AsyncGenerator[AsyncClient, None]:
+async def client(db_session: AsyncSession, monkeypatch) -> AsyncGenerator[AsyncClient, None]:
     """创建测试客户端
 
     关键修复：
@@ -202,7 +207,9 @@ async def client(
             return r
 
         monkeypatch.setattr(_cache_warmer, "warmup_task", _noop_warmup)
-        monkeypatch.setattr(_cache_warmer, "warmup_all", lambda *a, **k: asyncio.coroutine(lambda: None)())
+        monkeypatch.setattr(
+            _cache_warmer, "warmup_all", lambda *a, **k: asyncio.coroutine(lambda: None)()
+        )
     except Exception:
         pass
 
@@ -598,7 +605,7 @@ async def make_navigations(db_session: AsyncSession):
         location: str = "header",
         root_titles: list[str] | None = None,
         children_per_root: int = 0,
-    ) -> list["Navigation"]:
+    ) -> list:
         # 延迟导入，避免 conftest 加载时 models/__init__.py 未初始化
         from backend.models.core import Navigation as _Nav
 
@@ -622,12 +629,12 @@ async def make_navigations(db_session: AsyncSession):
             for ci in range(children_per_root):
                 child = _Nav(
                     title={
-                        "zh": f"{t}-子{ci+1}",
-                        "en": f"{t}-child{ci+1}",
-                        "zh_Hant": f"{t}-子{ci+1}",
-                        "ja": f"{t}-ch{ci+1}",
+                        "zh": f"{t}-子{ci + 1}",
+                        "en": f"{t}-child{ci + 1}",
+                        "zh_Hant": f"{t}-子{ci + 1}",
+                        "ja": f"{t}-ch{ci + 1}",
                     },
-                    url=f"/{t.lower()}/c{ci+1}/",
+                    url=f"/{t.lower()}/c{ci + 1}/",
                     icon="material-symbols:subdirectory-arrow-right",
                     parent_id=root.id,
                     location=location,
@@ -643,4 +650,3 @@ async def make_navigations(db_session: AsyncSession):
         return created
 
     return _factory
-

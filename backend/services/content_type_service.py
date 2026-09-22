@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import json
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field as PDField, create_model, ValidationError
+from pydantic import BaseModel, ConfigDict, create_model
+from pydantic import Field as PDField
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 
 # ── 字段类型 → Pydantic 规范 ────────────────────────────────────────────────
+
 
 def _type_spec(ftype: str) -> tuple[type, Any]:
     """返回 (python_type, pydantic_default) 用于动态 Pydantic 模型构造。"""
@@ -60,9 +63,7 @@ async def create_content_type(
             if isinstance(f, ContentField):
                 normalized_fields.append(f.model_dump(mode="json"))
             else:
-                normalized_fields.append(
-                    ContentField.model_validate(f).model_dump(mode="json")
-                )
+                normalized_fields.append(ContentField.model_validate(f).model_dump(mode="json"))
     obj = ContentTypeDefinition(
         key=key,
         name=name,
@@ -76,9 +77,7 @@ async def create_content_type(
 
 async def get_definition(session: AsyncSession, key: str) -> ContentTypeDefinition | None:
     """按 key 查询 ContentTypeDefinition。"""
-    r = await session.execute(
-        select(ContentTypeDefinition).where(ContentTypeDefinition.key == key)
-    )
+    r = await session.execute(select(ContentTypeDefinition).where(ContentTypeDefinition.key == key))
     return r.scalar_one_or_none()
 
 
@@ -107,8 +106,7 @@ def build_dynamic_schema(definition: ContentTypeDefinition) -> Callable[..., Bas
         if f.required:
             fields2[f.key] = (py_type, PDField(..., description=f.label))
         else:
-            from typing import Optional as _Optional
-            fields2[f.key] = (_Optional[py_type], PDField(default=None, description=f.label))
+            fields2[f.key] = (py_type | None, PDField(default=None, description=f.label))
 
     model_cls = create_model(
         f"DynamicContent_{definition.key}",
@@ -148,7 +146,11 @@ def read_meta(post: Post, key: str) -> Any:
     if meta is None:
         return None
     if isinstance(meta, (bytes, bytearray, memoryview)):
-        meta = meta.decode("utf-8") if isinstance(meta, (bytes, bytearray)) else bytes(meta).decode("utf-8")
+        meta = (
+            meta.decode("utf-8")
+            if isinstance(meta, (bytes, bytearray))
+            else bytes(meta).decode("utf-8")
+        )
     if isinstance(meta, str):
         try:
             meta = json.loads(meta)

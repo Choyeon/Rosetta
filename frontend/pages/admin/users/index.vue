@@ -1,17 +1,24 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        用户管理
-      </h1>
-      <Button
-        class="rounded-xl shadow-sm"
-        @click="openCreate"
-      >
-        <Plus class="size-4 mr-2" />
-        新建用户
-      </Button>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="用户管理"
+      description="查看、编辑与停用注册用户，调整角色权限"
+      :icon="Users"
+    >
+      <template #actions>
+        <Button
+          size="sm"
+          class="rounded-xl shadow-sm"
+          @click="openCreate"
+        >
+          <Plus
+            data-icon="inline-start"
+            class="mr-2"
+          />
+          新建用户
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
       <div class="relative flex-1 max-w-md">
@@ -72,7 +79,10 @@
         size="sm"
         @click="onSearch"
       >
-        <Search class="size-4 mr-2" />
+        <Search
+          data-icon="inline-start"
+          class="mr-2"
+        />
         搜索
       </Button>
     </div>
@@ -81,7 +91,7 @@
       <div class="p-0">
         <div
           v-if="loading"
-          class="p-4 space-y-3"
+          class="flex flex-col gap-3 p-4"
         >
           <div
             v-for="i in 5"
@@ -207,7 +217,7 @@
                   </div>
                 </td>
                 <td class="p-4 text-center">
-                  <div class="inline-flex flex-col items-center gap-1">
+                  <div class="inline-flex flex flex-col items-center gap-1">
                     <div class="inline-flex items-center gap-3 text-xs text-muted-foreground">
                       <span class="inline-flex items-center gap-1">
                         <FileText class="size-3.5" />
@@ -228,7 +238,7 @@
                         size="icon"
                         class="h-8 w-8"
                       >
-                        <MoreVertical class="size-4" />
+                        <MoreVertical data-icon="inline-start" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent
@@ -344,8 +354,8 @@
             为 <span class="font-medium">{{ resetPwdUser?.username }}</span> 设置新密码
           </DialogDescription>
         </DialogHeader>
-        <div class="space-y-4 py-2">
-          <div class="space-y-2">
+        <div class="flex flex-col gap-4 py-2">
+          <div class="flex flex-col gap-2">
             <Label>新密码 <span class="text-destructive">*</span></Label>
             <Input
               v-model="resetPwdForm.newPassword"
@@ -356,7 +366,7 @@
               至少 8 位，需包含大小写字母和数字
             </p>
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>确认密码 <span class="text-destructive">*</span></Label>
             <Input
               v-model="resetPwdForm.confirmPassword"
@@ -379,7 +389,8 @@
           >
             <Loader2
               v-if="resettingPwd"
-              class="size-4 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             确认重置
           </Button>
@@ -396,7 +407,7 @@
           </DialogDescription>
         </DialogHeader>
         <div class="py-2">
-          <div class="rounded-xl border bg-error-muted/40 p-4 space-y-3">
+          <div class="flex flex-col gap-3 rounded-xl border bg-error-muted/40 p-4">
             <label class="flex items-start gap-2 cursor-pointer">
               <Checkbox
                 v-model="deleteConfirmChecked"
@@ -422,7 +433,8 @@
           >
             <Loader2
               v-if="deleting"
-              class="size-4 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             确认删除
           </Button>
@@ -436,15 +448,15 @@
           <DialogTitle>新建用户</DialogTitle>
           <DialogDescription>创建一个新的用户账号</DialogDescription>
         </DialogHeader>
-        <div class="space-y-4 py-2">
-          <div class="space-y-2">
+        <div class="flex flex-col gap-4 py-2">
+          <div class="flex flex-col gap-2">
             <Label>用户名 <span class="text-destructive">*</span></Label>
             <Input
               v-model="createForm.username"
               placeholder="用于登录的用户名"
             />
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>邮箱 <span class="text-destructive">*</span></Label>
             <Input
               v-model="createForm.email"
@@ -452,14 +464,14 @@
               placeholder="user@example.com"
             />
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>昵称</Label>
             <Input
               v-model="createForm.nickname"
               placeholder="显示名称"
             />
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>初始密码 <span class="text-destructive">*</span></Label>
             <Input
               v-model="createForm.password"
@@ -481,7 +493,8 @@
           >
             <Loader2
               v-if="creating"
-              class="size-4 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             创建用户
           </Button>
@@ -510,7 +523,8 @@ import { Checkbox } from '~~/components/ui/checkbox'
 import { Label } from '~~/components/ui/label'
 import {
   Search, Plus, MoreVertical, Pencil, UserCheck, UserX, CheckCircle, Ban,
-  KeyRound, Trash2, Info, Loader2, FileText, MessageSquare
+  KeyRound, Trash2, Info, Loader2, FileText, MessageSquare,
+  Users
 } from '@lucide/vue'
 import {
   fetchAdminUsers,
@@ -531,7 +545,8 @@ const toast = useToast()
 const router = useRouter()
 
 const loading = ref(false)
-const allUsers = ref<AdminUserRow[]>([])
+// shallowRef：用户列表整赋值替换，避免深层响应式开销
+const allUsers = shallowRef<AdminUserRow[]>([])
 const searchQuery = ref('')
 const roleFilter = ref('all')
 const statusFilter = ref('all')
@@ -576,7 +591,7 @@ const visiblePages = computed(() => {
 
 function roleBadgeClass(u: AdminUserRow): string {
   if (u.is_superuser) return 'bg-indigo-100 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300'
-  if (u.is_staff) return 'bg-warning-muted text-warning-foreground hover:bg-warning-muted'
+  if (u.is_staff) return 'bg-warning-muted text-warning-muted-foreground hover:bg-warning-muted'
   return 'bg-muted text-muted-foreground'
 }
 
@@ -588,7 +603,7 @@ function roleText(u: AdminUserRow): string {
 
 function statusBadgeClass(u: AdminUserRow): string {
   if (u.is_banned) return 'bg-destructive/10 text-destructive hover:bg-destructive/10'
-  if (u.is_active) return 'bg-success-muted text-success-foreground hover:bg-success-muted'
+  if (u.is_active) return 'bg-success-muted text-success-muted-foreground hover:bg-success-muted'
   return 'bg-muted text-muted-foreground'
 }
 

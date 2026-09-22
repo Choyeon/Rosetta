@@ -174,6 +174,9 @@ async def verify_captcha(
 
     # 验证（不区分大小写）
     if data.code.lower() != stored_code.lower():
+        # 错误即作废：验证码字符集只有 32^4≈100 万组合，
+        # 若失败不作废，5 分钟有效期内可被在线暴力枚举
+        await cache.delete(f"captcha:{data.key}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="验证码错误",

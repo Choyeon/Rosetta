@@ -15,7 +15,7 @@ const props = defineProps<Props>()
 </script>
 
 <template>
-  <div :class="cn('flex flex-col gap-5 p-6', props.class)">
+  <div :class="cn('flex flex-col gap-5', props.class)">
     <!-- 页头：标题 + 描述 + 操作区 -->
     <AdminPageHeader
       :title="title"

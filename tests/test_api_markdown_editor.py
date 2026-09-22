@@ -255,7 +255,9 @@ async def test_scheduled_publish_then_autolive(
     from backend.models.blog import Post as _P
     from backend.utils.compat import UTC as _UTC
 
-    now_fn = lambda: datetime.now(_UTC)
+    def now_fn():
+        return datetime.now(_UTC)
+
     q = _s(_P).where(
         (
             (_P.status == "scheduled")

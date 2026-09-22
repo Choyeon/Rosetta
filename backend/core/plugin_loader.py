@@ -23,9 +23,10 @@ from __future__ import annotations
 import importlib
 import logging
 import pkgutil
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter
 
@@ -99,9 +100,9 @@ class PluginContext:
         priority: int = 10,
     ) -> None:
         """注册 action handler。"""
-        from backend.core.hooks import register_action as _reg_action
+        from backend.core.hooks import add_action as _add
 
-        _reg_action(hook_name, priority=priority, plugin=self.slug)(fn)
+        _add(hook_name, fn, priority=priority, plugin=self.slug)
 
     def add_filter(
         self,
@@ -111,9 +112,9 @@ class PluginContext:
         priority: int = 10,
     ) -> None:
         """注册 filter handler。"""
-        from backend.core.hooks import register_filter as _reg_filter
+        from backend.core.hooks import add_filter as _add
 
-        _reg_filter(hook_name, priority=priority, plugin=self.slug)(fn)
+        _add(hook_name, fn, priority=priority, plugin=self.slug)
 
     # ── Shortcode（Task C 中将正式提供；这里做安全桩，不抛错） ───────
 
@@ -175,6 +176,7 @@ class PluginContext:
 
         return await _apply(hook_name, value, *args, plugin=self.slug, **kwargs)
 
+
 _PLUGINS_PKG = "backend.plugins"
 
 
@@ -208,15 +210,48 @@ def discover_plugin_ids() -> list[str]:
     return sorted(set(ids))
 
 
-async def load_plugins(app: "FastAPI") -> list[str]:
-    """加载所有尚未加载的插件，返回本次新加载的 id 列表。
+async def _inactive_plugin_slugs() -> set[str]:
+    """返回 DB 中 ``status='inactive'`` 的插件 slug 集合。
 
-    幂等：两次调用返回的 loaded 列表相同，bus.loaded_plugins 不重复。
+    DB 未就绪 / 查询失败时返回空集合（退化为旧的「全部可加载」行为），
+    保证启动早期或异常情况下不会因为读取状态失败而阻断启动。
     """
+    try:
+        from sqlalchemy import select as _select
+
+        from backend.core.database import async_session_maker
+        from backend.models.extensions import Plugin as PluginModel
+
+        if async_session_maker is None:
+            return set()
+        async with async_session_maker() as db:  # type: ignore[misc]
+            rows = (
+                await db.execute(
+                    _select(PluginModel.slug).where(PluginModel.status == "inactive")
+                )
+            ).all()
+        return {r[0] for r in rows}
+    except Exception:  # noqa: BLE001
+        logger.debug("[plugin-loader] 读取插件停用状态失败，按全部可加载处理", exc_info=True)
+        return set()
+
+
+async def load_plugins(app: FastAPI) -> list[str]:
+    """加载所有尚未加载且在 DB 中处于启用状态的插件，返回本次新加载 id 列表。
+
+    - DB ``status='inactive'`` 的插件一律跳过：管理员停用后，**重启进程仍然保持停用**
+      （旧实现无条件加载所有目录，导致「停用」在重启后失效）。
+    - 其余（active / installed / 尚无 DB 记录的内建插件）正常加载。
+    - 幂等：两次调用 ``bus.loaded_plugins`` 不重复。
+    """
+    inactive_slugs = await _inactive_plugin_slugs()
     newly_loaded: list[str] = []
     for pid in discover_plugin_ids():
         if pid in bus.loaded_plugins:
             continue  # 已经加载过，幂等
+        if pid in inactive_slugs:
+            logger.info("[plugin-loader] 插件 id=%s 已被停用，跳过加载", pid)
+            continue
         try:
             module = importlib.import_module(f"{_PLUGINS_PKG}.{pid}")
         except Exception as exc:
@@ -252,15 +287,21 @@ async def load_plugins(app: "FastAPI") -> list[str]:
     return newly_loaded
 
 
-async def unload_plugins(app: "FastAPI") -> None:
-    """卸载所有已加载插件：调用 deactivate，并清空 bus.loaded_plugins。
+async def unload_plugins(app: FastAPI) -> None:
+    """卸载所有已加载插件：调用 deactivate，摘除其 hooks/shortcodes，清空 loaded_plugins。
 
-    注：当前对路由的卸载做「尽力而为」：因为 FastAPI 未暴露公开的
-    ``remove_router`` API，我们只做 hook 清理和 deactivate 通知，不修改
-    路由表；进程级生命周期下这种简化是可接受的。
+    钩子注册表已统一收归 :mod:`backend.core.hooks`，``PluginBus`` 门面不再自持
+    ``_actions/_filters``，因此这里按插件 slug 精确摘除（与运行时 deactivate 路径
+    :meth:`PluginManager.deactivate` 完全一致），避免误删其它来源的处理器。
+
+    注：路由卸载仍为「尽力而为」：FastAPI 未暴露公开的 ``remove_router`` API，
+    本函数不修改路由表；进程级生命周期下这种简化是可接受的。
     """
     if not bus.loaded_plugins:
         return
+    from backend.core.hooks import remove_hooks_for_plugin
+    from backend.core.shortcodes import shortcode_manager
+
     for pid in list(bus.loaded_plugins):
         try:
             module = importlib.import_module(f"{_PLUGINS_PKG}.{pid}")
@@ -275,13 +316,21 @@ async def unload_plugins(app: "FastAPI") -> None:
                         await result
                 except Exception as exc:
                     logger.warning(f"[plugin-loader] 插件 {pid}.deactivate 抛异常: {exc}")
-    # 清空钩子（保证下次加载是干净状态），避免 bus 对象常驻导致重复订阅
-    bus._actions.clear()
-    bus._filters.clear()
+        # 精确摘除该插件注册的全部 action/filter 与 shortcode（deactivate 未做时的兜底）
+        removed_hooks = remove_hooks_for_plugin(pid)
+        removed_codes = shortcode_manager.remove_for_plugin(pid)
+        if removed_hooks or removed_codes:
+            logger.info(
+                "[plugin-loader] 插件 %s 摘除 hooks=%d shortcodes=%d",
+                pid,
+                removed_hooks,
+                removed_codes,
+            )
     bus.loaded_plugins.clear()
-    logger.info("[plugin-loader] 所有插件已卸载，钩子已清空")
+    logger.info("[plugin-loader] 所有插件已卸载，loaded_plugins 已清空")
 
 
 def _iscoro(obj: object) -> bool:
     import asyncio
+
     return asyncio.iscoroutine(obj)

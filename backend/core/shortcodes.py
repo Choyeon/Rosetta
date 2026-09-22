@@ -34,8 +34,9 @@ import html as _html
 import logging
 import re
 import shlex
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger("rosetta.shortcodes")
 
@@ -43,6 +44,7 @@ logger = logging.getLogger("rosetta.shortcodes")
 # ═══════════════════════════════════════════════════════════════════════
 # 内部：数据结构
 # ═══════════════════════════════════════════════════════════════════════
+
 
 @dataclass
 class ShortcodeInfo:
@@ -76,9 +78,9 @@ _NAME_RE = re.compile(_NAME_PATTERN)
 
 # 开标签正则： [name(attrs)(/?)]
 _OPEN_RE = re.compile(
-    r"\[(" + _NAME_PATTERN + r")"   # group(1): name
-    r"([^\]]*?)"                    # group(2): 属性块 (可为空/含空白)
-    r"(\/)?\]"                      # group(3): 自闭合斜杠
+    r"\[(" + _NAME_PATTERN + r")"  # group(1): name
+    r"([^\]]*?)"  # group(2): 属性块 (可为空/含空白)
+    r"(\/)?\]"  # group(3): 自闭合斜杠
 )
 
 
@@ -142,29 +144,81 @@ def _parse_attrs(raw_block: str) -> dict[str, str]:
 # 安全：Allowlist Sanitizer
 # ═══════════════════════════════════════════════════════════════════════
 
-_ALLOWED_TAGS = frozenset({
-    # 结构化
-    "a", "abbr", "b", "blockquote", "br", "caption", "cite", "code",
-    "col", "colgroup", "dd", "del", "details", "div", "dl", "dt", "em",
-    "figcaption", "figure", "h1", "h2", "h3", "h4", "h5", "h6", "hr", "i",
-    "img", "ins", "li", "mark", "ol", "p", "pre", "q", "small", "span",
-    "strong", "sub", "summary", "sup", "table", "tbody", "td", "tfoot",
-    "th", "thead", "tr", "u", "ul",
-})
+_ALLOWED_TAGS = frozenset(
+    {
+        # 结构化
+        "a",
+        "abbr",
+        "b",
+        "blockquote",
+        "br",
+        "caption",
+        "cite",
+        "code",
+        "col",
+        "colgroup",
+        "dd",
+        "del",
+        "details",
+        "div",
+        "dl",
+        "dt",
+        "em",
+        "figcaption",
+        "figure",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "i",
+        "img",
+        "ins",
+        "li",
+        "mark",
+        "ol",
+        "p",
+        "pre",
+        "q",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "summary",
+        "sup",
+        "table",
+        "tbody",
+        "td",
+        "tfoot",
+        "th",
+        "thead",
+        "tr",
+        "u",
+        "ul",
+    }
+)
 
 _ALLOWED_ATTRS: dict[str, frozenset[str]] = {
-    "a":    frozenset({"href", "title", "target", "rel"}),
-    "img":  frozenset({"src", "alt", "title", "width", "height", "loading"}),
-    "td":   frozenset({"colspan", "rowspan"}),
-    "th":   frozenset({"colspan", "rowspan", "scope"}),
-    "col":  frozenset({"span"}),
+    "a": frozenset({"href", "title", "target", "rel"}),
+    "img": frozenset({"src", "alt", "title", "width", "height", "loading"}),
+    "td": frozenset({"colspan", "rowspan"}),
+    "th": frozenset({"colspan", "rowspan", "scope"}),
+    "col": frozenset({"span"}),
     "colgroup": frozenset({"span"}),
-    "*":    frozenset({"class", "id", "style", "title", "alt"}),
+    "*": frozenset({"class", "id", "style", "title", "alt"}),
 }
 
 # 整段剥离：开-闭配对的危险内容（script/style 等可能含大量代码）
 _STRIP_PAIR_TAGS = (
-    "script", "style", "iframe", "object", "embed", "noscript", "textarea",
+    "script",
+    "style",
+    "iframe",
+    "object",
+    "embed",
+    "noscript",
+    "textarea",
 )
 
 # 自闭合形式的危险标签
@@ -223,8 +277,10 @@ def _rewrite_attrs(tag: str, attr_string: str) -> str:
                 pos += 1
             vm = _ATTR_VALUE_RE.match(s, pos)
             if vm:
-                v = vm.group(1) if vm.group(1) is not None else (
-                    vm.group(2) if vm.group(2) is not None else vm.group(3)
+                v = (
+                    vm.group(1)
+                    if vm.group(1) is not None
+                    else (vm.group(2) if vm.group(2) is not None else vm.group(3))
                 )
                 pos = vm.end()
             else:
@@ -272,8 +328,8 @@ def _sanitize_output(raw: str) -> str:
 
     # 3) 对剩余所有标签做 allowlist 走查
     def _process_tag(m: re.Match[str]) -> str:
-        leading = m.group(1)      # 可能含 '/'
-        tagname = m.group(2)      # 可能含命名空间前缀等
+        leading = m.group(1)  # 可能含 '/'
+        tagname = m.group(2)  # 可能含命名空间前缀等
         attr_str = m.group(3)
         self_close = m.group(4)
 
@@ -307,6 +363,7 @@ def _sanitize_output(raw: str) -> str:
 # ShortcodeManager 核心（每个实例注册表独立 → 测试隔离 / 并行安全）
 # ═══════════════════════════════════════════════════════════════════════
 
+
 class ShortcodeManager:
     """短代码管理器。生产环境使用全局 ``shortcode_manager`` 单例。"""
 
@@ -326,9 +383,7 @@ class ShortcodeManager:
     ) -> None:
         """注册。重复注册覆盖旧记录。"""
         if not _NAME_RE.fullmatch(name):
-            raise ValueError(
-                f"Invalid shortcode name {name!r}; must match {_NAME_PATTERN}"
-            )
+            raise ValueError(f"Invalid shortcode name {name!r}; must match {_NAME_PATTERN}")
         if not callable(fn):
             raise TypeError(f"Shortcode handler for {name!r} must be callable")
         self._registry[name] = _HandlerRecord(
@@ -356,7 +411,9 @@ class ShortcodeManager:
         if drops:
             logger.info(
                 "Removed %d shortcodes for plugin=%s: %s",
-                len(drops), plugin_slug, drops,
+                len(drops),
+                plugin_slug,
+                drops,
             )
         return len(drops)
 
@@ -397,6 +454,7 @@ class ShortcodeManager:
 # 渲染主循环实现（共享给 ShortcodeManager.render 与全局 do_shortcode）
 # ═══════════════════════════════════════════════════════════════════════
 
+
 def _close_tag_pattern(name: str) -> re.Pattern[str]:
     return re.compile(r"\[\/" + re.escape(name) + r"\s*\]")
 
@@ -433,13 +491,13 @@ def _do_render_impl(
 
         if name not in registry:
             # 未注册 → 原样保留（防内容丢失）
-            out.append(text[cursor:m.end()])
+            out.append(text[cursor : m.end()])
             cursor = m.end()
             continue
 
         # 自闭合 → 直接展开
         if self_closing:
-            out.append(text[cursor:m.start()])
+            out.append(text[cursor : m.start()])
             attrs = _parse_attrs(attrs_raw)
             rendered = _call_handler(registry[name], attrs, "", ctx)
             out.append(rendered)
@@ -472,14 +530,14 @@ def _do_render_impl(
 
         if close_start is None or close_end is None:
             # 找不到闭合 → 原开标签保留
-            out.append(text[cursor:m.end()])
+            out.append(text[cursor : m.end()])
             cursor = m.end()
             continue
 
-        body_raw = text[m.end():close_start]
+        body_raw = text[m.end() : close_start]
         body_rendered = _do_render_impl(registry, body_raw, ctx)
 
-        out.append(text[cursor:m.start()])
+        out.append(text[cursor : m.start()])
         attrs = _parse_attrs(attrs_raw)
         rendered = _call_handler(registry[name], attrs, body_rendered, ctx)
         out.append(rendered)
@@ -563,7 +621,9 @@ def unregister_shortcode(name: str) -> bool:
     return shortcode_manager.unregister(name)
 
 
-def do_shortcode(text: str | None, ctx: dict[str, Any] | None = None, context: dict[str, Any] | None = None) -> str:
+def do_shortcode(
+    text: str | None, ctx: dict[str, Any] | None = None, context: dict[str, Any] | None = None
+) -> str:
     """公开入口：文章渲染前调用。``ctx`` 与 ``context`` 等价，取非空者。"""
     actual_ctx = context if context is not None else ctx
     return shortcode_manager.render(text, actual_ctx)

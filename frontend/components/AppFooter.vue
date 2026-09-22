@@ -8,6 +8,12 @@ const { t, locale, setLocale } = useI18n()
 
 const currentYear = new Date().getFullYear()
 
+// 极简主题（astro-paper-inspired）使用瘦身页脚：单列居中、无 logo/多列网格/分类栏，
+// 仅保留自定义 HTML、导航链接行、语言切换与版权。slug 判定与首页保持一致。
+const ft = useFrontendTheme()
+const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
+const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
+
 interface FooterLink {
   labelKey: string
   to?: string
@@ -15,7 +21,7 @@ interface FooterLink {
   external?: boolean
 }
 
-const { data: categories } = await useAPI<Category[]>('/blog/categories', {
+const { data: categories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
   key: `footer:categories:${locale.value}`,
   default: () => []
@@ -26,10 +32,23 @@ const pickLocalized = (value: string | Record<string, string>): string => {
   return value[locale.value] || value.zh || Object.values(value)[0] || ''
 }
 
-const categoryLinks = computed<FooterLink[]>(() => (categories.value || []).map(category => ({
-  labelKey: pickLocalized(category.name),
-  to: `/posts?category=${encodeURIComponent(category.slug)}`
-})))
+const categoryLinks = computed<FooterLink[]>(() => {
+  // 按本地化名称去重：mock/历史数据可能存在同名不同 slug 的重复分类，
+  // 直接全量映射会让页脚出现重复入口。保留首次出现的分类。
+  const seen = new Set<string>()
+  const links: FooterLink[] = []
+  for (const category of categories.value || []) {
+    const label = pickLocalized(category.name)
+    const key = label.trim().toLowerCase()
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    links.push({
+      labelKey: label,
+      to: `/posts?category=${encodeURIComponent(category.slug)}`
+    })
+  }
+  return links
+})
 
 /** 真实存在的前台页面（pages/* 路由），严禁引用不存在路径。 */
 interface SiteLink extends FooterLink {
@@ -233,7 +252,10 @@ const handleSetLocale = async (code: string) => {
 </script>
 
 <template>
-  <footer class="border-t bg-muted/30">
+  <footer
+    v-if="!isMinimalTheme"
+    class="border-t bg-muted/30"
+  >
     <div class="container mx-auto py-12 md:py-16">
       <div class="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-12">
         <!-- Brand column -->
@@ -245,9 +267,10 @@ const handleSetLocale = async (code: string) => {
             <img
               :src="siteConfig.site_logo"
               :alt="siteConfig.site_name"
-              class="size-6 h-6 w-6 dark:contrast-0 dark:brightness-200 object-contain"
+              class="size-6 dark:contrast-0 dark:brightness-200 object-contain"
               loading="lazy"
-              @error="(e: any) => { e.currentTarget.style.display = 'none' }"
+              decoding="async"
+              @error="(e: Event) => { (e.currentTarget as HTMLElement).style.display = 'none' }"
             >
             {{ siteConfig.site_name }}
           </NuxtLink>
@@ -255,6 +278,7 @@ const handleSetLocale = async (code: string) => {
             {{ siteConfig.footer_slogan || siteConfig.site_description || t('footer.description', '穿越语言的边界 · Modern Blog System') }}
           </p>
           <!-- 管理员在站点设置 footer_custom_html 注入的自定义 HTML 片段（统计脚本、验证标签等） -->
+          <!-- eslint-disable-next-line vue/no-v-html -->
           <div
             v-if="siteConfig.footer_custom_html"
             class="mb-6 text-sm text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2"
@@ -294,9 +318,6 @@ const handleSetLocale = async (code: string) => {
               </svg>
             </a>
           </div>
-          <p class="text-xs text-muted-foreground">
-            {{ copyrightLine }}
-          </p>
         </div>
 
         <!-- Navigation (真实存在的页面) -->
@@ -404,7 +425,7 @@ const handleSetLocale = async (code: string) => {
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div class="text-xs text-muted-foreground text-center md:text-left">
           <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
-          © {{ currentYear }} {{ siteConfig.site_author || siteConfig.site_name }}
+          {{ copyrightLine }}
         </div>
         <!-- Quick locale switch (with flags) -->
         <div class="flex items-center gap-2 flex-wrap">
@@ -424,6 +445,59 @@ const handleSetLocale = async (code: string) => {
             <span>{{ loc.label }}</span>
           </button>
         </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ============ 极简主题瘦身页脚（astro-paper-inspired） ============ -->
+  <footer
+    v-else
+    class="ap-footer-min border-t"
+  >
+    <div class="container mx-auto px-5 py-10 text-center">
+      <!-- 管理员注入的自定义 HTML 片段（统计脚本、验证标签等） -->
+      <!-- eslint-disable-next-line vue/no-v-html -->
+      <div
+        v-if="siteConfig.footer_custom_html"
+        class="mb-5 text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-2"
+        v-html="siteConfig.footer_custom_html"
+      />
+
+      <!-- 导航链接行 -->
+      <nav class="mb-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+        <NuxtLink
+          v-for="link in siteLinks"
+          :key="link.to"
+          :to="link.to!"
+          class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {{ siteLabel(link) }}
+        </NuxtLink>
+      </nav>
+
+      <!-- 语言切换 -->
+      <div class="mb-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+        <button
+          v-for="loc in quickLocales"
+          :key="loc.code"
+          type="button"
+          class="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          @click="handleSetLocale(loc.code)"
+        >
+          <span
+            class="fi rounded-sm shrink-0"
+            :class="`fi-${loc.flag}`"
+            style="font-size: 13px; line-height: 1;"
+            aria-hidden="true"
+          />
+          <span>{{ loc.label }}</span>
+        </button>
+      </div>
+
+      <!-- 版权 -->
+      <div class="text-xs text-muted-foreground">
+        <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
+        {{ copyrightLine }}
       </div>
     </div>
   </footer>

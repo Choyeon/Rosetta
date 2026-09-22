@@ -140,9 +140,17 @@ export function resolveAvatarUrl(
     // 未知格式的裸串（例如 "/avatar.png"）：可能是占位，跳过，不包装
   }
 
-  // 全部候选失败 → 使用 DiceBear 生成稳定的默认头像（不再返回 ''）
+  // 全部候选失败 → 使用 DiceBear 稳定默认头像（通过站点 /api/media/avatar 代理走
+  // 后端兜底链路：白名单直跳→流式代理→DiceBear SVG 兜底。避免浏览器直接外链
+  // api.dicebear.com 导致 CORS / ERR_ABORTED / 控制台红 error（D3 项必须零误差）。
   const seed = opts.seed && String(opts.seed).trim() ? fnv1aHash(String(opts.seed).trim()) : defaultSeedFromEnv()
-  return dicebearAvatarUrl(seed)
+  const direct = dicebearAvatarUrl(seed)
+  try {
+    const encoded = btoa(unescape(encodeURIComponent(direct)))
+    return `${apiBase}/media/avatar?src=${encoded}&fallback=1`
+  } catch {
+    return direct
+  }
 }
 
 /**

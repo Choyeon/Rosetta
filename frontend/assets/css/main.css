@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap');
+@import "tailwindcss";
 
 
 /* ========================================================================
@@ -29,15 +29,104 @@
   }
 }
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* =========================================================
+   Tailwind v4 主题令牌注册
+   ---------------------------------------------------------
+   将 :root / .dark 中定义的 HSL 语义变量注册为 TW4 可识别的
+   颜色 utility（bg-background / text-foreground / border-border 等）。
+   颜色值本身仍由下方 @layer base :root / .dark 统一管理。
+   ========================================================= */
+@theme {
+  --color-background:          hsl(var(--background)         );
+  --color-foreground:          hsl(var(--foreground)         );
+  --color-muted:               hsl(var(--muted)              );
+  --color-muted-foreground:    hsl(var(--muted-foreground)   );
+  --color-popover:             hsl(var(--popover)            );
+  --color-popover-foreground:  hsl(var(--popover-foreground) );
+  --color-card:                hsl(var(--card)               );
+  --color-card-foreground:     hsl(var(--card-foreground)    );
+  --color-border:              hsl(var(--border)             );
+  --color-input:               hsl(var(--input)              );
+  --color-primary:             hsl(var(--primary)            );
+  --color-primary-foreground:  hsl(var(--primary-foreground) );
+  --color-secondary:           hsl(var(--secondary)          );
+  --color-secondary-foreground:hsl(var(--secondary-foreground) / <alpha-value>);
+  --color-accent:              hsl(var(--accent)             );
+  --color-accent-foreground:   hsl(var(--accent-foreground)  );
+  --color-destructive:         hsl(var(--destructive)        );
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-ring:                hsl(var(--ring)               );
+  --color-info:                hsl(var(--info)               );
+  --color-info-foreground:     hsl(var(--info-foreground)    );
+  --color-info-muted:          hsl(var(--info-muted)         );
+  --color-info-muted-foreground:   hsl(var(--info-muted-foreground)  );
+  --color-success:             hsl(var(--success)            );
+  --color-success-foreground:  hsl(var(--success-foreground) );
+  --color-success-muted:       hsl(var(--success-muted)      );
+  --color-success-muted-foreground: hsl(var(--success-muted-foreground));
+  --color-warning:             hsl(var(--warning)            );
+  --color-warning-foreground:  hsl(var(--warning-foreground) );
+  --color-warning-muted:       hsl(var(--warning-muted)      );
+  --color-warning-muted-foreground: hsl(var(--warning-muted-foreground));
+  --color-error:               hsl(var(--error)              );
+  --color-error-foreground:    hsl(var(--error-foreground)   );
+  --color-error-muted:         hsl(var(--error-muted)        );
+  --color-error-muted-foreground:  hsl(var(--error-muted-foreground)  );
+  /* destructive = error 别名，两套命名都保留，避免旧代码里 bg-destructive-muted 失效 */
+  --color-destructive-muted:        hsl(var(--destructive-muted)      );
+  --color-destructive-muted-foreground: hsl(var(--destructive-muted-foreground));
+  --color-sidebar-background:  hsl(var(--sidebar-background) );
+  --color-sidebar-foreground:  hsl(var(--sidebar-foreground) );
+  --color-sidebar-primary:     hsl(var(--sidebar-primary)    );
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent:      hsl(var(--sidebar-accent)     );
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-border:      hsl(var(--sidebar-border)     );
+  --color-sidebar-ring:        hsl(var(--sidebar-ring)       );
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* 展示字体：标题/数字专用（与 tailwind.config.ts 保持一致，但真源在这里） */
+  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+
+  --shadow-soft: 0 10px 30px -12px rgba(15, 23, 42, 0.12);
+  --shadow-pop: 0 20px 50px -20px hsl(var(--primary) / 0.35);
+
+  --animate-accordion-down: accordion-down var(--motion-duration-fast) var(--motion-ease-standard);
+  --animate-accordion-up: accordion-up var(--motion-duration-fast) var(--motion-ease-standard);
+  --animate-fade-in: fade-in var(--motion-duration-slower) var(--motion-ease-standard) both;
+  --animate-progress-stripe: progress-stripe 1s linear infinite;
+  --animate-gradient-x: gradient-x 6s ease infinite;
+
+  @keyframes accordion-down {
+    from { height: 0; }
+    to { height: var(--reka-accordion-content-height); }
+  }
+  @keyframes accordion-up {
+    from { height: var(--reka-accordion-content-height); }
+    to { height: 0; }
+  }
+  @keyframes fade-in {
+    0% { opacity: 0; transform: translateY(6px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes progress-stripe {
+    0% { background-position: 0 0; }
+    100% { background-position: 40px 0; }
+  }
+  @keyframes gradient-x {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+}
 
 /* =========================================================
    Rosetta 全站统一主题令牌
    ---------------------------------------------------------
    所有颜色集中管理，只改这一处，全站统一生效：
-   - 主色 primary：天青 sky 201°（明/暗双主题由 html.dark 切换）
+   - 主色 primary：天青 sky 201°（6 套调色板 html.palette-* 可覆盖）
    - 语义状态色 info / success / warning / error
      → 与 primary 同色系，明/暗各自一套，对比度符合 WCAG AA
    - destructive = error 别名（与 shadcn 默认命名保持一致）
@@ -179,12 +268,233 @@
   }
 }
 
+/* ---------- Theme Palettes (6 brand colors) ----------
+   顶层规则，权重高于 @layer base，保证调色板切换一定生效。
+   每一个 palette 都只改 primary/accent/ring/sidebar-primary 一套，
+   语义状态色（info/success/warning/error）保持恒定，与品牌色解耦。 */
 
+html.palette-indigo {
+  --primary: 262 83% 58%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 262 83% 96%;
+  --accent-foreground: 262 83% 12%;
+  --ring: 262 83% 58%;
+  --sidebar-primary: 262 83% 62%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 263 91% 72%;
+}
+html.dark.palette-indigo {
+  --primary: 263 88% 76%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 262 41% 24%;
+  --accent-foreground: 263 91% 90%;
+  --ring: 263 88% 76%;
+  --sidebar-primary: 263 88% 70%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 263 88% 76%;
+}
+
+html.palette-emerald {
+  --primary: 158 64% 46%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 158 64% 95%;
+  --accent-foreground: 158 64% 10%;
+  --ring: 158 64% 46%;
+  --sidebar-primary: 158 64% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 158 88% 68%;
+}
+html.dark.palette-emerald {
+  --primary: 158 72% 65%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 158 42% 20%;
+  --accent-foreground: 158 92% 90%;
+  --ring: 158 72% 65%;
+  --sidebar-primary: 158 72% 60%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 158 72% 65%;
+}
+
+html.palette-amber {
+  --primary: 42 96% 55%;
+  --primary-foreground: 30 40% 10%;
+  --accent: 42 96% 93%;
+  --accent-foreground: 30 40% 10%;
+  --ring: 42 96% 55%;
+  --sidebar-primary: 42 96% 55%;
+  --sidebar-primary-foreground: 30 40% 10%;
+  --sidebar-ring: 42 98% 65%;
+}
+html.dark.palette-amber {
+  --primary: 42 97% 70%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 35 50% 22%;
+  --accent-foreground: 42 100% 92%;
+  --ring: 42 97% 70%;
+  --sidebar-primary: 42 97% 65%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 42 97% 70%;
+}
+
+html.palette-rose {
+  --primary: 346 77% 60%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 346 77% 96%;
+  --accent-foreground: 346 77% 12%;
+  --ring: 346 77% 60%;
+  --sidebar-primary: 346 77% 62%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 346 91% 75%;
+}
+html.dark.palette-rose {
+  --primary: 346 85% 78%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 346 42% 24%;
+  --accent-foreground: 346 100% 92%;
+  --ring: 346 85% 78%;
+  --sidebar-primary: 346 85% 72%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 346 85% 78%;
+}
+
+html.palette-violet {
+  --primary: 271 91% 65%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 271 91% 96%;
+  --accent-foreground: 271 91% 12%;
+  --ring: 271 91% 65%;
+  --sidebar-primary: 271 91% 66%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 272 95% 76%;
+}
+html.dark.palette-violet {
+  --primary: 271 96% 80%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 271 50% 26%;
+  --accent-foreground: 271 96% 92%;
+  --ring: 271 96% 80%;
+  --sidebar-primary: 271 96% 76%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 271 96% 80%;
+}
+
+html.palette-sky {
+  --primary: 201 96% 52%;
+  --primary-foreground: 0 0% 100%;
+  --accent: 201 96% 95%;
+  --accent-foreground: 201 96% 12%;
+  --ring: 201 96% 52%;
+  --sidebar-primary: 201 96% 54%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 202 98% 70%;
+}
+html.dark.palette-sky {
+  --primary: 201 98% 76%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 201 48% 22%;
+  --accent-foreground: 201 98% 92%;
+  --ring: 201 98% 76%;
+  --sidebar-primary: 201 98% 72%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 201 98% 76%;
+}
+
+/* ---- Warm Stone 赭石暖色调（Admin 后台默认启用）---- */
+html.palette-warm-stone {
+  --primary: 32 94% 44%;           /* 赭石 D97706 */
+  --primary-foreground: 30 40% 10%;
+  --accent: 40 96% 92%;           /* 赭石淡米 */
+  --accent-foreground: 30 40% 12%;
+  --ring: 32 94% 44%;
+  --sidebar-primary: 32 94% 48%;
+  --sidebar-primary-foreground: 30 40% 10%;
+  --sidebar-ring: 34 98% 52%;
+  /* 语义色微调，与赭石更和谐：竹青+天蓝保留，warning 用琥珀 */
+  --success: 172 70% 40%;
+  --info: 219 88% 60%;
+  --warning: 40 90% 50%;
+}
+html.dark.palette-warm-stone {
+  --primary: 34 96% 64%;
+  --primary-foreground: 224 71% 4%;
+  --accent: 30 45% 24%;
+  --accent-foreground: 40 100% 92%;
+  --ring: 34 96% 64%;
+  --sidebar-primary: 34 96% 60%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-ring: 34 96% 64%;
+  --success: 172 70% 55%;
+  --info: 219 90% 72%;
+  --warning: 40 92% 66%;
+}
+
+/* ---- Minimal 极简中性灰（无强品牌色，最大留白，明暗双模）---- */
+html.palette-minimal {
+  --primary: 220 9% 46%;           /* 中性灰 6b7280 */
+  --primary-foreground: 0 0% 100%;
+  --accent: 220 14% 96%;           /* 极浅灰底 */
+  --accent-foreground: 220 13% 22%;
+  --ring: 220 9% 46%;
+  --sidebar-primary: 220 9% 50%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 220 10% 60%;
+  /* 语义色压低饱和，保持极简调性 */
+  --success: 160 8% 40%;
+  --info: 220 9% 50%;
+  --warning: 38 30% 46%;
+}
+html.dark.palette-minimal {
+  --primary: 0 0% 92%;             /* 近白，暗底上最干净的主色 */
+  --primary-foreground: 240 6% 10%;
+  --accent: 0 0% 18%;              /* 暗灰底 */
+  --accent-foreground: 0 0% 92%;
+  --ring: 0 0% 92%;
+  --sidebar-primary: 0 0% 88%;
+  --sidebar-primary-foreground: 240 6% 10%;
+  --sidebar-ring: 0 0% 80%;
+  --success: 150 6% 60%;
+  --info: 0 0% 80%;
+  --warning: 40 12% 64%;
+}
 
 /* =========================================================
    Base reset + 排版
    ========================================================= */
 @layer base {
+  /* Tailwind v4 preflight 将 button 默认 cursor 改为 default。
+     恢复可用按钮的 pointer 光标，保证点击反馈一致（前台 + Admin 全局生效）。 */
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  /* Tailwind v4 不再从 tailwind.config.ts 读取 container.center，这里显式居中 */
+  .container {
+    margin-inline: auto;
+  }
+  /* a11y 跳到主内容链接：视觉隐藏，仅键盘 Tab 聚焦时显示 */
+  #skip-link {
+    position: absolute;
+    left: -9999px;
+    top: auto;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    z-index: 9999;
+  }
+  #skip-link:focus {
+    left: 1rem;
+    top: 1rem;
+    width: auto;
+    height: auto;
+    padding: 0.5rem 1rem;
+    background: var(--color-background);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    color: var(--color-foreground);
+    text-decoration: none;
+  }
   * {
     @apply border-border;
   }
@@ -217,6 +527,30 @@
   .font-display {
     font-family: var(--font-display);
   }
+}
+
+/* =========================================================
+   统一动画令牌（Motion Tokens）——全站唯一动画真源
+   ---------------------------------------------------------
+   所有过渡 / 动画只从这里取「时长 + 缓动」，禁止散落硬编码：
+     · 微反馈（颜色 / chip）      → --motion-duration-fast
+     · 标准交互（按钮 / 页面淡入）→ --motion-duration-base
+     · 卡片抬升                    → --motion-duration-slow
+     · 主题切换涟漪（圆形扩散）     → --motion-duration-theme-ripple
+     · 大型进场 / 滚动揭示        → --motion-duration-slower
+   曲线统一为「减速出场」（ease-out 家族），观感顺滑不突兀。
+   ========================================================= */
+:root {
+  --motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
+  --motion-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
+  --motion-duration-fast: 180ms;
+  --motion-duration-base: 280ms;
+  --motion-duration-slow: 420ms;
+  --motion-duration-slower: 520ms;
+  /* 主题切换涟漪（view-transition 圆形扩散/收缩）专用时长，比普通 slow 更从容 */
+  --motion-duration-theme-ripple: 650ms;
 }
 
 /* =========================================================
@@ -255,21 +589,21 @@
     animation: none;
   }
   html::view-transition-group(root) {
-    animation-duration: 420ms;
-    animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+    animation-duration: var(--motion-duration-theme-ripple);
+    animation-timing-function: var(--motion-ease-standard);
   }
 
   /* ===== 扩散模式（light -> dark：new 在上，从点击点 circle 扩大）===== */
   html.theme-grow::view-transition-old(root) { z-index: 1; }
   html.theme-grow::view-transition-new(root) {
     z-index: 9999;
-    animation: theme-grow 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: theme-grow var(--motion-duration-theme-ripple) var(--motion-ease-standard) forwards;
   }
 
   /* ===== 收回模式（dark -> light：old 在上，从全屏 circle 收缩到点击点）===== */
   html.theme-shrink::view-transition-old(root) {
     z-index: 9999;
-    animation: theme-shrink 420ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+    animation: theme-shrink var(--motion-duration-theme-ripple) var(--motion-ease-standard) forwards;
   }
   html.theme-shrink::view-transition-new(root) { z-index: 1; }
 
@@ -299,7 +633,8 @@
   /* ---- 页面过渡：<Transition name="page-fade" /> ---- */
   .page-fade-enter-active,
   .page-fade-leave-active {
-    transition: opacity 280ms ease, transform 280ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
+                transform var(--motion-duration-base) var(--motion-ease-standard);
   }
   .page-fade-enter-from {
     opacity: 0;
@@ -312,7 +647,7 @@
 
   /* ---- 元素进场：给任何需要的组件加 animate-in + stagger 类 ---- */
   .animate-in {
-    animation: fade-in-up 520ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    animation: fade-in-up var(--motion-duration-slower) var(--motion-ease-standard) both;
   }
   .stagger-1 { animation-delay: 60ms; }
   .stagger-2 { animation-delay: 120ms; }
@@ -325,8 +660,8 @@
   .scroll-reveal {
     opacity: 0;
     transform: translateY(14px);
-    transition: opacity 520ms cubic-bezier(0.22, 1, 0.36, 1),
-                transform 520ms cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity var(--motion-duration-slower) var(--motion-ease-standard),
+                transform var(--motion-duration-slower) var(--motion-ease-standard);
     will-change: opacity, transform;
   }
   .scroll-reveal.is-visible {
@@ -342,10 +677,10 @@
   .lift-hover {
     position: relative;
     transition:
-      transform 360ms var(--card-ease),
-      box-shadow 360ms var(--card-ease),
-      border-color 360ms var(--card-ease),
-      filter 360ms var(--card-ease);
+      transform var(--motion-duration-slow) var(--motion-ease-standard),
+      box-shadow var(--motion-duration-slow) var(--motion-ease-standard),
+      border-color var(--motion-duration-slow) var(--motion-ease-standard),
+      filter var(--motion-duration-slow) var(--motion-ease-standard);
     will-change: transform, box-shadow, filter;
   }
   .lift-hover::before {
@@ -363,7 +698,8 @@
     );
     opacity: 0;
     transform: translateY(1px);
-    transition: opacity 280ms var(--card-ease), transform 280ms var(--card-ease);
+    transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
+                transform var(--motion-duration-base) var(--motion-ease-standard);
     pointer-events: none;
   }
   .lift-hover:hover {
@@ -374,6 +710,15 @@
   .lift-hover:hover::before {
     opacity: 1;
     transform: translateY(0);
+  }
+  /* reduced-motion：取消卡片抬升/顶部 highlight 的位移，保留阴影与发光
+     等纯色彩反馈（glow-ring 彗星旋转已被全局 reduce 的 animation 规则压制）。 */
+  @media (prefers-reduced-motion: reduce) {
+    .lift-hover,
+    .lift-hover::before {
+      transform: none !important;
+      will-change: auto;
+    }
   }
 
   /* ---- Prose（Markdown 排版） ---- */
@@ -742,8 +1087,8 @@ html.dark {
     mix-blend-mode: normal !important;
     opacity: 0;
     transition:
-      opacity 320ms cubic-bezier(0.22, 1, 0.36, 1),
-      filter  320ms cubic-bezier(0.22, 1, 0.36, 1);
+      opacity var(--motion-duration-base) var(--motion-ease-standard),
+      filter  var(--motion-duration-base) var(--motion-ease-standard);
     filter:
       brightness(var(--gr-bright, 1))
       drop-shadow(0 0 0 hsl(199 89% 55% / 0));
@@ -777,9 +1122,9 @@ html.dark {
       drop-shadow(0 0 24px  hsl(200 95% 55% / 0.14));
   }
 
-  /* --- 暗色主题：光晕更亮 + 扩散更大，能量感拉满（仅限显式开启 lift-hover 的卡片） --- */
-  html.dark .card-surface.lift-hover:hover::after,
-  html.dark .card-surface.lift-hover:focus-within::after,
+  /* --- 暗色主题：光晕更亮 + 扩散更大，能量感拉满 --- */
+  html.dark .card-surface:hover::after,
+  html.dark .card-surface:focus-within::after,
   html.dark .glow-ring:hover::after,
   html.dark .glow-ring:focus-within::after {
     filter:
@@ -836,50 +1181,6 @@ html.dark {
   .tag-colored::selection { background: hsl(var(--tag-color, var(--primary)) / 0.3); }
 }
 
-/* ⚠ NOTICE: Minimal Paper (Astro Paper 风格) 的主题专属样式不再存放于全局 main.css。
-   为确保与默认 Editorial WP-Style 主题完全解耦，全部 CSS 已迁移到：
-     frontend/themes/minimal-brutalist/style.css
-   通过 useFrontendTheme.applyThemeVisual 在激活主题时以 <link rel=stylesheet> 动态挂载，
-   切换主题时移除该 link，完全与 main.css 的默认主题隔离。
-   若未来再扩展 Minimal Paper，请只改 themes/minimal-brutalist/style.css。 */
-
-/* =========================================================
-   Skeleton / Shimmer 骨架屏动画
-   - shimmer 斜向扫光渐变动画（优于纯 pulse：更有"加载中"时间感）
-   - prefers-reduced-motion 自动降级为静态色块
-   ========================================================= */
-@keyframes skeleton-shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
-}
-
-@layer utilities {
-  .skeleton-shimmer {
-    background-color: hsl(var(--muted));
-    background-image: linear-gradient(
-      105deg,
-      hsl(var(--muted)) 0%,
-      hsl(var(--muted)) 40%,
-      color-mix(in oklab, hsl(var(--muted-foreground) / 0.18), hsl(var(--muted))) 50%,
-      hsl(var(--muted)) 60%,
-      hsl(var(--muted)) 100%
-    );
-    background-size: 200% 100%;
-    background-repeat: no-repeat;
-    animation: skeleton-shimmer 1.5s cubic-bezier(0.22, 1, 0.36, 1) infinite;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer {
-    animation: none !important;
-  }
-}
-
 @keyframes fade-in-up {
   0% {
     opacity: 0;
@@ -906,6 +1207,25 @@ html.dark {
   background: hsl(var(--warning-muted));
   color: hsl(var(--warning-muted-foreground));
   border-color: hsl(var(--warning) / 0.25);
+}
+
+/* ===== TransitionGroup 列表入场动画（name="list-item"）===== */
+.list-item-enter-active {
+  transition: all var(--motion-duration-slow) var(--motion-ease-standard);
+}
+.list-item-leave-active {
+  transition: all var(--motion-duration-base) var(--motion-ease-standard);
+}
+.list-item-enter-from {
+  opacity: 0;
+  transform: translateY(16px) scale(0.98);
+}
+.list-item-leave-to {
+  opacity: 0;
+  transform: scale(0.96);
+}
+.list-item-move {
+  transition: transform var(--motion-duration-slow) var(--motion-ease-standard);
 }
 
 

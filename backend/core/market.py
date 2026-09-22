@@ -44,9 +44,7 @@ def _lock_for(kind: str) -> asyncio.Lock:
 
 def _validate_kind(kind: str) -> None:
     if kind not in _KIND_TO_SETTINGS:
-        raise ValueError(
-            f"未知的市场 kind={kind!r}，合法值: {sorted(_KIND_TO_SETTINGS)}"
-        )
+        raise ValueError(f"未知的市场 kind={kind!r}，合法值: {sorted(_KIND_TO_SETTINGS)}")
 
 
 def _base_url_for(kind: str) -> str:

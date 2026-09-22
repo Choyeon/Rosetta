@@ -1,8 +1,17 @@
 import type { Config } from 'tailwindcss'
 import tailwindcssAnimate from 'tailwindcss-animate'
 
+/**
+ * ⚠️ 本文件当前【未生效】。
+ *
+ * 项目使用 Tailwind v4 + @tailwindcss/vite（见 nuxt.config.ts），main.css 里没有
+ * `@config` 指令，所以 Vite/Oxide 不会加载这份 JS 配置。真正的主题真源是
+ * `assets/css/main.css` 的 `@theme` 块（颜色 / 字体 / 阴影 / 动画都注册在那里）。
+ *
+ * 这里保留仅作为历史参考；改颜色请改 main.css，否则改了也不生效。
+ */
 export default {
-  darkMode: ['class'],
+  darkMode: 'selector',
   content: [
     './components/**/*.{vue,js,ts,jsx,tsx,mdx}',
     './app/**/*.{vue,js,ts,jsx,tsx,mdx}',

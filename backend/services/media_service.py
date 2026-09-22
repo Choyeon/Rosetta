@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import asyncio
-import io
 import logging
 import re
 from pathlib import Path
@@ -17,6 +16,8 @@ from typing import Any
 from urllib.parse import urljoin
 
 from PIL import Image, ImageDraw, ImageFont
+
+from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +115,7 @@ async def generate_thumbnails(
         #  但 thumbnail 文件名本身不含 <type> 前缀；因此需要我们按 output_dir 推出
         #  相对于 MEDIA_ROOT/uploads 的子路径。）
         try:
-            sub = out_dir.relative_to(MEDIA_ROOT / "uploads")
+            sub = out_dir.relative_to(Path(settings.media_dir) / "uploads")
             rel_path_part = f"{sub.as_posix()}/{relative}" if str(sub) != "." else relative
         except Exception:
             rel_path_part = relative
@@ -154,7 +155,11 @@ async def apply_watermark(image: Image.Image, text: str) -> Image.Image:
             bbox = draw.textbbox((0, 0), text, font=font)
             tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
         except Exception:
-            tw, th = draw.textsize(text, font=font) if hasattr(draw, "textsize") else (len(text) * 10, 16)
+            tw, th = (
+                draw.textsize(text, font=font)
+                if hasattr(draw, "textsize")
+                else (len(text) * 10, 16)
+            )
         margin = max(8, min(w, h) // 40)
         pos = (w - tw - margin, h - th - margin)
         # 阴影

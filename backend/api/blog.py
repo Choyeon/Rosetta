@@ -14,45 +14,48 @@
 import math
 import re
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import String, cast, func, or_, select, update
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import defer, selectinload
 
 from backend.core.auth import DB, CurrentStaff, CurrentUser, CurrentUserOptional
 from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
 from backend.core.concurrency import concurrent_query
 from backend.core.config import settings
-from backend.core.plugin_bus import bus
 from backend.core.i18n import (
     get_i18n_value,
     get_language_from_request,
 )
+from backend.core.plugin_bus import bus
+from backend.services.content_renderer import render_post_fields
+
+# 20 curated tag colors — modern palette with balanced saturation for light/dark modes.
+_TAG_PALETTE = [
+    "#3B82F6",
+    "#10B981",
+    "#F59E0B",
+    "#EF4444",
+    "#8B5CF6",
+    "#EC4899",
+    "#06B6D4",
+    "#84CC16",
+    "#F97316",
+    "#6366F1",
+    "#14B8A6",
+    "#E11D48",
+    "#0EA5E9",
+    "#A855F7",
+    "#22C55E",
+    "#D946EF",
+    "#0891B2",
+    "#CA8A04",
+    "#DC2626",
+    "#7C3AED",
+]
 from backend.core.shortcodes import do_shortcode
 from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_tags
 from backend.models.user import User
-from backend.utils.compat import UTC
-
-
-def _parse_iso_date(s: str | None) -> datetime | None:
-    """解析 ISO 日期字符串为 UTC datetime。结束日期会扩展到当天 23:59:59.999 以包含整天。"""
-    if not s:
-        return None
-    try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=UTC)
-        return d
-    except (ValueError, TypeError):
-        stripped = s.strip()
-        if len(stripped) == 10:  # YYYY-MM-DD
-            try:
-                d = datetime.strptime(stripped, "%Y-%m-%d").replace(tzinfo=UTC)
-                return d
-            except ValueError:
-                return None
-        return None
 from backend.schemas import (
     BaseResponse,
     BatchPostStatusResponse,
@@ -76,55 +79,190 @@ from backend.schemas import (
 )
 from backend.services.comment_service import _comment_to_response
 from backend.utils.compat import UTC
+from backend.utils.reading_time import compute_reading_time_from_content
+
+
+def _parse_iso_date(s: str | None) -> datetime | None:
+    """解析 ISO 日期字符串为 UTC datetime。结束日期会扩展到当天 23:59:59.999 以包含整天。"""
+    if not s:
+        return None
+    try:
+        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
+        if d.tzinfo is None:
+            d = d.replace(tzinfo=UTC)
+        return d
+    except (ValueError, TypeError):
+        stripped = s.strip()
+        if len(stripped) == 10:  # YYYY-MM-DD
+            try:
+                d = datetime.strptime(stripped, "%Y-%m-%d").replace(tzinfo=UTC)
+                return d
+            except ValueError:
+                return None
+        return None
+
 
 router = APIRouter(tags=["博客"])
 
 # OOBE 状态判断统一委托给 backend.core.deps，避免各模块重复定义常量导致
 # 状态源不一致（以及测试时无法统一重定向路径）。
+
+# ── RSS / Sitemap 共享工具 ───────────────────────────────────────────────
+
+from datetime import timezone as _tz
+
 from backend.core.deps import is_oobe_complete  # noqa: E402
+
+_RSS_NS = "http://www.w3.org/2005/Atom"
+_CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
+_DC_NS = "http://purl.org/dc/elements/1.1/"
+_MEDIA_NS = "http://search.yahoo.com/mrss/"
+
+
+def _public_site_url() -> str:
+    """对外站点根 URL（去尾斜杠）。RSS/Sitemap 中的绝对 URL 一律基于它。"""
+    return (getattr(settings, "site_url", None) or "http://localhost:3000").rstrip("/")
+
+
+def _ensure_aware(dt: datetime | None) -> datetime | None:
+    """无时区的 datetime 一律假定为 UTC。"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt.replace(tzinfo=_tz.utc)
+    return dt
+
+
+def _rfc822(dt: datetime | None) -> str | None:
+    """RFC 822 日期（RSS pubDate/lastBuildDate 要求），例：Wed, 02 Oct 2024 13:00:00 +0000。"""
+    aware = _ensure_aware(dt)
+    if aware is None:
+        return None
+    return aware.strftime("%a, %d %b %Y %H:%M:%S %z")
+
+
+def _cdata(text: str) -> str:
+    """安全包裹 CDATA；内容若含 ``]]>`` 需拆分转义，避免提前闭合。"""
+    safe = (text or "").replace("]]>", "]]&gt;")
+    return f"<![CDATA[{safe}]]>"
+
+
+def _absolute_media(url: str | None, site_url: str) -> str | None:
+    """把相对媒体路径转成绝对 URL。"""
+    if not url:
+        return None
+    if url.startswith(("http://", "https://")):
+        return url
+    if url.startswith("/"):
+        return site_url + url
+    return site_url + "/" + url
+
+
+def _rss_language(code: str) -> str:
+    """内部语言码 → RSS 语言码（下划线改连字符）。"""
+    return (code or "en").replace("_", "-")
 
 
 def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_title: str) -> str:
-    """生成 RSS 2.0 格式的订阅源"""
-    from xml.etree.ElementTree import Element, SubElement, tostring
+    """生成 RSS 2.0 订阅源（最佳实践版）。
 
-    rss = Element("rss", version="2.0")
-    channel = SubElement(rss, "channel")
+    - Atom ``self`` 自链接（feed validator 必需）
+    - 每篇包含 ``description``（摘要）与 ``content:encoded``（完整正文）
+    - HTML 内容一律 CDATA 包裹，避免转义问题
+    - ``dc:creator`` 作者、``category`` 分类、``enclosure`` + ``media:content`` 封面
+    - ``lastBuildDate`` 取最新文章时间，而非服务器当前时间
+    """
+    site_url = site_url.rstrip("/")
+    rss_lang = _rss_language(language)
+    now_rfc = _rfc822(datetime.now(_tz.utc))
 
-    SubElement(channel, "title").text = site_title
-    SubElement(channel, "link").text = site_url
-    SubElement(channel, "description").text = f"{site_title} - RSS 订阅"
-    SubElement(channel, "language").text = language
-    SubElement(channel, "lastBuildDate").text = datetime.now(UTC).strftime(
-        "%a, %d %b %Y %H:%M:%S GMT"
+    # 最新一篇的发布时间作为 lastBuildDate
+    newest: datetime | None = None
+    for p in posts:
+        candidate = p.published_at or p.created_at
+        if candidate is not None and (newest is None or candidate > newest):
+            newest = candidate
+
+    lines: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>']
+    lines.append(
+        '<rss version="2.0" '
+        f'xmlns:atom="{_RSS_NS}" '
+        f'xmlns:content="{_CONTENT_NS}" '
+        f'xmlns:dc="{_DC_NS}" '
+        f'xmlns:media="{_MEDIA_NS}">'
     )
+    lines.append("  <channel>")
+    lines.append(f"    <title>{_xml_escape(site_title)}</title>")
+    lines.append(f"    <link>{_xml_escape(site_url)}/</link>")
+    lines.append(
+        f'    <description>{_cdata(f"{site_title} 最新文章")}</description>'
+    )
+    lines.append(f"    <language>{rss_lang}</language>")
+    # Atom self 链接：指向本 feed 的稳定 URL
+    lines.append(
+        f'    <atom:link href="{_xml_escape(site_url)}/rss.xml" '
+        'rel="self" type="application/rss+xml" />'
+    )
+    if newest is not None:
+        lines.append(f"    <lastBuildDate>{_rfc822(newest)}</lastBuildDate>")
+    if now_rfc:
+        lines.append(f"    <pubDate>{now_rfc}</pubDate>")
+    lines.append("    <generator>Rosetta Blog</generator>")
+    lines.append("    <docs>https://www.rssboard.org/rss-specification</docs>")
+    lines.append('    <ttl>60</ttl>')
 
     for post in posts:
-        item = SubElement(channel, "item")
-        title = get_i18n_value(post.title, language)
-        SubElement(item, "title").text = title
-        SubElement(item, "link").text = f"{site_url}/posts/{post.slug}"
-        SubElement(item, "guid", isPermaLink="true").text = f"{site_url}/posts/{post.slug}"
+        title = get_i18n_value(post.title, language) or post.slug
+        link = f"{site_url}/posts/{post.slug}"
+        pub_dt = post.published_at or post.created_at
 
-        if post.published_at:
-            pub_date = post.published_at
+        # 摘要：优先 excerpt，否则从正文截取纯文本
+        raw_excerpt = get_i18n_value(post.excerpt, language)
+        full_html = do_shortcode(get_i18n_value(post.content, language))
+        if raw_excerpt:
+            excerpt_html = do_shortcode(raw_excerpt)
         else:
-            pub_date = post.created_at
-        SubElement(item, "pubDate").text = pub_date.strftime("%a, %d %b %Y %H:%M:%S GMT")
+            text_only = re.sub(r"<[^>]+>", "", full_html).strip()
+            excerpt_html = (text_only[:200] + "…") if len(text_only) > 200 else text_only
 
-        if post.excerpt:
-            description = do_shortcode(get_i18n_value(post.excerpt, language))
-        else:
-            content = do_shortcode(get_i18n_value(post.content, language))
-            description = content[:200] + "..." if len(content) > 200 else content
-        SubElement(item, "description").text = description
+        lines.append("    <item>")
+        lines.append(f"      <title>{_cdata(title)}</title>")
+        lines.append(f"      <link>{_xml_escape(link)}</link>")
+        lines.append(f'      <guid isPermaLink="true">{_xml_escape(link)}</guid>')
+        if pub_dt is not None:
+            lines.append(f"      <pubDate>{_rfc822(pub_dt)}</pubDate>")
+        lines.append(f"      <description>{_cdata(excerpt_html)}</description>")
+        lines.append(f"      <content:encoded>{_cdata(full_html)}</content:encoded>")
 
-        if post.cover_image:
-            enclosure = SubElement(item, "enclosure")
-            enclosure.set("url", post.cover_image)
-            enclosure.set("type", "image/jpeg")
+        # 作者：RSS <author> 需要邮箱，使用 dc:creator 输出名字更通用
+        author_name = None
+        if post.author is not None:
+            author_name = post.author.nickname or post.author.username
+        if author_name:
+            lines.append(f"      <dc:creator>{_cdata(author_name)}</dc:creator>")
 
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(rss, encoding="unicode")
+        # 分类
+        cat_name = None
+        if post.category is not None:
+            cat_name = get_i18n_value(post.category.name, language) or post.category.slug
+        if cat_name:
+            lines.append(f"      <category>{_cdata(cat_name)}</category>")
+
+        # 封面：enclosure（RSS 2.0）+ media:content（MRSS，阅读器友好）
+        cover = _absolute_media(post.cover_image, site_url)
+        if cover:
+            lines.append(
+                f'      <enclosure url="{_xml_escape(cover)}" length="0" type="image/jpeg" />'
+            )
+            lines.append(
+                f'      <media:content url="{_xml_escape(cover)}" type="image/jpeg" medium="image" />'
+            )
+
+        lines.append("    </item>")
+
+    lines.append("  </channel>")
+    lines.append("</rss>")
+    return "\n".join(lines)
 
 
 def generate_slug(title: str) -> str:
@@ -162,14 +300,6 @@ def generate_slug(title: str) -> str:
         slug = uuid.uuid4().hex[:8]
 
     return slug
-
-
-def calculate_reading_time(content: str) -> int:
-    """计算阅读时间（分钟）"""
-    chinese_chars = len(re.findall(r"[\u4e00-\u9fa5]", content))
-    english_words = len(re.findall(r"[a-zA-Z0-9]+", content))
-    minutes = (chinese_chars / 300) + (english_words / 150)
-    return max(1, math.ceil(minutes))
 
 
 async def _get_post_list_cache_key(
@@ -232,13 +362,14 @@ def _build_post_list_item_from_row(
     row: tuple,
     language: str,
 ) -> PostListItemLocalized:
-    """从查询结果行构建文章列表项（优化版，避免 N+1 查询）"""
+    """从查询结果行构建文章列表项（优化版，避免 N+1 查询）。
+
+    注意：列表查询应 defer(Post.content)，reading_time 直接取持久化列。
+    """
     post = row.Post
     likes_count = row.likes_count or 0
     comments_count = row.comments_count or 0
 
-    raw_content = get_i18n_value(post.content, language)
-    content = do_shortcode(raw_content)
     raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
     excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
@@ -261,7 +392,7 @@ def _build_post_list_item_from_row(
         is_pinned=post.is_pinned,
         created_at=post.created_at,
         published_at=post.published_at,
-        reading_time=calculate_reading_time(raw_content),
+        reading_time=post.reading_time or 1,
     )
 
 
@@ -269,26 +400,32 @@ async def _build_post_list_item(
     post: Post,
     db: DB,
     language: str,
+    *,
+    likes_count: int | None = None,
+    comments_count: int | None = None,
 ) -> dict:
-    """从 Post 对象构建文章列表项（用于点赞列表等场景）"""
+    """从 Post 对象构建文章列表项（用于点赞列表等场景）。
+
+    若传入 ``likes_count`` / ``comments_count`` 则直接使用（批量预取场景），
+    否则回退到单篇并发查询。
+    """
     from backend.models.blog import Comment, post_likes
 
-    likes_count, comments_count = await concurrent_query(
-        db.scalar(
-            select(func.count()).select_from(post_likes).where(post_likes.c.post_id == post.id)
-        ),
-        db.scalar(
-            select(func.count())
-            .select_from(Comment)
-            .where(Comment.post_id == post.id, Comment.active.is_(True))
-        ),
-    )
+    if likes_count is None or comments_count is None:
+        likes_count, comments_count = await concurrent_query(
+            db.scalar(
+                select(func.count()).select_from(post_likes).where(post_likes.c.post_id == post.id)
+            ),
+            db.scalar(
+                select(func.count())
+                .select_from(Comment)
+                .where(Comment.post_id == post.id, Comment.active.is_(True))
+            ),
+        )
 
     likes_count = likes_count or 0
     comments_count = comments_count or 0
 
-    raw_content = get_i18n_value(post.content, language)
-    content = do_shortcode(raw_content)
     raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
     excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
@@ -311,7 +448,7 @@ async def _build_post_list_item(
         "is_pinned": post.is_pinned,
         "created_at": post.created_at,
         "published_at": post.published_at,
-        "reading_time": calculate_reading_time(raw_content),
+        "reading_time": post.reading_time or 1,
     }
 
 
@@ -335,8 +472,12 @@ async def list_posts(
     status_filter: str | None = Query(None, alias="status", description="文章状态（需管理员权限）"),
     post_type: str | None = Query(None, description="内容类型（自定义文章类型 key，默认 post）"),
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
-    created_start: str | None = Query(None, alias="created_start", description="创建开始日期 ISO（含边界）"),
-    created_end: str | None = Query(None, alias="created_end", description="创建结束日期 ISO（含边界）"),
+    created_start: str | None = Query(
+        None, alias="created_start", description="创建开始日期 ISO（含边界）"
+    ),
+    created_end: str | None = Query(
+        None, alias="created_end", description="创建结束日期 ISO（含边界）"
+    ),
     current_user: CurrentUserOptional = None,
 ):
     """获取文章列表，支持多语言和缓存
@@ -354,9 +495,9 @@ async def list_posts(
 
     language = get_language_from_request(request, lang)
 
-    is_admin = (
-        status_filter and current_user and (current_user.is_staff or current_user.is_superuser)
-    )
+    is_admin = bool(current_user and (current_user.is_staff or current_user.is_superuser))
+    # Admin 传 status=all 或不传 status → 返回全部状态；普通用户始终只看 published
+    admin_all_statuses = is_admin and (not status_filter or status_filter == "all")
     use_cache = not is_admin and not search and not created_start and not created_end
 
     if use_cache:
@@ -390,13 +531,22 @@ async def list_posts(
             selectinload(Post.author).selectinload(User.title),
             selectinload(Post.category),
             selectinload(Post.tags),
+            # 列表接口不展示正文，defer 大字段减少 DB I/O 与网络传输
+            defer(Post.content),
+            defer(Post.encrypted_content),
+            defer(Post.meta_fields),
+            defer(Post.meta_title),
+            defer(Post.meta_description),
+            defer(Post.meta_keywords),
         )
         .outerjoin(likes_subq, Post.id == likes_subq.c.post_id)
         .outerjoin(comments_subq, Post.id == comments_subq.c.post_id)
     )
 
     if is_admin:
-        query = query.where(Post.status == status_filter)
+        if not admin_all_statuses:
+            query = query.where(Post.status == status_filter)
+        # admin_all_statuses=True → 不加 status 过滤，返回全部状态
     else:
         query = query.where(
             Post.status == "published",
@@ -423,6 +573,7 @@ async def list_posts(
     if to_dt:
         # 结束日期扩展到当天 23:59:59.999 以包含整天
         from backend.utils.compat import timedelta as _td
+
         end_of_day = to_dt + _td(days=1) - _td(microseconds=1)
         query = query.where(Post.created_at <= end_of_day)
 
@@ -434,22 +585,58 @@ async def list_posts(
                 cast(Post.title["en"], String).ilike(search_term),
                 cast(Post.content["zh"], String).ilike(search_term),
                 cast(Post.content["en"], String).ilike(search_term),
+                cast(Post.excerpt["zh"], String).ilike(search_term),
+                cast(Post.excerpt["en"], String).ilike(search_term),
             )
         )
 
     count_query = select(func.count()).select_from(query.subquery())
     total = await db.scalar(count_query) or 0
 
-    query = (
-        query.offset((page - 1) * page_size)
-        .limit(page_size)
-        .order_by(Post.is_pinned.desc(), Post.published_at.desc())
-    )
+    if search and total > 0:
+        # —— BM25 搜索重排：粗召回（至少 page*page_size*4，最少 50，上限 200）→ 打分 → 分页切片 ——
+        from backend.services.recommendation import RecommendationService
 
-    result = await db.execute(query)
-    rows = result.unique().all()
+        search_candidates_cap = min(total, max(50, page * page_size * 4))
+        if search_candidates_cap > 200:
+            search_candidates_cap = 200
 
-    items = [_build_post_list_item_from_row(row, language) for row in rows]
+        coarse_q = query.order_by(Post.is_pinned.desc(), Post.published_at.desc()).limit(
+            search_candidates_cap
+        )
+        coarse_result = await db.execute(coarse_q)
+        coarse_rows = coarse_result.unique().all()
+        coarse_posts = [row.Post for row in coarse_rows]
+
+        rec_svc = RecommendationService(db)
+        scored = await rec_svc.search_rerank(search, coarse_posts, language)
+        # 先按 BM25 分数降序，同分保留原时间新鲜度相对顺序（is_pinned 仍优先——在 coarse_rows 先头保持）
+        row_by_post_id = {row.Post.id: row for row in coarse_rows}
+        scored.sort(
+            key=lambda pair: (
+                -pair[1],
+                pair[0].is_pinned is False,
+                -(pair[0].published_at or pair[0].created_at).timestamp()
+                if (pair[0].published_at or pair[0].created_at)
+                else 0,
+            )
+        )
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        page_post_rows = [row_by_post_id[p.id] for p, _score in scored[start:end]]
+        items = [_build_post_list_item_from_row(row, language) for row in page_post_rows]
+    else:
+        query = (
+            query.offset((page - 1) * page_size)
+            .limit(page_size)
+            .order_by(Post.is_pinned.desc(), Post.published_at.desc())
+        )
+
+        result = await db.execute(query)
+        rows = result.unique().all()
+
+        items = [_build_post_list_item_from_row(row, language) for row in rows]
 
     response = PaginatedResponse(
         items=items,
@@ -459,8 +646,13 @@ async def list_posts(
         total_pages=math.ceil(total / page_size) if total > 0 else 0,
     )
 
+    ttl_key = "search_results" if search else "post_list"
     if use_cache:
-        await cache.set(cache_key, response.model_dump(mode="json"), CACHE_TTL["post_list"])
+        await cache.set(
+            cache_key,
+            response.model_dump(mode="json"),
+            CACHE_TTL.get(ttl_key, CACHE_TTL["post_list"]),
+        )
 
     return response
 
@@ -505,18 +697,26 @@ async def get_recommended_posts(
     )
 
     items = []
-    for post in result["items"]:
-        likes_count, comments_count = await concurrent_query(
-            db.scalar(
-                select(func.count()).select_from(post_likes).where(post_likes.c.post_id == post.id)
-            ),
-            db.scalar(
-                select(func.count()).where(Comment.post_id == post.id, Comment.active.is_(True))
-            ),
+    posts_list = result["items"]
+    # 批量聚合 likes / comments（单次 SQL 汇总，避免逐篇 N+1 查询）
+    ids = [p.id for p in posts_list]
+    if ids:
+        likes_raw = await db.execute(
+            select(post_likes.c.post_id, func.count())
+            .where(post_likes.c.post_id.in_(ids))
+            .group_by(post_likes.c.post_id)
         )
+        likes_map = {pid: cnt for pid, cnt in likes_raw.fetchall()}
+        comments_raw = await db.execute(
+            select(Comment.post_id, func.count())
+            .where(Comment.post_id.in_(ids), Comment.active.is_(True))
+            .group_by(Comment.post_id)
+        )
+        comments_map = {pid: cnt for pid, cnt in comments_raw.fetchall()}
+    else:
+        likes_map, comments_map = {}, {}
 
-        raw_content = get_i18n_value(post.content, language)
-        _content = do_shortcode(raw_content)
+    for post in posts_list:
         raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
         excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
@@ -535,12 +735,12 @@ async def get_recommended_posts(
                 tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
                 status=post.status,
                 views=post.views,
-                likes_count=likes_count or 0,
-                comments_count=comments_count or 0,
+                likes_count=likes_map.get(post.id, 0),
+                comments_count=comments_map.get(post.id, 0),
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
-                reading_time=calculate_reading_time(raw_content),
+                reading_time=post.reading_time or 1,
             )
         )
 
@@ -575,18 +775,25 @@ async def get_similar_posts(
     posts = await service.get_similar_posts(post_id=post_id, limit=limit)
 
     items = []
-    for post in posts:
-        likes_count, comments_count = await concurrent_query(
-            db.scalar(
-                select(func.count()).select_from(post_likes).where(post_likes.c.post_id == post.id)
-            ),
-            db.scalar(
-                select(func.count()).where(Comment.post_id == post.id, Comment.active.is_(True))
-            ),
+    # 批量聚合 likes / comments（单次 SQL 汇总，避免逐篇 N+1 查询）
+    ids = [p.id for p in posts]
+    if ids:
+        likes_raw = await db.execute(
+            select(post_likes.c.post_id, func.count())
+            .where(post_likes.c.post_id.in_(ids))
+            .group_by(post_likes.c.post_id)
         )
+        likes_map = {pid: cnt for pid, cnt in likes_raw.fetchall()}
+        comments_raw = await db.execute(
+            select(Comment.post_id, func.count())
+            .where(Comment.post_id.in_(ids), Comment.active.is_(True))
+            .group_by(Comment.post_id)
+        )
+        comments_map = {pid: cnt for pid, cnt in comments_raw.fetchall()}
+    else:
+        likes_map, comments_map = {}, {}
 
-        raw_content = get_i18n_value(post.content, language)
-        _content = do_shortcode(raw_content)
+    for post in posts:
         raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
         excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
 
@@ -605,16 +812,146 @@ async def get_similar_posts(
                 tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
                 status=post.status,
                 views=post.views,
-                likes_count=likes_count or 0,
-                comments_count=comments_count or 0,
+                likes_count=likes_map.get(post.id, 0),
+                comments_count=comments_map.get(post.id, 0),
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
-                reading_time=calculate_reading_time(raw_content),
+                reading_time=post.reading_time or 1,
             )
         )
 
     return items
+
+
+@router.get(
+    "/posts/hot",
+    response_model=list[PostListItemLocalized],
+    summary="热门文章（HackerNews 风格热榜）",
+    description="按 HackerNews 公式的综合热度排序：（浏览 + 点赞×10 + 评论×20）/(发布小时+2)^1.8。",
+)
+async def list_hot_posts(
+    request: Request,
+    db: DB,
+    limit: int = Query(10, ge=1, le=50, description="返回数量"),
+    days: int = Query(30, ge=1, le=365, description="时间窗口（天）"),
+    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+):
+    """HN 风格热榜（走推荐服务的热榜缓存）。"""
+    from backend.services.recommendation import RecommendationService
+
+    language = get_language_from_request(request, lang)
+    service = RecommendationService(db)
+    posts = await service.get_hot_posts(limit=limit, days=days)
+
+    # 批量聚合 likes / comments（推荐服务没返回这些，单次 SQL 汇总即可）
+    ids = [p.id for p in posts]
+    if ids:
+        likes_raw = await db.execute(
+            select(post_likes.c.post_id, func.count())
+            .where(post_likes.c.post_id.in_(ids))
+            .group_by(post_likes.c.post_id)
+        )
+        likes_map = {pid: cnt for pid, cnt in likes_raw.fetchall()}
+        comments_raw = await db.execute(
+            select(Comment.post_id, func.count())
+            .where(Comment.post_id.in_(ids), Comment.active.is_(True))
+            .group_by(Comment.post_id)
+        )
+        comments_map = {pid: cnt for pid, cnt in comments_raw.fetchall()}
+    else:
+        likes_map, comments_map = {}, {}
+
+    items: list[PostListItemLocalized] = []
+    for post in posts:
+        raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
+        excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+        items.append(
+            PostListItemLocalized(
+                id=post.id,
+                title=get_i18n_value(post.title, language),
+                subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
+                slug=post.slug,
+                excerpt=excerpt,
+                cover_image=post.cover_image,
+                author=_build_author_data(post.author),
+                category=CategoryLocalizedResponse.from_category(post.category, language)
+                if post.category
+                else None,
+                tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
+                status=post.status,
+                views=post.views,
+                likes_count=int(likes_map.get(post.id, 0) or 0),
+                comments_count=int(comments_map.get(post.id, 0) or 0),
+                is_pinned=post.is_pinned,
+                created_at=post.created_at,
+                published_at=post.published_at,
+                reading_time=post.reading_time or 1,
+            )
+        )
+    return items
+
+
+@router.get(
+    "/posts/{slug}/adjacent",
+    summary="上一篇/下一篇",
+    description="按发布时间线获取当前公开文章的上一篇（更早）与下一篇（更晚），仅包含已发布且已到发布时间的文章。",
+)
+async def get_post_adjacent(
+    slug: str,
+    request: Request,
+    db: DB,
+    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+):
+    """获取同时间线上的相邻文章（用于文章详情页上下篇导航）。"""
+    from datetime import datetime
+
+    language = get_language_from_request(request, lang)
+
+    stmt = select(Post).where(Post.slug == slug, Post.status == "published")
+    post = (await db.execute(stmt)).scalar_one_or_none()
+    if post is None and slug.isdigit():
+        stmt = select(Post).where(Post.id == int(slug), Post.status == "published")
+        post = (await db.execute(stmt)).scalar_one_or_none()
+    if post is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
+
+    published_key = func.coalesce(Post.published_at, Post.created_at)
+    anchor = post.published_at or post.created_at
+
+    async def _neighbor(older: bool) -> dict | None:
+        if older:
+            cond = (published_key < anchor) | ((published_key == anchor) & (Post.id < post.id))
+            order = published_key.desc()
+        else:
+            cond = (published_key > anchor) | ((published_key == anchor) & (Post.id > post.id))
+            order = published_key.asc()
+        row = (
+            await db.execute(
+                select(Post.slug, Post.title)
+                .where(
+                    Post.status == "published",
+                    published_key <= datetime.now(),
+                    cond,
+                )
+                .order_by(order)
+                .limit(1)
+            )
+        ).first()
+        if row is None:
+            return None
+        return {"slug": row[0], "title": get_i18n_value(row[1], language)}
+
+    return {
+        "success": True,
+        "data": {
+            "previous": await _neighbor(older=True),
+            "next": await _neighbor(older=False),
+        },
+    }
 
 
 @router.get(
@@ -648,13 +985,10 @@ async def get_post(
     slug_is_numeric = slug.isdigit()
 
     def _build_query(by_id: bool):
-        stmt = (
-            select(Post)
-            .options(
-                selectinload(Post.author).selectinload(User.title),
-                selectinload(Post.category),
-                selectinload(Post.tags),
-            )
+        stmt = select(Post).options(
+            selectinload(Post.author).selectinload(User.title),
+            selectinload(Post.category),
+            selectinload(Post.tags),
         )
         if by_id:
             return stmt.where(Post.id == int(slug))
@@ -771,12 +1105,11 @@ async def get_post(
     _meta_title_i18n = post.meta_title
     _meta_description_i18n = post.meta_description
     _meta_keywords_i18n = post.meta_keywords
+    _reading_time = post.reading_time
 
     # 并发获取点赞数和评论数
     likes_count, comments_count = await concurrent_query(
-        db.scalar(
-            select(func.count()).select_from(post_likes).where(post_likes.c.post_id == _id)
-        ),
+        db.scalar(select(func.count()).select_from(post_likes).where(post_likes.c.post_id == _id)),
         db.scalar(select(func.count()).where(Comment.post_id == _id, Comment.active.is_(True))),
     )
 
@@ -784,17 +1117,31 @@ async def get_post(
     comments_count = comments_count or 0
 
     # 根据权限决定返回的内容
+    raw_title = get_i18n_value(_title_i18n, language)
     if is_password_protected and not can_access_content:
         # 加密文章但无权限，返回基本信息但隐藏内容
-        content = ""
-        excerpt = get_i18n_value(_excerpt_i18n, language) if _excerpt_i18n else None
+        raw_content = ""
+        raw_excerpt = get_i18n_value(_excerpt_i18n, language) if _excerpt_i18n else None
+        render_body = False
     else:
-        content = get_i18n_value(_content_i18n, language)
-        excerpt = get_i18n_value(_excerpt_i18n, language) if _excerpt_i18n else None
+        raw_content = get_i18n_value(_content_i18n, language)
+        raw_excerpt = get_i18n_value(_excerpt_i18n, language) if _excerpt_i18n else None
+        render_body = True
+
+    # 统一内容渲染管线（插件扩展点）：短代码 + the_title / the_content / the_excerpt，
+    # 完成后触发 post.rendered。渲染结果随响应一并缓存。
+    rendered = await render_post_fields(
+        title=raw_title,
+        content=raw_content,
+        excerpt=raw_excerpt,
+        post=post,
+        language=language,
+        render_body=render_body,
+    )
 
     response = PostLocalizedResponse(
         id=_id,
-        title=get_i18n_value(_title_i18n, language),
+        title=rendered.title,
         subtitle=get_i18n_value(_subtitle_i18n, language) if _subtitle_i18n else None,
         slug=_slug,
         source=_source,
@@ -802,8 +1149,8 @@ async def get_post(
         audio=_audio if can_access_content else None,
         video=_video if can_access_content else None,
         video_url=_video_url if can_access_content else None,
-        content=content,
-        excerpt=excerpt,
+        content=rendered.content,
+        excerpt=rendered.excerpt,
         cover_image=_cover_image,
         author=_build_author_data(_author),
         category=CategoryLocalizedResponse.from_category(_category, language)
@@ -821,11 +1168,13 @@ async def get_post(
         meta_description=get_i18n_value(_meta_description_i18n, language)
         if _meta_description_i18n
         else None,
-        meta_keywords=get_i18n_value(_meta_keywords_i18n, language) if _meta_keywords_i18n else None,
+        meta_keywords=get_i18n_value(_meta_keywords_i18n, language)
+        if _meta_keywords_i18n
+        else None,
         created_at=_created_at,
         published_at=_published_at,
         updated_at=_updated_at,
-        reading_time=calculate_reading_time(content) if content else 0,
+        reading_time=_reading_time or 1,
     )
 
     # 只有非加密或已授权的文章才缓存
@@ -902,6 +1251,7 @@ async def create_post(
         meta_title=post_data.meta_title,
         meta_description=post_data.meta_description,
         meta_keywords=post_data.meta_keywords,
+        reading_time=compute_reading_time_from_content(post_data.content),
     )
 
     if status_value == "published":
@@ -941,6 +1291,11 @@ async def create_post(
     response = PostLocalizedResponse.from_post(post, language, likes_count=0, comments_count=0)
     response.is_password_protected = bool(password)
     await bus.do_action("post.created", post, current_user=current_user, db=db)
+    if status_value == "published":
+        # 新文章直接发布 → 通知搜索引擎 / 订阅等插件
+        await bus.do_action(
+            "post.published", post.id, post=post, current_user=current_user, db=db
+        )
     return response
 
 
@@ -1018,6 +1373,9 @@ async def update_post(
             detail="无权修改此文章",
         )
 
+    # 记录更新前状态，用于识别「草稿/定时 → 已发布」的发布流转
+    previous_status = post.status
+
     update_data = post_data.model_dump(
         exclude_unset=True, exclude={"tag_ids", "password", "view_password"}
     )
@@ -1060,6 +1418,10 @@ async def update_post(
     for field, value in update_data.items():
         setattr(post, field, value)
 
+    # 内容变更时重算 reading_time（列表接口据此 defer(content) 避免加载大字段）
+    if "content" in update_data:
+        post.reading_time = compute_reading_time_from_content(post.content)
+
     if post_data.tag_ids is not None:
         tags = await db.execute(select(Tag).where(Tag.id.in_(post_data.tag_ids)))
         tag_list = list(tags.scalars().all())
@@ -1101,6 +1463,11 @@ async def update_post(
     post = result.scalar_one()
 
     await bus.do_action("post.updated", post, current_user=current_user, db=db)
+    if post.status == "published" and previous_status != "published":
+        # 由草稿 / 定时 / 待审流转到已发布 → 触发发布钩子（搜索引擎 ping、推送等）
+        await bus.do_action(
+            "post.published", post.id, post=post, current_user=current_user, db=db
+        )
     return PostLocalizedResponse.from_post(
         post, language, likes_count=likes_count, comments_count=comments_count
     )
@@ -1177,7 +1544,9 @@ async def toggle_like(post_id: int, current_user: CurrentUser, db: DB):
 async def list_categories(
     request: Request,
     db: DB,
-    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant），保留参数，返回时不裁剪语言"),
+    lang: str | None = Query(
+        None, description="语言代码（zh/en/ja/zh_Hant），保留参数，返回时不裁剪语言"
+    ),
 ):
     """获取分类列表，返回 i18n 原始 dict 供后台编辑 / 前端 getLocalized 统一处理"""
     if not is_oobe_complete():
@@ -1429,10 +1798,18 @@ async def create_tag(
             detail="标签别名已存在",
         )
 
+    color = data.color
+    if color is None:
+        used = await db.execute(select(Tag.color).where(Tag.color.isnot(None)))
+        used_counts: dict[str, int] = {}
+        for (c,) in used.all():
+            used_counts[c] = used_counts.get(c, 0) + 1
+        color = min(_TAG_PALETTE, key=lambda c: used_counts.get(c, 0))
+
     tag = Tag(
         name=data.name,
         slug=slug,
-        color=data.color,
+        color=color,
         icon=data.icon,
         is_active=data.is_active,
     )
@@ -1552,7 +1929,8 @@ async def create_comment(
         content=data.content,
         active=not settings.comment_require_approval,
         # 从登录态回填 author 字段：兼容 Comment NOT NULL 约束与对外响应
-        author_name=getattr(current_user, "nickname", None) or getattr(current_user, "username", "匿名"),
+        author_name=getattr(current_user, "nickname", None)
+        or getattr(current_user, "username", "匿名"),
         author_email=getattr(current_user, "email", None),
         author_website=None,
     )
@@ -1705,9 +2083,7 @@ async def get_site_stats(
     )
 
     # 总字数 + 总文章数：一次查询拿到所有已发布文章的内容
-    posts_result = await db.execute(
-        select(Post.content).where(*published_filter)
-    )
+    posts_result = await db.execute(select(Post.content).where(*published_filter))
     contents = posts_result.scalars().all()
     total_posts = len(contents)
     total_words = 0
@@ -2186,7 +2562,7 @@ async def get_post_by_id(
         created_at=post.created_at,
         published_at=post.published_at,
         updated_at=post.updated_at,
-        reading_time=calculate_reading_time(content),
+        reading_time=post.reading_time or 1,
     )
 
 
@@ -2320,9 +2696,33 @@ async def get_my_likes(
     result = await db.execute(query)
     posts = result.scalars().unique().all()
 
+    # 批量预取点赞数 / 评论数，避免循环内 N+1 查询
+    ids = [p.id for p in posts]
+    if ids:
+        likes_raw = await db.execute(
+            select(post_likes.c.post_id, func.count())
+            .where(post_likes.c.post_id.in_(ids))
+            .group_by(post_likes.c.post_id)
+        )
+        likes_map = {pid: cnt for pid, cnt in likes_raw.fetchall()}
+        comments_raw = await db.execute(
+            select(Comment.post_id, func.count())
+            .where(Comment.post_id.in_(ids), Comment.active.is_(True))
+            .group_by(Comment.post_id)
+        )
+        comments_map = {pid: cnt for pid, cnt in comments_raw.fetchall()}
+    else:
+        likes_map, comments_map = {}, {}
+
     items = []
     for post in posts:
-        item = await _build_post_list_item(post, db, language)
+        item = await _build_post_list_item(
+            post,
+            db,
+            language,
+            likes_count=likes_map.get(post.id, 0),
+            comments_count=comments_map.get(post.id, 0),
+        )
         items.append(item)
 
     return PaginatedResponse(
@@ -2573,11 +2973,72 @@ SITEMAP_PAGE_SIZE = 1000
 def _xml_escape(text: str) -> str:
     """转义 XML 文本中的特殊字符。"""
     return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
+        text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
     )
+
+
+# Sitemap 协议常量
+_SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
+_SITEMAP_IMG_NS = "http://www.google.com/schemas/sitemap-image/1.1"
+
+# 固定公开路由：(路径, 更新频率, 优先级)。
+# /search（noindex）、/login、/register、/oobe、/admin/** 一律不收录。
+_STATIC_SITEMAP_ROUTES: list[tuple[str, str, str]] = [
+    ("/", "daily", "1.0"),
+    ("/posts", "daily", "0.9"),
+    ("/posts/hot", "weekly", "0.6"),
+    ("/categories", "weekly", "0.5"),
+    ("/tags", "weekly", "0.4"),
+    ("/series", "weekly", "0.5"),
+    ("/archive", "monthly", "0.4"),
+    ("/guestbook", "daily", "0.5"),
+    ("/activity", "daily", "0.4"),
+    ("/gallery", "weekly", "0.4"),
+    ("/about", "monthly", "0.3"),
+    ("/friends", "monthly", "0.3"),
+]
+
+
+def _iso8601(dt: datetime | None) -> str | None:
+    """W3C Datetime（ISO 8601）；无时区则假定 UTC。"""
+    aware = _ensure_aware(dt)
+    if aware is None:
+        return None
+    return aware.isoformat(timespec="seconds")
+
+
+def _sitemap_url(
+    loc: str,
+    *,
+    lastmod: str | None = None,
+    changefreq: str | None = None,
+    priority: str | None = None,
+    images: list[str] | None = None,
+) -> str:
+    """生成单个 ``<url>`` 条目。"""
+    parts = ["  <url>", f"    <loc>{_xml_escape(loc)}</loc>"]
+    if lastmod:
+        parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
+    if changefreq:
+        parts.append(f"    <changefreq>{changefreq}</changefreq>")
+    if priority:
+        parts.append(f"    <priority>{priority}</priority>")
+    for img in images or []:
+        if img:
+            parts.append("    <image:image>")
+            parts.append(f"      <image:loc>{_xml_escape(img)}</image:loc>")
+            parts.append("    </image:image>")
+    parts.append("  </url>")
+    return "\n".join(parts)
+
+
+def _wrap_urlset(body: str, *, with_image: bool) -> str:
+    """用 urlset 外壳包裹条目正文。"""
+    ns = f'<urlset xmlns="{_SITEMAP_NS}"'
+    if with_image:
+        ns += f' xmlns:image="{_SITEMAP_IMG_NS}"'
+    ns += ">"
+    return f'<?xml version="1.0" encoding="UTF-8"?>\n{ns}\n{body}\n</urlset>'
 
 
 def generate_sitemap(
@@ -2586,134 +3047,193 @@ def generate_sitemap(
     tags: list[Tag],
     site_url: str,
 ) -> str:
-    """生成 Sitemap XML（单页，向后兼容）。"""
-    from xml.etree.ElementTree import Element, SubElement, tostring
-
-    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
-
+    """生成合并 Sitemap（文章+分类+标签，向后兼容）。"""
+    site_url = site_url.rstrip("/")
+    entries: list[str] = []
     for post in posts:
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/posts/{post.slug}"
-        if post.updated_at:
-            SubElement(url, "lastmod").text = post.updated_at.strftime("%Y-%m-%d")
-        SubElement(url, "changefreq").text = "weekly"
-        SubElement(url, "priority").text = "0.8"
-
-    # 仅为前端真实存在的路由生成 sitemap loc
-    # categories 列表页：/categories，单分类筛选：/posts?category=slug
+        cover = _absolute_media(post.cover_image, site_url)
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/posts/{post.slug}",
+                lastmod=_iso8601(post.updated_at or post.published_at),
+                changefreq="weekly",
+                priority="0.8",
+                images=[cover] if cover else None,
+            )
+        )
     for category in categories:
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/posts?category={category.slug}"
-        SubElement(url, "changefreq").text = "weekly"
-        SubElement(url, "priority").text = "0.6"
-
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/categories/{category.slug}",
+                lastmod=_iso8601(getattr(category, "updated_at", None)),
+                changefreq="weekly",
+                priority="0.6",
+            )
+        )
     for tag in tags:
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/posts?tag={tag.slug}"
-        SubElement(url, "changefreq").text = "monthly"
-        SubElement(url, "priority").text = "0.5"
-
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/tags/{tag.slug}",
+                lastmod=_iso8601(getattr(tag, "updated_at", None)),
+                changefreq="monthly",
+                priority="0.5",
+            )
+        )
+    return _wrap_urlset("\n".join(entries), with_image=True)
 
 
 def generate_post_sitemap_page(posts: list[Post], site_url: str) -> str:
-    """生成单页文章 sitemap（用于分页）。"""
-    from xml.etree.ElementTree import Element, SubElement, tostring
-
-    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    """生成单页文章 sitemap（含封面图，用于分页）。"""
+    site_url = site_url.rstrip("/")
+    entries: list[str] = []
     for post in posts:
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/posts/{post.slug}"
-        if post.updated_at:
-            SubElement(url, "lastmod").text = post.updated_at.strftime("%Y-%m-%d")
-        SubElement(url, "changefreq").text = "weekly"
-        SubElement(url, "priority").text = "0.8"
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
+        cover = _absolute_media(post.cover_image, site_url)
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/posts/{post.slug}",
+                lastmod=_iso8601(post.updated_at or post.published_at),
+                changefreq="weekly",
+                priority="0.8",
+                images=[cover] if cover else None,
+            )
+        )
+    return _wrap_urlset("\n".join(entries), with_image=True)
 
 
 def generate_taxonomy_sitemap(
-    categories: list[Category], tags: list[Tag], site_url: str
+    categories: list[Category],
+    tags: list[Tag],
+    site_url: str,
+    series: list | None = None,
 ) -> str:
-    """生成分类/标签 sitemap（合并到一个文件）。"""
-    from xml.etree.ElementTree import Element, SubElement, tostring
-
-    urlset = Element("urlset", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    """生成分类 / 标签 / 系列 sitemap（真实前端路由，合并文件）。"""
+    site_url = site_url.rstrip("/")
+    entries: list[str] = [
+        _sitemap_url(f"{site_url}/categories", changefreq="weekly", priority="0.5")
+    ]
     for category in categories:
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/posts?category={category.slug}"
-        SubElement(url, "changefreq").text = "weekly"
-        SubElement(url, "priority").text = "0.6"
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/categories/{category.slug}",
+                lastmod=_iso8601(getattr(category, "updated_at", None)),
+                changefreq="weekly",
+                priority="0.6",
+            )
+        )
+    entries.append(_sitemap_url(f"{site_url}/tags", changefreq="weekly", priority="0.4"))
     for tag in tags:
-        url = SubElement(urlset, "url")
-        SubElement(url, "loc").text = f"{site_url}/posts?tag={tag.slug}"
-        SubElement(url, "changefreq").text = "monthly"
-        SubElement(url, "priority").text = "0.5"
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(urlset, encoding="unicode")
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/tags/{tag.slug}",
+                lastmod=_iso8601(getattr(tag, "updated_at", None)),
+                changefreq="monthly",
+                priority="0.5",
+            )
+        )
+    entries.append(_sitemap_url(f"{site_url}/series", changefreq="weekly", priority="0.5"))
+    for s in series or []:
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/series/{s.slug}",
+                lastmod=_iso8601(getattr(s, "updated_at", None)),
+                changefreq="weekly",
+                priority="0.6",
+            )
+        )
+    return _wrap_urlset("\n".join(entries), with_image=False)
 
 
-def generate_sitemap_index(entries: list[tuple[str, str]], site_url: str) -> str:
-    """
-    生成 sitemap 索引 XML。
+def generate_pages_sitemap(pages: list, site_url: str) -> str:
+    """生成固定公开路由 + 独立页面（``/page/<slug>``）sitemap。"""
+    site_url = site_url.rstrip("/")
+    entries: list[str] = []
+    for path, changefreq, priority in _STATIC_SITEMAP_ROUTES:
+        entries.append(
+            _sitemap_url(f"{site_url}{path}", changefreq=changefreq, priority=priority)
+        )
+    for page in pages:
+        if getattr(page, "status", "published") != "published":
+            continue
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/page/{page.slug}",
+                lastmod=_iso8601(getattr(page, "updated_at", None)),
+                changefreq="monthly",
+                priority="0.5",
+            )
+        )
+    return _wrap_urlset("\n".join(entries), with_image=False)
+
+
+def generate_sitemap_index(entries: list[tuple[str, str]], site_url: str | None = None) -> str:
+    """生成 sitemap 索引 XML。
 
     Args:
-        entries: [(loc_url, lastmod_str), ...]
-        site_url: 站点根 URL（用于拼接相对路径，若 loc 已是绝对则直接用）
+        entries: ``[(loc_url, lastmod_str), ...]``
+        site_url: 仅为向后兼容保留；loc 已要求是绝对 URL。
     """
-    from xml.etree.ElementTree import Element, SubElement, tostring
-
-    smi = Element("sitemapindex", xmlns="http://www.sitemaps.org/schemas/sitemap/0.9")
+    parts = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        f'<sitemapindex xmlns="{_SITEMAP_NS}">',
+    ]
     for loc, lastmod in entries:
-        sitemap = SubElement(smi, "sitemap")
-        SubElement(sitemap, "loc").text = loc
+        parts.append("  <sitemap>")
+        parts.append(f"    <loc>{_xml_escape(loc)}</loc>")
         if lastmod:
-            SubElement(sitemap, "lastmod").text = lastmod
-    return '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(smi, encoding="unicode")
+            parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
+        parts.append("  </sitemap>")
+    parts.append("</sitemapindex>")
+    return "\n".join(parts)
+
+
+_XML_CACHE = "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400"
 
 
 @router.get(
     "/sitemap.xml",
     summary="Sitemap 索引",
-    description="获取站点地图索引（列出 posts 分页、taxonomies 子表）。对标 WordPress 的 sitemap-index.xml。",
+    description="站点地图索引：列出 pages 静态表、posts 分页表、taxonomies 分类表。"
+    "所有子表均指向对外站点域名（由 Nitro BFF 代理）。",
 )
 async def get_sitemap_index(
     db: DB,
     request: Request,
 ):
-    """获取 Sitemap 索引 XML"""
-    # 索引与子表应在同一服务域名下（搜索引擎抓取的入口即当前服务）
-    base = str(request.base_url).rstrip("/")
+    """获取 Sitemap 索引 XML。"""
+    site_url = _public_site_url()
+    today = datetime.now(_tz.utc).strftime("%Y-%m-%d")
 
-    # 统计已发布文章总数 → 计算分页
-    total_result = await db.execute(
-        select(func.count()).select_from(Post).where(Post.status == "published")
-    )
-    total_posts = total_result.scalar() or 0
+    total_posts = (
+        await db.execute(
+            select(func.count()).select_from(Post).where(Post.status == "published")
+        )
+    ).scalar() or 0
     total_pages = max(1, (total_posts + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE)
 
-    entries: list[tuple[str, str]] = []
+    entries: list[tuple[str, str]] = [(f"{site_url}/sitemap-pages.xml", today)]
     for page in range(1, total_pages + 1):
-        entries.append((f"{base}/api/blog/sitemap-posts.xml?page={page}", ""))
+        entries.append((f"{site_url}/sitemap-posts.xml?page={page}", today))
+    entries.append((f"{site_url}/sitemap-taxonomies.xml", today))
 
-    # 分类/标签合并为一个子表
-    entries.append((f"{base}/api/blog/sitemap-taxonomies.xml", ""))
-
-    content = generate_sitemap_index(entries, base)
-    return Response(content=content, media_type="application/xml")
+    content = generate_sitemap_index(entries, site_url)
+    return Response(
+        content=content,
+        media_type="application/xml",
+        headers={"Cache-Control": _XML_CACHE},
+    )
 
 
 @router.get(
     "/sitemap-posts.xml",
     summary="文章 Sitemap（分页）",
-    description="按 page 参数返回单页文章 sitemap，每页最多 1000 条。",
+    description="按 page 参数返回单页文章 sitemap，每页最多 1000 条，含封面图。",
 )
 async def get_sitemap_posts(
     db: DB,
     page: int = Query(1, ge=1, description="页码，从 1 开始"),
 ):
-    """获取分页文章 Sitemap XML"""
-    from backend.core.config import settings
-
-    site_url = settings.site_url.rstrip("/")
+    """获取分页文章 Sitemap XML。"""
+    site_url = _public_site_url()
     offset = (page - 1) * SITEMAP_PAGE_SIZE
     posts_result = await db.execute(
         select(Post)
@@ -2724,24 +3244,54 @@ async def get_sitemap_posts(
     )
     posts = posts_result.scalars().all()
     content = generate_post_sitemap_page(posts, site_url)
-    return Response(content=content, media_type="application/xml")
+    return Response(
+        content=content,
+        media_type="application/xml",
+        headers={"Cache-Control": _XML_CACHE},
+    )
 
 
 @router.get(
     "/sitemap-taxonomies.xml",
-    summary="分类/标签 Sitemap",
-    description="返回分类与标签的 sitemap（合并文件）。",
+    summary="分类 / 标签 / 系列 Sitemap",
+    description="返回分类、标签、系列的索引页与详情页（合并文件）。",
 )
 async def get_sitemap_taxonomies(
     db: DB,
 ):
-    """获取分类/标签 Sitemap XML"""
-    from backend.core.config import settings
+    """获取分类 / 标签 / 系列 Sitemap XML。"""
+    from backend.models.post_series import PostSeries
 
-    site_url = settings.site_url.rstrip("/")
-    categories_result = await db.execute(select(Category))
-    categories = categories_result.scalars().all()
-    tags_result = await db.execute(select(Tag).where(Tag.is_active.is_(True)))
-    tags = tags_result.scalars().all()
-    content = generate_taxonomy_sitemap(categories, tags, site_url)
-    return Response(content=content, media_type="application/xml")
+    site_url = _public_site_url()
+    categories = (await db.execute(select(Category))).scalars().all()
+    tags = (await db.execute(select(Tag).where(Tag.is_active.is_(True)))).scalars().all()
+    series = (
+        await db.execute(select(PostSeries).where(PostSeries.is_active.is_(True)))
+    ).scalars().all()
+    content = generate_taxonomy_sitemap(categories, tags, site_url, series=series)
+    return Response(
+        content=content,
+        media_type="application/xml",
+        headers={"Cache-Control": _XML_CACHE},
+    )
+
+
+@router.get(
+    "/sitemap-pages.xml",
+    summary="静态路由 / 独立页面 Sitemap",
+    description="返回固定公开路由与已发布独立页面（/page/<slug>）。",
+)
+async def get_sitemap_pages(db: DB):
+    """获取静态路由 / 独立页面 Sitemap XML。"""
+    from backend.models.core import Page
+
+    site_url = _public_site_url()
+    pages = (
+        await db.execute(select(Page).where(Page.status == "published"))
+    ).scalars().all()
+    content = generate_pages_sitemap(pages, site_url)
+    return Response(
+        content=content,
+        media_type="application/xml",
+        headers={"Cache-Control": _XML_CACHE},
+    )

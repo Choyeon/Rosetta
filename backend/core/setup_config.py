@@ -104,6 +104,7 @@ class OOBEState:
 
     def to_dict(self) -> dict:
         """转换为字典（敏感字段以 SHA-256 摘要存储，不存明文）"""
+
         def _digest(val: str) -> str:
             return hashlib.sha256(val.encode()).hexdigest()[:16]
 
@@ -114,7 +115,9 @@ class OOBEState:
             "database_config": {
                 k: _digest(v) if k in ("db_password", "redis_password") else v
                 for k, v in self.database_config.items()
-            } if self.database_config else {},
+            }
+            if self.database_config
+            else {},
             "site_config": self.site_config.__dict__ if self.site_config else {},
             "admin_config": {
                 "username": self.admin_config.username,
@@ -336,10 +339,21 @@ class ConfigService:
         """从请求对象构建 SiteConfig（兼容 CombinedInstallRequest / SiteConfigRequest）"""
         sc = SiteConfig()
         for attr in (
-            "site_name", "site_title", "site_description", "site_keywords",
-            "site_author", "site_email", "site_url", "github_url", "x_url",
-            "bilibili_url", "footer_text", "enable_comments", "enable_registration",
-            "enable_rss", "default_cover_image",
+            "site_name",
+            "site_title",
+            "site_description",
+            "site_keywords",
+            "site_author",
+            "site_email",
+            "site_url",
+            "github_url",
+            "x_url",
+            "bilibili_url",
+            "footer_text",
+            "enable_comments",
+            "enable_registration",
+            "enable_rss",
+            "default_cover_image",
         ):
             val = getattr(req, attr, None)
             if val is not None:
@@ -354,12 +368,7 @@ class ConfigService:
         admin_qq = getattr(req, "admin_qq", None)
         admin_website = getattr(req, "admin_website", None)
         admin_email = getattr(req, "admin_email", None) or getattr(req, "email", None)
-        sc.author_name = (
-            getattr(req, "author_name", None)
-            or admin_nickname
-            or admin_username
-            or ""
-        )
+        sc.author_name = getattr(req, "author_name", None) or admin_nickname or admin_username or ""
         sc.author_bio = getattr(req, "author_bio", None) or admin_bio or ""
         sc.author_avatar = getattr(req, "author_avatar", None) or ""
         author_links_val = getattr(req, "author_links_json", None)
@@ -369,52 +378,62 @@ class ConfigService:
             # 基于 OOBE 管理员信息构造默认作者社交链接数组（JSON 字符串）
             try:
                 import json as _json
+
                 links: list[dict] = []
                 if admin_qq:
                     qq_url = (
-                        admin_qq
-                        if "://" in str(admin_qq)
-                        else f"https://qm.qq.com/q/{admin_qq}"
+                        admin_qq if "://" in str(admin_qq) else f"https://qm.qq.com/q/{admin_qq}"
                     )
-                    links.append({
-                        "name": "qq",
-                        "icon": "fa7-brands:qq",
-                        "url": qq_url,
-                        "showName": False,
-                    })
+                    links.append(
+                        {
+                            "name": "qq",
+                            "icon": "fa7-brands:qq",
+                            "url": qq_url,
+                            "showName": False,
+                        }
+                    )
                 if admin_github:
                     gh_url = (
                         admin_github
                         if "://" in str(admin_github)
                         else f"https://github.com/{admin_github}"
                     )
-                    links.append({
-                        "name": "GitHub",
-                        "icon": "fa7-brands:github",
-                        "url": gh_url,
-                        "showName": False,
-                    })
+                    links.append(
+                        {
+                            "name": "GitHub",
+                            "icon": "fa7-brands:github",
+                            "url": gh_url,
+                            "showName": False,
+                        }
+                    )
                 if admin_email:
-                    links.append({
-                        "name": "Email",
-                        "icon": "fa7-solid:envelope",
-                        "url": f"mailto:{admin_email}",
+                    links.append(
+                        {
+                            "name": "Email",
+                            "icon": "fa7-solid:envelope",
+                            "url": f"mailto:{admin_email}",
+                            "showName": False,
+                        }
+                    )
+                links.append(
+                    {
+                        "name": "RSS",
+                        "icon": "fa7-solid:rss",
+                        "url": "/rss/",
                         "showName": False,
-                    })
-                links.append({
-                    "name": "RSS",
-                    "icon": "fa7-solid:rss",
-                    "url": "/rss/",
-                    "showName": False,
-                })
+                    }
+                )
                 if admin_website:
                     # 个人站点放在 RSS 之前
-                    links.insert(-1, {
-                        "name": "Website",
-                        "icon": "material-symbols:language",
-                        "url": admin_website,
-                        "showName": False,
-                    })
+                    links.insert(
+                        -1,
+                        {
+                            "name": "Website",
+                            "icon": "material-symbols:language",
+                            "url": admin_website,
+                            "showName": False,
+                        },
+                    )
                 sc.author_links_json = _json.dumps(links, ensure_ascii=False)
             except Exception:
                 sc.author_links_json = "[]"

@@ -13,68 +13,90 @@
     </header>
 
     <!-- 标签云：按文章数倒序，数量越多字号越大 -->
-    <div class="card-surface no-glow rounded-2xl p-8 mb-10">
+    <div
+      v-if="_tagsLoading && sortedTags.length === 0"
+      class="card-surface no-glow rounded-2xl p-8 mb-10"
+    >
       <div class="flex flex-wrap items-center justify-center gap-3">
-        <NuxtLink
-          v-for="tag in sortedTags"
-          :key="tag.id"
-          :to="`/tags/${tag.slug}`"
-          class="no-underline"
-          :style="cloudStyle(tag)"
-        >
-          <TagBadge
-            :color="tag.color"
-            :label="tagName(tag)"
-            size="md"
-            show-icon
-          />
-          <span class="ml-1 text-[11px] text-muted-foreground tabular-nums">
-            {{ tagPostsCount(tag) }}
-          </span>
-        </NuxtLink>
         <div
-          v-if="sortedTags.length === 0"
-          class="text-center py-10 w-full text-muted-foreground"
-        >
-          {{ t('tags.noTags') }}
-        </div>
+          v-for="i in 12"
+          :key="i"
+          class="h-8 rounded-full bg-muted animate-pulse"
+          :style="{ width: `${40 + (i % 5) * 24}px` }"
+        />
       </div>
     </div>
 
-    <!-- 网格视图（带颜色预览） -->
-    <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-      <NuxtLink
-        v-for="tag in sortedTags"
-        :key="tag.id"
-        :to="`/tags/${tag.slug}`"
-        class="no-underline group"
-      >
-        <div class="card-surface glow-ring h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
-          <div class="flex items-center justify-between mb-3">
-            <div
-              class="size-8 rounded-lg flex items-center justify-center"
-              :style="{ background: tagChipBg(tag) }"
-            >
-              <Hash
-                class="size-4"
-                :style="{ color: tagTextColor(tag) }"
-              />
-            </div>
-            <span class="text-[11px] text-muted-foreground tabular-nums">
+    <div
+      v-else-if="tagsLoadError"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center mb-10"
+    >
+      {{ t('admin.posts.loadFailed') }}
+    </div>
+
+    <template v-else>
+      <div class="card-surface no-glow rounded-2xl p-8 mb-10">
+        <div class="flex flex-wrap items-center justify-center gap-3">
+          <NuxtLink
+            v-for="tag in sortedTags"
+            :key="tag.id"
+            v-memo="[tag.id, tag.slug, tag.color]"
+            :to="`/tags/${tag.slug}`"
+            class="no-underline"
+            :style="cloudStyle(tag)"
+          >
+            <TagBadge
+              :color="tag.color"
+              :label="tagName(tag)"
+              size="md"
+              show-icon
+            />
+            <span class="ml-1 text-[11px] text-muted-foreground tabular-nums">
               {{ tagPostsCount(tag) }}
             </span>
+          </NuxtLink>
+          <div
+            v-if="sortedTags.length === 0"
+            class="text-center py-10 w-full text-muted-foreground"
+          >
+            {{ t('tags.noTags') }}
           </div>
-          <h3 class="font-medium text-sm leading-snug line-clamp-1 group-hover:underline underline-offset-4 text-foreground">
-            {{ tagName(tag) }}
-          </h3>
         </div>
-      </NuxtLink>
-    </div>
+      </div>
+
+      <!-- 网格视图（带颜色预览） -->
+      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+        <NuxtLink
+          v-for="tag in sortedTags"
+          :key="tag.id"
+          v-memo="[tag.id, tag.slug, tag.color]"
+          :to="`/tags/${tag.slug}`"
+          class="no-underline group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        >
+          <div class="card-surface glow-ring h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
+            <div class="flex items-center justify-between mb-3">
+              <TagBadge
+                :color="tag.color"
+                :label="tagName(tag)"
+                size="md"
+                show-icon
+              />
+              <span class="text-[11px] text-muted-foreground tabular-nums">
+                {{ tagPostsCount(tag) }}
+              </span>
+            </div>
+            <h3 class="font-medium text-sm leading-snug line-clamp-1 group-hover:underline underline-offset-4 text-foreground">
+              {{ tagName(tag) }}
+            </h3>
+          </div>
+        </NuxtLink>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Tags, Hash } from '@lucide/vue'
+import { Tags } from '@lucide/vue'
 import TagBadge from '~~/components/TagBadge.vue'
 import { watch, computed } from 'vue'
 
@@ -106,7 +128,7 @@ interface TagRow {
 
 // SSR 与客户端首渲染统一为空数组（空 = 无标签占位，避免显示假数据）。
 // 首屏渲染用 useSSR 友好的 useAPI，失败或空都保持空态，绝不回退到示例标签。
-const { data: tagsData, pending: _tagsLoading, refresh: refreshTags } = await useAPI<TagRow[]>('/blog/tags', {
+const { data: tagsData, pending: _tagsLoading, error: tagsLoadError, refresh: refreshTags } = useAPI<TagRow[]>('/blog/tags', {
   query: { lang: locale.value },
   key: computed(() => 'tags:list:' + (locale.value || 'zh')),
   default: () => []
@@ -154,64 +176,6 @@ const countToScale = (n: number) => {
 const cloudStyle = (tag: TagRow): Record<string, string> => {
   const scale = countToScale(tagPostsCount(tag))
   return { fontSize: scale.size, fontWeight: scale.weight }
-}
-
-/** 将 hex 色值融合为柔和卡片顶色块（CSS color-mix）。 */
-const tagChipBg = (tag: TagRow): string => {
-  const hex = tag.color?.trim()
-  if (!hex || !/^#?[0-9a-f]{6}$/i.test(hex)) return 'hsl(var(--muted))'
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  if (!m) return 'hsl(var(--muted))'
-  const r = parseInt(m[1] ?? '00', 16) / 255
-  const g = parseInt(m[2] ?? '00', 16) / 255
-  const b = parseInt(m[3] ?? '00', 16) / 255
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  let h = 0
-  let s = 0
-  const l = (max + min) / 2
-  if (max !== min) {
-    const d = max - min
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r: {
-        h = (g - b) / d + (g < b ? 6 : 0)
-        break
-      }
-      case g: {
-        h = (b - r) / d + 2
-        break
-      }
-      case b: {
-        h = (r - g) / d + 4
-        break
-      }
-      default: break
-    }
-    h *= 60
-  }
-  const hsl = `${h} ${s * 100}% ${l * 100}%`
-  return `color-mix(in oklab, hsl(${hsl}) 30%, hsl(var(--muted)))`
-}
-
-/** 相对亮度选择前景色，确保彩色 icon 在卡片上可读。 */
-function hexRelativeLuminance(hex: string): number {
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex)
-  if (!m) return 0.5
-  const toLin = (v: number) => {
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4
-  }
-  const r = toLin(parseInt(m[1] ?? '00', 16) / 255)
-  const g = toLin(parseInt(m[2] ?? '00', 16) / 255)
-  const b = toLin(parseInt(m[3] ?? '00', 16) / 255)
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b
-}
-
-const tagTextColor = (tag: TagRow): string => {
-  const col = tag.color?.trim()
-  if (!col) return 'hsl(var(--foreground))'
-  const lum = hexRelativeLuminance(col)
-  return lum > 0.55 ? '#0f172a' : lum > 0.3 ? '#0f172a' : '#ffffff'
 }
 
 // useAPI 已在顶层 await 进行 SSR 安全拉取；失败时自动回退空数组 default() => []，无示例标签残留。

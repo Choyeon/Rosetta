@@ -14,9 +14,11 @@ import {
   Palette,
   Check,
   Sparkles,
+  Play,
   ChevronRight,
   LayoutDashboard,
-  CheckCircle2
+  CheckCircle2,
+  BookOpen
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -85,9 +87,9 @@ interface Theme {
 }
 
 const { t: $_t } = useI18n()
-const t = (k: string, fallback: string) => {
+const t = (k: string, fallback: string, values?: Record<string, unknown>) => {
   try {
-    const v = $_t(k)
+    const v = values ? $_t(k, values) : $_t(k)
     return v && v !== k ? v : fallback
   } catch {
     return fallback
@@ -364,6 +366,97 @@ function stubToast(msg: string) {
   toast.info(msg)
 }
 
+// ===== 预览：打开前台首页并附带 ?rosetta_theme_preview=<slug> =====
+// useFrontendTheme.ensureLoaded() 读取该 query（仅限 KNOWN_ROSETTA_THEMES 白名单）
+// 临时覆盖 active slug，不改动后端激活主题。新标签页打开，避免丢失后台上下文。
+function previewTheme(theme: Theme) {
+  if (!import.meta.client) return
+  window.open(
+    `/?rosetta_theme_preview=${encodeURIComponent(theme.slug)}`,
+    '_blank',
+    'noopener,noreferrer'
+  )
+}
+
+// ===== 安装新主题：三来源（local / remote / upload）=====
+const installOpen = ref(false)
+const installSource = ref<'local' | 'remote' | 'upload'>('local')
+const installBusy = ref(false)
+const installLocalSlug = ref('')
+const installRemoteUrl = ref('')
+const installRemoteChecksum = ref('')
+const installFile = ref<File | null>(null)
+const installError = ref('')
+
+function openInstall() {
+  installSource.value = 'local'
+  installLocalSlug.value = ''
+  installRemoteUrl.value = ''
+  installRemoteChecksum.value = ''
+  installFile.value = null
+  installError.value = ''
+  installOpen.value = true
+}
+
+function onInstallSourceChange(v: unknown) {
+  const s = String(v ?? 'local')
+  installSource.value = s === 'remote' || s === 'upload' ? s : 'local'
+  installError.value = ''
+}
+
+function onInstallFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  installFile.value = input.files?.[0] ?? null
+  installError.value = ''
+}
+
+async function submitInstall() {
+  installError.value = ''
+  installBusy.value = true
+  try {
+    if (installSource.value === 'local') {
+      const slug = installLocalSlug.value.trim()
+      if (!slug) {
+        installError.value = t('admin.themes.installNeedSlug', '请填写主题 slug')
+        return
+      }
+      await apiFetch('/admin/themes?source=local', { method: 'POST', body: { slug } })
+    } else if (installSource.value === 'remote') {
+      const url = installRemoteUrl.value.trim()
+      if (!url) {
+        installError.value = t('admin.themes.installNeedUrl', '请填写主题包 URL')
+        return
+      }
+      const remote: Record<string, string> = { url }
+      const cs = installRemoteChecksum.value.trim()
+      if (cs) remote.checksum_sha256 = cs
+      await apiFetch('/admin/themes?source=remote', { method: 'POST', body: { remote } })
+    } else {
+      if (!installFile.value) {
+        installError.value = t('admin.themes.installNeedFile', '请选择 zip 文件')
+        return
+      }
+      const fd = new FormData()
+      fd.append('file', installFile.value)
+      await apiFetch('/admin/themes?source=upload', { method: 'POST', body: fd })
+    }
+    toast.success(t('admin.themes.installDone', '主题安装成功'))
+    installOpen.value = false
+    reload()
+  } catch (err) {
+    const msg = err && typeof err === 'object' && 'message' in err
+      ? String((err as { message?: unknown }).message ?? '')
+      : ''
+    installError.value = msg || t('admin.themes.installFailed', '安装失败')
+  } finally {
+    installBusy.value = false
+  }
+}
+
+function openThemeDocs() {
+  navigateTo('/admin/docs/theme-tutorial')
+}
+
 function normalizeScreenshotUrl(slug: string | undefined, src: string): string {
   if (!src) return ''
   if (/^https?:\/\//i.test(src) || src.startsWith('/')) return src
@@ -414,9 +507,18 @@ onMounted(() => {
           <Button
             variant="outline"
             size="sm"
+            class="text-primary hover:text-primary hover:bg-primary/5"
+            @click="openThemeDocs"
+          >
+            <BookOpen data-icon="inline-start" />
+            {{ t('admin.themes.docs', '主题文档') }}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             @click="reload"
           >
-            <RefreshCw class="size-4" />
+            <RefreshCw data-icon="inline-start" />
             {{ t('admin.actions.refresh', '刷新') }}
           </Button>
           <Button
@@ -424,16 +526,16 @@ onMounted(() => {
             size="sm"
             @click="scan"
           >
-            <FolderSearch class="size-4" />
+            <FolderSearch data-icon="inline-start" />
             {{ t('admin.themes.scan', '扫描本地') }}
           </Button>
           <Button
             variant="default"
             size="sm"
             class="shadow-soft"
-            @click="stubToast(t('admin.themes.installHint', '请通过后端或 CLI 安装新主题'))"
+            @click="openInstall"
           >
-            <UploadCloud class="size-4" />
+            <UploadCloud data-icon="inline-start" />
             {{ t('admin.themes.install', '安装新主题') }}
           </Button>
         </div>
@@ -545,7 +647,7 @@ onMounted(() => {
         <div class="ml-auto flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
           <Sparkles class="size-3.5 text-primary/70" />
           <span class="tabular-nums">
-            {{ totalCount }} {{ t('admin.themes.itemsUnit', '个主题') }} · {{ t('admin.pagination.page', '第') }} {{ page }} / {{ totalPages }} {{ t('admin.pagination.pageSuffix', '页') }}
+            {{ totalCount }} {{ t('admin.themes.itemsUnit', '个主题') }} · {{ t('admin.pagination.page', '第 {page} 页', { page }) }} / {{ totalPages }}
           </span>
         </div>
       </CardContent>
@@ -603,7 +705,7 @@ onMounted(() => {
               size="sm"
               @click="scan"
             >
-              <Sparkles class="size-4" />
+              <Sparkles data-icon="inline-start" />
               {{ t('admin.themes.scan', '扫描本地') }}
             </Button>
           </div>
@@ -690,9 +792,9 @@ onMounted(() => {
                     variant="default"
                     size="sm"
                     class="flex-1 rounded-xl shadow-soft bg-white/95 text-foreground hover:bg-white backdrop-blur"
-                    @click="stubToast(t('admin.themes.previewStub', '实时预览暂未实现'))"
+                    @click="previewTheme(theme)"
                   >
-                    <Eye class="size-3.5" />
+                    <Eye data-icon="inline-start" />
                     {{ t('admin.themes.preview', '预览') }}
                   </Button>
                   <Button
@@ -702,7 +804,7 @@ onMounted(() => {
                     class="flex-1 rounded-xl shadow-soft"
                     @click="openCustomizer(theme)"
                   >
-                    <SlidersHorizontal class="size-3.5" />
+                    <SlidersHorizontal data-icon="inline-start" />
                     {{ t('admin.themes.customize', '自定义') }}
                   </Button>
                 </div>
@@ -768,7 +870,10 @@ onMounted(() => {
                     class="flex-1 rounded-xl"
                     disabled
                   >
-                    <CheckCircle2 class="size-4 mr-1 text-success" />
+                    <CheckCircle2
+                      data-icon="inline-start"
+                      class="mr-1 text-success"
+                    />
                     {{ t('admin.themes.isActive', '已激活') }}
                   </Button>
                 </template>
@@ -778,7 +883,10 @@ onMounted(() => {
                     class="flex-1 rounded-xl shadow-soft/60"
                     @click="activateTheme(theme)"
                   >
-                    <Sparkles class="size-4 mr-1" />
+                    <Play
+                      data-icon="inline-start"
+                      class="mr-1"
+                    />
                     {{ t('admin.themes.activate', '启用') }}
                   </Button>
                 </template>
@@ -789,7 +897,7 @@ onMounted(() => {
                   :title="theme.mods_schema ? t('admin.themes.customize', '自定义') : t('admin.themes.noCustomizeHint', '该主题无可自定义项')"
                   @click="openCustomizer(theme)"
                 >
-                  <SlidersHorizontal class="size-4" />
+                  <SlidersHorizontal data-icon="inline-start" />
                 </Button>
                 <Button
                   variant="outline"
@@ -798,7 +906,7 @@ onMounted(() => {
                   :title="theme.is_active ? t('admin.themes.cannotDeleteActive', '当前激活的主题无法删除') : t('admin.themes.delete', '删除')"
                   @click="confirmDelete(theme)"
                 >
-                  <Trash2 class="size-4" />
+                  <Trash2 data-icon="inline-start" />
                 </Button>
               </div>
 
@@ -809,7 +917,7 @@ onMounted(() => {
                 @click.prevent="stubToast(t('admin.themes.parentHint', '父主题占位'))"
               >
                 <span>
-                  {{ t('admin.themes.childOf', '子主题：继承自 {name}').replace('{name}', theme.parent_theme) }}
+                  {{ t('admin.themes.childOf', '子主题：继承自 {name}', { name: theme.parent_theme }) }}
                 </span>
                 <ChevronRight class="size-3 opacity-60" />
               </a>
@@ -840,7 +948,7 @@ onMounted(() => {
             </Button>
           </div>
           <span class="text-xs text-muted-foreground tabular-nums">
-            {{ totalCount }} {{ t('admin.themes.itemsUnit', '个主题') }} · {{ t('admin.pagination.page', '第') }} {{ page }} / {{ totalPages }} {{ t('admin.pagination.pageSuffix', '页') }}
+            {{ totalCount }} {{ t('admin.themes.itemsUnit', '个主题') }} · {{ t('admin.pagination.page', '第 {page} 页', { page }) }} / {{ totalPages }}
           </span>
         </div>
         <div class="flex items-center justify-end gap-2">
@@ -964,7 +1072,7 @@ onMounted(() => {
               <template v-if="schema.type === 'boolean'">
                 <div class="flex items-center gap-2">
                   <Switch
-                    :checked="modsForm[key] === true"
+                    :model-value="modsForm[key] === true"
                     @update:model-value="(v: boolean) => (modsForm[key] = v)"
                   />
                   <span class="text-xs text-muted-foreground">
@@ -1116,11 +1224,14 @@ onMounted(() => {
             @click="saveMods"
           >
             <template v-if="modsSaving">
-              <RefreshCw class="size-4 animate-spin" />
+              <RefreshCw
+                data-icon="inline-start"
+                class="animate-spin"
+              />
               {{ t('admin.actions.saving', '保存中…') }}
             </template>
             <template v-else>
-              <Sparkles class="size-4" />
+              <Sparkles data-icon="inline-start" />
               {{ t('admin.actions.save', '保存') }}
             </template>
           </Button>
@@ -1145,7 +1256,8 @@ onMounted(() => {
                   currentTheme
                     ? t(
                       'admin.themes.confirmDelete',
-                      '即将删除主题「{name}」，删除后无法撤销，主题自定义与配置将一并移除。'
+                      '即将删除主题「{name}」，删除后无法撤销，主题自定义与配置将一并移除。',
+                      { name: currentTheme.name }
                     ).replace('{name}', currentTheme.name)
                     : ''
                 }}
@@ -1164,8 +1276,145 @@ onMounted(() => {
             variant="destructive"
             @click="doDelete"
           >
-            <Trash2 class="size-4" />
+            <Trash2 data-icon="inline-start" />
             {{ t('admin.actions.delete', '删除') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Install Dialog -->
+    <Dialog v-model:open="installOpen">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle class="flex items-center gap-2.5 font-display">
+            <span class="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <UploadCloud class="size-4.5" />
+            </span>
+            {{ t('admin.themes.install', '安装新主题') }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ t('admin.themes.installDesc', '从本地目录、远程 URL 或上传 zip 包安装主题。') }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-2">
+            <Label class="text-sm font-medium">
+              {{ t('admin.themes.installSource', '安装来源') }}
+            </Label>
+            <Select
+              :model-value="installSource"
+              @update:model-value="onInstallSourceChange"
+            >
+              <SelectTrigger class="rounded-xl">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">
+                  {{ t('admin.themes.sourceLocal', '本地目录扫描') }}
+                </SelectItem>
+                <SelectItem value="remote">
+                  {{ t('admin.themes.sourceRemote', '远程 URL 下载') }}
+                </SelectItem>
+                <SelectItem value="upload">
+                  {{ t('admin.themes.sourceUpload', '上传 zip 包') }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            v-if="installSource === 'local'"
+            class="flex flex-col gap-2"
+          >
+            <Label class="text-sm font-medium">
+              {{ t('admin.themes.installSlug', '主题 slug') }}
+            </Label>
+            <Input
+              v-model="installLocalSlug"
+              class="rounded-xl font-mono text-sm"
+              placeholder="astro-paper-inspired"
+            />
+            <p class="text-xs text-muted-foreground">
+              {{ t('admin.themes.installLocalHint', '主题需已存在于服务器 themes/ 目录，可先点「扫描本地」。') }}
+            </p>
+          </div>
+
+          <div
+            v-else-if="installSource === 'remote'"
+            class="flex flex-col gap-3"
+          >
+            <div class="flex flex-col gap-2">
+              <Label class="text-sm font-medium">
+                {{ t('admin.themes.installUrl', '主题包 URL') }}
+              </Label>
+              <Input
+                v-model="installRemoteUrl"
+                type="url"
+                class="rounded-xl"
+                placeholder="https://example.com/theme.zip"
+              />
+            </div>
+            <div class="flex flex-col gap-2">
+              <Label class="text-sm font-medium">
+                {{ t('admin.themes.installChecksum', 'SHA256 校验和（可选）') }}
+              </Label>
+              <Input
+                v-model="installRemoteChecksum"
+                class="rounded-xl font-mono text-xs"
+                :placeholder="t('admin.themes.installChecksumHint', '留空则跳过校验')"
+              />
+            </div>
+          </div>
+
+          <div
+            v-else
+            class="flex flex-col gap-2"
+          >
+            <Label class="text-sm font-medium">
+              {{ t('admin.themes.installFile', 'zip 文件') }}
+            </Label>
+            <Input
+              type="file"
+              accept=".zip,application/zip"
+              class="rounded-xl"
+              @change="onInstallFileChange"
+            />
+          </div>
+
+          <p
+            v-if="installError"
+            class="text-xs text-destructive flex items-center gap-1"
+          >
+            <AlertTriangle class="size-3.5 shrink-0" />
+            {{ installError }}
+          </p>
+        </div>
+
+        <DialogFooter class="gap-2 sm:gap-0">
+          <DialogClose as-child>
+            <Button variant="ghost">
+              {{ t('admin.actions.cancel', '取消') }}
+            </Button>
+          </DialogClose>
+          <Button
+            variant="default"
+            class="shadow-soft"
+            :disabled="installBusy"
+            @click="submitInstall"
+          >
+            <template v-if="installBusy">
+              <RefreshCw
+                data-icon="inline-start"
+                class="animate-spin"
+              />
+              {{ t('admin.themes.installing', '安装中…') }}
+            </template>
+            <template v-else>
+              <UploadCloud data-icon="inline-start" />
+              {{ t('admin.themes.installAction', '安装') }}
+            </template>
           </Button>
         </DialogFooter>
       </DialogContent>

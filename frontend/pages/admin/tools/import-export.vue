@@ -1,20 +1,10 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center gap-3">
-      <div
-        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-      >
-        <ArrowLeftRight class="size-5 text-white" />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">
-          导入导出
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          跨平台文章数据迁移与备份
-        </p>
-      </div>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="导入导出"
+      description="跨平台文章数据迁移与备份"
+      :icon="ArrowLeftRight"
+    />
 
     <Tabs
       v-model="activeTab"
@@ -39,11 +29,11 @@
 
       <TabsContent
         value="export"
-        class="mt-6 space-y-5"
+        class="flex flex-col gap-5 mt-6"
       >
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
-            <div class="size-9 rounded-lg bg-warning-muted flex items-center justify-center text-warning-foreground">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
+            <div class="size-9 rounded-lg bg-warning-muted flex items-center justify-center text-warning-muted-foreground">
               <FileJson class="size-5" />
             </div>
             <div class="flex-1">
@@ -85,8 +75,8 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
-            <div class="size-9 rounded-lg bg-info-muted flex items-center justify-center text-info-foreground">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
+            <div class="size-9 rounded-lg bg-info-muted flex items-center justify-center text-info-muted-foreground">
               <Filter class="size-5" />
             </div>
             <div class="flex-1">
@@ -98,7 +88,7 @@
               </p>
             </div>
           </div>
-          <div class="space-y-4">
+          <div class="flex flex-col gap-4">
             <div class="inline-flex rounded-xl border border-border p-1 bg-card">
               <button
                 v-for="s in scopes"
@@ -114,7 +104,7 @@
             </div>
             <div
               v-if="exportForm.scope === 'category'"
-              class="space-y-2"
+              class="flex flex-col gap-2"
             >
               <Label class="text-sm">指定分类（多选）</Label>
               <div class="rounded-xl border border-border p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto bg-muted/20">
@@ -125,14 +115,14 @@
                 >
                   <input
                     type="checkbox"
-                    class="accent-[#0EA5E9]"
+                    class="accent-[hsl(var(--primary))]"
                   >
                   分类 {{ ['技术', '生活', '随笔', '教程', '笔记', '资源'][i - 1] }}
                 </label>
               </div>
             </div>
             <div class="grid md:grid-cols-1 gap-4">
-              <div class="space-y-2">
+              <div class="flex flex-col gap-2">
                 <Label class="text-sm flex items-center gap-1.5">
                   <CalendarDays class="size-3.5 text-primary" />
                   按创建日期范围筛选（选完开始会自动弹出结束）
@@ -193,8 +183,8 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
-            <div class="size-9 rounded-lg bg-success-muted flex items-center justify-center text-success-foreground">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
+            <div class="size-9 rounded-lg bg-success-muted flex items-center justify-center text-success-muted-foreground">
               <Rocket class="size-5" />
             </div>
             <div class="flex-1">
@@ -206,7 +196,7 @@
               </p>
             </div>
           </div>
-          <div class="space-y-4">
+          <div class="flex flex-col gap-4">
             <div class="flex flex-col sm:flex-row sm:items-center gap-4">
               <Button
                 :disabled="exporting"
@@ -215,11 +205,12 @@
               >
                 <Loader2
                   v-if="exporting"
-                  class="size-4 animate-spin"
+                  data-icon="inline-start"
+                  class="animate-spin"
                 />
                 <Package
                   v-else
-                  class="size-4"
+                  data-icon="inline-start"
                 />
                 {{ exporting ? '正在生成...' : '生成导出文件' }}
               </Button>
@@ -254,7 +245,10 @@
                     class="mt-3 rounded-lg bg-success hover:bg-success/90"
                     @click="doDownload"
                   >
-                    <Download class="size-4 mr-1.5" /> 立即下载
+                    <Download
+                      data-icon="inline-start"
+                      class="mr-1.5"
+                    /> 立即下载
                   </Button>
                 </div>
               </div>
@@ -265,10 +259,10 @@
 
       <TabsContent
         value="import"
-        class="mt-6 space-y-5"
+        class="flex flex-col gap-5 mt-6"
       >
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
             <div class="size-9 rounded-lg bg-primary-muted flex items-center justify-center text-primary-foreground">
               <FileInput class="size-5" />
             </div>
@@ -311,8 +305,8 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
-            <div class="size-9 rounded-lg bg-warning-muted flex items-center justify-center text-warning-foreground">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
+            <div class="size-9 rounded-lg bg-warning-muted flex items-center justify-center text-warning-muted-foreground">
               <UploadCloud class="size-5" />
             </div>
             <div class="flex-1">
@@ -326,8 +320,8 @@
           </div>
           <div>
             <div
-              class="rounded-2xl border-2 border-dashed border-border hover:border-[#0EA5E9]/50 bg-muted/20 hover:bg-muted/40 transition-all p-8 text-center cursor-pointer"
-              :class="{ 'border-[#0EA5E9] bg-[#0EA5E9]/5': dragging }"
+              class="rounded-2xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40 transition-all p-8 text-center cursor-pointer"
+              :class="{ 'border-primary bg-primary/5': dragging }"
               @click="fileInput?.click()"
               @dragover.prevent="dragging = true"
               @dragleave.prevent="dragging = false"
@@ -347,7 +341,7 @@
               </div>
               <div
                 v-if="!importForm.file"
-                class="space-y-1"
+                class="flex flex-col gap-1"
               >
                 <p class="font-semibold">
                   拖拽文件到此处，或点击选择文件
@@ -358,7 +352,7 @@
               </div>
               <div
                 v-else
-                class="space-y-1"
+                class="flex flex-col gap-1"
               >
                 <p class="font-semibold truncate">
                   {{ importForm.file.name }}
@@ -380,7 +374,7 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
             <div class="size-9 rounded-lg bg-muted flex items-center justify-center text-muted-foreground">
               <Settings2 class="size-5" />
             </div>
@@ -393,7 +387,7 @@
               </p>
             </div>
           </div>
-          <div class="space-y-3">
+          <div class="flex flex-col gap-3">
             <label
               v-for="opt in importOptions"
               :key="opt.key"
@@ -403,7 +397,7 @@
                 :model-value="importForm.opts[opt.key]"
                 @update:model-value="importForm.opts[opt.key] = !!$event"
               />
-              <div class="space-y-0.5">
+              <div class="flex flex-col gap-0 .5">
                 <div class="font-medium">{{ opt.label }}</div>
                 <div class="text-sm text-muted-foreground">{{ opt.desc }}</div>
               </div>
@@ -412,8 +406,8 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="space-y-5 pt-6">
-            <div class="space-y-2">
+          <div class="flex flex-col gap-5 pt-6">
+            <div class="flex flex-col gap-2">
               <div class="flex items-center justify-between">
                 <span class="font-medium">导入进度</span>
                 <span class="text-sm text-muted-foreground tabular-nums">{{ importProgress }}%</span>
@@ -440,7 +434,7 @@
               </p>
               <p
                 v-else
-                class="text-sm text-success-foreground font-medium"
+                class="text-sm text-success-muted-foreground font-medium"
               >
                 ✓ 导入完成
               </p>
@@ -451,11 +445,12 @@
               >
                 <Loader2
                   v-if="importing"
-                  class="size-4 animate-spin"
+                  data-icon="inline-start"
+                  class="animate-spin"
                 />
                 <Play
                   v-else
-                  class="size-4"
+                  data-icon="inline-start"
                 />
                 {{ importing ? '导入中...' : '开始导入' }}
               </Button>
@@ -468,7 +463,7 @@
             >
               <CheckCircle class="size-4" />
               <AlertTitle>导入完成</AlertTitle>
-              <AlertDescription class="space-y-1">
+              <AlertDescription class="flex flex-col gap-1">
                 <div>
                   成功导入 <b>{{ importResult.created }}</b> 篇
                   <span v-if="importResult.skipped > 0">，跳过 <b class="text-muted-foreground">{{ importResult.skipped }}</b> 篇</span>
@@ -482,7 +477,7 @@
                 </p>
                 <ul
                   v-if="importResult.errors && importResult.errors.length"
-                  class="text-[11px] text-muted-foreground list-disc pl-4 mt-2 space-y-0.5"
+                  class="flex flex-col gap-0 text-[11px] text-muted-foreground list-disc pl-4 mt-2 .5"
                 >
                   <li
                     v-for="(err, i) in importResult.errors.slice(0, 5)"

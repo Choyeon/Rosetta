@@ -125,7 +125,7 @@ const endOffset = computed(() => Math.min(props.total, props.page * props.pageSi
               :disabled="page <= 1"
               @click="goPrev"
             >
-              <ChevronLeft class="size-4" />
+              <ChevronLeft data-icon="inline-start" />
             </Button>
           </PaginationItem>
           <PaginationItem :value="page">
@@ -141,7 +141,7 @@ const endOffset = computed(() => Math.min(props.total, props.page * props.pageSi
               :disabled="page >= Math.max(1, totalPages)"
               @click="goNext"
             >
-              <ChevronRight class="size-4" />
+              <ChevronRight data-icon="inline-start" />
             </Button>
           </PaginationItem>
         </PaginationContent>

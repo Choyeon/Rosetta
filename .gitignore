@@ -116,3 +116,6 @@ temp/
 .kiro/
 .workbuddy/
 .backups/
+
+# --- runtime PID dir (dev.ps1/stop.ps1) ---
+.rosetta_run/

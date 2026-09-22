@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from datetime import datetime
 from typing import Any
 
@@ -22,6 +23,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.cache import cache, make_cache_key
 from backend.core.logging_middleware import log_operation
 from backend.models.core import SiteConfig
 
@@ -49,6 +51,40 @@ SETTING_GROUPS_17 = [
     "sidebar",
     "footer",
 ]
+
+# ===== 公开可读分组（GET /api/settings/public，无需登录）=====
+# 背景：站点前台（首页 / 文章 / 关于 …）需要读取 hero / footer / appearance 等分组来渲染，
+# 而这些内容本质上就是要展示给所有访客看的公开素材。若强制要求 admin 身份，
+# 未登录访客必然收到 401 —— 既污染浏览器控制台，也让管理员配置的 hero/公告在前台永远不生效。
+# 因此这里显式声明「可以安全下发给所有人」的分组名单。
+PUBLIC_SETTING_GROUPS = [
+    "basic",
+    "appearance",
+    "hero",
+    "footer",
+    "seo",
+    "notice",
+    "sidebar",
+    "navigation",
+    "friendlinks",
+    "reading",
+    "features",
+]
+
+# 即便在公开分组内，这些键也一律脱敏（避免误配导致凭据外泄）
+_SENSITIVE_KEY_RE = re.compile(r"(password|secret|token|api_?key|private_key|authorization)", re.I)
+
+
+def _redact(data: dict) -> dict:
+    """把 dict 中疑似敏感键的值替换为掩码字符串（仅在顶层做一次浅层脱敏即可，
+    因为 17 组配置的值都是扁平标量 / 一维数组）。"""
+    out: dict[str, Any] = {}
+    for k, v in data.items():
+        if _SENSITIVE_KEY_RE.search(str(k)) and v not in (None, "", [], {}):
+            out[k] = "******"
+        else:
+            out[k] = v
+    return out
 
 
 def _default_basic() -> dict:
@@ -346,13 +382,44 @@ class SettingsGroupResponse(BaseModel):
     data: dict
 
 
-@router.get("")
+@router.get("/public", summary="公开站设置（无需登录）")
+async def get_public_settings(db: DB):
+    """
+    匿名可读的站点配置子集。
+
+    - 只对 PUBLIC_SETTING_GROUPS 白名单内的分组下发
+    - 白名单内疑似敏感键（password/secret/token/api_key/...）统一脱敏为 "******"
+    - 结果缓存 300s（前台每个页面都会读一次，避免每次 SSR 都打 DB）
+    """
+    cache_key = make_cache_key("settings_public")
+    cached = await cache.get(cache_key)
+    if cached and isinstance(cached, dict):
+        return {"groups": cached}
+
+    all_groups = await _load_all_groups(db)
+    public = {g: _redact(all_groups[g]) for g in PUBLIC_SETTING_GROUPS if g in all_groups}
+    try:
+        await cache.set(cache_key, public, 300)
+    except Exception:  # 缓存不可用不影响正常响应
+        logger.debug("cache set for public settings failed", exc_info=True)
+    return {"groups": public}
+
+
+@router.get(
+    "",
+    summary="获取所有设置分组",
+    description="返回所有站点设置分组及其配置项，需管理员权限。",
+)
 async def get_all_settings(db: DB, current_user: CurrentStaff):
     data = await _load_all_groups(db)
     return {"groups": data}
 
 
-@router.get("/{group}")
+@router.get(
+    "/{group}",
+    summary="获取单个设置分组",
+    description="返回指定分组的配置项，需管理员权限。",
+)
 async def get_one_setting(
     db: DB,
     current_user: CurrentStaff,
@@ -364,7 +431,11 @@ async def get_one_setting(
     return SettingsGroupResponse(group=group, data=all_g[group])
 
 
-@router.patch("/{group}")
+@router.patch(
+    "/{group}",
+    summary="更新单个设置分组",
+    description="批量更新指定分组的配置项，需管理员权限。",
+)
 async def patch_one_setting(
     request: Request,
     db: DB,
@@ -394,4 +465,10 @@ async def patch_one_setting(
         status="success",
     )
     await db.commit()
+    # 前台 ANY 页面都在读 /settings/public（含 300s 缓存），保存后必须立刻失效，
+    # 否则管理员保存 hero/footer/公告后前台最长 5 分钟看不到更新。
+    try:
+        await cache.delete(make_cache_key("settings_public"))
+    except Exception:
+        logger.debug("cache delete for public settings failed", exc_info=True)
     return {"success": True, "group": group, "data": saved, "changed": list(diff.keys())}

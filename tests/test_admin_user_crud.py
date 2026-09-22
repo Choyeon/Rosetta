@@ -15,7 +15,6 @@ from httpx import AsyncClient
 
 from backend.models.user import User
 
-
 # ============================= 1.1 列表 / 搜索 / 筛选 / 分页 =============================
 
 
@@ -43,7 +42,10 @@ class TestUserListPagination:
         "keyword, must_match_username_or_email_contains",
         [
             ("admin", "admin"),
-            ("test", "test"),  # 后端可能用的是 keyword 而非 search 子句的 email=test@ 模糊匹配（需要子串）
+            (
+                "test",
+                "test",
+            ),  # 后端可能用的是 keyword 而非 search 子句的 email=test@ 模糊匹配（需要子串）
             ("batch", "batch"),  # 见 make_users 工厂 username 前缀
         ],
     )
@@ -132,14 +134,10 @@ class TestUserListPagination:
         assert expected_count_predicate(len(items))
 
     @pytest.mark.asyncio
-    async def test_u_l5_page_size(
-        self, client: AsyncClient, admin_headers: dict, make_users
-    ):
+    async def test_u_l5_page_size(self, client: AsyncClient, admin_headers: dict, make_users):
         """U-L5: 切换每页大小 — 10/20/50 行数随之变化"""
         await make_users(35, prefix="psz")
-        r10 = await client.get(
-            "/api/admin/users", headers=admin_headers, params={"page_size": 10}
-        )
+        r10 = await client.get("/api/admin/users", headers=admin_headers, params={"page_size": 10})
         assert r10.status_code == 200
         assert len(r10.json()["items"]) <= 10
         r50 = await client.get(
@@ -190,23 +188,15 @@ class TestUserRowActions:
         self, client: AsyncClient, admin_headers: dict, test_user: User
     ):
         """U-R3: 封禁 → 解封，后端 is_banned 切换正确"""
-        ban_r = await client.post(
-            f"/api/admin/users/{test_user.id}/ban", headers=admin_headers
-        )
+        ban_r = await client.post(f"/api/admin/users/{test_user.id}/ban", headers=admin_headers)
         assert ban_r.status_code == 200, f"封禁失败: {ban_r.text}"
         # 验证 is_banned=true
-        detail_r = await client.get(
-            f"/api/admin/users/{test_user.id}", headers=admin_headers
-        )
+        detail_r = await client.get(f"/api/admin/users/{test_user.id}", headers=admin_headers)
         assert detail_r.json().get("is_banned") is True
 
-        unban_r = await client.post(
-            f"/api/admin/users/{test_user.id}/unban", headers=admin_headers
-        )
+        unban_r = await client.post(f"/api/admin/users/{test_user.id}/unban", headers=admin_headers)
         assert unban_r.status_code == 200
-        detail_r2 = await client.get(
-            f"/api/admin/users/{test_user.id}", headers=admin_headers
-        )
+        detail_r2 = await client.get(f"/api/admin/users/{test_user.id}", headers=admin_headers)
         assert detail_r2.json().get("is_banned") is False
 
     @pytest.mark.asyncio
@@ -242,22 +232,14 @@ class TestUserRowActions:
         self, client: AsyncClient, admin_headers: dict, test_user: User
     ):
         """U-R5: 删除用户（软删除）——删除接口成功，再 GET 可能 404 或 is_banned/软删除标记"""
-        del_r = await client.delete(
-            f"/api/admin/users/{test_user.id}", headers=admin_headers
-        )
+        del_r = await client.delete(f"/api/admin/users/{test_user.id}", headers=admin_headers)
         assert del_r.status_code in (200, 204), f"删除失败: {del_r.text}"
         # 软删除策略：后端 admin_delete_user 标记为 "软删除"（注释写明），
         # 再 GET 详情接口可能 404（已过滤）或 200 带 is_banned=True / deleted_at 字段；
         # 接受任一，不强制 404。
-        detail_r = await client.get(
-            f"/api/admin/users/{test_user.id}", headers=admin_headers
-        )
-        ok_cases = (
-            detail_r.status_code == 404
-            or (
-                detail_r.status_code == 200
-                and detail_r.json().get("is_banned", False) is True
-            )
+        detail_r = await client.get(f"/api/admin/users/{test_user.id}", headers=admin_headers)
+        ok_cases = detail_r.status_code == 404 or (
+            detail_r.status_code == 200 and detail_r.json().get("is_banned", False) is True
         )
         assert ok_cases, (
             f"软删除后既不返回 404，也不标记 is_banned=True: "
@@ -300,9 +282,7 @@ class TestUserDetailEdit:
         )
         assert r.status_code == 200, f"用户更新失败: {r.text}"
         # 重新 GET 确认写入
-        fresh = await client.get(
-            f"/api/admin/users/{subscriber_user.id}", headers=admin_headers
-        )
+        fresh = await client.get(f"/api/admin/users/{subscriber_user.id}", headers=admin_headers)
         data = fresh.json()
         # 普通字段精确匹配
         for k in ["nickname", "email", "website", "bio"]:
@@ -338,9 +318,7 @@ class TestUserDetailEdit:
         # 只要 is_staff=True 成功写入就算 pass（不强制 is_superuser 字段）
         assert data.get("is_staff") is True, "设置 is_staff=True 未写入成功"
         # GET 再确认一次
-        get_r = await client.get(
-            f"/api/admin/users/{subscriber_user.id}", headers=admin_headers
-        )
+        get_r = await client.get(f"/api/admin/users/{subscriber_user.id}", headers=admin_headers)
         assert get_r.status_code == 200
         assert get_r.json().get("is_staff") is True
 
@@ -354,9 +332,7 @@ class TestUserDetailEdit:
         test_comment,  # 1 条评论
     ):
         """U-D4: posts_count / comments_count 并发计数正确（非 N+1）"""
-        r = await client.get(
-            f"/api/admin/users/{test_user.id}", headers=admin_headers
-        )
+        r = await client.get(f"/api/admin/users/{test_user.id}", headers=admin_headers)
         assert r.status_code == 200
         d = r.json()
         assert d["posts_count"] >= 1, f"posts_count 少算: {d['posts_count']}"
@@ -370,9 +346,7 @@ class TestAdminCreateUser:
     """U-C1 ~ U-C6 创建流程"""
 
     @pytest.mark.asyncio
-    async def test_u_c3_create_subscriber_with_qq(
-        self, client: AsyncClient, admin_headers: dict
-    ):
+    async def test_u_c3_create_subscriber_with_qq(self, client: AsyncClient, admin_headers: dict):
         """U-C3: 创建 Subscriber + QQ + avatar_source=qq → 写入正确且可登录"""
         body = {
             "username": "p5create_sub",
@@ -387,9 +361,7 @@ class TestAdminCreateUser:
         }
         # AdminUserCreate schema 没有 qq 字段（只在 AdminUserUpdateFull 中），
         # 先创建后 PUT 写入 qq，保持两步原子一致：
-        r_create = await client.post(
-            "/api/admin/users", headers=admin_headers, json=body
-        )
+        r_create = await client.post("/api/admin/users", headers=admin_headers, json=body)
         assert r_create.status_code == 201, f"创建用户失败: {r_create.text}"
         created_id = r_create.json()["id"]
         # 第二步：PUT 补充 qq/avatar_source
@@ -430,9 +402,7 @@ class TestUserAdminPermission:
     """Phase 5 清单 §4 X-6 / No-Go R1：权限红线"""
 
     @pytest.mark.asyncio
-    async def test_staff_cannot_list_users(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_staff_cannot_list_users(self, client: AsyncClient, staff_headers: dict):
         """X-6: Staff 非 superuser 调用 admin/users（CurrentSuperUser 依赖）应 403"""
         r = await client.get("/api/admin/users", headers=staff_headers)
         assert r.status_code == 403, (

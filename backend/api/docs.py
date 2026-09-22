@@ -13,11 +13,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from pathlib import Path
 from typing import Final
 
-from fastapi import APIRouter, HTTPException, Path as PathParam, status
+from fastapi import APIRouter, HTTPException, status
+from fastapi import Path as PathParam
 
 from backend.core.paths import BASE_DIR
 
@@ -54,7 +56,7 @@ DOC_CATALOG: Final[list[dict]] = [
         "title": "插件开发教程",
         "category": "教程",
         "order": 30,
-        "description": "插件结构、register(ctx) 11 个能力、五类扩展点与安全清单。",
+        "description": "插件结构、清单、register(ctx) 10 个能力、完整钩子目录、生命周期与安全清单。",
     },
 ]
 
@@ -90,8 +92,7 @@ def _build_index_markdown() -> str:
         if row["slug"] == "index":
             continue
         lines.append(
-            f"- **[{row['title']}](/admin/docs/{row['slug']})**  "
-            f"<br/>{row['description']}"
+            f"- **[{row['title']}](/admin/docs/{row['slug']})**  <br/>{row['description']}"
         )
     lines.append("")
     lines.append("## 🧩 扩展点速查")
@@ -99,11 +100,11 @@ def _build_index_markdown() -> str:
     lines.append(
         "| 类型 | 说明 | 参考章节 |\n"
         "| --- | --- | --- |\n"
-        "| Action 钩子 | 在某个执行点触发副作用，不返回值 | 插件教程 §3.1 |\n"
-        "| Filter 过滤器 | 对某个值做变换并返回 | 插件教程 §3.2 |\n"
-        "| Shortcode 短代码 | 在文章内容中用 `[tag]` 语法嵌入组件 | 插件教程 §3.3 |\n"
-        "| 独立后台页 | 插件声明 `/api/admin/plugins/<slug>/**` 路由 | 插件教程 §3.4 |\n"
-        "| 独立前台路由 | 插件声明 `/api/plugins/<slug>/**` 路由 | 插件教程 §3.5 |\n"
+        "| Action 钩子 | 在某个执行点触发副作用，不返回值 | 插件教程 §6.1 |\n"
+        "| Filter 过滤器 | 对某个值做变换并返回 | 插件教程 §6.2 |\n"
+        "| Shortcode 短代码 | 在文章内容中用 `[tag]` 语法嵌入组件 | 插件教程 §6.3 |\n"
+        "| 独立路由 | 插件声明 admin/public APIRouter 与自动鉴权 | 插件教程 §6.4 |\n"
+        "| 后台菜单 | 插件在 Admin 侧边栏注册菜单项 | 插件教程 §6.5 |\n"
         "| 主题 Mods | JSON Schema 驱动的 Customizer 动态表单 | 主题教程 §2.1 |\n"
     )
     lines.append("")
@@ -174,11 +175,17 @@ def _read_markdown(slug: str) -> tuple[str, str]:
 )
 async def list_docs():
     items = []
-    for row in sorted(DOC_CATALOG, key=lambda r: r["order"]):
-        # 检查磁盘存在性（除 index —— 它允许后端动态合成）
-        exists = True
-        if row["slug"] != "index":
-            exists = (DOCS_DIR / f"{row['slug']}.md").exists()
+    # 批量检查磁盘存在性（path.exists 为同步 I/O，放入线程池避免阻塞事件循环）
+    slug_rows = sorted(DOC_CATALOG, key=lambda r: r["order"])
+    non_index_slugs = [r["slug"] for r in slug_rows if r["slug"] != "index"]
+
+    def _check_exists() -> set[str]:
+        return {s for s in non_index_slugs if (DOCS_DIR / f"{s}.md").exists()}
+
+    existing = await asyncio.to_thread(_check_exists) if non_index_slugs else set()
+
+    for row in slug_rows:
+        exists = row["slug"] == "index" or row["slug"] in existing
         items.append(
             {
                 "slug": row["slug"],
@@ -217,7 +224,8 @@ async def get_doc(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"文档 slug 未注册: {slug}",
         )
-    markdown, title = _read_markdown(slug)
+    # _read_markdown 内部调用 path.exists / path.read_text（同步 I/O），放入线程池
+    markdown, title = await asyncio.to_thread(_read_markdown, slug)
     return {
         "success": True,
         "data": {

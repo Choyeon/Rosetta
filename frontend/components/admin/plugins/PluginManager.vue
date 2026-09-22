@@ -16,7 +16,8 @@ import {
   Puzzle,
   X,
   Sparkles,
-  Download
+  Download,
+  BookOpen
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -93,9 +94,9 @@ interface BulkResponse {
 }
 
 const { t: $_t } = useI18n()
-const t = (k: string, fallback: string) => {
+const t = (k: string, fallback: string, values?: Record<string, unknown>) => {
   try {
-    const v = $_t(k)
+    const v = values ? $_t(k, values) : $_t(k)
     return v && v !== k ? v : fallback
   } catch {
     return fallback
@@ -318,6 +319,10 @@ function gotoPage(n: number) {
   page.value = tgt
 }
 
+function openPluginDocs() {
+  navigateTo('/admin/docs/plugin-tutorial')
+}
+
 onMounted(() => {
   load()
 })
@@ -345,9 +350,18 @@ onMounted(() => {
           <Button
             variant="outline"
             size="sm"
+            class="text-primary hover:text-primary hover:bg-primary/5"
+            @click="openPluginDocs"
+          >
+            <BookOpen data-icon="inline-start" />
+            {{ t('admin.plugins.docs', '插件文档') }}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             @click="reload"
           >
-            <RefreshCw class="size-4" />
+            <RefreshCw data-icon="inline-start" />
             {{ t('admin.actions.refresh', '刷新') }}
           </Button>
           <Button
@@ -355,7 +369,7 @@ onMounted(() => {
             size="sm"
             @click="scan"
           >
-            <FolderSearch class="size-4" />
+            <FolderSearch data-icon="inline-start" />
             {{ t('admin.plugins.scan', '扫描本地') }}
           </Button>
           <Button
@@ -364,7 +378,7 @@ onMounted(() => {
             class="shadow-soft"
             @click="stubToast(t('admin.plugins.installHint', '请通过后端或 CLI 安装新插件'))"
           >
-            <UploadCloud class="size-4" />
+            <UploadCloud data-icon="inline-start" />
             {{ t('admin.plugins.install', '安装新插件') }}
           </Button>
         </div>
@@ -506,7 +520,7 @@ onMounted(() => {
                 :disabled="selected.size === 0"
               >
                 {{ t('admin.plugins.bulkActions', '批量操作') }}
-                <ChevronDown class="size-4" />
+                <ChevronDown data-icon="inline-start" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -578,7 +592,7 @@ onMounted(() => {
               size="sm"
               @click="scan"
             >
-              <Sparkles class="size-4" />
+              <Sparkles data-icon="inline-start" />
               {{ t('admin.plugins.scan', '扫描本地') }}
             </Button>
           </div>
@@ -691,9 +705,9 @@ onMounted(() => {
                   <div class="flex flex-col gap-2.5 items-start">
                     <div class="flex items-center gap-2.5">
                       <Switch
-                        :checked="row.status === 'active'"
+                        :model-value="row.status === 'active'"
                         :disabled="row.status === 'error'"
-                        @update:checked="(next: boolean) => onToggleStatus(row, next)"
+                        @update:model-value="(next: boolean) => onToggleStatus(row, next)"
                       />
                       <Badge
                         :variant="statusVariant(row.status)"
@@ -732,7 +746,7 @@ onMounted(() => {
                       :disabled="!row.settings_schema"
                       @click="openSettings(row)"
                     >
-                      <Cog class="size-4" />
+                      <Cog data-icon="inline-start" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -742,7 +756,7 @@ onMounted(() => {
                       :disabled="!row.update_available"
                       @click="bulkAction('upgrade')"
                     >
-                      <Download class="size-4" />
+                      <Download data-icon="inline-start" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -751,7 +765,7 @@ onMounted(() => {
                       :title="t('admin.plugins.delete', '删除')"
                       @click="confirmDelete(row)"
                     >
-                      <Trash2 class="size-4" />
+                      <Trash2 data-icon="inline-start" />
                     </Button>
                   </div>
                 </TableCell>
@@ -779,7 +793,7 @@ onMounted(() => {
               </Button>
             </div>
             <span class="text-xs text-muted-foreground tabular-nums">
-              {{ totalCount }} {{ t('admin.plugins.itemsUnit', '项') }} · {{ t('admin.pagination.page', '第') }} {{ page }} / {{ totalPages }} {{ t('admin.pagination.pageSuffix', '页') }}
+              {{ totalCount }} {{ t('admin.plugins.itemsUnit', '项') }} · {{ t('admin.pagination.page', '第 {page} 页', { page }) }} / {{ totalPages }}
             </span>
           </div>
           <div class="flex items-center justify-end gap-2">
@@ -888,7 +902,7 @@ onMounted(() => {
               </Label>
               <template v-if="schema.type === 'boolean'">
                 <Switch
-                  :checked="settingsForm[key] === true"
+                  :model-value="settingsForm[key] === true"
                   @update:model-value="(v: boolean) => (settingsForm[key] = v)"
                 />
               </template>
@@ -1009,7 +1023,7 @@ onMounted(() => {
             class="shadow-soft"
             @click="doDelete"
           >
-            <Trash2 class="size-4" />
+            <Trash2 data-icon="inline-start" />
             {{ t('admin.actions.delete', '删除') }}
           </Button>
         </DialogFooter>

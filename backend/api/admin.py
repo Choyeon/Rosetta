@@ -12,6 +12,7 @@
 
 import math
 from datetime import datetime
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query, status
@@ -252,9 +253,9 @@ async def admin_get_user(
             detail="用户不存在",
         )
 
+    from backend.core.cache import cache as _cache
     from backend.models.blog import Comment as _Comment
     from backend.models.blog import Post as _Post
-    from backend.core.cache import cache as _cache
 
     # —— 性能优化：文章数 / 评论数 按用户维度缓存 30 秒 ——
     # 管理员"刷一下编辑页"这类高频场景下，避免每次都跑两次 COUNT(*)。
@@ -327,7 +328,11 @@ async def admin_update_user_full(
 
     # 仅禁止修改「自己」；允许超级管理员修改其他用户（含其他超级管理员），
     # 以支撑单管理员/个人博客场景下正常的账号资料维护。
-    if user.is_superuser and current_user.id != user_id and get_role_level(current_user.role) < get_role_level("super_admin"):
+    if (
+        user.is_superuser
+        and current_user.id != user_id
+        and get_role_level(current_user.role) < get_role_level("super_admin")
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="无权修改超级管理员",
@@ -481,9 +486,7 @@ async def admin_delete_user(
     from backend.models.blog import Comment as BlogComment
 
     await db.execute(
-        _sa_update(BlogComment)
-        .where(BlogComment.user_id == user_id)
-        .values(user_id=None)
+        _sa_update(BlogComment).where(BlogComment.user_id == user_id).values(user_id=None)
     )
 
     # 同目录同层：清理 Guestbook / Post.author_id 等外键引用
@@ -603,7 +606,11 @@ async def admin_unban_user(
 #  此处删除旧的 /stats /view-trends /category-stats 避免路由冲突。）
 
 
-@router.patch("/users/{user_id}")
+@router.patch(
+    "/users/{user_id}",
+    summary="部分更新用户（管理员）",
+    description="仅更新提供的字段，如角色、状态、资料等。",
+)
 async def admin_update_user(
     user_id: int,
     data: AdminUserUpdate,
@@ -648,7 +655,11 @@ async def admin_update_user(
     }
 
 
-@router.get("/comments")
+@router.get(
+    "/comments",
+    summary="评论列表（管理员）",
+    description="获取所有评论，支持按状态、文章、作者筛选和分页。",
+)
 async def admin_list_comments(
     db: DB,
     current_user: CurrentStaff,
@@ -696,11 +707,7 @@ async def admin_list_comments(
 
     total, result = await concurrent_query(
         db.scalar(count_q),
-        db.execute(
-            base_q.order_by(Comment.created_at.desc())
-            .offset(offset)
-            .limit(page_size)
-        ),
+        db.execute(base_q.order_by(Comment.created_at.desc()).offset(offset).limit(page_size)),
     )
     total = total or 0
     comments = result.scalars().all()
@@ -744,7 +751,7 @@ async def admin_list_comments(
         elif c.author_name and not c.user:
             # 匿名评论用户：检查是否有上传的头衔（通常没有，但预留扩展）
             pass
-            
+
         items_dicts.append(
             {
                 "id": c.id,
@@ -752,13 +759,16 @@ async def admin_list_comments(
                 "user_id": c.user_id,
                 "parent_id": c.parent_id,
                 "author_name": c.author_name or (c.user.nickname if c.user else "匿名用户"),
-                "author_avatar": (getattr(c, "avatar", None) or (c.user.avatar if c.user else "") or ""),
+                "author_avatar": (
+                    getattr(c, "avatar", None) or (c.user.avatar if c.user else "") or ""
+                ),
                 "author_email": getattr(c, "author_email", None),
                 "author_url": getattr(c, "author_url", None),
                 "author_website": c.author_website or (c.user.website if c.user else None),
                 "qq": getattr(c, "qq", None),
                 "github": getattr(c, "github", None),
-                "avatar_source": getattr(c, "avatar_source", None) or getattr(c, "author_avatar_source", None),
+                "avatar_source": getattr(c, "avatar_source", None)
+                or getattr(c, "author_avatar_source", None),
                 "resolved_avatar_url": resolved,
                 "content": c.content,
                 "title": title_data,
@@ -788,7 +798,11 @@ async def admin_list_comments(
     }
 
 
-@router.patch("/comments/{comment_id}")
+@router.patch(
+    "/comments/{comment_id}",
+    summary="更新评论（管理员）",
+    description="修改评论内容、状态（approved/rejected/spam）等。",
+)
 async def admin_update_comment(
     comment_id: int,
     data: CommentAdminUpdate,
@@ -858,11 +872,7 @@ async def admin_update_comment(
         post_ref = {
             "id": p.id,
             "slug": getattr(p, "slug", None),
-            "title": (
-                p.title.get("zh")
-                if isinstance(p.title, dict)
-                else str(p.title or "")
-            ),
+            "title": (p.title.get("zh") if isinstance(p.title, dict) else str(p.title or "")),
         }
 
     parent_ref = None
@@ -882,16 +892,19 @@ async def admin_update_comment(
         "post_id": comment.post_id,
         "user_id": comment.user_id,
         "parent_id": comment.parent_id,
-        "author_name": comment.author_name or (comment.user.nickname if comment.user else "匿名用户"),
+        "author_name": comment.author_name
+        or (comment.user.nickname if comment.user else "匿名用户"),
         "author_avatar": (
             getattr(comment, "avatar", None) or (comment.user.avatar if comment.user else "") or ""
         ),
         "author_email": getattr(comment, "author_email", None),
         "author_url": getattr(comment, "author_url", None),
-        "author_website": comment.author_website or (comment.user.website if comment.user else None),
+        "author_website": comment.author_website
+        or (comment.user.website if comment.user else None),
         "qq": getattr(comment, "qq", None),
         "github": getattr(comment, "github", None),
-        "avatar_source": getattr(comment, "avatar_source", None) or getattr(comment, "author_avatar_source", None),
+        "avatar_source": getattr(comment, "avatar_source", None)
+        or getattr(comment, "author_avatar_source", None),
         "resolved_avatar_url": resolved,
         "content": comment.content,
         "status": comment.status or ("approved" if comment.active else "rejected"),
@@ -900,7 +913,9 @@ async def admin_update_comment(
         "likes_count": int(getattr(comment, "likes_count", 0)),
         "reply_total": int(getattr(comment, "reply_total", 0)),
         "created_at": comment.created_at.isoformat() if comment.created_at else None,
-        "updated_at": comment.updated_at.isoformat() if getattr(comment, "updated_at", None) else None,
+        "updated_at": comment.updated_at.isoformat()
+        if getattr(comment, "updated_at", None)
+        else None,
         "replies": [],
         "post_ref": post_ref,
         "parent_ref": parent_ref,
@@ -908,7 +923,11 @@ async def admin_update_comment(
     }
 
 
-@router.delete("/comments/{comment_id}")
+@router.delete(
+    "/comments/{comment_id}",
+    summary="删除评论（管理员）",
+    description="永久删除指定评论及其子回复。",
+)
 async def admin_delete_comment(
     comment_id: int,
     current_user: CurrentStaff,
@@ -941,7 +960,11 @@ class MockDataRequest(BaseModel):
     reset: bool = False
 
 
-@router.post("/tools/mock-data")
+@router.post(
+    "/tools/mock-data",
+    summary="生成示例数据",
+    description="批量生成文章、分类、标签等测试数据，仅开发环境可用。",
+)
 async def generate_mock_data(
     request: MockDataRequest,
     current_user: CurrentStaff,
@@ -967,13 +990,16 @@ async def generate_mock_data(
     }
 
 
-@router.get("/tools/unused-images")
+@router.get(
+    "/tools/unused-images",
+    summary="列出未使用的图片",
+    description="扫描上传目录，找出未被文章/页面引用的图片文件。",
+)
 async def list_unused_images(
     current_user: CurrentStaff,
     db: DB,
 ):
     """扫描并列出未使用的图片"""
-    from pathlib import Path
 
     from backend.core.config import get_settings
     from backend.core.paths import BASE_DIR
@@ -1040,7 +1066,11 @@ async def list_unused_images(
     }
 
 
-@router.post("/tools/clean-unused-images")
+@router.post(
+    "/tools/clean-unused-images",
+    summary="清理未使用的图片",
+    description="删除未被文章/页面引用的图片文件，释放存储空间。",
+)
 async def clean_unused_images(
     current_user: CurrentStaff,
     db: DB,
@@ -1070,7 +1100,11 @@ async def clean_unused_images(
     }
 
 
-@router.get("/tools/search-stats")
+@router.get(
+    "/tools/search-stats",
+    summary="搜索优化统计",
+    description="获取搜索索引状态、未索引文章数等统计信息。",
+)
 async def get_search_optimization_stats(
     current_user: CurrentStaff,
     db: DB,
@@ -1127,7 +1161,11 @@ async def get_search_optimization_stats(
     }
 
 
-@router.post("/tools/optimize-search")
+@router.post(
+    "/tools/optimize-search",
+    summary="执行搜索优化",
+    description="重建/优化全文搜索索引，提升搜索性能与准确性。",
+)
 async def optimize_search(
     current_user: CurrentStaff,
     db: DB,

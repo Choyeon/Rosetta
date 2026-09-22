@@ -21,7 +21,6 @@ from fastapi.testclient import TestClient
 
 from backend.core.routing_registry import RoutingRegistry, routing_registry
 
-
 # ── 隔离：每测试重置全局单例状态（避免跨测试污染） ─────────────────────
 
 
@@ -182,7 +181,9 @@ async def test_menu_registry_endpoint_returns_items(client, admin_headers):
 
     resp = await client.get("/api/admin/plugins/menu-registry", headers=admin_headers)
     # 必须不能是 404
-    assert resp.status_code in (200, 401, 403, 503), f"unexpected status: {resp.status_code} {resp.text}"
+    assert resp.status_code in (200, 401, 403, 503), (
+        f"unexpected status: {resp.status_code} {resp.text}"
+    )
     if resp.status_code == 200:
         body = resp.json()
         assert body.get("success") is True

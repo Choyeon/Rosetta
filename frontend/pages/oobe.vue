@@ -26,7 +26,7 @@
     <!-- ========== 主体：两栏 ========== -->
     <div class="relative z-10 min-h-[calc(100svh-57px)] grid lg:grid-cols-[300px_1fr] gap-0">
       <!-- 侧边栏：高模糊毛玻璃 -->
-      <aside class="hidden lg:flex flex-col border-r border-white/10 bg-white/[0.06] backdrop-blur-[28px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-zinc-900/95">
+      <aside class="hidden lg:flex flex flex-col border-r border-white/10 bg-white/[0.06] backdrop-blur-[28px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-zinc-900/95">
         <div class="p-8 flex flex-col gap-8 flex-1">
           <NuxtLink
             to="/"
@@ -40,7 +40,7 @@
             <span>Rosetta</span>
           </NuxtLink>
 
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <div
               v-for="(s, idx) in steps"
               :key="idx"
@@ -111,7 +111,262 @@
             <div class="pt-6">
               <!-- ============== Step 1: 系统环境 + 依赖安装 ============== -->
               <template v-if="step === 1">
-                <div class="space-y-5">
+                <div class="flex flex-col gap-5">
+                  <!-- ============ 卡 1：后端连接配置（O 系列 Step1 顶卡） ============ -->
+                  <div class="flex flex-col gap-4 p-5 rounded-2xl border border-white/10 bg-white/[0.05]">
+                    <div class="flex items-center justify-between gap-3 flex-wrap">
+                      <div class="flex items-center gap-3 min-w-0">
+                        <div class="size-10 rounded-xl bg-gradient-to-br from-emerald-400/25 via-teal-400/25 to-cyan-400/25 ring-1 ring-white/10 flex items-center justify-center shrink-0">
+                          <Server class="size-5 text-emerald-300" />
+                        </div>
+                        <div class="min-w-0">
+                          <div class="font-semibold text-foreground">
+                            {{ t('oobe.connTitle') }}
+                          </div>
+                          <div class="text-xs text-foreground/70 mt-0.5">
+                            {{ t('oobe.connDesc') }}
+                          </div>
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        class="text-xs !border-white/15 text-foreground/85 shrink-0"
+                      >
+                        <component
+                          :is="connMode === 'dev' ? Cpu : Cable"
+                          data-icon="inline-start"
+                          class="mr-1.5 inline-block align-middle -mt-0.5"
+                        />
+                        {{ connMode === 'dev' ? t('oobe.connModeDev') : t('oobe.connModeProd') }}
+                      </Badge>
+                    </div>
+                    <p class="text-sm text-foreground/70 leading-relaxed">
+                      {{ t('oobe.connLongDesc') }}
+                    </p>
+
+                    <!-- 模式 Switch：Dev <-> Prod（FieldSet + FieldLegend 满足 WCAG 可访问命名，避免两个 label 指向同一 Switch id） -->
+                    <FieldSet class="!gap-2 p-3 rounded-xl border border-white/10 bg-white/[0.03]">
+                      <FieldLegend
+                        id="oobe-mode-legend"
+                        class="!mb-1 !text-sm font-semibold text-foreground/90"
+                      >
+                        {{ t('oobe.connMode') }}
+                      </FieldLegend>
+                      <div class="flex items-center gap-3">
+                        <div
+                          class="font-semibold text-sm transition-colors select-none cursor-pointer"
+                          :class="connMode === 'dev' ? 'text-emerald-200' : 'text-foreground/70'"
+                          @click="onConnModeChange('dev')"
+                        >
+                          {{ t('oobe.connModeDev') }}
+                        </div>
+                        <Separator
+                          orientation="vertical"
+                          class="h-3.5 bg-white/15"
+                        />
+                        <Switch
+                          id="oobe-mode-switch"
+                          :model-value="connMode === 'prod'"
+                          :aria-labelledby="'oobe-mode-legend'"
+                          @update:model-value="switchProdMode"
+                        />
+                        <Separator
+                          orientation="vertical"
+                          class="h-3.5 bg-white/15"
+                        />
+                        <div
+                          class="font-semibold text-sm transition-colors select-none cursor-pointer"
+                          :class="connMode === 'prod' ? 'text-emerald-200' : 'text-foreground/70'"
+                          @click="onConnModeChange('prod')"
+                        >
+                          {{ t('oobe.connModeProd') }}
+                        </div>
+                      </div>
+                      <div class="text-xs text-foreground/65 pt-0.5">
+                        {{ connMode === 'dev' ? t('oobe.connModeDevHint') : t('oobe.connModeProdHint') }}
+                      </div>
+                    </FieldSet>
+
+                    <!-- 后端 API URL Input + 探测按钮 -->
+                    <div class="grid grid-cols-1 gap-3">
+                      <div class="flex items-end gap-3">
+                        <div class="flex-1 min-w-0">
+                          <Label
+                            for="oobe-api-url"
+                            class="text-xs text-foreground/80 mb-1.5 block"
+                          >
+                            {{ t('oobe.connApiUrl') }}
+                          </Label>
+                          <Input
+                            id="oobe-api-url"
+                            ref="apiUrlInputRef"
+                            v-model="connApiUrl"
+                            type="url"
+                            inputmode="url"
+                            spellcheck="false"
+                            autocomplete="off"
+                            :placeholder="connMode === 'dev' ? 'http://127.0.0.1:8000/api' : '/api'"
+                            :aria-invalid="connApiUrlInvalid"
+                            class="bg-white/[0.04] !border-white/15 placeholder:text-foreground/40 text-foreground"
+                            :class="connApiUrlInvalid ? '!border-rose-400/40 focus-visible:!ring-rose-400/40' : ''"
+                            @input="resetProbeStateOnEdit"
+                            @keydown.enter.prevent="runProbeBackend"
+                          />
+                          <p
+                            class="text-[11px] mt-1.5 leading-relaxed"
+                            :class="connApiUrlInvalid ? 'text-rose-300' : 'text-foreground/60'"
+                          >
+                            {{ connApiUrlHintText }}
+                          </p>
+                        </div>
+                        <div class="shrink-0 flex flex-col gap-2">
+                          <Button
+                            size="sm"
+                            class="min-w-[9rem]"
+                            :disabled="backendProbeRunning"
+                            @click="runProbeBackend"
+                          >
+                            <Loader2
+                              v-if="backendProbeRunning"
+                              data-icon="inline-start"
+                              class="animate-spin"
+                            />
+                            <component
+                              :is="Wifi"
+                              v-else-if="backendProbeResult.ok"
+                              data-icon="inline-start"
+                            />
+                            <component
+                              :is="WifiOff"
+                              v-else
+                              data-icon="inline-start"
+                            />
+                            {{ backendProbeRunning ? t('oobe.connProbing') : t('oobe.connProbe') }}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <!-- 端口快选（仅 Dev 模式）：ToggleGroup + FieldSet/FieldLegend（shadcn forms 规范 + a11y） -->
+                      <FieldSet
+                        v-if="connMode === 'dev'"
+                        class="!gap-2"
+                      >
+                        <FieldLegend
+                          id="oobe-port-legend"
+                          class="!mb-1 !text-[11px] uppercase tracking-wider text-foreground/65"
+                        >
+                          {{ t('oobe.connPortQuick') }}
+                        </FieldLegend>
+                        <div class="flex flex-wrap gap-2 items-center">
+                          <ToggleGroup
+                            type="single"
+                            :value="connActivePort"
+                            aria-labelledby="oobe-port-legend"
+                            class="justify-start"
+                            @update:model-value="(p) => applyQuickPort(String(p ?? ''))"
+                          >
+                            <ToggleGroupItem
+                              v-for="p in quickPorts"
+                              :key="p"
+                              :value="p"
+                              size="sm"
+                              class="!border-white/15 aria-pressed:!bg-emerald-500/15 aria-pressed:!text-emerald-200 aria-pressed:!border-emerald-400/30"
+                            >
+                              :{{ p }}
+                            </ToggleGroupItem>
+                          </ToggleGroup>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled
+                            class="!border-dashed !border-white/15 text-foreground/65 hover:bg-white/10 opacity-80"
+                            @click="customPortNoop"
+                          >
+                            {{ t('oobe.connCustomPort') }}
+                          </Button>
+                        </div>
+                      </FieldSet>
+
+                      <!-- 当前生效地址 -->
+                      <div
+                        v-if="backendProbeApplied && effectiveApiBase"
+                        class="flex items-start gap-2 p-3 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.06]"
+                      >
+                        <CheckCircle2 class="size-4 text-emerald-300 mt-0.5 shrink-0" />
+                        <div class="min-w-0">
+                          <div class="text-[11px] uppercase tracking-wider text-emerald-200/80">
+                            {{ t('oobe.connCurrentHint') }} · {{ t('oobe.connAppliedHint') }}
+                          </div>
+                          <div
+                            class="text-sm font-mono text-emerald-100 truncate mt-0.5"
+                            :title="String(effectiveApiBase)"
+                          >
+                            {{ effectiveApiBase }}
+                          </div>
+                        </div>
+                      </div>
+
+                      <!-- 探测结果 -->
+                      <div
+                        v-if="backendProbeResult.stage !== 'init'"
+                        class="flex flex-col gap-2"
+                      >
+                        <div class="flex items-center gap-2 flex-wrap">
+                          <Badge
+                            :variant="backendProbeResult.ok ? 'default' : 'destructive'"
+                            :class="backendProbeResult.ok ? 'bg-emerald-500/90 text-zinc-950 hover:bg-emerald-500/90' : ''"
+                          >
+                            <CheckCircle2
+                              v-if="backendProbeResult.ok"
+                              data-icon="inline-start"
+                            />
+                            <XCircle
+                              v-else
+                              data-icon="inline-start"
+                            />
+                            {{ backendProbeResult.ok ? t('oobe.connProbeOK') : t('oobe.connProbeFail') }}
+                          </Badge>
+                          <Badge
+                            v-if="backendProbeResult.oobeRequired"
+                            variant="outline"
+                            class="!border-amber-400/30 text-amber-200"
+                          >
+                            <AlertTriangle data-icon="inline-start" />
+                            {{ t('oobe.connProbeOOBERequired') }}
+                          </Badge>
+                          <Badge
+                            v-else-if="backendProbeResult.oobeComplete"
+                            variant="outline"
+                            class="!border-emerald-400/30 text-emerald-200"
+                          >
+                            <CheckCircle2 data-icon="inline-start" />
+                            {{ t('oobe.connProbeAlreadyDone') }}
+                          </Badge>
+                          <span class="text-xs text-foreground/60">
+                            <span>{{ backendProbeResult.stage === 'health' ? t('oobe.connProbeStageHealth') : t('oobe.connProbeStageStatus') }}</span>
+                            <span
+                              v-if="backendProbeResult.code"
+                              class="ml-1 font-mono"
+                            >· HTTP {{ backendProbeResult.code }}</span>
+                          </span>
+                        </div>
+                        <div
+                          v-if="!backendProbeResult.ok && watchProbeFailText"
+                          class="text-xs text-rose-200/90 leading-relaxed p-3 rounded-xl bg-rose-500/[0.08] border border-rose-400/20"
+                        >
+                          {{ watchProbeFailText }}
+                        </div>
+                        <div
+                          v-if="!backendProbeResult.ok"
+                          class="text-xs text-amber-200/85 flex items-center gap-1.5"
+                        >
+                          <AlertTriangle class="size-3.5 shrink-0" />
+                          <span>{{ t('oobe.connProbeHintNext') }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <!-- 环境摘要卡片 -->
                   <div
                     v-if="systemSummary && typeof systemSummary === 'object'"
@@ -170,7 +425,7 @@
                   </div>
 
                   <!-- 检测结果 -->
-                  <div class="space-y-3">
+                  <div class="flex flex-col gap-3">
                     <div
                       v-for="check in systemChecks"
                       :key="check.name"
@@ -224,8 +479,33 @@
                     </div>
                   </div>
 
+                  <!-- QW-C：系统检测控制条（重新检测按钮 + 显式 loading）— 专业 CMS 级可操作 -->
+                  <div
+                    class="flex items-center justify-between gap-3 flex-wrap p-4 rounded-2xl border border-white/10 bg-white/[0.03]"
+                  >
+                    <div class="text-xs text-foreground/70">
+                      <span v-if="checking">{{ t('oobe.checking', { default: '正在分析系统环境…' }) }}</span>
+                      <span v-else-if="systemChecks.length > 0">{{ t('oobe.checkedNitems', { n: systemChecks.length, default: `已完成 ${systemChecks.length} 项环境检查` }) }}</span>
+                      <span v-else>{{ t('oobe.step1EmptyHint') }}</span>
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        :disabled="checking || !backendProbeApplied"
+                        @click="runCheckSystem"
+                      >
+                        <RefreshCw
+                          :class="checking ? 'animate-spin' : ''"
+                          data-icon="inline-start"
+                        />
+                        {{ checking ? t('oobe.checking', { default: '正在分析系统环境…' }) : t('oobe.runCheck', { default: '重新检测' }) }}
+                      </Button>
+                    </div>
+                  </div>
+
                   <!-- 一键依赖安装 -->
-                  <div class="rounded-2xl border border-white/10 bg-white/[0.05] p-4 space-y-3">
+                  <div class="flex flex-col gap-3 rounded-2xl border border-white/10 bg-white/[0.05] p-4">
                     <div class="flex items-center justify-between gap-3 flex-wrap">
                       <div class="flex items-center gap-3 min-w-0">
                         <div class="size-9 rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/25 flex items-center justify-center shrink-0">
@@ -254,11 +534,13 @@
                         >
                           <Download
                             v-if="!installRunning"
-                            class="size-4 mr-2"
+                            data-icon="inline-start"
+                            class="mr-2"
                           />
                           <Loader2
                             v-else
-                            class="size-4 mr-2 animate-spin"
+                            data-icon="inline-start"
+                            class="mr-2 animate-spin"
                           />
                           {{ installRunning ? t('oobe.depInstalling', '安装中…') : t('oobe.depInstallBtn', '一键安装') }}
                         </Button>
@@ -268,7 +550,7 @@
                     <!-- 进度条 -->
                     <div
                       v-if="installRunning || depInstalled"
-                      class="space-y-1"
+                      class="flex flex-col gap-1"
                     >
                       <div class="h-2 w-full rounded-full bg-white/10 overflow-hidden">
                         <div
@@ -290,7 +572,7 @@
                     <!-- 日志终端 -->
                     <div
                       v-if="depLogLines.length || installRunning"
-                      class="space-y-2"
+                      class="flex flex-col gap-2"
                     >
                       <div class="flex items-center justify-between">
                         <div class="text-xs font-semibold text-foreground/70 uppercase tracking-wider">
@@ -328,7 +610,7 @@
               <!-- ============== Step 2: 管理员账户 ============== -->
               <template v-else-if="step === 2">
                 <div class="flex flex-col gap-4">
-                  <div class="space-y-2">
+                  <div class="flex flex-col gap-2">
                     <Label class="text-foreground/90">{{ t('oobe.adminName') }} *</Label>
 
                     <div class="relative">
@@ -345,7 +627,7 @@
                     </p>
                   </div>
 
-                  <div class="space-y-2">
+                  <div class="flex flex-col gap-2">
                     <Label class="text-foreground/90">{{ t('oobe.adminEmail') }} *</Label>
 
                     <div class="relative">
@@ -360,7 +642,7 @@
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="space-y-2">
+                    <div class="flex flex-col gap-2">
                       <Label class="text-foreground/90">{{ t('oobe.adminPassword') }} * <span class="text-xs text-foreground/65">({{ t('oobe.adminPasswordHint') }})</span></Label>
 
                       <div class="relative">
@@ -389,7 +671,7 @@
                       </div>
                     </div>
 
-                    <div class="space-y-2">
+                    <div class="flex flex-col gap-2">
                       <Label class="text-foreground/90">{{ t('oobe.adminConfirmPassword') }} *</Label>
 
                       <div class="relative">
@@ -425,13 +707,13 @@
               <template v-else-if="step === 3">
                 <div class="flex flex-col gap-6">
                   <!-- 站点信息 -->
-                  <div class="space-y-4">
+                  <div class="flex flex-col gap-4">
                     <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Globe2 class="size-4 text-emerald-300" />
                       <span>{{ t('oobe.groupSite', '站点信息') }}</span>
                     </div>
 
-                    <div class="space-y-2">
+                    <div class="flex flex-col gap-2">
                       <Label class="text-foreground/90">{{ t('oobe.siteName') }} *</Label>
 
                       <div class="relative">
@@ -444,7 +726,7 @@
                       </div>
                     </div>
 
-                    <div class="space-y-2">
+                    <div class="flex flex-col gap-2">
                       <Label class="text-foreground/90">{{ t('oobe.siteUrl') }} *</Label>
 
                       <div class="relative">
@@ -462,7 +744,7 @@
                       </p>
                     </div>
 
-                    <div class="space-y-2">
+                    <div class="flex flex-col gap-2">
                       <Label class="text-foreground/90">{{ t('oobe.siteDescription') }}</Label>
 
                       <Textarea
@@ -474,7 +756,7 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div class="space-y-2">
+                      <div class="flex flex-col gap-2">
                         <Label class="text-foreground/90">{{ t('oobe.defaultLanguage') }}</Label>
                         <Select v-model="siteForm.locale">
                           <SelectTrigger class="h-11 !bg-white/[0.05] !border-white/10 text-foreground focus:!ring-emerald-400/40">
@@ -497,7 +779,7 @@
                         </Select>
                       </div>
 
-                      <div class="space-y-2">
+                      <div class="flex flex-col gap-2">
                         <Label class="text-foreground/90">{{ t('oobe.seoKeywords') }}</Label>
 
                         <div class="relative">
@@ -514,7 +796,7 @@
 
                   <!-- 环境与数据库 -->
                   <Separator class="my-1 !bg-white/10" />
-                  <div class="space-y-4">
+                  <div class="flex flex-col gap-4">
                     <div class="flex items-center justify-between gap-3 flex-wrap">
                       <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
                         <Database class="size-4 text-emerald-300" />
@@ -534,7 +816,7 @@
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div class="space-y-2">
+                      <div class="flex flex-col gap-2">
                         <Label class="text-foreground/90">{{ t('oobe.dbType', '数据库类型') }}</Label>
                         <Select v-model="siteForm.databaseType">
                           <SelectTrigger class="h-11 !bg-white/[0.05] !border-white/10 text-foreground focus:!ring-emerald-400/40">
@@ -562,7 +844,7 @@
                           {{ t('oobe.pgHint', '推荐生产环境使用，需填写下方连接信息') }}
                         </p>
                       </div>
-                      <div class="space-y-2">
+                      <div class="flex flex-col gap-2">
                         <Label class="text-foreground/90">{{ t('oobe.redis', 'Redis 缓存') }}</Label>
                         <div class="flex items-center h-11 px-3 rounded-xl border border-white/10 bg-white/[0.05] justify-between">
                           <span class="text-sm text-foreground/75">{{ siteForm.redisEnabled ? t('oobe.on', '开启') : t('oobe.off', '关闭') }}</span>
@@ -573,7 +855,7 @@
 
                     <template v-if="siteForm.databaseType === 'postgresql'">
                       <div class="grid grid-cols-2 gap-4">
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.dbHost', '主机') }}</Label>
 
                           <Input
@@ -582,7 +864,7 @@
                             placeholder="localhost"
                           />
                         </div>
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.dbPort', '端口') }}</Label>
 
                           <Input
@@ -592,7 +874,7 @@
                             placeholder="5432"
                           />
                         </div>
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.dbName', '数据库名') }}</Label>
 
                           <Input
@@ -601,7 +883,7 @@
                             placeholder="rosetta"
                           />
                         </div>
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.dbUser', '用户名') }}</Label>
 
                           <Input
@@ -610,7 +892,7 @@
                             placeholder="postgres"
                           />
                         </div>
-                        <div class="space-y-2 col-span-2">
+                        <div class="flex flex-col gap-2 col-span-2">
                           <Label class="text-foreground/90">{{ t('oobe.dbPassword', '密码') }}</Label>
 
                           <Input
@@ -622,7 +904,7 @@
                       </div>
                     </template>
                     <template v-else>
-                      <div class="space-y-2">
+                      <div class="flex flex-col gap-2">
                         <Label class="text-foreground/90">{{ t('oobe.dbPath', 'SQLite 文件路径') }}</Label>
 
                         <Input
@@ -635,7 +917,7 @@
 
                     <template v-if="siteForm.redisEnabled">
                       <div class="grid grid-cols-3 gap-4">
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.redisHost', 'Redis 主机') }}</Label>
 
                           <Input
@@ -644,7 +926,7 @@
                             placeholder="localhost"
                           />
                         </div>
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.redisPort', '端口') }}</Label>
 
                           <Input
@@ -654,7 +936,7 @@
                             placeholder="6379"
                           />
                         </div>
-                        <div class="space-y-2">
+                        <div class="flex flex-col gap-2">
                           <Label class="text-foreground/90">{{ t('oobe.redisPassword', '密码') }}</Label>
 
                           <Input
@@ -669,7 +951,7 @@
 
                   <!-- 特性开关 -->
                   <Separator class="my-1 !bg-white/10" />
-                  <div class="space-y-4">
+                  <div class="flex flex-col gap-4">
                     <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
                       <Sparkles class="size-4 text-emerald-300" />
                       <span>{{ t('oobe.groupFeatures', '功能开关') }}</span>
@@ -734,7 +1016,7 @@
                 <!-- 安装中：进度展示 -->
                 <div
                   v-if="installing"
-                  class="space-y-5 py-2"
+                  class="flex flex-col gap-5 py-2"
                 >
                   <div class="text-center">
                     <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
@@ -748,7 +1030,7 @@
                     </p>
                   </div>
 
-                  <div class="space-y-2">
+                  <div class="flex flex-col gap-2">
                     <div class="flex items-center justify-between text-xs text-foreground/70">
                       <span>{{ t('oobe.totalProgress', '总体进度') }}</span>
                       <span>{{ installPercent }}%</span>
@@ -764,7 +1046,7 @@
                   </div>
 
                   <!-- 8 步步骤列表 -->
-                  <div class="space-y-2">
+                  <div class="flex flex-col gap-2">
                     <div
                       v-for="(st, idx) in installStepList"
                       :key="st.id"
@@ -808,6 +1090,55 @@
                         </div>
                       </div>
                     </div>
+                  </div>
+
+                  <!-- SSE 快照兜底 banner：timeout / polling / retrying -->
+                  <div
+                    v-if="installSnapshotState === 'timeout' || installSnapshotState === 'polling' || installSnapshotState === 'retrying'"
+                    class="flex items-start gap-3 p-3 rounded-xl border"
+                    :class="installSnapshotState === 'timeout'
+                      ? 'border-amber-400/35 bg-amber-500/[0.07]'
+                      : 'border-sky-400/30 bg-sky-500/[0.06]'"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <AlertTriangle
+                      data-icon="inline-start"
+                      class="size-4 shrink-0 mt-0.5"
+                      :class="installSnapshotState === 'timeout' ? 'text-amber-300' : 'text-sky-300'"
+                    />
+                    <div class="flex-1 min-w-0 space-y-1">
+                      <div class="text-sm font-medium text-foreground">
+                        {{ installSnapshotState === 'timeout' ? t('oobe.installSnapshotTimeout') : t('oobe.installSnapshotPolling') }}
+                      </div>
+                      <div class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line">
+                        {{ installSnapshotState === 'timeout' ? t('oobe.installSnapshotTimeoutDetail') : t('oobe.installSnapshotPollingDetail') }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 安装中：Cancel/Retry 行（解决 SSE 假死死穴） -->
+                  <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      :disabled="!installing"
+                      @click="runInstallCancel"
+                    >
+                      <XCircle data-icon="inline-start" />
+                      {{ t('oobe.installSnapshotCancelBtn') }}
+                    </Button>
+                    <Button
+                      size="sm"
+                      :disabled="installing || installSnapshotState === 'timeout'"
+                      @click="runInstallRetry"
+                    >
+                      <RefreshCw
+                        data-icon="inline-start"
+                        :class="{ 'animate-spin': installing }"
+                      />
+                      {{ t('oobe.installSnapshotRetryBtn') }}
+                    </Button>
                   </div>
                 </div>
 
@@ -879,7 +1210,10 @@
                 class="text-foreground/85 hover:bg-white/10 hover:text-foreground"
                 @click="prevStep"
               >
-                <ArrowLeft class="size-4 mr-2" />
+                <ArrowLeft
+                  data-icon="inline-start"
+                  class="mr-2"
+                />
                 {{ t('oobe.prev') }}
               </Button>
               <div v-else />
@@ -894,11 +1228,13 @@
                 >
                   <Settings2
                     v-if="checking"
-                    class="size-4 mr-2 animate-spin"
+                    data-icon="inline-start"
+                    class="mr-2 animate-spin"
                   />
                   <RefreshCw
                     v-else
-                    class="size-4 mr-2"
+                    data-icon="inline-start"
+                    class="mr-2"
                   />
                   {{ checking ? t('oobe.checking') : t('oobe.recheck') }}
                 </Button>
@@ -912,7 +1248,10 @@
                   @click="nextStep"
                 >
                   {{ step === 3 ? t('oobe.saveAndNext') : t('oobe.next') }}
-                  <ArrowRight class="size-4 ml-2" />
+                  <ArrowRight
+                    data-icon="inline-end"
+                    class="ml-2"
+                  />
                 </Button>
 
                 <template v-else>
@@ -925,11 +1264,17 @@
                     @click="finishSetup"
                   >
                     <template v-if="installing">
-                      <Loader2 class="size-4 mr-2 animate-spin" />
+                      <Loader2
+                        data-icon="inline-start"
+                        class="mr-2 animate-spin"
+                      />
                       {{ t('oobe.installingBtn', '安装中…') }}
                     </template>
                     <template v-else>
-                      <Rocket class="size-4 mr-2" />
+                      <Rocket
+                        data-icon="inline-start"
+                        class="mr-2"
+                      />
                       {{ t('oobe.runInstall', '开始安装') }}
                     </template>
                   </Button>
@@ -941,7 +1286,10 @@
                     :loading="loading"
                     @click="goAdmin"
                   >
-                    <CheckCircle2 class="size-4 mr-2" />
+                    <CheckCircle2
+                      data-icon="inline-start"
+                      class="mr-2"
+                    />
                     {{ t('oobe.enterAdmin') }}
                   </Button>
                 </template>
@@ -1018,6 +1366,53 @@
         <ChevronRight class="size-[18px]" />
       </button>
     </div>
+
+    <!-- TLS / 明文 HTTP 风险二次确认（prod 模式 + admin_password 明文 HTTP 时弹出，R2-2.6） -->
+    <div>
+      <AlertDialog
+        :open="tlsDialogOpen"
+        @update:open="(v: boolean) => { tlsDialogOpen = v }"
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle class="flex items-center gap-2">
+              <ShieldAlert
+                data-icon="inline-start"
+                class="size-5 text-amber-500"
+              />
+              {{ t('oobe.tlsTitle') }}
+            </AlertDialogTitle>
+            <AlertDialogDescription as-child>
+              <div class="flex flex-col gap-3 pt-2 text-sm text-foreground/80 leading-relaxed">
+                <p>{{ t('oobe.tlsDesc') }}</p>
+                <ul class="list-disc list-inside space-y-1.5 pl-1 text-foreground/75">
+                  <li>
+                    {{ t('oobe.tlsHintTlsTerminate') }}
+                  </li>
+                  <li>
+                    {{ t('oobe.tlsHintConfigureReverseProxy') }}
+                  </li>
+                  <li class="text-rose-400/90">
+                    {{ t('oobe.tlsHintRisk') }}
+                  </li>
+                </ul>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel @click="onTlsGoBack">
+              {{ t('oobe.tlsGoBack') }}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              @click="reallyRunInstall"
+            >
+              {{ t('oobe.tlsContinueAnyway') }}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
   </div>
 </template>
 
@@ -1037,6 +1432,18 @@ import {
   SelectValue
 } from '~~/components/ui/select'
 import { Label } from '~~/components/ui/label'
+import { ToggleGroup, ToggleGroupItem } from '~~/components/ui/toggle-group'
+import { FieldSet, FieldLegend } from '~~/components/ui/field'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '~~/components/ui/alert-dialog'
 import { useOOBE, type DepProgressEvt, type InstallProgressEvt } from '~~/composables/useOOBE'
 import { resetOOBECache } from '~~/middleware/oobe.global'
 import { useI18n } from 'vue-i18n'
@@ -1064,9 +1471,15 @@ import {
   Rocket,
   ChevronLeft,
   ChevronRight,
-  ExternalLink
+  ExternalLink,
+  Server,
+  Wifi,
+  WifiOff,
+  Cpu,
+  Cable,
+  ShieldAlert
 } from '@lucide/vue'
-import { markRaw, nextTick, onMounted } from 'vue'
+import { computed, markRaw, nextTick, onMounted, ref } from 'vue'
 
 definePageMeta({ layout: false })
 
@@ -1082,7 +1495,12 @@ interface BingWallpaperPayload {
 
 const { t } = useI18n()
 const oobe = useOOBE()
-const { systemChecks, systemSummary, loading, checkSystem, createAdmin, saveSiteSettings, finishOOBE, getOOBEStatus, installDependencies, subscribeDependencyStream } = oobe
+const {
+  systemChecks, systemSummary, loading, checkSystem, createAdmin, saveSiteSettings,
+  finishOOBE, getOOBEStatus, installDependencies, subscribeDependencyStream,
+  effectiveApiBase, setBackendApiBase, probeBackend, normalizeUserApiBase,
+  clearOOBEApiBaseOverrideFromStorage, installSnapshotState, cancelInstallWatch
+} = oobe
 
 // ====== Bing 每日壁纸（后台风格：emerald/teal/cyan 三束光 + 毛玻璃） ======
 // —— 使用 FastAPI /api/bing/wallpapers，与 login/register 的 useBingWallpaper 同源，
@@ -1299,6 +1717,165 @@ const step = ref(1)
 const checking = ref(false)
 const showAdminPassword = ref(false)
 const showAdminConfirmPassword = ref(false)
+// R2-2.6：明文 HTTP TLS 二次确认对话开关；关闭时 focus 回到对应输入
+const tlsDialogOpen = ref(false)
+const apiUrlInputRef = ref<HTMLInputElement | null>(null)
+
+// ----- O 系列 Step1 后端连接相关状态 -----
+const connMode = ref<'dev' | 'prod'>('dev')
+const connApiUrl = ref('http://127.0.0.1:8000/api')
+const backendProbeRunning = ref(false)
+interface BackendProbeResult {
+  ok: boolean
+  code: number
+  statusText: string
+  stage: 'health' | 'status' | 'init'
+  errorCode?: string
+  detail?: string
+  apiBase?: string
+  oobeRequired?: boolean
+  oobeComplete?: boolean
+}
+const backendProbeResult = ref<BackendProbeResult>({
+  ok: false, code: 0, statusText: '', stage: 'init'
+})
+const backendProbeApplied = ref(false)
+const quickPorts = ['8000', '8001', '8080']
+
+const onConnModeChange = (v: 'dev' | 'prod') => {
+  connMode.value = v
+  if (v === 'dev') {
+    // 开发模式默认填本机 8000 /api（或从 effectiveApiBase 继承）
+    const curr = (effectiveApiBase.value || '').trim()
+    if (curr && curr !== '/api' && /^https?:\/\//i.test(curr)) {
+      connApiUrl.value = curr
+    } else {
+      connApiUrl.value = 'http://127.0.0.1:8000/api'
+    }
+  } else {
+    connApiUrl.value = '/api'
+  }
+  // 用户改模式 → 重置探测状态
+  backendProbeResult.value = { ok: false, code: 0, statusText: '', stage: 'init' }
+  backendProbeApplied.value = false
+}
+
+const applyQuickPort = (p: string) => {
+  if (connMode.value !== 'dev') return
+  const port = p.trim()
+  if (!port) return
+  // 纯数字端口：按 http://127.0.0.1:<port>/api 重写
+  if (/^\d+$/.test(port)) {
+    connApiUrl.value = `http://127.0.0.1:${port}/api`
+  } else {
+    connApiUrl.value = port
+  }
+  backendProbeResult.value = { ok: false, code: 0, statusText: '', stage: 'init' }
+  backendProbeApplied.value = false
+}
+
+const watchProbeFailText = computed(() => {
+  const r = backendProbeResult.value
+  if (!r || r.ok) return ''
+  if (r.code === 0) return t('oobe.connProbeNetworkError')
+  if (r.stage === 'health' && r.code !== 200) return t('oobe.connProbeNotHealthy')
+  return r.detail || `${t('oobe.connProbeFailDetail')}：HTTP ${r.code} ${r.statusText || ''}${r.errorCode ? ` (${r.errorCode})` : ''}`
+})
+
+// ---- O 系列 Step1 模板抽取辅助（避免模板内复杂 JS/全局对象访问） ----
+// reka-ui 2.10 Switch 受控属性是 modelValue（事件 @update:model-value）；
+// :checked/@update:checked 在此版本不存在，用了会导致开关永远显示未选中。
+const switchProdMode = (prod: boolean) => onConnModeChange(prod ? 'prod' : 'dev')
+// 用户编辑 URL 框时重置探测结果（需要 .value，因为是在 script 内）
+const resetProbeStateOnEdit = () => {
+  backendProbeResult.value = { ok: false, code: 0, statusText: '', stage: 'init' }
+  backendProbeApplied.value = false
+}
+// 快选端口激活态：从 connApiUrl 提取当前 port，失败时返回空串
+const connActivePort = computed<string>(() => {
+  const url = String(connApiUrl.value || '').trim()
+  try {
+    if (!/^https?:\/\//i.test(url)) return ''
+    const u = new URL(url)
+    return u.port
+  } catch {
+    return ''
+  }
+})
+// 自定义端口按钮：保留视觉占位，当前暂不实现弹出输入
+const customPortNoop = () => { /* keep noop */ }
+
+// ---- QW-D：URL 输入即时合法性（专业 CMS：不等到点「探测」才报错） ----
+const connApiUrlNormalizedPreview = computed<string>(() => normalizeUserApiBase(connApiUrl.value) || '')
+const connApiUrlInvalid = computed<boolean>(() => {
+  const raw = String(connApiUrl.value || '').trim()
+  if (!raw) return true
+  const normalized = normalizeUserApiBase(raw)
+  // 相对路径 /api 或绝对 http(s)://host:port/api 才合法
+  if (normalized && (normalized.startsWith('/') || /^https?:\/\//i.test(normalized))) return false
+  return true
+})
+const connApiUrlHintText = computed(() => {
+  const raw = String(connApiUrl.value || '').trim()
+  if (!raw) return t('oobe.connApiUrlEmptyHint', { default: '请填写后端 API 地址。例如：http://127.0.0.1:8000/api 或 /api' })
+  if (connApiUrlInvalid.value) return t('oobe.connApiUrlInvalidHint', { default: '地址格式无效，仅支持绝对 http(s)://host:port[/api] 或同源相对路径 /api' })
+  if (connApiUrlNormalizedPreview.value && connApiUrlNormalizedPreview.value !== raw) {
+    return t('oobe.connApiUrlWillNormalizeHint', { url: connApiUrlNormalizedPreview.value, default: `点击探测后将自动规范化为：${connApiUrlNormalizedPreview.value}` })
+  }
+  return connMode.value === 'dev' ? t('oobe.connApiUrlDevHint') : t('oobe.connApiUrlProdHint')
+})
+
+const runProbeBackend = async () => {
+  if (backendProbeRunning.value) return
+  backendProbeRunning.value = true
+  backendProbeApplied.value = false
+  try {
+    const r = await probeBackend(connApiUrl.value, { timeoutMs: 6000 })
+    backendProbeResult.value = {
+      ok: r.ok,
+      code: r.code,
+      statusText: r.statusText,
+      stage: r.stage,
+      errorCode: r.errorCode,
+      detail: r.detail,
+      apiBase: r.apiBase,
+      oobeRequired: r.oobeRequired,
+      oobeComplete: r.oobeComplete
+    }
+    if (r.ok) {
+      // 探测成功 → 应用 apiBase（写入 composable 内部 + localStorage，确保后续 request/SSE 立即命中）
+      setBackendApiBase(r.apiBase)
+      backendProbeApplied.value = true
+      // 探测成功 → 自动跑一次系统检测（Step1 的下卡），减少用户再点一次
+      try {
+        checking.value = true
+        await checkSystem()
+      } catch (e) {
+        // 系统检测失败时：写一条明确 warn 行，让 canNext 有合理提示（而不是空数组 + 无按钮无提示）
+        const msg = e instanceof Error ? e.message : String(e)
+        systemChecks.value = [{
+          name: '系统环境检测',
+          detail: msg || '后端返回异常，请点下方「重新检测」或确认后端服务状态',
+          status: 'warn',
+          statusText: '需重试'
+        }]
+      } finally {
+        checking.value = false
+      }
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e)
+    backendProbeResult.value = {
+      ok: false,
+      code: 0,
+      statusText: msg,
+      stage: 'health',
+      detail: msg
+    }
+  } finally {
+    backendProbeRunning.value = false
+  }
+}
 
 // ----- 依赖安装相关状态 -----
 const installRunning = ref(false)
@@ -1338,6 +1915,17 @@ const installStepList = reactive([
 
 // 页面加载时先取一次状态（完成后重定向首页）
 onMounted(async () => {
+  // 初始化 Step1 的 UI 值：从 effectiveApiBase 反推模式
+  const cur = (effectiveApiBase.value || '').trim()
+  if (cur && cur !== '/api' && /^https?:\/\//i.test(cur)) {
+    // 已有绝对地址 → Dev 模式
+    connMode.value = 'dev'
+    connApiUrl.value = cur
+  } else if (cur === '/api' || !cur) {
+    // 同源相对 → 仍默认 Dev 模式（本地 8000），用户可切 Prod
+    connMode.value = 'dev'
+    connApiUrl.value = 'http://127.0.0.1:8000/api'
+  }
   try {
     const result = await getOOBEStatus()
     const payload = result?.data?.value as { oobe_complete?: boolean } | null | undefined
@@ -1356,15 +1944,8 @@ onMounted(async () => {
   } catch {
     // 忽略：后端还没启动起来时也会失败，默认进入向导
   }
-  // 首次进入 step1：自动跑一次系统检测
-  try {
-    checking.value = true
-    await checkSystem()
-  } catch {
-    /* 系统检测失败不阻断向导 */
-  } finally {
-    checking.value = false
-  }
+  // ** 注意：O 系列改版后，首次进入 step1 不再自动跑 checkSystem **
+  // 用户必须先通过「探测连接」→ 成功后 handler 会自动触发 checkSystem。
 })
 
 const steps = [
@@ -1372,7 +1953,7 @@ const steps = [
     title: t('oobe.step1Title'),
     desc: t('oobe.step1Desc'),
     longDesc: t('oobe.step1LongDesc'),
-    icon: markRaw(Settings2)
+    icon: markRaw(Server)
   },
   {
     title: t('oobe.step2Title'),
@@ -1469,8 +2050,36 @@ const isProductionEnv = computed({
   set: (v: boolean) => { siteForm.environment = v ? 'production' : 'development' }
 })
 
+// ===== R2-2.6：Prod Mode 明文 HTTP 检测 =====
+// 任何字符串是否为 http:// 开头（忽略两端空白）
+const isPlainHttp = (s?: string) => /^http:\/\//i.test(String(s || '').trim())
+// 风险命中条件：(1) 部署模式为 prod **或** (2) Step3 的环境开关为 production，
+// 并且 (effectiveApiBase 明文 **或** siteForm.siteUrl 明文)
+const isPlaintextHttpRisk = computed<boolean>(() => {
+  const prodMode = connMode.value === 'prod' || isProductionEnv.value
+  if (!prodMode) return false
+  return isPlainHttp(effectiveApiBase.value) || isPlainHttp(siteForm.siteUrl)
+})
+// TLS 对话取消：跳回对应步骤并 focus 到输入
+const onTlsGoBack = async () => {
+  tlsDialogOpen.value = false
+  // 优先返回明文来源所在步骤：若 effectiveApiBase 是 http 则 Step1，否则 Step3
+  const source = isPlainHttp(effectiveApiBase.value) ? 1 : 3
+  step.value = source
+  await nextTick()
+  if (source === 1) {
+    apiUrlInputRef.value?.focus?.()
+  } else if (typeof document !== 'undefined') {
+    const el = document.querySelector<HTMLInputElement>('input[type="url"][name="site-url"], input[type="url"]')
+    el?.focus?.()
+  }
+}
+
 const canNext = computed(() => {
   if (step.value === 1) {
+    // O 系列 Step1：必须先通过后端连接探测，其次系统检测无硬错误
+    const probePassed = Boolean(backendProbeResult.value?.ok) && backendProbeApplied.value
+    if (!probePassed) return false
     return systemChecks.value.length > 0 && systemChecks.value.every(c => c.status !== 'err')
   }
   if (step.value === 2) {
@@ -1589,6 +2198,30 @@ const nextStep = async () => {
   if (!canNext.value) return
   loading.value = true
   try {
+    // Step 1 → 2：强制应用后端地址（防止用户探测后改 URL 未重新探测的边界）；若 systemChecks 仍空再跑一次
+    if (step.value === 1) {
+      const normalized = normalizeUserApiBase(connApiUrl.value)
+      if (normalized && normalized !== effectiveApiBase.value) {
+        setBackendApiBase(normalized)
+      }
+      if (systemChecks.value.length === 0) {
+        checking.value = true
+        try {
+          await checkSystem()
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e)
+          systemChecks.value = [{
+            name: '系统环境检测',
+            detail: msg || '后端返回异常，请点下方「重新检测」或确认后端服务状态',
+            status: 'warn',
+            statusText: '需重试'
+          }]
+        } finally {
+          checking.value = false
+        }
+      }
+    }
+
     if (step.value === 2) {
       await createAdmin({
         username: adminForm.name.trim(),
@@ -1640,11 +2273,42 @@ const prevStep = () => {
   if (step.value > 1) {
     step.value--
   }
+  // 回退到 Step≤2 时，清理之前的安装/进度残留（防止用户 4→3/4→3→2→3→4 时进度假完成/安装假运行）
+  if (step.value <= 2) {
+    installing.value = false
+    installed.value = false
+    for (const s of installStepList) {
+      s.done = false
+    }
+    installStepIndex.value = -1
+    installPercent.value = step.value === 1 ? 0 : installPercent.value
+    installStepMessage.value = ''
+    // R1-CEx-2：清理 SSE 快照状态 & 停止任何等待的 SSE
+    if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+      installSnapshotState.value = 'idle'
+    }
+    try {
+      cancelInstallWatch()
+    } catch {
+      // 忽略：未启动安装时 cancelInstallWatch 可能为 noop
+    }
+    // R2-2.6：关闭 TLS 确认框
+    tlsDialogOpen.value = false
+  }
+  if (step.value === 1) {
+    installPercent.value = 0
+    installStatusText.value = ''
+    depInstalled.value = false
+  }
 }
 
 // 安装进度回调：更新 Step4 的步骤状态（字段与 useOOBE 中 InstallProgressEvt 对齐：step_id / percent / success）
 const onInstallProgress = (evt: InstallProgressEvt) => {
   if (evt.type === 'progress') {
+    // 收到 SSE 事件：复位快照状态（兜底结束）
+    if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+      installSnapshotState.value = 'idle'
+    }
     installStepMessage.value = evt.message || ''
     // percent 0-100 粗粒度估算 stepIndex
     const percent = typeof evt.percent === 'number' ? Math.max(0, Math.min(100, evt.percent)) : undefined
@@ -1672,13 +2336,44 @@ const onInstallProgress = (evt: InstallProgressEvt) => {
     installPercent.value = 100
     installed.value = true
     installing.value = false
+    if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+      installSnapshotState.value = 'idle'
+    }
   } else if (evt.type === 'error') {
     installing.value = false
+    if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+      installSnapshotState.value = 'idle'
+    }
   }
 }
 
-const finishSetup = async () => {
+// ===== R1-CEx-2：取消等待 / 重试 =====
+const runInstallCancel = () => {
+  try {
+    cancelInstallWatch()
+  } catch {
+    // 忽略
+  }
+  installing.value = false
+  if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+    installSnapshotState.value = 'idle'
+  }
+}
+
+const runInstallRetry = async () => {
   if (installing.value) return
+  // 当前仍在 snapshot retrying / idle — 重新触发安装（幂等后端会串行化或直接 409 提前完成）
+  // 同时强制切回 idle，避免 UI 卡禁用态
+  if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+    installSnapshotState.value = 'idle'
+  }
+  await reallyRunInstall()
+}
+
+// ===== R1-U2 / R2-2.6 / R1-CEx-2：真安装流程 =====
+const reallyRunInstall = async () => {
+  if (installing.value) return
+  tlsDialogOpen.value = false
   installing.value = true
   installStepIndex.value = 0
   installPercent.value = 10
@@ -1686,10 +2381,18 @@ const finishSetup = async () => {
   installStepList.forEach((s) => {
     s.done = false
   })
+  if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+    installSnapshotState.value = 'idle'
+  }
 
   try {
-    // finishOOBE(onProgress)：异步回调 SSE 进度，最终 Promise<Record<string, unknown> | null>
-    await finishOOBE(onInstallProgress)
+    // finishOOBE(onProgress, { onCancelRequested })：SSE + 30s idleTimeout + 3 次快照轮询
+    await finishOOBE(onInstallProgress, {
+      onCancelRequested: () => {
+        // 后端安装仍在运行时，允许用户从 UI 解除 installing 假死（不杀后端任务，由 R1-U2 幂等性保证安全）
+        installing.value = false
+      }
+    })
     // 防御性兜底：即便上游 done 事件丢失，也按完成处理
     if (!installed.value) {
       installStepList.forEach((s) => {
@@ -1700,15 +2403,38 @@ const finishSetup = async () => {
       installed.value = true
     }
     installing.value = false
+    if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+      installSnapshotState.value = 'idle'
+    }
   } catch (e) {
     console.error('finishSetup failed:', e)
     installing.value = false
+    if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
+      installSnapshotState.value = 'idle'
+    }
   }
+}
+
+const finishSetup = async () => {
+  if (installing.value) return
+  // R2-2.6：生产模式 + 明文 HTTP 提交密码 → 显式二次确认
+  if (isPlaintextHttpRisk.value) {
+    tlsDialogOpen.value = true
+    return
+  }
+  await reallyRunInstall()
 }
 
 const goAdmin = async () => {
   loading.value = true
   try {
+    // 安装完成 → 清理向导期 localStorage rosetta:oobe:apiBase 覆盖
+    // 之后正常走 env/同源 /api 的持久化配置真源
+    try {
+      clearOOBEApiBaseOverrideFromStorage()
+    } catch {
+      /* ignore */
+    }
     resetOOBECache(true)
     try {
       await navigateTo('/admin', { replace: true })

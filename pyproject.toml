@@ -36,6 +36,7 @@ dependencies = [
     "pytest-asyncio>=1.4.0",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.2",
+    "scalar-fastapi>=1.9.0",
 ]
 
 [project.optional-dependencies]
@@ -53,7 +54,18 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
+ignore = [
+    "E501",
+    # 低风险风格类警告（不影响功能/可读性），待未来专项风格整治再逐个修复
+    "E701", "E702", "E741",
+    "N803", "N806", "N814", "N815", "N818",
+    # E402：core.py schemas 段因 BASE_DIR 定义后导入（需相对项目根路径），含 noqa 标记
+    "E402",
+    # UP035：schemas/__init__.py 是公共导出 hub，Dict/List/Generic 等仍具 API 兼容性价值
+    "UP035",
+    # UP007 / UP045：仅在能 100% 验证不破坏动态 create_model 行为时再清理
+    "UP007", "UP045",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

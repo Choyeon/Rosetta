@@ -10,6 +10,7 @@
 - 使用并发查询优化
 """
 
+import logging
 import math
 import secrets
 import string
@@ -20,9 +21,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
+logger = logging.getLogger(__name__)
+
 from backend.api._user_response_helper import build_user_response
 from backend.core.auth import (
     DB,
+    CurrentStaff,
     CurrentUser,
     CurrentUserOptional,
     get_password_hash,
@@ -71,6 +75,12 @@ class _PasswordResetBody(BaseModel):
 class _PasswordChangeBody(BaseModel):
     old_password: str = Field(..., description="旧密码")
     new_password: str = Field(..., description="新密码")
+
+
+class _DeleteAccountBody(BaseModel):
+    """注销账户请求体：密码走 body 而非 Query，避免明文密码进入访问日志 / Referer / 浏览器历史"""
+
+    password: str = Field(..., min_length=1, max_length=255, description="当前密码验证")
 
 
 async def _gen_reset_code_and_token(user: User) -> tuple[str, str]:
@@ -348,10 +358,13 @@ async def password_reset_request(
                 await db.commit()
             except Exception:
                 await db.rollback()
+                logger.warning("密码重置验证码写入站内信失败（SMTP 未配置时的降级通道）", exc_info=True)
         except Exception:
-            pass
+            logger.warning("密码重置通知准备失败", exc_info=True)
 
-    if settings.debug:
+    # 仅本地开发便利：生产环境即使 debug=True 也不回传重置凭证，
+    # 否则任何人请求管理员邮箱的重置即可在响应中拿到 reset_code/token 完成接管。
+    if settings.debug and settings.environment != "production":
         result["debug"] = {
             "reset_code": code,
             "reset_token": token,
@@ -391,18 +404,41 @@ async def password_reset(
 
     key_code = f"{PREFIX}:code:{user.id}"
     key_token = f"{PREFIX}:token:{user.id}"
+    key_attempts = f"{PREFIX}:attempts:{user.id}"
 
     try:
         cached_code = await cache.get(key_code)
-        cached_token = await cache.get(key_token)
+        attempts = await cache.get(key_attempts)
     except Exception:
         cached_code = None
-        cached_token = None
+        attempts = None
 
-    code_matches = cached_code is not None and str(cached_code) == body.code
-    token_matches = cached_token is not None and str(cached_token) == body.token_or_email
+    # 限制同一验证码的尝试次数（防 6 位码暴力枚举；IP 限流可被伪造头绕过，不能只靠它）
+    try:
+        if attempts is not None and int(attempts) >= 5:
+            await cache.delete(key_code)
+            await cache.delete(key_token)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "尝试次数过多，验证码已作废，请重新申请",
+                    "error_code": "RESET_CODE_INVALID",
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        pass
 
-    if not code_matches and not (cached_token is not None and token_matches):
+    code_matches = cached_code is not None and secrets.compare_digest(
+        str(cached_code), str(body.code)
+    )
+
+    if not code_matches:
+        try:
+            await cache.set(key_attempts, (int(attempts) if attempts else 0) + 1, ttl=900)
+        except Exception:
+            pass
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail={
@@ -717,13 +753,14 @@ async def get_user_preferences_by_username(username: str, db: DB):
     "/",
     response_model=PaginatedResponse,
     summary="用户列表",
-    description="获取用户列表，支持搜索和分页。",
+    description="获取用户列表，支持搜索和分页（仅限登录用户）。",
 )
 async def list_users(
     db: DB,
+    _viewer: CurrentStaff,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-    search: str | None = Query(None, description="搜索关键词"),
+    search: str | None = Query(None, max_length=100, description="搜索关键词"),
     sort: str = Query("created_at", description="排序字段：created_at|last_login|username"),
     order: str = Query("desc", description="排序方向：asc|desc"),
 ):
@@ -756,9 +793,7 @@ async def list_users(
 
     total, result = await concurrent_query(
         db.scalar(count_query),
-        db.execute(
-            query.offset((page - 1) * page_size).limit(page_size)
-        ),
+        db.execute(query.offset((page - 1) * page_size).limit(page_size)),
     )
 
     users = result.scalars().all()
@@ -810,7 +845,7 @@ async def change_password(
 async def delete_account(
     current_user: CurrentUser,
     db: DB,
-    password: str = Query(..., description="当前密码验证"),
+    body: _DeleteAccountBody,
 ):
     """注销账户"""
     if current_user.is_superuser:
@@ -820,7 +855,7 @@ async def delete_account(
         )
 
     # 直接验证密码（不用 change_password(new=old) hack，因为它现在会拒绝同密码）
-    if not verify_password(password, current_user.password_hash):
+    if not verify_password(body.password, current_user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="密码错误",

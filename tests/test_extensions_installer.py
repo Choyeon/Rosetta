@@ -18,10 +18,8 @@ import hashlib
 import io
 import json
 import zipfile
-from pathlib import Path
 
 import pytest
-import pytest_asyncio
 from httpx import AsyncClient
 
 # ============================================================
@@ -47,8 +45,7 @@ def _make_fake_plugin_zip(slug: str = "hello-plugin", version: str = "0.1.0") ->
         z.writestr(f"{slug}/__init__.py", "from .plugin import register\n")
         z.writestr(
             f"{slug}/plugin.py",
-            "async def register(app=None, bus=None):\n"
-            "    return None\n",
+            "async def register(app=None, bus=None):\n    return None\n",
         )
     return buf.getvalue()
 
@@ -92,9 +89,7 @@ def _make_invalid_package_zip() -> bytes:
 
 
 @pytest.mark.asyncio
-async def test_t1_install_plugin_from_uploaded_zip(
-    client: AsyncClient, admin_headers: dict
-):
+async def test_t1_install_plugin_from_uploaded_zip(client: AsyncClient, admin_headers: dict):
     """T1: 上传插件 zip → 绝不返回 501「暂不支持 upload/remote 安装方式」。
 
     TDD 红阶段：当前 api/plugins.py 返回 501 NOT_IMPLEMENTED，所以 status_code == 501，
@@ -110,8 +105,7 @@ async def test_t1_install_plugin_from_uploaded_zip(
         headers=admin_headers,
     )
     assert resp.status_code != 501, (
-        f"TDD-Red: 当前实现返回 501 NOT_IMPLEMENTED，"
-        f"请实现 upload 分支后重新运行。resp={resp.text}"
+        f"TDD-Red: 当前实现返回 501 NOT_IMPLEMENTED，请实现 upload 分支后重新运行。resp={resp.text}"
     )
     assert "暂不支持" not in (resp.text or "")
     # 如果走到业务层：成功返回 200 + success，错误返回 4xx
@@ -127,9 +121,7 @@ async def test_t1_install_plugin_from_uploaded_zip(
 
 
 @pytest.mark.asyncio
-async def test_t2_install_theme_from_uploaded_zip(
-    client: AsyncClient, admin_headers: dict
-):
+async def test_t2_install_theme_from_uploaded_zip(client: AsyncClient, admin_headers: dict):
     """T2: 上传主题 zip → 绝不返回 501 NOT_IMPLEMENTED"""
     data = _make_fake_theme_zip("hello-theme")
     files = {"file": ("hello-theme.zip", data, "application/zip")}
@@ -156,9 +148,7 @@ async def test_t2_install_theme_from_uploaded_zip(
 
 
 @pytest.mark.asyncio
-async def test_t3_invalid_zip_no_manifest(
-    client: AsyncClient, admin_headers: dict
-):
+async def test_t3_invalid_zip_no_manifest(client: AsyncClient, admin_headers: dict):
     """T3: 缺少 rosetta-plugin.json 的 zip → 400 MANIFEST_INVALID，不是 501"""
     data = _make_invalid_package_zip()
     files = {"file": ("garbage.zip", data, "application/zip")}
@@ -183,9 +173,7 @@ async def test_t3_invalid_zip_no_manifest(
 
 
 @pytest.mark.asyncio
-async def test_t4_duplicate_plugin_same_version_conflict(
-    client: AsyncClient, admin_headers: dict
-):
+async def test_t4_duplicate_plugin_same_version_conflict(client: AsyncClient, admin_headers: dict):
     """T4: 同 slug 上传两次 → 不返回 501；要么 200 覆盖，要么 409。"""
     data = _make_fake_plugin_zip("dup-plugin", "0.1.0")
     files = {"file": ("dup-1.zip", data, "application/zip")}
@@ -322,6 +310,16 @@ async def test_t6_plugin_remote_install_checksum_ok(
 
     monkeypatch.setattr(_httpx_mod, "AsyncClient", _MockClient)
 
+    # 远程安装流程测试关心的是「下载 + checksum」链路，不是 SSRF 校验本身
+    # （net_guard 有独立测试套件 tests/test_net_guard.py 覆盖）；
+    # 沙箱内 market.rosetta.dev 无法 DNS 解析，须放行 mock URL 才能走到下载分支。
+    import backend.core.net_guard as _ng
+
+    async def _allow_any(url: str) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(_ng, "assert_public_http_url", _allow_any)
+
     payload = {
         "source": "remote",
         "slug": "remote-plugin",
@@ -365,6 +363,14 @@ async def test_t7_theme_remote_install_checksum_mismatch(
             super().__init__({url: data})
 
     monkeypatch.setattr(_httpx_mod, "AsyncClient", _MockClient)
+
+    # 同 T6：放行 mock URL，让请求走到「下载 + checksum 比对」分支
+    import backend.core.net_guard as _ng
+
+    async def _allow_any(url: str) -> None:  # noqa: ARG001
+        return None
+
+    monkeypatch.setattr(_ng, "assert_public_http_url", _allow_any)
 
     payload = {
         "source": "remote",

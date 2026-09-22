@@ -20,6 +20,7 @@ from backend.models.blog import Post
 from backend.repositories.post import PostRepository
 from backend.services.cache_service import CacheService
 from backend.utils.compat import UTC
+from backend.utils.reading_time import compute_reading_time_from_content
 
 logger = logging.getLogger(__name__)
 
@@ -219,6 +220,10 @@ class PostService:
         if data.get("status") == "published" and not data.get("published_at"):
             post_data["published_at"] = datetime.now(UTC)
 
+        # 预计算阅读时长并持久化，列表接口即可 defer(content) 不加载大文本
+        if "content" in post_data:
+            post_data["reading_time"] = compute_reading_time_from_content(post_data["content"])
+
         post = await self._repo.create(post_data)
 
         await self._cache.invalidate_post_cache()
@@ -251,6 +256,10 @@ class PostService:
         if data.get("status") == "published" and post.status != "published":
             if not data.get("published_at"):
                 data["published_at"] = datetime.now(UTC)
+
+        # content 变更时重新计算阅读时长
+        if "content" in data:
+            data["reading_time"] = compute_reading_time_from_content(data["content"])
 
         updated_post = await self._repo.update(post, data)
 

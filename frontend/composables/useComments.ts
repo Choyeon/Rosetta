@@ -1,16 +1,14 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
-import { ref } from 'vue'
+import { ref, shallowRef } from 'vue'
 import type { Comment, PaginatedResponse } from '~~/types/api'
 import { useAPI, apiFetch, type ApiFetchOptions } from '~~/composables/useApi'
 
 export function useComments() {
   const { locale } = useI18n()
 
-  // ===== Reactive state (like usePosts.ts pattern) =====
-  const comments = ref<Comment[]>([])
-  const comment = ref<Comment | null>(null)
+  // ===== Reactive state（shallowRef：fetchComments 全是整赋值 comments.value = X，
+  //       不做 push/splice/单条嵌套字段 mutate；浅层代理减少 100+ 长列表首帧 CPU） =====
+  const comments = shallowRef<Comment[]>([])
+  const comment = shallowRef<Comment | null>(null)
   const loading = ref(false)
   const loadingSingle = ref(false)
   const error = ref<unknown>(null)

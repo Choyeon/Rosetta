@@ -57,6 +57,20 @@ async def _refresh_photo_count(db: DB, album_id: int) -> None:
         await db.flush()
 
 
+async def _album_with_fallback_cover(db: DB, album: Album) -> Album:
+    """若相册 cover 为空，用首张照片 URL 兜底"""
+    if not album.cover:
+        first_photo = await db.scalar(
+            select(Photo)
+            .where(Photo.album_id == album.id)
+            .order_by(Photo.sort_order.asc(), Photo.id.asc())
+            .limit(1)
+        )
+        if first_photo:
+            album.cover = first_photo.url
+    return album
+
+
 # ==================== 公开接口 ====================
 
 
@@ -70,7 +84,9 @@ async def list_albums(
     pagination: PaginationParams = Depends(get_pagination),
 ):
     """公开相册列表（分页）"""
-    cache_key = make_cache_key("gallery", "albums", f"p{pagination.page}", f"ps{pagination.page_size}")
+    cache_key = make_cache_key(
+        "gallery", "albums", f"p{pagination.page}", f"ps{pagination.page_size}"
+    )
     cached = await cache.get(cache_key)
     if cached:
         return cached
@@ -83,6 +99,8 @@ async def list_albums(
     total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
     query = query.offset(pagination.offset).limit(pagination.limit)
     items = (await db.execute(query)).scalars().all()
+    for album in items:
+        await _album_with_fallback_cover(db, album)
     resp = PaginatedResponse(
         items=[AlbumResponse.model_validate(a) for a in items],
         total=total,
@@ -115,6 +133,10 @@ async def get_album(album_id: int, db: DB):
     if not album:
         raise HTTPException(status_code=404, detail="相册不存在或未公开")
 
+    # 封面兜底：未设封面则用首张照片
+    if not album.cover and album.photos:
+        album.cover = album.photos[0].url
+
     resp = AlbumDetailResponse(
         **AlbumResponse.model_validate(album).model_dump(),
         photos=[PhotoResponse.model_validate(p) for p in album.photos],
@@ -143,6 +165,8 @@ async def admin_list_albums(
     total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
     query = query.offset(pagination.offset).limit(pagination.limit)
     items = (await db.execute(query)).scalars().all()
+    for album in items:
+        await _album_with_fallback_cover(db, album)
     return PaginatedResponse(
         items=[AlbumResponse.model_validate(a) for a in items],
         total=total,

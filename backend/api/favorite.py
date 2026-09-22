@@ -4,8 +4,11 @@
 支持文章收藏、收藏夹管理等功能。
 """
 
+from __future__ import annotations
+
 import math
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import BaseModel
@@ -16,6 +19,10 @@ from backend.core.auth import DB, CurrentUser
 from backend.core.concurrency import concurrent_query
 from backend.core.database import Base
 from backend.utils.compat import UTC
+
+if TYPE_CHECKING:
+    from backend.models.blog import Post
+    from backend.models.user import User
 
 
 class FavoriteFolder(Base):
@@ -36,7 +43,7 @@ class FavoriteFolder(Base):
         DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
     )
 
-    user: Mapped["User"] = relationship("User", backref="favorite_folders")
+    user: Mapped[User] = relationship("User", backref="favorite_folders")
 
 
 class Favorite(Base):
@@ -59,9 +66,9 @@ class Favorite(Base):
         DateTime, default=lambda: datetime.now(UTC), index=True
     )
 
-    user: Mapped["User"] = relationship("User")
-    post: Mapped["Post"] = relationship("Post")
-    folder: Mapped["FavoriteFolder | None"] = relationship("FavoriteFolder", backref="favorites")
+    user: Mapped[User] = relationship("User")
+    post: Mapped[Post] = relationship("Post")
+    folder: Mapped[FavoriteFolder | None] = relationship("FavoriteFolder", backref="favorites")
 
 
 router = APIRouter(tags=["收藏"])

@@ -10,7 +10,11 @@ from backend.models.user import User
 router = APIRouter(prefix="/messages", tags=["私信"])
 
 
-@router.get("/conversations")
+@router.get(
+    "/conversations",
+    summary="获取会话列表",
+    description="获取当前用户的所有私信会话，按最近消息时间排序。",
+)
 async def get_conversations(
     db: DB,
     current_user: CurrentUser,
@@ -113,7 +117,11 @@ async def get_conversations(
     }
 
 
-@router.get("/unread/count")
+@router.get(
+    "/unread/count",
+    summary="获取未读消息数",
+    description="返回当前用户所有未读私信的总数。",
+)
 async def get_unread_count(
     db: DB,
     current_user: CurrentUser,
@@ -131,7 +139,11 @@ async def get_unread_count(
     return {"count": count}
 
 
-@router.get("/{user_id}")
+@router.get(
+    "/{user_id}",
+    summary="获取与某用户的会话",
+    description="获取当前用户与指定用户之间的私信记录，支持分页。",
+)
 async def get_conversation(
     db: DB,
     current_user: CurrentUser,
@@ -204,7 +216,12 @@ async def get_conversation(
     }
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    summary="发送私信",
+    description="向指定用户发送一条私信消息。",
+)
 async def send_message(
     db: DB,
     current_user: CurrentUser,
@@ -236,7 +253,11 @@ async def send_message(
     }
 
 
-@router.put("/{message_id}/read")
+@router.put(
+    "/{message_id}/read",
+    summary="标记单条消息已读",
+    description="将指定私信标记为已读。",
+)
 async def mark_as_read(
     db: DB,
     current_user: CurrentUser,
@@ -256,7 +277,11 @@ async def mark_as_read(
     return {"success": True}
 
 
-@router.put("/read-all/{user_id}")
+@router.put(
+    "/read-all/{user_id}",
+    summary="标记某会话全部已读",
+    description="将与指定用户的所有私信标记为已读。",
+)
 async def mark_all_as_read(
     db: DB,
     current_user: CurrentUser,

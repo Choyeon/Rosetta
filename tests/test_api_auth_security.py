@@ -231,6 +231,7 @@ async def test_password_reset_flow(
     由于测试环境禁用 Redis，对 backend.api.users 中的 cache 模块的 set/get 提供内存兜底。
     """
     from backend.core import config as _cfg
+
     # --- 内存 fake cache key-value store (用于 password_reset 存 code/token) ---
     _fake_store: dict[str, object] = {}
     import backend.api.users as _u_mod
@@ -247,6 +248,8 @@ async def test_password_reset_flow(
     monkeypatch.setattr(_u_mod, "cache", _FakeCache())
 
     monkeypatch.setattr(_cfg.settings, "debug", True)
+    # 显式锁定 environment，避免其他测试文件（如 oobe 安装流程）修改全局 settings 后泄漏
+    monkeypatch.setattr(_cfg.settings, "environment", "development")
 
     # Step 1: password-reset-request
     r_req = await client.post(

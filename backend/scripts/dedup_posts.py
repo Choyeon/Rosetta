@@ -1,6 +1,7 @@
-"""一次性脚本：对 posts 表按 slug 去重，保留最小 ID，删除重复行。
+r"""一次性脚本：对 posts 表按 slug 去重，保留最小 ID，删除重复行。
 用法：cd d:\WebProjects\Rosetta && uv run python -m backend.scripts.dedup_posts
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,7 +31,9 @@ async def main() -> None:
 
         removed = 0
         for slug, _ in dup_rows:
-            ids_res = await db.execute(select(Post.id).where(Post.slug == slug).order_by(Post.id.asc()))
+            ids_res = await db.execute(
+                select(Post.id).where(Post.slug == slug).order_by(Post.id.asc())
+            )
             ids = [r for (r,) in ids_res.all()]
             if len(ids) < 2:
                 continue

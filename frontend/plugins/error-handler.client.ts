@@ -55,9 +55,24 @@ export default defineNuxtPlugin(() => {
     }
   }
 
+  /**
+   * Hydration 级联错误（refs null / mismatch）：
+   * 由 02-hydration-safety.global.client.ts 负责静默 + CSR 重挂载，
+   * 这里提前拦截避免 toast 对用户误报。
+   */
+  const isHydrationCascade = (err: unknown): boolean => {
+    const msg = extractMessage(err).toLowerCase()
+    if (msg.includes('hydration') || msg.includes('mismatch')) return true
+    if (msg.includes('refs')) {
+      if (msg.includes('null') || msg.includes('reading')) return true
+    }
+    return false
+  }
+
   window.onerror = (message, source, lineno, colno, error) => {
     // 静默跳过 CDN / 浏览器扩展等跨域脚本抛出的 "Script error."
     if (isForeignScriptError(message, source, lineno, colno, error)) return false
+    if (isHydrationCascade(error ?? message)) return false
     const msg = typeof message === 'string' ? message : extractMessage(message)
     showError(msg || '脚本执行出错', { source, lineno, colno, error })
     return false
@@ -65,6 +80,10 @@ export default defineNuxtPlugin(() => {
 
   window.addEventListener('unhandledrejection', (event) => {
     const reason = event.reason
+    if (isHydrationCascade(reason)) {
+      event.preventDefault()
+      return
+    }
     const msg = extractMessage(reason)
     // Nuxt 的 "Must be called at the top of a setup function" 非常常见，给出更友好的提示
     if (msg.includes('Must be called at the top of a `setup` function')) {

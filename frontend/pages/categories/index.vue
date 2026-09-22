@@ -12,19 +12,66 @@
       </p>
     </header>
 
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+    <div
+      v-if="_catsLoading && categories.length === 0"
+      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+    >
+      <div
+        v-for="i in 6"
+        :key="i"
+        class="h-48 rounded-2xl border border-border/60 bg-card p-6"
+      >
+        <div class="flex items-start justify-between mb-4">
+          <div class="size-12 rounded-xl bg-muted animate-pulse" />
+          <div class="w-12 h-6 rounded-full bg-muted animate-pulse" />
+        </div>
+        <div class="h-5 w-2/3 rounded-full bg-muted animate-pulse mb-3" />
+        <div class="flex flex-col gap-2 mb-4">
+          <div class="h-4 w-full rounded-full bg-muted animate-pulse" />
+          <div class="h-4 w-5/6 rounded-full bg-muted animate-pulse" />
+        </div>
+        <div class="h-px bg-border/60 my-2" />
+        <div class="h-4 w-1/2 rounded-full bg-muted animate-pulse mt-3" />
+      </div>
+    </div>
+
+    <div
+      v-else-if="catsLoadError"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center"
+    >
+      {{ t('admin.posts.loadFailed') }}
+    </div>
+
+    <TransitionGroup
+      v-else
+      tag="div"
+      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+      name="list-item"
+    >
       <NuxtLink
         v-for="cat in categories"
         :key="cat.id"
+        v-memo="[cat.id, cat.slug, cat.post_count ?? cat.postsCount]"
         :to="`/categories/${cat.slug}`"
+        class="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <Card class="h-full group transition-all hover:shadow-soft hover:-translate-y-0.5 duration-300 overflow-hidden">
           <CardHeader class="p-6 pb-4">
             <div class="flex items-start justify-between mb-4">
               <div
                 class="size-12 rounded-xl flex items-center justify-center bg-primary/10 transition-transform duration-300 group-hover:scale-110"
+                :style="cat.color ? { background: `color-mix(in oklab, ${cat.color} 15%, transparent)` } : undefined"
               >
-                <FolderOpen class="size-6 text-primary" />
+                <DynamicIcon
+                  v-if="cat.icon"
+                  :icon="cat.icon"
+                  class="size-6"
+                  :class="cat.color ? 'text-foreground' : 'text-primary'"
+                />
+                <FolderOpen
+                  v-else
+                  class="size-6 text-primary"
+                />
               </div>
               <Badge variant="secondary">
                 {{ getPostsCount(cat) }} {{ t('categories.posts') }}
@@ -43,7 +90,7 @@
           </CardFooter>
         </Card>
       </NuxtLink>
-    </div>
+    </TransitionGroup>
 
     <div
       v-if="categories.length === 0"
@@ -110,12 +157,14 @@ interface CategoryRow {
   slug: string
   name?: string | Record<string, string>
   description?: string | Record<string, string>
+  icon?: string
+  color?: string
   post_count?: number
   postsCount?: number
 }
 
 // 真实接口：GET /api/blog/categories。SSR + 客户端同源，失败时回退空数组，不显示示例分类。
-const { data: catsData, refresh: refreshCats } = await useAPI<CategoryRow[]>('/blog/categories', {
+const { data: catsData, pending: _catsLoading, error: catsLoadError, refresh: refreshCats } = useAPI<CategoryRow[]>('/blog/categories', {
   query: { lang: locale.value },
   key: computed(() => 'categories:list:' + (locale.value || 'zh')),
   default: () => []

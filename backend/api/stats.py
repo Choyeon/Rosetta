@@ -98,7 +98,11 @@ async def _get_system_health(db: DB):
     return result
 
 
-@router.get("/stats")
+@router.get(
+    "/stats",
+    summary="管理后台统计数据",
+    description="获取文章、评论、用户、媒体等模块的统计概览数据。",
+)
 async def get_admin_stats(
     db: DB,
     current_user: CurrentStaff,
@@ -258,7 +262,12 @@ async def get_admin_stats(
 
     act_q = (
         select(
-            User.id, User.nickname, User.username, User.avatar, User.title_id, func.count(Comment.id).label("c")
+            User.id,
+            User.nickname,
+            User.username,
+            User.avatar,
+            User.title_id,
+            func.count(Comment.id).label("c"),
         )
         .join(Comment, Comment.user_id == User.id)
         .group_by(User.id)
@@ -266,17 +275,19 @@ async def get_admin_stats(
         .limit(5)
     )
     act_rows = (await db.execute(act_q)).all()
-    
+
     # 批量查询用户头衔
     user_ids = [r.id for r in act_rows]
     title_map: dict[int, dict | None] = {}
     if user_ids:
-        titles_q = select(UserTitle).where(UserTitle.id.in_(
-            [r.title_id for r in act_rows if r.title_id is not None]
-        ))
+        titles_q = select(UserTitle).where(
+            UserTitle.id.in_([r.title_id for r in act_rows if r.title_id is not None])
+        )
         title_rows = (await db.execute(titles_q)).scalars().all()
-        title_map = {t.id: {"id": t.id, "name": t.name, "icon": t.icon, "color": t.color} for t in title_rows}
-    
+        title_map = {
+            t.id: {"id": t.id, "name": t.name, "icon": t.icon, "color": t.color} for t in title_rows
+        }
+
     active_commenters: list[dict] = []
     for r in act_rows:
         name = r.nickname or r.username or "User"

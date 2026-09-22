@@ -217,9 +217,9 @@ export function useJsonLd<T = unknown>(data: T | Ref<T>) {
       script: [
         {
           type: 'application/ld+json',
-          innerHTML: JSON.stringify(raw),
+          innerHTML: jsonLdStringify(raw),
           // 阻止 SSR/客户端 hydration 冲突：同一页多次调用时通过 hid 去重
-          hid: `jsonld-${stableHash(JSON.stringify(raw))}`
+          hid: `jsonld-${stableHash(jsonLdStringify(raw))}`
         }
       ]
     }
@@ -260,7 +260,7 @@ export function useWebsiteJsonLd() {
         {
           type: 'application/ld+json',
           hid: 'jsonld-website',
-          innerHTML: JSON.stringify(payload)
+          innerHTML: jsonLdStringify(payload)
         }
       ]
     }
@@ -270,6 +270,100 @@ export function useWebsiteJsonLd() {
 // ---------------------------------------------------------------------------
 // 4. Article / BlogPosting JSON-LD（文章详情页）
 // ---------------------------------------------------------------------------
+
+/**
+ * Safe ISO-8601 日期格式化 → 避免 unhead/SSR 因 "Invalid time value"
+ * RangeError 整页崩溃返回 500（会把用户带到 error.vue 且 NuxtData 序列化损坏）。
+ *
+ * 触发条件：new Date(undefined/null/""/空字符串/非 ISO/空 i18n 回退)
+ *   → Invalid Date 对象 → .toISOString() 抛 "Invalid time value"。
+ *
+ * 防御策略：
+ * 1. falsy 输入 → 返回 undefined（schema 属性被 JSON-LD omit，可接受）。
+ * 2. 构造后显式检查 Number.isNaN(getTime()) 捕获 Invalid Date。
+ * 3. catch 兜底任何异常 → 回 undefined。
+ */
+function safeIsoDate(val: unknown): string | undefined {
+  if (val === null || val === undefined || val === '') return undefined
+  try {
+    const d = new Date(val as string | number | Date)
+    if (Number.isNaN(d.getTime())) return undefined
+    return d.toISOString()
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Deep-safe JSON serialization for JSON-LD payloads against Vue circular ref structures.
+ *
+ * Typical chain that produces the last error:
+ *   posts/hot URL → matches pages/posts/[slug].vue (slug='hot' dynamic)
+ *   → fetch post by slug='hot' returns 404
+ *   → reactive computed chain on post.category / keywords might still be
+ *     bound to the raw computed object (Ref wrapping ComputedRef wrapping Ref)
+ *   → JSON.stringify(ComputedRefImpl) throws "Converting circular structure to JSON
+ *     ... property 'dep' -> object with constructor 'Dep' ... closes the circle".
+ *
+ * Solution: custom JSON.stringify replacer that unwraps Ref-ish `.value` AND
+ * safely drops any function / Map / WeakMap / cyclic back-ref that can't be serialized.
+ */
+function jsonLdStringify(value: unknown): string {
+  const seen = new WeakSet<object>()
+  const replacer = (_key: string, val: unknown): unknown => {
+    // 1) Unwrap any Vue Ref / ComputedRef-like object: extract .value if present
+    if (
+      val != null
+      && typeof val === 'object'
+      && Object.prototype.hasOwnProperty.call(val, 'value')
+      // Don't recurse into objects that are *supposed* to have `value` key (e.g.
+      // schema.org 'PropertyValue'). Only unwrap if it looks like a Vue ref:
+      // typeof ref.value matches the wrapped ref generic type and no other
+      // schema-ish keys exist. The simplest safe heuristic: unwrap objects
+      // that ALSO have `__v_isRef` = true (Vue's own marker), or have `dep`
+      // (Vue reactivity internals) = a reactive Dep instance.
+      && ((val as { __v_isRef?: unknown }).__v_isRef === true
+        || Object.prototype.hasOwnProperty.call(val, 'dep')
+        || Object.prototype.hasOwnProperty.call(val, '__v_isComputed')
+        || Object.prototype.hasOwnProperty.call(val, 'effect'))
+    ) {
+      const inner = (val as { value: unknown }).value
+      return replacer('', inner)
+    }
+    // 2) Handle primitives directly — always pass through
+    if (val === null || val === undefined || typeof val !== 'object') return val
+    // 3) Circular structure guard
+    if (seen.has(val as object)) return undefined
+    seen.add(val as object)
+    // 4) Dates → ISO string (standard JSON replacer default but explicit here)
+    if (val instanceof Date) return Number.isNaN(val.getTime()) ? undefined : val.toISOString()
+    // 5) Arrays with element-by-element recursion (preserves order)
+    if (Array.isArray(val)) {
+      const out: unknown[] = []
+      for (let i = 0; i < val.length; i++) out.push(replacer(String(i), val[i]))
+      return out
+    }
+    // 6) Plain-like objects: iterate own keys, skip any function / non-serializable
+    if (val.constructor === Object || Object.getPrototypeOf(val) === Object.prototype || val.constructor === undefined) {
+      const out: Record<string, unknown> = {}
+      for (const k of Object.keys(val as Record<string, unknown>)) {
+        const v = (val as Record<string, unknown>)[k]
+        if (typeof v === 'function' || v instanceof WeakMap || v instanceof WeakSet) continue
+        out[k] = replacer(k, v)
+      }
+      return out
+    }
+    // 7) Map/Set/RegExp/Promise/other classes: can't reliably serialize → omit
+    if (val instanceof Map || val instanceof Set || val instanceof RegExp || val instanceof Promise) return undefined
+    // 8) Fallback for custom classes: try Object.keys copy, if fails return undefined
+    try {
+      return replacer('', { ...(val as Record<string, unknown>) })
+    } catch {
+      return undefined
+    }
+  }
+  return JSON.stringify(value, replacer)
+}
 
 export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   const siteUrl = usePublicSiteUrl()
@@ -304,13 +398,20 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
 
     const articleUrl = asAbsolute(`/posts/${slug}`, base)
     const cover = _cover.value ? asAbsolute(_cover.value, base) : undefined
-    const published = _publishedAt.value
-      ? new Date(_publishedAt.value).toISOString()
-      : undefined
-    const updated = _updatedAt.value
-      ? new Date(_updatedAt.value).toISOString()
-      : published
-    const keywords = _keywords.value?.join(', ')
+    const published = safeIsoDate(_publishedAt.value)
+    const updated = safeIsoDate(_updatedAt.value) ?? published
+    const keywordsRaw = _keywords.value
+    // unrefVal 返回类型被 T extends string | string[] | undefined 精确约束，
+    // TS 不允许 string[] 分支上写 instanceof Set/Map（会 TS2358）。
+    // 兜底：string[] → join；string → 原样；null/undefined/其余数字/未知对象 → String() 安全转或丢弃。
+    const keywords
+      = Array.isArray(keywordsRaw)
+        ? keywordsRaw.join(', ')
+        : typeof keywordsRaw === 'string'
+          ? keywordsRaw
+          : keywordsRaw == null
+            ? undefined
+            : String(keywordsRaw)
 
     const payload: Record<string, unknown> = {
       '@context': 'https://schema.org',
@@ -355,7 +456,7 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
         {
           type: 'application/ld+json',
           hid: `jsonld-article-${slug}`,
-          innerHTML: JSON.stringify(payload)
+          innerHTML: jsonLdStringify(payload)
         }
       ]
     }
@@ -392,7 +493,7 @@ export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem
         {
           type: 'application/ld+json',
           hid: 'jsonld-breadcrumb',
-          innerHTML: JSON.stringify(payload)
+          innerHTML: jsonLdStringify(payload)
         }
       ]
     }

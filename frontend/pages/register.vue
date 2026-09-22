@@ -1,5 +1,202 @@
 <template>
-  <div class="min-h-screen relative overflow-hidden isolate font-sans antialiased">
+  <div
+    v-if="isMinimalAuth"
+    class="ap-auth min-h-screen w-full bg-background text-foreground antialiased"
+  >
+    <!-- 极简主题纯纸面注册：装饰样式由 style.css public-auth 守卫段落消费 .ap-auth-* 类 -->
+    <div class="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-5 py-14">
+      <div class="mb-10 text-center">
+        <NuxtLink
+          to="/"
+          class="ap-auth-brand inline-block text-2xl font-bold tracking-tight"
+        >
+          Rosetta
+        </NuxtLink>
+        <h1 class="ap-auth-title mt-8 text-3xl font-semibold tracking-tight">
+          {{ t('auth.joinUs') }}
+        </h1>
+        <p class="mt-2 text-sm leading-relaxed text-muted-foreground">
+          {{ t('auth.registerDesc', '创建你的 Rosetta 账户，解锁更多站点功能。') }}
+        </p>
+      </div>
+
+      <div
+        v-if="errorMessage"
+        role="alert"
+        class="ap-auth-alert mb-6 px-4 py-3 text-sm"
+      >
+        <div class="font-semibold">
+          {{ t('auth.error') }}
+        </div>
+        <div class="mt-0.5 opacity-95">
+          {{ errorMessage }}
+        </div>
+      </div>
+
+      <form
+        class="flex flex-col gap-5"
+        @submit.prevent="handleRegister"
+      >
+        <div class="flex flex-col gap-2">
+          <label
+            for="nickname"
+            class="ap-auth-label block text-sm font-medium"
+          >{{ t('auth.nickname') }}</label>
+          <input
+            id="nickname"
+            v-model="form.name"
+            type="text"
+            autocomplete="nickname"
+            :placeholder="t('auth.nicknamePlaceholder')"
+            class="ap-auth-input block h-11 w-full bg-transparent px-3 text-base outline-none"
+          >
+        </div>
+
+        <div class="flex flex-col gap-2">
+          <label
+            for="email"
+            class="ap-auth-label block text-sm font-medium"
+          >{{ t('auth.email') }}</label>
+          <input
+            id="email"
+            v-model="form.email"
+            type="email"
+            autocomplete="email"
+            :placeholder="t('auth.emailPlaceholder')"
+            class="ap-auth-input block h-11 w-full bg-transparent px-3 text-base outline-none"
+          >
+        </div>
+
+        <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="flex flex-col gap-2">
+            <label
+              for="password"
+              class="ap-auth-label block text-sm font-medium"
+            >{{ t('auth.password') }}</label>
+            <div class="relative">
+              <input
+                id="password"
+                v-model="form.password"
+                :type="showPassword ? 'text' : 'password'"
+                autocomplete="new-password"
+                :placeholder="t('auth.passwordPlaceholder')"
+                class="ap-auth-input block h-11 w-full bg-transparent px-3 pr-11 text-base outline-none"
+              >
+              <button
+                type="button"
+                class="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                tabindex="-1"
+                :title="showPassword ? t('auth.hidePassword', '隐藏密码') : t('auth.showPassword', '显示密码')"
+                @click="showPassword = !showPassword"
+              >
+                <Eye
+                  v-if="!showPassword"
+                  class="size-4"
+                />
+                <EyeOff
+                  v-else
+                  class="size-4"
+                />
+              </button>
+            </div>
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <label
+              for="confirmPassword"
+              class="ap-auth-label block text-sm font-medium"
+            >{{ t('auth.confirmPassword') }}</label>
+            <div class="relative">
+              <input
+                id="confirmPassword"
+                v-model="form.confirmPassword"
+                :type="showConfirmPassword ? 'text' : 'password'"
+                autocomplete="new-password"
+                :placeholder="t('auth.confirmPasswordPlaceholder')"
+                class="ap-auth-input block h-11 w-full bg-transparent px-3 pr-11 text-base outline-none"
+              >
+              <button
+                type="button"
+                class="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                tabindex="-1"
+                :title="showConfirmPassword ? t('auth.hidePassword', '隐藏密码') : t('auth.showPassword', '显示密码')"
+                @click="showConfirmPassword = !showConfirmPassword"
+              >
+                <Eye
+                  v-if="!showConfirmPassword"
+                  class="size-4"
+                />
+                <EyeOff
+                  v-else
+                  class="size-4"
+                />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="flex items-start gap-2.5">
+          <input
+            id="agreeTermsLabel"
+            v-model="form.agreeTerms"
+            type="checkbox"
+            class="ap-auth-check mt-0.5 size-4 shrink-0 cursor-pointer"
+          >
+          <label
+            for="agreeTermsLabel"
+            class="cursor-pointer select-none text-sm leading-normal text-muted-foreground"
+          >
+            {{ t('auth.agreeTermsPrefix', '我已阅读并同意') }}
+            <span class="ap-auth-link mx-1 font-semibold">
+              {{ t('auth.terms', '服务条款') }}
+            </span>
+            {{ t('auth.agreeTermsAnd', '与') }}
+            <span class="ap-auth-link mx-1 font-semibold">
+              {{ t('auth.privacy', '隐私政策') }}
+            </span>
+          </label>
+        </div>
+
+        <button
+          type="submit"
+          class="ap-auth-submit mt-2 inline-flex h-11 w-full items-center justify-center gap-2 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
+          :disabled="loading || !isFormValid"
+        >
+          <Loader2
+            v-if="loading"
+            class="size-4 animate-spin"
+          />
+          {{ loading ? t('auth.registering', '正在创建账户…') : t('auth.createAccount', '创建账户') }}
+        </button>
+      </form>
+
+      <div class="mt-8 flex items-center justify-center text-sm">
+        <span class="text-muted-foreground">{{ t('auth.hasAccount', '已有账户？') }}</span>
+        <NuxtLink
+          to="/login"
+          class="ap-auth-link ml-1.5 font-semibold"
+        >
+          {{ t('auth.goLogin') }}
+        </NuxtLink>
+      </div>
+
+      <div class="mt-10 text-center">
+        <NuxtLink
+          to="/"
+          class="ap-auth-link inline-flex items-center gap-1.5 text-sm text-muted-foreground"
+        >
+          <ArrowLeft class="size-3.5" />
+          {{ t('auth.backHome', '返回主页') }}
+        </NuxtLink>
+      </div>
+    </div>
+  </div>
+
+  <div
+    v-else
+    class="min-h-screen relative overflow-hidden isolate font-sans antialiased"
+  >
+    <!-- 默认壁纸玻璃卡注册（非极简主题） -->
     <!-- 背景：整屏 Bing 每日壁纸（Bing/Unsplash 失败时后面的渐变兜底自动可见） -->
     <div
       class="absolute inset-0 -z-20 bg-gradient-to-br from-sky-950 via-indigo-950 to-slate-900"
@@ -11,18 +208,27 @@
     <!-- 非常克制的暗角：只提升前景可读性，不改变壁纸本身观感 -->
     <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-t from-black/60 via-black/20 to-black/10" />
 
+    <!-- 返回主页：左上角玻璃胶囊（与底部控件同质感，z-index 高于壁纸，hover 仅变色不变形） -->
+    <NuxtLink
+      to="/"
+      class="fixed top-5 left-5 z-50 inline-flex items-center gap-2 rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.08] border border-white/12 px-4 py-2 text-sm font-medium text-white/85 shadow-lg shadow-black/40 hover:bg-white/15 hover:border-white/20 hover:text-white transition-colors"
+    >
+      <ArrowLeft class="size-4" />
+      {{ t('auth.backHome', '返回主页') }}
+    </NuxtLink>
+
     <!-- 内容区：单栏居中（全尺寸都是居中，没有双栏） -->
     <div class="relative z-10 min-h-screen w-full flex flex-col items-center justify-center px-5 py-10 gap-7">
       <!-- 彩色方形 Logo（仅图标，不带文字） + 标题 -->
       <NuxtLink
         to="/"
-        class="group inline-flex flex-col items-center gap-3 select-none"
+        class="group inline-flex flex flex-col items-center gap-3 select-none"
       >
         <div class="relative">
           <div class="absolute -inset-2.5 rounded-[18px] bg-white/10 blur-xl opacity-70 group-hover:opacity-90 transition-opacity" />
           <img
             src="/logo/rosetta-primary-icon.png"
-            alt="Rosetta — 彩色方形 Logo"
+            :alt="t('auth.logoAlt', 'Rosetta — 彩色方形 Logo')"
             class="relative h-14 w-14 object-contain drop-shadow-[0_8px_30px_rgba(0,0,0,0.55)]"
           >
         </div>
@@ -108,7 +314,7 @@
               @submit.prevent="handleRegister"
             >
               <!-- 昵称 -->
-              <div class="space-y-2">
+              <div class="flex flex-col gap-2">
                 <label
                   for="nickname"
                   class="block text-sm font-medium text-white/85"
@@ -133,7 +339,7 @@
               </div>
 
               <!-- 邮箱 + 用户名 -->
-              <div class="space-y-2">
+              <div class="flex flex-col gap-2">
                 <label
                   for="email"
                   class="block text-sm font-medium text-white/85"
@@ -159,7 +365,7 @@
 
               <!-- 密码 + 确认密码：双列（md 以上双列，小屏单列） -->
               <div class="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <label
                     for="password"
                     class="block text-sm font-medium text-white/85"
@@ -199,7 +405,7 @@
                   </div>
                 </div>
 
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <label
                     for="confirmPassword"
                     class="block text-sm font-medium text-white/85"
@@ -245,7 +451,7 @@
                 <label
                   class="relative inline-flex items-center justify-center size-[18px] mt-0.5 rounded-[6px] transition-colors shrink-0 cursor-pointer"
                   :style="form.agreeTerms
-                    ? 'background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 14px -8px rgba(14,165,233,0.8);'
+                    ? 'background: linear-gradient(135deg, hsl(var(--primary) / 0.9) 0%, hsl(var(--primary)) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 14px -8px hsl(var(--primary) / 0.8);'
                     : 'background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.12);'"
                 >
                   <input
@@ -377,7 +583,7 @@
           type="button"
           class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           :disabled="!canGoBackward || wallpaperLoading"
-          title="上一天"
+          :title="t('auth.prevDay', '上一天')"
           @click="selectDay(currentIdx + 1)"
         >
           <ChevronLeft class="size-[18px]" />
@@ -389,7 +595,7 @@
           type="button"
           class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
           :disabled="currentIdx === 0 || wallpaperLoading"
-          title="下一天（越新）"
+          :title="t('auth.nextDay', '下一天（越新）')"
           @click="selectDay(currentIdx - 1)"
         >
           <ChevronRight class="size-[18px]" />
@@ -402,7 +608,7 @@
           type="button"
           class="inline-flex items-center gap-1.5 rounded-full text-white/85 hover:bg-white/15 px-2.5 py-1 text-xs transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           :disabled="wallpaperLoading"
-          title="刷新当前壁纸"
+          :title="t('auth.refreshWallpaper', '刷新当前壁纸')"
           @click="handleReloadWallpaper"
         >
           <RefreshCw
@@ -421,6 +627,7 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import {
+  ArrowLeft,
   ChevronLeft,
   ChevronRight,
   RefreshCw,
@@ -438,6 +645,11 @@ definePageMeta({ layout: false, ssr: false })
 const { t } = useI18n()
 const authStore = useAuthStore()
 const toast = useToast()
+
+// 极简主题激活时切换到纯纸面注册分支（与 login.vue 一致）
+const ft = useFrontendTheme()
+const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
+const isMinimalAuth = computed(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 
 const form = reactive({
   name: '',
@@ -513,10 +725,14 @@ const thumbError = ref(false)
 
 // 首次进入拉取（ssr:false，客户端拉即可）
 onMounted(async () => {
-  try {
-    await fetchWallpapers()
-  } catch {
-    /* composable 内部已经做了兜底 */
+  // 先确定主题归属：极简激活时跳过壁纸拉取（纯纸面分支不消费 Bing 数据）
+  await ft.ensureLoaded()
+  if (!isMinimalAuth.value) {
+    try {
+      await fetchWallpapers()
+    } catch {
+      /* composable 内部已经做了兜底 */
+    }
   }
 
   // 登录态检查：已登录则直接跳回后台

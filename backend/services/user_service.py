@@ -278,8 +278,8 @@ class UserService:
         try:
             user_id = int(user_id_raw)
             old_version_int = int(old_version)
-        except (TypeError, ValueError):
-            raise ValueError("无效或过期的刷新令牌")
+        except (TypeError, ValueError) as err:
+            raise ValueError("无效或过期的刷新令牌") from err
 
         db_token = await self._token_repo.get_valid_token(refresh_token_str)
 

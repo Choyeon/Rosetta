@@ -59,7 +59,10 @@ class GuestbookEntry(Base):
         String(64), nullable=True, comment="留言者 GitHub 用户名（可选，游客填）"
     )
     avatar_source: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="auto", server_default="auto",
+        String(16),
+        nullable=False,
+        default="auto",
+        server_default="auto",
         comment="头像来源：auto/custom/github/qq/gravatar",
     )
 

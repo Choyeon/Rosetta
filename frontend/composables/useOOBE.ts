@@ -1,16 +1,7 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import type { OOBEStatus, OOBEInstallRequest, TokenResponse } from '~~/types/api'
 import { useAuthStore } from '~~/stores/auth'
 
 type CheckLevel = 'ok' | 'warn' | 'err'
-interface SystemCheckRow {
-  name: string
-  detail: string
-  status: CheckLevel
-  statusText: string
-}
 
 export interface DepProgressEvt {
   type: 'progress' | 'log' | 'done' | 'connected'
@@ -109,17 +100,47 @@ export interface SystemCheckRow {
 function connectSSE<T extends object>(
   url: string,
   onEvent: (evt: T, raw: MessageEvent) => void,
-  onOpen?: () => void
-): { close: () => void, reconnect: () => void } {
+  onOpen?: () => void,
+  opts?: {
+    // R1-CEx-2: SSE 客户端空闲超时（毫秒）。超过此时长未收到任何 onmessage → 调 onIdleTimeout。
+    idleTimeoutMs?: number
+    onIdleTimeout?: () => void
+    onError?: () => void
+  }
+): { close: () => void, reconnect: () => void, kickIdle: () => void } {
   let es: EventSource | null = null
   let closed = false
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  const idleTimeoutMs = opts?.idleTimeoutMs ?? 0
+
+  const clearIdle = () => {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+  }
+  const resetIdle = () => {
+    if (!idleTimeoutMs) return
+    clearIdle()
+    idleTimer = setTimeout(() => {
+      try {
+        opts?.onIdleTimeout?.()
+      } catch {
+        /* ignore */
+      }
+    }, idleTimeoutMs)
+  }
 
   const open = () => {
     if (closed) return
     try {
       es = new EventSource(url)
-      es.onopen = () => onOpen?.()
+      es.onopen = () => {
+        resetIdle()
+        onOpen?.()
+      }
       es.onmessage = (e: MessageEvent) => {
+        resetIdle()
         try {
           const parsed = JSON.parse(e.data)
           onEvent(parsed as T, e)
@@ -128,6 +149,7 @@ function connectSSE<T extends object>(
         }
       }
       es.addEventListener('connected', (e: Event) => {
+        resetIdle()
         const me = e as MessageEvent
         try {
           const parsed = JSON.parse(me.data)
@@ -137,7 +159,13 @@ function connectSSE<T extends object>(
         }
       })
       es.onerror = () => {
-        /* SSE 连接失败静默重试（浏览器内置） */
+        // 浏览器内置静默重试；此处额外 kick 一次 idle 以避免断连重连期时钟丢失。
+        resetIdle()
+        try {
+          opts?.onError?.()
+        } catch {
+          /* ignore */
+        }
       }
     } catch {
       /* ignore */
@@ -149,6 +177,7 @@ function connectSSE<T extends object>(
   return {
     close: () => {
       closed = true
+      clearIdle()
       if (es) {
         es.close()
         es = null
@@ -160,7 +189,8 @@ function connectSSE<T extends object>(
         es = null
       }
       open()
-    }
+    },
+    kickIdle: resetIdle
   }
 }
 
@@ -181,8 +211,10 @@ function request<T = unknown>(
   }
 ): Promise<{ data: Ref<T | null>, error: Ref<{ status?: number, statusText?: string, message?: string } | null> }> {
   const { authStore, apiBase, method = 'GET', body, params, timeoutMs, locale } = opts
-  const data = ref<T | null>(null)
-  const error = ref<{ status?: number, statusText?: string, message?: string } | null>(null)
+  // shallowRef 而非 ref：ref<T>() 会把值类型套上 UnwrapRef<T>，
+  // 与声明的返回类型 Ref<T | null> 不兼容；接口响应对象也不需要深层响应式。
+  const data = shallowRef<T | null>(null)
+  const error = shallowRef<{ status?: number, statusText?: string, message?: string } | null>(null)
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -223,11 +255,19 @@ function request<T = unknown>(
         }, timeoutMs)
       : null
 
-    $fetch<T>(target, {
+    // 同 useApi.ts：开放泛型下 $fetch<T> 显式泛型会让 Nitro 路由条件类型栈溢出（TS2321），
+    // 将 $fetch 擦除为普通函数类型彻底断开推断链。
+    const _fetch = $fetch as unknown as (
+      url: string,
+      opts?: Record<string, unknown>
+    ) => Promise<unknown>
+    const request = _fetch(target, {
       method,
       body: body ? JSON.stringify(body) : undefined,
       headers
-    })
+    }) as Promise<T>
+
+    request
       .then((res) => {
         if (cancelled) return
         // 后端返回两种格式：
@@ -265,13 +305,98 @@ function request<T = unknown>(
   })
 }
 
+const OOBE_API_BASE_STORAGE_KEY = 'rosetta:oobe:apiBase'
+
+/**
+ * 规范化用户填入的后端地址：
+ *   - 空串 → 返回默认同源 /api
+ *   - 纯 host:port（无协议、无斜杠开头、也不是 /api）→ 补 "http://" + 末尾补 "/api"（最常见场景："127.0.0.1:8000" → "http://127.0.0.1:8000/api"）
+ *   - 以 host:port/path 开头但 path!=/api → 末尾追 "/api"
+ *   - 已有协议 + 完整 URL → 去结尾多余 "/api/api"，去结尾斜杠
+ *   - 仅 "/api" → 返回 "/api"
+ */
+export function normalizeUserApiBase(input: unknown): string {
+  let s = typeof input === 'string' ? input.trim() : ''
+  if (!s) return '/api'
+  // 纯相对路径 (Nginx/同源部署) → 保留，但清理重复前缀
+  if (s.startsWith('/')) {
+    s = s.replace(/\/{2,}/g, '/')
+    if (!s.startsWith('/api')) s = s === '/' ? '/api' : `/api${s.replace(/^\/api\/?/, '')}`
+    // 清除重复 /api/api/..
+    while (/^\/api\/api(\b|\/)/.test(s)) s = s.replace(/^\/api\/api/, '/api')
+    return s.replace(/\/+$/, '') || '/api'
+  }
+  // 缺协议：补 http://
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(s)) s = `http://${s}`
+  try {
+    const u = new URL(s, 'http://placeholder.invalid')
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return s.replace(/\/+$/, '')
+    let p = u.pathname.replace(/\/{2,}/g, '/').replace(/\/+$/, '')
+    // 末尾路径不是 /api → 补 /api
+    if (!/\/api$/.test(p)) {
+      if (p === '' || p === '/') p = '/api'
+      else if (/\/api\/.+$/.test(p)) {
+        // /api/something 保留
+      } else {
+        p = `${p.replace(/\/api\/?$/, '')}/api`
+      }
+    }
+    // 去 /api/api/..
+    while (/\/api\/api(\b|\/)/.test(p)) p = p.replace(/^\/api\/api/, '/api')
+    const port = u.port ? `:${u.port}` : ''
+    return `${u.protocol}//${u.hostname}${port}${p || '/api'}`
+  } catch {
+    // 非法 URL 结构：简单去尾部
+    return s.replace(/\/+$/, '')
+  }
+}
+
+function readOOBEApiBaseOverrideFromStorage(): string | null {
+  try {
+    if (typeof localStorage === 'undefined') return null
+    const raw = localStorage.getItem(OOBE_API_BASE_STORAGE_KEY)
+    if (!raw) return null
+    const v = JSON.parse(raw) as unknown
+    if (typeof v === 'string') {
+      const cleaned = normalizeUserApiBase(v)
+      return cleaned || null
+    }
+    return null
+  } catch {
+    return null
+  }
+}
+
+function writeOOBEApiBaseOverrideToStorage(v: string) {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.setItem(OOBE_API_BASE_STORAGE_KEY, JSON.stringify(v))
+  } catch { /* quota / SSR safety ignore */ }
+}
+
+export function clearOOBEApiBaseOverrideFromStorage() {
+  try {
+    if (typeof localStorage === 'undefined') return
+    localStorage.removeItem(OOBE_API_BASE_STORAGE_KEY)
+  } catch { /* ignore */ }
+}
+
 export const useOOBE = () => {
   // ==========================================================
   // setup 顶层：一次性调用所有 composables，拿到引用
   // ==========================================================
   const authStore = useAuthStore()
   const runtimeConfig = useRuntimeConfig()
-  const apiBase = runtimeConfig.public.apiBase || '/api'
+  // 向导期间允许用户临时覆盖：localStorage rosetta:oobe:apiBase → runtimeConfig.public.apiBase
+  const overrideApiBase = ref<string | null>(null)
+  const effectiveApiBase = computed<string>(() => {
+    const user = overrideApiBase.value || readOOBEApiBaseOverrideFromStorage()
+    if (user) return normalizeUserApiBase(user)
+    return normalizeUserApiBase(String(runtimeConfig.public.apiBase || '/api'))
+  })
+  function currentApiBase() {
+    return effectiveApiBase.value
+  }
   const { locale } = useI18n()
 
   const status = ref<OOBEStatus | null>(null)
@@ -279,13 +404,152 @@ export const useOOBE = () => {
   const error = ref<unknown>(null)
   const systemChecks = ref<SystemCheckRow[]>([])
   const systemSummary = ref<SystemSummary | null>(null)
+  // R1-CEx-2: SSE 兜底快照状态（对外暴露给 UI 以渲染 Cancel/Retry 按钮）
+  const installSnapshotState = ref<'idle' | 'timeout' | 'polling' | 'retrying'>('idle')
+  // R1-CEx-2: UI 主动取消 SSE 订阅/安装观察的回调（由 finishOOBE 在订阅时注入）
+  let _cancelInstallWatchFn: null | (() => void) = null
+
+  /**
+   * 用户在 Step1 点"应用"或探测成功后，调用本函数：
+   *  1) 规范化 apiBase
+   *  2) 写入本 composable override 变量 & localStorage，使后续所有 request / SSE 立即切到用户指定后端
+   *  返回规范化后的字符串
+   */
+  const setBackendApiBase = (raw: string | undefined | null): string => {
+    const normalized = normalizeUserApiBase(raw)
+    overrideApiBase.value = normalized
+    writeOOBEApiBaseOverrideToStorage(normalized)
+    return normalized
+  }
+
+  const probeBackend = async (
+    candidate: unknown,
+    opts?: { timeoutMs?: number, locale?: string }
+  ): Promise<{
+    ok: boolean
+    code: number
+    statusText: string
+    apiBase: string
+    stage: 'health' | 'status'
+    errorCode?: string
+    detail?: string
+    healthJson?: Record<string, unknown>
+    statusJson?: Record<string, unknown>
+    oobeRequired?: boolean
+    oobeComplete?: boolean
+  }> => {
+    const api = normalizeUserApiBase(candidate as string)
+    const timeout = typeof opts?.timeoutMs === 'number' ? opts.timeoutMs : 5000
+    const loc = opts?.locale || locale.value
+    const headers: Record<string, string> = { Accept: 'application/json' }
+    if (loc) headers['Accept-Language'] = loc
+    // 1) 先探 /health（FastAPI 裸端点，不在 /api 下，需要剥离 /api 后缀拼 URL）
+    // eslint-disable-next-line no-useless-assignment
+    let healthCode = 0
+    // eslint-disable-next-line no-useless-assignment
+    let healthStatusText = ''
+    let healthJson: Record<string, unknown> | undefined
+    try {
+      const stripApi = api.endsWith('/api') ? api.slice(0, -4) : api
+      const base = stripApi.replace(/\/+$/, '') || api
+      const target = /^https?:\/\//i.test(base) ? `${base}/health` : `${base}/health`
+      // 如果 base 是同源 /api（无协议），走浏览器相对 /health
+      let finalTarget: string
+      if (/^https?:\/\//i.test(target)) finalTarget = target
+      else if (target.startsWith('/health')) finalTarget = target
+      else finalTarget = `/health${target.startsWith('/') ? target : `/${target}`}`
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeout) : null
+      try {
+        const r = await $fetch.raw<Record<string, unknown> | string>(finalTarget, {
+          headers,
+          signal: ctrl?.signal,
+          timeout,
+          credentials: 'omit',
+          ignoreResponseError: true
+        })
+        healthCode = r.status ?? 200
+        healthStatusText = r.statusText || (healthCode === 200 ? 'OK' : 'Fail')
+        if (r._data && typeof r._data === 'object' && r._data !== null) {
+          healthJson = r._data as Record<string, unknown>
+        }
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    } catch (e: unknown) {
+      const err = e as { status?: number, statusText?: string, message?: string }
+      healthCode = err.status ?? 0
+      healthStatusText = err.statusText || (err.message || '连接失败')
+    }
+    if (healthCode !== 200 || (healthJson && healthJson.status && healthJson.status !== 'healthy')) {
+      return {
+        ok: false,
+        code: healthCode,
+        statusText: healthStatusText || (healthCode === 0 ? '不可达' : '非 200'),
+        apiBase: api,
+        stage: 'health',
+        detail: `/health 返回 ${healthCode}${healthJson ? `：${JSON.stringify(healthJson)}` : ''}`
+      }
+    }
+    // 2) 再探 /api/oobe/status；允许 503 OOBE_REQUIRED（这才是正常的"未安装"态）
+    // eslint-disable-next-line no-useless-assignment
+    let statusCode = 0
+    let statusJson: Record<string, unknown> | undefined
+    let statusText = ''
+    try {
+      const target = /^https?:\/\//i.test(api) ? `${api}/oobe/status` : `${api}/oobe/status`
+      const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null
+      const timer = ctrl ? setTimeout(() => ctrl.abort(), timeout) : null
+      try {
+        const r = await $fetch.raw<Record<string, unknown>>(target, {
+          headers: { ...headers, 'Content-Type': 'application/json' },
+          signal: ctrl?.signal,
+          timeout,
+          credentials: 'omit',
+          ignoreResponseError: true
+        })
+        statusCode = r.status ?? 200
+        if (r._data && typeof r._data === 'object' && r._data !== null) {
+          statusJson = r._data as Record<string, unknown>
+        }
+      } finally {
+        if (timer) clearTimeout(timer)
+      }
+    } catch (e: unknown) {
+      const err = e as { status?: number, statusText?: string, data?: unknown, message?: string }
+      statusCode = err.status ?? 0
+      statusText = err.statusText || err.message || ''
+      if (err.data && typeof err.data === 'object') statusJson = err.data as Record<string, unknown>
+    }
+    const data = statusJson || {}
+    const successJson = data.success === true
+    const oobeComplete = Boolean(data.oobe_complete)
+    const ec = typeof data.error_code === 'string' ? data.error_code : ''
+    const oobeRequired = statusCode === 503 && ec === 'OOBE_REQUIRED'
+    const ok = Boolean(
+      (statusCode === 200 && successJson)
+      || oobeRequired
+    )
+    return {
+      ok,
+      code: statusCode,
+      statusText: statusText || (statusCode === 0 ? '不可达' : `${statusCode}`),
+      apiBase: api,
+      stage: 'status',
+      errorCode: ec || undefined,
+      healthJson,
+      statusJson,
+      oobeRequired,
+      oobeComplete
+    }
+  }
 
   // ----------------------------------------------------------
   // 简单 API 包装（setup 之后任何地方都可调用）
   // ----------------------------------------------------------
   const getOOBEStatus = async () => {
     const result = await request<OOBEStatus & { success?: boolean }>('/oobe/status', {
-      authStore, apiBase, locale: locale.value
+      authStore, apiBase: currentApiBase(), locale: locale.value
     })
     if (!result.error.value) status.value = (result.data.value ?? null) as OOBEStatus
     return result
@@ -293,25 +557,25 @@ export const useOOBE = () => {
 
   const checkEnvironment = async () => {
     return request<Record<string, RawCheckResult>>('/oobe/check', {
-      authStore, apiBase, locale: locale.value
+      authStore, apiBase: currentApiBase(), locale: locale.value
     })
   }
 
   const getSystemInfo = async () => {
     return request<Record<string, unknown>>('/oobe/system-info', {
-      authStore, apiBase, locale: locale.value
+      authStore, apiBase: currentApiBase(), locale: locale.value
     })
   }
 
   const checkDependencies = async () => {
     return request<Record<string, unknown>>('/oobe/dependencies', {
-      authStore, apiBase, locale: locale.value
+      authStore, apiBase: currentApiBase(), locale: locale.value
     })
   }
 
   const installDependencies = async () => {
     return request<Record<string, unknown>>('/oobe/install-dependencies', {
-      authStore, apiBase, locale: locale.value, method: 'POST'
+      authStore, apiBase: currentApiBase(), locale: locale.value, method: 'POST'
     })
   }
 
@@ -322,7 +586,7 @@ export const useOOBE = () => {
     sid: string,
     onEvent: (evt: DepProgressEvt) => void
   ) => {
-    const base = apiBase
+    const base = currentApiBase()
     const full = /^https?:\/\//.test(base)
       ? `${base}/oobe/install-dependencies/stream?sid=${encodeURIComponent(sid)}`
       : `${base}/oobe/install-dependencies/stream?sid=${encodeURIComponent(sid)}`
@@ -331,25 +595,28 @@ export const useOOBE = () => {
 
   const install = async (body: OOBEInstallRequest) => {
     return request<Record<string, unknown>>('/oobe/install', {
-      authStore, apiBase, locale: locale.value, method: 'POST', body
+      authStore, apiBase: currentApiBase(), locale: locale.value, method: 'POST', body
     })
   }
 
   const getInstallStream = (sid: string) => {
-    const base = apiBase
+    const base = currentApiBase()
     return new EventSource(`${base}/oobe/install/stream?sid=${sid}`)
   }
 
   /**
    * 订阅一键安装 SSE 进度流
+   * R1-CEx-2: 暴露 idleTimeoutMs / onIdleTimeout 给调用方，
+   * 以便在 30s 无 SSE 消息时执行快照兜底轮询。
    */
   const subscribeInstallStream = (
     sid: string,
-    onEvent: (evt: InstallProgressEvt) => void
+    onEvent: (evt: InstallProgressEvt) => void,
+    opts?: { idleTimeoutMs?: number, onIdleTimeout?: () => void, onError?: () => void }
   ) => {
-    const base = apiBase
+    const base = currentApiBase()
     const url = `${base}/oobe/install/stream?sid=${encodeURIComponent(sid)}`
-    return connectSSE<InstallProgressEvt>(url, evt => onEvent(evt))
+    return connectSSE<InstallProgressEvt>(url, evt => onEvent(evt), undefined, opts)
   }
 
   // -------- 向导友好的封装 --------
@@ -527,11 +794,65 @@ export const useOOBE = () => {
   }
 
   const finishOOBE = async (
-    onProgress?: (evt: InstallProgressEvt) => void
+    onProgress?: (evt: InstallProgressEvt) => void,
+    opts?: {
+      // UI 主动取消当前安装观察的句柄注入（UI 层调用 cancelInstallWatch 会触发）
+      onCancelRequested?: (resolvers: {
+        cancelSSE: () => void
+        setInstallingFalse: () => void
+      }) => void
+    }
   ) => {
     loading.value = true
     error.value = null
+    installSnapshotState.value = 'idle'
     let streamHandle: { close: () => void } | null = null
+    let cancelled = false
+    let pollTimer: ReturnType<typeof setTimeout> | null = null
+    let resolvedOnce = false
+
+    // cleanup：统一释放 SSE + 轮询定时器，避免泄漏
+    const cleanupAll = () => {
+      if (streamHandle) {
+        streamHandle.close()
+        streamHandle = null
+      }
+      if (pollTimer) {
+        clearTimeout(pollTimer)
+        pollTimer = null
+      }
+      _cancelInstallWatchFn = null
+    }
+
+    // 暴露给 UI 的取消接口：仅取消"前端安装观察"，不影响后端已提交请求（后端有幂等锁）
+    _cancelInstallWatchFn = () => {
+      if (resolvedOnce) return
+      cancelled = true
+      cleanupAll()
+      opts?.onCancelRequested?.({
+        cancelSSE: () => {},
+        setInstallingFalse: () => {}
+      })
+    }
+
+    // R1-CEx-2: 快照 reconciliation —— 调 getOOBEStatus，根据结果合成 done/error/继续轮询
+    const tryReconcile = async (): Promise<'done' | 'retry' | 'failed'> => {
+      try {
+        const res = await getOOBEStatus()
+        const payload = (res?.data?.value ?? {}) as { oobe_complete?: boolean, initialized?: boolean }
+        if (payload.oobe_complete === true || payload.initialized === true) {
+          return 'done'
+        }
+        if (res.error.value && res.error.value.status === 409) {
+          // 后端显式返回 ALREADY_COMPLETED
+          return 'done'
+        }
+        return 'retry'
+      } catch {
+        return 'retry'
+      }
+    }
+
     try {
       interface OOBESiteSettings {
         siteUrl?: string
@@ -623,8 +944,56 @@ export const useOOBE = () => {
       }
 
       const sid = Math.random().toString(36).slice(2) + Date.now().toString(36)
+
+      // R1-CEx-2: idleTimeout 30s → 快照 reconciliation → 最多 3 次 5s 间隔轮询（总 45s）
+      let pollAttempts = 0
+      const MAX_POLL_ATTEMPTS = 3
+      const POLL_INTERVAL_MS = 5000
+
+      const scheduleNextPoll = () => {
+        if (resolvedOnce || cancelled) return
+        pollAttempts += 1
+        installSnapshotState.value = 'polling'
+        onProgress?.({ type: 'progress', step_id: 'finalize', percent: 99, message: 'SSE 暂无事件，正在轮询安装最终状态…' })
+        pollTimer = setTimeout(async () => {
+          if (resolvedOnce || cancelled) return
+          const stNow = await tryReconcile()
+          if (stNow === 'done') {
+            onProgress?.({ type: 'done', success: true })
+          } else if (pollAttempts < MAX_POLL_ATTEMPTS) {
+            scheduleNextPoll()
+          } else {
+            // 45s 总兜底仍未收敛 → 抛 error 交给 UI 显示 Retry 按钮（installing 必须解除）
+            installSnapshotState.value = 'retrying'
+            onProgress?.({ type: 'error', success: false, message: '安装状态无法确认，请点重试或手动检查后端。' })
+          }
+        }, POLL_INTERVAL_MS)
+      }
+
+      const onIdleTimeout = () => {
+        if (resolvedOnce || cancelled) return
+        installSnapshotState.value = 'timeout'
+        // 立即一次 reconciliation；若未完成则开始轮询
+        void (async () => {
+          if (resolvedOnce || cancelled) return
+          const stNow = await tryReconcile()
+          if (stNow === 'done') {
+            onProgress?.({ type: 'done', success: true })
+          } else {
+            scheduleNextPoll()
+          }
+        })()
+      }
+
       if (onProgress) {
-        streamHandle = subscribeInstallStream(sid, onProgress)
+        streamHandle = subscribeInstallStream(sid, (evt) => {
+          // 收到 SSE 事件时若处于 timeout/polling → 恢复正常态
+          if (evt.type === 'progress' || evt.type === 'done' || evt.type === 'error') {
+            if (installSnapshotState.value !== 'idle') installSnapshotState.value = 'idle'
+          }
+          if (evt.type === 'done' || evt.type === 'error') resolvedOnce = true
+          onProgress(evt)
+        }, { idleTimeoutMs: 30_000, onIdleTimeout })
       }
 
       const { data, error: err } = await install(payload)
@@ -637,6 +1006,7 @@ export const useOOBE = () => {
       // 自动登录新管理员
       const loginRetries = 6
       for (let i = 1; i <= loginRetries; i++) {
+        if (cancelled) break
         try {
           const { data: loginData, error: loginErr } = await request<TokenResponse>('/users/login', {
             method: 'POST',
@@ -645,7 +1015,7 @@ export const useOOBE = () => {
               password: adminUser.password
             },
             authStore,
-            apiBase,
+            apiBase: currentApiBase(),
             locale: locale.value
           })
           if (!loginErr.value && loginData.value) {
@@ -666,8 +1036,22 @@ export const useOOBE = () => {
       throw e
     } finally {
       loading.value = false
-      if (streamHandle) streamHandle.close()
+      cleanupAll()
+      if (!resolvedOnce) installSnapshotState.value = 'idle'
     }
+  }
+
+  /**
+   * R1-CEx-2: UI 层主动取消安装观察。
+   * 注意：后端 install 请求在 FastAPI 内已持有 asyncio.Lock 且写 OOBE_LOCK 文件，
+   * 前端取消不会中断后端写入，仅解除 UI installing 假死。
+   */
+  const cancelInstallWatch = () => {
+    if (_cancelInstallWatchFn) {
+      _cancelInstallWatchFn()
+      _cancelInstallWatchFn = null
+    }
+    installSnapshotState.value = 'idle'
   }
 
   return {
@@ -677,6 +1061,15 @@ export const useOOBE = () => {
     error,
     systemChecks,
     systemSummary,
+    // R1-CEx-2: SSE 超时 / 轮询状态 + UI 主动取消
+    installSnapshotState,
+    cancelInstallWatch,
+    // backend connection (O series Step1)
+    effectiveApiBase,
+    setBackendApiBase,
+    probeBackend,
+    normalizeUserApiBase,
+    clearOOBEApiBaseOverrideFromStorage,
     // raw AsyncData API
     getOOBEStatus,
     checkEnvironment,

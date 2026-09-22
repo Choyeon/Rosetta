@@ -50,8 +50,8 @@ const overlayStyle = computed<Record<string, string | number>>(() => ({
     at var(--theme-ripple-cx) var(--theme-ripple-cy)
   );
   transition:
-    clip-path 520ms cubic-bezier(0.22, 1, 0.36, 1),
-    -webkit-clip-path 520ms cubic-bezier(0.22, 1, 0.36, 1),
+    clip-path 650ms cubic-bezier(0.22, 1, 0.36, 1),
+    -webkit-clip-path 650ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 200ms ease;
 }
 

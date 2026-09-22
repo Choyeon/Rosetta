@@ -193,11 +193,12 @@ async function translateLocale(lang: string) {
             >
               <Loader2
                 v-if="translatingLang === l.key"
-                class="size-3.5 animate-spin"
+                data-icon="inline-start"
+                class="animate-spin"
               />
               <Languages
                 v-else
-                class="size-3.5"
+                data-icon="inline-start"
               />
               从简体中文翻译
             </Button>

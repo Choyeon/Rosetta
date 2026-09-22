@@ -15,9 +15,8 @@ Rosetta RBAC 模块（单一角色 + 能力位图 轻量实现）。
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from enum import Enum
-from typing import Iterable
-
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 角色定义
@@ -98,6 +97,7 @@ def normalize_role(role: object) -> str | None:
 # ─────────────────────────────────────────────────────────────────────────────
 # 能力（Capability）枚举
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class Cap(str, Enum):
     """细粒度能力标识。``require_capability(Cap.X.value)`` 用于 FastAPI 依赖。"""

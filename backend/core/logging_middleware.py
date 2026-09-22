@@ -41,15 +41,12 @@ def _mask_ip(ip: str | None) -> str | None:
 
 def _get_client_ip(request: Request) -> str | None:
     try:
-        forwarded = request.headers.get("X-Forwarded-For")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        real = request.headers.get("X-Real-IP")
-        if real:
-            return real
-        return getattr(request.client, "host", None) if request.client else None
+        # 复用统一的受信反代策略，避免日志 IP 与限流 IP 口径不一致
+        from backend.core.rate_limit import get_client_ip
+
+        return get_client_ip(request)
     except Exception:
-        return None
+        return getattr(request.client, "host", None) if request.client else None
 
 
 def _get_path_action_target(request: Request) -> tuple[str, str]:

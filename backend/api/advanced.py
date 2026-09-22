@@ -496,6 +496,62 @@ async def list_post_revisions(
 
 
 @router.get(
+    "/posts/{post_id}/revisions/compare",
+    summary="比较修订版本",
+    description="比较两个修订版本的差异。",
+)
+async def compare_revisions(
+    post_id: int,
+    db: DB,
+    current_user: CurrentStaff,
+    rev1: int = Query(..., description="第一个修订版本 ID"),
+    rev2: int = Query(..., description="第二个修订版本 ID"),
+):
+    """比较两个修订版本
+
+    路由顺序注意：本路由必须声明在 ``/revisions/{revision_id}`` **之前**，
+    否则 "compare" 会被路径参数捕获（int 解析失败 → 422），端点永远不可达。
+    """
+    result = await db.execute(
+        select(PostRevision).where(
+            PostRevision.post_id == post_id,
+            PostRevision.id.in_([rev1, rev2]),
+        )
+    )
+    revisions = {r.id: r for r in result.scalars().all()}
+
+    if len(revisions) < 2:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="找不到指定的修订版本",
+        )
+
+    r1 = revisions[rev1]
+    r2 = revisions[rev2]
+
+    def get_content(rev):
+        content = rev.content
+        if isinstance(content, str):
+            return json.loads(content)
+        return content or {}
+
+    return {
+        "revision1": {
+            "id": r1.id,
+            "revision_number": r1.revision_number,
+            "content": get_content(r1),
+            "created_at": r1.created_at.isoformat() if r1.created_at else None,
+        },
+        "revision2": {
+            "id": r2.id,
+            "revision_number": r2.revision_number,
+            "content": get_content(r2),
+            "created_at": r2.created_at.isoformat() if r2.created_at else None,
+        },
+    }
+
+
+@router.get(
     "/posts/{post_id}/revisions/{revision_id}",
     summary="修订版本详情",
     description="获取指定修订版本的详细内容。",
@@ -639,6 +695,7 @@ async def restore_post_revision(
     "/logs",
     summary="操作日志列表",
     description="获取系统操作日志列表。",
+    operation_id="list_advanced_operation_logs",
 )
 async def list_operation_logs(
     db: DB,
@@ -653,7 +710,8 @@ async def list_operation_logs(
     q: str | None = Query(None, description="关键词搜索(details/error_code/ip)"),
 ):
     """获取操作日志列表"""
-    from sqlalchemy import or_, cast, String as SAString
+    from sqlalchemy import String as SAString
+    from sqlalchemy import cast, or_
 
     query = select(OperationLog).options(selectinload(OperationLog.user))
 
@@ -679,7 +737,9 @@ async def list_operation_logs(
         query = query.where(
             or_(
                 cast(OperationLog.detail, SAString).ilike(like),
-                OperationLog.error_code.ilike(like) if hasattr(OperationLog, 'error_code') else False,
+                OperationLog.error_code.ilike(like)
+                if hasattr(OperationLog, "error_code")
+                else False,
                 OperationLog.ip_address.ilike(like),
             )
         )
@@ -731,58 +791,6 @@ async def list_operation_logs(
 
 
 @router.get(
-    "/posts/{post_id}/revisions/compare",
-    summary="比较修订版本",
-    description="比较两个修订版本的差异。",
-)
-async def compare_revisions(
-    post_id: int,
-    db: DB,
-    current_user: CurrentStaff,
-    rev1: int = Query(..., description="第一个修订版本 ID"),
-    rev2: int = Query(..., description="第二个修订版本 ID"),
-):
-    """比较两个修订版本"""
-    result = await db.execute(
-        select(PostRevision).where(
-            PostRevision.post_id == post_id,
-            PostRevision.id.in_([rev1, rev2]),
-        )
-    )
-    revisions = {r.id: r for r in result.scalars().all()}
-
-    if len(revisions) < 2:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="找不到指定的修订版本",
-        )
-
-    r1 = revisions[rev1]
-    r2 = revisions[rev2]
-
-    def get_content(rev):
-        content = rev.content
-        if isinstance(content, str):
-            return json.loads(content)
-        return content or {}
-
-    return {
-        "revision1": {
-            "id": r1.id,
-            "revision_number": r1.revision_number,
-            "content": get_content(r1),
-            "created_at": r1.created_at.isoformat() if r1.created_at else None,
-        },
-        "revision2": {
-            "id": r2.id,
-            "revision_number": r2.revision_number,
-            "content": get_content(r2),
-            "created_at": r2.created_at.isoformat() if r2.created_at else None,
-        },
-    }
-
-
-@router.get(
     "/logs/export",
     summary="导出操作日志",
     description="导出操作日志为 CSV 或 JSON 格式。",
@@ -827,6 +835,14 @@ async def export_operation_logs(
         import csv
         import io
 
+        def _csv_safe(value) -> str:
+            """CSV 公式注入防护：以 =/+/-/@ 开头的单元格前置制表符，
+            防止日志内容（可含用户输入）在 Excel/WPS 打开时被执行为公式。"""
+            s = "" if value is None else str(value)
+            if s.startswith(("=", "+", "-", "@")):
+                return "\t" + s
+            return s
+
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(
@@ -837,14 +853,14 @@ async def export_operation_logs(
             writer.writerow(
                 [
                     log.id,
-                    log.user.username if log.user else "",
-                    log.action,
-                    log.resource_type,
-                    log.resource_id,
-                    log.detail or "",
-                    log.ip_address or "",
-                    log.status or "",
-                    log.created_at.isoformat() if log.created_at else "",
+                    _csv_safe(log.user.username if log.user else ""),
+                    _csv_safe(log.action),
+                    _csv_safe(log.resource_type),
+                    _csv_safe(log.resource_id),
+                    _csv_safe(log.detail or ""),
+                    _csv_safe(log.ip_address or ""),
+                    _csv_safe(log.status or ""),
+                    _csv_safe(log.created_at.isoformat() if log.created_at else ""),
                 ]
             )
 

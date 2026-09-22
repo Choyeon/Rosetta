@@ -7,12 +7,13 @@
  *   - hero/footer/notice copy                —— hero/footer/notice groups
  *
  * Data source (matches backend 17 settings groups):
- *   GET /api/settings  (admin-only, may 401 for guests)
- *   GET /api/config    (public, fallback)
+ *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/sidebar/...)
+ *   GET /api/config           (公开兜底同步 fallback)
  */
 import { computed } from 'vue'
 import type { AllSettingsGroups } from '~~/composables/useAdminManage'
-import { apiFetch, currentLocale } from '~~/composables/useApi'
+import { apiFetch } from '~~/composables/useApi'
+import { hexToHsl } from '~~/lib/utils'
 
 /**
  * 与 GET /api/config 返回值完全一致的首屏默认值。
@@ -62,40 +63,6 @@ const useStateRef = () =>
     publicConfig: null
   }))
 
-function hexToHsl(hex: string): { h: number, s: number, l: number } | null {
-  if (!hex) return null
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim())
-  if (!m) return null
-  const r = parseInt(m[1] ?? '00', 16) / 255
-  const g = parseInt(m[2] ?? '00', 16) / 255
-  const b = parseInt(m[3] ?? '00', 16) / 255
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  let h = 0
-  let s = 0
-  const l = (max + min) / 2
-  if (max !== min) {
-    const d = max - min
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r: {
-        h = (g - b) / d + (g < b ? 6 : 0)
-        break
-      }
-      case g: {
-        h = (b - r) / d + 2
-        break
-      }
-      case b: {
-        h = (r - g) / d + 4
-        break
-      }
-    }
-    h *= 60
-  }
-  return { h, s: s * 100, l: l * 100 }
-}
-
 function readGroup<T extends Record<string, unknown>>(
   state: UseSiteState,
   name: GroupKeys,
@@ -116,11 +83,10 @@ export function useSite() {
    * —— 公开页面 & SSR 阶段一律走 publicConfig（来自 /api/config，匿名也能拿到），
    *    保证 SSR 输出 & 客户端首渲染值字节级一致。
    *
-   * 为什么不能优先用 groups.basic？
-   *   - groups.basic 来自 GET /api/settings（需要 admin 权限）
-   *   - SSR 服务端是匿名请求，拿不到浏览器 cookie，groups 为空
-   *   - 客户端已登录时能取到 groups.basic，site_name 可能是 "Rosetta Blog"
-   *   - 结果 SSR HTML 里是 "Rosetta"，客户端 vdom 是 "Rosetta Blog" → mismatch
+   * 为什么 layout 的 basic 不优先用 groups.basic？
+   *   - SSR 服务端是匿名请求，拿不到浏览器 cookie/localStorage 中的 token
+   *   - 若 SSR 端读得到而客户端读不到（或反之），两端 site_name 不一致 → Hydration mismatch
+   *   - /api/config 是公开接口，SSR 与客户端拿到完全一致的同一份值，因此它才是唯一权威来源
    *
    * 策略：
    *   - SSR（import.meta.server === true）：只用 publicConfig + 默认值（两端一致）
@@ -323,22 +289,13 @@ export function useSite() {
         } catch { /* OOBE / backend unreachable → use defaults */ }
       })(),
       (async () => {
-        // ===== 关键：不走 apiFetch()，避免其内部遇到 401 自动 navigateTo('/login') =====
-        // /api/settings 是 admin-only 接口，匿名访客访问必然 401；这是预期行为，
-        // 绝不应该因此把公开页面（首页/文章详情/关于/...）的用户强行踢去登录页。
-        // 用 raw $fetch + 手动捕获 401 并静默，让 groups 保持空对象，
-        // computed 派生值会自动走 publicConfig（L131-155）作为兜底。
+        // ====== 走公开端点 GET /api/settings/public ======
+        // 旧的 GET /api/settings 是 admin-only：访客（含 SSR 匿名请求）必然 401，
+        // 结果是 hero / footer / notice 等管理员配置在前台永远读不到，
+        // 控制台还会刷一条 "Failed to load resource: 401"。
+        // 后端已提供脱敏后的公开子集，这里改用该端点，彻底消除 401。
         try {
-          const config = useRuntimeConfig()
-          const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
-          const headers: Record<string, string> = { 'Accept-Language': currentLocale() }
-          try {
-            const auth = useAuthStore()
-            if (auth.accessToken) headers.Authorization = `Bearer ${auth.accessToken}`
-          } catch { /* store unavailable in SSR edge cases */ }
-          const raw = await $fetch<{ groups?: AllSettingsGroups }>('/settings', {
-            baseURL,
-            headers,
+          const raw = await apiFetch<{ groups?: AllSettingsGroups }>('/settings/public', {
             method: 'GET'
           })
           if (raw && typeof raw === 'object' && raw.groups && typeof raw.groups === 'object') {
@@ -346,12 +303,8 @@ export function useSite() {
           }
         } catch (e) {
           const status = (e as { status?: number })?.status ?? 0
-          // 401 = 未登录（访客访问公开页），静默降级即可。
-          // 其它错误也不中断页面渲染，仍然用 publicConfig fallback。
-          if (status !== 401 && status !== 403) {
-            console.debug('[useSite] /settings fetch skipped:', status || 'network')
-          }
-          /* guest/401/403 → empty groups, fall back to publicConfig */
+          console.debug('[useSite] /settings/public fetch skipped:', status || 'network')
+          /* OOBE / 后端不可达 → groups 保持空对象，computed 自动走 publicConfig 兜底 */
         }
       })(),
       (async () => {

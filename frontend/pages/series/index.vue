@@ -24,6 +24,13 @@
     </div>
 
     <div
+      v-else-if="loadError"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center"
+    >
+      {{ t('admin.posts.loadFailed') }}
+    </div>
+
+    <div
       v-else-if="seriesList.length === 0"
       class="text-center py-20"
     >
@@ -45,6 +52,7 @@
       <NuxtLink
         v-for="s in seriesList"
         :key="s.id"
+        v-memo="[s.id, s.slug, s.post_count]"
         :to="`/series/${s.slug}`"
         class="no-underline group"
       >
@@ -54,12 +62,12 @@
               v-if="pickStr(s.cover_image)"
               :src="pickStr(s.cover_image)"
               :alt="pickStr(s.title) || pickStr(s.name || '')"
-              class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
+              class="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
               loading="lazy"
             >
             <div
               v-else
-              class="w-full h-full flex items-center justify-center bg-gradient-to-br from-sky-500/20 via-cyan-500/10 to-transparent"
+              class="size-full flex items-center justify-center bg-gradient-to-br from-sky-500/20 via-cyan-500/10 to-transparent"
             >
               <BookOpen class="size-10 text-primary/40" />
             </div>
@@ -133,7 +141,7 @@ const pickStr = (v: string | Record<string, string> | null | undefined): string 
 }
 
 // 真实接口：GET /api/series。失败或空时回退空数组，绝不显示示例系列。
-const { data: seriesData, pending } = await useAPI<SeriesRow[]>('/series', {
+const { data: seriesData, pending, error: loadError } = useAPI<SeriesRow[]>('/series', {
   key: 'series:list:' + (locale.value || 'zh'),
   default: () => []
 })

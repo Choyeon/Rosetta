@@ -1,5 +1,8 @@
 <template>
-  <div class="card-surface flex gap-3 p-4">
+  <div
+    class="card-surface flex gap-3 p-4"
+    :class="depth >= 2 ? 'ps-6 sm:ps-12' : depth >= 1 ? 'ps-6' : ''"
+  >
     <UserAvatar
       :avatar="comment.author?.avatar"
       :seed="comment.author?.name"
@@ -20,15 +23,6 @@
           />
           <span class="text-xs text-muted-foreground shrink-0">{{ formatRelativeTime(comment.createdAt) }}</span>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="shrink-0 h-7 px-2"
-          @click="$emit('reply', comment.id)"
-        >
-          <ArrowLeft class="size-3.5 mr-1 rotate-180" />
-          <span class="text-xs">{{ t('comment.reply') }}</span>
-        </Button>
       </div>
 
       <p class="text-sm leading-relaxed mt-1 break-words whitespace-pre-wrap">
@@ -40,21 +34,16 @@
           variant="ghost"
           size="sm"
           class="h-7 px-2"
+          :disabled="liking"
+          :aria-pressed="isLiked"
+          :aria-label="t('comment.like', '点赞')"
           @click="handleLike"
         >
-          <svg
-            class="size-3.5 mr-1"
-            :class="{ 'fill-error text-error': isLiked }"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-          >
-            <path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z" />
-          </svg>
-          <span class="text-xs tabular-nums">{{ comment.likesCount ?? 0 }}</span>
+          <Heart
+            data-icon="inline-start"
+            :class="`size-3.5 mr-1${isLiked ? ' fill-primary/30 text-primary' : ''}`"
+          />
+          <span class="text-xs tabular-nums">{{ displayLikesCount }}</span>
         </Button>
         <Button
           variant="ghost"
@@ -62,7 +51,10 @@
           class="h-7 px-2"
           @click="$emit('reply', comment.id)"
         >
-          <MessageSquare class="size-3.5 mr-1" />
+          <MessageSquare
+            data-icon="inline-start"
+            class="mr-1"
+          />
           <span class="text-xs">{{ t('comment.reply') }}</span>
         </Button>
       </div>
@@ -74,8 +66,9 @@
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
-import { ArrowLeft, MessageSquare } from '@lucide/vue'
+import { Heart, MessageSquare } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
+import { useComments } from '~~/composables/useComments'
 
 interface Props {
   comment: {
@@ -97,10 +90,11 @@ interface Props {
     parentId?: number | string | null
     likesCount?: number
   }
+  /** 回复嵌套层级（0=根评论）。仅用于视觉缩进，最多 2 级。 */
   depth?: number
 }
 
-withDefaults(defineProps<Props>(), {
+const props = withDefaults(defineProps<Props>(), {
   depth: 0
 })
 
@@ -109,7 +103,34 @@ defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
+const { likeComment } = useComments()
+
+// 点赞：真实调用 POST /api/comments/{id}/like（后端为纯计数 +1，无取消语义），
+// 成功后以响应 likes_count 为准更新计数并锁定按钮，防止重复计数。
 const isLiked = ref(false)
+const liking = ref(false)
+const serverLikesCount = ref<number | null>(null)
+const displayLikesCount = computed(() => serverLikesCount.value ?? props.comment.likesCount ?? 0)
+
+const handleLike = async () => {
+  if (liking.value || isLiked.value) return
+  liking.value = true
+  try {
+    const resp = await likeComment(props.comment.id)
+    const r = (resp ?? {}) as Record<string, unknown>
+    const rd = (r.data ?? {}) as Record<string, unknown>
+    const count
+      = (typeof r.likes_count === 'number' ? r.likes_count : undefined)
+        ?? (typeof rd.likes_count === 'number' ? rd.likes_count : undefined)
+    serverLikesCount.value = count ?? displayLikesCount.value + 1
+    isLiked.value = true
+  } catch {
+    // apiFetch 已统一 toast（无 silentToast），此处仅终止本地 loading
+  } finally {
+    liking.value = false
+  }
+}
+
 const formatRelativeTime = (date: string) => {
   try {
     if (!date) return ''
@@ -135,9 +156,5 @@ const formatRelativeTime = (date: string) => {
   } catch {
     return ''
   }
-}
-
-const handleLike = () => {
-  isLiked.value = !isLiked.value
 }
 </script>

@@ -1,6 +1,7 @@
 from __future__ import annotations
-from pathlib import Path
+
 import logging
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 logger = logging.getLogger(__name__)
@@ -12,26 +13,33 @@ THEMES_DIR: Path = PROJECT_ROOT / "frontend" / "themes"
 if TYPE_CHECKING:
     from backend.schemas.manifest import RosettaPluginManifest, RosettaThemeManifest
 
+
 def _safe_read_json(path: Path) -> dict | None:
     try:
         from backend.schemas.manifest import read_manifest_file
+
         return read_manifest_file(path)
     except Exception as e:
         logger.warning("Skip invalid manifest at %s: %s", path, e)
         return None
 
-def scan_plugins_dir() -> list[tuple[str, "RosettaPluginManifest"]]:
-    from backend.schemas.manifest import validate_plugin_manifest, RosettaPluginManifest
+
+def scan_plugins_dir() -> list[tuple[str, RosettaPluginManifest]]:
+    from backend.schemas.manifest import validate_plugin_manifest
+
     PLUGINS_DIR.mkdir(parents=True, exist_ok=True)
     results: list[tuple[str, RosettaPluginManifest]] = []
     if not PLUGINS_DIR.is_dir():
         return results
     for entry in sorted(PLUGINS_DIR.iterdir()):
-        if not entry.is_dir(): continue
-        if entry.name.startswith(".") or entry.name.startswith("_"): continue
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith(".") or entry.name.startswith("_"):
+            continue
         mf = entry / "rosetta-plugin.json"
         data = _safe_read_json(mf)
-        if data is None: continue
+        if data is None:
+            continue
         try:
             manifest = validate_plugin_manifest(data)
         except ValueError as e:
@@ -41,18 +49,23 @@ def scan_plugins_dir() -> list[tuple[str, "RosettaPluginManifest"]]:
         results.append((rel, manifest))
     return results
 
-def scan_themes_dir() -> list[tuple[str, "RosettaThemeManifest"]]:
-    from backend.schemas.manifest import validate_theme_manifest, RosettaThemeManifest
+
+def scan_themes_dir() -> list[tuple[str, RosettaThemeManifest]]:
+    from backend.schemas.manifest import validate_theme_manifest
+
     THEMES_DIR.mkdir(parents=True, exist_ok=True)
     results: list[tuple[str, RosettaThemeManifest]] = []
     if not THEMES_DIR.is_dir():
         return results
     for entry in sorted(THEMES_DIR.iterdir()):
-        if not entry.is_dir(): continue
-        if entry.name.startswith(".") or entry.name.startswith("_"): continue
+        if not entry.is_dir():
+            continue
+        if entry.name.startswith(".") or entry.name.startswith("_"):
+            continue
         mf = entry / "rosetta-theme.json"
         data = _safe_read_json(mf)
-        if data is None: continue
+        if data is None:
+            continue
         try:
             manifest = validate_theme_manifest(data)
         except ValueError as e:

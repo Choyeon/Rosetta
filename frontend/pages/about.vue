@@ -1,6 +1,7 @@
 <template>
   <div class="container py-16">
     <!-- HTML 模式：管理员在站点设置 basic.about_page_html 以 HTML 方式直接编辑关于内容 -->
+    <!-- eslint-disable-next-line vue/no-v-html -->
     <section
       v-if="aboutPageHtml"
       class="max-w-4xl mx-auto prose prose-sky dark:prose-invert max-w-none prose-img:rounded-xl prose-headings:font-display"
@@ -22,7 +23,7 @@
       </header>
 
       <div class="max-w-4xl mx-auto">
-        <Card class="mb-10 overflow-hidden border-0 shadow-soft bg-gradient-to-br from-slate-50 via-white to-primary/5 dark:from-slate-900 dark:via-background dark:to-primary/10">
+        <Card class="mb-10 overflow-hidden border-0 shadow-soft bg-gradient-to-br from-card via-background to-primary/5 dark:to-primary/10">
           <CardContent class="p-8 md:p-10">
             <div class="flex flex-col md:flex-row items-center md:items-start gap-6 md:gap-8">
               <UserAvatar
@@ -92,7 +93,7 @@
 
           <TabsContent value="bio">
             <Card>
-              <CardContent class="p-6 md:p-8 space-y-5 text-foreground/90 leading-relaxed">
+              <CardContent class="flex flex-col gap-5 p-6 md:p-8 text-foreground/90 leading-relaxed">
                 <p>{{ t('about.bioP1') }}</p>
                 <p>{{ t('about.bioP2') }}</p>
                 <p>{{ t('about.bioP3') }}</p>
@@ -130,7 +131,7 @@
                   </Badge>
                 </div>
 
-                <div class="space-y-5">
+                <div class="flex flex-col gap-5">
                   <div
                     v-for="group in skillGroups"
                     :key="group.title"
@@ -211,7 +212,7 @@
 
           <TabsContent value="rss">
             <Card>
-              <CardContent class="p-6 md:p-8 space-y-4">
+              <CardContent class="flex flex-col gap-4 p-6 md:p-8">
                 <div class="rounded-xl border border-border/60 p-5">
                   <div class="flex items-center justify-between flex-wrap gap-3">
                     <div class="flex items-center gap-3">
@@ -232,7 +233,10 @@
                       size="sm"
                       @click="navigateTo('/rss.xml', { external: true })"
                     >
-                      <ExternalLink class="size-3.5 mr-2" />
+                      <ExternalLink
+                        data-icon="inline-start"
+                        class="mr-2"
+                      />
                       {{ t('common.open') || '打开' }}
                     </Button>
                   </div>
@@ -257,7 +261,10 @@
                       size="sm"
                       @click="navigateTo('/sitemap.xml', { external: true })"
                     >
-                      <ExternalLink class="size-3.5 mr-2" />
+                      <ExternalLink
+                        data-icon="inline-start"
+                        class="mr-2"
+                      />
                       {{ t('common.open') || '打开' }}
                     </Button>
                   </div>

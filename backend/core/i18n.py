@@ -7,7 +7,13 @@
 - 语言偏好管理
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from starlette.requests import Request  # noqa: F401 (type alias)
 
 SUPPORTED_LANGUAGES: dict[str, str] = {
     "zh": "简体中文",
@@ -113,7 +119,7 @@ class I18nField:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, str] | None) -> "I18nField":
+    def from_dict(cls, data: dict[str, str] | None) -> I18nField:
         """从字典创建实例"""
         if not data:
             return cls()
@@ -170,7 +176,7 @@ def normalize_language(lang: str | None) -> str:
     base_first = lang.split("-")[0].split("_")[0]
     if base_first == "zh":
         # 检查是否包含繁体标识（tw / hk / mo / hant）
-        lang_sub = (lang.lower() + "_")
+        lang_sub = lang.lower() + "_"
         if "tw" in lang_sub or "hk" in lang_sub or "mo" in lang_sub or "hant" in lang_sub:
             return "zh_Hant"
         return "zh"
@@ -224,7 +230,7 @@ def parse_accept_language(accept_language: str | None) -> str:
 
 
 def get_language_from_request(
-    request: "Request | None" = None,
+    request: Request | None = None,
     lang_param: str | None = None,
 ) -> str:
     """

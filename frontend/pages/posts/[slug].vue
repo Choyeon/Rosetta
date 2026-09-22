@@ -3,8 +3,8 @@
     <!-- eslint-disable vue/no-v-html -- Vue 3；文章 HTML 已用 DOMPurify 净化 -->
     <div class="fixed top-0 left-0 right-0 z-[60] h-[3px] bg-transparent pointer-events-none">
       <div
-        class="h-full bg-gradient-to-r from-primary via-sky-400 to-primary origin-left shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
-        :style="{ width: `${progress}%`, transition: 'width 120ms linear' }"
+        class="h-full bg-gradient-to-r from-primary/60 via-primary to-primary/60 origin-left shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
+        :style="{ width: `${progress}%`, transition: 'width var(--motion-duration-fast) linear' }"
       />
     </div>
     <div class="relative container mx-auto px-4 md:px-6 py-16 max-w-7xl">
@@ -114,6 +114,7 @@
               :src="coverImage"
               :alt="postTitle"
               class="w-full aspect-[21/9] object-cover rounded-2xl shadow-soft"
+              decoding="async"
             >
           </div>
 
@@ -171,12 +172,13 @@
             <Button
               variant="outline"
               size="sm"
-              class="group"
+              class="group transition-colors hover:border-primary/50 hover:text-primary"
               :disabled="submittingLike"
               @click="handleLikePost"
             >
               <ThumbsUp
-                class="size-4 mr-2 transition-transform group-active:scale-110"
+                data-icon="inline-start"
+                class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5 group-active:scale-110"
                 :class="likedByMe ? 'text-primary fill-primary/30' : ''"
               />
               <span>{{ t('post.like', '点赞') }}</span>
@@ -189,7 +191,46 @@
             </Button>
           </div>
 
-          <Separator class-name="my-12" />
+          <!-- ========= 上一篇 / 下一篇：GET /blog/posts/{slug}/adjacent，缺失即不渲染 ========= -->
+          <nav
+            v-if="adjacent.previous || adjacent.next"
+            class="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-3"
+            :aria-label="t('post.adjacentNav', '文章翻页导航')"
+          >
+            <NuxtLink
+              v-if="adjacent.previous"
+              :to="`/posts/${adjacent.previous.slug}`"
+              class="group flex flex-col rounded-xl border border-border/60 bg-card/60 p-4 transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
+            >
+              <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                <ChevronLeft class="size-3.5 transition-transform duration-[var(--motion-duration-base)] group-hover:-translate-x-0.5" />
+                {{ t('post.previousPost', '上一篇') }}
+              </span>
+              <span class="mt-1.5 text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
+                {{ adjacent.previous.title }}
+              </span>
+            </NuxtLink>
+            <span
+              v-else
+              aria-hidden="true"
+              class="hidden sm:block"
+            />
+            <NuxtLink
+              v-if="adjacent.next"
+              :to="`/posts/${adjacent.next.slug}`"
+              class="group flex flex-col items-end rounded-xl border border-border/60 bg-card/60 p-4 text-right transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
+            >
+              <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                {{ t('post.nextPost', '下一篇') }}
+                <ChevronRight class="size-3.5 transition-transform duration-[var(--motion-duration-base)] group-hover:translate-x-0.5" />
+              </span>
+              <span class="mt-1.5 text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
+                {{ adjacent.next.title }}
+              </span>
+            </NuxtLink>
+          </nav>
+
+          <Separator class="my-12" />
 
           <section>
             <h3 class="font-display text-2xl font-bold tracking-tight mt-12 mb-6 flex items-center gap-2">
@@ -202,10 +243,29 @@
               class="mb-8"
             >
               <CardContent class="p-5">
+                <!-- 回复上下文横幅：replyingTo 有值时显示，X 清除回复态 -->
+                <div
+                  v-if="replyingTo !== null"
+                  class="mb-3 flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-2 text-sm"
+                >
+                  <span class="min-w-0 truncate text-muted-foreground">
+                    {{ t('post.replyingTo', '正在回复') }}
+                    <span class="font-medium text-foreground">@{{ replyTargetName || t('post.someone', '某人') }}</span>
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="shrink-0"
+                    :aria-label="t('post.cancelReply', '取消回复')"
+                    @click="cancelReply"
+                  >
+                    <X data-icon="inline-start" />
+                  </Button>
+                </div>
                 <Textarea
                   ref="commentTextareaRef"
                   v-model="commentContent"
-                  :placeholder="t('post.commentPlaceholder')"
+                  :placeholder="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
                   rows="4"
                   class="resize-none"
                 />
@@ -215,7 +275,10 @@
                     :disabled="!commentContent.trim() || submittingComment"
                     @click="handleSubmitComment"
                   >
-                    <Send class="size-4 mr-2" />
+                    <Send
+                      data-icon="inline-start"
+                      class="mr-2"
+                    />
                     {{ submittingComment ? t('post.submitting') : t('post.submitComment') }}
                   </Button>
                 </div>
@@ -258,6 +321,27 @@
                   @reply="handleReply"
                 />
               </template>
+              <div
+                v-else-if="commentsError"
+                class="text-center py-10 rounded-xl border border-dashed border-destructive/40"
+              >
+                <MessageSquare class="size-9 mx-auto text-destructive/50 mb-3" />
+                <p class="text-sm text-muted-foreground">
+                  {{ t('post.commentsLoadFailed', '评论加载失败') }}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="mt-4"
+                  @click="loadCommentsForCurrentPost"
+                >
+                  <RefreshCw
+                    data-icon="inline-start"
+                    class="mr-2"
+                  />
+                  {{ t('post.retry', '重试') }}
+                </Button>
+              </div>
               <template v-else>
                 <div class="text-center py-12 rounded-xl border border-dashed">
                   <MessageSquare class="size-10 mx-auto text-muted-foreground/50 mb-3" />
@@ -280,7 +364,7 @@
                 v-for="sp in similarPosts"
                 :key="sp.id"
                 :to="`/posts/${sp.slug}`"
-                class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-all duration-300 overflow-hidden"
+                class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
               >
                 <div
                   v-if="sp.cover_image || sp.coverImage"
@@ -289,12 +373,12 @@
                   <img
                     :src="(sp.cover_image || sp.coverImage) as string"
                     :alt="pickLocalized(sp.title)"
-                    class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
                     loading="lazy"
                   >
                 </div>
                 <div class="p-4">
-                  <h4 class="font-display font-semibold text-base tracking-tight line-clamp-2 group-hover:text-primary transition-colors">
+                  <h4 class="font-display font-semibold text-base tracking-tight line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
                     {{ pickLocalized(sp.title) }}
                   </h4>
                   <p
@@ -309,18 +393,18 @@
           </section>
         </div>
         <aside class="hidden lg:block sticky top-24 self-start">
-          <div class="space-y-3">
+          <div class="flex flex-col gap-3">
             <h4 class="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
               <List class="size-4" /> {{ t('post.toc', '目录') }}
             </h4>
             <nav
               v-if="tocItems.length"
-              class="space-y-1.5"
+              class="flex flex-col gap-1.5"
             >
               <button
                 v-for="item in tocItems"
                 :key="item.id"
-                class="block w-full text-left text-sm leading-relaxed transition-all duration-200 rounded-md px-2.5 py-1.5 -mx-2.5"
+                class="block w-full text-left text-sm leading-relaxed transition-colors duration-[var(--motion-duration-fast)] rounded-md px-2.5 py-1.5 -mx-2.5"
                 :class="[
                   activeId === item.id
                     ? 'text-primary font-medium bg-primary/10'
@@ -334,13 +418,13 @@
             </nav>
             <p
               v-else
-              class="text-xs text-muted-foreground/70 px-2 italic"
+              class="px-2 text-xs text-muted-foreground/70"
             >
-              —
+              {{ t('post.tocEmpty', '暂无目录') }}
             </p>
           </div>
           <Card class="mt-8 border-border/60 bg-muted/30">
-            <CardContent class="p-4 space-y-2.5 text-sm">
+            <CardContent class="flex flex-col gap-2.5 p-4 text-sm">
               <div class="flex items-center justify-between">
                 <span class="text-muted-foreground inline-flex items-center gap-1.5"><Clock3 class="size-3.5" />{{ t('post.readingTime', '阅读时间') }}</span>
                 <span class="font-medium">{{ readingTime }} {{ t('post.minRead') }}</span>
@@ -400,8 +484,11 @@ import {
   RefreshCw,
   List,
   Sparkles,
-  ThumbsUp
-} from '@lucide/vue'
+  ThumbsUp,
+  ChevronLeft,
+  ChevronRight,
+  X
+} from '~~/lib/lucide-svg-icons'
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
 import type { TocItem } from '~~/composables/useReadingUX'
@@ -471,6 +558,7 @@ type PostComment = {
 
 const comments = ref<PostComment[]>([])
 const loadingComments = ref(false)
+const commentsError = ref(false)
 const submittingComment = ref(false)
 const commentContent = ref('')
 const replyingTo = ref<number | string | null>(null)
@@ -478,9 +566,11 @@ const tocItems = ref<TocItem[]>([])
 const articleEl = ref<HTMLElement | null>(null)
 const { activeId, scrollTo } = useTOCScrollSpy(() => tocItems.value)
 
-// ========= 相似文章 & 点赞（真实接口，空数据=不渲染，无占位假内容）=========
+// ========= 相似文章 & 上一篇/下一篇（真实接口，空数据=不渲染，无占位假内容）=========
 interface SimilarPostRow { id: number | string, slug?: string, title?: unknown, cover_image?: string, coverImage?: string, excerpt?: unknown }
+interface AdjacentRef { slug: string, title: string }
 const similarPosts = ref<SimilarPostRow[]>([])
+const adjacent = ref<{ previous: AdjacentRef | null, next: AdjacentRef | null }>({ previous: null, next: null })
 const likeCount = ref<number>(0)
 const likedByMe = ref<boolean>(false)
 const submittingLike = ref<boolean>(false)
@@ -488,18 +578,16 @@ const submittingLike = ref<boolean>(false)
 async function loadSimilarAndLikeState(pid: number | string | null | undefined) {
   if (!pid) {
     similarPosts.value = []
+    adjacent.value = { previous: null, next: null }
     likeCount.value = 0
     likedByMe.value = false
     return
   }
-  // 1) similar posts
+  // 1) similar posts（辅助推荐，失败静默降级为空）
   try {
-    const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
-    const headers: Record<string, string> = { 'Accept-Language': locale.value || 'zh' }
-    if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
-    const raw = await $fetch<{ success: boolean, data?: SimilarPostRow[] }>(
+    const raw = await silentApiFetch<{ success: boolean, data?: SimilarPostRow[] }>(
       `/blog/posts/${pid}/similar`,
-      { baseURL, headers, query: { lang: locale.value || 'zh', limit: 6 } }
+      { query: { lang: locale.value || 'zh', limit: 6 } }
     )
     let list: SimilarPostRow[] = []
     if (raw && typeof raw === 'object') {
@@ -512,6 +600,20 @@ async function loadSimilarAndLikeState(pid: number | string | null | undefined) 
     }
     similarPosts.value = list
   } catch { similarPosts.value = [] }
+  // 2) 上一篇/下一篇（按当前 slug 查询，失败静默不渲染）
+  try {
+    const raw = await silentApiFetch<{ success: boolean, data?: { previous?: AdjacentRef | null, next?: AdjacentRef | null } }>(
+      `/blog/posts/${encodeURIComponent(postSlug.value)}/adjacent`,
+      { query: { lang: locale.value || 'zh' } }
+    )
+    const d = raw?.data
+    adjacent.value = {
+      previous: d?.previous ?? null,
+      next: d?.next ?? null
+    }
+  } catch {
+    adjacent.value = { previous: null, next: null }
+  }
 }
 
 const slug = computed(() => route.params.slug as string)
@@ -533,7 +635,7 @@ const postFetchLocaleStr = locale.value || 'zh'
 const cacheKey = `post:detail:${postSlug.value || ''}:${postFetchLocaleStr}`
 const runtimeConfig = useRuntimeConfig()
 const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
-  = await useAsyncData<PostDetail>(
+  = useAsyncData<PostDetail>(
     cacheKey,
     () => {
       const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
@@ -799,7 +901,18 @@ const mdRenderer = new Marked(
 
 const renderedContent = computed(() => {
   if (!post.value?.content) return ''
-  const raw = normalizeMarkdownFences(pickLocalized(post.value.content))
+  let raw = normalizeMarkdownFences(pickLocalized(post.value.content))
+  // 剥离正文开头与页面 H1 重复的标题：部分文章 Markdown 首行即 `# 标题`，
+  // 而模板已单独渲染 H1，直接转换会导致标题出现两次。
+  // 仅当首行 H1 文本与文章标题匹配时才移除，避免误删正文中真正的一级标题。
+  const leading = /^\s{0,3}#\s+(.+?)\s*#*\s*(?:\r?\n|$)/.exec(raw)
+  if (leading) {
+    const headingText = (leading[1] ?? '').trim()
+    const want = postTitle.value.trim()
+    if (want && (headingText === want || headingText.includes(want) || want.includes(headingText))) {
+      raw = raw.slice((leading[0] ?? '').length).replace(/^\s+/, '')
+    }
+  }
   try {
     const html = mdRenderer.parse(raw) as string
     return DOMPurify.sanitize(html, hljsSanitizeConfig)
@@ -850,6 +963,7 @@ const formatDate = (date: string) => {
 const loadCommentsForCurrentPost = async () => {
   if (!import.meta.client) return
   loadingComments.value = true
+  commentsError.value = false
   try {
     if (post.value?.id && commentsAPI.fetchComments) {
       await commentsAPI.fetchComments(post.value.id)
@@ -859,14 +973,18 @@ const loadCommentsForCurrentPost = async () => {
     }
   } catch (e) {
     console.warn('[post detail] comments fetch error:', e)
+    commentsError.value = true
   } finally {
     loadingComments.value = false
   }
 }
 onMounted(async () => {
-  await loadCommentsForCurrentPost()
-  await loadSimilarAndLikeState(post.value?.id)
-  await rebuildTOC()
+  // 三个独立任务并行执行：评论、相似文章、TOC 重建互不依赖
+  await Promise.all([
+    loadCommentsForCurrentPost(),
+    loadSimilarAndLikeState(post.value?.id),
+    rebuildTOC()
+  ])
   if (import.meta.client && typeof window !== 'undefined') {
     // 字体 / 懒加载图片导致布局变化后的兜底刷新（3 秒内再补几次）。
     const retries = [400, 1200, 3000]
@@ -874,12 +992,16 @@ onMounted(async () => {
   }
 })
 onActivated(async () => {
-  await loadCommentsForCurrentPost()
-  await loadSimilarAndLikeState(post.value?.id)
+  await Promise.all([
+    loadCommentsForCurrentPost(),
+    loadSimilarAndLikeState(post.value?.id)
+  ])
 })
 watch([slug, locale, () => post.value?.id], async () => {
-  await loadCommentsForCurrentPost()
-  await loadSimilarAndLikeState(post.value?.id)
+  await Promise.all([
+    loadCommentsForCurrentPost(),
+    loadSimilarAndLikeState(post.value?.id)
+  ])
 })
 
 /**
@@ -967,17 +1089,24 @@ const handleReply = (commentId: number | string) => {
   el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
-// 文章点赞：POST /api/blog/posts/{post_id}/like（后端对匿名也计数，严格不造假数字）
+// 回复横幅：显示被回复评论者昵称；X / 提交成功后清除 replyingTo
+const replyTargetName = computed(() => {
+  if (replyingTo.value === null) return ''
+  const target = comments.value.find(c => String(c.id) === String(replyingTo.value))
+  return String(target?.author?.name ?? '')
+})
+const cancelReply = () => {
+  replyingTo.value = null
+}
+
+// 文章点赞：POST /api/blog/posts/{post_id}/like（后端对匿名也计数；失败由 apiFetch 统一 toast）
 const handleLikePost = async () => {
   if (!post.value?.id || submittingLike.value) return
   submittingLike.value = true
   try {
-    const baseURL = import.meta.client ? runtimeConfig.public.apiBase : runtimeConfig.apiBase
-    const headers: Record<string, string> = { 'Accept-Language': locale.value || 'zh' }
-    if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
-    const raw = await $fetch<{ success: boolean, data?: { liked?: boolean, like_count?: number, likes?: number } }>(
+    const raw = await apiFetch<{ success: boolean, data?: { liked?: boolean, like_count?: number, likes?: number } }>(
       `/blog/posts/${post.value.id}/like`,
-      { method: 'POST', baseURL, headers }
+      { method: 'POST' }
     )
     type LikePayload = { liked?: boolean, like_count?: number, likes?: number }
     const extractLikePayload = (r: unknown): LikePayload => {
@@ -993,8 +1122,8 @@ const handleLikePost = async () => {
     else if (typeof payload.likes === 'number') likeCount.value = payload.likes
     else likeCount.value = Math.max(0, likeCount.value + (likedByMe.value ? -1 : 1))
     likedByMe.value = typeof payload.liked === 'boolean' ? payload.liked : !likedByMe.value
-  } catch (e) {
-    console.warn('[post detail] like failed', e)
+  } catch {
+    // 错误 toast 已由 apiFetch 统一处理，这里仅防止未捕获拒绝
   } finally {
     submittingLike.value = false
   }

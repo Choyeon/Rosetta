@@ -5,6 +5,7 @@
 """
 
 import re
+from html import escape
 from typing import Any
 
 from fastapi import APIRouter, Body
@@ -141,10 +142,12 @@ def generate_toc_html(items: list[dict[str, Any]], indent: int = 0) -> str:
     html_parts.append(f'{prefix}<ul class="toc-list">')
 
     for item in items:
+        # XSS 防护：标题文本来自用户 Markdown，必须转义后再入 HTML
+        # （id 由 extract_headings 归一化为 [\w\u4e00-\u9fff-]，本身安全，但仍统一转义）
+        item_id = escape(str(item["id"]), quote=True)
+        item_text = escape(str(item["text"]), quote=True)
         html_parts.append(f'{prefix}  <li class="toc-item toc-level-{item["level"]}">')
-        html_parts.append(
-            f'{prefix}    <a href="#{item["id"]}" class="toc-link">{item["text"]}</a>'
-        )
+        html_parts.append(f'{prefix}    <a href="#{item_id}" class="toc-link">{item_text}</a>')
 
         if item.get("children"):
             html_parts.append(generate_toc_html(item["children"], indent + 2))
@@ -229,7 +232,10 @@ async def add_heading_ids(
         heading_id = re.sub(r"[^\w\u4e00-\u9fff-]", "-", text.lower())
         heading_id = re.sub(r"-+", "-", heading_id).strip("-")
 
-        return f'<h{level} id="{heading_id}">{text}</h{level}>'
+        # XSS 防护：标题文本转义后再入 HTML
+        return (
+            f'<h{level} id="{escape(heading_id, quote=True)}">{escape(text, quote=True)}</h{level}>'
+        )
 
     # 替换标题
     pattern = r"^(#{1,6})\s+(.+)$"

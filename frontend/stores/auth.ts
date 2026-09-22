@@ -17,8 +17,17 @@ export interface AuthUser {
 }
 
 export const useAuthStore = defineStore('auth', () => {
-  // store 首次实例化必然发生在组件 setup / middleware 中，此时 Nuxt 上下文可用
-  const apiBase = useRuntimeConfig().public.apiBase as string
+  // store 首次实例化必然发生在组件 setup / middleware 中，此时 Nuxt 上下文可用。
+  // ⚠️ SSR 关键：不能只读 public.apiBase（客户端相对路径 /api），
+  // 服务器端必须直连 runtimeConfig.apiBase（绝对地址 http://host:port/api），
+  // 否则 Nitro 会把 /users/login 作为「Nitro 内部 server route」匹配，命中 404，
+  // 导致 SSR 刷新登录态 / SSR 下执行 refreshToken 静默失败。
+  const _runtime = useRuntimeConfig()
+  function getApiBase(): string {
+    const priv = _runtime as unknown as { apiBase?: string }
+    const pub = _runtime.public as unknown as { apiBase?: string }
+    return (import.meta.server ? (priv.apiBase || '') : (pub.apiBase || '')) as string
+  }
 
   const accessToken = ref<string | null>(null)
   const refreshToken = ref<string | null>(null)
@@ -64,7 +73,7 @@ export const useAuthStore = defineStore('auth', () => {
       // useFetch 必须在 setup 上下文中调用；store 方法可能由事件回调触发，
       // 因此这里使用 $fetch（无上下文要求）并显式携带 baseURL
       user.value = await $fetch<AuthUser>('/users/me', {
-        baseURL: apiBase,
+        baseURL: getApiBase(),
         headers: {
           Authorization: `Bearer ${accessToken.value}`
         }
@@ -84,7 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
     // useFetch/useAPI 要求 setup 上下文，脱离上下文会静默不执行 —— 必须用 $fetch
     try {
       const data = await $fetch<TokenResponse>('/users/login', {
-        baseURL: apiBase,
+        baseURL: getApiBase(),
         method: 'POST',
         body: { username, password }
       })
@@ -113,7 +122,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function register(username: string, email: string, password: string, nickname?: string) {
     try {
       const data = await $fetch<TokenResponse>('/users/register', {
-        baseURL: apiBase,
+        baseURL: getApiBase(),
         method: 'POST',
         body: { username, email, password, nickname }
       })
@@ -128,7 +137,7 @@ export const useAuthStore = defineStore('auth', () => {
   async function logout() {
     try {
       await $fetch('/users/logout', {
-        baseURL: apiBase,
+        baseURL: getApiBase(),
         method: 'POST',
         query: { refresh_token: refreshToken.value }
       })
@@ -153,7 +162,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
     try {
       await $fetch('/users/me/avatar', {
-        baseURL: apiBase,
+        baseURL: getApiBase(),
         method: 'PUT',
         query: { avatar: url },
         headers: accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}
@@ -167,31 +176,42 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  // 并发 401 刷新互斥：多个请求同时拿过期 access token 撞 401 时，
+  // 只允许一个真正的 /users/refresh 请求（后端是 rotate 语义，刷新令牌单次有效；
+  // 并发刷新会让第 2..N 个请求吃到 TOKEN_REUSED，把刚刷新成功的用户踢下线）。
+  let _refreshInFlight: Promise<boolean> | null = null
+
   async function refreshAccessToken(): Promise<boolean> {
     if (!refreshToken.value) {
       clearTokens()
       return false
     }
+    if (_refreshInFlight) return _refreshInFlight
 
-    try {
-      // 与 fetchUser 同理：使用 $fetch，避免 useFetch 的上下文限制
-      const data = await $fetch<TokenResponse>('/users/refresh', {
-        baseURL: apiBase,
-        method: 'POST',
-        body: { refresh_token: refreshToken.value }
-      })
+    _refreshInFlight = (async () => {
+      try {
+        // 与 fetchUser 同理：使用 $fetch，避免 useFetch 的上下文限制
+        const data = await $fetch<TokenResponse>('/users/refresh', {
+          baseURL: getApiBase(),
+          method: 'POST',
+          body: { refresh_token: refreshToken.value }
+        })
 
-      if (!data?.access_token) {
+        if (!data?.access_token) {
+          clearTokens()
+          return false
+        }
+
+        setTokens(data)
+        return true
+      } catch {
         clearTokens()
         return false
+      } finally {
+        _refreshInFlight = null
       }
-
-      setTokens(data)
-      return true
-    } catch {
-      clearTokens()
-      return false
-    }
+    })()
+    return _refreshInFlight
   }
 
   let initialized = false

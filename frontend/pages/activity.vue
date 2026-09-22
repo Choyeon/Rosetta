@@ -25,7 +25,7 @@
     <div class="max-w-2xl mx-auto">
       <div
         v-if="pending && activityList.length === 0"
-        class="space-y-8 mb-8"
+        class="flex flex-col gap-8 mb-8"
       >
         <div
           v-for="i in 5"
@@ -33,7 +33,7 @@
           class="relative pl-8"
         >
           <div class="absolute -left-8 top-1.5 size-6 rounded-full bg-muted animate-pulse" />
-          <div class="space-y-3 p-5 rounded-xl bg-card border border-border/60">
+          <div class="flex flex-col gap-3 p-5 rounded-xl bg-card border border-border/60">
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-2">
                 <div class="size-5 rounded-full bg-muted animate-pulse" />
@@ -41,13 +41,20 @@
               </div>
               <div class="w-16 h-3 rounded-full bg-muted animate-pulse" />
             </div>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <div class="w-full h-4 rounded-full bg-muted animate-pulse" />
               <div class="w-4/5 h-4 rounded-full bg-muted animate-pulse" />
               <div class="w-2/3 h-4 rounded-full bg-muted animate-pulse" />
             </div>
           </div>
         </div>
+      </div>
+
+      <div
+        v-else-if="loadError"
+        class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center"
+      >
+        {{ t('admin.posts.loadFailed') }}
       </div>
 
       <div
@@ -62,6 +69,7 @@
         <div
           v-for="item in activityList"
           :key="item.id"
+          v-memo="[item.id, item.type, item.likes_count, item.created_at]"
           class="relative mb-8 last:mb-0"
         >
           <div
@@ -247,7 +255,7 @@ interface Paginated<T> {
   total_pages?: number
 }
 
-const { data: activityResp, pending, refresh } = await useAPI<Paginated<ActivityItem>>('/activities', {
+const { data: activityResp, pending, error: loadError, refresh } = useAPI<Paginated<ActivityItem>>('/activities', {
   query: {
     page: 1,
     page_size: 50,

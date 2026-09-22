@@ -1,8 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import * as LucideIcons from '@lucide/vue'
-import { resolveTitleIcon } from '~~/composables/titlePresets'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
+import TitleIconSvg from '~~/components/TitleIconSvg.vue'
 
 const props = withDefaults(defineProps<{
   title: AdminUserTitle | null | undefined
@@ -17,14 +16,13 @@ const props = withDefaults(defineProps<{
 })
 
 const sizeCfg = {
-  sm: { h: 'h-4', px: 'px-1.5', text: 'text-[10px]', gap: 'gap-1', iconSize: 'size-2.5' },
-  md: { h: 'h-5', px: 'px-2', text: 'text-[11px]', gap: 'gap-1', iconSize: 'size-3' },
-  lg: { h: 'h-6', px: 'px-2.5', text: 'text-xs', gap: 'gap-1.5', iconSize: 'size-3.5' }
+  sm: { h: 'h-5', px: 'px-1.5', text: 'text-[10px]', gap: 'gap-1', iconSize: 'size-3' },
+  md: { h: 'h-6', px: 'px-2', text: 'text-[11px]', gap: 'gap-1', iconSize: 'size-3.5' },
+  lg: { h: 'h-7', px: 'px-2.5', text: 'text-xs', gap: 'gap-1.5', iconSize: 'size-4' }
 }
 
 const cfg = computed(() => sizeCfg[props.size])
 const color = computed(() => props.title?.color || '#3b82f6')
-const renderedIcon = computed(() => resolveTitleIcon(props.title?.icon))
 
 const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
   if (v == null) return ''
@@ -51,28 +49,18 @@ const displayName = computed(() => getLocalizedStr(props.title?.name))
     :title="displayName"
   >
     <span
-      v-if="showIcon && renderedIcon.type !== 'empty'"
+      v-if="showIcon"
       :class="[cfg.iconSize, 'flex items-center justify-center shrink-0']"
     >
-      <component
-        :is="(LucideIcons as Record<string, unknown>)[renderedIcon.value]"
-        v-if="renderedIcon.type === 'lucide'"
-        class="w-full h-full"
+      <TitleIconSvg
+        v-if="title.icon"
+        :icon="title.icon"
+        :stroke-width="2"
       />
       <span
-        v-else-if="renderedIcon.type === 'emoji'"
-        style="font-size:inherit"
-      >{{ renderedIcon.value }}</span>
-      <span
-        v-else-if="renderedIcon.type === 'svg'"
-        v-html="renderedIcon.value"
-      />
-    </span>
-    <span
-      v-else-if="showIcon"
-      :class="[cfg.iconSize, 'flex items-center justify-center shrink-0 font-bold']"
-    >
-      ★
+        v-else
+        class="font-bold"
+      >★</span>
     </span>
     <span
       v-if="showName"

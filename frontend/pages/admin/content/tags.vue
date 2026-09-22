@@ -15,15 +15,14 @@ import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import { getLocalizedStr, normalizeI18nDict, slugify, type I18nDict } from '~~/composables/useAdminI18n'
 import { Search, Plus, Pencil, Trash2, Tag } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
-type I18nDict = { zh: string, en: string, ja: string, zh_Hant: string }
-
-const tags = ref<AdminTag[]>([])
+const tags = shallowRef<AdminTag[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
 const hoveredId = ref<number | null>(null)
@@ -49,31 +48,6 @@ const form = reactive<{
 })
 
 const editingId = ref<number | null>(null)
-
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
-const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): I18nDict => {
-  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
-  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
-  return {
-    zh: v.zh ?? '',
-    en: v.en ?? '',
-    ja: v.ja ?? '',
-    zh_Hant: v.zh_Hant ?? ''
-  }
-}
-
-const slugify = (text: string): string => {
-  let s = text.trim().toLowerCase()
-  s = s.replace(/[\s]+/g, '-')
-  s = s.replace(/[^\w一-龥-]/g, '')
-  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
-  return s
-}
 
 let slugManualEdit = false as boolean
 watch(
@@ -208,7 +182,7 @@ onMounted(() => {
           class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
           @click="openNew"
         >
-          <Plus class="size-4" />
+          <Plus data-icon="inline-start" />
           <span>新建标签</span>
         </Button>
       </div>

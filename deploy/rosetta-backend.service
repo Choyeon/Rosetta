@@ -1,4 +1,11 @@
 # 由 deploy/linux-install.sh 自动参数化填充到 /etc/systemd/system/rosetta-backend.service
+#
+# Rosetta Nuxt SSR 期 Nitro 需要通过 EnvironmentFile 里的
+# NUXT_API_BASE / SSR_API_BASE_URL 直连此 FastAPI。
+# 典型值（localhost 场景）：
+#   NUXT_API_BASE=http://127.0.0.1:8000/api
+#   SSR_API_BASE_URL=http://127.0.0.1:8000/api
+#   NUXT_PUBLIC_API_BASE=/api
 [Unit]
 Description=Rosetta Blog Backend (FastAPI + uvicorn)
 After=network-online.target postgresql.service redis-server.service

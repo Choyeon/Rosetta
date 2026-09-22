@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Globe, Check } from '@lucide/vue'
+import { Globe, Check } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
 import { Button } from '~~/components/ui/button'
 import {

@@ -859,7 +859,9 @@ class DependencyService:
         try:
             result = subprocess.run(
                 [sys.executable, "-m", "uv", "--version"],
-                capture_output=True, text=True, timeout=10,
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if result.returncode == 0:
                 uv_cmd = [sys.executable, "-m", "uv"]

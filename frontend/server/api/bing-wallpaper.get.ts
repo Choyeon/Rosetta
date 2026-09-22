@@ -34,7 +34,7 @@ export default defineEventHandler(async (event) => {
   const mkt = typeof query.mkt === 'string' && query.mkt.trim() ? query.mkt.trim() : 'zh-CN'
 
   const bingUrl
-    = `https://www.bing.com/HPImageArchive.aspx?format=js&idx=${idx}&n=1&mkt=${encodeURIComponent(mkt)}`
+    = `https://cn.bing.com/HPImageArchive.aspx?format=js&idx=${idx}&n=1&mkt=${encodeURIComponent(mkt)}`
 
   const headers = new Headers({
     'User-Agent':
@@ -73,7 +73,7 @@ export default defineEventHandler(async (event) => {
   // url 形如 /th?id=OHR.MadagascarTsingy_ZH-CN11176168567_1920x1080.jpg&rf=...
   // 把 1920x1080 换成 UHD
   let uhd = img.url
-  if (uhd.startsWith('/')) uhd = `https://www.bing.com${uhd}`
+  if (uhd.startsWith('/')) uhd = `https://cn.bing.com${uhd}`
   uhd = uhd.replace(/_(1920x1080|1366x768|1280x720)\.(jpg|jpeg|png)/i, '_UHD.jpg')
 
   // 30 分钟 CDN + 浏览器缓存；idx 变了 query 不同就是新资源

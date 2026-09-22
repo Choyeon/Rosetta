@@ -19,9 +19,6 @@
 import pytest
 from httpx import AsyncClient
 
-from backend.models.core import Navigation
-
-
 # ============================= 3.1 位置 Tab & 空状态 & 新增根节点 =============================
 
 
@@ -50,7 +47,11 @@ class TestNavBasics:
         # 过滤自己建的（排除 OOBE 默认导航）
         def _only_titles(resp, prefix_set):
             items = resp.json()
-            return [n for n in items if isinstance(n, dict) and n.get("title", {}).get("zh", "") in prefix_set]
+            return [
+                n
+                for n in items
+                if isinstance(n, dict) and n.get("title", {}).get("zh", "") in prefix_set
+            ]
 
         hs = _only_titles(r_header, {"H1", "H2", "H3", "H4"})
         fs = _only_titles(r_footer, {"F1", "F2", "F3"})
@@ -61,9 +62,7 @@ class TestNavBasics:
         assert not (footer_zhs & {"H1", "H2", "H3", "H4"}), "footer 出现了 header 的导航"
 
     @pytest.mark.asyncio
-    async def test_n_a1_create_root_required(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_n_a1_create_root_required(self, client: AsyncClient, staff_headers: dict):
         """N-A1: 必填校验 — 理想空 title/url 返回 422；若 schema 暂未严格校验则软通过
 
         注意：如果 NavigationCreate schema 对 url 为空串 len=0 不拦截，
@@ -97,9 +96,7 @@ class TestNavBasics:
         assert created["target_blank"] is False
 
     @pytest.mark.asyncio
-    async def test_n_a2_i18n_title_fallback(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_n_a2_i18n_title_fallback(self, client: AsyncClient, staff_headers: dict):
         """N-A2: 只填英文 title 不填中文也能保存（国际化允许缺省）"""
         r = await client.post(
             "/api/navigations",
@@ -121,9 +118,7 @@ class TestNavHierarchyEditDelete:
     """N-H1 ~ N-H5 层级视图、编辑回填、删除父→子节点上提"""
 
     @pytest.mark.asyncio
-    async def test_n_h1_depth_3_indent(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_n_h1_depth_3_indent(self, client: AsyncClient, staff_headers: dict):
         """N-H1: 深度 3 级 A → B → C，后端 parent_id 链正确"""
         # 手动层叠创建
         root_r = await client.post(
@@ -184,8 +179,9 @@ class TestNavHierarchyEditDelete:
 
         正确做法：使用 PUT 接口返回值本身 + ORM 直查数据库双重断言。
         """
-        from backend.models.core import Navigation as _Nav
         from sqlalchemy import select
+
+        from backend.models.core import Navigation as _Nav
 
         navs = await make_navigations("header", root_titles=["BeforeEdit"])
         target = navs[0]
@@ -219,9 +215,7 @@ class TestNavHierarchyEditDelete:
 
         # --- ③ 返回为空（204）则 fallback：直查数据库 ---
         await db_session.commit()  # 确保 PUT 写事务提交后最新状态
-        result = await db_session.execute(
-            select(_Nav).where(_Nav.id == target.id)
-        )
+        result = await db_session.execute(select(_Nav).where(_Nav.id == target.id))
         fresh = result.scalar_one_or_none()
         assert fresh is not None, f"PUT 后数据库找不到 Nav id={target.id}"
         assert fresh.url == "/edited"
@@ -262,19 +256,17 @@ class TestNavHierarchyEditDelete:
             child_ids.append(c.json()["id"])
 
         # 删除父
-        del_r = await client.delete(
-            f"/api/navigations/{root['id']}", headers=staff_headers
-        )
+        del_r = await client.delete(f"/api/navigations/{root['id']}", headers=staff_headers)
         assert del_r.status_code in (200, 204), f"删除失败: {del_r.text}"
 
         # 验证子节点 parent_id = None（提升）。
         # ForeignKey ondelete=CASCADE 可能删掉子节点！如果后端设计为 CASCADE 则 N-H4 需要改为
         # "删除前提示用户确认，不自动提升子节点"。两种实现都可以通过，这里软断言：
-        r = await client.get("/api/navigations", headers=staff_headers, params={"location": "sidebar"})
+        r = await client.get(
+            "/api/navigations", headers=staff_headers, params={"location": "sidebar"}
+        )
         sidebar_navs = {n["id"]: n for n in r.json() if isinstance(n, dict)}
-        still_exist_children = [
-            sidebar_navs[cid] for cid in child_ids if cid in sidebar_navs
-        ]
+        still_exist_children = [sidebar_navs[cid] for cid in child_ids if cid in sidebar_navs]
         if still_exist_children:
             # 如果设计为"提升"，则 parent_id 应当都为 None
             parent_ids = {c["parent_id"] for c in still_exist_children}
@@ -292,9 +284,7 @@ class TestNavOrderAndFlags:
         self, client: AsyncClient, staff_headers: dict, make_navigations
     ):
         """N-O2: 首位「上移」最后位「下移」逻辑等价 PUT order，首位 order=0 再上移不报错"""
-        navs = await make_navigations(
-            "header", root_titles=["第一", "中间", "最后"]
-        )
+        navs = await make_navigations("header", root_titles=["第一", "中间", "最后"])
         # 顺序为 order 1, 2, 3（见 factory）
         first, _mid, last = navs
         # 上移 first：order 改 0（不变或 0）PUT 应成功无异常
@@ -335,9 +325,7 @@ class TestNavOrderAndFlags:
             headers=subscriber_headers,
             json={"title": {"zh": "hacked"}, "url": "/hacked", "location": "header"},
         )
-        assert r.status_code in (401, 403), (
-            f"No-Go R1: 订阅者能创建导航! status={r.status_code}"
-        )
+        assert r.status_code in (401, 403), f"No-Go R1: 订阅者能创建导航! status={r.status_code}"
 
 
 # ============================= 3.5 URL 合法性 =============================

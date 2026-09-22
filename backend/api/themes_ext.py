@@ -18,10 +18,10 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import select
 
-from backend.core.auth import CurrentStaff, CurrentUserOptional, DB
+from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.core.exceptions import AppException
 from backend.core.tenant import DEFAULT_SITE_ID
 from backend.models.extensions import Theme
@@ -40,6 +40,7 @@ router = APIRouter(prefix="/themes", tags=["主题平台"])
 
 def _get_theme_manager():
     from backend.core.extensions import theme_manager
+
     return theme_manager
 
 
@@ -65,7 +66,18 @@ async def _load_theme_row(db: DB, slug: str, *, site_id: int = DEFAULT_SITE_ID) 
             message=f"主题不存在: {slug}",
             error_code=THEME_NOT_FOUND,
         )
-    await db.refresh(row, attribute_names=["updated_at", "created_at", "activated_at", "installed_at", "screenshot_urls", "tags", "mods_schema"])
+    await db.refresh(
+        row,
+        attribute_names=[
+            "updated_at",
+            "created_at",
+            "activated_at",
+            "installed_at",
+            "screenshot_urls",
+            "tags",
+            "mods_schema",
+        ],
+    )
     return row
 
 
@@ -309,7 +321,7 @@ async def replace_theme_mods(
             error_code=THEME_NOT_FOUND,
         )
     # PUT 语义：重置为 schema 默认值，再叠加 payload.mods
-    schema_props = ((theme.mods_schema or {}).get("properties") or {})
+    schema_props = (theme.mods_schema or {}).get("properties") or {}
     reset = {
         k: (v.get("default") if isinstance(v, dict) and "default" in v else None)
         for k, v in schema_props.items()
@@ -479,7 +491,6 @@ async def install_theme_from_market(
 ):
     """在市场索引中按 slug 查找条目，然后调用 install_from_remote 安装主题。"""
     from backend.core.market import fetch_market_index
-
     from backend.schemas.extensions import PackageInstallRemote, ThemeInstallFrom
 
     index = await fetch_market_index("themes")
@@ -521,4 +532,3 @@ async def install_theme_from_market(
     row = await tm.install_from_remote(db, payload)
     await db.commit()
     return {"success": True, "data": await _theme_row_to_out(db, row.slug)}
-

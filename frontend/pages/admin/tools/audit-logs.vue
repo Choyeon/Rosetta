@@ -1,25 +1,15 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center gap-3">
-      <div
-        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-      >
-        <FileSearch class="size-5 text-white" />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">
-          操作审计日志
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          管理员与登录用户的操作留痕
-        </p>
-      </div>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="操作审计日志"
+      description="管理员与登录用户的操作留痕"
+      :icon="FileSearch"
+    />
 
     <AdminCard>
       <div class="pt-6 pb-4">
         <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">操作类型</Label>
             <Select
               v-model="filters.action"
@@ -39,7 +29,7 @@
               </SelectContent>
             </Select>
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">用户 ID 搜索</Label>
             <div class="relative">
               <Search class="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
@@ -51,7 +41,7 @@
               />
             </div>
           </div>
-          <div class="space-y-2 md:col-span-2 xl:col-span-2">
+          <div class="flex flex-col gap-2 md:col-span-2 xl:col-span-2">
             <Label class="text-sm font-medium flex items-center gap-1.5">
               <CalendarDays class="size-3.5 text-primary" />
               日期范围
@@ -131,14 +121,20 @@
               class="rounded-xl"
               @click="resetFilters"
             >
-              <RotateCcw class="size-4 mr-1.5" /> 重置
+              <RotateCcw
+                data-icon="inline-start"
+                class="mr-1.5"
+              /> 重置
             </Button>
             <Button
               class="rounded-xl shadow-sm"
               :disabled="loading"
               @click="loadLogs"
             >
-              <Filter class="size-4 mr-1.5" />
+              <Filter
+                data-icon="inline-start"
+                class="mr-1.5"
+              />
               应用筛选
             </Button>
           </div>
@@ -150,7 +146,7 @@
       <div class="p-0">
         <div
           v-if="loading"
-          class="p-6 space-y-3"
+          class="flex flex-col gap-3 p-6"
         >
           <Skeleton
             v-for="i in 6"
@@ -224,7 +220,8 @@
                   @click.stop="toggleExpand(log.id)"
                 >
                   <ChevronDown
-                    class="size-4 transition-transform"
+                    data-icon="inline-start"
+                    class="transition-transform"
                     :class="{ 'rotate-180': expandedId === log.id }"
                   />
                 </Button>
@@ -270,7 +267,7 @@
                 :disabled="page <= 1"
                 @click="page--; loadLogs()"
               >
-                <ChevronLeft class="size-4" />
+                <ChevronLeft data-icon="inline-start" />
               </Button>
               <Button
                 variant="outline"
@@ -279,7 +276,7 @@
                 :disabled="page >= totalPages"
                 @click="page++; loadLogs()"
               >
-                <ChevronRight class="size-4" />
+                <ChevronRight data-icon="inline-start" />
               </Button>
             </div>
           </div>
@@ -344,15 +341,15 @@ function actionLabel(a: string): string {
 
 function actionClass(a: string): string {
   const low = a.toLowerCase()
-  if (['login', 'register'].includes(low)) return 'bg-info-muted text-info-foreground border-transparent'
-  if (['create', 'import'].includes(low)) return 'bg-success-muted text-success-foreground border-transparent'
-  if (['update', 'settings', 'export', 'trigger', 'migrate'].includes(low)) return 'bg-warning-muted text-warning-foreground border-transparent'
-  if (['delete', 'ban'].includes(low)) return 'bg-error-muted text-error-foreground border-transparent'
+  if (['login', 'register'].includes(low)) return 'bg-info-muted text-info-muted-foreground border-transparent'
+  if (['create', 'import'].includes(low)) return 'bg-success-muted text-success-muted-foreground border-transparent'
+  if (['update', 'settings', 'export', 'trigger', 'migrate'].includes(low)) return 'bg-warning-muted text-warning-muted-foreground border-transparent'
+  if (['delete', 'ban'].includes(low)) return 'bg-error-muted text-error-muted-foreground border-transparent'
   return 'bg-muted text-muted-foreground'
 }
 
 const loading = ref(true)
-const logs = ref<AdminAuditLog[]>([])
+const logs = shallowRef<AdminAuditLog[]>([])
 const page = ref(1)
 const total = ref(0)
 const totalPages = ref(1)

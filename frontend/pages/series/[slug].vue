@@ -23,7 +23,7 @@
 
       <div
         v-if="pending && !series"
-        class="space-y-4"
+        class="flex flex-col gap-4"
       >
         <Skeleton class="h-10 w-1/2" />
         <Skeleton class="h-4 w-full" />
@@ -58,7 +58,7 @@
             <img
               :src="pickStr(series?.cover_image)"
               :alt="pickStr(series?.title) || pickStr(series?.name || '')"
-              class="w-full h-full object-cover"
+              class="size-full object-cover"
             >
           </div>
           <div class="flex items-center gap-3 mb-3">
@@ -115,7 +115,7 @@
                   :to="`/posts/${p.slug}`"
                   class="flex items-start gap-4 py-4 group transition-colors hover:bg-accent/40 rounded-lg px-3 -mx-3"
                 >
-                  <div class="shrink-0 w-10 h-10 rounded-lg bg-muted flex items-center justify-center font-display font-semibold text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
+                  <div class="shrink-0 size-10 rounded-lg bg-muted flex items-center justify-center font-display font-semibold text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
                     {{ pad(idx + 1) }}
                   </div>
                   <div class="min-w-0 flex-1">
@@ -220,7 +220,7 @@ const formatDate = (v: string | null | undefined) => {
 }
 
 // 真实接口：GET /api/series/{slug}。失败时回退 null，并显示 404 提示，不伪造内容。
-const { data: detail, pending, error } = await useAPI<SeriesDetail | null>(`/series/${params.slug ?? ''}`, {
+const { data: detail, pending, error } = useAPI<SeriesDetail | null>(`/series/${params.slug ?? ''}`, {
   key: 'series:detail:' + (params.slug ?? ''),
   default: () => null,
   server: false

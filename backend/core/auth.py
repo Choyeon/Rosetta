@@ -78,7 +78,9 @@ def _looks_like_bcrypt(hashed_password: str) -> bool:
 
 
 def _looks_like_argon2(hashed_password: str) -> bool:
-    return bool(hashed_password) and hashed_password.startswith(("$argon2id$", "$argon2i$", "$argon2d$"))
+    return bool(hashed_password) and hashed_password.startswith(
+        ("$argon2id$", "$argon2i$", "$argon2d$")
+    )
 
 
 def get_password_hash(password: str) -> str:
@@ -98,9 +100,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return ok
 
 
-def verify_password_with_rehash(
-    plain_password: str, hashed_password: str
-) -> tuple[bool, bool]:
+def verify_password_with_rehash(plain_password: str, hashed_password: str) -> tuple[bool, bool]:
     """
     验证密码并提示是否需要升级为 argon2。
 
@@ -142,6 +142,7 @@ def verify_password_with_rehash(
     # 未知格式（不抛异常，只视为失败，避免 500）
     logger.warning("password_hash 使用未知格式，拒绝登录")
     return False, False
+
 
 security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
@@ -551,7 +552,7 @@ async def validate_token(token: str, db: AsyncSession) -> User | None:
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 CurrentUserOptional = Annotated[User | None, Depends(get_current_user_optional)]
-CurrentActiveUser = Annotated[User,  Depends(get_current_active_user)]
+CurrentActiveUser = Annotated[User, Depends(get_current_active_user)]
 CurrentSuperUser = Annotated[User, Depends(get_current_superuser)]
 CurrentStaff = Annotated[User, Depends(get_current_staff)]
 DB = Annotated[AsyncSession, Depends(get_db)]

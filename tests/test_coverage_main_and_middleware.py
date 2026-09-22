@@ -7,6 +7,7 @@ main.py 顶层入口 + 中间件 catch-all 覆盖：
 - performance_middleware：正常/慢请求/except 兜底分支（通过拉长耗时 monkeypatch 触发 should_record=true，
   测试环境 async_session_maker 不同 → 自然走 except logger.warning 分支）
 """
+
 from __future__ import annotations
 
 import pytest
@@ -55,9 +56,7 @@ class TestMainExceptionHandlers:
     @pytest.mark.asyncio
     async def test_validation_error_422_handler(self, client: AsyncClient, admin_headers):
         """Query 参数违反约束 (page=-1 < ge=1) → RequestValidationError(422)"""
-        r = await client.get(
-            "/api/admin/users?page=-1&page_size=10", headers=admin_headers
-        )
+        r = await client.get("/api/admin/users?page=-1&page_size=10", headers=admin_headers)
         assert r.status_code in (200, 401, 403, 422)
 
     @pytest.mark.asyncio
@@ -83,6 +82,7 @@ class TestMainExceptionHandlers:
     @pytest.mark.asyncio
     async def test_general_exception_500_handler(self, client, monkeypatch):
         """强制 /health 内部抛一个普通 Exception → general_exception_handler 返回 500 JSON"""
+
         async def _boom(*a, **k):
             raise RuntimeError("boom! general 500")
 
@@ -121,6 +121,7 @@ class TestSecurityMiddleware:
         # 同步 patch 所有可能加载 settings 的中间件模块引用
         try:
             import backend.core.security_middleware as _sm
+
             monkeypatch.setattr(_sm.settings, "force_hsts", True)
         except Exception:
             pass

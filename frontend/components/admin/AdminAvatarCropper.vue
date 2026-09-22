@@ -1,8 +1,5 @@
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, watch, computed } from 'vue'
 import { Upload, X, RotateCw, Check, Image as ImageIcon } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
@@ -160,7 +157,7 @@ const onDrop = (e: DragEvent) => {
 </script>
 
 <template>
-  <div class="admin-avatar-cropper inline-flex flex-col items-center gap-3">
+  <div class="admin-avatar-cropper inline-flex flex flex-col items-center gap-3">
     <!-- 预览区 -->
     <div
       class="relative group shrink-0"
@@ -180,11 +177,11 @@ const onDrop = (e: DragEvent) => {
           v-if="modelValue"
           :src="modelValue"
           alt="avatar"
-          class="w-full h-full object-cover"
+          class="size-full object-cover"
         >
         <div
           v-else
-          class="w-full h-full flex flex-col items-center justify-center text-muted-foreground/60 bg-muted/50"
+          class="size-full flex flex-col items-center justify-center text-muted-foreground/60 bg-muted/50"
         >
           <ImageIcon class="size-6 mb-1" />
           <span class="text-[11px]">未设置</span>
@@ -201,7 +198,7 @@ const onDrop = (e: DragEvent) => {
           class="size-8 rounded-full bg-background/95 hover:bg-background text-foreground shadow"
           @click="pickFile"
         >
-          <Upload class="size-4" />
+          <Upload data-icon="inline-start" />
         </Button>
         <Button
           v-if="modelValue"
@@ -224,7 +221,7 @@ const onDrop = (e: DragEvent) => {
         class="rounded-[10px] h-8"
         @click="pickFile"
       >
-        <Upload class="size-4 mr-1.5" />
+        <Upload data-icon="inline-start" class="mr-1.5" />
         上传图片
       </Button>
       <span class="text-[11px] text-muted-foreground">
@@ -261,7 +258,7 @@ const onDrop = (e: DragEvent) => {
             <img
               :src="rawDataUrl"
               alt="crop"
-              class="w-full h-full object-cover"
+              class="size-full object-cover"
               :style="{
                 transform: `scale(${zoom}) rotate(${rotation}deg)`,
                 transition: 'transform 160ms ease-out'
@@ -283,7 +280,7 @@ const onDrop = (e: DragEvent) => {
               :max="250"
               :step="1"
               class="flex-1"
-              @update:model-value="(v: number[]) => (zoom = v[0] / 100)"
+              @update:model-value="(v?: number[]) => (zoom = (v?.[0] ?? 100) / 100)"
             />
             <span class="text-xs tabular-nums text-muted-foreground shrink-0 w-12 text-right">
               {{ Math.round(zoom * 100) }}%
@@ -299,7 +296,7 @@ const onDrop = (e: DragEvent) => {
               class="h-8 rounded-[8px]"
               @click="rotate(-90)"
             >
-              <RotateCw class="size-4 mr-1 rotate-180" />
+              <RotateCw data-icon="inline-start" class="mr-1 rotate-180" />
               -90°
             </Button>
             <Button
@@ -308,7 +305,7 @@ const onDrop = (e: DragEvent) => {
               class="h-8 rounded-[8px]"
               @click="rotate(90)"
             >
-              <RotateCw class="size-4 mr-1" />
+              <RotateCw data-icon="inline-start" class="mr-1" />
               +90°
             </Button>
             <div class="flex-1" />
@@ -329,14 +326,11 @@ const onDrop = (e: DragEvent) => {
           <Button
             type="button"
             class="rounded-[10px] text-white shadow-[0_6px_16px_-6px_hsl(var(--primary)/0.7)]"
-            style="background: linear-gradient(135deg,#0EA5E9 0%,#0284C7 100%);"
+            style="background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);"
             :disabled="submitting"
             @click="confirmCrop"
           >
-            <Check
-              v-if="!submitting"
-              class="size-4 mr-1.5"
-            />
+            <Check data-icon="inline-start" v-if="!submitting" class="mr-1.5" />
             {{ submitting ? '上传中…' : '确认并保存' }}
           </Button>
         </DialogFooter>

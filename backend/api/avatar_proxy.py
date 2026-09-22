@@ -10,15 +10,18 @@
     - 上游请求异常 → 307 兜底
 - 所有响应 Cache-Control: public, max-age=604800, immutable（7 天）。
 """
+
 from __future__ import annotations
 
 import base64
 import re
-from typing import Literal, Union
+from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse, StreamingResponse
+
+from backend.core.net_guard import validated_get
 
 router = APIRouter(tags=["媒体"])
 
@@ -62,7 +65,10 @@ _HEADERS_PASS_THOUGH = {
 }
 
 # 允许的图片 MIME（严格匹配，杜绝代理到 HTML/JSON 触发 ORB）
-_IMAGE_MIME_RE = re.compile(r"^(image/(png|jpeg|jpg|gif|webp|avif|svg\+xml|bmp|x-icon|vnd\.microsoft\.icon|ico))(?:;.*)?$", re.I)
+_IMAGE_MIME_RE = re.compile(
+    r"^(image/(png|jpeg|jpg|gif|webp|avif|svg\+xml|bmp|x-icon|vnd\.microsoft\.icon|ico))(?:;.*)?$",
+    re.I,
+)
 
 
 def _is_image_mime(ct: str | None) -> bool:
@@ -79,10 +85,12 @@ def _b64url_decode(src: str) -> str:
 
 def _is_allowed_host(url: str) -> bool:
     from urllib.parse import urlparse
+
     host = (urlparse(url).hostname or "").lower()
     if not host:
         return False
     import ipaddress as _ip
+
     try:
         ip = _ip.ip_address(host)
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
@@ -95,15 +103,21 @@ def _is_allowed_host(url: str) -> bool:
     return False
 
 
-_FB = Union[str, int, bool, None]
+_FB = str | int | bool | None
 
 
 async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
-    """流式代理上游图片；若状态码/Content-Type 不是图片，安全跳转最终兜底。"""
+    """流式代理上游图片；若状态码/Content-Type 不是图片，安全跳转最终兜底。
+
+    SSRF 防护（net_guard）：
+    - 请求前对目标 URL 做 DNS 解析校验（拒绝内网/环回/保留段）
+    - 手动逐跳跟随重定向，每一跳都重新校验（防止白名单域名 302 弹到内网）
+    """
     try:
         timeout = httpx.Timeout(8.0, connect=3.0, pool=5.0, read=10.0)
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, http2=True) as client:
-            r = await client.get(url, headers=_HEADERS_PASS_THOUGH)
+        # follow_redirects 必须为 False：重定向由 validated_get 逐跳校验后手动跟随
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, http2=True) as client:
+            r = await validated_get(client, url, headers=_HEADERS_PASS_THOUGH)
             if r.status_code >= 400:
                 return RedirectResponse(_FINAL_FALLBACK, status_code=307)
             media_type = r.headers.get("content-type") or ""
@@ -130,7 +144,11 @@ async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
         return RedirectResponse(_FINAL_FALLBACK, status_code=307)
 
 
-@router.get("/media/avatar")
+@router.get(
+    "/media/avatar",
+    summary="头像代理",
+    description="代理外部头像 URL，白名单域名 302 直跳，非白名单流式代理，失败时回退 DiceBear SVG。",
+)
 async def avatar_proxy(
     request: Request,
     src: str,

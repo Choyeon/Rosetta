@@ -16,6 +16,7 @@
               <Input
                 v-model="searchInput"
                 :placeholder="searchPlaceholder"
+                :aria-label="t('common.search') || '搜索'"
                 class="pl-9 h-10"
                 @keyup.enter="handleSearch"
               />
@@ -46,7 +47,10 @@
               variant="default"
               @click="handleSearch"
             >
-              <Filter class="size-4 mr-2" />
+              <Filter
+                data-icon="inline-start"
+                class="mr-2"
+              />
               {{ t('posts.filter') }}
             </Button>
           </div>
@@ -62,14 +66,24 @@
         />
       </div>
     </template>
+    <template v-else-if="loadError">
+      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center">
+        {{ t('admin.posts.loadFailed') }}
+      </div>
+    </template>
     <template v-else-if="posts.length > 0">
-      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <TransitionGroup
+        tag="div"
+        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+        name="list-item"
+      >
         <PostCard
           v-for="post in posts"
           :key="post.id"
+          v-memo="[post.id, post.updated_at, post.published_at]"
           :post="post"
         />
-      </div>
+      </TransitionGroup>
     </template>
     <template v-else>
       <div class="text-center py-20">
@@ -101,7 +115,7 @@
           aria-label="Go to previous page"
           @click="handlePageChange(currentPage - 1)"
         >
-          <ChevronLeft class="h-4 w-4" />
+          <ChevronLeft data-icon="inline-start" />
         </Button>
         <Button
           v-for="page in visiblePages"
@@ -120,7 +134,7 @@
           aria-label="Go to next page"
           @click="handlePageChange(currentPage + 1)"
         >
-          <ChevronRight class="h-4 w-4" />
+          <ChevronRight data-icon="inline-start" />
         </Button>
       </nav>
     </div>
@@ -137,7 +151,7 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
-import { Search, Filter, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Search, Filter, ChevronLeft, ChevronRight } from '~~/lib/lucide-svg-icons'
 import { watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -182,14 +196,25 @@ const selectedCategory = ref('')
 const currentPage = ref(1)
 const pageSize = 9
 
-const { data: categories, refresh: refreshCategories } = await useAPI<Category[]>('/blog/categories', {
+// ===== 同步阶段注册 SEO：canonical（await 之后注册触发 NUXT_E1001 → 失效）=====
+const requestURL = useRequestURL()
+const origin = computed(() => requestURL.origin)
+const canonical = computed(() => `${origin.value}/posts?page=${currentPage.value}`)
+
+useHead(() => ({
+  link: [
+    { rel: 'canonical', href: canonical.value }
+  ]
+}))
+
+const { data: categories, refresh: refreshCategories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
   key: computed(() => `posts:categories:${locale.value}`),
   default: () => []
 })
 
 // ===== 搜索占位符：真实接口 /api/search-placeholders。空则回退 i18n key，绝不编造示例提示词 =====
-const { data: placeholdersRaw } = await useAPI<string[]>('/search-placeholders', {
+const { data: placeholdersRaw } = useAPI<string[]>('/search-placeholders', {
   key: 'posts:search-placeholders',
   default: () => []
 })
@@ -218,7 +243,8 @@ onMounted(() => {
 // TEMP 临时用 plain object（非 computed）测试 SSR payload 是否正常注入
 // 注意：Nuxt useFetch 在 SSR 下 query 如果传 computed/ref ，可能不被序列化为 payload.data key
 //      导致客户端 hydration 拿到 undefined，不会自动重试。
-const { data, pending, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+// 另外：此处不 await，避免 setup 进入 Suspense 微任务 pending → comment/div Hydration mismatch（参见 pages/index.vue）。
+const { data, pending, error: loadError, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   // 不用 computed 直接传值，确保 SSR 端能生成正确的 cache key 并写入 payload
   query: computed(() => ({
     lang: locale.value,
@@ -274,15 +300,4 @@ const handlePageChange = (page: number) => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
-
-// ===== 补充 SEO：canonical（useSeoMeta 不处理此项）=====
-const requestURL = useRequestURL()
-const origin = computed(() => requestURL.origin)
-const canonical = computed(() => `${origin.value}/posts?page=${currentPage.value}`)
-
-useHead({
-  link: [
-    { rel: 'canonical', href: canonical }
-  ]
-})
 </script>

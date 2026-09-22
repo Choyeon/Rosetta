@@ -188,7 +188,11 @@ class MigrationStartIn(BaseModel):
 # ======================================================================
 
 
-@router.post("/start", summary="发起跨库迁移任务", description="管理员专属。后台异步运行，通过 /status 查看进度。全局同时只允许一个运行中的任务。")
+@router.post(
+    "/start",
+    summary="发起跨库迁移任务",
+    description="管理员专属。后台异步运行，通过 /status 查看进度。全局同时只允许一个运行中的任务。",
+)
 async def start_migration(
     payload: MigrationStartIn,
     current_user: CurrentStaff,
@@ -203,7 +207,11 @@ async def start_migration(
     return {"success": True, "job": job.to_public()}
 
 
-@router.get("/status", summary="查询最新迁移任务状态", description="返回最新一次任务（包括 running/done/error）的完整进度。")
+@router.get(
+    "/status",
+    summary="查询最新迁移任务状态",
+    description="返回最新一次任务（包括 running/done/error）的完整进度。",
+)
 async def status_migration(current_user: CurrentStaff):
     job = _manager.latest()
     return {"success": True, "job": job.to_public() if job else None}
@@ -218,7 +226,11 @@ async def cancel_migration(current_user: CurrentStaff):
     return {"success": True, "job": job.to_public()}
 
 
-@router.get("/presets", summary="获取常用连接预设", description="返回当前实例已配置的数据库 URL、SQLite 默认路径等，方便前端快速填。")
+@router.get(
+    "/presets",
+    summary="获取常用连接预设",
+    description="返回当前实例已配置的数据库 URL、SQLite 默认路径等，方便前端快速填。",
+)
 async def presets(current_user: CurrentStaff):
     from backend.core.config import settings
 

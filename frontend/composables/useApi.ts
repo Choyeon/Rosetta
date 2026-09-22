@@ -1,7 +1,5 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { toast as sonnerToast } from 'vue-sonner'
+import type { UseFetchOptions } from '#app'
 import { useAuthStore } from '~~/stores/auth'
 import {
   extractApiErrorMessage,
@@ -9,6 +7,18 @@ import {
   stableApiKey,
   type ApiErrorBody
 } from '~~/lib/utils'
+
+/**
+ * useAPI 的 options 类型。
+ *
+ * 直接使用 Nuxt 的 UseFetchOptions<T> 会触发 Nitro TypedInternalResponse 的
+ * 路由条件类型匹配，导致 TS2321 栈溢出（尤其在 open generic T 下）。
+ * 这里用 Omit 去掉 default 的严格约束，允许 default: T | (() => T) 的常规写法，
+ * 内部调用 useFetch 时再断言回 Nuxt 期望的类型。
+ */
+export type ApiUseFetchOptions<T> = Omit<UseFetchOptions<T>, 'default'> & {
+  default?: T | (() => T) | Ref<T> | null
+}
 
 /**
  * 统一请求选项。
@@ -90,7 +100,23 @@ export function currentLocale(): string {
   return 'zh'
 }
 
-export function useAPI<T>(url: string | (() => string), options?: UseFetchOptions<T>) {
+/**
+ * 守卫：服务端渲染时，若后端地址（runtimeConfig.apiBase）为空，
+ * 绝不能让 $fetch 以相对路径发起请求——那会变成对 Nuxt 自身的请求，
+ * 而引导插件在每个自请求上再次运行，形成嵌套自请求放大直至堆溢出（OOM）。
+ * 这里快速抛出明确错误，由各调用方的兜底 catch 处理（保持默认值/错误页）。
+ */
+function guardServerBase(base: unknown): asserts base is string {
+  if (import.meta.server && !String(base ?? '').trim()) {
+    const err = new Error(
+      'SSR backend base is not configured. Set NUXT_API_BASE (or SSR_API_BASE_URL at build).'
+    ) as Error & { code: string }
+    err.code = 'SSR_BACKEND_BASE_MISSING'
+    throw err
+  }
+}
+
+export function useAPI<T>(url: string | (() => string), options?: ApiUseFetchOptions<T>) {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
   // 避免在 setup 之外/异步链中调用 useI18n() 触发
@@ -113,18 +139,19 @@ export function useAPI<T>(url: string | (() => string), options?: UseFetchOption
   const ssrSafeBase = import.meta.server ? config.apiBase : config.public.apiBase
   // 如果调用方未传自定义 key，则生成稳定 key；若已传则以调用方为准。
   const stableKey = options?.key ?? stableApiKey(url, options?.query as Record<string, unknown> | undefined)
+  const callerOnRequest = options?.onRequest as ((ctx: unknown) => void) | undefined
+  // 用 unknown 中转断开 Nitro TypedInternalResponse 路由条件类型推断链，
+  // 否则 open generic T + options.default 会让 useFetch 重载匹配失败（TS2769）。
+  // 泛型 T 仍然保证返回的 data.value 类型为 T。
   return useFetch<T>(url, {
-    // 默认在 SSR 时执行（配合全局 ssr:true + 公开页面），
-    // 调用方可通过 options.server: false 显式关闭（如管理后台需要登录态、只在客户端拉的场景）。
-    // 这是修复"从文章详情返回列表/首页页面空白"的关键一环：
-    // 旧版强制 server:false + onMounted 调用 useFetch 导致：
-    //   1) SSR 不执行，首屏 HTML 无数据（搜索引擎爬不到，解决 SEO 空白）；
-    //   2) 客户端组件复用时 onMounted 不再触发 + useFetch 丢失上下文，
-    //      返回的 AsyncData 仍为空，出现"路由跳转后页面空白、刷新才恢复"。
-    ...options,
+    ...(options as unknown as Record<string, unknown>),
     key: stableKey,
     baseURL: ssrSafeBase,
     headers,
+    onRequest(ctx: unknown) {
+      guardServerBase(ssrSafeBase)
+      callerOnRequest?.(ctx)
+    },
     async onResponseError({ response }) {
       const body = response._data as unknown
       // 注意：SSR 服务器端的 onResponseError 绝不能调用 navigateTo（客户端路由 API），
@@ -155,7 +182,7 @@ export function useAPI<T>(url: string | (() => string), options?: UseFetchOption
   })
 }
 
-export function useAPILazy<T>(url: string, options?: UseFetchOptions<T>) {
+export function useAPILazy<T>(url: string, options?: ApiUseFetchOptions<T>) {
   return useAPI<T>(url, { ...options, lazy: true })
 }
 
@@ -180,12 +207,23 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
 
   // SSR-safe：服务端直连 FastAPI 绝对地址（不走 Nitro 内部路由匹配 404）
   const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+  // 服务端缺后端地址：快速失败，禁止自请求放大 OOM（ensureLoaded 等调用方会兜底）
+  guardServerBase(baseURL)
 
-  const doFetch = () => $fetch<T>(url, {
-    ...options,
-    baseURL,
-    headers: buildHeaders()
-  })
+  // 注意：不能用 $fetch<T>(url, ...) 的显式泛型写法——T 为开放泛型时
+  // Nitro 的 TypedInternalResponse 路由匹配条件类型会栈溢出（TS2321），
+  // 且 ApiFetchOptions.method: string 与 ofetch 的 HTTP 方法联合类型不兼容。
+  // 将 $fetch 擦除为普通函数类型，彻底断开 Nitro 路由类型推断链。
+  const _fetch = $fetch as unknown as (
+    url: string,
+    opts?: Record<string, unknown>
+  ) => Promise<unknown>
+  const doFetch = (): Promise<T> =>
+    _fetch(url, {
+      ...options,
+      baseURL,
+      headers: buildHeaders()
+    }) as Promise<T>
 
   try {
     return await doFetch()
@@ -291,12 +329,20 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
 
   // SSR-safe：服务端直连 FastAPI 绝对地址（不走 Nitro 内部路由匹配 404）
   const baseURL = import.meta.server ? config.apiBase : config.public.apiBase
+  // 服务端缺后端地址：快速失败返回 null，禁止自请求放大 OOM
+  guardServerBase(baseURL)
 
-  const doFetch = () => $fetch<T>(url, {
-    ...options,
-    baseURL,
-    headers: buildHeaders()
-  })
+  // 同 apiFetch：将 $fetch 擦除为普通函数类型，避免 TS2321 类型栈溢出
+  const _fetch = $fetch as unknown as (
+    url: string,
+    opts?: Record<string, unknown>
+  ) => Promise<unknown>
+  const doFetch = (): Promise<T> =>
+    _fetch(url, {
+      ...options,
+      baseURL,
+      headers: buildHeaders()
+    }) as Promise<T>
 
   try {
     return await doFetch()
@@ -304,7 +350,7 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
     const e = err as { status?: number, statusCode?: number, data?: unknown }
     const status = e.status ?? e.statusCode ?? 0
 
-    if (isOobeRequired(status, e.data) && import.meta.client) {
+    if (isOobeRequiredError(status, e.data) && import.meta.client) {
       await navigateTo('/oobe')
       return null
     }

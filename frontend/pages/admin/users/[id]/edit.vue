@@ -1,32 +1,36 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="编辑用户"
+      description="修改账号资料、角色与启用状态"
+      :icon="UserCog"
+    >
+      <template #actions>
         <Button
-          variant="ghost"
-          size="icon"
-          class="h-9 w-9"
+          variant="outline"
+          size="sm"
           @click="goBack"
         >
-          <ArrowLeft class="size-5" />
+          <ArrowLeft
+            data-icon="inline-start"
+            class="mr-1.5"
+          />
+          返回用户列表
         </Button>
-        <h1 class="text-2xl font-bold">
-          编辑用户
-        </h1>
-      </div>
-    </div>
+      </template>
+    </AdminPageHeader>
 
     <div
       v-if="loading"
       class="grid grid-cols-1 lg:grid-cols-2 gap-6"
     >
       <AdminCard>
-        <div class="p-6 space-y-6">
+        <div class="flex flex-col gap-6 p-6">
           <div class="flex items-center gap-4">
             <Skeleton class="size-20 rounded-full" />
             <Skeleton class="h-9 w-28 rounded-lg" />
           </div>
-          <div class="space-y-4">
+          <div class="flex flex-col gap-4">
             <Skeleton class="h-10 w-full rounded-lg" />
             <Skeleton class="h-10 w-full rounded-lg" />
             <Skeleton class="h-10 w-full rounded-lg" />
@@ -34,7 +38,7 @@
         </div>
       </AdminCard>
       <AdminCard>
-        <div class="p-6 space-y-6">
+        <div class="flex flex-col gap-6 p-6">
           <Skeleton class="h-20 w-full rounded-lg" />
           <Skeleton class="h-20 w-full rounded-lg" />
         </div>
@@ -48,7 +52,7 @@
             <User class="size-5 text-muted-foreground" />
             <span class="text-lg font-semibold">基本资料</span>
           </div>
-          <div class="space-y-6">
+          <div class="flex flex-col gap-6">
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <UserAvatar
                 :avatar="form.avatar || null"
@@ -59,13 +63,16 @@
                 :show-title="true"
                 class="shrink-0 border-4 border-muted"
               />
-              <div class="space-y-2">
+              <div class="flex flex-col gap-2">
                 <Button
                   variant="outline"
                   size="sm"
                   @click="triggerAvatarUpload"
                 >
-                  <Upload class="size-4 mr-2" />
+                  <Upload
+                    data-icon="inline-start"
+                    class="mr-2"
+                  />
                   上传头像
                 </Button>
                 <p class="text-xs text-muted-foreground">
@@ -83,16 +90,16 @@
 
             <Separator />
 
-            <div class="space-y-4">
+            <div class="flex flex-col gap-4">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label>昵称</Label>
                   <Input
                     v-model="form.nickname"
                     placeholder="显示名称"
                   />
                 </div>
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label>邮箱</Label>
                   <Input
                     v-model="form.email"
@@ -102,21 +109,21 @@
                 </div>
               </div>
               <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label>个人网站</Label>
                   <Input
                     v-model="form.website"
                     placeholder="https://..."
                   />
                 </div>
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label>GitHub</Label>
                   <Input
                     v-model="form.github"
                     placeholder="github.com/username"
                   />
                 </div>
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label>QQ</Label>
                   <Input
                     v-model="form.qq"
@@ -124,7 +131,7 @@
                   />
                 </div>
               </div>
-              <div class="space-y-2">
+              <div class="flex flex-col gap-2">
                 <Label>自我介绍</Label>
                 <Textarea
                   v-model="form.bio"
@@ -142,12 +149,12 @@
             <Shield class="size-5 text-muted-foreground" />
             <span class="text-lg font-semibold">账号安全</span>
           </div>
-          <div class="space-y-6">
-            <div class="space-y-3">
+          <div class="flex flex-col gap-6">
+            <div class="flex flex-col gap-3">
               <div class="text-sm font-medium">
                 角色权限
               </div>
-              <div class="space-y-3">
+              <div class="flex flex-col gap-3">
                 <div class="flex items-center justify-between rounded-xl border p-3">
                   <div>
                     <div class="text-sm font-medium">
@@ -187,7 +194,7 @@
 
             <Separator />
 
-            <div class="space-y-3">
+            <div class="flex flex-col gap-3">
               <div class="text-sm font-medium">
                 账号状态
               </div>
@@ -219,12 +226,12 @@
 
             <Separator />
 
-            <div class="space-y-3">
+            <div class="flex flex-col gap-3">
               <div class="text-sm font-medium">
                 修改密码
               </div>
-              <div class="space-y-3">
-                <div class="space-y-2">
+              <div class="flex flex-col gap-3">
+                <div class="flex flex-col gap-2">
                   <Label>新密码</Label>
                   <Input
                     v-model="pwdForm.newPassword"
@@ -235,7 +242,7 @@
                     至少 8 位，含大小写字母和数字
                   </p>
                 </div>
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label>确认密码</Label>
                   <Input
                     v-model="pwdForm.confirmPassword"
@@ -248,7 +255,7 @@
 
             <Separator />
 
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label>头衔</Label>
               <Select
                 v-model="form.title_id"
@@ -267,12 +274,17 @@
                     :value="t.id ?? 0"
                   >
                     <span class="inline-flex items-center gap-2">
-                      <Tag
-                        v-if="!t.icon"
-                        class="size-3.5 text-muted-foreground"
-                      />
-                      <span v-else>{{ t.icon }}</span>
-                      <span>{{ t.name }}</span>
+                      <span
+                        v-if="t.icon"
+                        class="size-4 shrink-0"
+                        :style="{ color: t.color || '#3b82f6' }"
+                      >
+                        <TitleIconSvg
+                          :icon="t.icon"
+                          :stroke-width="2"
+                        />
+                      </span>
+                      <span>{{ getLocalizedStr(t.name) }}</span>
                     </span>
                   </SelectItem>
                 </SelectContent>
@@ -295,7 +307,8 @@
         >
           <Loader2
             v-if="saving"
-            class="size-4 mr-2 animate-spin"
+            data-icon="inline-start"
+            class="mr-2 animate-spin"
           />
           保存更改
         </Button>
@@ -318,8 +331,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Label } from '~~/components/ui/label'
 import { Skeleton } from '~~/components/ui/skeleton'
 import {
-  ArrowLeft, User, Shield, Upload, Loader2, Tag
+  ArrowLeft, User, Shield, Upload, Loader2, UserCog
 } from '@lucide/vue'
+import TitleIconSvg from '~~/components/TitleIconSvg.vue'
 import {
   fetchAdminUserDetail,
   updateAdminUserDetail,
@@ -373,6 +387,12 @@ const pwdForm = reactive({
 })
 
 const avatarInputRef = ref<HTMLInputElement | null>(null)
+
+function getLocalizedStr(v: string | Record<string, string> | null | undefined): string {
+  if (v == null) return ''
+  if (typeof v === 'string') return v
+  return v.zh || v.en || Object.values(v)[0] || ''
+}
 
 function goBack() {
   router.push('/admin/users')

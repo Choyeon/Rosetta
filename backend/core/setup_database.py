@@ -511,8 +511,8 @@ def generate_database_url(config: dict) -> str:
       2. 若 db_path 是相对路径或 db_path 缺失 → 以项目根 BASE_DIR 为基准解析
       3. 若最终路径不携带 .db 后缀则自动补 .db
     """
-    from urllib.parse import quote_plus
     from pathlib import Path
+    from urllib.parse import quote_plus
 
     from backend.core.paths import BASE_DIR
 

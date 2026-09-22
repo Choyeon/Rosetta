@@ -2,6 +2,7 @@
 import { useRouter } from 'vue-router'
 import PostForm from '~~/components/admin/PostForm.vue'
 import { useToast } from '~~/composables/useToast'
+import { ArrowLeft, FilePlus } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -18,20 +19,22 @@ const onSubmitSuccess = async (_payload: unknown, isNew: boolean) => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 p-6">
+  <div class="flex flex-col gap-5">
     <div class="flex items-center gap-2">
       <button
-        class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         @click="router.push('/admin/content/posts')"
       >
-        <span class="text-base">←</span>
+        <ArrowLeft data-icon="inline-start" />
         <span>返回文章列表</span>
       </button>
     </div>
 
-    <h1 class="text-2xl font-bold tracking-tight">
-      新建文章
-    </h1>
+    <AdminPageHeader
+      title="新建文章"
+      description="撰写并发布一篇新的博客文章"
+      :icon="FilePlus"
+    />
 
     <PostForm
       mode="new"

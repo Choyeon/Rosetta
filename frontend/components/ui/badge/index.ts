@@ -15,9 +15,14 @@ export const badgeVariants = cva(
         destructive:
           'border-transparent bg-destructive text-destructive-foreground hover:bg-destructive/80',
         outline: 'text-foreground',
-        info: 'border-transparent bg-info-muted text-info-foreground',
-        warning: 'border-transparent bg-warning-muted text-warning-foreground',
-        success: 'border-transparent bg-success-muted text-success-foreground'
+        /* 语义状态色配对铁律：
+           -muted 背景 必须配 -muted-foreground 文字。
+           -foreground 是给「实心填充」（bg-info / bg-warning）用的，
+           放在 -muted 上会出现「浅色主题白底白字 / 深色主题黑底黑字」的隐形文本。 */
+        info: 'border-transparent bg-info-muted text-info-muted-foreground',
+        warning: 'border-transparent bg-warning-muted text-warning-muted-foreground',
+        success: 'border-transparent bg-success-muted text-success-muted-foreground',
+        error: 'border-transparent bg-error-muted text-error-muted-foreground'
       }
     },
     defaultVariants: {

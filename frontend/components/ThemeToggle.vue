@@ -9,18 +9,18 @@
   >
     <Sun
       v-if="isDark"
-      class="size-5"
+      data-icon="inline-start"
     />
     <Moon
       v-else
-      class="size-5"
+      data-icon="inline-start"
     />
   </Button>
 </template>
 
 <script setup lang="ts">
 import { Button } from '~~/components/ui/button'
-import { Sun, Moon } from '@lucide/vue'
+import { Sun, Moon } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
 import { useTheme } from '~~/composables/useTheme'
 

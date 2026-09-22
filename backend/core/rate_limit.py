@@ -106,7 +106,11 @@ class RateLimiter:
         if backend is None:
             return None
         # 必须同时满足：声明启用 + 拥有客户端方法 + 真正建立连接
-        if settings.redis_enabled and hasattr(backend, "_get_client") and getattr(backend, "_connected", False):
+        if (
+            settings.redis_enabled
+            and hasattr(backend, "_get_client")
+            and getattr(backend, "_connected", False)
+        ):
             return backend
         return None
 
@@ -493,18 +497,51 @@ class LoginRateLimiter:
 login_rate_limiter = LoginRateLimiter()
 
 
+_TRUSTED_PROXY_CACHE: tuple[list[str], frozenset[str]] | None = None
+
+
+def _trusted_proxies() -> frozenset[str]:
+    """解析受信反代 IP 集合（缓存于模块级，settings 变更后进程内生效）"""
+    global _TRUSTED_PROXY_CACHE
+    raw = [str(x) for x in (getattr(settings, "trusted_proxy_ips", None) or [])]
+    cached = _TRUSTED_PROXY_CACHE
+    if cached is not None and cached[0] == raw:
+        return cached[1]
+    result = frozenset(x.strip() for x in raw if x.strip())
+    _TRUSTED_PROXY_CACHE = (raw, result)
+    return result
+
+
 def get_client_ip(request: Request) -> str:
-    """获取客户端真实IP"""
-    forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    """获取客户端真实 IP
 
-    real_ip = request.headers.get("X-Real-IP")
-    if real_ip:
-        return real_ip
+    安全策略：仅当直连对端（socket 层 IP）属于 settings.trusted_proxy_ips 时，
+    才采信 X-Forwarded-For / X-Real-IP 头；否则一律使用 socket IP。
+    XFF 取「最右侧非受信跳」——最左值可被客户端伪造，最右值由离我们最近的
+    受信反代追加，最为可信。
 
-    if request.client:
-        return request.client.host
+    若部署在 Nginx 等反代之后，需配置 TRUSTED_PROXY_IPS（如 127.0.0.1），
+    否则所有请求都会被记录为反代 IP。
+    """
+    peer = request.client.host if request.client else None
+    proxies = _trusted_proxies()
+
+    if peer and peer in proxies:
+        forwarded = request.headers.get("X-Forwarded-For")
+        if forwarded:
+            candidates = [c.strip() for c in forwarded.split(",") if c.strip()]
+            if candidates:
+                for cand in reversed(candidates):
+                    if cand not in proxies:
+                        return cand
+                return candidates[-1]
+
+        real_ip = request.headers.get("X-Real-IP")
+        if real_ip:
+            return real_ip.strip()
+
+    if peer:
+        return peer
 
     return "unknown"
 

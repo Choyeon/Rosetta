@@ -11,11 +11,12 @@ import {
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
 import { Pin } from '@lucide/vue'
+import MarkdownEditor from '~~/components/admin/MarkdownEditor.vue'
+import { getLocalizedStr, slugify } from '~~/composables/useAdminI18n'
 import {
   Select,
   SelectContent,
@@ -29,7 +30,7 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
-const pages = ref<AdminPage[]>([])
+const pages = shallowRef<AdminPage[]>([])
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
@@ -50,20 +51,6 @@ const form = reactive({
 })
 
 const editingId = ref<number | null>(null)
-
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
-const slugify = (text: string): string => {
-  let s = text.trim().toLowerCase()
-  s = s.replace(/[\s]+/g, '-')
-  s = s.replace(/[^\w一-龥-]/g, '')
-  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
-  return s
-}
 
 let slugManualEdit = false as boolean
 watch(
@@ -221,10 +208,10 @@ onMounted(() => {
       </template>
       <template #cell-status="{ row }">
         <Badge
-          class="rounded-[10px] border font-normal"
+          class="rounded-[10px] font-normal"
           :class="(row as AdminPage).status === 'published'
-            ? 'bg-emerald-100 text-emerald-700 border-emerald-200'
-            : 'bg-amber-100 text-amber-700 border-amber-200'"
+            ? 'bg-success-muted text-success-muted-foreground'
+            : 'bg-warning-muted text-warning-muted-foreground'"
         >
           {{ (row as AdminPage).status === 'published' ? '已发布' : '草稿' }}
         </Badge>
@@ -320,15 +307,10 @@ onMounted(() => {
           </div>
         </div>
         <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">
-            内容
-            <span class="opacity-60 ml-1">（未来将替换为 Markdown 编辑器）</span>
-          </Label>
-          <Textarea
+          <Label class="mb-1 block text-xs text-muted-foreground">内容</Label>
+          <MarkdownEditor
             v-model="form.content"
-            rows="8"
             placeholder="页面内容..."
-            class="rounded-[10px] text-sm resize-y font-mono leading-relaxed"
           />
         </div>
       </div>

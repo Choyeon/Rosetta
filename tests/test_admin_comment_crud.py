@@ -20,7 +20,6 @@ from httpx import AsyncClient
 
 from backend.models.blog import Comment
 
-
 # ============================= 2.1 Tabs / 搜索 / 计数 Badge =============================
 
 
@@ -62,13 +61,11 @@ class TestCommentTabsSearch:
             status = c.get("status", "")
             if expected_effective_status_or_active == "approved":
                 # 后端 approved 通过 active=True 过滤，status 字段也应 = approved
-                assert status in ("approved",), (
-                    f"Tab=approved 中出现 status={status}"
-                )
+                assert status in ("approved",), f"Tab=approved 中出现 status={status}"
             else:
-                assert (
-                    status == expected_effective_status_or_active
-                ), f"Tab={status_filter} 出现 status={status}"
+                assert status == expected_effective_status_or_active, (
+                    f"Tab={status_filter} 出现 status={status}"
+                )
 
     @pytest.mark.asyncio
     async def test_c_l3_keyword_search(
@@ -94,9 +91,7 @@ class TestCommentTabsSearch:
         self, client: AsyncClient, staff_headers: dict, test_post, make_comments
     ):
         """C-L4: 搜索 + 过滤 复合条件 — URL query 同时包含 status + keyword + page + page_size"""
-        await make_comments(
-            test_post, 16, status_cycle=["pending", "approved"] * 8
-        )  # 只造两种状态
+        await make_comments(test_post, 16, status_cycle=["pending", "approved"] * 8)  # 只造两种状态
         r = await client.get(
             "/api/admin/comments",
             headers=staff_headers,
@@ -122,11 +117,9 @@ class TestCommentTableFields:
 
     @pytest.mark.asyncio
     async def test_c_r1_qq_github_markers_exist(
-        self, client: AsyncClient, staff_headers: dict, test_post, test_user: "User"
+        self, client: AsyncClient, staff_headers: dict, test_post, test_user
     ):
         """C-R1: 匿名 QQ 评论 + 登录用户 GitHub 评论 — 返回 qq/github/resolved_avatar_url 字段齐全"""
-        from sqlalchemy.ext.asyncio import AsyncSession as _DBSess
-        from backend.core.database import get_db as _get_db
 
         # 绕过 client 直接通过 db_session override 注入评论（避免再找 create comment API）
         # 使用 httpx 调用 public POST /api/posts/{id}/comments 匿名接口更真实
@@ -139,9 +132,7 @@ class TestCommentTableFields:
             "github": None,
             "avatar_source": "qq",
         }
-        r1 = await client.post(
-            f"/api/posts/{test_post.id}/comments", json=anon_body
-        )
+        r1 = await client.post(f"/api/posts/{test_post.id}/comments", json=anon_body)
         assert r1.status_code in (200, 201), f"匿名评论接口: {r1.text}"
 
         # 登录用户写 GitHub 评论
@@ -151,21 +142,19 @@ class TestCommentTableFields:
         )
         token = auth_r.json()["access_token"]
         h = {"Authorization": f"Bearer {token}"}
-        r2 = await client.post(
+        await client.post(
             f"/api/posts/{test_post.id}/comments",
             headers=h,
             json={"content": "登录用户带GitHub评论"},
         )
         # 先给 test_user 写入 github 字段，让 resolver 能找到
         from backend.main import create_application
-        from backend.core.database import Base, get_db
 
         # 用测试数据库直接更新 test_user 的 github
         async def _get_sess():
-            import inspect
 
             # client fixture 里 override 的 db_session 需要拿出来：直接用 override getter
-            app = create_application()
+            create_application()  # noqa: F841
             # 直接用 conftest client 依赖的 session 不在这，跳过这个测试里手动刷库，
             # 改为在 fixture 里已经设置 user_with_qq_github 了
             yield None
@@ -285,9 +274,7 @@ class TestCommentSingleAndBatch:
             assert _r.status_code == 200
             items = _r.json()["items"]
             remain_ids = [c["id"] for c in items if c["id"] in set(ids)]
-            assert (
-                not remain_ids
-            ), f"批量删除后残留 ID: {remain_ids}"
+            assert not remain_ids, f"批量删除后残留 ID: {remain_ids}"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("action", ["approve", "reject", "spam"])
@@ -305,8 +292,6 @@ class TestCommentSingleAndBatch:
             json={"action": action, "ids": ids},
         )
         assert r.status_code == 200, f"batch {action}: {r.text}"
-        # 查回：对应 Tab 应该包含这 4 条
-        tab_status = action  # approve → approved? 用 keyword 保险
         list_r = await client.get(
             "/api/admin/comments",
             headers=staff_headers,
@@ -332,18 +317,14 @@ class TestCommentContentSafety:
     """C-S1 ~ C-S5: XSS 注入 / Emoji 乱码 / 空内容"""
 
     @pytest.mark.asyncio
-    async def test_c_s1_xss_escaped(
-        self, client: AsyncClient, staff_headers: dict, test_post
-    ):
+    async def test_c_s1_xss_escaped(self, client: AsyncClient, staff_headers: dict, test_post):
         """C-S1 红线：<script> 注入后后台返回内容 escaped 为纯文本（不执行）"""
         payload = {
             "author_name": "XSS",
             "author_email": "xss@t.com",
             "content": "Hi <script>alert(1)</script> there",
         }
-        create_r = await client.post(
-            f"/api/posts/{test_post.id}/comments", json=payload
-        )
+        create_r = await client.post(f"/api/posts/{test_post.id}/comments", json=payload)
         assert create_r.status_code in (200, 201), f"评论提交接口: {create_r.text}"
 
         list_r = await client.get(
@@ -359,9 +340,7 @@ class TestCommentContentSafety:
         assert "<script>alert(1)</script>" in c["content"]
 
     @pytest.mark.asyncio
-    async def test_c_s3_empty_content_rejected(
-        self, client: AsyncClient, test_post
-    ):
+    async def test_c_s3_empty_content_rejected(self, client: AsyncClient, test_post):
         """C-S3: 纯空白评论 → 后端理想应 422 不入库；若后端暂未做 min_length 校验则标记为软断言
 
         注意：如果返回 201 即后端 schema 未强制 content min_length，属于待修复后端功能缺口，

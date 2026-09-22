@@ -10,16 +10,30 @@
         <span>/</span>
       </div>
       <div class="flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
-            {{ categoryName }}
-          </h1>
-          <p
-            v-if="categoryDesc"
-            class="text-muted-foreground mt-3 leading-relaxed max-w-2xl"
+        <div class="flex items-center gap-3">
+          <div
+            v-if="catRaw?.icon"
+            class="size-10 rounded-xl flex items-center justify-center shrink-0"
+            :style="{ background: catRaw?.color ? `color-mix(in oklab, ${catRaw.color} 15%, transparent)` : undefined }"
+            :class="!catRaw?.color ? 'bg-primary/10' : ''"
           >
-            {{ categoryDesc }}
-          </p>
+            <DynamicIcon
+              :icon="catRaw.icon"
+              class="size-5"
+              :class="catRaw?.color ? 'text-foreground' : 'text-primary'"
+            />
+          </div>
+          <div>
+            <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
+              {{ categoryName }}
+            </h1>
+            <p
+              v-if="categoryDesc"
+              class="text-muted-foreground mt-3 leading-relaxed max-w-2xl"
+            >
+              {{ categoryDesc }}
+            </p>
+          </div>
         </div>
         <div class="inline-flex items-center gap-2 text-sm text-muted-foreground">
           <span class="inline-flex items-center justify-center px-3 py-1 rounded-full bg-muted">
@@ -81,7 +95,7 @@
           aria-label="prev"
           @click="currentPage -= 1"
         >
-          <ChevronLeft class="h-4 w-4" />
+          <ChevronLeft data-icon="inline-start" />
         </Button>
         <Button
           v-for="p in visiblePages"
@@ -100,7 +114,7 @@
           aria-label="next"
           @click="currentPage += 1"
         >
-          <ChevronRight class="h-4 w-4" />
+          <ChevronRight data-icon="inline-start" />
         </Button>
       </nav>
     </div>
@@ -141,6 +155,8 @@ interface CategoryDetail {
   slug?: string
   name?: unknown
   description?: unknown
+  icon?: string
+  color?: string
   post_count?: number
   postsCount?: number
   posts?: unknown[]
@@ -169,14 +185,14 @@ interface CategoryPostRow {
   is_pinned?: boolean
   [key: string]: unknown
 }
-const { data: catRaw, error: catError } = await useAPI<CategoryDetail>(`/blog/categories/slug/${slug.value}`, {
+const { data: catRaw, error: catError } = useAPI<CategoryDetail>(`/blog/categories/slug/${slug.value}`, {
   query: { lang: locale.value },
   key: computed(() => `category:detail:${slug.value}:${locale.value}`),
   default: () => ({} as CategoryDetail)
 })
 
 // 分类文章：复用 /blog/posts?category=slug。失败回空数组，绝不造示例列表。
-const { data: postsRaw, pending, error: postsErr, refresh } = await useAPI<{ items?: CategoryPostRow[], total?: number }>('/blog/posts', {
+const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{ items?: CategoryPostRow[], total?: number }>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,

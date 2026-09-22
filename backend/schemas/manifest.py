@@ -1,11 +1,15 @@
 from __future__ import annotations
-from pathlib import Path
+
 import json
+from pathlib import Path
 from typing import Any, Literal
+
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+
 
 class PluginAdminMenuSpec(BaseModel):
     """插件 manifest 中声明的后台菜单项（可选）。"""
+
     model_config = ConfigDict(extra="allow")
     label: str
     path: str
@@ -28,19 +32,22 @@ class RosettaPluginManifest(BaseModel):
     author_uri: str | None = None
     textdomain: str | None = None
     tags: list[str] = Field(default_factory=list)
-    category: Literal[
-        "seo",
-        "performance",
-        "content",
-        "social",
-        "media",
-        "security",
-        "utility",
-        "integration",
-        "publishing",
-        "customization",
-        "editorial",
-    ] | None = None
+    category: (
+        Literal[
+            "seo",
+            "performance",
+            "content",
+            "social",
+            "media",
+            "security",
+            "utility",
+            "integration",
+            "publishing",
+            "customization",
+            "editorial",
+        ]
+        | None
+    ) = None
     settings_schema: dict[str, Any] | None = Field(default_factory=dict)
     screenshot_urls: list[str] = Field(default_factory=list)
     dependencies: list[dict[str, str]] = Field(default_factory=list)
@@ -54,6 +61,7 @@ class RosettaPluginManifest(BaseModel):
         if not v and hasattr(info, "data") and info.data.get("slug"):
             return info.data.get("slug")
         return v or None
+
 
 class RosettaThemeManifest(BaseModel):
     model_config = ConfigDict(extra="ignore", populate_by_name=True)
@@ -78,19 +86,22 @@ class RosettaThemeManifest(BaseModel):
     features: list[str] = Field(default_factory=list)
     color_palette: list[dict[str, Any]] | None = None
 
+
 def validate_plugin_manifest(data: dict[str, Any]) -> RosettaPluginManifest:
     try:
         return RosettaPluginManifest(**data)
     except ValidationError as e:
-        errs = [str(x.get("loc",()))+": "+str(x.get("msg")) for x in e.errors()]
+        errs = [str(x.get("loc", ())) + ": " + str(x.get("msg")) for x in e.errors()]
         raise ValueError("Plugin manifest invalid: " + "; ".join(errs)) from e
+
 
 def validate_theme_manifest(data: dict[str, Any]) -> RosettaThemeManifest:
     try:
         return RosettaThemeManifest(**data)
     except ValidationError as e:
-        errs = [str(x.get("loc",()))+": "+str(x.get("msg")) for x in e.errors()]
+        errs = [str(x.get("loc", ())) + ": " + str(x.get("msg")) for x in e.errors()]
         raise ValueError("Theme manifest invalid: " + "; ".join(errs)) from e
+
 
 def read_manifest_file(manifest_path: Path) -> dict[str, Any]:
     if not manifest_path.exists():

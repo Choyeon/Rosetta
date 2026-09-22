@@ -83,10 +83,8 @@ docs
 README.md
 DEPLOY.md
 backend/AGENTS.md
-backend/CLAUDE.md
 backend/docs
 frontend/AGENTS.md
-frontend/CLAUDE.md
 frontend/CONTRIBUTING.md
 
 # 测试(生产镜像不需要)

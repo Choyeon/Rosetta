@@ -67,17 +67,18 @@ from __future__ import annotations
 import json
 import logging
 import random
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.activity import Activity
 from backend.models.blog import Category, Comment, Post, Tag
-from backend.models.core import FriendLink, Navigation, Page
+from backend.models.core import Navigation, Page
 from backend.models.gallery import Album, Photo
 from backend.models.guestbook import GuestbookEntry
 from backend.models.user import User
@@ -160,7 +161,7 @@ class SeedDataBundle:
             path = data_dir / f"seed_content.{loc}.json"
             if not path.exists():
                 raise FileNotFoundError(f"Missing seed data file: {path}")
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 self._cache[loc] = json.load(f)
         self._index_posts()
         self._index_categories()
@@ -547,11 +548,8 @@ class SeedContext:
         now = self.clock()
 
         for post_idx, post in enumerate(posts):
-            slug = post.slug
             existing = (
-                await self.db.execute(
-                    select(Comment.id).where(Comment.post_id == post.id).limit(1)
-                )
+                await self.db.execute(select(Comment.id).where(Comment.post_id == post.id).limit(1))
             ).scalar_one_or_none()
             if existing is not None:
                 # Don't double-insert comments on existing seeded posts (idempotency).
@@ -676,7 +674,9 @@ class SeedContext:
     async def create_guestbook_entries(
         self, result: SeedResult, *, admin_user: User | None = None, locale: str = "zh"
     ) -> int:
-        existing_check = (await self.db.execute(select(GuestbookEntry.id).limit(1))).scalar_one_or_none()
+        existing_check = (
+            await self.db.execute(select(GuestbookEntry.id).limit(1))
+        ).scalar_one_or_none()
         created = 0
         if existing_check is not None:
             result._bump("guestbooks", 0, 7)
@@ -705,7 +705,7 @@ class SeedContext:
             else:
                 u_id = None
                 persona = personas[i % max(1, len(personas))] if personas else {}
-                name = str(persona.get("nickname") or row.get("author_name") or f"访客{i+1}")
+                name = str(persona.get("nickname") or row.get("author_name") or f"访客{i + 1}")
                 email = persona.get("email") or None
                 website = persona.get("website") or None
                 ip_addr = str(persona.get("ip_range") or "10.0.0.x")
@@ -754,11 +754,9 @@ class SeedContext:
         a_created = a_skipped = p_created = 0
         now = self.clock()
         for idx, row in enumerate(gal_rows):
-            slug = row.get("slug") or f"gallery-{idx + 1}"
+            row.get("slug") or f"gallery-{idx + 1}"
             existing = (
-                await self.db.execute(
-                    select(Album.id).where(Album.title == row["title"]).limit(1)
-                )
+                await self.db.execute(select(Album.id).where(Album.title == row["title"]).limit(1))
             ).scalar_one_or_none()
             if existing is not None:
                 a_skipped += 1
@@ -825,7 +823,11 @@ class SeedContext:
             status = (
                 self.data.get("pages", locale=locale)
                 and next(
-                    (r.get("status", "published") for r in self.data.get("pages", locale=locale) if r.get("slug") == slug),
+                    (
+                        r.get("status", "published")
+                        for r in self.data.get("pages", locale=locale)
+                        if r.get("slug") == slug
+                    ),
                     "published",
                 )
             ) or "published"
@@ -855,9 +857,7 @@ class SeedContext:
         if not rows:
             rows = self.data.get("activities", locale="zh")
         # Pre-check: skip seeding entirely if any activities already exist.
-        any_existing = (
-            await self.db.execute(select(Activity.id).limit(1))
-        ).scalar_one_or_none()
+        any_existing = (await self.db.execute(select(Activity.id).limit(1))).scalar_one_or_none()
         if any_existing is not None:
             result._bump("activities", 0, len(rows))
             return 0
@@ -896,9 +896,7 @@ class SeedContext:
     # ======================================================================
 
     async def create_default_navigation(self, result: SeedResult, *, locale: str = "zh") -> int:
-        any_existing = (
-            await self.db.execute(select(Navigation.id).limit(1))
-        ).scalar_one_or_none()
+        any_existing = (await self.db.execute(select(Navigation.id).limit(1))).scalar_one_or_none()
         if any_existing is not None:
             result._bump("navigations", 0, 10)
             return 0
@@ -908,36 +906,87 @@ class SeedContext:
 
         flat: list[dict] = [
             # parent nodes
-            {"temp_id": "home", "parent": None, "title": ml("首页", "Home", "ホーム", "首頁"),
-             "url": "/", "icon": "material-symbols:home", "order": 1},
-            {"temp_id": "posts_parent", "parent": None,
-             "title": ml("文章", "Posts", "投稿一覧", "文章"),
-             "url": "#", "icon": "material-symbols:article", "order": 2},
-            {"temp_id": "social_parent", "parent": None,
-             "title": ml("社交", "Social", "ソーシャル", "社交"),
-             "url": "#", "icon": "material-symbols:group", "order": 3},
-            {"temp_id": "about_parent", "parent": None,
-             "title": ml("关于", "About", "このサイトについて", "關於"),
-             "url": "#", "icon": "material-symbols:info", "order": 4},
+            {
+                "temp_id": "home",
+                "parent": None,
+                "title": ml("首页", "Home", "ホーム", "首頁"),
+                "url": "/",
+                "icon": "material-symbols:home",
+                "order": 1,
+            },
+            {
+                "temp_id": "posts_parent",
+                "parent": None,
+                "title": ml("文章", "Posts", "投稿一覧", "文章"),
+                "url": "#",
+                "icon": "material-symbols:article",
+                "order": 2,
+            },
+            {
+                "temp_id": "social_parent",
+                "parent": None,
+                "title": ml("社交", "Social", "ソーシャル", "社交"),
+                "url": "#",
+                "icon": "material-symbols:group",
+                "order": 3,
+            },
+            {
+                "temp_id": "about_parent",
+                "parent": None,
+                "title": ml("关于", "About", "このサイトについて", "關於"),
+                "url": "#",
+                "icon": "material-symbols:info",
+                "order": 4,
+            },
             # children
-            {"temp_id": "archive", "parent": "posts_parent",
-             "title": ml("归档", "Archive", "アーカイブ", "彙整"),
-             "url": "/archive/", "icon": "material-symbols:archive", "order": 1},
-            {"temp_id": "categories", "parent": "posts_parent",
-             "title": ml("分类", "Categories", "カテゴリ", "分類"),
-             "url": "/categories/", "icon": "material-symbols:folder-open-rounded", "order": 2},
-            {"temp_id": "tags", "parent": "posts_parent",
-             "title": ml("标签", "Tags", "タグ", "標籤"),
-             "url": "/tags/", "icon": "material-symbols:tag-rounded", "order": 3},
-            {"temp_id": "friends", "parent": "social_parent",
-             "title": ml("友链", "Friends", "フレンド", "友鏈"),
-             "url": "/friends/", "icon": "material-symbols:link-2-rounded", "order": 1},
-            {"temp_id": "guestbook_nav", "parent": "social_parent",
-             "title": ml("留言板", "Guestbook", "掲示板", "留言板"),
-             "url": "/guestbook/", "icon": "material-symbols:chat", "order": 2},
-            {"temp_id": "about_page", "parent": "about_parent",
-             "title": ml("关于我", "About Me", "プロフィール", "關於我"),
-             "url": "/about/", "icon": "material-symbols:person", "order": 1},
+            {
+                "temp_id": "archive",
+                "parent": "posts_parent",
+                "title": ml("归档", "Archive", "アーカイブ", "彙整"),
+                "url": "/archive/",
+                "icon": "material-symbols:archive",
+                "order": 1,
+            },
+            {
+                "temp_id": "categories",
+                "parent": "posts_parent",
+                "title": ml("分类", "Categories", "カテゴリ", "分類"),
+                "url": "/categories/",
+                "icon": "material-symbols:folder-open-rounded",
+                "order": 2,
+            },
+            {
+                "temp_id": "tags",
+                "parent": "posts_parent",
+                "title": ml("标签", "Tags", "タグ", "標籤"),
+                "url": "/tags/",
+                "icon": "material-symbols:tag-rounded",
+                "order": 3,
+            },
+            {
+                "temp_id": "friends",
+                "parent": "social_parent",
+                "title": ml("友链", "Friends", "フレンド", "友鏈"),
+                "url": "/friends/",
+                "icon": "material-symbols:link-2-rounded",
+                "order": 1,
+            },
+            {
+                "temp_id": "guestbook_nav",
+                "parent": "social_parent",
+                "title": ml("留言板", "Guestbook", "掲示板", "留言板"),
+                "url": "/guestbook/",
+                "icon": "material-symbols:chat",
+                "order": 2,
+            },
+            {
+                "temp_id": "about_page",
+                "parent": "about_parent",
+                "title": ml("关于我", "About Me", "プロフィール", "關於我"),
+                "url": "/about/",
+                "icon": "material-symbols:person",
+                "order": 1,
+            },
         ]
         now = self.clock()
         id_map: dict[str, int] = {}

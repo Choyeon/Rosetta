@@ -1,34 +1,26 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div
-          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="导航菜单管理"
+      description="管理站点顶部 / 侧边的菜单项与排序"
+      :icon="Menu"
+    >
+      <template #actions>
+        <Button
+          size="sm"
+          class="shadow-sm"
+          @click="openCreate()"
         >
-          <Menu class="size-5 text-white" />
-        </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight">
-            导航菜单管理
-          </h1>
-          <p class="text-sm text-muted-foreground">
-            管理站点顶部 / 侧边的菜单项与排序
-          </p>
-        </div>
-      </div>
-      <Button
-        class="shadow-sm"
-        @click="openCreate()"
-      >
-        <Plus class="size-4" /> 新建菜单项
-      </Button>
-    </div>
+          <Plus data-icon="inline-start" /> 新建菜单项
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <AdminCard>
       <div class="p-0">
         <div
           v-if="loading"
-          class="p-6 space-y-3"
+          class="flex flex-col gap-3 p-6"
         >
           <Skeleton
             v-for="i in 5"
@@ -127,7 +119,7 @@
                   title="编辑"
                   @click="openEdit(item)"
                 >
-                  <Pencil class="size-4" />
+                  <Pencil data-icon="inline-start" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -136,7 +128,7 @@
                   title="删除"
                   @click="handleDelete(item)"
                 >
-                  <Trash2 class="size-4" />
+                  <Trash2 data-icon="inline-start" />
                 </Button>
               </div>
             </div>
@@ -153,14 +145,14 @@
             填写导航菜单的显示名称、跳转链接与排序。
           </DialogDescription>
         </DialogHeader>
-        <div class="space-y-4 py-2">
+        <div class="flex flex-col gap-4 py-2">
           <I18nTabsEditor
             v-model="form.label"
             kind="text"
             label="显示名称"
             :required="true"
           />
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">链接 URL <span class="text-error">*</span></Label>
             <Input
               v-model="form.url"
@@ -169,7 +161,7 @@
             />
           </div>
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">图标（可选）</Label>
               <Input
                 v-model="form.icon"
@@ -177,7 +169,7 @@
                 class="rounded-xl"
               />
             </div>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">排序 order</Label>
               <Input
                 v-model.number="form.order"
@@ -186,7 +178,7 @@
               />
             </div>
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">打开方式</Label>
             <div class="flex items-center gap-4">
               <label class="inline-flex items-center gap-2 cursor-pointer">
@@ -194,7 +186,7 @@
                   v-model="form.target"
                   type="radio"
                   value="_self"
-                  class="accent-[#0EA5E9]"
+                  class="accent-[hsl(var(--primary))]"
                 >
                 <span class="text-sm">当前窗口</span>
               </label>
@@ -203,13 +195,13 @@
                   v-model="form.target"
                   type="radio"
                   value="_blank"
-                  class="accent-[#0EA5E9]"
+                  class="accent-[hsl(var(--primary))]"
                 >
                 <span class="text-sm">新窗口</span>
               </label>
             </div>
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">父级菜单（可选，做二级菜单）</Label>
             <Select v-model="form.parent_id">
               <SelectTrigger class="rounded-xl">
@@ -245,11 +237,12 @@
           >
             <Loader2
               v-if="submitting"
-              class="size-4 animate-spin"
+              data-icon="inline-start"
+              class="animate-spin"
             />
             <Save
               v-else
-              class="size-4"
+              data-icon="inline-start"
             />
             {{ editingId ? '保存修改' : '创建菜单' }}
           </Button>
@@ -280,11 +273,12 @@
           >
             <Loader2
               v-if="deleting"
-              class="size-4 animate-spin"
+              data-icon="inline-start"
+              class="animate-spin"
             />
             <Trash2
               v-else
-              class="size-4"
+              data-icon="inline-start"
             />
             确认删除
           </Button>

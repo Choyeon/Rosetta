@@ -1,82 +1,71 @@
 # Rosetta 前端开发规范
 
-前端栈：Nuxt 4.5 / Vue 3 / TypeScript / Tailwind CSS / shadcn-vue / Pinia / @nuxtjs/i18n v10。
+前端栈：Nuxt 4.5 / Vue 3 / TypeScript / Tailwind CSS v4 / shadcn-vue / Pinia / @nuxtjs/i18n v10。
 包管理器 pnpm 11（`package.json` 中 `packageManager` 已固定），所有命令在 `frontend/` 目录执行。
+
+> 跨域规则（SSR 策略、BaseURL、主题解耦、API 契约）见根 `AGENTS.md`。本文档聚焦前端编码细节。
 
 ## 运行模式与 SSR 策略
 
-当前 `nuxt.config.ts` 中 `ssr: false`，纯 SPA。**渐进式 SSR**，按页面逐个迁移，禁止一次性全量开启。
+`nuxt.config.ts` 中 `ssr: true`（**全局 SSR 基线**），仅以下路由精准反选为 SPA：
+- `/admin/**`（登录态 + 重交互 + localStorage）
+- `/login` / `/register` / `/oobe`（表单状态、敏感输入）
+- `/admin/docs/**`（内嵌 Markdown 编辑器）
+- `/search/**`（实时查询）
 
-SPA 路由（不做 SSR）：
-- `/admin/**`（登录态 + 搜索引擎不索引）
-- `/login` / `/register` / `/oobe`（安装向导 / 客户端状态依赖）
-
-SSR 路由（迁移后）：`/`（swr:60）→ `/posts/**`（swr:300）→ `/categories/**`（swr:300）→ `/archive` → `/guestbook` → `/friends` → `/about`。
-一次提交只迁移 1 个页面。
+如需单页临时切回 SPA：`definePageMeta({ ssr: false })`。
 
 ## 目录与文件放置规则
 
 | 类型 | 路径 | 备注 |
 |------|------|------|
-| 页面路由 | `app/pages/` | 唯一有效位置 |
-| 业务组件 | `components/` | 根目录，Nuxt 自动导入 |
-| UI 原子组件 | `components/ui/<name>/` | shadcn-vue CLI 生成，不手动编辑 |
-| Admin 组件 | `components/admin/` | AdminCard / StatCard / MarkdownEditor ... |
+| 页面路由 | `pages/` | **唯一有效位置**，禁止创建 `app/pages/` |
+| 业务组件 | `components/` | Nuxt 自动导入 |
+| UI 原子组件 | `components/ui/<name>/` | shadcn-vue 生成，不手动编辑 |
+| Admin 组件 | `components/admin/` | AdminPageHeader / StatCard / AdminDataTable … |
 | 组合式函数 | `composables/` | `useXxx.ts`，自动导入两层 |
 | 布局 | `layouts/` | `default.vue` 前台 / `admin.vue` 后台 |
 | Pinia stores | `stores/` | 仅跨页面共享状态 |
-| Nitro BFF | `server/api/` + `server/plugins/` | API 代理 / SWR 缓存 / 自动 spawn 后端 |
-| i18n 语言包 | `i18n/locales/{zh,en,ja,zh_Hant}.json` | 根目录旧 `locales/` 已废弃 |
-| 主题目录 | `themes/{slug}/` | 每个主题一个目录，manifest.json + style.css |
-| 全局 CSS | `assets/css/main.css` | Tailwind 变量 + `.prose-shadcn` + `.card-surface` 等**共享组件类** |
-| 路由中间件 | `middleware/` | 根目录（Nuxt 自动注册） |
-| 主题中间件 | `middleware/layout-scope.global.ts` | 三层解耦守卫之一 |
+| Nitro BFF | `server/api/` + `server/routes/` | API 代理 / RSS/Sitemap/Robots |
+| i18n 语言包 | `i18n/locales/{zh,en,ja,zh_Hant}.json` | **唯一生效目录**，根 `locales/` 已废弃 |
+| 主题目录 | `themes/{slug}/` | 每个主题一个目录，`rosetta-theme.json` + `style.css` |
+| 全局 CSS | `assets/css/main.css` | Tailwind v4 变量 + `.card-surface` 共享类 |
+| 路由中间件 | `middleware/` | Nuxt 自动注册 |
 
-引用：`~/components/*` → 根 `components/`；`~/*` → `frontend/` 其余
+引用别名：`@/*` 与 `~~/*` 双前缀同时生效。
 
-## ⚠️ main.css 共享组件 vs 主题 style.css
+### 后台页面排版约定（强制）
 
-**关键区分**：
+1. 页头一律用 `<AdminPageHeader :title :description :icon>`，`#actions` 插槽放主操作按钮
+2. 页面根容器不要重复写 `p-6 / p-4`（`layouts/admin.vue` 的 `<main>` 已是 `p-4 md:p-6`），统一 `flex flex-col gap-5`
+3. 主操作按钮 `size="sm"`，图标按钮 `size="icon-sm"` + `Tooltip`
+4. 二次确认用 `<AdminConfirmDialog>`，不要手写 Dialog
+5. 列表页复用 `<AdminDataTable>` + `<AdminFilterBar>` + `<AdminPagination>`
+
+## main.css 共享组件 vs 主题 style.css
 
 | 位置 | 内容 | 允许写 |
 |------|------|--------|
-| `assets/css/main.css` | 全站共享基础样式 | `.prose-shadcn`、`.card-surface`、`:root` CSS 变量、`.hero-gradient`、`.glow-ring` — **admin 和前台都要用的公共组件类** |
-| `themes/{slug}/style.css` | 主题特定样式 | 必须加 `[data-layout-scope="frontend"]` 守卫，**禁止** blanket `main .grid-cols-*` / `main [class*="shadow-"]` / `main [class*="rounded-xl"]` 这种会误伤其他页面的规则 |
+| `assets/css/main.css` | 全站共享基础样式 | `.prose-shadcn`、`.card-surface`、`:root` CSS 变量 — admin 和前台共用 |
+| `themes/{slug}/style.css` | 主题特定样式 | 通用规则必须加 `[data-layout-scope="frontend"]` 守卫；认证页定制必须显式用 `[data-layout-scope="public-auth"]` 守卫，禁止 blanket 规则 |
 
-新增主题 style.css 规则时，**只作用于特定组件名**（如 `[class*="PostCard"]`、`main header h1`、`main article > img`），不要 blanket 干掉通用 tailwind 类。
+## 主题解耦机制（四层防御）
 
-## 主题解耦机制（三层防御）
-
-1. **CSS 层**：主题 style.css 全部规则加 `[data-layout-scope="frontend"]` 守卫
-2. **运行时层**：`useFrontendTheme.ts` 的 `applyThemeVisual(path)` 检测路由 → `/admin` / `/login` / `/oobe` 路径调用 `clearThemeVisual()` 清理 html 上的 `data-theme` / `data-rosetta-theme` / `theme-*` class + 移除主题 `<link>`
-3. **布局层**：`layouts/admin.vue` onMounted + watch(route) 主动清理并写 `data-layout-scope=admin`
-4. **中间件层**：`middleware/layout-scope.global.ts` 作为兜底，SPA 路由跳转时立即写入正确 scope
-
-**修改主题样式后**，在浏览器切到 admin 路由确认 shadcn Card 仍保持原生 rounded-xl + border 外观。
+1. **CSS 层**：主题 style.css 全部规则按 scope 守卫（`frontend` / `public-auth`），Admin 永不加载主题文件
+2. **运行时层**：`useFrontendTheme.ts` 的 `applyThemeVisual(path)` 检测路由 → `/admin /oobe` 调用 `clearThemeVisual()`；`/login /register`（scope=public-auth）允许注入 slug 属性 + `<link>`，但 frontend 守卫规则在认证页不命中，主题若要定制认证页必须显式写 public-auth 段落
+3. **布局层**：`layouts/admin.vue` onMounted + watch(route) 清理并写 `data-layout-scope=admin`
+4. **中间件层**：`middleware/layout-scope.global.ts` 兜底（仅 admin 做 DOM 轻量清理）
 
 ## SFC 标准写法
 
 ```vue
 <script setup lang="ts">
-// 自动导入：ref / useState / useHead / useFetch / useI18n / useToast / useRuntimeConfig
-// 组件 props / emits
-const props = defineProps<{ title: string }>()
-const emit = defineEmits<{ (e: 'update'): void }>()
-
 const { t } = useI18n()
-const config = useRuntimeConfig()
 
-// SSR 友好的数据获取
-const { data: posts, pending, error, refresh } = await useFetch<Post[]>(
-  '/api/blog/posts',
-  {
-    baseURL: config.public.apiBase,
-    key: 'posts-index-page-1',
-    default: () => [],    // SSR/客户端水合前默认值
-    server: true,
-    lazy: false,
-  }
-)
+// SSR 友好的数据获取 —— 用 useAPI，不要裸写 $fetch
+const { data: posts, pending } = await useAPI<Post[]>('/blog/posts', {
+  query: { page: 1, per_page: 10 }
+})
 </script>
 
 <template>
@@ -94,7 +83,6 @@ const { data: posts, pending, error, refresh } = await useFetch<Post[]>(
 - `matchMedia` / 剪贴板 / Web Audio / Canvas / 拖拽
 - 第三方脚本（viewerjs、代码高亮、主题切换 DOM 操作）
 
-推荐模式：
 ```ts
 const theme = useState<'light' | 'dark'>('theme-mode', () => 'light')
 if (import.meta.client) {
@@ -106,27 +94,33 @@ if (import.meta.client) {
 
 `composables/useTheme.ts` + `plugins/theme.client.ts`：
 - localStorage 持久化（`light` / `dark`，禁止 `system`）
-- 切换动效：clip-path 圆形扩散 960ms `cubic-bezier(0.22,1,0.36,1)`
-- 语义色 CSS 变量驱动（`--primary` / `--accent` / `--muted` ...），业务代码只引用变量
+- 切换动效：clip-path 圆形扩散 960ms
+- 语义色 CSS 变量驱动，业务代码只引用变量
 
 ## 主题系统（WordPress 风格）
 
-目录结构：
+内建主题恒为两套（`lib/rosetta-themes.ts` 的 `KNOWN_ROSETTA_THEMES` 是唯一权威白名单）：
+
 ```
 themes/
-├── editorial-wp-style/     # 默认主题，Editorial Magazine 风格，衬线字体 + glow ring 卡片
-│   ├── manifest.json       # slug / name / version / requires / tags
-│   ├── style.css           # WordPress convention 元信息头（实际样式在 main.css 公共类 + Vue scoped）
-│   └── resources/          # 可选：主题特有的 SVG / 字体
-└── astro-paper-inspired/   # Minimal Paper 主题，复刻 Astro Paper 风格
-    ├── manifest.json
-    ├── style.css           # 600+ 行，全部带 [data-layout-scope="frontend"] 守卫
-    └── resources/
+├── editorial-wp-style/     # 默认主题（杂志风）
+│   ├── rosetta-theme.json  # slug / name / version / requires / tags / mods_schema
+│   ├── style.css           # 每条选择器必须带 [data-layout-scope="frontend"] 守卫
+│   └── screenshot.png
+└── astro-paper-inspired/   # 极简主题（760px 窄栏 / 无 hero / 竖排列表 / 极简登录注册页+错误页+toast，见 style.css public-auth 段）
+    ├── rosetta-theme.json
+    ├── style.css
+    └── screenshot.svg
 ```
 
-激活流程：`useFrontendTheme.setTheme(slug)` → 写入 localStorage + `<html>` 上写 `data-rosetta-theme={slug}` + 动态注入主题 `<link>`（style.css）。
+激活与加载链路（**前端没有 setTheme，激活是后端行为**）：
 
-开发新主题：**只改 `themes/{slug}/style.css`**，所有规则必须加守卫，禁止 blanket 规则。
+1. 激活：后台 `PUT /admin/themes/{slug}/activate`（需 CurrentStaff）改写后端 active 主题。
+2. 读取：`useFrontendTheme().ensureLoaded()` 调 `GET /themes/active` → 写入 `useState('frontend-theme:state')`（slug / name / version / mods / mods_schema）。
+3. SSR 注入：composable 创建时（同步阶段）注册一次 `useHead(() => …state.value…)`， reactive 回调把 `data-rosetta-theme` / `data-theme` / `theme-{slug}` class + `/themes/{slug}/style.css` `<link>` + 颜色 token 写进首字节 HTML。**禁止在 `await` 之后调用 `useHead`**（NUXT_E1001）。
+4. 客户端：`applyThemeVisual(slug, path)` 直接操作 DOM（htmlAttrs + `<link>`，登记进 `_INSTALLED_LINKS`）；进入 `/admin /oobe` 时改调 `clearThemeVisual()` 彻底清理。`/login /register` 允许注入（供 public-auth 段落消费）。
+5. mods：`mergeMods()` 只拷贝 `MODS_DEFAULTS` 里声明过的键——新增主题 mod 必须同步补进 `ThemeModsRuntime` + `MODS_DEFAULTS` + 校验分支，否则前端永远读不到。
+6. 预览：后台「主题管理」预览按钮打开 `/?rosetta_theme_preview=<slug>`；`ensureLoaded` 读取该 query（仅限 `KNOWN_ROSETTA_THEMES` 白名单）覆盖 `state.slug` 并置 `previewing=true`，**不改动后端 active 主题**。
 
 ## i18n
 
@@ -134,7 +128,7 @@ themes/
 - 模板：`{{ $t('posts.readingTime', { n: minutes }) }}`
 - 脚本：`const { t, locale, setLocale } = useI18n()`
 - 后端语言传递：`rosetta_lang` cookie
-- 语言切换事件：`rosetta-lang-change`（动态内容组件监听重新拉取）
+- 语言切换事件：`rosetta-lang-change`
 
 ## 状态管理
 
@@ -143,10 +137,29 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 ## UI 约定
 
 - 主色调青蓝色（sky 201°），由 `--primary` / `--ring` CSS 变量驱动
-- 扁平化：卡片**不**加左侧彩色装饰条 / 渐变外框 / 厚重阴影
-- 标签：淡色胶囊底 + 原色文字 + 无边框 + hover 仅改背景
+- 扁平化：卡片不加左侧彩色装饰条 / 渐变外框 / 厚重阴影
+- 标签：淡色胶囊底 + 原色文字 + 无边框
 - 响应式：默认桌面设计，`md:` 断点以下保证可用
-- 深色模式：暗色不用显式边框表达分隔，用对比度背景层次
+- 深色模式：用对比度背景层次，不用显式边框
+
+### 语义状态色配对铁律
+
+状态色 `info / success / warning / error`，每个色 4 个 token：
+
+| token | 用途 |
+|-------|------|
+| `bg-X` | 实心填充底（配 `text-X-foreground`） |
+| `text-X` | 实色文字/图标 |
+| `bg-X-muted` | 淡色底（**必须**配 `text-X-muted-foreground`） |
+| `text-X-muted-foreground` | `-muted` 底上的文字 |
+
+**禁止 `bg-X-muted` + `text-X-foreground`**：会出现隐形文本。
+
+### 颜色真源在 main.css 的 @theme，不在 tailwind.config.ts
+
+项目用 Tailwind v4 + `@tailwindcss/vite`，CSS 里没有 `@config` 指令，因此 `tailwind.config.ts` **未被加载**。
+- 新增颜色/字体/阴影/动画 → 写进 `main.css` 的 `@theme` 块
+- 颜色 HSL 值 → 写在 `@layer base` 的 `:root` / `.dark`，再由 `@theme` 用 `hsl(var(--x))` 暴露
 
 ## 性能
 
@@ -159,17 +172,17 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 
 ```bash
 pnpm install
-pnpm dev            # 8000 空闲时自动 spawn 后端
-pnpm typecheck      # vue-tsc
+pnpm dev
+pnpm typecheck
 pnpm lint
 pnpm build && pnpm preview
 ```
 
 ## 常见坑
 
-- **Hydration mismatch**：`ref()` 默认值 SSR / 客户端不同 → 用 `useState` 或 `useFetch({ default: () => ... })`
-- **SSR 登录态缺失**：需要用户态的接口 → `server: false`
-- **目录重复**：`app/pages/` 生效；`pages/` 根目录已废弃
-- **旧 locales/ 与 i18n/locales/ 并存**：只认后者
-- **语言切换后动态内容未刷新**：组件要监听 `rosetta-lang-change`
-- **主题切换后 admin 错乱**：style.css 里 blanket 规则没加守卫 → 立即修复
+- **Hydration mismatch**：`ref()` 默认值 SSR/客户端不同 → 用 `useState` 或 `onMounted` 赋值
+- **SSR 登录态缺失**：需要用户态的接口用 `apiFetch` 而非 setup 期 `useAPI`
+- **i18n 双目录陷阱**：只改 `i18n/locales/*.json`，根 `locales/` 是废弃影子目录
+- **语言切换后动态内容未刷新**：组件监听 `rosetta-lang-change`
+- **主题切换后 admin 错乱**：style.css blanket 规则没加守卫 → 立即修复
+- **`/api/api` 双前缀**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀

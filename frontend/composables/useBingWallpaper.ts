@@ -39,6 +39,9 @@ const WALLPAPER_MONTHS_LABEL: Record<string, string[]> = {
   ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 }
 
+const WALLPAPER_CACHE_KEY = 'bing_wallpaper_cache_v1'
+const WALLPAPER_CACHE_TTL = 3600_000 // 1 小时（与后端缓存对齐）
+
 const WALLPAPER_MONTHS_COMPACT_EN: string[] = [
   'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
@@ -111,7 +114,7 @@ export const useBingWallpaper = () => {
       let thumbnail: string
       if (img.urlbase) {
         // Bing 官方缩略图 CDN
-        thumbnail = `https://www.bing.com${img.urlbase}_150x150.jpg`
+        thumbnail = `https://cn.bing.com${img.urlbase}_150x150.jpg`
       } else if (img.fullUrl && /unsplash\.com|picsum\.photos|images\.unsplash/i.test(img.fullUrl)) {
         // Unsplash/Picsum 等支持参数的图片源：替换宽度参数或附加为缩略图
         let u = img.fullUrl
@@ -147,7 +150,7 @@ export const useBingWallpaper = () => {
   // 之后直接返回本地静态文件，刷新不再重复请求 bing.com）。
   const proxiedBingUrl = (rawUrl: string): string => {
     if (!rawUrl) return ''
-    const abs = rawUrl.startsWith('http') ? rawUrl : `https://www.bing.com${rawUrl}`
+    const abs = rawUrl.startsWith('http') ? rawUrl : `https://cn.bing.com${rawUrl}`
     try {
       const encoded = btoa(unescape(encodeURIComponent(abs)))
       return `${apiBase.value || '/api'}/bing/image?src=${encoded}`
@@ -160,7 +163,7 @@ export const useBingWallpaper = () => {
     return (rawImages || []).map((img: BingRawImage, i: number) => {
       const url = img.url || ''
       const uhdUrl = (img.urlbase || '') + '_UHD.jpg'
-      const fullUrl = url.startsWith('http') ? url : `https://www.bing.com${url}`
+      const fullUrl = url.startsWith('http') ? url : `https://cn.bing.com${url}`
       return {
         url,
         urlbase: img.urlbase || '',
@@ -185,6 +188,20 @@ export const useBingWallpaper = () => {
         try {
           const saved = localStorage.getItem('bing_wallpaper_idx')
           if (saved != null) currentIdx.value = Math.max(0, Math.min(7, parseInt(saved, 10) || 0))
+        } catch { /* ignore */ }
+
+        // 客户端持久缓存：重新打开浏览器时立即展示上次壁纸，避免白屏等待
+        try {
+          const raw = localStorage.getItem(WALLPAPER_CACHE_KEY)
+          if (raw) {
+            const cached = JSON.parse(raw) as { ts: number, images: BingImage[] }
+            if (Date.now() - cached.ts < WALLPAPER_CACHE_TTL && Array.isArray(cached.images)) {
+              images.value = cached.images
+              // 后台静默刷新（不阻塞 UI）
+              void refreshWallpapersInBackground()
+              return images.value
+            }
+          }
         } catch { /* ignore */ }
       }
 
@@ -222,6 +239,15 @@ export const useBingWallpaper = () => {
       let list: BingImage[] = []
       try {
         list = await loadFromBackend()
+        // 写入 localStorage 缓存（仅客户端）
+        if (import.meta.client && list.length > 0) {
+          try {
+            localStorage.setItem(
+              WALLPAPER_CACHE_KEY,
+              JSON.stringify({ ts: Date.now(), images: list })
+            )
+          } catch { /* ignore quota / private mode */ }
+        }
       } catch (e) {
         // 后端代理不可用（OOBE、网络异常等）：静默走 gradient 兜底
         // 不允许浏览器直连 Bing（会出现 CORS / ERR_FAILED 控制台错误）
@@ -235,6 +261,56 @@ export const useBingWallpaper = () => {
       loading.value = false
     }
     return images.value
+  }
+
+  /**
+   * 后台静默刷新壁纸数据：已有缓存时不阻塞 UI，请求成功后更新 images。
+   * 用于「重新打开浏览器」场景：先展示缓存，后台拉取最新。
+   */
+  const refreshWallpapersInBackground = async () => {
+    try {
+      interface ProxyImage {
+        url?: string
+        urlbase?: string
+        full_url?: string
+        uhd_url?: string
+        title?: string
+        copyright?: string
+        copyright_link?: string
+        startdate?: string
+        enddate?: string
+      }
+      const data = await $fetch<{ images?: ProxyImage[] }>('/bing/wallpapers', {
+        baseURL: apiBase.value,
+        query: { n: 8, market: 'zh-CN' }
+      })
+      const list = (data.images || []).map((img, i) => ({
+        url: img.url || '',
+        urlbase: img.urlbase || '',
+        copyright: img.copyright || '',
+        copyrightlink: img.copyright_link || '',
+        title: img.title || '',
+        startdate: img.startdate || '',
+        enddate: img.enddate || '',
+        fullUrl: proxiedBingUrl(img.full_url || ''),
+        uhdUrl: proxiedBingUrl(img.uhd_url || ''),
+        dayOffset: i
+      }))
+      if (list.length > 0) {
+        images.value = list
+        if (import.meta.client) {
+          try {
+            localStorage.setItem(
+              WALLPAPER_CACHE_KEY,
+              JSON.stringify({ ts: Date.now(), images: list })
+            )
+          } catch { /* ignore */ }
+        }
+      }
+    } catch (e) {
+      // 后台刷新失败不影响已展示的缓存
+      console.warn('[bing-wallpaper] background refresh failed, keeping cached data.', e)
+    }
   }
 
   return {

@@ -1,279 +1,348 @@
 <template>
-  <div class="container py-16">
-    <header class="mb-12 text-center max-w-2xl mx-auto">
-      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-primary/10 mb-5">
-        <Images class="size-7 text-primary" />
+  <div class="min-h-screen bg-background">
+    <!-- Header -->
+    <header class="border-b border-border/60">
+      <div class="container py-14 md:py-20 text-center">
+        <h1 class="font-display text-4xl md:text-5xl font-bold tracking-tight text-foreground">
+          {{ t('gallery.title') }}
+        </h1>
+        <p class="text-muted-foreground mt-4 text-base md:text-lg leading-relaxed max-w-2xl mx-auto">
+          {{ t('gallery.desc') }}
+        </p>
       </div>
-      <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
-        {{ t('gallery.title') }}
-      </h1>
-      <p class="text-muted-foreground mt-3 leading-relaxed">
-        {{ t('gallery.desc') }}
-      </p>
-      <p class="text-xs text-muted-foreground/80 mt-3">
-        {{ t('gallery.hint') || '点击任意图片可放大查看。' }}
-      </p>
     </header>
 
-    <div
-      v-if="pending && albums.length === 0"
-      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-    >
+    <!-- Album Grid -->
+    <section class="container py-12 md:py-16">
+      <!-- Skeleton -->
       <div
-        v-for="i in 6"
-        :key="i"
-        class="rounded-xl overflow-hidden border border-border/60 bg-card animate-pulse"
+        v-if="pending && albums.length === 0"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
       >
-        <div class="aspect-[4/3] bg-muted" />
-        <div class="p-5 space-y-3">
-          <div class="flex justify-between">
-            <div class="w-2/5 h-5 rounded-full bg-muted" />
-            <div class="w-16 h-4 rounded-full bg-muted" />
-          </div>
-          <div class="space-y-2">
-            <div class="w-full h-3.5 rounded-full bg-muted" />
-            <div class="w-3/4 h-3.5 rounded-full bg-muted" />
+        <div
+          v-for="i in 6"
+          :key="i"
+          class="rounded-xl overflow-hidden border border-border/60 bg-card animate-pulse"
+        >
+          <div class="aspect-[4/3] bg-muted" />
+          <div class="p-5 flex flex-col gap-3">
+            <div class="w-1/3 h-5 rounded bg-muted" />
+            <div class="w-full h-3.5 rounded bg-muted" />
           </div>
         </div>
       </div>
-    </div>
 
-    <div
-      v-else
-      class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-    >
+      <!-- Albums -->
       <div
-        v-for="album in albums"
-        :key="album.id"
+        v-else-if="albums.length > 0"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
       >
-        <Card
-          class="h-full group lift-hover overflow-hidden cursor-pointer"
-          @click="openAlbumSheet(album.id)"
+        <article
+          v-for="album in albums"
+          :key="album.id"
+          class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer"
+          @click="openAlbum(album.id)"
         >
           <div class="relative aspect-[4/3] overflow-hidden bg-muted">
             <img
               v-if="album.cover"
               :src="album.cover"
               :alt="album.title"
-              class="w-full h-full object-cover transition-transform duration-520 ease-out group-hover:scale-[1.04]"
+              class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
               loading="lazy"
             >
             <div
               v-else
-              class="w-full h-full bg-gradient-to-br from-primary/20 via-muted to-muted"
-            />
-            <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent" />
-            <div class="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-              <Badge
-                variant="secondary"
-                class="bg-white/90 dark:bg-black/50 backdrop-blur-sm border-0"
-              >
-                <ImageIcon class="size-3 mr-1.5" />
-                {{ album.photosCount }} {{ t('gallery.photos') }}
-              </Badge>
+              class="size-full flex items-center justify-center bg-muted"
+            >
+              <Images class="size-12 text-muted-foreground/40" />
+            </div>
+            <div class="absolute top-3 left-3">
+              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
+                <ImageIcon class="size-3.5" />
+                {{ album.photosCount }}
+              </span>
             </div>
           </div>
-          <CardHeader class="p-5">
-            <div class="flex items-center justify-between mb-2">
-              <CardTitle class="font-display text-lg tracking-tight group-hover:underline underline-offset-4">
-                {{ album.title }}
-              </CardTitle>
-              <ChevronRight class="size-4 text-muted-foreground transition-transform duration-300 group-hover:translate-x-0.5" />
-            </div>
-            <CardDescription class="line-clamp-2 text-sm leading-relaxed min-h-[2.5rem]">
+          <div class="p-5">
+            <h3 class="font-display text-lg font-semibold tracking-tight truncate group-hover:text-primary transition-colors">
+              {{ album.title }}
+            </h3>
+            <p class="text-sm text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
               {{ album.description || t('gallery.noDesc') }}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-
-        <Sheet v-model:open="localSheetOpen[album.id]">
-          <SheetContent
-            side="right"
-            class="w-full sm:max-w-3xl p-0 flex flex-col"
-          >
-            <SheetHeader class="p-6 pb-4 border-b shrink-0">
-              <SheetTitle class="font-display text-xl flex items-center gap-2">
-                <ImageIcon class="size-5 text-primary" />
-                {{ album.title }}
-              </SheetTitle>
-              <SheetDescription class="mt-1">
-                {{ album.description || '' }} · {{ album.photosCount }} {{ t('gallery.photos') }} · {{ t('gallery.clickToZoom') || '点击图片可放大' }}
-              </SheetDescription>
-            </SheetHeader>
-            <ScrollArea class="flex-1">
-              <div class="p-6">
-                <div
-                  v-if="albumsDetailLoading[album.id] && (album.photos || []).length === 0"
-                  class="grid grid-cols-2 sm:grid-cols-3 gap-3"
-                >
-                  <div
-                    v-for="i in 6"
-                    :key="i"
-                    class="aspect-square rounded-xl bg-muted animate-pulse"
-                  />
-                </div>
-                <div
-                  v-else
-                  :ref="(el: any) => setGalleryRef(`sheet-${album.id}`, el)"
-                  class="grid grid-cols-2 sm:grid-cols-3 gap-3 viewer-photos-grid"
-                >
-                  <div
-                    v-for="(photo, idx) in album.photos"
-                    :key="idx"
-                    class="group relative aspect-square rounded-xl overflow-hidden bg-muted cursor-zoom-in shadow-sm hover:shadow-md transition-shadow"
-                  >
-                    <img
-                      :src="photo"
-                      :data-original="photo"
-                      :alt="`${album.title} ${idx + 1}`"
-                      class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                      loading="lazy"
-                    >
-                    <div class="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors duration-300" />
-                    <div class="absolute bottom-2 right-2 size-7 rounded-full bg-black/60 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-                      <ZoomIn class="size-4" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </ScrollArea>
-          </SheetContent>
-        </Sheet>
+            </p>
+          </div>
+        </article>
       </div>
-    </div>
 
-    <div class="mt-12">
-      <Accordion
-        type="multiple"
-        class="w-full space-y-4"
+      <!-- Empty -->
+      <div
+        v-else
+        class="text-center py-24"
       >
-        <AccordionItem
-          v-for="album in albums"
-          :key="`acc-${album.id}`"
-          :value="`album-${album.id}`"
-          class="border rounded-xl overflow-hidden px-0"
-        >
-          <AccordionTrigger class="px-6 py-4 hover:no-underline hover:bg-muted/40 transition-colors">
-            <div class="flex items-center gap-4 w-full text-left">
-              <div class="size-12 shrink-0 rounded-lg overflow-hidden bg-muted">
-                <img
-                  v-if="album.cover"
-                  :src="album.cover"
-                  :alt="album.title"
-                  class="w-full h-full object-cover"
-                  loading="lazy"
-                >
-              </div>
-              <div class="flex-1 min-w-0">
-                <div class="font-medium">
-                  {{ album.title }}
-                </div>
-                <div class="text-sm text-muted-foreground truncate">
-                  {{ album.description || t('gallery.noDesc') }}
-                </div>
-              </div>
-              <Badge
-                variant="secondary"
-                class="shrink-0"
-              >
-                {{ album.photosCount }}
-              </Badge>
+        <div class="inline-flex items-center justify-center size-20 rounded-2xl bg-muted mb-6">
+          <Images class="size-10 text-muted-foreground" />
+        </div>
+        <h3 class="font-display text-xl font-semibold">
+          {{ t('gallery.noAlbums') }}
+        </h3>
+        <p class="text-muted-foreground mt-2 text-sm">
+          {{ t('gallery.hint') }}
+        </p>
+      </div>
+    </section>
+
+    <!-- Album Detail Dialog -->
+    <Dialog v-model:open="dialogOpen">
+      <DialogContent
+        class="sm:max-w-5xl w-[95vw] max-h-[90vh] p-0 flex flex-col gap-0 overflow-hidden"
+      >
+        <!-- Header -->
+        <div class="shrink-0 p-6 border-b border-border/60">
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0">
+              <DialogTitle class="font-display text-2xl font-bold tracking-tight truncate">
+                {{ currentAlbum?.title }}
+              </DialogTitle>
+              <DialogDescription class="mt-1 text-sm text-muted-foreground line-clamp-2">
+                {{ currentAlbum?.description || '' }}
+              </DialogDescription>
             </div>
-          </AccordionTrigger>
-          <AccordionContent class="px-6 pb-6">
+            <Badge
+              variant="secondary"
+              class="shrink-0"
+            >
+              <ImageIcon class="size-3.5 mr-1" />
+              {{ currentAlbum?.photosCount }} {{ t('gallery.photos') }}
+            </Badge>
+          </div>
+        </div>
+
+        <!-- Photos -->
+        <ScrollArea class="flex-1 min-h-0">
+          <div class="p-6">
+            <!-- Loading -->
             <div
-              v-if="albumsDetailLoading[album.id] && (album.photos || []).length === 0"
-              class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2"
+              v-if="albumLoading && currentPhotos.length === 0"
+              class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
             >
               <div
-                v-for="i in 6"
+                v-for="i in 8"
                 :key="i"
                 class="aspect-square rounded-lg bg-muted animate-pulse"
               />
             </div>
+
+            <!-- Photos with viewerjs -->
+            <div
+              v-else-if="currentPhotos.length > 0"
+              ref="viewerContainerRef"
+              class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
+            >
+              <img
+                v-for="(photo, idx) in currentPhotos"
+                :key="idx"
+                :src="photo"
+                :data-original="photo"
+                :alt="`${currentAlbum?.title || ''} ${idx + 1}`"
+                class="aspect-square w-full object-cover rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity shadow-sm"
+                loading="lazy"
+              >
+            </div>
+
+            <!-- Empty -->
             <div
               v-else
-              :ref="(el: any) => setGalleryRef(`acc-${album.id}`, el)"
-              class="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 pt-2 viewer-photos-grid"
+              class="text-center py-16"
             >
-              <div
-                v-for="(photo, idx) in album.photos"
-                :key="`acc-${album.id}-${idx}`"
-                class="group relative aspect-square rounded-lg overflow-hidden bg-muted cursor-zoom-in shadow-sm hover:shadow-md transition-shadow"
-              >
-                <img
-                  :src="photo"
-                  :data-original="photo"
-                  :alt="`${album.title} ${idx + 1}`"
-                  class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
-                  loading="lazy"
-                >
-              </div>
+              <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
+              <p class="text-muted-foreground text-sm">
+                {{ t('noData') }}
+              </p>
             </div>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
-    </div>
-
-    <div
-      v-if="!pending && albums.length === 0"
-      class="text-center py-20"
-    >
-      <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
-        <Images class="size-8 text-muted-foreground" />
-      </div>
-      <h3 class="font-display text-xl font-semibold">
-        {{ t('gallery.noAlbums') }}
-      </h3>
-    </div>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, nextTick } from 'vue'
-import { Card, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
+import { ref, reactive, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { Badge } from '~~/components/ui/badge'
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '~~/components/ui/sheet'
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger
-} from '~~/components/ui/accordion'
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~~/components/ui/dialog'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { useI18n } from 'vue-i18n'
-import { Images as ImageIcon, ChevronRight, Image as Images, ZoomIn } from '@lucide/vue'
+import { Images as ImageIcon, Image as Images } from '@lucide/vue'
 import { useAPI, apiFetch as apiFetchDirect } from '~~/composables/useApi'
-import Viewer from 'viewerjs'
-import 'viewerjs/dist/viewer.css'
 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 
-// Viewer.js instances per container key
-type ViewerInstance = InstanceType<typeof Viewer>
-interface ViewerRecord { instance: ViewerInstance, element: WeakRef<Element> }
-const viewerRegistry = new Map<string, ViewerRecord>()
+// viewerjs 懒加载
+type ViewerModule = typeof import('viewerjs')
+let ViewerCtor: ViewerModule['default'] | null = null
+let viewerCssInjected = false
 
-// 基础 ref 注册函数
-function baseSetGalleryRef(key: string, el: Element | null) {
-  if (!import.meta.client) return
-  const existing = viewerRegistry.get(key)
-  if (existing) {
-    const oldEl = existing.element.deref?.()
-    if (el && oldEl === el) return
+async function ensureViewer(): Promise<ViewerModule['default'] | null> {
+  if (!import.meta.client) return null
+  if (!ViewerCtor) {
     try {
-      existing.instance.destroy()
+      const mod = await import(/* @vite-ignore */ 'viewerjs' as string) as ViewerModule & { default: ViewerModule['default'] }
+      ViewerCtor = (mod.default ?? mod) as ViewerModule['default']
+    } catch {
+      return null
+    }
+  }
+  if (!viewerCssInjected) {
+    try {
+      await import('viewerjs/dist/viewer.css')
     } catch {
       /* noop */
     }
-    viewerRegistry.delete(key)
+    viewerCssInjected = true
   }
-  if (!el) return
+  return ViewerCtor
+}
+
+// --- Types ---
+interface Album {
+  id: number
+  title: string
+  description: string
+  cover: string
+  photosCount: number
+  photos: string[]
+  loaded: boolean
+}
+
+interface AlbumResp {
+  id: number
+  title: string
+  description?: string
+  cover?: string
+  photo_count?: number
+}
+
+// --- State ---
+const albums = reactive<Album[]>([])
+const dialogOpen = ref(false)
+const activeAlbumId = ref<number | null>(null)
+const albumLoading = ref(false)
+const viewerContainerRef = ref<HTMLElement | null>(null)
+let viewerInstance: { destroy: () => void } | null = null
+
+const currentAlbum = computed(() =>
+  albums.find(a => a.id === activeAlbumId.value) ?? null
+)
+const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
+
+// 拉取相册列表
+const { data: albumsResp, pending } = useAPI<{ items: AlbumResp[], total?: number }>(
+  '/gallery/albums',
+  {
+    query: { page: 1, page_size: 50, lang: locale }
+  }
+)
+
+watch(
+  [albumsResp],
+  () => {
+    const items = (albumsResp.value?.items || []) as AlbumResp[]
+    const existingMap = new Map(albums.map(a => [a.id, a]))
+    albums.splice(
+      0,
+      albums.length,
+      ...items.map((raw) => {
+        const prev = existingMap.get(raw.id)
+        return {
+          id: raw.id,
+          title: raw.title || '',
+          description: raw.description || '',
+          cover: raw.cover || '',
+          photosCount: typeof raw.photo_count === 'number' ? raw.photo_count : (prev?.photosCount ?? 0),
+          photos: prev?.photos ?? [],
+          loaded: prev?.loaded ?? false
+        }
+      })
+    )
+  },
+  // useAPI 返回的 data ref 是整体替换（非深 mutate），无需 deep:true
+  // 避免 Vue 递归遍历整个 albums 树造成不必要的 CPU 开销
+  { immediate: true }
+)
+
+// 加载相册详情
+async function loadAlbumDetail(id: number) {
+  const album = albums.find(a => a.id === id)
+  if (!album || album.loaded || albumLoading.value) return
+  albumLoading.value = true
+  try {
+    const raw = await apiFetchDirect<unknown>(`/gallery/albums/${id}`, {
+      query: { lang: locale.value }
+    })
+    const unwrapped
+      = raw && typeof raw === 'object' && 'data' in raw
+        ? (raw as { data?: unknown }).data
+        : raw
+    const data = (unwrapped ?? {}) as Record<string, unknown>
+    const photosArr = Array.isArray(data.photos) ? data.photos : []
+    album.photos = photosArr
+      .map((p) => {
+        const obj = (p ?? {}) as Record<string, unknown>
+        return typeof obj.url === 'string' ? obj.url : ''
+      })
+      .filter(Boolean) as string[]
+    album.loaded = true
+    const photoCount = data.photo_count
+    if (typeof photoCount === 'number') album.photosCount = photoCount
+    const cover = data.cover
+    if (!album.cover && typeof cover === 'string') album.cover = cover
+  } catch {
+    /* noop */
+  } finally {
+    albumLoading.value = false
+  }
+}
+
+// 打开相册
+function openAlbum(id: number) {
+  activeAlbumId.value = id
+  dialogOpen.value = true
   nextTick(() => {
-    if (!el.isConnected) return
-    const instance = new Viewer(el as HTMLElement, {
+    loadAlbumDetail(id).then(() => {
+      nextTick(() => initViewer())
+    })
+  })
+}
+
+// 初始化 viewerjs
+async function initViewer() {
+  if (!import.meta.client) return
+  const el = viewerContainerRef.value
+  if (!el) return
+
+  // 销毁旧实例
+  if (viewerInstance) {
+    try {
+      viewerInstance.destroy()
+    } catch {
+      /* noop */
+    }
+    viewerInstance = null
+  }
+
+  const Ctor = await ensureViewer()
+  if (!Ctor) return
+
+  // 确保 DOM 中 img 已渲染
+  await nextTick()
+  if (!el.isConnected) return
+  if (el.querySelectorAll('img').length === 0) return
+
+  try {
+    viewerInstance = new Ctor(el, {
       toolbar: {
         zoomIn: 1,
         zoomOut: 1,
@@ -307,148 +376,39 @@ function baseSetGalleryRef(key: string, el: Element | null) {
       toggleOnDblclick: true,
       loading: true
     })
-    viewerRegistry.set(key, { instance, element: new WeakRef(el) })
-  })
+  } catch {
+    viewerInstance = null
+  }
 }
 
+// Dialog 关闭时销毁 viewer
+watch(dialogOpen, (open) => {
+  if (!open) {
+    if (viewerInstance) {
+      try {
+        viewerInstance.destroy()
+      } catch {
+        /* noop */
+      }
+      viewerInstance = null
+    }
+  }
+})
+
 onBeforeUnmount(() => {
-  for (const r of viewerRegistry.values()) {
+  if (viewerInstance) {
     try {
-      r.instance.destroy()
+      viewerInstance.destroy()
     } catch {
       /* noop */
     }
-  }
-  viewerRegistry.clear()
-})
-
-// --- Data & real API integration -------------------------------------------
-
-interface Album {
-  id: number
-  title: string
-  description: string
-  cover: string
-  photosCount: number
-  photos: string[]
-  loaded?: boolean
-}
-
-interface AlbumResp {
-  id: number
-  title: string
-  description?: string
-  cover?: string
-  photo_count?: number
-}
-
-interface _AlbumDetailResp extends AlbumResp {
-  photos?: Array<{ id: number, url: string, title?: string, description?: string }>
-}
-
-interface Paginated<T> {
-  items: T[]
-  total?: number
-  page?: number
-  page_size?: number
-  total_pages?: number
-}
-
-const localSheetOpen = reactive<Record<number, boolean>>({})
-const albumsDetailLoading = reactive<Record<number, boolean>>({})
-
-// 真实接口：GET /api/gallery/albums?page=1&page_size=50
-const { data: albumsResp, pending } = await useAPI<Paginated<AlbumResp>>('/gallery/albums', {
-  query: {
-    page: 1,
-    page_size: 50,
-    lang: locale
+    viewerInstance = null
   }
 })
 
-const albums = reactive<Album[]>([])
-
-const loadAlbumsFromResp = () => {
-  const items = (albumsResp.value?.items || []) as AlbumResp[]
-  // Merge with existing to preserve loaded photos
-  const existingMap = new Map(albums.map(a => [a.id, a]))
-  albums.splice(
-    0,
-    albums.length,
-    ...items.map((raw) => {
-      const prev = existingMap.get(raw.id)
-      return {
-        id: raw.id,
-        title: raw.title || '',
-        description: raw.description || '',
-        cover: raw.cover || '',
-        photosCount: typeof raw.photo_count === 'number' ? raw.photo_count : (prev?.photosCount ?? 0),
-        photos: prev?.photos ?? [],
-        loaded: prev?.loaded ?? false
-      }
-    })
-  )
-}
-watch([albumsResp], loadAlbumsFromResp, { immediate: true, deep: true })
-
-const loadAlbumDetail = async (id: number) => {
-  const album = albums.find(a => a.id === id)
-  if (!album) return
-  if (album.loaded) return
-  if (albumsDetailLoading[id]) return
-  albumsDetailLoading[id] = true
-  try {
-    // 相册详情结构在运行时确定，返回 unknown 以便后续守卫
-    const raw = await apiFetchDirect<unknown>(`/gallery/albums/${id}`, {
-      query: { lang: locale.value }
-    })
-    const unwrapped
-      = raw && typeof raw === 'object' && 'data' in raw
-        ? (raw as { data?: unknown }).data
-        : raw
-    const data = (unwrapped ?? {}) as Record<string, unknown>
-    const photosArr = Array.isArray(data.photos) ? data.photos : []
-    const photos = photosArr
-      .map((p) => {
-        const obj = (p ?? {}) as Record<string, unknown>
-        return typeof obj.url === 'string' ? obj.url : ''
-      })
-      .filter(Boolean) as string[]
-    album.photos = photos
-    album.loaded = true
-    const photoCount = data.photo_count
-    if (typeof photoCount === 'number') album.photosCount = photoCount
-    const cover = data.cover
-    if (!album.cover && typeof cover === 'string') album.cover = cover
-  } catch {
-    // 失败则保持空列表，后续可重试
-  } finally {
-    albumsDetailLoading[id] = false
-  }
-}
-
-const openAlbumSheet = (id: number) => {
-  localSheetOpen[id] = true
-  nextTick(() => loadAlbumDetail(id))
-}
-
-// setGalleryRef 包装：acc-* key 触发相册详情懒加载
-const accLoaderKeys = new Set<string>()
-let setGalleryRef: (key: string, el: Element | null) => void = baseSetGalleryRef
-const setGalleryRefPatched = (key: string, el: Element | null) => {
-  if (key.startsWith('acc-')) {
-    const id = Number(key.replace('acc-', ''))
-    if (!Number.isNaN(id) && !accLoaderKeys.has(key)) {
-      accLoaderKeys.add(key)
-      loadAlbumDetail(id).catch(() => undefined)
-    }
-  }
-  return baseSetGalleryRef(key, el)
-}
-setGalleryRef = setGalleryRefPatched
-
+// SEO
 useSeo({
-  title: computed(() => t('gallery.title') as string || '相册'),
+  title: computed(() => (t('gallery.title') as string) || '相册'),
   description: computed(() => t('gallery.desc') as string),
   type: 'website'
 })

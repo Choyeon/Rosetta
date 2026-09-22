@@ -24,12 +24,20 @@ const slug = computed(() =>
 )
 
 if (import.meta.client) {
-  const s = slug.value
-  if (s && KNOWN_TOP_LEVEL.includes(s)) {
-    const query = route.fullPath.split('?')[1]
-    const hash = route.hash || ''
-    navigateTo(`/${s}${query ? `?${query}` : ''}${hash}`, { replace: true, redirectCode: 301 })
-  }
+  // IMPORTANT: 禁止在 <script setup> 顶层同步调用 navigateTo({ replace:true })。
+  // 它会在 Vue Hydration 首帧就打断当前组件的渲染管线，导致 Suspense / RouterView
+  // 边界出现 "refs null / Hydration 完成但结构错位 → NUXT_E1005" 级连锁错误。
+  // 安全做法：移到 onBeforeMount（首虚拟 DOM 已构建但尚未挂载到真实 DOM）。
+  // 已知受影响路径：/page/about、/page/guestbook、/page/gallery 等由旧 WordPress
+  // 风格链接兼容路由 /page/<slug> → /<slug> 的 301 跳转。
+  onBeforeMount(() => {
+    const s = slug.value
+    if (s && KNOWN_TOP_LEVEL.includes(s)) {
+      const query = route.fullPath.split('?')[1]
+      const hash = route.hash || ''
+      navigateTo(`/${s}${query ? `?${query}` : ''}${hash}`, { replace: true, redirectCode: 301 })
+    }
+  })
 }
 
 const { t, locale } = useI18n()
@@ -56,7 +64,7 @@ const pickLocalized = (val: unknown): string => {
   return String(val)
 }
 
-const { data: raw, pending, error } = await useAPI<PageDetail>(`/pages/${slug.value}`, {
+const { data: raw, pending, error } = useAPI<PageDetail>(`/pages/${slug.value}`, {
   query: { lang: locale.value },
   key: computed(() => `compat:page:slug:${slug.value}:${locale.value}`)
 })
@@ -135,7 +143,7 @@ useBreadcrumbJsonLd([
       <Skeleton class="aspect-[16/9] rounded-2xl mb-8" />
       <Skeleton class="h-12 w-3/4 rounded-xl mb-4" />
       <Skeleton class="h-6 w-2/4 rounded-lg mb-10" />
-      <div class="space-y-3">
+      <div class="flex flex-col gap-3">
         <Skeleton
           v-for="i in 10"
           :key="i"
@@ -151,7 +159,10 @@ useBreadcrumbJsonLd([
         variant="outline"
         @click="navigateTo('/')"
       >
-        <ArrowLeft class="size-4 mr-2" />
+        <ArrowLeft
+          data-icon="inline-start"
+          class="mr-2"
+        />
         {{ t('pages.backHome', '返回首页') }}
       </Button>
     </template>
@@ -182,6 +193,7 @@ useBreadcrumbJsonLd([
           </span>
         </div>
       </header>
+      <!-- eslint-disable-next-line vue/no-v-html -->
       <article
         class="prose-shadcn prose-shadcn-dark max-w-none"
         v-html="renderedContent"

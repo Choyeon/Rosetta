@@ -57,7 +57,10 @@
     "featured": "精华",
     "submitting": "提交中…",
     "open": "打开",
-    "common.by": "由"
+    "by": "由",
+    "retry": "重试",
+    "prevPage": "上一页",
+    "nextPage": "下一页"
   },
   "nav": {
     "home": "首页",
@@ -70,7 +73,9 @@
     "guestbook": "留言板",
     "activity": "动态",
     "about": "关于",
-    "admin": "后台管理"
+    "admin": "后台管理",
+    "search": "搜索",
+    "series": "系列"
   },
   "post": {
     "title": "标题",
@@ -109,7 +114,17 @@
     "backToList": "返回文章列表",
     "loadFailed": "文章加载失败",
     "loadFailedDesc": "找不到对应文章或已被移除，点击下方按钮返回列表。",
-    "like": "点赞"
+    "like": "点赞",
+    "adjacentNav": "文章翻页导航",
+    "previousPost": "上一篇",
+    "nextPost": "下一篇",
+    "tocEmpty": "暂无目录",
+    "commentsLoadFailed": "评论加载失败",
+    "retry": "重试",
+    "replyingTo": "正在回复",
+    "cancelReply": "取消回复",
+    "replyPlaceholder": "回复这条评论…",
+    "someone": "某人"
   },
   "comment": {
     "title": "评论",
@@ -122,7 +137,8 @@
     "reply": "回复",
     "replyTo": "回复给",
     "noComments": "暂无评论，来发表第一条评论吧！",
-    "loginToComment": "登录后才能评论"
+    "loginToComment": "登录后才能评论",
+    "like": "点赞"
   },
   "auth": {
     "username": "用户名",
@@ -192,15 +208,23 @@
     "hidePassword": "隐藏密码",
     "passwordTooShort": "密码至少需要 6 位字符",
     "pleaseAgreeTerms": "请先勾选同意服务条款与隐私政策",
-    "cannotDeriveUsername": "无法从邮箱或昵称派生出合法用户名，请更换邮箱或完善昵称后重试。"
+    "cannotDeriveUsername": "无法从邮箱或昵称派生出合法用户名，请更换邮箱或完善昵称后重试。",
+    "backHome": "返回主页",
+    "logoAlt": "Rosetta — 彩色方形 Logo",
+    "prevDay": "上一天",
+    "nextDay": "下一天（越新）",
+    "refreshWallpaper": "刷新当前壁纸"
   },
   "error": {
     "notFoundTitle": "页面不存在",
     "notFoundDesc": "你访问的页面可能已被移动、删除，或从未存在。",
     "serverErrorTitle": "服务器开小差了",
     "serverErrorDesc": "服务暂时不可用，请稍后重试。",
+    "permissionTitle": "无访问权限",
+    "permissionDesc": "您需要登录后才能访问此页面，或当前账号不具备相应权限。",
     "backHome": "返回首页",
-    "retry": "重试"
+    "retry": "重试",
+    "goLogin": "去登录"
   },
   "user": {
     "profile": "个人资料",
@@ -598,7 +622,10 @@
     "actions": {
       "refresh": "刷新",
       "cancel": "取消",
-      "save": "保存"
+      "save": "保存",
+      "clear": "清除筛选",
+      "delete": "删除",
+      "saving": "保存中…"
     },
     "pagination": {
       "page": "第 {page} 页",
@@ -623,7 +650,8 @@
       "status": {
         "active": "已启用",
         "inactive": "已禁用",
-        "error": "错误"
+        "error": "错误",
+        "installed": "已安装"
       },
       "settings": "设置",
       "upgrade": "升级",
@@ -638,7 +666,38 @@
       "bulkActivate": "批量启用",
       "bulkDeactivate": "批量禁用",
       "bulkDelete": "批量删除",
-      "selectedCount": "已选择 {count} 个插件"
+      "selectedCount": "已选择 {count} 个插件",
+      "docs": "插件文档",
+      "installHint": "请通过后端或 CLI 安装新插件",
+      "stats": {
+        "installed": "已安装",
+        "active": "已启用",
+        "inactive": "未启用",
+        "updates": "可升级",
+        "errors": "异常"
+      },
+      "filter": {
+        "all": "全部",
+        "inactive": "未启用"
+      },
+      "itemsUnit": "项",
+      "scanDone": "扫描完成",
+      "activated": "已启用",
+      "deactivated": "已禁用",
+      "settingsSaved": "设置已保存",
+      "deleted": "插件已删除",
+      "bulkDeleted": "批量删除完成",
+      "bulkUpgrade": "批量升级",
+      "selected": "已选",
+      "emptyTitle": "暂无插件",
+      "noSearchResult": "没有匹配的插件，换个关键词试试。",
+      "emptyDesc": "点击「扫描本地」以发现 plugins 文件夹中的插件",
+      "noDesc": "该插件暂未提供描述信息。",
+      "updateAvailable": "可升级",
+      "noSettings": "该插件暂无可配置项",
+      "confirmDeleteTitle": "确认删除",
+      "confirmDeleteOne": "即将删除插件「{name}」，删除后无法撤销，插件数据与设置将一并移除。",
+      "confirmDeleteBulk": "即将删除选中的 {n} 个插件，删除后无法撤销，插件数据与设置将一并移除。"
     },
     "themes": {
       "title": "主题管理",
@@ -664,7 +723,68 @@
       "modsSaved": "主题自定义已保存",
       "upload": "上传主题",
       "empty": "没有匹配的主题。",
-      "noThemes": "尚未安装任何主题，请先扫描或安装。"
+      "noThemes": "尚未安装任何主题，请先扫描或安装。",
+      "docs": "主题文档",
+      "scanDone": "扫描完成",
+      "activated": "主题已启用",
+      "modsValidationFailed": "表单校验失败，请检查标红字段",
+      "deleted": "主题已删除",
+      "installHint": "请通过后端或 CLI 安装新主题",
+      "stats": {
+        "total": "主题总数",
+        "active": "已激活",
+        "customizable": "可自定义",
+        "errors": "异常"
+      },
+      "itemsUnit": "个主题",
+      "noSearchResult": "没有匹配的主题，换个关键词试试。",
+      "emptyTitle": "暂无主题",
+      "emptyDesc": "点击「扫描本地」发现 themes 文件夹主题",
+      "error": "错误",
+      "previewStub": "实时预览暂未实现",
+      "activatedAt": "激活于",
+      "noDesc": "该主题暂未提供描述信息。",
+      "noCustomizeHint": "该主题无可自定义项",
+      "parentHint": "父主题占位",
+      "childOf": "子主题：继承自 {name}",
+      "perPage": "每页显示",
+      "customizerTitle": "自定义主题：",
+      "customizerDesc": "实时调整主题外观；设置立即保存到站点。",
+      "customizerActiveHint": "您正在修改当前激活主题，保存后前端将立刻刷新。",
+      "modsOn": "启用",
+      "modsOff": "关闭",
+      "noMods": "该主题暂无可自定义项",
+      "confirmDeleteTitle": "确认删除",
+      "confirmDelete": "即将删除主题「{name}」，删除后无法撤销，主题自定义与配置将一并移除。"
+    },
+    "media": {
+      "previewTitle": "媒体预览",
+      "previewDescription": "查看媒体文件内容并编辑基础信息",
+      "previewNoInline": "该文件类型不支持在线预览",
+      "previewOpenNewTab": "新标签页打开",
+      "previewMeta": "文件信息",
+      "previewFilename": "文件名",
+      "previewSize": "大小",
+      "previewDimensions": "尺寸",
+      "previewType": "类型",
+      "previewUploader": "上传者",
+      "previewCreatedAt": "上传时间",
+      "previewCopyUrl": "复制链接",
+      "previewFieldTitle": "标题",
+      "previewFieldTitlePh": "请输入标题（可选）",
+      "previewFieldAlt": "替代文本 (alt)",
+      "previewFieldAltPh": "用于无障碍与 SEO",
+      "previewFieldDesc": "描述",
+      "previewFieldDescPh": "文件描述（可选）",
+      "previewSave": "保存信息",
+      "previewCopied": "链接已复制到剪贴板",
+      "previewCopyFailed": "复制失败，请手动选择链接复制",
+      "previewSaved": "媒体信息已更新",
+      "uploadQueueTitle": "上传任务",
+      "uploadQueueClear": "清除已完成",
+      "uploadQueueDone": "已完成",
+      "uploadQueueFailed": "失败",
+      "uploadQueueDismiss": "移除"
     }
   },
   "oobe": {
@@ -678,10 +798,37 @@
       "admin": "管理员账户",
       "complete": "完成安装"
     },
-    "step1Title": "系统检测",
-    "step1Desc": "检查服务器环境与依赖",
-    "step1LongDesc": "我们将自动检测 Python 版本、所需依赖包与目录权限，确保您的服务器满足 Rosetta 的最低运行要求。",
-    "step1EmptyHint": "点击右侧按钮开始系统环境检测",
+    "step1Title": "连接后端",
+    "step1Desc": "配置后端 API 地址并探测连接",
+    "step1LongDesc": "首先配置 Rosetta 后端 API 服务的访问地址，系统将探测后端健康状态与 OOBE 安装状态；探测通过后将自动开始系统环境检测与依赖安装。",
+    "step1EmptyHint": "请先完成上方的后端连接探测",
+    "connTitle": "后端连接配置",
+    "connDesc": "指定 FastAPI 后端服务的地址，安装向导所有请求都会发往该地址。",
+    "connLongDesc": "开发模式默认使用本机 8000 端口；生产 Nginx 同源部署建议使用 /api。如后端与前端不在同源（端口/域名不同），请填写完整的绝对 URL。",
+    "connMode": "部署模式",
+    "connModeDev": "开发模式",
+    "connModeDevHint": "本机开发，前后端分离运行，FastAPI 默认监听 127.0.0.1:8000",
+    "connModeProd": "生产模式",
+    "connModeProdHint": "Nginx 反代或云原生部署，前端通过同源 /api 访问后端",
+    "connApiUrl": "后端 API 地址",
+    "connApiUrlDevHint": "例如 http://127.0.0.1:8000/api；若仅输入端口号会自动补全为本机地址。",
+    "connApiUrlProdHint": "同源 Nginx 部署填写 /api；跨域部署填写 https://domain.com/api。",
+    "connPortQuick": "端口快选（仅开发模式）",
+    "connCustomPort": "自定义端口…",
+    "connCurrentHint": "当前生效地址",
+    "connAppliedHint": "已应用该地址为后端目标",
+    "connProbe": "探测连接",
+    "connProbing": "正在探测…",
+    "connProbeOK": "探测成功：后端可达，状态正常",
+    "connProbeFail": "探测失败",
+    "connProbeFailDetail": "失败原因",
+    "connProbeStageHealth": "阶段① /health 健康检查",
+    "connProbeStageStatus": "阶段② /api/oobe/status 安装状态",
+    "connProbeOOBERequired": "后端正常，等待安装（503 OOBE_REQUIRED）",
+    "connProbeAlreadyDone": "后端已完成安装（可直接使用）",
+    "connProbeNetworkError": "网络不可达 / 连接被拒绝，请检查端口是否已启动或防火墙规则。",
+    "connProbeNotHealthy": "/health 未返回 healthy —— 目标可能不是 Rosetta 后端。",
+    "connProbeHintNext": "必须先通过「探测连接」后才能进入下一步。",
     "step2Title": "管理员账户",
     "step2Desc": "创建主管理员账户",
     "step2LongDesc": "设置用于登录后台管理面板的主管理员账户，后续可在用户管理中添加更多账户。",
@@ -820,7 +967,20 @@
     "depStarting": "正在连接安装服务…",
     "depSuccess": "全部依赖安装完成",
     "depPartFail": "部分依赖未成功，请查看日志或手动安装",
-    "isStarting": "准备安装任务…"
+    "isStarting": "准备安装任务…",
+    "tlsTitle": "检测到明文 HTTP 连接",
+    "tlsDesc": "您当前的生产环境配置会将管理员密码通过未加密的 HTTP 明文提交，任何同一网络的攻击者均可嗅探到账户凭据。",
+    "tlsGoBack": "返回并改为 HTTPS",
+    "tlsContinueAnyway": "我了解风险，仍继续",
+    "tlsHintTlsTerminate": "建议：立刻终止本次安装，在反代网关启用 TLS 证书后重试。",
+    "tlsHintConfigureReverseProxy": "推荐方案：在 Nginx / Caddy / Traefik 等反向代理配置 Let's Encrypt 免费证书，并将 API / 站点 URL 改为 https:// 开头。",
+    "tlsHintRisk": "继续提交将导致管理员密码、登录令牌、Cookie 均以明文形式在公网传输，存在账户被盗的严重安全风险。",
+    "installSnapshotTimeout": "安装进度推送超时",
+    "installSnapshotPolling": "正在通过快照接口核对安装状态…",
+    "installSnapshotRetryBtn": "重试连接",
+    "installSnapshotCancelBtn": "取消等待",
+    "installSnapshotTimeoutDetail": "安装进度 30 秒内未收到任何事件（SSE 通道可能因网络或代理中断）。系统正在以快照方式核对真实安装结果，不会丢失进度。",
+    "installSnapshotPollingDetail": "快照轮询中：每 5 秒查询一次后端安装状态，最多尝试 3 次。若后端实际已完成会自动进入完成页。"
   },
   "archive": {
     "title": "文章归档",
@@ -856,6 +1016,8 @@
   "posts": {
     "allPosts": "全部文章",
     "allPostsDesc": "按时间倒序展示所有已发布的内容",
+    "hotTitle": "热门榜单",
+    "hotTitleDesc": "Hacker News 风格综合热度榜：评分、浏览、评论、新鲜度加权计算",
     "noPosts": "还没有文章",
     "noPostsDesc": "作者正在酝酿新内容，过段时间再来看看吧。",
     "searchPlaceholder": "搜索标题或关键字…",
@@ -888,7 +1050,10 @@
     "contentPlaceholder": "在这里输入你想说的话…",
     "replyPlaceholder": "回复这条留言…",
     "noMessages": "还没有留言，来写下第一条吧！",
-    "submitFailed": "提交失败，请稍后再试"
+    "submitFailed": "提交失败，请稍后再试",
+    "loadFailed": "留言加载失败，请稍后重试",
+    "postingAs": "将以当前账号发表",
+    "submitSuccess": "留言已提交，审核通过后会显示在列表中"
   },
   "gallery": {
     "title": "相册",
@@ -905,7 +1070,8 @@
     "desc": "优秀的朋友们和他们的站点，值得被更多人看到。",
     "visit": "访问",
     "noDesc": "暂无描述",
-    "noLinks": "还没有友链"
+    "noLinks": "还没有友链",
+    "loadFailed": "加载失败"
   },
   "search": {
     "title": "搜索",
@@ -986,6 +1152,8 @@
     "techStack": "技术栈版本",
     "popularCategories": "热门分类",
     "tagCloud": "标签云",
+    "announcements": "站点公告",
+    "recentActivity": "最新动态",
     "newsletterTitle": "订阅 Rosetta Letter",
     "newsletterSubtitle": "每周一封精选 · 无广告、可随时退订。",
     "emailPlaceholder": "you{'@'}example.com",
@@ -1185,5 +1353,14 @@
     "posts": "篇",
     "noDesc": "暂无描述",
     "viewAll": "查看全部"
+  },
+  "a11y": {
+    "skipToMain": "跳到主内容",
+    "toggleTheme": "切换主题",
+    "togglePalette": "切换调色板",
+    "switchLanguage": "切换语言",
+    "openMenu": "打开菜单",
+    "closeMenu": "关闭菜单",
+    "toggleSidebar": "切换侧边栏"
   }
 }

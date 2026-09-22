@@ -1,34 +1,26 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div
-          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="Webhook 配置"
+      description="接入外部系统，订阅站点事件通知"
+      :icon="Webhook"
+    >
+      <template #actions>
+        <Button
+          size="sm"
+          class="shadow-sm"
+          @click="openCreate()"
         >
-          <Webhook class="size-5 text-white" />
-        </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight">
-            Webhook 配置
-          </h1>
-          <p class="text-sm text-muted-foreground">
-            接入外部系统，订阅站点事件通知
-          </p>
-        </div>
-      </div>
-      <Button
-        class="shadow-sm"
-        @click="openCreate()"
-      >
-        <Plus class="size-4" /> 新建 Webhook
-      </Button>
-    </div>
+          <Plus data-icon="inline-start" /> 新建 Webhook
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <AdminCard class="overflow-hidden">
       <div class="p-0">
         <div
           v-if="loading"
-          class="p-6 space-y-3"
+          class="flex flex-col gap-3 p-6"
         >
           <Skeleton
             v-for="i in 5"
@@ -158,11 +150,13 @@
                           >
                             <Zap
                               v-if="triggeringId !== w.id"
-                              class="size-4 text-warning"
+                              data-icon="inline-start"
+                              class="text-warning"
                             />
                             <Loader2
                               v-else
-                              class="size-4 animate-spin text-warning"
+                              data-icon="inline-start"
+                              class="animate-spin text-warning"
                             />
                           </Button>
                         </TooltipTrigger>
@@ -175,7 +169,7 @@
                       title="编辑"
                       @click="openEdit(w)"
                     >
-                      <Pencil class="size-4" />
+                      <Pencil data-icon="inline-start" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -184,7 +178,7 @@
                       title="删除"
                       @click="handleDelete(w)"
                     >
-                      <Trash2 class="size-4" />
+                      <Trash2 data-icon="inline-start" />
                     </Button>
                   </div>
                 </td>
@@ -201,9 +195,9 @@
           <DialogTitle>{{ editingId ? '编辑 Webhook' : '新建 Webhook' }}</DialogTitle>
           <DialogDescription>选择 Provider 并填写接收 URL 与订阅事件。</DialogDescription>
         </DialogHeader>
-        <div class="space-y-4 py-2">
+        <div class="flex flex-col gap-4 py-2">
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">名称 <span class="text-error">*</span></Label>
               <Input
                 v-model="form.name"
@@ -211,7 +205,7 @@
                 class="rounded-xl"
               />
             </div>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">Provider <span class="text-error">*</span></Label>
               <Select
                 v-model="form.provider"
@@ -237,7 +231,7 @@
               </Select>
             </div>
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">接收 URL <span class="text-error">*</span></Label>
             <Input
               v-model="form.url"
@@ -245,7 +239,7 @@
               class="rounded-xl font-mono"
             />
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">签名密钥 Secret（可选）</Label>
             <div class="relative">
               <Input
@@ -270,7 +264,7 @@
               </button>
             </div>
           </div>
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">订阅事件（多选）</Label>
             <div class="rounded-xl border border-border p-4 grid grid-cols-2 gap-3 bg-muted/20">
               <label
@@ -282,7 +276,7 @@
                   :model-value="form.events.includes(ev.key)"
                   @update:model-value="toggleEvent(ev.key, $event)"
                 />
-                <div class="space-y-0.5">
+                <div class="flex flex-col gap-0 .5">
                   <div class="text-sm font-medium leading-tight">{{ ev.label }}</div>
                   <div class="text-xs text-muted-foreground leading-tight">{{ ev.key }}</div>
                 </div>
@@ -290,7 +284,7 @@
             </div>
           </div>
           <div class="flex items-center justify-between rounded-xl border border-border p-4 bg-muted/30">
-            <div class="space-y-0.5">
+            <div class="flex flex-col gap-0 .5">
               <Label class="text-sm font-medium">启用 Webhook</Label>
               <p class="text-xs text-muted-foreground">
                 关闭后不会再推送任何事件。
@@ -314,11 +308,12 @@
           >
             <Loader2
               v-if="submitting"
-              class="size-4 animate-spin"
+              data-icon="inline-start"
+              class="animate-spin"
             />
             <Save
               v-else
-              class="size-4"
+              data-icon="inline-start"
             />
             {{ editingId ? '保存修改' : '创建 Webhook' }}
           </Button>
@@ -349,11 +344,12 @@
           >
             <Loader2
               v-if="deleting"
-              class="size-4 animate-spin"
+              data-icon="inline-start"
+              class="animate-spin"
             />
             <Trash2
               v-else
-              class="size-4"
+              data-icon="inline-start"
             />
             确认删除
           </Button>
@@ -445,7 +441,7 @@ function providerIcon(p: string) {
 function providerClass(p: string): string {
   if (p === 'github') return 'bg-slate-800 text-white border-transparent'
   if (p === 'feishu') return 'bg-[#3370FF]/15 text-[#3370FF] border-transparent'
-  if (p === 'email') return 'bg-success-muted text-success-foreground border-transparent'
+  if (p === 'email') return 'bg-success-muted text-success-muted-foreground border-transparent'
   return 'bg-primary-muted text-primary-foreground border-transparent'
 }
 

@@ -8,7 +8,7 @@ import logging
 from datetime import date, datetime
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.core.cache import cache, make_cache_key
@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/bing", tags=["Bing壁纸"])
 
-BING_API_URL = "https://www.bing.com/HPImageArchive.aspx"
+BING_API_URL = "https://cn.bing.com/HPImageArchive.aspx"
 BING_CACHE_TTL = 3600  # 缓存 1 小时
 
 
@@ -72,7 +72,9 @@ async def _fetch_bing_wallpaper(market: str = "zh-CN", n: int = 1) -> dict[str, 
 
     try:
         timeout_cfg = httpx.Timeout(10.0, connect=5.0)
-        async with httpx.AsyncClient(timeout=timeout_cfg, follow_redirects=True, trust_env=True) as client:
+        async with httpx.AsyncClient(
+            timeout=timeout_cfg, follow_redirects=True, trust_env=True
+        ) as client:
             response = await client.get(BING_API_URL, params=params)
             if response.status_code != 200:
                 logger.warning(f"Bing API HTTP {response.status_code}, 将走兜底")
@@ -124,7 +126,7 @@ async def get_bing_wallpaper(
     image = images[0]
 
     url = image.get("url", "")
-    full_url = f"https://www.bing.com{url}" if url and not url.startswith("http") else url
+    full_url = f"https://cn.bing.com{url}" if url and not url.startswith("http") else url
 
     end_date = image.get("enddate", "")
     if end_date and len(end_date) == 8:
@@ -180,8 +182,8 @@ async def get_bing_wallpapers(
     for image in raw_images:
         url = image.get("url", "")
         urlbase = image.get("urlbase", "")
-        uhd_url = f"https://www.bing.com{urlbase}_UHD.jpg" if urlbase else ""
-        full_url = f"https://www.bing.com{url}" if url and not url.startswith("http") else url
+        uhd_url = f"https://cn.bing.com{urlbase}_UHD.jpg" if urlbase else ""
+        full_url = f"https://cn.bing.com{url}" if url and not url.startswith("http") else url
         items.append(
             BingWallpaperItem(
                 url=url,

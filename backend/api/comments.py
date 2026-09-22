@@ -28,6 +28,7 @@ from backend.core.deps import (
     get_pagination,
     require_csrf,
 )
+from backend.core.plugin_bus import bus
 from backend.core.rate_limit import (
     RateLimitRule,
     RateLimitStrategy,
@@ -43,7 +44,6 @@ from backend.schemas import (
     CommentResponse,
 )
 from backend.services.comment_service import CommentService
-from backend.core.plugin_bus import bus
 
 logger = logging.getLogger(__name__)
 

@@ -38,6 +38,14 @@ watch(() => route.path, () => sanitizeAdminShell(), { flush: 'post' })
 //   1. 唯一 Provider 保证首渲染层级字节级一致
 //   2. AdminHeader / AdminSidebar 中的 Tooltip 仍能正确注入
 const sidebarCollapsed = ref(false)
+
+if (import.meta.client) {
+  onMounted(() => {
+    if (window.innerWidth < 1280) {
+      sidebarCollapsed.value = true
+    }
+  })
+}
 </script>
 
 <template>
@@ -51,8 +59,10 @@ const sidebarCollapsed = ref(false)
     <div class="admin-main flex-1 flex flex-col min-w-0">
       <AdminHeader :sidebar-collapsed="sidebarCollapsed" />
       <main
-        id="admin-content"
-        class="flex-1 p-4 md:p-6 overflow-x-hidden"
+        id="main"
+        class="flex-1 p-4 md:p-6 overflow-x-clip"
+        role="main"
+        aria-label="Admin main content"
       >
         <!-- 页面过渡统一走 nuxt.config 中的 app.pageTransition（Nuxt 原生机制）。
              不要手动包裹 <Transition>：异步页面 + out-in 模式会产生非元素根节点，

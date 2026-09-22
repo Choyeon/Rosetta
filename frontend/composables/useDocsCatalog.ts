@@ -60,7 +60,7 @@ export async function fetchDocsCatalog(force = false): Promise<DocsCatalogData> 
       success: boolean
       data: DocsCatalogData
     }>(
-      '/api/docs/list',
+      '/docs/list',
       { method: 'GET', silentToast: false }
     )
     if (!resp?.success || !resp.data) {
@@ -98,7 +98,7 @@ export async function fetchDocsDoc(slug: string, force = false): Promise<DocsDoc
     success: boolean
     data: DocsDocData
   }>(
-    `/api/docs/${encodeURIComponent(key)}`,
+    `/docs/${encodeURIComponent(key)}`,
     { method: 'GET', silentToast: false }
   )
   if (!resp?.success || !resp.data) {

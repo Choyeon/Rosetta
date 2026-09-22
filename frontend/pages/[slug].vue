@@ -4,7 +4,7 @@
       <Skeleton class="aspect-[16/9] rounded-2xl mb-8" />
       <Skeleton class="h-12 w-3/4 rounded-xl mb-4" />
       <Skeleton class="h-6 w-2/4 rounded-lg mb-10" />
-      <div class="space-y-3">
+      <div class="flex flex-col gap-3">
         <Skeleton
           v-for="i in 10"
           :key="i"
@@ -20,7 +20,10 @@
         variant="outline"
         @click="navigateTo('/')"
       >
-        <ArrowLeft class="size-4 mr-2" />
+        <ArrowLeft
+          data-icon="inline-start"
+          class="mr-2"
+        />
         {{ t('pages.backHome', '返回首页') }}
       </Button>
     </template>
@@ -51,6 +54,7 @@
           </span>
         </div>
       </header>
+      <!-- eslint-disable-next-line vue/no-v-html -->
       <article
         class="prose-shadcn prose-shadcn-dark max-w-none"
         v-html="renderedContent"
@@ -97,7 +101,7 @@ const pickLocalized = (val: unknown): string => {
   return String(val)
 }
 
-const { data: raw, pending, error } = await useAPI<PageDetail>(`/pages/${slug.value}`, {
+const { data: raw, pending, error } = useAPI<PageDetail>(`/pages/${slug.value}`, {
   query: { lang: locale.value },
   key: computed(() => `page:slug:${slug.value}:${locale.value}`)
 })

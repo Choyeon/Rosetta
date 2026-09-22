@@ -1,31 +1,21 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center gap-3">
-      <div
-        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-      >
-        <HardDrive class="size-5 text-white" />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">
-          缓存管理
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          查看缓存状态并执行按粒度的清退操作
-        </p>
-      </div>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="缓存管理"
+      description="查看缓存状态并执行按粒度的清退操作"
+      :icon="HardDrive"
+    />
 
     <div class="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-4">
       <AdminCard class="rounded-2xl">
-        <div class="p-5 space-y-3">
+        <div class="flex flex-col gap-3 p-5">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               缓存后端
             </p>
             <div
               class="size-10 rounded-xl flex items-center justify-center shrink-0"
-              :class="cacheStatus.backend === 'redis' ? 'bg-[#DC382D]/15 text-[#DC382D]' : 'bg-info-muted text-info-foreground'"
+              :class="cacheStatus.backend === 'redis' ? 'bg-destructive/15 text-destructive' : 'bg-info-muted text-info-muted-foreground'"
             >
               <Database
                 v-if="cacheStatus.backend === 'redis'"
@@ -49,7 +39,7 @@
       </AdminCard>
 
       <AdminCard class="rounded-2xl">
-        <div class="p-5 space-y-3">
+        <div class="flex flex-col gap-3 p-5">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               Keys 数量
@@ -72,18 +62,18 @@
       </AdminCard>
 
       <AdminCard class="rounded-2xl">
-        <div class="p-5 space-y-3">
+        <div class="flex flex-col gap-3 p-5">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               内存占用
             </p>
-            <div class="size-10 rounded-xl bg-warning-muted text-warning-foreground flex items-center justify-center shrink-0">
+            <div class="size-10 rounded-xl bg-warning-muted text-warning-muted-foreground flex items-center justify-center shrink-0">
               <PieChart class="size-5" />
             </div>
           </div>
           <div
             v-if="!statusLoading"
-            class="space-y-0.5"
+            class="flex flex-col gap-0 .5"
           >
             <div class="text-2xl font-bold tabular-nums tracking-tight">
               {{ formatBytes(cacheStatus.memory_used_bytes) }}
@@ -100,14 +90,14 @@
       </AdminCard>
 
       <AdminCard class="rounded-2xl">
-        <div class="p-5 space-y-3">
+        <div class="flex flex-col gap-3 p-5">
           <div class="flex items-center justify-between">
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               命中率
             </p>
             <div
               class="size-10 rounded-xl flex items-center justify-center shrink-0"
-              :class="hitRateWarning ? 'bg-warning-muted text-warning-foreground' : 'bg-success-muted text-success-foreground'"
+              :class="hitRateWarning ? 'bg-warning-muted text-warning-muted-foreground' : 'bg-success-muted text-success-muted-foreground'"
             >
               <Target
                 v-if="!hitRateWarning"
@@ -121,7 +111,7 @@
           </div>
           <div
             v-if="!statusLoading"
-            class="space-y-1"
+            class="flex flex-col gap-1"
           >
             <div class="flex items-center gap-2">
               <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
@@ -174,20 +164,20 @@
           选择需要清退的缓存范围。除「全部」外，其他模式不会影响彼此的内容；清退后首次访问会变慢。
         </p>
       </div>
-      <div class="space-y-5">
+      <div class="flex flex-col gap-5">
         <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-3">
           <label
             v-for="m in modes"
             :key="m.key"
             class="flex flex-col p-4 rounded-2xl border-2 transition-all cursor-pointer group"
             :class="flushMode === m.key
-              ? 'border-[#0EA5E9] bg-[#0EA5E9]/5 shadow-soft'
-              : 'border-border bg-card hover:border-[#0EA5E9]/40 hover:bg-muted/30'"
+              ? 'border-primary bg-primary/5 shadow-soft'
+              : 'border-border bg-card hover:border-primary/40 hover:bg-muted/30'"
           >
             <div class="flex items-start gap-3">
               <input
                 type="radio"
-                class="accent-[#0EA5E9] mt-1"
+                class="accent-[hsl(var(--primary))] mt-1"
                 :checked="flushMode === m.key"
                 @change="flushMode = m.key"
               >
@@ -196,7 +186,7 @@
                   <component
                     :is="m.icon"
                     class="size-4"
-                    :class="flushMode === m.key ? 'text-[#0EA5E9]' : 'text-muted-foreground'"
+                    :class="flushMode === m.key ? 'text-primary' : 'text-muted-foreground'"
                   />
                   <div class="font-semibold">{{ m.label }}</div>
                 </div>
@@ -213,9 +203,9 @@
         <Separator />
 
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div class="space-y-0.5">
+          <div class="flex flex-col gap-0 .5">
             <h3 class="font-semibold">
-              即将执行：<span class="text-[#0EA5E9]">{{ currentModeMeta?.label }}</span>
+              即将执行：<span class="text-primary">{{ currentModeMeta?.label }}</span>
             </h3>
             <p class="text-sm text-muted-foreground">
               {{ currentModeMeta?.scope }} · 确认后将立即清退
@@ -225,16 +215,18 @@
             variant="outline"
             size="lg"
             :disabled="flushing"
-            class="rounded-2xl !px-8 group border-2 border-[#0EA5E9]/50 text-[#0369A1] hover:bg-[#0EA5E9] hover:text-white hover:border-[#0EA5E9] transition-all"
+            class="rounded-2xl !px-8 group border-2 border-primary/50 text-primary/80 hover:bg-primary hover:text-white hover:border-primary transition-all"
             @click="confirmFlushOpen = true"
           >
             <Trash2
               v-if="!flushing"
-              class="size-5 mr-2"
+              data-icon="inline-start"
+              class="mr-2"
             />
             <Loader2
               v-else
-              class="size-5 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             立即执行清退
           </Button>
@@ -253,7 +245,7 @@
             即将对 <b>{{ currentModeMeta?.label }}</b> 范围的缓存执行清退：
           </DialogDescription>
         </DialogHeader>
-        <div class="rounded-xl p-4 border border-warning/40 bg-warning-muted/30 space-y-2">
+        <div class="flex flex-col gap-2 rounded-xl p-4 border border-warning/40 bg-warning-muted/30">
           <p class="text-sm">
             <b>影响：</b>{{ currentModeMeta?.scope }}
           </p>
@@ -278,11 +270,12 @@
           >
             <Loader2
               v-if="flushing"
-              class="size-4 animate-spin"
+              data-icon="inline-start"
+              class="animate-spin"
             />
             <Trash2
               v-else
-              class="size-4"
+              data-icon="inline-start"
             />
             确认清退
           </Button>

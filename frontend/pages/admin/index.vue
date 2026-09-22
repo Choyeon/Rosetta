@@ -175,7 +175,7 @@ type ActivityItem = {
   time: string
   accent: 'primary' | 'success' | 'warning' | 'info' | 'error'
 }
-const activities = ref<ActivityItem[]>([])
+const activities = shallowRef<ActivityItem[]>([])
 
 // ============== 工具：相对时间 ==============
 function timeAgo(iso: string | null | undefined): string {
@@ -205,126 +205,122 @@ function openHomepage() {
 async function loadAll() {
   loading.value = true
   try {
-    const raw = await fetchDashboardStats(statsRange.value)
-    // 防御性：规范化 API 返回 shape，避免 summary/timeseries/system_health 等字段缺失导致崩溃
-    // 注意：默认值写在前面，API 展开在后面，避免 TS2783 重复字段告警
-    const defaultSummary = {
-      total_posts: 0,
-      total_published: 0,
-      total_drafts: 0,
-      total_views_today: 0,
-      total_users: 0,
-      total_pending_comments: 0,
-      total_comments: 0,
-      total_comments_today: 0
-    }
-    const defaultTimeseries = { labels: [] as string[], datasets: [] as Array<{ key: string, values: number[] }> }
-    const defaultHealth = {
-      cpu_percent: null as number | null,
-      memory_percent: null as number | null,
-      db_rtt_ms: null as number | null,
-      cache_hit_percent: null as number | null,
-      health_score: 0
-    }
-    statsRaw.value = {
-      summary: { ...defaultSummary, ...(raw?.summary ?? {}) },
-      timeseries: { ...defaultTimeseries, ...(raw?.timeseries ?? {}) },
-      top_articles: Array.isArray(raw?.top_articles) ? raw.top_articles : [],
-      active_commenters: Array.isArray(raw?.active_commenters) ? raw.active_commenters : [],
-      system_health: { ...defaultHealth, ...(raw?.system_health ?? {}) }
-    }
-    const s = statsRaw.value.summary
-    const pvSeries = statsRaw.value.timeseries.datasets?.find(d => d.key === 'pv')?.values ?? []
-    const sevenDayViews = pvSeries.reduce((a: number, b: number) => a + b, 0)
-    const lastDayPv = pvSeries.length ? pvSeries[pvSeries.length - 1] : 0
-    summary.value = {
-      postsCount: (s.total_posts as number) ?? 0,
-      publishedCount: (s.total_published as number) ?? 0,
-      draftCount: (s.total_drafts as number) ?? 0,
-      views24h: ((s.total_views_today as number) ?? lastDayPv) ?? 0,
-      views7d: sevenDayViews,
-      usersCount: (s.total_users as number) ?? 0,
-      pendingComments: (s.total_pending_comments as number) ?? 0,
-      totalComments: (s.total_comments as number) ?? 0,
-      totalCommentsToday: (s.total_comments_today as number) ?? 0,
-      oobeComplete: true
+    // 并行：stats 与 posts/comments/activities 互不依赖，一次性发出
+    const [statsRes, postsRes, commentsRes, actRes] = await Promise.allSettled([
+      fetchDashboardStats(statsRange.value),
+      fetchRecentPosts(5),
+      fetchAdminComments({ page: 1, page_size: 5, status: 'pending' }).catch(
+        () => null as unknown as { items: AdminComment[] }
+      ),
+      fetchAdminActivities({ page: 1, page_size: 5 }).catch(
+        () => null as unknown as { items: AdminActivity[] }
+      )
+    ])
+
+    if (statsRes.status === 'fulfilled') {
+      const raw = statsRes.value
+      // 防御性：规范化 API 返回 shape，避免 summary/timeseries/system_health 等字段缺失导致崩溃
+      const defaultSummary = {
+        total_posts: 0,
+        total_published: 0,
+        total_drafts: 0,
+        total_views_today: 0,
+        total_users: 0,
+        total_pending_comments: 0,
+        total_comments: 0,
+        total_comments_today: 0
+      }
+      const defaultTimeseries = { labels: [] as string[], datasets: [] as Array<{ key: string, values: number[] }> }
+      const defaultHealth = {
+        cpu_percent: null as number | null,
+        memory_percent: null as number | null,
+        db_rtt_ms: null as number | null,
+        cache_hit_percent: null as number | null,
+        health_score: 0
+      }
+      statsRaw.value = {
+        summary: { ...defaultSummary, ...(raw?.summary ?? {}) },
+        timeseries: { ...defaultTimeseries, ...(raw?.timeseries ?? {}) },
+        top_articles: Array.isArray(raw?.top_articles) ? raw.top_articles : [],
+        active_commenters: Array.isArray(raw?.active_commenters) ? raw.active_commenters : [],
+        system_health: { ...defaultHealth, ...(raw?.system_health ?? {}) }
+      }
+      const s = statsRaw.value.summary
+      const pvSeries = statsRaw.value.timeseries.datasets?.find(d => d.key === 'pv')?.values ?? []
+      const sevenDayViews = pvSeries.reduce((a: number, b: number) => a + b, 0)
+      const lastDayPv = pvSeries.length ? pvSeries[pvSeries.length - 1] : 0
+      summary.value = {
+        postsCount: (s.total_posts as number) ?? 0,
+        publishedCount: (s.total_published as number) ?? 0,
+        draftCount: (s.total_drafts as number) ?? 0,
+        views24h: ((s.total_views_today as number) ?? lastDayPv) ?? 0,
+        views7d: sevenDayViews,
+        usersCount: (s.total_users as number) ?? 0,
+        pendingComments: (s.total_pending_comments as number) ?? 0,
+        totalComments: (s.total_comments as number) ?? 0,
+        totalCommentsToday: (s.total_comments_today as number) ?? 0,
+        oobeComplete: true
+      }
+      rangeRingback.value = calcRingback()
     }
 
-    // 衍生：近 7/30 天总量与前一半环比
-    rangeRingback.value = calcRingback()
-
-    // Top articles / commenters / health 直接走原始引用
     // 活动时间线（最近文章 + 待审评论 + 动态）
-    try {
-      const [postsRes, commentsRes, actRes] = await Promise.allSettled([
-        fetchRecentPosts(5),
-        fetchAdminComments({ page: 1, page_size: 5, status: 'pending' }).catch(
-          () => null as unknown as { items: AdminComment[] }
-        ),
-        fetchAdminActivities({ page: 1, page_size: 5 }).catch(
-          () => null as unknown as { items: AdminActivity[] }
-        )
-      ])
+    const merged: ActivityItem[] = []
 
-      const merged: ActivityItem[] = []
-
-      if (postsRes.status === 'fulfilled') {
-        for (const p of postsRes.value.slice(0, 3)) {
-          merged.push({
-            id: 10000 + Number(p.id),
-            icon: 'post',
-            text: `${p.status === 'published' ? '已发布' : '草稿'}：《${p.title}》`,
-            time: timeAgo(p.published_at ?? p.created_at),
-            accent: p.status === 'published' ? 'success' : 'warning'
-          })
-        }
+    if (postsRes.status === 'fulfilled') {
+      for (const p of postsRes.value.slice(0, 3)) {
+        merged.push({
+          id: 10000 + Number(p.id),
+          icon: 'post',
+          text: `${p.status === 'published' ? '已发布' : '草稿'}：《${p.title}》`,
+          time: timeAgo(p.published_at ?? p.created_at),
+          accent: p.status === 'published' ? 'success' : 'warning'
+        })
       }
-
-      if (
-        commentsRes.status === 'fulfilled'
-        && commentsRes.value
-        && Array.isArray((commentsRes.value as { items: AdminComment[] }).items)
-      ) {
-        for (const c of (commentsRes.value as { items: AdminComment[] }).items.slice(0, 3)) {
-          merged.push({
-            id: 20000 + Number(c.id),
-            icon: 'comment',
-            text: `新评论待审核：来自「${c.author_name}」`,
-            time: timeAgo(c.created_at),
-            accent: 'warning'
-          })
-        }
-      }
-
-      if (
-        actRes.status === 'fulfilled'
-        && actRes.value
-        && Array.isArray((actRes.value as { items: AdminActivity[] }).items)
-      ) {
-        let fallbackSeq = 0
-        for (const a of (actRes.value as { items: AdminActivity[] }).items.slice(0, 3)) {
-          const content: string
-            = (a as unknown as { content?: string }).content
-              ?? (a as unknown as { text?: string }).text
-              ?? (a as unknown as { message?: string }).message
-              ?? '发布了新动态'
-          fallbackSeq += 1
-          const idN = Number((a as unknown as { id?: number | string }).id)
-          merged.push({
-            id: Number.isFinite(idN) && idN > 0 ? 30000 + idN : 3000000 + fallbackSeq,
-            icon: 'system',
-            text: content.slice(0, 60),
-            time: timeAgo((a as unknown as { created_at?: string }).created_at),
-            accent: 'primary'
-          })
-        }
-      }
-
-      merged.sort((x, y) => y.id - x.id)
-      activities.value = merged.slice(0, 6)
-    } catch {
-      activities.value = []
     }
+
+    if (
+      commentsRes.status === 'fulfilled'
+      && commentsRes.value
+      && Array.isArray((commentsRes.value as { items: AdminComment[] }).items)
+    ) {
+      for (const c of (commentsRes.value as { items: AdminComment[] }).items.slice(0, 3)) {
+        merged.push({
+          id: 20000 + Number(c.id),
+          icon: 'comment',
+          text: `新评论待审核：来自「${c.author_name}」`,
+          time: timeAgo(c.created_at),
+          accent: 'warning'
+        })
+      }
+    }
+
+    if (
+      actRes.status === 'fulfilled'
+      && actRes.value
+      && Array.isArray((actRes.value as { items: AdminActivity[] }).items)
+    ) {
+      let fallbackSeq = 0
+      for (const a of (actRes.value as { items: AdminActivity[] }).items.slice(0, 3)) {
+        const content: string
+          = (a as unknown as { content?: string }).content
+            ?? (a as unknown as { text?: string }).text
+            ?? (a as unknown as { message?: string }).message
+            ?? '发布了新动态'
+        fallbackSeq += 1
+        const idN = Number((a as unknown as { id?: number | string }).id)
+        merged.push({
+          id: Number.isFinite(idN) && idN > 0 ? 30000 + idN : 3000000 + fallbackSeq,
+          icon: 'system',
+          text: content.slice(0, 60),
+          time: timeAgo((a as unknown as { created_at?: string }).created_at),
+          accent: 'primary'
+        })
+      }
+    }
+
+    merged.sort((x, y) => y.id - x.id)
+    activities.value = merged.slice(0, 6)
   } catch {
     // 错误已由 apiFetch 统一 toast，此处仅做状态兜底
     activities.value = []
@@ -863,7 +859,7 @@ const topArticlesOption = computed(() => {
 
   return {
     animationDuration: 900,
-    grid: { left: 8, right: 36, top: 24, bottom: 8, containLabel: true },
+    grid: { left: 8, right: 36, top: 24, bottom: 8 },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -1102,16 +1098,16 @@ const iconFor = (t: ActivityItem['icon']) =>
   })[t]
 const pillFor = (a: ActivityItem['accent']) =>
   ({
-    primary: 'bg-[#E0F2FE] text-[#0369A1] dark:bg-[#075985]/40 dark:text-[#BAE6FD]',
-    success: 'bg-[#ECFDF5] text-[#065F46] dark:bg-[#064E3B]/40 dark:text-[#A7F3D0]',
-    warning: 'bg-[#FEF9C3] text-[#854D0E] dark:bg-[#713F12]/40 dark:text-[#FDE68A]',
-    info: 'bg-[#EFF6FF] text-[#1E40AF] dark:bg-[#1E3A8A]/40 dark:text-[#BFDBFE]',
-    error: 'bg-[#FEF2F2] text-[#991B1B] dark:bg-[#7F1D1D]/40 dark:text-[#FECACA]'
+    primary: 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground',
+    success: 'bg-success-muted text-success-muted-foreground',
+    warning: 'bg-warning-muted text-warning-muted-foreground',
+    info: 'bg-info-muted text-info-muted-foreground',
+    error: 'bg-error-muted text-error-muted-foreground'
   })[a]
 </script>
 
 <template>
-  <div class="admin-dashboard-v2 space-y-5 py-1 animate-in">
+  <div class="flex flex-col gap-5 admin-dashboard-v2 py-1 animate-in">
     <!-- =============== HERO =============== -->
     <section
       class="relative overflow-hidden rounded-2xl p-6 md:p-7 border"
@@ -1123,7 +1119,7 @@ const pillFor = (a: ActivityItem['accent']) =>
         aria-hidden="true"
         viewBox="0 0 600 260"
         preserveAspectRatio="none"
-        class="pointer-events-none absolute inset-0 w-full h-full opacity-60"
+        class="pointer-events-none absolute inset-0 size-full opacity-60"
         :class="orbColors.mixBlend"
       >
         <defs>
@@ -1247,7 +1243,10 @@ const pillFor = (a: ActivityItem['accent']) =>
                 : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/25'"
               @click="navigateTo('/admin/content/posts/new')"
             >
-              <PencilLine class="size-4 mr-1" />
+              <PencilLine
+                data-icon="inline-start"
+                class="mr-1"
+              />
               写一篇新文章
             </Button>
             <Button
@@ -1259,7 +1258,10 @@ const pillFor = (a: ActivityItem['accent']) =>
                 : 'bg-white/60 border-slate-300/70 text-slate-800 hover:bg-white hover:text-slate-900 hover:border-sky-400'"
               @click="openHomepage"
             >
-              <LayoutDashboard class="size-4 mr-1" />
+              <LayoutDashboard
+                data-icon="inline-start"
+                class="mr-1"
+              />
               查看前台
             </Button>
             <Button
@@ -1271,14 +1273,17 @@ const pillFor = (a: ActivityItem['accent']) =>
                 : 'bg-white/40 border-slate-300/60 text-slate-700 hover:bg-white/80 hover:text-slate-900 hover:border-sky-400'"
               @click="navigateTo('/admin/tools/seo')"
             >
-              <Search class="size-4 mr-1" />
+              <Search
+                data-icon="inline-start"
+                class="mr-1"
+              />
               SEO 工作台
             </Button>
           </div>
         </div>
 
         <!-- Hero 右侧：环形迷你总览 -->
-        <div class="relative shrink-0 grid grid-cols-3 gap-3 md:w-[380px]">
+        <div class="relative grid grid-cols-3 gap-3 w-full md:max-w-[380px] md:shrink-0">
           <div
             v-for="tile in [
               {
@@ -1535,7 +1540,10 @@ const pillFor = (a: ActivityItem['accent']) =>
               @click="navigateTo(card.action!.to)"
             >
               {{ card.action.label }}
-              <ChevronRight class="size-3.5 ml-0.5 opacity-70 group-hover/act:translate-x-0.5 transition-transform" />
+              <ChevronRight
+                data-icon="inline-end"
+                class="ml-0.5 opacity-70 group-hover/act:translate-x-0.5 transition-transform"
+              />
             </Button>
           </div>
         </div>
@@ -1545,7 +1553,7 @@ const pillFor = (a: ActivityItem['accent']) =>
     <!-- =============== 主图表区 Row 1 =============== -->
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <!-- Traffic Overview (col 8/12) -->
-      <Card class="xl:col-span-8 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-8 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 py-4">
           <div>
             <CardTitle class="text-[15px] flex items-center gap-2">
@@ -1608,7 +1616,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           </div>
         </CardHeader>
         <CardContent class="pt-0 pb-4">
-          <div class="h-[360px] -mx-2">
+          <div class="h-[260px] md:h-[300px] xl:h-[360px] -mx-2">
             <Skeleton
               v-if="loading"
               class="h-full w-full rounded-xl"
@@ -1624,7 +1632,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       </Card>
 
       <!-- Content Donut (col 4/12) -->
-      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-4 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1643,7 +1651,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           </Badge>
         </CardHeader>
         <CardContent class="pt-0 pb-3">
-          <div class="h-[360px] -mx-2">
+          <div class="h-[260px] md:h-[300px] xl:h-[360px] -mx-2">
             <Skeleton
               v-if="loading"
               class="h-full w-full rounded-xl"
@@ -1662,7 +1670,7 @@ const pillFor = (a: ActivityItem['accent']) =>
     <!-- =============== 主图表区 Row 2 =============== -->
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <!-- Top Articles (col 5/12) -->
-      <Card class="xl:col-span-5 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-5 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1681,7 +1689,10 @@ const pillFor = (a: ActivityItem['accent']) =>
                 @click="navigateTo('/admin/content/posts')"
               >
                 更多
-                <ArrowUpRight class="size-4 ml-0.5" />
+                <ArrowUpRight
+                  data-icon="inline-end"
+                  class="ml-0.5"
+                />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -1692,7 +1703,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           </Tooltip>
         </CardHeader>
         <CardContent class="pt-0 pb-3">
-          <div class="h-[320px] -mx-2">
+          <div class="h-[240px] md:h-[280px] xl:h-[320px] -mx-2">
             <Skeleton
               v-if="loading"
               class="h-full w-full rounded-xl"
@@ -1708,7 +1719,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       </Card>
 
       <!-- System Health: Radar + Gauge (col 4/12) -->
-      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-4 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1736,20 +1747,20 @@ const pillFor = (a: ActivityItem['accent']) =>
         <CardContent class="pt-0 pb-2">
           <Skeleton
             v-if="loading"
-            class="h-[320px] w-full rounded-xl"
+            class="h-[220px] md:h-[260px] xl:h-[320px] w-full rounded-xl"
           />
           <div
             v-else
             class="grid grid-cols-1 md:grid-cols-2 gap-1 items-center"
           >
-            <div class="h-[260px] -mx-1">
+            <div class="h-[200px] md:h-[230px] xl:h-[260px] -mx-1">
               <v-chart
                 autoresize
                 :option="healthRadarOption"
                 class="h-full w-full"
               />
             </div>
-            <div class="h-[260px] -mx-1 -my-3">
+            <div class="h-[200px] md:h-[230px] xl:h-[260px] -mx-1 -my-3">
               <v-chart
                 autoresize
                 :option="healthGaugeOption"
@@ -1782,7 +1793,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       </Card>
 
       <!-- Active Commenters (col 3/12) -->
-      <Card class="xl:col-span-3 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-3 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1799,12 +1810,15 @@ const pillFor = (a: ActivityItem['accent']) =>
             @click="navigateTo('/admin/users')"
           >
             社区
-            <ChevronRight class="size-4 ml-0.5" />
+            <ChevronRight
+              data-icon="inline-end"
+              class="ml-0.5"
+            />
           </Button>
         </CardHeader>
         <CardContent class="pt-0 pb-4">
           <template v-if="loading">
-            <div class="space-y-3.5">
+            <div class="flex flex-col gap-3.5">
               <Skeleton
                 v-for="i in 5"
                 :key="i"
@@ -1814,7 +1828,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           </template>
           <ul
             v-else-if="commenters.length"
-            class="space-y-3.5"
+            class="flex flex-col gap-3.5"
           >
             <li
               v-for="(c, idx) in commenters"
@@ -1875,12 +1889,12 @@ const pillFor = (a: ActivityItem['accent']) =>
                       width: `${(Number(c.comments_count) / commentersMax) * 100}%`,
                       background:
                         idx === 0
-                          ? 'linear-gradient(90deg,#F59E0B,#FBBF24)'
+                          ? 'linear-gradient(90deg, hsl(var(--warning)), hsl(var(--warning) / 0.7))'
                           : idx === 1
-                            ? 'linear-gradient(90deg,#64748B,#94A3B8)'
+                            ? 'linear-gradient(90deg, hsl(var(--muted-foreground)), hsl(var(--muted-foreground) / 0.6))'
                             : idx === 2
-                              ? 'linear-gradient(90deg,#EA580C,#FB923C)'
-                              : 'linear-gradient(90deg,#0EA5E9,#38BDF8)'
+                              ? 'linear-gradient(90deg, hsl(var(--warning) / 0.8), hsl(var(--warning) / 0.5))'
+                              : 'linear-gradient(90deg, hsl(var(--primary)), hsl(var(--primary) / 0.6))'
                     }"
                   />
                 </div>
@@ -1899,7 +1913,7 @@ const pillFor = (a: ActivityItem['accent']) =>
 
     <!-- =============== Row 3: 近期活动 + 快捷入口 =============== -->
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
-      <Card class="xl:col-span-8 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-8 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
           <div>
             <CardTitle class="text-[15px]">
@@ -1916,11 +1930,14 @@ const pillFor = (a: ActivityItem['accent']) =>
             @click="navigateTo('/admin/tools/audit-logs')"
           >
             审计日志
-            <ChevronRight class="size-4 ml-0.5" />
+            <ChevronRight
+              data-icon="inline-end"
+              class="ml-0.5"
+            />
           </Button>
         </CardHeader>
         <CardContent class="pt-0 pb-4">
-          <ol class="relative border-l border-border ml-2.5 mt-2 space-y-5 pl-6">
+          <ol class="flex flex-col gap-5 relative border-l border-border ml-2.5 mt-2 pl-6">
             <template v-if="loading">
               <li
                 v-for="i in 6"
@@ -1966,7 +1983,7 @@ const pillFor = (a: ActivityItem['accent']) =>
         </CardContent>
       </Card>
 
-      <Card class="xl:col-span-4 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
+      <Card class="xl:col-span-4 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="py-4">
           <CardTitle class="text-[15px]">
             快捷入口
@@ -1979,21 +1996,21 @@ const pillFor = (a: ActivityItem['accent']) =>
           <div class="grid grid-cols-2 gap-2.5">
             <button
               v-for="q in [
-                { title: '新建文章', icon: PenTool, to: '/admin/content/posts/new', grad: '#0EA5E9,#0284C7' },
-                { title: '站点设置', icon: Settings, to: '/admin/system/settings', grad: '#6366F1,#4F46E5' },
-                { title: '媒体库', icon: LibraryBig, to: '/admin/media/library', grad: '#14B8A6,#0D9488' },
-                { title: '权限管理', icon: ShieldCheck, to: '/admin/roles', grad: '#0EA5E9,#0E7490' },
-                { title: '审核评论', icon: MessageSquare, to: '/admin/interaction/comments', grad: '#F59E0B,#D97706' },
-                { title: 'SEO 工具', icon: Search, to: '/admin/tools/seo', grad: '#0369A1,#075985' }
+                { title: '新建文章', icon: PenTool, to: '/admin/content/posts/new', colorVar: '--primary' },
+                { title: '站点设置', icon: Settings, to: '/admin/system/settings', colorVar: '--info' },
+                { title: '媒体库', icon: LibraryBig, to: '/admin/media/library', colorVar: '--success' },
+                { title: '权限管理', icon: ShieldCheck, to: '/admin/roles', colorVar: '--primary' },
+                { title: '审核评论', icon: MessageSquare, to: '/admin/interaction/comments', colorVar: '--warning' },
+                { title: 'SEO 工具', icon: Search, to: '/admin/tools/seo', colorVar: '--info' }
               ]"
               :key="q.title"
               type="button"
-              class="group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-14px_rgba(14,165,233,0.45)] hover:border-primary/30 transition-all duration-200 text-left"
+              class="group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-14px_hsl(var(--primary)/0.45)] hover:border-primary/30 transition-all duration-200 text-left"
               @click="navigateTo(q.to)"
             >
               <div
                 class="shrink-0 size-9 rounded-lg text-white flex items-center justify-center shadow-sm"
-                :style="{ background: `linear-gradient(135deg, ${q.grad})` }"
+                :style="{ background: `linear-gradient(135deg, hsl(var(${q.colorVar})) 0%, hsl(var(${q.colorVar}) / 0.7) 100%)` }"
               >
                 <component
                   :is="q.icon"

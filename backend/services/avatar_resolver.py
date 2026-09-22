@@ -1,4 +1,4 @@
-﻿"""
+"""
 头像解析器（纯函数，无 DB/HTTP IO）。
 
 Avatar 选择优先级（当 avatar_source == "auto" 时，从高到低）：
@@ -10,6 +10,7 @@ Avatar 选择优先级（当 avatar_source == "auto" 时，从高到低）：
 
 当 avatar_source 强制指定（qq/github/gravatar/custom）时，直接走对应分支，若失败返回 None。
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -35,7 +36,7 @@ def _gravatar_base() -> str:
 @dataclass(frozen=True)
 class AvatarInput:
     avatar_source: AvatarSource = "auto"
-    avatar: str | None = None          # custom 模式下使用（User.avatar）
+    avatar: str | None = None  # custom 模式下使用（User.avatar）
     github: str | None = None
     qq: str | None = None
     email: str | None = None
@@ -78,9 +79,7 @@ def validate_input(inp: AvatarInput) -> dict[str, str | None]:
         "github": _normalize_github(inp.github),
         "qq": _normalize_qq(inp.qq),
         "email": inp.email if (inp.email and EMAIL_RE.match(inp.email.strip())) else None,
-        "avatar": inp.avatar
-        if (inp.avatar and WEBSITE_URL_RE.match(inp.avatar.strip()))
-        else None,
+        "avatar": inp.avatar if (inp.avatar and WEBSITE_URL_RE.match(inp.avatar.strip())) else None,
     }
 
 

@@ -1,21 +1,19 @@
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
-import type { Post, PostCreate, Category, Tag } from '~~/types/api'
+import type { Post, PostCreate } from '~~/types/api'
 import I18nTabsEditor from './I18nTabsEditor.vue'
 import { usePosts } from '~~/composables/usePosts'
 import {
   fetchAdminCategories,
-  fetchAdminTags
+  fetchAdminTags,
+  type AdminCategory,
+  type AdminTag
 } from '~~/composables/useAdminManage'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
+import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import AdminCard from './AdminCard.vue'
 import { Badge } from '~~/components/ui/badge'
@@ -28,6 +26,17 @@ import {
   SelectTrigger,
   SelectValue
 } from '~~/components/ui/select'
+import {
+  Globe,
+  Lock,
+  EyeOff,
+  Check,
+  X,
+  Image as ImageIcon,
+  Save,
+  Send,
+  Eye
+} from '@lucide/vue'
 
 const props = defineProps<{
   mode: 'new' | 'edit'
@@ -66,8 +75,8 @@ const form = reactive({
 })
 
 const initialStateSnapshot = ref<string>('')
-const categories = ref<Category[]>([])
-const tags = ref<Tag[]>([])
+const categories = ref<AdminCategory[]>([])
+const tags = ref<AdminTag[]>([])
 const categoriesLoading = ref(false)
 const tagsLoading = ref(false)
 const submitting = ref(false)
@@ -78,6 +87,7 @@ const tagSearchQuery = ref('')
 const draftExists = ref(false)
 const draftSavedAt = ref<string | null>(null)
 const coverInputRef = ref<HTMLInputElement | null>(null)
+const tagComboboxRef = ref<HTMLDivElement | null>(null)
 
 const isDirty = computed(() => {
   return JSON.stringify(form) !== initialStateSnapshot.value
@@ -91,40 +101,11 @@ const filteredTags = computed(() => {
   )
 })
 
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
-// i18n dict 归一化：string 视为 zh；dict 补全 4 语言键（缺的补空串）
-const normalizeI18n = (v: string | Record<string, string> | null | undefined): Record<string, string> => {
-  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
-  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
-  return {
-    zh: v.zh ?? '',
-    en: v.en ?? '',
-    ja: v.ja ?? '',
-    zh_Hant: v.zh_Hant ?? ''
-  }
-}
-
-// i18n dict → 提交 payload：过滤空语言，全部为空则返回 undefined
-const toI18nPayload = (v: Record<string, string>): Record<string, string> | undefined => {
-  const out: Record<string, string> = {}
-  for (const [lang, val] of Object.entries(v)) {
-    if (val && val.trim()) out[lang] = val
-  }
-  return Object.keys(out).length > 0 ? out : undefined
-}
-
-const slugify = (text: string): string => {
-  let s = text.trim().toLowerCase()
-  s = s.replace(/[\s]+/g, '-')
-  s = s.replace(/[^\w\u4e00-\u9fa5-]/g, '')
-  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
-  return s
-}
+const visibilityOptions = [
+  { value: 'public' as const, label: '公开', description: '所有人可见', icon: Globe },
+  { value: 'password' as const, label: '密码保护', description: '需要密码才能查看', icon: Lock },
+  { value: 'private' as const, label: '私密', description: '仅管理员可见', icon: EyeOff }
+]
 
 let slugManualEdit = false
 watch(
@@ -163,20 +144,20 @@ const loadTags = async () => {
 }
 
 const applyInitialData = (data: Post) => {
-  form.title = normalizeI18n(data.title)
+  form.title = normalizeI18nDict(data.title)
   form.slug = data.slug
-  form.content = normalizeI18n(data.content)
+  form.content = normalizeI18nDict(data.content)
   form.status = data.status
   form.is_pinned = data.is_pinned
   form.allow_comments = data.allow_comments
   form.visibility = data.is_password_protected ? 'password' : 'public'
   form.category_id = data.category?.id ?? null
   form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
-  form.excerpt = normalizeI18n(data.excerpt)
+  form.excerpt = normalizeI18nDict(data.excerpt)
   form.cover_image = data.cover_image || ''
-  form.meta_title = normalizeI18n(data.meta_title)
-  form.meta_description = normalizeI18n(data.meta_description)
-  form.meta_keywords = normalizeI18n(data.meta_keywords)
+  form.meta_title = normalizeI18nDict(data.meta_title)
+  form.meta_description = normalizeI18nDict(data.meta_description)
+  form.meta_keywords = normalizeI18nDict(data.meta_keywords)
   slugManualEdit = !!data.slug
   nextTick(() => {
     initialStateSnapshot.value = JSON.stringify(form)
@@ -230,13 +211,12 @@ const restoreDraft = () => {
       const parsed = JSON.parse(raw)
       if (parsed?.form) {
         Object.assign(form, parsed.form)
-        // 兼容旧格式草稿（单语 string）：i18n 字段统一归一化为 dict
-        form.title = normalizeI18n(form.title)
-        form.content = normalizeI18n(form.content)
-        form.excerpt = normalizeI18n(form.excerpt)
-        form.meta_title = normalizeI18n(form.meta_title)
-        form.meta_description = normalizeI18n(form.meta_description)
-        form.meta_keywords = normalizeI18n(form.meta_keywords)
+        form.title = normalizeI18nDict(form.title)
+        form.content = normalizeI18nDict(form.content)
+        form.excerpt = normalizeI18nDict(form.excerpt)
+        form.meta_title = normalizeI18nDict(form.meta_title)
+        form.meta_description = normalizeI18nDict(form.meta_description)
+        form.meta_keywords = normalizeI18nDict(form.meta_keywords)
         slugManualEdit = !!form.slug
         toast.success('草稿已恢复')
       }
@@ -273,7 +253,7 @@ const removeTag = (id: number) => {
   if (idx !== -1) form.tag_ids.splice(idx, 1)
 }
 
-const getTagById = (id: number): Tag | undefined => tags.value.find(t => t.id === id)
+const getTagById = (id: number): AdminTag | undefined => tags.value.find(t => t.id === id)
 
 const handleCoverUpload = async (e: Event) => {
   const input = e.target as HTMLInputElement
@@ -415,8 +395,20 @@ const onBeforeUnload = (e: BeforeUnloadEvent) => {
   }
 }
 
-// 防御性兜底：若父组件异步传入 initialData（如编辑页先 loading 再赋值），
-// 在 onMounted 之后才就绪，需用 watch 补触发一次初始化，避免内容丢失。
+const onTagComboboxBlur = () => {
+  setTimeout(() => {
+    tagComboboxOpen.value = false
+    tagSearchQuery.value = ''
+  }, 200)
+}
+
+const onClickOutsideTagCombobox = (e: MouseEvent) => {
+  if (tagComboboxRef.value && !tagComboboxRef.value.contains(e.target as Node)) {
+    tagComboboxOpen.value = false
+    tagSearchQuery.value = ''
+  }
+}
+
 watch(
   () => props.initialData,
   (val) => {
@@ -433,6 +425,7 @@ const hasAppliedInitial = ref(false)
 onMounted(async () => {
   document.addEventListener('keydown', onKeyDown)
   window.addEventListener('beforeunload', onBeforeUnload as EventListener)
+  document.addEventListener('click', onClickOutsideTagCombobox)
 
   checkExistingDraft()
   await Promise.all([loadCategories(), loadTags()])
@@ -448,6 +441,7 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeyDown)
   window.removeEventListener('beforeunload', onBeforeUnload as EventListener)
+  document.removeEventListener('click', onClickOutsideTagCombobox)
   if (draftDebounceTimer) clearTimeout(draftDebounceTimer)
   saveDraftToLocalStorage()
 })
@@ -457,8 +451,8 @@ onBeforeUnmount(() => {
   <div class="flex flex-col gap-4">
     <Alert
       v-if="draftExists"
-      variant="default"
-      class="bg-amber-50 border-amber-200 text-amber-900 rounded-[12px]"
+      variant="warning"
+      class="rounded-[12px]"
     >
       <AlertTitle class="font-semibold">
         发现未保存草稿
@@ -520,316 +514,340 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="w-full lg:w-2/5">
-        <div class="flex flex-col gap-4 max-h-[calc(100vh-380px)] overflow-y-auto pr-1">
+        <div class="lg:sticky lg:top-4 lg:self-start flex flex-col gap-4 max-h-[calc(100vh-120px)] overflow-y-auto pr-1 scrollbar-thin">
           <AdminCard class="p-5 flex flex-col gap-4">
             <div>
               <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
-                <div class="flex flex-col gap-3">
-                  <div>
-                    <Label class="text-xs text-muted-foreground mb-1 block">状态 *</Label>
-                    <Select v-model="form.status">
-                      <SelectTrigger class="h-9 rounded-[10px]">
-                        <SelectValue placeholder="选择状态" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">
-                          草稿
-                        </SelectItem>
-                        <SelectItem value="published">
-                          已发布
-                        </SelectItem>
-                        <SelectItem value="scheduled">
-                          定时发布
-                        </SelectItem>
-                        <SelectItem value="archived">
-                          已归档
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div v-if="form.status === 'scheduled'">
-                    <Label class="text-xs text-muted-foreground mb-1 block">定时时间 *</Label>
-                    <Input
-                      v-model="form.scheduled_at"
-                      type="datetime-local"
-                      class="h-9 rounded-[10px] text-sm"
-                    />
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <Label class="text-sm">置顶</Label>
-                    <Switch v-model="form.is_pinned" />
-                  </div>
-                  <div class="flex items-center justify-between">
-                    <Label class="text-sm">允许评论</Label>
-                    <Switch v-model="form.allow_comments" />
-                  </div>
+              <div class="flex flex-col gap-3">
+                <div>
+                  <Label class="text-xs text-muted-foreground mb-1 block">状态 *</Label>
+                  <Select v-model="form.status">
+                    <SelectTrigger class="h-9 rounded-[10px]">
+                      <SelectValue placeholder="选择状态" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="draft">
+                        草稿
+                      </SelectItem>
+                      <SelectItem value="published">
+                        已发布
+                      </SelectItem>
+                      <SelectItem value="scheduled">
+                        定时发布
+                      </SelectItem>
+                      <SelectItem value="archived">
+                        已归档
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-
-              <div class="h-px bg-border" />
-
-              <div>
-                <Label class="mb-2 block text-sm font-medium">可见性</Label>
-                <div class="flex flex-col gap-2">
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input
-                      v-model="form.visibility"
-                      type="radio"
-                      value="public"
-                      class="accent-primary"
-                    >
-                    <span class="text-sm">公开</span>
-                  </label>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input
-                      v-model="form.visibility"
-                      type="radio"
-                      value="password"
-                      class="accent-primary"
-                    >
-                    <span class="text-sm">密码保护</span>
-                  </label>
-                  <label class="flex items-center gap-2 cursor-pointer">
-                    <input
-                      v-model="form.visibility"
-                      type="radio"
-                      value="private"
-                      class="accent-primary"
-                    >
-                    <span class="text-sm">私密</span>
-                  </label>
-                </div>
-                <div
-                  v-if="form.visibility === 'password'"
-                  class="mt-2"
-                >
+                <div v-if="form.status === 'scheduled'">
+                  <Label class="text-xs text-muted-foreground mb-1 block">定时时间 *</Label>
                   <Input
-                    v-model="form.password"
-                    type="password"
-                    placeholder="访问密码"
+                    v-model="form.scheduled_at"
+                    type="datetime-local"
                     class="h-9 rounded-[10px] text-sm"
                   />
                 </div>
+                <div class="flex items-center justify-between">
+                  <Label class="text-sm">置顶</Label>
+                  <Switch v-model="form.is_pinned" />
+                </div>
+                <div class="flex items-center justify-between">
+                  <Label class="text-sm">允许评论</Label>
+                  <Switch v-model="form.allow_comments" />
+                </div>
               </div>
+            </div>
 
-              <div class="h-px bg-border" />
+            <div class="h-px bg-border" />
 
-              <div>
-                <Label class="text-xs text-muted-foreground mb-1 block">分类</Label>
-                <Select
-                  :model-value="form.category_id?.toString() ?? ''"
-                  @update:model-value="(v) => form.category_id = v ? Number(v) : null"
+            <div>
+              <Label class="mb-2 block text-sm font-medium">可见性</Label>
+              <div class="flex flex-col gap-1.5">
+                <label
+                  v-for="opt in visibilityOptions"
+                  :key="opt.value"
+                  class="flex items-start gap-3 rounded-[10px] border px-3 py-2.5 cursor-pointer transition-colors"
+                  :class="form.visibility === opt.value
+                    ? 'border-primary bg-primary/5'
+                    : 'border-transparent hover:bg-muted/50'"
                 >
-                  <SelectTrigger class="h-9 rounded-[10px]">
-                    <SelectValue :placeholder="categoriesLoading ? '加载中...' : '选择分类'" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="">
-                      无分类
-                    </SelectItem>
-                    <SelectItem
-                      v-for="c in categories"
-                      :key="c.id"
-                      :value="c.id.toString()"
+                  <div class="mt-0.5">
+                    <div
+                      class="size-4 rounded-full border-2 flex items-center justify-center transition-colors"
+                      :class="form.visibility === opt.value
+                        ? 'border-primary'
+                        : 'border-muted-foreground/40'"
                     >
-                      <div class="flex items-center gap-2">
-                        <span
-                          class="w-2.5 h-2.5 rounded-full inline-block"
-                          :style="{ background: c.color || '#94a3b8' }"
-                        />
-                        {{ getLocalizedStr(c.name) }}
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <Label class="text-xs text-muted-foreground mb-1 block">标签</Label>
-                <div class="relative">
-                  <div
-                    class="min-h-9 px-2.5 py-1.5 rounded-[10px] border border-input bg-background flex flex-wrap gap-1.5 items-center cursor-text"
-                    @click="tagComboboxOpen = true"
-                  >
-                    <template v-if="form.tag_ids.length === 0 && !tagSearchQuery">
-                      <span class="text-sm text-muted-foreground px-1">
-                        {{ tagsLoading ? '加载中...' : '点击添加标签...' }}
-                      </span>
-                    </template>
-                    <template v-else>
-                      <Badge
-                        v-for="tagId in form.tag_ids"
-                        :key="tagId"
-                        variant="secondary"
-                        class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
-                      >
-                        {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
-                        <button
-                          type="button"
-                          class="ml-0.5 text-xs hover:text-destructive"
-                          @click.stop="removeTag(tagId)"
-                        >
-                          ×
-                        </button>
-                      </Badge>
-                    </template>
+                      <div
+                        v-if="form.visibility === opt.value"
+                        class="size-2 rounded-full bg-primary"
+                      />
+                    </div>
                     <input
-                      v-if="tagComboboxOpen"
-                      v-model="tagSearchQuery"
-                      type="text"
-                      class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
-                      placeholder="搜索标签..."
-                      @blur="setTimeout(() => { tagComboboxOpen = false; tagSearchQuery = '' }, 150)"
+                      v-model="form.visibility"
+                      type="radio"
+                      :value="opt.value"
+                      class="sr-only"
                     >
                   </div>
-                  <div
-                    v-if="tagComboboxOpen"
-                    class="absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1"
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                      <component
+                        :is="opt.icon"
+                        class="size-3.5 text-muted-foreground"
+                      />
+                      <span class="text-sm font-medium">{{ opt.label }}</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5">
+                      {{ opt.description }}
+                    </div>
+                  </div>
+                </label>
+              </div>
+              <div
+                v-if="form.visibility === 'password'"
+                class="mt-2"
+              >
+                <Input
+                  v-model="form.password"
+                  type="password"
+                  placeholder="访问密码"
+                  class="h-9 rounded-[10px] text-sm"
+                />
+              </div>
+            </div>
+
+            <div class="h-px bg-border" />
+
+            <div>
+              <Label class="text-xs text-muted-foreground mb-1 block">分类</Label>
+              <Select
+                :model-value="form.category_id?.toString() ?? ''"
+                @update:model-value="(v: string | undefined) => form.category_id = v ? Number(v) : null"
+              >
+                <SelectTrigger class="h-9 rounded-[10px]">
+                  <SelectValue :placeholder="categoriesLoading ? '加载中...' : '选择分类'" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">
+                    无分类
+                  </SelectItem>
+                  <SelectItem
+                    v-for="c in categories"
+                    :key="c.id"
+                    :value="c.id.toString()"
                   >
-                    <div
-                      v-for="t in filteredTags"
-                      :key="t.id"
-                      class="flex items-center justify-between px-2.5 py-2 rounded-md text-sm cursor-pointer hover:bg-accent"
-                      :class="{ 'bg-accent/50': isTagSelected(t.id) }"
-                      @mousedown.prevent="toggleTag(t.id)"
-                    >
-                      <div class="flex items-center gap-2">
-                        <span
-                          class="w-2 h-2 rounded-full inline-block"
-                          :style="{ background: t.color || '#94a3b8' }"
-                        />
-                        {{ getLocalizedStr(t.name) }}
-                        <span class="text-xs text-muted-foreground">({{ t.post_count }})</span>
-                      </div>
+                    <div class="flex items-center gap-2">
                       <span
-                        v-if="isTagSelected(t.id)"
-                        class="text-primary"
-                      >✓</span>
+                        class="size-2.5 rounded-full inline-block"
+                        :style="{ background: c.color || '#94a3b8' }"
+                      />
+                      {{ getLocalizedStr(c.name) }}
                     </div>
-                    <div
-                      v-if="filteredTags.length === 0"
-                      class="px-2.5 py-3 text-sm text-muted-foreground text-center"
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div ref="tagComboboxRef">
+              <Label class="text-xs text-muted-foreground mb-1 block">标签</Label>
+              <div class="relative">
+                <div
+                  class="min-h-9 px-2.5 py-1.5 rounded-[10px] border border-input bg-background flex flex-wrap gap-1.5 items-center cursor-text transition-colors"
+                  :class="tagComboboxOpen ? 'ring-2 ring-ring ring-offset-0' : ''"
+                  @click="tagComboboxOpen = true"
+                >
+                  <template v-if="form.tag_ids.length === 0 && !tagSearchQuery">
+                    <span class="text-sm text-muted-foreground px-1">
+                      {{ tagsLoading ? '加载中...' : '点击添加标签...' }}
+                    </span>
+                  </template>
+                  <Badge
+                    v-for="tagId in form.tag_ids"
+                    :key="tagId"
+                    variant="secondary"
+                    class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
+                  >
+                    {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
+                    <button
+                      type="button"
+                      class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
+                      @click.stop="removeTag(tagId)"
                     >
-                      无匹配标签
+                      <X class="size-3" />
+                    </button>
+                  </Badge>
+                  <input
+                    v-if="tagComboboxOpen"
+                    v-model="tagSearchQuery"
+                    type="text"
+                    class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
+                    placeholder="搜索标签..."
+                    @blur="onTagComboboxBlur"
+                  >
+                </div>
+                <div
+                  v-if="tagComboboxOpen"
+                  class="absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1"
+                >
+                  <div
+                    v-for="t in filteredTags"
+                    :key="t.id"
+                    class="flex items-center justify-between px-2.5 py-2 rounded-md text-sm cursor-pointer transition-colors hover:bg-accent"
+                    :class="{ 'bg-accent/50': isTagSelected(t.id) }"
+                    @mousedown.prevent="toggleTag(t.id)"
+                  >
+                    <div class="flex items-center gap-2">
+                      <span
+                        class="size-2 rounded-full inline-block"
+                        :style="{ background: t.color || '#94a3b8' }"
+                      />
+                      {{ getLocalizedStr(t.name) }}
+                      <span class="text-xs text-muted-foreground">({{ t.post_count }})</span>
                     </div>
+                    <Check
+                      v-if="isTagSelected(t.id)"
+                      class="size-3.5 text-primary"
+                    />
+                  </div>
+                  <div
+                    v-if="filteredTags.length === 0"
+                    class="px-2.5 py-3 text-sm text-muted-foreground text-center"
+                  >
+                    无匹配标签
                   </div>
                 </div>
               </div>
+            </div>
 
-              <div>
-                <Label class="text-xs text-muted-foreground mb-1 block">摘要</Label>
-                <I18nTabsEditor
-                  v-model="form.excerpt"
-                  kind="textarea"
-                  :rows="3"
-                  placeholder="输入文章摘要，不填则自动截取前 180 字"
-                />
-              </div>
+            <div>
+              <Label class="text-xs text-muted-foreground mb-1 block">摘要</Label>
+              <I18nTabsEditor
+                v-model="form.excerpt"
+                kind="textarea"
+                :rows="3"
+                placeholder="输入文章摘要，不填则自动截取前 180 字"
+              />
+            </div>
           </AdminCard>
 
           <AdminCard class="p-5 flex flex-col gap-4">
             <div>
               <Label class="mb-2 block text-sm font-medium">封面图</Label>
-                <div class="flex items-start gap-3">
-                  <div
-                    v-if="form.cover_image"
-                    class="w-[160px] h-[90px] rounded-[10px] overflow-hidden border border-border bg-muted"
-                  >
-                    <img
-                      :src="form.cover_image"
-                      alt="cover"
-                      class="w-full h-full object-cover"
-                    >
-                  </div>
-                  <div
-                    v-else
-                    class="w-[160px] h-[90px] rounded-[10px] border border-dashed border-border bg-muted/30 flex items-center justify-center text-xs text-muted-foreground"
-                  >
-                    160×90
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      class="rounded-[10px] h-9"
-                      :disabled="coverUploading"
-                      @click="coverInputRef?.click()"
-                    >
-                      {{ coverUploading ? '上传中...' : '上传封面' }}
-                    </Button>
-                    <Button
-                      v-if="form.cover_image"
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      class="rounded-[10px] h-9 text-destructive hover:text-destructive"
-                      @click="clearCover"
-                    >
-                      清除
-                    </Button>
-                  </div>
-                  <input
-                    ref="coverInputRef"
-                    type="file"
-                    accept="image/*"
-                    class="hidden"
-                    @change="handleCoverUpload"
+              <div class="flex items-start gap-3">
+                <div
+                  v-if="form.cover_image"
+                  class="w-[160px] h-[90px] rounded-[10px] overflow-hidden border border-border bg-muted"
+                >
+                  <img
+                    :src="form.cover_image"
+                    alt="cover"
+                    class="size-full object-cover"
                   >
                 </div>
+                <div
+                  v-else
+                  class="w-[160px] h-[90px] rounded-[10px] border border-dashed border-border bg-muted/30 flex items-center justify-center"
+                >
+                  <ImageIcon class="size-5 text-muted-foreground/50" />
+                </div>
+                <div class="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="rounded-[10px] h-9"
+                    :disabled="coverUploading"
+                    @click="coverInputRef?.click()"
+                  >
+                    {{ coverUploading ? '上传中...' : '上传封面' }}
+                  </Button>
+                  <Button
+                    v-if="form.cover_image"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="rounded-[10px] h-9 text-destructive hover:text-destructive"
+                    @click="clearCover"
+                  >
+                    清除
+                  </Button>
+                </div>
+                <input
+                  ref="coverInputRef"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                  @change="handleCoverUpload"
+                >
               </div>
+            </div>
           </AdminCard>
 
           <AdminCard class="p-5 flex flex-col gap-3">
             <Label class="text-sm font-medium">SEO 设置</Label>
-              <I18nTabsEditor
-                v-model="form.meta_title"
-                kind="text"
-                label="Meta Title"
-                placeholder="SEO 标题"
-              />
-              <I18nTabsEditor
-                v-model="form.meta_description"
-                kind="text"
-                label="Meta Description"
-                placeholder="SEO 描述"
-              />
-              <I18nTabsEditor
-                v-model="form.meta_keywords"
-                kind="text"
-                label="Meta Keywords"
-                placeholder="SEO 关键词，逗号分隔"
-              />
-            </AdminCard>
+            <I18nTabsEditor
+              v-model="form.meta_title"
+              kind="text"
+              label="Meta Title"
+              placeholder="SEO 标题"
+            />
+            <I18nTabsEditor
+              v-model="form.meta_description"
+              kind="text"
+              label="Meta Description"
+              placeholder="SEO 描述"
+            />
+            <I18nTabsEditor
+              v-model="form.meta_keywords"
+              kind="text"
+              label="Meta Keywords"
+              placeholder="SEO 关键词，逗号分隔"
+            />
+          </AdminCard>
         </div>
       </div>
     </div>
 
-    <div class="flex items-center justify-between pt-2">
+    <div class="flex items-center justify-between pt-2 border-t border-border">
       <Button
         type="button"
-        variant="secondary"
-        class="rounded-[12px] h-11 px-6"
+        variant="outline"
+        class="rounded-[12px] h-11 px-6 gap-2"
         :disabled="savingDraft || submitting"
         @click="saveDraft"
       >
+        <Save
+          data-icon="inline-start"
+          class="size-4"
+        />
         {{ savingDraft ? '保存中...' : '保存草稿' }}
       </Button>
       <div class="flex items-center gap-2">
         <Button
           type="button"
-          variant="outline"
-          class="rounded-[12px] h-11 px-5"
+          variant="ghost"
+          class="rounded-[12px] h-11 px-5 gap-2"
           @click="openPreview"
         >
+          <Eye
+            data-icon="inline-start"
+            class="size-4"
+          />
           预览
         </Button>
         <Button
           type="button"
-          class="rounded-[12px] h-11 px-7 bg-gradient-to-r from-amber-500 to-orange-500 text-white hover:from-amber-600 hover:to-orange-600 shadow-sm"
+          class="rounded-[12px] h-11 px-7 gap-2"
           :disabled="submitting || savingDraft"
           @click="publishPost"
         >
+          <Send
+            data-icon="inline-start"
+            class="size-4"
+          />
           {{ submitting ? '发布中...' : '发布文章' }}
         </Button>
       </div>

@@ -1,4 +1,5 @@
 """Avatar 工具：解析 + 包装代理 URL（给 comment/guestbook/user 三个 service 复用）。"""
+
 from __future__ import annotations
 
 import base64
@@ -75,6 +76,7 @@ def resolved_for_user(user) -> str | None:
         email=getattr(user, "email", None),
     )
     return wrap_proxy(_resolve_avatar(inp))
+
 
 def _user_relationship_safe(orm_obj, rel_name: str = "user"):
     """安全读取 ORM 对象的关系属性，未 eager-load 时返回 None 避免触发 async greenlet IO。"""

@@ -1,5 +1,5 @@
 <template>
-  <div class="space-y-4">
+  <div class="flex flex-col gap-4">
     <div class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
       <div class="relative flex-1 max-w-md">
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
@@ -16,7 +16,10 @@
           size="sm"
           @click="onSearch"
         >
-          <Search class="size-4 mr-2" />
+          <Search
+            data-icon="inline-start"
+            class="mr-2"
+          />
           搜索
         </Button>
       </div>
@@ -38,7 +41,10 @@
         variant="outline"
         @click="batchAction('approve')"
       >
-        <Check class="size-3.5 mr-1.5" />
+        <Check
+          data-icon="inline-start"
+          class="mr-1.5"
+        />
         通过
       </Button>
       <Button
@@ -54,7 +60,10 @@
         variant="outline"
         @click="batchAction('spam')"
       >
-        <Trash2 class="size-3.5 mr-1.5" />
+        <Trash2
+          data-icon="inline-start"
+          class="mr-1.5"
+        />
         标垃圾
       </Button>
       <Button
@@ -62,7 +71,10 @@
         variant="destructive"
         @click="batchAction('delete')"
       >
-        <Trash2 class="size-3.5 mr-1.5" />
+        <Trash2
+          data-icon="inline-start"
+          class="mr-1.5"
+        />
         删除
       </Button>
       <Button
@@ -76,16 +88,16 @@
 
     <div
       v-if="loading"
-      class="space-y-4"
+      class="flex flex-col gap-4"
     >
       <div
         v-for="i in 5"
         :key="i"
-        class="rounded-xl border p-4 space-y-3"
+        class="flex flex-col gap-3 rounded-xl border p-4"
       >
         <div class="flex items-center gap-3">
           <Skeleton class="size-10 rounded-full" />
-          <div class="flex-1 space-y-2">
+          <div class="flex flex-col gap-2 flex-1">
             <Skeleton class="h-4 w-32" />
             <Skeleton class="h-3 w-48" />
           </div>
@@ -110,7 +122,7 @@
 
     <div
       v-else
-      class="space-y-3"
+      class="flex flex-col gap-3"
     >
       <div
         v-for="comment in comments"
@@ -175,7 +187,7 @@
                       size="icon"
                       class="h-8 w-8"
                     >
-                      <MoreVertical class="size-4" />
+                      <MoreVertical data-icon="inline-start" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
@@ -223,14 +235,17 @@
                 class="h-7 px-2"
                 @click="toggleReply(comment.id)"
               >
-                <Reply class="size-3.5 mr-1" />
+                <Reply
+                  data-icon="inline-start"
+                  class="mr-1"
+                />
                 <span class="text-xs">回复</span>
               </Button>
             </div>
 
             <div
               v-if="replyOpenId === comment.id"
-              class="mt-3 p-3 rounded-xl bg-muted/40 border border-border/50 space-y-3"
+              class="flex flex-col gap-3 mt-3 p-3 rounded-xl bg-muted/40 border border-border/50"
             >
               <Textarea
                 v-model="replyContent"
@@ -250,7 +265,10 @@
                   size="sm"
                   @click="submitReply(comment)"
                 >
-                  <Send class="size-3.5 mr-1.5" />
+                  <Send
+                    data-icon="inline-start"
+                    class="mr-1.5"
+                  />
                   发送回复
                 </Button>
               </div>
@@ -377,7 +395,7 @@ const props = defineProps<{
 const toast = useToast()
 
 const loading = ref(false)
-const comments = ref<AdminComment[]>([])
+const comments = shallowRef<AdminComment[]>([])
 const keyword = ref('')
 const page = ref(1)
 const pageSize = 10
@@ -407,8 +425,8 @@ const visiblePages = computed(() => {
 
 const statusBadgeClass = (s: string): string => {
   switch (s) {
-    case 'approved': return 'bg-success-muted text-success-foreground hover:bg-success-muted'
-    case 'pending': return 'bg-warning-muted text-warning-foreground hover:bg-warning-muted'
+    case 'approved': return 'bg-success-muted text-success-muted-foreground hover:bg-success-muted'
+    case 'pending': return 'bg-warning-muted text-warning-muted-foreground hover:bg-warning-muted'
     case 'rejected': return 'bg-destructive/10 text-destructive hover:bg-destructive/10'
     case 'spam': return 'bg-muted text-muted-foreground hover:bg-muted'
     default: return 'bg-muted text-muted-foreground'

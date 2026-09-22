@@ -2,42 +2,9 @@
 //  - 单一权威拼接："单页标题 · 站点名" / "站点名 · 副标题"
 //  - 与 useSite composable 解耦：直接用 $fetch 打公开 /api/config，不走 useRuntimeConfig /
 //    useAuthStore 等 composable，避免在 Vite diagnostics 热链路上触发 NUXT_E1001。
+//    （lib/utils 是无 Nuxt 上下文依赖的纯函数库，import 它不破坏该解耦）
 //  - 仅客户端生效（SSR 时由各页面 useSeoMeta/useHead 生成标题，避免双链路冲突）。
-
-function hexToHsl(hex: string): { h: number, s: number, l: number } | null {
-  if (!hex) return null
-  const m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(hex).trim())
-  if (!m) return null
-  const r = parseInt(m[1] ?? '00', 16) / 255
-  const g = parseInt(m[2] ?? '00', 16) / 255
-  const b = parseInt(m[3] ?? '00', 16) / 255
-  const max = Math.max(r, g, b)
-  const min = Math.min(r, g, b)
-  let h = 0
-  let s = 0
-  const l = (max + min) / 2
-  if (max !== min) {
-    const d = max - min
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min)
-    switch (max) {
-      case r: {
-        h = (g - b) / d + (g < b ? 6 : 0)
-        break
-      }
-      case g: {
-        h = (b - r) / d + 2
-        break
-      }
-      case b: {
-        h = (r - g) / d + 4
-        break
-      }
-      default: break
-    }
-    h *= 60
-  }
-  return { h, s: s * 100, l: l * 100 }
-}
+import { hexToHsl } from '~~/lib/utils'
 
 function applyAppearance(primary: string, accent: string) {
   if (!import.meta.client) return
@@ -90,8 +57,48 @@ async function loadBrand(): Promise<BrandInfo> {
 }
 
 let cached: Promise<BrandInfo> | null = null
+let cachedAt = 0
+let brandCache: BrandInfo | null = null
+const CACHE_MS = 60_000
+const STORAGE_KEY = 'rosetta:brand:cache:v1'
+
+function readPersisted(): BrandInfo | null {
+  if (!import.meta.client) return null
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (!raw) return null
+    const v = JSON.parse(raw) as { exp: number, brand: BrandInfo }
+    if (!v || !v.brand || typeof v !== 'object') return null
+    if (v.exp > 0 && v.exp < Date.now()) return null
+    return v.brand
+  } catch { return null }
+}
+function writePersisted(b: BrandInfo) {
+  if (!import.meta.client) return
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ exp: Date.now() + CACHE_MS, brand: b }))
+  } catch { /* storage quota */ }
+}
+
 const getBrand = (): Promise<BrandInfo> => {
-  if (!cached) cached = loadBrand()
+  if (brandCache) return Promise.resolve(brandCache)
+  if (cached && cachedAt > 0 && Date.now() - cachedAt < CACHE_MS) return cached
+  const persisted = readPersisted()
+  if (persisted && persisted.siteName) {
+    // 优先用存储兜底，即便网络闪断首屏也不会再发 3 次重复请求
+    brandCache = persisted
+    cached = Promise.resolve(persisted)
+    cachedAt = Date.now()
+  }
+  if (!cached) {
+    cached = (async () => {
+      const b = await loadBrand()
+      brandCache = b
+      cachedAt = Date.now()
+      writePersisted(b)
+      return b
+    })()
+  }
   return cached
 }
 

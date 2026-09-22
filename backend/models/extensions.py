@@ -122,7 +122,9 @@ class Theme(Base, TenantMixin):
     )
     mods_schema: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
     parent_theme: Mapped[str | None] = mapped_column(String(100), nullable=True)
-    screenshot_urls: Mapped[list | None] = mapped_column(JSON_TYPE, nullable=True, default=lambda: [])
+    screenshot_urls: Mapped[list | None] = mapped_column(
+        JSON_TYPE, nullable=True, default=lambda: []
+    )
     tags: Mapped[list | None] = mapped_column(JSON_TYPE, nullable=True, default=lambda: [])
     install_path: Mapped[str | None] = mapped_column(String(500))
     installed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)

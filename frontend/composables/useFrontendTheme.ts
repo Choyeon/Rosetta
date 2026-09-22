@@ -17,6 +17,7 @@
  */
 import { apiFetch } from '~~/composables/useApi'
 import { hexToHsl } from '~~/lib/utils'
+import { KNOWN_ROSETTA_THEMES } from '~~/lib/rosetta-themes'
 
 type JsonObject = Record<string, unknown>
 
@@ -28,6 +29,8 @@ export interface FrontendThemeInfo {
   mods: ThemeModsRuntime
   mods_schema: JsonObject | null
   loaded: boolean
+  /** 处于「预览模式」：slug 来自 ?rosetta_theme_preview= 查询参数而非后端 active 主题。 */
+  previewing: boolean
 }
 
 /** 与 editorial-wp-style rosetta-theme.json 一致；未来新主题新增键这里可以不立刻改动。 */
@@ -42,6 +45,7 @@ export interface ThemeModsRuntime {
   primary_color: string
   show_author_box: boolean
   show_related_posts: boolean
+  show_avatar: boolean
   footer_text: string
   [k: string]: unknown
 }
@@ -57,6 +61,7 @@ const MODS_DEFAULTS: ThemeModsRuntime = {
   primary_color: '',
   show_author_box: true,
   show_related_posts: true,
+  show_avatar: true,
   footer_text: ''
 }
 
@@ -68,7 +73,8 @@ const useThemeState = () =>
     screenshot_urls: [],
     mods: { ...MODS_DEFAULTS },
     mods_schema: null,
-    loaded: false
+    loaded: false,
+    previewing: false
   }))
 
 function mergeMods(mods: unknown): ThemeModsRuntime {
@@ -91,6 +97,7 @@ function mergeMods(mods: unknown): ThemeModsRuntime {
       case 'show_sidebar':
       case 'show_author_box':
       case 'show_related_posts':
+      case 'show_avatar':
         if (typeof v === 'boolean') out[k] = v
         break
       case 'sidebar_position':
@@ -115,8 +122,20 @@ function mergeMods(mods: unknown): ThemeModsRuntime {
  * 把主题 accent_color / primary_color 写进 :root 样式变量。
  * 优先顺序：theme mods > settings.appearance 的 applyAppearanceTokens。
  * 这里只覆盖主题里显式给了颜色的变量，空字符串留给 settings 兜底。
+ *
+ * 【SSR 策略】
+ * 注意：ensureLoaded() 里调用 apply* 发生在 `await apiFetch(...)` 之后——而 Nuxt SSR
+ * 的 async setup 在"第一个 await 之后"会**丢失同步 NuxtApp 上下文**，在那之后再调
+ * useHead() 会触发 NUXT_E1001。因此 SSR 端的颜色 token / 视觉层注入不在本函数里做，
+ * 而是在 useFrontendTheme() 首次创建时（同步阶段、上下文有效）注册一个
+ * `useHead(() => reactiveCallback)`，后续 ensureLoaded 改写的 state.value.mods/slug
+ * 会被 Unhead 响应式追踪自动刷新，全程无需再次调用 useHead。
+ *
+ * 客户端分支：沿用历史 DOM 直接写，避免 useHead 的 <style> 与客户端对同一个变量
+ * 的多次修改互相覆盖（DOM style.setProperty 优先级最高，是最终值）。
  */
 function applyThemeColorTokens(mods: ThemeModsRuntime) {
+  if (import.meta.server) return
   if (!import.meta.client) return
   const root = document.documentElement
   if (mods.accent_color) {
@@ -144,22 +163,37 @@ function applyThemeColorTokens(mods: ThemeModsRuntime) {
 }
 
 /**
- * 前端公开页面路径。非这些路径（尤其 /admin/*）永远不应用主题视觉层，
- * 也不保留任何 theme slug 属性 —— 避免从首页 SPA 导航到后台后 theme CSS 泄漏。
+ * 永不可应用主题视觉层的路径（后台 / OOBE 向导）——避免 theme CSS 泄漏进 Admin。
+ *
+ * 2026-09 调整：/login 与 /register 从排除名单移出。它们的 data-layout-scope
+ * 是 "public-auth"（而非 "frontend"），主题 style.css 的既有规则全部带
+ * [data-layout-scope="frontend"] 守卫、在认证页上不命中；因此这里允许注入
+ * slug 属性 + <link>，供主题 CSS 中显式书写的 public-auth 段落（极简登录/
+ * 注册页、toast 统一）消费，零耦合约束依旧成立。
  */
-const FRONTEND_EXCLUDE_PREFIXES = ['/admin', '/login', '/register', '/oobe']
+const FRONTEND_EXCLUDE_PREFIXES = ['/admin', '/oobe']
 
-function _isFrontendExcludedPath(path?: string): boolean {
-  if (!import.meta.client) return false
-  const p = path ?? window.location.pathname
-  return FRONTEND_EXCLUDE_PREFIXES.some(prefix => p.startsWith(prefix))
+function _isFrontendExcludedPath(path?: string, routeFallbackPath?: string): boolean {
+  // 注意：本函数**禁止在内部调用 useRoute()**——它会在 layouts/default.vue 的
+  // async setup 等待 apiFetch 之后才被调度，而 "after await" 的 SSR 微任务阶段
+  // 会异步丢失 NuxtApp 同步上下文 → NUXT_E1001。
+  // 所有调用方（ensureLoaded / applyThemeVisual / clearThemeVisual）必须显式传 path。
+  let p: string | undefined
+  if (path) {
+    p = path
+  } else if (routeFallbackPath) {
+    p = routeFallbackPath
+  } else if (import.meta.client && typeof window !== 'undefined') {
+    p = window.location.pathname
+  }
+  if (!p) return false
+  return FRONTEND_EXCLUDE_PREFIXES.some(prefix => p!.startsWith(prefix))
 }
 
-/** 与 _clearThemeVisual 互相同步的已知 Rosetta 主题 slug 集合（用于判定 data-theme 是否由我们写入）。 */
-const KNOWN_ROSETTA_THEMES = new Set([
-  'editorial-wp-style', 'astro-paper-inspired', 'minimal-brutalist',
-  'typewriter-serif', 'market-style'
-])
+/**
+ * 已知 Rosetta 主题 slug 集合（~~/lib/rosetta-themes 单一权威来源），
+ * 用于判定 data-theme 是否由我们写入、可否在 admin 清理时移除。
+ */
 
 /**
  * 所有曾注入过的主题 style.css <link> 注册表（slug → HTMLLinkElement）。
@@ -233,8 +267,14 @@ function normalizeScreenshotUrls(slug: string | null, raws: unknown): string[] {
   return out
 }
 function applyThemeVisual(slug: string | null, explicitPath?: string) {
+  // ===== SSR 策略：同步阶段 reactive useHead 已全权负责 =====
+  // 见 useFrontendTheme() 导出函数顶部的 useHead(() => {…state.value…}) 注册。
+  // ensureLoaded -> applyThemeVisual 的调用链发生在 await apiFetch 之后，
+  // 此时 SSR 已丢失同步 NuxtApp 上下文，任何 useHead 调用都会触发 NUXT_E1001
+  // 并连带子组件 undefined vnode 渲染失败。SSR 端直接 return。
+  if (import.meta.server) return
   if (!import.meta.client) return
-  // 【关键安全出口】admin / login / register / oobe 等非前台页面：
+  // 【关键安全出口】admin / oobe 等禁止主题路径：
   // 不应用任何主题，反而彻底清理已写入的属性/链接/class，
   // 避免从前台 SPA 导航过来时 data-theme 等残留导致后台 UI 错乱。
   if (_isFrontendExcludedPath(explicitPath)) {
@@ -274,15 +314,46 @@ function applyThemeVisual(slug: string | null, explicitPath?: string) {
   }
 
   if (_INSTALLED_LINKS.has(slug)) return
-  const link = document.createElement('link')
-  link.rel = 'stylesheet'
-  link.href = `/themes/${slug}/style.css`
-  link.onerror = () => {
-    link.remove()
-    _INSTALLED_LINKS.delete(slug)
+  // 主题 <link> 有两个潜在来源：
+  //   · useHead 响应式注入（SSR 首字节 / 客户端 slug 变化后由 unhead 批量 flush，
+  //     其时机可能晚于宏任务，不能用一次同步检查判定）
+  //   · 本函数的 DOM 直接注入（ssr:false 认证页 / error 页等纯客户端路径的兜底）
+  // 策略：先认领已存在的 unhead 节点；没有则创建带 data-rosetta-manual 标记的兜底
+  // 节点，并在 unhead 通常已 flush 完成后移交——若其 id 节点出现，移除兜底、认领正主。
+  const MANUAL_ATTR = 'data-rosetta-manual'
+  const install = () => {
+    if (_INSTALLED_LINKS.has(slug)) return
+    const existing = document.querySelector<HTMLLinkElement>(
+      `link[rel="stylesheet"][href="/themes/${slug}/style.css"]`
+    )
+    if (existing) {
+      _INSTALLED_LINKS.set(slug, existing)
+      return
+    }
+    const link = document.createElement('link')
+    link.rel = 'stylesheet'
+    link.href = `/themes/${slug}/style.css`
+    link.setAttribute(MANUAL_ATTR, '1')
+    link.onerror = () => {
+      link.remove()
+      _INSTALLED_LINKS.delete(slug)
+    }
+    document.head.appendChild(link)
+    _INSTALLED_LINKS.set(slug, link)
+    // 移交：unhead 的响应式节点到位后，移除手动兜底，避免同一 style.css 双 <link>
+    setTimeout(() => {
+      const mine = _INSTALLED_LINKS.get(slug)
+      if (!mine || !mine.hasAttribute(MANUAL_ATTR)) return
+      const headLink = document.querySelector<HTMLLinkElement>(
+        `link[id="rosetta-theme-css-${slug}"]`
+      )
+      if (headLink && headLink !== mine) {
+        mine.remove()
+        _INSTALLED_LINKS.set(slug, headLink)
+      }
+    }, 400)
   }
-  document.head.appendChild(link)
-  _INSTALLED_LINKS.set(slug, link)
+  install()
 }
 
 /**
@@ -295,6 +366,72 @@ function clearThemeVisual() {
 
 export function useFrontendTheme() {
   const state = useThemeState()
+  const route = useRoute()
+
+  // =========================================================================
+  // 【SSR 核心：同步阶段注册 reactive useHead】
+  // 永远不要把 useHead() 放在 ensureLoaded() 的 await apiFetch(...) 之后调用——
+  // Nuxt SSR async setup 在"第一个 await 之后"会丢失同步 NuxtApp 上下文，
+  // 在此之后调 useHead 会触发 NUXT_E1001，子组件 VNode 会被渲染为 undefined。
+  //
+  // 解决方案：在 composable 创建时（同步阶段、上下文仍有效）注册一次
+  // useHead(() => reactiveCallback)。后续 ensureLoaded 改写 state.value 的
+  // slug / mods 变化都会被 Unhead 自动追踪并响应式刷新 head / htmlAttrs，
+  // 首字节 HTML 即包含主题四件套 + 颜色 tokens，全程零 E1001。
+  // =========================================================================
+  useHead(() => {
+    const s = state.value
+    const excluded = FRONTEND_EXCLUDE_PREFIXES.some(prefix => route.path.startsWith(prefix))
+
+    // 1) htmlAttrs：data-rosetta-theme / data-theme / theme-{slug} class
+    const htmlAttrs: Record<string, string> = {}
+    // 3) style tokens 先构建（与 slug 无关的部分初始化）
+    const styleTokens: string[] = []
+    // 2) theme CSS <link>（条件命中后用字面量构造，let TS 推断精确 literal 类型）
+    type LinkItem = { rel: 'stylesheet', href: string, id: string }
+    let link: LinkItem[] = []
+
+    if (s.slug && !excluded) {
+      htmlAttrs['data-rosetta-theme'] = s.slug
+      htmlAttrs['data-theme'] = s.slug
+      htmlAttrs['class'] = `theme-${s.slug}`
+      link = [
+        {
+          rel: 'stylesheet',
+          href: `/themes/${s.slug}/style.css`,
+          id: `rosetta-theme-css-${s.slug}`
+        }
+      ]
+
+      // accent → --theme-accent-hue/sat/light
+      if (s.mods.accent_color) {
+        const hsl = hexToHsl(s.mods.accent_color)
+        if (hsl) {
+          styleTokens.push(`--theme-accent-hue:${Math.round(hsl.h)}`)
+          styleTokens.push(`--theme-accent-sat:${Math.round(hsl.s)}%`)
+          styleTokens.push(`--theme-accent-light:${Math.round(hsl.l)}%`)
+        }
+      }
+      // primary → --primary / --ring
+      if (s.mods.primary_color) {
+        const hsl = hexToHsl(s.mods.primary_color)
+        if (hsl) {
+          styleTokens.push(
+            `--primary:${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%`
+          )
+          const ringL = Math.min(96, hsl.l * 1.12)
+          styleTokens.push(`--ring:${Math.round(hsl.h)} ${Math.round(hsl.s + 2)}% ${ringL}%`)
+        }
+      }
+    }
+
+    type StyleItem = { id: 'rosetta-theme-color-tokens', innerHTML: string }
+    const style: StyleItem[] = styleTokens.length
+      ? [{ id: 'rosetta-theme-color-tokens', innerHTML: `:root{${styleTokens.join(';')}}` }]
+      : []
+
+    return { htmlAttrs, link, style }
+  })
 
   const mods = computed<ThemeModsRuntime>(() => state.value.mods)
   const isActive = computed(() => !!state.value.slug)
@@ -316,6 +453,8 @@ export function useFrontendTheme() {
   const postsPerRow = computed(() => mods.value.posts_per_row)
   const showAuthorBox = computed(() => mods.value.show_author_box)
   const showRelatedPosts = computed(() => mods.value.show_related_posts)
+  const showAvatar = computed(() => mods.value.show_avatar !== false)
+  const previewing = computed(() => state.value.previewing)
 
   async function ensureLoaded(opts?: { force?: boolean }) {
     if (state.value.loaded && !opts?.force) return state.value
@@ -356,6 +495,21 @@ export function useFrontendTheme() {
       state.value.mods_schema = null
     }
 
+    // ── 预览模式：?rosetta_theme_preview=<slug> ──────────────────────────
+    // 由后台「主题管理」的预览按钮打开新标签页触发。仅允许 KNOWN_ROSETTA_THEMES
+    // 白名单内的 slug，覆盖 state.slug 以挂载该主题的 style.css + htmlAttrs，
+    // 但不改动后端 active 主题。mods 沿用 active 主题（或默认值）——内建主题的
+    // 视觉差异主要在 style.css，slug 覆盖即可得到忠实预览。
+    // 读取 route.query 是对已捕获 reactive 对象的属性访问，await 之后仍安全。
+    const previewRaw = route.query.rosetta_theme_preview
+    const previewSlug = Array.isArray(previewRaw) ? previewRaw[0] : previewRaw
+    if (typeof previewSlug === 'string' && KNOWN_ROSETTA_THEMES.has(previewSlug)) {
+      state.value.slug = previewSlug
+      state.value.previewing = true
+    } else {
+      state.value.previewing = false
+    }
+
     state.value.loaded = true
     applyThemeColorTokens(state.value.mods)
     applyThemeVisual(state.value.slug)
@@ -386,6 +540,8 @@ export function useFrontendTheme() {
     postsPerRow,
     showAuthorBox,
     showRelatedPosts,
+    showAvatar,
+    previewing,
     ensureLoaded,
     reload,
     clearThemeVisual,

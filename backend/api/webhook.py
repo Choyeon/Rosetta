@@ -4,7 +4,6 @@ Webhook 系统
 支持事件推送和外部集成。
 """
 
-import asyncio
 import hashlib
 import hmac
 import json
@@ -18,7 +17,9 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, fun
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.core.auth import DB, CurrentStaff, CurrentUser
+from backend.core.config import settings
 from backend.core.database import Base
+from backend.core.net_guard import UnsafeTargetError, assert_public_http_url
 from backend.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -66,6 +67,28 @@ class WebhookDelivery(Base):
 
 
 router = APIRouter(tags=["Webhook"])
+
+
+async def _validate_webhook_url(url: str) -> None:
+    """Webhook URL 护栏：scheme 必须 http/https；默认拒绝内网/保留地址。
+
+    服务端会主动请求该 URL（投递），属于 SSRF 攻击面；
+    自托管内网自动化场景可通过 WEBHOOK_ALLOW_PRIVATE_TARGETS=true 显式放行。
+    """
+    if not url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Webhook URL 仅支持 http/https 协议",
+        )
+    if getattr(settings, "webhook_allow_private_targets", False):
+        return
+    try:
+        await assert_public_http_url(url)
+    except UnsafeTargetError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Webhook URL 不允许指向内网/保留地址（可在配置中显式放行）: {exc}",
+        ) from exc
 
 
 # 支持的事件类型
@@ -171,6 +194,8 @@ async def create_webhook(
                 detail=f"不支持的事件类型: {event}",
             )
 
+    await _validate_webhook_url(data.url)
+
     webhook = WebhookEndpoint(
         name=data.name,
         url=data.url,
@@ -220,6 +245,7 @@ async def update_webhook(
     if name is not None:
         webhook.name = name
     if url is not None:
+        await _validate_webhook_url(url)
         webhook.url = url
     if secret is not None:
         webhook.secret = secret
@@ -395,7 +421,7 @@ async def test_webhook(
 ):
     """测试 Webhook 端点"""
     webhook = await db.get(WebhookEndpoint, webhook_id)
-    if not webhook or webhook.user_id != current_user.id:
+    if not webhook or webhook.created_by_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Webhook 不存在",
@@ -458,7 +484,7 @@ async def regenerate_webhook_secret(
 ):
     """重新生成 Webhook 密钥"""
     webhook = await db.get(WebhookEndpoint, webhook_id)
-    if not webhook or webhook.user_id != current_user.id:
+    if not webhook or webhook.created_by_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Webhook 不存在",
@@ -491,7 +517,7 @@ async def retry_webhook_delivery(
         )
 
     webhook = await db.get(WebhookEndpoint, delivery.endpoint_id)
-    if not webhook or webhook.user_id != current_user.id:
+    if not webhook or webhook.created_by_id != current_user.id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Webhook 不存在",
@@ -537,28 +563,3 @@ async def retry_webhook_delivery(
         delivery.error = str(e)
         await db.flush()
         return {"success": False, "message": f"重试失败: {str(e)}"}
-
-        # 发送请求
-        try:
-            headers = {
-                "Content-Type": "application/json",
-                "X-Webhook-Event": event_type,
-            }
-            if signature:
-                headers["X-Webhook-Signature"] = f"sha256={signature}"
-
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    webhook.url,
-                    json=request_body,
-                    headers=headers,
-                )
-
-                delivery.status_code = response.status_code
-                delivery.response_body = response.text[:1000]
-                delivery.delivered_at = datetime.now(UTC)
-
-        except Exception as e:
-            delivery.error = str(e)
-
-        await db.flush()

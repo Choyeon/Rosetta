@@ -2,14 +2,13 @@
 后端覆盖率 catch-all（核心纯函数模块）：覆盖 auth/csrf/config/xss_filter/moderation/password_policy/exceptions/crypto/deps
 所有分支，不依赖外部服务，速度快。
 """
+
 from __future__ import annotations
 
-import asyncio
-import importlib
-import sys
 from unittest.mock import MagicMock
 
 import pytest
+
 
 # ---------------------------------------------------------
 # 1. password_policy
@@ -23,6 +22,7 @@ class TestPasswordPolicy:
         # 这里用更可靠的方式：直接 patch password_policy 模块中对 settings 的引用。
         try:
             import backend.core.password_policy as _pp_mod
+
             monkeypatch.setattr(_pp_mod.settings, "security_password_policy", False)
         except Exception:
             monkeypatch.setattr(settings, "security_password_policy", False, raising=False)
@@ -100,7 +100,9 @@ class TestPasswordPolicy:
         assert validate_password("Str0ngP@ss!") == []
 
     @pytest.mark.asyncio
-    async def test_check_site_password_policy_uses_settings_when_site_config_missing(self, monkeypatch):
+    async def test_check_site_password_policy_uses_settings_when_site_config_missing(
+        self, monkeypatch
+    ):
         """当 site_settings 不存在或者抛出异常，回退到 settings.security_password_policy"""
         from backend.core.config import settings
 
@@ -143,7 +145,7 @@ class TestXssFilter:
         t = '<a href="#" onclick="alert(1)">click</a>'
         out = _escape_dangerous_tag_names(t)
         # onclick 属性名被转义成 o&#110;...&#61; → 不形成事件处理器
-        assert ' onclick=' not in out.lower()
+        assert " onclick=" not in out.lower()
         assert "&#111;&#110;" in out or "&#61;" in out
 
     def test_escape_javascript_protocol(self):
@@ -167,7 +169,7 @@ class TestXssFilter:
         assert "&lt;" in out or "on" not in out[:3]
 
     def test_rough_strip_alias(self):
-        from backend.core.xss_filter import _rough_strip, _escape_dangerous_tag_names
+        from backend.core.xss_filter import _escape_dangerous_tag_names, _rough_strip
 
         # 兼容 alias：调用结果一致
         sample = "<script>x</script>"
@@ -206,7 +208,7 @@ class TestXssFilter:
         out = sanitize_html(safe)
         # 允许标签保留
         assert "<p>" in out and "</p>" in out
-        assert "target=\"_blank\"" in out
+        assert 'target="_blank"' in out
         # target=_blank 强制追加 rel
         assert 'rel="noopener noreferrer"' in out
 
@@ -294,9 +296,9 @@ class TestXssFilter:
 
     def test_sanitize_html_exception_fallback_to_stripped(self, monkeypatch):
         """如果 HTMLParser.feed 抛异常，fallback 到 _rough_strip 结果"""
-        from backend.core.xss_filter import sanitize_html, _rough_strip
+        from backend.core.xss_filter import _rough_strip, sanitize_html
 
-        sample = '<script>bad</script>'
+        sample = "<script>bad</script>"
 
         class _BustyParser:
             def feed(self, *a, **k):
@@ -424,8 +426,9 @@ class TestCrypto:
             decrypt_content("@@not-base64@@", "x")
 
     def test_decrypt_too_short(self):
-        from backend.core.crypto import DecryptionError, decrypt_content
         import base64
+
+        from backend.core.crypto import DecryptionError, decrypt_content
 
         # 长度 < 16+12 = 28
         blob = base64.b64encode(b"too short").decode("ascii")
@@ -447,7 +450,13 @@ class TestExceptions:
     @pytest.mark.parametrize(
         "cls,code,ec",
         [
-            (lambda: __import__("backend.core.exceptions", fromlist=["AppException"]).AppException(), 500, "INTERNAL_ERROR"),
+            (
+                lambda: __import__(
+                    "backend.core.exceptions", fromlist=["AppException"]
+                ).AppException(),
+                500,
+                "INTERNAL_ERROR",
+            ),
         ],
     )
     def test_base_app_exception_defaults(self, cls, code, ec):
@@ -459,18 +468,162 @@ class TestExceptions:
     @pytest.mark.parametrize(
         "factory,status,ec",
         [
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["NotFoundException"]).NotFoundException(m) if m else __import__("backend.core.exceptions", fromlist=["NotFoundException"]).NotFoundException(), 404, "NOT_FOUND"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["BadRequestException"]).BadRequestException(m) if m else __import__("backend.core.exceptions", fromlist=["BadRequestException"]).BadRequestException(), 400, "BAD_REQUEST"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["UnauthorizedException"]).UnauthorizedException(m) if m else __import__("backend.core.exceptions", fromlist=["UnauthorizedException"]).UnauthorizedException(), 401, "UNAUTHORIZED"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["ForbiddenException"]).ForbiddenException(m) if m else __import__("backend.core.exceptions", fromlist=["ForbiddenException"]).ForbiddenException(), 403, "FORBIDDEN"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["ConflictException"]).ConflictException(m) if m else __import__("backend.core.exceptions", fromlist=["ConflictException"]).ConflictException(), 409, "CONFLICT"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["ValidationException"]).ValidationException(m) if m else __import__("backend.core.exceptions", fromlist=["ValidationException"]).ValidationException(), 422, "VALIDATION_ERROR"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["RateLimitException"]).RateLimitException(m) if m else __import__("backend.core.exceptions", fromlist=["RateLimitException"]).RateLimitException(), 429, "RATE_LIMIT_EXCEEDED"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["ServiceUnavailableException"]).ServiceUnavailableException(m) if m else __import__("backend.core.exceptions", fromlist=["ServiceUnavailableException"]).ServiceUnavailableException(), 503, "SERVICE_UNAVAILABLE"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["OOBERequiredException"]).OOBERequiredException(m) if m else __import__("backend.core.exceptions", fromlist=["OOBERequiredException"]).OOBERequiredException(), 503, "OOBE_REQUIRED"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["OOBEAlreadyCompletedException"]).OOBEAlreadyCompletedException(m) if m else __import__("backend.core.exceptions", fromlist=["OOBEAlreadyCompletedException"]).OOBEAlreadyCompletedException(), 409, "OOBE_ALREADY_COMPLETED"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["WeakPasswordException"]).WeakPasswordException(m) if m else __import__("backend.core.exceptions", fromlist=["WeakPasswordException"]).WeakPasswordException(), 422, "WEAK_PASSWORD"),
-            (lambda m=None: __import__("backend.core.exceptions", fromlist=["AdminNotCreatedException"]).AdminNotCreatedException(m) if m else __import__("backend.core.exceptions", fromlist=["AdminNotCreatedException"]).AdminNotCreatedException(), 400, "ADMIN_NOT_CREATED"),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["NotFoundException"]
+                    ).NotFoundException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["NotFoundException"]
+                    ).NotFoundException()
+                ),
+                404,
+                "NOT_FOUND",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["BadRequestException"]
+                    ).BadRequestException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["BadRequestException"]
+                    ).BadRequestException()
+                ),
+                400,
+                "BAD_REQUEST",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["UnauthorizedException"]
+                    ).UnauthorizedException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["UnauthorizedException"]
+                    ).UnauthorizedException()
+                ),
+                401,
+                "UNAUTHORIZED",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["ForbiddenException"]
+                    ).ForbiddenException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["ForbiddenException"]
+                    ).ForbiddenException()
+                ),
+                403,
+                "FORBIDDEN",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["ConflictException"]
+                    ).ConflictException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["ConflictException"]
+                    ).ConflictException()
+                ),
+                409,
+                "CONFLICT",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["ValidationException"]
+                    ).ValidationException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["ValidationException"]
+                    ).ValidationException()
+                ),
+                422,
+                "VALIDATION_ERROR",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["RateLimitException"]
+                    ).RateLimitException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["RateLimitException"]
+                    ).RateLimitException()
+                ),
+                429,
+                "RATE_LIMIT_EXCEEDED",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["ServiceUnavailableException"]
+                    ).ServiceUnavailableException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["ServiceUnavailableException"]
+                    ).ServiceUnavailableException()
+                ),
+                503,
+                "SERVICE_UNAVAILABLE",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["OOBERequiredException"]
+                    ).OOBERequiredException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["OOBERequiredException"]
+                    ).OOBERequiredException()
+                ),
+                503,
+                "OOBE_REQUIRED",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["OOBEAlreadyCompletedException"]
+                    ).OOBEAlreadyCompletedException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["OOBEAlreadyCompletedException"]
+                    ).OOBEAlreadyCompletedException()
+                ),
+                409,
+                "OOBE_ALREADY_COMPLETED",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["WeakPasswordException"]
+                    ).WeakPasswordException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["WeakPasswordException"]
+                    ).WeakPasswordException()
+                ),
+                422,
+                "WEAK_PASSWORD",
+            ),
+            (
+                lambda m=None: (
+                    __import__(
+                        "backend.core.exceptions", fromlist=["AdminNotCreatedException"]
+                    ).AdminNotCreatedException(m)
+                    if m
+                    else __import__(
+                        "backend.core.exceptions", fromlist=["AdminNotCreatedException"]
+                    ).AdminNotCreatedException()
+                ),
+                400,
+                "ADMIN_NOT_CREATED",
+            ),
         ],
     )
     def test_exception_classes(self, factory, status, ec):
@@ -570,7 +723,6 @@ class TestDeps:
     @pytest.mark.asyncio
     async def test_require_oobe_incomplete_raises_when_done(self, tmp_path, monkeypatch):
         """OOBE 完成 → 抛 OOBEAlreadyCompletedException"""
-        from backend.core.deps import CONFIG_FILE, OOBE_LOCK_FILE
 
         # 临时伪造 OOBE 锁文件存在
         import backend.core.deps as deps_mod
@@ -606,14 +758,17 @@ class TestAuthPureFunctions:
 
     def test_create_access_token_custom_expiry(self):
         from backend.core.auth import create_access_token, decode_token
-
         from backend.utils.compat import timedelta
 
         token = create_access_token({"sub": "1"}, expires_delta=timedelta(minutes=1))
         payload = decode_token(token)
         assert payload is not None
         assert payload["type"] == "access"
-        assert "kid" in decode_token.__wrapped__.__globals__ if hasattr(decode_token, "__wrapped__") else True  # 行覆盖
+        assert (
+            "kid" in decode_token.__wrapped__.__globals__
+            if hasattr(decode_token, "__wrapped__")
+            else True
+        )  # 行覆盖
 
     def test_create_refresh_token_returns_jti(self):
         from backend.core.auth import create_refresh_token
@@ -649,10 +804,11 @@ class TestAuthPureFunctions:
     @pytest.mark.asyncio
     async def test_get_current_user_error_paths(self, db_session):
         """get_current_user 的各种异常分支：bad token / bad type / bad sub / no user / inactive / banned"""
-        from backend.core.auth import create_access_token, decode_token, get_current_user
-        from backend.models.user import User
         from fastapi import HTTPException
         from fastapi.security import HTTPAuthorizationCredentials
+
+        from backend.core.auth import create_access_token, get_current_user
+        from backend.models.user import User
 
         # Case 1：解码失败 token
         fake_creds_bad = HTTPAuthorizationCredentials(scheme="Bearer", credentials="garbage-token")
@@ -661,8 +817,9 @@ class TestAuthPureFunctions:
         assert exc.value.status_code == 401
 
         # Case 2：type 不是 access（造一个 type=refresh 的 payload）
-        from backend.core.config import settings
         import jwt
+
+        from backend.core.config import settings
 
         payload_refresh = {
             "sub": 999999,
@@ -752,15 +909,16 @@ class TestAuthPureFunctions:
     @pytest.mark.asyncio
     async def test_get_current_user_optional_branches(self, db_session):
         """可选认证：None / bad token / type != access / bad sub / inactive"""
+        import jwt
         from fastapi.security import HTTPAuthorizationCredentials
+
         from backend.core.auth import (
             create_access_token,
             get_current_user_optional,
             get_password_hash,
         )
-        from backend.models.user import User
-        import jwt
         from backend.core.config import settings
+        from backend.models.user import User
 
         # 无凭据
         assert await get_current_user_optional(None, db_session) is None
@@ -820,9 +978,10 @@ class TestAuthPureFunctions:
 
     @pytest.mark.asyncio
     async def test_get_current_active_user_inactive(self):
+        from fastapi import HTTPException
+
         from backend.core.auth import get_current_active_user
         from backend.models.user import User
-        from fastapi import HTTPException
 
         u = User(username="x", email="x@t.com", password_hash="", is_active=False)
         with pytest.raises(HTTPException):
@@ -831,10 +990,10 @@ class TestAuthPureFunctions:
     @pytest.mark.asyncio
     async def test_get_current_superuser_and_staff_fail_branches(self, db_session, admin_user):
         """权限失败分支 + 日志写入（即使日志失败也要走 except 兜底）"""
-        from backend.core.auth import get_current_staff, get_current_superuser
-        from backend.core.auth import get_password_hash
-        from backend.models.user import User
         from fastapi import HTTPException
+
+        from backend.core.auth import get_current_staff, get_current_superuser, get_password_hash
+        from backend.models.user import User
 
         # 非超管（is_staff=True 但不是 superuser）→ 超管校验失败
         staff = User(
@@ -879,9 +1038,10 @@ class TestAuthPureFunctions:
 
     @pytest.mark.asyncio
     async def test_validate_token_branches(self, db_session, admin_user):
+        import jwt
+
         from backend.core.auth import create_access_token, validate_token
         from backend.core.config import settings
-        import jwt
 
         # None payload
         assert await validate_token("garbage", db_session) is None

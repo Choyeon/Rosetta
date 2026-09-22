@@ -73,8 +73,18 @@ class RoutingRegistry:
         self._public_routes: list[tuple[str, APIRouter]] = []
         self._menu_items: list[AdminMenuEntry] = []
         self._mounted = False
+        # 统一挂载后保留 app 引用，使「挂载之后再注册」的插件路由立即生效
+        # （插件在 lifespan 的 load_plugins 中加载，晚于 create_application 内的 mount_all）。
+        self._app: FastAPI | None = None
+        self._admin_guard: Any = None
 
     # ── 注册 API（供插件 ctx / 手动调用） ──────────────────────────────
+
+    def has_slug(self, slug: str) -> bool:
+        """若 ``slug`` 已在 admin 或 public 注册表中返回 True（幂等注册前置判断）。"""
+        return any(s == slug for s, _ in self._admin_routes) or any(
+            s == slug for s, _ in self._public_routes
+        )
 
     def register_admin_router(self, slug: str, router: APIRouter) -> None:
         """注册一个插件后台 APIRouter，最终挂载在 ``/api/admin/plugins/{slug}``。"""
@@ -82,13 +92,19 @@ class RoutingRegistry:
             raise ValueError("register_admin_router: slug 必须是非空字符串")
         if not isinstance(router, APIRouter):
             raise TypeError("register_admin_router: router 必须是 fastapi.APIRouter 实例")
-        if self._mounted:
-            logger.warning(
-                "[routing_registry] %s 在路由统一挂载之后再注册 admin router，可能不生效",
+        # slug 级去重：避免 legacy loader + 沙箱导入双路径造成 Duplicate Operation ID。
+        if any(s == slug for s, _ in self._admin_routes):
+            logger.info(
+                "[routing_registry] admin router 已存在，跳过重复注册: plugin=%s",
                 slug,
             )
+            return
         self._admin_routes.append((slug, router))
-        logger.info("[routing_registry] admin router 注册完成: plugin=%s", slug)
+        if self._mounted and self._app is not None:
+            # 已在统一挂载之后注册（如插件在 lifespan 中加载）→ 立即挂载，避免"可能不生效"
+            self._mount_router(self._app, "admin", slug, router)
+        else:
+            logger.info("[routing_registry] admin router 注册完成: plugin=%s", slug)
 
     def register_public_router(self, slug: str, router: APIRouter) -> None:
         """注册一个插件前台 APIRouter，最终挂载在 ``/api/plugins/{slug}``。"""
@@ -96,13 +112,18 @@ class RoutingRegistry:
             raise ValueError("register_public_router: slug 必须是非空字符串")
         if not isinstance(router, APIRouter):
             raise TypeError("register_public_router: router 必须是 fastapi.APIRouter 实例")
-        if self._mounted:
-            logger.warning(
-                "[routing_registry] %s 在路由统一挂载之后再注册 public router，可能不生效",
+        # slug 级去重：同 admin。
+        if any(s == slug for s, _ in self._public_routes):
+            logger.info(
+                "[routing_registry] public router 已存在，跳过重复注册: plugin=%s",
                 slug,
             )
+            return
         self._public_routes.append((slug, router))
-        logger.info("[routing_registry] public router 注册完成: plugin=%s", slug)
+        if self._mounted and self._app is not None:
+            self._mount_router(self._app, "public", slug, router)
+        else:
+            logger.info("[routing_registry] public router 注册完成: plugin=%s", slug)
 
     def register_admin_menu(self, item: dict[str, Any] | AdminMenuEntry) -> None:
         """注册一个后台菜单项，供 Sidebar / AppHeader 动态渲染。
@@ -117,21 +138,25 @@ class RoutingRegistry:
             label = str(item.get("label") or "").strip()
             path = str(item.get("path") or "").strip()
             if not slug or not label or not path:
-                raise ValueError(
-                    "register_admin_menu: dict 必须包含 slug / label / path 三个字段"
-                )
+                raise ValueError("register_admin_menu: dict 必须包含 slug / label / path 三个字段")
             entry = AdminMenuEntry(
                 slug=slug,
                 label=label,
                 path=path,
                 icon=str(item.get("icon") or "material-symbols:extension"),
                 badge=item.get("badge"),
-                extras={k: v for k, v in item.items() if k not in {"slug", "label", "path", "icon", "badge"}},
+                extras={
+                    k: v
+                    for k, v in item.items()
+                    if k not in {"slug", "label", "path", "icon", "badge"}
+                },
             )
         else:
             raise TypeError("register_admin_menu: 参数必须是 dict 或 AdminMenuEntry")
         self._menu_items.append(entry)
-        logger.info("[routing_registry] admin menu 注册完成: plugin=%s path=%s", entry.slug, entry.path)
+        logger.info(
+            "[routing_registry] admin menu 注册完成: plugin=%s path=%s", entry.slug, entry.path
+        )
 
     # ── 查询 API（供列表 / 菜单接口调用） ──────────────────────────────
 
@@ -168,7 +193,42 @@ class RoutingRegistry:
 
     # ── 统一挂载 ────────────────────────────────────────────────────────
 
-    def mount_all(self, app: "FastAPI", *, admin_guard: Any = None) -> None:
+    def _mount_router(self, app: FastAPI, kind: str, slug: str, router: APIRouter) -> str:
+        """把单个插件 router 挂到 ``app`` 上，返回挂载前缀。``kind`` ∈ {admin, public}。"""
+        if kind == "admin":
+            prefix = f"/api/admin/plugins/{slug}"
+            try:
+                app.include_router(
+                    router,
+                    prefix=prefix,
+                    dependencies=[Depends(self._admin_guard)],
+                    tags=[f"Plugin: {slug}"],
+                )
+                logger.info(
+                    "[routing_registry] admin router 已挂载: plugin=%s prefix=%s",
+                    slug,
+                    prefix,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("[routing_registry] admin router 挂载失败: plugin=%s", slug)
+        else:
+            prefix = f"/api/plugins/{slug}"
+            try:
+                app.include_router(
+                    router,
+                    prefix=prefix,
+                    tags=[f"Plugin-Public: {slug}"],
+                )
+                logger.info(
+                    "[routing_registry] public router 已挂载: plugin=%s prefix=%s",
+                    slug,
+                    prefix,
+                )
+            except Exception:  # noqa: BLE001
+                logger.exception("[routing_registry] public router 挂载失败: plugin=%s", slug)
+        return prefix
+
+    def mount_all(self, app: FastAPI, *, admin_guard: Any = None) -> None:
         """把 registry 中暂存的 admin/public 路由统一挂到 ``app`` 上。
 
         Args:
@@ -186,40 +246,17 @@ class RoutingRegistry:
 
             admin_guard = get_current_staff
 
+        # 记录 app/guard 引用，供「挂载之后再注册」的插件路由立即挂载（见 register_*_router）
+        self._app = app
+        self._admin_guard = admin_guard
+
         # 1) Admin 路由：统一加 admin 权限依赖
         for slug, router in self._admin_routes:
-            prefix = f"/api/admin/plugins/{slug}"
-            try:
-                app.include_router(
-                    router,
-                    prefix=prefix,
-                    dependencies=[Depends(admin_guard)],
-                    tags=[f"Plugin: {slug}"],
-                )
-                logger.info(
-                    "[routing_registry] admin router 已挂载: plugin=%s prefix=%s",
-                    slug,
-                    prefix,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception("[routing_registry] admin router 挂载失败: plugin=%s", slug)
+            self._mount_router(app, "admin", slug, router)
 
         # 2) Public 路由：无权限依赖，走插件自己的 guard
         for slug, router in self._public_routes:
-            prefix = f"/api/plugins/{slug}"
-            try:
-                app.include_router(
-                    router,
-                    prefix=prefix,
-                    tags=[f"Plugin-Public: {slug}"],
-                )
-                logger.info(
-                    "[routing_registry] public router 已挂载: plugin=%s prefix=%s",
-                    slug,
-                    prefix,
-                )
-            except Exception:  # noqa: BLE001
-                logger.exception("[routing_registry] public router 挂载失败: plugin=%s", slug)
+            self._mount_router(app, "public", slug, router)
 
         self._mounted = True
         logger.info(
@@ -236,6 +273,8 @@ class RoutingRegistry:
         self._public_routes.clear()
         self._menu_items.clear()
         self._mounted = False
+        self._app = None
+        self._admin_guard = None
 
 
 # 全局单例

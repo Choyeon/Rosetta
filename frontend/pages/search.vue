@@ -24,7 +24,10 @@
               variant="default"
               @click="runSearch"
             >
-              <Search class="size-4 mr-2" />
+              <Search
+                data-icon="inline-start"
+                class="mr-2"
+              />
               {{ t('search.submit') }}
             </Button>
           </div>
@@ -83,7 +86,7 @@
             aria-label="Go to previous page"
             @click="handlePageChange(currentPage - 1)"
           >
-            <ChevronLeft class="h-4 w-4" />
+            <ChevronLeft data-icon="inline-start" />
           </Button>
           <Button
             v-for="page in visiblePages"
@@ -102,7 +105,7 @@
             aria-label="Go to next page"
             @click="handlePageChange(currentPage + 1)"
           >
-            <ChevronRight class="h-4 w-4" />
+            <ChevronRight data-icon="inline-start" />
           </Button>
         </nav>
       </div>
@@ -147,7 +150,7 @@ const currentPage = ref(1)
 const pageSize = 9
 
 // 以路由 query.q 作为检索词的唯一真值来源：SSR 可渲染、结果可分享。
-const { data, pending, refresh } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+const { data, pending, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,

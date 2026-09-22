@@ -110,9 +110,11 @@ class TestUserAccountDeletion:
         auth_headers: dict,
     ):
         """测试成功注销账户"""
-        response = await client.delete(
-            "/api/users/me?password=Testpass123",
+        response = await client.request(
+            "DELETE",
+            "/api/users/me",
             headers=auth_headers,
+            json={"password": "Testpass123"},
         )
         assert response.status_code == 200
         data = response.json()
@@ -125,9 +127,11 @@ class TestUserAccountDeletion:
         auth_headers: dict,
     ):
         """测试密码错误"""
-        response = await client.delete(
-            "/api/users/me?password=WrongPassword",
+        response = await client.request(
+            "DELETE",
+            "/api/users/me",
             headers=auth_headers,
+            json={"password": "WrongPassword"},
         )
         assert response.status_code == 400
 

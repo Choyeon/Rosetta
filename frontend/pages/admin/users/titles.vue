@@ -1,22 +1,29 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        头衔管理
-      </h1>
-      <Button
-        class="rounded-xl shadow-sm"
-        @click="openCreate"
-      >
-        <Plus class="size-4 mr-2" />
-        新建头衔
-      </Button>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="头衔管理"
+      description="为用户配置展示在前台评论区的等级头衔"
+      :icon="Award"
+    >
+      <template #actions>
+        <Button
+          size="sm"
+          class="rounded-xl shadow-sm"
+          @click="openCreate"
+        >
+          <Plus
+            data-icon="inline-start"
+            class="mr-2"
+          />
+          新建头衔
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <AdminCard>
       <div
         v-if="loading"
-        class="p-4 space-y-3"
+        class="flex flex-col gap-3 p-4"
       >
         <div
           v-for="i in 5"
@@ -100,7 +107,7 @@
                     class="h-8 w-8"
                     @click="openEdit(t)"
                   >
-                    <Pencil class="size-4" />
+                    <Pencil data-icon="inline-start" />
                   </Button>
                   <Button
                     variant="ghost"
@@ -108,7 +115,7 @@
                     class="h-8 w-8 text-destructive hover:text-destructive"
                     @click="t.id && confirmDelete(t.id)"
                   >
-                    <Trash2 class="size-4" />
+                    <Trash2 data-icon="inline-start" />
                   </Button>
                 </div>
               </td>
@@ -127,7 +134,7 @@
             头衔可授予用户，显示在用户名旁边
           </DialogDescription>
         </DialogHeader>
-        <div class="space-y-5 py-2">
+        <div class="flex flex-col gap-5 py-2">
           <!-- 名称 -->
           <I18nTabsEditor
             v-model="form.name"
@@ -138,7 +145,7 @@
 
           <!-- 颜色 + 图标预览 -->
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label>颜色</Label>
               <div class="flex items-center gap-2">
                 <input
@@ -153,7 +160,7 @@
                 />
               </div>
             </div>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label>预览</Label>
               <div class="flex items-center h-10 rounded-lg border bg-muted/30 px-3">
                 <TitleBadge
@@ -165,7 +172,7 @@
           </div>
 
           <!-- 图标选择：预设 SVG 网格 -->
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>选择图标</Label>
             <div class="rounded-lg border p-3 bg-muted/20">
               <div class="grid grid-cols-6 sm:grid-cols-8 gap-2">
@@ -182,11 +189,15 @@
                   :title="p.name"
                   @click="form.icon = p.id"
                 >
-                  <component
-                    :is="(LucideIcons as Record<string, unknown>)[p.lucideName]"
+                  <span
                     class="size-5"
                     :style="{ color: form.color }"
-                  />
+                  >
+                    <TitleIconSvg
+                      :icon="p.id"
+                      :stroke-width="2"
+                    />
+                  </span>
                   <span
                     v-if="form.icon === p.id"
                     class="absolute -top-1 -right-1 size-4 rounded-full bg-primary text-primary-foreground text-[8px] flex items-center justify-center"
@@ -195,7 +206,7 @@
               </div>
 
               <!-- 自定义图标输入 -->
-              <div class="mt-3 space-y-2">
+              <div class="flex flex-col gap-2 mt-3">
                 <Label
                   class="text-xs text-muted-foreground"
                 >自定义（emoji / 内联 SVG / 预设 ID）</Label>
@@ -237,7 +248,8 @@
           >
             <Loader2
               v-if="submitting"
-              class="size-4 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             {{ editingId ? '保存修改' : '创建头衔' }}
           </Button>
@@ -272,20 +284,17 @@
 </template>
 
 <script setup lang="ts">
-/* eslint-disable */
- 
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~~/components/ui/dialog'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Label } from '~~/components/ui/label'
-import * as LucideIcons from '@lucide/vue'
-import { Plus, Pencil, Trash2, Info, Loader2 } from '@lucide/vue'
+import { Plus, Pencil, Trash2, Info, Loader2, Award } from '@lucide/vue'
+import TitleIconSvg from '~~/components/TitleIconSvg.vue'
 import {
   fetchAdminUserTitles,
   createAdminUserTitle,
@@ -294,17 +303,16 @@ import {
   type AdminUserTitle
 } from '~~/composables/useAdminManage'
 import { TITLE_PRESET_ICONS } from '~~/composables/titlePresets'
+import { getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 const presetIcons = TITLE_PRESET_ICONS
 
-type I18nDict = { zh: string; en: string; ja: string; zh_Hant: string }
-
 const loading = ref(false)
 const submitting = ref(false)
-const titles = ref<AdminUserTitle[]>([])
+const titles = shallowRef<AdminUserTitle[]>([])
 
 const formDialogOpen = ref(false)
 const editingId = ref<number | null>(null)
@@ -322,23 +330,6 @@ const form = reactive<{
 
 const deleteDialogOpen = ref(false)
 const deleteTargetId = ref<number | null>(null)
-
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
-const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): I18nDict => {
-  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
-  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
-  return {
-    zh: v.zh ?? '',
-    en: v.en ?? '',
-    ja: v.ja ?? '',
-    zh_Hant: v.zh_Hant ?? ''
-  }
-}
 
 const previewTitle = computed<AdminUserTitle>(() => ({
   id: 0,

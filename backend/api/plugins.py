@@ -11,15 +11,13 @@ WordPress 风格插件管理接口：
 
 from __future__ import annotations
 
-from typing import Annotated, Literal
+from typing import Literal
 
-from fastapi import APIRouter, Body, Depends, File, Query, Request, UploadFile, status
+from fastapi import APIRouter, Query, Request, status
 
-from backend.core.auth import CurrentStaff, DB
+from backend.core.auth import DB, CurrentStaff
 from backend.core.exceptions import AppException
 from backend.schemas.extensions import (
-    BulkOperationOut,
-    PluginActivateIn,
     PluginBulkIn,
     PluginConfigIn,
     PluginInstallFrom,
@@ -38,6 +36,7 @@ router = APIRouter(prefix="/plugins", tags=["插件"])
 
 def _get_plugin_manager():
     from backend.core.extensions import plugin_manager
+
     return plugin_manager
 
 
@@ -167,9 +166,8 @@ async def install_plugin_from_market(
     slug: str,
 ):
     """在市场索引中按 slug 查找条目，然后调用 install_from_remote 安装。"""
-    from backend.core.market import fetch_market_index
-
     from backend.core.exceptions import AppException
+    from backend.core.market import fetch_market_index
     from backend.schemas.extensions import PackageInstallRemote, PluginInstallFrom
 
     index = await fetch_market_index("plugins")
@@ -239,21 +237,6 @@ async def get_plugin_detail(
     except Exception:
         out.settings = None
     return {"success": True, "data": out}
-
-
-@router.post("/scan")
-async def scan_local_plugins(
-    db: DB,
-    current_user: CurrentStaff,
-):
-    pm = _get_plugin_manager()
-    added, refreshed = await pm.scan_local(db)
-    await db.commit()
-    return {
-        "success": True,
-        "message": f"扫描完成，新增 {added}，更新 {refreshed}",
-        "data": {"added": added, "refreshed": refreshed},
-    }
 
 
 @router.post("")
@@ -413,10 +396,12 @@ async def replace_plugin_settings(
             error_code=PLUGIN_NOT_FOUND,
         )
     # PUT 语义：先读取 schema 默认值，再用 payload.settings 覆盖（等同于重置为默认后应用 payload）
-    settings = await pm.get_settings(db, slug)
+    await pm.get_settings(db, slug)
     merged = {
         k: (v.get("default") if isinstance(v, dict) and "default" in v else None)
-        for k, v in ((getattr(plugin, "settings_schema", None) or {}).get("properties") or {}).items()
+        for k, v in (
+            (getattr(plugin, "settings_schema", None) or {}).get("properties") or {}
+        ).items()
         if isinstance(v, dict)
     }
     if isinstance(payload.settings, dict):
@@ -475,7 +460,11 @@ async def activate_plugin(
             error_code=PLUGIN_NOT_FOUND,
         )
     if plugin.status == "active":
-        return {"success": True, "message": "插件已处于激活态", "data": PluginOut.model_validate(plugin)}
+        return {
+            "success": True,
+            "message": "插件已处于激活态",
+            "data": PluginOut.model_validate(plugin),
+        }
     result = await pm.activate(db, slug)
     await db.commit()
     return {"success": True, "data": PluginOut.model_validate(result)}
@@ -496,20 +485,12 @@ async def deactivate_plugin(
             error_code=PLUGIN_NOT_FOUND,
         )
     if plugin.status != "active":
-        return {"success": True, "message": "插件已处于禁用态", "data": PluginOut.model_validate(plugin)}
+        return {
+            "success": True,
+            "message": "插件已处于禁用态",
+            "data": PluginOut.model_validate(plugin),
+        }
     result = await pm.deactivate(db, slug)
-    await db.commit()
-    return {"success": True, "data": PluginOut.model_validate(result)}
-
-
-@router.post("/bulk")
-async def bulk_plugin_operation(
-    db: DB,
-    current_user: CurrentStaff,
-    payload: PluginBulkIn,
-):
-    pm = _get_plugin_manager()
-    result = await pm.bulk(db, payload.action, payload.slugs)
     await db.commit()
     return {"success": True, "data": result}
 
@@ -550,31 +531,3 @@ async def upgrade_plugin(
     await pm.upgrade(db, slug)
     await db.commit()
     return {"success": True, "message": "升级完成 (stub)"}
-
-
-@router.get("/menu-registry")
-async def list_plugin_menu_registry(
-    db: DB,
-    current_user: CurrentStaff,
-):
-    """返回已激活插件声明的后台菜单项（Sidebar「插件」分组用）。
-
-    返回字段：
-    - ``items``: ``[{slug, label, icon, path, admin_route_prefix, badge?}]`` 列表
-    - ``admin_route_prefix``: 插件后台路由的固定前缀 ``/api/admin/plugins/{slug}``
-    """
-    from backend.core.routing_registry import routing_registry
-
-    items: list[dict] = []
-    for entry in routing_registry.list_menu():
-        slug = entry["slug"]
-        enriched = dict(entry)
-        enriched["admin_route_prefix"] = f"/api/admin/plugins/{slug}"
-        items.append(enriched)
-    return {
-        "success": True,
-        "data": {
-            "items": items,
-            "total": len(items),
-        },
-    }

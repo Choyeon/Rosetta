@@ -4,12 +4,18 @@
 支持文章编辑历史追踪和版本回滚。
 """
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+
+if TYPE_CHECKING:
+    from backend.models.user import User
 
 
 class PostRevision(Base):
@@ -40,7 +46,7 @@ class PostRevision(Base):
     author_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    author: Mapped["User | None"] = relationship("User")
+    author: Mapped[User | None] = relationship("User")
 
     # 变更说明
     change_summary: Mapped[str | None] = mapped_column(String(500), nullable=True)

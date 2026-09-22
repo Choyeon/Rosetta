@@ -1,22 +1,11 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div
-          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-        >
-          <Link2 class="size-5 text-white" />
-        </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight">
-            友情链接管理
-          </h1>
-          <p class="text-sm text-muted-foreground">
-            审核、管理与展示所有友情链接申请
-          </p>
-        </div>
-      </div>
-      <div class="flex items-center gap-2">
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="友情链接管理"
+      description="审核、管理与展示所有友情链接申请"
+      :icon="Link2"
+    >
+      <template #actions>
         <div class="inline-flex rounded-xl border border-border p-1 bg-card">
           <button
             v-for="s in statusFilters"
@@ -38,13 +27,14 @@
           </button>
         </div>
         <Button
+          size="sm"
           class="shadow-sm"
           @click="openCreate()"
         >
-          <Plus class="size-4" /> 新建友链
+          <Plus data-icon="inline-start" /> 新建友链
         </Button>
-      </div>
-    </div>
+      </template>
+    </AdminPageHeader>
 
     <div
       v-if="loading"
@@ -90,7 +80,7 @@
           </Badge>
         </div>
 
-        <div class="p-5 space-y-4">
+        <div class="flex flex-col gap-4 p-5">
           <div class="flex items-start gap-3">
             <div
               v-if="link.logo"
@@ -99,7 +89,7 @@
               <img
                 :src="link.logo"
                 :alt="getLocalizedStr(link.name)"
-                class="w-full h-full object-cover"
+                class="size-full object-cover"
                 @error="($event.currentTarget as HTMLImageElement).style.display = 'none'"
               >
             </div>
@@ -133,29 +123,37 @@
           </p>
         </div>
 
-        <div class="px-5 pb-4 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div class="px-5 pb-4">
           <div class="flex items-center justify-between pt-3 border-t border-border/60">
             <div class="text-xs text-muted-foreground tabular-nums">
               排序 #{{ link.sort_order }}
             </div>
             <div class="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                title="编辑"
-                @click="openEdit(link)"
-              >
-                <Pencil class="size-4" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                class="text-error hover:text-error hover:bg-error-muted"
-                title="删除"
-                @click="handleDelete(link)"
-              >
-                <Trash2 class="size-4" />
-              </Button>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    @click="openEdit(link)"
+                  >
+                    <Pencil />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>编辑</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger as-child>
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    class="text-error hover:text-error hover:bg-error-muted"
+                    @click="handleDelete(link)"
+                  >
+                    <Trash2 />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>删除</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </div>
@@ -168,7 +166,7 @@
           <DialogTitle>{{ editingId ? '编辑友链' : '新建友情链接' }}</DialogTitle>
           <DialogDescription>填写基本信息与卡片展示样式。</DialogDescription>
         </DialogHeader>
-        <div class="space-y-4 py-2">
+        <div class="flex flex-col gap-4 py-2">
           <div class="grid grid-cols-2 gap-4">
             <I18nTabsEditor
               v-model="form.name"
@@ -177,7 +175,7 @@
               placeholder="如：Rosetta Blog"
               :required="true"
             />
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">URL <span class="text-error">*</span></Label>
               <Input
                 v-model="form.url"
@@ -187,7 +185,7 @@
             </div>
           </div>
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">Logo 图片 URL</Label>
               <Input
                 v-model="form.logo"
@@ -195,7 +193,7 @@
                 class="rounded-xl"
               />
             </div>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">卡片背景色</Label>
               <div class="flex items-center gap-2">
                 <div class="relative">
@@ -225,7 +223,7 @@
             :rows="3"
           />
           <div class="grid grid-cols-2 gap-4">
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">审核状态</Label>
               <Select v-model="form.status">
                 <SelectTrigger class="rounded-xl">
@@ -244,7 +242,7 @@
                 </SelectContent>
               </Select>
             </div>
-            <div class="space-y-2">
+            <div class="flex flex-col gap-2">
               <Label class="text-sm font-medium">{{ t('adminCommon.sortOrder') }}</Label>
               <Input
                 v-model.number="form.sort_order"
@@ -269,11 +267,12 @@
           >
             <Loader2
               v-if="submitting"
-              class="size-4 animate-spin"
+              data-icon="inline-start"
+              class="animate-spin"
             />
             <Save
               v-else
-              class="size-4"
+              data-icon="inline-start"
             />
             {{ editingId ? '保存修改' : '创建友链' }}
           </Button>
@@ -281,40 +280,13 @@
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="confirmOpen">
-      <DialogContent class="max-w-sm rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>确认删除？</DialogTitle>
-          <DialogDescription>该操作会永久删除友链记录，无法撤销。</DialogDescription>
-        </DialogHeader>
-        <DialogFooter class="gap-2">
-          <Button
-            variant="outline"
-            class="rounded-xl"
-            :disabled="deleting"
-            @click="confirmOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            class="rounded-xl"
-            :disabled="deleting"
-            @click="confirmDelete"
-          >
-            <Loader2
-              v-if="deleting"
-              class="size-4 animate-spin"
-            />
-            <Trash2
-              v-else
-              class="size-4"
-            />
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <AdminConfirmDialog
+      v-model:open="confirmOpen"
+      title="确认删除友链？"
+      :description="`「${getLocalizedStr(deleteTarget?.name)}」将被永久删除，无法撤销。`"
+      confirm-text="确认删除"
+      @confirm="confirmDelete"
+    />
   </div>
 </template>
 
@@ -401,8 +373,8 @@ function statusVariant(s: string): BadgeVariants['variant'] {
 }
 
 function statusClass(s: string): string {
-  if (s === 'approved') return 'bg-success-muted text-success-foreground border-transparent'
-  if (s === 'pending') return 'bg-warning-muted text-warning-foreground border-transparent'
+  if (s === 'approved') return 'bg-success-muted text-success-muted-foreground border-transparent'
+  if (s === 'pending') return 'bg-warning-muted text-warning-muted-foreground border-transparent'
   return ''
 }
 

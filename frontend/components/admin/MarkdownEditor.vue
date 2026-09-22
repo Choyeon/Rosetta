@@ -1,14 +1,18 @@
 <script setup lang="ts">
-/* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import { useVModel } from '@vueuse/core'
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useMediaUpload } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { Tabs, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Button } from '~~/components/ui/button'
+import {
+  Image as ImageIcon,
+  Link as LinkIcon,
+  Undo2,
+  Redo2,
+  Maximize2,
+  Minimize2
+} from '@lucide/vue'
 
 const props = defineProps<{
   modelValue?: string
@@ -47,7 +51,7 @@ const pushHistory = () => {
   if (historyIndex.value < historyStack.value.length - 1) {
     historyStack.value = historyStack.value.slice(0, historyIndex.value + 1)
   }
-  historyStack.value.push(content.value)
+  historyStack.value.push(content.value || '')
   if (historyStack.value.length > historyMaxSize) {
     historyStack.value.shift()
   }
@@ -199,10 +203,9 @@ const uploadImageFile = async (file: File) => {
     return
   }
   try {
-    const { data, error } = await useMediaUpload(file, 'post')
-    if (error.value) throw error.value
-    if (data.value?.url) {
-      insertAtCursor(`\n![image](${data.value.url})\n`)
+    const result = await useMediaUpload(file, 'post')
+    if (result?.url) {
+      insertAtCursor(`\n![image](${result.url})\n`)
       toast.success('图片上传成功')
     } else {
       toast.error('图片上传失败')
@@ -224,6 +227,7 @@ const onPaste = async (e: ClipboardEvent) => {
   if (!items) return
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
+    if (!item) continue
     if (item.type.startsWith('image/')) {
       e.preventDefault()
       const file = item.getAsFile()
@@ -239,6 +243,7 @@ const onDrop = async (e: DragEvent) => {
   if (!files) return
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
+    if (!file) continue
     if (file.type.startsWith('image/')) {
       await uploadImageFile(file)
     }
@@ -324,15 +329,23 @@ const previewHtml = computed(() => simpleMarkdownToHtml(content.value || ''))
 onMounted(() => {
   historyStack.value = [content.value || '']
   historyIndex.value = 0
-  document.addEventListener('paste', onPaste as EventListener)
+  document.addEventListener('paste', onPaste as unknown as EventListener)
 })
 
 onBeforeUnmount(() => {
-  document.removeEventListener('paste', onPaste as EventListener)
+  document.removeEventListener('paste', onPaste as unknown as EventListener)
   if (historyTimer) clearTimeout(historyTimer)
 })
 
-const toolbarButtons = [
+type ToolbarBtn = {
+  key: string
+  title: string
+  label?: string
+  cls?: string
+  icon?: typeof ImageIcon
+}
+
+const toolbarButtons: ToolbarBtn[] = [
   { key: 'bold', label: 'B', title: '粗体 (Ctrl+B)', cls: 'font-bold' },
   { key: 'italic', label: 'I', title: '斜体 (Ctrl+I)', cls: 'italic' },
   { key: 'h2', label: 'H2', title: '二级标题', cls: 'text-xs font-bold' },
@@ -343,10 +356,10 @@ const toolbarButtons = [
   { key: 'ul', label: 'UL', title: '无序列表', cls: 'text-xs' },
   { key: 'ol', label: 'OL', title: '有序列表', cls: 'text-xs' },
   { key: 'hr', label: '---', title: '分割线', cls: 'text-xs' },
-  { key: 'image', label: '🖼', title: '插入图片', cls: '' },
-  { key: 'link', label: '🔗', title: '插入链接 (Ctrl+K)', cls: '' },
-  { key: 'undo', label: '⟲', title: '撤销 (Ctrl+Z)', cls: '' },
-  { key: 'redo', label: '⟳', title: '重做 (Ctrl+Y)', cls: 'scale-x-[-1] inline-block' }
+  { key: 'image', icon: ImageIcon, title: '插入图片' },
+  { key: 'link', icon: LinkIcon, title: '插入链接 (Ctrl+K)' },
+  { key: 'undo', icon: Undo2, title: '撤销 (Ctrl+Z)' },
+  { key: 'redo', icon: Redo2, title: '重做 (Ctrl+Y)' }
 ]
 </script>
 
@@ -370,7 +383,15 @@ const toolbarButtons = [
             class="rounded-[12px]"
             @click="handleToolbarAction(btn.key)"
           >
-            <span :class="btn.cls">{{ btn.label }}</span>
+            <component
+              :is="btn.icon"
+              v-if="btn.icon"
+              data-icon="inline-start"
+            />
+            <span
+              v-else
+              :class="btn.cls"
+            >{{ btn.label }}</span>
           </Button>
           <div
             v-else
@@ -385,7 +406,15 @@ const toolbarButtons = [
               class="rounded-[12px]"
               @click="handleToolbarAction(btn.key)"
             >
-              <span :class="btn.cls">{{ btn.label }}</span>
+              <component
+                :is="btn.icon"
+                v-if="btn.icon"
+                data-icon="inline-start"
+              />
+              <span
+                v-else
+                :class="btn.cls"
+              >{{ btn.label }}</span>
             </Button>
           </div>
         </template>
@@ -394,7 +423,7 @@ const toolbarButtons = [
         <Tabs
           :model-value="mode"
           class="w-auto"
-          @update:model-value="mode = $event as any"
+          @update:model-value="mode = $event as 'edit' | 'split' | 'preview'"
         >
           <TabsList class="h-8 rounded-[12px]">
             <TabsTrigger
@@ -425,7 +454,14 @@ const toolbarButtons = [
           :title="isFullscreen ? '退出全屏' : '全屏'"
           @click="toggleFullscreen"
         >
-          <span class="text-sm">{{ isFullscreen ? '✕' : '⛶' }}</span>
+          <Minimize2
+            v-if="isFullscreen"
+            data-icon="inline-start"
+          />
+          <Maximize2
+            v-else
+            data-icon="inline-start"
+          />
         </Button>
       </div>
     </div>

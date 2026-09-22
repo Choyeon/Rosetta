@@ -15,6 +15,7 @@
 
 import argparse
 import shutil
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -26,6 +27,24 @@ from backend.migrations.config import (
     get_alembic_config,
     run_async,
 )
+
+
+def _force_utf8_stdout() -> None:
+    """Windows 控制台默认 GBK，emoji 输出会抛 UnicodeEncodeError。
+
+    在模块导入时把 stdout/stderr 重配为 UTF-8（errors=replace 兜底），
+    保证中文与 emoji 提示在任何终端都能打印而不中断迁移命令。
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            try:
+                reconfigure(encoding="utf-8", errors="replace")
+            except (ValueError, OSError):
+                pass
+
+
+_force_utf8_stdout()
 
 
 def cmd_upgrade(args):
@@ -104,7 +123,10 @@ def cmd_init(args):
                     )
                 )
                 await conn.execute(
-                    text(f"INSERT INTO alembic_version (version_num) VALUES ('{head_revision}')")
+                    text(
+                        "INSERT INTO alembic_version (version_num) VALUES (:version_num)"
+                    ),
+                    {"version_num": head_revision}
                 )
 
         print("✅ 数据库初始化完成")
@@ -147,7 +169,10 @@ def cmd_reset(args):
                     )
                 )
                 await conn.execute(
-                    text(f"INSERT INTO alembic_version (version_num) VALUES ('{head_revision}')")
+                    text(
+                        "INSERT INTO alembic_version (version_num) VALUES (:version_num)"
+                    ),
+                    {"version_num": head_revision}
                 )
 
         print("✅ 数据库重置完成")

@@ -77,7 +77,9 @@ class TestUserRegistration:
         assert body.get("success") is False
         errors = body.get("errors", [])
         # 至少存在 body.password 相关的字段错误
-        assert any("password" in (e.get("field") or "") for e in errors), f"Expected password field error: {body}"
+        assert any("password" in (e.get("field") or "") for e in errors), (
+            f"Expected password field error: {body}"
+        )
 
     @pytest.mark.asyncio
     async def test_register_weak_password(self, client: AsyncClient):

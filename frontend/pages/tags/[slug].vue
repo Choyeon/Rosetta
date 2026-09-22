@@ -86,7 +86,7 @@
           :disabled="currentPage <= 1"
           @click="currentPage -= 1"
         >
-          <ChevronLeft class="h-4 w-4" />
+          <ChevronLeft data-icon="inline-start" />
         </Button>
         <Button
           v-for="p in visiblePages"
@@ -104,7 +104,7 @@
           :disabled="currentPage >= totalPages"
           @click="currentPage += 1"
         >
-          <ChevronRight class="h-4 w-4" />
+          <ChevronRight data-icon="inline-start" />
         </Button>
       </nav>
     </div>
@@ -165,13 +165,13 @@ interface TagPostRow {
   is_pinned?: boolean
   [key: string]: unknown
 }
-const { data: tagRaw, error: tagErr } = await useAPI<TagDetail>(`/blog/tags/slug/${slug.value}`, {
+const { data: tagRaw, error: tagErr } = useAPI<TagDetail>(`/blog/tags/slug/${slug.value}`, {
   query: { lang: locale.value },
   key: computed(() => `tag:detail:${slug.value}:${locale.value}`),
   default: () => ({} as TagDetail)
 })
 
-const { data: postsRaw, pending, error: postsErr, refresh } = await useAPI<{ items?: TagPostRow[], total?: number }>('/blog/posts', {
+const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{ items?: TagPostRow[], total?: number }>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,

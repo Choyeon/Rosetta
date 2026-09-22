@@ -125,7 +125,7 @@ function createRippleState() {
 
     progress.value = opts.endProgress
 
-    const THEME_RIPPLE_DURATION = 520
+    const THEME_RIPPLE_DURATION = 650
     if (isExpand) {
       runningTimer = window.setTimeout(() => opts.flipTheme(), Math.round(THEME_RIPPLE_DURATION * 0.62))
     }

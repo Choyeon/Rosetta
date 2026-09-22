@@ -20,7 +20,6 @@ import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from datetime import datetime
-from pathlib import Path
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -28,12 +27,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from scalar_fastapi import get_scalar_api_reference
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from backend.api import (
     activity,
     admin,
     admin_logs,
+    admin_tools,
     advanced,
     announcement,
     avatar_proxy,
@@ -56,6 +57,7 @@ from backend.api import (
     notification,
     oobe,
     performance,
+    plugins,
     post_crypto,
     post_encryption,
     post_series,
@@ -67,35 +69,146 @@ from backend.api import (
     stats,
     themes,
     themes_ext,
-    plugins,
     title,
     toc,
     translate,
-    admin_tools,
     users,
     voting,
     webhook,
 )
 from backend.core.config import settings
 from backend.core.database import check_db_connection, close_db, get_db_info, init_db
-from backend.core.paths import BASE_DIR
 from backend.core.exceptions import AppException
 from backend.core.i18n import I18nContext, parse_accept_language, t
 from backend.core.maintenance import MaintenanceMiddleware
+from backend.core.paths import BASE_DIR
+from backend.core.plugin_loader import load_plugins, unload_plugins
 from backend.core.rate_limit import setup_rate_limit_middleware
 from backend.core.security_middleware import SecurityHeadersMiddleware
-from backend.core.plugin_loader import load_plugins, unload_plugins
 from backend.middleware.performance import performance_middleware
 
 logger = logging.getLogger(__name__)
 
+# ── OpenAPI 标签元数据 ──────────────────────────────────────────────────────
+# 为每个 API 分组提供中文说明，Scalar / Redoc / Swagger 会在侧边栏展示。
+TAG_METADATA: list[dict[str, str]] = [
+    {"name": "系统", "description": "应用健康检查与基础信息"},
+    {"name": "用户", "description": "注册、登录、令牌刷新、个人资料与密码管理"},
+    {"name": "博客", "description": "文章、分类、标签、评论的公开与管理接口"},
+    {"name": "核心", "description": "站点公开配置、导航、友情链接等前台核心数据"},
+    {"name": "媒体", "description": "文件上传、头像代理、图片处理"},
+    {"name": "数据库迁移", "description": "Alembic 迁移状态查询与执行"},
+    {"name": "留言板", "description": "访客留言的提交、审核与管理"},
+    {"name": "投票", "description": "文章投票与统计"},
+    {"name": "通知", "description": "站内通知的读取与标记"},
+    {"name": "收藏", "description": "文章收藏管理"},
+    {"name": "后台管理", "description": "仪表盘统计、用户管理、系统概览"},
+    {"name": "Webhook", "description": "外部服务回调配置与日志"},
+    {"name": "导入导出", "description": "内容数据的批量导入与导出"},
+    {"name": "SEO", "description": "站点地图、Robots、SEO 设置"},
+    {"name": "高级管理", "description": "缓存清理、系统维护等高级操作"},
+    {"name": "监控", "description": "运行状态、访问日志、性能指标"},
+    {"name": "TOC", "description": "文章目录生成"},
+    {"name": "短代码", "description": "内容短代码解析与预览"},
+    {"name": "用户称号", "description": "用户头衔与徽章管理"},
+    {"name": "验证码", "description": "图形验证码生成与校验"},
+    {"name": "私信", "description": "用户间私信收发"},
+    {"name": "翻译", "description": "多语言内容翻译接口"},
+    {"name": "OOBE", "description": "开箱即用安装向导（首次部署时使用）"},
+    {"name": "公告", "description": "站点公告发布与管理"},
+    {"name": "网站动态", "description": "用户活动时间线"},
+    {"name": "Hero轮播", "description": "首页 Hero 区轮播图配置"},
+    {"name": "文章系列", "description": "系列文章的组织与展示"},
+    {"name": "内容加密", "description": "文章内容加密访问"},
+    {"name": "文章加密工具", "description": "文章加密的管理工具"},
+    {"name": "定时发布", "description": "定时发布任务管理"},
+    {"name": "评论表情反应", "description": "评论表情互动"},
+    {"name": "热门排行", "description": "热门文章排行榜"},
+    {"name": "性能监控", "description": "接口性能数据查询"},
+    {"name": "仪表盘", "description": "后台仪表盘统计数据"},
+    {"name": "操作日志", "description": "管理员操作审计日志"},
+    {"name": "Admin 工具", "description": "后台通用工具接口"},
+    {"name": "系统设置", "description": "站点配置分组读写"},
+    {"name": "主题", "description": "前台主题切换与配置"},
+    {"name": "主题平台", "description": "主题市场与安装管理"},
+    {"name": "插件平台", "description": "插件市场与安装管理"},
+    {"name": "开发文档", "description": "API 文档与开发指南"},
+    {"name": "Bing壁纸", "description": "Bing 每日壁纸获取"},
+    {"name": "评论", "description": "文章评论的提交与管理"},
+    {"name": "相册", "description": "公开相册浏览"},
+    {"name": "相册管理", "description": "相册与照片管理"},
+]
+
+
+def _build_openapi(app: FastAPI) -> dict:
+    """生成带中文元数据的 OpenAPI schema。
+
+    在 FastAPI 默认 schema 基础上补充：
+    - 应用描述、联系信息、许可证
+    - 服务器列表（按环境区分）
+    - Bearer 认证方案说明
+    - 标签分组描述
+    """
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    from fastapi.openapi.utils import get_openapi
+
+    schema = get_openapi(
+        title=settings.app_name,
+        version=settings.app_version,
+        description=(
+            "## Rosetta 博客平台 API\n\n"
+            "一个现代化的多语言博客平台，基于 FastAPI 构建。\n\n"
+            "### 认证方式\n\n"
+            "除公开接口外，所有请求需在 Header 中携带 Bearer Token：\n"
+            "```\nAuthorization: Bearer <access_token>\n```\n\n"
+            "通过 `/api/users/login` 获取 access_token（1 小时有效），"
+            "过期后使用 `/api/users/refresh` 换取新令牌。\n\n"
+            "### 响应格式\n\n"
+            "所有接口统一返回如下结构：\n"
+            "```json\n{\"success\": true, \"data\": {...}, \"message\": \"...\"}\n```\n\n"
+            "失败时返回：\n"
+            "```json\n{\"success\": false, \"error_code\": \"...\", \"message\": \"...\"}\n```"
+        ),
+        contact={
+            "name": "Rosetta Project",
+            "url": settings.site_url or "https://github.com/Choyeon/Rosetta",
+        },
+        license_info={
+            "name": "MIT License",
+            "url": "https://opensource.org/licenses/MIT",
+        },
+        routes=app.routes,
+    )
+
+    # 标签描述
+    schema["tags"] = TAG_METADATA
+
+    # 服务器列表
+    servers = [{"url": settings.site_url or "/", "description": "当前站点"}]
+    if settings.site_url and "localhost" not in settings.site_url:
+        servers.append({"url": "http://127.0.0.1:8000", "description": "本地开发"})
+    schema["servers"] = servers
+
+    # 安全方案说明
+    if "components" in schema and "securitySchemes" in schema["components"]:
+        scheme = schema["components"]["securitySchemes"]
+        if "HTTPBearer" in scheme:
+            scheme["HTTPBearer"]["description"] = (
+                "登录后获取的 access_token，有效期 1 小时。"
+                "Header 格式：`Authorization: Bearer <token>`"
+            )
+
+    app.openapi_schema = schema
+    return schema
+
 
 async def _scheduled_publish_loop(db_session_factory):
-    """
-    定时发布扫描器（每分钟扫描一次）
+    """定时发布扫描器，每分钟扫描一次。
 
-    Task 7: 后台循环将 status=scheduled 或 scheduled_at<=now 的文章发布。
-    同时兼容旧实现：status=published 且 scheduled_at<=now 的也真正生效。
+    将到达 scheduled_at 的文章状态切换为 published，并清空 scheduled_at。
+    兼容历史数据：status 已为 published 但 scheduled_at 仍在的也一并清理。
     """
     import asyncio as _asyncio
 
@@ -277,38 +390,46 @@ def create_application() -> FastAPI:
     Returns:
         FastAPI: 应用实例
     """
+    # 文档端点开关：
+    # - production 环境：仅 DEBUG=true 时开启（避免接口结构泄露）
+    # - development/staging 环境：默认开启，便于联调与 OOBE 后自查
+    docs_enabled = settings.debug or settings.environment != "production"
+
     app = FastAPI(
         title=settings.app_name,
-        description="""
-## Rosetta 博客平台 API
-
-一个现代化的博客平台，使用 FastAPI + Astro 构建。
-
-### 功能特性
-
-- 🔐 **用户认证**: JWT 令牌认证，支持刷新令牌
-- 📝 **文章管理**: 支持多语言、Markdown、SEO 优化
-- 💬 **评论系统**: 支持嵌套回复、审核机制
-- 🏷️ **分类标签**: 灵活的内容组织
-- 🌐 **多语言**: 支持中文、英文、日文、繁体中文
-- 📱 **媒体管理**: 图片上传、裁剪、压缩
-
-### 认证方式
-
-使用 Bearer Token 认证：
-```
-Authorization: Bearer <access_token>
-```
-        """,
-        version="1.0.0",
-        # 文档端点开关：
-        # - production 环境：严格依赖 DEBUG=true 才开启（默认关闭，避免接口泄露）
-        # - development/staging 环境：即便 DEBUG=false 也默认开启，便于联调与 OOBE 安装后自查
-        docs_url="/docs" if (settings.debug or settings.environment != "production") else None,
-        redoc_url="/redoc" if (settings.debug or settings.environment != "production") else None,
-        openapi_url="/openapi.json" if (settings.debug or settings.environment != "production") else None,
+        version=settings.app_version,
+        openapi_url="/openapi.json" if docs_enabled else None,
+        docs_url=None,
+        redoc_url=None,
         lifespan=lifespan,
     )
+    app.openapi = lambda: _build_openapi(app)
+
+    if docs_enabled:
+        @app.get("/docs", include_in_schema=False, tags=["系统"])
+        async def scalar_docs():
+            return get_scalar_api_reference(
+                openapi_url=app.openapi_url,
+                title=f"{settings.app_name} · API 文档",
+                layout="modern",
+                theme="default",
+                dark_mode=True,
+                hide_download_button=False,
+                default_open_all_tags=False,
+                servers=[{"url": "/", "description": "当前站点"}],
+                overrides={
+                    "localization": {"locale": "zh-CN"},
+                },
+            )
+
+        from fastapi.openapi.docs import get_redoc_html
+
+        @app.get("/redoc", include_in_schema=False, tags=["系统"])
+        async def redoc_docs():
+            return get_redoc_html(
+                openapi_url=app.openapi_url,
+                title=f"{settings.app_name} · ReDoc",
+            )
 
     app.add_middleware(
         CORSMiddleware,
@@ -564,6 +685,15 @@ Authorization: Bearer <access_token>
             },
         )
 
+    # /api/health 别名：前端生产 Nitro 代理同源 /api/* 时，
+    # 前端代码调 /api/health 可直接命中（无需特殊处理根路径路由）。
+    app.get(
+        "/api/health",
+        tags=["系统"],
+        summary="健康检查 (/api 前缀别名)",
+        description="前端 SSR/Nitro 同源代理场景下的健康检查入口，与 /health 等价。",
+    )(health_check)
+
     app.include_router(users.router, prefix="/api/users", tags=["用户"])
     app.include_router(blog.router, prefix="/api/blog", tags=["博客"])
     app.include_router(core.router, prefix="/api", tags=["核心"])
@@ -613,6 +743,7 @@ Authorization: Bearer <access_token>
     # ===== Gallery（相册）：公开 + 管理
     from backend.api.gallery import admin_router as gallery_admin_router
     from backend.api.gallery import public_router as gallery_public_router
+
     app.include_router(gallery_public_router, prefix="/api", tags=["相册"])
     app.include_router(gallery_admin_router, prefix="/api", tags=["相册管理"])
 
@@ -641,7 +772,7 @@ Authorization: Bearer <access_token>
         return {
             "name": settings.app_name,
             "version": "1.0.0",
-            "docs": "/docs" if settings.debug else None,
+            "docs": "/docs" if docs_enabled else None,
             "health": "/health",
             "api": "/api",
         }

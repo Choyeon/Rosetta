@@ -8,6 +8,7 @@ import { apiFetch } from '~~/composables/useApi'
 import { Button } from '~~/components/ui/button'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
+import { ArrowLeft, FilePenLine } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -63,25 +64,29 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 p-6">
+  <div class="flex flex-col gap-5">
     <div class="flex items-center gap-2">
       <button
-        class="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
         @click="router.push('/admin/content/posts')"
       >
-        <span class="text-base">←</span>
+        <ArrowLeft data-icon="inline-start" />
         <span>返回文章列表</span>
       </button>
     </div>
 
-    <div class="flex items-center gap-3">
-      <h1 class="text-2xl font-bold tracking-tight">
-        编辑文章
-      </h1>
-      <template v-if="post && !loading">
-        <span class="text-sm text-muted-foreground">#{{ postId }}</span>
+    <AdminPageHeader
+      title="编辑文章"
+      description="修改文章正文、元数据与发布配置"
+      :icon="FilePenLine"
+    >
+      <template #meta>
+        <span
+          v-if="post && !loading"
+          class="text-sm text-muted-foreground"
+        >#{{ postId }}</span>
       </template>
-    </div>
+    </AdminPageHeader>
 
     <template v-if="loading">
       <div class="flex flex-col gap-4">

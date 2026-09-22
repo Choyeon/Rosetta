@@ -4,7 +4,7 @@ import AppFooter from '~~/components/AppFooter.vue'
 import { useTheme } from '~~/composables/useTheme'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
-import { Bell, X, ExternalLink } from '@lucide/vue'
+import { Bell, X, ExternalLink } from '~~/lib/lucide-svg-icons'
 import { useFrontendTheme } from '~~/composables/useFrontendTheme'
 
 // 初始化 useTheme 共享状态（不调用任何会影响首渲染 DOM 的逻辑；真实偏好延后到 Hydrate 后）
@@ -44,17 +44,13 @@ watch(() => route.path, () => applyFrontendShell(), { flush: 'post' })
 
 const siteTitleForHead = computed(() => site.siteTitle.value || 'Rosetta')
 useHead(() => {
-  const title = siteTitleForHead.value
+  const siteTitle = siteTitleForHead.value
   return {
     link: [
-      { rel: 'alternate', type: 'application/rss+xml', title: `${title} · RSS`, href: '/rss.xml' },
-      { rel: 'sitemap', type: 'application/xml', title: `${title} · Sitemap`, href: '/sitemap.xml' }
+      { rel: 'alternate', type: 'application/rss+xml', title: `${siteTitle} · RSS`, href: '/rss.xml' },
+      { rel: 'sitemap', type: 'application/xml', title: `${siteTitle} · Sitemap`, href: '/sitemap.xml' }
     ]
   }
-})
-
-onMounted(() => {
-  authStore.initialize()
 })
 
 // =============== 站点公告条（GET /api/announcements）===============
@@ -131,6 +127,8 @@ const annContent = (a: AnnouncementRow) => {
     <div
       v-for="ann in visibleAnns"
       :key="ann.id"
+      data-announcement
+      :data-announcement-type="ann.type || 'info'"
       :class="['px-4 py-2.5 text-sm', variantClass(ann.type)]"
     >
       <div class="container mx-auto flex items-start gap-3">
@@ -177,7 +175,7 @@ const annContent = (a: AnnouncementRow) => {
     </div>
 
     <main
-      id="main-content"
+      id="main"
       class="flex-1"
     >
       <slot />

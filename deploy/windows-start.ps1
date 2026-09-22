@@ -1,4 +1,4 @@
-# Windows PowerShell 一键部署脚本
+﻿# Windows PowerShell 一键部署脚本
 # --------------------------------------------------------------
 # 功能：
 #   1. 检查 Python / Node / pnpm / uv / PostgreSQL / Redis 等依赖

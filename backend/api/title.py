@@ -73,26 +73,24 @@ async def get_titles(
     titles_result = await db.execute(select(UserTitle).order_by(UserTitle.created_at.desc()))
     titles = titles_result.scalars().all()
 
-    title_responses = []
-    for title in titles:
-        count_result = await db.execute(
-            select(func.count()).select_from(User).where(User.title_id == title.id)
-        )
-        users_count = count_result.scalar() or 0
+    # 单次 GROUP BY 聚合所有称号的使用数，避免逐条 count 的 N+1 查询
+    counts_result = await db.execute(
+        select(User.title_id, func.count()).where(User.title_id.is_not(None)).group_by(User.title_id)
+    )
+    counts_map = {title_id: cnt for title_id, cnt in counts_result.fetchall()}
 
-        title_responses.append(
-            UserTitleResponse(
-                id=title.id,
-                name=title.name,
-                color=title.color,
-                icon=title.icon,
-                description=title.description,
-                created_at=title.created_at,
-                users_count=users_count,
-            )
+    return [
+        UserTitleResponse(
+            id=title.id,
+            name=title.name,
+            color=title.color,
+            icon=title.icon,
+            description=title.description,
+            created_at=title.created_at,
+            users_count=counts_map.get(title.id, 0),
         )
-
-    return title_responses
+        for title in titles
+    ]
 
 
 @router.post(
@@ -109,9 +107,7 @@ async def create_title(
     """创建新称号"""
     name_for_check = data.name.get("zh") if isinstance(data.name, dict) else str(data.name)
     existing = await db.execute(
-        select(UserTitle).where(
-            func.cast(UserTitle.name, String).like(f"%{name_for_check}%")
-        )
+        select(UserTitle).where(func.cast(UserTitle.name, String).like(f"%{name_for_check}%"))
     )
     if existing.scalar_one_or_none():
         raise HTTPException(

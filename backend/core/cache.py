@@ -10,6 +10,7 @@
 
 import json
 import logging
+import random
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import Any, ParamSpec, TypeVar
@@ -337,7 +338,13 @@ class RedisCacheBackend(CacheBackend):
             }
         except Exception as e:
             logger.warning(f"Redis stats 读取失败: {e}")
-            return {"keys": 0, "memory_used_bytes": None, "hit_rate": None, "connected": False, "error": str(e)}
+            return {
+                "keys": 0,
+                "memory_used_bytes": None,
+                "hit_rate": None,
+                "connected": False,
+                "error": str(e),
+            }
 
     async def close(self):
         """关闭 Redis 连接"""
@@ -460,8 +467,6 @@ CACHE_TTL = {
 }
 
 NULL_MARKER = "__NULL__"
-
-import random
 
 
 def get_cache_ttl(key: str) -> int:

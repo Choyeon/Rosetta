@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
   Rosetta 本地开发启动脚本：并发启动 FastAPI 后端 (:8000) 与 Nuxt 4 前端 (:3000)
 .DESCRIPTION

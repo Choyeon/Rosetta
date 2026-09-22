@@ -45,9 +45,7 @@ class Album(Base):
     is_published: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=True, server_default="true", index=True
     )
-    photo_count: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
-    )
+    photo_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
     author_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True

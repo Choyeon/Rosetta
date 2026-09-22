@@ -13,20 +13,30 @@
         :alt="postTitle"
         class="h-full w-full object-cover transition-transform transition-duration-[520ms] ease-out group-hover:scale-[1.035]"
         loading="lazy"
+        decoding="async"
+        fetchpriority="low"
+        sizes="(max-width: 640px) 120px, (max-width: 768px) 168px, 180px"
       >
     </NuxtLink>
+    <!-- 无封面：占位渐变砖块，保证列表高度稳定（compact） -->
+    <div
+      v-else
+      aria-hidden="true"
+      class="shrink-0 w-[120px] sm:w-[168px] md:w-[180px] aspect-[4/3] sm:aspect-auto sm:min-h-full flex items-center justify-center bg-gradient-to-br from-muted via-muted to-primary/10"
+    >
+      <FileImage class="size-6 text-muted-foreground/40" />
+    </div>
 
     <div class="flex-1 min-w-0 p-4 sm:p-5 flex flex-col">
       <div class="flex items-center gap-2 flex-wrap mb-2">
-        <Badge
+        <CategoryBadge
           v-if="categoryName"
-          variant="secondary"
-          class="text-[11px] h-5 px-2 inline-flex items-center gap-1"
-          :style="categoryBadgeStyle"
-        >
-          <FolderOpen class="size-3" />
-          {{ categoryName }}
-        </Badge>
+          :color="categoryColor"
+          :icon="post.category?.icon ?? null"
+          :label="categoryName"
+          :to="categoryLink"
+          size="sm"
+        />
         <Badge
           v-if="isPinned"
           variant="default"
@@ -66,16 +76,18 @@
           <span class="font-medium text-foreground truncate">{{ authorName }}</span>
           <TitleBadge
             v-if="post.author?.title"
-            :title="post.author?.title as { id?: number; name: string; icon?: string; color?: string }"
+            :title="post.author?.title as { id?: number; name: string | Record<string, string>; icon?: string; color?: string }"
             size="sm"
           />
           <span
             v-if="publishedAt"
             class="shrink-0"
           >·</span>
-          <CalendarDays
+          <!-- 紧凑卡片：日历图标 size-3.5（与默认卡片统一） -->
+          <Calendar
             v-if="publishedAt"
-            class="size-3 shrink-0"
+            class="size-3.5 shrink-0"
+            aria-hidden="true"
           />
           <span
             v-if="publishedAt"
@@ -84,11 +96,17 @@
         </div>
         <div class="flex items-center gap-3 shrink-0">
           <span class="inline-flex items-center gap-1 tabular-nums">
-            <Eye class="size-3.5" />
+            <Eye
+              class="size-3.5 shrink-0"
+              aria-hidden="true"
+            />
             {{ views }}
           </span>
           <span class="inline-flex items-center gap-1 tabular-nums">
-            <MessageSquare class="size-3.5" />
+            <MessageCircle
+              class="size-3.5 shrink-0"
+              aria-hidden="true"
+            />
             {{ commentsCount }}
           </span>
         </div>
@@ -110,22 +128,31 @@
         :alt="postTitle"
         class="h-full w-full object-cover transition-transform transition-duration-[600ms] ease-out group-hover:scale-[1.03]"
         loading="lazy"
+        decoding="async"
+        fetchpriority="low"
+        sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
       >
       <!-- subtle bottom vignette so text/tags still work when no content overlay -->
       <span class="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/10 to-transparent opacity-70" />
     </NuxtLink>
+    <!-- 无封面：占位渐变砖块，保证网格高度一致（default） -->
+    <div
+      v-else
+      aria-hidden="true"
+      class="aspect-[16/9] flex items-center justify-center bg-gradient-to-br from-muted via-muted to-primary/10"
+    >
+      <FileImage class="size-8 text-muted-foreground/40" />
+    </div>
 
     <header class="p-5 pb-0">
       <div class="flex items-center gap-2 flex-wrap">
-        <Badge
+        <CategoryBadge
           v-if="categoryName"
-          variant="secondary"
-          class="inline-flex items-center gap-1"
-          :style="categoryBadgeStyle"
-        >
-          <FolderOpen class="size-3" />
-          {{ categoryName }}
-        </Badge>
+          :color="categoryColor"
+          :icon="post.category?.icon ?? null"
+          :label="categoryName"
+          :to="categoryLink"
+        />
         <Badge
           v-if="isPinned"
           variant="default"
@@ -153,8 +180,7 @@
     </div>
 
     <footer
-      class="flex items-center justify-between mt-2 text-xs text-muted-foreground gap-3 p-5 pt-0"
-      style="border-top:1px solid color-mix(in oklab, hsl(var(--foreground)) 6%, transparent)"
+      class="flex items-center justify-between mt-2 text-xs text-muted-foreground gap-3 p-5 pt-0 border-t border-border/60"
     >
       <div class="flex items-center gap-2 min-w-0">
         <UserAvatar
@@ -168,16 +194,17 @@
         <span class="font-medium text-foreground truncate">{{ authorName }}</span>
         <TitleBadge
           v-if="post.author?.title"
-          :title="post.author?.title as { id?: number; name: string; icon?: string; color?: string }"
+          :title="post.author?.title as { id?: number; name: string | Record<string, string>; icon?: string; color?: string }"
           size="sm"
         />
         <span
           v-if="publishedAt"
           class="shrink-0"
         >·</span>
-        <CalendarDays
+        <Calendar
           v-if="publishedAt"
           class="size-3.5 shrink-0"
+          aria-hidden="true"
         />
         <span
           v-if="publishedAt"
@@ -186,11 +213,17 @@
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <span class="inline-flex items-center gap-1 tabular-nums">
-          <Eye class="size-3.5" />
+          <Eye
+            class="size-3.5 shrink-0"
+            aria-hidden="true"
+          />
           {{ views }}
         </span>
         <span class="inline-flex items-center gap-1 tabular-nums">
-          <MessageSquare class="size-3.5" />
+          <MessageCircle
+            class="size-3.5 shrink-0"
+            aria-hidden="true"
+          />
           {{ commentsCount }}
         </span>
       </div>
@@ -200,14 +233,14 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import { Calendar, Eye, FileImage, MessageCircle } from '@lucide/vue'
 import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
-import { CalendarDays, Eye, MessageSquare, FolderOpen } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
+import CategoryBadge from '~~/components/CategoryBadge.vue'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
-import { hexToHslTriple } from '~~/lib/utils'
 
 type PostCardVariant = 'default' | 'compact'
 
@@ -231,6 +264,7 @@ interface Props {
       name: string | Record<string, string>
       slug: string
       color?: string | null
+      icon?: string | null
     }
     tags?: TagLike[]
     author?: {
@@ -241,7 +275,7 @@ interface Props {
       avatar?: string
       title?: {
         id?: number
-        name: string
+        name: string | Record<string, string>
         icon?: string
         color?: string
       } | null
@@ -281,16 +315,10 @@ const authorName = computed(() => {
 const categoryName = computed(() => resolveLocalized(props.post.category?.name))
 const categoryColor = computed(() => props.post.category?.color ?? null)
 
-/** 分类 Badge：当后端返回了 category.color 时，融合成柔和底色。 */
-const categoryBadgeStyle = computed<Record<string, string> | undefined>(() => {
-  if (!categoryColor.value) return undefined
-  const triple = hexToHslTriple(categoryColor.value)
-  if (!triple) return undefined
-  return {
-    background: `color-mix(in oklab, hsl(${triple}) 18%, hsl(var(--secondary)))`,
-    border: `1px solid color-mix(in oklab, hsl(${triple}) 30%, transparent)`,
-    color: 'hsl(var(--secondary-foreground))'
-  }
+/** 分类 chip 跳转目标：与标签的 /posts?tag= 相呼应，分类走独立详情页。 */
+const categoryLink = computed(() => {
+  const slug = props.post.category?.slug
+  return slug ? `/categories/${slug}` : undefined
 })
 
 const postTitle = computed(() => resolveLocalized(props.post.title))

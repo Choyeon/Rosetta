@@ -16,10 +16,57 @@
       </div>
     </header>
 
-    <div class="space-y-12">
+    <!-- ===== PENDING：归档数据加载骨架屏（避免首屏空白） ===== -->
+    <template v-if="_pending">
+      <div class="flex flex-col gap-12">
+        <!-- Skeleton year group × 2 -->
+        <section
+          v-for="g in 2"
+          :key="g"
+        >
+          <div class="flex items-end justify-between mb-4">
+            <Skeleton class="h-8 w-24 rounded-lg" />
+            <Skeleton class="h-5 w-16 rounded-full" />
+          </div>
+          <Skeleton class="h-px w-full" />
+          <ul class="flex flex-col gap-3 mt-2">
+            <li
+              v-for="r in 5"
+              :key="r"
+              class="py-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3 min-w-0 flex-1">
+                  <Skeleton class="h-5 w-14 rounded-md" />
+                  <Skeleton class="h-5 w-3/5 rounded-md" />
+                </div>
+                <div class="flex items-center gap-3 shrink-0 ml-3">
+                  <Skeleton class="h-3 w-20 rounded-md hidden sm:block" />
+                  <Skeleton class="h-3 w-12 rounded-md" />
+                </div>
+              </div>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </template>
+
+    <!-- ===== ERROR：后端请求失败提示 ===== -->
+    <template v-else-if="loadError">
+      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+        {{ t('admin.posts.loadFailed', '加载失败，请稍后重试。') }}
+      </div>
+    </template>
+
+    <!-- ===== DATA：按年分组的归档列表 ===== -->
+    <div
+      v-else-if="groupedByYear.length > 0"
+      class="flex flex-col gap-12"
+    >
       <section
         v-for="group in groupedByYear"
         :key="group.year"
+        v-memo="[group.year, group.posts.length]"
         class="scroll-mt-24"
       >
         <div class="flex items-end justify-between mb-4">
@@ -89,6 +136,7 @@
 <script setup lang="ts">
 import { Badge } from '~~/components/ui/badge'
 import { Separator } from '~~/components/ui/separator'
+import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useI18n } from 'vue-i18n'
 import { CalendarDays, Eye, FolderOpen } from '@lucide/vue'
 
@@ -129,7 +177,7 @@ interface ArchiveGroupItem {
 
 // ===== 真实接口：GET /api/blog/archive → [{year,month,count,posts:[...]}]
 // 空数组作为 SSR/客户端统一兜底；绝不内置任何示例文章。
-const { data: archiveData, pending: _pending } = await useAPI<ArchiveGroupItem[]>('/blog/archive', {
+const { data: archiveData, pending: _pending, error: loadError } = useAPI<ArchiveGroupItem[]>('/blog/archive', {
   query: { lang: locale.value, limit_per_month: 100 },
   key: 'archive:list:' + (locale.value || 'zh'),
   default: () => []

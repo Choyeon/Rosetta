@@ -21,12 +21,11 @@ import asyncio
 import logging
 import random
 import string
-from datetime import datetime, timedelta, timezone
-from typing import Any
+from datetime import datetime, timedelta
 
 from sqlalchemy import select
 
-from backend.scripts._seed_shared import SeedContext, SeedResult, UTC
+from backend.scripts._seed_shared import UTC, SeedContext, SeedResult
 
 log = logging.getLogger(__name__)
 
@@ -84,7 +83,18 @@ async def generate_all_mock_data(
 
     # ---------- 分类 (categories_count 个，简易 i18n) ----------
     cat_cn_pool = ["技术", "生活", "随笔", "教程", "分享", "读书", "旅行", "美食", "职场", "日记"]
-    cat_en_pool = ["Technology", "Life", "Essay", "Tutorial", "Share", "Books", "Travel", "Food", "Career", "Diary"]
+    cat_en_pool = [
+        "Technology",
+        "Life",
+        "Essay",
+        "Tutorial",
+        "Share",
+        "Books",
+        "Travel",
+        "Food",
+        "Career",
+        "Diary",
+    ]
     cat_pool = list(zip(cat_cn_pool, cat_en_pool))
     cats: list[Category] = []
     for i in range(min(max(1, categories_count), len(cat_pool))):
@@ -93,8 +103,10 @@ async def generate_all_mock_data(
             name={"zh": cn, "en": en, "ja": cn, "zh_Hant": cn},
             slug=f"category-{i + 1}-{''.join(rng.choices(string.ascii_lowercase, k=4))}",
             description={
-                "zh": f"{cn}分类", "en": f"{en} category",
-                "ja": f"{cn}カテゴリ", "zh_Hant": f"{cn}分類",
+                "zh": f"{cn}分类",
+                "en": f"{en} category",
+                "ja": f"{cn}カテゴリ",
+                "zh_Hant": f"{cn}分類",
             },
             color="#6366F1",
             icon="heroicons:code-bracket",
@@ -107,12 +119,27 @@ async def generate_all_mock_data(
     await db.flush()
 
     # ---------- 标签 ----------
-    tag_cn = ["Python", "JavaScript", "Vue", "FastAPI", "Docker", "Linux", "Rust",
-              "算法", "数据库", "前端", "后端", "AI", "CSS", "Go", "TypeScript"]
+    tag_cn = [
+        "Python",
+        "JavaScript",
+        "Vue",
+        "FastAPI",
+        "Docker",
+        "Linux",
+        "Rust",
+        "算法",
+        "数据库",
+        "前端",
+        "后端",
+        "AI",
+        "CSS",
+        "Go",
+        "TypeScript",
+    ]
     tags: list[Tag] = []
     for i in range(min(max(1, tags_count), len(tag_cn))):
         name = tag_cn[i]
-        color = "#{:06x}".format(rng.randint(0x222222, 0xBBBBBB))
+        color = f"#{rng.randint(0x222222, 0xBBBBBB):06x}"
         t = Tag(
             name={"zh": name, "en": name, "ja": name, "zh_Hant": name},
             slug=f"tag-{i + 1}-{name.lower()}",
@@ -152,8 +179,10 @@ async def generate_all_mock_data(
     created_post_ids: list[int] = []
     for i in range(max(1, posts_count)):
         cat = cats[i % len(cats)]
-        title_zh = f"示例文章 #{i + 1}：{rng.choice(['深入理解', '快速上手', '实战经验', '踩坑记录', '最佳实践'])}" \
-                   + rng.choice(tag_cn[:tags_count])
+        title_zh = (
+            f"示例文章 #{i + 1}：{rng.choice(['深入理解', '快速上手', '实战经验', '踩坑记录', '最佳实践'])}"
+            + rng.choice(tag_cn[:tags_count])
+        )
         content_md = (
             f"# {title_zh}\n\n"
             f"这是自动生成的示例文章 **#{i + 1}**，作者演示内容。\n\n"
@@ -166,7 +195,12 @@ async def generate_all_mock_data(
             f"感谢阅读，欢迎评论互动。\n"
         )
         p = Post(
-            title={"zh": title_zh, "en": f"Sample Post #{i + 1}", "ja": title_zh, "zh_Hant": title_zh},
+            title={
+                "zh": title_zh,
+                "en": f"Sample Post #{i + 1}",
+                "ja": title_zh,
+                "zh_Hant": title_zh,
+            },
             slug=f"sample-post-{i + 1}-{''.join(rng.choices(string.ascii_lowercase, k=6))}",
             source="原创",
             excerpt={"zh": f"这是示例文章 #{i + 1} 的摘要。", "en": f"Summary of post #{i + 1}"},
@@ -190,9 +224,11 @@ async def generate_all_mock_data(
         created_views += p.views
     await db.flush()
     # Fetch back PKs
-    recent = list((await db.execute(
-        select(Post).order_by(Post.id.desc()).limit(created_posts)
-    )).scalars().all())
+    recent = list(
+        (await db.execute(select(Post).order_by(Post.id.desc()).limit(created_posts)))
+        .scalars()
+        .all()
+    )
     created_post_ids = [p.id for p in recent]
 
     # ---------- 评论（按 comments_count 总目标分配，均匀分摊到文章） ----------
@@ -209,11 +245,18 @@ async def generate_all_mock_data(
                 author_name=commentator.nickname or commentator.username,
                 author_email=commentator.email,
                 author_ip=f"10.0.{rng.randint(1, 254)}.{rng.randint(1, 254)}",
-                content=rng.choice([
-                    "写得很详细，学习了～", "感谢分享！", "刚好我遇到同样的问题，mark 一下。",
-                    "作者这个思路非常赞。", "我觉得第三点可以再展开讲讲？",
-                    "Great article, thanks!", "顶一下，期待后续。", "代码片段复制即用，省了我半天，感谢！",
-                ]),
+                content=rng.choice(
+                    [
+                        "写得很详细，学习了～",
+                        "感谢分享！",
+                        "刚好我遇到同样的问题，mark 一下。",
+                        "作者这个思路非常赞。",
+                        "我觉得第三点可以再展开讲讲？",
+                        "Great article, thanks!",
+                        "顶一下，期待后续。",
+                        "代码片段复制即用，省了我半天，感谢！",
+                    ]
+                ),
                 status="approved",
                 active=True,
                 likes_count=rng.randint(0, 12),
@@ -252,11 +295,18 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
     admin = await db.get(User, int(admin_id))
     if admin is None:
         # 兜底：找任意管理员
-        admin = (await db.execute(select(User).where(User.is_superuser.is_(True)).limit(1))).scalar_one_or_none()
+        admin = (
+            await db.execute(select(User).where(User.is_superuser.is_(True)).limit(1))
+        ).scalar_one_or_none()
     if admin is None:
         return {
-            "categories": 0, "tags": 0, "posts": 0, "comments": 0,
-            "activities": 0, "guestbook_entries": 0, "views": 0,
+            "categories": 0,
+            "tags": 0,
+            "posts": 0,
+            "comments": 0,
+            "activities": 0,
+            "guestbook_entries": 0,
+            "views": 0,
             "error": f"admin_id={admin_id} not found",
         }
 
@@ -391,12 +441,16 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
     ]
     tech_category = None
     for cat_data in oobe_categories:
-        existing = (await db.execute(select(Category).where(Category.slug == cat_data["slug"]))).scalar_one_or_none()
+        existing = (
+            await db.execute(select(Category).where(Category.slug == cat_data["slug"]))
+        ).scalar_one_or_none()
         if existing:
             if cat_data["slug"] == "technology":
                 tech_category = existing
             continue
-        c = Category(**cat_data, is_active=True, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+        c = Category(
+            **cat_data, is_active=True, created_at=datetime.now(UTC), updated_at=datetime.now(UTC)
+        )
         db.add(c)
         created_cats += 1
         if cat_data["slug"] == "technology":
@@ -405,18 +459,36 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
 
     created_tags = 0
     oobe_tags = [
-        {"name": {"zh": "Python", "en": "Python", "ja": "Python", "zh_Hant": "Python"},
-         "slug": "python", "color": "#3776AB"},
-        {"name": {"zh": "JavaScript", "en": "JavaScript", "ja": "JavaScript", "zh_Hant": "JavaScript"},
-         "slug": "javascript", "color": "#F7DF1E"},
-        {"name": {"zh": "Vue", "en": "Vue", "ja": "Vue", "zh_Hant": "Vue"},
-         "slug": "vue", "color": "#4FC08D"},
+        {
+            "name": {"zh": "Python", "en": "Python", "ja": "Python", "zh_Hant": "Python"},
+            "slug": "python",
+            "color": "#3776AB",
+        },
+        {
+            "name": {
+                "zh": "JavaScript",
+                "en": "JavaScript",
+                "ja": "JavaScript",
+                "zh_Hant": "JavaScript",
+            },
+            "slug": "javascript",
+            "color": "#F7DF1E",
+        },
+        {
+            "name": {"zh": "Vue", "en": "Vue", "ja": "Vue", "zh_Hant": "Vue"},
+            "slug": "vue",
+            "color": "#4FC08D",
+        },
     ]
     tag_objs: list[Tag] = []
     for td in oobe_tags:
-        existing = (await db.execute(select(Tag).where(Tag.slug == td["slug"]))).scalar_one_or_none()
+        existing = (
+            await db.execute(select(Tag).where(Tag.slug == td["slug"]))
+        ).scalar_one_or_none()
         if not existing:
-            existing = Tag(**td, is_active=True, created_at=datetime.now(UTC), updated_at=datetime.now(UTC))
+            existing = Tag(
+                **td, is_active=True, created_at=datetime.now(UTC), updated_at=datetime.now(UTC)
+            )
             db.add(existing)
             created_tags += 1
         tag_objs.append(existing)
@@ -424,7 +496,9 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
 
     created_posts = 0
     hello_slug = "hello-world-oobe"
-    hello_post = (await db.execute(select(Post).where(Post.slug == hello_slug))).scalar_one_or_none()
+    hello_post = (
+        await db.execute(select(Post).where(Post.slug == hello_slug))
+    ).scalar_one_or_none()
     if not hello_post:
         content = (
             "# Hello World\n\n欢迎使用 **Rosetta** 博客平台！\n\n"
@@ -432,10 +506,19 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
             "1. 访问管理后台撰写真实文章\n2. 在站点设置中修改网站名称与描述\n\n祝写作愉快！\n"
         )
         hp = Post(
-            title={"zh": "Hello World", "en": "Hello World", "ja": "Hello World", "zh_Hant": "Hello World"},
+            title={
+                "zh": "Hello World",
+                "en": "Hello World",
+                "ja": "Hello World",
+                "zh_Hant": "Hello World",
+            },
             slug=hello_slug,
-            excerpt={"zh": "欢迎使用 Rosetta 博客平台！", "en": "Welcome to Rosetta!",
-                     "ja": "Rosetta へようこそ！", "zh_Hant": "歡迎使用 Rosetta 部落格平台！"},
+            excerpt={
+                "zh": "欢迎使用 Rosetta 博客平台！",
+                "en": "Welcome to Rosetta!",
+                "ja": "Rosetta へようこそ！",
+                "zh_Hant": "歡迎使用 Rosetta 部落格平台！",
+            },
             content={"zh": content, "en": content, "ja": content, "zh_Hant": content},
             author_id=int(admin_id),
             category_id=tech_category.id if tech_category else None,
@@ -475,8 +558,11 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
 # ==========================================================================
 
 
-async def create_mock_data(num_posts: int = 20, num_users: int = 10, num_comments: int = 50) -> dict:
+async def create_mock_data(
+    num_posts: int = 20, num_users: int = 10, num_comments: int = 50
+) -> dict:
     from backend.core.database import async_session_maker
+
     async with async_session_maker() as session:
         return await generate_all_mock_data(
             session,
@@ -498,8 +584,9 @@ async def main() -> None:
     parser.add_argument("--users", type=int, default=10)
     parser.add_argument("--comments", type=int, default=50)
     parser.add_argument("--reset", action="store_true", help="Clear old mock rows before inserting")
-    parser.add_argument("--oobe", action="store_true",
-                        help="Run OOBE seed (requires admin_id via --admin-id)")
+    parser.add_argument(
+        "--oobe", action="store_true", help="Run OOBE seed (requires admin_id via --admin-id)"
+    )
     parser.add_argument("--admin-id", type=int, default=1)
     args = parser.parse_args()
 

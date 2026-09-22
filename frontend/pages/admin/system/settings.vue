@@ -1,56 +1,44 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center justify-between">
-      <div class="flex items-center gap-3">
-        <div
-          class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-        >
-          <Settings class="size-5 text-white" />
-        </div>
-        <div>
-          <h1 class="text-xl font-bold tracking-tight">
-            站点设置
-          </h1>
-          <p class="text-sm text-muted-foreground">
-            配置 Rosetta 博客系统的全部参数
-          </p>
-        </div>
-      </div>
-      <div class="flex items-center gap-3">
-        <Badge
-          :variant="isDirty ? 'secondary' : 'default'"
-          :class="isDirty ? '' : 'bg-success-muted text-success-foreground'"
-        >
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="站点设置"
+      description="配置 Rosetta 博客系统的全部参数"
+      :icon="Settings"
+    >
+      <template #actions>
+        <Badge :variant="isDirty ? 'warning' : 'success'">
           <span
-            class="size-1.5 rounded-full mr-1.5"
+            class="size-1.5 shrink-0 rounded-full"
             :class="isDirty ? 'bg-warning animate-pulse' : 'bg-success'"
           />
           {{ isDirty ? '有未保存改动' : '已保存' }}
         </Badge>
         <Button
+          size="sm"
           :disabled="!isDirty || saving"
           class="shadow-sm"
           @click="handleSaveCurrentGroup"
         >
           <Save
             v-if="!saving"
-            class="size-4"
+            data-icon="inline-start"
           />
           <Loader2
             v-else
-            class="size-4 animate-spin"
+            data-icon="inline-start"
+            class="animate-spin"
           />
           保存当前组
         </Button>
-      </div>
-    </div>
+      </template>
+    </AdminPageHeader>
 
     <div
       v-if="loading"
-      class="grid grid-cols-[220px_1fr] gap-6 h-[calc(100vh-220px)]"
+      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
     >
       <ScrollArea class="rounded-xl border border-border bg-card p-3">
-        <div class="space-y-2">
+        <div class="flex flex-col gap-2">
           <Skeleton
             v-for="i in 17"
             :key="i"
@@ -60,7 +48,7 @@
       </ScrollArea>
       <AdminCard>
         <Skeleton class="h-8 w-48 rounded mb-6" />
-        <div class="space-y-4">
+        <div class="flex flex-col gap-4">
           <Skeleton
             v-for="i in 6"
             :key="i"
@@ -72,10 +60,10 @@
 
     <div
       v-else
-      class="grid grid-cols-[220px_1fr] gap-6 h-[calc(100vh-220px)]"
+      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
     >
       <ScrollArea class="rounded-xl border border-border bg-card p-2">
-        <div class="space-y-1 p-1">
+        <div class="flex flex-col gap-1 p-1">
           <button
             v-for="g in groups"
             :key="g.key"
@@ -96,9 +84,9 @@
 
       <ScrollArea class="rounded-xl border border-border bg-card">
         <div
-          class="p-6 space-y-6"
+          class="flex flex-col gap-6 p-6"
         >
-          <div class="space-y-1">
+          <div class="flex flex-col gap-1">
             <h2 class="text-lg font-bold">
               {{ currentGroupMeta?.label }}
             </h2>
@@ -107,13 +95,13 @@
             </p>
           </div>
           <Separator />
-          <div class="space-y-5 max-w-3xl">
+          <div class="flex flex-col gap-5 max-w-3xl">
             <template
               v-for="(schema, key) in currentGroupSchemas"
               :key="key"
             >
               <template v-if="schema.type === 'string' && !schema.long && !schema.sensitive">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <Input
                     v-model="strRef(key).value"
@@ -130,7 +118,7 @@
               </template>
 
               <template v-else-if="schema.type === 'string' && schema.sensitive">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <div class="relative">
                     <Input
@@ -164,7 +152,7 @@
               </template>
 
               <template v-else-if="schema.type === 'string' && schema.long">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <Textarea
                     v-model="strRef(key).value"
@@ -182,7 +170,7 @@
               </template>
 
               <template v-else-if="schema.type === 'json'">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <Textarea
                     :model-value="stringifyJson(formState[activeGroup]?.[key] ?? null)"
@@ -198,7 +186,7 @@
               </template>
 
               <template v-else-if="schema.type === 'number'">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <Input
                     v-model.number="numRef(key).value"
@@ -219,7 +207,7 @@
 
               <template v-else-if="schema.type === 'boolean'">
                 <div class="flex items-center justify-between rounded-xl border border-border p-4 bg-muted/30">
-                  <div class="space-y-0.5">
+                  <div class="flex flex-col gap-0 .5">
                     <Label class="text-sm font-medium">{{ schema.label }}</Label>
                     <p
                       v-if="schema.help"
@@ -233,7 +221,7 @@
               </template>
 
               <template v-else-if="schema.type === 'color'">
-                <div class="space-y-2">
+                <div class="flex flex-col gap-2">
                   <Label class="text-sm font-medium">{{ schema.label }}</Label>
                   <div class="flex items-center gap-3">
                     <div class="relative">

@@ -1,8 +1,5 @@
 <script setup lang="ts">
 /* eslint-disable */
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import type { Component } from 'vue'
 import {
   TrendingUp,
@@ -53,40 +50,33 @@ const emit = defineEmits<{
   action: []
 }>()
 
-const gradients: Record<string, string> = {
-  primary: 'linear-gradient(135deg,#0EA5E9 0%,#0284C7 100%)',
-  info: 'linear-gradient(135deg,#3B82F6 0%,#2563EB 100%)',
-  success: 'linear-gradient(135deg,#10B981 0%,#059669 100%)',
-  warning: 'linear-gradient(135deg,#38BDF8 0%,#0EA5E9 100%)',
-  error: 'linear-gradient(135deg,#EF4444 0%,#DC2626 100%)',
-  ochre: 'linear-gradient(135deg,#EA580C 0%,#C2410C 100%)',
-  sage: 'linear-gradient(135deg,#14B8A6 0%,#0D9488 100%)',
-  indigo: 'linear-gradient(135deg,#6366F1 0%,#4F46E5 100%)',
-  walnut: 'linear-gradient(135deg,#A16207 0%,#854D0E 100%)'
+// 语义色 → CSS 变量映射（统一走主题变量，浅色/深色自动适配）
+const accentVar: Record<string, string> = {
+  primary: 'var(--primary)',
+  info: 'var(--info)',
+  success: 'var(--success)',
+  warning: 'var(--warning)',
+  error: 'var(--destructive)',
+  ochre: 'var(--warning)',
+  sage: 'var(--success)',
+  indigo: 'var(--primary)',
+  walnut: 'var(--warning)'
 }
 
-const lightPills: Record<string, string> = {
-  primary: 'bg-[#FFF7ED] text-[#9A3412]',
-  info: 'bg-[#EFF6FF] text-[#1E40AF]',
-  success: 'bg-[#ECFDF5] text-[#065F46]',
-  warning: 'bg-[#E0F2FE] text-[#0369A1]',
-  error: 'bg-[#FEF2F2] text-[#991B1B]',
-  ochre: 'bg-[#FFF7ED] text-[#7C2D12]',
-  sage: 'bg-[#F0FDFA] text-[#134E4A]',
-  indigo: 'bg-[#EEF2FF] text-[#3730A3]',
-  walnut: 'bg-[#FEF3C7] text-[#075985]'
-}
-const darkPills: Record<string, string> = {
-  primary: 'bg-[#075985]/40 text-[#BAE6FD]',
-  info: 'bg-[#1E3A8A]/40 text-[#BFDBFE]',
-  success: 'bg-[#064E3B]/40 text-[#A7F3D0]',
-  warning: 'bg-[#075985]/40 text-[#BAE6FD]',
-  error: 'bg-[#7F1D1D]/40 text-[#FECACA]',
-  ochre: 'bg-[#7C2D12]/40 text-[#FED7AA]',
-  sage: 'bg-[#134E4A]/40 text-[#99F6E4]',
-  indigo: 'bg-[#312E81]/40 text-[#C7D2FE]',
-  walnut: 'bg-[#075985]/40 text-[#BAE6FD]'
-}
+// 装饰光晕渐变（用 hsl() 包裹 CSS 变量，自动适配明暗主题）
+const gradient = computed<string>(() => {
+  const v = accentVar[props.accent] || 'var(--primary)'
+  return `linear-gradient(135deg, hsl(${v}) 0%, hsl(${v} / 0.6) 100%)`
+})
+
+// trend pill 样式：统一用 bg-{color}/10 + text-{color}，深色自动适配
+const pillClasses = computed(() => {
+  if (!props.trend) return ''
+  if (props.trend.direction === 'flat') return 'bg-muted text-muted-foreground'
+  if (props.trend.direction === 'down') return 'bg-destructive/10 text-destructive'
+  // up：用语义色
+  return `bg-[hsl(${accentVar[props.accent] || 'var(--primary)'})]/10 text-[hsl(${accentVar[props.accent] || 'var(--primary)'})]`
+})
 
 const IconComponent = computed<Component>(() => {
   if (typeof props.icon === 'string') {
@@ -117,7 +107,7 @@ const TrendIcon = computed(() => {
     <div
       aria-hidden="true"
       class="pointer-events-none absolute -top-10 -right-10 size-36 rounded-full opacity-[0.08] blur-2xl"
-      :style="{ background: gradients[accent] }"
+      :style="{ background: gradient }"
     />
     <div class="relative flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
@@ -147,27 +137,8 @@ const TrendIcon = computed(() => {
         <div class="mt-3 flex items-center gap-2 flex-wrap">
           <div
             v-if="trend && !loading"
-            class="inline-flex items-center gap-1 rounded-full px-2 h-5 text-[11px] font-semibold dark:hidden"
-            :class="[
-              trend.direction === 'up' ? lightPills[accent]
-              : trend.direction === 'down' ? 'bg-[#FEF2F2] text-[#991B1B]'
-                : 'bg-muted text-muted-foreground'
-            ]"
-          >
-            <component
-              :is="TrendIcon"
-              class="size-3"
-            />
-            <span>{{ trend.value }}</span>
-          </div>
-          <div
-            v-if="trend && !loading"
-            class="hidden dark:inline-flex items-center gap-1 rounded-full px-2 h-5 text-[11px] font-semibold"
-            :class="[
-              trend.direction === 'up' ? darkPills[accent]
-              : trend.direction === 'down' ? 'bg-[#7F1D1D]/40 text-[#FECACA]'
-                : 'bg-muted text-muted-foreground'
-            ]"
+            class="inline-flex items-center gap-1 rounded-full px-2 h-5 text-[11px] font-semibold"
+            :class="pillClasses"
           >
             <component
               :is="TrendIcon"
@@ -202,7 +173,7 @@ const TrendIcon = computed(() => {
       <div
         aria-hidden="true"
         class="shrink-0 relative size-11 rounded-[12px] text-white flex items-center justify-center shadow-[0_8px_20px_-6px_rgba(0,0,0,0.25)]"
-        :style="{ background: gradients[accent] }"
+        :style="{ background: gradient }"
       >
         <component
           :is="IconComponent"

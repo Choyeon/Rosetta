@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel
-from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.logging_middleware import log_operation
@@ -71,80 +71,20 @@ def _row_to_dict(row: OperationLog, user_map: dict[int, User] | None = None) -> 
     }
 
 
-@router.get("/logs")
-async def list_operation_logs(
-    db: DB,
-    current_user: CurrentStaff,
-    user_id: int | None = Query(None, description="用户 id 过滤"),
-    action: str | None = Query(None, description="动作过滤"),
-    target_type: str | None = Query(None, description="对象类型过滤（等价 resource_type）"),
-    from_date: str | None = Query(None, alias="from", description="开始日期 ISO"),
-    to_date: str | None = Query(None, alias="to", description="结束日期 ISO"),
-    q: str | None = Query(None, description="关键词搜索(details/error_code/ip)"),
-    page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-):
-    from_dt = _parse_date(from_date)
-    to_dt = _parse_date(to_date)
-
-    conditions = []
-    if user_id is not None:
-        conditions.append(OperationLog.user_id == user_id)
-    if action:
-        conditions.append(OperationLog.action == action)
-    if target_type:
-        conditions.append(OperationLog.resource_type == target_type)
-    if from_dt:
-        conditions.append(OperationLog.created_at >= from_dt)
-    if to_dt:
-        conditions.append(OperationLog.created_at <= to_dt)
-    if q:
-        like = f"%{q}%"
-        conditions.append(
-            or_(
-                OperationLog.detail.like(like),
-                OperationLog.error_code.like(like),
-                OperationLog.ip_address.like(like),
-                OperationLog.request_path.like(like),
-            )
-        )
-
-    where = and_(*conditions) if conditions else True
-
-    total = await db.scalar(select(func.count()).select_from(OperationLog).where(where)) or 0
-
-    stmt = (
-        select(OperationLog)
-        .where(where)
-        .order_by(desc(OperationLog.created_at))
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-    )
-    rows = (await db.execute(stmt)).scalars().all()
-
-    user_ids: list[int] = [r.user_id for r in rows if r.user_id is not None]
-    user_map: dict[int, User] = {}
-    if user_ids:
-        urows = (await db.execute(select(User).where(User.id.in_(user_ids)))).scalars().all()
-        user_map = {u.id: u for u in urows}
-
-    items = [_row_to_dict(r, user_map) for r in rows]
-
-    return {
-        "items": items,
-        "total": int(total),
-        "page": page,
-        "page_size": page_size,
-        "pages": (int(total) + page_size - 1) // page_size if page_size else 0,
-    }
-
-
+# 说明：GET /api/admin/logs 的统一实现位于 backend/api/advanced.py（其 APIRouter 内部
+# prefix="/admin"，随主应用挂载于 /api，与本模块曾注册的路由同路径；该实现返回 total_pages 与
+# 嵌套 user，且注册顺序在前、运行时优先生效）。此处不再重复注册，以消除同路径同方法的重复路由
+# 与 OpenAPI operationId 冲突；保留下方 DELETE /logs/retention 清理接口。
 class _RetentionResponse(BaseModel):
     deleted_count: int
     before: str
 
 
-@router.delete("/logs/retention")
+@router.delete(
+    "/logs/retention",
+    summary="清理旧日志",
+    description="按保留天数删除早于 N 天的操作日志记录。",
+)
 async def cleanup_old_logs(
     request: Request,
     db: DB,

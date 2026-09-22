@@ -1,6 +1,3 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 /**
  * 后台管理页（仪表盘 / 评论 / 用户 / 分类·标签 / 站点设置）API 封装。
  * 全部基于 useAPI.ts 的 apiFetch（自动注入 Authorization 与 Accept-Language），
@@ -206,9 +203,7 @@ export interface FetchAdminPostsResult<T> {
 /**
  * 后台文章管理列表数据加载（基于 GET /api/blog/posts，需 staff 登录态）：
  * - status=具体值：服务端按该 status 过滤并分页
- * - status='all'：并行请求 4 种 status（published / draft / scheduled / archived），
- *   客户端合并去重、应用 search/category 过滤，再按时间倒序做本地分页。
- *   单个请求失败不阻断其他状态数据合并，避免整片列表为空。
+ * - status='all'（或不传）：后端直接返回全部状态，单次请求 + 服务端分页
  */
 export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
   params: FetchAdminPostsParams
@@ -220,94 +215,21 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
   const qCreatedStart = params.created_start || undefined
   const qCreatedEnd = params.created_end || undefined
 
-  const statuses: Array<'published' | 'draft' | 'scheduled' | 'archived'>
-    = !params.status || params.status === 'all'
-      ? ['published', 'draft', 'scheduled', 'archived']
-      : [params.status as 'published' | 'draft' | 'scheduled' | 'archived']
+  // 后端已支持 admin 传 status=all 返回全部状态，单次请求即可，无需 4 路并行
+  const status = !params.status || params.status === 'all' ? 'all' : params.status
 
-  const commonQuery = {
-    search: qSearch || undefined,
-    category: qCategory,
-    created_start: qCreatedStart,
-    created_end: qCreatedEnd
-  }
-
-  // 特定单 status：直接走服务端分页，简单高效
-  if (statuses.length === 1) {
-    const paged = await apiFetch<AdminPaged<T>>('/blog/posts', {
-      query: {
-        page,
-        page_size: pageSize,
-        status: statuses[0],
-        ...commonQuery
-      }
-    })
-    return { items: paged.items ?? [], total: paged.total ?? 0 }
-  }
-
-  // status='all' 合并模式：每种 status 拉取足够大的一页，客户端统一处理
-  // 注意：后端 list_posts 的 page_size 上限为 le=100（PaginatedResponse 同为 le=100），
-  // 超过会 422。这里封顶 100，避免触发参数校验失败。
-  const bigBatch = Math.min(100, Math.max(50, pageSize * 20))
-  const results = await Promise.allSettled(
-    statuses.map(s =>
-      apiFetch<AdminPaged<T>>('/blog/posts', {
-        query: {
-          page: 1,
-          page_size: bigBatch,
-          status: s,
-          ...commonQuery
-        }
-      })
-    )
-  )
-
-  const seen = new Set<number>()
-  const merged: T[] = []
-  for (const r of results) {
-    if (r.status !== 'fulfilled') continue
-    for (const item of (r.value.items ?? []) as T[]) {
-      if (seen.has(item.id)) continue
-      seen.add(item.id)
-      merged.push(item)
+  const paged = await apiFetch<AdminPaged<T>>('/blog/posts', {
+    query: {
+      page,
+      page_size: pageSize,
+      status,
+      search: qSearch || undefined,
+      category: qCategory,
+      created_start: qCreatedStart,
+      created_end: qCreatedEnd
     }
-  }
-
-  const getLocalized = (v: string | Record<string, string> | null | undefined): string => {
-    if (v == null) return ''
-    if (typeof v === 'string') return v
-    return Object.values(v)[0] || ''
-  }
-
-  // 客户端 search 兜底（服务端对非 published 的 search 可能不稳定）
-  let filtered = merged
-  if (qSearch) {
-    const q = qSearch.toLowerCase()
-    filtered = filtered.filter((p) => {
-      const title = getLocalized(p.title as unknown as string | Record<string, string> | null | undefined).toLowerCase()
-      const slug = String(p.slug ?? '').toLowerCase()
-      return title.includes(q) || slug.includes(q)
-    })
-  }
-
-  // 客户端日期范围兜底（合并模式下对多 status 结果再做一次本地校验）
-  if (qCreatedStart || qCreatedEnd) {
-    const startTs = qCreatedStart ? new Date(qCreatedStart + 'T00:00:00').getTime() : -Infinity
-    const endTs = qCreatedEnd ? new Date(qCreatedEnd + 'T23:59:59.999').getTime() : Infinity
-    filtered = filtered.filter((p) => {
-      const t = new Date(p.created_at ?? p.published_at ?? 0).getTime() || 0
-      return t >= startTs && t <= endTs
-    })
-  }
-
-  // 时间倒序：优先 published_at，其次 created_at
-  const timeOf = (p: T): number => new Date(p.published_at ?? p.created_at ?? 0).getTime() || 0
-  filtered.sort((a, b) => timeOf(b) - timeOf(a))
-
-  const total = filtered.length
-  const start = (page - 1) * pageSize
-  const items = filtered.slice(start, start + pageSize)
-  return { items, total }
+  })
+  return { items: paged.items ?? [], total: paged.total ?? 0 }
 }
 
 // ==================== 评论管理 ====================
@@ -951,13 +873,13 @@ export function fetchAdminAnnouncements(params: { page?: number, page_size?: num
 /** POST /api/admin/announcements */
 export function createAdminAnnouncement(payload: Record<string, unknown>): Promise<AdminAnnouncement> {
   return apiFetch<Record<string, unknown>>('/admin/announcements', { method: 'POST', body: payload })
-    .then(r => (r?.data as AdminAnnouncement) ?? (r as AdminAnnouncement))
+    .then(r => ((r?.data ?? r) as unknown as AdminAnnouncement))
 }
 
 /** PUT /api/admin/announcements/{id} */
 export function updateAdminAnnouncement(id: number, payload: Record<string, unknown>): Promise<AdminAnnouncement> {
   return apiFetch<Record<string, unknown>>(`/admin/announcements/${id}`, { method: 'PUT', body: payload })
-    .then(r => (r?.data as AdminAnnouncement) ?? (r as AdminAnnouncement))
+    .then(r => ((r?.data ?? r) as unknown as AdminAnnouncement))
 }
 
 /** DELETE /api/admin/announcements/{id} */
@@ -989,13 +911,13 @@ export function fetchAdminActivities(params: { page?: number, page_size?: number
 /** POST /api/admin/activities */
 export function createAdminActivity(payload: Record<string, unknown>): Promise<AdminActivity> {
   return apiFetch<Record<string, unknown>>('/admin/activities', { method: 'POST', body: payload })
-    .then(r => (r?.data as AdminActivity) ?? (r as AdminActivity))
+    .then(r => ((r?.data ?? r) as unknown as AdminActivity))
 }
 
 /** PUT /api/admin/activities/{id} */
 export function updateAdminActivity(id: number, payload: Record<string, unknown>): Promise<AdminActivity> {
   return apiFetch<Record<string, unknown>>(`/admin/activities/${id}`, { method: 'PUT', body: payload })
-    .then(r => (r?.data as AdminActivity) ?? (r as AdminActivity))
+    .then(r => ((r?.data ?? r) as unknown as AdminActivity))
 }
 
 /** DELETE /api/admin/activities/{id} */
@@ -1007,10 +929,10 @@ export function deleteAdminActivity(id: number): Promise<ApiMessage> {
 
 export interface AdminUserTitle {
   id?: number
-  name: string
+  name: string | Record<string, string>
   color?: string | null
   icon?: string | null
-  description?: string | null
+  description?: string | Record<string, string> | null
   created_at?: string | null
 }
 
@@ -1127,8 +1049,10 @@ export interface AdminPhoto {
   id: number
   album_id: number
   title?: string | null
+  description?: string | null
   thumbnail_url?: string | null
   original_url: string
+  url?: string
   sort_order: number
   created_at: string | null
 }
@@ -1157,9 +1081,37 @@ export function deleteAdminAlbum(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/admin/gallery/albums/${id}`, { method: 'DELETE' })
 }
 
-/** GET /api/admin/gallery/albums/{albumId}/photos */
-export function fetchAdminPhotos(albumId: number): Promise<AdminPaged<AdminPhoto>> {
-  return apiFetch<AdminPaged<AdminPhoto>>(`/admin/gallery/albums/${albumId}/photos`)
+/**
+ * GET /api/admin/gallery/albums/{albumId}/photos —— 后端 get_pagination 限制 page_size ≤ 100，
+ * 且默认仅 12 条。这里逐页拉全（最多 20 页 = 2000 张，防御异常数据导致的死循环），
+ * 保证相册详情页展示全部照片而不是被默认分页截断为 12 张。
+ */
+export async function fetchAdminPhotos(albumId: number): Promise<AdminPaged<AdminPhoto>> {
+  const pageSize = 100
+  const maxPages = 20
+  const items: AdminPhoto[] = []
+  let page = 1
+  let total = 0
+  let last: AdminPaged<AdminPhoto> | null = null
+  while (page <= maxPages) {
+    const resp = await apiFetch<AdminPaged<AdminPhoto>>(`/admin/gallery/albums/${albumId}/photos`, {
+      query: { page, page_size: pageSize }
+    })
+    last = resp
+    const batch = resp?.items ?? []
+    items.push(...batch)
+    total = Number(resp?.total ?? items.length)
+    if (batch.length === 0) break
+    if (items.length >= total) break
+    page++
+  }
+  return {
+    items,
+    total: total || items.length,
+    page: 1,
+    page_size: pageSize,
+    total_pages: last?.total_pages ?? 1
+  }
 }
 
 export function createAdminPhoto(payload: Record<string, unknown>): Promise<AdminPhoto> {
@@ -1598,7 +1550,7 @@ export interface AdminAuditLog {
   username?: string | null
   action: string
   target_type?: string | null
-  target_id?: string | null
+  target_id?: string | number | null
   ip?: string | null
   user_agent?: string | null
   details?: Record<string, unknown> | null
@@ -1648,9 +1600,24 @@ export interface AdminMigrationStatus {
 /**
  * GET /api/admin/alembic/status —— 2026-08 新增后端端点，用于显示 Alembic schema 迁移的：
  *   current_version / latest_version / is_latest / applied / pending
- * 注意：/api/admin/migration/status 是"跨库数据迁移任务管理器"（Job）与本页面无关。
+ * 注意：/api/admin/migration/status 是"跨库数据迁移任务管理器"（Job），
+ * 与本处 Alembic schema 版本状态是两套接口（见下方 AdminMigrationJob* 系列）。
  * 失败时静默回退为 emptyStatus，保证界面可用。
  */
+/**
+ * Alembic status 静默回退值：接口不可用 / OOBE 未完成 / 网络异常时
+ * 保证界面仍能渲染出"未知状态"而不是 ReferenceError 崩溃。
+ */
+function emptyStatus(): AdminMigrationStatus {
+  return {
+    current_version: '',
+    latest_version: '',
+    is_latest: true,
+    pending: [],
+    applied: []
+  }
+}
+
 export function fetchAdminMigrationStatus(): Promise<AdminMigrationStatus> {
   return silentApiFetch<ApiEnvelope<AdminMigrationStatus> | AdminMigrationStatus>('/admin/alembic/status')
     .then((raw) => {
@@ -1670,14 +1637,93 @@ export function fetchAdminMigrationStatus(): Promise<AdminMigrationStatus> {
 }
 
 /**
- * Alembic 升级：后端 migration.router 是跨库数据迁移工具，不负责 Alembic schema 升级。
- * Schema 升级只能通过 `uv run python -m backend.migrations upgrade` 命令行执行。
- * 静默降级 + 给出明确提示，避免 404 toast。
+ * Alembic schema 升级：POST /api/admin/alembic/upgrade（admin_tools.router），
+ * 服务端在后台线程执行 `alembic upgrade head`。失败走 apiFetch 统一 toast。
  */
 export function upgradeAdminMigrations(): Promise<ApiMessage> {
-  return silentApiFetch<ApiMessage>('/admin/migration/upgrade', { method: 'POST' }).then(r =>
-    r ?? { success: false, message: '数据库 Schema 升级请在服务器执行命令：uv run python -m backend.migrations upgrade' }
-  )
+  return apiFetch<ApiMessage>('/admin/alembic/upgrade', { method: 'POST' })
+}
+
+// -------------------- 跨库数据迁移任务（migration.router） --------------------
+// 后端真实路径（migration.router prefix="/migration"，main.py 挂 /api/admin）：
+//   POST /api/admin/migration/start    {source, target, dry_run, skip_schema} → {success, job}
+//   GET  /api/admin/migration/status   → {success, job|null}（最新一次任务）
+//   POST /api/admin/migration/cancel   → {success, job}
+//   GET  /api/admin/migration/presets  → {success, presets: Record<string,string>}
+
+export type AdminMigrationJobStatus = 'pending' | 'running' | 'done' | 'error' | 'cancelled'
+
+export interface AdminMigrationJobProgress {
+  stage?: string
+  message?: string
+  table?: string
+  elapsed?: number
+  tables_total?: number
+  tables_done?: number
+  rows_total?: number
+  rows_done?: number
+  warnings?: string[]
+  errors?: string[]
+  [key: string]: unknown
+}
+
+export interface AdminMigrationJob {
+  job_id: string
+  source: string
+  target: string
+  dry_run: boolean
+  skip_schema: boolean
+  created_by: string
+  created_at: number
+  started_at: number | null
+  finished_at: number | null
+  status: AdminMigrationJobStatus
+  latest_progress: AdminMigrationJobProgress | null
+  events_count: number
+  events_tail: AdminMigrationJobProgress[]
+  errors: string[]
+  warnings: string[]
+}
+
+export interface AdminMigrationStartPayload {
+  source: string
+  target: string
+  dry_run?: boolean
+  skip_schema?: boolean
+}
+
+/** GET /api/admin/migration/presets —— 常用连接预设（当前库 / SQLite 默认路径等） */
+export function fetchAdminMigrationPresets(): Promise<Record<string, string>> {
+  return apiFetch<{ success: boolean, presets?: Record<string, string> }>('/admin/migration/presets')
+    .then(r => (r?.presets && typeof r.presets === 'object' ? r.presets : {}))
+}
+
+/** POST /api/admin/migration/start —— 发起一次跨库迁移任务（全局同时仅允许一个 running） */
+export function startAdminMigrationJob(payload: AdminMigrationStartPayload): Promise<AdminMigrationJob> {
+  return apiFetch<{ success: boolean, job: AdminMigrationJob }>('/admin/migration/start', {
+    method: 'POST',
+    body: {
+      source: payload.source,
+      target: payload.target,
+      dry_run: payload.dry_run ?? true,
+      skip_schema: payload.skip_schema ?? false
+    }
+  }).then(r => r.job)
+}
+
+/** GET /api/admin/migration/status —— 查询最新一次迁移任务（无任务返回 null，轮询用静默版） */
+export function fetchAdminMigrationJobStatus(silent = false): Promise<AdminMigrationJob | null> {
+  const req = silent
+    ? silentApiFetch<{ success: boolean, job?: AdminMigrationJob | null }>('/admin/migration/status')
+    : apiFetch<{ success: boolean, job?: AdminMigrationJob | null }>('/admin/migration/status')
+  return req.then(r => r?.job ?? null)
+}
+
+/** POST /api/admin/migration/cancel —— 取消当前运行中的迁移任务 */
+export function cancelAdminMigrationJob(): Promise<AdminMigrationJob> {
+  return apiFetch<{ success: boolean, job: AdminMigrationJob }>('/admin/migration/cancel', {
+    method: 'POST'
+  }).then(r => r.job)
 }
 
 // ==================== 缓存管理 ====================

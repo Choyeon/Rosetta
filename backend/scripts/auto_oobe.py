@@ -24,7 +24,9 @@ import os
 from pathlib import Path
 
 logger = logging.getLogger("rosetta.auto_oobe")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s | %(levelname)-7s | %(name)s | %(message)s"
+)
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 # ⚠️ 必须与 backend/core/paths.py OOBE_LOCK_FILE、backend/api/core.py 保持一致（项目根目录下）。

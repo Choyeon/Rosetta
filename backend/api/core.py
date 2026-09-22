@@ -14,6 +14,7 @@
 - 使用后台任务处理缓存失效
 """
 
+import logging
 import math
 from pathlib import Path
 from typing import Any
@@ -25,12 +26,12 @@ from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
 from backend.models.core import FriendLink, Navigation, Page, SearchPlaceholder, SiteConfig
 
+logger = logging.getLogger(__name__)
+
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # OOBE 状态判断统一委托给 backend.core.deps（见 backend/api/blog.py 的说明）。
 from backend.core.deps import is_oobe_complete  # noqa: E402
-
-
 from backend.schemas import (
     BaseResponse,
     FriendLinkCreate,
@@ -264,7 +265,12 @@ async def list_navigations(
                 "id": 5,
                 "parent_id": None,
                 "icon": "material-symbols:info",
-                "title": {"zh": "关于", "en": "About", "ja": "このサイトについて", "zh_Hant": "關於"},
+                "title": {
+                    "zh": "关于",
+                    "en": "About",
+                    "ja": "このサイトについて",
+                    "zh_Hant": "關於",
+                },
                 "url": "#",
                 "location": "header",
                 "order": 5,
@@ -378,7 +384,12 @@ async def list_navigations(
                 "id": 15,
                 "parent_id": 5,
                 "icon": "material-symbols:person",
-                "title": {"zh": "关于我", "en": "About Me", "ja": "私について", "zh_Hant": "關於我"},
+                "title": {
+                    "zh": "关于我",
+                    "en": "About Me",
+                    "ja": "私について",
+                    "zh_Hant": "關於我",
+                },
                 "url": "/about/",
                 "location": "header",
                 "order": 2,
@@ -658,9 +669,7 @@ async def list_sponsors(db: DB):
     if cached is not None:
         return cached
 
-    result = await db.execute(
-        select(SiteConfig).where(SiteConfig.key == "SPONSORS")
-    )
+    result = await db.execute(select(SiteConfig).where(SiteConfig.key == "SPONSORS"))
     config = result.scalar_one_or_none()
 
     sponsors: list[dict] = []
@@ -909,7 +918,6 @@ async def get_site_config(db: DB):
         oobe_kwargs.update(_sidebar_dict_to_flat(default_sidebar))
         return SiteConfigResponse(**oobe_kwargs)
 
-
     # 合并 settings_groups 表中 17 组 JSON（admin 编辑保存的）进入 /api/config 返回值。
     # 优先级：site_configs 扁平 key → settings_groups JSON（覆盖/补充） → 环境 fallback
     def _apply_settings_groups(cfg_base: dict[str, Any]) -> dict[str, Any]:
@@ -1004,6 +1012,7 @@ async def get_site_config(db: DB):
         except Exception as exc:  # 任何合并异常不影响核心配置返回
             logger.warning("merge settings_groups into /config failed: %s", exc)
         return cfg_base
+
     cache_key = make_cache_key("site_config")
     cached = await cache.get(cache_key)
     if cached:
@@ -1196,9 +1205,7 @@ async def get_site_config(db: DB):
         about_content=about_content or "",
         # 关于页面 HTML（优先从 basic 组 JSON 中读取 about_page_html；空时回退扁平 key）
         about_page_html=(
-            _configs_ci.get("ABOUT_PAGE_HTML", "")
-            or configs.get("about_page_html", "")
-            or ""
+            _configs_ci.get("ABOUT_PAGE_HTML", "") or configs.get("about_page_html", "") or ""
         ),
         # 友链申请区域自定义 HTML 内容
         friends_apply_html=get_str("FRIENDS_APPLY_HTML", "") or "",
@@ -1257,18 +1264,26 @@ async def get_site_config(db: DB):
         # ========== 许可证配置 ==========
         license_enable=get_bool("LICENSE_ENABLE", "true"),
         license_name=get_str("LICENSE_NAME", "CC BY-NC-SA 4.0") or "CC BY-NC-SA 4.0",
-        license_url=get_str("LICENSE_URL", "https://creativecommons.org/licenses/by-nc-sa/4.0/") or "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        license_url=get_str("LICENSE_URL", "https://creativecommons.org/licenses/by-nc-sa/4.0/")
+        or "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         license_icon=get_str("LICENSE_ICON", "") or "",
         # ========== 评论系统配置 ==========
         comment_system_type=get_str("COMMENT_SYSTEM_TYPE", "none") or "none",
         comment_twikoo_env_id=get_str("COMMENT_TWIKOO_ENV_ID", "") or "",
         comment_twikoo_lang=get_str("COMMENT_TWIKOO_LANG", "zh-CN") or "zh-CN",
         comment_twikoo_visitor_count=get_bool("COMMENT_TWIKOO_VISITOR_COUNT", "true"),
-        comment_twikoo_js_url=get_str("COMMENT_TWIKOO_JS_URL", "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js") or "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js",
+        comment_twikoo_js_url=get_str(
+            "COMMENT_TWIKOO_JS_URL", "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js"
+        )
+        or "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js",
         comment_twikoo_css_url=get_str("COMMENT_TWIKOO_CSS_URL", "") or "",
         comment_waline_server_url=get_str("COMMENT_WALINE_SERVER_URL", "") or "",
         comment_waline_lang=get_str("COMMENT_WALINE_LANG", "zh-CN") or "zh-CN",
-        comment_waline_emoji_json=get_str("COMMENT_WALINE_EMOJI_JSON", '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]') or '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]',
+        comment_waline_emoji_json=get_str(
+            "COMMENT_WALINE_EMOJI_JSON",
+            '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]',
+        )
+        or '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]',
         comment_waline_login_mode=get_str("COMMENT_WALINE_LOGIN_MODE", "enable") or "enable",
         comment_waline_visitor_count=get_bool("COMMENT_WALINE_VISITOR_COUNT", "true"),
         comment_artalk_server=get_str("COMMENT_ARTALK_SERVER", "") or "",
@@ -1289,9 +1304,16 @@ async def get_site_config(db: DB):
         # ========== Bangumi配置 ==========
         bangumi_user_id=get_str("BANGUMI_USER_ID", "") or "",
         bangumi_mode=get_str("BANGUMI_MODE", "dynamic") or "dynamic",
-        bangumi_api_url=get_str("BANGUMI_API_URL", "https://bgmapi.anibt.net") or "https://bgmapi.anibt.net",
-        bangumi_subject_base_url=get_str("BANGUMI_SUBJECT_BASE_URL", "https://bgmmi.anibt.net/subject/") or "https://bgmmi.anibt.net/subject/",
-        bangumi_category_order_json=get_str("BANGUMI_CATEGORY_ORDER_JSON", '["anime","book","music","game"]') or '["anime","book","music","game"]',
+        bangumi_api_url=get_str("BANGUMI_API_URL", "https://bgmapi.anibt.net")
+        or "https://bgmapi.anibt.net",
+        bangumi_subject_base_url=get_str(
+            "BANGUMI_SUBJECT_BASE_URL", "https://bgmmi.anibt.net/subject/"
+        )
+        or "https://bgmmi.anibt.net/subject/",
+        bangumi_category_order_json=get_str(
+            "BANGUMI_CATEGORY_ORDER_JSON", '["anime","book","music","game"]'
+        )
+        or '["anime","book","music","game"]',
         # ========== 追番配置 ==========
         anime_bilibili_uid=get_str("ANIME_BILIBILI_UID", "") or "",
         anime_tmdb_api_key=get_str("ANIME_TMDB_API_KEY", "") or "",
@@ -1301,7 +1323,10 @@ async def get_site_config(db: DB):
         # ========== 图像优化配置 ==========
         image_opt_formats=get_str("IMAGE_OPT_FORMATS", "webp") or "webp",
         image_opt_quality=get_int("IMAGE_OPT_QUALITY", "85"),
-        image_opt_no_referrer_json=get_str("IMAGE_OPT_NO_REFERRER_JSON", '["*.hdslb.com","*.bilibili.com"]') or '["*.hdslb.com","*.bilibili.com"]',
+        image_opt_no_referrer_json=get_str(
+            "IMAGE_OPT_NO_REFERRER_JSON", '["*.hdslb.com","*.bilibili.com"]'
+        )
+        or '["*.hdslb.com","*.bilibili.com"]',
         # ========== 樱花特效配置 ==========
         sakura_enable=get_bool("SAKURA_ENABLE", "false"),
         sakura_count=get_int("SAKURA_COUNT", "21"),
@@ -1314,7 +1339,8 @@ async def get_site_config(db: DB):
         pio_spine_enable=get_bool("PIO_SPINE_ENABLE", "false"),
         pio_spine_model_path=get_str("PIO_SPINE_MODEL_PATH", "") or "",
         pio_spine_scale=float(_configs_ci.get("PIO_SPINE_SCALE", "1.0")),
-        pio_spine_position_corner=get_str("PIO_SPINE_POSITION_CORNER", "bottom-left") or "bottom-left",
+        pio_spine_position_corner=get_str("PIO_SPINE_POSITION_CORNER", "bottom-left")
+        or "bottom-left",
         pio_spine_width=get_int("PIO_SPINE_WIDTH", "135"),
         pio_spine_height=get_int("PIO_SPINE_HEIGHT", "165"),
         pio_spine_z_index=get_int("PIO_SPINE_Z_INDEX", "1000"),
@@ -1322,7 +1348,8 @@ async def get_site_config(db: DB):
         mermaid_theme=get_str("MERMAID_THEME", "default") or "default",
         mermaid_security_level=get_str("MERMAID_SECURITY_LEVEL", "strict") or "strict",
         # ========== PlantUML配置 ==========
-        plantuml_server_url=get_str("PLANTUML_SERVER_URL", "https://www.plantuml.com/plantuml") or "https://www.plantuml.com/plantuml",
+        plantuml_server_url=get_str("PLANTUML_SERVER_URL", "https://www.plantuml.com/plantuml")
+        or "https://www.plantuml.com/plantuml",
     )
     response_dict.update(_sidebar_dict_to_flat(sidebar))
     # 把后台 17 组 settings 合并进 /api/config 公开返回

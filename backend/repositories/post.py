@@ -97,7 +97,17 @@ class PostRepository(BaseRepository[Post]):
         Returns:
             文章列表
         """
-        order_column = getattr(Post, order_by, Post.published_at)
+        # 排序白名单：只允许真实列名（防 getattr 命中方法/敏感列导致 500 或信息侧信道）
+        _SORTABLE = {
+            "id": Post.id,
+            "created_at": Post.created_at,
+            "updated_at": Post.updated_at,
+            "published_at": Post.published_at,
+            "views": Post.views,
+            "title": Post.title,
+            "slug": Post.slug,
+        }
+        order_column = _SORTABLE.get(order_by, Post.published_at)
         query = (
             select(Post)
             .where(Post.status == "published")
@@ -662,7 +672,17 @@ class PostRepository(BaseRepository[Post]):
         total_result = await self.session.execute(count_query)
         total = total_result.scalar_one()
 
-        order_column = getattr(Post, order_by, Post.published_at)
+        # 排序白名单：只允许真实列名（防 getattr 命中方法/敏感列导致 500 或信息侧信道）
+        _SORTABLE = {
+            "id": Post.id,
+            "created_at": Post.created_at,
+            "updated_at": Post.updated_at,
+            "published_at": Post.published_at,
+            "views": Post.views,
+            "title": Post.title,
+            "slug": Post.slug,
+        }
+        order_column = _SORTABLE.get(order_by, Post.published_at)
         query = query.order_by(order_column.desc() if descending else order_column)
 
         skip = (page - 1) * page_size

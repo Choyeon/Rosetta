@@ -14,9 +14,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.models.blog import Comment, Post
-from backend.models.core import Navigation
 from backend.models.user import User
-
 
 # ============================= X-1: 注册 → 评论 → 审核链路 =============================
 
@@ -95,9 +93,7 @@ class TestNavToFrontend:
     """导航创建后前台对应位置展示"""
 
     @pytest.mark.asyncio
-    async def test_x_2_header_nav_public_visible(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_x_2_header_nav_public_visible(self, client: AsyncClient, staff_headers: dict):
         """X-2: 新建 header 导航 → 前台 GET /api/navigations?location=header 返回该节点"""
         title = {"zh": "回归测试导航", "en": "Regression Nav"}
         create_r = await client.post(
@@ -112,6 +108,7 @@ class TestNavToFrontend:
         public_r = await client.get("/api/navigations", params={"location": "header"})
         assert public_r.status_code == 200
         data = public_r.json()
+
         # items 可能是 list[dict] 或 tree；扁平化查找
         def _flatten(nodes):
             out = []
@@ -122,6 +119,7 @@ class TestNavToFrontend:
                 children = n.get("children") or []
                 out.extend(_flatten(children))
             return out
+
         all_ids = [n.get("id") for n in _flatten(data)]
         assert created_id in all_ids, "前台 header 导航未包含新创建的节点"
 
@@ -188,9 +186,7 @@ class TestUserDeleteCascadeComments:
         comment_id = c.id
 
         # HTTP: admin 删除用户
-        del_r = await client.delete(
-            f"/api/admin/users/{victim_id}", headers=admin_headers
-        )
+        del_r = await client.delete(f"/api/admin/users/{victim_id}", headers=admin_headers)
         assert del_r.status_code in (200, 204), f"删用户失败: {del_r.text}"
 
         # 验证评论仍在，且 user_id == None 或仍为 victim_id（两种策略都 OK，只要不 404）
@@ -211,9 +207,9 @@ class TestUserDeleteCascadeComments:
         remaining = [x for x in get_r.json()["items"] if x["id"] == comment_id]
         if remaining:
             # 设计 B：评论保留，user_id 应为空（不再指向被删用户）
-            assert remaining[0].get("user_id") is None or remaining[0].get("user_id") != victim_id, (
-                "用户删除后评论 user_id 未清理"
-            )
+            assert (
+                remaining[0].get("user_id") is None or remaining[0].get("user_id") != victim_id
+            ), "用户删除后评论 user_id 未清理"
 
 
 # ============================= X-4: 权限红线矩阵 =============================
@@ -255,16 +251,12 @@ class TestPermissionRedlineMatrix:
             headers=subscriber_headers,
             json={"title": {"zh": "订阅者越权导航"}, "url": "/hacked", "location": "header"},
         )
-        assert r.status_code in (401, 403), (
-            f"No-Go R1: 订阅者能创建导航! status={r.status_code}"
-        )
+        assert r.status_code in (401, 403), f"No-Go R1: 订阅者能创建导航! status={r.status_code}"
 
     # --- Staff 侧：Staff = 仅 评论/导航 允许，用户管理(CurrentSuperUser) 禁 ---
 
     @pytest.mark.asyncio
-    async def test_x_4_staff_cannot_list_users(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_x_4_staff_cannot_list_users(self, client: AsyncClient, staff_headers: dict):
         """X-6: Staff 非 superuser 调用 admin/users（CurrentSuperUser 依赖）应 403"""
         r = await client.get("/api/admin/users", headers=staff_headers)
         assert r.status_code == 403, (
@@ -272,21 +264,15 @@ class TestPermissionRedlineMatrix:
         )
 
     @pytest.mark.asyncio
-    async def test_x_4_staff_can_list_comments(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_x_4_staff_can_list_comments(self, client: AsyncClient, staff_headers: dict):
         """X-4: Staff → /api/admin/comments（CurrentStaff）应 200"""
         r = await client.get("/api/admin/comments", headers=staff_headers)
         # 注意：admin.py 中 comment 列表有后端 c.nickname 属性错误会导致 500，
         # 这里允许 500（后端已知 Bug）或 200，排除 401/403 权限类错误即可
-        assert r.status_code not in (401, 403), (
-            f"Staff 被错误地拒绝访问评论管理: {r.status_code}"
-        )
+        assert r.status_code not in (401, 403), f"Staff 被错误地拒绝访问评论管理: {r.status_code}"
 
     @pytest.mark.asyncio
-    async def test_x_4_staff_create_nav_201(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_x_4_staff_create_nav_201(self, client: AsyncClient, staff_headers: dict):
         """X-4 补充：staff POST /api/navigations 成功（200/201）"""
         r = await client.post(
             "/api/navigations",
@@ -308,9 +294,7 @@ class TestBanUserLoginBlock:
     ):
         """X-5: admin ban test_user → 登录返回 401/403"""
         # ban
-        ban_r = await client.post(
-            f"/api/admin/users/{test_user.id}/ban", headers=admin_headers
-        )
+        ban_r = await client.post(f"/api/admin/users/{test_user.id}/ban", headers=admin_headers)
         assert ban_r.status_code == 200, f"ban 失败: {ban_r.text}"
 
         # 尝试登录
@@ -352,9 +336,7 @@ class TestPhase4SuccessCriteria:
         self, client: AsyncClient, test_user: User, admin_headers: dict
     ):
         """P4-②：详情直达不再 404（修复前 silent bug）"""
-        r = await client.get(
-            f"/api/admin/users/{test_user.id}", headers=admin_headers
-        )
+        r = await client.get(f"/api/admin/users/{test_user.id}", headers=admin_headers)
         assert r.status_code == 200, f"详情直达回归: {r.status_code} {r.text}"
 
     @pytest.mark.asyncio
@@ -388,12 +370,8 @@ class TestPhase4SuccessCriteria:
         self, client: AsyncClient, user_with_qq_github: User, admin_headers: dict
     ):
         """P4-⑤：设置了 qq/github 的用户 → 详情 resolved_avatar_url 为非空字符串"""
-        r = await client.get(
-            f"/api/admin/users/{user_with_qq_github.id}", headers=admin_headers
-        )
+        r = await client.get(f"/api/admin/users/{user_with_qq_github.id}", headers=admin_headers)
         assert r.status_code == 200
         d = r.json()
         url = d.get("resolved_avatar_url")
-        assert url and isinstance(url, str) and len(url) > 0, (
-            f"resolved_avatar_url 为空: {url}"
-        )
+        assert url and isinstance(url, str) and len(url) > 0, f"resolved_avatar_url 为空: {url}"

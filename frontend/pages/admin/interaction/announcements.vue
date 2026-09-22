@@ -1,23 +1,30 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        公告管理
-      </h1>
-      <Button
-        class="rounded-xl shadow-sm"
-        @click="openCreate"
-      >
-        <Plus class="size-4 mr-2" />
-        新建公告
-      </Button>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="公告管理"
+      description="全站公告的发布、置顶与下线"
+      :icon="Megaphone"
+    >
+      <template #actions>
+        <Button
+          size="sm"
+          class="rounded-xl shadow-sm"
+          @click="openCreate"
+        >
+          <Plus
+            data-icon="inline-start"
+            class="mr-2"
+          />
+          新建公告
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <AdminCard>
       <div class="p-0">
         <div
           v-if="loading"
-          class="p-4 space-y-3"
+          class="flex flex-col gap-3 p-4"
         >
           <div
             v-for="i in 5"
@@ -120,7 +127,7 @@
                       class="h-8 w-8"
                       @click="openEdit(a)"
                     >
-                      <Pencil class="size-4" />
+                      <Pencil data-icon="inline-start" />
                     </Button>
                     <Button
                       variant="ghost"
@@ -128,7 +135,7 @@
                       class="h-8 w-8 text-destructive hover:text-destructive"
                       @click="confirmDelete(a.id)"
                     >
-                      <Trash2 class="size-4" />
+                      <Trash2 data-icon="inline-start" />
                     </Button>
                   </div>
                 </td>
@@ -194,10 +201,10 @@
           </DialogDescription>
         </DialogHeader>
 
-        <div class="space-y-4 py-2">
-          <div class="space-y-2">
+        <div class="flex flex-col gap-4 py-2">
+          <div class="flex flex-col gap-2">
             <Label>公告类型</Label>
-            <div class="grid grid-cols-4 gap-2">
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <button
                 v-for="t in announcementTypes"
                 :key="t.value"
@@ -219,7 +226,7 @@
             </div>
           </div>
 
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>标题 <span class="text-destructive">*</span></Label>
             <Input
               v-model="form.title"
@@ -227,7 +234,7 @@
             />
           </div>
 
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>内容（Markdown）</Label>
             <Textarea
               v-model="form.content_md"
@@ -276,7 +283,8 @@
           >
             <Loader2
               v-if="submitting"
-              class="size-4 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             {{ editingId ? '保存修改' : '创建公告' }}
           </Button>
@@ -351,7 +359,7 @@ const announcementTypes = [
 
 const loading = ref(false)
 const submitting = ref(false)
-const announcements = ref<AdminAnnouncement[]>([])
+const announcements = shallowRef<AdminAnnouncement[]>([])
 const page = ref(1)
 const pageSize = 20
 const total = ref(0)
@@ -395,10 +403,10 @@ function displayField(v: unknown): string {
 
 function typeBadgeClass(t: string): string {
   switch (t) {
-    case 'info': return 'bg-info-muted text-info-foreground hover:bg-info-muted'
-    case 'warning': return 'bg-warning-muted text-warning-foreground hover:bg-warning-muted'
-    case 'error': return 'bg-error-muted text-error-foreground hover:bg-error-muted'
-    case 'success': return 'bg-success-muted text-success-foreground hover:bg-success-muted'
+    case 'info': return 'bg-info-muted text-info-muted-foreground hover:bg-info-muted'
+    case 'warning': return 'bg-warning-muted text-warning-muted-foreground hover:bg-warning-muted'
+    case 'error': return 'bg-error-muted text-error-muted-foreground hover:bg-error-muted'
+    case 'success': return 'bg-success-muted text-success-muted-foreground hover:bg-success-muted'
     default: return 'bg-muted text-muted-foreground'
   }
 }

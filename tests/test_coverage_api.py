@@ -7,10 +7,10 @@
 - csrf：origin 错误、token 不匹配
 所有用例改为 **独立函数 + @pytest.mark.asyncio**（避免 pytest-asyncio 类装饰器 + 多 fixture 注入时出 ERROR）。
 """
+
 from __future__ import annotations
 
 import pytest
-from httpx import AsyncClient
 
 
 # ================================================================
@@ -49,7 +49,9 @@ async def test_admin_get_user_detail_success_and_404(client, admin_headers, admi
 
 
 @pytest.mark.asyncio
-async def test_admin_put_update_user_full_success_and_error_paths(client, admin_headers, subscriber_user):
+async def test_admin_put_update_user_full_success_and_error_paths(
+    client, admin_headers, subscriber_user
+):
     uid = subscriber_user.id
     # 成功：完整 payload
     r_ok = await client.put(
@@ -101,8 +103,8 @@ async def test_admin_reset_password_branches(client, admin_headers, subscriber_u
 @pytest.mark.asyncio
 async def test_admin_delete_user_branches(client, db_session, admin_headers):
     # 先临时建一个用户再删除，避免污染 fixture 给后续用
-    from backend.models.user import User
     from backend.core.auth import get_password_hash
+    from backend.models.user import User
 
     u = User(
         username="cov_to_delete",
@@ -187,7 +189,9 @@ async def test_admin_patch_status_branches(client, admin_headers, subscriber_use
 # 2. admin.py：评论列表/PATCH/DELETE + comments.py legacy admin endpoints
 # ================================================================
 @pytest.mark.asyncio
-async def test_admin_patch_comment_all_status_sync(client, db_session, admin_headers, make_comments, test_post):
+async def test_admin_patch_comment_all_status_sync(
+    client, db_session, admin_headers, make_comments, test_post
+):
     await make_comments(test_post, 4)
     from backend.models.blog import Comment
 
@@ -212,7 +216,9 @@ async def test_admin_patch_comment_all_status_sync(client, db_session, admin_hea
 
 
 @pytest.mark.asyncio
-async def test_admin_delete_comment_404_and_success(client, db_session, admin_headers, test_post, make_comments):
+async def test_admin_delete_comment_404_and_success(
+    client, db_session, admin_headers, test_post, make_comments
+):
     await make_comments(test_post, 2)
     from backend.models.blog import Comment
 
@@ -233,7 +239,9 @@ async def test_admin_delete_comment_404_and_success(client, db_session, admin_he
 
 
 @pytest.mark.asyncio
-async def test_legacy_comments_admin_approve_reject_spam_and_batch(client, db_session, admin_headers, test_post, make_comments):
+async def test_legacy_comments_admin_approve_reject_spam_and_batch(
+    client, db_session, admin_headers, test_post, make_comments
+):
     await make_comments(test_post, 4)
     from backend.models.blog import Comment
 
@@ -328,14 +336,10 @@ async def test_like_comment_404_and_success(client, test_post, make_comments, db
     row = res.first()
     cid = row.id if row else 1
 
-    r_ok = await client.post(
-        f"/api/comments/{cid}/like", follow_redirects=True
-    )
+    r_ok = await client.post(f"/api/comments/{cid}/like", follow_redirects=True)
     assert r_ok.status_code in (200, 201, 400, 409, 404)
 
-    r404 = await client.post(
-        "/api/comments/99999999/like", follow_redirects=True
-    )
+    r404 = await client.post("/api/comments/99999999/like", follow_redirects=True)
     assert r404.status_code in (200, 404)
 
 
@@ -363,9 +367,7 @@ def _login_header(client, username, password):
 
 @pytest.mark.asyncio
 async def test_logout_with_or_without_token(client, auth_headers):
-    r_logged = await client.post(
-        "/api/users/logout", headers=auth_headers, follow_redirects=True
-    )
+    r_logged = await client.post("/api/users/logout", headers=auth_headers, follow_redirects=True)
     assert r_logged.status_code in (200, 204, 401)
 
     # 无 token → 401 或 200（宽松取决于实现）
@@ -413,9 +415,7 @@ async def test_change_password_v2_and_legacy(client, auth_headers):
 
 @pytest.mark.asyncio
 async def test_get_my_preferences_and_update(client, auth_headers):
-    r = await client.get(
-        "/api/users/me/preferences", headers=auth_headers, follow_redirects=True
-    )
+    r = await client.get("/api/users/me/preferences", headers=auth_headers, follow_redirects=True)
     assert r.status_code in (200, 401, 404)
 
     # 更新
@@ -430,9 +430,7 @@ async def test_get_my_preferences_and_update(client, auth_headers):
 @pytest.mark.asyncio
 async def test_get_user_and_by_username_404_and_success(client, test_user, auth_headers):
     # by id
-    r = await client.get(
-        f"/api/users/{test_user.id}", headers=auth_headers, follow_redirects=True
-    )
+    r = await client.get(f"/api/users/{test_user.id}", headers=auth_headers, follow_redirects=True)
     assert r.status_code in (200, 401, 403, 404)
 
     # by username
@@ -463,7 +461,9 @@ async def test_get_user_posts_comments_stats_404_and_success(client, admin_user,
     rp = await client.get(f"/api/users/{uid}/posts", headers=admin_headers, follow_redirects=True)
     assert rp.status_code in (200, 401, 403, 404)
 
-    rc = await client.get(f"/api/users/{uid}/comments", headers=admin_headers, follow_redirects=True)
+    rc = await client.get(
+        f"/api/users/{uid}/comments", headers=admin_headers, follow_redirects=True
+    )
     assert rc.status_code in (200, 401, 403, 404)
 
     rs = await client.get(f"/api/users/{uid}/stats", headers=admin_headers, follow_redirects=True)
@@ -477,7 +477,9 @@ async def test_get_user_posts_comments_stats_404_and_success(client, admin_user,
 # 5. guestbook 所有公开 + admin 接口
 # ================================================================
 @pytest.mark.asyncio
-async def test_admin_guestbook_list_and_toggles_and_status_and_batch(client, admin_headers, db_session):
+async def test_admin_guestbook_list_and_toggles_and_status_and_batch(
+    client, admin_headers, db_session
+):
     # 创建留言：优先用 models 已注册的 GuestbookEntry；如不存在则跳过导入分支验证
     try:
         from backend.models.blog import GuestbookEntry as _GB  # noqa: F401

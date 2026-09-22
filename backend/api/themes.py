@@ -17,12 +17,12 @@ from __future__ import annotations
 import functools
 import logging
 from dataclasses import dataclass, field
-from typing import Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field as PDField
+from fastapi import APIRouter, Body, HTTPException, Query, status
+from pydantic import BaseModel
+from pydantic import Field as PDField
 
-from backend.core.auth import CurrentStaff, CurrentUserOptional, DB
+from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.models.core import SiteConfig
 
 logger = logging.getLogger(__name__)
@@ -137,7 +137,7 @@ DEFAULT_PALETTE_ID: str = "sky"
 _PALETTE_BY_ID: dict[str, Palette] = {p.id: p for p in AVAILABLE_PALETTES}
 
 
-@functools.lru_cache(maxsize=None)
+@functools.cache
 def _build_palette_css(key: str) -> str:
     """为指定调色板生成 CSS 自定义属性块。
 
@@ -201,7 +201,7 @@ async def list_palettes(_: CurrentUserOptional = None) -> dict:
 @router.get("/themes/current.css", summary="获取当前启用调色板的 CSS")
 async def get_current_palette_css(
     db: DB,
-    palette: Optional[str] = Query(None, description="强制指定调色板 id（调试用）"),
+    palette: str | None = Query(None, description="强制指定调色板 id（调试用）"),
 ):
     """返回 text/css 响应，可通过 <link rel=stylesheet> 直链。"""
     from fastapi.responses import Response
@@ -209,6 +209,7 @@ async def get_current_palette_css(
     pid = palette
     if not pid:
         from sqlalchemy import select as _s
+
         r = await db.execute(_s(SiteConfig).where(SiteConfig.key == CONFIG_KEY))
         row = r.scalar_one_or_none()
         pid = row.value if row and row.value else DEFAULT_PALETTE_ID
@@ -272,6 +273,7 @@ async def public_get_active_theme(
     # 填充 mods：读取 JSON 字段（theme.mods 通常已经是 dict；如果为字符串兜底做一次 json.loads）
     try:
         from backend.core.extensions import theme_manager
+
         out.mods = await theme_manager.get_mods(db, theme.slug)
     except Exception:
         out.mods = None

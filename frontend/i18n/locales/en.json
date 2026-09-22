@@ -57,7 +57,10 @@
     "featured": "Featured",
     "submitting": "Submitting…",
     "open": "Open",
-    "by": "By"
+    "by": "By",
+    "retry": "Retry",
+    "prevPage": "Previous page",
+    "nextPage": "Next page"
   },
   "nav": {
     "home": "Home",
@@ -70,7 +73,9 @@
     "guestbook": "Guestbook",
     "activity": "Activity",
     "about": "About",
-    "admin": "Admin"
+    "admin": "Admin",
+    "search": "Search",
+    "series": "Series"
   },
   "post": {
     "title": "Title",
@@ -109,7 +114,17 @@
     "backToList": "Back to posts",
     "loadFailed": "Failed to load this post",
     "loadFailedDesc": "The post you're looking for doesn't exist or has been removed. Use the button below to return to the list.",
-    "like": "Like"
+    "like": "Like",
+    "adjacentNav": "Post navigation",
+    "previousPost": "Previous",
+    "nextPost": "Next",
+    "tocEmpty": "No table of contents",
+    "commentsLoadFailed": "Failed to load comments",
+    "retry": "Retry",
+    "replyingTo": "Replying to",
+    "cancelReply": "Cancel reply",
+    "replyPlaceholder": "Reply to this comment…",
+    "someone": "someone"
   },
   "comment": {
     "title": "Comments",
@@ -122,7 +137,8 @@
     "reply": "Reply",
     "replyTo": "Reply to",
     "noComments": "No comments yet. Be the first!",
-    "loginToComment": "Please login to comment"
+    "loginToComment": "Please login to comment",
+    "like": "Like"
   },
   "auth": {
     "username": "Username",
@@ -192,15 +208,23 @@
     "hidePassword": "Hide Password",
     "passwordTooShort": "Password must be at least 6 characters",
     "pleaseAgreeTerms": "Please accept the Terms of Service and Privacy Policy first",
-    "cannotDeriveUsername": "Unable to derive a valid username from email/nickname. Please use a different email/nickname."
+    "cannotDeriveUsername": "Unable to derive a valid username from email/nickname. Please use a different email/nickname.",
+    "backHome": "Back to Home",
+    "logoAlt": "Rosetta — colorful square logo",
+    "prevDay": "Previous day",
+    "nextDay": "Next day (newer)",
+    "refreshWallpaper": "Refresh current wallpaper"
   },
   "error": {
     "notFoundTitle": "Page Not Found",
     "notFoundDesc": "The page you are looking for may have been moved, deleted, or never existed.",
     "serverErrorTitle": "Server Error",
     "serverErrorDesc": "The service is temporarily unavailable. Please try again later.",
+    "permissionTitle": "Permission Denied",
+    "permissionDesc": "You need to sign in to access this page, or your account does not have sufficient permissions.",
     "backHome": "Back to Home",
-    "retry": "Retry"
+    "retry": "Retry",
+    "goLogin": "Go to Login"
   },
   "user": {
     "profile": "Profile",
@@ -598,7 +622,10 @@
     "actions": {
       "refresh": "Refresh",
       "cancel": "Cancel",
-      "save": "Save"
+      "save": "Save",
+      "clear": "Clear filters",
+      "delete": "Delete",
+      "saving": "Saving…"
     },
     "pagination": {
       "page": "Page {page}",
@@ -623,7 +650,8 @@
       "status": {
         "active": "Active",
         "inactive": "Inactive",
-        "error": "Error"
+        "error": "Error",
+        "installed": "Installed"
       },
       "settings": "Settings",
       "upgrade": "Upgrade",
@@ -638,7 +666,38 @@
       "bulkActivate": "Bulk activate",
       "bulkDeactivate": "Bulk deactivate",
       "bulkDelete": "Bulk delete",
-      "selectedCount": "{count} plugins selected"
+      "selectedCount": "{count} plugins selected",
+      "docs": "Plugin docs",
+      "installHint": "Install new plugins via the backend or CLI",
+      "stats": {
+        "installed": "Installed",
+        "active": "Active",
+        "inactive": "Inactive",
+        "updates": "Updatable",
+        "errors": "Errors"
+      },
+      "filter": {
+        "all": "All",
+        "inactive": "Inactive"
+      },
+      "itemsUnit": "items",
+      "scanDone": "Scan complete",
+      "activated": "Enabled",
+      "deactivated": "Disabled",
+      "settingsSaved": "Settings saved",
+      "deleted": "Plugin deleted",
+      "bulkDeleted": "Bulk delete complete",
+      "bulkUpgrade": "Bulk upgrade",
+      "selected": "Selected",
+      "emptyTitle": "No plugins",
+      "noSearchResult": "No matching plugins. Try another keyword.",
+      "emptyDesc": "Click \"Scan Local\" to discover plugins in the plugins folder",
+      "noDesc": "This plugin has no description yet.",
+      "updateAvailable": "Update available",
+      "noSettings": "This plugin has no configurable settings",
+      "confirmDeleteTitle": "Confirm delete",
+      "confirmDeleteOne": "Plugin \"{name}\" will be permanently deleted. Its data and settings will also be removed.",
+      "confirmDeleteBulk": "The selected {n} plugins will be permanently deleted. Their data and settings will also be removed."
     },
     "themes": {
       "title": "Themes",
@@ -664,7 +723,68 @@
       "modsSaved": "Theme customization saved",
       "upload": "Upload theme",
       "empty": "No matching themes.",
-      "noThemes": "No themes installed yet. Scan or install one first."
+      "noThemes": "No themes installed yet. Scan or install one first.",
+      "docs": "Theme docs",
+      "scanDone": "Scan complete",
+      "activated": "Theme activated",
+      "modsValidationFailed": "Validation failed. Please check the highlighted fields.",
+      "deleted": "Theme deleted",
+      "installHint": "Install new themes via the backend or CLI",
+      "stats": {
+        "total": "Total themes",
+        "active": "Active",
+        "customizable": "Customizable",
+        "errors": "Errors"
+      },
+      "itemsUnit": "themes",
+      "noSearchResult": "No matching themes. Try another keyword.",
+      "emptyTitle": "No themes",
+      "emptyDesc": "Click \"Scan Local\" to discover themes in the themes folder",
+      "error": "Error",
+      "previewStub": "Live preview is not available yet",
+      "activatedAt": "Activated on",
+      "noDesc": "This theme has no description yet.",
+      "noCustomizeHint": "This theme has no customization options",
+      "parentHint": "Parent theme placeholder",
+      "childOf": "Child theme: inherits from {name}",
+      "perPage": "Per page",
+      "customizerTitle": "Customize theme: ",
+      "customizerDesc": "Adjust the theme appearance in real time; settings are saved to the site immediately.",
+      "customizerActiveHint": "You are editing the active theme. The frontend refreshes immediately after saving.",
+      "modsOn": "On",
+      "modsOff": "Off",
+      "noMods": "This theme has no customization fields",
+      "confirmDeleteTitle": "Confirm delete",
+      "confirmDelete": "Theme \"{name}\" will be permanently deleted. Its customization and settings will also be removed."
+    },
+    "media": {
+      "previewTitle": "Media Preview",
+      "previewDescription": "View the file and edit basic metadata",
+      "previewNoInline": "This file type cannot be previewed inline",
+      "previewOpenNewTab": "Open in new tab",
+      "previewMeta": "File Info",
+      "previewFilename": "Filename",
+      "previewSize": "Size",
+      "previewDimensions": "Dimensions",
+      "previewType": "Type",
+      "previewUploader": "Uploaded by",
+      "previewCreatedAt": "Upload time",
+      "previewCopyUrl": "Copy link",
+      "previewFieldTitle": "Title",
+      "previewFieldTitlePh": "Enter a title (optional)",
+      "previewFieldAlt": "Alt text",
+      "previewFieldAltPh": "For accessibility and SEO",
+      "previewFieldDesc": "Description",
+      "previewFieldDescPh": "File description (optional)",
+      "previewSave": "Save info",
+      "previewCopied": "Link copied to clipboard",
+      "previewCopyFailed": "Copy failed, please copy the link manually",
+      "previewSaved": "Media info updated",
+      "uploadQueueTitle": "Uploads",
+      "uploadQueueClear": "Clear completed",
+      "uploadQueueDone": "Done",
+      "uploadQueueFailed": "Failed",
+      "uploadQueueDismiss": "Remove"
     }
   },
   "oobe": {
@@ -678,10 +798,37 @@
       "admin": "Admin Account",
       "complete": "Complete Installation"
     },
-    "step1Title": "System Check",
-    "step1Desc": "Check server environment and dependencies",
-    "step1LongDesc": "We'll automatically detect Python version, required dependencies, and directory permissions to ensure your server meets Rosetta's minimum requirements.",
-    "step1EmptyHint": "Click the button on the right to start system environment detection",
+    "step1Title": "Connect Backend",
+    "step1Desc": "Configure backend API URL and probe connectivity",
+    "step1LongDesc": "First specify where the Rosetta FastAPI backend lives. The wizard will probe the /health endpoint and the OOBE status; once the probe succeeds, it automatically proceeds to system checks and dependency installation.",
+    "step1EmptyHint": "Please complete the backend connection probe above first",
+    "connTitle": "Backend Connection",
+    "connDesc": "Tell the installer where to send all OOBE API requests during setup.",
+    "connLongDesc": "Dev mode defaults to localhost port 8000. For production behind Nginx use the relative /api path. If frontend and backend are on different origins (port/domain), enter the full absolute URL.",
+    "connMode": "Deployment Mode",
+    "connModeDev": "Development",
+    "connModeDevHint": "Local dev with split stacks — FastAPI listens on 127.0.0.1:8000 by default",
+    "connModeProd": "Production",
+    "connModeProdHint": "Behind a reverse proxy like Nginx, frontend reaches backend via same-origin /api",
+    "connApiUrl": "Backend API URL",
+    "connApiUrlDevHint": "e.g. http://127.0.0.1:8000/api. Entering just a port number auto-expands to localhost.",
+    "connApiUrlProdHint": "Use /api for same-origin Nginx setups; enter https://domain.com/api for cross-origin.",
+    "connPortQuick": "Quick ports (dev mode only)",
+    "connCustomPort": "Custom port…",
+    "connCurrentHint": "Active backend URL",
+    "connAppliedHint": "Applied as the target backend for this wizard",
+    "connProbe": "Probe Connection",
+    "connProbing": "Probing…",
+    "connProbeOK": "Probe OK: backend is reachable and healthy",
+    "connProbeFail": "Probe Failed",
+    "connProbeFailDetail": "Failure reason",
+    "connProbeStageHealth": "Stage ① /health endpoint",
+    "connProbeStageStatus": "Stage ② /api/oobe/status endpoint",
+    "connProbeOOBERequired": "Backend is healthy — awaiting install (503 OOBE_REQUIRED)",
+    "connProbeAlreadyDone": "Backend already installed (ready to use)",
+    "connProbeNetworkError": "Network unreachable / connection refused. Verify the backend is running on the given port and firewall rules allow it.",
+    "connProbeNotHealthy": "/health did not return 'healthy'. The target may not be a Rosetta backend.",
+    "connProbeHintNext": "You must pass the connection probe before advancing to the next step.",
     "step2Title": "Admin Account",
     "step2Desc": "Create the administrator account",
     "step2LongDesc": "Set up the primary admin account for logging into the dashboard. You can add more users later from the admin panel.",
@@ -820,7 +967,20 @@
     "depStarting": "Connecting to the installer service…",
     "depSuccess": "All dependencies installed.",
     "depPartFail": "Some dependencies failed. Please check the logs or install them manually.",
-    "isStarting": "Preparing installation tasks…"
+    "isStarting": "Preparing installation tasks…",
+    "tlsTitle": "Plaintext HTTP connection detected",
+    "tlsDesc": "Your current production configuration will submit the admin password over unencrypted HTTP. Any attacker on the same network can sniff the credentials.",
+    "tlsGoBack": "Go back and switch to HTTPS",
+    "tlsContinueAnyway": "I understand the risks, continue anyway",
+    "tlsHintTlsTerminate": "Recommended: cancel this installation now and re-run after enabling TLS on your reverse proxy.",
+    "tlsHintConfigureReverseProxy": "Best practice: obtain a free Let's Encrypt certificate via Nginx / Caddy / Traefik and change both your API and site URLs to https://.",
+    "tlsHintRisk": "Proceeding will send your admin password, login tokens and cookies in plaintext over the public internet — a critical account-theft risk.",
+    "installSnapshotTimeout": "Installation progress stream timed out",
+    "installSnapshotPolling": "Verifying installation state via snapshot API…",
+    "installSnapshotRetryBtn": "Reconnect",
+    "installSnapshotCancelBtn": "Cancel wait",
+    "installSnapshotTimeoutDetail": "No progress events were received for 30 seconds (the SSE channel may have been dropped by network or proxy). The system is now reconciling the true installation state via snapshot — your progress is not lost.",
+    "installSnapshotPollingDetail": "Snapshot polling: querying backend install status every 5 seconds, up to 3 times. If the backend actually completed, we will automatically advance to the success screen."
   },
   "archive": {
     "title": "Archive",
@@ -856,6 +1016,8 @@
   "posts": {
     "allPosts": "All posts",
     "allPostsDesc": "Everything published, in reverse chronological order.",
+    "hotTitle": "Hot Ranking",
+    "hotTitleDesc": "HN-style composite score: upvotes, views, comments, and freshness weighted together.",
     "noPosts": "No posts yet",
     "noPostsDesc": "The author is cooking up new content — check back soon.",
     "searchPlaceholder": "Search titles or keywords…",
@@ -888,7 +1050,10 @@
     "contentPlaceholder": "Type something here…",
     "replyPlaceholder": "Reply to this message…",
     "noMessages": "No messages yet. Be the first to say hi!",
-    "submitFailed": "Submit failed, please try again later"
+    "submitFailed": "Submit failed, please try again later",
+    "loadFailed": "Failed to load guestbook entries, please try again later",
+    "postingAs": "Posting with your current account",
+    "submitSuccess": "Message submitted. It will appear in the list after approval."
   },
   "gallery": {
     "title": "Gallery",
@@ -905,7 +1070,8 @@
     "desc": "Wonderful folks and their sites, worth sharing with more readers.",
     "visit": "Visit",
     "noDesc": "No description",
-    "noLinks": "No friend links yet"
+    "noLinks": "No friend links yet",
+    "loadFailed": "Failed to load"
   },
   "search": {
     "title": "Search",
@@ -990,6 +1156,8 @@
     "commentsCount": "Comments",
     "popularCategories": "Popular categories",
     "tagCloud": "Tag cloud",
+    "announcements": "Announcements",
+    "recentActivity": "Recent Activity",
     "techStack": "Tech Stack",
     "newsletterTitle": "Subscribe for updates",
     "newsletterSubtitle": "Get new posts in your inbox. No spam, ever.",
@@ -1185,5 +1353,14 @@
     "posts": "posts",
     "noDesc": "No description",
     "viewAll": "View all posts"
+  },
+  "a11y": {
+    "skipToMain": "Skip to main content",
+    "toggleTheme": "Toggle theme",
+    "togglePalette": "Toggle palette",
+    "switchLanguage": "Switch language",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "toggleSidebar": "Toggle sidebar"
   }
 }

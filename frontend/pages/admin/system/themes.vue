@@ -1,7 +1,5 @@
 <template>
-  <div class="p-6">
-    <ThemeManager />
-  </div>
+  <ThemeManager />
 </template>
 
 <script setup lang="ts">

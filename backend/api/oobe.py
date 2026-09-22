@@ -22,7 +22,7 @@ import uuid as _uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
@@ -30,7 +30,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth import get_password_hash
 from backend.core.database import async_session_maker, get_db, init_db, reset_engine
-from backend.core.deps import is_oobe_complete, require_oobe_incomplete
+from backend.core.deps import (
+    CurrentUserOptional,
+    is_oobe_complete,
+    require_oobe_incomplete,
+)
 from backend.core.exceptions import (
     OOBEAlreadyCompletedException,
     WeakPasswordException,
@@ -72,7 +76,9 @@ class CombinedInstallRequest(BaseModel):
     redis_port: int = 6379
     redis_password: str = ""
 
-    admin_username: str = Field(default="Choyeon", min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH)
+    admin_username: str = Field(
+        default="Choyeon", min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH
+    )
     admin_email: str = "choyeon@foxmail.com"
     admin_password: str = Field(default="Choyeon@2025", min_length=PASSWORD_MIN_LENGTH)
     admin_nickname: str = "Choyeon"
@@ -109,6 +115,30 @@ class CombinedInstallRequest(BaseModel):
         return v
 
 
+def _refresh_settings_inplace() -> None:
+    """重读 .env 并**原地**刷新全局 settings 单例。
+
+    不能 `config_module.settings = config_module.get_settings()` 重绑：
+    各模块（rate_limit / users / csrf 等）在 import 时以
+    `from backend.core.config import settings` 拿到的旧引用会全部失效，
+    导致安装完成后这些模块永远读取不到新配置（内存中出现两个 settings 对象）。
+    原地交换 __dict__ 可保持对象身份不变，所有持有引用的模块立即看到新值。
+    """
+    try:
+        from backend.core import config as config_module
+
+        if hasattr(config_module.get_settings, "cache_clear"):
+            config_module.get_settings.cache_clear()
+        _fresh = config_module.get_settings()
+        _existing = config_module.settings
+        object.__setattr__(_existing, "__dict__", dict(_fresh.__dict__))
+        object.__setattr__(
+            _existing, "__pydantic_fields_set__", set(_fresh.__pydantic_fields_set__)
+        )
+    except Exception:
+        logger.exception("刷新全局 settings 失败（将沿用安装前配置）")
+
+
 router = APIRouter(prefix="/oobe", tags=["OOBE"])
 
 config_service = ConfigService()
@@ -124,6 +154,11 @@ _INSTALL_STREAM_BUFFER_MAX = 200
 _DEP_STREAM_QUEUES: dict[str, asyncio.Queue] = {}
 _DEP_STREAM_BUFFER: list[dict] = []
 _DEP_STREAM_BUFFER_MAX = 500
+
+# R1-U2: 安装幂等性 —— 单 worker 内禁止并发重入一键安装，
+# 避免 OOBE 标记文件写入前两个请求交错进入导致双写 admin/重复 mock 数据。
+_INSTALL_LOCK = asyncio.Lock()
+_INSTALL_LOCK_ACQUIRED = False
 
 
 def _append_progress(evt: dict):
@@ -186,6 +221,12 @@ def _load_state() -> dict:
     }
 
 
+def _read_config_file() -> dict | None:
+    """同步读取配置文件（供 asyncio.to_thread 调用）"""
+    with open(CONFIG_FILE, encoding="utf-8") as f:
+        return json.load(f)
+
+
 @router.get("/status")
 async def get_oobe_status():
     """获取 OOBE 状态
@@ -198,11 +239,11 @@ async def get_oobe_status():
     config_data = None
     if CONFIG_FILE.exists():
         try:
-            with open(CONFIG_FILE, encoding="utf-8") as f:
-                config_data = json.load(f)
+            # 文件读取为同步 IO，放入线程池避免阻塞事件循环
+            config_data = await asyncio.to_thread(_read_config_file)
             sensitive = ["db_password", "redis_password", "secret_key", "admin_password"]
             for field in sensitive:
-                if field in config_data:
+                if config_data and field in config_data:
                     config_data[field] = "***"
         except Exception:
             pass
@@ -246,7 +287,9 @@ async def oobe_check_environment():
 
     # uv 检测
     uv_result = check_uv_installed()
-    result["uv_installed"] = _ok(uv_result.get("ok", False), ok=uv_result.get("ok", False), error=uv_result.get("error"))
+    result["uv_installed"] = _ok(
+        uv_result.get("ok", False), ok=uv_result.get("ok", False), error=uv_result.get("error")
+    )
     if "uv_version" in uv_result:
         result["uv_version"] = _ok(uv_result["uv_version"])
     else:
@@ -289,7 +332,8 @@ async def get_system_info():
 @router.get("/dependencies")
 async def check_dependencies():
     """检查系统依赖状态"""
-    deps = dependency_service.check_all()
+    # check_all 内部调用 shutil.which / subprocess.run（同步阻塞），放入线程池
+    deps = await asyncio.to_thread(dependency_service.check_all)
 
     def _map_dep(_name, dep):
         from backend.core.setup_dependency import DependencyStatus
@@ -314,11 +358,16 @@ async def check_dependencies():
 
     dependency_service._refresh_path()
 
-    npm_available = shutil.which("npm") is not None
+    # shutil.which 和 subprocess.run 为同步阻塞操作，放入线程池避免阻塞事件循环
+    npm_available = await asyncio.to_thread(shutil.which, "npm") is not None
     npm_version = ""
     if npm_available:
         try:
-            r = subprocess.run(["npm", "--version"], capture_output=True, text=True, timeout=10)
+            r = await asyncio.to_thread(
+                lambda: subprocess.run(
+                    ["npm", "--version"], capture_output=True, text=True, timeout=10
+                )
+            )
             if r.returncode == 0:
                 npm_version = r.stdout.strip().lstrip("v")
         except Exception:
@@ -326,10 +375,12 @@ async def check_dependencies():
     if not npm_version:
         for npm_cmd in ["npm.cmd", "npm"]:
             try:
-                npm_path = shutil.which(npm_cmd)
+                npm_path = await asyncio.to_thread(shutil.which, npm_cmd)
                 if npm_path:
-                    r = subprocess.run(
-                        [npm_path, "--version"], capture_output=True, text=True, timeout=10
+                    r = await asyncio.to_thread(
+                        lambda: subprocess.run(
+                            [npm_path, "--version"], capture_output=True, text=True, timeout=10
+                        )
                     )
                     if r.returncode == 0 and r.stdout.strip():
                         npm_version = r.stdout.strip().lstrip("v")
@@ -346,15 +397,20 @@ async def check_dependencies():
         else ("已安装" if npm_available else "未检测到"),
     }
 
-    pip_available = shutil.which("pip") is not None or shutil.which("pip3") is not None
+    pip_available = (
+        await asyncio.to_thread(shutil.which, "pip") is not None
+        or await asyncio.to_thread(shutil.which, "pip3") is not None
+    )
     pip_version = ""
     if pip_available:
         try:
-            r = subprocess.run(
-                [sys.executable, "-m", "pip", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
+            r = await asyncio.to_thread(
+                lambda: subprocess.run(
+                    [sys.executable, "-m", "pip", "--version"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
             )
             if r.returncode == 0:
                 parts = r.stdout.strip().split()
@@ -392,21 +448,25 @@ async def install_dependencies():
     dep_logs: list[str] = []
 
     def _on_progress(name: str, status: str, message: str):
-        _append_dep_progress({
-            "type": "progress",
-            "name": name,
-            "status": status,
-            "message": message,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _append_dep_progress(
+            {
+                "type": "progress",
+                "name": name,
+                "status": status,
+                "message": message,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     def _on_log(message: str):
         dep_logs.append(message)
-        _append_dep_progress({
-            "type": "log",
-            "message": message,
-            "timestamp": datetime.now().isoformat(),
-        })
+        _append_dep_progress(
+            {
+                "type": "log",
+                "message": message,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
 
     dependency_service.set_progress_callback(_on_progress)
     dependency_service.set_log_callback(_on_log)
@@ -418,12 +478,14 @@ async def install_dependencies():
         summary = dependency_service.get_install_summary(results)
         # 广播最终 done
         all_ok = summary.get("all_success", False)
-        _append_dep_progress({
-            "type": "done",
-            "success": all_ok,
-            "summary": {k: v for k, v in summary.items() if k != "logs"},
-            "timestamp": datetime.now().isoformat(),
-        })
+        _append_dep_progress(
+            {
+                "type": "done",
+                "success": all_ok,
+                "summary": {k: v for k, v in summary.items() if k != "logs"},
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
         return {"success": True, **summary}
     finally:
         dependency_service.set_progress_callback(None)
@@ -581,14 +643,16 @@ async def _run_combined_install(req: CombinedInstallRequest):
         state.admin_config = ConfigService._create_admin_config(req)
         full_config = config_service.generate_config(state)
         # 补全 CombinedInstallRequest 独有字段
-        full_config.update({
-            "enable_bing_wallpaper": req.enable_bing_wallpaper,
-            "enable_pagefind_search": req.enable_pagefind_search,
-            "enable_encrypted_posts": req.enable_encrypted_posts,
-            "enable_music_player": req.enable_music_player,
-            "footer_text": "",
-            "default_cover_image": "",
-        })
+        full_config.update(
+            {
+                "enable_bing_wallpaper": req.enable_bing_wallpaper,
+                "enable_pagefind_search": req.enable_pagefind_search,
+                "enable_encrypted_posts": req.enable_encrypted_posts,
+                "enable_music_player": req.enable_music_player,
+                "footer_text": "",
+                "default_cover_image": "",
+            }
+        )
 
         env_content = config_service.generate_env_content(full_config)
         with open(ENV_FILE, "w", encoding="utf-8") as f:
@@ -597,19 +661,17 @@ async def _run_combined_install(req: CombinedInstallRequest):
         database_url = generate_database_url(full_config)
         reset_engine(database_url)
 
-        try:
-            from backend.core import config as config_module
-
-            if hasattr(config_module.get_settings, "cache_clear"):
-                config_module.get_settings.cache_clear()
-            config_module.settings = config_module.get_settings()
-        except Exception:
-            pass
+        _refresh_settings_inplace()
 
         await _broadcast_progress(steps[0][0], "环境配置已写入", _pct(0))
 
         await init_db()
         await _broadcast_progress(steps[1][0], "表结构初始化完成", _pct(1))
+
+        # R1-U2（二次幂等检查点）：拿到进程锁 + env/schema 写入后再次校验 OOBE 是否完成，
+        # 防止并发请求在"未拿锁时"都通过了入口检查。
+        if is_oobe_complete():
+            raise OOBEAlreadyCompletedException()
 
         admin_id: int | None = None
         async with async_session_maker() as session:
@@ -650,17 +712,33 @@ async def _run_combined_install(req: CombinedInstallRequest):
             ("footer_text", full_config["footer_text"], "页脚介绍文本"),
             ("enable_comments", str(req.enable_comments).lower(), "启用评论"),
             ("enable_registration", str(req.enable_registration).lower(), "开放注册"),
-            (FEATURE_FLAG_DB_KEY_MAP.get("enable_rss", "enable_rss_feed"), str(req.enable_rss).lower(), "启用RSS"),
+            (
+                FEATURE_FLAG_DB_KEY_MAP.get("enable_rss", "enable_rss_feed"),
+                str(req.enable_rss).lower(),
+                "启用RSS",
+            ),
             ("enable_bing_wallpaper", str(req.enable_bing_wallpaper).lower(), "启用Bing壁纸"),
             ("enable_pagefind_search", str(req.enable_pagefind_search).lower(), "启用Pagefind搜索"),
             ("enable_encrypted_posts", str(req.enable_encrypted_posts).lower(), "启用加密文章"),
             ("enable_music_player", str(req.enable_music_player).lower(), "启用音乐播放器"),
             ("default_cover_image", full_config["default_cover_image"], "默认封面图"),
             # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐，避免前端 fallback 为 ROSETTA 示例文案
-            ("author_name", full_config.get("author_name") or req.admin_nickname or req.admin_username, "作者昵称"),
-            ("author_bio", full_config.get("author_bio") or getattr(req, "admin_bio", "") or "", "作者签名"),
+            (
+                "author_name",
+                full_config.get("author_name") or req.admin_nickname or req.admin_username,
+                "作者昵称",
+            ),
+            (
+                "author_bio",
+                full_config.get("author_bio") or getattr(req, "admin_bio", "") or "",
+                "作者签名",
+            ),
             ("author_avatar", full_config.get("author_avatar", "") or "", "作者头像"),
-            ("author_links_json", full_config.get("author_links_json", "[]") or "[]", "作者社交链接"),
+            (
+                "author_links_json",
+                full_config.get("author_links_json", "[]") or "[]",
+                "作者社交链接",
+            ),
             ("enable_pio", "false", "启用看板娘(Pio)"),
         ]
         async with async_session_maker() as session:
@@ -785,24 +863,40 @@ async def oobe_install(req: CombinedInstallRequest):
 
     幂等：若 OOBE 已完成则返回 409 + OOBE_ALREADY_COMPLETED。
     安装顺序严格按 spec 执行：env -> schema -> admin -> site_settings -> mock_data -> pages/navs -> 标记文件。
+    R1-U2: 进程级 asyncio.Lock 防并发重入；拿到锁后 + 创建 admin 前都会执行二次 is_oobe_complete()。
     """
+    # R1-U2: 3 层幂等防线 —— 第一层：入口无锁快速检查（409 立即返回）
     if is_oobe_complete():
         raise OOBEAlreadyCompletedException()
 
     if len(req.admin_password) < 8:
         raise WeakPasswordException("管理员密码至少 8 位")
 
+    # R1-U2: 第二层：进程级 asyncio.Lock（单 worker 串行化，避免两请求都过第一层后交错）
+    global _INSTALL_LOCK_ACQUIRED
+    acquired = False
     try:
-        done = await _run_combined_install(req)
-    except OOBEAlreadyCompletedException:
-        raise
-    except WeakPasswordException:
-        raise
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"安装失败: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"安装失败: {e}")
+        await _INSTALL_LOCK.acquire()
+        acquired = True
+        _INSTALL_LOCK_ACQUIRED = True
+        # R1-U2: 第三层：拿到锁后立即二次检查（若第一个持锁请求刚完成，第二个直接 409）
+        if is_oobe_complete():
+            raise OOBEAlreadyCompletedException()
+        try:
+            done = await _run_combined_install(req)
+        except OOBEAlreadyCompletedException:
+            raise
+        except WeakPasswordException:
+            raise
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"安装失败: {e}\n{traceback.format_exc()}")
+            raise HTTPException(status_code=500, detail=f"安装失败: {e}")
+    finally:
+        if acquired:
+            _INSTALL_LOCK_ACQUIRED = False
+            _INSTALL_LOCK.release()
 
     return {
         "success": True,
@@ -862,7 +956,9 @@ async def save_database_config(request: DatabaseConfigRequest):
         此接口将在未来版本移除，请使用 POST /api/oobe/install 一键安装代替。
     """
     await require_oobe_incomplete()
-    logger.warning("DEPRECATED: POST /api/oobe/database-config 被调用，请迁移到 POST /api/oobe/install")
+    logger.warning(
+        "DEPRECATED: POST /api/oobe/database-config 被调用，请迁移到 POST /api/oobe/install"
+    )
     if request.db_type != "sqlite" and not request.db_user:
         raise HTTPException(status_code=400, detail=t("oobe_db_user_empty"))
     if not request.db_name:
@@ -978,7 +1074,9 @@ async def save_admin_account(request: AdminAccountRequest):
         此接口将在未来版本移除，请使用 POST /api/oobe/install 一键安装代替。
     """
     await require_oobe_incomplete()
-    logger.warning("DEPRECATED: POST /api/oobe/admin-account 被调用，请迁移到 POST /api/oobe/install")
+    logger.warning(
+        "DEPRECATED: POST /api/oobe/admin-account 被调用，请迁移到 POST /api/oobe/install"
+    )
     if len(request.username) < USERNAME_MIN_LENGTH:
         raise HTTPException(status_code=400, detail=t("oobe_username_min"))
     if len(request.username) > USERNAME_MAX_LENGTH:
@@ -1018,8 +1116,6 @@ async def complete_oobe(db: AsyncSession = Depends(get_db)):
         raise HTTPException(status_code=400, detail=t("oobe_admin_not_created"))
 
     try:
-        admin_cfg = state.admin_config
-        site_cfg = state.site_config
         db_cfg = state.database_config or {}
         if not db_cfg:
             db_cfg = {
@@ -1044,14 +1140,7 @@ async def complete_oobe(db: AsyncSession = Depends(get_db)):
         database_url = generate_database_url(config_dict)
         reset_engine(database_url)
 
-        try:
-            from backend.core import config as config_module
-
-            if hasattr(config_module.get_settings, "cache_clear"):
-                config_module.get_settings.cache_clear()
-            config_module.settings = config_module.get_settings()
-        except Exception:
-            pass
+        _refresh_settings_inplace()
 
         await init_db()
 
@@ -1326,8 +1415,18 @@ async def complete_oobe(db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/reset")
-async def reset_oobe():
-    """重置 OOBE 状态（测试/开发使用），同时清空内存中的 SSE 进度缓冲"""
+async def reset_oobe(current_user: CurrentUserOptional = None):
+    """重置 OOBE 状态（测试/开发使用），同时清空内存中的 SSE 进度缓冲
+
+    安全约束：站点已完成安装（OOBE 完成态）后，重置会删除安装锁并允许
+    重跑向导创建新超管，属于高危操作，必须携带超级管理员凭证；
+    尚未安装时不存在任何管理员，向导本就开放，放行。
+    """
+    if is_oobe_complete() and (current_user is None or not current_user.is_superuser):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="站点已安装，重置 OOBE 需要超级管理员权限",
+        )
     config_service.reset_oobe()
     if STATE_FILE.exists():
         try:

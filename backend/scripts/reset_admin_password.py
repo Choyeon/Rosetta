@@ -40,12 +40,16 @@ async def _do_reset(username: str, password: str, email: str) -> int:
     async with async_session_maker() as db:
         total = (await db.execute(select(func.count()).select_from(User))).scalar_one()
         row: User | None = (
-            await db.execute(select(User).where(or_(User.username == username, User.email == username)))
+            await db.execute(
+                select(User).where(or_(User.username == username, User.email == username))
+            )
         ).scalar_one_or_none()
 
         if row is None:
             row = (
-                await db.execute(select(User).where(or_(User.role == "super_admin", User.is_staff.is_(True))))
+                await db.execute(
+                    select(User).where(or_(User.role == "super_admin", User.is_staff.is_(True)))
+                )
             ).scalar_one_or_none()
             if row is None:
                 if total == 0:
@@ -109,7 +113,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="重置 Rosetta 管理员账号密码")
     parser.add_argument("--username", default="admin", help="用户名或邮箱，默认 admin")
     parser.add_argument("--password", default="Choyeon@123", help="新密码，默认 Choyeon@123")
-    parser.add_argument("--email", default="admin@rosetta.local", help="若需要新建账号时使用的邮箱，默认 admin@rosetta.local")
+    parser.add_argument(
+        "--email",
+        default="admin@rosetta.local",
+        help="若需要新建账号时使用的邮箱，默认 admin@rosetta.local",
+    )
     args = parser.parse_args()
     return asyncio.run(_do_reset(args.username, args.password, args.email))
 

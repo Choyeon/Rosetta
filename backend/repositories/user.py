@@ -516,7 +516,18 @@ class UserRepository(BaseRepository[User]):
         total_result = await self.session.execute(count_query)
         total = total_result.scalar_one()
 
-        order_column = getattr(User, order_by, User.created_at)
+        # 排序白名单：只允许非敏感列（防 getattr 命中 password_hash / 方法属性）
+        _SORTABLE = {
+            "id": User.id,
+            "username": User.username,
+            "nickname": User.nickname,
+            "email": User.email,
+            "created_at": User.created_at,
+            "last_login": User.last_login,
+            "is_staff": User.is_staff,
+            "is_active": User.is_active,
+        }
+        order_column = _SORTABLE.get(order_by, User.created_at)
         query = query.order_by(order_column.desc() if descending else order_column)
 
         skip = (page - 1) * page_size

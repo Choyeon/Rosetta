@@ -33,17 +33,19 @@ import asyncio
 import functools
 import inspect
 import logging
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger("rosetta.hooks")
 
 # ── 内部存储 ──────────────────────────────────────────────────────────────
 
+
 @dataclass(order=True)
 class _HookHandler:
     priority: int = 10
-    sequence: int = field(compare=True, default=0)   # 保证同 priority FIFO
+    sequence: int = field(compare=True, default=0)  # 保证同 priority FIFO
     fn: Callable[..., Any] = field(compare=False, repr=False, default=lambda *a, **kw: None)
     plugin: str | None = field(compare=False, default=None)
     hook_name: str = field(compare=False, default="")
@@ -63,7 +65,91 @@ def _reset_hooks_for_tests() -> None:  # pragma: no cover - debug helper
     _seq_counter = 0
 
 
-# ── 装饰器 ────────────────────────────────────────────────────────────────
+# ── 命令式注册 API（PluginBus / 插件 ctx 直接调用） ───────────────────────
+
+
+def add_action(
+    hook_name: str,
+    fn: Callable[..., Any],
+    *,
+    priority: int = 10,
+    plugin: str | None = None,
+) -> Callable[..., Any]:
+    """命令式注册一个 action 处理器（与 :func:`register_action` 装饰器等价）。
+
+    Rosetta 内部的 ``PluginBus`` 兼容层与插件 ``ctx.add_action()`` 都汇入此函数，
+    保证全进程只有一份 action 注册表。
+    """
+    global _seq_counter
+    _seq_counter += 1
+    handler = _HookHandler(
+        priority=priority,
+        sequence=_seq_counter,
+        fn=fn,
+        plugin=plugin,
+        hook_name=hook_name,
+    )
+    _actions.setdefault(hook_name, []).append(handler)
+    _actions[hook_name].sort()
+    return fn
+
+
+def add_filter(
+    hook_name: str,
+    fn: Callable[..., Any],
+    *,
+    priority: int = 10,
+    plugin: str | None = None,
+) -> Callable[..., Any]:
+    """命令式注册一个 filter 处理器（与 :func:`register_filter` 装饰器等价）。"""
+    global _seq_counter
+    _seq_counter += 1
+    handler = _HookHandler(
+        priority=priority,
+        sequence=_seq_counter,
+        fn=fn,
+        plugin=plugin,
+        hook_name=hook_name,
+    )
+    _filters.setdefault(hook_name, []).append(handler)
+    _filters[hook_name].sort()
+    return fn
+
+
+def remove_action(hook_name: str, fn: Callable[..., Any]) -> bool:
+    """按回调引用移除一个 action。返回是否命中并删除。"""
+    handlers = _actions.get(hook_name)
+    if not handlers:
+        return False
+    for idx, h in enumerate(handlers):
+        if h.fn is fn:
+            handlers.pop(idx)
+            return True
+    return False
+
+
+def remove_filter(hook_name: str, fn: Callable[..., Any]) -> bool:
+    """按回调引用移除一个 filter。返回是否命中并删除。"""
+    handlers = _filters.get(hook_name)
+    if not handlers:
+        return False
+    for idx, h in enumerate(handlers):
+        if h.fn is fn:
+            handlers.pop(idx)
+            return True
+    return False
+
+
+def list_hook_names() -> dict[str, list[str]]:
+    """返回当前已注册的 action/filter 名称（自检与文档生成用）。"""
+    return {
+        "actions": sorted(_actions.keys()),
+        "filters": sorted(_filters.keys()),
+    }
+
+
+# ── 装饰器（命令式 API 的薄包装） ─────────────────────────────────────────
+
 
 def register_action(
     hook_name: str,
@@ -81,18 +167,7 @@ def register_action(
     """
 
     def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        global _seq_counter
-        _seq_counter += 1
-        handler = _HookHandler(
-            priority=priority,
-            sequence=_seq_counter,
-            fn=fn,
-            plugin=plugin,
-            hook_name=hook_name,
-        )
-        _actions.setdefault(hook_name, []).append(handler)
-        _actions[hook_name].sort()
-        return fn
+        return add_action(hook_name, fn, priority=priority, plugin=plugin)
 
     return _decorator
 
@@ -107,18 +182,7 @@ def register_filter(
     """注册 filter 处理器（值转换链）。"""
 
     def _decorator(fn: Callable[..., Any]) -> Callable[..., Any]:
-        global _seq_counter
-        _seq_counter += 1
-        handler = _HookHandler(
-            priority=priority,
-            sequence=_seq_counter,
-            fn=fn,
-            plugin=plugin,
-            hook_name=hook_name,
-        )
-        _filters.setdefault(hook_name, []).append(handler)
-        _filters[hook_name].sort()
-        return fn
+        return add_filter(hook_name, fn, priority=priority, plugin=plugin)
 
     return _decorator
 
@@ -155,6 +219,7 @@ def hooks_registered_for_plugin(plugin_slug: str) -> bool:
 
 
 # ── 运行时沙箱执行器 ──────────────────────────────────────────────────────
+
 
 async def _safe_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
     """在 try/except 沙箱中调用 sync/async 处理器，返回结果或 None（失败时）。"""

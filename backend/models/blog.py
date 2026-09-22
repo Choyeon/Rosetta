@@ -81,7 +81,10 @@ class Category(Base, TenantMixin):
         comment="父分类 ID（层级分类）",
     )
     is_active: Mapped[bool] = mapped_column(
-        Boolean, default=True, server_default=true(), nullable=False,
+        Boolean,
+        default=True,
+        server_default=true(),
+        nullable=False,
         comment="是否启用（False 前台不展示）",
     )
 
@@ -118,7 +121,7 @@ class Tag(Base, TenantMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[dict] = mapped_column(JSON_TYPE, nullable=False)
     slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
-    color: Mapped[str] = mapped_column(String(20), default="#64748B", nullable=False)
+    color: Mapped[str | None] = mapped_column(String(20), default=None, nullable=True)
     icon: Mapped[str | None] = mapped_column(String(50), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
@@ -185,6 +188,13 @@ class Post(Base, TenantMixin):
     views: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     is_pinned: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     allow_comments: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    reading_time: Mapped[int] = mapped_column(
+        Integer,
+        default=0,
+        server_default="0",
+        nullable=False,
+        comment="阅读时间（分钟），创建/更新时由 content 预计算，列表接口无需加载大字段 content",
+    )
 
     meta_title: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
     meta_description: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
@@ -222,9 +232,7 @@ class Post(Base, TenantMixin):
     )
 
     # 内容类型（自定义文章类型 CPT 的 key；默认 'post' 为博客文章）
-    post_type: Mapped[str] = mapped_column(
-        String(50), default="post", nullable=False, index=True
-    )
+    post_type: Mapped[str] = mapped_column(String(50), default="post", nullable=False, index=True)
     # 自定义字段（ACF）键值对，按所属内容类型定义动态读写
     meta_fields: Mapped[dict | None] = mapped_column(JSON_TYPE, nullable=True)
 
@@ -266,13 +274,17 @@ class Comment(Base, TenantMixin):
 
     user_id: Mapped[int | None] = mapped_column(
         # 用户删除 → 保留评论作为「匿名」内容继续展示；禁止 CASCADE 误删
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     user: Mapped["User | None"] = relationship("User", back_populates="comments")
 
     parent_id: Mapped[int | None] = mapped_column(
         # 父评论删除 → 子评论提升为根评论（parent_id=NULL），不丢回复内容
-        Integer, ForeignKey("comments.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("comments.id", ondelete="SET NULL"),
+        nullable=True,
     )
     parent: Mapped["Comment | None"] = relationship("Comment", remote_side=[id], backref="replies")
 
@@ -288,7 +300,10 @@ class Comment(Base, TenantMixin):
         String(64), nullable=True, comment="评论者 GitHub 用户名（可选，游客填）"
     )
     avatar_source: Mapped[str] = mapped_column(
-        String(16), nullable=False, default="auto", server_default="auto",
+        String(16),
+        nullable=False,
+        default="auto",
+        server_default="auto",
         comment="头像来源：auto/custom/github/qq/gravatar",
     )
 

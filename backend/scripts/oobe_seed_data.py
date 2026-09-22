@@ -18,11 +18,10 @@ from __future__ import annotations
 
 import logging
 import pickle
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from backend.scripts._seed_shared import SeedContext, SeedDataBundle, UTC
+from backend.scripts._seed_shared import UTC, SeedContext, SeedDataBundle
 
 log = logging.getLogger(__name__)
 
@@ -45,13 +44,15 @@ def _build_oobe_categories() -> list[dict]:
     out: list[dict] = []
     for slug in _bundle().cat_slugs():
         info = _bundle().cat_i18n(slug)
-        out.append({
-            "slug": slug,
-            "name": info["name"],
-            "description": info["description"],
-            "color": info["meta"].get("color") or "#3B82F6",
-            "icon": info["meta"].get("icon") or "heroicons:code-bracket",
-        })
+        out.append(
+            {
+                "slug": slug,
+                "name": info["name"],
+                "description": info["description"],
+                "color": info["meta"].get("color") or "#3B82F6",
+                "icon": info["meta"].get("icon") or "heroicons:code-bracket",
+            }
+        )
     return out
 
 
@@ -59,11 +60,13 @@ def _build_oobe_tags() -> list[dict]:
     out: list[dict] = []
     for slug in _bundle().tag_slugs():
         info = _bundle().tag_i18n(slug)
-        out.append({
-            "slug": slug,
-            "name": info["name"],
-            "color": info["color"] or "#6366F1",
-        })
+        out.append(
+            {
+                "slug": slug,
+                "name": info["name"],
+                "color": info["color"] or "#6366F1",
+            }
+        )
     return out
 
 
@@ -76,26 +79,28 @@ def _build_article_templates_v3() -> list[dict]:
             iter(_bundle()._posts_by_slug.get(slug, {}).values()), {}
         )
         cats = meta_src.get("categories") or ["technology"]
-        out.append({
-            "slug": slug,
-            "title_zh": i18n["title"].get("zh", ""),
-            "title_en": i18n["title"].get("en", ""),
-            "title_ja": i18n["title"].get("ja", ""),
-            "title_zh_hant": i18n["title"].get("zh_Hant", ""),
-            "excerpt_zh": i18n["summary"].get("zh", ""),
-            "excerpt_en": i18n["summary"].get("en", ""),
-            "excerpt_ja": i18n["summary"].get("ja", ""),
-            "excerpt_zh_hant": i18n["summary"].get("zh_Hant", ""),
-            "content_zh": i18n["content_md"].get("zh", ""),
-            "content_en": i18n["content_md"].get("en", ""),
-            "content_ja": i18n["content_md"].get("ja", ""),
-            "content_zh_hant": i18n["content_md"].get("zh_Hant", ""),
-            "category_slug": cats[0],
-            "tag_slugs": list(meta_src.get("tags") or []),
-            "cover_theme": meta_src.get("cover_theme") or "",
-            "code_language": meta_src.get("code_language") or "",
-            "code_snippet": meta_src.get("code_snippet") or "",
-        })
+        out.append(
+            {
+                "slug": slug,
+                "title_zh": i18n["title"].get("zh", ""),
+                "title_en": i18n["title"].get("en", ""),
+                "title_ja": i18n["title"].get("ja", ""),
+                "title_zh_hant": i18n["title"].get("zh_Hant", ""),
+                "excerpt_zh": i18n["summary"].get("zh", ""),
+                "excerpt_en": i18n["summary"].get("en", ""),
+                "excerpt_ja": i18n["summary"].get("ja", ""),
+                "excerpt_zh_hant": i18n["summary"].get("zh_Hant", ""),
+                "content_zh": i18n["content_md"].get("zh", ""),
+                "content_en": i18n["content_md"].get("en", ""),
+                "content_ja": i18n["content_md"].get("ja", ""),
+                "content_zh_hant": i18n["content_md"].get("zh_Hant", ""),
+                "category_slug": cats[0],
+                "tag_slugs": list(meta_src.get("tags") or []),
+                "cover_theme": meta_src.get("cover_theme") or "",
+                "code_language": meta_src.get("code_language") or "",
+                "code_snippet": meta_src.get("code_snippet") or "",
+            }
+        )
     return out
 
 
@@ -103,17 +108,19 @@ def _build_comment_personas() -> list[dict]:
     rows = _bundle().get("users", "zh")
     out: list[dict] = []
     for r in rows:
-        out.append({
-            "nickname": r.get("nickname", ""),
-            "email": r.get("email", ""),
-            "style": r.get("style") or "normal",
-            "website": r.get("website"),
-            "github": r.get("github"),
-            "qq": r.get("qq"),
-            "avatar_source": r.get("avatar_source", "auto"),
-            "user_agent": r.get("user_agent"),
-            "ip_range": r.get("ip_range"),
-        })
+        out.append(
+            {
+                "nickname": r.get("nickname", ""),
+                "email": r.get("email", ""),
+                "style": r.get("style") or "normal",
+                "website": r.get("website"),
+                "github": r.get("github"),
+                "qq": r.get("qq"),
+                "avatar_source": r.get("avatar_source", "auto"),
+                "user_agent": r.get("user_agent"),
+                "ip_range": r.get("ip_range"),
+            }
+        )
     return out
 
 
@@ -210,12 +217,12 @@ async def run_oobe_seed(db, admin_user) -> dict:
 
 def _dump_pickle(out_path: str) -> None:
     data = {
-        "OOBE_CATEGORIES": _OOBE_CATEGORIES,
-        "OOBE_TAGS": _OOBE_TAGS,
-        "ARTICLE_TEMPLATES_V3": _ARTICLE_TEMPLATES_V3,
-        "COMMENT_PERSONAS": _COMMENT_PERSONAS,
-        "COMMENT_CONTENT_TEMPLATES": _COMMENT_CONTENT_TEMPLATES,
-        "ACTIVITY_TEMPLATES": _ACTIVITY_TEMPLATES,
+        "OOBE_CATEGORIES": OOBE_CATEGORIES,
+        "OOBE_TAGS": OOBE_TAGS,
+        "ARTICLE_TEMPLATES_V3": ARTICLE_TEMPLATES_V3,
+        "COMMENT_PERSONAS": COMMENT_PERSONAS,
+        "COMMENT_CONTENT_TEMPLATES": COMMENT_CONTENT_TEMPLATES,
+        "ACTIVITY_TEMPLATES": ACTIVITY_TEMPLATES,
     }
     p = Path(out_path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -228,7 +235,9 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="OOBE seed data utilities (refactor edition)")
-    parser.add_argument("--dump-pickle", type=str, help="Write backward-compat constants to a pickle file")
+    parser.add_argument(
+        "--dump-pickle", type=str, help="Write backward-compat constants to a pickle file"
+    )
     parser.add_argument("--print-counts", action="store_true", help="Print counts of each constant")
     args = parser.parse_args()
 
@@ -237,10 +246,12 @@ if __name__ == "__main__":
 
     if args.print_counts or (not args.dump_pickle and not args.dump_pickle):
         print("[oobe_seed_data] loaded constant counts (from JSON):")
-        print(f"  categories : {len(_OOBE_CATEGORIES)}")
-        print(f"  tags       : {len(_OOBE_TAGS)}")
-        print(f"  articles   : {len(_ARTICLE_TEMPLATES_V3)}")
-        print(f"  personas   : {len(_COMMENT_PERSONAS)}")
-        print(f"  comment buckets: {len(_COMMENT_CONTENT_TEMPLATES)} "
-              f"({sum(len(v) for v in _COMMENT_CONTENT_TEMPLATES.values())} templates)")
-        print(f"  activities : {len(_ACTIVITY_TEMPLATES)}")
+        print(f"  categories : {len(OOBE_CATEGORIES)}")
+        print(f"  tags       : {len(OOBE_TAGS)}")
+        print(f"  articles   : {len(ARTICLE_TEMPLATES_V3)}")
+        print(f"  personas   : {len(COMMENT_PERSONAS)}")
+        print(
+            f"  comment buckets: {len(COMMENT_CONTENT_TEMPLATES)} "
+            f"({sum(len(v) for v in COMMENT_CONTENT_TEMPLATES.values())} templates)"
+        )
+        print(f"  activities : {len(ACTIVITY_TEMPLATES)}")

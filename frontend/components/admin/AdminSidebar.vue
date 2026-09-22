@@ -23,8 +23,7 @@ const collapsed = computed({
 const route = useRoute()
 
 // ── 插件菜单：拉取一次后缓存 ───────────────────────────────────────────
-const { group: pluginGroup } = usePluginMenuGroup()
-const { load: loadPluginMenu } = usePluginMenuGroup()
+const { group: pluginGroup, load: loadPluginMenu } = usePluginMenuGroup()
 onMounted(() => {
   loadPluginMenu().catch(() => { /* 已在 composable 内静默处理 */ })
 })
@@ -103,13 +102,20 @@ const isActive = (path: string) => {
   return !isSibling
 }
 
+// 渲染前一次性算好每项的 active，避免模板中同一 item 每帧重复调用 isActive 4-5 次。
+const renderGroups = computed(() =>
+  mergedMenu.value.map(g => ({
+    key: g.key,
+    label: g.label,
+    items: g.items.map(it => ({ ...it, active: isActive(it.path) }))
+  }))
+)
+
 // 选择图标：内置项的 icon 是 lucide component；插件项默认 Puzzle（拼图）图标。
 function resolveIcon(item: { icon?: unknown }) {
   if (item.icon && typeof item.icon !== 'string') return item.icon
   return Puzzle
 }
-
-const go = (path: string) => navigateTo(path)
 </script>
 
 <template>
@@ -150,14 +156,14 @@ const go = (path: string) => navigateTo(path)
         class="ml-1 shrink-0 size-8 text-muted-foreground hover:text-sidebar-foreground"
         @click="collapsed = true"
       >
-        <ChevronLeft class="size-4" />
+        <ChevronLeft data-icon="inline-start" />
       </Button>
     </div>
 
     <ScrollArea class="flex-1 py-3 px-2">
       <nav class="flex flex-col gap-1">
         <template
-          v-for="(group, gi) in mergedMenu"
+          v-for="(group, gi) in renderGroups"
           :key="group.key"
         >
           <div
@@ -179,20 +185,22 @@ const go = (path: string) => navigateTo(path)
             >
               <Tooltip :disabled="!collapsed">
                 <TooltipTrigger as-child>
-                  <button
-                    type="button"
+                  <NuxtLink
+                    :to="item.path"
                     class="sb-item w-full group flex items-center gap-2.5 px-2.5 h-[38px] rounded-[11px] relative isolate transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
                     :class="[
-                      isActive(item.path)
+                      item.active
                         ? 'sb-item-active text-[hsl(var(--sidebar-active-foreground,var(--primary)))] font-semibold'
                         : 'sb-item-idle text-sidebar-foreground/75 hover:text-sidebar-foreground'
                     ]"
-                    @click="go(item.path)"
+                    :aria-current="item.active ? 'page' : undefined"
+                    :aria-label="item.label"
+                    :title="collapsed ? item.label : undefined"
                   >
                     <span
                       class="absolute inset-0 rounded-[11px] -z-10 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
                       :class="[
-                        isActive(item.path)
+                        item.active
                           ? 'sb-bg-active'
                           : 'opacity-0 group-hover:opacity-100 sb-bg-hover'
                       ]"
@@ -201,7 +209,7 @@ const go = (path: string) => navigateTo(path)
                     <component
                       :is="resolveIcon(item)"
                       class="shrink-0 size-[18px] transition-colors duration-300"
-                      :class="isActive(item.path) ? 'sb-icon-active' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
+                      :class="item.active ? 'sb-icon-active' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
                     />
                     <span
                       v-if="!collapsed"
@@ -210,7 +218,7 @@ const go = (path: string) => navigateTo(path)
                       {{ item.label }}
                     </span>
                     <ChevronRight
-                      v-if="isActive(item.path) && !collapsed"
+                      v-if="item.active && !collapsed"
                       class="shrink-0 size-3.5 opacity-70 sb-chevron"
                       aria-hidden="true"
                     />
@@ -221,7 +229,7 @@ const go = (path: string) => navigateTo(path)
                     >
                       {{ item.badge }}
                     </Badge>
-                  </button>
+                  </NuxtLink>
                 </TooltipTrigger>
                 <TooltipContent
                   v-if="collapsed"
@@ -256,7 +264,7 @@ const go = (path: string) => navigateTo(path)
         class="shrink-0 size-8 text-muted-foreground hover:text-sidebar-foreground"
         @click="collapsed = false"
       >
-        <ChevronRight class="size-4" />
+        <ChevronRight data-icon="inline-start" />
       </Button>
     </div>
   </aside>

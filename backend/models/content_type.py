@@ -20,12 +20,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, Field as PDField
+from pydantic import BaseModel
+from pydantic import Field as PDField
 from sqlalchemy import JSON, Column, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.core.database import Base
-from backend.core.tenant import DEFAULT_SITE_ID, TenantMixin
+from backend.core.tenant import TenantMixin
 
 
 class ContentField(BaseModel):
@@ -41,9 +42,7 @@ class ContentField(BaseModel):
     required: bool = PDField(False, description="是否必填")
     default: Any = PDField(None, description="默认值")
     description: str | None = PDField(None, max_length=512, description="字段说明/帮助文本")
-    options: list[str] | None = PDField(
-        None, description="select 类型的候选项（text 等类型忽略）"
-    )
+    options: list[str] | None = PDField(None, description="select 类型的候选项（text 等类型忽略）")
 
     model_config = {"extra": "forbid"}
 
@@ -66,9 +65,7 @@ class ContentTypeDefinition(Base, TenantMixin):
     icon: Mapped[str | None] = mapped_column(
         String(64), nullable=True, comment="Lucide / 自定义图标名称"
     )
-    description: Mapped[str | None] = mapped_column(
-        Text, nullable=True, comment="内容类型用途描述"
-    )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True, comment="内容类型用途描述")
     fields: Mapped[list[dict]] = mapped_column(
         JSON,
         nullable=False,
@@ -100,7 +97,11 @@ class ContentTypeDefinition(Base, TenantMixin):
 
     # 为列显式声明 SQLAlchemy 字段（mapped_column(JSON) + site_id TenantMixin）
     # 保证 Column 级反射/迁移识别
-    _ = Column("site_id_fallback_placeholder", Integer, comment="占位，不影响建表") if False else None
+    _ = (
+        Column("site_id_fallback_placeholder", Integer, comment="占位，不影响建表")
+        if False
+        else None
+    )
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<ContentTypeDefinition key={self.key!r} name={self.name!r}>"

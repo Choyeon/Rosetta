@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import * as LucideIcons from '@lucide/vue'
 import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'
 import type { AvatarVariants } from '~~/components/ui/avatar'
 import { resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
-import { resolveTitleIcon } from '~~/composables/titlePresets'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
+import TitleIconSvg from '~~/components/TitleIconSvg.vue'
 
 const props = withDefaults(defineProps<{
   avatar?: string | null
@@ -72,7 +71,10 @@ const badgeSize = computed(() => {
   return Math.max(8, px)
 })
 
-const resolvedIcon = computed(() => resolveTitleIcon(props.title?.icon))
+const hasTitleIcon = computed(() => {
+  return props.showTitle && props.title && props.title.icon
+})
+
 const titleColor = computed(() => props.title?.color || '#3b82f6')
 
 const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
@@ -108,7 +110,7 @@ const titleDisplayName = computed(() => getLocalizedStr(props.title?.name))
     </Avatar>
 
     <span
-      v-if="showTitle && title && resolvedIcon.type !== 'empty'"
+      v-if="hasTitleIcon"
       class="absolute -bottom-0.5 -right-0.5 z-10 flex items-center justify-center rounded-full border-2 border-background"
       :style="{
         width: badgeSize + 'px',
@@ -118,19 +120,10 @@ const titleDisplayName = computed(() => getLocalizedStr(props.title?.name))
       }"
       :title="titleDisplayName"
     >
-      <component
-        :is="(LucideIcons as Record<string, unknown>)[resolvedIcon.value]"
-        v-if="resolvedIcon.type === 'lucide'"
-        class="w-[60%] h-[60%]"
-      />
-      <span
-        v-else-if="resolvedIcon.type === 'emoji'"
-        style="font-size:60%"
-      >{{ resolvedIcon.value }}</span>
-      <span
-        v-else-if="resolvedIcon.type === 'svg'"
-        class="w-full h-full flex items-center justify-center"
-        v-html="resolvedIcon.value"
+      <TitleIconSvg
+        :icon="title?.icon"
+        :stroke-width="2.5"
+        class="size-[60%]"
       />
     </span>
   </div>

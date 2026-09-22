@@ -9,7 +9,6 @@ import ctypes
 import logging
 import os
 import platform
-import re
 import shutil
 import subprocess
 import sys
@@ -164,9 +163,7 @@ def run_command_check(name: str, cmd: list[str]) -> dict:
     # ---- 2. Windows 上：用 where.exe 查找所有匹配，逐一尝试 ----
     if is_windows:
         try:
-            wr = subprocess.run(
-                ["where.exe", base], capture_output=True, text=True, timeout=5
-            )
+            wr = subprocess.run(["where.exe", base], capture_output=True, text=True, timeout=5)
             if wr.returncode == 0 and wr.stdout.strip():
                 for line in wr.stdout.strip().splitlines():
                     p = Path(line.strip())
@@ -211,9 +208,7 @@ def run_command_check(name: str, cmd: list[str]) -> dict:
     last_error: str | None = None
     for candidate in candidates:
         try:
-            r = subprocess.run(
-                candidate, capture_output=True, text=True, timeout=8
-            )
+            r = subprocess.run(candidate, capture_output=True, text=True, timeout=8)
             stdout = (r.stdout or "").strip()
             stderr = (r.stderr or "").strip()
             if r.returncode == 0 and stdout:
@@ -299,9 +294,7 @@ async def check_redis_connectivity() -> dict:
         import redis.asyncio as aioredis
 
         redis_url = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
-        client = aioredis.from_url(
-            redis_url, decode_responses=True, socket_connect_timeout=2
-        )
+        client = aioredis.from_url(redis_url, decode_responses=True, socket_connect_timeout=2)
         try:
             redis_ok = bool(await client.ping())
             return _ok(redis_ok, ok=redis_ok)
@@ -363,6 +356,7 @@ def _os_summary() -> dict:
         # psutil 不可用时，Windows 下用 ctypes 兜底
         if system_name == "Windows":
             try:
+
                 class MEMORYSTATUSEX(ctypes.Structure):
                     _fields_ = [
                         ("dwLength", ctypes.c_ulong),

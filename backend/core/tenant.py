@@ -15,27 +15,25 @@ Rosetta 多租户（Multi-Tenant）骨架。
 from __future__ import annotations
 
 from contextvars import ContextVar, Token
-from typing import Optional
 
 from sqlalchemy import Column, Integer
 from sqlalchemy.orm import declared_attr
 
-
 # 单站点默认值：当前部署形态恒定 = 1（个人博客单一站点）
 DEFAULT_SITE_ID: int = 1
 
-_current_site_id: ContextVar[Optional[int]] = ContextVar(
+_current_site_id: ContextVar[int | None] = ContextVar(
     "tenant.current_site_id",
     default=DEFAULT_SITE_ID,
 )
 
 
-def get_current_site_id() -> Optional[int]:
+def get_current_site_id() -> int | None:
     """返回当前请求绑定的租户 id（未设置返回 DEFAULT_SITE_ID）。"""
     return _current_site_id.get()
 
 
-def set_current_site_id(site_id: Optional[int]) -> Token:
+def set_current_site_id(site_id: int | None) -> Token:
     """设置当前请求的租户 id，返回用于 reset 的 Token。
 
     传 ``None`` 显式清除（请求结束时）。
@@ -75,7 +73,7 @@ class TenantMixin:
         )
 
 
-def require_site_filter(site_id: Optional[int] = None):
+def require_site_filter(site_id: int | None = None):
     """返回 ``site_id == value`` 的 SQL 表达式，便于仓储层显式拼接过滤。
 
     当不传 site_id 时，使用当前上下文的 current_site_id。

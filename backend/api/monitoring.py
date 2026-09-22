@@ -4,6 +4,8 @@
 提供系统监控、性能指标、访问统计等功能。
 """
 
+import asyncio
+import logging
 import time
 from datetime import datetime
 from typing import Any
@@ -17,6 +19,8 @@ from backend.core.cache import cache
 from backend.core.config import settings
 from backend.core.database import engine
 from backend.utils.compat import UTC, timedelta
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["监控"])
 
@@ -57,30 +61,99 @@ class PerformanceMetrics(BaseModel):
     error_rate: float
 
 
-async def record_visit(request: Request, status_code: int, response_time_ms: float):
-    """记录访问日志"""
+# ── 访问日志：内存队列 + 后台批量落库 ─────────────────────────────────────
+# 高并发下逐请求 INSERT 会让数据库成为吞吐瓶颈（每请求一次连接获取+事务提交），
+# 改为内存队列缓冲、后台任务每 5s 批量写一次。
+# 队列满时丢弃（访问日志允许有损，业务请求吞吐优先）。
+
+_VISIT_QUEUE_MAX = 10000
+_VISIT_BATCH_SIZE = 50
+_VISIT_FLUSH_INTERVAL = 5.0
+
+_visit_queue: asyncio.Queue | None = None
+_visit_flusher: asyncio.Task | None = None
+
+
+async def _flush_visit_queue() -> int:
+    """把队列中的访问日志批量写入数据库，返回本次写入条数。"""
     from backend.core.database import async_session_maker
     from backend.models.monitoring import VisitLog
 
+    if _visit_queue is None or _visit_queue.empty():
+        return 0
+
+    items: list[tuple] = []
+    while len(items) < _VISIT_BATCH_SIZE:
+        try:
+            items.append(_visit_queue.get_nowait())
+        except asyncio.QueueEmpty:
+            break
+    if not items:
+        return 0
+
     try:
         async with async_session_maker() as db:
-            visit = VisitLog(
-                path=request.url.path[:500],
-                method=request.method,
-                ip=request.client.host if request.client else None,
-                user_agent=request.headers.get("user-agent", "")[:500]
-                if request.headers.get("user-agent")
-                else None,
-                referer=request.headers.get("referer", "")[:500]
-                if request.headers.get("referer")
-                else None,
-                status_code=status_code,
-                response_time_ms=int(response_time_ms),
+            db.add_all(
+                VisitLog(
+                    path=it[0],
+                    method=it[1],
+                    ip=it[2],
+                    user_agent=it[3],
+                    referer=it[4],
+                    status_code=it[5],
+                    response_time_ms=it[6],
+                    created_at=it[7],
+                )
+                for it in items
             )
-            db.add(visit)
             await db.commit()
     except Exception:
-        pass
+        logger.warning("[monitoring] 访问日志批量落库失败（丢弃 %d 条）", len(items))
+    return len(items)
+
+
+async def _visit_flush_loop() -> None:
+    """后台周期性落库任务（懒启动，进程内单例）。"""
+    while True:
+        await asyncio.sleep(_VISIT_FLUSH_INTERVAL)
+        try:
+            # 一次唤醒可能积压多批，循环清空
+            while await _flush_visit_queue() > 0:
+                pass
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.exception("[monitoring] 访问日志 flush 循环异常")
+
+
+async def record_visit(request: Request, status_code: int, response_time_ms: float):
+    """记录访问日志（入队，非阻塞；由后台任务批量落库）。"""
+    global _visit_queue, _visit_flusher
+
+    if _visit_queue is None:
+        _visit_queue = asyncio.Queue(maxsize=_VISIT_QUEUE_MAX)
+    try:
+        _visit_queue.put_nowait(
+            (
+                request.url.path[:500],
+                request.method,
+                request.client.host if request.client else None,
+                (request.headers.get("user-agent") or "")[:500] or None,
+                (request.headers.get("referer") or "")[:500] or None,
+                status_code,
+                int(response_time_ms),
+                datetime.now(UTC),
+            )
+        )
+    except asyncio.QueueFull:
+        return  # 高峰期丢弃访问日志，保护业务吞吐
+
+    # 懒启动 flush 循环（进程内单例；意外退出后自动重启）
+    if _visit_flusher is None or _visit_flusher.done():
+        try:
+            _visit_flusher = asyncio.create_task(_visit_flush_loop())
+        except RuntimeError:
+            pass  # 无运行中的事件循环——下次请求再启
 
 
 @router.get(
@@ -275,23 +348,30 @@ async def get_visits_summary(
         or 0
     )
 
-    # 计算趋势（最近7天每天访问量）
+    # 计算趋势（最近7天每天访问量）：单次 GROUP BY 聚合（替代 7 次 COUNT）
+    week_ago_start = today_start - timedelta(days=6)
+    date_expr = func.date(VisitLog.created_at)
+    rows = (
+        await db.execute(
+            select(date_expr, func.count())
+            .where(
+                VisitLog.created_at >= week_ago_start,
+                VisitLog.created_at < today_start + timedelta(days=1),
+            )
+            .group_by(date_expr)
+        )
+    ).all()
+    counts_by_day = {}
+    for date_val, cnt in rows:
+        if date_val is not None:
+            key = datetime.strptime(str(date_val)[:10], "%Y-%m-%d").strftime("%m-%d")
+            counts_by_day[key] = int(cnt or 0)
     trend = []
     for i in range(6, -1, -1):
         date = today_start - timedelta(days=i)
-        next_date = date + timedelta(days=1)
-        count = (
-            await db.scalar(
-                select(func.count())
-                .select_from(VisitLog)
-                .where(
-                    VisitLog.created_at >= date,
-                    VisitLog.created_at < next_date,
-                )
-            )
-            or 0
+        trend.append(
+            {"date": date.strftime("%m-%d"), "value": counts_by_day.get(date.strftime("%m-%d"), 0)}
         )
-        trend.append({"date": date.strftime("%m-%d"), "value": count})
 
     # 独立IP数（今日）
     unique_ips = (
@@ -569,78 +649,47 @@ async def get_trends(
     from backend.models.monitoring import VisitLog
     from backend.models.user import User
 
-    trends = {
-        "posts": [],
-        "comments": [],
-        "users": [],
-        "visits": [],
-    }
-
     now = datetime.now(UTC)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    range_start = today_start - timedelta(days=days - 1)
 
-    for i in range(days - 1, -1, -1):
-        date = today_start - timedelta(days=i)
-        date_end = date + timedelta(days=1)
+    def _empty_slots() -> dict[str, int]:
+        return {
+            (today_start - timedelta(days=i)).strftime("%m-%d"): 0 for i in range(days - 1, -1, -1)
+        }
 
-        # 文章数
-        posts_count = (
-            await db.scalar(
-                select(func.count())
-                .select_from(Post)
-                .where(
-                    Post.created_at >= date,
-                    Post.created_at < date_end,
-                )
+    # 每张表一次 GROUP BY 聚合（替代原来的 4×days 次 COUNT 查询；
+    # func.date() 在 SQLite 与 PostgreSQL 上均可按天分桶）
+    async def _daily_counts(model, column) -> dict[str, int]:
+        slots = _empty_slots()
+        date_expr = func.date(column)
+        rows = (
+            await db.execute(
+                select(date_expr, func.count())
+                .where(column >= range_start, column < today_start + timedelta(days=1))
+                .group_by(date_expr)
             )
-            or 0
-        )
+        ).all()
+        for date_val, cnt in rows:
+            if date_val is None:
+                continue
+            # date() 输出 "YYYY-MM-DD"（两库一致）
+            key = datetime.strptime(str(date_val)[:10], "%Y-%m-%d").strftime("%m-%d")
+            if key in slots:
+                slots[key] = int(cnt or 0)
+        return slots
 
-        # 评论数
-        comments_count = (
-            await db.scalar(
-                select(func.count())
-                .select_from(Comment)
-                .where(
-                    Comment.created_at >= date,
-                    Comment.created_at < date_end,
-                )
-            )
-            or 0
-        )
+    posts_by_day = await _daily_counts(Post, Post.created_at)
+    comments_by_day = await _daily_counts(Comment, Comment.created_at)
+    users_by_day = await _daily_counts(User, User.created_at)
+    visits_by_day = await _daily_counts(VisitLog, VisitLog.created_at)
 
-        # 用户数
-        users_count = (
-            await db.scalar(
-                select(func.count())
-                .select_from(User)
-                .where(
-                    User.created_at >= date,
-                    User.created_at < date_end,
-                )
-            )
-            or 0
-        )
-
-        # 访问数
-        visits_count = (
-            await db.scalar(
-                select(func.count())
-                .select_from(VisitLog)
-                .where(
-                    VisitLog.created_at >= date,
-                    VisitLog.created_at < date_end,
-                )
-            )
-            or 0
-        )
-
-        trends["posts"].append({"date": date.strftime("%m-%d"), "count": posts_count})
-        trends["comments"].append({"date": date.strftime("%m-%d"), "count": comments_count})
-        trends["users"].append({"date": date.strftime("%m-%d"), "count": users_count})
-        trends["visits"].append({"date": date.strftime("%m-%d"), "count": visits_count})
-
-    return trends
+    return {
+        "posts": [{"date": d, "count": c} for d, c in posts_by_day.items()],
+        "comments": [{"date": d, "count": c} for d, c in comments_by_day.items()],
+        "users": [{"date": d, "count": c} for d, c in users_by_day.items()],
+        "visits": [{"date": d, "count": c} for d, c in visits_by_day.items()],
+    }
 
 
 # 内部函数：记录请求延迟

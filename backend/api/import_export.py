@@ -20,7 +20,9 @@ from backend.models.blog import Category, Post, Tag
 from backend.models.log import OperationLog
 from backend.utils.compat import UTC, timedelta
 
-router = APIRouter(prefix="/admin", tags=["导入导出"])
+# 注意：main.py 以 prefix="/api/admin" 挂载本路由（与 admin_tools.py 一致，
+# router 自身不再带 /admin 前缀，否则会拼出 /api/admin/admin/* 导致前端 404）。
+router = APIRouter(tags=["导入导出"])
 
 
 def _parse_iso_date(s: str | None) -> datetime | None:
@@ -343,12 +345,26 @@ async def import_posts(
     error_count = 0
     errors = []
 
+    # 批量预查已存在的分类 / 标签 slug，避免循环内逐条 SELECT
+    existing_cat_slugs: set[str] = set()
+    if categories_data:
+        result = await db.execute(
+            select(Category.slug).where(Category.slug.in_([c["slug"] for c in categories_data]))
+        )
+        existing_cat_slugs = {row[0] for row in result.fetchall()}
+
+    existing_tag_slugs: set[str] = set()
+    if tags_data:
+        result = await db.execute(
+            select(Tag.slug).where(Tag.slug.in_([t["slug"] for t in tags_data]))
+        )
+        existing_tag_slugs = {row[0] for row in result.fetchall()}
+
     # 导入分类
     category_map = {}  # old_id -> new_category
     for cat_data in categories_data:
         try:
-            existing = await db.execute(select(Category).where(Category.slug == cat_data["slug"]))
-            if existing.scalar_one_or_none():
+            if cat_data["slug"] in existing_cat_slugs:
                 continue
 
             category = Category(
@@ -370,8 +386,7 @@ async def import_posts(
     tag_map = {}  # old_id -> new_tag
     for tag_data in tags_data:
         try:
-            existing = await db.execute(select(Tag).where(Tag.slug == tag_data["slug"]))
-            if existing.scalar_one_or_none():
+            if tag_data["slug"] in existing_tag_slugs:
                 continue
 
             tag = Tag(
@@ -387,12 +402,39 @@ async def import_posts(
         except Exception as e:
             errors.append(f"导入标签失败: {tag_data.get('slug', 'unknown')} - {str(e)}")
 
+    # 文章导入前：批量预查已存在的文章 slug、分类、标签，消除循环内 N+1
+    post_slugs = [p["slug"] for p in posts_data if p.get("slug")]
+    existing_post_slugs: set[str] = set()
+    if post_slugs:
+        result = await db.execute(select(Post.slug).where(Post.slug.in_(post_slugs)))
+        existing_post_slugs = {row[0] for row in result.fetchall()}
+
+    # 分类 slug -> Category（含本次新创建的）
+    all_cat_slugs = {
+        p["category"]["slug"] for p in posts_data if p.get("category", {}).get("slug")
+    }
+    category_by_slug: dict[str, Category] = {}
+    if all_cat_slugs:
+        result = await db.execute(select(Category).where(Category.slug.in_(all_cat_slugs)))
+        category_by_slug = {c.slug: c for c in result.scalars().all()}
+
+    # 标签 slug -> Tag（含本次新创建的）
+    all_tag_slugs = {
+        t.get("slug")
+        for p in posts_data
+        for t in p.get("tags", [])
+        if t.get("slug")
+    }
+    tag_by_slug: dict[str, Tag] = {}
+    if all_tag_slugs:
+        result = await db.execute(select(Tag).where(Tag.slug.in_(all_tag_slugs)))
+        tag_by_slug = {t.slug: t for t in result.scalars().all()}
+
     # 导入文章
     for post_data in posts_data:
         try:
             # 检查是否已存在
-            existing = await db.execute(select(Post).where(Post.slug == post_data["slug"]))
-            if existing.scalar_one_or_none():
+            if post_data["slug"] in existing_post_slugs:
                 if skip_existing:
                     skipped_count += 1
                     continue
@@ -401,13 +443,11 @@ async def import_posts(
                     errors.append(f"文章已存在: {post_data['slug']}")
                     continue
 
-            # 获取分类
+            # 获取分类（从预查字典中取，不再逐条查询）
             category = None
-            if post_data.get("category"):
-                cat_slug = post_data["category"].get("slug")
-                if cat_slug:
-                    cat_result = await db.execute(select(Category).where(Category.slug == cat_slug))
-                    category = cat_result.scalar_one_or_none()
+            cat_slug = post_data.get("category", {}).get("slug")
+            if cat_slug:
+                category = category_by_slug.get(cat_slug)
 
             # 创建文章
             post = Post(
@@ -430,12 +470,11 @@ async def import_posts(
             db.add(post)
             await db.flush()
 
-            # 添加标签
+            # 添加标签（从预查字典中取，不再逐条查询）
             for tag_info in post_data.get("tags", []):
                 tag_slug = tag_info.get("slug")
                 if tag_slug:
-                    tag_result = await db.execute(select(Tag).where(Tag.slug == tag_slug))
-                    tag = tag_result.scalar_one_or_none()
+                    tag = tag_by_slug.get(tag_slug)
                     if tag:
                         post.tags.append(tag)
 

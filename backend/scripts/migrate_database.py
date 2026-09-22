@@ -124,13 +124,17 @@ async def _ensure_postgres_db_exists(target_url: str) -> None:
     maintenance_url = f"{driver}://{authority_part}/postgres"
 
     def _create_sync():
-        engine = _sync_create_engine(maintenance_url.replace("+asyncpg", "+psycopg2"), isolation_level="AUTOCOMMIT")
+        engine = _sync_create_engine(
+            maintenance_url.replace("+asyncpg", "+psycopg2"), isolation_level="AUTOCOMMIT"
+        )
         try:
             with engine.connect() as conn:
-                row = conn.execute(text("SELECT 1 FROM pg_database WHERE datname=:d"), {"d": db_name}).fetchone()
+                row = conn.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname=:d"), {"d": db_name}
+                ).fetchone()
                 if not row:
                     # Don't quote inside CREATE DATABASE — use %I style via format, here exec direct
-                    conn.execute(text(f'CREATE DATABASE "{db_name}" ENCODING \'UTF8\''))
+                    conn.execute(text(f"CREATE DATABASE \"{db_name}\" ENCODING 'UTF8'"))
                     logger.info(f"[PG] 自动创建数据库 {db_name}")
         except Exception as exc:  # pragma: no cover - 真实依赖环境
             logger.warning(f"[PG] 尝试维护库创建失败（可能已有/权限不足），将继续: {exc}")
@@ -251,7 +255,11 @@ def _is_autoincrement_pk(table: Table) -> bool:
     if len(pk.columns) != 1:
         return False
     col = list(pk.columns)[0]
-    if not (str(col.type).lower().startswith("integer") or str(col.type).lower().startswith("bigint") or str(col.type).lower().startswith("smallint")):
+    if not (
+        str(col.type).lower().startswith("integer")
+        or str(col.type).lower().startswith("bigint")
+        or str(col.type).lower().startswith("smallint")
+    ):
         # PG: SERIAL -> Integer 底层
         return False
     return True
@@ -310,7 +318,9 @@ async def _copy_table(
         # rowcount 不一定可靠，直接返回 len(chunk) 作为近似（有冲突时会小）
         return r.rowcount or 0
 
-    progress_cb and progress_cb(stats.to_progress("copy", table=table_name, rows_src=src_count, rows_done=0))
+    progress_cb and progress_cb(
+        stats.to_progress("copy", table=table_name, rows_src=src_count, rows_done=0)
+    )
 
     streamed = 0
     async for row in await src_session.stream(stmt.execution_options(yield_per=_CHUNK_SIZE)):
@@ -321,7 +331,9 @@ async def _copy_table(
             inserted += await _flush_chunk(insert_values_list)
             stats.rows_done += len(insert_values_list)
             insert_values_list.clear()
-            progress_cb and progress_cb(stats.to_progress("copy", table=table_name, rows_src=src_count, rows_done=streamed))
+            progress_cb and progress_cb(
+                stats.to_progress("copy", table=table_name, rows_src=src_count, rows_done=streamed)
+            )
 
     if insert_values_list:
         inserted += await _flush_chunk(insert_values_list)
@@ -335,11 +347,7 @@ async def _copy_table(
         # SELECT setval(pg_get_serial_sequence('table','col'), coalesce(MAX(col),1) + 1, false)
         sql = text(
             "SELECT setval(pg_get_serial_sequence(:t,:c), "
-            "coalesce((SELECT MAX(\""
-            + pk_name
-            + "\") FROM \""
-            + table_name
-            + "\"), 0) + 1, false)"
+            'coalesce((SELECT MAX("' + pk_name + '") FROM "' + table_name + '"), 0) + 1, false)'
         )
         try:
             await dst_session.execute(sql, {"t": table_name, "c": pk_name})
@@ -373,7 +381,13 @@ async def run_migration(
     dst_engine: AsyncEngine | None = None
 
     def _emit(**extra):
-        yield stats.to_progress(stats.to_progress.__self__.__class__.__name__, **extra) if False else stats.to_progress(stats.to_progress.__self__.__class__.__name__ if False else "noop", **extra)
+        yield (
+            stats.to_progress(stats.to_progress.__self__.__class__.__name__, **extra)
+            if False
+            else stats.to_progress(
+                stats.to_progress.__self__.__class__.__name__ if False else "noop", **extra
+            )
+        )
 
     try:
         yield stats.to_progress("init", message="解析源/目标连接")
@@ -408,6 +422,7 @@ async def run_migration(
         yield stats.to_progress("pre_copy", message="反射源/目标表结构")
         src_meta = MetaData()
         dst_meta = MetaData()
+
         # 反射用 sync 引擎（轻量）
         def _reflect(url: str, meta: MetaData):
             sync_url = url.replace("+asyncpg", "+psycopg2").replace("+aiosqlite", "")
@@ -416,6 +431,7 @@ async def run_migration(
                 meta.reflect(bind=eng)
             finally:
                 eng.dispose()
+
         await asyncio.gather(
             asyncio.to_thread(_reflect, source_url, src_meta),
             asyncio.to_thread(_reflect, target_url, dst_meta),
@@ -439,7 +455,9 @@ async def run_migration(
         if dry_run:
             # dry-run: 只输出源侧计数
             yield stats.to_progress("verify", message="dry-run: 仅输出源表计数")
-            src_session = async_sessionmaker(src_engine, expire_on_commit=False, class_=AsyncSession)()
+            src_session = async_sessionmaker(
+                src_engine, expire_on_commit=False, class_=AsyncSession
+            )()
             try:
                 for t in ordered_src:
                     c = await _count_rows(src_session, t)
@@ -456,8 +474,12 @@ async def run_migration(
         await _with_fk_disabled(dst_engine, "target", False)
 
         # 5. 逐表复制
-        src_session_cls = async_sessionmaker(src_engine, expire_on_commit=False, class_=AsyncSession)
-        dst_session_cls = async_sessionmaker(dst_engine, expire_on_commit=False, class_=AsyncSession)
+        src_session_cls = async_sessionmaker(
+            src_engine, expire_on_commit=False, class_=AsyncSession
+        )
+        dst_session_cls = async_sessionmaker(
+            dst_engine, expire_on_commit=False, class_=AsyncSession
+        )
 
         def _cb(p: dict[str, Any]):
             pass
@@ -466,7 +488,9 @@ async def run_migration(
             src_s = src_session_cls()
             dst_s = dst_session_cls()
             try:
-                src_count, inserted = await _copy_table(src_s, dst_s, table, stats, progress_cb=lambda p: None)
+                src_count, inserted = await _copy_table(
+                    src_s, dst_s, table, stats, progress_cb=lambda p: None
+                )
                 stats.tables_done += 1
                 yield stats.to_progress(
                     "copy",
@@ -546,7 +570,9 @@ async def _main_async(args: argparse.Namespace) -> int:
         logging.getLogger().setLevel(logging.DEBUG)
     start = time.time()
     final_stage = "init"
-    async for progress in run_migration(args.from_, args.to_, dry_run=args.dry_run, skip_schema=args.skip_schema):
+    async for progress in run_migration(
+        args.from_, args.to_, dry_run=args.dry_run, skip_schema=args.skip_schema
+    ):
         final_stage = progress.get("stage", final_stage)
         elapsed = progress.get("elapsed", 0.0)
         msg = progress.get("message", "")
@@ -556,13 +582,11 @@ async def _main_async(args: argparse.Namespace) -> int:
             extra = f" src={progress['rows_src']}"
         if progress.get("rows_done") is not None:
             extra += f" done={progress['rows_done']}"
-        print(
-            f"[{elapsed:>7.1f}s] {progress['stage']:<10} {table or '':<22} {msg or ''}{extra}"
-        )
+        print(f"[{elapsed:>7.1f}s] {progress['stage']:<10} {table or '':<22} {msg or ''}{extra}")
         if progress.get("errors"):
             for e in progress["errors"][-3:]:
                 print("  !!", e)
-    print(f"\n迁移完成 in {time.time()-start:.1f}s，最后阶段 {final_stage}")
+    print(f"\n迁移完成 in {time.time() - start:.1f}s，最后阶段 {final_stage}")
     return 0 if final_stage == "done" else 2
 
 

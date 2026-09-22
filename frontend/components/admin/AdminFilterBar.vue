@@ -263,7 +263,10 @@ function doReset() {
         :disabled="loading"
         @click="doReset"
       >
-        <RotateCcw class="size-4 mr-1.5" />
+        <RotateCcw
+          data-icon="inline-start"
+          class="mr-1.5"
+        />
         重置
       </Button>
       <Button
@@ -272,7 +275,10 @@ function doReset() {
         :disabled="loading"
         @click="doSearch"
       >
-        <Search class="size-4 mr-1.5" />
+        <Search
+          data-icon="inline-start"
+          class="mr-1.5"
+        />
         {{ loading ? '加载中...' : '搜索' }}
       </Button>
     </div>

@@ -15,13 +15,14 @@ import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { BookOpen, ChevronDown, Plus } from 'lucide-vue-next'
+import { getLocalizedStr, normalizeI18nDict, slugify } from '~~/composables/useAdminI18n'
+import { BookOpen, ChevronDown, Plus } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
-const seriesList = ref<AdminSeries[]>([])
+const seriesList = shallowRef<AdminSeries[]>([])
 const loading = ref(false)
 const expandedId = ref<number | null>(null)
 const coverInputRef = ref<HTMLInputElement | null>(null)
@@ -33,45 +34,15 @@ const dialogMode = ref<'new' | 'edit'>('new')
 const saving = ref(false)
 const coverUploading = ref(false)
 
-type I18nDict = Record<string, string>
-
 const form = reactive({
-  name: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
+  name: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   slug: '',
-  description: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
+  description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   cover_image: '',
   sort_order: 0
 })
 
 const editingId = ref<number | null>(null)
-
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
-const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): Record<string, string> => {
-  const base = { zh: '', en: '', ja: '', zh_Hant: '' }
-  if (v == null) return base
-  if (typeof v === 'string') {
-    return { ...base, zh: v }
-  }
-  return {
-    zh: v.zh ?? '',
-    en: v.en ?? '',
-    ja: v.ja ?? '',
-    zh_Hant: v.zh_Hant ?? ''
-  }
-}
-
-const slugify = (text: string): string => {
-  let s = text.trim().toLowerCase()
-  s = s.replace(/[\s]+/g, '-')
-  s = s.replace(/[^\w一-龥-]/g, '')
-  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
-  return s
-}
 
 let slugManualEdit = false as boolean
 watch(
@@ -221,7 +192,7 @@ onMounted(() => {
         class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
         @click="openNew"
       >
-        <Plus class="size-4" />
+        <Plus data-icon="inline-start" />
         <span>新建系列</span>
       </Button>
     </template>
@@ -266,11 +237,11 @@ onMounted(() => {
                 v-if="s.cover_image"
                 :src="s.cover_image"
                 :alt="getLocalizedStr(s.name)"
-                class="w-full h-full object-cover cursor-pointer"
+                class="size-full object-cover cursor-pointer"
               >
               <div
                 v-else
-                class="w-full h-full bg-primary/85 cursor-pointer"
+                class="size-full bg-primary/85 cursor-pointer"
               />
               <div class="absolute top-3 left-3 flex items-center gap-2">
                 <Badge class="rounded-[10px] border border-white/30 bg-white/90 text-stone-700 backdrop-blur-sm">
@@ -380,7 +351,7 @@ onMounted(() => {
               <img
                 :src="form.cover_image"
                 alt="cover"
-                class="w-full h-full object-cover"
+                class="size-full object-cover"
               >
             </div>
             <div

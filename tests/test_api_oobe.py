@@ -8,14 +8,13 @@ OOBE (Out-of-Box Experience) API 测试
 - test_oobe_admin_weak_password: 密码<8位返回 422
 """
 
+import sys
 from collections.abc import AsyncGenerator
 from pathlib import Path
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-
-import sys
 
 import backend.api.oobe as _oobe
 import backend.core.deps as _deps
@@ -114,6 +113,17 @@ async def oobe_client(monkeypatch, tmp_path) -> AsyncGenerator[AsyncClient, None
     for p in (tmp_cfg, tmp_lock, tmp_state, tmp_env, tmp_db):
         _safe_unlink(p)
 
+    # 快照全局 settings 与数据库引擎：
+    # install 流程会通过 _refresh_settings_inplace() 原地改写全局 settings，
+    # 并通过 reset_engine() 原地改写 async_session_maker 的 bind。
+    # 若不在 teardown 还原，这些泄漏会污染后续所有测试文件（曾导致
+    # test_password_reset_flow 的 debug 回传断言失败）。
+    import backend.core.config as _config_mod
+    import backend.core.database as _db_mod
+
+    _settings_snapshot = dict(_config_mod.settings.__dict__)
+    _engine_snapshot = _db_mod.async_session_maker.kw.get("bind")
+
     app = create_application()
 
     async with AsyncClient(
@@ -126,6 +136,24 @@ async def oobe_client(monkeypatch, tmp_path) -> AsyncGenerator[AsyncClient, None
         await ac.aclose()
     except Exception:
         pass
+
+    # --- 还原全局状态（顺序：先 settings 再缓存清理） ---
+    try:
+        _config_mod.settings.__dict__.clear()
+        _config_mod.settings.__dict__.update(_settings_snapshot)
+    except Exception:
+        pass
+    try:
+        if hasattr(_config_mod.get_settings, "cache_clear"):
+            _config_mod.get_settings.cache_clear()
+    except Exception:
+        pass
+    try:
+        _db_mod.async_session_maker.kw["bind"] = _engine_snapshot
+        _db_mod.engine = _engine_snapshot
+    except Exception:
+        pass
+
     for p in (tmp_cfg, tmp_lock, tmp_state, tmp_env, tmp_db):
         _safe_unlink(p)
 
@@ -235,7 +263,23 @@ async def test_oobe_reset_and_retrigger(oobe_client: AsyncClient):
     r = await oobe_client.post("/api/oobe/install", json=DEFAULT_INSTALL_PAYLOAD)
     assert r.status_code == 409, r.text
 
+    # 安装完成后 reset 属高危操作：匿名请求应被拒绝（403）
     r = await oobe_client.post("/api/oobe/reset")
+    assert r.status_code == 403, f"匿名 reset 已安装站点应 403，实际 {r.status_code}"
+
+    # 用安装时创建的超管登录后 reset 应成功
+    r_login = await oobe_client.post(
+        "/api/users/login",
+        json={
+            "username": DEFAULT_INSTALL_PAYLOAD["admin_username"],
+            "password": DEFAULT_INSTALL_PAYLOAD["admin_password"],
+        },
+    )
+    assert r_login.status_code == 200, r_login.text
+    token = r_login.json().get("access_token")
+    assert token
+
+    r = await oobe_client.post("/api/oobe/reset", headers={"Authorization": f"Bearer {token}"})
     assert r.status_code == 200, r.text
     assert not OOBE_COMPLETE.exists()
     assert not ROSETTA_JSON.exists()

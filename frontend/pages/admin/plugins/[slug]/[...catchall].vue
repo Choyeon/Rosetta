@@ -67,7 +67,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
 </script>
 
 <template>
-  <div class="plugin-host-page space-y-4">
+  <div class="flex flex-col gap-4 plugin-host-page">
     <!-- 顶部条：插件 slug / 返回按钮 / 新标签打开 -->
     <div class="flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-3 min-w-0">
@@ -77,7 +77,10 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
           class="shrink-0"
           @click="goBack"
         >
-          <ArrowLeft class="size-4 mr-1.5" />
+          <ArrowLeft
+            data-icon="inline-start"
+            class="mr-1.5"
+          />
           返回插件管理
         </Button>
         <div class="min-w-0">
@@ -107,7 +110,10 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
           :disabled="!iframeSrc"
           @click="openInNewTab"
         >
-          <ExternalLink class="size-4 mr-1.5" />
+          <ExternalLink
+            data-icon="inline-start"
+            class="mr-1.5"
+          />
           新标签打开
         </Button>
       </div>
@@ -128,7 +134,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
           具体子段（例如 <code class="px-1 rounded bg-muted">/admin/plugins/{slug}/settings</code>）。
         </CardDescription>
       </CardHeader>
-      <CardContent class="space-y-3 text-sm">
+      <CardContent class="flex flex-col gap-3 text-sm">
         <Alert variant="default">
           <AlertTriangle class="size-4" />
           <AlertTitle>路径提示</AlertTitle>
@@ -148,7 +154,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
     >
       <CardHeader class="pb-2">
         <div class="flex items-center justify-between gap-3 flex-wrap">
-          <div class="space-y-1">
+          <div class="flex flex-col gap-1">
             <CardTitle class="text-base">
               <span class="opacity-70 mr-2">插件路由:</span>
               <span class="font-mono text-sm">{{ iframeSrc }}</span>
@@ -183,7 +189,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
         <div class="relative w-full border-t border-border bg-muted/20">
           <div
             v-if="!iframeReady && !iframeLoadFailed"
-            class="absolute inset-0 p-4 space-y-3 pointer-events-none"
+            class="flex flex-col gap-3 absolute inset-0 p-4 pointer-events-none"
           >
             <Skeleton class="h-6 w-1/3" />
             <Skeleton class="h-3 w-2/3" />
@@ -211,7 +217,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
           <AlertDescription>
             插件路由 <code class="px-1 rounded bg-muted">{{ iframeSrc }}</code>
             未能正常返回内容。请确认：
-            <ol class="list-decimal list-inside mt-1.5 space-y-0.5 pl-1">
+            <ol class="flex flex-col gap-0 list-decimal list-inside mt-1.5 pl-1">
               <li>插件已激活并成功调用了 <code>ctx.register_admin_router()</code>。</li>
               <li>对应 GET 路由存在且返回 2xx（可在新标签打开查看具体响应）。</li>
               <li>若该路由需要特殊参数，更新菜单的 <code>path</code> 或前端链接。</li>

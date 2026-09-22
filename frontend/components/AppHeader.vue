@@ -1,9 +1,8 @@
 <script setup lang="ts">
 import { watch, computed, onMounted } from 'vue'
 import {
-  Menu, Search, LogOut, User, ChevronDown,
-  LayoutGrid, Tags, Archive, MessageSquareText
-} from '@lucide/vue'
+  Menu, Search, LogOut, User, ChevronDown
+} from '~~/lib/lucide-svg-icons'
 import { Button } from '~~/components/ui/button'
 import {
   DropdownMenu,
@@ -29,71 +28,29 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import ThemeToggle from '~~/components/ThemeToggle.vue'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
-import { useFrontendTheme } from '~~/composables/useFrontendTheme'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
+
+// 极简主题（astro-paper-inspired）导航栏模式：
+//   · show_avatar === false → data-navbar-minimal="text-only"（style.css 隐藏 logo img，只留站名文字）
+//   · 其余情况（含非极简主题）→ "default"
+// 仅在极简主题激活时才允许 text-only，避免影响默认 Editorial 主题导航。
 const ft = useFrontendTheme()
+const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
+const navbarMinimalMode = computed<'default' | 'text-only'>(() => {
+  if (!MINIMAL_THEME_SLUGS.has(ft.slug.value || '')) return 'default'
+  return ft.mods.value.show_avatar === false ? 'text-only' : 'default'
+})
 
 /**
- * 极简主题判定：只要 slug 属于 Minimal Paper 系列（astro-paper-inspired / minimal-brutalist），
- * 就给 <header> 挂 data-navbar-minimal 属性，让主题 style.css 里的极简 navbar 规则命中。
- * 与 pages/index.vue 的 isMinimalTheme 判断保持语义一致。
+ * Header 导航栏（当前仅默认 Editorial 主题）：
+ * 完整中文菜单 + 登录 / 注册按钮显式 + 登录后进入后台。
+ *
+ * 去重规则：导航后端返回可能重复（用户配置时误加 2 次同 to）。按 to 路径去重。
+ * 移动端：≥md 显示完整中文；<md 统一折叠进 Sheet（左侧抽屉），仍然有登录/注册/进入后台。
  */
-const MINIMAL_THEME_SLUGS = new Set(['astro-paper-inspired', 'minimal-brutalist'])
-const isMinimalTheme = computed(() => {
-  const s = ft.slug.value
-  return !!s && MINIMAL_THEME_SLUGS.has(s)
-})
-const navVariant = computed(() => (isMinimalTheme.value ? 'minimal' : 'default'))
-
-/**
- * 极简主题桌面 nav 的"3 文字 + N 图标"分类（复刻 Astro Paper 5 项原则：3 文字 + 2 图标）。
- * 中文默认 7 项导航 → 文字保留 3 项（首页/文章/关于），其余 4 项变为 32×32 SVG 纯图标（sr-only 文字）。
- * 路径严格匹配 FALLBACK_NAV，若用户自定义了导航里不存在的路径，则全部保持文字形式。
- */
-const MINIMAL_ICON_MENU_PATHS: Record<string, string> = {
-  '/categories': 'categories',
-  '/tags': 'tags',
-  '/archive': 'archive',
-  '/guestbook': 'guestbook',
-  '/announcements': 'announcements'
-}
-// 极简主题下作为"文字链接"显示（最多 3 项以节约宽度）
-const MINIMAL_TEXT_MENU_PATHS = new Set(['/', '/posts', '/about'])
-
-const minimalTextItems = computed(() => {
-  if (!isMinimalTheme.value) return navItems.value
-  return navItems.value.filter(i => MINIMAL_TEXT_MENU_PATHS.has(i.to))
-})
-const minimalIconItems = computed(() => {
-  if (!isMinimalTheme.value) return []
-  return navItems.value
-    .filter(i => !MINIMAL_TEXT_MENU_PATHS.has(i.to) && MINIMAL_ICON_MENU_PATHS[i.to])
-    .map(i => ({
-      ...i,
-      iconKey: MINIMAL_ICON_MENU_PATHS[i.to]
-    }))
-})
-// 极简模式下，如果用户自定义菜单很多（>4 项图标）且不在白名单映射中 → 保留文字但只渲染前 4 个其余进 sheet
-const minimalOverflowTextItems = computed(() => {
-  if (!isMinimalTheme.value) return []
-  return navItems.value.filter(
-    i => !MINIMAL_TEXT_MENU_PATHS.has(i.to) && !MINIMAL_ICON_MENU_PATHS[i.to]
-  )
-})
-
-const resolveIcon = (iconKey: string) => {
-  switch (iconKey) {
-    case 'categories': return LayoutGrid
-    case 'tags': return Tags
-    case 'archive': return Archive
-    case 'guestbook': return MessageSquareText
-    case 'announcements': return Tags
-    default: return LayoutGrid
-  }
-}
 
 // 显示名：优先 nickname → name → username，避免出现"用户名/登录名"而非昵称
 const userDisplayName = computed(() => {
@@ -135,7 +92,7 @@ interface NavApiRow {
   sort_order?: number
 }
 
-// 内置兜底（极简、无示例数据）——当后端 /api/navigations 为空或请求失败时使用。
+// 内置兜底（非极简主题 fallback）—— 当后端 /api/navigations 为空或请求失败时使用。
 // 保留核心必要页面：首页 / 文章 / 分类 / 标签 / 归档 + 两个高权重静态页（关于 / 留言板）。
 // 这样即便用户 DB 中 navigation_menu 表未 seed，顶部导航也永远不会缺链接。
 const FALLBACK_NAV: { label: string, to: string }[] = [
@@ -145,11 +102,30 @@ const FALLBACK_NAV: { label: string, to: string }[] = [
   { label: t('nav.tags') || '标签', to: '/tags' },
   { label: t('nav.archive') || '归档', to: '/archive' },
   { label: t('nav.about') || t('common.about') || t('about.title') || '关于', to: '/about' },
+  { label: t('nav.friends') || t('friends.title') || '友情链接', to: '/friends' },
+  { label: t('nav.gallery') || t('gallery.title') || '相册', to: '/gallery' },
   { label: t('nav.guestbook') || t('common.guestbook') || t('guestbook.title') || '留言板', to: '/guestbook' }
 ]
 
-const { data: navRowsRef, refresh: refreshNav } = await useAPI<NavApiRow[]>('/navigations', {
-  key: computed(() => `public:navigations:${locale.value}`),
+/**
+ * 保证某些路由在 Header 导航中必然渲染（即便后端菜单漏配）。
+ *   · 旧 Minimal 主题强制 9 条导航，但 Editorial 默认走后端配置 navRowsRef，
+ *     易出现"友情链接 / 相册"缺失 → 点不到。这里最后一步合并：缺失就补上。
+ */
+const ENSURE_PRESENT: { label: () => string, to: string }[] = [
+  { label: () => t('nav.home') || '首页', to: '/' },
+  { label: () => t('nav.posts') || '文章', to: '/posts' },
+  { label: () => t('nav.categories') || '分类', to: '/categories' },
+  { label: () => t('nav.tags') || '标签', to: '/tags' },
+  { label: () => t('nav.archive') || '归档', to: '/archive' },
+  { label: () => t('nav.about') || t('common.about') || t('about.title') || '关于', to: '/about' },
+  { label: () => t('nav.friends') || t('friends.title') || '友情链接', to: '/friends' },
+  { label: () => t('nav.gallery') || t('gallery.title') || '相册', to: '/gallery' },
+  { label: () => t('nav.guestbook') || t('common.guestbook') || t('guestbook.title') || '留言板', to: '/guestbook' }
+]
+
+const { data: navRowsRef, refresh: refreshNav } = useAPI<NavApiRow[]>('/navigations', {
+  key: 'public:navigations:' + locale.value,
   default: () => []
 })
 // 语言切换时，用新的 Accept-Language 头重新拉导航（否则导航仍缓存旧语言的 label/i18n）
@@ -196,10 +172,24 @@ const normalizeNavPath = (row: NavApiRow): string => {
   return raw
 }
 
+/**
+ * 去重：按 to 字段保留第一次出现（解决用户截图里"关于 × 2 连续出现"的问题）。
+ */
+const dedupeByTo = <T extends { to: string }>(arr: ReadonlyArray<T>): T[] => {
+  const seen = new Set<string>()
+  const out: T[] = []
+  for (const it of arr) {
+    if (seen.has(it.to)) continue
+    seen.add(it.to)
+    out.push(it)
+  }
+  return out
+}
+
 const navItems = computed(() => {
   const _ = locale.value // 显式建立响应式依赖：语言切换 → 标签重新 pickNavStr
   const raw = navRowsRef.value
-  if (!Array.isArray(raw) || raw.length === 0) return FALLBACK_NAV
+  if (!Array.isArray(raw) || raw.length === 0) return dedupeByTo(FALLBACK_NAV)
   const out: { label: string, to: string, external?: boolean }[] = []
   for (const row of raw) {
     const labelRaw = row.label ?? row.title ?? row.name ?? ''
@@ -214,7 +204,15 @@ const navItems = computed(() => {
     }
     out.push({ label, to: path })
   }
-  return out.length > 0 ? out : FALLBACK_NAV
+  const base = out.length > 0 ? out : FALLBACK_NAV
+  // Merge ensure: 若后端未配置友情/相册等关键路径，按 ENSURE_PRESENT 顺序补齐在末尾
+  for (const req of ENSURE_PRESENT) {
+    if (base.some(x => x.to === req.to)) continue
+    const label = req.label()
+    if (!label) continue
+    base.push({ label, to: req.to })
+  }
+  return dedupeByTo(base)
 })
 
 const isActive = (to: string) => {
@@ -237,40 +235,30 @@ const handleSearchClick = () => navigateTo('/search')
   <header
     id="app-header"
     data-navbar="root"
-    :data-navbar-minimal="navVariant"
-    :data-navbar-icon-menu="isMinimalTheme ? 'on' : null"
+    :data-navbar-minimal="navbarMinimalMode"
     class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
   >
     <div
-      class="container mx-auto flex items-center justify-between gap-4"
-      :class="isMinimalTheme ? 'h-16 sm:h-[72px]' : 'h-16'"
+      class="container mx-auto flex items-center justify-between gap-4 h-16"
     >
       <NuxtLink
         to="/"
         data-navbar="brand"
-        class="flex items-center gap-2 font-display font-bold tracking-tight"
-        :class="isMinimalTheme ? 'text-xl sm:text-2xl' : 'text-xl'"
+        class="flex items-center gap-2 font-display font-bold tracking-tight min-w-0 shrink-0 text-lg sm:text-xl"
       >
         <img
-          v-if="!isMinimalTheme"
           :src="brandLogo"
           :alt="brandName"
           role="brand-logo"
-          class="h-7 w-auto object-contain"
+          class="h-7 w-auto object-contain shrink-0"
         >
-        <!-- 极简主题 logo 图片更紧凑：h-6 24px，与 Astro Paper text-2xl logo 高度匹配 -->
-        <img
-          v-else
-          :src="brandLogo"
-          :alt="brandName"
-          role="brand-logo"
-          class="h-6 w-auto object-contain"
-        >
-        <span>{{ brandName }}</span>
+        <span
+          class="whitespace-nowrap overflow-hidden text-ellipsis max-w-[40vw] sm:max-w-[46vw] md:max-w-[50vw]"
+          :title="brandName"
+        >{{ brandName }}</span>
       </NuxtLink>
 
       <nav
-        v-if="!isMinimalTheme"
         data-navbar="menu"
         class="md:flex hidden items-center gap-1"
       >
@@ -285,75 +273,6 @@ const handleSearchClick = () => navigateTo('/search')
         >
           {{ item.label }}
         </NuxtLink>
-      </nav>
-
-      <!-- Minimal 主题桌面导航：复刻 Astro Paper → 3 文字 + N 图标（≥lg 展开；md 以下走 Sheet 汉堡） -->
-      <nav
-        v-else
-        data-navbar="menu"
-        data-navbar-role="minimal-desktop"
-        class="lg:flex hidden items-center"
-      >
-        <NuxtLink
-          v-for="item in minimalTextItems"
-          :key="item.to"
-          :to="item.to"
-          :class="[
-            'px-2 py-1 text-base font-medium rounded-none transition-colors whitespace-nowrap',
-            isActive(item.to) ? 'bg-transparent font-bold text-foreground' : 'text-foreground/80 hover:text-foreground'
-          ]"
-          :aria-current="isActive(item.to) ? 'page' : undefined"
-        >
-          {{ item.label }}
-        </NuxtLink>
-
-        <!-- 4 个"低频/可图标化"菜单：分类 LayoutGrid / 标签 Tags / 归档 Archive / 留言板 MessageSquare -->
-        <div
-          v-if="minimalIconItems.length"
-          data-navbar-icon-group
-          class="flex items-center gap-x-4 ml-2"
-        >
-          <NuxtLink
-            v-for="item in minimalIconItems"
-            :key="'icon-' + item.to"
-            :to="item.to"
-            data-navbar-role="icon-only"
-            class="relative inline-flex items-center justify-center w-8 h-8 rounded-none hover:text-accent transition-colors"
-            :title="item.label"
-            :aria-label="item.label"
-            :aria-current="isActive(item.to) ? 'page' : undefined"
-          >
-            <component
-              :is="resolveIcon(item.iconKey as string)"
-              class="w-6 h-6"
-              :stroke-width="isActive(item.to) ? 2.25 : 2"
-              :class="isActive(item.to) ? 'stroke-accent' : ''"
-            />
-            <span class="sr-only" data-text>{{ item.label }}</span>
-            <!-- 激活态下在图标下方显示 1.5px 细底线（与文字项视觉等价） -->
-            <span
-              v-if="isActive(item.to)"
-              class="absolute left-1/2 -translate-x-1/2 bottom-0 w-6 h-[1.5px] bg-current rounded-full"
-              aria-hidden="true"
-            />
-          </NuxtLink>
-        </div>
-
-        <!-- 用户自定义导航（不在映射白名单）作为少量文字保留，超过 2 个省略展示（mobile sheet 中依然完整） -->
-        <div
-          v-if="minimalOverflowTextItems.length"
-          class="ml-2 hidden xl:flex items-center gap-3"
-        >
-          <NuxtLink
-            v-for="item in minimalOverflowTextItems.slice(0, 2)"
-            :key="'ov-' + item.to"
-            :to="item.to"
-            class="px-2 py-1 text-sm font-medium whitespace-nowrap text-foreground/80 hover:text-foreground"
-            :aria-current="isActive(item.to) ? 'page' : undefined"
-          >
-            {{ item.label }}
-          </NuxtLink>
-        </div>
       </nav>
 
       <!-- 交互控件区：Tooltip/DropdownMenu/Sheet 基于 reka-ui，SSR 渲染 PrimitiveSlot 不稳定；
@@ -372,7 +291,7 @@ const handleSearchClick = () => navigateTo('/search')
                 :aria-label="t('common.search') || '搜索'"
                 @click="handleSearchClick"
               >
-                <Search class="h-[1.2rem] w-[1.2rem]" />
+                <Search data-icon="inline-start" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>
@@ -475,7 +394,7 @@ const handleSearchClick = () => navigateTo('/search')
                 class="md:hidden"
                 :aria-label="t('common.titleMenu') || 'Menu'"
               >
-                <Menu class="h-[1.2rem] w-[1.2rem]" />
+                <Menu data-icon="inline-start" />
               </Button>
             </SheetTrigger>
             <SheetContent
@@ -523,13 +442,13 @@ const handleSearchClick = () => navigateTo('/search')
                     <UserAvatar
                       :resolved-avatar-url="(authStore.user as Record<string, unknown> | null)?.resolved_avatar_url as string || ''"
                       :avatar="(authStore.user as Record<string, unknown> | null)?.avatar as string || ''"
-                      :name="String((authStore.user as any)?.name || authStore.user?.username || 'U')"
+                      :name="userDisplayName || 'U'"
                       :size="40"
                       :show-title="false"
                     />
                     <div class="min-w-0">
                       <div class="text-sm font-medium truncate">
-                        {{ authStore.user?.name || authStore.user?.username }}
+                        {{ userDisplayName }}
                       </div>
                       <div
                         v-if="authStore.user?.email"
@@ -547,7 +466,10 @@ const handleSearchClick = () => navigateTo('/search')
                         class="justify-start"
                         @click="handleAdmin"
                       >
-                        <User class="mr-2 h-4 w-4" />
+                        <User
+                          data-icon="inline-start"
+                          class="mr-2"
+                        />
                         {{ t('common.dashboard') || 'Dashboard' }}
                       </Button>
                     </SheetClose>
@@ -557,7 +479,10 @@ const handleSearchClick = () => navigateTo('/search')
                       class="justify-start text-error"
                       @click="handleLogout"
                     >
-                      <LogOut class="mr-2 h-4 w-4" />
+                      <LogOut
+                        data-icon="inline-start"
+                        class="mr-2"
+                      />
                       {{ t('auth.logout') || '退出登录' }}
                     </Button>
                   </div>

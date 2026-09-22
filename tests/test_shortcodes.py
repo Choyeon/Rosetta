@@ -11,15 +11,14 @@ Shortcode 引擎测试
 - 全局 do_shortcode() 函数接口
 - register_shortcode / unregister_shortcode 与插件绑定
 """
-from __future__ import annotations
 
-import pytest
+from __future__ import annotations
 
 from backend.core.shortcodes import (
     ShortcodeManager,
     do_shortcode,
-    shortcode_manager,
     register_shortcode,
+    shortcode_manager,
     unregister_shortcode,
 )
 
@@ -172,7 +171,7 @@ class TestShortcodeStack:
 
         sm.register("box", box, plugin="demo")
         # 两级同名嵌套：内部先解析
-        result = sm.render('[box level=1]outer [box level=2]inner[/box] tail[/box]')
+        result = sm.render("[box level=1]outer [box level=2]inner[/box] tail[/box]")
         # 内层：level=2 content="inner" → 被内层函数先捕获
         # 外层：level=1 content="outer [box-2:inner] tail"
         #   (因为内层先渲染，结果替换回字符串)
@@ -212,9 +211,10 @@ class TestShortcodeSanitize:
 
     def test_script_tag_stripped(self):
         sm = ShortcodeManager()
+
         # 恶意 handler 想注入 script
         def evil(**_):
-            return '<script>alert(1)</script><b>safe</b>'
+            return "<script>alert(1)</script><b>safe</b>"
 
         sm.register("evil", evil, plugin="demo")
         result = sm.render("[evil /]")
@@ -278,8 +278,8 @@ class TestShortcodeSanitize:
             "<em>em</em>",
             "<strong>s</strong>",
             "<code>c</code>",
-            "href=\"https://example.com\"",
-            "src=\"https://i/a.png\"",
+            'href="https://example.com"',
+            'src="https://i/a.png"',
         ):
             assert tag in result, f"Missing expected tag: {tag}"
 
@@ -315,8 +315,11 @@ class TestGlobalFunctions:
         assert "[hi /]" in result
 
     def test_plugin_binding_removal(self):
-        def a(**_): return "A"
-        def b(**_): return "B"
+        def a(**_):
+            return "A"
+
+        def b(**_):
+            return "B"
 
         register_shortcode("a", a, plugin="p1")
         register_shortcode("b", b, plugin="p1")

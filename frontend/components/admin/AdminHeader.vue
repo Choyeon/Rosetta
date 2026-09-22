@@ -52,16 +52,29 @@ const route = useRoute()
 const toast = useToast()
 
 // ==================== 面包屑（读 admin-menu config，避免死链/不同步） ====================
+/**
+ * 菜单项路径可能比当前路由短（如 /admin/docs/index 覆盖 /admin/docs/<slug>、
+ * /admin/users/12/edit 覆盖 /admin/users），因此逐级裁剪 path segment 匹配父菜单。
+ */
+const matchedMenuPath = computed<string | null>(() => {
+  if (findMenuItem(route.path)) return route.path
+  const segs = route.path.split('/').filter(Boolean)
+  while (segs.length > 1) {
+    segs.pop()
+    const p = '/' + segs.join('/')
+    if (findMenuItem(p)) return p
+  }
+  return null
+})
 const currentGroup = computed(() => {
-  const grp = findMenuGroup(route.path)
+  const grp = findMenuGroup(route.path) ?? findMenuGroup(matchedMenuPath.value || '')
   return grp?.label ?? '总览'
 })
 const currentPage = computed(() => {
-  const item = findMenuItem(route.path)
+  const path = matchedMenuPath.value || route.path
+  const item = findMenuItem(path)
   if (item) return item.label
-  // 动态子路由（如 /admin/users/12/edit）：回退到父菜单项名称
-  const parent = findMenuItem('/' + route.path.split('/').slice(0, 4).join('/'))
-  return parent?.label || route.path.split('/').pop() || ''
+  return route.path.split('/').filter(Boolean).pop() || ''
 })
 
 // ==================== 用户信息 ====================
@@ -290,7 +303,7 @@ watch(
       size="icon"
       class="md:hidden size-9 text-muted-foreground"
     >
-      <MenuIcon class="size-5" />
+      <MenuIcon data-icon="inline-start" />
     </Button>
 
     <!-- 面包屑 -->
@@ -342,11 +355,12 @@ watch(
           >
             <Bell
               v-if="!loadingBadge"
-              class="size-[18px]"
+              data-icon="inline-start"
             />
             <Loader2
               v-else
-              class="size-[18px] animate-spin opacity-60"
+              data-icon="inline-start"
+              class="animate-spin opacity-60"
             />
             <span
               v-if="unreadCount > 0"
@@ -390,11 +404,13 @@ watch(
             >
               <CheckCheck
                 v-if="!markingClearing"
-                class="size-3.5 mr-1"
+                data-icon="inline-start"
+                class="mr-1"
               />
               <Loader2
                 v-else
-                class="size-3.5 mr-1 animate-spin"
+                data-icon="inline-start"
+                class="mr-1 animate-spin"
               />
               全部已读
             </Button>
@@ -405,7 +421,10 @@ watch(
               :disabled="markingClearing || items.length === 0"
               @click="handleClearAll"
             >
-              <Trash2 class="size-3.5 mr-1" />
+              <Trash2
+                data-icon="inline-start"
+                class="mr-1"
+              />
               清空
             </Button>
           </div>

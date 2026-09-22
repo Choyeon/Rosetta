@@ -57,7 +57,10 @@
     "featured": "精華",
     "submitting": "提交中…",
     "open": "打開",
-    "by": "由"
+    "by": "由",
+    "retry": "重試",
+    "prevPage": "上一頁",
+    "nextPage": "下一頁"
   },
   "nav": {
     "home": "首頁",
@@ -70,7 +73,9 @@
     "about": "關於",
     "admin": "後台管理",
     "gallery": "[繁]:Gallery",
-    "activity": "[繁]:Activity"
+    "activity": "[繁]:Activity",
+    "search": "搜尋",
+    "series": "系列"
   },
   "post": {
     "title": "標題",
@@ -109,7 +114,17 @@
     "backToList": "返回文章列表",
     "loadFailed": "文章載入失敗",
     "loadFailedDesc": "找不到對應文章或已被移除，點擊下方按鈕返回列表。",
-    "like": "點讚"
+    "like": "點讚",
+    "adjacentNav": "文章翻頁導航",
+    "previousPost": "上一篇",
+    "nextPost": "下一篇",
+    "tocEmpty": "暫無目錄",
+    "commentsLoadFailed": "留言加載失敗",
+    "retry": "重試",
+    "replyingTo": "正在回覆",
+    "cancelReply": "取消回覆",
+    "replyPlaceholder": "回覆這條評論…",
+    "someone": "某人"
   },
   "comment": {
     "title": "留言",
@@ -122,7 +137,8 @@
     "justNow": "[繁]:just now",
     "minutesAgo": "[繁]: min ago",
     "hoursAgo": "[繁]: h ago",
-    "daysAgo": "[繁]: d ago"
+    "daysAgo": "[繁]: d ago",
+    "like": "點讚"
   },
   "auth": {
     "username": "使用者名稱",
@@ -192,15 +208,23 @@
     "hidePassword": "[繁] 隱藏密碼",
     "passwordTooShort": "[繁] 密碼至少需要 6 位字元",
     "pleaseAgreeTerms": "[繁] 請先勾選同意服務條款與隱私政策",
-    "cannotDeriveUsername": "[繁] 無法從信箱或暱稱派生出合法使用者名稱，請更換信箱或完善暱稱後重試。"
+    "cannotDeriveUsername": "[繁] 無法從信箱或暱稱派生出合法使用者名稱，請更換信箱或完善暱稱後重試。",
+    "backHome": "返回首頁",
+    "logoAlt": "Rosetta — 彩色方形 Logo",
+    "prevDay": "上一天",
+    "nextDay": "下一天（越新）",
+    "refreshWallpaper": "重新整理當前桌布"
   },
   "error": {
     "notFoundTitle": "頁面不存在",
     "notFoundDesc": "你造訪的頁面可能已被移動、刪除，或從未存在。",
     "serverErrorTitle": "伺服器發生錯誤",
     "serverErrorDesc": "服務暫時不可用，請稍後重試。",
+    "permissionTitle": "無存取權限",
+    "permissionDesc": "您需要登入後才能造訪此頁面，或您的帳號沒有對應權限。",
     "backHome": "返回首頁",
-    "retry": "重試"
+    "retry": "重試",
+    "goLogin": "前往登入"
   },
   "user": {
     "profile": "個人資料",
@@ -598,7 +622,10 @@
     "actions": {
       "refresh": "重新整理",
       "cancel": "取消",
-      "save": "儲存"
+      "save": "儲存",
+      "clear": "清除篩選",
+      "delete": "刪除",
+      "saving": "儲存中…"
     },
     "pagination": {
       "page": "第 {page} 頁",
@@ -623,7 +650,8 @@
       "status": {
         "active": "已啟用",
         "inactive": "已停用",
-        "error": "錯誤"
+        "error": "錯誤",
+        "installed": "已安裝"
       },
       "settings": "設定",
       "upgrade": "升級",
@@ -638,7 +666,38 @@
       "bulkActivate": "批次啟用",
       "bulkDeactivate": "批次停用",
       "bulkDelete": "批次刪除",
-      "selectedCount": "已選取 {count} 個外掛"
+      "selectedCount": "已選取 {count} 個外掛",
+      "docs": "插件文件",
+      "installHint": "請透過後端或 CLI 安裝新插件",
+      "stats": {
+        "installed": "已安裝",
+        "active": "已啟用",
+        "inactive": "未啟用",
+        "updates": "可升級",
+        "errors": "異常"
+      },
+      "filter": {
+        "all": "全部",
+        "inactive": "未啟用"
+      },
+      "itemsUnit": "項",
+      "scanDone": "掃描完成",
+      "activated": "已啟用",
+      "deactivated": "已停用",
+      "settingsSaved": "設定已儲存",
+      "deleted": "外掛已刪除",
+      "bulkDeleted": "批次刪除完成",
+      "bulkUpgrade": "批次升級",
+      "selected": "已選",
+      "emptyTitle": "尚無外掛",
+      "noSearchResult": "沒有匹配的外掛，請換個關鍵字試試。",
+      "emptyDesc": "點擊「掃描本地」以發現 plugins 資料夾中的外掛",
+      "noDesc": "該外掛暂未提供描述資訊。",
+      "updateAvailable": "可升級",
+      "noSettings": "該外掛暫無可配置項",
+      "confirmDeleteTitle": "確認刪除",
+      "confirmDeleteOne": "即將刪除外掛「{name}」，刪除後無法復原，外掛資料與設定將一併移除。",
+      "confirmDeleteBulk": "即將刪除選中的 {n} 個外掛，刪除後無法復原，外掛資料與設定將一併移除。"
     },
     "themes": {
       "title": "佈景主題管理",
@@ -664,7 +723,68 @@
       "modsSaved": "主題自訂已儲存",
       "upload": "上傳主題",
       "empty": "沒有符合的主題。",
-      "noThemes": "尚未安裝任何主題，請先掃描或安裝。"
+      "noThemes": "尚未安裝任何主題，請先掃描或安裝。",
+      "docs": "主題文件",
+      "scanDone": "掃描完成",
+      "activated": "主題已啟用",
+      "modsValidationFailed": "表單校驗失敗，請檢查標紅欄位",
+      "deleted": "主題已刪除",
+      "installHint": "請透過後端或 CLI 安裝新主題",
+      "stats": {
+        "total": "主題總數",
+        "active": "已啟用",
+        "customizable": "可自訂",
+        "errors": "異常"
+      },
+      "itemsUnit": "個主題",
+      "noSearchResult": "沒有匹配的主題，請換個關鍵字試試。",
+      "emptyTitle": "尚無主題",
+      "emptyDesc": "點擊「掃描本地」發現 themes 資料夾主題",
+      "error": "錯誤",
+      "previewStub": "即時預覽暫未實現",
+      "activatedAt": "啟用於",
+      "noDesc": "該主題暂未提供描述資訊。",
+      "noCustomizeHint": "該主題無可自訂項",
+      "parentHint": "父主題佔位",
+      "childOf": "子主題：繼承自 {name}",
+      "perPage": "每頁顯示",
+      "customizerTitle": "自訂主題：",
+      "customizerDesc": "即時調整主題外觀；設定會立即儲存到站點。",
+      "customizerActiveHint": "您正在修改當前啟用主題，儲存後前臺將立即重新整理。",
+      "modsOn": "啟用",
+      "modsOff": "關閉",
+      "noMods": "該主題暫無可自訂項",
+      "confirmDeleteTitle": "確認刪除",
+      "confirmDelete": "主題「{name}」將被永久刪除，主題自訂與設定將一併移除。"
+    },
+    "media": {
+      "previewTitle": "媒體預覽",
+      "previewDescription": "檢視媒體檔案內容並編輯基礎資訊",
+      "previewNoInline": "該檔案類型不支援線上預覽",
+      "previewOpenNewTab": "新標籤頁開啟",
+      "previewMeta": "檔案資訊",
+      "previewFilename": "檔名",
+      "previewSize": "大小",
+      "previewDimensions": "尺寸",
+      "previewType": "類型",
+      "previewUploader": "上傳者",
+      "previewCreatedAt": "上傳時間",
+      "previewCopyUrl": "複製連結",
+      "previewFieldTitle": "標題",
+      "previewFieldTitlePh": "請輸入標題（選填）",
+      "previewFieldAlt": "替代文字 (alt)",
+      "previewFieldAltPh": "用於無障礙與 SEO",
+      "previewFieldDesc": "描述",
+      "previewFieldDescPh": "檔案描述（選填）",
+      "previewSave": "儲存資訊",
+      "previewCopied": "連結已複製到剪貼簿",
+      "previewCopyFailed": "複製失敗，請手動選取連結複製",
+      "previewSaved": "媒體資訊已更新",
+      "uploadQueueTitle": "上傳任務",
+      "uploadQueueClear": "清除已完成",
+      "uploadQueueDone": "已完成",
+      "uploadQueueFailed": "失敗",
+      "uploadQueueDismiss": "移除"
     }
   },
   "oobe": {
@@ -678,10 +798,37 @@
       "admin": "管理員帳戶",
       "complete": "完成安裝"
     },
-    "step1Title": "系統檢測",
-    "step1Desc": "檢查伺服器環境與依賴",
-    "step1LongDesc": "我們將自動偵測 Python 版本、所需依賴套件與目錄權限，確保您的伺服器滿足 Rosetta 的最低執行需求。",
-    "step1EmptyHint": "點擊右側按鈕開始系統環境檢測",
+    "step1Title": "連接後端",
+    "step1Desc": "設定後端 API 位址並探測連線",
+    "step1LongDesc": "首先指定 Rosetta FastAPI 後端的服務位址，系統將探測後端健康狀態與 OOBE 安裝狀態；探測通過後自動進入系統環境檢查與相依安裝流程。",
+    "step1EmptyHint": "請先完成上方的後端連線探測",
+    "connTitle": "後端連線設定",
+    "connDesc": "指定安裝精靈在此階段所有 OOBE API 請求的發送目標。",
+    "connLongDesc": "開發模式預設本機 8000 通訊埠；Nginx 同源部署的生產環境建議使用 /api。若前後端不在同源（通訊埠/網域不同），請填入完整的絕對 URL。",
+    "connMode": "部署模式",
+    "connModeDev": "開發模式",
+    "connModeDevHint": "本機開發，前後端分離啟動，FastAPI 預設監聽 127.0.0.1:8000",
+    "connModeProd": "生產模式",
+    "connModeProdHint": "Nginx 反向代理或雲端部署，前端經同源 /api 存取後端",
+    "connApiUrl": "後端 API 位址",
+    "connApiUrlDevHint": "例如 http://127.0.0.1:8000/api；若僅輸入通訊埠編號會自動補齊為本機位址。",
+    "connApiUrlProdHint": "同源 Nginx 部署填寫 /api；跨網域部署填寫 https://domain.com/api。",
+    "connPortQuick": "快速埠（僅開發模式）",
+    "connCustomPort": "自訂連接埠…",
+    "connCurrentHint": "目前生效位址",
+    "connAppliedHint": "已做為本次精靈的目標後端套用",
+    "connProbe": "探測連線",
+    "connProbing": "探測中…",
+    "connProbeOK": "探測成功：後端可達且狀態正常",
+    "connProbeFail": "探測失敗",
+    "connProbeFailDetail": "失敗原因",
+    "connProbeStageHealth": "階段① /health 健康檢查",
+    "connProbeStageStatus": "階段② /api/oobe/status 安裝狀態",
+    "connProbeOOBERequired": "後端正常，等待安裝（503 OOBE_REQUIRED）",
+    "connProbeAlreadyDone": "後端已完成安裝（可直接使用）",
+    "connProbeNetworkError": "網路不可達 / 連線被拒絕，請確認該通訊埠已啟動或防火牆規則。",
+    "connProbeNotHealthy": "/health 未回傳 healthy —— 目標可能不是 Rosetta 後端。",
+    "connProbeHintNext": "必須先通過「探測連線」後才能進入下一步。",
     "step2Title": "管理員帳戶",
     "step2Desc": "建立主要管理員帳戶",
     "step2LongDesc": "設定用於登入後台管理面板的主要管理員帳戶，後續可在使用者管理中新增更多帳戶。",
@@ -820,7 +967,20 @@
     "depStarting": "正在連線安裝服務…",
     "depSuccess": "全部相依安裝完成",
     "depPartFail": "部分相依未成功，請查看日誌或手動安裝",
-    "isStarting": "準備安裝任務…"
+    "isStarting": "準備安裝任務…",
+    "tlsTitle": "偵測到明文 HTTP 連線",
+    "tlsDesc": "您目前的生產環境設定會將管理員密碼透過未加密的 HTTP 明文提交，任何同一網路的攻擊者都能嗅探到帳號憑證。",
+    "tlsGoBack": "返回並改為 HTTPS",
+    "tlsContinueAnyway": "我了解風險，仍繼續",
+    "tlsHintTlsTerminate": "建議：立即中止本次安裝，在反向代理網關啟用 TLS 憑證後再重試。",
+    "tlsHintConfigureReverseProxy": "推薦方案：在 Nginx / Caddy / Traefik 等反向代理設定 Let's Encrypt 免費憑證，並將 API 與站點 URL 改為 https:// 開頭。",
+    "tlsHintRisk": "繼續提交將導致管理員密碼、登入權杖、Cookie 皆以明文形式在公網傳輸，存在帳號被盜的嚴重安全風險。",
+    "installSnapshotTimeout": "安裝進度推送逾時",
+    "installSnapshotPolling": "正在透過快照介面核對安裝狀態…",
+    "installSnapshotRetryBtn": "重試連線",
+    "installSnapshotCancelBtn": "取消等待",
+    "installSnapshotTimeoutDetail": "安裝進度 30 秒內未收到任何事件（SSE 通道可能因網路或代理中斷）。系統正在以快照方式核對真實安裝結果，不會遺失進度。",
+    "installSnapshotPollingDetail": "快照輪詢中：每 5 秒查詢一次後端安裝狀態，最多嘗試 3 次。若後端實際已完成會自動進入完成頁。"
   },
   "archive": {
     "title": "文章彙整",
@@ -857,6 +1017,8 @@
     "pinned": "置頂",
     "allPosts": "[繁]:All posts",
     "allPostsDesc": "[繁]:Everything published, in reverse chronological order.",
+    "hotTitle": "熱門榜單",
+    "hotTitleDesc": "HN 風格加權熱度分：評分、瀏覽、評論、新鮮度聯合計算。",
     "noPosts": "[繁]:No posts yet",
     "noPostsDesc": "[繁]:The author is cooking up new content — check back soon.",
     "searchPlaceholder": "[繁]:Search titles or keywords…",
@@ -893,6 +1055,8 @@
     "commentsCount": "留言數",
     "popularCategories": "熱門分類",
     "tagCloud": "標籤雲",
+    "announcements": "站點公告",
+    "recentActivity": "最新動態",
     "techStack": "技術棧版本",
     "newsletterTitle": "訂閱最新更新",
     "newsletterSubtitle": "將新文章直接寄到你的信箱，無廣告、隨時可取消訂閱。",
@@ -1090,7 +1254,10 @@
     "contentPlaceholder": "[繁]:Type something here…",
     "replyPlaceholder": "[繁]:Reply to this message…",
     "noMessages": "[繁]:No messages yet. Be the first to say hi!",
-    "submitFailed": "[繁]:Submit failed, please try again later"
+    "submitFailed": "[繁]:Submit failed, please try again later",
+    "loadFailed": "留言加載失敗，請稍後重試",
+    "postingAs": "將以當前帳號發表",
+    "submitSuccess": "留言已提交，審核通過後會顯示在列表中"
   },
   "gallery": {
     "title": "[繁]:Gallery",
@@ -1107,7 +1274,8 @@
     "desc": "[繁]:Wonderful folks and their sites, worth sharing with more readers.",
     "visit": "[繁]:Visit",
     "noDesc": "[繁]:No description",
-    "noLinks": "[繁]:No friend links yet"
+    "noLinks": "[繁]:No friend links yet",
+    "loadFailed": "加載失敗"
   },
   "search": {
     "title": "[繁]:搜尋",
@@ -1185,5 +1353,14 @@
     "posts": "篇",
     "noDesc": "暫無描述",
     "viewAll": "查看全部"
+  },
+  "a11y": {
+    "skipToMain": "跳到主內容",
+    "toggleTheme": "切換主題",
+    "togglePalette": "切換調色盤",
+    "switchLanguage": "切換語言",
+    "openMenu": "開啟選單",
+    "closeMenu": "關閉選單",
+    "toggleSidebar": "切換側邊欄"
   }
 }

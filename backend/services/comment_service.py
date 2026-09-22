@@ -24,7 +24,7 @@ from backend.models.blog import Comment, Post
 from backend.models.core import Notification
 from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
-from backend.services._avatar_helpers import resolved_for_comment, _user_relationship_safe
+from backend.services._avatar_helpers import _user_relationship_safe, resolved_for_comment
 
 if TYPE_CHECKING:
     pass
@@ -216,7 +216,6 @@ class CommentService:
             select(Comment)
             .options(
                 joinedload(Comment.user),
-                joinedload(Comment.post),
                 joinedload(Comment.parent),
             )
             .where(where_stmt)
@@ -252,7 +251,6 @@ class CommentService:
                 select(Comment, rn)
                 .options(
                     joinedload(Comment.user),
-                    joinedload(Comment.post),
                     joinedload(Comment.parent),
                 )
                 .where(Comment.parent_id.in_(root_ids))
@@ -272,7 +270,6 @@ class CommentService:
                         select(Comment)
                         .options(
                             joinedload(Comment.user),
-                            joinedload(Comment.post),
                             joinedload(Comment.parent),
                         )
                         .where(Comment.parent_id == rid)
@@ -317,7 +314,6 @@ class CommentService:
             select(Comment)
             .options(
                 joinedload(Comment.user),
-                joinedload(Comment.post),
                 joinedload(Comment.parent),
             )
             .where(Comment.id == int(comment_id))
@@ -372,7 +368,6 @@ class CommentService:
             select(Comment)
             .options(
                 joinedload(Comment.user),
-                joinedload(Comment.post),
                 joinedload(Comment.parent),
             )
             .where(where_and)
@@ -498,7 +493,11 @@ class CommentService:
             author_ip=masked,
             author_user_agent=truncate_ua(user_agent, 200),
             qq=(data.qq.strip() if getattr(data, "qq", None) and data.qq.strip() else None),
-            github=(data.github.strip() if getattr(data, "github", None) and data.github.strip() else None),
+            github=(
+                data.github.strip()
+                if getattr(data, "github", None) and data.github.strip()
+                else None
+            ),
             avatar_source=(getattr(data, "avatar_source", "auto") or "auto"),
             content=data.content,  # 存原文，不在 storage 层做 destructive 清洗
             status=status,
@@ -698,7 +697,6 @@ class CommentService:
             select(Comment)
             .options(
                 joinedload(Comment.user),
-                joinedload(Comment.post),
                 joinedload(Comment.parent),
             )
             .where(where_and)
@@ -716,7 +714,6 @@ class CommentService:
             select(Comment)
             .options(
                 joinedload(Comment.user),
-                joinedload(Comment.post),
                 joinedload(Comment.parent),
             )
             .where(Comment.id == int(comment_id))

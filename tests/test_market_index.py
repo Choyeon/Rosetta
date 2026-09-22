@@ -20,8 +20,8 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.core.extensions import _validate_mods_against_schema
 from backend.core.exceptions import AppException
+from backend.core.extensions import _validate_mods_against_schema
 
 BACKEND_ROOT = Path(__file__).resolve().parents[1]
 
@@ -107,7 +107,7 @@ def test_validate_mods_unknown_type_passes_loosely():
 
 
 def test_fetch_market_index_hit_cache(tmp_path: Path):
-    from backend.core.market import CACHE_TTL, fetch_market_index
+    from backend.core.market import fetch_market_index
 
     cache_dir = tmp_path / "market_cache"
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -134,6 +134,7 @@ def test_fetch_market_index_expired_ttl_fetches_remote(tmp_path: Path):
     # 把 mtime 回退至超过 TTL
     old_ts = time.time() - (market_module.CACHE_TTL + 10)
     import os
+
     os.utime(cache_file, (old_ts, old_ts))
 
     fresh = {"items": [{"slug": "new"}], "fresh": True}
@@ -162,8 +163,10 @@ def test_fetch_market_index_expired_ttl_fetches_remote(tmp_path: Path):
 
     asyncio = pytest.importorskip("asyncio")
     import httpx as _httpx_pkg
-    with patch.object(market_module, "CACHE_DIR", cache_dir), patch.object(
-        _httpx_pkg, "AsyncClient", _FakeClient
+
+    with (
+        patch.object(market_module, "CACHE_DIR", cache_dir),
+        patch.object(_httpx_pkg, "AsyncClient", _FakeClient),
     ):
         got = asyncio.run(fetch_market_index("plugins"))
     assert got["items"] == fresh["items"]

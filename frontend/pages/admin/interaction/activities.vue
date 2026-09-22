@@ -1,17 +1,24 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        动态/说说管理
-      </h1>
-      <Button
-        class="rounded-xl shadow-sm"
-        @click="openCreate"
-      >
-        <Plus class="size-4 mr-2" />
-        发说说
-      </Button>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="动态/说说管理"
+      description="发布与管理站点时间线上的短动态"
+      :icon="Activity"
+    >
+      <template #actions>
+        <Button
+          size="sm"
+          class="rounded-xl shadow-sm"
+          @click="openCreate"
+        >
+          <Plus
+            data-icon="inline-start"
+            class="mr-2"
+          />
+          发说说
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <div class="flex flex-wrap items-center gap-2">
       <div
@@ -35,7 +42,7 @@
 
     <div
       v-if="loading"
-      class="space-y-4"
+      class="flex flex-col gap-4"
     >
       <div
         v-for="i in 4"
@@ -49,7 +56,7 @@
             class="absolute left-1/2 top-10 w-px h-16 bg-border -translate-x-1/2"
           />
         </div>
-        <div class="flex-1 space-y-3">
+        <div class="flex flex-col gap-3 flex-1">
           <Skeleton class="h-4 w-40" />
           <Skeleton class="h-20 w-full rounded-xl" />
         </div>
@@ -121,7 +128,7 @@
                   class="h-7 w-7"
                   @click="openEdit(a)"
                 >
-                  <Pencil class="size-3.5" />
+                  <Pencil data-icon="inline-start" />
                 </Button>
                 <Button
                   variant="ghost"
@@ -129,7 +136,7 @@
                   class="h-7 w-7 text-destructive hover:text-destructive"
                   @click="confirmDelete(a.id)"
                 >
-                  <Trash2 class="size-3.5" />
+                  <Trash2 data-icon="inline-start" />
                 </Button>
               </div>
             </div>
@@ -221,10 +228,10 @@
           </DialogDescription>
         </DialogHeader>
 
-        <div class="space-y-4 py-2">
+        <div class="flex flex-col gap-4 py-2">
           <div
             v-if="editingId"
-            class="space-y-2"
+            class="flex flex-col gap-2"
           >
             <Label>类型</Label>
             <Select v-model="form.type">
@@ -243,7 +250,7 @@
             </Select>
           </div>
 
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>内容</Label>
             <Textarea
               v-model="form.content"
@@ -253,7 +260,7 @@
             />
           </div>
 
-          <div class="space-y-2">
+          <div class="flex flex-col gap-2">
             <Label>链接（可选）</Label>
             <Input
               v-model="form.link"
@@ -275,7 +282,8 @@
           >
             <Loader2
               v-if="submitting"
-              class="size-4 mr-2 animate-spin"
+              data-icon="inline-start"
+              class="mr-2 animate-spin"
             />
             {{ editingId ? '保存修改' : '发布' }}
           </Button>
@@ -325,7 +333,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Label } from '~~/components/ui/label'
 import {
   Plus, Info, Pencil, Trash2, ExternalLink, Loader2,
-  List, FileText, Image as ImageIcon, MessageCircle, ThumbsUp, MessageSquareQuote
+  List, FileText, Image as ImageIcon, MessageCircle, ThumbsUp, MessageSquareQuote,
+  Activity
 } from '@lucide/vue'
 import {
   fetchAdminActivities,
@@ -351,7 +360,7 @@ const typeOptions = [
 
 const loading = ref(false)
 const submitting = ref(false)
-const activities = ref<AdminActivity[]>([])
+const activities = shallowRef<AdminActivity[]>([])
 const selectedType = ref('')
 const page = ref(1)
 const pageSize = 20
@@ -416,11 +425,11 @@ function typeText(t: string): string {
 
 function typeBgClass(t: string): string {
   switch (t) {
-    case 'post': return 'bg-info-muted text-info-foreground'
+    case 'post': return 'bg-info-muted text-info-muted-foreground'
     case 'card': return 'bg-primary/10 text-primary'
-    case 'comment': return 'bg-warning-muted text-warning-foreground'
-    case 'like': return 'bg-error-muted text-error-foreground'
-    case 'status': return 'bg-success-muted text-success-foreground'
+    case 'comment': return 'bg-warning-muted text-warning-muted-foreground'
+    case 'like': return 'bg-error-muted text-error-muted-foreground'
+    case 'status': return 'bg-success-muted text-success-muted-foreground'
     default: return 'bg-muted text-muted-foreground'
   }
 }

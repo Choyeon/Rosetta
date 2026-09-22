@@ -15,7 +15,7 @@
   "category": "utility",
   "entry": "plugin.py",
   "entrypoint": "plugin:register",
-  "hooks": ["post.rendered", "post.title"],
+  "hooks": ["the_title", "the_content", "post.rendered"],
   "shortcodes": ["hello"],
   "settings_schema": {
     "$schema": "https://json-schema.org/draft-07/schema",

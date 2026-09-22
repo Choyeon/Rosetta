@@ -19,24 +19,26 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
-from pydantic import BaseModel, Field as PDField
+from fastapi import APIRouter, Query
+from fastapi.responses import FileResponse, RedirectResponse
+from pydantic import BaseModel
+from pydantic import Field as PDField
 
 from backend.core.config import settings
+from backend.core.net_guard import validated_get
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Bing壁纸"])
 
-BING_WP_BASE = "https://www.bing.com"
+BING_WP_BASE = "https://cn.bing.com"
 
 # ========== Bing 图片代理（与前端 proxiedBingUrl 对应）==========
 # Bing 官方域名白名单：CORS 正确、返回 image/*，可以 307 直跳省出口带宽
 _BING_ALLOWED_HOST_SUFFIXES = (
     "bing.com",
     "bing.net",
-    "windows.net",   # Bing 部分 CDN CNAME
+    "windows.net",  # Bing 部分 CDN CNAME
     "microsoft.com",
 )
 
@@ -52,7 +54,7 @@ _UPSTREAM_HEADERS = {
         "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36"
     ),
 }
-_FINAL_FALLBACK = "/favicon/rosetta-256.png"
+_FINAL_FALLBACK = "/images/bing-fallback.svg"
 
 
 def _is_image_mime(ct: str | None) -> bool:
@@ -66,6 +68,7 @@ def _is_bing_host(url: str) -> bool:
     if not host:
         return False
     import ipaddress as _ip
+
     try:
         ip = _ip.ip_address(host)
         # 禁止 SSRF 打内网
@@ -97,8 +100,16 @@ def _get_bing_cache_dir() -> Path:
 def _cached_filepath(url: str) -> Path:
     h = hashlib.sha256(url.encode("utf-8")).hexdigest()
     # 保留 URL 末尾扩展名（若存在）作为本地文件扩展名，帮助静态服务识别 Content-Type
+    # Bing 图片 URL 如 /th?id=xxx_1920x1080.jpg&rf=... 的扩展名在 query 中，需特殊处理
     parsed = urlparse(url)
-    ext = Path(parsed.path).suffix.lower() or ".bin"
+    ext = Path(parsed.path).suffix.lower()
+    if not ext:
+        # 从 query string 中提取（如 id=OHR.xxx_1920x1080.jpg）
+        import re as _re
+
+        m = _re.search(r"\.(jpg|jpeg|png|webp|gif|avif|svg|bmp|ico)(?:&|$)", parsed.query, _re.I)
+        if m:
+            ext = "." + m.group(1).lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".svg", ".bmp", ".ico"}:
         ext = ".bin"
     return _get_bing_cache_dir() / f"{h[:16]}{ext}"
@@ -109,16 +120,19 @@ async def _download_and_cache(url: str, target: Path) -> Path | None:
 
     保持默认 trust_env=True：有 HTTP_PROXY/HTTPS_PROXY 环境变量时自动走代理，
     没有时直连；不强制挂载 transport，避免本地代理未启动时直接报错。
+
+    SSRF 防护（net_guard）：请求前 DNS 解析校验 + 重定向逐跳校验。
     """
     try:
         timeout = httpx.Timeout(8.0, connect=3.0, pool=5.0, read=30.0)
+        # follow_redirects 必须为 False：重定向由 validated_get 逐跳校验后手动跟随
+        # http2 不强制开启：h2 包未安装时会直接抛异常导致下载失败
         async with httpx.AsyncClient(
             timeout=timeout,
-            follow_redirects=True,
-            http2=True,
+            follow_redirects=False,
             trust_env=True,
         ) as client:
-            r = await client.get(url, headers=_UPSTREAM_HEADERS)
+            r = await validated_get(client, url, headers=_UPSTREAM_HEADERS)
             if r.status_code >= 400:
                 return None
             media_type = r.headers.get("content-type") or ""
@@ -126,7 +140,7 @@ async def _download_and_cache(url: str, target: Path) -> Path | None:
                 return None
             # 原子写入：先写 .tmp 再 rename，避免半写文件被读到
             tmp = target.with_suffix(target.suffix + ".tmp")
-            async with tmp.open("wb") as f:
+            with tmp.open("wb") as f:
                 async for chunk in r.aiter_bytes(chunk_size=256 * 1024):
                     await asyncio.to_thread(f.write, chunk)
             tmp.replace(target)
@@ -160,13 +174,10 @@ async def bing_image_proxy(src: str = Query(..., description="base64(原始图�
     if not url.startswith(("http://", "https://")):
         return RedirectResponse(_FINAL_FALLBACK, status_code=307)
 
-    # Bing 官方域名：CORS 正确、返回 image/*，直接 307 让浏览器取 CDN
-    if _is_bing_host(url):
-        resp = RedirectResponse(url, status_code=307)
-        resp.headers["Cache-Control"] = "public, max-age=604800, immutable"
-        return resp
-
-    # 本地缓存命中 → 直接用 FileResponse（Nginx 可 sendfile，不走 Python streaming）
+    # 所有图片（包括 Bing 官方域名）统一走本地下载缓存：
+    # - 避免 307 重定向导致浏览器每次重新解析上游缓存头
+    # - 统一 max-age=2592000 immutable，浏览器重新打开直接命中磁盘缓存
+    # - Nginx sendfile 零拷贝，性能优于流式代理
     cache_fp = _cached_filepath(url)
     if cache_fp.is_file():
         return FileResponse(
@@ -208,7 +219,7 @@ async def bing_today_image():
     try:
         async with httpx.AsyncClient(timeout=8) as client:
             r = await client.get(
-                "https://www.bing.com/HPImageArchive.aspx",
+                "https://cn.bing.com/HPImageArchive.aspx",
                 params={"format": "js", "idx": 0, "n": 1, "mkt": "zh-CN"},
             )
             r.raise_for_status()
@@ -252,7 +263,7 @@ async def bing_archive(days: int = Query(7, ge=1, le=14, description="查询的�
         async with httpx.AsyncClient(timeout=10) as client:
             for idx in range(days):
                 r = await client.get(
-                    "https://www.bing.com/HPImageArchive.aspx",
+                    "https://cn.bing.com/HPImageArchive.aspx",
                     params={"format": "js", "idx": idx, "n": 1, "mkt": "zh-CN"},
                 )
                 if r.status_code != 200:

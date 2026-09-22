@@ -77,15 +77,25 @@ class PhotoCreate(PhotoBase):
 
     album_id: int = Field(..., ge=1, description="所属相册 ID")
     # 前端旧字段名：original_url，自动映射到 url
-    original_url: str | None = Field(None, min_length=1, max_length=500, description="照片 URL（兼容字段名，优先使用 url）")
-    media_id: int | None = Field(None, ge=1, description="关联的媒体库 ID（透传保留，暂不写入 photos 表）")
-    thumbnail_url: str | None = Field(None, max_length=500, description="缩略图 URL（透传保留，暂不写入 photos 表）")
+    original_url: str | None = Field(
+        None, min_length=1, max_length=500, description="照片 URL（兼容字段名，优先使用 url）"
+    )
+    media_id: int | None = Field(
+        None, ge=1, description="关联的媒体库 ID（透传保留，暂不写入 photos 表）"
+    )
+    thumbnail_url: str | None = Field(
+        None, max_length=500, description="缩略图 URL（透传保留，暂不写入 photos 表）"
+    )
 
     @model_validator(mode="before")
     @classmethod
     def _normalize_url(cls, data: object) -> object:
         if isinstance(data, dict):
-            if not data.get("url") and isinstance(data.get("original_url"), str) and data["original_url"]:
+            if (
+                not data.get("url")
+                and isinstance(data.get("original_url"), str)
+                and data["original_url"]
+            ):
                 data = {**data, "url": data["original_url"]}
         return data
 
@@ -96,7 +106,9 @@ class PhotoUpdate(BaseModel):
     title: str | None = Field(None, max_length=200)
     description: str | None = Field(None, max_length=2000)
     url: str | None = Field(None, min_length=1, max_length=500)
-    original_url: str | None = Field(None, min_length=1, max_length=500, description="兼容字段，会覆盖 url")
+    original_url: str | None = Field(
+        None, min_length=1, max_length=500, description="兼容字段，会覆盖 url"
+    )
     sort_order: int | None = Field(None, ge=0)
     album_id: int | None = Field(None, ge=1)
     thumbnail_url: str | None = Field(None, max_length=500)
@@ -106,7 +118,11 @@ class PhotoUpdate(BaseModel):
     @classmethod
     def _normalize_url_update(cls, data: object) -> object:
         if isinstance(data, dict):
-            if not data.get("url") and isinstance(data.get("original_url"), str) and data["original_url"]:
+            if (
+                not data.get("url")
+                and isinstance(data.get("original_url"), str)
+                and data["original_url"]
+            ):
                 data = {**data, "url": data["original_url"]}
         return data
 

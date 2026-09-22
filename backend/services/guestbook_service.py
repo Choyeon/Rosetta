@@ -1,4 +1,4 @@
-﻿"""
+"""
 Rosetta 留言板服务模块
 
 封装留言板 CRUD、审核、置顶/精华切换、点赞、敏感词、频控校验、通知等业务逻辑。
@@ -16,6 +16,7 @@ from typing import Any
 
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import joinedload
 
 from backend.core.config import settings
 from backend.core.moderation import moderate_text
@@ -79,10 +80,10 @@ def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
 def _entry_to_response(e: GuestbookEntry) -> GuestbookEntryResponse:
     """把 ORM GuestbookEntry 转成对外响应（填充 author_avatar + title）"""
     from backend.schemas import UserTitleResponse
-    
+
     email = e.author_email
     avatar = gravatar_avatar(email, e.author_name)
-    
+
     # 获取用户头衔
     title_data = None
     if e.user and e.user.title:
@@ -93,7 +94,7 @@ def _entry_to_response(e: GuestbookEntry) -> GuestbookEntryResponse:
             icon=e.user.title.icon,
             description=e.user.title.description,
         )
-    
+
     return GuestbookEntryResponse(
         id=e.id,
         user_id=e.user_id,
@@ -180,6 +181,7 @@ class GuestbookService:
         offset = max(0, (page - 1) * page_size)
         list_stmt = (
             select(GuestbookEntry)
+            .options(joinedload(GuestbookEntry.user).joinedload(User.title))
             .where(where_stmt)
             .order_by(
                 desc(GuestbookEntry.is_pinned),
@@ -190,11 +192,25 @@ class GuestbookService:
             .offset(offset)
         )
         list_res = await db.execute(list_stmt)
-        items: list[GuestbookEntry] = list(list_res.scalars().all())
+        items: list[GuestbookEntry] = list(list_res.scalars().unique().all())
 
         return [_entry_to_response(e) for e in items], total
 
     # ---------- 创建留言 ----------
+
+    @staticmethod
+    async def _refetch_with_relations(db: AsyncSession, entry_id: int) -> GuestbookEntry:
+        """针对单条 GuestbookEntry 附带 user + user.title 关系的预取，防止
+        _entry_to_response() 在非 greenlet 同步上下文中触发懒加载导致
+        MissingGreenlet (sqlalchemy XD2S) HTTP 500。
+        """
+        stmt = (
+            select(GuestbookEntry)
+            .options(joinedload(GuestbookEntry.user).joinedload(User.title))
+            .where(GuestbookEntry.id == int(entry_id))
+        )
+        r = await db.execute(stmt)
+        return r.scalar_one()
 
     @staticmethod
     async def check_same_ip_duplicate(
@@ -278,7 +294,11 @@ class GuestbookService:
             author_ip=masked,
             author_user_agent=truncate_ua(user_agent, 200),
             qq=(data.qq.strip() if getattr(data, "qq", None) and data.qq.strip() else None),
-            github=(data.github.strip() if getattr(data, "github", None) and data.github.strip() else None),
+            github=(
+                data.github.strip()
+                if getattr(data, "github", None) and data.github.strip()
+                else None
+            ),
             avatar_source=(getattr(data, "author_avatar_source", "auto") or "auto"),
             content=data.content,
             status=status,
@@ -304,7 +324,8 @@ class GuestbookService:
         except Exception:
             logger.exception("schedule guestbook notification task failed")
 
-        return _entry_to_response(obj)
+        obj_loaded = await GuestbookService._refetch_with_relations(db, obj.id)
+        return _entry_to_response(obj_loaded)
 
     @staticmethod
     async def _fire_notifications(
@@ -420,6 +441,7 @@ class GuestbookService:
         offset = max(0, (page - 1) * page_size)
         stmt = (
             select(GuestbookEntry)
+            .options(joinedload(GuestbookEntry.user).joinedload(User.title))
             .where(where_and)
             .order_by(
                 desc(GuestbookEntry.is_pinned),
@@ -430,7 +452,7 @@ class GuestbookService:
             .offset(offset)
         )
         res = await db.execute(stmt)
-        items = [_entry_to_response(c) for c in res.scalars().all()]
+        items = [_entry_to_response(c) for c in res.scalars().unique().all()]
         return items, total
 
     @staticmethod
@@ -444,7 +466,7 @@ class GuestbookService:
             raise ValueError("GUESTBOOK_ENTRY_NOT_FOUND")
         e.status = new_status
         await db.flush()
-        await db.refresh(e)
+        e = await GuestbookService._refetch_with_relations(db, e.id)
         return _entry_to_response(e)
 
     @staticmethod
@@ -456,7 +478,7 @@ class GuestbookService:
             raise ValueError("GUESTBOOK_ENTRY_NOT_FOUND")
         e.is_pinned = not e.is_pinned
         await db.flush()
-        await db.refresh(e)
+        e = await GuestbookService._refetch_with_relations(db, e.id)
         return _entry_to_response(e)
 
     @staticmethod
@@ -468,7 +490,7 @@ class GuestbookService:
             raise ValueError("GUESTBOOK_ENTRY_NOT_FOUND")
         e.is_featured = not e.is_featured
         await db.flush()
-        await db.refresh(e)
+        e = await GuestbookService._refetch_with_relations(db, e.id)
         return _entry_to_response(e)
 
     @staticmethod

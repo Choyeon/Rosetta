@@ -1,4 +1,5 @@
 """UserResponse 构建 helper：所有给前端的用户响应统一走这里 → resolved_avatar_url。"""
+
 from __future__ import annotations
 
 from typing import TypeVar

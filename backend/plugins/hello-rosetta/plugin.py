@@ -1,13 +1,23 @@
-"""Hello Rosetta 示例插件。
+"""Hello Rosetta —— Rosetta 示例插件（规范版）。
 
-覆盖三类扩展点：
-1. Action 钩子 ``post.rendered`` — 在文章详情页 HTML 尾部插入签名。
-2. Filter 钩子 ``post.title`` — 给文章标题统一追加后缀 ``· hello``。
-3. Shortcode ``[hello to="World"]`` — 输出问候语 HTML。
+演示插件平台四类扩展点，全部遵循 WordPress 风格的
+**「接收一个值 → 返回一个值」纯函数约定**（不依赖 ORM、不修改传入对象）：
 
-两种注册模式兼容：
-- ``async def register(ctx)``  —— 新 ctx 风格（计划 D 描述）；
-- ``def register(app, bus)`` —— 现有的 plugin_loader 同步风格。
+1. Filter ``the_title``   —— 给文章标题幂等追加后缀 ``· hello``；
+2. Filter ``the_content`` —— 在正文末尾幂等插入插件署名；
+3. Action ``post.rendered`` —— 渲染完成后的通知型钩子（此处仅记日志，演示副作用）；
+4. Shortcode ``[hello to="World"]`` —— 在正文里输出问候语 HTML。
+
+注册入口：
+
+- ``register(ctx)``       —— 新 PluginContext 风格；
+- ``register(app, bus)``  —— 历史 (app, bus) 风格。
+
+两种调用等价。所有钩子都在 ``register()`` 内以命令式 API 注册，并做
+「先按引用移除再注册」，因此：
+
+- 重复调用（双加载路径 / 测试 reset 后重注册）幂等，不会叠加重复回调；
+- 插件被停用时由 hooks 引擎按 ``plugin=slug`` 整体摘除。
 """
 
 from __future__ import annotations
@@ -20,163 +30,87 @@ logger = logging.getLogger("hello_rosetta")
 
 PLUGIN_SLUG = "hello-rosetta"
 
-# ── 新风格 ctx 注册 (async) ─────────────────────────────────────────────────
+# 标题后缀；回调据此判断是否已追加（幂等）。
+TITLE_SUFFIX = "  · hello"
+
+# 署名块的唯一锚点，用于判重。
+SIGNATURE_ANCHOR = "Hello from <b>hello-rosetta</b>"
 
 
-async def register_via_ctx(ctx: Any) -> None:
-    """使用新的 PluginContext（extensions.py 内提供）注册。
+def _signature_html() -> str:
+    """构造正文末尾的插件署名 HTML（仅使用设计变量，不注入自定义样式体系）。"""
+    return (
+        '<hr class="my-4" style="border-color:hsl(var(--border)/0.6)"/>'
+        '<p class="text-sm text-muted-foreground">'
+        "— Hello from <b>hello-rosetta</b> 示例插件 —"
+        "</p>"
+    )
 
-    ctx 具备：add_action / add_filter / register_shortcode / manifest / settings 等。
+
+# ── Filter / Action 处理器（模块级单例函数，便于按引用幂等注册） ───────────
+
+
+def hello_title_filter(title: Any, post: Any = None, context: Any = None, **_kw: Any) -> Any:
+    """``the_title``：标题幂等追加后缀。"""
+    if not isinstance(title, str) or title.endswith(TITLE_SUFFIX):
+        return title
+    return title + TITLE_SUFFIX
+
+
+def hello_content_filter(content: Any, post: Any = None, context: Any = None, **_kw: Any) -> Any:
+    """``the_content``：正文末尾幂等插入署名。"""
+    if not isinstance(content, str):
+        return content
+    if SIGNATURE_ANCHOR in content:
+        return content
+    return content + _signature_html()
+
+
+def hello_rendered_action(
+    post: Any = None,
+    title: Any = None,
+    content: Any = None,
+    **_kw: Any,
+) -> None:
+    """``post.rendered``：通知型 action，演示渲染完成后的副作用（此处仅 debug 日志）。"""
+    logger.debug(
+        "hello-rosetta: 一篇内容已完成渲染 slug=%s title=%r",
+        getattr(post, "slug", None),
+        title,
+    )
+
+
+def hello_shortcode(to: Any = "World", **_kw: Any) -> str:
+    """``[hello]`` 短代码：输出问候语；对参数做 HTML 转义防 XSS。"""
+    safe_to = _html.escape(str(to))
+    return f'<p class="hello-rosetta-greeting">Hello, <b>{safe_to}</b>!</p>'
+
+
+# ── 注册入口 ────────────────────────────────────────────────────────────────
+
+
+def register(*args: Any, **kwargs: Any) -> None:
+    """统一注册入口：兼容 ``register(ctx)`` 与 ``register(app, bus)``。
+
+    本插件不直接需要 app / bus —— 钩子通过全局 hooks / shortcodes 引擎注册，
+    因此忽略传入参数。注册采用「先移除再添加」，保证任意调用次数下每个钩子
+    都只有一个处理器。
     """
-    # 1) Action：post.rendered — 在文章内容末尾插入签名
-    def _append_signature(post: Any = None, **_kw: Any) -> None:
-        if post is None:
-            return
-        signature = (
-            '<hr class="my-4" style="border-color:hsl(var(--border)/0.6)"/>'
-            '<p class="text-sm text-muted-foreground">'
-            "— Hello from <b>hello-rosetta</b> 示例插件 —"
-            "</p>"
-        )
-        existing = getattr(post, "content_html", "") or ""
-        if signature not in existing:
-            try:
-                post.content_html = existing + signature
-            except Exception:
-                pass
+    from backend.core.hooks import add_action, add_filter, remove_action, remove_filter
+    from backend.core.shortcodes import register_shortcode
 
-    ctx_add_action = getattr(ctx, "add_action", None)
-    if callable(ctx_add_action):
-        ctx_add_action("post.rendered", _append_signature)
-    else:  # 兼容旧 ctx 没有 add_action —— 走全局 hooks.py
-        from backend.core.hooks import register_action
+    # Filter：the_title（默认优先级）/ the_content（靠后，让其它转换先完成）
+    remove_filter("the_title", hello_title_filter)
+    add_filter("the_title", hello_title_filter, priority=10, plugin=PLUGIN_SLUG)
 
-        register_action("post.rendered", plugin=PLUGIN_SLUG)(_append_signature)
+    remove_filter("the_content", hello_content_filter)
+    add_filter("the_content", hello_content_filter, priority=20, plugin=PLUGIN_SLUG)
 
-    # 2) Filter：post.title — 追加后缀
-    def _title_suffix(title: str, _post: Any = None, **_kw: Any) -> str:
-        suffix = "  · hello"
-        if not isinstance(title, str):
-            return title
-        if title.endswith(suffix):
-            return title
-        return title + suffix
+    # Action：post.rendered（通知）
+    remove_action("post.rendered", hello_rendered_action)
+    add_action("post.rendered", hello_rendered_action, priority=10, plugin=PLUGIN_SLUG)
 
-    ctx_add_filter = getattr(ctx, "add_filter", None)
-    if callable(ctx_add_filter):
-        ctx_add_filter("post.title", _title_suffix)
-    else:
-        from backend.core.hooks import register_filter
+    # Shortcode：[hello]（dict 覆盖，天然幂等）
+    register_shortcode("hello", hello_shortcode, plugin=PLUGIN_SLUG)
 
-        register_filter("post.title", plugin=PLUGIN_SLUG)(_title_suffix)
-
-    # 3) Shortcode：[hello to="World"/] —— <p>Hello, <b>World</b>!</p>
-    def _shortcode_hello(to: str = "World", **_kw: Any) -> str:
-        safe_to = _html.escape(str(to))
-        return f'<p class="hello-rosetta-greeting">Hello, <b>{safe_to}</b>!</p>'
-
-    ctx_register_sc = getattr(ctx, "register_shortcode", None)
-    if callable(ctx_register_sc):
-        ctx_register_sc("hello", _shortcode_hello)
-    else:  # 回退：走 core.shortcodes 直接注册
-        try:
-            from backend.core.shortcodes import register_shortcode
-
-            register_shortcode("hello", _shortcode_hello, plugin=PLUGIN_SLUG)
-        except Exception as exc:  # pragma: no cover - 防御性
-            logger.warning("hello-rosetta: shortcode 注册失败: %s", exc)
-
-
-# ── 旧风格 (app, bus) 注册 —— 当前 plugin_loader 实际使用 ──────────────────
-
-
-def register_via_bus(app: Any = None, bus: Any = None) -> None:
-    """与 plugin_loader 的 ``register(app, bus)`` 签名兼容。"""
-    from backend.core.hooks import register_action, register_filter
-
-    # Action
-    @register_action("post.rendered", plugin=PLUGIN_SLUG)
-    def _append(post: Any = None, **_kw: Any) -> None:
-        if post is None:
-            return
-        signature = (
-            '<hr class="my-4" style="border-color:hsl(var(--border)/0.6)"/>'
-            '<p class="text-sm text-muted-foreground">'
-            "— Hello from <b>hello-rosetta</b> 示例插件 —"
-            "</p>"
-        )
-        existing = getattr(post, "content_html", "") or ""
-        if signature not in existing:
-            try:
-                post.content_html = existing + signature
-            except Exception:
-                pass
-
-    # Filter
-    @register_filter("post.title", plugin=PLUGIN_SLUG)
-    def _suffix(title: str, **_kw: Any) -> str:
-        suffix = "  · hello"
-        if not isinstance(title, str):
-            return title
-        if title.endswith(suffix):
-            return title
-        return title + suffix
-
-    # Shortcode — 直接注册到 core.shortcodes
-    try:
-        from backend.core.shortcodes import register_shortcode
-
-        def _hello(to: str = "World", **_kw: Any) -> str:
-            safe_to = _html.escape(str(to))
-            return f'<p class="hello-rosetta-greeting">Hello, <b>{safe_to}</b>!</p>'
-
-        register_shortcode("hello", _hello, plugin=PLUGIN_SLUG)
-    except Exception as exc:  # pragma: no cover
-        logger.warning("hello-rosetta: shortcode 注册失败: %s", exc)
-
-    # 同时注册到 bus (plugin_loader 传过来的那个)
-    if bus is not None and hasattr(bus, "add_filter"):
-        def _bus_suffix(title: str, **_kw: Any) -> str:
-            suffix = "  · hello"
-            if not isinstance(title, str) or title.endswith(suffix):
-                return title
-            return title + suffix
-        try:
-            bus.add_filter("post.title", _bus_suffix)
-        except Exception:
-            pass
-
-    logger.info("hello-rosetta plugin registered (app=%s bus=%s)",
-                app is not None, bus is not None)
-
-
-# 暴露给 plugin_loader 的入口：优先识别是否以 ctx 调用
-def register(*args: Any, **kwargs: Any) -> Any:
-    """统一入口（同步/异步双路径，返回值匹配调用方）。
-
-    - 新风格：``await register(ctx)``  → 返回 awaitable（coroutine），由
-      PluginManager / PluginLoader 的 ``await register(...)`` 执行。
-    - 旧风格：``register(app, bus)`` → 直接返回 None，同步完成。
-
-    注意：**不** 主动包 asyncio.Task，避免调用方做
-    ``if hasattr(result, '__await__'): await result`` 时出现
-    "a coroutine was expected, got <Task …>" 类型错误。
-    """
-
-    # —— 旧风格：register(app, bus)，显式关键字或 2 个位置参数 ——
-    if "app" in kwargs or "bus" in kwargs or len(args) >= 2:
-        app = kwargs.get("app") or (args[0] if len(args) >= 1 else None)
-        bus = kwargs.get("bus") or (args[1] if len(args) >= 2 else None)
-        return register_via_bus(app, bus)
-
-    # —— 新风格：register(ctx)（1 个位置参数 / ctx 关键字） ——
-    ctx_like: Any | None = kwargs.get("ctx")
-    if ctx_like is None and args:
-        ctx_like = args[0]
-
-    if ctx_like is not None:
-        # 返回原生 coroutine：调用方 await 即可。
-        return register_via_ctx(ctx_like)
-
-    # 兜底：无参数 → 退化为旧风格空参数调用（同步）。
-    return register_via_bus(None, None)
+    logger.debug("hello-rosetta 已注册扩展点（args=%d）", len(args))

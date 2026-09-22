@@ -70,7 +70,7 @@ async def require_csrf(
 
     csrf_origins = list(getattr(settings, "csrf_origins", None) or settings.cors_origins)
 
-    origin = request.headers.get("Origin") or request.headers.get("X-Forwarded-For")
+    origin = request.headers.get("Origin")
     if origin:
         if not _origin_in_whitelist(origin, csrf_origins):
             raise HTTPException(

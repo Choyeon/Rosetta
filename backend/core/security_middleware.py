@@ -23,13 +23,23 @@ CSP_FONT_SRCS = "'self' data: https://fonts.gstatic.com https://cdn.jsdelivr.net
 CSP_MEDIA_SRCS = "'self' blob: data:"
 CSP_CONNECT_SRCS = "'self' https: wss: blob:"
 CSP_STYLE_SRCS = "'self' 'unsafe-inline' https://cdn.jsdelivr.net https://fonts.googleapis.com"
-CSP_SCRIPT_BASE = (
-    "'self' https://cdn.jsdelivr.net https://www.googletagmanager.com https://cdnjs.cloudflare.com"
-)
+
+# FastAPI 内置文档（Swagger UI / ReDoc）使用内联脚本，无法注入 nonce，
+# 这些端点仅 debug 模式开放，对其放宽 script-src 允许 unsafe-inline。
+DOCS_PATHS = ("/docs", "/redoc", "/openapi.json")
 
 
-def _build_csp(nonce: str) -> str:
-    script_src = f"'self' 'nonce-{nonce}' https://cdn.jsdelivr.net https://www.googletagmanager.com https://cdnjs.cloudflare.com"
+def _build_csp(nonce: str, allow_inline_scripts: bool = False) -> str:
+    if allow_inline_scripts:
+        script_src = (
+            "'self' 'unsafe-inline' 'unsafe-eval' "
+            "https://cdn.jsdelivr.net https://www.googletagmanager.com https://cdnjs.cloudflare.com"
+        )
+    else:
+        script_src = (
+            f"'self' 'nonce-{nonce}' "
+            "https://cdn.jsdelivr.net https://www.googletagmanager.com https://cdnjs.cloudflare.com"
+        )
     parts = [
         "default-src 'self'",
         f"script-src {script_src}",
@@ -63,7 +73,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
 
         response = await call_next(request)
 
-        csp_value = _build_csp(nonce)
+        # FastAPI 文档页（Swagger UI / ReDoc）依赖内联脚本，无法使用 nonce，
+        # 对这些路径放宽 script-src；其余路径保持严格 nonce 策略。
+        path = request.url.path
+        is_docs = any(path == p or path.startswith(p + "/") for p in DOCS_PATHS)
+        csp_value = _build_csp(nonce, allow_inline_scripts=is_docs)
         response.headers["Content-Security-Policy"] = csp_value
         response.headers["X-Content-Type-Options"] = NOSNIFF
         response.headers["Referrer-Policy"] = REFERRER_POLICY

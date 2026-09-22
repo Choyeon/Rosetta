@@ -1,10 +1,10 @@
 <template>
-  <div class="space-y-6">
-    <div class="flex items-center justify-between">
-      <h1 class="text-2xl font-bold">
-        评论管理
-      </h1>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="评论管理"
+      description="审核、回复与管理全站文章评论"
+      :icon="MessageSquare"
+    />
 
     <Tabs
       v-model="activeTab"
@@ -64,6 +64,7 @@
 
 <script setup lang="ts">
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import { MessageSquare } from '@lucide/vue'
 import CommentListContent from './_parts/CommentListContent.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })

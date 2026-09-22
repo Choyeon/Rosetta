@@ -1,20 +1,10 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center gap-3">
-      <div
-        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-      >
-        <Gauge class="size-5 text-white" />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">
-          性能监控
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          实时观察接口响应、慢请求与错误趋势
-        </p>
-      </div>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="性能监控"
+      description="实时观察接口响应、慢请求与错误趋势"
+      :icon="Gauge"
+    />
 
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <StatCard
@@ -92,7 +82,7 @@
         class="mt-6"
       >
         <AdminCard>
-          <div class="space-y-1.5 mb-4">
+          <div class="flex flex-col gap-1 .5 mb-4">
             <h3 class="text-base font-semibold">
               慢路径 Top 排名
             </h3>
@@ -103,7 +93,7 @@
           <div class="p-0">
             <div
               v-if="summaryLoading"
-              class="p-5 space-y-3"
+              class="flex flex-col gap-3 p-5"
             >
               <Skeleton
                 v-for="i in 6"
@@ -135,7 +125,7 @@
               >
                 <div
                   class="size-8 rounded-lg flex items-center justify-center font-bold text-xs shrink-0"
-                  :class="idx < 3 ? 'bg-warning-muted text-warning-foreground' : 'bg-muted text-muted-foreground'"
+                  :class="idx < 3 ? 'bg-warning-muted text-warning-muted-foreground' : 'bg-muted text-muted-foreground'"
                 >
                   #{{ idx + 1 }}
                 </div>
@@ -182,7 +172,7 @@
           <div class="p-0">
             <div
               v-if="slowLoading"
-              class="p-6 space-y-3"
+              class="flex flex-col gap-3 p-6"
             >
               <Skeleton
                 v-for="i in 6"
@@ -287,7 +277,7 @@
                     :disabled="slowPage <= 1"
                     @click="slowPage--; loadSlow()"
                   >
-                    <ChevronLeft class="size-4" />
+                    <ChevronLeft data-icon="inline-start" />
                   </Button>
                   <Button
                     variant="outline"
@@ -296,7 +286,7 @@
                     :disabled="slowPage >= slowTotalPages"
                     @click="slowPage++; loadSlow()"
                   >
-                    <ChevronRight class="size-4" />
+                    <ChevronRight data-icon="inline-start" />
                   </Button>
                 </div>
               </div>
@@ -310,7 +300,7 @@
         class="mt-6"
       >
         <AdminCard>
-          <div class="space-y-1.5 mb-4">
+          <div class="flex flex-col gap-1 .5 mb-4">
             <h3 class="text-base font-semibold">
               近 30 天错误率趋势
             </h3>
@@ -323,7 +313,7 @@
               class="h-72 rounded-2xl relative overflow-hidden bg-primary/5"
             >
               <svg
-                class="absolute inset-0 w-full h-full opacity-30"
+                class="absolute inset-0 size-full opacity-30"
                 preserveAspectRatio="none"
                 viewBox="0 0 100 40"
               >
@@ -337,15 +327,15 @@
                   >
                     <stop
                       offset="0%"
-                      stop-color="#0EA5E9"
+                      stop-color="hsl(var(--primary))"
                     />
                     <stop
                       offset="50%"
-                      stop-color="#8B5CF6"
+                      stop-color="hsl(var(--info))"
                     />
                     <stop
                       offset="100%"
-                      stop-color="#0EA5A9"
+                      stop-color="hsl(var(--success))"
                     />
                   </linearGradient>
                   <linearGradient
@@ -357,12 +347,12 @@
                   >
                     <stop
                       offset="0%"
-                      stop-color="#0EA5E9"
+                      stop-color="hsl(var(--primary))"
                       stop-opacity="0.3"
                     />
                     <stop
                       offset="100%"
-                      stop-color="#0EA5E9"
+                      stop-color="hsl(var(--primary))"
                       stop-opacity="0"
                     />
                   </linearGradient>
@@ -451,11 +441,11 @@ const StatCard = defineComponent({
   },
   setup(props) {
     const colorClasses: Record<string, string> = {
-      info: 'bg-info-muted text-info-foreground',
-      error: 'bg-error-muted text-error-foreground',
+      info: 'bg-info-muted text-info-muted-foreground',
+      error: 'bg-error-muted text-error-muted-foreground',
       primary: 'bg-primary-muted text-primary-foreground',
-      warning: 'bg-warning-muted text-warning-foreground',
-      danger: 'bg-error-muted text-error-foreground'
+      warning: 'bg-warning-muted text-warning-muted-foreground',
+      danger: 'bg-error-muted text-error-muted-foreground'
     }
     return () => {
       const display = props.format ? props.format(props.value) : String(props.value ?? '-')
@@ -488,17 +478,17 @@ const summary = reactive<AdminPerformanceSummary>({
   top_slow_paths: []
 })
 
-const slowList = ref<AdminSlowRequest[]>([])
+const slowList = shallowRef<AdminSlowRequest[]>([])
 const slowPage = ref(1)
 const slowTotal = ref(0)
 const slowTotalPages = ref(1)
 
 function methodClass(m: string): string {
   const up = m.toUpperCase()
-  if (up === 'GET') return 'bg-success-muted text-success-foreground border-transparent'
-  if (up === 'POST') return 'bg-warning-muted text-warning-foreground border-transparent'
-  if (up === 'PUT') return 'bg-info-muted text-info-foreground border-transparent'
-  if (up === 'DELETE') return 'bg-error-muted text-error-foreground border-transparent'
+  if (up === 'GET') return 'bg-success-muted text-success-muted-foreground border-transparent'
+  if (up === 'POST') return 'bg-warning-muted text-warning-muted-foreground border-transparent'
+  if (up === 'PUT') return 'bg-info-muted text-info-muted-foreground border-transparent'
+  if (up === 'DELETE') return 'bg-error-muted text-error-muted-foreground border-transparent'
   return 'bg-muted text-muted-foreground border-transparent'
 }
 

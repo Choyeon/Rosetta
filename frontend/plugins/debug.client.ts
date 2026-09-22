@@ -21,7 +21,32 @@ export default defineNuxtPlugin((nuxtApp) => {
     return noFile && noLine && noCol && noError
   }
 
+  /**
+   * 判断是不是 Hydration 级联错误（SSR mismatch → Vue 拆 SSR DOM → 子组件 instance detach
+   * → instance.refs === null → TypeError reading refs）。
+   *
+   * 根因修复见 02-hydration-safety.global.client：
+   *   1. 捕获后切换全局 __safetyRootKey → 整页 remount 为纯 CSR（不会再 detach）。
+   *   2. 这里不再重复 console.error / toast，避免用户看到 4 条 refs null 红日志。
+   */
+  function isHydrationCascade(err: unknown): boolean {
+    const s = (() => {
+      if (err instanceof Error) return err.message
+      if (err == null) return ''
+      if (typeof (err as { message?: unknown }).message === 'string') {
+        return (err as { message: string }).message
+      }
+      return String(err)
+    })()
+    if (!s) return false
+    const lc = s.toLowerCase()
+    if (lc.includes('hydration') || lc.includes('mismatch')) return true
+    if (s.includes('reading refs') || (lc.includes('null') && lc.includes('refs'))) return true
+    return false
+  }
+
   const persist = (label: string, err: unknown, extra?: Record<string, unknown>) => {
+    if (isHydrationCascade(err)) return
     const errObj = err as { stack?: string, message?: string }
     const rec = {
       label,
@@ -48,6 +73,10 @@ export default defineNuxtPlugin((nuxtApp) => {
     // 同样把 Promise 形态的 "Script error." 空壳过滤掉
     const msg = typeof reason === 'string' ? reason : (reason as { message?: unknown } | null)?.message
     if (isForeignScriptError(msg, '', 0, 0, reason == null ? null : reason)) return
+    if (isHydrationCascade(reason)) {
+      e.preventDefault()
+      return
+    }
     persist('UNHANDLED REJECTION', reason)
   })
 })

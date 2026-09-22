@@ -1,20 +1,10 @@
 <template>
-  <div class="p-6 space-y-6">
-    <div class="flex items-center gap-3">
-      <div
-        class="size-10 rounded-xl flex items-center justify-center bg-primary text-primary-foreground"
-      >
-        <Search class="size-5 text-white" />
-      </div>
-      <div>
-        <h1 class="text-xl font-bold tracking-tight">
-          SEO 工具
-        </h1>
-        <p class="text-sm text-muted-foreground">
-          死链检查、质量评分与站点地图
-        </p>
-      </div>
-    </div>
+  <div class="flex flex-col gap-5">
+    <AdminPageHeader
+      title="SEO 工具"
+      description="死链检查、质量评分与站点地图"
+      :icon="Search"
+    />
 
     <Tabs
       v-model="activeTab"
@@ -46,11 +36,11 @@
 
       <TabsContent
         value="sitemap"
-        class="mt-6 space-y-5"
+        class="flex flex-col gap-5 mt-6"
       >
         <AdminCard>
-          <div class="flex-row items-center gap-3 space-y-0 flex">
-            <div class="size-9 rounded-lg bg-info-muted flex items-center justify-center text-info-foreground">
+          <div class="flex-col gap-0 flex-row items-center gap-3 flex">
+            <div class="size-9 rounded-lg bg-info-muted flex items-center justify-center text-info-muted-foreground">
               <Activity class="size-5" />
             </div>
             <div class="flex-1">
@@ -64,13 +54,13 @@
             <Badge
               v-if="sitemapStatus"
               :variant="sitemapStatus.isStale ? 'secondary' : 'default'"
-              :class="!sitemapStatus.isStale ? 'bg-success-muted text-success-foreground border-transparent' : ''"
+              :class="!sitemapStatus.isStale ? 'bg-success-muted text-success-muted-foreground border-transparent' : ''"
             >
               {{ sitemapStatus.isStale ? '可能过期' : '最新' }}
             </Badge>
           </div>
           <div class="grid md:grid-cols-3 gap-4">
-            <div class="rounded-xl border border-border p-4 bg-muted/20 space-y-1">
+            <div class="flex flex-col gap-1 rounded-xl border border-border p-4 bg-muted/20">
               <p class="text-xs text-muted-foreground uppercase tracking-wide">
                 上次生成时间
               </p>
@@ -78,7 +68,7 @@
                 {{ sitemapStatus?.generatedAt || '未生成' }}
               </p>
             </div>
-            <div class="rounded-xl border border-border p-4 bg-muted/20 space-y-1">
+            <div class="flex flex-col gap-1 rounded-xl border border-border p-4 bg-muted/20">
               <p class="text-xs text-muted-foreground uppercase tracking-wide">
                 包含 URL 数量
               </p>
@@ -86,7 +76,7 @@
                 {{ sitemapStatus?.urlCount ?? '-' }}
               </p>
             </div>
-            <div class="rounded-xl border border-border p-4 bg-muted/20 space-y-1">
+            <div class="flex flex-col gap-1 rounded-xl border border-border p-4 bg-muted/20">
               <p class="text-xs text-muted-foreground uppercase tracking-wide">
                 是否过期
               </p>
@@ -101,7 +91,7 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="pt-6 space-y-5">
+          <div class="flex flex-col gap-5 pt-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 class="font-semibold">
@@ -118,11 +108,12 @@
               >
                 <Loader2
                   v-if="regenerating"
-                  class="size-4 animate-spin"
+                  data-icon="inline-start"
+                  class="animate-spin"
                 />
                 <RefreshCw
                   v-else
-                  class="size-4"
+                  data-icon="inline-start"
                 />
                 {{ regenerating ? '正在生成...' : '重新生成 sitemap.xml + robots.txt' }}
               </Button>
@@ -133,13 +124,13 @@
                 href="/sitemap.xml"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="group p-4 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 hover:border-[#0EA5E9]/40 transition-all flex items-center gap-4"
+                class="group p-4 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all flex items-center gap-4"
               >
                 <div class="size-11 rounded-xl bg-primary-muted text-primary-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                   <FileCode class="size-5" />
                 </div>
                 <div>
-                  <div class="font-semibold group-hover:text-[#0EA5E9] transition-colors">/sitemap.xml</div>
+                  <div class="font-semibold group-hover:text-primary transition-colors">/sitemap.xml</div>
                   <div class="text-sm text-muted-foreground">站点地图索引</div>
                 </div>
                 <ExternalLink class="size-4 ml-auto text-muted-foreground" />
@@ -148,13 +139,13 @@
                 href="/robots.txt"
                 target="_blank"
                 rel="noopener noreferrer"
-                class="group p-4 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 hover:border-[#0EA5E9]/40 transition-all flex items-center gap-4"
+                class="group p-4 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all flex items-center gap-4"
               >
-                <div class="size-11 rounded-xl bg-info-muted text-info-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <div class="size-11 rounded-xl bg-info-muted text-info-muted-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                   <Bot class="size-5" />
                 </div>
                 <div>
-                  <div class="font-semibold group-hover:text-[#0EA5E9] transition-colors">/robots.txt</div>
+                  <div class="font-semibold group-hover:text-primary transition-colors">/robots.txt</div>
                   <div class="text-sm text-muted-foreground">爬虫规则说明</div>
                 </div>
                 <ExternalLink class="size-4 ml-auto text-muted-foreground" />
@@ -166,10 +157,10 @@
 
       <TabsContent
         value="score"
-        class="mt-6 space-y-5"
+        class="flex flex-col gap-5 mt-6"
       >
         <AdminCard>
-          <div class="space-y-1.5 mb-4">
+          <div class="flex flex-col gap-1 .5 mb-4">
             <h3 class="text-base font-semibold">
               文章 SEO 质量评分
             </h3>
@@ -180,7 +171,7 @@
           <div class="p-0">
             <div
               v-if="scoresLoading"
-              class="p-5 space-y-3"
+              class="flex flex-col gap-3 p-5"
             >
               <Skeleton
                 v-for="i in 6"
@@ -245,7 +236,7 @@
                     </td>
                     <td class="px-5 py-4">
                       <ul
-                        class="space-y-0.5 text-xs text-muted-foreground"
+                        class="flex flex-col gap-0 .5 text-xs text-muted-foreground"
                         style="display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;"
                       >
                         <li
@@ -287,7 +278,7 @@
                     :disabled="scoresPage <= 1"
                     @click="scoresPage--; loadScores()"
                   >
-                    <ChevronLeft class="size-4" />
+                    <ChevronLeft data-icon="inline-start" />
                   </Button>
                   <Button
                     variant="outline"
@@ -296,7 +287,7 @@
                     :disabled="scoresPage >= scoresTotalPages"
                     @click="scoresPage++; loadScores()"
                   >
-                    <ChevronRight class="size-4" />
+                    <ChevronRight data-icon="inline-start" />
                   </Button>
                 </div>
               </div>
@@ -307,10 +298,10 @@
 
       <TabsContent
         value="links"
-        class="mt-6 space-y-5"
+        class="flex flex-col gap-5 mt-6"
       >
         <AdminCard>
-          <div class="pt-6 space-y-5">
+          <div class="flex flex-col gap-5 pt-6">
             <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
               <div>
                 <h3 class="font-semibold">
@@ -327,11 +318,12 @@
               >
                 <Loader2
                   v-if="checking"
-                  class="size-4 animate-spin"
+                  data-icon="inline-start"
+                  class="animate-spin"
                 />
                 <ScanSearch
                   v-else
-                  class="size-4"
+                  data-icon="inline-start"
                 />
                 {{ checking ? '扫描中...' : '运行死链检查' }}
               </Button>
@@ -360,7 +352,7 @@
             >
               <div class="flex items-center gap-3 max-w-md mx-auto">
                 <Loader2 class="size-6 animate-spin text-warning" />
-                <div class="space-y-0.5">
+                <div class="flex flex-col gap-0 .5">
                   <div class="font-medium">
                     正在扫描外部链接...
                   </div>
@@ -372,10 +364,10 @@
             </div>
             <div
               v-else
-              class="p-6 space-y-4"
+              class="flex flex-col gap-4 p-6"
             >
               <div class="grid md:grid-cols-3 gap-4">
-                <div class="rounded-xl border border-border p-4 bg-success-muted/30 space-y-1">
+                <div class="flex flex-col gap-1 rounded-xl border border-border p-4 bg-success-muted/30">
                   <div class="text-xs text-muted-foreground uppercase tracking-wide">
                     检测 URL 总数
                   </div>
@@ -384,7 +376,7 @@
                   </div>
                 </div>
                 <div
-                  class="rounded-xl border border-border p-4 space-y-1"
+                  class="flex flex-col gap-1 rounded-xl border border-border p-4"
                   :class="checkResult.ok ? 'bg-success-muted/30' : 'bg-warning-muted/30'"
                 >
                   <div class="text-xs text-muted-foreground uppercase tracking-wide">
@@ -406,7 +398,7 @@
                   </div>
                 </div>
                 <div
-                  class="rounded-xl border border-border p-4 space-y-1"
+                  class="flex flex-col gap-1 rounded-xl border border-border p-4"
                   :class="checkResult.errors.length > 0 ? 'bg-error-muted/30' : 'bg-muted/20'"
                 >
                   <div class="text-xs text-muted-foreground uppercase tracking-wide">
@@ -422,7 +414,7 @@
               </div>
               <div
                 v-if="checkResult.errors.length > 0"
-                class="space-y-2"
+                class="flex flex-col gap-2"
               >
                 <h4 class="font-semibold text-sm">
                   错误列表
@@ -439,7 +431,7 @@
                     <div class="size-7 rounded-full bg-error-muted text-error flex items-center justify-center shrink-0">
                       <XCircle class="size-4" />
                     </div>
-                    <span class="font-mono text-xs flex-1 truncate group-hover:text-[#0EA5E9] transition-colors">{{ err }}</span>
+                    <span class="font-mono text-xs flex-1 truncate group-hover:text-primary transition-colors">{{ err }}</span>
                     <ExternalLink class="size-3.5 text-muted-foreground" />
                   </a>
                 </div>
@@ -483,7 +475,7 @@ const activeTab = ref('sitemap')
 const sitemapStatus = ref<{ generatedAt: string, urlCount: number, isStale: boolean } | null>(null)
 const regenerating = ref(false)
 
-const scores = ref<AdminSeoScore[]>([])
+const scores = shallowRef<AdminSeoScore[]>([])
 const scoresLoading = ref(true)
 const scoresPage = ref(1)
 const scoresTotal = ref(0)

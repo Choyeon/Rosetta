@@ -57,7 +57,10 @@
     "featured": "おすすめ",
     "submitting": "送信中…",
     "open": "開く",
-    "by": "作者："
+    "by": "作者：",
+    "retry": "再試行",
+    "prevPage": "前のページ",
+    "nextPage": "次のページ"
   },
   "nav": {
     "home": "ホーム",
@@ -70,7 +73,9 @@
     "about": "概要",
     "admin": "管理",
     "gallery": "[JA]:Gallery",
-    "activity": "[JA]:Activity"
+    "activity": "[JA]:Activity",
+    "search": "検索",
+    "series": "シリーズ"
   },
   "post": {
     "title": "タイトル",
@@ -109,7 +114,17 @@
     "backToList": "記事一覧に戻る",
     "loadFailed": "記事の読み込みに失敗しました",
     "loadFailedDesc": "お探しの記事は存在しないか、削除されています。下のボタンで一覧に戻ってください。",
-    "like": "いいね"
+    "like": "いいね",
+    "adjacentNav": "記事ナビゲーション",
+    "previousPost": "前の記事",
+    "nextPost": "次の記事",
+    "tocEmpty": "目次なし",
+    "commentsLoadFailed": "コメントの読み込みに失敗しました",
+    "retry": "再試行",
+    "replyingTo": "返信対象",
+    "cancelReply": "返信をキャンセル",
+    "replyPlaceholder": "このコメントに返信…",
+    "someone": "誰か"
   },
   "comment": {
     "title": "コメント",
@@ -122,7 +137,8 @@
     "justNow": "[JA]:just now",
     "minutesAgo": "[JA]: min ago",
     "hoursAgo": "[JA]: h ago",
-    "daysAgo": "[JA]: d ago"
+    "daysAgo": "[JA]: d ago",
+    "like": "いいね"
   },
   "auth": {
     "username": "ユーザー名",
@@ -192,15 +208,23 @@
     "hidePassword": "[JA] パスワードを非表示",
     "passwordTooShort": "[JA] パスワードは 6 文字以上必要です",
     "pleaseAgreeTerms": "[JA] 利用規約とプライバシーポリシーに先に同意してください",
-    "cannotDeriveUsername": "[JA] メールアドレスまたはニックネームから有効なユーザー名を作成できません。別の値を使用してください。"
+    "cannotDeriveUsername": "[JA] メールアドレスまたはニックネームから有効なユーザー名を作成できません。別の値を使用してください。",
+    "backHome": "ホームに戻る",
+    "logoAlt": "Rosetta — カラースクエアロゴ",
+    "prevDay": "前日へ",
+    "nextDay": "次の日へ（新しい方）",
+    "refreshWallpaper": "現在の壁紙を更新"
   },
   "error": {
     "notFoundTitle": "ページが見つかりません",
     "notFoundDesc": "アクセスしたページは移動または削除された可能性があります。",
     "serverErrorTitle": "サーバーエラーが発生しました",
     "serverErrorDesc": "サービスが一時的に利用できません。しばらくしてからもう一度お試しください。",
+    "permissionTitle": "アクセス権限がありません",
+    "permissionDesc": "このページにアクセスするにはログインが必要です。またはアカウントに十分な権限がありません。",
     "backHome": "ホームに戻る",
-    "retry": "再試行"
+    "retry": "再試行",
+    "goLogin": "ログインページへ"
   },
   "user": {
     "profile": "プロフィール",
@@ -598,7 +622,10 @@
     "actions": {
       "refresh": "更新",
       "cancel": "キャンセル",
-      "save": "保存"
+      "save": "保存",
+      "clear": "フィルターをクリア",
+      "delete": "削除",
+      "saving": "保存中…"
     },
     "pagination": {
       "page": "{page} ページ目",
@@ -623,7 +650,8 @@
       "status": {
         "active": "有効",
         "inactive": "無効",
-        "error": "エラー"
+        "error": "エラー",
+        "installed": "インストール済み"
       },
       "settings": "設定",
       "upgrade": "アップグレード",
@@ -638,7 +666,38 @@
       "bulkActivate": "一括有効化",
       "bulkDeactivate": "一括無効化",
       "bulkDelete": "一括削除",
-      "selectedCount": "{count} 個のプラグインを選択中"
+      "selectedCount": "{count} 個のプラグインを選択中",
+      "docs": "プラグインドキュメント",
+      "installHint": "新しいプラグインはバックエンドまたは CLI でインストールしてください",
+      "stats": {
+        "installed": "インストール済み",
+        "active": "有効",
+        "inactive": "無効",
+        "updates": "更新可能",
+        "errors": "エラー"
+      },
+      "filter": {
+        "all": "すべて",
+        "inactive": "無効"
+      },
+      "itemsUnit": "件",
+      "scanDone": "スキャン完了",
+      "activated": "有効化しました",
+      "deactivated": "無効化しました",
+      "settingsSaved": "設定を保存しました",
+      "deleted": "プラグインを削除しました",
+      "bulkDeleted": "一括削除が完了しました",
+      "bulkUpgrade": "一括アップグレード",
+      "selected": "選択済み",
+      "emptyTitle": "プラグインなし",
+      "noSearchResult": "一致するプラグインがありません。他のキーワードをお試しください。",
+      "emptyDesc": "「ローカルスキャン」をクリックして plugins フォルダーのプラグインを検出",
+      "noDesc": "このプラグインの説明はまだありません。",
+      "updateAvailable": "アップデート可能",
+      "noSettings": "このプラグインに設定項目はありません",
+      "confirmDeleteTitle": "削除の確認",
+      "confirmDeleteOne": "プラグイン「{name}」が完全に削除されます。データと設定も削除されます。",
+      "confirmDeleteBulk": "選択した {n} 個のプラグインが完全に削除されます。データと設定も削除されます。"
     },
     "themes": {
       "title": "テーマ管理",
@@ -664,7 +723,68 @@
       "modsSaved": "テーマのカスタマイズを保存しました",
       "upload": "テーマをアップロード",
       "empty": "該当するテーマがありません。",
-      "noThemes": "テーマがインストールされていません。スキャンまたはインストールしてください。"
+      "noThemes": "テーマがインストールされていません。スキャンまたはインストールしてください。",
+      "docs": "テーマドキュメント",
+      "scanDone": "スキャン完了",
+      "activated": "テーマを有効化しました",
+      "modsValidationFailed": "フォーム検証に失敗しました。赤字の項目を確認してください。",
+      "deleted": "テーマを削除しました",
+      "installHint": "バックエンドまたは CLI で新しいテーマをインストールしてください",
+      "stats": {
+        "total": "テーマ総数",
+        "active": "有効",
+        "customizable": "カスタマイズ可能",
+        "errors": "エラー"
+      },
+      "itemsUnit": "件のテーマ",
+      "noSearchResult": "一致するテーマがありません。他のキーワードをお試しください。",
+      "emptyTitle": "テーマなし",
+      "emptyDesc": "「ローカルスキャン」をクリックして themes フォルダーのテーマを検出",
+      "error": "エラー",
+      "previewStub": "ライブプレビューは未実装です",
+      "activatedAt": "有効化日",
+      "noDesc": "このテーマの説明はまだありません。",
+      "noCustomizeHint": "このテーマにカスタマイズ項目はありません",
+      "parentHint": "親テーマのプレースホルダー",
+      "childOf": "子テーマ：{name} を継承",
+      "perPage": "表示件数",
+      "customizerTitle": "テーマのカスタマイズ：",
+      "customizerDesc": "テーマの外観をリアルタイムで調整できます。設定は即座にサイトへ保存されます。",
+      "customizerActiveHint": "現在有効なテーマを編集しています。保存後、フロントエンドは即座に更新されます。",
+      "modsOn": "有効",
+      "modsOff": "無効",
+      "noMods": "このテーマにカスタマイズ項目はありません",
+      "confirmDeleteTitle": "削除の確認",
+      "confirmDelete": "テーマ「{name}」が完全に削除されます。カスタマイズと設定も削除されます。"
+    },
+    "media": {
+      "previewTitle": "メディアプレビュー",
+      "previewDescription": "ファイルを表示して基本情報を編集します",
+      "previewNoInline": "このファイル形式はインラインプレビューに対応していません",
+      "previewOpenNewTab": "新しいタブで開く",
+      "previewMeta": "ファイル情報",
+      "previewFilename": "ファイル名",
+      "previewSize": "サイズ",
+      "previewDimensions": "寸法",
+      "previewType": "種別",
+      "previewUploader": "アップロード者",
+      "previewCreatedAt": "アップロード日時",
+      "previewCopyUrl": "リンクをコピー",
+      "previewFieldTitle": "タイトル",
+      "previewFieldTitlePh": "タイトルを入力（任意）",
+      "previewFieldAlt": "代替テキスト (alt)",
+      "previewFieldAltPh": "アクセシビリティと SEO 用",
+      "previewFieldDesc": "説明",
+      "previewFieldDescPh": "ファイルの説明（任意）",
+      "previewSave": "情報を保存",
+      "previewCopied": "リンクをクリップボードにコピーしました",
+      "previewCopyFailed": "コピーに失敗しました。リンクを手動でコピーしてください",
+      "previewSaved": "メディア情報を更新しました",
+      "uploadQueueTitle": "アップロード",
+      "uploadQueueClear": "完了分を消去",
+      "uploadQueueDone": "完了",
+      "uploadQueueFailed": "失敗",
+      "uploadQueueDismiss": "削除"
     }
   },
   "oobe": {
@@ -678,10 +798,37 @@
       "admin": "管理者アカウント",
       "complete": "インストール完了"
     },
-    "step1Title": "システムチェック",
-    "step1Desc": "サーバー環境と依存関係を確認",
-    "step1LongDesc": "Python バージョン、必要な依存パッケージ、ディレクトリ権限を自動的に検出し、サーバーが Rosetta の最小要件を満たしていることを確認します。",
-    "step1EmptyHint": "右側のボタンをクリックしてシステム環境検出を開始してください",
+    "step1Title": "バックエンド接続",
+    "step1Desc": "バックエンド API URL を設定して接続確認",
+    "step1LongDesc": "最初に Rosetta FastAPI バックエンドのアドレスを指定します。/health エンドポイントと OOBE ステータスを確認し、プローブ成功後は自動的にシステムチェックと依存関係のインストールへ進みます。",
+    "step1EmptyHint": "先に上記のバックエンド接続プローブを完了してください",
+    "connTitle": "バックエンド接続設定",
+    "connDesc": "セットアップ中、インストーラーがすべての OOBE API を送信する宛先を指定します。",
+    "connLongDesc": "開発モードはローカルホスト 8000 番ポートを初期値とします。Nginx 配下の本番環境では 同源の /api パスを使用してください。フロントエンドとバックエンドが異なるオリジン（ポート/ドメイン）にある場合は完全な絶対 URL を入力してください。",
+    "connMode": "デプロイモード",
+    "connModeDev": "開発モード",
+    "connModeDevHint": "ローカル開発、フロント/バックエンド分離起動。FastAPI はデフォルトで 127.0.0.1:8000 を待ち受けます。",
+    "connModeProd": "本番モード",
+    "connModeProdHint": "Nginx などのリバースプロキシ配下。フロントエンドは同源 /api 経由でバックエンドへ到達します。",
+    "connApiUrl": "バックエンド API URL",
+    "connApiUrlDevHint": "例：http://127.0.0.1:8000/api。ポート番号のみ入力すると自動的に localhost に展開されます。",
+    "connApiUrlProdHint": "同源 Nginx 構成では /api を使用。クロスオリジンの場合は https://domain.com/api を入力。",
+    "connPortQuick": "クイックポート（開発モードのみ）",
+    "connCustomPort": "カスタムポート…",
+    "connCurrentHint": "現在有効なバックエンド URL",
+    "connAppliedHint": "本ウィザードのターゲットとして適用済み",
+    "connProbe": "接続プローブ",
+    "connProbing": "プローブ中…",
+    "connProbeOK": "プローブ成功：バックエンドに到達可能かつ正常です",
+    "connProbeFail": "プローブ失敗",
+    "connProbeFailDetail": "失敗理由",
+    "connProbeStageHealth": "フェーズ① /health エンドポイント",
+    "connProbeStageStatus": "フェーズ② /api/oobe/status エンドポイント",
+    "connProbeOOBERequired": "バックエンド正常 — インストール待ち（503 OOBE_REQUIRED）",
+    "connProbeAlreadyDone": "バックエンドはインストール済みです（利用可能）",
+    "connProbeNetworkError": "ネットワーク到達不能 / 接続拒否。指定ポートでバックエンドが起動しているか、ファイアウォールルールを確認してください。",
+    "connProbeNotHealthy": "/health が 'healthy' を返しませんでした。対象は Rosetta バックエンドではない可能性があります。",
+    "connProbeHintNext": "次のステップへ進むには接続プローブに合格する必要があります。",
     "step2Title": "管理者アカウント",
     "step2Desc": "メイン管理者アカウントを作成",
     "step2LongDesc": "管理パネルにログインするためのメイン管理者アカウントを設定します。後からユーザー管理で追加のアカウントを作成できます。",
@@ -820,7 +967,20 @@
     "depStarting": "インストーラーへ接続中…",
     "depSuccess": "すべての依存関係のインストールが完了しました",
     "depPartFail": "一部の依存関係が失敗しました。ログを参照するか手動でインストールしてください",
-    "isStarting": "インストールタスク準備中…"
+    "isStarting": "インストールタスク準備中…",
+    "tlsTitle": "平文 HTTP 接続が検出されました",
+    "tlsDesc": "現在の本番環境設定では管理者パスワードが暗号化されていない HTTP 平文で送信されます。同一ネットワーク上の攻撃者が認証情報を盗み聞きできます。",
+    "tlsGoBack": "戻って HTTPS に変更",
+    "tlsContinueAnyway": "リスクを理解した上で続行",
+    "tlsHintTlsTerminate": "推奨：今すぐインストールを中止し、リバースプロキシで TLS を有効にしてから再実行してください。",
+    "tlsHintConfigureReverseProxy": "ベストプラクティス：Nginx / Caddy / Traefik で Let's Encrypt 無料証明書を取得し、API URL とサイト URL の両方を https:// に変更してください。",
+    "tlsHintRisk": "続行すると管理者パスワード・ログイントークン・Cookie が公衆ネットワーク上を平文で流れ、アカウント乗っ取りの重大なリスクとなります。",
+    "installSnapshotTimeout": "インストール進捗ストリームがタイムアウト",
+    "installSnapshotPolling": "スナップショット API でインストール状態を確認中…",
+    "installSnapshotRetryBtn": "再接続",
+    "installSnapshotCancelBtn": "待機をキャンセル",
+    "installSnapshotTimeoutDetail": "30 秒間進捗イベントが受信されていません（ネットワークまたはプロキシにより SSE 経路が切断された可能性）。現在スナップショット方式で真のインストール結果を照合中です。進捗は失われません。",
+    "installSnapshotPollingDetail": "スナップショットポーリング：5 秒ごとにバックエンドのインストール状態を確認し、最大 3 回試行します。バックエンド側で実際に完了していれば自動的に完了画面へ進みます。"
   },
   "archive": {
     "title": "アーカイブ",
@@ -857,6 +1017,8 @@
     "pinned": "ピン留め",
     "allPosts": "[JA]:All posts",
     "allPostsDesc": "[JA]:Everything published, in reverse chronological order.",
+    "hotTitle": "[JA]:Hot Ranking",
+    "hotTitleDesc": "[JA]:HN-style composite score weighted by upvotes, views, comments and freshness.",
     "noPosts": "[JA]:No posts yet",
     "noPostsDesc": "[JA]:The author is cooking up new content — check back soon.",
     "searchPlaceholder": "[JA]:Search titles or keywords…",
@@ -893,6 +1055,8 @@
     "commentsCount": "コメント数",
     "popularCategories": "人気カテゴリ",
     "tagCloud": "タグクラウド",
+    "announcements": "お知らせ",
+    "recentActivity": "最新のアクティビティ",
     "techStack": "技術スタック",
     "newsletterTitle": "更新を購読する",
     "newsletterSubtitle": "新着記事をメールで受け取れます。広告は一切ありません。",
@@ -1090,7 +1254,10 @@
     "contentPlaceholder": "[JA]:Type something here…",
     "replyPlaceholder": "[JA]:Reply to this message…",
     "noMessages": "[JA]:No messages yet. Be the first to say hi!",
-    "submitFailed": "[JA]:Submit failed, please try again later"
+    "submitFailed": "[JA]:Submit failed, please try again later",
+    "loadFailed": "メッセージの読み込みに失敗しました。しばらくしてからもう一度お試しください",
+    "postingAs": "現在のアカウントで投稿します",
+    "submitSuccess": "メッセージを送信しました。承認後にリストに表示されます。"
   },
   "gallery": {
     "title": "[JA]:Gallery",
@@ -1107,7 +1274,8 @@
     "desc": "[JA]:Wonderful folks and their sites, worth sharing with more readers.",
     "visit": "[JA]:Visit",
     "noDesc": "[JA]:No description",
-    "noLinks": "[JA]:No friend links yet"
+    "noLinks": "[JA]:No friend links yet",
+    "loadFailed": "読み込みに失敗しました"
   },
   "search": {
     "title": "[JA]:Search",
@@ -1185,5 +1353,14 @@
     "posts": "記事",
     "noDesc": "説明はありません",
     "viewAll": "すべて見る"
+  },
+  "a11y": {
+    "skipToMain": "メインコンテンツへ移動",
+    "toggleTheme": "テーマ切り替え",
+    "togglePalette": "パレット切り替え",
+    "switchLanguage": "言語を切り替え",
+    "openMenu": "メニューを開く",
+    "closeMenu": "メニューを閉じる",
+    "toggleSidebar": "サイドバーの切り替え"
   }
 }

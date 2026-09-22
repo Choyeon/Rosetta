@@ -1,31 +1,16 @@
 <template>
   <div>
     <!-- =========================================================
-         当 activeThemeSlug 为以下任一极简 slug → AstroPaper 风格首页
-         · astro-paper-inspired  现保留主题（Minimal Paper）
-         · minimal-brutalist     历史兼容（已下线但仍可能存于老 DB / 用户自定义安装）
+         当 activeThemeSlug 为极简主题 slug → AstroPaper 风格首页
+         · astro-paper-inspired  极简主题（内建，除默认主题外唯一保留）
          · 无大图 Bing 壁纸 Hero（不请求壁纸、不渲染图片区）
-         · 纯文本站点头：大号 H1 站名 + 简短描述（站点 subtitle 或 hero mods）
+         · 无文字 Hero（极简主题不渲染任何 hero header）
          · 不渲染 Pinned 段、不渲染 Sidebar、不渲染 Newsletter CTA
          · 最新文章用纯竖排列表：日期 · 标题 · 摘要，一条一行（非卡片）
          ========================================================= -->
     <template v-if="isMinimalTheme">
       <section
-        class="ap-hero container pt-20 md:pt-28 pb-14"
-        :style="containerMaxStyle"
-      >
-        <h1
-          class="ap-hero-title font-display text-[2.4rem] leading-[1.1] md:text-[3rem] md:leading-[1.08] font-bold tracking-tight"
-        >
-          {{ apHeroTitle }}
-        </h1>
-        <p class="ap-hero-subtitle mt-4 md:mt-5 text-base md:text-lg leading-relaxed text-muted-foreground">
-          {{ apHeroSubtitle }}
-        </p>
-      </section>
-
-      <section
-        class="container pb-24"
+        class="container pt-14 md:pt-20 pb-24"
         :style="containerMaxStyle"
       >
         <h2 class="ap-section-title mb-7 md:mb-8 text-xl md:text-2xl font-semibold tracking-tight">
@@ -116,7 +101,7 @@
           backgroundRepeat: 'no-repeat',
           backgroundAttachment: 'local'
         } : {
-          backgroundImage: 'linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary)/0.35))'
+          backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%)'
         }"
       >
         <!-- Subtle depth overlays (keep cinematics — dim for editorial wallpaper-only view) -->
@@ -363,7 +348,7 @@
                 >
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_posts }}
+                      {{ formatStat(siteStats.total_posts) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.postsCount') }}
@@ -371,7 +356,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_categories }}
+                      {{ formatStat(siteStats.total_categories) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.categoriesCount') }}
@@ -379,7 +364,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_tags }}
+                      {{ formatStat(siteStats.total_tags) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.tagsCount') }}
@@ -387,7 +372,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_words }}
+                      {{ formatStat(siteStats.total_words) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('post.words') }}
@@ -474,15 +459,14 @@
                   v-else-if="categories.length"
                   class="flex flex-wrap gap-2"
                 >
-                  <Badge
+                  <CategoryBadge
                     v-for="category in categories"
                     :key="category.id"
-                    variant="secondary"
-                    class="cursor-pointer hover:bg-secondary/80 transition-colors"
-                    @click="navigateTo(`/posts?category=${category.slug}`)"
-                  >
-                    {{ pickLocalized(category.name) }}
-                  </Badge>
+                    :color="category.color ?? null"
+                    :icon="category.icon ?? null"
+                    :label="pickLocalized(category.name)"
+                    :to="`/categories/${category.slug}`"
+                  />
                 </div>
                 <div
                   v-else
@@ -664,7 +648,7 @@
                 >
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_posts }}
+                      {{ formatStat(siteStats.total_posts) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.postsCount') }}
@@ -672,7 +656,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_categories }}
+                      {{ formatStat(siteStats.total_categories) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.categoriesCount') }}
@@ -680,7 +664,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_tags }}
+                      {{ formatStat(siteStats.total_tags) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.tagsCount') }}
@@ -688,7 +672,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ siteStats.total_words }}
+                      {{ formatStat(siteStats.total_words) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('post.words') }}
@@ -775,15 +759,14 @@
                   v-else-if="categories.length"
                   class="flex flex-wrap gap-2"
                 >
-                  <Badge
+                  <CategoryBadge
                     v-for="category in categories"
                     :key="category.id"
-                    variant="secondary"
-                    class="cursor-pointer hover:bg-secondary/80 transition-colors"
-                    @click="navigateTo(`/posts?category=${category.slug}`)"
-                  >
-                    {{ pickLocalized(category.name) }}
-                  </Badge>
+                    :color="category.color ?? null"
+                    :icon="category.icon ?? null"
+                    :label="pickLocalized(category.name)"
+                    :to="`/categories/${category.slug}`"
+                  />
                 </div>
                 <div
                   v-else
@@ -897,12 +880,13 @@ import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
+import CategoryBadge from '~~/components/CategoryBadge.vue'
 import type { Category, PaginatedResponse, Post, SiteStats, Tag as BlogTag } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
-import { ArrowRight } from '@lucide/vue'
+import { ArrowRight } from '~~/lib/lucide-svg-icons'
 import { watch, computed, onMounted } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -918,12 +902,11 @@ await site.ensureLoaded()
 const ft = useFrontendTheme()
 await ft.ensureLoaded()
 
-// 被识别为「极简印刷风格」的主题 slug 集合：
-//   · astro-paper-inspired   当前保留的 Minimal Paper（Minimal Paper 主题）
-//   · minimal-brutalist      历史兼容：曾存在，已下线；老环境或第三方安装中仍可能被激活
+// 被识别为「极简印刷风格」的主题 slug 集合（内建极简主题唯一成员）：
+//   · astro-paper-inspired   极简主题
 // 匹配以上 slug 时，首页使用 AstroPaper 风格的"纯文 Hero + 竖排文章列表"模板，
 // 不请求 Bing 壁纸 / 不渲染 HUD / 不渲染 Sidebar / 不渲染 Pinned + CTA 区块。
-const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired', 'minimal-brutalist'])
+const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
 const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 const isEditorialTheme = computed<boolean>(() => {
   const slug = ft.slug.value
@@ -964,26 +947,6 @@ const containerMaxStyle = computed(() => {
 // Editorial 默认主题：节与节之间更紧凑
 const sectionTightY = computed(() => isEditorialTheme.value)
 
-const apHeroTitle = computed(() => {
-  const fromTheme = ft.mods.value.hero_title?.trim?.()
-  if (fromTheme) return fromTheme
-  const h1 = site.pickI18n(site.hero.value.title)?.trim?.()
-  if (h1) return h1
-  const name = site.siteTitle.value?.trim?.()
-  if (name) return name
-  return 'Rosetta'
-})
-const apHeroSubtitle = computed(() => {
-  const fromTheme = ft.mods.value.hero_subtitle?.trim?.()
-  if (fromTheme) return fromTheme
-  const sub = site.pickI18n(site.hero.value.subtitle)?.trim?.()
-  if (sub) return sub
-  const desc = site.siteDescription.value?.trim?.()
-  if (desc) return desc
-  const subtitle = site.siteSubtitle.value?.trim?.()
-  if (subtitle) return subtitle
-  return 'Minimal, accessible, content-first blog.'
-})
 const apFeaturedLabel = computed(() => (t?.('home.latestPosts')?.toString?.() || 'Posts'))
 
 function apFormatDate(input: string | Date | null | undefined): string {
@@ -1127,20 +1090,30 @@ onMounted(() => {
   if (!isMinimalTheme.value) fetchWallpapers()
 })
 
-const { data: postsData, pending: postsPending, error: postsError, refresh: refreshPosts } = await useAPI<PaginatedResponse<Post>>('/blog/posts', {
+// 并行发起 4 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成
+// 比逐个 await 减少 3 个 RTT 的串行等待
+const postsPromise = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: { lang: locale.value, page: 1, page_size: 20 },
   key: computed(() => 'home:posts:' + locale.value)
 })
-
-const { data: categoriesData, pending: categoriesPending, error: categoriesError, refresh: refreshCategories } = await useAPI<Category[]>('/blog/categories', {
+const categoriesPromise = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
   key: computed(() => 'home:categories:' + locale.value)
 })
-
-const { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags } = await useAPI<BlogTag[]>('/blog/tags', {
+const tagsPromise = useAPI<BlogTag[]>('/blog/tags', {
   query: { lang: locale.value },
   key: computed(() => 'home:tags:' + locale.value)
 })
+const siteStatsPromise = useAPI<SiteStats>('/blog/site-stats', {
+  key: 'home:site-stats'
+})
+
+const [
+  { data: postsData, pending: postsPending, error: postsError, refresh: refreshPosts },
+  { data: categoriesData, pending: categoriesPending, error: categoriesError, refresh: refreshCategories },
+  { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags },
+  { data: siteStats, pending: siteStatsPending, error: siteStatsError }
+] = await Promise.all([postsPromise, categoriesPromise, tagsPromise, siteStatsPromise])
 
 // 语言切换时：重新以新的 lang 参数与缓存键请求后端数据，
 // 避免显示旧语言缓存，以及分类/标签本地化 JSON key 解析不更新。
@@ -1150,10 +1123,6 @@ watch(locale, async () => {
     refreshCategories(),
     refreshTags()
   ])
-})
-
-const { data: siteStats, pending: siteStatsPending, error: siteStatsError } = await useAPI<SiteStats>('/blog/site-stats', {
-  key: 'home:site-stats'
 })
 
 // ===== 去重兜底：按 slug 唯一化（即使后端出现重复，也只保留第一条） =====
@@ -1172,8 +1141,37 @@ const posts = computed<Post[]>(() => {
 })
 const pinnedPosts = computed(() => posts.value.filter(post => post.is_pinned))
 const latestPosts = computed(() => posts.value.filter(post => !post.is_pinned))
-const categories = computed<Category[]>(() => categoriesData.value ?? [])
-const tags = computed<BlogTag[]>(() => tagsData.value ?? [])
+// 按 slug/本地化名称去重：后端历史或 mock 数据可能返回同名重复项，
+// 侧边栏分类徽章与标签云直接全量渲染会出现重复入口。
+const categories = computed<Category[]>(() => {
+  const seen = new Set<string>()
+  const out: Category[] = []
+  for (const c of categoriesData.value ?? []) {
+    const key = pickLocalized(c.name).trim().toLowerCase() || c.slug
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(c)
+  }
+  return out
+})
+const tags = computed<BlogTag[]>(() => {
+  const seen = new Set<string>()
+  const out: BlogTag[] = []
+  for (const tg of tagsData.value ?? []) {
+    const key = pickLocalized(tg.name).trim().toLowerCase() || tg.slug
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(tg)
+  }
+  return out
+})
+
+// 大数字按本地化千分位格式化（如总字数 58100 → 58,100），SSR/客户端一致。
+const formatStat = (value: number | undefined | null): string => {
+  const n = Number(value ?? 0)
+  if (!Number.isFinite(n)) return '0'
+  return n.toLocaleString('en-US')
+}
 
 // ===== 补充 SEO：keywords + canonical（useSeoMeta 不处理这两项）=====
 const canonical = computed(() => requestURL.href)

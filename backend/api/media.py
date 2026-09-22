@@ -14,7 +14,10 @@ import asyncio
 import io
 import logging
 import math
+import mimetypes
+import os
 import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -22,13 +25,25 @@ from typing import Any
 
 import aiofiles
 import aiofiles.os
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi import (
+    APIRouter,
+    Body,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from backend.core.auth import DB, CurrentUser, get_current_user
+from backend.core.auth import DB, CurrentStaff, CurrentUser, get_current_user
 from backend.core.concurrency import concurrent_query
 from backend.models.core import Media
 from backend.services.media_service import apply_watermark, build_media_url, generate_thumbnails
@@ -41,6 +56,33 @@ MEDIA_DIR = Path("media")
 UPLOADS_DIR = MEDIA_DIR / "uploads"
 AVATARS_DIR = MEDIA_DIR / "avatars"
 COVERS_DIR = MEDIA_DIR / "covers"
+
+
+def _resolve_media_file_path(stored: str | None) -> Path:
+    """把 Media.file 存储路径（如 ``/media/uploads/image/x.png``）解析为 MEDIA_DIR 内的绝对路径。
+
+    修复点：
+    - 原实现用 ``lstrip("/media/")`` 是**字符集**语义，会连续吃掉路径开头所有
+      属于 {/, m, e, d, i, a} 的字符（如 ``/media/image/…`` 会被错剥成 ``ge/…``）；
+      改为精确的前缀剥离 + 绝对 URL 分离。
+    - 同时防御路径穿越：解析结果必须仍位于 MEDIA_DIR 之内。
+    """
+    rel = (stored or "").strip()
+    if rel.startswith(("http://", "https://")):
+        # 外链文件（CDN / 远程 URL）：本地无文件可删
+        raise FileNotFoundError("外链媒体文件不在本地存储")
+    if rel.startswith("/media/"):
+        rel = rel[len("/media/") :]
+    rel = rel.lstrip("/")
+    candidate = (MEDIA_DIR / rel).resolve()
+    media_root = MEDIA_DIR.resolve()
+    if candidate != media_root and media_root not in candidate.parents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="非法的媒体文件路径",
+        )
+    return candidate
+
 
 # 允许的图片类型
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
@@ -560,10 +602,11 @@ async def upload_cover(
 )
 async def list_media_library(
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     file_type: str | None = Query(None, description="文件类型：image/video/audio/other"),
+    category: str | None = Query(None, description="业务分类：image/video/audio/document/other"),
     search: str | None = Query(None, description="搜索关键词"),
     sort_by: str = Query("created_at", description="排序字段：created_at/file_size/filename"),
     sort_order: str = Query("desc", description="排序方向：asc/desc"),
@@ -577,9 +620,12 @@ async def list_media_library(
     """
     query = select(Media).options(selectinload(Media.uploaded_by))
 
-    # 筛选条件
+    # 筛选条件：file_type 与 category 都映射到 Media.file_type
+    # （Media 表以 file_type 区分文件格式；category 是前端业务分类别名）
     if file_type:
         query = query.where(Media.file_type == file_type)
+    elif category:
+        query = query.where(Media.file_type == category)
 
     if search:
         query = query.where(
@@ -588,8 +634,14 @@ async def list_media_library(
             | Media.description.ilike(f"%{search}%")
         )
 
-    # 排序
-    sort_column = getattr(Media, sort_by, Media.created_at)
+    # 排序白名单（与端点文档一致：created_at/file_size/filename；防 getattr 命中方法属性）
+    _SORTABLE = {
+        "created_at": Media.created_at,
+        "file_size": Media.file_size,
+        "filename": Media.filename,
+        "updated_at": Media.updated_at,
+    }
+    sort_column = _SORTABLE.get(sort_by, Media.created_at)
     if sort_order == "asc":
         query = query.order_by(sort_column.asc())
     else:
@@ -607,15 +659,22 @@ async def list_media_library(
     total = total or 0
 
     # 转换为响应格式
+    # 字段对齐前端 AdminMediaItem：url / mime / size_bytes / category
+    # （media.file 在入库时已是 build_media_url 生成的可访问 URL）
     items = []
     for media in media_list:
+        guessed_mime = mimetypes.guess_type(media.filename or "")[0]
         items.append(
             {
                 "id": media.id,
                 "file": media.file,
+                "url": media.file,
                 "filename": media.filename,
                 "file_type": media.file_type,
+                "category": media.file_type,
+                "mime": guessed_mime or media.file_type or "application/octet-stream",
                 "file_size": media.file_size,
+                "size_bytes": media.file_size or 0,
                 "title": media.title,
                 "alt_text": media.alt_text,
                 "description": media.description,
@@ -650,7 +709,7 @@ async def list_media_library(
 )
 async def get_media_stats(
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
 ):
     """
     获取媒体库统计信息
@@ -689,6 +748,13 @@ async def get_media_stats(
             "total_size": total_size or 0,
             "total_size_formatted": format_file_size(total_size or 0),
             "type_stats": type_statistics,
+            # 前端 AdminMediaStats 别名字段（total_files / total_size_bytes / 分类型计数）
+            "total_files": total_count or 0,
+            "total_size_bytes": total_size or 0,
+            "images": type_statistics.get("image", {}).get("count", 0),
+            "videos": type_statistics.get("video", {}).get("count", 0),
+            "audios": type_statistics.get("audio", {}).get("count", 0),
+            "documents": type_statistics.get("document", {}).get("count", 0),
         },
         "message": "获取媒体库统计成功",
     }
@@ -768,19 +834,28 @@ async def _save_media_to_library(
     cdn_prefix = await _read_cdn_prefix(db)
     file_url = build_media_url(f"/media/uploads/{file_type}/{new_filename}", cdn_prefix)
 
-    # 图片：生成多尺寸缩略图 + 可选水印
+    # 图片：压缩原图 + 生成多尺寸缩略图 + 可选水印
     width: int | None = None
     height: int | None = None
     sizes: dict | None = None
     thumbnail_url: str | None = None
-    mime_type = file.content_type or f"application/octet-stream"
+    mime_type = file.content_type or "application/octet-stream"
     if file_type == "image" and ext.lower() not in ("svg",):
         try:
             from PIL import Image
 
             pil_image = await asyncio.to_thread(lambda: Image.open(filepath))
+            # 加载到内存以便后续处理（PIL lazy load 在 to_thread 外可能失效）
+            pil_image.load()
             width, height = pil_image.size
             mime_type = getattr(pil_image, "get_format_mimetype", lambda: mime_type)() or mime_type
+
+            # 压缩原图：超大图缩放 + JPEG/WebP 质量优化
+            compressed = await _compress_original_image(pil_image, filepath, ext)
+            if compressed is not None:
+                pil_image = compressed
+                width, height = pil_image.size
+
             watermark_text = await _read_watermark_text(db)
             if watermark_text:
                 pil_image = await apply_watermark(pil_image, watermark_text)
@@ -790,17 +865,32 @@ async def _save_media_to_library(
             )
             # 取 thumbnail / medium / large 第一个可用 URL 做缩略图
             for key in ("thumbnail", "medium", "large"):
-                if sizes and isinstance(sizes, dict) and sizes.get(key) and isinstance(sizes[key], dict):
+                if (
+                    sizes
+                    and isinstance(sizes, dict)
+                    and sizes.get(key)
+                    and isinstance(sizes[key], dict)
+                ):
                     maybe_url = sizes[key].get("url")
                     if maybe_url:
                         thumbnail_url = str(maybe_url)
                         break
         except Exception as e:
-            logger.warning(f"图片后处理失败（缩略图/水印），仅保存原图: {e}")
+            logger.warning(f"图片后处理失败（压缩/缩略图/水印），仅保存原图: {e}")
 
     # category：若前端传入则优先使用（例如 gallery）；否则回退 file_type
     final_category = category or file_type
-    valid_categories = {"image", "video", "audio", "document", "other", "gallery", "post-cover", "avatar", "cover"}
+    valid_categories = {
+        "image",
+        "video",
+        "audio",
+        "document",
+        "other",
+        "gallery",
+        "post-cover",
+        "avatar",
+        "cover",
+    }
     if final_category not in valid_categories:
         final_category = file_type
 
@@ -854,9 +944,11 @@ async def _save_media_to_library(
 )
 async def upload_library_rest(
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
     file: UploadFile = File(...),
-    category: str | None = Form(None, description="业务分类：gallery / post-cover / avatar / cover 等"),
+    category: str | None = Form(
+        None, description="业务分类：gallery / post-cover / avatar / cover 等"
+    ),
     title: str | None = Form(None, description="标题"),
     alt_text: str | None = Form(None, description="替代文本"),
     description: str | None = Form(None, description="描述"),
@@ -889,9 +981,11 @@ async def upload_library_rest(
 )
 async def upload_to_library(
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
     file: UploadFile = File(...),
-    category: str | None = Form(None, description="业务分类：gallery / post-cover / avatar / cover 等"),
+    category: str | None = Form(
+        None, description="业务分类：gallery / post-cover / avatar / cover 等"
+    ),
     title: str | None = Form(None, description="标题"),
     alt_text: str | None = Form(None, description="替代文本"),
     description: str | None = Form(None, description="描述"),
@@ -970,7 +1064,7 @@ async def get_media_detail(
 async def update_media(
     media_id: int,
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
     title: str | None = Body(None, description="标题"),
     alt_text: str | None = Body(None, description="替代文本"),
     description: str | None = Body(None, description="描述"),
@@ -1012,6 +1106,57 @@ async def update_media(
 
 
 @router.delete(
+    "/library/batch",
+    summary="批量删除媒体",
+    description="批量删除多个媒体文件。",
+)
+async def batch_delete_media(
+    db: DB,
+    current_user: CurrentStaff,
+    ids: list[int] = Body(..., embed=True, description="媒体 ID 列表"),
+):
+    """
+    批量删除媒体
+
+    同时删除数据库记录和物理文件。
+
+    注意：本路由必须注册在 ``/library/{media_id}`` 之前，
+    否则 FastAPI 会把路径段 "batch" 尝试按 int 解析 ``{media_id}`` → 422。
+    """
+    if not ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请提供要删除的媒体 ID",
+        )
+
+    # 查询媒体记录
+    result = await db.execute(select(Media).where(Media.id.in_(ids)))
+    media_list = result.scalars().all()
+
+    deleted_count = 0
+    for media in media_list:
+        # 删除物理文件（外链文件跳过；非法路径跳过并继续，避免批量中断）
+        try:
+            filepath = _resolve_media_file_path(media.file)
+            if await async_file_exists(filepath):
+                await async_delete_file(filepath)
+        except (FileNotFoundError, HTTPException):
+            pass
+
+        # 删除数据库记录
+        await db.delete(media)
+        deleted_count += 1
+
+    await db.flush()
+
+    return {
+        "success": True,
+        "message": f"已删除 {deleted_count} 个媒体文件",
+        "deleted_count": deleted_count,
+    }
+
+
+@router.delete(
     "/library/{media_id}",
     summary="删除单个媒体",
     description="删除单个媒体文件。",
@@ -1019,7 +1164,7 @@ async def update_media(
 async def delete_media_by_id(
     media_id: int,
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
 ):
     """
     删除单个媒体
@@ -1036,60 +1181,20 @@ async def delete_media_by_id(
         )
 
     # 删除物理文件
-    filepath = MEDIA_DIR / media.file.lstrip("/media/")
-    if await async_file_exists(filepath):
-        await async_delete_file(filepath)
+    try:
+        filepath = _resolve_media_file_path(media.file)
+        if await async_file_exists(filepath):
+            await async_delete_file(filepath)
+    except FileNotFoundError:
+        pass  # 外链文件：仅删数据库记录
+    except HTTPException:
+        raise  # 非法路径：显式拒绝，避免误删其他文件
 
     # 删除数据库记录
     await db.delete(media)
     await db.flush()
 
     return {"success": True, "message": "媒体文件已删除"}
-
-
-@router.delete(
-    "/library/batch",
-    summary="批量删除媒体",
-    description="批量删除多个媒体文件。",
-)
-async def batch_delete_media(
-    db: DB,
-    current_user: CurrentUser,
-    media_ids: list[int] = Body(..., description="媒体 ID 列表"),
-):
-    """
-    批量删除媒体
-
-    同时删除数据库记录和物理文件
-    """
-    if not media_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="请提供要删除的媒体 ID",
-        )
-
-    # 查询媒体记录
-    result = await db.execute(select(Media).where(Media.id.in_(media_ids)))
-    media_list = result.scalars().all()
-
-    deleted_count = 0
-    for media in media_list:
-        # 删除物理文件
-        filepath = MEDIA_DIR / media.file.lstrip("/media/")
-        if await async_file_exists(filepath):
-            await async_delete_file(filepath)
-
-        # 删除数据库记录
-        await db.delete(media)
-        deleted_count += 1
-
-    await db.flush()
-
-    return {
-        "success": True,
-        "message": f"已删除 {deleted_count} 个媒体文件",
-        "deleted_count": deleted_count,
-    }
 
 
 # ==================== 图片文件访问 API ====================
@@ -1126,7 +1231,8 @@ async def get_image(category: str, filename: str):
     # 按扩展名推断 MIME，避免把 png/svg/webp 硬标成 image/jpeg 导致浏览器渲染异常
     suffix = Path(filename).suffix.lower().lstrip(".")
     _MIME_MAP = {
-        "jpg": "image/jpeg", "jpeg": "image/jpeg",
+        "jpg": "image/jpeg",
+        "jpeg": "image/jpeg",
         "png": "image/png",
         "gif": "image/gif",
         "webp": "image/webp",
@@ -1183,6 +1289,7 @@ def format_file_size(size: int) -> str:
 # 媒体高级能力辅助：从 site_configs 读 media 组配置（CDN / 水印）
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def _read_media_settings(db: DB) -> dict:
     """读取 site_configs 中 key='media' 的 JSON 配置。"""
     from backend.models.core import SiteConfig
@@ -1217,7 +1324,6 @@ async def _read_watermark_text(db: DB) -> str | None:
 
 def _pil_to_bytes(image: Any, ext: str) -> bytes:
     """把 PIL.Image 序列化为字节（用于回写加了水印的原图）。"""
-    from PIL import Image
 
     out = io.BytesIO()
     save_format = "JPEG" if ext.lower() in ("jpg", "jpeg", "webp") else "PNG"
@@ -1228,28 +1334,103 @@ def _pil_to_bytes(image: Any, ext: str) -> bytes:
     return out.getvalue()
 
 
+# 原图压缩相关常量
+MAX_ORIGINAL_DIMENSION = 3840  # 超过此边长的原图会被等比缩放
+JPEG_WEBP_QUALITY = 85  # JPEG/WebP 重保存质量
+PNG_OPTIMIZE = True
+
+
+async def _compress_original_image(
+    image: Any, filepath: Path, ext: str
+) -> Any | None:
+    """
+    压缩原图并回写磁盘，返回压缩后的 PIL Image；未压缩返回 None。
+
+    策略：
+    - 边长超过 MAX_ORIGINAL_DIMENSION：等比缩放（LANCZOS）
+    - JPEG / WebP：以 JPEG_WEBP_QUALITY 质量重保存（透明通道转 RGB）
+    - PNG：optimize=True 重保存（无损）
+    - 仅在确实需要压缩时回写，避免无谓的质量损失
+    """
+    from PIL import Image
+
+    orig_w, orig_h = image.size
+    needs_resize = max(orig_w, orig_h) > MAX_ORIGINAL_DIMENSION
+    ext_lower = ext.lower()
+    is_jpeg_like = ext_lower in ("jpg", "jpeg", "webp")
+    is_png = ext_lower == "png"
+
+    if not needs_resize and not is_jpeg_like and not is_png:
+        return None
+
+    img = image
+    changed = False
+
+    if needs_resize:
+        ratio = MAX_ORIGINAL_DIMENSION / max(orig_w, orig_h)
+        new_w = max(1, round(orig_w * ratio))
+        new_h = max(1, round(orig_h * ratio))
+
+        def _resize():
+            return img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+        img = await asyncio.to_thread(_resize)
+        changed = True
+
+    if is_jpeg_like:
+        # JPEG/WebP 统一走质量压缩
+        save_format = "WEBP" if ext_lower == "webp" else "JPEG"
+
+        def _save_jpeg():
+            working = img
+            if working.mode in ("RGBA", "P", "LA", "RGBa"):
+                working = working.convert("RGB")
+            out = io.BytesIO()
+            working.save(
+                out,
+                format=save_format,
+                quality=JPEG_WEBP_QUALITY,
+                optimize=True,
+                progressive=(save_format == "JPEG"),
+            )
+            return out.getvalue()
+
+        compressed_bytes = await asyncio.to_thread(_save_jpeg)
+        # 仅当压缩后更小才回写，避免反而变大
+        if len(compressed_bytes) < filepath.stat().st_size or changed:
+            await async_write_file(filepath, compressed_bytes)
+            changed = True
+        return img
+
+    if is_png and needs_resize:
+        # PNG 仅在缩放后才重保存（无损 optimize）
+        def _save_png():
+            out = io.BytesIO()
+            img.save(out, format="PNG", optimize=PNG_OPTIMIZE)
+            return out.getvalue()
+
+        png_bytes = await asyncio.to_thread(_save_png)
+        if len(png_bytes) < filepath.stat().st_size:
+            await async_write_file(filepath, png_bytes)
+        return img
+
+    return img if changed else None
+
+
 # ==================== Bing 每日壁纸代理 API ====================
-
-import os as _os
-import time as _time
-from typing import Any as _Any
-
-from fastapi import Request as _Request
-from fastapi import Response as _Response
-from fastapi.responses import JSONResponse as _JSONResponse
 
 BING_API_URL = "https://www.bing.com/HPImageArchive.aspx"
 BING_WALLPAPER_CACHE_TTL = 3600 * 12  # 12 小时
 
-_bing_fallback_cache: dict[str, tuple[float, list[dict[str, _Any]]]] = {}
-_bing_last_success: list[dict[str, _Any]] | None = None
+_bing_fallback_cache: dict[str, tuple[float, list[dict[str, Any]]]] = {}
+_bing_last_success: list[dict[str, Any]] | None = None
 _bing_last_success_at: float = 0.0
 BING_FALLBACK_TTL = 3600 * 24  # 24 小时
 
 
 def _get_proxy() -> str | None:
-    http_proxy = _os.environ.get("HTTP_PROXY") or _os.environ.get("http_proxy")
-    https_proxy = _os.environ.get("HTTPS_PROXY") or _os.environ.get("https_proxy")
+    http_proxy = os.environ.get("HTTP_PROXY") or os.environ.get("http_proxy")
+    https_proxy = os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")
     return https_proxy or http_proxy or None
 
 
@@ -1272,11 +1453,11 @@ def _build_full_url(url: str | None, urlbase: str | None) -> str:
     ),
 )
 async def get_bing_wallpaper_batch(
-    request: _Request,
+    request: Request,
     idx: int = Query(0, description="偏移天数 (0=今天, 1=昨天...)，超出范围自动 clamp 到 [0, 7]"),
     n: int = Query(1, description="返回壁纸数量，超出范围自动 clamp 到 [1, 15]"),
     mkt: str = Query("zh-CN", description="地区市场，如 zh-CN / en-US / ja-JP"),
-) -> _Response:
+) -> Response:
     idx = max(0, min(7, int(idx)))
     n = max(1, min(15, int(n)))
     cache_key = f"bing_wallpaper_{idx}_{n}_{mkt}"
@@ -1288,7 +1469,7 @@ async def get_bing_wallpaper_batch(
         full_key = make_cache_key(cache_key)
         cached = await cache.get(full_key)
         if cached and isinstance(cached, dict) and "images" in cached:
-            resp = _JSONResponse(content=cached)
+            resp = JSONResponse(content=cached)
             resp.headers["Access-Control-Allow-Origin"] = "*"
             resp.headers["X-Bing-Cache"] = "HIT"
             return resp
@@ -1300,7 +1481,7 @@ async def get_bing_wallpaper_batch(
 
     proxy = _get_proxy()
     params = {"format": "js", "idx": idx, "n": n, "mkt": mkt}
-    images_out: list[dict[str, _Any]] = []
+    images_out: list[dict[str, Any]] = []
 
     try:
         timeout = _httpx.Timeout(15.0, connect=8.0)
@@ -1313,7 +1494,7 @@ async def get_bing_wallpaper_batch(
         logger.warning(f"Bing 壁纸请求失败 idx={idx} n={n} mkt={mkt}: {exc}")
         # 3a) fallback: 最近一次成功 (24h)
         global _bing_last_success, _bing_last_success_at
-        now = _time.time()
+        now = time.time()
         if _bing_last_success and (now - _bing_last_success_at) < BING_FALLBACK_TTL:
             take = max(1, min(n, len(_bing_last_success)))
             images_out = _bing_last_success[:take]
@@ -1332,7 +1513,7 @@ async def get_bing_wallpaper_batch(
                 }
             ]
         body = {"images": images_out}
-        resp = _JSONResponse(content=body, status_code=200)
+        resp = JSONResponse(content=body, status_code=200)
         resp.headers["Access-Control-Allow-Origin"] = "*"
         resp.headers["X-Bing-Cache"] = "FALLBACK"
         return resp
@@ -1359,7 +1540,7 @@ async def get_bing_wallpaper_batch(
     # 更新 last-success fallback
     if images_out:
         _bing_last_success = list(images_out)
-        _bing_last_success_at = _time.time()
+        _bing_last_success_at = time.time()
 
     # 写 12h 缓存
     try:
@@ -1370,7 +1551,7 @@ async def get_bing_wallpaper_batch(
     except Exception:
         pass
 
-    resp = _JSONResponse(content=body)
+    resp = JSONResponse(content=body)
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["X-Bing-Cache"] = "MISS"
     return resp

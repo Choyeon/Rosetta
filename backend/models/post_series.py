@@ -5,7 +5,10 @@
 Post 模型通过 series_id 外键关联到本表。
 """
 
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import JSON, Boolean, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -13,6 +16,9 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.config import settings
 from backend.core.database import Base
+
+if TYPE_CHECKING:
+    from backend.models.blog import Post
 
 JSON_TYPE = JSONB if settings.is_postgresql else JSON
 
@@ -54,7 +60,7 @@ class PostSeries(Base):
         nullable=False,
     )
 
-    posts: Mapped[list["Post"]] = relationship(
+    posts: Mapped[list[Post]] = relationship(
         "Post",
         backref="series",
         order_by="Post.series_order",

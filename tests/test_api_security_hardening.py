@@ -150,7 +150,7 @@ async def sec_post(sec_db_session: AsyncSession, sec_user: User, sec_category: C
 
 @pytest.mark.xfail(reason="site_configs 表缺失：sec_engine fixture 未创建完整表结构", strict=False)
 @pytest.mark.asyncio
-async def test_TR12_1_security_headers(sec_client: AsyncClient):
+async def test_TR12_1_security_headers(sec_client: AsyncClient):  # noqa: N802
     """GET /api/health 至少包含 nosniff/referrer/frame-options/Permissions-Policy 4 个关键头"""
     resp = await sec_client.get("/api/health")
     allowed = {200, 503, 404, 401, 403}
@@ -178,7 +178,7 @@ async def test_TR12_1_security_headers(sec_client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_TR12_2a_upload_magic_mismatch(tmp_path: Path):
+async def test_TR12_2a_upload_magic_mismatch(tmp_path: Path):  # noqa: N802
     """魔数不一致：内容是 PHP 但扩展名 .png"""
     bad = b"<?php system('id'); ?>"
     file_like = io.BytesIO(bad)
@@ -193,7 +193,7 @@ async def test_TR12_2a_upload_magic_mismatch(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_TR12_2b_upload_path_traversal(tmp_path: Path):
+async def test_TR12_2b_upload_path_traversal(tmp_path: Path):  # noqa: N802
     """路径遍历：文件名 ../evil.png，结果应保存到 media_dir 内或直接 422 拒绝"""
     content = PNG_HEADER
     file_like = io.BytesIO(content)
@@ -214,7 +214,7 @@ async def test_TR12_2b_upload_path_traversal(tmp_path: Path):
 
 
 @pytest.mark.asyncio
-async def test_TR12_2c_upload_oversize(tmp_path: Path):
+async def test_TR12_2c_upload_oversize(tmp_path: Path):  # noqa: N802
     """21MB 超大文件 => 413 REQUEST_ENTITY_TOO_LARGE"""
     oversize = 21 * 1024 * 1024
     assert MAX_UPLOAD_BYTES == 20 * 1024 * 1024
@@ -232,7 +232,7 @@ async def test_TR12_2c_upload_oversize(tmp_path: Path):
 # ================== TR-12.3 SQL/XSS 载荷 ==================
 
 
-def test_TR12_3_xss_payload_sanitize():
+def test_TR12_3_xss_payload_sanitize():  # noqa: N802
     """XSS payload 被 sanitize_html 清洗，无 <script> 和 onerror="""
     payload = "<script>alert(1)</script> hello <img src=x onerror=alert(2)>"
     cleaned = sanitize_html(payload)
@@ -242,7 +242,7 @@ def test_TR12_3_xss_payload_sanitize():
 
 
 @pytest.mark.asyncio
-async def test_TR12_3_xss_comment_endpoint(
+async def test_TR12_3_xss_comment_endpoint(  # noqa: N802
     sec_client: AsyncClient, sec_auth_headers: dict, sec_post: Post, sec_db_session: AsyncSession
 ):
     """POST 评论接口：XSS payload 存库后不保留 <script>/onerror=（直接调 comment_service）"""
@@ -276,7 +276,7 @@ async def test_TR12_3_xss_comment_endpoint(
 
 @pytest.mark.xfail(reason="site_configs 表缺失：sec_engine fixture 未创建完整表结构", strict=False)
 @pytest.mark.asyncio
-async def test_TR12_5_csrf_origin_rejected(
+async def test_TR12_5_csrf_origin_rejected(  # noqa: N802
     sec_client: AsyncClient, sec_auth_headers: dict, sec_post: Post
 ):
     """登录用户 + POST 写接口，带不在白名单的 Origin => 403 CSRF_CHECK_FAILED"""

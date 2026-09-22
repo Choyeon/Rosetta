@@ -43,8 +43,9 @@ def _escape_dangerous_tag_names(text: str) -> str:
         closing = m.group(3) or ""
         # 转义属性里的 onxxx= 和 javascript:（双重保险）
         attrs_safe = _escape_attrs(attrs)
-        prefix = "</" if leading_slash else "<"
-        return f"&lt;{'/' if leading_slash else ''}{tagname}{attrs_safe}{closing.replace('>', '&gt;')}"
+        return (
+            f"&lt;{'/' if leading_slash else ''}{tagname}{attrs_safe}{closing.replace('>', '&gt;')}"
+        )
 
     text = dangerous_tag_re.sub(_tag_escaper, text)
 
@@ -54,8 +55,7 @@ def _escape_dangerous_tag_names(text: str) -> str:
         r"(?is)\s+(on\w+)\s*(=)\s*(\"[^\"]*\"|'[^']*'|[^\s\"'>]+)",
     )
     text = on_event_re.sub(
-        lambda m: f" &#111;&#110;{m.group(1)[2:]}&#61;"
-        f"{_html_escape(m.group(3), quote=True)}",
+        lambda m: f" &#111;&#110;{m.group(1)[2:]}&#61;{_html_escape(m.group(3), quote=True)}",
         text,
     )
 

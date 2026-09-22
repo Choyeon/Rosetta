@@ -43,6 +43,46 @@ logger = logging.getLogger("rosetta.extensions")
 
 UTC = timezone.utc
 
+
+def _safe_zip_extract_path(target_dir: Path, rel: str) -> Path:
+    """Zip Slip 防护：校验 zip 条目的相对路径并返回解析后的安全落盘路径。
+
+    恶意 zip 可包含 ``evil/../../etc/cron.d/x``、``C:\\autoexec.bat``、
+    ``\\\\server\\share\\x`` 等条目；未校验直接拼接落盘即可逃逸目标目录。
+    规则：
+    - 禁止绝对路径（``/`` 或 ``\\`` 开头）、反斜杠、Windows 盘符 / ADS（``:``）
+    - 禁止任何 ``..`` 路径段
+    - 解析后必须仍位于 target_dir 内（双保险）
+    """
+    from backend.core.exceptions import AppException
+
+    def _reject(reason: str) -> AppException:
+        return AppException(
+            status_code=400,
+            error_code="PACKAGE_PATH_INVALID",
+            message=f"ZIP 内含不安全路径条目（{reason}）: {rel!r}",
+        )
+
+    if not rel:
+        raise _reject("空路径")
+    if rel.startswith(("/", "\\")):
+        raise _reject("绝对路径")
+    if "\\" in rel:
+        # zip 规范分隔符为 "/"；反斜杠条目在 Windows 上会被解释为目录分隔符
+        raise _reject("反斜杠")
+    head = rel.split("/", 1)[0]
+    if ":" in head:
+        raise _reject("盘符/流语法")
+    if any(part == ".." for part in rel.split("/")):
+        raise _reject("上跳目录")
+
+    out = (target_dir / rel).resolve()
+    root = target_dir.resolve()
+    if out != root and root not in out.parents:
+        raise _reject("解析后逃逸目标目录")
+    return out
+
+
 # ── SiteConfig KV 命名空间 (F3: 防止与 17 组 settings_groups 冲突) ────────
 
 PLUGIN_SETTINGS_PREFIX = "plugin_settings:"
@@ -50,6 +90,7 @@ THEME_MODS_PREFIX = "theme_mods:"
 
 
 # ── KV helpers（沿用 SiteConfig key → JSON 字符串模式，见 settings_groups） ─
+
 
 async def _get_kv_json(db: AsyncSession, key: str, default: Any = None) -> Any:
     from backend.models.core import SiteConfig
@@ -100,10 +141,11 @@ class PluginManager:
 
         return scan_plugins_dir
 
-    async def scan_local(self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID) -> tuple[int, int]:
+    async def scan_local(
+        self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID
+    ) -> tuple[int, int]:
         """扫描本地 manifest 并与 DB 对齐。返回 (新增数, 更新数)。"""
         from backend.models.extensions import Plugin as PluginModel
-        from backend.schemas.manifest import RosettaPluginManifest
 
         scan = self._scanner_import()
         items = scan()
@@ -187,19 +229,31 @@ class PluginManager:
         if search:
             q = f"%{search}%"
             stmt = stmt.where(
-                or_(PluginModel.name.ilike(q), PluginModel.description.ilike(q), PluginModel.slug.ilike(q))
+                or_(
+                    PluginModel.name.ilike(q),
+                    PluginModel.description.ilike(q),
+                    PluginModel.slug.ilike(q),
+                )
             )
-        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one() or 0
+        total = (
+            await db.execute(select(func.count()).select_from(stmt.subquery()))
+        ).scalar_one() or 0
         page = max(1, int(page))
         per_page = max(1, min(100, int(per_page)))
-        stmt = stmt.order_by(
-            PluginModel.status == "active",
-            PluginModel.name.asc(),
-        ).limit(per_page).offset((page - 1) * per_page)
+        stmt = (
+            stmt.order_by(
+                PluginModel.status == "active",
+                PluginModel.name.asc(),
+            )
+            .limit(per_page)
+            .offset((page - 1) * per_page)
+        )
         rows = list((await db.execute(stmt)).scalars().all())
         return rows, total
 
-    async def get(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Plugin | None:
+    async def get(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Plugin | None:
         from backend.models.extensions import Plugin as PluginModel
 
         stmt = select(PluginModel).where(
@@ -209,16 +263,53 @@ class PluginManager:
 
     # ── 激活/禁用（含 hooks 注册/摘除） ────────────────────────────────
 
-    async def activate(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Plugin:
+    async def activate(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Plugin:
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装")
-        if row.status == "active" and hooks_registered_for_plugin(slug):
-            # 真·幂等：已激活且 hooks 已注册 → 原样返回
+
+            raise AppException(
+                status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装"
+            )
+        from backend.core.routing_registry import routing_registry
+
+        hooks_present = hooks_registered_for_plugin(slug)
+        routes_present = routing_registry.has_slug(slug)
+        already_registered = hooks_present or routes_present
+        if row.status == "active" and already_registered:
+            # 真·幂等：已激活且 hooks/routes 已注册 → 原样返回
             return row  # type: ignore[return-value]
-        # 状态是 active 但 hooks 未注册（冷启动/新进程）→ 走导入流程但不重写 activated_at / 不重复 do_action
-        cold_boot = row.status == "active" and not hooks_registered_for_plugin(slug)
+        # ⚠️ 双重加载防护：若本进程中 legacy plugin_loader（main.py lifespan L211）已经通过
+        # pkgutil 导入 `backend.plugins.<slug>` 并跑了 register_via_bus() 完成钩子/路由注册，
+        # 再走本函数的沙箱 exec_module() 会导致重复注册：
+        #   - Action/Filter 钩子 → 重复执行副作用（例：hello-rosetta 签名插两次）
+        #   - APIRouter → FastAPI 报 Duplicate Operation ID，污染 /openapi.json 并增加
+        #     openapi() 生成开销
+        # 命中本分支时：仅把 DB status 从 installed→active（若尚未），不重复 import。
+        # 注：纯路由插件（如 guestbook-rss）不挂 hooks，必须用 routes_present 才能识别。
+        if already_registered:
+            now = datetime.now(UTC)
+            status_changed = row.status != "active"
+            row.status = "active"  # type: ignore[assignment]
+            row.error_message = None
+            if status_changed:
+                row.activated_at = now  # type: ignore[assignment]
+            await db.flush()
+            await db.refresh(row)
+            if status_changed:
+                await do_action("plugin.activated", slug=slug, row=row)
+            logger.info(
+                "[plugin.activate] slug=%s 已由 legacy loader 预注册（hooks=%s routes=%s），"
+                "跳过沙箱 import（防重复）",
+                slug,
+                hooks_present,
+                routes_present,
+            )
+            return row  # type: ignore[return-value]
+        # 状态是 active 但 hooks 未注册（冷启动/新进程，且 legacy loader 未跑）→ 导入但不写 activated_at
+        cold_boot = row.status == "active"
         # 沙箱导入：从 manifest.folder / entry
         imported, err = await self._import_plugin_module(row, site_id=site_id)
         now = datetime.now(UTC)
@@ -228,7 +319,10 @@ class PluginManager:
             await db.flush()
             await db.refresh(row)
             from backend.core.exceptions import AppException
-            raise AppException(status_code=500, error_code="PLUGIN_IMPORT_ERROR", message=row.error_message)
+
+            raise AppException(
+                status_code=500, error_code="PLUGIN_IMPORT_ERROR", message=row.error_message
+            )
         row.status = "active"
         if not cold_boot:
             row.activated_at = now
@@ -239,15 +333,26 @@ class PluginManager:
             await do_action("plugin.activated", slug=slug, row=row)
         return row  # type: ignore[return-value]
 
-    async def deactivate(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Plugin:
+    async def deactivate(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Plugin:
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装")
+
+            raise AppException(
+                status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装"
+            )
         if row.status != "active":
             # 幂等：已非激活态直接返回
             return row  # type: ignore[return-value]
         remove_hooks_for_plugin(slug)
+        try:
+            from backend.core.shortcodes import shortcode_manager
+
+            shortcode_manager.remove_for_plugin(slug)
+        except Exception:  # noqa: BLE001 - shortcode 引擎缺失不影响停用
+            logger.debug("插件 %s: shortcode 摘除跳过（引擎不可用）", slug)
         row.status = "inactive"
         await db.flush()
         await db.refresh(row)
@@ -294,6 +399,7 @@ class PluginManager:
                 return False, "无法创建 module spec (SourceFileLoader)"
             mod = importlib.util.module_from_spec(spec)
             import sys as _sys
+
             _sys.modules.setdefault(module_name, mod)
             try:
                 spec.loader.exec_module(mod)  # type: ignore[union-attr]
@@ -305,9 +411,9 @@ class PluginManager:
             register_fn = getattr(mod, "register", None)
             if callable(register_fn):
                 try:
-                    from backend.main import app as _app_ref  # 延迟引入，避免循环导入
-                    from backend.core.plugin_loader import PluginContext
                     from backend.core.plugin_bus import bus as _bus
+                    from backend.core.plugin_loader import PluginContext
+                    from backend.main import app as _app_ref  # 延迟引入，避免循环导入
 
                     ctx = PluginContext(
                         slug=row.slug,
@@ -320,7 +426,11 @@ class PluginManager:
                     # 预先写入 registry（register() 内再调用 ctx.register_admin_menu
                     # 会是重复声明；由 registry 自行接受 / 去重）。
                     admin_menu_decl = (manifest_dict or {}).get("admin_menu")
-                    if isinstance(admin_menu_decl, dict) and admin_menu_decl.get("label") and admin_menu_decl.get("path"):
+                    if (
+                        isinstance(admin_menu_decl, dict)
+                        and admin_menu_decl.get("label")
+                        and admin_menu_decl.get("path")
+                    ):
                         try:
                             ctx.register_admin_menu(admin_menu_decl)
                         except Exception:  # noqa: BLE001
@@ -346,7 +456,18 @@ class PluginManager:
                     pos_args: tuple[Any, ...]
                     if not kwargs:
                         # 没有命名冲突 → 按参数长度决定：1-ctx；2-app,bus；否则回退 (ctx,)
-                        n_pos = len([p for p in sig.parameters.values() if p.kind in (_inspect.Parameter.POSITIONAL_ONLY, _inspect.Parameter.POSITIONAL_OR_KEYWORD, _inspect.Parameter.VAR_POSITIONAL)])
+                        n_pos = len(
+                            [
+                                p
+                                for p in sig.parameters.values()
+                                if p.kind
+                                in (
+                                    _inspect.Parameter.POSITIONAL_ONLY,
+                                    _inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                                    _inspect.Parameter.VAR_POSITIONAL,
+                                )
+                            ]
+                        )
                         if n_pos == 0:
                             pos_args = ()
                         elif n_pos == 1:
@@ -375,13 +496,20 @@ class PluginManager:
 
     # ── 安装/删除 ──────────────────────────────────────────────────────
 
-    async def install_local(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Plugin:
+    async def install_local(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Plugin:
         # scan to ensure row present
         added, _updated = await self.scan_local(db, site_id=site_id)
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"本地未找到插件文件夹: {slug}")
+
+            raise AppException(
+                status_code=404,
+                error_code="PLUGIN_NOT_FOUND",
+                message=f"本地未找到插件文件夹: {slug}",
+            )
         return row  # type: ignore[return-value]
 
     # ── zip 上传 / 远程安装（Task A） ──────────────────────────────────
@@ -431,7 +559,11 @@ class PluginManager:
 
         # 2) zip 合法性 + 结构分析：必须单根目录，且目录下有 rosetta-plugin.json
         try:
-            zf = zipfile.ZipFile(io.BytesIO(data)) if not isinstance(data, (bytes, bytearray)) else None
+            zf = (
+                zipfile.ZipFile(io.BytesIO(data))
+                if not isinstance(data, (bytes, bytearray))
+                else None
+            )
         except Exception:
             zf = None
         if zf is None:
@@ -525,7 +657,7 @@ class PluginManager:
                 if len(parts) != 2:
                     continue  # 顶层文件忽略
                 _, rel = parts
-                out_path = target_dir / rel
+                out_path = _safe_zip_extract_path(target_dir, rel)
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(n) as src, open(out_path, "wb") as dst:
                     shutil.copyfileobj(src, dst)
@@ -612,6 +744,18 @@ class PluginManager:
         url_str = str(payload.remote.url)
         timeout_seconds = 60
         try:
+            from backend.core.net_guard import UnsafeTargetError, assert_public_http_url
+
+            # SSRF 防护：下载目标必须是公网 http(s) 地址
+            # （内网市场场景请改用 zip 上传安装，不放宽此校验）
+            await assert_public_http_url(url_str)
+        except UnsafeTargetError as e:
+            raise AppException(
+                status_code=400,
+                error_code="REMOTE_URL_NOT_ALLOWED",
+                message=f"远程包地址不合法: {e}",
+            ) from e
+        try:
             async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
                 resp = await client.get(url_str)
                 resp.raise_for_status()
@@ -640,16 +784,21 @@ class PluginManager:
         return await self.install_from_uploaded_bytes(db, filename, content, site_id=site_id)
 
     async def delete(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> None:
-        from backend.models.extensions import Plugin as PluginModel
         from backend.models.core import SiteConfig
 
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 不存在")
+
+            raise AppException(
+                status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 不存在"
+            )
         if row.status == "active":
             from backend.core.exceptions import AppException
-            raise AppException(status_code=409, error_code="PLUGIN_ALREADY_ACTIVE", message="请先禁用该插件再删除")
+
+            raise AppException(
+                status_code=409, error_code="PLUGIN_ALREADY_ACTIVE", message="请先禁用该插件再删除"
+            )
         folder_rel = getattr(row, "folder") or ""
         if folder_rel:
             # Remove KV settings too
@@ -676,16 +825,27 @@ class PluginManager:
     async def get_settings(self, db: AsyncSession, slug: str) -> dict[str, Any]:
         row = await self.get(db, slug)
         schema = getattr(row, "settings_schema", None) or {} if row else {}
-        defaults = {k: v.get("default") for k, v in (schema.get("properties") or {}).items() if isinstance(v, dict) and "default" in v}
+        defaults = {
+            k: v.get("default")
+            for k, v in (schema.get("properties") or {}).items()
+            if isinstance(v, dict) and "default" in v
+        }
         stored = await _get_kv_json(db, f"{PLUGIN_SETTINGS_PREFIX}{slug}", {})
         if isinstance(stored, dict):
             return {**defaults, **stored}
         return defaults
 
-    async def set_settings(self, db: AsyncSession, slug: str, settings: dict[str, Any]) -> dict[str, Any]:
+    async def set_settings(
+        self, db: AsyncSession, slug: str, settings: dict[str, Any]
+    ) -> dict[str, Any]:
         if not isinstance(settings, dict):
             from backend.core.exceptions import AppException
-            raise AppException(status_code=422, error_code="PLUGIN_SETTINGS_INVALID", message="插件设置必须是 JSON 对象")
+
+            raise AppException(
+                status_code=422,
+                error_code="PLUGIN_SETTINGS_INVALID",
+                message="插件设置必须是 JSON 对象",
+            )
         merged = {**(await self.get_settings(db, slug)), **settings}
         return await _set_kv_json(
             db,
@@ -696,11 +856,16 @@ class PluginManager:
 
     # ── 升级（桩） ─────────────────────────────────────────────────────
 
-    async def upgrade(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Plugin:
+    async def upgrade(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Plugin:
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装")
+
+            raise AppException(
+                status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装"
+            )
         # Re-scan picks up new version from manifest (stub: simulate version bump by resetting updated_at)
         now = datetime.now(UTC)
         row.updated_at = now  # type: ignore[assignment]
@@ -735,18 +900,28 @@ class PluginManager:
                     await self.upgrade(db, s, site_id=site_id)
                 else:
                     from backend.core.exceptions import AppException
-                    raise AppException(status_code=422, error_code="PLUGIN_INVALID_ACTION", message=f"不支持的批量操作: {action}")
+
+                    raise AppException(
+                        status_code=422,
+                        error_code="PLUGIN_INVALID_ACTION",
+                        message=f"不支持的批量操作: {action}",
+                    )
                 success += 1
             except Exception as exc:  # noqa: BLE001 - bulk, collect
                 err_code = getattr(exc, "error_code", type(exc).__name__)
                 message = str(getattr(exc, "message", exc))
                 errors.append({"slug": s, "error_code": err_code, "message": message})
-        return BulkOperationOut(total=total, success=success, failed=total - success, errors=errors or None)
+        return BulkOperationOut(
+            total=total, success=success, failed=total - success, errors=errors or None
+        )
 
     # ── 启动期批量激活 ─────────────────────────────────────────────────
 
-    async def boot_activate_plugins(self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID) -> tuple[int, int]:
+    async def boot_activate_plugins(
+        self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID
+    ) -> tuple[int, int]:
         """对 DB 中 status='active' 的所有插件做沙箱导入（启动时重放）。返回 (success, failed)。"""
+        from backend.core.routing_registry import routing_registry
         from backend.models.extensions import Plugin as PluginModel
 
         stmt = select(PluginModel).where(
@@ -755,6 +930,19 @@ class PluginManager:
         rows = list((await db.execute(stmt)).scalars().all())
         ok = fail = 0
         for row in rows:
+            # ⚠️ legacy 双重加载兜底：main.py lifespan 先执行了 plugin_loader.load_plugins()，
+            # 本进程中若该插件的 hooks 已注册、或 routing_registry 已有其 slug（"纯路由插件"
+            # 如 guestbook-rss 不挂 hooks），则不再做沙箱 import，仅算 success。
+            if hooks_registered_for_plugin(row.slug) or routing_registry.has_slug(row.slug):
+                logger.info(
+                    "[plugin.boot] slug=%s 已由 legacy loader 注册（hooks=%s routes=%s），"
+                    "跳过沙箱重导入（防重复）",
+                    row.slug,
+                    hooks_registered_for_plugin(row.slug),
+                    routing_registry.has_slug(row.slug),
+                )
+                ok += 1
+                continue
             imported, err = await self._import_plugin_module(row, site_id=site_id)
             if imported:
                 ok += 1
@@ -783,7 +971,9 @@ class ThemeManager:
 
         return scan_themes_dir
 
-    async def scan_local(self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID) -> tuple[int, int]:
+    async def scan_local(
+        self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID
+    ) -> tuple[int, int]:
         from backend.models.extensions import Theme as ThemeModel
 
         scan = self._scanner_import()
@@ -791,7 +981,9 @@ class ThemeManager:
         added = updated = 0
         now = datetime.now(UTC)
         for folder_rel, manifest in items:
-            stmt = select(ThemeModel).where(and_(ThemeModel.site_id == site_id, ThemeModel.slug == manifest.slug))
+            stmt = select(ThemeModel).where(
+                and_(ThemeModel.site_id == site_id, ThemeModel.slug == manifest.slug)
+            )
             row = (await db.execute(stmt)).scalar_one_or_none()
             if row is None:
                 row = ThemeModel(
@@ -874,37 +1066,56 @@ class ThemeManager:
                 stmt = stmt.where(ThemeModel.status.in_(["installed", "active"]))
         if search:
             q = f"%{search}%"
-            stmt = stmt.where(or_(ThemeModel.name.ilike(q), ThemeModel.slug.ilike(q), ThemeModel.description.ilike(q)))
-        total = (await db.execute(select(func.count()).select_from(stmt.subquery()))).scalar_one() or 0
+            stmt = stmt.where(
+                or_(
+                    ThemeModel.name.ilike(q),
+                    ThemeModel.slug.ilike(q),
+                    ThemeModel.description.ilike(q),
+                )
+            )
+        total = (
+            await db.execute(select(func.count()).select_from(stmt.subquery()))
+        ).scalar_one() or 0
         stmt = stmt.order_by(ThemeModel.is_active.desc(), ThemeModel.name.asc())
-        page = max(1, int(page)); per_page = max(1, min(200, int(per_page)))
+        page = max(1, int(page))
+        per_page = max(1, min(200, int(per_page)))
         stmt = stmt.limit(per_page).offset((page - 1) * per_page)
         rows = list((await db.execute(stmt)).scalars().all())
         return rows, total
 
-    async def get(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Theme | None:
+    async def get(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Theme | None:
         from backend.models.extensions import Theme as ThemeModel
 
-        stmt = select(ThemeModel).where(and_(ThemeModel.site_id == site_id, ThemeModel.slug == slug))
+        stmt = select(ThemeModel).where(
+            and_(ThemeModel.site_id == site_id, ThemeModel.slug == slug)
+        )
         return (await db.execute(stmt)).scalar_one_or_none()
 
     async def get_active(self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID) -> Theme | None:
         from backend.models.extensions import Theme as ThemeModel
 
-        stmt = select(ThemeModel).where(
-            and_(ThemeModel.site_id == site_id, ThemeModel.is_active.is_(True))
-        ).limit(1)
+        stmt = (
+            select(ThemeModel)
+            .where(and_(ThemeModel.site_id == site_id, ThemeModel.is_active.is_(True)))
+            .limit(1)
+        )
         return (await db.execute(stmt)).scalar_one_or_none()
 
     # ── 激活 / 互斥切换 ────────────────────────────────────────────────
 
-    async def activate(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Theme:
-        from backend.models.extensions import Theme as ThemeModel
+    async def activate(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Theme:
 
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装")
+
+            raise AppException(
+                status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装"
+            )
         if getattr(row, "is_active", False):
             # 幂等：已激活直接返回（不改变 activated_at / 不重放 hook）
             return row  # type: ignore[return-value]
@@ -928,28 +1139,42 @@ class ThemeManager:
         return row  # type: ignore[return-value]
 
     async def delete(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> None:
-        from backend.models.extensions import Theme as ThemeModel
         from backend.models.core import SiteConfig
 
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装")
+
+            raise AppException(
+                status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装"
+            )
         if getattr(row, "is_active", False):
             from backend.core.exceptions import AppException
-            raise AppException(status_code=409, error_code="THEME_ALREADY_ACTIVE", message="激活中的主题不允许删除（请先切换）")
+
+            raise AppException(
+                status_code=409,
+                error_code="THEME_ALREADY_ACTIVE",
+                message="激活中的主题不允许删除（请先切换）",
+            )
         kv_key = f"{THEME_MODS_PREFIX}{slug}"
         await db.execute(delete(SiteConfig).where(SiteConfig.key == kv_key))
         await db.delete(row)
         await db.flush()
         await do_action("theme.deleted", slug=slug)
 
-    async def install_local(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Theme:
+    async def install_local(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Theme:
         await self.scan_local(db, site_id=site_id)
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="THEME_NOT_FOUND", message=f"本地未找到主题文件夹: {slug}")
+
+            raise AppException(
+                status_code=404,
+                error_code="THEME_NOT_FOUND",
+                message=f"本地未找到主题文件夹: {slug}",
+            )
         return row  # type: ignore[return-value]
 
     # ── zip 上传 / 远程安装（Task A）主题版 ────────────────────────────
@@ -995,7 +1220,9 @@ class ThemeManager:
         with zf:
             names = zf.namelist()
             if not names:
-                raise AppException(status_code=400, error_code="PACKAGE_EMPTY", message="ZIP 内没有文件")
+                raise AppException(
+                    status_code=400, error_code="PACKAGE_EMPTY", message="ZIP 内没有文件"
+                )
             top_levels: set[str] = {n.split("/", 1)[0] for n in names if n.split("/", 1)[0]}
             if len(top_levels) != 1:
                 raise AppException(
@@ -1019,7 +1246,9 @@ class ThemeManager:
             except AppException:
                 raise
             except (ValueError, TypeError) as e:
-                raise AppException(status_code=400, error_code="MANIFEST_INVALID", message=str(e)) from e
+                raise AppException(
+                    status_code=400, error_code="MANIFEST_INVALID", message=str(e)
+                ) from e
             except Exception as e:  # noqa: BLE001
                 raise AppException(
                     status_code=400,
@@ -1059,7 +1288,7 @@ class ThemeManager:
                 if len(parts) != 2:
                     continue
                 _, rel = parts
-                out = target_dir / rel
+                out = _safe_zip_extract_path(target_dir, rel)
                 out.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(n) as src, open(out, "wb") as dst:
                     shutil.copyfileobj(src, dst)
@@ -1146,6 +1375,18 @@ class ThemeManager:
                 message="remote 字段必填",
             )
         try:
+            from backend.core.net_guard import UnsafeTargetError, assert_public_http_url
+
+            # SSRF 防护：下载目标必须是公网 http(s) 地址
+            # （内网市场场景请改用 zip 上传安装，不放宽此校验）
+            await assert_public_http_url(str(payload.remote.url))
+        except UnsafeTargetError as e:
+            raise AppException(
+                status_code=400,
+                error_code="REMOTE_URL_NOT_ALLOWED",
+                message=f"远程主题包地址不合法: {e}",
+            ) from e
+        try:
             async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(str(payload.remote.url))
                 resp.raise_for_status()
@@ -1171,11 +1412,16 @@ class ThemeManager:
         slug = getattr(payload, "slug", None) or "remote-theme"
         return await self.install_from_uploaded_bytes(db, f"{slug}.zip", content, site_id=site_id)
 
-    async def upgrade(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> Theme:
+    async def upgrade(
+        self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
+    ) -> Theme:
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
-            raise AppException(status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装")
+
+            raise AppException(
+                status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装"
+            )
         row.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         await db.flush()
         await db.refresh(row)
@@ -1188,7 +1434,8 @@ class ThemeManager:
         row = await self.get(db, slug)
         schema = getattr(row, "mods_schema", None) or {} if row else {}
         defaults = {
-            k: v.get("default") for k, v in (schema.get("properties") or {}).items()
+            k: v.get("default")
+            for k, v in (schema.get("properties") or {}).items()
             if isinstance(v, dict) and "default" in v
         }
         stored = await _get_kv_json(db, f"{THEME_MODS_PREFIX}{slug}", {})
@@ -1200,7 +1447,11 @@ class ThemeManager:
         from backend.core.exceptions import AppException
 
         if not isinstance(mods, dict):
-            raise AppException(status_code=422, error_code="THEME_MODS_INVALID", message="主题 mods 必须是 JSON 对象")
+            raise AppException(
+                status_code=422,
+                error_code="THEME_MODS_INVALID",
+                message="主题 mods 必须是 JSON 对象",
+            )
         merged = {**(await self.get_mods(db, slug)), **mods}
 
         # ── mods_schema 校验：jsonschema 优先，缺失则用 pydantic 降级 ─────
@@ -1284,11 +1535,10 @@ def _validate_mods_against_schema(value: dict[str, Any], schema: dict[str, Any])
                 required_keys.add(k)
 
     field_specs: dict[str, tuple[type, Any]] = {}
-    # Pydantic 2 不支持在 Field() 之外塞 enum；用 Annotated + 字面量合成
     try:
-        from typing import Annotated, Literal, Union
+        from typing import Literal
     except ImportError:  # pragma: no cover - py310+ always has typing
-        from typing_extensions import Annotated, Literal, Union  # type: ignore[assignment]
+        pass  # type: ignore[assignment]
 
     import re
 
@@ -1321,9 +1571,13 @@ def _validate_mods_against_schema(value: dict[str, Any], schema: dict[str, Any])
         elif jtype == "integer":
             py_type = int
             if "minimum" in node and isinstance(node["minimum"], (int, float)):
-                field_kwargs["ge"] = int(node["minimum"]) if float(node["minimum"]).is_integer() else node["minimum"]
+                field_kwargs["ge"] = (
+                    int(node["minimum"]) if float(node["minimum"]).is_integer() else node["minimum"]
+                )
             if "maximum" in node and isinstance(node["maximum"], (int, float)):
-                field_kwargs["le"] = int(node["maximum"]) if float(node["maximum"]).is_integer() else node["maximum"]
+                field_kwargs["le"] = (
+                    int(node["maximum"]) if float(node["maximum"]).is_integer() else node["maximum"]
+                )
         elif jtype == "number":
             py_type = float
             if "minimum" in node and isinstance(node["minimum"], (int, float)):
@@ -1349,14 +1603,14 @@ def _validate_mods_against_schema(value: dict[str, Any], schema: dict[str, Any])
                 else:
                     # 混合类型：用 Union[Literal[每一项]]
                     variants = tuple(Literal[v] for v in enum_vals)  # type: ignore[misc]
-                    py_type = Union[variants]  # type: ignore[valid-type]
+                    py_type = variants  # type: ignore[valid-type]
             except Exception:  # noqa: BLE001 - pragma
                 # 失败降级为 Any + json_schema_extra 提示
                 py_type = Any
 
         # 允许空值 → 包 Optional
         if default is None:
-            py_type = Union[py_type, type(None)]
+            py_type = py_type | None
 
         try:
             field_specs[key] = (py_type, Field(default=default, **field_kwargs))
@@ -1403,6 +1657,7 @@ theme_manager: ThemeManager = ThemeManager()
 
 
 # ── Lifespan bootstrap entry ──────────────────────────────────────────────
+
 
 async def bootstrap_extensions(
     db: AsyncSession,

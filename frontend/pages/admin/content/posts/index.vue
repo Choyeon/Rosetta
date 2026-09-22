@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, shallowRef, computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePosts } from '~~/composables/usePosts'
 import {
@@ -23,6 +23,7 @@ import {
 } from '~~/components/ui/select'
 import type { AdminColumn as Column } from '~~/types/admin'
 import AdminFilterBar from '~~/components/admin/AdminFilterBar.vue'
+import { getLocalizedStr } from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -30,7 +31,8 @@ const router = useRouter()
 const { deletePost, batchUpdatePostStatus } = usePosts()
 const toast = useToast()
 
-const posts = ref<AdminPostListItem[]>([])
+// shallowRef：列表整赋值替换，避免 Vue 对 10+ 条 Post 对象深层 reactive 递归 Proxy
+const posts = shallowRef<AdminPostListItem[]>([])
 const loading = ref(false)
 const total = ref(0)
 const page = ref(1)
@@ -42,7 +44,7 @@ const categoryFilter = ref<string>('all')
 const createdStart = ref<string | null>(null)
 const createdEnd = ref<string | null>(null)
 
-const categories = ref<AdminCategory[]>([])
+const categories = shallowRef<AdminCategory[]>([])
 const selectedIds = ref<number[]>([])
 const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
@@ -55,12 +57,6 @@ const statusOptions = [
   { value: 'scheduled' as const, label: '定时' },
   { value: 'archived' as const, label: '已归档' }
 ]
-
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
 
 const columns: Column[] = [
   { key: 'id', title: 'ID', class: 'w-16 text-muted-foreground text-xs' },
@@ -172,17 +168,14 @@ function confirmBatchDelete() {
 
 async function doBatchDelete() {
   const ids = [...selectedIds.value]
-  let failed = 0
-  for (const id of ids) {
-    try {
-      await deletePost(id)
-      selectedIds.value = selectedIds.value.filter(x => x !== id)
-    } catch {
-      failed++
-    }
-  }
+  if (ids.length === 0) return
+  // 并行删除：Promise.allSettled 保证单个失败不阻断其他删除
+  const results = await Promise.allSettled(ids.map(id => deletePost(id)))
+  const failed = results.filter(r => r.status === 'rejected').length
+  const success = ids.length - failed
   if (failed === 0) toast.success(`已批量删除 ${ids.length} 篇文章`)
-  else toast.warning(`成功删除 ${ids.length - failed} 篇，失败 ${failed} 篇`)
+  else toast.warning(`成功删除 ${success} 篇，失败 ${failed} 篇`)
+  selectedIds.value = []
   batchDeleteDialogOpen.value = false
   loadPosts()
 }
@@ -219,13 +212,13 @@ onMounted(() => {
         class="rounded-[12px] h-11 px-5 shadow-sm gap-2"
         @click="router.push('/admin/content/posts/new')"
       >
-        <Plus class="size-4.5" />
+        <Plus data-icon="inline-start" />
         <span>新建文章</span>
       </Button>
     </template>
 
     <template #toolbar>
-      <div class="space-y-3">
+      <div class="flex flex-col gap-3">
         <AdminFilterBar
           v-model:keyword="searchQuery"
           v-model:status="statusFilter"
@@ -261,7 +254,10 @@ onMounted(() => {
               class="h-9 rounded-[10px]"
               @click="refresh"
             >
-              <RefreshCw class="size-4 mr-1.5" />
+              <RefreshCw
+                data-icon="inline-start"
+                class="mr-1.5"
+              />
               刷新
             </Button>
           </template>
@@ -350,12 +346,12 @@ onMounted(() => {
       </template>
       <template #cell-status="{ row }">
         <Badge
-          class="rounded-[10px] border font-normal"
+          class="rounded-[10px] font-normal"
           :class="{
-            'bg-emerald-100 text-emerald-700 border-emerald-200': (row as Post).status === 'published',
-            'bg-amber-100 text-amber-700 border-amber-200': (row as Post).status === 'draft',
-            'bg-indigo-100 text-indigo-700 border-indigo-200': (row as Post).status === 'scheduled',
-            'bg-slate-100 text-slate-600 border-slate-200': (row as Post).status === 'archived'
+            'bg-success-muted text-success-muted-foreground': (row as Post).status === 'published',
+            'bg-warning-muted text-warning-muted-foreground': (row as Post).status === 'draft',
+            'bg-info-muted text-info-muted-foreground': (row as Post).status === 'scheduled',
+            'bg-muted text-muted-foreground': (row as Post).status === 'archived'
           }"
         >
           {{ { published: '已发布', draft: '草稿', scheduled: '定时', archived: '已归档' }[(row as Post).status] ?? (row as Post).status }}

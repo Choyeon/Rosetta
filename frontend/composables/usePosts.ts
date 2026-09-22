@@ -1,15 +1,14 @@
-/* eslint-disable @typescript-eslint/ban-ts-comment */
-// @ts-nocheck
-/* eslint-enable @typescript-eslint/ban-ts-comment */
 import type { Post, PostCreate, PaginatedResponse } from '~~/types/api'
 import { apiFetch } from '~~/composables/useApi'
 
 export const usePosts = () => {
   const { locale } = useI18n()
 
-  // Reactive state for pages that want "store-like" usage
-  const posts = ref<Post[]>([])
-  const post = ref<Post | null>(null)
+  // ===== Reactive state（shallowRef：读多写少 + 所有写路径都是整替换 posts.value = X，
+  //       避免 Vue 对 Post 对象深层 reactive 递归 Proxy，减少 100+ 条列表的 CPU 开销）。
+  //       若未来需要 mutate 单条 post 的嵌套字段，先用 toRaw + 手动触发响应式。 =====
+  const posts = shallowRef<Post[]>([])
+  const post = shallowRef<Post | null>(null)
   const loading = ref(false)
   const error = ref<unknown>(null)
   const total = ref(0)

@@ -1,7 +1,7 @@
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
-      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-emerald-100 to-teal-100 dark:from-emerald-900/30 dark:to-teal-900/30 mb-5">
+      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5 mb-5">
         <Link2 class="size-7 text-success" />
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
@@ -27,7 +27,7 @@
       v-else-if="fetchError"
       class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
     >
-      {{ t('admin.posts.loadFailed') }}
+      {{ t('friends.loadFailed', '加载失败') }}
     </div>
 
     <div
@@ -45,18 +45,21 @@
           <CardHeader class="p-5 pb-3">
             <div class="flex items-start gap-3 mb-3">
               <div
-                class="size-12 shrink-0 rounded-xl flex items-center justify-center overflow-hidden bg-gradient-to-br from-slate-100 to-zinc-200 dark:from-slate-800 dark:to-zinc-700 transition-transform duration-300 group-hover:scale-105"
+                class="size-12 shrink-0 rounded-xl flex items-center justify-center overflow-hidden bg-muted transition-transform duration-300 group-hover:scale-105"
               >
                 <img
-                  v-if="friend.logo"
+                  v-if="friend.logo && !logoFailedIds.has(friend.id)"
                   :src="friend.logo"
                   :alt="pickLocalized(friend.name)"
-                  class="w-full h-full object-cover"
+                  class="size-full object-cover"
                   loading="lazy"
+                  width="48"
+                  height="48"
+                  @error="onLogoError(friend.id)"
                 >
                 <span
                   v-else
-                  class="font-display text-lg font-bold text-slate-600 dark:text-slate-300"
+                  class="font-display text-lg font-bold text-muted-foreground"
                 >
                   {{ pickLocalized(friend.name)?.[0]?.toUpperCase() }}
                 </span>
@@ -133,7 +136,20 @@ useBreadcrumbJsonLd([
 
 const { getFriendLinks } = useFriendLinks()
 
-const { data: links, pending: loading, error: fetchError } = await getFriendLinks()
+// ===== Hydration 安全：同步解构（无 await）避免 setup() 被编译器判定为 async 函数。
+// async setup 在客户端同步 Hydrate Diff 阶段视为 Promise pending → Suspense 渲染 Symbol(v-cmt) Comment，
+// 而 SSR 端已经渲染了真实 div 子树 → 直接触发 "Hydration completed but contains mismatches."。
+// useCore/getFriendLinks 内部基于 useFetch，返回 { data, pending, error } 同步解构即可，
+// 首字节 SSR 数据由 useFetch 在服务端阶段填充，客户端从 payload 取回，不需要 await 阻塞。
+const { data: links, pending: loading, error: fetchError } = getFriendLinks()
 
 const friendLinks = computed(() => links.value ?? [])
+
+// Logo 加载失败 → 回退到首字母占位（整集替换保证响应式触发；空集两端一致，无 Hydration 风险）
+const logoFailedIds = ref<Set<string | number>>(new Set())
+const onLogoError = (id: string | number) => {
+  const next = new Set(logoFailedIds.value)
+  next.add(id)
+  logoFailedIds.value = next
+}
 </script>

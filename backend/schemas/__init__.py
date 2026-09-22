@@ -16,14 +16,13 @@ Example:
     >>>     password="SecurePassword123",
     >>> )
 """
+# ruff: noqa: F401,E402  —— 整个文件是 schemas 统一再导出的 Hub；按功能分组 import 分布在多段。
 
 import re
 from datetime import datetime
-from typing import Any, Dict, Generic, List, Literal, TypeVar
+from typing import Annotated, Any, Dict, Generic, List, Literal, TypeVar
 
-from pydantic import BaseModel, Field, field_validator, model_validator, AfterValidator
-from typing import Annotated
-import re
+from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
 
 # 仅校验"格式合法"，不评判域名是否可解析 / 是否为 special-use 域名。
 # Pydantic EmailStr 默认会做 DNS 可达性与 special-use 域名（.local / example.com 等）
@@ -56,6 +55,19 @@ from backend.schemas.announcement import (
     AnnouncementType,
     AnnouncementUpdate,
 )
+from backend.schemas.extensions import (
+    BulkOperationOut,
+    PluginActivateIn,
+    PluginBase,
+    PluginBulkIn,
+    PluginConfigIn,
+    PluginInstallFrom,
+    PluginOut,
+    ThemeActivateIn,
+    ThemeBase,
+    ThemeModsIn,
+    ThemeOut,
+)
 from backend.schemas.gallery import (
     AlbumCreate,
     AlbumDetailResponse,
@@ -64,19 +76,6 @@ from backend.schemas.gallery import (
     PhotoCreate,
     PhotoResponse,
     PhotoUpdate,
-)
-from backend.schemas.extensions import (
-    PluginBase,
-    PluginOut,
-    PluginActivateIn,
-    PluginConfigIn,
-    PluginBulkIn,
-    PluginInstallFrom,
-    ThemeBase,
-    ThemeOut,
-    ThemeModsIn,
-    ThemeActivateIn,
-    BulkOperationOut,
 )
 
 T = TypeVar("T")
@@ -176,7 +175,9 @@ class UserBase(BaseModel):
     website: str | None = Field(None, max_length=200, description="个人网站")
     github: str | None = Field(None, max_length=200, description="GitHub 主页")
     qq: str | None = Field(None, max_length=20, description="QQ 号（可选，用于头像识别）")
-    avatar_source: Literal["auto","custom","github","qq","gravatar"] = Field("auto", description="头像来源")
+    avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] = Field(
+        "auto", description="头像来源"
+    )
 
     @field_validator("website", "github")
     @classmethod
@@ -228,7 +229,7 @@ class UserUpdate(BaseModel):
     website: str | None = Field(None, max_length=200)
     github: str | None = Field(None, max_length=200)
     qq: str | None = Field(None, max_length=20)
-    avatar_source: Literal["auto","custom","github","qq","gravatar"] | None = None
+    avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] | None = None
     avatar: str | None = Field(None, max_length=500)
     cover_image: str | None = Field(None, max_length=500)
 
@@ -245,7 +246,7 @@ class AdminUserUpdate(BaseModel):
     qq: str | None = Field(None, max_length=20)
     github: str | None = Field(None, max_length=200)
     website: str | None = Field(None, max_length=200)
-    avatar_source: Literal["auto","custom","github","qq","gravatar"] | None = None
+    avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] | None = None
     avatar: str | None = Field(None, max_length=500)
 
 
@@ -447,7 +448,9 @@ class AdminUserUpdateFull(BaseModel):
     用于管理员更新用户的所有信息。
     """
 
-    username: str | None = Field(None, min_length=1, max_length=150, description="用户名（可选，留空则不修改）")
+    username: str | None = Field(
+        None, min_length=1, max_length=150, description="用户名（可选，留空则不修改）"
+    )
     email: RelaxedEmailStr | None = None
     nickname: str | None = Field(None, max_length=50)
     bio: str | None = Field(None, max_length=500)
@@ -599,7 +602,7 @@ class TagBase(BaseModel):
 
     name: dict[str, str] = Field(..., description="多语言标签名称")
     slug: str | None = Field(None, max_length=100, pattern=r"^[a-z0-9-]+$")
-    color: str = Field(default="#64748B", max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
+    color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
     icon: str | None = Field(None, max_length=50)
     is_active: bool = True
 
@@ -626,7 +629,7 @@ class TagResponse(BaseModel):
     id: int
     name: dict[str, str]
     slug: str
-    color: str
+    color: str | None = None
     icon: str | None = None
     is_active: bool
     created_at: datetime
@@ -645,7 +648,7 @@ class TagLocalizedResponse(BaseModel):
     id: int
     name: str
     slug: str
-    color: str
+    color: str | None = None
     icon: str | None = None
     is_active: bool
     created_at: datetime
@@ -731,9 +734,7 @@ class PostUpdate(BaseModel):
     series_id: int | None = None
     series_order: int | None = None
     status: str | None = Field(None, pattern="^(draft|published|scheduled)$")
-    visibility: str | None = Field(
-        None, pattern="^(public|password|private)$", max_length=10
-    )
+    visibility: str | None = Field(None, pattern="^(public|password|private)$", max_length=10)
     scheduled_at: datetime | None = None
     password: str | None = None
     view_password: str | None = None
@@ -1103,9 +1104,7 @@ class CommentCreate(CommentBase):
     avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] = Field(
         "auto", description="头像来源"
     )
-    author_avatar_source: (
-        Literal["auto", "custom", "github", "qq", "gravatar"] | None
-    ) = Field(
+    author_avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] | None = Field(
         None,
         description="【已废弃】请使用 avatar_source；旧调用方兼容位，若为非 None 会覆盖 avatar_source",
     )
@@ -1337,7 +1336,11 @@ class FriendLinkBase(BaseModel):
     )
     logo: str | None = Field(None, max_length=500)
     order: int = Field(default=0, ge=0)
-    status: str = Field(default="pending", pattern=r"^(pending|approved|rejected)$", description="审核状态：pending待审核 / approved已通过 / rejected已拒绝")
+    status: str = Field(
+        default="pending",
+        pattern=r"^(pending|approved|rejected)$",
+        description="审核状态：pending待审核 / approved已通过 / rejected已拒绝",
+    )
     is_active: bool = True
     target_blank: bool = False
 
@@ -2220,7 +2223,9 @@ class GuestbookEntryCreate(GuestbookEntryBase):
 
     qq: str | None = Field(None, max_length=20, description="评论者 QQ（可选）")
     github: str | None = Field(None, max_length=64, description="评论者 GitHub 用户名（可选）")
-    author_avatar_source: Literal["auto","custom","github","qq","gravatar"] = Field("auto", description="头像来源")
+    author_avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] = Field(
+        "auto", description="头像来源"
+    )
 
 
 class GuestbookEntryResponse(BaseModel):

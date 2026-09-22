@@ -7,7 +7,7 @@ Rosetta 多站点 Site 模型（骨架）。
 
 from __future__ import annotations
 
-from sqlalchemy import Boolean, Column, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, validates
 
 from backend.core.database import Base

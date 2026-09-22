@@ -14,15 +14,14 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import { getLocalizedStr, normalizeI18nDict, slugify, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
-type I18nDict = { zh: string, en: string, ja: string, zh_Hant: string }
-
-const categories = ref<AdminCategory[]>([])
+const categories = shallowRef<AdminCategory[]>([])
 const loading = ref(false)
 const saving = ref(false)
 const editingId = ref<number | null>(null)
@@ -45,31 +44,6 @@ const form = reactive<{
   icon: '',
   sort_order: 0
 })
-
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
-const normalizeI18nDict = (v: string | Record<string, string> | null | undefined): I18nDict => {
-  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
-  if (typeof v === 'string') return { zh: v, en: '', ja: '', zh_Hant: '' }
-  return {
-    zh: v.zh ?? '',
-    en: v.en ?? '',
-    ja: v.ja ?? '',
-    zh_Hant: v.zh_Hant ?? ''
-  }
-}
-
-const slugify = (text: string): string => {
-  let s = text.trim().toLowerCase()
-  s = s.replace(/[\s]+/g, '-')
-  s = s.replace(/[^\w一-龥-]/g, '')
-  s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
-  return s
-}
 
 let slugManualEdit = false as boolean
 watch(
@@ -226,10 +200,11 @@ onMounted(() => {
             :style="{ background: (row as AdminCategory).color || '#94a3b8' }"
           />
           <span class="font-medium">{{ getLocalizedStr((row as AdminCategory).name) }}</span>
-          <span
+          <DynamicIcon
             v-if="(row as AdminCategory).icon"
-            class="text-muted-foreground"
-          >{{ (row as AdminCategory).icon }}</span>
+            :icon="(row as AdminCategory).icon!"
+            class="size-4 text-muted-foreground shrink-0"
+          />
         </div>
       </template>
       <template #cell-description="{ row }">
@@ -315,11 +290,24 @@ onMounted(() => {
           </div>
           <div>
             <Label class="mb-1 block text-xs text-muted-foreground">图标</Label>
-            <Input
-              v-model="form.icon"
-              placeholder="emoji 或 icon"
-              class="h-9 rounded-[10px]"
-            />
+            <div class="flex gap-2">
+              <div class="size-9 shrink-0 rounded-[10px] border border-border flex items-center justify-center bg-muted/30">
+                <DynamicIcon
+                  v-if="form.icon"
+                  :icon="form.icon"
+                  class="size-5 text-foreground"
+                />
+                <span
+                  v-else
+                  class="text-xs text-muted-foreground"
+                >—</span>
+              </div>
+              <Input
+                v-model="form.icon"
+                placeholder="heroicons:code-bracket 或 emoji"
+                class="h-9 rounded-[10px] flex-1 font-mono text-xs"
+              />
+            </div>
           </div>
         </div>
         <div>

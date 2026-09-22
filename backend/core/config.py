@@ -61,8 +61,11 @@ class Settings(BaseSettings):
         description="应用版本",
     )
     debug: bool = Field(
-        default=True,
-        description="调试模式，启用后会开启 API 文档和详细错误信息",
+        default=False,
+        description=(
+            "调试模式：开启后 500 响应会携带原始异常信息、SQL echo 等调试便利。"
+            "默认关闭（安全默认）；开发环境由 OOBE 写入 .env 的 DEBUG=true 开启。"
+        ),
     )
     environment: Literal["development", "staging", "production"] = Field(
         default="development",
@@ -168,6 +171,25 @@ class Settings(BaseSettings):
     cors_allow_headers: list[str] = Field(
         default=["*"],
         description="允许的 HTTP 头",
+    )
+
+    trusted_proxy_ips: list[str] = Field(
+        default=[],
+        description=(
+            "受信反向代理 IP 列表（逗号分隔或 JSON 数组）。"
+            "仅当直连对端 IP 在此列表内时才采信 X-Forwarded-For / X-Real-IP 头，"
+            "否则一律使用 socket 层 IP，防止客户端伪造 XFF 绕过 IP 限流。"
+            "部署在 Nginx 后应配置为 ['127.0.0.1']（或反代所在内网 IP）。"
+        ),
+    )
+
+    webhook_allow_private_targets: bool = Field(
+        default=False,
+        description=(
+            "是否允许 Webhook URL 指向内网/保留地址（自托管内网自动化场景）。"
+            "默认关闭：服务端会替 staff 用户主动请求该 URL，"
+            "放行内网目标意味着获得 staff 权限即可探测内网服务。"
+        ),
     )
 
     @property
