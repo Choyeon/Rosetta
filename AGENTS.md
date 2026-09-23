@@ -60,7 +60,7 @@
 
 ### 1.1 已落地的扩展系统
 
-1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`，可选 `mods_schema/` 子目录。
+1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`；Customizer 字段在 `rosetta-theme.json` 内以 `mods_schema`（JSON Schema Draft-07）内联声明，mods 值存 SiteConfig KV `theme_mods:<slug>`。磁盘 ↔ DB 由「扫描」同步：非激活且磁盘已不存在的主题会被清为僵尸记录，激活主题升级前必须磁盘文件存在。
 2. **插件系统**（FastAPI 侧 Hook Engine）：`backend/services/plugin_engine.py`（Bus 模式），三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。
 3. **头像代理 / 解析器**：`/api/media/avatar?src=<base64>`，白名单 302 直跳 → 非白名单流式代理 → DiceBear SVG 兜底；前端 `useResolvedAvatar`。
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
@@ -108,7 +108,7 @@
 | - | --- | --- |
 | 1 | 运行时路径检测：进入 `/admin/**` / `/oobe` 时 `clearThemeVisual`，反之 `applyThemeVisual`；`/login` / `/register`（scope=`public-auth`）允许注入主题属性/链接，frontend 守卫规则在认证页不命中 | `composables/useFrontendTheme.ts` |
 | 2 | 布局主动清理：`layouts/admin.vue` 与 `layouts/default.vue` 在 `onMounted` + `watch(route)` 双节点清理 | `frontend/layouts/*.vue` |
-| 3 | 全局中间件兜底：`layout-scope.global.ts` 向 `<html>` 写 `data-layout-scope="frontend"|"admin"` | `frontend/middleware/layout-scope.global.ts` |
+| 3 | 全局中间件兜底：`layout-scope.global.ts` 向 `<html>` 写 `data-layout-scope="frontend"|"admin"|"public-auth"`（`/oobe` 与 `/admin/**` 同按 admin 处理，判定共用 lib `isThemeVisualExcluded`） | `frontend/middleware/layout-scope.global.ts` |
 | 4 | CSS 选择器作用域守卫：主题 `style.css` 通用选择器必须最前带 `:is([data-theme="..."],[data-rosetta-theme="..."])[data-layout-scope="frontend"]` | `frontend/themes/*/style.css` |
 
 硬红线：

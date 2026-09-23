@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { apiFetch } from '~~/composables/useApi'
 import {
@@ -150,7 +150,13 @@ const filtered = computed(() => {
 })
 
 const totalCount = computed(() => filtered.value.length)
-const totalPages = computed(() => Math.max(1, Math.ceil(totalCount.value / perPage.value)))
+
+// 客户端分页：筛选/搜索收窄后页码可能越界（如第 3 页只剩 1 项时被筛空），
+// 统一在这里钳回最后一页，AdminPagination 与表格切片共享同一 page 状态。
+watch(totalCount, (n) => {
+  const max = Math.max(1, Math.ceil(n / perPage.value))
+  if (page.value > max) page.value = max
+})
 
 const paginated = computed(() => {
   const start = (page.value - 1) * perPage.value
@@ -313,11 +319,6 @@ const statusFilters: Array<{ key: typeof statusFilter.value, label: () => string
   { key: 'inactive', label: () => t('admin.plugins.filter.inactive', '未启用'), count: () => inactiveCount.value },
   { key: 'error', label: () => t('admin.plugins.status.error', '异常'), count: () => errorCount.value }
 ]
-
-function gotoPage(n: number) {
-  const tgt = Math.min(Math.max(1, n), totalPages.value)
-  page.value = tgt
-}
 
 function openPluginDocs() {
   navigateTo('/admin/docs/plugin-tutorial')
@@ -774,96 +775,15 @@ onMounted(() => {
           </Table>
         </div>
 
-        <!-- Pagination bar -->
-        <div class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-border bg-muted/25">
-          <div class="flex items-center gap-3 flex-wrap">
-            <span class="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-              {{ t('admin.plugins.perPage', '每页显示') }}
-            </span>
-            <div class="inline-flex rounded-xl border border-input overflow-hidden bg-background shadow-sm">
-              <Button
-                v-for="n in [10, 20, 50]"
-                :key="n"
-                size="sm"
-                :variant="perPage === n ? 'default' : 'ghost'"
-                class="rounded-none border-0 h-8 px-3"
-                @click="perPage = n; page = 1"
-              >
-                {{ n }}
-              </Button>
-            </div>
-            <span class="text-xs text-muted-foreground tabular-nums">
-              {{ totalCount }} {{ t('admin.plugins.itemsUnit', '项') }} · {{ t('admin.pagination.page', '第 {page} 页', { page }) }} / {{ totalPages }}
-            </span>
-          </div>
-          <div class="flex items-center justify-end gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              class="rounded-xl"
-              :disabled="page <= 1"
-              @click="gotoPage(page - 1)"
-            >
-              {{ t('admin.pagination.prev', '上一页') }}
-            </Button>
-            <template v-if="totalPages <= 7">
-              <Button
-                v-for="n in totalPages"
-                :key="n"
-                size="sm"
-                :variant="page === n ? 'default' : 'ghost'"
-                class="rounded-xl w-9 px-0 tabular-nums"
-                @click="gotoPage(n)"
-              >
-                {{ n }}
-              </Button>
-            </template>
-            <template v-else>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="rounded-xl w-9 px-0 tabular-nums"
-                @click="gotoPage(1)"
-              >
-                1
-              </Button>
-              <span
-                v-if="page > 3"
-                class="text-muted-foreground px-1"
-              >…</span>
-              <Button
-                v-for="n in [page - 1, page, page + 1].filter(x => x > 1 && x < totalPages)"
-                :key="n"
-                size="sm"
-                :variant="page === n ? 'default' : 'ghost'"
-                class="rounded-xl w-9 px-0 tabular-nums"
-                @click="gotoPage(n)"
-              >
-                {{ n }}
-              </Button>
-              <span
-                v-if="page < totalPages - 2"
-                class="text-muted-foreground px-1"
-              >…</span>
-              <Button
-                size="sm"
-                variant="ghost"
-                class="rounded-xl w-9 px-0 tabular-nums"
-                @click="gotoPage(totalPages)"
-              >
-                {{ totalPages }}
-              </Button>
-            </template>
-            <Button
-              variant="outline"
-              size="sm"
-              class="rounded-xl"
-              :disabled="page * perPage >= totalCount"
-              @click="gotoPage(page + 1)"
-            >
-              {{ t('admin.pagination.next', '下一页') }}
-            </Button>
-          </div>
+        <!-- Pagination bar（全站后台统一：AdminPagination） -->
+        <div class="px-6 py-4 border-t border-border bg-muted/25">
+          <AdminPagination
+            v-model:page="page"
+            v-model:page-size="perPage"
+            :total="totalCount"
+            :page-size-options="[10, 20, 50, 100]"
+            unit="项"
+          />
         </div>
       </template>
     </Card>

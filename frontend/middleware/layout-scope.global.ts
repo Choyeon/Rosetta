@@ -3,8 +3,10 @@
  *
  * 前后台样式解耦的"第三层保险"（前两层：useFrontendTheme.clearThemeVisual + 布局 onMounted/watch）。
  *
- *   · /admin/*             → 确保 <html data-layout-scope="admin">，并清理 Rosetta 前端主题残留
- *   · /login /register /oobe → 确保 <html data-layout-scope="public-auth">（主题视觉层
+ *   · /admin/* 与 /oobe     → 确保 <html data-layout-scope="admin">，并清理 Rosetta 前端主题残留
+ *     （两者同属 lib/rosetta-themes 的 THEME_VISUAL_EXCLUDE_PREFIXES——useFrontendTheme
+ *     对这两类路径永远不注入主题视觉层，这里统一按 admin 处理残留清理）
+ *   · /login /register      → 确保 <html data-layout-scope="public-auth">（主题视觉层
  *     允许保留在认证页：frontend 守卫的规则不命中；仅 admin 强制清理）
  *   · 其他所有路径          → 确保 <html data-layout-scope="frontend">
  *
@@ -19,19 +21,18 @@
  *   所以这里只改 data-layout-scope，不做重的 DOM 操作；真正清理 <link>/<class>/<color>
  *   还是由布局的 onMounted 做。
  */
-import { KNOWN_ROSETTA_THEMES } from '~~/lib/rosetta-themes'
+import { isThemeVisualExcluded, KNOWN_ROSETTA_THEMES } from '~~/lib/rosetta-themes'
 
 export default defineNuxtRouteMiddleware((to) => {
   const path = to.path
 
   let scope: 'admin' | 'frontend' | 'public-auth'
-  if (path.startsWith('/admin')) {
+  if (isThemeVisualExcluded(path)) {
     scope = 'admin'
   } else if (
-    ['/login', '/register', '/oobe'].includes(path)
+    ['/login', '/register'].includes(path)
     || path.startsWith('/login/')
     || path.startsWith('/register/')
-    || path.startsWith('/oobe/')
   ) {
     scope = 'public-auth'
   } else {
@@ -70,9 +71,11 @@ export default defineNuxtRouteMiddleware((to) => {
       try {
         // 直接在 DOM 层做"轻量清理"：移除已知 Rosetta 主题属性。
         // 不使用 useFrontendTheme() 是因为 middleware 阶段可能在 setup() 之外调用 composable 会出错。
-        for (const cls of Array.from(root.classList)) {
-          if (cls.startsWith('theme-')) root.classList.remove(cls)
-        }
+        // class 只删白名单 slug 与 data-rosetta-theme 当前值——不按 `theme-` 前缀盲删，
+        // 避免误伤其它系统的 theme-* class（如 useTheme 的过渡 class）。
+        for (const slug of KNOWN_ROSETTA_THEMES) root.classList.remove(`theme-${slug}`)
+        const themedFor = root.getAttribute('data-rosetta-theme')
+        if (themedFor) root.classList.remove(`theme-${themedFor}`)
         root.removeAttribute('data-rosetta-theme')
         const dt = root.getAttribute('data-theme')
         if (dt && KNOWN_ROSETTA_THEMES.has(dt)) root.removeAttribute('data-theme')

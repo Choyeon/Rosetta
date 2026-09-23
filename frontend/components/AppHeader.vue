@@ -28,6 +28,7 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import ThemeToggle from '~~/components/ThemeToggle.vue'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
@@ -38,7 +39,6 @@ const route = useRoute()
 //   · 其余情况（含非极简主题）→ "default"
 // 仅在极简主题激活时才允许 text-only，避免影响默认 Editorial 主题导航。
 const ft = useFrontendTheme()
-const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
 const navbarMinimalMode = computed<'default' | 'text-only'>(() => {
   if (!MINIMAL_THEME_SLUGS.has(ft.slug.value || '')) return 'default'
   return ft.mods.value.show_avatar === false ? 'text-only' : 'default'

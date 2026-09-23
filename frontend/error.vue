@@ -88,6 +88,7 @@
 
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 /**
  * 关闭 error.vue 自身的 SSR：
@@ -165,7 +166,6 @@ let ft: ReturnType<typeof useFrontendTheme> | null = null
 try {
   ft = useFrontendTheme()
 } catch { /* Nuxt 上下文极端异常：保持默认错误页 */ }
-const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
 const isMinimalError = computed(() => MINIMAL_THEME_SLUGS.has(ft?.slug.value || ''))
 if (import.meta.client) void ft?.ensureLoaded()
 

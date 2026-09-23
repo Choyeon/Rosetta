@@ -626,6 +626,7 @@
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import {
   ArrowLeft,
   ChevronLeft,
@@ -648,7 +649,6 @@ const toast = useToast()
 
 // 极简主题激活时切换到纯纸面注册分支（与 login.vue 一致）
 const ft = useFrontendTheme()
-const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
 const isMinimalAuth = computed(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 
 const form = reactive({

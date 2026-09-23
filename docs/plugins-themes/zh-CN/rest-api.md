@@ -127,30 +127,39 @@ curl -X POST -H "Authorization: Bearer <TOKEN>" \
 ## 3. 主题 API
 
 主题分为 **公开只读接口**（前缀 `/api/themes`）与 **管理接口**（前缀 `/api/admin/themes`）。
+注意：调色板（palette）是独立于 WordPress 风格主题的旧系统，路径同样挂在
+`/themes` 下（`palettes` / `current.css` / `admin/themes/current`），互不相干。
 
 ### 3.1 公开只读接口
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET  | `/api/themes/current` | 当前激活主题 slug / manifest / mods / mods_schema |
+| GET  | `/api/themes/active` | 当前激活主题 slug / manifest / mods / mods_schema（前台 `useFrontendTheme` 消费；无激活主题时 `data: null`） |
+| GET  | `/api/themes/palettes` | 可用调色板列表（旧配色系统） |
+| GET  | `/api/themes/current.css` | 当前调色板 CSS，可 `<link>` 直链（旧配色系统） |
 
 ### 3.2 管理接口（/api/admin/themes）
 
 | 方法 | 路径 | 说明 |
 | --- | --- | --- |
-| GET  | `/api/admin/themes` | 列表（status / search / page / per_page） |
+| GET  | `/api/admin/themes` | 列表（status / search / page / per_page；每项携带已存 mods） |
 | GET  | `/api/admin/themes/{slug}` | 主题详情（manifest、mods、mods_schema、截图） |
 | PUT  | `/api/admin/themes/{slug}/activate` | 激活主题（互斥：其它主题自动 inactive） |
-| POST | `/api/admin/themes/_scan` | 扫描 `frontend/themes/*/rosetta-theme.json` 并同步 DB |
-| DELETE | `/api/admin/themes/{slug}` | 删除主题目录与 DB 记录（当前激活主题不可删） |
+| POST | `/api/admin/themes/scan` | 扫描 `frontend/themes/*/rosetta-theme.json` 同步 DB，并清理"磁盘已不存在的非激活主题"僵尸记录（含其 mods）；返回 `{added, refreshed, removed}` |
+| DELETE | `/api/admin/themes/{slug}` | 删除主题的 DB 记录与 mods 配置（**磁盘文件保留**，下次 scan 会重新登记；激活中返回 409） |
 | GET  | `/api/admin/themes/{slug}/mods` | 读取主题 mods 键值 |
-| PUT  | `/api/admin/themes/{slug}/mods` | 全量覆盖 mods（严格校验 mods_schema） |
-| PATCH| `/api/admin/themes/{slug}/mods` | 部分合并 mods（严格校验 mods_schema） |
-| POST | `/api/admin/themes/install?source=upload` | ZIP 上传安装主题（字段名 `file`） |
-| POST | `/api/admin/themes/install?source=remote` | 远程安装主题 |
-| POST | `/api/admin/themes/{slug}/upgrade?source=remote` | 在线升级 |
-| GET  | `/api/admin/themes/market` | 官方市场主题列表 |
+| PUT  | `/api/admin/themes/{slug}/mods` | **全量替换**：先重置为 mods_schema 默认值再写入提交的键（未提交的键回到默认） |
+| PATCH| `/api/admin/themes/{slug}/mods` | **增量合并**：只更新提交的键 |
+| POST | `/api/admin/themes?source=local` | 安装：slug 须已存在于服务器 `frontend/themes/` 目录（JSON `{slug}`） |
+| POST | `/api/admin/themes?source=upload` | 安装：ZIP 上传（multipart 字段名 `file`） |
+| POST | `/api/admin/themes?source=remote` | 安装：远程下载（JSON `{remote:{url, checksum_sha256?}}`） |
+| POST | `/api/admin/themes/{slug}/upgrade` | 从磁盘 manifest 重新同步该主题的元数据 |
+| GET  | `/api/admin/themes/market` | 官方市场主题索引（`?force=true` 跳过 8h 缓存） |
 | POST | `/api/admin/themes/market/{slug}/install` | 官方市场一键安装主题 |
+| PUT  | `/api/admin/themes/current` | 设置默认调色板 id（旧配色系统，非主题激活） |
+
+PUT/PATCH 共用同一套清洗规则：**mods_schema 未声明的键会被静默丢弃**（WordPress
+`sanitize_theme_mods` 语义），只有类型/范围等约束违例才整次拒绝。
 
 ### Mods Schema 校验错误响应样例
 

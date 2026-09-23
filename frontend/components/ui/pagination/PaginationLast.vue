@@ -22,12 +22,13 @@ const forwarded = useForwardProps(delegatedProps)
 <template>
   <PaginationLast
     data-slot="pagination-last"
+    aria-label="最后一页"
     :class="cn(buttonVariants({ variant: 'ghost', size }), 'gap-1 px-2.5 sm:pr-2.5', props.class)"
     v-bind="forwarded"
   >
     <slot>
-      <span class="hidden sm:block">Last</span>
-      <ChevronRightIcon />
+      <span class="hidden sm:block">末页</span>
+      <ChevronRightIcon class="size-4" />
     </slot>
   </PaginationLast>
 </template>

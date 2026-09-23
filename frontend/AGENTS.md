@@ -99,7 +99,7 @@ if (import.meta.client) {
 
 ## 主题系统（WordPress 风格）
 
-内建主题恒为两套（`lib/rosetta-themes.ts` 的 `KNOWN_ROSETTA_THEMES` 是唯一权威白名单）：
+内建主题恒为两套（`lib/rosetta-themes.ts` 是唯一权威来源：`KNOWN_ROSETTA_THEMES` 主题白名单、`MINIMAL_THEME_SLUGS` 极简变体判定、`THEME_VISUAL_EXCLUDE_PREFIXES` / `isThemeVisualExcluded` 路径排除、`resolveThemeAssetPath` / `bustThemeAssetCache` 资源 URL 归一与缓存 bust）。页头/页脚/登录/注册/错误页/首页等组件一律 import，**禁止再写本地 `MINIMAL_THEME_SLUGS` 副本**）：
 
 ```
 themes/
@@ -117,9 +117,9 @@ themes/
 
 1. 激活：后台 `PUT /admin/themes/{slug}/activate`（需 CurrentStaff）改写后端 active 主题。
 2. 读取：`useFrontendTheme().ensureLoaded()` 调 `GET /themes/active` → 写入 `useState('frontend-theme:state')`（slug / name / version / mods / mods_schema）。
-3. SSR 注入：composable 创建时（同步阶段）注册一次 `useHead(() => …state.value…)`， reactive 回调把 `data-rosetta-theme` / `data-theme` / `theme-{slug}` class + `/themes/{slug}/style.css` `<link>` + 颜色 token 写进首字节 HTML。**禁止在 `await` 之后调用 `useHead`**（NUXT_E1001）。
-4. 客户端：`applyThemeVisual(slug, path)` 直接操作 DOM（htmlAttrs + `<link>`，登记进 `_INSTALLED_LINKS`）；进入 `/admin /oobe` 时改调 `clearThemeVisual()` 彻底清理。`/login /register` 允许注入（供 public-auth 段落消费）。
-5. mods：`mergeMods()` 只拷贝 `MODS_DEFAULTS` 里声明过的键——新增主题 mod 必须同步补进 `ThemeModsRuntime` + `MODS_DEFAULTS` + 校验分支，否则前端永远读不到。
+3. SSR 注入：composable 创建时（同步阶段）注册一次 `useHead(() => …state.value…)`， reactive 回调把 `data-rosetta-theme` / `data-theme` / `theme-{slug}` class + `/themes/{slug}/style.css?v=<version>` `<link>` + 颜色 token 写进首字节 HTML。`/themes/**` 是 immutable 强缓存（nuxt.config routeRules），**`?v=` 由 `bustThemeAssetCache` 统一追加，缺了它主题升级后访客永远拿旧 CSS**。禁止在 `await` 之后调用 `useHead`（NUXT_E1001）。
+4. 客户端：`applyThemeVisual(slug, version, path)` 直接操作 DOM（htmlAttrs + 带版本的 `<link>`，登记进 `_INSTALLED_LINKS`，同 slug 且 href 相同则复用）；路径命中 `isThemeVisualExcluded`（`/admin /oobe`）时改调 `clearThemeVisual()` 彻底清理。`/login /register` 允许注入（供 public-auth 段落消费）。
+5. mods：`mergeMods()` 对已声明键按类型校验（如 `posts_per_row` 必须是 1-6 整数），schema 里的未声明键原样透传（后端 `set_mods` 已做 sanitize，落库的键可信）——新增主题 mod 仍建议同步补进 `ThemeModsRuntime` + `MODS_DEFAULTS` 以获得类型化读取。
 6. 预览：后台「主题管理」预览按钮打开 `/?rosetta_theme_preview=<slug>`；`ensureLoaded` 读取该 query（仅限 `KNOWN_ROSETTA_THEMES` 白名单）覆盖 `state.slug` 并置 `previewing=true`，**不改动后端 active 主题**。
 
 ## i18n

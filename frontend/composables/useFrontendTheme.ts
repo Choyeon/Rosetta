@@ -17,7 +17,7 @@
  */
 import { apiFetch } from '~~/composables/useApi'
 import { hexToHsl } from '~~/lib/utils'
-import { KNOWN_ROSETTA_THEMES } from '~~/lib/rosetta-themes'
+import { bustThemeAssetCache, isThemeVisualExcluded, KNOWN_ROSETTA_THEMES, resolveThemeAssetPath } from '~~/lib/rosetta-themes'
 
 type JsonObject = Record<string, unknown>
 
@@ -40,7 +40,8 @@ export interface ThemeModsRuntime {
   layout_width: number
   show_sidebar: boolean
   sidebar_position: 'left' | 'right'
-  posts_per_row: 2 | 3 | 4
+  /** 1~6 的整数。旧版本硬编码 2|3|4，会把极简主题的 1 列配置误杀回默认 3。 */
+  posts_per_row: number
   accent_color: string
   primary_color: string
   show_author_box: boolean
@@ -91,7 +92,7 @@ function mergeMods(mods: unknown): ThemeModsRuntime {
       }
       case 'posts_per_row': {
         const n = Number(v)
-        if (n === 2 || n === 3 || n === 4) out.posts_per_row = n as 2 | 3 | 4
+        if (Number.isInteger(n) && n >= 1 && n <= 6) out.posts_per_row = n
         break
       }
       case 'show_sidebar':
@@ -110,13 +111,30 @@ function mergeMods(mods: unknown): ThemeModsRuntime {
       case 'footer_text':
         if (typeof v === 'string') out[k] = v
         break
-      default:
-        if (v !== undefined) out[k] = v
-        break
     }
+  }
+  // 主题特有 mods（MODS_DEFAULTS 未声明的键，如 astro 的 1 列配置之外的扩展项）
+  // 原样透传——组件可经 mods 的 [k: string]: unknown 索引访问，不再被静默丢弃。
+  for (const k of Object.keys(raw)) {
+    if (!(k in MODS_DEFAULTS)) out[k] = raw[k]
   }
   return out
 }
+
+/**
+ * 主题 style.css 的 URL 单一构造点。
+ *
+ * nuxt.config routeRules 对 /themes/** 发 `max-age=31536000, immutable` 强缓存，
+ * 不带版本号的 URL 意味着主题升级后访客永远拿到旧 CSS——必须携带 ?v=<theme.version>
+ * 做 cache-busting。SSR（useHead）与客户端 DOM 注入两条路径都走本函数，保证
+ * href 完全一致、不产生双 <link>。
+ */
+function themeCssHref(slug: string, version?: string | null): string {
+  return bustThemeAssetCache(resolveThemeAssetPath(slug, 'style.css'), version)
+}
+
+/** 主题视觉层写入 inline token 的标记属性（区分于 settings.appearance 写的 --primary）。 */
+const TOKEN_MARKER_ATTR = 'data-rosetta-color-tokens'
 
 /**
  * 把主题 accent_color / primary_color 写进 :root 样式变量。
@@ -138,12 +156,14 @@ function applyThemeColorTokens(mods: ThemeModsRuntime) {
   if (import.meta.server) return
   if (!import.meta.client) return
   const root = document.documentElement
+  let wrote = false
   if (mods.accent_color) {
     const hsl = hexToHsl(mods.accent_color)
     if (hsl) {
       root.style.setProperty('--theme-accent-hue', String(Math.round(hsl.h)))
       root.style.setProperty('--theme-accent-sat', `${Math.round(hsl.s)}%`)
       root.style.setProperty('--theme-accent-light', `${Math.round(hsl.l)}%`)
+      wrote = true
     }
   }
   if (mods.primary_color) {
@@ -158,12 +178,17 @@ function applyThemeColorTokens(mods: ThemeModsRuntime) {
         '--ring',
         `${Math.round(hsl.h)} ${Math.round(hsl.s + 2)}% ${ringL}%`
       )
+      wrote = true
     }
   }
+  // 打上"这两个 --primary/--ring 是主题写的"标记，_clearThemeVisual 据此精确回收，
+  // 不再用旧的"值里不含 calc 才删"启发式（会误删 settings.appearance 的同名覆盖）。
+  if (wrote) root.setAttribute(TOKEN_MARKER_ATTR, '1')
 }
 
 /**
- * 永不可应用主题视觉层的路径（后台 / OOBE 向导）——避免 theme CSS 泄漏进 Admin。
+ * 永不可应用主题视觉层的路径判定见 lib/rosetta-themes 的 THEME_VISUAL_EXCLUDE_PREFIXES
+ * （/admin、/oobe）——与 middleware/layout-scope.global.ts 共用单一来源。
  *
  * 2026-09 调整：/login 与 /register 从排除名单移出。它们的 data-layout-scope
  * 是 "public-auth"（而非 "frontend"），主题 style.css 的既有规则全部带
@@ -171,8 +196,6 @@ function applyThemeColorTokens(mods: ThemeModsRuntime) {
  * slug 属性 + <link>，供主题 CSS 中显式书写的 public-auth 段落（极简登录/
  * 注册页、toast 统一）消费，零耦合约束依旧成立。
  */
-const FRONTEND_EXCLUDE_PREFIXES = ['/admin', '/oobe']
-
 function _isFrontendExcludedPath(path?: string, routeFallbackPath?: string): boolean {
   // 注意：本函数**禁止在内部调用 useRoute()**——它会在 layouts/default.vue 的
   // async setup 等待 apiFetch 之后才被调度，而 "after await" 的 SSR 微任务阶段
@@ -186,14 +209,8 @@ function _isFrontendExcludedPath(path?: string, routeFallbackPath?: string): boo
   } else if (import.meta.client && typeof window !== 'undefined') {
     p = window.location.pathname
   }
-  if (!p) return false
-  return FRONTEND_EXCLUDE_PREFIXES.some(prefix => p!.startsWith(prefix))
+  return isThemeVisualExcluded(p)
 }
-
-/**
- * 已知 Rosetta 主题 slug 集合（~~/lib/rosetta-themes 单一权威来源），
- * 用于判定 data-theme 是否由我们写入、可否在 admin 清理时移除。
- */
 
 /**
  * 所有曾注入过的主题 style.css <link> 注册表（slug → HTMLLinkElement）。
@@ -203,11 +220,23 @@ function _isFrontendExcludedPath(path?: string, routeFallbackPath?: string): boo
 const _INSTALLED_LINKS = new Map<string, HTMLLinkElement>()
 
 /**
+ * 精确移除主题写入的 `theme-{slug}` class。
+ * 旧实现按 `theme-` 前缀盲删，会误伤其它系统的同名 class（如 useTheme 的
+ * theme-grow / theme-shrink 过渡 class），因此只删白名单 slug 与
+ * data-rosetta-theme 当前值对应的 class。
+ */
+function _removeRosettaThemeClasses(root: HTMLElement) {
+  for (const slug of KNOWN_ROSETTA_THEMES) root.classList.remove(`theme-${slug}`)
+  const active = root.getAttribute('data-rosetta-theme')
+  if (active) root.classList.remove(`theme-${active}`)
+}
+
+/**
  * 彻底清理 <html> 上的 Rosetta 主题视觉痕迹：
- *   · theme-* class
+ *   · theme-{slug} class（仅白名单与 data-rosetta-theme 值）
  *   · data-rosetta-theme / data-theme（仅当值为已知主题 slug 时才移除，避免破坏明暗主题的 light/dark）
  *   · 已注入的 /themes/<slug>/style.css <link>
- *   · --theme-accent-* / --primary / --ring 覆盖变量
+ *   · 主题经 TOKEN_MARKER_ATTR 标记写入的 --primary / --ring / --theme-accent-* 变量
  *
  * 此函数 idempotent，admin 布局 onMounted / 路由切换时主动调用，保证后台永远是
  * shadcn 原生样式，不被前端主题 CSS 误伤。
@@ -216,10 +245,8 @@ function _clearThemeVisual() {
   if (!import.meta.client) return
   const root = document.documentElement
 
-  // 1) 清理 class
-  for (const cls of Array.from(root.classList)) {
-    if (cls.startsWith('theme-')) root.classList.remove(cls)
-  }
+  // 1) 清理 class（精确，不按 theme- 前缀盲删）
+  _removeRosettaThemeClasses(root)
 
   // 2) 清理 data-* 属性
   root.removeAttribute('data-rosetta-theme')
@@ -228,45 +255,40 @@ function _clearThemeVisual() {
     root.removeAttribute('data-theme')
   }
 
-  // 3) 清理 <link>（Map 里保留所有曾安装的 link，彻底移除防止 admin 页残留）
+  // 3) 清理 <link>（含已被 unhead/中间件摘走、Map 里剩的失联节点）
   for (const [k, el] of _INSTALLED_LINKS) {
     el.remove()
     _INSTALLED_LINKS.delete(k)
   }
 
-  // 4) 清理颜色 token（避免 accent/primary 污染 admin 原生配色）
+  // 4) 颜色 token：--theme-accent-* 是主题专属命名，直接回收；
+  //    --primary / --ring 只有当标记属性存在（即确实由主题写入）时才移除，
+  //    避免误伤 settings.appearance 管理的同名变量。
   root.style.removeProperty('--theme-accent-hue')
   root.style.removeProperty('--theme-accent-sat')
   root.style.removeProperty('--theme-accent-light')
-  // 注意：--primary / --ring 不直接删，它们由 settings.appearance 与 shadcn 共同管理，
-  //      主题层只在 applyThemeColorTokens 中做"写入覆盖"，后续调用 applyThemeColorTokens({...空默认值})
-  //      不会清除——这里用"重设为空字符串让 CSS 走 fallback"的方式。
-  if (root.style.getPropertyValue('--primary').includes('calc') === false) {
+  if (root.hasAttribute(TOKEN_MARKER_ATTR)) {
     root.style.removeProperty('--primary')
     root.style.removeProperty('--ring')
+    root.removeAttribute(TOKEN_MARKER_ATTR)
   }
 }
 
 /**
- * manifest.scrennshot_urls 允许三种写法：
- *   1) 相对文件名：screenshot.png → 补齐 /themes/{slug}/screenshot.png
- *   2) 根路径相对：/xxx.png → 直接使用（前端 public 资源或其它已挂载路径）
- *   3) 绝对 URL：https://... → 直接使用（外链 CDN/OSS 场景）
+ * 归一 manifest.screenshot_urls 为可渲染 URL 列表。
+ * 相对/根/绝对三种书写的解析规则统一在 lib 的 resolveThemeAssetPath。
  */
 function normalizeScreenshotUrls(slug: string | null, raws: unknown): string[] {
   if (!Array.isArray(raws)) return []
   const out: string[] = []
   for (const r of raws) {
     if (typeof r !== 'string' || !r) continue
-    if (/^https?:\/\//i.test(r) || r.startsWith('/')) {
-      out.push(r)
-    } else if (slug) {
-      out.push(`/themes/${slug}/${r}`)
-    }
+    const resolved = resolveThemeAssetPath(slug, r)
+    if (resolved) out.push(resolved)
   }
   return out
 }
-function applyThemeVisual(slug: string | null, explicitPath?: string) {
+function applyThemeVisual(slug: string | null, version?: string | null, explicitPath?: string) {
   // ===== SSR 策略：同步阶段 reactive useHead 已全权负责 =====
   // 见 useFrontendTheme() 导出函数顶部的 useHead(() => {…state.value…}) 注册。
   // ensureLoaded -> applyThemeVisual 的调用链发生在 await apiFetch 之后，
@@ -285,9 +307,7 @@ function applyThemeVisual(slug: string | null, explicitPath?: string) {
   const root = document.documentElement
 
   // 1) 先清理"旧 slug 不等于新 slug"的那部分（保留旧 link → 新 slug 相同命中缓存分支）
-  for (const cls of Array.from(root.classList)) {
-    if (cls.startsWith('theme-')) root.classList.remove(cls)
-  }
+  _removeRosettaThemeClasses(root)
   root.removeAttribute('data-rosetta-theme')
   const currentDataTheme = root.getAttribute('data-theme')
   if (currentDataTheme && KNOWN_ROSETTA_THEMES.has(currentDataTheme)) {
@@ -299,6 +319,15 @@ function applyThemeVisual(slug: string | null, explicitPath?: string) {
       _INSTALLED_LINKS.delete(k)
     }
   }
+  // 孤儿 <link> 兜底清理：SSR 强缓存页面的旧主题 link 由 Unhead 从 payload 收养，
+  // 客户端纠偏换 slug 后 Unhead 的 reactive diff 不保证摘除它（实测会双 link 共存）。
+  // 凡 id 命中标准前缀但不属于当前 slug 的主题样式表，一律视为陈旧节点移除。
+  const keepId = slug ? `rosetta-theme-css-${slug}` : ''
+  document
+    .querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"][id^="rosetta-theme-css-"]')
+    .forEach((el) => {
+      if (el.id !== keepId) el.remove()
+    })
 
   // 2) 去激活（没有 slug）→ 到此结束（上方已做清理）
   if (!slug) return
@@ -313,7 +342,15 @@ function applyThemeVisual(slug: string | null, explicitPath?: string) {
     root.setAttribute('data-theme', slug)
   }
 
-  if (_INSTALLED_LINKS.has(slug)) return
+  // Map 里的节点必须"仍在 DOM 上且 href 命中当前版本"才算已安装；
+  // 否则视为失联（被 unhead flush / 中间件摘走，或主题升级换了 ?v=），重新安装。
+  const wantHref = themeCssHref(slug, version)
+  const known = _INSTALLED_LINKS.get(slug)
+  if (known?.isConnected && known.getAttribute('href') === wantHref) return
+  if (known) {
+    known.remove()
+    _INSTALLED_LINKS.delete(slug)
+  }
   // 主题 <link> 有两个潜在来源：
   //   · useHead 响应式注入（SSR 首字节 / 客户端 slug 变化后由 unhead 批量 flush，
   //     其时机可能晚于宏任务，不能用一次同步检查判定）
@@ -322,9 +359,12 @@ function applyThemeVisual(slug: string | null, explicitPath?: string) {
   // 节点，并在 unhead 通常已 flush 完成后移交——若其 id 节点出现，移除兜底、认领正主。
   const MANUAL_ATTR = 'data-rosetta-manual'
   const install = () => {
-    if (_INSTALLED_LINKS.has(slug)) return
+    if (_INSTALLED_LINKS.get(slug)?.isConnected) return
     const existing = document.querySelector<HTMLLinkElement>(
-      `link[rel="stylesheet"][href="/themes/${slug}/style.css"]`
+      `link[rel="stylesheet"][id="rosetta-theme-css-${slug}"]`
+    )
+    ?? document.querySelector<HTMLLinkElement>(
+      `link[rel="stylesheet"][href="${CSS.escape(wantHref)}"]`
     )
     if (existing) {
       _INSTALLED_LINKS.set(slug, existing)
@@ -332,7 +372,7 @@ function applyThemeVisual(slug: string | null, explicitPath?: string) {
     }
     const link = document.createElement('link')
     link.rel = 'stylesheet'
-    link.href = `/themes/${slug}/style.css`
+    link.href = wantHref
     link.setAttribute(MANUAL_ATTR, '1')
     link.onerror = () => {
       link.remove()
@@ -364,9 +404,31 @@ function clearThemeVisual() {
   _clearThemeVisual()
 }
 
+/**
+ * ensureLoaded 的 in-flight 去重表：同一 Nuxt 实例（以 useState 返回的 ref 对象为键）
+ * 内多个组件并发调用时共享同一请求。用 WeakMap 而非模块级单值，
+ * 避免 SSR 跨请求串用彼此的 state。
+ */
+const _ensureInflight = new WeakMap<object, Promise<FrontendThemeInfo>>()
+
+/**
+ * 记录"本客户端会话内真正发过请求并验证过"的 state 引用。
+ * SSR payload hydrate 出来的 loaded=true 不算——公开页 HTML 可能来自 Nitro
+ * SWR 缓存（'/' 300s，/archive 等最长 3600s），缓存窗口内后台可能已切换主题，
+ * 若客户端无条件信任 hydrated 闩锁，页面会一直停留在旧主题直到缓存过期。
+ * 因此客户端首次 ensureLoaded 必须补拉一次 /themes/active 做纠偏；同一会话内
+ * 后续调用（SPA 路由切换）命中本集合，不再重复请求。
+ */
+const _clientFetched = new WeakSet<object>()
+
+/** 客户端 app 是否已完成首帧挂载（仅纠偏调度用；SSR 恒为 false 不参与）。 */
+let _appMounted = false
+
 export function useFrontendTheme() {
   const state = useThemeState()
   const route = useRoute()
+  // 在 composable 创建（同步、上下文有效）时捕获 nuxtApp：纠偏调度要在 app:mounted 上挂 hook。
+  const nuxtApp = useNuxtApp()
 
   // =========================================================================
   // 【SSR 核心：同步阶段注册 reactive useHead】
@@ -381,7 +443,7 @@ export function useFrontendTheme() {
   // =========================================================================
   useHead(() => {
     const s = state.value
-    const excluded = FRONTEND_EXCLUDE_PREFIXES.some(prefix => route.path.startsWith(prefix))
+    const excluded = isThemeVisualExcluded(route.path)
 
     // 1) htmlAttrs：data-rosetta-theme / data-theme / theme-{slug} class
     const htmlAttrs: Record<string, string> = {}
@@ -398,7 +460,7 @@ export function useFrontendTheme() {
       link = [
         {
           rel: 'stylesheet',
-          href: `/themes/${s.slug}/style.css`,
+          href: themeCssHref(s.slug, s.version),
           id: `rosetta-theme-css-${s.slug}`
         }
       ]
@@ -456,64 +518,108 @@ export function useFrontendTheme() {
   const showAvatar = computed(() => mods.value.show_avatar !== false)
   const previewing = computed(() => state.value.previewing)
 
-  async function ensureLoaded(opts?: { force?: boolean }) {
-    if (state.value.loaded && !opts?.force) return state.value
-    let data: JsonObject | null = null
-    type ThemeActiveResp = { success: boolean, data: JsonObject | null }
-    try {
-      const resp = await apiFetch<ThemeActiveResp>('/themes/active', {
-        method: 'GET',
-        silentToast: true
-      })
-      data
-        = resp && typeof resp === 'object' && (resp as ThemeActiveResp).success
-          ? ((resp as ThemeActiveResp).data as JsonObject | null) ?? null
-          : null
-    } catch {
-      /* 404 / 未启用主题 / 后端不可达 → 保持默认值 */
-    }
+  /** 真实请求体：拉 /themes/active、写 state、应用颜色 token 与视觉层；并发调用共享 in-flight。 */
+  function _startFetch(): Promise<FrontendThemeInfo> {
+    const running = _ensureInflight.get(state)
+    if (running) return running
+    const task = (async (): Promise<FrontendThemeInfo> => {
+      let data: JsonObject | null = null
+      let requestFailed = false
+      type ThemeActiveResp = { success: boolean, data: JsonObject | null }
+      try {
+        const resp = await apiFetch<ThemeActiveResp>('/themes/active', {
+          method: 'GET',
+          silentToast: true
+        })
+        data
+          = resp && typeof resp === 'object' && (resp as ThemeActiveResp).success
+            ? ((resp as ThemeActiveResp).data as JsonObject | null) ?? null
+            : null
+      } catch {
+        // 网络/后端故障：与「成功但无激活主题」(data=null) 严格区分——
+        // 前者不写 loaded 闩锁，下一次路由/组件仍会重试；后者正常落 latch。
+        requestFailed = true
+      }
 
-    if (data && typeof data === 'object') {
-      state.value.slug = typeof data.slug === 'string' ? data.slug : null
-      state.value.name = typeof data.name === 'string' ? data.name : null
-      state.value.version = typeof data.version === 'string' ? data.version : null
-      state.value.screenshot_urls = normalizeScreenshotUrls(
-        state.value.slug,
-        Array.isArray(data.screenshot_urls) ? data.screenshot_urls : []
-      )
-      state.value.mods = mergeMods(data.mods)
-      state.value.mods_schema
-        = data.mods_schema && typeof data.mods_schema === 'object' && !Array.isArray(data.mods_schema)
-          ? (data.mods_schema as JsonObject)
-          : null
-    } else {
-      state.value.slug = null
-      state.value.name = null
-      state.value.version = null
-      state.value.screenshot_urls = []
-      state.value.mods = { ...MODS_DEFAULTS }
-      state.value.mods_schema = null
-    }
+      if (requestFailed) {
+        // 保留现有 state（可能来自 SSR/上次成功），不覆盖、不闩锁
+        return state.value
+      }
 
-    // ── 预览模式：?rosetta_theme_preview=<slug> ──────────────────────────
-    // 由后台「主题管理」的预览按钮打开新标签页触发。仅允许 KNOWN_ROSETTA_THEMES
-    // 白名单内的 slug，覆盖 state.slug 以挂载该主题的 style.css + htmlAttrs，
-    // 但不改动后端 active 主题。mods 沿用 active 主题（或默认值）——内建主题的
-    // 视觉差异主要在 style.css，slug 覆盖即可得到忠实预览。
-    // 读取 route.query 是对已捕获 reactive 对象的属性访问，await 之后仍安全。
-    const previewRaw = route.query.rosetta_theme_preview
-    const previewSlug = Array.isArray(previewRaw) ? previewRaw[0] : previewRaw
-    if (typeof previewSlug === 'string' && KNOWN_ROSETTA_THEMES.has(previewSlug)) {
-      state.value.slug = previewSlug
-      state.value.previewing = true
-    } else {
-      state.value.previewing = false
-    }
+      if (data && typeof data === 'object') {
+        state.value.slug = typeof data.slug === 'string' ? data.slug : null
+        state.value.name = typeof data.name === 'string' ? data.name : null
+        state.value.version = typeof data.version === 'string' ? data.version : null
+        state.value.screenshot_urls = normalizeScreenshotUrls(
+          state.value.slug,
+          Array.isArray(data.screenshot_urls) ? data.screenshot_urls : []
+        )
+        state.value.mods = mergeMods(data.mods)
+        state.value.mods_schema
+          = data.mods_schema && typeof data.mods_schema === 'object' && !Array.isArray(data.mods_schema)
+            ? (data.mods_schema as JsonObject)
+            : null
+      } else {
+        state.value.slug = null
+        state.value.name = null
+        state.value.version = null
+        state.value.screenshot_urls = []
+        state.value.mods = { ...MODS_DEFAULTS }
+        state.value.mods_schema = null
+      }
 
-    state.value.loaded = true
-    applyThemeColorTokens(state.value.mods)
-    applyThemeVisual(state.value.slug)
-    return state.value
+      // ── 预览模式：?rosetta_theme_preview=<slug> ──────────────────────────
+      // 由后台「主题管理」的预览按钮打开新标签页触发。仅允许 KNOWN_ROSETTA_THEMES
+      // 白名单内的 slug，覆盖 state.slug 以挂载该主题的 style.css + htmlAttrs，
+      // 但不改动后端 active 主题。mods 沿用 active 主题（或默认值）——内建主题的
+      // 视觉差异主要在 style.css，slug 覆盖即可得到忠实预览。
+      // 读取 route.query 是对已捕获 reactive 对象的属性访问，await 之后仍安全。
+      const previewRaw = route.query.rosetta_theme_preview
+      const previewSlug = Array.isArray(previewRaw) ? previewRaw[0] : previewRaw
+      if (typeof previewSlug === 'string' && KNOWN_ROSETTA_THEMES.has(previewSlug)) {
+        state.value.slug = previewSlug
+        state.value.previewing = true
+      } else {
+        state.value.previewing = false
+      }
+
+      state.value.loaded = true
+      // 本实例已完成一次真实验证请求：同一客户端会话内后续 ensureLoaded 直接命中闩锁。
+      _clientFetched.add(state)
+      applyThemeColorTokens(state.value.mods)
+      applyThemeVisual(state.value.slug, state.value.version)
+      return state.value
+    })().finally(() => {
+      if (_ensureInflight.get(state) === task) _ensureInflight.delete(state)
+    })
+    _ensureInflight.set(state, task)
+    return task
+  }
+
+  async function ensureLoaded(opts?: { force?: boolean }): Promise<FrontendThemeInfo> {
+    if (state.value.loaded && !opts?.force) {
+      if (import.meta.client && !_clientFetched.has(state)) {
+        // Hydrate 自 SWR 缓存页面的 loaded=true 不可信（缓存窗口内后台可能已换主题）。
+        // 纠偏请求必须推迟到首帧挂载完成后（app:mounted）再发：本函数会被
+        // 01-site-bootstrap 插件在 mount 之前 await，若 setup 期直接发请求，响应可能
+        // 先于 Layout/Page 首帧渲染落地，把 isMinimalTheme 等模板分支翻到"新主题"，
+        // 与服务端缓存的"旧主题"HTML 产生 Hydration mismatch。挂载完成后纠偏只是
+        // 一次普通响应式更新，reactive state + useHead/applyThemeVisual 自动应用到 DOM。
+        const fire = () => {
+          _startFetch().catch(() => { /* 请求体内部已兜底 */ })
+        }
+        if (_appMounted) {
+          fire()
+        } else {
+          nuxtApp.hook('app:mounted', () => {
+            _appMounted = true
+            fire()
+          })
+        }
+      }
+      return state.value
+    }
+    return _startFetch()
   }
 
   /**
@@ -546,6 +652,7 @@ export function useFrontendTheme() {
     reload,
     clearThemeVisual,
     applyThemeColorTokens: () => applyThemeColorTokens(state.value.mods),
-    applyThemeVisual: (path?: string) => applyThemeVisual(state.value.slug, path)
+    applyThemeVisual: (path?: string) =>
+      applyThemeVisual(state.value.slug, state.value.version, path)
   }
 }

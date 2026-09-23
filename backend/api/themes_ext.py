@@ -4,14 +4,17 @@
 WordPress 风格主题管理接口：
 - GET   /themes             管理员列表
 - GET   /themes/{slug}      管理员详情
-- GET   /themes/current     公开当前激活主题
 - PUT   /themes/{slug}/activate
 - DELETE /themes/{slug}
-- POST  /themes/_scan
+- POST  /themes/scan
 - GET   /themes/{slug}/mods
-- PATCH /themes/{slug}/mods
-- POST  /themes            安装
+- PUT   /themes/{slug}/mods   全量替换（重置为 schema 默认值再写入）
+- PATCH /themes/{slug}/mods   增量更新
+- POST  /themes            安装（local / remote / upload）
 - POST  /themes/{slug}/upgrade
+
+注意：公开侧 ``GET /api/themes/active``（供前台 useFrontendTheme 消费）
+定义在 ``backend/api/themes.py``，本模块不再重复提供 active 查询端点。
 """
 
 from __future__ import annotations
@@ -21,7 +24,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Query, Request, status
 from sqlalchemy import select
 
-from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
+from backend.core.auth import DB, CurrentStaff
 from backend.core.exceptions import AppException
 from backend.core.tenant import DEFAULT_SITE_ID
 from backend.models.extensions import Theme
@@ -32,8 +35,6 @@ from backend.schemas.extensions import (
 )
 
 THEME_NOT_FOUND = "THEME_NOT_FOUND"
-THEME_ALREADY_ACTIVE = "THEME_ALREADY_ACTIVE"
-THEME_MODS_INVALID = "THEME_MODS_INVALID"
 
 router = APIRouter(prefix="/themes", tags=["主题平台"])
 
@@ -92,13 +93,11 @@ async def list_admin_themes(
 ):
     tm = _get_theme_manager()
     themes, total = await tm.list(db, status=status, search=search, page=page, per_page=per_page)
+    mods_map = await tm.get_mods_bulk(db, [t.slug for t in themes])
     data = []
     for t in themes:
         out = ThemeOut.model_validate(t)
-        try:
-            out.mods = await tm.get_mods(db, t.slug)
-        except Exception:
-            out.mods = None
+        out.mods = mods_map.get(t.slug, {})
         data.append(out)
     total_pages = (total + per_page - 1) // per_page if per_page else 1
     return {
@@ -137,24 +136,6 @@ async def list_theme_market(
     }
 
 
-@router.get("/active")
-async def get_current_active_theme(
-    db: DB,
-    current_user: CurrentUserOptional,
-):
-    tm = _get_theme_manager()
-    result = await db.execute(select(Theme).where(Theme.is_active == True))  # noqa: E712
-    theme = result.scalar_one_or_none()
-    if theme is None:
-        return {"success": True, "data": None, "message": "未启用自定义主题"}
-    out = ThemeOut.model_validate(theme)
-    try:
-        out.mods = await tm.get_mods(db, theme.slug)
-    except Exception:
-        out.mods = None
-    return {"success": True, "data": out}
-
-
 @router.get("/{slug}")
 async def get_theme_detail(
     db: DB,
@@ -170,10 +151,7 @@ async def get_theme_detail(
             error_code=THEME_NOT_FOUND,
         )
     out = ThemeOut.model_validate(theme)
-    try:
-        out.mods = await tm.get_mods(db, theme.slug)
-    except Exception:
-        out.mods = None
+    out.mods = await tm.get_mods(db, theme.slug)
     return {"success": True, "data": out}
 
 
@@ -234,10 +212,7 @@ async def activate_theme(
     raw["mods_schema"] = dict(theme.mods_schema) if theme.mods_schema else None
 
     out = ThemeOut(**raw)
-    try:
-        out.mods = await tm.get_mods(db, result.slug)
-    except Exception:
-        out.mods = None
+    out.mods = await tm.get_mods(db, result.slug)
     return {"success": True, "data": out}
 
 
@@ -248,19 +223,8 @@ async def delete_theme(
     slug: str,
 ):
     tm = _get_theme_manager()
-    theme = await tm.get(db, slug)
-    if theme is None:
-        raise AppException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            message=f"主题不存在: {slug}",
-            error_code=THEME_NOT_FOUND,
-        )
-    if theme.is_active:
-        raise AppException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            message=f"当前主题已启用，无法删除: {slug}",
-            error_code=THEME_ALREADY_ACTIVE,
-        )
+    # 404 / 409（激活中禁止删除）的判定统一在 ThemeManager.delete 内，
+    # API 层不再重复检查 is_active（曾出现 400 vs 409 双标）。
     await tm.delete(db, slug)
     await db.commit()
     return {"success": True, "message": "已删除"}
@@ -272,12 +236,12 @@ async def scan_local_themes(
     current_user: CurrentStaff,
 ):
     tm = _get_theme_manager()
-    added, refreshed = await tm.scan_local(db)
+    added, refreshed, removed = await tm.scan_local(db)
     await db.commit()
     return {
         "success": True,
-        "message": f"扫描完成，新增 {added}，更新 {refreshed}",
-        "data": {"added": added, "refreshed": refreshed},
+        "message": f"扫描完成，新增 {added}，更新 {refreshed}，清理僵尸 {len(removed)}",
+        "data": {"added": added, "refreshed": refreshed, "removed": removed},
     }
 
 
@@ -320,23 +284,10 @@ async def replace_theme_mods(
             message=f"主题不存在: {slug}",
             error_code=THEME_NOT_FOUND,
         )
-    # PUT 语义：重置为 schema 默认值，再叠加 payload.mods
-    schema_props = (theme.mods_schema or {}).get("properties") or {}
-    reset = {
-        k: (v.get("default") if isinstance(v, dict) and "default" in v else None)
-        for k, v in schema_props.items()
-        if isinstance(v, dict)
-    }
-    if isinstance(payload.mods, dict):
-        reset.update(payload.mods)
-    try:
-        saved = await tm.set_mods(db, slug, reset)
-    except Exception as e:
-        raise AppException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            message=f"主题 Mods 无效: {e}",
-            error_code=THEME_MODS_INVALID,
-        )
+    # PUT 全量替换语义：manager 内先重置为 schema 默认值再叠加 payload，
+    # 并丢弃 schema 未声明的键。校验失败时 AppException（含 MODS_SCHEMA_VIOLATION
+    # 等精确 error_code）直接透传，不再统一改写成 THEME_MODS_INVALID。
+    saved = await tm.set_mods(db, slug, payload.mods or {}, replace=True)
     await db.commit()
     return {"success": True, "data": saved}
 
@@ -356,14 +307,7 @@ async def set_theme_mods(
             message=f"主题不存在: {slug}",
             error_code=THEME_NOT_FOUND,
         )
-    try:
-        saved = await tm.set_mods(db, slug, payload.mods)
-    except Exception as e:
-        raise AppException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            message=f"主题 Mods 无效: {e}",
-            error_code=THEME_MODS_INVALID,
-        )
+    saved = await tm.set_mods(db, slug, payload.mods)
     await db.commit()
     return {"success": True, "data": saved}
 
@@ -373,10 +317,7 @@ async def _theme_row_to_out(db: DB, slug: str) -> ThemeOut:
     tm = _get_theme_manager()
     row = await _load_theme_row(db, slug)
     out = ThemeOut.model_validate(row)
-    try:
-        out.mods = await tm.get_mods(db, slug)
-    except Exception:
-        out.mods = None
+    out.mods = await tm.get_mods(db, slug)
     return out
 
 
@@ -471,16 +412,9 @@ async def upgrade_theme(
     slug: str,
 ):
     tm = _get_theme_manager()
-    theme = await tm.get(db, slug)
-    if theme is None:
-        raise AppException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            message=f"主题不存在: {slug}",
-            error_code=THEME_NOT_FOUND,
-        )
-    await tm.upgrade(db, slug)
+    row = await tm.upgrade(db, slug)
     await db.commit()
-    return {"success": True, "message": "升级完成 (stub)"}
+    return {"success": True, "message": "已从磁盘清单重新同步元数据", "data": await _theme_row_to_out(db, row.slug)}
 
 
 @router.post("/market/{slug}/install")

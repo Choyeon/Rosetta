@@ -17,10 +17,13 @@ interface Props {
   pageSize: number
   total: number
   pageSizeOptions?: number[]
+  /** 计数单位（后台列表统一中文），如 条 / 项 / 个主题 */
+  unit?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  pageSizeOptions: () => [10, 20, 50, 100]
+  pageSizeOptions: () => [10, 20, 50, 100],
+  unit: '条'
 })
 
 const emit = defineEmits<{
@@ -41,10 +44,11 @@ function onPageSizeChange(value: string | undefined) {
 }
 
 const rangeLabel = computed(() => {
-  if (props.total === 0) return '共 0 条'
+  const u = props.unit
+  if (props.total === 0) return `共 0 ${u}`
   const start = (props.page - 1) * props.pageSize + 1
   const end = Math.min(props.page * props.pageSize, props.total)
-  return `第 ${start}-${end} 条 / 共 ${props.total} 条`
+  return `第 ${start}-${end} ${u} / 共 ${props.total} ${u} · 第 ${props.page}/${_totalPages.value} 页`
 })
 </script>
 
@@ -54,8 +58,8 @@ const rangeLabel = computed(() => {
       {{ rangeLabel }}
     </p>
     <div class="flex items-center gap-4">
-      <div class="flex items-center gap-2">
-        <span class="text-sm text-muted-foreground">每页</span>
+      <div class="flex shrink-0 items-center gap-2">
+        <span class="text-sm text-muted-foreground whitespace-nowrap">每页</span>
         <Select
           :model-value="String(pageSize)"
           @update:model-value="onPageSizeChange"

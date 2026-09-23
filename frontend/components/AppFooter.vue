@@ -3,6 +3,7 @@ import { Separator } from '~~/components/ui/separator'
 import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 const { t, locale, setLocale } = useI18n()
 
@@ -11,7 +12,6 @@ const currentYear = new Date().getFullYear()
 // 极简主题（astro-paper-inspired）使用瘦身页脚：单列居中、无 logo/多列网格/分类栏，
 // 仅保留自定义 HTML、导航链接行、语言切换与版权。slug 判定与首页保持一致。
 const ft = useFrontendTheme()
-const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
 const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 
 interface FooterLink {

@@ -387,7 +387,7 @@ export function fetchAdminUsers(params: AdminUserQuery): Promise<AdminPaged<Admi
   const qs = new URLSearchParams(query as Record<string, string>).toString()
   return cachedGet(
     `admin:users:list:${qs || 'default'}`,
-    () => apiFetch<AdminPaged<AdminUserRow>>('/users', { query }),
+    () => apiFetch<AdminPaged<AdminUserRow>>('/users/', { query }),
     20 * 1000 // 用户列表短暂缓存，避免进入编辑页再回列表时重复拉
   )
 }

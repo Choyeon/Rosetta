@@ -3,6 +3,11 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { toast } from 'vue-sonner'
 import { apiFetch } from '~~/composables/useApi'
 import {
+  bustThemeAssetCache,
+  KNOWN_ROSETTA_THEMES,
+  resolveThemeAssetPath
+} from '~~/lib/rosetta-themes'
+import {
   Search,
   RefreshCw,
   FolderSearch,
@@ -187,11 +192,6 @@ const paginatedThemes = computed(() => {
   return filteredThemes.value.slice(start, start + perPage.value)
 })
 
-function gotoPage(n: number) {
-  const tgt = Math.min(Math.max(1, n), totalPages.value)
-  page.value = tgt
-}
-
 async function load() {
   try {
     const data = await $get<unknown>('/admin/themes')
@@ -211,8 +211,31 @@ function reload() {
 
 async function scan() {
   try {
-    await $post('/admin/themes/scan')
-    toast.success(t('admin.themes.scanDone', '扫描完成'))
+    const res = await $post<{
+      message?: string
+      data?: { added?: number, refreshed?: number, removed?: string[] }
+    }>('/admin/themes/scan')
+    const detail = res?.data
+    if (detail) {
+      // 老后端可能不回传 removed，兜底空数组，避免 TypeError 静默吞掉整个 toast。
+      const removed = detail.removed ?? []
+      toast.success(
+        t('admin.themes.scanDoneDetail', '扫描完成：新增 {added}、刷新 {refreshed}、清理僵尸 {removed}', {
+          added: detail.added ?? 0,
+          refreshed: detail.refreshed ?? 0,
+          removed: removed.length
+        })
+      )
+      if (removed.length > 0) {
+        toast.info(
+          t('admin.themes.scanRemovedSlugs', '已移除磁盘上不存在主题的数据记录：{slugs}', {
+            slugs: removed.join(', ')
+          })
+        )
+      }
+    } else {
+      toast.success(t('admin.themes.scanDone', '扫描完成'))
+    }
   } catch {
     /* handled */
   } finally {
@@ -224,6 +247,13 @@ async function activateTheme(theme: Theme) {
   try {
     await apiFetch(`/admin/themes/${theme.slug}/activate`, { method: 'PUT' })
     toast.success(t('admin.themes.activated', '主题已启用'))
+    // 同步刷新前台主题状态，避免"后台切主题 → SPA 返回首页仍是旧主题"
+    // （useFrontendTheme 有 loaded-latch，不强制重载不会重新拉 /api/themes/active）。
+    try {
+      await frontendTheme.reload()
+    } catch {
+      /* noop：后台上下文不消费主题视觉层，失败仅影响首页需硬刷新 */
+    }
     reload()
   } catch {
     /* handled */
@@ -457,16 +487,18 @@ function openThemeDocs() {
   navigateTo('/admin/docs/theme-tutorial')
 }
 
-function normalizeScreenshotUrl(slug: string | undefined, src: string): string {
-  if (!src) return ''
-  if (/^https?:\/\//i.test(src) || src.startsWith('/')) return src
-  return `/themes/${slug ?? 'default'}/${src}`
-}
-
 function themeScreenshot(theme: Theme): string {
   const first = theme.screenshot_urls?.[0]
   if (!first) return ''
-  return normalizeScreenshotUrl(theme.slug, first)
+  // 归一规则与前台 useFrontendTheme 共享单一来源；本地 /themes/** 是
+  // immutable 强缓存，必须带 ?v=<version>，否则主题升级后卡片截图永远是旧的。
+  return bustThemeAssetCache(resolveThemeAssetPath(theme.slug, first), theme.version)
+}
+
+// 内建主题随代码仓库分发：删除只会留下"磁盘还在、记录没了"的僵尸态，
+// 下次 scan 又会被重新装回，白白丢失 mods 配置——UI 层直接禁止。
+function isBuiltinTheme(theme: Theme): boolean {
+  return KNOWN_ROSETTA_THEMES.has(theme.slug)
 }
 
 function formatDate(iso: string | null): string {
@@ -643,24 +675,17 @@ onMounted(() => {
             <span class="ml-1 tabular-nums opacity-70">{{ f.count() }}</span>
           </Badge>
         </div>
-
-        <div class="ml-auto flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-          <Sparkles class="size-3.5 text-primary/70" />
-          <span class="tabular-nums">
-            {{ totalCount }} {{ t('admin.themes.itemsUnit', '个主题') }} · {{ t('admin.pagination.page', '第 {page} 页', { page }) }} / {{ totalPages }}
-          </span>
-        </div>
       </CardContent>
 
       <!-- Loading state -->
       <div
         v-if="loading"
-        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-0 [&>*]:border-t [&>*]:border-border divide-x-0 sm:[&>*:not(:last-child)]:border-r xl:[&>*:nth-child(4n)]:border-r-0 xl:[&>*:nth-child(-n+4)]:border-t-0 sm:[&>*:nth-child(-n+2)]:border-t-0 [&>*]:first:border-t-0 border-t border-border"
+        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-4"
       >
         <div
           v-for="n in Math.min(8, perPage)"
           :key="`sk-${n}`"
-          class="flex flex-col gap-3 p-4 bg-card"
+          class="flex flex-col gap-3 p-4 rounded-2xl border border-border/70 bg-card"
         >
           <Skeleton class="aspect-[16/10] rounded-xl" />
           <div class="flex flex-col gap-1.5">
@@ -715,26 +740,19 @@ onMounted(() => {
       <!-- Grid -->
       <div
         v-else
-        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-0 border-t border-border"
+        class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 p-4"
       >
         <div
           v-for="(theme, idx) in paginatedThemes"
           :key="theme.slug"
           :class="[
-            'relative group p-4 transition-colors',
-            'border-border [&:not(:last-child)]:border-b',
-            'sm:[&:nth-child(2n+1)]:border-r xl:[&:nth-child(4n+1)]:border-r xl:[&:nth-child(4n+2)]:border-r xl:[&:nth-child(4n+3)]:border-r xl:[&:nth-child(4n)]:border-r-0',
-            'sm:[&:nth-child(-n+2)]:border-t-0 xl:[&:nth-child(-n+4)]:border-t-0',
-            'hover:bg-accent/20'
+            'relative group flex flex-col p-4 rounded-2xl border transition-all duration-300',
+            theme.is_active
+              ? 'border-primary/50 ring-2 ring-primary/20 bg-primary/[0.03] shadow-soft'
+              : 'border-border/80 bg-card shadow-soft/40 hover:-translate-y-1 hover:border-primary/35 hover:shadow-pop'
           ]"
           :data-idx="idx"
         >
-          <!-- Active highlight border -->
-          <div
-            v-if="theme.is_active"
-            class="pointer-events-none absolute inset-0 rounded-[calc(var(--radius)+2px)] ring-2 ring-primary/60 -m-0.5 z-10 bg-primary/[0.02]"
-            aria-hidden
-          />
           <div class="relative flex flex-col gap-3 h-full">
             <!-- Screenshot tile -->
             <div class="aspect-[16/10] relative overflow-hidden rounded-xl bg-muted ring-1 ring-border/80 shadow-soft/40 group-hover:shadow-soft/80 transition-all">
@@ -902,8 +920,12 @@ onMounted(() => {
                 <Button
                   variant="outline"
                   class="rounded-xl px-3 text-destructive hover:bg-destructive/10 hover:text-destructive hover:border-destructive/40"
-                  :disabled="theme.is_active"
-                  :title="theme.is_active ? t('admin.themes.cannotDeleteActive', '当前激活的主题无法删除') : t('admin.themes.delete', '删除')"
+                  :disabled="theme.is_active || isBuiltinTheme(theme)"
+                  :title="theme.is_active
+                    ? t('admin.themes.cannotDeleteActive', '当前激活的主题无法删除')
+                    : isBuiltinTheme(theme)
+                      ? t('admin.themes.cannotDeleteBuiltin', '内建主题不可删除')
+                      : t('admin.themes.delete', '删除')"
                   @click="confirmDelete(theme)"
                 >
                   <Trash2 data-icon="inline-start" />
@@ -926,99 +948,18 @@ onMounted(() => {
         </div>
       </div>
 
-      <!-- Pagination bar -->
+      <!-- Pagination bar（全站后台统一：AdminPagination） -->
       <div
         v-if="!loading && filteredThemes.length > 0"
-        class="flex flex-wrap items-center justify-between gap-3 px-6 py-4 border-t border-border bg-muted/25"
+        class="px-5 py-4 border-t border-border bg-muted/25"
       >
-        <div class="flex items-center gap-3 flex-wrap">
-          <span class="text-xs uppercase tracking-[0.12em] text-muted-foreground">
-            {{ t('admin.themes.perPage', '每页显示') }}
-          </span>
-          <div class="inline-flex rounded-xl border border-input overflow-hidden bg-background shadow-sm">
-            <Button
-              v-for="n in [4, 8, 12]"
-              :key="n"
-              size="sm"
-              :variant="perPage === n ? 'default' : 'ghost'"
-              class="rounded-none border-0 h-8 px-3"
-              @click="perPage = n; page = 1"
-            >
-              {{ n }}
-            </Button>
-          </div>
-          <span class="text-xs text-muted-foreground tabular-nums">
-            {{ totalCount }} {{ t('admin.themes.itemsUnit', '个主题') }} · {{ t('admin.pagination.page', '第 {page} 页', { page }) }} / {{ totalPages }}
-          </span>
-        </div>
-        <div class="flex items-center justify-end gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            class="rounded-xl"
-            :disabled="page <= 1"
-            @click="gotoPage(page - 1)"
-          >
-            {{ t('admin.pagination.prev', '上一页') }}
-          </Button>
-          <template v-if="totalPages <= 7">
-            <Button
-              v-for="n in totalPages"
-              :key="n"
-              size="sm"
-              :variant="page === n ? 'default' : 'ghost'"
-              class="rounded-xl w-9 px-0 tabular-nums"
-              @click="gotoPage(n)"
-            >
-              {{ n }}
-            </Button>
-          </template>
-          <template v-else>
-            <Button
-              size="sm"
-              variant="ghost"
-              class="rounded-xl w-9 px-0 tabular-nums"
-              @click="gotoPage(1)"
-            >
-              1
-            </Button>
-            <span
-              v-if="page > 3"
-              class="text-muted-foreground px-1"
-            >…</span>
-            <Button
-              v-for="n in [page - 1, page, page + 1].filter(x => x > 1 && x < totalPages)"
-              :key="n"
-              size="sm"
-              :variant="page === n ? 'default' : 'ghost'"
-              class="rounded-xl w-9 px-0 tabular-nums"
-              @click="gotoPage(n)"
-            >
-              {{ n }}
-            </Button>
-            <span
-              v-if="page < totalPages - 2"
-              class="text-muted-foreground px-1"
-            >…</span>
-            <Button
-              size="sm"
-              variant="ghost"
-              class="rounded-xl w-9 px-0 tabular-nums"
-              @click="gotoPage(totalPages)"
-            >
-              {{ totalPages }}
-            </Button>
-          </template>
-          <Button
-            variant="outline"
-            size="sm"
-            class="rounded-xl"
-            :disabled="page * perPage >= totalCount"
-            @click="gotoPage(page + 1)"
-          >
-            {{ t('admin.pagination.next', '下一页') }}
-          </Button>
-        </div>
+        <AdminPagination
+          v-model:page="page"
+          v-model:page-size="perPage"
+          :total="totalCount"
+          :page-size-options="[4, 8, 12]"
+          unit="个主题"
+        />
       </div>
     </Card>
 

@@ -278,52 +278,14 @@
       </div>
     </div>
 
-    <div
-      v-if="totalPages > 1"
-      class="pt-4"
-    >
-      <Pagination :items-per-page="pageSize ?? 10">
-        <PaginationContent>
-          <PaginationItem :value="1">
-            <PaginationPrevious
-              :value="1"
-              :disabled="page <= 1"
-              @click="page > 1 && (page--, fetchData())"
-            />
-          </PaginationItem>
-          <template
-            v-for="p in visiblePages"
-            :key="p"
-          >
-            <PaginationItem
-              v-if="p !== '...'"
-              :value="typeof p === 'number' ? p : 1"
-            >
-              <Button
-                :variant="p === page ? 'default' : 'ghost'"
-                size="icon"
-                class="h-9 w-9"
-                @click="page !== p && (page = Number(p), fetchData())"
-              >
-                {{ p }}
-              </Button>
-            </PaginationItem>
-            <PaginationItem
-              v-else
-              :value="1"
-            >
-              <PaginationEllipsis :value="1" />
-            </PaginationItem>
-          </template>
-          <PaginationItem :value="1">
-            <PaginationNext
-              :value="1"
-              :disabled="page >= totalPages"
-              @click="page < totalPages && (page++, fetchData())"
-            />
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
+    <div class="pt-4">
+      <AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-size-options="[10, 20, 50, 100]"
+        @update:page="fetchData"
+      />
     </div>
 
     <Dialog v-model:open="deleteDialogOpen">
@@ -366,7 +328,6 @@ import { Badge } from '~~/components/ui/badge'
 import { Checkbox } from '~~/components/ui/checkbox'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '~~/components/ui/dropdown-menu'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~~/components/ui/dialog'
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious } from '~~/components/ui/pagination'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Separator } from '~~/components/ui/separator'
@@ -398,30 +359,13 @@ const loading = ref(false)
 const comments = shallowRef<AdminComment[]>([])
 const keyword = ref('')
 const page = ref(1)
-const pageSize = 10
+const pageSize = ref(10)
 const total = ref(0)
 const selectedIds = ref<number[]>([])
 const replyOpenId = ref<number | null>(null)
 const replyContent = ref('')
 const deleteDialogOpen = ref(false)
 const deleteTargetId = ref<number | null>(null)
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
-
-const visiblePages = computed(() => {
-  const tp = totalPages.value
-  const curr = page.value
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const pages: (number | string)[] = []
-  pages.push(1)
-  if (curr > 3) pages.push('...')
-  const start = Math.max(2, curr - 1)
-  const end = Math.min(tp - 1, curr + 1)
-  for (let i = start; i <= end; i++) pages.push(i)
-  if (curr < tp - 2) pages.push('...')
-  pages.push(tp)
-  return pages
-})
 
 const statusBadgeClass = (s: string): string => {
   switch (s) {
@@ -450,7 +394,7 @@ async function fetchData() {
   try {
     const res = await fetchFn.value({
       page: page.value,
-      page_size: pageSize,
+      page_size: pageSize.value,
       status: props.status,
       keyword: keyword.value.trim() || undefined
     })

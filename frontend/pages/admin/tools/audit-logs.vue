@@ -257,29 +257,13 @@
           v-if="logs.length > 0"
           class="p-4 pt-0 mt-2"
         >
-          <div class="flex items-center justify-between text-xs text-muted-foreground">
-            <span>第 {{ page }} / {{ Math.max(1, totalPages) }} 页，共 {{ total }} 条</span>
-            <div class="flex gap-1">
-              <Button
-                variant="outline"
-                size="icon-sm"
-                class="rounded-lg"
-                :disabled="page <= 1"
-                @click="page--; loadLogs()"
-              >
-                <ChevronLeft data-icon="inline-start" />
-              </Button>
-              <Button
-                variant="outline"
-                size="icon-sm"
-                class="rounded-lg"
-                :disabled="page >= totalPages"
-                @click="page++; loadLogs()"
-              >
-                <ChevronRight data-icon="inline-start" />
-              </Button>
-            </div>
-          </div>
+          <AdminPagination
+            v-model:page="page"
+            v-model:page-size="pageSize"
+            :total="total"
+            :page-size-options="[15, 30, 50, 100]"
+            @update:page="loadLogs"
+          />
         </div>
       </div>
     </AdminCard>
@@ -296,7 +280,7 @@ import {
 import { useToast } from '~~/composables/useToast'
 import {
   FileSearch, Search, Filter, RotateCcw, Clock, Globe, Monitor, Info,
-  ChevronLeft, ChevronRight, ChevronDown, X, CalendarDays, AlertTriangle
+  ChevronRight, ChevronDown, X, CalendarDays, AlertTriangle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
@@ -351,8 +335,8 @@ function actionClass(a: string): string {
 const loading = ref(true)
 const logs = shallowRef<AdminAuditLog[]>([])
 const page = ref(1)
+const pageSize = ref(15)
 const total = ref(0)
-const totalPages = ref(1)
 const expandedId = ref<number | null>(null)
 
 const toDateInputRef = ref<HTMLInputElement | null>(null)
@@ -440,7 +424,7 @@ async function loadLogs() {
   try {
     const params: Parameters<typeof fetchAdminAuditLogs>[0] = {
       page: page.value,
-      page_size: 15
+      page_size: pageSize.value
     }
     if (filters.action) params.action = filters.action
     if (filters.userId) params.user_id = filters.userId
@@ -449,7 +433,6 @@ async function loadLogs() {
     const r = await fetchAdminAuditLogs(params)
     logs.value = r?.items ?? []
     total.value = r?.total ?? 0
-    totalPages.value = r?.total_pages ?? 1
   } catch (e) {
     logs.value = []
     const msg = e instanceof Error ? e.message : '加载日志失败'

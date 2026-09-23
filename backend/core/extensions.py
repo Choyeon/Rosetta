@@ -965,19 +965,18 @@ class ThemeManager:
 
     # ── 扫描 / 同步 ────────────────────────────────────────────────────
 
-    @staticmethod
-    def _scanner_import():
-        from backend.core.manifest_scanner import scan_themes_dir
-
-        return scan_themes_dir
-
     async def scan_local(
         self, db: AsyncSession, *, site_id: int = DEFAULT_SITE_ID
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, list[str]]:
+        """扫描磁盘主题清单并同步 DB。
+
+        返回 ``(新增数, 刷新数, 清理掉的僵尸 slug 列表)``。
+        """
+        from backend.core.manifest_scanner import scan_themes_dir
+        from backend.models.core import SiteConfig
         from backend.models.extensions import Theme as ThemeModel
 
-        scan = self._scanner_import()
-        items = scan()
+        items = scan_themes_dir()
         added = updated = 0
         now = datetime.now(UTC)
         for folder_rel, manifest in items:
@@ -1035,9 +1034,35 @@ class ThemeManager:
                     if row.status == "error":
                         row.status = "installed"
                         row.error_message = None
+        # ── 僵尸行清理：DB 里有、磁盘上没有的主题 ────────────────────────
+        # 对标 WordPress "broken/destroyed theme" 处理，但更彻底：
+        # 未激活的孤儿行直接删除（连带其 mods KV），激活中的孤儿仅告警不误删。
+        disk_slugs = {manifest.slug for _, manifest in items}
+        all_rows = list(
+            (
+                await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id))
+            )
+            .scalars()
+            .all()
+        )
+        removed: list[str] = []
+        for orphan in all_rows:
+            if orphan.slug in disk_slugs:
+                continue
+            if getattr(orphan, "is_active", False):
+                logger.error(
+                    "激活主题 %s 的磁盘文件缺失（疑似被手动删除），保留 DB 行等待管理员处理",
+                    orphan.slug,
+                )
+                continue
+            await db.execute(
+                delete(SiteConfig).where(SiteConfig.key == f"{THEME_MODS_PREFIX}{orphan.slug}")
+            )
+            await db.delete(orphan)
+            removed.append(orphan.slug)
         await db.flush()
-        await do_action("themes.scanned", added=added, updated=updated)
-        return added, updated
+        await do_action("themes.scanned", added=added, updated=updated, removed=removed)
+        return added, updated, removed
 
     # ── 列表 / 查询 ────────────────────────────────────────────────────
 
@@ -1415,12 +1440,25 @@ class ThemeManager:
     async def upgrade(
         self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
     ) -> Theme:
+        """升级 = 重新读取磁盘清单并同步元数据（版本/描述/mods_schema 等）。
+
+        主题没有"下载新版本"的概念（ zip 覆盖安装走 install_from_*），
+        因此本方法只负责把磁盘上已替换的清单刷回 DB。
+        """
+        from backend.core.exceptions import AppException
+
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
-            from backend.core.exceptions import AppException
-
             raise AppException(
                 status_code=404, error_code="THEME_NOT_FOUND", message=f"主题 {slug} 未安装"
+            )
+        await self.scan_local(db, site_id=site_id)
+        row = await self.get(db, slug, site_id=site_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                error_code="THEME_NOT_FOUND",
+                message=f"主题 {slug} 磁盘文件缺失，无法升级（请重新安装）",
             )
         row.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         await db.flush()
@@ -1443,7 +1481,65 @@ class ThemeManager:
             return {**defaults, **stored}
         return defaults
 
-    async def set_mods(self, db: AsyncSession, slug: str, mods: dict[str, Any]) -> dict[str, Any]:
+    async def get_mods_bulk(
+        self, db: AsyncSession, slugs: list[str], *, site_id: int = DEFAULT_SITE_ID
+    ) -> dict[str, dict[str, Any]]:
+        """批量读取多个主题的 mods（列表页避免 N+1）。"""
+        from backend.models.core import SiteConfig
+        from backend.models.extensions import Theme as ThemeModel
+
+        if not slugs:
+            return {}
+        rows = list(
+            (
+                await db.execute(
+                    select(ThemeModel).where(
+                        and_(ThemeModel.site_id == site_id, ThemeModel.slug.in_(slugs))
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        kv_rows = (
+            await db.execute(
+                select(SiteConfig).where(
+                    SiteConfig.key.in_([f"{THEME_MODS_PREFIX}{s}" for s in slugs])
+                )
+            )
+        ).scalars().all()
+        stored_map: dict[str, Any] = {}
+        for r in kv_rows:
+            try:
+                stored_map[r.key] = json.loads(r.value) if r.value else {}
+            except (TypeError, ValueError):
+                stored_map[r.key] = {}
+        out: dict[str, dict[str, Any]] = {}
+        for t in rows:
+            schema = getattr(t, "mods_schema", None) or {}
+            defaults = {
+                k: v.get("default")
+                for k, v in (schema.get("properties") or {}).items()
+                if isinstance(v, dict) and "default" in v
+            }
+            sv = stored_map.get(f"{THEME_MODS_PREFIX}{t.slug}", {})
+            out[t.slug] = {**defaults, **sv} if isinstance(sv, dict) else defaults
+        return out
+
+    async def set_mods(
+        self,
+        db: AsyncSession,
+        slug: str,
+        mods: dict[str, Any],
+        *,
+        replace: bool = False,
+    ) -> dict[str, Any]:
+        """写入主题 mods。
+
+        - ``replace=False``（PATCH）：在现有值上叠加增量。
+        - ``replace=True``（PUT）：全量替换——先重置为 schema 默认值再叠加 payload。
+        - 两种模式都先做 WordPress 风格 sanitize：丢弃 schema 未声明的键（而非整单拒绝）。
+        """
         from backend.core.exceptions import AppException
 
         if not isinstance(mods, dict):
@@ -1452,12 +1548,28 @@ class ThemeManager:
                 error_code="THEME_MODS_INVALID",
                 message="主题 mods 必须是 JSON 对象",
             )
-        merged = {**(await self.get_mods(db, slug)), **mods}
-
-        # ── mods_schema 校验：jsonschema 优先，缺失则用 pydantic 降级 ─────
         row = await self.get(db, slug)
         schema = getattr(row, "mods_schema", None) if row else None
-        if isinstance(schema, dict) and schema:
+        schema = schema if isinstance(schema, dict) and schema else None
+        props = (schema or {}).get("properties") or {}
+        if isinstance(props, dict) and props:
+            unknown = [k for k in mods if k not in props]
+            if unknown:
+                logger.warning("主题 %s mods 丢弃 schema 未声明的键: %s", slug, unknown)
+                mods = {k: v for k, v in mods.items() if k in props}
+
+        if replace:
+            base = {
+                k: (v.get("default") if isinstance(v, dict) and "default" in v else None)
+                for k, v in props.items()
+                if isinstance(v, dict)
+            }
+            merged = {**base, **mods}
+        else:
+            merged = {**(await self.get_mods(db, slug)), **mods}
+
+        # ── mods_schema 校验：jsonschema 优先，缺失则用 pydantic 降级 ─────
+        if schema:
             try:
                 _validate_mods_against_schema(merged, schema)
             except AppException:
@@ -1670,7 +1782,7 @@ async def bootstrap_extensions(
     返回运行状态字典（便于日志打印）：
       { plugins_scanned: (added, refreshed),
         plugins_booted: (success, failed),
-        themes_scanned: (added, refreshed),
+        themes_scanned: {added, refreshed, removed},
         theme_active: slug | None }
     """
     p_scan = await plugin_manager.scan_local(db, site_id=site_id)
@@ -1679,8 +1791,8 @@ async def bootstrap_extensions(
     # Ensure there's always at least 1 active theme if candidates exist
     active = await theme_manager.get_active(db, site_id=site_id)
     if active is None:
-        # 尝试激活 editorial-wp-style 示例主题
-        candidates = ["editorial-wp-style", "default"]
+        # 尝试激活内建默认主题（仅真实存在的 slug；历史上曾挂过不存在的 "default"）
+        candidates = ["editorial-wp-style"]
         for candidate in candidates:
             row = await theme_manager.get(db, candidate, site_id=site_id)
             if row is not None:
@@ -1694,6 +1806,6 @@ async def bootstrap_extensions(
     return {
         "plugins_scanned": {"added": p_scan[0], "refreshed": p_scan[1]},
         "plugins_booted": {"success": p_ok, "failed": p_fail},
-        "themes_scanned": {"added": t_scan[0], "refreshed": t_scan[1]},
+        "themes_scanned": {"added": t_scan[0], "refreshed": t_scan[1], "removed": t_scan[2]},
         "theme_active": getattr(active, "slug", None) if active else None,
     }

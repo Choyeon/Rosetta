@@ -887,6 +887,7 @@ import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { watch, computed, onMounted } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -902,11 +903,9 @@ await site.ensureLoaded()
 const ft = useFrontendTheme()
 await ft.ensureLoaded()
 
-// 被识别为「极简印刷风格」的主题 slug 集合（内建极简主题唯一成员）：
-//   · astro-paper-inspired   极简主题
-// 匹配以上 slug 时，首页使用 AstroPaper 风格的"纯文 Hero + 竖排文章列表"模板，
+// 极简主题（MINIMAL_THEME_SLUGS，来自 lib/rosetta-themes 单一来源）激活时，
+// 首页使用 AstroPaper 风格的"纯文 Hero + 竖排文章列表"模板，
 // 不请求 Bing 壁纸 / 不渲染 HUD / 不渲染 Sidebar / 不渲染 Pinned + CTA 区块。
-const MINIMAL_THEME_SLUGS = new Set<string>(['astro-paper-inspired'])
 const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 const isEditorialTheme = computed<boolean>(() => {
   const slug = ft.slug.value
@@ -1006,6 +1005,7 @@ const latestAsGrid = computed(() => !showSidebar.value)
 const latestGridClass = computed(() => {
   const n = ft.postsPerRow.value
   const map: Record<number, string> = {
+    1: 'grid-cols-1 gap-6',
     2: 'grid-cols-1 md:grid-cols-2 gap-6',
     3: 'grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6',
     4: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
@@ -1015,6 +1015,7 @@ const latestGridClass = computed(() => {
 const pinnedGridClass = computed(() => {
   const n = ft.postsPerRow.value
   const map: Record<number, string> = {
+    1: 'grid-cols-1 gap-6',
     2: 'grid-cols-1 md:grid-cols-2 gap-6',
     3: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6',
     4: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'

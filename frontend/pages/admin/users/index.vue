@@ -300,50 +300,14 @@
       </div>
     </AdminCard>
 
-    <div
-      v-if="totalPages > 1"
-      class="pt-2"
-    >
-      <Pagination :items-per-page="pageSize ?? 10">
-        <PaginationContent>
-          <PaginationItem :value="1" />
-          <PaginationPrevious
-            :value="1"
-            :disabled="page <= 1"
-            @click="page > 1 && (page--, fetchData())"
-          />
-          <template
-            v-for="p in visiblePages"
-            :key="p"
-          >
-            <PaginationItem
-              v-if="p !== '...'"
-              :value="1"
-            >
-              <Button
-                :variant="p === page ? 'default' : 'ghost'"
-                size="icon"
-                class="h-9 w-9"
-                @click="page !== p && (page = Number(p), fetchData())"
-              >
-                {{ p }}
-              </Button>
-            </PaginationItem>
-            <PaginationItem
-              v-else
-              :value="1"
-            >
-              <PaginationEllipsis :value="1" />
-            </PaginationItem>
-          </template>
-          <PaginationItem :value="1" />
-          <PaginationNext
-            :value="1"
-            :disabled="page >= totalPages"
-            @click="page < totalPages && (page++, fetchData())"
-          />
-        </PaginationContent>
-      </Pagination>
+    <div class="pt-2">
+      <AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-size-options="[10, 20, 50, 100]"
+        @update:page="fetchData"
+      />
     </div>
 
     <Dialog v-model:open="resetPwdDialogOpen">
@@ -515,7 +479,6 @@ import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~~/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~~/components/ui/dropdown-menu'
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious } from '~~/components/ui/pagination'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
@@ -551,7 +514,7 @@ const searchQuery = ref('')
 const roleFilter = ref('all')
 const statusFilter = ref('all')
 const page = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
 const total = ref(0)
 
 const filteredUsers = computed<AdminUserRow[]>(() => {
@@ -573,20 +536,6 @@ const filteredUsers = computed<AdminUserRow[]>(() => {
     })
   }
   return list
-})
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
-
-const visiblePages = computed(() => {
-  const tp = totalPages.value
-  const curr = page.value
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const pages: (number | string)[] = [1]
-  if (curr > 3) pages.push('...')
-  for (let i = Math.max(2, curr - 1); i <= Math.min(tp - 1, curr + 1); i++) pages.push(i)
-  if (curr < tp - 2) pages.push('...')
-  pages.push(tp)
-  return pages
 })
 
 function roleBadgeClass(u: AdminUserRow): string {
@@ -618,7 +567,7 @@ async function fetchData() {
   try {
     const res = await fetchAdminUsers({
       page: page.value,
-      page_size: pageSize,
+      page_size: pageSize.value,
       search: searchQuery.value.trim() || undefined
     })
     allUsers.value = res.items ?? []

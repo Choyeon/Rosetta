@@ -146,50 +146,14 @@
       </div>
     </AdminCard>
 
-    <div
-      v-if="totalPages > 1"
-      class="pt-2"
-    >
-      <Pagination :items-per-page="pageSize ?? 10">
-        <PaginationContent>
-          <PaginationItem :value="1" />
-          <PaginationPrevious
-            :value="1"
-            :disabled="page <= 1"
-            @click="page > 1 && (page--, fetchData())"
-          />
-          <template
-            v-for="p in visiblePages"
-            :key="p"
-          >
-            <PaginationItem
-              v-if="p !== '...'"
-              :value="typeof p === 'number' ? p : 1"
-            >
-              <Button
-                :variant="p === page ? 'default' : 'ghost'"
-                size="icon"
-                class="h-9 w-9"
-                @click="page !== p && (page = Number(p), fetchData())"
-              >
-                {{ p }}
-              </Button>
-            </PaginationItem>
-            <PaginationItem
-              v-else
-              :value="1"
-            >
-              <PaginationEllipsis :value="1" />
-            </PaginationItem>
-          </template>
-          <PaginationItem :value="1" />
-          <PaginationNext
-            :value="1"
-            :disabled="page >= totalPages"
-            @click="page < totalPages && (page++, fetchData())"
-          />
-        </PaginationContent>
-      </Pagination>
+    <div class="pt-2">
+      <AdminPagination
+        v-model:page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        :page-size-options="[10, 20, 50, 100]"
+        @update:page="fetchData"
+      />
     </div>
 
     <Dialog v-model:open="formDialogOpen">
@@ -327,7 +291,6 @@ import { Textarea } from '~~/components/ui/textarea'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~~/components/ui/dialog'
-import { Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationNext, PaginationPrevious } from '~~/components/ui/pagination'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Label } from '~~/components/ui/label'
@@ -361,7 +324,7 @@ const loading = ref(false)
 const submitting = ref(false)
 const announcements = shallowRef<AdminAnnouncement[]>([])
 const page = ref(1)
-const pageSize = 20
+const pageSize = ref(20)
 const total = ref(0)
 
 const formDialogOpen = ref(false)
@@ -376,20 +339,6 @@ const form = reactive({
 
 const deleteDialogOpen = ref(false)
 const deleteTargetId = ref<number | null>(null)
-
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
-
-const visiblePages = computed(() => {
-  const tp = totalPages.value
-  const curr = page.value
-  if (tp <= 7) return Array.from({ length: tp }, (_, i) => i + 1)
-  const pages: (number | string)[] = [1]
-  if (curr > 3) pages.push('...')
-  for (let i = Math.max(2, curr - 1); i <= Math.min(tp - 1, curr + 1); i++) pages.push(i)
-  if (curr < tp - 2) pages.push('...')
-  pages.push(tp)
-  return pages
-})
 
 function displayField(v: unknown): string {
   if (v == null) return ''
@@ -434,7 +383,7 @@ function typeText(t: string): string {
 async function fetchData() {
   loading.value = true
   try {
-    const res = await fetchAdminAnnouncements({ page: page.value, page_size: pageSize })
+    const res = await fetchAdminAnnouncements({ page: page.value, page_size: pageSize.value })
     announcements.value = res.items ?? []
     total.value = res.total ?? 0
   } catch (err) {

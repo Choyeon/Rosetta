@@ -242,7 +242,7 @@ async def put_current_palette(
         row.value = pid
     await db.flush()
     # 调色板切换后需要让 lru_cache 保持命中即可（不清除缓存），不刷新浏览器也生效
-    return {"success": True, "palette_id": pid}
+    return {"success": True, "data": {"palette_id": pid}}
 
 
 @router.get("/themes/active", summary="获取当前激活主题（公开，支持 Customizer 前台渲染）")
@@ -252,17 +252,14 @@ async def public_get_active_theme(
 ):
     """公开端点：供首页/公开页面读取当前激活主题的 slug / mods / screenshot_urls。
 
-    与 :router:`themes_ext.router` 中 ``GET /admin/themes/active`` 不同，此处：
     - 不需要管理员权限（访客访问公开页面也要能渲染主题 Customizer 覆盖）；
-    - 返回结构使用 ThemeOut schema（与后台返回一致）。
+    - 站点过滤统一走 ``ThemeManager.get_active``（避免各处手写 query 漏掉 site_id）；
+    - 返回结构使用 ThemeOut schema（与后台列表一致）。
     """
-    from sqlalchemy import select as _s
-
-    from backend.models.extensions import Theme
+    from backend.core.extensions import theme_manager
     from backend.schemas.extensions import ThemeOut
 
-    result = await db.execute(_s(Theme).where(Theme.is_active == True))  # noqa: E712
-    theme = result.scalar_one_or_none()
+    theme = await theme_manager.get_active(db)
     if theme is None:
         return {"success": True, "data": None, "message": "未启用自定义主题"}
     # Commit boundary safe: refresh the ORM row from DB so datetime columns and JSON
@@ -270,11 +267,11 @@ async def public_get_active_theme(
     # attribute access (causing MissingGreenlet errors).
     await db.refresh(theme)
     out = ThemeOut.model_validate(theme)
-    # 填充 mods：读取 JSON 字段（theme.mods 通常已经是 dict；如果为字符串兜底做一次 json.loads）
     try:
-        from backend.core.extensions import theme_manager
-
         out.mods = await theme_manager.get_mods(db, theme.slug)
     except Exception:
+        # 公开路径容错：mods 读取失败不阻断页面渲染，但要留下日志痕迹
+        # （静默吞掉是此前审计指出的问题，双端点各自吞、无从排查）。
+        logger.exception("读取主题 %s mods 失败，已按空 mods 返回", theme.slug)
         out.mods = None
     return {"success": True, "data": out}
