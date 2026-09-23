@@ -92,7 +92,7 @@
           variant="outline"
           size="icon"
           :disabled="currentPage <= 1"
-          aria-label="prev"
+          :aria-label="t('common.prevPage', '上一页')"
           @click="currentPage -= 1"
         >
           <ChevronLeft data-icon="inline-start" />
@@ -111,7 +111,7 @@
           variant="outline"
           size="icon"
           :disabled="currentPage >= totalPages"
-          aria-label="next"
+          :aria-label="t('common.nextPage', '下一页')"
           @click="currentPage += 1"
         >
           <ChevronRight data-icon="inline-start" />

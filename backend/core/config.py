@@ -252,6 +252,17 @@ class Settings(BaseSettings):
         default="http://localhost:4321",
         description="站点 URL",
     )
+    frontend_base_url: str = Field(
+        default="",
+        description=(
+            "Nuxt 前端服务地址（用于主题切换后清除 Nitro 页面缓存）。"
+            "为空时：debug 模式回退 http://localhost:3000，生产不启用清除。"
+        ),
+    )
+    frontend_purge_secret: str = Field(
+        default="",
+        description="前端缓存清除请求共享密钥（须与 Nuxt 端 NUXT_PURGE_SECRET 一致）",
+    )
     pagination_page_size: int = Field(
         default=12,
         ge=1,

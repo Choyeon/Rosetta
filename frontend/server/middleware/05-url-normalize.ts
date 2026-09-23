@@ -15,14 +15,12 @@ const MAX_DECODE_PASSES = 4
 
 function collapsePercentLayers(path: string): string {
   let cur = path
-  for (let i = 0; i < MAX_DECODE_PASSES && cur.includes('%25'); i++) {
-    try {
-      const decoded = decodeURIComponent(cur)
-      if (decoded === cur) break
-      cur = decoded
-    } catch {
-      break // 非法转义序列：放弃折叠，按原样放行
-    }
+  // 只折叠 %25 层（%25XX → %XX）；绝不调 decodeURIComponent——那会连真实
+  // %XX 一起解掉（如 %2D 连字符丢失），把干净 URL 解成不存在的死链。
+  for (let i = 0; i < MAX_DECODE_PASSES && /%25/i.test(cur); i++) {
+    const next = cur.replace(/%25/gi, '%')
+    if (next === cur) break
+    cur = next
   }
   return cur
 }

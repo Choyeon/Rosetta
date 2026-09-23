@@ -38,14 +38,16 @@ const attrs = {
 const S = (sizeClass: string | undefined, ...children: IconChild[]) =>
   defineComponent({
     inheritAttrs: true,
-    props: { class: { type: String, default: sizeClass ?? 'size-4' } },
-    setup(_, { attrs: a }) {
+    // Vue 把 class 声明为 prop 后不会再落到 attrs —— 必须从 props.class 读取，
+    // 否则调用方传入的定位/尺寸类（absolute、mr-2 等）会被静默丢弃。
+    props: { class: { type: String, default: undefined as string | undefined } },
+    setup(props, { attrs: a }) {
       return () =>
         h(
           'svg',
           {
             ...attrs,
-            class: a.class ?? sizeClass ?? 'size-4',
+            class: props.class || sizeClass || 'size-4',
             style: a.style
           },
           children
@@ -205,6 +207,12 @@ export const LogOut = S(undefined,
 export const User = S(undefined,
   h('path', { d: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2' }),
   h('circle', { cx: '12', cy: '7', r: '4' })
+)
+
+// Settings（lucide v1.x 齿轮）
+export const Settings = S(undefined,
+  h('path', { d: 'M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915' }),
+  h('circle', { cx: '12', cy: '12', r: '3' })
 )
 
 // Bell

@@ -4,18 +4,20 @@ Theme URI: https://rosetta.dev/themes/editorial-wp-style
 Author: Rosetta Themes
 Author URI: https://rosetta.dev
 Description: Classic Editorial magazine layout for Rosetta. Full customizer support.
-Version: 1.0.0
+Version: 1.1.0
 Requires Rosetta: >=1.0.0
 Tags: color:sky, layout:magazine, custom-header, customizer
 Text Domain: editorial-wp-style
 */
 
 /* ========================================================================
-   Editorial WP-Style 主题样式（自包含）
+   Editorial WP-Style 主题样式（完整自包含皮肤）
    ------------------------------------------------------------------------
-   作用域：仅作用于前台 [data-theme="editorial-wp-style"][data-layout-scope="frontend"]
-   不污染 Admin（Admin 使用 main.css 的共享样式 + palette-warm-stone）。
-   共享结构（card-surface / glow-ring / prose）仍在 main.css，此处只覆写颜色令牌。
+   作用域：仅前台 [data-layout-scope="frontend"] 与认证页 [data-layout-scope="public-auth"]。
+   本主题自带完整装饰层（card-surface 渐变/圆角、glow-ring 彗星环、lift-hover、
+   hero-gradient、gradient-text 等）——与其它主题平级，不依赖 main.css 的皮肤。
+   main.css 仅提供 Tailwind 基础设施 + 中性 .card-surface 基底；
+   Admin 装饰冻结在 assets/css/admin-ui.css（选择器锁 html[data-layout-scope="admin"]），本文件不触及。
    ======================================================================== */
 
 :is(html[data-theme="editorial-wp-style"], html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="frontend"] {
@@ -124,4 +126,251 @@ Text Domain: editorial-wp-style
   --sidebar-accent-foreground: 240 5% 96%;
   --sidebar-border: 240 4% 16%;
   --sidebar-ring: 201 98% 76%;
+}
+
+/* ========================================================================
+   Editorial Magazine 装饰层（2026-09 主题解耦架构：自 main.css 完整下沉）
+   ------------------------------------------------------------------------
+   渐变玻璃卡 .card-surface / 彗星发光描边 .glow-ring / 抬升 .lift-hover /
+   Hero 渐变底 .hero-gradient / 渐变文字 .gradient-text + 卡片 tokens。
+   作用域 = 本主题激活 + 前台(frontend)或认证页(public-auth)布局；
+   Admin 永不命中（其同款观感已冻结在 assets/css/admin-ui.css，双方零依赖）。
+   ======================================================================== */
+
+/* ---- 彗星动画：可动画属性与关键帧（与 admin-ui.css 定义一致，重复注册幂等） ---- */
+@supports (background: conic-gradient(from 0deg, #000, #fff)) {
+  @property --gr-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+  @property --gr-bright {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 1;
+  }
+}
+@keyframes gr-spin {
+  to { --gr-angle: 360deg; }
+}
+@keyframes gr-pulse {
+  0%, 100% { --gr-bright: 1.00; }
+  50%      { --gr-bright: 1.14; }
+}
+
+/* ---- 卡片 tokens（亮 / 暗） ---- */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) {
+  --theme-accent-hue: 201;
+  --theme-accent-sat: 96%;
+  --theme-accent-light: 52%;
+  --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.6) inset,
+                  0 -1px 0 hsl(224 71% 4% / 0.06) inset;
+  --card-shadow-sm:
+    0 1px 2px hsl(222 47% 11% / 0.04),
+    0 8px 24px -12px hsl(222 47% 11% / 0.08),
+    0 1px 0 hsl(222 47% 11% / 0.02);
+  --card-shadow-lg:
+    0 2px 6px hsl(222 47% 11% / 0.05),
+    0 32px 60px -28px hsl(222 47% 11% / 0.15),
+    0 2px 0 hsl(222 47% 11% / 0.02);
+  --card-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) {
+  --card-shadow-sm:
+    0 1px 0 hsl(0 0% 100% / 0.04),
+    0 12px 36px -16px hsl(0 0% 0% / 0.55);
+  --card-shadow-lg:
+    0 2px 0 hsl(0 0% 100% / 0.03),
+    0 40px 80px -32px hsl(0 0% 0% / 0.7);
+  --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.06) inset,
+                  0 -1px 0 hsl(0 0% 0% / 0.4) inset;
+}
+
+/* ---- 装饰版 .card-surface：渐变玻璃面 + 内发光 ---- */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface {
+  border: none;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, hsl(var(--background) / 0.92), hsl(var(--muted) / 0.55) 120%),
+    hsl(var(--card));
+  box-shadow: var(--card-shadow-sm);
+  backdrop-filter: saturate(1.05) blur(4px);
+  -webkit-backdrop-filter: saturate(1.05) blur(4px);
+  isolation: isolate;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: var(--card-ambient);
+  mix-blend-mode: soft-light;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface {
+  background:
+    linear-gradient(180deg, hsl(var(--background) / 0.78), hsl(var(--muted) / 0.35) 120%),
+    hsl(var(--card));
+}
+
+/* ---- lift-hover：抬升 + 顶部 accent 高光条 ---- */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .lift-hover {
+  position: relative;
+  transition:
+    transform var(--motion-duration-slow) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-slow) var(--motion-ease-standard),
+    border-color var(--motion-duration-slow) var(--motion-ease-standard),
+    filter var(--motion-duration-slow) var(--motion-ease-standard);
+  will-change: transform, box-shadow, filter;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .lift-hover::before {
+  content: "";
+  position: absolute;
+  inset: -1px 30% auto 30%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 0),
+    hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 1) 50%,
+    hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 0)
+  );
+  opacity: 0;
+  transform: translateY(1px);
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
+              transform var(--motion-duration-base) var(--motion-ease-standard);
+  pointer-events: none;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .lift-hover:hover {
+  transform: translateY(-3px) translateZ(0);
+  box-shadow: var(--card-shadow-lg) !important;
+  filter: saturate(1.04);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .lift-hover:hover::before {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  :is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .lift-hover,
+  :is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .lift-hover::before {
+    transform: none !important;
+    will-change: auto;
+  }
+}
+
+/* ---- Glow Ring · 天青彗星发光描边 ---- */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring {
+  position: relative;
+  isolation: isolate;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring::after {
+  padding: 2.5px;
+  box-sizing: border-box;
+  background:
+    conic-gradient(
+      from var(--gr-angle, 0deg),
+      #a5f3fc 0%,
+      #67e8f9 1.5%,
+      #22d3ee 3.5%,
+      #06b6d4 6%,
+      #0ea5e9 9%,
+      hsl(199 95% 60% / 0.85) 12%,
+      hsl(var(--ring) / 0.72) 16%,
+      hsl(var(--ring) / 0.48) 20%,
+      hsl(var(--ring) / 0.22) 25%,
+      transparent 30%,
+      transparent 178%,
+      hsl(var(--ring) / 0.38) 180%,
+      hsl(var(--ring) / 0.18) 182.5%,
+      transparent 185%,
+      transparent 360%
+    );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  mix-blend-mode: normal !important;
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-standard),
+    filter  var(--motion-duration-base) var(--motion-ease-standard);
+  filter:
+    brightness(var(--gr-bright, 1))
+    drop-shadow(0 0 0 hsl(199 89% 55% / 0));
+  z-index: 5;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:hover::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:focus-within::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:hover::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:focus-within::after {
+  opacity: 1;
+  animation:
+    gr-spin  2.2s linear infinite,
+    gr-pulse 1.8s ease-in-out infinite;
+  filter:
+    brightness(var(--gr-bright, 1))
+    drop-shadow(0 0 1.5px hsl(199 98% 72% / 0.92))
+    drop-shadow(0 0 5px   hsl(197 96% 62% / 0.62))
+    drop-shadow(0 0 12px  hsl(198 95% 58% / 0.34))
+    drop-shadow(0 0 24px  hsl(200 95% 55% / 0.14));
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:hover::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:focus-within::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:hover::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:focus-within::after {
+  filter:
+    brightness(calc(var(--gr-bright, 1) * 1.05))
+    drop-shadow(0 0 1.5px hsl(190 100% 85% / 0.95))
+    drop-shadow(0 0 5px   hsl(194 100% 76% / 0.72))
+    drop-shadow(0 0 13px  hsl(199 100% 66% / 0.46))
+    drop-shadow(0 0 26px  hsl(202 100% 62% / 0.26));
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .no-glow::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .no-glow > *::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .no-glow:hover::after,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .no-glow:focus-within::after {
+  opacity: 0 !important;
+  animation: none !important;
+  filter: none !important;
+  padding: 0 !important;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:hover,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:focus-within,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:hover,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:focus-within {
+  box-shadow:
+    var(--card-shadow-lg),
+    0 0 0 1px hsl(var(--ring) / 0.18),
+    0 10px 40px -18px hsl(199 95% 55% / 0.28) !important;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:hover,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .card-surface.lift-hover:focus-within,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:hover,
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .glow-ring:focus-within {
+  box-shadow:
+    var(--card-shadow-lg),
+    0 0 0 1px hsl(var(--ring) / 0.28),
+    0 18px 60px -22px hsl(200 100% 62% / 0.32) !important;
+}
+
+/* ---- Hero 渐变底 / 渐变文字（editorial 视觉签名，供页面模板消费） ---- */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .hero-gradient {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, hsl(var(--primary) / 0.08), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, hsl(var(--ring) / 0.06), transparent 60%),
+    linear-gradient(180deg, transparent, hsl(var(--background)) 80%);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .hero-gradient {
+  background:
+    radial-gradient(1200px 600px at 10% -10%, hsl(var(--primary) / 0.22), transparent 60%),
+    radial-gradient(1000px 500px at 110% 10%, hsl(var(--ring) / 0.14), transparent 60%);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]):is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) .gradient-text {
+  background-image: linear-gradient(90deg, hsl(var(--foreground)), hsl(var(--foreground) / 0.7), hsl(var(--foreground)));
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
 }

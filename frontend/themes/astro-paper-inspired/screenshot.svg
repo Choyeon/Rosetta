@@ -1,45 +1,48 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 450" width="600" height="450">
-  <defs>
-    <style>
-      .bg { fill: #fafafa; }
-      .fg { fill: #111827; font-family: "Iowan Old Style", "Palatino Linotype", Georgia, serif; }
-      .muted { fill: #6b7280; font-family: Inter, system-ui, sans-serif; }
-      .accent { fill: #4f46e5; }
-      .hairline { stroke: #e5e7eb; stroke-width: 0.5; }
-    </style>
-  </defs>
-  <!-- 背景 -->
-  <rect class="bg" width="600" height="450"/>
-  <!-- 内容区域 760px 缩放到 520px 居中 -->
-  <g transform="translate(40, 0)">
-    <!-- 顶部细线 -->
-    <line class="hairline" x1="0" y1="72" x2="520" y2="72"/>
-    <!-- Logo / 导航文字 -->
-    <text class="fg" x="0" y="58" font-size="15" font-weight="700">rosetta</text>
-    <text class="muted" x="440" y="58" font-size="12">about · posts · tags</text>
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800" role="img" aria-label="极简主题预览：760px 窄栏、衬线标题、hairline 细线、直角排版">
+  <!-- 纸面底 -->
+  <rect width="1280" height="800" fill="#fafaf9"/>
 
-    <!-- Hero: 纯文字标题 -->
-    <text class="fg" x="0" y="140" font-size="32" font-weight="700">Sharing ideas, one post</text>
-    <text class="fg" x="0" y="176" font-size="32" font-weight="700">at a time.</text>
-    <text class="muted" x="0" y="208" font-size="13">A quiet place for writings on software, design, and the craft.</text>
-
-    <!-- 分割线 -->
-    <line class="hairline" x1="0" y1="236" x2="520" y2="236"/>
-
-    <!-- 文章列表 竖排列 -->
-    <!-- Item 1 -->
-    <text class="muted" x="0" y="264" font-size="10" letter-spacing="1.5">AUG 28 · 2026</text>
-    <text class="fg" x="0" y="288" font-size="18" font-weight="600">On building minimalist blog themes that last</text>
-    <text class="muted" x="0" y="308" font-size="12">Thoughts on typography, whitespace, and why 760px feels just right...</text>
-    <!-- 分割线 -->
-    <line class="hairline" x1="0" y1="324" x2="520" y2="324"/>
-    <!-- Item 2 -->
-    <text class="muted" x="0" y="348" font-size="10" letter-spacing="1.5">AUG 22 · 2026</text>
-    <text class="fg" x="0" y="372" font-size="18" font-weight="600">The power of plugin hooks in small CMS engines</text>
-    <text class="muted" x="0" y="392" font-size="12">How a tiny action/filter system can grow into a whole marketplace...</text>
-    <!-- 底部分割线 -->
-    <line class="hairline" x1="0" y1="414" x2="520" y2="414"/>
-    <text class="muted" x="0" y="436" font-size="11">© 2026 · Astro Paper Inspired theme</text>
-    <circle class="accent" cx="508" cy="430" r="3"/>
+  <!-- 顶栏：hairline 分隔 + 衬线品牌 + 下划线导航 -->
+  <line x1="0" y1="72" x2="1280" y2="72" stroke="#e7e5e4" stroke-width="1"/>
+  <text x="260" y="46" font-family="Georgia, 'Songti SC', serif" font-size="22" font-weight="700" fill="#1c1917">Rosetta</text>
+  <g font-family="Inter, 'PingFang SC', sans-serif" font-size="15" fill="#1c1917">
+    <text x="880" y="45">首页</text>
+    <text x="940" y="45" font-weight="700">文章</text>
+    <text x="1000" y="45">分类</text>
+    <text x="1060" y="45">标签</text>
+    <text x="1120" y="45">归档</text>
   </g>
+  <rect x="940" y="53" width="34" height="1.5" fill="#1c1917"/>
+
+  <!-- 版心（760 窄栏示意：x=260..1020） -->
+  <!-- 列表条目标题：衬线大标题 -->
+  <text x="260" y="150" font-family="Georgia, 'Songti SC', serif" font-size="30" font-weight="700" fill="#1c1917">快速上手 FastAPI：构建高性能 REST API</text>
+  <text x="260" y="182" font-family="Inter, 'PingFang SC', sans-serif" font-size="13" fill="#78716c">2026-09-12 · 8 分钟阅读 · #Python #FastAPI</text>
+  <text x="260" y="214" font-family="Inter, 'PingFang SC', sans-serif" font-size="15" fill="#44403c">从项目结构到依赖注入，一份写给工程师的极简实践笔记。</text>
+  <text x="260" y="238" font-family="Inter, 'PingFang SC', sans-serif" font-size="15" fill="#44403c">阅读更多</text>
+  <line x1="260" y1="234" x2="318" y2="234" stroke="#1c1917" stroke-width="1"/>
+
+  <!-- hairline 分隔的竖排列表 -->
+  <line x1="260" y1="284" x2="1020" y2="284" stroke="#e7e5e4" stroke-width="1"/>
+  <text x="260" y="336" font-family="Georgia, 'Songti SC', serif" font-size="24" font-weight="700" fill="#1c1917">Alembic 深度指南：数据库迁移与分支合并</text>
+  <text x="260" y="364" font-family="Inter, 'PingFang SC', sans-serif" font-size="13" fill="#78716c">2026-09-03 · 12 分钟阅读 · #PostgreSQL #Docker</text>
+  <line x1="260" y1="400" x2="1020" y2="400" stroke="#e7e5e4" stroke-width="1"/>
+  <text x="260" y="452" font-family="Georgia, 'Songti SC', serif" font-size="24" font-weight="700" fill="#1c1917">PWA 离线应用实战：Service Worker 与 Background Sync</text>
+  <text x="260" y="480" font-family="Inter, 'PingFang SC', sans-serif" font-size="13" fill="#78716c">2026-08-21 · 10 分钟阅读 · #前端 #JavaScript</text>
+  <line x1="260" y1="516" x2="1020" y2="516" stroke="#e7e5e4" stroke-width="1"/>
+  <text x="260" y="568" font-family="Georgia, 'Songti SC', serif" font-size="24" font-weight="700" fill="#1c1917">Zero Trust 安全架构入门：永不信任，始终验证</text>
+  <text x="260" y="596" font-family="Inter, 'PingFang SC', sans-serif" font-size="13" fill="#78716c">2026-08-09 · 9 分钟阅读 · #安全 #Kubernetes</text>
+  <line x1="260" y1="632" x2="1020" y2="632" stroke="#e7e5e4" stroke-width="1"/>
+
+  <!-- 墨色实底直角主按钮 -->
+  <rect x="260" y="668" width="132" height="40" fill="#1c1917"/>
+  <text x="292" y="693" font-family="Inter, 'PingFang SC', sans-serif" font-size="14" fill="#fafaf9">查看文章</text>
+
+  <!-- 细线方角次按钮 -->
+  <rect x="412" y="668" width="120" height="40" fill="none" stroke="#e7e5e4" stroke-width="1"/>
+  <text x="444" y="693" font-family="Inter, 'PingFang SC', sans-serif" font-size="14" fill="#1c1917">订阅 RSS</text>
+
+  <!-- 页脚：hairline + 居中细字 -->
+  <line x1="0" y1="748" x2="1280" y2="748" stroke="#e7e5e4" stroke-width="1"/>
+  <text x="640" y="778" text-anchor="middle" font-family="Inter, 'PingFang SC', sans-serif" font-size="13" fill="#78716c">© 2026 Rosetta · Built with the Minimal Paper theme.</text>
 </svg>

@@ -3,7 +3,7 @@
   "id": "io.github.rosetta.astro-paper-inspired",
   "name": "极简主题",
   "slug": "astro-paper-inspired",
-  "version": "0.1.0",
+  "version": "2.2.1",
   "requires_rosetta": ">=1.0.0",
   "type": "blog",
   "description": "极简印刷风格：760px 窄栏居中、无大图 Hero、竖排列表、极细分割线。以排版和留白为主，无多余装饰。覆盖全部前台页面，与默认主题及 Admin 完全解耦。",

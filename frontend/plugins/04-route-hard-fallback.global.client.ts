@@ -92,8 +92,15 @@ export default defineNuxtPlugin((nuxtApp) => {
       const title = prevTitle()
       const h1Changed = !!h1 && h1 !== origH1
       const titleChanged = !!title && title !== origTitle
+      // "已渲染"判定（任一成立即视为 slot 已 patch）：
+      //   · h1 变了；或
+      //   · 目标页本就没有 h1（首页/搜索等）且标题已换——NuxtPage 完成挂载、
+      //     useSeo 生效才可能换 title，等价于内容已切换。
+      // 旧版只认 h1Changed：任何"通往无-h1 页"的导航都会等满 ~2s 后
+      // window.location.replace 硬跳，表现为每条进首页/留言板的路由切换闪屏。
+      const patched = h1Changed || (!h1 && titleChanged)
       const urlRight = location.pathname === to.path
-      return { h1, title, h1Changed, titleChanged, urlRight }
+      return { h1, title, h1Changed, titleChanged, patched, urlRight }
     }
 
     // 最多 180 次 tick（nextTick(≈0ms microtask) + setTimeout(0)(≈4~15ms macrotask)
@@ -115,7 +122,7 @@ export default defineNuxtPlugin((nuxtApp) => {
         nextTick(r).then(() => setTimeout(r, 0))
       })
       const s = tryAssert()
-      if (s.h1Changed && s.urlRight) {
+      if (s.patched && s.urlRight) {
         detectedAt = i
         break
       }
@@ -127,7 +134,7 @@ export default defineNuxtPlugin((nuxtApp) => {
       console.info(`[nav-hard-fallback] ok from=${origPath} to=${to.path} tick=${detectedAt}/${maxAttempts} h1Now=${final.h1.slice(0, 20)}`)
       return
     }
-    if (final.h1Changed && final.urlRight) {
+    if ((final.h1Changed || final.titleChanged) && final.urlRight) {
       console.info(`[nav-hard-fallback] ok-from-21st from=${origPath} to=${to.path} h1Now=${final.h1.slice(0, 20)}`)
       return
     }

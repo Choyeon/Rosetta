@@ -60,7 +60,7 @@
 
 ### 1.1 已落地的扩展系统
 
-1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`；Customizer 字段在 `rosetta-theme.json` 内以 `mods_schema`（JSON Schema Draft-07）内联声明，mods 值存 SiteConfig KV `theme_mods:<slug>`。磁盘 ↔ DB 由「扫描」同步：非激活且磁盘已不存在的主题会被清为僵尸记录，激活主题升级前必须磁盘文件存在。
+1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`；Customizer 字段在 `rosetta-theme.json` 内以 `mods_schema`（JSON Schema Draft-07）内联声明，mods 值存 SiteConfig KV `theme_mods:<slug>`。磁盘 ↔ DB 由「扫描」同步：非激活且磁盘已不存在的主题会被清为僵尸记录，激活主题升级前必须磁盘文件存在。主题皮肤完全自包含：默认主题的装饰层也在自己的 `style.css` 内（main.css 无皮肤）；无激活主题时前台回退加载默认主题（`useFrontendTheme` 的 `DEFAULT_THEME_*`），渲染路径上永远恰好一个完整主题。
 2. **插件系统**（FastAPI 侧 Hook Engine）：`backend/services/plugin_engine.py`（Bus 模式），三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。
 3. **头像代理 / 解析器**：`/api/media/avatar?src=<base64>`，白名单 302 直跳 → 非白名单流式代理 → DiceBear SVG 兜底；前端 `useResolvedAvatar`。
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
@@ -100,19 +100,31 @@
 
 ***
 
-## 3. 主题样式 ↔ Admin UI 解耦（四层防御）
+## 3. 主题样式 ↔ Admin UI 解耦（三层 CSS + 四层防御）
 
 **永远不能让前台主题样式影响后台（shadcn Card / Button / Input）。**
+
+【2026-09 解耦架构】CSS 分三层，职责互斥：
+- `assets/css/main.css` = 主题中性基础设施（Tailwind、令牌、prose、toast、
+  `.card-surface` **中性基座版**：素色+1px 细边框）。不含任何"皮肤"。
+- `assets/css/admin-ui.css` = Admin 冻结设计系统（装饰版玻璃卡/彗星发光描边/
+  lift-hover），全部选择器锁死 `html[data-layout-scope="admin"]`——后台观感
+  与主题包零依赖，升主题永不影响 Admin。
+- `themes/<slug>/style.css` = 前台主题完整皮肤。默认主题 editorial-wp-style
+  自带全套 Editorial 装饰层（作用于 frontend + public-auth 段落）；
+  「无激活主题」时 `useFrontendTheme` 回退加载该默认主题（DEFAULT_THEME_*），
+  保证渲染路径上永远恰好一个完整主题 CSS——"默认主题闪帧"在架构上不存在。
 
 | 层 | 机制 | 位置 |
 | - | --- | --- |
 | 1 | 运行时路径检测：进入 `/admin/**` / `/oobe` 时 `clearThemeVisual`，反之 `applyThemeVisual`；`/login` / `/register`（scope=`public-auth`）允许注入主题属性/链接，frontend 守卫规则在认证页不命中 | `composables/useFrontendTheme.ts` |
 | 2 | 布局主动清理：`layouts/admin.vue` 与 `layouts/default.vue` 在 `onMounted` + `watch(route)` 双节点清理 | `frontend/layouts/*.vue` |
 | 3 | 全局中间件兜底：`layout-scope.global.ts` 向 `<html>` 写 `data-layout-scope="frontend"|"admin"|"public-auth"`（`/oobe` 与 `/admin/**` 同按 admin 处理，判定共用 lib `isThemeVisualExcluded`） | `frontend/middleware/layout-scope.global.ts` |
-| 4 | CSS 选择器作用域守卫：主题 `style.css` 通用选择器必须最前带 `:is([data-theme="..."],[data-rosetta-theme="..."])[data-layout-scope="frontend"]` | `frontend/themes/*/style.css` |
+| 4 | CSS 选择器作用域守卫：主题 `style.css` 通用选择器必须最前带 `:is([data-theme="..."],[data-rosetta-theme="..."])[data-layout-scope="..."]` | `frontend/themes/*/style.css` |
 
 硬红线：
-- 主题 style.css **禁止**重写 `.card-surface`（它是 `main.css` 的共享类，Admin 也在用）
+- `.card-surface` 在 main.css 只有**中性基座版**；主题要装饰它必须带完整双守卫（主题属性 + layout-scope），禁止无守卫覆写
+- Admin 装饰样式只允许写在 `admin-ui.css`（`html[data-layout-scope="admin"]` 前缀），**禁止**把新装饰加回 main.css
 - Admin 保留 shadcn 原生 Tailwind 原子类，禁止为"视觉统一"套主题自定义
 - 禁止给 Admin 卡片加左侧彩条 `.border-l-4 border-primary/…`
 
@@ -177,7 +189,8 @@ Rosetta/
 │  ├─ server/                        Nitro BFF（routes/ + api/ + utils/ssr.ts）
 │  ├─ themes/                        editorial-wp-style · astro-paper-inspired
 │  ├─ i18n/locales/                  {zh,en,ja,zh_Hant}.json + .ts 工厂（唯一生效目录）
-│  ├─ assets/css/main.css            Tailwind v4 变量入口；.card-surface 共享类
+│  ├─ assets/css/main.css            主题中性基础设施（Tailwind 入口 + 令牌 + .card-surface 中性基座）
+│  ├─ assets/css/admin-ui.css        Admin 冻结设计系统（data-layout-scope="admin" 专属装饰层）
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
@@ -351,7 +364,7 @@ PR 标题：`{scope}: {message}`，例如 `feat(frontend): SSR 留言板 apiFetc
 1. 密钥 / JWT `SECRET_KEY` / DB 连接串 / 邮箱密码 / GitHub PAT 必须通过 `.env`，严禁硬编码
 2. SSR 顶层 setup 不得直接使用 `window / document / localStorage / navigator / matchMedia`
 3. 主题 `style.css` 禁止 blanket 通用选择器（`main / header / a / h1 / .btn`），必须带作用域守卫
-4. `.card-surface` 共享类禁止主题重写
+4. ~~`.card-surface` 共享类禁止主题重写~~（2026-09 解除：main.css 内已是中性基座版；主题可在**双守卫作用域内**装饰它，见 §3）
 5. 不得把 JWT / admin 资料以 `useState` 序列化到 HTML，用 Pinia `skipHydrate` + localStorage
 6. CSP / 安全头只能更严不能更松
 7. 用户上传文件：`MAX_UPLOAD_SIZE` + `ALLOWED_EXTENSIONS` 双校验；图片 Pillow verify；头像代理 SSRF 白名单

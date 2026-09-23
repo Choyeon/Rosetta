@@ -139,11 +139,23 @@ export default defineNuxtConfig({
         { rel: 'alternate', type: 'application/rss+xml', title: 'Rosetta · RSS Feed', href: '/rss.xml' },
         // Sitemap 提示
         { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: '/sitemap.xml' }
+      ],
+      script: [
+        // ===== 明暗偏好预检（阻塞式内联，首帧渲染前执行）=====
+        // theme.client.ts 的 initFromStorageAndApply 要等 window.load 才挂 .dark class，
+        // 暗色偏好用户每次整页加载都会先闪一帧亮色（"闪屏"）。此脚本在 <head> 内、
+        // CSS 绘制前同步读取 localStorage.theme（含旧键迁移与 system→matchMedia 解析），
+        // 提前写入 .dark。Hydrate 后的正式流程幂等覆盖，不会产生 mismatch
+        // （Vue 首渲染的 isDark 来自 useState 恒 false，class 由本脚本管理，互不冲突）。
+        {
+          tagPosition: 'head',
+          innerHTML: '(function(){try{var s=localStorage.getItem("theme")||localStorage.getItem("rosetta-theme");var d=s==="dark"||(s!=="light"&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark")}catch(e){}})()'
+        }
       ]
     }
   },
 
-  css: ['~/assets/css/main.css'],
+  css: ['~/assets/css/main.css', '~/assets/css/admin-ui.css'],
 
   runtimeConfig: {
     // 单源：后端地址（服务端私有，不会泄漏到客户端 bundle）
@@ -153,6 +165,9 @@ export default defineNuxtConfig({
     apiBase: resolveSsrApiBase(),
     // 对外公开域名（生成 RSS/邮件/OG 链接用）
     siteUrl: SITE_URL,
+    // 主题切换后由后端调用的页面缓存清除密钥（NUXT_PURGE_SECRET）。
+    // 空值：生产 = 清除端点直接 404（功能关闭）；dev = 端点免密钥可用（本机服务）。
+    purgeSecret: process.env.NUXT_PURGE_SECRET || '',
     public: {
       apiBase: process.env.API_BASE_URL || '/api',
       // 对外公开域名（客户端可读取，用于 OOBE 表单默认值 / 前端跳转拼装）

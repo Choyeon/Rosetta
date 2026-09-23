@@ -47,7 +47,7 @@
     "minutesAgo": "[繁]:min ago",
     "hoursAgo": "[繁]:h ago",
     "daysAgo": "[繁]:d ago",
-    "dashboard": "[繁]:Dashboard",
+    "dashboard": "後台管理",
     "settings": "[繁]:Settings",
     "palette": "[繁]:Palette",
     "paletteHint": "[繁]:Choose a brand palette",
@@ -75,7 +75,8 @@
     "gallery": "[繁]:Gallery",
     "activity": "[繁]:Activity",
     "search": "搜尋",
-    "series": "系列"
+    "series": "系列",
+    "more": "更多"
   },
   "post": {
     "title": "標題",
@@ -1365,5 +1366,18 @@
     "openMenu": "開啟選單",
     "closeMenu": "關閉選單",
     "toggleSidebar": "切換側邊欄"
+  },
+  "settings": {
+    "title": "個人設定",
+    "desc": "管理你的顯示偏好，僅儲存在此瀏覽器。",
+    "display": "顯示設定",
+    "displayDesc": "選擇網站外觀模式，立即生效。",
+    "themeMode": "外觀模式",
+    "modeSystem": "跟隨系統",
+    "modeSystemHint": "依操作系統的深淺色偏好",
+    "modeLight": "淺色",
+    "modeLightHint": "始終使用亮色介面",
+    "modeDark": "深色",
+    "modeDarkHint": "始終使用暗色介面"
   }
 }

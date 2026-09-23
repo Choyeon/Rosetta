@@ -29,7 +29,7 @@
 | Nitro BFF | `server/api/` + `server/routes/` | API 代理 / RSS/Sitemap/Robots |
 | i18n 语言包 | `i18n/locales/{zh,en,ja,zh_Hant}.json` | **唯一生效目录**，根 `locales/` 已废弃 |
 | 主题目录 | `themes/{slug}/` | 每个主题一个目录，`rosetta-theme.json` + `style.css` |
-| 全局 CSS | `assets/css/main.css` | Tailwind v4 变量 + `.card-surface` 共享类 |
+| 全局 CSS | `assets/css/main.css` + `assets/css/admin-ui.css` | main.css = 主题中性基础设施（令牌/prose/`.card-surface` 中性基座）；admin-ui.css = Admin 冻结装饰层（锁 `data-layout-scope="admin"`） |
 | 路由中间件 | `middleware/` | Nuxt 自动注册 |
 
 引用别名：`@/*` 与 `~~/*` 双前缀同时生效。
@@ -42,12 +42,13 @@
 4. 二次确认用 `<AdminConfirmDialog>`，不要手写 Dialog
 5. 列表页复用 `<AdminDataTable>` + `<AdminFilterBar>` + `<AdminPagination>`
 
-## main.css 共享组件 vs 主题 style.css
+## 三层 CSS 分工（2026-09 主题解耦架构）
 
 | 位置 | 内容 | 允许写 |
 |------|------|--------|
-| `assets/css/main.css` | 全站共享基础样式 | `.prose-shadcn`、`.card-surface`、`:root` CSS 变量 — admin 和前台共用 |
-| `themes/{slug}/style.css` | 主题特定样式 | 通用规则必须加 `[data-layout-scope="frontend"]` 守卫；认证页定制必须显式用 `[data-layout-scope="public-auth"]` 守卫，禁止 blanket 规则 |
+| `assets/css/main.css` | 主题中性基础设施 | Tailwind 入口、@theme 令牌、`:root`/`.dark` 语义色板、palette-*、prose-shadcn、toast、动效工具、`.card-surface` **中性基座版**（素色+细边框）；**禁止**新增任何"皮肤"装饰 |
+| `assets/css/admin-ui.css` | Admin 冻结设计系统 | 装饰版玻璃卡 / 彗星发光描边 / lift-hover，每条选择器必须以 `html[data-layout-scope="admin"]` 开头；与主题包零依赖 |
+| `themes/{slug}/style.css` | 主题完整皮肤 | 通用规则必须加 `[data-layout-scope="frontend"]` 守卫；认证页定制必须显式用 `[data-layout-scope="public-auth"]` 守卫，禁止 blanket 规则。默认主题 editorial-wp-style 自带全套装饰层（Admin 观感不受其影响） |
 
 ## 主题解耦机制（四层防御）
 

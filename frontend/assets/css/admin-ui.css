@@ -1,0 +1,233 @@
+/* ========================================================================
+   assets/css/admin-ui.css —— Admin 后台专属设计系统（冻结层）
+   ------------------------------------------------------------------------
+   【主题解耦架构 · 2026-09】
+   原先 main.css 里的"Editorial Magazine"装饰层（渐变玻璃卡、彗星发光描边、
+   抬升动效）同时被前台默认主题和 Admin 消费。解耦后：
+     · 前台 → 由 themes/editorial-wp-style/style.css 自带完整装饰；
+     · Admin → 冻结本文件，与任何前台主题包彻底无关（升级/新增主题永不影响后台）。
+   所有选择器强制以 html[data-layout-scope="admin"] 开头（middleware +
+   layouts/admin.vue 双保险写入），public-auth（登录/注册）不在此列——
+   认证页视觉归属当前激活主题的 public-auth 段落。
+   ======================================================================== */
+
+/* ---- 彗星动画依赖：可动画自定义属性 + 关键帧（全局声明，定义仅此一处） ---- */
+@supports (background: conic-gradient(from 0deg, #000, #fff)) {
+  @property --gr-angle {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+  @property --gr-bright {
+    syntax: '<number>';
+    inherits: false;
+    initial-value: 1;
+  }
+}
+@keyframes gr-spin {
+  to { --gr-angle: 360deg; }
+}
+@keyframes gr-pulse {
+  0%, 100% { --gr-bright: 1.00; }
+  50%      { --gr-bright: 1.14; }
+}
+
+/* ---- Admin 卡片 tokens（亮） ---- */
+html[data-layout-scope="admin"] {
+  --theme-accent-hue: 201;
+  --theme-accent-sat: 96%;
+  --theme-accent-light: 52%;
+  --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.6) inset,
+                  0 -1px 0 hsl(224 71% 4% / 0.06) inset;
+  --card-shadow-sm:
+    0 1px 2px hsl(222 47% 11% / 0.04),
+    0 8px 24px -12px hsl(222 47% 11% / 0.08),
+    0 1px 0 hsl(222 47% 11% / 0.02);
+  --card-shadow-lg:
+    0 2px 6px hsl(222 47% 11% / 0.05),
+    0 32px 60px -28px hsl(222 47% 11% / 0.15),
+    0 2px 0 hsl(222 47% 11% / 0.02);
+  --card-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* ---- Admin 卡片 tokens（暗） ---- */
+html[data-layout-scope="admin"].dark {
+  --card-shadow-sm:
+    0 1px 0 hsl(0 0% 100% / 0.04),
+    0 12px 36px -16px hsl(0 0% 0% / 0.55);
+  --card-shadow-lg:
+    0 2px 0 hsl(0 0% 100% / 0.03),
+    0 40px 80px -32px hsl(0 0% 0% / 0.7);
+  --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.06) inset,
+                  0 -1px 0 hsl(0 0% 0% / 0.4) inset;
+}
+
+/* ---- 装饰版 .card-surface：渐变玻璃面 + 内发光 ---- */
+html[data-layout-scope="admin"] .card-surface {
+  border: none;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, hsl(var(--background) / 0.92), hsl(var(--muted) / 0.55) 120%),
+    hsl(var(--card));
+  box-shadow: var(--card-shadow-sm);
+  backdrop-filter: saturate(1.05) blur(4px);
+  -webkit-backdrop-filter: saturate(1.05) blur(4px);
+  isolation: isolate;
+}
+html[data-layout-scope="admin"] .card-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: var(--card-ambient);
+  mix-blend-mode: soft-light;
+}
+html[data-layout-scope="admin"].dark .card-surface {
+  background:
+    linear-gradient(180deg, hsl(var(--background) / 0.78), hsl(var(--muted) / 0.35) 120%),
+    hsl(var(--card));
+}
+
+/* ---- lift-hover：抬升 + 顶部 accent 高光条 ---- */
+html[data-layout-scope="admin"] .lift-hover {
+  position: relative;
+  transition:
+    transform var(--motion-duration-slow) var(--motion-ease-standard),
+    box-shadow var(--motion-duration-slow) var(--motion-ease-standard),
+    border-color var(--motion-duration-slow) var(--motion-ease-standard),
+    filter var(--motion-duration-slow) var(--motion-ease-standard);
+  will-change: transform, box-shadow, filter;
+}
+html[data-layout-scope="admin"] .lift-hover::before {
+  content: "";
+  position: absolute;
+  inset: -1px 30% auto 30%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 0),
+    hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 1) 50%,
+    hsl(var(--theme-accent-hue) var(--theme-accent-sat) var(--theme-accent-light) / 0)
+  );
+  opacity: 0;
+  transform: translateY(1px);
+  transition: opacity var(--motion-duration-base) var(--motion-ease-standard),
+              transform var(--motion-duration-base) var(--motion-ease-standard);
+  pointer-events: none;
+}
+html[data-layout-scope="admin"] .lift-hover:hover {
+  transform: translateY(-3px) translateZ(0);
+  box-shadow: var(--card-shadow-lg) !important;
+  filter: saturate(1.04);
+}
+html[data-layout-scope="admin"] .lift-hover:hover::before {
+  opacity: 1;
+  transform: translateY(0);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-layout-scope="admin"] .lift-hover,
+  html[data-layout-scope="admin"] .lift-hover::before {
+    transform: none !important;
+    will-change: auto;
+  }
+}
+
+/* ---- Glow Ring · 彗星发光描边（opt-in：.glow-ring 或 .card-surface.lift-hover） ---- */
+html[data-layout-scope="admin"] .glow-ring {
+  position: relative;
+  isolation: isolate;
+}
+html[data-layout-scope="admin"] .card-surface::after,
+html[data-layout-scope="admin"] .glow-ring::after {
+  padding: 2.5px;
+  box-sizing: border-box;
+  background:
+    conic-gradient(
+      from var(--gr-angle, 0deg),
+      #a5f3fc 0%,
+      #67e8f9 1.5%,
+      #22d3ee 3.5%,
+      #06b6d4 6%,
+      #0ea5e9 9%,
+      hsl(199 95% 60% / 0.85) 12%,
+      hsl(var(--ring) / 0.72) 16%,
+      hsl(var(--ring) / 0.48) 20%,
+      hsl(var(--ring) / 0.22) 25%,
+      transparent 30%,
+      transparent 178%,
+      hsl(var(--ring) / 0.38) 180%,
+      hsl(var(--ring) / 0.18) 182.5%,
+      transparent 185%,
+      transparent 360%
+    );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  mix-blend-mode: normal !important;
+  opacity: 0;
+  transition:
+    opacity var(--motion-duration-base) var(--motion-ease-standard),
+    filter  var(--motion-duration-base) var(--motion-ease-standard);
+  filter:
+    brightness(var(--gr-bright, 1))
+    drop-shadow(0 0 0 hsl(199 89% 55% / 0));
+  z-index: 5;
+}
+html[data-layout-scope="admin"] .card-surface.lift-hover:hover::after,
+html[data-layout-scope="admin"] .card-surface.lift-hover:focus-within::after,
+html[data-layout-scope="admin"] .glow-ring:hover::after,
+html[data-layout-scope="admin"] .glow-ring:focus-within::after {
+  opacity: 1;
+  animation:
+    gr-spin  2.2s linear infinite,
+    gr-pulse 1.8s ease-in-out infinite;
+  filter:
+    brightness(var(--gr-bright, 1))
+    drop-shadow(0 0 1.5px hsl(199 98% 72% / 0.92))
+    drop-shadow(0 0 5px   hsl(197 96% 62% / 0.62))
+    drop-shadow(0 0 12px  hsl(198 95% 58% / 0.34))
+    drop-shadow(0 0 24px  hsl(200 95% 55% / 0.14));
+}
+html[data-layout-scope="admin"].dark
+  .card-surface.lift-hover:hover::after,
+html[data-layout-scope="admin"].dark
+  .card-surface.lift-hover:focus-within::after,
+html[data-layout-scope="admin"].dark .glow-ring:hover::after,
+html[data-layout-scope="admin"].dark .glow-ring:focus-within::after {
+  filter:
+    brightness(calc(var(--gr-bright, 1) * 1.05))
+    drop-shadow(0 0 1.5px hsl(190 100% 85% / 0.95))
+    drop-shadow(0 0 5px   hsl(194 100% 76% / 0.72))
+    drop-shadow(0 0 13px  hsl(199 100% 66% / 0.46))
+    drop-shadow(0 0 26px  hsl(202 100% 62% / 0.26));
+}
+html[data-layout-scope="admin"] .no-glow::after,
+html[data-layout-scope="admin"] .no-glow > *::after,
+html[data-layout-scope="admin"] .no-glow:hover::after,
+html[data-layout-scope="admin"] .no-glow:focus-within::after {
+  opacity: 0 !important;
+  animation: none !important;
+  filter: none !important;
+  padding: 0 !important;
+}
+html[data-layout-scope="admin"] .card-surface.lift-hover:hover,
+html[data-layout-scope="admin"] .card-surface.lift-hover:focus-within,
+html[data-layout-scope="admin"] .glow-ring:hover,
+html[data-layout-scope="admin"] .glow-ring:focus-within {
+  box-shadow:
+    var(--card-shadow-lg),
+    0 0 0 1px hsl(var(--ring) / 0.18),
+    0 10px 40px -18px hsl(199 95% 55% / 0.28) !important;
+}
+html[data-layout-scope="admin"].dark .card-surface.lift-hover:hover,
+html[data-layout-scope="admin"].dark .card-surface.lift-hover:focus-within,
+html[data-layout-scope="admin"].dark .glow-ring:hover,
+html[data-layout-scope="admin"].dark .glow-ring:focus-within {
+  box-shadow:
+    var(--card-shadow-lg),
+    0 0 0 1px hsl(var(--ring) / 0.28),
+    0 18px 60px -22px hsl(200 100% 62% / 0.32) !important;
+}

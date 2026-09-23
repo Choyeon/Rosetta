@@ -270,6 +270,15 @@ export function useTheme() {
     applyTheme(true)
     persist()
   }
+  /** 跟随系统：立即按 prefers-color-scheme 应用，并把 'system' 存为偏好。 */
+  const setSystem = () => {
+    ripple.stop()
+    const dark = _getSystemDark()
+    applyTheme(dark)
+    if (import.meta.client && typeof localStorage !== 'undefined') {
+      localStorage.setItem(STORAGE_KEY, 'system')
+    }
+  }
 
   /**
    * 在 Hydrate 完成后调用：读取用户偏好 → 同步写入共享 useState & DOM classList。
@@ -369,5 +378,5 @@ export function useTheme() {
     }).catch(() => { /* noop */ })
   }
 
-  return { isDark, themeMode, toggle, setLight, setDark, initFromStorageAndApply }
+  return { isDark, themeMode, toggle, setLight, setDark, setSystem, initFromStorageAndApply }
 }

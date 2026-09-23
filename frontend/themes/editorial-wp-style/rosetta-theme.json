@@ -2,7 +2,7 @@
   "manifest_version": "1.0",
   "name": "默认主题",
   "slug": "editorial-wp-style",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "requires_rosetta": ">=1.0.0",
   "description": "Rosetta 默认主题：经典 Editorial 杂志风格，完整支持 Customizer 颜色、布局、侧边栏、Hero 文案等 11 项自定义。",
   "author_name": "Rosetta Themes",

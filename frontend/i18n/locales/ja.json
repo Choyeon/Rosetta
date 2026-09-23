@@ -47,7 +47,7 @@
     "minutesAgo": "[JA]:min ago",
     "hoursAgo": "[JA]:h ago",
     "daysAgo": "[JA]:d ago",
-    "dashboard": "[JA]:Dashboard",
+    "dashboard": "管理画面",
     "settings": "[JA]:Settings",
     "palette": "[JA]:Palette",
     "paletteHint": "[JA]:Choose a brand palette",
@@ -75,7 +75,8 @@
     "gallery": "[JA]:Gallery",
     "activity": "[JA]:Activity",
     "search": "検索",
-    "series": "シリーズ"
+    "series": "シリーズ",
+    "more": "その他"
   },
   "post": {
     "title": "タイトル",
@@ -1365,5 +1366,18 @@
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる",
     "toggleSidebar": "サイドバーの切り替え"
+  },
+  "settings": {
+    "title": "個人設定",
+    "desc": "表示設定を管理します。このブラウザのみに保存されます。",
+    "display": "表示設定",
+    "displayDesc": "外観モードを選択してください。即時反映されます。",
+    "themeMode": "外観モード",
+    "modeSystem": "システムに従う",
+    "modeSystemHint": "OS の深浅色設定に追従",
+    "modeLight": "ライト",
+    "modeLightHint": "常に明るい画面",
+    "modeDark": "ダーク",
+    "modeDarkHint": "常に暗い画面"
   }
 }

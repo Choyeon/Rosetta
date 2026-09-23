@@ -66,11 +66,25 @@ const MODS_DEFAULTS: ThemeModsRuntime = {
   footer_text: ''
 }
 
+/**
+ * 【默认主题 = 平级主题包 · 2026-09 架构解耦】
+ * editorial-wp-style 的视觉皮肤完整存放在自己的 style.css（main.css 已退化为
+ * 主题中性基础设施）。当后端"无激活主题"或 /themes/active 请求失败时，
+ * 前台回退加载这份默认主题，保证渲染路径上永远恰好有一个完整主题 CSS。
+ * version 必须与 themes/editorial-wp-style/rosetta-theme.json 保持同步
+ * （用作 style.css ?v= 缓存击穿键）。
+ */
+export const DEFAULT_THEME_SLUG = 'editorial-wp-style'
+export const DEFAULT_THEME_NAME = '默认主题'
+export const DEFAULT_THEME_VERSION = '1.1.0'
+
 const useThemeState = () =>
   useState<FrontendThemeInfo>('frontend-theme:state', () => ({
-    slug: null,
-    name: null,
-    version: null,
+    // 初始即指向默认主题：SSR 兜底（后端故障 / 无激活主题）下首字节
+    // 仍能渲染出完整主题皮肤，而非中性骨架。ensureLoaded 成功后被真实值覆盖。
+    slug: DEFAULT_THEME_SLUG,
+    name: DEFAULT_THEME_NAME,
+    version: DEFAULT_THEME_VERSION,
     screenshot_urls: [],
     mods: { ...MODS_DEFAULTS },
     mods_schema: null,
@@ -165,6 +179,9 @@ function applyThemeColorTokens(mods: ThemeModsRuntime) {
       root.style.setProperty('--theme-accent-light', `${Math.round(hsl.l)}%`)
       wrote = true
     }
+  }
+  if (mods.layout_width) {
+    root.style.setProperty('--rosetta-layout-width', `${Number(mods.layout_width)}px`)
   }
   if (mods.primary_color) {
     const hsl = hexToHsl(mods.primary_color)
@@ -267,6 +284,7 @@ function _clearThemeVisual() {
   root.style.removeProperty('--theme-accent-hue')
   root.style.removeProperty('--theme-accent-sat')
   root.style.removeProperty('--theme-accent-light')
+  root.style.removeProperty('--rosetta-layout-width')
   if (root.hasAttribute(TOKEN_MARKER_ATTR)) {
     root.style.removeProperty('--primary')
     root.style.removeProperty('--ring')
@@ -485,6 +503,10 @@ export function useFrontendTheme() {
           styleTokens.push(`--ring:${Math.round(hsl.h)} ${Math.round(hsl.s + 2)}% ${ringL}%`)
         }
       }
+      // layout width → --rosetta-layout-width（主题 CSS 消费窄栏宽度）
+      if (s.mods.layout_width) {
+        styleTokens.push(`--rosetta-layout-width:${Number(s.mods.layout_width)}px`)
+      }
     }
 
     type StyleItem = { id: 'rosetta-theme-color-tokens', innerHTML: string }
@@ -560,9 +582,14 @@ export function useFrontendTheme() {
             ? (data.mods_schema as JsonObject)
             : null
       } else {
-        state.value.slug = null
-        state.value.name = null
-        state.value.version = null
+        // 【默认主题平级兜底 · 2026-09 解耦架构】
+        // "无激活主题"不再让前台裸奔（slug=null）：直接回退加载内置默认主题
+        // editorial-wp-style 的完整 CSS。前台任何时刻都恰好有一个完整主题在
+        // 渲染路径上，不存在"先出中性骨架再补皮肤"的中间帧。
+        // Admin 的「使用中」徽标读的是主题列表 API 的 is_active，不受此兜底影响。
+        state.value.slug = DEFAULT_THEME_SLUG
+        state.value.name = DEFAULT_THEME_NAME
+        state.value.version = DEFAULT_THEME_VERSION
         state.value.screenshot_urls = []
         state.value.mods = { ...MODS_DEFAULTS }
         state.value.mods_schema = null

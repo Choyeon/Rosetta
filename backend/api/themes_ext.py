@@ -33,6 +33,7 @@ from backend.schemas.extensions import (
     ThemeModsIn,
     ThemeOut,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 THEME_NOT_FOUND = "THEME_NOT_FOUND"
 
@@ -176,6 +177,7 @@ async def activate_theme(
     # stale expressions — this prevents MissingGreenlet when Pydantic reads
     # ``updated_at`` during ThemeOut.model_validate.
     await db.commit()
+    purge_frontend_page_cache(f"主题激活: {slug}")
     theme = await _load_theme_row(db, result.slug)
 
     # Build response WITHOUT using from_attributes on the live ORM object.
@@ -289,6 +291,7 @@ async def replace_theme_mods(
     # 等精确 error_code）直接透传，不再统一改写成 THEME_MODS_INVALID。
     saved = await tm.set_mods(db, slug, payload.mods or {}, replace=True)
     await db.commit()
+    purge_frontend_page_cache(f"主题 mods 全量替换: {slug}")
     return {"success": True, "data": saved}
 
 
@@ -309,6 +312,7 @@ async def set_theme_mods(
         )
     saved = await tm.set_mods(db, slug, payload.mods)
     await db.commit()
+    purge_frontend_page_cache(f"主题 mods 增量更新: {slug}")
     return {"success": True, "data": saved}
 
 
@@ -414,7 +418,13 @@ async def upgrade_theme(
     tm = _get_theme_manager()
     row = await tm.upgrade(db, slug)
     await db.commit()
-    return {"success": True, "message": "已从磁盘清单重新同步元数据", "data": await _theme_row_to_out(db, row.slug)}
+    # 升级可能改变 version → 缓存 HTML 里的 ?v=<old> 链接失效，需清页面缓存
+    purge_frontend_page_cache(f"主题升级: {slug}")
+    return {
+        "success": True,
+        "message": "已从磁盘清单重新同步元数据",
+        "data": await _theme_row_to_out(db, row.slug),
+    }
 
 
 @router.post("/market/{slug}/install")

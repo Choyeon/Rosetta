@@ -37,7 +37,7 @@ const displayName = computed(() => getLocalizedStr(props.title?.name))
   <span
     v-if="title"
     :class="[
-      'inline-flex items-center rounded-full border font-medium',
+      'title-badge-chip inline-flex items-center rounded-full border font-medium',
       cfg.h, cfg.px, cfg.text, cfg.gap,
       props.class
     ]"

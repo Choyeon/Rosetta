@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Globe, Check } from '~~/lib/lucide-svg-icons'
+import { Globe, Check, ChevronDown } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
 import { Button } from '~~/components/ui/button'
 import {
@@ -11,11 +11,6 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem
 } from '~~/components/ui/dropdown-menu'
-import {
-  Tooltip,
-  TooltipTrigger,
-  TooltipContent
-} from '~~/components/ui/tooltip'
 
 const { t, locale, setLocale } = useI18n()
 
@@ -23,18 +18,20 @@ interface LocaleOption {
   code: 'zh' | 'en' | 'ja' | 'zh_Hant'
   name: string
   nativeName: string
+  /** 顶栏触发器用的极简短标签（语言自称，无需国旗图形） */
+  short: string
   flag: string
 }
 
 const displayLocales: LocaleOption[] = [
-  { code: 'zh', name: 'Chinese (Simplified)', nativeName: '简体中文', flag: 'cn' },
-  { code: 'en', name: 'English', nativeName: 'English', flag: 'us' },
-  { code: 'ja', name: 'Japanese', nativeName: '日本語', flag: 'jp' },
-  { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文', flag: 'tw' }
+  { code: 'zh', name: 'Chinese (Simplified)', nativeName: '简体中文', short: '中文', flag: 'cn' },
+  { code: 'en', name: 'English', nativeName: 'English', short: 'EN', flag: 'us' },
+  { code: 'ja', name: 'Japanese', nativeName: '日本語', short: '日本語', flag: 'jp' },
+  { code: 'zh_Hant', name: 'Chinese (Traditional)', nativeName: '繁體中文', short: '繁體', flag: 'tw' }
 ]
 
-const flagOf = (code: string) =>
-  displayLocales.find(l => l.code === code)?.flag || 'un'
+const shortOf = (code: string) =>
+  displayLocales.find(l => l.code === code)?.short || '文A'
 
 const handleSetLocale = async (code: string) => {
   await setLocale(code as LocaleOption['code'])
@@ -48,27 +45,20 @@ const handleSetLocale = async (code: string) => {
 
 <template>
   <DropdownMenu>
-    <Tooltip>
-      <TooltipTrigger as-child>
-        <DropdownMenuTrigger as-child>
-          <Button
-            variant="ghost"
-            size="icon"
-            :aria-label="t('common.language') || 'Language'"
-          >
-            <span
-              class="fi rounded-sm"
-              :class="'fi-' + flagOf(locale as string)"
-              style="font-size: 18px; line-height: 1;"
-              aria-hidden="true"
-            />
-          </Button>
-        </DropdownMenuTrigger>
-      </TooltipTrigger>
-      <TooltipContent>
-        <p>{{ t('common.language') || 'Language' }}</p>
-      </TooltipContent>
-    </Tooltip>
+    <DropdownMenuTrigger as-child>
+      <Button
+        variant="ghost"
+        size="sm"
+        class="gap-1 px-2 text-sm font-medium"
+        :aria-label="t('common.language') || 'Language'"
+      >
+        <span data-locale-short>{{ shortOf(locale as string) }}</span>
+        <ChevronDown
+          class="size-3.5 opacity-60"
+          aria-hidden="true"
+        />
+      </Button>
+    </DropdownMenuTrigger>
 
     <DropdownMenuContent
       align="end"
@@ -80,7 +70,7 @@ const handleSetLocale = async (code: string) => {
       </DropdownMenuLabel>
       <DropdownMenuSeparator />
       <DropdownMenuRadioGroup
-        :value="locale as string"
+        :model-value="locale as string"
         @update:model-value="(v) => handleSetLocale(String(v ?? locale))"
       >
         <DropdownMenuRadioItem

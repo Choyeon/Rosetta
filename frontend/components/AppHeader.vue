@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { watch, computed, onMounted } from 'vue'
 import {
-  Menu, Search, LogOut, User, ChevronDown
+  Menu, Search, LogOut, User, Settings, ChevronDown
 } from '~~/lib/lucide-svg-icons'
 import { Button } from '~~/components/ui/button'
 import {
@@ -22,34 +22,22 @@ import {
   SheetClose
 } from '~~/components/ui/sheet'
 import UserAvatar from '~~/components/UserAvatar.vue'
+import ThemeToggle from '~~/components/ThemeToggle.vue'
 import { Separator } from '~~/components/ui/separator'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
-import ThemeToggle from '~~/components/ThemeToggle.vue'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
 
-// 极简主题（astro-paper-inspired）导航栏模式：
-//   · show_avatar === false → data-navbar-minimal="text-only"（style.css 隐藏 logo img，只留站名文字）
-//   · 其余情况（含非极简主题）→ "default"
-// 仅在极简主题激活时才允许 text-only，避免影响默认 Editorial 主题导航。
-const ft = useFrontendTheme()
-const navbarMinimalMode = computed<'default' | 'text-only'>(() => {
-  if (!MINIMAL_THEME_SLUGS.has(ft.slug.value || '')) return 'default'
-  return ft.mods.value.show_avatar === false ? 'text-only' : 'default'
-})
-
 /**
- * Header 导航栏（当前仅默认 Editorial 主题）：
- * 完整中文菜单 + 登录 / 注册按钮显式 + 登录后进入后台。
- *
- * 去重规则：导航后端返回可能重复（用户配置时误加 2 次同 to）。按 to 路径去重。
- * 移动端：≥md 显示完整中文；<md 统一折叠进 Sheet（左侧抽屉），仍然有登录/注册/进入后台。
+ * Header 导航栏：
+ *  · 品牌为纯文字（logo 图片由各主题 style.css 决定是否展示）
+ *  · 桌面主菜单最多 5 项，其余收进「更多」下拉；移动端折叠进 Sheet
+ *  · 右侧控件：搜索 / 明暗切换 / 语言切换（文字标签）/ 登录态
  */
 
 // 显示名：优先 nickname → name → username，避免出现"用户名/登录名"而非昵称
@@ -220,6 +208,12 @@ const isActive = (to: string) => {
   return route.path === to || route.path.startsWith(to + '/')
 }
 
+// ===== 导航分组：桌面端主菜单只放前 5 项，其余收进「更多」下拉，避免窄栏挤成一排 =====
+const NAV_PRIMARY_MAX = 5
+const primaryNavItems = computed(() => navItems.value.slice(0, NAV_PRIMARY_MAX))
+const overflowNavItems = computed(() => navItems.value.slice(NAV_PRIMARY_MAX))
+const moreActive = computed(() => overflowNavItems.value.some(item => isActive(item.to)))
+
 const handleLogout = async () => {
   await authStore.logout()
   navigateTo('/')
@@ -235,7 +229,6 @@ const handleSearchClick = () => navigateTo('/search')
   <header
     id="app-header"
     data-navbar="root"
-    :data-navbar-minimal="navbarMinimalMode"
     class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
   >
     <div
@@ -260,12 +253,13 @@ const handleSearchClick = () => navigateTo('/search')
 
       <nav
         data-navbar="menu"
-        class="md:flex hidden items-center gap-1"
+        class="md:flex hidden items-center gap-1 min-w-0"
       >
         <NuxtLink
-          v-for="item in navItems"
+          v-for="item in primaryNavItems"
           :key="item.to"
           :to="item.to"
+          data-navbar="link"
           :class="[
             'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
             isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
@@ -273,6 +267,42 @@ const handleSearchClick = () => navigateTo('/search')
         >
           {{ item.label }}
         </NuxtLink>
+
+        <!-- 溢出导航：第 6 项起收进「更多」下拉，保持窄栏不拥挤 -->
+        <DropdownMenu v-if="overflowNavItems.length > 0">
+          <DropdownMenuTrigger as-child>
+            <button
+              type="button"
+              data-navbar="link"
+              data-navbar-more
+              :data-active="moreActive || undefined"
+              :class="[
+                'inline-flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
+                moreActive ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
+              ]"
+            >
+              {{ t('nav.more') }}
+              <ChevronDown class="size-3.5 opacity-70" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="start"
+            class="w-44"
+          >
+            <DropdownMenuItem
+              v-for="item in overflowNavItems"
+              :key="item.to"
+              as-child
+            >
+              <NuxtLink
+                :to="item.to"
+                :class="isActive(item.to) ? 'font-semibold' : ''"
+              >
+                {{ item.label }}
+              </NuxtLink>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </nav>
 
       <!-- 交互控件区：Tooltip/DropdownMenu/Sheet 基于 reka-ui，SSR 渲染 PrimitiveSlot 不稳定；
@@ -299,8 +329,9 @@ const handleSearchClick = () => navigateTo('/search')
             </TooltipContent>
           </Tooltip>
 
-          <LocaleSwitcher />
           <ThemeToggle />
+
+          <LocaleSwitcher />
 
           <div
             v-if="!authStore.isAuthenticated"
@@ -370,8 +401,8 @@ const handleSearchClick = () => navigateTo('/search')
                   <User class="mr-2 h-4 w-4" />
                   <span>{{ t('common.dashboard') || 'Dashboard' }}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem @click="handleAdmin">
-                  <ChevronDown class="mr-2 h-4 w-4" />
+                <DropdownMenuItem @click="navigateTo('/settings')">
+                  <Settings class="mr-2 h-4 w-4" />
                   <span>{{ t('common.settings') || '设置' }}</span>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -509,7 +540,6 @@ const handleSearchClick = () => navigateTo('/search')
               <Separator class="mb-4" />
               <div class="flex items-center justify-end gap-1 ml-auto">
                 <LocaleSwitcher />
-                <ThemeToggle />
               </div>
             </SheetContent>
           </Sheet>
@@ -520,6 +550,7 @@ const handleSearchClick = () => navigateTo('/search')
             class="flex items-center gap-1"
             aria-hidden="true"
           >
+            <span class="size-10 shrink-0" />
             <span class="size-10 shrink-0" />
             <span class="size-10 shrink-0" />
             <span class="size-10 shrink-0" />

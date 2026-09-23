@@ -83,7 +83,7 @@
             variant="outline"
             size="icon"
             :disabled="currentPage <= 1"
-            aria-label="Go to previous page"
+            :aria-label="t('common.prevPage', '上一页')"
             @click="handlePageChange(currentPage - 1)"
           >
             <ChevronLeft data-icon="inline-start" />
@@ -102,7 +102,7 @@
             variant="outline"
             size="icon"
             :disabled="currentPage >= totalPages"
-            aria-label="Go to next page"
+            :aria-label="t('common.nextPage', '下一页')"
             @click="handlePageChange(currentPage + 1)"
           >
             <ChevronRight data-icon="inline-start" />

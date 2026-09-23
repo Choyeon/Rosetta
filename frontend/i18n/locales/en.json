@@ -75,7 +75,8 @@
     "about": "About",
     "admin": "Admin",
     "search": "Search",
-    "series": "Series"
+    "series": "Series",
+    "more": "More"
   },
   "post": {
     "title": "Title",
@@ -1365,5 +1366,18 @@
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
     "toggleSidebar": "Toggle sidebar"
+  },
+  "settings": {
+    "title": "My Settings",
+    "desc": "Manage your display preferences, stored only in this browser.",
+    "display": "Display",
+    "displayDesc": "Choose the appearance mode. Takes effect immediately.",
+    "themeMode": "Appearance mode",
+    "modeSystem": "System",
+    "modeSystemHint": "Follow your OS preference",
+    "modeLight": "Light",
+    "modeLightHint": "Always use light UI",
+    "modeDark": "Dark",
+    "modeDarkHint": "Always use dark UI"
   }
 }

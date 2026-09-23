@@ -40,7 +40,7 @@
         <Badge
           v-if="isPinned"
           variant="default"
-          class="text-[11px] h-5 px-2"
+          class="ap-pinned-badge text-[11px] h-5 px-2"
         >
           {{ t('posts.pinned') }}
         </Badge>
@@ -156,6 +156,7 @@
         <Badge
           v-if="isPinned"
           variant="default"
+          class="ap-pinned-badge"
         >
           {{ t('posts.pinned') }}
         </Badge>

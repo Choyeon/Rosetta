@@ -12,7 +12,7 @@
         <CardContent class="p-4">
           <div class="flex flex-col md:flex-row gap-3">
             <div class="flex-1 relative">
-              <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 v-model="searchInput"
                 :placeholder="searchPlaceholder"
@@ -45,6 +45,7 @@
             </div>
             <Button
               variant="default"
+              class="shrink-0"
               @click="handleSearch"
             >
               <Filter
@@ -112,7 +113,7 @@
           variant="outline"
           size="icon"
           :disabled="currentPage <= 1"
-          aria-label="Go to previous page"
+          :aria-label="t('common.prevPage', '上一页')"
           @click="handlePageChange(currentPage - 1)"
         >
           <ChevronLeft data-icon="inline-start" />
@@ -131,7 +132,7 @@
           variant="outline"
           size="icon"
           :disabled="currentPage >= totalPages"
-          aria-label="Go to next page"
+          :aria-label="t('common.nextPage', '下一页')"
           @click="handlePageChange(currentPage + 1)"
         >
           <ChevronRight data-icon="inline-start" />

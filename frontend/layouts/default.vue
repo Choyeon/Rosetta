@@ -19,6 +19,17 @@ const site = useSite()
 await site.ensureLoaded()
 
 /**
+ * 【SSR 主题注入】前台所有走本布局的页面在 SSR 阶段就 await 主题状态，
+ * 让 useFrontendTheme 内注册的 reactive useHead 在渲染 <head> 前拿到 slug/version——
+ * 首字节 HTML 即带 data-rosetta-theme / data-theme / theme class / 主题 style.css <link>，
+ * 浏览器渲染阻塞式加载主题 CSS，从根上消灭"先默认主题闪一帧再切极简"的问题。
+ * 此前只有首页（页面自身 await）满足此条件，其余页面全靠 app:mounted 后客户端纠偏，
+ * 导致归档/留言板/标签/文章页等每次进入都闪屏。
+ * useHead 在 useFrontendTheme() 同步阶段注册，本 await 之后不再触碰 head，无 E1001 风险。
+ */
+await ft.ensureLoaded()
+
+/**
  * 前台布局守卫：
  *   · 写 data-layout-scope=frontend（admin 会写 admin，作为主题 CSS 的双重作用域）
  *   · 重新应用 Rosetta 主题视觉层（SPA 从后台切回前台时，前台的 data-theme 被 clear 掉了，
