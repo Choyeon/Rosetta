@@ -44,7 +44,7 @@
             <p class="text-xs text-muted-foreground font-medium uppercase tracking-wide">
               Keys 数量
             </p>
-            <div class="size-10 rounded-xl bg-primary-muted text-primary-foreground flex items-center justify-center shrink-0">
+            <div class="size-10 rounded-xl bg-primary-muted text-primary-muted-foreground flex items-center justify-center shrink-0">
               <Layers class="size-5" />
             </div>
           </div>

@@ -126,7 +126,7 @@
                 rel="noopener noreferrer"
                 class="group p-4 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 hover:border-primary/40 transition-all flex items-center gap-4"
               >
-                <div class="size-11 rounded-xl bg-primary-muted text-primary-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <div class="size-11 rounded-xl bg-primary-muted text-primary-muted-foreground flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
                   <FileCode class="size-5" />
                 </div>
                 <div>

@@ -4,10 +4,14 @@
       <div
         v-if="open"
         class="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="currentTitle || '图片预览'"
         @click.self="close"
       >
         <button
           class="absolute top-4 right-4 z-10 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          aria-label="关闭预览"
           @click="close"
         >
           <X class="size-5" />
@@ -16,6 +20,7 @@
         <button
           v-if="images.length > 1"
           class="absolute left-4 z-10 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          aria-label="上一张"
           @click.stop="prev"
         >
           <ChevronLeft class="size-5" />
@@ -24,6 +29,7 @@
         <button
           v-if="images.length > 1"
           class="absolute right-4 z-10 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
+          aria-label="下一张"
           @click.stop="next"
         >
           <ChevronRight class="size-5" />
@@ -34,7 +40,6 @@
             :src="currentImage"
             :alt="currentTitle"
             class="max-w-full max-h-[85vh] object-contain rounded-lg"
-            @click.stop
           >
           <div
             v-if="currentTitle"

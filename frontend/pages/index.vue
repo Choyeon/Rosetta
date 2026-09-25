@@ -90,7 +90,9 @@
           'relative overflow-hidden',
           isEditorialTheme
             ? 'min-h-[72vh] md:min-h-[78vh]'
-            : 'min-h-[80vh] md:min-h-[86vh]'
+            : 'min-h-[80vh] md:min-h-[86vh]',
+          // 无壁纸时的兜底渐变属于主题皮肤，定义在 editorial 主题 CSS 内
+          currentWallpaper ? '' : 'ed-hero-fallback'
         ]"
         aria-label="hero"
         data-editorial-section="hero"
@@ -100,9 +102,7 @@
           backgroundPosition: 'center center',
           backgroundRepeat: 'no-repeat',
           backgroundAttachment: 'local'
-        } : {
-          backgroundImage: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0c4a6e 100%)'
-        }"
+        } : {}"
       >
         <!-- Subtle depth overlays (keep cinematics — dim for editorial wallpaper-only view) -->
         <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-black/22 pointer-events-none" />

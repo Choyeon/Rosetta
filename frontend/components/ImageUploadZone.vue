@@ -11,9 +11,15 @@
         isDragging
           ? 'border-primary bg-primary/5 scale-[1.01]'
           : 'border-border hover:border-primary/50 hover:bg-muted/30',
+        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2',
         disabled ? 'opacity-50 pointer-events-none' : ''
       ]"
+      role="button"
+      :tabindex="disabled ? -1 : 0"
+      :aria-disabled="disabled"
       @click="triggerInput"
+      @keydown.enter.prevent="triggerInput"
+      @keydown.space.prevent="triggerInput"
     >
       <div class="flex flex-col items-center justify-center py-10 px-4 text-center">
         <div class="size-12 rounded-full bg-primary/10 flex items-center justify-center mb-3">
@@ -56,6 +62,7 @@
           <img
             v-if="item.preview"
             :src="item.preview"
+            :alt="item.name"
             class="size-full object-cover"
           >
           <div
@@ -72,13 +79,15 @@
           >
             <Check class="size-3 text-white" />
           </div>
-          <div
+          <button
             v-else-if="item.status === 'error'"
-            class="absolute top-1.5 right-1.5 size-5 rounded-full bg-destructive flex items-center justify-center cursor-pointer"
+            type="button"
+            class="absolute top-1.5 right-1.5 size-5 rounded-full bg-destructive flex items-center justify-center cursor-pointer before:absolute before:-inset-1.5 before:content-['']"
+            aria-label="移除这张失败的图片"
             @click.stop="removeItem(item.id)"
           >
             <X class="size-3 text-white" />
-          </div>
+          </button>
         </div>
         <div class="p-2">
           <p

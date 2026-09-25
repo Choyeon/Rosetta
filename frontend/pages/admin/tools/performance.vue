@@ -9,43 +9,38 @@
     <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
       <StatCard
         :loading="summaryLoading"
-        label="24h 请求总数"
-        icon="Activity"
-        color="info"
-        :value="summary.total_requests_24h"
-        :format="(v: unknown) => Number(v).toLocaleString('zh-CN')"
+        title="24h 请求总数"
+        :icon="Activity"
+        accent="info"
+        :value="Number(summary.total_requests_24h).toLocaleString('zh-CN')"
       />
       <StatCard
         :loading="summaryLoading"
-        label="24h 错误率"
-        icon="AlertTriangle"
-        color="error"
-        :value="summary.error_rate_24h"
-        :format="(v: unknown) => `${(Number(v) * 100).toFixed(2)}%`"
+        title="24h 错误率"
+        :icon="AlertTriangle"
+        accent="error"
+        :value="`${(Number(summary.error_rate_24h) * 100).toFixed(2)}%`"
       />
       <StatCard
         :loading="summaryLoading"
-        label="P50 延迟"
-        icon="Timer"
-        color="primary"
-        :value="summary.p50_ms"
-        :format="(v: unknown) => `${v} ms`"
+        title="P50 延迟"
+        :icon="Timer"
+        accent="primary"
+        :value="`${summary.p50_ms} ms`"
       />
       <StatCard
         :loading="summaryLoading"
-        label="P95 延迟"
-        icon="TimerReset"
-        color="warning"
-        :value="summary.p95_ms"
-        :format="(v: unknown) => `${v} ms`"
+        title="P95 延迟"
+        :icon="TimerReset"
+        accent="warning"
+        :value="`${summary.p95_ms} ms`"
       />
       <StatCard
         :loading="summaryLoading"
-        label="P99 延迟"
-        icon="Zap"
-        color="danger"
-        :value="summary.p99_ms"
-        :format="(v: unknown) => `${v} ms`"
+        title="P99 延迟"
+        :icon="Zap"
+        accent="error"
+        :value="`${summary.p99_ms} ms`"
       />
     </div>
 
@@ -401,7 +396,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, defineComponent, h, type Component } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import {
   fetchAdminPerformanceSummary,
   fetchAdminSlowRequests,
@@ -412,10 +407,11 @@ import {
 import { useToast } from '~~/composables/useToast'
 import {
   Gauge, Activity, AlertTriangle, Timer, TimerReset, Zap, BarChart3, Clock,
-  TrendingUp, Info, Loader2 as LucideSkeleton, ChevronLeft, ChevronRight
+  TrendingUp, Info, ChevronLeft, ChevronRight
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import StatCard from '~~/components/admin/StatCard.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
@@ -424,46 +420,6 @@ import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const _toast = useToast()
-
-const iconMap: Record<string, Component> = {
-  Activity, AlertTriangle, Timer, TimerReset, Zap
-}
-
-const StatCard = defineComponent({
-  name: 'StatCard',
-  props: {
-    loading: { type: Boolean, default: false },
-    label: { type: String, required: true },
-    icon: { type: String, required: true },
-    color: { type: String, default: 'primary' },
-    value: { type: [Number, String], default: 0 },
-    format: { type: Function, default: null as ((v: unknown) => string) | null }
-  },
-  setup(props) {
-    const colorClasses: Record<string, string> = {
-      info: 'bg-info-muted text-info-muted-foreground',
-      error: 'bg-error-muted text-error-muted-foreground',
-      primary: 'bg-primary-muted text-primary-foreground',
-      warning: 'bg-warning-muted text-warning-muted-foreground',
-      danger: 'bg-error-muted text-error-muted-foreground'
-    }
-    return () => {
-      const display = props.format ? props.format(props.value) : String(props.value ?? '-')
-      const Icon = iconMap[props.icon] || Activity
-      return h('div', { class: 'rounded-2xl border border-border bg-card p-4 space-y-3' }, [
-        h('div', { class: 'flex items-start justify-between' }, [
-          h('p', { class: 'text-xs text-muted-foreground font-medium uppercase tracking-wide' }, props.label),
-          h('div', { class: ['size-9 rounded-xl flex items-center justify-center shrink-0', colorClasses[props.color]] }, [
-            h(Icon, { class: 'size-4' })
-          ])
-        ]),
-        props.loading
-          ? h(LucideSkeleton, { class: 'h-9 w-24 rounded-lg animate-spin' })
-          : h('div', { class: 'text-2xl font-bold tracking-tight tabular-nums' }, display)
-      ])
-    }
-  }
-})
 
 const activeTab = ref('overview')
 const summaryLoading = ref(true)

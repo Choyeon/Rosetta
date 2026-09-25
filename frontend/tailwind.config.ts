@@ -112,22 +112,8 @@ export default {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)'
       },
-      fontFamily: {
-        sans: [
-          'Geist',
-          'Inter',
-          'ui-sans-serif',
-          'system-ui',
-          'sans-serif'
-        ],
-        mono: [
-          'JetBrains Mono',
-          'ui-monospace',
-          'SFMono-Regular',
-          'monospace'
-        ],
-        display: ['Fraunces', 'ui-serif', 'Georgia', 'serif']
-      },
+      // fontFamily 不在此处声明：Tailwind v4 不读取本文件，字体栈的唯一真源是
+      // assets/css/main.css 的 @theme（--font-sans / --font-mono / --font-display）。
       keyframes: {
         'accordion-down': {
           from: { height: '0' },

@@ -191,6 +191,42 @@
             </Button>
           </div>
 
+          <!-- ========= 作者信息卡：主题 mods show_author_box 控制（作者数据缺失时不渲染空卡） ========= -->
+          <section
+            v-if="showAuthorBox && post?.author"
+            class="mt-10 rounded-2xl border border-border/60 bg-card/60 p-5 sm:p-6"
+            :aria-label="t('post.authorBox', '作者信息')"
+          >
+            <p class="text-xs text-muted-foreground">
+              {{ t('post.authorBoxLabel', '本文作者') }}
+            </p>
+            <div class="mt-3 flex flex-wrap items-center gap-3">
+              <UserAvatar
+                v-if="showAvatar"
+                :avatar="post?.author?.avatar"
+                :seed="authorName"
+                :name="authorName"
+                :title="post?.author?.title || null"
+                :size="48"
+                :show-title="false"
+              />
+              <div class="min-w-0">
+                <p class="font-display text-lg font-semibold tracking-tight">
+                  {{ authorName }}
+                </p>
+                <div
+                  v-if="post?.author?.title"
+                  class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                >
+                  <TitleBadge
+                    :title="post.author.title"
+                    size="sm"
+                  />
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- ========= 上一篇 / 下一篇：GET /blog/posts/{slug}/adjacent，缺失即不渲染 ========= -->
           <nav
             v-if="adjacent.previous || adjacent.next"
@@ -354,7 +390,7 @@
           </section>
 
           <!-- ========= 相关文章：GET /api/blog/posts/{post_id}/similar 真实接口，失败则为空不显示假数据 ========= -->
-          <section v-if="similarPosts.length">
+          <section v-if="showRelatedPosts && similarPosts.length">
             <h3 class="font-display text-2xl font-bold tracking-tight mt-16 mb-6 flex items-center gap-2">
               <Sparkles class="size-5 text-primary" />
               {{ t('post.relatedPosts', '相关文章') }}
@@ -695,6 +731,13 @@ watch(post, (next) => {
   else if (next && typeof nxt.likes === 'number') likeCount.value = nxt.likes
   else if (next && typeof nxt.likes_count === 'number') likeCount.value = nxt.likes_count
 }, { immediate: true })
+
+// 主题 Customizer 开关：layouts/default.vue 已 await ft.ensureLoaded()，
+// 服务端与客户端首帧拿到同一份 mods，条件渲染不会引起 hydration mismatch。
+const ft = useFrontendTheme()
+const showAuthorBox = computed(() => ft.showAuthorBox.value)
+const showRelatedPosts = computed(() => ft.showRelatedPosts.value)
+const showAvatar = computed(() => ft.showAvatar.value)
 
 const postTitle = computed(() => pickLocalized(post.value?.title))
 const displayPostTitle = computed(() => {

@@ -276,9 +276,9 @@ cd frontend
 pnpm install
 pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
-pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线）
+pnpm lint                     # 0 error；warnings == 8（vue/no-v-html 固定基线）
 pnpm typecheck                # 0 TS error
-pnpm test                     # 15/15 Vitest
+pnpm test                     # 48/48 Vitest
 ```
 
 ### 8.3 部署
@@ -308,10 +308,10 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ### 9.2 前端
 
 ```bash
-pnpm lint          # 0 error，warnings == 7
+pnpm lint          # 0 error，warnings == 8
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 15/15
+pnpm test          # 48/48
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
@@ -386,7 +386,7 @@ PR 标题：`{scope}: {message}`，例如 `feat(frontend): SSR 留言板 apiFetc
 ## 14. 维护者补充
 
 - 本文档随代码演进。发现规范与实际冲突时，修改代码或修改本规范二选一，不得长期不一致。
-- 新增内建主题：`frontend/themes/{slug}/` 创建 `rosetta-theme.json + style.css + screenshot`，`style.css` 必须满足 §3 CSS 守卫。
+- 新增内建主题：`frontend/themes/{slug}/` 创建 `rosetta-theme.json + style.css + screenshot`，`style.css` 必须满足 §3 CSS 守卫；`mods_schema.properties` 是 Customizer 控件的唯一清单（后端只接受已声明键，前端只消费有真实消费点的键）。若新主题需要**独立的 DOM 骨架**（首页/页脚/登录注册/错误页结构分支），还必须在 `frontend/lib/rosetta-themes.ts` 的 `MINIMAL_THEME_SLUGS` 登记；只换皮肤的主题不登记，自动落回默认骨架 —— 详见 `frontend/AGENTS.md`「主题变体契约」。
 - 新增插件：`backend/plugins/{slug}/` 创建 `rosetta-plugin.json + plugin.py`，注册入口是同步 `register(app, ctx)`。
 - 新增语言：必须先在 §13.2 去掉禁止，然后同步补 `i18n.config.ts` · `i18n/locales/xx.json` · `schemas/i18n.py` · site_settings 默认值全链路。
 

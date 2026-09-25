@@ -69,13 +69,20 @@ const gradient = computed<string>(() => {
   return `linear-gradient(135deg, hsl(${v}) 0%, hsl(${v} / 0.6) 100%)`
 })
 
-// trend pill 样式：统一用 bg-{color}/10 + text-{color}，深色自动适配
+// trend pill 样式：统一用 10% 语义色底 + 语义色文字，深色自动适配
 const pillClasses = computed(() => {
   if (!props.trend) return ''
   if (props.trend.direction === 'flat') return 'bg-muted text-muted-foreground'
   if (props.trend.direction === 'down') return 'bg-destructive/10 text-destructive'
-  // up：用语义色
-  return `bg-[hsl(${accentVar[props.accent] || 'var(--primary)'})]/10 text-[hsl(${accentVar[props.accent] || 'var(--primary)'})]`
+  // up 走内联样式：accent 是运行时值，Tailwind 无法为拼接出的
+  // bg-[hsl(var(--info))] 这类任意值 class 生成 CSS。
+  return ''
+})
+
+const pillStyle = computed(() => {
+  if (!props.trend || props.trend.direction !== 'up') return undefined
+  const v = accentVar[props.accent] || 'var(--primary)'
+  return { background: `hsl(${v} / 0.1)`, color: `hsl(${v})` }
 })
 
 const IconComponent = computed<Component>(() => {
@@ -139,6 +146,7 @@ const TrendIcon = computed(() => {
             v-if="trend && !loading"
             class="inline-flex items-center gap-1 rounded-full px-2 h-5 text-[11px] font-semibold"
             :class="pillClasses"
+            :style="pillStyle"
           >
             <component
               :is="TrendIcon"

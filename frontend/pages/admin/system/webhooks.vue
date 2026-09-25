@@ -442,7 +442,7 @@ function providerClass(p: string): string {
   if (p === 'github') return 'bg-slate-800 text-white border-transparent'
   if (p === 'feishu') return 'bg-[#3370FF]/15 text-[#3370FF] border-transparent'
   if (p === 'email') return 'bg-success-muted text-success-muted-foreground border-transparent'
-  return 'bg-primary-muted text-primary-foreground border-transparent'
+  return 'bg-primary-muted text-primary-muted-foreground border-transparent'
 }
 
 function eventLabel(e: string): string {

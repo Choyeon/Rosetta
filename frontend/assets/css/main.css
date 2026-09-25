@@ -7,7 +7,7 @@
      · Tailwind v4 入口 + @theme 令牌注册 + :root/.dark 语义色板（Admin 设计系统基座）
      · palette-* 调色板、基础 reset、容器、a11y、明暗切换 view-transition
      · 功能型动效工具（animate-in / scroll-reveal / page-fade / list-item）
-     · 内容排版 .prose-shadcn + highlight.js、sonner toast、admin-badge
+     · 内容排版 .prose-shadcn + highlight.js、sonner toast
      · .card-surface 的【中性基座版】：素面 + 1px 细边框 + 轻阴影
    默认主题 editorial-wp-style 的装饰层（渐变玻璃卡 / 彗星发光描边 glow-ring /
    lift-hover 抬升 / hero 渐变底）已全部下沉到 themes/editorial-wp-style/style.css；
@@ -35,6 +35,8 @@
   --color-input:               hsl(var(--input)              );
   --color-primary:             hsl(var(--primary)            );
   --color-primary-foreground:  hsl(var(--primary-foreground) );
+  --color-primary-muted:       hsl(var(--primary-muted)            );
+  --color-primary-muted-foreground: hsl(var(--primary-muted-foreground));
   --color-secondary:           hsl(var(--secondary)          );
   --color-secondary-foreground:hsl(var(--secondary-foreground) / <alpha-value>);
   --color-accent:              hsl(var(--accent)             );
@@ -74,8 +76,20 @@
   --radius-lg: 0.75rem;
   --radius-xl: 1rem;
 
-  /* 展示字体：标题/数字专用（与 tailwind.config.ts 保持一致，但真源在这里） */
-  --font-display: 'Fraunces', ui-serif, Georgia, serif;
+  /* 字体栈：真源在这里（Tailwind v4 不再读 tailwind.config.ts 的 fontFamily）。
+     网络字体（Geist / JetBrains Mono / Fraunces）由 Google Fonts 外链提供，
+     但外链不可达时必须静默降级，因此每条栈都带完整的本地兜底：
+     ui-* → 系统字体 → 中文（简/繁）族名 → 通用族。
+     中文兜底不可省：Geist/Fraunces 不含 CJK 字形，缺少列表时
+     浏览器会逐字回退，中英混排的字号与基线会明显错位。 */
+  --font-sans: 'Geist', 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI',
+    'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', 'Noto Sans CJK SC',
+    'Source Han Sans SC', Arial, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    'Liberation Mono', 'Courier New', monospace;
+  /* 展示字体：标题/数字专用 */
+  --font-display: 'Fraunces', ui-serif, Georgia, 'Songti SC', 'STSong', 'Noto Serif SC',
+    'Source Han Serif SC', SimSun, serif;
 
   --shadow-soft: 0 10px 30px -12px rgba(15, 23, 42, 0.12);
   --shadow-pop: 0 20px 50px -20px hsl(var(--primary) / 0.35);
@@ -136,9 +150,13 @@
     --border: 214 32% 91%;
     --input: 214 32% 91%;
 
-    /* ---- 主色：天青 ---- */
-    --primary: 201 96% 52%;
+    /* ---- 主色：天青（L=35% 为 AA 下限：白字 5.16:1 / 白底文字 5.16:1 / muted 底 4.70:1）---- */
+    --primary: 201 96% 35%;
     --primary-foreground: 0 0% 100%;
+    /* 淡主色底 + 主色深字（图标磁贴 / 软标签用）；
+       注意 -muted 背景必须配 -muted-foreground 文字，配 -foreground 会得到白底白字 */
+    --primary-muted: 201 96% 95%;
+    --primary-muted-foreground: 201 94% 20%;
 
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
@@ -146,34 +164,36 @@
     --accent: 210 40% 96%;
     --accent-foreground: 222 47% 11%;
 
-    --ring: 201 96% 52%;
+    --ring: 201 96% 35%;
     --radius: 0.75rem;
 
-    /* ---- 语义状态色：由天青推导演算 ---- */
+    /* ---- 语义状态色：由天青推导演算 ----
+       明度统一压到 AA 下限：同一枚色值既能做实心背景（配白色 -foreground ≥4.5:1），
+       也能直接当白底文字/图标色（≥4.5:1）。调暗是刻意的，勿再提回高亮度版本。 */
     /* info：主色直接衍生，更淡更清爽的提示色 */
-    --info: 199 89% 56%;
+    --info: 199 89% 35%;
     --info-foreground: 0 0% 100%;
     --info-muted: 199 90% 94%;
     --info-muted-foreground: 199 74% 22%;
 
     /* success：青绿 172°，与天青同冷色，和谐不突兀 */
-    --success: 172 76% 45%;
+    --success: 172 76% 28%;
     --success-foreground: 0 0% 100%;
     --success-muted: 172 70% 94%;
     --success-muted-foreground: 172 80% 24%;
 
     /* warning：琥珀 38°，降低饱和贴合天青整体干净感 */
-    --warning: 38 92% 53%;
-    --warning-foreground: 30 40% 12%;
+    --warning: 38 92% 31%;
+    --warning-foreground: 0 0% 100%;
     --warning-muted: 38 92% 94%;
     --warning-muted-foreground: 38 70% 26%;
 
     /* error / destructive：玫瑰红 355°，一个名字双入口兼容 */
-    --error: 355 82% 62%;
+    --error: 355 82% 47%;
     --error-foreground: 0 0% 100%;
     --error-muted: 355 80% 95%;
     --error-muted-foreground: 355 70% 28%;
-    --destructive: 355 82% 62%;
+    --destructive: 355 82% 47%;
     --destructive-foreground: 0 0% 100%;
     --destructive-muted: 355 80% 95%;
     --destructive-muted-foreground: 355 70% 28%;
@@ -181,14 +201,12 @@
     /* ---- Sidebar ---- */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5% 26%;
-    --sidebar-primary: 201 96% 54%;
-    --sidebar-primary-foreground: 0 0% 98%;
+    --sidebar-primary: 201 96% 35%;
+    --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 5% 96%;
     --sidebar-accent-foreground: 240 6% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 202 98% 70%;
-
-    --font-display: 'Fraunces', ui-serif, Georgia, serif;
+    --sidebar-ring: 201 96% 35%;
   }
 
   /* ---- 暗色模式：对应每一个亮色 token，确保色相关系一致，对比 AA ---- */
@@ -210,6 +228,8 @@
 
     --primary: 201 98% 76%;
     --primary-foreground: 224 71% 4%;
+    --primary-muted: 201 45% 18%;
+    --primary-muted-foreground: 201 90% 82%;
 
     --secondary: 222 47% 11%;
     --secondary-foreground: 210 40% 98%;
@@ -265,9 +285,12 @@ html.palette-indigo {
   --accent: 262 83% 96%;
   --accent-foreground: 262 83% 12%;
   --ring: 262 83% 58%;
-  --sidebar-primary: 262 83% 62%;
+  --sidebar-primary: 262 83% 58%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 263 91% 72%;
+  --sidebar-ring: 262 83% 58%;
+
+  --primary-muted: 262 83% 95%;
+  --primary-muted-foreground: 262 83% 20%;
 }
 html.dark.palette-indigo {
   --primary: 263 88% 76%;
@@ -278,17 +301,23 @@ html.dark.palette-indigo {
   --sidebar-primary: 263 88% 70%;
   --sidebar-primary-foreground: 224 71% 4%;
   --sidebar-ring: 263 88% 76%;
+
+  --primary-muted: 263 45% 18%;
+  --primary-muted-foreground: 263 90% 82%;
 }
 
 html.palette-emerald {
-  --primary: 158 64% 46%;
+  --primary: 158 64% 30%;
   --primary-foreground: 0 0% 100%;
   --accent: 158 64% 95%;
   --accent-foreground: 158 64% 10%;
-  --ring: 158 64% 46%;
-  --sidebar-primary: 158 64% 50%;
+  --ring: 158 64% 30%;
+  --sidebar-primary: 158 64% 30%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 158 88% 68%;
+  --sidebar-ring: 158 64% 30%;
+
+  --primary-muted: 158 64% 95%;
+  --primary-muted-foreground: 158 64% 20%;
 }
 html.dark.palette-emerald {
   --primary: 158 72% 65%;
@@ -299,17 +328,23 @@ html.dark.palette-emerald {
   --sidebar-primary: 158 72% 60%;
   --sidebar-primary-foreground: 224 71% 4%;
   --sidebar-ring: 158 72% 65%;
+
+  --primary-muted: 158 45% 18%;
+  --primary-muted-foreground: 158 90% 82%;
 }
 
 html.palette-amber {
-  --primary: 42 96% 55%;
-  --primary-foreground: 30 40% 10%;
+  --primary: 42 96% 29%;           /* 深琥珀：白字与白底文字双向 AA */
+  --primary-foreground: 0 0% 100%;
   --accent: 42 96% 93%;
   --accent-foreground: 30 40% 10%;
-  --ring: 42 96% 55%;
-  --sidebar-primary: 42 96% 55%;
-  --sidebar-primary-foreground: 30 40% 10%;
-  --sidebar-ring: 42 98% 65%;
+  --ring: 42 96% 29%;
+  --sidebar-primary: 42 96% 29%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 42 96% 29%;
+
+  --primary-muted: 42 96% 95%;
+  --primary-muted-foreground: 42 90% 20%;
 }
 html.dark.palette-amber {
   --primary: 42 97% 70%;
@@ -320,17 +355,23 @@ html.dark.palette-amber {
   --sidebar-primary: 42 97% 65%;
   --sidebar-primary-foreground: 224 71% 4%;
   --sidebar-ring: 42 97% 70%;
+
+  --primary-muted: 42 45% 18%;
+  --primary-muted-foreground: 42 90% 82%;
 }
 
 html.palette-rose {
-  --primary: 346 77% 60%;
+  --primary: 346 77% 48%;
   --primary-foreground: 0 0% 100%;
   --accent: 346 77% 96%;
   --accent-foreground: 346 77% 12%;
-  --ring: 346 77% 60%;
-  --sidebar-primary: 346 77% 62%;
+  --ring: 346 77% 48%;
+  --sidebar-primary: 346 77% 48%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 346 91% 75%;
+  --sidebar-ring: 346 77% 48%;
+
+  --primary-muted: 346 77% 95%;
+  --primary-muted-foreground: 346 77% 20%;
 }
 html.dark.palette-rose {
   --primary: 346 85% 78%;
@@ -341,17 +382,23 @@ html.dark.palette-rose {
   --sidebar-primary: 346 85% 72%;
   --sidebar-primary-foreground: 224 71% 4%;
   --sidebar-ring: 346 85% 78%;
+
+  --primary-muted: 346 45% 18%;
+  --primary-muted-foreground: 346 90% 82%;
 }
 
 html.palette-violet {
-  --primary: 271 91% 65%;
+  --primary: 271 91% 59%;
   --primary-foreground: 0 0% 100%;
   --accent: 271 91% 96%;
   --accent-foreground: 271 91% 12%;
-  --ring: 271 91% 65%;
-  --sidebar-primary: 271 91% 66%;
+  --ring: 271 91% 59%;
+  --sidebar-primary: 271 91% 59%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 272 95% 76%;
+  --sidebar-ring: 271 91% 59%;
+
+  --primary-muted: 271 91% 95%;
+  --primary-muted-foreground: 271 90% 20%;
 }
 html.dark.palette-violet {
   --primary: 271 96% 80%;
@@ -362,17 +409,23 @@ html.dark.palette-violet {
   --sidebar-primary: 271 96% 76%;
   --sidebar-primary-foreground: 224 71% 4%;
   --sidebar-ring: 271 96% 80%;
+
+  --primary-muted: 271 45% 18%;
+  --primary-muted-foreground: 271 90% 82%;
 }
 
 html.palette-sky {
-  --primary: 201 96% 52%;
+  --primary: 201 96% 35%;
   --primary-foreground: 0 0% 100%;
   --accent: 201 96% 95%;
   --accent-foreground: 201 96% 12%;
-  --ring: 201 96% 52%;
-  --sidebar-primary: 201 96% 54%;
+  --ring: 201 96% 35%;
+  --sidebar-primary: 201 96% 35%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 202 98% 70%;
+  --sidebar-ring: 201 96% 35%;
+
+  --primary-muted: 201 96% 95%;
+  --primary-muted-foreground: 201 90% 20%;
 }
 html.dark.palette-sky {
   --primary: 201 98% 76%;
@@ -383,22 +436,28 @@ html.dark.palette-sky {
   --sidebar-primary: 201 98% 72%;
   --sidebar-primary-foreground: 224 71% 4%;
   --sidebar-ring: 201 98% 76%;
+
+  --primary-muted: 201 45% 18%;
+  --primary-muted-foreground: 201 90% 82%;
 }
 
 /* ---- Warm Stone 赭石暖色调（Admin 后台默认启用）---- */
 html.palette-warm-stone {
-  --primary: 32 94% 44%;           /* 赭石 D97706 */
-  --primary-foreground: 30 40% 10%;
+  --primary: 32 94% 34%;           /* 赭石深阶：白字 / 白底文字双向 AA */
+  --primary-foreground: 0 0% 100%;
   --accent: 40 96% 92%;           /* 赭石淡米 */
   --accent-foreground: 30 40% 12%;
-  --ring: 32 94% 44%;
-  --sidebar-primary: 32 94% 48%;
-  --sidebar-primary-foreground: 30 40% 10%;
-  --sidebar-ring: 34 98% 52%;
+  --ring: 32 94% 34%;
+  --sidebar-primary: 32 94% 34%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-ring: 32 94% 34%;
   /* 语义色微调，与赭石更和谐：竹青+天蓝保留，warning 用琥珀 */
-  --success: 172 70% 40%;
-  --info: 219 88% 60%;
-  --warning: 40 90% 50%;
+  --success: 172 70% 29%;
+  --info: 219 88% 52%;
+  --warning: 40 90% 31%;
+
+  --primary-muted: 32 94% 95%;
+  --primary-muted-foreground: 32 90% 20%;
 }
 html.dark.palette-warm-stone {
   --primary: 34 96% 64%;
@@ -412,22 +471,28 @@ html.dark.palette-warm-stone {
   --success: 172 70% 55%;
   --info: 219 90% 72%;
   --warning: 40 92% 66%;
+
+  --primary-muted: 34 45% 18%;
+  --primary-muted-foreground: 34 90% 82%;
 }
 
 /* ---- Minimal 极简中性灰（无强品牌色，最大留白，明暗双模）---- */
 html.palette-minimal {
-  --primary: 220 9% 46%;           /* 中性灰 6b7280 */
+  --primary: 220 9% 45%;           /* 中性灰：白字 / 白底文字双向 AA */
   --primary-foreground: 0 0% 100%;
   --accent: 220 14% 96%;           /* 极浅灰底 */
   --accent-foreground: 220 13% 22%;
-  --ring: 220 9% 46%;
-  --sidebar-primary: 220 9% 50%;
+  --ring: 220 9% 45%;
+  --sidebar-primary: 220 9% 45%;
   --sidebar-primary-foreground: 0 0% 100%;
-  --sidebar-ring: 220 10% 60%;
+  --sidebar-ring: 220 9% 45%;
   /* 语义色压低饱和，保持极简调性 */
-  --success: 160 8% 40%;
-  --info: 220 9% 50%;
-  --warning: 38 30% 46%;
+  --success: 160 8% 42%;
+  --info: 220 9% 45%;
+  --warning: 38 30% 39%;
+
+  --primary-muted: 220 9% 95%;
+  --primary-muted-foreground: 220 9% 20%;
 }
 html.dark.palette-minimal {
   --primary: 0 0% 92%;             /* 近白，暗底上最干净的主色 */
@@ -441,6 +506,9 @@ html.dark.palette-minimal {
   --success: 150 6% 60%;
   --info: 0 0% 80%;
   --warning: 40 12% 64%;
+
+  --primary-muted: 0 0% 18%;
+  --primary-muted-foreground: 0 0% 92%;
 }
 
 /* =========================================================
@@ -528,8 +596,6 @@ html.dark.palette-minimal {
    ========================================================= */
 :root {
   --motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
-  --motion-ease-emphasized: cubic-bezier(0.16, 1, 0.3, 1);
-  --motion-ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
 
   --motion-duration-fast: 180ms;
   --motion-duration-base: 280ms;
@@ -913,23 +979,6 @@ html.dark.palette-minimal {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-/* ===== Admin 语义 Badge（variant=outline 叠加 class 驱动）===== */
-.admin-badge-info {
-  background: hsl(var(--info-muted));
-  color: hsl(var(--info-muted-foreground));
-  border-color: hsl(var(--info) / 0.25);
-}
-.admin-badge-success {
-  background: hsl(var(--success-muted));
-  color: hsl(var(--success-muted-foreground));
-  border-color: hsl(var(--success) / 0.25);
-}
-.admin-badge-warning {
-  background: hsl(var(--warning-muted));
-  color: hsl(var(--warning-muted-foreground));
-  border-color: hsl(var(--warning) / 0.25);
 }
 
 /* ===== TransitionGroup 列表入场动画（name="list-item"）===== */

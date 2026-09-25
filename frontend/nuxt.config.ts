@@ -117,10 +117,14 @@ export default defineNuxtConfig({
         { rel: 'dns-prefetch', href: 'https://fonts.googleapis.com' },
 
         // === 字体样式表（Geist / JetBrains Mono / Fraunces）===
-        // 用 <link> 直出而非 CSS @import：可与 main.css 并行下载，不再串行阻塞首屏渲染。
-        // display=swap 保证字体未就绪时先用回退字体，不白屏。
+        // 用 preload 而不是 stylesheet：`<link rel="stylesheet">` 指向外站时会
+        // 阻塞首屏渲染，直到请求成功或超时（Google Fonts 不可达时可拖到数十秒）。
+        // preload 只负责尽早并行下载，真正生效由 plugins/font-stylesheet.client.ts
+        // 在客户端把 rel 换成 stylesheet，因此首屏一定用 main.css 里的本地兜底字体。
+        // display=swap 保证 webfont 后到时平滑替换，不白屏。
         {
-          rel: 'stylesheet',
+          rel: 'preload',
+          as: 'style',
           href: 'https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap'
         },
 

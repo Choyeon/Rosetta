@@ -4,7 +4,7 @@ Theme URI: https://rosetta.dev/themes/editorial-wp-style
 Author: Rosetta Themes
 Author URI: https://rosetta.dev
 Description: Classic Editorial magazine layout for Rosetta. Full customizer support.
-Version: 1.1.0
+Version: 1.1.2
 Requires Rosetta: >=1.0.0
 Tags: color:sky, layout:magazine, custom-header, customizer
 Text Domain: editorial-wp-style
@@ -20,113 +20,9 @@ Text Domain: editorial-wp-style
    Admin 装饰冻结在 assets/css/admin-ui.css（选择器锁 html[data-layout-scope="admin"]），本文件不触及。
    ======================================================================== */
 
-:is(html[data-theme="editorial-wp-style"], html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="frontend"] {
-  /* ---- 基色 ---- */
-  --background: 0 0% 100%;
-  --foreground: 222 47% 11%;
-  --muted: 210 40% 96%;
-  --muted-foreground: 215 16% 47%;
-  --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
-  --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-
-  /* ---- 主色：天青 ---- */
-  --primary: 201 96% 52%;
-  --primary-foreground: 0 0% 100%;
-  --secondary: 210 40% 96%;
-  --secondary-foreground: 222 47% 11%;
-  --accent: 210 40% 96%;
-  --accent-foreground: 222 47% 11%;
-  --ring: 201 96% 52%;
-  --radius: 0.75rem;
-
-  /* ---- 语义状态色 ---- */
-  --info: 199 89% 56%;
-  --info-foreground: 0 0% 100%;
-  --info-muted: 199 90% 94%;
-  --info-muted-foreground: 199 74% 22%;
-  --success: 172 76% 45%;
-  --success-foreground: 0 0% 100%;
-  --success-muted: 172 70% 94%;
-  --success-muted-foreground: 172 80% 24%;
-  --warning: 38 92% 53%;
-  --warning-foreground: 30 40% 12%;
-  --warning-muted: 38 92% 94%;
-  --warning-muted-foreground: 38 70% 26%;
-  --error: 355 82% 62%;
-  --error-foreground: 0 0% 100%;
-  --error-muted: 355 80% 95%;
-  --error-muted-foreground: 355 70% 28%;
-  --destructive: 355 82% 62%;
-  --destructive-foreground: 0 0% 100%;
-  --destructive-muted: 355 80% 95%;
-  --destructive-muted-foreground: 355 70% 28%;
-
-  /* ---- Sidebar ---- */
-  --sidebar-background: 0 0% 98%;
-  --sidebar-foreground: 240 5% 26%;
-  --sidebar-primary: 201 96% 54%;
-  --sidebar-primary-foreground: 0 0% 98%;
-  --sidebar-accent: 240 5% 96%;
-  --sidebar-accent-foreground: 240 6% 10%;
-  --sidebar-border: 220 13% 91%;
-  --sidebar-ring: 202 98% 70%;
-
-  /* ---- 字体 ---- */
-  --font-display: 'Fraunces', ui-serif, Georgia, serif;
-}
-
-/* ---- 暗色模式 ---- */
-:is(html[data-theme="editorial-wp-style"], html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="frontend"].dark {
-  --background: 224 71% 4%;
-  --foreground: 213 31% 91%;
-  --muted: 223 47% 11%;
-  --muted-foreground: 215 16% 57%;
-  --popover: 224 71% 4%;
-  --popover-foreground: 215 20% 65%;
-  --card: 224 71% 4%;
-  --card-foreground: 213 31% 91%;
-  --border: 216 34% 17%;
-  --input: 216 34% 17%;
-  --primary: 201 98% 76%;
-  --primary-foreground: 224 71% 4%;
-  --secondary: 222 47% 11%;
-  --secondary-foreground: 210 40% 98%;
-  --accent: 216 34% 17%;
-  --accent-foreground: 210 40% 98%;
-  --ring: 201 98% 76%;
-  --info: 199 88% 70%;
-  --info-foreground: 224 71% 4%;
-  --info-muted: 199 48% 20%;
-  --info-muted-foreground: 199 92% 90%;
-  --success: 172 72% 62%;
-  --success-foreground: 224 71% 4%;
-  --success-muted: 172 42% 18%;
-  --success-muted-foreground: 172 88% 86%;
-  --warning: 38 95% 68%;
-  --warning-foreground: 30 40% 10%;
-  --warning-muted: 38 48% 20%;
-  --warning-muted-foreground: 38 96% 90%;
-  --error: 355 84% 72%;
-  --error-foreground: 224 71% 4%;
-  --error-muted: 355 44% 22%;
-  --error-muted-foreground: 355 92% 90%;
-  --destructive: 355 84% 72%;
-  --destructive-foreground: 224 71% 4%;
-  --destructive-muted: 355 44% 22%;
-  --destructive-muted-foreground: 355 92% 90%;
-  --sidebar-background: 240 6% 10%;
-  --sidebar-foreground: 240 5% 96%;
-  --sidebar-primary: 201 98% 72%;
-  --sidebar-primary-foreground: 224 71% 4%;
-  --sidebar-accent: 240 4% 16%;
-  --sidebar-accent-foreground: 240 5% 96%;
-  --sidebar-border: 240 4% 16%;
-  --sidebar-ring: 201 98% 76%;
-}
+/* 语义色令牌（背景/前景/主色/状态色/sidebar）单一来源在 assets/css/main.css 的 :root/.dark，
+   本主题不重复声明：重复一份副本会让前台与基座对比度审计脱钩（历史上就是这里落后了一次 AA 修正）。
+   主题只声明自己的皮肤层装饰（见下方卡片 tokens 与各选择器）。 */
 
 /* ========================================================================
    Editorial Magazine 装饰层（2026-09 主题解耦架构：自 main.css 完整下沉）
@@ -173,7 +69,6 @@ Text Domain: editorial-wp-style
     0 2px 6px hsl(222 47% 11% / 0.05),
     0 32px 60px -28px hsl(222 47% 11% / 0.15),
     0 2px 0 hsl(222 47% 11% / 0.02);
-  --card-ease: cubic-bezier(0.22, 1, 0.36, 1);
 }
 :is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"]).dark:is([data-layout-scope="frontend"],[data-layout-scope="public-auth"]) {
   --card-shadow-sm:
@@ -373,4 +268,97 @@ Text Domain: editorial-wp-style
   -webkit-background-clip: text;
           background-clip: text;
   color: transparent;
+}
+
+/* ---- 登录 / 注册（public-auth 骨架变体）覆盖层玻璃皮肤 ----
+   这两页是骨架层变体（结构写死在 pages/login.vue / pages/register.vue），
+   但皮肤不该留在模板里：壁纸渐变、玻璃卡、错误条、分隔线、主按钮高光，
+   以及输入框的常态 / 聚焦 / 键盘焦点环，全部收进本文件的 .ed-auth-* 家族。
+   此前这些值以内联 style + JS focusin/focusout 改写实现，既绕过令牌，
+   又让键盘焦点只有一条 1px 内描边（WCAG 2.4.7 不足）。 */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-shade {
+  background: linear-gradient(to top, rgb(0 0 0 / 0.6), rgb(0 0 0 / 0.2) 55%, rgb(0 0 0 / 0.1));
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-brand-glow {
+  background: rgb(255 255 255 / 0.10);
+  opacity: 0.7;
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-card-shadow {
+  background: rgb(0 0 0 / 0.5);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-card-shadow-far {
+  background: rgb(2 6 23 / 0.45);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-card-halo {
+  background: linear-gradient(135deg,
+    rgb(255 255 255 / 0.42) 0%, rgb(255 255 255 / 0.16) 22%, rgb(255 255 255 / 0.08) 42%,
+    rgb(255 255 255 / 0.04) 60%, rgb(255 255 255 / 0.08) 80%, rgb(255 255 255 / 0.20) 100%);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-card {
+  background: linear-gradient(155deg, rgb(255 255 255 / 0.095) 0%, rgb(255 255 255 / 0.055) 45%, rgb(255 255 255 / 0.08) 100%);
+  backdrop-filter: blur(42px) saturate(240%);
+  -webkit-backdrop-filter: blur(42px) saturate(240%);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.18),
+    inset 0 0 40px 0 rgb(255 255 255 / 0.025),
+    0 1px 2px 0 rgb(0 0 0 / 0.30),
+    0 30px 70px -22px rgb(0 0 0 / 0.85),
+    0 22px 45px -18px rgb(0 0 0 / 0.65);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-alert {
+  background: linear-gradient(135deg, rgb(239 68 68 / 0.18) 0%, rgb(220 38 38 / 0.12) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    inset 0 0 0 1px rgb(248 113 113 / 0.22),
+    0 8px 22px -10px rgb(220 38 38 / 0.55);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-divider {
+  background: linear-gradient(90deg, transparent 0%, rgb(255 255 255 / 0.22) 50%, transparent 100%);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-submit {
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.8),
+    inset 0 -2px 0 0 rgb(0 0 0 / 0.06),
+    0 1px 2px 0 rgb(0 0 0 / 0.18),
+    0 12px 28px -14px rgb(255 255 255 / 0.55),
+    0 8px 20px -12px rgb(0 0 0 / 0.55);
+}
+/* 玻璃输入框 / 勾选框：常态底与内描边由 CSS 提供（原内联 style），
+   聚焦改由 :focus 承担（原 JS focusin/focusout），键盘焦点走 --ring 令牌。 */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-glass {
+  border: 1px solid transparent;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.10) 0%, rgb(255 255 255 / 0.06) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.12),
+    inset 0 0 0 1px rgb(255 255 255 / 0.09),
+    inset 0 2px 6px rgb(0 0 0 / 0.14);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-glass:focus {
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.13) 0%, rgb(255 255 255 / 0.09) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.14),
+    inset 0 2px 6px rgb(0 0 0 / 0.14);
+}
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-glass:focus-visible {
+  border-color: hsl(var(--ring));
+  outline: 2px solid hsl(var(--ring) / 0.55);
+  outline-offset: 2px;
+}
+/* 记住我 / 同意条款勾选框的「已选中」态：主色实底 + 顶部高光 + 主色投影。 */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="public-auth"] .ed-auth-check-checked {
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.9) 0%, hsl(var(--primary)) 100%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    0 6px 14px -8px hsl(var(--primary) / 0.8);
+}
+
+/* ============================================================
+   首页 hero 兜底渐变（无壁纸时）
+   ------------------------------------------------------------
+   原先写成 pages/index.vue 的行内 style，属于把主题皮肤塞进模板；
+   现在模板只挂 .ed-hero-fallback 类，颜色与角度由本主题决定。
+   三个停点由原行内的 #0f172a / #1e3a5f / #0c4a6e 等值换算为 HSL，观感不变。
+   ============================================================ */
+:is(html[data-theme="editorial-wp-style"],html[data-rosetta-theme="editorial-wp-style"])[data-layout-scope="frontend"] .ed-hero-fallback {
+  background-image: linear-gradient(135deg, hsl(222.2 47.4% 11.2%) 0%, hsl(214.2 52% 24.5%) 50%, hsl(202 80.3% 23.9%) 100%);
 }

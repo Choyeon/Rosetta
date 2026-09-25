@@ -263,7 +263,7 @@
       >
         <AdminCard>
           <div class="flex-col gap-0 flex-row items-center gap-3 flex">
-            <div class="size-9 rounded-lg bg-primary-muted flex items-center justify-center text-primary-foreground">
+            <div class="size-9 rounded-lg bg-primary-muted flex items-center justify-center text-primary-muted-foreground">
               <FileInput class="size-5" />
             </div>
             <div class="flex-1">

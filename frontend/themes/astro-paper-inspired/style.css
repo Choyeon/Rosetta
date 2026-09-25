@@ -4,7 +4,7 @@ Theme URI: https://rosetta.dev/themes/astro-paper-inspired
 Author: Rosetta Themes
 Author URI: https://rosetta.dev
 Description: 760px 窄栏、衬线标题、1px 细线、直角、墨色实底按钮 — Astro Paper 式极简印刷风。覆盖全部前台页面（含登录/注册/错误页/toast），与默认主题及 Admin 零耦合。
-Version: 2.2.1
+Version: 2.2.2
 Requires Rosetta: >=1.0.0
 Tags: color:mono, layout:single-column, customizer, minimal-paper
 Text Domain: astro-paper-inspired
@@ -40,7 +40,6 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
 :is([data-theme="astro-paper-inspired"], [data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="public-auth"] {
   /* 窄栏宽度：layout_width mod 经 --rosetta-layout-width 注入，兜底 760px */
   --ap-layout: var(--rosetta-layout-width, 760px);
-  --ap-accent: hsl(var(--theme-accent-hue, 243), var(--theme-accent-sat, 75%), var(--theme-accent-light, 59%));
   --ap-ink: hsl(var(--foreground));
   --ap-muted: hsl(var(--muted-foreground));
   --ap-bg: hsl(var(--background));
@@ -70,7 +69,7 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
   --popover: 30 10% 98% !important;
   --popover-foreground: 24 10% 10% !important;
   --muted: 30 9% 95% !important;                  /* #f5f5f4 */
-  --muted-foreground: 24 5% 46% !important;       /* #78716c */
+  --muted-foreground: 24 5% 44% !important;       /* #6d6a66，L=44% 为 AA 下限（纸底 4.66:1） */
   --secondary: 30 9% 94% !important;
   --secondary-foreground: 24 10% 10% !important;
   --accent: 30 9% 93% !important;                 /* hover 底（导航激活态本文件已改透明） */
@@ -637,11 +636,17 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
     border: 1px solid var(--ap-hairline);
     border-radius: 0;
     background: var(--ap-bg);
-    transition: border-color 120ms ease;
+    transition: border-color 120ms ease, box-shadow 120ms ease;
   }
   .ap-auth-input:focus {
     border-color: var(--ap-ink);
-    outline: none;
+    /* 纸墨式 focus 环：1px 边框变色在纸面上几乎不可辨，补一圈 2px 墨环；
+       只覆写 box-shadow，不关掉 outline，键盘焦点（:focus-visible）仍然可见。 */
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--ap-ink) 22%, transparent);
+  }
+  .ap-auth-input:focus-visible {
+    outline: 2px solid var(--ap-ink);
+    outline-offset: 2px;
   }
   .ap-auth-check {
     border-radius: 0;

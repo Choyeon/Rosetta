@@ -120,8 +120,25 @@ themes/
 2. 读取：`useFrontendTheme().ensureLoaded()` 调 `GET /themes/active` → 写入 `useState('frontend-theme:state')`（slug / name / version / mods / mods_schema）。
 3. SSR 注入：composable 创建时（同步阶段）注册一次 `useHead(() => …state.value…)`， reactive 回调把 `data-rosetta-theme` / `data-theme` / `theme-{slug}` class + `/themes/{slug}/style.css?v=<version>` `<link>` + 颜色 token 写进首字节 HTML。`/themes/**` 是 immutable 强缓存（nuxt.config routeRules），**`?v=` 由 `bustThemeAssetCache` 统一追加，缺了它主题升级后访客永远拿旧 CSS**。禁止在 `await` 之后调用 `useHead`（NUXT_E1001）。
 4. 客户端：`applyThemeVisual(slug, version, path)` 直接操作 DOM（htmlAttrs + 带版本的 `<link>`，登记进 `_INSTALLED_LINKS`，同 slug 且 href 相同则复用）；路径命中 `isThemeVisualExcluded`（`/admin /oobe`）时改调 `clearThemeVisual()` 彻底清理。`/login /register` 允许注入（供 public-auth 段落消费）。
-5. mods：`mergeMods()` 对已声明键按类型校验（如 `posts_per_row` 必须是 1-6 整数），schema 里的未声明键原样透传（后端 `set_mods` 已做 sanitize，落库的键可信）——新增主题 mod 仍建议同步补进 `ThemeModsRuntime` + `MODS_DEFAULTS` 以获得类型化读取。
+5. mods：`mergeMods()` 对已声明键按类型校验（如 `posts_per_row` 必须是 1-6 整数），未声明键在运行时读取时被忽略——后端 `set_mods` 会**直接丢弃** schema 未声明的键（只记 warning，不整单拒绝），所以 `mods_schema.properties` 就是控件的唯一清单：多写一个键就多一个死控件。新增主题 mod 必须同步补进 `ThemeModsRuntime` + `MODS_DEFAULTS` **并且**在页面/组件里出现真实消费点，否则不予登记。
 6. 预览：后台「主题管理」预览按钮打开 `/?rosetta_theme_preview=<slug>`；`ensureLoaded` 读取该 query（仅限 `KNOWN_ROSETTA_THEMES` 白名单）覆盖 `state.slug` 并置 `previewing=true`，**不改动后端 active 主题**。
+
+## 主题变体契约（两层，2026-09 QA 确认）
+
+主题可以只在 CSS 层换皮，也可以换 DOM 结构。两层契约不同，**不要混**：
+
+| 层 | 覆盖范围 | 契约 |
+| -- | -------- | ---- |
+| **皮肤层** | 颜色、字体、圆角、线、阴影、宽度、显隐装饰 | 只写在 `themes/<slug>/style.css`，选择器带 §三层 CSS 的双守卫；组件 DOM 不变，新主题零成本获得变体 |
+| **骨架层**（variant） | 首页 hero vs 竖排列表、页脚结构、登录/注册排版、错误页排版 | 组件里的 `v-if` 分支，判定唯一来源是 `lib/rosetta-themes.ts` 的 `MINIMAL_THEME_SLUGS` |
+
+骨架层是**有意的**成本：同一份 DOM 无法同时表达"杂志网格"和"窄栏竖排"。约束如下：
+
+1. 判断是否真需要骨架层分支：能用 `style.css` 的 `display:none` / 栅格覆写做到的，一律留在皮肤层，不加 `v-if`。
+2. 新主题若要走极简骨架（当前成员仅 `astro-paper-inspired`），**必须**在 `MINIMAL_THEME_SLUGS` 登记一次；组件侧永远 `import`，禁止本地复制 Set 或写 `slug === 'astro-paper-inspired'` 字面量。
+3. 消费骨架变体的组件必须从 `useFrontendTheme().slug` 派生（SSR 已 `ensureLoaded`，两端一致），禁止用 `localStorage`/`matchMedia` 等客户端态判定变体。
+4. 新增第三套内建主题若不登记，则自动落回 editorial 骨架 + 自己的皮肤层——这是**默认且受支持**的行为，不算 bug。
+
 
 ## i18n
 
@@ -161,6 +178,15 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 项目用 Tailwind v4 + `@tailwindcss/vite`，CSS 里没有 `@config` 指令，因此 `tailwind.config.ts` **未被加载**。
 - 新增颜色/字体/阴影/动画 → 写进 `main.css` 的 `@theme` 块
 - 颜色 HSL 值 → 写在 `@layer base` 的 `:root` / `.dark`，再由 `@theme` 用 `hsl(var(--x))` 暴露
+- 字体栈同理：`--font-sans` / `--font-mono` / `--font-display` 只在 `@theme` 声明（`tailwind.config.ts` 里的 `fontFamily` 已删除，避免第二真源漂移）
+
+### Webfont 只以 preload 引入，不做渲染阻塞
+
+`nuxt.config.ts` 的 Google Fonts 链接写的是 `rel="preload" as="style"`，真正生效由
+`plugins/06-font-stylesheet.client.ts` 在客户端把 `rel` 换成 `stylesheet`。
+- 原因：外站不可达时 `<link rel="stylesheet">` 会阻塞首屏渲染，最长可拖到请求超时
+- 因此字体栈的本地兜底（含中文族名）**必须保留**，首屏就是靠它渲染的
+- 不要把这条链接改回 `rel="stylesheet"`，也不要在 `main.css` 里 `@import` 字体（同样阻塞且串行）
 
 ## 性能
 

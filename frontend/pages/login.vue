@@ -50,7 +50,7 @@
             type="text"
             autocomplete="username"
             :placeholder="t('auth.usernamePlaceholder')"
-            class="ap-auth-input block h-11 w-full bg-transparent px-3 text-base outline-none"
+            class="ap-auth-input block h-11 w-full bg-transparent px-3 text-base"
           >
         </div>
 
@@ -66,11 +66,11 @@
               :type="showPassword ? 'text' : 'password'"
               autocomplete="current-password"
               :placeholder="t('auth.passwordPlaceholder')"
-              class="ap-auth-input block h-11 w-full bg-transparent px-3 pr-11 text-base outline-none"
+              class="ap-auth-input block h-11 w-full bg-transparent px-3 pr-11 text-base"
             >
             <button
               type="button"
-              class="absolute right-2 top-1/2 inline-flex size-7 -translate-y-1/2 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+              class="absolute right-2 top-1/2 inline-flex min-h-[44px] min-w-[44px] -translate-y-1/2 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
               tabindex="-1"
               :title="showPassword ? t('auth.hidePassword', '隐藏密码') : t('auth.showPassword', '显示密码')"
               @click="showPassword = !showPassword"
@@ -154,7 +154,7 @@
       :style="wallpaperUrl ? { backgroundImage: `url(${wallpaperUrl})` } : {}"
     />
     <!-- 非常克制的暗角：只提升前景可读性，不改变壁纸本身观感 -->
-    <div class="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-t from-black/60 via-black/20 to-black/10" />
+    <div class="ed-auth-shade pointer-events-none absolute inset-0 -z-10" />
 
     <!-- 返回主页：左上角玻璃胶囊（与底部控件同质感，z-index 高于壁纸，hover 仅变色不变形） -->
     <NuxtLink
@@ -173,7 +173,7 @@
         class="group inline-flex flex flex-col items-center gap-3 select-none"
       >
         <div class="relative">
-          <div class="absolute -inset-2.5 rounded-[18px] bg-white/10 blur-xl opacity-70 group-hover:opacity-90 transition-opacity" />
+          <div class="ed-auth-brand-glow absolute -inset-2.5 rounded-[18px] blur-xl transition-opacity group-hover:opacity-90" />
           <img
             src="/logo/rosetta-primary-icon.png"
             :alt="t('auth.logoAlt', 'Rosetta — 彩色方形 Logo')"
@@ -196,12 +196,12 @@
       <div class="w-full max-w-md relative">
         <!-- 外层柔和投影（贴近 Card 的黑色软阴影） -->
         <div
-          class="absolute inset-x-4 bottom-[-20px] top-[30%] rounded-[28px] bg-black/50 blur-[36px] -z-10"
+          class="ed-auth-card-shadow absolute inset-x-4 bottom-[-20px] top-[30%] rounded-[28px] blur-[36px] -z-10"
           aria-hidden="true"
         />
         <!-- 外层远距离投影（模拟悬浮于空气中的玻璃片） -->
         <div
-          class="absolute inset-x-1 bottom-[-30px] top-[20%] rounded-[28px] bg-slate-950/45 blur-[70px] -z-10"
+          class="ed-auth-card-shadow-far absolute inset-x-1 bottom-[-30px] top-[20%] rounded-[28px] blur-[70px] -z-10"
           aria-hidden="true"
         />
         <div class="relative group">
@@ -211,24 +211,12 @@
             aria-hidden="true"
           >
             <div
-              class="h-full w-full rounded-[27px] opacity-90"
-              style="background: linear-gradient(135deg, rgba(255,255,255,0.42) 0%, rgba(255,255,255,0.16) 22%, rgba(255,255,255,0.08) 42%, rgba(255,255,255,0.04) 60%, rgba(255,255,255,0.08) 80%, rgba(255,255,255,0.20) 100%);"
+              class="ed-auth-card-halo h-full w-full rounded-[27px] opacity-90"
             />
           </div>
           <!-- 真正的 Card 主体：无 border，靠多层阴影 + 内阴影 + 高光伪元素保持边界 -->
           <div
-            class="relative rounded-[27px] p-7 md:p-8 text-white"
-            style="
-              background: linear-gradient(155deg, rgba(255,255,255,0.095) 0%, rgba(255,255,255,0.055) 45%, rgba(255,255,255,0.08) 100%);
-              backdrop-filter: blur(42px) saturate(240%);
-              -webkit-backdrop-filter: blur(42px) saturate(240%);
-              box-shadow:
-                inset 0 1px 0 0 rgba(255,255,255,0.18),
-                inset 0 0 40px 0 rgba(255,255,255,0.025),
-                0 1px 2px 0 rgba(0,0,0,0.30),
-                0 30px 70px -22px rgba(0,0,0,0.85),
-                0 22px 45px -18px rgba(0,0,0,0.65);
-            "
+            class="ed-auth-card relative rounded-[27px] p-7 md:p-8 text-white"
           >
             <div class="mb-5">
               <h2 class="font-display text-2xl font-semibold tracking-tight">
@@ -243,11 +231,7 @@
             <div
               v-if="errorMessage"
               role="alert"
-              class="mb-5 rounded-xl text-red-50 px-4 py-3 backdrop-blur-md text-sm"
-              style="
-                background: linear-gradient(135deg, rgba(239,68,68,0.18) 0%, rgba(220,38,38,0.12) 100%);
-                box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), inset 0 0 0 1px rgba(248,113,113,0.22), 0 8px 22px -10px rgba(220,38,38,0.55);
-              "
+              class="ed-auth-alert mb-5 rounded-xl text-red-50 px-4 py-3 text-sm"
             >
               <div class="font-semibold text-red-100">
                 {{ t('auth.error') }}
@@ -274,13 +258,7 @@
                     type="text"
                     autocomplete="username"
                     :placeholder="t('auth.usernamePlaceholder')"
-                    class="block w-full h-11 rounded-lg pl-10 pr-3.5 text-white placeholder:text-white/40 backdrop-blur-md transition-all outline-none"
-                    style="
-                      background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
-                      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 2px 6px rgba(0,0,0,0.14);
-                    "
-                    @focusin="handleInputFocus"
-                    @focusout="handleInputBlur"
+                    class="ed-auth-glass block w-full h-11 rounded-lg pl-10 pr-3.5 text-white placeholder:text-white/40 backdrop-blur-md transition-all"
                   >
                 </div>
               </div>
@@ -298,17 +276,11 @@
                     :type="showPassword ? 'text' : 'password'"
                     autocomplete="current-password"
                     :placeholder="t('auth.passwordPlaceholder')"
-                    class="block w-full h-11 rounded-lg pl-10 pr-11 text-white placeholder:text-white/40 backdrop-blur-md transition-all outline-none"
-                    style="
-                      background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%);
-                      box-shadow: inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 2px 6px rgba(0,0,0,0.14);
-                    "
-                    @focusin="handleInputFocus"
-                    @focusout="handleInputBlur"
+                    class="ed-auth-glass block w-full h-11 rounded-lg pl-10 pr-11 text-white placeholder:text-white/40 backdrop-blur-md transition-all"
                   >
                   <button
                     type="button"
-                    class="absolute right-2.5 top-1/2 -translate-y-1/2 size-7 inline-flex items-center justify-center rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-colors"
+                    class="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex min-h-[44px] min-w-[44px] items-center justify-center rounded-md text-white/60 hover:text-white hover:bg-white/10 transition-colors"
                     tabindex="-1"
                     :title="showPassword ? t('auth.hidePassword', '隐藏密码') : t('auth.showPassword', '显示密码')"
                     @click="showPassword = !showPassword"
@@ -330,9 +302,7 @@
                 <label class="inline-flex items-center gap-2 cursor-pointer select-none">
                   <span
                     class="relative inline-flex items-center justify-center size-[18px] rounded-[6px] transition-colors"
-                    :style="form.rememberMe
-                      ? 'background: linear-gradient(135deg, hsl(var(--primary) / 0.9) 0%, hsl(var(--primary)) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.35), 0 6px 14px -8px hsl(var(--primary) / 0.8);'
-                      : 'background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%); box-shadow: inset 0 1px 0 rgba(255,255,255,0.10), inset 0 0 0 1px rgba(255,255,255,0.12);'"
+                    :class="form.rememberMe ? 'ed-auth-check-checked' : 'ed-auth-glass'"
                   >
                     <input
                       v-model="form.rememberMe"
@@ -367,15 +337,7 @@
               <!-- 登录按钮：白底黑字高对比，绝对可见 -->
               <button
                 type="submit"
-                class="relative mt-2 w-full h-11 rounded-lg font-semibold text-zinc-900 bg-white hover:bg-white/95 active:bg-white/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-                style="
-                  box-shadow:
-                    inset 0 1px 0 0 rgba(255,255,255,0.8),
-                    inset 0 -2px 0 0 rgba(0,0,0,0.06),
-                    0 1px 2px 0 rgba(0,0,0,0.18),
-                    0 12px 28px -14px rgba(255,255,255,0.55),
-                    0 8px 20px -12px rgba(0,0,0,0.55);
-                "
+                class="ed-auth-submit relative mt-2 w-full h-11 rounded-lg font-semibold text-zinc-900 bg-white hover:bg-white/95 active:bg-white/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                 :disabled="loading"
               >
                 <Loader2
@@ -389,8 +351,7 @@
             <!-- 注册跳转（无实 border-t：用渐变透明分隔条） -->
             <div class="mt-6 flex flex-col items-center justify-center text-sm">
               <div
-                class="mb-4 w-full h-px opacity-80"
-                style="background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.22) 50%, transparent 100%);"
+                class="ed-auth-divider mb-4 w-full h-px opacity-80"
                 aria-hidden="true"
               />
               <div class="flex items-center justify-center">
@@ -540,24 +501,6 @@ const safeRedirect = (raw: unknown): string => {
   if (typeof raw !== 'string') return '/admin'
   if (!raw.startsWith('/') || raw.startsWith('//') || raw.startsWith('/\\')) return '/admin'
   return raw
-}
-
-// ── 输入聚焦/失焦（统一 style 更新，避免 template 内写长内联） ──
-const handleInputFocus = (e: Event) => {
-  const el = e.currentTarget as HTMLElement
-  el.style.setProperty(
-    'box-shadow',
-    'inset 0 1px 0 rgba(255,255,255,0.14), inset 0 0 0 1px rgba(186,230,253,0.35), inset 0 2px 6px rgba(0,0,0,0.14), 0 0 0 3px rgba(125,211,252,0.18)'
-  )
-  el.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.13) 0%, rgba(255,255,255,0.09) 100%)'
-}
-const handleInputBlur = (e: Event) => {
-  const el = e.currentTarget as HTMLElement
-  el.style.setProperty(
-    'box-shadow',
-    'inset 0 1px 0 rgba(255,255,255,0.12), inset 0 0 0 1px rgba(255,255,255,0.09), inset 0 2px 6px rgba(0,0,0,0.14)'
-  )
-  el.style.background = 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)'
 }
 
 // ── Bing 每日壁纸：复用已验证可用的 useBingWallpaper（后端代理→直连→Unsplash 三重兜底）
