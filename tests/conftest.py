@@ -113,7 +113,9 @@ async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
 
 
 @pytest_asyncio.fixture(scope="function")
-async def client(db_session: AsyncSession, monkeypatch) -> AsyncGenerator[AsyncClient, None]:
+async def client(
+    db_session: AsyncSession, test_engine, monkeypatch
+) -> AsyncGenerator[AsyncClient, None]:
     """创建测试客户端
 
     关键修复：
@@ -189,6 +191,28 @@ async def client(db_session: AsyncSession, monkeypatch) -> AsyncGenerator[AsyncC
 
     monkeypatch.setattr(_rl_mod.login_rate_limiter, "is_locked", _never_locked)
     monkeypatch.setattr(_rl_mod.login_rate_limiter, "record_attempt", _noop_record)
+
+    # --- Patch 4: 把全局 async_session_maker 指到测试引擎 ---
+    # 部分接口（SEO / robots / OG / hero / …）不走 get_db 依赖注入，而是直接
+    # `async with async_session_maker()` 开新会话。CI 上那个全局会话连的是仓库里
+    # 不存在的空 SQLite，于是抛 `no such table: site_configs`；本地则连到开发用
+    # rosetta.db——测试照样"通过"，还把数据写进了真实库。两类泄漏都要堵。
+    # 注意这些模块是 `from backend.core.database import async_session_maker`
+    # 静态导入的，只改源模块属性对它们无效，必须扫已加载模块逐个覆写。
+    import sys
+
+    import backend.core.database as _db_mod
+
+    _test_session_maker = async_sessionmaker(
+        test_engine, class_=AsyncSession, expire_on_commit=False
+    )
+    _rebound = 0
+    for _mod in list(sys.modules.values()):
+        if getattr(_mod, "async_session_maker", None) is _db_mod.async_session_maker:
+            monkeypatch.setattr(_mod, "async_session_maker", _test_session_maker)
+            _rebound += 1
+    monkeypatch.setattr(_db_mod, "async_session_maker", _test_session_maker)
+    assert _rebound >= 1, "未找到任何静态导入 async_session_maker 的模块，Patch 4 可能已失效"
 
     # --- 清除缓存（内存缓存是全局单例，跨测试会污染） ---
     import backend.core.cache as _cache_mod

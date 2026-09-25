@@ -117,7 +117,9 @@ def test_theme_assets_exist(slug: str):
 def test_theme_style_uses_data_theme_prefix(slug: str):
     """Task E-核心要求：style.css 遵循 data-theme 前缀写覆盖样式。
 
-    每个主题至少有 10 处以 ``[data-theme="<slug>"]`` 作为选择器前缀。
+    两套主题现在都采用 CSS 嵌套：一个带守卫的顶层块内包住大量规则，
+    所以顶层前缀出现次数不再等于受保护规则数。阈值只保证"确实按主题
+    属性作用域化"（≥5 处），并额外要求带 data-layout-scope 隔离守卫。
     """
     css = (FRONTEND_THEMES / slug / "style.css").read_text(encoding="utf-8")
     prefix = f'[data-theme="{slug}"]'
@@ -126,9 +128,12 @@ def test_theme_style_uses_data_theme_prefix(slug: str):
     # 兼容空格变体（如 `[data-theme=...]  body` 之间的空格）
     count_v2 = css.count(f"[data-theme='{slug}']")
     count_v3 = css.count(f"[data-theme={slug}]")
-    assert count + count_v2 + count_v3 >= 10, (
-        f"{slug}: style.css 里必须使用 {prefix} 作为覆盖样式前缀（至少 10 处），"
-        f"当前只有 {count + count_v2 + count_v3} 处"
+    total = count + count_v2 + count_v3
+    assert total >= 5, (
+        f"{slug}: style.css 里必须使用 {prefix} 作为覆盖样式前缀（至少 5 处），当前只有 {total} 处"
+    )
+    assert "data-layout-scope" in css, (
+        f"{slug}: style.css 必须带 data-layout-scope 守卫，避免污染 Admin 布局"
     )
 
 
