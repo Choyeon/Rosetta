@@ -11,6 +11,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import StaticPool
 
 from backend.core.auth import get_password_hash
 from backend.core.database import Base, get_db
@@ -81,11 +82,19 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def test_engine():
-    """创建测试数据库引擎"""
+    """创建测试数据库引擎
+
+    SQLite `:memory:` 库是**每连接独立**的。必须用 StaticPool 让全引擎复用同一条
+    连接，否则 create_all 建的表只存在于建表那条连接里：换个连接就报
+    `no such table: site_configs`。默认池策略在不同 SQLAlchemy/驱动版本下不一致，
+    这正是"本地通过、CI 失败"的来源。
+    """
     engine = create_async_engine(
         TEST_DATABASE_URL,
         echo=False,
         future=True,
+        poolclass=StaticPool,
+        connect_args={"check_same_thread": False},
     )
 
     async with engine.begin() as conn:
@@ -197,21 +206,22 @@ async def client(
     # `async with async_session_maker()` 开新会话。CI 上那个全局会话连的是仓库里
     # 不存在的空 SQLite，于是抛 `no such table: site_configs`；本地则连到开发用
     # rosetta.db——测试照样"通过"，还把数据写进了真实库。两类泄漏都要堵。
-    # 注意这些模块是 `from backend.core.database import async_session_maker`
-    # 静态导入的，只改源模块属性对它们无效，必须扫已加载模块逐个覆写。
+    # 注意：不能只比对自己在 import 时抓到的那个对象——site_config / oobe 持有的
+    # 引用与 database 模块当前值并非同一实例（reset_engine 会就地改 bind），
+    # 按身份比对会漏掉它们。这里改为"凡模块里有名为 async_session_maker 的
+    # sessionmaker 属性且尚未指向测试引擎，一律覆写"。
     import sys
-
-    import backend.core.database as _db_mod
 
     _test_session_maker = async_sessionmaker(
         test_engine, class_=AsyncSession, expire_on_commit=False
     )
     _rebound = 0
     for _mod in list(sys.modules.values()):
-        if getattr(_mod, "async_session_maker", None) is _db_mod.async_session_maker:
+        if _mod is None or getattr(_mod, "async_session_maker", None) is _test_session_maker:
+            continue
+        if callable(getattr(_mod, "async_session_maker", None)):
             monkeypatch.setattr(_mod, "async_session_maker", _test_session_maker)
             _rebound += 1
-    monkeypatch.setattr(_db_mod, "async_session_maker", _test_session_maker)
     assert _rebound >= 1, "未找到任何静态导入 async_session_maker 的模块，Patch 4 可能已失效"
 
     # --- 清除缓存（内存缓存是全局单例，跨测试会污染） ---
