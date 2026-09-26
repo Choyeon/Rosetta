@@ -15,6 +15,27 @@
 
 如需单页临时切回 SPA：`definePageMeta({ ssr: false })`。
 
+### 导航必须是真 SPA（硬约束）
+
+公开页之间点导航**只允许**换页组件，不允许重载整文档：`<NuxtPage page-key="fullPath" />`
+（`app.vue`）已经覆盖"同组件不同参数（`/posts/a → /posts/b`）实例被复用、内容不换"这一类
+问题，代价只有页组件重建，`<NuxtLayout>`（顶栏/页脚/侧栏）保持挂载。
+
+因此禁止：
+
+- ❌ 给 `app.vue` 里的 `<NuxtLayout>` 外层再加 `:key` 屏障（历史上是
+  `__navSlotBusterKey` + `plugins/03-global-page-render-tick.client.ts`，每次导航
+  把 layout+page 整体 unmount/remount，等价于整页重载：滚动复位、顶栏重建、图片重请、
+  主题 link 重建 → 用户看到"闪一下默认样式再重新加载"。已删除）
+- ❌ 在 `router.afterEach` / `page:finish` 里用 `window.location.replace` 兜底
+  （历史上是 `plugins/04-route-hard-fallback.global.client.ts`，判据是 h1/title 文本 diff，
+  首页在默认主题下本就没有 `<h1>`，误判率极高，每条导航都被硬重载。已删除）
+- ❌ 新增"检测 DOM 没变就重载"的客户端插件
+
+若再遇到"URL 变了内容不变"，先定位到具体路由与组件（多半是该页 `useAPI` 的 key 没跟随
+参数、或 `<Suspense>` 数据链断了），修那一处，不要加回全局屏障。
+`plugins/02-hydration-safety.global.client.ts` 只在真实抛错时软重挂，正常导航不介入。
+
 ## 目录与文件放置规则
 
 | 类型 | 路径 | 备注 |
@@ -108,7 +129,7 @@ themes/
 │   ├── rosetta-theme.json  # slug / name / version / requires / tags / mods_schema
 │   ├── style.css           # 每条选择器必须带 [data-layout-scope="frontend"] 守卫
 │   └── screenshot.png
-└── astro-paper-inspired/   # 极简主题（760px 窄栏 / 无 hero / 竖排列表 / 极简登录注册页+错误页+toast，见 style.css public-auth 段）
+└── astro-paper-inspired/   # 极简主题（880px 窄栏 / 无 hero / 竖排列表 / 极简登录注册页+错误页+toast，见 style.css public-auth 段）
     ├── rosetta-theme.json
     ├── style.css
     └── screenshot.svg
@@ -118,7 +139,7 @@ themes/
 
 1. 激活：后台 `PUT /admin/themes/{slug}/activate`（需 CurrentStaff）改写后端 active 主题。
 2. 读取：`useFrontendTheme().ensureLoaded()` 调 `GET /themes/active` → 写入 `useState('frontend-theme:state')`（slug / name / version / mods / mods_schema）。
-3. SSR 注入：composable 创建时（同步阶段）注册一次 `useHead(() => …state.value…)`， reactive 回调把 `data-rosetta-theme` / `data-theme` / `theme-{slug}` class + `/themes/{slug}/style.css?v=<version>` `<link>` + 颜色 token 写进首字节 HTML。`/themes/**` 是 immutable 强缓存（nuxt.config routeRules），**`?v=` 由 `bustThemeAssetCache` 统一追加，缺了它主题升级后访客永远拿旧 CSS**。禁止在 `await` 之后调用 `useHead`（NUXT_E1001）。
+3. SSR 注入：`registerFrontendThemeHead()` 在 **app 级插件** `plugins/01-site-bootstrap.global.ts` 里同步注册一次 `useHead(() => …state.value…)`（**禁止放进 `useFrontendTheme()` 内部**：那会让 10+ 个调用方各自创建组件作用域 head entry，SPA 导航 / soft CSR remount 卸载组件时 unhead dispose 掉它们，主题 `<link>` 出现"掉一帧"窗口 → 前台闪一下默认样式再恢复）。reactive 回调把 `data-rosetta-theme` / `data-theme` / `theme-{slug}` class + `/themes/{slug}/style.css?v=<version>` `<link>` + 颜色 token 写进首字节 HTML。`/themes/**` 是 immutable 强缓存（nuxt.config routeRules），**`?v=` 由 `bustThemeAssetCache` 统一追加，缺了它主题升级后访客永远拿旧 CSS**。禁止在 `await` 之后调用 `useHead`（NUXT_E1001）。
 4. 客户端：`applyThemeVisual(slug, version, path)` 直接操作 DOM（htmlAttrs + 带版本的 `<link>`，登记进 `_INSTALLED_LINKS`，同 slug 且 href 相同则复用）；路径命中 `isThemeVisualExcluded`（`/admin /oobe`）时改调 `clearThemeVisual()` 彻底清理。`/login /register` 允许注入（供 public-auth 段落消费）。
 5. mods：`mergeMods()` 对已声明键按类型校验（如 `posts_per_row` 必须是 1-6 整数），未声明键在运行时读取时被忽略——后端 `set_mods` 会**直接丢弃** schema 未声明的键（只记 warning，不整单拒绝），所以 `mods_schema.properties` 就是控件的唯一清单：多写一个键就多一个死控件。新增主题 mod 必须同步补进 `ThemeModsRuntime` + `MODS_DEFAULTS` **并且**在页面/组件里出现真实消费点，否则不予登记。
 6. 预览：后台「主题管理」预览按钮打开 `/?rosetta_theme_preview=<slug>`；`ensureLoaded` 读取该 query（仅限 `KNOWN_ROSETTA_THEMES` 白名单）覆盖 `state.slug` 并置 `previewing=true`，**不改动后端 active 主题**。
@@ -159,6 +180,10 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 - 标签：淡色胶囊底 + 原色文字 + 无边框
 - 响应式：默认桌面设计，`md:` 断点以下保证可用
 - 深色模式：用对比度背景层次，不用显式边框
+- 文章封面取值只有 `lib/post-cover.ts` 一个来源：`postCoverUrl(post, size)` 有封面用封面，
+  没封面回落到 `https://picsum.photos/seed/rosetta-post-<id>/<w>/<h>`（seed 由文章标识派生，
+  同篇恒定、篇篇不同，SSR/hydrate 字节一致）。只在公开读取链路使用，禁止把默认值写回
+  `cover_image`（管理端表单/PUT 必须保持"未设置封面 = 空"）
 
 ### 语义状态色配对铁律
 

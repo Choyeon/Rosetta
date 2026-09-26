@@ -242,6 +242,7 @@ import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
+import { postCoverUrl, POST_COVER_CARD } from '~~/lib/post-cover'
 
 type PostCardVariant = 'default' | 'compact'
 
@@ -303,7 +304,8 @@ const props = withDefaults(defineProps<Props>(), {
 const { t } = useI18n()
 const { resolveLocalized, formatDate } = useI18nHelpers()
 
-const coverImage = computed(() => props.post.cover_image || props.post.coverImage || '')
+// 无封面文章不再留白：回落到按文章标识派生的 picsum seed 图（篇篇不同、同篇恒定）
+const coverImage = computed(() => postCoverUrl(props.post, POST_COVER_CARD))
 const publishedAt = computed(() => props.post.published_at || props.post.publishedAt || props.post.created_at || '')
 const views = computed(() => props.post.views ?? props.post.views_count ?? 0)
 const commentsCount = computed(() => props.post.comments_count ?? props.post.commentsCount ?? 0)

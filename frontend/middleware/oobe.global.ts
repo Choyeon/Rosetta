@@ -7,7 +7,7 @@
  */
 let cachedStatus: boolean | null = null
 let cachedStatusAt = 0
-let inFlight: Promise<boolean> | null = null
+let inFlight: Promise<boolean | null> | null = null
 let lastFailAt = 0
 let lastFailSticky: boolean | null = null
 const CACHE_MS = 60_000 // 正常完成：60s 内完全信任缓存
@@ -24,6 +24,15 @@ function shouldSkipRoute(path: string): boolean {
 
 /**
  * 获取 oobe 完成状态（带缓存和并发合并）。
+ * 返回三态：
+ *   · true  —— 后端明确回答"已安装"
+ *   · false —— 后端明确回答"未安装"（此时才允许 302 到 /oobe）
+ *   · null  —— **状态未知**（后端不可达 / 5xx / 超时 / 429 之外的异常）。
+ *              调用方必须放行当前路由，绝不重定向：Nitro 的 routeRules SWR
+ *              会按 URL（含 query）缓存 302 响应，一次因后端冷启动产生的
+ *              "/?rosetta_theme_preview=xxx → /oobe" 会在缓存窗口内持续吐给
+ *              后续访客，表现为「预览主题」落到向导页 / 页面不存在。
+ *
  * 注意：中间件在初始导航期间执行，此时组件 setup 上下文不可用，
  * 不能调用 useOOBE()（内部依赖 useI18n/Pinia 等 setup 绑定的 composable），
  * 必须使用无上下文要求的 $fetch。
@@ -31,7 +40,7 @@ function shouldSkipRoute(path: string): boolean {
  * SSR 端用 runtimeConfig.apiBase（绝对直连后端，不走 devProxy）；
  * 客户端用 runtimeConfig.public.apiBase（相对路径，经浏览器 devProxy / nginx 同源）。
  */
-async function resolveOOBEComplete(): Promise<boolean> {
+async function resolveOOBEComplete(): Promise<boolean | null> {
   const now = Date.now()
 
   // 命中：客户端成功缓存（60s）
@@ -82,23 +91,17 @@ async function resolveOOBEComplete(): Promise<boolean> {
       return complete
     } catch (e) {
       const status = (e as { status?: number })?.status ?? 0
-      // —— 失败分类兜底（Sticky）：
-      //   429/5xx/网络不可达：30s 内不再重复调用，避免首页死循环打满 300+ 条红 error。
-      //   429 视为后端健康 → 已安装；其余失败保守 false（下次再试仍会等 30s sticky）。
-      const sticky = status === 429
-        ? true
-        : (status >= 500 || status === 0 || status === 502 || status === 503 || status === 504 ? false : null)
-      if (sticky !== null) {
-        lastFailSticky = sticky
-        lastFailAt = now
-        cachedStatus = null
-        return sticky
-      }
-      if (import.meta.dev) console.warn('[oobe.middleware] status fetch failed:', e)
-      cachedStatus = null
-      lastFailSticky = null
+      // —— 失败分类兜底（Sticky，30s 内不再重复调用，避免首页死循环打满红 error）：
+      //   429 = 后端健康且限流生效 → 视为已安装（true）；
+      //   其余一切失败（网络不可达 / 5xx / 超时）→ null（未知），调用方放行不重定向。
+      const sticky: boolean | null = status === 429 ? true : null
+      lastFailSticky = sticky
       lastFailAt = now
-      return false
+      cachedStatus = null
+      if (sticky === null && import.meta.dev) {
+        console.warn('[oobe.middleware] status fetch failed → 状态未知，放行当前路由:', e)
+      }
+      return sticky
     } finally {
       inFlight = null
     }
@@ -124,6 +127,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (import.meta.server) {
     try {
       const done = await resolveOOBEComplete()
+      // 状态未知（后端不可达 / 超时 / 5xx）：放行当前路由。这里绝不 302——
+      // Nitro 会把 302 也按 URL 缓存进 routeRules 的 SWR，后端恢复后仍继续
+      // 把访客送到 /oobe，表现为「预览主题」等入口落到向导页 / 页面不存在。
+      if (done === null) return
       if (done) {
         if (isOOBEPage) return navigateTo('/', { replace: true, redirectCode: 302 })
         return
@@ -150,6 +157,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
   if (client.__ros_oobe_reroute_done__) return
   try {
     const done = await resolveOOBEComplete()
+    // 未知态：客户端同样放行，不做任何重定向（与 SSR 分支一致）
+    if (done === null) return
     if (done) {
       if (isOOBEPage) {
         // /oobe 已安装：不用 navigateTo（会被 pending nav 锁死 in-flight），
@@ -164,9 +173,8 @@ export default defineNuxtRouteMiddleware(async (to) => {
       return navigateTo('/oobe', { replace: true })
     }
   } catch {
-    if (!isOOBEPage) {
-      return navigateTo('/oobe', { replace: true })
-    }
+    // 抛异常 = 状态未知：放行当前路由，不进向导（向导由 SSR 302 / 用户手动访问触发）
+    return
   }
 })
 

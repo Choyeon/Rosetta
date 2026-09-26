@@ -24,6 +24,7 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -65,8 +66,12 @@ def _guestbook_plugin_module():
 THEMES_TASK_E = {
     "astro-paper-inspired": {
         "id": "io.github.rosetta.astro-paper-inspired",
-        "description_keywords": ["印刷", "760px", "窄栏"],
-        "mods_keys": {"posts_per_row", "show_avatar", "accent_color"},
+        # 版心宽度随主题演进（v2.2.3：760 → 880），关键词与 manifest.description 同步
+        "description_keywords": ["印刷", "880px", "窄栏"],
+        # 极简主题是"纸墨单色"设计：style.css 不消费 --theme-accent-* 令牌，
+        # 因此 accent_color **不**进它的 mods_schema（进了就是一个死控件，
+        # 违反「mods_schema.properties 是 Customizer 控件唯一清单」契约）。
+        "mods_keys": {"posts_per_row", "show_avatar", "layout_width", "footer_text"},
         "entry_css": "style.css",
     },
     # typewriter-serif 主题未安装 → 已从参数字典移除，相关测试已 skip
@@ -103,6 +108,63 @@ def test_theme_manifest_exists(slug: str):
         isinstance(manifest.get("screenshot_urls"), list)
         and "screenshot.svg" in manifest["screenshot_urls"]
     ), f"{slug}: 必须声明 screenshot.svg"
+
+
+FRONTEND_DIR = REPO_ROOT / "frontend"
+
+
+def _strip_ts_comments(src: str) -> str:
+    """去掉块注释与行注释，避免文档注释里的 ``useHead(`` 干扰静态守卫计数。"""
+    no_block = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"//[^\n]*", "", no_block)
+
+
+def test_theme_head_registered_at_app_level_not_per_caller():
+    """主题 head 注入必须留在 app 级插件，禁止回到 ``useFrontendTheme()`` 内部。
+
+    回归背景（闪屏根因）：``useFrontendTheme()`` 被 10+ 处 layout/page/组件调用，
+    若在其中注册 ``useHead(() => …)``，每个调用方都会得到一条**组件作用域**的
+    head entry；SPA 导航或 02-hydration-safety 的 soft CSR remount 卸载组件时
+    unhead 会 dispose 这些 entry，主题 ``<link>`` 出现"掉一帧"的空窗 →
+    前台闪一下默认/中性样式，然后极简主题又加载回来。
+    """
+    composable = _strip_ts_comments(
+        (FRONTEND_DIR / "composables" / "useFrontendTheme.ts").read_text(encoding="utf-8")
+    )
+    plugin = (FRONTEND_DIR / "plugins" / "01-site-bootstrap.global.ts").read_text(
+        encoding="utf-8"
+    )
+
+    assert "export function registerFrontendThemeHead" in composable, (
+        "registerFrontendThemeHead() 必须存在且是唯一 useHead 注册点"
+    )
+    assert "registerFrontendThemeHead()" in plugin, "app 级插件必须调用 registerFrontendThemeHead()"
+    assert composable.count("useHead(") == 1, "useHead 在主题层只允许出现一次（注册函数体内）"
+
+    _, _, composable_body = composable.partition("export function useFrontendTheme()")
+    assert "useHead(" not in composable_body, (
+        "useFrontendTheme() 内部不得调用 useHead：那会让每个调用方各自注册/"
+        "dispose 一条主题 head entry，导航期间主题 <link> 会掉帧（闪默认样式）"
+    )
+
+
+def test_minimal_theme_layout_width_single_source():
+    """极简主题版心：manifest mods_schema 默认值必须与 style.css 的 CSS 兜底一致。
+
+    两个数各自演化时，"Customizer 没存过 mods" 的访客看到的就是 CSS 兜底宽度，
+    与后台滑块显示的默认值不一致（实测过一次 760/880 漂移）。
+    """
+    slug = "astro-paper-inspired"
+    manifest = json.loads((FRONTEND_THEMES / slug / "rosetta-theme.json").read_text(encoding="utf-8"))
+    lw = manifest["mods_schema"]["properties"]["layout_width"]
+    css = (FRONTEND_THEMES / slug / "style.css").read_text(encoding="utf-8")
+
+    match = re.search(r"--ap-layout:\s*var\(--rosetta-layout-width,\s*(\d+)px\)", css)
+    assert match, "style.css 必须以 var(--rosetta-layout-width, <n>px) 消费版心宽度"
+    assert int(match.group(1)) == lw["default"], (
+        f"CSS 兜底 {match.group(1)}px 与 mods_schema 默认 {lw['default']}px 不一致"
+    )
+    assert lw["minimum"] <= lw["default"] <= lw["maximum"], "layout_width 默认值越界"
 
 
 @pytest.mark.parametrize("slug", sorted(THEMES_TASK_E.keys()))

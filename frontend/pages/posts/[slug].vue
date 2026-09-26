@@ -403,11 +403,11 @@
                 class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
               >
                 <div
-                  v-if="sp.cover_image || sp.coverImage"
+                  v-if="similarCover(sp)"
                   class="aspect-[16/9] bg-muted overflow-hidden"
                 >
                   <img
-                    :src="(sp.cover_image || sp.coverImage) as string"
+                    :src="similarCover(sp)"
                     :alt="pickLocalized(sp.title)"
                     class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
                     loading="lazy"
@@ -500,6 +500,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import TagBadge from '~~/components/TagBadge.vue'
 import CommentItem from '~~/components/CommentItem.vue'
+import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
 import { Marked } from 'marked'
@@ -751,7 +752,9 @@ const displayPostTitle = computed(() => {
     return t('post.untitled', '未命名文章')
   }
 })
-const coverImage = computed(() => post.value?.cover_image || post.value?.coverImage || '')
+const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_DETAIL))
+/** 相似文章缩略图：同样按文章标识回落默认封面。 */
+const similarCover = (sp: SimilarPostRow): string => postCoverUrl(sp, POST_COVER_CARD)
 const publishedAt = computed(() => post.value?.published_at || post.value?.publishedAt || post.value?.created_at || '')
 const updatedAt = computed(() => post.value?.updated_at || post.value?.updatedAt || '')
 const views = computed(() => post.value?.views ?? post.value?.views_count ?? 0)

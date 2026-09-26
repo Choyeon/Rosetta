@@ -249,17 +249,31 @@ async def put_current_palette(
 async def public_get_active_theme(
     db: DB,
     _: CurrentUserOptional = None,
+    preview: str | None = Query(
+        None,
+        max_length=80,
+        description="预览模式：返回该 slug 主题自身的公开信息（version / mods / screenshot_urls），"
+        "不改变站点激活主题，也不影响未安装/未知 slug（此时回落到激活主题）",
+    ),
 ):
     """公开端点：供首页/公开页面读取当前激活主题的 slug / mods / screenshot_urls。
 
     - 不需要管理员权限（访客访问公开页面也要能渲染主题 Customizer 覆盖）；
     - 站点过滤统一走 ``ThemeManager.get_active``（避免各处手写 query 漏掉 site_id）；
     - 返回结构使用 ThemeOut schema（与后台列表一致）。
+    - ``?preview=<slug>``：后台「预览」按钮的取数入口。必须返回**被预览主题自己**的
+      version 与 mods，否则前台会拿激活主题的 ``?v=`` 与 ``layout_width`` 去渲染
+      另一个主题（实测：预览极简主题时宽度是默认主题的 1200px，且 style.css 的
+      缓存击穿键指向错误主题）。
     """
     from backend.core.extensions import theme_manager
     from backend.schemas.extensions import ThemeOut
 
-    theme = await theme_manager.get_active(db)
+    theme = None
+    if preview:
+        theme = await theme_manager.get(db, preview)
+    if theme is None:
+        theme = await theme_manager.get_active(db)
     if theme is None:
         return {"success": True, "data": None, "message": "未启用自定义主题"}
     # Commit boundary safe: refresh the ORM row from DB so datetime columns and JSON

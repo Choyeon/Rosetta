@@ -1876,40 +1876,5 @@
       "locale": "en"
     }
   ],
-  "galleries": [
-    {
-      "slug": "daily-life",
-      "title": "Daily Life",
-      "description": "Capturing the little moments",
-      "photos": [
-        {
-          "title": "Morning Coffee",
-          "url": "https://picsum.photos/seed/rosetta-g1-p1/1200/800"
-        },
-        {
-          "title": "City Night",
-          "url": "https://picsum.photos/seed/rosetta-g1-p2/1200/800"
-        },
-        {
-          "title": "Weekend Hike",
-          "url": "https://picsum.photos/seed/rosetta-g1-p3/1200/800"
-        }
-      ]
-    },
-    {
-      "slug": "tech-events",
-      "title": "Tech Events",
-      "description": "Photos from conferences and meetups",
-      "photos": [
-        {
-          "title": "PyCon 2024",
-          "url": "https://picsum.photos/seed/rosetta-g2-p1/1200/800"
-        },
-        {
-          "title": "VueConf Group",
-          "url": "https://picsum.photos/seed/rosetta-g2-p2/1200/800"
-        }
-      ]
-    }
-  ]
+  "galleries": []
 }

@@ -1876,40 +1876,5 @@
       "locale": "zh_Hant"
     }
   ],
-  "galleries": [
-    {
-      "slug": "daily-life",
-      "title": "生活日常",
-      "description": "記錄生活中的美好瞬間",
-      "photos": [
-        {
-          "title": "清晨咖啡",
-          "url": "https://picsum.photos/seed/rosetta-g1-p1/1200/800"
-        },
-        {
-          "title": "城市夜景",
-          "url": "https://picsum.photos/seed/rosetta-g1-p2/1200/800"
-        },
-        {
-          "title": "週末徒步",
-          "url": "https://picsum.photos/seed/rosetta-g1-p3/1200/800"
-        }
-      ]
-    },
-    {
-      "slug": "tech-events",
-      "title": "技術活動",
-      "description": "各類技術大會、Meetup 現場留影",
-      "photos": [
-        {
-          "title": "PyCon 2024",
-          "url": "https://picsum.photos/seed/rosetta-g2-p1/1200/800"
-        },
-        {
-          "title": "VueConf 合影",
-          "url": "https://picsum.photos/seed/rosetta-g2-p2/1200/800"
-        }
-      ]
-    }
-  ]
+  "galleries": []
 }

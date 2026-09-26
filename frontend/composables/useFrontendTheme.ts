@@ -76,7 +76,7 @@ const MODS_DEFAULTS: ThemeModsRuntime = {
  */
 export const DEFAULT_THEME_SLUG = 'editorial-wp-style'
 export const DEFAULT_THEME_NAME = '默认主题'
-export const DEFAULT_THEME_VERSION = '1.1.0'
+export const DEFAULT_THEME_VERSION = '1.1.2'
 
 const useThemeState = () =>
   useState<FrontendThemeInfo>('frontend-theme:state', () => ({
@@ -442,11 +442,27 @@ const _clientFetched = new WeakSet<object>()
 /** 客户端 app 是否已完成首帧挂载（仅纠偏调度用；SSR 恒为 false 不参与）。 */
 let _appMounted = false
 
-export function useFrontendTheme() {
+/**
+ * 【app 级唯一注册点】主题四件套（htmlAttrs / <link> / 颜色 token <style>）的响应式 head 入口。
+ *
+ * 为什么必须放在 app 级插件（plugins/01-site-bootstrap.global.ts）里、而不是
+ * useFrontendTheme() 内部：
+ *   · useHead() 在组件 setup 中调用会被绑定到该组件的 effect scope，组件卸载时
+ *     unhead **dispose 整条 head entry**。全站有 10+ 处调用 useFrontendTheme()
+ *     （layouts / pages / AppFooter / error.vue / useSite），每次 SPA 导航都会
+ *     卸载旧页、挂载新页 → 多条持有同一 `rosetta-theme-css-<slug>` <link> 的
+ *     entry 被反复 dispose / 重建，中间存在"head 里没有任何主题 <link>"的窗口
+ *     → 浏览器以 main.css 的中性基座重绘一帧 → 观感就是「默认主题闪一下，
+ *     然后极简主题又回来了」。
+ *   · 02-hydration-safety 的 soft CSR remount（rootKey++）会整棵重挂组件树，
+ *     同样触发上述 dispose 风暴；app 级 entry 不属于任何组件 scope，remount
+ *     期间恒定存在，主题 <link> 永不掉落。
+ *
+ * 必须在 NuxtApp 上下文（插件 / setup）内调用，且整个 app 生命周期只调用一次。
+ */
+export function registerFrontendThemeHead() {
   const state = useThemeState()
   const route = useRoute()
-  // 在 composable 创建（同步、上下文有效）时捕获 nuxtApp：纠偏调度要在 app:mounted 上挂 hook。
-  const nuxtApp = useNuxtApp()
 
   // =========================================================================
   // 【SSR 核心：同步阶段注册 reactive useHead】
@@ -454,10 +470,9 @@ export function useFrontendTheme() {
   // Nuxt SSR async setup 在"第一个 await 之后"会丢失同步 NuxtApp 上下文，
   // 在此之后调 useHead 会触发 NUXT_E1001，子组件 VNode 会被渲染为 undefined。
   //
-  // 解决方案：在 composable 创建时（同步阶段、上下文仍有效）注册一次
-  // useHead(() => reactiveCallback)。后续 ensureLoaded 改写 state.value 的
-  // slug / mods 变化都会被 Unhead 自动追踪并响应式刷新 head / htmlAttrs，
-  // 首字节 HTML 即包含主题四件套 + 颜色 tokens，全程零 E1001。
+  // 注册之后，ensureLoaded 改写 state.value 的 slug / mods 变化都会被 Unhead
+  // 自动追踪并响应式刷新 head / htmlAttrs，首字节 HTML 即包含主题四件套 +
+  // 颜色 tokens，全程零 E1001。
   // =========================================================================
   useHead(() => {
     const s = state.value
@@ -516,6 +531,13 @@ export function useFrontendTheme() {
 
     return { htmlAttrs, link, style }
   })
+}
+
+export function useFrontendTheme() {
+  const state = useThemeState()
+  const route = useRoute()
+  // 在 composable 创建（同步、上下文有效）时捕获 nuxtApp：纠偏调度要在 app:mounted 上挂 hook。
+  const nuxtApp = useNuxtApp()
 
   const mods = computed<ThemeModsRuntime>(() => state.value.mods)
   const isActive = computed(() => !!state.value.slug)
@@ -547,10 +569,26 @@ export function useFrontendTheme() {
     const task = (async (): Promise<FrontendThemeInfo> => {
       let data: JsonObject | null = null
       let requestFailed = false
+      // ── 预览模式：?rosetta_theme_preview=<slug> ──────────────────────────
+      // 由后台「主题管理」的预览按钮打开新标签页触发。仅允许 KNOWN_ROSETTA_THEMES
+      // 白名单内的 slug，覆盖 state.slug 以挂载该主题的 style.css + htmlAttrs，
+      // 但不改动后端 active 主题。mods 沿用 active 主题（或默认值）——内建主题的
+      // 视觉差异主要在 style.css，slug 覆盖即可得到忠实预览。
+      // 必须在任何 await / 早退之前解析：请求失败分支也要能应用预览。
+      const previewRaw = route.query.rosetta_theme_preview
+      const previewSlug = Array.isArray(previewRaw) ? previewRaw[0] : previewRaw
+      const wantPreview = typeof previewSlug === 'string' && KNOWN_ROSETTA_THEMES.has(previewSlug)
+        ? previewSlug
+        : null
       type ThemeActiveResp = { success: boolean, data: JsonObject | null }
       try {
         const resp = await apiFetch<ThemeActiveResp>('/themes/active', {
           method: 'GET',
+          // 预览模式必须向服务端要**被预览主题自己**的 version / mods：
+          // 否则 ?v= 缓存击穿键与 layout_width 等 mods 全部来自激活主题，
+          // 预览出来的极简主题会套用默认主题的 1200px 版心、并挂在错误的
+          // style.css 缓存键上。
+          query: wantPreview ? { preview: wantPreview } : undefined,
           silentToast: true
         })
         data
@@ -564,7 +602,15 @@ export function useFrontendTheme() {
       }
 
       if (requestFailed) {
-        // 保留现有 state（可能来自 SSR/上次成功），不覆盖、不闩锁
+        // 保留现有 state（可能来自 SSR/上次成功），不覆盖、不闩锁。
+        // 但预览参数必须仍然生效：后端冷启动/重启的瞬时不可达不该让后台
+        // 「预览」按钮打开的新标签页静默退回当前激活主题。
+        if (wantPreview && state.value.slug !== wantPreview) {
+          state.value.slug = wantPreview
+          state.value.previewing = true
+          applyThemeColorTokens(state.value.mods)
+          applyThemeVisual(state.value.slug, state.value.version)
+        }
         return state.value
       }
 
@@ -595,16 +641,9 @@ export function useFrontendTheme() {
         state.value.mods_schema = null
       }
 
-      // ── 预览模式：?rosetta_theme_preview=<slug> ──────────────────────────
-      // 由后台「主题管理」的预览按钮打开新标签页触发。仅允许 KNOWN_ROSETTA_THEMES
-      // 白名单内的 slug，覆盖 state.slug 以挂载该主题的 style.css + htmlAttrs，
-      // 但不改动后端 active 主题。mods 沿用 active 主题（或默认值）——内建主题的
-      // 视觉差异主要在 style.css，slug 覆盖即可得到忠实预览。
-      // 读取 route.query 是对已捕获 reactive 对象的属性访问，await 之后仍安全。
-      const previewRaw = route.query.rosetta_theme_preview
-      const previewSlug = Array.isArray(previewRaw) ? previewRaw[0] : previewRaw
-      if (typeof previewSlug === 'string' && KNOWN_ROSETTA_THEMES.has(previewSlug)) {
-        state.value.slug = previewSlug
+      // 预览模式覆盖（解析在请求之前完成，见函数开头 wantPreview）
+      if (wantPreview) {
+        state.value.slug = wantPreview
         state.value.previewing = true
       } else {
         state.value.previewing = false

@@ -52,7 +52,16 @@
  *   · 客户端每次 SPA 路由切换：本插件不再重复执行（plugins 仅在 app 创建时执行一次）。
  *   · 后续跳转时页面代码里的 ensureLoaded 冗余 fire-and-forget：0 开销。
  */
+import { registerFrontendThemeHead } from '~~/composables/useFrontendTheme'
+
 export default defineNuxtPlugin(async () => {
+  // 主题 head（htmlAttrs + style.css <link> + 颜色 token <style>）在整个 app
+  // 生命周期只注册一次。绝不能放回 useFrontendTheme() 内部：那里每个调用方
+  // （10+ 处 layout/page/组件）都会创建一条组件作用域的 head entry，SPA 导航
+  // 或 soft CSR remount 卸载旧组件时 unhead 会 dispose 它 → 主题 <link> 出现
+  // "被摘掉一帧"的窗口 → 前台闪一下默认/中性样式再恢复。
+  registerFrontendThemeHead()
+
   const site = useSite()
   const ft = useFrontendTheme()
   try {

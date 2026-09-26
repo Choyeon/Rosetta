@@ -1,0 +1,83 @@
+# Rosetta Design QA 配置（design-review 插件消费）
+# 基准契约：AGENTS.md §3 三层 CSS + frontend/assets/css/admin-ui.css（无 DESIGN.md / 无参考图）
+project:
+  name: Rosetta
+  baseUrl: http://localhost:3000
+  outputDir: .design-qa
+
+design:
+  designMd: DESIGN.md
+  screenSpec: SCREEN_SPEC.md
+
+# 只扫自己的代码：shadcn 原子件（frontend/components/ui/**）是设计系统本身，生成物不计债
+code:
+  include:
+    - frontend/pages/**/*.{vue,ts,css}
+    - frontend/components/**/*.{vue,ts,css}
+    - frontend/layouts/**/*.vue
+    - frontend/composables/**/*.ts
+    - frontend/assets/css/*.css
+    - frontend/themes/*/style.css
+  exclude:
+    - frontend/node_modules/**
+    - frontend/.nuxt/**
+    - frontend/.output/**
+    - frontend/dist/**
+    - frontend/components/ui/**
+    - frontend/tests/**
+    - node_modules/**
+    - .design-qa/**
+
+components:
+  libraryImportPatterns:
+    - '@/components/ui/'
+    - '#components/ui/'
+    - '~/components/ui/'
+    - '@/components/'
+    - '#components/'
+  allowedRawElementFiles:
+    - frontend/components/ui/**
+
+a11y:
+  disabledRules: []
+
+debt:
+  maxHardCodedColors: 0
+  maxArbitraryTailwindValues: 5
+  maxInlineStyles: 0
+  allowedColorValues:
+    - '#000'
+    - '#fff'
+    - 'transparent'
+
+screens:
+  - name: home-editorial
+    mode: app
+    app:
+      url: /
+      viewport: { width: 1440, height: 900 }
+      fullPage: true
+  - name: post-detail-editorial
+    mode: app
+    app:
+      url: /posts
+      viewport: { width: 1440, height: 900 }
+      fullPage: true
+  - name: mobile-375
+    mode: app
+    app:
+      url: /
+      viewport: { width: 375, height: 812 }
+      fullPage: true
+  - name: tablet-768
+    mode: app
+    app:
+      url: /
+      viewport: { width: 768, height: 1024 }
+      fullPage: true
+  - name: laptop-1024
+    mode: app
+    app:
+      url: /
+      viewport: { width: 1024, height: 768 }
+      fullPage: true

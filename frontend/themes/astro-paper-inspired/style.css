@@ -3,8 +3,8 @@ Theme Name: 极简主题 (Minimal Ink & Paper)
 Theme URI: https://rosetta.dev/themes/astro-paper-inspired
 Author: Rosetta Themes
 Author URI: https://rosetta.dev
-Description: 760px 窄栏、衬线标题、1px 细线、直角、墨色实底按钮 — Astro Paper 式极简印刷风。覆盖全部前台页面（含登录/注册/错误页/toast），与默认主题及 Admin 零耦合。
-Version: 2.2.2
+Description: 880px 窄栏、衬线标题、1px 细线、直角、墨色实底按钮 — Astro Paper 式极简印刷风。覆盖全部前台页面（含登录/注册/错误页/toast），与默认主题及 Admin 零耦合。
+Version: 2.2.3
 Requires Rosetta: >=1.0.0
 Tags: color:mono, layout:single-column, customizer, minimal-paper
 Text Domain: astro-paper-inspired
@@ -16,6 +16,9 @@ v2.2.0 导航栏重构适配：纯文字品牌（隐藏彩色 logo）、主菜�
 +「更多」下拉触发器与链接同款下划线激活态、语言切换改文字标签。
 v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem、
 菜单项 gap 加大到 1.25rem，解决窄栏挤压。
+v2.2.3 版心 760 → 880（mods 上限 960 → 1200），长文单行不再局促；
+品牌 logo 隐藏选择器改吃 data-navbar="brand-logo"（原 role="brand-logo"
+不是合法 ARIA role，已在模板侧一并纠正）。
 设计语言：单栏窄排印——衬线标题、hairline 细线、直角、
 无阴影无渐变、墨色实底主按钮。明暗模式全部消费 shadcn
 语义令牌（--foreground/--border/--card/--muted/--background），
@@ -30,7 +33,7 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
 3. 不做"卡片 padding 清零"式改造——容器保留自身 padding，
    只统一形状（直角）与线（hairline）。
 4. layout_width mod 经 useFrontendTheme 注入 --rosetta-layout-width，
-   本文件以 --ap-layout 消费；缺省 760px。
+   本文件以 --ap-layout 消费；缺省 880px。
 ========================================================= */
 
 /* ---------------------------------------------------------
@@ -38,8 +41,8 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
    --------------------------------------------------------- */
 :is([data-theme="astro-paper-inspired"], [data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="frontend"],
 :is([data-theme="astro-paper-inspired"], [data-rosetta-theme="astro-paper-inspired"])[data-layout-scope="public-auth"] {
-  /* 窄栏宽度：layout_width mod 经 --rosetta-layout-width 注入，兜底 760px */
-  --ap-layout: var(--rosetta-layout-width, 760px);
+  /* 窄栏宽度：layout_width mod 经 --rosetta-layout-width 注入，兜底 880px */
+  --ap-layout: var(--rosetta-layout-width, 880px);
   --ap-ink: hsl(var(--foreground));
   --ap-muted: hsl(var(--muted-foreground));
   --ap-bg: hsl(var(--background));
@@ -157,7 +160,7 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
     box-shadow: none;
   }
 
-  /* ===== 1.5 顶栏 Navbar（760 窄栏 / 衬线品牌 / 下划线导航） ===== */
+  /* ===== 1.5 顶栏 Navbar（880 窄栏 / 衬线品牌 / 下划线导航） ===== */
   :is(header#app-header, header[data-layout="app-header"]) {
     background: var(--ap-bg);
     backdrop-filter: none;
@@ -190,7 +193,7 @@ v2.2.1 导航栏去宽度限制：整行内容居中成组、组间距 2.25rem�
     letter-spacing: -0.015em;
     font-size: 1.2rem;
   }
-  header [data-navbar="brand"] img[role="brand-logo"] {
+  header [data-navbar="brand"] img[data-navbar="brand-logo"] {
     display: none;
   }
   @media (min-width: 640px) {

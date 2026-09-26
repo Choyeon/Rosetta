@@ -28,6 +28,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/toolti
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
@@ -36,9 +37,14 @@ const route = useRoute()
 /**
  * Header 导航栏：
  *  · 品牌为纯文字（logo 图片由各主题 style.css 决定是否展示）
- *  · 桌面主菜单最多 5 项，其余收进「更多」下拉；移动端折叠进 Sheet
+ *  · 桌面主菜单：极简主题（窄栏 760~880px）只放前 5 项、其余收进「更多」下拉；
+ *    默认主题（宽栏）完整平铺全部导航项——主题骨架差异走 MINIMAL_THEME_SLUGS 分支，
+ *    不允许一个主题的排版约束泄漏到另一个主题
+ *  · 移动端一律折叠进 Sheet
  *  · 右侧控件：搜索 / 明暗切换 / 语言切换（文字标签）/ 登录态
  */
+const ft = useFrontendTheme()
+const isMinimalTheme = computed<boolean>(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 
 // 显示名：优先 nickname → name → username，避免出现"用户名/登录名"而非昵称
 const userDisplayName = computed(() => {
@@ -208,10 +214,14 @@ const isActive = (to: string) => {
   return route.path === to || route.path.startsWith(to + '/')
 }
 
-// ===== 导航分组：桌面端主菜单只放前 5 项，其余收进「更多」下拉，避免窄栏挤成一排 =====
+// ===== 导航分组：仅极简主题（窄栏）把第 6 项起收进「更多」下拉；默认主题全量平铺 =====
 const NAV_PRIMARY_MAX = 5
-const primaryNavItems = computed(() => navItems.value.slice(0, NAV_PRIMARY_MAX))
-const overflowNavItems = computed(() => navItems.value.slice(NAV_PRIMARY_MAX))
+const primaryNavItems = computed(() =>
+  isMinimalTheme.value ? navItems.value.slice(0, NAV_PRIMARY_MAX) : navItems.value
+)
+const overflowNavItems = computed(() =>
+  isMinimalTheme.value ? navItems.value.slice(NAV_PRIMARY_MAX) : []
+)
 const moreActive = computed(() => overflowNavItems.value.some(item => isActive(item.to)))
 
 const handleLogout = async () => {
@@ -242,7 +252,7 @@ const handleSearchClick = () => navigateTo('/search')
         <img
           :src="brandLogo"
           :alt="brandName"
-          role="brand-logo"
+          data-navbar="brand-logo"
           class="h-7 w-auto object-contain shrink-0"
         >
         <span

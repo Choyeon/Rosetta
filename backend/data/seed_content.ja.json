@@ -1876,40 +1876,5 @@
       "locale": "ja"
     }
   ],
-  "galleries": [
-    {
-      "slug": "daily-life",
-      "title": "日常の風景",
-      "description": "日常の小さな素敵な記録",
-      "photos": [
-        {
-          "title": "朝のコーヒー",
-          "url": "https://picsum.photos/seed/rosetta-g1-p1/1200/800"
-        },
-        {
-          "title": "夜景",
-          "url": "https://picsum.photos/seed/rosetta-g1-p2/1200/800"
-        },
-        {
-          "title": "週末ハイキング",
-          "url": "https://picsum.photos/seed/rosetta-g1-p3/1200/800"
-        }
-      ]
-    },
-    {
-      "slug": "tech-events",
-      "title": "テックイベント",
-      "description": "カンファレンスや Meetup の写真",
-      "photos": [
-        {
-          "title": "PyCon 2024",
-          "url": "https://picsum.photos/seed/rosetta-g2-p1/1200/800"
-        },
-        {
-          "title": "VueConf 集合写真",
-          "url": "https://picsum.photos/seed/rosetta-g2-p2/1200/800"
-        }
-      ]
-    }
-  ]
+  "galleries": []
 }

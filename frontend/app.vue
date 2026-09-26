@@ -45,37 +45,15 @@ const needsSpaIsolation = computed(() => {
 // refs 变 null → 这里直接切换根 key → 整页转纯 CSR 重新挂载（不会再 detach → 不再级联）。
 const __safetyRootKey = useState<number>('__hydration_safety_root_key__', () => 0)
 
-// ====== 路由切换 → 同 layout 间 slot 不 memoization 的"硬屏障 key" ======
-// 由 plugins/03-global-page-render-tick.client.ts 在 $router.afterEach / page:finish
-// / app:rendered 三路 bump；`useState('__page_render_tick_global__')` 为 window 级
-// 单例，即使 02-hydration-safety 触发整页重挂（safetyRootKey++）、app.vue 实例
-// 被销毁重建，下一次 setup 仍然能读到"累计最新 tick 值"，保证新旧 key 严格不等
-// → NuxtLayout 内 <NuxtPage>（以及外层的包装 div）必定 unmount + remount →
-// H1 / main 里的 DOM 100% 被 patch 成新页面，不再出现 "URL 变了 H1 不变"
-// 的用户侧顽疾（之前误判 false-positive 导致 window.location.replace 硬跳每次
-// +1 条 Hydration error，被 04 插件的 HARD replace 打满 9 条 console.error）。
-//
-// 组成形式：<path_without_hash>::<page_render_tick>。
-//   · SSR 端：tick 默认 0 → key = path::0，与客户端首帧 hydrate 前相等 → key 字节一致。
-//   · 客户端导航：$router.afterEach 先 bump tick → 再触发 page:finish / app:rendered
-//     再 bump 两次（2~3 次 bump / 导航 / 每条）→ 每轮导航 key 一定严格变大，
-//     即使用户来回点同一个路径，由于 afterEach 每次都会 bump，key 也保证不同
-//     → 一定 unmount。
-const __pageRenderTick = useState<number>('__page_render_tick_global__', () => 0)
-const __navSlotBusterKey = computed(() => `${_route.fullPath.split('#')[0]}::${Number(__pageRenderTick.value || 0)}`)
-if (import.meta.client) {
-  const w = globalThis as typeof globalThis & {
-    __ROS_NAV_KEY_TRACE__?: Array<{ t: number, k: string }>
-  }
-  w.__ROS_NAV_KEY_TRACE__ = w.__ROS_NAV_KEY_TRACE__ || []
-  watch(__navSlotBusterKey, (k) => {
-    try {
-      w.__ROS_NAV_KEY_TRACE__!.push({ t: Date.now(), k: String(k) })
-    } catch {
-      // ignore: push may throw when window has been torn down (soft-CSR remount race)
-    }
-  }, { immediate: true })
-}
+// ====== 页面级 remount 键：仅换页组件，不换布局 ======
+// 同组件不同参数的路由（/posts/a → /posts/b、/categories/x → /categories/y、
+// 独立页 pages/[slug]）Vue Router 会复用实例，页面 setup 里按 route.params
+// 构造的 useAPI key 不重跑 → 用户看到"URL 变了内容没变"。
+// NuxtPage 的 page-key 让**页组件**按 fullPath 重建，<NuxtLayout>（顶栏/页脚/
+// 侧栏）保持挂载——这是真正的 SPA 导航，不重载文档、不重取布局数据。
+// 历史注：曾用 app 级 `:key=__navSlotBusterKey`（plugins/03）把 layout+page 整体
+// unmount，再用 plugins/04 的 window.location.replace 兜底；那两条把每次点导航
+// 变成整页重载（用户侧"闪一下默认样式再重新加载"），已删除，勿再加回。
 
 const authStore = useAuthStore()
 const toast = useToast()
@@ -188,7 +166,7 @@ useHead(() => ({
              · 现已由 02-hydration-safety 插件处理 hydration 问题，
                恢复 NuxtLayout 以保证布局正常渲染。 -->
         <NuxtLayout>
-          <NuxtPage />
+          <NuxtPage page-key="fullPath" />
         </NuxtLayout>
         <ClientOnly>
           <Toaster
@@ -207,18 +185,13 @@ useHead(() => ({
       </template>
 
       <template v-else>
-        <!-- 外层 div 携带 `:key=__navSlotBusterKey`（由 plugin 03 在路由 afterEach
-             / page:finish / app:rendered 三路 bump 的全局 tick）做 unmount 硬屏障：
-             每次导航后 key 一定严格不同 → NuxtLayout + NuxtPage 一定 unmount +
-             remount → 新页面 async useAPI + Suspense 的微任务链虽然仍要 tick 40~160
-             才能完成，但 H1 / main 的 DOM 一定是新页面 patch 进去（非旧页面残留）
-             → 04 插件 false-positive window.location.replace 不再触发 → 每条导航
-             不再额外 +1 Hydration mismatch console.error。 -->
-        <div :key="__navSlotBusterKey">
-          <NuxtLayout>
-            <NuxtPage />
-          </NuxtLayout>
-        </div>
+        <!-- page-key="fullPath"：换页只重建页组件，<NuxtLayout>（顶栏/页脚）保持挂载，
+             同时修掉同组件不同参数路由复用实例导致的"URL 变了内容不变"。
+             禁止再加 app 级 :key 屏障或 afterEach window.location.replace 硬跳——
+             那会把普通导航降级成整文档重载。 -->
+        <NuxtLayout>
+          <NuxtPage page-key="fullPath" />
+        </NuxtLayout>
 
         <ClientOnly>
           <div class="client-only-overlays">

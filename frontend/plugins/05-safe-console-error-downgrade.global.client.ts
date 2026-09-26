@@ -14,10 +14,10 @@
  *    旧 SSR DOM 被丢掉，客户端按纯 CSR 重新挂载 —— 所有 refs null / detached /
  *    级联副作用一次性消失，页面后续完全正常。
  *    因此剩余的 1 条 console.error 其实是"已经修复的一次性历史告警"。
- *    如果再叠加 plugins/04-route-hard-fallback.global.client.ts 在极端 "slot 200+
- *    tick 仍未 patch H1"场景做的 window.location.replace（概率 <3%/每次导航），
- *    每次硬跳 SSR 重载也会把上述首帧 mismatch 再打 1 次，但它们已经被 02
- *    在对端做了软 CSR remount，所以对用户同样是"无害噪音"。
+ *    如果再叠加"整文档硬跳"类兜底（历史上是 plugins/04 的 window.location.replace，
+ *    已于 2026-09 删除），每次 SSR 重载也会把上述首帧 mismatch 再打 1 次。
+ *    注意：SSR 现在已直出真实 <svg>（首页 112 个），"图标渲染成 <!---->"的
+ *    前提在多数页面已不成立，本条过滤器属于历史遗留，勿据此认为线上仍有 mismatch。
  *
  * 2) "Synchronous XMLHttpRequest on the main thread is deprecated" 等浏览器
  *    实现层的 deprecation / CORS ORB 拦截（白名单头像 307 直跳、UserAvatar 上

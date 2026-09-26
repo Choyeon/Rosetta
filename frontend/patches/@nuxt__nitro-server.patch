@@ -1,8 +1,14 @@
 diff --git a/dist/runtime/utils/renderer/app.mjs b/dist/runtime/utils/renderer/app.mjs
-index 71e408ba149231b8c16c3d24ed598680c910f426..86ed9a5b74cd4e0bcbb693e9dbff560bee31c389 100644
+index 71e408ba149231b8c16c3d24ed598680c910f426..f4c0d270930f833f1548ec85b6013a3a1b016c0e 100644
 --- a/dist/runtime/utils/renderer/app.mjs
 +++ b/dist/runtime/utils/renderer/app.mjs
-@@ -10,10 +10,14 @@ const PRERENDER_NO_SSR_ROUTES = /* @__PURE__ */ new Set([
+@@ -1,5 +1,4 @@
+ import { sharedPrerenderCache } from "../cache.mjs";
+-import { encodePath } from "ufo";
+ import { useRuntimeConfig } from "nitropack/runtime";
+ import { NUXT_NO_SSR, NUXT_SHARED_DATA } from "#internal/nuxt/nitro-config.mjs";
+ import { createHead } from "@unhead/vue/server";
+@@ -10,10 +9,14 @@ const PRERENDER_NO_SSR_ROUTES = /* @__PURE__ */ new Set([
  	"/200.html",
  	"/404.html"
  ]);
