@@ -65,6 +65,9 @@ async def _invalidate_rendered_content(*, reason: str) -> None:
 
     await invalidate_cache("post:")  # 详情键不在 posts 前缀下，必须单独清
     await invalidate_cache("posts")  # 列表 + RSS
+    # 归档三端点的标题同样过 the_title 链（_render_archive_post_titles），
+    # 不清就会让归档页在 TTL 内继续显示旧钩子集下的标题，与列表页对不上。
+    await invalidate_cache("archive")
     purge_frontend_page_cache(f"plugin:{reason}")
 
 

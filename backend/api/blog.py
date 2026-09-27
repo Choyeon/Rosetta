@@ -15,6 +15,7 @@ import json
 import math
 import re
 from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import String, cast, func, or_, select, update
@@ -2083,6 +2084,22 @@ async def create_comment(
 # ==================== 归档 API ====================
 
 
+async def _render_archive_post_titles(
+    posts: list[dict], *, language: str
+) -> None:
+    """就地给归档条目的每篇标题补上 the_title 渲染链。
+
+    三个归档出口（`/archive` · `/archive/{year}` · `/archive/{year}/{month}`）此前直出
+    i18n dict 里的裸字符串，而列表 / RSS / 详情页都过 `render_title`。挂上标题类插件
+    （hello-rosetta 追加 `· hello`）后，同一篇文章在归档入口不带后缀、在列表带——
+    插件对同一篇内容呈现两套标题，违背 the_title 契约。
+    必须在写响应缓存之前调用，否则缓存里固化的就是旧钩子集的口径。
+    """
+    for item in posts:
+        ref = SimpleNamespace(id=item.get("id"), slug=item.get("slug"))
+        item["title"] = await render_title(item["title"], post=ref, language=language)
+
+
 @router.get(
     "/archive",
     summary="文章归档",
@@ -2137,6 +2154,10 @@ async def get_archive(
 
     repo = PostRepository(db)
     archive_data = await repo.get_archive_data(language, limit_per_month)
+    # 仓储给的是 i18n dict 里的裸字符串，进缓存前必须过一遍 the_title 链。
+    await _render_archive_post_titles(
+        [post for group in archive_data for post in group["posts"]], language=language
+    )
 
     # 设置缓存
     await cache.set(cache_key, archive_data, CACHE_TTL["categories"])
@@ -2363,6 +2384,10 @@ async def get_archive_by_year(
             }
         )
 
+    await _render_archive_post_titles(
+        [post for month_group in archive_data for post in month_group["posts"]],
+        language=language,
+    )
     await cache.set(cache_key, archive_data, CACHE_TTL["categories"])
 
     return archive_data
@@ -2450,6 +2475,8 @@ async def get_archive_by_month(
                 "views": post.views,
             }
         )
+
+    await _render_archive_post_titles(posts_data, language=language)
 
     return {
         "year": year,
