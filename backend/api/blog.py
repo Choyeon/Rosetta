@@ -48,6 +48,10 @@ from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
     invalidate_post_caches_by_slugs,
 )
+from backend.services.post_revision import (
+    has_content_change,
+    snapshot_post_revision,
+)
 
 # 20 curated tag colors — modern palette with balanced saturation for light/dark modes.
 _TAG_PALETTE = [
@@ -1486,6 +1490,20 @@ async def update_post(
         post.encryption_salt = None
         post.encryption_verifier = None
         post.encryption_hint = None
+
+    # 内容/标题/摘要真的变了才落快照：编辑器每次 PUT 整份表单，只比键存在会造出
+    # 一堆与上一版字节相同的空版本。快照记录的是「改动前」的状态，故必须在赋值之前。
+    if has_content_change(post, update_data):
+        await snapshot_post_revision(
+            db,
+            post=post,
+            author_id=current_user.id,
+            change_summary=(
+                "编辑保存"
+                if new_status in (None, previous_status)
+                else f"{previous_status} → {new_status} 变更前"
+            ),
+        )
 
     apply_partial_update(post, update_data)
 

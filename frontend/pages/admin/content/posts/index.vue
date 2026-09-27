@@ -363,6 +363,14 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
+          class="h-8 rounded-[10px] text-xs px-3"
+          @click="router.push(`/admin/content/posts/${(row as Post).id}/revisions`)"
+        >
+          版本
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
           class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
           @click="confirmDelete((row as Post).id)"
         >

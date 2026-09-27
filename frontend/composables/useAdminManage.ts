@@ -1822,6 +1822,63 @@ export function emptyAdminTrash(options: { silentToast?: boolean } = {}) {
   return apiFetch<{ success: boolean, message: string }>('/admin/trash', { method: 'DELETE', ...options })
 }
 
+// ==================== 文章版本历史 ====================
+
+export interface AdminRevisionItem {
+  id: number
+  revision_number: number
+  /** 该版本的多语言标题；历史脏数据下可能是纯字符串 */
+  title: Record<string, string> | string | null
+  change_summary: string | null
+  author: { id: number, username: string, nickname: string | null } | null
+  created_at: string | null
+}
+
+export interface AdminRevisionList {
+  post_id: number
+  current_title: Record<string, string> | string | null
+  revisions: AdminRevisionItem[]
+  total: number
+}
+
+export interface AdminRevisionDetail {
+  id: number
+  post_id: number
+  revision_number: number
+  title: Record<string, string> | string | null
+  content: Record<string, string> | string | null
+  excerpt: Record<string, string> | string | null
+  change_summary: string | null
+  created_at: string | null
+}
+
+export interface AdminRevisionSnapshot {
+  id: number
+  revision_number: number
+  content: Record<string, string>
+  created_at: string | null
+}
+
+/** GET /api/admin/posts/{id}/revisions —— 版本摘要列表（裸对象，正文走详情接口） */
+export function fetchPostRevisions(postId: number): Promise<AdminRevisionList> {
+  return apiFetch<AdminRevisionList>(`/admin/posts/${postId}/revisions`)
+}
+
+/** GET /api/admin/posts/{id}/revisions/{rid} —— 单版本全文（预览 / 恢复前确认） */
+export function fetchPostRevision(postId: number, revisionId: number): Promise<AdminRevisionDetail> {
+  return apiFetch<AdminRevisionDetail>(`/admin/posts/${postId}/revisions/${revisionId}`)
+}
+
+/** GET /api/admin/posts/{id}/revisions/compare?rev1=&rev2= —— 左右两版正文，diff 在前端算 */
+export function comparePostRevisions(postId: number, rev1: number, rev2: number): Promise<{ revision1: AdminRevisionSnapshot, revision2: AdminRevisionSnapshot }> {
+  return apiFetch(`/admin/posts/${postId}/revisions/compare`, { query: { rev1, rev2 } })
+}
+
+/** POST /api/admin/posts/{id}/revisions/{rid}/restore —— 回滚（服务端会先给当前内容留备份版本） */
+export function restorePostRevision(postId: number, revisionId: number, options: { silentToast?: boolean } = {}) {
+  return apiFetch<{ success: boolean, message: string }>(`/admin/posts/${postId}/revisions/${revisionId}/restore`, { method: 'POST', ...options })
+}
+
 // ==================== 数据库迁移 ====================
 
 export interface AdminMigrationStatus {

@@ -54,7 +54,7 @@
 | 缓存        | Redis 8 + Memory 双后端；分布式锁 / 预热器                                                                              | `backend/core/cache*.py` · `cache_warmer.py` · `distributed_lock.py`                      |
 | 认证        | PyJWT 2.10+ + argon2-cffi 24+ + bcrypt 5+ + cryptography 45+                                                 | `backend/core/auth.py` / `stores/auth.ts`                                                 |
 | 国际化 i18n  | 固定四语：`zh` · `en` · `ja` · `zh_Hant`（fallbackLocale=`en`）                                                     | `frontend/i18n.config.ts` · `frontend/i18n/locales/*.json` + `frontend/i18n/index.ts` 双加载 |
-| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 35 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
+| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 36 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
 | 测试        | 后端 pytest-asyncio 自动模式 + pytest-cov 45% fail\_under；前端 vitest 单测 happy-dom                                   | `tests/test_*.py` · `frontend/tests/unit/*.spec.ts`                                       |
 | CI        | GitHub Actions（`.github/workflows/ci.yml`、`frontend/.github/workflows/ci.yml`）                                          | lint + typecheck + pytest + coverage 底线                                                   |
 
@@ -186,7 +186,7 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          58 个页面文件 = 23 个前台公开页（SSR）+ 35 个 admin 子页（SPA）
+│  ├─ pages/                          59 个页面文件 = 23 个前台公开页（SSR）+ 36 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   26 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
@@ -203,7 +203,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1060 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~87%，fail_under=45%）
+├─ tests/                            Pytest（1065 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~87%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -307,7 +307,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1060 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~87%）
+uv run pytest                                        # 1065 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~87%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -320,7 +320,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 19 个 spec，206 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 20 个 spec，212 用例全绿）
 ```
 
 ### 8.3 部署
@@ -354,7 +354,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 206/206（19 个 spec 文件）
+pnpm test          # 212/212（20 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

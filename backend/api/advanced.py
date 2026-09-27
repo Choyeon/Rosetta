@@ -22,6 +22,7 @@ from backend.core.concurrency import concurrent_query
 from backend.models.blog import Category, Comment, Post, Tag
 from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
+from backend.services.post_revision import snapshot_post_revision
 from backend.utils.compat import UTC, parse_utc_date, timedelta
 from backend.utils.reading_time import compute_reading_time_from_content
 
@@ -613,7 +614,8 @@ class RevisionDetailResponse(BaseModel):
     summary="文章修订历史",
     description=(
         "需 CurrentStaff。读取某篇文章的全部修订版本（不含正文，正文走单版本详情接口），"
-        "按版本号倒序。文章不存在返回 404。只读、幂等。"
+        "按版本号倒序。版本在每次「改了标题/正文/摘要」的保存时自动生成，快照存的是改动前的状态；"
+        "只改状态或重复保存同一份内容不会产版本。文章不存在返回 404。只读、幂等。"
     ),
     responses={
         200: {"model": RevisionListResponse, "description": "版本摘要列表"},
@@ -824,26 +826,13 @@ async def restore_post_revision(
             detail="修订版本不存在",
         )
 
-    # 保存当前版本到修订历史
-    current_revision_number = (
-        await db.scalar(
-            select(func.max(PostRevision.revision_number)).where(PostRevision.post_id == post_id)
-        )
-        or 0
-    )
-
-    current_revision = PostRevision(
-        post_id=post_id,
-        revision_number=current_revision_number + 1,
-        title=json.dumps(post.title) if isinstance(post.title, dict) else post.title,
-        content=json.dumps(post.content) if isinstance(post.content, dict) else post.content,
-        excerpt=json.dumps(post.excerpt)
-        if post.excerpt and isinstance(post.excerpt, dict)
-        else post.excerpt,
+    # 先把当前内容另存为新版本（避免丢失），与编辑保存走同一个快照出口。
+    await snapshot_post_revision(
+        db,
+        post=post,
         author_id=current_user.id,
         change_summary=f"恢复到版本 #{revision.revision_number} 前的备份",
     )
-    db.add(current_revision)
 
     # 恢复内容
     revision_title = (

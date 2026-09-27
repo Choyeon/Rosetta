@@ -28,7 +28,7 @@
 | media | `/api/media` | 15 | 11 | 1 | 3 | 80% |
 | favorite | `/api/favorites` | 12 | 0 | 0 | 12 | 0% |
 | plugins | `/api/admin/plugins` | 16 | 11 | 0 | 5 | 69% |
-| advanced | `/api/admin` | 11 | 1 | 0 | 10 | 9% |
+| advanced | `/api/admin` | 11 | 9 | 0 | 2 | 82% |
 | themes_ext | `/api/admin/themes` | 12 | 6 | 0 | 6 | 50% |
 | guestbook | `/api` | 11 | 11 | 0 | 0 | 100% |
 | gallery | `/api/gallery` · `/api/admin/gallery` | 10 | 10 | 0 | 0 | 100% |
@@ -167,10 +167,10 @@
 ❌（8，**刻意保留**）：向导实际把建库/站点/管理员合并进 `POST /install` 单调用，旧分步接口 `GET /state`、`POST /environment`、`POST /database-config`、`GET /test-database`、`POST /site-config`、`GET /check-username`、`POST /admin-account`、`POST /reset` 为旧流程与恢复工具保留（reset 有运维价值，无 UI 属预期）。
 > 2026-09-26：`POST /complete` 已删除。它自标注 deprecated、前后端零调用，且与 `/install` 是两套并行的初始化实现（行为早已漂移：`/complete` 里示例数据失败被 `except` 吞掉，`/install` 里会中止安装）。留着的代价是维护一份没人走的安装路径，`tests/test_api_oobe.py::test_oobe_legacy_complete_endpoint_removed` 钉住 404 防止回潮。
 
-### advanced（/api/admin）— 5/11
+### advanced（/api/admin）— 9/11
 
 ✅：`GET /logs`（uam:1611，pages/admin/tools/audit-logs.vue）、`GET /trash`、`POST /trash/{id}/restore`、`DELETE /trash/{id}`、`DELETE /trash`（uam 回收站段，pages/admin/content/trash.vue；单删文章也已与批删同构落回收站，回归见 `tests/test_trash_flow.py`）
-❌（6，**成片真实缺口/半成品**）：`POST /posts/batch`（批量被 `/blog/posts/batch-status` 替代——重复；无 UI 消费，但 add_tag / remove_tag 分支曾因未 eager load `Post.tags` 而稳定 500，现已修复并由 `tests/test_post_batch_actions.py` 全量覆盖）、`GET /posts/{id}/revisions · /revisions/compare · /revisions/{rid}`、`POST /posts/{id}/revisions/{rid}/restore`（文章版本历史无 UI——功能预留）、`GET /logs/export`（导出按钮未做）
+❌（2，**成片真实缺口/半成品**）：`POST /posts/batch`（批量被 `/blog/posts/batch-status` 替代——重复；无 UI 消费，但 add_tag / remove_tag 分支曾因未 eager load `Post.tags` 而稳定 500，现已修复并由 `tests/test_post_batch_actions.py` 全量覆盖）、`GET /logs/export`（导出按钮未做）
 
 ### admin_logs / admin_tools / migration / performance（均 /api/admin）
 
@@ -238,7 +238,7 @@
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
    - **用户体系外围**（users 15 个 + blog users/me 系 6 个 + favorite 12 + messages 6）：个人中心/改密/密码找回/收藏/私信整块无页面；
-   - **后台运维增强**：文章版本历史（revisions ×4）、日志导出、hero 轮播管理（×5）；
+   - **后台运维增强**：日志导出、hero 轮播管理（×5）；
    - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、captcha 接入（×2）。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
