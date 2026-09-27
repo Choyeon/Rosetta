@@ -463,9 +463,9 @@ function previewTheme(theme: Theme) {
   )
 }
 
-// ===== 安装新主题：三来源（local / remote / upload）=====
+// ===== 安装新主题：四来源（local / remote / upload / market）=====
 const installOpen = ref(false)
-const installSource = ref<'local' | 'remote' | 'upload'>('local')
+const installSource = ref<'local' | 'remote' | 'upload' | 'market'>('local')
 const installBusy = ref(false)
 const installLocalSlug = ref('')
 const installRemoteUrl = ref('')
@@ -485,8 +485,9 @@ function openInstall() {
 
 function onInstallSourceChange(v: unknown) {
   const s = String(v ?? 'local')
-  installSource.value = s === 'remote' || s === 'upload' ? s : 'local'
+  installSource.value = s === 'remote' || s === 'upload' || s === 'market' ? s : 'local'
   installError.value = ''
+  if (installSource.value === 'market' && !marketLoaded.value) void loadMarket()
 }
 
 function onInstallFileChange(e: Event) {
@@ -535,6 +536,46 @@ async function submitInstall() {
     installError.value = msg || t('admin.themes.installFailed', '安装失败')
   } finally {
     installBusy.value = false
+  }
+}
+
+// ===== 市场来源：GET /admin/themes/market（服务端 8h 缓存 + 离线回退快照）=====
+// 安装动作复用远程通道：POST /admin/themes/market/{slug}/install（带 SHA-256 校验）。
+interface MarketItem {
+  slug: string
+  name?: string
+  version?: string
+  description?: string
+  zip_url?: string
+}
+const marketItems = ref<MarketItem[]>([])
+const marketLoading = ref(false)
+const marketLoaded = ref(false)
+const marketBusySlug = ref('')
+const installedSlugs = computed(() => new Set(themes.value.map(x => String(x.slug))))
+
+async function loadMarket(force = false) {
+  marketLoading.value = true
+  try {
+    const res = await apiFetch<{ data?: { items?: MarketItem[] } }>(
+      `/admin/themes/market${force ? '?force=true' : ''}`
+    )
+    marketItems.value = res?.data?.items ?? []
+    marketLoaded.value = true
+  } catch { /* apiFetch 统一 toast；空列表由占位文案兜底 */ } finally {
+    marketLoading.value = false
+  }
+}
+
+async function installFromMarket(item: MarketItem) {
+  marketBusySlug.value = item.slug
+  try {
+    await apiFetch(`/admin/themes/market/${encodeURIComponent(item.slug)}/install`, { method: 'POST' })
+    toast.success(t('admin.themes.marketInstalled', '已从市场安装：{slug}', { slug: item.slug }))
+    installOpen.value = false
+    reload()
+  } catch { /* apiFetch 统一 toast */ } finally {
+    marketBusySlug.value = ''
   }
 }
 
@@ -1346,6 +1387,9 @@ onMounted(() => {
                 <SelectItem value="upload">
                   {{ t('admin.themes.sourceUpload', '上传 zip 包') }}
                 </SelectItem>
+                <SelectItem value="market">
+                  {{ t('admin.themes.sourceMarket', '市场索引') }}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1407,7 +1451,72 @@ onMounted(() => {
           </div>
 
           <div
-            v-else
+            v-else-if="installSource === 'market'"
+            class="flex flex-col gap-2"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs text-muted-foreground">
+                {{ t('admin.themes.marketHint', '远端市场索引（服务端缓存 8 小时，不可达时回退最近快照）。') }}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="marketLoading"
+                @click="loadMarket(true)"
+              >
+                {{ t('admin.themes.marketRefresh', '刷新') }}
+              </Button>
+            </div>
+            <p
+              v-if="marketLoading && marketItems.length === 0"
+              class="py-6 text-center text-sm text-muted-foreground"
+            >
+              {{ t('admin.themes.marketLoading', '加载市场索引…') }}
+            </p>
+            <p
+              v-else-if="marketItems.length === 0"
+              class="py-6 text-center text-sm text-muted-foreground"
+            >
+              {{ t('admin.themes.marketEmpty', '市场暂无可安装条目（远端不可达时属正常现象）') }}
+            </p>
+            <div
+              v-else
+              class="max-h-72 overflow-y-auto flex flex-col gap-2"
+            >
+              <div
+                v-for="item in marketItems"
+                :key="item.slug"
+                class="flex items-center justify-between gap-3 rounded-xl border p-3"
+              >
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium truncate">{{ item.name || item.slug }}</span>
+                    <span
+                      v-if="item.version"
+                      class="text-xs font-mono text-muted-foreground"
+                    >v{{ item.version }}</span>
+                  </div>
+                  <p
+                    v-if="item.description"
+                    class="mt-0.5 truncate text-xs text-muted-foreground"
+                  >
+                    {{ item.description }}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="installedSlugs.has(item.slug) || marketBusySlug === item.slug"
+                  @click="installFromMarket(item)"
+                >
+                  {{ installedSlugs.has(item.slug) ? t('admin.themes.marketInstalledAlready', '已安装') : t('admin.themes.marketInstall', '安装') }}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-else-if="installSource === 'upload'"
             class="flex flex-col gap-2"
           >
             <Label
@@ -1443,7 +1552,7 @@ onMounted(() => {
           <Button
             variant="default"
             class="shadow-soft"
-            :disabled="installBusy"
+            :disabled="installBusy || installSource === 'market'"
             @click="submitInstall"
           >
             <template v-if="installBusy">

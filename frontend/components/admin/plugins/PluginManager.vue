@@ -370,8 +370,10 @@ async function upgradeSingle(slug: string) {
 // local → {slug}；remote → {remote:{url,checksum_sha256?}}；upload → multipart file。
 // zip 校验失败（PLUGIN_ZIP_BAD_MANIFEST / PACKAGE_UPLOAD_FILE_REQUIRED 等）由
 // apiFetch 统一 toast，同时在弹窗内联保留错误文本便于对照重试。
+// local → {slug}；remote → {remote:{url,checksum_sha256?}}；upload → multipart file；
+// market → 只读索引列表 + POST /market/{slug}/install（独立动作，不走 submitInstall）。
 const installOpen = ref(false)
-const installSource = ref<'local' | 'remote' | 'upload'>('local')
+const installSource = ref<'local' | 'remote' | 'upload' | 'market'>('local')
 const installBusy = ref(false)
 const installLocalSlug = ref('')
 const installRemoteUrl = ref('')
@@ -391,8 +393,9 @@ function openInstall() {
 
 function onInstallSourceChange(v: unknown) {
   const s = String(v ?? 'local')
-  installSource.value = s === 'remote' || s === 'upload' ? s : 'local'
+  installSource.value = s === 'remote' || s === 'upload' || s === 'market' ? s : 'local'
   installError.value = ''
+  if (installSource.value === 'market' && !marketLoaded.value) void loadMarket()
 }
 
 function onInstallFileChange(e: Event) {
@@ -442,6 +445,46 @@ async function submitInstall() {
     installError.value = msg || t('admin.plugins.installFailed', '安装失败')
   } finally {
     installBusy.value = false
+  }
+}
+
+// ===== 市场来源：GET /admin/plugins/market（服务端 8h 缓存 + 离线回退快照）=====
+interface MarketItem {
+  slug: string
+  name?: string
+  version?: string
+  description?: string
+  zip_url?: string
+}
+const marketItems = ref<MarketItem[]>([])
+const marketLoading = ref(false)
+const marketLoaded = ref(false)
+const marketBusySlug = ref('')
+const installedSlugs = computed(() => new Set(plugins.value.map(x => String(x.slug))))
+
+async function loadMarket(force = false) {
+  marketLoading.value = true
+  try {
+    const res = await apiFetch<{ data?: { items?: MarketItem[] } }>(
+      `/admin/plugins/market${force ? '?force=true' : ''}`
+    )
+    marketItems.value = res?.data?.items ?? []
+    marketLoaded.value = true
+  } catch { /* apiFetch 统一 toast；空列表由占位文案兜底 */ } finally {
+    marketLoading.value = false
+  }
+}
+
+async function installFromMarket(item: MarketItem) {
+  marketBusySlug.value = item.slug
+  try {
+    await apiFetch(`/admin/plugins/market/${encodeURIComponent(item.slug)}/install`, { method: 'POST' })
+    toast.success(t('admin.plugins.marketInstalled', '已从市场安装：{slug}', { slug: item.slug }))
+    installOpen.value = false
+    reload()
+    refreshPluginMenu()
+  } catch { /* apiFetch 统一 toast */ } finally {
+    marketBusySlug.value = ''
   }
 }
 
@@ -1130,6 +1173,9 @@ onMounted(() => {
                 <SelectItem value="upload">
                   {{ t('admin.plugins.sourceUpload', '上传 zip 包') }}
                 </SelectItem>
+                <SelectItem value="market">
+                  {{ t('admin.plugins.sourceMarket', '市场索引') }}
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -1191,7 +1237,72 @@ onMounted(() => {
           </div>
 
           <div
-            v-else
+            v-else-if="installSource === 'market'"
+            class="flex flex-col gap-2"
+          >
+            <div class="flex items-center justify-between gap-2">
+              <p class="text-xs text-muted-foreground">
+                {{ t('admin.plugins.marketHint', '远端市场索引（服务端缓存 8 小时，不可达时回退最近快照）。') }}
+              </p>
+              <Button
+                variant="ghost"
+                size="sm"
+                :disabled="marketLoading"
+                @click="loadMarket(true)"
+              >
+                {{ t('admin.plugins.marketRefresh', '刷新') }}
+              </Button>
+            </div>
+            <p
+              v-if="marketLoading && marketItems.length === 0"
+              class="py-6 text-center text-sm text-muted-foreground"
+            >
+              {{ t('admin.plugins.marketLoading', '加载市场索引…') }}
+            </p>
+            <p
+              v-else-if="marketItems.length === 0"
+              class="py-6 text-center text-sm text-muted-foreground"
+            >
+              {{ t('admin.plugins.marketEmpty', '市场暂无可安装条目（远端不可达时属正常现象）') }}
+            </p>
+            <div
+              v-else
+              class="max-h-72 overflow-y-auto flex flex-col gap-2"
+            >
+              <div
+                v-for="item in marketItems"
+                :key="item.slug"
+                class="flex items-center justify-between gap-3 rounded-xl border p-3"
+              >
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2">
+                    <span class="text-sm font-medium truncate">{{ item.name || item.slug }}</span>
+                    <span
+                      v-if="item.version"
+                      class="text-xs font-mono text-muted-foreground"
+                    >v{{ item.version }}</span>
+                  </div>
+                  <p
+                    v-if="item.description"
+                    class="mt-0.5 truncate text-xs text-muted-foreground"
+                  >
+                    {{ item.description }}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  :disabled="installedSlugs.has(item.slug) || marketBusySlug === item.slug"
+                  @click="installFromMarket(item)"
+                >
+                  {{ installedSlugs.has(item.slug) ? t('admin.plugins.marketInstalledAlready', '已安装') : t('admin.plugins.marketInstall', '安装') }}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          <div
+            v-else-if="installSource === 'upload'"
             class="flex flex-col gap-2"
           >
             <Label
@@ -1227,7 +1338,7 @@ onMounted(() => {
           <Button
             variant="default"
             class="shadow-soft"
-            :disabled="installBusy"
+            :disabled="installBusy || installSource === 'market'"
             @click="submitInstall"
           >
             <template v-if="installBusy">

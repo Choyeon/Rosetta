@@ -721,7 +721,15 @@
       "sourceLocal": "本地目录扫描",
       "sourceRemote": "远程 URL 下载",
       "sourceUpload": "上传 zip 包",
-      "upgraded": "升级完成"
+      "upgraded": "升级完成",
+      "sourceMarket": "市场索引",
+      "marketHint": "远端市场索引（服务端缓存 8 小时，不可达时回退最近快照）。",
+      "marketRefresh": "刷新",
+      "marketLoading": "加载市场索引…",
+      "marketEmpty": "市场暂无可安装条目（远端不可达时属正常现象）",
+      "marketInstall": "安装",
+      "marketInstalled": "已从市场安装：{slug}",
+      "marketInstalledAlready": "已安装"
     },
     "themes": {
       "title": "主题管理",
@@ -804,7 +812,15 @@
       "updateAvailable": "可升级",
       "upgrade": "升级",
       "upgradeNoUpdate": "磁盘上没有可同步的新版本",
-      "upgraded": "已按磁盘清单重新同步：{version}"
+      "upgraded": "已按磁盘清单重新同步：{version}",
+      "sourceMarket": "市场索引",
+      "marketHint": "远端市场索引（服务端缓存 8 小时，不可达时回退最近快照）。",
+      "marketRefresh": "刷新",
+      "marketLoading": "加载市场索引…",
+      "marketEmpty": "市场暂无可安装条目（远端不可达时属正常现象）",
+      "marketInstall": "安装",
+      "marketInstalled": "已从市场安装：{slug}",
+      "marketInstalledAlready": "已安装"
     },
     "media": {
       "previewTitle": "媒体预览",

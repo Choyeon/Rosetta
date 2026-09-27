@@ -721,7 +721,15 @@
       "sourceLocal": "Local directory scan",
       "sourceRemote": "Remote URL download",
       "sourceUpload": "Upload zip package",
-      "upgraded": "Upgrade complete"
+      "upgraded": "Upgrade complete",
+      "sourceMarket": "Market index",
+      "marketHint": "Remote market index (cached 8h server-side; falls back to the last snapshot when unreachable).",
+      "marketRefresh": "Refresh",
+      "marketLoading": "Loading market index…",
+      "marketEmpty": "No installable items in the market (normal when the remote is unreachable)",
+      "marketInstall": "Install",
+      "marketInstalled": "Installed from market: {slug}",
+      "marketInstalledAlready": "Installed"
     },
     "themes": {
       "title": "Themes",
@@ -804,7 +812,15 @@
       "updateAvailable": "Update available",
       "upgrade": "Upgrade",
       "upgradeNoUpdate": "No newer version on disk to sync",
-      "upgraded": "Re-synced from disk manifest: {version}"
+      "upgraded": "Re-synced from disk manifest: {version}",
+      "sourceMarket": "Market index",
+      "marketHint": "Remote market index (cached 8h server-side; falls back to the last snapshot when unreachable).",
+      "marketRefresh": "Refresh",
+      "marketLoading": "Loading market index…",
+      "marketEmpty": "No installable items in the market (normal when the remote is unreachable)",
+      "marketInstall": "Install",
+      "marketInstalled": "Installed from market: {slug}",
+      "marketInstalledAlready": "Installed"
     },
     "media": {
       "previewTitle": "Media Preview",

@@ -721,7 +721,15 @@
       "sourceLocal": "ローカルディレクトリスキャン",
       "sourceRemote": "リモート URL ダウンロード",
       "sourceUpload": "zip パッケージをアップロード",
-      "upgraded": "アップグレード完了"
+      "upgraded": "アップグレード完了",
+      "sourceMarket": "マーケットインデックス",
+      "marketHint": "リモート市場インデックス（サーバー側で 8 時間キャッシュ、到達不可時は最新スナップショットにフォールバック）。",
+      "marketRefresh": "更新",
+      "marketLoading": "市場インデックスを読み込み中…",
+      "marketEmpty": "市場にインストール可能な項目がありません（リモートに到達不可の場合は正常です）",
+      "marketInstall": "インストール",
+      "marketInstalled": "市場からインストールしました：{slug}",
+      "marketInstalledAlready": "インストール済み"
     },
     "themes": {
       "title": "テーマ管理",
@@ -804,7 +812,15 @@
       "updateAvailable": "更新あり",
       "upgrade": "アップグレード",
       "upgradeNoUpdate": "同期可能な新しいバージョンがディスク上にありません",
-      "upgraded": "ディスクのマニフェストから再同期しました：{version}"
+      "upgraded": "ディスクのマニフェストから再同期しました：{version}",
+      "sourceMarket": "マーケットインデックス",
+      "marketHint": "リモート市場インデックス（サーバー側で 8 時間キャッシュ、到達不可時は最新スナップショットにフォールバック）。",
+      "marketRefresh": "更新",
+      "marketLoading": "市場インデックスを読み込み中…",
+      "marketEmpty": "市場にインストール可能な項目がありません（リモートに到達不可の場合は正常です）",
+      "marketInstall": "インストール",
+      "marketInstalled": "市場からインストールしました：{slug}",
+      "marketInstalledAlready": "インストール済み"
     },
     "media": {
       "previewTitle": "メディアプレビュー",
