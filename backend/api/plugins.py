@@ -694,7 +694,8 @@ async def deactivate_plugin(
     "/{slug}",
     summary="删除插件",
     description=(
-        "需 CurrentStaff。删除 DB 记录与 settings KV；仅安装态（非 active）可删，"
+        "需 CurrentStaff。删除 DB 记录与 settings KV，并失效已渲染内容/页面缓存"
+        "（防 TTL 内访客仍见已删插件的钩子输出）；仅安装态（非 active）可删，"
         "激活中返回 409（PLUGIN_ALREADY_ACTIVE，需先停用）。"
         "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
     ),
@@ -719,20 +720,24 @@ async def delete_plugin(
         )
     await pm.delete(db, slug)
     await db.commit()
+    # 钩子/短代码已在 manager 内摘除；不清缓存 = TTL 内访客仍见已删插件的渲染残留
+    await _invalidate_rendered_content(reason=f"{slug}:delete")
     return {"success": True, "message": "已删除"}
 
 
 @router.post(
     "/{slug}/upgrade",
-    summary="升级插件（stub）",
+    summary="升级插件（从磁盘清单重新同步元数据）",
     description=(
-        "需 CurrentStaff。当前为占位实现：仅刷新 updated_at 并触发 plugin.upgraded 钩子，"
-        "响应 message 标注 stub；真正的版本替换请走 zip 覆盖安装（POST /plugins?source=upload|remote）。"
-        "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+        "需 CurrentStaff。升级 = 重新扫描磁盘清单并把已替换的元数据（版本/名称/"
+        "settings_schema 等）刷回 DB，与主题侧 `POST /themes/{slug}/upgrade` 同口径；"
+        "真正的版本包替换走 zip 覆盖安装（POST /plugins?source=upload|remote）。"
+        "响应 data 为同步后的插件记录。"
+        "未安装 404（PLUGIN_NOT_FOUND）；磁盘目录已缺失（清理后不可升级）同样 404，message 提示重新安装。"
     ),
     responses={
-        200: {"model": PackageMessageResponse},
-        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+        200: {"model": PluginDetailResponse},
+        404: {"description": "插件不存在或磁盘目录缺失（error_code: PLUGIN_NOT_FOUND）"},
     },
 )
 async def upgrade_plugin(
@@ -741,13 +746,10 @@ async def upgrade_plugin(
     slug: str,
 ):
     pm = _get_plugin_manager()
-    plugin = await pm.get(db, slug)
-    if plugin is None:
-        raise AppException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            message=f"插件不存在: {slug}",
-            error_code=PLUGIN_NOT_FOUND,
-        )
-    await pm.upgrade(db, slug)
+    result = await pm.upgrade(db, slug)
     await db.commit()
-    return {"success": True, "message": "升级完成 (stub)"}
+    # 升级可能改 version → 缓存 HTML 里的旧渲染/钩子集失效，与启停同口径清三层缓存
+    await _invalidate_rendered_content(reason=f"{slug}:upgrade")
+    out = PluginOut.model_validate(result)
+    out.settings = await pm.get_settings(db, slug)
+    return {"success": True, "message": "已从磁盘清单重新同步元数据", "data": out}

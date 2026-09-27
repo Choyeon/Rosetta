@@ -28,7 +28,6 @@ import {
   Check,
   Sparkles,
   Play,
-  ChevronRight,
   LayoutDashboard,
   CheckCircle2,
   BookOpen,
@@ -423,10 +422,6 @@ async function doDelete() {
     confirmDeleteOpen.value = false
     reload()
   }
-}
-
-function stubToast(msg: string) {
-  toast.info(msg)
 }
 
 // ===== 预览：打开前台首页并附带 ?rosetta_theme_preview=<slug> =====
@@ -965,17 +960,14 @@ onMounted(() => {
                 </Button>
               </div>
 
-              <a
+              <!-- 继承关系仅作信息展示：主题继承（parent_theme）在 Rosetta 无实现面，
+                   过去做成 href="#" 假链接 + 点击只弹「占位」toast，是误导性的空壳 affordance。 -->
+              <p
                 v-if="theme.parent_theme"
-                href="#"
-                class="text-[11px] text-muted-foreground hover:text-foreground inline-flex items-center gap-1 truncate"
-                @click.prevent="stubToast(t('admin.themes.parentHint', '父主题占位'))"
+                class="text-[11px] text-muted-foreground truncate"
               >
-                <span>
-                  {{ t('admin.themes.childOf', '子主题：继承自 {name}', { name: theme.parent_theme }) }}
-                </span>
-                <ChevronRight class="size-3 opacity-60" />
-              </a>
+                {{ t('admin.themes.childOf', '子主题：继承自 {name}', { name: theme.parent_theme }) }}
+              </p>
             </div>
           </div>
         </div>

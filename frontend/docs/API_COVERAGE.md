@@ -193,8 +193,8 @@
 ### themes / themes_ext / plugins
 
 - themes（/api）1/4：✅ `GET /themes/active`（uft:661）；❌ `GET /themes/palettes`、`GET /themes/current.css`、`PUT /admin/themes/current`——旧调色板体系，被主题 Customizer（mods）取代，**遗留待清理**。
-- themes_ext（/api/admin/themes）6/12：✅ 列表 GET（TM:200 及 ?source=local/remote/upload 查询）、`POST /scan`（TM:220）、`PUT /{slug}/activate`（TM:251）、`PATCH /{slug}/mods`（TM:359）、`DELETE /{slug}`（TM:387）、`POST ""?source=…` 安装（TM:455–473）。❌6：`GET /{slug}` 详情、`GET|PUT /{slug}/mods`（列表内联返回 + PATCH 替代）、`POST /{slug}/upgrade`、`GET /market`、`POST /market/{slug}/install`——市场为**半成品功能**（后端就绪、UI 未接）；upgrade 主题侧缺失（插件侧已有）。
-- plugins（/api/admin/plugins）11/16：✅ 列表（PM:207）、`POST /scan`（:224）、`PATCH /{slug}/status`（:235）、`GET /menu-registry`（upm:67）、`GET|PUT /{slug}/settings`（plugins/guestbook-rss/settings.vue:75,90）、`PATCH /{slug}/settings`（PM:267）、`POST /bulk`（:295,314）、`GET /{slug}` 详情（settings.vue:61）、`DELETE /{slug}`（:292）、`POST /{slug}/upgrade`（:341）。❌5：`POST ""` zip 上传安装（当前仅扫描本地目录安装——小缺口）、`GET /market`、`POST /market/{slug}/install`（市场未接，同上）、`POST /{slug}/activate|deactivate`（被 status PATCH 替代——**重复入口，建议统一**）。
+- themes_ext（/api/admin/themes）6/12：✅ 列表 GET（TM:200 及 ?source=local/remote/upload 查询）、`POST /scan`（TM:220）、`PUT /{slug}/activate`（TM:251）、`PATCH /{slug}/mods`（TM:359）、`DELETE /{slug}`（TM:387）、`POST ""?source=…` 安装（TM:455–473）。❌6：`GET /{slug}` 详情、`GET|PUT /{slug}/mods`（列表内联返回 + PATCH 替代）、`POST /{slug}/upgrade`、`GET /market`、`POST /market/{slug}/install`——市场为**半成品功能**（后端就绪、UI 未接）；`POST /{slug}/upgrade` 后端已与插件侧同口径（scan 回读磁盘清单刷 DB），UI 未单独接入——`POST /scan` 已覆盖同一刷新语义，故不是功能缺口。
+- plugins（/api/admin/plugins）12/16：✅ 列表（PM:207）、`POST /scan`（:224）、`PATCH /{slug}/status`（:235）、`GET /menu-registry`（upm:67）、`GET|PUT /{slug}/settings`（plugins/guestbook-rss/settings.vue:75,90）、`PATCH /{slug}/settings`（PM:267）、`POST /bulk`（:295,314）、`GET /{slug}` 详情（settings.vue:61）、`DELETE /{slug}`（:292）、`POST /{slug}/upgrade`（:341）、`POST ""?source=local|remote|upload` 安装（PM:412–430，与主题侧同构，zip 校验走 PACKAGE_*/PLUGIN_ZIP_BAD_MANIFEST）。❌4：`GET /market`、`POST /market/{slug}/install`（市场未接，同上）、`POST /{slug}/activate|deactivate`（被 status PATCH 替代——**重复入口，建议统一**）。
 
 ### title（/api/admin 下 titles）— 6/9
 
@@ -235,7 +235,7 @@
 1. **刻意保留的后端能力（约六成，不算债）**：
    - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、`scheduled_posts` ×3（前端用 status 字段替代）、`themes/palettes` 旧调色板 ×3、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/posts/batch`、`/archive` 单数 bing wallpaper、各 `…/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）。
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
-2. **半成品（后端就绪、UI 半接入）**：主题/插件**市场**（market GET/install ×4）、主题 upgrade（×1，插件侧已接）、zip 上传安装（×1）。（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%。）
+2. **半成品（后端就绪、UI 半接入）**：主题/插件**市场**（market GET/install ×4）、主题 upgrade 便捷壳（×1，语义已由 `POST /scan` 覆盖，两侧后端同口径）。（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
    - **用户体系外围**（users 15 个 + blog users/me 系 6 个 + favorite 12 + messages 6）：个人中心/改密/密码找回/收藏/私信整块无页面；
    - **后台运维增强**：回收站 UI（advanced trash ×4）、文章版本历史（revisions ×4）、日志导出、hero 轮播管理（×5）；

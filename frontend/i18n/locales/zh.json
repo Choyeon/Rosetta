@@ -771,7 +771,6 @@
       "activatedAt": "激活于",
       "noDesc": "该主题暂未提供描述信息。",
       "noCustomizeHint": "该主题无可自定义项",
-      "parentHint": "父主题占位",
       "childOf": "子主题：继承自 {name}",
       "perPage": "每页显示",
       "customizerTitle": "自定义主题：",

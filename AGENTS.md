@@ -203,7 +203,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1038 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~85%，fail_under=45%）
+├─ tests/                            Pytest（1041 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~85%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -307,7 +307,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1038 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~85%）
+uv run pytest                                        # 1041 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~85%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -320,7 +320,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 16 个 spec，191 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 17 个 spec，195 用例全绿）
 ```
 
 ### 8.3 部署
@@ -354,7 +354,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 191/191（16 个 spec 文件）
+pnpm test          # 195/195（17 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

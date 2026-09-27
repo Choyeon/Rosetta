@@ -771,7 +771,6 @@
       "activatedAt": "有効化日",
       "noDesc": "このテーマの説明はまだありません。",
       "noCustomizeHint": "このテーマにカスタマイズ項目はありません",
-      "parentHint": "親テーマのプレースホルダー",
       "childOf": "子テーマ：{name} を継承",
       "perPage": "表示件数",
       "customizerTitle": "テーマのカスタマイズ：",

@@ -771,7 +771,6 @@
       "activatedAt": "Activated on",
       "noDesc": "This theme has no description yet.",
       "noCustomizeHint": "This theme has no customization options",
-      "parentHint": "Parent theme placeholder",
       "childOf": "Child theme: inherits from {name}",
       "perPage": "Per page",
       "customizerTitle": "Customize theme: ",

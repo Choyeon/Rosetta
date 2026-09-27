@@ -771,7 +771,6 @@
       "activatedAt": "啟用於",
       "noDesc": "該主題暂未提供描述資訊。",
       "noCustomizeHint": "該主題無可自訂項",
-      "parentHint": "父主題佔位",
       "childOf": "子主題：繼承自 {name}",
       "perPage": "每頁顯示",
       "customizerTitle": "自訂主題：",

@@ -926,22 +926,35 @@ class PluginManager:
             description=f"插件设置（slug={slug}）",
         )
 
-    # ── 升级（桩） ─────────────────────────────────────────────────────
+    # ── 升级 ───────────────────────────────────────────────────────────
 
     async def upgrade(
         self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
     ) -> Plugin:
+        """升级 = 重新读取磁盘清单并同步元数据（与 ThemeManager.upgrade 同口径）。
+
+        插件没有"下载新版本"的概念（zip 覆盖安装走 install_from_*），
+        因此本方法只负责把磁盘上已替换的清单刷回 DB。原 stub 只动 updated_at，
+        前端「升级完成」后版本不变，与主题侧行为分叉。
+        """
+        from backend.core.exceptions import AppException
+
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
-            from backend.core.exceptions import AppException
-
             raise AppException(
                 status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装"
             )
-        # Re-scan picks up new version from manifest (stub: simulate version bump by resetting updated_at)
-        now = datetime.now(UTC)
-        row.updated_at = now  # type: ignore[assignment]
+        await self.scan_local(db, site_id=site_id)
+        row = await self.get(db, slug, site_id=site_id)
+        if row is None:
+            raise AppException(
+                status_code=404,
+                error_code="PLUGIN_NOT_FOUND",
+                message=f"插件 {slug} 磁盘文件缺失，无法升级（请重新安装）",
+            )
+        row.updated_at = datetime.now(UTC)  # type: ignore[assignment]
         await db.flush()
+        await db.refresh(row)
         await do_action("plugin.upgraded", slug=slug, row=row)
         return row  # type: ignore[return-value]
 

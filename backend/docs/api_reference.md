@@ -2154,7 +2154,7 @@ API 实现了请求限流保护：
 | `PUT` | `/api/admin/plugins/{slug}/settings` | 全量替换插件设置 |
 | `PATCH` | `/api/admin/plugins/{slug}/settings` | 增量更新插件设置 |
 | `PATCH` | `/api/admin/plugins/{slug}/status` | 切换插件启用状态 |
-| `POST` | `/api/admin/plugins/{slug}/upgrade` | 升级插件（stub） |
+| `POST` | `/api/admin/plugins/{slug}/upgrade` | 升级插件（从磁盘清单重新同步元数据） |
 
 ### 开发文档（2）
 
