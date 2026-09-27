@@ -349,3 +349,28 @@ async def test_stats_reports_real_numbers_not_placeholders(
     # 今日访问 = 今天真实落库的访问量，与 Post.views 累计值无关
     assert payload["summary"]["total_views_today"] == 0
     assert payload["summary"]["total_posts"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_patch_settings_basic_invalidates_site_config_cache(
+    client: AsyncClient, admin_headers: dict
+):
+    """basic 分组保存后 /api/config 必须立刻反映新站点名（而不是等 site_config 缓存 TTL）。
+
+    历史缺陷：PATCH /settings/{group} 只失效 settings_public（300s），没删
+    site_config（3600s）——而分组 JSON 正是 /api/config 的权威覆写来源，
+    缓存命中直接吐旧值；RSS channel 同读这份缓存，一起陈旧最长 1 小时。"""
+    warm = await client.get("/api/config")
+    assert warm.status_code == 200
+    assert warm.json()["site_name"] != "即时生效站点名"
+
+    resp = await client.patch(
+        "/api/settings/basic",
+        headers=admin_headers,
+        json={"site_name": "即时生效站点名", "site_url": "https://fresh.example.com"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    cfg = (await client.get("/api/config")).json()
+    assert cfg["site_name"] == "即时生效站点名"
+    assert cfg["site_url"] == "https://fresh.example.com"

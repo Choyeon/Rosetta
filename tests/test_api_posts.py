@@ -4,6 +4,7 @@
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.blog import Category, Post, Tag
@@ -207,6 +208,35 @@ class TestContentPipelineCoverage:
             remove_filter("the_content", c_fn)
             remove_filter("the_excerpt", e_fn)
             remove_filter("the_title", t_fn)
+
+    @pytest.mark.asyncio
+    async def test_rss_channel_uses_admin_site_config(
+        self, client: AsyncClient, db_session: AsyncSession, test_post: Post
+    ):
+        """channel 标题/链接必须来自管理端 SiteConfig（含分组覆写后的 /config 缓存），
+        而不是 env settings 的 app_name/site_url——否则改站点名后订阅源与前台口径分裂。"""
+        from backend.core.cache import cache
+        from backend.models.core import SiteConfig
+
+        # SiteConfig 主键是自增 id，session.get(str) 永不命中；按 key 显式 SELECT。
+        # conftest 已预置 SITE_NAME=Rosetta Test（未 flush 的 pending 行也能被 autoflush SELECT 看到）。
+        for key, value in [
+            ("SITE_NAME", "站点名测试RSS"),
+            ("SITE_URL", "https://rss-test.example.com"),
+        ]:
+            row = (
+                await db_session.execute(select(SiteConfig).where(SiteConfig.key == key))
+            ).scalar_one_or_none()
+            if row:
+                row.value = value
+            else:
+                db_session.add(SiteConfig(key=key, value=value))
+        await db_session.commit()
+        # 清空响应缓存：既去掉 site_config 旧缓存，也去掉 conftest 预热进 posts 前缀的 rss 条目
+        await cache.clear()
+        xml = (await client.get("/api/blog/rss")).text
+        assert "<title>站点名测试RSS</title>" in xml
+        assert "https://rss-test.example.com/" in xml
 
     @pytest.mark.asyncio
     async def test_user_posts_excerpt_applies_filters(self, client: AsyncClient, test_post: Post):

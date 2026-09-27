@@ -52,6 +52,7 @@ from backend.schemas import (
     SiteSettingItem,
 )
 from backend.services.content_renderer import render_content
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 router = APIRouter(tags=["核心"])
 
@@ -2410,6 +2411,8 @@ async def update_site_settings(
 
     # 同步删除缓存，确保下次读取时使用新值（测试也能看到变更）
     await cache.delete(make_cache_key("site_config"))
+    # Nitro 页面级 swr 缓存嵌着旧配置渲染的 HTML，fire-and-forget 通知清除
+    purge_frontend_page_cache("后台站点设置保存")
 
     # 使用后台任务处理缓存预热（不阻塞响应）
     async def warmup_cache_async():

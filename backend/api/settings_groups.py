@@ -25,6 +25,7 @@ from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import cache, make_cache_key
 from backend.core.logging_middleware import log_operation
 from backend.models.core import SiteConfig
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.utils.compat import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -494,7 +495,8 @@ async def get_one_setting(
     description=(
         "需管理员（CurrentStaff）。payload 为该分组的部分键值对象；"
         "不在该组默认值键集内的键被静默丢弃。副作用：写入操作日志（含 before/after diff）、"
-        "落库 site_configs 后立刻失效 /settings/public 的 300s 缓存。"
+        "落库 site_configs 后立刻失效 /settings/public（300s）与 /api/config 的 site_config（3600s）缓存——"
+        "分组 JSON 是 /api/config 的权威覆写来源，不失效则站点名等改动最长 1 小时不可见。"
         "未知分组 404；payload 非对象 400。"
     ),
     responses={
@@ -537,5 +539,14 @@ async def patch_one_setting(
     try:
         await cache.delete(make_cache_key("settings_public"))
     except Exception:
-        logger.debug("cache delete for public settings failed", exc_info=True)
+        logger.debug("cache delete for settings_public failed", exc_info=True)
+    # site_config 缓存（TTL 3600s）里叠了本分组的 JSON 覆写（见 core.py::_apply_settings_groups）：
+    # 分组保存后不删它，站点名/简介/侧栏最长 1 小时不生效，RSS channel（同源读缓存）一起陈旧。
+    try:
+        await cache.delete(make_cache_key("site_config"))
+    except Exception:
+        logger.debug("cache delete for site_config failed", exc_info=True)
+    # Nitro 对公开页做 swr 缓存，缓存的 HTML 字节里嵌着站点名等配置渲染结果；
+    # API 缓存删了页面仍是旧口径，fire-and-forget 通知前端清页面级缓存。
+    purge_frontend_page_cache(f"设置分组保存: {group}")
     return {"success": True, "group": group, "data": saved, "changed": list(diff.keys())}

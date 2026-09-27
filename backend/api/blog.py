@@ -3102,6 +3102,34 @@ async def clear_my_history(
     return {"success": True, "data": None, "message": "阅读历史已清空"}
 
 
+async def _effective_site_meta() -> dict[str, str]:
+    """RSS 需要的站点名/URL：以 /api/config 的构建结果为唯一权威（含分组 JSON 覆写，
+    任一分组保存即失效，天然新鲜）。缓存未命中（冷启动首请求就是 /rss）时先自调用
+    /api/config 顺带预热缓存，再读回——避免在别处复刻一套优先级逻辑造成口径漂移。"""
+    from backend.core.cache import cache, make_cache_key
+
+    site_name = site_url = ""
+    try:
+        cache_key = make_cache_key("site_config")
+        cached = await cache.get(cache_key)
+        if not isinstance(cached, dict):
+            import httpx
+
+            from backend.main import app as _app
+
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(app=_app), timeout=5, base_url="http://internal"
+            ) as _c:
+                await _c.get("/api/config")
+            cached = await cache.get(cache_key)
+        if isinstance(cached, dict):
+            site_name = str(cached.get("site_name") or "")
+            site_url = str(cached.get("site_url") or "")
+    except Exception:  # 配置读取异常不阻断订阅源，回退 env 口径
+        pass
+    return {"site_name": site_name, "site_url": site_url}
+
+
 @router.get(
     "/rss",
     summary="RSS 订阅",
@@ -3144,8 +3172,12 @@ async def get_rss_feed(
     result = await db.execute(query)
     posts = result.scalars().all()
 
-    site_url = settings.site_url
-    site_title = settings.app_name
+    # 站点名/URL 取管理端配置（与 /api/config 权威同源），env settings 仅冷启动兜底——
+    # 此前直接用 settings.app_name / site_url，admin 改站点名后订阅源标题仍是旧值，
+    # 且 basic 分组 JSON 的覆写根本不参与（RSS 与前台/OG 口径分裂）。
+    cfg = await _effective_site_meta()
+    site_url = cfg["site_url"] or settings.site_url
+    site_title = cfg["site_name"] or settings.app_name
     rss_content = await generate_rss_feed(posts, language, site_url, site_title)
 
     await cache.set(cache_key, rss_content, CACHE_TTL["post_list"])

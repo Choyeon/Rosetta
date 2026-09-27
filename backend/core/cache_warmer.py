@@ -39,8 +39,13 @@ from backend.core.cache import (
 from backend.core.config import settings
 from backend.core.database import async_session_maker
 from backend.models.blog import Category, Post, Tag, post_tags
-from backend.models.core import FriendLink, Navigation, SiteConfig
-from backend.schemas import CategoryResponse, TagResponse
+from backend.models.core import FriendLink, Navigation
+from backend.schemas import (
+    CategoryResponse,
+    FriendLinkResponse,
+    NavigationResponse,
+    TagResponse,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,47 +228,16 @@ class CacheWarmer:
         return result
 
     async def _warmup_site_config(self) -> int:
-        """预热站点配置"""
+        """预热站点配置：委托 /api/config 端点函数本体——它是配置口径的唯一权威
+        （扁平键 → 分组 JSON 覆写 → env 兜底），返回前自行写入 site_config 缓存。
+        此前这里复刻了一套只认大写扁平键的手工拼装：既没有分组覆写，也读不到
+        小写键行，冷启动预热反而把 "Rosetta Blog" 等默认值毒进缓存——
+        此后缓存命中直接返回旧值，改站点名要等 TTL 到期或任意保存才可见。"""
+        from backend.api.core import get_site_config
+
         async with async_session_maker() as db:
-            result = await db.execute(select(SiteConfig))
-            configs = {c.key: c.value for c in result.scalars().all()}
-
-            cache_key = make_cache_key("site_config")
-            config_data = {
-                "site_name": configs.get("SITE_NAME", "Rosetta Blog"),
-                "site_description": configs.get(
-                    "SITE_DESCRIPTION",
-                    "Rosetta开源博客系统",
-                ),
-                "site_keywords": configs.get(
-                    "SITE_KEYWORDS", "Rosetta, FastAPI, Astro, Svelte, Blog"
-                ),
-                "site_author": configs.get("SITE_AUTHOR", "Rosetta Team"),
-                "site_email": configs.get("SITE_EMAIL", "contact@rosetta.dev"),
-                "site_logo": configs.get("SITE_LOGO"),
-                "site_favicon": configs.get("SITE_FAVICON"),
-                "footer_text": configs.get("FOOTER_TEXT", "Powered by Rosetta"),
-                "footer_slogan": configs.get(
-                    "FOOTER_SLOGAN", "Share knowledge, inspire creativity"
-                ),
-                "github_url": configs.get("GITHUB_URL"),
-                "x_url": configs.get("X_URL"),
-                "bilibili_url": configs.get("BILIBILI_URL"),
-                "contact_email": configs.get("CONTACT_EMAIL"),
-                "enable_comments": configs.get("ENABLE_COMMENTS", "true").lower() == "true",
-                "enable_registration": configs.get("ENABLE_REGISTRATION", "true").lower() == "true",
-                "enable_rss_feed": configs.get("ENABLE_RSS_FEED", "true").lower() == "true",
-                "pagination_page_size": int(configs.get("PAGINATION_PAGE_SIZE", "12")),
-                "code_theme": configs.get("CODE_THEME", "github"),
-                "maintenance_mode": configs.get("MAINTENANCE_MODE", "false").lower() == "true",
-                "maintenance_message": configs.get(
-                    "MAINTENANCE_MESSAGE", "Site is under maintenance"
-                ),
-                "default_post_cover": configs.get("DEFAULT_POST_COVER"),
-            }
-
-            await cache.set(cache_key, config_data, CACHE_TTL["site_config"])
-            return 1
+            await get_site_config(db)
+        return 1
 
     async def _warmup_navigations(self) -> int:
         """预热导航列表"""
@@ -286,17 +260,11 @@ class CacheWarmer:
                 result = await db.execute(query)
                 navigations = result.scalars().all()
 
+                # 载荷必须走 NavigationResponse：读侧命中缓存是原样透传（不再过模型），
+                # 此前手写 dict 漏了 icon/parent_id/updated_at，冷启动预热后
+                # 菜单图标与父子关系凭空消失，要等任意一次失效才恢复。
                 nav_data = [
-                    {
-                        "id": n.id,
-                        "title": n.title,
-                        "url": n.url,
-                        "location": n.location,
-                        "order": n.order,
-                        "is_active": n.is_active,
-                        "target_blank": n.target_blank,
-                        "created_at": n.created_at.isoformat() if n.created_at else None,
-                    }
+                    NavigationResponse.model_validate(n).model_dump(mode="json")
                     for n in navigations
                 ]
 
@@ -397,19 +365,10 @@ class CacheWarmer:
                 result = await db.execute(query)
                 links = result.scalars().all()
 
+                # 同上：读侧透传缓存，载荷形态必须与 FriendLinkResponse 一致
+                # （此前手写 dict 漏了必填的 status，友链审核状态在预热载荷里丢失）
                 links_data = [
-                    {
-                        "id": f.id,
-                        "name": f.name,
-                        "url": f.url,
-                        "description": f.description,
-                        "logo": f.logo,
-                        "order": f.order,
-                        "is_active": f.is_active,
-                        "target_blank": f.target_blank,
-                        "created_at": f.created_at.isoformat() if f.created_at else None,
-                    }
-                    for f in links
+                    FriendLinkResponse.model_validate(f).model_dump(mode="json") for f in links
                 ]
 
                 await cache.set(cache_key, links_data, CACHE_TTL["friend_links"])

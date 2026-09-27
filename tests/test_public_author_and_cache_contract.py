@@ -366,3 +366,111 @@ class TestCacheWarmerMatchesReader:
         await cache.clear()
         cold = _payload((await client.get("/api/blog/tags")).json())
         assert cold == warmed
+
+    @pytest.mark.asyncio
+    async def test_warmed_site_config_carries_group_overlay(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """预热写入的 site_config 必须是 /api/config 权威口径（扁平键 → 分组 JSON 覆写）。
+
+        历史缺陷：预热复刻了一套只认大写扁平键的手工拼装——既没有分组覆写也读不到
+        小写键行，冷启动即把默认站点名毒进缓存，改站点名要等 TTL 到期才生效，
+        RSS/前台/OG 与后台设置口径分裂。"""
+        import json as _json
+
+        from backend.core.cache_warmer import cache_warmer
+        from backend.models.core import SiteConfig
+
+        db_session.add(
+            SiteConfig(
+                key="basic",
+                value=_json.dumps(
+                    {"site_name": "预热权威名", "site_url": "https://warm.example.com"}
+                ),
+            )
+        )
+        await db_session.commit()
+        await cache.clear()
+
+        assert await cache_warmer._warmup_site_config() == 1
+        warmed = await cache.get(make_cache_key("site_config"))
+        assert isinstance(warmed, dict), "预热没有写到读侧看的 site_config 键"
+        assert warmed["site_name"] == "预热权威名"
+        assert warmed["site_url"] == "https://warm.example.com"
+
+        # 读侧命中预热结果：/api/config 返回的必须就是这份权威载荷
+        cfg = (await client.get("/api/config")).json()
+        assert cfg["site_name"] == "预热权威名"
+        assert cfg["site_url"] == "https://warm.example.com"
+
+    @pytest.mark.asyncio
+    async def test_warmed_navigations_match_reader_shape(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """预热导航载荷必须与 GET /blog/navigations 冷读逐字段一致。
+
+        读侧命中缓存是原样透传（不再过 NavigationResponse）——预热侧手写 dict
+        少一个键（如 icon/parent_id），冷启动后菜单图标就凭空消失。"""
+        from backend.core.cache_warmer import cache_warmer
+        from backend.models.core import Navigation
+
+        db_session.add(
+            Navigation(
+                title={"zh": "首页", "en": "Home", "ja": "ホーム", "zh_Hant": "首頁"},
+                url="/",
+                icon="house",
+                location="header",
+                order=1,
+                is_active=True,
+            )
+        )
+        await db_session.commit()
+        await cache.clear()
+
+        assert await cache_warmer._warmup_navigations() == 4
+        warmed = await cache.get(make_cache_key("navigations", "header"))
+        assert warmed and warmed[0]["icon"] == "house", "预热载荷丢字段"
+
+        hot = _payload(
+            (await client.get("/api/navigations", params={"location": "header"})).json()
+        )
+        assert hot == warmed
+
+        await cache.clear()
+        cold = _payload(
+            (await client.get("/api/navigations", params={"location": "header"})).json()
+        )
+        assert cold == warmed
+
+    @pytest.mark.asyncio
+    async def test_warmed_friend_links_match_reader_shape(
+        self, client: AsyncClient, db_session: AsyncSession
+    ):
+        """预热友链载荷必须与 GET /friend-links 冷读逐字段一致（含必填 status）。"""
+        from backend.core.cache_warmer import cache_warmer
+        from backend.models.core import FriendLink
+
+        db_session.add(
+            FriendLink(
+                name={"zh": "友站", "en": "Friend", "ja": "フレンド", "zh_Hant": "友站"},
+                url="https://friend.example.com",
+                description=None,
+                logo="",
+                order=1,
+                status="approved",
+                is_active=True,
+            )
+        )
+        await db_session.commit()
+        await cache.clear()
+
+        assert await cache_warmer._warmup_friend_links() == 2
+        warmed = await cache.get(make_cache_key("friend_links", "active"))
+        assert warmed and "status" in warmed[0], "预热载荷丢字段"
+
+        hot = _payload((await client.get("/api/friend-links")).json())
+        assert hot == warmed
+
+        await cache.clear()
+        cold = _payload((await client.get("/api/friend-links")).json())
+        assert cold == warmed
