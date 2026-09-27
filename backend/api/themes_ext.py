@@ -356,12 +356,14 @@ async def get_theme_mods(
     summary="全量替换主题 Mods",
     description=(
         "需 CurrentStaff。PUT 全量替换语义：先重置为 mods_schema 声明的默认值，再叠加 payload.mods。"
-        "schema 未声明的键被静默丢弃（仅记 warning，不整单拒绝）；payload 非 JSON 对象返回 422"
-        "（error_code: THEME_MODS_INVALID）。写入 SiteConfig KV theme_mods:<slug>，"
-        "成功后清空前台页面缓存。"
+        "schema 未声明的键被静默丢弃（仅记 warning，不整单拒绝）；payload.mods 非 JSON 对象"
+        "在请求 schema 层拒绝，返回 422（error_code: VALIDATION_ERROR）；"
+        "合并值违反 schema 约束（如越界数字）返回 400（error_code: MODS_SCHEMA_VIOLATION）。"
+        "写入 SiteConfig KV theme_mods:<slug>，成功后清空前台页面缓存。"
     ),
     responses={
         200: {"model": ThemeModsSavedResponse},
+        400: {"description": "mods 违反 mods_schema 约束（error_code: MODS_SCHEMA_VIOLATION）"},
         404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
     },
 )
@@ -393,11 +395,13 @@ async def replace_theme_mods(
     summary="增量更新主题 Mods",
     description=(
         "需 CurrentStaff。在现有值上仅覆盖 payload.mods 出现的键，其余保持不变；"
-        "schema 未声明的键同样被静默丢弃，非 JSON 对象返回 422（error_code: THEME_MODS_INVALID）。"
-        "成功后清空前台页面缓存。"
+        "schema 未声明的键同样被静默丢弃；payload.mods 非 JSON 对象在请求 schema 层拒绝，"
+        "返回 422（error_code: VALIDATION_ERROR）；合并值违反 schema 约束返回 400"
+        "（error_code: MODS_SCHEMA_VIOLATION）。成功后清空前台页面缓存。"
     ),
     responses={
         200: {"model": ThemeModsSavedResponse},
+        400: {"description": "mods 违反 mods_schema 约束（error_code: MODS_SCHEMA_VIOLATION）"},
         404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
     },
 )
