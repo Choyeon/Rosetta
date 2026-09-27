@@ -2,6 +2,7 @@
   操作审计日志页：按操作类型/用户 ID/日期范围做服务端筛选 + 分页列表 + 行展开 details JSON。
   契约：筛选条件须点「应用筛选」才生效且必须把页码重置回 1（否则停留越界空页）；结果缩小时钳制回最后一页并只重试一次防循环；
   日期区间保证"结束不早于开始"，自动弹出结束选择器需等 DOM 同步（nextTick + showPicker）。
+  导出（CSV/JSON）复用同一组筛选条件打 /admin/logs/export，后端上限 1000 条，提示语须如实写明"按当前筛选"。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -9,7 +10,28 @@
       title="操作审计日志"
       description="管理员与登录用户的操作留痕"
       :icon="FileSearch"
-    />
+    >
+      <template #actions>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-xl"
+          :disabled="exporting !== ''"
+          @click="handleExport('csv')"
+        >
+          {{ exporting === 'csv' ? '导出中…' : '导出 CSV' }}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-xl"
+          :disabled="exporting !== ''"
+          @click="handleExport('json')"
+        >
+          {{ exporting === 'json' ? '导出中…' : '导出 JSON' }}
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <AdminCard>
       <div class="pt-6 pb-4">
@@ -319,7 +341,9 @@ import { ref, reactive, onMounted, watch, computed, nextTick } from 'vue'
 import {
   fetchAdminAuditLogs,
   formatAdminDateTime,
-  type AdminAuditLog
+  type AdminAuditLog,
+  exportAdminAuditLogs,
+  downloadBlob
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
@@ -344,7 +368,7 @@ import UserAvatar from '~~/components/UserAvatar.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
-const _toast = useToast()
+const toast = useToast()
 
 const actionOptions = [
   { label: '登录 login', value: 'login' },
@@ -384,6 +408,8 @@ const page = ref(1)
 const pageSize = ref(15)
 const total = ref(0)
 const expandedId = ref<number | null>(null)
+/** 导出中标记：兼作按钮禁用与文案切换，避免连点起两个下载。 */
+const exporting = ref<'' | 'csv' | 'json'>('')
 
 const toDateInputRef = ref<HTMLInputElement | null>(null)
 
@@ -448,12 +474,34 @@ function onToDateChange(_e: Event) {
   if (filters.toDate && filters.fromDate && filters.toDate < filters.fromDate) {
     // 二次拦截：如果用户绕过 min 限制（例如通过键盘输入），自动拉平并 toast
     filters.toDate = filters.fromDate
-    _toast.warning('结束日期不能早于开始日期，已自动调整。')
+    toast.warning('结束日期不能早于开始日期，已自动调整。')
   }
 }
 
 function toggleExpand(id: number) {
   expandedId.value = expandedId.value === id ? null : id
+}
+
+/**
+ * 导出走 /admin/logs/export：把**当前屏幕上的筛选条件**原样带上，
+ * 导出的就是用户看到的那一份（后端另有 1000 条上限，故提示语如实写明）。
+ */
+async function handleExport(format: 'csv' | 'json') {
+  exporting.value = format
+  try {
+    const blob = await exportAdminAuditLogs(format, {
+      action: filters.action,
+      userId: filters.userId,
+      fromDate: filters.fromDate,
+      toDate: filters.toDate
+    })
+    downloadBlob(blob, `operation-logs-${todayStr.value}.${format}`)
+    toast.success(`已导出 ${format.toUpperCase()}（按当前筛选，最多 1000 条）`)
+  } catch {
+    // apiFetch 已把失败原因 toast 出来，这里只需解除按钮禁用
+  } finally {
+    exporting.value = ''
+  }
 }
 
 function resetFilters() {

@@ -1822,6 +1822,42 @@ export function emptyAdminTrash(options: { silentToast?: boolean } = {}) {
   return apiFetch<{ success: boolean, message: string }>('/admin/trash', { method: 'DELETE', ...options })
 }
 
+/**
+ * 导出操作日志（GET /admin/logs/export）。后端按与列表接口相同的过滤条件出文件
+ * （上限 1000 条，CSV 单元格已做公式注入防护），所以调用时必须把页面当前筛选一并带上，
+ * 否则「筛完再导出」会得到与屏幕上不一致的全量文件。
+ * responseType: 'blob' 经 ApiFetchOptions 的索引签名透传给 $fetch，
+ * 从而复用同一套 Authorization / 401 刷新 / 错误 toast 链路，页面里不裸写 fetch。
+ */
+export function exportAdminAuditLogs(
+  format: 'csv' | 'json',
+  filters: { action?: string, userId?: number, fromDate?: string, toDate?: string } = {}
+) {
+  return apiFetch<Blob>('/admin/logs/export', {
+    query: {
+      format,
+      ...(filters.action ? { action: filters.action } : {}),
+      ...(filters.userId ? { user_id: filters.userId } : {}),
+      ...(filters.fromDate ? { from: filters.fromDate } : {}),
+      ...(filters.toDate ? { to: filters.toDate } : {})
+    },
+    responseType: 'blob',
+    timeout: 60000
+  })
+}
+
+/** 落成浏览器下载：object URL 用完立即 revoke，否则整页生命周期内都不会释放。 */
+export function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
 // ==================== 文章版本历史 ====================
 
 export interface AdminRevisionItem {
