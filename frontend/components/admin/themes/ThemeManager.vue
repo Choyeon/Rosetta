@@ -1355,7 +1355,7 @@ onMounted(() => {
             {{ t('admin.themes.install', '安装新主题') }}
           </DialogTitle>
           <DialogDescription>
-            {{ t('admin.themes.installDesc', '从本地目录、远程 URL 或上传 zip 包安装主题。') }}
+            {{ t('admin.themes.installDesc', '从本地目录、远程 URL、上传 zip 包或市场索引安装主题。') }}
           </DialogDescription>
         </DialogHeader>
 

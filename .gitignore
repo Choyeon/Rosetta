@@ -121,3 +121,6 @@ temp/
 
 # --- runtime PID dir (dev.ps1/stop.ps1) ---
 .rosetta_run/
+
+# 市场索引本地缓存（运行时自举，见 backend/core/market.py）
+backend/data/market_cache/
