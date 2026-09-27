@@ -2,7 +2,7 @@
   首页（SSR）骨架三态：isMinimalTheme（MINIMAL_THEME_SLUGS）→ 纯竖排列表且不请求 Bing 壁纸；
   isEditorialTheme 在"无激活主题（slug=null）"时也成立，只有既非极简又非 editorial 的 slug 才走文字 Hero 杂志风。
   时序硬约束：先 await site.ensureLoaded() 再 await ft.ensureLoaded()（首帧两端同判），
-  随后 4 个 useAPI 先并行发出、再统一 Promise.all await（省 3 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
+  随后 5 个 useAPI 先并行发出、再统一 Promise.all await（省 4 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
   防御性去重：posts 按 slug/id、categories/tags 按本地化名称，兜的是后端/mock 重复行；formatStat 固定 en-US 千分位保 SSR 一致。
 -->
 
@@ -839,6 +839,33 @@
         </div>
       </section>
 
+      <!-- ===== 推荐阅读（/blog/posts/recommended；与上方列表去重后不足 2 条则整段隐藏） ===== -->
+      <section
+        v-if="recommendedPosts.length >= 2"
+        :class="[
+          'container',
+          sectionTightY ? 'pb-8 md:pb-10' : 'pb-14 md:pb-20',
+          isEditorialTheme ? editorialClassPx : ''
+        ]"
+        aria-labelledby="home-recommended-title"
+        data-editorial-section="recommended"
+        :style="containerMaxStyle"
+      >
+        <h2
+          id="home-recommended-title"
+          class="font-display text-2xl md:text-3xl font-bold tracking-tight mb-7"
+        >
+          {{ t('home.recommendedTitle') }}
+        </h2>
+        <div class="grid gap-6 md:grid-cols-2">
+          <PostCard
+            v-for="post in recommendedPosts"
+            :key="post.slug || post.id"
+            :post="post"
+          />
+        </div>
+      </section>
+
       <!-- ===== Newsletter / Guestbook CTA ===== -->
       <section
         :class="[
@@ -1087,8 +1114,8 @@ onMounted(() => {
   if (!isMinimalTheme.value) fetchWallpapers()
 })
 
-// 并行发起 4 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成
-// 比逐个 await 减少 3 个 RTT 的串行等待
+// 并行发起 5 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成
+// 比逐个 await 减少 4 个 RTT 的串行等待
 const postsPromise = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: { lang: locale.value, page: 1, page_size: 20 },
   key: computed(() => 'home:posts:' + locale.value)
@@ -1104,13 +1131,20 @@ const tagsPromise = useAPI<BlogTag[]>('/blog/tags', {
 const siteStatsPromise = useAPI<SiteStats>('/blog/site-stats', {
   key: 'home:site-stats'
 })
+// 后端推荐算法（浏览/点赞/评论/时间衰减/标签匹配）就绪但长期无消费方；
+// 首页只取一屏容量，页面缓存键必须带 locale，否则切语言不刷新。
+const recommendedPromise = useAPI<PaginatedResponse<Post>>('/blog/posts/recommended', {
+  query: { lang: locale.value, page: 1, page_size: 8 },
+  key: computed(() => 'home:recommended:' + locale.value)
+})
 
 const [
   { data: postsData, pending: postsPending, error: postsError, refresh: refreshPosts },
   { data: categoriesData, pending: categoriesPending, error: categoriesError, refresh: refreshCategories },
   { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags },
-  { data: siteStats, pending: siteStatsPending, error: siteStatsError }
-] = await Promise.all([postsPromise, categoriesPromise, tagsPromise, siteStatsPromise])
+  { data: siteStats, pending: siteStatsPending, error: siteStatsError },
+  { data: recommendedData, refresh: refreshRecommended }
+] = await Promise.all([postsPromise, categoriesPromise, tagsPromise, siteStatsPromise, recommendedPromise])
 
 // 版本信息（rosetta 来自后端 /health，其余来自 package.json / vue 运行时）
 const { buildInfo } = await siteVersionsPromise
@@ -1133,7 +1167,8 @@ watch(locale, async () => {
   await Promise.all([
     refreshPosts(),
     refreshCategories(),
-    refreshTags()
+    refreshTags(),
+    refreshRecommended()
   ])
 })
 
@@ -1153,6 +1188,21 @@ const posts = computed<Post[]>(() => {
 })
 const pinnedPosts = computed(() => posts.value.filter(post => post.is_pinned))
 const latestPosts = computed(() => posts.value.filter(post => !post.is_pinned))
+// 推荐位与「最新文章」同页出现，重复条目会让首页像凑数：
+// 先按本页已展示的 slug 排除，剩下的不足 2 条时整段不渲染（宁缺不空转）。
+const recommendedPosts = computed<Post[]>(() => {
+  const seen = new Set<string>()
+  for (const p of posts.value) seen.add(p.slug ? `s:${p.slug}` : `i:${p.id}`)
+  const out: Post[] = []
+  for (const p of recommendedData.value?.items ?? []) {
+    const key = p.slug ? `s:${p.slug}` : `i:${p.id}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(p)
+    if (out.length === 4) break
+  }
+  return out
+})
 // 按 slug/本地化名称去重：后端历史或 mock 数据可能返回同名重复项，
 // 侧边栏分类徽章与标签云直接全量渲染会出现重复入口。
 const categories = computed<Category[]>(() => {

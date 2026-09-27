@@ -1098,6 +1098,7 @@
     "allCategories": "[繁]:All categories"
   },
   "home": {
+    "recommendedTitle": "推荐閱讀",
     "release": "穩定版",
     "multiLang": "多語言支援",
     "tagline": "穿越語言的邊界",

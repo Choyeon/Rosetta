@@ -1098,6 +1098,7 @@
     "allCategories": "[JA]:All categories"
   },
   "home": {
+    "recommendedTitle": "おすすめの記事",
     "release": "安定版",
     "multiLang": "多言語対応",
     "tagline": "言語の境界を越えて",

@@ -1199,6 +1199,7 @@
     "rssHint": "通过 RSS 或站点地图，可以及时获取最新文章更新，或被搜索引擎正常收录。"
   },
   "home": {
+    "recommendedTitle": "推荐阅读",
     "release": "发布",
     "multiLang": "多语言 · 4 种语言",
     "tagline": "穿越语言的边界",
