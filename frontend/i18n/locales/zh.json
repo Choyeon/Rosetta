@@ -100,6 +100,8 @@
     "chars": "字符",
     "toc": "目录",
     "share": "分享",
+    "authorBox": "作者信息",
+    "authorBoxLabel": "本文作者",
     "copyLink": "复制链接",
     "passwordProtected": "该文章需要密码访问",
     "enterPassword": "请输入访问密码",
@@ -699,7 +701,26 @@
       "noSettings": "该插件暂无可配置项",
       "confirmDeleteTitle": "确认删除",
       "confirmDeleteOne": "即将删除插件「{name}」，删除后无法撤销，插件数据与设置将一并移除。",
-      "confirmDeleteBulk": "即将删除选中的 {n} 个插件，删除后无法撤销，插件数据与设置将一并移除。"
+      "confirmDeleteBulk": "即将删除选中的 {n} 个插件，删除后无法撤销，插件数据与设置将一并移除。",
+      "installAction": "安装",
+      "installChecksum": "SHA256 校验和（可选）",
+      "installChecksumHint": "留空则跳过校验",
+      "installDesc": "从本地目录、远程 URL 或上传 zip 包安装插件。",
+      "installDone": "插件安装成功",
+      "installFailed": "安装失败",
+      "installFile": "zip 文件",
+      "installLocalHint": "插件需已存在于服务器 plugins/ 目录，可先点「扫描本地」。",
+      "installNeedFile": "请选择 zip 文件",
+      "installNeedSlug": "请填写插件 slug",
+      "installNeedUrl": "请填写插件包 URL",
+      "installSlug": "插件 slug",
+      "installSource": "安装来源",
+      "installUrl": "插件包 URL",
+      "installing": "安装中…",
+      "sourceLocal": "本地目录扫描",
+      "sourceRemote": "远程 URL 下载",
+      "sourceUpload": "上传 zip 包",
+      "upgraded": "升级完成"
     },
     "themes": {
       "title": "主题管理",
@@ -760,7 +781,26 @@
       "modsOff": "关闭",
       "noMods": "该主题暂无可自定义项",
       "confirmDeleteTitle": "确认删除",
-      "confirmDelete": "即将删除主题「{name}」，删除后无法撤销，主题自定义与配置将一并移除。"
+      "confirmDelete": "即将删除主题「{name}」，删除后无法撤销，主题自定义与配置将一并移除。",
+      "installAction": "安装",
+      "installChecksum": "SHA256 校验和（可选）",
+      "installChecksumHint": "留空则跳过校验",
+      "installDesc": "从本地目录、远程 URL 或上传 zip 包安装主题。",
+      "installDone": "主题安装成功",
+      "installFailed": "安装失败",
+      "installFile": "zip 文件",
+      "installLocalHint": "主题需已存在于服务器 themes/ 目录，可先点「扫描本地」。",
+      "installNeedFile": "请选择 zip 文件",
+      "installNeedSlug": "请填写主题 slug",
+      "installNeedUrl": "请填写主题包 URL",
+      "installSlug": "主题 slug",
+      "installSource": "安装来源",
+      "installUrl": "主题包 URL",
+      "installing": "安装中…",
+      "resetDefaults": "恢复默认",
+      "sourceLocal": "本地目录扫描",
+      "sourceRemote": "远程 URL 下载",
+      "sourceUpload": "上传 zip 包"
     },
     "media": {
       "previewTitle": "媒体预览",
@@ -789,7 +829,8 @@
       "uploadQueueClear": "清除已完成",
       "uploadQueueDone": "已完成",
       "uploadQueueFailed": "失败",
-      "uploadQueueDismiss": "移除"
+      "uploadQueueDismiss": "移除",
+      "uploadQueueCancel": "取消上传"
     }
   },
   "oobe": {
@@ -985,7 +1026,12 @@
     "installSnapshotRetryBtn": "重试连接",
     "installSnapshotCancelBtn": "取消等待",
     "installSnapshotTimeoutDetail": "安装进度 30 秒内未收到任何事件（SSE 通道可能因网络或代理中断）。系统正在以快照方式核对真实安装结果，不会丢失进度。",
-    "installSnapshotPollingDetail": "快照轮询中：每 5 秒查询一次后端安装状态，最多尝试 3 次。若后端实际已完成会自动进入完成页。"
+    "installSnapshotPollingDetail": "快照轮询中：每 5 秒查询一次后端安装状态，最多尝试 3 次。若后端实际已完成会自动进入完成页。",
+    "checkedNitems": "已完成 {n} 项环境检查",
+    "connApiUrlEmptyHint": "请填写后端 API 地址。例如：http://127.0.0.1:8000/api 或 /api",
+    "connApiUrlInvalidHint": "地址格式无效，仅支持绝对 http(s)://host:port[/api] 或同源相对路径 /api",
+    "connApiUrlWillNormalizeHint": "点击探测后将自动规范化为：{url}",
+    "runCheck": "重新检测"
   },
   "archive": {
     "title": "文章归档",

@@ -1,15 +1,22 @@
 /**
- * Nitro server plugin：把 ssr:false 精准反选路径的 `window.__NUXT_DATA__` payload 中
- * `serverRendered: 1` 强制写 0，避免 Nuxt 4 客户端在"空壳 HTML + serverRendered:1"
- * 的组合下走 hydrate 分支，触发 runtime-core setRef 的 NPE → NUXT_E1005 → 500 壳。
+ * Nitro server plugin：确保 ssr:false 精准反选路径的 `__NUXT_DATA__` payload 中
+ * `serverRendered` 反序列化后是布尔 false，避免 Nuxt 4 客户端在"空壳 HTML +
+ * serverRendered 真值"的组合下走 hydrate 分支，触发 runtime-core setRef 的 NPE
+ * → NUXT_E1005 → 500 壳。
+ *
+ * ⚠️ 2026-09-27 修复：payload 是 devalue「扁平数组」格式——对象属性里的整数
+ * 不是字面量，而是**数组下标引用**（`serverRendered:7` 表示真值在 d[7]）。
+ * 旧实现用正则把 `:1` 改成字面 `:0`，本意"写 false"，实际把引用指回了下标 0
+ * 的根对象本身 → 客户端 revive 出循环真值对象 → auth store 误判仍在 hydrate、
+ * 等 app:mounted，而 admin.global 中间件 await initialize() 阻塞挂载 →
+ * **未登录冷访问 /admin 永久白屏死锁**（iframe 对照实验：/login 5s 挂载，
+ * /admin 50s 空壳）。正确做法：解析 payload 数组，让 serverRendered 指向
+ * 数组里真实存在的布尔 false 元素（没有就 push 一个，不影响既有下标）。
  *
  * 实现：
- *  挂 Nitro 的 'request'/'response' 流，在响应 body 真正被写回 client 前拦截；
- *  若 path ∈ /login|/register|/oobe|/search|/admin|前缀 + Content-Type 包含 text/html，
- *  就把 body 串正则替换首处的 "serverRendered":1 → 0。
- *
- * 之所以用流式拦截：Nuxt 4.5 + Nitro preset node-server 的最终响应 body 是字符串，
- * 无论有没有 render:html 钩子都能命中；是"所有路径的最终兜底"。
+ *  挂 Nitro 的 'render:html' / 'beforeResponse' 两道钩子，在响应写回 client 前
+ *  拦截 body；若 path ∈ /login|/register|/search|/admin 前缀 + text/html，
+ *  就对 <script id="__NUXT_DATA__"> 段做上述语义修正。
  */
 import type { NitroApp } from 'nitropack'
 import type { H3Event } from 'h3'
@@ -32,35 +39,56 @@ function isSpa(p: string): boolean {
   return false
 }
 
-/** 只在 <script id="__NUXT_DATA__"> 段内把首个 "serverRendered": 1 → 0 */
+/**
+ * 语义修正：把 payload 根对象的 serverRendered 引用指向布尔 false。
+ * 输入是 <script id="__NUXT_DATA__"> 内的 JSON 文本；已为 false / 解析失败
+ * 一律原样返回（幂等，可安全地被 render:html 与 beforeResponse 双跑）。
+ */
+export function fixServerRendered(payloadJson: string): string {
+  let d: unknown
+  try {
+    d = JSON.parse(payloadJson)
+  } catch {
+    return payloadJson
+  }
+  if (!Array.isArray(d) || d.length === 0) return payloadJson
+  const root = d[0]
+  if (!root || typeof root !== 'object' || !('serverRendered' in root)) return payloadJson
+  const holder = root as { serverRendered: unknown }
+  const resolved = typeof holder.serverRendered === 'number'
+    ? d[holder.serverRendered]
+    : holder.serverRendered
+  if (resolved === false) return payloadJson
+  if (resolved !== true) return payloadJson
+  let falseIdx = d.findIndex(x => x === false)
+  if (falseIdx < 0) falseIdx = d.push(false) - 1
+  holder.serverRendered = falseIdx
+  return JSON.stringify(d)
+}
+
+/** 只在 <script id="__NUXT_DATA__"> 段内应用 fixServerRendered */
 function patchBody(bodyStr: string): string {
   if (!bodyStr.includes('id="__NUXT_DATA__"')) return bodyStr
   if (!bodyStr.includes('serverRendered')) return bodyStr
   return bodyStr.replace(
     /(<script[^>]*id="__NUXT_DATA__"[^>]*>)([\s\S]*?)(<\/script>)/gi,
-    (_m, open, content, close) => {
-      const c = String(content)
-      if (!c.includes('serverRendered')) return open + c + close
-      // 替换：首个数组元素里 "serverRendered":1/ "serverRendered": 1 / \"serverRendered\":1 三态
-      const c2 = c.replace(
-        /(\\"serverRendered\\"|"serverRendered")\s*:\s*1(?=\s*[,\]}])/,
-        (_mm, key) => `${key}:0`
-      )
-      return open + c2 + close
-    }
+    (_m, open, content, close) => open + fixServerRendered(String(content)) + close
   )
 }
 
 export default defineNitroPlugin((nitroApp: NitroApp) => {
   // —— Nuxt 在 Nitro 侧导出的渲染钩子：render:html 改 html 数组片段。
-  //    Nuxt 4 SSR / ssr:false 共用此钩子，是最干净的切入点。——
+  //    Nuxt 4 SSR / ssr:false 共用此钩子，是最干净的切入点。
+  //    ⚠️ 必须按 isSpa(event.path) 过滤：SSR 页（如 /oobe）的 serverRendered
+  //    合法为 true，若无差别改写会把真页面骗成 CSR 分支、丢掉 hydrate。——
   type NitroHookShape = {
-    hook: (name: string, handler: (segments: unknown) => void | Promise<void>) => unknown
+    hook: (name: string, handler: (segments: unknown, event?: { path?: string }) => void | Promise<void>) => unknown
   }
   const nitroHooks = nitroApp.hooks as NitroHookShape
   try {
-    nitroHooks.hook('render:html', (htmlSegments: unknown) => {
+    nitroHooks.hook('render:html', (htmlSegments: unknown, event?: { path?: string }) => {
       if (!Array.isArray(htmlSegments)) return
+      if (!isSpa(event?.path ?? '')) return
       for (let i = 0; i < htmlSegments.length; i++) {
         const seg = htmlSegments[i]
         if (typeof seg !== 'string') continue

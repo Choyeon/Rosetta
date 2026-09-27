@@ -93,6 +93,8 @@
     "relatedPosts": "関連記事",
     "toc": "目次",
     "share": "共有",
+    "authorBox": "著者情報",
+    "authorBoxLabel": "筆者について",
     "copyLink": "リンクをコピー",
     "passwordProtected": "この投稿はパスワードで保護されています",
     "enterPassword": "パスワードを入力",
@@ -699,7 +701,26 @@
       "noSettings": "このプラグインに設定項目はありません",
       "confirmDeleteTitle": "削除の確認",
       "confirmDeleteOne": "プラグイン「{name}」が完全に削除されます。データと設定も削除されます。",
-      "confirmDeleteBulk": "選択した {n} 個のプラグインが完全に削除されます。データと設定も削除されます。"
+      "confirmDeleteBulk": "選択した {n} 個のプラグインが完全に削除されます。データと設定も削除されます。",
+      "installAction": "インストール",
+      "installChecksum": "SHA256 チェックサム（任意）",
+      "installChecksumHint": "空欄の場合は検証をスキップ",
+      "installDesc": "ローカルディレクトリ、リモート URL、zip アップロードからプラグインをインストールします。",
+      "installDone": "プラグインのインストールに成功しました",
+      "installFailed": "インストールに失敗しました",
+      "installFile": "zip ファイル",
+      "installLocalHint": "プラグインはサーバーの plugins/ ディレクトリに存在する必要があります。先に「ローカルスキャン」を実行してください。",
+      "installNeedFile": "zip ファイルを選択してください",
+      "installNeedSlug": "プラグインの slug を入力してください",
+      "installNeedUrl": "プラグインパッケージの URL を入力してください",
+      "installSlug": "プラグイン slug",
+      "installSource": "インストール元",
+      "installUrl": "プラグインパッケージ URL",
+      "installing": "インストール中…",
+      "sourceLocal": "ローカルディレクトリスキャン",
+      "sourceRemote": "リモート URL ダウンロード",
+      "sourceUpload": "zip パッケージをアップロード",
+      "upgraded": "アップグレード完了"
     },
     "themes": {
       "title": "テーマ管理",
@@ -760,7 +781,26 @@
       "modsOff": "無効",
       "noMods": "このテーマにカスタマイズ項目はありません",
       "confirmDeleteTitle": "削除の確認",
-      "confirmDelete": "テーマ「{name}」が完全に削除されます。カスタマイズと設定も削除されます。"
+      "confirmDelete": "テーマ「{name}」が完全に削除されます。カスタマイズと設定も削除されます。",
+      "installAction": "インストール",
+      "installChecksum": "SHA256 チェックサム（任意）",
+      "installChecksumHint": "空欄の場合は検証をスキップ",
+      "installDesc": "ローカルディレクトリ、リモート URL、zip アップロードからテーマをインストールします。",
+      "installDone": "テーマのインストールに成功しました",
+      "installFailed": "インストールに失敗しました",
+      "installFile": "zip ファイル",
+      "installLocalHint": "テーマはサーバーの themes/ ディレクトリに存在する必要があります。先に「ローカルスキャン」を実行してください。",
+      "installNeedFile": "zip ファイルを選択してください",
+      "installNeedSlug": "テーマの slug を入力してください",
+      "installNeedUrl": "テーマパッケージの URL を入力してください",
+      "installSlug": "テーマ slug",
+      "installSource": "インストール元",
+      "installUrl": "テーマパッケージ URL",
+      "installing": "インストール中…",
+      "resetDefaults": "デフォルトに復元",
+      "sourceLocal": "ローカルディレクトリスキャン",
+      "sourceRemote": "リモート URL ダウンロード",
+      "sourceUpload": "zip パッケージをアップロード"
     },
     "media": {
       "previewTitle": "メディアプレビュー",
@@ -789,7 +829,8 @@
       "uploadQueueClear": "完了分を消去",
       "uploadQueueDone": "完了",
       "uploadQueueFailed": "失敗",
-      "uploadQueueDismiss": "削除"
+      "uploadQueueDismiss": "削除",
+      "uploadQueueCancel": "アップロードをキャンセル"
     }
   },
   "oobe": {
@@ -985,7 +1026,12 @@
     "installSnapshotRetryBtn": "再接続",
     "installSnapshotCancelBtn": "待機をキャンセル",
     "installSnapshotTimeoutDetail": "30 秒間進捗イベントが受信されていません（ネットワークまたはプロキシにより SSE 経路が切断された可能性）。現在スナップショット方式で真のインストール結果を照合中です。進捗は失われません。",
-    "installSnapshotPollingDetail": "スナップショットポーリング：5 秒ごとにバックエンドのインストール状態を確認し、最大 3 回試行します。バックエンド側で実際に完了していれば自動的に完了画面へ進みます。"
+    "installSnapshotPollingDetail": "スナップショットポーリング：5 秒ごとにバックエンドのインストール状態を確認し、最大 3 回試行します。バックエンド側で実際に完了していれば自動的に完了画面へ進みます。",
+    "checkedNitems": "{n} 項目の環境チェックが完了しました",
+    "connApiUrlEmptyHint": "バックエンド API のアドレスを入力してください。例：http://127.0.0.1:8000/api または /api",
+    "connApiUrlInvalidHint": "URL 形式が不正です。絶対 URL http(s)://host:port[/api] または同一オリジン相対 /api のみ対応",
+    "connApiUrlWillNormalizeHint": "接続テスト後、自動的に正規化されます：{url}",
+    "runCheck": "再検出"
   },
   "archive": {
     "title": "アーカイブ",

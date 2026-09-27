@@ -170,7 +170,7 @@
             >
               <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
               <p class="text-muted-foreground text-sm">
-                {{ t('noData') }}
+                {{ t('common.noData') }}
               </p>
             </div>
           </div>

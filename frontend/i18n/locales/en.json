@@ -101,6 +101,8 @@
     "toc": "Table of contents",
     "noExcerpt": "No excerpt available",
     "share": "Share",
+    "authorBox": "Author info",
+    "authorBoxLabel": "About the author",
     "copyLink": "Copy link",
     "passwordProtected": "This post is password-protected",
     "enterPassword": "Enter the password to view this post",
@@ -699,7 +701,26 @@
       "noSettings": "This plugin has no configurable settings",
       "confirmDeleteTitle": "Confirm delete",
       "confirmDeleteOne": "Plugin \"{name}\" will be permanently deleted. Its data and settings will also be removed.",
-      "confirmDeleteBulk": "The selected {n} plugins will be permanently deleted. Their data and settings will also be removed."
+      "confirmDeleteBulk": "The selected {n} plugins will be permanently deleted. Their data and settings will also be removed.",
+      "installAction": "Install",
+      "installChecksum": "SHA-256 checksum (optional)",
+      "installChecksumHint": "Leave blank to skip verification",
+      "installDesc": "Install a plugin from a local directory, a remote URL, or an uploaded zip package.",
+      "installDone": "Plugin installed successfully",
+      "installFailed": "Installation failed",
+      "installFile": "zip file",
+      "installLocalHint": "The plugin must already exist in the server plugins/ directory; try \"Scan local\" first.",
+      "installNeedFile": "Please select a zip file",
+      "installNeedSlug": "Please enter the plugin slug",
+      "installNeedUrl": "Please enter the plugin package URL",
+      "installSlug": "Plugin slug",
+      "installSource": "Install source",
+      "installUrl": "Plugin package URL",
+      "installing": "Installing…",
+      "sourceLocal": "Local directory scan",
+      "sourceRemote": "Remote URL download",
+      "sourceUpload": "Upload zip package",
+      "upgraded": "Upgrade complete"
     },
     "themes": {
       "title": "Themes",
@@ -760,7 +781,26 @@
       "modsOff": "Off",
       "noMods": "This theme has no customization fields",
       "confirmDeleteTitle": "Confirm delete",
-      "confirmDelete": "Theme \"{name}\" will be permanently deleted. Its customization and settings will also be removed."
+      "confirmDelete": "Theme \"{name}\" will be permanently deleted. Its customization and settings will also be removed.",
+      "installAction": "Install",
+      "installChecksum": "SHA-256 checksum (optional)",
+      "installChecksumHint": "Leave blank to skip verification",
+      "installDesc": "Install a theme from a local directory, a remote URL, or an uploaded zip package.",
+      "installDone": "Theme installed successfully",
+      "installFailed": "Installation failed",
+      "installFile": "zip file",
+      "installLocalHint": "The theme must already exist in the server themes/ directory; try \"Scan local\" first.",
+      "installNeedFile": "Please select a zip file",
+      "installNeedSlug": "Please enter the theme slug",
+      "installNeedUrl": "Please enter the theme package URL",
+      "installSlug": "Theme slug",
+      "installSource": "Install source",
+      "installUrl": "Theme package URL",
+      "installing": "Installing…",
+      "resetDefaults": "Reset to defaults",
+      "sourceLocal": "Local directory scan",
+      "sourceRemote": "Remote URL download",
+      "sourceUpload": "Upload zip package"
     },
     "media": {
       "previewTitle": "Media Preview",
@@ -789,7 +829,8 @@
       "uploadQueueClear": "Clear completed",
       "uploadQueueDone": "Done",
       "uploadQueueFailed": "Failed",
-      "uploadQueueDismiss": "Remove"
+      "uploadQueueDismiss": "Remove",
+      "uploadQueueCancel": "Cancel upload"
     }
   },
   "oobe": {
@@ -985,7 +1026,12 @@
     "installSnapshotRetryBtn": "Reconnect",
     "installSnapshotCancelBtn": "Cancel wait",
     "installSnapshotTimeoutDetail": "No progress events were received for 30 seconds (the SSE channel may have been dropped by network or proxy). The system is now reconciling the true installation state via snapshot — your progress is not lost.",
-    "installSnapshotPollingDetail": "Snapshot polling: querying backend install status every 5 seconds, up to 3 times. If the backend actually completed, we will automatically advance to the success screen."
+    "installSnapshotPollingDetail": "Snapshot polling: querying backend install status every 5 seconds, up to 3 times. If the backend actually completed, we will automatically advance to the success screen.",
+    "checkedNitems": "Completed {n} environment checks",
+    "connApiUrlEmptyHint": "Please enter the backend API URL, e.g. http://127.0.0.1:8000/api or /api",
+    "connApiUrlInvalidHint": "Invalid URL format. Only absolute http(s)://host:port[/api] or same-origin relative /api is supported",
+    "connApiUrlWillNormalizeHint": "After probing, this will be normalized to: {url}",
+    "runCheck": "Re-run checks"
   },
   "archive": {
     "title": "Archive",

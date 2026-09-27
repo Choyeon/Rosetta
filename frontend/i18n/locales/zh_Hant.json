@@ -93,6 +93,8 @@
     "relatedPosts": "相關文章",
     "toc": "目錄",
     "share": "分享",
+    "authorBox": "作者資訊",
+    "authorBoxLabel": "本文作者",
     "copyLink": "複製連結",
     "passwordProtected": "該文章需要密碼存取",
     "enterPassword": "請輸入存取密碼",
@@ -699,7 +701,26 @@
       "noSettings": "該外掛暫無可配置項",
       "confirmDeleteTitle": "確認刪除",
       "confirmDeleteOne": "即將刪除外掛「{name}」，刪除後無法復原，外掛資料與設定將一併移除。",
-      "confirmDeleteBulk": "即將刪除選中的 {n} 個外掛，刪除後無法復原，外掛資料與設定將一併移除。"
+      "confirmDeleteBulk": "即將刪除選中的 {n} 個外掛，刪除後無法復原，外掛資料與設定將一併移除。",
+      "installAction": "安裝",
+      "installChecksum": "SHA256 校驗和（選填）",
+      "installChecksumHint": "留空則跳過校驗",
+      "installDesc": "從本地目錄、遠端 URL 或上傳 zip 套件安裝外掛。",
+      "installDone": "外掛安裝成功",
+      "installFailed": "安裝失敗",
+      "installFile": "zip 檔案",
+      "installLocalHint": "外掛需已存在於伺服器 plugins/ 目錄，可先點「掃描本地」。",
+      "installNeedFile": "請選擇 zip 檔案",
+      "installNeedSlug": "請填寫外掛 slug",
+      "installNeedUrl": "請填寫外掛套件 URL",
+      "installSlug": "外掛 slug",
+      "installSource": "安裝來源",
+      "installUrl": "外掛套件 URL",
+      "installing": "安裝中…",
+      "sourceLocal": "本地目錄掃描",
+      "sourceRemote": "遠端 URL 下載",
+      "sourceUpload": "上傳 zip 套件",
+      "upgraded": "升級完成"
     },
     "themes": {
       "title": "佈景主題管理",
@@ -760,7 +781,26 @@
       "modsOff": "關閉",
       "noMods": "該主題暫無可自訂項",
       "confirmDeleteTitle": "確認刪除",
-      "confirmDelete": "主題「{name}」將被永久刪除，主題自訂與設定將一併移除。"
+      "confirmDelete": "主題「{name}」將被永久刪除，主題自訂與設定將一併移除。",
+      "installAction": "安裝",
+      "installChecksum": "SHA256 校驗和（選填）",
+      "installChecksumHint": "留空則跳過校驗",
+      "installDesc": "從本地目錄、遠端 URL 或上傳 zip 套件安裝主題。",
+      "installDone": "主題安裝成功",
+      "installFailed": "安裝失敗",
+      "installFile": "zip 檔案",
+      "installLocalHint": "主題需已存在於伺服器 themes/ 目錄，可先點「掃描本地」。",
+      "installNeedFile": "請選擇 zip 檔案",
+      "installNeedSlug": "請填寫主題 slug",
+      "installNeedUrl": "請填寫主題套件 URL",
+      "installSlug": "主題 slug",
+      "installSource": "安裝來源",
+      "installUrl": "主題套件 URL",
+      "installing": "安裝中…",
+      "resetDefaults": "恢復預設",
+      "sourceLocal": "本地目錄掃描",
+      "sourceRemote": "遠端 URL 下載",
+      "sourceUpload": "上傳 zip 套件"
     },
     "media": {
       "previewTitle": "媒體預覽",
@@ -789,7 +829,8 @@
       "uploadQueueClear": "清除已完成",
       "uploadQueueDone": "已完成",
       "uploadQueueFailed": "失敗",
-      "uploadQueueDismiss": "移除"
+      "uploadQueueDismiss": "移除",
+      "uploadQueueCancel": "取消上傳"
     }
   },
   "oobe": {
@@ -985,7 +1026,12 @@
     "installSnapshotRetryBtn": "重試連線",
     "installSnapshotCancelBtn": "取消等待",
     "installSnapshotTimeoutDetail": "安裝進度 30 秒內未收到任何事件（SSE 通道可能因網路或代理中斷）。系統正在以快照方式核對真實安裝結果，不會遺失進度。",
-    "installSnapshotPollingDetail": "快照輪詢中：每 5 秒查詢一次後端安裝狀態，最多嘗試 3 次。若後端實際已完成會自動進入完成頁。"
+    "installSnapshotPollingDetail": "快照輪詢中：每 5 秒查詢一次後端安裝狀態，最多嘗試 3 次。若後端實際已完成會自動進入完成頁。",
+    "checkedNitems": "已完成 {n} 項環境檢查",
+    "connApiUrlEmptyHint": "請填寫後端 API 網址。例如：http://127.0.0.1:8000/api 或 /api",
+    "connApiUrlInvalidHint": "網址格式無效，僅支援絕對 http(s)://host:port[/api] 或同源相對路徑 /api",
+    "connApiUrlWillNormalizeHint": "點擊探測後將自動正規化為：{url}",
+    "runCheck": "重新檢測"
   },
   "archive": {
     "title": "文章彙整",
