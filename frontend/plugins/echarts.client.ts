@@ -7,7 +7,7 @@
  *  - 全局注册 <v-chart> 组件（自动导入无需 import）
  * @doc https://github.com/ecomfe/vue-echarts
  */
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, h } from 'vue'
 import type { App, Component } from 'vue'
 
 let registered = false
@@ -71,9 +71,16 @@ export default defineNuxtPlugin((nuxtApp) => {
   // 全局注册异步 <v-chart>：首次渲染时触发 loadEcharts() 下载 echarts chunk
   const AsyncVChart = defineAsyncComponent({
     loader: loadEcharts,
-    // 加载中占位：避免图表区域空白闪烁
+    // 加载中占位：避免图表区域空白闪烁。
+    // 必须用 render 函数而非 template 字符串——Nuxt 走 runtime-only Vue 构建，
+    // 字符串 template 不会被编译，会抛 "runtime compilation is not supported" 且渲染空壳。
     loadingComponent: {
-      template: '<div class="w-full h-full flex items-center justify-center text-muted-foreground text-sm">…</div>'
+      name: 'VChartLoading',
+      render: () => h(
+        'div',
+        { class: 'w-full h-full flex items-center justify-center text-muted-foreground text-sm' },
+        '…'
+      )
     },
     delay: 200,
     suspensible: false
