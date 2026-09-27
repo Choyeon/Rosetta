@@ -697,8 +697,8 @@ onBeforeUnmount(() => {
                 class="text-xs text-muted-foreground mb-1 block"
               >分类</Label>
               <Select
-                :model-value="form.category_id?.toString() ?? ''"
-                @update:model-value="(v: string | undefined) => form.category_id = v ? Number(v) : null"
+                :model-value="form.category_id?.toString() ?? '0'"
+                @update:model-value="(v: string | undefined) => form.category_id = Number(v) || null"
               >
                 <SelectTrigger
                   id="post-form-category"
@@ -707,7 +707,7 @@ onBeforeUnmount(() => {
                   <SelectValue :placeholder="categoriesLoading ? '加载中...' : '选择分类'" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">
+                  <SelectItem value="0">
                     无分类
                   </SelectItem>
                   <SelectItem
