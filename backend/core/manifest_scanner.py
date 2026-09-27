@@ -60,6 +60,44 @@ def scan_plugins_dir() -> list[tuple[str, RosettaPluginManifest]]:
     return results
 
 
+def _version_parts(version: str) -> tuple[int, ...] | None:
+    parts = version.strip().split(".")
+    try:
+        return tuple(int(part) for part in parts)
+    except ValueError:
+        return None
+
+
+def is_newer(disk_version: str | None, db_version: str | None) -> bool:
+    """磁盘清单版本相对 DB 记录是否「值得同步」。
+
+    升级的实现口径就是「回读磁盘清单」，所以 update_available 的唯一真值来源
+    是磁盘 manifest 的 version 与库里的不一致。点分数字版本按数值比较，只有
+    磁盘更新才算可升级（磁盘被回滚成旧版不该催用户点升级）；
+    带后缀的版本（1.0.0-beta）无法数值化，退化为「不同即可同步」。
+    """
+    if not disk_version or not db_version or disk_version == db_version:
+        return False
+    left = _version_parts(disk_version)
+    right = _version_parts(db_version)
+    if left is not None and right is not None:
+        width = max(len(left), len(right))
+        left += (0,) * (width - len(left))
+        right += (0,) * (width - len(right))
+        return left > right
+    return True
+
+
+def plugin_versions_on_disk() -> dict[str, str]:
+    """slug → 磁盘清单声明的插件版本（安装备份目录已被 scan 排除）。"""
+    return {manifest.slug: manifest.version for _, manifest in scan_plugins_dir()}
+
+
+def theme_versions_on_disk() -> dict[str, str]:
+    """slug → 磁盘清单声明的主题版本。"""
+    return {manifest.slug: manifest.version for _, manifest in scan_themes_dir()}
+
+
 def scan_themes_dir() -> list[tuple[str, RosettaThemeManifest]]:
     from backend.schemas.manifest import validate_theme_manifest
 

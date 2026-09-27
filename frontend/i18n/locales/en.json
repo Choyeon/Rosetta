@@ -659,6 +659,7 @@
       },
       "settings": "Settings",
       "upgrade": "Upgrade",
+      "upgradeNoUpdate": "No newer version on disk to sync",
       "delete": "Delete",
       "settingsTitle": "Plugin settings: {name}",
       "settingsDesc": "Enable or configure plugin features; changes take effect immediately.",

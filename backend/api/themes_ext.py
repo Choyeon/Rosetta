@@ -19,6 +19,7 @@ WordPress 风格主题管理接口：
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any, Literal
 
 from fastapi import APIRouter, Query, Request, status
@@ -26,6 +27,7 @@ from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.exceptions import AppException
+from backend.core.manifest_scanner import is_newer, theme_versions_on_disk
 from backend.core.tenant import DEFAULT_SITE_ID
 from backend.models.extensions import Theme
 from backend.schemas.extensions import (
@@ -97,6 +99,7 @@ async def _load_theme_row(db: DB, slug: str, *, site_id: int = DEFAULT_SITE_ID) 
         "需 CurrentStaff。按 status（inactive|active|error|installed）与 search（名称/slug 模糊）"
         "过滤分页（默认 50 条/页，上限 200）。每项附带该主题当前生效的 mods 值"
         "（schema 默认值与 DB 存储值合并结果），供后台主题管理卡片渲染。"
+        "update_available 与插件侧同口径：磁盘清单版本新于 DB 记录才为 true。"
     ),
     responses={200: {"model": ThemeListResponse}},
 )
@@ -111,9 +114,12 @@ async def list_admin_themes(
     tm = _get_theme_manager()
     themes, total = await tm.list(db, status=status, search=search, page=page, per_page=per_page)
     mods_map = await tm.get_mods_bulk(db, [t.slug for t in themes])
+    # 与插件侧同口径：「可升级」= 磁盘清单版本新于 DB 记录（升级实现就是回读磁盘清单）。
+    disk_versions = await asyncio.to_thread(theme_versions_on_disk)
     data = []
     for t in themes:
         out = ThemeOut.model_validate(t)
+        out.update_available = is_newer(disk_versions.get(t.slug), out.version)
         out.mods = mods_map.get(t.slug, {})
         data.append(out)
     total_pages = (total + per_page - 1) // per_page if per_page else 1
@@ -187,6 +193,7 @@ async def get_theme_detail(
             error_code=THEME_NOT_FOUND,
         )
     out = ThemeOut.model_validate(theme)
+    out.update_available = is_newer(theme_versions_on_disk().get(theme.slug), out.version)
     out.mods = await tm.get_mods(db, theme.slug)
     return {"success": True, "data": out}
 
@@ -246,7 +253,9 @@ async def activate_theme(
         "status": str(theme.status),
         "is_active": bool(theme.is_active),
         "manifest_version": str(getattr(theme, "manifest_version", "1.0") or "1.0"),
-        "update_available": bool(getattr(theme, "update_available", False)),
+        "update_available": is_newer(
+            theme_versions_on_disk().get(str(theme.slug)), str(theme.version)
+        ),
         "error_message": theme.error_message,
     }
     # DateTime columns — access only after refresh above (otherwise raises
@@ -430,6 +439,7 @@ async def _theme_row_to_out(db: DB, slug: str) -> ThemeOut:
     tm = _get_theme_manager()
     row = await _load_theme_row(db, slug)
     out = ThemeOut.model_validate(row)
+    out.update_available = is_newer(theme_versions_on_disk().get(out.slug), out.version)
     out.mods = await tm.get_mods(db, slug)
     return out
 

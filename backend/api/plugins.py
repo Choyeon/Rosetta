@@ -11,6 +11,7 @@ WordPress 风格插件管理接口：
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Literal
 
@@ -19,6 +20,7 @@ from fastapi import APIRouter, Query, Request, status
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache
 from backend.core.exceptions import AppException
+from backend.core.manifest_scanner import is_newer, plugin_versions_on_disk
 from backend.schemas.extensions import (
     PackageMessageResponse,
     PluginBulkIn,
@@ -81,6 +83,8 @@ async def _invalidate_rendered_content(*, reason: str) -> None:
         "需 CurrentStaff。按 status（inactive|active|error|installed）与 search（名称/slug 模糊）"
         "过滤分页（默认 20 条/页，上限 100）。每项附带当前 settings"
         "（单插件读取失败时置 null，不影响整体列表）。"
+        "update_available 由磁盘清单版本与 DB 版本比对得出 —— 与「升级=回读磁盘清单」同口径，"
+        "磁盘缺目录时为 false（升级本来做不了）。"
     ),
     responses={200: {"model": PluginListResponse}},
 )
@@ -94,9 +98,13 @@ async def list_admin_plugins(
 ):
     pm = _get_plugin_manager()
     plugins, total = await pm.list(db, status=status, search=search, page=page, per_page=per_page)
+    # 「可升级」以磁盘清单版本为准（列表是唯一消费点：Badge + 升级按钮的 disabled）。
+    # 目录扫描是阻塞 IO，放线程里跑，别占事件循环。
+    disk_versions = await asyncio.to_thread(plugin_versions_on_disk)
     data = []
     for p in plugins:
         out = PluginOut.model_validate(p)
+        out.update_available = is_newer(disk_versions.get(p.slug), out.version)
         try:
             out.settings = await pm.get_settings(db, p.slug)
         except Exception as exc:
@@ -329,6 +337,7 @@ async def get_plugin_detail(
             error_code=PLUGIN_NOT_FOUND,
         )
     out = PluginOut.model_validate(plugin)
+    out.update_available = is_newer(plugin_versions_on_disk().get(plugin.slug), out.version)
     try:
         out.settings = await pm.get_settings(db, slug)
     except Exception as exc:

@@ -659,6 +659,7 @@
       },
       "settings": "设置",
       "upgrade": "升级",
+      "upgradeNoUpdate": "磁盘上没有可同步的新版本",
       "delete": "删除",
       "settingsTitle": "插件设置：{name}",
       "settingsDesc": "启用或配置插件功能；修改后立即生效。",

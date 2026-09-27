@@ -659,6 +659,7 @@
       },
       "settings": "設定",
       "upgrade": "アップグレード",
+      "upgradeNoUpdate": "同期可能な新しいバージョンがディスク上にありません",
       "delete": "削除",
       "settingsTitle": "プラグイン設定：{name}",
       "settingsDesc": "プラグイン機能の有効化や設定を行います。変更は即座に反映されます。",

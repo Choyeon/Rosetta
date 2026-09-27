@@ -89,6 +89,8 @@ interface Plugin {
   status: 'inactive' | 'active' | 'error' | 'installed'
   settings_schema?: JsonSchema | null
   settings?: Record<string, unknown> | null
+  // 后端按「磁盘清单版本 vs DB 版本」算出的真值，驱动下面的「可升级」Badge 与升级按钮可用性；
+  // 升级动作本身就是让后端回读磁盘清单，所以同步成功后该值会变回 false。
   update_available: boolean
   installed_at: string | null
   activated_at: string | null
@@ -884,7 +886,11 @@ onMounted(() => {
                       variant="ghost"
                       size="icon"
                       class="rounded-xl text-info hover:text-info/90 hover:bg-info/10 disabled:opacity-50"
-                      :title="t('admin.plugins.upgrade', '升级')"
+                      :title="
+                        row.update_available
+                          ? t('admin.plugins.upgrade', '升级')
+                          : t('admin.plugins.upgradeNoUpdate', '磁盘上没有可同步的新版本')
+                      "
                       :disabled="!row.update_available"
                       @click="upgradeSingle(row.slug)"
                     >

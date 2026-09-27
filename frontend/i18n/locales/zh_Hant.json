@@ -659,6 +659,7 @@
       },
       "settings": "設定",
       "upgrade": "升級",
+      "upgradeNoUpdate": "磁碟上沒有可同步的新版本",
       "delete": "刪除",
       "settingsTitle": "外掛設定：{name}",
       "settingsDesc": "啟用或設定外掛功能；變更後立即生效。",
