@@ -1,6 +1,6 @@
 <!--
   媒体资源库页：网格/列表双视图 + 服务端分页筛选 + XHR 进度上传队列 + 预览编辑与单删/批删。
-  契约：批删回包分三种结果必须分别播报（deleted_count / refused=路径非法被服务端保留 / missing_ids），只报"已删除"会误导管理员；
+  契约：批删回包分三种结果必须分别播报（deleted_count / refused=被内容引用或路径非法被服务端保留，reason 由服务端给 / missing_ids），只报"已删除"会误导管理员；
   selectedIds 每次拉取都要重新与当前页结果求交，防批量操作连带删除不可见的旧选中项；响应带序号防乱序写回，分页组件双 emit 需微任务合并成单次请求。
 -->
 <template>
@@ -801,8 +801,14 @@ async function doBatchDelete() {
   const { deleted_count: deleted, refused = [], missing_ids: missing = [] } = res
   const n = typeof deleted === 'number' ? deleted : ids.length
   const notes: string[] = []
-  if (refused.length > 0)
-    notes.push(`${refused.length} 个因文件路径非法已保留（未删除，需人工处理）`)
+  if (refused.length > 0) {
+    // reason 是服务端口径（被内容引用 / 路径非法），按原因分组播报，前端不再写死一种
+    const byReason = new Map<string, number>()
+    for (const r of refused)
+      byReason.set(r.reason, (byReason.get(r.reason) ?? 0) + 1)
+    const detail = [...byReason].map(([reason, count]) => `${count} 个（${reason}）`).join('，')
+    notes.push(`${refused.length} 个已保留未删除：${detail}`)
+  }
   if (missing.length > 0) notes.push(`${missing.length} 个记录已不存在`)
   if (notes.length > 0)
     toast.warning(`已删除 ${n} 个文件，${notes.join('，')}`)

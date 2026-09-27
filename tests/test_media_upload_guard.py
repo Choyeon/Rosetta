@@ -298,6 +298,161 @@ async def test_batch_delete_removes_derivative_files(
         assert not p.exists(), f"派生档残留：{p}"
 
 
+# ── 删除引用护栏（被内容引用的媒体不得静默删除） ──────────────────────────────
+
+
+async def _make_referenced_media(db_session, tmp_path: Path, stem: str):
+    """铺一条媒体记录 + 一张引用它原图 URL 的相册照片，返回 (media, 原图路径)。"""
+    from backend.models.core import Media
+    from backend.models.gallery import Album, Photo
+
+    up = tmp_path / "uploads" / "image"
+    up.mkdir(parents=True, exist_ok=True)
+    original = up / f"{stem}.png"
+    original.write_bytes(b"\x89PNG\r\n\x1a\n")
+    media = Media(
+        file=f"/media/uploads/image/{stem}.png",
+        filename=f"{stem}.png",
+        file_type="image",
+        file_size=8,
+    )
+    db_session.add(media)
+    await db_session.commit()
+    await db_session.refresh(media)
+
+    album = Album(title=f"album-{stem}")
+    db_session.add(album)
+    await db_session.commit()
+    await db_session.refresh(album)
+    db_session.add(Photo(album_id=album.id, url=media.file))
+    await db_session.commit()
+    return media, original
+
+
+@pytest.mark.asyncio
+async def test_single_delete_refuses_media_referenced_by_photo(
+    client: AsyncClient, staff_headers: dict, db_session, monkeypatch, tmp_path: Path
+):
+    """被相册照片引用的媒体单删必须 409 拒绝，记录与文件都保留。
+
+    原实现零引用检查：管理员从媒体库删掉在用图片，相册/文章封面页立刻 404 图，
+    界面却回"已删除"，无从得知也不可从公开页面恢复。"""
+    from sqlalchemy import select
+
+    from backend.api import media as media_api
+
+    monkeypatch.setattr(media_api, "MEDIA_DIR", tmp_path)
+    media, original = await _make_referenced_media(db_session, tmp_path, "used")
+
+    r = await client.delete(f"/api/media/library/{media.id}", headers=staff_headers)
+    assert r.status_code == 409, f"被引用媒体必须拒绝删除：{r.status_code} {r.text}"
+    # 统一错误包络（main.py::http_exception_handler 对含 error_code 的 dict detail 原样透传）
+    body = r.json()
+    assert body.get("error_code") == "MEDIA_IN_USE", body
+    assert "相册照片" in body.get("message", ""), body
+
+    assert original.exists(), "拒绝删除后物理文件必须保留"
+    remaining = await db_session.execute(
+        select(media_api.Media).where(media_api.Media.id == media.id)
+    )
+    assert remaining.scalar_one_or_none() is not None, "拒绝删除后 DB 记录必须保留"
+
+
+@pytest.mark.asyncio
+async def test_batch_delete_reports_referenced_media_as_refused(
+    client: AsyncClient, staff_headers: dict, db_session, monkeypatch, tmp_path: Path
+):
+    """批删把被引用条目并入 refused 上报；只引用到派生档 URL 也算整条在用。"""
+    from backend.api import media as media_api
+    from backend.models.core import Media
+    from backend.models.gallery import Album, Photo
+
+    monkeypatch.setattr(media_api, "MEDIA_DIR", tmp_path)
+    img = tmp_path / "uploads" / "image"
+    img.mkdir(parents=True, exist_ok=True)
+    original = img / "inuse.png"
+    thumb = img / "inuse-thumbnail.png"
+    original.write_bytes(b"\x89PNG\r\n\x1a\n")
+    thumb.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    used = Media(
+        file="/media/uploads/image/inuse.png",
+        filename="inuse.png",
+        file_type="image",
+        file_size=8,
+        sizes={
+            "thumbnail": {
+                "url": "/media/uploads/image/inuse-thumbnail.png",
+                "width": 1,
+                "height": 1,
+            }
+        },
+    )
+    free, free_paths = _make_media_with_derivatives(tmp_path, "free")
+    db_session.add_all([used, free])
+    await db_session.commit()
+    await db_session.refresh(used)
+    await db_session.refresh(free)
+
+    album = Album(title="audit-album")
+    db_session.add(album)
+    await db_session.commit()
+    await db_session.refresh(album)
+    # 照片只引用派生档：删记录会连带删掉该派生档，同样必须算"在用"
+    db_session.add(Photo(album_id=album.id, url="/media/uploads/image/inuse-thumbnail.png"))
+    await db_session.commit()
+
+    r = await client.request(
+        "DELETE",
+        "/api/media/library/batch",
+        headers=staff_headers,
+        json={"ids": [used.id, free.id]},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["deleted_count"] == 1, f"只应删掉未被引用那条：{body}"
+    assert [x["id"] for x in body["refused"]] == [used.id], f"派生档被引用必须整条保留：{body}"
+    assert "相册照片" in body["refused"][0]["reason"], body
+    assert original.exists() and thumb.exists(), "被保留条目的文件不得被顺手删除"
+    for p in free_paths:
+        assert not p.exists(), f"未引用条目应删干净：{p}"
+
+
+@pytest.mark.asyncio
+async def test_delete_by_filename_refuses_referenced_url(
+    client: AsyncClient, staff_headers: dict, db_session, monkeypatch, tmp_path: Path
+):
+    """按「分类+文件名」直删物理文件同样必须先查引用；未引用时照常删。
+
+    该端点绕过 Media 记录直接删盘上文件，若不查引用，删掉正被相册照片/头像
+    指向的文件后 DB 记录还在、页面图却 404——比按 ID 删更隐蔽。"""
+    from backend.api import media as media_api
+    from backend.models.gallery import Album, Photo
+
+    monkeypatch.setattr(media_api, "MEDIA_DIR", tmp_path)
+    (tmp_path / "avatars").mkdir(parents=True, exist_ok=True)
+    used_file = tmp_path / "avatars" / "pic.png"
+    used_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+    free_file = tmp_path / "avatars" / "spare.png"
+    free_file.write_bytes(b"\x89PNG\r\n\x1a\n")
+
+    album = Album(title="filename-guard")
+    db_session.add(album)
+    await db_session.commit()
+    await db_session.refresh(album)
+    db_session.add(Photo(album_id=album.id, url="/media/avatars/pic.png"))
+    await db_session.commit()
+
+    r = await client.delete("/api/media/avatars/pic.png", headers=staff_headers)
+    assert r.status_code == 409, f"被引用文件按名直删必须被拒：{r.status_code} {r.text}"
+    assert r.json().get("error_code") == "MEDIA_IN_USE", r.text
+    assert used_file.exists(), "拒绝后文件必须保留"
+
+    r2 = await client.delete("/api/media/avatars/spare.png", headers=staff_headers)
+    assert r2.status_code == 200, r2.text
+    assert not free_file.exists(), "未引用文件应正常删除"
+
+
 # ── 按文件名读取（GET /api/media/{category}/{filename}） ──────────────────────
 
 

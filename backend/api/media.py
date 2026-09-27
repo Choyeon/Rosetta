@@ -46,7 +46,12 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentStaff, CurrentUser, get_current_user
 from backend.core.concurrency import concurrent_query
 from backend.core.plugin_bus import bus
-from backend.models.core import Media
+from backend.models.blog import Category, Post
+from backend.models.core import Media, SiteConfig
+from backend.models.gallery import Album, Photo
+from backend.models.hero import HeroSlide
+from backend.models.post_series import PostSeries
+from backend.models.user import User
 from backend.schemas import raw_content_response
 from backend.services.media_service import apply_watermark, build_media_url, generate_thumbnails
 
@@ -86,6 +91,33 @@ def _resolve_media_file_path(stored: str | None) -> Path:
     return candidate
 
 
+# 内容表引用媒体 URL 的全部精确列（删除护栏与引用报告共用一张清单）。
+_MEDIA_REFERENCE_CHECKS: tuple[tuple[str, Any], ...] = (
+    ("相册照片", Photo.url),
+    ("相册封面", Album.cover),
+    ("文章封面", Post.cover_image),
+    ("分类封面", Category.cover_image),
+    ("系列封面", PostSeries.cover_image),
+    ("用户头像", User.avatar),
+    ("用户封面", User.cover_image),
+    ("首页Hero媒体", HeroSlide.media_url),
+    ("首页Hero海报", HeroSlide.poster_url),
+    ("站点配置", SiteConfig.value),
+)
+
+
+async def _find_referencing_urls(db, urls: set[str]) -> dict[str, str]:
+    """在内容表引用列里精确匹配给定 URL，返回 {url: 引用面中文说明}（仅出现在用项）。"""
+    if not urls:
+        return {}
+    found: dict[str, set[str]] = {}
+    for label, column in _MEDIA_REFERENCE_CHECKS:
+        rows = (await db.execute(select(column).where(column.in_(urls)))).scalars().all()
+        for url in rows:
+            found.setdefault(url, set()).add(label)
+    return {url: "、".join(sorted(labels)) for url, labels in found.items()}
+
+
 async def _delete_media_derivatives(media: Media) -> list[str]:
     """删除 Media.sizes 记录的派生档（thumbnail/medium/large 等变体）。
 
@@ -110,6 +142,36 @@ async def _delete_media_derivatives(media: Media) -> list[str]:
     return failed
 
 
+async def _collect_media_references(db, media_list: list[Media]) -> dict[int, str]:
+    """查每条媒体（含其派生档 URL）是否被内容表行引用，返回 media_id → 引用面说明。
+
+    媒体库删除原先零引用检查：相册照片/文章封面/分类/系列/头像/首页 Hero/站标
+    都直接引用媒体库 URL，删掉在用记录会让公开页面立刻出现 404 图且管理员无从感知。
+    按列精确匹配即可——这些列存的就是从库里复制出去的 URL 原文。正文 JSON 内嵌
+    引用不在本护栏范围：全文 LIKE 会让每次删除都付全表扫描的代价。
+    """
+    # URL → 哪些库记录拥有它（删一条记录会连原图带派生档一起删，任何一档被引用都算这条在用）
+    url_to_ids: dict[str, set[int]] = {}
+    for media in media_list:
+        urls = {media.file}
+        sizes = media.sizes if isinstance(media.sizes, dict) else {}
+        for entry in sizes.values():
+            if isinstance(entry, dict) and entry.get("url"):
+                urls.add(str(entry["url"]))
+        for url in urls:
+            url_to_ids.setdefault(url, set()).add(media.id)
+
+    if not url_to_ids:
+        return {}
+
+    referencing = await _find_referencing_urls(db, set(url_to_ids))
+    found: dict[int, set[str]] = {}
+    for url, labels in referencing.items():
+        for media_id in url_to_ids.get(url, ()):
+            found.setdefault(media_id, set()).update(labels.split("、"))
+    return {media_id: "、".join(sorted(labels)) for media_id, labels in found.items()}
+
+
 # 允许的图片类型
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 # 流式上传块大小 64KB
@@ -117,6 +179,7 @@ CHUNK_SIZE = 64 * 1024
 
 UPLOAD_MAGIC_MISMATCH = "UPLOAD_MAGIC_MISMATCH"
 UPLOAD_PATH_TRAVERSAL = "UPLOAD_PATH_TRAVERSAL"
+MEDIA_IN_USE = "MEDIA_IN_USE"
 MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 # 单文件上传上限 10MB（upload_image / upload_image_stream 使用）
 MAX_FILE_SIZE = 10 * 1024 * 1024
@@ -712,7 +775,7 @@ class MediaDeleteRefusal(BaseModel):
     """批量删除中被拒绝保留的单条记录。"""
 
     id: int = Field(..., description="被保留的媒体记录 ID")
-    reason: str = Field(..., description="拒绝删除的原因（存储路径不落在媒体目录内）")
+    reason: str = Field(..., description="拒绝删除的原因（被内容引用 / 存储路径不落在媒体目录内）")
 
 
 class MediaBatchDeleteResponse(BaseModel):
@@ -723,7 +786,7 @@ class MediaBatchDeleteResponse(BaseModel):
     deleted_count: int = Field(0, description="实际删除的记录数")
     refused: list[MediaDeleteRefusal] = Field(
         default_factory=list,
-        description="路径非法被拒绝删除（DB 记录与物理文件都保留）的条目",
+        description="被内容引用或路径非法而拒绝删除（DB 记录与物理文件都保留）的条目",
     )
     missing_ids: list[int] = Field(
         default_factory=list, description="请求里查无此记录的媒体 ID（升序）"
@@ -1482,7 +1545,7 @@ async def update_media(
     summary="批量删除媒体",
     description=(
         "批量删除多个媒体文件，同时删除数据库记录和物理文件。需 staff 及以上权限（未登录 401，非管理员 403）。"
-        "ids 为空数组返回 400。响应除 `deleted_count` 外还回 `refused`（路径非法、记录被保留的条目）"
+        "ids 为空数组返回 400。响应除 `deleted_count` 外还回 `refused`（被内容引用或路径非法、记录被保留的条目）"
         "与 `missing_ids`，调用方不得只看 `success` 判定全部删除完成。"
     ),
     responses={200: {"model": MediaBatchDeleteResponse}},
@@ -1510,9 +1573,16 @@ async def batch_delete_media(
     result = await db.execute(select(Media).where(Media.id.in_(ids)))
     media_list = result.scalars().all()
 
+    # 被内容引用的条目必须拒绝删除（并入 refused 上报）：删掉会让公开页面出悬空图
+    references = await _collect_media_references(db, list(media_list))
+
     deleted_count = 0
     refused: list[dict] = []
     for media in media_list:
+        if media.id in references:
+            logger.info("批量删除跳过媒体 %s：被内容引用（%s）", media.id, references[media.id])
+            refused.append({"id": media.id, "reason": f"被内容引用：{references[media.id]}"})
+            continue
         # 非法路径必须**拒绝删除该条记录**：单条删除走的是 `raise`，批量这里原先把
         # HTTPException 一起吞掉却照样删 DB 行，等于留着越权文件变成永久孤儿，
         # 而界面上显示"已删除"。FileNotFoundError 才是可忽略的正常分支（文件本就不在）。
@@ -1538,7 +1608,7 @@ async def batch_delete_media(
     missing = sorted(set(ids) - {m.id for m in media_list})
     message = f"已删除 {deleted_count} 个媒体文件"
     if refused:
-        message += f"，{len(refused)} 个因路径非法被保留"
+        message += f"，{len(refused)} 个被内容引用或路径非法而保留"
     if missing:
         message += f"，{len(missing)} 个 ID 不存在"
 
@@ -1557,7 +1627,9 @@ async def batch_delete_media(
     description=(
         "删除单个媒体文件，同时删除数据库记录、物理原图与 sizes 中的全部派生档（thumbnail/medium/large）。"
         "需 staff 及以上权限（未登录 401，非管理员 403）。"
-        "记录不存在返回 404；存储路径不落在媒体目录内时拒绝删除并返回 400（UPLOAD_PATH_TRAVERSAL）；"
+        "记录不存在返回 404；被内容引用（相册/文章/分类/系列/用户/Hero/站点配置的 URL 列）返回 409"
+        "（error_code: MEDIA_IN_USE，记录与文件都保留）；"
+        "存储路径不落在媒体目录内时拒绝删除并返回 400（UPLOAD_PATH_TRAVERSAL）；"
         "外链记录（远程 URL）仅删数据库记录。"
     ),
     responses={200: {"model": MediaDeleteResponse}},
@@ -1579,6 +1651,19 @@ async def delete_media_by_id(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="媒体文件不存在",
+        )
+
+    # 被内容引用时拒绝删除：相册照片/文章封面/头像等列直接引用该 URL，
+    # 删掉就是公开页面 404 图，必须让管理员先解除引用。
+    references = await _collect_media_references(db, [media])
+    if media.id in references:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "success": False,
+                "message": f"媒体正被内容引用（{references[media.id]}），请先解除引用再删除",
+                "error_code": MEDIA_IN_USE,
+            },
         )
 
     # 删除物理文件（原图 + sizes 里的全部派生档）
@@ -1689,6 +1774,7 @@ async def get_image(category: str, filename: str) -> StreamingResponse:
         "按「分类目录 + 文件名」直接删除物理文件，需 staff 权限"
         "（与按媒体 ID 删除的口径一致）。"
         "文件名先经净化并校验落在媒体目录内，越界返回 400（error_code: UPLOAD_PATH_TRAVERSAL）；"
+        "对应 URL 正被内容引用返回 409（error_code: MEDIA_IN_USE，文件保留）；"
         "分类非法或文件不存在返回 404。注意：本接口只删物理文件，不清理对应的数据库记录。"
     ),
     responses={200: {"model": ImageDeleteResponse}},
@@ -1696,12 +1782,25 @@ async def get_image(category: str, filename: str) -> StreamingResponse:
 async def delete_image(
     category: str,
     filename: str,
+    db: DB,
     current_user: CurrentStaff,
 ):
     """删除图片文件（按文件名直删物理文件，仅限 staff）"""
     valid_categories = ["uploads", "avatars", "covers"]
     if category not in valid_categories:
         raise HTTPException(status_code=404, detail="图片不存在")
+
+    # 与按 ID 删除同口径：先查引用再删文件，否则公开页面留下 404 图而 DB 记录仍在
+    referencing = await _find_referencing_urls(db, {f"/media/{category}/{filename}"})
+    if referencing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "success": False,
+                "message": f"图片正被内容引用（{next(iter(referencing.values()))}），请先解除引用再删除",
+                "error_code": MEDIA_IN_USE,
+            },
+        )
 
     filepath = _resolve_category_filepath(category, filename)
     if not await async_file_exists(filepath):
