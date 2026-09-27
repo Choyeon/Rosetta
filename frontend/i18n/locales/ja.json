@@ -800,7 +800,11 @@
       "resetDefaults": "デフォルトに復元",
       "sourceLocal": "ローカルディレクトリスキャン",
       "sourceRemote": "リモート URL ダウンロード",
-      "sourceUpload": "zip パッケージをアップロード"
+      "sourceUpload": "zip パッケージをアップロード",
+      "updateAvailable": "更新あり",
+      "upgrade": "アップグレード",
+      "upgradeNoUpdate": "同期可能な新しいバージョンがディスク上にありません",
+      "upgraded": "ディスクのマニフェストから再同期しました：{version}"
     },
     "media": {
       "previewTitle": "メディアプレビュー",

@@ -800,7 +800,11 @@
       "resetDefaults": "恢復預設",
       "sourceLocal": "本地目錄掃描",
       "sourceRemote": "遠端 URL 下載",
-      "sourceUpload": "上傳 zip 套件"
+      "sourceUpload": "上傳 zip 套件",
+      "updateAvailable": "可升級",
+      "upgrade": "升級",
+      "upgradeNoUpdate": "磁碟上沒有可同步的新版本",
+      "upgraded": "已依磁碟清單重新同步：{version}"
     },
     "media": {
       "previewTitle": "媒體預覽",

@@ -31,7 +31,9 @@ import {
   LayoutDashboard,
   CheckCircle2,
   BookOpen,
-  RotateCcw
+  RotateCcw,
+  Download,
+  ArrowUpCircle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -95,6 +97,8 @@ interface Theme {
   tags: string[]
   mods_schema?: JsonSchema | null
   mods?: Record<string, unknown> | null
+  // 后端按「磁盘清单版本 vs DB 版本」算出；升级动作本身就是让后端回读磁盘清单。
+  update_available?: boolean
   activated_at: string | null
   error_message: string | null
 }
@@ -275,6 +279,29 @@ async function activateTheme(theme: Theme) {
     reload()
   } catch {
     /* handled */
+  }
+}
+
+// 升级 = 让后端回读磁盘清单刷 DB（与插件侧 upgrade 完全同口径）。
+// 入口只在 update_available 为真时开放；同步成功后该值转假，按钮随之禁用。
+async function upgradeTheme(theme: Theme) {
+  try {
+    const res = await $post<{ data?: { version?: string } }>(
+      `/admin/themes/${theme.slug}/upgrade`
+    )
+    toast.success(
+      t('admin.themes.upgraded', '已按磁盘清单重新同步：{version}', {
+        version: res?.data?.version ?? theme.version
+      })
+    )
+    // 版本参与截图 ?v= 破缓存，激活主题升级后要重载前台主题资源。
+    if (theme.is_active) {
+      await frontendTheme.reload()
+    }
+  } catch {
+    /* apiFetch 统一 toast */
+  } finally {
+    reload()
   }
 }
 
@@ -822,12 +849,20 @@ onMounted(() => {
                   {{ t('admin.themes.error', '错误') }}
                 </Badge>
               </div>
-              <div class="absolute top-2.5 right-2.5">
+              <div class="absolute top-2.5 right-2.5 flex flex-col items-end gap-1.5">
                 <Badge
                   variant="outline"
                   class="rounded-full bg-background/80 backdrop-blur font-mono text-[11px]"
                 >
                   v{{ theme.version }}
+                </Badge>
+                <Badge
+                  v-if="theme.update_available"
+                  variant="secondary"
+                  class="rounded-full bg-background/80 backdrop-blur text-[11px] text-info"
+                >
+                  <ArrowUpCircle class="size-3 mr-1" />
+                  {{ t('admin.themes.updateAvailable', '可升级') }}
                 </Badge>
               </div>
 
@@ -936,6 +971,17 @@ onMounted(() => {
                     {{ t('admin.themes.activate', '启用') }}
                   </Button>
                 </template>
+                <Button
+                  variant="outline"
+                  class="rounded-xl px-3 text-info hover:border-info/40 hover:bg-info/10 hover:text-info"
+                  :disabled="!theme.update_available"
+                  :title="theme.update_available
+                    ? t('admin.themes.upgrade', '升级')
+                    : t('admin.themes.upgradeNoUpdate', '磁盘上没有可同步的新版本')"
+                  @click="upgradeTheme(theme)"
+                >
+                  <Download data-icon="inline-start" />
+                </Button>
                 <Button
                   variant="outline"
                   class="rounded-xl px-3"
