@@ -94,6 +94,14 @@
 首页/文章列表 `/posts` swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 分类/标签/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。常规页附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`；高频实时页（`/posts/hot` · `/guestbook`）用较短的 `stale-while-revalidate=600`。
 静态资源 `/_nuxt/**` 与 `/themes/**` 使用强缓存 immutable（31536000s）。
 
+### 2.3.1 动态子路由必须用目录式父页
+
+`pages/x.vue` 与 `pages/x/[id].vue` **不能并存**：前者会变成没有 `<NuxtPage>` outlet 的父路由，
+子路由 URL（`/x/2026`）会**静默渲染父组件并返回 HTTP 200**——不报错、不 404，看起来"有内容"，
+实则新页面从未执行。要给 `/x` 加 `/x/{id}`，必须先把父页挪成 `pages/x/index.vue`。
+实例与反向断言见 `frontend/pages/archive/index.vue` + `frontend/pages/archive/[year].vue`
+与 `frontend/tests/unit/archiveYearRoute.spec.ts`。
+
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
 
 1. 组件 `setup()` 顶层禁止直接读 `window / document / localStorage / navigator / matchMedia`；必须包 `if (import.meta.client) { … }` 或 `onMounted`
