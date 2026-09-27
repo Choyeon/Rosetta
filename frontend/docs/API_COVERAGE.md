@@ -12,7 +12,7 @@
 - **路径规则**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀，故代码中 `'/admin/guestbook'` == `GET /api/admin/guestbook`
 - 覆盖率 =（✅ + 🟡）/ 后端端点总数
 
-**总计：46 个路由模块文件、351 个端点；✅ 200 + 🟡 8 = 已覆盖 208 个，未消费 143 个，覆盖率 59.3%。**
+**总计：46 个路由模块文件、351 个端点；✅ 201 + 🟡 8 = 已覆盖 209 个，未消费 142 个，覆盖率 59.6%。**
 
 > 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。
 
@@ -28,7 +28,7 @@
 | media | `/api/media` | 15 | 11 | 1 | 3 | 80% |
 | favorite | `/api/favorites` | 12 | 0 | 0 | 12 | 0% |
 | plugins | `/api/admin/plugins` | 16 | 11 | 0 | 5 | 69% |
-| advanced | `/api/admin` | 11 | 10 | 0 | 1 | 91% |
+| advanced | `/api/admin` | 11 | 11 | 0 | 0 | 100% |
 | themes_ext | `/api/admin/themes` | 12 | 6 | 0 | 6 | 50% |
 | guestbook | `/api` | 11 | 11 | 0 | 0 | 100% |
 | gallery | `/api/gallery` · `/api/admin/gallery` | 10 | 10 | 0 | 0 | 100% |
@@ -65,7 +65,7 @@
 | stats | `/api/admin/stats` | 1 | 1 | 0 | 0 | 100% |
 | translate | `/api/translate` | 1 | 1 | 0 | 0 | 100% |
 | docs | `/api/docs` | 2 | 2 | 0 | 0 | 100% |
-| **合计** | — | **355** | **195** | **8** | **152** | **57.2%** |
+| **合计** | — | **355** | **196** | **8** | **151** | **57.5%** |
 
 ***
 
@@ -167,10 +167,10 @@
 ❌（8，**刻意保留**）：向导实际把建库/站点/管理员合并进 `POST /install` 单调用，旧分步接口 `GET /state`、`POST /environment`、`POST /database-config`、`GET /test-database`、`POST /site-config`、`GET /check-username`、`POST /admin-account`、`POST /reset` 为旧流程与恢复工具保留（reset 有运维价值，无 UI 属预期）。
 > 2026-09-26：`POST /complete` 已删除。它自标注 deprecated、前后端零调用，且与 `/install` 是两套并行的初始化实现（行为早已漂移：`/complete` 里示例数据失败被 `except` 吞掉，`/install` 里会中止安装）。留着的代价是维护一份没人走的安装路径，`tests/test_api_oobe.py::test_oobe_legacy_complete_endpoint_removed` 钉住 404 防止回潮。
 
-### advanced（/api/admin）— 10/11
+### advanced（/api/admin）— 11/11
 
-✅：`GET /logs`（uam:1611，pages/admin/tools/audit-logs.vue）、`GET /trash`、`POST /trash/{id}/restore`、`DELETE /trash/{id}`、`DELETE /trash`（uam 回收站段，pages/admin/content/trash.vue；单删文章也已与批删同构落回收站，回归见 `tests/test_trash_flow.py`）
-❌（1，**成片真实缺口/半成品**）：`POST /posts/batch`（批量被 `/blog/posts/batch-status` 替代——重复；无 UI 消费，但 add_tag / remove_tag 分支曾因未 eager load `Post.tags` 而稳定 500，现已修复并由 `tests/test_post_batch_actions.py` 全量覆盖）
+✅：`GET /logs`（uam:1611，pages/admin/tools/audit-logs.vue）、`GET /logs/export`（uam exportAdminAuditLogs，同页「导出 CSV/JSON」）、`GET /trash`、`POST /trash/{id}/restore`、`DELETE /trash/{id}`、`DELETE /trash`（uam 回收站段，pages/admin/content/trash.vue；单删文章也已与批删同构落回收站，回归见 `tests/test_trash_flow.py`）、`POST /posts/batch`（uam batchAdminPosts，pages/admin/content/posts/index.vue 的「批量删除/批量置顶/取消置顶」——批量删除从逐条 N 次 DELETE 改为一次请求，软删除口径与单删一致；`add_tag`/`remove_tag` 分支曾因未 eager load `Post.tags` 而稳定 500，现已修复并由 `tests/test_post_batch_actions.py` 全量覆盖）
+> 与 `/blog/posts/batch-status` 的分工（2026-09-27 定稿）：状态切换（含 `scheduled`）走 batch-status，`{success,data}` 双层信封；删除/置顶等其余动作走 `/admin/posts/batch`，`affected_count` 平铺。publish/draft 仍只在 batch-status 侧，不再重复接入。
 
 ### admin_logs / admin_tools / migration / performance（均 /api/admin）
 
@@ -233,7 +233,7 @@
 **总体：351 端点 / 46 模块，前端已覆盖 208（59.3%），其中 8 个仅 Nitro/直链消费。** 未覆盖的 143 个可分三类：
 
 1. **刻意保留的后端能力（约六成，不算债）**：
-   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、`scheduled_posts` ×3（前端用 status 字段替代）、`themes/palettes` 旧调色板 ×3、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/posts/batch`、`/archive` 单数 bing wallpaper、各 `…/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）。
+   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、`scheduled_posts` ×3（前端用 status 字段替代）、`themes/palettes` 旧调色板 ×3、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）。
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：

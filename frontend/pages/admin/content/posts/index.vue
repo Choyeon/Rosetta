@@ -1,8 +1,9 @@
 <!--
-  文章管理列表页：服务端分页 + 关键字/状态/分类/日期筛选 + 批量发布/转草稿/删除。
+  文章管理列表页：服务端分页 + 关键字/状态/分类/日期筛选 + 批量发布/转草稿/置顶/删除。
   硬契约：AdminDataTable 的选择是受控的——翻页、删除、批量成功后必须由本页清空 selectedIds，
   表格不会自动清（残留 id 会让下一批操作误伤）；任何筛选变化必须先 page=1 再 loadPosts；
-  批量状态接口的 updated_count 藏在 {success,data} 双层信封里，判失败以它为准；
+  两个批量接口信封不同：/blog/posts/batch-status 的 updated_count 在 {success,data} 双层里，
+  /admin/posts/batch（删除与置顶走它，一次请求而非逐条 N 次往返）的 affected_count 是平铺的；
   列表用 shallowRef 整替换，禁止改回 deep ref（大量 Post 对象的递归 Proxy 是白给的性能损耗）。
 -->
 <script setup lang="ts">
@@ -13,6 +14,7 @@ import {
   fetchAdminCategories,
   fetchAdminPostsPaged,
   formatAdminDateTime,
+  batchAdminPosts,
   type AdminCategory,
   type AdminPostListItem
 } from '~~/composables/useAdminManage'
@@ -56,6 +58,7 @@ const selectedIds = ref<number[]>([])
 const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
 const batchDeleteDialogOpen = ref(false)
+const batching = ref(false)
 
 const statusOptions = [
   { value: 'all' as const, label: '全部状态' },
@@ -158,18 +161,24 @@ function confirmBatchDelete() {
 async function doBatchDelete() {
   const ids = [...selectedIds.value]
   if (ids.length === 0) return
-  // 并行删除：Promise.allSettled 保证单个失败不阻断其他删除
-  const results = await Promise.allSettled(ids.map(id => deletePost(id)))
-  const failed = results.filter(r => r.status === 'rejected').length
-  const success = ids.length - failed
-  if (failed === 0) toast.success(`已批量删除 ${ids.length} 篇文章，回收站 30 天内可恢复`)
-  else toast.warning(`成功删除 ${success} 篇，失败 ${failed} 篇`)
-  selectedIds.value = []
-  loadPosts()
+  batching.value = true
+  try {
+    // 一次请求替代逐条 DELETE：服务端在同一事务里入回收站并单层清缓存，
+    // 部分失败不会留下"删了一半"的中间态。
+    const resp = await batchAdminPosts('delete', ids)
+    toast.success(`已删除 ${resp.affected_count ?? ids.length} 篇文章，回收站 30 天内可恢复`)
+    selectedIds.value = []
+    loadPosts()
+  } catch {
+    /* apiFetch 已统一 toast */
+  } finally {
+    batching.value = false
+  }
 }
 
 const batchChangeStatus = async (status: 'published' | 'draft' | 'scheduled') => {
   const ids = [...selectedIds.value]
+  batching.value = true
   try {
     const data = await batchUpdatePostStatus(ids, status)
     const updatedCount = data?.data?.updated_count ?? 0
@@ -180,6 +189,25 @@ const batchChangeStatus = async (status: 'published' | 'draft' | 'scheduled') =>
     await loadPosts()
   } catch {
     /* apiFetch 已统一 toast */
+  } finally {
+    batching.value = false
+  }
+}
+
+const batchPin = async (action: 'pin' | 'unpin') => {
+  const ids = [...selectedIds.value]
+  batching.value = true
+  try {
+    const resp = await batchAdminPosts(action, ids)
+    const affected = resp.affected_count ?? 0
+    if (affected === 0) toast.warning('所选文章已处于目标置顶状态，未做变更')
+    else toast.success(`${action === 'pin' ? '已置顶' : '已取消置顶'} ${affected} 篇文章`)
+    selectedIds.value = []
+    await loadPosts()
+  } catch {
+    /* apiFetch 已统一 toast */
+  } finally {
+    batching.value = false
   }
 }
 
@@ -257,11 +285,12 @@ onMounted(() => {
       <span class="text-sm text-primary/90">
         已选择 <strong>{{ selectedIds.length }}</strong> 条记录
       </span>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap justify-end">
         <Button
           variant="outline"
           size="sm"
           class="rounded-[10px] h-9"
+          :disabled="batching"
           @click="batchChangeStatus('published')"
         >
           批量发布
@@ -270,14 +299,35 @@ onMounted(() => {
           variant="outline"
           size="sm"
           class="rounded-[10px] h-9"
+          :disabled="batching"
           @click="batchChangeStatus('draft')"
         >
           批量转草稿
         </Button>
         <Button
+          variant="outline"
+          size="sm"
+          class="rounded-[10px] h-9"
+          :disabled="batching"
+          @click="batchPin('pin')"
+        >
+          <Pin data-icon="inline-start" />
+          批量置顶
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-[10px] h-9"
+          :disabled="batching"
+          @click="batchPin('unpin')"
+        >
+          取消置顶
+        </Button>
+        <Button
           variant="destructive"
           size="sm"
           class="rounded-[10px] h-9"
+          :disabled="batching"
           @click="confirmBatchDelete"
         >
           批量删除

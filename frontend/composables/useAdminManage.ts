@@ -1858,6 +1858,30 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+// ==================== 文章批量操作 ====================
+
+export type AdminPostBatchAction = 'publish' | 'draft' | 'delete' | 'move_category' | 'add_tag' | 'remove_tag' | 'pin' | 'unpin'
+
+/**
+ * POST /api/admin/posts/batch —— 一次请求对多篇执行同一动作（服务端原子 + 单层缓存失效）。
+ * delete 是软删除（入回收站，30 天可恢复），与逐条 DELETE /blog/posts/{id} 口径一致。
+ */
+export function batchAdminPosts(
+  action: AdminPostBatchAction,
+  postIds: number[],
+  extra: { categoryId?: number, tagIds?: number[] } = {}
+) {
+  return apiFetch<{ success: boolean, message: string, affected_count: number }>('/admin/posts/batch', {
+    method: 'POST',
+    body: {
+      action,
+      post_ids: postIds,
+      ...(extra.categoryId ? { category_id: extra.categoryId } : {}),
+      ...(extra.tagIds ? { tag_ids: extra.tagIds } : {})
+    }
+  })
+}
+
 // ==================== 文章版本历史 ====================
 
 export interface AdminRevisionItem {
