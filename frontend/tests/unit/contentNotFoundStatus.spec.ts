@@ -48,4 +48,21 @@ describe('内容页 404 状态码闸门', () => {
     expect(src).toContain('composables/useContentStatus')
     expect(src).not.toContain('createError')
   })
+
+  it.each(PAGES)('%s 缺内容时标题走 404 文案，不再伪造 slug 标题', (rel) => {
+    const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+    expect(src).toContain('error.notFoundTitle')
+    // 旧口径是 `pickLocalized(...) || slug.value || ''`：404 页的 <title> 变成一串
+    // 假装是分类名的乱码。WordPress 的 404 标题就是"页面不存在"。
+    expect(src).not.toMatch(/\|\|\s*slug\.value \|\| ''/)
+  })
+
+  it('四语都有 error.notFoundTitle 文案', () => {
+    for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const messages = JSON.parse(
+        readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')
+      ) as Record<string, Record<string, string>>
+      expect(messages.error?.notFoundTitle, `${loc} 缺 error.notFoundTitle`).toBeTruthy()
+    }
+  })
 })

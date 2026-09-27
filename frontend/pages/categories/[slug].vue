@@ -213,7 +213,9 @@ watch([currentPage, slug, locale], () => {
   if (import.meta.client) refresh()
 })
 
-const categoryName = computed(() => pickLocalized(catRaw.value?.name) || slug.value || '')
+// 加载中留空（只显站点名）；确实取不到分类时用 404 口径标题，
+// 不再把 slug 人性化成假装存在的分类名（响应侧由 useContentStatus 回写 404）。
+const categoryName = computed(() => pickLocalized(catRaw.value?.name) || (pending.value ? '' : t('error.notFoundTitle')))
 const categoryDesc = computed(() => pickLocalized(catRaw.value?.description))
 const postCount = computed<number>(() => {
   const c = catRaw.value as CategoryDetail | null | undefined

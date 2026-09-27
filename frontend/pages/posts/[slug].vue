@@ -758,6 +758,9 @@ const displayPostTitle = computed(() => {
   if (postTitle.value) return postTitle.value
   // Hydrate 安全回退：SSR 序列化的共享标题
   if (ssrPostTitle.value) return ssrPostTitle.value
+  // 内容不存在（响应已回写 404）：标题不得由 slug 人性化"编"出一个假文章名，
+  // WordPress 的 404 页标题就是"页面不存在"口径。加载中仍留空，避免闪一下。
+  if (!post.value && !loadingPost.value) return t('error.notFoundTitle')
   try {
     const raw = decodeURIComponent(slug.value || '')
     return raw.replace(/-[0-9]+$/, '').replace(/-/g, ' ') || t('post.untitled', '未命名文章')

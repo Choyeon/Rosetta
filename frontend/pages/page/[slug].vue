@@ -90,7 +90,9 @@ const loadError = computed(() => !!error.value || !page.value)
 // 独立页不存在/未发布时让 SSR 响应带 404（兜底 UI 不变）；见 composables/useContentStatus.ts。
 useContentStatus(error, computed(() => !page.value))
 
-const title = computed(() => pickLocalized(page.value?.title) || slug.value)
+// 加载中留空（只显站点名，不闪"页面不存在"）；确实取不到内容时用 404 口径标题，
+// 不再把 slug 人性化成一个假装存在的页面名（响应侧已由 useContentStatus 回写 404）。
+const title = computed(() => pickLocalized(page.value?.title) || (pending.value ? '' : t('error.notFoundTitle')))
 
 const md = new Marked()
 // isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch

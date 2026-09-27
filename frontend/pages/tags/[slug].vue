@@ -194,7 +194,8 @@ watch([currentPage, slug, locale], () => {
   if (import.meta.client) refresh()
 })
 
-const tagName = computed(() => pickLocalized(tagRaw.value?.name) || slug.value || '')
+// 同 categories：加载中留空，取不到标签时用 404 口径标题而不是人性化 slug。
+const tagName = computed(() => pickLocalized(tagRaw.value?.name) || (pending.value ? '' : t('error.notFoundTitle')))
 const tagColor = computed<string | null>(() => (tagRaw.value?.color ?? null) as string | null)
 const tagDesc = computed(() => pickLocalized(tagRaw.value?.description))
 const postCount = computed<number>(() => {
