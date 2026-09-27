@@ -71,7 +71,7 @@
             {{ titleOf(post) }}
           </NuxtLink>
           <span class="flex items-center gap-3 text-sm text-muted-foreground tabular-nums">
-            <span>{{ formatDate(post.created_at) }}</span>
+            <span>{{ formatDate(post.published_at || post.created_at) }}</span>
             <span
               v-if="categoryOf(post)"
               class="hidden sm:inline"
@@ -128,6 +128,7 @@ interface ArchivePostItem {
   slug: string
   title?: string | Record<string, string>
   created_at?: string | null
+  published_at?: string | null
   views?: number
   category?: { name?: string | Record<string, string> }
 }

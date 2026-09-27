@@ -2367,6 +2367,10 @@ async def get_archive_by_year(
                 "title": title,
                 "slug": post.slug,
                 "created_at": post.created_at.isoformat() if post.created_at else None,
+                # 分组/排序按 published_at，显示口径必须同源（WordPress 用发布日期）
+                "published_at": (post.published_at or post.created_at).isoformat()
+                if (post.published_at or post.created_at)
+                else None,
                 "category": category_data,
                 "views": post.views,
             }
@@ -2471,6 +2475,10 @@ async def get_archive_by_month(
                 "title": title,
                 "slug": post.slug,
                 "created_at": post.created_at.isoformat() if post.created_at else None,
+                # 分组/排序按 published_at，显示口径必须同源（WordPress 用发布日期）
+                "published_at": (post.published_at or post.created_at).isoformat()
+                if (post.published_at or post.created_at)
+                else None,
                 "category": category_data,
                 "views": post.views,
             }

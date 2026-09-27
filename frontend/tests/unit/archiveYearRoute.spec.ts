@@ -111,5 +111,10 @@ describe('单月归档 /archive/[year]/[month]', () => {
     expect(monthPage).toContain('timeZone:')
     expect(monthPage).toContain('UTC')
     expect(monthPage).toContain('total_pages')
+    // 分组键是 published_at，显示必须同源（只读 created_at 会让文章挂到别的月份下）
+    for (const src of [yearPage, monthPage]) {
+      expect(src).toContain('post.published_at || post.created_at')
+      expect(src).not.toContain('formatDate(post.created_at)')
+    }
   })
 })

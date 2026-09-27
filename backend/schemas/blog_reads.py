@@ -28,6 +28,10 @@ class ArchivePostItem(BaseModel):
     title: str = Field(..., description="按请求语言解析后的标题，缺失时回退 zh")
     slug: str = Field(..., description="文章 slug，用于拼详情页 URL")
     created_at: str | None = Field(None, description="创建时间 ISO 8601；无创建时间时为 null")
+    published_at: str | None = Field(
+        None,
+        description="发布时间 ISO 8601（缺发布日时回退创建日）；归档的分组与日期显示都以此为准",
+    )
     category: ArchivePostCategory | None = Field(None, description="所属分类，未归类时为 null")
     views: int = Field(0, description="累计浏览量")
 

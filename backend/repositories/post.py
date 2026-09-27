@@ -787,6 +787,9 @@ class PostRepository(BaseRepository[Post]):
                         "title": title,
                         "slug": slug,
                         "created_at": created_at.isoformat() if created_at else None,
+                # 分组按 published_at（回退 created_at），显示必须用同一个字段，
+                # 否则「2026-08」标题下会列出创建日在 7 月的文章。
+                "published_at": (published_at or created_at).isoformat(),
                         "category": category_data,
                         "views": views,
                     }

@@ -102,7 +102,7 @@
                 variant="outline"
                 class="shrink-0 font-mono text-xs tabular-nums"
               >
-                {{ formatDate(post.created_at) }}
+                {{ formatDate(post.published_at || post.created_at) }}
               </Badge>
               <NuxtLink
                 :to="`/posts/${post.slug}`"
@@ -147,6 +147,7 @@ interface ArchivePostItem {
   slug: string
   title?: string | Record<string, string>
   created_at?: string | null
+  published_at?: string | null
   views?: number
   category?: { id?: number | string, name?: string | Record<string, string>, slug?: string }
 }
