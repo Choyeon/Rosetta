@@ -1275,7 +1275,8 @@ export async function fetchAdminNavigations(): Promise<AdminNavItem[]> {
       url: String(x.url ?? x.link ?? ''),
       icon: typeof x.icon === 'string' ? x.icon : null,
       order: Number(x.order ?? x.sort_order ?? i) || i,
-      target: (String(x.target ?? x.target_blank ?? '_self') === '_blank' ? '_blank' : '_self'),
+      // NavigationResponse.target_blank 是布尔；与写入侧 navigationBody() 对称。
+      target: (x.target_blank === true || x.target === '_blank' ? '_blank' : '_self'),
       parent_id: Number(x.parent_id ?? null) || null
     }
   })

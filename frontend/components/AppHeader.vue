@@ -90,13 +90,14 @@ interface NavApiRow {
   link_type?: string
   is_external?: boolean
   target?: string
+  target_blank?: boolean
   sort_order?: number
 }
 
 // 内置兜底（非极简主题 fallback）—— 当后端 /api/navigations 为空或请求失败时使用。
 // 保留核心必要页面：首页 / 文章 / 分类 / 标签 / 归档 + 两个高权重静态页（关于 / 留言板）。
 // 这样即便用户 DB 中 navigation_menu 表未 seed，顶部导航也永远不会缺链接。
-const FALLBACK_NAV: { label: string, to: string }[] = [
+const FALLBACK_NAV: { label: string, to: string, target?: string }[] = [
   { label: t('nav.home') || '首页', to: '/' },
   { label: t('nav.posts') || '文章', to: '/posts' },
   { label: t('nav.categories') || '分类', to: '/categories' },
@@ -191,19 +192,22 @@ const navItems = computed(() => {
   const _ = locale.value // 显式建立响应式依赖：语言切换 → 标签重新 pickNavStr
   const raw = navRowsRef.value
   if (!Array.isArray(raw) || raw.length === 0) return dedupeByTo(FALLBACK_NAV)
-  const out: { label: string, to: string, external?: boolean }[] = []
+  const out: { label: string, to: string, target?: string }[] = []
   for (const row of raw) {
     const labelRaw = row.label ?? row.title ?? row.name ?? ''
     const label = pickNavStr(labelRaw as string | Record<string, string> | null | undefined, '')
     if (!label) continue
     const path = normalizeNavPath(row)
     if (!path) continue
-    const external = Boolean(row.is_external || row.link_type === 'external' || row.target === '_blank' || /^https?:\/\//i.test(path))
+    // 外链判定只看 URL/类型：target_blank（NavigationResponse 的布尔字段）不再把内部页
+    // 踢出导航，而是按 WordPress 口径让该链接在新窗口打开。
+    const external = Boolean(row.is_external || row.link_type === 'external' || /^https?:\/\//i.test(path))
     if (external) {
       // 外链不进入 navItems（避免内部路由解析出错），前台 header 暂不渲染外链
       continue
     }
-    out.push({ label, to: path })
+    const target = row.target_blank === true || row.target === '_blank' ? '_blank' : undefined
+    out.push(target ? { label, to: path, target } : { label, to: path })
   }
   const base = out.length > 0 ? out : FALLBACK_NAV
   // Merge ensure: 若后端未配置友情/相册等关键路径，按 ENSURE_PRESENT 顺序补齐在末尾
@@ -276,6 +280,8 @@ const handleSearchClick = () => navigateTo('/search')
           v-for="item in primaryNavItems"
           :key="item.to"
           :to="item.to"
+          :target="item.target"
+          :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
           data-navbar="link"
           :class="[
             'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
@@ -313,6 +319,8 @@ const handleSearchClick = () => navigateTo('/search')
             >
               <NuxtLink
                 :to="item.to"
+                :target="item.target"
+                :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
                 :class="isActive(item.to) ? 'font-semibold' : ''"
               >
                 {{ item.label }}
