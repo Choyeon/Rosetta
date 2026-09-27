@@ -694,7 +694,9 @@ def create_application() -> FastAPI:
         405: "METHOD_NOT_ALLOWED",
         409: "CONFLICT",
         413: "PAYLOAD_TOO_LARGE",
-        422: "VALIDATION_FAILED",
+        # 与下方 RequestValidationError 处理器的产出码同源——同一个 422
+        # 不得在"schema 拦截"与"字符串 detail 回退"两条链路上长出两个码。
+        422: "VALIDATION_ERROR",
         423: "ACCOUNT_LOCKED",
         # 与 core/exceptions.py 的 RateLimitException、core/rate_limit.py 的三个触发点同源，
         # 避免同一个 429 在不同链路上长出四种 error_code。

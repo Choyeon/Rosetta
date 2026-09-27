@@ -85,7 +85,7 @@
 | `SERVICE_UNAVAILABLE` | 503 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `UNAUTHORIZED` | 401 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `VALIDATION_ERROR` | 422 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
-| `VALIDATION_FAILED` | 422 | payload 必须是 object | `backend/main.py`<br>`backend/plugins/guestbook-rss/plugin.py` |
+| `VALIDATION_FAILED` | — | payload 必须是 object | `backend/plugins/guestbook-rss/plugin.py` |
 
 ### 认证与授权（2）
 
