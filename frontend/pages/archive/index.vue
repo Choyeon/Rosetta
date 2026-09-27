@@ -1,5 +1,5 @@
 <!--
-  归档页：GET /blog/archive 返回按年月预分组的数据，本组件摊平后按年重新分组排序。
+  归档页（父路由已改为目录式：/archive 命中本文件，/archive/{year} 命中 [year].vue）：GET /blog/archive 返回按年月预分组的数据，本组件摊平后按年重新分组排序。
   坑点：allPosts 会就地改写 useAPI 缓存对象（把 created_at 回填进 post.published_at），
   下游别把它当只读数据源；年份分组用本地时区 getFullYear()，服务器与访客时区不一致时
   跨年文章的分组结果两端可能不同（本路由 swr 3600 还会把它固化进缓存）。
@@ -17,6 +17,13 @@
           </h1>
           <p class="text-muted-foreground mt-1">
             {{ t('archive.desc') }}
+          </p>
+          <p
+            v-if="archiveStats"
+            class="text-muted-foreground mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm tabular-nums"
+          >
+            <span>{{ t('archive.statsTotal', { count: archiveStats.total_posts }) }}</span>
+            <span>{{ t('archive.statsYears', { count: archiveStats.total_years }) }}</span>
           </p>
         </div>
       </div>
@@ -77,7 +84,12 @@
       >
         <div class="flex items-end justify-between mb-4">
           <h2 class="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
-            {{ group.year }}
+            <NuxtLink
+              :to="`/archive/${group.year}`"
+              class="tabular-nums transition-colors hover:text-primary"
+            >
+              {{ group.year }}
+            </NuxtLink>
             <Badge
               variant="secondary"
               class="text-xs font-medium"
@@ -162,6 +174,13 @@ useBreadcrumbJsonLd([
   { name: t('nav.home') as string, url: '/' },
   { name: t('nav.archive') as string, url: '/archive' }
 ])
+
+// 归档统计：与全量分组并行请求，只读展示。键刻意不带 locale——该端点不做本地化，
+// 带 locale 反而会让四种语言各存一份相同数据。
+const { data: archiveStats } = useAPI<{ total_posts: number, total_years: number }>(
+  '/blog/archive/stats',
+  { key: 'archive:stats' }
+)
 
 interface PostItem {
   id: number | string

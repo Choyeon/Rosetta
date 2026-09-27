@@ -1054,6 +1054,11 @@
     "runCheck": "再検出"
   },
   "archive": {
+    "backToArchive": "全アーカイブに戻る",
+    "yearTitle": "{year} 年のアーカイブ",
+    "noYearPosts": "この年に公開済みの記事はありません",
+    "statsTotal": "合計 {count} 件の記事",
+    "statsYears": "過去 {count} 年にまたがります",
     "title": "アーカイブ",
     "year": "年",
     "month": "月",

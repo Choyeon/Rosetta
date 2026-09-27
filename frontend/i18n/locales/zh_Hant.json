@@ -1054,6 +1054,11 @@
     "runCheck": "重新檢測"
   },
   "archive": {
+    "backToArchive": "返回完整歸檔",
+    "yearTitle": "{year} 年歸檔",
+    "noYearPosts": "該年份暫無已發布文章",
+    "statsTotal": "共 {count} 篇文章",
+    "statsYears": "跨越 {count} 個年份",
     "title": "文章彙整",
     "year": "年",
     "month": "月",

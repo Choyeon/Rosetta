@@ -214,6 +214,9 @@ export default defineNuxtConfig({
     // === 公开内容页（SSR + SWR cache 写死，全局 ssr:true 时直接启用）
     '/': { swr: 300, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400' } },
     '/archive': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
+    // 单年归档 /archive/2026 与 /archive 同属低频内容，缓存口径必须一致：
+    // 只写 '/archive' 会让新路由静默落回无缓存 SSR，而 routeRulesSsr.spec 只锁 ssr:false 集合，看不见这条。
+    '/archive/**': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
     '/about': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
     '/friends': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
     '/gallery': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
