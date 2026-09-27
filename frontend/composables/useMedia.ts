@@ -1,20 +1,18 @@
-import type {
-  MediaItem,
-  MediaLibraryParams,
-  MediaUpdate,
-  MediaStats,
-  BingWallpaperItem,
-  MediaAvatarOptions,
-  BaseResponse
-} from '~~/types/api'
-import { useAPI, apiFetch } from '~~/composables/useApi'
-
 /**
- * 资源上传（表单中即时触发的"动作型"请求）：
- * 必须用 $fetch 基的 apiFetch，返回 Promise<T> 可直接 await 拿到数据；
- * useFetch (= useAPI) 返回 AsyncData 响应式状态，适合模板/setup 中声明式绑定，
- * 但在事件回调中 await 它拿到的只是 { data, pending, ... } 包装对象而非 T 本身 —— 这是之前上传无反应的根因。
+ * useMedia —— 上传类「动作型」请求（编辑器、头像、封面、素材库上传）。
+ *
+ * 为什么这些不是 useAPI/useFetch：上传发生在事件回调里，需要 `await` 直接拿到返回的
+ * MediaItem；useFetch 返回的是 AsyncData 包装对象，await 它拿不到 T 本身
+ * ——这正是早先「点了上传没反应」的根因。
+ *
+ * 媒体库的**读**与**删**不在这里：列表/统计/单条删除/批量删除是后台管理契约，
+ * 单一实现位于 useAdminManage.ts（fetchAdminMediaLibrary / fetchAdminMediaStats /
+ * deleteAdminMedia / deleteAdminMediaBatch），页面一律走那一侧，避免两份封装漂移。
  */
+import type { MediaItem } from '~~/types/api'
+import { apiFetch } from '~~/composables/useApi'
+
+/** 通用图片上传（POST /media/upload），category 决定落盘子目录。 */
 export async function useMediaUpload(file: File, category?: string): Promise<MediaItem> {
   const formData = new FormData()
   formData.append('file', file)
@@ -22,18 +20,14 @@ export async function useMediaUpload(file: File, category?: string): Promise<Med
   return apiFetch<MediaItem>('/media/upload', { method: 'POST', body: formData })
 }
 
-export async function useMediaUploadStream(file: File): Promise<MediaItem> {
-  const formData = new FormData()
-  formData.append('file', file)
-  return apiFetch<MediaItem>('/media/upload/stream', { method: 'POST', body: formData })
-}
-
+/** 头像上传（前端已裁剪为方形小图）。 */
 export async function useMediaUploadAvatar(file: File): Promise<{ url: string }> {
   const formData = new FormData()
   formData.append('file', file)
   return apiFetch<{ url: string }>('/media/avatar', { method: 'POST', body: formData })
 }
 
+/** 文章/相册封面上传。 */
 export async function useMediaUploadCover(file: File): Promise<{ url: string }> {
   const formData = new FormData()
   formData.append('file', file)
@@ -41,21 +35,7 @@ export async function useMediaUploadCover(file: File): Promise<{ url: string }> 
 }
 
 export const useMediaLibrary = () => {
-  const getMediaList = async (params?: MediaLibraryParams) => {
-    const query = {
-      page: params?.page,
-      page_size: params?.page_size ?? params?.pageSize,
-      search: params?.search,
-      category: params?.category,
-      type: params?.type
-    }
-    return apiFetch<{ items: MediaItem[], total: number }>('/media/library', { query })
-  }
-
-  const getMediaStats = async () => {
-    return apiFetch<MediaStats>('/media/library/stats')
-  }
-
+  /** 入库上传（POST /media/library）：写 Media 记录，供媒体库页面直接列出。 */
   const uploadMedia = async (file: File, category?: string) => {
     const formData = new FormData()
     formData.append('file', file)
@@ -68,73 +48,5 @@ export const useMediaLibrary = () => {
     })
   }
 
-  const getMediaDetail = async (mediaId: number) => {
-    return apiFetch<MediaItem>(`/media/library/${mediaId}`)
-  }
-
-  const updateMedia = async (mediaId: number, data: MediaUpdate) => {
-    return apiFetch<MediaItem>(`/media/library/${mediaId}`, {
-      method: 'PUT',
-      body: data
-    })
-  }
-
-  const deleteMedia = async (mediaId: number) => {
-    return apiFetch<BaseResponse>(`/media/library/${mediaId}`, {
-      method: 'DELETE'
-    })
-  }
-
-  const deleteMediaBatch = async (ids: number[]) => {
-    return apiFetch<BaseResponse>('/media/library/batch', {
-      method: 'DELETE',
-      body: { ids }
-    })
-  }
-
-  return {
-    getMediaList,
-    getMediaStats,
-    uploadMedia,
-    getMediaDetail,
-    updateMedia,
-    deleteMedia,
-    deleteMediaBatch
-  }
-}
-
-export const useServerBingWallpaper = (count = 1) => {
-  // 仅用于 setup 顶层声明式调用；若要在事件回调中使用请改用 apiFetch('/media/bing-wallpaper')
-  return useAPI<BingWallpaperItem[]>('/media/bing-wallpaper', {
-    query: { count }
-  })
-}
-
-export const useMediaAvatar = (options?: MediaAvatarOptions) => {
-  const config = useRuntimeConfig()
-  const baseURL = config.public.apiBase
-
-  const getAvatarUrl = () => {
-    const params = new URLSearchParams()
-    if (options?.username) params.append('username', options.username)
-    if (options?.email) params.append('email', options.email)
-    if (options?.size) params.append('size', options.size.toString())
-    if (options?.default) params.append('default', options.default)
-    const queryString = params.toString()
-    return `${baseURL}/media/avatar${queryString ? `?${queryString}` : ''}`
-  }
-
-  return {
-    getAvatarUrl,
-    fetchAvatar: async () => {
-      return apiFetch<string>('/media/avatar', {
-        query: {
-          username: options?.username,
-          email: options?.email,
-          size: options?.size,
-          default: options?.default
-        }
-      })
-    }
-  }
+  return { uploadMedia }
 }

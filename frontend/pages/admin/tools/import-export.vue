@@ -1,3 +1,8 @@
+<!--
+  导入导出页：文章数据的双向搬运——导出 ZIP（json/markdown 两通道）与上传导入（覆盖/跳过同 slug）。
+  契约：草稿仅 /export/posts 在 scope≠published 且 include_drafts=true 时输出，markdown 导出固定只含已发布并忽略范围选择；
+  skip_existing 查询参数只有 /import/posts 支持（markdown 通道不接收）；导入接口 HTTP 200 仍可能 success:false（业务失败），必须抛出走内联错误而非提示"导入完成"。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -13,14 +18,14 @@
       <TabsList class="rounded-xl p-1 bg-muted/40">
         <TabsTrigger
           value="export"
-          class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
+          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
           :class="activeTab === 'export' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Upload class="size-4 mr-1.5" /> 导出
         </TabsTrigger>
         <TabsTrigger
           value="import"
-          class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
+          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
           :class="activeTab === 'import' ? 'bg-primary text-primary-foreground' : ''"
         >
           <Download class="size-4 mr-1.5" /> 导入
@@ -46,31 +51,34 @@
             </div>
           </div>
           <div>
+            <Label
+              for="export-format"
+              class="text-sm"
+            >
+              导出格式
+            </Label>
             <Select
               v-model="exportForm.format"
               class="max-w-md"
             >
-              <SelectTrigger class="rounded-xl">
+              <SelectTrigger
+                id="export-format"
+                class="rounded-xl mt-1.5"
+              >
                 <SelectValue placeholder="选择导出格式" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wordpress">
-                  WordPress (XML WXR)
-                </SelectItem>
-                <SelectItem value="halo">
-                  Halo 导出包
-                </SelectItem>
-                <SelectItem value="typecho">
-                  Typecho (Markdown/HTML)
+                <SelectItem value="json">
+                  Rosetta 数据包（ZIP：posts/categories/tags JSON）
                 </SelectItem>
                 <SelectItem value="markdown">
-                  Markdown 打包
-                </SelectItem>
-                <SelectItem value="json">
-                  Rosetta JSON
+                  Markdown 打包（ZIP：每篇一个 .md，含 frontmatter）
                 </SelectItem>
               </SelectContent>
             </Select>
+            <p class="text-xs text-muted-foreground mt-2">
+              后端当前仅提供以上两种导出通道；WordPress / Halo / Typecho 等第三方格式暂无导入导出实现，故不再列出，避免生成错误命名的文件。
+            </p>
           </div>
         </AdminCard>
 
@@ -89,47 +97,49 @@
             </div>
           </div>
           <div class="flex flex-col gap-4">
-            <div class="inline-flex rounded-xl border border-border p-1 bg-card">
-              <button
-                v-for="s in scopes"
-                :key="s.key"
-                class="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all"
-                :class="exportForm.scope === s.key
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-                @click="exportForm.scope = s.key"
+            <div class="flex flex-col gap-2">
+              <Label class="text-sm">导出范围</Label>
+              <div
+                class="inline-flex rounded-xl border border-border p-1 bg-card self-start"
+                role="group"
+                aria-label="导出范围"
               >
-                {{ s.label }}
-              </button>
-            </div>
-            <div
-              v-if="exportForm.scope === 'category'"
-              class="flex flex-col gap-2"
-            >
-              <Label class="text-sm">指定分类（多选）</Label>
-              <div class="rounded-xl border border-border p-3 grid grid-cols-2 md:grid-cols-3 gap-2 max-h-40 overflow-y-auto bg-muted/20">
-                <label
-                  v-for="i in 6"
-                  :key="i"
-                  class="flex items-center gap-2 cursor-pointer p-2 rounded-lg hover:bg-muted transition-colors text-sm"
+                <button
+                  v-for="s in scopes"
+                  :key="s.key"
+                  type="button"
+                  class="px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all"
+                  :class="exportForm.scope === s.key
+                    ? 'bg-primary text-primary-foreground shadow-sm'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
+                  @click="exportForm.scope = s.key"
                 >
-                  <input
-                    type="checkbox"
-                    class="accent-[hsl(var(--primary))]"
-                  >
-                  分类 {{ ['技术', '生活', '随笔', '教程', '笔记', '资源'][i - 1] }}
-                </label>
+                  {{ s.label }}
+                </button>
               </div>
+              <p class="text-xs text-muted-foreground">
+                后端仅在 <code class="font-mono">include_drafts=true</code> 且范围非 published 时输出草稿。
+              </p>
             </div>
+            <p
+              v-if="exportForm.format === 'markdown'"
+              class="text-xs text-muted-foreground"
+            >
+              Markdown 导出固定为「已发布」文章，且忽略下方范围选择。
+            </p>
             <div class="grid md:grid-cols-1 gap-4">
               <div class="flex flex-col gap-2">
-                <Label class="text-sm flex items-center gap-1.5">
+                <Label
+                  for="export-from-date"
+                  class="text-sm flex items-center gap-1.5"
+                >
                   <CalendarDays class="size-3.5 text-primary" />
                   按创建日期范围筛选（选完开始会自动弹出结束）
                 </Label>
                 <div class="flex items-center gap-2 rounded-xl border border-border/60 bg-background/60 px-3 py-2.5">
                   <div class="relative group flex-1">
                     <input
+                      id="export-from-date"
                       v-model="exportForm.fromDate"
                       type="date"
                       class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
@@ -141,7 +151,7 @@
                       v-if="exportForm.fromDate"
                       type="button"
                       class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
-                      title="清除开始日期"
+                      aria-label="清除开始日期"
                       @click="exportForm.fromDate = ''"
                     >
                       <X class="size-3.5" />
@@ -163,7 +173,7 @@
                       v-if="exportForm.toDate"
                       type="button"
                       class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
-                      title="清除结束日期"
+                      aria-label="清除结束日期"
                       @click="exportForm.toDate = ''"
                     >
                       <X class="size-3.5" />
@@ -222,12 +232,34 @@
               </p>
             </div>
 
+            <Alert
+              v-if="exportError"
+              variant="destructive"
+              class="rounded-xl"
+            >
+              <AlertTriangle class="size-4" />
+              <AlertTitle>导出失败</AlertTitle>
+              <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+                <span>{{ exportError }}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="rounded-lg shrink-0"
+                  :disabled="exporting"
+                  @click="handleExport"
+                >
+                  <RotateCcw data-icon="inline-start" />
+                  重试
+                </Button>
+              </AlertDescription>
+            </Alert>
+
             <div
               v-if="downloadReady"
               class="p-5 rounded-xl border border-success/40 bg-success-muted/40"
             >
               <div class="flex items-start gap-3">
-                <div class="size-11 rounded-xl bg-success text-white flex items-center justify-center shrink-0">
+                <div class="size-11 rounded-xl bg-success text-success-foreground flex items-center justify-center shrink-0">
                   <Check class="size-5" />
                 </div>
                 <div class="flex-1 min-w-0">
@@ -242,13 +274,10 @@
                   <Button
                     variant="default"
                     size="sm"
-                    class="mt-3 rounded-lg bg-success hover:bg-success/90"
+                    class="mt-3 rounded-lg bg-success text-success-foreground hover:bg-success/90"
                     @click="doDownload"
                   >
-                    <Download
-                      data-icon="inline-start"
-                      class="mr-1.5"
-                    /> 立即下载
+                    <Download data-icon="inline-start" /> 立即下载
                   </Button>
                 </div>
               </div>
@@ -271,33 +300,33 @@
                 选择导入格式
               </h3>
               <p class="text-sm text-muted-foreground">
-                兼容 WordPress XML / Halo 导出包 / Typecho / Markdown 压缩包 / JSON
+                后端支持 Rosetta 导出包（ZIP）与单篇 Markdown（.md，含 frontmatter）
               </p>
             </div>
           </div>
           <div>
+            <Label
+              for="import-format"
+              class="text-sm"
+            >
+              导入格式
+            </Label>
             <Select
               v-model="importForm.format"
               class="max-w-md"
             >
-              <SelectTrigger class="rounded-xl">
+              <SelectTrigger
+                id="import-format"
+                class="rounded-xl mt-1.5"
+              >
                 <SelectValue placeholder="选择导入格式" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="wordpress">
-                  WordPress (XML WXR)
-                </SelectItem>
-                <SelectItem value="halo">
-                  Halo 导出包 (.zip/.json)
-                </SelectItem>
-                <SelectItem value="typecho">
-                  Typecho 导出
+                <SelectItem value="json">
+                  Rosetta 数据包 (.zip)
                 </SelectItem>
                 <SelectItem value="markdown">
-                  Markdown 压缩包 (.zip)
-                </SelectItem>
-                <SelectItem value="json">
-                  Rosetta JSON
+                  单篇 Markdown (.md)
                 </SelectItem>
               </SelectContent>
             </Select>
@@ -320,9 +349,14 @@
           </div>
           <div>
             <div
-              class="rounded-2xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40 transition-all p-8 text-center cursor-pointer"
+              class="rounded-2xl border-2 border-dashed border-border hover:border-primary/50 bg-muted/20 hover:bg-muted/40 transition-all p-8 text-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               :class="{ 'border-primary bg-primary/5': dragging }"
-              @click="fileInput?.click()"
+              role="button"
+              tabindex="0"
+              aria-label="选择导入文件"
+              @click="fileInputRef?.click()"
+              @keydown.enter.prevent="fileInputRef?.click()"
+              @keydown.space.prevent="fileInputRef?.click()"
               @dragover.prevent="dragging = true"
               @dragleave.prevent="dragging = false"
               @drop.prevent="handleDrop"
@@ -337,7 +371,7 @@
               <div
                 class="size-16 rounded-2xl mx-auto mb-4 flex items-center justify-center bg-primary text-primary-foreground"
               >
-                <CloudUpload class="size-8 text-white" />
+                <CloudUpload class="size-8" />
               </div>
               <div
                 v-if="!importForm.file"
@@ -366,7 +400,7 @@
                   class="mt-2 rounded-lg text-xs"
                   @click.stop="clearFile"
                 >
-                  <X class="size-3.5 mr-1" /> 移除文件
+                  <X data-icon="inline-start" /> 移除文件
                 </Button>
               </div>
             </div>
@@ -389,19 +423,29 @@
           </div>
           <div class="flex flex-col gap-3">
             <label
-              v-for="opt in importOptions"
-              :key="opt.key"
-              class="flex items-start gap-3 cursor-pointer p-3 rounded-xl hover:bg-muted transition-colors"
+              class="flex items-start gap-3 cursor-pointer p-3 rounded-xl hover:bg-muted transition-colors border border-border"
+              :class="importForm.opts.overwrite ? 'border-warning/60 bg-warning-muted/30' : ''"
             >
               <Checkbox
-                :model-value="importForm.opts[opt.key]"
-                @update:model-value="importForm.opts[opt.key] = !!$event"
+                :model-value="importForm.opts.overwrite"
+                @update:model-value="importForm.opts.overwrite = !!$event"
               />
-              <div class="flex flex-col gap-0 .5">
-                <div class="font-medium">{{ opt.label }}</div>
-                <div class="text-sm text-muted-foreground">{{ opt.desc }}</div>
+              <div class="flex flex-col gap-0.5">
+                <div class="font-medium">
+                  覆盖已有同 slug 文章
+                </div>
+                <div class="text-sm text-muted-foreground">
+                  对应后端 <code class="font-mono">skip_existing=false</code>；不勾选时同名 slug 会被跳过。
+                  <b
+                    v-if="importForm.opts.overwrite"
+                    class="text-warning"
+                  >该操作会改写线上内容，需要输入确认短语。</b>
+                </div>
               </div>
             </label>
+            <p class="text-xs text-muted-foreground">
+              「自动生成缩略图」「导入后存为草稿」等选项目前后端未实现，已移除以免产生无效请求。
+            </p>
           </div>
         </AdminCard>
 
@@ -409,39 +453,62 @@
           <div class="flex flex-col gap-5 pt-6">
             <div class="flex flex-col gap-2">
               <div class="flex items-center justify-between">
-                <span class="font-medium">导入进度</span>
-                <span class="text-sm text-muted-foreground tabular-nums">{{ importProgress }}%</span>
+                <span class="font-medium">导入状态</span>
+                <span class="text-sm text-muted-foreground tabular-nums">
+                  {{ importing ? '处理中' : (importResult ? (importResult.ok ? '已完成' : '失败') : '待开始') }}
+                </span>
               </div>
-              <div class="h-2.5 rounded-full bg-muted overflow-hidden">
+              <div
+                class="h-2.5 rounded-full bg-muted overflow-hidden"
+                role="progressbar"
+                :aria-valuemin="0"
+                :aria-valuemax="100"
+                :aria-valuenow="importing ? undefined : (importResult?.ok ? 100 : 0)"
+                :aria-label="importing ? '正在导入' : '导入进度'"
+              >
                 <div
+                  v-if="importing"
+                  class="h-full w-full origin-left animate-pulse rounded-full bg-primary"
+                />
+                <div
+                  v-else
                   class="h-full rounded-full transition-all duration-500"
-                  :style="{ width: `${importProgress}%`, backgroundColor: importProgress < 100 ? 'hsl(var(--primary))' : 'hsl(var(--success))' }"
+                  :style="{
+                    width: importResult?.ok ? '100%' : '0%',
+                    backgroundColor: importResult?.ok ? 'hsl(var(--success))' : 'hsl(var(--destructive))'
+                  }"
                 />
               </div>
             </div>
             <div class="flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
               <p
-                v-if="importProgress === 0"
+                v-if="!importForm.file"
                 class="text-sm text-muted-foreground"
               >
-                准备就绪后点击下方开始按钮
+                请先上传导入文件
               </p>
               <p
-                v-else-if="importProgress < 100"
+                v-else-if="importing"
                 class="text-sm text-muted-foreground"
               >
-                正在导入中，请勿关闭页面...
+                正在导入中，请勿关闭页面…
+              </p>
+              <p
+                v-else-if="importError"
+                class="text-sm text-destructive"
+              >
+                {{ importError }}
               </p>
               <p
                 v-else
-                class="text-sm text-success-muted-foreground font-medium"
+                class="text-sm text-muted-foreground"
               >
-                ✓ 导入完成
+                准备就绪后点击下方按钮，确认后即可开始导入
               </p>
               <Button
                 :disabled="importing || !importForm.file"
                 class="sm:w-auto w-full shadow-sm"
-                @click="handleImport"
+                @click="importConfirmOpen = true"
               >
                 <Loader2
                   v-if="importing"
@@ -458,16 +525,23 @@
 
             <Alert
               v-if="importResult"
-              variant="success"
+              :variant="importResult.ok ? 'success' : 'destructive'"
               class="rounded-xl"
             >
-              <CheckCircle class="size-4" />
-              <AlertTitle>导入完成</AlertTitle>
+              <CheckCircle
+                v-if="importResult.ok"
+                class="size-4"
+              />
+              <AlertTriangle
+                v-else
+                class="size-4"
+              />
+              <AlertTitle>{{ importResult.ok ? '导入完成' : '导入未成功' }}</AlertTitle>
               <AlertDescription class="flex flex-col gap-1">
                 <div>
                   成功导入 <b>{{ importResult.created }}</b> 篇
                   <span v-if="importResult.skipped > 0">，跳过 <b class="text-muted-foreground">{{ importResult.skipped }}</b> 篇</span>
-                  <span v-if="importResult.failed > 0">，失败 <b class="text-error">{{ importResult.failed }}</b> 篇</span>
+                  <span v-if="importResult.failed > 0">，失败 <b class="text-destructive">{{ importResult.failed }}</b> 篇</span>
                 </div>
                 <p
                   v-if="importResult.message"
@@ -477,7 +551,7 @@
                 </p>
                 <ul
                   v-if="importResult.errors && importResult.errors.length"
-                  class="flex flex-col gap-0 text-[11px] text-muted-foreground list-disc pl-4 mt-2 .5"
+                  class="flex flex-col gap-0.5 text-[11px] text-muted-foreground list-disc pl-4 mt-2"
                 >
                   <li
                     v-for="(err, i) in importResult.errors.slice(0, 5)"
@@ -489,7 +563,7 @@
                     v-if="importResult.errors.length > 5"
                     class="italic opacity-70"
                   >
-                    另有 {{ importResult.errors.length - 5 }} 条错误未展示...
+                    另有 {{ importResult.errors.length - 5 }} 条错误未展示…
                   </li>
                 </ul>
               </AlertDescription>
@@ -498,56 +572,67 @@
         </AdminCard>
       </TabsContent>
     </Tabs>
+
+    <DangerConfirmDialog
+      v-model:open="importConfirmOpen"
+      :title="importForm.opts.overwrite ? '危险：覆盖导入文章' : '确认导入文章'"
+      :description="`将使用「${formatLabel}」通道导入 ${importForm.file?.name ?? '（未选择文件）'}（${importForm.opts.overwrite ? '同 slug 覆盖写入' : '跳过已存在 slug'}）。导入会直接写入线上文章数据且不可撤销，建议先做一次全站备份。`"
+      confirm-text="确认导入"
+      :confirm-phrase="importForm.opts.overwrite ? '覆盖导入' : ''"
+      :on-confirm="runImport"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
-import {
-  exportAdminPosts,
-  importAdminPosts
-} from '~~/composables/useAdminManage'
+import { apiFetch } from '~~/composables/useApi'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
   ArrowLeftRight, Upload, Download, FileJson, FileInput, Filter, Rocket,
   Package, Check, CloudUpload, UploadCloud, Settings2, Play, X, Loader2,
-  CheckCircle, ChevronRight, CalendarDays, Info
+  CheckCircle, ChevronRight, CalendarDays, Info, AlertTriangle, RotateCcw
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Label } from '~~/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Checkbox } from '~~/components/ui/checkbox'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 
-const fileInput = ref<HTMLInputElement | null>(null)
-
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
 const activeTab = ref('export')
+/** 后端 /admin/export/posts 只认 scope=published|其它，草稿需显式 include_drafts=true */
 const scopes = [
-  { key: 'all', label: '全部文章' },
   { key: 'published', label: '仅已发布' },
-  { key: 'category', label: '指定分类' }
+  { key: 'all', label: '全部（含草稿）' }
 ] as const
 
-const importOptions = [
-  { key: 'overwrite', label: '覆盖已有同 slug 文章', desc: '如果目标 slug 已存在，使用导入内容覆盖' },
-  { key: 'thumbnail', label: '自动生成缩略图', desc: '根据正文图片自动提取并生成封面' },
-  { key: 'draft', label: '导入后发布为草稿', desc: '所有文章默认为草稿，需要手动发布' }
-] as const
+/** 后端 ImportResult 原始结构 */
+interface ImportResultResponse {
+  success?: boolean
+  message?: string
+  created_count?: number
+  skipped_count?: number
+  error_count?: number
+  errors?: string[]
+}
 
 const exporting = ref(false)
+const exportError = ref('')
 const downloadReady = ref<{ fileName: string, size: string, time: string, blob: Blob } | null>(null)
 
 const exportToDateInputRef = ref<HTMLInputElement | null>(null)
 
 const exportForm = reactive({
-  format: 'json',
-  scope: 'all' as 'all' | 'published' | 'category',
+  format: 'json' as 'json' | 'markdown',
+  scope: 'published' as 'all' | 'published',
   fromDate: '',
   toDate: ''
 })
@@ -595,8 +680,10 @@ function onToChange() {
 }
 
 const importing = ref(false)
-const importProgress = ref(0)
+const importConfirmOpen = ref(false)
+const importError = ref('')
 const importResult = ref<{
+  ok: boolean
   created: number
   skipped: number
   failed: number
@@ -607,25 +694,20 @@ const dragging = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 
 const importForm = reactive({
-  format: 'wordpress',
+  format: 'json' as 'json' | 'markdown',
   file: null as File | null,
   opts: {
-    overwrite: false,
-    thumbnail: true,
-    draft: false
-  } as Record<string, boolean>
+    overwrite: false
+  }
 })
 
-const acceptForFormat = computed(() => {
-  const m: Record<string, string> = {
-    wordpress: '.xml,text/xml,application/xml',
-    halo: '.zip,.json',
-    typecho: '.xml,.zip,.md',
-    markdown: '.zip,.md',
-    json: '.json,application/json'
-  }
-  return m[importForm.format] ?? '*'
-})
+const formatLabel = computed(() =>
+  importForm.format === 'markdown' ? '/admin/import/markdown（单篇 .md）' : '/admin/import/posts（ZIP 数据包）'
+)
+
+const acceptForFormat = computed(() =>
+  importForm.format === 'markdown' ? '.md,text/markdown' : '.zip,application/zip'
+)
 
 function formatSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
@@ -637,13 +719,27 @@ function formatSize(bytes: number): string {
 function handleFileSelect(e: Event) {
   const t = e.currentTarget as HTMLInputElement
   const f = t.files?.[0]
-  if (f) importForm.file = f
+  if (f) acceptImportFile(f)
 }
 
 function handleDrop(e: DragEvent) {
   dragging.value = false
   const f = e.dataTransfer?.files?.[0]
-  if (f) importForm.file = f
+  if (f) acceptImportFile(f)
+}
+
+/** 前端先按后端契约校验扩展名，避免必然 400 的上传 */
+function acceptImportFile(f: File) {
+  const okExt = importForm.format === 'markdown' ? /\.md$/i : /\.zip$/i
+  if (!okExt.test(f.name)) {
+    const want = importForm.format === 'markdown' ? '.md' : '.zip'
+    toast.error(`当前导入通道只接受 ${want} 文件，已忽略「${f.name}」`)
+    if (fileInputRef.value) fileInputRef.value.value = ''
+    return
+  }
+  importResult.value = null
+  importError.value = ''
+  importForm.file = f
 }
 
 function clearFile() {
@@ -653,30 +749,43 @@ function clearFile() {
 
 async function handleExport() {
   exporting.value = true
+  exportError.value = ''
   downloadReady.value = null
   try {
-    const opts: { from?: string, to?: string, scope?: string } = {}
-    if (exportForm.fromDate) opts.from = exportForm.fromDate
-    if (exportForm.toDate) opts.to = exportForm.toDate
-    if (exportForm.scope !== 'all') opts.scope = exportForm.scope
-    const blob = await exportAdminPosts(exportForm.format, opts)
+    const isMd = exportForm.format === 'markdown'
+    const query: Record<string, string | boolean> = {}
+    if (exportForm.fromDate) query.from = exportForm.fromDate
+    if (exportForm.toDate) query.to = exportForm.toDate
+    if (isMd) {
+      query.lang = 'zh'
+    } else {
+      query.scope = exportForm.scope
+      query.include_drafts = exportForm.scope === 'all'
+    }
+    const path = isMd ? '/admin/export/markdown' : '/admin/export/posts'
+    const blob = await apiFetch<Blob>(path, {
+      method: 'GET',
+      responseType: 'blob',
+      query,
+      silentToast: true
+    })
+    if (!blob || blob.size === 0) {
+      throw new Error('导出内容为空，请放宽筛选条件后重试')
+    }
     const now = new Date()
     const pad = (n: number) => String(n).padStart(2, '0')
     const stamp = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}`
-    const extMap: Record<string, string> = {
-      wordpress: 'xml', halo: 'zip', typecho: 'zip', markdown: 'zip', json: 'json'
-    }
-    const ext = extMap[exportForm.format] ?? 'bin'
     downloadReady.value = {
-      fileName: `rosetta-export-${exportForm.format}-${stamp}.${ext}`,
-      size: formatSize(blob.size || 0),
+      // 两个导出通道都返回 ZIP，扩展名统一为 zip，避免误导下游平台
+      fileName: `rosetta-export-${exportForm.format}-${stamp}.zip`,
+      size: formatSize(blob.size),
       time: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`,
       blob
     }
     toast.success('导出文件已生成')
   } catch (e) {
-    const msg = e instanceof Error ? e.message : '导出失败'
-    toast.error(msg)
+    const err = e as { data?: unknown, message?: string }
+    exportError.value = extractApiErrorMessage(err?.data, err?.message || '导出失败')
   } finally {
     exporting.value = false
   }
@@ -694,28 +803,56 @@ function doDownload() {
   setTimeout(() => URL.revokeObjectURL(url), 5000)
 }
 
-async function handleImport() {
+/**
+ * 由 DangerConfirmDialog 的 onConfirm 调用：
+ *   - 网络/HTTP 错误：apiFetch(silentToast) 抛出 → 弹窗内联展示，弹窗保持打开可重试
+ *   - HTTP 200 + success:false（后端业务失败）：同样抛出，绝不提示"导入完成"
+ */
+async function runImport() {
   if (!importForm.file) {
-    toast.warning('请先选择导入文件')
-    return
+    throw new Error('请先选择导入文件')
   }
   importing.value = true
+  importError.value = ''
   importResult.value = null
-  importProgress.value = 10
   try {
-    const r = await importAdminPosts(importForm.format, importForm.file)
-    importProgress.value = 100
+    const isMd = importForm.format === 'markdown'
+    const fd = new FormData()
+    fd.append('file', importForm.file)
+    const r = await apiFetch<ImportResultResponse>(
+      isMd ? '/admin/import/markdown' : '/admin/import/posts',
+      {
+        method: 'POST',
+        body: fd,
+        // 仅 /import/posts 支持 skip_existing；markdown 通道后端不接收该参数
+        query: isMd ? undefined : { skip_existing: !importForm.opts.overwrite },
+        silentToast: true
+      }
+    )
+    const created = Number(r?.created_count ?? 0) || 0
+    const skipped = Number(r?.skipped_count ?? 0) || 0
+    const failed = Number(r?.error_count ?? 0) || 0
+    const ok = r?.success !== false
     importResult.value = {
-      created: Number(r?.created_count ?? 0) || 0,
-      skipped: Number(r?.skipped_count ?? 0) || 0,
-      failed: Number(r?.error_count ?? 0) || 0,
-      message: r?.message || '导入完成',
-      errors: Array.isArray(r?.errors) ? r.errors.filter(e => e && typeof e === 'string') as string[] : []
+      ok,
+      created,
+      skipped,
+      failed,
+      message: r?.message || (ok ? '导入完成' : '导入失败'),
+      errors: Array.isArray(r?.errors) ? r.errors.filter(e => typeof e === 'string' && e) as string[] : []
     }
-    toast.success(importResult.value.message || '导入完成')
+    if (!ok || (created === 0 && skipped === 0 && failed === 0)) {
+      throw new Error(importResult.value.message || '导入未创建任何内容')
+    }
+    if (ok) {
+      toast.success(importResult.value.message)
+      clearFile()
+    }
   } catch (e) {
-    importProgress.value = 0
-    toast.error(`导入失败: ${e instanceof Error ? e.message : 'importAdminPosts'}`)
+    const err = e as { data?: unknown, message?: string }
+    const msg = extractApiErrorMessage(err?.data, err?.message || '导入失败')
+    importError.value = msg
+    throw new Error(msg, { cause: e })
   } finally {
     importing.value = false
   }

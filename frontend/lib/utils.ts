@@ -1,3 +1,11 @@
+/**
+ * lib/utils —— 零 Nuxt 上下文的纯函数集合，分两段：
+ * 前半是 UI 工具（cn = clsx + tailwind-merge 的 shadcn 约定；hex→HSL / WCAG 相对亮度，
+ * 给 TagBadge 这类「背景色由数据决定」的组件自动挑前景色）；
+ * 后半（extractApiErrorMessage / isOobeRequiredError / stableApiKey）被 useApi.ts import
+ * 而不是就地实现，正是为了能被 vitest 直接断言。依赖方向恒为 useApi → utils，勿反向。
+ */
+
 import { type ClassValue, clsx } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 

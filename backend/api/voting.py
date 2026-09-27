@@ -132,18 +132,21 @@ async def get_poll(poll_id: int, db: DB):
     # 统计总票数
     total_votes = await db.scalar(select(func.count()).where(Vote.poll_id == poll.id)) or 0
 
-    # 统计各选项票数
-    choices_data = []
-    for choice in poll.choices:
-        votes_count = await db.scalar(select(func.count()).where(Vote.choice_id == choice.id)) or 0
-        choices_data.append(
-            {
-                "id": choice.id,
-                "text": choice.text,
-                "order": choice.order,
-                "votes_count": votes_count,
-            }
-        )
+    # 各选项票数：与 GET /polls 列表口径一致，一次 GROUP BY 取代逐选项 COUNT
+    vote_rows = await db.execute(
+        select(Vote.choice_id, func.count()).where(Vote.poll_id == poll.id).group_by(Vote.choice_id)
+    )
+    votes_by_choice = {int(choice_id): int(count) for choice_id, count in vote_rows.all()}
+
+    choices_data = [
+        {
+            "id": choice.id,
+            "text": choice.text,
+            "order": choice.order,
+            "votes_count": votes_by_choice.get(choice.id, 0),
+        }
+        for choice in poll.choices
+    ]
 
     return PollResponse(
         id=poll.id,

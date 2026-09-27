@@ -1,3 +1,11 @@
+/**
+ * 认证 store：token / user 的唯一前端真源，真值持久化在 localStorage。
+ * SSR 侧永远渲染为未登录（三态均 skipHydrate）；initialize() 必须等 hydrate 完成
+ * （app:mounted）后才回填，纯 CSR 空壳页（serverRendered=false）则要立即恢复，否则
+ * 等 hook 的 router middleware 会死锁。刷新互斥 _refreshInFlight 保护后端 rotate 语义的
+ * refresh_token（并发刷新第 2..N 个会吃到 TOKEN_REUSED 被踢下线）；store 内请求一律 $fetch
+ * 并按端推导 baseURL（事件回调里调 useFetch 会静默不执行）。
+ */
 import type { TokenResponse } from '~~/types/api'
 // Pinia skipHydrate：标记某些 state 为「不需要参与 SSR → 客户端的 payload 序列化/反序列化」
 // 因为 token/user 的 source of truth 永远是 localStorage，
@@ -14,6 +22,33 @@ export interface AuthUser {
   role?: string
   avatar?: string
   [k: string]: unknown
+}
+
+/**
+ * 从后端失败响应里解析人类可读文案，优先级 message > detail > errors[0].message > 兜底。
+ * 后端统一失败信封（AGENTS.md §7.2）只在 422 校验等 FastAPI 原生异常时带 detail，
+ * 业务失败带的是 message / error_code / errors；只看 detail 会把真实错误吞成兜底文案。
+ */
+function extractApiMessage(data: Record<string, unknown>, fallback: string): string {
+  const message = typeof data.message === 'string' ? data.message : ''
+  const detail = typeof data.detail === 'string' ? data.detail : ''
+  const errors = Array.isArray(data.errors) ? data.errors : []
+  const firstFieldMsg
+    = errors.length > 0 && errors[0] && typeof errors[0] === 'object' && typeof (errors[0] as { message?: string }).message === 'string'
+      ? (errors[0] as { message: string }).message
+      : ''
+  return message || detail || firstFieldMsg || fallback
+}
+
+/**
+ * login() 抛出的结构化错误：在普通 Error 之外携带后端错误码与剩余锁定秒数，
+ * 让登录页能区分"密码错"与"账号被锁"并对后者展示倒计时（而非笼统报错）。
+ * retryAfterSeconds 仅在 ACCOUNT_LOCKED / HTTP 423 时 > 0。
+ */
+export interface AuthLoginError extends Error {
+  errorCode?: string
+  status?: number
+  retryAfterSeconds?: number
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -100,22 +135,23 @@ export const useAuthStore = defineStore('auth', () => {
       setTokens(data)
       await fetchUser()
     } catch (err) {
-      // 后端统一响应结构：{ success:false, message, error_code?, errors? }
+      // 后端统一响应结构：{ success:false, message, error_code?, errors?, retry_after_seconds? }
       // 某些 FastAPI 未捕获异常（如 422 校验）会带 { detail }，两者都取
       const data = (err as { data?: Record<string, unknown> })?.data ?? {}
-      const message = typeof data.message === 'string' ? data.message : ''
-      const detail = typeof data.detail === 'string' ? data.detail : ''
-      const errors = Array.isArray(data.errors) ? data.errors : []
-      const firstFieldMsg
-        = errors.length > 0 && errors[0] && typeof errors[0] === 'object' && typeof (errors[0] as { message?: string }).message === 'string'
-          ? (errors[0] as { message: string }).message
-          : ''
-      const msg
-        = message
-          || detail
-          || firstFieldMsg
-          || '登录失败，请稍后再试'
-      throw new Error(msg, { cause: err })
+      const status = (err as { status?: number, statusCode?: number })?.status
+        ?? (err as { statusCode?: number })?.statusCode
+      const errorCode = typeof data.error_code === 'string' ? data.error_code : ''
+      const msg = extractApiMessage(data, '登录失败，请稍后再试')
+      // 423 ACCOUNT_LOCKED：把剩余锁定秒数随错误一起外泄，登录页据此展示倒计时
+      // （契约见 backend/docs/error_codes.md 限流段——不能只丢一句笼统报错）。
+      const rawRetry = data.retry_after_seconds
+      const retryAfterSeconds = typeof rawRetry === 'number' && rawRetry > 0 ? Math.ceil(rawRetry) : 0
+      const loginError = new Error(msg) as AuthLoginError
+      loginError.cause = err
+      loginError.errorCode = errorCode
+      loginError.status = typeof status === 'number' ? status : undefined
+      loginError.retryAfterSeconds = errorCode === 'ACCOUNT_LOCKED' || status === 423 ? retryAfterSeconds : 0
+      throw loginError
     }
   }
 
@@ -129,8 +165,13 @@ export const useAuthStore = defineStore('auth', () => {
       setTokens(data)
       await fetchUser()
     } catch (err) {
-      const detail = (err as { data?: Record<string, unknown> })?.data?.detail
-      throw new Error(typeof detail === 'string' ? detail : 'Registration failed', { cause: err })
+      const data = (err as { data?: Record<string, unknown> })?.data ?? {}
+      // 与 login 同源：读统一失败信封的 message / errors，别把 WEAK_PASSWORD、
+      // EMAIL_EXISTS 这类真实业务错误吞成兜底文案。
+      const regError = new Error(extractApiMessage(data, 'Registration failed')) as AuthLoginError
+      regError.cause = err
+      regError.errorCode = typeof data.error_code === 'string' ? data.error_code : ''
+      throw regError
     }
   }
 
@@ -226,34 +267,47 @@ export const useAuthStore = defineStore('auth', () => {
    *  会让 Header 从「登录按钮」变「用户头像」，触发大面积 Hydration mismatch
    *  （Vue 报错 "Hydration completed but contains mismatches."）。
    *
-   *  因此：客户端首屏时必须 defer 到 app:mounted（hydrate 完成）之后，
-   *  再从 localStorage 恢复 token；SPA 导航的后续调用则立即执行。
+   *  因此 SSR 页面必须等 app:mounted（hydrate 完成）后再恢复 token。
+   *  两点关键约束：
+   *   1. app:mounted 是唯一放行点——超时只告警不抢跑。低端机首帧超阈值时抢跑
+   *      写入正是这里要防的 mismatch；挂载只是慢不是死，hook 最终仍会触发。
+   *   2. ssr:false 空壳页（/admin /login /register）没有可 mismatch 的服务端
+   *      HTML，且它们的 middleware/page-setup 会 await 本函数——router.isReady
+   *      阻塞挂载、挂载才触发 app:mounted，等待该 hook 会直接死锁，
+   *      所以 serverRendered=false 时必须立即恢复。
    */
   function initialize(): Promise<void> {
     if (!import.meta.client) return Promise.resolve()
     if (initialized) return Promise.resolve()
     if (initPromise) return initPromise
 
-    // 判断是否仍处于首屏 hydration 阶段：
-    //   document.readyState === 'loading' → 还在解析 HTML，必是首屏 hydrating
-    //   或 window.__NUXT_HYDRATED__ 未打标 → 仍在 hydrate 过程中
-    const isHydrating
-      = (typeof document !== 'undefined' && document.readyState === 'loading')
-        || !(typeof window !== 'undefined' && (window as { __NUXT_HYDRATED__?: boolean }).__NUXT_HYDRATED__)
+    const nuxtApp = useNuxtApp()
+    // 判断是否仍处于「有真实 HTML 待 hydrate 且尚未完成」的首屏阶段：
+    //   · payload.serverRendered=false → 纯 CSR 首渲染，写状态就是首帧本身，无 mismatch
+    //   · document.readyState === 'loading' → 还在解析 HTML，必是首屏 hydrating
+    //   · window.__NUXT_HYDRATED__ 未打标 → 仍在 hydrate 过程中
+    const serverRendered = !!nuxtApp.payload?.serverRendered
+    const isHydrating = serverRendered
+      && ((typeof document !== 'undefined' && document.readyState === 'loading')
+        || !(typeof window !== 'undefined' && (window as { __NUXT_HYDRATED__?: boolean }).__NUXT_HYDRATED__))
 
     initPromise = (async () => {
       try {
         // 首屏阶段 → 等 Vue/Nuxt 挂载完成（hydrate 结束）再改状态，避免 mismatch
         if (isHydrating) {
-          const nuxtApp = useNuxtApp()
           await new Promise<void>((resolve) => {
-            // app:mounted = Vue app 实例已挂载（hydrate 完成）
-            const offMounted = nuxtApp.hook('app:mounted', () => {
-              offMounted()
+            // app:mounted = Vue app 实例已挂载（hydrate 完成）；这是唯一放行点。
+            let released = false
+            nuxtApp.hook('app:mounted', () => {
+              released = true
               resolve()
             })
-            // 兜底：app:mounted 因异常未触发，超时 1.5s 后直接放行
-            setTimeout(resolve, 1500)
+            // 仅观测用途：慢挂载时提示，但绝不提前写状态（那等于恢复旧超时抢跑 bug）。
+            setTimeout(() => {
+              if (!released) {
+                console.warn('[auth] app:mounted >8s 未触发，登录态恢复继续等待挂载完成')
+              }
+            }, 8000)
           })
         }
 

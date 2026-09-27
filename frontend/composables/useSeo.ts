@@ -111,6 +111,26 @@ function unrefVal<T extends string | string[] | undefined>(
   return val as T
 }
 
+// SEO 描述出口的最后一道防线：剥掉短代码与 HTML 标签、压缩空白并封顶长度。
+// 各页面理应在调用侧先裁成纯文本；这里兜住新页面直传渲染后 HTML 的回退。
+// 入参可能是未解包的 ComputedRef（unrefVal 的 hasOwnProperty 检查看不到
+// 原型链上的 value getter，JSON-LD 路径靠 jsonLdStringify 兜底解包），
+// 所以先手动解一层 ref 再校验类型，非字符串一律安全返回空。
+const SEO_DESC_LIMIT = 200
+function plainTextMeta(input: unknown): string {
+  let value = input
+  if (value != null && typeof value === 'object' && 'value' in value) {
+    value = (value as { value: unknown }).value
+  }
+  if (typeof value !== 'string') return ''
+  return value
+    .replace(/\[\/?[A-Za-z_][\w-]*(?:[^\][]*)?\]/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, SEO_DESC_LIMIT)
+}
+
 // ---------------------------------------------------------------------------
 // 1. 通用 Meta：title / description / og / twitter
 // ---------------------------------------------------------------------------
@@ -138,7 +158,7 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       = typeof opts.description === 'string'
         ? opts.description
         : (opts.description?.value ?? defaultDescription.value)
-    return raw || defaultDescription.value
+    return plainTextMeta(raw) || defaultDescription.value
   })
   const _image = computed(() =>
     asAbsolute(
@@ -372,7 +392,7 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   const _slug = computed(() => unrefVal(opts.slug))
   const _title = computed(() => unrefVal(opts.title))
   const _headline = computed(() => unrefVal(opts.headline))
-  const _description = computed(() => unrefVal(opts.description))
+  const _description = computed(() => plainTextMeta(unrefVal(opts.description)))
   const _cover = computed(() => unrefVal(opts.cover))
   const _publishedAt = computed(() => unrefVal(opts.publishedAt))
   const _updatedAt = computed(() => unrefVal(opts.updatedAt))

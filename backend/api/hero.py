@@ -19,6 +19,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.partial_update import apply_partial_update
 from backend.core.site_config import get_site_config_value
 from backend.models.hero import HeroSlide
 from backend.schemas import BaseResponse
@@ -261,8 +262,7 @@ async def update_hero_slide(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(slide, field, value)
+    apply_partial_update(slide, update_data)
 
     await db.flush()
     await db.refresh(slide)

@@ -4,47 +4,119 @@
 支持文章、分类、标签等数据的导入导出。
 """
 
+import asyncio
 import io
 import json
 import zipfile
 from datetime import datetime
 
-from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.cache import invalidate_cache
 from backend.models.blog import Category, Post, Tag
 from backend.models.log import OperationLog
-from backend.utils.compat import UTC, timedelta
+from backend.schemas import raw_content_response
+from backend.utils.compat import UTC, parse_utc_date, timedelta
 
 # 注意：main.py 以 prefix="/api/admin" 挂载本路由（与 admin_tools.py 一致，
 # router 自身不再带 /admin 前缀，否则会拼出 /api/admin/admin/* 导致前端 404）。
 router = APIRouter(tags=["导入导出"])
 
 
-def _parse_iso_date(s: str | None) -> datetime | None:
-    """解析 ISO 日期字符串为 UTC datetime。"""
-    if not s:
-        return None
-    try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=UTC)
-        return d
-    except Exception:
-        return None
+async def _invalidate_content_caches(*extra_prefixes: str) -> None:
+    """导入 / 备份恢复之后统一失效内容缓存。
+
+    这两条路径会新增或整篇覆盖文章、分类、标签，却走不到 blog.py 写侧的失效逻辑；
+    不清的话前台最长 600s 仍展示导入前的内容。文章详情缓存键是
+    ``post:{slug}:{language}``，不在 ``posts`` 前缀下，所以两个前缀都要清。
+    """
+    for prefix in ("posts", "post:", "categories", "tags", *extra_prefixes):
+        await invalidate_cache(prefix)
 
 
 # ==================== 导出 API ====================
 
 
+def _build_zip(entries: list[tuple[str, object]]) -> bytes:
+    """把 (文件名, 内容) 列表打成 ZIP 字节。
+
+    内容可以是已序列化好的字符串，也可以是待 ``json.dumps`` 的对象。
+    JSON 序列化 + ZIP_DEFLATED 压缩都是 CPU 密集操作，整站备份时会占用
+    事件循环几十秒，因此本函数**只允许**通过 ``asyncio.to_thread`` 调用，
+    且入参必须是与 ORM 会话无关的纯 Python 结构。
+    """
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, payload in entries:
+            text = (
+                payload
+                if isinstance(payload, str)
+                else json.dumps(payload, ensure_ascii=False, indent=2)
+            )
+            zf.writestr(name, text)
+    return buffer.getvalue()
+
+
+def _extract_import_payloads(content: bytes) -> tuple[list, list, list]:
+    """解析 Rosetta 导出 ZIP，返回 ``(posts, categories, tags)``。
+
+    解压 + ``json.loads`` 属于 CPU/IO 密集操作，调用方一律走
+    ``asyncio.to_thread``。上传内容不可信，因此这里把结构校验做完：
+    后面取 ``row["slug"]`` 的地方才不会把一份畸形 ZIP 变成 500。
+    """
+    with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+        names = set(zf.namelist())
+
+        def read_json(name: str) -> list:
+            if name not in names:
+                return []
+            payload = json.loads(zf.read(name).decode("utf-8"))
+            if not isinstance(payload, list):
+                raise ValueError(f"{name} 顶层结构必须是数组")
+            for index, row in enumerate(payload):
+                if not isinstance(row, dict):
+                    raise ValueError(f"{name} 第 {index + 1} 条不是对象")
+            return payload
+
+        posts_data = read_json("posts.json")
+        categories_data = read_json("categories.json")
+        tags_data = read_json("tags.json")
+
+    # 分类/标签后续直接取 ["slug"]，缺键必须在这里就拒绝
+    for name, rows in (("categories.json", categories_data), ("tags.json", tags_data)):
+        for index, row in enumerate(rows):
+            if not str(row.get("slug") or "").strip():
+                raise ValueError(f"{name} 第 {index + 1} 条缺少 slug")
+
+    # 文章的 category 允许缺省，但给了就必须是对象（后续要 .get("slug")）
+    for index, row in enumerate(posts_data):
+        category = row.get("category")
+        if category is not None and not isinstance(category, dict):
+            raise ValueError(f"posts.json 第 {index + 1} 条的 category 必须是对象")
+
+    return posts_data, categories_data, tags_data
+
+
 @router.get(
     "/export/posts",
     summary="导出文章",
-    description="导出所有文章为 JSON 格式。",
+    description=(
+        "导出所有文章为 JSON 格式（Rosetta 原生 JSON ZIP）。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "format 仅支持 json，未实现格式明确 400。"
+        "默认只导已发布文章，include_drafts=true 时含草稿（scope=published 又把范围收窄回已发布）；"
+        "from/to 按创建时间过滤（含边界，只给日期时上界补足到当天 23:59:59）；"
+        "include_content=false 可只导元数据不带正文。"
+        "包内是 posts.json / categories.json / tags.json 三个 UTF-8 JSON 文件。"
+    ),
+    responses=raw_content_response(
+        "application/zip", "导出结果 zip 压缩包（二进制流下载）。", binary=True
+    ),
+    response_class=Response,
 )
 async def export_posts(
     db: DB,
@@ -54,7 +126,11 @@ async def export_posts(
     scope: str | None = Query(None, description="范围过滤：published=仅已发布，其余视为 all"),
     from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
     to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
-):
+    format: str = Query(
+        "json",
+        description="导出格式：当前仅实现 json；wordpress/halo/typecho 未实现，传入会得到 400 而非静默降级。",
+    ),
+) -> StreamingResponse:
     """
     导出文章数据
 
@@ -63,13 +139,22 @@ async def export_posts(
     - categories.json: 分类列表
     - tags.json: 标签列表
     """
+    # 诚实契约：导出器今天只产出 JSON ZIP，未声明的 format 会被静默丢弃，
+    # 用户选了未实现格式却拿到 JSON 包属于"假装成功"，这里显式 400。
+    if format != "json":
+        hint = "；Markdown 请使用 /admin/export/markdown 端点" if format == "markdown" else ""
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"暂不支持的导出格式：{format}{hint}。当前仅支持 json。",
+        )
+
     # 查询文章
     query = select(Post).options(selectinload(Post.category), selectinload(Post.tags))
     if not include_drafts or scope == "published":
         query = query.where(Post.status == "published")
 
-    from_dt = _parse_iso_date(from_date)
-    to_dt = _parse_iso_date(to_date)
+    from_dt = parse_utc_date(from_date)
+    to_dt = parse_utc_date(to_date)
     if from_dt:
         query = query.where(Post.created_at >= from_dt)
     if to_dt:
@@ -140,27 +225,23 @@ async def export_posts(
         for t in tags
     ]
 
-    # 创建 ZIP 文件
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("posts.json", json.dumps(posts_data, ensure_ascii=False, indent=2))
-        zf.writestr("categories.json", json.dumps(categories_data, ensure_ascii=False, indent=2))
-        zf.writestr("tags.json", json.dumps(tags_data, ensure_ascii=False, indent=2))
-        zf.writestr(
+    # 创建 ZIP 文件（序列化 + 压缩放线程池，避免阻塞事件循环）
+    zip_entries: list[tuple[str, object]] = [
+        ("posts.json", posts_data),
+        ("categories.json", categories_data),
+        ("tags.json", tags_data),
+        (
             "export_info.json",
-            json.dumps(
-                {
-                    "exported_at": datetime.now(UTC).isoformat(),
-                    "exported_by": current_user.username,
-                    "posts_count": len(posts_data),
-                    "include_drafts": include_drafts,
-                    "include_content": include_content,
-                },
-                ensure_ascii=False,
-                indent=2,
-            ),
-        )
-
+            {
+                "exported_at": datetime.now(UTC).isoformat(),
+                "exported_by": current_user.username,
+                "posts_count": len(posts_data),
+                "include_drafts": include_drafts,
+                "include_content": include_content,
+            },
+        ),
+    ]
+    zip_buffer = io.BytesIO(await asyncio.to_thread(_build_zip, zip_entries))
     zip_buffer.seek(0)
 
     # 记录操作日志
@@ -190,7 +271,18 @@ async def export_posts(
 @router.get(
     "/export/markdown",
     summary="导出为 Markdown",
-    description="将文章导出为 Markdown 文件。",
+    description=(
+        "将文章导出为 Markdown 文件。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "只导已发布文章（无草稿开关），每篇一个 ``<slug>.md``，正文前拼 YAML frontmatter"
+        "（title / slug / date / category / tags / cover，空字段整行省略），"
+        "并附一个 README.md 记录导出时间与篇数。"
+        "lang 选择 frontmatter 与正文取用的语言变体，取不到时回退 zh。"
+        "from/to 按创建时间过滤（含边界）；不含图片资产，压缩包是纯文本。"
+    ),
+    responses=raw_content_response(
+        "application/zip", "Markdown 导出包（含图片资产的 zip）。", binary=True
+    ),
+    response_class=Response,
 )
 async def export_markdown(
     db: DB,
@@ -198,7 +290,7 @@ async def export_markdown(
     lang: str = "zh",
     from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
     to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
-):
+) -> StreamingResponse:
     """
     导出文章为 Markdown 格式
 
@@ -210,8 +302,8 @@ async def export_markdown(
         .where(Post.status == "published")
         .options(selectinload(Post.category), selectinload(Post.tags))
     )
-    from_dt = _parse_iso_date(from_date)
-    to_dt = _parse_iso_date(to_date)
+    from_dt = parse_utc_date(from_date)
+    to_dt = parse_utc_date(to_date)
     if from_dt:
         query = query.where(Post.created_at >= from_dt)
     if to_dt:
@@ -223,48 +315,45 @@ async def export_markdown(
     result = await db.execute(query)
     posts = result.unique().scalars().all()
 
-    # 创建 ZIP 文件
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for post in posts:
-            # 获取标题和内容
-            title = post.title.get(lang, post.title.get("zh", "")) if post.title else ""
-            content = post.content.get(lang, post.content.get("zh", "")) if post.content else ""
+    # 创建 ZIP 文件：先在事件循环里拼好 Markdown 文本，再交线程池压缩
+    md_entries: list[tuple[str, object]] = []
+    for post in posts:
+        # 获取标题和内容
+        title = post.title.get(lang, post.title.get("zh", "")) if post.title else ""
+        content = post.content.get(lang, post.content.get("zh", "")) if post.content else ""
 
-            # 构建 frontmatter
-            frontmatter = "---\n"
-            frontmatter += f"title: {title}\n"
-            frontmatter += f"slug: {post.slug}\n"
-            frontmatter += f"date: {post.published_at.isoformat() if post.published_at else ''}\n"
-            if post.category:
-                cat_name = (
-                    post.category.name.get(lang, post.category.name.get("zh", ""))
-                    if post.category.name
-                    else ""
-                )
-                frontmatter += f"category: {cat_name}\n"
-            if post.tags:
-                tag_names = [
-                    t.name.get(lang, t.name.get("zh", "")) if t.name else "" for t in post.tags
-                ]
-                frontmatter += f"tags: [{', '.join(tag_names)}]\n"
-            if post.cover_image:
-                frontmatter += f"cover: {post.cover_image}\n"
-            frontmatter += "---\n\n"
+        # 构建 frontmatter
+        frontmatter = "---\n"
+        frontmatter += f"title: {title}\n"
+        frontmatter += f"slug: {post.slug}\n"
+        frontmatter += f"date: {post.published_at.isoformat() if post.published_at else ''}\n"
+        if post.category:
+            cat_name = (
+                post.category.name.get(lang, post.category.name.get("zh", ""))
+                if post.category.name
+                else ""
+            )
+            frontmatter += f"category: {cat_name}\n"
+        if post.tags:
+            tag_names = [
+                t.name.get(lang, t.name.get("zh", "")) if t.name else "" for t in post.tags
+            ]
+            frontmatter += f"tags: [{', '.join(tag_names)}]\n"
+        if post.cover_image:
+            frontmatter += f"cover: {post.cover_image}\n"
+        frontmatter += "---\n\n"
 
-            # 完整内容
-            full_content = frontmatter + content
+        md_entries.append((f"{post.slug}.md", frontmatter + content))
 
-            # 文件名
-            filename = f"{post.slug}.md"
-            zf.writestr(filename, full_content)
-
-        # 添加导出信息
-        zf.writestr(
+    # 添加导出信息
+    md_entries.append(
+        (
             "README.md",
             f"# Rosetta Blog Export\n\nExported at: {datetime.now(UTC).isoformat()}\nTotal posts: {len(posts)}\n",
         )
+    )
 
+    zip_buffer = io.BytesIO(await asyncio.to_thread(_build_zip, md_entries))
     zip_buffer.seek(0)
 
     return StreamingResponse(
@@ -280,32 +369,101 @@ async def export_markdown(
 
 
 class ImportResult(BaseModel):
-    """导入结果"""
+    """导入结果
 
-    success: bool
-    message: str
-    created_count: int = 0
-    skipped_count: int = 0
-    error_count: int = 0
-    errors: list[str] = []
+    文章导入、Markdown 导入与全站恢复三个端点共用该结构：
+    成功与失败都以 200 返回，由 ``success`` 区分，故 ``errors`` 只承载逐条失败明细。
+    """
+
+    success: bool = Field(..., description="本次导入整体是否成功；false 时 message 说明失败原因")
+    message: str = Field(..., description="人类可读汇总文案（含创建/跳过/失败计数）")
+    created_count: int = Field(
+        0, description="新建或被覆盖更新的条目数；单文件 Markdown 导入成功时为 1"
+    )
+    skipped_count: int = Field(
+        0, description="按策略跳过的条目数（同 slug 已存在、恢复策略为 skip_existing 等）"
+    )
+    error_count: int = Field(0, description="逐条解析或写库失败的条目数；计数是全量的")
+    errors: list[str] = Field(
+        default_factory=list,
+        description="失败明细（每条一个中文短句）：文章导入最多回传前 10 条，全站恢复最多回传前 20 条",
+    )
+
+
+class BackupInfoResponse(BaseModel):
+    """全站备份前的数据统计预览。"""
+
+    counts: dict[str, int] = Field(
+        default_factory=dict,
+        description=(
+            "各内容模型的行数。键固定为 posts / categories / tags / comments / users / media / "
+            "friend_links / navigations / pages / announcements / hero_slides / site_config，"
+            "文章系列模型可用时额外多一个 post_series 键"
+        ),
+    )
+    total: int = Field(0, description="counts 各值之和，即整站记录总条数")
+    queried_at: str = Field(..., description="统计时刻的 UTC ISO 8601 时间字符串")
+    queried_by: str = Field(..., description="发起本次统计的登录用户名")
+
+
+def _overwrite_post_from_import(post: Post, post_data: dict, category: Category | None) -> None:
+    """用导入载荷覆盖既有文章字段。
+
+    有意保留原作者与密码：备份中的 password hash 不可信，作者也不应因
+    导入者不同而被悄悄改写（与 /backup/restore 的 overwrite 策略一致）。
+    """
+    post.title = post_data.get("title", post.title)
+    post.subtitle = post_data.get("subtitle", post.subtitle)
+    post.content = post_data.get("content", post.content)
+    post.excerpt = post_data.get("excerpt", post.excerpt)
+    post.cover_image = post_data.get("cover_image", post.cover_image)
+    post.source = post_data.get("source", post.source)
+    post.source_url = post_data.get("source_url", post.source_url)
+    post.status = post_data.get("status", post.status)
+    post.views = post_data.get("views", post.views)
+    post.is_pinned = post_data.get("is_pinned", post.is_pinned)
+    post.allow_comments = post_data.get("allow_comments", post.allow_comments)
+    if category is not None:
+        post.category_id = category.id
 
 
 @router.post(
     "/import/posts",
     summary="导入文章",
-    description="从 JSON 文件导入文章。",
+    description=(
+        "从 Rosetta 导出的 JSON ZIP（posts/categories/tags.json）导入文章。"
+        "需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "skip_existing=true 跳过同名 slug；false 覆盖更新既有文章，但覆盖时有意保留原作者与密码 hash。"
+        "format 仅支持 json，其它取值 400。压缩包解析不出 posts.json 时 400。"
+        "成功与失败都以 200 返回，由 success 与 errors 判定逐条结果；"
+        "errors 只回传前 10 条，error_count 才是全量失败数。导入后会写一条后台操作日志并失效内容缓存。"
+    ),
+    responses={200: {"model": ImportResult}},
 )
 async def import_posts(
     db: DB,
     current_user: CurrentStaff,
     file: UploadFile = File(...),
     skip_existing: bool = True,
+    format: str = Query(
+        "json",
+        description="导入格式：当前仅实现 json（Rosetta ZIP）；wordpress/halo/typecho 未实现，传入会得到 400。",
+    ),
 ):
     """
     导入文章数据
 
     接受 ZIP 文件，包含 posts.json、categories.json、tags.json
     """
+    # 与导出侧同理：importer 只认 Rosetta JSON ZIP，未实现格式必须 400，
+    # 不能让前端 format 下拉的选择不被消费（静默按 json 解析失败更难排查）。
+    if format != "json":
+        hint = "；Markdown 请使用 /admin/import/markdown 端点" if format == "markdown" else ""
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"暂不支持的导入格式：{format}{hint}。当前仅支持 json。",
+        )
+
     if not file.filename or not file.filename.endswith(".zip"):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -314,26 +472,9 @@ async def import_posts(
 
     try:
         content = await file.read()
-        zip_buffer = io.BytesIO(content)
-
-        with zipfile.ZipFile(zip_buffer, "r") as zf:
-            # 读取文件
-            posts_json = (
-                zf.read("posts.json").decode("utf-8") if "posts.json" in zf.namelist() else "[]"
-            )
-            categories_json = (
-                zf.read("categories.json").decode("utf-8")
-                if "categories.json" in zf.namelist()
-                else "[]"
-            )
-            tags_json = (
-                zf.read("tags.json").decode("utf-8") if "tags.json" in zf.namelist() else "[]"
-            )
-
-            posts_data = json.loads(posts_json)
-            categories_data = json.loads(categories_json)
-            tags_data = json.loads(tags_json)
-
+        posts_data, categories_data, tags_data = await asyncio.to_thread(
+            _extract_import_payloads, content
+        )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -402,29 +543,28 @@ async def import_posts(
         except Exception as e:
             errors.append(f"导入标签失败: {tag_data.get('slug', 'unknown')} - {str(e)}")
 
-    # 文章导入前：批量预查已存在的文章 slug、分类、标签，消除循环内 N+1
+    # 文章导入前：批量预查已存在的文章（含整对象，覆盖模式需要）、分类、标签，消除循环内 N+1
+    # tags/category 必须一并 eager load：覆盖分支要给这两个集合赋值，
+    # 未加载的属性在 async 会话里触发懒加载 = MissingGreenlet。
     post_slugs = [p["slug"] for p in posts_data if p.get("slug")]
-    existing_post_slugs: set[str] = set()
+    existing_posts: dict[str, Post] = {}
     if post_slugs:
-        result = await db.execute(select(Post.slug).where(Post.slug.in_(post_slugs)))
-        existing_post_slugs = {row[0] for row in result.fetchall()}
+        result = await db.execute(
+            select(Post)
+            .options(selectinload(Post.tags), selectinload(Post.category))
+            .where(Post.slug.in_(post_slugs))
+        )
+        existing_posts = {p.slug: p for p in result.scalars().all()}
 
     # 分类 slug -> Category（含本次新创建的）
-    all_cat_slugs = {
-        p["category"]["slug"] for p in posts_data if p.get("category", {}).get("slug")
-    }
+    all_cat_slugs = {p["category"]["slug"] for p in posts_data if p.get("category", {}).get("slug")}
     category_by_slug: dict[str, Category] = {}
     if all_cat_slugs:
         result = await db.execute(select(Category).where(Category.slug.in_(all_cat_slugs)))
         category_by_slug = {c.slug: c for c in result.scalars().all()}
 
     # 标签 slug -> Tag（含本次新创建的）
-    all_tag_slugs = {
-        t.get("slug")
-        for p in posts_data
-        for t in p.get("tags", [])
-        if t.get("slug")
-    }
+    all_tag_slugs = {t.get("slug") for p in posts_data for t in p.get("tags", []) if t.get("slug")}
     tag_by_slug: dict[str, Tag] = {}
     if all_tag_slugs:
         result = await db.execute(select(Tag).where(Tag.slug.in_(all_tag_slugs)))
@@ -433,23 +573,40 @@ async def import_posts(
     # 导入文章
     for post_data in posts_data:
         try:
-            # 检查是否已存在
-            if post_data["slug"] in existing_post_slugs:
-                if skip_existing:
-                    skipped_count += 1
-                    continue
-                else:
-                    error_count += 1
-                    errors.append(f"文章已存在: {post_data['slug']}")
-                    continue
-
             # 获取分类（从预查字典中取，不再逐条查询）
             category = None
             cat_slug = post_data.get("category", {}).get("slug")
             if cat_slug:
                 category = category_by_slug.get(cat_slug)
 
+            # 检查是否已存在：skip_existing=True 跳过；False 覆盖更新
+            # （后台"覆盖已有同 slug 文章"选项承诺的就是 overwrite，
+            #  旧实现只记 error 不覆盖，属于虚假承诺）
+            existing_post = existing_posts.get(post_data["slug"])
+            if existing_post is not None:
+                if skip_existing:
+                    skipped_count += 1
+                    continue
+                _overwrite_post_from_import(existing_post, post_data, category)
+                existing_post.tags = [
+                    tag_by_slug[t["slug"]]
+                    for t in post_data.get("tags", [])
+                    if t.get("slug") and t["slug"] in tag_by_slug
+                ]
+                await db.flush()
+                await db.refresh(existing_post)
+                created_count += 1
+                continue
+
             # 创建文章
+            # 标签必须在构造器里一次性传入：flush 之后再 post.tags.append() 会去
+            # 加载尚未载入的集合，async 会话直接抛 MissingGreenlet，
+            # 表现为"带标签的 ZIP 一条都导不进来"（旧实现的必崩点）。
+            tag_objects = [
+                tag_by_slug[t["slug"]]
+                for t in post_data.get("tags", [])
+                if t.get("slug") and t["slug"] in tag_by_slug
+            ]
             post = Post(
                 title=post_data.get("title", {}),
                 slug=post_data["slug"],
@@ -466,17 +623,10 @@ async def import_posts(
                 password=None,  # 不信任备份中的密码 hash，新文章不写入
                 author_id=current_user.id,
                 category_id=category.id if category else None,
+                tags=tag_objects,
             )
             db.add(post)
             await db.flush()
-
-            # 添加标签（从预查字典中取，不再逐条查询）
-            for tag_info in post_data.get("tags", []):
-                tag_slug = tag_info.get("slug")
-                if tag_slug:
-                    tag = tag_by_slug.get(tag_slug)
-                    if tag:
-                        post.tags.append(tag)
 
             created_count += 1
 
@@ -499,10 +649,14 @@ async def import_posts(
     )
     db.add(log)
     await db.flush()
+    await _invalidate_content_caches()
 
     return ImportResult(
         success=True,
-        message=f"导入完成：创建 {created_count} 篇，跳过 {skipped_count} 篇，失败 {error_count} 篇",
+        message=(
+            f"导入完成：创建/更新 {created_count} 篇，跳过 {skipped_count} 篇，"
+            f"失败 {error_count} 篇"
+        ),
         created_count=created_count,
         skipped_count=skipped_count,
         error_count=error_count,
@@ -513,7 +667,15 @@ async def import_posts(
 @router.post(
     "/import/markdown",
     summary="导入 Markdown",
-    description="从 Markdown 文件导入文章。",
+    description=(
+        "导入单个 Markdown 文件为文章。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "上传内容按 UTF-8 文本解析：必须是以 --- 包裹的 frontmatter，"
+        "取其中的 title 与 slug（缺 slug 时由标题小写转写生成），正文落为 zh 变体；"
+        "default_category 参数当前实现未参与写库。导入的文章一律是草稿状态，不会直接上线。"
+        "未提供文件名时 400；slug 已存在或解析不到 frontmatter 时返回 200 且 success=false（不抛 4xx），"
+        "调用方须读 success 判定结果。"
+    ),
+    responses={200: {"model": ImportResult}},
 )
 async def import_markdown(
     db: DB,
@@ -572,6 +734,7 @@ async def import_markdown(
             )
             db.add(post)
             await db.flush()
+            await _invalidate_content_caches()
 
             return ImportResult(
                 success=True,
@@ -633,7 +796,11 @@ def _parse_dt(value):
 @router.get(
     "/backup/info",
     summary="备份信息",
-    description="返回当前数据库各项数据统计，用于备份前预览。",
+    description=(
+        "返回当前数据库各项数据统计，用于备份前预览。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "每个模型一条 COUNT 查询，无缓存；文章系列模型不可用时 counts 里没有对应键。"
+    ),
+    responses={200: {"model": BackupInfoResponse}},
 )
 async def backup_info(
     db: DB,
@@ -673,12 +840,24 @@ async def backup_info(
 @router.get(
     "/backup/full",
     summary="全站备份",
-    description="导出整站数据为 ZIP 文件，包含所有内容模型及 manifest.json。",
+    description=(
+        "导出整站数据为 ZIP 文件，包含所有内容模型及 manifest.json。"
+        "需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "包内按模型分文件（文章、分类、标签、评论、用户、媒体、友情链接、导航、页面、公告、"
+        "首屏轮播、站点配置，文章系列可用时另有一份），时间统一序列化为 ISO 字符串；"
+        "manifest.json 记录备份版本、生成时间、导出者与每张表的条数。"
+        "注意：备份的是数据库行（含媒体记录），不打包磁盘上的媒体文件本体；"
+        "整包在内存里组装后流式下发，大站慎用。导入本包请用全站恢复接口。"
+    ),
+    responses=raw_content_response(
+        "application/zip", "全站备份 zip（数据库转储 + 媒体目录）。", binary=True
+    ),
+    response_class=Response,
 )
 async def backup_full(
     db: DB,
     current_user: CurrentStaff,
-):
+) -> StreamingResponse:
     """全站备份：导出为 ZIP，内含各模型的 JSON 文件与 manifest.json"""
     # === 查询所有数据（预加载关联，避免 N+1） ===
     posts_result = await db.execute(
@@ -965,31 +1144,26 @@ async def backup_full(
         },
     }
 
-    # === 打包 ZIP ===
-    zip_buffer = io.BytesIO()
-    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2))
-        zf.writestr("posts.json", json.dumps(posts_data, ensure_ascii=False, indent=2))
-        zf.writestr("categories.json", json.dumps(categories_data, ensure_ascii=False, indent=2))
-        zf.writestr("tags.json", json.dumps(tags_data, ensure_ascii=False, indent=2))
-        zf.writestr("comments.json", json.dumps(comments_data, ensure_ascii=False, indent=2))
-        zf.writestr("users.json", json.dumps(users_data, ensure_ascii=False, indent=2))
-        zf.writestr("media.json", json.dumps(media_data, ensure_ascii=False, indent=2))
-        zf.writestr(
-            "friend_links.json", json.dumps(friend_links_data, ensure_ascii=False, indent=2)
-        )
-        zf.writestr("navigations.json", json.dumps(navigations_data, ensure_ascii=False, indent=2))
-        zf.writestr("pages.json", json.dumps(pages_data, ensure_ascii=False, indent=2))
-        zf.writestr(
-            "announcements.json", json.dumps(announcements_data, ensure_ascii=False, indent=2)
-        )
-        zf.writestr("hero_slides.json", json.dumps(hero_slides_data, ensure_ascii=False, indent=2))
-        zf.writestr("site_config.json", json.dumps(site_config_data, ensure_ascii=False, indent=2))
-        if PostSeries is not None:
-            zf.writestr(
-                "post_series.json", json.dumps(post_series_data, ensure_ascii=False, indent=2)
-            )
+    # === 打包 ZIP（整站备份数据量大，序列化 + 压缩走线程池） ===
+    backup_entries: list[tuple[str, object]] = [
+        ("manifest.json", manifest),
+        ("posts.json", posts_data),
+        ("categories.json", categories_data),
+        ("tags.json", tags_data),
+        ("comments.json", comments_data),
+        ("users.json", users_data),
+        ("media.json", media_data),
+        ("friend_links.json", friend_links_data),
+        ("navigations.json", navigations_data),
+        ("pages.json", pages_data),
+        ("announcements.json", announcements_data),
+        ("hero_slides.json", hero_slides_data),
+        ("site_config.json", site_config_data),
+    ]
+    if PostSeries is not None:
+        backup_entries.append(("post_series.json", post_series_data))
 
+    zip_buffer = io.BytesIO(await asyncio.to_thread(_build_zip, backup_entries))
     zip_buffer.seek(0)
 
     # 记录操作日志
@@ -1013,7 +1187,19 @@ async def backup_full(
 @router.post(
     "/backup/restore",
     summary="全站恢复",
-    description="上传 ZIP 备份文件恢复整站数据。策略：skip_existing（默认）或 overwrite。",
+    description=(
+        "上传全站备份 ZIP 恢复整站数据。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "文件名必须以 .zip 结尾，否则 400；压缩包本身解析失败也是 400。"
+        "缺某个 JSON 分项不报错、按空集合跳过，因此请确认包来自全站备份接口。"
+        "按外键依赖顺序导入（站点配置 → 用户 → 分类/标签 → …… → 文章 → 评论 → 媒体）。"
+        "是否已存在按自然键判断：站点配置看 key、用户看 username、分类/标签/页面/文章看 slug、"
+        "媒体看存储路径。策略 skip_existing（默认）把已存在条目计为跳过；"
+        "overwrite 覆盖可写字段并计入 created_count，但用户是分脱敏恢复（不还原密码，"
+        "新用户用占位密码与邮箱），文章的密码 hash 也不信任备份值。"
+        "完成后连带失效内容、站点配置、导航、友情链接等缓存。"
+        "结果以 200 返回，success 恒为 true，逐条失败看 error_count 与 errors（最多回传前 20 条）。"
+    ),
+    responses={200: {"model": ImportResult}},
 )
 async def backup_restore(
     db: DB,
@@ -1463,15 +1649,12 @@ async def backup_restore(
                 encryption_hint=item.get("encryption_hint"),
                 scheduled_at=_parse_dt(item.get("scheduled_at")),
                 published_at=_parse_dt(item.get("published_at")),
+                # 标签必须在构造器里传入：flush 之后 post.tags.append() 要加载未载入
+                # 的集合，async 会话直接抛 MissingGreenlet（与 /import/posts 同一缺陷）
+                tags=[slug_to_tag[s] for s in item.get("tag_slugs", []) if s in slug_to_tag],
             )
             db.add(post)
             await db.flush()
-
-            # 关联标签
-            for t_slug in item.get("tag_slugs", []):
-                t = slug_to_tag.get(t_slug)
-                if t:
-                    post.tags.append(t)
 
             slug_to_post[slug] = post
             _created()
@@ -1686,6 +1869,11 @@ async def backup_restore(
     )
     db.add(log)
     await db.flush()
+    # 整站恢复触及文章之外的站点配置/导航/友情链接/相册，这些缓存同样要一起失效，
+    # 否则"恢复完成"后前台仍会按备份前的配置渲染。
+    await _invalidate_content_caches(
+        "site_config", "navigations", "friend_links", "gallery", "activities"
+    )
 
     return ImportResult(
         success=True,

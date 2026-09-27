@@ -1,3 +1,11 @@
+<!--
+  登录页（layout:false + ssr:false）：自带全屏外壳（不套 default 布局），极简/壁纸两分支由 ft.slug 现场判定。
+  onMounted 顺序固定：ft.ensureLoaded() → 仅非极简分支拉 Bing 壁纸 → authStore.initialize()，
+  已登录直接 navigateTo('/admin')，所以二次进入不会停在登录页。
+  ?redirect 只接受站内绝对路径（拒 `//` 与 `/\` 协议相对写法），非法或缺失统一回落 /admin。
+  「忘记密码」是 aria-disabled 的 <span>：后端无找回流程，故意不给可点击入口。
+-->
+
 <template>
   <div
     v-if="isMinimalAuth"
@@ -108,7 +116,7 @@
         <button
           type="submit"
           class="ap-auth-submit mt-2 inline-flex h-11 w-full items-center justify-center gap-2 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="loading"
+          :disabled="loading || lockSeconds > 0"
         >
           <Loader2
             v-if="loading"
@@ -338,7 +346,7 @@
               <button
                 type="submit"
                 class="ed-auth-submit relative mt-2 w-full h-11 rounded-lg font-semibold text-zinc-900 bg-white hover:bg-white/95 active:bg-white/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
-                :disabled="loading"
+                :disabled="loading || lockSeconds > 0"
               >
                 <Loader2
                   v-if="loading"
@@ -460,6 +468,7 @@
 
 <script setup lang="ts">
 import { useAuthStore } from '~~/stores/auth'
+import type { AuthLoginError } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
@@ -495,6 +504,33 @@ const loading = ref(false)
 const errorMessage = ref('')
 const showPassword = ref(false)
 const toast = useToast()
+
+// 423 ACCOUNT_LOCKED 倒计时：后端在响应体返回 retry_after_seconds，前端据此展示真实
+// 剩余秒数并在锁定期间禁用提交（契约见 backend/docs/error_codes.md 限流段）。
+const lockSeconds = ref(0)
+let lockTimer: ReturnType<typeof setInterval> | null = null
+const stopLockCountdown = () => {
+  if (lockTimer !== null) {
+    clearInterval(lockTimer)
+    lockTimer = null
+  }
+}
+const startLockCountdown = (seconds: number, expiredMessage: string) => {
+  stopLockCountdown()
+  lockSeconds.value = seconds
+  errorMessage.value = t('auth.accountLocked', { seconds })
+  lockTimer = setInterval(() => {
+    if (lockSeconds.value <= 1) {
+      lockSeconds.value = 0
+      stopLockCountdown()
+      errorMessage.value = expiredMessage
+    } else {
+      lockSeconds.value -= 1
+      errorMessage.value = t('auth.accountLocked', { seconds: lockSeconds.value })
+    }
+  }, 1000)
+}
+onUnmounted(stopLockCountdown)
 
 /** 仅接受站内相对路径：以单个 '/' 开头，排除 '//'（协议相对）与 '/\' */
 const safeRedirect = (raw: unknown): string => {
@@ -603,7 +639,13 @@ const handleLogin = async () => {
     await authStore.login(form.username.trim(), form.password)
     navigateTo(safeRedirect(route.query.redirect))
   } catch (error) {
-    errorMessage.value = error instanceof Error ? error.message : t('auth.loginFailed', '登录失败')
+    const e = error as Partial<AuthLoginError>
+    const seconds = typeof e?.retryAfterSeconds === 'number' ? e.retryAfterSeconds : 0
+    if (seconds > 0) {
+      startLockCountdown(seconds, e?.message || t('auth.loginFailed', '登录失败'))
+    } else {
+      errorMessage.value = error instanceof Error ? error.message : t('auth.loginFailed', '登录失败')
+    }
   } finally {
     loading.value = false
   }

@@ -54,18 +54,19 @@
 | 缓存        | Redis 8 + Memory 双后端；分布式锁 / 预热器                                                                              | `backend/core/cache*.py` · `cache_warmer.py` · `distributed_lock.py`                      |
 | 认证        | PyJWT 2.10+ + argon2-cffi 24+ + bcrypt 5+ + cryptography 45+                                                 | `backend/core/auth.py` / `stores/auth.ts`                                                 |
 | 国际化 i18n  | 固定四语：`zh` · `en` · `ja` · `zh_Hant`（fallbackLocale=`en`）                                                     | `frontend/i18n.config.ts` · `frontend/i18n/locales/*.json` + `frontend/i18n/index.ts` 双加载 |
-| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 46 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
+| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 34 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
 | 测试        | 后端 pytest-asyncio 自动模式 + pytest-cov 45% fail\_under；前端 vitest 单测 happy-dom                                   | `tests/test_*.py` · `frontend/tests/unit/*.spec.ts`                                       |
 | CI        | GitHub Actions（`.github/workflows/ci.yml`、`frontend/.github/workflows/ci.yml`）                                          | lint + typecheck + pytest + coverage 底线                                                   |
 
 ### 1.1 已落地的扩展系统
 
 1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`；Customizer 字段在 `rosetta-theme.json` 内以 `mods_schema`（JSON Schema Draft-07）内联声明，mods 值存 SiteConfig KV `theme_mods:<slug>`。磁盘 ↔ DB 由「扫描」同步：非激活且磁盘已不存在的主题会被清为僵尸记录，激活主题升级前必须磁盘文件存在。主题皮肤完全自包含：默认主题的装饰层也在自己的 `style.css` 内（main.css 无皮肤）；无激活主题时前台回退加载默认主题（`useFrontendTheme` 的 `DEFAULT_THEME_*`），渲染路径上永远恰好一个完整主题。
-2. **插件系统**（FastAPI 侧 Hook Engine）：`backend/services/plugin_engine.py`（Bus 模式），三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。
+2. **插件系统**（FastAPI 侧 Hook Engine，Bus 模式）：`backend/core/plugin_loader.py`（load/unload、运行时 settings 快照）+ `backend/core/plugin_bus.py`（钩子总线）+ `backend/core/hooks.py`（do_action / add_action 原语）；启动经 `backend/core/extensions.py::bootstrap_extensions` 扫描对齐，运行时插件路由经 `core/routing_registry.py` 统一挂载，三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。
 3. **头像代理 / 解析器**：`/api/media/avatar?src=<base64>`，白名单 302 直跳 → 非白名单流式代理 → DiceBear SVG 兜底；前端 `useResolvedAvatar`。
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
 5. **SEO 服务端生成**：RSS 2.0 / Sitemap / Robots 三条 Nitro Server-Route。
 6. **Bing 每日壁纸 BFF**：`frontend/server/api/bing-wallpaper.get.ts`，30m SWR cache。
+7. **Webhook 外发**：`backend/api/webhook.py` 把 hooks 总线事件投递到外部端点。事件名唯一清单是 `GET /api/webhooks/events`（= `WEBHOOK_EVENTS` = 总线 `do_action` 名），前端订阅 UI 必须消费该接口、不得自有一套命名；`main.py` startup 调 `register_webhook_listeners()` 挂接。投递请求头固定 `X-Rosetta-Event: <event.type>` + `X-Rosetta-Signature: sha256=<hmac_sha256(secret, 实际发出的 JSON 字节)>`；URL 每次发送前重过 SSRF 护栏（`core/net_guard.py` + `settings.webhook_allow_private_targets`）。`provider` 只是分类标签，签名/载荷格式对所有类型一致。密钥明文仅在 `POST /{id}/regenerate-secret` 一次性返回，`WebhookOut` 只给 `has_secret`。回归测试：`tests/test_webhook_dispatch.py`。
 
 ***
 
@@ -80,14 +81,17 @@
 | 路由                                            | SSR     | Cache               | 原因                               |
 | --------------------------------------------- | ------- | ------------------- | -------------------------------- |
 | `/admin/**` · `/admin`                         | ❌ false | `no-store, private` | 登录态 + 重交互 + localStorage       |
-| `/login` · `/register` · `/oobe`              | ❌ false | `no-store, private` | 表单状态、敏感输入                        |
+| `/login` · `/register`                         | ❌ false | `no-store, private` | 表单状态、敏感输入                        |
+| `/oobe`                                       | ✅ 继承全局 | `no-store, private` | 安装完成后 `oobe.global` 要走 SSR 级 302，`ssr:false` 会让它吐空壳并白屏 |
 | `/admin/docs/**`                              | ❌ false | `no-store, private` | 内嵌 Markdown 编辑器与执行工具             |
 | `/search/**`                                  | ❌ false | `no-store`          | 实时查询 + 高频率                      |
 | Vite 虚拟文件：`/@vite/**` · `/@id/**` · `/@fs/**` | ❌ false | `no-store`          | 防 HMR 404 被 spa-fallback 拦截      |
 
+上表 6 行覆盖 10 条 routeRules 键，镜像关系由 `frontend/tests/unit/routeRulesSsr.spec.ts` 断言（`ssr:false` 集合精确相等 + `/oobe` 必须保留 SSR + 反选页必须 `no-store`）——改配置不改测试会直接红。
+
 ### 2.3 公开页 SWR / Cache 头
 
-首页 swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 文章列表/分类/标签/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。全部附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`。
+首页/文章列表 `/posts` swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 分类/标签/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。常规页附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`；高频实时页（`/posts/hot` · `/guestbook`）用较短的 `stale-while-revalidate=600`。
 静态资源 `/_nuxt/**` 与 `/themes/**` 使用强缓存 immutable（31536000s）。
 
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
@@ -166,35 +170,40 @@ SSR / Nitro 侧私有：  SSR_API_BASE_URL  >  NUXT_API_BASE  >  ROSETTA_API_BAS
 ```
 Rosetta/
 ├─ backend/                          FastAPI 后端
-│  ├─ main.py                        入口；CORS / CSRF / OOBE / 日志 / 速率 / 安全 / 维护 八层中间件
-│  ├─ api/                           41 个 API 模块（activity … webhook）
-│  ├─ core/                          基础设施（config / database / auth / cache / csrf / rate_limit / exceptions …）
+│  ├─ main.py                        入口；中间件链（由外到内：CORS → 安全头 → 维护模式 → 限流 →
+│  │                                 TrustedHost(生产条件启用) → i18n → OOBE → 租户 → 请求日志 → 性能）。
+│  │                                 注意：CSRF 不是中间件，是 per-route 依赖 core/csrf.py::require_csrf
+│  ├─ api/                           46 个模块文件（activity … webhook；含共享 helper `_user_response_helper.py`）
+│  ├─ core/                          基础设施（config / database / auth / cache / csrf / rate_limit / exceptions /
+│  │                                 plugin_loader + plugin_bus + hooks（插件引擎）…）
 │  ├─ models/                        SQLAlchemy 2.0 DeclarativeBase（blog / user / gallery / site …）
 │  ├─ schemas/                       Pydantic v2 请求/响应模型 + i18n dict 工厂
 │  ├─ repositories/                  Repository 层（base / post / user）
-│  ├─ services/                      业务层（post_service / plugin_engine / avatar_resolver / recommendation …）
+│  ├─ services/                      业务层（user_service / media_service / email_service / avatar_resolver / recommendation …）
 │  ├─ migrations/                    Alembic 版本化迁移
 │  ├─ scripts/                       mock_data / auto_oobe / reset_admin_password …
 │  ├─ plugins/                       hello-rosetta / guestbook-rss / seo-toolkit
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          28 个页面 + 20 条前台公开路由（SSR）+ 46 个 admin 子页（SPA）
-│  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 24 种原子组件）
-│  ├─ composables/                   27 个 useXxx 组合函数
+│  ├─ pages/                          57 个页面文件 = 23 个前台公开页（SSR）+ 34 个 admin 子页（SPA）
+│  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
+│  ├─ composables/                   26 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
 │  ├─ stores/                        Pinia：auth.ts（skipHydrate）
 │  ├─ middleware/                    admin.global · layout-scope.global · oobe.global
-│  ├─ plugins/                       debug.client / echarts.client / error-handler.client / site-title.global / theme.client
-│  ├─ server/                        Nitro BFF（routes/ + api/ + utils/ssr.ts）
+│  ├─ plugins/                       01-site-bootstrap.global / 02-hydration-safety.global.client /
+│  │                                 06-font-stylesheet.client / debug.client / echarts.client /
+│  │                                 error-handler.client / site-title.global / theme.client
+│  ├─ server/                        Nitro BFF（routes/ + api/ + utils/ssr.ts + plugins/spa-serverrendered-zero.nitro.ts）
 │  ├─ themes/                        editorial-wp-style · astro-paper-inspired
 │  ├─ i18n/locales/                  {zh,en,ja,zh_Hant}.json + .ts 工厂（唯一生效目录）
 │  ├─ assets/css/main.css            主题中性基础设施（Tailwind 入口 + 令牌 + .card-surface 中性基座）
 │  ├─ assets/css/admin-ui.css        Admin 冻结设计系统（data-layout-scope="admin" 专属装饰层）
-│  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n
+│  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（386+ 用例，覆盖率基线 61%，fail_under=45%）
+├─ tests/                            Pytest（843 passed + 2 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~85%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -215,6 +224,19 @@ Rosetta/
 | `.env.production`（根） | 生产部署 | 同三条写死 | `API_BASE_URL=/api` · `SITE_URL=https://…` |
 | `.env.docker`（根） | Docker compose | `NUXT_API_BASE=http://backend:8000/api` · `SSR_API_BASE_URL=http://backend:8000/api` | `NUXT_PUBLIC_API_BASE=/api` |
 | `frontend/.env.example` | 纯前端子目录 | 三别名 + 默认 127.0.0.1:8000/api | `API_BASE_URL=/api` |
+
+后端可选变量（不写就走默认值，`.env.example` 已示例）：
+
+| 变量 | 默认 | 作用 |
+| ---- | ---- | ---- |
+| `CACHE_WARMUP_ENABLED` | `true` | 启动时预热热点响应缓存（站点配置/导航/分类/标签/友链），并挂后台定时刷新任务 |
+| `CACHE_REFRESH_INTERVAL` | `3600`（下限 60） | 上述定时刷新的间隔（秒） |
+| `LOG_RETENTION_DAYS` | `7`（1–3650） | 只增日志表（`visit_logs` / `performance_metrics` / `operation_logs`）的保留天数，后台循环按此批量删除更早的行 |
+| `LOG_RETENTION_INTERVAL_HOURS` | `6`（1–168） | 上述保留扫描的间隔（小时）。**先睡后删**：进程启动首轮不删，短生命周期进程（含测试）不会误删数据 |
+
+日志保留刻意不用分布式锁——该锁要求启用 Redis，单机/内存缓存部署会直接抛错；删除以 id 集合为条件、幂等，多 worker 各跑各的安全。口径副作用：默认 7 天窗口会把 `GET /api/monitoring/visits/summary` 的 `month`（30 天窗口）截短成保留窗口本身，所以该端点响应自带 `retention_days` + `data_since`（现存最早一条日志的时间），消费方必须据此把被截短的窗口标成下界、不得当全量读数；要真实覆盖 30 天就把 `LOG_RETENTION_DAYS` 设 ≥31。该端点目前无前端消费者（后台只接了 `/performance/summary`）。
+
+这两个开关与 `REDIS_ENABLED` **无关**：Memory 后端同样是有效的响应缓存，而单机部署进程重启即冷启动，预热收益反而更大。
 
 ***
 
@@ -250,6 +272,26 @@ Rosetta/
 - 管理模块 `name / title / description` 类 i18n 字段：后端必须返回完整 dict `{zh, en, ja, zh_Hant}`，不得返回单个字符串或缺失 key
 - UGC 通知（留言、评论）的 title/message：明文字符串存，禁止自动翻译
 
+### 7.4 响应体文档（OpenAPI）规范
+
+全仓 JSON 端点的响应 schema 已补齐（缺口 166 → 0），由 `tests/test_api_docs_baseline.py` 钉在 **0**：新增端点不声明响应体就是 CI 失败。补文档时**只允许**下面两种手法：
+
+| 手法 | 运行时影响 | 用途 |
+| ---- | ---------- | ---- |
+| `responses={200: {"model": M}}` | **无**（只产出 `$ref`） | 返回裸 dict / 已被 handler 自行构造模型的所有 JSON 端点 |
+| `responses=raw_content_response(media, desc, binary=…)` + `response_class=Response` | 无 | RSS / sitemap / robots / 图片 / zip 等非 JSON 端点，声明真实媒体类型 |
+
+禁止的手法（都会**改变运行时行为**，不是文档）：
+
+1. ❌ 给返回裸 dict 的端点加 `response_model=M`——Pydantic 会**静默丢弃**模型里没写的键（SSR 页面正在读 `data` / `total` / `page`）。
+   例外：handler 本身就 `return M(...)` 时可以加；提交前用 `model.model_fields` 与 handler `return` 的键集做一次差分，`会被丢弃=[] 必填但缺失=[]` 才算安全。
+2. ❌ 用 `-> Any` / `-> dict[str, Any]` / `-> list[dict[str, Any]]` 注解"凑"文档——本仓 FastAPI 会把它**派生成真实 response_model**：
+   实测端点返回裸 ORM 实例时直接 **500**，而 OpenAPI 里只多出一行 `"title": "Response Xyz…"` 噪声，连 `$ref` 都不产出。守卫见同文件的 `test_no_useless_any_annotations_on_routes`。
+3. ✅ `-> Response` / `-> StreamingResponse` 注解安全（FastAPI 对已是 Response 的返回值短路，不校验）。
+4. ❌ 静态核对文档缺口**不要**读 `app.routes`：本 FastAPI 版本把 `include_router()` 的结果懒挂载成 `_IncludedRouter`，`route.path` 也不带 prefix，按路由属性检查会**假通过**（曾把 166 个缺口误报成 5 个）。要么静态扫 AST，要么读 `app.openapi()["paths"]`。
+
+文档层面另有一道 `tests/test_openapi_doc_completeness.py`，直接对**生成后的文档**断言：操作数下限 340（当前实测 284 paths / 355 operations，router 掉线会立刻跌破）、每个操作至少有 `summary` 或 `description`、每个响应码都带 `description`。AST 检查看不见"整条路由消失了"，这一层才看得见。
+
 ***
 
 ## 8. 命令
@@ -265,7 +307,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 386+ cases；覆盖率 ≥45%
+uv run pytest                                        # 843 passed + 2 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~85%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -276,9 +318,9 @@ cd frontend
 pnpm install
 pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
-pnpm lint                     # 0 error；warnings == 8（vue/no-v-html 固定基线）
+pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # 48/48 Vitest
+pnpm test                     # Vitest 单测（tests/unit/ 14 个 spec，166 用例全绿）
 ```
 
 ### 8.3 部署
@@ -302,16 +344,17 @@ uv run pytest                                      # 覆盖率 ≥ fail_under=45
 curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```
 
-- 新建/更新接口：`db.flush()` 后**必须**立刻 `await db.refresh(entity)`，否则 JSON 字段仍为字符串
+- 新建/更新接口：`db.flush()` 之后服务端生成的列（`created_at` / `updated_at` 这类 onupdate）处于过期状态，直接序列化会在事件循环里触发隐式 IO（异步下表现为 `MissingGreenlet`）。必须回读一次——`await db.refresh(entity)` 与"一条带 `selectinload` 的 SELECT"**二选一**；`refresh` 本身就会连关系一起重载，两条都做等于白发一次往返。
+- JSON 多语言列（`title` / `content` / `excerpt` / `meta_*`）写入 Python `None` 时落库是 **JSON null 而不是 SQL NULL**（SQLAlchemy JSON 默认 `none_as_null=False`），所以 `col.is_(None)` 在 SQL 里筛不出"没有内容"的行；判定口径见 `backend/api/admin.py::_missing_i18n_json`。
 - 新 API 路径必须用 `useAPI` 或 `apiFetch` 包装，不得裸写 `$fetch`
 
 ### 9.2 前端
 
 ```bash
-pnpm lint          # 0 error，warnings == 8
+pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 48/48
+pnpm test          # 166/166（14 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
@@ -321,7 +364,7 @@ pnpm test          # 48/48
 - 明/暗主题切换：前台 2 套 + Admin 原生均 OK；Admin 不被前台 CSS 污染
 - 四语切换：zh / en / ja / zh_Hant 无 404
 - SSR 关键页 `Ctrl+U`：首页、文章详情、分类、留言板有真实 HTML
-- SSR 反选页：`/admin/*` · `/login` · `/oobe` · `/search/*` 是空壳 SPA
+- SSR 反选页：`/admin/*` · `/login` · `/register` · `/search/*` 是空壳 SPA（`/oobe` 不在此列，它保留 SSR 只禁缓存）；该口径由 `tests/unit/routeRulesSsr.spec.ts` 静态锁定，不必开浏览器复核
 
 ***
 
@@ -368,6 +411,7 @@ PR 标题：`{scope}: {message}`，例如 `feat(frontend): SSR 留言板 apiFetc
 5. 不得把 JWT / admin 资料以 `useState` 序列化到 HTML，用 Pinia `skipHydrate` + localStorage
 6. CSP / 安全头只能更严不能更松
 7. 用户上传文件：`MAX_UPLOAD_SIZE` + `ALLOWED_EXTENSIONS` 双校验；图片 Pillow verify；头像代理 SSRF 白名单
+8. 会渲染到访客页面上的短字符串字段（称号图标 `user_titles.icon` 等）：写入侧必须用 Pydantic `pattern` 拒掉标记语言（`^[^<>]*$` + `max_length`），渲染侧不得对其 `v-html`。只守渲染侧不算守——DB 里躺着脏数据时，换一个消费点就中招
 
 ***
 

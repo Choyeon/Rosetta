@@ -1,3 +1,9 @@
+<!--
+  动态时间线页：GET /activities 一次拉 50 条（不分页），未知 type 一律回落 'say'。
+  图标必须是本文件内联 ICONS 常量而非 lucide 组件：SSR 与客户端首字节要逐字节一致，
+  组件形态的首子差异会直接造成水合错位。后端新增活动类型时，ICONS + backendToIconKey
+  白名单 + i18n 的 activity.type_* 三处必须同步补，漏一处就静默显示成"说说"。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">

@@ -1,3 +1,8 @@
+<!--
+  新建文章薄壳页：表单与提交逻辑全部在 PostForm（mode="new"），本页只管返回与成功跳转。
+  硬契约：submitSuccess 在"存草稿/发布"都会触发且两个页面共用同一事件形状，
+  必须按 isNew 分支处理（new 页只认 isNew=true），否则编辑页保存会误跳/双 toast。
+-->
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import PostForm from '~~/components/admin/PostForm.vue'

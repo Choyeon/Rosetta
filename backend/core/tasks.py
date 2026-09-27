@@ -28,7 +28,19 @@ import uuid
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import StrEnum
+from enum import Enum
+
+try:
+    from enum import StrEnum  # Python 3.11+
+except ImportError:  # 项目 requires-python >=3.10，3.10/3.11 都要能跑
+
+    class StrEnum(str, Enum):  # type: ignore[no-redef]
+        """3.10 回退：语义等价于 3.11 的 enum.StrEnum（str 成员 + 自动小写值不模拟，仅显式赋值）"""
+
+        def __str__(self) -> str:
+            return str(self.value)
+
+
 from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)

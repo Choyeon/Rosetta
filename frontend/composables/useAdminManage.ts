@@ -32,8 +32,8 @@ function cachedGet<T>(key: string, loader: () => Promise<T>, ttl = MEM_TTL_MS): 
   return p
 }
 
-/** 清理某条缓存（写操作后调用，确保下次读拿到最新值） */
-export function invalidateMemCache(keyPrefix?: string) {
+/** 清理某条缓存（写操作后调用，确保下次读拿到最新值）。仅本模块内使用。 */
+function invalidateMemCache(keyPrefix?: string) {
   if (!keyPrefix) {
     MEM_CACHE.clear()
     return
@@ -131,7 +131,10 @@ export interface SystemHealth {
   memory_percent: number | null
   db_rtt_ms: number | null
   cache_hit_percent: number | null
+  /** 0-100；null = 一个指标都没实测到（未知），不是 0 分危急也不是 100 分健康 */
   health_score: number | null
+  /** 后端算好的每轴健康分（0-100，越高越好），雷达/配色单源，避免前后端两套口径 */
+  metric_scores?: Partial<Record<'cache' | 'cpu' | 'db' | 'memory', number | null>>
 }
 
 export interface DashboardStats {
@@ -189,7 +192,10 @@ export interface FetchAdminPostsParams {
   page?: number
   page_size?: number
   search?: string
-  status?: 'all' | 'published' | 'draft' | 'scheduled' | 'archived'
+  /** 'all' 是后台专属的「全部状态」哨兵（blog.py::admin_all_statuses）；
+   *  其余取值必须落在后端 schema 的 draft|published|scheduled 之内，
+   *  archived 在后端不存在，列出只会得到一个永远为空的筛选 */
+  status?: 'all' | 'published' | 'draft' | 'scheduled'
   category?: string
   created_start?: string | null
   created_end?: string | null
@@ -235,7 +241,8 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
 // ==================== 评论管理 ====================
 
 export type AdminCommentStatus = 'approved' | 'pending' | 'rejected' | 'spam'
-export type AdminCommentStatusFilter = AdminCommentStatus | 'all'
+/** `trashed` 只有留言板端点识别（评论表无软删除列），列表组件按 tab 透传。 */
+export type AdminCommentStatusFilter = AdminCommentStatus | 'all' | 'trashed'
 
 export interface AdminCommentPostRef {
   id: number
@@ -243,21 +250,36 @@ export interface AdminCommentPostRef {
   title: string | null
 }
 
-export interface AdminComment {
+/**
+ * 审核列表的共用行形状：评论（Comment）与留言（GuestbookEntry）两套后端模型
+ * 在列表 UI 上消费同一组字段，评论专属字段（post/parent/reply）为可选。
+ */
+export interface AdminCommentRow {
   id: number
-  post_id: number
-  parent_id: number | null
   author_name: string
   resolved_avatar_url: string | null
-  author_email: string | null
+  author_email?: string | null
   content: string
   status: AdminCommentStatus | string
-  active: boolean
   likes_count: number
-  reply_total: number
+  reply_total?: number
   created_at: string | null
-  post_ref: AdminCommentPostRef | null
   title?: { id?: number, name: string, icon?: string, color?: string } | null
+  post_id?: number | null
+  parent_id?: number | null
+  post_ref?: AdminCommentPostRef | null
+  active?: boolean
+  /** 留言专属：评论模型无对应列，故为可选。 */
+  is_pinned?: boolean
+  is_featured?: boolean
+}
+
+export interface AdminComment extends AdminCommentRow {
+  post_id: number
+  parent_id: number | null
+  active: boolean
+  reply_total: number
+  post_ref: AdminCommentPostRef | null
 }
 
 export interface AdminCommentQuery {
@@ -349,6 +371,9 @@ export interface AdminUserRow {
   comments_count: number
   title?: AdminUserTitle | null
   title_id?: number | null
+  /** 仅 GET /admin/users/{id}（UserDetailResponse）返回，列表接口不含 */
+  qq?: string | null
+  avatar_source?: string | null
 }
 
 /** RBAC 角色定义（应与后端 backend.core.rbac 保持一致） */
@@ -424,19 +449,6 @@ export function updateAdminUserFlags(
   })
 }
 
-/** PATCH /api/admin/users/{id} 设置 RBAC 角色（后端 admin.router 已支持 role 字段） */
-export function updateAdminUserRole(
-  userId: number,
-  role: string
-): Promise<AdminUserPatchResult> {
-  invalidateMemCache(`admin:users:detail:${userId}`)
-  invalidateMemCache('admin:users:list:')
-  return apiFetch<AdminUserPatchResult>(`/admin/users/${userId}`, {
-    method: 'PATCH',
-    body: { role }
-  })
-}
-
 /** POST /api/admin/users/{id}/activate —— admin.router @router.post("/users/{user_id}/activate") */
 export function activateAdminUser(userId: number): Promise<ApiMessage> {
   invalidateMemCache(`admin:users:detail:${userId}`)
@@ -492,8 +504,10 @@ export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
 
 /**
  * PUT /api/admin/users/{id} —— 后端 admin.router 提供 PUT 全量更新（admin_update_user_full）。
- * 接受 AdminUserUpdateFull：nickname/email/website/github/qq/bio/avatar/title_id/
- * is_staff/is_superuser/is_active/is_banned/role/username。
+ * 接受 AdminUserUpdateFull：username/email/nickname/bio/website/github/qq/avatar_source/
+ * avatar/cover_image/role/is_staff/is_active/is_banned。
+ * 该 schema 为 extra=forbid（2026-09 起真正生效），**多传一个字段就是 422 而不是被忽略**；
+ * title_id 与 is_superuser 不在其列——头衔走 assign/remove 专用端点，超级管理员由 role 反推。
  */
 export function updateAdminUserDetail(id: number, payload: Record<string, unknown>): Promise<AdminUserRow> {
   invalidateMemCache(`admin:users:detail:${id}`)
@@ -505,19 +519,20 @@ export function updateAdminUserDetail(id: number, payload: Record<string, unknow
 
 export interface AdminCategory {
   id: number
-  name: string
+  /** 后端 GET /blog/categories 返回 i18n 原始 dict（{zh,en,ja,zh_Hant}） */
+  name: string | Record<string, string>
   slug: string
-  description: string | null
+  description: string | Record<string, string> | null
   icon: string | null
   color: string | null
-  sort_order: number
   created_at: string | null
   post_count: number
 }
 
 export interface AdminTag {
   id: number
-  name: string
+  /** 同分类：后端返回多语言原始 dict */
+  name: string | Record<string, string>
   slug: string
   color: string | null
   icon: string | null
@@ -537,7 +552,6 @@ export interface AdminTaxonomyPayload {
   icon?: string
   color?: string
   is_active?: boolean
-  sort_order?: number
 }
 
 /** 把多语言字段规整为后端期望的 dict：收到 string 视为 zh，收到 dict 原样保留（不覆盖其他语言） */
@@ -567,7 +581,6 @@ function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
   if (payload.icon && payload.icon.trim()) body.icon = payload.icon.trim()
   if (payload.color && payload.color.trim()) body.color = payload.color.trim()
   if (payload.is_active !== undefined) body.is_active = payload.is_active
-  if (payload.sort_order !== undefined) body.sort_order = payload.sort_order
   return body
 }
 
@@ -770,7 +783,6 @@ export interface AdminPage {
   title: string | Record<string, string>
   content: string | Record<string, string>
   status: 'draft' | 'published'
-  is_pinned: boolean
   created_at: string | null
   updated_at: string | null
 }
@@ -813,8 +825,9 @@ export async function fetchAdminPages(
 }
 
 /**
- * 后端 core.router 当前仅暴露 GET /pages 和 GET /pages/{slug}，未提供 POST/PUT/DELETE CRUD。
- * 以下三个接口静默降级，避免 404 toast 红条；等后端补齐后再删除这层降级。
+ * core.router 已提供完整页面 CRUD：POST /pages、PUT /pages/{id}、DELETE /pages/{id}
+ * （均需 staff 登录；PageCreate/PageUpdate 为 extra=forbid，body 不得携带额外字段，
+ * title/content 为 {zh,en,ja,zh_Hant} 多语言 dict，slug 必填且匹配 ^[a-z0-9-]+$）。
  */
 export function createAdminPage(payload: Record<string, unknown>): Promise<AdminPage> {
   return apiFetch<AdminPage>('/pages', { method: 'POST', body: payload })
@@ -828,13 +841,70 @@ export function deleteAdminPage(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/pages/${id}`, { method: 'DELETE' })
 }
 
-// ==================== 留言板（post_id = null 的评论） ====================
+// ==================== 留言板（GuestbookEntry 独立模型） ====================
 
-export function fetchAdminGuestbook(params: AdminCommentQuery): Promise<AdminPaged<AdminComment>> {
-  const query: Record<string, unknown> = { page: params.page ?? 1, page_size: params.page_size ?? 20, guestbook: 1 }
-  if (params.status && params.status !== 'all') query.status = params.status
+/**
+ * 留言与评论是两套后端模型：前台 /guestbook 读写 GuestbookEntry 表，
+ * 管理入口只能走 /admin/guestbook/*。
+ * 历史缺陷：这里曾请求 `/admin/comments?guestbook=1`，而该 query 参数后端根本不存在
+ * （FastAPI 直接丢弃未声明参数），结果是后台"留言板"列出的是文章评论，
+ * 真实待审留言在后台永远不可见、不可审核。
+ */
+export interface AdminGuestbookEntry extends AdminCommentRow {
+  user_id: number | null
+  author_website?: string | null
+  qq?: string | null
+  github?: string | null
+  avatar_source?: string | null
+  is_pinned: boolean
+  is_featured: boolean
+}
+
+export type GuestbookBatchAction
+  = 'approve' | 'reject' | 'spam' | 'pin' | 'feature' | 'trash' | 'restore' | 'delete'
+
+/** status 透传后端（含 all / trashed），不做前端二次过滤。 */
+export function fetchAdminGuestbook(params: AdminCommentQuery): Promise<AdminPaged<AdminGuestbookEntry>> {
+  const query: Record<string, unknown> = {
+    page: params.page ?? 1,
+    page_size: params.page_size ?? 20,
+    status: params.status ?? 'all'
+  }
   if (params.keyword && params.keyword.trim()) query.keyword = params.keyword.trim()
-  return apiFetch<AdminPaged<AdminComment>>('/admin/comments', { query })
+  return apiFetch<AdminPaged<AdminGuestbookEntry>>('/admin/guestbook', { query })
+}
+
+/** 审核是三个子动作 POST（/approve | /reject | /spam），不是 PATCH body。 */
+export function updateAdminGuestbookStatus(
+  entryId: number,
+  status: AdminCommentStatus
+): Promise<AdminGuestbookEntry> {
+  const action = status === 'approved' ? 'approve' : status === 'rejected' ? 'reject' : 'spam'
+  return apiFetch<AdminGuestbookEntry>(`/admin/guestbook/${entryId}/${action}`, { method: 'POST' })
+}
+
+/** 置顶 / 精华均为 toggle 语义，可安全重复调用。 */
+export function toggleAdminGuestbookPin(entryId: number): Promise<AdminGuestbookEntry> {
+  return apiFetch<AdminGuestbookEntry>(`/admin/guestbook/${entryId}/pin`, { method: 'POST' })
+}
+
+export function toggleAdminGuestbookFeature(entryId: number): Promise<AdminGuestbookEntry> {
+  return apiFetch<AdminGuestbookEntry>(`/admin/guestbook/${entryId}/feature`, { method: 'POST' })
+}
+
+/** DELETE 为彻底删除（复用批量 delete 通道），非回收站软删除。 */
+export function deleteAdminGuestbook(entryId: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/admin/guestbook/${entryId}`, { method: 'DELETE' })
+}
+
+export function batchAdminGuestbook(
+  ids: number[],
+  action: GuestbookBatchAction
+): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/admin/guestbook/batch', {
+    method: 'POST',
+    body: { ids: ids.slice(0, 100), action }
+  })
 }
 
 // ==================== 公告 ====================
@@ -891,7 +961,8 @@ export function deleteAdminAnnouncement(id: number): Promise<ApiMessage> {
 
 export interface AdminActivity {
   id: number
-  type: 'post' | 'card' | 'comment' | 'like' | 'status'
+  /** 与后端 schemas/activity.py::ActivityType 及 Activity.type 列一致 */
+  type: 'say' | 'article' | 'update' | 'notice' | 'link'
   title?: string | null
   content?: string | null
   link?: string | null
@@ -958,20 +1029,28 @@ export function updateAdminUserTitle(id: number, payload: Record<string, unknown
   return apiFetch<AdminUserTitle>(`/admin/titles/${id}`, { method: 'PUT', body: payload })
 }
 
-export function deleteAdminUserTitle(id: number): Promise<ApiMessage> {
+/**
+ * DELETE /api/admin/titles/{id} —— 后端返回 204 No Content（全库唯一一个 204 端点），
+ * 因此这里不声明 `ApiMessage`：调用方拿到的是空响应体，任何 `.message` 读取都会 undefined。
+ */
+export async function deleteAdminUserTitle(id: number): Promise<void> {
   invalidateMemCache('admin:titles:')
-  return apiFetch<ApiMessage>(`/admin/titles/${id}`, { method: 'DELETE' })
+  await apiFetch<unknown>(`/admin/titles/${id}`, { method: 'DELETE' })
 }
 
 /**
  * POST /api/admin/titles/assign —— title.router 内部 @router.post("/titles/assign")
  * = /api/admin/titles/assign
+ * 只负责"赋予某个称号"；取消称号是另一个端点（见 removeAdminUserTitle），
+ * 不要在这里用 titleId=null 走伪成功分支——旧实现正是那样返回了一条从未发出的"已移除头衔"。
  */
-export function assignAdminUserTitle(userId: number, titleId: number | null): Promise<ApiMessage> {
-  if (titleId == null || titleId <= 0) {
-    return Promise.resolve({ success: true, message: '已移除头衔' })
-  }
+export function assignAdminUserTitle(userId: number, titleId: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>('/admin/titles/assign', { method: 'POST', body: { user_id: userId, title_id: titleId } })
+}
+
+/** DELETE /api/admin/users/{user_id}/title —— 移除用户称号，返回 { message, user_id }。 */
+export function removeAdminUserTitle(userId: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/admin/users/${userId}/title`, { method: 'DELETE' })
 }
 
 // ==================== 媒体库 ====================
@@ -1002,10 +1081,13 @@ interface AdminMediaQuery {
  */
 export function fetchAdminMediaLibrary(params: AdminMediaQuery = {}): Promise<AdminPaged<AdminMediaItem>> {
   const query: Record<string, unknown> = { page: 1, page_size: 20, ...params }
-  // 后端参数名是 file_type 而非 mime_prefix；做一次兼容映射
+  // 后端 /media/library 只认 file_type（见 backend/api/media.py 的 Query 声明）。
+  // mime_prefix 是历史别名：映射后必须从 query 里删掉，否则发出去一个后端会静默丢弃的参数，
+  // 让人误以为筛选生效了。
   if (params.mime_prefix && !params.file_type) {
     query.file_type = params.mime_prefix
   }
+  delete query.mime_prefix
   if (params.search) query.search = params.search
   return apiFetch<AdminPaged<AdminMediaItem>>('/media/library', { query })
 }
@@ -1015,9 +1097,21 @@ export function deleteAdminMedia(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/media/library/${id}`, { method: 'DELETE' })
 }
 
+/** DELETE /api/media/library/batch 的结果：三种条目必须分开上报，不能只看 deleted_count */
+export interface AdminMediaBatchDeleteResult extends ApiMessage {
+  deleted_count?: number
+  /** 路径非法（越权文件）因而**保留数据库记录**的条目，需人工处理 */
+  refused?: { id: number, reason: string }[]
+  /** 请求里给出但库里不存在的 ID */
+  missing_ids?: number[]
+}
+
 /** DELETE /api/media/library/batch —— media.router @router.delete("/library/batch") */
-export function deleteAdminMediaBatch(ids: number[]): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>('/media/library/batch', { method: 'DELETE', body: { ids } })
+export function deleteAdminMediaBatch(ids: number[]): Promise<AdminMediaBatchDeleteResult> {
+  return apiFetch<AdminMediaBatchDeleteResult>('/media/library/batch', {
+    method: 'DELETE',
+    body: { ids }
+  })
 }
 
 export interface AdminMediaStats {
@@ -1025,6 +1119,8 @@ export interface AdminMediaStats {
   total_size_bytes: number
   images: number
   videos: number
+  /** 后端 media.py 以 type_statistics["audio"] 单列音频计数，不与 videos 合并 */
+  audios: number
   documents: number
 }
 
@@ -1127,6 +1223,24 @@ export function deleteAdminPhoto(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/admin/gallery/photos/${id}`, { method: 'DELETE' })
 }
 
+/**
+ * DELETE /api/admin/gallery/photos/batch —— 批量删除照片。
+ *
+ * deleted_count / missing_ids 用于判断是否"真的全删掉了"：
+ * 请求里不存在的 ID 会列在 missing_ids，不会让请求失败。
+ */
+export interface AdminPhotoBatchDeleteResult extends ApiMessage {
+  deleted_count?: number
+  missing_ids?: number[]
+}
+
+export function deleteAdminPhotosBatch(ids: number[]): Promise<AdminPhotoBatchDeleteResult> {
+  return apiFetch<AdminPhotoBatchDeleteResult>('/admin/gallery/photos/batch', {
+    method: 'DELETE',
+    body: { ids }
+  })
+}
+
 // ==================== 导航菜单 ====================
 
 export interface AdminNavItem {
@@ -1189,8 +1303,14 @@ export function updateAdminNavigation(id: number, payload: Record<string, unknow
   return apiFetch<AdminNavItem>(`/navigations/${id}`, { method: 'PUT', body: navigationBody(payload) })
 }
 
-export function deleteAdminNavigation(id: number): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>(`/navigations/${id}`, { method: 'DELETE' })
+export function deleteAdminNavigation(
+  id: number,
+  options: AdminToolRequestOptions = {}
+): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/navigations/${id}`, {
+    method: 'DELETE',
+    silentToast: options.silentToast ?? false
+  })
 }
 
 // ==================== 友情链接 ====================
@@ -1233,28 +1353,21 @@ export function updateAdminFriendLink(id: number, payload: Record<string, unknow
   return apiFetch<Record<string, unknown>>(`/friend-links/${id}`, { method: 'PUT', body: friendLinkBody(payload) }).then(mapFriendLink)
 }
 
-export function deleteAdminFriendLink(id: number): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>(`/friend-links/${id}`, { method: 'DELETE' })
+export function deleteAdminFriendLink(
+  id: number,
+  options: AdminToolRequestOptions = {}
+): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/friend-links/${id}`, {
+    method: 'DELETE',
+    silentToast: options.silentToast ?? false
+  })
 }
 
 // ==================== 响应形状适配（后端 → 前端约定） ====================
-// 后端部分接口返回裸对象 / 裸列表 / {success, webhook|job} 等非标准信封，
+// 后端部分接口返回裸对象 / 裸列表 / {success, job} 等非标准信封，
 // 这里统一映射为前端页面期望的形状，避免页面拿到 undefined / 字段错位。
-
-function mapWebhook(raw: Record<string, unknown>): AdminWebhook {
-  const r = raw as Record<string, unknown>
-  return {
-    id: Number(r.id) || 0,
-    name: String(r.name ?? ''),
-    url: String(r.url ?? ''),
-    secret: (r.secret as string | null) ?? null,
-    events: Array.isArray(r.events) ? (r.events as string[]) : [],
-    active: typeof r.is_active === 'boolean' ? r.is_active : Boolean(r.active),
-    provider: (r.provider as AdminWebhook['provider']) ?? 'generic',
-    created_at: (r.created_at as string | null) ?? null,
-    last_triggered_at: (r.last_triggered_at as string | null) ?? null
-  }
-}
+// 已声明 response_model 的接口（如 /webhooks）不再需要 mapper：字段契约由
+// Pydantic 在服务端保证，前端直接消费类型。
 
 function mapAlbum(raw: Record<string, unknown>): AdminAlbum {
   const r = raw as Record<string, unknown>
@@ -1330,29 +1443,53 @@ export interface AdminWebhook {
   id: number
   name: string
   url: string
-  secret?: string | null
+  /** 密钥只用于服务端出站签名，接口不再回显明文；页面用「是否已配置」提示 */
+  has_secret: boolean
   events: string[]
   active: boolean
   provider: 'github' | 'generic' | 'feishu' | 'email'
   created_at: string | null
+  updated_at: string | null
   last_triggered_at: string | null
 }
 
-/** GET /api/webhooks —— webhook.router 挂在 /api/webhooks，@router.get("") */
+export interface AdminWebhookPayload {
+  name: string
+  url: string
+  /** undefined = 保持原密钥不变；'' = 清除密钥；非空 = 设为该值 */
+  secret?: string | null
+  events: string[]
+  provider: AdminWebhook['provider']
+  active: boolean
+}
+
+export interface AdminWebhookEvent {
+  type: string
+  description: string
+}
+
+/** GET /api/webhooks —— 服务端 WebhookListOut（items 已是 WebhookOut） */
 export function fetchAdminWebhooks(): Promise<AdminWebhook[]> {
-  return apiFetch<AdminPaged<Record<string, unknown>>>('/webhooks').then(r => (r.items ?? []).map(mapWebhook))
+  return apiFetch<AdminPaged<AdminWebhook>>('/webhooks').then(r => r.items ?? [])
 }
 
-/** POST /api/webhooks —— 后端返回 {success, message, webhook} */
-export function createAdminWebhook(payload: Record<string, unknown>): Promise<AdminWebhook> {
-  return apiFetch<{ success: boolean, webhook: Record<string, unknown> }>('/webhooks', { method: 'POST', body: payload })
-    .then(r => mapWebhook(r.webhook))
+/**
+ * GET /api/webhooks/events —— 可订阅事件的唯一清单。
+ * 事件名必须来自这里：后端校验的就是 hooks 总线上的 do_action 名，
+ * 前端自造一套 post_created 之类的写法会被 422 挡掉。
+ */
+export function fetchAdminWebhookEvents(): Promise<AdminWebhookEvent[]> {
+  return apiFetch<{ events: AdminWebhookEvent[] }>('/webhooks/events').then(r => r.events ?? [])
 }
 
-/** PUT /api/webhooks/{id} —— 后端仅返回 {success, message}，无 webhook 体，返回 undefined 由页面刷新列表 */
-export function updateAdminWebhook(id: number, payload: Record<string, unknown>): Promise<AdminWebhook | undefined> {
-  return apiFetch<{ success: boolean, webhook?: Record<string, unknown>, message?: string }>(`/webhooks/${id}`, { method: 'PUT', body: payload })
-    .then(r => (r.webhook ? mapWebhook(r.webhook) : undefined))
+/** POST /api/webhooks —— 返回创建后的完整对象（WebhookOut） */
+export function createAdminWebhook(payload: AdminWebhookPayload): Promise<AdminWebhook> {
+  return apiFetch<AdminWebhook>('/webhooks', { method: 'POST', body: payload })
+}
+
+/** PUT /api/webhooks/{id} —— 返回更新后的完整对象（WebhookOut） */
+export function updateAdminWebhook(id: number, payload: Partial<AdminWebhookPayload>): Promise<AdminWebhook> {
+  return apiFetch<AdminWebhook>(`/webhooks/${id}`, { method: 'PUT', body: payload })
 }
 
 /** DELETE /api/webhooks/{id} */
@@ -1361,70 +1498,52 @@ export function deleteAdminWebhook(id: number): Promise<ApiMessage> {
 }
 
 /**
- * 触发测试：POST /api/webhooks/{id}/test —— webhook.router @router.post("/{webhook_id}/test")
- * 后端没有 trigger 端点，统一用 test 端点（发送示例 payload）。
+ * 触发测试：POST /api/webhooks/{id}/test
+ * 后端没有 trigger 端点，统一用 test（真实发送一次 test 事件并落投递记录）。
+ * success=false 表示目标端点返回失败——HTTP 仍是 200，调用方必须看这个字段。
  */
-export function triggerAdminWebhook(id: number): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>(`/webhooks/${id}/test`, { method: 'POST' })
+export function triggerAdminWebhook(id: number): Promise<{ success: boolean, message: string, status_code: number | null }> {
+  return apiFetch<{ success: boolean, message: string, status_code: number | null }>(`/webhooks/${id}/test`, { method: 'POST' })
 }
 
-// ==================== 导入导出 ====================
-
-export interface AdminExportInfo {
-  job_id: string
-  format: 'wordpress' | 'halo' | 'typecho' | 'markdown' | 'json'
-  status: 'running' | 'done' | 'failed'
-  download_url?: string | null
+/** 投递记录：后端 WebhookDeliveryOut */
+export interface AdminWebhookDelivery {
+  id: number
+  event_type: string
+  status_code: number | null
+  error: string | null
+  response_body: string | null
+  delivered_at: string | null
   created_at: string | null
 }
 
-/**
- * GET /api/admin/export/{posts|markdown} —— import_export.router 挂在 /api/admin：
- *   @router.get("/export/posts")      → JSON 格式（Rosetta 原生 JSON + categories + tags）
- *   @router.get("/export/markdown")   → Markdown ZIP
- * 后端没有 /import-export/* 路径，format=markdown → /admin/export/markdown，其它走 /admin/export/posts。
- */
-export function exportAdminPosts(format: string, opts?: { from?: string, to?: string, scope?: string }): Promise<Blob> {
-  const subPath = (format === 'markdown') ? 'markdown' : 'posts'
-  const query: Record<string, string> = {}
-  if (format !== 'markdown' && format !== 'json') query.format = format
-  if (opts?.from) query.from = opts.from
-  if (opts?.to) query.to = opts.to
-  if (opts?.scope) query.scope = opts.scope
-  return apiFetch<Blob>(`/admin/export/${subPath}`, {
-    method: 'GET',
-    responseType: 'blob',
-    query: Object.keys(query).length ? query : undefined
-  })
-}
-
-export interface AdminImportResult {
-  success: boolean
-  message: string
-  created_count: number
-  skipped_count: number
-  error_count: number
-  errors?: string[]
+/** GET /api/webhooks/{id}/deliveries —— 投递记录（含响应片段） */
+export function fetchAdminWebhookDeliveries(id: number): Promise<AdminWebhookDelivery[]> {
+  return apiFetch<AdminPaged<AdminWebhookDelivery>>(`/webhooks/${id}/deliveries`).then(r => r.items ?? [])
 }
 
 /**
- * POST /api/admin/import/{posts|markdown} —— import_export.router：
- *   @router.post("/import/posts")      → WordPress/Halo/Typecho/JSON 等（通过 format query 区分）
- *   @router.post("/import/markdown")   → Markdown ZIP
- * 统一传 multipart/form-data；后端通过 query.format 判断具体导入逻辑。
+ * POST /api/webhooks/deliveries/{id}/retry —— 复发库内 payload 原文。
+ * 目标端点失败时 HTTP 仍是 200，判成败看 success。
  */
-export function importAdminPosts(format: string, file: File): Promise<AdminImportResult> {
-  const subPath = (format === 'markdown') ? 'markdown' : 'posts'
-  const fd = new FormData()
-  fd.append('file', file)
-  // 后端 import/posts 读 query.format 区分 wordpress/halo/typecho/json
-  const query = (format !== 'markdown') ? { format } : undefined
-  return apiFetch<AdminImportResult>(`/admin/import/${subPath}`, {
-    method: 'POST',
-    body: fd as unknown as Record<string, unknown>,
-    query
-  })
+export function retryAdminWebhookDelivery(deliveryId: number): Promise<{ success: boolean, message: string }> {
+  return apiFetch<{ success: boolean, message: string }>(`/webhooks/deliveries/${deliveryId}/retry`, { method: 'POST' })
 }
+
+/**
+ * POST /api/webhooks/{id}/regenerate-secret —— 轮换 HMAC 密钥。
+ * 明文密钥只有这一个出口（WebhookOut 刻意不含 secret），旧密钥即刻失效，
+ * 因此 UI 必须把新值展示一次并提示同步到接收方。
+ */
+export function regenerateAdminWebhookSecret(id: number): Promise<{ success: boolean, message: string, data: { secret: string } }> {
+  return apiFetch<{ success: boolean, message: string, data: { secret: string } }>(`/webhooks/${id}/regenerate-secret`, { method: 'POST' })
+}
+
+/**
+ * 导入导出的唯一实现放在 `pages/admin/tools/import-export.vue`：
+ * 导出要拿 Blob + 进度、导入要 FormData + 结果统计，与这里的薄封装已有实质差异，
+ * 保留两份只会让路径漂移（历史教训：/import-export/* 与 /admin/export/* 两套写法并存）。
+ */
 
 // ==================== SEO 工具 ====================
 
@@ -1436,31 +1555,134 @@ export interface AdminSeoScore {
   suggestions: string[]
 }
 
-/**
- * GET /api/seo/sitemap-check —— 后端 seo.router 暂未提供（只有 config + sitemap.xml + robots.txt + schema/OG）
- * 静默降级返回占位，避免 404。
- */
-export function fetchAdminSeoSitemapCheck(): Promise<{ ok: boolean, url_count: number, errors: string[] }> {
-  return silentApiFetch<ApiEnvelope<{ ok: boolean, url_count: number, errors: string[] }>>('/seo/sitemap-check').then(r =>
-    r?.data ?? { ok: false, url_count: 0, errors: ['后端暂未开放 sitemap 校验接口'] }
-  )
+/** GET /api/seo/sitemap-check 的 data 载荷 */
+export interface SitemapCheckResult {
+  ok: boolean
+  url_count: number
+  errors: string[]
 }
 
 /**
- * GET /api/seo/scores —— 后端暂未提供；静默降级。
+ * GET /api/seo/sitemap-check —— seo.router @router.get("/sitemap-check")
+ * 注意：这是**少数手工返回 { success, data } 包壳**的端点（见 backend/api/seo.py sitemap_check），
+ * 与全局"裸对象"约定不同，因此这里显式解包 data。
+ * 校验失败（后端 5xx / 权限）由调用方展示错误态，不再降级成"后端暂未开放"的假结果。
  */
-export function fetchAdminSeoScores(params: { page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminSeoScore>> {
-  return silentApiFetch<AdminPaged<AdminSeoScore>>('/seo/scores', { query: { page: 1, page_size: 20, ...params } }).then(r =>
-    r ?? { items: [], total: 0, page: params.page ?? 1, page_size: params.page_size ?? 20, total_pages: 0 }
-  )
+export function fetchAdminSeoSitemapCheck(
+  options: AdminToolRequestOptions = {}
+): Promise<SitemapCheckResult> {
+  return apiFetch<ApiEnvelope<SitemapCheckResult>>('/seo/sitemap-check', {
+    silentToast: options.silentToast ?? true
+  }).then((r) => {
+    // 缺 data 不能当成"体检通过"：返回空 errors 会让界面绿掉，属假阳性
+    if (!r?.data) throw new Error('Sitemap 校验接口未返回数据')
+    return {
+      ok: r.data.ok === true,
+      url_count: Number(r.data.url_count ?? 0),
+      errors: Array.isArray(r.data.errors) ? r.data.errors : []
+    }
+  })
+}
+
+/** GET /api/seo/scores —— seo.router @router.get("/scores")：裸分页对象（无 success 信封） */
+export function fetchAdminSeoScores(
+  params: { page?: number, page_size?: number } = {},
+  options: AdminToolRequestOptions = {}
+): Promise<AdminPaged<AdminSeoScore>> {
+  const page = params.page ?? 1
+  const pageSize = params.page_size ?? 20
+  return apiFetch<Partial<AdminPaged<AdminSeoScore>>>('/seo/scores', {
+    query: { page, page_size: pageSize, ...params },
+    silentToast: options.silentToast ?? true
+  }).then(r => ({
+    items: Array.isArray(r?.items) ? r.items : [],
+    total: Number(r?.total ?? 0) || 0,
+    page: Number(r?.page ?? page),
+    page_size: Number(r?.page_size ?? pageSize),
+    total_pages: Number(r?.total_pages ?? 0) || 0
+  }))
+}
+
+/** POST /api/seo/sitemap/generate —— 重新生成 sitemap.xml */
+export function regenerateAdminSitemap(
+  options: AdminToolRequestOptions = {}
+): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/seo/sitemap/generate', {
+    method: 'POST',
+    silentToast: options.silentToast ?? true
+  })
 }
 
 /**
- * POST /api/seo/sitemap/generate —— seo.router 挂在 /api/seo，@router.post("/sitemap/generate")
- * 前端旧路径 /seo/sitemap/regenerate 不存在，已修正为 generate。
+ * 检索字段体检 —— GET /api/admin/tools/search-stats
+ * 后端 response_model=SearchStatsResponse，裸对象无 { success, data } 包壳。
+ * 口径是"内容完整度"（SQLite/PG 都走 LIKE 检索，没有全文索引可查）：
+ * posts_without_* 同时兜住 SQL NULL、空串与 JSON null 三种"没有内容"形态。
  */
-export function regenerateAdminSitemap(): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>('/seo/sitemap/generate', { method: 'POST' })
+export interface AdminSearchRecommendation {
+  type: 'excerpt' | 'slug' | 'tags'
+  count: number
+  message: string
+}
+
+export interface AdminSearchStats {
+  total_posts: number
+  total_categories: number
+  posts_without_excerpt: number
+  posts_without_slug: number
+  posts_without_tags: number
+  avg_slug_length: number
+  avg_excerpt_length: number
+  recommendations: AdminSearchRecommendation[]
+}
+
+export function fetchAdminSearchStats(
+  options: AdminToolRequestOptions = {}
+): Promise<AdminSearchStats> {
+  return apiFetch<Partial<AdminSearchStats>>('/admin/tools/search-stats', {
+    silentToast: options.silentToast ?? true
+  }).then((r) => {
+    // 缺字段一律归零而不是抛错：本接口是只读统计，部分缺失仍可展示
+    const num = (v: unknown) => Number(v ?? 0) || 0
+    return {
+      total_posts: num(r?.total_posts),
+      total_categories: num(r?.total_categories),
+      posts_without_excerpt: num(r?.posts_without_excerpt),
+      posts_without_slug: num(r?.posts_without_slug),
+      posts_without_tags: num(r?.posts_without_tags),
+      avg_slug_length: num(r?.avg_slug_length),
+      avg_excerpt_length: num(r?.avg_excerpt_length),
+      recommendations: Array.isArray(r?.recommendations) ? r.recommendations : []
+    }
+  })
+}
+
+/**
+ * 补全检索字段 —— POST /api/admin/tools/optimize-search
+ * slug 复用建文流程的 generate_slug（中文转拼音 + 唯一性校验），
+ * 摘要按每种语言各自的正文生成，因此三个计数分开给。
+ */
+export interface AdminSearchOptimizeResult {
+  success: boolean
+  scanned_count: number
+  slug_filled_count: number
+  excerpt_filled_count: number
+  message: string
+}
+
+export function runAdminSearchOptimize(
+  options: AdminToolRequestOptions = {}
+): Promise<AdminSearchOptimizeResult> {
+  return apiFetch<Partial<AdminSearchOptimizeResult>>('/admin/tools/optimize-search', {
+    method: 'POST',
+    silentToast: options.silentToast ?? true
+  }).then(r => ({
+    success: r?.success === true,
+    scanned_count: Number(r?.scanned_count ?? 0) || 0,
+    slug_filled_count: Number(r?.slug_filled_count ?? 0) || 0,
+    excerpt_filled_count: Number(r?.excerpt_filled_count ?? 0) || 0,
+    message: typeof r?.message === 'string' ? r.message : ''
+  }))
 }
 
 // ==================== 翻译工具 ====================
@@ -1478,16 +1700,6 @@ export function translateAdminText(
     method: 'POST',
     body: { text, source_lang: sourceLang, target_langs: targetLangs }
   })
-}
-
-export interface AdminSlowRequest {
-  id: number
-  method: string
-  path: string
-  duration_ms: number
-  status_code: number
-  user_agent?: string | null
-  created_at: string | null
 }
 
 export interface AdminPerformanceSummary {
@@ -1521,23 +1733,6 @@ export function fetchAdminPerformanceSummary(): Promise<AdminPerformanceSummary>
         count: Number(e.request_count ?? 0),
         avg_ms: Number(e.avg_response_time_ms ?? 0)
       }))
-    }
-  })
-}
-
-/** GET /api/admin/performance/slow —— performance.router @router.get("/performance/slow") */
-export function fetchAdminSlowRequests(params: { page?: number, page_size?: number, limit?: number } = {}): Promise<AdminPaged<AdminSlowRequest>> {
-  // 后端 /performance/slow 返回 list（非分页），包装成 AdminPaged。
-  return silentApiFetch<AdminSlowRequest[]>('/admin/performance/slow', {
-    query: { page: 1, page_size: 20, limit: 50, ...params }
-  }).then((list) => {
-    const items = Array.isArray(list) ? list : []
-    return {
-      items,
-      total: items.length,
-      page: params.page ?? 1,
-      page_size: params.page_size ?? 20,
-      total_pages: items.length > 0 ? 1 : 0
     }
   })
 }
@@ -1598,50 +1793,56 @@ export interface AdminMigrationStatus {
 }
 
 /**
- * GET /api/admin/alembic/status —— 2026-08 新增后端端点，用于显示 Alembic schema 迁移的：
- *   current_version / latest_version / is_latest / applied / pending
- * 注意：/api/admin/migration/status 是"跨库数据迁移任务管理器"（Job），
+ * 迁移工具的统一请求选项。
+ * 这些接口的错误都由页面**内联**渲染（状态卡片旁的重试按钮、确认弹窗里的错误行），
+ * 所以默认抑制全局 toast，避免同一错误弹两条。需要全局提示时传 `{ silentToast: false }`。
+ */
+export interface AdminToolRequestOptions {
+  silentToast?: boolean
+}
+
+/** GET /api/admin/alembic/status 的返回结构（后端 response_model=AlembicStatusResponse，裸对象无包壳）。 */
+export interface AdminAlembicUpgradeResult {
+  success: boolean
+  message: string
+}
+
+/**
+ * GET /api/admin/alembic/status —— Alembic schema 版本状态：
+ *   current_version / latest_version / is_latest / pending / applied
+ * 注意：/api/admin/migration/status 是「跨库数据迁移任务管理器」（Job），
  * 与本处 Alembic schema 版本状态是两套接口（见下方 AdminMigrationJob* 系列）。
- * 失败时静默回退为 emptyStatus，保证界面可用。
+ *
+ * 错误语义：接口失败一律 reject，由调用方渲染「状态不可用 + 重试」。
+ * 早期版本走 silentApiFetch 并 catch 成 is_latest:true，后端宕机时界面会显示
+ * "已是最新版本"——误导管理员跳过升级，属危险降级，已移除。
  */
-/**
- * Alembic status 静默回退值：接口不可用 / OOBE 未完成 / 网络异常时
- * 保证界面仍能渲染出"未知状态"而不是 ReferenceError 崩溃。
- */
-function emptyStatus(): AdminMigrationStatus {
-  return {
-    current_version: '',
-    latest_version: '',
-    is_latest: true,
-    pending: [],
-    applied: []
-  }
-}
-
-export function fetchAdminMigrationStatus(): Promise<AdminMigrationStatus> {
-  return silentApiFetch<ApiEnvelope<AdminMigrationStatus> | AdminMigrationStatus>('/admin/alembic/status')
-    .then((raw) => {
-      const r = (raw && (raw as ApiEnvelope<AdminMigrationStatus>).data)
-        ? (raw as ApiEnvelope<AdminMigrationStatus>).data
-        : (raw as AdminMigrationStatus | null | undefined)
-      if (!r) return emptyStatus()
-      return {
-        current_version: String(r.current_version ?? ''),
-        latest_version: String(r.latest_version ?? ''),
-        is_latest: Boolean(r.is_latest ?? true),
-        pending: (Array.isArray(r.pending) ? r.pending : []) as AdminMigrationStatus['pending'],
-        applied: (Array.isArray(r.applied) ? r.applied : []) as AdminMigrationStatus['applied']
-      }
-    })
-    .catch(() => emptyStatus())
+export function fetchAdminMigrationStatus(
+  options: AdminToolRequestOptions = {}
+): Promise<AdminMigrationStatus> {
+  return apiFetch<AdminMigrationStatus>('/admin/alembic/status', {
+    silentToast: options.silentToast ?? true
+  }).then(r => ({
+    current_version: String(r?.current_version ?? ''),
+    latest_version: String(r?.latest_version ?? ''),
+    is_latest: Boolean(r?.is_latest ?? true),
+    pending: (Array.isArray(r?.pending) ? r.pending : []) as AdminMigrationStatus['pending'],
+    applied: (Array.isArray(r?.applied) ? r.applied : []) as AdminMigrationStatus['applied']
+  }))
 }
 
 /**
- * Alembic schema 升级：POST /api/admin/alembic/upgrade（admin_tools.router），
- * 服务端在后台线程执行 `alembic upgrade head`。失败走 apiFetch 统一 toast。
+ * POST /api/admin/alembic/upgrade（admin_tools.router）——
+ * 服务端在 asyncio.to_thread 里执行 `alembic upgrade head`；
+ * 失败后端返回 500，因此成功响应必为 success:true，调用方无需再判 success。
  */
-export function upgradeAdminMigrations(): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>('/admin/alembic/upgrade', { method: 'POST' })
+export function upgradeAdminMigrations(
+  options: AdminToolRequestOptions = {}
+): Promise<AdminAlembicUpgradeResult> {
+  return apiFetch<AdminAlembicUpgradeResult>('/admin/alembic/upgrade', {
+    method: 'POST',
+    silentToast: options.silentToast ?? true
+  })
 }
 
 // -------------------- 跨库数据迁移任务（migration.router） --------------------
@@ -1693,15 +1894,23 @@ export interface AdminMigrationStartPayload {
 }
 
 /** GET /api/admin/migration/presets —— 常用连接预设（当前库 / SQLite 默认路径等） */
-export function fetchAdminMigrationPresets(): Promise<Record<string, string>> {
-  return apiFetch<{ success: boolean, presets?: Record<string, string> }>('/admin/migration/presets')
+export function fetchAdminMigrationPresets(
+  options: AdminToolRequestOptions = {}
+): Promise<Record<string, string>> {
+  return apiFetch<{ success: boolean, presets?: Record<string, string> }>('/admin/migration/presets', {
+    silentToast: options.silentToast ?? false
+  })
     .then(r => (r?.presets && typeof r.presets === 'object' ? r.presets : {}))
 }
 
 /** POST /api/admin/migration/start —— 发起一次跨库迁移任务（全局同时仅允许一个 running） */
-export function startAdminMigrationJob(payload: AdminMigrationStartPayload): Promise<AdminMigrationJob> {
+export function startAdminMigrationJob(
+  payload: AdminMigrationStartPayload,
+  options: AdminToolRequestOptions = {}
+): Promise<AdminMigrationJob> {
   return apiFetch<{ success: boolean, job: AdminMigrationJob }>('/admin/migration/start', {
     method: 'POST',
+    silentToast: options.silentToast ?? true,
     body: {
       source: payload.source,
       target: payload.target,
@@ -1711,18 +1920,26 @@ export function startAdminMigrationJob(payload: AdminMigrationStartPayload): Pro
   }).then(r => r.job)
 }
 
-/** GET /api/admin/migration/status —— 查询最新一次迁移任务（无任务返回 null，轮询用静默版） */
-export function fetchAdminMigrationJobStatus(silent = false): Promise<AdminMigrationJob | null> {
-  const req = silent
-    ? silentApiFetch<{ success: boolean, job?: AdminMigrationJob | null }>('/admin/migration/status')
-    : apiFetch<{ success: boolean, job?: AdminMigrationJob | null }>('/admin/migration/status')
-  return req.then(r => r?.job ?? null)
+/**
+ * GET /api/admin/migration/status —— 查询最新一次迁移任务。
+ * 返回 `null` 表示「确实没有任务」；接口失败必须 reject，
+ * 否则轮询会把后端宕机当成任务结束、进度条冻结且无任何提示。
+ */
+export function fetchAdminMigrationJobStatus(
+  options: AdminToolRequestOptions = {}
+): Promise<AdminMigrationJob | null> {
+  return apiFetch<{ success: boolean, job?: AdminMigrationJob | null }>('/admin/migration/status', {
+    silentToast: options.silentToast ?? true
+  }).then(r => r?.job ?? null)
 }
 
 /** POST /api/admin/migration/cancel —— 取消当前运行中的迁移任务 */
-export function cancelAdminMigrationJob(): Promise<AdminMigrationJob> {
+export function cancelAdminMigrationJob(
+  options: AdminToolRequestOptions = {}
+): Promise<AdminMigrationJob> {
   return apiFetch<{ success: boolean, job: AdminMigrationJob }>('/admin/migration/cancel', {
-    method: 'POST'
+    method: 'POST',
+    silentToast: options.silentToast ?? true
   }).then(r => r.job)
 }
 
@@ -1738,29 +1955,10 @@ export interface AdminCacheStatus {
 }
 
 /**
- * GET /api/admin/cache/status —— 2026-08 新增后端端点（admin_tools.router）。
- * 兼容统一响应格式 {success, data} 与直接裸对象两种包法。
+ * GET /api/admin/cache/status 与 POST /api/admin/cache/flush 的唯一实现放在
+ * `pages/admin/tools/cache.vue`（需要模式选择、批量 key 清退、逐条结果展示等页面态）。
+ * 这里只保留 AdminCacheStatus / AdminCacheFlushMode 作为共享契约类型。
  */
-export function fetchAdminCacheStatus(): Promise<AdminCacheStatus> {
-  return silentApiFetch<ApiEnvelope<AdminCacheStatus> | AdminCacheStatus>('/admin/cache/status').then((raw) => {
-    const r = (raw && (raw as ApiEnvelope<AdminCacheStatus>).data)
-      ? (raw as ApiEnvelope<AdminCacheStatus>).data
-      : (raw as AdminCacheStatus | null | undefined)
-    if (!r) return { backend: 'memory', keys: 0, memory_used_bytes: null, hit_rate: null }
-    return {
-      backend: r.backend === 'redis' ? 'redis' : 'memory',
-      keys: Number(r.keys ?? 0),
-      memory_used_bytes: r.memory_used_bytes ?? null,
-      hit_rate: r.hit_rate ?? null
-    } satisfies AdminCacheStatus
-  })
-}
-
-export function flushAdminCache(mode: AdminCacheFlushMode): Promise<ApiMessage> {
-  return apiFetch<ApiMessage>('/admin/cache/flush', { method: 'POST', body: { mode } }).then(r =>
-    r ?? { success: true, message: '缓存已清退' }
-  )
-}
 
 // ==================== 站内通知 Notifications ====================
 // 接口路径: GET/POST /api/notifications/* （非 admin 前缀，按 recipient_id = 当前用户隔离）
@@ -1797,32 +1995,42 @@ export interface NotificationsStats {
 
 /**
  * GET /api/notifications —— notification.router 挂在 /api/notifications，@router.get("")
- * 裸 dict（非 ApiEnvelope）。降级：后端暂缺 / 权限不足时返回空列表，不抛错不 toast。
+ * 裸 dict（非 ApiEnvelope）。
+ *
+ * 失败一律 reject：把接口故障渲染成「暂时没有通知」是让管理员误判系统健康的假阴性。
+ * 调用方负责展示错误态 + 重试；默认不弹全局 toast（面板内联展示）。
  */
 export function fetchNotifications(params: {
   page?: number
   page_size?: number
   unread_only?: boolean
-} = {}): Promise<NotificationsListResponse> {
-  return silentApiFetch<NotificationsListResponse>('/notifications', {
-    query: { page: 1, page_size: 10, unread_only: false, ...params }
-  }).then(r => r ?? {
-    items: [],
-    total: 0,
-    unread_count: 0,
-    page: params.page ?? 1,
-    page_size: params.page_size ?? 10,
-    total_pages: 0
-  })
+} = {}, options: AdminToolRequestOptions = {}): Promise<NotificationsListResponse> {
+  const page = params.page ?? 1
+  const pageSize = params.page_size ?? 10
+  return apiFetch<Partial<NotificationsListResponse>>('/notifications', {
+    query: { page, page_size: pageSize, unread_only: false, ...params },
+    silentToast: options.silentToast ?? true
+  }).then(r => ({
+    items: Array.isArray(r?.items) ? r.items : [],
+    total: Number(r?.total ?? 0) || 0,
+    unread_count: Number(r?.unread_count ?? 0) || 0,
+    page: Number(r?.page ?? page),
+    page_size: Number(r?.page_size ?? pageSize),
+    total_pages: Number(r?.total_pages ?? 0) || 0
+  }))
 }
 
 /**
  * GET /api/notifications/stats —— notification.router @router.get("/stats")
- * 注意：后端返回裸 dict（无 success/data 包裹），404/5xx 时降级为 0 保证 badge 不误导。
- * 同时后端还有 @router.get("/unread-count")，这里使用 /stats 信息更全。
+ * 后端返回裸 dict（无 success/data 包裹）。字段名兼容 unread/total 与 unread_count/total_count。
+ * 失败 reject，由调用方决定 badge 显示 0 还是错误态。
  */
-export function fetchNotificationStats(): Promise<NotificationsStats> {
-  return silentApiFetch<Record<string, unknown>>('/notifications/stats').then((r) => {
+export function fetchNotificationStats(
+  options: AdminToolRequestOptions = {}
+): Promise<NotificationsStats> {
+  return apiFetch<Record<string, unknown>>('/notifications/stats', {
+    silentToast: options.silentToast ?? true
+  }).then((r) => {
     const s = (r ?? {}) as Record<string, unknown>
     const num = (v: unknown, d = 0): number => (typeof v === 'number' ? v : Number(v ?? d)) || d
     return {
@@ -1837,22 +2045,41 @@ export function fetchNotificationStats(): Promise<NotificationsStats> {
   })
 }
 
-/** POST /api/notifications/{id}/read —— notification.router @router.post("/{notification_id}/read") */
+/** POST /api/notifications/{id}/read —— 标记单条已读（失败 reject，调用方乐观回滚） */
 export function markNotificationRead(id: number): Promise<void> {
-  return silentApiFetch(`/notifications/${id}/read`, { method: 'POST' }).then(() => undefined)
+  return apiFetch(`/notifications/${id}/read`, { method: 'POST', silentToast: true })
+    .then(() => undefined)
 }
 
 /** POST /api/notifications/read-all —— @router.post("/read-all") */
-export function markAllNotificationsRead(): Promise<void> {
-  return silentApiFetch('/notifications/read-all', { method: 'POST' }).then(() => undefined)
+export function markAllNotificationsRead(
+  options: AdminToolRequestOptions = {}
+): Promise<void> {
+  return apiFetch('/notifications/read-all', {
+    method: 'POST',
+    silentToast: options.silentToast ?? false
+  }).then(() => undefined)
 }
 
-/** DELETE /api/notifications —— @router.delete("") 清空所有通知 */
-export function clearAllNotifications(): Promise<void> {
-  return silentApiFetch('/notifications', { method: 'DELETE' }).then(() => undefined)
+/** DELETE /api/notifications —— @router.delete("") 清空所有通知（可 read_only=true 只清已读） */
+export function clearAllNotifications(
+  params: { read_only?: boolean } = {},
+  options: AdminToolRequestOptions = {}
+): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>('/notifications', {
+    method: 'DELETE',
+    query: { read_only: params.read_only ?? false },
+    silentToast: options.silentToast ?? false
+  })
 }
 
 /** DELETE /api/notifications/{id} —— @router.delete("/{notification_id}") 删除单条 */
-export function deleteNotification(id: number): Promise<void> {
-  return silentApiFetch(`/notifications/${id}`, { method: 'DELETE' }).then(() => undefined)
+export function deleteNotification(
+  id: number,
+  options: AdminToolRequestOptions = {}
+): Promise<void> {
+  return apiFetch(`/notifications/${id}`, {
+    method: 'DELETE',
+    silentToast: options.silentToast ?? false
+  }).then(() => undefined)
 }

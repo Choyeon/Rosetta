@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.partial_update import apply_partial_update
 from backend.models.announcement import Announcement
 from backend.schemas import BaseResponse
 from backend.schemas.announcement import (
@@ -58,14 +59,24 @@ async def list_active_announcements(db: DB):
     "/admin/announcements",
     response_model=list[AnnouncementResponse],
     summary="管理员获取所有公告",
-    description="管理员获取所有公告列表，支持按激活状态过滤。",
+    description=(
+        "管理员获取所有公告列表，支持按激活状态过滤。"
+        "注意：本端点有意返回全量裸列表（不分页）——前端 fetchAdminManage/announcements 页"
+        "按 list 结构消费且未实现分页器；page/page_size 参数不会被接受或生效。"
+    ),
 )
 async def admin_list_announcements(
     db: DB,
     current_user: CurrentStaff,
     is_active: bool | None = Query(None, description="按激活状态过滤"),
 ):
-    """管理员获取所有公告"""
+    """管理员获取所有公告
+
+    公告总量极小（站点级运营内容），且现有前端调用方（useAdminManage.ts 的
+    fetchAdminAnnouncements 与 announcements.vue）都按裸 list 消费并自行包装
+    AdminPaged 结构；改为 {items,total,...} 分页对象会直接破坏这些调用方，
+    因此保持不分页的全量列表契约。
+    """
     query = select(Announcement).order_by(
         Announcement.sort_order.asc(), Announcement.created_at.desc()
     )
@@ -130,8 +141,7 @@ async def update_announcement(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(announcement, field, value)
+    apply_partial_update(announcement, update_data)
 
     await db.flush()
     await db.refresh(announcement)

@@ -11,6 +11,7 @@
 
 import hashlib
 import json
+import logging
 import os
 import secrets
 from dataclasses import dataclass, field
@@ -26,6 +27,8 @@ from backend.core.oobe_constants import (
     USERNAME_PATTERN,
 )
 from backend.core.paths import BASE_DIR
+
+logger = logging.getLogger(__name__)
 
 
 class Environment(Enum):
@@ -302,33 +305,37 @@ class ConfigService:
         try:
             with open(self.state_file, "w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-        except Exception:
-            pass
-
-    def clear_state(self):
-        """清除保存的状态"""
-        try:
-            if self.state_file.exists():
-                self.state_file.unlink()
-        except Exception:
-            pass
+        except OSError:
+            # 断点状态只是可丢的优化：写失败不能让向导步骤整体失败，但必须留痕，
+            # 否则"重启后要重头填"这种反馈永远查不到原因。
+            logger.exception("OOBE 断点状态写入失败: %s", self.state_file)
 
     def is_oobe_complete(self) -> bool:
         """检查 OOBE 是否已完成"""
         return self.lock_file.exists()
 
-    def reset_oobe(self):
-        """重置 OOBE 状态"""
-        try:
-            if self.lock_file.exists():
-                self.lock_file.unlink()
-            if self.env_file.exists():
-                self.env_file.unlink()
-            if self.config_file.exists():
-                self.config_file.unlink()
-            self.clear_state()
-        except Exception:
-            pass
+    def reset_oobe(self) -> list[str]:
+        """重置 OOBE 状态：删除安装锁、.env、rosetta.json 与断点状态。
+
+        逐个删除，单个失败不阻断其余文件；返回**未能删除**的项名列表，由调用方决定
+        如何上报。原先整体包在一个 `except Exception: pass` 里，锁删掉了而 .env 没删掉
+        也照样回"成功"——携带 SECRET_KEY/DB 连接串的 .env 残留、而安装锁已消失，
+        是可观测性最差的一类半完成态。
+        """
+        failed: list[str] = []
+        for label, path in (
+            ("lock", self.lock_file),
+            ("env", self.env_file),
+            ("config", self.config_file),
+            ("state", self.state_file),
+        ):
+            try:
+                if path.exists():
+                    path.unlink()
+            except OSError:
+                logger.exception("OOBE 重置无法删除 %s: %s", label, path)
+                failed.append(label)
+        return failed
 
     def generate_secret_key(self) -> str:
         """生成密钥"""
@@ -503,7 +510,7 @@ class ConfigService:
         会各自访问到不同的 <cwd>/.db 文件，导致"DB 明明有数据但前端读到 0 篇文章 / 重复文章"
         这类诡异问题。BASE_DIR 固定为 backend/core 的 parent.parent（项目根目录）。
         """
-        from urllib.parse import quote_plus
+        from urllib.parse import quote
 
         from backend.core.paths import BASE_DIR
 
@@ -536,7 +543,9 @@ class ConfigService:
             # aiosqlite 对绝对路径用 URL 形式：sqlite+aiosqlite:///X:/foo/bar.db
             database_url = f"sqlite+aiosqlite:///{candidate.as_posix()}"
         else:
-            password_part = f":{quote_plus(db_password)}" if db_password else ""
+            # userinfo 不能用 quote_plus：空格会被编成 `+`，而 URL authority 里的 `+` 是字面量，
+            # SQLAlchemy 解出来的密码就多了个加号 → 认证失败（同 generate_database_url）
+            password_part = f":{quote(db_password, safe='')}" if db_password else ""
             database_url = f"postgresql+asyncpg://{config['db_user']}{password_part}@{config['db_host']}:{config['db_port']}/{config['db_name']}"
 
         redis_url = ""
@@ -546,7 +555,8 @@ class ConfigService:
             redis_port = config.get("redis_port", 6379)
             redis_password = config.get("redis_password", "")
             if redis_password:
-                redis_url = f"redis://:{redis_password}@{redis_host}:{redis_port}/0"
+                # 未编码时密码里的 @ / : 会截断 authority
+                redis_url = f"redis://:{quote(redis_password, safe='')}@{redis_host}:{redis_port}/0"
             else:
                 redis_url = f"redis://{redis_host}:{redis_port}/0"
 

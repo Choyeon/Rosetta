@@ -13,18 +13,21 @@ import logging
 from datetime import datetime
 from typing import Any
 
+from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth import (
     _add_jti_to_blacklist,
+    aget_password_hash,
+    averify_password,
+    averify_password_with_rehash,
     create_access_token,
     create_refresh_token,
     decode_token,
-    get_password_hash,
-    verify_password,
-    verify_password_with_rehash,
 )
 from backend.core.config import settings
+from backend.core.partial_update import apply_partial_update
+from backend.models.blog import Post
 from backend.models.user import User, UserPreference
 from backend.repositories.user import (
     RefreshTokenRepository,
@@ -33,12 +36,28 @@ from backend.repositories.user import (
 )
 from backend.services._avatar_helpers import resolved_for_user
 from backend.services.cache_service import CacheService
+from backend.services.post_cache import invalidate_post_caches_by_slugs
 from backend.utils.compat import UTC, timedelta
 
 logger = logging.getLogger(__name__)
 
 USER_PROFILE_TTL = 300
 USER_STATS_TTL = 60
+
+# 偏好可写字段 = UserPreference 的列全集减去身份列与时间戳。
+# 这里刻意不手写名单：旧实现写死 ["theme", "public_profile"]，于是 show_email、
+# show_posts、show_comments、show_stats 四个隐私开关从 API 传进来被**静默丢弃**——
+# 接口返回 200、前端提示"已保存"、库里一个字节都没改，用户以为邮箱已经隐藏其实一直暴露。
+# 以模型为唯一事实源，加列时不会再出现"服务层漏掉"的第二个真相。
+PREFERENCE_WRITABLE_FIELDS: frozenset[str] = frozenset(
+    str(attr.key) for attr in inspect(UserPreference).mapper.column_attrs
+) - {"id", "user_id", "created_at", "updated_at"}
+
+# 会被嵌进文章详情缓存 author 段的展示字段（见 blog._build_author_data）。
+# 只有这些字段变更才需要顺带失效文章缓存；email/qq/password 等隐私字段不进 author 段。
+_AUTHOR_VISIBLE_FIELDS: frozenset[str] = frozenset(
+    {"username", "nickname", "avatar", "bio", "website", "github", "cover_image"}
+)
 
 
 class UserService:
@@ -107,7 +126,7 @@ class UserService:
         if await self._user_repo.email_exists(email):
             raise ValueError("邮箱已被注册")
 
-        password_hash = get_password_hash(password)
+        password_hash = await aget_password_hash(password)
 
         user = await self._user_repo.create(
             {
@@ -169,14 +188,14 @@ class UserService:
         if user is None:
             raise ValueError("用户名或密码错误")
 
-        pwd_ok, need_rehash = verify_password_with_rehash(password, user.password_hash)
+        pwd_ok, need_rehash = await averify_password_with_rehash(password, user.password_hash)
         if not pwd_ok:
             raise ValueError("用户名或密码错误")
 
         # bcrypt → argon2id 平滑升级：首次登录成功就重新保存为 argon2 哈希
         if need_rehash:
             try:
-                user.password_hash = get_password_hash(password)
+                user.password_hash = await aget_password_hash(password)
                 await self._db.flush()
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"用户 {user.id} 密码 rehash (bcrypt→argon2id) 失败：{e}")
@@ -295,7 +314,10 @@ class UserService:
         if current_version != old_version_int:
             raise ValueError("TOKEN_VERSION_MISMATCH")
 
-        await _add_jti_to_blacklist(jti, ttl_days)
+        # 消费 SET NX 的原子结果：上面的 _is_jti_blacklisted 与写入之间仍有窗口，
+        # 两个并发刷新可能同时通过预检；以"本次是否首次拉黑"为最终判据。
+        if not await _add_jti_to_blacklist(jti, ttl_days):
+            raise ValueError("TOKEN_REUSED")
 
         user.token_version = current_version + 1
         await self._db.flush()
@@ -427,7 +449,7 @@ class UserService:
                 raise ValueError("邮箱已被使用")
 
         if "password" in data:
-            data["password_hash"] = get_password_hash(data["password"])
+            data["password_hash"] = await aget_password_hash(data["password"])
             del data["password"]
 
         allowed_fields = [
@@ -449,9 +471,20 @@ class UserService:
 
         await self._cache.invalidate_user_cache(user_id)
 
+        # 作者可见资料会被写进文章详情缓存的 author 段（见 blog._build_author_data），
+        # 而该缓存 key 是 `post:{slug}:{lang}`，invalidate_user_cache 覆盖不到。
+        # 仅当本次改动确实命中这些展示字段时，才失效该作者全部文章的详情/列表缓存。
+        if update_data.keys() & _AUTHOR_VISIBLE_FIELDS:
+            await self._invalidate_author_post_caches(user_id)
+
         logger.info(f"用户资料更新成功: id={user_id}")
 
         return updated_user
+
+    async def _invalidate_author_post_caches(self, user_id: int) -> None:
+        """失效某作者全部文章的详情缓存与列表/RSS 缓存（作者资料变更后调用）。"""
+        rows = await self._db.execute(select(Post.slug).where(Post.author_id == user_id))
+        await invalidate_post_caches_by_slugs(rows.scalars().all())
 
     async def update_preferences(
         self,
@@ -472,11 +505,19 @@ class UserService:
         if preference is None:
             preference = await self._preference_repo.get_or_create_for_user(user_id)
 
-        allowed_fields = ["theme", "public_profile"]
+        allowed_fields = PREFERENCE_WRITABLE_FIELDS
         update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        if len(update_data) != len(data):
+            # 只可能发生在"模型加了列、Schema 没加"或反之：静默丢弃就是这次修复要消灭的 bug 类，
+            # 至少留一条日志，别让"接口 200 但什么都没保存"再次无声发生。
+            logger.warning(
+                "更新偏好丢弃未知字段: %s",
+                sorted(set(data) - set(update_data)),
+            )
 
-        for key, value in update_data.items():
-            setattr(preference, key, value)
+        # 偏好六个列全是 NOT NULL（客户端显式传 null 会撞 flush → 500），
+        # 走统一守卫而不是裸 setattr。
+        apply_partial_update(preference, update_data)
 
         await self._db.flush()
         await self._db.refresh(preference)
@@ -511,13 +552,13 @@ class UserService:
         if user is None:
             return False
 
-        if not verify_password(old_password, user.password_hash):
+        if not await averify_password(old_password, user.password_hash):
             raise ValueError("旧密码错误")
 
-        if verify_password(new_password, user.password_hash):
+        if await averify_password(new_password, user.password_hash):
             raise ValueError("新密码不能与当前密码相同")
 
-        user.password_hash = get_password_hash(new_password)
+        user.password_hash = await aget_password_hash(new_password)
         current_v = getattr(user, "token_version", 0) or 0
         user.token_version = current_v + 1
         await self._db.flush()

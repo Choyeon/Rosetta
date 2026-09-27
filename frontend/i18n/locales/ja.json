@@ -179,6 +179,7 @@
     "error": "エラー",
     "fillRequired": "ユーザー名とパスワードを入力してください",
     "loginFailed": "ログインに失敗しました。認証情報を確認してください",
+    "accountLocked": "試行回数が多いです。アカウントを一時的にロックしました。{seconds} 秒後に再試行してください",
     "goLogin": "[JA]:Go to Login",
     "welcomeBackTagline": "[JA]:Crossing the boundaries of language",
     "openBeta": "[JA]:Open Beta — Join Today",

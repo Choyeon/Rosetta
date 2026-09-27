@@ -1,3 +1,9 @@
+<!--
+  管理列表通用筛选条（关键字/状态/日期范围），组件只负责输入形态与 emit search/reset，不发请求。
+  硬契约：筛选值与分页在调用方耦合——@search / @reset 都必须把页码重置为 1 再重查，
+  否则会出现"第 5 页 + 新条件"的空结果假象；日期统一 YYYY-MM-DD 字符串，
+  对应后端查询参数 created_start / created_end（互锁细则见 script 内注释）。
+-->
 <script setup lang="ts" generic="TStatus extends string = string">
 /* 通用管理列表筛选条：关键字 + 状态 + 日期范围（开始/结束互锁） + 筛选/重置按钮
  *
@@ -211,13 +217,14 @@ function doReset() {
               class="h-8 min-w-0 flex-1 rounded-[8px] border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-0 focus:bg-background disabled:cursor-not-allowed disabled:opacity-50"
               :value="localStart ?? ''"
               :max="startMax"
+              aria-label="开始日期"
               placeholder="开始"
               @change="updateDate($event, 'start')"
             >
             <button
               v-if="localStart"
               type="button"
-              class="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+              class="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
               title="清除开始日期"
               @click="clearStart"
             >
@@ -235,13 +242,14 @@ function doReset() {
               :value="localEnd ?? ''"
               :min="endMin"
               :max="endMax"
+              aria-label="结束日期"
               placeholder="结束"
               @change="updateDate($event, 'end')"
             >
             <button
               v-if="localEnd"
               type="button"
-              class="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
+              class="pointer-events-auto absolute right-1 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
               title="清除结束日期"
               @click="clearEnd"
             >

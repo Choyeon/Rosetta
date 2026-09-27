@@ -1,3 +1,10 @@
+<!--
+  头像 + 称号角标的统一渲染入口。
+  关键契约：resolvedAvatarUrl 优先于 avatar —— 前者来自后端 /api/media/avatar 代理链
+  （白名单 302 → 非白名单流式代理 → DiceBear 兜底），后者是未做 SSRF 处理的原始串，
+  两个 prop 同时传时必须以解析后的 URL 为准（解析逻辑收敛在 useResolvedAvatar）。
+  size 传数值时以内联 style 输出确定像素，配合 fallback 字母保证图片迟到也不抖动（CLS）。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Avatar, AvatarFallback, AvatarImage } from '~~/components/ui/avatar'

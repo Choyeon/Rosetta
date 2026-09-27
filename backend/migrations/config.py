@@ -20,6 +20,9 @@ def get_alembic_config() -> Config:
 
     config.set_main_option("script_location", str(MIGRATIONS_DIR))
     config.set_main_option("version_locations", str(MIGRATIONS_DIR / "versions"))
+    # 没有这一项时 Alembic 按空格/逗号切分 version_locations（弃用行为），
+    # Windows 绝对路径一旦含空格就会被切成不存在的目录，迁移直接找不到版本文件
+    config.set_main_option("path_separator", "os")
 
     migrations_dir = MIGRATIONS_DIR / "versions"
     migrations_dir.mkdir(parents=True, exist_ok=True)

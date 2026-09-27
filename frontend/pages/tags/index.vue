@@ -1,3 +1,9 @@
+<!--
+  标签页：GET /blog/tags 的标签云 + 网格双视图。
+  字号走 countToScale 阶梯映射而非连续计算，SSR 与客户端才能对同一数量产出逐字节一致的
+  style；排序是纯函数（数量降序 → slug 字典序），掺入随机或时间相关因子就会让两端顺序不同。
+  name 缺失兜底 slug，post_count 兼容 postsCount 两种命名。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">

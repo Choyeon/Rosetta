@@ -1,3 +1,7 @@
+<!--
+  评论管理页：按状态 Tab 承载 CommentListContent（status="all|pending|approved|rejected|spam"）。
+  契约：本页不持有任何列表状态——TabsContent 只渲染激活项，切 Tab 即挂载新实例并自行首屏请求，父层无需刷新信号。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -6,10 +10,7 @@
       :icon="MessageSquare"
     />
 
-    <Tabs
-      v-model="activeTab"
-      @update:model-value="onTabChange"
-    >
+    <Tabs v-model="activeTab">
       <TabsList>
         <TabsTrigger value="all">
           全部
@@ -69,12 +70,7 @@ import CommentListContent from './_parts/CommentListContent.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
+// TabsContent 只渲染当前激活项：切 tab 会挂载新的列表实例并自行首屏请求，
+// 不需要额外的刷新信号。
 const activeTab = ref('all')
-const refreshKey = ref(0)
-
-const onTabChange = () => {
-  refreshKey.value++
-}
-
-provide('refreshKey', refreshKey)
 </script>

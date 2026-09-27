@@ -1,3 +1,8 @@
+<!--
+  缓存管理页：展示服务端缓存后端/键数/内存/命中率，按粒度模式（all/post_list/post_detail/settings/fragments）执行清退。
+  契约：GET /admin/cache/status 返回裸对象（无 success 信封）；hit_rate 可能是 0-1 小数或 0-100 百分数，须按 <=1 归一化否则命中率显示错量级；
+  接口走 silentToast + 页内联错误态避免双重提示，「全部清退」在 DangerConfirmDialog 中要求输入短语二次确认。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -5,6 +10,28 @@
       description="查看缓存状态并执行按粒度的清退操作"
       :icon="HardDrive"
     />
+
+    <Alert
+      v-if="statusError"
+      variant="destructive"
+      class="rounded-xl"
+    >
+      <AlertTriangle class="size-4" />
+      <AlertTitle>缓存状态获取失败</AlertTitle>
+      <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+        <span>{{ statusError }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-lg shrink-0"
+          :disabled="statusLoading"
+          @click="loadStatus"
+        >
+          <RotateCcw data-icon="inline-start" />
+          重试
+        </Button>
+      </AlertDescription>
+    </Alert>
 
     <div class="grid grid-cols-2 gap-4 md:grid-cols-2 lg:grid-cols-4">
       <AdminCard class="rounded-2xl">
@@ -29,10 +56,10 @@
           </div>
           <div>
             <div class="text-2xl font-bold tracking-tight capitalize">
-              {{ cacheStatus.backend || 'memory' }}
+              {{ statusError ? '未知' : (cacheStatus.backend || 'memory') }}
             </div>
             <div class="text-xs text-muted-foreground mt-0.5">
-              {{ cacheStatus.backend === 'redis' ? '分布式 Redis 缓存' : '进程内 Memory 缓存' }}
+              {{ statusError ? '状态接口不可用' : (cacheStatus.backend === 'redis' ? '分布式 Redis 缓存' : '进程内 Memory 缓存') }}
             </div>
           </div>
         </div>
@@ -52,7 +79,7 @@
             v-if="!statusLoading"
             class="text-2xl font-bold tabular-nums tracking-tight"
           >
-            {{ (cacheStatus.keys ?? 0).toLocaleString('zh-CN') }}
+            {{ statusError ? '—' : (cacheStatus.keys ?? 0).toLocaleString('zh-CN') }}
           </div>
           <Skeleton
             v-else
@@ -73,13 +100,13 @@
           </div>
           <div
             v-if="!statusLoading"
-            class="flex flex-col gap-0 .5"
+            class="flex flex-col gap-0.5"
           >
             <div class="text-2xl font-bold tabular-nums tracking-tight">
-              {{ formatBytes(cacheStatus.memory_used_bytes) }}
+              {{ statusError ? '—' : formatBytes(cacheStatus.memory_used_bytes) }}
             </div>
             <div class="text-xs text-muted-foreground">
-              {{ cacheStatus.memory_used_bytes != null ? `${cacheStatus.memory_used_bytes.toLocaleString('zh-CN')} Bytes` : '未上报' }}
+              {{ statusError ? '状态接口不可用' : (cacheStatus.memory_used_bytes != null ? `${cacheStatus.memory_used_bytes.toLocaleString('zh-CN')} Bytes` : '未上报') }}
             </div>
           </div>
           <Skeleton
@@ -127,9 +154,9 @@
               </div>
               <span
                 class="font-bold tabular-nums min-w-[52px] text-right"
-                :class="hitRateWarning ? 'text-warning' : 'text-success'"
+                :class="statusError ? 'text-muted-foreground' : (hitRateWarning ? 'text-warning' : 'text-success')"
               >
-                {{ hitPctFixed }}
+                {{ statusError ? '—' : hitPctFixed }}
               </span>
             </div>
             <p
@@ -138,6 +165,12 @@
             >
               <AlertTriangle class="size-3 inline mr-1" />
               命中率偏低（建议 ≥ 70%）
+            </p>
+            <p
+              v-else-if="statusError || cacheStatus.hit_rate == null"
+              class="text-xs text-muted-foreground"
+            >
+              后端未上报命中率
             </p>
             <p
               v-else
@@ -203,7 +236,7 @@
         <Separator />
 
         <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div class="flex flex-col gap-0 .5">
+          <div class="flex flex-col gap-0.5">
             <h3 class="font-semibold">
               即将执行：<span class="text-primary">{{ currentModeMeta?.label }}</span>
             </h3>
@@ -215,18 +248,17 @@
             variant="outline"
             size="lg"
             :disabled="flushing"
-            class="rounded-2xl !px-8 group border-2 border-primary/50 text-primary/80 hover:bg-primary hover:text-white hover:border-primary transition-all"
+            class="rounded-2xl !px-8 group border-2 border-primary/50 text-primary hover:bg-primary hover:text-primary-foreground hover:border-primary transition-all"
             @click="confirmFlushOpen = true"
           >
             <Trash2
               v-if="!flushing"
               data-icon="inline-start"
-              class="mr-2"
             />
             <Loader2
               v-else
               data-icon="inline-start"
-              class="mr-2 animate-spin"
+              class="animate-spin"
             />
             立即执行清退
           </Button>
@@ -234,79 +266,34 @@
       </div>
     </AdminCard>
 
-    <Dialog v-model:open="confirmFlushOpen">
-      <DialogContent class="max-w-md rounded-2xl">
-        <DialogHeader>
-          <DialogTitle class="flex items-center gap-2">
-            <AlertTriangle class="size-5 text-warning" />
-            二次确认：缓存清退
-          </DialogTitle>
-          <DialogDescription>
-            即将对 <b>{{ currentModeMeta?.label }}</b> 范围的缓存执行清退：
-          </DialogDescription>
-        </DialogHeader>
-        <div class="flex flex-col gap-2 rounded-xl p-4 border border-warning/40 bg-warning-muted/30">
-          <p class="text-sm">
-            <b>影响：</b>{{ currentModeMeta?.scope }}
-          </p>
-          <p class="text-sm text-muted-foreground">
-            清退后首次访问会重新计算，响应速度会变慢；后续请求将恢复正常且带有新数据。
-          </p>
-        </div>
-        <DialogFooter class="gap-2">
-          <Button
-            variant="outline"
-            class="rounded-xl"
-            :disabled="flushing"
-            @click="confirmFlushOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            class="rounded-xl"
-            :disabled="flushing"
-            @click="handleFlush"
-          >
-            <Loader2
-              v-if="flushing"
-              data-icon="inline-start"
-              class="animate-spin"
-            />
-            <Trash2
-              v-else
-              data-icon="inline-start"
-            />
-            确认清退
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DangerConfirmDialog
+      v-model:open="confirmFlushOpen"
+      :title="`二次确认：${currentModeMeta?.label ?? ''}`"
+      :description="`即将清退「${currentModeMeta?.label}」范围（${currentModeMeta?.scope}）。清退后首次访问会重新计算，响应速度会短暂变慢，且不可撤销。`"
+      confirm-text="确认清退"
+      :confirm-phrase="flushMode === 'all' ? '全部清退' : ''"
+      :on-confirm="runFlush"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import {
-  fetchAdminCacheStatus,
-  flushAdminCache,
-  type AdminCacheStatus,
-  type AdminCacheFlushMode
-} from '~~/composables/useAdminManage'
+import type { AdminCacheStatus, AdminCacheFlushMode } from '~~/composables/useAdminManage'
+import { apiFetch } from '~~/composables/useApi'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
   HardDrive, Database, MemoryStick, Layers, PieChart, Target, TrendingDown,
-  Shovel, AlertTriangle, Trash2, Loader2, Info,
+  Shovel, AlertTriangle, Trash2, Loader2, Info, RotateCcw,
   Boxes, BookOpen, FileText, Settings as SettingsIcon, Puzzle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Separator } from '~~/components/ui/separator'
-import {
-  Dialog, DialogContent, DialogDescription, DialogFooter,
-  DialogHeader, DialogTitle
-} from '~~/components/ui/dialog'
+import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -351,9 +338,24 @@ const modes = [
 ]
 
 const statusLoading = ref(true)
+const statusError = ref('')
 const flushing = ref(false)
 const confirmFlushOpen = ref(false)
 const flushMode = ref<AdminCacheFlushMode>('all')
+
+/** GET /admin/cache/status 返回裸对象（无 success 信封） */
+interface CacheStatusResponse {
+  backend?: string | null
+  keys?: number | null
+  memory_used_bytes?: number | null
+  hit_rate?: number | null
+}
+
+interface CacheFlushResponse {
+  mode?: string
+  deleted_keys?: number
+  message?: string
+}
 
 const emptyStatus = (): AdminCacheStatus => ({
   backend: 'memory',
@@ -387,25 +389,37 @@ function formatBytes(b: number | null | undefined): string {
 
 async function loadStatus() {
   statusLoading.value = true
+  statusError.value = ''
   try {
-    const r = await fetchAdminCacheStatus()
-    cacheStatus.value = r || emptyStatus()
-  } catch {
+    // 状态接口失败时必须可见：silentToast 避免与页面内联错误重复提示
+    const r = await apiFetch<CacheStatusResponse>('/admin/cache/status', { silentToast: true })
+    cacheStatus.value = {
+      backend: r?.backend === 'redis' ? 'redis' : 'memory',
+      keys: Number(r?.keys ?? 0),
+      memory_used_bytes: r?.memory_used_bytes ?? null,
+      hit_rate: r?.hit_rate ?? null
+    }
+  } catch (err) {
     cacheStatus.value = emptyStatus()
+    const e = err as { data?: unknown, message?: string }
+    statusError.value = extractApiErrorMessage(e?.data, e?.message || '无法连接缓存状态接口')
   } finally {
     statusLoading.value = false
   }
 }
 
-async function handleFlush() {
+/** 供 DangerConfirmDialog 调用：throw 则弹窗保持打开并内联展示错误 */
+async function runFlush() {
   flushing.value = true
   try {
-    const r = await flushAdminCache(flushMode.value)
-    confirmFlushOpen.value = false
-    toast.success(r?.message || `已清退缓存：${currentModeMeta.value?.label}`)
+    const r = await apiFetch<CacheFlushResponse>('/admin/cache/flush', {
+      method: 'POST',
+      body: { mode: flushMode.value },
+      silentToast: true
+    })
+    const keysHint = r?.deleted_keys != null ? `（${r.deleted_keys} 个键）` : ''
+    toast.success(r?.message ?? `已清退缓存：${currentModeMeta.value?.label}${keysHint}`)
     await loadStatus()
-  } catch (err) {
-    toast.error((err as { message?: string })?.message || '清退缓存失败')
   } finally {
     flushing.value = false
   }

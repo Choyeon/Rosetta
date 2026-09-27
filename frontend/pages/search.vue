@@ -1,3 +1,9 @@
+<!--
+  搜索页：以 route.query.q 为检索词唯一真值（结果可收藏/可分享）。
+  本路由被 routeRules '/search/**' 精准反选为 ssr:false：虽然代码写得像 SSR 页
+  （computed query + 跟随 q 的 key），首屏数据实际只在客户端拉取，改任何"可直出"假设前
+  先查反选表。分页页码只存在本地 ref、不写回 URL，刷新或分享都会落回第一页。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-10">
@@ -15,6 +21,7 @@
               <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 v-model="keyword"
+                :aria-label="t('common.search')"
                 :placeholder="t('search.placeholder')"
                 class="pl-9 h-10"
                 @keyup.enter="runSearch"

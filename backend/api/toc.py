@@ -9,7 +9,7 @@ from html import escape
 from typing import Any
 
 from fastapi import APIRouter, Body
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 router = APIRouter(tags=["TOC"])
 
@@ -35,6 +35,47 @@ class TOCResponse(BaseModel):
 
     items: list[TOCItem]
     html: str
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class TOCHeadingItem(BaseModel):
+    """从 Markdown 里提取出的单个标题（扁平结构，不含 children）。"""
+
+    id: str = Field(
+        ...,
+        description=(
+            "由标题文本推导的锚点 id：转小写后把非 [字母数字下划线/中文/连字符] 的字符换成 -"
+            "并压缩连续连字符；纯符号标题可能是空字符串"
+        ),
+    )
+    text: str = Field(..., description="标题纯文本：已剥掉粗体、斜体、行内代码与链接语法")
+    level: int = Field(..., description="标题层级 1–6，等于行首 # 的个数")
+
+
+class TOCExtractResponse(BaseModel):
+    """标题提取端点的响应体。"""
+
+    headings: list[TOCHeadingItem] = Field(
+        default_factory=list, description="按文中出现顺序排列的扁平标题列表，无命中时是空数组"
+    )
+    count: int = Field(0, description="标题条数，等于 headings 长度")
+
+
+class TOCAddIdsResponse(BaseModel):
+    """标题加锚点端点的响应体。"""
+
+    content: str = Field(
+        ...,
+        description=(
+            "改写后的整篇内容：行首的 Markdown 标题被替换成带 id 属性的原生 h1–h6 HTML 标签"
+            "（文本与 id 均已 HTML 转义），其余行原样保留；没有标题时与入参完全相同"
+        ),
+    )
 
 
 def extract_headings(content: str, max_depth: int = 3) -> list[dict[str, Any]]:
@@ -163,7 +204,12 @@ def generate_toc_html(items: list[dict[str, Any]], indent: int = 0) -> str:
     "/generate",
     response_model=TOCResponse,
     summary="生成目录",
-    description="从 Markdown 内容中生成文章目录。",
+    description=(
+        "从 Markdown 内容中生成文章目录。公开接口、无需鉴权。"
+        "提取 ATX 标题（max_depth 控制保留层级）后按层级嵌套成树，"
+        "并渲染成 toc-list 结构的无序列表 HTML；标题文本与锚点 id 均已 HTML 转义。"
+        "无命中标题时 items 为空数组、html 为空字符串。"
+    ),
 )
 async def generate_toc(
     request: TOCRequest = Body(...),
@@ -191,7 +237,12 @@ async def generate_toc(
 @router.post(
     "/extract",
     summary="提取标题",
-    description="从 Markdown 内容中提取所有标题。",
+    description=(
+        "从 Markdown 内容中提取所有标题。公开接口、无需鉴权，纯文本解析不落库。"
+        "只认 ATX 形式（行首 1–6 个 # 加空格），max_depth 指定保留的最大层级（更深的标题整条丢弃）。"
+        "返回的是按文中顺序排列的扁平列表，不构建树结构（要树请用本模块的目录生成接口）。"
+    ),
+    responses={200: {"model": TOCExtractResponse}},
 )
 async def extract_toc(
     content: str = Body(..., embed=True),
@@ -213,7 +264,12 @@ async def extract_toc(
 @router.post(
     "/add-ids",
     summary="添加标题 ID",
-    description="为 Markdown 内容中的标题添加 ID 属性。",
+    description=(
+        "为 Markdown 内容中的标题添加 ID 属性。公开接口、无需鉴权。"
+        "逐行匹配 ATX 标题并改写为带 id 的原生 HTML 标题标签，锚点 id 的推导规则与标题提取接口一致，"
+        "id 与文本都做 HTML 转义以防注入；非标题行与 max_depth 无关（本接口不截断层级）。"
+    ),
+    responses={200: {"model": TOCAddIdsResponse}},
 )
 async def add_heading_ids(
     content: str = Body(..., embed=True),

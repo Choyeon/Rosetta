@@ -1,3 +1,11 @@
+<!--
+  相册页（SSR 列表 + 客户端懒取详情）：列表 useAPI('/gallery/albums', page_size:50) 一次拉满，
+  点开才用 apiFetch('/gallery/albums/{id}') 取照片，靠 Album.loaded + albumLoading 双守卫防重复请求。
+  详情响应可能是 {data} 信封（手工解包），photos 只取字符串 url 项、其余过滤掉，故"有照片数却空网格"是脏数据表现。
+  viewerjs 只在点开相册时动态 import（ViewerCtor / viewerCssInjected 缓存，import 失败即静默降级为
+  纯图片网格、无灯箱）；实例必须在 initViewer 重入、Dialog 关闭、组件卸载三处 destroy，否则灯箱浮层残留。
+-->
+
 <template>
   <div class="min-h-screen bg-background">
     <!-- Header -->
@@ -40,8 +48,13 @@
         <article
           v-for="album in albums"
           :key="album.id"
-          class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer"
+          class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          role="button"
+          tabindex="0"
+          :aria-label="`打开相册：${album.title}`"
           @click="openAlbum(album.id)"
+          @keydown.enter.prevent="openAlbum(album.id)"
+          @keydown.space.prevent="openAlbum(album.id)"
         >
           <div class="relative aspect-[4/3] overflow-hidden bg-muted">
             <img

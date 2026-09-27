@@ -20,6 +20,7 @@ import asyncio
 import base64
 import hashlib
 import logging
+import time
 import uuid
 from contextlib import suppress
 from datetime import datetime
@@ -144,37 +145,82 @@ def verify_password_with_rehash(plain_password: str, hashed_password: str) -> tu
     return False, False
 
 
+# ==========================
+# 异步外壳：把 KDF 请出事件循环
+# ==========================
+# 上面这套参数（time_cost=3 / memory_cost=64 MiB / parallelism=4）实测单次约 21 ms，
+# bcrypt 兼容分支更慢。而登录、注册、改密、受密码文章访问都是**匿名可达**入口：
+# 在 `async def` 里直接同步调用，等于每个请求让整个事件循环停摆 21 ms，
+# 攻击者只要并发提交错误密码就能把站点拖成"慢而不死"的 DoS。
+# 请求路径一律用下面的 `a*` 变体；同步版保留给脚本、迁移与单测。
+
+
+async def aget_password_hash(password: str) -> str:
+    """`get_password_hash` 的线程池版本（请求路径专用）。"""
+    return await asyncio.to_thread(get_password_hash, password)
+
+
+async def averify_password(plain_password: str, hashed_password: str) -> bool:
+    """`verify_password` 的线程池版本（请求路径专用）。"""
+    return await asyncio.to_thread(verify_password, plain_password, hashed_password)
+
+
+async def averify_password_with_rehash(
+    plain_password: str, hashed_password: str
+) -> tuple[bool, bool]:
+    """`verify_password_with_rehash` 的线程池版本（请求路径专用）。"""
+    return await asyncio.to_thread(verify_password_with_rehash, plain_password, hashed_password)
+
+
 security = HTTPBearer()
 security_optional = HTTPBearer(auto_error=False)
 
 REFRESH_BLACKLIST_PREFIX = "refresh_blacklist"
-MEMORY_REFRESH_BLACKLIST: set[str] = set()
+# jti → 黑名单条目过期时刻（unix 秒）。写入带 TTL、读取时惰性清理，
+# 避免无界增长；check+insert 在同一把锁内完成，消除 check-then-act 竞态。
+MEMORY_REFRESH_BLACKLIST: dict[str, float] = {}
 _MEMORY_BLACKLIST_LOCK = asyncio.Lock()
 
 
-async def _add_jti_to_blacklist(jti: str, ttl_days: int) -> None:
+def _purge_expired_blacklist_locked(now: float) -> None:
+    expired = [jti for jti, exp in MEMORY_REFRESH_BLACKLIST.items() if exp <= now]
+    for jti in expired:
+        MEMORY_REFRESH_BLACKLIST.pop(jti, None)
+
+
+async def _add_jti_to_blacklist(jti: str, ttl_days: int) -> bool:
     """
-    将 refresh token 的 jti 加入黑名单
+    将 refresh token 的 jti 原子地加入黑名单（SET NX 语义）
 
     Args:
         jti: JWT ID
         ttl_days: 过期天数
+
+    Returns:
+        bool: True = 本次为首次拉黑（jti 此前不在黑名单）；False = 已存在（重复消费）
     """
     ttl = int(ttl_days * 86400) + 86400
     key = f"{REFRESH_BLACKLIST_PREFIX}:{jti}"
+    now = time.time()
 
     try:
         redis_backend = getattr(cache, "backend", None)
         if redis_backend and settings.redis_enabled and hasattr(redis_backend, "_get_client"):
             client = await redis_backend._get_client()
             if getattr(redis_backend, "_connected", False):
-                await client.setex(key, ttl, "1")
-                return
+                # SET NX EX：Redis 单命令内完成"判断 + 写入"
+                ok = await client.set(key, "1", nx=True, ex=ttl)
+                return bool(ok)
     except Exception as e:
         logger.warning(f"Redis 黑名单写入失败，回退到内存: {e}")
 
     async with _MEMORY_BLACKLIST_LOCK:
-        MEMORY_REFRESH_BLACKLIST.add(jti)
+        _purge_expired_blacklist_locked(now)
+        existing_exp = MEMORY_REFRESH_BLACKLIST.get(jti)
+        if existing_exp is not None and existing_exp > now:
+            return False
+        MEMORY_REFRESH_BLACKLIST[jti] = now + ttl
+        return True
 
 
 async def _is_jti_blacklisted(jti: str) -> bool:
@@ -188,6 +234,7 @@ async def _is_jti_blacklisted(jti: str) -> bool:
         bool: True = 已使用/无效
     """
     key = f"{REFRESH_BLACKLIST_PREFIX}:{jti}"
+    now = time.time()
 
     try:
         redis_backend = getattr(cache, "backend", None)
@@ -199,6 +246,7 @@ async def _is_jti_blacklisted(jti: str) -> bool:
         logger.warning(f"Redis 黑名单读取失败，回退到内存: {e}")
 
     async with _MEMORY_BLACKLIST_LOCK:
+        _purge_expired_blacklist_locked(now)
         return jti in MEMORY_REFRESH_BLACKLIST
 
 

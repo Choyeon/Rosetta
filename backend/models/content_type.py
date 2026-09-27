@@ -10,10 +10,9 @@ Rosetta 的文章（Post）除内置标题、正文、slug 等通用字段外，
 约定：
 - ``ContentTypeDefinition`` 是 ORM 模型，存在 ``content_types`` 表；
 - 字段定义通过 ``fields`` JSON 列存储为 ``list[ContentField]``；
-- 业务层使用 ``services.content_type_service`` 做：
-    * 动态生成 Pydantic schema
-    * 校验 & 打包 meta_fields（JSON blob 存入 Post.meta_fields）
-    * 读取 meta_fields 中的单字段值
+- 本模型目前只是数据契约：随 ``content_type_service`` 一并撤下的动态 schema
+  生成/校验逻辑没有接替者，写入 ``Post.meta_fields`` 的自由 JSON 不经字段校验。
+  接管理该能力时，请先补 service 层与单测，不要在此处恢复不存在的模块名。
 """
 
 from __future__ import annotations

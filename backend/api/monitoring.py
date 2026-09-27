@@ -11,18 +11,25 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff
-from backend.core.cache import cache
+from backend.core.cache import cache, make_cache_key
 from backend.core.config import settings
 from backend.core.database import engine
+from backend.core.setup_system import psutil_errors
 from backend.utils.compat import UTC, timedelta
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["监控"])
+
+# `visit_logs` 是纯追加表（开发库实测 64.5 万行），无 `WHERE` 的 `COUNT(*)` 走不到任何索引，
+# 每次仪表盘轮询都要扫全表。两个只读端点都用它展示"累计访问"，60s 陈旧无关紧要，
+# 因此共用这一个短 TTL 缓存键；带 `created_at` 区间的今日/本周计数保持实时。
+_VISIT_TOTAL_KEY = make_cache_key("monitoring", "visit_total")
+_VISIT_TOTAL_TTL = 60
 
 # 服务启动时间
 _start_time = time.time()
@@ -59,6 +66,209 @@ class PerformanceMetrics(BaseModel):
     p99_latency: float
     requests_per_minute: float
     error_rate: float
+
+
+class HealthComponentOut(BaseModel):
+    """健康检查里单个组件的探测结果。"""
+
+    status: str = Field(..., description="组件状态：healthy / degraded / unhealthy")
+    latency_ms: int | None = Field(
+        default=None, description="数据库探测延迟（毫秒）；其余组件不返回"
+    )
+    error: str | None = Field(default=None, description="探测异常信息；正常时为 null")
+
+
+class HealthCheckResponse(BaseModel):
+    """GET /health 的响应体（匿名可访问，无鉴权）。"""
+
+    status: str = Field(..., description="整体状态：全部组件 healthy 才为 healthy，否则 degraded")
+    timestamp: str = Field(..., description="服务端探测完成时间（ISO 8601，UTC）")
+    checks: dict[str, HealthComponentOut] = Field(
+        ..., description="按组件名聚合的探测结果，当前键为 database 与 cache"
+    )
+
+
+class ContentCountStatsOut(BaseModel):
+    """内容量统计（/stats 的 database 段）。"""
+
+    users_count: int = Field(..., description="用户总数")
+    posts_count: int = Field(..., description="文章总数（含草稿）")
+    published_posts_count: int = Field(..., description="已发布文章数")
+    comments_count: int = Field(..., description="评论总数")
+    active_comments_count: int = Field(..., description="已通过审核的评论数")
+
+
+class CacheProbeOut(BaseModel):
+    """缓存后端标识（/stats 的 cache 段）。"""
+
+    type: str = Field(..., description="缓存后端类型：redis 或 memory")
+    connected: bool = Field(
+        ..., description="本字段为固定占位 true，真实可用性看 /cache 与 /health"
+    )
+
+
+class RequestCountStatsOut(BaseModel):
+    """请求量统计（/stats 的 requests 段）。"""
+
+    total_requests: int = Field(..., description="访问日志累计条数")
+    today_requests: int = Field(..., description="今日（UTC 零点起）访问条数")
+    avg_latency_ms: float = Field(
+        ..., description="进程内缓冲区（最近一万条）的平均响应毫秒数，冷启动时为 0"
+    )
+
+
+class ProcessMemoryStatsOut(BaseModel):
+    """进程内存占用（/stats 的 memory 段）；psutil 不可用时全部为 0。"""
+
+    rss_mb: float = Field(..., description="常驻内存（MB，保留两位小数）")
+    vms_mb: float = Field(..., description="虚拟内存（MB，保留两位小数）")
+    percent: float = Field(..., description="进程占系统内存百分比")
+
+
+class CpuStatsOut(BaseModel):
+    """CPU 指标（/stats 的 cpu 段）；psutil 不可用时保持默认值。"""
+
+    percent: float = Field(..., description="瞬时 CPU 使用率百分比")
+    count: int | None = Field(..., description="逻辑核心数，探测不到时为 null")
+
+
+class VisitCounterOut(BaseModel):
+    """访问计数（/stats 的 visits 段）。"""
+
+    total: int = Field(..., description="访问日志累计条数")
+    today: int = Field(..., description="今日（UTC 零点起）访问条数")
+
+
+class SystemStatsResponse(BaseModel):
+    """GET /stats 的响应体（裸对象，无 success 信封）。"""
+
+    database: ContentCountStatsOut = Field(..., description="内容量统计")
+    cache: CacheProbeOut = Field(..., description="缓存后端标识")
+    requests: RequestCountStatsOut = Field(..., description="请求量与平均延迟")
+    memory: ProcessMemoryStatsOut = Field(..., description="进程内存占用")
+    cpu: CpuStatsOut = Field(..., description="CPU 指标")
+    visits: VisitCounterOut = Field(..., description="访问计数")
+    uptime_seconds: float = Field(..., description="进程启动至今的运行秒数")
+    timestamp: str = Field(..., description="统计生成时间（ISO 8601，UTC）")
+
+
+class VisitTrendPointOut(BaseModel):
+    """访问量趋势单日采样点。"""
+
+    date: str = Field(..., description="日期，格式 MM-DD")
+    value: int = Field(..., description="当日访问条数，无数据时为 0")
+
+
+class VisitsSummaryResponse(BaseModel):
+    """GET /visits/summary 的响应体。"""
+
+    total: int = Field(..., description="访问日志累计条数")
+    today: int = Field(..., description="今日（UTC 零点起）访问条数")
+    yesterday: int = Field(..., description="昨日全天访问条数")
+    week: int = Field(..., description="最近 7 天访问条数")
+    month: int = Field(..., description="最近 30 天访问条数")
+    unique_ips_today: int = Field(..., description="今日去重来源 IP 数（忽略 IP 为空的记录）")
+    trend: list[VisitTrendPointOut] = Field(
+        ..., description="最近 7 天逐日访问曲线，固定 7 个点（含今天），缺失日补 0"
+    )
+    growth: float = Field(..., description="今日相对昨日的增长率百分比；昨日为 0 时回 0")
+    retention_days: int = Field(
+        ...,
+        description=(
+            "日志自动保留窗口天数（LOG_RETENTION_DAYS）。<=0 表示不清理，"
+            "week/month 恒为真实窗口；>0 且小于窗口天数时，对应计数只是下界"
+        ),
+    )
+    data_since: str | None = Field(
+        None,
+        description="visit_logs 现存最早一条的 UTC 时间（ISO 8601）；表为空时为 null。用于判断窗口是否被保留策略截短",
+    )
+
+
+class PerformanceWindowStatsOut(BaseModel):
+    """某个时间窗口的响应耗时统计（/performance/summary 的两段结构）。"""
+
+    avg_response_time_ms: float = Field(..., description="平均响应耗时（毫秒）")
+    p50_response_time_ms: float = Field(..., description="中位数响应耗时（毫秒）")
+    p95_response_time_ms: float = Field(..., description="P95 响应耗时（毫秒）")
+    p99_response_time_ms: float = Field(..., description="P99 响应耗时（毫秒）")
+    total_requests: int = Field(..., description="参与统计的请求条数（仅 response_time_ms > 0）")
+    error_count: int = Field(..., description="状态码 >= 400 的请求条数（按窗口全量统计）")
+    error_rate: float = Field(..., description="错误率百分比，保留两位小数")
+
+
+class PerformanceSummaryResponse(BaseModel):
+    """GET /performance/summary 的响应体。"""
+
+    last_24h: PerformanceWindowStatsOut = Field(..., description="最近 24 小时窗口统计")
+    last_7d: PerformanceWindowStatsOut = Field(..., description="最近 7 天窗口统计")
+
+
+class PerformanceLatencyResponse(BaseModel):
+    """GET /performance 的响应体：基于进程内内存缓冲的延迟分位数。"""
+
+    avg_latency: float = Field(..., description="平均延迟（毫秒）")
+    p50_latency: float = Field(..., description="中位延迟（毫秒）")
+    p95_latency: float = Field(..., description="P95 延迟（毫秒）")
+    p99_latency: float = Field(..., description="P99 延迟（毫秒）")
+    requests_per_minute: float = Field(..., description="采样窗口内的每分钟平均请求数")
+    error_rate: float = Field(..., description="错误率（当前实现固定回 0）")
+    sample_count: int | None = Field(
+        default=None, description="窗口内采样条数；无样本的快速分支不返回该键"
+    )
+
+
+class DbPoolStatsOut(BaseModel):
+    """SQLAlchemy 连接池状态。"""
+
+    size: int = Field(..., description="池内连接数；池类型不支持该探针时为 0")
+    checked_in: int = Field(..., description="空闲（已归还）连接数")
+    checked_out: int = Field(..., description="已被占用（借出）的连接数")
+    overflow: int = Field(..., description="超出 size 的临时连接数")
+
+
+class DatabaseMonitorResponse(BaseModel):
+    """GET /database 的响应体。"""
+
+    pool: DbPoolStatsOut = Field(..., description="连接池状态")
+    table_sizes: dict[str, int] = Field(
+        ..., description="按表名聚合的行数，当前键为 users 与 posts"
+    )
+    database_url: str | None = Field(
+        default=None, description="生效的数据库连接串，凭据段已做掩码处理；无 URL 时为 null"
+    )
+
+
+class CacheMonitorResponse(BaseModel):
+    """GET /cache 的响应体（裸对象，无 success 信封）。"""
+
+    type: str = Field(..., description="缓存后端类型：redis 或 memory")
+    connected: bool = Field(..., description="是否连通；Redis 探测失败时置 false")
+    metrics: dict[str, Any] = Field(
+        ...,
+        description=(
+            "缓存指标。memory 后端固定为 total_keys / hit_rate / miss_rate 三个占位 0；"
+            "Redis 后端额外含 used_memory_human、connected_clients、total_commands_processed，"
+            "hit_rate / miss_rate 为百分比"
+        ),
+    )
+    error: str | None = Field(default=None, description="Redis 探测异常信息；正常时不返回该键")
+
+
+class TrendPointOut(BaseModel):
+    """业务量趋势单日采样点。"""
+
+    date: str = Field(..., description="日期，格式 MM-DD")
+    count: int = Field(..., description="当日新增条数，无数据时为 0")
+
+
+class TrendsResponse(BaseModel):
+    """GET /trends 的响应体：四条按天分桶的折线数据。"""
+
+    posts: list[TrendPointOut] = Field(..., description="每日新增文章数")
+    comments: list[TrendPointOut] = Field(..., description="每日新增评论数")
+    users: list[TrendPointOut] = Field(..., description="每日新增用户数")
+    visits: list[TrendPointOut] = Field(..., description="每日访问量")
 
 
 # ── 访问日志：内存队列 + 后台批量落库 ─────────────────────────────────────
@@ -108,7 +318,24 @@ async def _flush_visit_queue() -> int:
             )
             await db.commit()
     except Exception:
-        logger.warning("[monitoring] 访问日志批量落库失败（丢弃 %d 条）", len(items))
+        # 返回 0 而不是 len(items)：调用方 `while await _flush_visit_queue() > 0` 靠返回值
+        # 判断是否继续排空。落库失败也算"有进展"的话，一次数据库抖动期间会把整个缓冲队列
+        # 连续取出并全部丢弃；返回 0 让本轮停下。
+        # 同时尽力把本批放回队列（放不下的部分才真丢），一次瞬时故障不必整批报废。
+        restored = 0
+        for it in reversed(items):
+            try:
+                _visit_queue.put_nowait(it)
+                restored += 1
+            except asyncio.QueueFull:
+                break
+        logger.exception(
+            "[monitoring] 访问日志批量落库失败（本批 %d 条，回队 %d 条，丢弃 %d 条）",
+            len(items),
+            restored,
+            len(items) - restored,
+        )
+        return 0
     return len(items)
 
 
@@ -159,7 +386,11 @@ async def record_visit(request: Request, status_code: int, response_time_ms: flo
 @router.get(
     "/health",
     summary="健康检查",
-    description="检查系统各组件的健康状态。",
+    description=(
+        "匿名可访问（OOBE 与负载均衡探针白名单）。对数据库与缓存各做一次真实探测，"
+        "任一组件非 healthy 时整体降级为 degraded。只读、幂等，无副作用。"
+    ),
+    responses={200: {"model": HealthCheckResponse, "description": "组件级健康报告"}},
 )
 async def health_check():
     """健康检查"""
@@ -194,7 +425,11 @@ async def health_check():
 @router.get(
     "/stats",
     summary="系统统计",
-    description="获取系统运行统计数据。",
+    description=(
+        "需 CurrentStaff。聚合内容量、访问量、缓存后端、进程内存与 CPU 五类指标，"
+        "供后台仪表盘首屏使用；psutil 缺失时内存/CPU 回 0 而不是报错。只读、幂等。"
+    ),
+    responses={200: {"model": SystemStatsResponse, "description": "系统统计聚合对象"}},
 )
 async def get_system_stats(
     db: DB,
@@ -221,7 +456,10 @@ async def get_system_stats(
     }
 
     # 访问统计
-    total_visits = await db.scalar(select(func.count()).select_from(VisitLog)) or 0
+    total_visits = await cache.get(_VISIT_TOTAL_KEY)
+    if total_visits is None:
+        total_visits = await db.scalar(select(func.count()).select_from(VisitLog)) or 0
+        await cache.set(_VISIT_TOTAL_KEY, total_visits, ttl=_VISIT_TOTAL_TTL)
     today_start = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     today_visits = (
         await db.scalar(
@@ -244,12 +482,18 @@ async def get_system_stats(
     try:
         import psutil
 
-        cpu_stats["percent"] = psutil.cpu_percent(interval=0.1)
-        cpu_stats["count"] = psutil.cpu_count(logical=True) or 1
-    except ImportError:
-        pass
-    except Exception:
-        pass
+        # interval=0.1 是**阻塞**采样：直接调用会让事件循环停 100ms，监控页每次刷新
+        # 就顺带拖慢全站请求。与 stats.py 的 _get_system_health 同口径，丢给线程池。
+        def _sample_cpu() -> tuple[float, int | None]:
+            return psutil.cpu_percent(interval=0.1), psutil.cpu_count(logical=True)
+
+        percent, logical = await asyncio.to_thread(_sample_cpu)
+        cpu_stats["percent"] = percent
+        cpu_stats["count"] = logical or 1
+    except psutil_errors() as exc:
+        # psutil 缺失/调用失败时保留默认值，但留下原因：
+        # 否则监控页的 "CPU 0%" 会永久伪装成一台健康的机器。
+        logger.debug(f"[monitoring] CPU 指标探测失败: {exc}")
 
     # 运行时间
     uptime_seconds = time.time() - _start_time
@@ -279,10 +523,8 @@ async def get_system_stats(
             "vms_mb": round(memory_info.vms / 1024 / 1024, 2),
             "percent": round(process.memory_percent(), 2),
         }
-    except ImportError:
-        pass
-    except Exception:
-        pass
+    except psutil_errors() as exc:
+        logger.debug(f"[monitoring] 内存指标探测失败: {exc}")
 
     return {
         "database": db_stats,
@@ -302,7 +544,13 @@ async def get_system_stats(
 @router.get(
     "/visits/summary",
     summary="访问量汇总",
-    description="获取访问量汇总数据。",
+    description=(
+        "需 CurrentStaff。按今日/昨日/7 天/30 天窗口汇总访问日志条数，并给出最近 7 天逐日曲线"
+        "与今日环比增长率。趋势用单条 GROUP BY 聚合，不按天循环查询。只读、幂等。"
+        "响应另带 retention_days 与 data_since：日志受 LOG_RETENTION_DAYS 自动清理，"
+        "保留窗口小于窗口天数时 week/month 只是下界，消费方据此标注口径。"
+    ),
+    responses={200: {"model": VisitsSummaryResponse, "description": "访问量汇总与 7 日趋势"}},
 )
 async def get_visits_summary(
     db: DB,
@@ -317,7 +565,10 @@ async def get_visits_summary(
     week_start = today_start - timedelta(days=7)
     month_start = today_start - timedelta(days=30)
 
-    total = await db.scalar(select(func.count()).select_from(VisitLog)) or 0
+    total = await cache.get(_VISIT_TOTAL_KEY)
+    if total is None:
+        total = await db.scalar(select(func.count()).select_from(VisitLog)) or 0
+        await cache.set(_VISIT_TOTAL_KEY, total, ttl=_VISIT_TOTAL_TTL)
     today = (
         await db.scalar(
             select(func.count()).select_from(VisitLog).where(VisitLog.created_at >= today_start)
@@ -386,6 +637,14 @@ async def get_visits_summary(
         or 0
     )
 
+    # 数据覆盖起点：visit_logs 会被 LOG_RETENTION_DAYS 自动清理，"最近 30 天"这类
+    # 固定窗口在保留窗口更短时就只剩部分数据。MIN(created_at) 走 created_at 索引，
+    # 是常数级开销；前端据此把被截短的窗口标成下界，而不是当成全量。
+    earliest = await db.scalar(select(func.min(VisitLog.created_at)))
+    if earliest is not None and earliest.tzinfo is None:
+        # SQLite 的 CURRENT_TIMESTAMP 落的是 naive UTC；PG 才是 TIMESTAMPTZ。
+        earliest = earliest.replace(tzinfo=UTC)
+
     return {
         "total": total,
         "today": today,
@@ -395,13 +654,20 @@ async def get_visits_summary(
         "unique_ips_today": unique_ips,
         "trend": trend,
         "growth": ((today - yesterday) / max(yesterday, 1)) * 100 if yesterday > 0 else 0,
+        "retention_days": settings.log_retention_days,
+        "data_since": earliest.isoformat() if earliest is not None else None,
     }
 
 
 @router.get(
     "/performance/summary",
     summary="性能概览",
-    description="获取性能概览数据。",
+    description=(
+        "需 CurrentStaff。基于访问日志的 response_time_ms 计算 24 小时与 7 天窗口的均值与"
+        "P50/P95/P99 分位数，并按 status_code >= 400 统计错误数与错误率。"
+        "只统计耗时大于 0 的请求，无数据时各分位回 0。只读、幂等。"
+    ),
+    responses={200: {"model": PerformanceSummaryResponse, "description": "两个时间窗口的耗时统计"}},
 )
 async def get_performance_summary(
     db: DB,
@@ -505,7 +771,14 @@ async def get_performance_summary(
 @router.get(
     "/performance",
     summary="性能指标",
-    description="获取系统性能指标。",
+    description=(
+        "需 CurrentStaff。统计**进程内内存环形缓冲**里最近 period 分钟（默认 60，上限 1440）的"
+        "请求延迟分位数；缓冲不落盘，进程重启后清零，无样本时快速返回全 0（该分支不含 sample_count 键）。"
+        "只读、幂等。"
+    ),
+    responses={
+        200: {"model": PerformanceLatencyResponse, "description": "延迟分位数与每分钟请求数"}
+    },
 )
 async def get_performance_metrics(
     current_user: CurrentStaff,
@@ -549,7 +822,11 @@ async def get_performance_metrics(
 @router.get(
     "/database",
     summary="数据库监控",
-    description="获取数据库连接和查询统计。",
+    description=(
+        "需 CurrentStaff。读取 SQLAlchemy 连接池占用与 users/posts 两张表的行数。"
+        "database_url 为运行时生效的连接串且凭据段已掩码，请勿在前端公开展示。只读、幂等。"
+    ),
+    responses={200: {"model": DatabaseMonitorResponse, "description": "连接池与表行数"}},
 )
 async def get_database_stats(
     db: DB,
@@ -590,7 +867,12 @@ async def get_database_stats(
 @router.get(
     "/cache",
     summary="缓存监控",
-    description="获取缓存命中率和使用统计。",
+    description=(
+        "需 CurrentStaff。Redis 配置存在时实时 INFO 一次（键总量/命中率/内存占用/客户端数），"
+        "探测失败回 connected=false 并附 error 文本；memory 后端只回三项占位 0。"
+        "返回裸对象（无 success 信封）。只读、幂等。"
+    ),
+    responses={200: {"model": CacheMonitorResponse, "description": "缓存后端指标"}},
 )
 async def get_cache_stats(
     current_user: CurrentStaff,
@@ -637,7 +919,11 @@ async def get_cache_stats(
 @router.get(
     "/trends",
     summary="趋势数据",
-    description="获取系统指标的历史趋势。",
+    description=(
+        "需 CurrentStaff。返回文章/评论/用户/访问四条按天分桶的折线，天数 1-30（默认 7）。"
+        "每张表一条 GROUP BY 查询，缺失日期补 0，数组长度恒等于 days。只读、幂等。"
+    ),
+    responses={200: {"model": TrendsResponse, "description": "四条日度趋势序列"}},
 )
 async def get_trends(
     db: DB,

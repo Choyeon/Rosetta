@@ -19,7 +19,7 @@
  * 使用：通过 resolveBackendEndpoint / resolveSsrBackendBase 拿私有后端直连地址，
  *       确保 本地 / 生产 NODE_ENV=production 都能正确解析。
  */
-import { defineEventHandler, getRequestHeader, getRequestHeaders, getRequestWebStream, setResponseHeader, setResponseHeaders, sendStream, createError } from 'h3'
+import { defineEventHandler, getRequestHeaders, getRequestWebStream, setResponseHeader, setResponseHeaders, sendStream, createError } from 'h3'
 import { $fetch } from 'ofetch'
 import { resolveSsrBackendBase } from '../utils/ssr'
 
@@ -74,8 +74,9 @@ export default defineEventHandler(async (event) => {
   const pathOnly = endOfPath > 0 ? rawUrl.slice(0, endOfPath) : rawUrl
   if (pathOnly && NITRO_OWN_API_ROUTES.has(pathOnly)) return
 
-  // 允许 SSR 阶段 (server/utils) 用特殊标记跳过本中间件，避免死循环。
-  if (getRequestHeader(event, 'x-nitro-skip-api-proxy') === '1') return
+  // 这里曾有一个 `x-nitro-skip-api-proxy: 1` 请求头防重入开关：浏览器带该头即可
+  // 绕过代理落到 SPA fallback，属可伪造的绕过面，已删除且不应加回——SSR 侧请求
+  // 全部走绝对 baseURL 直连 FastAPI，永远不会回头经过本中间件，无需重入开关。
 
   // 解析私有后端 base（直连 FastAPI）。若未配置且为生产环境，返回 503 提示运维配置 env。
   let backendBase: string
@@ -92,7 +93,16 @@ export default defineEventHandler(async (event) => {
     }
   } catch (err) {
     if (err && (err as { statusCode?: number }).statusCode === 503) throw err
-    // 其他解析错误（非预期）：开发期兜底 127.0.0.1:8000/api
+    // 非预期解析错误：仅 dev 允许兜底 127.0.0.1:8000；生产兜底会静默掩盖
+    // BaseURL 配置错误，违反 AGENTS.md §4.1「生产缺配置必须 503」。
+    if (!import.meta.dev) {
+      throw createError({
+        statusCode: 503,
+        statusMessage: 'Rosetta /api 代理配置异常',
+        message: `resolveSsrBackendBase failed: ${err instanceof Error ? err.message : String(err)}`,
+        cause: err as Error
+      })
+    }
     backendBase = 'http://127.0.0.1:8000/api'
   }
 

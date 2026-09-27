@@ -13,6 +13,7 @@ import asyncio
 import hashlib
 import logging
 import time
+import uuid
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
 from enum import Enum
@@ -26,6 +27,7 @@ from starlette.types import ASGIApp
 
 from backend.core.cache import cache
 from backend.core.config import settings
+from backend.core.exceptions import RATE_LIMIT_EXCEEDED
 
 logger = logging.getLogger(__name__)
 
@@ -61,14 +63,19 @@ class RateLimitResult:
     """限流检查结果"""
 
     allowed: bool
+    limit: int
     remaining: int
     reset_at: float
     retry_after: int | None = None
 
     def to_headers(self) -> dict[str, str]:
-        """转换为响应头"""
+        """转换为响应头
+
+        `X-RateLimit-Limit` 必须是规则阈值而不是剩余量：此前它直接抄了
+        `remaining`，两个头永远相等，客户端据此画的进度条/退避逻辑都是错的。
+        """
         headers = {
-            "X-RateLimit-Limit": str(self.remaining + (0 if self.allowed else 0)),
+            "X-RateLimit-Limit": str(self.limit),
             "X-RateLimit-Remaining": str(max(0, self.remaining)),
             "X-RateLimit-Reset": str(int(self.reset_at)),
         }
@@ -89,15 +96,53 @@ class LoginAttempt:
     locked_until: float | None = None
 
 
+# 滑动窗口原子化 Lua（ZSET）：裁剪过期成员、计数、判断、写入在同一脚本内完成，
+# 消除 GET→改→SETEX 在并发下放行超过限额的竞态。
+_SLIDING_WINDOW_LUA = """
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", ARGV[1])
+local count = redis.call("ZCARD", KEYS[1])
+if count >= tonumber(ARGV[2]) then
+    local oldest = redis.call("ZRANGE", KEYS[1], 0, 0, "WITHSCORES")
+    if #oldest == 2 then
+        return {0, oldest[2]}
+    end
+    return {0, ARGV[3]}
+end
+redis.call("ZADD", KEYS[1], ARGV[3], ARGV[4])
+redis.call("PEXPIRE", KEYS[1], ARGV[5])
+return {1, count + 1}
+"""
+
+_SLIDING_COUNT_LUA = """
+redis.call("ZREMRANGEBYSCORE", KEYS[1], "-inf", ARGV[1])
+return redis.call("ZCARD", KEYS[1])
+"""
+
+# 固定窗口 INCR + 首次 EXPIRE 原子化：避免计数键永不过期
+_FIXED_WINDOW_LUA = """
+local count = redis.call("INCR", KEYS[1])
+if count == 1 then
+    redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+return count
+"""
+
+# 内存存储条目超过该数量时触发一次惰性过期清理
+_MEMORY_PRUNE_THRESHOLD = 2048
+
+
 class RateLimiter:
     """
     限流器
 
-    实现滑动窗口限流算法，支持 Redis 和内存存储。
+    实现滑动/固定窗口限流算法，支持 Redis（Lua 原子操作）和内存存储。
     """
 
     def __init__(self):
-        self._memory_store: dict[str, list[float]] = {}
+        # key -> (expires_at, timestamps)；expires_at 供惰性清理
+        self._memory_store: dict[str, tuple[float, list[float]]] = {}
+        # 固定窗口计数：key -> (count, expires_at)
+        self._memory_counters: dict[str, tuple[int, float]] = {}
         self._lock = asyncio.Lock()
 
     def _get_redis_client(self):
@@ -114,46 +159,14 @@ class RateLimiter:
             return backend
         return None
 
-    async def _get_sliding_window_data(self, key: str) -> list[float]:
-        """获取滑动窗口数据"""
-        redis_backend = self._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                import json
-
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    data = await client.get(key)
-                    if data:
-                        return json.loads(data)
-                return []
-            except Exception as e:
-                logger.error(f"Redis 获取滑动窗口数据失败: {e}")
-                return []
-        else:
-            async with self._lock:
-                return self._memory_store.get(key, []).copy()
-
-    async def _set_sliding_window_data(self, key: str, data: list[float], ttl: int) -> bool:
-        """设置滑动窗口数据"""
-        redis_backend = self._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                import json
-
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    await client.setex(key, ttl, json.dumps(data))
-                    return True
-            except Exception as e:
-                logger.error(f"Redis 设置滑动窗口数据失败: {e}")
-        else:
-            async with self._lock:
-                self._memory_store[key] = data
-
-        return True
+    def _prune_memory_locked(self, now: float) -> None:
+        """惰性清理过期内存条目，防止 key 无界增长"""
+        if len(self._memory_store) > _MEMORY_PRUNE_THRESHOLD:
+            for k in [k for k, (exp, _) in self._memory_store.items() if exp <= now]:
+                del self._memory_store[k]
+        if len(self._memory_counters) > _MEMORY_PRUNE_THRESHOLD:
+            for k in [k for k, (_, exp) in self._memory_counters.items() if exp <= now]:
+                del self._memory_counters[k]
 
     async def check_rate_limit(
         self,
@@ -185,35 +198,86 @@ class RateLimiter:
         current_time: float,
         window_start: float,
     ) -> RateLimitResult:
-        """滑动窗口限流检查"""
+        """滑动窗口限流检查（Redis Lua 原子；内存路径整个临界区持锁且无 await）"""
         cache_key = f"{rule.key_prefix}:{key}"
 
-        timestamps = await self._get_sliding_window_data(cache_key)
+        result = await self._sliding_window_redis(cache_key, rule, current_time, window_start)
+        if result is not None:
+            return result
 
-        valid_timestamps = [ts for ts in timestamps if ts > window_start]
+        async with self._lock:
+            self._prune_memory_locked(current_time)
+            stored = self._memory_store.get(cache_key)
+            if stored is None or stored[0] <= current_time:
+                timestamps: list[float] = []
+            else:
+                timestamps = [ts for ts in stored[1] if ts > window_start]
 
-        if len(valid_timestamps) >= rule.requests:
-            oldest = min(valid_timestamps) if valid_timestamps else current_time
-            reset_at = oldest + rule.window_seconds
-            retry_after = int(reset_at - current_time)
+            expires_at = current_time + rule.window_seconds + 1
+            if len(timestamps) >= rule.requests:
+                oldest = min(timestamps)
+                reset_at = oldest + rule.window_seconds
+                self._memory_store[cache_key] = (expires_at, timestamps)
+                return RateLimitResult(
+                    allowed=False,
+                    limit=rule.requests,
+                    remaining=0,
+                    reset_at=reset_at,
+                    retry_after=max(1, int(reset_at - current_time)),
+                )
 
+            timestamps.append(current_time)
+            self._memory_store[cache_key] = (expires_at, timestamps)
             return RateLimitResult(
-                allowed=False,
-                remaining=0,
-                reset_at=reset_at,
-                retry_after=retry_after,
+                allowed=True,
+                limit=rule.requests,
+                remaining=rule.requests - len(timestamps),
+                reset_at=current_time + rule.window_seconds,
             )
 
-        valid_timestamps.append(current_time)
-        await self._set_sliding_window_data(cache_key, valid_timestamps, rule.window_seconds + 1)
+    async def _sliding_window_redis(
+        self,
+        cache_key: str,
+        rule: RateLimitRule,
+        current_time: float,
+        window_start: float,
+    ) -> RateLimitResult | None:
+        """Redis 原子滑动窗口；返回 None 表示不可用/失败，调用方回退内存"""
+        redis_backend = self._get_redis_client()
+        if redis_backend is None:
+            return None
+        try:
+            client = await redis_backend._get_client()
+            allowed, payload = await client.eval(
+                _SLIDING_WINDOW_LUA,
+                1,
+                cache_key,
+                str(window_start),
+                str(rule.requests),
+                str(current_time),
+                uuid.uuid4().hex,
+                str((rule.window_seconds + 1) * 1000),
+            )
+        except Exception as e:
+            logger.error(f"Redis 滑动窗口执行失败，回退内存: {e}")
+            return None
 
-        remaining = rule.requests - len(valid_timestamps)
-        reset_at = current_time + rule.window_seconds
-
+        if allowed:
+            used = int(payload)
+            return RateLimitResult(
+                allowed=True,
+                limit=rule.requests,
+                remaining=max(0, rule.requests - used),
+                reset_at=current_time + rule.window_seconds,
+            )
+        oldest = float(payload)
+        reset_at = oldest + rule.window_seconds
         return RateLimitResult(
-            allowed=True,
-            remaining=remaining,
+            allowed=False,
+            limit=rule.requests,
+            remaining=0,
             reset_at=reset_at,
+            retry_after=max(1, int(reset_at - current_time)),
         )
 
     async def _check_fixed_window(
@@ -222,14 +286,11 @@ class RateLimiter:
         rule: RateLimitRule,
         current_time: float,
     ) -> RateLimitResult:
-        """固定窗口限流检查"""
+        """固定窗口限流检查（计数带 TTL，不再依赖 cache.set 与 incr 双写不同 store）"""
         window_start = int(current_time / rule.window_seconds) * rule.window_seconds
         cache_key = f"{rule.key_prefix}:{key}:{window_start}"
 
-        count = await cache.incr(cache_key)
-
-        if count == 1:
-            await cache.set(cache_key, count, ttl=rule.window_seconds)
+        count = await self._incr_fixed_window(cache_key, rule.window_seconds, current_time)
 
         remaining = max(0, rule.requests - count)
         reset_at = window_start + rule.window_seconds
@@ -238,6 +299,7 @@ class RateLimiter:
             retry_after = int(reset_at - current_time)
             return RateLimitResult(
                 allowed=False,
+                limit=rule.requests,
                 remaining=0,
                 reset_at=reset_at,
                 retry_after=retry_after,
@@ -245,25 +307,51 @@ class RateLimiter:
 
         return RateLimitResult(
             allowed=True,
+            limit=rule.requests,
             remaining=remaining,
             reset_at=reset_at,
         )
+
+    async def _incr_fixed_window(
+        self,
+        cache_key: str,
+        window_seconds: int,
+        current_time: float,
+    ) -> int:
+        """固定窗口计数自增（Redis Lua 原子 INCR+EXPIRE；内存带过期时间）"""
+        redis_backend = self._get_redis_client()
+        if redis_backend is not None:
+            try:
+                client = await redis_backend._get_client()
+                return int(await client.eval(_FIXED_WINDOW_LUA, 1, cache_key, str(window_seconds)))
+            except Exception as e:
+                logger.error(f"Redis 固定窗口计数失败，回退内存: {e}")
+
+        async with self._lock:
+            self._prune_memory_locked(current_time)
+            count, expires_at = self._memory_counters.get(cache_key, (0, 0.0))
+            if expires_at <= current_time:
+                count = 0
+            count += 1
+            self._memory_counters[cache_key] = (count, current_time + window_seconds)
+            return count
 
     async def reset(self, key: str, prefix: str = "rate_limit") -> bool:
         """重置限流计数"""
         cache_key = f"{prefix}:{key}"
 
         redis_backend = self._get_redis_client()
-        if redis_backend and settings.redis_enabled:
+        if redis_backend is not None:
             try:
                 client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    await client.delete(cache_key)
+                await client.delete(cache_key)
             except Exception as e:
                 logger.error(f"Redis 重置限流失败: {e}")
-        else:
-            async with self._lock:
-                self._memory_store.pop(cache_key, None)
+        async with self._lock:
+            self._memory_store.pop(cache_key, None)
+            # 固定窗口键带 window_start 后缀，无法精确还原；按前缀清理
+            for k in [k for k in self._memory_counters if k.startswith(cache_key)]:
+                del self._memory_counters[k]
 
         return True
 
@@ -272,15 +360,31 @@ class RateLimiter:
         key: str,
         rule: RateLimitRule,
     ) -> int:
-        """获取剩余请求数"""
+        """获取剩余请求数（滑动窗口口径）"""
         current_time = time.time()
         window_start = current_time - rule.window_seconds
         cache_key = f"{rule.key_prefix}:{key}"
 
-        timestamps = await self._get_sliding_window_data(cache_key)
-        valid_timestamps = [ts for ts in timestamps if ts > window_start]
+        used: int | None = None
+        redis_backend = self._get_redis_client()
+        if redis_backend is not None:
+            try:
+                client = await redis_backend._get_client()
+                used = int(await client.eval(_SLIDING_COUNT_LUA, 1, cache_key, str(window_start)))
+            except Exception as e:
+                logger.error(f"Redis 读取滑动窗口计数失败: {e}")
+                used = None
 
-        return max(0, rule.requests - len(valid_timestamps))
+        if used is None:
+            async with self._lock:
+                stored = self._memory_store.get(cache_key)
+                if stored is None or stored[0] <= current_time:
+                    timestamps: list[float] = []
+                else:
+                    timestamps = [ts for ts in stored[1] if ts > window_start]
+                used = len(timestamps)
+
+        return max(0, rule.requests - used)
 
 
 rate_limiter = RateLimiter()
@@ -288,12 +392,11 @@ rate_limiter = RateLimiter()
 
 class LoginRateLimiter:
     """
-    登录限流器
+    登录限流器（纯内存最小实现）
 
-    专门用于登录场景的限流，支持：
-    - 基于用户名的限流
-    - 基于IP的限流
-    - 账户锁定机制
+    生产登录锁定由 users.py 的 DB 字段（failed_login_attempts / locked_until）实现，
+    本类无业务调用方；测试夹具（conftest 等）直接引用 is_locked / record_attempt /
+    _memory_store，故保留这份最小可用形态而非删除。
     """
 
     DEFAULT_MAX_ATTEMPTS = 5
@@ -320,53 +423,6 @@ class LoginRateLimiter:
         """生成锁定键"""
         return f"login_lockout:{username}"
 
-    async def _get_attempt(self, key: str) -> LoginAttempt | None:
-        """获取登录尝试记录"""
-        redis_backend = rate_limiter._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                import json
-
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    data = await client.get(key)
-                    if data:
-                        attempt_data = json.loads(data)
-                        return LoginAttempt(**attempt_data)
-            except Exception as e:
-                logger.error(f"Redis 获取登录尝试记录失败: {e}")
-
-        return None
-
-    async def _set_attempt(self, key: str, attempt: LoginAttempt, ttl: int) -> bool:
-        """设置登录尝试记录"""
-        redis_backend = rate_limiter._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                import json
-
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    data = {
-                        "username": attempt.username,
-                        "ip_address": attempt.ip_address,
-                        "attempt_count": attempt.attempt_count,
-                        "first_attempt_at": attempt.first_attempt_at,
-                        "last_attempt_at": attempt.last_attempt_at,
-                        "locked_until": attempt.locked_until,
-                    }
-                    await client.setex(key, ttl, json.dumps(data))
-                    return True
-            except Exception as e:
-                logger.error(f"Redis 设置登录尝试记录失败: {e}")
-        else:
-            async with self._lock:
-                self._memory_store[key] = attempt
-
-        return True
-
     async def is_locked(self, username: str) -> tuple[bool, int | None]:
         """
         检查账户是否被锁定
@@ -377,20 +433,11 @@ class LoginRateLimiter:
         Returns:
             tuple[bool, int | None]: (是否锁定, 剩余锁定时间秒数)
         """
-        lockout_key = self._get_lockout_key(username)
-
-        redis_backend = rate_limiter._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    ttl = await client.ttl(lockout_key)
-                    if ttl > 0:
-                        return True, ttl
-            except Exception as e:
-                logger.error(f"Redis 检查锁定状态失败: {e}")
-
+        now = time.time()
+        async with self._lock:
+            lock = self._memory_store.get(self._get_lockout_key(username))
+        if lock and lock.locked_until and lock.locked_until > now:
+            return True, int(lock.locked_until - now)
         return False, None
 
     async def record_attempt(
@@ -410,87 +457,55 @@ class LoginRateLimiter:
         Returns:
             tuple[int, bool]: (当前尝试次数, 是否被锁定)
         """
-        current_time = time.time()
-        cache_key = self._get_cache_key(username, ip_address)
-
         if success:
             await self.reset_attempts(username, ip_address)
             return 0, False
 
-        attempt = await self._get_attempt(cache_key)
-
-        if attempt is None:
-            attempt = LoginAttempt(
-                username=username,
-                ip_address=ip_address,
-                attempt_count=1,
-                first_attempt_at=current_time,
-                last_attempt_at=current_time,
-            )
-        else:
-            window_start = current_time - self.window_seconds
-            if attempt.first_attempt_at < window_start:
-                attempt.attempt_count = 1
-                attempt.first_attempt_at = current_time
+        now = time.time()
+        cache_key = self._get_cache_key(username, ip_address)
+        async with self._lock:
+            attempt = self._memory_store.get(cache_key)
+            if attempt is None or attempt.first_attempt_at < now - self.window_seconds:
+                attempt = LoginAttempt(
+                    username=username,
+                    ip_address=ip_address,
+                    attempt_count=1,
+                    first_attempt_at=now,
+                    last_attempt_at=now,
+                )
             else:
                 attempt.attempt_count += 1
-            attempt.last_attempt_at = current_time
+                attempt.last_attempt_at = now
+            self._memory_store[cache_key] = attempt
 
-        await self._set_attempt(cache_key, attempt, self.window_seconds + 1)
+            locked = attempt.attempt_count >= self.max_attempts
+            if locked:
+                self._memory_store[self._get_lockout_key(username)] = LoginAttempt(
+                    username=username,
+                    ip_address="",
+                    attempt_count=attempt.attempt_count,
+                    first_attempt_at=now,
+                    last_attempt_at=now,
+                    locked_until=now + self.lockout_seconds,
+                )
+                logger.warning(f"账户 {username} 已锁定 {self.lockout_seconds} 秒")
 
-        if attempt.attempt_count >= self.max_attempts:
-            await self._lock_account(username)
-            return attempt.attempt_count, True
-
-        return attempt.attempt_count, False
-
-    async def _lock_account(self, username: str) -> bool:
-        """锁定账户"""
-        lockout_key = self._get_lockout_key(username)
-
-        redis_backend = rate_limiter._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    await client.setex(lockout_key, self.lockout_seconds, "1")
-                    logger.warning(f"账户 {username} 已锁定 {self.lockout_seconds} 秒")
-                    return True
-            except Exception as e:
-                logger.error(f"Redis 锁定账户失败: {e}")
-
-        return True
+        return attempt.attempt_count, locked
 
     async def reset_attempts(self, username: str, ip_address: str) -> bool:
         """重置登录尝试计数"""
-        cache_key = self._get_cache_key(username, ip_address)
-        lockout_key = self._get_lockout_key(username)
-
-        redis_backend = rate_limiter._get_redis_client()
-
-        if redis_backend and settings.redis_enabled:
-            try:
-                client = await redis_backend._get_client()
-                if redis_backend._connected:
-                    await client.delete(cache_key)
-                    await client.delete(lockout_key)
-            except Exception as e:
-                logger.error(f"Redis 重置登录尝试失败: {e}")
-        else:
-            async with self._lock:
-                self._memory_store.pop(cache_key, None)
-
+        async with self._lock:
+            self._memory_store.pop(self._get_cache_key(username, ip_address), None)
+            self._memory_store.pop(self._get_lockout_key(username), None)
         return True
 
     async def get_remaining_attempts(self, username: str, ip_address: str) -> int:
         """获取剩余尝试次数"""
-        cache_key = self._get_cache_key(username, ip_address)
-        attempt = await self._get_attempt(cache_key)
-
-        if attempt is None:
+        now = time.time()
+        async with self._lock:
+            attempt = self._memory_store.get(self._get_cache_key(username, ip_address))
+        if attempt is None or attempt.first_attempt_at < now - self.window_seconds:
             return self.max_attempts
-
         return max(0, self.max_attempts - attempt.attempt_count)
 
 
@@ -609,6 +624,7 @@ def rate_limit(
                     status_code=429,
                     detail={
                         "message": "请求过于频繁，请稍后再试",
+                        "error_code": RATE_LIMIT_EXCEEDED,
                         "retry_after": result.retry_after,
                     },
                     headers=result.to_headers(),
@@ -689,13 +705,17 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         result = await rate_limiter.check_rate_limit(key, rule)
 
         if not result.allowed:
+            # 包络形状与 AGENTS.md §7.2 一致（success/error_code/message）。
+            # 原先直接返回 {"detail": {...}}：FastAPI 的 exception handler 不参与
+            # 中间件构造的响应，于是 429 成为全站唯一的非包络错误体，
+            # 前端 extractApiErrorMessage 取不到 message，用户只看到"请求失败"。
             return JSONResponse(
                 status_code=429,
                 content={
-                    "detail": {
-                        "message": "请求过于频繁，请稍后再试",
-                        "retry_after": result.retry_after,
-                    }
+                    "success": False,
+                    "error_code": RATE_LIMIT_EXCEEDED,
+                    "message": "请求过于频繁，请稍后再试",
+                    "retry_after": result.retry_after,
                 },
                 headers=result.to_headers(),
             )
@@ -802,21 +822,22 @@ def build_depends_rate_limit(
     async def _dep(request: Request) -> None:
         identifier: str | None = None
         if use_user_id:
-            try:
-                from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+            # 不套 try：`HTTPBearer(auto_error=False)` 无头时返回 None，
+            # `decode_token` 内部已把 JWTError 转成 None（见 core/auth.py）。
+            # 这里原本 `except Exception: identifier = None` 只会吞掉真实缺陷
+            # （改名、导入路径变动等），让"按用户限流"静默退化成"按 IP 限流"。
+            from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-                security = HTTPBearer(auto_error=False)
-                creds: HTTPAuthorizationCredentials | None = await security(request)
-                if creds is not None:
-                    from backend.core.auth import decode_token
+            security = HTTPBearer(auto_error=False)
+            creds: HTTPAuthorizationCredentials | None = await security(request)
+            if creds is not None:
+                from backend.core.auth import decode_token
 
-                    payload = decode_token(creds.credentials)
-                    if payload and payload.get("type") == "access":
-                        uid = payload.get("sub")
-                        if uid:
-                            identifier = f"user:{uid}"
-            except Exception:
-                identifier = None
+                payload = decode_token(creds.credentials)
+                if payload and payload.get("type") == "access":
+                    uid = payload.get("sub")
+                    if uid:
+                        identifier = f"user:{uid}"
 
         if identifier is None:
             identifier = f"ip:{get_client_ip(request)}"
@@ -829,8 +850,16 @@ def build_depends_rate_limit(
                 eff_requests = int(getattr(settings, requests_attr))
             if window_attr is not None and hasattr(settings, window_attr):
                 eff_window = int(getattr(settings, window_attr))
-        except Exception:
-            pass
+        except (TypeError, ValueError) as exc:
+            # 只可能是配置值不是整数（env 写错、测试 patch 成对象）。回落到规则自带阈值
+            # 是安全的，但**必须留痕**：原先静默回落，运维把限流调大/调小后发现没生效，
+            # 只能靠猜。其余异常（AttributeError 等）是真实缺陷，照样抛出。
+            logger.warning(
+                "限流阈值配置无法解析（requests_attr=%s window_attr=%s），回落到规则默认值：%s",
+                requests_attr,
+                window_attr,
+                exc,
+            )
 
         effective_rule = RateLimitRule(
             requests=max(1, eff_requests),
@@ -848,7 +877,7 @@ def build_depends_rate_limit(
                 status_code=429,
                 detail={
                     "message": "请求过于频繁，请稍后再试",
-                    "error_code": "RATE_LIMITED",
+                    "error_code": RATE_LIMIT_EXCEEDED,
                     "retry_after": result.retry_after,
                 },
                 headers=headers,

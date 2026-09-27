@@ -1,3 +1,8 @@
+<!--
+  站点设置页：按组分栏编辑后端返回的全部站点配置，表单控件由值类型反向推断（inferSchema），保存以单组为粒度。
+  契约：与主题 Customizer 重复的键（primary_color / hero.title / footer.copyright 等）不仅 UI 屏蔽，保存 payload 也必须强制剥离，防止站点设置回写覆盖主题色（双写冲突）；
+  default_theme 只允许 light/dark——system 已移除以避免前后台切换黑屏；isDirty 只对比当前激活组与最近一次服务端回包。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -58,6 +63,27 @@
       </AdminCard>
     </div>
 
+    <Alert
+      v-if="!loading && loadError"
+      variant="destructive"
+      class="rounded-xl"
+    >
+      <AlertTriangle class="size-4" />
+      <AlertTitle>站点配置加载失败</AlertTitle>
+      <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+        <span>{{ loadError }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-lg shrink-0"
+          @click="loadAll"
+        >
+          <RotateCcw data-icon="inline-start" />
+          重试
+        </Button>
+      </AlertDescription>
+    </Alert>
+
     <div
       v-else
       class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
@@ -102,8 +128,12 @@
             >
               <template v-if="schema.type === 'string' && !schema.long && !schema.sensitive">
                 <div class="flex flex-col gap-2">
-                  <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <Label
+                    :for="`set-${key}`"
+                    class="text-sm font-medium"
+                  >{{ schema.label }}</Label>
                   <Input
+                    :id="`set-${key}`"
                     v-model="strRef(key).value"
                     :placeholder="schema.placeholder || ''"
                     class="rounded-xl"
@@ -119,9 +149,13 @@
 
               <template v-else-if="schema.type === 'string' && schema.sensitive">
                 <div class="flex flex-col gap-2">
-                  <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <Label
+                    :for="`set-${key}`"
+                    class="text-sm font-medium"
+                  >{{ schema.label }}</Label>
                   <div class="relative">
                     <Input
+                      :id="`set-${key}`"
                       v-model="strRef(key).value"
                       :type="showSensitive[key] ? 'text' : 'password'"
                       :placeholder="schema.placeholder || ''"
@@ -130,6 +164,7 @@
                     <button
                       type="button"
                       class="absolute right-2 top-1/2 -translate-y-1/2 size-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
+                      :aria-label="showSensitive[key] ? '隐藏敏感值' : '显示敏感值'"
                       @click="toggleSensitive(key)"
                     >
                       <Eye
@@ -153,8 +188,12 @@
 
               <template v-else-if="schema.type === 'string' && schema.long">
                 <div class="flex flex-col gap-2">
-                  <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <Label
+                    :for="`set-${key}`"
+                    class="text-sm font-medium"
+                  >{{ schema.label }}</Label>
                   <Textarea
+                    :id="`set-${key}`"
                     v-model="strRef(key).value"
                     :placeholder="schema.placeholder || ''"
                     rows="4"
@@ -171,8 +210,12 @@
 
               <template v-else-if="schema.type === 'json'">
                 <div class="flex flex-col gap-2">
-                  <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <Label
+                    :for="`set-${key}`"
+                    class="text-sm font-medium"
+                  >{{ schema.label }}</Label>
                   <Textarea
+                    :id="`set-${key}`"
                     :model-value="stringifyJson(formState[activeGroup]?.[key] ?? null)"
                     rows="8"
                     class="rounded-xl resize-none font-mono text-xs"
@@ -187,8 +230,12 @@
 
               <template v-else-if="schema.type === 'number'">
                 <div class="flex flex-col gap-2">
-                  <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <Label
+                    :for="`set-${key}`"
+                    class="text-sm font-medium"
+                  >{{ schema.label }}</Label>
                   <Input
+                    :id="`set-${key}`"
                     v-model.number="numRef(key).value"
                     type="number"
                     :min="schema.min"
@@ -207,8 +254,11 @@
 
               <template v-else-if="schema.type === 'boolean'">
                 <div class="flex items-center justify-between rounded-xl border border-border p-4 bg-muted/30">
-                  <div class="flex flex-col gap-0 .5">
-                    <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <div class="flex flex-col gap-0.5">
+                    <Label
+                      :for="`set-${key}`"
+                      class="text-sm font-medium"
+                    >{{ schema.label }}</Label>
                     <p
                       v-if="schema.help"
                       class="text-xs text-muted-foreground"
@@ -216,18 +266,25 @@
                       {{ schema.help }}
                     </p>
                   </div>
-                  <Switch v-model="boolRef(key).value" />
+                  <Switch
+                    :id="`set-${key}`"
+                    v-model="boolRef(key).value"
+                  />
                 </div>
               </template>
 
               <template v-else-if="schema.type === 'color'">
                 <div class="flex flex-col gap-2">
-                  <Label class="text-sm font-medium">{{ schema.label }}</Label>
+                  <Label
+                    :for="`set-${key}`"
+                    class="text-sm font-medium"
+                  >{{ schema.label }}</Label>
                   <div class="flex items-center gap-3">
                     <div class="relative">
                       <input
                         v-model="colorRef(key).value"
                         type="color"
+                        :aria-label="`${schema.label} 取色器`"
                         class="absolute inset-0 opacity-0 cursor-pointer size-11 rounded-xl"
                       >
                       <div
@@ -236,6 +293,7 @@
                       />
                     </div>
                     <Input
+                      :id="`set-${key}`"
                       v-model="colorRef(key).value"
                       class="rounded-xl font-mono text-xs uppercase w-32"
                       placeholder="#0EA5A9"
@@ -256,7 +314,7 @@
     </div>
 
     <Alert
-      v-if="Object.keys(formState).length === 0 && !loading"
+      v-if="Object.keys(formState).length === 0 && !loading && !loadError"
       variant="warning"
       class="rounded-xl"
     >
@@ -278,8 +336,9 @@ import {
   type SettingsValue
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import {
-  Settings, Save, Loader2, Eye, EyeOff, AlertTriangle,
+  Settings, Save, Loader2, Eye, EyeOff, AlertTriangle, RotateCcw,
   Globe, BookOpen, MessageSquare, Image, Search, Mail, Cloud, Database,
   Shield, ToggleLeft, Palette, Menu, Link2, Sparkles, Bell, LayoutPanelLeft,
   LayoutTemplate
@@ -339,6 +398,7 @@ const groups = [
 
 const activeGroup = ref('basic')
 const loading = ref(true)
+const loadError = ref('')
 const saving = ref(false)
 const originalState = ref<AllSettingsGroups>({})
 const formState = reactive<AllSettingsGroups>({})
@@ -652,6 +712,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
 
 async function loadAll() {
   loading.value = true
+  loadError.value = ''
   try {
     const data = await fetchAllSettings()
     originalState.value = JSON.parse(JSON.stringify(data))
@@ -659,8 +720,9 @@ async function loadAll() {
       formState[k] = v as SettingsGroupData
     }
   } catch (e) {
-    console.error('[settings] loadGroupData failed:', e)
-    toast.error('加载站点配置失败')
+    // fetchAllSettings 内部的 apiFetch 已 toast，这里只补充可见的内联错误态（含重试）
+    const err = e as { data?: unknown, message?: string }
+    loadError.value = extractApiErrorMessage(err?.data, err?.message || '加载站点配置失败')
   } finally {
     loading.value = false
   }
@@ -698,8 +760,9 @@ async function handleSaveCurrentGroup() {
     originalState.value[groupKey] = JSON.parse(JSON.stringify(r.data))
     toast.success(`已保存：${currentGroupMeta.value?.label ?? groupKey}`)
   } catch (e) {
+    // saveSettingsGroup 的 apiFetch 失败时已 toast 展示后端错误；
+    // 此处不再二次 toast，仅保留控制台日志便于排查
     console.error('[settings] handleSaveCurrentGroup failed:', e)
-    toast.error('保存配置失败')
   } finally {
     saving.value = false
   }

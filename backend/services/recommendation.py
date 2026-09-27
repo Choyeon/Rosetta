@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
 import re
@@ -37,6 +38,7 @@ from sqlalchemy.orm import selectinload
 
 from backend.core.database import get_db
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes, post_tags
+from backend.models.user import User
 from backend.services.cache_service import CacheService, get_cache_service
 from backend.utils.compat import UTC
 
@@ -196,6 +198,134 @@ def heat_score(views: int, likes: int, comments: int) -> float:
     return max(0.0, min(1.0, raw))
 
 
+# 打分输入：(文章 id, 原始正文 title+excerpt+content, 标签 id 集, 分类 id, published_at, created_at)
+# 必须是**拍平后的纯数据**——worker 线程里碰 ORM 会踩 lazy load / greenlet 上下文。
+SimilarDoc = tuple[int, str, set[int], int | None, datetime | None, datetime | None]
+
+
+def score_similar_posts(
+    anchor_text: str,
+    anchor_tag_ids: set[int],
+    anchor_category_id: int | None,
+    docs: list[SimilarDoc],
+    heat_map: dict[int, tuple[int, int, int]],
+) -> list[tuple[int, float]]:
+    """TF-IDF + 标签 + 分类 + 时间衰减 + 热度的综合打分，按分数倒序返回。
+
+    候选池上限 300 篇**全文**，分词与余弦是整条推荐链路唯一的 CPU 大头；
+    留在事件循环里会让所有并发请求一起停摆（文章页 SSR 首屏尤其明显），
+    因此调用方必须通过 `asyncio.to_thread` 把它放进 worker 线程。
+    """
+    anchor_tokens = tokenize(normalize_text(anchor_text))
+    anchor_tf = build_tf(anchor_tokens)
+
+    # ── 聚合 IDF：只基于候选集的 document frequency ──
+    doc_tokens_map: dict[int, list[str]] = {}
+    df: Counter[str] = Counter()
+    n_docs = 1 + len(docs)  # anchor + 候选
+    for cid, text, *_rest in docs:
+        tokens = tokenize(normalize_text(text))
+        doc_tokens_map[cid] = tokens
+        for term in set(tokens):
+            df[term] += 1
+    for term in set(anchor_tokens):  # anchor 也计入 IDF
+        df[term] += 1
+    idf: dict[str, float] = {term: math.log(1 + (n_docs / (1 + freq))) for term, freq in df.items()}
+
+    weights = SIMILAR_WEIGHTS
+    scored: list[tuple[int, float]] = []
+    for cid, _text, cand_tag_ids, cand_category_id, published_at, created_at in docs:
+        tag_sim = jaccard(anchor_tag_ids, cand_tag_ids)
+        cat_sim = 1.0 if (anchor_category_id and cand_category_id == anchor_category_id) else 0.0
+
+        cand_tokens = doc_tokens_map.get(cid, [])
+        text_sim = compute_cosine_similarity(anchor_tf, build_tf(cand_tokens), idf)
+        # BM25 风格的文档长度归一化：对文本相似度做修正
+        len_norm = (1 - BM25_B) + BM25_B * (max(1, len(cand_tokens)) / AVG_DOC_LEN_ESTIMATE)
+        text_sim_bm25 = text_sim / max(0.3, len_norm)
+
+        views, likes, comments = heat_map.get(cid, (0, 0, 0))
+        scored.append(
+            (
+                cid,
+                weights["tags"] * tag_sim
+                + weights["category"] * cat_sim
+                + weights["tfidf"] * max(text_sim, text_sim_bm25)
+                + weights["time"] * exponential_decay(published_at or created_at)
+                + weights["heat"] * heat_score(views, likes, comments),
+            )
+        )
+
+    scored.sort(key=lambda item: item[1], reverse=True)
+    return scored
+
+
+# 搜索打分输入：(标题, 摘要, 正文, 标签名列表)——本地化后的纯字符串，worker 线程不碰 ORM
+SearchDoc = tuple[str, str, str, list[str]]
+
+
+def score_search_docs(query: str, docs: list[SearchDoc]) -> list[float]:
+    """BM25-Okapi 风格字段加权打分，返回值与 `docs` 一一对应。
+
+    权重：title × 3.0 + tags × 2.0 + excerpt × 1.5 + content × 1.0。
+    每个候选都要分词整篇正文，召回几十篇时是几十毫秒起的事件循环占用，
+    所以和 `score_similar_posts` 一样只能放到 worker 线程里跑。
+    """
+    q_terms = set(tokenize(normalize_text(query)))
+    n_docs = len(docs)
+    if not q_terms or not n_docs:
+        return [0.0] * n_docs
+
+    # 1-pass：统计每个 term 的 document frequency（跨候选集）
+    df: Counter[str] = Counter()
+    docs_data: list[dict[str, Any]] = []
+    for title, excerpt, content, tag_names in docs:
+        title_toks = tokenize(normalize_text(title))
+        excerpt_toks = tokenize(normalize_text(excerpt))
+        content_toks = tokenize(normalize_text(content))
+        tag_toks: list[str] = []
+        for tag_name in tag_names:
+            tag_toks.extend(tokenize(normalize_text(tag_name)))
+        for term in set(title_toks) | set(excerpt_toks) | set(content_toks) | set(tag_toks):
+            if term in q_terms:
+                df[term] += 1
+        docs_data.append(
+            {
+                "title": Counter(title_toks),
+                "excerpt": Counter(excerpt_toks),
+                "content": Counter(content_toks),
+                "tags": Counter(tag_toks),
+                "dl": len(title_toks) + len(excerpt_toks) + len(content_toks) + len(tag_toks),
+            }
+        )
+
+    avg_dl = max(1.0, sum(d["dl"] for d in docs_data) / len(docs_data))
+    idf_q = {
+        term: math.log(1 + ((n_docs - freq + 0.5) / (freq + 0.5))) for term, freq in df.items()
+    }
+
+    # 2-pass：对每个 doc，按字段权重累加 BM25 分数
+    scores: list[float] = []
+    for d in docs_data:
+        score = 0.0
+        dl_norm = (1 - BM25_B) + BM25_B * (d["dl"] / avg_dl)
+        for term in q_terms:
+            term_idf = idf_q.get(term)
+            if term_idf is None:
+                continue
+            field_acc = 0.0
+            for field, field_weight in BM25_FIELD_WEIGHTS:
+                tf = int(d[field].get(term, 0))
+                if tf <= 0:
+                    continue
+                num = tf * (BM25_K1 + 1)
+                den = tf + BM25_K1 * dl_norm
+                field_acc += field_weight * (num / den)
+            score += term_idf * field_acc
+        scores.append(score)
+    return scores
+
+
 # ══════════════════════════════════════════════════════════════════
 #  RecommendationService
 # ══════════════════════════════════════════════════════════════════
@@ -229,15 +359,14 @@ class RecommendationService:
 
         anchor_tag_ids: set[int] = {t.id for t in anchor.tags}
         anchor_cat = anchor.category_id
-        anchor_text = normalize_text(
+        # 归一化与分词交给 score_similar_posts（worker 线程）执行，这里只拍平文本
+        anchor_text = (
             self._first_lang(anchor.title)
             + " "
             + self._first_lang(anchor.excerpt)
             + " "
             + self._first_lang(anchor.content)
         )
-        anchor_tokens = tokenize(anchor_text)
-        anchor_tf = build_tf(anchor_tokens)
 
         # ── 候选池：同分类 + 同标签最多 300 篇 ──
         cand_q = (
@@ -278,7 +407,9 @@ class RecommendationService:
         full_q = (
             select(Post)
             .options(
-                selectinload(Post.tags), selectinload(Post.category), selectinload(Post.author)
+                selectinload(Post.tags),
+                selectinload(Post.category),
+                selectinload(Post.author).selectinload(User.title),
             )
             .where(Post.id.in_(candidate_ids))
         )
@@ -286,28 +417,22 @@ class RecommendationService:
         candidates = full_res.scalars().all()
         candidates_by_id = {p.id: p for p in candidates}
 
-        # ── 聚合 IDF（只基于候选集的 document frequency）──
-        doc_tokens_map: dict[int, list[str]] = {}
-        df: Counter[str] = Counter()
-        n_docs = 1 + len(candidates)  # anchor + 候选
-        for p in candidates:
-            text = normalize_text(
+        # ── 打分输入拍平：worker 线程只吃纯数据，不触碰 ORM ──
+        docs: list[SimilarDoc] = [
+            (
+                p.id,
                 self._first_lang(p.title)
                 + " "
                 + self._first_lang(p.excerpt)
                 + " "
-                + self._first_lang(p.content)
+                + self._first_lang(p.content),
+                {t.id for t in p.tags},
+                p.category_id,
+                p.published_at,
+                p.created_at,
             )
-            toks = tokenize(text)
-            doc_tokens_map[p.id] = toks
-            for term in set(toks):
-                df[term] += 1
-        # anchor 也计入 IDF
-        for term in set(anchor_tokens):
-            df[term] += 1
-        idf: dict[str, float] = {
-            term: math.log(1 + (n_docs / (1 + freq))) for term, freq in df.items()
-        }
+            for p in candidates
+        ]
 
         # ── 聚合 likes / comments / views 热数据 ──
         heat_q = (
@@ -327,46 +452,26 @@ class RecommendationService:
         for r in heat_rows.fetchall():
             heat_map[r.id] = (int(r.views or 0), int(r.lc or 0), int(r.cc or 0))
 
-        # ── 逐篇打分 ──
-        scored: list[tuple[int, float]] = []
-        anchor_cat_id = anchor_cat
-        for cid, cand in candidates_by_id.items():
-            cand_tag_ids: set[int] = {t.id for t in cand.tags}
-            tag_sim = jaccard(anchor_tag_ids, cand_tag_ids)
-            cat_sim = 1.0 if (anchor_cat_id and cand.category_id == anchor_cat_id) else 0.0
+        # ── 逐篇打分：分词 + 余弦在 worker 线程执行，事件循环不被 300 篇全文卡住 ──
+        scored = await asyncio.to_thread(
+            score_similar_posts,
+            anchor_text,
+            anchor_tag_ids,
+            anchor_cat,
+            docs,
+            heat_map,
+        )
 
-            cand_tokens = doc_tokens_map.get(cid, [])
-            cand_tf = build_tf(cand_tokens)
-            text_sim = compute_cosine_similarity(anchor_tf, cand_tf, idf)
-
-            # BM25 风格的文档长度归一化：对文本相似度做修正
-            dl = max(1, len(cand_tokens))
-            len_norm = (1 - BM25_B) + BM25_B * (dl / AVG_DOC_LEN_ESTIMATE)
-            text_sim_bm25 = text_sim / max(0.3, len_norm)
-
-            ts = exponential_decay(cand.published_at or cand.created_at)
-            views, lc, cc = heat_map.get(cid, (0, 0, 0))
-            hs = heat_score(views, lc, cc)
-
-            w = SIMILAR_WEIGHTS
-            total = (
-                w["tags"] * tag_sim
-                + w["category"] * cat_sim
-                + w["tfidf"] * max(text_sim, text_sim_bm25)
-                + w["time"] * ts
-                + w["heat"] * hs
-            )
-            scored.append((cid, total))
-
-        # ── 排序 & 补足 ──
-        scored.sort(key=lambda x: x[1], reverse=True)
+        # ── 取前 N，不足则按热度补足 ──
         selected_ids = [cid for cid, _ in scored[:limit]]
         if len(selected_ids) < limit:
             existing = set(selected_ids) | {post_id}
             fill_q = (
                 select(Post)
                 .options(
-                    selectinload(Post.author), selectinload(Post.category), selectinload(Post.tags)
+                    selectinload(Post.author).selectinload(User.title),
+                    selectinload(Post.category),
+                    selectinload(Post.tags),
                 )
                 .where(Post.id.notin_(list(existing)), Post.status == "published")
                 .order_by(Post.views.desc())
@@ -492,7 +597,9 @@ class RecommendationService:
             detail_q = (
                 select(Post)
                 .options(
-                    selectinload(Post.author), selectinload(Post.category), selectinload(Post.tags)
+                    selectinload(Post.author).selectinload(User.title),
+                    selectinload(Post.category),
+                    selectinload(Post.tags),
                 )
                 .where(Post.id.in_(page_ids))
             )
@@ -562,7 +669,9 @@ class RecommendationService:
             dq = (
                 select(Post)
                 .options(
-                    selectinload(Post.author), selectinload(Post.category), selectinload(Post.tags)
+                    selectinload(Post.author).selectinload(User.title),
+                    selectinload(Post.category),
+                    selectinload(Post.tags),
                 )
                 .where(Post.id.in_(top_ids))
             )
@@ -581,65 +690,25 @@ class RecommendationService:
     ) -> list[tuple[Post, float]]:
         """对已召回的 Post 候选做 BM25 风格精细化排序。
 
-        权重：title × 3.0 + tags × 2.0 + excerpt × 1.5 + content × 1.0
+        算法在 `score_search_docs`（纯计算）里，这里只把 ORM 拍平成纯文本：
+        `p.tags` 是关系属性，必须在事件循环内读取，worker 线程里取会踩 MissingGreenlet。
         """
-        q = normalize_text(query)
-        q_tokens = tokenize(q)
-        if not q_tokens or not posts:
-            return [(p, 0.0) for p in posts]
+        if not posts:
+            return []
 
-        q_terms = set(q_tokens)
-        n_docs = len(posts)
-
-        # 1-pass：统计每个 term 的 document frequency（跨候选集）
-        df: Counter[str] = Counter()
-        docs_data: list[dict[str, Any]] = []
-        for p in posts:
-            title_toks = tokenize(normalize_text(self._get_localized(p.title, language)))
-            excerpt_toks = tokenize(normalize_text(self._get_localized(p.excerpt, language)))
-            content_toks = tokenize(normalize_text(self._get_localized(p.content, language)))
-            tag_toks: list[str] = []
-            for t in getattr(p, "tags", []) or []:
-                tag_toks.extend(tokenize(normalize_text(self._get_localized(t.name, language))))
-            for term in set(title_toks) | set(excerpt_toks) | set(content_toks) | set(tag_toks):
-                if term in q_terms:
-                    df[term] += 1
-            docs_data.append(
-                {
-                    "p": p,
-                    "title": Counter(title_toks),
-                    "excerpt": Counter(excerpt_toks),
-                    "content": Counter(content_toks),
-                    "tags": Counter(tag_toks),
-                    "dl": len(title_toks) + len(excerpt_toks) + len(content_toks) + len(tag_toks),
-                }
+        raw_docs: list[SearchDoc] = [
+            (
+                self._get_localized(p.title, language),
+                self._get_localized(p.excerpt, language),
+                self._get_localized(p.content, language),
+                [self._get_localized(t.name, language) for t in (getattr(p, "tags", []) or [])],
             )
-
-        avg_dl = max(1.0, sum(d["dl"] for d in docs_data) / max(1, len(docs_data)))
-        idf_q = {
-            term: math.log(1 + ((n_docs - freq + 0.5) / (freq + 0.5))) for term, freq in df.items()
-        }
-
-        # 2-pass：对每个 doc，按字段权重累加 BM25 分数
-        ranked: list[tuple[Post, float]] = []
-        for d in docs_data:
-            score = 0.0
-            dl_norm = (1 - BM25_B) + BM25_B * (d["dl"] / avg_dl)
-            for term in q_terms:
-                if term not in idf_q:
-                    continue
-                term_idf = idf_q[term]
-                field_acc = 0.0
-                for fld, fw in BM25_FIELD_WEIGHTS:
-                    tf = int(d[fld].get(term, 0))
-                    if tf <= 0:
-                        continue
-                    num = tf * (BM25_K1 + 1)
-                    den = tf + BM25_K1 * dl_norm
-                    field_acc += fw * (num / den)
-                score += term_idf * field_acc
-            ranked.append((d["p"], score))
-        ranked.sort(key=lambda x: x[1], reverse=True)
+            for p in posts
+        ]
+        scores = await asyncio.to_thread(score_search_docs, query, raw_docs)
+        ranked: list[tuple[Post, float]] = sorted(
+            zip(posts, scores), key=lambda item: item[1], reverse=True
+        )
         return ranked
 
     # ─────────────── 内部 helper ───────────────

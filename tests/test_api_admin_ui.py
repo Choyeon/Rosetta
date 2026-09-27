@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth import get_password_hash
+from backend.models.blog import Post
 from backend.models.log import OperationLog
 from backend.models.user import User
 
@@ -68,7 +69,11 @@ async def _task8_setup(monkeypatch, tmp_path):
         import time
 
         return RateLimitResult(
-            allowed=True, remaining=999_999, reset_at=time.time() + 3600, retry_after=0
+            allowed=True,
+            limit=999_999,
+            remaining=999_999,
+            reset_at=time.time() + 3600,
+            retry_after=0,
         )
 
     monkeypatch.setattr(rate_limiter, "check_rate_limit", _always_allowed_check)
@@ -307,3 +312,40 @@ async def test_stats_returns_schema(
     assert isinstance(sh, dict), "system_health 应该是对象"
     for k in ("cpu_percent", "memory_percent", "db_rtt_ms", "cache_hit_percent"):
         assert k in sh, f"system_health 缺少 {k}"
+
+
+@pytest.mark.asyncio
+async def test_stats_reports_real_numbers_not_placeholders(
+    client: AsyncClient,
+    admin_headers: dict,
+    db_session: AsyncSession,
+    test_post: Post,
+):
+    """仪表盘必须只报真实数字。
+
+    曾经的行为：PV/UV 为 0 的天被回填成 ``base*17`` / ``base*7`` 的演示曲线，
+    热门榜与活跃评论者也会凭空造出 Alice/Bob 和 "Welcome to Rosetta"，
+    而 ``total_views_today`` 取的是 ``SUM(posts.views)`` 历史总和。
+    管理员照着假曲线做内容决策，比空面板危害大得多。
+    """
+    test_post.views = 5000
+    await db_session.commit()
+
+    resp = await client.get("/api/admin/stats", params={"range": "7d"}, headers=admin_headers)
+    assert resp.status_code == 200, resp.text
+    payload = resp.json()["data"]
+
+    assert payload["active_commenters"] == [], "没有真实评论时不能编造活跃用户"
+    # 榜单里有真实文章（views 来自 DB），但绝不掺演示数据
+    assert {row["id"] for row in payload["top_articles"]} >= {test_post.id}
+    assert next(r for r in payload["top_articles"] if r["id"] == test_post.id)["views"] == 5000
+
+    datasets = {d["key"]: d["values"] for d in payload["timeseries"]["datasets"]}
+    assert set(datasets) == {"pv", "uv", "comments", "posts", "users"}
+    # 库里没有任何 visit_logs 记录：流量曲线必须全 0
+    assert sum(datasets["pv"]) == 0
+    assert sum(datasets["uv"]) == 0
+
+    # 今日访问 = 今天真实落库的访问量，与 Post.views 累计值无关
+    assert payload["summary"]["total_views_today"] == 0
+    assert payload["summary"]["total_posts"] >= 1

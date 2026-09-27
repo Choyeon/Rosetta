@@ -6,11 +6,13 @@
 - 管理接口：相册 CRUD、照片 CRUD
 - 权限：未登录 / 普通用户 / staff 用户的访问边界
 - photo_count 自动维护
+- 批量删除照片（一次请求 + missing_ids 上报）
 - 缓存失效
 """
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select, update
 
 from backend.models.gallery import Album, Photo
 
@@ -111,9 +113,7 @@ class TestAdminAlbumCrud:
         assert data["photo_count"] == 0
 
     @pytest.mark.asyncio
-    async def test_admin_create_album_validation(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_admin_create_album_validation(self, client: AsyncClient, staff_headers: dict):
         """标题为空时返回 422"""
         r = await client.post(
             "/api/admin/gallery/albums",
@@ -144,9 +144,7 @@ class TestAdminAlbumCrud:
         assert "A2" in titles
 
     @pytest.mark.asyncio
-    async def test_admin_update_album(
-        self, client: AsyncClient, staff_headers: dict, db_session
-    ):
+    async def test_admin_update_album(self, client: AsyncClient, staff_headers: dict, db_session):
         """更新相册字段"""
         album = Album(title="旧标题", is_published=True, photo_count=0)
         db_session.add(album)
@@ -163,9 +161,7 @@ class TestAdminAlbumCrud:
         assert r.json()["is_published"] is False
 
     @pytest.mark.asyncio
-    async def test_admin_delete_album(
-        self, client: AsyncClient, staff_headers: dict, db_session
-    ):
+    async def test_admin_delete_album(self, client: AsyncClient, staff_headers: dict, db_session):
         """删除相册成功"""
         album = Album(title="待删", is_published=True, photo_count=0)
         db_session.add(album)
@@ -173,9 +169,7 @@ class TestAdminAlbumCrud:
         await db_session.refresh(album)
         album_id = album.id
 
-        r = await client.delete(
-            f"/api/admin/gallery/albums/{album_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/admin/gallery/albums/{album_id}", headers=staff_headers)
         assert r.status_code == 200
 
         # 确认已删除（刷新 session 缓存）
@@ -204,8 +198,10 @@ class TestAdminAlbumCrud:
         from sqlalchemy import select
 
         photos = (
-            await db_session.execute(select(Photo).where(Photo.album_id == album_id))
-        ).scalars().all()
+            (await db_session.execute(select(Photo).where(Photo.album_id == album_id)))
+            .scalars()
+            .all()
+        )
         assert photos == []
 
 
@@ -216,9 +212,7 @@ class TestAdminPhotoCrud:
     """管理员照片增删改查"""
 
     @pytest.mark.asyncio
-    async def test_admin_create_photo(
-        self, client: AsyncClient, staff_headers: dict, db_session
-    ):
+    async def test_admin_create_photo(self, client: AsyncClient, staff_headers: dict, db_session):
         """添加照片到相册"""
         album = Album(title="P", is_published=True, photo_count=0)
         db_session.add(album)
@@ -241,9 +235,7 @@ class TestAdminPhotoCrud:
         assert data["original_url"] == "/media/uploads/photo.jpg"  # alias
 
     @pytest.mark.asyncio
-    async def test_admin_create_photo_invalid_album(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_admin_create_photo_invalid_album(self, client: AsyncClient, staff_headers: dict):
         """添加照片到不存在的相册返回 404"""
         r = await client.post(
             "/api/admin/gallery/photos",
@@ -278,23 +270,23 @@ class TestAdminPhotoCrud:
 
         # 删除 1 张
         photos = (
-            await db_session.execute(
-                __import__("sqlalchemy").select(Photo).where(Photo.album_id == album_id)
+            (
+                await db_session.execute(
+                    __import__("sqlalchemy").select(Photo).where(Photo.album_id == album_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         if photos:
-            await client.delete(
-                f"/api/admin/gallery/photos/{photos[0].id}", headers=staff_headers
-            )
+            await client.delete(f"/api/admin/gallery/photos/{photos[0].id}", headers=staff_headers)
 
         db_session.expire_all()
         album = await db_session.get(Album, album_id)
         assert album.photo_count == 1
 
     @pytest.mark.asyncio
-    async def test_admin_update_photo(
-        self, client: AsyncClient, staff_headers: dict, db_session
-    ):
+    async def test_admin_update_photo(self, client: AsyncClient, staff_headers: dict, db_session):
         """更新照片标题"""
         album = Album(title="U", is_published=True, photo_count=0)
         db_session.add(album)
@@ -316,9 +308,7 @@ class TestAdminPhotoCrud:
         assert r.json()["description"] == "新描述"
 
     @pytest.mark.asyncio
-    async def test_admin_delete_photo(
-        self, client: AsyncClient, staff_headers: dict, db_session
-    ):
+    async def test_admin_delete_photo(self, client: AsyncClient, staff_headers: dict, db_session):
         """删除照片成功"""
         album = Album(title="D", is_published=True, photo_count=0)
         db_session.add(album)
@@ -331,9 +321,7 @@ class TestAdminPhotoCrud:
         await db_session.refresh(photo)
         photo_id = photo.id
 
-        r = await client.delete(
-            f"/api/admin/gallery/photos/{photo_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/admin/gallery/photos/{photo_id}", headers=staff_headers)
         assert r.status_code == 200
 
         db_session.expire_all()
@@ -351,9 +339,7 @@ class TestAdminPhotoCrud:
         await db_session.refresh(album)
 
         for i in range(5):
-            db_session.add(
-                Photo(album_id=album.id, url=f"/{i}.jpg", sort_order=i + 1)
-            )
+            db_session.add(Photo(album_id=album.id, url=f"/{i}.jpg", sort_order=i + 1))
         await db_session.commit()
 
         r = await client.get(
@@ -380,11 +366,135 @@ class TestGalleryPermissions:
         assert r.status_code == 401
 
     @pytest.mark.asyncio
-    async def test_admin_requires_staff(
-        self, client: AsyncClient, subscriber_headers: dict
-    ):
+    async def test_admin_requires_staff(self, client: AsyncClient, subscriber_headers: dict):
         """普通用户访问管理相册列表返回 403"""
-        r = await client.get(
-            "/api/admin/gallery/albums", headers=subscriber_headers
+        r = await client.get("/api/admin/gallery/albums", headers=subscriber_headers)
+        assert r.status_code in (401, 403)
+
+
+# ==================== 批量删除照片 ====================
+
+
+async def _count(db_session, album_id: int) -> int:
+    """某相册剩余照片数"""
+    return await db_session.scalar(
+        select(func.count()).select_from(Photo).where(Photo.album_id == album_id)
+    )
+
+
+async def _photo_count(db_session, album_id: int) -> int:
+    """某相册 DB 里记录的 photo_count 字段值"""
+    return await db_session.scalar(select(Album.photo_count).where(Album.id == album_id))
+
+
+class TestAdminPhotoBatchDelete:
+    """一次请求删一组照片：替代前端逐张 DELETE 的 N 次往返"""
+
+    async def _seed(self, db_session):
+        """建 2 个相册，A 内 3 张、B 内 2 张，返回 (album_a, album_b, photo_ids)"""
+        album_a = Album(title="相册A", is_published=True, photo_count=0)
+        album_b = Album(title="相册B", is_published=True, photo_count=0)
+        db_session.add_all([album_a, album_b])
+        await db_session.commit()
+        await db_session.refresh(album_a)
+        await db_session.refresh(album_b)
+
+        for album, count in ((album_a, 3), (album_b, 2)):
+            for i in range(count):
+                photo = Photo(
+                    album_id=album.id,
+                    url=f"/media/uploads/{album.id}-{i}.jpg",
+                    sort_order=i + 1,
+                )
+                db_session.add(photo)
+            await db_session.commit()
+        rows = (await db_session.execute(select(Photo.id).order_by(Photo.id.asc()))).scalars().all()
+        return album_a, album_b, list(rows)
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_spans_albums_and_recounts(
+        self, client: AsyncClient, staff_headers: dict, db_session
+    ):
+        """跨相册批量删除：各相册 photo_count 各重算一次"""
+        album_a, album_b, all_ids = await self._seed(db_session)
+        await db_session.execute(update(Album).where(Album.id == album_a.id).values(photo_count=3))
+        await db_session.execute(update(Album).where(Album.id == album_b.id).values(photo_count=2))
+        await db_session.commit()
+
+        r = await client.request(
+            "DELETE",
+            "/api/admin/gallery/photos/batch",
+            headers=staff_headers,
+            json={"ids": all_ids[:3]},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["success"] is True
+        assert data["deleted_count"] == 3
+        assert data["missing_ids"] == []
+
+        # 用列投影查询而不是取回 ORM 对象：app 侧会话删改后，测试会话的
+        # identity map 可能 still 缓存旧行，直接读属性会触发同步 IO（MissingGreenlet）
+        assert await _count(db_session, album_a.id) == 0
+        assert await _count(db_session, album_b.id) == 2
+        assert await _photo_count(db_session, album_a.id) == 0
+        assert await _photo_count(db_session, album_b.id) == 2
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_reports_missing_ids(
+        self, client: AsyncClient, staff_headers: dict, db_session
+    ):
+        """请求里混入不存在的 ID：删除成功，但 missing_ids 必须如实上报"""
+        album_a, _album_b, all_ids = await self._seed(db_session)
+        target = all_ids[0]
+
+        r = await client.request(
+            "DELETE",
+            "/api/admin/gallery/photos/batch",
+            headers=staff_headers,
+            json={"ids": [target, 999_998, 999_999]},
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert data["deleted_count"] == 1
+        assert data["missing_ids"] == [999_998, 999_999]
+        assert "不存在" in data["message"]
+        assert (
+            await db_session.scalar(
+                select(func.count()).select_from(Photo).where(Photo.id == target)
+            )
+            == 0
+        )
+        assert await db_session.scalar(select(func.count()).select_from(Photo)) == 4
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_rejects_empty_ids(self, client: AsyncClient, staff_headers: dict):
+        """空 ID 列表返回 400，而不是静默成功"""
+        r = await client.request(
+            "DELETE", "/api/admin/gallery/photos/batch", headers=staff_headers, json={"ids": []}
+        )
+        assert r.status_code == 400
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_all_unknown_returns_404(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        """全部 ID 不存在返回 404（没有任何东西被删）"""
+        r = await client.request(
+            "DELETE",
+            "/api/admin/gallery/photos/batch",
+            headers=staff_headers,
+            json={"ids": [424242]},
+        )
+        assert r.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_batch_delete_requires_staff(self, client: AsyncClient, subscriber_headers: dict):
+        """普通用户不能批量删照片"""
+        r = await client.request(
+            "DELETE",
+            "/api/admin/gallery/photos/batch",
+            headers=subscriber_headers,
+            json={"ids": [1]},
         )
         assert r.status_code in (401, 403)

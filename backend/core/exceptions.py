@@ -125,7 +125,7 @@ class RateLimitException(AppException):
         super().__init__(
             status_code=429,
             message=message,
-            error_code="RATE_LIMIT_EXCEEDED",
+            error_code=RATE_LIMIT_EXCEEDED,
             details=details,
         )
 
@@ -146,6 +146,10 @@ OOBE_REQUIRED = "OOBE_REQUIRED"
 OOBE_ALREADY_COMPLETED = "OOBE_ALREADY_COMPLETED"
 WEAK_PASSWORD = "WEAK_PASSWORD"
 ADMIN_NOT_CREATED = "ADMIN_NOT_CREATED"
+# 429 的唯一对外错误码。限流有三个触发点（中间件、`@rate_limit` 装饰器、
+# `build_depends_rate_limit` 依赖），历史上它们各写各的（`RATE_LIMITED` / 走状态码回退的
+# `TOO_MANY_REQUESTS` / `RATE_LIMIT_EXCEEDED`），客户端按 error_code 分支时无法覆盖全部。
+RATE_LIMIT_EXCEEDED = "RATE_LIMIT_EXCEEDED"
 
 
 class OOBERequiredException(AppException):

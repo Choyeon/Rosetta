@@ -1,3 +1,10 @@
+<!--
+  插件管理真实主体（/admin/system/plugins 只是薄壳）：列表/扫描/三来源安装/启停/设置/批量。
+  硬契约：任何改变 menu-registry 输出的写操作（扫描/安装/启停/升级/删除）都必须调用
+  refreshPluginMenu() 强制刷新共享插件菜单缓存，否则侧栏「插件」分组要到整页刷新才跟上；
+  列表为客户端分页（一次拉 per_page=100），批量接口走 {success,data} 信封需手工解包，
+  设置弹窗控件由后端 settings_schema（JSON Schema）动态生成——schema 是控件唯一清单。
+-->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { toast } from 'vue-sonner'
@@ -88,9 +95,15 @@ interface Plugin {
   error_message: string | null
 }
 
-interface BulkResponse {
-  success?: number
+interface BulkData {
   total?: number
+  success?: number
+  failed?: number
+  errors?: string[]
+}
+interface BulkEnvelope {
+  success?: boolean
+  data?: BulkData
 }
 
 const { t: $_t } = useI18n()
@@ -198,7 +211,7 @@ function toggleSel(slug: string, checked: boolean) {
 
 async function load() {
   try {
-    const data = await $get<unknown>('/admin/plugins')
+    const data = await $get<unknown>('/admin/plugins', { query: { per_page: 100 } })
     const obj = data as { data?: Plugin[] } | Plugin[]
     plugins.value = (obj && typeof obj === 'object' && 'data' in obj ? (obj.data as Plugin[]) : Array.isArray(obj) ? obj : null) ?? []
   } catch {
@@ -213,6 +226,14 @@ function reload() {
   load()
 }
 
+const { load: loadPluginMenu } = usePluginMenu()
+
+// 启用/停用/删除/升级会改变 menu-registry 的输出（Sidebar「插件」分组），
+// 强制刷新共享的插件菜单缓存，否则后台已生效、侧栏要到整页刷新才跟上。
+function refreshPluginMenu() {
+  void loadPluginMenu(true)
+}
+
 async function scan() {
   try {
     await $post('/admin/plugins/scan')
@@ -221,6 +242,7 @@ async function scan() {
     /* toast handled by apiFetch */
   } finally {
     reload()
+    refreshPluginMenu()
   }
 }
 
@@ -232,6 +254,7 @@ async function onToggleStatus(row: Plugin, val: boolean) {
     /* handled */
   } finally {
     reload()
+    refreshPluginMenu()
   }
 }
 
@@ -249,10 +272,18 @@ function openSettings(row: Plugin) {
 
 async function saveSettings() {
   if (!currentPlugin.value) return
+  const props = currentPlugin.value.settings_schema?.properties ?? {}
+  const cleaned: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(settingsForm)) {
+    // 数字类型空字符串会导致后端校验失败，跳过未填写项
+    const fieldType = props[k]?.type
+    if ((fieldType === 'integer' || fieldType === 'number') && v === '') continue
+    cleaned[k] = v
+  }
   try {
     await $patch(`/admin/plugins/${currentPlugin.value.slug}/settings`, {
       slug: currentPlugin.value.slug,
-      settings: { ...settingsForm }
+      settings: cleaned
     })
     toast.success(t('admin.plugins.settingsSaved', '设置已保存'))
     settingsOpen.value = false
@@ -278,8 +309,12 @@ async function doDelete() {
       await $delete(`/admin/plugins/${currentPlugin.value.slug}`)
       toast.success(t('admin.plugins.deleted', '插件已删除'))
     } else if (selected.value.size > 0) {
-      await $post('/admin/plugins/_bulk', { action: 'delete', slugs: [...selected.value] })
-      toast.success(t('admin.plugins.bulkDeleted', '批量删除完成'))
+      const resp = await $post<BulkEnvelope>('/admin/plugins/bulk', { action: 'delete', slugs: [...selected.value] })
+      const d = resp?.data
+      if (d && (d.failed ?? 0) > 0)
+        toast.warning(`${t('admin.plugins.bulkDeleted', '批量删除')} 完成 ${d.success}/${d.total}，失败 ${d.failed}`)
+      else
+        toast.success(t('admin.plugins.bulkDeleted', '批量删除完成'))
       selected.value.clear()
     }
   } catch {
@@ -287,30 +322,125 @@ async function doDelete() {
   } finally {
     confirmDeleteOpen.value = false
     reload()
+    refreshPluginMenu()
   }
 }
 
 async function bulkAction(action: string) {
   if (selected.value.size === 0) return
   try {
-    const data = await $post<BulkResponse>('/admin/plugins/_bulk', { action, slugs: [...selected.value] })
-    const succ = data?.success ?? 0
-    const tot = data?.total ?? selected.value.size
+    const resp = await $post<BulkEnvelope>('/admin/plugins/bulk', { action, slugs: [...selected.value] })
+    const d = resp?.data
+    const succ = d?.success ?? 0
+    const tot = d?.total ?? selected.value.size
+    const failed = d?.failed ?? 0
     const labels: Record<string, string> = {
       activate: t('admin.plugins.bulkActivate', '批量启用'),
       deactivate: t('admin.plugins.bulkDeactivate', '批量禁用'),
       upgrade: t('admin.plugins.bulkUpgrade', '批量升级')
     }
-    toast.success(`${labels[action] ?? action}完成: ${succ}/${tot}`)
+    if (failed > 0)
+      toast.warning(`${labels[action] ?? action} 完成 ${succ}/${tot}，失败 ${failed}`)
+    else
+      toast.success(`${labels[action] ?? action}完成: ${succ}/${tot}`)
     selected.value.clear()
     reload()
+    refreshPluginMenu()
   } catch {
     /* handled */
   }
 }
 
-function stubToast(msg: string) {
-  toast.info(msg)
+async function upgradeSingle(slug: string) {
+  try {
+    await $post(`/admin/plugins/${slug}/upgrade`)
+    toast.success(t('admin.plugins.upgraded', '升级完成'))
+  } catch {
+    /* handled */
+  } finally {
+    reload()
+    refreshPluginMenu()
+  }
+}
+
+// ===== 安装新插件：三来源（local / remote / upload），与主题安装同构 =====
+// 后端 POST /admin/plugins?source=... 三分支互斥：
+// local → {slug}；remote → {remote:{url,checksum_sha256?}}；upload → multipart file。
+// zip 校验失败（PLUGIN_ZIP_BAD_MANIFEST / PACKAGE_UPLOAD_FILE_REQUIRED 等）由
+// apiFetch 统一 toast，同时在弹窗内联保留错误文本便于对照重试。
+const installOpen = ref(false)
+const installSource = ref<'local' | 'remote' | 'upload'>('local')
+const installBusy = ref(false)
+const installLocalSlug = ref('')
+const installRemoteUrl = ref('')
+const installRemoteChecksum = ref('')
+const installFile = ref<File | null>(null)
+const installError = ref('')
+
+function openInstall() {
+  installSource.value = 'local'
+  installLocalSlug.value = ''
+  installRemoteUrl.value = ''
+  installRemoteChecksum.value = ''
+  installFile.value = null
+  installError.value = ''
+  installOpen.value = true
+}
+
+function onInstallSourceChange(v: unknown) {
+  const s = String(v ?? 'local')
+  installSource.value = s === 'remote' || s === 'upload' ? s : 'local'
+  installError.value = ''
+}
+
+function onInstallFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  installFile.value = input.files?.[0] ?? null
+  installError.value = ''
+}
+
+async function submitInstall() {
+  installError.value = ''
+  installBusy.value = true
+  try {
+    if (installSource.value === 'local') {
+      const slug = installLocalSlug.value.trim()
+      if (!slug) {
+        installError.value = t('admin.plugins.installNeedSlug', '请填写插件 slug')
+        return
+      }
+      await apiFetch('/admin/plugins?source=local', { method: 'POST', body: { slug } })
+    } else if (installSource.value === 'remote') {
+      const url = installRemoteUrl.value.trim()
+      if (!url) {
+        installError.value = t('admin.plugins.installNeedUrl', '请填写插件包 URL')
+        return
+      }
+      const remote: Record<string, string> = { url }
+      const cs = installRemoteChecksum.value.trim()
+      if (cs) remote.checksum_sha256 = cs
+      await apiFetch('/admin/plugins?source=remote', { method: 'POST', body: { remote } })
+    } else {
+      if (!installFile.value) {
+        installError.value = t('admin.plugins.installNeedFile', '请选择 zip 文件')
+        return
+      }
+      const fd = new FormData()
+      fd.append('file', installFile.value)
+      await apiFetch('/admin/plugins?source=upload', { method: 'POST', body: fd })
+    }
+    toast.success(t('admin.plugins.installDone', '插件安装成功'))
+    installOpen.value = false
+    reload()
+    refreshPluginMenu()
+  } catch (err) {
+    const msg = err && typeof err === 'object' && 'message' in err
+      ? String((err as { message?: unknown }).message ?? '')
+      : ''
+    installError.value = msg || t('admin.plugins.installFailed', '安装失败')
+  } finally {
+    installBusy.value = false
+  }
 }
 
 const statusFilters: Array<{ key: typeof statusFilter.value, label: () => string, count: () => number }> = [
@@ -377,7 +507,7 @@ onMounted(() => {
             variant="default"
             size="sm"
             class="shadow-soft"
-            @click="stubToast(t('admin.plugins.installHint', '请通过后端或 CLI 安装新插件'))"
+            @click="openInstall"
           >
             <UploadCloud data-icon="inline-start" />
             {{ t('admin.plugins.install', '安装新插件') }}
@@ -578,14 +708,15 @@ onMounted(() => {
               {{ t('admin.plugins.emptyTitle', '暂无插件') }}
             </h3>
             <p class="text-sm text-muted-foreground max-w-sm">
-              {{ search ? t('admin.plugins.noSearchResult', '没有匹配的插件，换个关键词试试。') : t('admin.plugins.emptyDesc', '点击「扫描本地」以发现 plugins 文件夹中的插件') }}
+              {{ (search || statusFilter !== 'all') ? t('admin.plugins.noSearchResult', '没有匹配的插件，换个关键词或状态试试。') : t('admin.plugins.emptyDesc', '点击「扫描本地」以发现 plugins 文件夹中的插件') }}
             </p>
           </div>
           <div class="flex items-center gap-2 pt-2">
             <Button
+              v-if="search || statusFilter !== 'all'"
               size="sm"
               variant="outline"
-              @click="search = ''"
+              @click="search = ''; statusFilter = 'all'; page = 1"
             >
               {{ t('admin.actions.clear', '清除筛选') }}
             </Button>
@@ -755,7 +886,7 @@ onMounted(() => {
                       class="rounded-xl text-info hover:text-info/90 hover:bg-info/10 disabled:opacity-50"
                       :title="t('admin.plugins.upgrade', '升级')"
                       :disabled="!row.update_available"
-                      @click="bulkAction('upgrade')"
+                      @click="upgradeSingle(row.slug)"
                     >
                       <Download data-icon="inline-start" />
                     </Button>
@@ -945,6 +1076,165 @@ onMounted(() => {
           >
             <Trash2 data-icon="inline-start" />
             {{ t('admin.actions.delete', '删除') }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <!-- Install Dialog（local / remote / upload 三来源，与后端 POST /admin/plugins?source= 对应） -->
+    <Dialog v-model:open="installOpen">
+      <DialogContent class="max-w-lg">
+        <DialogHeader>
+          <DialogTitle class="flex items-center gap-2.5 font-display">
+            <span class="size-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <UploadCloud class="size-4.5" />
+            </span>
+            {{ t('admin.plugins.install', '安装新插件') }}
+          </DialogTitle>
+          <DialogDescription>
+            {{ t('admin.plugins.installDesc', '从本地目录、远程 URL 或上传 zip 包安装插件。') }}
+          </DialogDescription>
+        </DialogHeader>
+
+        <div class="flex flex-col gap-4">
+          <div class="flex flex-col gap-2">
+            <Label
+              for="plugin-install-source"
+              class="text-sm font-medium"
+            >
+              {{ t('admin.plugins.installSource', '安装来源') }}
+            </Label>
+            <Select
+              :model-value="installSource"
+              @update:model-value="onInstallSourceChange"
+            >
+              <SelectTrigger
+                id="plugin-install-source"
+                class="rounded-xl"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">
+                  {{ t('admin.plugins.sourceLocal', '本地目录扫描') }}
+                </SelectItem>
+                <SelectItem value="remote">
+                  {{ t('admin.plugins.sourceRemote', '远程 URL 下载') }}
+                </SelectItem>
+                <SelectItem value="upload">
+                  {{ t('admin.plugins.sourceUpload', '上传 zip 包') }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div
+            v-if="installSource === 'local'"
+            class="flex flex-col gap-2"
+          >
+            <Label
+              for="plugin-install-local-slug"
+              class="text-sm font-medium"
+            >
+              {{ t('admin.plugins.installSlug', '插件 slug') }}
+            </Label>
+            <Input
+              id="plugin-install-local-slug"
+              v-model="installLocalSlug"
+              class="rounded-xl font-mono text-sm"
+              placeholder="hello-rosetta"
+            />
+            <p class="text-xs text-muted-foreground">
+              {{ t('admin.plugins.installLocalHint', '插件需已存在于服务器 plugins/ 目录，可先点「扫描本地」。') }}
+            </p>
+          </div>
+
+          <div
+            v-else-if="installSource === 'remote'"
+            class="flex flex-col gap-3"
+          >
+            <div class="flex flex-col gap-2">
+              <Label
+                for="plugin-install-remote-url"
+                class="text-sm font-medium"
+              >
+                {{ t('admin.plugins.installUrl', '插件包 URL') }}
+              </Label>
+              <Input
+                id="plugin-install-remote-url"
+                v-model="installRemoteUrl"
+                type="url"
+                class="rounded-xl"
+                placeholder="https://example.com/plugin.zip"
+              />
+            </div>
+            <div class="flex flex-col gap-2">
+              <Label
+                for="plugin-install-remote-checksum"
+                class="text-sm font-medium"
+              >
+                {{ t('admin.plugins.installChecksum', 'SHA256 校验和（可选）') }}
+              </Label>
+              <Input
+                id="plugin-install-remote-checksum"
+                v-model="installRemoteChecksum"
+                class="rounded-xl font-mono text-xs"
+                :placeholder="t('admin.plugins.installChecksumHint', '留空则跳过校验')"
+              />
+            </div>
+          </div>
+
+          <div
+            v-else
+            class="flex flex-col gap-2"
+          >
+            <Label
+              for="plugin-install-file"
+              class="text-sm font-medium"
+            >
+              {{ t('admin.plugins.installFile', 'zip 文件') }}
+            </Label>
+            <Input
+              id="plugin-install-file"
+              type="file"
+              accept=".zip,application/zip"
+              class="rounded-xl"
+              @change="onInstallFileChange"
+            />
+          </div>
+
+          <p
+            v-if="installError"
+            class="text-xs text-destructive flex items-center gap-1"
+          >
+            <AlertTriangle class="size-3.5 shrink-0" />
+            {{ installError }}
+          </p>
+        </div>
+
+        <DialogFooter class="gap-2 sm:gap-0">
+          <DialogClose as-child>
+            <Button variant="ghost">
+              {{ t('admin.actions.cancel', '取消') }}
+            </Button>
+          </DialogClose>
+          <Button
+            variant="default"
+            class="shadow-soft"
+            :disabled="installBusy"
+            @click="submitInstall"
+          >
+            <template v-if="installBusy">
+              <RefreshCw
+                data-icon="inline-start"
+                class="animate-spin"
+              />
+              {{ t('admin.plugins.installing', '安装中…') }}
+            </template>
+            <template v-else>
+              <UploadCloud data-icon="inline-start" />
+              {{ t('admin.plugins.installAction', '安装') }}
+            </template>
           </Button>
         </DialogFooter>
       </DialogContent>

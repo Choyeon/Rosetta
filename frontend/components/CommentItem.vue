@@ -1,3 +1,9 @@
+<!--
+  单条评论行（含点赞与回复入口）。
+  后端 POST /comments/{id}/like 是纯计数 +1、无取消语义，故 isLiked 一旦置真就永久锁按钮；
+  响应里 likes_count 位置不固定（信封层 / data 层都要探测）。点赞状态只存在本组件、不回写
+  父列表，父页面 refresh 后本地点赞会丢；depth 仅是视觉缩进且封顶 2 级，不代表真实树深度。
+-->
 <template>
   <div
     class="card-surface flex gap-3 p-4"

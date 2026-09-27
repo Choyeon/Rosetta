@@ -1,3 +1,11 @@
+<!--
+  后台文档浏览器（ssr:false + layout:'admin'）：Markdown 渲染器惰性构建后缓成 Promise（_rendererReady），
+  只构建一次；高亮依赖任一 import 失败即整体降级为无高亮渲染，此时代码块配色只剩本文件
+  scoped 里的 hljs-* 内联兜底——highlight.js/styles/github.css 同样是运行时动态 import，也可能失败。
+  v-html 前强制 sanitizeMarkdownHtml：marked 官方已移除 sanitize 选项，这一层是给"文档转后台可编辑"
+  预留的注入面封堵（当前 docs 源仍是只读内建文件）；正文首个 h1 由 CSS 隐藏，避免与页头标题重复。
+-->
+
 <script setup lang="ts">
 /**
  * Rosetta 后台开发文档浏览器。
@@ -14,6 +22,7 @@ import { fetchDocsCatalog, fetchDocsDoc, groupByCategory, type DocsCatalogItem }
 import { Skeleton } from '~~/components/ui/skeleton'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { useDocsCatalog as useCatalogExport } from '~~/composables/useDocsCatalog'
+import { sanitizeMarkdownHtml } from '~~/lib/sanitize'
 
 // 后台布局内渲染：带侧边栏/面包屑，可随时跳转其他 Admin 页面
 definePageMeta({
@@ -119,7 +128,9 @@ async function _buildRenderer(): Promise<(md: string) => string> {
 async function renderMarkdown(md: string): Promise<string> {
   if (!_rendererReady) _rendererReady = _buildRenderer()
   const renderer = await _rendererReady
-  return renderer(md)
+  // marked 的 sanitize 选项已被官方移除，v-html 前必须显式走 lib/sanitize 白名单；
+  // 当前 docs 源是内建只读文件，但后台可编辑化后这里就是注入面，防御性封死。
+  return sanitizeMarkdownHtml(renderer(md) as string)
 }
 
 // ═══════════════════════════════════════════════════════════════════════

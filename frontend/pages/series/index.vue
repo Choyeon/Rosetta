@@ -1,3 +1,8 @@
+<!--
+  系列列表页：GET /series，title/description 按四语 dict 取值并兼容 name 字段。
+  契约：useAPI 的 key 是 setup 期字符串拼接（非 computed）且没有 locale 监听，叠加本路由
+  swr 3600 强缓存 —— 切语言后列表通常要整页重载才见效，改成响应式前先确认不动缓存策略。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">

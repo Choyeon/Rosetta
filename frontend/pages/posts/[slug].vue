@@ -1,3 +1,11 @@
+<!--
+  文章详情（SSR）：刻意不用 useAPI / useFetch 封装，直接 useAsyncData + 确定性纯字符串 cacheKey
+  （post:detail:<slug>:<locale>），handler 内按 import.meta.server 选 baseURL 并手动补 Bearer/Accept-Language，
+  让两端精确命中同一条 payload，不依赖 headers / 函数 toString 这类会漂移的输入。
+  Hydrate 锚点：h1 无条件渲染 + 标题同步写入 useState(`post-detail-title:<slug>`)；onMounted 只刷评论/相似/TOC，
+  禁止 refreshPost（客户端接管会 abort 仍在传输的 SSR 请求，表现为正文大的文章 ERR_ABORTED）。
+-->
+
 <template>
   <div>
     <!-- eslint-disable vue/no-v-html -- Vue 3；文章 HTML 已用 DOMPurify 净化 -->
@@ -301,6 +309,7 @@
                 <Textarea
                   ref="commentTextareaRef"
                   v-model="commentContent"
+                  :aria-label="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
                   :placeholder="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
                   rows="4"
                   class="resize-none"
@@ -775,7 +784,16 @@ const normalizedTags = computed(() => {
 
 const seoTitle = computed(() => pickLocalized(post.value?.title) || displayPostTitle.value || '')
 const seoExcerpt = computed(() => pickLocalized(post.value?.excerpt))
-const seoDescription = computed(() => seoExcerpt.value || pickLocalized(post.value?.content || '').slice(0, 180))
+// 回退到正文时必须剥掉 HTML 标签：详情端点返回的是服务端渲染后的 HTML，
+// 直接 slice 会把标签碎片写进 meta description。
+const seoDescription = computed(() => {
+  if (seoExcerpt.value) return seoExcerpt.value.slice(0, 180)
+  return pickLocalized(post.value?.content || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+})
 
 // ===== SEO（useSeo composable）：全部使用 ComputedRef，useSeo/useArticleJsonLd 内部响应式追踪 =====
 // 从响应式 post 中安全提取未类型化的字段（API 响应结构在运行时确认）

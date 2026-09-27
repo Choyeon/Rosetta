@@ -1,3 +1,8 @@
+<!--
+  后台仪表盘首页：ECharts 出访趋势/KPI 卡片/健康雷达/合并活动线，数据经 useAdminManage wrapper + Promise.allSettled 并行拉取。
+  契约：statsRaw 缺失字段需规范化，且 health_score/metric_scores 的 null 必须保持 null——填 0 会把"未取到数据"渲染成红色"危急"假告警；
+  活动线由 posts/pending-comments/activities 三源合并，必须按真实时间戳 at 倒序而非按 id（id 排序会退化成按来源分组）。
+-->
 <script setup lang="ts">
 import {
   FileText,
@@ -21,6 +26,8 @@ import {
   Medal,
   Eye,
   Users,
+  AlertTriangle,
+  HelpCircle,
   MessageSquare
 } from '@lucide/vue'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
@@ -166,6 +173,8 @@ type SystemHealthShape = {
   db_rtt_ms?: number | null
   cache_hit_percent?: number | null
   health_score?: number | null
+  /** 后端算好的每轴健康分（0-100，越高越好）；null=该指标未测到 */
+  metric_scores?: Partial<Record<'cache' | 'cpu' | 'db' | 'memory', number | null>> | null
 }
 
 type ActivityItem = {
@@ -173,11 +182,19 @@ type ActivityItem = {
   icon: 'post' | 'comment' | 'user' | 'system' | 'alert'
   text: string
   time: string
+  /** 原始时间戳（epoch ms），用于跨来源按时间倒序合并 */
+  at: number
   accent: 'primary' | 'success' | 'warning' | 'info' | 'error'
 }
 const activities = shallowRef<ActivityItem[]>([])
 
 // ============== 工具：相对时间 ==============
+function epochOf(iso: string | null | undefined): number {
+  if (!iso) return 0
+  const d = new Date(iso).getTime()
+  return Number.isNaN(d) ? 0 : d
+}
+
 function timeAgo(iso: string | null | undefined): string {
   if (!iso) return '刚刚'
   const d = new Date(iso).getTime()
@@ -236,7 +253,9 @@ async function loadAll() {
         memory_percent: null as number | null,
         db_rtt_ms: null as number | null,
         cache_hit_percent: null as number | null,
-        health_score: 0
+        // 未知就是未知：填 0 会把"没取到数据"渲染成红色「危急」，是假告警
+        health_score: null as number | null,
+        metric_scores: { cpu: null, memory: null, db: null, cache: null }
       }
       statsRaw.value = {
         summary: { ...defaultSummary, ...(raw?.summary ?? {}) },
@@ -274,6 +293,7 @@ async function loadAll() {
           icon: 'post',
           text: `${p.status === 'published' ? '已发布' : '草稿'}：《${p.title}》`,
           time: timeAgo(p.published_at ?? p.created_at),
+          at: epochOf(p.published_at ?? p.created_at),
           accent: p.status === 'published' ? 'success' : 'warning'
         })
       }
@@ -290,6 +310,7 @@ async function loadAll() {
           icon: 'comment',
           text: `新评论待审核：来自「${c.author_name}」`,
           time: timeAgo(c.created_at),
+          at: epochOf(c.created_at),
           accent: 'warning'
         })
       }
@@ -314,12 +335,14 @@ async function loadAll() {
           icon: 'system',
           text: content.slice(0, 60),
           time: timeAgo((a as unknown as { created_at?: string }).created_at),
+          at: epochOf((a as unknown as { created_at?: string }).created_at),
           accent: 'primary'
         })
       }
     }
 
-    merged.sort((x, y) => y.id - x.id)
+    // 按真实时间倒序合并（此前按 id 排序 = 按"来源"分组，动态永远排最前）
+    merged.sort((x, y) => y.at - x.at)
     activities.value = merged.slice(0, 6)
   } catch {
     // 错误已由 apiFetch 统一 toast，此处仅做状态兜底
@@ -512,13 +535,6 @@ const kpiCards = computed<KpiCardDef[]>(() => {
 })
 
 // ============== 各图表 computed options ==============
-
-// 基础 grid / tooltip 样式（根据 palette）
-const _commonTextStyle = computed(() => ({
-  color: palette.value.text,
-  fontFamily: 'Inter, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif',
-  fontSize: 12
-}))
 
 function shortDateLabels(raw: string[]): string[] {
   return raw.map((d) => {
@@ -847,6 +863,7 @@ const contentDonutOption = computed(() => {
 })
 
 // 4.1 Top 文章水平柱
+const hasTopArticles = computed(() => (statsRaw.value?.top_articles ?? []).length > 0)
 const topArticlesOption = computed(() => {
   const P = palette.value
   const arts = (statsRaw.value?.top_articles ?? []).slice(0, 6)
@@ -929,41 +946,80 @@ const topArticlesOption = computed(() => {
 })
 
 // 4.2 健康雷达 + 4.3 健康分数仪表
+// 雷达每轴统一成「健康分」（越高越好），原始读数另放 display。
+// 旧实现把 CPU/内存的占用率（越低越好）和数据库/缓存的健康分（越高越好）塞进同一个
+// value 字段，配色规则只能二选一——结果内存 39%（健康）显示橙色警告，CPU 满载（异常）反而绿色。
 type HealthRow = {
+  key: 'cache' | 'cpu' | 'db' | 'memory'
   label: string
-  value: number
-  reversed?: boolean
+  /** 0-100 健康分，来自后端 metric_scores；null = 该指标未测到 */
+  score: number | null
+  /** 展示用原始读数（%、ms、未知/不可用） */
+  display: string
 }
+
+const health = computed(() => (statsRaw.value?.system_health ?? {}) as SystemHealthShape)
+
 const healthRows = computed<HealthRow[]>(() => {
-  const h = (statsRaw.value?.system_health ?? {}) as SystemHealthShape
-  const rows: HealthRow[] = []
-  if (h.cpu_percent != null) rows.push({ label: 'CPU', value: Math.round(Number(h.cpu_percent)) })
-  if (h.memory_percent != null)
-    rows.push({ label: '内存', value: Math.round(Number(h.memory_percent)) })
-  if (h.db_rtt_ms != null) {
-    // RTT 越小越好 → 反向：0ms=100分，500ms=0分
-    const rtt = Math.min(500, Math.max(0, Number(h.db_rtt_ms)))
-    rows.push({ label: '数据库', value: Math.round(100 - (rtt / 500) * 100), reversed: true })
-  }
-  if (h.cache_hit_percent != null)
-    rows.push({ label: '缓存', value: Math.round(Number(h.cache_hit_percent)) })
-  if (rows.length < 4) {
-    // 补齐 4 轴显示（空占位会变形；不能重复 push rows[0] 同一对象引用，
-    // 否则 v-for :key=r.label 出现 duplicate key 警告）
-    const fillers = ['N/A-1', 'N/A-2', 'N/A-3', 'N/A-4']
-    let i = 0
-    while (rows.length < 4) {
-      rows.push({ label: fillers[i++] ?? `N/A-${rows.length + 1}`, value: 0 })
-    }
-  }
-  return rows
+  const h = health.value
+  const scores = h.metric_scores ?? {}
+  const percent = (value: number | null | undefined) =>
+    value == null ? null : `${Math.round(Number(value))}%`
+  return [
+    { key: 'cpu', label: 'CPU', score: scores.cpu ?? null, display: percent(h.cpu_percent) ?? '未知' },
+    { key: 'memory', label: '内存', score: scores.memory ?? null, display: percent(h.memory_percent) ?? '未知' },
+    {
+      key: 'db',
+      label: '数据库',
+      score: scores.db ?? null,
+      display: h.db_rtt_ms == null ? '不可用' : `${Number(h.db_rtt_ms).toFixed(1)} ms`
+    },
+    { key: 'cache', label: '缓存', score: scores.cache ?? null, display: percent(h.cache_hit_percent) ?? '未知' }
+  ]
 })
+
+const healthScore = computed<number | null>(() => {
+  const raw = health.value.health_score
+  if (raw == null || !Number.isFinite(Number(raw))) return null
+  return Math.round(Number(raw))
+})
+
+// 等级口径单源：仪表、徽标、文案共用，不再各处重写 85/60 阈值
+const healthLevel = computed<{ label: string, tone: 'bad' | 'ok' | 'unknown' | 'warn' }>(() => {
+  const score = healthScore.value
+  if (score == null) return { label: '未知', tone: 'unknown' }
+  if (score >= 85) return { label: '健康', tone: 'ok' }
+  if (score >= 60) return { label: '需注意', tone: 'warn' }
+  return { label: '异常', tone: 'bad' }
+})
+
+const healthLevelClass = computed(() => ({
+  ok: 'text-success border-success/30 bg-success/5',
+  warn: 'text-warning border-warning/30 bg-warning/5',
+  bad: 'text-destructive border-destructive/30 bg-destructive/5',
+  unknown: 'text-muted-foreground border-border/40 bg-muted/30'
+}[healthLevel.value.tone]))
+
+const healthLevelIcon = computed(() => ({
+  bad: AlertTriangle,
+  ok: CheckCircle2,
+  unknown: HelpCircle,
+  warn: AlertTriangle
+}[healthLevel.value.tone]))
+
+// 统一按「健康分」配色（分数越高越好）；未测到的指标走 muted，不伪装成警告或正常
+function healthRowClass(score: number | null): string {
+  if (score == null) return 'text-muted-foreground'
+  if (score >= 70) return 'text-success'
+  return score >= 40 ? 'text-warning' : 'text-destructive'
+}
 
 const healthRadarOption = computed(() => {
   const P = palette.value
   const rows = healthRows.value
   const indicators = rows.map(r => ({ name: r.label, max: 100 }))
-  const data = rows.map(r => r.value)
+  // 未测到的轴画 0（雷达需要满 4 轴才不成形），真实语义由右侧文案"未知"承载
+  const data = rows.map(r => r.score ?? 0)
   return {
     animationDuration: 800,
     tooltip: {
@@ -1017,8 +1073,15 @@ const healthRadarOption = computed(() => {
 
 const healthGaugeOption = computed(() => {
   const P = palette.value
-  const score = Math.round(Number((statsRaw.value?.system_health as SystemHealthShape)?.health_score ?? 0))
-  const statusColor = score >= 85 ? P.success : score >= 60 ? P.warning : P.danger
+  const score = healthScore.value
+  const known = score != null
+  const statusColor = score == null
+    ? P.textSoft
+    : score >= 85
+      ? P.success
+      : score >= 60
+        ? P.warning
+        : P.danger
   return {
     animationDuration: 1100,
     series: [
@@ -1072,9 +1135,10 @@ const healthGaugeOption = computed(() => {
           fontSize: 28,
           fontWeight: 800,
           color: P.text,
-          formatter: '{value}'
+          // 无实测数据时显示"未知"，不要让 0 分指针冒充「危急」
+          formatter: () => (known ? String(score) : '未知')
         },
-        data: [{ value: score, name: '健康分数' }]
+        data: [{ value: score ?? 0, name: known ? '健康分数' : '暂无实测数据' }]
       }
     ]
   }
@@ -1348,7 +1412,7 @@ const pillFor = (a: ActivityItem['accent']) =>
                 class="mt-0.5 text-3xl font-bold tabular-nums tracking-tight"
                 :class="heroTextPrimary"
               >
-                {{ Number(statsRaw?.system_health?.health_score ?? 0) }}
+                {{ healthScore ?? '—' }}
                 <span
                   class="text-sm font-semibold ml-0.5"
                   :class="isDark ? 'text-white/70' : 'text-slate-500'"
@@ -1356,7 +1420,9 @@ const pillFor = (a: ActivityItem['accent']) =>
               </p>
             </div>
             <div class="shrink-0 flex items-center gap-2">
+              <!-- 只在真的取到统计数据后才声称"实时监控"，否则这里是假告警反向的假安心 -->
               <Badge
+                v-if="statsRaw"
                 variant="outline"
                 class="rounded-full backdrop-blur"
                 :class="isDark
@@ -1709,11 +1775,23 @@ const pillFor = (a: ActivityItem['accent']) =>
               class="h-full w-full rounded-xl"
             />
             <v-chart
-              v-else
+              v-else-if="hasTopArticles"
               autoresize
               :option="topArticlesOption"
               class="h-full w-full"
             />
+            <!-- 后端不再伪造热门榜：没有真实访问记录时给出明确空状态 -->
+            <div
+              v-else
+              class="flex h-full flex-col items-center justify-center gap-1 text-center"
+            >
+              <p class="text-sm text-muted-foreground">
+                暂无文章访问数据
+              </p>
+              <p class="text-xs text-muted-foreground/80">
+                产生真实访问后此处会自动填充
+              </p>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -1732,16 +1810,13 @@ const pillFor = (a: ActivityItem['accent']) =>
           <Badge
             variant="outline"
             class="rounded-full h-5 px-2 text-[11px]"
-            :class="
-              Number(statsRaw?.system_health?.health_score ?? 0) >= 85
-                ? 'text-success border-success/30 bg-success/5'
-                : Number(statsRaw?.system_health?.health_score ?? 0) >= 60
-                  ? 'text-warning border-warning/30 bg-warning/5'
-                  : 'text-destructive border-destructive/30 bg-destructive/5'
-            "
+            :class="healthLevelClass"
           >
-            <CheckCircle2 class="size-3 mr-1" />
-            在线
+            <component
+              :is="healthLevelIcon"
+              class="size-3 mr-1"
+            />
+            {{ healthLevel.label }}
           </Badge>
         </CardHeader>
         <CardContent class="pt-0 pb-2">
@@ -1771,21 +1846,15 @@ const pillFor = (a: ActivityItem['accent']) =>
           <div class="mt-1 grid grid-cols-2 gap-2 text-[11.5px]">
             <div
               v-for="r in healthRows"
-              :key="r.label"
+              :key="r.key"
               class="flex items-center justify-between rounded-lg bg-accent/40 px-2.5 py-1.5"
             >
               <span class="text-muted-foreground">{{ r.label }}</span>
               <span
                 class="font-semibold tabular-nums"
-                :class="
-                  (!r.reversed && r.value < 70) || (r.reversed && r.value < 60)
-                    ? 'text-warning'
-                    : 'text-success'
-                "
+                :class="healthRowClass(r.score)"
               >
-                {{ r.label === '数据库' && statsRaw?.system_health?.db_rtt_ms != null
-                  ? `${Number(statsRaw?.system_health?.db_rtt_ms).toFixed(1)} ms`
-                  : `${r.value}%` }}
+                {{ r.display }}
               </span>
             </div>
           </div>

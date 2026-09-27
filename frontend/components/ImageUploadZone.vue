@@ -1,3 +1,10 @@
+<!--
+  图片上传队列：拖拽/选择 → useImageCompress 客户端压缩 → useMediaLibrary 上传入库。
+  预览用的 createObjectURL 必须在 removeItem / clearQueue / onBeforeUnmount 逐个 revoke，
+  漏掉一处对话框反复开关就稳定泄漏内存；队列条目必须是 reactive，换成普通对象进度条与
+  状态角标会一直停在 0%/uploading。uploaded 事件每次只发本次完成的那一项（累计重发会让
+  调用方把旧照片重复入库）；进度是计时器模拟值，ofetch 拿不到 upload.onprogress。
+-->
 <template>
   <div
     class="image-upload-zone"
@@ -127,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onBeforeUnmount, reactive, ref } from 'vue'
 import { UploadCloud, Check, X } from '@lucide/vue'
 import { compressImage, formatBytes, type CompressResult } from '~~/composables/useImageCompress'
 import { useMediaLibrary } from '~~/composables/useMedia'
@@ -178,32 +185,66 @@ const inputRef = ref<HTMLInputElement | null>(null)
 const isDragging = ref(false)
 const queue = ref<UploadItem[]>([])
 
+/** 每项一个轮询定时器，结束时（含异常）必须 clearInterval，否则定时器永久泄漏 */
+const progressTimers = new Map<string, ReturnType<typeof setInterval>>()
+let waitTimer: ReturnType<typeof setInterval> | null = null
+
 const { uploadMedia } = useMediaLibrary()
+
+function stopProgressTimer(id: string) {
+  const timer = progressTimers.get(id)
+  if (timer) {
+    clearInterval(timer)
+    progressTimers.delete(id)
+  }
+}
 
 function triggerInput() {
   if (props.disabled) return
   inputRef.value?.click()
 }
 
+/** multiple=false 时只取第一个文件：拖拽/选择都可能带进来多个。 */
+function takeFiles(files: File[]): File[] {
+  if (props.multiple) return files
+  return files.slice(0, 1)
+}
+
 function onFileInput(e: Event) {
   const target = e.target as HTMLInputElement
   const files = Array.from(target.files ?? [])
-  if (files.length) handleFiles(files)
+  if (files.length) handleFiles(takeFiles(files))
+  // 同一张图连选两次：value 不清空就不会再触发 change
   target.value = ''
 }
 
 function onDrop(e: DragEvent) {
   isDragging.value = false
   if (props.disabled) return
-  const files = Array.from(e.dataTransfer?.files ?? []).filter(f =>
-    f.type.startsWith('image/')
-  )
+  const dropped = Array.from(e.dataTransfer?.files ?? [])
+  if (!dropped.length) return
+  const images = dropped.filter(f => f.type.startsWith('image/'))
+  const rejectedNonImage = dropped.length - images.length
+  const files = takeFiles(images)
+  const trimmed = images.length - files.length
+  if (rejectedNonImage > 0) {
+    // 非图片文件被静默丢弃时用户以为「没反应」，必须给出反馈
+    emit('error', files.length === 0
+      ? '仅支持上传图片文件（JPG / PNG / WebP / GIF）'
+      : `已忽略 ${rejectedNonImage} 个非图片文件`)
+  }
+  if (trimmed > 0) {
+    emit('error', `该位置只支持 1 张图片，已忽略其余 ${trimmed} 张`)
+  }
   if (files.length) handleFiles(files)
 }
 
 function handleFiles(files: File[]) {
   const valid = files.filter((f) => {
-    if (!f.type.startsWith('image/')) return false
+    if (!f.type.startsWith('image/')) {
+      emit('error', `${f.name} 不是图片文件`)
+      return false
+    }
     if (props.maxSize && f.size > props.maxSize * 1024 * 1024) {
       emit('error', `${f.name} 超过 ${props.maxSize}MB 限制`)
       return false
@@ -214,7 +255,9 @@ function handleFiles(files: File[]) {
   if (!valid.length) return
 
   for (const file of valid) {
-    const item: UploadItem = {
+    // 必须是 reactive 对象：直接改原始对象不会触发渲染，
+    // 进度条与状态角标会一直停在 0% / uploading。
+    const item = reactive<UploadItem>({
       id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       file,
       name: file.name,
@@ -222,13 +265,15 @@ function handleFiles(files: File[]) {
       preview: URL.createObjectURL(file),
       status: 'pending',
       progress: 0
-    }
+    })
     queue.value.push(item)
     void processItem(item)
   }
 }
 
 async function processItem(item: UploadItem) {
+  // 阶段标记：上传阶段由 apiFetch 统一 toast，本地阶段只能自己上报
+  let phase: 'compress' | 'upload' = 'compress'
   try {
     let uploadFile = item.file
 
@@ -242,28 +287,31 @@ async function processItem(item: UploadItem) {
     item.status = 'uploading'
     item.progress = 10
 
-    // 模拟进度（XMLHttpRequest 可做真实进度，这里简化）
+    // 模拟进度（ofetch 拿不到 upload.onprogress，这里给推进感）
     const progressTimer = setInterval(() => {
       if (item.progress < 90) item.progress += 10
     }, 150)
+    progressTimers.set(item.id, progressTimer)
 
+    phase = 'upload'
     const media = await uploadMedia(uploadFile, props.category)
 
-    clearInterval(progressTimer)
     item.progress = 100
     item.status = 'success'
     item.result = media
-
-    const successItems = queue.value.filter(q => q.status === 'success')
-    emit('uploaded', successItems.map(i => i.result))
+    // 只发本次完成的这一项：累计重发会让调用方把老照片又建一遍
+    emit('uploaded', [media])
   } catch (e) {
     item.status = 'error'
     item.error = e instanceof Error ? e.message : '上传失败'
-    emit('error', item.error)
+    if (phase !== 'upload') emit('error', item.error)
+  } finally {
+    stopProgressTimer(item.id)
   }
 }
 
 function removeItem(id: string) {
+  stopProgressTimer(id)
   const idx = queue.value.findIndex(i => i.id === id)
   if (idx >= 0) {
     const item = queue.value[idx]
@@ -274,6 +322,8 @@ function removeItem(id: string) {
 
 /** 清空队列 */
 function clearQueue() {
+  for (const timer of progressTimers.values()) clearInterval(timer)
+  progressTimers.clear()
   for (const item of queue.value) {
     URL.revokeObjectURL(item.preview)
   }
@@ -285,12 +335,13 @@ async function waitAll(): Promise<unknown[]> {
   const pending = queue.value.filter(i => i.status !== 'success' && i.status !== 'error')
   if (!pending.length) return getResults()
   await new Promise((resolve) => {
-    const check = setInterval(() => {
+    waitTimer = setInterval(() => {
       const stillPending = queue.value.some(
         i => i.status === 'pending' || i.status === 'compressing' || i.status === 'uploading'
       )
       if (!stillPending) {
-        clearInterval(check)
+        if (waitTimer) clearInterval(waitTimer)
+        waitTimer = null
         resolve(true)
       }
     }, 200)
@@ -301,6 +352,17 @@ async function waitAll(): Promise<unknown[]> {
 function getResults(): unknown[] {
   return queue.value.filter(i => i.status === 'success').map(i => i.result)
 }
+
+onBeforeUnmount(() => {
+  // objectURL 不会随组件销毁自动回收，相册对话框反复开关会稳定泄漏内存
+  for (const timer of progressTimers.values()) clearInterval(timer)
+  progressTimers.clear()
+  if (waitTimer) {
+    clearInterval(waitTimer)
+    waitTimer = null
+  }
+  for (const item of queue.value) URL.revokeObjectURL(item.preview)
+})
 
 defineExpose({ clearQueue, waitAll, getResults })
 </script>

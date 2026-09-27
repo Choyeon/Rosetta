@@ -1,3 +1,10 @@
+<!--
+  文章卡骨架，7 个公开列表页（首页 / posts / posts/hot / categories / tags / series / search）在 pending 期用它占位防 CLS；
+  首页与 series 会按 PostCard 的横条排版显式传 variant="compact"，所以两副骨架必须成对维护。
+  尺寸不是随手写的：compact 封面 w-[120px] sm:w-[168px] md:w-[180px] aspect-[4/3]、default aspect-[16/9]、
+  footer border-t border-border/60 都逐块对齐 PostCard；卡片外壳同样挂 .card-surface，才能吃到主题/admin 同一层圆角与边框。
+  外部样式只认 className prop（不是 class，当前 7 个消费点无人传），经 cn 合并进各自 <article> 根。
+-->
 <script setup lang="ts">
 import { cn } from '~~/lib/utils'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'

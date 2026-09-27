@@ -1,3 +1,9 @@
+<!--
+  独立页面（Page）管理列表：服务端分页 + CRUD 弹窗，请求走 useAdminManage wrapper 单源。
+  硬契约：exclude_slugs=[about,guestbook] 不可移除——关于页内容真源在站点设置 basic.about_page_html、
+  留言板是固定路由页，混进列表会造成双编辑入口；后端 PageCreate/PageUpdate 是 extra=forbid，
+  请求体只能带 slug/title/status/content 四键，多一个字段即 422；title/content 提交完整 i18n dict。
+-->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
 import {
@@ -13,10 +19,14 @@ import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
-import { Switch } from '~~/components/ui/switch'
-import { Pin } from '@lucide/vue'
-import MarkdownEditor from '~~/components/admin/MarkdownEditor.vue'
-import { getLocalizedStr, slugify } from '~~/composables/useAdminI18n'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import {
+  getLocalizedStr,
+  normalizeI18nDict,
+  toI18nPayload,
+  slugify,
+  type I18nDict
+} from '~~/composables/useAdminI18n'
 import {
   Select,
   SelectContent,
@@ -44,29 +54,31 @@ const pendingDeleteId = ref<number | null>(null)
 
 const form = reactive({
   slug: '',
-  title: '',
+  title: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
   status: 'draft' as 'draft' | 'published',
-  is_pinned: false,
-  content: ''
+  content: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict
 })
 
 const editingId = ref<number | null>(null)
 
+/** 后端 slug 校验 ^[a-z0-9-]+$；slugify 可能保留中文，仅当结果合法才自动填充 */
+const SLUG_PATTERN = /^[a-z0-9-]+$/
 let slugManualEdit = false as boolean
 watch(
   () => form.title,
   (val) => {
-    if (!slugManualEdit && val) {
-      form.slug = slugify(val)
+    if (!slugManualEdit && getLocalizedStr(val)) {
+      const s = slugify(getLocalizedStr(val))
+      form.slug = SLUG_PATTERN.test(s) ? s : ''
     }
-  }
+  },
+  { deep: true }
 )
 
 const columns: Column[] = [
   { key: 'slug', title: 'Slug', class: 'font-mono text-xs text-muted-foreground' },
   { key: 'title', title: '标题', class: 'font-medium' },
   { key: 'status', title: '状态', class: 'w-24' },
-  { key: 'is_pinned', title: '置顶', align: 'center', class: 'w-16' },
   { key: 'updated_at', title: '更新时间', class: 'w-44 text-xs text-muted-foreground' }
 ]
 
@@ -83,6 +95,12 @@ const loadData = async () => {
     })
     pages.value = res.items || []
     total.value = res.total || pages.value.length
+    // 删除/筛选后当前页可能越界：夹回最后一页
+    const maxPage = Math.max(1, Math.ceil((total.value ?? 0) / pageSize.value))
+    if (page.value > maxPage && maxPage !== page.value) {
+      page.value = maxPage
+      return
+    }
   } catch {
     pages.value = []
     total.value = 0
@@ -95,10 +113,9 @@ const openNew = () => {
   dialogMode.value = 'new'
   editingId.value = null
   form.slug = ''
-  form.title = ''
+  form.title = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.status = 'draft'
-  form.is_pinned = false
-  form.content = ''
+  form.content = { zh: '', en: '', ja: '', zh_Hant: '' }
   slugManualEdit = false
   dialogOpen.value = true
 }
@@ -107,10 +124,10 @@ const openEdit = (p: AdminPage) => {
   dialogMode.value = 'edit'
   editingId.value = p.id
   form.slug = p.slug
-  form.title = getLocalizedStr(p.title)
+  // 保留后端完整多语言 dict，避免保存时把其他语言内容抹掉
+  form.title = normalizeI18nDict(p.title)
   form.status = p.status
-  form.is_pinned = p.is_pinned
-  form.content = getLocalizedStr(p.content)
+  form.content = normalizeI18nDict(p.content)
   slugManualEdit = true
   dialogOpen.value = true
 }
@@ -120,18 +137,23 @@ const save = async () => {
     toast.error('请输入 slug')
     return
   }
-  if (!form.title.trim()) {
-    toast.error('请输入标题')
+  if (!SLUG_PATTERN.test(form.slug.trim())) {
+    toast.error('Slug 只能包含小写字母、数字和连字符（-）')
+    return
+  }
+  const titlePayload = toI18nPayload(form.title)
+  if (!titlePayload) {
+    toast.error('请输入标题（至少一种语言）')
     return
   }
   saving.value = true
   try {
+    // PageCreate/PageUpdate 为 extra=forbid：body 只能带 slug/title/status/content
     const payload: Record<string, unknown> = {
-      slug: form.slug,
-      title: { zh: form.title },
+      slug: form.slug.trim(),
+      title: titlePayload,
       status: form.status,
-      is_pinned: form.is_pinned,
-      content: { zh: form.content }
+      content: toI18nPayload(form.content) ?? {}
     }
     if (dialogMode.value === 'edit' && editingId.value) {
       await updateAdminPage(editingId.value, payload)
@@ -155,15 +177,16 @@ function confirmDelete(id: number) {
 }
 
 async function doDelete() {
-  if (pendingDeleteId.value == null) return
-  try {
-    await deleteAdminPage(pendingDeleteId.value)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    pendingDeleteId.value = null
+  const id = pendingDeleteId.value
+  if (id == null) return
+  await deleteAdminPage(id)
+  toast.success('删除成功')
+  pendingDeleteId.value = null
+  // 删掉当前页最后一条时回退一页（watch 会自动触发重新加载）
+  if (pages.value.length <= 1 && page.value > 1) {
+    page.value -= 1
+  } else {
     await loadData()
-  } catch {
-    /* apiFetch 已统一 toast */
   }
 }
 
@@ -216,12 +239,6 @@ onMounted(() => {
           {{ (row as AdminPage).status === 'published' ? '已发布' : '草稿' }}
         </Badge>
       </template>
-      <template #cell-is_pinned="{ row }">
-        <Pin
-          v-if="(row as AdminPage).is_pinned"
-          class="size-3.5 text-amber-500"
-        />
-      </template>
       <template #cell-updated_at="{ row }">
         {{ formatAdminDateTime((row as AdminPage).updated_at ?? (row as AdminPage).created_at) }}
       </template>
@@ -263,32 +280,30 @@ onMounted(() => {
       <div class="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-1">
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">
+            <Label
+              for="page-form-slug"
+              class="mb-1 block text-xs text-muted-foreground"
+            >
               Slug <span class="text-destructive">*</span>
             </Label>
             <Input
+              id="page-form-slug"
               v-model="form.slug"
-              placeholder="如 about, contact"
+              placeholder="如 about, contact（仅限小写字母/数字/-）"
               class="h-9 rounded-[10px]"
               @input="slugManualEdit = true"
             />
           </div>
           <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">
-              标题 <span class="text-destructive">*</span>
-            </Label>
-            <Input
-              v-model="form.title"
-              placeholder="页面标题"
-              class="h-9 rounded-[10px]"
-            />
-          </div>
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">状态</Label>
+            <Label
+              for="page-form-status"
+              class="mb-1 block text-xs text-muted-foreground"
+            >状态</Label>
             <Select v-model="form.status">
-              <SelectTrigger class="h-9 rounded-[10px]">
+              <SelectTrigger
+                id="page-form-status"
+                class="h-9 rounded-[10px]"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -301,18 +316,20 @@ onMounted(() => {
               </SelectContent>
             </Select>
           </div>
-          <div class="flex items-center justify-between rounded-[10px] border border-input px-3 py-2 bg-background">
-            <span class="text-sm">置顶</span>
-            <Switch v-model="form.is_pinned" />
-          </div>
         </div>
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">内容</Label>
-          <MarkdownEditor
-            v-model="form.content"
-            placeholder="页面内容..."
-          />
-        </div>
+        <I18nTabsEditor
+          v-model="form.title"
+          kind="text"
+          label="标题"
+          required
+          placeholder="页面标题"
+        />
+        <I18nTabsEditor
+          v-model="form.content"
+          kind="markdown"
+          label="内容"
+          placeholder="页面内容..."
+        />
       </div>
     </AdminCrudDialog>
 
@@ -321,7 +338,7 @@ onMounted(() => {
       title="确认删除页面"
       description="此操作不可撤销，确定要删除这个页面吗？"
       confirm-text="确认删除"
-      @confirm="doDelete"
+      :on-confirm="doDelete"
     />
   </AdminListPage>
 </template>

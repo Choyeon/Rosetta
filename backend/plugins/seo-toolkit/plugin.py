@@ -25,6 +25,15 @@ logger = logging.getLogger("seo_toolkit")
 PLUGIN_SLUG = "seo-toolkit"
 
 
+def _setting(key: str, default: Any) -> Any:
+    """从插件设置快照读取单个键；快照未预热或键不存在时返回 default。"""
+    from backend.core.plugin_loader import get_settings_snapshot
+
+    snap = get_settings_snapshot(PLUGIN_SLUG)
+    val = snap.get(key)
+    return val if val is not None else default
+
+
 # ── Hook 处理器（纯函数，导入无副作用） ────────────────────────────────────
 
 
@@ -38,7 +47,12 @@ def inject_jsonld_comment_marker(
     context: dict | None = None,
     **kwargs: Any,
 ) -> str:
-    """(示例) 在内容末尾追加 JSON-LD 占位符注释（幂等）。"""
+    """(示例) 在内容末尾追加 JSON-LD 占位符注释（幂等）。
+
+    enable_json_ld_article=false 时跳过。其余 5 个声明的设置项尚无对应行为（stub）。
+    """
+    if not _setting("enable_json_ld_article", True):
+        return html_content
     marker = "<!-- seo-toolkit:article-jsonld-placeholder -->"
     if marker in (html_content or ""):
         return html_content

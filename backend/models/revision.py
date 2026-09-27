@@ -44,7 +44,7 @@ class PostRevision(Base):
 
     # 编辑信息
     author_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     author: Mapped[User | None] = relationship("User")
 

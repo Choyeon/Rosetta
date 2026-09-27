@@ -91,9 +91,11 @@ Desktop.ini
 .settings/
 
 # --- Media & uploads (runtime generated) ---
-media/
-uploads/
-frontend/pages/admin/media/
+# 必须锚定到仓库根：不写斜杠前缀的 `media/` 会匹配任意深度的 media 目录，
+# 曾把 frontend/pages/admin/media/ 与 frontend/components/admin/media/ 这两处
+# 后台媒体页源码整体排除出版本库（克隆后 /admin/media/* 直接 404）。
+/media/
+/uploads/
 
 # --- Local tool scratch files ---
 tmp/

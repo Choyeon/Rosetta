@@ -32,6 +32,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent.parent
 
 # OOBE 状态判断统一委托给 backend.core.deps（见 backend/api/blog.py 的说明）。
 from backend.core.deps import is_oobe_complete  # noqa: E402
+from backend.core.partial_update import apply_partial_update
 from backend.schemas import (
     BaseResponse,
     FriendLinkCreate,
@@ -50,6 +51,7 @@ from backend.schemas import (
     SiteSettingGroup,
     SiteSettingItem,
 )
+from backend.services.content_renderer import render_content
 
 router = APIRouter(tags=["核心"])
 
@@ -98,7 +100,10 @@ async def list_pages(
     "/pages/{slug}",
     response_model=PageResponse,
     summary="页面详情",
-    description="根据 slug 获取页面内容。",
+    description=(
+        "根据 slug 获取页面内容。正文经统一内容渲染管线"
+        "（短代码 + the_content filter 链），与文章详情同口径。"
+    ),
 )
 async def get_page(slug: str, db: DB, current_user: CurrentUserOptional = None):
     """获取页面详情"""
@@ -119,7 +124,16 @@ async def get_page(slug: str, db: DB, current_user: CurrentUserOptional = None):
                 detail="页面不存在",
             )
 
-    return PageResponse.model_validate(page)
+    # 读者侧正文走统一渲染管线（短代码 + the_content filter 链），否则声明这些
+    # 钩子的插件在独立页静默失效。刻意只渲染本详情端点：后台编辑器的原始文
+    # 取自 list_pages（不渲染），保存路径回写的是用户原文，不会被二次渲染污染。
+    response = PageResponse.model_validate(page)
+    raw_content = page.content or {}
+    response.content = {
+        lang: await render_content(text, post=page, language=lang)
+        for lang, text in raw_content.items()
+    }
+    return response
 
 
 @router.post(
@@ -171,8 +185,7 @@ async def update_page(page_id: int, data: PageUpdate, current_user: CurrentStaff
 
     # 更新字段
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(page, field, value)
+    apply_partial_update(page, update_data)
 
     await db.flush()
     await db.refresh(page)
@@ -471,8 +484,7 @@ async def update_navigation(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(nav, field, value)
+    apply_partial_update(nav, update_data)
 
     await db.flush()
     await db.refresh(nav)
@@ -637,8 +649,7 @@ async def update_friend_link(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(link, field, value)
+    apply_partial_update(link, update_data)
 
     await db.flush()
     await db.refresh(link)
@@ -720,7 +731,7 @@ async def list_search_placeholders(db: DB):
 )
 async def get_site_config(db: DB):
     """
-    获取站点配置（带缓存和并发优化）
+    获取站点配置（先查缓存；未命中时只读一次 SiteConfig 表，其余为内存拼装默认值）
     """
     # 侧边栏默认配置
     default_sidebar: dict[str, Any] = {
@@ -1039,7 +1050,9 @@ async def get_site_config(db: DB):
                 for k, v in parsed_sb.items():
                     if k in default_sidebar:
                         sidebar[k] = v
-        except Exception:
+        except (ValueError, TypeError):
+            # SiteConfig 里的 JSON 是用户可写字段：解析失败回退默认侧栏即可。
+            # 只收窄到 JSON/类型错误，NameError 等真实缺陷必须照样抛出。
             pass
 
     # 从 basic 分组 JSON 中读取 about_content
@@ -1053,7 +1066,8 @@ async def get_site_config(db: DB):
                 parsed_basic = _json.loads(raw_basic_json)
                 if isinstance(parsed_basic, dict):
                     about_content = parsed_basic.get("about_content", "")
-            except Exception:
+            except (ValueError, TypeError):
+                # 同上：坏 JSON 回退空内容，不吞非解析类错误
                 pass
 
     def get_bool(key: str, default: str = "true") -> bool:
@@ -1473,7 +1487,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     type="textarea",
                     value=get_val("AUTHOR_BIO", "Full-Stack Development"),
                     default="Full-Stack Development",
-                    rows=2,
                 ),
                 SiteSettingItem(
                     key="AUTHOR_LINKS_JSON",
@@ -1482,7 +1495,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     type="json",
                     value=get_val("AUTHOR_LINKS_JSON", "[]"),
                     default="[]",
-                    rows=5,
                     placeholder='[{"name":"GitHub","icon":"fa7-brands:github","url":"https://github.com/","showName":false}]',
                 ),
             ],
@@ -2185,7 +2197,12 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
     "/admin/settings",
     response_model=BaseResponse,
     summary="更新站点设置",
-    description="更新站点配置，需要管理员权限。",
+    description=(
+        "更新站点配置，需要管理员权限。局部更新（exclude_unset）："
+        '省略某字段表示不改它；**显式传 null 表示清空该项，落库为空串**（不是字符串 "None"）。'
+        "布尔项统一以小写 'true'/'false' 存储，与读取侧 `.lower()=='true'` 对齐；"
+        "整数/URL 等按其字符串形式入库。"
+    ),
 )
 async def update_site_settings(
     data: SiteConfigUpdate,
@@ -2359,7 +2376,18 @@ async def update_site_settings(
         if not key:
             continue
 
-        str_value = str(value) if not isinstance(value, str) else value
+        # 显式 null 表示"清空该项"，必须落库为空串。
+        # 直接 `str(None)` 会把字面量 "None" 存进 SiteConfig.value，
+        # 前台读回 author_bio / *_json 时会原样渲染出 "None"（静默数据污染）。
+        # bool 统一小写，与读取侧 `.lower() == "true"` 的规范化口径一致。
+        if value is None:
+            str_value = ""
+        elif isinstance(value, bool):
+            str_value = "true" if value else "false"
+        elif isinstance(value, str):
+            str_value = value
+        else:
+            str_value = str(value)
 
         if key in existing_configs:
             existing_configs[key].value = str_value
@@ -2377,10 +2405,14 @@ async def update_site_settings(
     async def warmup_cache_async():
         try:
             from backend.core.cache_warmer import cache_warmer
-
-            await cache_warmer.warmup_task("site_config")
-        except Exception:
-            pass
+        except ImportError as exc:
+            # 预热只是让下一次读取更快，缺模块可以安全放弃；异常面收窄到 import。
+            logger.debug(f"[site-config] 缓存预热模块不可用: {exc}")
+            return
+        result = await cache_warmer.warmup_task("site_config")
+        # warmup_task 不抛异常，失败信息只在返回值里——不看就等于没发生（原实现丢返回值）
+        if getattr(result, "error", None):
+            logger.warning(f"[site-config] 缓存预热失败: {result.error}")
 
     background_tasks.add_task(warmup_cache_async)
 

@@ -133,8 +133,10 @@ async def _ensure_postgres_db_exists(target_url: str) -> None:
                     text("SELECT 1 FROM pg_database WHERE datname=:d"), {"d": db_name}
                 ).fetchone()
                 if not row:
-                    # Don't quote inside CREATE DATABASE — use %I style via format, here exec direct
-                    conn.execute(text(f"CREATE DATABASE \"{db_name}\" ENCODING 'UTF8'"))
+                    # CREATE DATABASE 不接受绑定参数，标识符只能内联；必须把 `"` 翻倍转义，
+                    # 否则连接串里的引号就能闭合字符串接上任意 SQL。
+                    escaped = db_name.replace('"', '""')
+                    conn.execute(text(f"CREATE DATABASE \"{escaped}\" ENCODING 'UTF8'"))
                     logger.info(f"[PG] 自动创建数据库 {db_name}")
         except Exception as exc:  # pragma: no cover - 真实依赖环境
             logger.warning(f"[PG] 尝试维护库创建失败（可能已有/权限不足），将继续: {exc}")

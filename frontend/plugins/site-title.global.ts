@@ -114,6 +114,9 @@ export default defineNuxtPlugin(async () => {
     const t = String(title || '').trim()
     if (t) {
       if (t === siteName) return siteSub ? `${siteName} · ${siteSub}` : siteName
+      // 幂等守卫：与 app.vue titleTemplate 同口径——useSeo 的 title 已带
+      // " · 站点名" 后缀，SPA 客户端再拼一次会出现双站点名。
+      if (t.endsWith(`· ${siteName}`)) return t
       return `${t} · ${siteName}`
     }
     return siteSub ? `${siteName} · ${siteSub}` : siteName

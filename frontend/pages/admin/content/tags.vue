@@ -1,5 +1,12 @@
+<!--
+  标签管理页：标签墙 + 客户端搜索过滤 + CRUD 弹窗（颜色/图标/启用开关）。
+  硬契约：fetchAdminTags 一次拉全量、搜索是纯客户端过滤（与分类/标签后端 slug 生成同套
+  ^[a-z0-9-]+$ 规则——slugify 留中文时清空交给后端按名称生成）；name 提交完整四语 dict；
+  图标以文本插值渲染（{{ t.icon }}），禁止改回 v-html——短字符串落库脏数据换个消费点就中招。
+-->
 <script setup lang="ts">
 import { ref, reactive, watch, computed, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   fetchAdminTags,
   createAdminTag,
@@ -20,6 +27,7 @@ import { Search, Plus, Pencil, Trash2, Tag } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
+const { t: $_t } = useI18n()
 const toast = useToast()
 
 const tags = shallowRef<AdminTag[]>([])
@@ -49,13 +57,16 @@ const form = reactive<{
 
 const editingId = ref<number | null>(null)
 
+/** 后端 slug 校验 ^[a-z0-9-]+$；slugify 可能保留中文，仅当结果合法才自动填充，否则留空由后端按中文名生成 */
+const SLUG_PATTERN = /^[a-z0-9-]+$/
 let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
     const nameZh = getLocalizedStr(val)
     if (!slugManualEdit && nameZh) {
-      form.slug = slugify(nameZh)
+      const s = slugify(nameZh)
+      form.slug = SLUG_PATTERN.test(s) ? s : ''
     }
   },
   { deep: true }
@@ -75,8 +86,8 @@ const loadData = async () => {
   try {
     tags.value = await fetchAdminTags()
   } catch (err) {
+    // 失败提示由 apiFetch 统一 toast，此处仅做状态兜底
     console.error('load tags error', err)
-    toast.error('加载标签列表失败')
     tags.value = []
   } finally {
     loading.value = false
@@ -112,6 +123,14 @@ const save = async () => {
     toast.error('请输入标签名称')
     return
   }
+  if (form.slug && !SLUG_PATTERN.test(form.slug)) {
+    toast.error('Slug 只能包含小写字母、数字和连字符（-）')
+    return
+  }
+  if (form.color && !/^#[0-9a-fA-F]{6}$/.test(form.color)) {
+    toast.error('颜色需为 6 位十六进制值，如 #0EA5E9')
+    return
+  }
   saving.value = true
   try {
     const payload: AdminTaxonomyPayload = {
@@ -131,8 +150,8 @@ const save = async () => {
     dialogOpen.value = false
     await loadData()
   } catch (err) {
+    // 失败提示由 apiFetch 统一 toast，此处不重复弹错
     console.error('save tag error', err)
-    toast.error(editingId.value ? '更新标签失败' : '创建标签失败')
   } finally {
     saving.value = false
   }
@@ -144,17 +163,15 @@ function confirmDelete(id: number) {
 }
 
 async function doDelete() {
-  if (pendingDeleteId.value == null) return
-  try {
-    await deleteAdminTag(pendingDeleteId.value)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    pendingDeleteId.value = null
-    await loadData()
-  } catch (err) {
-    console.error('delete tag error', err)
-    toast.error('删除标签失败')
+  const id = pendingDeleteId.value
+  if (id == null) return
+  await deleteAdminTag(id)
+  toast.success('删除成功')
+  pendingDeleteId.value = null
+  if (editingId.value === id && !dialogOpen.value) {
+    editingId.value = null
   }
+  await loadData()
 }
 
 onMounted(() => {
@@ -174,6 +191,7 @@ onMounted(() => {
           <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
           <Input
             v-model="searchQuery"
+            :aria-label="$_t('common.search')"
             placeholder="搜索标签..."
             class="h-10 w-64 rounded-[12px] pl-9"
           />
@@ -228,13 +246,14 @@ onMounted(() => {
           >
             <div
               class="absolute top-2 right-2 z-10 transition-opacity"
-              :class="hoveredId === t.id ? 'opacity-100' : 'opacity-0'"
+              :class="hoveredId === t.id ? 'opacity-100' : 'opacity-0 focus-within:opacity-100'"
             >
               <div class="flex items-center gap-0.5 bg-white/95 backdrop-blur rounded-[8px] shadow-md border border-border p-0.5">
                 <button
                   type="button"
                   class="h-7 w-7 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   title="编辑"
+                  aria-label="编辑标签"
                   @click.stop="openEdit(t)"
                 >
                   <Pencil class="size-3.5" />
@@ -243,6 +262,7 @@ onMounted(() => {
                   type="button"
                   class="h-7 w-7 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors"
                   title="删除"
+                  aria-label="删除标签"
                   @click.stop="confirmDelete(t.id)"
                 >
                   <Trash2 class="size-3.5" />
@@ -288,8 +308,12 @@ onMounted(() => {
           required
         />
         <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
+          <Label
+            for="tag-form-slug"
+            class="mb-1 block text-xs text-muted-foreground"
+          >Slug</Label>
           <Input
+            id="tag-form-slug"
             v-model="form.slug"
             placeholder="自动生成，可修改"
             class="h-9 rounded-[10px]"
@@ -298,22 +322,31 @@ onMounted(() => {
         </div>
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">颜色</Label>
+            <Label
+              for="tag-form-color"
+              class="mb-1 block text-xs text-muted-foreground"
+            >颜色</Label>
             <div class="flex gap-2">
               <input
+                id="tag-form-color"
                 v-model="form.color"
                 type="color"
                 class="h-9 w-11 rounded-[10px] border border-input bg-background cursor-pointer"
               >
               <Input
                 v-model="form.color"
+                :aria-label="$_t('admin.categories.fColor')"
                 class="h-9 rounded-[10px] flex-1 font-mono text-xs"
               />
             </div>
           </div>
           <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">图标</Label>
+            <Label
+              for="tag-form-icon"
+              class="mb-1 block text-xs text-muted-foreground"
+            >图标</Label>
             <Input
+              id="tag-form-icon"
               v-model="form.icon"
               placeholder="emoji 或 icon"
               class="h-9 rounded-[10px]"
@@ -322,12 +355,18 @@ onMounted(() => {
         </div>
         <div class="flex items-center justify-between rounded-[10px] border border-border bg-muted/20 px-4 py-3">
           <div>
-            <Label class="text-sm font-medium">启用状态</Label>
+            <Label
+              for="tag-form-active"
+              class="text-sm font-medium"
+            >启用状态</Label>
             <div class="text-xs text-muted-foreground mt-0.5">
               关闭后标签不再显示在前台
             </div>
           </div>
-          <Switch v-model="form.is_active" />
+          <Switch
+            id="tag-form-active"
+            v-model="form.is_active"
+          />
         </div>
       </div>
     </AdminCrudDialog>
@@ -337,7 +376,7 @@ onMounted(() => {
       title="确认删除标签"
       description="删除标签不会删除关联文章，只是解除文章与该标签的关联。此操作不可撤销。"
       confirm-text="确认删除"
-      @confirm="doDelete"
+      :on-confirm="doDelete"
     />
   </AdminListPage>
 </template>

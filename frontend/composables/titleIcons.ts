@@ -1,8 +1,26 @@
+/**
+ * 称号预设图标注册表。
+ *
+ * 设计约定（改这里前先读）：
+ * - `paths` / `circles` 是 **内联的 24×24 viewBox SVG 图元**，由 `TitleIconSvg.vue`
+ *   直接以 `<path>` / `<circle>` 渲染（`TitleBadge` 通过它出图）。这样称号图标不依赖
+ *   运行时 lucide 组件树，SSR 首帧即可渲染。
+ * - 图标字符串先经 `composables/titlePresets` 的 `resolveTitleIcon` 分类为 lucide / emoji；
+ *   命中 lucide 时才用本表 `getTitleIconDef` 取图元。历史上这里有过 `svg` 分支走 v-html
+ *   直插任意 SVG——那是存储型 XSS 通道，已移除，本表是图元的唯一可信来源。
+ * - `lucideName` 既是展示名也是"历史数据"兼容键：早期记录把 lucide 名存进 `UserTitle.icon`，
+ *   `getTitleIconDef` 先按 `id` 再按 `lucideName` 兜底解析，保证旧记录仍能出图。
+ * - 新建/编辑时持久化进 `UserTitle.icon` 的应是本表的 `id`（或用户自填 emoji）。
+ * - 后端 `UserTitleCreate/Update.icon` 用 `^[^<>]*$` 校验，禁止任何 HTML/SVG 标记入库。
+ */
 export interface TitleIconDef {
   id: string
   label: string
+  /** lucide 图标名：展示用，同时兼容早期以 lucide 名入库的记录 */
   lucideName: string
+  /** 内联 SVG <path d>（24×24 viewBox），由 TitleIconSvg 渲染，不依赖运行时图标库 */
   paths: string[]
+  /** 部分图标需要的 <circle> 图元（如认证徽章的对勾圆心） */
   circles?: Array<{ cx: number, cy: number, r: number }>
 }
 

@@ -1,3 +1,11 @@
+/**
+ * error-handler.client.ts —— 客户端全局错误唯一的 toast 出口（.client 插件：window 只在浏览器存在）。
+ * 这里是直接给 window.onerror 赋值而不是 addEventListener，所以再加第二个赋值点会互相冲掉；
+ * debug.client.ts 走 addEventListener('error')，与本插件共存且只写日志。
+ * showError 用 message 前 80 字符做 3 秒去重，防止一个坏组件刷满屏 toast；
+ * 跨域 "Script error." 与 hydration 级联一律静默（后者交给 02-hydration-safety 重挂载，误报只会吓用户）。
+ */
+
 import { toast as sonnerToast } from 'vue-sonner'
 
 export default defineNuxtPlugin(() => {

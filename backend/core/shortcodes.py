@@ -577,7 +577,8 @@ def _call_handler(
     if not isinstance(result, str):
         try:
             result = str(result)
-        except Exception:
+        except Exception as exc:  # noqa: BLE001 —— 插件返回值 __str__ 自身抛错
+            logger.warning(f"Shortcode {rec.name} 返回值无法转成字符串，输出置空: {exc!r}")
             return ""
 
     return _sanitize_output(result)

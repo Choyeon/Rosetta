@@ -1,3 +1,12 @@
+/**
+ * heroIcons —— DB/API 里的图标字符串 → 可渲染组件的唯一解析入口（字符串语法见 HeroiconVariant 上方注释）。
+ * 顺序是硬约定：同 variant Heroicons → 另一 variant → Lucide 兜底 → null；
+ * 返回 null 而不是占位组件，把「回落到 emoji / 原文字」的判断留给调用方。
+ * 查表用 squash() 归一化键（Heroicons 导出名带数字，PascalCase 推不出来），
+ * 命中统一 markRaw 后才写入模块级缓存（COMPONENT_CACHE / HEROICON_INDEX），调用方把结果放进
+ * 响应式状态时 Vue 会跳过代理；新增查表分支请沿用 markRaw，别直接缓存未标记的导出对象。
+ */
+
 import { type Component, markRaw } from 'vue'
 import * as HeroiconsOutline from '@heroicons/vue/24/outline'
 import * as HeroiconsSolid from '@heroicons/vue/24/solid'

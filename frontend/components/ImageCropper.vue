@@ -1,3 +1,9 @@
+<!--
+  vue-advanced-cropper 封装：缩放/旋转/翻转 + 比例切换 + 裁剪结果导出。
+  纯客户端组件：getCroppedBlob/getCroppedFile 直接用 document.createElement('canvas') 与
+  toBlob，SSR 下无法渲染，调用方必须包 <ClientOnly> 或只在 ssr:false 反选页里使用。
+  裁剪产物只经 defineExpose 传出（change 事件仅给实时预览 canvas），父组件不持 ref 就拿不到结果。
+-->
 <template>
   <div class="image-cropper">
     <div class="cropper-wrapper">
@@ -22,57 +28,71 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="放大"
+          aria-label="放大"
           @click="zoomIn"
         >
-          <ZoomIn class="size-4" />
+          <ZoomIn data-icon="inline-start" />
         </Button>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="缩小"
+          aria-label="缩小"
           @click="zoomOut"
         >
-          <ZoomOut class="size-4" />
+          <ZoomOut data-icon="inline-start" />
         </Button>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="向左旋转"
+          aria-label="向左旋转"
           @click="rotateLeft"
         >
-          <RotateCcw class="size-4" />
+          <RotateCcw data-icon="inline-start" />
         </Button>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="向右旋转"
+          aria-label="向右旋转"
           @click="rotateRight"
         >
-          <RotateCw class="size-4" />
+          <RotateCw data-icon="inline-start" />
         </Button>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="水平翻转"
+          aria-label="水平翻转"
           @click="flipH"
         >
-          <FlipHorizontal class="size-4" />
+          <FlipHorizontal data-icon="inline-start" />
         </Button>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="垂直翻转"
+          aria-label="垂直翻转"
           @click="flipV"
         >
-          <FlipVertical class="size-4" />
+          <FlipVertical data-icon="inline-start" />
         </Button>
         <Button
           variant="outline"
           size="icon"
           class="h-8 w-8"
+          title="重置"
+          aria-label="重置裁剪框"
           @click="reset"
         >
-          <RefreshCw class="size-4" />
+          <RefreshCw data-icon="inline-start" />
         </Button>
       </div>
 
@@ -83,7 +103,7 @@
         <Button
           v-for="r in aspectRatios"
           :key="r.label"
-          :variant="aspectRatio === r.value ? 'default' : 'outline'"
+          :variant="activeRatio === r.value ? 'default' : 'outline'"
           size="sm"
           class="h-8"
           @click="setAspectRatio(r.value)"
@@ -154,14 +174,18 @@ const cropperRef = ref<InstanceType<typeof Cropper> | null>(null)
 const croppedWidth = ref(0)
 const croppedHeight = ref(0)
 
+/** 用户点比例按钮后的覆盖值；undefined = 沿用 props.aspectRatio */
+const ratioOverride = ref<number | null | undefined>(undefined)
+const activeRatio = computed<number | null>(() => ratioOverride.value ?? props.aspectRatio ?? null)
+
 const stencil = computed(() =>
   props.shape === 'circle' ? CircleStencil : RectangleStencil
 )
 
 const stencilProps = computed(() => {
   const p: Record<string, unknown> = {}
-  if (props.aspectRatio != null) {
-    p.aspectRatio = props.aspectRatio
+  if (activeRatio.value != null) {
+    p.aspectRatio = activeRatio.value
   }
   if (props.shape === 'rectangle') {
     p.handlers = true
@@ -223,11 +247,10 @@ function reset() {
   getCropper()?.reset()
 }
 
-function setAspectRatio(_value: number | null) {
-  // 通过重新设置 stencil props 触发比例变化
-  // vue-advanced-cropper 通过 props 响应式更新
-  // 这里直接触发父组件更新
-  emit('change', { canvas: null })
+function setAspectRatio(value: number | null) {
+  // stencilProps 是 computed：改变比例会生成新对象，
+  // vue-advanced-cropper 内部 watch props.aspectRatio 并重建限制框
+  ratioOverride.value = value
 }
 
 /**
@@ -295,6 +318,8 @@ watch(
   () => {
     croppedWidth.value = 0
     croppedHeight.value = 0
+    // 换了原图就回到调用方声明的默认比例，避免沿用上次的选择
+    ratioOverride.value = undefined
   }
 )
 </script>

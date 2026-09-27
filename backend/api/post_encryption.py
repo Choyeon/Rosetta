@@ -20,7 +20,7 @@ from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
-from backend.core.auth import DB, CurrentStaff, get_password_hash, verify_password
+from backend.core.auth import DB, CurrentStaff, aget_password_hash, averify_password
 from backend.core.crypto import DecryptionError, decrypt_content, encrypt_content
 from backend.models.blog import Post
 from backend.schemas import BaseResponse
@@ -95,7 +95,7 @@ async def decrypt_post(
         )
 
     # 校验密码（bcrypt 比对）
-    if not verify_password(data.password, post.password):
+    if not await averify_password(data.password, post.password):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="密码错误",
@@ -151,7 +151,7 @@ async def encrypt_post(
     post.encrypted_content = {"data": ciphertext}
     post.encryption_enabled = True
     post.encryption_hint = data.hint
-    post.password = get_password_hash(data.password)
+    post.password = await aget_password_hash(data.password)
 
     await db.flush()
     await db.refresh(post)
@@ -205,7 +205,7 @@ async def update_post_encryption(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="未提供 old_password 时必须同时提供新的 content",
             )
-        if not verify_password(verify_pwd, post.password):
+        if not await averify_password(verify_pwd, post.password):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="旧密码错误",
@@ -227,7 +227,7 @@ async def update_post_encryption(
     else:
         # 提供了新内容，但仍需验证旧密码（如果提供了）
         if data.old_password is not None and post.password:
-            if not verify_password(data.old_password, post.password):
+            if not await averify_password(data.old_password, post.password):
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail="旧密码错误",
@@ -237,7 +237,7 @@ async def update_post_encryption(
     new_ciphertext = encrypt_content(plaintext, data.new_password)
     post.encrypted_content = {"data": new_ciphertext}
     post.encryption_hint = data.hint
-    post.password = get_password_hash(data.new_password)
+    post.password = await aget_password_hash(data.new_password)
 
     await db.flush()
     await db.refresh(post)

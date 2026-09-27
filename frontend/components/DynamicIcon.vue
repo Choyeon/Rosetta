@@ -1,3 +1,9 @@
+<!--
+  通用图标渲染器：把接口里的 icon 字符串解析为 emoji / 图标组件 / 纯文本 / 空四态。
+  解析真源在 composables/heroIcons.ts（无名称翻译层，直连 @heroicons/vue 版本化子路径，
+  禁止 import 包根 Proxy）。带命名空间前缀的值（heroicons:/material-symbols:）认不出时
+  兜底中性字形、绝不漏出原始字符串；无前缀值才允许降级为文本渲染。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { Squares2X2Icon } from '@heroicons/vue/24/outline'

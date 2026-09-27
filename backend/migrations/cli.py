@@ -123,10 +123,8 @@ def cmd_init(args):
                     )
                 )
                 await conn.execute(
-                    text(
-                        "INSERT INTO alembic_version (version_num) VALUES (:version_num)"
-                    ),
-                    {"version_num": head_revision}
+                    text("INSERT INTO alembic_version (version_num) VALUES (:version_num)"),
+                    {"version_num": head_revision},
                 )
 
         print("✅ 数据库初始化完成")
@@ -169,10 +167,8 @@ def cmd_reset(args):
                     )
                 )
                 await conn.execute(
-                    text(
-                        "INSERT INTO alembic_version (version_num) VALUES (:version_num)"
-                    ),
-                    {"version_num": head_revision}
+                    text("INSERT INTO alembic_version (version_num) VALUES (:version_num)"),
+                    {"version_num": head_revision},
                 )
 
         print("✅ 数据库重置完成")
@@ -221,8 +217,10 @@ def cmd_status(args):
                     print("\n⚠️  数据库需要升级")
                 else:
                     print("\n⚠️  数据库未初始化迁移")
-        except Exception:
-            print("\n⚠️  数据库未初始化迁移")
+        except Exception as exc:  # noqa: BLE001 —— CLI 出口：原因必须原样打给操作者
+            # 连接失败与"表不存在"是两件不同的事，混成一句"未初始化迁移"
+            # 会把 DATABASE_URL 配错的人引去跑 upgrade。
+            print(f"\n❌ 无法读取数据库版本（连接或权限失败，并非未初始化迁移）：{exc}")
 
     run_async(_status())
 
@@ -297,10 +295,9 @@ def _clear_pycache():
     cache_dirs = list(project_root.rglob("__pycache__"))
 
     for cache_dir in cache_dirs:
-        try:
-            shutil.rmtree(cache_dir, ignore_errors=True)
-        except Exception:
-            pass
+        # ignore_errors=True：缓存目录被其他进程占用时跳过即可，
+        # rmtree 本身不会抛出异常，无需再包一层 try。
+        shutil.rmtree(cache_dir, ignore_errors=True)
 
 
 if __name__ == "__main__":

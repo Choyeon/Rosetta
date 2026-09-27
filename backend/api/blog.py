@@ -17,10 +17,19 @@ from datetime import datetime
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import String, cast, func, or_, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
 from backend.core.auth import DB, CurrentStaff, CurrentUser, CurrentUserOptional
-from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
+from backend.core.cache import (
+    CACHE_KEY_CATEGORIES,
+    CACHE_KEY_TAGS,
+    CACHE_TTL,
+    cache,
+    invalidate_cache,
+    invalidate_post_detail_cache,
+    make_cache_key,
+)
 from backend.core.concurrency import concurrent_query
 from backend.core.config import settings
 from backend.core.i18n import (
@@ -28,7 +37,16 @@ from backend.core.i18n import (
     get_language_from_request,
 )
 from backend.core.plugin_bus import bus
-from backend.services.content_renderer import render_post_fields
+from backend.services.content_renderer import (
+    render_content,
+    render_excerpt,
+    render_post_fields,
+    render_title,
+)
+from backend.services.post_cache import (
+    invalidate_post_aggregate_caches,
+    invalidate_post_caches_by_slugs,
+)
 
 # 20 curated tag colors — modern palette with balanced saturation for light/dark modes.
 _TAG_PALETTE = [
@@ -53,7 +71,6 @@ _TAG_PALETTE = [
     "#DC2626",
     "#7C3AED",
 ]
-from backend.core.shortcodes import do_shortcode
 from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_tags
 from backend.models.user import User
 from backend.schemas import (
@@ -76,33 +93,22 @@ from backend.schemas import (
     TagLocalizedResponse,
     TagResponse,
     TagUpdate,
+    raw_content_response,
+)
+from backend.schemas.blog_reads import (
+    ArchiveMonthGroup,
+    ArchiveMonthPage,
+    ArchiveStats,
+    PostAdjacentResponse,
+    SiteStats,
+    UserBlogStatsResponse,
 )
 from backend.services.comment_service import _comment_to_response
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, parse_utc_date
 from backend.utils.reading_time import compute_reading_time_from_content
 
-
-def _parse_iso_date(s: str | None) -> datetime | None:
-    """解析 ISO 日期字符串为 UTC datetime。结束日期会扩展到当天 23:59:59.999 以包含整天。"""
-    if not s:
-        return None
-    try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=UTC)
-        return d
-    except (ValueError, TypeError):
-        stripped = s.strip()
-        if len(stripped) == 10:  # YYYY-MM-DD
-            try:
-                d = datetime.strptime(stripped, "%Y-%m-%d").replace(tzinfo=UTC)
-                return d
-            except ValueError:
-                return None
-        return None
-
-
 router = APIRouter(tags=["博客"])
+
 
 # OOBE 状态判断统一委托给 backend.core.deps，避免各模块重复定义常量导致
 # 状态源不一致（以及测试时无法统一重定向路径）。
@@ -112,6 +118,7 @@ router = APIRouter(tags=["博客"])
 from datetime import timezone as _tz
 
 from backend.core.deps import is_oobe_complete  # noqa: E402
+from backend.core.partial_update import apply_partial_update
 
 _RSS_NS = "http://www.w3.org/2005/Atom"
 _CONTENT_NS = "http://purl.org/rss/1.0/modules/content/"
@@ -163,7 +170,9 @@ def _rss_language(code: str) -> str:
     return (code or "en").replace("_", "-")
 
 
-def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_title: str) -> str:
+async def generate_rss_feed(
+    posts: list[Post], language: str, site_url: str, site_title: str
+) -> str:
     """生成 RSS 2.0 订阅源（最佳实践版）。
 
     - Atom ``self`` 自链接（feed validator 必需）
@@ -171,6 +180,11 @@ def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_titl
     - HTML 内容一律 CDATA 包裹，避免转义问题
     - ``dc:creator`` 作者、``category`` 分类、``enclosure`` + ``media:content`` 封面
     - ``lastBuildDate`` 取最新文章时间，而非服务器当前时间
+
+    正文/摘要走统一渲染管线（短代码 + ``the_content`` / ``the_excerpt`` filter），
+    与文章详情口径一致，插件的正文过滤器在订阅源里同样生效。刻意不触发
+    ``post.rendered`` action：一次抓取最多涉及 ``limit``（≤100）篇文章，
+    逐篇发通知会让订阅端点变成副作用风暴，且结果还会被缓存 300s。
     """
     site_url = site_url.rstrip("/")
     rss_lang = _rss_language(language)
@@ -194,9 +208,7 @@ def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_titl
     lines.append("  <channel>")
     lines.append(f"    <title>{_xml_escape(site_title)}</title>")
     lines.append(f"    <link>{_xml_escape(site_url)}/</link>")
-    lines.append(
-        f'    <description>{_cdata(f"{site_title} 最新文章")}</description>'
-    )
+    lines.append(f"    <description>{_cdata(f'{site_title} 最新文章')}</description>")
     lines.append(f"    <language>{rss_lang}</language>")
     # Atom self 链接：指向本 feed 的稳定 URL
     lines.append(
@@ -209,18 +221,24 @@ def generate_rss_feed(posts: list[Post], language: str, site_url: str, site_titl
         lines.append(f"    <pubDate>{now_rfc}</pubDate>")
     lines.append("    <generator>Rosetta Blog</generator>")
     lines.append("    <docs>https://www.rssboard.org/rss-specification</docs>")
-    lines.append('    <ttl>60</ttl>')
+    lines.append("    <ttl>60</ttl>")
 
     for post in posts:
-        title = get_i18n_value(post.title, language) or post.slug
+        # 标题同样过 the_title 链：详情有后缀而 feed 没有，会让订阅端与站内显示分叉。
+        title = (
+            await render_title(get_i18n_value(post.title, language), post=post, language=language)
+            or post.slug
+        )
         link = f"{site_url}/posts/{post.slug}"
         pub_dt = post.published_at or post.created_at
 
         # 摘要：优先 excerpt，否则从正文截取纯文本
         raw_excerpt = get_i18n_value(post.excerpt, language)
-        full_html = do_shortcode(get_i18n_value(post.content, language))
+        full_html = await render_content(
+            get_i18n_value(post.content, language) or "", post=post, language=language
+        )
         if raw_excerpt:
-            excerpt_html = do_shortcode(raw_excerpt)
+            excerpt_html = await render_excerpt(raw_excerpt, post=post, language=language)
         else:
             text_only = re.sub(r"<[^>]+>", "", full_html).strip()
             excerpt_html = (text_only[:200] + "…") if len(text_only) > 200 else text_only
@@ -340,42 +358,43 @@ def _build_author_data(author: User | None) -> dict | None:
             "description": author.title.description,
         }
     return {
+        # 字段清单必须与 schemas.PublicUserResponse 对齐：
+        # email / qq / is_active / is_staff / is_superuser / role / last_login
+        # 属于账号隐私与权限信息，文章列表与详情是匿名可访的公开端点，一律不外发。
         "id": author.id,
         "username": author.username,
         "nickname": author.nickname,
         "avatar": author.avatar,
-        "email": author.email,
         "bio": author.bio,
         "website": author.website,
         "github": author.github,
         "cover_image": author.cover_image,
-        "is_active": author.is_active,
-        "is_staff": author.is_staff,
-        "is_superuser": author.is_superuser,
-        "title": title_data,
         "created_at": author.created_at,
-        "last_login": author.last_login,
+        "title": title_data,
     }
 
 
-def _build_post_list_item_from_row(
+async def _build_post_list_item_from_row(
     row: tuple,
     language: str,
 ) -> PostListItemLocalized:
     """从查询结果行构建文章列表项（优化版，避免 N+1 查询）。
 
     注意：列表查询应 defer(Post.content)，reading_time 直接取持久化列。
+    摘要走统一渲染管线（短代码 + ``the_excerpt`` filter），与详情口径一致。
     """
     post = row.Post
     likes_count = row.likes_count or 0
     comments_count = row.comments_count or 0
 
     raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
-    excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+    excerpt = await render_excerpt(raw_excerpt, post=post, language=language)
 
     return PostListItemLocalized(
         id=post.id,
-        title=get_i18n_value(post.title, language),
+        title=await render_title(
+            get_i18n_value(post.title, language), post=post, language=language
+        ),
         subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
         slug=post.slug,
         excerpt=excerpt,
@@ -407,7 +426,7 @@ async def _build_post_list_item(
     """从 Post 对象构建文章列表项（用于点赞列表等场景）。
 
     若传入 ``likes_count`` / ``comments_count`` 则直接使用（批量预取场景），
-    否则回退到单篇并发查询。
+    否则回退到当场补查（两条 count，顺序执行）。
     """
     from backend.models.blog import Comment, post_likes
 
@@ -427,11 +446,13 @@ async def _build_post_list_item(
     comments_count = comments_count or 0
 
     raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
-    excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+    excerpt = await render_excerpt(raw_excerpt, post=post, language=language)
 
     return {
         "id": post.id,
-        "title": get_i18n_value(post.title, language),
+        "title": await render_title(
+            get_i18n_value(post.title, language), post=post, language=language
+        ),
         "subtitle": get_i18n_value(post.subtitle, language) if post.subtitle else None,
         "slug": post.slug,
         "excerpt": excerpt,
@@ -566,8 +587,8 @@ async def list_posts(
         query = query.where(Post.post_type == "post")
 
     # 创建日期范围过滤
-    from_dt = _parse_iso_date(created_start)
-    to_dt = _parse_iso_date(created_end)
+    from_dt = parse_utc_date(created_start)
+    to_dt = parse_utc_date(created_end)
     if from_dt:
         query = query.where(Post.created_at >= from_dt)
     if to_dt:
@@ -625,7 +646,7 @@ async def list_posts(
         start = (page - 1) * page_size
         end = start + page_size
         page_post_rows = [row_by_post_id[p.id] for p, _score in scored[start:end]]
-        items = [_build_post_list_item_from_row(row, language) for row in page_post_rows]
+        items = [await _build_post_list_item_from_row(row, language) for row in page_post_rows]
     else:
         query = (
             query.offset((page - 1) * page_size)
@@ -636,7 +657,7 @@ async def list_posts(
         result = await db.execute(query)
         rows = result.unique().all()
 
-        items = [_build_post_list_item_from_row(row, language) for row in rows]
+        items = [await _build_post_list_item_from_row(row, language) for row in rows]
 
     response = PaginatedResponse(
         items=items,
@@ -718,12 +739,14 @@ async def get_recommended_posts(
 
     for post in posts_list:
         raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
-        excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+        excerpt = await render_excerpt(raw_excerpt, post=post, language=language)
 
         items.append(
             PostListItemLocalized(
                 id=post.id,
-                title=get_i18n_value(post.title, language),
+                title=await render_title(
+                    get_i18n_value(post.title, language), post=post, language=language
+                ),
                 subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
                 slug=post.slug,
                 excerpt=excerpt,
@@ -795,12 +818,14 @@ async def get_similar_posts(
 
     for post in posts:
         raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
-        excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+        excerpt = await render_excerpt(raw_excerpt, post=post, language=language)
 
         items.append(
             PostListItemLocalized(
                 id=post.id,
-                title=get_i18n_value(post.title, language),
+                title=await render_title(
+                    get_i18n_value(post.title, language), post=post, language=language
+                ),
                 subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
                 slug=post.slug,
                 excerpt=excerpt,
@@ -865,11 +890,13 @@ async def list_hot_posts(
     items: list[PostListItemLocalized] = []
     for post in posts:
         raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
-        excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+        excerpt = await render_excerpt(raw_excerpt, post=post, language=language)
         items.append(
             PostListItemLocalized(
                 id=post.id,
-                title=get_i18n_value(post.title, language),
+                title=await render_title(
+                    get_i18n_value(post.title, language), post=post, language=language
+                ),
                 subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
                 slug=post.slug,
                 excerpt=excerpt,
@@ -896,6 +923,7 @@ async def list_hot_posts(
     "/posts/{slug}/adjacent",
     summary="上一篇/下一篇",
     description="按发布时间线获取当前公开文章的上一篇（更早）与下一篇（更晚），仅包含已发布且已到发布时间的文章。",
+    responses={200: {"model": PostAdjacentResponse}},
 )
 async def get_post_adjacent(
     slug: str,
@@ -908,33 +936,42 @@ async def get_post_adjacent(
 
     language = get_language_from_request(request, lang)
 
-    stmt = select(Post).where(Post.slug == slug, Post.status == "published")
-    post = (await db.execute(stmt)).scalar_one_or_none()
-    if post is None and slug.isdigit():
-        stmt = select(Post).where(Post.id == int(slug), Post.status == "published")
-        post = (await db.execute(stmt)).scalar_one_or_none()
-    if post is None:
+    published_key = func.coalesce(Post.published_at, Post.created_at)
+
+    # 锚点行只需要 (id, published_at, created_at)：整行 select(Post) 会把
+    # content / content_html 这些大字段一起拖过来，而本端点每次文章页渲染都要跑一遍。
+    def _anchor_stmt(by_id: bool):
+        cond = Post.id == int(slug) if by_id else Post.slug == slug
+        return select(Post.id, Post.published_at, Post.created_at).where(
+            cond, Post.status == "published"
+        )
+
+    row = (await db.execute(_anchor_stmt(False))).first()
+    if row is None and slug.isdigit():
+        row = (await db.execute(_anchor_stmt(True))).first()
+    if row is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文章不存在",
         )
 
-    published_key = func.coalesce(Post.published_at, Post.created_at)
-    anchor = post.published_at or post.created_at
+    post_id, anchor = row[0], (row[1] or row[2])
+    # "已到达发布时间"的判定只取一次 now：两侧各取一次会让上下篇边界在同一请求内漂移。
+    now = datetime.now()
 
     async def _neighbor(older: bool) -> dict | None:
         if older:
-            cond = (published_key < anchor) | ((published_key == anchor) & (Post.id < post.id))
+            cond = (published_key < anchor) | ((published_key == anchor) & (Post.id < post_id))
             order = published_key.desc()
         else:
-            cond = (published_key > anchor) | ((published_key == anchor) & (Post.id > post.id))
+            cond = (published_key > anchor) | ((published_key == anchor) & (Post.id > post_id))
             order = published_key.asc()
         row = (
             await db.execute(
                 select(Post.slug, Post.title)
                 .where(
                     Post.status == "published",
-                    published_key <= datetime.now(),
+                    published_key <= now,
                     cond,
                 )
                 .order_by(order)
@@ -943,7 +980,11 @@ async def get_post_adjacent(
         ).first()
         if row is None:
             return None
-        return {"slug": row[0], "title": get_i18n_value(row[1], language)}
+        # 上下篇标题同为读者侧显示面：不过 the_title 链会与详情页分叉。
+        return {
+            "slug": row[0],
+            "title": await render_title(get_i18n_value(row[1], language), language=language),
+        }
 
     return {
         "success": True,
@@ -983,6 +1024,34 @@ async def get_post(
     cache_key = make_cache_key("post", slug, language)
 
     slug_is_numeric = slug.isdigit()
+
+    # 缓存读：本端点是全站 QPS 最高的查询，此前只写不读（每次请求跑完整查询图 + 渲染管线，
+    # 再白白 SET 一次）。命中条件被刻意压到最窄，任何一条不满足即回落到完整路径：
+    #   - 匿名访客：作者/编辑要能即时看到草稿与排期预览，登录态一律走慢路径；
+    #   - 按 slug 取：数字 ID 形式的 URL 与规范 slug 同文不同键，写侧无法被 update 精确失效；
+    #   - 仅"公开可见"内容：见函数末尾的写侧门禁，读写两侧口径必须一致。
+    # 计数不落缓存是刻意保留的实时项：voting/评论写入不会失效本键，若沿用缓存值会出现
+    # "点赞后计数十分钟不动"。views 只能取缓存快照（DB 侧仍是原子自增），与列表页既有口径一致。
+    if current_user is None and not slug_is_numeric:
+        cached = await cache.get(cache_key)
+        if isinstance(cached, dict) and cached.get("id") is not None:
+            post_id = cached["id"]
+            likes_count, comments_count = await concurrent_query(
+                db.scalar(
+                    select(func.count())
+                    .select_from(post_likes)
+                    .where(post_likes.c.post_id == post_id)
+                ),
+                db.scalar(
+                    select(func.count()).where(Comment.post_id == post_id, Comment.active.is_(True))
+                ),
+            )
+            await db.execute(update(Post).where(Post.id == post_id).values(views=Post.views + 1))
+            # 浅拷贝后再改：MemoryCacheBackend 直接返回存储对象引用，就地写回会污染缓存
+            result = dict(cached)
+            result["likes_count"] = likes_count or 0
+            result["comments_count"] = comments_count or 0
+            return result
 
     def _build_query(by_id: bool):
         stmt = select(Post).options(
@@ -1024,7 +1093,8 @@ async def get_post(
                 detail="文章不存在",
             )
 
-    # 检查定时发布时间
+    # 检查定时发布时间（aware/naive 双兼容：_ensure_aware 统一口径，
+    # 直接和 datetime.now() 比较在带时区的 published_at 上会 TypeError）
     if post.status == "published" and post.published_at:
         if not (
             current_user
@@ -1034,9 +1104,7 @@ async def get_post(
                 or current_user.is_superuser
             )
         ):
-            from datetime import datetime
-
-            if post.published_at > datetime.now():
+            if _ensure_aware(post.published_at) > datetime.now(_tz.utc):
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="文章不存在",
@@ -1054,31 +1122,28 @@ async def get_post(
             can_access_content = True
         elif x_post_password or password:
             # 验证密码（argon2id + bcrypt 双识别，平滑升级）；Header 优先，Query 兼容
-            from backend.core.auth import verify_password as verify_post_password
+            from backend.core.auth import averify_password as verify_post_password
 
             provided_password = x_post_password or password
-            can_access_content = verify_post_password(provided_password, post.password)
+            can_access_content = await verify_post_password(provided_password, post.password)
         else:
             can_access_content = False
 
     current_views = post.views
 
-    await db.execute(update(Post).where(Post.id == post.id).values(views=Post.views + 1))
-
-    result = await db.execute(
-        select(Post)
-        .options(
-            selectinload(Post.author).selectinload(User.title),
-            selectinload(Post.category),
-            selectinload(Post.tags),
-        )
+    # 浏览数在 DB 侧原子自增。synchronize_session=False 让 ORM 不去回灌/失效该属性，
+    # 于是上面对 post 的整套 eager-load（author→title / category / tags）保持已加载状态。
+    # 旧实现在这里又跑了一次 "select Post + 3 组 selectinload(populate_existing)"，
+    # 只为把 views 恢复成进入时的值——每次文章浏览凭空多出 4 次往返。
+    await db.execute(
+        update(Post)
         .where(Post.id == post.id)
-        .execution_options(populate_existing=True)
+        .values(views=Post.views + 1)
+        .execution_options(synchronize_session=False)
     )
-    post = result.scalar_one()
     post.views = current_views
 
-    # 在后续并发查询/修改之前，预先加载所有要访问的列，避免 expire 后触发隐式 lazy-load
+    # 在后续查询/修改之前，预先加载所有要访问的列，避免 expire 后触发隐式 lazy-load
     _id = post.id
     _slug = post.slug
     _source = post.source
@@ -1107,7 +1172,7 @@ async def get_post(
     _meta_keywords_i18n = post.meta_keywords
     _reading_time = post.reading_time
 
-    # 并发获取点赞数和评论数
+    # 补查点赞数和评论数（两条 count 顺序执行）
     likes_count, comments_count = await concurrent_query(
         db.scalar(select(func.count()).select_from(post_likes).where(post_likes.c.post_id == _id)),
         db.scalar(select(func.count()).where(Comment.post_id == _id, Comment.active.is_(True))),
@@ -1177,8 +1242,11 @@ async def get_post(
         reading_time=_reading_time or 1,
     )
 
-    # 只有非加密或已授权的文章才缓存
-    if not is_password_protected or can_access_content:
+    # 缓存写：只存"匿名访客看到的公开全文"，与函数开头的读侧门禁严格对齐。
+    # 旧条件 `not is_password_protected or can_access_content` 会把作者/管理员用密码打开的
+    # 明文内容写进共享键位——一旦读侧生效就是越权泄露，因此这里收紧为：
+    # 匿名 + 无密码 + 已发布。登录态与加密文一律不进缓存。
+    if current_user is None and not slug_is_numeric and not is_password_protected:
         await cache.set(cache_key, response.model_dump(mode="json"), CACHE_TTL["post_detail"])
 
     return response
@@ -1213,9 +1281,9 @@ async def create_post(
     # 处理密码加密
     password = None
     if post_data.password:
-        from backend.core.auth import get_password_hash as hash_post_password
+        from backend.core.auth import aget_password_hash as hash_post_password
 
-        password = hash_post_password(post_data.password)
+        password = await hash_post_password(post_data.password)
 
     status_value = post_data.status
     scheduled_at_value = post_data.scheduled_at
@@ -1276,6 +1344,7 @@ async def create_post(
         await db.refresh(post)
 
     await invalidate_cache("posts")
+    await invalidate_post_aggregate_caches()
 
     result = await db.execute(
         select(Post)
@@ -1293,9 +1362,7 @@ async def create_post(
     await bus.do_action("post.created", post, current_user=current_user, db=db)
     if status_value == "published":
         # 新文章直接发布 → 通知搜索引擎 / 订阅等插件
-        await bus.do_action(
-            "post.published", post.id, post=post, current_user=current_user, db=db
-        )
+        await bus.do_action("post.published", post.id, post=post, current_user=current_user, db=db)
     return response
 
 
@@ -1330,8 +1397,9 @@ async def batch_update_post_status(
     await db.flush()
 
     for post in posts:
-        await invalidate_cache(f"post:{post.slug}")
+        await invalidate_post_detail_cache(post.slug)
     await invalidate_cache("posts")
+    await invalidate_post_aggregate_caches()
 
     return BatchPostStatusResponse(
         message="文章状态已批量更新",
@@ -1375,6 +1443,8 @@ async def update_post(
 
     # 记录更新前状态，用于识别「草稿/定时 → 已发布」的发布流转
     previous_status = post.status
+    # 详情缓存键含 slug：改名后旧 slug 的键必须还能清掉，所以先把改名前的 slug 存下来
+    previous_slug = post.slug
 
     update_data = post_data.model_dump(
         exclude_unset=True, exclude={"tag_ids", "password", "view_password"}
@@ -1382,9 +1452,9 @@ async def update_post(
 
     if post_data.password is not None:
         if post_data.password:
-            from backend.core.auth import get_password_hash as hash_post_password
+            from backend.core.auth import aget_password_hash as hash_post_password
 
-            post.password = hash_post_password(post_data.password)
+            post.password = await hash_post_password(post_data.password)
         else:
             post.password = None
 
@@ -1415,8 +1485,7 @@ async def update_post(
         post.encryption_verifier = None
         post.encryption_hint = None
 
-    for field, value in update_data.items():
-        setattr(post, field, value)
+    apply_partial_update(post, update_data)
 
     # 内容变更时重算 reading_time（列表接口据此 defer(content) 避免加载大字段）
     if "content" in update_data:
@@ -1434,8 +1503,11 @@ async def update_post(
     await db.flush()
     await db.refresh(post)
 
-    await cache.delete(make_cache_key("post", post.slug, language))
+    # 详情缓存按 post:{slug}:{language} 分语言写入（见 get_post），只删当前请求语言会让
+    # 其余语言最长 600s 返回旧内容；改名时旧 slug 的键同样要清，故一并传入。
+    await invalidate_post_detail_cache(previous_slug, post.slug)
     await invalidate_cache("posts")
+    await invalidate_post_aggregate_caches()
 
     likes_count = (
         await db.scalar(
@@ -1465,9 +1537,7 @@ async def update_post(
     await bus.do_action("post.updated", post, current_user=current_user, db=db)
     if post.status == "published" and previous_status != "published":
         # 由草稿 / 定时 / 待审流转到已发布 → 触发发布钩子（搜索引擎 ping、推送等）
-        await bus.do_action(
-            "post.published", post.id, post=post, current_user=current_user, db=db
-        )
+        await bus.do_action("post.published", post.id, post=post, current_user=current_user, db=db)
     return PostLocalizedResponse.from_post(
         post, language, likes_count=likes_count, comments_count=comments_count
     )
@@ -1496,8 +1566,13 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
             detail="无权删除此文章",
         )
 
+    # slug 要在删除前取：db.delete 后实例已过期，再读属性会对已删行发出 SELECT
+    deleted_slug = post.slug
     await db.delete(post)
+    # 详情缓存独立于 posts 前缀：不清的话删除后 600s 内匿名 GET /posts/{slug} 仍返回旧正文
+    await invalidate_post_detail_cache(deleted_slug)
     await invalidate_cache("posts")
+    await invalidate_post_aggregate_caches()
     await bus.do_action("post.deleted", post, current_user=current_user, db=db)
 
     return BaseResponse(message="文章已删除")
@@ -1553,7 +1628,7 @@ async def list_categories(
         return []
 
     # 统一返回完整 i18n dict（不再按 lang 裁剪），前后端都能正确渲染
-    cache_key = make_cache_key("categories", "raw-i18n")
+    cache_key = CACHE_KEY_CATEGORIES
     cached = await cache.get(cache_key)
     if cached:
         return cached
@@ -1624,6 +1699,20 @@ async def get_category_by_slug(
         created_at=category.created_at,
         post_count=post_count,
     )
+
+
+async def _category_post_slugs(db: AsyncSession, category_id: int) -> list[str]:
+    rows = await db.execute(select(Post.slug).where(Post.category_id == category_id))
+    return list(rows.scalars().all())
+
+
+async def _tag_post_slugs(db: AsyncSession, tag_id: int) -> list[str]:
+    rows = await db.execute(
+        select(Post.slug)
+        .join(post_tags, post_tags.c.post_id == Post.id)
+        .where(post_tags.c.tag_id == tag_id)
+    )
+    return list(rows.scalars().all())
 
 
 @router.post(
@@ -1698,7 +1787,7 @@ async def list_tags(
     if not is_oobe_complete():
         return []
 
-    cache_key = make_cache_key("tags", "raw-i18n")
+    cache_key = CACHE_KEY_TAGS
     cached = await cache.get(cache_key)
     if cached:
         return cached
@@ -1948,6 +2037,7 @@ async def create_comment(
     "/archive",
     summary="文章归档",
     description="按年月分组获取已发布文章的归档列表。",
+    responses={200: {"model": list[ArchiveMonthGroup]}},
 )
 async def get_archive(
     request: Request,
@@ -2008,6 +2098,7 @@ async def get_archive(
     "/archive/stats",
     summary="归档统计",
     description="获取归档统计信息，包括总文章数、年份数等。",
+    responses={200: {"model": ArchiveStats}},
 )
 async def get_archive_stats(
     db: DB,
@@ -2059,6 +2150,7 @@ def _count_words_in_content(content: str) -> int:
     "/site-stats",
     summary="站点统计",
     description="获取站点公开统计信息：总字数、文章数、分类数、标签数。",
+    responses={200: {"model": SiteStats}},
 )
 async def get_site_stats(
     db: DB,
@@ -2135,6 +2227,7 @@ async def get_site_stats(
     "/archive/{year}",
     summary="按年份获取归档",
     description="获取指定年份的文章归档。",
+    responses={200: {"model": list[ArchiveMonthGroup]}},
 )
 async def get_archive_by_year(
     year: int,
@@ -2229,6 +2322,7 @@ async def get_archive_by_year(
     "/archive/{year}/{month}",
     summary="按年月获取归档",
     description="获取指定年月的文章归档。",
+    responses={200: {"model": ArchiveMonthPage}},
 )
 async def get_archive_by_month(
     year: int,
@@ -2325,7 +2419,11 @@ async def get_archive_by_month(
     "/categories/{category_id}",
     response_model=CategoryResponse,
     summary="更新分类",
-    description="更新分类信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
+    description=(
+        "更新分类信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。"
+        "改名/改色会同步失效该分类下所有文章的详情缓存（`post:{slug}:{lang}`）与列表/RSS 缓存，"
+        "避免前台文章页在 TTL 内继续显示旧分类名/颜色。"
+    ),
 )
 async def update_category(
     category_id: int,
@@ -2345,14 +2443,16 @@ async def update_category(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(category, field, value)
+    apply_partial_update(category, update_data)
 
     await db.flush()
     await db.refresh(category)
     await invalidate_cache("categories")
 
-    post_count = await db.scalar(select(func.count()).where(Post.category_id == category.id)) or 0
+    affected_slugs = await _category_post_slugs(db, category.id)
+    await invalidate_post_caches_by_slugs(affected_slugs)
+
+    post_count = len(affected_slugs)
 
     return CategoryResponse(
         id=category.id,
@@ -2371,7 +2471,10 @@ async def update_category(
     "/categories/{category_id}",
     response_model=BaseResponse,
     summary="删除分类",
-    description="删除分类，需要管理员权限。",
+    description=(
+        "删除分类，需要管理员权限。删除会把该分类下文章的 category_id 置空（SET NULL），"
+        "并失效这些文章的详情/列表/RSS 缓存，使前台立即回落到「无分类」而非旧分类。"
+    ),
 )
 async def delete_category(
     category_id: int,
@@ -2388,8 +2491,12 @@ async def delete_category(
             detail="分类不存在",
         )
 
+    # 删除会把文章的 category_id 置空（SET NULL），故必须在 delete 前抓出受影响 slug。
+    affected_slugs = await _category_post_slugs(db, category.id)
+
     await db.delete(category)
     await invalidate_cache("categories")
+    await invalidate_post_caches_by_slugs(affected_slugs)
 
     return BaseResponse(message="分类已删除")
 
@@ -2401,7 +2508,10 @@ async def delete_category(
     "/tags/{tag_id}",
     response_model=TagResponse,
     summary="更新标签",
-    description="更新标签信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
+    description=(
+        "更新标签信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。"
+        "改名/改色会失效所有引用该标签的文章详情缓存与列表/RSS 缓存。"
+    ),
 )
 async def update_tag(
     tag_id: int,
@@ -2421,19 +2531,16 @@ async def update_tag(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(tag, field, value)
+    apply_partial_update(tag, update_data)
 
     await db.flush()
     await db.refresh(tag)
     await invalidate_cache("tags")
 
-    post_count = (
-        await db.scalar(
-            select(func.count()).select_from(post_tags).where(post_tags.c.tag_id == tag.id)
-        )
-        or 0
-    )
+    affected_slugs = await _tag_post_slugs(db, tag.id)
+    await invalidate_post_caches_by_slugs(affected_slugs)
+
+    post_count = len(affected_slugs)
 
     return TagResponse(
         id=tag.id,
@@ -2451,7 +2558,10 @@ async def update_tag(
     "/tags/{tag_id}",
     response_model=BaseResponse,
     summary="删除标签",
-    description="删除标签，需要管理员权限。",
+    description=(
+        "删除标签，需要管理员权限。删除会 CASCADE 清空 post_tags 关联，"
+        "并失效原引用该标签文章的详情/列表/RSS 缓存。"
+    ),
 )
 async def delete_tag(
     tag_id: int,
@@ -2468,8 +2578,12 @@ async def delete_tag(
             detail="标签不存在",
         )
 
+    # 删除标签会 CASCADE 清空 post_tags 关联，故必须在 delete 前抓出受影响 slug。
+    affected_slugs = await _tag_post_slugs(db, tag.id)
+
     await db.delete(tag)
     await invalidate_cache("tags")
+    await invalidate_post_caches_by_slugs(affected_slugs)
 
     return BaseResponse(message="标签已删除")
 
@@ -2481,13 +2595,21 @@ async def delete_tag(
     "/posts/id/{post_id}",
     response_model=PostLocalizedResponse,
     summary="按ID获取文章",
-    description="根据文章ID获取文章详情，用于编辑等场景。",
+    description=(
+        "根据文章ID获取文章详情。可见性口径与 slug 详情端点一致："
+        "草稿/未到排期时间的文章仅作者与职员可见；加密文章需通过 "
+        "X-Post-Password 验证才返回正文；密码散列永不出现在响应中。"
+    ),
 )
 async def get_post_by_id(
     post_id: int,
     request: Request,
     db: DB,
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+    x_post_password: str | None = Header(
+        None, alias="X-Post-Password", description="文章访问密码（加密文章必需）"
+    ),
+    current_user: CurrentUserOptional = None,
 ):
     """按ID获取文章详情"""
     language = get_language_from_request(request, lang)
@@ -2509,6 +2631,41 @@ async def get_post_by_id(
             detail="文章不存在",
         )
 
+    # 可见性门禁必须与 GET /posts/{slug} 同口径。本端点匿名可访，
+    # 旧实现一条检查都没有：草稿可按 ID 直读，加密文章明文连带密码散列一起外泄。
+    is_owner_or_staff = bool(
+        current_user
+        and (
+            current_user.id == post.author_id or current_user.is_staff or current_user.is_superuser
+        )
+    )
+    if post.status != "published" and not is_owner_or_staff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
+    if (
+        post.status == "published"
+        and _ensure_aware(post.published_at)
+        and _ensure_aware(post.published_at) > datetime.now(_tz.utc)
+        and not is_owner_or_staff
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
+
+    is_password_protected = bool(post.password)
+    can_access_content = True
+    if is_password_protected and not is_owner_or_staff:
+        if x_post_password:
+            # 验证密码（argon2id + bcrypt 双识别，平滑升级）
+            from backend.core.auth import averify_password
+
+            can_access_content = await averify_password(x_post_password, post.password)
+        else:
+            can_access_content = False
+
     likes_count = (
         await db.scalar(
             select(func.count()).select_from(post_likes).where(post_likes.c.post_id == post.id)
@@ -2523,23 +2680,32 @@ async def get_post_by_id(
         or 0
     )
 
-    raw_content = get_i18n_value(post.content, language)
-    content = do_shortcode(raw_content)
+    raw_content = "" if not can_access_content else get_i18n_value(post.content, language)
     raw_excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else None
-    excerpt = do_shortcode(raw_excerpt) if raw_excerpt is not None else None
+
+    # 统一内容渲染管线（插件扩展点）：短代码 + the_title / the_content / the_excerpt，
+    # 完成后触发 post.rendered。与详情端点共用同一入口，不再散落 do_shortcode。
+    rendered = await render_post_fields(
+        title=get_i18n_value(post.title, language),
+        content=raw_content,
+        excerpt=raw_excerpt,
+        post=post,
+        language=language,
+        render_body=can_access_content,
+    )
 
     return PostLocalizedResponse(
         id=post.id,
-        title=get_i18n_value(post.title, language),
+        title=rendered.title,
         subtitle=get_i18n_value(post.subtitle, language) if post.subtitle else None,
         slug=post.slug,
         source=post.source,
         source_url=post.source_url,
-        audio=post.audio,
-        video=post.video,
-        video_url=post.video_url,
-        content=content,
-        excerpt=excerpt,
+        audio=post.audio if can_access_content else None,
+        video=post.video if can_access_content else None,
+        video_url=post.video_url if can_access_content else None,
+        content=rendered.content,
+        excerpt=rendered.excerpt,
         cover_image=post.cover_image,
         author=_build_author_data(post.author),
         category=CategoryLocalizedResponse.from_category(post.category, language)
@@ -2548,12 +2714,12 @@ async def get_post_by_id(
         tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
         status=post.status,
         visibility=post.visibility or "public",
-        password=post.password,
         views=post.views,
         likes_count=likes_count,
         is_pinned=post.is_pinned,
         allow_comments=post.allow_comments,
         comments_count=comments_count,
+        is_password_protected=is_password_protected,
         meta_title=get_i18n_value(post.meta_title, language) if post.meta_title else None,
         meta_description=get_i18n_value(post.meta_description, language)
         if post.meta_description
@@ -2738,6 +2904,7 @@ async def get_my_likes(
     "/users/me/stats",
     summary="获取我的统计",
     description="获取当前用户的文章数、评论数、获赞数统计。",
+    responses={200: {"model": UserBlogStatsResponse}},
 )
 async def get_my_stats(
     current_user: CurrentUser,
@@ -2886,7 +3053,9 @@ async def get_my_history(
                     "viewed_at": history.viewed_at.isoformat() if history.viewed_at else None,
                     "post": {
                         "id": post.id,
-                        "title": get_i18n_value(post.title, language),
+                        "title": await render_title(
+                            get_i18n_value(post.title, language), post=post, language=language
+                        ),
                         "slug": post.slug,
                         "cover_image": post.cover_image,
                         "views": post.views,
@@ -2916,6 +3085,7 @@ async def get_my_history(
     "/users/me/history",
     summary="清空阅读历史",
     description="清空当前用户的阅读历史记录。",
+    responses={200: {"model": BaseResponse}},
 )
 async def clear_my_history(
     current_user: CurrentUser,
@@ -2936,6 +3106,8 @@ async def clear_my_history(
     "/rss",
     summary="RSS 订阅",
     description="获取 RSS 2.0 格式的文章订阅源。",
+    responses=raw_content_response("application/rss+xml", "RSS 2.0 XML 文档。"),
+    response_class=Response,
 )
 async def get_rss_feed(
     request: Request,
@@ -2950,8 +3122,21 @@ async def get_rss_feed(
 
     language = get_language_from_request(request, lang)
 
+    # RSS 是匿名+爬虫流量，内容却与"最新已发布文章"同频；列表缓存本来就是 300s 口径，
+    # 这里同 TTL 顺带把订阅源的 DB 压力摊平。
+    # 键刻意挂在 "posts:" 前缀下：文章的增删改统一走 invalidate_cache("posts")，
+    # 换成独立的 "rss:" 前缀就再没人负责失效它，删掉的文章会一直挂在订阅源里。
+    cache_key = make_cache_key("posts", "rss", language, str(limit))
+    cached_xml = await cache.get(cache_key)
+    if isinstance(cached_xml, str) and cached_xml:
+        return Response(content=cached_xml, media_type="application/rss+xml")
+
+    # generate_rss_feed 逐条读取 post.author.nickname / post.category.name；
+    # 不预加载就是 1 + 2*limit 次隐式 IO（limit 最大 100），且 async 会话上的隐式
+    # lazy-load 会抛 MissingGreenlet —— 匿名可访、无缓存、爬虫必到的入口。
     query = (
         select(Post)
+        .options(selectinload(Post.author), selectinload(Post.category))
         .where(Post.status == "published")
         .order_by(Post.is_pinned.desc(), Post.published_at.desc())
         .limit(limit)
@@ -2961,8 +3146,9 @@ async def get_rss_feed(
 
     site_url = settings.site_url
     site_title = settings.app_name
-    rss_content = generate_rss_feed(posts, language, site_url, site_title)
+    rss_content = await generate_rss_feed(posts, language, site_url, site_title)
 
+    await cache.set(cache_key, rss_content, CACHE_TTL["post_list"])
     return Response(content=rss_content, media_type="application/rss+xml")
 
 
@@ -2983,13 +3169,13 @@ _SITEMAP_IMG_NS = "http://www.google.com/schemas/sitemap-image/1.1"
 
 # 固定公开路由：(路径, 更新频率, 优先级)。
 # /search（noindex）、/login、/register、/oobe、/admin/** 一律不收录。
+# 注意：`/categories` `/tags` `/series` 三个分类学根路径**不在**这里——它们由
+# `generate_taxonomy_sitemap` 无条件输出（哪怕一个分类都没有）。在此重复会让
+# sitemap 索引对同一 URL 提交两次，Search Console 直接报"重复网址"。
 _STATIC_SITEMAP_ROUTES: list[tuple[str, str, str]] = [
     ("/", "daily", "1.0"),
     ("/posts", "daily", "0.9"),
     ("/posts/hot", "weekly", "0.6"),
-    ("/categories", "weekly", "0.5"),
-    ("/tags", "weekly", "0.4"),
-    ("/series", "weekly", "0.5"),
     ("/archive", "monthly", "0.4"),
     ("/guestbook", "daily", "0.5"),
     ("/activity", "daily", "0.4"),
@@ -3148,9 +3334,7 @@ def generate_pages_sitemap(pages: list, site_url: str) -> str:
     site_url = site_url.rstrip("/")
     entries: list[str] = []
     for path, changefreq, priority in _STATIC_SITEMAP_ROUTES:
-        entries.append(
-            _sitemap_url(f"{site_url}{path}", changefreq=changefreq, priority=priority)
-        )
+        entries.append(_sitemap_url(f"{site_url}{path}", changefreq=changefreq, priority=priority))
     for page in pages:
         if getattr(page, "status", "published") != "published":
             continue
@@ -3194,6 +3378,8 @@ _XML_CACHE = "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400"
     summary="Sitemap 索引",
     description="站点地图索引：列出 pages 静态表、posts 分页表、taxonomies 分类表。"
     "所有子表均指向对外站点域名（由 Nitro BFF 代理）。",
+    responses=raw_content_response("application/xml", "Sitemap index XML 文档。"),
+    response_class=Response,
 )
 async def get_sitemap_index(
     db: DB,
@@ -3204,9 +3390,7 @@ async def get_sitemap_index(
     today = datetime.now(_tz.utc).strftime("%Y-%m-%d")
 
     total_posts = (
-        await db.execute(
-            select(func.count()).select_from(Post).where(Post.status == "published")
-        )
+        await db.execute(select(func.count()).select_from(Post).where(Post.status == "published"))
     ).scalar() or 0
     total_pages = max(1, (total_posts + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE)
 
@@ -3227,6 +3411,8 @@ async def get_sitemap_index(
     "/sitemap-posts.xml",
     summary="文章 Sitemap（分页）",
     description="按 page 参数返回单页文章 sitemap，每页最多 1000 条，含封面图。",
+    responses=raw_content_response("application/xml", "urlset XML 文档。"),
+    response_class=Response,
 )
 async def get_sitemap_posts(
     db: DB,
@@ -3255,6 +3441,8 @@ async def get_sitemap_posts(
     "/sitemap-taxonomies.xml",
     summary="分类 / 标签 / 系列 Sitemap",
     description="返回分类、标签、系列的索引页与详情页（合并文件）。",
+    responses=raw_content_response("application/xml", "urlset XML 文档。"),
+    response_class=Response,
 )
 async def get_sitemap_taxonomies(
     db: DB,
@@ -3266,8 +3454,8 @@ async def get_sitemap_taxonomies(
     categories = (await db.execute(select(Category))).scalars().all()
     tags = (await db.execute(select(Tag).where(Tag.is_active.is_(True)))).scalars().all()
     series = (
-        await db.execute(select(PostSeries).where(PostSeries.is_active.is_(True)))
-    ).scalars().all()
+        (await db.execute(select(PostSeries).where(PostSeries.is_active.is_(True)))).scalars().all()
+    )
     content = generate_taxonomy_sitemap(categories, tags, site_url, series=series)
     return Response(
         content=content,
@@ -3280,15 +3468,15 @@ async def get_sitemap_taxonomies(
     "/sitemap-pages.xml",
     summary="静态路由 / 独立页面 Sitemap",
     description="返回固定公开路由与已发布独立页面（/page/<slug>）。",
+    responses=raw_content_response("application/xml", "urlset XML 文档。"),
+    response_class=Response,
 )
 async def get_sitemap_pages(db: DB):
     """获取静态路由 / 独立页面 Sitemap XML。"""
     from backend.models.core import Page
 
     site_url = _public_site_url()
-    pages = (
-        await db.execute(select(Page).where(Page.status == "published"))
-    ).scalars().all()
+    pages = (await db.execute(select(Page).where(Page.status == "published"))).scalars().all()
     content = generate_pages_sitemap(pages, site_url)
     return Response(
         content=content,

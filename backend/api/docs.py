@@ -20,10 +20,11 @@ from typing import Final
 
 from fastapi import APIRouter, HTTPException, status
 from fastapi import Path as PathParam
+from pydantic import BaseModel, Field
 
 from backend.core.paths import BASE_DIR
 
-router = APIRouter(tags=["文档"])
+router = APIRouter(tags=["开发文档"])
 
 # ── 文档根目录：docs/plugins-themes/zh-CN ─────────────────────────────
 DOCS_DIR: Final[Path] = BASE_DIR / "docs" / "plugins-themes" / "zh-CN"
@@ -164,6 +165,55 @@ def _read_markdown(slug: str) -> tuple[str, str]:
 
 
 # ═══════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════
+
+
+class DocCatalogItemDoc(BaseModel):
+    """目录接口返回的单条文档条目（来自静态 DOC_CATALOG + 磁盘存在性探测）。"""
+
+    slug: str = Field(..., description="文档 slug，用于拼 /docs/{slug} 详情请求")
+    title: str = Field(..., description="目录里登记的中文标题（不读 Markdown 内部标题）")
+    category: str = Field(..., description="分类名（概览 / 接口 / 教程…），侧边栏分组用")
+    order: int = Field(..., description="菜单排序权重，越小越靠前")
+    description: str = Field("", description="条目描述；目录行未写 description 时是空串")
+    available: bool = Field(
+        ..., description="磁盘上对应 <slug>.md 是否存在；index 恒为 true（缺文件时动态合成）"
+    )
+
+
+class DocListDataDoc(BaseModel):
+    """目录接口的 data 载荷。"""
+
+    items: list[DocCatalogItemDoc] = Field(default_factory=list, description="按 order 升序的条目")
+    language: str = Field("zh-CN", description="文档语言标识（当前内建目录仅中文，固定值）")
+
+
+class DocListResponse(BaseModel):
+    """``GET /api/docs/list`` 的响应体（success/data 信封）。"""
+
+    success: bool = Field(True, description="固定为 true（本接口成功路径无分支）")
+    data: DocListDataDoc = Field(..., description="目录数据；不回传 DOCS_DIR 磁盘绝对路径")
+
+
+class DocDetailDataDoc(BaseModel):
+    """单篇文档接口的 data 载荷。"""
+
+    slug: str = Field(..., description="请求的文档 slug")
+    title: str = Field(..., description="优先取 Markdown 首个 H1，缺省回退目录标题/slug")
+    markdown: str = Field(..., description="原始 Markdown 全文，由前端 marked + highlight.js 渲染")
+    language: str = Field("zh-CN", description="文档语言标识（固定值）")
+
+
+class DocDetailResponse(BaseModel):
+    """``GET /api/docs/{slug}`` 的响应体（success/data 信封）。"""
+
+    success: bool = Field(True, description="固定为 true（slug 未注册 / 文件缺失走 404 错误信封）")
+    data: DocDetailDataDoc = Field(..., description="单篇文档数据")
+
+
+# ═══════════════════════════════════════════════════════════════════════
 # 公开接口
 # ═══════════════════════════════════════════════════════════════════════
 
@@ -171,7 +221,11 @@ def _read_markdown(slug: str) -> tuple[str, str]:
 @router.get(
     "/docs/list",
     summary="列出所有开发文档条目",
-    description="返回菜单排序、分类与描述；用于侧边栏 / TOC 渲染。",
+    description=(
+        "返回菜单排序、分类与描述；用于侧边栏 / TOC 渲染。公开接口、无需鉴权。"
+        "响应为 success/data 信封，data.items 按 order 升序，available 反映磁盘文件是否存在。"
+    ),
+    responses={200: {"model": DocListResponse}},
 )
 async def list_docs():
     items = []
@@ -201,7 +255,7 @@ async def list_docs():
         "data": {
             "items": items,
             "language": "zh-CN",
-            "docs_dir": str(DOCS_DIR),
+            # 不回传 DOCS_DIR 绝对路径：这是未鉴权接口，磁盘路径属于内部实现细节
         },
     }
 
@@ -210,7 +264,10 @@ async def list_docs():
     "/docs/{slug}",
     summary="读取单篇文档",
     description="返回 {markdown, title}；markdown 为原始 Markdown 文本，"
-    "由前端 marked + highlight.js 渲染为 HTML。",
+    "由前端 marked + highlight.js 渲染为 HTML。"
+    "响应为 success/data 信封（data 含 slug/title/markdown/language）；"
+    "slug 未注册或磁盘文件缺失返回 404 错误信封。",
+    responses={200: {"model": DocDetailResponse}},
 )
 async def get_doc(
     slug: str = PathParam(

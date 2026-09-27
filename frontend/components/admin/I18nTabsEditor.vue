@@ -1,3 +1,8 @@
+<!--
+  四语（zh/en/ja/zh_Hant）Tab 编辑器，v-model 兼容明文字符串（视为 zh）与 i18n dict 两种形态。
+  硬契约：一旦发生编辑，update:modelValue 永远 emit 完整的 {zh,en,ja,zh_Hant} 四键 dict
+  （字符串值会被升级），后端 JSON i18n 列依赖该形状；某语言缺值显示空输入框，禁止伪造默认值。
+-->
 <script setup lang="ts">
 /* 多语言 Tab 编辑器（4 语言：zh/en/ja/zh_Hant，与项目 i18n 规则严格一致）
  *

@@ -7,7 +7,7 @@
 - 使用服务层封装业务逻辑
 - 使用仓储层进行数据访问
 - 使用缓存减少数据库查询
-- 使用并发查询优化
+- 多条独立查询用 concurrent_query 顺序批处理（AsyncSession 非并发安全，无并行收益）
 """
 
 import logging
@@ -19,24 +19,26 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import defer, selectinload
 
 logger = logging.getLogger(__name__)
 
-from backend.api._user_response_helper import build_user_response
+from backend.api._user_response_helper import apply_email_privacy, build_user_response
 from backend.core.auth import (
     DB,
     CurrentStaff,
     CurrentUser,
     CurrentUserOptional,
-    get_password_hash,
-    verify_password,
+    aget_password_hash,
+    averify_password,
 )
 from backend.core.cache import cache
 from backend.core.concurrency import concurrent_query
 from backend.core.config import settings
 from backend.core.exceptions import AppException
 from backend.core.password_policy import validate_password
+from backend.core.plugin_bus import bus
 from backend.core.rate_limit import rate_limit_sensitive, rate_limit_write
 from backend.models.blog import Comment, Post, post_likes
 from backend.models.user import User, UserPreference
@@ -52,12 +54,16 @@ from backend.schemas import (
     UserResponse,
     UserUpdate,
 )
+from backend.services.content_renderer import render_excerpt
+from backend.services.email_service import get_email_service
 from backend.services.user_service import get_user_service
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["用户"])
 
 PREFIX = "password_reset"
+RESET_CODE_TTL = 15 * 60  # 验证码有效期；尝试计数与它同 TTL，验证码过期即一并清零
+RESET_CODE_MAX_ATTEMPTS = 5  # 6 位码 → 5 次尝试的枚举收益已低于噪声阈值
 
 
 class _PasswordResetRequest(BaseModel):
@@ -65,9 +71,7 @@ class _PasswordResetRequest(BaseModel):
 
 
 class _PasswordResetBody(BaseModel):
-    token_or_email: str = Field(
-        ..., min_length=1, max_length=255, description="邮箱或用户名或 reset_token"
-    )
+    token_or_email: str = Field(..., min_length=1, max_length=255, description="邮箱或用户名")
     code: str = Field(..., min_length=6, max_length=6, description="6 位数字验证码")
     new_password: str = Field(..., min_length=1, max_length=255, description="新密码")
 
@@ -83,22 +87,77 @@ class _DeleteAccountBody(BaseModel):
     password: str = Field(..., min_length=1, max_length=255, description="当前密码验证")
 
 
-async def _gen_reset_code_and_token(user: User) -> tuple[str, str]:
-    """生成 6 位 code + 32 位 token 并写入缓存 15 分钟"""
-    digits = string.digits
-    code = "".join(secrets.choice(digits) for _ in range(6))
-    token = secrets.token_hex(16)
-    ttl = 15 * 60
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
 
-    key_code = f"{PREFIX}:code:{user.id}"
-    key_token = f"{PREFIX}:token:{user.id}"
-    key_meta = f"{PREFIX}:meta:{user.id}"
 
-    await cache.set(key_code, code, ttl=ttl)
-    await cache.set(key_token, token, ttl=ttl)
-    await cache.set(key_meta, {"email": user.email or user.username}, ttl=ttl)
+class PasswordResetDebugDoc(BaseModel):
+    """密码重置请求响应里的调试载荷（仅非生产环境出现）。"""
 
-    return code, token
+    reset_code: str = Field(
+        ...,
+        description="本次生成的 6 位数字验证码（可能以 0 开头，故是字符串）。"
+        "仅当 DEBUG=true 且 environment != production 时才会随响应下发",
+    )
+
+
+class PasswordResetRequestResponseDoc(BaseModel):
+    """``POST /api/users/password-reset-request`` 的响应体（裸 dict，无 data 信封）。"""
+
+    message: str = Field(
+        ...,
+        description="恒定文案（无论账号是否存在、邮件是否投递成功都是同一句），避免枚举账号",
+    )
+    success: bool = Field(True, description="固定为 true：本端点成功路径永远 200，不区分投递结果")
+    debug: PasswordResetDebugDoc | None = Field(
+        None,
+        description="调试回显：只有非生产环境且 DEBUG=true 时存在（生产环境绝不回传验证码），"
+        "该分支下也不会走「投递失败作废」逻辑",
+    )
+
+
+class UserPreferencesPublicDoc(BaseModel):
+    """``GET /api/users/username/{username}/preferences`` 的响应体（裸 dict，5 个隐私开关）。
+
+    无偏好行时返回下述模型默认值（public_profile=True、show_email=False、其余 True），
+    口径与 UserPreference 的建表默认一致。
+    """
+
+    public_profile: bool = Field(True, description="是否公开个人资料页")
+    show_email: bool = Field(False, description="是否对外展示邮箱（默认拒绝）")
+    show_posts: bool = Field(True, description="是否公开文章列表")
+    show_comments: bool = Field(True, description="是否公开评论列表")
+    show_stats: bool = Field(True, description="是否公开统计数据")
+
+
+class UserStatsDoc(BaseModel):
+    """``GET /api/users/{user_id}/stats`` 的响应体（裸 dict，无信封）。"""
+
+    user_id: int = Field(..., description="用户 ID（路径参数回显）")
+    posts_count: int = Field(..., description="已发布文章数（status=published，无数据为 0）")
+    comments_count: int = Field(..., description="已过审评论数（active=True，无数据为 0）")
+    total_views: int = Field(
+        ...,
+        description="本人已发布文章的 views 列求和（SUM 无行为 null，兜底成 0）",
+    )
+    total_likes: int = Field(..., description="本人全部文章（含草稿）收到的点赞总数，无数据为 0")
+    joined_at: str | None = Field(
+        None, description="注册时间：handler 手工 isoformat() 的字符串，无创建时间时为 null"
+    )
+
+
+async def _gen_reset_code(user: User) -> str:
+    """生成 6 位验证码并写入缓存 15 分钟
+
+    只存验证码：`/password-reset` 的唯一凭据就是这 6 位码（配合尝试次数限流与
+    token_version 递增踢会话）。历史上的 reset_token / meta 两个键从不出现在校验
+    路径上，属于纯暴露的幽灵密钥，已移除。
+    """
+    code = "".join(secrets.choice(string.digits) for _ in range(6))
+    await cache.set(f"{PREFIX}:code:{user.id}", code, ttl=RESET_CODE_TTL)
+    return code
 
 
 @router.post(
@@ -123,7 +182,7 @@ async def register(
     errors = validate_password(user_data.password)
     if errors:
         raise AppException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             message=errors[0],
             error_code="WEAK_PASSWORD",
             details={"errors": errors},
@@ -147,10 +206,24 @@ async def register(
         else:
             code = "REGISTER_FAILED"
         raise AppException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             message=msg,
             error_code=code,
         )
+    except IntegrityError as e:
+        # 并发同名注册的"先查后插"窗口：唯一约束兜底，转 409 而非 500
+        await db.rollback()
+        detail = str(e.orig).lower()
+        code = "EMAIL_TAKEN" if "email" in detail else "USERNAME_EXISTS"
+        raise AppException(
+            status_code=status.HTTP_409_CONFLICT,
+            message="用户名或邮箱已被使用",
+            error_code=code,
+        )
+
+    # 事件 payload 不带邮箱等 PII（字段白名单见 api/webhook.py）：
+    # user.registered 可被管理员转发到第三方 URL。
+    await bus.do_action("user.registered", result["user"])
 
     return TokenResponse(
         access_token=result["access_token"],
@@ -315,7 +388,13 @@ async def refresh_token(
 @router.post(
     "/password-reset-request",
     summary="请求密码重置",
-    description="通过邮箱/用户名请求密码重置，不泄露账号是否存在。调试模式下会返回验证码。",
+    description=(
+        "通过邮箱/用户名请求密码重置，不泄露账号是否存在（恒定 message + success=true，永远 200）。"
+        "公开接口、按 IP 限流。验证码 15 分钟有效；SMTP 未配置或投递失败时验证码会被作废"
+        "（不留发不出去却能通过校验的孤儿凭证），响应形态不变。"
+        "仅非生产 + DEBUG 环境额外返回 debug.reset_code 供本地调试。"
+    ),
+    responses={200: {"model": PasswordResetRequestResponseDoc}},
 )
 async def password_reset_request(
     body: _PasswordResetRequest,
@@ -323,7 +402,11 @@ async def password_reset_request(
     _rl=Depends(rate_limit_sensitive("password_reset_request")),
 ):
     """请求密码重置（永远返回 200，避免枚举）"""
-    result: dict[str, object] = {"message": "若该账号存在，重置链接已发送", "success": True}
+    # 恒定文案：账号不存在 / 邮件发送失败都返回同一句，既不泄露账号存在性，也不谎报"已送达"
+    result: dict[str, object] = {
+        "message": "若该账号存在，重置验证码已发送至其绑定邮箱；如未收到，请联系站点管理员",
+        "success": True,
+    }
     stmt = select(User).where(
         (User.email == body.email_or_username) | (User.username == body.email_or_username)
     )
@@ -333,42 +416,52 @@ async def password_reset_request(
     if user is None:
         return result
 
-    code, token = await _gen_reset_code_and_token(user)
+    code = await _gen_reset_code(user)
 
-    has_smtp = bool(getattr(settings, "smtp_host", None))
-    if not has_smtp:
+    # is_configured 同时要求 host/user/password 齐备；
+    # 单看 smtp_host 会被 config.py 的默认值 "smtp.qq.com" 恒真欺骗。
+    email_service = get_email_service()
+    email_sent = False
+    if user.email and email_service.is_configured:
         try:
-            from sqlalchemy import text as _t
-
-            content = f"密码重置验证码：{code}，重置令牌：{token}（15 分钟内有效）"
-            try:
-                await db.execute(
-                    _t(
-                        "INSERT INTO notifications (user_id, type, content, is_read, created_at) "
-                        "VALUES (:uid, :typ, :c, :r, :now)"
-                    ),
-                    {
-                        "uid": user.id,
-                        "typ": "password_reset",
-                        "c": content,
-                        "r": False,
-                        "now": datetime.now(UTC),
-                    },
+            # 同步等待（background=False）：只有拿到确定结果才能判定投递成败
+            mail_result = await email_service.send_email(
+                to=user.email,
+                subject=f"[{settings.site_name}] 密码重置验证码",
+                body=f"您的密码重置验证码：{code}（15 分钟内有效）。如非本人操作，请忽略本邮件。",
+                background=False,
+            )
+            email_sent = bool(mail_result.success)
+            if not email_sent:
+                logger.error(
+                    "密码重置验证码邮件投递失败 user_id=%s error=%s",
+                    user.id,
+                    mail_result.error,
                 )
-                await db.commit()
-            except Exception:
-                await db.rollback()
-                logger.warning("密码重置验证码写入站内信失败（SMTP 未配置时的降级通道）", exc_info=True)
         except Exception:
-            logger.warning("密码重置通知准备失败", exc_info=True)
+            logger.exception("密码重置验证码邮件发送异常 user_id=%s", user.id)
+    else:
+        logger.error(
+            "密码重置请求无法投递：SMTP 未配置或用户无邮箱 user_id=%s has_email=%s smtp=%s",
+            user.id,
+            bool(user.email),
+            email_service.is_configured,
+        )
 
     # 仅本地开发便利：生产环境即使 debug=True 也不回传重置凭证，
-    # 否则任何人请求管理员邮箱的重置即可在响应中拿到 reset_code/token 完成接管。
-    if settings.debug and settings.environment != "production":
-        result["debug"] = {
-            "reset_code": code,
-            "reset_token": token,
-        }
+    # 否则任何人请求管理员邮箱的重置即可在响应中拿到 reset_code 完成接管。
+    # 判据必须前置于"投递失败即作废"——开发环境一般没配 SMTP，否则本地永远拿不到码。
+    dev_echo = settings.debug and settings.environment != "production"
+    if dev_echo:
+        result["debug"] = {"reset_code": code}
+        return result
+
+    if not email_sent:
+        # 投递失败即作废验证码：不留一把发不出去却仍能通过校验的孤儿凭证
+        try:
+            await cache.delete(f"{PREFIX}:code:{user.id}")
+        except Exception:
+            logger.warning("密码重置验证码清理失败 user_id=%s", user.id, exc_info=True)
 
     return result
 
@@ -377,7 +470,7 @@ async def password_reset_request(
     "/password-reset",
     response_model=BaseResponse,
     summary="重置密码（验证码 + 新密码）",
-    description="使用请求阶段下发的验证码和令牌重置密码。",
+    description="使用请求阶段投递到邮箱的验证码重置密码。",
 )
 async def password_reset(
     body: _PasswordResetBody,
@@ -392,43 +485,48 @@ async def password_reset(
     user: User | None = r.scalar_one_or_none()
 
     if user is None:
-        # 也可能 body.token_or_email 直接就是 reset_token，查 meta 反查
-        # 简化：如果找不到 user 也不暴露，直接 422 验证码无效
+        # 不区分"账号不存在"与"验证码错误"，避免枚举
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
-                "message": "验证码或令牌无效",
+                "message": "验证码无效",
                 "error_code": "RESET_CODE_INVALID",
             },
         )
 
     key_code = f"{PREFIX}:code:{user.id}"
-    key_token = f"{PREFIX}:token:{user.id}"
     key_attempts = f"{PREFIX}:attempts:{user.id}"
 
     try:
         cached_code = await cache.get(key_code)
         attempts = await cache.get(key_attempts)
-    except Exception:
+    except Exception as exc:  # noqa: BLE001 —— 缓存故障按"无验证码"处理（fail-closed）
+        # 拒绝而不是放行是安全的；但必须留痕：否则 Redis 挂掉时用户看到的是
+        # 永远"验证码无效"，排查方向会被完全带偏到邮件/发码环节。
+        logger.warning(f"[password-reset] 验证码缓存读取失败，按无效处理: {exc!r}")
         cached_code = None
         attempts = None
 
     # 限制同一验证码的尝试次数（防 6 位码暴力枚举；IP 限流可被伪造头绕过，不能只靠它）
     try:
-        if attempts is not None and int(attempts) >= 5:
+        attempt_count = int(attempts) if attempts is not None else 0
+    except (TypeError, ValueError):
+        attempt_count = 0
+
+    # 计数达到上限就作废验证码。作废失败只记日志：`raise` 不能被它连带吞掉，
+    # 否则锁定制服静默失效，暴力枚举窗口重新打开。
+    if attempt_count >= RESET_CODE_MAX_ATTEMPTS:
+        try:
             await cache.delete(key_code)
-            await cache.delete(key_token)
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail={
-                    "message": "尝试次数过多，验证码已作废，请重新申请",
-                    "error_code": "RESET_CODE_INVALID",
-                },
-            )
-    except HTTPException:
-        raise
-    except Exception:
-        pass
+        except Exception:
+            logger.warning("密码重置验证码作废失败 user_id=%s", user.id, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={
+                "message": "尝试次数过多，验证码已作废，请重新申请",
+                "error_code": "RESET_CODE_INVALID",
+            },
+        )
 
     code_matches = cached_code is not None and secrets.compare_digest(
         str(cached_code), str(body.code)
@@ -436,11 +534,13 @@ async def password_reset(
 
     if not code_matches:
         try:
-            await cache.set(key_attempts, (int(attempts) if attempts else 0) + 1, ttl=900)
+            await cache.set(key_attempts, attempt_count + 1, ttl=RESET_CODE_TTL)
         except Exception:
-            pass
+            logger.warning(
+                "密码重置尝试计数写入失败，暴力枚举防护可能失效 user_id=%s", user.id, exc_info=True
+            )
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "message": "验证码或令牌无效或已过期",
                 "error_code": "RESET_CODE_INVALID",
@@ -451,7 +551,7 @@ async def password_reset(
     errors = validate_password(body.new_password)
     if errors:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "message": "新密码不符合强度要求",
                 "errors": errors,
@@ -460,15 +560,15 @@ async def password_reset(
         )
 
     # 设置新密码 + 踢所有会话下线
-    user.password_hash = get_password_hash(body.new_password)
+    user.password_hash = await aget_password_hash(body.new_password)
     user.token_version = (getattr(user, "token_version", 0) or 0) + 1
 
-    # 清理验证码
+    # 清理验证码与尝试计数（成功后计数没意义，留着会让下一次申请带上历史）
     try:
         await cache.delete(key_code)
-        await cache.delete(key_token)
+        await cache.delete(key_attempts)
     except Exception:
-        pass
+        logger.warning("密码重置凭证清理失败 user_id=%s", user.id, exc_info=True)
 
     # 撤销所有 refresh token（service 层）
     service = await get_user_service(db)
@@ -510,7 +610,11 @@ async def get_me(current_user: CurrentUser):
     "/me",
     response_model=UserResponse,
     summary="更新个人信息",
-    description="更新当前用户的个人资料。",
+    description=(
+        "更新当前用户的个人资料。若改动了文章作者卡片会展示的字段"
+        "（昵称/头像/封面/简介/网站/GitHub/用户名），"
+        "会自动失效该作者全部文章的详情缓存与列表/RSS 缓存。"
+    ),
 )
 async def update_me(user_data: UserUpdate, current_user: CurrentUser, db: DB):
     """更新个人信息"""
@@ -536,7 +640,7 @@ async def change_password_v2(
     errors = validate_password(body.new_password)
     if errors:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "message": "新密码不符合强度要求",
                 "errors": errors,
@@ -576,7 +680,7 @@ async def change_password_legacy(
     errors = validate_password(data.new_password)
     if errors:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "message": "新密码不符合强度要求",
                 "errors": errors,
@@ -662,7 +766,9 @@ async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = Non
             detail="用户资料不公开",
         )
 
-    return build_user_response(profile["user"])
+    response = build_user_response(profile["user"])
+    apply_email_privacy(response, profile, current_user)
+    return response
 
 
 @router.get(
@@ -698,23 +804,19 @@ async def get_user_by_username(username: str, db: DB, current_user: CurrentUserO
         )
 
     response = build_user_response(user)
-    preference = profile.get("preferences")
-
-    if (
-        preference
-        and not preference.show_email
-        and not profile.get("is_self")
-        and not (current_user and current_user.is_staff)
-    ):
-        response.email = "***"
-
+    apply_email_privacy(response, profile, current_user)
     return response
 
 
 @router.get(
     "/username/{username}/preferences",
     summary="获取用户隐私设置",
-    description="获取用户的隐私设置（公开部分）。",
+    description=(
+        "获取用户的隐私设置（公开部分）。公开接口、无需鉴权。"
+        "响应为裸 dict（5 个布尔开关，无 data 信封）；用户从未动过设置（无偏好行）时"
+        "返回与建表默认一致的默认开关组（show_email 默认拒绝）。用户不存在返回 404。"
+    ),
+    responses={200: {"model": UserPreferencesPublicDoc}},
 )
 async def get_user_preferences_by_username(username: str, db: DB):
     """获取用户的隐私设置"""
@@ -767,11 +869,12 @@ async def list_users(
     """
     获取用户列表
 
-    性能优化：
-    - 使用并发查询获取总数和列表
-    - 使用 selectinload 预加载关联数据
+    - `defer(User.password_hash)`：列表响应不含哈希，但 `select(User)` 默认取整行，
+      每页 100 个用户就多拉 100 条 argon2 哈希（每条几十字节，且是敏感数据）。
+    - `selectinload(User.title)`：头衔一次 IN 查完，避免逐行懒加载。
+      注意 `concurrent_query` 是**顺序**执行（AsyncSession 非并发安全），别期待并行收益。
     """
-    query = select(User).options(selectinload(User.title))
+    query = select(User).options(selectinload(User.title), defer(User.password_hash))
 
     if search:
         query = query.where(
@@ -788,7 +891,7 @@ async def list_users(
     }.get(sort, User.created_at)
     query = query.order_by(sort_col.desc() if order == "desc" else sort_col.asc())
 
-    # 并发执行计数和列表查询
+    # 计数 + 列表（顺序两条查询）
     count_query = select(func.count()).select_from(query.subquery())
 
     total, result = await concurrent_query(
@@ -806,34 +909,6 @@ async def list_users(
         page_size=page_size,
         total_pages=math.ceil(total / page_size) if total > 0 else 0,
     )
-
-
-@router.post(
-    "/me/change-password",
-    response_model=BaseResponse,
-    summary="修改密码",
-    description="修改当前用户的密码，需要验证当前密码。",
-)
-async def change_password(
-    data: PasswordChange,
-    current_user: CurrentUser,
-    db: DB,
-):
-    """修改密码"""
-    service = await get_user_service(db)
-    try:
-        await service.change_password(
-            user_id=current_user.id,
-            old_password=data.current_password,
-            new_password=data.new_password,
-        )
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
-
-    return BaseResponse(message="密码修改成功")
 
 
 @router.delete(
@@ -855,7 +930,7 @@ async def delete_account(
         )
 
     # 直接验证密码（不用 change_password(new=old) hack，因为它现在会拒绝同密码）
-    if not verify_password(body.password, current_user.password_hash):
+    if not await averify_password(body.password, current_user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="密码错误",
@@ -870,7 +945,7 @@ async def delete_account(
     "/me/avatar",
     response_model=UserResponse,
     summary="更新头像",
-    description="更新当前用户的头像。",
+    description="更新当前用户的头像；头像属于作者展示字段，会失效该作者全部文章的缓存。",
 )
 async def update_avatar(
     avatar: str = Query(..., description="头像 URL"),
@@ -887,7 +962,7 @@ async def update_avatar(
     "/me/cover",
     response_model=UserResponse,
     summary="更新封面图",
-    description="更新当前用户的封面图。",
+    description=("更新当前用户的封面图；封面图属于作者展示字段，会失效该作者全部文章的缓存。"),
 )
 async def update_cover(
     cover_image: str = Query(..., description="封面图 URL"),
@@ -907,7 +982,10 @@ async def update_cover(
     "/{user_id}/posts",
     response_model=PaginatedResponse,
     summary="用户文章列表",
-    description="获取指定用户发布的文章列表。",
+    description=(
+        "获取指定用户发布的文章列表。摘要与 `blog.py` 列表口径一致，"
+        "经内容渲染管线处理（短代码 + the_excerpt filter 链），插件不会在此页失效。"
+    ),
 )
 async def get_user_posts(
     user_id: int,
@@ -919,9 +997,10 @@ async def get_user_posts(
     """
     获取用户发布的文章
 
-    性能优化：
-    - 使用并发查询获取总数和列表
-    - 预加载分类和标签
+    - 正文/加密正文/SEO meta 一律 `defer`：本接口的手写响应体不读这些列，
+      不 defer 就等于把每篇文章的整篇 Markdown 从磁盘捞进内存再丢掉。
+      （`blog.py` 的文章列表同样处理，两者口径一致。）
+    - 分类、标签用 selectinload 批量预加载。
     """
 
     # 检查用户是否存在
@@ -945,11 +1024,20 @@ async def get_user_posts(
     query = (
         select(Post)
         .where(Post.author_id == user_id, Post.status == "published")
-        .options(selectinload(Post.category), selectinload(Post.tags))
+        .options(
+            selectinload(Post.category),
+            selectinload(Post.tags),
+            defer(Post.content),
+            defer(Post.encrypted_content),
+            defer(Post.meta_fields),
+            defer(Post.meta_title),
+            defer(Post.meta_description),
+            defer(Post.meta_keywords),
+        )
         .order_by(Post.published_at.desc())
     )
 
-    # 并发执行计数和列表查询
+    # 计数 + 列表（顺序两条查询）
     count_query = select(func.count()).select_from(
         select(Post).where(Post.author_id == user_id, Post.status == "published").subquery()
     )
@@ -965,12 +1053,22 @@ async def get_user_posts(
     # 转换为响应格式
     items = []
     for post in posts:
+        # 摘要走统一渲染管线（短代码 + the_excerpt filter 链），保持多语言 dict 形状；
+        # 直接吐 raw dict 会让声明 the_excerpt 的插件在作者主页静默失效。
+        excerpt_value = post.excerpt
+        if isinstance(excerpt_value, dict):
+            excerpt_value = {
+                lang: await render_excerpt(text, post=post, language=lang)
+                for lang, text in excerpt_value.items()
+            }
+        elif excerpt_value is not None:
+            excerpt_value = await render_excerpt(excerpt_value, post=post)
         items.append(
             {
                 "id": post.id,
                 "title": post.title,
                 "slug": post.slug,
-                "excerpt": post.excerpt,
+                "excerpt": excerpt_value,
                 "cover_image": post.cover_image,
                 "views": post.views,
                 "category": {
@@ -1011,9 +1109,9 @@ async def get_user_comments(
     """
     获取用户发表的评论
 
-    性能优化：
-    - 使用并发查询获取总数和列表
-    - 预加载文章信息
+    - 只用到评论正文的截断 + 文章的 id/title/slug，所以 `Comment.post` 预加载时
+      必须 defer 掉正文与 meta 列，否则每页最多 50 条评论会连带读入 50 篇全文。
+    - 计数与列表两条查询顺序执行（`concurrent_query` 不并行）。
     """
 
     # 检查用户是否存在
@@ -1037,11 +1135,17 @@ async def get_user_comments(
     query = (
         select(Comment)
         .where(Comment.user_id == user_id, Comment.active.is_(True))
-        .options(selectinload(Comment.post))
+        .options(
+            selectinload(Comment.post).options(
+                defer(Post.content),
+                defer(Post.encrypted_content),
+                defer(Post.meta_fields),
+            )
+        )
         .order_by(Comment.created_at.desc())
     )
 
-    # 并发执行计数和列表查询
+    # 计数 + 列表（顺序两条查询）
     count_query = select(func.count()).select_from(
         select(Comment).where(Comment.user_id == user_id, Comment.active.is_(True)).subquery()
     )
@@ -1086,7 +1190,12 @@ async def get_user_comments(
 @router.get(
     "/{user_id}/stats",
     summary="用户统计信息",
-    description="获取指定用户的统计数据。",
+    description=(
+        "获取指定用户的统计数据。公开接口、无需鉴权。响应为裸 dict"
+        "（user_id/posts_count/comments_count/total_views/total_likes/joined_at，无信封）；"
+        "计数在无数据时兜底为 0，joined_at 为 ISO 8601 字符串或 null。用户不存在返回 404。"
+    ),
+    responses={200: {"model": UserStatsDoc}},
 )
 async def get_user_stats(
     user_id: int,
@@ -1096,7 +1205,6 @@ async def get_user_stats(
     获取用户统计信息
 
     性能优化：
-    - 使用并发查询同时获取多个统计值
     """
 
     # 检查用户是否存在
@@ -1107,7 +1215,7 @@ async def get_user_stats(
             detail="用户不存在",
         )
 
-    # 并发执行所有统计查询
+    # 顺序执行多条统计查询
     posts_count, comments_count, total_views, total_likes = await concurrent_query(
         # 文章数
         db.scalar(

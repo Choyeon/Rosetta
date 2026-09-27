@@ -30,6 +30,16 @@ logger = logging.getLogger("hello_rosetta")
 
 PLUGIN_SLUG = "hello-rosetta"
 
+
+def _setting(key: str, default: Any) -> Any:
+    """从插件设置快照读取单个键；快照未预热或键不存在时返回 default。"""
+    from backend.core.plugin_loader import get_settings_snapshot
+
+    snap = get_settings_snapshot(PLUGIN_SLUG)
+    val = snap.get(key)
+    return val if val is not None else default
+
+
 # 标题后缀；回调据此判断是否已追加（幂等）。
 TITLE_SUFFIX = "  · hello"
 
@@ -51,14 +61,18 @@ def _signature_html() -> str:
 
 
 def hello_title_filter(title: Any, post: Any = None, context: Any = None, **_kw: Any) -> Any:
-    """``the_title``：标题幂等追加后缀。"""
+    """``the_title``：标题幂等追加后缀；enable_title_suffix=false 时跳过。"""
+    if not _setting("enable_title_suffix", True):
+        return title
     if not isinstance(title, str) or title.endswith(TITLE_SUFFIX):
         return title
     return title + TITLE_SUFFIX
 
 
 def hello_content_filter(content: Any, post: Any = None, context: Any = None, **_kw: Any) -> Any:
-    """``the_content``：正文末尾幂等插入署名。"""
+    """``the_content``：正文末尾幂等插入署名；enable_signature=false 时跳过。"""
+    if not _setting("enable_signature", True):
+        return content
     if not isinstance(content, str):
         return content
     if SIGNATURE_ANCHOR in content:
@@ -80,9 +94,10 @@ def hello_rendered_action(
     )
 
 
-def hello_shortcode(to: Any = "World", **_kw: Any) -> str:
+def hello_shortcode(to: Any = None, **_kw: Any) -> str:
     """``[hello]`` 短代码：输出问候语；对参数做 HTML 转义防 XSS。"""
-    safe_to = _html.escape(str(to))
+    greeting_to = to if to is not None else _setting("default_greeting_to", "World")
+    safe_to = _html.escape(str(greeting_to))
     return f'<p class="hello-rosetta-greeting">Hello, <b>{safe_to}</b>!</p>'
 
 

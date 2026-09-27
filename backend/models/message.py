@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Text, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
@@ -44,6 +44,12 @@ class PrivateMessage(Base):
         server_default=func.now(),
         nullable=False,
         comment="创建时间",
+    )
+
+    __table_args__ = (
+        # 未读角标与会话列表的 COUNT 都是 `WHERE recipient_id = ? AND is_read = false`
+        # （messages.py 未读数 / 按对端分组）；recipient_id 单列索引要把已读行一起捞出来。
+        Index("ix_private_messages_recipient_read", "recipient_id", "is_read"),
     )
 
     sender = relationship("User", foreign_keys=[sender_id], backref="sent_messages")

@@ -11,7 +11,6 @@ import asyncio
 import hashlib
 import logging
 import re
-from datetime import datetime
 from typing import Any
 
 from sqlalchemy import and_, desc, func, or_, select
@@ -25,6 +24,7 @@ from backend.models.guestbook import GuestbookEntry
 from backend.models.user import User
 from backend.schemas import GuestbookEntryCreate, GuestbookEntryResponse
 from backend.services._avatar_helpers import resolved_for_guestbook
+from backend.utils.compat import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -222,7 +222,7 @@ class GuestbookService:
         try:
             from datetime import timedelta
 
-            since = datetime.utcnow() - timedelta(seconds=window_sec)
+            since = utc_now_naive() - timedelta(seconds=window_sec)
             stmt = select(func.count(GuestbookEntry.id)).where(
                 and_(
                     GuestbookEntry.author_ip == masked_ip,
@@ -231,7 +231,9 @@ class GuestbookService:
             )
             r = await db.execute(stmt)
             return int(r.scalar_one() or 0) > 0
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            # 频控查询失败时放行，但必须留痕——静默 return False 等于检测失效。
+            logger.warning("留言同 IP 频控查询失败，本次放行：%s", e)
             return False
 
     @staticmethod
@@ -525,7 +527,7 @@ class GuestbookService:
             elif action == "feature":
                 e.is_featured = True
             elif action == "trash":
-                e.deleted_at = datetime.utcnow()
+                e.deleted_at = utc_now_naive()
             elif action == "restore":
                 e.deleted_at = None
             elif action == "delete":

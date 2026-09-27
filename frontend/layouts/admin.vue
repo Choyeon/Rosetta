@@ -1,3 +1,10 @@
+<!--
+  后台布局骨架：侧栏 + 顶栏 + 主内容容器；/admin 主题解耦四层防御中的"布局层"。
+  硬契约：onMounted 与 watch(route.path) 双节点必须 clearThemeVisual + 写
+  html[data-layout-scope="admin"]（SPA 从前台切回时旧 data-theme 会残留）；
+  sidebarCollapsed 由本布局独占（AdminHeader/Sidebar 只透传事件，不得私存副本）；
+  <main> 已带 p-4 md:p-6，页面根容器禁止再写 padding；TooltipProvider 归 app.vue 单例，此处禁止嵌套。
+-->
 <script setup lang="ts">
 /* eslint-disable */
 import AdminSidebar from '~~/components/admin/AdminSidebar.vue'
@@ -57,7 +64,10 @@ if (import.meta.client) {
       v-model:collapsed="sidebarCollapsed"
     />
     <div class="admin-main flex-1 flex flex-col min-w-0">
-      <AdminHeader :sidebar-collapsed="sidebarCollapsed" />
+      <AdminHeader
+        :sidebar-collapsed="sidebarCollapsed"
+        @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+      />
       <main
         id="main"
         class="flex-1 p-4 md:p-6 overflow-x-clip"

@@ -241,6 +241,25 @@ def test_TR12_3_xss_payload_sanitize():  # noqa: N802
     assert "onerror=" not in cleaned.lower()
 
 
+def test_TR12_3_xss_sanitize_degrades_strictly(monkeypatch):  # noqa: N802
+    """allowlist 解析器抛错时，降级方向必须"更严"而不是"更松"
+
+    回归：旧实现 `except Exception: cleaned = stripped` 把只过了正则粗筛
+    （_rough_strip 挡不住属性型 payload）的 HTML 原样返回，
+    等于给存储型 XSS 留了一条逃生门。现在整体转义为 inert 文本。
+    """
+    from backend.core import xss_filter
+
+    def boom(self):
+        raise RuntimeError("parser crashed")
+
+    monkeypatch.setattr(xss_filter._AllowlistParser, "result", boom)
+    cleaned = xss_filter.sanitize_html("<p>hi</p><img src=x onerror=alert(2)>")
+
+    assert "<img" not in cleaned.lower(), "解析失败后仍返回了可执行标签"
+    assert "&lt;img" in cleaned.lower(), "降级结果应为转义后的纯文本"
+
+
 @pytest.mark.asyncio
 async def test_TR12_3_xss_comment_endpoint(  # noqa: N802
     sec_client: AsyncClient, sec_auth_headers: dict, sec_post: Post, sec_db_session: AsyncSession

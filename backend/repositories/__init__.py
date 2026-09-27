@@ -6,7 +6,7 @@ Rosetta FastAPI 后端 - 仓储层
 仓储层职责：
 - 封装数据库操作
 - 提供统一的查询接口
-- 支持并发查询优化
+- 批量按 ID 读取（单次 IN 查询：同一 AsyncSession 不能并发分批）
 - 支持依赖注入
 
 Example:

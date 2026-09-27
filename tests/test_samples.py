@@ -131,9 +131,7 @@ def test_theme_head_registered_at_app_level_not_per_caller():
     composable = _strip_ts_comments(
         (FRONTEND_DIR / "composables" / "useFrontendTheme.ts").read_text(encoding="utf-8")
     )
-    plugin = (FRONTEND_DIR / "plugins" / "01-site-bootstrap.global.ts").read_text(
-        encoding="utf-8"
-    )
+    plugin = (FRONTEND_DIR / "plugins" / "01-site-bootstrap.global.ts").read_text(encoding="utf-8")
 
     assert "export function registerFrontendThemeHead" in composable, (
         "registerFrontendThemeHead() 必须存在且是唯一 useHead 注册点"
@@ -155,7 +153,9 @@ def test_minimal_theme_layout_width_single_source():
     与后台滑块显示的默认值不一致（实测过一次 760/880 漂移）。
     """
     slug = "astro-paper-inspired"
-    manifest = json.loads((FRONTEND_THEMES / slug / "rosetta-theme.json").read_text(encoding="utf-8"))
+    manifest = json.loads(
+        (FRONTEND_THEMES / slug / "rosetta-theme.json").read_text(encoding="utf-8")
+    )
     lw = manifest["mods_schema"]["properties"]["layout_width"]
     css = (FRONTEND_THEMES / slug / "style.css").read_text(encoding="utf-8")
 

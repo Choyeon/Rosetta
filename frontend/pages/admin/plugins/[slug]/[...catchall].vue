@@ -1,3 +1,11 @@
+<!--
+  插件后台承载页（ssr:false + layout:'admin'）：iframe src 前缀唯一真源是 runtimeConfig.public.apiBase
+  （去尾斜杠，不再硬编码 /api），catchall 每段单独 encodeURIComponent，插件路由带特殊字符 segment 也能命中。
+  sandbox 必须保留 allow-same-origin：否则同域插件页带不上 cookie/token，其内部 useAPI 一律 401。
+  iframeHeight 是固定值（72vh + scoped min-height 60vh），没有 postMessage 自适应高度；
+  插件返回 JSON 时由浏览器自行渲染，本页不解析响应体（catchall 为空则不挂 iframe，见占位卡分支）。
+-->
+
 <script setup lang="ts">
 /**
  * 插件后台承载页：统一接管 /admin/plugins/<slug>/**
@@ -26,6 +34,10 @@ definePageMeta({
 })
 
 const route = useRoute()
+const config = useRuntimeConfig()
+
+// API 前缀单源：runtimeConfig.public.apiBase（同源默认 "/api"，跨域为完整地址），去掉结尾斜杠
+const apiPrefix = computed(() => (config.public.apiBase || '/api').replace(/\/+$/, ''))
 
 const slug = computed(() => {
   const v = route.params.slug
@@ -42,10 +54,10 @@ const catchallSegments = computed<string[]>(() => {
 const catchallPath = computed(() => catchallSegments.value.map(encodeURIComponent).join('/'))
 
 // iframe src：代理到插件的 FastAPI 路由前缀（带所有剩余 path segment 透传）
-// 例：slug=guestbook-rss, catchall=[settings] => /api/admin/plugins/guestbook-rss/settings
+// 例：slug=guestbook-rss, catchall=[settings] => {apiBase}/admin/plugins/guestbook-rss/settings
 const iframeSrc = computed(() => {
   if (!slug.value) return ''
-  const base = `/api/admin/plugins/${slug.value}`
+  const base = `${apiPrefix.value}/admin/plugins/${slug.value}`
   return catchallPath.value ? `${base}/${catchallPath.value}` : base
 })
 
@@ -77,10 +89,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
           class="shrink-0"
           @click="goBack"
         >
-          <ArrowLeft
-            data-icon="inline-start"
-            class="mr-1.5"
-          />
+          <ArrowLeft data-icon="inline-start" />
           返回插件管理
         </Button>
         <div class="min-w-0">
@@ -110,10 +119,7 @@ const openInNewTab = () => iframeSrc.value && window.open(iframeSrc.value, '_bla
           :disabled="!iframeSrc"
           @click="openInNewTab"
         >
-          <ExternalLink
-            data-icon="inline-start"
-            class="mr-1.5"
-          />
+          <ExternalLink data-icon="inline-start" />
           新标签打开
         </Button>
       </div>

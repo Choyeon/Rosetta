@@ -1,23 +1,37 @@
 /**
- * Hydration 防御插件（客户端全局）
+ * plugins/02-hydration-safety.global.client.ts
  *
- * 根因（本项目 Windows SSR 环境）：
- * 任何 Vue defineComponent 形式的 svg 图标组件（无论 @lucide/vue 还是自建 h()），SSR 端一律
- * 渲染为 `<!---->` 空 Comment；客户端 Hydrate 时 first-child 类型不匹配 → Vue 拆 SSR DOM
- * 重建子树 → 子组件 instance 指针 detached → 级联 refs null TypeError。
+ * 最小且诚实的水合防御（frontend/AGENTS.md 允许的唯一定位：只在真实抛错时软重挂）：
+ *   命中真实 hydration 级联错误 → 先 console.error 上报，再做有界软重挂
+ *   （app.vue 根子树 :key++ 整棵转纯 CSR 重挂，每个文档硬上限 2 次，绝不循环）。
  *
- * 本插件提供"最后一道防线"（不替代根因修复）：
- *   1. 静默吞掉 Hydration mismatch 警告 + refs null 级联错误（不打扰用户）。
- *   2. 首次触发 Hydration 级联错误时，将整页切为纯 CSR（切换 #__nuxt 根 key），
- *      让客户端重新走正常挂载，避免后续任何 detached 副作用。
+ * 已拆除（原 00-escape-hatch / 旧版 02 / 05-downgrade 的掩盖层，勿再加回）：
+ *   · 改写 window.__NUXT_DATA__.serverRendered —— nuxt/dist/app/entry.js 在
+ *     applyPlugins() **之前**就用它决定 hydrate/mount，插件期改写是 no-op；
+ *     真正生效的是 server/plugins/spa-serverrendered-zero.nitro.ts（HTTP 层）。
+ *   · requestIdleCallback 轮询遍历组件实例树、包装 Vue 内置 ref 指令、
+ *     eval('clearError')、按消息子串吞 window.onerror / preventDefault
+ *     unhandledrejection —— 全部为欺骗性掩盖（window.onerror 覆写实际还会被
+ *     error-handler.client.ts 直接赋值冲掉，本就不是可靠拦截点）。
+ *
+ * 真实根因修复点（都在构建/服务端层）：
+ *   · vite `rosetta-lucide-ssr-fix`（SSR lucide 图标 first-child 与客户端同构，消除 mismatch 源）
+ *   · vite `rosetta-vue-setref-nullsafe`（Vue setRef 父链 null-safe，见 nuxt.config.ts）
+ *   · nitro `spa-serverrendered-zero`（ssr:false 空壳页不再进 hydrate 分支）
+ *   · app.pageTransition 不再使用 mode:'out-in'（SSR 首帧 Comment 占位 mismatch 源）
  */
 export default defineNuxtPlugin((nuxtApp) => {
   if (!import.meta.client) return
 
   const rootKey = useState<number>('__hydration_safety_root_key__', () => 0)
-  let recovered = false
 
-  const isHydrationError = (e: unknown): boolean => {
+  // WHY 硬上限：历史上无上限的 rootKey++ 循环曾把每次导航变成 30~80 次重挂
+  // 打满后端限流；预算耗尽后必须让错误真实暴露，而不是继续"抢救"。
+  const MAX_SOFT_REMOUNTS = 2
+
+  // WHY 按消息子串识别：Vue/Nuxt 对这类运行时级联 TypeError 没有错误码字段，
+  // 只能在 message 层面判定；判定收窄到 hydration/mismatch/refs-null 三类。
+  const isHydrationCascade = (e: unknown): boolean => {
     if (!e) return false
     const msg = (e as Error)?.message ?? String(e)
     if (!msg) return false
@@ -26,134 +40,23 @@ export default defineNuxtPlugin((nuxtApp) => {
       lc.includes('hydration')
       || lc.includes('mismatch')
       || msg.includes('reading refs')
-      || msg.includes('reading refs')
       || (lc.includes('null') && lc.includes('refs'))
     )
   }
 
-  const SPA_REDIRECT_PATHS = new Set([
-    '/login',
-    '/register',
-    '/oobe',
-    '/search'
-  ])
-  const isSpaPath = (): boolean => {
-    try {
-      const p = location.pathname
-      if (SPA_REDIRECT_PATHS.has(p)) return true
-      if (p.startsWith('/admin/') || p === '/admin') return true
-      if (p.startsWith('/search/')) return true
-    } catch {
-      /* guard: location access can throw inside sandboxed error recovery */
-    }
-    return false
-  }
-
-  const onFatal = (ctx: string) => {
-    if (recovered) return
-    recovered = true
-
-    // ssr:false 精准反选路径（登录/注册/OOBE/搜索/管理端）特殊处理：
-    // 这些路径在 Nitro node-server standalone 下，SSR 层输出的 body 几乎是
-    // 空壳（只有 #__nuxt 空 div），客户端 Hydrate 时 instance.refs === null
-    // 会立刻判成 Hydration 级联错 → onFatal → rootKey++ 软 CSR 重挂 →
-    // 第二次重挂时 Nuxt 仍然无法找到对应 DOM → 再次级联报错 → error.vue 500
-    // 冒泡"Cannot read properties of null (reading 'refs')"。
-    //
-    // 既然这些路径已经明确 ssr:false，它们本就应当走纯客户端挂载；一旦
-    // 命中 refs null，直接把 location.replace 到自己 → 一次性让客户端按
-    // 纯 SPA bootstrap，不再在根 key 上做软 CSR 重挂循环。
-    if (isSpaPath()) {
-      const target = location.pathname + location.search + location.hash
-      console.info(
-        `[hydration-safety] ${ctx} SPA detected(${location.pathname}) → soft client bootstrap via navigateTo(${target})`
-      )
-      // ssr:false 空壳页面：不要 window.location.replace（同路径硬跳会再次命中
-      // 空壳 → 再次 refs null → 死循环 500）。改成 navigateTo + replace:true
-      // + force 让客户端走纯 CSR 的导航解析，Vue 会把 shell 当成纯 SPA 重
-      // 新挂载，没有任何 SSR DOM 需要对齐 → refs 级联不再触发。
-      try {
-        const nuxt = useNuxtApp()
-        const maybePromise = nuxt.callHook('page:loading:start') as unknown as Promise<void> | void
-        if (typeof maybePromise === 'object' && maybePromise && typeof (maybePromise as Promise<void>).catch === 'function') {
-          (maybePromise as Promise<void>).catch(() => {})
-        }
-        // 同样微任务先出栈，确保剩余同批错误钩子执行完（此时 recovered=true
-        // 已经短路 onFatal 重入）。
-        setTimeout(() => {
-          nuxt.$router?.replace?.(target)
-          if (!nuxt.$router) {
-            // 极个别 Nitro standalone 场景下 useNuxtApp 取到实例但 $router
-            // 尚未挂载，退化成 navigateTo composable。
-            try {
-              navigateTo(target, { replace: true, open: undefined } as Record<string, unknown> as Parameters<typeof navigateTo>[1])
-            } catch {
-              /* ignore */
-            }
-          }
-        }, 10)
-      } catch {
-        // 极端：nuxt 实例拿不到，退化成软 key++（仍然可能 500，但概率极低）。
-        setTimeout(() => {
-          rootKey.value++
-        }, 10)
-      }
+  const recoverOnce = (ctx: string, err: unknown): void => {
+    if (rootKey.value >= MAX_SOFT_REMOUNTS) {
+      console.error(`[hydration-safety] ${ctx}: remount budget exhausted, surfacing error as-is`, err)
       return
     }
-
-    console.info(`[hydration-safety] ${ctx} detected → soft-CSR remount (rootKey++)`)
+    console.error(`[hydration-safety] ${ctx}: hydration cascade → soft CSR remount ${rootKey.value + 1}/${MAX_SOFT_REMOUNTS}`, err)
     rootKey.value++
   }
 
-  // Nuxt 层面：vue:app:error / vue:error 双钩子拦截
+  // 只订阅 vue:error 并仅做有界重挂。app:error 意味着错误已被 Nuxt 判为 fatal
+  // 并挂载 error.vue —— App 树此刻已整体 unmount，rootKey++ 救不回来，
+  // 正确的诚实路径是让 500 兜底页可见（自带重试按钮），不做 clearError 复活术。
   nuxtApp.hook('vue:error', (err) => {
-    if (isHydrationError(err)) {
-      onFatal('vue:error')
-    }
+    if (isHydrationCascade(err)) recoverOnce('vue:error', err)
   })
-
-  // App.config.errorHandler（不吞非 Hydration 错误）
-  const origHandler = nuxtApp.vueApp.config.errorHandler
-  nuxtApp.vueApp.config.errorHandler = (err, instance, info) => {
-    if (isHydrationError(err)) {
-      onFatal('config.errorHandler')
-      return
-    }
-    if (origHandler) origHandler.call(nuxtApp.vueApp, err as Error, instance, info)
-  }
-
-  // window.onerror：拦截控制台第 4 条
-  const origOnerror = window.onerror
-  window.onerror = function rosHydrationOnError(...args) {
-    const [msg, , , , err] = args
-    if (isHydrationError(err ?? msg)) {
-      onFatal('window.onerror')
-      return true // 吞掉
-    }
-    return origOnerror ? origOnerror.apply(window, args as unknown as Parameters<typeof origOnerror>) : false
-  }
-
-  // window.onunhandledrejection：拦截第 2 条
-  const origReject = window.onunhandledrejection
-  window.onunhandledrejection = function rosHydrationReject(...args) {
-    const reason = args[0]?.reason
-    if (isHydrationError(reason)) {
-      onFatal('unhandledrejection')
-      args[0]?.preventDefault?.()
-      return
-    }
-    return origReject ? origReject.apply(window, args) : undefined
-  }
-
-  // ——————————————————————————————————————————————————————————————————————
-  // NOTE (D2 零级联优化): 原先的 app:mounted "若 DOM 没 svg → 必 mismatch 过 → CSR 重挂"
-  // 会在 soft CSR remount（vue:error 触发 rootKey++）完成后的第二次 mounted 再误判：
-  //   client 渲染路径下，<svg lucide-icon /> 组件是异步首帧渲染的，mounted 时 DOM 仍无
-  //   任何 svg → 再次误判 → 第二次 onFatal rootKey++ → Nuxt 同步 re-sync 导航到同 path →
-  //   04 号硬兜底插件 "before path = after path = '/' 且 h1 还没挂上" → 触发
-  //   window.location.replace('/') → 死循环 30~80 次直到后端 /api/config /oobe/status
-  //   打满 429 → 用户控制台 300+ 条红 error。
-  // 保留 vue:error / config.errorHandler / window.onerror / unhandledrejection 四钩子就够了，
-  // 真正的 Hydration 级联错误一定会抛到这些钩子。
-  // ——————————————————————————————————————————————————————————————————————
 })

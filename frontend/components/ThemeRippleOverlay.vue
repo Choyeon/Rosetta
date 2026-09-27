@@ -1,3 +1,10 @@
+<!--
+  主题涟漪兜底：状态是 composables/useTheme.ts 里 __themeRippleSingleton 模块级单例（progress/fade 由 useTheme 侧计时驱动，
+  本组件只把它映射成 CSS 变量），故必须挂在 app.vue 的 <NuxtLayout> 之外（needsSpaIsolation 两条分支各挂一份）。
+  走这条路径的不只是无 View Transition API 的浏览器：useTheme().toggle() 的判据是
+  「startViewTransition 存在 且 未开启 prefers-reduced-motion」，所以 reduced-motion 用户看到的正是这个遮罩，
+  下方 scoped 媒体查询把它的过渡压到 1ms；这里的 650ms 必须与 useTheme.ts 的 THEME_RIPPLE_DURATION 同步。
+-->
 <template>
   <!--
     仅作为「不支持 View Transition API」浏览器的兜底：

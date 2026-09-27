@@ -1,3 +1,9 @@
+<!--
+  OOBE 向导专用顶栏（仅 pages/oobe.vue 使用）。与前台 Navbar 刻意不共用：安装完成前
+  站点设置、导航配置、主题包都不存在，所以品牌名与 logo 只能硬编码，也不能挂任何
+  主题皮肤——/oobe 在 layout-scope 中间件里按 admin 处理，主题 CSS 不会注入。
+  纯展示组件，locale / 明暗切换各自由子组件接管。
+-->
 <script setup lang="ts">
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 import ThemeToggle from '~~/components/ThemeToggle.vue'

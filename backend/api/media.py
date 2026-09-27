@@ -39,13 +39,15 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse, StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff, CurrentUser, get_current_user
 from backend.core.concurrency import concurrent_query
+from backend.core.plugin_bus import bus
 from backend.models.core import Media
+from backend.schemas import raw_content_response
 from backend.services.media_service import apply_watermark, build_media_url, generate_thumbnails
 
 logger = logging.getLogger(__name__)
@@ -108,6 +110,46 @@ ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
 
 SAFE_NAME_RE = re.compile(r"[^\w\-.一-龠ぁ-ゔァ-ヴー\u4e00-\u9fa5a-zA-Z0-9]")
 
+# 媒体库「文件格式分类 → 扩展名」白名单。服务端强制校验（AGENTS §12.7 双校验红线），
+# 清单与前端 composables/useUploadProgress.ts::ALLOWED_UPLOAD_EXTENSIONS 同源。
+LIBRARY_TYPE_EXTENSIONS: dict[str, tuple[str, ...]] = {
+    "image": ("jpg", "jpeg", "png", "gif", "webp", "svg"),
+    "video": ("mp4", "webm", "mov"),
+    "audio": ("mp3", "wav", "ogg"),
+    "document": ("pdf", "doc", "docx", "xls", "xlsx"),
+}
+LIBRARY_ALLOWED_EXTENSIONS: frozenset[str] = frozenset(
+    ext for exts in LIBRARY_TYPE_EXTENSIONS.values() for ext in exts
+)
+
+UPLOAD_EXT_REJECTED = "UPLOAD_EXT_REJECTED"
+UPLOAD_SVG_UNSAFE = "UPLOAD_SVG_UNSAFE"
+
+# SVG 与页面同源渲染（/media 静态挂载 + GET /media/{category}/{filename}），
+# 内含脚本即等价于站点自身的 XSS，因此按内容拒绝，扩展名白名单挡不住它。
+_SVG_UNSAFE_RE = re.compile(rb"<script|\son[a-z]+\s*=|javascript:", re.IGNORECASE)
+
+
+def _file_type_for_ext(ext: str) -> str:
+    """扩展名 → 文件格式分类；调用前必须先过 LIBRARY_ALLOWED_EXTENSIONS。"""
+    for ftype, extensions in LIBRARY_TYPE_EXTENSIONS.items():
+        if ext in extensions:
+            return ftype
+    return "other"  # pragma: no cover - 白名单已排除
+
+
+def _assert_svg_content_safe(content: bytes) -> None:
+    """拒绝含可执行内容的 SVG（script 标签 / 事件处理器 / javascript: 协议）。"""
+    if _SVG_UNSAFE_RE.search(content):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "message": "SVG 含脚本或事件处理器属性，已拒绝上传（同源渲染会造成 XSS）",
+                "error_code": UPLOAD_SVG_UNSAFE,
+            },
+        )
+
 
 def _sanitize_filename(filename: str) -> str:
     name = Path(Path(filename).name).name or "upload"
@@ -145,7 +187,7 @@ def _validate_magic(head: bytes, ext: str, filename: str) -> None:
             or b"<!doctype svg" in stripped
         ):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail={
                     "success": False,
                     "message": "上传文件内容与扩展名不匹配（SVG magic）",
@@ -169,7 +211,7 @@ def _validate_magic(head: bytes, ext: str, filename: str) -> None:
         if ok:
             return
     raise HTTPException(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         detail={
             "success": False,
             "message": "上传文件内容与扩展名不匹配",
@@ -192,6 +234,7 @@ async def save_upload(
 
     Raises:
         HTTPException(413, REQUEST_ENTITY_TOO_LARGE)
+        HTTPException(400, UPLOAD_SVG_UNSAFE)
         HTTPException(422, UPLOAD_MAGIC_MISMATCH)
         HTTPException(422, UPLOAD_PATH_TRAVERSAL)
     """
@@ -202,7 +245,7 @@ async def save_upload(
     total_size = size if size is not None else len(content)
     if total_size > max_upload_bytes:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail={
                 "success": False,
                 "message": f"文件大小不能超过 {max_upload_bytes // (1024 * 1024)}MB",
@@ -212,6 +255,8 @@ async def save_upload(
 
     head = content[:512]
     _validate_magic(head, ext, filename)
+    if ext == ".svg":
+        _assert_svg_content_safe(content)
 
     media_dir.mkdir(parents=True, exist_ok=True)
     safe_name = _sanitize_filename(filename)
@@ -221,7 +266,7 @@ async def save_upload(
         final_path.relative_to(target_dir_resolved)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "success": False,
                 "message": "非法文件路径",
@@ -230,7 +275,7 @@ async def save_upload(
         ) from exc
     if not final_path.is_relative_to(target_dir_resolved):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail={
                 "success": False,
                 "message": "非法文件路径",
@@ -323,25 +368,47 @@ async def async_file_exists(filepath: Path) -> bool:
         return False
 
 
-async def async_save_stream(filepath: Path, stream: Any) -> int:
+async def async_save_stream(
+    filepath: Path, stream: UploadFile, max_bytes: int | None = None
+) -> int:
     """
     异步流式保存文件
 
     Args:
         filepath: 文件路径
-        stream: 文件流（UploadFile 的 file 属性）
+        stream: FastAPI/Starlette 的 ``UploadFile`` 本体——它的 ``read`` 是异步的
+            （内部转 threadpool）。传 ``upload.file``（同步 BinaryIO）会立刻
+            ``await bytes`` 抛 TypeError；本函数早期正是那么调的，导致
+            ``POST /media/upload/stream`` 从未真正可用过。
+        max_bytes: 写入过程中即生效的字节上限；None 表示不限制
 
     Returns:
         写入的总字节数
+
+    Raises:
+        HTTPException(413): 超过 max_bytes。超限的字节已经落盘，
+            所以必须在这里删掉半成品——否则"先全部写完再比较大小"的写法
+            等于允许调用方用任意大的请求体打满磁盘（Nginx 侧放行 50m）。
     """
     total_size = 0
+    oversize = False
     async with aiofiles.open(filepath, "wb") as f:
         while True:
             chunk = await stream.read(CHUNK_SIZE)
             if not chunk:
                 break
-            await f.write(chunk)
             total_size += len(chunk)
+            await f.write(chunk)
+            if max_bytes is not None and total_size > max_bytes:
+                oversize = True
+                break
+
+    if oversize:
+        await async_delete_file(filepath)
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"文件大小不能超过 {max_bytes // (1024 * 1024)}MB",
+        )
     return total_size
 
 
@@ -430,6 +497,229 @@ class ImageResponse(BaseModel):
     height: int
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class MediaThumbnailSize(BaseModel):
+    """单档缩略图（``Media.sizes`` 的一个取值）。"""
+
+    url: str = Field(..., description="该档缩略图的对外可访问 URL")
+    width: int = Field(..., description="缩略图宽度（像素）")
+    height: int = Field(..., description="缩略图高度（像素）")
+
+
+class MediaUploaderRef(BaseModel):
+    """媒体条目上的上传者摘要（只含展示字段，不含邮箱等私密信息）。"""
+
+    id: int = Field(..., description="上传者用户 ID")
+    username: str = Field(..., description="上传者用户名")
+    nickname: str | None = Field(None, description="上传者昵称，未设置时为 null")
+
+
+class MediaItemBase(BaseModel):
+    """媒体记录的对外公共字段（``Media`` 表投影；时间统一为 ISO 字符串）。"""
+
+    id: int = Field(..., description="媒体记录 ID")
+    file: str = Field(
+        ...,
+        description=(
+            "文件可访问地址（入库前经 CDN 前缀改写）：未配置 CDN 时是站内相对路径，"
+            "配置后是绝对 http(s) URL；任何情况下都不是服务器上的磁盘路径"
+        ),
+    )
+    filename: str | None = Field(
+        None, description="上传时的原始文件名（已 sanitize 前的客户端命名）"
+    )
+    file_type: str = Field(
+        ..., description="文件格式分类：image / video / audio / document（由扩展名白名单派生）"
+    )
+    file_size: int = Field(0, description="文件大小（字节）")
+    title: str | None = Field(None, description="标题")
+    alt_text: str | None = Field(None, description="替代文本")
+    description: str | None = Field(None, description="描述")
+    width: int | None = Field(None, description="原图宽度（像素）；非图片为 null")
+    height: int | None = Field(None, description="原图高度（像素）；非图片为 null")
+    sizes: dict[str, MediaThumbnailSize] | None = Field(
+        None,
+        description=(
+            "多尺寸缩略图表，键为档位名 thumbnail / medium / large；"
+            "非图片、SVG 或后处理失败时为 null"
+        ),
+    )
+    uploaded_by: MediaUploaderRef | None = Field(
+        None, description="上传者摘要；记录未关联上传者时为 null"
+    )
+    created_at: str | None = Field(None, description="创建时间 ISO 8601 字符串；无值时为 null")
+    updated_at: str | None = Field(None, description="更新时间 ISO 8601 字符串；无值时为 null")
+
+
+class MediaLibraryItem(MediaItemBase):
+    """媒体库列表项：公共字段之上再挂一组前端 AdminMediaItem 别名字段。"""
+
+    url: str = Field(..., description="与 ``file`` 同值的可访问 URL（前端读取的别名）")
+    category: str = Field(..., description="与 ``file_type`` 同值的业务分类别名")
+    mime: str = Field(
+        ...,
+        description="按文件名推断的 MIME；推不出时回退 ``file_type``，再兜底 application/octet-stream",
+    )
+    size_bytes: int = Field(0, description="与 ``file_size`` 同值的字节数别名")
+
+
+class MediaLibraryListResponse(BaseModel):
+    """媒体库列表端点的响应体（裸分页信封，不带 success）。"""
+
+    items: list[MediaLibraryItem] = Field(default_factory=list, description="当前页媒体条目")
+    total: int = Field(0, description="符合筛选条件的媒体总数")
+    page: int = Field(1, description="当前页码（回显请求参数）")
+    page_size: int = Field(20, description="每页数量（回显请求参数，上限 100）")
+    total_pages: int = Field(0, description="总页数 = ceil(total / page_size)，total 为 0 时是 0")
+
+
+class MediaDetailResponse(MediaItemBase):
+    """单媒体详情端点的响应体（一条媒体记录，无列表用的别名字段）。"""
+
+
+class MediaUploadMetadata(BaseModel):
+    """上传结果里的 ``metadata`` 载荷。"""
+
+    sizes: dict[str, MediaThumbnailSize] | None = Field(
+        None, description="生成的多尺寸缩略图表；非图片或后处理失败时为 null"
+    )
+    file_type: str = Field(..., description="按扩展名判定的文件格式分类")
+
+
+class MediaUploadResult(BaseModel):
+    """媒体库上传成功后的响应体（两个上传路径同构）。"""
+
+    id: int = Field(..., description="新建媒体记录 ID")
+    title: str | None = Field(None, description="标题（取自表单，未填为 null）")
+    description: str | None = Field(None, description="描述（取自表单，未填为 null）")
+    alt_text: str | None = Field(None, description="替代文本（取自表单，未填为 null）")
+    filename: str | None = Field(
+        None,
+        description="入库记录里的文件名（即客户端提交的原始文件名）；记录该列为空时回退本次生成的落盘名",
+    )
+    original_name: str | None = Field(None, description="客户端提交的原始文件名")
+    url: str = Field(..., description="文件可访问 URL（已按 CDN 前缀生成）")
+    thumbnail_url: str = Field(
+        ...,
+        description="缩略图 URL：按 thumbnail → medium → large 取首个可用档位，全缺省时等于 ``url``",
+    )
+    category: str = Field(
+        ...,
+        description="业务分类：表单传入且合法时用表单值，否则回退文件格式分类",
+    )
+    mime_type: str = Field(
+        ...,
+        description="MIME：图片取 Pillow 识别结果，其它取请求声明的 content-type 或 application/octet-stream",
+    )
+    size: int = Field(..., description="文件大小（字节，按实际读到的内容长度计）")
+    width: int | None = Field(None, description="原图宽度（像素）；非图片为 null")
+    height: int | None = Field(None, description="原图高度（像素）；非图片为 null")
+    duration: None = Field(None, description="音视频时长：当前实现固定为 null（未探测）")
+    storage: str = Field("local", description="存储位置标识，当前实现固定为 local")
+    metadata: MediaUploadMetadata = Field(..., description="附加元信息（缩略图表与文件格式分类）")
+    is_active: bool = Field(True, description="是否启用：入库即为 true")
+    created_at: str = Field("", description="创建时间 ISO 字符串；记录缺值时为空字符串")
+    updated_at: str = Field("", description="更新时间 ISO 字符串；记录缺值时为空字符串")
+
+
+class MediaUpdatedInfo(BaseModel):
+    """媒体信息更新成功后回显的媒体字段子集。"""
+
+    id: int = Field(..., description="媒体记录 ID")
+    title: str | None = Field(None, description="更新后的标题")
+    alt_text: str | None = Field(None, description="更新后的替代文本")
+    description: str | None = Field(None, description="更新后的描述")
+    width: int | None = Field(None, description="原图宽度（像素），本端点不修改该值")
+    height: int | None = Field(None, description="原图高度（像素），本端点不修改该值")
+    sizes: dict[str, MediaThumbnailSize] | None = Field(
+        None, description="多尺寸缩略图表，本端点不修改该值"
+    )
+
+
+class MediaUpdateResponse(BaseModel):
+    """媒体信息更新端点的响应体。"""
+
+    success: bool = Field(True, description="固定为 true（失败走 HTTPException 错误信封）")
+    message: str = Field("媒体信息已更新", description="人类可读结果")
+    media: MediaUpdatedInfo = Field(..., description="更新后回显的字段子集")
+
+
+class MediaTypeStat(BaseModel):
+    """单个文件格式分类的计数与占用。"""
+
+    count: int = Field(0, description="该格式的文件数")
+    size: int = Field(0, description="该格式占用字节数合计；NULL 行按 0 计")
+
+
+class MediaStatsData(BaseModel):
+    """媒体库统计载荷（同一数值挂了多组前端别名字段）。"""
+
+    total_count: int = Field(0, description="媒体文件总数")
+    total_size: int = Field(0, description="全部文件占用字节数")
+    total_size_formatted: str = Field(
+        "0.00 B", description="人类可读体积（B/KB/MB/GB/TB/PB，保留两位小数）"
+    )
+    type_stats: dict[str, MediaTypeStat] = Field(
+        default_factory=dict,
+        description="按文件格式分类的统计，键为 image / video / audio / document（仅出现库里实际存在的类型）",
+    )
+    total_files: int = Field(0, description="与 ``total_count`` 同值的前端别名")
+    total_size_bytes: int = Field(0, description="与 ``total_size`` 同值的字节数别名")
+    images: int = Field(0, description="image 分类文件数（type_stats 缺该键时为 0）")
+    videos: int = Field(0, description="video 分类文件数")
+    audios: int = Field(0, description="audio 分类文件数")
+    documents: int = Field(0, description="document 分类文件数")
+
+
+class MediaStatsResponse(BaseModel):
+    """媒体库统计端点的响应体。"""
+
+    success: bool = Field(True, description="固定为 true")
+    data: MediaStatsData = Field(..., description="统计载荷")
+    message: str = Field("获取媒体库统计成功", description="人类可读结果")
+
+
+class MediaDeleteRefusal(BaseModel):
+    """批量删除中被拒绝保留的单条记录。"""
+
+    id: int = Field(..., description="被保留的媒体记录 ID")
+    reason: str = Field(..., description="拒绝删除的原因（存储路径不落在媒体目录内）")
+
+
+class MediaBatchDeleteResponse(BaseModel):
+    """媒体批量删除端点的响应体。"""
+
+    success: bool = Field(True, description="固定为 true；调用方须再看 refused / missing_ids")
+    message: str = Field(..., description="汇总文案，含保留与不存在条目的数量")
+    deleted_count: int = Field(0, description="实际删除的记录数")
+    refused: list[MediaDeleteRefusal] = Field(
+        default_factory=list,
+        description="路径非法被拒绝删除（DB 记录与物理文件都保留）的条目",
+    )
+    missing_ids: list[int] = Field(
+        default_factory=list, description="请求里查无此记录的媒体 ID（升序）"
+    )
+
+
+class MediaDeleteResponse(BaseModel):
+    """单媒体删除端点的响应体。"""
+
+    success: bool = Field(True, description="固定为 true；失败路径走 HTTPException 错误信封")
+    message: str = Field("媒体文件已删除", description="人类可读结果")
+
+
+class ImageDeleteResponse(BaseModel):
+    """按「分类目录 + 文件名」删除图片端点的响应体。"""
+
+    success: bool = Field(True, description="固定为 true；失败路径走 HTTPException 错误信封")
+    message: str = Field("图片已删除", description="人类可读结果")
+
+
 @router.post("/upload", response_model=ImageUploadResponse, summary="上传图片")
 async def upload_image(
     file: UploadFile = File(...),
@@ -487,7 +777,8 @@ async def upload_image_stream(
     """
     流式上传图片（支持大文件）
 
-    适用于大文件上传，使用流式处理减少内存占用。
+    与 `save_upload` 的区别只在写入方式：分块边读边写，避免把整张图先读进内存。
+    安全口径（扩展名白名单 + 魔数 + SVG 主动内容 + 大小上限）与 `save_upload` 一致。
     """
     await ensure_dirs()
 
@@ -497,23 +788,36 @@ async def upload_image_stream(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"不支持的文件类型: {file.content_type}"
         )
 
+    # content_type 由客户端自报，不能当唯一依据：`image/png` + `x.html`
+    # 就能把可执行文档塞进同源可访问的 uploads 目录（AGENTS §12.7 双校验红线）。
+    ext = Path(file.filename or "image.jpg").suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "message": f"不支持的文件扩展名: {ext or '(无扩展名)'}",
+                "error_code": UPLOAD_EXT_REJECTED,
+            },
+        )
+
     # 生成文件名
-    ext = Path(file.filename or "image.jpg").suffix or ".jpg"
     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
     filepath = UPLOADS_DIR / filename
 
-    # 流式保存文件
-    total_size = await async_save_stream(filepath, file.file)
+    # 流式保存文件（超限即在写入过程中中断并清理半成品）
+    total_size = await async_save_stream(filepath, file, max_bytes=MAX_FILE_SIZE)
 
-    # 检查文件大小
-    if total_size > MAX_FILE_SIZE:
-        await async_delete_file(filepath)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件大小不能超过 10MB")
-
-    # 异步验证图片
+    # 校验内容与扩展名相符，且不是伪装成图片的脚本载体
     try:
         content = await async_read_file(filepath)
+        _validate_magic(content[:16], ext, filename)
+        if ext == ".svg":
+            _assert_svg_content_safe(content)
         width, height, _ = await validate_image_async(content)
+    except HTTPException:
+        await async_delete_file(filepath)
+        raise
     except Exception as e:
         await async_delete_file(filepath)
         raise HTTPException(
@@ -598,7 +902,13 @@ async def upload_cover(
 @router.get(
     "/library",
     summary="媒体库列表",
-    description="获取媒体库文件列表，支持分页、搜索和筛选。",
+    description=(
+        "获取媒体库文件列表，支持分页、搜索和筛选。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "`file_type` 与 `category` 都映射到同一列，同时传入时 `file_type` 优先；"
+        "`page_size` 上限 100；`sort_by` 只接受 created_at / file_size / filename / updated_at，"
+        "非法值静默回退 created_at；`search` 对文件名、标题、描述做不区分大小写的模糊匹配。"
+    ),
+    responses={200: {"model": MediaLibraryListResponse}},
 )
 async def list_media_library(
     db: DB,
@@ -615,7 +925,6 @@ async def list_media_library(
     获取媒体库列表
 
     性能优化：
-    - 使用并发查询获取总数和列表
     - 支持多种筛选和排序
     """
     query = select(Media).options(selectinload(Media.uploaded_by))
@@ -647,7 +956,7 @@ async def list_media_library(
     else:
         query = query.order_by(sort_column.desc())
 
-    # 并发执行计数和列表查询
+    # 计数 + 列表（两条顺序查询；concurrent_query 不并行）
     count_query = select(func.count()).select_from(query.subquery())
 
     total, result = await concurrent_query(
@@ -705,7 +1014,12 @@ async def list_media_library(
 @router.get(
     "/library/stats",
     summary="媒体库统计",
-    description="获取媒体库的统计信息。",
+    description=(
+        "获取媒体库的统计信息：总文件数、总占用字节数与人类可读体积，"
+        "并按文件格式分类给出计数。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "单次请求内跑三条聚合查询，未做缓存。"
+    ),
+    responses={200: {"model": MediaStatsResponse}},
 )
 async def get_media_stats(
     db: DB,
@@ -715,9 +1029,8 @@ async def get_media_stats(
     获取媒体库统计信息
 
     性能优化：
-    - 使用并发查询同时获取多个统计值
     """
-    # 并发执行所有统计查询
+    # 顺序执行多条统计查询
     total_count, total_size, type_stats = await concurrent_query(
         # 总文件数
         db.scalar(select(func.count()).select_from(Media)),
@@ -776,16 +1089,11 @@ async def _save_media_to_library(
     参数：
     - category：前端传来的业务分类（gallery/post-cover/avatar 等），仅用于创建 AdminPhoto
       等上层业务关联，**不**写入 Media 表（Media 表以 file_type 区分文件格式）。
+    - 落盘路径为 ``MEDIA_DIR/uploads/<file_type>/<时间戳>_<随机名>.<ext>``；``ext``
+      必须命中 ``LIBRARY_ALLOWED_EXTENSIONS``，未知/危险扩展名直接 400——前端
+      useUploadProgress 的白名单只是体验优化，服务端不信任它（AGENTS §12.7）。
     返回：扁平化的 MediaItem-like 字典，与前端 types/api.ts 的 MediaItem 对齐。
     """
-    # 允许的文件类型与扩展名映射
-    allowed_types = {
-        "image": ["jpg", "jpeg", "png", "gif", "webp", "svg"],
-        "video": ["mp4", "webm", "mov"],
-        "audio": ["mp3", "wav", "ogg"],
-        "document": ["pdf", "doc", "docx", "xls", "xlsx"],
-    }
-
     if not file.filename:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -796,18 +1104,23 @@ async def _save_media_to_library(
     size_hint = getattr(file, "size", None)
     if isinstance(size_hint, int) and size_hint > MAX_UPLOAD_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"文件过大，最大允许 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
         )
 
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
+    if ext not in LIBRARY_ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "message": f"不支持的文件类型：.{ext or '(无扩展名)'}",
+                "error_code": UPLOAD_EXT_REJECTED,
+            },
+        )
 
-    # 确定文件格式分类
-    file_type = "other"
-    for ftype, extensions in allowed_types.items():
-        if ext in extensions:
-            file_type = ftype
-            break
+    # ext 命中白名单 ⇒ 必然归属某一类，不存在 other 兜底
+    file_type = _file_type_for_ext(ext)
 
     timestamp = datetime.now().strftime("%Y%m%d")
     unique_id = uuid.uuid4().hex[:8]
@@ -821,7 +1134,7 @@ async def _save_media_to_library(
     content = await file.read()
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(
-            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail=f"文件过大，最大允许 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
         )
     if not content:
@@ -829,6 +1142,8 @@ async def _save_media_to_library(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="上传文件内容为空",
         )
+    if ext == "svg":
+        _assert_svg_content_safe(content)
     await async_write_file(filepath, content)
 
     cdn_prefix = await _read_cdn_prefix(db)
@@ -842,11 +1157,7 @@ async def _save_media_to_library(
     mime_type = file.content_type or "application/octet-stream"
     if file_type == "image" and ext.lower() not in ("svg",):
         try:
-            from PIL import Image
-
-            pil_image = await asyncio.to_thread(lambda: Image.open(filepath))
-            # 加载到内存以便后续处理（PIL lazy load 在 to_thread 外可能失效）
-            pil_image.load()
+            pil_image = await _open_image_decoded(filepath)
             width, height = pil_image.size
             mime_type = getattr(pil_image, "get_format_mimetype", lambda: mime_type)() or mime_type
 
@@ -859,7 +1170,8 @@ async def _save_media_to_library(
             watermark_text = await _read_watermark_text(db)
             if watermark_text:
                 pil_image = await apply_watermark(pil_image, watermark_text)
-                await async_write_file(filepath, _pil_to_bytes(pil_image, ext))
+                encoded = await asyncio.to_thread(_pil_to_bytes, pil_image, ext)
+                await async_write_file(filepath, encoded)
             sizes = await generate_thumbnails(
                 pil_image, upload_dir, f"{timestamp}_{unique_id}", f".{ext}", cdn_prefix
             )
@@ -911,6 +1223,20 @@ async def _save_media_to_library(
     await db.flush()
     await db.refresh(media)
 
+    # 素材入库事件：webhook 端点是第三方地址，故显式给出对外字段，
+    # 不把整条 Media 记录交给总线去扫（见 api/webhook.py 的 payload 白名单）
+    await bus.do_action(
+        "media.uploaded",
+        media,
+        webhook_payload={
+            "id": media.id,
+            "filename": media.filename,
+            "file_type": media.file_type,
+            "file_size": media.file_size,
+            "url": media.file,
+        },
+    )
+
     return {
         "id": media.id,
         "title": media.title,
@@ -940,7 +1266,16 @@ async def _save_media_to_library(
 @router.post(
     "/library",
     summary="上传到媒体库（REST 主路径）",
-    description="与 GET /library 配对：上传文件到媒体库。category 用于业务分类（gallery/post-cover 等）。",
+    description=(
+        "与媒体库列表接口配对：上传文件到媒体库。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "multipart 单文件上限 20MB（超限 413 REQUEST_ENTITY_TOO_LARGE）；"
+        "扩展名白名单为 image(jpg/jpeg/png/gif/webp/svg)、video(mp4/webm/mov)、"
+        "audio(mp3/wav/ogg)、document(pdf/doc/docx/xls/xlsx)，未命中返回 400 UPLOAD_EXT_REJECTED；"
+        "含脚本或事件处理器属性的 SVG 按内容拒绝（400 UPLOAD_SVG_UNSAFE）；空文件 400。"
+        "category 用于业务分类（gallery/post-cover 等），非法值静默回退文件格式分类；"
+        "图片会压缩原图并生成 thumbnail/medium/large 三档缩略图，站点配置了水印文案时叠加水印。"
+    ),
+    responses={200: {"model": MediaUploadResult}},
 )
 async def upload_library_rest(
     db: DB,
@@ -977,7 +1312,11 @@ async def upload_library_rest(
 @router.post(
     "/library/upload",
     summary="上传到媒体库（别名路径）",
-    description="兼容旧客户端的别名路径，参数与 POST /library 一致。",
+    description=(
+        "兼容旧客户端的别名路径，参数、鉴权（staff 及以上）、"
+        "20MB 上限、扩展名白名单、SVG 内容拦截与缩略图行为均与 REST 主路径一致。"
+    ),
+    responses={200: {"model": MediaUploadResult}},
 )
 async def upload_to_library(
     db: DB,
@@ -1013,7 +1352,11 @@ async def upload_to_library(
 @router.get(
     "/library/{media_id}",
     summary="媒体详情",
-    description="获取单个媒体文件的详细信息。",
+    description=(
+        "获取单个媒体文件的详细信息。需登录（任意角色，游客 401）；"
+        "记录不存在或 ID 无法解析为整数时分别返回 404 / 422。"
+    ),
+    responses={200: {"model": MediaDetailResponse}},
 )
 async def get_media_detail(
     media_id: int,
@@ -1059,7 +1402,12 @@ async def get_media_detail(
 @router.put(
     "/library/{media_id}",
     summary="更新媒体信息",
-    description="更新媒体文件的标题、描述等信息。",
+    description=(
+        "更新媒体文件的标题、替代文本与描述。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "采用「传了才改」语义：请求体中为 null 的字段保留原值，因此无法用本接口清空已有文案；"
+        "只改元信息，不触碰物理文件与缩略图；记录不存在返回 404。"
+    ),
+    responses={200: {"model": MediaUpdateResponse}},
 )
 async def update_media(
     media_id: int,
@@ -1108,7 +1456,12 @@ async def update_media(
 @router.delete(
     "/library/batch",
     summary="批量删除媒体",
-    description="批量删除多个媒体文件。",
+    description=(
+        "批量删除多个媒体文件，同时删除数据库记录和物理文件。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "ids 为空数组返回 400。响应除 `deleted_count` 外还回 `refused`（路径非法、记录被保留的条目）"
+        "与 `missing_ids`，调用方不得只看 `success` 判定全部删除完成。"
+    ),
+    responses={200: {"model": MediaBatchDeleteResponse}},
 )
 async def batch_delete_media(
     db: DB,
@@ -1134,13 +1487,21 @@ async def batch_delete_media(
     media_list = result.scalars().all()
 
     deleted_count = 0
+    refused: list[dict] = []
     for media in media_list:
-        # 删除物理文件（外链文件跳过；非法路径跳过并继续，避免批量中断）
+        # 非法路径必须**拒绝删除该条记录**：单条删除走的是 `raise`，批量这里原先把
+        # HTTPException 一起吞掉却照样删 DB 行，等于留着越权文件变成永久孤儿，
+        # 而界面上显示"已删除"。FileNotFoundError 才是可忽略的正常分支（文件本就不在）。
         try:
             filepath = _resolve_media_file_path(media.file)
+        except HTTPException as exc:
+            logger.warning("批量删除跳过媒体 %s：文件路径非法（%s）", media.id, exc.detail)
+            refused.append({"id": media.id, "reason": str(exc.detail)})
+            continue
+        try:
             if await async_file_exists(filepath):
                 await async_delete_file(filepath)
-        except (FileNotFoundError, HTTPException):
+        except FileNotFoundError:
             pass
 
         # 删除数据库记录
@@ -1149,17 +1510,31 @@ async def batch_delete_media(
 
     await db.flush()
 
+    missing = sorted(set(ids) - {m.id for m in media_list})
+    message = f"已删除 {deleted_count} 个媒体文件"
+    if refused:
+        message += f"，{len(refused)} 个因路径非法被保留"
+    if missing:
+        message += f"，{len(missing)} 个 ID 不存在"
+
     return {
         "success": True,
-        "message": f"已删除 {deleted_count} 个媒体文件",
+        "message": message,
         "deleted_count": deleted_count,
+        "refused": refused,
+        "missing_ids": missing,
     }
 
 
 @router.delete(
     "/library/{media_id}",
     summary="删除单个媒体",
-    description="删除单个媒体文件。",
+    description=(
+        "删除单个媒体文件，同时删除数据库记录与物理文件。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "记录不存在返回 404；存储路径不落在媒体目录内时拒绝删除并返回 400（UPLOAD_PATH_TRAVERSAL）；"
+        "外链记录（远程 URL）仅删数据库记录。"
+    ),
+    responses={200: {"model": MediaDeleteResponse}},
 )
 async def delete_media_by_id(
     media_id: int,
@@ -1217,8 +1592,24 @@ def _resolve_category_filepath(category: str, filename: str) -> Path:
     return final_path
 
 
-@router.get("/{category}/{filename}", summary="获取图片")
-async def get_image(category: str, filename: str):
+@router.get(
+    "/{category}/{filename}",
+    summary="获取图片",
+    description=(
+        "按「分类目录 + 文件名」直出图片二进制流，公开访问、无需鉴权。"
+        "category 仅接受 uploads / avatars / covers / defaults，其余返回 404；"
+        "文件名先经净化并校验落在媒体目录内，越界返回 400（error_code: UPLOAD_PATH_TRAVERSAL）。"
+        "Content-Type 按扩展名映射，未知类型回退 application/octet-stream 并带 X-Content-Type-Options: nosniff；"
+        "响应带 Cache-Control: public, max-age=31536000（一年强缓存），分块 64KB 流式读盘。"
+    ),
+    responses=raw_content_response(
+        "image/*",
+        "图片二进制流；Content-Type 按扩展名映射，未知类型回退 application/octet-stream。",
+        binary=True,
+    ),
+    response_class=Response,
+)
+async def get_image(category: str, filename: str) -> StreamingResponse:
     """获取图片文件"""
     valid_categories = ["uploads", "avatars", "covers", "defaults"]
     if category not in valid_categories:
@@ -1243,26 +1634,44 @@ async def get_image(category: str, filename: str):
     }
     media_type = _MIME_MAP.get(suffix, "application/octet-stream")
 
-    # 异步读取文件内容
-    content = await async_read_file(filepath)
-
-    def iter_content():
-        yield content
+    # 分块读盘直出：整文件 async_read_file 会把每张图（最大 10MB）完整压进内存，
+    # 图库页并发加载 N 张就是 N 倍峰值；生成器按 CHUNK_SIZE 边读边发。
+    async def aiter_file(path: Path):
+        async with aiofiles.open(path, "rb") as f:
+            while True:
+                chunk = await f.read(CHUNK_SIZE)
+                if not chunk:
+                    break
+                yield chunk
 
     return StreamingResponse(
-        iter_content(),
+        aiter_file(filepath),
         media_type=media_type,
-        headers={"Cache-Control": "public, max-age=31536000"},
+        headers={
+            "Cache-Control": "public, max-age=31536000",
+            # 显式声明不嗅探：octet-stream 兜底依赖浏览器尊重 Content-Type
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
-@router.delete("/{category}/{filename}", summary="删除图片")
+@router.delete(
+    "/{category}/{filename}",
+    summary="删除图片",
+    description=(
+        "按「分类目录 + 文件名」直接删除物理文件，需 staff 权限"
+        "（与按媒体 ID 删除的口径一致）。"
+        "文件名先经净化并校验落在媒体目录内，越界返回 400（error_code: UPLOAD_PATH_TRAVERSAL）；"
+        "分类非法或文件不存在返回 404。注意：本接口只删物理文件，不清理对应的数据库记录。"
+    ),
+    responses={200: {"model": ImageDeleteResponse}},
+)
 async def delete_image(
     category: str,
     filename: str,
-    current_user: Any = Depends(get_current_user),
+    current_user: CurrentStaff,
 ):
-    """删除图片文件"""
+    """删除图片文件（按文件名直删物理文件，仅限 staff）"""
     valid_categories = ["uploads", "avatars", "covers"]
     if category not in valid_categories:
         raise HTTPException(status_code=404, detail="图片不存在")
@@ -1322,6 +1731,22 @@ async def _read_watermark_text(db: DB) -> str | None:
     return text or None
 
 
+async def _open_image_decoded(path: Path):
+    """打开并**完整解码**图片，返回 PIL.Image。
+
+    ``Image.open`` 只是惰性建对象，真正的 CPU 在 ``load()``，因此两步必须在同一个
+    worker 线程里完成；否则一次上传就把事件循环按住几十到几百毫秒。
+    """
+    from PIL import Image
+
+    def _open_and_load():
+        img = Image.open(path)
+        img.load()
+        return img
+
+    return await asyncio.to_thread(_open_and_load)
+
+
 def _pil_to_bytes(image: Any, ext: str) -> bytes:
     """把 PIL.Image 序列化为字节（用于回写加了水印的原图）。"""
 
@@ -1340,9 +1765,7 @@ JPEG_WEBP_QUALITY = 85  # JPEG/WebP 重保存质量
 PNG_OPTIMIZE = True
 
 
-async def _compress_original_image(
-    image: Any, filepath: Path, ext: str
-) -> Any | None:
+async def _compress_original_image(image: Any, filepath: Path, ext: str) -> Any | None:
     """
     压缩原图并回写磁盘，返回压缩后的 PIL Image；未压缩返回 None。
 
@@ -1473,8 +1896,10 @@ async def get_bing_wallpaper_batch(
             resp.headers["Access-Control-Allow-Origin"] = "*"
             resp.headers["X-Bing-Cache"] = "HIT"
             return resp
-    except Exception:
-        pass
+    except ImportError as exc:
+        # 只可能发生在 import 阶段：RedisCacheBackend / MemoryCacheBackend 的 get 自己
+        # 就 try/except 到底并 logger.error 后返回 None，缓存层从不向外抛异常。
+        logger.warning(f"[bing] 缓存模块不可用，跳过缓存读取: {exc}")
 
     # 2) 请求 Bing API
     import httpx as _httpx
@@ -1548,8 +1973,9 @@ async def get_bing_wallpaper_batch(
 
         full_key = make_cache_key(cache_key)
         await cache.set(full_key, body, BING_WALLPAPER_CACHE_TTL)
-    except Exception:
-        pass
+    except ImportError as exc:
+        # 同上：缓存层内部已降级，写失败只是下次重新请求 Bing，端点还有 last-success 兜底
+        logger.warning(f"[bing] 缓存模块不可用，跳过缓存写入: {exc}")
 
     resp = JSONResponse(content=body)
     resp.headers["Access-Control-Allow-Origin"] = "*"

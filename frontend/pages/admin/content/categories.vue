@@ -1,5 +1,12 @@
+<!--
+  后台分类管理页（SPA / layout=admin）：分类 CRUD，请求全部走 useAdminManage wrapper 单源。
+  硬契约：name/description 以完整四语 dict {zh,en,ja,zh_Hant} 提交（后端 JSON 列依赖该形状）；
+  slug 自动派生仅在结果匹配后端 ^[a-z0-9-]+$ 时才填入，含中文则留空交给后端按名称生成；
+  失败提示由 apiFetch 统一 toast，页面 catch 内禁止二次弹错（双 toast 是回归）。
+-->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
+import { useI18n } from 'vue-i18n'
 import {
   fetchAdminCategories,
   createAdminCategory,
@@ -19,6 +26,7 @@ import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
+const { t } = useI18n()
 const toast = useToast()
 
 const categories = shallowRef<AdminCategory[]>([])
@@ -35,25 +43,27 @@ const form = reactive<{
   description: I18nDict
   color: string
   icon: string
-  sort_order: number
 }>({
   name: { zh: '', en: '', ja: '', zh_Hant: '' },
   slug: '',
   description: { zh: '', en: '', ja: '', zh_Hant: '' },
   color: '#94a3b8',
-  icon: '',
-  sort_order: 0
+  icon: ''
 })
 
+/** 后端 slug 校验 ^[a-z0-9-]+$；slugify 可能保留中文，仅当结果合法才自动填充，否则留空由后端按中文名生成 */
+const SLUG_PATTERN = /^[a-z0-9-]+$/
 let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
     const nameStr = getLocalizedStr(val)
     if (!slugManualEdit && nameStr) {
-      form.slug = slugify(nameStr)
+      const s = slugify(nameStr)
+      form.slug = SLUG_PATTERN.test(s) ? s : ''
     }
-  }
+  },
+  { deep: true }
 )
 
 const columns: Column[] = [
@@ -61,8 +71,7 @@ const columns: Column[] = [
   { key: 'name', title: '名称' },
   { key: 'slug', title: 'Slug', class: 'text-muted-foreground' },
   { key: 'description', title: '描述', class: 'max-w-[260px]' },
-  { key: 'post_count', title: '文章数', align: 'center', class: 'w-20' },
-  { key: 'sort_order', title: '排序', align: 'center', class: 'w-16' }
+  { key: 'post_count', title: '文章数', align: 'center', class: 'w-20' }
 ]
 
 const loadData = async () => {
@@ -70,8 +79,8 @@ const loadData = async () => {
   try {
     categories.value = await fetchAdminCategories()
   } catch (err) {
+    // 失败提示由 apiFetch 统一 toast，此处仅做状态兜底
     console.error('load categories error', err)
-    toast.error('加载分类列表失败')
     categories.value = []
   } finally {
     loading.value = false
@@ -84,7 +93,6 @@ const resetForm = () => {
   form.description = { zh: '', en: '', ja: '', zh_Hant: '' }
   form.color = '#94a3b8'
   form.icon = ''
-  form.sort_order = 0
   editingId.value = null
   slugManualEdit = false
 }
@@ -102,7 +110,6 @@ const openEdit = (cat: AdminCategory) => {
   form.description = normalizeI18nDict(cat.description)
   form.color = cat.color || '#94a3b8'
   form.icon = cat.icon || ''
-  form.sort_order = (cat as unknown as { sort_order?: number }).sort_order ?? 0
   editingId.value = cat.id
   slugManualEdit = true
   dialogOpen.value = true
@@ -113,6 +120,14 @@ const save = async () => {
     toast.error('请输入分类名称')
     return
   }
+  if (form.slug && !SLUG_PATTERN.test(form.slug)) {
+    toast.error('Slug 只能包含小写字母、数字和连字符（-）')
+    return
+  }
+  if (form.color && !/^#[0-9a-fA-F]{6}$/.test(form.color)) {
+    toast.error('颜色需为 6 位十六进制值，如 #3B82F6')
+    return
+  }
   saving.value = true
   try {
     const payload: AdminTaxonomyPayload = {
@@ -120,8 +135,7 @@ const save = async () => {
       slug: form.slug || undefined,
       description: form.description,
       color: form.color || undefined,
-      icon: form.icon || undefined,
-      sort_order: form.sort_order
+      icon: form.icon || undefined
     }
     if (editingId.value) {
       await updateAdminCategory(editingId.value, payload)
@@ -134,8 +148,8 @@ const save = async () => {
     dialogOpen.value = false
     await loadData()
   } catch (err) {
+    // 失败提示由 apiFetch 统一 toast，此处不重复弹错
     console.error('save category error', err)
-    toast.error(editingId.value ? '更新分类失败' : '创建分类失败')
   } finally {
     saving.value = false
   }
@@ -150,18 +164,14 @@ function confirmDelete(id: number) {
 }
 
 async function doDelete() {
-  if (pendingDeleteId.value == null) return
-  try {
-    await deleteAdminCategory(pendingDeleteId.value)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    pendingDeleteId.value = null
-    if (editingId.value === pendingDeleteId.value) resetForm()
-    await loadData()
-  } catch (err) {
-    console.error('delete category error', err)
-    toast.error('删除分类失败')
-  }
+  const id = pendingDeleteId.value
+  if (id == null) return
+  // 异常一律外抛：AdminConfirmDialog 据此保持打开，错误提示由 apiFetch 统一 toast
+  await deleteAdminCategory(id)
+  toast.success('删除成功')
+  pendingDeleteId.value = null
+  if (editingId.value === id) resetForm()
+  await loadData()
 }
 
 onMounted(() => {
@@ -220,9 +230,6 @@ onMounted(() => {
           {{ (row as AdminCategory).post_count }}
         </Badge>
       </template>
-      <template #cell-sort_order="{ row }">
-        <span class="text-muted-foreground text-xs">{{ (row as AdminCategory).sort_order ?? 0 }}</span>
-      </template>
       <template #actions="{ row }">
         <Button
           variant="ghost"
@@ -259,8 +266,12 @@ onMounted(() => {
           required
         />
         <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
+          <Label
+            for="category-form-slug"
+            class="mb-1 block text-xs text-muted-foreground"
+          >Slug</Label>
           <Input
+            id="category-form-slug"
             v-model="form.slug"
             placeholder="自动生成，可修改"
             class="h-9 rounded-[10px]"
@@ -275,21 +286,29 @@ onMounted(() => {
         />
         <div class="grid grid-cols-2 gap-3">
           <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">颜色</Label>
+            <Label
+              for="category-form-color"
+              class="mb-1 block text-xs text-muted-foreground"
+            >颜色</Label>
             <div class="flex gap-2">
               <input
+                id="category-form-color"
                 v-model="form.color"
                 type="color"
                 class="h-9 w-11 rounded-[10px] border border-input bg-background cursor-pointer"
               >
               <Input
                 v-model="form.color"
+                :aria-label="t('admin.categories.fColor')"
                 class="h-9 rounded-[10px] flex-1 font-mono text-xs"
               />
             </div>
           </div>
           <div>
-            <Label class="mb-1 block text-xs text-muted-foreground">图标</Label>
+            <Label
+              for="category-form-icon"
+              class="mb-1 block text-xs text-muted-foreground"
+            >图标</Label>
             <div class="flex gap-2">
               <div class="size-9 shrink-0 rounded-[10px] border border-border flex items-center justify-center bg-muted/30">
                 <DynamicIcon
@@ -303,20 +322,13 @@ onMounted(() => {
                 >—</span>
               </div>
               <Input
+                id="category-form-icon"
                 v-model="form.icon"
                 placeholder="heroicons:code-bracket 或 emoji"
                 class="h-9 rounded-[10px] flex-1 font-mono text-xs"
               />
             </div>
           </div>
-        </div>
-        <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">排序号</Label>
-          <Input
-            v-model.number="form.sort_order"
-            type="number"
-            class="h-9 rounded-[10px]"
-          />
         </div>
       </div>
     </AdminCrudDialog>
@@ -327,7 +339,7 @@ onMounted(() => {
       title="确认删除分类"
       description="删除分类不会删除关联文章，但文章将变为未分类状态。此操作不可撤销。"
       confirm-text="确认删除"
-      @confirm="doDelete"
+      :on-confirm="doDelete"
     />
   </AdminListPage>
 </template>

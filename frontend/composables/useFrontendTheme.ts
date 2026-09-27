@@ -76,7 +76,7 @@ const MODS_DEFAULTS: ThemeModsRuntime = {
  */
 export const DEFAULT_THEME_SLUG = 'editorial-wp-style'
 export const DEFAULT_THEME_NAME = '默认主题'
-export const DEFAULT_THEME_VERSION = '1.1.2'
+export const DEFAULT_THEME_VERSION = '1.1.3'
 
 const useThemeState = () =>
   useState<FrontendThemeInfo>('frontend-theme:state', () => ({
@@ -236,6 +236,86 @@ function _isFrontendExcludedPath(path?: string, routeFallbackPath?: string): boo
  */
 const _INSTALLED_LINKS = new Map<string, HTMLLinkElement>()
 
+/** 手动兜底 <link> 的标记属性（区别于 unhead 注入的正主节点）。 */
+const MANUAL_ATTR = 'data-rosetta-manual'
+
+/**
+ * 【单一手动兜底节点】跨 slug 复用同一个 <link> 元素、只切换 href——
+ * 手动路径全生命周期最多存在一个节点，天然杜绝"多次 install 叠出多个兜底 link"。
+ */
+let _manualLink: HTMLLinkElement | null = null
+/** 当前手动兜底节点服务的 slug（用于精确回收 _INSTALLED_LINKS 中的登记项）。 */
+let _manualLinkSlug: string | null = null
+/**
+ * 【事件驱动移交】unhead 响应式节点到位前，用 MutationObserver 监听 <head>；
+ * 正主一出现立即摘除兜底并认领——取代历史 setTimeout(400) 定时竞态
+ * （400ms 不是"就绪信号"只是经验值：unhead 晚于 400ms flush 时兜底与正主
+ * 双 <link> 长期共存重复加载，且旧定时器在 slug 切换/清理后仍会迟到触发）。
+ */
+let _handoffObserver: MutationObserver | null = null
+
+function _stopHandoff() {
+  if (_handoffObserver) {
+    _handoffObserver.disconnect()
+    _handoffObserver = null
+  }
+}
+
+function _removeManualLink() {
+  _stopHandoff()
+  if (_manualLink) {
+    if (_manualLinkSlug) _INSTALLED_LINKS.delete(_manualLinkSlug)
+    _manualLink.remove()
+    _manualLink = null
+    _manualLinkSlug = null
+  }
+}
+
+/**
+ * 若 unhead 正主节点（id=rosetta-theme-css-<slug>）已在 <head> 中：
+ * 摘除同 slug 的手动兜底、认领正主。返回是否完成认领（供移交观察器判定）。
+ *
+ * 认领前置条件：节点 href 与当前构造的 wantHref 完全一致——
+ * 主题 CSS 走 immutable 强缓存，unhead 在 flush 窗口内可能仍持有上一
+ * slug/version 的旧节点；认领 stale 节点再摘兜底会导致主题 CSS 掉帧
+ * （白屏一瞬）。unhead 的响应式 flush 完成后本观察器会再次命中新版本节点。
+ */
+function _adoptCanonicalLink(slug: string, wantHref: string): boolean {
+  const headLink = document.querySelector<HTMLLinkElement>(
+    `link[rel="stylesheet"][id="rosetta-theme-css-${slug}"]`
+  )
+  if (!headLink) return false
+  // 版本核对：unhead 在 flush 窗口内可能仍持有上一 slug/version 的旧节点，
+  // 只有 href 与当前构造完全一致才算"服务本版本的正主"。
+  const href = headLink.getAttribute('href') || ''
+  if (href !== wantHref) return false
+  if (_manualLink && _manualLinkSlug === slug) {
+    _INSTALLED_LINKS.delete(slug)
+    _removeManualLink()
+  }
+  _INSTALLED_LINKS.set(slug, headLink)
+  _stopHandoff()
+  return true
+}
+
+function _startHandoff(slug: string, wantHref: string) {
+  _stopHandoff()
+  if (typeof MutationObserver === 'undefined' || typeof document === 'undefined') return
+  _handoffObserver = new MutationObserver(() => {
+    // 观察回调里重新核对 href：unhead 可能先挂旧版本节点、随后原地更新，
+    // 只有命中当前 wantHref 的节点才是可以接班的正主。
+    if (_adoptCanonicalLink(slug, wantHref)) _stopHandoff()
+  })
+  _handoffObserver.observe(document.head, {
+    childList: true,
+    subtree: true,
+    // unhead 对已收养的同 id 节点可能原地更新 href（主题升级 ?v=）而非重新插入，
+    // 只监听 childList 会错过这种移交时机。
+    attributes: true,
+    attributeFilter: ['href']
+  })
+}
+
 /**
  * 精确移除主题写入的 `theme-{slug}` class。
  * 旧实现按 `theme-` 前缀盲删，会误伤其它系统的同名 class（如 useTheme 的
@@ -273,6 +353,8 @@ function _clearThemeVisual() {
   }
 
   // 3) 清理 <link>（含已被 unhead/中间件摘走、Map 里剩的失联节点）
+  //    手动兜底节点先单独回收：同时断开移交观察器，避免清理后回调迟到触发。
+  _removeManualLink()
   for (const [k, el] of _INSTALLED_LINKS) {
     el.remove()
     _INSTALLED_LINKS.delete(k)
@@ -333,8 +415,13 @@ function applyThemeVisual(slug: string | null, version?: string | null, explicit
   }
   for (const [k, el] of _INSTALLED_LINKS) {
     if (k !== slug) {
-      el.remove()
-      _INSTALLED_LINKS.delete(k)
+      // 手动兜底节点走专用回收（同步置空 _manualLink / 断开移交观察器），
+      // 否则会留下"已从 DOM 摘除但变量仍指向"的失联节点，破坏单一节点复用不变量。
+      if (el === _manualLink) _removeManualLink()
+      else {
+        el.remove()
+        _INSTALLED_LINKS.delete(k)
+      }
     }
   }
   // 孤儿 <link> 兜底清理：SSR 强缓存页面的旧主题 link 由 Unhead 从 payload 收养，
@@ -366,52 +453,41 @@ function applyThemeVisual(slug: string | null, version?: string | null, explicit
   const known = _INSTALLED_LINKS.get(slug)
   if (known?.isConnected && known.getAttribute('href') === wantHref) return
   if (known) {
-    known.remove()
+    if (known === _manualLink) _removeManualLink()
+    else known.remove()
     _INSTALLED_LINKS.delete(slug)
   }
   // 主题 <link> 有两个潜在来源：
   //   · useHead 响应式注入（SSR 首字节 / 客户端 slug 变化后由 unhead 批量 flush，
-  //     其时机可能晚于宏任务，不能用一次同步检查判定）
+  //     其时机不确定，不能用一次同步检查判定）
   //   · 本函数的 DOM 直接注入（ssr:false 认证页 / error 页等纯客户端路径的兜底）
-  // 策略：先认领已存在的 unhead 节点；没有则创建带 data-rosetta-manual 标记的兜底
-  // 节点，并在 unhead 通常已 flush 完成后移交——若其 id 节点出现，移除兜底、认领正主。
-  const MANUAL_ATTR = 'data-rosetta-manual'
-  const install = () => {
-    if (_INSTALLED_LINKS.get(slug)?.isConnected) return
-    const existing = document.querySelector<HTMLLinkElement>(
-      `link[rel="stylesheet"][id="rosetta-theme-css-${slug}"]`
-    )
-    ?? document.querySelector<HTMLLinkElement>(
-      `link[rel="stylesheet"][href="${CSS.escape(wantHref)}"]`
-    )
-    if (existing) {
-      _INSTALLED_LINKS.set(slug, existing)
-      return
-    }
-    const link = document.createElement('link')
-    link.rel = 'stylesheet'
-    link.href = wantHref
-    link.setAttribute(MANUAL_ATTR, '1')
-    link.onerror = () => {
-      link.remove()
-      _INSTALLED_LINKS.delete(slug)
-    }
-    document.head.appendChild(link)
-    _INSTALLED_LINKS.set(slug, link)
-    // 移交：unhead 的响应式节点到位后，移除手动兜底，避免同一 style.css 双 <link>
-    setTimeout(() => {
-      const mine = _INSTALLED_LINKS.get(slug)
-      if (!mine || !mine.hasAttribute(MANUAL_ATTR)) return
-      const headLink = document.querySelector<HTMLLinkElement>(
-        `link[id="rosetta-theme-css-${slug}"]`
-      )
-      if (headLink && headLink !== mine) {
-        mine.remove()
-        _INSTALLED_LINKS.set(slug, headLink)
+  // 策略（事件驱动，无定时竞态）：
+  //   1. 先认领 head 中已存在的正主（id 命中且 href 等于当前版本）；
+  //   2. 否则复用单一手动兜底节点（只切 href，不再新建第二个）；
+  //   3. 用 MutationObserver 监听 <head>，正主 flush 到位的那一帧立即
+  //      摘除兜底、认领正主——替代历史 setTimeout(400) 经验值移交
+  //      （unhead 晚于 400ms flush 时双 link 长期共存重复加载；切换/清理后
+  //      迟到的定时器还会操作已失效的节点）。
+  // 移交观察器由 _clearThemeVisual / slug 切换 / 认领成功三处共同回收，无泄漏。
+  if (!_adoptCanonicalLink(slug, wantHref)) {
+    if (!_manualLink) {
+      _manualLink = document.createElement('link')
+      _manualLink.rel = 'stylesheet'
+      _manualLink.setAttribute(MANUAL_ATTR, '1')
+      _manualLink.onerror = () => {
+        // 仅当失败的仍是当前服务中的兜底节点时回收（href 切换在途的旧 onerror 忽略）
+        if (_manualLink && _manualLinkSlug && _INSTALLED_LINKS.get(_manualLinkSlug) === _manualLink) {
+          _INSTALLED_LINKS.delete(_manualLinkSlug)
+          _removeManualLink()
+        }
       }
-    }, 400)
+      document.head.appendChild(_manualLink)
+    }
+    _manualLinkSlug = slug
+    _INSTALLED_LINKS.set(slug, _manualLink)
+    _manualLink.setAttribute('href', wantHref)
+    _startHandoff(slug, wantHref)
   }
-  install()
 }
 
 /**

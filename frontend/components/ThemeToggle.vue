@@ -1,3 +1,9 @@
+<!--
+  明暗切换按钮：点击把事件与按钮实例透传给 useTheme().toggle（圆形扩散动效需要源 DOM）。
+  SSR 契约：isDark 首帧两端恒为 false（useState('theme-dark')），真实偏好由 plugins/theme.client.ts
+  在 Hydrate 之后 apply，走 Vue patch 而非水合比对 —— 任何"首帧读 localStorage/matchMedia"
+  的改动都会立刻造成大面积 mismatch。
+-->
 <template>
   <Button
     ref="buttonRef"

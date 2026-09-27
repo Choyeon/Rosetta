@@ -1,3 +1,10 @@
+<!--
+  顶栏语言下拉（DropdownMenuRadioGroup 受控于当前 locale）。
+  setLocale 之后必须手写两枚 cookie：rosetta_lang 供后端 i18n 中间件识别语言（管理端
+  name/title 等 i18n dict 的返回跟随它），i18n_redirected 是 @nuxtjs/i18n 检测语言的约定名，
+  少写前者会出现"界面换语、接口仍回旧语言"。语言集合硬编码四语（no_prefix 策略，整包切换
+  而非路由前缀），不得增删码值。
+-->
 <script setup lang="ts">
 import { Globe, Check, ChevronDown } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'

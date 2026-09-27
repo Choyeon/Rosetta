@@ -1,3 +1,10 @@
+<!--
+  显示偏好页（跟随系统 / 亮 / 暗三选一），definePageMeta 显式 ssr:false，
+  因此 onMounted 直读 localStorage 是安全的。
+  存储铁律：useTheme 只允许持久化 'light'|'dark'，setSystem() 落库的是解析后的具体值，
+  所以选「跟随系统」后重进本页高亮会回落到 light/dark —— 要真支持 system 态得先给
+  useTheme 补 matchMedia change 监听，别只改这页。
+-->
 <template>
   <div class="container py-16 max-w-2xl">
     <header class="mb-10">

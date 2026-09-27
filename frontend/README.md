@@ -91,11 +91,11 @@ frontend/
 │   ├── AdminSidebar.vue    # Admin sidebar
 │   └── AdminHeader.vue     # Admin header
 ├── composables/
-│   ├── useAPI.ts           # API wrapper
+│   ├── useApi.ts           # API wrapper (useAPI / apiFetch / silentApiFetch)
 │   ├── usePosts.ts         # Posts API
-│   ├── useAuth.ts          # Auth API
-│   ├── useCore.ts          # Core API (categories, tags, etc.)
-│   ├── useUsers.ts         # Users API
+│   ├── useAdminManage.ts   # Admin 列表/详情/批量操作
+│   ├── useFriendLinks.ts   # 前台友链数据
+│   ├── useMedia.ts         # 媒体上传
 │   └── useOOBE.ts          # OOBE API
 ├── stores/
 │   └── auth.ts             # Auth state management

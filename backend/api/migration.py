@@ -183,6 +183,65 @@ class MigrationStartIn(BaseModel):
     skip_schema: bool = False
 
 
+class MigrationJobOut(BaseModel):
+    """迁移任务对外快照（``MigrationJob.to_public()`` 的字段形态）。"""
+
+    job_id: str = Field(..., description="任务唯一标识（uuid hex）")
+    source: str = Field(..., description="源库连接串原文回显（含凭据时由前端自行保管）")
+    target: str = Field(..., description="目标库连接串原文回显")
+    dry_run: bool = Field(..., description="是否演练模式（只读校验不落数据）")
+    skip_schema: bool = Field(..., description="是否跳过目标库表结构创建")
+    created_by: str = Field(..., description="发起者用户名（无用户名时回退为 staff）")
+    created_at: float = Field(..., description="任务创建时间（Unix 秒级时间戳）")
+    started_at: float | None = Field(default=None, description="实际开始执行时间；未开始为 null")
+    finished_at: float | None = Field(default=None, description="结束时间；运行中为 null")
+    status: str = Field(
+        ...,
+        description="任务状态：pending | running | done | error | cancelled",
+    )
+    latest_progress: dict[str, Any] | None = Field(
+        default=None,
+        description="最近一条进度事件（来自 migrate_database.run_migration 的事件字典），无进度为 null",
+    )
+    events_count: int = Field(..., description="环形缓冲内累计事件条数（上限 2000）")
+    events_tail: list[dict[str, Any]] = Field(
+        ...,
+        description="最近 200 条进度事件，供前端渲染阶段时间线",
+    )
+    errors: list[str] = Field(..., description="错误摘要列表（每条事件尾部 20 条累加）")
+    warnings: list[str] = Field(..., description="告警摘要列表（每条事件尾部 20 条累加）")
+
+
+class MigrationStartOut(BaseModel):
+    """POST /migration/start 与 /migration/cancel 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true；失败走 4xx 错误信封")
+    job: MigrationJobOut = Field(..., description="本次创建/取消的迁移任务快照")
+
+
+class MigrationStatusOut(BaseModel):
+    """GET /migration/status 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true")
+    job: MigrationJobOut | None = Field(
+        default=None, description="进程内最近一次迁移任务；从未发起过时为 null"
+    )
+
+
+class MigrationPresetsOut(BaseModel):
+    """GET /migration/presets 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true")
+    presets: dict[str, str] = Field(
+        ...,
+        description=(
+            "连接预设键值对：sqlite_default（内置 SQLite 默认路径）、"
+            "current_database（当前实例生效的库连接串）、"
+            "current_redis（仅在 Redis 开启时存在）"
+        ),
+    )
+
+
 # ======================================================================
 # Routes
 # ======================================================================
@@ -191,7 +250,14 @@ class MigrationStartIn(BaseModel):
 @router.post(
     "/start",
     summary="发起跨库迁移任务",
-    description="管理员专属。后台异步运行，通过 /status 查看进度。全局同时只允许一个运行中的任务。",
+    description=(
+        "管理员专属（CurrentStaff）。后台 asyncio task 异步运行，通过 /status 查看进度。"
+        "全局同时只允许一个运行中的任务，冲突时返回 409。"
+    ),
+    responses={
+        200: {"model": MigrationStartOut, "description": "任务已创建并开始后台执行"},
+        409: {"description": "已有迁移任务运行中"},
+    },
 )
 async def start_migration(
     payload: MigrationStartIn,
@@ -210,14 +276,33 @@ async def start_migration(
 @router.get(
     "/status",
     summary="查询最新迁移任务状态",
-    description="返回最新一次任务（包括 running/done/error）的完整进度。",
+    description=(
+        "管理员专属（CurrentStaff）。返回进程内最新一次任务（running/done/error 均在列）的完整进度；"
+        "任务历史只存内存，进程重启即为空（job 为 null）。只读、幂等。"
+    ),
+    responses={
+        200: {"model": MigrationStatusOut, "description": "最新任务快照；无任务时 job 为 null"}
+    },
 )
 async def status_migration(current_user: CurrentStaff):
     job = _manager.latest()
     return {"success": True, "job": job.to_public() if job else None}
 
 
-@router.post("/cancel", summary="取消当前运行中的迁移任务")
+@router.post(
+    "/cancel",
+    summary="取消当前运行中的迁移任务",
+    description=(
+        "需 CurrentStaff。作用于最近一次创建的迁移任务：优先置协作式取消标志（_cancel_flag），"
+        "否则退化为 asyncio Task.cancel()，任务状态改为 cancelled。"
+        "当前没有任何迁移任务时返回 404，任务不在 running 时返回 400。取消不可逆，需重新发起迁移。"
+    ),
+    responses={
+        200: {"model": MigrationStartOut, "description": "任务已置为 cancelled 的最终快照"},
+        400: {"description": "任务未在运行，无法取消"},
+        404: {"description": "当前没有迁移任务"},
+    },
+)
 async def cancel_migration(current_user: CurrentStaff):
     latest = _manager.latest()
     if not latest:
@@ -229,7 +314,11 @@ async def cancel_migration(current_user: CurrentStaff):
 @router.get(
     "/presets",
     summary="获取常用连接预设",
-    description="返回当前实例已配置的数据库 URL、SQLite 默认路径等，方便前端快速填。",
+    description=(
+        "需 CurrentStaff。返回内置 SQLite 默认路径与当前实例已生效的数据库（Redis 开启时含 Redis）"
+        "连接串，供前端表单快速填充。只读、幂等。"
+    ),
+    responses={200: {"model": MigrationPresetsOut, "description": "预设键值对"}},
 )
 async def presets(current_user: CurrentStaff):
     from backend.core.config import settings

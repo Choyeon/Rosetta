@@ -14,10 +14,13 @@ XSS 输入过滤（bleach 依赖不存在，手写正则 allowlist 清洗）
 
 from __future__ import annotations
 
+import logging
 import re
 from html import escape as _html_escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
+
+logger = logging.getLogger(__name__)
 
 
 def _escape_dangerous_tag_names(text: str) -> str:
@@ -141,8 +144,8 @@ def _is_safe_src(v: str) -> bool:
         parsed = urlparse(v)
         if parsed.scheme in ("http", "https", "data"):
             return True
-    except Exception:
-        return False
+    except ValueError:
+        return False  # 解析不了的 URL 一律判为不安全 src（降级更严）
     return False
 
 
@@ -255,7 +258,11 @@ def sanitize_html(text: str) -> str:
         parser = _AllowlistParser()
         parser.feed(stripped)
         parser.close()
-        cleaned = parser.result()
+        return parser.result()
     except Exception:
-        cleaned = stripped
-    return cleaned
+        # 安全闸门降级必须更严：allowlist 解析器一旦抛错，返回 `stripped`
+        # 等于只靠正则粗筛（_rough_strip 挡不住属性型 payload），
+        # 存储型 XSS 就会绕过整层过滤。改为整体转义——内容退化成纯文本，
+        # 但绝不会带着可执行片段出门。
+        logger.exception("[xss] allowlist 解析失败，内容降级为转义纯文本")
+        return _html_escape(stripped, quote=False)

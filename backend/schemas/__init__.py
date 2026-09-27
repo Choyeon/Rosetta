@@ -22,7 +22,14 @@ import re
 from datetime import datetime
 from typing import Annotated, Any, Dict, Generic, List, Literal, TypeVar
 
-from pydantic import AfterValidator, BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    Field,
+    StringConstraints,
+    field_validator,
+    model_validator,
+)
 
 # 仅校验"格式合法"，不评判域名是否可解析 / 是否为 special-use 域名。
 # Pydantic EmailStr 默认会做 DNS 可达性与 special-use 域名（.local / example.com 等）
@@ -37,7 +44,15 @@ def _relaxed_email_validator(value: str) -> str:
     return value
 
 
-RelaxedEmailStr = Annotated[str, AfterValidator(_relaxed_email_validator)]
+RelaxedEmailStr = Annotated[
+    str,
+    # User.email 是 String(254)。正则只保证格式，不保证长度；
+    # 把上限并进类型本身，避免某个新端点漏写 max_length 而把超长邮箱写进库里
+    # （MySQL 截断 / PostgreSQL·SQLite 长度约束报错，都是 500）。
+    # 254 = RFC 5321 单段 path 上限，也是常见邮箱长度上限。
+    StringConstraints(max_length=254),
+    AfterValidator(_relaxed_email_validator),
+]
 
 from backend.core.i18n import LANGUAGE_CODES, get_i18n_value, normalize_language
 from backend.schemas.activity import (
@@ -97,6 +112,16 @@ class BaseResponse(BaseModel):
 
     success: bool = True
     message: str = "操作成功"
+
+
+def raw_content_response(media_type: str, description: str, *, binary: bool = False) -> dict:
+    """给"返回非 JSON 原文"的端点生成 `responses` 声明（只影响 OpenAPI，不改运行时行为）。
+
+    RSS / Sitemap / 主题 CSS / 图片流 / 压缩包下载这些端点没有 JSON 模型可套，
+    FastAPI 默认按 `application/json` 出文档，等于文档里根本查不到真实媒体类型。
+    """
+    schema = {"type": "string", "format": "binary"} if binary else {"type": "string"}
+    return {200: {"description": description, "content": {media_type: {"schema": schema}}}}
 
 
 class PaginatedResponse(BaseModel, Generic[T]):
@@ -299,6 +324,36 @@ class UserTitleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class PublicUserResponse(BaseModel):
+    """
+    公开作者卡片模型（用于文章 / 相册等资源的 ``author`` 字段）。
+
+    与 :class:`UserResponse` 的差别就是本模型**没有**的那些字段：
+    ``email``、``qq``、``is_active`` / ``is_staff`` / ``is_superuser``、``role``、``last_login``。
+    这些字段曾经随每一次文章列表 / 详情响应公开下发，等于把全站作者的邮箱（可用于撞库与
+    密码重置轰炸）以及"谁是管理员/超级用户"的映射白送给匿名爬虫——用户偏好里已经存在
+    ``show_email`` 开关，说明邮箱本就按私密处理。后台与"我"的接口继续用
+    :class:`UserResponse` / :class:`UserDetailResponse`，只有**挂在资源上的第三人作者信息**走这里。
+
+    新增字段前请先确认它对匿名访客无害。
+    """
+
+    id: int
+    username: str
+    nickname: str | None = None
+    avatar: str | None = None
+    cover_image: str | None = None
+    bio: str | None = None
+    website: str | None = None
+    github: str | None = None
+    avatar_source: str | None = None
+    resolved_avatar_url: str | None = None
+    title: UserTitleResponse | None = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class UserPreferenceResponse(BaseModel):
     """
     用户偏好设置响应模型
@@ -461,6 +516,15 @@ class AdminUserUpdateFull(BaseModel):
     is_staff: bool | None = None
     is_active: bool | None = None
     is_banned: bool | None = None
+    qq: str | None = Field(
+        None,
+        max_length=20,
+        description="QQ 号；UserDetailResponse 会回显该字段，此处必须可写，否则管理员改 QQ 静默失效",
+    )
+    avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] | None = Field(
+        None,
+        description="头像来源，取值与 /api/media/avatar 解析器白名单一致",
+    )
     role: str | None = Field(
         None,
         description="RBAC 角色：super_admin/admin/editor/author/contributor/subscriber。为空时不变更。",
@@ -722,13 +786,13 @@ class PostUpdate(BaseModel):
     subtitle: dict[str, str] | None = None
     slug: str | None = Field(None, max_length=200)
     source: str | None = Field(None, max_length=50)
-    source_url: str | None = None
-    audio: str | None = None
-    video: str | None = None
-    video_url: str | None = None
+    source_url: str | None = Field(None, max_length=500)
+    audio: str | None = Field(None, max_length=500)
+    video: str | None = Field(None, max_length=500)
+    video_url: str | None = Field(None, max_length=500)
     content: dict[str, str] | None = None
     excerpt: dict[str, str] | None = None
-    cover_image: str | None = None
+    cover_image: str | None = Field(None, max_length=500)
     category_id: int | None = None
     tag_ids: list[int] | None = None
     series_id: int | None = None
@@ -736,7 +800,7 @@ class PostUpdate(BaseModel):
     status: str | None = Field(None, pattern="^(draft|published|scheduled)$")
     visibility: str | None = Field(None, pattern="^(public|password|private)$", max_length=10)
     scheduled_at: datetime | None = None
-    password: str | None = None
+    password: str | None = Field(None, max_length=100)
     view_password: str | None = None
     encryption_enabled: bool | None = None
     encryption_salt: str | None = Field(None, max_length=128)
@@ -774,7 +838,7 @@ class PostResponse(BaseModel):
     content: dict[str, str]
     excerpt: dict[str, str] | None = None
     cover_image: str | None = None
-    author: UserResponse
+    author: PublicUserResponse
     category: CategoryResponse | None = None
     tags: list[TagResponse] = []
     status: str
@@ -818,6 +882,7 @@ class PostEditResponse(BaseModel):
     visibility: str
     has_password: bool = False
     published_at: datetime | None = None
+    scheduled_at: datetime | None = None
     category: dict[str, Any] | None = None
     tags: list[dict[str, Any]] = []
     is_pinned: bool
@@ -856,6 +921,7 @@ class PostEditResponse(BaseModel):
             visibility=post.visibility or "public",
             has_password=bool(post.password),
             published_at=post.published_at,
+            scheduled_at=post.scheduled_at,
             category=category,
             tags=tags,
             is_pinned=post.is_pinned or False,
@@ -887,7 +953,7 @@ class PostLocalizedResponse(BaseModel):
     content: str
     excerpt: str | None = None
     cover_image: str | None = None
-    author: UserResponse
+    author: PublicUserResponse
     category: CategoryLocalizedResponse | None = None
     tags: list[TagLocalizedResponse] = []
     status: str
@@ -931,7 +997,7 @@ class PostLocalizedResponse(BaseModel):
             content=get_i18n_value(post.content, lang),
             excerpt=get_i18n_value(post.excerpt, lang) if post.excerpt else None,
             cover_image=post.cover_image,
-            author=UserResponse.model_validate(post.author),
+            author=PublicUserResponse.model_validate(post.author),
             category=category,
             tags=tags,
             status=post.status,
@@ -969,7 +1035,7 @@ class PostListItem(BaseModel):
     slug: str
     excerpt: dict[str, str] | None = None
     cover_image: str | None = None
-    author: UserResponse
+    author: PublicUserResponse
     category: CategoryResponse | None = None
     tags: list[TagResponse] = []
     status: str
@@ -992,7 +1058,7 @@ class PostListItemLocalized(BaseModel):
     slug: str
     excerpt: str | None = None
     cover_image: str | None = None
-    author: UserResponse
+    author: PublicUserResponse
     category: CategoryLocalizedResponse | None = None
     tags: list[TagLocalizedResponse] = []
     status: str
@@ -1022,7 +1088,7 @@ class PostListItemLocalized(BaseModel):
             slug=post.slug,
             excerpt=excerpt,
             cover_image=post.cover_image,
-            author=UserResponse.model_validate(post.author),
+            author=PublicUserResponse.model_validate(post.author),
             category=category,
             tags=tags,
             status=post.status,
@@ -2271,24 +2337,9 @@ class GuestbookBatchAction(BaseModel):
     )
 
 
-import sys as _sys  # noqa: E402
+from backend.schemas.strict_config import apply_strict_extra_forbid, finalize_strict_extra_forbid
 
-_STRICT_EXTRA_FORBID = {"strict": True, "extra": "forbid"}
-for _name in list(globals().keys()):
-    _obj = globals()[_name]
-    if (
-        isinstance(_obj, type)
-        and issubclass(_obj, BaseModel)
-        and _obj is not BaseModel
-        and _obj.__module__ == _sys.modules[__name__].__name__
-    ):
-        _existing = _obj.model_config if isinstance(_obj.model_config, dict) else {}
-        _merged = {**_existing, **_STRICT_EXTRA_FORBID}
-        try:
-            _obj.model_config = _merged
-        except Exception:
-            pass
-    del _name, _obj
+apply_strict_extra_forbid(globals(), __name__)
 
 
 # 重建模型以解决循环引用
@@ -2305,3 +2356,6 @@ FriendLinkLocalizedResponse.model_rebuild()
 NotificationLocalizedResponse.model_rebuild()
 ActivityResponse.model_rebuild()
 ActivityLocalizedResponse.model_rebuild()
+
+# 引用解析晚于加固的类，在这里补重建（见 strict_config 模块文档）
+finalize_strict_extra_forbid()

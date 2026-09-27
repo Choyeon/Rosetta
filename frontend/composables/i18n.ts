@@ -1,3 +1,14 @@
+/**
+ * i18n 辅助层（存在理由 = SSR 启动竞态下的安全兜底）。
+ *
+ * 自动导入实测优先级（见 .nuxt/imports.d.ts）：本文件的 `t` 会覆盖全局自动导入，
+ * 而本文件的 `useI18n` 会被 @nuxtjs/i18n 的同名自动导入顶掉——调用方拿到的
+ * `useI18n()` 始终是官方实例，不要依赖本文件导出的 useI18n 做常规取实例。
+ *
+ * 这里的降级路径只服务一个场景：`$i18n` 尚未注入 nuxtApp 的 SSR 启动边缘调用。
+ * 兜底字典是**仅中文**的最小集（不是真 i18n），命中不了 key 时原样返回 key，
+ * 目的是保证不抛错、不阻塞首字节渲染——不要在业务代码里主动依赖兜底文案。
+ */
 import type { Locale, LocaleMessageDictionary, VueI18n } from 'vue-i18n'
 
 /** nuxtApp 上由 @nuxtjs/i18n 注入的 $i18n */

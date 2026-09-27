@@ -221,7 +221,13 @@ def hooks_registered_for_plugin(plugin_slug: str) -> bool:
 # ── 运行时沙箱执行器 ──────────────────────────────────────────────────────
 
 
-async def _safe_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+async def _safe_call(
+    fn: Callable[..., Any],
+    *args: Any,
+    _hook_name: str = "?",
+    _plugin_slug: str = "?",
+    **kwargs: Any,
+) -> Any:
     """在 try/except 沙箱中调用 sync/async 处理器，返回结果或 None（失败时）。"""
     try:
         if inspect.iscoroutinefunction(fn) or inspect.isasyncgenfunction(fn):
@@ -232,11 +238,11 @@ async def _safe_call(fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         return await loop.run_in_executor(None, partial)
     except Exception as exc:  # noqa: BLE001 - intentional sandbox
         logger.exception(
-            "Hook handler failed (sandboxed): %s.%s args=%s kwargs=%s exc=%s",
+            "Hook handler failed (sandboxed): hook=%s plugin=%s fn=%s.%s exc=%s",
+            _hook_name,
+            _plugin_slug,
             getattr(fn, "__module__", "?"),
             getattr(fn, "__qualname__", str(fn)),
-            args,
-            {k: v for k, v in kwargs.items() if k != "self"},
             exc,
         )
         return None
@@ -250,7 +256,7 @@ async def do_action(name: str, *args: Any, **kwargs: Any) -> int:
     executed = 0
     # 顺序：按 priority(+) 再 sequence(+)，同步串行执行（WP 语义：顺序确定）
     for h in list(handlers):  # copy: 防止 handler 回调期间的并发修改
-        result = await _safe_call(h.fn, *args, **kwargs)
+        result = await _safe_call(h.fn, *args, _hook_name=name, _plugin_slug=h.plugin, **kwargs)
         if result is not None:
             # 允许 handler 返回 False 显式短路后续 actions（扩展行为：可选）
             if result is False:
@@ -267,7 +273,9 @@ async def apply_filters(name: str, value: Any, *args: Any, **kwargs: Any) -> Any
         return value
     current = value
     for h in list(handlers):
-        result = await _safe_call(h.fn, current, *args, **kwargs)
+        result = await _safe_call(
+            h.fn, current, *args, _hook_name=name, _plugin_slug=h.plugin, **kwargs
+        )
         if result is None:
             # 异常时跳过，保留 current 不变
             continue

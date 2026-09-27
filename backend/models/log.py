@@ -86,7 +86,7 @@ class TrashItem(Base):
 
     # 删除信息
     deleted_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     deleted_by: Mapped[User | None] = relationship("User")
 

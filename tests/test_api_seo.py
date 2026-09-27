@@ -257,3 +257,94 @@ async def test_schema_breadcrumb(client: AsyncClient):
     body = r.json()
     assert body["@type"] == "BreadcrumbList"
     assert len(body["itemListElement"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_meta_descriptions_strip_shortcodes_and_html(client: AsyncClient, db_session):
+    """公开元数据（JSON-LD / Open Graph）不得泄漏短代码字面量或 HTML 标签。"""
+    author = User(
+        username="seo_meta_author",
+        email="seo_meta_author@example.com",
+        password_hash=get_password_hash("Pass@1234"),
+        is_active=True,
+        is_staff=False,
+    )
+    db_session.add(author)
+    await db_session.flush()
+
+    post = Post(
+        title={"zh": "元数据测试文章标题"},
+        slug="meta-strip-post",
+        status="published",
+        content="正文内容",
+        excerpt={
+            "zh": '看图 <p>[gallery ids="1,2"]</p> 这是纯文本摘要',
+        },
+        author_id=author.id,
+    )
+    db_session.add(post)
+    await db_session.commit()
+
+    r1 = await client.get(f"/api/seo/schema/article/{post.id}")
+    assert r1.status_code == 200
+    desc1 = r1.json()["description"]
+    assert "[" not in desc1 and "<" not in desc1
+    assert "这是纯文本摘要" in desc1
+
+    r2 = await client.get(f"/api/seo/open-graph/article/{post.id}")
+    assert r2.status_code == 200
+    desc2 = r2.json()["og:description"]
+    assert "[" not in desc2 and "<" not in desc2
+    assert "这是纯文本摘要" in desc2
+
+
+@pytest.mark.asyncio
+async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
+    """三份子 sitemap 合并后不得出现重复 <loc>。
+
+    历史缺陷：`/categories` `/tags` `/series` 同时写在固定路由表和分类学表里，
+    索引对同一 URL 提交两次，Search Console 报"重复网址"。这里按 URL 集合守，
+    任何人再往 `_STATIC_SITEMAP_ROUTES` 塞分类学根路径都会立刻红。
+    """
+    import re
+    from collections import Counter
+
+    import backend.core.cache as _c
+    import backend.core.cache_v2 as _cv2
+
+    await _c.cache.clear()
+    try:
+        await _cv2.cache.clear()
+    except Exception:
+        pass
+
+    children = [
+        "/api/blog/sitemap-pages.xml",
+        "/api/blog/sitemap-posts.xml",
+        "/api/blog/sitemap-taxonomies.xml",
+    ]
+    locs: list[str] = []
+    for path in children:
+        r = await client.get(path)
+        assert r.status_code == 200, path
+        assert r.headers["content-type"].startswith("application/xml"), path
+        locs.extend(re.findall(r"<loc>(.*?)</loc>", r.text))
+
+    assert locs, "三份子 sitemap 全空，断言会变成假通过"
+    dupes = [url for url, n in Counter(locs).items() if n > 1]
+    assert not dupes, f"重复提交的 sitemap URL: {dupes}"
+
+    # 三个根路径必须各出现一次（由分类学表负责，哪怕站点还没有任何分类）
+    for root in ("/categories", "/tags", "/series"):
+        hits = [u for u in locs if u.endswith(root)]
+        assert len(hits) == 1, f"{root} 应恰好提交一次，实际 {len(hits)} 次: {hits}"
+
+    # noindex / 后台路由永不收录：只比较 URL 的 path 段，避免域名里含 "admin" 误判
+    from urllib.parse import urlsplit
+
+    banned_prefixes = ("/admin", "/login", "/register", "/oobe", "/search")
+    for url in locs:
+        path = urlsplit(url).path
+        assert not any(
+            path == prefix or path.startswith(f"{prefix}/") for prefix in banned_prefixes
+        ), f"{url} 不应出现在 sitemap"

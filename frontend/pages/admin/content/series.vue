@@ -1,3 +1,9 @@
+<!--
+  系列管理页：卡片列表 + CRUD 弹窗（含封面上传与排序号）。
+  硬契约：与分类/标签不同，PostSeriesCreate/Update 的 slug 为必填且后端不自动生成——
+  slugify 结果含中文时必须让用户手填（^[a-z0-9-]+$ 前端先拦）；请求体 extra=forbid，
+  只能带 name/slug/description/cover_image/sort_order，i18n dict 要先经 toI18nPayload 滤掉空语言。
+-->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
 import {
@@ -15,7 +21,7 @@ import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, slugify } from '~~/composables/useAdminI18n'
+import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
 import { BookOpen, ChevronDown, Plus } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -44,13 +50,17 @@ const form = reactive({
 
 const editingId = ref<number | null>(null)
 
+/** 后端 PostSeriesCreate/Update 的 slug 必填且校验 ^[a-z0-9-]+$（无后端自动生成）；
+ *  slugify 可能保留中文，仅当结果合法才自动填充 */
+const SLUG_PATTERN = /^[a-z0-9-]+$/
 let slugManualEdit = false as boolean
 watch(
   () => form.name,
   (val) => {
     const zhVal = String(val?.zh ?? '')
     if (!slugManualEdit && zhVal) {
-      form.slug = slugify(zhVal)
+      const s = slugify(zhVal)
+      form.slug = SLUG_PATTERN.test(s) ? s : ''
     }
   },
   { deep: true }
@@ -61,8 +71,8 @@ const loadData = async () => {
   try {
     seriesList.value = await fetchAdminSeries()
   } catch (e) {
+    // 失败提示由 apiFetch 统一 toast，此处仅做状态兜底
     console.error('[series] loadData failed:', e)
-    toast.error('加载系列列表失败')
     seriesList.value = []
   } finally {
     loading.value = false
@@ -107,8 +117,8 @@ const handleCoverUpload = async (e: Event) => {
       toast.error('封面上传失败')
     }
   } catch (e) {
+    // 上传失败提示由 apiFetch 统一 toast，此处不重复弹错
     console.error('[series] handleCoverUpload failed:', e)
-    toast.error('封面上传失败')
   } finally {
     coverUploading.value = false
     input.value = ''
@@ -120,20 +130,25 @@ const clearCover = () => {
 }
 
 const save = async () => {
-  if (!String(form.name.zh ?? '').trim()) {
-    toast.error('请输入系列标题')
+  const namePayload = toI18nPayload(form.name)
+  if (!namePayload) {
+    toast.error('请输入系列标题（至少一种语言）')
+    return
+  }
+  if (!form.slug.trim() || !SLUG_PATTERN.test(form.slug.trim())) {
+    toast.error('请填写 Slug，仅允许小写字母、数字和连字符（-）')
     return
   }
   saving.value = true
   try {
-    const descHasValue = String(form.description.zh ?? '') || String(form.description.en ?? '')
-      || String(form.description.ja ?? '') || String(form.description.zh_Hant ?? '')
+    // PostSeriesCreate/Update 为 extra=forbid：只带后端已知字段，空语言值过滤掉
+    const descPayload = toI18nPayload(form.description)
     const payload: Record<string, unknown> = {
-      name: form.name,
-      slug: form.slug || undefined,
-      description: descHasValue ? form.description : undefined,
+      name: namePayload,
+      slug: form.slug.trim(),
+      description: descPayload,
       cover_image: form.cover_image || undefined,
-      sort_order: form.sort_order
+      sort_order: Number(form.sort_order) || 0
     }
     if (dialogMode.value === 'edit' && editingId.value) {
       await updateAdminSeries(editingId.value, payload)
@@ -145,8 +160,8 @@ const save = async () => {
     dialogOpen.value = false
     await loadData()
   } catch (e) {
+    // 失败提示由 apiFetch 统一 toast，此处不重复弹错
     console.error('[series] save failed:', e)
-    toast.error(editingId.value ? '更新系列失败' : '创建系列失败')
   } finally {
     saving.value = false
   }
@@ -162,18 +177,13 @@ function confirmDelete(id: number) {
 }
 
 async function doDelete() {
-  if (pendingDeleteId.value == null) return
-  try {
-    await deleteAdminSeries(pendingDeleteId.value)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    pendingDeleteId.value = null
-    if (expandedId.value === pendingDeleteId.value) expandedId.value = null
-    await loadData()
-  } catch (e) {
-    console.error('[series] doDelete failed:', e)
-    toast.error('删除系列失败')
-  }
+  const id = pendingDeleteId.value
+  if (id == null) return
+  await deleteAdminSeries(id)
+  toast.success('删除成功')
+  pendingDeleteId.value = null
+  if (expandedId.value === id) expandedId.value = null
+  await loadData()
 }
 
 onMounted(() => {
@@ -326,10 +336,16 @@ onMounted(() => {
           :required="true"
         />
         <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">Slug</Label>
+          <Label
+            for="series-form-slug"
+            class="mb-1 block text-xs text-muted-foreground"
+          >
+            Slug <span class="text-destructive">*</span>
+          </Label>
           <Input
+            id="series-form-slug"
             v-model="form.slug"
-            placeholder="自动生成，可修改"
+            placeholder="必填，仅限小写字母/数字/-，可由标题自动生成"
             class="h-9 rounded-[10px]"
             @input="slugManualEdit = true"
           />
@@ -392,8 +408,12 @@ onMounted(() => {
           </div>
         </div>
         <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">排序号</Label>
+          <Label
+            for="series-form-sort-order"
+            class="mb-1 block text-xs text-muted-foreground"
+          >排序号</Label>
           <Input
+            id="series-form-sort-order"
             v-model.number="form.sort_order"
             type="number"
             class="h-9 rounded-[10px]"
@@ -407,7 +427,7 @@ onMounted(() => {
       title="确认删除系列"
       description="删除系列不会删除其中的文章，但文章会失去系列关联。此操作不可撤销。"
       confirm-text="确认删除"
-      @confirm="doDelete"
+      :on-confirm="doDelete"
     />
   </AdminListPage>
 </template>

@@ -1,3 +1,9 @@
+<!--
+  插槽契约（脚本内注释讲的是历史，这条讲的是改它的人必须知道的）：只有 #meta 与 #actions 两个具名出口，
+  没有 <slot /> 默认出口——父组件裸传子节点（AdminListPage 现在就这样）会静默丢弃，必须 <template #meta> 包裹。
+  全后台唯一的 <h1> 在此（22 个 pages/admin/* 直接消费 + AdminListPage 间接），页面不要再自带标题区。
+  icon 只收 Component（@lucide/vue 直接 import），不像 StatCard 那样支持字符串名映射。
+-->
 <script setup lang="ts">
 /**
  * 后台统一页头 —— 全站唯一的页面标题区实现。

@@ -12,6 +12,7 @@ import math
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff
@@ -20,6 +21,7 @@ from backend.core.deps import CurrentUserOptional
 from backend.core.i18n import (
     get_language_from_request,
 )
+from backend.core.partial_update import apply_partial_update
 from backend.models.activity import Activity
 from backend.models.user import User
 from backend.schemas import BaseResponse, PaginatedResponse
@@ -48,6 +50,25 @@ async def _get_activities_cache_key(
     return make_cache_key(*parts)
 
 
+async def _reload_activity(db: AsyncSession, activity_id: int) -> Activity:
+    """写操作后重新读取一条动态，并带齐 `author`（含 title）关联。
+
+    flush 之后 `created_at` / `updated_at` 这类服务端 onupdate 列处于过期状态，
+    而 `ActivityResponse.author` 是必填，所以必须回读一次。
+
+    此前每个写接口是"一条带 selectinload 但结果丢弃的 SELECT + refresh"两连；
+    refresh 本身就会连 author→user→title 一起重载，那条 SELECT 纯属多余——实测一次
+    POST /admin/activities 要读 activities 表 3 遍（计数断言见
+    tests/test_admin_activity_crud.py）。现在收敛为一次带预加载的重读。
+    """
+    result = await db.execute(
+        select(Activity)
+        .options(selectinload(Activity.author).selectinload(User.title))
+        .where(Activity.id == activity_id)
+    )
+    return result.unique().scalar_one()
+
+
 # ==================== 公开接口 ====================
 
 
@@ -72,18 +93,24 @@ async def list_activities(
     if cached:
         return cached
 
+    # 计数用裸 count(*)：此前是 `select_from(list_query.subquery())`，
+    # 等于把整页列表当成派生表再扫一遍，还带上了没意义的 ORDER BY。
+    total = (
+        await db.scalar(
+            select(func.count(Activity.id)).where(Activity.is_published.is_(True)),
+        )
+        or 0
+    )
+    total_pages = math.ceil(total / page_size) if total > 0 else 0
+
     query = (
         select(Activity)
         .options(selectinload(Activity.author).selectinload(User.title))
         .where(Activity.is_published.is_(True))
         .order_by(Activity.created_at.desc())
+        .offset((page - 1) * page_size)
+        .limit(page_size)
     )
-
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query) or 0
-    total_pages = math.ceil(total / page_size) if total > 0 else 0
-
-    query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
     activities = result.scalars().all()
@@ -133,14 +160,7 @@ async def create_activity_public(
     )
     db.add(activity)
     await db.flush()
-    await db.refresh(activity)
-    # 重新加载关联 author
-    await db.execute(
-        select(Activity)
-        .options(selectinload(Activity.author).selectinload(User.title))
-        .where(Activity.id == activity.id)
-    )
-    await db.refresh(activity)
+    activity = await _reload_activity(db, activity.id)
     await cache.delete_pattern(make_cache_key("activities", "*"))
     return ActivityResponse.model_validate(activity)
 
@@ -173,7 +193,7 @@ async def like_activity(activity_id: int, db: DB):
     "/admin/activities",
     response_model=PaginatedResponse[ActivityResponse],
     summary="管理员获取所有动态",
-    description="管理员获取所有动态列表，包括未发布的，支持分页。",
+    description="管理员获取所有动态列表，包括未发布的，支持按发布状态与类型（type）过滤、分页。",
 )
 async def admin_list_activities(
     db: DB,
@@ -181,21 +201,33 @@ async def admin_list_activities(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
     is_published: bool | None = Query(None, description="按发布状态过滤"),
+    type: str | None = Query(
+        None,
+        pattern="^(say|article|update|notice|link)$",
+        description="按动态类型过滤：say（说说）/article（文章发布）/update（更新）/notice（通知）/link（友链推荐）",
+    ),
 ):
     """管理员获取所有动态"""
+    conditions = []
+    if is_published is not None:
+        conditions.append(Activity.is_published == is_published)
+    if type is not None:
+        conditions.append(Activity.type == type)
+
+    # 同上：计数不套派生表
+    count_stmt = select(func.count(Activity.id))
+    if conditions:
+        count_stmt = count_stmt.where(*conditions)
+    total = await db.scalar(count_stmt) or 0
+    total_pages = math.ceil(total / page_size) if total > 0 else 0
+
     query = (
         select(Activity)
         .options(selectinload(Activity.author).selectinload(User.title))
         .order_by(Activity.created_at.desc())
     )
-
-    if is_published is not None:
-        query = query.where(Activity.is_published == is_published)
-
-    count_query = select(func.count()).select_from(query.subquery())
-    total = await db.scalar(count_query) or 0
-    total_pages = math.ceil(total / page_size) if total > 0 else 0
-
+    if conditions:
+        query = query.where(*conditions)
     query = query.offset((page - 1) * page_size).limit(page_size)
 
     result = await db.execute(query)
@@ -233,14 +265,7 @@ async def create_activity(
     )
     db.add(activity)
     await db.flush()
-    await db.refresh(activity)
-
-    await db.execute(
-        select(Activity)
-        .options(selectinload(Activity.author).selectinload(User.title))
-        .where(Activity.id == activity.id)
-    )
-    await db.refresh(activity)
+    activity = await _reload_activity(db, activity.id)
 
     await cache.delete_pattern(make_cache_key("activities", "*"))
 
@@ -260,12 +285,8 @@ async def update_activity(
     current_user: CurrentStaff,
 ):
     """更新动态"""
-    result = await db.execute(
-        select(Activity)
-        .options(selectinload(Activity.author).selectinload(User.title))
-        .where(Activity.id == activity_id)
-    )
-    activity = result.scalar_one_or_none()
+    # 这里只需要"存在性 + 可改的列"，带关联的完整对象在写完后统一重读
+    activity = await db.get(Activity, activity_id)
 
     if not activity:
         raise HTTPException(
@@ -274,11 +295,10 @@ async def update_activity(
         )
 
     update_data = data.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(activity, field, value)
+    apply_partial_update(activity, update_data)
 
     await db.flush()
-    await db.refresh(activity)
+    activity = await _reload_activity(db, activity_id)
 
     await cache.delete_pattern(make_cache_key("activities", "*"))
 
@@ -325,12 +345,8 @@ async def toggle_activity(
     current_user: CurrentStaff,
 ):
     """切换动态发布状态"""
-    result = await db.execute(
-        select(Activity)
-        .options(selectinload(Activity.author).selectinload(User.title))
-        .where(Activity.id == activity_id)
-    )
-    activity = result.scalar_one_or_none()
+    # 这里只需要"存在性 + 可改的列"，带关联的完整对象在写完后统一重读
+    activity = await db.get(Activity, activity_id)
 
     if not activity:
         raise HTTPException(
@@ -340,7 +356,7 @@ async def toggle_activity(
 
     activity.is_published = not activity.is_published
     await db.flush()
-    await db.refresh(activity)
+    activity = await _reload_activity(db, activity_id)
 
     await cache.delete_pattern(make_cache_key("activities", "*"))
 

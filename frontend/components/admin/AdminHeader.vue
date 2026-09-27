@@ -1,3 +1,10 @@
+<!--
+  Admin 顶栏：面包屑 + 通知中心 + 明暗切换 + 用户菜单。
+  硬契约：面包屑唯一真源是 config/admin-menu（逐级裁剪 segment 匹配父菜单），禁止在此硬编码；
+  侧栏折叠状态归 layouts/admin.vue 持有，本组件只 emit toggle-sidebar，不得私存副本；
+  通知 title/message 有两种历史形态（i18n dict {zh,en,ja,zh_Hant} 与 UGC 明文字符串），
+  渲染前必须过 resolveNotifText，直接 toString 会把 JSON 裸露到界面上。
+-->
 <script setup lang="ts">
 import {
   Search,
@@ -11,7 +18,9 @@ import {
   Inbox,
   ChevronRight,
   Loader2,
-  Trash2
+  Trash2,
+  RotateCcw,
+  X
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -36,14 +45,22 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
   clearAllNotifications,
+  deleteNotification,
   type AdminNotification,
   type NotificationLevel
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import { findMenuItem, findMenuGroup } from '~~/config/admin-menu'
 
 defineProps<{
   sidebarCollapsed: boolean
+}>()
+
+// 窄屏下侧栏默认收成 72px 图标轨（见 layouts/admin.vue），但没有可点开的入口；
+// 这个汉堡按钮负责把同一个状态翻回来，必须由布局接管，不能在头部私存一份状态。
+const emit = defineEmits<{
+  (e: 'toggle-sidebar'): void
 }>()
 
 const authStore = useAuthStore()
@@ -117,6 +134,14 @@ const loadingList = ref(false)
 const loadingBadge = ref(false)
 const markingClearing = ref(false)
 const dropdownOpen = ref(false)
+/** 列表/操作失败的内联错误（不再"接口挂了也显示暂无通知"） */
+const listError = ref('')
+const deletingId = ref<number | null>(null)
+
+function errText(e: unknown, fallback: string): string {
+  const err = e as { data?: unknown, message?: string }
+  return extractApiErrorMessage(err?.data, err?.message || fallback)
+}
 
 // 使用主题语义色（与 toast 主题一致，亮/暗自动联动）
 const levelToClass: Record<NotificationLevel, string> = {
@@ -181,13 +206,15 @@ async function loadBadge(silent = false) {
 /** 点开下拉时拉取最近 10 条（不缓存，保持当前最新） */
 async function loadList() {
   loadingList.value = true
+  listError.value = ''
   try {
-    const r = await fetchNotifications({ page: 1, page_size: 10 })
+    const r = await fetchNotifications({ page: 1, page_size: 10 }, { silentToast: true })
     items.value = r?.items ?? []
     if (typeof r?.unread_count === 'number') unreadCount.value = r.unread_count
-  } catch {
+  } catch (e) {
+    // 接口失败不再伪装成「暂无通知」：内联错误 + 重试按钮
     items.value = []
-    unreadCount.value = 0
+    listError.value = errText(e, '通知列表读取失败')
   } finally {
     loadingList.value = false
   }
@@ -201,9 +228,8 @@ async function handleOpenItem(n: AdminNotification) {
   // 先标记已读（异步不阻塞跳转），badge 立刻 -1 给即时反馈
   if (!n.is_read && unreadCount.value > 0) unreadCount.value -= 1
   const localId = n.id
-  // markNotificationRead 已改用 silentApiFetch，不再抛；此处只做乐观回滚 UI
-  const _wasRead = n.is_read
-  markNotificationRead(localId).then(() => { /* noop */ })
+  // 标记失败不打断跳转：2s 后的 loadBadge 会以服务端为准校正 badge
+  markNotificationRead(localId).catch(() => { /* badge 由下方 loadBadge 校正 */ })
   setTimeout(() => {
     // 若 2s 后后端仍未反馈，尝试重拉 badge 校正（避免永久偏差）
     loadBadge(true).catch(() => {})
@@ -226,11 +252,17 @@ async function handleOpenItem(n: AdminNotification) {
 /** 全部标记为已读（不删除） */
 async function handleMarkAllRead() {
   markingClearing.value = true
+  listError.value = ''
   try {
-    await markAllNotificationsRead()
+    await markAllNotificationsRead({ silentToast: true })
     unreadCount.value = 0
     items.value = items.value.map(i => ({ ...i, is_read: true }))
     toast.success('已全部标记为已读')
+  } catch (e) {
+    // 失败必须回滚乐观状态并报错，否则用户以为已处理
+    listError.value = errText(e, '全部标记已读失败')
+    toast.error(listError.value)
+    loadBadge(true).catch(() => {})
   } finally {
     markingClearing.value = false
   }
@@ -239,13 +271,34 @@ async function handleMarkAllRead() {
 /** 清空全部通知（物理删除） */
 async function handleClearAll() {
   markingClearing.value = true
+  listError.value = ''
   try {
-    await clearAllNotifications()
+    const r = await clearAllNotifications({}, { silentToast: true })
     unreadCount.value = 0
     items.value = []
-    toast.success('通知已清空')
+    toast.success(r?.message || '通知已清空')
+  } catch (e) {
+    listError.value = errText(e, '清空通知失败')
+    toast.error(listError.value)
+    loadList().catch(() => {})
   } finally {
     markingClearing.value = false
+  }
+}
+
+/** 删除单条通知（行内 X，不触发跳转） */
+async function handleDeleteItem(n: AdminNotification) {
+  if (deletingId.value !== null) return
+  deletingId.value = n.id
+  const wasUnread = !n.is_read
+  try {
+    await deleteNotification(n.id, { silentToast: true })
+    items.value = items.value.filter(i => i.id !== n.id)
+    if (wasUnread && unreadCount.value > 0) unreadCount.value -= 1
+  } catch (e) {
+    listError.value = errText(e, `删除通知 ${n.id} 失败`)
+  } finally {
+    deletingId.value = null
   }
 }
 
@@ -302,6 +355,10 @@ watch(
       variant="ghost"
       size="icon"
       class="md:hidden size-9 text-muted-foreground"
+      aria-label="切换导航菜单"
+      aria-controls="admin-sidebar"
+      :aria-expanded="!sidebarCollapsed"
+      @click="emit('toggle-sidebar')"
     >
       <MenuIcon data-icon="inline-start" />
     </Button>
@@ -445,6 +502,32 @@ watch(
                 class="rounded-xl h-14 mb-2 last:mb-0 mx-1.5"
               />
 
+              <template v-else-if="listError">
+                <div
+                  class="flex flex-col items-center justify-center gap-2 px-4 pt-10 pb-8 text-center"
+                  role="alert"
+                >
+                  <div class="size-12 rounded-2xl bg-error-muted flex items-center justify-center text-error">
+                    <Bell class="size-5" />
+                  </div>
+                  <p class="text-sm font-medium text-foreground/90">
+                    通知读取失败
+                  </p>
+                  <p class="text-xs text-muted-foreground break-all">
+                    {{ listError }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-1 rounded-lg"
+                    @click="loadList"
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    重试
+                  </Button>
+                </div>
+              </template>
+
               <template v-else-if="items.length === 0">
                 <div class="flex flex-col items-center justify-center gap-2 px-4 pt-10 pb-8 text-center">
                   <div class="size-12 rounded-2xl bg-muted/60 flex items-center justify-center text-muted-foreground">
@@ -473,6 +556,26 @@ watch(
                   :class="{ 'bg-accent/20': !n.is_read }"
                   @click="handleOpenItem(n)"
                 >
+                  <!-- 行内删除：必须阻止冒泡，否则会同时触发整行的跳转 -->
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    class="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                    :disabled="deletingId === n.id"
+                    :aria-label="`删除这条通知`"
+                    @click.stop="handleDeleteItem(n)"
+                  >
+                    <Loader2
+                      v-if="deletingId === n.id"
+                      class="size-3.5 animate-spin"
+                      data-icon="inline-start"
+                    />
+                    <X
+                      v-else
+                      class="size-3.5"
+                      data-icon="inline-start"
+                    />
+                  </Button>
                   <!-- level 小圆点 -->
                   <span
                     class="mt-1 shrink-0 size-2 rounded-full inline-flex items-center justify-center"

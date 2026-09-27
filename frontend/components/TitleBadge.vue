@@ -1,3 +1,8 @@
+<!--
+  称号徽章 chip：颜色以 hex + alpha 后缀直接拼内联样式（`#rrggbb` 字面值，改格式要先验色值拼接）。
+  坑点：title.name 虽是四语 dict，本组件内 getLocalizedStr 固定按 zh → en → 首个值取值，
+  不跟随当前 locale —— 切语言不会换称号名，属既有行为而非 bug 修复点。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'

@@ -1,3 +1,11 @@
+<!--
+  Nuxt 根级兜底页（layout:false，无布局替它加载主题）：极简变体判定 import MINIMAL_THEME_SLUGS，
+  并自行在客户端触发 useFrontendTheme().ensureLoaded()；后端不可达时 slug 为空即落默认分支。
+  回首页/去登录一律 clearError({ redirect: localePath(...) })（同时清错误态并跳转），不是 navigateTo；
+  「去登录」只在 401/403 出现、「重试」只在 >=500 出现，500 的副标题直接透出 error.message。
+  t() 与 useLocalePath() 都包了 try/catch + 内置中文兜底：i18n 未就绪的窗口期本页也必须能渲染。
+-->
+
 <template>
   <div
     v-if="isMinimalError"
@@ -91,21 +99,11 @@ import { useI18n } from 'vue-i18n'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 /**
- * 关闭 error.vue 自身的 SSR：
- *
- * 本项目 Windows Nitro standalone 在 ssr:false 页面（/login /register /search
- * /admin/** /oobe）上仍会先跑一次 app.vue shell 的 SSR 渲染流程；若渲染时
- * Vue/Nuxt 全局链路（app.vue wrapper 结构、layout resolve、全局 composable）
- * 触发 `refs null` 级联，Nuxt 会把 NUXT_E1005 当成 fatal → 把 error.vue 当
- * 成"兜底页"SSR 渲染出来。而 error.vue 自己如果又带 SSR，会重新命中上面
- * 那根致命链 → 每次 `window.location.replace(/login?__spa_mount=uniq)` 回到
- * 服务端，仍然拿到 SSR 的 error.vue 500 壳 → 客户端再次进入死循环。
- *
- * 把 error.vue 自己关 SSR 以后：NUXT_E1005 → Nitro 仅返回 #__nuxt 空壳，
- * 客户端首帧立刻 `import.meta.client === true` → 直接走下面的 SPA 自愈
- * clearError / location.replace，且替换回来的 `/login` 页面因为 login.vue
- * ssr:false + error.vue ssr:false，整个链路里**没有**任何 SSR DOM 需要
- * Vue runtime 去 `hydrateNode` 对齐 → 级联 `refs null` 直接消失。
+ * layout:false 必需：兜底页不得套前台 default 布局（主题装饰 / 页头页脚）。
+ * ssr:false：历史动机是阻断 "ssr:false 空壳页 NUXT_E1005 → error.vue 又走 SSR
+ * → 二次 fatal" 的循环；该循环的客户端掩盖层（00-escape-hatch）已拆除，
+ * 且 definePageMeta 在 error.vue 中是否生效未经证实（可能本就是 no-op）。
+ * 保留为保守选项——移除会改变错误页 SSR 行为，需真机验证后再决策（见拆除报告遗留项）。
  */
 definePageMeta({ ssr: false, layout: false })
 
@@ -193,49 +191,8 @@ const reload = () => {
   if (import.meta.client) window.location.reload()
 }
 
-/**
- * SPA 精准反选路径的 refs null 级联自愈（v2 静默版）：
- *
- * 2026-01-11 最终版：由于 plugins/00-spa-global-error-escape-hatch 已经在
- * vue:error / config.errorHandler / window.onerror 五道钩子里把 SPA 路径
- * 上的 refs null NPE 彻底吞掉（_swallow + 不触发任何 clearError），这里
- * error.vue setup 中保留"记录一次 info 诊断"作为辅助排错日志，不再执行
- * HARD window.location.replace 跳 __spa_mount=uniq，避免同 stack 内
- * setRef forEach 仍在跑就同步 unmount 子树造成第二轮 NPE 死循环。
- *
- * 若吞错后 UI 仍未渲染（极端情况），用户会看到 500 壳上的「重试」按钮，
- * 手动 reload 即可；实际上 setRef NPE 在 Vue render effect 的 post patch
- * 收尾阶段，UI 已能继续画出来——error.vue 根本不会被 Nuxt 挂载。
- */
-const SPA_CLEAR_PATHS = new Set([
-  '/login',
-  '/register',
-  '/oobe',
-  '/search',
-  '/admin'
-])
-const isSpaClearPath = (p: string): boolean => {
-  if (SPA_CLEAR_PATHS.has(p)) return true
-  if (p.startsWith('/admin/') || p.startsWith('/search/')) return true
-  return false
-}
-if (import.meta.client) {
-  const msg = (props.error?.message || '').toString()
-  const isRefsNullCascade
-    = /reading\s+['"`']refs['"`']/.test(msg)
-      || /null.*refs|refs.*null/i.test(msg)
-  const path = (window.location?.pathname || '')
-  // 仅诊断：不要 HARD replace。实际命中时 00-escape-hatch 应已让 Nuxt 直接
-  // 继续渲染真实页面，不会落到 error.vue。
-  if (isRefsNullCascade && isSpaClearPath(path)) {
-    console.info(
-      '[error.vue:client] SPA refs-null cascade (v2 swallow-only). Not doing HARD replace. Path:',
-      path,
-      'msg:',
-      msg.slice(0, 180)
-    )
-  }
-}
+// 注：曾在此处放"SPA 路径 refs-null 级联自愈诊断"（依赖 00-escape-hatch 吞错链）。
+// 该插件已拆除；真实错误现在会照常进入本兜底页并展示（含重试按钮），不做静默诊断。
 
 useHead({
   title: computed(() => `${statusCode.value} · ${pageTitle.value} · Rosetta`)

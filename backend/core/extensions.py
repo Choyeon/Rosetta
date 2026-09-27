@@ -152,12 +152,17 @@ class PluginManager:
         added = updated = 0
         now = datetime.now(UTC)
         known_slugs: set[str] = set()
+        # 一次性预取本站已有行：原先每个 manifest 单发一条 SELECT（N+1），
+        # 插件数增长时启动期与后台"重新扫描"的往返次数线性上升。
+        existing_rows = (
+            (await db.execute(select(PluginModel).where(PluginModel.site_id == site_id)))
+            .scalars()
+            .all()
+        )
+        rows_by_slug = {r.slug: r for r in existing_rows}
         for folder_rel, manifest in items:
             known_slugs.add(manifest.slug)
-            stmt = select(PluginModel).where(
-                and_(PluginModel.site_id == site_id, PluginModel.slug == manifest.slug)
-            )
-            row = (await db.execute(stmt)).scalar_one_or_none()
+            row = rows_by_slug.get(manifest.slug)
             if row is None:
                 row = PluginModel(
                     site_id=site_id,
@@ -203,7 +208,45 @@ class PluginManager:
                         row.status = "installed"
                         row.error_message = None
         await db.flush()
-        await do_action("plugins.scanned", added=added, updated=updated, slugs=sorted(known_slugs))
+        # ── 僵尸行清理：DB 里有、磁盘上没有的插件（对标 ThemeManager.scan_local）──
+        # 未激活的孤儿行连同 settings KV、钩子、快照一起清除；激活中的孤儿仅告警
+        # 不误删（磁盘文件可能稍后随部署恢复）。不清理会导致列表长期显示已卸载
+        # 插件、且 legacy loader 可能按 DB active 状态反复尝试加载已消失的目录。
+        from backend.core.plugin_loader import invalidate_settings_snapshot
+        from backend.models.core import SiteConfig
+
+        removed = 0
+        all_rows = list(
+            (await db.execute(select(PluginModel).where(PluginModel.site_id == site_id)))
+            .scalars()
+            .all()
+        )
+        for orphan in all_rows:
+            if orphan.slug in known_slugs:
+                continue
+            if orphan.status == "active":
+                logger.error(
+                    "激活插件 %s 的磁盘文件缺失（疑似被手动删除），保留 DB 行等待管理员处理",
+                    orphan.slug,
+                )
+                continue
+            await db.execute(
+                delete(SiteConfig).where(SiteConfig.key == f"{PLUGIN_SETTINGS_PREFIX}{orphan.slug}")
+            )
+            remove_hooks_for_plugin(orphan.slug)
+            invalidate_settings_snapshot(orphan.slug)
+            await db.delete(orphan)
+            removed += 1
+        await db.flush()
+        if removed:
+            logger.info("插件扫描清理僵尸记录 %d 条", removed)
+        await do_action(
+            "plugins.scanned",
+            added=added,
+            updated=updated,
+            removed=removed,
+            slugs=sorted(known_slugs),
+        )
         return added, updated
 
     # ── 列表/查询 ──────────────────────────────────────────────────────
@@ -277,19 +320,20 @@ class PluginManager:
 
         hooks_present = hooks_registered_for_plugin(slug)
         routes_present = routing_registry.has_slug(slug)
-        already_registered = hooks_present or routes_present
-        if row.status == "active" and already_registered:
+        if row.status == "active" and (hooks_present or routes_present):
             # 真·幂等：已激活且 hooks/routes 已注册 → 原样返回
             return row  # type: ignore[return-value]
-        # ⚠️ 双重加载防护：若本进程中 legacy plugin_loader（main.py lifespan L211）已经通过
-        # pkgutil 导入 `backend.plugins.<slug>` 并跑了 register_via_bus() 完成钩子/路由注册，
-        # 再走本函数的沙箱 exec_module() 会导致重复注册：
+        # ⚠️ 双重加载防护：若本进程中 legacy plugin_loader（main.py lifespan）已经
+        # 通过 pkgutil 导入 `backend.plugins.<slug>` 并完成了钩子注册，再走本函数的
+        # 沙箱 exec_module() 会导致重复注册：
         #   - Action/Filter 钩子 → 重复执行副作用（例：hello-rosetta 签名插两次）
         #   - APIRouter → FastAPI 报 Duplicate Operation ID，污染 /openapi.json 并增加
         #     openapi() 生成开销
         # 命中本分支时：仅把 DB status 从 installed→active（若尚未），不重复 import。
-        # 注：纯路由插件（如 guestbook-rss）不挂 hooks，必须用 routes_present 才能识别。
-        if already_registered:
+        # 注意判据只看 hooks_present，不能把 routes_present 也算进来：停用会把钩子
+        # 摘除但路由因 FastAPI 无法卸载而残留，此时必须重新 import 才能恢复钩子；
+        # 路由的重复注册由 routing_registry 按 slug 幂等去重兜底。
+        if hooks_present:
             now = datetime.now(UTC)
             status_changed = row.status != "active"
             row.status = "active"  # type: ignore[assignment]
@@ -336,6 +380,8 @@ class PluginManager:
     async def deactivate(
         self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID
     ) -> Plugin:
+        from backend.core.plugin_loader import invalidate_settings_snapshot
+
         row = await self.get(db, slug, site_id=site_id)
         if row is None:
             from backend.core.exceptions import AppException
@@ -343,9 +389,9 @@ class PluginManager:
             raise AppException(
                 status_code=404, error_code="PLUGIN_NOT_FOUND", message=f"插件 {slug} 未安装"
             )
-        if row.status != "active":
-            # 幂等：已非激活态直接返回
-            return row  # type: ignore[return-value]
+        # 无论此前处于什么状态，先无条件摘除运行期注册（installed 插件的钩子可能
+        # 已被 legacy loader 注册过；不摘除则"停用"只改了 DB、本进程行为不变）。
+        # 摘除是幂等的；路由因 FastAPI 无卸载 API 而残留，属既有已文档化限制。
         remove_hooks_for_plugin(slug)
         try:
             from backend.core.shortcodes import shortcode_manager
@@ -353,6 +399,10 @@ class PluginManager:
             shortcode_manager.remove_for_plugin(slug)
         except Exception:  # noqa: BLE001 - shortcode 引擎缺失不影响停用
             logger.debug("插件 %s: shortcode 摘除跳过（引擎不可用）", slug)
+        invalidate_settings_snapshot(slug)
+        if row.status == "inactive":
+            # 幂等：已非激活态直接返回
+            return row  # type: ignore[return-value]
         row.status = "inactive"
         await db.flush()
         await db.refresh(row)
@@ -421,6 +471,17 @@ class PluginManager:
                         app=_app_ref,
                         bus=_bus,
                     )
+
+                    # register() 是同步入口，插件可能在其中读 ctx.settings；
+                    # 先在异步上下文预取快照，失败只告警（get_settings 本身不吞）。
+                    try:
+                        await ctx.get_settings()
+                    except Exception:  # noqa: BLE001
+                        logger.warning(
+                            "插件 %s settings 快照预取失败（ctx.settings 暂为空快照）",
+                            row.slug,
+                            exc_info=True,
+                        )
 
                     # 在真正调用 register() 之前，若 manifest.admin_menu 已声明，
                     # 预先写入 registry（register() 内再调用 ctx.register_admin_menu
@@ -784,6 +845,7 @@ class PluginManager:
         return await self.install_from_uploaded_bytes(db, filename, content, site_id=site_id)
 
     async def delete(self, db: AsyncSession, slug: str, *, site_id: int = DEFAULT_SITE_ID) -> None:
+        from backend.core.plugin_loader import invalidate_settings_snapshot
         from backend.models.core import SiteConfig
 
         row = await self.get(db, slug, site_id=site_id)
@@ -800,14 +862,14 @@ class PluginManager:
                 status_code=409, error_code="PLUGIN_ALREADY_ACTIVE", message="请先禁用该插件再删除"
             )
         folder_rel = getattr(row, "folder") or ""
+        # 无论 folder 是否声明，KV / 钩子 / 快照都要清理（旧实现 folder 为空时全部泄漏）
+        kv_key = f"{PLUGIN_SETTINGS_PREFIX}{slug}"
+        await db.execute(delete(SiteConfig).where(SiteConfig.key == kv_key))
+        remove_hooks_for_plugin(slug)
+        invalidate_settings_snapshot(slug)
+        await db.delete(row)
+        await db.flush()
         if folder_rel:
-            # Remove KV settings too
-            kv_key = f"{PLUGIN_SETTINGS_PREFIX}{slug}"
-            await db.execute(delete(SiteConfig).where(SiteConfig.key == kv_key))
-            # Remove hooks (shouldn't be any, but defensive)
-            remove_hooks_for_plugin(slug)
-            await db.delete(row)
-            await db.flush()
             # Try filesystem delete; but never for non-local (zip installs). Stub here.
             path = Path(__file__).resolve().parents[2] / folder_rel
             if path.exists() and path.is_dir():
@@ -846,6 +908,16 @@ class PluginManager:
                 error_code="PLUGIN_SETTINGS_INVALID",
                 message="插件设置必须是 JSON 对象",
             )
+        # 与 ThemeManager.set_mods 同策略：settings_schema.properties 是合法键的
+        # 唯一清单，未声明键丢弃并告警（否则脏键会永久占用 KV 且无人消费）。
+        row = await self.get(db, slug)
+        schema = getattr(row, "settings_schema", None) if row else None
+        props = schema.get("properties") if isinstance(schema, dict) else None
+        if isinstance(props, dict) and props:
+            unknown = [k for k in settings if k not in props]
+            if unknown:
+                logger.warning("插件 %s settings 丢弃 schema 未声明的键: %s", slug, unknown)
+                settings = {k: v for k, v in settings.items() if k in props}
         merged = {**(await self.get_settings(db, slug)), **settings}
         return await _set_kv_json(
             db,
@@ -979,11 +1051,15 @@ class ThemeManager:
         items = scan_themes_dir()
         added = updated = 0
         now = datetime.now(UTC)
+        # 同 PluginManager.scan_local：预取代替逐 slug 单发 SELECT
+        existing_rows = (
+            (await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id)))
+            .scalars()
+            .all()
+        )
+        rows_by_slug = {r.slug: r for r in existing_rows}
         for folder_rel, manifest in items:
-            stmt = select(ThemeModel).where(
-                and_(ThemeModel.site_id == site_id, ThemeModel.slug == manifest.slug)
-            )
-            row = (await db.execute(stmt)).scalar_one_or_none()
+            row = rows_by_slug.get(manifest.slug)
             if row is None:
                 row = ThemeModel(
                     site_id=site_id,
@@ -1039,9 +1115,7 @@ class ThemeManager:
         # 未激活的孤儿行直接删除（连带其 mods KV），激活中的孤儿仅告警不误删。
         disk_slugs = {manifest.slug for _, manifest in items}
         all_rows = list(
-            (
-                await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id))
-            )
+            (await db.execute(select(ThemeModel).where(ThemeModel.site_id == site_id)))
             .scalars()
             .all()
         )
@@ -1502,12 +1576,16 @@ class ThemeManager:
             .all()
         )
         kv_rows = (
-            await db.execute(
-                select(SiteConfig).where(
-                    SiteConfig.key.in_([f"{THEME_MODS_PREFIX}{s}" for s in slugs])
+            (
+                await db.execute(
+                    select(SiteConfig).where(
+                        SiteConfig.key.in_([f"{THEME_MODS_PREFIX}{s}" for s in slugs])
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         stored_map: dict[str, Any] = {}
         for r in kv_rows:
             try:
@@ -1803,6 +1881,10 @@ async def bootstrap_extensions(
                     logger.exception("启动期：默认主题 %s 激活失败", candidate)
                 break
     await db.commit()
+    # reconcile 使用独立 session，须等 above commit 后方可看到 scan_local 写入的行
+    from backend.core.plugin_loader import reconcile_loaded_with_db
+
+    await reconcile_loaded_with_db()
     return {
         "plugins_scanned": {"added": p_scan[0], "refreshed": p_scan[1]},
         "plugins_booted": {"success": p_ok, "failed": p_fail},

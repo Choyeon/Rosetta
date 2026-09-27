@@ -33,7 +33,8 @@ def _normalize_origin(url: str | None) -> str | None:
         if not parsed.scheme or not parsed.netloc:
             return None
         return f"{parsed.scheme.lower()}://{parsed.netloc.lower()}"
-    except Exception:
+    except ValueError:
+        # 解析不了的 Origin 归一化为 None → 白名单判定不通过（fail closed）。
         return None
 
 

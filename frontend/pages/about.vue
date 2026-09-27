@@ -1,3 +1,11 @@
+<!--
+  关于页（SSR）：本页不发任何请求，字段全部读 useSite()（layouts/default.vue 已 await ensureLoaded），
+  与页头/页脚共用同一份配置副本，避免各自拉 /config 产生差异。
+  双模式：basic.about_page_html 非空 → sanitizeTrustedAdminHtml 后 v-html（仍禁 script/iframe/on*/javascript:），
+  sanitize 结果为空串时自动落回内置 i18n Tabs 结构。
+  techStack / skillGroups 是刻意的空常量：后端无该字段，宁可「技能」Tab 只有标题也不编造履历数据。
+-->
+
 <template>
   <div class="container py-16">
     <!-- HTML 模式：管理员在站点设置 basic.about_page_html 以 HTML 方式直接编辑关于内容 -->
@@ -288,6 +296,7 @@ import UserAvatar from '~~/components/UserAvatar.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { useI18n } from 'vue-i18n'
 import type { Component } from 'vue'
+import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
 import {
   User2,
   UserCircle2,
@@ -313,7 +322,9 @@ const site = useSite()
 
 // 关于页 HTML 正文：admin 在站点设置 basic.about_page_html 直接写 HTML，
 // 有内容时走 v-html 渲染（完整自定义内容），为空时回退默认 i18n Tabs 结构。
-const aboutPageHtml = computed(() => String(site.basic.value.about_page_html || '').trim())
+// settings 虽是管理员写入，但仍带白名单 sanitize（禁 script/iframe/on*/javascript: URI），
+// isomorphic-dompurify SSR/CSR 同实现，sanitize 后为空串时自动落回退分支。
+const aboutPageHtml = computed(() => sanitizeTrustedAdminHtml(site.basic.value.about_page_html))
 
 // useHead：页面标题/描述统一走 useSite.withSuffix / basic.* 真实数据
 useHead(() => ({

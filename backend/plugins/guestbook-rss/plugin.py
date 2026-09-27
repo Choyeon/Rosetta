@@ -88,9 +88,12 @@ async def _persist_settings(merged: dict) -> bool:
         async with async_session_maker() as db:  # type: ignore[misc]
             await plugin_manager.set_settings(db, PLUGIN_SLUG, merged)
             await db.commit()
+        from backend.core.plugin_loader import set_settings_snapshot
+
+        set_settings_snapshot(PLUGIN_SLUG, merged)
         return True
     except Exception:  # noqa: BLE001
-        logger.debug("guestbook-rss: 设置持久化失败，仅保留内存副本", exc_info=True)
+        logger.warning("guestbook-rss: 设置持久化失败，仅保留内存副本", exc_info=True)
         return False
 
 
@@ -136,9 +139,7 @@ def _rss_xml(
     lines.append(f"    <description>{desc}</description>")
     lines.append(f"    <language>{lang}</language>")
     lines.append(f"    <lastBuildDate>{now}</lastBuildDate>")
-    lines.append(
-        f'    <atom:link href="{safe_self}" rel="self" type="application/rss+xml"/>'
-    )
+    lines.append(f'    <atom:link href="{safe_self}" rel="self" type="application/rss+xml"/>')
 
     for e in list(entries or [])[:max_items]:
         eid = getattr(e, "id", 0) or 0
@@ -162,12 +163,12 @@ def _rss_xml(
         lines.append("    <item>")
         lines.append(f"      <title><![CDATA[{safe_author} 留言]]></title>")
         lines.append(f"      <link>{_html.escape(entry_link, quote=True)}</link>")
-        lines.append(
-            f'      <guid isPermaLink="false">guestbook-entry-{eid}@rosetta.dev</guid>'
-        )
+        lines.append(f'      <guid isPermaLink="false">guestbook-entry-{eid}@rosetta.dev</guid>')
         lines.append(f"      <pubDate>{pub_date}</pubDate>")
         if include_email and email:
-            lines.append(f"      <author>{_html.escape(str(email), quote=True)} ({safe_author})</author>")
+            lines.append(
+                f"      <author>{_html.escape(str(email), quote=True)} ({safe_author})</author>"
+            )
         else:
             lines.append(f"      <dc:creator>{safe_author}</dc:creator>")
         lines.append(f"      <description><![CDATA[{safe_content}]]></description>")
@@ -222,10 +223,20 @@ def _build_routers() -> tuple[Any, Any]:
     @admin.put("/settings")
     async def put_settings(payload: dict) -> dict:
         if not isinstance(payload, dict):
-            return {"success": False, "error_code": "VALIDATION_FAILED", "message": "payload 必须是 object"}
+            return {
+                "success": False,
+                "error_code": "VALIDATION_FAILED",
+                "message": "payload 必须是 object",
+            }
         current = await _load_settings()
         merged = {**current, **payload}
-        await _persist_settings(merged)
+        persisted = await _persist_settings(merged)
+        if not persisted:
+            return {
+                "success": True,
+                "data": merged,
+                "message": "设置已写入内存，但持久化失败，请检查数据库连接",
+            }
         return {"success": True, "data": merged}
 
     return public, admin

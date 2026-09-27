@@ -1,3 +1,10 @@
+<!--
+  安装向导：layout:false 自绘整屏，且 /oobe 命中 lib/rosetta-themes 的 THEME_VISUAL_EXCLUDE_PREFIXES → 永不注入主题皮肤。
+  它仍是 SSR 页：routeRules 对 /oobe 只设 no-store（撤销 ssr:false 是让安装完成后的 SSR 级 302 不与客户端 navigateTo 抢跑成白屏），所以 location / new Image() / document 只能待在 onMounted 与回调里。
+  数据层全走 composables/useOOBE.ts 的裸 fetch + EventSource（localStorage rosetta:oobe:apiBase 现场覆盖后端地址），刻意绕开 useApi：跳登录、统一 toast、CSR 缓存键在"后端地址未定"的时序里三者都错。
+  Step1 的 canNext 硬门 = 探测成功且 apiBase 已应用（之后才自动 checkSystem）；Step2/3 在 nextStep 内即时 createAdmin / saveSiteSettings，回退再前进就是重复提交。
+  收尾必须 clearOOBEApiBaseOverrideFromStorage() + resetOOBECache(true)，否则 middleware/oobe.global 的 60s 缓存仍把人锁回 /oobe；prod + 明文 HTTP 时 finishSetup 先弹 TLS 二次确认再安装。
+-->
 <template>
   <div class="relative min-h-screen overflow-hidden text-foreground isolate">
     <!-- ========== 背景：Bing 每日壁纸 + 多层遮罩 ========== -->
@@ -611,11 +618,15 @@
               <template v-else-if="step === 2">
                 <div class="flex flex-col gap-4">
                   <div class="flex flex-col gap-2">
-                    <Label class="text-foreground/90">{{ t('oobe.adminName') }} *</Label>
+                    <Label
+                      for="oobe-admin-name"
+                      class="text-foreground/90"
+                    >{{ t('oobe.adminName') }} *</Label>
 
                     <div class="relative">
                       <UserPlus class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                       <Input
+                        id="oobe-admin-name"
                         v-model="adminForm.name"
                         :placeholder="t('oobe.adminNamePlaceholder')"
                         class="pl-9 h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -628,11 +639,15 @@
                   </div>
 
                   <div class="flex flex-col gap-2">
-                    <Label class="text-foreground/90">{{ t('oobe.adminEmail') }} *</Label>
+                    <Label
+                      for="oobe-admin-email"
+                      class="text-foreground/90"
+                    >{{ t('oobe.adminEmail') }} *</Label>
 
                     <div class="relative">
                       <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                       <Input
+                        id="oobe-admin-email"
                         v-model="adminForm.email"
                         type="email"
                         :placeholder="t('oobe.adminEmailPlaceholder')"
@@ -643,11 +658,15 @@
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div class="flex flex-col gap-2">
-                      <Label class="text-foreground/90">{{ t('oobe.adminPassword') }} * <span class="text-xs text-foreground/65">({{ t('oobe.adminPasswordHint') }})</span></Label>
+                      <Label
+                        for="oobe-admin-password"
+                        class="text-foreground/90"
+                      >{{ t('oobe.adminPassword') }} * <span class="text-xs text-foreground/65">({{ t('oobe.adminPasswordHint') }})</span></Label>
 
                       <div class="relative">
                         <ShieldCheck class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                         <Input
+                          id="oobe-admin-password"
                           v-model="adminForm.password"
                           :type="showAdminPassword ? 'text' : 'password'"
                           :placeholder="t('oobe.adminPasswordPlaceholder')"
@@ -672,11 +691,15 @@
                     </div>
 
                     <div class="flex flex-col gap-2">
-                      <Label class="text-foreground/90">{{ t('oobe.adminConfirmPassword') }} *</Label>
+                      <Label
+                        for="oobe-admin-confirm-password"
+                        class="text-foreground/90"
+                      >{{ t('oobe.adminConfirmPassword') }} *</Label>
 
                       <div class="relative">
                         <CheckCircle2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                         <Input
+                          id="oobe-admin-confirm-password"
                           v-model="adminForm.confirmPassword"
                           :type="showAdminConfirmPassword ? 'text' : 'password'"
                           :placeholder="t('oobe.adminConfirmPasswordPlaceholder')"
@@ -714,11 +737,15 @@
                     </div>
 
                     <div class="flex flex-col gap-2">
-                      <Label class="text-foreground/90">{{ t('oobe.siteName') }} *</Label>
+                      <Label
+                        for="oobe-site-name"
+                        class="text-foreground/90"
+                      >{{ t('oobe.siteName') }} *</Label>
 
                       <div class="relative">
                         <Globe2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                         <Input
+                          id="oobe-site-name"
                           v-model="siteForm.name"
                           :placeholder="t('oobe.siteNamePlaceholder')"
                           class="pl-9 h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -727,11 +754,15 @@
                     </div>
 
                     <div class="flex flex-col gap-2">
-                      <Label class="text-foreground/90">{{ t('oobe.siteUrl') }} *</Label>
+                      <Label
+                        for="oobe-site-url"
+                        class="text-foreground/90"
+                      >{{ t('oobe.siteUrl') }} *</Label>
 
                       <div class="relative">
                         <LinkIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                         <Input
+                          id="oobe-site-url"
                           v-model="siteForm.siteUrl"
                           type="url"
                           :placeholder="t('oobe.siteUrlPlaceholder')"
@@ -745,9 +776,13 @@
                     </div>
 
                     <div class="flex flex-col gap-2">
-                      <Label class="text-foreground/90">{{ t('oobe.siteDescription') }}</Label>
+                      <Label
+                        for="oobe-site-description"
+                        class="text-foreground/90"
+                      >{{ t('oobe.siteDescription') }}</Label>
 
                       <Textarea
+                        id="oobe-site-description"
                         v-model="siteForm.description"
                         :placeholder="t('oobe.siteDescriptionPlaceholder')"
                         rows="3"
@@ -757,9 +792,15 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div class="flex flex-col gap-2">
-                        <Label class="text-foreground/90">{{ t('oobe.defaultLanguage') }}</Label>
+                        <Label
+                          for="oobe-default-language"
+                          class="text-foreground/90"
+                        >{{ t('oobe.defaultLanguage') }}</Label>
                         <Select v-model="siteForm.locale">
-                          <SelectTrigger class="h-11 !bg-white/[0.05] !border-white/10 text-foreground focus:!ring-emerald-400/40">
+                          <SelectTrigger
+                            id="oobe-default-language"
+                            class="h-11 !bg-white/[0.05] !border-white/10 text-foreground focus:!ring-emerald-400/40"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent class="!bg-zinc-900/95 backdrop-blur-xl !border-white/10">
@@ -780,11 +821,15 @@
                       </div>
 
                       <div class="flex flex-col gap-2">
-                        <Label class="text-foreground/90">{{ t('oobe.seoKeywords') }}</Label>
+                        <Label
+                          for="oobe-seo-keywords"
+                          class="text-foreground/90"
+                        >{{ t('oobe.seoKeywords') }}</Label>
 
                         <div class="relative">
                           <Tag class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                           <Input
+                            id="oobe-seo-keywords"
                             v-model="siteForm.keywords"
                             :placeholder="t('oobe.seoKeywordsPlaceholder')"
                             class="pl-9 h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -817,9 +862,15 @@
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div class="flex flex-col gap-2">
-                        <Label class="text-foreground/90">{{ t('oobe.dbType', '数据库类型') }}</Label>
+                        <Label
+                          for="oobe-db-type"
+                          class="text-foreground/90"
+                        >{{ t('oobe.dbType', '数据库类型') }}</Label>
                         <Select v-model="siteForm.databaseType">
-                          <SelectTrigger class="h-11 !bg-white/[0.05] !border-white/10 text-foreground focus:!ring-emerald-400/40">
+                          <SelectTrigger
+                            id="oobe-db-type"
+                            class="h-11 !bg-white/[0.05] !border-white/10 text-foreground focus:!ring-emerald-400/40"
+                          >
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent class="!bg-zinc-900/95 backdrop-blur-xl !border-white/10">
@@ -845,10 +896,16 @@
                         </p>
                       </div>
                       <div class="flex flex-col gap-2">
-                        <Label class="text-foreground/90">{{ t('oobe.redis', 'Redis 缓存') }}</Label>
+                        <Label
+                          for="oobe-redis-enabled"
+                          class="text-foreground/90"
+                        >{{ t('oobe.redis', 'Redis 缓存') }}</Label>
                         <div class="flex items-center h-11 px-3 rounded-xl border border-white/10 bg-white/[0.05] justify-between">
                           <span class="text-sm text-foreground/75">{{ siteForm.redisEnabled ? t('oobe.on', '开启') : t('oobe.off', '关闭') }}</span>
-                          <Switch v-model="siteForm.redisEnabled" />
+                          <Switch
+                            id="oobe-redis-enabled"
+                            v-model="siteForm.redisEnabled"
+                          />
                         </div>
                       </div>
                     </div>
@@ -856,18 +913,26 @@
                     <template v-if="siteForm.databaseType === 'postgresql'">
                       <div class="grid grid-cols-2 gap-4">
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.dbHost', '主机') }}</Label>
+                          <Label
+                            for="oobe-db-host"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbHost', '主机') }}</Label>
 
                           <Input
+                            id="oobe-db-host"
                             v-model="siteForm.dbHost"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                             placeholder="localhost"
                           />
                         </div>
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.dbPort', '端口') }}</Label>
+                          <Label
+                            for="oobe-db-port"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbPort', '端口') }}</Label>
 
                           <Input
+                            id="oobe-db-port"
                             v-model.number="siteForm.dbPort"
                             type="number"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -875,27 +940,39 @@
                           />
                         </div>
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.dbName', '数据库名') }}</Label>
+                          <Label
+                            for="oobe-db-name"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbName', '数据库名') }}</Label>
 
                           <Input
+                            id="oobe-db-name"
                             v-model="siteForm.dbName"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                             placeholder="rosetta"
                           />
                         </div>
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.dbUser', '用户名') }}</Label>
+                          <Label
+                            for="oobe-db-user"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbUser', '用户名') }}</Label>
 
                           <Input
+                            id="oobe-db-user"
                             v-model="siteForm.dbUser"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                             placeholder="postgres"
                           />
                         </div>
                         <div class="flex flex-col gap-2 col-span-2">
-                          <Label class="text-foreground/90">{{ t('oobe.dbPassword', '密码') }}</Label>
+                          <Label
+                            for="oobe-db-password"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbPassword', '密码') }}</Label>
 
                           <Input
+                            id="oobe-db-password"
                             v-model="siteForm.dbPassword"
                             type="password"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -905,9 +982,13 @@
                     </template>
                     <template v-else>
                       <div class="flex flex-col gap-2">
-                        <Label class="text-foreground/90">{{ t('oobe.dbPath', 'SQLite 文件路径') }}</Label>
+                        <Label
+                          for="oobe-db-path"
+                          class="text-foreground/90"
+                        >{{ t('oobe.dbPath', 'SQLite 文件路径') }}</Label>
 
                         <Input
+                          id="oobe-db-path"
                           v-model="siteForm.dbPath"
                           class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                           placeholder="rosetta.db"
@@ -918,18 +999,26 @@
                     <template v-if="siteForm.redisEnabled">
                       <div class="grid grid-cols-3 gap-4">
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.redisHost', 'Redis 主机') }}</Label>
+                          <Label
+                            for="oobe-redis-host"
+                            class="text-foreground/90"
+                          >{{ t('oobe.redisHost', 'Redis 主机') }}</Label>
 
                           <Input
+                            id="oobe-redis-host"
                             v-model="siteForm.redisHost"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                             placeholder="localhost"
                           />
                         </div>
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.redisPort', '端口') }}</Label>
+                          <Label
+                            for="oobe-redis-port"
+                            class="text-foreground/90"
+                          >{{ t('oobe.redisPort', '端口') }}</Label>
 
                           <Input
+                            id="oobe-redis-port"
                             v-model.number="siteForm.redisPort"
                             type="number"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -937,9 +1026,13 @@
                           />
                         </div>
                         <div class="flex flex-col gap-2">
-                          <Label class="text-foreground/90">{{ t('oobe.redisPassword', '密码') }}</Label>
+                          <Label
+                            for="oobe-redis-password"
+                            class="text-foreground/90"
+                          >{{ t('oobe.redisPassword', '密码') }}</Label>
 
                           <Input
+                            id="oobe-redis-password"
                             v-model="siteForm.redisPassword"
                             type="password"
                             class="h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
@@ -1983,7 +2076,7 @@ const adminForm = reactive({
 })
 
 const { locale: currentLocale } = useI18n()
-// OOBE 路由固定 ssr:false → 必在浏览器内。统一走 runtimeConfig.public.siteUrl → location.origin，
+// 站点 URL 默认值统一走 runtimeConfig.public.siteUrl，客户端再兜底 location.origin，
 // 禁止散落写默认 http://localhost:3000 / 127.0.0.1 字面量。
 const runtimeCfg = useRuntimeConfig()
 const defaultOrigin = computed(() => {

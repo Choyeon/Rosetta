@@ -14,14 +14,18 @@
 from __future__ import annotations
 
 import base64
+import logging
 import re
 from typing import Literal
 
 import httpx
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
 
-from backend.core.net_guard import validated_get
+from backend.core.net_guard import UnsafeTargetError, validated_get
+from backend.schemas import raw_content_response
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["媒体"])
 
@@ -116,7 +120,9 @@ async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
     try:
         timeout = httpx.Timeout(8.0, connect=3.0, pool=5.0, read=10.0)
         # follow_redirects 必须为 False：重定向由 validated_get 逐跳校验后手动跟随
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False, http2=True) as client:
+        # 不开 http2：依赖清单用的是 `httpx>=0.27.0`（无 [http2] extra），
+        # http2=True 会在构造客户端时抛 ImportError，整个头像代理直接 500。
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
             r = await validated_get(client, url, headers=_HEADERS_PASS_THOUGH)
             if r.status_code >= 400:
                 return RedirectResponse(_FINAL_FALLBACK, status_code=307)
@@ -140,7 +146,10 @@ async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
                 media_type=mt,
                 headers=headers,
             )
-    except Exception:
+    except (UnsafeTargetError, httpx.HTTPError, ValueError) as exc:
+        # 任何上游失败都安全降级到 DiceBear，但必须留下原因：
+        # 否则"SSRF 判定拒绝"与"上游 504"在日志里长得一样，头像批量失效时无从排查。
+        logger.debug(f"[avatar] 代理上游失败，回退兜底头像: {exc!r}")
         return RedirectResponse(_FINAL_FALLBACK, status_code=307)
 
 
@@ -148,6 +157,10 @@ async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
     "/media/avatar",
     summary="头像代理",
     description="代理外部头像 URL，白名单域名 302 直跳，非白名单流式代理，失败时回退 DiceBear SVG。",
+    responses=raw_content_response(
+        "image/*", "头像二进制流；白名单源可能 302 直跳，兜底返回 DiceBear SVG。", binary=True
+    ),
+    response_class=Response,
 )
 async def avatar_proxy(
     request: Request,
@@ -156,7 +169,9 @@ async def avatar_proxy(
 ):
     try:
         url = _b64url_decode(src)
-    except Exception:
+    except (ValueError, UnicodeDecodeError) as exc:
+        # src 由前端 base64url 编码，解码失败=伪造/截断的参数；回退兜底而非 500。
+        logger.debug(f"[avatar] src 解码失败，回退兜底头像: {exc!r}")
         return RedirectResponse(_FINAL_FALLBACK, status_code=307)
 
     if not url.startswith(("http://", "https://")):

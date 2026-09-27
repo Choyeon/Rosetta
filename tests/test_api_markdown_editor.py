@@ -82,7 +82,11 @@ async def _task7_setup(monkeypatch, tmp_path):
         import time
 
         return RateLimitResult(
-            allowed=True, remaining=999_999, reset_at=time.time() + 3600, retry_after=0
+            allowed=True,
+            limit=999_999,
+            remaining=999_999,
+            reset_at=time.time() + 3600,
+            retry_after=0,
         )
 
     monkeypatch.setattr(rate_limiter, "check_rate_limit", _always_allowed_check)

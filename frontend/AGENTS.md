@@ -9,9 +9,11 @@
 
 `nuxt.config.ts` 中 `ssr: true`（**全局 SSR 基线**），仅以下路由精准反选为 SPA：
 - `/admin/**`（登录态 + 重交互 + localStorage）
-- `/login` / `/register` / `/oobe`（表单状态、敏感输入）
+- `/login` / `/register`（表单状态、敏感输入）
 - `/admin/docs/**`（内嵌 Markdown 编辑器）
 - `/search/**`（实时查询）
+
+`/oobe` **不在**反选之列：它保留 SSR，只设 `swr:false + no-store`——安装完成后 `middleware/oobe.global.ts` 要做 SSR 级 302，`ssr:false` 会让 Nitro 直接吐空壳、不走 middleware SSR 分支（表现为白屏挂死）。
 
 如需单页临时切回 SPA：`definePageMeta({ ssr: false })`。
 
@@ -34,7 +36,28 @@
 
 若再遇到"URL 变了内容不变"，先定位到具体路由与组件（多半是该页 `useAPI` 的 key 没跟随
 参数、或 `<Suspense>` 数据链断了），修那一处，不要加回全局屏障。
-`plugins/02-hydration-safety.global.client.ts` 只在真实抛错时软重挂，正常导航不介入。
+`plugins/02-hydration-safety.global.client.ts` 只在真实抛错（`vue:error` 命中 hydration
+级联特征）时做**有界软重挂**（每文档上限 2 次，预算耗尽如实暴露错误），正常导航不介入。
+
+### 禁止把吞错的"逃生舱"插件加回来（硬约束）
+
+历史上存在过 `plugins/00-spa-global-error-escape-hatch.global.client.ts` 与
+`plugins/05-safe-console-error-downgrade.global.client.ts`（以及旧版 02），它们通过
+覆写 `window.onerror`、按消息子串吞 `unhandledrejection`、改写
+`window.__NUXT_DATA__.serverRendered`、`eval('clearError')` 复活 App 等手段让控制台
+"看起来干净"。这些全部是**欺骗性掩盖**，已于 2026-09 拆除，禁止任何形式的回归：
+
+- 插件期改写 `serverRendered` 是 no-op —— nuxt/dist/app/entry.js 在 `applyPlugins()`
+  **之前**就用它决定 hydrate/mount；真正生效的是 HTTP 层
+  `server/plugins/spa-serverrendered-zero.nitro.ts`
+- `window.onerror` 直接赋值会被 `error-handler.client.ts` 冲掉，本就不是可靠拦截点
+- 吞错让真实的水合缺陷静默累积，等到以白屏/数据错乱形式爆发时已失去定位能力
+
+Hydration / setRef 崩溃的**真实修复点**（都在构建/服务端层，改动请去这几处）：
+- vite 插件 `rosetta-vue-setref-nullsafe`（Vue setRef 父链 null-safe，`nuxt.config.ts`）
+- vite 插件 `rosetta-lucide-ssr-fix`（SSR lucide 图标 first-child 与客户端同构，消除 mismatch 源）
+- nitro 插件 `spa-serverrendered-zero`（ssr:false 空壳页不再进 hydrate 分支）
+- `app.pageTransition` 禁用 `mode:'out-in'`（SSR 首帧 Comment 占位是 mismatch 源）
 
 ## 目录与文件放置规则
 
@@ -62,6 +85,14 @@
 3. 主操作按钮 `size="sm"`，图标按钮 `size="icon-sm"` + `Tooltip`
 4. 二次确认用 `<AdminConfirmDialog>`，不要手写 Dialog
 5. 列表页复用 `<AdminDataTable>` + `<AdminFilterBar>` + `<AdminPagination>`
+
+### 后台接口层约定（强制）
+
+1. **单源**：`/admin/**` 与后台用到的业务端点，请求函数一律写在 `composables/useAdminManage.ts`，页面只 import wrapper。页面内再写一遍 `apiFetch('/同一个路径')` = 重复契约（历史上 cache / import-export / seo / user-role 各有一份），要么删 wrapper 要么改页面，二者不得并存。
+2. **错误必须外泄**：wrapper 一律走 `apiFetch`（失败即 reject），**禁止**用 `silentApiFetch` + `catch` 把失败降级成"看起来像成功的空值/默认值"——那会让"后端宕机"显示成"已是最新"或"没有数据"。`silentApiFetch` 仅用于纯装饰数据（文章页相似推荐、上/下一篇）。
+3. **`AdminToolRequestOptions`**：`{ silentToast?: boolean }` 统一控制是否由 wrapper 弹 toast。轮询 / 首屏静默加载传 `{ silentToast: true }`，页面自己渲染 `role="alert"` 错误条 + 重试按钮；用户主动触发的写操作保持默认 toast。
+4. **响应信封**：后端只在**失败**时返回 `{success:false,error_code,…}`；列表/详情返回裸对象。唯一例外是 `GET /seo/sitemap-check` 与 `migration` 的任务接口手工返回 `{success,data}`/`{success,job}`，对应 wrapper 在内部解包并在数据缺失时 throw。
+5. **初始化错误要可见**：任何写进 `xxxError` 的失败，其展示节点不能嵌在 `v-if="该次请求的产物"` 里面——首次加载就失败时产物为 `null`，banner 永远不渲染。初始化错误用独立状态 + `v-else-if` 分支（见 `pages/admin/tools/migrations.vue` 的 `jobInitError`）。
 
 ## 三层 CSS 分工（2026-09 主题解耦架构）
 

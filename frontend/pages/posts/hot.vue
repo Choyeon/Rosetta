@@ -1,3 +1,9 @@
+<!--
+  热门榜单页：GET /blog/posts/hot，排名就是数组顺序（热度评分全在后端，前端不再二次计算）。
+  后端当前返回裸数组，代码同时兼容 { items } 信封 —— 收紧成单一形状前先确认端点行为。
+  本路由带 swr 60s 缓存，排名变动会滞后显示属预期，别为"立即生效"加客户端轮询；
+  同步解构不加 await 是为避开 Suspense 水合 mismatch（全仓列表页同一约定）。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-10">

@@ -263,10 +263,9 @@ class TestUserDetailEdit:
         """U-D1: 修改 nickname/email/website/github 全部正确保存
 
         注意：
-        - AdminUserUpdateFull schema 没有 qq/avatar_source 字段（后端能力限制），
-          所以本测试只验证 schema 中存在的字段。
         - github 字段的 validator 会自动给非 http(s) 前缀值加上 "https://"，
           因此断言使用 endswith / contains。
+        - qq / avatar_source 的写入单独由 test_u_d2b 覆盖。
         """
         payload = {
             "nickname": "张三_修改",
@@ -292,6 +291,50 @@ class TestUserDetailEdit:
         # github 自动加 https:// 前缀
         assert data.get("github", "").endswith("octocat"), (
             f"github 自动前缀后应包含 octocat，实际: {data.get('github')}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_u_d2b_qq_and_avatar_source_write_through(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        subscriber_user: User,
+    ):
+        """U-D2b: 管理员写 qq / avatar_source 必须真的落库。
+
+        这俩字段曾只出现在 UserDetailResponse（读）而不在 AdminUserUpdateFull（写），
+        管理员改 QQ 是静默失效的；`extra="forbid"` 真正生效后，字段集合读写必须对齐。
+        """
+        r = await client.put(
+            f"/api/admin/users/{subscriber_user.id}",
+            headers=admin_headers,
+            json={"qq": "123456789", "avatar_source": "qq"},
+        )
+        assert r.status_code == 200, r.text
+        fresh = await client.get(f"/api/admin/users/{subscriber_user.id}", headers=admin_headers)
+        data = fresh.json()
+        assert data.get("qq") == "123456789", f"qq 未写入: {data}"
+        assert data.get("avatar_source") == "qq", f"avatar_source 未写入: {data}"
+        # 写入后解析链路必须吃到新值（resolved_avatar_url 由 avatar_source 决定）
+        assert data.get("resolved_avatar_url"), (
+            f"avatar_source=qq 应解析出头像，实际: {data.get('resolved_avatar_url')}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_u_d2c_extra_field_is_rejected_not_ignored(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        subscriber_user: User,
+    ):
+        """U-D2c: 未声明字段是 422，不是被静默丢弃（extra=forbid 生效的直接证据）。"""
+        r = await client.put(
+            f"/api/admin/users/{subscriber_user.id}",
+            headers=admin_headers,
+            json={"nickname": "ok", "title_id": 999},
+        )
+        assert r.status_code == 422, (
+            f"title_id 不在 AdminUserUpdateFull 内，forbid 生效应返回 422，实际 {r.status_code}: {r.text}"
         )
 
     @pytest.mark.asyncio

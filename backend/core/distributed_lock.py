@@ -12,6 +12,7 @@
 import asyncio
 import logging
 import uuid
+from collections import OrderedDict
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -85,8 +86,22 @@ class DistributedLock:
         self.holder_id = f"{id(self)}:{self.token}"
         self._lock_info: LockInfo | None = None
         self._renewal_task: asyncio.Task | None = None
-        self._reentrant_count = 0
+        # 可重入计数按「持有者任务」记账而非实例计数：get_lock 返回的是共享实例，
+        # 实例级计数会让并发协程误判为可重入而互相"复用"同一把锁。
+        # value = (重入次数, Redis 值 token)
+        self._holders: dict[asyncio.Task, tuple[int, str]] = {}
+        self._redis_owner: str | None = None
         self._client = None
+
+    def _purge_dead_holders(self, keep: asyncio.Task | None = None) -> None:
+        """清掉已结束任务遗留的记账（任务死亡后不可能再 release）"""
+        for task in [
+            t for t, (c, _) in self._holders.items() if c <= 0 or (t.done() and t is not keep)
+        ]:
+            del self._holders[task]
+        if not self._holders:
+            self._lock_info = None
+            self._redis_owner = None
 
     async def _get_client(self):
         """获取 Redis 客户端"""
@@ -114,11 +129,19 @@ class DistributedLock:
             是否成功获取锁
         """
         client = await self._get_client()
+        task = asyncio.current_task()
+        if task is None:
+            raise RuntimeError("分布式锁必须在事件循环内使用")
+        self._purge_dead_holders(keep=task)
 
-        if self._reentrant_count > 0:
-            self._reentrant_count += 1
-            logger.debug(f"可重入锁获取成功: {self.key}, 计数: {self._reentrant_count}")
+        entry = self._holders.get(task)
+        if entry is not None:
+            count, holder_token = entry
+            self._holders[task] = (count + 1, holder_token)
+            logger.debug(f"可重入锁获取成功: {self.key}, 持有者: {id(task)}, 计数: {count + 1}")
             return True
+
+        holder_token = f"{self.token}:{uuid.uuid4().hex}"
 
         import time
 
@@ -126,14 +149,15 @@ class DistributedLock:
         wait_timeout = max(0, wait_timeout)
 
         while True:
-            acquired = await client.set(self.key, self.holder_id, ex=self.timeout, nx=True)
+            acquired = await client.set(self.key, holder_token, ex=self.timeout, nx=True)
 
             if acquired:
-                self._reentrant_count = 1
+                self._holders[task] = (1, holder_token)
+                self._redis_owner = holder_token
                 self._lock_info = LockInfo(
                     key=self.key,
                     token=self.token,
-                    holder_id=self.holder_id,
+                    holder_id=holder_token,
                     acquire_time=time.time(),
                     timeout=self.timeout,
                 )
@@ -157,16 +181,23 @@ class DistributedLock:
         Returns:
             是否成功释放锁
         """
-        if self._reentrant_count > 1:
-            self._reentrant_count -= 1
-            logger.debug(f"可重入锁释放（计数减少）: {self.key}, 剩余计数: {self._reentrant_count}")
-            return True
+        task = asyncio.current_task()
+        entry = self._holders.get(task) if task is not None else None
 
-        if self._reentrant_count == 0:
+        if entry is None:
             logger.warning(f"尝试释放未持有的锁: {self.key}")
             return False
 
-        self._stop_renewal_task()
+        count, holder_token = entry
+        if count > 1:
+            self._holders[task] = (count - 1, holder_token)
+            logger.debug(f"可重入锁释放（计数减少）: {self.key}, 剩余计数: {count - 1}")
+            return True
+
+        self._holders.pop(task, None)
+
+        if not self._holders:
+            self._stop_renewal_task()
 
         client = await self._get_client()
 
@@ -178,10 +209,11 @@ class DistributedLock:
         end
         """
 
-        result = await client.eval(lua_script, 1, self.key, self.holder_id)
+        result = await client.eval(lua_script, 1, self.key, holder_token)
 
-        self._reentrant_count = 0
-        self._lock_info = None
+        if not self._holders:
+            self._lock_info = None
+            self._redis_owner = None
 
         if result:
             logger.debug(f"锁释放成功: {self.key}")
@@ -197,7 +229,7 @@ class DistributedLock:
         Returns:
             是否成功续期
         """
-        if not self._lock_info:
+        if not self._lock_info or self._redis_owner is None:
             return False
 
         client = await self._get_client()
@@ -210,7 +242,7 @@ class DistributedLock:
         end
         """
 
-        result = await client.eval(lua_script, 1, self.key, self.holder_id, self.timeout)
+        result = await client.eval(lua_script, 1, self.key, self._redis_owner, self.timeout)
 
         if result:
             self._lock_info.renewal_count += 1
@@ -224,10 +256,10 @@ class DistributedLock:
         """启动续期任务"""
 
         async def renewal_loop():
-            while self._reentrant_count > 0:
+            while self._holders:
                 try:
                     await asyncio.sleep(self.renewal_interval)
-                    if self._reentrant_count > 0:
+                    if self._holders:
                         await self.renew()
                 except asyncio.CancelledError:
                     break
@@ -235,6 +267,8 @@ class DistributedLock:
                     logger.error(f"锁续期任务异常: {self.key}, 错误: {e}")
                     break
 
+        if self._renewal_task and not self._renewal_task.done():
+            return
         self._renewal_task = asyncio.create_task(renewal_loop())
 
     def _stop_renewal_task(self):
@@ -295,6 +329,9 @@ class LockManager:
 
     _instance = None
 
+    # LRU 上限：防止高基数锁键（如按文章 ID）让 _locks 字典无界增长
+    MAX_TRACKED_LOCKS = 256
+
     def __new__(cls):
         if cls._instance is None:
             cls._instance = super().__new__(cls)
@@ -305,8 +342,17 @@ class LockManager:
         if self._initialized:
             return
         self._initialized = True
-        self._locks: dict[str, DistributedLock] = {}
+        self._locks: OrderedDict[str, DistributedLock] = OrderedDict()
         self._default_config = LockConfig()
+
+    def _evict_unlocked(self) -> None:
+        """超上限时从最久未用端淘汰未被持有的锁实例"""
+        if len(self._locks) <= self.MAX_TRACKED_LOCKS:
+            return
+        for key in [k for k, lk in self._locks.items() if not lk._holders]:
+            del self._locks[key]
+            if len(self._locks) <= self.MAX_TRACKED_LOCKS:
+                break
 
     def get_lock(
         self,
@@ -328,6 +374,7 @@ class LockManager:
             分布式锁实例
         """
         if key in self._locks:
+            self._locks.move_to_end(key)
             return self._locks[key]
 
         lock = DistributedLock(
@@ -339,6 +386,7 @@ class LockManager:
             renewal_interval=renewal_interval or self._default_config.renewal_interval,
         )
         self._locks[key] = lock
+        self._evict_unlocked()
         return lock
 
     @asynccontextmanager
@@ -433,7 +481,8 @@ class LockManager:
         lock = self._locks.get(key)
         if lock:
             lock._stop_renewal_task()
-            lock._reentrant_count = 0
+            lock._holders.clear()
+            lock._redis_owner = None
             lock._lock_info = None
 
         import redis.asyncio as redis
@@ -478,7 +527,7 @@ class LockManager:
         """清理所有锁"""
         for lock in self._locks.values():
             try:
-                if lock._reentrant_count > 0:
+                if lock._holders:
                     await lock.release()
                 await lock.close()
             except Exception as e:

@@ -4,14 +4,20 @@
 当站点处于维护模式时，阻止普通用户访问，只允许管理员访问。
 """
 
+import json
+import logging
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import select
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.core.database import async_session_maker
 from backend.core.deps import is_oobe_complete
 from backend.models.core import SiteConfig
+
+logger = logging.getLogger(__name__)
 
 
 class MaintenanceMiddleware(BaseHTTPMiddleware):
@@ -79,6 +85,8 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
         # 从请求头获取 token
         auth_header = request.headers.get("Authorization", "")
         if auth_header.startswith("Bearer "):
+            # 核验失败就按普通访客处理（降级更严）。异常类型必须收窄：
+            # "票不合法 / 查不到人"可降级，导入失败或模型字段改名是真实缺陷，得抛。
             try:
                 token = auth_header[7:]
                 from backend.core.auth import decode_token
@@ -97,8 +105,8 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
                             user = user_result.scalar_one_or_none()
                             if user and (user.is_staff or user.is_superuser):
                                 return await call_next(request)
-            except Exception:
-                pass
+            except (SQLAlchemyError, ValueError, TypeError) as exc:
+                logger.warning("[maintenance] 管理员身份核验失败，按普通访客处理：%s", exc)
 
         # 返回维护模式响应
         if path.startswith("/api/"):
@@ -115,6 +123,11 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
         # 前端路由返回 HTML 重定向
         from fastapi.responses import HTMLResponse
 
+        # json.dumps 产出合法 JS 字符串字面量；再转义 "</" 防止消息内 </script> 提前闭合标签
+        safe_message = json.dumps(maintenance_message or "", ensure_ascii=False).replace(
+            "</", "<\\/"
+        )
+
         return HTMLResponse(
             content=f"""
             <!DOCTYPE html>
@@ -124,7 +137,7 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
                 <title>维护中</title>
                 <script>
                     localStorage.setItem('maintenance_mode', 'true');
-                    localStorage.setItem('maintenance_message', '{maintenance_message or ""}');
+                    localStorage.setItem('maintenance_message', {safe_message});
                     window.location.href = '/maintenance';
                 </script>
             </head>

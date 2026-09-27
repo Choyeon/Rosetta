@@ -1,3 +1,10 @@
+<!--
+  前台顶栏：品牌 + 主导航（GET /navigations）+ 右侧交互控件区。
+  契约一：normalizeNavPath 负责把历史 /page/<slug> 数据折回真实路由并去尾斜杠，删它会
+  让旧菜单直接 404；外链行被有意排除在 navItems 之外。
+  契约二：控件区整体 <ClientOnly>（reka-ui 弹层 SSR 输出不稳 + 登录态强耦合），fallback
+  占位尺寸与实际控件对齐以防 CLS；用户名字段须等 userInfoReady 延后一帧再显示。
+-->
 <script setup lang="ts">
 import { watch, computed, onMounted } from 'vue'
 import {

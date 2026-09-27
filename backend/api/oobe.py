@@ -20,16 +20,15 @@ import sys
 import traceback
 import uuid as _uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.core.auth import get_password_hash
-from backend.core.database import async_session_maker, get_db, init_db, reset_engine
+from backend.core.auth import aget_password_hash
+from backend.core.database import async_session_maker, init_db, reset_engine
 from backend.core.deps import (
     CurrentUserOptional,
     is_oobe_complete,
@@ -52,7 +51,6 @@ from backend.core.setup_database import DatabaseService, generate_database_url
 from backend.core.setup_dependency import DependencyService
 from backend.core.setup_progress import ProgressService
 from backend.core.setup_system import SystemService
-from backend.models.blog import Category, Tag
 from backend.models.core import Navigation, Page
 from backend.models.core import SiteConfig as DbSiteConfig
 from backend.models.user import User
@@ -155,6 +153,10 @@ _DEP_STREAM_QUEUES: dict[str, asyncio.Queue] = {}
 _DEP_STREAM_BUFFER: list[dict] = []
 _DEP_STREAM_BUFFER_MAX = 500
 
+# 进度流空闲上限：15s 心跳 × 40 ≈ 10 分钟无事件即关闭。两条 /stream 端点位于
+# OOBE 白名单内（匿名可连），不设上限会让单个客户端永久占住连接与协程。
+_STREAM_MAX_IDLE_PINGS = 40
+
 # R1-U2: 安装幂等性 —— 单 worker 内禁止并发重入一键安装，
 # 避免 OOBE 标记文件写入前两个请求交错进入导致双写 admin/重复 mock 数据。
 _INSTALL_LOCK = asyncio.Lock()
@@ -168,7 +170,9 @@ def _append_progress(evt: dict):
     for q in list(_INSTALL_STREAM_QUEUES.values()):
         try:
             q.put_nowait(evt)
-        except Exception:
+        except asyncio.QueueFull:
+            # 订阅者掉线/消费不过来时丢弃该事件：缓冲 `_INSTALL_STREAM_BUFFER` 仍是完整真相，
+            # 客户端重连会重放缓冲。只收窄到 QueueFull，其余异常照抛。
             pass
 
 
@@ -180,8 +184,61 @@ def _append_dep_progress(evt: dict):
     for q in list(_DEP_STREAM_QUEUES.values()):
         try:
             q.put_nowait(evt)
-        except Exception:
+        except asyncio.QueueFull:
             pass
+
+
+def _sse_progress_stream(
+    queues: dict[str, asyncio.Queue],
+    buffer: list[dict],
+    sid: str,
+    *,
+    maxsize: int,
+) -> StreamingResponse:
+    """OOBE 进度 SSE 通用实现：回放缓冲 → 订阅队列 → done/error 或空闲超限关闭。
+
+    调用方（两条 GET /stream 端点）必须先 ``await require_oobe_incomplete()``：
+    缓冲内含安装期 pip/npm 命令输出，安装完成后不得再向匿名请求回放。
+    """
+
+    async def _event_generator():
+        q: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        queues[sid] = q
+        idle_pings = 0
+        try:
+            connected = {"sid": sid, "buffered": len(buffer)}
+            yield f"event: connected\ndata: {json.dumps(connected, ensure_ascii=False)}\n\n"
+            for past in list(buffer):
+                yield f"data: {json.dumps(past, ensure_ascii=False)}\n\n"
+            while True:
+                try:
+                    evt = await asyncio.wait_for(q.get(), timeout=15.0)
+                except asyncio.TimeoutError:
+                    idle_pings += 1
+                    if idle_pings >= _STREAM_MAX_IDLE_PINGS:
+                        timeout_evt = {
+                            "type": "error",
+                            "message": "进度流空闲超时，已关闭（可重新连接）",
+                        }
+                        yield f"data: {json.dumps(timeout_evt, ensure_ascii=False)}\n\n"
+                        break
+                    yield ": ping\n\n"
+                    continue
+                idle_pings = 0
+                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
+                if evt.get("type") in ("done", "error"):
+                    break
+        finally:
+            queues.pop(sid, None)
+
+    return StreamingResponse(
+        _event_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 async def _broadcast_progress(step_id: str, message: str, percent: int):
@@ -227,7 +284,268 @@ def _read_config_file() -> dict | None:
         return json.load(f)
 
 
-@router.get("/status")
+# ======================================================================
+# 响应体文档模型（仅用于 OpenAPI 的 responses 声明，不参与序列化过滤）
+# ======================================================================
+
+
+class OobeWizardState(BaseModel):
+    """向导断点状态（``_load_state()`` 的字段形态）。"""
+
+    current_step: int = Field(..., description="当前所处步骤序号（1 起）")
+    total_steps: int = Field(..., description="总步骤数，固定 5")
+    environment: str = Field(..., description="环境选择：development 或 production")
+    database_config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "数据库/Redis 配置草稿的键值集合（db_type、db_host、db_port、db_name、db_user、"
+            "db_path、redis_host、redis_port、redis_enabled 等）；尚未填写时为空对象，"
+            "密码类键不落在此处回显"
+        ),
+    )
+    site_config: dict[str, Any] = Field(
+        ...,
+        description="站点配置草稿（site_name / site_url / 社交链接 / 功能开关等字段），未填写时为空对象",
+    )
+    admin_config: dict[str, Any] = Field(
+        ..., description="管理员资料草稿（username / email / nickname），未填写时为空对象"
+    )
+    completed: bool = Field(..., description="向导是否已走到最后一步")
+    errors: list[str] = Field(..., description="各步骤累积的错误摘要列表")
+
+
+class OobeStateResponse(OobeWizardState):
+    """GET /oobe/state 的响应体（状态字段平铺在顶层，无 data 信封）。"""
+
+    success: bool = Field(..., description="固定为 true；OOBE 已完成时该端点被 503 短路")
+
+
+class OobeStatusResponse(BaseModel):
+    """GET /oobe/status 的响应体（匿名可访问，前端启动时首先调用）。"""
+
+    success: bool = Field(..., description="固定为 true")
+    oobe_complete: bool = Field(
+        ..., description="安装锁是否存在；true 时前台正常放行，false 时其余接口 503"
+    )
+    has_config: bool = Field(..., description="配置文件是否已落盘")
+    state: OobeWizardState | None = Field(
+        default=None, description="向导断点状态；OOBE 已完成时为 null（不再对外暴露进度）"
+    )
+    config: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "已落盘配置文件的回显；数据库/Redis/管理员密码与 secret_key 一律替换为掩码串。"
+            "文件不存在或读取失败时为 null"
+        ),
+    )
+
+
+class OobeCheckItem(BaseModel):
+    """环境检测单项结果（``_ok()`` 的字段形态）。"""
+
+    ok: bool = Field(..., description="该项是否通过（可选组件失败也可能为 true）")
+    value: Any = Field(
+        default=None,
+        description="探测值，类型随项而定：版本号字符串 / 布尔连通性 / 数值（GB 或 MB）；探测失败为 null",
+    )
+    error: str | None = Field(default=None, description="失败原因或告警提示；通过时为 null")
+
+
+class OobeUvCheckItem(BaseModel):
+    """uv 工具链检测项（额外带版本快照）。"""
+
+    ok: bool = Field(..., description="uv 是否可用")
+    value: bool = Field(..., description="与 ok 同义的布尔探针结果")
+    error: str | None = Field(default=None, description="未检测到时的安装指引文本")
+    uv_version: str | None = Field(
+        default=None, description="解析出的 uv 版本号；仅在检测成功时存在该键"
+    )
+
+
+class OobeDiskCheckItem(OobeCheckItem):
+    """磁盘可用空间检测项（附带总量与使用率）。"""
+
+    display: str = Field(..., description="供向导直接渲染的一行摘要文案")
+    os_summary: str = Field(..., description="系统概览文案（系统名 · 架构 · 核数）")
+    total_gb: int = Field(..., description="卷总容量（GB）")
+    used_gb: int = Field(..., description="已用容量（GB）")
+    usage_pct: int = Field(..., description="使用率百分比")
+    path: str = Field(..., description="被探测的卷路径")
+
+
+class OobeMemoryCheckItem(OobeCheckItem):
+    """可用内存检测项（附带总量、使用率与 CPU 概览）。"""
+
+    display: str = Field(..., description="供向导直接渲染的一行摘要文案")
+    cpu_count: int = Field(..., description="逻辑 CPU 核数")
+    cpu_name: str = Field(..., description="CPU 型号名称，探测不到时为空串")
+    arch: str = Field(..., description="CPU 架构标识，如 AMD64 / x86_64")
+    total_mb: int = Field(..., description="物理内存总量（MB）")
+    used_mb: int = Field(..., description="已用内存（MB）")
+    usage_pct: int = Field(..., description="内存使用率百分比")
+    avail_gb: float = Field(..., description="可用内存（GB，保留一位小数）")
+    total_gb: float = Field(..., description="内存总量（GB，保留一位小数）")
+    used_gb: float = Field(..., description="已用内存（GB，保留一位小数）")
+    os_summary: str = Field(..., description="系统概览文案")
+
+
+class OobeCheckResponse(BaseModel):
+    """GET /oobe/check 的响应体：各项环境探测结果平铺在顶层。
+
+    单项失败不影响整体 HTTP 200（前端按项渲染红绿灯）。
+    """
+
+    success: bool = Field(..., description="固定为 true")
+    python_version: OobeCheckItem = Field(..., description="Python 解释器版本探测")
+    uv_installed: OobeUvCheckItem = Field(..., description="uv 是否可用")
+    uv_version: OobeCheckItem = Field(..., description="uv 版本号探测")
+    node_version: OobeCheckItem = Field(..., description="node --version 探测")
+    pnpm_version: OobeCheckItem = Field(..., description="pnpm --version 探测")
+    database_connectivity: OobeCheckItem = Field(..., description="当前数据库连通性")
+    redis_connectivity: OobeCheckItem = Field(
+        ..., description="Redis 连通性（可选组件，失败也只给提示不阻断）"
+    )
+    disk_free_gb: OobeDiskCheckItem = Field(..., description="磁盘剩余空间")
+    memory_free_mb: OobeMemoryCheckItem = Field(..., description="可用内存")
+
+
+class OobeSystemInfoResponse(BaseModel):
+    """GET /oobe/system-info 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true")
+    os_name: str = Field(..., description="友好的操作系统名，如 Windows / macOS / 发行版全名")
+    os_version: str = Field(..., description="操作系统版本串")
+    os_type: str = Field(..., description="平台族标识：Windows / Darwin / Linux")
+    processor: str = Field(..., description="CPU 型号名称，探测不到时为空串")
+    python_version: str = Field(..., description="Python 解释器版本串")
+    architecture: str = Field(..., description="机器架构标识，如 AMD64 / x86_64")
+    total_memory_mb: int = Field(..., description="物理内存总量（MB，四舍五入）")
+    available_memory_mb: int = Field(..., description="可用内存（MB，四舍五入）")
+    disk_total_gb: int = Field(..., description="启动盘总容量（GB，四舍五入）")
+    disk_free_gb: int = Field(..., description="启动盘剩余容量（GB，四舍五入）")
+    python_path: str = Field(..., description="当前解释器可执行文件路径")
+    cpu_count: int = Field(..., description="逻辑 CPU 核数")
+    hostname: str = Field(..., description="主机名")
+
+
+class OobeDependencyItem(BaseModel):
+    """单个依赖/工具链的可用性条目。"""
+
+    available: bool = Field(..., description="是否已安装（INSTALLED / COMPATIBLE 视为可用）")
+    version: str = Field(..., description="当前版本串；探测不到时为空串")
+    required: str = Field(..., description="要求版本；npm/pip/sqlite 等项不校验，恒为空串")
+    message: str = Field(..., description="展示文案，如「已安装」「未检测到」「npm x.y 已安装」")
+
+
+class OobeDependenciesResponse(BaseModel):
+    """GET /oobe/dependencies 的响应体：按依赖名平铺的可用性条目。"""
+
+    success: bool = Field(..., description="固定为 true")
+    python: OobeDependencyItem = Field(..., description="Python 解释器")
+    uv: OobeDependencyItem = Field(..., description="uv 包管理器")
+    node: OobeDependencyItem = Field(..., description="Node.js（键名 node，检测项为 nodejs）")
+    pnpm: OobeDependencyItem = Field(..., description="pnpm 包管理器")
+    postgresql: OobeDependencyItem = Field(..., description="PostgreSQL 服务端")
+    redis: OobeDependencyItem = Field(..., description="Redis 服务端（可选）")
+    npm: OobeDependencyItem = Field(..., description="npm（随 Node 安装，仅作补充提示）")
+    pip: OobeDependencyItem = Field(..., description="pip（当前解释器内置）")
+    sqlite: OobeDependencyItem = Field(..., description="SQLite（Python 内置，恒为可用）")
+
+
+class OobeInstallResultItem(BaseModel):
+    """单个依赖的安装结果。"""
+
+    status: str = Field(
+        ..., description="安装状态：pending / installing / success / failed / skipped"
+    )
+    message: str = Field(..., description="结果说明")
+    duration: float | None = Field(default=None, description="耗时（秒）；未执行为 null")
+
+
+class OobeInstallDependenciesResponse(BaseModel):
+    """POST /oobe/install-dependencies 的响应体（安装摘要平铺在顶层）。"""
+
+    success: int | bool = Field(
+        ...,
+        description=(
+            "注意：该键被展开的安装摘要覆盖，实际含义是**安装成功项计数**（int），"
+            "不是布尔成功标记；判断整体是否全绿请看 all_success"
+        ),
+    )
+    total: int = Field(..., description="参与安装的依赖项总数")
+    failed: int = Field(..., description="失败项数")
+    skipped: int = Field(..., description="跳过项数（已满足要求）")
+    all_success: bool = Field(..., description="是否零失败")
+    results: dict[str, OobeInstallResultItem] = Field(..., description="按依赖名聚合的逐项安装结果")
+    logs: list[dict[str, Any]] = Field(..., description="安装期日志条目（命令输出等）")
+
+
+class OobeEnvironmentResponse(BaseModel):
+    """POST /oobe/environment 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true")
+    environment: str = Field(..., description="已写入状态的运行环境：development 或 production")
+
+
+class OobeInstallResponse(BaseModel):
+    """POST /oobe/install 的响应体（与 SSE done 事件字段口径一致）。"""
+
+    success: bool = Field(..., description="固定为 true；失败走 4xx/5xx 错误信封")
+    frontend_url: str = Field(..., description="站点前台地址（取自提交的站点 URL）")
+    admin_url: str = Field(..., description="后台入口地址（前台 URL 追加 /admin）")
+
+
+class OobeDatabaseConfigResponse(BaseModel):
+    """POST /oobe/database-config 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true")
+    config: dict[str, Any] = Field(
+        ...,
+        description=(
+            "已保存的数据库/Redis 配置草稿回显，**密码类键（db_password、redis_password）已被剔除**，"
+            "不随响应外泄"
+        ),
+    )
+
+
+class OobeDatabaseTestResponse(BaseModel):
+    """GET /oobe/test-database 的响应体（两种分支共用一个形态）。"""
+
+    success: bool = Field(..., description="连接是否成功（SQLite 分支恒为 true）")
+    message: str = Field(..., description="结果说明文案，含失败原因与安装依赖提示")
+    database_url: str | None = Field(
+        default=None, description="仅 SQLite 分支返回：由表单构建出的连接串（不含凭据）"
+    )
+    details: dict[str, Any] | None = Field(
+        default=None,
+        description="仅 PostgreSQL 分支返回：附加信息，成功时含服务端 version 文本，异常时含 warning",
+    )
+
+
+class OobeSimpleSuccessResponse(BaseModel):
+    """只回布尔成功标记的写操作响应（站点配置、管理员账户、重置）。"""
+
+    success: bool = Field(..., description="固定为 true；校验失败走 4xx/5xx 错误信封")
+
+
+class OobeUsernameCheckResponse(BaseModel):
+    """GET /oobe/check-username 的响应体（裸对象，无 success 信封）。"""
+
+    available: bool = Field(..., description="用户名是否可用（长度与字符集校验通过即 true）")
+    message: str | None = Field(
+        default=None, description="不可用原因（四语文案）；可用时不返回该键"
+    )
+
+
+@router.get(
+    "/status",
+    summary="获取 OOBE 状态",
+    description=(
+        "匿名可访问（安装锁未摘时也在白名单内）。前端启动插件据此判断是否跳转 /oobe 向导；"
+        "已完成时不再返回 state 进度。只读、幂等、无副作用。"
+    ),
+    responses={200: {"model": OobeStatusResponse, "description": "安装锁 + 断点状态 + 配置回显"}},
+)
 async def get_oobe_status():
     """获取 OOBE 状态
 
@@ -245,8 +563,11 @@ async def get_oobe_status():
             for field in sensitive:
                 if config_data and field in config_data:
                     config_data[field] = "***"
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError) as exc:
+            # ValueError 覆盖 json.JSONDecodeError / UnicodeDecodeError。
+            # 配置文件存在却读不出来时，向导会退回空配置（用户以为"上次填的没了"），
+            # 判定不变但必须留痕，否则排障时无法区分"没写过配置"和"配置损坏"。
+            logger.warning("[oobe] 配置文件读取失败，按未配置处理：%s", exc)
 
     return {
         "success": True,
@@ -257,14 +578,33 @@ async def get_oobe_status():
     }
 
 
-@router.get("/state")
+@router.get(
+    "/state",
+    summary="获取向导断点状态",
+    description=(
+        "匿名可访问，但**仅 OOBE 未完成时可用**（require_oobe_incomplete），安装完成后返回 "
+        "``503 OOBE_REQUIRED``。返回断点续传所需的步骤与环境/配置草稿。只读、幂等。"
+    ),
+    responses={
+        200: {"model": OobeStateResponse, "description": "向导状态字段平铺（无 data 信封）"},
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
 async def get_oobe_state():
     """获取当前 OOBE 详细状态（仅在 OOBE 未完成时可用）"""
     await require_oobe_incomplete()
     return {"success": True, **_load_state()}
 
 
-@router.get("/check")
+@router.get(
+    "/check",
+    summary="环境检测",
+    description=(
+        "匿名可访问（OOBE 白名单）。逐项探测 Python / uv / node / pnpm 版本、数据库与 Redis 连通性、"
+        "磁盘与内存余量。**单项失败不影响整体 HTTP 200**，前端按项渲染红绿灯。只读、幂等。"
+    ),
+    responses={200: {"model": OobeCheckResponse, "description": "各检测项结果平铺在顶层"}},
+)
 async def oobe_check_environment():
     """OOBE 环境检测端点
 
@@ -306,7 +646,15 @@ async def oobe_check_environment():
     return {"success": True, **result}
 
 
-@router.get("/system-info")
+@router.get(
+    "/system-info",
+    summary="获取系统信息",
+    description=(
+        "匿名可访问（OOBE 白名单）。返回操作系统、CPU、内存、磁盘与当前解释器等主机概览，"
+        "供向导第一步展示运行环境。只读、幂等。"
+    ),
+    responses={200: {"model": OobeSystemInfoResponse, "description": "主机概览"}},
+)
 async def get_system_info():
     """获取系统信息"""
     info = system_service.get_system_info()
@@ -329,7 +677,16 @@ async def get_system_info():
     }
 
 
-@router.get("/dependencies")
+@router.get(
+    "/dependencies",
+    summary="检查系统依赖",
+    description=(
+        "匿名可访问（OOBE 白名单）。逐项检测 python / uv / node / pnpm / postgresql / redis / npm / "
+        "pip / sqlite 是否可用及版本；有副作用：检测后会刷新进程 PATH（``_refresh_path``），"
+        "让刚安装的工具立即可见。"
+    ),
+    responses={200: {"model": OobeDependenciesResponse, "description": "按依赖名聚合的可用性条目"}},
+)
 async def check_dependencies():
     """检查系统依赖状态"""
     # check_all 内部调用 shutil.which / subprocess.run（同步阻塞），放入线程池
@@ -370,7 +727,8 @@ async def check_dependencies():
             )
             if r.returncode == 0:
                 npm_version = r.stdout.strip().lstrip("v")
-        except Exception:
+        except (OSError, subprocess.SubprocessError, asyncio.TimeoutError):
+            # 只影响版本号展示；类型收窄以免连带吞掉 NameError 等真实缺陷
             pass
     if not npm_version:
         for npm_cmd in ["npm.cmd", "npm"]:
@@ -386,7 +744,8 @@ async def check_dependencies():
                         npm_version = r.stdout.strip().lstrip("v")
                         npm_available = True
                         break
-            except Exception:
+            except (OSError, subprocess.SubprocessError, asyncio.TimeoutError):
+                # 只影响版本号展示；类型收窄以免连带吞掉 NameError 等真实缺陷
                 pass
     result["npm"] = {
         "available": npm_available,
@@ -416,7 +775,8 @@ async def check_dependencies():
                 parts = r.stdout.strip().split()
                 if len(parts) >= 2:
                     pip_version = parts[1]
-        except Exception:
+        except (OSError, subprocess.SubprocessError, asyncio.TimeoutError):
+            # 只影响版本号展示；类型收窄以免连带吞掉 NameError 等真实缺陷
             pass
     result["pip"] = {
         "available": pip_available,
@@ -435,7 +795,20 @@ async def check_dependencies():
     return result
 
 
-@router.post("/install-dependencies")
+@router.post(
+    "/install-dependencies",
+    summary="一键安装缺失依赖",
+    description=(
+        "匿名可访问，但**仅 OOBE 未完成时可调用**，完成后返回 ``503 OOBE_REQUIRED``。"
+        "**高危副作用**：在服务器上执行 uv / npm / pip 等安装命令（工具链 + 后端 + 前端依赖），"
+        "耗时较长；实时日志走 GET /oobe/install-dependencies/stream。"
+        "响应里的 ``success`` 键是安装成功项计数而非布尔值，判断整体结果请看 ``all_success``。"
+    ),
+    responses={
+        200: {"model": OobeInstallDependenciesResponse, "description": "安装摘要（平铺在顶层）"},
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
 async def install_dependencies():
     """安装缺失的依赖（工具链 + 后端 + 前端），对标 WordPress 一键安装
 
@@ -492,50 +865,46 @@ async def install_dependencies():
         dependency_service.set_log_callback(None)
 
 
-@router.get("/install-dependencies/stream")
-async def install_dependencies_stream(sid: str = Query(default_factory=lambda: _uuid.uuid4().hex)):
-    """依赖安装进度 SSE 流（与 install-dependencies 配对）
-
-    客户端在点击「一键安装」后立即连接此端点，实时接收：
-      - event: connected    → 握手成功，含 buffered 数量
-      - data: {...progress} → 单依赖进度回调
-      - data: {...log}      → 实时命令行输出
-      - data: {...done}     → 全部完成（success + summary）
-    """
-
-    async def _event_generator():
-        q: asyncio.Queue = asyncio.Queue(maxsize=1000)
-        _DEP_STREAM_QUEUES[sid] = q
-        try:
-            yield (
-                f"event: connected\n"
-                f"data: {json.dumps({'sid': sid, 'buffered': len(_DEP_STREAM_BUFFER)}, ensure_ascii=False)}\n\n"
-            )
-            for past in _DEP_STREAM_BUFFER:
-                yield f"data: {json.dumps(past, ensure_ascii=False)}\n\n"
-            while True:
-                try:
-                    evt = await asyncio.wait_for(q.get(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    yield ": ping\n\n"
-                    continue
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-                if evt.get("type") == "done" or evt.get("type") == "error":
-                    break
-        finally:
-            _DEP_STREAM_QUEUES.pop(sid, None)
-
-    return StreamingResponse(
-        _event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
+@router.get(
+    "/install-dependencies/stream",
+    summary="依赖安装进度 SSE 流",
+    description=(
+        "与 POST /oobe/install-dependencies 配对：点击「一键安装」后连接本端点，"
+        "实时接收 ``connected`` 握手、逐依赖进度、命令行日志与 ``done`` 汇总。"
+        "**仅安装未完成（OOBE 锁存在）时可访问**：缓冲内含 pip/npm 命令输出，"
+        "OOBE 完成后返回 ``503 OOBE_REQUIRED``；空闲约 10 分钟无事件自动关闭。"
+        "事件载荷为 SSE 文本帧（type: connected / progress / log / done），不是 JSON 响应体。"
+    ),
+    responses={
+        200: {
+            "description": "SSE 事件流（逐帧 data: JSON 文本，以空行分隔）",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
         },
-    )
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
+async def install_dependencies_stream(
+    sid: str = Query(default_factory=lambda: _uuid.uuid4().hex),
+) -> StreamingResponse:
+    """依赖安装进度 SSE 流（与 install-dependencies 配对）"""
+    await require_oobe_incomplete()
+    return _sse_progress_stream(_DEP_STREAM_QUEUES, _DEP_STREAM_BUFFER, sid, maxsize=1000)
 
 
-@router.post("/environment")
+@router.post(
+    "/environment",
+    summary="保存环境选择（已废弃）",
+    description=(
+        "**Deprecated**：旧分步式接口，仅为兼容保留，请改用 POST /oobe/install 一键安装。"
+        "仅 OOBE 未完成时可用；把 environment 写进向导 state（development 会连带把库类型定为 sqlite、"
+        "production 定为 postgresql）。非法取值返回 400。"
+    ),
+    responses={
+        200: {"model": OobeEnvironmentResponse, "description": "已写入的环境标识"},
+        400: {"description": "environment 不是 development / production"},
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
 async def save_environment(request):
     """保存环境选择（旧分步式接口，兼容保留）
 
@@ -563,41 +932,29 @@ async def save_environment(request):
     return {"success": True, "environment": env}
 
 
-@router.get("/install/stream")
-async def oobe_install_stream(sid: str = Query(default_factory=lambda: _uuid.uuid4().hex)):
-    """OOBE 安装进度 SSE 流
-
-    客户端在发起 POST /api/oobe/install 之前或之后连接此端点，
-    通过 sid 订阅安装进度事件（SSE text/event-stream）。
-    """
-
-    async def _event_generator():
-        q: asyncio.Queue = asyncio.Queue(maxsize=500)
-        _INSTALL_STREAM_QUEUES[sid] = q
-        try:
-            yield f"event: connected\ndata: {json.dumps({'sid': sid, 'buffered': len(_INSTALL_STREAM_BUFFER)}, ensure_ascii=False)}\n\n"
-            for past in _INSTALL_STREAM_BUFFER:
-                yield f"data: {json.dumps(past, ensure_ascii=False)}\n\n"
-            while True:
-                try:
-                    evt = await asyncio.wait_for(q.get(), timeout=15.0)
-                except asyncio.TimeoutError:
-                    yield ": ping\n\n"
-                    continue
-                yield f"data: {json.dumps(evt, ensure_ascii=False)}\n\n"
-                if evt.get("type") == "done" or evt.get("type") == "error":
-                    break
-        finally:
-            _INSTALL_STREAM_QUEUES.pop(sid, None)
-
-    return StreamingResponse(
-        _event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",
+@router.get(
+    "/install/stream",
+    summary="一键安装进度 SSE 流",
+    description=(
+        "客户端在发起 POST /oobe/install 前后连接，通过 ``sid`` 订阅安装进度事件。"
+        "**仅安装未完成（OOBE 锁存在）时可访问**；空闲约 10 分钟无事件自动关闭。"
+        "事件载荷为 SSE 文本帧（type: connected / progress / done / error），不是 JSON 响应体；"
+        "``done`` 帧里的 frontend_url / admin_url 由向导消费，改字段需同步 useOOBE。"
+    ),
+    responses={
+        200: {
+            "description": "SSE 事件流（逐帧 data: JSON 文本，以空行分隔）",
+            "content": {"text/event-stream": {"schema": {"type": "string"}}},
         },
-    )
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
+async def oobe_install_stream(
+    sid: str = Query(default_factory=lambda: _uuid.uuid4().hex),
+) -> StreamingResponse:
+    """OOBE 安装进度 SSE 流"""
+    await require_oobe_incomplete()
+    return _sse_progress_stream(_INSTALL_STREAM_QUEUES, _INSTALL_STREAM_BUFFER, sid, maxsize=500)
 
 
 async def _run_combined_install(req: CombinedInstallRequest):
@@ -681,7 +1038,7 @@ async def _run_combined_install(req: CombinedInstallRequest):
                 admin = User(
                     username=req.admin_username,
                     email=req.admin_email,
-                    password_hash=get_password_hash(req.admin_password),
+                    password_hash=await aget_password_hash(req.admin_password),
                     nickname=req.admin_nickname or req.admin_username,
                     bio=getattr(req, "admin_bio", None) or None,
                     qq=getattr(req, "admin_qq", None) or None,
@@ -832,8 +1189,12 @@ async def _run_combined_install(req: CombinedInstallRequest):
         if STATE_FILE.exists():
             try:
                 STATE_FILE.unlink()
-            except Exception:
-                pass
+            except OSError as exc:
+                # 安装已成功（OOBE 锁文件已写），残留 state 不影响可用性；
+                # 但下次进入向导可能读到旧进度，必须警告而非静默。
+                logger.warning(
+                    "[oobe] 安装完成但 state 文件删除失败，请手动清理 %s：%s", STATE_FILE, exc
+                )
 
         await _broadcast_progress(steps[7][0], "安装完成！", 100)
         done_evt = {
@@ -857,7 +1218,21 @@ async def _run_combined_install(req: CombinedInstallRequest):
         raise
 
 
-@router.post("/install")
+@router.post(
+    "/install",
+    summary="OOBE 一键安装",
+    description=(
+        "唯一的安装入口（匿名可访问，但仅 OOBE 未完成时可用）。**危险且不可逆的副作用**："
+        "写 .env 与配置文件、重建数据库引擎并建表、创建超级管理员、写入站点设置与示例数据/页面/导航，"
+        "最后落 OOBE 完成锁。三层幂等防线（入口检查 + 进程内 asyncio.Lock + 拿锁后二次检查），"
+        "已完成返回 409 + ``OOBE_ALREADY_COMPLETED``，密码过短回 422，其余异常回 500。"
+        "实时进度走 GET /oobe/install/stream。"
+    ),
+    responses={
+        200: {"model": OobeInstallResponse, "description": "安装完成，回前台与后台入口地址"},
+        409: {"description": "OOBE 已完成（error_code: OOBE_ALREADY_COMPLETED）"},
+    },
+)
 async def oobe_install(req: CombinedInstallRequest):
     """OOBE 一键安装端点
 
@@ -948,7 +1323,20 @@ class EnvironmentRequest(BaseModel):
     environment: str = "development"
 
 
-@router.post("/database-config")
+@router.post(
+    "/database-config",
+    summary="保存数据库配置（已废弃）",
+    description=(
+        "**Deprecated**：旧分步式接口，请改用 POST /oobe/install。仅 OOBE 未完成时可用。"
+        "把数据库/Redis 配置草稿写入向导 state 文件（不落库、不建连接）；"
+        "响应回显时**剔除所有密码字段**。非 sqlite 且缺 db_user、或 db_name 为空时返回 400。"
+    ),
+    responses={
+        200: {"model": OobeDatabaseConfigResponse, "description": "已保存的配置（无密码字段）"},
+        400: {"description": "数据库用户名或库名缺失"},
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
 async def save_database_config(request: DatabaseConfigRequest):
     """保存数据库配置（旧分步式接口，兼容保留）
 
@@ -987,7 +1375,16 @@ async def save_database_config(request: DatabaseConfigRequest):
     }
 
 
-@router.get("/test-database")
+@router.get(
+    "/test-database",
+    summary="测试数据库连接",
+    description=(
+        "匿名可访问（OOBE 白名单，安装前不存在任何凭证可保护它）。sqlite 分支不建连接，"
+        "只回一句提示与由表单参数构建出的连接串；postgresql 分支用 asyncpg 实连系统库做探测，"
+        "连接失败也回 HTTP 200 + success=false（原因在 message/details）。"
+    ),
+    responses={200: {"model": OobeDatabaseTestResponse, "description": "连接测试结果"}},
+)
 async def test_database(
     db_type: str = "sqlite",
     db_host: str = "localhost",
@@ -1014,7 +1411,20 @@ async def test_database(
     )
 
 
-@router.post("/site-config")
+@router.post(
+    "/site-config",
+    summary="保存站点配置（已废弃）",
+    description=(
+        "**Deprecated**：旧分步式接口，请改用 POST /oobe/install。仅 OOBE 未完成时可用。"
+        "把站点名称/描述/社交链接/页脚与评论、注册、RSS 开关写进向导 state 文件，不落库。"
+        "site_name 或 site_email 为空时返回 400。"
+    ),
+    responses={
+        200: {"model": OobeSimpleSuccessResponse, "description": "已写入向导状态"},
+        400: {"description": "站点名称或联系邮箱为空"},
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
 async def save_site_config(request: SiteConfigRequest):
     """保存站点配置（旧分步式接口，兼容保留）
 
@@ -1054,7 +1464,15 @@ async def save_site_config(request: SiteConfigRequest):
     return {"success": True}
 
 
-@router.get("/check-username")
+@router.get(
+    "/check-username",
+    summary="检查用户名是否可用",
+    description=(
+        "匿名可访问（OOBE 白名单）。只校验长度与字符集（字母数字，允许下划线/连字符），"
+        "不查库、不建账号，因此**不保证最终唯一性**。返回裸对象（无 success 信封）。"
+    ),
+    responses={200: {"model": OobeUsernameCheckResponse, "description": "可用性与不可用原因"}},
+)
 async def check_username(username: str):
     """检查用户名是否可用"""
     if len(username) < USERNAME_MIN_LENGTH:
@@ -1066,7 +1484,20 @@ async def check_username(username: str):
     return {"available": True}
 
 
-@router.post("/admin-account")
+@router.post(
+    "/admin-account",
+    summary="保存管理员账户信息（已废弃）",
+    description=(
+        "**Deprecated**：旧分步式接口，请改用 POST /oobe/install。仅 OOBE 未完成时可用。"
+        "把管理员资料草稿写进向导 state 文件，**此步骤不创建任何用户、不校验邮箱是否已注册**；"
+        "用户名长度/字符集或密码长度不合规返回 400。"
+    ),
+    responses={
+        200: {"model": OobeSimpleSuccessResponse, "description": "已写入向导状态"},
+        400: {"description": "用户名不合规或密码过短"},
+        503: {"description": "OOBE 已完成（error_code: OOBE_REQUIRED）"},
+    },
+)
 async def save_admin_account(request: AdminAccountRequest):
     """保存管理员账户信息（旧分步式接口，兼容保留）
 
@@ -1101,320 +1532,20 @@ async def save_admin_account(request: AdminAccountRequest):
     return {"success": True}
 
 
-@router.post("/complete")
-async def complete_oobe(db: AsyncSession = Depends(get_db)):
-    """完成 OOBE 配置 - 写入配置并初始化数据库（旧分步式接口，兼容保留）
-
-    .. deprecated::
-        此接口将在未来版本移除，请使用 POST /api/oobe/install 一键安装代替。
-    """
-    await require_oobe_incomplete()
-    logger.warning("DEPRECATED: POST /api/oobe/complete 被调用，请迁移到 POST /api/oobe/install")
-
-    state = config_service.load_state()
-    if not state or not state.admin_config or not state.admin_config.username:
-        raise HTTPException(status_code=400, detail=t("oobe_admin_not_created"))
-
-    try:
-        db_cfg = state.database_config or {}
-        if not db_cfg:
-            db_cfg = {
-                "db_type": "sqlite",
-                "db_host": "",
-                "db_port": 5432,
-                "db_name": "rosetta",
-                "db_user": "",
-                "db_password": "",
-                "db_path": "rosetta.db",
-                "redis_host": "localhost",
-                "redis_port": 6379,
-                "redis_password": "",
-            }
-
-        config_dict = config_service.generate_config(state)
-
-        env_content = config_service.generate_env_content(config_dict)
-        with open(ENV_FILE, "w", encoding="utf-8") as f:
-            f.write(env_content)
-
-        database_url = generate_database_url(config_dict)
-        reset_engine(database_url)
-
-        _refresh_settings_inplace()
-
-        await init_db()
-
-        result = await db.execute(
-            select(User).where(User.username == config_dict["admin_username"])
-        )
-        admin_id: int | None = None
-        if not result.scalar_one_or_none():
-            admin = User(
-                username=config_dict["admin_username"],
-                email=config_dict["admin_email"],
-                password_hash=get_password_hash(config_dict["admin_password"]),
-                nickname=config_dict["admin_nickname"],
-                is_active=True,
-                is_staff=True,
-                is_superuser=True,
-            )
-            db.add(admin)
-            await db.flush()
-            admin_id = admin.id
-
-        site_configs = [
-            DbSiteConfig(key="site_name", value=config_dict["site_name"], description="站点名称"),
-            DbSiteConfig(
-                key="site_title", value=config_dict.get("site_title", ""), description="网站标题"
-            ),
-            DbSiteConfig(
-                key="site_description",
-                value=config_dict["site_description"],
-                description="站点描述",
-            ),
-            DbSiteConfig(
-                key="site_keywords", value=config_dict["site_keywords"], description="SEO关键词"
-            ),
-            DbSiteConfig(
-                key="site_author", value=config_dict["site_author"], description="站点作者"
-            ),
-            DbSiteConfig(key="site_email", value=config_dict["site_email"], description="联系邮箱"),
-            DbSiteConfig(key="site_url", value=config_dict["site_url"], description="站点URL"),
-            DbSiteConfig(key="github_url", value=config_dict["github_url"], description="GitHub"),
-            DbSiteConfig(key="x_url", value=config_dict["x_url"], description="X (Twitter)"),
-            DbSiteConfig(
-                key="bilibili_url", value=config_dict["bilibili_url"], description="Bilibili"
-            ),
-            DbSiteConfig(
-                key="footer_text",
-                value=config_dict.get("footer_text", ""),
-                description="页脚介绍文本",
-            ),
-            DbSiteConfig(
-                key="enable_comments",
-                value=str(config_dict["enable_comments"]).lower(),
-                description="启用评论",
-            ),
-            DbSiteConfig(
-                key="enable_registration",
-                value=str(config_dict["enable_registration"]).lower(),
-                description="开放注册",
-            ),
-            DbSiteConfig(
-                key=FEATURE_FLAG_DB_KEY_MAP.get("enable_rss", "enable_rss_feed"),
-                value=str(config_dict["enable_rss"]).lower(),
-                description="启用RSS",
-            ),
-            DbSiteConfig(
-                key="default_cover_image",
-                value=config_dict["default_cover_image"],
-                description="默认封面图",
-            ),
-            # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐
-            DbSiteConfig(
-                key="author_name",
-                value=config_dict.get("author_name") or config_dict.get("admin_nickname") or "",
-                description="作者昵称",
-            ),
-            DbSiteConfig(
-                key="author_bio",
-                value=config_dict.get("author_bio", "") or "",
-                description="作者签名",
-            ),
-            DbSiteConfig(
-                key="author_avatar",
-                value=config_dict.get("author_avatar", "") or "",
-                description="作者头像",
-            ),
-            DbSiteConfig(
-                key="author_links_json",
-                value=config_dict.get("author_links_json", "[]") or "[]",
-                description="作者社交链接",
-            ),
-        ]
-        for sc in site_configs:
-            existing = await db.execute(select(DbSiteConfig).where(DbSiteConfig.key == sc.key))
-            if existing.scalar_one_or_none():
-                continue
-            db.add(sc)
-
-        cat_result = await db.execute(select(Category).where(Category.slug == "uncategorized"))
-        if not cat_result.scalar_one_or_none():
-            default_category = Category(
-                name={"zh": "未分类", "en": "Uncategorized", "ja": "未分類", "zh_TW": "未分類"},
-                slug="uncategorized",
-                description={
-                    "zh": "默认分类",
-                    "en": "Default category",
-                    "ja": "デフォルト分類",
-                    "zh_TW": "預設分類",
-                },
-                color="primary",
-            )
-            db.add(default_category)
-
-        default_tags = [
-            Tag(
-                name={"zh": "技术", "en": "Technology", "ja": "技術", "zh_TW": "技術"},
-                slug="technology",
-                color="#3B82F6",
-            ),
-            Tag(
-                name={"zh": "生活", "en": "Life", "ja": "生活", "zh_TW": "生活"},
-                slug="life",
-                color="#10B981",
-            ),
-            Tag(
-                name={"zh": "随笔", "en": "Essay", "ja": "随筆", "zh_TW": "隨筆"},
-                slug="essay",
-                color="#8B5CF6",
-            ),
-        ]
-        for tag in default_tags:
-            tresult = await db.execute(select(Tag).where(Tag.slug == tag.slug))
-            if not tresult.scalar_one_or_none():
-                db.add(tag)
-
-        page_about = await db.execute(select(Page).where(Page.slug == "about"))
-        if not page_about.scalar_one_or_none():
-            about_page = Page(
-                title={"zh": "关于", "en": "About", "ja": "概要", "zh_TW": "關於"},
-                slug="about",
-                content={
-                    "zh": "# 关于\n\n欢迎来到我们的博客！",
-                    "en": "# About\n\nWelcome to our blog!",
-                    "ja": "# 概要\n\n私たちのブログへようこそ！",
-                    "zh_TW": "# 關於\n\n歡迎來到我們的部落格！",
-                },
-                status="published",
-            )
-            db.add(about_page)
-
-        page_gb = await db.execute(select(Page).where(Page.slug == "guestbook"))
-        if not page_gb.scalar_one_or_none():
-            guestbook_page = Page(
-                title={"zh": "留言板", "en": "Guestbook", "ja": "ゲストブック", "zh_TW": "留言板"},
-                slug="guestbook",
-                content={
-                    "zh": "# 留言板\n\n欢迎留言！",
-                    "en": "# Guestbook\n\nLeave a message!",
-                    "ja": "# ゲストブック\n\nメッセージを残してください！",
-                    "zh_TW": "# 留言板\n\n歡迎留言！",
-                },
-                status="published",
-            )
-            db.add(guestbook_page)
-
-        default_navs = [
-            Navigation(
-                title={"zh": "首页", "en": "Home", "ja": "ホーム", "zh_TW": "首頁"},
-                url="/",
-                location="header",
-                order=1,
-                is_active=True,
-            ),
-            Navigation(
-                title={"zh": "文章", "en": "Posts", "ja": "記事", "zh_TW": "文章"},
-                url="/posts",
-                location="header",
-                order=2,
-                is_active=True,
-            ),
-            Navigation(
-                title={"zh": "分类", "en": "Categories", "ja": "カテゴリー", "zh_TW": "分類"},
-                url="/categories",
-                location="header",
-                order=3,
-                is_active=True,
-            ),
-            Navigation(
-                title={"zh": "标签", "en": "Tags", "ja": "タグ", "zh_TW": "標籤"},
-                url="/tags",
-                location="header",
-                order=4,
-                is_active=True,
-            ),
-            Navigation(
-                title={"zh": "关于", "en": "About", "ja": "概要", "zh_TW": "關於"},
-                url="/page/about",
-                location="header",
-                order=5,
-                is_active=True,
-            ),
-            Navigation(
-                title={"zh": "留言板", "en": "Guestbook", "ja": "ゲストブック", "zh_TW": "留言板"},
-                url="/page/guestbook",
-                location="header",
-                order=6,
-                is_active=True,
-            ),
-        ]
-        for nav in default_navs:
-            nresult = await db.execute(select(Navigation).where(Navigation.url == nav.url))
-            if not nresult.scalar_one_or_none():
-                db.add(nav)
-
-        await db.commit()
-
-        if admin_id is None:
-            r2 = await db.execute(
-                select(User).where(User.username == config_dict["admin_username"])
-            )
-            u = r2.scalar_one_or_none()
-            if u:
-                admin_id = u.id
-
-        if admin_id:
-            try:
-                from backend.scripts.mock_data import generate_oobe_mock_data
-
-                await generate_oobe_mock_data(db, admin_id=admin_id)
-            except Exception:
-                pass
-
-        for sensitive_field in ["admin_password", "db_password", "redis_password"]:
-            config_dict.pop(sensitive_field, None)
-
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-        if state.admin_config:
-            state.admin_config.password = ""
-        if state.database_config:
-            state.database_config["db_password"] = ""
-            state.database_config["redis_password"] = ""
-        config_service.save_state()
-
-        with open(OOBE_LOCK_FILE, "w") as f:
-            f.write(datetime.now().isoformat())
-
-        if STATE_FILE.exists():
-            try:
-                STATE_FILE.unlink()
-            except Exception:
-                pass
-
-        frontend_url = config_dict["site_url"]
-        return {
-            "success": True,
-            "message": t("oobe_complete_success"),
-            "frontend_url": frontend_url,
-            "admin_url": f"{frontend_url}/admin",
-            "config": {
-                "site_name": config_dict["site_name"],
-                "environment": config_dict["environment"],
-                "admin_username": config_dict["admin_username"],
-            },
-        }
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"完成配置失败: {e}\n{traceback.format_exc()}")
-        raise HTTPException(status_code=500, detail=f"{t('oobe_complete_failed')}: {str(e)}")
-
-
-@router.post("/reset")
+@router.post(
+    "/reset",
+    summary="重置 OOBE 状态",
+    description=(
+        "**危险操作**：删除安装锁、.env、配置文件与向导 state，使站点回到未安装态（其余接口立即 503）。"
+        "站点已安装时必须携带超级管理员凭证，否则 403；尚未安装时开放。"
+        "任一文件删除失败回 500 并在 detail 列明残留项，不会返回半成功状态。"
+    ),
+    responses={
+        200: {"model": OobeSimpleSuccessResponse, "description": "已全部清理，可重跑向导"},
+        403: {"description": "站点已安装，需要超级管理员权限"},
+        500: {"description": "部分文件无法删除（detail 列出残留项）"},
+    },
+)
 async def reset_oobe(current_user: CurrentUserOptional = None):
     """重置 OOBE 状态（测试/开发使用），同时清空内存中的 SSE 进度缓冲
 
@@ -1427,21 +1558,13 @@ async def reset_oobe(current_user: CurrentUserOptional = None):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="站点已安装，重置 OOBE 需要超级管理员权限",
         )
-    config_service.reset_oobe()
-    if STATE_FILE.exists():
-        try:
-            STATE_FILE.unlink()
-        except Exception:
-            pass
-    if OOBE_LOCK_FILE.exists():
-        try:
-            OOBE_LOCK_FILE.unlink()
-        except Exception:
-            pass
-    if CONFIG_FILE.exists():
-        try:
-            CONFIG_FILE.unlink()
-        except Exception:
-            pass
+    # reset_oobe 逐个删除并回报失败项；原先这里还重复 unlink 一遍且全被 `except: pass`
+    # 吞掉，"重置失败"会回 200 —— 前端据此认为向导可重跑，安装锁却还在。
+    leftover = config_service.reset_oobe()
+    if leftover:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"OOBE 重置未完成，以下文件无法删除: {', '.join(leftover)}",
+        )
     _INSTALL_STREAM_BUFFER.clear()
     return {"success": True}

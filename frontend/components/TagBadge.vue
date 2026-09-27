@@ -1,3 +1,9 @@
+<!--
+  标签胶囊（淡色底 + 原色文字 + 无边框）：hex 经 hexToHsl 写入 --tag-h/s/l 局部令牌，
+  scoped 样式再由这组令牌派生底/字/点色；color 为空时回落内置的 --primary-* 兜底值。
+  暗色覆写挂在 html.dark 下、与 useTheme 写入的属性名绑定，改令牌名要两处同步。
+  hover 禁止加 transform 位移：卡片容器已有 .lift-hover，嵌套变换会叠加错位。
+-->
 <template>
   <NuxtLink
     v-if="to"

@@ -1,3 +1,9 @@
+<!--
+  Admin 仪表盘统计卡：数值 + 趋势 pill + 语义色图标，纯展示组件（action 只 emit）。
+  硬契约：accent 全部映射到语义 CSS 变量（明暗自适应、与主题包零依赖）；trend=up 的
+  pill 必须走内联 style——accent 是运行时值，拼接出的 Tailwind 任意值 class 不会生成 CSS。
+  装饰效果来自 admin-ui.css 冻结层的 .card-surface lift-hover，禁止再加左侧彩条。
+-->
 <script setup lang="ts">
 /* eslint-disable */
 import type { Component } from 'vue'

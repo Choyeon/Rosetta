@@ -45,12 +45,8 @@ def _define_plugin_table(metadata: sa.MetaData) -> sa.Table:
         sa.Column("version", sa.String(length=32), nullable=False),
         sa.Column("author", sa.String(length=200), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "status", sa.String(length=16), server_default="inactive", nullable=False
-        ),
-        sa.Column(
-            "manifest_version", sa.String(length=8), server_default="1.0", nullable=False
-        ),
+        sa.Column("status", sa.String(length=16), server_default="inactive", nullable=False),
+        sa.Column("manifest_version", sa.String(length=8), server_default="1.0", nullable=False),
         sa.Column("requires_rosetta", sa.String(length=16), nullable=True),
         sa.Column("plugin_uri", sa.String(length=500), nullable=True),
         sa.Column("author_uri", sa.String(length=500), nullable=True),
@@ -90,18 +86,14 @@ def _define_theme_table(metadata: sa.MetaData) -> sa.Table:
         sa.Column("version", sa.String(length=32), nullable=False),
         sa.Column("author", sa.String(length=200), nullable=True),
         sa.Column("description", sa.Text(), nullable=True),
-        sa.Column(
-            "status", sa.String(length=16), server_default="installed", nullable=False
-        ),
+        sa.Column("status", sa.String(length=16), server_default="installed", nullable=False),
         sa.Column(
             "is_active",
             sa.Boolean(),
             server_default=sa.false(),
             nullable=False,
         ),
-        sa.Column(
-            "manifest_version", sa.String(length=8), server_default="1.0", nullable=False
-        ),
+        sa.Column("manifest_version", sa.String(length=8), server_default="1.0", nullable=False),
         sa.Column("requires_rosetta", sa.String(length=16), nullable=True),
         sa.Column("theme_uri", sa.String(length=500), nullable=True),
         sa.Column("author_uri", sa.String(length=500), nullable=True),
@@ -143,16 +135,10 @@ def upgrade() -> None:
             table.create(bind=bind)
             with op.batch_alter_table(table.name, schema=None) as batch_op:
                 batch_op.create_index(f"ix_{table.name}_slug", ["slug"], unique=False)
-                batch_op.create_index(
-                    f"ix_{table.name}_status", ["status"], unique=False
-                )
-                batch_op.create_index(
-                    f"ix_{table.name}_site_id", ["site_id"], unique=False
-                )
+                batch_op.create_index(f"ix_{table.name}_status", ["status"], unique=False)
+                batch_op.create_index(f"ix_{table.name}_site_id", ["site_id"], unique=False)
                 if table.name == "themes":
-                    batch_op.create_index(
-                        "ix_themes_is_active", ["is_active"], unique=False
-                    )
+                    batch_op.create_index("ix_themes_is_active", ["is_active"], unique=False)
 
 
 def downgrade() -> None:

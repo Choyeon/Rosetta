@@ -1,3 +1,10 @@
+<!--
+  分类 chip（消费方：PostCard 两副骨架各一处 + pages/index.vue 两处），与 TagBadge 是「同色引擎、异形」兄弟：
+  color 只收后端 hex 串，hexToHsl 解出 H/S/L 写进局部 --cat-* 三变量，为 null 或非法时整套回落 --primary-* 令牌；
+  暗色前景不是 dark: 变体，而是本文件 html.dark 段重算的 --_fg，改令牌名要两处同步。
+  label 必须是调用方已按当前语言解析好的纯字符串（resolveLocalized(post.category.name)），不要传 i18n dict；
+  左侧 2px .cat-accent 是分类/标签的刻意视觉区分（不受 Admin 禁彩条约束），hover 只换色不位移——位移会与卡片 .lift-hover 抢 transform。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { hexToHsl } from '~~/lib/utils'

@@ -11,6 +11,7 @@
 """
 
 import hmac
+import logging
 import secrets
 from datetime import datetime, timedelta
 from hashlib import sha256
@@ -24,6 +25,9 @@ from sqlalchemy import select
 from backend.core.auth import DB, CurrentUserOptional
 from backend.core.config import settings
 from backend.models.blog import Post
+from backend.utils.compat import utc_now_naive
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["文章加密工具"])
 
@@ -76,7 +80,7 @@ def _compute_verifier(salt_hex: str, password: str) -> str:
 
 
 def _sign_post_access_token(post_id: int) -> str:
-    now = datetime.utcnow()
+    now = utc_now_naive()
     payload = {
         "sub": f"post:{post_id}",
         "scope": POST_ACCESS_SCOPE,
@@ -126,11 +130,14 @@ async def verify_access(data: VerifyAccessRequest, db: DB) -> VerifyAccessRespon
 
     if not post.encryption_salt or not post.encryption_verifier:
         if post.password:
-            from backend.core.auth import verify_password
+            from backend.core.auth import averify_password
 
             try:
-                ok = verify_password(data.password, post.password)
-            except Exception:
+                ok = await averify_password(data.password, post.password)
+            except Exception as exc:  # noqa: BLE001 —— 校验异常按不通过处理（fail closed）
+                # 不放行是对的；但要留痕：hash 库/算法不匹配会让所有旧密码帖
+                # 永远显示"密码错误"，没有日志根本看不出是后端坏了而不是用户输错。
+                logger.warning(f"[post-crypto] 旧版密码校验异常，按不通过处理: {exc!r}")
                 ok = False
             if ok:
                 token = _sign_post_access_token(post.id)

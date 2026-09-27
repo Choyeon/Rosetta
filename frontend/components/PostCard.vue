@@ -1,3 +1,10 @@
+<!--
+  文章卡片（default 网格版 / compact 横条版两副骨架，由 variant 选择）。
+  字段读取一律 snake_case + camelCase 双写兜底：后端不同接口混用两种命名，只留一种会静默丢值。
+  title/excerpt/category.name 假定后端返回完整四语 dict（缺 key 即无兜底，见 §7.3）；
+  封面只允许走 lib/post-cover 的 postCoverUrl —— picsum seed 两端派生，改成随机或本地时态
+  会直接造成水合 mismatch。compact 变体 Tag 封顶 4 个属有意的排版契约。
+-->
 <template>
   <article
     v-if="variant === 'compact'"

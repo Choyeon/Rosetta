@@ -1,3 +1,9 @@
+<!--
+  称号图标渲染器：icon 字段只接受预设 ID 或 emoji，预设真源是 composables/titleIcons.ts
+  与 titlePresets.ts（新增图标要在两处登记）。
+  安全红线：这里没有 v-html 分支 —— 曾有的内联 SVG 直出被确认为存储型 XSS 通道已删除，
+  恢复它等于让 DB 脏数据绕过 §12.8；未知 ID 走透明矩形兜底而不是回显原始字符串。
+-->
 <script setup lang="ts">
 import { computed } from 'vue'
 import { getTitleIconDef } from '~~/composables/titleIcons'
@@ -16,7 +22,6 @@ const resolved = computed(() => {
     return { kind: 'lucide' as const, def: getTitleIconDef(r.value) }
   }
   if (r.type === 'emoji') return { kind: 'emoji' as const, value: r.value }
-  if (r.type === 'svg') return { kind: 'svg' as const, value: r.value }
   return { kind: 'empty' as const }
 })
 </script>
@@ -61,10 +66,8 @@ const resolved = computed(() => {
     v-else-if="resolved.kind === 'emoji'"
     style="font-size:inherit"
   >{{ resolved.value }}</span>
-  <!-- eslint-disable-next-line vue/no-v-html -->
-  <span
-    v-else-if="resolved.kind === 'svg'"
-    class="size-full flex items-center justify-center"
-    v-html="resolved.value"
-  />
+  <!--
+    这里没有 v-html 分支：称号图标只允许预设 ID 与 emoji。
+    内联 SVG 曾经过 v-html 渲染（resolveTitleIcon 的 'svg' 分支），属存储型 XSS 通道，已移除。
+  -->
 </template>

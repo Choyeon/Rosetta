@@ -1,3 +1,10 @@
+<!--
+  留言板：GET/POST /guestbook + 点赞 POST /guestbook/{id}/like（本路由 swr 60s）。
+  guestbookList 必须是可写 ref 而不是 computed：点赞是就地 mutate item，computed 会在
+  依赖重算时把 liked/likesCount 冲回接口初值。后端 like 为纯计数 +1（无取消语义），
+  liked 置真后不再发请求；提交固定只拉 status=approved，新留言先进审核队列、刷新看不到自己
+  那条属预期。失败只写行内 submitError —— apiFetch 已全局弹过 toast，不得双报。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">

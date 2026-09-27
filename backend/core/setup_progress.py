@@ -9,11 +9,14 @@
 """
 
 import asyncio
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 class StepStatus(Enum):
@@ -103,14 +106,21 @@ class ProgressService:
             self._callbacks.remove(callback)
 
     async def _notify(self, data: dict[str, Any]):
-        """通知所有回调"""
-        for callback in self._callbacks:
+        """通知所有回调
+
+        回调由调用方（SSE/WebSocket 推送、日志收集器）注册，属于第三方扩展点，
+        单个回调炸掉不能中断其余回调——原先 `except Exception: pass` 会把
+        「推送通道已死」伪装成「进度正常」，安装页因此可能永远停在 0%。
+        迭代快照：回调内部会 add/remove_callback，且 await 处会让出事件循环。
+        """
+        for callback in list(self._callbacks):
             try:
                 result = callback(data)
                 if asyncio.iscoroutine(result):
                     await result
-            except Exception:
-                pass
+            except Exception:  # noqa: BLE001
+                name = getattr(callback, "__qualname__", repr(callback))
+                logger.exception("[setup] 进度回调 %s 执行失败，已跳过该回调", name)
 
     def setup_steps(self, steps: list[dict]):
         """设置步骤"""
@@ -199,8 +209,10 @@ class ProgressService:
                     start = datetime.fromisoformat(step.started_at)
                     end = datetime.fromisoformat(step.completed_at)
                     step.duration = (end - start).total_seconds()
-                except Exception:
-                    pass
+                except (TypeError, ValueError) as exc:
+                    # started_at 可能是旧版本 state 文件里的非法时间串；
+                    # 耗时算不出就保持 None，让 UI 显示为空而不是显示 0s。
+                    logger.debug("[setup] 步骤 %s 耗时计算失败: %s", step.id, exc)
 
             if message:
                 step.message = message

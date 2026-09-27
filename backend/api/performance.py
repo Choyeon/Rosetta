@@ -14,7 +14,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, desc, func, select
 
 from backend.core.auth import DB, CurrentStaff
@@ -22,6 +22,105 @@ from backend.models.performance_metric import PerformanceMetric
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["性能监控"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class PerformanceSlowEndpointDoc(BaseModel):
+    """热门慢接口榜单的单条（按平均响应时间倒序 top 5）。"""
+
+    endpoint: str = Field(..., description="接口路径（performance_metrics 表登记的原始 path）")
+    method: str = Field(..., description="HTTP 方法（GET/POST/…）")
+    avg_response_time_ms: float = Field(..., description="窗口内平均响应时间毫秒（保留 2 位小数）")
+    request_count: int = Field(..., description="窗口内该 (endpoint, method) 的请求条数")
+
+
+class PerformancePeriodStatsDoc(BaseModel):
+    """单个时间窗口（24h / 7d）的性能统计块，由 ``_stats_for_period`` 产出。"""
+
+    total_requests: int = Field(..., description="窗口内记录的请求总数")
+    avg_response_time_ms: float = Field(..., description="平均响应时间毫秒（保留 2 位小数）")
+    max_response_time_ms: int = Field(..., description="最慢一次请求的响应时间毫秒")
+    p95_response_time_ms: int = Field(
+        ..., description="P95 响应时间毫秒（升序取整索引，无数据时为 0）"
+    )
+    p99_response_time_ms: int = Field(..., description="P99 响应时间毫秒（同上，无数据时为 0）")
+    error_count: int = Field(..., description="状态码 >= 400 的请求数")
+    error_rate: float = Field(
+        ..., description="错误率百分比（error_count/total_requests*100，保留 2 位小数；零请求为 0）"
+    )
+    slow_endpoints: list[PerformanceSlowEndpointDoc] = Field(
+        default_factory=list, description="平均耗时最高的 5 个接口"
+    )
+
+
+class PerformanceSummaryResponseDoc(BaseModel):
+    """``GET /api/admin/performance/summary`` 的响应体（裸 dict，无信封）。需 CurrentStaff。"""
+
+    last_24h: PerformancePeriodStatsDoc = Field(..., description="最近 24 小时窗口统计")
+    last_7d: PerformancePeriodStatsDoc = Field(..., description="最近 7 天窗口统计")
+    timestamp: str = Field(
+        ..., description="统计基准时刻（当前 UTC 时间的 isoformat 字符串，两窗口共用）"
+    )
+
+
+class StorageStatusBucketDoc(BaseModel):
+    """按 HTTP 状态码分组的行数。"""
+
+    status_code: int = Field(..., description="HTTP 状态码")
+    count: int = Field(..., description="该状态码的记录的条数（全表，不限窗口）")
+
+
+class StorageDailyBucketDoc(BaseModel):
+    """最近 7 天按日期分组的统计（Python 侧分组以兼容 SQLite/PG 方言差异）。"""
+
+    date: str = Field(..., description="日期键 YYYY-MM-DD，升序排列")
+    count: int = Field(
+        ..., description="当日记录条数（含 response_time 为 null 的行，它们不进均值计算）"
+    )
+    avg_response_time_ms: float = Field(
+        ..., description="当日平均响应时间毫秒（保留 2 位小数），无有效耗时样本时为 0"
+    )
+
+
+class PerformanceStorageResponseDoc(BaseModel):
+    """``GET /api/admin/performance/storage`` 的响应体（裸 dict，无信封）。需 CurrentStaff。"""
+
+    total_count: int = Field(..., description="performance_metrics 全表行数")
+    earliest_record: str | None = Field(
+        None, description="最早记录的 created_at ISO 8601 字符串，空表时为 null"
+    )
+    latest_record: str | None = Field(
+        None, description="最晚记录的 created_at ISO 8601 字符串，空表时为 null"
+    )
+    status_breakdown: list[StorageStatusBucketDoc] = Field(
+        default_factory=list, description="按状态码分组计数，状态码升序"
+    )
+    daily_breakdown: list[StorageDailyBucketDoc] = Field(
+        default_factory=list, description="最近 7 天的逐日统计，日期升序"
+    )
+    queried_at: str = Field(
+        ..., description="查询时刻（handler 在返回前再取一次当前 UTC 时间的 isoformat 字符串）"
+    )
+
+
+class SlowRequestItemDoc(BaseModel):
+    """``GET /api/admin/performance/slow`` 数组里的单条最慢请求记录。"""
+
+    id: int = Field(..., description="performance_metrics 主键")
+    endpoint: str = Field(..., description="请求路径（原始登记的 path）")
+    method: str = Field(..., description="HTTP 方法（GET/POST/…）")
+    status_code: int = Field(..., description="响应状态码")
+    response_time_ms: int = Field(..., description="响应耗时毫秒；数组整体按此字段降序")
+    user_agent: str | None = Field(None, description="原始 User-Agent，缺失为 null")
+    ip: str | None = Field(None, description="客户端 IP，缺失为 null")
+    created_at: str | None = Field(
+        None, description="记录时刻 ISO 8601 字符串；行内时间为空时为 null"
+    )
 
 
 async def _stats_for_period(db: DB, since: datetime) -> dict[str, Any]:
@@ -105,12 +204,17 @@ async def _stats_for_period(db: DB, since: datetime) -> dict[str, Any]:
 @router.get(
     "/performance/summary",
     summary="性能统计摘要",
-    description="返回最近 24 小时和 7 天的性能统计：平均响应时间、P95/P99、错误率、热门慢接口。",
+    description=(
+        "返回最近 24 小时和 7 天的性能统计：平均响应时间、P95/P99、错误率、热门慢接口。"
+        "需 CurrentStaff。响应为裸 dict（last_24h/last_7d/timestamp，无信封），"
+        "两个窗口由同一段统计逻辑分别计算，结构完全一致。"
+    ),
+    responses={200: {"model": PerformanceSummaryResponseDoc}},
 )
 async def get_performance_summary(
     db: DB,
     current_user: CurrentStaff,
-) -> dict[str, Any]:
+):
     """获取性能统计摘要"""
     now = datetime.now(UTC)
     last_24h = now - timedelta(hours=24)
@@ -127,12 +231,13 @@ async def get_performance_summary(
     "/performance/slow",
     summary="最慢的请求",
     description="返回最近 7 天内最慢的 20 个请求记录。",
+    responses={200: {"model": list[SlowRequestItemDoc]}},
 )
 async def get_slow_requests(
     db: DB,
     current_user: CurrentStaff,
     limit: int = Query(20, ge=1, le=100, description="返回数量"),
-) -> list[dict[str, Any]]:
+):
     """获取最慢的请求"""
     since = datetime.now(UTC) - timedelta(days=7)
     result = await db.execute(
@@ -160,12 +265,17 @@ async def get_slow_requests(
 @router.get(
     "/performance/storage",
     summary="性能数据存储统计",
-    description="返回性能监控表的数据量、时间范围及按状态码分组的统计，便于评估是否需要清理。",
+    description=(
+        "返回性能监控表的数据量、时间范围及按状态码分组的统计，便于评估是否需要清理。"
+        "需 CurrentStaff。响应为裸 dict（total_count/earliest_record/latest_record/"
+        "status_breakdown/daily_breakdown/queried_at，无信封）；空表时两条时间边界为 null。"
+    ),
+    responses={200: {"model": PerformanceStorageResponseDoc}},
 )
 async def get_performance_storage(
     db: DB,
     current_user: CurrentStaff,
-) -> dict[str, Any]:
+):
     """获取性能监控数据存储统计"""
     # 总条数
     total_result = await db.execute(select(func.count()).select_from(PerformanceMetric))

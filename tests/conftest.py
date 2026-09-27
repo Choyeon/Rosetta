@@ -59,12 +59,13 @@ def _apply_global_settings_patches() -> None:
         _cv2.redis_backend = None  # type: ignore[attr-defined]
     except Exception:
         pass
-    # cache 模块 backend 置空
+    # cache 单例：CacheService.backend 现在是懒绑定的，这里把绑定结果清掉，
+    # 让第一次使用发生在 `_s.redis_enabled = False` 之后，必然拿到内存后端。
+    # （旧写法试图赋 `_cc.backend = None`，那是模块属性、根本不存在，等于空操作。）
     try:
-        import backend.core.cache as _cc
+        from backend.core.cache import cache as _cache_singleton
 
-        if hasattr(_cc, "backend"):
-            _cc.backend = None  # type: ignore[attr-defined]
+        _cache_singleton._backend = None
     except Exception:
         pass
 
@@ -78,6 +79,27 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop = asyncio.new_event_loop()
     yield loop
     loop.close()
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def isolate_caches():
+    """用例前后清空**两套**进程级缓存单例。
+
+    项目里有两条互不相通的缓存：``core.cache.cache``（响应/列表缓存）和
+    ``core.cache_v2.two_level_cache``（``services/cache_service.py`` 的用户资料、
+    站点配置等走这条）。此前只有 ``client`` fixture 清第一套，第二套会带着上一个
+    用例写入的 ``user_profile:<id>`` 活到下一个用例里——表现为"改了隐私偏好却仍返回
+    遮蔽后的邮箱"这类与代码无关的假失败。测试库每个用例都是全新的内存库，而缓存键
+    只含 user_id/post_id，跨用例必然撞键，所以两侧都必须清。
+    """
+    from backend.core.cache import cache as _level1
+    from backend.core.cache_v2 import two_level_cache as _level2
+
+    await _level1.clear()
+    await _level2.invalidate_pattern("*")
+    yield
+    await _level1.clear()
+    await _level2.invalidate_pattern("*")
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -109,13 +131,44 @@ async def test_engine():
 
 
 @pytest_asyncio.fixture(scope="function")
-async def db_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
-    """创建测试数据库会话"""
+async def db_session(test_engine, monkeypatch) -> AsyncGenerator[AsyncSession, None]:
+    """创建测试数据库会话，并把全局 `async_session_maker` 绑到同一个测试引擎。
+
+    绑定必须放在这里而不是 `client` fixture 里：部分用例（monitoring 的批量落库、
+    各类 service 单测）只请求 `db_session`，压根不经过 `client`，于是被测代码里
+    函数级的 `from backend.core.database import async_session_maker` 拿到的仍是
+    **真实引擎** —— 测试照样"通过"，数据却写进了开发用的 `rosetta.db`。
+    StaticPool 让全引擎共用一条连接，所以这里绑完后，新会话提交的行对
+    `db_session` 也可直接读到，无需再绕一层可见性 hack。
+    """
     async_session = async_sessionmaker(
         test_engine,
         class_=AsyncSession,
         expire_on_commit=False,
     )
+
+    # 不能只改 `backend.core.database` 自己：各模块 import 时抓到的是**另一个引用**
+    # （reset_engine 会就地改 bind），按身份比对会漏。这里扫 sys.modules，
+    # 凡有名为 async_session_maker 的可调用属性且尚未指向本会话工厂，一律覆写。
+    import sys
+
+    from sqlalchemy.ext.asyncio import AsyncEngine as _AsyncEngine
+
+    import backend.core.database as _db_mod
+
+    rebound = 0
+    for mod in list(sys.modules.values()):
+        if mod is None or getattr(mod, "async_session_maker", None) is async_session:
+            continue
+        if callable(getattr(mod, "async_session_maker", None)):
+            monkeypatch.setattr(mod, "async_session_maker", async_session)
+            rebound += 1
+        # 同理覆写模块级 `engine`：monitoring 的统计/健康检查用
+        # `async with engine.connect()`，不绑定的话测试读的是开发库的真实数据。
+        if isinstance(getattr(mod, "engine", None), _AsyncEngine) and mod is not _db_mod:
+            if getattr(mod, "engine") is not test_engine:
+                monkeypatch.setattr(mod, "engine", test_engine)
+    assert rebound >= 1, "未找到任何持有 async_session_maker 的模块，会话隔离补丁可能已失效"
 
     async with async_session() as session:
         yield session
@@ -185,6 +238,7 @@ async def client(
 
         return RateLimitResult(
             allowed=True,
+            limit=rule.requests,
             remaining=rule.requests,
             reset_at=__import__("time").time() + rule.window_seconds,
         )
@@ -201,28 +255,13 @@ async def client(
     monkeypatch.setattr(_rl_mod.login_rate_limiter, "is_locked", _never_locked)
     monkeypatch.setattr(_rl_mod.login_rate_limiter, "record_attempt", _noop_record)
 
-    # --- Patch 4: 把全局 async_session_maker 指到测试引擎 ---
+    # --- Patch 4: 全局 async_session_maker / engine 已在 db_session 里绑定 ---
     # 部分接口（SEO / robots / OG / hero / …）不走 get_db 依赖注入，而是直接
     # `async with async_session_maker()` 开新会话。CI 上那个全局会话连的是仓库里
     # 不存在的空 SQLite，于是抛 `no such table: site_configs`；本地则连到开发用
     # rosetta.db——测试照样"通过"，还把数据写进了真实库。两类泄漏都要堵。
-    # 注意：不能只比对自己在 import 时抓到的那个对象——site_config / oobe 持有的
-    # 引用与 database 模块当前值并非同一实例（reset_engine 会就地改 bind），
-    # 按身份比对会漏掉它们。这里改为"凡模块里有名为 async_session_maker 的
-    # sessionmaker 属性且尚未指向测试引擎，一律覆写"。
-    import sys
-
-    _test_session_maker = async_sessionmaker(
-        test_engine, class_=AsyncSession, expire_on_commit=False
-    )
-    _rebound = 0
-    for _mod in list(sys.modules.values()):
-        if _mod is None or getattr(_mod, "async_session_maker", None) is _test_session_maker:
-            continue
-        if callable(getattr(_mod, "async_session_maker", None)):
-            monkeypatch.setattr(_mod, "async_session_maker", _test_session_maker)
-            _rebound += 1
-    assert _rebound >= 1, "未找到任何静态导入 async_session_maker 的模块，Patch 4 可能已失效"
+    # `client` 必然先实例化 `db_session`，所以绑定动作已上移到那个 fixture，
+    # 只请求 `db_session` 的用例（不经过本 fixture）也同样受保护。
 
     # --- 清除缓存（内存缓存是全局单例，跨测试会污染） ---
     import backend.core.cache as _cache_mod
@@ -232,6 +271,7 @@ async def client(
     # --- 禁用 cache_warmer 的预热（使用全局 async_session_maker 连接空 SQLite :memory:，会污染缓存为默认值） ---
     try:
         from backend.core.cache_warmer import cache_warmer as _cache_warmer
+        from backend.core.cache_warmer import scheduled_cache_refresher as _refresher
 
         async def _noop_warmup(task_name: str):
             from backend.core.cache_warmer import WarmupTaskResult, WarmupTaskStatus
@@ -240,10 +280,19 @@ async def client(
             r.items_cached = 0
             return r
 
+        async def _noop_warmup_all():
+            return {}
+
+        async def _noop_refresher():
+            return None
+
         monkeypatch.setattr(_cache_warmer, "warmup_task", _noop_warmup)
-        monkeypatch.setattr(
-            _cache_warmer, "warmup_all", lambda *a, **k: asyncio.coroutine(lambda: None)()
-        )
+        # 不能用 asyncio.coroutine 包装：它在 3.11 已删除，届时这行会抛
+        # AttributeError 被下面的 except 吞掉，warmup_all 就悄悄没被替换。
+        monkeypatch.setattr(_cache_warmer, "warmup_all", _noop_warmup_all)
+        # lifespan 现在会拉起定时刷新任务，测试里不需要，也不该留悬空 task。
+        monkeypatch.setattr(_refresher, "start", _noop_refresher)
+        monkeypatch.setattr(_refresher, "stop", _noop_refresher)
     except Exception:
         pass
 

@@ -1,3 +1,11 @@
+<!--
+  主题管理真实主体（/admin/system/themes 只是薄壳）：扫描/三来源安装/激活/Customizer/删除/预览。
+  硬契约：激活是后端行为（PUT /admin/themes/{slug}/activate），成功后必须 frontendTheme.reload()
+  ——useFrontendTheme 有 loaded-latch，不重载则 SPA 回首页仍是旧主题；截图 URL 必须经
+  resolveThemeAssetPath + bustThemeAssetCache（/themes/** immutable 强缓存，缺 ?v= 升级后永远拿旧图）；
+  Customizer 控件唯一清单是 mods_schema.properties（未声明键后端直接丢弃）；
+  KNOWN_ROSETTA_THEMES 内建主题禁删；预览走 ?rosetta_theme_preview= 不改后端激活态。
+-->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { toast } from 'vue-sonner'
@@ -23,7 +31,8 @@ import {
   ChevronRight,
   LayoutDashboard,
   CheckCircle2,
-  BookOpen
+  BookOpen,
+  RotateCcw
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -131,13 +140,16 @@ const frontendTheme = useFrontendTheme()
 
 function castBySchema(value: unknown, node: JsonSchemaNode): unknown {
   const jtype = node.type
-  if (value === null || value === undefined || value === '') {
+  if (value === null || value === undefined || (value === '' && jtype !== 'string')) {
     if (node.default !== undefined) return node.default
     if (jtype === 'string') return ''
     if (jtype === 'integer' || jtype === 'number') return node.default ?? null
     if (jtype === 'boolean') return false
     return null
   }
+  // 字符串控件的空值是合法用户意图（清空 hero_title / footer_text = 回退站点设置），
+  // 不能被 schema.default 顶回去——否则「清空后保存」永远还原成默认文案，改不掉。
+  if (value === '' && jtype === 'string') return ''
   if (jtype === 'integer') {
     const n = Number(value)
     return Number.isNaN(n) ? value : Math.trunc(n)
@@ -161,10 +173,17 @@ const restCount = computed(() => themes.value.filter(t => !t.is_active).length)
 const customizableCount = computed(() => themes.value.filter(t => !!t.mods_schema && Object.keys(t.mods_schema?.properties ?? {}).length > 0).length)
 const errorCount = computed(() => themes.value.filter(t => t.status === 'error' || t.error_message).length)
 
-const statusFilters: Array<{ key: typeof activeFilter.value, label: string, count: () => number }> = [
-  { key: 'all', label: t('admin.themes.filter.all', '全部'), count: () => totalInstalled.value },
-  { key: 'active', label: t('admin.themes.filter.active', '已激活'), count: () => activeCount.value },
-  { key: 'available', label: t('admin.themes.filter.available', '可用'), count: () => restCount.value }
+// 与 customizableCount 同一判定：mods_schema 存在但 properties 为空的主题，
+// 打开 Customizer 只有"暂无可自定义项"占位，按钮应直接置灰而非可点空弹窗。
+function canCustomize(theme: Theme): boolean {
+  return !!theme.mods_schema && Object.keys(theme.mods_schema.properties ?? {}).length > 0
+}
+
+// label 用函数形式取 t()：常量字符串在 setup 求值一次，语言切换后不会更新
+const statusFilters: Array<{ key: typeof activeFilter.value, label: () => string, count: () => number }> = [
+  { key: 'all', label: () => t('admin.themes.filter.all', '全部'), count: () => totalInstalled.value },
+  { key: 'active', label: () => t('admin.themes.filter.active', '已激活'), count: () => activeCount.value },
+  { key: 'available', label: () => t('admin.themes.filter.available', '可用'), count: () => restCount.value }
 ]
 
 const filteredThemes = computed(() => {
@@ -285,6 +304,21 @@ function openCustomizer(theme: Theme) {
   customizerOpen.value = true
 }
 
+// 重置仅回填当前表单值到 schema 声明的默认值，不发送请求；
+// 用户仍需点「保存」才落库（后端 PATCH 只写已声明键，未动 DOM 契约）。
+function resetModsToDefaults() {
+  const props = currentTheme.value?.mods_schema?.properties
+  for (const k of Object.keys(modsFormErrors)) {
+    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
+    delete modsFormErrors[k]
+  }
+  if (!props) return
+  for (const [key, node] of Object.entries(props)) {
+    if (!node || typeof node !== 'object') continue
+    modsForm[key] = castBySchema(node.default ?? null, node as JsonSchemaNode)
+  }
+}
+
 function _validateLocalForm(): boolean {
   for (const k of Object.keys(modsFormErrors)) {
     // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
@@ -366,9 +400,8 @@ async function saveMods() {
       }
     }
     reload()
-  } catch (err) {
-    const msg = err && typeof err === 'object' && 'message' in err ? String((err as { message?: unknown }).message ?? '') : ''
-    if (msg) toast.error(msg)
+  } catch {
+    /* apiFetch 已自动 toast 错误信息，此处不再重复弹出（避免双 toast） */
   } finally {
     modsSaving.value = false
   }
@@ -671,7 +704,7 @@ onMounted(() => {
             :class="activeFilter === f.key ? 'shadow-soft/50' : 'hover:bg-accent'"
             @click="activeFilter = f.key; page = 1"
           >
-            <span>{{ f.label }}</span>
+            <span>{{ f.label() }}</span>
             <span class="ml-1 tabular-nums opacity-70">{{ f.count() }}</span>
           </Badge>
         </div>
@@ -816,7 +849,7 @@ onMounted(() => {
                     {{ t('admin.themes.preview', '预览') }}
                   </Button>
                   <Button
-                    v-if="theme.mods_schema"
+                    v-if="canCustomize(theme)"
                     variant="default"
                     size="sm"
                     class="flex-1 rounded-xl shadow-soft"
@@ -911,8 +944,8 @@ onMounted(() => {
                 <Button
                   variant="outline"
                   class="rounded-xl px-3"
-                  :disabled="!theme.mods_schema"
-                  :title="theme.mods_schema ? t('admin.themes.customize', '自定义') : t('admin.themes.noCustomizeHint', '该主题无可自定义项')"
+                  :disabled="!canCustomize(theme)"
+                  :title="canCustomize(theme) ? t('admin.themes.customize', '自定义') : t('admin.themes.noCustomizeHint', '该主题无可自定义项')"
                   @click="openCustomizer(theme)"
                 >
                   <SlidersHorizontal data-icon="inline-start" />
@@ -1153,6 +1186,14 @@ onMounted(() => {
           </div>
         </div>
         <DialogFooter class="gap-2 sm:gap-0">
+          <Button
+            variant="ghost"
+            :disabled="modsSaving || !currentTheme?.mods_schema?.properties"
+            @click="resetModsToDefaults"
+          >
+            <RotateCcw data-icon="inline-start" />
+            {{ t('admin.themes.resetDefaults', '恢复默认') }}
+          </Button>
           <DialogClose as-child>
             <Button variant="ghost">
               {{ t('admin.actions.cancel', '取消') }}
@@ -1241,14 +1282,20 @@ onMounted(() => {
 
         <div class="flex flex-col gap-4">
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">
+            <Label
+              for="theme-install-source"
+              class="text-sm font-medium"
+            >
               {{ t('admin.themes.installSource', '安装来源') }}
             </Label>
             <Select
               :model-value="installSource"
               @update:model-value="onInstallSourceChange"
             >
-              <SelectTrigger class="rounded-xl">
+              <SelectTrigger
+                id="theme-install-source"
+                class="rounded-xl"
+              >
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1269,10 +1316,14 @@ onMounted(() => {
             v-if="installSource === 'local'"
             class="flex flex-col gap-2"
           >
-            <Label class="text-sm font-medium">
+            <Label
+              for="theme-install-local-slug"
+              class="text-sm font-medium"
+            >
               {{ t('admin.themes.installSlug', '主题 slug') }}
             </Label>
             <Input
+              id="theme-install-local-slug"
               v-model="installLocalSlug"
               class="rounded-xl font-mono text-sm"
               placeholder="astro-paper-inspired"
@@ -1287,10 +1338,14 @@ onMounted(() => {
             class="flex flex-col gap-3"
           >
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">
+              <Label
+                for="theme-install-remote-url"
+                class="text-sm font-medium"
+              >
                 {{ t('admin.themes.installUrl', '主题包 URL') }}
               </Label>
               <Input
+                id="theme-install-remote-url"
                 v-model="installRemoteUrl"
                 type="url"
                 class="rounded-xl"
@@ -1298,10 +1353,14 @@ onMounted(() => {
               />
             </div>
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">
+              <Label
+                for="theme-install-remote-checksum"
+                class="text-sm font-medium"
+              >
                 {{ t('admin.themes.installChecksum', 'SHA256 校验和（可选）') }}
               </Label>
               <Input
+                id="theme-install-remote-checksum"
                 v-model="installRemoteChecksum"
                 class="rounded-xl font-mono text-xs"
                 :placeholder="t('admin.themes.installChecksumHint', '留空则跳过校验')"
@@ -1313,10 +1372,14 @@ onMounted(() => {
             v-else
             class="flex flex-col gap-2"
           >
-            <Label class="text-sm font-medium">
+            <Label
+              for="theme-install-file"
+              class="text-sm font-medium"
+            >
               {{ t('admin.themes.installFile', 'zip 文件') }}
             </Label>
             <Input
+              id="theme-install-file"
               type="file"
               accept=".zip,application/zip"
               class="rounded-xl"

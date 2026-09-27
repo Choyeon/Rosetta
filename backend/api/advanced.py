@@ -8,35 +8,26 @@ import json
 import logging
 import math
 from datetime import datetime
+from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
-from pydantic import BaseModel
+from fastapi.responses import Response
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.core.concurrency import concurrent_query
 from backend.models.blog import Category, Comment, Post, Tag
 from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
-from backend.utils.compat import UTC, timedelta
+from backend.utils.compat import UTC, parse_utc_date, timedelta
+from backend.utils.reading_time import compute_reading_time_from_content
 
-router = APIRouter(prefix="/admin", tags=["高级功能"])
+router = APIRouter(prefix="/admin", tags=["高级管理"])
 
 logger = logging.getLogger(__name__)
-
-
-def _parse_date_param(s: str | None) -> datetime | None:
-    """解析 ISO 日期字符串（兼容 YYYY-MM-DD 和带 T/Z 的完整 ISO）"""
-    if not s:
-        return None
-    try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=UTC)
-        return d
-    except Exception:
-        return None
 
 
 # ==================== 回收站 API ====================
@@ -56,10 +47,64 @@ class TrashItemResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class OperatorOut(BaseModel):
+    """回收站/日志里回显的操作者摘要。"""
+
+    id: int = Field(..., description="用户 ID")
+    username: str = Field(..., description="登录用户名")
+    nickname: str | None = Field(default=None, description="昵称；未设置时为 null")
+
+
+class TrashEntryOut(BaseModel):
+    """回收站单条记录（``/admin/trash`` 列表项的实际字段形态）。"""
+
+    id: int = Field(..., description="回收站记录 ID")
+    resource_type: str = Field(..., description="资源类型：post / comment / page")
+    resource_id: int = Field(..., description="原始资源 ID（原记录已删除，仅作展示）")
+    resource_data: dict = Field(
+        ...,
+        description=(
+            "删除时快照的字段集合（JSON 反序列化结果）。"
+            "文章为 title/slug/content/excerpt/cover_image/author_id/category_id/status/views；"
+            "评论为 post_id/user_id/parent_id/content"
+        ),
+    )
+    deleted_by: OperatorOut | None = Field(
+        default=None, description="执行删除的管理员摘要；账号已注销时为 null"
+    )
+    auto_delete_at: str | None = Field(
+        default=None, description="到期自动清除时间（ISO 8601）；未设置时为 null"
+    )
+    created_at: str | None = Field(
+        default=None, description="进入回收站的时间（ISO 8601）；异常数据下可能为 null"
+    )
+
+
+class TrashListResponse(BaseModel):
+    """GET /admin/trash 的响应体（裸分页对象，不带 success 信封）。"""
+
+    items: list[TrashEntryOut] = Field(..., description="当前页回收站记录，按创建时间倒序")
+    total: int = Field(..., description="符合筛选条件的总条数")
+    page: int = Field(..., description="当前页码（从 1 开始）")
+    page_size: int = Field(..., description="每页数量")
+    total_pages: int = Field(..., description="总页数；total 为 0 时是 0")
+
+
+class SimpleActionResultResponse(BaseModel):
+    """只回「成功 + 提示语」的写操作响应（恢复、永久删除、清空回收站、恢复修订版本）。"""
+
+    success: bool = Field(..., description="固定为 true；失败走 4xx 错误信封")
+    message: str = Field(..., description="人类可读结果提示（如「项目已恢复」）")
+
+
 @router.get(
     "/trash",
     summary="回收站列表",
-    description="获取回收站中的项目列表。",
+    description=(
+        "需 CurrentStaff。分页读取回收站记录，可按资源类型过滤，按入站时间倒序。"
+        "只读、幂等；返回裸分页对象（无 success 信封）。"
+    ),
+    responses={200: {"model": TrashListResponse, "description": "分页的回收站记录"}},
 )
 async def list_trash(
     db: DB,
@@ -72,7 +117,6 @@ async def list_trash(
     获取回收站列表
 
     性能优化：
-    - 使用并发查询获取总数和列表
     """
     query = select(TrashItem).options(selectinload(TrashItem.deleted_by))
 
@@ -81,7 +125,7 @@ async def list_trash(
 
     query = query.order_by(TrashItem.created_at.desc())
 
-    # 并发执行计数和列表查询
+    # 计数 + 列表（两条顺序查询；concurrent_query 不并行）
     count_query = select(func.count()).select_from(query.subquery())
 
     total, result = await concurrent_query(
@@ -127,7 +171,15 @@ async def list_trash(
 @router.post(
     "/trash/{trash_id}/restore",
     summary="恢复项目",
-    description="从回收站恢复项目。",
+    description=(
+        "需 CurrentStaff。按回收站记录重建原始资源（仅支持 post / comment）并删除该条记录，"
+        "同时写入 restore 操作日志。非幂等：文章 slug 已被占用时返回 400，记录不存在返回 404。"
+    ),
+    responses={
+        200: {"model": SimpleActionResultResponse, "description": "恢复完成"},
+        400: {"description": "文章 slug 已被使用，无法恢复"},
+        404: {"description": "回收站项目不存在"},
+    },
 )
 async def restore_trash_item(
     trash_id: int,
@@ -203,7 +255,14 @@ async def restore_trash_item(
 @router.delete(
     "/trash/{trash_id}",
     summary="永久删除",
-    description="永久删除回收站中的项目。",
+    description=(
+        "需 CurrentStaff。不可逆：删除回收站记录本体（原始资源在入站时已删除），"
+        "并写入 permanent_delete 操作日志。记录不存在返回 404。"
+    ),
+    responses={
+        200: {"model": SimpleActionResultResponse, "description": "已永久删除"},
+        404: {"description": "回收站项目不存在"},
+    },
 )
 async def permanently_delete(
     trash_id: int,
@@ -241,7 +300,11 @@ async def permanently_delete(
 @router.delete(
     "/trash",
     summary="清空回收站",
-    description="清空回收站中的所有项目。",
+    description=(
+        "需 CurrentStaff。不可逆：逐条删除回收站记录（可限定资源类型，不传则清空全部），"
+        "message 里回显实际清除条数。"
+    ),
+    responses={200: {"model": SimpleActionResultResponse, "description": "已清空，提示语含条数"}},
 )
 async def empty_trash(
     db: DB,
@@ -278,10 +341,30 @@ class BatchActionRequest(BaseModel):
     tag_ids: list[int] | None = None
 
 
+class BatchActionResponse(BaseModel):
+    """POST /admin/posts/batch 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true；失败走 4xx 错误信封")
+    message: str = Field(..., description="提示语，含实际处理篇数")
+    affected_count: int = Field(
+        ...,
+        description="状态真正发生变化的文章篇数（publish/draft 会跳过本就符合目标的记录）",
+    )
+
+
 @router.post(
     "/posts/batch",
     summary="批量操作文章",
-    description="对多篇文章执行批量操作。",
+    description=(
+        "需 CurrentStaff。对多篇文章执行同一种动作，成功后失效 posts 列表与详情缓存。"
+        "delete 为软删除（移入回收站，30 天后自动清除）；其余动作幂等。"
+        "未选中任何文章返回 400，全部找不到返回 404。"
+    ),
+    responses={
+        200: {"model": BatchActionResponse, "description": "批量处理完成"},
+        400: {"description": "未选择文章 / 缺少 category_id 或 tag_ids / 不支持的 action"},
+        404: {"description": "未找到任何匹配的文章或目标分类"},
+    },
 )
 async def batch_action_posts(
     db: DB,
@@ -307,8 +390,11 @@ async def batch_action_posts(
             detail="请选择要操作的文章",
         )
 
-    # 查询文章
-    result = await db.execute(select(Post).where(Post.id.in_(request.post_ids)))
+    # 查询文章：add_tag / remove_tag 会读写 post.tags 集合，
+    # 不做 selectinload 就是"未加载属性 + async 会话"= MissingGreenlet 500。
+    result = await db.execute(
+        select(Post).options(selectinload(Post.tags)).where(Post.id.in_(request.post_ids))
+    )
     posts = result.scalars().all()
 
     if not posts:
@@ -318,6 +404,8 @@ async def batch_action_posts(
         )
 
     affected_count = 0
+    # slug 要在任何删除动作之前采集：db.delete + flush 之后再读属性会对已删行发 SELECT
+    affected_slugs = [post.slug for post in posts]
 
     if request.action == "publish":
         for post in posts:
@@ -431,6 +519,11 @@ async def batch_action_posts(
     db.add(log)
     await db.flush()
 
+    # 批量操作绕过了 blog.py 的写侧失效逻辑：列表类缓存在 posts 前缀下，详情缓存是
+    # 逐 slug/语言的 post:{slug}:{lang}，两层都要清，否则转草稿/删除的文章会继续对外可见。
+    await invalidate_cache("posts")
+    await invalidate_post_detail_cache(*affected_slugs)
+
     return {
         "success": True,
         "message": f"已处理 {affected_count} 篇文章",
@@ -441,10 +534,91 @@ async def batch_action_posts(
 # ==================== 文章修订版本 API ====================
 
 
+class RevisionAuthorOut(BaseModel):
+    """修订版本作者摘要。"""
+
+    id: int = Field(..., description="用户 ID")
+    username: str = Field(..., description="登录用户名")
+    nickname: str | None = Field(default=None, description="昵称；未设置时为 null")
+
+
+class RevisionListItemOut(BaseModel):
+    """``/admin/posts/{post_id}/revisions`` 列表项：不含正文，只给摘要信息。"""
+
+    id: int = Field(..., description="修订版本 ID")
+    revision_number: int = Field(..., description="版本号（同一文章内递增）")
+    title: dict[str, Any] | str | None = Field(
+        default=None, description="该版本的多语言标题字典；历史脏数据下可能是纯字符串"
+    )
+    change_summary: str | None = Field(
+        default=None, description="变更说明（如「恢复到版本 #N 前的备份」）"
+    )
+    author: RevisionAuthorOut | None = Field(
+        default=None, description="作者摘要；作者账号已删除时为 null"
+    )
+    created_at: str | None = Field(
+        default=None, description="版本创建时间（ISO 8601）；异常数据下可能为 null"
+    )
+
+
+class RevisionListResponse(BaseModel):
+    """GET /admin/posts/{post_id}/revisions 的响应体（裸对象，无 success 信封）。"""
+
+    post_id: int = Field(..., description="文章 ID")
+    current_title: dict[str, Any] | str | None = Field(
+        default=None, description="文章当前标题（多语言字典），供前端对比各版本"
+    )
+    revisions: list[RevisionListItemOut] = Field(
+        ..., description="修订版本列表，按 revision_number 倒序（最新在前）"
+    )
+    total: int = Field(..., description="版本条数（等于 revisions 长度）")
+
+
+class RevisionSnapshotOut(BaseModel):
+    """版本比对里单侧的内容快照。"""
+
+    id: int = Field(..., description="修订版本 ID")
+    revision_number: int = Field(..., description="版本号")
+    content: dict[str, Any] = Field(
+        ...,
+        description="该版本正文（多语言字典，键为语言码；缺失时为空对象）",
+    )
+    created_at: str | None = Field(default=None, description="版本创建时间（ISO 8601）")
+
+
+class RevisionCompareResponse(BaseModel):
+    """GET /admin/posts/{post_id}/revisions/compare 的响应体。"""
+
+    revision1: RevisionSnapshotOut = Field(..., description="rev1 查询参数对应的版本快照")
+    revision2: RevisionSnapshotOut = Field(..., description="rev2 查询参数对应的版本快照")
+
+
+class RevisionDetailResponse(BaseModel):
+    """GET /admin/posts/{post_id}/revisions/{revision_id} 的响应体。"""
+
+    id: int = Field(..., description="修订版本 ID")
+    post_id: int = Field(..., description="所属文章 ID")
+    revision_number: int = Field(..., description="版本号")
+    title: dict[str, Any] | str | None = Field(default=None, description="该版本多语言标题")
+    content: dict[str, Any] | str | None = Field(default=None, description="该版本正文")
+    excerpt: dict[str, Any] | str | None = Field(
+        default=None, description="该版本摘要；未设置时为 null"
+    )
+    change_summary: str | None = Field(default=None, description="变更说明")
+    created_at: str | None = Field(default=None, description="版本创建时间（ISO 8601）")
+
+
 @router.get(
     "/posts/{post_id}/revisions",
     summary="文章修订历史",
-    description="获取文章的修订版本列表。",
+    description=(
+        "需 CurrentStaff。读取某篇文章的全部修订版本（不含正文，正文走单版本详情接口），"
+        "按版本号倒序。文章不存在返回 404。只读、幂等。"
+    ),
+    responses={
+        200: {"model": RevisionListResponse, "description": "版本摘要列表"},
+        404: {"description": "文章不存在"},
+    },
 )
 async def list_post_revisions(
     post_id: int,
@@ -498,7 +672,14 @@ async def list_post_revisions(
 @router.get(
     "/posts/{post_id}/revisions/compare",
     summary="比较修订版本",
-    description="比较两个修订版本的差异。",
+    description=(
+        "需 CurrentStaff。按 ``rev1`` / ``rev2`` 两个版本 ID 返回正文快照，由前端做 diff。"
+        "任一 ID 不属于该文章（或只传到一个）时返回 404。只读、幂等。"
+    ),
+    responses={
+        200: {"model": RevisionCompareResponse, "description": "左右两版本的正文快照"},
+        404: {"description": "找不到指定的修订版本"},
+    },
 )
 async def compare_revisions(
     post_id: int,
@@ -554,7 +735,14 @@ async def compare_revisions(
 @router.get(
     "/posts/{post_id}/revisions/{revision_id}",
     summary="修订版本详情",
-    description="获取指定修订版本的详细内容。",
+    description=(
+        "需 CurrentStaff。返回指定修订版本的标题 / 正文 / 摘要全文，用于版本预览与恢复前确认。"
+        "版本不存在或不属于该文章返回 404。只读、幂等。"
+    ),
+    responses={
+        200: {"model": RevisionDetailResponse, "description": "单版本完整内容"},
+        404: {"description": "修订版本不存在"},
+    },
 )
 async def get_post_revision(
     post_id: int,
@@ -596,7 +784,15 @@ async def get_post_revision(
 @router.post(
     "/posts/{post_id}/revisions/{revision_id}/restore",
     summary="恢复到指定版本",
-    description="将文章恢复到指定的修订版本。",
+    description=(
+        "需 CurrentStaff。有副作用：先把文章当前内容另存为新版本（避免丢失），"
+        "再用目标版本的 title/content/excerpt 覆盖文章，并重算阅读时长，"
+        "最后失效该文章详情缓存与 posts 列表缓存。文章或版本不存在返回 404。"
+    ),
+    responses={
+        200: {"model": SimpleActionResultResponse, "description": "恢复完成，提示语含目标版本号"},
+        404: {"description": "文章不存在或修订版本不存在"},
+    },
 )
 async def restore_post_revision(
     post_id: int,
@@ -665,6 +861,9 @@ async def restore_post_revision(
     post.title = revision_title
     post.content = revision_content
     post.excerpt = revision_excerpt
+    # 正文回退后必须重算阅读时长：列表接口 defer(content) 只读 reading_time，
+    # 不重算会让"恢复版本"后的文章继续显示旧内容的时长（blog.py 更新路径同样这么做）。
+    post.reading_time = compute_reading_time_from_content(post.content)
 
     # 记录操作日志
     log = OperationLog(
@@ -682,6 +881,10 @@ async def restore_post_revision(
     db.add(log)
     await db.flush()
 
+    # 正文已整体回退，两层缓存都会失真：详情缓存存的是新版正文，列表缓存的排序/摘要同样过期
+    await invalidate_post_detail_cache(post.slug)
+    await invalidate_cache("posts")
+
     return {
         "success": True,
         "message": f"已恢复到版本 #{revision.revision_number}",
@@ -691,11 +894,51 @@ async def restore_post_revision(
 # ==================== 操作日志 API ====================
 
 
+class OperationLogEntryOut(BaseModel):
+    """``/admin/logs`` 列表项：一条系统操作日志。"""
+
+    id: int = Field(..., description="日志 ID")
+    user: OperatorOut | None = Field(
+        default=None, description="操作者摘要（id/username/nickname）；匿名或账号已删除时为 null"
+    )
+    action: str = Field(
+        ...,
+        description="动作标识，如 create/update/delete/restore/permanent_delete/batch_publish",
+    )
+    resource_type: str | None = Field(default=None, description="被操作资源类型，如 post/comment")
+    resource_id: int | None = Field(default=None, description="被操作资源 ID")
+    detail: dict[str, Any] | str | None = Field(
+        default=None, description="详情载荷（能解析为 JSON 时给对象，否则原样字符串）"
+    )
+    ip_address: str | None = Field(default=None, description="请求来源 IP；取不到时为 null")
+    status: str | None = Field(default=None, description="操作结果状态（成功/失败标记）")
+    created_at: str | None = Field(
+        default=None, description="日志时间（ISO 8601）；异常数据下可能为 null"
+    )
+
+
+class OperationLogListResponse(BaseModel):
+    """GET /admin/logs 的响应体（裸分页对象，无 success 信封）。"""
+
+    items: list[OperationLogEntryOut] = Field(
+        ..., description="当前页日志，按创建时间倒序（最新在前）"
+    )
+    total: int = Field(..., description="符合筛选条件的总条数")
+    page: int = Field(..., description="当前页码（从 1 开始）")
+    page_size: int = Field(..., description="每页数量（上限 200）")
+    total_pages: int = Field(..., description="总页数；total 为 0 时是 0")
+
+
 @router.get(
     "/logs",
     summary="操作日志列表",
-    description="获取系统操作日志列表。",
+    description=(
+        "需 CurrentStaff。分页读取操作日志，支持按用户、动作、资源类型、时间区间"
+        "（from/to，仅给日期时 to 扩展到当天末尾）与关键词（匹配 detail / error_code / ip）过滤。"
+        "只读、幂等。"
+    ),
     operation_id="list_advanced_operation_logs",
+    responses={200: {"model": OperationLogListResponse, "description": "分页日志列表"}},
 )
 async def list_operation_logs(
     db: DB,
@@ -722,8 +965,8 @@ async def list_operation_logs(
     if resource_type:
         query = query.where(OperationLog.resource_type == resource_type)
 
-    from_dt = _parse_date_param(from_date)
-    to_dt = _parse_date_param(to_date)
+    from_dt = parse_utc_date(from_date)
+    to_dt = parse_utc_date(to_date)
     if from_dt:
         query = query.where(OperationLog.created_at >= from_dt)
     if to_dt:
@@ -746,7 +989,7 @@ async def list_operation_logs(
 
     query = query.order_by(OperationLog.created_at.desc())
 
-    # 并发执行计数和列表查询
+    # 计数 + 列表（两条顺序查询；concurrent_query 不并行）
     count_query = select(func.count()).select_from(query.subquery())
 
     total, result = await concurrent_query(
@@ -793,7 +1036,26 @@ async def list_operation_logs(
 @router.get(
     "/logs/export",
     summary="导出操作日志",
-    description="导出操作日志为 CSV 或 JSON 格式。",
+    description=(
+        "需 CurrentStaff。按与列表接口相同的过滤条件导出**最多 1000 条**日志为文件下载"
+        "（带 Content-Disposition: attachment）：``format=csv`` 回 text/csv"
+        "（单元格已做公式注入防护），``format=json``（默认）回 application/json 数组。"
+        "只读、无副作用。"
+    ),
+    responses={
+        200: {
+            "description": "文件下载体：CSV 文本或 JSON 数组，取决于 format 参数",
+            "content": {
+                "text/csv": {"schema": {"type": "string", "description": "CSV 全文（含表头）"}},
+                "application/json": {
+                    "schema": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/OperationLogEntryOut"},
+                    }
+                },
+            },
+        }
+    },
 )
 async def export_operation_logs(
     db: DB,
@@ -804,10 +1066,8 @@ async def export_operation_logs(
     resource_type: str | None = Query(None, description="资源类型"),
     from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
     to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
-):
+) -> Response:
     """导出操作日志"""
-    from fastapi.responses import Response
-
     query = select(OperationLog).options(selectinload(OperationLog.user))
 
     if user_id:
@@ -817,8 +1077,8 @@ async def export_operation_logs(
     if resource_type:
         query = query.where(OperationLog.resource_type == resource_type)
 
-    from_dt = _parse_date_param(from_date)
-    to_dt = _parse_date_param(to_date)
+    from_dt = parse_utc_date(from_date)
+    to_dt = parse_utc_date(to_date)
     if from_dt:
         query = query.where(OperationLog.created_at >= from_dt)
     if to_dt:

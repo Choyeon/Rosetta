@@ -1,3 +1,6 @@
+<!-- 头衔管理页：前台评论区展示的用户头衔 CRUD，名称/描述为完整 i18n dict（旧纯文本行经 normalizeI18nDict 兼容）。
+     契约：color 为 NOT NULL 列——留空时必须整个 key 不发（POST 落后端默认色、PUT 保持原色），传 null 会被 422 拒；
+     icon 只接受预设 ID/emoji，HTML/SVG 标记后端以 422 拒绝（头衔渲染于所有访客页，属存储型 XSS 防线）。 -->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -11,10 +14,7 @@
           class="rounded-xl shadow-sm"
           @click="openCreate"
         >
-          <Plus
-            data-icon="inline-start"
-            class="mr-2"
-          />
+          <Plus data-icon="inline-start" />
           新建头衔
         </Button>
       </template>
@@ -32,6 +32,24 @@
         >
           <Skeleton class="h-full w-full rounded-lg" />
         </div>
+      </div>
+
+      <div
+        v-else-if="loadError"
+        class="flex flex-col items-start gap-3 p-6"
+      >
+        <Alert variant="destructive">
+          <AlertTitle>加载头衔列表失败</AlertTitle>
+          <AlertDescription>{{ loadErrorMsg || '请求未成功，请重试。' }}</AlertDescription>
+        </Alert>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="fetchData"
+        >
+          <RotateCcw data-icon="inline-start" />
+          重试
+        </Button>
       </div>
 
       <div
@@ -53,21 +71,39 @@
         class="overflow-x-auto"
       >
         <table class="w-full text-sm">
+          <caption class="sr-only">
+            头衔列表：ID、名称、图标预览、描述与操作
+          </caption>
           <thead>
             <tr class="border-b bg-muted/30">
-              <th class="text-left font-medium p-4 w-16">
+              <th
+                scope="col"
+                class="text-left font-medium p-4 w-16"
+              >
                 ID
               </th>
-              <th class="text-left font-medium p-4">
+              <th
+                scope="col"
+                class="text-left font-medium p-4"
+              >
                 名称
               </th>
-              <th class="text-left font-medium p-4 w-28">
+              <th
+                scope="col"
+                class="text-left font-medium p-4 w-28"
+              >
                 图标预览
               </th>
-              <th class="text-left font-medium p-4">
+              <th
+                scope="col"
+                class="text-left font-medium p-4"
+              >
                 描述
               </th>
-              <th class="text-right font-medium p-4 w-28">
+              <th
+                scope="col"
+                class="text-right font-medium p-4 w-28"
+              >
                 操作
               </th>
             </tr>
@@ -96,24 +132,25 @@
                   size="md"
                 />
               </td>
-              <td class="p-4 text-muted-foreground max-w-md truncate">
+              <td class="p-4 text-muted-foreground max-w-md break-words">
                 {{ getLocalizedStr(t.description) || '—' }}
               </td>
               <td class="p-4 text-right">
                 <div class="inline-flex items-center gap-1">
                   <Button
                     variant="ghost"
-                    size="icon"
-                    class="h-8 w-8"
+                    size="icon-sm"
+                    aria-label="编辑头衔"
                     @click="openEdit(t)"
                   >
                     <Pencil data-icon="inline-start" />
                   </Button>
                   <Button
                     variant="ghost"
-                    size="icon"
-                    class="h-8 w-8 text-destructive hover:text-destructive"
-                    @click="t.id && confirmDelete(t.id)"
+                    size="icon-sm"
+                    class="text-destructive hover:text-destructive"
+                    aria-label="删除头衔"
+                    @click="confirmDelete(t)"
                   >
                     <Trash2 data-icon="inline-start" />
                   </Button>
@@ -146,22 +183,27 @@
           <!-- 颜色 + 图标预览 -->
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
-              <Label>颜色</Label>
+              <Label for="title-color">颜色</Label>
               <div class="flex items-center gap-2">
                 <input
                   v-model="form.color"
                   type="color"
+                  aria-label="颜色选择器"
                   class="size-10 rounded-lg border cursor-pointer bg-transparent"
                 >
                 <Input
+                  id="title-color"
                   v-model="form.color"
                   placeholder="#3b82f6"
                   class="font-mono text-sm"
                 />
               </div>
+              <p class="text-xs text-muted-foreground">
+                十六进制色值（#rgb / #rrggbb 均可）；留空则用默认色，编辑时保持原色。
+              </p>
             </div>
             <div class="flex flex-col gap-2">
-              <Label>预览</Label>
+              <span class="text-sm font-medium leading-none">预览</span>
               <div class="flex items-center h-10 rounded-lg border bg-muted/30 px-3">
                 <TitleBadge
                   :title="previewTitle"
@@ -173,7 +215,7 @@
 
           <!-- 图标选择：预设 SVG 网格 -->
           <div class="flex flex-col gap-2">
-            <Label>选择图标</Label>
+            <span class="text-sm font-medium leading-none">选择图标</span>
             <div class="rounded-lg border p-3 bg-muted/20">
               <div class="grid grid-cols-6 sm:grid-cols-8 gap-2">
                 <button
@@ -187,6 +229,7 @@
                       : 'border-border bg-card hover:bg-accent'
                   ]"
                   :title="p.name"
+                  :aria-label="`选择图标 ${p.name}`"
                   @click="form.icon = p.id"
                 >
                   <span
@@ -208,19 +251,22 @@
               <!-- 自定义图标输入 -->
               <div class="flex flex-col gap-2 mt-3">
                 <Label
+                  for="title-icon-custom"
                   class="text-xs text-muted-foreground"
-                >自定义（emoji / 内联 SVG / 预设 ID）</Label>
+                >自定义（emoji / 预设 ID）</Label>
                 <div class="flex gap-2">
                   <Input
+                    id="title-icon-custom"
                     v-model="form.icon"
-                    placeholder="选择预设或输入自定义，如 star / ⭐ / <svg>...</svg>"
+                    placeholder="选择预设或输入自定义，如 star / ⭐"
                     class="font-mono text-sm flex-1"
                   />
                 </div>
                 <p
                   class="text-[11px] text-muted-foreground"
                 >
-                  支持预设 ID（star、crown、trophy 等）、emoji（⭐、🏆）或完整 SVG 字符串
+                  支持预设 ID（star、crown、trophy 等）与 emoji（⭐、🏆）。
+                  不接受 HTML/SVG 标记——称号图标会渲染在所有访客页面上，贴入标记属存储型 XSS（后端以 422 拒绝）
                 </p>
               </div>
             </div>
@@ -249,7 +295,7 @@
             <Loader2
               v-if="submitting"
               data-icon="inline-start"
-              class="mr-2 animate-spin"
+              class="animate-spin"
             />
             {{ editingId ? '保存修改' : '创建头衔' }}
           </Button>
@@ -257,34 +303,25 @@
       </DialogContent>
     </Dialog>
 
-    <!-- 删除确认 -->
-    <Dialog v-model:open="deleteDialogOpen">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>确认删除</DialogTitle>
-          <DialogDescription>删除后该头衔将无法恢复，确定继续吗？</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            @click="deleteDialogOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            @click="doDelete"
-          >
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <!-- 删除确认：统一走 DangerConfirmDialog -->
+    <DangerConfirmDialog
+      v-model:open="deleteDialogOpen"
+      title="确认删除头衔"
+      confirm-text="确认删除"
+      confirm-phrase="删除头衔"
+      phrase-hint="请输入：删除头衔"
+      :on-confirm="doDelete"
+    >
+      <template #description>
+        删除头衔 <span class="font-medium text-destructive">{{ deleteTargetName }}</span> 后无法恢复，已授予该头衔的用户将失去头衔显示。
+      </template>
+    </DangerConfirmDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
@@ -293,7 +330,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Label } from '~~/components/ui/label'
-import { Plus, Pencil, Trash2, Info, Loader2, Award } from '@lucide/vue'
+import { Plus, Pencil, Trash2, Info, Loader2, Award, RotateCcw } from '@lucide/vue'
 import TitleIconSvg from '~~/components/TitleIconSvg.vue'
 import {
   fetchAdminUserTitles,
@@ -312,6 +349,8 @@ const presetIcons = TITLE_PRESET_ICONS
 
 const loading = ref(false)
 const submitting = ref(false)
+const loadError = ref(false)
+const loadErrorMsg = ref('')
 const titles = shallowRef<AdminUserTitle[]>([])
 
 const formDialogOpen = ref(false)
@@ -329,7 +368,10 @@ const form = reactive<{
 })
 
 const deleteDialogOpen = ref(false)
-const deleteTargetId = ref<number | null>(null)
+const deleteTarget = ref<AdminUserTitle | null>(null)
+const deleteTargetName = computed(() =>
+  deleteTarget.value ? getLocalizedStr(deleteTarget.value.name) || `#${deleteTarget.value.id}` : ''
+)
 
 const previewTitle = computed<AdminUserTitle>(() => ({
   id: 0,
@@ -341,11 +383,15 @@ const previewTitle = computed<AdminUserTitle>(() => ({
 
 async function fetchData() {
   loading.value = true
+  loadError.value = false
+  loadErrorMsg.value = ''
   try {
     titles.value = await fetchAdminUserTitles()
   } catch (err) {
+    // apiFetch 已自动 toast，这里只保留页面级错误态 + 重试入口
     console.error('fetch titles error', err)
-    toast.error('加载头衔列表失败')
+    loadError.value = true
+    loadErrorMsg.value = err instanceof Error ? err.message : ''
     titles.value = []
   } finally {
     loading.value = false
@@ -377,10 +423,19 @@ async function submitForm() {
     toast.warning('请填写名称')
     return
   }
+  // 与后端 UserTitleCreate/Update 的 color 正则同规；先在前端拦下，
+  // 免得取色器手输的 "reddish" 变成一条 422 校验错误 toast。
+  const color = form.color.trim()
+  if (color && !/^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color)) {
+    toast.warning('颜色需为十六进制色值，例如 #3b82f6')
+    return
+  }
   submitting.value = true
   const payload = {
     name: form.name,
-    color: form.color || null,
+    // color 是 NOT NULL 列：留空时整个 key 都不发（POST 落后端默认色，PUT 保持原色）。
+    // 传 null 会被后端以 422「称号颜色不能为空」拒绝——旧写法在这里会直接卡死保存。
+    ...(color ? { color } : {}),
     icon: form.icon.trim() || null,
     description: form.description
   }
@@ -395,30 +450,26 @@ async function submitForm() {
     formDialogOpen.value = false
     fetchData()
   } catch (err) {
+    // 失败时保持弹窗打开；错误提示由 apiFetch 统一弹出，避免双重 toast
     console.error('submit title form error', err)
-    toast.error(editingId.value ? '修改头衔失败' : '创建头衔失败')
   } finally {
     submitting.value = false
   }
 }
 
-function confirmDelete(id: number) {
-  deleteTargetId.value = id
+function confirmDelete(t: AdminUserTitle) {
+  deleteTarget.value = t
   deleteDialogOpen.value = true
 }
 
 async function doDelete() {
-  if (deleteTargetId.value === null) return
-  try {
-    await deleteAdminUserTitle(deleteTargetId.value)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    deleteTargetId.value = null
-    fetchData()
-  } catch (err) {
-    console.error('delete title error', err)
-    toast.error('删除头衔失败')
-  }
+  const target = deleteTarget.value
+  if (!target?.id) throw new Error('未选择要删除的头衔')
+  // 抛错时 DangerConfirmDialog 保持打开并内联显示错误；toast 由 apiFetch 统一处理
+  await deleteAdminUserTitle(target.id)
+  toast.success('删除成功')
+  deleteTarget.value = null
+  await fetchData()
 }
 
 onMounted(fetchData)

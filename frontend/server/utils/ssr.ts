@@ -101,6 +101,8 @@ interface ProxyTextOptions {
   cacheControl?: string
   /** 回退时的 cache-control */
   fallbackCacheControl?: string
+  /** 上游超时毫秒（缺省 10s）：后端 hang 死时快速失败走 fallback，不占满 Nitro 请求槽 */
+  timeout?: number
 }
 
 /**
@@ -120,7 +122,8 @@ export async function proxyUpstreamText(
     const text = await $fetch(target, {
       headers: { accept },
       redirect: 'follow',
-      responseType: 'text'
+      responseType: 'text',
+      timeout: opts.timeout ?? 10_000
     })
     const body = typeof text === 'string' ? text : await stringifyUpstreamBody(text)
     if (body) {

@@ -1,3 +1,9 @@
+<!--
+  分类详情页：GET /blog/categories/slug/<slug>（元信息）+ GET /blog/posts?category=<slug>（列表）。
+  详情请求的 URL 与 query 都是 setup 期一次性取值（只有 key 是 computed），换 slug 不会自动重取；
+  列表 refresh 一律带 import.meta.client 守卫 —— SSR 阶段 useFetch 已取过数，服务端再 refresh
+  等于重复请求。分类名取不到时兜底显示 slug，是刻意保留的可辨识占位而不是数据缺失。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12">

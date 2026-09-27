@@ -11,33 +11,59 @@ WordPress 风格插件管理接口：
 
 from __future__ import annotations
 
+import logging
 from typing import Literal
 
 from fastapi import APIRouter, Query, Request, status
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.cache import invalidate_cache
 from backend.core.exceptions import AppException
 from backend.schemas.extensions import (
+    PackageMessageResponse,
     PluginBulkIn,
+    PluginBulkResponse,
     PluginConfigIn,
+    PluginDeactivateResponse,
+    PluginDetailResponse,
     PluginInstallFrom,
+    PluginListResponse,
+    PluginMarketResponse,
+    PluginMenuRegistryResponse,
     PluginOut,
+    PluginScanResponse,
+    PluginSettingsResponse,
     PluginStatusToggleIn,
 )
 
 PLUGIN_NOT_FOUND = "PLUGIN_NOT_FOUND"
 PLUGIN_ALREADY_ACTIVE = "PLUGIN_ALREADY_ACTIVE"
-PLUGIN_NOT_ACTIVE = "PLUGIN_NOT_ACTIVE"
-PLUGIN_INVALID_STATUS = "PLUGIN_INVALID_STATUS"
 PLUGIN_SETTINGS_INVALID = "PLUGIN_SETTINGS_INVALID"
 
-router = APIRouter(prefix="/plugins", tags=["插件"])
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/plugins", tags=["插件平台"])
 
 
 def _get_plugin_manager():
     from backend.core.extensions import plugin_manager
 
     return plugin_manager
+
+
+async def _invalidate_rendered_content(*, reason: str) -> None:
+    """插件钩子/设置变化后，抹掉一切嵌有插件渲染结果的缓存。
+
+    插件挂在 the_content / the_excerpt 上的 filter 输出会进详情（``post:{slug}:{lang}``）、
+    列表与 RSS（``posts*``，RSS 刻意挂该前缀）响应缓存，以及 Nitro 页面缓存。
+    启停/改设置不清 = 访客在 TTL（最长 10 分钟）内仍看到旧钩子集的渲染，
+    后台拨了开关却没效果——插件前后端协同的最后一公里就是这里。
+    """
+    from backend.services.frontend_cache_purge import purge_frontend_page_cache
+
+    await invalidate_cache("post:")  # 详情键不在 posts 前缀下，必须单独清
+    await invalidate_cache("posts")  # 列表 + RSS
+    purge_frontend_page_cache(f"plugin:{reason}")
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -48,7 +74,16 @@ def _get_plugin_manager():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="获取插件列表（管理员）",
+    description=(
+        "需 CurrentStaff。按 status（inactive|active|error|installed）与 search（名称/slug 模糊）"
+        "过滤分页（默认 20 条/页，上限 100）。每项附带当前 settings"
+        "（单插件读取失败时置 null，不影响整体列表）。"
+    ),
+    responses={200: {"model": PluginListResponse}},
+)
 async def list_admin_plugins(
     db: DB,
     current_user: CurrentStaff,
@@ -64,7 +99,8 @@ async def list_admin_plugins(
         out = PluginOut.model_validate(p)
         try:
             out.settings = await pm.get_settings(db, p.slug)
-        except Exception:
+        except Exception as exc:
+            logger.warning("list_plugins: 读取 %s settings 失败，已置 null: %s", p.slug, exc)
             out.settings = None
         data.append(out)
     total_pages = (total + per_page - 1) // per_page if per_page else 1
@@ -79,7 +115,15 @@ async def list_admin_plugins(
     }
 
 
-@router.get("/menu-registry")
+@router.get(
+    "/menu-registry",
+    summary="获取插件后台菜单注册表",
+    description=(
+        "需 CurrentStaff。返回已激活插件经 routing_registry 声明的后台菜单项"
+        "（Sidebar「插件」分组数据源），每项附带其 admin_route_prefix。只读、幂等。"
+    ),
+    responses={200: {"model": PluginMenuRegistryResponse}},
+)
 async def list_plugin_menu_registry(
     db: DB,
     current_user: CurrentStaff,
@@ -107,7 +151,15 @@ async def list_plugin_menu_registry(
     }
 
 
-@router.post("/scan")
+@router.post(
+    "/scan",
+    summary="扫描本地插件目录",
+    description=(
+        "需 CurrentStaff。扫描 backend/plugins/*/rosetta-plugin.json 与 DB 对齐："
+        "登记新插件、刷新清单变更。返回 added/refreshed 计数。幂等，可安全重复调用。"
+    ),
+    responses={200: {"model": PluginScanResponse}},
+)
 async def scan_local_plugins(
     db: DB,
     current_user: CurrentStaff,
@@ -122,7 +174,16 @@ async def scan_local_plugins(
     }
 
 
-@router.post("/bulk")
+@router.post(
+    "/bulk",
+    summary="批量插件操作",
+    description=(
+        "需 CurrentStaff。请求体 {action: activate|deactivate|delete|upgrade, slugs:[...]}，"
+        "action 越界在 Pydantic 层即 422（VALIDATION_ERROR）。"
+        "逐插件执行：单个失败不中断整体，失败项以 {slug, error_code, message} 汇总在 data 中返回。"
+    ),
+    responses={200: {"model": PluginBulkResponse}},
+)
 async def bulk_plugin_operation(
     db: DB,
     current_user: CurrentStaff,
@@ -131,6 +192,7 @@ async def bulk_plugin_operation(
     pm = _get_plugin_manager()
     result = await pm.bulk(db, payload.action, payload.slugs)
     await db.commit()
+    await _invalidate_rendered_content(reason=f"bulk:{payload.action}")
     return {"success": True, "data": result}
 
 
@@ -139,7 +201,15 @@ async def bulk_plugin_operation(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/market")
+@router.get(
+    "/market",
+    summary="获取插件市场索引",
+    description=(
+        "需 CurrentStaff。返回远端插件市场索引（本地缓存 8 小时），force=true 跳过缓存重新拉取。"
+        "响应附带 items 列表、total 与 cached_at。"
+    ),
+    responses={200: {"model": PluginMarketResponse}},
+)
 async def list_plugin_market(
     current_user: CurrentStaff,
     force: bool = Query(False, description="true=跳过本地 8h 缓存重新拉远端"),
@@ -159,7 +229,23 @@ async def list_plugin_market(
     }
 
 
-@router.post("/market/{slug}/install")
+@router.post(
+    "/market/{slug}/install",
+    summary="从市场一键安装插件",
+    description=(
+        "需 CurrentStaff。在市场索引（本地缓存 8h）中按 slug 查找条目，"
+        "复用 install_from_remote 通道下载 zip 并安装（含 SHA-256 校验与 pre-release 开关）。"
+        "索引缺 items 时 502（MARKET_INDEX_INVALID）；市场无该 slug 时 404（MARKET_ITEM_NOT_FOUND）；"
+        "条目缺 zip_url 时 502（MARKET_ITEM_MISSING_ZIP_URL）。"
+    ),
+    responses={
+        200: {"model": PluginDetailResponse},
+        404: {"description": "市场中未找到该插件（error_code: MARKET_ITEM_NOT_FOUND）"},
+        502: {
+            "description": "市场索引异常或缺 zip_url（error_code: MARKET_INDEX_INVALID / MARKET_ITEM_MISSING_ZIP_URL）"
+        },
+    },
+)
 async def install_plugin_from_market(
     db: DB,
     current_user: CurrentStaff,
@@ -217,7 +303,18 @@ async def install_plugin_from_market(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/{slug}")
+@router.get(
+    "/{slug}",
+    summary="获取插件详情（管理员）",
+    description=(
+        "需 CurrentStaff。返回插件记录（PluginOut）并附带当前 settings；"
+        "settings 读取失败时置 null 而不报错。未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": PluginDetailResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def get_plugin_detail(
     db: DB,
     current_user: CurrentStaff,
@@ -234,12 +331,25 @@ async def get_plugin_detail(
     out = PluginOut.model_validate(plugin)
     try:
         out.settings = await pm.get_settings(db, slug)
-    except Exception:
+    except Exception as exc:
+        logger.warning("get_plugin_detail: 读取 %s settings 失败，已置 null: %s", slug, exc)
         out.settings = None
     return {"success": True, "data": out}
 
 
-@router.post("")
+@router.post(
+    "",
+    summary="安装插件（local / upload / remote）",
+    description=(
+        "需 CurrentStaff。统一安装入口，由 query 参数 source 决定分支："
+        "local=按 JSON body 的 slug 扫描本地目录并登记；upload=multipart/form-data 上传 zip"
+        "（缺 file 字段 400 PACKAGE_UPLOAD_FILE_REQUIRED）；remote=按 {remote:{url,checksum_sha256?}}"
+        "下载 zip 安装（缺 remote 400 REMOTE_INFO_MISSING）。"
+        "JSON body 校验失败 422（PAYLOAD_INVALID）；source=local 缺 slug 422（PLUGIN_SLUG_REQUIRED）；"
+        "未知 source 400（INVALID_INSTALL_SOURCE）。成功后返回安装完成的插件记录。"
+    ),
+    responses={200: {"model": PluginDetailResponse}},
+)
 async def install_plugin(
     request: Request,
     db: DB,
@@ -327,7 +437,20 @@ async def install_plugin(
     )
 
 
-@router.patch("/{slug}/status")
+@router.patch(
+    "/{slug}/status",
+    summary="切换插件启用状态",
+    description=(
+        "需 CurrentStaff。请求体 {enabled: true|false}。幂等：插件已处于目标状态时"
+        "直接返回现状并附 message，不抛 4xx，保证前端 Switch 二次触发与客户端重试安全。"
+        "状态真实变化时失效文章详情/列表/RSS 与前端页面缓存，钩子渲染结果即刻生效。"
+        "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": PluginDetailResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def toggle_plugin_status(
     db: DB,
     current_user: CurrentStaff,
@@ -359,10 +482,22 @@ async def toggle_plugin_status(
     else:
         result = await pm.deactivate(db, slug)
     await db.commit()
+    await _invalidate_rendered_content(reason=f"{slug}:toggle")
     return {"success": True, "data": PluginOut.model_validate(result)}
 
 
-@router.get("/{slug}/settings")
+@router.get(
+    "/{slug}/settings",
+    summary="获取插件设置",
+    description=(
+        "需 CurrentStaff。返回该插件在 SiteConfig 中持久化的 settings（已应用 schema 默认值）。"
+        "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": PluginSettingsResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def get_plugin_settings(
     db: DB,
     current_user: CurrentStaff,
@@ -380,7 +515,21 @@ async def get_plugin_settings(
     return {"success": True, "data": data}
 
 
-@router.put("/{slug}/settings")
+@router.put(
+    "/{slug}/settings",
+    summary="全量替换插件设置",
+    description=(
+        "需 CurrentStaff。PUT 全量替换语义：先重置为 settings_schema 声明的默认值，"
+        "再叠加 payload.settings 后整体保存。保存后立即刷新插件运行时 settings 快照"
+        "（plugin_loader.set_settings_snapshot），无需重启；"
+        "并失效已渲染文章缓存（设置可影响 filter 输出）。"
+        "未安装 404（PLUGIN_NOT_FOUND）；保存校验失败 400（PLUGIN_SETTINGS_INVALID）。"
+    ),
+    responses={
+        200: {"model": PluginSettingsResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def replace_plugin_settings(
     db: DB,
     current_user: CurrentStaff,
@@ -415,10 +564,26 @@ async def replace_plugin_settings(
             error_code=PLUGIN_SETTINGS_INVALID,
         )
     await db.commit()
+    from backend.core.plugin_loader import set_settings_snapshot
+
+    set_settings_snapshot(slug, saved)
+    await _invalidate_rendered_content(reason=f"{slug}:settings")
     return {"success": True, "data": saved}
 
 
-@router.patch("/{slug}/settings")
+@router.patch(
+    "/{slug}/settings",
+    summary="增量更新插件设置",
+    description=(
+        "需 CurrentStaff。仅覆盖 payload.settings 中出现的键，其余保持现值。"
+        "保存后立即刷新运行时 settings 快照，并失效已渲染文章缓存。"
+        "未安装 404（PLUGIN_NOT_FOUND）；保存校验失败 400（PLUGIN_SETTINGS_INVALID）。"
+    ),
+    responses={
+        200: {"model": PluginSettingsResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def update_plugin_settings(
     db: DB,
     current_user: CurrentStaff,
@@ -442,10 +607,26 @@ async def update_plugin_settings(
             error_code=PLUGIN_SETTINGS_INVALID,
         )
     await db.commit()
+    from backend.core.plugin_loader import set_settings_snapshot
+
+    set_settings_snapshot(slug, saved)
+    await _invalidate_rendered_content(reason=f"{slug}:settings")
     return {"success": True, "data": saved}
 
 
-@router.post("/{slug}/activate")
+@router.post(
+    "/{slug}/activate",
+    summary="激活插件",
+    description=(
+        "需 CurrentStaff。加载插件包并执行 register/activate 钩子（Bus 模式，见 core/plugin_loader + plugin_bus）。"
+        "幂等：已激活时直接返回现状（success=true，不报错）。激活后失效已渲染文章缓存。"
+        "未安装 404（PLUGIN_NOT_FOUND）；导入/初始化失败 500（PLUGIN_IMPORT_ERROR）。"
+    ),
+    responses={
+        200: {"model": PluginDetailResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def activate_plugin(
     db: DB,
     current_user: CurrentStaff,
@@ -467,10 +648,23 @@ async def activate_plugin(
         }
     result = await pm.activate(db, slug)
     await db.commit()
+    await _invalidate_rendered_content(reason=f"{slug}:activate")
     return {"success": True, "data": PluginOut.model_validate(result)}
 
 
-@router.post("/{slug}/deactivate")
+@router.post(
+    "/{slug}/deactivate",
+    summary="停用插件",
+    description=(
+        "需 CurrentStaff。执行插件 deactivate 钩子并置为禁用态。"
+        "幂等：本就未激活时直接返回现状（success=true，不报错）。停用后失效已渲染文章缓存。"
+        "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": PluginDeactivateResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def deactivate_plugin(
     db: DB,
     current_user: CurrentStaff,
@@ -492,10 +686,24 @@ async def deactivate_plugin(
         }
     result = await pm.deactivate(db, slug)
     await db.commit()
+    await _invalidate_rendered_content(reason=f"{slug}:deactivate")
     return {"success": True, "data": result}
 
 
-@router.delete("/{slug}")
+@router.delete(
+    "/{slug}",
+    summary="删除插件",
+    description=(
+        "需 CurrentStaff。删除 DB 记录与 settings KV；仅安装态（非 active）可删，"
+        "激活中返回 409（PLUGIN_ALREADY_ACTIVE，需先停用）。"
+        "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": PackageMessageResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+        409: {"description": "插件处于激活态，禁止删除（error_code: PLUGIN_ALREADY_ACTIVE）"},
+    },
+)
 async def delete_plugin(
     db: DB,
     current_user: CurrentStaff,
@@ -514,7 +722,19 @@ async def delete_plugin(
     return {"success": True, "message": "已删除"}
 
 
-@router.post("/{slug}/upgrade")
+@router.post(
+    "/{slug}/upgrade",
+    summary="升级插件（stub）",
+    description=(
+        "需 CurrentStaff。当前为占位实现：仅刷新 updated_at 并触发 plugin.upgraded 钩子，"
+        "响应 message 标注 stub；真正的版本替换请走 zip 覆盖安装（POST /plugins?source=upload|remote）。"
+        "未安装时 404（error_code: PLUGIN_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": PackageMessageResponse},
+        404: {"description": "插件不存在（error_code: PLUGIN_NOT_FOUND）"},
+    },
+)
 async def upgrade_plugin(
     db: DB,
     current_user: CurrentStaff,

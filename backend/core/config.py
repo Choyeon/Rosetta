@@ -108,6 +108,19 @@ class Settings(BaseSettings):
         description="是否启用 Redis（开发和生产环境均可启用）",
     )
 
+    # 缓存预热 / 定时刷新
+    # 注意：这两个开关与 redis_enabled **无关**。内存后端同样是有效的响应缓存，
+    # 且进程重启即冷启动，预热对单机部署收益更大。
+    cache_warmup_enabled: bool = Field(
+        default=True,
+        description="启动时是否预热热点缓存（站点配置/导航/分类/标签/友链）",
+    )
+    cache_refresh_interval: int = Field(
+        default=3600,
+        ge=60,
+        description="后台定时刷新预热缓存的间隔（秒）",
+    )
+
     # JWT 认证配置
     secret_key: str = Field(
         default="your-secret-key-change-in-production",
@@ -408,6 +421,23 @@ class Settings(BaseSettings):
     sentry_dsn: str | None = Field(
         default=None,
         description="Sentry DSN，用于错误监控",
+    )
+
+    # 只增日志表的保留期（visit_logs / performance_metrics / operation_logs）
+    # 这三张表只写不删：开发库实测 visit_logs 64.5 万行、performance_metrics 6.7 万行，
+    # 而清理只有手动端点（DELETE /admin/logs/retention、DELETE /admin/performance/cleanup），
+    # 没人点就一直涨。下面两项驱动后台循环按保留期自动收敛。
+    log_retention_days: int = Field(
+        default=7,
+        ge=1,
+        le=3650,
+        description="监控/操作日志保留天数，早于该窗口的行由后台循环自动删除",
+    )
+    log_retention_interval_hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description="日志保留扫描间隔（小时）。先睡后删：进程刚启动的那轮不做删除",
     )
 
     @model_validator(mode="after")

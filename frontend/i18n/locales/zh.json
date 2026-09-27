@@ -201,6 +201,7 @@
     "passwordMismatch": "两次输入的密码不一致",
     "registerFailed": "注册失败，请稍后重试",
     "loginFailed": "登录失败，请检查账号信息",
+    "accountLocked": "尝试次数过多，账号已临时锁定，请 {seconds} 秒后重试",
     "fillRequired": "请填写用户名和密码",
     "switchWallpaper": "切换壁纸",
     "error": "错误",

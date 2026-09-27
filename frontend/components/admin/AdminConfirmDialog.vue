@@ -1,3 +1,9 @@
+<!--
+  文件级分工：消费方只有 pages/admin/content/*（categories/pages/series/tags/posts）与 pages/admin/media/*（gallery/library）；
+  tools / system / interaction / users 走的是 admin/tools/DangerConfirmDialog（多一道 confirmPhrase 输入闸门 + 内联错误条）。
+  本组件没有任何错误渲染出口：onConfirm 抛错只 console.error 并保持弹窗打开，因此调用方禁止传 silentToast，
+  失败提示必须由 apiFetch 的统一 toast 承担。open 是 defineModel → 写 v-model:open；关闭只复位 loading。
+-->
 <script setup lang="ts">
 /**
  * 后台统一二次确认弹窗。
@@ -5,9 +11,13 @@
  * 统一约定（所有 admin 页面的删除/重置类操作都应走这里，不要再手写 Dialog）：
  *   - 危险操作左侧一定有 AlertTriangle 图标块，且在 destructive 模式下主按钮为红色
  *   - 执行期间按钮自动进入 loading（旋转图标），并禁用取消按钮，避免重复提交
- *   - confirm 回调抛出错误时不关闭弹窗，由调用方自行 toast 提示
+ *   - 执行回调通过 **`onConfirm` prop** 传入（不是 `@confirm` 事件）：
+ *     `emit()` 的返回值恒为 undefined，父组件的 async handler 根本 await 不到，
+ *     失败时弹窗会照样关闭 —— 那是本组件修掉的历史缺陷。
+ *   - onConfirm 抛出即视为失败：弹窗保持打开供用户重试，错误提示由调用方
+ *     （通常是 apiFetch 的统一 toast）负责，所以调用方不要再 try/catch 吞掉异常
  */
-import { ref } from 'vue'
+import { ref, watch } from 'vue'
 import {
   Dialog,
   DialogContent,
@@ -25,6 +35,8 @@ interface Props {
   confirmText?: string
   cancelText?: string
   destructive?: boolean
+  /** 真正的执行回调：throw 即视为失败，弹窗保持打开 */
+  onConfirm?: () => Promise<unknown> | unknown
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -32,21 +44,22 @@ const props = withDefaults(defineProps<Props>(), {
   description: '此操作不可撤销，确定要继续吗？',
   confirmText: '确认',
   cancelText: '取消',
-  destructive: true
+  destructive: true,
+  onConfirm: undefined
 })
 
 const open = defineModel<boolean>('open', { default: false })
 const loading = ref(false)
 
-const emit = defineEmits<{
-  (e: 'confirm'): Promise<void> | void
-}>()
+watch(open, (v) => {
+  if (!v) loading.value = false
+})
 
 async function handleConfirm() {
   if (loading.value) return
   loading.value = true
   try {
-    await emit('confirm')
+    await props.onConfirm?.()
     open.value = false
   } catch (err) {
     // 失败时不关闭：调用方通常已 toast 报错，用户可重试或取消

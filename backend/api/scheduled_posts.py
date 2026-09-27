@@ -21,6 +21,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.models.blog import Post
 from backend.schemas import BaseResponse
 from backend.utils.compat import UTC
@@ -71,6 +72,9 @@ async def publish_due_posts(db) -> int:
 
     if count:
         await db.flush()
+        # 到点的定时文章此前对匿名访客是 404，列表缓存里也不存在；不立刻失效的话，
+        # posts:* 最长 300s 仍按"未发布"返回，首页/分类会在到点后几分钟内继续查不到它。
+        await invalidate_cache("posts")
 
     return count
 
@@ -78,10 +82,44 @@ async def publish_due_posts(db) -> int:
 # ==================== 管理接口 ====================
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ScheduledPostDoc(BaseModel):
+    """``GET /api/admin/posts/scheduled`` 列表中的单条定时文章投影。"""
+
+    id: int = Field(..., description="文章 ID")
+    title: dict[str, str] = Field(
+        ..., description="多语言标题 dict（JSON 列原样返回，如 {'zh': ..., 'en': ...}）"
+    )
+    slug: str = Field(..., description="文章 slug")
+    cover_image: str | None = Field(None, description="封面图 URL，未设置时为 null")
+    status: str = Field(
+        ..., description="文章状态（draft/published 等，定时发布请求里可携带的目标状态）"
+    )
+    scheduled_at: datetime | None = Field(
+        ...,
+        description="计划发布时间（响应序列化为 ISO 8601 字符串）。"
+        "本端点先触发到期文章发布再查询，理论上恒非空；到期已发布的文章会从列表消失",
+    )
+    published_at: datetime | None = Field(
+        None, description="实际发布时间，尚未发布（等待定时生效）时为 null"
+    )
+    author_id: int | None = Field(None, description="作者用户 ID，历史脏数据可能为 null")
+
+
 @router.get(
     "/admin/posts/scheduled",
     summary="获取定时发布文章列表",
-    description="获取所有处于定时等待状态的文章（scheduled_at 非空）。会先触发到期文章的发布。",
+    description=(
+        "获取所有处于定时等待状态的文章（scheduled_at 非空），按 scheduled_at 升序，"
+        "响应为裸数组（无分页/信封）。需 CurrentStaff。"
+        "查询前会先触发到期文章的发布，因此列表中不会再包含已到点的文章。"
+    ),
+    responses={200: {"model": list[ScheduledPostDoc]}},
 )
 async def list_scheduled_posts(
     db: DB,
@@ -153,6 +191,9 @@ async def schedule_post(
         message = "定时发布已设置"
 
     await db.flush()
+
+    await invalidate_cache("posts")
+    await invalidate_post_detail_cache(post.slug)
 
     return BaseResponse(message=message)
 

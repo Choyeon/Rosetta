@@ -1,3 +1,8 @@
+<!--
+  数据库迁移页：Alembic 状态/一键 upgrade head + 跨库数据迁移任务（SQLite⇄PostgreSQL）发起、轮询与取消。
+  契约：状态接口失败必须显式报错——把"取不到状态"降级成"已是最新版本"是危险误报；轮询要区分 job:null（无任务）与请求失败，后者连续 3 次才停止并露出重试；
+  后端无 downgrade/单脚本应用端点；初始化错误横幅必须放在 v-if="job" 之外，否则首次使用（无任务）时永远不可见。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -14,6 +19,32 @@
         <Skeleton class="h-40 rounded-2xl" />
         <Skeleton class="h-40 rounded-2xl" />
       </div>
+    </AdminCard>
+
+    <AdminCard
+      v-else-if="statusError"
+    >
+      <Alert
+        variant="destructive"
+        class="m-6 rounded-xl"
+      >
+        <AlertTriangle class="size-4" />
+        <AlertTitle>无法读取 Alembic 迁移状态</AlertTitle>
+        <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+          <span>
+            {{ statusError }} —— 为避免误判，页面不会把「取不到状态」显示成「已是最新版本」。
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            class="rounded-lg shrink-0"
+            @click="loadStatus"
+          >
+            <RotateCcw data-icon="inline-start" />
+            重试
+          </Button>
+        </AlertDescription>
+      </Alert>
     </AdminCard>
 
     <template v-else>
@@ -64,7 +95,7 @@
 
       <div class="grid md:grid-cols-2 gap-5">
         <AdminCard>
-          <div class="flex flex-col gap-1 .5 mb-4">
+          <div class="flex flex-col gap-1.5 mb-4">
             <h3 class="flex items-center gap-2 text-base font-semibold">
               <History class="size-5 text-success" />
               已应用迁移（{{ status.applied?.length ?? 0 }}）
@@ -118,13 +149,13 @@
         </AdminCard>
 
         <AdminCard>
-          <div class="flex flex-col gap-1 .5 mb-4">
+          <div class="flex flex-col gap-1.5 mb-4">
             <h3 class="flex items-center gap-2 text-base font-semibold">
               <PackageOpen class="size-5 text-warning" />
               待应用迁移（{{ status.pending?.length ?? 0 }}）
             </h3>
             <p class="text-sm text-muted-foreground">
-              点击右侧按钮可立即执行单个迁移
+              后端只提供一次性 upgrade 到 head，不支持单脚本应用或回滚；请使用下方「升级到最新版本」
             </p>
           </div>
           <div class="p-0">
@@ -134,7 +165,7 @@
                 class="p-8"
               >
                 <div class="max-w-md mx-auto rounded-2xl border border-success/30 bg-success-muted/30 p-5 text-center">
-                  <div class="size-14 rounded-2xl bg-success text-white mx-auto mb-3 flex items-center justify-center">
+                  <div class="size-14 rounded-2xl bg-success text-success-foreground mx-auto mb-3 flex items-center justify-center">
                     <PartyPopper class="size-7" />
                   </div>
                   <h3 class="font-semibold text-success">
@@ -165,18 +196,6 @@
                       {{ m.message || '（无描述）' }}
                     </div>
                   </div>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="rounded-lg shrink-0 mt-0.5"
-                    :disabled="upgrading"
-                    @click="handleUpgrade"
-                  >
-                    <Play
-                      data-icon="inline-start"
-                      class="mr-1"
-                    /> 应用
-                  </Button>
                 </div>
               </div>
             </ScrollArea>
@@ -191,7 +210,7 @@
             class="rounded-xl border border-success/40 bg-success-muted/40 p-5"
           >
             <div class="flex items-start gap-3">
-              <div class="size-10 rounded-xl bg-success text-white flex items-center justify-center shrink-0">
+              <div class="size-10 rounded-xl bg-success text-success-foreground flex items-center justify-center shrink-0">
                 <CheckCircle2 class="size-5" />
               </div>
               <div class="flex-1 min-w-0">
@@ -214,14 +233,14 @@
                 升级到最新版本（upgrade）
               </h3>
               <p class="text-sm text-muted-foreground">
-                一键运行所有待应用迁移，将 schema 升级至 <code class="px-1.5 py-0.5 bg-muted rounded">{{ status.latest_version || 'latest' }}</code>
+                一键运行所有待应用迁移，将 schema 升级至 <code class="px-1.5 py-0.5 bg-muted rounded">{{ status.latest_version || 'latest' }}</code>；后端未提供 downgrade 端点，升级前请确认已备份
               </p>
             </div>
             <Button
               :disabled="upgrading || status.is_latest"
               size="lg"
               class="sm:w-auto w-full rounded-2xl !px-8 shadow-md"
-              @click="handleUpgrade"
+              @click="upgradeConfirmOpen = true"
             >
               <Loader2
                 v-if="upgrading"
@@ -257,7 +276,7 @@
                 variant="outline"
                 size="sm"
                 class="rounded-xl"
-                @click="handleJobCancel"
+                @click="jobCancelOpen = true"
               >
                 <Ban
                   data-icon="inline-start"
@@ -268,7 +287,7 @@
                 size="sm"
                 class="rounded-xl"
                 :disabled="jobSubmitting || jobRunning || !jobForm.source.trim() || !jobForm.target.trim()"
-                @click="handleJobStart"
+                @click="jobConfirmOpen = true"
               >
                 <Loader2
                   v-if="jobSubmitting"
@@ -286,8 +305,14 @@
 
           <div class="grid md:grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">源库连接串（source）</Label>
+              <Label
+                for="migration-source"
+                class="text-sm font-medium"
+              >
+                源库连接串（source）
+              </Label>
               <Input
+                id="migration-source"
                 v-model="jobForm.source"
                 placeholder="sqlite+aiosqlite:///./rosetta.db"
                 class="rounded-xl font-mono text-xs"
@@ -308,8 +333,14 @@
               </div>
             </div>
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">目标库连接串（target）</Label>
+              <Label
+                for="migration-target"
+                class="text-sm font-medium"
+              >
+                目标库连接串（target）
+              </Label>
               <Input
+                id="migration-target"
                 v-model="jobForm.target"
                 placeholder="postgresql+asyncpg://user:pass@localhost:5432/rosetta"
                 class="rounded-xl font-mono text-xs"
@@ -348,6 +379,25 @@
             </label>
           </div>
 
+          <!-- 初始化错误（预设/最近任务读取失败）：不能塞进 jobPollError，
+               那块横幅在 v-if="job" 内部，首次使用（无任务）时永远不会显示 -->
+          <div
+            v-if="jobInitError"
+            class="flex items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3"
+            role="alert"
+          >
+            <span class="text-xs text-destructive">{{ jobInitError }}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              class="rounded-lg shrink-0"
+              @click="reloadJobSection"
+            >
+              <RotateCcw data-icon="inline-start" />
+              重试
+            </Button>
+          </div>
+
           <!-- 任务进度 -->
           <div
             v-if="job"
@@ -379,6 +429,23 @@
                 :value="jobPercent"
                 class="h-2"
               />
+            </div>
+
+            <div
+              v-if="jobPollError"
+              class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-destructive/40 bg-destructive/10 p-3"
+              role="alert"
+            >
+              <span class="text-xs text-destructive">{{ jobPollError }}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg shrink-0"
+                @click="resumeJobPolling"
+              >
+                <RotateCcw data-icon="inline-start" />
+                继续轮询
+              </Button>
             </div>
 
             <div
@@ -421,31 +488,63 @@
         </div>
       </AdminCard>
     </template>
+
+    <DangerConfirmDialog
+      v-model:open="upgradeConfirmOpen"
+      title="确认执行 Alembic upgrade"
+      :description="`将执行 alembic upgrade head，把数据库 schema 从 ${status.current_version || '未知版本'} 升级到 ${status.latest_version || 'latest'}（共 ${status.pending?.length ?? 0} 个待应用迁移）。后端未提供回滚端点，结构变更不可撤销，请先完成全站备份。`"
+      confirm-text="执行升级"
+      confirm-phrase="upgrade head"
+      :on-confirm="runUpgrade"
+    />
+
+    <DangerConfirmDialog
+      v-model:open="jobConfirmOpen"
+      :title="jobForm.dry_run ? '确认发起试运行迁移' : '危险：确认发起跨库迁移'"
+      :description="jobForm.dry_run
+        ? '试运行只统计源表行数，不写入目标库。'
+        : `该任务会向目标库 ${jobForm.target} 整库复制数据并在其中执行 alembic upgrade head，目标库中的同名数据可能被覆盖且不可撤销。`"
+      confirm-text="发起任务"
+      :confirm-phrase="jobForm.dry_run ? '' : '发起迁移'"
+      :on-confirm="runJobStart"
+    />
+
+    <DangerConfirmDialog
+      v-model:open="jobCancelOpen"
+      title="确认取消迁移任务"
+      description="取消后当前任务会中断，已写入目标库的数据不会自动回滚，需要重新发起或手工清理。"
+      confirm-text="取消任务"
+      cancel-text="继续运行"
+      :on-confirm="runJobCancel"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue'
 import {
+  formatAdminDateTime,
   fetchAdminMigrationStatus,
   upgradeAdminMigrations,
-  formatAdminDateTime,
   fetchAdminMigrationPresets,
-  startAdminMigrationJob,
   fetchAdminMigrationJobStatus,
+  startAdminMigrationJob,
   cancelAdminMigrationJob,
   type AdminMigrationStatus,
   type AdminMigrationJob,
   type AdminMigrationJobProgress,
   type AdminMigrationJobStatus
 } from '~~/composables/useAdminManage'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
   Database, CheckCircle2, AlertTriangle, History, Check, PackageOpen,
-  Clock, PartyPopper, Play, ArrowUpCircle, Loader2, Info, MoveRight, Ban
+  Clock, PartyPopper, Play, ArrowUpCircle, Loader2, Info, MoveRight, Ban,
+  RotateCcw
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { ScrollArea } from '~~/components/ui/scroll-area'
@@ -459,15 +558,24 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
+function errText(e: unknown, fallback: string): string {
+  const err = e as { data?: unknown, message?: string }
+  return extractApiErrorMessage(err?.data, err?.message || fallback)
+}
+
 const loading = ref(true)
+const statusError = ref('')
 const upgrading = ref(false)
+const upgradeConfirmOpen = ref(false)
+const jobConfirmOpen = ref(false)
+const jobCancelOpen = ref(false)
 const countdown = ref(10)
 const upgradeResult = ref<{ message?: string } | null>(null)
 
 const emptyStatus = (): AdminMigrationStatus => ({
   current_version: '',
   latest_version: '',
-  is_latest: true,
+  is_latest: false,
   pending: [],
   applied: []
 })
@@ -483,32 +591,37 @@ function stopCountdown() {
   }
 }
 
+/**
+ * 状态读取走 useAdminManage 的 typed wrapper：
+ * 该 wrapper 已改为「接口失败即 reject」，页面据此渲染显式错误态 + 重试，
+ * 不会再出现后端宕机时误报"已是最新版本"的危险降级。
+ */
 async function loadStatus() {
   loading.value = true
+  statusError.value = ''
   upgradeResult.value = null
   stopCountdown()
   countdown.value = 10
   try {
-    const r = await fetchAdminMigrationStatus()
-    status.value = r || emptyStatus()
-  } catch {
+    status.value = await fetchAdminMigrationStatus({ silentToast: true })
+  } catch (e) {
     status.value = emptyStatus()
+    statusError.value = errText(e, '迁移状态接口不可用')
   } finally {
     loading.value = false
   }
 }
 
-async function handleUpgrade() {
+/** DangerConfirmDialog 的 onConfirm：抛出即由弹窗内联展示并保留重试入口 */
+async function runUpgrade() {
   upgrading.value = true
   upgradeResult.value = null
   try {
-    const r = await upgradeAdminMigrations()
-    if (r?.success === false) {
-      throw new Error(r.message || '数据库 Schema 升级失败')
-    }
+    const r = await upgradeAdminMigrations({ silentToast: true })
     upgradeResult.value = { message: r?.message }
     toast.success(r?.message || '数据库 Schema 已升级到最新版本')
     countdown.value = 10
+    stopCountdown()
     countdownTimer = window.setInterval(() => {
       countdown.value--
       if (countdown.value <= 0) {
@@ -516,8 +629,8 @@ async function handleUpgrade() {
         loadStatus()
       }
     }, 1000)
-  } catch {
-    // 错误已由 apiFetch 统一 toast，此处不再双报（"静默失败"是 bug 的反面是双报）
+  } catch (e) {
+    throw new Error(errText(e, '数据库 Schema 升级失败'), { cause: e })
   } finally {
     upgrading.value = false
   }
@@ -529,6 +642,9 @@ const jobSubmitting = ref(false)
 const job = ref<AdminMigrationJob | null>(null)
 const presets = ref<Record<string, string>>({})
 const jobForm = reactive({ source: '', target: '', dry_run: true, skip_schema: false })
+const jobPollError = ref('')
+const jobInitError = ref('')
+let jobPollFailures = 0
 
 let jobPollTimer: number | null = null
 
@@ -587,68 +703,105 @@ function stopJobPolling() {
   }
 }
 
+/**
+ * 轮询必须能区分「后端返回 job:null」与「请求失败」：
+ * 之前用 silent 版，接口宕机时被当成任务结束，进度直接冻结且无任何提示。
+ * 连续失败 3 次停止轮询并显式报错，提供手动重试。
+ */
 function startJobPolling() {
   stopJobPolling()
   jobPollTimer = window.setInterval(async () => {
-    const latest = await fetchAdminMigrationJobStatus(true)
-    if (latest) job.value = latest
-    if (!latest || (latest.status !== 'running' && latest.status !== 'pending')) {
-      stopJobPolling()
-      if (latest?.status === 'done') toast.success('跨库迁移任务已完成')
-      else if (latest?.status === 'error') toast.error('跨库迁移任务失败，请查看事件日志')
+    try {
+      const latest = await fetchAdminMigrationJobStatus({ silentToast: true })
+      jobPollFailures = 0
+      jobPollError.value = ''
+      if (latest) job.value = latest
+      if (!latest || (latest.status !== 'running' && latest.status !== 'pending')) {
+        stopJobPolling()
+        if (latest?.status === 'done') toast.success('跨库迁移任务已完成')
+        else if (latest?.status === 'error') toast.error('跨库迁移任务失败，请查看事件日志')
+      }
+    } catch (e) {
+      jobPollFailures++
+      jobPollError.value = `进度轮询失败（第 ${jobPollFailures} 次）：${errText(e, '任务状态接口不可用')}`
+      if (jobPollFailures >= 3) {
+        stopJobPolling()
+        toast.error(jobPollError.value)
+      }
     }
   }, 2000)
 }
 
+function resumeJobPolling() {
+  jobPollFailures = 0
+  jobPollError.value = ''
+  startJobPolling()
+}
+
 async function loadPresets() {
   try {
-    presets.value = await fetchAdminMigrationPresets()
-  } catch {
+    presets.value = await fetchAdminMigrationPresets({ silentToast: true })
+  } catch (e) {
+    // 连接串预设是辅助功能：不弹 toast，但要留下可重试的错误提示
     presets.value = {}
+    jobInitError.value = `迁移连接预设读取失败：${errText(e, '接口不可用')}`
   }
 }
 
 async function loadLatestJob() {
   try {
-    const latest = await fetchAdminMigrationJobStatus(true)
+    // 「没有历史任务」后端返回 job:null（不报错），走到 catch 就是网络/权限故障，
+    // 必须显式露出，不能静默当成「无任务」。
+    const latest = await fetchAdminMigrationJobStatus({ silentToast: true })
+    jobInitError.value = ''
     if (latest) {
       job.value = latest
       if (latest.status === 'running' || latest.status === 'pending') startJobPolling()
     }
-  } catch {
-    // 无历史任务时静默
+  } catch (e) {
+    jobInitError.value = `最近任务状态读取失败：${errText(e, '接口不可用')}`
   }
 }
 
-async function handleJobStart() {
-  if (!jobForm.source.trim() || !jobForm.target.trim()) {
-    toast.warning('请填写源库与目标库连接串')
-    return
+/** 错误横幅上的「重试」：重跑本区块的两个读取请求 */
+function reloadJobSection() {
+  loadPresets()
+  loadLatestJob()
+}
+
+/** DangerConfirmDialog 的 onConfirm（非试运行需输入确认短语） */
+async function runJobStart() {
+  const source = jobForm.source.trim()
+  const target = jobForm.target.trim()
+  if (!source || !target) {
+    throw new Error('请填写源库与目标库连接串')
   }
   jobSubmitting.value = true
   try {
-    job.value = await startAdminMigrationJob({
-      source: jobForm.source.trim(),
-      target: jobForm.target.trim(),
-      dry_run: jobForm.dry_run,
-      skip_schema: jobForm.skip_schema
-    })
+    job.value = await startAdminMigrationJob(
+      { source, target, dry_run: jobForm.dry_run, skip_schema: jobForm.skip_schema },
+      { silentToast: true }
+    )
+    jobPollFailures = 0
+    jobPollError.value = ''
     toast.success('迁移任务已发起，正在后台执行')
     startJobPolling()
-  } catch {
-    // 错误已由 apiFetch 统一 toast
+  } catch (e) {
+    throw new Error(errText(e, '迁移任务发起失败'), { cause: e })
   } finally {
     jobSubmitting.value = false
   }
 }
 
-async function handleJobCancel() {
+async function runJobCancel() {
   try {
-    job.value = await cancelAdminMigrationJob()
+    const latest = await cancelAdminMigrationJob({ silentToast: true })
+    if (latest) job.value = latest
     stopJobPolling()
+    jobPollError.value = ''
     toast.success('迁移任务已取消')
-  } catch {
-    // 错误已由 apiFetch 统一 toast
+  } catch (e) {
+    throw new Error(errText(e, '取消迁移任务失败'), { cause: e })
   }
 }
 

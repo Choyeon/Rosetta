@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, select
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
@@ -59,7 +59,10 @@ class Favorite(Base):
         Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
     )
     folder_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("favorite_folders.id", ondelete="SET NULL"), nullable=True
+        Integer,
+        ForeignKey("favorite_folders.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)  # 收藏备注
     created_at: Mapped[datetime] = mapped_column(
@@ -90,13 +93,134 @@ class FolderUpdate(BaseModel):
     is_public: bool | None = None
 
 
+# ==================== 响应体文档模型 ====================
+# 仅用于 OpenAPI responses 声明（$ref 文档化），刻意不挂 response_model= 实体模型，
+# 避免 Pydantic 序列化过滤抹掉运行时字段。
+
+
+class FavoriteFolderItemOut(BaseModel):
+    """收藏夹条目（含收藏数）"""
+
+    id: int = Field(..., description="收藏夹 ID")
+    name: str = Field(..., description="收藏夹名称")
+    description: str | None = Field(None, description="收藏夹描述，未填写时为 null")
+    is_public: bool = Field(..., description="是否公开（公开收藏夹可被他人浏览）")
+    count: int = Field(..., description="该收藏夹内的收藏文章数量")
+    created_at: str | None = Field(None, description="创建时间（ISO 8601 字符串）")
+
+
+class FavoriteFolderListOut(BaseModel):
+    """我的收藏夹列表"""
+
+    items: list[FavoriteFolderItemOut] = Field(
+        ..., description="收藏夹列表，按 order 升序、创建时间倒序"
+    )
+    total: int = Field(..., description="收藏夹总数")
+
+
+class FavoriteFolderBriefOut(BaseModel):
+    """创建收藏夹后回显的收藏夹摘要"""
+
+    id: int = Field(..., description="新建收藏夹 ID")
+    name: str = Field(..., description="收藏夹名称")
+    description: str | None = Field(None, description="收藏夹描述，未填写时为 null")
+    is_public: bool = Field(..., description="是否公开")
+
+
+class FavoriteFolderCreateOut(BaseModel):
+    """创建收藏夹响应"""
+
+    success: bool = Field(True, description="操作是否成功")
+    message: str = Field(..., description="人类可读操作结果提示")
+    folder: FavoriteFolderBriefOut = Field(..., description="新建的收藏夹摘要")
+
+
+class FavoriteActionResultOut(BaseModel):
+    """收藏 CRUD 操作的统一结果"""
+
+    success: bool = Field(True, description="操作是否成功")
+    message: str = Field(..., description="人类可读操作结果提示（如「收藏成功」）")
+
+
+class FavoritePostCategoryOut(BaseModel):
+    """收藏列表中文章所属分类的摘要"""
+
+    id: int = Field(..., description="分类 ID")
+    name: dict[str, str] = Field(..., description="多语言分类名称 {zh,en,ja,zh_Hant}")
+    color: str = Field(..., description="分类展示颜色（主题色令牌或十六进制色值）")
+
+
+class FavoritePostOut(BaseModel):
+    """收藏记录关联的文章摘要"""
+
+    id: int = Field(..., description="文章 ID")
+    title: dict[str, str] = Field(..., description="多语言文章标题 {zh,en,ja,zh_Hant}")
+    slug: str = Field(..., description="文章 slug，用于 URL")
+    cover_image: str | None = Field(None, description="封面图 URL，无封面时为 null")
+    views: int = Field(..., description="浏览量")
+    category: FavoritePostCategoryOut | None = Field(None, description="所属分类，未归类时为 null")
+    published_at: str | None = Field(
+        None, description="发布时间（ISO 8601 字符串），未发布（草稿）时为 null"
+    )
+
+
+class FavoriteItemOut(BaseModel):
+    """单条收藏记录"""
+
+    id: int = Field(..., description="收藏记录 ID")
+    note: str | None = Field(None, description="收藏备注，未填写时为 null")
+    folder_id: int | None = Field(None, description="所属收藏夹 ID，默认收藏（未归类）时为 null")
+    created_at: str | None = Field(None, description="收藏时间（ISO 8601 字符串）")
+    post: FavoritePostOut | None = Field(
+        None, description="关联文章摘要；文章记录已被级联清理时为 null"
+    )
+
+
+class FavoriteListOut(BaseModel):
+    """收藏分页列表"""
+
+    items: list[FavoriteItemOut] = Field(..., description="本页收藏列表，按收藏时间倒序")
+    total: int = Field(..., description="当前用户收藏总数（不受 folder_id 筛选影响）")
+    page: int = Field(..., description="当前页码，从 1 开始")
+    page_size: int = Field(..., description="每页条数")
+    total_pages: int = Field(..., description="总页数；total 为 0 时是 0")
+
+
+class FavoriteRecordOut(BaseModel):
+    """收藏记录原始行（移动收藏夹 / 更新备注成功后直接回显）"""
+
+    id: int = Field(..., description="收藏记录 ID")
+    user_id: int = Field(..., description="所属用户 ID")
+    post_id: int = Field(..., description="被收藏的文章 ID")
+    folder_id: int | None = Field(None, description="移动后的收藏夹 ID，移回默认收藏时为 null")
+    note: str | None = Field(None, description="收藏备注，清空后为 null")
+    created_at: str | None = Field(None, description="收藏时间（ISO 8601 字符串）")
+
+
+class FavoriteCheckItemOut(BaseModel):
+    """单篇文章的收藏状态"""
+
+    is_favorited: bool = Field(..., description="当前用户是否已收藏该文章")
+    favorite_id: int | None = Field(None, description="收藏记录 ID，未收藏时为 null")
+
+
+class FavoriteCheckResultOut(BaseModel):
+    """批量检查收藏状态响应"""
+
+    favorites: dict[str, FavoriteCheckItemOut] = Field(
+        ..., description="以文章 ID 字符串为键的收藏状态映射，覆盖请求中的全部 post_ids"
+    )
+
+
 # ==================== 收藏夹 API ====================
 
 
 @router.get(
     "/folders",
     summary="我的收藏夹列表",
-    description="获取当前用户的收藏夹列表。",
+    description="获取当前用户的收藏夹列表（需登录），每项含该收藏夹内的收藏文章数量。",
+    response_model=None,
+    responses={200: {"model": FavoriteFolderListOut, "description": "收藏夹列表"}},
 )
 async def list_favorite_folders(
     db: DB,
@@ -110,22 +234,27 @@ async def list_favorite_folders(
     )
     folders = result.scalars().all()
 
-    # 获取每个收藏夹的文章数
+    # 每个收藏夹的文章数：一次 GROUP BY 取回。
+    # 原先循环内逐条 COUNT，收藏夹越多首屏越慢（查询数线性增长）。
+    folder_ids = [folder.id for folder in folders]
+    count_map: dict[int, int] = {}
+    if folder_ids:
+        count_rows = await db.execute(
+            select(Favorite.folder_id, func.count(Favorite.id))
+            .where(Favorite.folder_id.in_(folder_ids))
+            .group_by(Favorite.folder_id)
+        )
+        count_map = {int(folder_id): int(count) for folder_id, count in count_rows.all()}
+
     items = []
     for folder in folders:
-        count = (
-            await db.scalar(
-                select(func.count()).select_from(Favorite).where(Favorite.folder_id == folder.id)
-            )
-            or 0
-        )
         items.append(
             {
                 "id": folder.id,
                 "name": folder.name,
                 "description": folder.description,
                 "is_public": folder.is_public,
-                "count": count,
+                "count": count_map.get(folder.id, 0),
                 "created_at": folder.created_at.isoformat() if folder.created_at else None,
             }
         )
@@ -136,7 +265,9 @@ async def list_favorite_folders(
 @router.post(
     "/folders",
     summary="创建收藏夹",
-    description="创建新的收藏夹。",
+    description="创建新的收藏夹（需登录）。成功后回显新收藏夹的 ID 与基本信息。",
+    response_model=None,
+    responses={200: {"model": FavoriteFolderCreateOut, "description": "创建结果与收藏夹摘要"}},
 )
 async def create_favorite_folder(
     db: DB,
@@ -169,7 +300,9 @@ async def create_favorite_folder(
 @router.put(
     "/folders/{folder_id}",
     summary="更新收藏夹",
-    description="更新收藏夹信息。",
+    description="更新收藏夹信息（需登录）。仅更新传入的字段；收藏夹不存在或不属于当前用户时 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
 async def update_favorite_folder(
     folder_id: int,
@@ -200,7 +333,9 @@ async def update_favorite_folder(
 @router.delete(
     "/folders/{folder_id}",
     summary="删除收藏夹",
-    description="删除收藏夹（收藏的文章会移到默认收藏）。",
+    description="删除收藏夹（需登录），收藏夹内的文章会移到默认收藏（folder_id 置空）而不被删除。",
+    response_model=None,
+    responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
 async def delete_favorite_folder(
     folder_id: int,
@@ -230,7 +365,10 @@ async def delete_favorite_folder(
 @router.get(
     "",
     summary="我的收藏列表",
-    description="获取当前用户的收藏列表。",
+    description="获取当前用户的收藏列表（需登录）。可按收藏夹筛选并分页；"
+    "注意 total 是当前用户全部收藏数，不受 folder_id 筛选影响。",
+    response_model=None,
+    responses={200: {"model": FavoriteListOut, "description": "收藏分页列表"}},
 )
 async def list_favorites(
     db: DB,
@@ -253,7 +391,7 @@ async def list_favorites(
 
     query = query.order_by(Favorite.created_at.desc())
 
-    # 并发查询
+    # 顺序查询（同一会话不能并发）
     count_query = select(func.count()).select_from(
         select(Favorite).where(Favorite.user_id == current_user.id).subquery()
     )
@@ -307,7 +445,10 @@ async def list_favorites(
 @router.post(
     "",
     summary="收藏文章",
-    description="收藏一篇文章。",
+    description="收藏一篇文章（需登录）。文章不存在时 404；重复收藏时 400；"
+    "指定 folder_id 时收藏夹必须属于当前用户，否则 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
 async def add_favorite(
     db: DB,
@@ -364,7 +505,10 @@ async def add_favorite(
 @router.put(
     "/{favorite_id}",
     summary="更新收藏",
-    description="更新收藏信息（移动收藏夹、添加备注）。",
+    description="更新收藏信息（移动收藏夹、添加备注）。需登录；"
+    "收藏不存在或不属于当前用户时 404，目标收藏夹非法时 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
 async def update_favorite(
     favorite_id: int,
@@ -402,7 +546,9 @@ async def update_favorite(
 @router.delete(
     "/{favorite_id}",
     summary="取消收藏",
-    description="取消收藏文章。",
+    description="按收藏记录 ID 取消收藏（需登录）。收藏不存在或不属于当前用户时 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
 async def remove_favorite(
     favorite_id: int,
@@ -426,7 +572,9 @@ async def remove_favorite(
 @router.delete(
     "/post/{post_id}",
     summary="按文章ID取消收藏",
-    description="根据文章ID取消收藏。",
+    description="根据文章 ID 取消收藏（需登录）。该文章未被当前用户收藏时 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
 async def remove_favorite_by_post(
     post_id: int,
@@ -456,7 +604,10 @@ async def remove_favorite_by_post(
 @router.patch(
     "/post/{post_id}/folder",
     summary="按文章ID移动收藏夹",
-    description="根据文章ID移动收藏到指定收藏夹。",
+    description="根据文章 ID 移动收藏到指定收藏夹（需登录，folder_id 传 null 表示移回默认收藏）。"
+    "成功后直接回显更新后的收藏记录行；收藏或目标收藏夹不存在时 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteRecordOut, "description": "更新后的收藏记录"}},
 )
 async def move_favorite_by_post(
     post_id: int,
@@ -496,7 +647,10 @@ async def move_favorite_by_post(
 @router.patch(
     "/post/{post_id}/note",
     summary="按文章ID更新备注",
-    description="根据文章ID更新收藏备注。",
+    description="根据文章 ID 更新收藏备注（需登录，note 传 null 表示清空备注）。"
+    "成功后直接回显更新后的收藏记录行；收藏不存在时 404。",
+    response_model=None,
+    responses={200: {"model": FavoriteRecordOut, "description": "更新后的收藏记录"}},
 )
 async def update_favorite_note_by_post(
     post_id: int,
@@ -528,7 +682,10 @@ async def update_favorite_note_by_post(
 @router.post(
     "/check",
     summary="检查收藏状态",
-    description="检查多篇文章是否已收藏。",
+    description="批量检查多篇文章是否已被当前用户收藏（需登录）。"
+    "响应以文章 ID 字符串为键，未收藏的文章 favorite_id 为 null。",
+    response_model=None,
+    responses={200: {"model": FavoriteCheckResultOut, "description": "按文章 ID 索引的收藏状态"}},
 )
 async def check_favorites(
     db: DB,

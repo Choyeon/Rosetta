@@ -13,6 +13,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -74,7 +75,7 @@ class Navigation(Base):
     url: Mapped[str] = mapped_column(String(200), nullable=False)  # 链接地址
     icon: Mapped[str | None] = mapped_column(String(100), nullable=True)  # 图标名称
     parent_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("navigations.id", ondelete="CASCADE"), nullable=True
+        Integer, ForeignKey("navigations.id", ondelete="CASCADE"), nullable=True, index=True
     )  # 父导航ID
     parent: Mapped["Navigation | None"] = relationship(
         "Navigation", remote_side=[id], backref="children"
@@ -185,7 +186,7 @@ class Media(Base, TenantMixin):
 
     # 上传者
     uploaded_by_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
     )
     uploaded_by: Mapped["User | None"] = relationship("User")
 
@@ -222,7 +223,7 @@ class Notification(Base):
 
     # 触发者
     actor_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
     )
     actor: Mapped["User"] = relationship(
         "User", back_populates="triggered_notifications", foreign_keys=[actor_id]
@@ -246,6 +247,16 @@ class Notification(Base):
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False, index=True
+    )
+
+    __table_args__ = (
+        # 轮询热点：`GET /notifications/unread-count` 与列表页的 unread_count 都是
+        # `WHERE recipient_id = ? AND is_read = false` 的 COUNT —— 只有 recipient_id
+        # 单列索引时还要把该用户全部通知读出来过滤。
+        Index("ix_notifications_recipient_read", "recipient_id", "is_read"),
+        # 列表页 `WHERE recipient_id = ? ORDER BY created_at DESC LIMIT ?`：
+        # 复合索引让 Postgres/SQLite 直接反向扫描取前 N 行，省掉全量排序。
+        Index("ix_notifications_recipient_created", "recipient_id", "created_at"),
     )
 
     def __repr__(self) -> str:

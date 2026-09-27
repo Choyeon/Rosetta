@@ -44,10 +44,11 @@ export default defineNuxtConfig({
   ],
 
   // ============================================================
-  //  SSR 策略（全站内容区启用 SSR，后台/登录/OOBE 保持 SPA）
+  //  SSR 策略（全站内容区启用 SSR，后台/登录/注册/搜索保持 SPA）
   //   - 全局基线 ssr: true，公开内容页直接受益于 SEO 与首屏直出。
-  //   - /admin/** /login /register /oobe /docs/** /search/** 路由显式 ssr:false（需要
+  //   - /admin/** /login /register /docs/** /search/** 路由显式 ssr:false（需要
   //     localStorage 登录态与重度交互，SSR 既无收益也会触发 hydration mismatch）。
+  //   - /oobe 例外：只禁缓存不撤销 SSR，详见 routeRules 内注释。
   //   - SSR 请求后端：runtimeConfig.apiBase（服务端私有）+ SSR_API_BASE_URL /
   //     BACKEND_HOST:PORT 注入；客户端走 public.apiBase (/api 或自定义域名)。
   // ============================================================
@@ -183,7 +184,8 @@ export default defineNuxtConfig({
   // ============================================================
   //  路由渲染 + 缓存：
   //   · 公开页面默认 SSR (全局 ssr:true)；swr + s-maxage + stale-while-revalidate 供 Nitro/CDN 共享缓存。
-  //   · 后台/login/register/oobe/docs/search 个性化/重度交互页面 → ssr:false + 禁止缓存。
+  //   · 后台/login/register/docs/search 个性化/重度交互页面 → ssr:false + 禁止缓存。
+  //   · /oobe → 保留 SSR，只禁止缓存（见下方 routeRules 说明）。
   // ============================================================
   routeRules: {
     // === Vite 内部虚拟文件：禁止 swr/ssr 缓存与 spa-fallback 拦截
@@ -191,13 +193,14 @@ export default defineNuxtConfig({
     '/@id/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
     '/@fs/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
 
-    // === 后台、登录、OOBE、docs（文档内嵌工具）、search（实时查询）—— 纯 SPA + 禁止代理/CDN 缓存
+    // === 后台、登录、注册、docs（文档内嵌工具）、search（实时查询）—— 纯 SPA + 禁止代理/CDN 缓存
     //     · '/admin' 由 pages/admin/index.vue（Dashboard）承载，无需 redirect 到 /admin/dashboard（不存在会触发 Vue Router R0004 警告与空 dashboard）。
     //     · '/admin/**' 更宽匹配同时覆盖所有子页（包括 /admin/index），已统一 ssr:false。
     // === SPA 精准反选（ssr:false —— 与 Nitro HTTP 级 serverRendered=0 补丁一致）
     // 说明：/oobe 不再 ssr:false，原因是安装完成后 oobe.global 中间件要做 SSR
     // 级 302 重定向，ssr:false 会导致 Nitro 直接吐 SPA 空壳不走 middleware SSR 分
-    // 支 → 客户端"navigateTo('/')"与 escape-hatch 的 clearError 并发，Router
+    // 支 → 客户端"navigateTo('/')"与（已拆除的）escape-hatch 插件的
+    // clearError 并发，Router
     // pending nav 锁死 in-flight，Playwright evaluate 永远 pending 表现为 oobe
     // 访问白屏挂死。oobe 本身是单页无状态，SSR 渲染无副作用。
     '/oobe': { swr: false, headers: { 'Cache-Control': 'no-store, private' } },

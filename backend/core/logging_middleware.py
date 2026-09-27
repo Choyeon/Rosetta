@@ -14,13 +14,13 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import datetime
 from typing import Any
 
 from fastapi import Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.log import OperationLog
+from backend.utils.compat import utc_now_naive
 
 
 def _mask_ip(ip: str | None) -> str | None:
@@ -176,7 +176,7 @@ async def log_operation(
             request_method=method,
             status=status,
             error_code=str(error_code) if error_code is not None else None,
-            created_at=datetime.utcnow(),
+            created_at=utc_now_naive(),
         )
         db.add(log)
         if commit:

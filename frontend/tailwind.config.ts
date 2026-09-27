@@ -1,3 +1,9 @@
+/**
+ * tailwind.config.ts —— 未被构建加载的死配置（判据与真源见下方 ⚠️ 块与 assets/css/main.css 的 @theme）。
+ * 唯一还在指名它的是 components.json 的 tailwind.config 字段（shadcn-vue CLI 脚手架据此识别工程），
+ * 所以文件不能删；但往这里的 colors/keyframes 加东西不会改变任何页面观感。
+ */
+
 import type { Config } from 'tailwindcss'
 import tailwindcssAnimate from 'tailwindcss-animate'
 

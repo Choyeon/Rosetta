@@ -118,8 +118,10 @@ class DependencyService:
                 sep = ";" if self.is_windows else ":"
                 if scripts_dir not in os.environ.get("PATH", ""):
                     os.environ["PATH"] = scripts_dir + sep + os.environ.get("PATH", "")
-        except Exception:
-            pass
+        except (ImportError, ValueError, OSError) as exc:
+            # 纯 PATH 便捷优化：拿不到 scripts 目录时用户仍可能通过下面的
+            # winreg / common_paths 回退找到工具，所以可丢，但异常面必须收窄并留痕。
+            self._log(f"[probe] sysconfig scripts 目录不可用：{exc!r}")
 
         if self.is_windows:
             try:
@@ -134,8 +136,10 @@ class DependencyService:
                     user_path, _ = winreg.QueryValueEx(key, "PATH")
                 current = os.environ.get("PATH", "")
                 os.environ["PATH"] = f"{current};{user_path};{system_path}"
-            except Exception:
-                pass
+            except (ImportError, OSError) as exc:
+                # winreg 仅在 Windows 存在；注册表键读不到（受限环境/非管理员）时
+                # 下面的 common_paths 硬编码回退仍然有效，可丢但要收窄 + 留痕。
+                self._log(f"[probe] 注册表 PATH 读取失败，回退到固定候选目录：{exc!r}")
 
             common_paths = [
                 r"C:\Program Files\nodejs",
@@ -166,8 +170,9 @@ class DependencyService:
                     exe_path = Path(scripts_dir) / f"{name}.exe"
                     if exe_path.exists():
                         return str(exe_path)
-            except Exception:
-                pass
+            except (ImportError, ValueError, OSError) as exc:
+                # 同 _refresh_path：scripts 目录探测失败仍有 npm_global / nodejs 目录回退
+                self._log(f"[probe] scripts 目录探测失败（{name}）：{exc!r}")
 
             npm_global = os.path.expanduser(r"~\AppData\Roaming\npm")
             exe_path = Path(npm_global) / f"{name}.cmd"
@@ -190,6 +195,37 @@ class DependencyService:
                     return str(exe_path)
 
         return None
+
+    def _probe_output(self, cmd: list[str]) -> str | None:
+        """执行探测命令（`xxx --version`），成功返回 stdout（strip 后），失败返回 None。
+
+        吞掉失败是**有意的**（可选依赖探测，属"纯噪声"类），但原先各处自写的
+        `except Exception: pass` 有两个问题：异常面过宽（一个真正的编码/属性 bug 也会
+        被报成"该工具未安装"），且原因完全丢失——装了但 `--version` 报错的 Node 会被
+        OOBE 报成「Node.js 未安装」并建议用户去安装它，日志里查不到任何线索。
+        这里收窄异常类型、把退出码与 stderr 写进安装日志，判定结果不变但可追溯。
+        """
+        shown = " ".join(cmd)
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            self._log(f"[probe] {shown} 无法执行：{exc!r}")
+            return None
+
+        if result.returncode != 0:
+            detail = (result.stderr or result.stdout or "").strip()[:200]
+            self._log(f"[probe] {shown} 退出码 {result.returncode}：{detail}")
+            return None
+
+        output = result.stdout.strip()
+        if not output:
+            self._log(f"[probe] {shown} 无输出，视为探测失败")
+        return output
 
     def _run_command_streaming(
         self,
@@ -258,27 +294,21 @@ class DependencyService:
         for cmd in candidates:
             try:
                 path = shutil.which(cmd)
-                if path:
-                    return path
-            except Exception:
-                pass
+            except (OSError, ValueError) as exc:
+                # which 只在 PATH 含非法项时抛错；换下一个候选即可
+                self._log(f"[probe] shutil.which({cmd}) 失败：{exc!r}")
+                continue
+            if path:
+                return path
         return None
 
     def _check_uv_with_python(self, python_exe: str) -> tuple[str, str] | None:
         """用指定 Python 检查 uv"""
-        try:
-            result = subprocess.run(
-                [python_exe, "-m", "uv", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                parts = result.stdout.strip().split()
-                version = parts[1] if len(parts) >= 2 else parts[-1]
-                return version, python_exe
-        except Exception:
-            pass
+        output = self._probe_output([python_exe, "-m", "uv", "--version"])
+        if output:
+            parts = output.split()
+            version = parts[1] if len(parts) >= 2 else parts[-1]
+            return version, python_exe
         return None
 
     def check_uv(self) -> DependencyInfo:
@@ -287,24 +317,16 @@ class DependencyService:
         uv_path = self._find_executable("uv")
 
         if uv_path:
-            try:
-                result = subprocess.run(
-                    [uv_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
+            output = self._probe_output([uv_path, "--version"])
+            if output:
+                parts = output.split()
+                version = parts[1] if len(parts) >= 2 else parts[-1]
+                return DependencyInfo(
+                    name="uv",
+                    status=DependencyStatus.INSTALLED,
+                    current_version=version,
+                    message=f"uv {version} 已安装",
                 )
-                if result.returncode == 0:
-                    parts = result.stdout.strip().split()
-                    version = parts[1] if len(parts) >= 2 else parts[-1]
-                    return DependencyInfo(
-                        name="uv",
-                        status=DependencyStatus.INSTALLED,
-                        current_version=version,
-                        message=f"uv {version} 已安装",
-                    )
-            except Exception:
-                pass
 
         found = self._check_uv_with_python(sys.executable)
         if found:
@@ -369,31 +391,25 @@ class DependencyService:
         node_path = self._find_executable("node")
 
         if node_path:
-            try:
-                result = subprocess.run(
-                    [node_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
+            output = self._probe_output([node_path, "--version"])
+            if output:
+                version_str = output.lstrip("v")
+                head = version_str.split(".")[0]
+                # 版本号解析不出来时按"版本过低"处理（工具确实存在），不再伪装成未安装
+                major_version = int(head) if head.isdigit() else 0
+
+                is_compatible = major_version >= self.MIN_NODEJS_VERSION
+
+                return DependencyInfo(
+                    name="Node.js",
+                    status=DependencyStatus.COMPATIBLE
+                    if is_compatible
+                    else DependencyStatus.OUTDATED,
+                    current_version=version_str,
+                    required_version=f"{self.MIN_NODEJS_VERSION}.0.0",
+                    message=f"Node.js {version_str} {'已安装' if is_compatible else f'版本过低，需要 {self.MIN_NODEJS_VERSION}+'}",
+                    install_command=self._get_nodejs_install_command(),
                 )
-                if result.returncode == 0:
-                    version_str = result.stdout.strip().lstrip("v")
-                    major_version = int(version_str.split(".")[0]) if version_str else 0
-
-                    is_compatible = major_version >= self.MIN_NODEJS_VERSION
-
-                    return DependencyInfo(
-                        name="Node.js",
-                        status=DependencyStatus.COMPATIBLE
-                        if is_compatible
-                        else DependencyStatus.OUTDATED,
-                        current_version=version_str,
-                        required_version=f"{self.MIN_NODEJS_VERSION}.0.0",
-                        message=f"Node.js {version_str} {'已安装' if is_compatible else f'版本过低，需要 {self.MIN_NODEJS_VERSION}+'}",
-                        install_command=self._get_nodejs_install_command(),
-                    )
-            except Exception:
-                pass
 
         return DependencyInfo(
             name="Node.js",
@@ -408,23 +424,14 @@ class DependencyService:
         pnpm_path = self._find_executable("pnpm")
 
         if pnpm_path:
-            try:
-                result = subprocess.run(
-                    [pnpm_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
+            version = self._probe_output([pnpm_path, "--version"])
+            if version:
+                return DependencyInfo(
+                    name="pnpm",
+                    status=DependencyStatus.INSTALLED,
+                    current_version=version,
+                    message=f"pnpm {version} 已安装",
                 )
-                if result.returncode == 0:
-                    version = result.stdout.strip()
-                    return DependencyInfo(
-                        name="pnpm",
-                        status=DependencyStatus.INSTALLED,
-                        current_version=version,
-                        message=f"pnpm {version} 已安装",
-                    )
-            except Exception:
-                pass
 
         return DependencyInfo(
             name="pnpm",
@@ -439,23 +446,15 @@ class DependencyService:
         psql_path = self._find_executable("psql")
 
         if psql_path:
-            try:
-                result = subprocess.run(
-                    [psql_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
+            output = self._probe_output([psql_path, "--version"])
+            if output:
+                version = output.split()[-1]
+                return DependencyInfo(
+                    name="PostgreSQL",
+                    status=DependencyStatus.INSTALLED,
+                    current_version=version,
+                    message=f"PostgreSQL 客户端 {version} 已安装",
                 )
-                if result.returncode == 0:
-                    version = result.stdout.strip().split()[-1]
-                    return DependencyInfo(
-                        name="PostgreSQL",
-                        status=DependencyStatus.INSTALLED,
-                        current_version=version,
-                        message=f"PostgreSQL 客户端 {version} 已安装",
-                    )
-            except Exception:
-                pass
 
         return DependencyInfo(
             name="PostgreSQL",
@@ -472,23 +471,15 @@ class DependencyService:
         redis_cli_path = self._find_executable("redis-cli")
 
         if redis_cli_path:
-            try:
-                result = subprocess.run(
-                    [redis_cli_path, "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
+            output = self._probe_output([redis_cli_path, "--version"])
+            if output:
+                version = output.split()[-1]
+                return DependencyInfo(
+                    name="Redis",
+                    status=DependencyStatus.INSTALLED,
+                    current_version=version,
+                    message=f"Redis 客户端 {version} 已安装",
                 )
-                if result.returncode == 0:
-                    version = result.stdout.strip().split()[-1]
-                    return DependencyInfo(
-                        name="Redis",
-                        status=DependencyStatus.INSTALLED,
-                        current_version=version,
-                        message=f"Redis 客户端 {version} 已安装",
-                    )
-            except Exception:
-                pass
 
         return DependencyInfo(
             name="Redis",
@@ -856,17 +847,8 @@ class DependencyService:
 
         # 优先使用 python -m uv，确保使用当前环境的 uv
         uv_cmd = None
-        try:
-            result = subprocess.run(
-                [sys.executable, "-m", "uv", "--version"],
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                uv_cmd = [sys.executable, "-m", "uv"]
-        except Exception:
-            pass
+        if self._probe_output([sys.executable, "-m", "uv", "--version"]) is not None:
+            uv_cmd = [sys.executable, "-m", "uv"]
 
         if not uv_cmd:
             uv_path = self._find_executable("uv")

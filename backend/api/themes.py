@@ -18,12 +18,14 @@ import functools
 import logging
 from dataclasses import dataclass, field
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, Response, status
 from pydantic import BaseModel
 from pydantic import Field as PDField
 
 from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.models.core import SiteConfig
+from backend.schemas import raw_content_response
+from backend.schemas.extensions import ThemeOut
 
 logger = logging.getLogger(__name__)
 
@@ -180,7 +182,50 @@ class PaletteOut(BaseModel):
     swatch_dark: str = PDField(description="深色模式 primary HSL 字符串")
 
 
-@router.get("/themes/palettes", summary="获取所有可用调色板")
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class PaletteSetData(BaseModel):
+    """默认调色板写入成功后回显的载荷。"""
+
+    palette_id: str = PDField(..., description="已生效的调色板 id（即请求体提交值，必在清单内）")
+
+
+class PaletteSetResponse(BaseModel):
+    """设置默认调色板端点的响应体。"""
+
+    success: bool = PDField(True, description="固定为 true（校验失败走 422 错误信封）")
+    data: PaletteSetData = PDField(..., description="回显生效的调色板 id")
+
+
+class ActiveThemeResponse(BaseModel):
+    """当前激活主题端点的响应体（公开接口）。"""
+
+    success: bool = PDField(True, description="固定为 true")
+    data: ThemeOut | None = PDField(
+        None,
+        description=(
+            "主题记录：mods 为清单默认值与 DB 存值的合并结果，"
+            "mods 读取失败时该字段回退 null 而不阻断响应；站点尚未启用任何主题时为 null"
+        ),
+    )
+    message: str | None = PDField(
+        None, description="仅 data 为 null 时出现，取值为「未启用自定义主题」"
+    )
+
+
+@router.get(
+    "/themes/palettes",
+    summary="获取所有可用调色板",
+    description=(
+        "公开接口。返回后端 AVAILABLE_PALETTES 全量清单（id / name / label / 明暗主色 swatch）"
+        "与 DEFAULT_PALETTE_ID，清单与前端 useThemePalette.ts 的 PALETTES 一一对应，"
+        "供主题管理页渲染调色板选择器。"
+    ),
+)
 async def list_palettes(_: CurrentUserOptional = None) -> dict:
     out = []
     for p in AVAILABLE_PALETTES:
@@ -198,14 +243,24 @@ async def list_palettes(_: CurrentUserOptional = None) -> dict:
     return {"success": True, "data": out, "default": DEFAULT_PALETTE_ID}
 
 
-@router.get("/themes/current.css", summary="获取当前启用调色板的 CSS")
+@router.get(
+    "/themes/current.css",
+    summary="获取当前启用调色板的 CSS",
+    description=(
+        "返回当前启用调色板编译出的 CSS 自定义属性样式表（text/css; charset=utf-8），"
+        "公开访问、无需鉴权，可直接作为 <link rel=stylesheet> 链接使用。"
+        "未显式指定 palette 参数时取站点配置里保存的默认调色板，缺省回退内置调色板；"
+        "参数取值不在清单内时 400。编译结果按调色板 id 走进程内缓存，"
+        "响应本身不带 HTTP 缓存头。"
+    ),
+    responses=raw_content_response("text/css", "当前启用调色板编译出的 CSS 自定义属性样式表。"),
+    response_class=Response,
+)
 async def get_current_palette_css(
     db: DB,
     palette: str | None = Query(None, description="强制指定调色板 id（调试用）"),
-):
+) -> Response:
     """返回 text/css 响应，可通过 <link rel=stylesheet> 直链。"""
-    from fastapi.responses import Response
-
     pid = palette
     if not pid:
         from sqlalchemy import select as _s
@@ -219,7 +274,16 @@ async def get_current_palette_css(
     return Response(content=css, media_type="text/css; charset=utf-8")
 
 
-@router.put("/admin/themes/current", summary="管理员设置默认调色板")
+@router.put(
+    "/admin/themes/current",
+    summary="管理员设置默认调色板",
+    description=(
+        "需 CurrentStaff。请求体 {palette_id}（或兼容 {id}），取值必须在 AVAILABLE_PALETTES 内，"
+        "否则 422 并列出可选值。写入 SiteConfig KV 键 theme_palette，幂等（重复设置同值无副作用）；"
+        "生效后经 GET /api/themes/current.css 编译为 HSL CSS 变量注入前台。"
+    ),
+    responses={200: {"model": PaletteSetResponse}},
+)
 async def put_current_palette(
     db: DB,
     _: CurrentStaff,
@@ -230,7 +294,7 @@ async def put_current_palette(
     pid = (payload or {}).get("palette_id") or (payload or {}).get("id")
     if not isinstance(pid, str) or pid not in _PALETTE_BY_ID:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=f"palette_id 非法，可选值：{list(_PALETTE_BY_ID)}",
         )
     r = await db.execute(_s(SiteConfig).where(SiteConfig.key == CONFIG_KEY))
@@ -245,7 +309,19 @@ async def put_current_palette(
     return {"success": True, "data": {"palette_id": pid}}
 
 
-@router.get("/themes/active", summary="获取当前激活主题（公开，支持 Customizer 前台渲染）")
+@router.get(
+    "/themes/active",
+    summary="获取当前激活主题（公开，支持 Customizer 前台渲染）",
+    description=(
+        "公开接口，访客无需登录即可读取（也可带 token，但权限一致），"
+        "供前台页面渲染主题 Customizer 覆盖样式。data 是主题记录，"
+        "mods 为清单默认值与已存值的合并；mods 读取失败只把 mods 置 null，不阻断响应。"
+        "站点尚未启用任何主题时 data 为 null 并附 message 提示。"
+        "preview 参数是后台预览入口：传主题 slug 时返回该主题自身的信息"
+        "（不改变站点激活主题），slug 不存在或未安装时静默回落到激活主题。"
+    ),
+    responses={200: {"model": ActiveThemeResponse}},
+)
 async def public_get_active_theme(
     db: DB,
     _: CurrentUserOptional = None,

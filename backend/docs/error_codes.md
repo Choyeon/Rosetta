@@ -2,7 +2,18 @@
 
 ## 概述
 
-本文档列出了 Rosetta API 返回的所有错误码及其含义，帮助前端开发者正确处理错误。
+本文档列出 Rosetta API 返回的错误码及其含义，帮助前端开发者正确处理错误。
+
+> **错误码清单区块由脚本从源码反向生成，请勿手改**：清单内的每一个错误码都在
+> `backend/**/*.py` 里有真实字面量证据（`error_code=` / `HTTPException` 包络 /
+> `AppException` 子类 / `main.py::_STATUS_ERROR_CODES` 回退表）。
+> 新增或删除错误码后运行：
+> `uv run python -m backend.scripts.gen_error_codes --write`
+> 漂移守卫见 `tests/test_docs_error_codes_sync.py`——改了码没改文档会直接红。
+>
+> 历史教训：旧版本文档手写 49 个码，其中 36 个（`USER_NOT_FOUND`、`TOKEN_INVALID`、
+> `LOGIN_FAILED`、`NOT_STAFF` 等）代码里从未产出过，真实码反而一个都没写。前端按
+> 幻觉码分支处理，真实错误全部落到默认分支。现已改为源码驱动。
 
 ## 错误响应格式
 
@@ -35,104 +46,173 @@
 | 404 | 资源不存在 |
 | 409 | 资源冲突 |
 | 422 | 数据验证失败 |
+| 423 | 账号被临时锁定 |
 | 429 | 请求过于频繁 |
 | 500 | 服务器内部错误 |
 | 503 | 服务暂时不可用 |
 
 ---
 
-## 错误码列表
+<!-- BEGIN AUTO-GENERATED:ERROR_CODE_INDEX 由 backend/scripts/gen_error_codes.py 生成，请勿手改 -->
 
-### 通用错误 (1xxx)
+## 错误码清单（自动生成）
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `INTERNAL_ERROR` | 500 | 服务器内部错误 | 联系管理员，稍后重试 |
-| `SERVICE_UNAVAILABLE` | 503 | 服务暂时不可用 | 等待后重试 |
-| `VALIDATION_ERROR` | 422 | 数据验证失败 | 检查请求参数 |
-| `BAD_REQUEST` | 400 | 请求参数错误 | 检查请求格式 |
+本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **62 个真实存在的错误码**。
 
-### 认证错误 (2xxx)
+- 出处列只列到文件级：同一个码可能出现在多个端点，具体判定看源码。
+- HTTP 列为该码在当前源码里能推断出的状态码；`—` 表示该码由 AppException 子类外的路径抛出且附近没有 `status_code=`（以调用点为准）。
+- 新增/删除错误码后跑 `uv run python -m backend.scripts.gen_error_codes --write`，否则 `tests/test_docs_error_codes_sync.py` 会失败。
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `UNAUTHORIZED` | 401 | 未授权访问 | 跳转登录页面 |
-| `TOKEN_EXPIRED` | 401 | 令牌已过期 | 使用刷新令牌获取新令牌 |
-| `TOKEN_INVALID` | 401 | 无效的令牌 | 重新登录 |
-| `REFRESH_TOKEN_INVALID` | 401 | 无效的刷新令牌 | 重新登录 |
-| `REFRESH_TOKEN_EXPIRED` | 401 | 刷新令牌已过期 | 重新登录 |
-| `REFRESH_TOKEN_REVOKED` | 401 | 刷新令牌已撤销 | 重新登录 |
+### 通用与状态码回退（18）
 
-### 权限错误 (3xxx)
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `BAD_REQUEST` | 400 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `CONFLICT` | 409 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `FORBIDDEN` | 403 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `INTERNAL` | 500 | 服务器错误 | `backend/api/comments.py`<br>`backend/api/guestbook.py` |
+| `INTERNAL_SERVER_ERROR` | — | — | `backend/main.py` |
+| `INVALID_INSTALL_SOURCE` | — | — | `backend/api/plugins.py`<br>`backend/api/themes_ext.py` |
+| `METHOD_NOT_ALLOWED` | 405 | — | `backend/main.py` |
+| `NOT_FOUND` | 404 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `PAYLOAD_INVALID` | — | — | `backend/api/plugins.py`<br>`backend/api/themes_ext.py` |
+| `PAYLOAD_TOO_LARGE` | 413 | — | `backend/main.py` |
+| `PERMISSION_DENIED` | — | — | `backend/core/auth.py` |
+| `POST_NOT_FOUND` | 404 | 文章不存在 | `backend/api/comments.py` |
+| `REQUEST_ENTITY_TOO_LARGE` | — | — | `backend/api/media.py` |
+| `RESOURCE_NOT_FOUND` | 404 | 资源不存在 | `backend/core/exceptions.py` |
+| `SERVICE_UNAVAILABLE` | 503 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `UNAUTHORIZED` | 401 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `VALIDATION_ERROR` | 422 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `VALIDATION_FAILED` | 422 | payload 必须是 object | `backend/main.py`<br>`backend/plugins/guestbook-rss/plugin.py` |
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `FORBIDDEN` | 403 | 禁止访问 | 检查用户权限 |
-| `NOT_STAFF` | 403 | 需要管理员权限 | 联系管理员获取权限 |
-| `NOT_SUPERUSER` | 403 | 需要超级管理员权限 | 联系超级管理员 |
-| `USER_BANNED` | 403 | 用户已被封禁 | 联系管理员 |
-| `USER_INACTIVE` | 403 | 用户账号未激活 | 激活账号 |
-| `PROFILE_NOT_PUBLIC` | 403 | 用户资料不公开 | 无权限查看 |
+### 认证与授权（2）
 
-### 资源错误 (4xxx)
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `AUTH_INVALID_CREDENTIALS` | — | — | `backend/api/users.py` |
+| `AUTH_REQUIRED` | — | 请先登录后再发布动态 | `backend/api/activity.py` |
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `NOT_FOUND` | 404 | 资源不存在 | 检查资源 ID 或 slug |
-| `POST_NOT_FOUND` | 404 | 文章不存在 | 检查文章 slug |
-| `USER_NOT_FOUND` | 404 | 用户不存在 | 检查用户 ID |
-| `CATEGORY_NOT_FOUND` | 404 | 分类不存在 | 检查分类 ID 或 slug |
-| `TAG_NOT_FOUND` | 404 | 标签不存在 | 检查标签 ID 或 slug |
-| `COMMENT_NOT_FOUND` | 404 | 评论不存在 | 检查评论 ID |
-| `PAGE_NOT_FOUND` | 404 | 页面不存在 | 检查页面 slug |
-| `NAVIGATION_NOT_FOUND` | 404 | 导航不存在 | 检查导航 ID |
-| `FRIEND_LINK_NOT_FOUND` | 404 | 友链不存在 | 检查友链 ID |
+### 令牌与刷新（2）
 
-### 冲突错误 (5xxx)
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `TOKEN_REUSED` | — | 该刷新令牌已被使用过（禁止重用） | `backend/api/users.py` |
+| `TOKEN_VERSION_MISMATCH` | — | 密码已修改，该刷新令牌已失效 | `backend/api/users.py` |
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `CONFLICT` | 409 | 资源冲突 | 检查资源是否已存在 |
-| `USERNAME_EXISTS` | 400 | 用户名已存在 | 更换用户名 |
-| `EMAIL_EXISTS` | 400 | 邮箱已存在 | 更换邮箱或使用已有账号登录 |
-| `SLUG_EXISTS` | 400 | 别名已存在 | 更换 slug |
-| `CATEGORY_SLUG_EXISTS` | 400 | 分类别名已存在 | 更换分类 slug |
-| `TAG_SLUG_EXISTS` | 400 | 标签别名已存在 | 更换标签 slug |
-| `PAGE_SLUG_EXISTS` | 400 | 页面别名已存在 | 更换页面 slug |
+### 密码重置（1）
 
-### 业务错误 (6xxx)
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `RESET_CODE_INVALID` | — | 尝试次数过多，验证码已作废，请重新申请 | `backend/api/users.py` |
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `REGISTRATION_DISABLED` | 403 | 注册功能已关闭 | 联系管理员 |
-| `LOGIN_FAILED` | 401 | 登录失败 | 检查用户名和密码 |
-| `PASSWORD_MISMATCH` | 400 | 密码不匹配 | 检查密码输入 |
-| `PASSWORD_TOO_WEAK` | 400 | 密码强度不足 | 使用更强的密码 |
-| `COMMENTS_DISABLED` | 403 | 评论功能已关闭 | 无法发表评论 |
-| `POST_COMMENTS_DISABLED` | 403 | 该文章禁止评论 | 无法发表评论 |
-| `POST_PASSWORD_REQUIRED` | 403 | 文章需要密码访问 | 提供正确的密码 |
-| `POST_PASSWORD_INCORRECT` | 403 | 文章密码错误 | 提供正确的密码 |
-| `COMMENT_NEED_APPROVAL` | 403 | 评论需要审核 | 等待审核通过 |
-| `PARENT_COMMENT_NOT_FOUND` | 400 | 父评论不存在 | 检查父评论 ID |
+### 密码策略（1）
 
-### 限流错误 (7xxx)
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `WEAK_PASSWORD` | 422 | 新密码不符合强度要求 | `backend/api/users.py`<br>`backend/core/exceptions.py` |
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `RATE_LIMIT_EXCEEDED` | 429 | 请求过于频繁 | 等待 `retry_after` 秒后重试 |
-| `LOGIN_RATE_LIMITED` | 429 | 登录尝试次数过多 | 等待锁定时间结束后重试 |
-| `ACCOUNT_LOCKED` | 403 | 账户已被锁定 | 等待解锁或联系管理员 |
+### 限流与锁定（2）
 
-### 文件上传错误 (8xxx)
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `ACCOUNT_LOCKED` | 423 | 账号因多次登录失败已被暂时锁定 | `backend/api/users.py`<br>`backend/main.py` |
+| `RATE_LIMIT_EXCEEDED` | 429 | — | `backend/core/exceptions.py` |
 
-| 错误码 | HTTP 状态码 | 说明 | 处理建议 |
-|--------|-------------|------|----------|
-| `FILE_TOO_LARGE` | 400 | 文件大小超过限制 | 压缩文件或上传更小的文件 |
-| `INVALID_FILE_TYPE` | 400 | 不支持的文件类型 | 使用支持的文件格式 |
-| `INVALID_IMAGE` | 400 | 无效的图片文件 | 检查图片文件是否损坏 |
-| `UPLOAD_FAILED` | 500 | 文件上传失败 | 稍后重试 |
+### CSRF（1）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `CSRF_CHECK_FAILED` | — | — | `backend/core/csrf.py` |
+
+### OOBE 安装向导（3）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `ADMIN_NOT_CREATED` | 400 | — | `backend/core/exceptions.py` |
+| `OOBE_ALREADY_COMPLETED` | 409 | — | `backend/core/exceptions.py` |
+| `OOBE_REQUIRED` | 503 | — | `backend/core/exceptions.py` |
+
+### 文件上传（4）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `UPLOAD_EXT_REJECTED` | — | — | `backend/api/media.py` |
+| `UPLOAD_MAGIC_MISMATCH` | — | — | `backend/api/media.py` |
+| `UPLOAD_PATH_TRAVERSAL` | — | — | `backend/api/media.py` |
+| `UPLOAD_SVG_UNSAFE` | — | — | `backend/api/media.py` |
+
+### 插件系统（6）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `PLUGIN_ALREADY_ACTIVE` | 409 | 请先禁用该插件再删除 | `backend/api/plugins.py`<br>`backend/core/extensions.py` |
+| `PLUGIN_IMPORT_ERROR` | 500 | — | `backend/core/extensions.py` |
+| `PLUGIN_INVALID_ACTION` | 422 | — | `backend/core/extensions.py` |
+| `PLUGIN_NOT_FOUND` | 404 | — | `backend/api/plugins.py`<br>`backend/core/extensions.py` |
+| `PLUGIN_SETTINGS_INVALID` | 422 | 插件设置必须是 JSON 对象 | `backend/api/plugins.py`<br>`backend/core/extensions.py` |
+| `PLUGIN_SLUG_REQUIRED` | — | source=local 时必须通过 JSON body 提供 slug 字段 | `backend/api/plugins.py` |
+
+### 主题系统（5）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `MODS_SCHEMA_VIOLATION` | 400 | — | `backend/core/extensions.py` |
+| `THEME_ALREADY_ACTIVE` | 409 | 激活中的主题不允许删除（请先切换） | `backend/core/extensions.py` |
+| `THEME_MODS_INVALID` | 422 | 主题 mods 必须是 JSON 对象 | `backend/core/extensions.py` |
+| `THEME_NOT_FOUND` | 404 | — | `backend/api/themes_ext.py`<br>`backend/core/extensions.py` |
+| `THEME_SLUG_REQUIRED` | — | source=local 时必须通过 JSON body 提供 slug 字段 | `backend/api/themes_ext.py` |
+
+### 扩展包（插件/主题）下载与解压（10）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `PACKAGE_ALREADY_ACTIVE` | 409 | — | `backend/core/extensions.py` |
+| `PACKAGE_CHECKSUM_MISMATCH` | 400 | SHA-256 校验不匹配 | `backend/core/extensions.py` |
+| `PACKAGE_DOWNLOAD_FAILED` | 502 | — | `backend/core/extensions.py` |
+| `PACKAGE_EMPTY` | 400 | ZIP 内没有文件 | `backend/core/extensions.py` |
+| `PACKAGE_MANIFEST_NOT_FOUND` | 400 | — | `backend/core/extensions.py` |
+| `PACKAGE_PATH_INVALID` | 400 | — | `backend/core/extensions.py` |
+| `PACKAGE_STRUCTURE_INVALID` | 400 | — | `backend/core/extensions.py` |
+| `PACKAGE_TOO_LARGE` | 400 | — | `backend/core/extensions.py` |
+| `PACKAGE_UPLOAD_FILE_REQUIRED` | — | source=upload 时必须通过 multipart/form-data 提供 file 字段 | `backend/api/plugins.py`<br>`backend/api/themes_ext.py` |
+| `PACKAGE_ZIP_INVALID` | 400 | — | `backend/core/extensions.py` |
+
+### 扩展市场（3）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `MARKET_INDEX_INVALID` | — | 市场索引格式异常：缺少 items 列表 | `backend/api/plugins.py`<br>`backend/api/themes_ext.py` |
+| `MARKET_ITEM_MISSING_ZIP_URL` | — | — | `backend/api/plugins.py`<br>`backend/api/themes_ext.py` |
+| `MARKET_ITEM_NOT_FOUND` | — | — | `backend/api/plugins.py`<br>`backend/api/themes_ext.py` |
+
+### 远程来源（2）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `REMOTE_INFO_MISSING` | 400 | remote 字段必填 | `backend/api/plugins.py`<br>`backend/api/themes_ext.py`<br>`backend/core/extensions.py` |
+| `REMOTE_URL_NOT_ALLOWED` | 400 | — | `backend/core/extensions.py` |
+
+### 清单校验（2）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `MANIFEST_INVALID` | 400 | — | `backend/core/extensions.py` |
+| `SCHEMA_VALIDATOR_UNAVAILABLE` | 500 | 既无 jsonschema 也无 pydantic，无法执行 schema 校验 | `backend/core/extensions.py` |
+
+<!-- END AUTO-GENERATED:ERROR_CODE_INDEX -->
 
 ---
+
+## 限流与账号锁定口径说明
+
+> 429 的对外错误码**全站唯一**为 `RATE_LIMIT_EXCEEDED`，三个触发点（限流中间件、
+> `@rate_limit` 装饰器、`build_depends_rate_limit` 依赖）与状态码回退表都取
+> `backend/core/exceptions.py::RATE_LIMIT_EXCEEDED`。
+> 旧文档里的 `LOGIN_RATE_LIMITED` 代码里从未产出过（登录爆破走 423 锁定 +
+> 敏感接口限流），已删除。回归见 `tests/test_core_rate_limit_contract.py`。
+> 423 `ACCOUNT_LOCKED` 携带 `Retry-After` 头与响应体 `retry_after_seconds`，
+> 前端应据此展示倒计时而非笼统报错。
 
 ## 常见错误处理示例
 
@@ -156,6 +236,15 @@ if (response.status === 429) {
   const retryAfter = response.headers.get('Retry-After')
   // 显示等待提示
   showToast(`请等待 ${retryAfter} 秒后重试`)
+}
+```
+
+### 423 账号锁定
+
+```typescript
+if (response.status === 423) {
+  const secs = response.data.retry_after_seconds
+  showToast(`账号已锁定，请 ${secs} 秒后再试`)
 }
 ```
 
@@ -186,56 +275,10 @@ try {
 
 ---
 
-## 错误码与 HTTP 状态码映射
-
-```
-HTTP 400 -> BAD_REQUEST, VALIDATION_ERROR, USERNAME_EXISTS, EMAIL_EXISTS, ...
-HTTP 401 -> UNAUTHORIZED, TOKEN_EXPIRED, TOKEN_INVALID, LOGIN_FAILED, ...
-HTTP 403 -> FORBIDDEN, NOT_STAFF, USER_BANNED, REGISTRATION_DISABLED, ...
-HTTP 404 -> NOT_FOUND, POST_NOT_FOUND, USER_NOT_FOUND, ...
-HTTP 409 -> CONFLICT, ...
-HTTP 422 -> VALIDATION_ERROR, ...
-HTTP 429 -> RATE_LIMIT_EXCEEDED, LOGIN_RATE_LIMITED, ...
-HTTP 500 -> INTERNAL_ERROR, ...
-HTTP 503 -> SERVICE_UNAVAILABLE, ...
-```
-
----
-
 ## 前端错误处理最佳实践
 
-1. **统一错误处理**：使用 axios 拦截器统一处理错误响应
-
-```typescript
-axios.interceptors.response.use(
-  response => response,
-  error => {
-    const { response } = error
-    if (response) {
-      switch (response.status) {
-        case 401:
-          // 处理未授权
-          break
-        case 403:
-          // 处理禁止访问
-          break
-        case 404:
-          // 处理资源不存在
-          break
-        case 429:
-          // 处理限流
-          break
-        default:
-          // 其他错误
-      }
-    }
-    return Promise.reject(error)
-  }
-)
-```
-
-2. **用户友好提示**：将技术性错误转换为用户友好的提示信息
-
-3. **错误日志**：记录错误信息以便调试
-
-4. **重试机制**：对于临时性错误（如网络错误）实现自动重试
+1. **按 `error_code` 分支，不要按 `message` 字符串匹配**：`message` 是人类可读且会随
+   i18n 变化的文案，`error_code` 才是稳定契约。
+2. **未知错误码走默认分支并 toast**：失败一律给用户可见反馈，"静默失败"是 bug。
+3. **401 自动刷新**：`apiFetch` 已内置 `refreshAccessToken`，刷新失败清登录态跳 `/login`。
+4. **503 `OOBE_REQUIRED`**：前端跳 `/oobe` 安装向导。

@@ -529,48 +529,38 @@ async def test_admin_guestbook_list_and_toggles_and_status_and_batch(
 
 
 # ================================================================
-# 6. admin tools：unused-images、clean-unused-images、search-stats、optimize-search
+# 6. admin tools：搜索优化（图片清理/示例数据入口已下线，见 admin.py 注释）
 # ================================================================
-@pytest.mark.asyncio
-async def test_unused_images_empty_dir(client, admin_headers, tmp_path, monkeypatch):
-    # 即使 settings 指向空目录，也应该返回空列表 / 或未实现
-    from backend.core.config import settings
-
-    if hasattr(settings, "upload_dir"):
-        monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
-    elif hasattr(settings, "media_dir"):
-        monkeypatch.setattr(settings, "media_dir", str(tmp_path))
-    r = await client.get(
-        "/api/admin/tools/unused-images", headers=admin_headers, follow_redirects=True
-    )
-    assert r.status_code in (200, 401, 403, 404, 405, 500)
 
 
 @pytest.mark.asyncio
-async def test_clean_unused_images(client, admin_headers, tmp_path, monkeypatch):
-    from backend.core.config import settings
+async def test_removed_image_tools_stay_gone(client, admin_headers):
+    """`/tools/unused-images` 与 `/tools/clean-unused-images` 必须保持 404。
 
-    if hasattr(settings, "upload_dir"):
-        monkeypatch.setattr(settings, "upload_dir", str(tmp_path))
-    elif hasattr(settings, "media_dir"):
-        monkeypatch.setattr(settings, "media_dir", str(tmp_path))
+    两者曾以不完整的引用集合（漏掉相册 Photo/Album.cover、SiteConfig.logo）判定
+    "未使用"，并提供一键物理删除；误删用户上传文件不可恢复，故整体下线。
+    """
+    for method in ("get", "post"):
+        r = await getattr(client, method)(
+            "/api/admin/tools/unused-images", headers=admin_headers, follow_redirects=True
+        )
+        assert r.status_code == 404, f"{method.upper()} /tools/unused-images -> {r.status_code}"
+        r = await getattr(client, method)(
+            "/api/admin/tools/clean-unused-images", headers=admin_headers, follow_redirects=True
+        )
+        assert r.status_code == 404, f"{method.upper()} -> {r.status_code}"
+
+
+@pytest.mark.asyncio
+async def test_removed_mock_data_endpoint(client, admin_headers):
+    """示例数据只能由 CLI 生成，后台不得暴露一键灌假数据/清库的入口。"""
     r = await client.post(
-        "/api/admin/tools/clean-unused-images", headers=admin_headers, follow_redirects=True
+        "/api/admin/tools/mock-data",
+        headers=admin_headers,
+        json={"posts_count": 1, "reset": False},
+        follow_redirects=True,
     )
-    assert r.status_code in (200, 401, 403, 404, 405, 500)
-
-
-@pytest.mark.asyncio
-async def test_search_stats_and_optimize(client, admin_headers):
-    r1 = await client.get(
-        "/api/admin/tools/search-stats", headers=admin_headers, follow_redirects=True
-    )
-    assert r1.status_code in (200, 401, 403, 500)
-
-    r2 = await client.post(
-        "/api/admin/tools/optimize-search", headers=admin_headers, follow_redirects=True
-    )
-    assert r2.status_code in (200, 401, 403, 500)
+    assert r.status_code == 404
 
 
 # ================================================================
@@ -612,12 +602,16 @@ async def test_csrf_token_mismatch(client, monkeypatch):
     if hasattr(settings, "csrf_enabled"):
         monkeypatch.setattr(settings, "csrf_enabled", True)
     cookies = {"csrftoken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
-    headers = {"X-CSRF-Token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}
+    # Cookie 走 header 而非 httpx 的 per-request ``cookies=``（该用法已废弃，
+    # 且会污染 client 的 cookie jar，影响后续用例）。
+    headers = {
+        "X-CSRF-Token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "Cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
+    }
     # 使用 PATCH /api/users/me（写接口，避免 405）；405=路由未注册对应方法
     r = await client.patch(
         "/api/users/me",
         json={"nickname": "x"},
-        cookies=cookies,
         headers=headers,
         follow_redirects=True,
     )

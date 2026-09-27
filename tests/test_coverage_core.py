@@ -99,21 +99,6 @@ class TestPasswordPolicy:
 
         assert validate_password("Str0ngP@ss!") == []
 
-    @pytest.mark.asyncio
-    async def test_check_site_password_policy_uses_settings_when_site_config_missing(
-        self, monkeypatch
-    ):
-        """当 site_settings 不存在或者抛出异常，回退到 settings.security_password_policy"""
-        from backend.core.config import settings
-
-        monkeypatch.setattr(settings, "security_password_policy", True)
-        from backend.core.password_policy import check_site_password_policy
-
-        # 直接调用（如果 site_config 模块实际上不存在或抛异常则走 ImportError 分支；
-        #  若存在则正常获取 SiteConfig，两种路径都能返回 bool，不抛异常）
-        res = await check_site_password_policy()
-        assert isinstance(res, bool)
-
 
 # ---------------------------------------------------------
 # 2. xss_filter
@@ -294,11 +279,15 @@ class TestXssFilter:
         # 两个都自动补齐：</strong></p>
         assert out.endswith("</strong></p>")
 
-    def test_sanitize_html_exception_fallback_to_stripped(self, monkeypatch):
-        """如果 HTMLParser.feed 抛异常，fallback 到 _rough_strip 结果"""
-        from backend.core.xss_filter import _rough_strip, sanitize_html
+    def test_sanitize_html_exception_degrades_to_escaped_text(self, monkeypatch):
+        """如果 HTMLParser.feed 抛异常，降级方向是"整体转义"而不是返回粗筛结果。
 
-        sample = "<script>bad</script>"
+        粗筛 _rough_strip 只做危险标签名/事件属性正则替换，挡不住属性型 payload；
+        解析器故障时若返回它，等于安全闸门在异常路径上失效。
+        """
+        from backend.core.xss_filter import sanitize_html
+
+        sample = "<p>hello</p><script>alert(1)</script>"
 
         class _BustyParser:
             def feed(self, *a, **k):
@@ -310,8 +299,9 @@ class TestXssFilter:
         monkeypatch.setattr("backend.core.xss_filter._AllowlistParser", _BustyParser)
         # 调用 sanitize_html → 命中 except Exception 分支
         out = sanitize_html(sample)
-        # 至少输出 stripped 形式
-        assert out == _rough_strip(sample)
+        # <p> 是 allowlist 标签，粗筛原样保留 → 旧实现在这里就漏出了裸标记
+        assert "<" not in out and ">" not in out, "降级输出仍含裸尖括号，可被浏览器当作标记解析"
+        assert "alert(1)" in out, "降级不应丢弃正文，只应失去标记语义"
 
     def test_allowlist_parser_endtag_not_on_stack(self):
         """endtag 不在 stack 顶部 → 跳过"""

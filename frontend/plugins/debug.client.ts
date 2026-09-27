@@ -1,3 +1,11 @@
+/**
+ * debug.client.ts —— 仅客户端的错误「取证」通道：只落日志，不 toast（面向用户的提示是 error-handler.client.ts 的职责）。
+ * 五路入口（vue:error / app:error / vueApp.config.errorHandler / window error / unhandledrejection）
+ * 收敛进同一个 persist()，把最后一条写进 localStorage.__captured_error__——全仓没有读取方，纯供 DevTools 人肉取证。
+ * 两类噪声必须丢：跨域脚本的 "Script error."（无 file/line/error，定位不到）与 hydration 级联
+ * （refs null），后者由 02-hydration-safety.global.client 负责有界 CSR 重挂载，这里重复报只会刷 4 条红日志。
+ */
+
 export default defineNuxtPlugin((nuxtApp) => {
   /**
    * 判断是否是 CORS 隐藏的第三方脚本错误（"Script error."）。

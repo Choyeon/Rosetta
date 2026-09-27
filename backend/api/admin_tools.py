@@ -11,15 +11,19 @@ Admin 工具端点：Alembic 迁移状态 + 缓存状态/清退
 from __future__ import annotations
 
 import asyncio
+import logging
 from collections.abc import Callable
 from typing import Any, Literal
 
+from alembic.util.exc import CommandError
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
 
 from backend.core.auth import CurrentStaff
 from backend.core.cache import cache, invalidate_cache
 from backend.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["Admin 工具"])
 
@@ -45,19 +49,22 @@ class AlembicStatusResponse(BaseModel):
 
 
 def _run_in_thread(fn: Callable[[], Any]) -> Any:
-    """在独立线程执行阻塞的 Alembic 命令（alembic.command 内部是同步 sqlalchemy）。"""
-    import concurrent.futures
+    """把阻塞的 Alembic 命令丢到工作线程（alembic.command 内部是同步 sqlalchemy）。
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        loop = asyncio.get_event_loop()
-        return loop.run_in_executor(executor, fn)
+    返回 awaitable，调用方需 ``await``。
+    """
+    return asyncio.to_thread(fn)
 
 
 @router.get(
     "/alembic/status",
     response_model=AlembicStatusResponse,
     summary="查看 Alembic 迁移状态",
-    description="读取当前数据库版本、最新版本、已应用与待应用的迁移列表。",
+    description=(
+        "读取当前数据库版本、最新版本、已应用与待应用的迁移列表。"
+        "读取失败返回 500，不会回 `is_latest=true` 的空壳响应——"
+        "前端迁移页据此展示错误态，而不是把「取不到状态」显示成「已是最新」。"
+    ),
 )
 async def get_alembic_status(current_user: CurrentStaff) -> AlembicStatusResponse:
     """读取 Alembic 当前版本、最新版本、已应用与待应用列表。"""
@@ -77,13 +84,10 @@ async def get_alembic_status(current_user: CurrentStaff) -> AlembicStatusRespons
 
         # 1) 当前版本：捕获 command.current 的 stdout 输出
         buffer = io.StringIO()
-        try:
-            cfg.print_stdout = lambda *args, **kwargs: buffer.write(
-                " ".join(str(a) for a in args)
-                + (kwargs.get("end", "\n") if isinstance(kwargs.get("end"), str) else "\n")
-            )
-        except Exception:
-            pass
+        cfg.print_stdout = lambda *args, **kwargs: buffer.write(
+            " ".join(str(a) for a in args)
+            + (kwargs.get("end", "\n") if isinstance(kwargs.get("end"), str) else "\n")
+        )
         command.current(cfg)
         current_out = buffer.getvalue().strip() or ""
         current_lines = [ln for ln in current_out.splitlines() if ln.strip()]
@@ -104,7 +108,9 @@ async def get_alembic_status(current_user: CurrentStaff) -> AlembicStatusRespons
             cur = stack.pop()
             try:
                 rev = script.get_revision(cur)
-            except Exception:
+            except CommandError:
+                # 只跳过"悬空 rev（版本文件已不存在）"；其他异常照样抛出，
+                # 否则迁移状态页会把坏掉的链条谎报成"已是最新"
                 continue
             if rev is None:
                 continue
@@ -137,14 +143,14 @@ async def get_alembic_status(current_user: CurrentStaff) -> AlembicStatusRespons
 
     try:
         current_version, latest_version, is_latest, pending, applied = await _run_in_thread(collect)
-    except Exception:
-        return AlembicStatusResponse(
-            current_version="",
-            latest_version="",
-            is_latest=True,
-            pending=[],
-            applied=[],
-        )
+    except Exception as exc:
+        # 状态读取失败必须报错：这里原先回一个 is_latest=True 的空壳响应，
+        # 迁移页会把"读不到状态"显示成"已是最新"，运维据此跳过本该做的升级。
+        logger.exception("Alembic 迁移状态读取失败")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"无法读取迁移状态：{exc}",
+        ) from exc
 
     return AlembicStatusResponse(
         current_version=current_version,
@@ -304,8 +310,8 @@ async def flush_cache(req: CacheFlushRequest, current_user: CurrentStaff) -> Cac
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"未知清退模式: {mode}")
 
     for prefix in prefixes:
-        prefix if prefix.endswith("*") else f"{prefix}*"
         # CACHE_TTL 的 key 前缀可能是 "post_list" 这种，配合 make_cache_key 会拼成 "post_list:<args>:<kwargs>"
+        # 因此 MODE_PREFIXES 里统一写裸前缀，这里只去掉示例里的 ":" / "*" 尾巴
         deleted_total += await invalidate_cache(prefix.rstrip("*").rstrip(":"))
 
     return CacheFlushResponse(

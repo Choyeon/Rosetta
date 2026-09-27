@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 if TYPE_CHECKING:
-    from backend.schemas import UserResponse
+    from backend.schemas import PublicUserResponse
 
 
 ActivityType = Literal["say", "article", "update", "notice", "link"]
@@ -47,7 +47,7 @@ class ActivityResponse(BaseModel):
     id: int
     content: dict[str, str]
     type: ActivityType
-    author: "UserResponse"
+    author: "PublicUserResponse"
     is_published: bool
     likes_count: int = 0
     created_at: datetime
@@ -62,7 +62,7 @@ class ActivityLocalizedResponse(BaseModel):
     id: int
     content: str
     type: ActivityType
-    author: "UserResponse"
+    author: "PublicUserResponse"
     is_published: bool
     likes_count: int = 0
     created_at: datetime
@@ -72,34 +72,19 @@ class ActivityLocalizedResponse(BaseModel):
     def from_activity(cls, activity, lang: str = "zh") -> "ActivityLocalizedResponse":
         """从活动模型创建本地化响应"""
         from backend.core.i18n import get_i18n_value
-        from backend.schemas import UserResponse
+        from backend.schemas import PublicUserResponse
 
         return cls(
             id=activity.id,
             content=get_i18n_value(activity.content, lang),
             type=activity.type,
-            author=UserResponse.model_validate(activity.author),
+            author=PublicUserResponse.model_validate(activity.author),
             is_published=activity.is_published,
             created_at=activity.created_at,
             updated_at=activity.updated_at,
         )
 
 
-import sys as _sys  # noqa: E402
+from backend.schemas.strict_config import apply_strict_extra_forbid
 
-_STRICT_EXTRA_FORBID = {"strict": True, "extra": "forbid"}
-for _name in list(globals().keys()):
-    _obj = globals()[_name]
-    if (
-        isinstance(_obj, type)
-        and issubclass(_obj, BaseModel)
-        and _obj is not BaseModel
-        and _obj.__module__ == _sys.modules[__name__].__name__
-    ):
-        _existing = _obj.model_config if isinstance(_obj.model_config, dict) else {}
-        _merged = {**_existing, **_STRICT_EXTRA_FORBID}
-        try:
-            _obj.model_config = _merged
-        except Exception:
-            pass
-    del _name, _obj
+apply_strict_extra_forbid(globals(), __name__)

@@ -15,6 +15,8 @@
 //     totalDays:     8
 //   }
 
+import type { H3Event } from 'h3'
+
 interface BingImage {
   url: string
   urlbase: string
@@ -28,10 +30,22 @@ interface BingMetaResponse {
   images: BingImage[]
 }
 
-export default defineEventHandler(async (event) => {
+/** 归一化 query 参数（handler 与缓存 key 共用，保证两者一致）。 */
+function parseParams(event: H3Event) {
   const query = getQuery(event)
   const idx = Math.max(0, Math.min(7, Number(query.idx) || 0))
   const mkt = typeof query.mkt === 'string' && query.mkt.trim() ? query.mkt.trim() : 'zh-CN'
+  return { idx, mkt }
+}
+
+// Nitro 层结果缓存（真正的 30m SWR）：此前只有成功路径的响应头缓存，
+// 缓存头只影响下游 CDN/浏览器，Nitro 自身每次请求仍串行打 Bing；
+// Bing 不可达时 SSR 引用会拖垮 TTFB。现在：
+//   · 30m 内命中缓存直接回放（含 setHeader 的响应头，Nitro 会缓存并 replay）
+//   · 过期后先回旧值、后台刷新（swr），上游报错时降级继续用旧值
+//   · 仅「从未成功缓存过 + 上游失败」才落到 502
+export default defineCachedEventHandler(async (event) => {
+  const { idx, mkt } = parseParams(event)
 
   const bingUrl
     = `https://cn.bing.com/HPImageArchive.aspx?format=js&idx=${idx}&n=1&mkt=${encodeURIComponent(mkt)}`
@@ -76,7 +90,7 @@ export default defineEventHandler(async (event) => {
   if (uhd.startsWith('/')) uhd = `https://cn.bing.com${uhd}`
   uhd = uhd.replace(/_(1920x1080|1366x768|1280x720)\.(jpg|jpeg|png)/i, '_UHD.jpg')
 
-  // 30 分钟 CDN + 浏览器缓存；idx 变了 query 不同就是新资源
+  // 响应头随缓存条目一起被 Nitro replay，命中时同样携带
   setHeader(event, 'Cache-Control', 'public, max-age=1800, s-maxage=3600, stale-while-revalidate=86400')
   setHeader(event, 'Vary', 'Accept, Accept-Language')
 
@@ -88,5 +102,13 @@ export default defineEventHandler(async (event) => {
     startDate: img.startdate || '',
     idx,
     totalDays: 8
+  }
+}, {
+  maxAge: 1800, // 30m 内直接命中缓存，不打上游
+  swr: true, // 过期后先回旧值、后台静默刷新；刷新失败时旧值继续顶住（降级不 502）
+  staleMaxAge: 86400, // 旧值最长可容忍 24h（声明意图；本版 Nitro swr:true 下主要靠 mtime 判断）
+  getKey: (event: H3Event) => {
+    const { idx, mkt } = parseParams(event)
+    return `idx:${idx}:mkt:${mkt}`
   }
 })

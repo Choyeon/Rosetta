@@ -16,6 +16,7 @@ Example:
 """
 
 import logging
+import re
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -78,7 +79,7 @@ from backend.api import (
 )
 from backend.core.config import settings
 from backend.core.database import check_db_connection, close_db, get_db_info, init_db
-from backend.core.exceptions import AppException
+from backend.core.exceptions import RATE_LIMIT_EXCEEDED, AppException
 from backend.core.i18n import I18nContext, parse_accept_language, t
 from backend.core.maintenance import MaintenanceMiddleware
 from backend.core.paths import BASE_DIR
@@ -88,6 +89,25 @@ from backend.core.security_middleware import SecurityHeadersMiddleware
 from backend.middleware.performance import performance_middleware
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_app_version() -> str:
+    """版本单一真源：读取根 pyproject.toml [project].version。
+
+    settings.app_version 默认值会漂移（硬编码 "1.0.0"），发布版本号只维护
+    pyproject 一处；读取失败时回退 settings.app_version 保证可启动。
+    """
+    try:
+        content = (BASE_DIR / "pyproject.toml").read_text(encoding="utf-8")
+        match = re.search(r"^version\s*=\s*\"([^\"]+)\"", content, re.MULTILINE)
+        if match:
+            return match.group(1)
+    except OSError:
+        pass
+    return settings.app_version
+
+
+APP_VERSION = _resolve_app_version()
 
 # ── OpenAPI 标签元数据 ──────────────────────────────────────────────────────
 # 为每个 API 分组提供中文说明，Scalar / Redoc / Swagger 会在侧边栏展示。
@@ -156,7 +176,7 @@ def _build_openapi(app: FastAPI) -> dict:
 
     schema = get_openapi(
         title=settings.app_name,
-        version=settings.app_version,
+        version=APP_VERSION,
         description=(
             "## Rosetta 博客平台 API\n\n"
             "一个现代化的多语言博客平台，基于 FastAPI 构建。\n\n"
@@ -167,9 +187,9 @@ def _build_openapi(app: FastAPI) -> dict:
             "过期后使用 `/api/users/refresh` 换取新令牌。\n\n"
             "### 响应格式\n\n"
             "所有接口统一返回如下结构：\n"
-            "```json\n{\"success\": true, \"data\": {...}, \"message\": \"...\"}\n```\n\n"
+            '```json\n{"success": true, "data": {...}, "message": "..."}\n```\n\n'
             "失败时返回：\n"
-            "```json\n{\"success\": false, \"error_code\": \"...\", \"message\": \"...\"}\n```"
+            '```json\n{"success": false, "error_code": "...", "message": "..."}\n```'
         ),
         contact={
             "name": "Rosetta Project",
@@ -256,6 +276,35 @@ async def _scheduled_publish_loop(db_session_factory):
             break
 
 
+async def _log_retention_loop(db_session_factory):
+    """按保留期收敛只增日志表（visit_logs / performance_metrics / operation_logs）。
+
+    刻意**先睡后删**：进程启动的那一轮不做删除，既不给冷启动加锁开销，
+    也让短生命周期进程（含测试）不会误删数据。多 worker 各跑各的没问题——
+    删除以 id 集合为条件、幂等，不额外引分布式锁（该锁要求启用 Redis，
+    单机 / 内存缓存部署直接抛错）。
+    """
+    import asyncio as _asyncio
+
+    from backend.services.log_retention import (
+        prune_expired_logs,
+        retention_loop_interval_seconds,
+    )
+
+    while True:
+        try:
+            await _asyncio.sleep(retention_loop_interval_seconds())
+        except _asyncio.CancelledError:
+            logger.info("[retention] 日志保留循环已取消")
+            break
+
+        try:
+            async with db_session_factory() as session:
+                await prune_expired_logs(session)
+        except Exception as exc:
+            logger.exception(f"[retention] 日志清理失败: {exc}")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """
@@ -284,6 +333,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     oobe_complete = OOBE_LOCK_FILE.exists() and CONFIG_FILE.exists()
 
     scheduler_task = None
+    retention_task = None
 
     if not oobe_complete:
         logger.info("OOBE 未完成，跳过数据库初始化与定时发布循环")
@@ -292,8 +342,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             scheduler_task.cancel()
             try:
                 await scheduler_task
-            except Exception:
+            except _asyncio.CancelledError:
                 pass
+            except Exception:
+                logger.exception("[scheduler] 关闭时出现异常")
         return
 
     await init_db()
@@ -316,9 +368,20 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
             engine, class_=_AsyncSession, expire_on_commit=False
         )
         scheduler_task = _asyncio.create_task(_scheduled_publish_loop(db_session_factory))
+        retention_task = _asyncio.create_task(_log_retention_loop(db_session_factory))
     except Exception as exc:
         logger.exception(f"[scheduler] 启动失败: {exc}")
         scheduler_task = None
+        retention_task = None
+
+    # Webhook 事件投递：把 WEBHOOK_EVENTS 挂到 hooks 总线。
+    # 没这一步，后台配置的订阅就是一张永远不会兑现的清单（历史缺陷）。
+    try:
+        from backend.api.webhook import register_webhook_listeners
+
+        register_webhook_listeners()
+    except Exception as exc:
+        logger.exception(f"[webhook] 事件监听注册失败: {exc}")
 
     # 加载插件（在数据库就绪后注册路由钩子/事件订阅）
     try:
@@ -346,18 +409,41 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     except Exception as exc:
         logger.exception("[extensions] 启动初始化失败: %s", exc)
 
+    # 缓存预热：后台任务跑，不拖慢启动；同时拉起定时刷新保持缓存热度。
+    # AGENTS.md 把"缓存预热"列为已落地能力，但 warmup_cache / 定时刷新器此前从未被调用。
+    from backend.core.cache_warmer import scheduled_cache_refresher, warmup_cache
+
+    async def _run_cache_warmup():
+        stats = await warmup_cache()
+        logger.info(f"[cache] 启动预热结果: {stats}")
+
+    cache_warmup_task = _asyncio.create_task(_run_cache_warmup())
+    await scheduled_cache_refresher.start()
+
     logger.info(f"{settings.app_name} 启动完成")
 
     yield
 
-    if scheduler_task and not scheduler_task.done():
-        scheduler_task.cancel()
+    await scheduled_cache_refresher.stop()
+
+    if cache_warmup_task and not cache_warmup_task.done():
+        cache_warmup_task.cancel()
         try:
-            await scheduler_task
+            await cache_warmup_task
         except _asyncio.CancelledError:
             pass
         except Exception:
-            logger.exception("[scheduler] 关闭时出现异常")
+            logger.exception("[cache] 预热任务取消时出现异常")
+
+    for _bg_task in (scheduler_task, retention_task):
+        if _bg_task and not _bg_task.done():
+            _bg_task.cancel()
+            try:
+                await _bg_task
+            except _asyncio.CancelledError:
+                pass
+            except Exception:
+                logger.exception("[scheduler] 关闭时出现异常")
 
     # 卸载插件（调用各插件 deactivate 钩子）
     try:
@@ -397,7 +483,7 @@ def create_application() -> FastAPI:
 
     app = FastAPI(
         title=settings.app_name,
-        version=settings.app_version,
+        version=APP_VERSION,
         openapi_url="/openapi.json" if docs_enabled else None,
         docs_url=None,
         redoc_url=None,
@@ -406,6 +492,7 @@ def create_application() -> FastAPI:
     app.openapi = lambda: _build_openapi(app)
 
     if docs_enabled:
+
         @app.get("/docs", include_in_schema=False, tags=["系统"])
         async def scalar_docs():
             return get_scalar_api_reference(
@@ -431,14 +518,7 @@ def create_application() -> FastAPI:
                 title=f"{settings.app_name} · ReDoc",
             )
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.effective_cors_origins,
-        allow_credentials=settings.cors_allow_credentials,
-        allow_methods=settings.cors_allow_methods,
-        allow_headers=settings.cors_allow_headers,
-    )
-
+    # CORS 中间件已移至所有中间件注册之后（最后 add = 最外层），见本函数末尾。
     app.add_middleware(SecurityHeadersMiddleware)
 
     app.add_middleware(MaintenanceMiddleware)
@@ -578,24 +658,111 @@ def create_application() -> FastAPI:
                 from backend.api.monitoring import record_visit
 
                 await record_visit(request, response.status_code, process_time)
-            except Exception:
-                pass
+            except (ImportError, RuntimeError) as exc:
+                # 遥测不得拖垮业务请求：monitoring 未加载、或此刻没有运行中的事件循环
+                # （record_visit 内部已消化 QueueFull）时跳过这一条即可。
+                # 其余异常（签名改动、属性拼错）是真实缺陷，必须照样抛出而不是被吞。
+                logger.debug("[access-log] 访问记录入队失败：%s", exc)
 
         return response
 
     # 性能监控中间件：采样记录请求响应时间到数据库
     app.middleware("http")(performance_middleware)
 
+    # CORSMiddleware 最后 add：Starlette 中后注册的中间件位于最外层，这样
+    # OOBE 503 / 限流 429 / 维护模式 503 等所有短路响应都会带上 CORS 头，
+    # OPTIONS 预检也不会被内层中间件先行拦截。CSRF 校验依赖的是请求头
+    # （X-CSRF-Token / Authorization），与响应侧 CORS 头互不影响。
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.effective_cors_origins,
+        allow_credentials=settings.cors_allow_credentials,
+        allow_methods=settings.cors_allow_methods,
+        allow_headers=settings.cors_allow_headers,
+    )
+
+    # HTTPException.detail → 语义化 error_code 的回退映射。
+    # 注意：401 的 error_code 必须是字符串语义码（如 UNAUTHORIZED）——
+    # 前端 apiFetch/useAPI 判定刷新走 HTTP status === 401（lib/utils.ts::isOobeRequiredError
+    # 判定 OOBE 走 503 + error_code === "OOBE_REQUIRED"），均不依赖裸数字状态码，
+    # 语义化映射不会破坏 401 刷新 / 503 OOBE 跳转链路。
+    _STATUS_ERROR_CODES: dict[int, str] = {
+        400: "BAD_REQUEST",
+        401: "UNAUTHORIZED",
+        403: "FORBIDDEN",
+        404: "NOT_FOUND",
+        405: "METHOD_NOT_ALLOWED",
+        409: "CONFLICT",
+        413: "PAYLOAD_TOO_LARGE",
+        422: "VALIDATION_FAILED",
+        423: "ACCOUNT_LOCKED",
+        # 与 core/exceptions.py 的 RateLimitException、core/rate_limit.py 的三个触发点同源，
+        # 避免同一个 429 在不同链路上长出四种 error_code。
+        429: RATE_LIMIT_EXCEEDED,
+        503: "SERVICE_UNAVAILABLE",
+    }
+
+    def _fallback_error_code(status_code: int) -> str:
+        if status_code in _STATUS_ERROR_CODES:
+            return _STATUS_ERROR_CODES[status_code]
+        return "INTERNAL_SERVER_ERROR" if status_code >= 500 else "REQUEST_FAILED"
+
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(request: Request, exc: StarletteHTTPException):
-        """HTTP 异常处理器，保留 exc.headers（如 Retry-After, WWW-Authenticate 等）"""
+        """HTTP 异常处理器，保留 exc.headers（如 Retry-After, WWW-Authenticate 等）
+
+        契约（AGENTS.md §7.2）：error_code 必须是语义化字符串。
+        1) detail 已是本项目的错误包络（dict 且含 error_code 或 message）→
+           原样透传 error_code / message / errors 及其余扩展键（如
+           retry_after_seconds），绝不用数字状态码覆盖 error_code；
+        2) detail 是校验错误列表 → 展开为 errors:[{field,message,type}]；
+        3) detail 是普通字符串 → error_code 回退到按状态码映射的语义默认值。
+        """
+        detail = exc.detail
+        content: dict = {"success": False}
+
+        if isinstance(detail, dict) and ("error_code" in detail or "message" in detail):
+            # 包络透传：success 强制为 False，其余键（含 retry_after_seconds 等扩展键、
+            # errors 列表）原样保留。不输出 detail 键——包络形状以 message 为准，
+            # 前端 extractApiErrorMessage 优先读 message（字符串），不会误读 dict。
+            content.update(detail)
+            content["success"] = False
+            ec = content.get("error_code")
+            if not isinstance(ec, str) or not ec:
+                content["error_code"] = _fallback_error_code(exc.status_code)
+            msg = content.get("message")
+            if not isinstance(msg, str):
+                content["message"] = str(msg) if msg is not None else "请求处理失败"
+        elif isinstance(detail, list):
+            # FastAPI 校验形状的 list detail：展开为 field/message/type，禁止 [object Object]
+            errors: list[dict] = []
+            for item in detail:
+                if isinstance(item, dict):
+                    loc = item.get("loc")
+                    field = (
+                        ".".join(str(x) for x in loc)
+                        if isinstance(loc, (list, tuple))
+                        else str(item.get("field", ""))
+                    )
+                    errors.append(
+                        {
+                            "field": field,
+                            "message": str(item.get("msg") or item.get("message") or item),
+                            "type": str(item.get("type", "")),
+                        }
+                    )
+                else:
+                    errors.append({"field": "", "message": str(item), "type": "value_error"})
+            content["message"] = t("validation_error")
+            content["error_code"] = _fallback_error_code(exc.status_code)
+            content["errors"] = errors
+        else:
+            content["message"] = str(detail)
+            content["error_code"] = _fallback_error_code(exc.status_code)
+
         return JSONResponse(
             status_code=exc.status_code,
-            content={
-                "success": False,
-                "message": exc.detail,
-                "error_code": exc.status_code,
-            },
+            content=content,
             headers=dict(exc.headers) if exc.headers else None,
         )
 
@@ -614,7 +781,7 @@ def create_application() -> FastAPI:
             )
 
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             content={
                 "success": False,
                 "message": t("validation_error"),
@@ -646,7 +813,7 @@ def create_application() -> FastAPI:
                 content={
                     "success": False,
                     "message": str(exc),
-                    "error_code": 500,
+                    "error_code": "INTERNAL_SERVER_ERROR",
                 },
             )
 
@@ -655,7 +822,7 @@ def create_application() -> FastAPI:
             content={
                 "success": False,
                 "message": t("internal_server_error"),
-                "error_code": 500,
+                "error_code": "INTERNAL_SERVER_ERROR",
             },
         )
 
@@ -671,7 +838,7 @@ def create_application() -> FastAPI:
         health_data = {
             "status": "healthy" if db_connected else "unhealthy",
             "app_name": settings.app_name,
-            "version": "1.0.0",
+            "version": app.version,
             "environment": settings.environment,
             "database": "connected" if db_connected else "disconnected",
         }
@@ -694,58 +861,58 @@ def create_application() -> FastAPI:
         description="前端 SSR/Nitro 同源代理场景下的健康检查入口，与 /health 等价。",
     )(health_check)
 
-    app.include_router(users.router, prefix="/api/users", tags=["用户"])
-    app.include_router(blog.router, prefix="/api/blog", tags=["博客"])
-    app.include_router(core.router, prefix="/api", tags=["核心"])
+    app.include_router(users.router, prefix="/api/users")
+    app.include_router(blog.router, prefix="/api/blog")
+    app.include_router(core.router, prefix="/api")
     # avatar_proxy 必须在 media.router 之前挂载，否则 /api/media/avatar 会被
     # media.router 的 /{category}/{filename} 捕获（category=media 不在白名单 -> 404）。
-    app.include_router(avatar_proxy.router, prefix="/api", tags=["媒体"])
-    app.include_router(media.router, prefix="/api/media", tags=["媒体"])
-    app.include_router(migration.router, prefix="/api/admin", tags=["数据库迁移"])
-    app.include_router(guestbook.router, prefix="/api", tags=["留言板"])
-    app.include_router(voting.router, prefix="/api/voting", tags=["投票"])
-    app.include_router(notification.router, prefix="/api/notifications", tags=["通知"])
-    app.include_router(favorite.router, prefix="/api/favorites", tags=["收藏"])
-    app.include_router(admin.router, prefix="/api/admin", tags=["后台管理"])
-    app.include_router(webhook.router, prefix="/api/webhooks", tags=["Webhook"])
-    app.include_router(import_export.router, prefix="/api/admin", tags=["导入导出"])
-    app.include_router(seo.router, prefix="/api/seo", tags=["SEO"])
-    app.include_router(advanced.router, prefix="/api", tags=["高级管理"])
-    app.include_router(monitoring.router, prefix="/api/monitoring", tags=["监控"])
-    app.include_router(toc.router, prefix="/api/toc", tags=["TOC"])
-    app.include_router(shortcodes.router, prefix="/api", tags=["短代码"])
-    app.include_router(title.router, prefix="/api/admin", tags=["用户称号"])
-    app.include_router(captcha.router, prefix="/api/captcha", tags=["验证码"])
-    app.include_router(messages.router, prefix="/api", tags=["私信"])
-    app.include_router(translate.router, prefix="/api", tags=["翻译"])
-    app.include_router(oobe.router, prefix="/api", tags=["OOBE"])
-    app.include_router(announcement.router, prefix="/api", tags=["公告"])
-    app.include_router(activity.router, prefix="/api", tags=["网站动态"])
-    app.include_router(hero.router, prefix="/api", tags=["Hero轮播"])
-    app.include_router(post_series.router, prefix="/api", tags=["文章系列"])
-    app.include_router(post_encryption.router, prefix="/api", tags=["内容加密"])
-    app.include_router(post_crypto.router, prefix="/api", tags=["文章加密工具"])
-    app.include_router(scheduled_posts.router, prefix="/api", tags=["定时发布"])
-    app.include_router(comment_reactions.router, prefix="/api", tags=["评论表情反应"])
-    app.include_router(ranking.router, prefix="/api", tags=["热门排行"])
-    app.include_router(performance.router, prefix="/api/admin", tags=["性能监控"])
-    app.include_router(stats.router, prefix="/api/admin", tags=["仪表盘"])
-    app.include_router(admin_logs.router, prefix="/api/admin", tags=["操作日志"])
-    app.include_router(admin_tools.router, prefix="/api/admin", tags=["Admin 工具"])
-    app.include_router(settings_groups.router, prefix="/api", tags=["系统设置"])
-    app.include_router(themes.router, prefix="/api", tags=["主题"])
-    app.include_router(themes_ext.router, prefix="/api/admin", tags=["主题平台"])
-    app.include_router(plugins.router, prefix="/api/admin", tags=["插件平台"])
-    app.include_router(docs.router, prefix="/api", tags=["开发文档"])
-    app.include_router(bing.router, prefix="/api", tags=["Bing壁纸"])
-    app.include_router(bing_image.router, prefix="/api", tags=["Bing壁纸"])
-    app.include_router(comments.router, prefix="/api", tags=["评论"])
+    app.include_router(avatar_proxy.router, prefix="/api")
+    app.include_router(media.router, prefix="/api/media")
+    app.include_router(migration.router, prefix="/api/admin")
+    app.include_router(guestbook.router, prefix="/api")
+    app.include_router(voting.router, prefix="/api/voting")
+    app.include_router(notification.router, prefix="/api/notifications")
+    app.include_router(favorite.router, prefix="/api/favorites")
+    app.include_router(admin.router, prefix="/api/admin")
+    app.include_router(webhook.router, prefix="/api/webhooks")
+    app.include_router(import_export.router, prefix="/api/admin")
+    app.include_router(seo.router, prefix="/api/seo")
+    app.include_router(advanced.router, prefix="/api")
+    app.include_router(monitoring.router, prefix="/api/monitoring")
+    app.include_router(toc.router, prefix="/api/toc")
+    app.include_router(shortcodes.router, prefix="/api")
+    app.include_router(title.router, prefix="/api/admin")
+    app.include_router(captcha.router, prefix="/api/captcha")
+    app.include_router(messages.router, prefix="/api")
+    app.include_router(translate.router, prefix="/api")
+    app.include_router(oobe.router, prefix="/api")
+    app.include_router(announcement.router, prefix="/api")
+    app.include_router(activity.router, prefix="/api")
+    app.include_router(hero.router, prefix="/api")
+    app.include_router(post_series.router, prefix="/api")
+    app.include_router(post_encryption.router, prefix="/api")
+    app.include_router(post_crypto.router, prefix="/api")
+    app.include_router(scheduled_posts.router, prefix="/api")
+    app.include_router(comment_reactions.router, prefix="/api")
+    app.include_router(ranking.router, prefix="/api")
+    app.include_router(performance.router, prefix="/api/admin")
+    app.include_router(stats.router, prefix="/api/admin")
+    app.include_router(admin_logs.router, prefix="/api/admin")
+    app.include_router(admin_tools.router, prefix="/api/admin")
+    app.include_router(settings_groups.router, prefix="/api")
+    app.include_router(themes.router, prefix="/api")
+    app.include_router(themes_ext.router, prefix="/api/admin")
+    app.include_router(plugins.router, prefix="/api/admin")
+    app.include_router(docs.router, prefix="/api")
+    app.include_router(bing.router, prefix="/api")
+    app.include_router(bing_image.router, prefix="/api")
+    app.include_router(comments.router, prefix="/api")
     # ===== Gallery（相册）：公开 + 管理
     from backend.api.gallery import admin_router as gallery_admin_router
     from backend.api.gallery import public_router as gallery_public_router
 
-    app.include_router(gallery_public_router, prefix="/api", tags=["相册"])
-    app.include_router(gallery_admin_router, prefix="/api", tags=["相册管理"])
+    app.include_router(gallery_public_router, prefix="/api")
+    app.include_router(gallery_admin_router, prefix="/api")
 
     media_dir = BASE_DIR / settings.media_dir
     media_dir.mkdir(parents=True, exist_ok=True)
@@ -767,11 +934,16 @@ def create_application() -> FastAPI:
 
     routing_registry.mount_all(app)
 
-    @app.get("/", tags=["系统"], summary="API 根路径")
+    @app.get(
+        "/",
+        tags=["系统"],
+        summary="API 根路径",
+        description="返回应用名、版本与文档/健康检查入口的导航信息，无需鉴权。",
+    )
     async def root():
         return {
             "name": settings.app_name,
-            "version": "1.0.0",
+            "version": app.version,
             "docs": "/docs" if docs_enabled else None,
             "health": "/health",
             "api": "/api",

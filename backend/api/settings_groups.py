@@ -15,17 +15,17 @@ from __future__ import annotations
 import json
 import logging
 import re
-from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Body, HTTPException, Path, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import cache, make_cache_key
 from backend.core.logging_middleware import log_operation
 from backend.models.core import SiteConfig
+from backend.utils.compat import utc_now_naive
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +348,10 @@ async def _load_all_groups(db: DB) -> dict[str, dict]:
         if r.key in SETTING_GROUPS_17:
             try:
                 db_map[r.key] = json.loads(r.value) if r.value else {}
-            except Exception:
+            except (json.JSONDecodeError, TypeError) as exc:
+                # 单条 KV 损坏不能连带整组：这里退回默认值，但要点名是哪个 key——
+                # 否则下一次 PUT 会用默认值静默覆盖整组配置。
+                logger.warning(f"[settings] 配置项 {r.key} 的值不是合法 JSON，按默认值处理: {exc}")
                 db_map[r.key] = {}
 
     out: dict[str, dict] = {}
@@ -372,17 +375,60 @@ async def _save_group(db: DB, group: str, data: dict) -> dict:
         db.add(row)
     else:
         row.value = val_json
-        row.updated_at = datetime.utcnow()
+        row.updated_at = utc_now_naive()
     await db.flush()
     return merged
 
 
 class SettingsGroupResponse(BaseModel):
-    group: str
-    data: dict
+    """``GET /api/settings/{group}`` 直接返回的裸对象（无 success 信封）。"""
+
+    group: str = Field(..., description="分组键（17 组之一）")
+    data: dict[str, Any] = Field(..., description="该分组的完整配置（默认值与 DB 存值的合并结果）")
 
 
-@router.get("/public", summary="公开站设置（无需登录）")
+class SettingsPublicResponse(BaseModel):
+    """``GET /api/settings/public`` 的响应体（匿名可读）。"""
+
+    groups: dict[str, Any] = Field(
+        ...,
+        description=(
+            "仅 PUBLIC_SETTING_GROUPS 白名单内的分组；"
+            '疑似敏感键（password/secret/token/api_key 等）值统一脱敏为 "******"'
+        ),
+    )
+
+
+class SettingsAllResponse(BaseModel):
+    """``GET /api/settings`` 的响应体（需管理员）。"""
+
+    groups: dict[str, Any] = Field(
+        ...,
+        description="全部 17 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值）",
+    )
+
+
+class SettingsPatchResponse(BaseModel):
+    """``PATCH /api/settings/{group}`` 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true；已写操作日志并失效公开设置缓存")
+    group: str = Field(..., description="被更新的分组键")
+    data: dict[str, Any] = Field(
+        ..., description="保存后的最终配置（payload 中不在该组默认值键集内的键已被丢弃）"
+    )
+    changed: list[str] = Field(default_factory=list, description="与更新前相比发生变化的键名列表")
+
+
+@router.get(
+    "/public",
+    summary="公开站设置（无需登录）",
+    description=(
+        "匿名可读的站点配置子集：只对 PUBLIC_SETTING_GROUPS 白名单分组下发，"
+        '白名单内疑似敏感键（password/secret/token/api_key/...）统一脱敏为 "******"。'
+        "结果服务端缓存 300s（PATCH 任一分组后立即失效）。只读、幂等。"
+    ),
+    responses={200: {"model": SettingsPublicResponse}},
+)
 async def get_public_settings(db: DB):
     """
     匿名可读的站点配置子集。
@@ -408,7 +454,11 @@ async def get_public_settings(db: DB):
 @router.get(
     "",
     summary="获取所有设置分组",
-    description="返回所有站点设置分组及其配置项，需管理员权限。",
+    description=(
+        "需管理员（CurrentStaff）。返回全部 17 组分组的配置项（含敏感明文值，"
+        "如 SMTP 密码）；前台/SSR 一律改用 GET /settings/public，不得调用本接口。只读、幂等。"
+    ),
+    responses={200: {"model": SettingsAllResponse}},
 )
 async def get_all_settings(db: DB, current_user: CurrentStaff):
     data = await _load_all_groups(db)
@@ -418,7 +468,14 @@ async def get_all_settings(db: DB, current_user: CurrentStaff):
 @router.get(
     "/{group}",
     summary="获取单个设置分组",
-    description="返回指定分组的配置项，需管理员权限。",
+    description=(
+        "需管理员（CurrentStaff）。返回指定分组（17 组之一）合并默认值后的完整配置；"
+        "未知分组 404。直接返回 {group, data} 裸对象（无 success 信封）。只读、幂等。"
+    ),
+    responses={
+        200: {"model": SettingsGroupResponse},
+        404: {"description": "未知设置分组"},
+    },
 )
 async def get_one_setting(
     db: DB,
@@ -434,7 +491,17 @@ async def get_one_setting(
 @router.patch(
     "/{group}",
     summary="更新单个设置分组",
-    description="批量更新指定分组的配置项，需管理员权限。",
+    description=(
+        "需管理员（CurrentStaff）。payload 为该分组的部分键值对象；"
+        "不在该组默认值键集内的键被静默丢弃。副作用：写入操作日志（含 before/after diff）、"
+        "落库 site_configs 后立刻失效 /settings/public 的 300s 缓存。"
+        "未知分组 404；payload 非对象 400。"
+    ),
+    responses={
+        200: {"model": SettingsPatchResponse},
+        400: {"description": "payload 必须为 JSON 对象"},
+        404: {"description": "未知设置分组"},
+    },
 )
 async def patch_one_setting(
     request: Request,

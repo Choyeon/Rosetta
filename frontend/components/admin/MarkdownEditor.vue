@@ -1,8 +1,16 @@
+<!--
+  后台 Markdown 编辑器：工具栏快捷键 + 撤销/重做历史栈 + 图片粘贴/拖拽上传 + 分屏预览。
+  硬契约：预览 v-html 必须走 marked + lib/sanitize 白名单净化（与前台文章链路同一条），
+  禁止退回旧自制正则渲染器——它不处理引号与 URL scheme，javascript: 可直达后台预览（XSS）；
+  onPaste 挂在 document 级（onMounted 注册 / onBeforeUnmount 移除），本组件仅限 client-only 场景使用。
+-->
 <script setup lang="ts">
 import { useVModel } from '@vueuse/core'
 import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { Marked } from 'marked'
 import { useMediaUpload } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
+import { sanitizeMarkdownHtml } from '~~/lib/sanitize'
 import { Tabs, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Button } from '~~/components/ui/button'
 import {
@@ -298,33 +306,20 @@ const toggleFullscreen = () => {
   isFullscreen.value = !isFullscreen.value
 }
 
-const simpleMarkdownToHtml = (md: string): string => {
-  if (!md) return ''
-  let html = md
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-  html = html.replace(/```([\s\S]*?)```/g, '<pre class="bg-muted p-3 rounded-lg overflow-x-auto my-3 text-sm"><code>$1</code></pre>')
-  html = html.replace(/`([^`]+)`/g, '<code class="bg-muted px-1.5 py-0.5 rounded text-sm">$1</code>')
-  html = html.replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold mt-4 mb-2">$1</h3>')
-  html = html.replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold mt-5 mb-3">$1</h2>')
-  html = html.replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold mt-6 mb-4">$1</h1>')
-  html = html.replace(/^> (.+)$/gm, '<blockquote class="border-l-4 border-muted-foreground/20 pl-4 italic my-3 opacity-80">$1</blockquote>')
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold">$1</strong>')
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>')
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" class="max-w-full h-auto rounded-lg my-3" />')
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="text-primary underline hover:opacity-80">$1</a>')
-  html = html.replace(/^- (.+)$/gm, '<li class="ml-5 list-disc">$1</li>')
-  html = html.replace(/^\d+\. (.+)$/gm, '<li class="ml-5 list-decimal">$1</li>')
-  html = html.replace(/^---$/gm, '<hr class="my-4 border-border" />')
-  html = html.split(/\n\n+/).map((para) => {
-    if (/^<(h|pre|blockquote|ul|ol|hr|li|img)/.test(para)) return para
-    return `<p class="my-3 leading-relaxed">${para.replace(/\n/g, '<br/>')}</p>`
-  }).join('\n')
-  return html
-}
+// 预览渲染与前台文章/独立页链路统一：marked 解析 + lib/sanitize 白名单净化。
+// 旧自制正则渲染器只转义 <>&，不处理引号与 URL scheme，
+// [x](javascript:...) 与 `" onmouseover=` 可直达预览 v-html（后台预览 XSS）。
+const mdPreview = new Marked({ gfm: true, breaks: true })
 
-const previewHtml = computed(() => simpleMarkdownToHtml(content.value || ''))
+const previewHtml = computed(() => {
+  const md = content.value || ''
+  if (!md.trim()) return ''
+  try {
+    return sanitizeMarkdownHtml(mdPreview.parse(md) as string)
+  } catch {
+    return ''
+  }
+})
 
 onMounted(() => {
   historyStack.value = [content.value || '']

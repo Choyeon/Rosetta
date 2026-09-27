@@ -235,7 +235,9 @@ async def test_list_themes_carries_mods(
 
 
 @pytest.mark.asyncio
-async def test_scan_removes_zombie_rows(client: AsyncClient, admin_headers: dict, db_session: AsyncSession):
+async def test_scan_removes_zombie_rows(
+    client: AsyncClient, admin_headers: dict, db_session: AsyncSession
+):
     """DB 有、磁盘无 → scan 后僵尸行与其 mods KV 一并清除。"""
     await _mk_theme(db_session, "zombie-not-on-disk")
     db_session.add(SiteConfig(key="theme_mods:zombie-not-on-disk", value="{}", description="x"))

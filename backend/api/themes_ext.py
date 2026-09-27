@@ -29,9 +29,16 @@ from backend.core.exceptions import AppException
 from backend.core.tenant import DEFAULT_SITE_ID
 from backend.models.extensions import Theme
 from backend.schemas.extensions import (
+    PackageMessageResponse,
+    ThemeDetailResponse,
     ThemeInstallFrom,
+    ThemeListResponse,
+    ThemeMarketResponse,
     ThemeModsIn,
+    ThemeModsResponse,
+    ThemeModsSavedResponse,
     ThemeOut,
+    ThemeScanResponse,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
@@ -83,7 +90,16 @@ async def _load_theme_row(db: DB, slug: str, *, site_id: int = DEFAULT_SITE_ID) 
     return row
 
 
-@router.get("")
+@router.get(
+    "",
+    summary="获取主题列表（管理员）",
+    description=(
+        "需 CurrentStaff。按 status（inactive|active|error|installed）与 search（名称/slug 模糊）"
+        "过滤分页（默认 50 条/页，上限 200）。每项附带该主题当前生效的 mods 值"
+        "（schema 默认值与 DB 存储值合并结果），供后台主题管理卡片渲染。"
+    ),
+    responses={200: {"model": ThemeListResponse}},
+)
 async def list_admin_themes(
     db: DB,
     current_user: CurrentStaff,
@@ -117,7 +133,15 @@ async def list_admin_themes(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@router.get("/market")
+@router.get(
+    "/market",
+    summary="获取主题市场索引",
+    description=(
+        "需 CurrentStaff。返回远端主题市场索引（本地缓存 8 小时），force=true 跳过缓存重拉。"
+        "响应附带 items 列表、total 与 cached_at（缓存时间戳，便于前端展示数据新鲜度）。"
+    ),
+    responses={200: {"model": ThemeMarketResponse}},
+)
 async def list_theme_market(
     current_user: CurrentStaff,
     force: bool = Query(False, description="true=跳过本地 8h 缓存重新拉远端"),
@@ -137,7 +161,18 @@ async def list_theme_market(
     }
 
 
-@router.get("/{slug}")
+@router.get(
+    "/{slug}",
+    summary="获取主题详情（管理员）",
+    description=(
+        "需 CurrentStaff。返回主题完整记录（含 mods_schema 与当前 mods 值）。"
+        "主题未安装时返回 404（error_code: THEME_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": ThemeDetailResponse},
+        404: {"description": "主题不存在（error_code: THEME_NOT_FOUND）"},
+    },
+)
 async def get_theme_detail(
     db: DB,
     current_user: CurrentStaff,
@@ -156,7 +191,19 @@ async def get_theme_detail(
     return {"success": True, "data": out}
 
 
-@router.put("/{slug}/activate")
+@router.put(
+    "/{slug}/activate",
+    summary="激活主题",
+    description=(
+        "需 CurrentStaff。同一站点同时只有一个激活主题：激活新主题时旧激活项自动降为 installed。"
+        "幂等：目标主题已激活时直接返回现状（不刷新 activated_at、不重放钩子）。"
+        "成功后清空前台页面缓存，前台经 GET /api/themes/active 拉取新 slug 与 mods。"
+    ),
+    responses={
+        200: {"model": ThemeDetailResponse},
+        404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
+    },
+)
 async def activate_theme(
     db: DB,
     current_user: CurrentStaff,
@@ -218,7 +265,20 @@ async def activate_theme(
     return {"success": True, "data": out}
 
 
-@router.delete("/{slug}")
+@router.delete(
+    "/{slug}",
+    summary="删除主题记录",
+    description=(
+        "需 CurrentStaff。404/409 判定统一在 ThemeManager.delete 内：未安装 → 404 THEME_NOT_FOUND；"
+        "仍为激活主题 → 409 THEME_ALREADY_ACTIVE（须先激活其他主题）。"
+        "仅清除 DB 记录，不删除磁盘文件（磁盘 ↔ DB 由扫描同步）。"
+    ),
+    responses={
+        200: {"model": PackageMessageResponse},
+        404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
+        409: {"description": "主题处于激活态，禁止删除（error_code: THEME_ALREADY_ACTIVE）"},
+    },
+)
 async def delete_theme(
     db: DB,
     current_user: CurrentStaff,
@@ -232,7 +292,16 @@ async def delete_theme(
     return {"success": True, "message": "已删除"}
 
 
-@router.post("/scan")
+@router.post(
+    "/scan",
+    summary="扫描本地主题目录",
+    description=(
+        "需 CurrentStaff。扫描 frontend/themes/*/rosetta-theme.json 与 DB 对齐："
+        "新增未登记主题、刷新清单变更（version/mods_schema 等）、"
+        "清理非激活且磁盘已不存在的僵尸记录。返回 added/refreshed/removed 计数。幂等。"
+    ),
+    responses={200: {"model": ThemeScanResponse}},
+)
 async def scan_local_themes(
     db: DB,
     current_user: CurrentStaff,
@@ -247,7 +316,18 @@ async def scan_local_themes(
     }
 
 
-@router.get("/{slug}/mods")
+@router.get(
+    "/{slug}/mods",
+    summary="获取主题 Mods 与 Schema",
+    description=(
+        "需 CurrentStaff。返回 mods（schema 默认值与 DB 已存值的合并结果）与 mods_schema"
+        "（JSON Schema Draft-07）。mods_schema.properties 是 Customizer 控件的唯一清单。"
+    ),
+    responses={
+        200: {"model": ThemeModsResponse},
+        404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
+    },
+)
 async def get_theme_mods(
     db: DB,
     current_user: CurrentStaff,
@@ -271,7 +351,20 @@ async def get_theme_mods(
     }
 
 
-@router.put("/{slug}/mods")
+@router.put(
+    "/{slug}/mods",
+    summary="全量替换主题 Mods",
+    description=(
+        "需 CurrentStaff。PUT 全量替换语义：先重置为 mods_schema 声明的默认值，再叠加 payload.mods。"
+        "schema 未声明的键被静默丢弃（仅记 warning，不整单拒绝）；payload 非 JSON 对象返回 422"
+        "（error_code: THEME_MODS_INVALID）。写入 SiteConfig KV theme_mods:<slug>，"
+        "成功后清空前台页面缓存。"
+    ),
+    responses={
+        200: {"model": ThemeModsSavedResponse},
+        404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
+    },
+)
 async def replace_theme_mods(
     db: DB,
     current_user: CurrentStaff,
@@ -295,7 +388,19 @@ async def replace_theme_mods(
     return {"success": True, "data": saved}
 
 
-@router.patch("/{slug}/mods")
+@router.patch(
+    "/{slug}/mods",
+    summary="增量更新主题 Mods",
+    description=(
+        "需 CurrentStaff。在现有值上仅覆盖 payload.mods 出现的键，其余保持不变；"
+        "schema 未声明的键同样被静默丢弃，非 JSON 对象返回 422（error_code: THEME_MODS_INVALID）。"
+        "成功后清空前台页面缓存。"
+    ),
+    responses={
+        200: {"model": ThemeModsSavedResponse},
+        404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
+    },
+)
 async def set_theme_mods(
     db: DB,
     current_user: CurrentStaff,
@@ -325,7 +430,19 @@ async def _theme_row_to_out(db: DB, slug: str) -> ThemeOut:
     return out
 
 
-@router.post("")
+@router.post(
+    "",
+    summary="安装主题（local / upload / remote）",
+    description=(
+        "需 CurrentStaff。统一安装入口，由 query 参数 source 决定分支："
+        "local=按 JSON body 的 slug 扫描本地目录并登记（缺 slug 422 THEME_SLUG_REQUIRED）；"
+        "upload=multipart/form-data 上传 zip（缺 file 字段 400 PACKAGE_UPLOAD_FILE_REQUIRED）；"
+        "remote=按 {remote:{url,checksum_sha256?}} 下载 zip 安装（缺 remote 400 REMOTE_INFO_MISSING）。"
+        "JSON body 校验失败 422（PAYLOAD_INVALID）；未知 source 400（INVALID_INSTALL_SOURCE）。"
+        "成功后返回安装完成的主题记录（含合并后的 mods）。"
+    ),
+    responses={200: {"model": ThemeDetailResponse}},
+)
 async def install_theme(
     request: Request,
     db: DB,
@@ -409,7 +526,20 @@ async def install_theme(
     )
 
 
-@router.post("/{slug}/upgrade")
+@router.post(
+    "/{slug}/upgrade",
+    summary="升级主题（重扫磁盘清单）",
+    description=(
+        "需 CurrentStaff。主题没有独立的下载通道：升级 = 重新扫描磁盘清单并把 "
+        "version / mods_schema 等元数据刷回 DB（zip 覆盖安装请走 POST /themes?source=upload|remote）。"
+        "version 变化会使前台 <link> 的 ?v= bust 参数失效，故同步清空前台页面缓存。"
+        "主题未安装时由 ThemeManager 抛出 404（error_code: THEME_NOT_FOUND）。"
+    ),
+    responses={
+        200: {"model": ThemeDetailResponse},
+        404: {"description": "主题未安装（error_code: THEME_NOT_FOUND）"},
+    },
+)
 async def upgrade_theme(
     db: DB,
     current_user: CurrentStaff,
@@ -427,7 +557,23 @@ async def upgrade_theme(
     }
 
 
-@router.post("/market/{slug}/install")
+@router.post(
+    "/market/{slug}/install",
+    summary="从市场一键安装主题",
+    description=(
+        "需 CurrentStaff。在市场索引（本地缓存 8h）中按 slug 查找条目，"
+        "复用 install_from_remote 通道下载 zip 并安装（含 SHA-256 校验与 pre-release 开关）。"
+        "索引缺 items 时 502（MARKET_INDEX_INVALID）；市场无该 slug 时 404（MARKET_ITEM_NOT_FOUND）；"
+        "条目缺 zip_url 时 502（MARKET_ITEM_MISSING_ZIP_URL）。成功后返回安装完成的主题记录。"
+    ),
+    responses={
+        200: {"model": ThemeDetailResponse},
+        404: {"description": "市场中未找到该主题（error_code: MARKET_ITEM_NOT_FOUND）"},
+        502: {
+            "description": "市场索引异常或缺 zip_url（error_code: MARKET_INDEX_INVALID / MARKET_ITEM_MISSING_ZIP_URL）"
+        },
+    },
+)
 async def install_theme_from_market(
     db: DB,
     current_user: CurrentStaff,

@@ -44,6 +44,10 @@ post_tags = Table(
     Base.metadata,
     Column("post_id", Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True),
     Column("tag_id", Integer, ForeignKey("tags.id", ondelete="CASCADE"), primary_key=True),
+    # 复合主键 (post_id, tag_id) 只服务「按文章取标签」；按标签筛文章
+    # （blog.py 列表 `join(Post.tags).where(Tag.slug == tag)`）走不到最左前缀，
+    # 需要 tag_id 单列索引，否则关联表全表扫描。
+    Index("ix_post_tags_tag_id", "tag_id"),
 )
 
 post_likes = Table(
@@ -51,6 +55,8 @@ post_likes = Table(
     Base.metadata,
     Column("post_id", Integer, ForeignKey("posts.id", ondelete="CASCADE"), primary_key=True),
     Column("user_id", Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True),
+    # 同上：`/users/me/likes` 只按 user_id 过滤，必须是独立索引。
+    Index("ix_post_likes_user_id", "user_id"),
 )
 
 
@@ -175,7 +181,7 @@ class Post(Base, TenantMixin):
     author: Mapped["User"] = relationship("User", back_populates="posts")
 
     category_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True
+        Integer, ForeignKey("categories.id", ondelete="SET NULL"), nullable=True, index=True
     )
     category: Mapped[Category | None] = relationship("Category", back_populates="posts")
 
@@ -277,6 +283,7 @@ class Comment(Base, TenantMixin):
         Integer,
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
     )
     user: Mapped["User | None"] = relationship("User", back_populates="comments")
 
@@ -355,7 +362,7 @@ class PostViewHistory(Base):
     user: Mapped["User"] = relationship("User")
 
     post_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=False, index=True
     )
     post: Mapped["Post"] = relationship("Post")
 
@@ -363,7 +370,13 @@ class PostViewHistory(Base):
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
 
-    __table_args__ = (Index("ix_post_view_histories_user_post", "user_id", "post_id", unique=True),)
+    __table_args__ = (
+        Index("ix_post_view_histories_user_post", "user_id", "post_id", unique=True),
+        # `/users/me/history` 按 user_id 过滤 + `ORDER BY viewed_at DESC` 分页；
+        # 复合唯一索引只覆盖到 (user_id, post_id)，排序仍需回表 + 排序。
+        # B 树反向扫描即可满足 DESC（SQLite / PostgreSQL 都支持），故按升序建。
+        Index("ix_post_view_histories_user_viewed", "user_id", "viewed_at"),
+    )
 
     def __repr__(self) -> str:
         return f"<PostViewHistory(user_id={self.user_id}, post_id={self.post_id})>"

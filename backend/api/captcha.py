@@ -10,7 +10,7 @@ import random
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -48,6 +48,19 @@ class CaptchaVerifyRequest(BaseModel):
 
     key: str
     code: str
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class CaptchaVerifyResponse(BaseModel):
+    """验证码校验端点的响应体（失败一律走 400 错误信封，故出现即代表通过）。"""
+
+    success: bool = Field(True, description="固定为 true：不通过时本接口抛 400 而不返回 false")
+    message: str = Field("验证成功", description="人类可读结果")
 
 
 def generate_captcha_code(length: int = 4) -> str:
@@ -122,7 +135,12 @@ def generate_captcha_image(code: str, width: int = 120, height: int = 40) -> byt
     "",
     response_model=CaptchaResponse,
     summary="获取验证码",
-    description="生成并返回一个图形验证码。",
+    description=(
+        "生成并返回一个图形验证码。公开接口、无需鉴权。"
+        "code 是 4 位字符，字符集刻意排除易混淆的 0/O/1/I；"
+        "image 字段是 data:image/png;base64 内联图，可直接塞进 img 标签。"
+        "答案按 key 存进缓存，有效期 5 分钟，过期后校验会返回 400。"
+    ),
 )
 async def get_captcha():
     """
@@ -153,7 +171,14 @@ async def get_captcha():
 @router.post(
     "/verify",
     summary="验证验证码",
-    description="验证用户输入的验证码是否正确。",
+    description=(
+        "验证用户输入的验证码是否正确。公开接口、无需鉴权。"
+        "比对不区分大小写。key 不存在或已过期返回 400（验证码已过期或不存在）。"
+        "是一次性凭据：无论校验成功还是失败都会立即作废，"
+        "失败即作废是为了挡住小字符集下的在线枚举，因此前端重试必须重新获取验证码。"
+        "成功响应为裸 dict（success + message），无 data 信封。"
+    ),
+    responses={200: {"model": CaptchaVerifyResponse}},
 )
 async def verify_captcha(
     data: CaptchaVerifyRequest,

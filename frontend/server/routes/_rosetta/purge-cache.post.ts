@@ -15,6 +15,19 @@
  *     未配置时本端点直接 404（功能关闭，不暴露清除面）。
  *   - dev 模式下 Nitro 仅监听本机，允许免密钥调用，方便本地零配置验证。
  */
+import { timingSafeEqual } from 'node:crypto'
+
+/**
+ * 常数时间比较：`given !== secret` 的字符串比较会在首个差异字节短路，
+ * 攻击者可通过计时侧信道逐字节猜出 purge 密钥。
+ * 长度差异无法隐藏（timingSafeEqual 要求等长），但内容比对全程常数时间。
+ */
+function secretsEqual(given: string, secret: string): boolean {
+  const a = Buffer.from(given, 'utf8')
+  const b = Buffer.from(secret, 'utf8')
+  return a.length === b.length && timingSafeEqual(a, b)
+}
+
 export default defineEventHandler(async (event) => {
   const config = useRuntimeConfig(event)
   const secret = String(config.purgeSecret || '')
@@ -23,7 +36,7 @@ export default defineEventHandler(async (event) => {
   }
   if (secret) {
     const given = getRequestHeader(event, 'x-rosetta-purge-secret') || ''
-    if (given !== secret) {
+    if (!secretsEqual(given, secret)) {
       throw createError({ statusCode: 403, statusMessage: 'Forbidden' })
     }
   }

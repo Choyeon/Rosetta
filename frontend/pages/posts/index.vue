@@ -1,3 +1,10 @@
+<!--
+  文章列表页：GET /blog/posts（分页 / 分类 / 关键词）+ /search-placeholders 占位词轮播。
+  canonical 在 setup 同步阶段用 useRequestURL().origin 拼好：await 之后再调 useHead 会被
+  Nuxt 忽略（NUXT_E1001），SEO 静默失效。query 虽以 computed 传入，真正的重新请求仍由
+  那个 import.meta.client 守卫的 watch 集中触发 —— SSR 首屏由 useFetch 自动完成，服务端
+  refresh 会得到重复请求。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-10">

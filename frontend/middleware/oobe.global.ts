@@ -3,17 +3,24 @@
  * - 首次进入任意页面时调用后端 /api/oobe/status 检查安装状态
  * - 未安装：自动进入 /oobe 向导
  * - 已安装：禁止回到 /oobe（重定向首页）
- * - 检查结果用进程内变量缓存，避免每次路由切换都请求后端
+ * - 缓存策略双端分离：SSR 端 per-request（useState，随 payload 水合供客户端
+ *   首屏复用）；客户端进程内 60s（浏览器标签页视角，跨导航复用没问题）。
  */
+
+// ===== 客户端（浏览器标签页）缓存：模块级变量在浏览器里天然按标签页隔离 =====
 let cachedStatus: boolean | null = null
 let cachedStatusAt = 0
 let inFlight: Promise<boolean | null> | null = null
 let lastFailAt = 0
-let lastFailSticky: boolean | null = null
+// 客户端是否已拿到过明确判定（成功 fetch / SSR 水合种子 / resetOOBECache），
+// 用于把「消费 SSR 水合值」限制为首屏一次性动作——安装完成后 payload 里的旧值
+// 不得再覆盖 resetOOBECache(true) 的新状态。
+let clientResolved = false
 const CACHE_MS = 60_000 // 正常完成：60s 内完全信任缓存
-const FAIL_STICKY_MS = 30_000 // 失败/429：30s 内继续信任上次结果，不打爆限流
+const FAIL_STICKY_MS = 30_000 // 失败（未知态）：30s 内继续放行，不重复打后端
+const STATUS_TIMEOUT_MS = 8_000
+const SSR_STATE_KEY = 'oobe:status'
 const STATIC_OR_API_RE = /^\/(?:favicon|api|media|_nuxt|_ipx|site\.webmanifest|logo|assets|apple-touch-icon)/
-const OOBE_API_BASE_STORAGE_KEY = 'rosetta:oobe:apiBase'
 
 function shouldSkipRoute(path: string): boolean {
   if (STATIC_OR_API_RE.test(path)) return true
@@ -23,11 +30,10 @@ function shouldSkipRoute(path: string): boolean {
 }
 
 /**
- * 获取 oobe 完成状态（带缓存和并发合并）。
- * 返回三态：
+ * 实际请求一次 /oobe/status。返回三态：
  *   · true  —— 后端明确回答"已安装"
  *   · false —— 后端明确回答"未安装"（此时才允许 302 到 /oobe）
- *   · null  —— **状态未知**（后端不可达 / 5xx / 超时 / 429 之外的异常）。
+ *   · null  —— **状态未知**（后端不可达 / 5xx / 超时 / 429 等一切失败）。
  *              调用方必须放行当前路由，绝不重定向：Nitro 的 routeRules SWR
  *              会按 URL（含 query）缓存 302 响应，一次因后端冷启动产生的
  *              "/?rosetta_theme_preview=xxx → /oobe" 会在缓存窗口内持续吐给
@@ -39,69 +45,88 @@ function shouldSkipRoute(path: string): boolean {
  *
  * SSR 端用 runtimeConfig.apiBase（绝对直连后端，不走 devProxy）；
  * 客户端用 runtimeConfig.public.apiBase（相对路径，经浏览器 devProxy / nginx 同源）。
+ * 客户端**不接受**任何 localStorage 对 apiBase 的覆写——那是任意 API 重定向面；
+ * 向导期的临时后端地址覆写只保留在 useOOBE() 请求内部使用。
+ */
+async function fetchOOBEStatus(): Promise<boolean | null> {
+  try {
+    const nuxtConf = useRuntimeConfig()
+    let apiBase = import.meta.server
+      ? ((nuxtConf as unknown as { apiBase?: string }).apiBase || '')
+      : ((nuxtConf.public as unknown as { apiBase?: string }).apiBase || '')
+    if (!String(apiBase).trim()) {
+      // 生产 SSR 未配置后端：按未知处理直接放行。相对 '/api' 在 Nitro 进程内
+      // 是自请求，行为依赖部署形态（nginx/代理中间件），不是可靠的探测路径。
+      if (import.meta.server) return null
+      apiBase = '/api'
+    }
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), STATUS_TIMEOUT_MS)
+    const res = await $fetch<{ success?: boolean, oobe_complete?: boolean }>('/oobe/status', {
+      baseURL: apiBase,
+      signal: ctrl.signal,
+      timeout: STATUS_TIMEOUT_MS
+    })
+    clearTimeout(timer)
+    return Boolean(res?.oobe_complete)
+  } catch (e) {
+    // —— 失败分类：一律按"未知"放行，不再把 429 判成"已安装"。
+    // 429 只能说明后端活着，不能说明装完了：全新实例安装期被自己/CDN 限流时，
+    // 误判 true 会把 /oobe 重定向回 /，恰好挡死安装入口。
+    const status = (e as { status?: number })?.status ?? 0
+    if (import.meta.dev) {
+      console.warn(`[oobe.middleware] status fetch failed (status=${status}) → 状态未知，放行当前路由:`, e)
+    }
+    return null
+  }
+}
+
+/**
+ * 带缓存的 OOBE 完成状态读取（缓存策略见文件头注释：SSR per-request / 客户端 60s）。
  */
 async function resolveOOBEComplete(): Promise<boolean | null> {
-  const now = Date.now()
-
-  // 命中：客户端成功缓存（60s）
-  if (cachedStatus !== null && now - cachedStatusAt < CACHE_MS) return cachedStatus
-  // 命中：客户端 sticky 失败（30s），不重复打爆后端 429 限流
-  if (cachedStatus === null && lastFailSticky !== null && now - lastFailAt < FAIL_STICKY_MS) {
-    return lastFailSticky
+  // ===== SSR：per-request 缓存 =====
+  // 模块级缓存会在 SSR 进程内跨请求共享：OOBE 状态刚变更（安装完成/异常回滚）时，
+  // 最长 1 分钟仍把访客锁在 /oobe（或放行未安装实例）。useState 每个请求全新，
+  // 且随 HTML payload 水合，客户端首屏直接复用该判定、不再重复请求。
+  if (import.meta.server) {
+    const state = useState<boolean | null | undefined>(SSR_STATE_KEY, () => undefined)
+    if (state.value === undefined) state.value = await fetchOOBEStatus()
+    return state.value
   }
+
+  // ===== 客户端 =====
+  const now = Date.now()
+  // 首屏一次性消费 SSR 水合结果（之后以本标签页内的最新判定为准）
+  if (!clientResolved) {
+    const hydrated = useState<boolean | null | undefined>(SSR_STATE_KEY, () => undefined).value
+    if (typeof hydrated === 'boolean') {
+      clientResolved = true
+      cachedStatus = hydrated
+      cachedStatusAt = now
+      return hydrated
+    }
+  }
+  // 命中：成功缓存（60s）
+  if (cachedStatus !== null && now - cachedStatusAt < CACHE_MS) return cachedStatus
+  // 命中：失败 sticky（30s），未知态也不重复打后端，避免首页死循环请求
+  if (cachedStatus === null && lastFailAt > 0 && now - lastFailAt < FAIL_STICKY_MS) return null
 
   if (inFlight) return inFlight
   inFlight = (async () => {
     try {
-      // ====== SSR/客户端 双端单源 baseURL ======
-      const nuxtConf = useRuntimeConfig()
-      let apiBase = import.meta.server
-        ? ((nuxtConf as unknown as { apiBase?: string }).apiBase || '')
-        : ((nuxtConf.public as unknown as { apiBase?: string }).apiBase || '')
-      if (!String(apiBase).trim()) {
-        apiBase = (import.meta.server && process.env.NODE_ENV !== 'production')
-          ? 'http://127.0.0.1:8000/api'
-          : '/api'
+      const value = await fetchOOBEStatus()
+      const settledAt = Date.now()
+      if (value === null) {
+        cachedStatus = null
+        lastFailAt = settledAt
+      } else {
+        clientResolved = true
+        cachedStatus = value
+        cachedStatusAt = settledAt
+        lastFailAt = 0
       }
-
-      if (import.meta.client && typeof localStorage !== 'undefined') {
-        try {
-          const raw = localStorage.getItem(OOBE_API_BASE_STORAGE_KEY)
-          if (raw) {
-            const parsed = JSON.parse(raw)
-            if (typeof parsed === 'string' && parsed.trim()) {
-              apiBase = parsed.trim()
-            }
-          }
-        } catch { /* ignore */ }
-      }
-      const ctrl = new AbortController()
-      const timer = setTimeout(() => ctrl.abort(), 8000)
-      const res = await $fetch<{ success?: boolean, oobe_complete?: boolean }>('/oobe/status', {
-        baseURL: apiBase,
-        signal: ctrl.signal,
-        timeout: 8000
-      })
-      clearTimeout(timer)
-      const complete = Boolean(res?.oobe_complete)
-      cachedStatus = complete
-      cachedStatusAt = now
-      lastFailSticky = complete
-      lastFailAt = now
-      return complete
-    } catch (e) {
-      const status = (e as { status?: number })?.status ?? 0
-      // —— 失败分类兜底（Sticky，30s 内不再重复调用，避免首页死循环打满红 error）：
-      //   429 = 后端健康且限流生效 → 视为已安装（true）；
-      //   其余一切失败（网络不可达 / 5xx / 超时）→ null（未知），调用方放行不重定向。
-      const sticky: boolean | null = status === 429 ? true : null
-      lastFailSticky = sticky
-      lastFailAt = now
-      cachedStatus = null
-      if (sticky === null && import.meta.dev) {
-        console.warn('[oobe.middleware] status fetch failed → 状态未知，放行当前路由:', e)
-      }
-      return sticky
+      return value
     } finally {
       inFlight = null
     }
@@ -117,8 +142,6 @@ export default defineNuxtRouteMiddleware(async (to) => {
   const isOOBEPage = path === '/oobe' || path.startsWith('/oobe/')
 
   // ===== SSR 分支：首字节决定是否 302 重定向，避免"先吐 SPA 壳再在客户端跳"的白屏 =====
-  // 服务端每次渲染全新 HTML，module-level cachedStatus 跨请求复用没问题（OOBE 是一次性状态）。
-  // 关键：SSR 环境下没有 localStorage，跳过 rosetta:oobe:apiBase 手动覆写。
   //
   // ⚠️ 2026-01-11 强化：即使命中当前 defineNuxtRouteMiddleware 之前有客户端导航
   // 队列（比如 Nuxt 4 SPA ssr:false 首屏 client hydration 先跳一次 /oobe 再被
@@ -178,6 +201,15 @@ export default defineNuxtRouteMiddleware(async (to) => {
   }
 })
 
+/**
+ * 客户端安装完成后即时翻转缓存（oobe.vue 安装成功时调用），
+ * 避免 60s 缓存窗口内中间件仍认为"未安装"。
+ */
 export function resetOOBECache(nextValue: boolean | null = null) {
   cachedStatus = nextValue
+  cachedStatusAt = Date.now()
+  if (nextValue !== null) {
+    clientResolved = true
+    lastFailAt = 0
+  }
 }

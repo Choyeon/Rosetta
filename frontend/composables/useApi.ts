@@ -1,3 +1,12 @@
+/**
+ * useApi —— 全站 HTTP 出口，AGENTS.md §4「BaseURL 双端单源」的前端实现（调用方 URL 一律不带 /api 前缀）。
+ * 分工：useAPI = setup 期 SSR 取数（headers 是 computed，401 刷新成功后 token 变化会自动重放原请求）；
+ * apiFetch = 交互/提交（失败必 toast 再 rethrow，silentToast:true 时把提示权交还调用方，避免双弹）；
+ * silentApiFetch = 可缺失的装饰数据（失败返回 null）。服务端 baseURL 用 config.apiBase 绝对地址、
+ * 客户端用 config.public.apiBase，混用会命中 Nitro 内部路由 404；SSR 分支禁止 navigateTo、
+ * currentLocale 禁止读 localStorage，否则两端 useFetch key 不一致 → 整页 hydration mismatch。
+ */
+
 import { toast as sonnerToast } from 'vue-sonner'
 import type { UseFetchOptions } from '#app'
 import { useAuthStore } from '~~/stores/auth'
@@ -35,11 +44,30 @@ export interface ApiFetchOptions {
   server?: boolean
   key?: string
   silentToast?: boolean
+  /** 请求超时毫秒；缺省用 DEFAULT_FETCH_TIMEOUT（15s），防止后端 hang 死拖垮页面/Nitro。 */
+  timeout?: number
   [key: string]: unknown
 }
 
 /** 后端统一错误响应体类型（透传 lib/utils 的定义）。 */
 export type { ApiErrorBody }
+
+/**
+ * 默认请求超时（毫秒）：后端进程 hang 死（非拒连）时，无超时的请求会无限挂起，
+ * 占满浏览器连接池 / Nitro SSR 请求槽。调用方可通过 options.timeout 覆盖。
+ */
+const DEFAULT_FETCH_TIMEOUT = 15_000
+
+/**
+ * 计算生效超时：调用方显式传的 timeout 优先；FormData  multipart 上传
+ * （媒体库 / 封面 / 头像 / 主题包）耗时取决于上行带宽而非后端健康度，
+ * 15s 会误杀正常的大文件上传，因此不套默认超时。
+ */
+function resolveFetchTimeout(options: ApiFetchOptions): number | undefined {
+  if (typeof options.timeout === 'number') return options.timeout
+  if ((options.body as FormData | undefined) instanceof FormData) return undefined
+  return DEFAULT_FETCH_TIMEOUT
+}
 
 /**
  * vue-sonner 的全局 toast 函数不依赖 Vue setup 上下文，
@@ -116,20 +144,18 @@ function guardServerBase(base: unknown): asserts base is string {
   }
 }
 
+/** 401 刷新响应错误的最小上下文形状（onResponseError ctx.response 的本地投影）。 */
+interface ResponseErrorCtx {
+  response: { status: number, _data?: unknown }
+  [key: string]: unknown
+}
+
 export function useAPI<T>(url: string | (() => string), options?: ApiUseFetchOptions<T>) {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
   // 避免在 setup 之外/异步链中调用 useI18n() 触发
   // "Must be called at the top of a setup function"
   const locale = currentLocale()
-
-  const headers: Record<string, string> = { 'Accept-Language': locale }
-  if (options?.headers && typeof options.headers === 'object' && !Array.isArray(options.headers)) {
-    Object.assign(headers, options.headers as Record<string, string>)
-  }
-  if (authStore.accessToken) {
-    headers.Authorization = `Bearer ${authStore.accessToken}`
-  }
 
   // 关键：SSR 环境下，Nitro 内部路由与 devProxy 是两套机制，
   // 若用 config.public.apiBase（值为 '/api' 相对路径），会走 Nitro 自身
@@ -139,7 +165,30 @@ export function useAPI<T>(url: string | (() => string), options?: ApiUseFetchOpt
   const ssrSafeBase = import.meta.server ? config.apiBase : config.public.apiBase
   // 如果调用方未传自定义 key，则生成稳定 key；若已传则以调用方为准。
   const stableKey = options?.key ?? stableApiKey(url, options?.query as Record<string, unknown> | undefined)
+  // 调用方自传的生命周期回调必须组合执行，不能被内置钩子静默覆盖。
   const callerOnRequest = options?.onRequest as ((ctx: unknown) => void) | undefined
+  const callerOnResponse = options?.onResponse as ((ctx: unknown) => void) | undefined
+  const callerOnResponseError = options?.onResponseError as ((ctx: ResponseErrorCtx) => unknown) | undefined
+  const userTimeout = (options as { timeout?: number } | undefined)?.timeout
+
+  // headers 用 computed：Nuxt useFetch 原生支持 reactive option——依赖变化会自动重发。
+  // 401 → refreshAccessToken 成功 → accessToken 变 → 原请求以新 Authorization 自动重放，
+  // 与 apiFetch 的"刷新→重放"行为一致（旧实现刷新后停在 error 态直到手动导航）。
+  const headers = computed<Record<string, string>>(() => {
+    const h: Record<string, string> = { 'Accept-Language': locale }
+    if (options?.headers && typeof options.headers === 'object' && !Array.isArray(options.headers)) {
+      Object.assign(h, options.headers as Record<string, string>)
+    }
+    // Authorization 最后写：store 里的 token 优先级高于调用方手传的 Authorization 头
+    if (authStore.accessToken) {
+      h.Authorization = `Bearer ${authStore.accessToken}`
+    }
+    return h
+  })
+  // 防重放死循环：刷新成功后 headers 变化触发自动重发，若重发仍 401 则直接登出；
+  // 任何一次成功响应都会复位该标记。
+  let replayedAfterRefresh = false
+
   // 用 unknown 中转断开 Nitro TypedInternalResponse 路由条件类型推断链，
   // 否则 open generic T + options.default 会让 useFetch 重载匹配失败（TS2769）。
   // 泛型 T 仍然保证返回的 data.value 类型为 T。
@@ -148,42 +197,49 @@ export function useAPI<T>(url: string | (() => string), options?: ApiUseFetchOpt
     key: stableKey,
     baseURL: ssrSafeBase,
     headers,
+    timeout: userTimeout ?? DEFAULT_FETCH_TIMEOUT,
     onRequest(ctx: unknown) {
       guardServerBase(ssrSafeBase)
       callerOnRequest?.(ctx)
     },
-    async onResponseError({ response }) {
-      const body = response._data as unknown
+    onResponse(ctx: unknown) {
+      replayedAfterRefresh = false
+      callerOnResponse?.(ctx)
+    },
+    async onResponseError(ctx: ResponseErrorCtx) {
+      const body = ctx.response._data as unknown
       // 注意：SSR 服务器端的 onResponseError 绝不能调用 navigateTo（客户端路由 API），
       // 否则会在 Nitro 渲染线程中抛异常或让 Promise 永远 pending，
       // 导致 useFetch 卡住、结果永远 pending=true、客户端 hydration 后不重试，页面永久空白。
       if (import.meta.client) {
-        if (isOobeRequiredError(response.status, body)) {
+        if (isOobeRequiredError(ctx.response.status, body)) {
           await navigateTo('/oobe')
-          return
-        }
-        if (response.status === 401 && authStore.refreshToken) {
+        } else if (ctx.response.status === 401 && authStore.refreshToken && !replayedAfterRefresh) {
+          replayedAfterRefresh = true
           const refreshed = await authStore.refreshAccessToken()
+          // 刷新成功 → accessToken 变化 → headers computed 重算 → useFetch 自动重放原请求
           if (!refreshed) {
             authStore.clearTokens()
             await navigateTo('/login')
           }
-        } else if (response.status === 401) {
+        } else if (ctx.response.status === 401) {
           authStore.clearTokens()
           await navigateTo('/login')
         }
       } else {
-        // SSR 端：401 / 503 只清理内部状态，不尝试路由跳转（跳转没有意义）
-        if (response.status === 401) {
+        // SSR 端：401 只清理内部状态，不尝试路由跳转（跳转没有意义）
+        if (ctx.response.status === 401) {
           authStore.clearTokens()
         }
       }
+      // 保留调用方回调（此前内置钩子整体覆盖了自传 onResponseError）
+      try {
+        await callerOnResponseError?.(ctx)
+      } catch {
+        /* 调用方回调异常不再向外扩散，避免打断内置 401/503 处理链 */
+      }
     }
   })
-}
-
-export function useAPILazy<T>(url: string, options?: ApiUseFetchOptions<T>) {
-  return useAPI<T>(url, { ...options, lazy: true })
 }
 
 /**
@@ -220,6 +276,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
   ) => Promise<unknown>
   const doFetch = (): Promise<T> =>
     _fetch(url, {
+      timeout: resolveFetchTimeout(options),
       ...options,
       baseURL,
       headers: buildHeaders()
@@ -339,6 +396,8 @@ export async function silentApiFetch<T = unknown>(url: string, options: ApiFetch
   ) => Promise<unknown>
   const doFetch = (): Promise<T> =>
     _fetch(url, {
+      // 默认超时（FormData 上传除外）；调用方显式 timeout 经 ...options 覆盖
+      timeout: resolveFetchTimeout(options),
       ...options,
       baseURL,
       headers: buildHeaders()

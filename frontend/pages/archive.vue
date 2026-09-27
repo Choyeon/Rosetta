@@ -1,3 +1,9 @@
+<!--
+  归档页：GET /blog/archive 返回按年月预分组的数据，本组件摊平后按年重新分组排序。
+  坑点：allPosts 会就地改写 useAPI 缓存对象（把 created_at 回填进 post.published_at），
+  下游别把它当只读数据源；年份分组用本地时区 getFullYear()，服务器与访客时区不一致时
+  跨年文章的分组结果两端可能不同（本路由 swr 3600 还会把它固化进缓存）。
+-->
 <template>
   <div class="container py-16 max-w-3xl mx-auto">
     <header class="mb-12">

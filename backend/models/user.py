@@ -53,8 +53,8 @@ class UserTitle(Base):
     Attributes:
         id: 主键
         name: 头衔名称
-        color: 显示颜色（十六进制）
-        icon: 图标（SVG 或图标类名）
+        color: 显示颜色（十六进制，非空，写入侧按 hex 正则校验）
+        icon: 图标（预设 ID 或 emoji；纯文本，禁止 HTML/SVG 标记，见 api/title.py）
         description: 头衔描述
         created_at: 创建时间
 
@@ -228,6 +228,7 @@ class User(Base, TenantMixin):
         Integer,
         ForeignKey("user_titles.id", ondelete="SET NULL"),
         nullable=True,
+        index=True,
         comment="头衔ID",
     )
     title: Mapped[UserTitle | None] = relationship(

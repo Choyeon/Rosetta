@@ -1,3 +1,11 @@
+<!--
+  注册页（layout:false + ssr:false）：与 login.vue 同一套双分支外壳（极简纸面 / Bing 壁纸玻璃卡），
+  onMounted 同样是 ensureLoaded() 决定拉不拉壁纸，再 authStore.initialize() 判已登录跳 /admin。
+  后端 register 需要 username 而表单没有该字段：由 deriveUsername 取 email @ 前缀（清洗后 ≥2 位），
+  退化用昵称（允许中日韩字符），两者都拿不到合法值时报错而不是回退邮箱原文。
+  成功只 toast + navigateTo('/login')：不自动登录、也不消费 ?redirect（与登录页不对称是有意的）。
+-->
+
 <template>
   <div
     v-if="isMinimalAuth"

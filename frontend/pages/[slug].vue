@@ -1,3 +1,9 @@
+<!--
+  独立页（顶级 catchall）：GET /pages/<slug> → marked 渲染 + isomorphic-dompurify 白名单清洗。
+  污染 URL 自愈只折叠 %25 层、绝不整体 decode（过度解码会吞掉 %2D 造出死链）；slug 命中文章
+  形态时 301/replace 跳 /posts/<slug>，因此新增顶级路由前必须确认不被这里的 catchall 抢占。
+  sanitize 配置两端共用一份：SSR 直出的 HTML 与客户端重算结果要逐字节一致，否则水合错位。
+-->
 <template>
   <div class="container max-w-4xl mx-auto py-16">
     <template v-if="pending">
@@ -208,6 +214,16 @@ const renderedContent = computed(() => {
   }
 })
 
+// meta 描述必须是纯文本：renderedContent 是 sanitized HTML，
+// 直接 slice 会把 <p> 等标签碎片喂给搜索引擎和社交卡片。
+const metaDescription = computed(() =>
+  renderedContent.value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+)
+
 const formatDate = (iso: string) => {
   if (!iso) return ''
   try {
@@ -219,19 +235,19 @@ const formatDate = (iso: string) => {
 
 useHead(() => ({
   title: title.value,
-  meta: [{ name: 'description', content: renderedContent.value.slice(0, 180) }]
+  meta: [{ name: 'description', content: metaDescription.value }]
 }))
 
 useSeo({
   title,
-  description: computed(() => renderedContent.value.slice(0, 180)),
+  description: metaDescription,
   type: 'article'
 })
 useArticleJsonLd({
   slug,
   title,
   'headline': title,
-  'description': computed(() => renderedContent.value.slice(0, 180)),
+  'description': metaDescription,
   'publishedAt': computed(() => (page.value?.created_at || page.value?.createdAt || '') as string),
   'updatedAt': computed(() => (page.value?.updated_at || page.value?.updatedAt || '') as string),
   '@type': 'Article'

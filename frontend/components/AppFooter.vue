@@ -1,9 +1,17 @@
+<!--
+  前台页脚（默认主题完整版 / 极简主题瘦身版两副骨架）。
+  站点数据不自行请求，直接读 layouts/default.vue 已 ensureLoaded 的 useSite() state，
+  换挂载点时必须先保证该 state 已填充；管理员注入的 footer_custom_html 只有过
+  sanitizeTrustedAdminHtml 白名单才允许 v-html。极简骨架判定唯一来源是
+  lib/rosetta-themes 的 MINIMAL_THEME_SLUGS，禁止本地复制 slug 字面量。
+-->
 <script setup lang="ts">
 import { Separator } from '~~/components/ui/separator'
 import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
 
 const { t, locale, setLocale } = useI18n()
 
@@ -207,6 +215,11 @@ const siteConfig = computed<SiteConfigLite>(() => {
   }
 })
 
+// footer_custom_html 是管理员有意书写的富 HTML，但仍带白名单 sanitize
+// （禁 script/iframe/on*/javascript: URI，放行 class/style 内联排版）。
+// isomorphic-dompurify SSR 与客户端同实现，首屏 HTML 即已洗过，两端字节一致。
+const footerCustomHtml = computed(() => sanitizeTrustedAdminHtml(siteConfig.value.footer_custom_html))
+
 const socialLinks = computed<FooterLink[]>(() => {
   const cfg = siteConfig.value
   const list: FooterLink[] = []
@@ -277,12 +290,12 @@ const handleSetLocale = async (code: string) => {
           <p class="text-sm text-muted-foreground leading-relaxed mb-6 max-w-sm">
             {{ siteConfig.footer_slogan || siteConfig.site_description || t('footer.description', '穿越语言的边界 · Modern Blog System') }}
           </p>
-          <!-- 管理员在站点设置 footer_custom_html 注入的自定义 HTML 片段（统计脚本、验证标签等） -->
+          <!-- 管理员在站点设置 footer_custom_html 注入的自定义 HTML 片段（统计脚本、验证标签等）；已经过 lib/sanitize 白名单清洗 -->
           <!-- eslint-disable-next-line vue/no-v-html -->
           <div
-            v-if="siteConfig.footer_custom_html"
+            v-if="footerCustomHtml"
             class="mb-6 text-sm text-muted-foreground [&_a]:text-primary [&_a]:underline-offset-2"
-            v-html="siteConfig.footer_custom_html"
+            v-html="footerCustomHtml"
           />
           <!-- 社交链接：不使用 Button asChild 组合，避免 SSR 渲染 <a> 但客户端
                asChild slot 透传时序问题导致 undefined → Hydration mismatch。
@@ -455,12 +468,12 @@ const handleSetLocale = async (code: string) => {
     class="ap-footer-min border-t"
   >
     <div class="container mx-auto px-5 py-10 text-center">
-      <!-- 管理员注入的自定义 HTML 片段（统计脚本、验证标签等） -->
+      <!-- 管理员注入的自定义 HTML 片段（统计脚本、验证标签等）；已经过 lib/sanitize 白名单清洗 -->
       <!-- eslint-disable-next-line vue/no-v-html -->
       <div
-        v-if="siteConfig.footer_custom_html"
+        v-if="footerCustomHtml"
         class="mb-5 text-xs text-muted-foreground [&_a]:underline [&_a]:underline-offset-2"
-        v-html="siteConfig.footer_custom_html"
+        v-html="footerCustomHtml"
       />
 
       <!-- 导航链接行 -->

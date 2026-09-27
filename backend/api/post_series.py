@@ -12,11 +12,14 @@
     POST /api/post_series/complete   根据关键词 autocomplete 系列文章
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import String, and_, cast, func, or_, select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.partial_update import apply_partial_update
 from backend.models.blog import Category, Post
 from backend.models.post_series import PostSeries
 from backend.schemas import BaseResponse
@@ -27,6 +30,51 @@ from backend.schemas.post_series import (
 )
 
 router = APIRouter(tags=["文章系列"])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
+# 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class SeriesPostItemDoc(BaseModel):
+    """系列详情页文章列表的单条投影（列级 select，只取渲染所需的 7 个字段）。"""
+
+    id: int = Field(..., description="文章 ID")
+    title: dict[str, str] = Field(
+        ..., description="多语言标题 dict（JSON 列原样返回，如 {'zh': ..., 'en': ...}）"
+    )
+    slug: str = Field(..., description="文章 slug")
+    cover_image: str | None = Field(None, description="封面图 URL，未设置时为 null")
+    series_order: int | None = Field(
+        None, description="系列内排序权重（模型列 NOT NULL default 0；历史脏数据可能为 null）"
+    )
+    views: int | None = Field(None, description="累计浏览量（模型列 NOT NULL default 0）")
+    published_at: datetime | None = Field(
+        None, description="发布时间，尚未发布（草稿入镜等历史态）时为 null"
+    )
+
+
+class SeriesDetailDoc(BaseModel):
+    """``GET /api/series/{slug}`` 的响应体（裸 dict，无 success/data 信封）。
+
+    注意：本端点**不输出** ``is_active``（未激活的系列直接 404），
+    与 ``PostSeriesResponse``（列表/管理端点使用）字段集合不同。
+    """
+
+    id: int = Field(..., description="系列 ID")
+    title: dict[str, str] = Field(..., description="多语言系列标题（JSON 列原样返回）")
+    description: dict[str, str] | None = Field(None, description="多语言系列描述，未设置时为 null")
+    slug: str = Field(..., description="系列 slug")
+    cover_image: str | None = Field(None, description="系列封面图 URL，未设置时为 null")
+    sort_order: int = Field(..., description="系列间排序权重，越小越靠前")
+    created_at: datetime = Field(..., description="创建时间（响应序列化为 ISO 8601 字符串）")
+    updated_at: datetime = Field(..., description="更新时间（响应序列化为 ISO 8601 字符串）")
+    post_count: int = Field(..., description="已发布文章数，等于 posts 数组长度")
+    posts: list[SeriesPostItemDoc] = Field(
+        default_factory=list, description="已发布文章列表，按 series_order 升序、再按发布时间倒序"
+    )
 
 
 class SeriesCompleteRequest(BaseModel):
@@ -87,7 +135,12 @@ async def list_series(db: DB):
 @router.get(
     "/series/{slug}",
     summary="获取系列详情",
-    description="根据 slug 获取系列详情，包含该系列下所有已发布文章列表（按 series_order 排序）。",
+    description=(
+        "根据 slug 获取系列详情，包含该系列下所有已发布文章列表（按 series_order 排序）。"
+        "公开接口、无需鉴权；响应为裸 dict（无 success/data 信封），"
+        "post_count 恒等于 posts 长度；系列不存在或未激活返回 404。"
+    ),
+    responses={200: {"model": SeriesDetailDoc}},
 )
 async def get_series(slug: str, db: DB):
     """获取系列详情及文章列表（公开接口）"""
@@ -100,12 +153,22 @@ async def get_series(slug: str, db: DB):
             detail="系列不存在",
         )
 
+    # 只投影系列页真正渲染的列。`select(Post)` 会把每篇文章的正文与 excerpt 一并读进
+    # 内存——一个 200 篇的系列就是几百 KB 到几 MB 的无效 IO，而响应用到的只有下面 7 个字段。
     posts_result = await db.execute(
-        select(Post)
+        select(
+            Post.id,
+            Post.title,
+            Post.slug,
+            Post.cover_image,
+            Post.series_order,
+            Post.views,
+            Post.published_at,
+        )
         .where(Post.series_id == series.id, Post.status == "published")
         .order_by(Post.series_order.asc(), Post.published_at.desc())
     )
-    posts = posts_result.scalars().all()
+    rows = posts_result.all()
 
     return {
         "id": series.id,
@@ -116,18 +179,18 @@ async def get_series(slug: str, db: DB):
         "sort_order": series.sort_order,
         "created_at": series.created_at,
         "updated_at": series.updated_at,
-        "post_count": len(posts),
+        "post_count": len(rows),
         "posts": [
             {
-                "id": p.id,
-                "title": p.title,
-                "slug": p.slug,
-                "cover_image": p.cover_image,
-                "series_order": p.series_order,
-                "views": p.views,
-                "published_at": p.published_at,
+                "id": r.id,
+                "title": r.title,
+                "slug": r.slug,
+                "cover_image": r.cover_image,
+                "series_order": r.series_order,
+                "views": r.views,
+                "published_at": r.published_at,
             }
-            for p in posts
+            for r in rows
         ],
     }
 
@@ -232,8 +295,7 @@ async def update_series(
                 detail="系列 slug 已存在",
             )
 
-    for field, value in update_data.items():
-        setattr(series, field, value)
+    apply_partial_update(series, update_data)
 
     await db.flush()
     await db.refresh(series)
@@ -333,22 +395,35 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
     series_result = await db.execute(series_subq)
     series_ids = [row[0] for row in series_result.all()]
 
-    if series_ids:
-        posts_q = (
-            select(Post)
-            .where(Post.series_id.in_(series_ids), Post.status == "published")
-            .order_by(Post.published_at.desc())
-            .limit(8)
-        )
-        r = await db.execute(posts_q)
-        for p in r.scalars().all():
-            if p.id in seen:
+    def _collect(rows) -> bool:
+        """把候选文章并入结果，凑满 8 条返回 True。
+
+        投影查询（id/title/slug）而不是 ``select(Post)``：autocomplete 只要这三个字段，
+        而整行会把正文读进来——三段查询就是 24 篇全文的无效 IO。
+        """
+        for r in rows:
+            if r.id in seen:
                 continue
-            title = p.title.get("zh") or p.title.get("en") or next(iter(p.title.values()), "")
-            results.append(SeriesCompleteItem(id=p.id, title=title, slug=p.slug))
-            seen.add(p.id)
+            title = r.title.get("zh") or r.title.get("en") or next(iter(r.title.values()), "")
+            results.append(SeriesCompleteItem(id=r.id, title=title, slug=r.slug))
+            seen.add(r.id)
             if len(results) >= 8:
-                return results
+                return True
+        return False
+
+    light_fields = (Post.id, Post.title, Post.slug)
+
+    if series_ids:
+        rows = (
+            await db.execute(
+                select(*light_fields)
+                .where(Post.series_id.in_(series_ids), Post.status == "published")
+                .order_by(Post.published_at.desc())
+                .limit(8)
+            )
+        ).all()
+        if _collect(rows):
+            return results
 
     try:
         cat_subq = (
@@ -373,42 +448,31 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         cat_r = await db.execute(cat_subq)
         cat_ids = [row[0] for row in cat_r.all()]
     if cat_ids:
-        posts_q = (
-            select(Post)
-            .where(Post.category_id.in_(cat_ids), Post.status == "published")
+        rows = (
+            await db.execute(
+                select(*light_fields)
+                .where(Post.category_id.in_(cat_ids), Post.status == "published")
+                .order_by(Post.published_at.desc())
+                .limit(8)
+            )
+        ).all()
+        if _collect(rows):
+            return results
+
+    rows = (
+        await db.execute(
+            select(*light_fields)
+            .where(
+                Post.status == "published",
+                or_(
+                    cast(Post.title["zh"], String).ilike(like),
+                    cast(Post.title["en"], String).ilike(like),
+                ),
+            )
             .order_by(Post.published_at.desc())
             .limit(8)
         )
-        r = await db.execute(posts_q)
-        for p in r.scalars().all():
-            if p.id in seen:
-                continue
-            title = p.title.get("zh") or p.title.get("en") or next(iter(p.title.values()), "")
-            results.append(SeriesCompleteItem(id=p.id, title=title, slug=p.slug))
-            seen.add(p.id)
-            if len(results) >= 8:
-                return results
-
-    posts_q = (
-        select(Post)
-        .where(
-            Post.status == "published",
-            or_(
-                cast(Post.title["zh"], String).ilike(like),
-                cast(Post.title["en"], String).ilike(like),
-            ),
-        )
-        .order_by(Post.published_at.desc())
-        .limit(8)
-    )
-    r = await db.execute(posts_q)
-    for p in r.scalars().all():
-        if p.id in seen:
-            continue
-        title = p.title.get("zh") or p.title.get("en") or next(iter(p.title.values()), "")
-        results.append(SeriesCompleteItem(id=p.id, title=title, slug=p.slug))
-        seen.add(p.id)
-        if len(results) >= 8:
-            return results
+    ).all()
+    _collect(rows)
 
     return results

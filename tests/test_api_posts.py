@@ -79,6 +79,178 @@ class TestPostGetById:
         response = await client.get("/api/blog/posts/id/99999")
         assert response.status_code == 404
 
+    @pytest.mark.asyncio
+    async def test_get_post_by_id_draft_invisible_to_anonymous(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        """草稿不得按 ID 匿名直读（与 slug 详情端点同口径，此前无任何门禁）"""
+        draft = Post(
+            title={"zh": "草稿文章", "en": "Draft Post"},
+            slug="draft-by-id",
+            content={"zh": "未发布的秘密内容", "en": "Secret draft content"},
+            author_id=test_user.id,
+            category_id=test_category.id,
+            status="draft",
+            allow_comments=True,
+        )
+        db_session.add(draft)
+        await db_session.commit()
+        await db_session.refresh(draft)
+
+        response = await client.get(f"/api/blog/posts/id/{draft.id}")
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_post_by_id_password_protected_hides_body_and_hash(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        """加密文章未提供密码：正文置空、标记受保护，密码散列绝不出现在响应里"""
+        guarded = Post(
+            title={"zh": "加密文章", "en": "Guarded Post"},
+            slug="guarded-by-id",
+            content={"zh": "需要密码的正文", "en": "Password gated body"},
+            excerpt={"zh": "加密摘要", "en": "Guarded excerpt"},
+            author_id=test_user.id,
+            category_id=test_category.id,
+            status="published",
+            password="$argon2id$fake.placeholder.hash",
+            allow_comments=True,
+        )
+        db_session.add(guarded)
+        await db_session.commit()
+        await db_session.refresh(guarded)
+
+        response = await client.get(f"/api/blog/posts/id/{guarded.id}")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["is_password_protected"] is True
+        assert data["content"] == ""
+        assert data.get("password") is None
+        assert "fake.placeholder.hash" not in response.text
+        assert "需要密码的正文" not in response.text
+
+
+class TestContentPipelineCoverage:
+    """统一渲染管线覆盖：所有响应路径必须过插件 filter 链，不得只跑短代码。
+
+    content_renderer 的契约是"核心请求端点只调用这里的函数"——若某条路径
+    退回裸 do_shortcode，the_content / the_excerpt 上的插件（seo-toolkit、
+    hello-rosetta）就会在该端点静默失效。本类钉住三条曾绕过的路径。
+    """
+
+    @staticmethod
+    def _append(marker: str):
+        def _fn(value, **_kw):
+            return value + marker if isinstance(value, str) and value else value
+
+        _fn.__name__ = f"append_{marker.strip('[]')}"
+        return _fn
+
+    @pytest.mark.asyncio
+    async def test_by_id_detail_applies_filters(self, client: AsyncClient, test_post: Post):
+        from backend.core.hooks import add_filter, remove_filter
+
+        c_fn = self._append("[C]")
+        e_fn = self._append("[E]")
+        add_filter("the_content", c_fn)
+        add_filter("the_excerpt", e_fn)
+        try:
+            data = (await client.get(f"/api/blog/posts/id/{test_post.id}")).json()
+            assert data["content"].endswith("[C]")
+            assert data["excerpt"].endswith("[E]")
+        finally:
+            remove_filter("the_content", c_fn)
+            remove_filter("the_excerpt", e_fn)
+
+    @pytest.mark.asyncio
+    async def test_post_list_excerpt_applies_filters(self, client: AsyncClient, test_post: Post):
+        from backend.core.hooks import add_filter, remove_filter
+
+        e_fn = self._append("[E]")
+        t_fn = self._append("[T]")
+        add_filter("the_excerpt", e_fn)
+        add_filter("the_title", t_fn)
+        try:
+            payload = (await client.get("/api/blog/posts")).json()
+            items = payload["items"]
+            target = next(i for i in items if i["id"] == test_post.id)
+            assert target["excerpt"].endswith("[E]")
+            assert target["title"].endswith("[T]")
+        finally:
+            remove_filter("the_excerpt", e_fn)
+            remove_filter("the_title", t_fn)
+
+    @pytest.mark.asyncio
+    async def test_rss_feed_applies_filters(self, client: AsyncClient, test_post: Post):
+        from backend.core.hooks import add_filter, remove_filter
+
+        c_fn = self._append("[C]")
+        e_fn = self._append("[E]")
+        t_fn = self._append("[T]")
+        add_filter("the_content", c_fn)
+        add_filter("the_excerpt", e_fn)
+        add_filter("the_title", t_fn)
+        try:
+            xml = (await client.get("/api/blog/rss")).text
+            assert "[C]" in xml  # content:encoded 过了 the_content
+            assert "[E]" in xml  # description 过了 the_excerpt
+            assert "测试文章[T]" in xml  # item title 过了 the_title
+        finally:
+            remove_filter("the_content", c_fn)
+            remove_filter("the_excerpt", e_fn)
+            remove_filter("the_title", t_fn)
+
+    @pytest.mark.asyncio
+    async def test_user_posts_excerpt_applies_filters(self, client: AsyncClient, test_post: Post):
+        """作者主页文章列表：多语言摘要 dict 的每个值都必须过 the_excerpt 链。"""
+        from backend.core.hooks import add_filter, remove_filter
+
+        e_fn = self._append("[E]")
+        add_filter("the_excerpt", e_fn)
+        try:
+            payload = (await client.get(f"/api/users/{test_post.author_id}/posts")).json()
+            data = payload.get("data") or payload
+            target = next(i for i in data["items"] if i["id"] == test_post.id)
+            excerpt = target["excerpt"]
+            assert isinstance(excerpt, dict)
+            assert all(v.endswith("[E]") for v in excerpt.values() if v)
+        finally:
+            remove_filter("the_excerpt", e_fn)
+
+    @pytest.mark.asyncio
+    async def test_page_detail_content_applies_filters(self, client: AsyncClient, db_session):
+        """独立页详情：多语言正文 dict 的每个值都必须过 the_content 链（列表端点保持原文）。"""
+        from backend.core.hooks import add_filter, remove_filter
+        from backend.models.core import Page
+
+        c_fn = self._append("[C]")
+        add_filter("the_content", c_fn)
+        page = Page(
+            title={"zh": "关于", "en": "About"},
+            slug="about-pipeline",
+            content={"zh": "读者侧正文", "en": "reader body"},
+            status="published",
+        )
+        db_session.add(page)
+        await db_session.commit()
+        try:
+            detail = (await client.get("/api/pages/about-pipeline")).json()
+            assert all(v.endswith("[C]") for v in detail["content"].values())
+            listed = (await client.get("/api/pages")).json()
+            data = listed.get("data") or listed
+            target = next(i for i in data["items"] if i["slug"] == "about-pipeline")
+            assert target["content"] == {"zh": "读者侧正文", "en": "reader body"}
+        finally:
+            remove_filter("the_content", c_fn)
+
 
 class TestPostCreate:
     """创建文章测试"""

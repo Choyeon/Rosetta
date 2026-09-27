@@ -28,13 +28,19 @@ except ImportError:
 from typing import Any
 
 from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
 
-from backend.core.cache import CACHE_TTL, cache, make_cache_key
+from backend.core.cache import (
+    CACHE_KEY_CATEGORIES,
+    CACHE_KEY_TAGS,
+    CACHE_TTL,
+    cache,
+    make_cache_key,
+)
 from backend.core.config import settings
 from backend.core.database import async_session_maker
-from backend.models.blog import Category, Post, Tag, post_likes, post_tags
+from backend.models.blog import Category, Post, Tag, post_tags
 from backend.models.core import FriendLink, Navigation, SiteConfig
+from backend.schemas import CategoryResponse, TagResponse
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +108,6 @@ class CacheWarmer:
     - 分类列表
     - 标签列表
     - 友链列表
-    - 热门文章
     """
 
     _instance = None
@@ -125,6 +130,19 @@ class CacheWarmer:
         """获取预热状态"""
         return self._state
 
+    def _warmup_tasks(self) -> list[tuple[str, Any]]:
+        """预热任务清单——全量预热与单任务触发共用同一来源。
+
+        此前两处各自维护一份，删任务要记得改两个地方，历史上就漏过。
+        """
+        return [
+            ("site_config", self._warmup_site_config),
+            ("navigations", self._warmup_navigations),
+            ("categories", self._warmup_categories),
+            ("tags", self._warmup_tags),
+            ("friend_links", self._warmup_friend_links),
+        ]
+
     async def warmup_all(self) -> dict[str, Any]:
         """
         预热所有缓存
@@ -143,14 +161,7 @@ class CacheWarmer:
 
             logger.info("开始缓存预热...")
 
-            tasks = [
-                ("site_config", self._warmup_site_config),
-                ("navigations", self._warmup_navigations),
-                ("categories", self._warmup_categories),
-                ("tags", self._warmup_tags),
-                ("friend_links", self._warmup_friend_links),
-                ("hot_posts", self._warmup_hot_posts),
-            ]
+            tasks = self._warmup_tasks()
 
             results = await asyncio.gather(
                 *[self._run_warmup_task(name, func) for name, func in tasks],
@@ -295,11 +306,13 @@ class CacheWarmer:
             return total_cached
 
     async def _warmup_categories(self) -> int:
-        """预热分类列表"""
-        async with async_session_maker() as db:
-            languages = ["zh", "en", "ja", "zh_Hant"]
-            total_cached = 0
+        """预热分类列表
 
+        键与载荷形态必须和 ``GET /blog/categories`` 读侧完全一致（单键 ``raw-i18n``、
+        值为 ``CategoryResponse`` 列表的 JSON 形态）。这里刻意复用同一个响应模型，
+        避免"预热门面与读侧字段各自演化"——形状不一致时命中缓存反而会交出坏数据。
+        """
+        async with async_session_maker() as db:
             result = await db.execute(
                 select(
                     Category,
@@ -311,42 +324,31 @@ class CacheWarmer:
             )
             rows = result.all()
 
-            for lang in languages:
-                cache_key = make_cache_key("categories", lang)
+            items = [
+                CategoryResponse(
+                    id=row.Category.id,
+                    name=row.Category.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
+                    slug=row.Category.slug,
+                    description=row.Category.description or None,
+                    icon=row.Category.icon,
+                    color=row.Category.color,
+                    cover_image=row.Category.cover_image,
+                    created_at=row.Category.created_at,
+                    post_count=row.post_count or 0,
+                )
+                for row in rows
+            ]
 
-                def get_i18n_value(data: dict | None, language: str) -> str:
-                    if not data:
-                        return ""
-                    if isinstance(data, str):
-                        return data
-                    return data.get(language, data.get("zh", ""))
-
-                categories_data = [
-                    {
-                        "id": row.Category.id,
-                        "name": get_i18n_value(row.Category.name, lang),
-                        "slug": row.Category.slug,
-                        "description": get_i18n_value(row.Category.description, lang),
-                        "icon": row.Category.icon,
-                        "color": row.Category.color,
-                        "cover_image": row.Category.cover_image,
-                        "created_at": row.Category.created_at.isoformat(),
-                        "post_count": row.post_count or 0,
-                    }
-                    for row in rows
-                ]
-
-                await cache.set(cache_key, categories_data, CACHE_TTL["categories"])
-                total_cached += 1
-
-            return total_cached
+            await cache.set(
+                CACHE_KEY_CATEGORIES,
+                [item.model_dump(mode="json") for item in items],
+                CACHE_TTL["categories"],
+            )
+            return 1
 
     async def _warmup_tags(self) -> int:
-        """预热标签列表"""
+        """预热标签列表（键/形态与 ``GET /blog/tags`` 读侧一致）"""
         async with async_session_maker() as db:
-            languages = ["zh", "en", "ja", "zh_Hant"]
-            total_cached = 0
-
             result = await db.execute(
                 select(
                     Tag,
@@ -359,34 +361,26 @@ class CacheWarmer:
             )
             rows = result.all()
 
-            for lang in languages:
-                cache_key = make_cache_key("tags", lang)
+            items = [
+                TagResponse(
+                    id=row.Tag.id,
+                    name=row.Tag.name or {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
+                    slug=row.Tag.slug,
+                    color=row.Tag.color,
+                    icon=row.Tag.icon,
+                    is_active=row.Tag.is_active,
+                    created_at=row.Tag.created_at,
+                    post_count=row.post_count or 0,
+                )
+                for row in rows
+            ]
 
-                def get_i18n_value(data: dict | None, language: str) -> str:
-                    if not data:
-                        return ""
-                    if isinstance(data, str):
-                        return data
-                    return data.get(language, data.get("zh", ""))
-
-                tags_data = [
-                    {
-                        "id": row.Tag.id,
-                        "name": get_i18n_value(row.Tag.name, lang),
-                        "slug": row.Tag.slug,
-                        "color": row.Tag.color,
-                        "icon": row.Tag.icon,
-                        "is_active": row.Tag.is_active,
-                        "created_at": row.Tag.created_at.isoformat(),
-                        "post_count": row.post_count or 0,
-                    }
-                    for row in rows
-                ]
-
-                await cache.set(cache_key, tags_data, CACHE_TTL["tags"])
-                total_cached += 1
-
-            return total_cached
+            await cache.set(
+                CACHE_KEY_TAGS,
+                [item.model_dump(mode="json") for item in items],
+                CACHE_TTL["tags"],
+            )
+            return 1
 
     async def _warmup_friend_links(self) -> int:
         """预热友链列表"""
@@ -423,67 +417,6 @@ class CacheWarmer:
 
             return total_cached
 
-    async def _warmup_hot_posts(self) -> int:
-        """预热热门文章列表"""
-        async with async_session_maker() as db:
-            languages = ["zh", "en", "ja", "zh_Hant"]
-            total_cached = 0
-
-            result = await db.execute(
-                select(
-                    Post,
-                    func.coalesce(
-                        select(func.count())
-                        .select_from(post_likes)
-                        .where(post_likes.c.post_id == Post.id)
-                        .scalar_subquery(),
-                        0,
-                    ).label("likes_count"),
-                )
-                .options(
-                    selectinload(Post.author),
-                    selectinload(Post.category),
-                    selectinload(Post.tags),
-                )
-                .where(Post.status == "published")
-                .order_by(Post.views.desc())
-                .limit(10)
-            )
-            posts = result.unique().all()
-
-            for lang in languages:
-                cache_key = make_cache_key("hot_posts", lang)
-
-                def get_i18n_value(data: dict | None, language: str) -> str:
-                    if not data:
-                        return ""
-                    if isinstance(data, str):
-                        return data
-                    return data.get(language, data.get("zh", ""))
-
-                posts_data = []
-                for row in posts:
-                    post = row.Post
-                    posts_data.append(
-                        {
-                            "id": post.id,
-                            "title": get_i18n_value(post.title, lang),
-                            "slug": post.slug,
-                            "cover_image": post.cover_image,
-                            "views": post.views,
-                            "likes_count": row.likes_count or 0,
-                            "created_at": post.created_at.isoformat(),
-                            "published_at": post.published_at.isoformat()
-                            if post.published_at
-                            else None,
-                        }
-                    )
-
-                await cache.set(cache_key, posts_data, CACHE_TTL["post_list"])
-                total_cached += 1
-
-            return total_cached
-
     async def warmup_task(self, task_name: str) -> WarmupTaskResult:
         """
         执行单个预热任务
@@ -494,14 +427,7 @@ class CacheWarmer:
         Returns:
             预热任务结果
         """
-        task_map = {
-            "site_config": self._warmup_site_config,
-            "navigations": self._warmup_navigations,
-            "categories": self._warmup_categories,
-            "tags": self._warmup_tags,
-            "friend_links": self._warmup_friend_links,
-            "hot_posts": self._warmup_hot_posts,
-        }
+        task_map = dict(self._warmup_tasks())
 
         if task_name not in task_map:
             result = WarmupTaskResult(task_name=task_name, status=WarmupTaskStatus.FAILED)
@@ -529,16 +455,17 @@ async def warmup_cache() -> dict[str, Any]:
 
     并行预热多个缓存项，错误处理和日志记录。
 
-    Returns:
-        预热结果摘要
+    注意：这里**不看** ``redis_enabled``。内存缓存后端同样是有意义的响应缓存，
+    而且进程一重启就全冷，单机部署反而更需要预热；把它当成 Redis 专属功能，
+    等于让默认部署形态永远冷启动。
     """
-    if not settings.redis_enabled:
-        logger.info("未启用 Redis，跳过缓存预热")
-        return {"skipped": True, "reason": "Redis not enabled"}
+    if not settings.cache_warmup_enabled:
+        logger.info("缓存预热已由配置关闭")
+        return {"skipped": True, "reason": "cache_warmup_enabled=False"}
 
     try:
         result = await cache_warmer.warmup_all()
-        return result
+        return result or {}
     except Exception as e:
         logger.error(f"缓存预热失败: {e}")
         return {"error": str(e)}
@@ -553,21 +480,30 @@ class ScheduledCacheRefresher:
 
     def __init__(
         self,
-        refresh_interval: int = 3600,
-        enabled: bool = True,
+        refresh_interval: int | None = None,
+        enabled: bool | None = None,
     ):
         """
         初始化定时刷新器
 
         Args:
-            refresh_interval: 刷新间隔（秒），默认 1 小时
-            enabled: 是否启用定时刷新
+            refresh_interval: 刷新间隔（秒），None 则跟随 ``settings.cache_refresh_interval``
+            enabled: 是否启用定时刷新，None 则跟随 ``settings.cache_warmup_enabled``
         """
-        self.refresh_interval = refresh_interval
-        self.enabled = enabled
+        self._refresh_interval = refresh_interval
+        self._enabled = enabled
         self._task: asyncio.Task | None = None
         self._running = False
         self._stop_event = asyncio.Event()
+
+    @property
+    def refresh_interval(self) -> int:
+        """间隔每次取用都重读配置，避免 import 期定值后改 settings 不生效"""
+        return self._refresh_interval or settings.cache_refresh_interval
+
+    @property
+    def enabled(self) -> bool:
+        return settings.cache_warmup_enabled if self._enabled is None else self._enabled
 
     async def start(self) -> None:
         """启动定时刷新任务"""
@@ -626,7 +562,4 @@ class ScheduledCacheRefresher:
         return self._running
 
 
-scheduled_cache_refresher = ScheduledCacheRefresher(
-    refresh_interval=getattr(settings, "cache_refresh_interval", 3600),
-    enabled=settings.redis_enabled,
-)
+scheduled_cache_refresher = ScheduledCacheRefresher()

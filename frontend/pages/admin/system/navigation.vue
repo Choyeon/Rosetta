@@ -1,3 +1,8 @@
+<!--
+  导航菜单管理页：全量列表 + 上下移排序 + 父子级选择 + Dialog CRUD。
+  契约：交换 order 必须串行 PUT——并发两个局部更新若其一失败会留下重复 order，失败后不信任乐观状态而是 loadAll() 重同步；
+  label 以完整 {zh,en,ja,zh_Hant} dict 提交（管理员名称必填校验只看 zh）；删除走 silentToast 由 DangerConfirmDialog 内联展示错误。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -18,6 +23,27 @@
 
     <AdminCard>
       <div class="p-0">
+        <Alert
+          v-if="!loading && loadError"
+          variant="destructive"
+          class="rounded-xl m-5"
+        >
+          <AlertTriangle class="size-4" />
+          <AlertTitle>导航列表加载失败</AlertTitle>
+          <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+            <span>{{ loadError }}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              class="rounded-lg shrink-0"
+              @click="loadAll"
+            >
+              <RotateCcw data-icon="inline-start" />
+              重试
+            </Button>
+          </AlertDescription>
+        </Alert>
+
         <div
           v-if="loading"
           class="flex flex-col gap-3 p-6"
@@ -56,8 +82,9 @@
               <button
                 type="button"
                 class="size-7 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                :disabled="isFirst(item)"
+                :disabled="isFirst(item) || swapping"
                 title="上移"
+                aria-label="上移菜单项"
                 @click="moveUp(item)"
               >
                 <ChevronUp class="size-4" />
@@ -65,8 +92,9 @@
               <button
                 type="button"
                 class="size-7 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                :disabled="isLast(item)"
+                :disabled="isLast(item) || swapping"
                 title="下移"
+                aria-label="下移菜单项"
                 @click="moveDown(item)"
               >
                 <ChevronDown class="size-4" />
@@ -117,6 +145,7 @@
                   variant="ghost"
                   size="icon-sm"
                   title="编辑"
+                  aria-label="编辑菜单项"
                   @click="openEdit(item)"
                 >
                   <Pencil data-icon="inline-start" />
@@ -126,6 +155,7 @@
                   size="icon-sm"
                   class="text-error hover:text-error hover:bg-error-muted"
                   title="删除"
+                  aria-label="删除菜单项"
                   @click="handleDelete(item)"
                 >
                   <Trash2 data-icon="inline-start" />
@@ -153,8 +183,12 @@
             :required="true"
           />
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">链接 URL <span class="text-error">*</span></Label>
+            <Label
+              for="nav-url"
+              class="text-sm font-medium"
+            >链接 URL <span class="text-error">*</span></Label>
             <Input
+              id="nav-url"
               v-model="form.url"
               placeholder="https:// 或 /posts 内部路由"
               class="rounded-xl"
@@ -162,16 +196,24 @@
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">图标（可选）</Label>
+              <Label
+                for="nav-icon"
+                class="text-sm font-medium"
+              >图标（可选）</Label>
               <Input
+                id="nav-icon"
                 v-model="form.icon"
                 placeholder="如 Home / Star"
                 class="rounded-xl"
               />
             </div>
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">排序 order</Label>
+              <Label
+                for="nav-order"
+                class="text-sm font-medium"
+              >排序 order</Label>
               <Input
+                id="nav-order"
                 v-model.number="form.order"
                 type="number"
                 class="rounded-xl"
@@ -202,9 +244,15 @@
             </div>
           </div>
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">父级菜单（可选，做二级菜单）</Label>
+            <Label
+              for="nav-parent"
+              class="text-sm font-medium"
+            >父级菜单（可选，做二级菜单）</Label>
             <Select v-model="form.parent_id">
-              <SelectTrigger class="rounded-xl">
+              <SelectTrigger
+                id="nav-parent"
+                class="rounded-xl"
+              >
                 <SelectValue placeholder="无（一级菜单）" />
               </SelectTrigger>
               <SelectContent>
@@ -250,41 +298,13 @@
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="confirmOpen">
-      <DialogContent class="max-w-sm rounded-2xl">
-        <DialogHeader>
-          <DialogTitle>确认删除菜单项？</DialogTitle>
-          <DialogDescription>删除后无法恢复，若有子菜单将一同解除关联。</DialogDescription>
-        </DialogHeader>
-        <DialogFooter class="gap-2">
-          <Button
-            variant="outline"
-            class="rounded-xl"
-            :disabled="deleting"
-            @click="confirmOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            class="rounded-xl"
-            :disabled="deleting"
-            @click="confirmDelete"
-          >
-            <Loader2
-              v-if="deleting"
-              data-icon="inline-start"
-              class="animate-spin"
-            />
-            <Trash2
-              v-else
-              data-icon="inline-start"
-            />
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <DangerConfirmDialog
+      v-model:open="confirmOpen"
+      title="确认删除菜单项？"
+      :description="`「${extractZh(deleteTarget?.label ?? '') || '未命名'}」将被永久删除，无法恢复；若有子菜单将一同解除关联。`"
+      confirm-text="确认删除"
+      :on-confirm="confirmDelete"
+    />
   </div>
 </template>
 
@@ -298,9 +318,10 @@ import {
   type AdminNavItem
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   Menu, Plus, ChevronUp, ChevronDown, GripVertical, ExternalLink,
-  Pencil, Trash2, Save, Loader2, Info
+  Pencil, Trash2, Save, Loader2, Info, AlertTriangle, RotateCcw
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
@@ -315,17 +336,19 @@ import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
 const loading = ref(true)
+const loadError = ref('')
 const items = ref<AdminNavItem[]>([])
 const dialogOpen = ref(false)
 const confirmOpen = ref(false)
 const submitting = ref(false)
-const deleting = ref(false)
+const swapping = ref(false)
 const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminNavItem | null>(null)
 
@@ -380,19 +403,24 @@ function isLast(item: AdminNavItem): boolean {
 }
 
 async function swapOrder(a: AdminNavItem, b: AdminNavItem) {
+  if (swapping.value) return
+  swapping.value = true
   const origA = a.order
   const origB = b.order
   try {
-    await Promise.all([
-      updateAdminNavigation(a.id, { order: origB }),
-      updateAdminNavigation(b.id, { order: origA })
-    ])
+    // 串行 PUT：并发两个局部更新若其中一个失败会留下重复 order，
+    // 失败时统一 loadAll() 从后端重新同步，不信任本地乐观状态
+    await updateAdminNavigation(a.id, { order: origB })
+    await updateAdminNavigation(b.id, { order: origA })
     a.order = origB
     b.order = origA
     toast.success('排序已更新')
   } catch (e) {
+    // updateAdminNavigation 的 apiFetch 已 toast，这里只重同步列表
     console.error('[navigation] swapOrder failed:', e)
-    toast.error('更新排序失败')
+    await loadAll()
+  } finally {
+    swapping.value = false
   }
 }
 
@@ -410,12 +438,14 @@ function moveDown(item: AdminNavItem) {
 
 async function loadAll() {
   loading.value = true
+  loadError.value = ''
   try {
     items.value = await fetchAdminNavigations()
   } catch (e) {
-    console.error('[navigation] loadAll failed:', e)
-    toast.error('加载导航列表失败')
+    // fetchAdminNavigations 内部 apiFetch 已 toast；这里补充内联错误态 + 重试
     items.value = []
+    const err = e as { data?: unknown, message?: string }
+    loadError.value = extractApiErrorMessage(err?.data, err?.message || '加载导航列表失败')
   } finally {
     loading.value = false
   }
@@ -468,8 +498,8 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
+    // create/update 的 apiFetch 失败时已 toast 展示后端错误，不再二次提示
     console.error('[navigation] handleSubmit failed:', e)
-    toast.error(editingId.value ? '更新导航失败' : '创建导航失败')
   } finally {
     submitting.value = false
   }
@@ -480,20 +510,17 @@ function handleDelete(item: AdminNavItem) {
   confirmOpen.value = true
 }
 
+/**
+ * DangerConfirmDialog 的 onConfirm：
+ * throw 时弹窗保持打开并内联展示错误（请求走 silentToast 避免 toast 与内联双重提示）。
+ */
 async function confirmDelete() {
-  if (!deleteTarget.value) return
-  deleting.value = true
-  try {
-    await deleteAdminNavigation(deleteTarget.value.id)
-    items.value = items.value.filter(i => i.id !== deleteTarget.value!.id)
-    toast.success('菜单项已删除')
-    confirmOpen.value = false
-  } catch (e) {
-    console.error('[navigation] confirmDelete failed:', e)
-    toast.error('删除导航失败')
-  } finally {
-    deleting.value = false
-  }
+  const target = deleteTarget.value
+  if (!target) return
+  await deleteAdminNavigation(target.id, { silentToast: true })
+  toast.success('菜单项已删除')
+  deleteTarget.value = null
+  await loadAll()
 }
 
 onMounted(loadAll)

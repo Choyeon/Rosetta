@@ -1,3 +1,8 @@
+<!--
+  动态/说说管理页：时间线样式列表 + Dialog 创建/编辑 + DangerConfirmDialog 删除。
+  契约：后端 Activity 创建/更新为 extra=forbid，只能发 content（必填 i18n dict）/type/is_published（title/link 字段已不存在）；type 枚举须与 backend/schemas/activity.py 严格同步；
+  行内 content 可能是 dict 或旧纯文本，展示/回填/提交必须经 getLocalizedStr/normalizeI18nDict/toI18nPayload 兼容处理。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -11,34 +16,11 @@
           class="rounded-xl shadow-sm"
           @click="openCreate"
         >
-          <Plus
-            data-icon="inline-start"
-            class="mr-2"
-          />
+          <Plus data-icon="inline-start" />
           发说说
         </Button>
       </template>
     </AdminPageHeader>
-
-    <div class="flex flex-wrap items-center gap-2">
-      <div
-        v-for="opt in typeOptions"
-        :key="opt.value"
-        :class="[
-          'inline-flex items-center gap-1.5 px-4 py-2 rounded-full text-sm border transition-all cursor-pointer',
-          selectedType === opt.value
-            ? 'bg-primary/10 border-primary text-primary'
-            : 'bg-card hover:bg-muted/50'
-        ]"
-        @click="setType(opt.value)"
-      >
-        <component
-          :is="opt.icon"
-          class="size-4"
-        />
-        <span>{{ opt.label }}</span>
-      </div>
-    </div>
 
     <div
       v-if="loading"
@@ -64,6 +46,24 @@
     </div>
 
     <div
+      v-else-if="loadError"
+      class="flex flex-col items-start gap-3 p-6 rounded-xl border bg-card"
+    >
+      <Alert variant="destructive">
+        <AlertTitle>加载动态列表失败</AlertTitle>
+        <AlertDescription>{{ loadErrorMsg || '请求未成功，请重试。' }}</AlertDescription>
+      </Alert>
+      <Button
+        variant="outline"
+        size="sm"
+        @click="fetchData"
+      >
+        <RotateCcw data-icon="inline-start" />
+        重试
+      </Button>
+    </div>
+
+    <div
       v-else-if="!activities.length"
       class="py-16 text-center"
     >
@@ -73,7 +73,7 @@
       >
         <Info class="size-4" />
         <AlertTitle>暂无动态</AlertTitle>
-        <AlertDescription>当前筛选下没有动态数据，点击右上角发一条吧</AlertDescription>
+        <AlertDescription>还没有任何动态数据，点击右上角发一条吧</AlertDescription>
       </Alert>
     </div>
 
@@ -97,7 +97,7 @@
           >
             <component
               :is="typeIcon(a.type)"
-              class="size-4.5"
+              class="size-4"
             />
           </div>
         </div>
@@ -114,60 +114,40 @@
                 <span class="text-xs text-muted-foreground">
                   {{ formatAdminDateTime(a.created_at) }}
                 </span>
-                <Badge
-                  variant="outline"
-                  class="text-xs"
-                >
+                <Badge variant="outline">
                   {{ typeText(a.type) }}
+                </Badge>
+                <Badge
+                  v-if="!a.is_published"
+                  variant="secondary"
+                >
+                  未发布
                 </Badge>
               </div>
               <div class="flex items-center gap-1 shrink-0">
                 <Button
                   variant="ghost"
-                  size="icon"
-                  class="h-7 w-7"
+                  size="icon-sm"
+                  aria-label="编辑动态"
                   @click="openEdit(a)"
                 >
                   <Pencil data-icon="inline-start" />
                 </Button>
                 <Button
                   variant="ghost"
-                  size="icon"
-                  class="h-7 w-7 text-destructive hover:text-destructive"
-                  @click="confirmDelete(a.id)"
+                  size="icon-sm"
+                  class="text-destructive hover:text-destructive"
+                  aria-label="删除动态"
+                  @click="confirmDelete(a)"
                 >
                   <Trash2 data-icon="inline-start" />
                 </Button>
               </div>
             </div>
 
-            <p
-              v-if="displayField(a.title)"
-              class="font-medium mb-1"
-            >
-              {{ displayField(a.title) }}
+            <p class="text-foreground/90 leading-relaxed whitespace-pre-wrap break-words">
+              {{ displayField(a.content) }}
             </p>
-            <p
-              v-if="a.content"
-              class="text-foreground/90 leading-relaxed whitespace-pre-wrap"
-            >
-              {{ a.content }}
-            </p>
-
-            <div
-              v-if="a.link"
-              class="mt-3"
-            >
-              <a
-                :href="a.link"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex items-center gap-1.5 text-sm text-primary hover:underline max-w-full truncate"
-              >
-                <ExternalLink class="size-3.5 shrink-0" />
-                <span class="truncate">{{ a.link }}</span>
-              </a>
-            </div>
           </div>
         </AdminCard>
       </div>
@@ -193,14 +173,12 @@
         </DialogHeader>
 
         <div class="flex flex-col gap-4 py-2">
-          <div
-            v-if="editingId"
-            class="flex flex-col gap-2"
-          >
-            <Label>类型</Label>
+          <div class="flex flex-col gap-2">
+            <Label for="activity-type">类型</Label>
+            <!-- 后端 ActivityType 枚举：say / article / update / notice / link -->
             <Select v-model="form.type">
-              <SelectTrigger>
-                <SelectValue />
+              <SelectTrigger id="activity-type">
+                <SelectValue placeholder="选择类型" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem
@@ -208,34 +186,49 @@
                   :key="opt.value"
                   :value="opt.value"
                 >
-                  {{ opt.icon }} {{ opt.label }}
+                  {{ opt.label }}
                 </SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          <div class="flex flex-col gap-2">
-            <Label>内容</Label>
-            <Textarea
-              v-model="form.content"
-              rows="4"
-              placeholder="此刻的想法..."
-              class="resize-none"
+          <!-- 后端要求 content 为多语言 dict（extra=forbid，不再支持 title/link 字段） -->
+          <I18nTabsEditor
+            v-model="form.content"
+            kind="textarea"
+            :rows="4"
+            label="内容"
+            placeholder="此刻的想法..."
+            required
+          />
+
+          <div class="flex items-center justify-between rounded-xl border p-3">
+            <div>
+              <div class="text-sm font-medium">
+                发布到时间线
+              </div>
+              <div class="text-xs text-muted-foreground">
+                关闭则仅自己可见
+              </div>
+            </div>
+            <Switch
+              v-model="form.published"
+              aria-label="发布到时间线"
             />
           </div>
 
-          <div class="flex flex-col gap-2">
-            <Label>链接（可选）</Label>
-            <Input
-              v-model="form.link"
-              placeholder="https://..."
-            />
-          </div>
+          <p
+            v-if="formError"
+            class="text-sm text-destructive"
+          >
+            {{ formError }}
+          </p>
         </div>
 
         <DialogFooter>
           <Button
             variant="ghost"
+            :disabled="submitting"
             @click="formDialogOpen = false"
           >
             取消
@@ -247,7 +240,7 @@
             <Loader2
               v-if="submitting"
               data-icon="inline-start"
-              class="mr-2 animate-spin"
+              class="animate-spin"
             />
             {{ editingId ? '保存修改' : '发布' }}
           </Button>
@@ -255,39 +248,31 @@
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="deleteDialogOpen">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>确认删除</DialogTitle>
-          <DialogDescription>删除后该动态将无法恢复，确定继续吗？</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            @click="deleteDialogOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            @click="doDelete"
-          >
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <!-- 删除确认：统一走 DangerConfirmDialog -->
+    <DangerConfirmDialog
+      v-model:open="deleteDialogOpen"
+      title="确认删除动态"
+      confirm-text="确认删除"
+      confirm-phrase="删除动态"
+      phrase-hint="请输入：删除动态"
+      :on-confirm="doDelete"
+    >
+      <template #description>
+        将删除动态内容：{{ (displayField(deleteTarget?.content) || '').slice(0, 60) }}…删除后无法恢复。
+      </template>
+    </DangerConfirmDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 /* eslint-disable */
- 
+
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import { Button } from '~~/components/ui/button'
-import { Input } from '~~/components/ui/input'
-import { Textarea } from '~~/components/ui/textarea'
 import { Badge } from '~~/components/ui/badge'
+import { Switch } from '~~/components/ui/switch'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~~/components/ui/dialog'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
@@ -295,113 +280,130 @@ import { Separator } from '~~/components/ui/separator'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Label } from '~~/components/ui/label'
 import {
-  Plus, Info, Pencil, Trash2, ExternalLink, Loader2,
-  List, FileText, Image as ImageIcon, MessageCircle, ThumbsUp, MessageSquareQuote,
-  Activity
+  Plus, Info, Pencil, Trash2, Loader2, RotateCcw, Activity,
+  MessageSquareQuote, FileText, RefreshCw, Bell, Link as LinkIcon
 } from '@lucide/vue'
 import {
   fetchAdminActivities,
   createAdminActivity,
   updateAdminActivity,
   deleteAdminActivity,
-  formatAdminDateTime,
-  type AdminActivity
+  formatAdminDateTime
 } from '~~/composables/useAdminManage'
+import {
+  getLocalizedStr,
+  normalizeI18nDict,
+  toI18nPayload,
+  type I18nDict
+} from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
-const typeOptions = [
-  { value: '', label: '全部', icon: List },
-  { value: 'post', label: '文章', icon: FileText },
-  { value: 'card', label: '卡片', icon: ImageIcon },
-  { value: 'comment', label: '评论', icon: MessageCircle },
-  { value: 'like', label: '点赞', icon: ThumbsUp },
-  { value: 'status', label: '说说', icon: MessageSquareQuote }
+// 与 backend/schemas/activity.py 的 ActivityType 严格一致
+type ActType = 'say' | 'article' | 'update' | 'notice' | 'link'
+
+// 后端 ActivityResponse：content 为 i18n dict，无 title/link 字段
+interface ActivityRow {
+  id: number
+  content: string | Record<string, string> | null
+  type: ActType | string
+  author?: { username?: string, nickname?: string | null } | null
+  is_published: boolean
+  created_at: string | null
+}
+
+const typeOptions: { value: ActType, label: string }[] = [
+  { value: 'say', label: '说说' },
+  { value: 'article', label: '文章' },
+  { value: 'update', label: '更新' },
+  { value: 'notice', label: '通知' },
+  { value: 'link', label: '链接' }
 ]
 
 const loading = ref(false)
 const submitting = ref(false)
-const activities = shallowRef<AdminActivity[]>([])
-const selectedType = ref('')
+const loadError = ref(false)
+const loadErrorMsg = ref('')
+const activities = shallowRef<ActivityRow[]>([])
 const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
 const formDialogOpen = ref(false)
 const editingId = ref<number | null>(null)
+const formError = ref('')
 const form = reactive({
-  type: 'status' as AdminActivity['type'],
-  content: '',
-  link: ''
+  type: 'say' as ActType,
+  content: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
+  published: true
 })
 
 const deleteDialogOpen = ref(false)
-const deleteTargetId = ref<number | null>(null)
+const deleteTarget = ref<ActivityRow | null>(null)
 
 function displayField(v: unknown): string {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  if (typeof v === 'object') {
-    const obj = v as Record<string, unknown>
-    return (obj.zh as string) || (obj.en as string) || Object.values(obj)[0] as string || ''
-  }
-  return String(v)
+  return getLocalizedStr(v as string | Record<string, string> | null | undefined)
 }
 
 function typeIcon(t: string) {
   switch (t) {
-    case 'post': return FileText
-    case 'card': return ImageIcon
-    case 'comment': return MessageCircle
-    case 'like': return ThumbsUp
-    case 'status': return MessageSquareQuote
+    case 'say': return MessageSquareQuote
+    case 'article': return FileText
+    case 'update': return RefreshCw
+    case 'notice': return Bell
+    case 'link': return LinkIcon
     default: return MessageSquareQuote
   }
 }
 
 function typeText(t: string): string {
   switch (t) {
-    case 'post': return '文章'
-    case 'card': return '卡片'
-    case 'comment': return '评论'
-    case 'like': return '点赞'
-    case 'status': return '说说'
+    case 'say': return '说说'
+    case 'article': return '文章'
+    case 'update': return '更新'
+    case 'notice': return '通知'
+    case 'link': return '链接'
     default: return t
   }
 }
 
 function typeBgClass(t: string): string {
   switch (t) {
-    case 'post': return 'bg-info-muted text-info-muted-foreground'
-    case 'card': return 'bg-primary/10 text-primary'
-    case 'comment': return 'bg-warning-muted text-warning-muted-foreground'
-    case 'like': return 'bg-error-muted text-error-muted-foreground'
-    case 'status': return 'bg-success-muted text-success-muted-foreground'
+    case 'say': return 'bg-success-muted text-success-muted-foreground'
+    case 'article': return 'bg-info-muted text-info-muted-foreground'
+    case 'update': return 'bg-primary/10 text-primary'
+    case 'notice': return 'bg-warning-muted text-warning-muted-foreground'
+    case 'link': return 'bg-error-muted text-error-muted-foreground'
     default: return 'bg-muted text-muted-foreground'
   }
 }
 
-function setType(v: string) {
-  selectedType.value = v
-  page.value = 1
-  fetchData()
-}
-
 async function fetchData() {
   loading.value = true
+  loadError.value = false
+  loadErrorMsg.value = ''
   try {
-    const res = await fetchAdminActivities({
-      page: page.value,
-      page_size: pageSize.value,
-      type: selectedType.value || undefined
-    })
-    activities.value = res.items ?? []
-    total.value = res.total ?? 0
+    // 删除后当前页可能越界：回退一页再取（循环而非递归，保证 loading 覆盖全程）
+    for (;;) {
+      const res = await fetchAdminActivities({ page: page.value, page_size: pageSize.value })
+      const items = (res.items ?? []) as unknown as ActivityRow[]
+      total.value = res.total ?? 0
+      if (items.length === 0 && total.value > 0 && page.value > 1) {
+        page.value -= 1
+        continue
+      }
+      activities.value = items
+      break
+    }
   } catch (err) {
+    // apiFetch 已自动 toast，这里保留页面级错误态 + 重试入口
+    console.error('fetch activities error', err)
     activities.value = []
     total.value = 0
+    loadError.value = true
+    loadErrorMsg.value = err instanceof Error ? err.message : ''
   } finally {
     loading.value = false
   }
@@ -409,65 +411,72 @@ async function fetchData() {
 
 function openCreate() {
   editingId.value = null
-  Object.assign(form, { type: 'status', content: '', link: '' })
+  formError.value = ''
+  Object.assign(form, {
+    type: 'say' as ActType,
+    content: { zh: '', en: '', ja: '', zh_Hant: '' },
+    published: true
+  })
   formDialogOpen.value = true
 }
 
-function openEdit(a: AdminActivity) {
+function openEdit(a: ActivityRow) {
   editingId.value = a.id
+  formError.value = ''
   Object.assign(form, {
-    type: a.type,
-    content: a.content ?? '',
-    link: a.link ?? ''
+    type: (typeOptions.some(o => o.value === a.type) ? a.type : 'say') as ActType,
+    content: normalizeI18nDict(a.content),
+    published: a.is_published
   })
   formDialogOpen.value = true
 }
 
 async function submitForm() {
-  if (!form.content.trim()) {
-    toast.warning('请输入内容')
+  formError.value = ''
+  // 后端 ActivityBase.content 为必填 i18n dict，且 extra=forbid：只允许 content/type/is_published
+  const contentPayload = toI18nPayload(form.content as Record<string, string>)
+  if (!contentPayload) {
+    formError.value = '请填写内容（至少一种语言）'
     return
   }
   submitting.value = true
+  const payload: Record<string, unknown> = {
+    content: contentPayload,
+    type: form.type,
+    is_published: form.published
+  }
   try {
     if (editingId.value) {
-      await updateAdminActivity(editingId.value, {
-        type: form.type,
-        content: form.content.trim(),
-        link: form.link.trim() || null
-      })
+      await updateAdminActivity(editingId.value, payload)
       toast.success('修改成功')
     } else {
-      await createAdminActivity({
-        type: 'status',
-        content: form.content.trim(),
-        link: form.link.trim() || null
-      })
+      await createAdminActivity(payload)
       toast.success('发布成功')
     }
     formDialogOpen.value = false
     fetchData()
   } catch (err) {
+    // apiFetch 已弹 toast；弹窗保持打开并保留输入，内联提示失败原因
+    console.error('submit activity error', err)
+    formError.value = err instanceof Error ? err.message : (editingId.value ? '修改失败' : '发布失败')
   } finally {
     submitting.value = false
   }
 }
 
-function confirmDelete(id: number) {
-  deleteTargetId.value = id
+function confirmDelete(a: ActivityRow) {
+  deleteTarget.value = a
   deleteDialogOpen.value = true
 }
 
 async function doDelete() {
-  if (deleteTargetId.value === null) return
-  try {
-    await deleteAdminActivity(deleteTargetId.value)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    deleteTargetId.value = null
-    fetchData()
-  } catch (err) {
-  }
+  const target = deleteTarget.value
+  if (!target?.id) throw new Error('未选择要删除的动态')
+  // 抛错时 DangerConfirmDialog 保持打开并内联显示错误；toast 由 apiFetch 统一处理
+  await deleteAdminActivity(target.id)
+  toast.success('删除成功')
+  deleteTarget.value = null
+  await fetchData()
 }
 
 onMounted(fetchData)

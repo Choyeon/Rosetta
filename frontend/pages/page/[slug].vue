@@ -1,3 +1,12 @@
+<!--
+  独立页 /page/<slug>（SSR），同时是旧 WordPress 链接的兼容跳板：slug 命中 KNOWN_TOP_LEVEL 白名单时
+  在 onBeforeMount 里 navigateTo(replace, redirectCode:301) 并手工透传 query/hash。
+  唯一的时序红线：重定向不能写在 <script setup> 顶层同步执行——会在 Hydration 首帧打断渲染管线，
+  引发 Suspense/RouterView refs null → NUXT_E1005 级联。
+  未命中白名单的 slug 走真实渲染：useAPI('/pages/{slug}')、key 含 slug+locale、响应可能带 {data} 信封需解包；
+  Markdown 转 HTML 后仍过 DOMPurify（禁 script/iframe/form/on*/style），再以 v-html 输出。
+-->
+
 <script setup lang="ts">
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Button } from '~~/components/ui/button'
@@ -103,6 +112,16 @@ const renderedContent = computed(() => {
   }
 })
 
+// meta 描述必须是纯文本：renderedContent 是 sanitized HTML，
+// 直接 slice 会把 <p> 等标签碎片喂给搜索引擎和社交卡片。
+const metaDescription = computed(() =>
+  renderedContent.value
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 180)
+)
+
 const formatDate = (iso: string) => {
   if (!iso) return ''
   try {
@@ -114,19 +133,19 @@ const formatDate = (iso: string) => {
 
 useHead(() => ({
   title: title.value,
-  meta: [{ name: 'description', content: renderedContent.value.slice(0, 180) }]
+  meta: [{ name: 'description', content: metaDescription.value }]
 }))
 
 useSeo({
   title,
-  description: computed(() => renderedContent.value.slice(0, 180)),
+  description: metaDescription,
   type: 'article'
 })
 useArticleJsonLd({
   slug,
   title,
   'headline': title,
-  'description': computed(() => renderedContent.value.slice(0, 180)),
+  'description': metaDescription,
   'publishedAt': computed(() => (page.value?.created_at || page.value?.createdAt || '') as string),
   'updatedAt': computed(() => (page.value?.updated_at || page.value?.updatedAt || '') as string),
   '@type': 'Article'

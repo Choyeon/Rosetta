@@ -10,10 +10,10 @@ import asyncio
 import hashlib
 import logging
 import re
-from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, desc, func, or_, select
+from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
@@ -25,6 +25,7 @@ from backend.models.core import Notification
 from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
 from backend.services._avatar_helpers import _user_relationship_safe, resolved_for_comment
+from backend.utils.compat import utc_now_naive
 
 if TYPE_CHECKING:
     pass
@@ -89,6 +90,33 @@ def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
 
 def _status_to_active(status: str) -> bool:
     return status == "approved"
+
+
+def _comment_visibility_condition(
+    include_unapproved: bool,
+    current_user: User | None,
+    post_author_id: int | None,
+) -> Any | None:
+    """把"评论对当前观看者是否可见"翻译成 SQL 条件；返回 None 表示不加限制。
+
+    ``approved`` 恒可见。非 approved（pending / rejected）只对三种人可见：staff/超管、
+    文章作者本人、以及"提交者看自己那一条"；``include_unapproved=False``（公开页口径）
+    时连最后这条也不给。
+
+    根评论、回复列表、回复计数三处必须共用本函数：规则一旦分叉，就会出现
+    "根评论看得见但回复总数把垃圾评论也算进去"这类对不上的口径。
+    """
+    if not include_unapproved or current_user is None:
+        return Comment.status == "approved"
+    is_privileged = bool(
+        getattr(current_user, "is_staff", False) or getattr(current_user, "is_superuser", False)
+    ) or (post_author_id is not None and current_user.id == post_author_id)
+    if is_privileged:
+        return None
+    return or_(
+        Comment.status == "approved",
+        and_(Comment.user_id == current_user.id, Comment.status.in_(["pending", "rejected"])),
+    )
 
 
 def _comment_to_response(
@@ -173,37 +201,13 @@ class CommentService:
         post_author_id = post.author_id
 
         base_where = [Comment.post_id == post_id, Comment.parent_id.is_(None)]
-
-        if not include_unapproved:
-            base_where.append(Comment.status == "approved")
-        else:
-            allowed_extra: list[Any] = [Comment.status == "approved"]
-            if current_user is not None:
-                is_staff = bool(
-                    getattr(current_user, "is_staff", False)
-                    or getattr(current_user, "is_superuser", False)
-                )
-                if is_staff or (post_author_id is not None and current_user.id == post_author_id):
-                    pass
-                else:
-                    allowed_extra.append(
-                        and_(
-                            Comment.user_id == current_user.id,
-                            Comment.status.in_(["pending", "rejected"]),
-                        )
-                    )
-            # 非 staff/作者 的 include_unapproved=true：其实仅能看到 approved 或本人 pending
-            if not (
-                current_user
-                and (
-                    bool(
-                        getattr(current_user, "is_staff", False)
-                        or getattr(current_user, "is_superuser", False)
-                    )
-                    or (post_author_id is not None and current_user.id == post_author_id)
-                )
-            ):
-                base_where.append(or_(*allowed_extra))
+        visibility_cond = _comment_visibility_condition(
+            include_unapproved=include_unapproved,
+            current_user=current_user,
+            post_author_id=post_author_id,
+        )
+        if visibility_cond is not None:
+            base_where.append(visibility_cond)
 
         where_stmt = and_(*base_where)
 
@@ -226,20 +230,30 @@ class CommentService:
         list_res = await db.execute(list_stmt)
         roots: list[Comment] = list(list_res.scalars().all())
 
-        # 批量求 reply_total + 取前 3 条最新回复（一次性批查询以减少 round-trip）
+        # 批量求 reply_total + 取前 3 条可见回复（一次性批查询以减少 round-trip）
         response_items: list[CommentResponse] = []
         if roots:
             root_ids = [r.id for r in roots]
 
+            # 回复的可见性与根评论同一套规则，且必须下推到 SQL：
+            # 旧实现把 row_number 算出来却在 Python 侧裁前 3 条，热帖 500 条回复会整批发回
+            # 再丢掉 497 条；reply_total 更是把 pending/rejected 一并计入，公开页的
+            # "共 N 条回复"因此把垃圾评论数也报给了访客。
+            reply_cond = visibility_cond
+
+            total_where = [Comment.parent_id.in_(root_ids)]
+            if reply_cond is not None:
+                total_where.append(reply_cond)
             total_subq = (
                 select(Comment.parent_id, func.count(Comment.id).label("c"))
-                .where(Comment.parent_id.in_(root_ids))
+                .where(*total_where)
                 .group_by(Comment.parent_id)
             )
             total_res2 = await db.execute(total_subq)
             totals_map: dict[int, int] = {pid: int(c) for pid, c in total_res2.all()}
 
-            # 取每个根评论前 3 条最新回复：用窗口函数 row_number 因 SQLite/PG 都支持
+            # 每个根评论的前 3 条：窗口函数在子查询里就把 rn<=3 裁掉
+            # （SQLite >= 3.25 与 PostgreSQL 均支持）
             from sqlalchemy import func as sa_func
 
             rn = (
@@ -247,56 +261,48 @@ class CommentService:
                 .over(partition_by=Comment.parent_id, order_by=Comment.created_at.asc())
                 .label("rn")
             )
+            rn_where = [Comment.parent_id.in_(root_ids)]
+            if reply_cond is not None:
+                rn_where.append(reply_cond)
+            ranked = select(Comment.id.label("cid"), rn).where(*rn_where).subquery()
+            top_ids = select(ranked.c.cid).where(ranked.c.rn <= 3)
             replies_stmt = (
-                select(Comment, rn)
+                select(Comment)
                 .options(
                     joinedload(Comment.user),
                     joinedload(Comment.parent),
                 )
-                .where(Comment.parent_id.in_(root_ids))
+                .where(Comment.id.in_(top_ids))
+                .order_by(Comment.created_at.asc())
             )
             # 兼容：无窗口函数时退化为每个根查 3 条
             try:
                 rr = await db.execute(replies_stmt)
-                flat: list[tuple[Comment, int]] = list(rr.all())
                 replies_by_root: dict[int, list[Comment]] = {rid: [] for rid in root_ids}
-                for c, rnum in flat:
-                    if rnum <= 3:
-                        replies_by_root.setdefault(c.parent_id, []).append(c)
-            except Exception:
+                for c in rr.scalars().all():
+                    replies_by_root.setdefault(c.parent_id, []).append(c)
+            except (OperationalError, ProgrammingError) as exc:  # 方言不支持窗口函数时逐根回退
+                logger.warning(f"[comments] 窗口函数批量取回复失败，回退逐根查询: {exc}")
                 replies_by_root = {rid: [] for rid in root_ids}
                 for rid in root_ids:
+                    per_where = [Comment.parent_id == rid]
+                    if reply_cond is not None:
+                        per_where.append(reply_cond)
                     per = await db.execute(
                         select(Comment)
                         .options(
                             joinedload(Comment.user),
                             joinedload(Comment.parent),
                         )
-                        .where(Comment.parent_id == rid)
+                        .where(*per_where)
                         .order_by(Comment.created_at.asc())
                         .limit(3)
                     )
                     replies_by_root[rid] = list(per.scalars().all())
 
-            # 非 approved 回复的可见性过滤（和根一样规则）
-            def reply_visible(reply: Comment) -> bool:
-                if reply.status == "approved":
-                    return True
-                if not include_unapproved:
-                    return False
-                if current_user is None:
-                    return False
-                staff = bool(
-                    getattr(current_user, "is_staff", False)
-                    or getattr(current_user, "is_superuser", False)
-                )
-                if staff or (post_author_id is not None and current_user.id == post_author_id):
-                    return True
-                return bool(reply.user_id == current_user.id)
-
             for r in roots:
                 reply_total = totals_map.get(r.id, 0)
-                raw_replies = [rep for rep in replies_by_root.get(r.id, []) if reply_visible(rep)]
+                raw_replies = replies_by_root.get(r.id, [])
                 response_items.append(_comment_to_response(r, raw_replies, reply_total))
 
         return response_items, total
@@ -403,7 +409,7 @@ class CommentService:
         """同 post + 同 IP 30s 内已存在评论 → 返回 True（表示命中重复频控）
 
         注意：SQLite / PG 的 created_at 使用 SQL 的 CURRENT_TIMESTAMP/func.now() 存储的是 UTC；
-        因此这里必须使用 datetime.utcnow() 进行窗口比对，否则 Python 默认的本地时区（如 UTC+8）
+        因此这里必须使用 utc_now_naive() 进行窗口比对，否则 Python 默认的本地时区（如 UTC+8）
         会造成 8 小时的偏差，导致时间窗口判断永远 false。
         """
         if not masked_ip:
@@ -411,7 +417,7 @@ class CommentService:
         try:
             from datetime import timedelta
 
-            since = datetime.utcnow() - timedelta(seconds=window_sec)
+            since = utc_now_naive() - timedelta(seconds=window_sec)
             alt_stmt = select(func.count(Comment.id)).where(
                 and_(
                     Comment.post_id == int(post_id),
@@ -421,7 +427,10 @@ class CommentService:
             )
             r = await db.execute(alt_stmt)
             return int(r.scalar_one() or 0) > 0
-        except Exception:
+        except Exception as e:  # noqa: BLE001
+            # 频控查询失败时放行（不因数据库抖动挡住正常用户），但必须留痕：
+            # 静默 return False 等于"重复评论检测永久失效"而无人知晓。
+            logger.warning("评论同 IP 频控查询失败，本次放行：%s", e)
             return False
 
     @staticmethod
@@ -587,26 +596,32 @@ class CommentService:
 
                 # actor_id fallback：游客评论没有 actor_user_id 时，用站点管理员 ID=1 兜底
                 resolved_actor = actor_user_id or 1
+                # 一次批量插入：原先每个收件人 add+flush 一轮（N 次往返），
+                # 而且 id 根本没被用到。单条 try/except 也只是看着安全——
+                # PG 上首个 INSERT 失败后事务即中止，后面的必然一起失败。
+                # UGC 评论通知：title + message 统一纯字符串（msg_zh 已包含用户原文），
+                # 不再包装 i18n dict，避免前端直接 toString 裸露 JSON。
+                notifications = [
+                    Notification(
+                        recipient_id=rid,
+                        actor_id=resolved_actor,
+                        verb=verb,
+                        content_type="Comment",
+                        object_id=comment_id,
+                        title="评论通知",  # type: ignore[arg-type]
+                        message=msg_zh,  # type: ignore[arg-type]
+                        level="info",
+                    )
+                    for rid, verb, msg_zh in recipients
+                ]
                 written_notif_ids: list[int] = []
-                for rid, verb, msg_zh in recipients:
+                if notifications:
                     try:
-                        # UGC 评论通知：title + message 统一纯字符串（msg_zh 已包含用户原文），
-                        # 不再包装 i18n dict，避免前端直接 toString 裸露 JSON。
-                        notif = Notification(
-                            recipient_id=rid,
-                            actor_id=resolved_actor,
-                            verb=verb,
-                            content_type="Comment",
-                            object_id=comment_id,
-                            title="评论通知",  # type: ignore[arg-type]
-                            message=msg_zh,  # type: ignore[arg-type]
-                            level="info",
-                        )
-                        adb.add(notif)
+                        adb.add_all(notifications)
                         await adb.flush()
-                        written_notif_ids.append(notif.id)
+                        written_notif_ids = [n.id for n in notifications]
                     except Exception:
-                        logger.exception("write notification failed, rid=%s", rid)
+                        logger.exception("write notifications failed (recipients=%s)", recipients)
 
                 if written_notif_ids:
                     try:
@@ -625,17 +640,16 @@ class CommentService:
                     )
                     if smtp_ready and recipients:
                         es = get_email_service()
-                        email_recips: set[str] = set()
-                        for rid, _verb, _msg in recipients:
-                            user_q = await adb.execute(select(User).where(User.id == rid))
-                            u = user_q.scalars().first()
-                            if u is None:
-                                continue
-                            if not getattr(u, "notify_by_email", True):
-                                continue
-                            em = getattr(u, "email", None)
-                            if em and "@" in em:
-                                email_recips.add(em)
+                        # 一次 IN 查询拿全部收件人邮箱；原先逐个 SELECT 整行 User
+                        # （连 password_hash 一起读出来），且查询数随收件人线性增长。
+                        email_rows = await adb.execute(
+                            select(User.email, User.notify_by_email).where(
+                                User.id.in_({rid for rid, _verb, _msg in recipients})
+                            )
+                        )
+                        email_recips: set[str] = {
+                            em for em, notify in email_rows.all() if notify and em and "@" in em
+                        }
                         for em in email_recips:
                             try:
                                 await es.send_email(
@@ -751,14 +765,18 @@ class CommentService:
         await db.flush()
 
     @staticmethod
-    async def admin_batch(db: AsyncSession, ids: list[int], action: str) -> dict[str, int]:
+    async def admin_batch(db: AsyncSession, ids: list[int], action: str) -> dict[str, Any]:
         if not ids:
-            return {"processed": 0}
+            return {"processed": 0, "post_ids": []}
         stmt = select(Comment).where(Comment.id.in_([int(i) for i in ids]))
         r = await db.execute(stmt)
         cs = list(r.scalars().all())
         n = 0
+        # 四种动作都会改变文章的可见评论集合（delete 直接少一条，
+        # approve/reject/spam 切换 active），调用方要按 post_id 失效展示缓存。
+        affected_post_ids: set[int] = set()
         for c in cs:
+            affected_post_ids.add(c.post_id)
             if action == "approve":
                 c.status = "approved"
                 c.active = True
@@ -774,4 +792,4 @@ class CommentService:
                 raise ValueError("INVALID_ACTION")
             n += 1
         await db.flush()
-        return {"processed": n}
+        return {"processed": n, "post_ids": sorted(affected_post_ids)}

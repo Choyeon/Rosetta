@@ -1,3 +1,9 @@
+<!--
+  通用后台数据表格：列配置驱动 + cell-<key> 具名插槽 + 可选行选择/骨架屏/空态。
+  硬契约：selectedIds 是受控 prop——选中态由父级持有并在翻页/重查时自行清空，
+  组件内部不持久化；操作列仅在调用方提供 #actions 插槽时渲染；行选中靠
+  data-state="selected" 属性呈现，对应装饰样式在 admin-ui.css 冻结层内。
+-->
 <script setup lang="ts" generic="T">
 import { computed } from 'vue'
 import { Skeleton } from '~~/components/ui/skeleton'

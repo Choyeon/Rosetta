@@ -1,3 +1,10 @@
+<!--
+  编辑文章页：拉取单篇数据交给 PostForm（mode="edit"），带骨架/错误重试/表单三分支。
+  硬契约：必须走 staff 端点 GET /blog/posts/{id}/edit——公开端点返回单语言字符串，
+  PostForm 会把它当 zh 重组 dict，PUT 时抹掉其余语言；且公开端点计入浏览量。
+  PostEditResponse 的 has_password/visibility 需在此适配成 PostForm 读的 is_password_protected；
+  初始化错误用独立 loadError + v-else-if 分支呈现（silentToast 防双报，banner 不能嵌在产物 v-if 里）。
+-->
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
@@ -27,13 +34,22 @@ const loadData = async () => {
   loadError.value = null
   const id = postId.value
   try {
-    // 后端 /blog/posts/{slug} 支持智能识别：纯数字自动按 ID 查询
-    // silentToast=true：页面自行处理错误提示，避免 apiFetch 自动弹错后重复弹出
-    const found = await apiFetch<Post>(`/blog/posts/${id}`, {
+    // 必须走 staff 编辑端点 GET /blog/posts/{id}/edit：
+    //  1. 公开端点 /blog/posts/{id} 返回 PostLocalizedResponse（单语言字符串），
+    //     PostForm 会把字符串当成 zh 重新组装 dict，PUT 时把其他语言内容全部抹掉；
+    //  2. 公开端点会计入浏览量（PV 虚增）。
+    // silentToast=true：页面自行处理错误提示（Alert + toast），避免 apiFetch 重复弹错
+    const found = await apiFetch<Record<string, unknown>>(`/blog/posts/${id}/edit`, {
       silentToast: true
     })
     if (found) {
-      post.value = found
+      // PostEditResponse 用 has_password/visibility；PostForm 读取 is_password_protected。
+      // visibility 一并透传（PostForm 修复后即可正确还原 private 文章）
+      const hasPwd = Boolean(found.has_password) || found.visibility === 'password'
+      post.value = {
+        ...found,
+        is_password_protected: hasPwd
+      } as unknown as Post
     } else {
       loadError.value = '文章不存在或已被删除'
       toast.error(loadError.value)

@@ -1,3 +1,9 @@
+<!--
+  分类列表页：GET /blog/categories 卡片网格，name/description 按四语 dict 取值，
+  post_count 兼容 postsCount 两种命名。
+  契约：query.lang 只在 setup 期取一次快照，换语言后列表能更新完全依赖 watch(locale) 里
+  那次显式 refresh —— 删掉它 key 虽然变了但请求参数不会变，页面继续显示旧语言分类名。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">

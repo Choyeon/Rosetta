@@ -1,3 +1,7 @@
+<!--
+  友情链接管理页：卡片网格 + 状态筛选 + Dialog CRUD；列表一次全量拉取，筛选与排序全在客户端完成。
+  契约：name/description 必须以 {zh,en,ja,zh_Hant} 完整 i18n dict 提交，描述各语言全空时提交 null 而非空 dict；删除走 silentToast，失败由 DangerConfirmDialog 内联展示避免双重提示。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -35,6 +39,27 @@
         </Button>
       </template>
     </AdminPageHeader>
+
+    <Alert
+      v-if="!loading && loadError"
+      variant="destructive"
+      class="rounded-xl"
+    >
+      <AlertTriangle class="size-4" />
+      <AlertTitle>友链列表加载失败</AlertTitle>
+      <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+        <span>{{ loadError }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-lg shrink-0"
+          @click="loadAll"
+        >
+          <RotateCcw data-icon="inline-start" />
+          重试
+        </Button>
+      </AlertDescription>
+    </Alert>
 
     <div
       v-if="loading"
@@ -134,6 +159,7 @@
                   <Button
                     variant="ghost"
                     size="icon-sm"
+                    aria-label="编辑友链"
                     @click="openEdit(link)"
                   >
                     <Pencil />
@@ -147,6 +173,7 @@
                     variant="ghost"
                     size="icon-sm"
                     class="text-error hover:text-error hover:bg-error-muted"
+                    aria-label="删除友链"
                     @click="handleDelete(link)"
                   >
                     <Trash2 />
@@ -176,8 +203,12 @@
               :required="true"
             />
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">URL <span class="text-error">*</span></Label>
+              <Label
+                for="fl-url"
+                class="text-sm font-medium"
+              >URL <span class="text-error">*</span></Label>
               <Input
+                id="fl-url"
                 v-model="form.url"
                 placeholder="https://example.com"
                 class="rounded-xl"
@@ -186,33 +217,16 @@
           </div>
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">Logo 图片 URL</Label>
+              <Label
+                for="fl-logo"
+                class="text-sm font-medium"
+              >Logo 图片 URL</Label>
               <Input
+                id="fl-logo"
                 v-model="form.logo"
                 placeholder="https://.../logo.png"
                 class="rounded-xl"
               />
-            </div>
-            <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">卡片背景色</Label>
-              <div class="flex items-center gap-2">
-                <div class="relative">
-                  <input
-                    v-model="form.bg_color"
-                    type="color"
-                    class="absolute inset-0 opacity-0 cursor-pointer size-11 rounded-xl"
-                  >
-                  <div
-                    class="size-11 rounded-xl border border-border shadow-inner"
-                    :style="{ background: form.bg_color || '#ffffff' }"
-                  />
-                </div>
-                <Input
-                  v-model="form.bg_color"
-                  class="rounded-xl font-mono text-xs uppercase w-full"
-                  placeholder="#0EA5E9"
-                />
-              </div>
             </div>
           </div>
           <I18nTabsEditor
@@ -224,9 +238,15 @@
           />
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">审核状态</Label>
+              <Label
+                for="fl-status"
+                class="text-sm font-medium"
+              >审核状态</Label>
               <Select v-model="form.status">
-                <SelectTrigger class="rounded-xl">
+                <SelectTrigger
+                  id="fl-status"
+                  class="rounded-xl"
+                >
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -243,8 +263,12 @@
               </Select>
             </div>
             <div class="flex flex-col gap-2">
-              <Label class="text-sm font-medium">{{ t('adminCommon.sortOrder') }}</Label>
+              <Label
+                for="fl-sort"
+                class="text-sm font-medium"
+              >{{ t('adminCommon.sortOrder') }}</Label>
               <Input
+                id="fl-sort"
                 v-model.number="form.sort_order"
                 type="number"
                 class="rounded-xl"
@@ -280,12 +304,12 @@
       </DialogContent>
     </Dialog>
 
-    <AdminConfirmDialog
+    <DangerConfirmDialog
       v-model:open="confirmOpen"
       title="确认删除友链？"
       :description="`「${getLocalizedStr(deleteTarget?.name)}」将被永久删除，无法撤销。`"
       confirm-text="确认删除"
-      @confirm="confirmDelete"
+      :on-confirm="confirmDelete"
     />
   </div>
 </template>
@@ -300,8 +324,9 @@ import {
   type AdminFriendLink
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import {
-  Link2, Plus, Pencil, Trash2, Save, Loader2, Info
+  Link2, Plus, Pencil, Trash2, Save, Loader2, Info, AlertTriangle, RotateCcw
 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '~~/components/ui/button'
@@ -316,6 +341,8 @@ import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
+import AdminPageHeader from '~~/components/admin/AdminPageHeader.vue'
 import type { BadgeVariants } from '~~/components/ui/badge'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -331,12 +358,12 @@ const statusFilters = [
 ] as const
 
 const loading = ref(true)
+const loadError = ref('')
 const items = ref<AdminFriendLink[]>([])
 const filter = ref<typeof statusFilters[number]['key']>('all')
 const dialogOpen = ref(false)
 const confirmOpen = ref(false)
 const submitting = ref(false)
-const deleting = ref(false)
 const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminFriendLink | null>(null)
 
@@ -345,7 +372,6 @@ const emptyForm = () => ({
   url: '',
   logo: '',
   description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
-  bg_color: '',
   status: 'pending' as 'pending' | 'approved' | 'rejected',
   sort_order: 0
 })
@@ -402,30 +428,16 @@ function normalizeI18nDict(v: string | Record<string, string> | null | undefined
   }
 }
 
-function _gradientFor(name: string, idx: number): string {
-  const palette = [
-    ['#0EA5E9', '#0284C7'],
-    ['#0EA5A9', '#0891B2'],
-    ['#8B5CF6', '#7C3AED'],
-    ['#10B981', '#059669'],
-    ['#EF4444', '#DC2626'],
-    ['#3B82F6', '#2563EB'],
-    ['#EC4899', '#DB2777']
-  ]
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
-  const pick = palette[hash % palette.length]!
-  return pick[idx] ?? pick[0]!
-}
-
 async function loadAll() {
   loading.value = true
+  loadError.value = ''
   try {
     items.value = await fetchAdminFriendLinks()
   } catch (e) {
-    console.error('[friendlinks] loadAll failed:', e)
-    toast.error('加载友链列表失败')
+    // fetchAdminFriendLinks 内部 apiFetch 已 toast；这里补充内联错误态 + 重试
     items.value = []
+    const err = e as { data?: unknown, message?: string }
+    loadError.value = extractApiErrorMessage(err?.data, err?.message || '加载友链列表失败')
   } finally {
     loading.value = false
   }
@@ -446,7 +458,6 @@ function openEdit(link: AdminFriendLink) {
     url: link.url,
     logo: link.logo ?? '',
     description: normalizeI18nDict(link.description),
-    bg_color: '',
     status: link.status,
     sort_order: link.sort_order
   }
@@ -466,7 +477,6 @@ async function handleSubmit() {
     url: form.value.url.trim(),
     logo: form.value.logo.trim() || null,
     description: descHasValue ? form.value.description : null,
-    bg_color: form.value.bg_color.trim() || null,
     status: form.value.status,
     sort_order: Number(form.value.sort_order) || 0
   }
@@ -482,8 +492,8 @@ async function handleSubmit() {
     dialogOpen.value = false
     await loadAll()
   } catch (e) {
+    // create/update 的 apiFetch 失败时已 toast 展示后端错误，不再二次提示
     console.error('[friendlinks] handleSubmit failed:', e)
-    toast.error(editingId.value ? '更新友链失败' : '创建友链失败')
   } finally {
     submitting.value = false
   }
@@ -494,20 +504,17 @@ function handleDelete(link: AdminFriendLink) {
   confirmOpen.value = true
 }
 
+/**
+ * DangerConfirmDialog 的 onConfirm：
+ * throw 时弹窗保持打开并内联展示错误（请求走 silentToast 避免 toast 与内联双重提示）。
+ */
 async function confirmDelete() {
-  if (!deleteTarget.value) return
-  deleting.value = true
-  try {
-    await deleteAdminFriendLink(deleteTarget.value.id)
-    items.value = items.value.filter(i => i.id !== deleteTarget.value!.id)
-    toast.success('友链已删除')
-    confirmOpen.value = false
-  } catch (e) {
-    console.error('[friendlinks] confirmDelete failed:', e)
-    toast.error('删除友链失败')
-  } finally {
-    deleting.value = false
-  }
+  const target = deleteTarget.value
+  if (!target) return
+  await deleteAdminFriendLink(target.id, { silentToast: true })
+  toast.success('友链已删除')
+  deleteTarget.value = null
+  await loadAll()
 }
 
 onMounted(loadAll)

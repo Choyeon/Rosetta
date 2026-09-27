@@ -1,29 +1,48 @@
+<!-- 性能监控页：24h 接口摘要、慢路径排行、近 7 天慢请求明细与性能表清理。
+     契约：GET /admin/performance/slow 返回「裸数组」（无 success 信封）且字段为 endpoint/response_time_ms、
+     仅支持 limit(≤100) 无分页，故本页绕过 useAdminManage 直接 apiFetch 并在页面侧归一化字段；
+     清理保留天数校验失败以 throw 交给 DangerConfirmDialog 内联展示，而非 toast。 -->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
       title="性能监控"
-      description="实时观察接口响应、慢请求与错误趋势"
+      description="实时观察接口响应、慢请求与性能数据存储情况"
       :icon="Gauge"
-    />
+    >
+      <template #actions>
+        <Button
+          variant="outline"
+          class="rounded-xl"
+          :disabled="anyLoading"
+          @click="reloadAll"
+        >
+          <RefreshCw
+            data-icon="inline-start"
+            :class="anyLoading ? 'animate-spin' : ''"
+          />
+          刷新
+        </Button>
+      </template>
+    </AdminPageHeader>
 
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+    <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
       <StatCard
         :loading="summaryLoading"
         title="24h 请求总数"
         :icon="Activity"
         accent="info"
-        :value="Number(summary.total_requests_24h).toLocaleString('zh-CN')"
+        :value="summary.total_requests_24h.toLocaleString('zh-CN')"
       />
       <StatCard
         :loading="summaryLoading"
         title="24h 错误率"
         :icon="AlertTriangle"
         accent="error"
-        :value="`${(Number(summary.error_rate_24h) * 100).toFixed(2)}%`"
+        :value="`${(summary.error_rate_24h * 100).toFixed(2)}%`"
       />
       <StatCard
         :loading="summaryLoading"
-        title="P50 延迟"
+        title="平均延迟"
         :icon="Timer"
         accent="primary"
         :value="`${summary.p50_ms} ms`"
@@ -44,6 +63,28 @@
       />
     </div>
 
+    <Alert
+      v-if="summaryError"
+      variant="destructive"
+      class="rounded-xl"
+    >
+      <AlertTriangle class="size-4" />
+      <AlertTitle>性能摘要获取失败</AlertTitle>
+      <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+        <span>{{ summaryError }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-lg shrink-0"
+          :disabled="summaryLoading"
+          @click="loadSummary"
+        >
+          <RotateCcw data-icon="inline-start" />
+          重试
+        </Button>
+      </AlertDescription>
+    </Alert>
+
     <Tabs
       v-model="activeTab"
       class="w-full"
@@ -54,21 +95,33 @@
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
           :class="activeTab === 'overview' ? 'bg-primary text-primary-foreground' : ''"
         >
-          <BarChart3 class="size-4 mr-1.5" /> 概览
+          <BarChart3
+            class="size-4"
+            data-icon="inline-start"
+          />
+          概览
         </TabsTrigger>
         <TabsTrigger
           value="slow"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
           :class="activeTab === 'slow' ? 'bg-primary text-primary-foreground' : ''"
         >
-          <Clock class="size-4 mr-1.5" /> 慢请求 Top
+          <Clock
+            class="size-4"
+            data-icon="inline-start"
+          />
+          慢请求明细
         </TabsTrigger>
         <TabsTrigger
-          value="trend"
+          value="storage"
           class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :class="activeTab === 'trend' ? 'bg-primary text-primary-foreground' : ''"
+          :class="activeTab === 'storage' ? 'bg-primary text-primary-foreground' : ''"
         >
-          <TrendingUp class="size-4 mr-1.5" /> 错误率趋势
+          <Database
+            class="size-4"
+            data-icon="inline-start"
+          />
+          存储与清理
         </TabsTrigger>
       </TabsList>
 
@@ -77,9 +130,9 @@
         class="mt-6"
       >
         <AdminCard>
-          <div class="flex flex-col gap-1 .5 mb-4">
+          <div class="flex flex-col gap-1.5 mb-4">
             <h3 class="text-base font-semibold">
-              慢路径 Top 排名
+              慢路径 Top 排名（近 24 小时）
             </h3>
             <p class="text-sm text-muted-foreground">
               按平均响应耗时排序的接口路径，建议优先优化红色与赭色条目
@@ -106,7 +159,9 @@
               >
                 <Info class="size-4" />
                 <AlertTitle>暂无慢路径数据</AlertTitle>
-                <AlertDescription>接口实现后，这里将展示平均耗时最高的 Top 路径。</AlertDescription>
+                <AlertDescription>
+                  {{ summaryError ? '摘要接口不可用，请点击上方重试。' : '近 24 小时内没有平均耗时超过 200ms 的接口，或尚无监控数据。' }}
+                </AlertDescription>
               </Alert>
             </div>
             <div
@@ -164,6 +219,45 @@
         class="mt-6"
       >
         <AdminCard class="overflow-hidden">
+          <div class="flex flex-wrap items-center justify-between gap-3 px-5 pt-5 pb-4">
+            <div class="flex flex-col gap-1.5">
+              <h3 class="text-base font-semibold">
+                最近 7 天最慢请求
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                后端按耗时倒序返回 Top N 原始记录（非分页接口），调整数量即时重新拉取
+              </p>
+            </div>
+            <div class="flex items-center gap-2">
+              <Label
+                for="slow-limit"
+                class="text-sm whitespace-nowrap"
+              >
+                数量
+              </Label>
+              <Select
+                v-model="slowLimit"
+                @update:model-value="loadSlow"
+              >
+                <SelectTrigger
+                  id="slow-limit"
+                  class="w-24 rounded-xl"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="n in slowLimitOptions"
+                    :key="n"
+                    :value="n"
+                  >
+                    {{ n }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div class="p-0">
             <div
               v-if="slowLoading"
@@ -176,10 +270,37 @@
               />
             </div>
             <div
+              v-else-if="slowError"
+              class="p-12"
+            >
+              <Alert
+                variant="destructive"
+                class="rounded-xl max-w-lg mx-auto"
+              >
+                <AlertTriangle class="size-4" />
+                <AlertTitle>慢请求获取失败</AlertTitle>
+                <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+                  <span>{{ slowError }}</span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="rounded-lg shrink-0"
+                    @click="loadSlow"
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    重试
+                  </Button>
+                </AlertDescription>
+              </Alert>
+            </div>
+            <div
               v-else
               class="overflow-x-auto"
             >
               <table class="w-full text-sm">
+                <caption class="sr-only">
+                  最近 7 天最慢请求列表
+                </caption>
                 <thead class="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
                   <tr>
                     <th class="text-left font-medium px-5 py-3">
@@ -195,6 +316,9 @@
                       状态码
                     </th>
                     <th class="text-left font-medium px-5 py-3">
+                      IP
+                    </th>
+                    <th class="text-left font-medium px-5 py-3">
                       UA
                     </th>
                     <th class="text-right font-medium px-5 py-3">
@@ -204,7 +328,7 @@
                 </thead>
                 <tbody class="divide-y divide-border">
                   <tr
-                    v-for="r in slowList"
+                    v-for="r in slowRows"
                     :key="r.id"
                     class="hover:bg-muted/30"
                   >
@@ -232,6 +356,9 @@
                         {{ r.status_code }}
                       </span>
                     </td>
+                    <td class="px-5 py-4 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                      {{ r.ip || '-' }}
+                    </td>
                     <td
                       class="px-5 py-4 text-xs text-muted-foreground max-w-[220px] truncate"
                       :title="r.user_agent ?? ''"
@@ -246,7 +373,7 @@
               </table>
             </div>
             <div
-              v-if="slowList.length === 0 && !slowLoading"
+              v-if="!slowLoading && !slowError && slowRows.length === 0"
               class="p-12"
             >
               <Alert
@@ -254,176 +381,241 @@
                 class="rounded-xl max-w-lg mx-auto"
               >
                 <Info class="size-4" />
-                <AlertTitle>暂无慢请求数据</AlertTitle>
-                <AlertDescription>当接口返回 >200ms 的请求时将显示在此列表。</AlertDescription>
+                <AlertTitle>暂无慢请求记录</AlertTitle>
+                <AlertDescription>最近 7 天内没有可展示的请求耗时记录。</AlertDescription>
               </Alert>
-            </div>
-            <div
-              v-if="slowList.length > 0"
-              class="p-4 pt-0 mt-2"
-            >
-              <div class="flex items-center justify-between text-xs text-muted-foreground">
-                <span>第 {{ slowPage }} / {{ Math.max(1, slowTotalPages) }} 页，共 {{ slowTotal }} 条</span>
-                <div class="flex gap-1">
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    class="rounded-lg"
-                    :disabled="slowPage <= 1"
-                    @click="slowPage--; loadSlow()"
-                  >
-                    <ChevronLeft data-icon="inline-start" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="icon-sm"
-                    class="rounded-lg"
-                    :disabled="slowPage >= slowTotalPages"
-                    @click="slowPage++; loadSlow()"
-                  >
-                    <ChevronRight data-icon="inline-start" />
-                  </Button>
-                </div>
-              </div>
             </div>
           </div>
         </AdminCard>
       </TabsContent>
 
       <TabsContent
-        value="trend"
+        value="storage"
         class="mt-6"
       >
         <AdminCard>
-          <div class="flex flex-col gap-1 .5 mb-4">
-            <h3 class="text-base font-semibold">
-              近 30 天错误率趋势
-            </h3>
-            <p class="text-sm text-muted-foreground">
-              展示每日按请求数加权的 4xx / 5xx 比例，接入图表库后自动替换为真实曲线
-            </p>
+          <div
+            v-if="storageLoading"
+            class="flex flex-col gap-3 p-5"
+          >
+            <Skeleton class="h-10 w-1/3 rounded-xl" />
+            <Skeleton class="h-40 rounded-xl" />
           </div>
-          <div>
-            <div
-              class="h-72 rounded-2xl relative overflow-hidden bg-primary/5"
+          <div
+            v-else-if="storageError"
+            class="p-12"
+          >
+            <Alert
+              variant="destructive"
+              class="rounded-xl max-w-lg mx-auto"
             >
-              <svg
-                class="absolute inset-0 size-full opacity-30"
-                preserveAspectRatio="none"
-                viewBox="0 0 100 40"
+              <AlertTriangle class="size-4" />
+              <AlertTitle>存储统计获取失败</AlertTitle>
+              <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+                <span>{{ storageError }}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="rounded-lg shrink-0"
+                  @click="loadStorage"
+                >
+                  <RotateCcw data-icon="inline-start" />
+                  重试
+                </Button>
+              </AlertDescription>
+            </Alert>
+          </div>
+          <div
+            v-else
+            class="flex flex-col gap-6"
+          >
+            <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              <div class="flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-4">
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">总记录数</span>
+                <span class="text-xl font-bold tabular-nums">{{ storage.total_count.toLocaleString('zh-CN') }}</span>
+              </div>
+              <div class="flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-4">
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">最早记录</span>
+                <span class="text-sm font-medium tabular-nums mt-1">{{ storage.earliest_record ? formatAdminDateTime(storage.earliest_record) : '-' }}</span>
+              </div>
+              <div class="flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-4">
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">最新记录</span>
+                <span class="text-sm font-medium tabular-nums mt-1">{{ storage.latest_record ? formatAdminDateTime(storage.latest_record) : '-' }}</span>
+              </div>
+              <div class="flex flex-col gap-1 rounded-xl border border-border bg-muted/30 p-4">
+                <span class="text-xs text-muted-foreground uppercase tracking-wide">统计时间</span>
+                <span class="text-sm font-medium tabular-nums mt-1">{{ storage.queried_at ? formatAdminDateTime(storage.queried_at) : formatAdminDateTime(new Date().toISOString()) }}</span>
+              </div>
+            </div>
+
+            <div>
+              <div class="flex flex-col gap-1.5 mb-4">
+                <h3 class="text-base font-semibold">
+                  近 7 天每日请求量
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                  来自 /admin/performance/storage 的 daily_breakdown 真实数据，悬停查看当日平均耗时
+                </p>
+              </div>
+              <div
+                v-if="dailyBars.length === 0"
+                class="p-8"
               >
-                <defs>
-                  <linearGradient
-                    id="linegrad"
-                    x1="0%"
-                    y1="0%"
-                    x2="100%"
-                    y2="0%"
-                  >
-                    <stop
-                      offset="0%"
-                      stop-color="hsl(var(--primary))"
-                    />
-                    <stop
-                      offset="50%"
-                      stop-color="hsl(var(--info))"
-                    />
-                    <stop
-                      offset="100%"
-                      stop-color="hsl(var(--success))"
-                    />
-                  </linearGradient>
-                  <linearGradient
-                    id="areagrad"
-                    x1="0%"
-                    y1="0%"
-                    x2="0%"
-                    y2="100%"
-                  >
-                    <stop
-                      offset="0%"
-                      stop-color="hsl(var(--primary))"
-                      stop-opacity="0.3"
-                    />
-                    <stop
-                      offset="100%"
-                      stop-color="hsl(var(--primary))"
-                      stop-opacity="0"
-                    />
-                  </linearGradient>
-                </defs>
-                <path
-                  d="M0 28 L8 26 L16 24 L24 30 L32 22 L40 20 L48 25 L56 18 L64 22 L72 16 L80 20 L88 14 L100 18 L100 40 L0 40 Z"
-                  fill="url(#areagrad)"
-                />
-                <path
-                  d="M0 28 L8 26 L16 24 L24 30 L32 22 L40 20 L48 25 L56 18 L64 22 L72 16 L80 20 L88 14 L100 18"
-                  fill="none"
-                  stroke="url(#linegrad)"
-                  stroke-width="0.8"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                />
-              </svg>
-              <div class="absolute inset-0 flex items-center justify-center flex-col gap-2 backdrop-blur-sm">
-                <div class="size-14 rounded-2xl bg-white/60 dark:bg-black/40 flex items-center justify-center text-muted-foreground">
-                  <BarChart3 class="size-7" />
-                </div>
-                <div class="font-semibold text-foreground/90">
-                  24 小时错误率
-                </div>
-                <div class="text-sm tabular-nums text-muted-foreground">
-                  <span
-                    class="font-semibold"
-                    :class="Number(summary.error_rate_24h) * 100 >= 1 ? 'text-error' : 'text-success'"
-                  >
-                    {{ (Number(summary.error_rate_24h) * 100).toFixed(2) }}%
+                <Alert variant="info">
+                  <Info class="size-4" />
+                  <AlertTitle>暂无近 7 天数据</AlertTitle>
+                  <AlertDescription>监控中间件写入记录后将在此展示每日趋势。</AlertDescription>
+                </Alert>
+              </div>
+              <div
+                v-else
+                class="flex items-end gap-2 h-52 rounded-xl border border-border/60 bg-muted/20 p-4 pb-2"
+              >
+                <div
+                  v-for="d in dailyBars"
+                  :key="d.date"
+                  class="flex-1 h-full flex flex-col items-center justify-end gap-1 group min-w-0"
+                >
+                  <span class="text-[10px] tabular-nums text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity">
+                    {{ d.count.toLocaleString('zh-CN') }}
                   </span>
-                  <span class="opacity-70">
-                    · 共 {{ Number(summary.total_requests_24h).toLocaleString() }} 请求
+                  <div
+                    class="w-full max-w-12 rounded-t-md bg-primary/60 group-hover:bg-primary transition-colors"
+                    :style="{ height: `${d.heightPct}%` }"
+                    :title="`${d.date} · ${d.count} 条 · 平均 ${d.avg_ms} ms`"
+                  />
+                  <span class="text-[10px] text-muted-foreground tabular-nums shrink-0">
+                    {{ d.date.slice(5) }}
                   </span>
                 </div>
-                <div class="text-[11px] text-muted-foreground/70 mt-1">
-                  30 天趋势折线图：等待后端提供 timeseries 数据
-                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 class="text-base font-semibold mb-3">
+                状态码分布
+              </h3>
+              <div
+                v-if="statusGroups.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                暂无数据
+              </div>
+              <div
+                v-else
+                class="flex flex-wrap gap-2"
+              >
+                <Badge
+                  v-for="g in statusGroups"
+                  :key="g.group"
+                  :class="g.class"
+                  class="rounded-lg text-xs tabular-nums border-transparent"
+                >
+                  {{ g.group }}：{{ g.count.toLocaleString('zh-CN') }}
+                </Badge>
+              </div>
+            </div>
+
+            <Separator />
+
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div class="flex flex-col gap-0.5">
+                <h3 class="font-semibold flex items-center gap-2">
+                  <Eraser class="size-4 text-destructive" />
+                  清理历史监控数据
+                </h3>
+                <p class="text-sm text-muted-foreground">
+                  删除保留期之外的性能记录，避免监控表无限增长（1–365 天）
+                </p>
+              </div>
+              <div class="flex items-center gap-2 shrink-0">
+                <Label
+                  for="cleanup-days"
+                  class="text-sm whitespace-nowrap"
+                >
+                  保留最近
+                </Label>
+                <Input
+                  id="cleanup-days"
+                  v-model.number="cleanupDays"
+                  type="number"
+                  min="1"
+                  max="365"
+                  class="w-24 rounded-xl"
+                  :disabled="cleanupRunning"
+                />
+                <span class="text-sm text-muted-foreground">天</span>
+                <Button
+                  variant="destructive"
+                  class="rounded-xl"
+                  :disabled="cleanupRunning"
+                  @click="cleanupOpen = true"
+                >
+                  <Trash2
+                    v-if="!cleanupRunning"
+                    data-icon="inline-start"
+                  />
+                  <Loader2
+                    v-else
+                    data-icon="inline-start"
+                    class="animate-spin"
+                  />
+                  清理旧数据
+                </Button>
               </div>
             </div>
           </div>
         </AdminCard>
       </TabsContent>
     </Tabs>
+
+    <DangerConfirmDialog
+      v-model:open="cleanupOpen"
+      title="二次确认：清理性能监控数据"
+      :description="`即将永久删除 ${cleanupDaysHint} 天之前的全部性能监控记录，此操作不可撤销。`"
+      confirm-text="确认清理"
+      confirm-phrase="清理数据"
+      phrase-hint="请输入「清理数据」以确认"
+      :on-confirm="runCleanup"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
+import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
 import {
   fetchAdminPerformanceSummary,
-  fetchAdminSlowRequests,
   formatAdminDateTime,
-  type AdminPerformanceSummary,
-  type AdminSlowRequest
+  type AdminPerformanceSummary
 } from '~~/composables/useAdminManage'
+import { apiFetch } from '~~/composables/useApi'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
   Gauge, Activity, AlertTriangle, Timer, TimerReset, Zap, BarChart3, Clock,
-  TrendingUp, Info, ChevronLeft, ChevronRight
+  Database, Info, RotateCcw, RefreshCw, Eraser, Trash2, Loader2
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import AdminPageHeader from '~~/components/admin/AdminPageHeader.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import StatCard from '~~/components/admin/StatCard.vue'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
+import { Separator } from '~~/components/ui/separator'
+import { Input } from '~~/components/ui/input'
+import { Label } from '~~/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
-const _toast = useToast()
+const toast = useToast()
 
 const activeTab = ref('overview')
 const summaryLoading = ref(true)
-const slowLoading = ref(true)
+const summaryError = ref('')
 
 const summary = reactive<AdminPerformanceSummary>({
   total_requests_24h: 0,
@@ -434,10 +626,39 @@ const summary = reactive<AdminPerformanceSummary>({
   top_slow_paths: []
 })
 
-const slowList = shallowRef<AdminSlowRequest[]>([])
-const slowPage = ref(1)
-const slowTotal = ref(0)
-const slowTotalPages = ref(1)
+// ---------- 慢请求明细 ----------
+// 后端 GET /admin/performance/slow 返回「裸数组」，字段为 endpoint / response_time_ms，
+// 且不支持 page/page_size 分页（仅 limit，上限 100，见后端 Query(ge=1, le=100)），
+// 因此本页直接调 apiFetch 并在页面侧归一化字段；useAdminManage 中对应的
+// fetchAdminSlowRequests（无映射/假分页/吞错）因无任何调用方已于 2026-09 删除。
+interface RawSlowRecord {
+  id: number
+  endpoint?: string | null
+  method?: string | null
+  status_code?: number | null
+  response_time_ms?: number | null
+  user_agent?: string | null
+  ip?: string | null
+  created_at?: string | null
+}
+
+interface SlowRow {
+  id: number
+  path: string
+  method: string
+  duration_ms: number
+  status_code: number
+  user_agent: string | null
+  ip: string | null
+  created_at: string | null
+}
+
+const slowLoading = ref(true)
+const slowError = ref('')
+// reka-ui Select 以字符串为 value（与 AdminPagination 约定一致），发请求时再转数字
+const slowLimit = ref('20')
+const slowLimitOptions = ['20', '50', '100']
+const slowRows = shallowRef<SlowRow[]>([])
 
 function methodClass(m: string): string {
   const up = m.toUpperCase()
@@ -448,33 +669,167 @@ function methodClass(m: string): string {
   return 'bg-muted text-muted-foreground border-transparent'
 }
 
-async function loadSummary() {
-  summaryLoading.value = true
-  try {
-    const r = await fetchAdminPerformanceSummary()
-    Object.assign(summary, r)
-  } catch {
-    // 失败时保持空 summary
-  } finally {
-    summaryLoading.value = false
-  }
-}
-
 async function loadSlow() {
   slowLoading.value = true
+  slowError.value = ''
   try {
-    const r = await fetchAdminSlowRequests({ page: slowPage.value, page_size: 15 })
-    slowList.value = r?.items ?? []
-    slowTotal.value = r?.total ?? 0
-    slowTotalPages.value = r?.total_pages ?? 1
-  } catch {
-    slowList.value = []
+    const raw = await apiFetch<RawSlowRecord[]>('/admin/performance/slow', {
+      query: { limit: Number(slowLimit.value) },
+      silentToast: true
+    })
+    slowRows.value = (Array.isArray(raw) ? raw : []).map(r => ({
+      id: Number(r.id),
+      path: String(r.endpoint ?? ''),
+      method: String(r.method ?? ''),
+      duration_ms: Number(r.response_time_ms ?? 0),
+      status_code: Number(r.status_code ?? 0),
+      user_agent: r.user_agent ?? null,
+      ip: r.ip ?? null,
+      created_at: r.created_at ?? null
+    }))
+  } catch (err) {
+    slowRows.value = []
+    const e = err as { data?: unknown, message?: string }
+    slowError.value = extractApiErrorMessage(e?.data, e?.message || '无法加载慢请求记录')
   } finally {
     slowLoading.value = false
   }
 }
 
-onMounted(async () => {
-  await Promise.all([loadSummary(), loadSlow()])
+// ---------- 存储统计与清理 ----------
+interface StorageStatusRow {
+  status_code: number
+  count: number
+}
+
+interface StorageDailyRow {
+  date: string
+  count: number
+  avg_response_time_ms: number
+}
+
+interface StorageStats {
+  total_count: number
+  earliest_record: string | null
+  latest_record: string | null
+  status_breakdown: StorageStatusRow[]
+  daily_breakdown: StorageDailyRow[]
+  queried_at?: string | null
+}
+
+interface CleanupResult {
+  success: boolean
+  deleted_count: number
+  cutoff_date: string
+  remaining_count: number
+}
+
+const storageLoading = ref(true)
+const storageError = ref('')
+const storage = ref<StorageStats>({
+  total_count: 0,
+  earliest_record: null,
+  latest_record: null,
+  status_breakdown: [],
+  daily_breakdown: []
 })
+
+const cleanupOpen = ref(false)
+const cleanupRunning = ref(false)
+const cleanupDays = ref(30)
+
+const cleanupDaysHint = computed(() => {
+  const d = clampDays(cleanupDays.value)
+  return d == null ? '（天数无效）' : `${d}`
+})
+
+const dailyBars = computed(() => {
+  const rows = storage.value.daily_breakdown ?? []
+  const max = Math.max(...rows.map(r => r.count), 1)
+  return rows.map(r => ({
+    date: r.date,
+    count: Number(r.count ?? 0),
+    avg_ms: Number(r.avg_response_time_ms ?? 0),
+    heightPct: Math.max(3, Math.round((Number(r.count ?? 0) / max) * 100))
+  }))
+})
+
+const statusGroups = computed(() => {
+  const agg: Record<string, number> = {}
+  for (const row of storage.value.status_breakdown ?? []) {
+    const g = `${String(row.status_code).charAt(0)}xx`
+    agg[g] = (agg[g] ?? 0) + Number(row.count ?? 0)
+  }
+  const colorFor: Record<string, string> = {
+    '2xx': 'bg-success-muted text-success-muted-foreground',
+    '3xx': 'bg-info-muted text-info-muted-foreground',
+    '4xx': 'bg-warning-muted text-warning-muted-foreground',
+    '5xx': 'bg-error-muted text-error-muted-foreground'
+  }
+  return Object.entries(agg)
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([group, count]) => ({ group, count, class: colorFor[group] ?? 'bg-muted text-muted-foreground' }))
+})
+
+function clampDays(v: unknown): number | null {
+  const n = Number(v)
+  if (!Number.isInteger(n) || n < 1 || n > 365) return null
+  return n
+}
+
+async function loadSummary() {
+  summaryLoading.value = true
+  summaryError.value = ''
+  try {
+    const r = await fetchAdminPerformanceSummary()
+    Object.assign(summary, r)
+  } catch (err) {
+    const e = err as { data?: unknown, message?: string }
+    summaryError.value = extractApiErrorMessage(e?.data, e?.message || '无法加载性能摘要')
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+async function loadStorage() {
+  storageLoading.value = true
+  storageError.value = ''
+  try {
+    const r = await apiFetch<StorageStats>('/admin/performance/storage', { silentToast: true })
+    storage.value = r
+  } catch (err) {
+    const e = err as { data?: unknown, message?: string }
+    storageError.value = extractApiErrorMessage(e?.data, e?.message || '无法加载存储统计')
+  } finally {
+    storageLoading.value = false
+  }
+}
+
+/** 供 DangerConfirmDialog 调用：throw 则弹窗保持打开并内联展示错误 */
+async function runCleanup() {
+  const days = clampDays(cleanupDays.value)
+  if (days == null) {
+    throw new Error('保留天数需为 1–365 之间的整数')
+  }
+  cleanupRunning.value = true
+  try {
+    const r = await apiFetch<CleanupResult>('/admin/performance/cleanup', {
+      method: 'DELETE',
+      query: { days },
+      silentToast: true
+    })
+    toast.success(`已删除 ${r?.deleted_count ?? 0} 条旧记录，剩余 ${r?.remaining_count ?? 0} 条`)
+    await Promise.all([loadStorage(), loadSlow()])
+  } finally {
+    cleanupRunning.value = false
+  }
+}
+
+const anyLoading = computed(() => summaryLoading.value || slowLoading.value || storageLoading.value)
+
+async function reloadAll() {
+  await Promise.all([loadSummary(), loadSlow(), loadStorage()])
+}
+
+onMounted(reloadAll)
 </script>

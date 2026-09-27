@@ -1,5 +1,12 @@
+<!--
+  文章管理列表页：服务端分页 + 关键字/状态/分类/日期筛选 + 批量发布/转草稿/删除。
+  硬契约：AdminDataTable 的选择是受控的——翻页、删除、批量成功后必须由本页清空 selectedIds，
+  表格不会自动清（残留 id 会让下一批操作误伤）；任何筛选变化必须先 page=1 再 loadPosts；
+  批量状态接口的 updated_count 藏在 {success,data} 双层信封里，判失败以它为准；
+  列表用 shallowRef 整替换，禁止改回 deep ref（大量 Post 对象的递归 Proxy 是白给的性能损耗）。
+-->
 <script setup lang="ts">
-import { ref, shallowRef, computed, onMounted, watch } from 'vue'
+import { ref, shallowRef, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { usePosts } from '~~/composables/usePosts'
 import {
@@ -39,7 +46,7 @@ const page = ref(1)
 const pageSize = ref(10)
 
 const searchQuery = ref('')
-const statusFilter = ref<'all' | 'published' | 'draft' | 'scheduled' | 'archived'>('all')
+const statusFilter = ref<'all' | 'published' | 'draft' | 'scheduled'>('all')
 const categoryFilter = ref<string>('all')
 const createdStart = ref<string | null>(null)
 const createdEnd = ref<string | null>(null)
@@ -54,8 +61,7 @@ const statusOptions = [
   { value: 'all' as const, label: '全部状态' },
   { value: 'published' as const, label: '已发布' },
   { value: 'draft' as const, label: '草稿' },
-  { value: 'scheduled' as const, label: '定时' },
-  { value: 'archived' as const, label: '已归档' }
+  { value: 'scheduled' as const, label: '定时' }
 ]
 
 const columns: Column[] = [
@@ -88,6 +94,12 @@ const loadPosts = async () => {
     })
     posts.value = result.items ?? []
     total.value = result.total ?? 0
+    // 删除/筛选后当前页可能越界：夹回最后一页（page 变化由 watch 触发重载）
+    const maxPage = Math.max(1, Math.ceil(total.value / pageSize.value))
+    if (posts.value.length === 0 && total.value > 0 && page.value > maxPage) {
+      page.value = maxPage
+      return
+    }
   } catch {
     posts.value = []
     total.value = 0
@@ -109,6 +121,11 @@ const onSearch = () => {
   loadPosts()
 }
 
+// 分类下拉在 FilterBar 插槽内，无法复用其搜索按钮语义：选中后立即刷新
+watch(categoryFilter, () => {
+  onSearch()
+})
+
 const onReset = () => {
   categoryFilter.value = 'all'
   page.value = 1
@@ -119,29 +136,6 @@ const refresh = () => {
   loadPosts()
 }
 
-const isSelected = (id: number) => selectedIds.value.includes(id)
-const _toggleSelected = (id: number) => {
-  const idx = selectedIds.value.indexOf(id)
-  if (idx === -1) selectedIds.value.push(id)
-  else selectedIds.value.splice(idx, 1)
-}
-
-const isAllSelected = computed(() => {
-  return posts.value.length > 0 && posts.value.every(p => isSelected(p.id))
-})
-
-const _isSomeSelected = computed(() => {
-  return posts.value.some(p => isSelected(p.id)) && !isAllSelected.value
-})
-
-const _toggleSelectAll = () => {
-  if (isAllSelected.value) {
-    selectedIds.value = []
-  } else {
-    selectedIds.value = [...new Set([...selectedIds.value, ...posts.value.map(p => p.id)])]
-  }
-}
-
 function confirmDelete(id: number) {
   pendingDeleteId.value = id
   deleteDialogOpen.value = true
@@ -150,16 +144,11 @@ function confirmDelete(id: number) {
 async function doDelete() {
   if (pendingDeleteId.value == null) return
   const id = pendingDeleteId.value
-  try {
-    await deletePost(id)
-    toast.success('删除成功')
-    deleteDialogOpen.value = false
-    pendingDeleteId.value = null
-    selectedIds.value = selectedIds.value.filter(x => x !== id)
-    loadPosts()
-  } catch {
-    /* apiFetch 已统一 toast */
-  }
+  await deletePost(id)
+  toast.success('删除成功')
+  pendingDeleteId.value = null
+  selectedIds.value = selectedIds.value.filter(x => x !== id)
+  loadPosts()
 }
 
 function confirmBatchDelete() {
@@ -176,7 +165,6 @@ async function doBatchDelete() {
   if (failed === 0) toast.success(`已批量删除 ${ids.length} 篇文章`)
   else toast.warning(`成功删除 ${success} 篇，失败 ${failed} 篇`)
   selectedIds.value = []
-  batchDeleteDialogOpen.value = false
   loadPosts()
 }
 
@@ -254,10 +242,7 @@ onMounted(() => {
               class="h-9 rounded-[10px]"
               @click="refresh"
             >
-              <RefreshCw
-                data-icon="inline-start"
-                class="mr-1.5"
-              />
+              <RefreshCw data-icon="inline-start" />
               刷新
             </Button>
           </template>
@@ -360,7 +345,7 @@ onMounted(() => {
       <template #cell-is_pinned="{ row }">
         <Pin
           v-if="(row as Post).is_pinned"
-          class="size-3.5 text-amber-500"
+          class="size-3.5 text-warning"
         />
       </template>
       <template #cell-published_at="{ row }">
@@ -399,7 +384,7 @@ onMounted(() => {
       title="确认删除文章"
       description="此操作不可撤销，确定要删除这篇文章吗？"
       confirm-text="确认删除"
-      @confirm="doDelete"
+      :on-confirm="doDelete"
     />
 
     <AdminConfirmDialog
@@ -407,7 +392,7 @@ onMounted(() => {
       title="确认批量删除"
       :description="`即将删除 ${selectedIds.length} 篇文章，此操作不可撤销，确定继续吗？`"
       confirm-text="确认删除"
-      @confirm="doBatchDelete"
+      :on-confirm="doBatchDelete"
     />
   </AdminListPage>
 </template>

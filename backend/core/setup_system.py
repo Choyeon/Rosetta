@@ -1,19 +1,19 @@
 """
 系统环境检测服务
 
-提供全面的系统环境检测功能：
+提供安装/初始化向导所需的系统环境探测：
 - 操作系统信息（正确识别 Windows 11 等）
-- 硬件资源检测（CPU 型号、内存、磁盘）
-- 端口检测
-- 权限检测
-- 自动修复建议
+- CPU 型号（`get_processor_name`，OOBE 侧共用同一实现）
+- 硬件资源检测（内存、磁盘；psutil 缺失时 Windows 下用 ctypes 兜底）
 """
 
+import logging
 import platform
 import socket
 import subprocess
 from dataclasses import dataclass
-from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -31,15 +31,6 @@ class SystemResource:
 
 
 @dataclass
-class PortStatus:
-    """端口状态"""
-
-    port: int
-    in_use: bool
-    process: str | None = None
-
-
-@dataclass
 class SystemInfo:
     """系统信息"""
 
@@ -54,7 +45,7 @@ class SystemInfo:
     resources: SystemResource
 
 
-def _get_windows_version_display() -> str:
+def get_windows_version_display() -> str:
     """正确识别 Windows 版本（区分 Win10/Win11 通过 build 号）"""
     ver = platform.version()
     try:
@@ -68,8 +59,13 @@ def _get_windows_version_display() -> str:
     return platform.release()
 
 
-def _get_processor_name() -> str:
-    """获取 CPU 品牌/型号名称"""
+def get_processor_name() -> str:
+    """获取 CPU 品牌/型号名称（纯展示用；OOBE 与安装向导共用）
+
+    探测失败时退回 `platform.machine()`。异常面只覆盖"探测本身可能失败"的类别
+    （注册表/子进程/文件读取），编程错误一律外抛——把真实 bug 吞成一个看起来
+    合理的架构名，会让下游排查完全失去线索。
+    """
     system = platform.system()
     try:
         if system == "Windows":
@@ -96,8 +92,8 @@ def _get_processor_name() -> str:
                 for line in cpuinfo.read_text(encoding="utf-8").splitlines():
                     if line.startswith("model name"):
                         return line.split(":", 1)[1].strip()
-    except Exception:  # noqa: BLE001
-        pass
+    except (OSError, ValueError, UnicodeDecodeError, subprocess.SubprocessError) as exc:
+        logger.debug("[setup] CPU 型号探测失败，退回架构名: %s", exc)
     return platform.machine()
 
 
@@ -105,7 +101,7 @@ def _get_os_display_name() -> str:
     """获取友好的操作系统名称"""
     system = platform.system()
     if system == "Windows":
-        return f"Windows {_get_windows_version_display()}"
+        return f"Windows {get_windows_version_display()}"
     elif system == "Darwin":
         mac_ver = platform.mac_ver()[0]
         if mac_ver:
@@ -120,11 +116,29 @@ def _get_os_display_name() -> str:
                 for line in os_release.read_text(encoding="utf-8").splitlines():
                     if line.startswith("PRETTY_NAME="):
                         return line.split("=", 1)[1].strip('"')
-        except Exception:  # noqa: BLE001
-            pass
+        except (OSError, ValueError, UnicodeDecodeError) as exc:
+            logger.debug("[setup] /etc/os-release 解析失败，退回通用名: %s", exc)
         return f"Linux {platform.release()}"
     else:
         return f"{system} {platform.release()}"
+
+
+def psutil_errors() -> tuple[type[BaseException], ...]:
+    """psutil 探测允许吞掉的异常集合（OOBE 侧共用）
+
+    psutil 虽在依赖清单里，但安装向导恰恰跑在"后端依赖可能还没装"的时机，
+    ImportError 是真实分支。这里把它与系统调用/版本 API 不兼容类异常并列，
+    其余异常（编程错误）一律外抛——否则探测代码写错也会伪装成
+    "这项指标拿不到"，最终以 0 值提交给安装判定。
+    """
+    errors: list[type[BaseException]] = [ImportError, OSError, ValueError, AttributeError]
+    try:
+        from psutil import Error as PsutilError  # type: ignore
+    except ImportError:
+        PsutilError = None  # type: ignore[assignment]
+    if PsutilError is not None:
+        errors.append(PsutilError)
+    return tuple(errors)
 
 
 class SystemService:
@@ -132,8 +146,6 @@ class SystemService:
 
     def __init__(self):
         self.is_windows = platform.system() == "Windows"
-        self.is_linux = platform.system() == "Linux"
-        self.is_macos = platform.system() == "Darwin"
 
     def get_system_info(self) -> SystemInfo:
         """获取系统信息"""
@@ -143,7 +155,7 @@ class SystemService:
             release=platform.release(),
             version=platform.version(),
             machine=platform.machine(),
-            processor=_get_processor_name(),
+            processor=get_processor_name(),
             python_version=platform.python_version(),
             hostname=socket.gethostname(),
             resources=self.get_system_resources(),
@@ -170,7 +182,8 @@ class SystemService:
                 disk_available=disk.free,
                 disk_percent=disk.percent,
             )
-        except ImportError:
+        except psutil_errors() as exc:
+            logger.debug("[setup] psutil 资源探测失败，尝试 ctypes 兜底: %s", exc)
             try:
                 import ctypes
 
@@ -212,7 +225,10 @@ class SystemService:
                     disk_available=free_bytes.value,
                     disk_percent=0,
                 )
-            except Exception:
+            except (OSError, ValueError, AttributeError) as exc:
+                # ctypes 兜底只在 Windows 上有效；非 Windows 或调用失败时返回全 0，
+                # 由前端显示为"未知"。必须留痕，否则资源探测永久失效也无人知晓。
+                logger.debug("[setup] ctypes 资源兜底探测失败，返回 0 值: %s", exc)
                 return SystemResource(
                     cpu_count=1,
                     cpu_percent=0,
@@ -223,128 +239,3 @@ class SystemService:
                     disk_available=0,
                     disk_percent=0,
                 )
-
-    def check_port(self, port: int, host: str = "localhost") -> PortStatus:
-        """检测端口是否被占用"""
-        try:
-            if self.is_windows:
-                result = subprocess.run(
-                    ["netstat", "-ano"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                for line in result.stdout.split("\n"):
-                    if f":{port}" in line and "LISTENING" in line:
-                        parts = line.split()
-                        if len(parts) >= 5:
-                            return PortStatus(port=port, in_use=True, process=parts[-1])
-            else:
-                result = subprocess.run(
-                    ["lsof", "-i", f":{port}", "-n"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5,
-                )
-                if result.returncode == 0 and result.stdout.strip():
-                    lines = result.stdout.strip().split("\n")
-                    if len(lines) > 1:
-                        parts = lines[1].split()
-                        if len(parts) > 2:
-                            return PortStatus(port=port, in_use=True, process=parts[0])
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(1)
-            result = sock.connect_ex((host, port))
-            sock.close()
-
-            return PortStatus(port=port, in_use=result == 0)
-
-        except Exception:
-            return PortStatus(port=port, in_use=False)
-
-    def find_available_port(self, start_port: int = 8000, end_port: int = 9000) -> int:
-        """查找可用端口"""
-        for port in range(start_port, end_port + 1):
-            if not self.check_port(port).in_use:
-                return port
-        return start_port
-
-    def check_directory_permissions(self, path: str) -> dict[str, Any]:
-        """检查目录权限"""
-        from pathlib import Path
-
-        p = Path(path)
-        result = {"readable": False, "writable": False, "exists": p.exists()}
-
-        if result["exists"]:
-            result["readable"] = p.is_dir() and list(p.iterdir()) is not None
-            try:
-                test_file = p / ".write_test"
-                test_file.touch()
-                test_file.unlink()
-                result["writable"] = True
-            except Exception:
-                result["writable"] = False
-
-        return result
-
-    def check_command_available(self, command: str) -> bool:
-        """检查命令是否可用"""
-        import shutil
-
-        return shutil.which(command) is not None
-
-    def get_network_info(self) -> dict[str, Any]:
-        """获取网络信息"""
-        try:
-            hostname = socket.gethostname()
-            local_ip = socket.gethostbyname(hostname)
-
-            return {
-                "hostname": hostname,
-                "local_ip": local_ip,
-                "can_connect_external": self._check_external_connection(),
-            }
-        except Exception:
-            return {"hostname": "unknown", "local_ip": "unknown", "can_connect_external": False}
-
-    def _check_external_connection(self) -> bool:
-        """检查是否能连接外部网络"""
-        try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(2)
-            sock.connect(("8.8.8.8", 53))
-            sock.close()
-            return True
-        except Exception:
-            return False
-
-    def get_diagnostics(self) -> dict[str, Any]:
-        """获取完整的系统诊断信息"""
-        return {
-            "system": self.get_system_info().__dict__,
-            "network": self.get_network_info(),
-            "ports": {
-                "8000": self.check_port(8000).__dict__,
-                "3000": self.check_port(3000).__dict__,
-                "5432": self.check_port(5432).__dict__,
-                "6379": self.check_port(6379).__dict__,
-            },
-            "commands": {
-                "python": self.check_command_available("python"),
-                "python3": self.check_command_available("python3"),
-                "uv": self.check_command_available("uv"),
-                "node": self.check_command_available("node"),
-                "npm": self.check_command_available("npm"),
-                "pnpm": self.check_command_available("pnpm"),
-            },
-        }
-
-    def format_bytes(self, bytes_value: int) -> str:
-        """格式化字节数"""
-        for unit in ["B", "KB", "MB", "GB", "TB"]:
-            if bytes_value < 1024:
-                return f"{bytes_value:.2f} {unit}"
-            bytes_value /= 1024
-        return f"{bytes_value:.2f} PB"

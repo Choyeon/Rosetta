@@ -1,3 +1,8 @@
+<!--
+  操作审计日志页：按操作类型/用户 ID/日期范围做服务端筛选 + 分页列表 + 行展开 details JSON。
+  契约：筛选条件须点「应用筛选」才生效且必须把页码重置回 1（否则停留越界空页）；结果缩小时钳制回最后一页并只重试一次防循环；
+  日期区间保证"结束不早于开始"，自动弹出结束选择器需等 DOM 同步（nextTick + showPicker）。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -10,12 +15,18 @@
       <div class="pt-6 pb-4">
         <div class="grid md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">操作类型</Label>
+            <Label
+              for="audit-action-select"
+              class="text-sm font-medium"
+            >操作类型</Label>
             <Select
               v-model="filters.action"
               class="rounded-xl"
             >
-              <SelectTrigger class="rounded-xl">
+              <SelectTrigger
+                id="audit-action-select"
+                class="rounded-xl"
+              >
                 <SelectValue placeholder="全部类型" />
               </SelectTrigger>
               <SelectContent>
@@ -30,10 +41,14 @@
             </Select>
           </div>
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">用户 ID 搜索</Label>
+            <Label
+              for="audit-user-input"
+              class="text-sm font-medium"
+            >用户 ID 搜索</Label>
             <div class="relative">
               <Search class="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
               <Input
+                id="audit-user-input"
                 v-model.number="filters.userId"
                 type="number"
                 placeholder="留空=全部用户"
@@ -54,6 +69,7 @@
                 <input
                   v-model="filters.fromDate"
                   type="date"
+                  aria-label="开始日期"
                   class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
                   :max="startMax"
                   placeholder="开始日期"
@@ -64,6 +80,7 @@
                   type="button"
                   class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
                   title="清除开始日期"
+                  aria-label="清除开始日期"
                   @click="filters.fromDate = ''"
                 >
                   <X class="size-3.5" />
@@ -75,6 +92,7 @@
                   ref="toDateInputRef"
                   v-model="filters.toDate"
                   type="date"
+                  aria-label="结束日期"
                   class="w-full h-9 rounded-lg border border-transparent bg-transparent px-2.5 text-sm text-foreground transition-colors hover:border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus:bg-background"
                   :min="endMin"
                   :max="endMax"
@@ -86,6 +104,7 @@
                   type="button"
                   class="pointer-events-auto absolute right-1.5 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity rounded-full p-0.5 hover:bg-muted text-muted-foreground hover:text-foreground"
                   title="清除结束日期"
+                  aria-label="清除结束日期"
                   @click="filters.toDate = ''"
                 >
                   <X class="size-3.5" />
@@ -129,7 +148,7 @@
             <Button
               class="rounded-xl shadow-sm"
               :disabled="loading"
-              @click="loadLogs"
+              @click="applyFilters"
             >
               <Filter
                 data-icon="inline-start"
@@ -153,6 +172,30 @@
             :key="i"
             class="h-16 rounded-xl"
           />
+        </div>
+        <div
+          v-else-if="loadError"
+          class="p-12"
+        >
+          <Alert
+            variant="destructive"
+            class="rounded-xl max-w-lg mx-auto"
+          >
+            <AlertTriangle class="size-4" />
+            <AlertTitle>日志加载失败</AlertTitle>
+            <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+              <span>{{ loadError }}</span>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg shrink-0"
+                @click="loadLogs()"
+              >
+                <RotateCcw data-icon="inline-start" />
+                重试
+              </Button>
+            </AlertDescription>
+          </Alert>
         </div>
         <div
           v-else
@@ -217,6 +260,7 @@
                   variant="ghost"
                   size="icon-sm"
                   class="opacity-0 group-hover:opacity-100 transition-opacity"
+                  :aria-label="expandedId === log.id ? '收起详情' : '展开详情'"
                   @click.stop="toggleExpand(log.id)"
                 >
                   <ChevronDown
@@ -241,7 +285,7 @@
           </div>
         </div>
         <div
-          v-if="logs.length === 0 && !loading"
+          v-if="logs.length === 0 && !loading && !loadError"
           class="p-12"
         >
           <Alert
@@ -262,7 +306,7 @@
             v-model:page-size="pageSize"
             :total="total"
             :page-size-options="[15, 30, 50, 100]"
-            @update:page="loadLogs"
+            @update:page="loadLogs()"
           />
         </div>
       </div>
@@ -278,6 +322,7 @@ import {
   type AdminAuditLog
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   FileSearch, Search, Filter, RotateCcw, Clock, Globe, Monitor, Info,
   ChevronRight, ChevronDown, X, CalendarDays, AlertTriangle
@@ -333,6 +378,7 @@ function actionClass(a: string): string {
 }
 
 const loading = ref(true)
+const loadError = ref('')
 const logs = shallowRef<AdminAuditLog[]>([])
 const page = ref(1)
 const pageSize = ref(15)
@@ -419,8 +465,15 @@ function resetFilters() {
   loadLogs()
 }
 
-async function loadLogs() {
+/** 应用筛选：条件变化后必须回到第 1 页，否则可能停留在越界空页 */
+function applyFilters() {
+  page.value = 1
+  loadLogs()
+}
+
+async function loadLogs(retryOnClamp = true) {
   loading.value = true
+  loadError.value = ''
   try {
     const params: Parameters<typeof fetchAdminAuditLogs>[0] = {
       page: page.value,
@@ -433,10 +486,17 @@ async function loadLogs() {
     const r = await fetchAdminAuditLogs(params)
     logs.value = r?.items ?? []
     total.value = r?.total ?? 0
+    // 结果集缩小时钳制回最后一页，避免停在越界空页（仅重试一次防循环）
+    const maxPage = Math.max(1, Math.ceil(total.value / pageSize.value))
+    if (retryOnClamp && logs.value.length === 0 && total.value > 0 && page.value > maxPage) {
+      page.value = maxPage
+      await loadLogs(false)
+    }
   } catch (e) {
     logs.value = []
-    const msg = e instanceof Error ? e.message : '加载日志失败'
-    _toast.error(msg)
+    // fetchAdminAuditLogs 内部的 apiFetch 已经 toast，这里只做内联错误态，避免双重提示
+    const err = e as { data?: unknown, message?: string }
+    loadError.value = extractApiErrorMessage(err?.data, err?.message || '加载日志失败')
   } finally {
     loading.value = false
   }

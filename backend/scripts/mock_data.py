@@ -331,8 +331,8 @@ async def generate_oobe_mock_data(db, admin_id: int) -> dict:
         log.exception("generate_oobe_mock_data 执行失败（降级到 minimal）：%s", exc)
         try:
             await db.rollback()
-        except Exception:
-            pass
+        except Exception as rollback_exc:  # noqa: BLE001 —— 回滚失败只能留痕，继续降级
+            log.warning("种子数据回滚失败（会话可能已损坏）：%s", rollback_exc)
         return await generate_oobe_mock_data_minimal(db, admin_id)
 
     # 汇总统计视图数（为了与旧返回键保持兼容）
@@ -539,7 +539,8 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
     created_guestbook = 0
     try:
         created_guestbook = await create_sample_guestbook_entries(db, admin_id)
-    except Exception:  # noqa: BLE001
+    except Exception as exc:  # noqa: BLE001 —— 最小集里留言板是可选样本，失败不阻断安装
+        log.warning("最小种子数据：示例留言生成失败，跳过：%s", exc)
         created_guestbook = 0
 
     await db.commit()

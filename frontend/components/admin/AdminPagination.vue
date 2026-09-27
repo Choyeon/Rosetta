@@ -1,3 +1,8 @@
+<!--
+  管理列表分页条：页码 + 每页条数 + 范围文案，组件不请求数据。
+  硬契约：改每页条数时本组件会连带 emit update:page=1（防止总页数变小后停在
+  不存在的页码上拿到空列表），父级只需 watch page/pageSize 重查即可。
+-->
 <script setup lang="ts">
 import {
   Pagination,

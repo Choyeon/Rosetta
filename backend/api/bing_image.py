@@ -19,13 +19,14 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, Response
 from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from pydantic import Field as PDField
 
 from backend.core.config import settings
 from backend.core.net_guard import validated_get
+from backend.schemas import raw_content_response
 
 logger = logging.getLogger(__name__)
 
@@ -149,13 +150,38 @@ async def _download_and_cache(url: str, target: Path) -> Path | None:
         logger.warning("[bing_image] 下载缓存失败 %s: %s", url, exc)
         try:
             target.with_suffix(target.suffix + ".tmp").unlink(missing_ok=True)
-        except Exception:
-            pass
+        except OSError as cleanup_error:
+            # 临时文件残留不影响本次响应（已 return None），但会在缓存目录里堆积，
+            # 所以按状态清理类要求回报而非吞掉。
+            logger.warning(
+                "[bing_image] 临时文件清理失败 %s: %s",
+                target.with_suffix(target.suffix + ".tmp"),
+                cleanup_error,
+            )
         return None
 
 
-@router.get("/bing/image", summary="Bing 图片流式代理 + 本地缓存")
-async def bing_image_proxy(src: str = Query(..., description="base64(原始图片URL)")):
+@router.get(
+    "/bing/image",
+    summary="Bing 图片流式代理 + 本地缓存",
+    description=(
+        "图片代理端点：src 参数是原始图片地址的标准 base64（可含 URL 安全字符替换），"
+        "解码失败、非 http(s) 协议或上游拉取失败时，一律 307 跳到站内兜底图，"
+        "绝不 302 跳外部地址，以防被当作开放重定向使用。"
+        "命中本地缓存或下载成功后以文件直出，Content-Type 取自落盘扩展名，"
+        "带 Cache-Control: public, max-age=2592000, immutable（30 天强缓存）与 nosniff。"
+        "上游只允许 Bing / Microsoft 白名单域名，且经 SSRF 校验（拒内网、逐跳校验重定向）；"
+        "响应 Content-Type 必须是 image/*，否则不落盘直接走兜底。"
+        "公开访问、无需鉴权。"
+    ),
+    responses=raw_content_response(
+        "image/*",
+        "壁纸二进制流；未命中缓存时可能 302 跳转到上游图片地址。",
+        binary=True,
+    ),
+    response_class=Response,
+)
+async def bing_image_proxy(src: str = Query(..., description="base64(原始图片URL)")) -> Response:
     """
     前端 ``proxiedBingUrl`` 生成的 /api/bing/image?src=<base64(url)> 代理端点。
 
@@ -204,14 +230,51 @@ async def bing_image_proxy(src: str = Query(..., description="base64(原始图�
 
 
 class BingImageOut(BaseModel):
-    date: str = PDField(description="YYYY-MM-DD，发布日期")
-    title: str = PDField(description="标题 / 版权文字（中文）")
-    url: str = PDField(description="1920x1080 JPEG 直链")
-    url_uhd: str | None = PDField(None, description="4K UHD 原图直链")
-    copyright: str | None = None
+    """Bing 每日一图的元数据条目（对上游 URL 拼装后的结果，不含图片本体）。"""
+
+    date: str = PDField(description="YYYY-MM-DD，服务端按服务器当天日期填入")
+    title: str = PDField(description="标题；上游无标题时回退版权文字，再回退兜底文案")
+    url: str = PDField(
+        description="1920x1080 JPEG 直链；上游未给 urlbase 时是空字符串，"
+        "今日图接口兜底分支则是一条 data: URI 占位图"
+    )
+    url_uhd: str | None = PDField(None, description="4K UHD 原图直链；无 urlbase 时为 null")
+    copyright: str | None = PDField(None, description="上游版权署名文字；上游未提供时为 null")
 
 
-@router.get("/bing/image/today", summary="获取 Bing 今日图元数据")
+class BingTodayResponse(BaseModel):
+    """今日图元数据接口的响应体。"""
+
+    success: bool = PDField(True, description="恒为 true：上游拉取失败也按兜底数据成功返回")
+    fallback: bool | None = PDField(
+        None, description="仅在上游拉取失败、走占位图兜底时出现并为 true；正常拉取时该键缺席"
+    )
+    data: BingImageOut = PDField(..., description="当日图片元数据")
+
+
+class BingArchiveResponse(BaseModel):
+    """最近 N 天归档接口的响应体。"""
+
+    success: bool = PDField(True, description="恒为 true：整体异常被吞掉并返回已抓到的部分")
+    data: list[BingImageOut] = PDField(
+        default_factory=list,
+        description="归档条目，按请求天数从新到旧排列；"
+        "上游非 200 或当天无数据的天会被跳过，因此条数可能少于请求的 days，异常时可为空数组",
+    )
+    count: int = PDField(0, description="data 的实际长度，可能小于请求参数 days")
+
+
+@router.get(
+    "/bing/image/today",
+    summary="获取 Bing 今日图元数据",
+    description=(
+        "从 Bing 首页图像元数据接口抓取今日信息，公开访问、无需鉴权。"
+        "上游请求超时上限 8 秒；任何上游异常都不返回错误码，"
+        "而是带 fallback 标记返回一条 data: URI 占位图，保证前端不崩。"
+        "结果不做服务端缓存，每次请求都会打上游。"
+    ),
+    responses={200: {"model": BingTodayResponse}},
+)
 async def bing_today_image():
     """从 Bing HP 图像元数据 JSON 接口抓取今日信息，失败则回退到占位图。"""
     import httpx
@@ -252,7 +315,18 @@ async def bing_today_image():
         }
 
 
-@router.get("/bing/image/archive", summary="获取 Bing 最近 N 天图片归档（骨架）")
+@router.get(
+    "/bing/image/archive",
+    summary="获取 Bing 最近 N 天图片归档（骨架）",
+    description=(
+        "返回最近 days 天的图片元数据列表，公开访问、无需鉴权。"
+        "实现是串行请求上游归档接口（每天一次请求、每请求间隔 50ms，单次超时 10 秒），"
+        "days 取值 1..14，越界由框架返回 422；因此大天数会显著拉长响应时间。"
+        "上游不可用或某天缺数据时跳过该天，count 可能小于 days；"
+        "整体异常同样返回 200，只带已抓到的部分（可能是空数组）。无服务端缓存。"
+    ),
+    responses={200: {"model": BingArchiveResponse}},
+)
 async def bing_archive(days: int = Query(7, ge=1, le=14, description="查询的天数 1..14")):
     """返回最近 days 天的图片元数据列表。实现方式：串行请求 idx=0..days-1 的归档。"""
     import httpx

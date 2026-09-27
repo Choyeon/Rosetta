@@ -1,3 +1,9 @@
+<!--
+  Admin 侧栏：内建菜单（config/admin-menu）+ 插件菜单分组的渲染容器。
+  硬契约：折叠状态由布局经 v-model:collapsed 受控，本组件不私存；插件项图标只允许
+  字符串 iconName → 统一 Puzzle 占位（禁止按名动态 import lucide，包体不可控）；
+  mergedMenu 合并插件组时不得修改 adminMenu 原对象（展示期派生，非注册期突变）。
+-->
 <script setup lang="ts">
 import { ChevronLeft, ChevronRight, Globe, Puzzle } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
@@ -120,6 +126,7 @@ function resolveIcon(item: { icon?: unknown }) {
 
 <template>
   <aside
+    id="admin-sidebar"
     class="admin-sidebar shrink-0 transition-all duration-300 ease-out border-r border-sidebar-border bg-sidebar flex flex-col"
     :class="collapsed ? 'w-[72px]' : 'w-[256px]'"
   >
@@ -154,6 +161,7 @@ function resolveIcon(item: { icon?: unknown }) {
         variant="ghost"
         size="icon"
         class="ml-1 shrink-0 size-8 text-muted-foreground hover:text-sidebar-foreground"
+        aria-label="收起侧边导航"
         @click="collapsed = true"
       >
         <ChevronLeft data-icon="inline-start" />
@@ -161,7 +169,10 @@ function resolveIcon(item: { icon?: unknown }) {
     </div>
 
     <ScrollArea class="flex-1 py-3 px-2">
-      <nav class="flex flex-col gap-1">
+      <nav
+        class="flex flex-col gap-1"
+        aria-label="管理后台导航"
+      >
         <template
           v-for="(group, gi) in renderGroups"
           :key="group.key"
@@ -262,6 +273,7 @@ function resolveIcon(item: { icon?: unknown }) {
         variant="ghost"
         size="icon"
         class="shrink-0 size-8 text-muted-foreground hover:text-sidebar-foreground"
+        aria-label="展开侧边导航"
         @click="collapsed = false"
       >
         <ChevronRight data-icon="inline-start" />

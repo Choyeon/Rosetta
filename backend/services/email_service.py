@@ -32,6 +32,10 @@ from backend.core.tasks import BackgroundTaskManager, background_task
 
 logger = logging.getLogger(__name__)
 
+# SMTP 单次操作预算（秒）。没有它，SMTP 服务器不可达会让发信请求挂到 TCP 默认超时，
+# 进而拖死调用方（如密码重置这类需要即时反馈投递结果的接口）。
+_SMTP_TIMEOUT = 15
+
 
 @dataclass
 class EmailMessage:
@@ -291,16 +295,24 @@ class EmailService:
 
             def send() -> None:
                 if self.smtp_use_tls:
-                    smtp = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port)
+                    smtp = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=_SMTP_TIMEOUT)
                 else:
-                    smtp = smtplib.SMTP(self.smtp_host, self.smtp_port)
+                    smtp = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=_SMTP_TIMEOUT)
                     smtp.starttls()
 
-                smtp.login(self.smtp_user, self.smtp_password)
-                smtp.sendmail(self.from_email, recipients, msg.as_string())
-                smtp.quit()
+                try:
+                    smtp.login(self.smtp_user, self.smtp_password)
+                    smtp.sendmail(self.from_email, recipients, msg.as_string())
+                finally:
+                    # 不写 finally 则每次发送失败都漏一条 SMTP 连接
+                    smtp.quit()
 
-            await loop.run_in_executor(None, send)
+            # 双保险：smtplib 的 timeout 只管已建立 socket 的操作，
+            # DNS 解析与线程池排队不受它约束，必须用 wait_for 兜住整体预算。
+            await asyncio.wait_for(
+                loop.run_in_executor(None, send),
+                timeout=_SMTP_TIMEOUT + 5,
+            )
 
             logger.info(f"邮件发送成功: {email.to} - {email.subject}")
             return EmailResult(success=True)

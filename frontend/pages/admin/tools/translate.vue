@@ -1,3 +1,7 @@
+<!-- 翻译工具页：调后端同步翻译接口逐篇生成标题译文，供人工逐条复制。
+     契约：结果仅展示不回写文章（翻译端点为只读）；title 可能是 i18n dict 或旧纯文本，
+     须经 titleText 归一否则译文源变 [object Object]；批量用 allSettled 单篇失败不阻断，
+     且 apiFetch 已自动 toast 错误，页内 catch 不得二次提示。 -->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -8,7 +12,7 @@
 
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-5">
       <AdminCard>
-        <div class="flex flex-col gap-1 .5 mb-4">
+        <div class="flex flex-col gap-1.5 mb-4">
           <h3 class="text-base font-semibold">
             语言设置
           </h3>
@@ -18,12 +22,15 @@
         </div>
         <div class="flex flex-col gap-4">
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">源语言</Label>
+            <Label
+              for="tr-source-lang"
+              class="text-sm font-medium"
+            >源语言</Label>
             <Select
               v-model="form.sourceLang"
               class="rounded-xl"
             >
-              <SelectTrigger>
+              <SelectTrigger id="tr-source-lang">
                 <SelectValue placeholder="选择源语言" />
               </SelectTrigger>
               <SelectContent>
@@ -59,7 +66,7 @@
       </AdminCard>
 
       <AdminCard>
-        <div class="flex flex-col gap-1 .5 mb-4">
+        <div class="flex flex-col gap-1.5 mb-4">
           <h3 class="text-base font-semibold">
             选择文章
           </h3>
@@ -69,9 +76,13 @@
         </div>
         <div class="flex flex-col gap-4">
           <div class="flex flex-col gap-2">
-            <Label class="text-sm font-medium">单篇快速翻译</Label>
+            <Label
+              for="tr-quick-post"
+              class="text-sm font-medium"
+            >单篇快速翻译</Label>
             <div class="flex gap-2">
               <Input
+                id="tr-quick-post"
                 v-model.number="quickPostId"
                 type="number"
                 placeholder="输入已加载的文章 ID"
@@ -129,7 +140,7 @@
                   @update:model-value="togglePost(post.id, $event)"
                 />
                 <div class="flex-1 min-w-0">
-                  <div class="font-medium truncate text-sm">{{ post.title }}</div>
+                  <div class="font-medium truncate text-sm">{{ titleText(post.title) }}</div>
                   <div class="text-xs text-muted-foreground font-mono">#{{ post.id }}</div>
                 </div>
               </label>
@@ -139,7 +150,7 @@
       </AdminCard>
 
       <AdminCard>
-        <div class="flex flex-col gap-1 .5 mb-4">
+        <div class="flex flex-col gap-1.5 mb-4">
           <h3 class="text-base font-semibold">
             开始翻译
           </h3>
@@ -234,6 +245,7 @@
               size="icon-sm"
               class="shrink-0 text-muted-foreground hover:text-foreground"
               title="复制译文"
+              aria-label="复制译文"
               @click="copyTranslation(row)"
             >
               <Check
@@ -311,9 +323,19 @@ interface TranslateResultRow {
 const results = ref<TranslateResultRow[]>([])
 const copiedKey = ref<string | null>(null)
 let rowSeq = 0
+/** 多语言文章的 title 可能是 {zh,en,ja,zh_Hant} 对象，直接 String() 会得到 [object Object] */
+function titleText(title: unknown): string {
+  if (title && typeof title === 'object') {
+    const t = title as Record<string, unknown>
+    const v = t.zh ?? t.en ?? t.ja ?? t.zh_Hant
+      ?? Object.values(t).find(x => typeof x === 'string' && x.length > 0)
+    return String(v ?? '')
+  }
+  return String(title ?? '')
+}
 const filteredPosts = computed(() => {
   const keyword = postSearch.value.trim().toLowerCase()
-  return keyword ? posts.value.filter(post => String(post.title).toLowerCase().includes(keyword) || String(post.id).includes(keyword)) : posts.value
+  return keyword ? posts.value.filter(post => titleText(post.title).toLowerCase().includes(keyword) || String(post.id).includes(keyword)) : posts.value
 })
 function labelOf(code: string) {
   return langOptions.find(lang => lang.value === code)?.label ?? code
@@ -333,13 +355,14 @@ function togglePost(id: number, checked: boolean | 'indeterminate') {
  * 逐语言写入结果列表（此前只数了个数量、结果被丢弃）。
  */
 async function translatePost(post: AdminPostListItem) {
-  const result = await translateAdminText(String(post.title), form.sourceLang, form.targetLangs)
+  const title = titleText(post.title)
+  const result = await translateAdminText(title, form.sourceLang, form.targetLangs)
   const entries = Object.entries(result?.translations ?? {})
   for (const [lang, text] of entries) {
     results.value.unshift({
       key: `r${++rowSeq}`,
       postId: post.id,
-      postTitle: String(post.title),
+      postTitle: title,
       lang,
       langLabel: labelOf(lang),
       text
@@ -356,9 +379,8 @@ async function handleQuickTranslate() {
     translatedCount.value += success
     toast.success(`已完成 ${success} 个语言翻译`)
     quickPostId.value = undefined
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : '翻译失败'
-    toast.error(msg)
+  } catch {
+    // translateAdminText 内部的 apiFetch 已 toast，这里不再二次提示
   } finally {
     translatingQuick.value = false
   }

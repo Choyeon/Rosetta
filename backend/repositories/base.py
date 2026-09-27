@@ -4,8 +4,9 @@
 提供通用的 CRUD 操作基类，支持：
 - 基础 CRUD 操作（创建、读取、更新、删除）
 - 分页查询
-- 过滤和排序
-- 并发查询优化
+- 过滤与排序
+- 批量按 ID 读取（单次 IN 查询：同一 AsyncSession 不能并发分批）
+- 写回前统一拦截"显式 null 落到 NOT NULL 列"（见 backend/core/partial_update.py）
 """
 
 from typing import Any, Generic, TypeVar
@@ -14,8 +15,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import InstrumentedAttribute
 
-from backend.core.concurrency import concurrent_query
 from backend.core.database import Base
+from backend.core.partial_update import validate_partial_update
 
 ModelType = TypeVar("ModelType", bound=Base)
 
@@ -156,7 +157,12 @@ class BaseRepository(Generic[ModelType]):
 
         Returns:
             更新后的模型实例
+
+        Raises:
+            ValidationException: `data` 里显式给了 null，但目标列是 NOT NULL
+                （否则会一路 setattr 到 flush 才炸 IntegrityError，对外变成 500）
         """
+        validate_partial_update(instance, data)
         for key, value in data.items():
             if hasattr(instance, key):
                 setattr(instance, key, value)
@@ -384,6 +390,8 @@ class BaseRepository(Generic[ModelType]):
         Returns:
             更新后的模型实例列表
         """
+        # 同一批实例共用一个 mapper，按映射类校验一次即可（见 update() 的说明）
+        validate_partial_update(self.model, data)
         for instance in instances:
             for key, value in data.items():
                 if hasattr(instance, key):
@@ -437,33 +445,3 @@ class BaseRepository(Generic[ModelType]):
             create_data.update(defaults)
         instance = await self.create(create_data)
         return instance, True
-
-    async def concurrent_get_by_ids(self, ids: list[int], batch_size: int = 10) -> list[ModelType]:
-        """
-        并发批量获取记录
-
-        将 ID 列表分批并发查询，适用于大量 ID 的场景。
-
-        Args:
-            ids: ID 列表
-            batch_size: 每批查询的数量
-
-        Returns:
-            模型实例列表
-        """
-        if not ids:
-            return []
-
-        batches = [ids[i : i + batch_size] for i in range(0, len(ids), batch_size)]
-
-        async def get_batch(batch_ids: list[int]) -> list[ModelType]:
-            return await self.get_by_ids(batch_ids)
-
-        results = await concurrent_query(*[get_batch(batch) for batch in batches])
-
-        all_items: list[ModelType] = []
-        for result in results:
-            if isinstance(result, list):
-                all_items.extend(result)
-
-        return all_items

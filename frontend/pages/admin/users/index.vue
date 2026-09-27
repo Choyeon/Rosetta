@@ -1,3 +1,13 @@
+<!--
+  用户管理列表（ssr:false + layout:'admin'）：权限两层隐藏——写端点全是 CurrentSuperUser（staff 只给看列表 +
+  只读 banner），后端又禁止管理员操作自己，所以当前登录者那一行既不渲染封禁开关也不给操作菜单。
+  角色/状态是"当前这一页"的客户端过滤：改筛选必须重置 page=1 重新拉取，否则停在越界页看似空列表；
+  allUsers 用 shallowRef，任何状态变更一律走 patchUser 整行替换（改元素属性不触发重渲染）。
+  删除是软删除（封禁 + 停用：评论转匿名、文章仍归属该作者），可用"激活账号"恢复；
+  读写一律走 useAdminManage wrapper（失败由 apiFetch 单点 toast，页面只记 loadError 供重试），
+  唯一例外是新建用户直连 POST /admin/users——不再借公开注册端点手塞 Bearer，故入口仅超管可见。
+-->
+
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -6,15 +16,14 @@
       :icon="Users"
     >
       <template #actions>
+        <!-- 创建用户端点 POST /admin/users 为 CurrentSuperUser，对 staff 隐藏避免必吃 403 -->
         <Button
+          v-if="isSuperUser"
           size="sm"
           class="rounded-xl shadow-sm"
           @click="openCreate"
         >
-          <Plus
-            data-icon="inline-start"
-            class="mr-2"
-          />
+          <Plus data-icon="inline-start" />
           新建用户
         </Button>
       </template>
@@ -25,6 +34,7 @@
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
           v-model="searchQuery"
+          :aria-label="t('admin.users.searchPlaceholder')"
           placeholder="搜索用户名、邮箱、昵称..."
           class="pl-9"
           @keyup.enter="onSearch"
@@ -79,13 +89,20 @@
         size="sm"
         @click="onSearch"
       >
-        <Search
-          data-icon="inline-start"
-          class="mr-2"
-        />
+        <Search data-icon="inline-start" />
         搜索
       </Button>
     </div>
+
+    <Alert
+      v-if="!isSuperUser"
+      variant="info"
+      class="max-w-none"
+    >
+      <Info class="size-4" />
+      <AlertTitle>只读视图</AlertTitle>
+      <AlertDescription>用户的新建、编辑、封禁、角色与删除操作仅限超级管理员，当前账号无权执行。</AlertDescription>
+    </Alert>
 
     <AdminCard>
       <div class="p-0">
@@ -100,6 +117,28 @@
           >
             <Skeleton class="h-full w-full rounded-lg" />
           </div>
+        </div>
+
+        <div
+          v-else-if="loadError"
+          class="p-16 text-center"
+        >
+          <Alert
+            variant="destructive"
+            class="max-w-md mx-auto"
+          >
+            <Info class="size-4" />
+            <AlertTitle>加载失败</AlertTitle>
+            <AlertDescription>用户列表请求失败，请检查后端状态后重试。</AlertDescription>
+            <Button
+              variant="outline"
+              size="sm"
+              class="mt-3"
+              @click="fetchData"
+            >
+              重试
+            </Button>
+          </Alert>
         </div>
 
         <div
@@ -121,30 +160,57 @@
           class="overflow-x-auto"
         >
           <table class="w-full text-sm">
+            <caption class="sr-only">
+              用户列表：用户名、角色、状态、注册时间、最近登录、头衔与贡献统计
+            </caption>
             <thead>
               <tr class="border-b bg-muted/30">
-                <th class="text-left font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4"
+                >
                   用户
                 </th>
-                <th class="text-left font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4"
+                >
                   角色
                 </th>
-                <th class="text-left font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4"
+                >
                   状态
                 </th>
-                <th class="text-left font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4"
+                >
                   注册时间
                 </th>
-                <th class="text-left font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4"
+                >
                   最近登录
                 </th>
-                <th class="text-left font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4"
+                >
                   头衔
                 </th>
-                <th class="text-left font-medium p-4 text-center">
+                <th
+                  scope="col"
+                  class="text-left font-medium p-4 text-center"
+                >
                   贡献
                 </th>
-                <th class="text-right font-medium p-4">
+                <th
+                  scope="col"
+                  class="text-right font-medium p-4"
+                >
                   操作
                 </th>
               </tr>
@@ -185,10 +251,14 @@
                     <Badge :class="statusBadgeClass(u)">
                       {{ statusText(u) }}
                     </Badge>
+                    <!-- reka-ui 2.10 Switch 受控 prop 是 modelValue，事件是 update:model-value；
+                         @change 不会回传布尔值，封禁开关会“拨了不生效” -->
                     <Switch
+                      v-if="isSuperUser && u.id !== currentUserId"
                       :model-value="u.is_banned"
                       title="封禁/解封"
-                      @change="toggleBan(u, $event)"
+                      aria-label="封禁或解封该用户"
+                      @update:model-value="toggleBan(u, $event)"
                     />
                   </div>
                 </td>
@@ -231,12 +301,17 @@
                   </div>
                 </td>
                 <td class="p-4 text-right">
-                  <DropdownMenu>
+                  <!-- 用户管理写端点全部为 CurrentSuperUser；后端亦禁止操作自己，故两者都隐藏入口 -->
+                  <span
+                    v-if="!isSuperUser || u.id === currentUserId"
+                    class="text-muted-foreground"
+                  >—</span>
+                  <DropdownMenu v-else>
                     <DropdownMenuTrigger as="template">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        class="h-8 w-8"
+                        size="icon-sm"
+                        aria-label="用户操作菜单"
                       >
                         <MoreVertical data-icon="inline-start" />
                       </Button>
@@ -246,50 +321,55 @@
                       class="w-48"
                     >
                       <DropdownMenuItem @click="goEdit(u.id)">
-                        <Pencil class="size-4 mr-2" />
+                        <Pencil data-icon="inline-start" />
                         编辑资料
                       </DropdownMenuItem>
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        v-if="u.is_superuser || u.is_staff"
-                        @click="toggleStaff(u, false)"
-                      >
-                        <UserX class="size-4 mr-2" />
-                        撤销管理员
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        v-else
-                        @click="toggleStaff(u, true)"
-                      >
-                        <UserCheck class="size-4 mr-2" />
-                        设为管理员
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        v-if="!u.is_active || u.is_banned"
-                        @click="doActivate(u)"
-                      >
-                        <CheckCircle class="size-4 mr-2" />
-                        激活账号
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        v-else
-                        @click="doBan(u)"
-                      >
-                        <Ban class="size-4 mr-2 text-destructive" />
-                        <span class="text-destructive">封禁账号</span>
-                      </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem @click="openResetPwd(u)">
-                        <KeyRound class="size-4 mr-2" />
-                        重置密码
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        class="text-destructive focus:text-destructive"
-                        @click="openDelete(u)"
-                      >
-                        <Trash2 class="size-4 mr-2" />
-                        删除用户
-                      </DropdownMenuItem>
+                      <template v-if="!u.is_superuser">
+                        <DropdownMenuItem
+                          v-if="u.is_staff"
+                          @click="toggleStaff(u, false)"
+                        >
+                          <UserX data-icon="inline-start" />
+                          撤销管理员
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          v-else
+                          @click="toggleStaff(u, true)"
+                        >
+                          <UserCheck data-icon="inline-start" />
+                          设为管理员
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          v-if="!u.is_active || u.is_banned"
+                          @click="doActivate(u)"
+                        >
+                          <CheckCircle data-icon="inline-start" />
+                          激活账号
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          v-else
+                          @click="doBan(u)"
+                        >
+                          <Ban
+                            data-icon="inline-start"
+                            class="text-destructive"
+                          />
+                          <span class="text-destructive">封禁账号</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem @click="openResetPwd(u)">
+                          <KeyRound data-icon="inline-start" />
+                          重置密码
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          class="text-destructive focus:text-destructive"
+                          @click="openDelete(u)"
+                        >
+                          <Trash2 data-icon="inline-start" />
+                          删除用户
+                        </DropdownMenuItem>
+                      </template>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </td>
@@ -320,8 +400,9 @@
         </DialogHeader>
         <div class="flex flex-col gap-4 py-2">
           <div class="flex flex-col gap-2">
-            <Label>新密码 <span class="text-destructive">*</span></Label>
+            <Label for="reset-pwd-new">新密码 <span class="text-destructive">*</span></Label>
             <Input
+              id="reset-pwd-new"
               v-model="resetPwdForm.newPassword"
               type="password"
               placeholder="至少 8 位，含大小写字母和数字"
@@ -331,8 +412,9 @@
             </p>
           </div>
           <div class="flex flex-col gap-2">
-            <Label>确认密码 <span class="text-destructive">*</span></Label>
+            <Label for="reset-pwd-confirm">确认密码 <span class="text-destructive">*</span></Label>
             <Input
+              id="reset-pwd-confirm"
               v-model="resetPwdForm.confirmPassword"
               type="password"
               placeholder="再次输入新密码"
@@ -354,7 +436,7 @@
             <Loader2
               v-if="resettingPwd"
               data-icon="inline-start"
-              class="mr-2 animate-spin"
+              class="animate-spin"
             />
             确认重置
           </Button>
@@ -362,49 +444,22 @@
       </DialogContent>
     </Dialog>
 
-    <Dialog v-model:open="deleteDialogOpen">
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>确认删除用户</DialogTitle>
-          <DialogDescription>
-            此操作将删除用户 <span class="font-medium text-destructive">{{ deleteUser?.username }}</span> 及其所有引用数据，删除后无法恢复。
-          </DialogDescription>
-        </DialogHeader>
-        <div class="py-2">
-          <div class="flex flex-col gap-3 rounded-xl border bg-error-muted/40 p-4">
-            <label class="flex items-start gap-2 cursor-pointer">
-              <Checkbox
-                v-model="deleteConfirmChecked"
-                class="mt-0.5"
-              />
-              <span class="text-sm">
-                我确认删除该用户及其所有引用，此操作不可撤销
-              </span>
-            </label>
-          </div>
-        </div>
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            @click="deleteDialogOpen = false"
-          >
-            取消
-          </Button>
-          <Button
-            variant="destructive"
-            :disabled="!deleteConfirmChecked || deleting"
-            @click="doDeleteUser"
-          >
-            <Loader2
-              v-if="deleting"
-              data-icon="inline-start"
-              class="mr-2 animate-spin"
-            />
-            确认删除
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+    <!-- 破坏性删除统一走 DangerConfirmDialog：需输入确认短语，失败内联展示并保持弹窗可重试 -->
+    <DangerConfirmDialog
+      v-model:open="deleteDialogOpen"
+      title="确认删除用户"
+      confirm-text="确认删除"
+      confirm-phrase="删除用户"
+      phrase-hint="请输入：删除用户"
+      :on-confirm="doDeleteUser"
+    >
+      <template #description>
+        此操作将删除用户
+        <span class="font-medium text-destructive">{{ deleteUser?.username }}</span>
+        ——后端执行软删除（封禁 + 停用，账号数据保留，可用"激活"恢复）。
+        该用户的评论与留言板发言会变为匿名，文章仍归属该作者且不会被删除。
+      </template>
+    </DangerConfirmDialog>
 
     <Dialog v-model:open="createDialogOpen">
       <DialogContent>
@@ -414,30 +469,34 @@
         </DialogHeader>
         <div class="flex flex-col gap-4 py-2">
           <div class="flex flex-col gap-2">
-            <Label>用户名 <span class="text-destructive">*</span></Label>
+            <Label for="create-user-username">用户名 <span class="text-destructive">*</span></Label>
             <Input
+              id="create-user-username"
               v-model="createForm.username"
-              placeholder="用于登录的用户名"
+              placeholder="3-150 位字母、数字、下划线或连字符"
             />
           </div>
           <div class="flex flex-col gap-2">
-            <Label>邮箱 <span class="text-destructive">*</span></Label>
+            <Label for="create-user-email">邮箱 <span class="text-destructive">*</span></Label>
             <Input
+              id="create-user-email"
               v-model="createForm.email"
               type="email"
               placeholder="user@example.com"
             />
           </div>
           <div class="flex flex-col gap-2">
-            <Label>昵称</Label>
+            <Label for="create-user-nickname">昵称</Label>
             <Input
+              id="create-user-nickname"
               v-model="createForm.nickname"
               placeholder="显示名称"
             />
           </div>
           <div class="flex flex-col gap-2">
-            <Label>初始密码 <span class="text-destructive">*</span></Label>
+            <Label for="create-user-password">初始密码 <span class="text-destructive">*</span></Label>
             <Input
+              id="create-user-password"
               v-model="createForm.password"
               type="password"
               placeholder="至少 8 位，含大小写字母和数字"
@@ -458,7 +517,7 @@
             <Loader2
               v-if="creating"
               data-icon="inline-start"
-              class="mr-2 animate-spin"
+              class="animate-spin"
             />
             创建用户
           </Button>
@@ -472,6 +531,7 @@
 /* eslint-disable */
  
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -481,9 +541,10 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~~/components/ui/dropdown-menu'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
+import { apiFetch } from '~~/composables/useApi'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
-import { Checkbox } from '~~/components/ui/checkbox'
 import { Label } from '~~/components/ui/label'
+import { useI18n } from 'vue-i18n'
 import {
   Search, Plus, MoreVertical, Pencil, UserCheck, UserX, CheckCircle, Ban,
   KeyRound, Trash2, Info, Loader2, FileText, MessageSquare,
@@ -504,10 +565,19 @@ import {
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
+const { t } = useI18n()
 const toast = useToast()
 const router = useRouter()
+const auth = useAuthStore()
+
+// 后端 /api/admin/users* 全部写端点为 CurrentSuperUser（users.py 列表仅 CurrentStaff）：
+// staff 只给看列表，所有操作入口隐藏，避免点击只吃 403。
+const isSuperUser = computed(() => auth.user?.is_superuser === true)
+// 后端禁止管理员对自己执行改状态/封禁/重置/删除（400），自己的行不提供入口。
+const currentUserId = computed(() => auth.user?.id ?? null)
 
 const loading = ref(false)
+const loadError = ref(false)
 // shallowRef：用户列表整赋值替换，避免深层响应式开销
 const allUsers = shallowRef<AdminUserRow[]>([])
 const searchQuery = ref('')
@@ -564,17 +634,28 @@ function statusText(u: AdminUserRow): string {
 
 async function fetchData() {
   loading.value = true
+  loadError.value = false
   try {
     const res = await fetchAdminUsers({
       page: page.value,
       page_size: pageSize.value,
       search: searchQuery.value.trim() || undefined
     })
-    allUsers.value = res.items ?? []
+    let items = res.items ?? []
     total.value = res.total ?? 0
-  } catch (err) {
+    // 删除/封禁后回到越界空页：自动回退一页，避免停在"第 N 页无数据"的假空态
+    if (items.length === 0 && total.value > 0 && page.value > 1) {
+      page.value -= 1
+      loading.value = false
+      await fetchData()
+      return
+    }
+    allUsers.value = items
+  } catch {
+    // apiFetch 已统一 toast（fetchAdminUsers 内部），页面只记录错误态供重试，不再重复弹
     allUsers.value = []
     total.value = 0
+    loadError.value = true
   } finally {
     loading.value = false
   }
@@ -586,62 +667,66 @@ function onSearch() {
 }
 
 function onFilterChange() {
+  // 角色/状态是客户端对"当前页"数据的过滤：切换筛选必须回到第 1 页并重新拉取，
+  // 否则会出现"停在第 N 页 + 客户端过滤后看起来没有数据"的错位。
   page.value = 1
+  fetchData()
 }
 
 function goEdit(id: number) {
   router.push(`/admin/users/${id}/edit`)
 }
 
+// allUsers 是 shallowRef：直接改元素属性不会触发重渲染，
+// 统一用"整行替换"的方式把最新状态写回列表。
+function patchUser(id: number, patch: Partial<AdminUserRow>) {
+  allUsers.value = allUsers.value.map((u) => (u.id === id ? { ...u, ...patch } : u))
+}
+
 async function toggleStaff(u: AdminUserRow, toStaff: boolean) {
   try {
     await updateAdminUserFlags(u.id, { is_staff: toStaff })
-    u.is_staff = toStaff
+    patchUser(u.id, { is_staff: toStaff })
     toast.success(toStaff ? '已设为管理员' : '已撤销管理员')
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '操作失败'
-    toast.error(msg)
+  } catch {
+    // apiFetch 已自动 toast，避免双报；失败时不改本地行
   }
 }
 
-async function toggleBan(u: AdminUserRow, ev: unknown) {
-  const checked = ev === true || (ev as { checked?: boolean })?.checked === true
+async function toggleBan(u: AdminUserRow, value: unknown) {
+  const checked = value === true
   try {
     if (checked) {
       await banAdminUser(u.id)
-      u.is_banned = true
+      patchUser(u.id, { is_banned: true })
       toast.success('已封禁')
     } else {
       await unbanAdminUser(u.id)
-      u.is_banned = false
+      patchUser(u.id, { is_banned: false })
       toast.success('已解封')
     }
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '操作失败'
-    toast.error(msg)
+  } catch {
+    // apiFetch 已自动 toast；开关保持原值（受控 model-value 未变）
   }
 }
 
 async function doActivate(u: AdminUserRow) {
   try {
     await activateAdminUser(u.id)
-    u.is_active = true
-    u.is_banned = false
+    patchUser(u.id, { is_active: true, is_banned: false })
     toast.success('已激活')
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '激活失败'
-    toast.error(msg)
+  } catch {
+    // apiFetch 已自动 toast
   }
 }
 
 async function doBan(u: AdminUserRow) {
   try {
     await banAdminUser(u.id)
-    u.is_banned = true
+    patchUser(u.id, { is_banned: true })
     toast.success('已封禁')
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '封禁失败'
-    toast.error(msg)
+  } catch {
+    // apiFetch 已自动 toast
   }
 }
 
@@ -680,39 +765,28 @@ async function doResetPwd() {
     await resetAdminUserPassword(resetPwdUser.value.id, resetPwdForm.newPassword)
     toast.success('密码重置成功')
     resetPwdDialogOpen.value = false
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '密码重置失败'
-    toast.error(msg)
+  } catch {
+    // apiFetch 已自动 toast（唯一报错点）；弹窗保持打开供修正
   } finally {
     resettingPwd.value = false
   }
 }
 
-const deleting = ref(false)
 const deleteDialogOpen = ref(false)
 const deleteUser = ref<AdminUserRow | null>(null)
-const deleteConfirmChecked = ref(false)
 
 function openDelete(u: AdminUserRow) {
   deleteUser.value = u
-  deleteConfirmChecked.value = false
   deleteDialogOpen.value = true
 }
 
+/** DangerConfirmDialog 的 onConfirm：throw 即由弹窗内联展示错误并保持可重试 */
 async function doDeleteUser() {
   if (!deleteUser.value) return
-  deleting.value = true
-  try {
-    await deleteAdminUser(deleteUser.value.id)
-    toast.success('用户已删除')
-    deleteDialogOpen.value = false
-    fetchData()
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : '删除失败'
-    toast.error(msg)
-  } finally {
-    deleting.value = false
-  }
+  await deleteAdminUser(deleteUser.value.id)
+  toast.success('用户已删除（账号已封禁停用）')
+  deleteUser.value = null
+  await fetchData()
 }
 
 const creating = ref(false)
@@ -730,30 +804,34 @@ function openCreate() {
 }
 
 async function doCreate() {
+  // 与后端 AdminUserCreate 契约对齐：username 3-150 且仅 [a-zA-Z0-9_-]，
+  // 密码 ≥8 位含大小写与数字（validatePassword 同规则），先在前端拦一道给出人话提示。
   if (!createForm.username.trim()) { toast.warning('请输入用户名'); return }
+  if (!/^[a-zA-Z0-9_-]{3,150}$/.test(createForm.username.trim())) {
+    toast.warning('用户名需 3-150 位，仅允许字母、数字、下划线和连字符')
+    return
+  }
   if (!createForm.email.trim()) { toast.warning('请输入邮箱'); return }
-  if (!validatePassword(createForm.password)) { toast.warning('密码不符合要求'); return }
+  if (!validatePassword(createForm.password)) { toast.warning('密码需至少 8 位，含大小写字母和数字'); return }
   creating.value = true
   try {
-    const apiBase = useRuntimeConfig().public.apiBase as string
-    const auth = useAuthStore()
-    await $fetch('/users/register', {
-      baseURL: apiBase,
+    // 走 apiFetch + staff 专用端点 POST /admin/users（backend/api/admin.py admin_create_user），
+    // 不再借用公开注册端点 /users/register 手动塞 Bearer；401 刷新与错误契约由 apiFetch 统一处理。
+    // apiFetch 失败已自动 toast（唯一报错点），这里只中断流程、不重复弹。
+    await apiFetch('/admin/users', {
       method: 'POST',
       body: {
         username: createForm.username.trim(),
         email: createForm.email.trim(),
         password: createForm.password,
         nickname: createForm.nickname.trim() || undefined
-      },
-      headers: auth.accessToken ? { Authorization: `Bearer ${auth.accessToken}` } : {}
+      }
     })
     toast.success('用户创建成功')
     createDialogOpen.value = false
     fetchData()
-  } catch (err) {
-    const msg = (err as { data?: { message?: string } })?.data?.message
-    toast.error(msg || (err instanceof Error ? err.message : '创建失败'))
+  } catch {
+    // 错误提示已由 apiFetch 统一 toast，此处保持对话框打开供用户修正
   } finally {
     creating.value = false
   }

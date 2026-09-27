@@ -1,5 +1,13 @@
+<!--
+  后台文章编辑表单（new / [id]/edit 两页共用）：i18n 标题/正文/SEO 字段 + 发布设置 + 本地草稿。
+  硬契约：buildPayload 的两条后端语义不可破坏——PUT 是 exclude_unset 增量更新，
+  visibility 必须始终发送（否则"改回公开"永不落库）；password 为空时禁止发送该键
+  （后端收到 password:'' 会清空已有密码哈希）。cover_image 维持"未设置=空"，禁止写回默认封面。
+-->
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { onBeforeRouteLeave } from 'vue-router'
 import type { Post, PostCreate } from '~~/types/api'
 import I18nTabsEditor from './I18nTabsEditor.vue'
 import { usePosts } from '~~/composables/usePosts'
@@ -48,6 +56,7 @@ const emits = defineEmits<{
   submitSuccess: [payload: unknown, isNew: boolean]
 }>()
 
+const { t: $_t } = useI18n()
 const toast = useToast()
 const { createPost, updatePost } = usePosts()
 
@@ -59,7 +68,9 @@ const form = reactive({
   title: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   slug: '',
   content: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
-  status: 'draft' as 'draft' | 'published' | 'scheduled' | 'archived',
+  // 后端 PostBase/PostUpdate 的 pattern 只接受 draft|published|scheduled，
+  // 历史遗留的 archived 状态不可再作为可写值出现。
+  status: 'draft' as 'draft' | 'published' | 'scheduled',
   scheduled_at: '',
   is_pinned: false,
   allow_comments: true,
@@ -125,8 +136,8 @@ const loadCategories = async () => {
   categoriesLoading.value = true
   try {
     categories.value = await fetchAdminCategories()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '加载分类失败')
+  } catch {
+    // apiFetch 已统一 toast 错误，不再二次弹
   } finally {
     categoriesLoading.value = false
   }
@@ -136,8 +147,8 @@ const loadTags = async () => {
   tagsLoading.value = true
   try {
     tags.value = await fetchAdminTags()
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '加载标签失败')
+  } catch {
+    // apiFetch 已统一 toast 错误，不再二次弹
   } finally {
     tagsLoading.value = false
   }
@@ -147,10 +158,19 @@ const applyInitialData = (data: Post) => {
   form.title = normalizeI18nDict(data.title)
   form.slug = data.slug
   form.content = normalizeI18nDict(data.content)
-  form.status = data.status
+  form.status = data.status === 'archived' ? 'draft' : data.status
+  // 定时文章必须回填计划时间：后端 GET 现已透传 scheduled_at，
+  // 不回填则编辑一次就把 scheduled_at 提交为空、文章永远发不出去。
+  form.scheduled_at = data.scheduled_at ? data.scheduled_at.slice(0, 16) : ''
   form.is_pinned = data.is_pinned
   form.allow_comments = data.allow_comments
-  form.visibility = data.is_password_protected ? 'password' : 'public'
+  // 优先读 staff 端点透传的 visibility（private 文章只靠 is_password_protected
+  // 会被错误还原成 public，保存后把私密文章变公开）
+  const vis = data.visibility
+  form.visibility = vis === 'public' || vis === 'password' || vis === 'private'
+    ? vis
+    : (data.is_password_protected ? 'password' : 'public')
+  initiallyPasswordProtected.value = form.visibility === 'password'
   form.category_id = data.category?.id ?? null
   form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
   form.excerpt = normalizeI18nDict(data.excerpt)
@@ -268,8 +288,8 @@ const handleCoverUpload = async (e: Event) => {
     } else {
       toast.error('封面上传失败')
     }
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '封面上传失败')
+  } catch {
+    // apiFetch 已统一 toast 错误，不再二次弹
   } finally {
     coverUploading.value = false
     input.value = ''
@@ -286,6 +306,9 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
     slug: form.slug,
     content: (toI18nPayload(form.content) ?? { zh: form.content.zh }) as Record<string, string>,
     status: (overrideStatus as PostCreate['status']) || form.status,
+    // 必发：后端 PUT 是 exclude_unset 增量语义，不发送 visibility 时
+    // 「密码/私密 → 公开」的切换永远不会落库（表单显示公开、库里仍保护）
+    visibility: form.visibility,
     is_pinned: form.is_pinned,
     allow_comments: form.allow_comments,
     category_id: form.category_id || undefined,
@@ -296,7 +319,9 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
   if (form.status === 'scheduled' && form.scheduled_at) {
     payload.scheduled_at = form.scheduled_at
   }
-  if (form.visibility === 'password' && form.password) {
+  // 空密码不发送：后端收到 password:'' 会清空已有哈希；编辑态哈希不可读，
+  // 只有用户明确重新输入时才更新
+  if (form.visibility === 'password' && form.password.trim()) {
     payload.password = form.password
   }
   payload.meta_title = toI18nPayload(form.meta_title)
@@ -322,11 +347,25 @@ const validateBase = (): boolean => {
     toast.error('请选择定时发布时间')
     return false
   }
-  if (form.visibility === 'password' && !form.password.trim()) {
+  if (form.visibility === 'password' && !form.password.trim() && !initiallyPasswordProtected.value) {
     toast.error('请输入访问密码')
     return false
   }
   return true
+}
+
+// 提交成功后统一收尾：清 localStorage 草稿、停掉 8s 自动保存定时器、放行路由守卫
+const markSubmitted = () => {
+  submitted.value = true
+  if (draftDebounceTimer) {
+    clearTimeout(draftDebounceTimer)
+    draftDebounceTimer = null
+  }
+  try {
+    localStorage.removeItem(draftLocalStorageKey.value)
+  } catch {
+    /* storage disabled */
+  }
 }
 
 const saveDraft = async () => {
@@ -336,15 +375,17 @@ const saveDraft = async () => {
     const payload = buildPayload('draft')
     if (props.mode === 'new') {
       const data = await createPost(payload)
+      markSubmitted()
       toast.success('草稿保存成功')
       emits('submitSuccess', data, true)
     } else if (props.postId) {
       const data = await updatePost(props.postId, payload)
+      markSubmitted()
       toast.success('草稿保存成功')
       emits('submitSuccess', data, false)
     }
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '保存草稿失败')
+  } catch {
+    // apiFetch 已统一 toast 错误，不再二次弹（双 toast 是回归）
   } finally {
     savingDraft.value = false
   }
@@ -354,19 +395,18 @@ const publishPost = async () => {
   if (!validateBase()) return
   submitting.value = true
   try {
-    const publishStatus = form.status === 'archived' ? 'archived' : form.status
-    const payload = buildPayload(publishStatus)
+    const payload = buildPayload(form.status)
     if (props.mode === 'new') {
       const data = await createPost(payload)
-      localStorage.removeItem(draftLocalStorageKey.value)
+      markSubmitted()
       emits('submitSuccess', data, true)
     } else if (props.postId) {
       const data = await updatePost(props.postId, payload)
-      localStorage.removeItem(draftLocalStorageKey.value)
+      markSubmitted()
       emits('submitSuccess', data, false)
     }
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : '发布失败')
+  } catch {
+    // apiFetch 已统一 toast 错误，不再二次弹
   } finally {
     submitting.value = false
   }
@@ -388,7 +428,7 @@ const onKeyDown = (e: KeyboardEvent) => {
 }
 
 const onBeforeUnload = (e: BeforeUnloadEvent) => {
-  if (isDirty.value) {
+  if (!submitted.value && isDirty.value) {
     e.preventDefault()
     e.returnValue = '您有未保存的更改，确定要离开吗？'
     return e.returnValue
@@ -421,6 +461,15 @@ watch(
 )
 
 const hasAppliedInitial = ref(false)
+// 提交成功后置位：跳过卸载时的本地草稿自动保存，并放行路由离开守卫
+const submitted = ref(false)
+// 编辑源文章本就是密码保护时，允许不重填密码直接保存（后端保留原哈希）
+const initiallyPasswordProtected = ref(false)
+
+onBeforeRouteLeave(async () => {
+  if (submitted.value || !isDirty.value) return true
+  return window.confirm('您有未保存的更改，确定要离开吗？')
+})
 
 onMounted(async () => {
   document.addEventListener('keydown', onKeyDown)
@@ -443,7 +492,8 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload as EventListener)
   document.removeEventListener('click', onClickOutsideTagCombobox)
   if (draftDebounceTimer) clearTimeout(draftDebounceTimer)
-  saveDraftToLocalStorage()
+  // 已提交成功后卸载不应再把草稿写回 localStorage
+  if (!submitted.value) saveDraftToLocalStorage()
 })
 </script>
 
@@ -520,9 +570,15 @@ onBeforeUnmount(() => {
               <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
               <div class="flex flex-col gap-3">
                 <div>
-                  <Label class="text-xs text-muted-foreground mb-1 block">状态 *</Label>
+                  <Label
+                    for="post-form-status"
+                    class="text-xs text-muted-foreground mb-1 block"
+                  >状态 *</Label>
                   <Select v-model="form.status">
-                    <SelectTrigger class="h-9 rounded-[10px]">
+                    <SelectTrigger
+                      id="post-form-status"
+                      class="h-9 rounded-[10px]"
+                    >
                       <SelectValue placeholder="选择状态" />
                     </SelectTrigger>
                     <SelectContent>
@@ -535,27 +591,40 @@ onBeforeUnmount(() => {
                       <SelectItem value="scheduled">
                         定时发布
                       </SelectItem>
-                      <SelectItem value="archived">
-                        已归档
-                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
                 <div v-if="form.status === 'scheduled'">
-                  <Label class="text-xs text-muted-foreground mb-1 block">定时时间 *</Label>
+                  <Label
+                    for="post-form-scheduled-at"
+                    class="text-xs text-muted-foreground mb-1 block"
+                  >定时时间 *</Label>
                   <Input
+                    id="post-form-scheduled-at"
                     v-model="form.scheduled_at"
                     type="datetime-local"
                     class="h-9 rounded-[10px] text-sm"
                   />
                 </div>
                 <div class="flex items-center justify-between">
-                  <Label class="text-sm">置顶</Label>
-                  <Switch v-model="form.is_pinned" />
+                  <Label
+                    for="post-form-is-pinned"
+                    class="text-sm"
+                  >置顶</Label>
+                  <Switch
+                    id="post-form-is-pinned"
+                    v-model="form.is_pinned"
+                  />
                 </div>
                 <div class="flex items-center justify-between">
-                  <Label class="text-sm">允许评论</Label>
-                  <Switch v-model="form.allow_comments" />
+                  <Label
+                    for="post-form-allow-comments"
+                    class="text-sm"
+                  >允许评论</Label>
+                  <Switch
+                    id="post-form-allow-comments"
+                    v-model="form.allow_comments"
+                  />
                 </div>
               </div>
             </div>
@@ -613,6 +682,7 @@ onBeforeUnmount(() => {
                 <Input
                   v-model="form.password"
                   type="password"
+                  :aria-label="$_t('admin.editor.postPassword')"
                   placeholder="访问密码"
                   class="h-9 rounded-[10px] text-sm"
                 />
@@ -622,12 +692,18 @@ onBeforeUnmount(() => {
             <div class="h-px bg-border" />
 
             <div>
-              <Label class="text-xs text-muted-foreground mb-1 block">分类</Label>
+              <Label
+                for="post-form-category"
+                class="text-xs text-muted-foreground mb-1 block"
+              >分类</Label>
               <Select
                 :model-value="form.category_id?.toString() ?? ''"
                 @update:model-value="(v: string | undefined) => form.category_id = v ? Number(v) : null"
               >
-                <SelectTrigger class="h-9 rounded-[10px]">
+                <SelectTrigger
+                  id="post-form-category"
+                  class="h-9 rounded-[10px]"
+                >
                   <SelectValue :placeholder="categoriesLoading ? '加载中...' : '选择分类'" />
                 </SelectTrigger>
                 <SelectContent>
@@ -684,6 +760,7 @@ onBeforeUnmount(() => {
                     v-model="tagSearchQuery"
                     type="text"
                     class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
+                    :aria-label="$_t('common.search')"
                     placeholder="搜索标签..."
                     @blur="onTagComboboxBlur"
                   >

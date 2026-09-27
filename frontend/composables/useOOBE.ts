@@ -1,3 +1,10 @@
+/**
+ * OOBE 安装向导的数据层：自检、系统信息、依赖安装与初始化的 SSE 流，全部绕开
+ * useApi.ts 的请求栈——向导跑在「后端地址尚未确定」的时序里（用户可现场改 base、
+ * 服务器可能还没起），而 useApi 会跳 /login、弹 toast、挂 CSR 缓存键，三者在此都错。
+ * 因此这里用裸 fetch + AbortController，409/503 都按正常分支处理而非报错。
+ * 客户端独有状态（localStorage 里的 base 覆盖值）一律函数内惰性读取，保证 SSR 安全。
+ */
 import type { OOBEStatus, OOBEInstallRequest, TokenResponse } from '~~/types/api'
 import { useAuthStore } from '~~/stores/auth'
 

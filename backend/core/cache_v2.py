@@ -32,6 +32,19 @@ T = TypeVar("T")
 NULL_MARKER = "__NULL__"
 
 
+def _redis_retry_errors() -> tuple[type[BaseException], ...]:
+    """Redis 是可选依赖，异常基类不能写在模块顶层。
+
+    返回「远端读失败、可安全退回本地默认值」的异常集合；其余异常（编程错误）
+    一律外抛，避免被当成缓存抖动吞掉。
+    """
+    try:
+        from redis.exceptions import RedisError
+    except ImportError:
+        return (asyncio.TimeoutError, OSError)
+    return (RedisError, asyncio.TimeoutError, OSError)
+
+
 @dataclass
 class CacheEntry:
     """缓存条目"""
@@ -464,12 +477,17 @@ class TwoLevelCache:
         redis_client = await self._get_redis_client()
         if redis_client and self._redis_connected:
             try:
-                if isinstance(value, (dict, list)):
-                    redis_value = json.dumps(value, ensure_ascii=False)
-                elif not isinstance(value, str):
-                    redis_value = str(value)
-                else:
+                if isinstance(value, str):
                     redis_value = value
+                elif isinstance(value, (dict, list, int, float, bool)) or value is None:
+                    redis_value = json.dumps(value, ensure_ascii=False)
+                else:
+                    # 复杂对象（如 ORM 实体）不再 str() 掩盖：那会写入一个
+                    # 永远读不回原值的假缓存，这里显式告警并跳过 Redis 层
+                    logger.warning(
+                        f"Redis 缓存跳过：不支持的值类型 {type(value).__name__} (key={key})"
+                    )
+                    return False
 
                 await redis_client.setex(key, ttl, redis_value)
                 logger.debug(f"Redis 缓存设置成功: {key}, TTL: {ttl}s")
@@ -490,41 +508,45 @@ class TwoLevelCache:
         Returns:
             是否设置成功
         """
+        written = False
         if self._enable_local_cache:
             self._local_cache.set(key, NULL_MARKER, ttl=ttl)
+            written = True
 
         redis_client = await self._get_redis_client()
         if redis_client and self._redis_connected:
             try:
                 await redis_client.setex(key, ttl, json.dumps(NULL_MARKER))
-                return True
+                written = True
             except Exception as e:
                 logger.error(f"Redis set_null 错误: {e}")
 
-        return False
+        # 无 Redis 的单实例部署：本地层写成功就算写成功。旧实现只有 Redis 分支返回
+        # True，调用方据此判断"空值是否已缓存"在单实例下永远收到 False。
+        return written
 
     async def delete(self, key: str) -> bool:
         """
         删除缓存（同时删除本地和 Redis）
 
-        Args:
-            key: 缓存键
-
         Returns:
-            是否删除成功
+            是否删掉了至少一层里的这个键。Redis 未连接时以本地层结果为准，
+            否则单实例部署下所有失效动作都会被误报成失败。
         """
+        removed = False
         if self._enable_local_cache:
-            self._local_cache.delete(key)
+            removed = self._local_cache.delete(key)
 
         redis_client = await self._get_redis_client()
         if redis_client and self._redis_connected:
             try:
+                # 必须无条件删：本地层没这个键不代表 Redis 没有（多实例共享 Redis）。
                 await redis_client.delete(key)
-                return True
+                removed = True
             except Exception as e:
                 logger.error(f"Redis delete 错误: {e}")
 
-        return False
+        return removed
 
     async def delete_pattern(self, pattern: str) -> int:
         """
@@ -639,8 +661,10 @@ class TwoLevelCache:
             redis_ttl = await redis_client.ttl(key)
             if redis_ttl > 0:
                 return int(redis_ttl * self._local_ttl_ratio)
-        except Exception:
-            pass
+        except _redis_retry_errors() as exc:
+            # 拿不到远端 TTL 时退回默认比例，本次请求仍能命中本地缓存；
+            # 但这是"两级缓存 TTL 正在漂移"的信号，静默会让不一致长期不可见。
+            logger.debug(f"[cache_v2] 读取 Redis TTL 失败，本地 TTL 退回默认值 {key}: {exc}")
         return int(300 * self._local_ttl_ratio)
 
     def get_local_stats(self) -> dict[str, Any]:
@@ -650,7 +674,7 @@ class TwoLevelCache:
     async def close(self):
         """关闭 Redis 连接"""
         if self._redis_client:
-            await self._redis_client.close()
+            await self._redis_client.aclose()
             self._redis_client = None
 
 

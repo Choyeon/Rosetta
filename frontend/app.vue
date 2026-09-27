@@ -1,3 +1,10 @@
+<!--
+  全局根组件：TooltipProvider 单例 + NuxtLayout/NuxtPage + 客户端浮层（Toaster/主题涟漪）。
+  硬契约：<NuxtPage page-key="fullPath"> 保证导航只重建页组件、布局保持挂载，禁止给
+  NuxtLayout 外层再加 :key 屏障或在导航钩子里 window.location.replace（历史插件已删除，
+  那等于把 SPA 导航降级成整文档重载）；水合级联的软重挂 (__safetyRootKey) 是每文档上限
+  2 次的有界恢复，重挂前必先 console.error 留痕，真实修复在构建/服务端层。
+-->
 <script setup lang="ts">
 import { Toaster } from 'vue-sonner'
 import { useI18n } from 'vue-i18n'
@@ -12,6 +19,10 @@ const _route = useRoute()
 const { locale, t } = useI18n()
 const { isDark: isDarkTheme } = useTheme()
 useScrollReveal()
+
+// 路由进度条颜色用 hsl(var(--primary))：--primary 在 :root/.dark/调色板里重定义，
+// 进度条内联 style 作为 body 后代解析该变量，明暗与换肤均自动跟随，无需 JS 分支。
+const indicatorColor = 'hsl(var(--primary))'
 
 /**
  * 需要走 SPA 隔离（<ClientOnly> 包裹）的路径集合。
@@ -39,11 +50,13 @@ const needsSpaIsolation = computed(() => {
   return false
 })
 
-// ====== Hydration 级联错误防御：根组件 remount key ======
-// 由 plugins/02-hydration-safety.global.client 写入此全局 useState key。
-// 若 Windows SSR 首帧仍有 defineComponent 图标 → empty comment 残留 mismatch →
-// refs 变 null → 这里直接切换根 key → 整页转纯 CSR 重新挂载（不会再 detach → 不再级联）。
+// ====== Hydration 级联防御：根组件软重挂 key ======
+// app.vue onErrorCaptured 与 plugins/02-hydration-safety 共享此 useState key，
+// 统一硬上限 MAX_SOFT_REMOUNTS 次/文档。重挂前必先 console.error 上报 ——
+// 软重挂是"有界恢复"，不是掩盖。真实根因修复在构建/服务端层
+// （nuxt.config vite lucide-ssr-fix / setref-nullsafe、nitro spa-serverrendered-zero）。
 const __safetyRootKey = useState<number>('__hydration_safety_root_key__', () => 0)
+const MAX_SOFT_REMOUNTS = 2
 
 // ====== 页面级 remount 键：仅换页组件，不换布局 ======
 // 同组件不同参数的路由（/posts/a → /posts/b、/categories/x → /categories/y、
@@ -61,9 +74,6 @@ const toast = useToast()
 /**
  * 判断是不是 Hydration 级联错误（SSR mismatch → 拆 DOM → instance detach →
  * instance.refs === null → TypeError reading refs）。
- *
- * 这类错误不是业务错误，不应该对用户 toast 报错；
- * 交由 02-hydration-safety 切换 __safetyRootKey 做静默 CSR 重挂载。
  */
 const isHydrationCascade = (err: unknown): boolean => {
   const s = err instanceof Error ? err.message : String(err)
@@ -76,9 +86,14 @@ const isHydrationCascade = (err: unknown): boolean => {
 
 onErrorCaptured((err) => {
   if (isHydrationCascade(err)) {
-    // 静默 + 触发根重挂
-    if (import.meta.client) __safetyRootKey.value++
-    return true
+    if (import.meta.client && __safetyRootKey.value < MAX_SOFT_REMOUNTS) {
+      // WHY：先上报再重挂 —— 恢复动作必须留痕，不得静默。
+      console.error(`[app] hydration cascade → soft CSR remount ${__safetyRootKey.value + 1}/${MAX_SOFT_REMOUNTS}`, err)
+      __safetyRootKey.value++
+      return true
+    }
+    // 预算耗尽（或 SSR 端）：不再掩盖，继续向 Nuxt 默认链传播（vue:error 钩子会再报一次并放弃恢复）。
+    return false
   }
   if (import.meta.client) {
     const msg = err instanceof Error ? err.message : String(err)
@@ -109,11 +124,15 @@ const defaultTitles = computed(() => ({
 
 useHead(() => ({
   // 页面标题模板：页面 title 如果有，显示 "页面 · 站点名"；否则 "站点名 · 副标题"
+  // 幂等守卫：useSeo 产出的 title 已自带 " · 站点名" 后缀，直接再拼会产生
+  // "标题 · 站点名 · 站点名" 双后缀（SSR curl 实测复现），已含后缀则原样返回。
   titleTemplate: (titleChunk?: string | null) => {
     const name = defaultTitles.value.name || 'Rosetta Blog'
     const sub = defaultTitles.value.sub || ''
     if (titleChunk && String(titleChunk).trim()) {
-      return `${String(titleChunk).trim()} · ${name}`
+      const t = String(titleChunk).trim()
+      if (t === name || t.endsWith(`· ${name}`)) return t
+      return `${t} · ${name}`
     }
     if (sub) return `${name} · ${sub}`
     return name
@@ -150,6 +169,15 @@ useHead(() => ({
         {{ t?.('a11y.skipToMain') ?? 'Skip to main content' }}
       </a>
 
+      <!-- 路由切换进度条：SSR 直出页/慢导航期间给出可见反馈，颜色随主题 --primary 自适应。
+           单次渲染于分支之外，覆盖前台与后台全部导航。 -->
+      <NuxtLoadingIndicator
+        :color="indicatorColor"
+        :height="3"
+        :throttle="150"
+        :duration="8000"
+      />
+
       <!-- ===== SSR / SPA 混合渲染分路 =====
          公开内容页（/、/posts/**、/categories/**、/tags/**、/series/**、/archive、/about、
          /friends、/gallery、/activity、/guestbook、/page/**、/[slug] 独立页）直接
@@ -160,11 +188,10 @@ useHead(() => ({
          ClientOnly 的 fallback spinner 与 SPA 基线行为一致，消除 layout:false /
          重定向场景首帧 DOM 结构错位导致的 Hydration mismatch。 -->
       <template v-if="needsSpaIsolation">
-        <!-- ssr:false 精准反选路径（登录/注册/OOBE/搜索/管理端）：
-             · 2026-01-11 曾移除 NuxtLayout 以避免 refs null 级联错误，
-               但这导致 admin 布局（侧边栏/顶栏）无法渲染。
-             · 现已由 02-hydration-safety 插件处理 hydration 问题，
-               恢复 NuxtLayout 以保证布局正常渲染。 -->
+        <!-- ssr:false 精准反选路径（登录/注册/搜索/管理端）：
+             Nitro 层已保证空壳响应不带 hydrate 分支（server/plugins/spa-serverrendered-zero），
+             这里保留 ClientOnly 仅用于隔离 layout:false / 重定向场景的首帧结构错位。
+             水合级联错误由 app.vue onErrorCaptured + 02-hydration-safety 做有界软重挂（上限 2 次）。 -->
         <NuxtLayout>
           <NuxtPage page-key="fullPath" />
         </NuxtLayout>

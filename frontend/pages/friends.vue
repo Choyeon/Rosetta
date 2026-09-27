@@ -1,3 +1,9 @@
+<!--
+  友情链接页：useFriendLinks → GET /friend-links 的卡片网格。
+  硬契约：数据必须同步解构、禁止加 await —— async setup 在客户端 hydrate 阶段被当成
+  pending Promise，Suspense 渲染 v-cmt 注释节点，与 SSR 已输出的真实 DOM 直接 mismatch。
+  logoFailedIds 首渲染必须为空集（两端一致），失败时整组替换新 Set，原地 add 不触发渲染。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
@@ -104,7 +110,7 @@
 <script setup lang="ts">
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Skeleton } from '~~/components/ui/skeleton'
-import { useFriendLinks } from '~~/composables/useCore'
+import { useFriendLinks } from '~~/composables/useFriendLinks'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Link2, ExternalLink } from '@lucide/vue'
@@ -139,7 +145,7 @@ const { getFriendLinks } = useFriendLinks()
 // ===== Hydration 安全：同步解构（无 await）避免 setup() 被编译器判定为 async 函数。
 // async setup 在客户端同步 Hydrate Diff 阶段视为 Promise pending → Suspense 渲染 Symbol(v-cmt) Comment，
 // 而 SSR 端已经渲染了真实 div 子树 → 直接触发 "Hydration completed but contains mismatches."。
-// useCore/getFriendLinks 内部基于 useFetch，返回 { data, pending, error } 同步解构即可，
+// useFriendLinks/getFriendLinks 内部基于 useFetch，返回 { data, pending, error } 同步解构即可，
 // 首字节 SSR 数据由 useFetch 在服务端阶段填充，客户端从 payload 取回，不需要 await 阻塞。
 const { data: links, pending: loading, error: fetchError } = getFriendLinks()
 

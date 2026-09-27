@@ -15,11 +15,13 @@ Example:
     >>>     users = result.scalars().all()
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import event, text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -32,6 +34,9 @@ from sqlalchemy.pool import AsyncAdaptedQueuePool, NullPool
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+# 后台 dispose 旧 engine 的任务强引用（防 asyncio 任务被提前 GC）
+_PENDING_ENGINE_DISPOSES: set[asyncio.Task] = set()
 
 
 def create_engine(database_url: str | None = None) -> AsyncEngine:
@@ -151,10 +156,25 @@ def reset_engine(database_url: str | None = None) -> None:
     """
     global engine
 
+    old_engine = engine
     new_engine = create_engine(database_url)
     engine = new_engine
     # 原地替换 session maker 的 bind，保持对象身份不变（关键修复）
     async_session_maker.kw["bind"] = engine
+
+    # 换绑后必须 dispose 旧 engine，否则旧连接池（PG 下最多 pool_size+max_overflow
+    # 条物理连接）永久泄漏。调用方均在事件循环内（OOBE install），此处把 dispose
+    # 挂成后台任务并保留强引用防止被 GC。
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop is not None:
+        task = loop.create_task(old_engine.dispose())
+        _PENDING_ENGINE_DISPOSES.add(task)
+        task.add_done_callback(_PENDING_ENGINE_DISPOSES.discard)
+    else:
+        asyncio.run(old_engine.dispose())
     logger.info(f"数据库引擎已重置: {database_url or settings.database_url}")
 
 
@@ -198,8 +218,10 @@ async def get_db() -> AsyncGenerator[AsyncSession]:
         except Exception as e:
             try:
                 await session.rollback()
-            except Exception:
-                pass
+            except SQLAlchemyError as rollback_error:
+                # 回滚本身失败必须留痕：此时会话处于脏状态，只报原始异常
+                # 会让人以为"已经回滚干净了"。原始异常照旧向上抛。
+                logger.error(f"Database session rollback failed: {rollback_error}")
             logger.error(f"Database session error: {e}")
             raise
 
@@ -226,8 +248,8 @@ async def get_db_context() -> AsyncGenerator[AsyncSession]:
         except Exception as e:
             try:
                 await session.rollback()
-            except Exception:
-                pass
+            except SQLAlchemyError as rollback_error:
+                logger.error(f"Database context rollback failed: {rollback_error}")
             logger.error(f"Database context error: {e}")
             raise
 
@@ -254,7 +276,10 @@ async def init_db() -> None:
                 tname = table.name
                 try:
                     actual_cols = {c["name"] for c in insp.get_columns(tname)}
-                except Exception:
+                except Exception as exc:  # noqa: BLE001 —— 表不存在/方言不支持均跳过修复
+                    # 跳过是合理的（新表由 create_all 负责），但静默跳过会让
+                    # "列一直没补上"变成无人可查的谜。留一条 warning 指回这里。
+                    logger.warning(f"[schema] 无法读取表 {tname} 的列信息，跳过列修复: {exc!r}")
                     actual_cols = set()
                 if not actual_cols:
                     continue

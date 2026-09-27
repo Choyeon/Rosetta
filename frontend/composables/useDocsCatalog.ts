@@ -21,7 +21,6 @@ export interface DocsCatalogItem {
 export interface DocsCatalogData {
   items: DocsCatalogItem[]
   language: string
-  docs_dir?: string
 }
 
 export interface DocsDocData {

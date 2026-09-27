@@ -1,3 +1,11 @@
+<!--
+  首页（SSR）骨架三态：isMinimalTheme（MINIMAL_THEME_SLUGS）→ 纯竖排列表且不请求 Bing 壁纸；
+  isEditorialTheme 在"无激活主题（slug=null）"时也成立，只有既非极简又非 editorial 的 slug 才走文字 Hero 杂志风。
+  时序硬约束：先 await site.ensureLoaded() 再 await ft.ensureLoaded()（首帧两端同判），
+  随后 4 个 useAPI 先并行发出、再统一 Promise.all await（省 3 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
+  防御性去重：posts 按 slug/id、categories/tags 按本地化名称，兜的是后端/mock 重复行；formatStat 固定 en-US 千分位保 SSR 一致。
+-->
+
 <template>
   <div>
     <!-- =========================================================
@@ -415,11 +423,11 @@
                         <span class="text-muted-foreground truncate">{{ row.label }}</span>
                       </div>
                       <code class="font-mono text-xs px-2 py-0.5 rounded-md bg-muted/70 text-foreground/90 truncate max-w-[55%] tabular-nums">
-                        v{{ buildInfo[row.key] }}
+                        {{ buildInfo[row.key] ? `v${buildInfo[row.key]}` : '—' }}
                       </code>
                     </div>
                     <div
-                      v-if="idx === 3 || idx === 5"
+                      v-if="idx === 2 || idx === 4"
                       class="my-2 border-t border-border"
                     />
                   </template>
@@ -715,11 +723,11 @@
                         <span class="text-muted-foreground truncate">{{ row.label }}</span>
                       </div>
                       <code class="font-mono text-xs px-2 py-0.5 rounded-md bg-muted/70 text-foreground/90 truncate max-w-[55%] tabular-nums">
-                        v{{ buildInfo[row.key] }}
+                        {{ buildInfo[row.key] ? `v${buildInfo[row.key]}` : '—' }}
                       </code>
                     </div>
                     <div
-                      v-if="idx === 3 || idx === 5"
+                      v-if="idx === 2 || idx === 4"
                       class="my-2 border-t border-border"
                     />
                   </template>
@@ -1058,21 +1066,9 @@ useSeo({
 useWebsiteJsonLd()
 
 // ===== Tech versions =====
-const { buildInfo } = useSiteVersions()
-
-// Inline tech rows — no defineComponent() with runtime string-template,
-// which breaks Vue runtime + Nuxt auto-injection on Windows.
-interface TechRowItem { label: string, key: keyof typeof buildInfo.value, color: string }
-const techRows: TechRowItem[] = [
-  { label: 'Nuxt', key: 'nuxt', color: 'bg-emerald-500' },
-  { label: 'Vue', key: 'vue', color: 'bg-teal-500' },
-  { label: 'Vite', key: 'vite', color: 'bg-violet-500' },
-  { label: 'Tailwind', key: 'tailwindcss', color: 'bg-sky-500' },
-  { label: 'Pinia', key: 'pinia', color: 'bg-yellow-500' },
-  { label: 'i18n', key: 'i18n', color: 'bg-rose-500' },
-  { label: 'Nitro', key: 'nitro', color: 'bg-cyan-500' },
-  { label: 'Rosetta', key: 'rosetta', color: 'bg-primary' }
-]
+// useSiteVersions 内部 await /health（后端版本真源）；此处先发起请求，
+// 与下方 4 个首页数据请求并行，在 Promise.all 之后统一 await（见下）。
+const siteVersionsPromise = useSiteVersions()
 
 // ===== Bing wallpaper =====
 const {
@@ -1115,6 +1111,21 @@ const [
   { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags },
   { data: siteStats, pending: siteStatsPending, error: siteStatsError }
 ] = await Promise.all([postsPromise, categoriesPromise, tagsPromise, siteStatsPromise])
+
+// 版本信息（rosetta 来自后端 /health，其余来自 package.json / vue 运行时）
+const { buildInfo } = await siteVersionsPromise
+
+// Inline tech rows — no defineComponent() with runtime string-template,
+// which breaks Vue runtime + Nuxt auto-injection on Windows.
+interface TechRowItem { label: string, key: keyof typeof buildInfo.value, color: string }
+const techRows: TechRowItem[] = [
+  { label: 'Nuxt', key: 'nuxt', color: 'bg-emerald-500' },
+  { label: 'Vue', key: 'vue', color: 'bg-teal-500' },
+  { label: 'Tailwind', key: 'tailwindcss', color: 'bg-sky-500' },
+  { label: 'Pinia', key: 'pinia', color: 'bg-yellow-500' },
+  { label: 'i18n', key: 'i18n', color: 'bg-rose-500' },
+  { label: 'Rosetta', key: 'rosetta', color: 'bg-primary' }
+]
 
 // 语言切换时：重新以新的 lang 参数与缓存键请求后端数据，
 // 避免显示旧语言缓存，以及分类/标签本地化 JSON key 解析不更新。

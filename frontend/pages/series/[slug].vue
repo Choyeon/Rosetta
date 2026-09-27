@@ -1,3 +1,9 @@
+<!--
+  系列详情页：GET /series/<slug>，把响应内嵌的 posts 按后端顺序渲染成章节目录（前端不再排序）。
+  数据请求显式带 server:false（pages/ 下唯一一处）—— 首屏无 SSR 直出、爬虫拿到空壳，属现状取舍；
+  想恢复直出要先确认该端点的鉴权与响应形状。title→name→slug 的取值优先级在标题、面包屑、
+  JSON-LD 三处重复出现，后端改字段要三处一起验。
+-->
 <template>
   <div class="container py-16 max-w-5xl mx-auto">
     <div class="mb-10">

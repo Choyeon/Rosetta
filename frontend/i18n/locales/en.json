@@ -202,6 +202,7 @@
     "passwordMismatch": "Passwords do not match",
     "registerFailed": "Registration failed, please try again later",
     "loginFailed": "Login failed, please check your credentials",
+    "accountLocked": "Too many failed attempts. Your account is temporarily locked — try again in {seconds}s",
     "fillRequired": "Please enter both username and password",
     "switchWallpaper": "Switch wallpaper",
     "startCreate": "Start Writing",

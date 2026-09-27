@@ -11,7 +11,7 @@
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
@@ -278,7 +278,7 @@ class PostRepository(BaseRepository[Post]):
         """
         获取文章详情数据
 
-        预加载 author/category/tags 关系，仅并发 count 查询（避免 MissingGreenlet）。
+        预加载 author/category/tags 关系；两条 count 顺序执行（AsyncSession 不能并发）。
 
         Args:
             post_id: 文章 ID
@@ -332,18 +332,18 @@ class PostRepository(BaseRepository[Post]):
         """
         增加文章浏览量
 
+        原子 UPDATE ... SET views = views + 1：旧的读-改-写在并发访问下会互相覆盖丢计数。
+
         Args:
             post_id: 文章 ID
 
         Returns:
             成功返回 True
         """
-        post = await self.get_by_id(post_id)
-        if post is None:
-            return False
-        post.views += 1
-        await self.session.flush()
-        return True
+        result = await self.session.execute(
+            update(Post).where(Post.id == post_id).values(views=Post.views + 1)
+        )
+        return result.rowcount > 0
 
     async def toggle_like(self, post_id: int, user_id: int) -> tuple[bool, bool]:
         """
@@ -716,22 +716,43 @@ class PostRepository(BaseRepository[Post]):
             归档数据列表，按年月分组
         """
 
-        # 获取所有已发布文章，按发布时间降序
+        # 只投影归档真正要展示的列：原先 `select(Post)` 会把每篇文章的 JSON `content`
+        # 正文整列读进内存并实例化 ORM 对象，文章数上千时归档页的内存与耗时都失控。
         query = (
-            select(Post)
+            select(
+                Post.id,
+                Post.title,
+                Post.slug,
+                Post.created_at,
+                Post.published_at,
+                Post.views,
+                Category.id,
+                Category.name,
+                Category.color,
+            )
+            .outerjoin(Category, Post.category_id == Category.id)
             .where(Post.status == "published")
-            .options(joinedload(Post.category))
             .order_by(Post.published_at.desc())
         )
 
         result = await self.session.execute(query)
-        posts = result.unique().scalars().all()
+        rows = result.all()
 
         # 按年月分组
         archive_map: dict[tuple[int, int], list[dict]] = {}
 
-        for post in posts:
-            date_field = post.published_at or post.created_at
+        for (
+            post_id,
+            post_title,
+            slug,
+            created_at,
+            published_at,
+            views,
+            category_id,
+            category_name_i18n,
+            category_color,
+        ) in rows:
+            date_field = published_at or created_at
             if not date_field:
                 continue
 
@@ -744,30 +765,30 @@ class PostRepository(BaseRepository[Post]):
 
             if len(archive_map[key]) < limit_per_month:
                 # 获取标题
-                title = post.title.get(lang, post.title.get("zh", "")) if post.title else ""
+                title = post_title.get(lang, post_title.get("zh", "")) if post_title else ""
 
                 # 获取分类信息
                 category_data = None
-                if post.category:
+                if category_id is not None:
                     category_name = (
-                        post.category.name.get(lang, post.category.name.get("zh", ""))
-                        if post.category.name
+                        category_name_i18n.get(lang, category_name_i18n.get("zh", ""))
+                        if category_name_i18n
                         else ""
                     )
                     category_data = {
-                        "id": post.category.id,
+                        "id": category_id,
                         "name": category_name,
-                        "color": post.category.color,
+                        "color": category_color,
                     }
 
                 archive_map[key].append(
                     {
-                        "id": post.id,
+                        "id": post_id,
                         "title": title,
-                        "slug": post.slug,
-                        "created_at": post.created_at.isoformat() if post.created_at else None,
+                        "slug": slug,
+                        "created_at": created_at.isoformat() if created_at else None,
                         "category": category_data,
-                        "views": post.views,
+                        "views": views,
                     }
                 )
 
@@ -798,6 +819,7 @@ class PostRepository(BaseRepository[Post]):
 
         # 使用coalesce处理published_at为null的情况，fallback到created_at
         date_expr = func.coalesce(Post.published_at, Post.created_at)
+        year_expr = extract("year", date_expr)
 
         # 统计总数
         total_result = await self.session.execute(
@@ -805,26 +827,14 @@ class PostRepository(BaseRepository[Post]):
         )
         total_posts = total_result.scalar_one()
 
-        # 统计年份数
-        years_result = await self.session.execute(
-            select(func.distinct(extract("year", date_expr)))
-            .where(Post.status == "published")
-            .order_by(extract("year", date_expr).desc())
+        # 一次 GROUP BY 拿到"每年文章数"：原先先 DISTINCT 年份、再对每个年份单发一条
+        # COUNT，跨年归档统计的查询数随年份数线性增长（归档页每次命中都要跑一遍）。
+        # GROUP BY 用与 SELECT 完全相同的表达式，PG 才不会判"裸列分组"。
+        stats_result = await self.session.execute(
+            select(year_expr, func.count()).where(Post.status == "published").group_by(year_expr)
         )
-        years = [int(y) for y in years_result.scalars().all() if y]
-
-        # 按年份统计文章数
-        year_stats = {}
-        for year in years:
-            count_result = await self.session.execute(
-                select(func.count())
-                .select_from(Post)
-                .where(
-                    Post.status == "published",
-                    extract("year", date_expr) == year,
-                )
-            )
-            year_stats[year] = count_result.scalar_one()
+        year_stats = {int(y): cnt for y, cnt in stats_result.fetchall() if y is not None}
+        years = sorted(year_stats, reverse=True)
 
         return {
             "total_posts": total_posts,

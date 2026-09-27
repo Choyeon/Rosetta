@@ -9,13 +9,9 @@
 - 可通过 security_password_policy 开关控制
 """
 
-import logging
 import re
-from typing import Any
 
 from backend.core.config import settings
-
-logger = logging.getLogger(__name__)
 
 PASSWORD_BLOCKLIST: list[str] = [
     "123456",
@@ -158,21 +154,3 @@ def validate_password(password: str | None) -> list[str]:
         errors.append("该密码属于常见弱密码，请更换为更复杂的密码")
 
     return errors
-
-
-async def check_site_password_policy() -> bool:
-    """
-    检查站点级密码策略开关（后续可接入 site_settings）
-
-    当前优先使用 settings.security_password_policy
-    """
-    try:
-        from backend.core.site_config import site_settings
-
-        v: Any = await site_settings.get("security", "password_policy", default=None)
-        if v is not None:
-            return bool(v)
-    except Exception:
-        pass
-
-    return settings.security_password_policy

@@ -464,24 +464,6 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "ja": "ファイルサイズが制限を超えています（最大5MB）",
         "zh_Hant": "檔案大小超過限制 (最大 5MB)",
     },
-    "oobe_admin_not_created": {
-        "zh": "请先创建管理员账户",
-        "en": "Please create an admin account first",
-        "ja": "最初に管理者アカウントを作成してください",
-        "zh_Hant": "請先建立管理員帳戶",
-    },
-    "oobe_complete_success": {
-        "zh": "配置完成！",
-        "en": "Configuration complete!",
-        "ja": "設定が完了しました！",
-        "zh_Hant": "設定完成！",
-    },
-    "oobe_complete_failed": {
-        "zh": "配置失败",
-        "en": "Configuration failed",
-        "ja": "設定に失敗しました",
-        "zh_Hant": "設定失敗",
-    },
     "oobe_reset_success": {
         "zh": "OOBE 状态已重置",
         "en": "OOBE state has been reset",

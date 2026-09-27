@@ -1,3 +1,9 @@
+<!--
+  标签详情页：GET /blog/tags/slug/<slug> + GET /blog/posts?tag=<slug>，任一失败即整体进错误态。
+  与 categories/[slug] 同一形态：详情 URL 与 lang 都是 setup 期快照，翻页只在客户端 refresh。
+  分页只认列表响应的 total —— 详情里的 post_count 仅用于头部展示，不参与算页数，两者不一致时
+  以 total 为准。
+-->
 <template>
   <div class="container py-16">
     <header class="mb-12">
@@ -83,6 +89,7 @@
         <Button
           variant="outline"
           size="icon"
+          aria-label="上一页"
           :disabled="currentPage <= 1"
           @click="currentPage -= 1"
         >
@@ -101,6 +108,7 @@
         <Button
           variant="outline"
           size="icon"
+          aria-label="下一页"
           :disabled="currentPage >= totalPages"
           @click="currentPage += 1"
         >

@@ -1,3 +1,11 @@
+<!--
+  前台布局：AppHeader/AppFooter + 站点公告条 + SSR 主题注入守卫。
+  硬契约：setup 期必须 await site.ensureLoaded / ft.ensureLoaded——首字节 HTML 才能带上
+  主题 data-* 与 style.css <link>（缺了会"先默认样式闪一帧"）；useHead 只在同步阶段注册，
+  await 之后严禁再触碰 head（NUXT_E1001）；onMounted + watch(route) 写 data-layout-scope=frontend
+  并重新 applyThemeVisual（从 /admin 返回时视觉层被 clear 过）；公告 title/content 兼容
+  i18n dict 与明文字符串双形态（pickAnnStr），后端两种都可能返回。
+-->
 <script setup lang="ts">
 import AppHeader from '~~/components/AppHeader.vue'
 import AppFooter from '~~/components/AppFooter.vue'

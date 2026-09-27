@@ -270,14 +270,18 @@ export function useTheme() {
     applyTheme(true)
     persist()
   }
-  /** 跟随系统：立即按 prefers-color-scheme 应用，并把 'system' 存为偏好。 */
+  /**
+   * 跟随系统：立即按 prefers-color-scheme 应用，并把**解析后的** light/dark 写入偏好。
+   * 【存储铁律】localStorage.theme 只允许 'light' | 'dark'（AGENTS.md §主题切换）——
+   * 禁止写 'system' 第三态：本文件没有 matchMedia change 监听器，'system' 并不会
+   * 动态跟随，只会在下次加载走 initFromStorageAndApply 的旧值迁移分支被改写成
+   * 具体值；期间任何读 storage 的代码拿到的都是过期偏好，属于语义漂移的缺陷值。
+   */
   const setSystem = () => {
     ripple.stop()
     const dark = _getSystemDark()
     applyTheme(dark)
-    if (import.meta.client && typeof localStorage !== 'undefined') {
-      localStorage.setItem(STORAGE_KEY, 'system')
-    }
+    persist()
   }
 
   /**

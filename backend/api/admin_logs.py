@@ -13,7 +13,7 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff
@@ -25,18 +25,6 @@ from backend.utils.compat import UTC
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["操作日志"])
-
-
-def _parse_date(s: str | None) -> datetime | None:
-    if not s:
-        return None
-    try:
-        d = datetime.fromisoformat(s.replace("Z", "+00:00"))
-        if d.tzinfo is None:
-            d = d.replace(tzinfo=UTC)
-        return d
-    except Exception:
-        return None
 
 
 def _row_to_dict(row: OperationLog, user_map: dict[int, User] | None = None) -> dict[str, Any]:
@@ -76,14 +64,23 @@ def _row_to_dict(row: OperationLog, user_map: dict[int, User] | None = None) -> 
 # 嵌套 user，且注册顺序在前、运行时优先生效）。此处不再重复注册，以消除同路径同方法的重复路由
 # 与 OpenAPI operationId 冲突；保留下方 DELETE /logs/retention 清理接口。
 class _RetentionResponse(BaseModel):
-    deleted_count: int
-    before: str
+    """DELETE /admin/logs/retention 的响应体（本端点直接 return 本模型实例）。"""
+
+    deleted_count: int = Field(..., description="本次实际删除的日志条数（无可删记录时为 0）")
+    before: str = Field(
+        ..., description="保留期截止时间点（cutoff）的 ISO 8601 字符串，早于该时间的记录被删除"
+    )
 
 
 @router.delete(
     "/logs/retention",
     summary="清理旧日志",
-    description="按保留天数删除早于 N 天的操作日志记录。",
+    description=(
+        "按保留天数删除早于 N 天的操作日志记录。需登录且为 staff/superuser"
+        "（不满足返回 403）；days 取值 1-3650，越界 422。"
+        "响应即 _RetentionResponse 模型实例（deleted_count + cutoff 时间点），无信封包裹。"
+    ),
+    responses={200: {"model": _RetentionResponse}},
 )
 async def cleanup_old_logs(
     request: Request,

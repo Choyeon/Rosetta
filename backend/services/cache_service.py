@@ -162,7 +162,7 @@ class CacheService:
         执行单个预热任务
 
         Args:
-            task_name: 任务名称（site_config, navigations, categories, tags, friend_links, hot_posts）
+            task_name: 任务名称（site_config, navigations, categories, tags, friend_links）
 
         Returns:
             预热任务结果
@@ -233,17 +233,21 @@ class CacheService:
         return self._key_builder.build_pattern(*parts)
 
     async def invalidate_user_cache(self, user_id: int) -> int:
-        """
-        使用户相关缓存失效
+        """删除该用户在二级缓存里的全部键族，返回删除条数。
 
-        Args:
-            user_id: 用户 ID
-
-        Returns:
-            删除的条目数
+        读侧其实有三族键：``user:{id}``、``user_profile:{id}``（公开资料，含
+        preferences）、``user_stats:{id}``。旧实现只删 ``build_pattern("user", id)``
+        → ``rosetta:v1:user:<id>*``，而 ``user_profile`` 是**另一个前缀**，压根不匹配。
+        后果：用户改完隐私开关 / 头像 / 昵称后，公开资料页最长 ``USER_PROFILE_TTL``
+        （300s）仍返回旧值——"关掉邮箱显示却没生效"这类反馈就出自这条路径。
+        三族都是精确键名，逐个删即可，不要用前缀通配（``user:1*`` 会顺带命中
+        ``user:10``、``user:11``，白打一批数据库）。
         """
-        pattern = self.build_pattern("user", user_id)
-        return await self.invalidate_pattern(pattern)
+        deleted = 0
+        for prefix in ("user", "user_profile", "user_stats"):
+            if await self.delete(self.build_key(prefix, user_id)):
+                deleted += 1
+        return deleted
 
     async def invalidate_post_cache(self, post_id: int | None = None) -> int:
         """

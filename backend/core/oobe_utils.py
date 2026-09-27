@@ -14,10 +14,15 @@ import subprocess
 import sys
 from pathlib import Path
 
-logger = logging.getLogger(__name__)
+# CPU 型号 / Windows 版本名 / psutil 异常集合由 setup_system 单源提供，
+# OOBE 与安装向导走同一套探测，避免两份实现各自漂移。
+from backend.core.setup_system import (
+    get_processor_name,
+    get_windows_version_display,
+    psutil_errors,
+)
 
-# Windows build 号阈值：>= 22000 是 Windows 11
-_WIN11_BUILD_THRESHOLD = 22000
+logger = logging.getLogger(__name__)
 
 
 def _ok(value=None, ok: bool = True, error: str | None = None) -> dict:
@@ -25,30 +30,11 @@ def _ok(value=None, ok: bool = True, error: str | None = None) -> dict:
     return {"ok": ok, "value": value, "error": error}
 
 
-def _get_windows_version_display() -> str:
-    """正确识别 Windows 版本（区分 Win10/Win11）
-
-    platform.release() 在 Windows 11 上仍返回 '10'，
-    需要通过 build 号判断：build >= 22000 为 Windows 11。
-    """
-    rel = platform.release()
-    ver = platform.version()  # 如 "10.0.22621"
-    try:
-        parts = ver.split(".")
-        if len(parts) >= 3:
-            build = int(parts[2])
-            if build >= _WIN11_BUILD_THRESHOLD:
-                return "11"
-    except (ValueError, IndexError):
-        pass
-    return rel
-
-
 def _get_os_name() -> str:
     """获取友好的操作系统名称，如 'Windows 11', 'macOS 14', 'Ubuntu 22.04'"""
     system = platform.system()
     if system == "Windows":
-        return f"Windows {_get_windows_version_display()}"
+        return f"Windows {get_windows_version_display()}"
     elif system == "Darwin":
         rel = platform.release()
         mac_ver = platform.mac_ver()[0]
@@ -71,46 +57,11 @@ def _get_os_name() -> str:
                 for line in os_release.read_text(encoding="utf-8").splitlines():
                     if line.startswith("PRETTY_NAME="):
                         return line.split("=", 1)[1].strip('"')
-        except Exception:  # noqa: BLE001
+        except (OSError, ValueError):  # 文件读不出/解码失败时退回 platform.release 通用解析
             pass
         return f"Linux {platform.release()}"
     else:
         return f"{system} {platform.release()}"
-
-
-def _get_cpu_name() -> str:
-    """获取 CPU 品牌/型号名称"""
-    system = platform.system()
-    try:
-        if system == "Windows":
-            # 通过注册表读取 CPU 名称
-            import winreg  # type: ignore
-
-            key_path = r"HARDWARE\DESCRIPTION\System\CentralProcessor\0"
-            with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, key_path) as key:
-                name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
-                return str(name).strip()
-        elif system == "Darwin":
-            r = subprocess.run(
-                ["sysctl", "-n", "machdep.cpu.brand_string"],
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                return r.stdout.strip()
-        elif system == "Linux":
-            cpuinfo = Path("/proc/cpuinfo")
-            if cpuinfo.exists():
-                for line in cpuinfo.read_text(encoding="utf-8").splitlines():
-                    if line.startswith("model name"):
-                        return line.split(":", 1)[1].strip()
-    except Exception as e:  # noqa: BLE001
-        logger.debug("Failed to get CPU name: %s", e)
-
-    # Fallback: 返回通用描述
-    arch = platform.machine()
-    return f"{arch} processor"
 
 
 def check_python_version() -> dict:
@@ -171,8 +122,10 @@ def run_command_check(name: str, cmd: list[str]) -> dict:
                         sp = str(p)
                         if not any(c[0] == sp for c in candidates):
                             candidates.append([sp, *rest])
-        except Exception:  # noqa: BLE001
-            pass
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            # where.exe 只是候选路径的补充来源，缺失/超时不影响 shutil.which 主路径；
+            # 异常面收窄，避免把编程错误（如 cmd 非 list）也一起吞掉。
+            logger.debug("[oobe] where.exe 查找 %s 失败，跳过该来源: %r", base, exc)
 
     # ---- 3. 项目本地 frontend/node_modules/.bin ----
     frontend_bin = project_root / "frontend" / "node_modules" / ".bin"
@@ -333,7 +286,7 @@ def _os_summary() -> dict:
     system_name = platform.system()
     arch = platform.machine()
     cpu_count = os.cpu_count() or 1
-    cpu_name = _get_cpu_name()
+    cpu_name = get_processor_name()
     os_name = _get_os_name()
     total_mem = 0
     avail_mem = 0
@@ -352,7 +305,8 @@ def _os_summary() -> dict:
         disk = psutil.disk_usage(disk_path)
         total_disk = disk.total
         avail_disk = disk.free
-    except Exception:  # noqa: BLE001
+    except psutil_errors() as exc:
+        logger.debug("[oobe] psutil 系统指标探测失败，回退其他来源: %r", exc)
         # psutil 不可用时，Windows 下用 ctypes 兜底
         if system_name == "Windows":
             try:
@@ -386,8 +340,10 @@ def _os_summary() -> dict:
                 )
                 total_disk = total_bytes.value
                 avail_disk = free_bytes.value
-            except Exception:  # noqa: BLE001
-                pass
+            except (OSError, ValueError, AttributeError) as exc:
+                # WinAPI 调用失败（非 Windows / 权限 / 结构体不匹配）时保留 0 值，
+                # 由前端显示为"未知"，但必须留痕，不能静默。
+                logger.debug("[oobe] ctypes 内存/磁盘兜底探测失败: %r", exc)
 
     # 转换单位
     total_mem_MB = round(total_mem / (1024 * 1024)) if total_mem else 0

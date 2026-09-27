@@ -1,3 +1,7 @@
+<!--
+  留言板管理页：与评论管理共用 CommentListContent，以 is-guestbook 切换到留言通道，并多出回收站 Tab（评论模型无软删除）。
+  契约：本页不持有列表状态——TabsContent 只渲染激活项，切 Tab 挂载新实例并自行首屏请求；trashed 视图的动作集限制在子组件内实现。
+-->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -6,10 +10,7 @@
       :icon="MessagesSquare"
     />
 
-    <Tabs
-      v-model="activeTab"
-      @update:model-value="onTabChange"
-    >
+    <Tabs v-model="activeTab">
       <TabsList>
         <TabsTrigger value="all">
           全部
@@ -25,6 +26,9 @@
         </TabsTrigger>
         <TabsTrigger value="spam">
           垃圾
+        </TabsTrigger>
+        <TabsTrigger value="trashed">
+          回收站
         </TabsTrigger>
       </TabsList>
 
@@ -73,6 +77,15 @@
           :is-guestbook="true"
         />
       </TabsContent>
+      <TabsContent
+        value="trashed"
+        class="mt-6"
+      >
+        <CommentListContent
+          status="trashed"
+          :is-guestbook="true"
+        />
+      </TabsContent>
     </Tabs>
   </div>
 </template>
@@ -84,12 +97,7 @@ import CommentListContent from './_parts/CommentListContent.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
+// TabsContent 只渲染当前激活项：切 tab 会挂载新的列表实例并自行首屏请求，
+// 不需要额外的刷新信号。
 const activeTab = ref('all')
-const refreshKey = ref(0)
-
-const onTabChange = () => {
-  refreshKey.value++
-}
-
-provide('refreshKey', refreshKey)
 </script>

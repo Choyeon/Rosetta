@@ -303,3 +303,65 @@ async def test_oobe_admin_weak_password(oobe_client: AsyncClient):
     r = await oobe_client.post("/api/oobe/install", json=weak_payload)
     assert r.status_code == 422, f"弱密码应返回 422，实际 {r.status_code}: {r.text}"
     assert not OOBE_COMPLETE.exists(), "弱密码时不应写入 OOBE 完成标记"
+
+
+@pytest.mark.asyncio
+async def test_oobe_legacy_complete_endpoint_removed(oobe_client: AsyncClient):
+    """旧分步式 `POST /api/oobe/complete` 已下线：向导只认 `POST /api/oobe/install`。
+
+    该端点自标注 deprecated 且前后端零调用，保留等于留一份和真安装流程
+    并行的第二套初始化实现（两者行为早已漂移）。钉住 404 防止被"顺手恢复"。
+    """
+    await oobe_client.post("/api/oobe/reset")
+
+    r = await oobe_client.post("/api/oobe/complete")
+    assert r.status_code == 404, f"/oobe/complete 应已下线，实际 {r.status_code}: {r.text}"
+    assert not OOBE_COMPLETE.exists(), "下线的端点不应产生任何安装副作用"
+
+
+def test_reset_oobe_reports_undeletable_files(tmp_path, monkeypatch):
+    """`reset_oobe` 必须逐个删除并回报失败项，而不是整体 `except: pass` 后假装成功。
+
+    半完成态是这里最坏的结果：安装锁已删而带 SECRET_KEY/DB 连接串的 .env 还在，
+    调用方却收到"成功"。同时验证单项失败不会中断其余文件的删除。
+    """
+    svc = ConfigService()
+    paths = {
+        "lock": tmp_path / ".oobe_complete",
+        "env": tmp_path / ".env",
+        "config": tmp_path / "rosetta.json",
+        "state": tmp_path / "oobe_state.json",
+    }
+    for p in paths.values():
+        p.write_text("placeholder", encoding="utf-8")
+    monkeypatch.setattr(svc, "lock_file", paths["lock"])
+    monkeypatch.setattr(svc, "env_file", paths["env"])
+    monkeypatch.setattr(svc, "config_file", paths["config"])
+    monkeypatch.setattr(svc, "state_file", paths["state"])
+
+    real_unlink = Path.unlink
+
+    def flaky_unlink(self, *args, **kwargs):
+        if self.name == ".env":
+            raise PermissionError("simulated read-only .env")
+        return real_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "unlink", flaky_unlink)
+
+    failed = svc.reset_oobe()
+
+    assert failed == ["env"], f"只应回报无法删除的 env，实际={failed}"
+    assert not paths["lock"].exists(), "单项失败不得中断其余文件删除（锁必须被删）"
+    assert not paths["config"].exists() and not paths["state"].exists()
+    assert paths["env"].exists(), ".env 仍应存在，供调用方上报"
+
+
+@pytest.mark.asyncio
+async def test_oobe_reset_fails_closed_on_leftover(oobe_client: AsyncClient, monkeypatch):
+    """重置未清干净时 `POST /oobe/reset` 必须回 5xx，不能回 200 让前端以为可重跑向导"""
+    monkeypatch.setattr(_oobe.config_service, "reset_oobe", lambda: ["env"])
+
+    r = await oobe_client.post("/api/oobe/reset")
+
+    assert r.status_code == 500, f"残留文件应显式失败，实际 {r.status_code}: {r.text}"
+    assert "env" in r.text

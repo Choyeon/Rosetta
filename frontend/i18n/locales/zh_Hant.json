@@ -179,6 +179,7 @@
     "error": "錯誤",
     "fillRequired": "請填寫使用者名稱和密碼",
     "loginFailed": "登入失敗，請檢查帳號資訊",
+    "accountLocked": "嘗試次數過多，帳號已暫時鎖定，請 {seconds} 秒後重試",
     "goLogin": "[繁]:Go to Login",
     "welcomeBackTagline": "[繁]:Crossing the boundaries of language",
     "openBeta": "[繁]:Open Beta — Join Today",
