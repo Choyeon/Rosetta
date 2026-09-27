@@ -30,11 +30,17 @@ interface BingMetaResponse {
   images: BingImage[]
 }
 
+// Nitro 层缓存条目与上游请求都按 mkt 键控：不校验格式的话，匿名者传任意
+// 随机串即可无界膨胀缓存并逐个触发对 Bing 的外发请求（请求放大）。
+// Bing 的合法市场标识形如 zh-CN / en-US / ja-JP，此处同口径收口。
+const MKT_PATTERN = /^[a-zA-Z]{2,3}(-[a-zA-Z]{2,4})?$/
+
 /** 归一化 query 参数（handler 与缓存 key 共用，保证两者一致）。 */
 function parseParams(event: H3Event) {
   const query = getQuery(event)
   const idx = Math.max(0, Math.min(7, Number(query.idx) || 0))
-  const mkt = typeof query.mkt === 'string' && query.mkt.trim() ? query.mkt.trim() : 'zh-CN'
+  const raw = typeof query.mkt === 'string' ? query.mkt.trim() : ''
+  const mkt = raw && MKT_PATTERN.test(raw) ? raw : 'zh-CN'
   return { idx, mkt }
 }
 
