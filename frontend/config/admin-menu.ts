@@ -34,7 +34,8 @@ import {
   Trash2,
   Puzzle,
   Brush,
-  BookOpen
+  BookOpen,
+  ArchiveRestore
 } from '@lucide/vue'
 
 import type { Component } from 'vue'
@@ -72,7 +73,8 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/content/categories', label: '分类', icon: FolderTree },
       { path: '/admin/content/tags', label: '标签', icon: Tags },
       { path: '/admin/content/series', label: '系列', icon: Layers },
-      { path: '/admin/content/pages', label: '页面', icon: FileStack }
+      { path: '/admin/content/pages', label: '页面', icon: FileStack },
+      { path: '/admin/content/trash', label: '回收站', icon: ArchiveRestore }
     ]
   },
   {

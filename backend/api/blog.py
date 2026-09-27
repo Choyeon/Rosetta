@@ -11,6 +11,7 @@
 - 标签列表：10 分钟
 """
 
+import json
 import math
 import re
 from datetime import datetime
@@ -72,6 +73,7 @@ _TAG_PALETTE = [
     "#7C3AED",
 ]
 from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_tags
+from backend.models.log import TrashItem
 from backend.models.user import User
 from backend.schemas import (
     BaseResponse,
@@ -104,7 +106,7 @@ from backend.schemas.blog_reads import (
     UserBlogStatsResponse,
 )
 from backend.services.comment_service import _comment_to_response
-from backend.utils.compat import UTC, parse_utc_date
+from backend.utils.compat import UTC, parse_utc_date, timedelta
 from backend.utils.reading_time import compute_reading_time_from_content
 
 router = APIRouter(tags=["博客"])
@@ -1547,7 +1549,7 @@ async def update_post(
     "/posts/{post_id}",
     response_model=BaseResponse,
     summary="删除文章",
-    description="删除文章，仅作者或超级管理员可操作。",
+    description="将文章移入回收站（30 天后自动清除），仅作者或超级管理员可操作。",
 )
 async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
     """删除文章"""
@@ -1568,6 +1570,28 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
 
     # slug 要在删除前取：db.delete 后实例已过期，再读属性会对已删行发出 SELECT
     deleted_slug = post.slug
+    # 与批删（advanced.py batch action=delete）同构：先落回收站快照再删原行，
+    # 否则单删是物理删除、批删可恢复——同一入口两种语义，用户数据会真丢。
+    trash_item = TrashItem(
+        resource_type="post",
+        resource_id=post.id,
+        resource_data=json.dumps(
+            {
+                "title": post.title,
+                "slug": post.slug,
+                "content": post.content,
+                "excerpt": post.excerpt,
+                "cover_image": post.cover_image,
+                "author_id": post.author_id,
+                "category_id": post.category_id,
+                "status": post.status,
+                "views": post.views,
+            }
+        ),
+        deleted_by_id=current_user.id,
+        auto_delete_at=datetime.now(UTC) + timedelta(days=30),
+    )
+    db.add(trash_item)
     await db.delete(post)
     # 详情缓存独立于 posts 前缀：不清的话删除后 600s 内匿名 GET /posts/{slug} 仍返回旧正文
     await invalidate_post_detail_cache(deleted_slug)
@@ -1575,7 +1599,7 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
     await invalidate_post_aggregate_caches()
     await bus.do_action("post.deleted", post, current_user=current_user, db=db)
 
-    return BaseResponse(message="文章已删除")
+    return BaseResponse(message="文章已移入回收站")
 
 
 @router.post(

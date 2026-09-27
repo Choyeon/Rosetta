@@ -145,7 +145,7 @@ async function doDelete() {
   if (pendingDeleteId.value == null) return
   const id = pendingDeleteId.value
   await deletePost(id)
-  toast.success('删除成功')
+  toast.success('已移入回收站')
   pendingDeleteId.value = null
   selectedIds.value = selectedIds.value.filter(x => x !== id)
   loadPosts()
@@ -162,7 +162,7 @@ async function doBatchDelete() {
   const results = await Promise.allSettled(ids.map(id => deletePost(id)))
   const failed = results.filter(r => r.status === 'rejected').length
   const success = ids.length - failed
-  if (failed === 0) toast.success(`已批量删除 ${ids.length} 篇文章`)
+  if (failed === 0) toast.success(`已批量删除 ${ids.length} 篇文章，回收站 30 天内可恢复`)
   else toast.warning(`成功删除 ${success} 篇，失败 ${failed} 篇`)
   selectedIds.value = []
   loadPosts()
@@ -382,7 +382,7 @@ onMounted(() => {
     <AdminConfirmDialog
       v-model:open="deleteDialogOpen"
       title="确认删除文章"
-      description="此操作不可撤销，确定要删除这篇文章吗？"
+      description="删除后将移入回收站，保留 30 天可恢复。确定要删除这篇文章吗？"
       confirm-text="确认删除"
       :on-confirm="doDelete"
     />
@@ -390,7 +390,7 @@ onMounted(() => {
     <AdminConfirmDialog
       v-model:open="batchDeleteDialogOpen"
       title="确认批量删除"
-      :description="`即将删除 ${selectedIds.length} 篇文章，此操作不可撤销，确定继续吗？`"
+      :description="`即将删除 ${selectedIds.length} 篇文章，移入回收站后 30 天内可恢复。`"
       confirm-text="确认删除"
       :on-confirm="doBatchDelete"
     />

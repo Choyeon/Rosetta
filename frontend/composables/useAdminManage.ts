@@ -1783,6 +1783,45 @@ export function fetchAdminAuditLogs(params: { page?: number, page_size?: number,
     })
 }
 
+// ==================== 回收站 ====================
+
+export interface AdminTrashEntry {
+  id: number
+  /** 资源类型：post / comment / page */
+  resource_type: string
+  /** 原始资源 ID（原记录已删除，仅作展示） */
+  resource_id: number
+  /** 删除时快照的字段集合（文章含 title/slug/content/status 等） */
+  resource_data: Record<string, unknown>
+  deleted_by: { id: number, username: string, nickname?: string | null } | null
+  /** 到期自动清除时间（ISO 8601） */
+  auto_delete_at: string | null
+  /** 进入回收站的时间（ISO 8601） */
+  created_at: string | null
+}
+
+/** GET /api/admin/trash —— 后端返回裸分页对象（无 success 信封） */
+export function fetchAdminTrash(params: { resource_type?: string, page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminTrashEntry>> {
+  return apiFetch<AdminPaged<AdminTrashEntry>>('/admin/trash', {
+    query: { page: 1, page_size: 20, ...params }
+  })
+}
+
+/** POST /api/admin/trash/{id}/restore —— 恢复即删记录（一次性）；slug 冲突返回 400 */
+export function restoreAdminTrashItem(id: number, options: { silentToast?: boolean } = {}) {
+  return apiFetch<{ success: boolean, message: string }>(`/admin/trash/${id}/restore`, { method: 'POST', ...options })
+}
+
+/** DELETE /api/admin/trash/{id} —— 永久删除单条 */
+export function deleteAdminTrashItem(id: number, options: { silentToast?: boolean } = {}) {
+  return apiFetch<{ success: boolean, message: string }>(`/admin/trash/${id}`, { method: 'DELETE', ...options })
+}
+
+/** DELETE /api/admin/trash —— 清空整个回收站 */
+export function emptyAdminTrash(options: { silentToast?: boolean } = {}) {
+  return apiFetch<{ success: boolean, message: string }>('/admin/trash', { method: 'DELETE', ...options })
+}
+
 // ==================== 数据库迁移 ====================
 
 export interface AdminMigrationStatus {
