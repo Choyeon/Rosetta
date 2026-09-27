@@ -66,3 +66,11 @@ export const slugify = (text: string): string => {
   s = s.replace(/-+/g, '-').replace(/^-|-$/g, '')
   return s
 }
+
+/**
+ * 内容型 slug（文章/分类/标签/独立页/系列）的校验正则，镜像后端
+ * `backend/schemas/_slug.py::CONTENT_SLUG_PATTERN`（小写字母/数字/下划线/CJK/连字符）。
+ * 改任何一侧必须同步另一侧。插件/主题 manifest 的 slug 仍是更严的 ASCII kebab-case，
+ * 不复用本常量。
+ */
+export const CONTENT_SLUG_PATTERN = /^[a-z0-9_\u4e00-\u9fff-]+$/

@@ -1,7 +1,7 @@
 <!--
   标签管理页：标签墙 + 客户端搜索过滤 + CRUD 弹窗（颜色/图标/启用开关）。
-  硬契约：fetchAdminTags 一次拉全量、搜索是纯客户端过滤（与分类/标签后端 slug 生成同套
-  ^[a-z0-9-]+$ 规则——slugify 留中文时清空交给后端按名称生成）；name 提交完整四语 dict；
+  硬契约：fetchAdminTags 一次拉全量、搜索是纯客户端过滤（slug 校验与分类同套
+  CONTENT_SLUG_PATTERN——允许中文，留空时由后端按名称生成）；name 提交完整四语 dict；
   图标以文本插值渲染（{{ t.icon }}），禁止改回 v-html——短字符串落库脏数据换个消费点就中招。
 -->
 <script setup lang="ts">
@@ -22,7 +22,7 @@ import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, slugify, type I18nDict } from '~~/composables/useAdminI18n'
+import { getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
 import { Search, Plus, Pencil, Trash2, Tag } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -57,8 +57,7 @@ const form = reactive<{
 
 const editingId = ref<number | null>(null)
 
-/** 后端 slug 校验 ^[a-z0-9-]+$；slugify 可能保留中文，仅当结果合法才自动填充，否则留空由后端按中文名生成 */
-const SLUG_PATTERN = /^[a-z0-9-]+$/
+/** slugify 结果与用户手填 slug 统一用 CONTENT_SLUG_PATTERN 校验（与后端同口径，允许中文） */
 let slugManualEdit = false as boolean
 watch(
   () => form.name,
@@ -66,7 +65,7 @@ watch(
     const nameZh = getLocalizedStr(val)
     if (!slugManualEdit && nameZh) {
       const s = slugify(nameZh)
-      form.slug = SLUG_PATTERN.test(s) ? s : ''
+      form.slug = CONTENT_SLUG_PATTERN.test(s) ? s : ''
     }
   },
   { deep: true }
@@ -123,8 +122,8 @@ const save = async () => {
     toast.error('请输入标签名称')
     return
   }
-  if (form.slug && !SLUG_PATTERN.test(form.slug)) {
-    toast.error('Slug 只能包含小写字母、数字和连字符（-）')
+  if (form.slug && !CONTENT_SLUG_PATTERN.test(form.slug)) {
+    toast.error('Slug 只能包含小写字母、数字、下划线、中文和连字符（-）')
     return
   }
   if (form.color && !/^#[0-9a-fA-F]{6}$/.test(form.color)) {

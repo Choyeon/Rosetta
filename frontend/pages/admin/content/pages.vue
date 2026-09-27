@@ -2,7 +2,8 @@
   独立页面（Page）管理列表：服务端分页 + CRUD 弹窗，请求走 useAdminManage wrapper 单源。
   硬契约：exclude_slugs=[about,guestbook] 不可移除——关于页内容真源在站点设置 basic.about_page_html、
   留言板是固定路由页，混进列表会造成双编辑入口；后端 PageCreate/PageUpdate 是 extra=forbid，
-  请求体只能带 slug/title/status/content 四键，多一个字段即 422；title/content 提交完整 i18n dict。
+  请求体只能带 slug/title/status/content 四键，多一个字段即 422；title/content 提交完整 i18n dict；
+  slug 必填，校验用 CONTENT_SLUG_PATTERN（与后端同口径，允许中文）。
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
@@ -25,6 +26,7 @@ import {
   normalizeI18nDict,
   toI18nPayload,
   slugify,
+  CONTENT_SLUG_PATTERN,
   type I18nDict
 } from '~~/composables/useAdminI18n'
 import {
@@ -61,15 +63,14 @@ const form = reactive({
 
 const editingId = ref<number | null>(null)
 
-/** 后端 slug 校验 ^[a-z0-9-]+$；slugify 可能保留中文，仅当结果合法才自动填充 */
-const SLUG_PATTERN = /^[a-z0-9-]+$/
+/** slugify 结果与用户手填 slug 统一用 CONTENT_SLUG_PATTERN 校验（与后端同口径，允许中文） */
 let slugManualEdit = false as boolean
 watch(
   () => form.title,
   (val) => {
     if (!slugManualEdit && getLocalizedStr(val)) {
       const s = slugify(getLocalizedStr(val))
-      form.slug = SLUG_PATTERN.test(s) ? s : ''
+      form.slug = CONTENT_SLUG_PATTERN.test(s) ? s : ''
     }
   },
   { deep: true }
@@ -137,8 +138,8 @@ const save = async () => {
     toast.error('请输入 slug')
     return
   }
-  if (!SLUG_PATTERN.test(form.slug.trim())) {
-    toast.error('Slug 只能包含小写字母、数字和连字符（-）')
+  if (!CONTENT_SLUG_PATTERN.test(form.slug.trim())) {
+    toast.error('Slug 只能包含小写字母、数字、下划线、中文和连字符（-）')
     return
   }
   const titlePayload = toI18nPayload(form.title)

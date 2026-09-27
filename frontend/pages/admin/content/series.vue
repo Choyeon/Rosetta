@@ -1,7 +1,7 @@
 <!--
   系列管理页：卡片列表 + CRUD 弹窗（含封面上传与排序号）。
   硬契约：与分类/标签不同，PostSeriesCreate/Update 的 slug 为必填且后端不自动生成——
-  slugify 结果含中文时必须让用户手填（^[a-z0-9-]+$ 前端先拦）；请求体 extra=forbid，
+  前端用 CONTENT_SLUG_PATTERN 先拦（与后端同口径，允许中文）；请求体 extra=forbid，
   只能带 name/slug/description/cover_image/sort_order，i18n dict 要先经 toI18nPayload 滤掉空语言。
 -->
 <script setup lang="ts">
@@ -21,7 +21,7 @@ import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
+import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify, CONTENT_SLUG_PATTERN } from '~~/composables/useAdminI18n'
 import { BookOpen, ChevronDown, Plus } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -50,9 +50,7 @@ const form = reactive({
 
 const editingId = ref<number | null>(null)
 
-/** 后端 PostSeriesCreate/Update 的 slug 必填且校验 ^[a-z0-9-]+$（无后端自动生成）；
- *  slugify 可能保留中文，仅当结果合法才自动填充 */
-const SLUG_PATTERN = /^[a-z0-9-]+$/
+/** 后端 PostSeriesCreate/Update 的 slug 必填（无后端自动生成），校验口径与 CONTENT_SLUG_PATTERN 一致 */
 let slugManualEdit = false as boolean
 watch(
   () => form.name,
@@ -60,7 +58,7 @@ watch(
     const zhVal = String(val?.zh ?? '')
     if (!slugManualEdit && zhVal) {
       const s = slugify(zhVal)
-      form.slug = SLUG_PATTERN.test(s) ? s : ''
+      form.slug = CONTENT_SLUG_PATTERN.test(s) ? s : ''
     }
   },
   { deep: true }
@@ -135,8 +133,8 @@ const save = async () => {
     toast.error('请输入系列标题（至少一种语言）')
     return
   }
-  if (!form.slug.trim() || !SLUG_PATTERN.test(form.slug.trim())) {
-    toast.error('请填写 Slug，仅允许小写字母、数字和连字符（-）')
+  if (!form.slug.trim() || !CONTENT_SLUG_PATTERN.test(form.slug.trim())) {
+    toast.error('请填写 Slug，仅允许小写字母、数字、下划线、中文和连字符（-）')
     return
   }
   saving.value = true

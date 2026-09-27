@@ -827,7 +827,7 @@ export async function fetchAdminPages(
 /**
  * core.router 已提供完整页面 CRUD：POST /pages、PUT /pages/{id}、DELETE /pages/{id}
  * （均需 staff 登录；PageCreate/PageUpdate 为 extra=forbid，body 不得携带额外字段，
- * title/content 为 {zh,en,ja,zh_Hant} 多语言 dict，slug 必填且匹配 ^[a-z0-9-]+$）。
+ * title/content 为 {zh,en,ja,zh_Hant} 多语言 dict，slug 必填、校验口径同 CONTENT_SLUG_PATTERN（允许中文）。
  */
 export function createAdminPage(payload: Record<string, unknown>): Promise<AdminPage> {
   return apiFetch<AdminPage>('/pages', { method: 'POST', body: payload })

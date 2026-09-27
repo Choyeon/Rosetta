@@ -1,7 +1,7 @@
 <!--
   后台分类管理页（SPA / layout=admin）：分类 CRUD，请求全部走 useAdminManage wrapper 单源。
   硬契约：name/description 以完整四语 dict {zh,en,ja,zh_Hant} 提交（后端 JSON 列依赖该形状）；
-  slug 自动派生仅在结果匹配后端 ^[a-z0-9-]+$ 时才填入，含中文则留空交给后端按名称生成；
+  slug 自动派生与手填校验共用 CONTENT_SLUG_PATTERN（镜像后端，允许 CJK）；留空时由后端按名称生成；
   失败提示由 apiFetch 统一 toast，页面 catch 内禁止二次弹错（双 toast 是回归）。
 -->
 <script setup lang="ts">
@@ -21,7 +21,7 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, slugify, type I18nDict } from '~~/composables/useAdminI18n'
+import { getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -51,8 +51,7 @@ const form = reactive<{
   icon: ''
 })
 
-/** 后端 slug 校验 ^[a-z0-9-]+$；slugify 可能保留中文，仅当结果合法才自动填充，否则留空由后端按中文名生成 */
-const SLUG_PATTERN = /^[a-z0-9-]+$/
+/** slugify 结果与用户手填 slug 统一用 CONTENT_SLUG_PATTERN 校验（与后端同口径，允许中文） */
 let slugManualEdit = false as boolean
 watch(
   () => form.name,
@@ -60,7 +59,7 @@ watch(
     const nameStr = getLocalizedStr(val)
     if (!slugManualEdit && nameStr) {
       const s = slugify(nameStr)
-      form.slug = SLUG_PATTERN.test(s) ? s : ''
+      form.slug = CONTENT_SLUG_PATTERN.test(s) ? s : ''
     }
   },
   { deep: true }
@@ -120,8 +119,8 @@ const save = async () => {
     toast.error('请输入分类名称')
     return
   }
-  if (form.slug && !SLUG_PATTERN.test(form.slug)) {
-    toast.error('Slug 只能包含小写字母、数字和连字符（-）')
+  if (form.slug && !CONTENT_SLUG_PATTERN.test(form.slug)) {
+    toast.error('Slug 只能包含小写字母、数字、下划线、中文和连字符（-）')
     return
   }
   if (form.color && !/^#[0-9a-fA-F]{6}$/.test(form.color)) {
