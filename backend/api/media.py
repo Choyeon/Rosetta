@@ -86,6 +86,30 @@ def _resolve_media_file_path(stored: str | None) -> Path:
     return candidate
 
 
+async def _delete_media_derivatives(media: Media) -> list[str]:
+    """删除 Media.sizes 记录的派生档（thumbnail/medium/large 等变体）。
+
+    删除路径原先只删 media.file 原图，上传时生成的派生档永久残留成磁盘孤儿
+    （2026-09 curl 实证：DELETE 后 -large/-medium/-thumbnail 三件仍在）。
+    单项失败不阻断记录删除，返回失败 URL 列表供调用方记日志。"""
+    failed: list[str] = []
+    sizes = media.sizes if isinstance(media.sizes, dict) else {}
+    for entry in sizes.values():
+        url = entry.get("url") if isinstance(entry, dict) else None
+        if not url:
+            continue
+        try:
+            path = _resolve_media_file_path(url)
+            if await async_file_exists(path):
+                await async_delete_file(path)
+        except FileNotFoundError:
+            continue  # 外链档（远程 URL）/ 本就不存在：无需处理
+        except Exception as err:  # noqa: BLE001 - 派生档失败不得阻断记录删除
+            logger.warning("派生档删除失败（%s）：%s", url, err)
+            failed.append(str(url))
+    return failed
+
+
 # 允许的图片类型
 ALLOWED_IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
 # 流式上传块大小 64KB
@@ -1503,6 +1527,7 @@ async def batch_delete_media(
                 await async_delete_file(filepath)
         except FileNotFoundError:
             pass
+        await _delete_media_derivatives(media)
 
         # 删除数据库记录
         await db.delete(media)
@@ -1530,7 +1555,8 @@ async def batch_delete_media(
     "/library/{media_id}",
     summary="删除单个媒体",
     description=(
-        "删除单个媒体文件，同时删除数据库记录与物理文件。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "删除单个媒体文件，同时删除数据库记录、物理原图与 sizes 中的全部派生档（thumbnail/medium/large）。"
+        "需 staff 及以上权限（未登录 401，非管理员 403）。"
         "记录不存在返回 404；存储路径不落在媒体目录内时拒绝删除并返回 400（UPLOAD_PATH_TRAVERSAL）；"
         "外链记录（远程 URL）仅删数据库记录。"
     ),
@@ -1555,7 +1581,7 @@ async def delete_media_by_id(
             detail="媒体文件不存在",
         )
 
-    # 删除物理文件
+    # 删除物理文件（原图 + sizes 里的全部派生档）
     try:
         filepath = _resolve_media_file_path(media.file)
         if await async_file_exists(filepath):
@@ -1564,6 +1590,7 @@ async def delete_media_by_id(
         pass  # 外链文件：仅删数据库记录
     except HTTPException:
         raise  # 非法路径：显式拒绝，避免误删其他文件
+    await _delete_media_derivatives(media)
 
     # 删除数据库记录
     await db.delete(media)

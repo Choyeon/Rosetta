@@ -221,6 +221,83 @@ async def test_batch_delete_requires_staff(client: AsyncClient, auth_headers: di
     assert r2.status_code in (401, 403), f"普通用户批量删除必须被拒：{r2.status_code} {r2.text}"
 
 
+def _make_media_with_derivatives(tmp_path: Path, stem: str) -> tuple:
+    """在 tmp_path 下铺一套 原图+thumbnail+medium 派生档，返回 (Media, [路径])。"""
+    from backend.models.core import Media
+
+    up = tmp_path / "uploads" / "image"
+    up.mkdir(parents=True, exist_ok=True)
+    paths = [up / f"{stem}{suffix}.png" for suffix in ("", "-thumbnail", "-medium")]
+    for p in paths:
+        p.write_bytes(b"\x89PNG\r\n\x1a\n")
+    media = Media(
+        file=f"/media/uploads/image/{stem}.png",
+        filename=f"{stem}.png",
+        file_type="image",
+        file_size=8,
+        sizes={
+            "thumbnail": {
+                "url": f"/media/uploads/image/{stem}-thumbnail.png",
+                "width": 1,
+                "height": 1,
+            },
+            "medium": {"url": f"/media/uploads/image/{stem}-medium.png", "width": 1, "height": 1},
+            # 外链档必须被安全跳过而不是报错阻断记录删除
+            "remote": {"url": "https://cdn.example.com/x.png", "width": 1, "height": 1},
+        },
+    )
+    return media, paths
+
+
+@pytest.mark.asyncio
+async def test_single_delete_removes_derivative_files(
+    client: AsyncClient, staff_headers: dict, db_session, monkeypatch, tmp_path: Path
+):
+    """单删必须连 sizes 里的派生档一起清。
+
+    2026-09 curl 实证：DELETE /api/media/library/{id} 只删原图，
+    -thumbnail/-medium/-large 变体永久残留成磁盘孤儿。"""
+    from backend.api import media as media_api
+
+    monkeypatch.setattr(media_api, "MEDIA_DIR", tmp_path)
+    media, paths = _make_media_with_derivatives(tmp_path, "pic")
+    db_session.add(media)
+    await db_session.commit()
+    await db_session.refresh(media)
+
+    r = await client.delete(f"/api/media/library/{media.id}", headers=staff_headers)
+    assert r.status_code == 200, r.text
+    for p in paths:
+        assert not p.exists(), f"派生档残留：{p}"
+
+
+@pytest.mark.asyncio
+async def test_batch_delete_removes_derivative_files(
+    client: AsyncClient, staff_headers: dict, db_session, monkeypatch, tmp_path: Path
+):
+    """批删与单删同口径：原图 + 全部派生档都必须清掉。"""
+    from backend.api import media as media_api
+
+    monkeypatch.setattr(media_api, "MEDIA_DIR", tmp_path)
+    m1, p1 = _make_media_with_derivatives(tmp_path, "a")
+    m2, p2 = _make_media_with_derivatives(tmp_path, "b")
+    db_session.add_all([m1, m2])
+    await db_session.commit()
+    await db_session.refresh(m1)
+    await db_session.refresh(m2)
+
+    r = await client.request(
+        "DELETE",
+        "/api/media/library/batch",
+        headers=staff_headers,
+        json={"ids": [m1.id, m2.id]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["deleted_count"] == 2, r.text
+    for p in [*p1, *p2]:
+        assert not p.exists(), f"派生档残留：{p}"
+
+
 # ── 按文件名读取（GET /api/media/{category}/{filename}） ──────────────────────
 
 
