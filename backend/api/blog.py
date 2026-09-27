@@ -3446,12 +3446,21 @@ def generate_taxonomy_sitemap(
     return _wrap_urlset("\n".join(entries), with_image=False)
 
 
-def generate_pages_sitemap(pages: list, site_url: str) -> str:
-    """生成固定公开路由 + 独立页面（``/page/<slug>``）sitemap。"""
+def generate_pages_sitemap(
+    pages: list, site_url: str, archive_years: list[int] | None = None
+) -> str:
+    """生成固定公开路由 + 年份归档落地页 + 独立页面（``/page/<slug>``）sitemap。
+
+    ``/archive/<year>`` 是 SSR、可分享且会被索引的年份落地页（页面注释即为此口径），
+    只把 ``/archive`` 总览提交给爬虫会让这一级落地页失去唯一的外链发现入口——
+    年份由调用方按已发布文章的 ``published_at`` 去重给出，不存在的年份不会凭空生成 URL。
+    """
     site_url = site_url.rstrip("/")
     entries: list[str] = []
     for path, changefreq, priority in _STATIC_SITEMAP_ROUTES:
         entries.append(_sitemap_url(f"{site_url}{path}", changefreq=changefreq, priority=priority))
+    for year in archive_years or []:
+        entries.append(_sitemap_url(f"{site_url}/archive/{year}", changefreq="monthly", priority="0.4"))
     for page in pages:
         if getattr(page, "status", "published") != "published":
             continue
@@ -3592,9 +3601,21 @@ async def get_sitemap_pages(db: DB):
     """获取静态路由 / 独立页面 Sitemap XML。"""
     from backend.models.core import Page
 
+    from sqlalchemy import extract
+
+    from backend.models import Post
+
     site_url = _public_site_url()
     pages = (await db.execute(select(Page).where(Page.status == "published"))).scalars().all()
-    content = generate_pages_sitemap(pages, site_url)
+    year_rows = (
+        await db.execute(
+            select(extract("year", Post.published_at))
+            .where(Post.status == "published", Post.published_at.is_not(None))
+            .distinct()
+        )
+    ).scalars().all()
+    archive_years = sorted({int(row) for row in year_rows if row}, reverse=True)
+    content = generate_pages_sitemap(pages, site_url, archive_years=archive_years)
     return Response(
         content=content,
         media_type="application/xml",
