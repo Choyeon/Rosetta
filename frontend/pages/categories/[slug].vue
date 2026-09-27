@@ -129,6 +129,7 @@
 
 <script setup lang="ts">
 import { useAPI } from '~~/composables/useApi'
+import { useContentStatus } from '~~/composables/useContentStatus'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import { Button } from '~~/components/ui/button'
@@ -224,6 +225,8 @@ const postCount = computed<number>(() => {
 const posts = computed<CategoryPostRow[]>(() => Array.isArray(postsRaw.value?.items) ? postsRaw.value!.items! : [])
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(catError.value || postsErr.value))
+// 分类不存在时让 SSR 响应带 404（兜底 UI 不变）；判定口径见 composables/useContentStatus.ts。
+useContentStatus(catError, computed(() => !pickLocalized(catRaw.value?.name)))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const visiblePages = computed(() => {

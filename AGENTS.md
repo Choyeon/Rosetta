@@ -113,6 +113,17 @@
 的 `definePageMeta({ middleware: 'archive-year' })`，契约见 `archiveYearRoute.spec.ts`。
 附带收益：垃圾参数不会走到 `useAPI`，后端也就拿不到机会返回 422。
 
+**依赖异步数据的 404 判定**（内容详情页：文章 / 分类 / 标签 / 独立页）另有两条坑，
+实测踩过，口径见 `frontend/composables/useContentStatus.ts`：
+
+1. `useFetch / useAsyncData` 的 payload 是 Nuxt 在渲染前才 await 落值的——**setup 同步期
+   `data.value` 还是 null**，在那儿判"内容为空"会把每一个真实页面一起判成 404。判定必须
+   推迟到 `app:rendered`（`renderToString` 之后、响应发出之前，状态码还改得动）。
+2. `useRequestEvent()` 必须在 setup 同步期取好、闭包带走：异步回调里再取会拿到 `undefined`
+   （本仓未开 `nitroAsyncContext`），闸门会静默失效、页面全回 200。
+3. 只有后端明确 404、或请求成功但对象为空才改状态码；网络故障 / 5xx 一律不动——
+   把一次临时故障写成 404，搜索引擎会当成永久删除而掉索引，比 200 更难恢复。
+
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
 
 1. 组件 `setup()` 顶层禁止直接读 `window / document / localStorage / navigator / matchMedia`；必须包 `if (import.meta.client) { … }` 或 `onMounted`
@@ -339,7 +350,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 23 个 spec，247 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 24 个 spec，252 用例全绿）
 ```
 
 ### 8.3 部署
@@ -373,7 +384,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 247/247（23 个 spec 文件）
+pnpm test          # 252/252（24 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

@@ -83,6 +83,8 @@
 
 > 2026-09-28 口径：`GET /posts/recommended` 从缺口转为已接入——首页 editorial 分支在「最新文章」与 CTA 之间新增「推荐阅读」区块（`pages/index.vue` 第 5 个并行 `useAPI`，缓存键 `home:recommended:<locale>`，语言切换随其余请求一起 refresh）。三点约束：① 推荐条目先按本页已展示的 slug 去重，去重后不足 2 条整段不渲染，宁缺不凑数；② 极简主题分支按主题变体契约本就不渲染 sidebar/CTA，推荐区同样只在 editorial 分支出现，不是遗漏；③ 该端点走 `RecommendationService` 的加权算法（浏览 30%/点赞 20%/评论 15%/时间衰减 25%/标签匹配 10%），登录用户的浏览历史才启用标签匹配项，访客态退化为热度加权，因此首页对访客也始终有内容。回归见 `tests/unit/homeRecommendedSection.spec.ts`。
 
+> 2026-09-28 口径：内容详情页的「不存在」此前只渲染兜底 UI、HTTP 仍是 200，且带 swr 会被缓存成可索引的空壳（生产实例实测四类页面 × 不存在 slug 全 200，而后端对这些路径明确回 404）。新增 `composables/useContentStatus.ts`，在 `app:rendered` 时点把真实 404 写回 SSR 响应，四类详情页（`pages/posts/[slug] · categories/[slug] · tags/[slug] · page/[slug]`）全部接线；网络故障与 5xx 不改状态码（临时故障判成永久删除会掉索引）。两条时序约束（payload 落值前判定=全站误判 404；异步回调里取 event=闸门静默失效）记在 AGENTS §2.3.2，回归见 `tests/unit/contentNotFoundStatus.spec.ts`。残留观感项：这类 404 页的 `<title>` 仍由 slug 人性化生成，WordPress 是「页面不存在」——属 useSeo 兜底文案口径，未在本轮改动。
+
 ### users（/api/users）— 7/22 覆盖
 
 ✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`GET /users/`（用户列表，uam:405）

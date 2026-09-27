@@ -12,6 +12,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Button } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { useAPI } from '~~/composables/useApi'
+import { useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
@@ -86,6 +87,8 @@ const page = computed<PageDetail | null>(() => {
   return (r as PageDetail | null) ?? null
 })
 const loadError = computed(() => !!error.value || !page.value)
+// 独立页不存在/未发布时让 SSR 响应带 404（兜底 UI 不变）；见 composables/useContentStatus.ts。
+useContentStatus(error, computed(() => !page.value))
 
 const title = computed(() => pickLocalized(page.value?.title) || slug.value)
 

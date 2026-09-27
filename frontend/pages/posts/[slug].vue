@@ -512,6 +512,7 @@ import CommentItem from '~~/components/CommentItem.vue'
 import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
+import { useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js'
@@ -709,6 +710,9 @@ const _postFetchKey = computed(() => `post:detail:${postSlug.value}:${postFetchL
 void refreshPost
 const post = computed(() => postData.value ?? null)
 const loadError = computed(() => !!fetchError.value)
+// 后端明确 404（不存在/草稿/密码保护未授权）时，本页兜底 UI 之外还要让 SSR 响应带 404，
+// 否则不存在的文章是"可索引的 200 空壳"。判定与理由见 composables/useContentStatus.ts。
+useContentStatus(fetchError, computed(() => !post.value))
 
 const pickLocalized = (val: unknown): string => {
   if (val == null) return ''

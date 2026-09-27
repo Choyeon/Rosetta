@@ -121,6 +121,7 @@
 
 <script setup lang="ts">
 import { useAPI } from '~~/composables/useApi'
+import { useContentStatus } from '~~/composables/useContentStatus'
 import PostCard from '~~/components/PostCard.vue'
 import TagBadge from '~~/components/TagBadge.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
@@ -206,6 +207,8 @@ const postCount = computed<number>(() => {
 const posts = computed<TagPostRow[]>(() => Array.isArray(postsRaw.value?.items) ? postsRaw.value!.items! : [])
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(tagErr.value || postsErr.value))
+// 标签不存在时让 SSR 响应带 404（兜底 UI 不变）；判定口径见 composables/useContentStatus.ts。
+useContentStatus(tagErr, computed(() => !pickLocalized(tagRaw.value?.name)))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const visiblePages = computed(() => {
