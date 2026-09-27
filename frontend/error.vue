@@ -99,13 +99,13 @@ import { useI18n } from 'vue-i18n'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 
 /**
- * layout:false 必需：兜底页不得套前台 default 布局（主题装饰 / 页头页脚）。
- * ssr:false：历史动机是阻断 "ssr:false 空壳页 NUXT_E1005 → error.vue 又走 SSR
- * → 二次 fatal" 的循环；该循环的客户端掩盖层（00-escape-hatch）已拆除，
- * 且 definePageMeta 在 error.vue 中是否生效未经证实（可能本就是 no-op）。
- * 保留为保守选项——移除会改变错误页 SSR 行为，需真机验证后再决策（见拆除报告遗留项）。
+ * 注意：error.vue 位于项目根目录、不在 pages/ 下，因此 Nuxt 编译器【不会】把
+ * definePageMeta 编译掉——在这里调用它会在运行时抛 NUXT_E1007（"compiler macro
+ * cannot be called at runtime"）→ 连带触发 NUXT_E1005 app 初始化错误，每次渲染
+ * 兜底页都在控制台留下 2~3 条 error。而且它本就是 no-op：error.vue 是独立渲染、
+ * 不套 <NuxtLayout>（模板直接输出 .error-page），layout/ssr 选项无从生效。
+ * 故此处【不得】写 definePageMeta；错误页的 SSR 由出错路由与 Nuxt 内部决定。
  */
-definePageMeta({ ssr: false, layout: false })
 
 const props = defineProps<{
   error: {
