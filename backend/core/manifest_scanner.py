@@ -10,6 +10,14 @@ PROJECT_ROOT: Path = Path(__file__).resolve().parents[2]
 PLUGINS_DIR: Path = PROJECT_ROOT / "backend" / "plugins"
 THEMES_DIR: Path = PROJECT_ROOT / "frontend" / "themes"
 
+
+# 覆盖安装会把被替换的旧目录改名为 `<slug>.old.<timestamp>` 留作备份。
+# 备份目录内仍带完整清单，若不跳过，同 slug 的两份清单会在 scan 对齐时
+# 让 DB 记录被排序靠后的旧版本回写（版本/ folder 打回备份目录）。
+def _is_install_backup(name: str) -> bool:
+    return ".old." in name
+
+
 if TYPE_CHECKING:
     from backend.schemas.manifest import RosettaPluginManifest, RosettaThemeManifest
 
@@ -36,6 +44,8 @@ def scan_plugins_dir() -> list[tuple[str, RosettaPluginManifest]]:
             continue
         if entry.name.startswith(".") or entry.name.startswith("_"):
             continue
+        if _is_install_backup(entry.name):
+            continue
         mf = entry / "rosetta-plugin.json"
         data = _safe_read_json(mf)
         if data is None:
@@ -61,6 +71,8 @@ def scan_themes_dir() -> list[tuple[str, RosettaThemeManifest]]:
         if not entry.is_dir():
             continue
         if entry.name.startswith(".") or entry.name.startswith("_"):
+            continue
+        if _is_install_backup(entry.name):
             continue
         mf = entry / "rosetta-theme.json"
         data = _safe_read_json(mf)
