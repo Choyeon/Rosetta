@@ -2,15 +2,12 @@
   单年归档页（SSR）：GET /blog/archive/{year} 返回该年「月 → 文章」分组。
   与 /archive 的分工：/archive 一次拉全量分组做站内总览，本页是可被索引、可分享的
   年份落地页（WordPress date archive 口径），缓存走 nuxt.config 的 /archive/** 规则。
-  两条硬约束：
-  1. 路由参数必须是 4 位数字，非法路径在本页 throw 404，不把垃圾参数发给后端换 422；
+  三条硬约束：
+  1. 路由参数必须是 4 位数字，非法路径由 middleware/archive-year.ts 在服务端 abort，
+     不把垃圾参数发给后端换 422（闸门不放本页 setup 的原因见该中间件注释）；
   2. 日期/月份格式化必须钉死 locale + timeZone（/archive 的教训：两端时区不一致时
-     跨年分组结果不同，而 swr 缓存会把服务端那一份固化下来）。
-
-  Known gap (verified 2026-09-28 against the production build): /archive/abcd does hit this
-  page and the guard does throw, but the error page comes back with HTTP 200 instead of 404.
-  Real content is fine (/archive/2026 -> 82 KB with 2026-05..08 groups); the status code for
-  invalid years still needs a server-side guard. Not silently prettied over here.
+     跨年分组结果不同，而 swr 缓存会把服务端那一份固化下来）；
+  3. 父页必须是 pages/archive/index.vue 而非 pages/archive.vue，否则本路由永远轮不到渲染。
 -->
 <template>
   <div class="container py-16 max-w-3xl mx-auto">
@@ -135,7 +132,7 @@ import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 
-definePageMeta({ layout: 'default' })
+definePageMeta({ layout: 'default', middleware: 'archive-year' })
 
 /** GET /blog/archive/{year} 的分组项（与后端 ArchiveMonthGroup 同构，前端本地声明避免依赖 re-export） */
 interface ArchivePostItem {
@@ -157,12 +154,9 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const site = useSite()
 
-// 路由参数即年份闸门：非 4 位数字（爬虫乱拼、手改地址栏）不进请求阶段就 404。
-const rawYear = String(route.params.year ?? '')
-if (!/^\d{4}$/.test(rawYear)) {
-  throw createError({ statusCode: 404, message: 'Invalid archive year', fatal: true })
-}
-const year = Number(rawYear)
+// 年份合法性由 middleware/archive-year.ts 在进入本组件前判定并 abort，
+// 走到这里参数一定已经是 4 位数字。
+const year = Number(route.params.year)
 
 const { data: groupsData, pending: _pending } = useAPI<ArchiveMonthGroup[]>(
   `/blog/archive/${year}`,

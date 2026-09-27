@@ -4,7 +4,7 @@
  * 这组端点（/blog/archive/{year}、/blog/archive/stats）此前长期"后端就绪、前端零消费"，
  * 本测试把接入方式钉住，防止后续改动把它重新变成不可达的死路由：
  *   1. /archive 页的年份标题必须链向 /archive/{year}——没有入口的路由等于没做；
- *   2. 年页只接受 4 位数字，非法参数在本页 404，不把垃圾值发给后端换 422；
+ *   2. 年页只接受 4 位数字，非法参数由命名路由中间件 abort（页面 setup 里 throw 仍是 HTTP 200）；
  *   3. 日期渲染必须钉死时区（两端时区不一致会让 swr 缓存固化错版分组）；
  *   4. 新路由必须与 /archive 同档缓存，否则静默落回无缓存 SSR；
  *   5. 四语补齐文案键。
@@ -30,11 +30,22 @@ describe('单年归档 /archive/[year]', () => {
     expect(yearPage).toContain('/blog/archive/${year}')
   })
 
-  it('非法年份在发起请求前 404，不把垃圾参数发给后端', () => {
-    const guardAt = yearPage.indexOf('createError')
-    expect(guardAt).toBeGreaterThan(-1)
-    expect(yearPage.slice(guardAt, guardAt + 90)).toContain('404')
-    expect(guardAt).toBeLessThan(yearPage.indexOf('useAPI<'))
+  it('非法年份由路由中间件在服务端 abort，页面 setup 不自己 throw', () => {
+    // 页面 setup 里 throw createError 会渲染 error.vue，但响应仍是 HTTP 200，
+    // 且被 /archive/** 的 swr 缓存固化成一个可复用的 200 页——闸门必须在中间件。
+    const middlewarePath = resolve(ROOT, 'middleware/archive-year.ts')
+    expect(existsSync(middlewarePath)).toBe(true)
+    const middleware = readFileSync(middlewarePath, 'utf-8')
+    expect(middleware).toContain('abortNavigation')
+    expect(middleware).toContain('statusCode: 404')
+    expect(middleware).toContain('d{4}')
+    // 挂在与文件名，不进全局链
+    const metaAt = yearPage.indexOf('definePageMeta')
+    expect(metaAt).toBeGreaterThan(-1)
+    expect(yearPage.slice(metaAt, metaAt + 80)).toContain('archive-year')
+    // 页面侧只留纯解析，不再有第二套闸门
+    expect(yearPage).not.toContain('createError')
+    expect(yearPage).toContain('Number(route.params.year)')
   })
 
   it('日期格式化钉死时区，避免服务端与访客分歧被 swr 固化', () => {

@@ -102,6 +102,17 @@
 实例与反向断言见 `frontend/pages/archive/index.vue` + `frontend/pages/archive/[year].vue`
 与 `frontend/tests/unit/archiveYearRoute.spec.ts`。
 
+### 2.3.2 HTTP 状态码闸门只能放路由中间件
+
+公开页（尤其是带 `swr` 的 SEO 页）需要"这个 URL 不存在"时，**不要**在页面 `<script setup>` 里
+`throw createError({ statusCode: 404 })`：实测它会把 `error.vue` 渲染出来但**响应仍是 HTTP 200**，
+并且这个 200 会按该路由的 `swr` 被缓存成一个可复用的"正常页"——对爬虫与 SEO 等于承认页面存在。
+正确做法是命名路由中间件（不进全局链）里 `return abortNavigation(createError({ statusCode: 404, … }))`，
+这与 Nuxt 自身未命中路由的行为同轨（浏览器 `Accept: text/html` 下同样渲染 error.vue + 真 404，
+`cache-control: no-cache`）。实例见 `frontend/middleware/archive-year.ts` + `pages/archive/[year].vue`
+的 `definePageMeta({ middleware: 'archive-year' })`，契约见 `archiveYearRoute.spec.ts`。
+附带收益：垃圾参数不会走到 `useAPI`，后端也就拿不到机会返回 422。
+
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
 
 1. 组件 `setup()` 顶层禁止直接读 `window / document / localStorage / navigator / matchMedia`；必须包 `if (import.meta.client) { … }` 或 `onMounted`
