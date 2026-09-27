@@ -210,7 +210,9 @@ Rosetta/
 │  ├─ schemas/                       Pydantic v2 请求/响应模型 + i18n dict 工厂
 │  ├─ repositories/                  Repository 层（base / post / user）
 │  ├─ services/                      业务层（user_service / media_service / email_service / avatar_resolver / recommendation …）
-│  ├─ migrations/                    Alembic 版本化迁移
+│  ├─ migrations/                       Alembic 版本化迁移（4 个历史文件名含中文，git ls-files
+│  │                                 会把它们显示成带引号的八进制路径，易被误判为垃圾文件；
+│  │                                 新迁移一律 ASCII + revision 前缀）
 │  ├─ scripts/                       mock_data / auto_oobe / reset_admin_password …
 │  ├─ plugins/                       hello-rosetta / guestbook-rss / seo-toolkit
 │  └─ data/                          四语 seed_content + 市场缓存
@@ -238,6 +240,11 @@ Rosetta/
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
 ├─ dev.ps1 · dev.bat                 并发启前后端
+├─ start.ps1 · stop.bat · stop.ps1   与 dev.* 同族的服务入口/清理脚本
+├─ rosetta.json                      站点单源配置文件（backend/core/paths.py::CONFIG_FILE）；运行期生成、已 .gitignore，勿提交
+├─ media/                            上传与派生媒体的落盘目录；运行期生成、已 .gitignore
+├─ static/ · logo/                   对外静态资源与品牌图源（logo/ 已追踪，供 favicon / OG 生成参考）
+├─ design.qa.yaml                    design-review 插件的 Design QA 配置（非运行时依赖，只被 QA 工具消费）
 ├─ .env.example · .env.production · .env.docker
 ├─ pyproject.toml / uv.lock
 ├─ docker-compose.yml · Dockerfile
