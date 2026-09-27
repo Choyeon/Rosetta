@@ -8,6 +8,8 @@
   2. 日期/月份格式化必须钉死 locale + timeZone（/archive 的教训：两端时区不一致时
      跨年分组结果不同，而 swr 缓存会把服务端那一份固化下来）；
   3. 父页必须是 pages/archive/index.vue 而非 pages/archive.vue，否则本路由永远轮不到渲染。
+  4. 本文件是目录式父页 pages/archive/[year]/index.vue：下钻的月页是同级 [month].vue，
+     月份标题必须保持为链向 /archive/<year>/<mm> 的链接（断链即把后端端点变回死路由）。
 -->
 <template>
   <div class="container py-16 max-w-3xl mx-auto">
@@ -74,7 +76,12 @@
       >
         <div class="mb-4 flex items-end justify-between gap-3">
           <h2 class="font-display text-2xl font-bold tracking-tight tabular-nums">
-            {{ year }}-{{ padMonth(group.month) }}
+            <NuxtLink
+              :to="`/archive/${year}/${padMonth(group.month)}`"
+              class="transition-colors hover:text-primary"
+            >
+              {{ year }}-{{ padMonth(group.month) }}
+            </NuxtLink>
             <Badge
               variant="secondary"
               class="ml-2 text-xs font-medium"

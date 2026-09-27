@@ -15,8 +15,10 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(__dirname, '..', '..')
-const yearPagePath = resolve(ROOT, 'pages/archive/[year].vue')
+const yearPagePath = resolve(ROOT, 'pages/archive/[year]/index.vue')
 const yearPage = readFileSync(yearPagePath, 'utf-8')
+const monthPagePath = resolve(ROOT, 'pages/archive/[year]/[month].vue')
+const monthPage = readFileSync(monthPagePath, 'utf-8')
 const archivePage = readFileSync(resolve(ROOT, 'pages/archive/index.vue'), 'utf-8')
 const routeRules = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
 const NEW_KEYS = ['backToArchive', 'yearTitle', 'noYearPosts', 'statsTotal', 'statsYears']
@@ -73,5 +75,41 @@ describe('单年归档 /archive/[year]', () => {
     for (const key of NEW_KEYS) {
       expect(messages.archive?.[key], `${locale} 缺 archive.${key}`).toBeTruthy()
     }
+  })
+})
+
+describe('单月归档 /archive/[year]/[month]', () => {
+  // 后端 /blog/archive/{year}/{month} 自上线起零消费，本块钉住"有入口 + 有闸门 + 真 404"。
+  const middleware = readFileSync(resolve(ROOT, 'middleware/archive-year.ts'), 'utf-8')
+
+  it('父页是目录式，月页存在且请求按月端点', () => {
+    expect(existsSync(monthPagePath)).toBe(true)
+    expect(existsSync(resolve(ROOT, 'pages/archive/[year].vue'))).toBe(false)
+    expect(monthPage).toContain('/blog/archive/${year}/${month}')
+    expect(monthPage).toContain('middleware: ')
+    expect(monthPage.slice(monthPage.indexOf('definePageMeta'), monthPage.indexOf('definePageMeta') + 90))
+      .toContain('archive-year')
+  })
+
+  it('年页的月份标题链向月页（没有入口的路由等于没做）', () => {
+    expect(yearPage).toContain('`/archive/${year}/${padMonth(group.month)}`')
+  })
+
+  it('月份参数由中间件闸门拦下 1-12 以外与越界页，页面不自己 throw', () => {
+    expect(middleware).toContain('YEAR_MONTH')
+    expect(middleware).toContain('Invalid archive date')
+    expect(middleware).toMatch(/0\?\[1-9\]\|1\[0-2\]/)
+    // 兜底分支只能收窄到 3 位以上：写成 \d+ 会连 08 这种合法月份一起 404（实测踩过）
+    expect(middleware).toContain('\\/\\d{3,}$')
+    expect(middleware).not.toContain('\\/\\d+$')
+    expect(monthPage).not.toContain('createError(')
+  })
+
+  it('月页与年页同口径：钉时区、空数据走 useContentStatus 真 404', () => {
+    expect(monthPage).toContain('composables/useContentStatus')
+    expect(monthPage).toContain('Intl.DateTimeFormat')
+    expect(monthPage).toContain('timeZone:')
+    expect(monthPage).toContain('UTC')
+    expect(monthPage).toContain('total_pages')
   })
 })
