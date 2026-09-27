@@ -31,6 +31,8 @@ from pydantic import (
     model_validator,
 )
 
+from backend.schemas._slug import CONTENT_SLUG_PATTERN
+
 # 仅校验"格式合法"，不评判域名是否可解析 / 是否为 special-use 域名。
 # Pydantic EmailStr 默认会做 DNS 可达性与 special-use 域名（.local / example.com 等）
 # 校验，导致 UserResponse 等响应模型在序列化存储值（如 dev 环境的 .local 邮箱）时
@@ -572,7 +574,7 @@ class CategoryBase(BaseModel):
         ...,
         description="多语言分类名称，如 {'zh': '技术', 'en': 'Technology', 'ja': '技術', 'zh_Hant': '技術'}",
     )
-    slug: str | None = Field(None, max_length=100, pattern=r"^[a-z0-9-]+$")
+    slug: str | None = Field(None, max_length=100, pattern=CONTENT_SLUG_PATTERN)
     description: dict[str, str] | None = Field(None, description="多语言分类描述")
     icon: str | None = Field(None, max_length=50)
     color: str = Field(default="#3B82F6", max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -600,7 +602,7 @@ class CategoryUpdate(BaseModel):
     """分类更新模型"""
 
     name: dict[str, str] | None = None
-    slug: str | None = Field(None, max_length=100, pattern=r"^[a-z0-9-]+$")
+    slug: str | None = Field(None, max_length=100, pattern=CONTENT_SLUG_PATTERN)
     description: dict[str, str] | None = None
     icon: str | None = Field(None, max_length=50)
     color: str | None = Field(None, max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
@@ -665,7 +667,7 @@ class TagBase(BaseModel):
     """标签基础模型"""
 
     name: dict[str, str] = Field(..., description="多语言标签名称")
-    slug: str | None = Field(None, max_length=100, pattern=r"^[a-z0-9-]+$")
+    slug: str | None = Field(None, max_length=100, pattern=CONTENT_SLUG_PATTERN)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
     icon: str | None = Field(None, max_length=50)
     is_active: bool = True
@@ -741,7 +743,7 @@ class PostBase(BaseModel):
 
     title: dict[str, str] = Field(..., description="多语言文章标题")
     subtitle: dict[str, str] | None = Field(None, description="多语言副标题")
-    slug: str | None = Field(None, max_length=200, pattern=r"^[a-z0-9-]+$")
+    slug: str | None = Field(None, max_length=200, pattern=CONTENT_SLUG_PATTERN)
     source: str = Field(default="原创", max_length=50)
     source_url: str | None = Field(None, max_length=500)
     content: dict[str, str] = Field(..., description="多语言文章内容")
@@ -1236,7 +1238,7 @@ class PageBase(BaseModel):
     """页面基础模型"""
 
     title: dict[str, str] = Field(..., description="多语言页面标题")
-    slug: str = Field(..., max_length=200, pattern=r"^[a-z0-9-]+$")
+    slug: str = Field(..., max_length=200, pattern=CONTENT_SLUG_PATTERN)
     content: dict[str, str] = Field(..., description="多语言页面内容")
     status: str = Field(default="published", pattern="^(draft|published)$")
 

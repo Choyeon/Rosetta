@@ -6,6 +6,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from backend.schemas._slug import CONTENT_SLUG_PATTERN
+
 
 class PostSeriesBase(BaseModel):
     """文章系列基础模型"""
@@ -16,7 +18,7 @@ class PostSeriesBase(BaseModel):
         ...,
         min_length=1,
         max_length=100,
-        pattern=r"^[a-z0-9-]+$",
+        pattern=CONTENT_SLUG_PATTERN,
         description="唯一标识，用于 URL",
     )
     cover_image: str | None = Field(None, max_length=500, description="系列封面图 URL")
@@ -35,7 +37,7 @@ class PostSeriesUpdate(BaseModel):
 
     title: dict[str, str] | None = None
     description: dict[str, str] | None = None
-    slug: str | None = Field(None, min_length=1, max_length=100, pattern=r"^[a-z0-9-]+$")
+    slug: str | None = Field(None, min_length=1, max_length=100, pattern=CONTENT_SLUG_PATTERN)
     cover_image: str | None = Field(None, max_length=500)
     is_active: bool | None = None
     sort_order: int | None = Field(None, ge=0)
