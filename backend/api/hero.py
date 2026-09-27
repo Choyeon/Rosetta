@@ -6,18 +6,22 @@ Hero 轮播 API
 路由设计：
 - 公开接口: GET /api/hero/slides
 - 管理接口: /api/admin/hero/slides (GET/POST/PUT/DELETE/toggle)
+
+硬契约：DB 无生效轮播时的 Bing 壁纸兜底**必须**委托 `backend.api.bing.get_bing_wallpapers`
+（全站唯一一份上游抓取 + 响应缓存）。本模块不得自行 httpx 直连——历史上那样做过，
+结果是公开端点每次请求都对站外发一次最长 15s 的 HTTP，且与首页壁纸各打各的上游域名。
+兜底项用负 ID 标记，不与 DB 记录冲突。
 """
 
 from __future__ import annotations
 
 import logging
-import os as _os
-import time as _time
 from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
+from backend.api.bing import get_bing_wallpapers
 from backend.core.auth import DB, CurrentStaff
 from backend.core.partial_update import apply_partial_update
 from backend.core.site_config import get_site_config_value
@@ -33,74 +37,6 @@ from backend.utils.compat import UTC
 logger = logging.getLogger("rosetta.api.hero")
 
 router = APIRouter(tags=["Hero轮播"])
-
-BING_API_URL = "https://www.bing.com/HPImageArchive.aspx"
-_BING_FALLBACK_TTL = 3600 * 24
-_bing_last_success: list[dict] | None = None
-_bing_last_success_at: float = 0.0
-
-
-def _get_proxy() -> str | None:
-    http_proxy = _os.environ.get("HTTP_PROXY") or _os.environ.get("http_proxy")
-    https_proxy = _os.environ.get("HTTPS_PROXY") or _os.environ.get("https_proxy")
-    return https_proxy or http_proxy or None
-
-
-def _build_full_url(url: str | None, urlbase: str | None) -> str:
-    if url:
-        if url.startswith("http"):
-            return url
-        return f"https://www.bing.com{url}"
-    if urlbase:
-        return f"https://www.bing.com{urlbase}_1920x1080.jpg"
-    return ""
-
-
-async def _fetch_bing_wallpapers(n: int = 8, mkt: str = "zh-CN") -> list[dict]:
-    """拉取 Bing 壁纸，带 24h 最近一次成功 fallback。"""
-    import httpx as _httpx
-
-    global _bing_last_success, _bing_last_success_at
-
-    proxy = _get_proxy()
-    params = {"format": "js", "idx": 0, "n": max(1, min(15, int(n))), "mkt": mkt}
-    images_out: list[dict] = []
-
-    try:
-        timeout = _httpx.Timeout(15.0, connect=8.0)
-        async with _httpx.AsyncClient(timeout=timeout, proxy=proxy) as client:
-            raw = await client.get(BING_API_URL, params=params)
-            if raw.status_code != 200:
-                raise RuntimeError(f"Bing HTTP {raw.status_code}")
-            data = raw.json()
-    except Exception as exc:
-        logger.warning("Bing 壁纸拉取失败 n=%s mkt=%s: %s", n, mkt, exc)
-        now = _time.time()
-        if _bing_last_success and (now - _bing_last_success_at) < _BING_FALLBACK_TTL:
-            return list(_bing_last_success)
-        return []
-
-    raw_images = data.get("images") or []
-    for img in raw_images:
-        url = img.get("url") or ""
-        urlbase = img.get("urlbase") or ""
-        full_url = _build_full_url(url, urlbase)
-        if not full_url:
-            continue
-        images_out.append(
-            {
-                "title": img.get("title", ""),
-                "copyright": img.get("copyright", ""),
-                "copyrightlink": img.get("copyrightlink", ""),
-                "startdate": img.get("startdate", ""),
-                "enddate": img.get("enddate", ""),
-                "full_url": full_url,
-            }
-        )
-    if images_out:
-        _bing_last_success = list(images_out)
-        _bing_last_success_at = _time.time()
-    return images_out
 
 
 # ==================== 公开接口 ====================
@@ -146,15 +82,17 @@ async def list_active_hero_slides(db: DB):
     if not bing_enabled:
         return []
 
-    wallpapers = await _fetch_bing_wallpapers(n=8)
+    # 委托 Bing 壁纸共享端点：上游抓取只有一份实现，且结果进响应缓存（1h），
+    # 本站点多个消费者（首页壁纸、hero 虚拟轮播）共用同一个键。
+    wallpapers = (await get_bing_wallpapers(n=8, market="zh-CN")).images
     now_ts = datetime.now(UTC)
     virtual: list[HeroSlideResponse] = []
     for i, wp in enumerate(wallpapers):
-        full_url = wp.get("full_url") or ""
+        full_url = wp.full_url
         if not full_url:
             continue
-        title = wp.get("title") or ""
-        copyright_text = wp.get("copyright") or ""
+        title = wp.title or ""
+        copyright_text = wp.copyright or ""
         # 主标题使用 Bing 标题；副标题使用版权说明作为信息
         virtual.append(
             HeroSlideResponse(

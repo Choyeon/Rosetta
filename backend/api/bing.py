@@ -19,6 +19,7 @@ router = APIRouter(prefix="/bing", tags=["Bing壁纸"])
 
 BING_API_URL = "https://cn.bing.com/HPImageArchive.aspx"
 BING_CACHE_TTL = 3600  # 缓存 1 小时
+BING_EMPTY_CACHE_TTL = 60  # 上游不可达时的空结果短缓存（防穿透重试风暴）
 
 
 class BingWallpaperResponse(BaseModel):
@@ -175,7 +176,9 @@ async def get_bing_wallpapers(
 
     raw_images = data.get("images") or []
     if not raw_images:
-        # Bing 不可达时返回空列表，不抛 502；前端 detect 空后自动走 gradient fallback，不打断页面
+        # Bing 不可达时返回空列表，不抛 502；前端 detect 空后自动走 gradient fallback，不打断页面。
+        # 空结果同样写缓存（短 TTL）——否则上游故障期间每个访客请求都会重试一次外呼。
+        await cache.set(cache_key, {"images": []}, BING_EMPTY_CACHE_TTL)
         return BingWallpaperListResponse(images=[])
 
     items: list[BingWallpaperItem] = []

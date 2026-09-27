@@ -143,6 +143,8 @@
 
 ❌（6）：`GET /hero/slides` 与 `/admin/hero/slides` 全家桶（GET/POST/PUT/DELETE/toggle）——`GET /hero/slides` 原先只被已删除的 `useCore.ts` 名义消费、无真实调用方；后台亦无轮播管理页，前端真实缺口（首页 hero 数据当前由 settings 驱动）。
 
+> 2026-09-28 复核：hero 轮播是**与首页并行的第二套 hero**（首页真实数据源是 settings 的 `hero` 分组），补齐管理页会造出两个真相源，故**不接 UI**、维持缺口诚实。但 `GET /hero/slides` 曾在模块内自带一份 httpx 直连 Bing 的兜底抓取（独立上游域名、15s 超时、不进响应缓存），使这个公开端点在默认安装（DB 无轮播）下**每个访客请求都对站外发一次 HTTP**，且 Bing 故障时无负缓存、重试无上界。现改为委托 `backend/api/bing.py::get_bing_wallpapers`（全站唯一一份抓取 + 1h 缓存），bing 侧空结果补 60s 短缓存防穿透。回归 `tests/test_hero_bing_fetch_dedup.py`（含"hero.py 不得再出现自有抓取"的源码门禁）。
+
 ### post_series（/api）— 6/8
 
 ✅：`GET /series`（pages/series/index.vue:144）、`GET /series/{slug}`（pages/series/[slug].vue:223）、`GET/POST /admin/series`（uam:742,753）、`PUT/DELETE /admin/series/{id}`（uam:767,776）
