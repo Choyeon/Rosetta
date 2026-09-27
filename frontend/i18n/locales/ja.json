@@ -1079,7 +1079,9 @@
     },
     "desc": "[JA]:Browse everything published, organized by date",
     "posts": "[JA]:posts",
-    "noPosts": "[JA]:No archived posts yet"
+    "noPosts": "[JA]:No archived posts yet",
+    "prevPage": "前へ",
+    "nextPage": "次へ"
   },
   "stats": {
     "totalPosts": "総投稿数",

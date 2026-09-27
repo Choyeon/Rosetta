@@ -1079,7 +1079,9 @@
     },
     "desc": "[繁]:Browse everything published, organized by date",
     "posts": "[繁]:posts",
-    "noPosts": "[繁]:No archived posts yet"
+    "noPosts": "[繁]:No archived posts yet",
+    "prevPage": "上一頁",
+    "nextPage": "下一頁"
   },
   "stats": {
     "totalPosts": "文章總數",

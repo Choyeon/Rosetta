@@ -1079,7 +1079,9 @@
     },
     "desc": "按时间倒序浏览全部已发布内容",
     "posts": "篇",
-    "noPosts": "暂无归档文章"
+    "noPosts": "暂无归档文章",
+    "prevPage": "上一页",
+    "nextPage": "下一页"
   },
   "stats": {
     "totalPosts": "文章总数",

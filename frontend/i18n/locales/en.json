@@ -1079,7 +1079,9 @@
       "10": "October",
       "11": "November",
       "12": "December"
-    }
+    },
+    "prevPage": "Previous page",
+    "nextPage": "Next page"
   },
   "stats": {
     "totalPosts": "Total Posts",

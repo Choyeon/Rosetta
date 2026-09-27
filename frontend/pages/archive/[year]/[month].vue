@@ -94,9 +94,10 @@
           v-if="page > 1"
           :to="pageLink(page - 1)"
           class="inline-flex items-center gap-1 text-sm transition-colors hover:text-primary"
-          :aria-label="`${t('archive.posts')} ${page - 1}`"
+          :aria-label="`${t('archive.prevPage')} ${t('archive.posts')} ${page - 1}`"
         >
-          ←
+          <ChevronLeft class="size-4" />
+          {{ t('archive.prevPage') }}
         </NuxtLink>
         <span class="text-sm text-muted-foreground tabular-nums">
           {{ page }} / {{ totalPages }}
@@ -105,9 +106,10 @@
           v-if="page < totalPages"
           :to="pageLink(page + 1)"
           class="inline-flex items-center gap-1 text-sm transition-colors hover:text-primary"
-          :aria-label="`${t('archive.posts')} ${page + 1}`"
+          :aria-label="`${t('archive.nextPage')} ${t('archive.posts')} ${page + 1}`"
         >
-          →
+          {{ t('archive.nextPage') }}
+          <ChevronRight class="size-4" />
         </NuxtLink>
       </nav>
     </div>
@@ -115,7 +117,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, CalendarDays, Eye } from '@lucide/vue'
+import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Eye } from '@lucide/vue'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'

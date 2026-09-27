@@ -21,7 +21,7 @@ const monthPagePath = resolve(ROOT, 'pages/archive/[year]/[month].vue')
 const monthPage = readFileSync(monthPagePath, 'utf-8')
 const archivePage = readFileSync(resolve(ROOT, 'pages/archive/index.vue'), 'utf-8')
 const routeRules = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
-const NEW_KEYS = ['backToArchive', 'yearTitle', 'noYearPosts', 'statsTotal', 'statsYears']
+const NEW_KEYS = ['backToArchive', 'yearTitle', 'noYearPosts', 'statsTotal', 'statsYears', 'prevPage', 'nextPage']
 
 describe('单年归档 /archive/[year]', () => {
   it('文件存在且请求按年归档端点', () => {
@@ -112,6 +112,11 @@ describe('单月归档 /archive/[year]/[month]', () => {
     expect(monthPage).toContain('UTC')
     expect(monthPage).toContain('total_pages')
     // 分组键是 published_at，显示必须同源（只读 created_at 会让文章挂到别的月份下）
+    // 分页必须有四语文案与图标，不得只留裸箭头字符（读屏不可读）
+    expect(monthPage).toContain(`t('archive.prevPage')`)
+    expect(monthPage).toContain(`t('archive.nextPage')`)
+    expect(monthPage).toContain('ChevronLeft')
+    expect(monthPage).not.toContain('←')
     for (const src of [yearPage, monthPage]) {
       expect(src).toContain('post.published_at || post.created_at')
       expect(src).not.toContain('formatDate(post.created_at)')
