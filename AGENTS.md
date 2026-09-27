@@ -66,7 +66,7 @@
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
 5. **SEO 服务端生成**：RSS 2.0 / Sitemap / Robots 三条 Nitro Server-Route。
 6. **Bing 每日壁纸 BFF**：`frontend/server/api/bing-wallpaper.get.ts`，30m SWR cache。
-7. **Webhook 外发**：`backend/api/webhook.py` 把 hooks 总线事件投递到外部端点。事件名唯一清单是 `GET /api/webhooks/events`（= `WEBHOOK_EVENTS` = 总线 `do_action` 名），前端订阅 UI 必须消费该接口、不得自有一套命名；`main.py` startup 调 `register_webhook_listeners()` 挂接。投递请求头固定 `X-Rosetta-Event: <event.type>` + `X-Rosetta-Signature: sha256=<hmac_sha256(secret, 实际发出的 JSON 字节)>`；URL 每次发送前重过 SSRF 护栏（`core/net_guard.py` + `settings.webhook_allow_private_targets`）。`provider` 只是分类标签，签名/载荷格式对所有类型一致。密钥明文仅在 `POST /{id}/regenerate-secret` 一次性返回，`WebhookOut` 只给 `has_secret`。回归测试：`tests/test_webhook_dispatch.py`。
+7. **Webhook 外发**：`backend/api/webhook.py` 把 hooks 总线事件投递到外部端点。事件名唯一清单是 `GET /api/webhooks/events`（= `WEBHOOK_EVENTS` = 总线 `do_action` 名），前端订阅 UI 必须消费该接口、不得自有一套命名；`main.py` startup 调 `register_webhook_listeners()` 挂接。投递请求头固定 `X-Rosetta-Event: <event.type>` + `X-Rosetta-Signature: sha256=<hmac_sha256(secret, 实际发出的 JSON 字节)>`；URL 每次发送前重过 SSRF 护栏（`core/net_guard.py` + `settings.webhook_allow_private_targets`）。`provider` 只是分类标签，签名/载荷格式对所有类型一致。**任何写路径（含批量入口 `POST /blog/posts/batch-status`、`POST /admin/posts/batch`）都必须与单篇路径同构地 `do_action`**——批量分支漏发钩子的表现是「用户改用多选后 Webhook 与插件监听静默失聪」，回归见 `tests/test_post_batch_hooks.py`。密钥明文仅在 `POST /{id}/regenerate-secret` 一次性返回，`WebhookOut` 只给 `has_secret`。回归测试：`tests/test_webhook_dispatch.py`。
 
 ***
 
@@ -203,7 +203,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1065 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~87%，fail_under=45%）
+├─ tests/                            Pytest（1073 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 ~87%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -307,7 +307,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1065 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~87%）
+uv run pytest                                        # 1073 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 ~87%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 

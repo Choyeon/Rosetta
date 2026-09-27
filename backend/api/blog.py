@@ -1406,6 +1406,14 @@ async def batch_update_post_status(
         await invalidate_post_detail_cache(post.slug)
     await invalidate_cache("posts")
     await invalidate_post_aggregate_caches()
+    # 与单篇 update_post 同构发钩子：批量路径原先静默，导致 Webhook/插件监听只在
+    # 「一篇一篇改」时收到事件，改成批量就全丢。
+    for post in posts:
+        await bus.do_action("post.updated", post, current_user=current_user, db=db)
+        if post_data.status == "published":
+            await bus.do_action(
+                "post.published", post.id, post=post, current_user=current_user, db=db
+            )
 
     return BatchPostStatusResponse(
         message="文章状态已批量更新",

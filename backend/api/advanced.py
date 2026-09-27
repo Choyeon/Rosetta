@@ -19,9 +19,11 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.core.concurrency import concurrent_query
+from backend.core.plugin_bus import bus
 from backend.models.blog import Category, Comment, Post, Tag
 from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
+from backend.services.post_cache import invalidate_post_aggregate_caches
 from backend.services.post_revision import snapshot_post_revision
 from backend.utils.compat import UTC, parse_utc_date, timedelta
 from backend.utils.reading_time import compute_reading_time_from_content
@@ -405,6 +407,9 @@ async def batch_action_posts(
         )
 
     affected_count = 0
+    # 只有真正改了状态的篇才发钩子：批量发布 100 篇里 99 篇本就 published，
+    # 全发一遍会让 webhook 外发与插件监听收到一堆空事件。
+    changed_posts: list[Post] = []
     # slug 要在任何删除动作之前采集：db.delete + flush 之后再读属性会对已删行发 SELECT
     affected_slugs = [post.slug for post in posts]
 
@@ -414,12 +419,14 @@ async def batch_action_posts(
                 post.status = "published"
                 post.published_at = post.published_at or datetime.now(UTC)
                 affected_count += 1
+                changed_posts.append(post)
 
     elif request.action == "draft":
         for post in posts:
             if post.status == "published":
                 post.status = "draft"
                 affected_count += 1
+                changed_posts.append(post)
 
     elif request.action == "delete":
         for post in posts:
@@ -524,6 +531,22 @@ async def batch_action_posts(
     # 逐 slug/语言的 post:{slug}:{lang}，两层都要清，否则转草稿/删除的文章会继续对外可见。
     await invalidate_cache("posts")
     await invalidate_post_detail_cache(*affected_slugs)
+    # 聚合缓存（归档/分类计数/首页统计）同属读侧：单篇路径在 blog.py 里都会清，
+    # 批量路径漏一次就会让「批量删除后归档页仍列出该篇」这类陈旧读继续存在。
+    await invalidate_post_aggregate_caches()
+
+    # 与单篇写路径同构地发钩子，否则「批量删除/批量发布」对 Webhook 与插件监听完全静默
+    # （单篇路径一直在发，用户从逐篇改成批量的瞬间外发就断了）。
+    event_posts = changed_posts if request.action in ("publish", "draft") else posts
+    for post in event_posts:
+        if request.action == "delete":
+            await bus.do_action("post.deleted", post, current_user=current_user, db=db)
+            continue
+        await bus.do_action("post.updated", post, current_user=current_user, db=db)
+        if request.action == "publish":
+            await bus.do_action(
+                "post.published", post.id, post=post, current_user=current_user, db=db
+            )
 
     return {
         "success": True,
