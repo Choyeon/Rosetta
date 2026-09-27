@@ -929,8 +929,13 @@ async def get_site_config(db: DB):
         oobe_kwargs.update(_sidebar_dict_to_flat(default_sidebar))
         return SiteConfigResponse(**oobe_kwargs)
 
-    # 合并 settings_groups 表中 17 组 JSON（admin 编辑保存的）进入 /api/config 返回值。
-    # 优先级：site_configs 扁平 key → settings_groups JSON（覆盖/补充） → 环境 fallback
+    # 合并 17 组设置 JSON 进入 /api/config 返回值。分组不是独立的表：
+    # 它们是 site_configs 表里 key 为小写分组名（basic/seo/footer/...）的整段 JSON 行，
+    # 由 PATCH /api/settings/{group} 写入（见 api/settings_groups.py::_save_group）。
+    # 优先级：site_configs 扁平 UPPERCASE key → 分组 JSON（覆盖/补充） → 环境 fallback。
+    # 注意覆写是无条件的：分组行一旦存在（前台设置页保存过一次即存在），其键值即权威，
+    # 包括空串——如 basic.icp_number="" 会把扁平 ICP_NUMBER 的写入覆写成 null。
+    # POST /api/admin/settings 只写扁平面，因此与分组键交集的项须走分组接口才可见。
     def _apply_settings_groups(cfg_base: dict[str, Any]) -> dict[str, Any]:
         import json as _json_
 
@@ -2202,6 +2207,11 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
         '省略某字段表示不改它；**显式传 null 表示清空该项，落库为空串**（不是字符串 "None"）。'
         "布尔项统一以小写 'true'/'false' 存储，与读取侧 `.lower()=='true'` 对齐；"
         "整数/URL 等按其字符串形式入库。"
+        "注意读写面：本端点只写 site_configs 的扁平 UPPERCASE 键；"
+        "basic/seo/footer/appearance 分组 JSON（同行小写键，经 PATCH /settings/{group} 写入）"
+        "在 /api/config 合并时优先级更高——两组键有交集的项（site_name / icp_number 等）"
+        "会被分组值覆写（分组空串同样覆写为 null）。"
+        "前台设置页已全量走分组接口，本端点为程序化/兼容入口。"
     ),
 )
 async def update_site_settings(

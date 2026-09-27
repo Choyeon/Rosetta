@@ -848,6 +848,14 @@ Content-Type: application/json
 - 布尔项（`enable_*` 等）统一小写存储为 `"true"` / `"false"`，与读取侧 `.lower()=='true'` 对齐。
 - 整数 / 字符串按其字符串形式入库；全部写完后失效 `site_config` 缓存并后台预热。
 
+**读写面（双存储键，务必注意）**：本端点只写 `site_configs` 的扁平 UPPERCASE 键（如 `ICP_NUMBER`）。
+17 个设置分组（`basic` / `seo` / `footer` / `appearance` 等）并不是独立的表，而是同一张
+`site_configs` 里 key 为小写分组名的整段 JSON 行，由 `PATCH /api/settings/{group}` 写入。
+`GET /api/config` 合并时**分组 JSON 优先于扁平键且覆写无条件**——`basic.icp_number=""`
+会把刚写入的扁平 `ICP_NUMBER` 覆写成 `null`。因此与分组键有交集的项
+（site_name / site_description / icp_number / footer 系列等）**必须走分组接口才会出现在
+`/api/config`**；前台设置页已全量使用分组接口，本端点面向程序化 / 兼容场景。
+
 ---
 
 ## 媒体 API (`/api/media`)
