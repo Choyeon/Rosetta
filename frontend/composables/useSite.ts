@@ -222,6 +222,20 @@ export function useSite() {
     return base
   })
 
+  /**
+   * 「站点公告」分组（设置页 notice 组，后端 _default_notice 同构）。
+   * 读侧唯一消费者是 layouts/default.vue 的公告条——此前这个分组能存能读却没人渲染，
+   * 属于"后台配了前台不生效"的死配置；口径见 composables/useAnnouncementBar.ts 的 noticeToRow。
+   */
+  const notice = computed(() => readGroup(state.value, 'notice', {
+    enable: false,
+    type: 'info',
+    title: '',
+    content_md: '',
+    dismissible: true,
+    sticky: true
+  }))
+
   const siteTitle = computed(() => basic.value.site_name)
   const siteSubtitle = computed(() => basic.value.subtitle || seo.value.default_title)
   const siteDescription = computed(() => seo.value.default_description || basic.value.description)
@@ -332,6 +346,7 @@ export function useSite() {
     appearance,
     hero,
     footer,
+    notice,
     siteTitle,
     siteSubtitle,
     siteDescription,

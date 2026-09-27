@@ -41,7 +41,7 @@
 | seo | `/api/seo` | 9 | 3 | 2 | 4 | 56% |
 | notification | `/api/notifications` | 7 | 7 | 0 | 0 | 100% |
 | import_export | `/api/admin` | 7 | 4 | 0 | 3 | 57% |
-| announcement | `/api` | 6 | 4 | 0 | 2 | 67% |
+| announcement | `/api` | 6 | 5 | 0 | 1 | 83% |
 | messages | `/api/messages` | 6 | 0 | 0 | 6 | 0% |
 | voting | `/api/voting` | 5 | 2 | 0 | 3 | 40% |
 | shortcodes | `/api` | 5 | 0 | 0 | 5 | 0% |
@@ -133,10 +133,11 @@
 ✅：`GET /activities`（pages/activity.vue:258）、`GET/POST /admin/activities`、`PUT/DELETE /admin/activities/{id}`（uam:979–996）
 ❌（2）：`POST /activities/{id}/like`（前端未做点赞按钮——小缺口）、`PUT /admin/activities/{id}/toggle`（后台用 PUT 详情代替——重复入口）
 
-### announcement（/api）— 4/6
+### announcement（/api）— 5/6
 
-✅：`GET/POST /admin/announcements`、`PUT/DELETE /admin/announcements/{id}`（uam:930–958；后台开关以 PUT 实现，pages/admin/interaction/announcements.vue:468）
-❌（2）：`GET /announcements`（公开横幅位未接入——功能预留）、`PUT /admin/announcements/{id}/toggle`（被 PUT 详情替代——重复入口）
+✅：`GET/POST /admin/announcements`、`PUT/DELETE /admin/announcements/{id}`（uam:930–958；后台开关以 PUT 实现，pages/admin/interaction/announcements.vue:468）、`GET /announcements`（前台公告条：layouts/default.vue + composables/useAnnouncementBar.ts）
+❌（1，**重复入口**）：`PUT /admin/announcements/{id}/toggle`（被 PUT 详情替代——重复入口）
+> 2026-09-28 口径：公告条是**两个来源合一**——公告表（多条、带生效时间窗）与设置页 `notice` 分组（全站置顶单条）。后者此前属于"能存能读却无人渲染"的死配置，现由 `useSite().notice` → `noticeToRow()` 接入，`sticky=false` 时排在表格公告之后。两处正文都允许写 Markdown，而横幅是单行纯文本位，统一由 `stripInlineMarkdown()` 剥标记（不为此引入公共页 v-html）。回归见 `tests/unit/announcementBar.spec.ts`。
 
 ### hero（/api）— 0/6
 

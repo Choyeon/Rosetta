@@ -1432,7 +1432,9 @@
     "switchLanguage": "Switch language",
     "openMenu": "Open menu",
     "closeMenu": "Close menu",
-    "toggleSidebar": "Toggle sidebar"
+    "toggleSidebar": "Toggle sidebar",
+    "announcementBar": "Site announcement",
+    "closeAnnouncement": "Dismiss announcement"
   },
   "settings": {
     "title": "My Settings",

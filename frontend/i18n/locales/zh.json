@@ -1432,7 +1432,9 @@
     "switchLanguage": "切换语言",
     "openMenu": "打开菜单",
     "closeMenu": "关闭菜单",
-    "toggleSidebar": "切换侧边栏"
+    "toggleSidebar": "切换侧边栏",
+    "announcementBar": "站点公告",
+    "closeAnnouncement": "关闭公告"
   },
   "settings": {
     "title": "个人设置",

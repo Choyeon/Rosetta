@@ -1432,7 +1432,9 @@
     "switchLanguage": "言語を切り替え",
     "openMenu": "メニューを開く",
     "closeMenu": "メニューを閉じる",
-    "toggleSidebar": "サイドバーの切り替え"
+    "toggleSidebar": "サイドバーの切り替え",
+    "announcementBar": "サイトのお知らせ",
+    "closeAnnouncement": "お知らせを閉じる"
   },
   "settings": {
     "title": "個人設定",

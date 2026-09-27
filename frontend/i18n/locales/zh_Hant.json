@@ -1432,7 +1432,9 @@
     "switchLanguage": "切換語言",
     "openMenu": "開啟選單",
     "closeMenu": "關閉選單",
-    "toggleSidebar": "切換側邊欄"
+    "toggleSidebar": "切換側邊欄",
+    "announcementBar": "網站公告",
+    "closeAnnouncement": "關閉公告"
   },
   "settings": {
     "title": "個人設定",
