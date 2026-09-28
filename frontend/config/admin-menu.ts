@@ -35,6 +35,7 @@ import {
   Puzzle,
   Brush,
   BookOpen,
+  Code2,
   ArchiveRestore
 } from '@lucide/vue'
 
@@ -110,6 +111,7 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/system/settings', label: '站点设置', icon: Settings },
       { path: '/admin/system/themes', label: '主题平台', icon: Brush },
       { path: '/admin/system/plugins', label: '插件管理', icon: Puzzle },
+      { path: '/admin/system/shortcodes', label: '短代码', icon: Code2 },
       { path: '/admin/docs', label: '开发文档', icon: BookOpen },
       { path: '/admin/system/navigation', label: '导航菜单', icon: MenuIcon },
       { path: '/admin/system/friendlinks', label: '友情链接', icon: Link2 },

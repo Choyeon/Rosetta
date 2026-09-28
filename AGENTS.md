@@ -54,14 +54,14 @@
 | 缓存        | Redis 8 + Memory 双后端；分布式锁 / 预热器                                                                              | `backend/core/cache*.py` · `cache_warmer.py` · `distributed_lock.py`                      |
 | 认证        | PyJWT 2.10+ + argon2-cffi 24+ + bcrypt 5+ + cryptography 45+                                                 | `backend/core/auth.py` / `stores/auth.ts`                                                 |
 | 国际化 i18n  | 固定四语：`zh` · `en` · `ja` · `zh_Hant`（fallbackLocale=`en`）                                                     | `frontend/i18n.config.ts` · `frontend/i18n/locales/*.json` + `frontend/i18n/index.ts` 双加载 |
-| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 36 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
+| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 37 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
 | 测试        | 后端 pytest-asyncio 自动模式 + pytest-cov 45% fail\_under；前端 vitest 单测 happy-dom                                   | `tests/test_*.py` · `frontend/tests/unit/*.spec.ts`                                       |
 | CI        | GitHub Actions（`.github/workflows/ci.yml`、`frontend/.github/workflows/ci.yml`）                                          | lint + typecheck + pytest + coverage 底线                                                   |
 
 ### 1.1 已落地的扩展系统
 
 1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`；Customizer 字段在 `rosetta-theme.json` 内以 `mods_schema`（JSON Schema Draft-07）内联声明，mods 值存 SiteConfig KV `theme_mods:<slug>`。磁盘 ↔ DB 由「扫描」同步：非激活且磁盘已不存在的主题会被清为僵尸记录，激活主题升级前必须磁盘文件存在。主题皮肤完全自包含：默认主题的装饰层也在自己的 `style.css` 内（main.css 无皮肤）；无激活主题时前台回退加载默认主题（`useFrontendTheme` 的 `DEFAULT_THEME_*`），渲染路径上永远恰好一个完整主题。
-2. **插件系统**（FastAPI 侧 Hook Engine，Bus 模式）：`backend/core/plugin_loader.py`（load/unload、运行时 settings 快照）+ `backend/core/plugin_bus.py`（钩子总线）+ `backend/core/hooks.py`（do_action / add_action 原语）；启动经 `backend/core/extensions.py::bootstrap_extensions` 扫描对齐，运行时插件路由经 `core/routing_registry.py` 统一挂载，三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。短代码子系统集成点在 `core/shortcodes.py`（引擎 + `_MAX_NESTING_DEPTH` 深度闸门 + `_ALLOWED_TAGS` 输出白名单）与 `core/extensions.py`（API 方式注册的模板短代码落 KV `shortcode_templates`，启动/列表两处重放）；前端目前没有短代码管理面板，5 条 `/api/shortcodes*` 路由是「后端就绪、UI 预留」状态（见 `frontend/docs/API_COVERAGE.md`）。
+2. **插件系统**（FastAPI 侧 Hook Engine，Bus 模式）：`backend/core/plugin_loader.py`（load/unload、运行时 settings 快照）+ `backend/core/plugin_bus.py`（钩子总线）+ `backend/core/hooks.py`（do_action / add_action 原语）；启动经 `backend/core/extensions.py::bootstrap_extensions` 扫描对齐，运行时插件路由经 `core/routing_registry.py` 统一挂载，三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。短代码子系统集成点在 `core/shortcodes.py`（引擎 + `_MAX_NESTING_DEPTH` 深度闸门 + `_ALLOWED_TAGS` 输出白名单）与 `core/extensions.py`（API 方式注册的模板短代码落 KV `shortcode_templates`，启动/列表两处重放）；Admin 面板 `frontend/pages/admin/system/shortcodes.vue` 已消费其中 4 条（列表 / 管理员预览 / 注册模板 / 注销），公开口 `POST /api/shortcodes/render` 刻意不给编辑器用——预览需要上下文时走管理员口（见 `frontend/docs/API_COVERAGE.md`）。
 3. **头像代理 / 解析器**：`/api/media/avatar?src=<base64>`，白名单 302 直跳 → 非白名单流式代理 → DiceBear SVG 兜底；前端 `useResolvedAvatar`。
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
 5. **SEO 服务端生成**：RSS 2.0 / Sitemap / Robots 三条 Nitro Server-Route。
@@ -219,7 +219,7 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          65 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 36 个 admin 子页（SPA）
+│  ├─ pages/                          66 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 37 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   27 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
@@ -363,7 +363,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 29 个 spec，333 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 30 个 spec，344 用例全绿）
 ```
 
 ### 8.3 部署
@@ -404,7 +404,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 333/333（29 个 spec 文件）
+pnpm test          # 344/344（30 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

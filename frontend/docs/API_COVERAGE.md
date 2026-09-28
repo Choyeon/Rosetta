@@ -12,7 +12,7 @@
 - **路径规则**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀，故代码中 `'/admin/guestbook'` == `GET /api/admin/guestbook`
 - 覆盖率 =（✅ + 🟡）/ 后端端点总数
 
-**总计：46 个路由模块文件、351 个端点；✅ 202 + 🟡 8 = 已覆盖 210 个，未消费 141 个，覆盖率 59.8%。**
+**总计：46 个路由模块文件、351 个端点；✅ 206 + 🟡 8 = 已覆盖 214 个，未消费 137 个，覆盖率 61.0%。**
 
 > 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。
 
@@ -44,7 +44,7 @@
 | announcement | `/api` | 6 | 5 | 0 | 1 | 83% |
 | messages | `/api/messages` | 6 | 0 | 0 | 6 | 0% |
 | voting | `/api/voting` | 5 | 2 | 0 | 3 | 40% |
-| shortcodes | `/api` | 5 | 0 | 0 | 5 | 0% |
+| shortcodes | `/api` | 5 | 4 | 0 | 1 | 80% |
 | hero | `/api` | 6 | 0 | 0 | 6 | 0% |
 | admin_tools | `/api/admin`（alembic/cache） | 4 | 4 | 0 | 0 | 100% |
 | migration | `/api/admin/migration` | 4 | 4 | 0 | 0 | 100% |
@@ -65,7 +65,7 @@
 | stats | `/api/admin/stats` | 1 | 1 | 0 | 0 | 100% |
 | translate | `/api/translate` | 1 | 1 | 0 | 0 | 100% |
 | docs | `/api/docs` | 2 | 2 | 0 | 0 | 100% |
-| **合计** | — | **355** | **197** | **8** | **150** | **57.7%** |
+| **合计** | — | **355** | **201** | **8** | **146** | **58.9%** |
 
 ***
 
@@ -226,7 +226,7 @@
 | messages（/api/messages） | 6 | 会话列表、未读数、历史、发送、已读、全部已读。**真实缺口**：无私信 UI（需配套用户体系完善后接入）。契约（2026-09-28 修）：`POST /send` 的参数走 JSON 请求体（`{recipient_id, content}`，正文 1–5000），不再接受 query string——正文进 URL 会被 nginx access log 明文落盘；会话列表保证「每个对端一行」且只含本人的消息；按 id 标记已读对他人消息一律 404（不再用 403 承认私信 id 存在） |
 | monitoring（/api/monitoring） | 8 | health/stats/visits/performance/db/cache/trends。刻意保留：Admin 监控面板当前由 `/admin/stats` + `/admin/performance/*` + `/admin/cache/status` 覆盖，此模块为深度诊断接口（运维经 docs/工具页直访） |
 | captcha（/api/captcha） | 2 | 图形验证码生成/校验。注册登录暂未接入（后端已支持，防滥用开关未开）——**待接入缺口** |
-| shortcodes（/api） | 5 | 渲染/注册/管理短代码。编辑器未提供短代码面板——功能预留。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
+| shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
 | toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |
 | scheduled_posts（/api） | 3 | 定时发布列表/改期/取消。前端以 `status=scheduled` + PUT 文章实现——**重复入口，建议统一** |
 | post_encryption（/api） | 4 | 文章加密设置 CRUD + 解密。**缺口**：OOBE 已有 `enable_encrypted_posts` 开关，但编辑器无加密设置 UI |
