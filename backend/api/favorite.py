@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import math
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -210,6 +210,30 @@ class FavoriteCheckResultOut(BaseModel):
     favorites: dict[str, FavoriteCheckItemOut] = Field(
         ..., description="以文章 ID 字符串为键的收藏状态映射，覆盖请求中的全部 post_ids"
     )
+
+
+# ==================== 工具函数 ====================
+
+
+def _favorite_row(favorite: Favorite) -> dict[str, Any]:
+    """收藏记录行的可序列化字典（与 ``FavoriteRecordOut`` 同键）。
+
+    原先两个 PATCH 端点直接 ``return favorite``：本仓这些端点刻意不挂
+    ``response_model``（见 AGENTS.md §7.4），FastAPI 于是把裸 ORM 实例交给
+    ``jsonable_encoder``。它对 SQLAlchemy 实例走的是**内省已加载属性**——
+    ``_sa_instance_state`` 会被正确跳过，但没落在 ``__dict__`` 里的列会**整键消失**
+    （实测：未设过 ``created_at`` 的实例编码后只剩 5 个键）。也就是说响应里有哪些键
+    取决于这一刻对象上加载了什么，而不是 ``FavoriteRecordOut`` 承诺了什么。
+    在处理器侧显式构造字典，键集才由代码决定。
+    """
+    return {
+        "id": favorite.id,
+        "user_id": favorite.user_id,
+        "post_id": favorite.post_id,
+        "folder_id": favorite.folder_id,
+        "note": favorite.note,
+        "created_at": favorite.created_at.isoformat() if favorite.created_at else None,
+    }
 
 
 # ==================== 收藏夹 API ====================
@@ -643,7 +667,7 @@ async def move_favorite_by_post(
     await db.flush()
     await db.refresh(favorite)
 
-    return favorite
+    return _favorite_row(favorite)
 
 
 @router.patch(
@@ -678,7 +702,7 @@ async def update_favorite_note_by_post(
     await db.flush()
     await db.refresh(favorite)
 
-    return favorite
+    return _favorite_row(favorite)
 
 
 @router.post(

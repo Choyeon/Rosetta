@@ -274,6 +274,93 @@ class TestFavoriteCountMatchesFilter:
         assert body["total_pages"] == 1
 
 
+class TestFavoritePatchEndpointsSerialize:
+    """两个 ``return favorite`` 的 PATCH 端点：响应键集必须由代码而不是编码器内省决定。
+
+    本仓这些端点刻意不挂 ``response_model``（见 AGENTS.md §7.4），FastAPI 会把裸 ORM
+    实例交给 ``jsonable_encoder``；它对 SQLAlchemy 走「内省已加载属性」——实测未加载的列
+    **整键消失**（``Favorite(id=1,...)`` 不设 created_at 时编码结果只有 5 个键）。
+    处理器改成显式构造字典后，下面这三例钉住 FavoriteRecordOut 承诺的键集与类型。
+    诚实记录：改动前两例也通过（handler 刚 refresh 过，全部列都在），它们防的是此后
+    再出现「响应形态取决于哪列被加载」的回归，而不是当场复现一个 500。
+    """
+
+    async def _seed(self, db_session, test_user, test_post):
+        folder = FavoriteFolder(user_id=test_user.id, name="待移入")
+        db_session.add(folder)
+        await db_session.commit()
+        await db_session.refresh(folder)
+        fav = Favorite(user_id=test_user.id, post_id=test_post.id, folder_id=None, note="初版备注")
+        db_session.add(fav)
+        await db_session.commit()
+        await db_session.refresh(fav)
+        return folder, fav
+
+    @pytest.mark.asyncio
+    async def test_move_by_post_returns_clean_json(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        folder, fav = await self._seed(db_session, test_user, test_post)
+
+        resp = await client.patch(
+            f"/api/favorites/post/{test_post.id}/folder",
+            headers=auth_headers,
+            json={"folder_id": folder.id},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "_sa_instance_state" not in body
+        # 键集必须与 FavoriteRecordOut 完全一致（多一个内部键、少一个契约键都算破契约）
+        assert set(body) == {"id", "user_id", "post_id", "folder_id", "note", "created_at"}
+        assert body["id"] == fav.id
+        assert body["user_id"] == test_user.id
+        assert body["post_id"] == test_post.id
+        assert body["folder_id"] == folder.id
+        assert body["note"] == "初版备注"
+        # created_at 必须是 ISO 字符串而不是 datetime 的时间戳数字（文档契约）
+        assert isinstance(body["created_at"], str)
+        assert body["created_at"].startswith(fav.created_at.strftime("%Y-%m-%dT"))
+
+    @pytest.mark.asyncio
+    async def test_note_by_post_returns_clean_json(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        _, fav = await self._seed(db_session, test_user, test_post)
+
+        resp = await client.patch(
+            f"/api/favorites/post/{test_post.id}/note",
+            headers=auth_headers,
+            json={"note": "改过的备注"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "_sa_instance_state" not in body
+        assert body["id"] == fav.id
+        assert body["note"] == "改过的备注"
+        assert isinstance(body["created_at"], str)
+
+    @pytest.mark.asyncio
+    async def test_move_back_to_default_clears_folder(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        """folder_id 传 null 是「移回默认收藏」，落库必须是 None 而不是 0/缺键。"""
+        folder, fav = await self._seed(db_session, test_user, test_post)
+        await client.patch(
+            f"/api/favorites/post/{test_post.id}/folder",
+            headers=auth_headers,
+            json={"folder_id": folder.id},
+        )
+        resp = await client.patch(
+            f"/api/favorites/post/{test_post.id}/folder",
+            headers=auth_headers,
+            json={"folder_id": None},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["folder_id"] is None
+        await db_session.refresh(fav)
+        assert fav.folder_id is None
+
+
 class TestErrorRateDenominator:
     @pytest.mark.asyncio
     async def test_fast_errors_do_not_inflate_rate(self, client, staff_headers, db_session):
