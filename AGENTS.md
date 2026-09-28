@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1187 passed + 3 skipped + 2 xfailed + 2 xpassed，覆盖率 68.43%（须先删 .coverage，见 §8），fail_under=45%）
+├─ tests/                            Pytest（1195 passed + 3 skipped + 2 xfailed + 2 xpassed，覆盖率 68.65%（须先删 .coverage，见 §8），fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -349,7 +349,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1187 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 68.43%）
+uv run pytest                                        # 1195 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 68.65%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
