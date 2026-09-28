@@ -31,6 +31,7 @@ router = APIRouter(tags=["投票"])
 )
 async def list_polls(
     db: DB,
+    current_user: CurrentUserOptional = None,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(12, ge=1, le=100, description="每页数量"),
     is_active: bool | None = Query(None, description="是否进行中"),
@@ -38,6 +39,8 @@ async def list_polls(
     """获取投票列表
 
     优化：批量获取投票统计数据，避免 N+1 查询
+    
+    show_results 闸门：当 poll.show_results=False 时，对非 staff/superuser 隐藏 votes_count / total_votes。
     """
     query = select(Poll).options(selectinload(Poll.choices))
 
@@ -73,16 +76,27 @@ async def list_polls(
     else:
         poll_stats = {}
 
+    is_privileged = bool(
+        current_user
+        and (
+            getattr(current_user, "is_staff", False)
+            or getattr(current_user, "is_superuser", False)
+        )
+    )
+
     items = []
     for poll in polls:
         stats = poll_stats.get(poll.id, {"total": 0, "choices": {}})
+
+        # show_results 闸门：非特权用户看不到票数
+        can_see_results = poll.show_results or is_privileged
 
         choices_data = [
             {
                 "id": choice.id,
                 "text": choice.text,
                 "order": choice.order,
-                "votes_count": stats["choices"].get(choice.id, 0),
+                "votes_count": stats["choices"].get(choice.id, 0) if can_see_results else None,
             }
             for choice in poll.choices
         ]
@@ -96,7 +110,7 @@ async def list_polls(
                 allow_multiple=poll.allow_multiple,
                 show_results=poll.show_results,
                 choices=choices_data,
-                total_votes=stats["total"],
+                total_votes=stats["total"] if can_see_results else 0,
                 created_at=poll.created_at,
             )
         )
@@ -114,9 +128,9 @@ async def list_polls(
     "/polls/{poll_id}",
     response_model=PollResponse,
     summary="投票详情",
-    description="获取投票详情和各选项票数。",
+    description="获取投票详情和各选项票数。show_results=False 时对非 staff/superuser 隐藏票数。",
 )
-async def get_poll(poll_id: int, db: DB):
+async def get_poll(poll_id: int, db: DB, current_user: CurrentUserOptional = None):
     """获取投票详情"""
     result = await db.execute(
         select(Poll).options(selectinload(Poll.choices)).where(Poll.id == poll_id)
@@ -138,12 +152,22 @@ async def get_poll(poll_id: int, db: DB):
     )
     votes_by_choice = {int(choice_id): int(count) for choice_id, count in vote_rows.all()}
 
+    # show_results 闸门：非特权用户看不到票数
+    is_privileged = bool(
+        current_user
+        and (
+            getattr(current_user, "is_staff", False)
+            or getattr(current_user, "is_superuser", False)
+        )
+    )
+    can_see_results = poll.show_results or is_privileged
+
     choices_data = [
         {
             "id": choice.id,
             "text": choice.text,
             "order": choice.order,
-            "votes_count": votes_by_choice.get(choice.id, 0),
+            "votes_count": votes_by_choice.get(choice.id, 0) if can_see_results else None,
         }
         for choice in poll.choices
     ]
@@ -156,7 +180,7 @@ async def get_poll(poll_id: int, db: DB):
         allow_multiple=poll.allow_multiple,
         show_results=poll.show_results,
         choices=choices_data,
-        total_votes=total_votes,
+        total_votes=total_votes if can_see_results else 0,
         created_at=poll.created_at,
     )
 

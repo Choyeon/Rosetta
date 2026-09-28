@@ -2252,7 +2252,7 @@ class PollChoiceResponse(BaseModel):
     id: int
     text: str
     order: int
-    votes_count: int = 0
+    votes_count: int | None = Field(None, description="票数；show_results=False 且非 staff/superuser 时为 null")
 
     model_config = {"from_attributes": True}
 
