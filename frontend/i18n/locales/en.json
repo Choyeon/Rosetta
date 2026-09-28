@@ -155,7 +155,6 @@
     "register": "Register",
     "logout": "Logout",
     "forgotPassword": "Forgot Password",
-    "forgotPasswordDisabled": "Password reset is not available yet. Please contact the administrator.",
     "resetPassword": "Reset Password",
     "rememberMe": "Remember Me",
     "noAccount": "Don't have an account?",
@@ -1531,5 +1530,22 @@
     "modeLightHint": "Always use light UI",
     "modeDark": "Dark",
     "modeDarkHint": "Always use dark UI"
+  },
+  "forgotPassword": {
+    "title": "Reset your password",
+    "desc": "Enter your username or bound email and we will send a 6-digit code; then set a new password on this page.",
+    "step1Title": "Step 1: Get the code",
+    "step2Title": "Step 2: Set a new password",
+    "fieldAccount": "Username or email",
+    "fieldCode": "6-digit code",
+    "fieldNewPassword": "New password",
+    "fieldConfirmPassword": "Confirm new password",
+    "sendCode": "Send code",
+    "codeSent": "If the account exists, a reset code has been sent to its email.",
+    "resetPassword": "Reset password",
+    "passwordReset": "Password reset. Please sign in again.",
+    "passwordMismatch": "The two passwords do not match",
+    "backToLogin": "Back to sign in",
+    "devCodeHint": "Dev-only code echo: {code} (never shown in production)"
   }
 }

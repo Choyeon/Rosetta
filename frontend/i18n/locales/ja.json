@@ -155,7 +155,6 @@
     "register": "登録",
     "logout": "ログアウト",
     "forgotPassword": "パスワードを忘れた",
-    "forgotPasswordDisabled": "パスワードリセットは未実装です。管理者にお問い合わせください。",
     "resetPassword": "パスワードをリセット",
     "rememberMe": "ログイン状態を保持",
     "noAccount": "アカウントをお持ちでない方",
@@ -1531,5 +1530,22 @@
     "modeLightHint": "常に明るい画面",
     "modeDark": "ダーク",
     "modeDarkHint": "常に暗い画面"
+  },
+  "forgotPassword": {
+    "title": "パスワードをリセット",
+    "desc": "ユーザー名または登録メールを入力すると、6 桁の確認コードが送信されます。そのコードがこのページに入力して新しいパスワードを設定してください。",
+    "step1Title": "ステップ 1：確認コードを取得",
+    "step2Title": "ステップ 2：新しいパスワードを設定",
+    "fieldAccount": "ユーザー名またはメール",
+    "fieldCode": "6 桁の確認コード",
+    "fieldNewPassword": "新しいパスワード",
+    "fieldConfirmPassword": "新しいパスワード（確認）",
+    "sendCode": "確認コードを送信",
+    "codeSent": "アカウントが存在する場合、確認コードがメールに送信されました。",
+    "resetPassword": "パスワードをリセット",
+    "passwordReset": "パスワードをリセットしました。再度ログインしてください。",
+    "passwordMismatch": "パスワードが一致しません",
+    "backToLogin": "ログインに戻る",
+    "devCodeHint": "開発環境のみのコード表示：{code}（本番では表示されません）"
   }
 }

@@ -206,6 +206,8 @@ export default defineNuxtConfig({
     '/oobe': { swr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/login': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/register': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
+    // 找回密码：与 /login 同档（敏感输入 + 提交后跳登录页，SSR 无内容价值）。
+    '/forgot-password': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/admin/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/admin': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/admin/docs/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },

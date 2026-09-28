@@ -156,7 +156,6 @@
     "register": "注册",
     "logout": "登出",
     "forgotPassword": "忘记密码",
-    "forgotPasswordDisabled": "忘记密码功能暂未开放，请联系管理员",
     "resetPassword": "重置密码",
     "rememberMe": "记住我",
     "noAccount": "还没有账号？",
@@ -1531,5 +1530,22 @@
     "modeLightHint": "始终使用亮色界面",
     "modeDark": "深色",
     "modeDarkHint": "始终使用暗色界面"
+  },
+  "forgotPassword": {
+    "title": "找回密码",
+    "desc": "輸入你的用戶名或綁定郵箱，我們會發送 6 位驗證碼；拿到驗證碼後在本頁設置新密碼。",
+    "step1Title": "第 1 步：獲取驗證碼",
+    "step2Title": "第 2 步：設置新密碼",
+    "fieldAccount": "用戶名或郵箱",
+    "fieldCode": "6 位驗證碼",
+    "fieldNewPassword": "新密碼",
+    "fieldConfirmPassword": "確認新密碼",
+    "sendCode": "發送驗證碼",
+    "codeSent": "若該賬號存在，重置驗證碼已發送至其綁定郵箱。",
+    "resetPassword": "重置密碼",
+    "passwordReset": "密碼已重置，請重新登入。",
+    "passwordMismatch": "兩次輸入的密碼不一致",
+    "backToLogin": "返回登入",
+    "devCodeHint": "開發環境回顯驗證碼：{code}（生產環境不會出現本提示）"
   }
 }

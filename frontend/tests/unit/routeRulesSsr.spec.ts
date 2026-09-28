@@ -61,6 +61,7 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
       '/admin',
       '/admin/**',
       '/admin/docs/**',
+      '/forgot-password',
       '/login',
       '/register',
       '/search/**'

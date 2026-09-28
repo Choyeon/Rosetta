@@ -104,13 +104,12 @@
             >
             <span class="text-muted-foreground">{{ t('auth.rememberMe') }}</span>
           </label>
-          <span
-            class="cursor-not-allowed select-none text-sm text-muted-foreground"
-            :title="t('auth.forgotPasswordDisabled', '忘记密码功能暂未开放，请联系管理员')"
-            aria-disabled="true"
+          <NuxtLink
+            to="/forgot-password"
+            class="text-sm text-muted-foreground transition-colors hover:text-primary"
           >
             {{ t('auth.forgotPassword') }}
-          </span>
+          </NuxtLink>
         </div>
 
         <button
@@ -333,13 +332,12 @@
                   </span>
                   <span class="text-sm text-white/80">{{ t('auth.rememberMe') }}</span>
                 </label>
-                <span
-                  class="text-sm text-white/55 cursor-not-allowed select-none"
-                  :title="t('auth.forgotPasswordDisabled', '忘记密码功能暂未开放，请联系管理员')"
-                  aria-disabled="true"
+                <NuxtLink
+                  to="/forgot-password"
+                  class="text-sm text-white/55 transition-colors hover:text-white"
                 >
                   {{ t('auth.forgotPassword') }}
-                </span>
+                </NuxtLink>
               </div>
 
               <!-- 登录按钮：白底黑字高对比，绝对可见 -->
