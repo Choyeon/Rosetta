@@ -823,6 +823,9 @@ async def get_performance_summary(
     description=(
         "需 CurrentStaff。统计**进程内内存环形缓冲**里最近 period 分钟（默认 60，上限 1440）的"
         "请求延迟分位数；缓冲不落盘，进程重启后清零，无样本时快速返回全 0（该分支不含 sample_count 键）。"
+        "错误率另算：环形缓冲只记耗时不记状态码，无法判错，故 `error_rate` / `error_count` / "
+        "`window_requests` 三个键取自 `visit_logs`（同一 period 窗口，`status_code >= 400` 计为错误，"
+        "分母为窗口内全部日志条数），口径与 `/performance/summary` 一致，单位是百分数（13.29 即 13.29%）。"
         "只读、幂等。"
     ),
     responses={
@@ -830,10 +833,13 @@ async def get_performance_summary(
     },
 )
 async def get_performance_metrics(
+    db: DB,
     current_user: CurrentStaff,
     period: int = Query(60, ge=1, le=1440, description="统计周期（分钟）"),
 ):
     """获取性能指标"""
+    from backend.models.monitoring import VisitLog
+
     latencies = _metrics.get("request_latency", [])
     timestamps = _metrics_timestamps.get("request_latency", [])
 
@@ -841,7 +847,30 @@ async def get_performance_metrics(
     now = time.time()
     cutoff = now - period * 60
 
+    # 错误率与延迟分位数**不同源**：缓冲里没有状态码，只能回落到访问日志。
+    # 这也让进程刚重启（缓冲为空）时错误率仍是真实读数，而不是伪装成 0。
     filtered_latencies = [l for l, t in zip(latencies, timestamps) if t >= cutoff]
+
+    window_start = datetime.now(UTC) - timedelta(minutes=period)
+    window_total = (
+        await db.scalar(
+            select(func.count()).select_from(VisitLog).where(VisitLog.created_at >= window_start)
+        )
+        or 0
+    )
+    error_count = (
+        await db.scalar(
+            select(func.count())
+            .select_from(VisitLog)
+            .where(VisitLog.created_at >= window_start, VisitLog.status_code >= 400)
+        )
+        or 0
+    )
+    error_stats = {
+        "error_count": error_count,
+        "window_requests": window_total,
+        "error_rate": round(error_count / max(window_total, 1) * 100, 2),
+    }
 
     if not filtered_latencies:
         return {
@@ -850,7 +879,7 @@ async def get_performance_metrics(
             "p95_latency": 0,
             "p99_latency": 0,
             "requests_per_minute": 0,
-            "error_rate": 0,
+            **error_stats,
         }
 
     # 环形缓冲里存的是秒，读数统一换算成毫秒
@@ -860,8 +889,8 @@ async def get_performance_metrics(
         "p95_latency": round(_percentile(filtered_latencies, 95) * 1000, 2),
         "p99_latency": round(_percentile(filtered_latencies, 99) * 1000, 2),
         "requests_per_minute": len(filtered_latencies) / period,
-        "error_rate": 0,
         "sample_count": len(filtered_latencies),
+        **error_stats,
     }
 
 

@@ -317,3 +317,86 @@ class TestErrorRateDenominator:
         assert h24["error_rate"] == pytest.approx(
             round(h24["error_count"] / max(h24["window_requests"], 1) * 100, 2), abs=0.01
         )
+
+
+class TestPerformanceMetricsErrorRate:
+    """``GET /api/monitoring/performance`` 的 error_rate 曾经恒为 0——环形缓冲不记状态码，
+    于是这个字段把一个"看起来像读数"的假值交给了任何消费者。修后它另取自 visit_logs。"""
+
+    @staticmethod
+    def _seed(db_session):
+        stamp = datetime.now(UTC) - timedelta(minutes=2)
+        rows = [
+            VisitLog(
+                path="/api/mixed-ok",
+                method="GET",
+                ip="127.0.0.1",
+                user_agent="pytest",
+                status_code=200,
+                response_time_ms=30,
+                created_at=stamp,
+            )
+            for _ in range(3)
+        ] + [
+            VisitLog(
+                path="/api/mixed-err",
+                method="GET",
+                ip="127.0.0.1",
+                user_agent="pytest",
+                status_code=500,
+                response_time_ms=40,
+                created_at=stamp,
+            )
+            for _ in range(1)
+        ]
+        db_session.add_all(rows)
+
+    @pytest.mark.asyncio
+    async def test_error_rate_is_measured_not_zero_filled(self, client, staff_headers, db_session):
+        self._seed(db_session)
+        await db_session.commit()
+
+        resp = await client.get(
+            "/api/monitoring/performance", headers=staff_headers, params={"period": 60}
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        data = payload.get("data", payload)
+        assert data["error_count"] >= 1
+        assert data["window_requests"] >= 4
+        assert data["error_rate"] > 0
+        assert data["error_rate"] == pytest.approx(
+            round(data["error_count"] / max(data["window_requests"], 1) * 100, 2), abs=0.01
+        )
+
+    @pytest.mark.asyncio
+    async def test_empty_latency_buffer_still_reports_errors(
+        self, client, staff_headers, db_session
+    ):
+        """进程刚重启（缓冲为空）时延迟回 0，但错误率不得跟着回 0。"""
+        import backend.api.monitoring as monitoring
+
+        self._seed(db_session)
+        await db_session.commit()
+
+        saved = dict(monitoring._metrics)
+        saved_ts = dict(monitoring._metrics_timestamps)
+        monitoring._metrics["request_latency"] = []
+        monitoring._metrics_timestamps["request_latency"] = []
+        try:
+            resp = await client.get(
+                "/api/monitoring/performance", headers=staff_headers, params={"period": 60}
+            )
+        finally:
+            monitoring._metrics.clear()
+            monitoring._metrics.update(saved)
+            monitoring._metrics_timestamps.clear()
+            monitoring._metrics_timestamps.update(saved_ts)
+
+        assert resp.status_code == 200
+        data = resp.json()
+        data = data.get("data", data)
+        assert data["avg_latency"] == 0
+        assert "sample_count" not in data
+        assert data["error_count"] >= 1
+        assert data["error_rate"] > 0
