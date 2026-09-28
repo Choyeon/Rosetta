@@ -163,17 +163,17 @@ async def test_poll_detail_votes_per_choice_matches_list(client: AsyncClient, ad
     choice_ids = [c["id"] for c in poll["choices"]]
     assert len(choice_ids) == 3
 
+    # 刻意走匿名投票：本接口对已登录用户是「每人一票」（见
+    # test_logged_in_user_cannot_vote_twice），用 admin_headers 连投就是在测旧缺陷。
     for _ in range(2):
         vote = await client.post(
             f"/api/voting/polls/{poll_id}/vote",
             json={"choice_ids": [choice_ids[0]]},
-            headers=admin_headers,
         )
         assert vote.status_code == 200, vote.text
     vote = await client.post(
         f"/api/voting/polls/{poll_id}/vote",
         json={"choice_ids": [choice_ids[1], choice_ids[2]]},
-        headers=admin_headers,
     )
     assert vote.status_code == 200, vote.text
 
@@ -189,3 +189,55 @@ async def test_poll_detail_votes_per_choice_matches_list(client: AsyncClient, ad
     listed = next(p for p in page["items"] if p["id"] == poll_id)
     assert [c["votes_count"] for c in listed["choices"]] == [2, 1, 1]
     assert listed["total_votes"] == body["total_votes"]
+
+
+async def _mk_poll(client, admin_headers):
+    create = await client.post(
+        "/api/voting/polls",
+        json={"title": "一人一票验证", "choices": ["甲", "乙"], "allow_multiple": False},
+        headers=admin_headers,
+    )
+    assert create.status_code == 201, create.text
+    body = create.json()
+    return body["id"], [c["id"] for c in body["choices"]]
+
+
+@pytest.mark.asyncio
+async def test_poll_logged_in_user_cannot_vote_twice(client: AsyncClient, admin_headers: dict):
+    """同一登录账号重复投票：原先**完全没有查重**，票数可被单账号任意拉高。"""
+    poll_id, choice_ids = await _mk_poll(client, admin_headers)
+
+    first = await client.post(
+        f"/api/voting/polls/{poll_id}/vote",
+        json={"choice_ids": [choice_ids[0]]},
+        headers=admin_headers,
+    )
+    assert first.status_code == 200, first.text
+
+    second = await client.post(
+        f"/api/voting/polls/{poll_id}/vote",
+        json={"choice_ids": [choice_ids[1]]},
+        headers=admin_headers,
+    )
+    assert second.status_code == 409, second.text
+
+    detail = await client.get(f"/api/voting/polls/{poll_id}")
+    body = detail.json()
+    assert body["total_votes"] == 1
+    assert [c["votes_count"] for c in body["choices"]] == [1, 0]
+
+
+@pytest.mark.asyncio
+async def test_poll_anonymous_voting_still_per_call(client: AsyncClient, admin_headers: dict):
+    """护栏只覆盖可识别用户：匿名没有稳定标识（ip_address 未采集），仍按次放行。"""
+    poll_id, choice_ids = await _mk_poll(client, admin_headers)
+
+    for _ in range(2):
+        vote = await client.post(
+            f"/api/voting/polls/{poll_id}/vote",
+            json={"choice_ids": [choice_ids[0]]},
+        )
+        assert vote.status_code == 200, vote.text
+
+    detail = await client.get(f"/api/voting/polls/{poll_id}")
+    assert detail.json()["total_votes"] == 2

@@ -194,7 +194,10 @@ async def create_poll(data: PollCreate, current_user: CurrentStaff, db: DB):
     "/polls/{poll_id}/vote",
     response_model=BaseResponse,
     summary="参与投票",
-    description="提交投票选择，支持匿名投票。",
+    description=(
+        "提交投票选择，支持匿名投票。**已登录用户每人一票**：重复提交返回 409。"
+        "匿名请求没有稳定标识（``ip_address`` 列存在但本路径不采集），仍按次放行。"
+    ),
 )
 async def cast_vote(
     poll_id: int,
@@ -219,6 +222,24 @@ async def cast_vote(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="投票已结束",
         )
+
+    # 已登录用户不得重复参与：原先这条路径**完全没有**查重，同一账号可以无限次提交，
+    # 每次都在 votes 表里追加行，票数统计因此可被单个用户任意拉高（votes 表上也没有
+    # (poll_id, user_id) 唯一约束，匿名票 user_id 为 NULL 更是无法用唯一约束表达）。
+    # 因此护栏只能落在写入口：匿名请求仍按现状放行（ip_address 未采集，无稳定标识可用）。
+    if current_user is not None:
+        voted = (
+            await db.execute(
+                select(Vote.id)
+                .where(Vote.poll_id == poll_id, Vote.user_id == current_user.id)
+                .limit(1)
+            )
+        ).first()
+        if voted:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="您已参与过该投票",
+            )
 
     # 检查是否多选
     if not poll.allow_multiple and len(data.choice_ids) > 1:
