@@ -699,7 +699,14 @@ class CommentService:
 
     @staticmethod
     async def like(db: AsyncSession, comment_id: int) -> int:
-        stmt = select(Comment).where(Comment.id == int(comment_id)).with_for_update()
+        stmt = (
+            select(Comment)
+            .where(
+                Comment.id == int(comment_id),
+                Comment.status == "approved",  # 只允许点赞已审核通过的评论
+            )
+            .with_for_update()
+        )
         r = await db.execute(stmt)
         c: Comment | None = r.scalars().first()
         if c is None:

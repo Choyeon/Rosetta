@@ -390,7 +390,11 @@ class GuestbookService:
     async def like(db: AsyncSession, entry_id: int) -> int:
         stmt = (
             select(GuestbookEntry)
-            .where(GuestbookEntry.id == int(entry_id), GuestbookEntry.deleted_at.is_(None))
+            .where(
+                GuestbookEntry.id == int(entry_id),
+                GuestbookEntry.deleted_at.is_(None),
+                GuestbookEntry.status == "approved",  # 只允许点赞已审核通过的留言
+            )
             .with_for_update()
         )
         r = await db.execute(stmt)
