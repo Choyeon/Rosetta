@@ -97,6 +97,13 @@ class MessageSuccessOut(BaseModel):
     success: bool = Field(True, description="操作是否成功")
 
 
+class MessageSendRequest(BaseModel):
+    """发送私信的请求体（真实校验模型，非文档声明）"""
+
+    recipient_id: int = Field(..., description="接收者用户 ID")
+    content: str = Field(..., min_length=1, max_length=5000, description="消息正文")
+
+
 @router.get(
     "/conversations",
     summary="获取会话列表",
@@ -127,10 +134,15 @@ async def get_conversations(
         PrivateMessage.recipient_id == current_user.id,
     )
 
+    # 锚点用 ``max(id)`` 而不是 ``max(created_at)``：created_at 在 SQLite 只到秒，
+    # 同秒消息会让"时间相等"命中**别人之间**的会话行（子查询里筛了我的 id，
+    # 外层 join 却没有 between_us 条件，第三方行照样能挤进来当"我的最近消息"展示），
+    # 还会让同一对端出现多行、白占 limit 名额。自增 id 天然单调，按对端取最大 id
+    # 恰好是"每对端一行且为该端最近一条"，无需再去重。
     peer_latest = (
         select(
             other_id_expr.label("other_id"),
-            func.max(PrivateMessage.created_at).label("last_message_time"),
+            func.max(PrivateMessage.id).label("last_message_id"),
         )
         .where(between_us)
         .group_by(other_id_expr)
@@ -141,14 +153,8 @@ async def get_conversations(
 
     latest_messages = (
         select(PrivateMessage)
-        .join(
-            peer_latest,
-            and_(
-                other_id_expr == peer_latest.c.other_id,
-                PrivateMessage.created_at == peer_latest.c.last_message_time,
-            ),
-        )
-        .order_by(desc(PrivateMessage.created_at))
+        .join(peer_latest, PrivateMessage.id == peer_latest.c.last_message_id)
+        .order_by(desc(PrivateMessage.created_at), desc(PrivateMessage.id))
         .offset((page - 1) * page_size)
         .limit(page_size)
     )
@@ -321,17 +327,20 @@ async def get_conversation(
     "",
     status_code=status.HTTP_201_CREATED,
     summary="发送私信",
-    description="向指定用户发送一条私信消息（需登录）。给自己发送时 400；接收者不存在时 404。",
+    description="向指定用户发送一条私信消息（需登录）。参数走 **JSON 请求体**："
+    "正文若走 query string 会整条落进 nginx 访问日志（``log_format`` 打的是完整请求行），"
+    "5000 字上限还会顶破请求头缓冲直接 414/400。给自己发送时 400；接收者不存在时 404。",
     response_model=None,
     responses={201: {"model": MessageSendOut, "description": "新建消息回显"}},
 )
 async def send_message(
+    payload: MessageSendRequest,
     db: DB,
     current_user: CurrentUser,
-    recipient_id: int = Query(..., description="接收者ID"),
-    content: str = Query(..., min_length=1, max_length=5000, description="消息内容"),
 ):
     """发送私信"""
+    recipient_id = payload.recipient_id
+    content = payload.content
     if recipient_id == current_user.id:
         raise HTTPException(status_code=400, detail="不能给自己发送私信")
 
@@ -359,8 +368,9 @@ async def send_message(
 @router.put(
     "/{message_id}/read",
     summary="标记单条消息已读",
-    description="将指定私信标记为已读（需登录）。消息不存在时 404；"
-    "当前用户不是接收者时 403。成功后该会话/全局未读数相应减少。",
+    description="将指定私信标记为已读（需登录）。消息不存在**或不属于当前用户**时一律 404——"
+    "私信 id 是连续自增的，用 403 区分「存在但非你的」等于把别人的私信存在性摊给攻击者"
+    "（收藏、通知同族同为 404）。成功后该会话/全局未读数相应减少。",
     response_model=None,
     responses={200: {"model": MessageSuccessOut, "description": "操作结果"}},
 )
@@ -371,11 +381,8 @@ async def mark_as_read(
 ):
     """标记消息为已读"""
     message = await db.get(PrivateMessage, message_id)
-    if not message:
+    if not message or message.recipient_id != current_user.id:
         raise HTTPException(status_code=404, detail="消息不存在")
-
-    if message.recipient_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权操作此消息")
 
     message.is_read = True
     await db.commit()

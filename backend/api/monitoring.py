@@ -6,13 +6,14 @@
 
 import asyncio
 import logging
+import math
 import time
 from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import cache, make_cache_key
@@ -24,6 +25,28 @@ from backend.utils.compat import UTC, timedelta
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["监控"])
+
+# 分位数按"窗口内最近 N 条带耗时的请求"计算：visit_logs 是纯追加表（下方已有 64.5 万行的实测，
+# 7 天窗口约 24 万行），全量拉进内存再排序既吃内存又在事件循环上跑长任务。
+_PERF_SAMPLE_LIMIT = 50_000
+
+
+def _percentile(values: list[float], percentile: float) -> float:
+    """线性插值分位数（与 numpy 默认 ``interpolation='linear'`` 同口径）。
+
+    刻意不引 numpy：它不在 ``pyproject.toml`` 依赖里，而旧实现是函数内 ``import numpy``，
+    于是**只要窗口里有数据就 ModuleNotFoundError → 500**（空窗口走提前返回才显得正常）。
+    """
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile / 100
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return float(ordered[lower])
+    return ordered[lower] + (ordered[upper] - ordered[lower]) * (position - lower)
+
 
 # `visit_logs` 是纯追加表（开发库实测 64.5 万行），无 `WHERE` 的 `COUNT(*)` 走不到任何索引，
 # 每次仪表盘轮询都要扫全表。两个只读端点都用它展示"累计访问"，60s 陈旧无关紧要，
@@ -194,7 +217,12 @@ class PerformanceWindowStatsOut(BaseModel):
     p99_response_time_ms: float = Field(..., description="P99 响应耗时（毫秒）")
     total_requests: int = Field(..., description="参与统计的请求条数（仅 response_time_ms > 0）")
     error_count: int = Field(..., description="状态码 >= 400 的请求条数（按窗口全量统计）")
-    error_rate: float = Field(..., description="错误率百分比，保留两位小数")
+    window_requests: int = Field(
+        ..., description="窗口内全部访问日志条数（error_rate 的分母，与 error_count 同口径）"
+    )
+    error_rate: float = Field(
+        ..., description="错误率百分比（error_count / window_requests），保留两位小数"
+    )
 
 
 class PerformanceSummaryResponse(BaseModel):
@@ -665,7 +693,7 @@ async def get_visits_summary(
     description=(
         "需 CurrentStaff。基于访问日志的 response_time_ms 计算 24 小时与 7 天窗口的均值与"
         "P50/P95/P99 分位数，并按 status_code >= 400 统计错误数与错误率。"
-        "只统计耗时大于 0 的请求，无数据时各分位回 0。只读、幂等。"
+        "只统计耗时大于 0 的请求（取窗口内最近 50000 条样本），无数据时各分位回 0。只读、幂等。"
     ),
     responses={200: {"model": PerformanceSummaryResponse, "description": "两个时间窗口的耗时统计"}},
 )
@@ -673,9 +701,7 @@ async def get_performance_summary(
     db: DB,
     current_user: CurrentStaff,
 ):
-    """获取性能概览"""
-    import numpy as np
-
+    """获取性能概览（分位数用纯 Python 实现，不依赖 numpy）"""
     from backend.models.monitoring import VisitLog
 
     now = datetime.now(UTC)
@@ -686,10 +712,13 @@ async def get_performance_summary(
     h24_logs = (
         (
             await db.execute(
-                select(VisitLog.response_time_ms).where(
+                select(VisitLog.response_time_ms)
+                .where(
                     VisitLog.created_at >= h24_ago,
                     VisitLog.response_time_ms > 0,
                 )
+                .order_by(desc(VisitLog.created_at), desc(VisitLog.id))
+                .limit(_PERF_SAMPLE_LIMIT)
             )
         )
         .scalars()
@@ -700,10 +729,13 @@ async def get_performance_summary(
     d7_logs = (
         (
             await db.execute(
-                select(VisitLog.response_time_ms).where(
+                select(VisitLog.response_time_ms)
+                .where(
                     VisitLog.created_at >= d7_ago,
                     VisitLog.response_time_ms > 0,
                 )
+                .order_by(desc(VisitLog.created_at), desc(VisitLog.id))
+                .limit(_PERF_SAMPLE_LIMIT)
             )
         )
         .scalars()
@@ -721,12 +753,11 @@ async def get_performance_summary(
                 "error_count": 0,
                 "error_rate": 0,
             }
-        arr = np.array(logs_list)
         return {
-            "avg_response_time_ms": round(float(np.mean(arr)), 2),
-            "p50_response_time_ms": round(float(np.percentile(arr, 50)), 2),
-            "p95_response_time_ms": round(float(np.percentile(arr, 95)), 2),
-            "p99_response_time_ms": round(float(np.percentile(arr, 99)), 2),
+            "avg_response_time_ms": round(sum(logs_list) / len(logs_list), 2),
+            "p50_response_time_ms": round(_percentile(logs_list, 50), 2),
+            "p95_response_time_ms": round(_percentile(logs_list, 95), 2),
+            "p99_response_time_ms": round(_percentile(logs_list, 99), 2),
             "total_requests": len(logs_list),
         }
 
@@ -754,13 +785,31 @@ async def get_performance_summary(
         or 0
     )
 
+    # 分母口径：窗口内**全部**日志条数（与 error_count 同一套 WHERE）。
+    h24_window_total = (
+        await db.scalar(
+            select(func.count()).select_from(VisitLog).where(VisitLog.created_at >= h24_ago)
+        )
+        or 0
+    )
+    d7_window_total = (
+        await db.scalar(
+            select(func.count()).select_from(VisitLog).where(VisitLog.created_at >= d7_ago)
+        )
+        or 0
+    )
+
     h24_stats = calc_stats(h24_logs)
+    h24_stats["window_requests"] = h24_window_total
     h24_stats["error_count"] = h24_errors
-    h24_stats["error_rate"] = round(h24_errors / max(h24_stats["total_requests"], 1) * 100, 2)
+    # 原先分母用的是 response_time_ms>0 的样本数，而快错误（429/401 亚毫秒回 0）
+    # 全在样本之外，分子却统计所有 >=400 的行——两处不同口径能把错误率顶过 100%。
+    h24_stats["error_rate"] = round(h24_errors / max(h24_window_total, 1) * 100, 2)
 
     d7_stats = calc_stats(d7_logs)
+    d7_stats["window_requests"] = d7_window_total
     d7_stats["error_count"] = d7_errors
-    d7_stats["error_rate"] = round(d7_errors / max(d7_stats["total_requests"], 1) * 100, 2)
+    d7_stats["error_rate"] = round(d7_errors / max(d7_window_total, 1) * 100, 2)
 
     return {
         "last_24h": h24_stats,
@@ -785,8 +834,6 @@ async def get_performance_metrics(
     period: int = Query(60, ge=1, le=1440, description="统计周期（分钟）"),
 ):
     """获取性能指标"""
-    import numpy as np
-
     latencies = _metrics.get("request_latency", [])
     timestamps = _metrics_timestamps.get("request_latency", [])
 
@@ -806,13 +853,12 @@ async def get_performance_metrics(
             "error_rate": 0,
         }
 
-    latencies_array = np.array(filtered_latencies)
-
+    # 环形缓冲里存的是秒，读数统一换算成毫秒
     return {
-        "avg_latency": float(np.mean(latencies_array) * 1000),
-        "p50_latency": float(np.percentile(latencies_array, 50) * 1000),
-        "p95_latency": float(np.percentile(latencies_array, 95) * 1000),
-        "p99_latency": float(np.percentile(latencies_array, 99) * 1000),
+        "avg_latency": round(sum(filtered_latencies) / len(filtered_latencies) * 1000, 2),
+        "p50_latency": round(_percentile(filtered_latencies, 50) * 1000, 2),
+        "p95_latency": round(_percentile(filtered_latencies, 95) * 1000, 2),
+        "p99_latency": round(_percentile(filtered_latencies, 99) * 1000, 2),
         "requests_per_minute": len(filtered_latencies) / period,
         "error_rate": 0,
         "sample_count": len(filtered_latencies),

@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, select, update
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
 from backend.core.auth import DB, CurrentUser
@@ -180,7 +180,7 @@ class FavoriteListOut(BaseModel):
     """收藏分页列表"""
 
     items: list[FavoriteItemOut] = Field(..., description="本页收藏列表，按收藏时间倒序")
-    total: int = Field(..., description="当前用户收藏总数（不受 folder_id 筛选影响）")
+    total: int = Field(..., description="符合当前筛选（含 folder_id）的收藏总数")
     page: int = Field(..., description="当前页码，从 1 开始")
     page_size: int = Field(..., description="每页条数")
     total_pages: int = Field(..., description="总页数；total 为 0 时是 0")
@@ -350,8 +350,10 @@ async def delete_favorite_folder(
             detail="收藏夹不存在",
         )
 
-    # 将收藏移到默认（folder_id = None）
-    await db.execute(select(Favorite).where(Favorite.folder_id == folder_id))
+    # 将收藏移到默认（folder_id = None）。显式 UPDATE 而不是依赖 FK 的
+    # ON DELETE SET NULL：原先这里是一条结果被丢弃的 SELECT（空操作），
+    # 行为全靠数据库 DDL 兜住，换成未建该约束的库就会级联删掉用户的收藏。
+    await db.execute(update(Favorite).where(Favorite.folder_id == folder_id).values(folder_id=None))
 
     await db.delete(folder)
     await db.flush()
@@ -366,7 +368,7 @@ async def delete_favorite_folder(
     "",
     summary="我的收藏列表",
     description="获取当前用户的收藏列表（需登录）。可按收藏夹筛选并分页；"
-    "注意 total 是当前用户全部收藏数，不受 folder_id 筛选影响。",
+    "``total`` / ``total_pages`` 与该筛选同口径。",
     response_model=None,
     responses={200: {"model": FavoriteListOut, "description": "收藏分页列表"}},
 )
@@ -380,21 +382,21 @@ async def list_favorites(
     """获取收藏列表"""
     from backend.models.blog import Post
 
+    conditions = [Favorite.user_id == current_user.id]
+    if folder_id:
+        conditions.append(Favorite.folder_id == folder_id)
+
     query = (
         select(Favorite)
-        .where(Favorite.user_id == current_user.id)
+        .where(*conditions)
         .options(selectinload(Favorite.post).selectinload(Post.category))
+        .order_by(Favorite.created_at.desc())
     )
 
-    if folder_id:
-        query = query.where(Favorite.folder_id == folder_id)
-
-    query = query.order_by(Favorite.created_at.desc())
-
-    # 顺序查询（同一会话不能并发）
-    count_query = select(func.count()).select_from(
-        select(Favorite).where(Favorite.user_id == current_user.id).subquery()
-    )
+    # 顺序查询（同一会话不能并发）。计数必须与列表同一套 WHERE：
+    # 用未筛选的总数算 total_pages 时，按收藏夹过滤会宣称还有下一页、
+    # 拉过去却是空的——分页契约（FavoriteListOut）本身就承诺 total 随筛选走。
+    count_query = select(func.count()).select_from(Favorite).where(*conditions)
 
     total, result = await concurrent_query(
         db.scalar(count_query),

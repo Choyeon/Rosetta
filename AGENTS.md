@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1137 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.79%，fail_under=45%）
+├─ tests/                            Pytest（1148 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 88.08%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -348,7 +348,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1137 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.79%）
+uv run pytest                                        # 1148 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 88.08%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -389,6 +389,9 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 - **响应缓存的载荷里不得放会话绑定的 ORM 实例。** 缓存跨请求复用，而实例属于"第一次那次请求"的会话：那次请求结束、会话 commit/close 后 `expire_on_commit` 会把它的属性全部标成过期，下一个命中缓存的请求再读任何一个字段就是 `DetachedInstanceError` → HTTP 500（实测表现：作者主页第一次正常，TTL 内刷新即报错）。要么在写缓存前 `make_transient` 摘成只读快照（见 `user_service._detach_for_cache`），要么直接存 `model_dump(mode="json")`（本仓多数接口已是后者）。同一条规则的另一面：**给后台写路径取实体的 getter 一律不能带缓存**（`get_user_by_id` 曾带 300s 缓存，六个调用点全是写操作——读属性 500、写属性落在脱离会话的对象上，接口回 200 而库里没变）。守卫见 `tests/test_author_archive_filter.py::TestCachedProfilePayloadIsReusable`。
 - **用户隐私开关只有两种语义，新增读取面必须选边并过同一道闸门。** `public_profile=False`＝这个主页对外**不存在**：主文档与它的全部子资源（`/{id}/posts`、`/{id}/comments`、`/{id}/stats`、`/username/{u}/preferences`）一律 404，判定唯一入口是 `api/users.py::_profile_is_hidden`（403/401 等于承认账号存在＝账号枚举面；把整组开关摊给匿名方也是）。`show_posts / show_comments / show_stats=False`＝**隐藏即空**：200 + 空页/全零计数，别改成 404，那是"这个人有内容但不给看"的另一回事。本人和 staff 越过两层；无偏好行按可见处理。可见性判定结果会被缓存（作者列表键 `posts:*a<username>` + Nitro swr 页面），所以写开关处必须同时 `_invalidate_author_post_caches` 与 `purge_frontend_page_cache`（见 `user_service.update_preferences`）。回归 `tests/test_author_archive_filter.py::TestHiddenProfileSubResources`。
 - **响应缓存的键必须带齐查询侧真正使用的判别位。** 凡是进了 SQL `WHERE` 的请求参数，就必须进缓存键（或让该请求跳过缓存）：`post_type` 曾"过滤但不进键"，匿名访客就能用 `?post_type=<不存在的值>` 把空列表写进首页/列表共用的键位，在 TTL 内对全站投毒。同理，**改变内容可见性的写操作（加/去访问密码、转草稿）必须显式清详情缓存**——`GET /blog/posts/{slug}` 的缓存命中在密码判定之前，不清键等于密码门在 TTL 内形同虚设（`invalidate_post_detail_cache` 的说明即此口径；`post:{slug}:{lang}` 不在 `posts` 前缀下，`invalidate_cache("posts")` 命中不了它）。同一资源族的权限档位也不得有孤立缺口（媒体库详情曾只要求登录，而列表/改/删要求 staff）。回归 `tests/test_read_surface_discriminators.py`。
+- **归属/可见性的边界条件必须写在"决定返回哪一行"的那一层。** 私信会话列表曾把 `between_us` 只放进"算每个对端最近时间"的子查询，外层用时间等值 join 取正文时没有再过滤，于是"朋友在同一秒还给陌生人发过消息"会命中我的会话行——第三方正文泄漏 + 同一对端重复成行。两条通用口径：**时间戳等值 join 不算可靠去重**（SQLite `created_at` 只到秒、PG 同事务时间戳相同，取"最新一条"要用 `max(id)` 或带 `id` 的 tiebreaker）；**分组/聚合的 WHERE 不会自动传导到下游 join**，跨用户资源族的每个出口都得重过一遍归属谓词（收藏的 `total` 同型：计数用未筛选的总数算 `total_pages`，按文件夹过滤时就宣称还有下一页、拉过去是空的）。**对象级也要守同一条**：按 id 操作他人资源一律 404，不要 403——主键连续自增时 403 是在替攻击者数"这条存在"（`PUT /messages/{id}/read` 曾回 403，通知/收藏同族本就 404）。回归 `tests/test_private_surface_boundaries.py`。
+- **WebSocket 与 query string 是两条独立的红线。** handshake 只能 `accept()` 一次（内层 manager 再 accept 会破坏 ASGI 协议）；WS 鉴权必须走与 HTTP 同轨的 `core/auth.py::validate_token`（`type=="access"` + 存在 + `is_active` + 未 `is_banned`），不能只看 token 能否解码——refresh token 与封禁账号都能凭旧实现拿到推送通道。顺带：`async def` 的注册调用漏 `await` 不会报错，只会静默不登记。用户正文/隐私字段一律走请求体，不走 query string（nginx access log 会明文落盘，且长正文撞 414）。
+- **函数体里的 `import` 只能是已声明的依赖。** `import numpy as np` 曾藏在监控聚合函数里，`pyproject.toml` 从未声明 numpy：窗口内一旦有访问日志就 `ModuleNotFoundError` → 后台性能页 500（空窗口提前 return，所以既有套件从未暴露）。同类面还有一条口径：**分位数/统计的分母必须是"窗口内全部请求数"**，只按慢请求子集算 `error_rate` 会把快速失败的 4xx 放大成虚高错误率；扫描原始日志也必须带 `order_by(desc) + limit` 上限，不能全表进内存。
 - JSON 多语言列（`title` / `content` / `excerpt` / `meta_*`）写入 Python `None` 时落库是 **JSON null 而不是 SQL NULL**（SQLAlchemy JSON 默认 `none_as_null=False`），所以 `col.is_(None)` 在 SQL 里筛不出"没有内容"的行；判定口径见 `backend/api/admin.py::_missing_i18n_json`。
 - 新 API 路径必须用 `useAPI` 或 `apiFetch` 包装，不得裸写 `$fetch`
 

@@ -100,7 +100,9 @@ class ConnectionManager:
         self.active_connections: dict[int, list[WebSocket]] = {}
 
     async def connect(self, websocket: WebSocket, user_id: int):
-        await websocket.accept()
+        # 协议层的 accept 由处理函数做一次；这里只登记连接。
+        # 再 accept 一次会让 ASGI 服务器收到第二条 ``websocket.accept`` 而抛错，
+        # 表现是「认证永远不成功」。
         if user_id not in self.active_connections:
             self.active_connections[user_id] = []
         self.active_connections[user_id].append(websocket)
@@ -400,8 +402,16 @@ async def clear_notifications(
 
 
 @router.websocket("/ws")
-async def websocket_notifications(websocket: WebSocket):
-    """WebSocket 实时通知"""
+async def websocket_notifications(websocket: WebSocket, db: DB):
+    """WebSocket 实时通知
+
+    鉴权与 HTTP 侧同口径，走 ``core.auth.validate_token`` 这唯一入口：必须是
+    ``type="access"`` 令牌，且账号存在、已激活、未封禁。原先只调 ``decode_token``，
+    等于"签名对就算通过"——长效 refresh 令牌、已封禁用户的令牌都能挂进某个用户的
+    连接表，收走推送给他的通知标题/正文/链接。
+    """
+    from backend.core.auth import validate_token
+
     await websocket.accept()
 
     user_id = None
@@ -411,24 +421,21 @@ async def websocket_notifications(websocket: WebSocket):
             data = await websocket.receive_json()
 
             if data.get("type") == "auth":
-                # 验证用户
-                from backend.core.auth import decode_token
-
                 token = data.get("token")
-                if token:
-                    payload = decode_token(token)
-                    if payload:
-                        user_id = payload.get("sub")
-                        if user_id:
-                            manager.connect(websocket, int(user_id))
-                            await websocket.send_json({"type": "auth", "status": "success"})
+                user = await validate_token(token, db) if isinstance(token, str) and token else None
+                if user is None:
+                    await websocket.send_json({"type": "auth", "status": "error"})
+                    continue
+                user_id = int(user.id)
+                await manager.connect(websocket, user_id)
+                await websocket.send_json({"type": "auth", "status": "success"})
 
             elif data.get("type") == "ping":
                 await websocket.send_json({"type": "pong"})
 
     except WebSocketDisconnect:
-        if user_id:
-            manager.disconnect(websocket, int(user_id))
+        if user_id is not None:
+            manager.disconnect(websocket, user_id)
 
 
 # ==================== 内部函数 ====================
