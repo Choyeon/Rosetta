@@ -61,7 +61,7 @@
 ### 1.1 已落地的扩展系统
 
 1. **主题系统**（WordPress 风格，2 套内建）：`frontend/themes/{editorial-wp-style,astro-paper-inspired}/`，必需 `rosetta-theme.json` + `style.css`（必须带作用域守卫）+ `screenshot.png|svg`；Customizer 字段在 `rosetta-theme.json` 内以 `mods_schema`（JSON Schema Draft-07）内联声明，mods 值存 SiteConfig KV `theme_mods:<slug>`。磁盘 ↔ DB 由「扫描」同步：非激活且磁盘已不存在的主题会被清为僵尸记录，激活主题升级前必须磁盘文件存在。主题皮肤完全自包含：默认主题的装饰层也在自己的 `style.css` 内（main.css 无皮肤）；无激活主题时前台回退加载默认主题（`useFrontendTheme` 的 `DEFAULT_THEME_*`），渲染路径上永远恰好一个完整主题。
-2. **插件系统**（FastAPI 侧 Hook Engine，Bus 模式）：`backend/core/plugin_loader.py`（load/unload、运行时 settings 快照）+ `backend/core/plugin_bus.py`（钩子总线）+ `backend/core/hooks.py`（do_action / add_action 原语）；启动经 `backend/core/extensions.py::bootstrap_extensions` 扫描对齐，运行时插件路由经 `core/routing_registry.py` 统一挂载，三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。
+2. **插件系统**（FastAPI 侧 Hook Engine，Bus 模式）：`backend/core/plugin_loader.py`（load/unload、运行时 settings 快照）+ `backend/core/plugin_bus.py`（钩子总线）+ `backend/core/hooks.py`（do_action / add_action 原语）；启动经 `backend/core/extensions.py::bootstrap_extensions` 扫描对齐，运行时插件路由经 `core/routing_registry.py` 统一挂载，三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。短代码子系统集成点在 `core/shortcodes.py`（引擎 + `_MAX_NESTING_DEPTH` 深度闸门 + `_ALLOWED_TAGS` 输出白名单）与 `core/extensions.py`（API 方式注册的模板短代码落 KV `shortcode_templates`，启动/列表两处重放）；前端目前没有短代码管理面板，5 条 `/api/shortcodes*` 路由是「后端就绪、UI 预留」状态（见 `frontend/docs/API_COVERAGE.md`）。
 3. **头像代理 / 解析器**：`/api/media/avatar?src=<base64>`，白名单 302 直跳 → 非白名单流式代理 → DiceBear SVG 兜底；前端 `useResolvedAvatar`。
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
 5. **SEO 服务端生成**：RSS 2.0 / Sitemap / Robots 三条 Nitro Server-Route。
@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1148 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 88.08%，fail_under=45%）
+├─ tests/                            Pytest（1168 passed + 3 skipped + 2 xfailed + 2 xpassed，覆盖率 68.30%（须先删 .coverage，见 §8），fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -348,9 +348,11 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1148 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 88.08%）
+uv run pytest                                        # 1168 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 68.30%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
+
+**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
 
 ### 8.2 frontend/ 目录
 
@@ -381,7 +383,7 @@ powershell -ExecutionPolicy Bypass -File deploy/windows-start.ps1  # Windows
 ```bash
 uv run python -c "from backend.main import app"    # 模块导入无错
 uv run python -m backend.migrations status         # 'head' == 当前版本
-uv run pytest                                      # 覆盖率 ≥ fail_under=45%
+uv run pytest                                      # 覆盖率 ≥ fail_under=45%（读数口径见 §8：先 rm -f .coverage）
 curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```
 
@@ -391,6 +393,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 - **响应缓存的键必须带齐查询侧真正使用的判别位。** 凡是进了 SQL `WHERE` 的请求参数，就必须进缓存键（或让该请求跳过缓存）：`post_type` 曾"过滤但不进键"，匿名访客就能用 `?post_type=<不存在的值>` 把空列表写进首页/列表共用的键位，在 TTL 内对全站投毒。同理，**改变内容可见性的写操作（加/去访问密码、转草稿）必须显式清详情缓存**——`GET /blog/posts/{slug}` 的缓存命中在密码判定之前，不清键等于密码门在 TTL 内形同虚设（`invalidate_post_detail_cache` 的说明即此口径；`post:{slug}:{lang}` 不在 `posts` 前缀下，`invalidate_cache("posts")` 命中不了它）。同一资源族的权限档位也不得有孤立缺口（媒体库详情曾只要求登录，而列表/改/删要求 staff）。回归 `tests/test_read_surface_discriminators.py`。
 - **归属/可见性的边界条件必须写在"决定返回哪一行"的那一层。** 私信会话列表曾把 `between_us` 只放进"算每个对端最近时间"的子查询，外层用时间等值 join 取正文时没有再过滤，于是"朋友在同一秒还给陌生人发过消息"会命中我的会话行——第三方正文泄漏 + 同一对端重复成行。两条通用口径：**时间戳等值 join 不算可靠去重**（SQLite `created_at` 只到秒、PG 同事务时间戳相同，取"最新一条"要用 `max(id)` 或带 `id` 的 tiebreaker）；**分组/聚合的 WHERE 不会自动传导到下游 join**，跨用户资源族的每个出口都得重过一遍归属谓词（收藏的 `total` 同型：计数用未筛选的总数算 `total_pages`，按文件夹过滤时就宣称还有下一页、拉过去是空的）。**对象级也要守同一条**：按 id 操作他人资源一律 404，不要 403——主键连续自增时 403 是在替攻击者数"这条存在"（`PUT /messages/{id}/read` 曾回 403，通知/收藏同族本就 404）。回归 `tests/test_private_surface_boundaries.py`。
 - **WebSocket 与 query string 是两条独立的红线。** handshake 只能 `accept()` 一次（内层 manager 再 accept 会破坏 ASGI 协议）；WS 鉴权必须走与 HTTP 同轨的 `core/auth.py::validate_token`（`type=="access"` + 存在 + `is_active` + 未 `is_banned`），不能只看 token 能否解码——refresh token 与封禁账号都能凭旧实现拿到推送通道。顺带：`async def` 的注册调用漏 `await` 不会报错，只会静默不登记。用户正文/隐私字段一律走请求体，不走 query string（nginx access log 会明文落盘，且长正文撞 414）。
+- **运行期可变的注册表必须持久化，公开渲染口不得接受调用方自备的上下文。** 短代码注册表是模块级内存 dict，而生产用 `--workers 4` 跑：只写进"处理这次请求的那个 worker"的注册表，下一次列表请求就可能看不到它、进程重启即全丢。口径：写入侧同时落 SiteConfig KV（`shortcode_templates`），启动侧（`bootstrap_extensions`）与读取侧（admin 列表）各重放一次，且重放必须让**插件自带的同名 tag 优先**——运营期数据覆盖代码，等于让"插件升级换了 `[tag]` 实现却不生效"无从排查。同族另三条红线：handler 必须遵循引擎调用约定 `fn(**attrs, content=, _content=, ctx=)`，签名不匹配的表现为正文里冒出 `<!-- shortcode-error -->` 注释而不是接口报错；`POST /api/shortcodes/render` 是**无鉴权公开口**，绝不能收 `context`（插件 handler 靠 ctx 读文章/用户，访客自备 ctx 就是越权渲染），唯一能带 ctx 的入口是管理员预览；纯 CPU + 无鉴权的公开口必须有专属限流规则，且**必须排在 `"/api"` catch-all 之前**（`_get_rule_for_path` 按插入顺序 `startswith` 首命中即返回，写在 catch-all 后面就是一条永远不会命中的死规则）。对不可信文本做递归展开必须有深度闸门；改注册表后必须走 `_invalidate_rendered_content`（`post:` / `posts` / `archive` + 前端页面缓存），漏清的表现是"已删除的短代码仍在旧正文里渲染"。回归 `tests/test_shortcode_registry_api.py`。
 - **函数体里的 `import` 只能是已声明的依赖。** `import numpy as np` 曾藏在监控聚合函数里，`pyproject.toml` 从未声明 numpy：窗口内一旦有访问日志就 `ModuleNotFoundError` → 后台性能页 500（空窗口提前 return，所以既有套件从未暴露）。同类面还有一条口径：**分位数/统计的分母必须是"窗口内全部请求数"**，只按慢请求子集算 `error_rate` 会把快速失败的 4xx 放大成虚高错误率；扫描原始日志也必须带 `order_by(desc) + limit` 上限，不能全表进内存。
 - JSON 多语言列（`title` / `content` / `excerpt` / `meta_*`）写入 Python `None` 时落库是 **JSON null 而不是 SQL NULL**（SQLAlchemy JSON 默认 `none_as_null=False`），所以 `col.is_(None)` 在 SQL 里筛不出"没有内容"的行；判定口径见 `backend/api/admin.py::_missing_i18n_json`。
 - 新 API 路径必须用 `useAPI` 或 `apiFetch` 包装，不得裸写 `$fetch`

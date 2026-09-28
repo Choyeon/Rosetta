@@ -749,6 +749,14 @@ DEFAULT_RATE_LIMIT_RULES = {
         window_seconds=60,
         key_prefix="upload",
     ),
+    # 未鉴权 + 纯 CPU（正则扫描并逐层重扫正文），单请求成本远高于一次普通读接口。
+    # 必须排在 "/api" 之前：_get_rule_for_path 按插入顺序 startswith 命中即返回，
+    # 放在通配项之后这条规则永远命中不了。
+    "/api/shortcodes/render": RateLimitRule(
+        requests=20,
+        window_seconds=60,
+        key_prefix="shortcode_render",
+    ),
     "/api": RateLimitRule(
         requests=100,
         window_seconds=60,

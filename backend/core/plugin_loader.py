@@ -165,16 +165,20 @@ class PluginContext:
     # ── Shortcode（Task C 中将正式提供；这里做安全桩，不抛错） ───────
 
     def register_shortcode(self, name: str, fn: Callable[..., Any]) -> None:
-        """注册短代码（Task C 正式接入 shortcodes.py 后覆盖实现）。"""
+        """注册短代码（引擎侧 ``core/shortcodes.py``）。"""
         try:
-            from backend.core.shortcodes import register_shortcode as _reg  # type: ignore
+            from backend.core.shortcodes import register_shortcode as _reg
 
             _reg(name, fn, plugin=self.slug)
-        except Exception:  # noqa: BLE001 - Task C 尚未创建时静默忽略
-            logger.debug(
-                "[PluginContext] shortcode engine 尚未就绪，占位忽略: plugin=%s shortcode=%s",
+        except Exception:  # noqa: BLE001 - 单插件注册失败不应打断其他插件
+            # 至少要是 warning：debug 级在生产日志级别下不可见，插件作者会认为
+            # "register() 没报错就是注册成功了"，而实际短代码从未进入注册表，
+            # 前台表现为"[tag] 原样出现在文章里"且无人知道为什么。
+            logger.warning(
+                "[PluginContext] shortcode 注册失败: plugin=%s shortcode=%s",
                 self.slug,
                 name,
+                exc_info=True,
             )
 
     # ── Settings（同步快照读 + 异步实时读，两条路径都不触事件循环桥接） ──

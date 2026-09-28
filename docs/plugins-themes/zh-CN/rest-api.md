@@ -206,26 +206,31 @@ curl -X PATCH -H "Authorization: Bearer <TOKEN>" \
 
 ## 4. Shortcodes API
 
-前缀：公开渲染接口挂在 `/api/shortcodes`，管理接口挂在 `/api/admin/shortcodes`；渲染接口公开可访问（带 30/min/IP 限流）。
+前缀：公开渲染接口挂在 `/api/shortcodes`，管理接口挂在 `/api/admin/shortcodes`。
+渲染接口公开可访问，但带独立限流（`/api/shortcodes/render` 每键 20 次/分钟，早于通配的 `/api` 100 次/分钟命中）。
 
 | 方法 | 路径 | 权限 | 说明 |
 | --- | --- | --- | --- |
-| POST | `/api/shortcodes/render` | 公开 | 把含短代码的文本渲染为 HTML（走 bleach 白名单） |
-| GET  | `/api/admin/shortcodes` | 管理员 | 列出所有已注册短代码及描述 |
-| POST | `/api/admin/shortcodes` | 管理员 | 预览短代码渲染结果（不落库） |
-| POST | `/api/admin/shortcodes/register` | 管理员 | 注册一个简单「字符串模板」式短代码 |
-| DELETE | `/api/admin/shortcodes/{tag}` | 管理员 | 删除 API 方式注册的短代码 |
+| POST | `/api/shortcodes/render` | 公开 | 展开文本中的短代码；**不接受** `context`（传了被忽略） |
+| GET  | `/api/admin/shortcodes` | 管理员 | 列出注册表（含归属插件与是否为可管理的模板） |
+| POST | `/api/admin/shortcodes` | 管理员 | 预览渲染结果，唯一接受 `context` 的入口 |
+| POST | `/api/admin/shortcodes/register` | 管理员 | 注册一个简单「字符串模板」式短代码（落库，重启后仍在） |
+| DELETE | `/api/admin/shortcodes/{tag}` | 管理员 | 注销一个 API 注册的模板短代码（插件自带的返回 409） |
 
-### 示例：渲染
+### 示例：注册并渲染一个模板短代码
+
+```http
+POST /api/admin/shortcodes/register
+Content-Type: application/json
+
+{ "tag": "cta", "replacement": "<a class=\"cta\" href=\"{url}\">{content}</a>", "description": "行动按钮" }
+```
 
 ```http
 POST /api/shortcodes/render
 Content-Type: application/json
 
-{
-  "content": "欢迎来到 Rosetta！[hello to=\"开发者\" /]\n\n[warning]注意：启用插件后才可见额外短代码。[/warning]",
-  "context": { "post_id": 42 }
-}
+{ "content": "欢迎来到 Rosetta！[cta url=\"/docs\"]查看文档[/cta]" }
 ```
 
 响应：
@@ -234,14 +239,31 @@ Content-Type: application/json
 {
   "success": true,
   "data": {
-    "rendered": "<p>欢迎来到 Rosetta！<p>Hello, <b>开发者</b>!</p></p>\n\n<div class=\"alert warning\">注意：启用插件后才可见额外短代码。</div>",
-    "original_length": 91,
-    "rendered_length": 176
+    "rendered": "欢迎来到 Rosetta！<a class=\"cta\" href=\"/docs\">查看文档</a>",
+    "original_length": 40,
+    "rendered_length": 49
   }
 }
 ```
 
-> 安全说明：`rendered` 已经过 bleach 白名单过滤；默认允许的标签为 `b / i / em / strong / p / br / img / a / sup / sub / code / pre / ul / ol / li / table / thead / tbody / tr / th / td / blockquote / details / summary`。
+未注册该短代码时 `[cta …][/cta]` 会原样返回；`hello` 等由插件提供的 tag 只有在对应插件启用后才会展开。
+
+> 渲染口径（务必别当成 HTML 净化器）：引擎只展开**已注册**的短代码，其余文本**原样返回、不转义不过滤**。
+> 白名单清洗只作用于 handler 的返回值（`_sanitize_output`）。
+> 净化器是 stdlib 手写的 allowlist（`backend/core/shortcodes.py` 的 `_ALLOWED_TAGS`），**没有引入 bleach**；
+> 高危标签整段剥离，`on*=`` 事件属性与 `javascript:` 协议删除，未列入白名单的标签转义为实体。
+> 成对短代码的正文递归展开，同名嵌套超过 `_MAX_NESTING_DEPTH`（32）后内层原样保留。
+> 公开正文上限 200000 字符，超限 422。
+
+### 注册表的存储与归属
+
+- 模板式短代码写入 SiteConfig KV `shortcode_templates`（`{tag: {replacement, description}}`），启动 bootstrap 与
+  `GET /api/admin/shortcodes` 之前都会重放进本进程注册表。注册表本身是进程内存，多 worker 部署下写请求只影响
+  处理它的那个进程，其余进程要到重启或下一次列表才对齐。
+- 插件在 `register()` 里自带的短代码（`plugin` 非空）不在本接口的管理范围内：`register` 同名返回 409、
+  `DELETE` 返回 409（注销后除重启外没有恢复路径）。停用插件会由 hooks 总线批量摘除其短代码。
+- 注册与注销都会失效已渲染内容缓存（`post:` / `posts` / `archive` 前缀 + 前台页面缓存），否则访客在 TTL 内
+  仍看到旧展开结果。
 
 ---
 
@@ -260,6 +282,7 @@ Content-Type: application/json
 | `PLUGIN_ALREADY_ACTIVE` | 409 | 重复激活 |
 | `THEME_ALREADY_ACTIVE` | 409 | 目标主题已是当前激活主题 |
 | `THEME_MODS_INVALID` | 422 | mods 请求体顶层不是 JSON 对象（`主题 mods 必须是 JSON 对象`）；字段级 schema 违例走 `MODS_SCHEMA_VIOLATION`（400） |
+| `SHORTCODE_PLUGIN_OWNED` | 409 | 该短代码 tag 归属插件，运行时注册/注销接口不得覆盖或摘除 |
 | `VALIDATION_ERROR` | 422 | FastAPI 请求参数校验失败；顶层 `errors[]`（`{{field, message, type}}`）列出所有字段问题 |
 
 > 统一响应中 `success=false` 且 `error_code` 为上述常量之一时，前端可直接用 `t(error_code)` 做多语言提示映射。

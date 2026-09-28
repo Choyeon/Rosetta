@@ -57,7 +57,7 @@
 
 ## 错误码清单（自动生成）
 
-本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **63 个真实存在的错误码**。
+本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **64 个真实存在的错误码**。
 
 - 出处列只列到文件级：同一个码可能出现在多个端点，具体判定看源码。
 - HTTP 列为该码在当前源码里能推断出的状态码；`—` 表示该码由 AppException 子类外的路径抛出且附近没有 `status_code=`（以调用点为准）。
@@ -163,6 +163,12 @@
 | `THEME_MODS_INVALID` | 422 | 主题 mods 必须是 JSON 对象 | `backend/core/extensions.py` |
 | `THEME_NOT_FOUND` | 404 | — | `backend/api/themes_ext.py`<br>`backend/core/extensions.py` |
 | `THEME_SLUG_REQUIRED` | — | source=local 时必须通过 JSON body 提供 slug 字段 | `backend/api/themes_ext.py` |
+
+### 短代码系统（1）
+
+| 错误码 | HTTP | 说明 | 出处 |
+| --- | --- | --- | --- |
+| `SHORTCODE_PLUGIN_OWNED` | 409 | — | `backend/api/shortcodes.py` |
 
 ### 扩展包（插件/主题）下载与解压（10）
 

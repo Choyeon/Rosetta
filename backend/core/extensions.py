@@ -122,6 +122,106 @@ async def _set_kv_json(db: AsyncSession, key: str, value: Any, description: str)
     return value
 
 
+# ── 模板式短代码持久化（管理 API 注册，见 api/shortcodes.py） ────────────────
+#
+# 注册表本身是进程内存（``core/shortcodes.py`` 的单例 dict），而生产按
+# ``--workers 4`` 起：不落库的话注册只在接请求那一个 worker 生效，重启即全丢，
+# "注册成功 → 刷新两次 → 时好时坏"。这里把它钉进 SiteConfig KV，与
+# plugin_settings / theme_mods 同一套单源存储；启动与后台列表前重放，
+# 让每个 worker 的注册表都从同一份 DB 事实出发。
+#
+# worker 之间的实时一致仍做不到（内存注册表按进程各自持有，与插件启停同限制）：
+# 写请求只影响本进程 + DB，其他进程要到下次重放（重启 / 后台列表）才对齐。
+# 所以重放点选在后台列表——管理员要的就是"我刚注册的那条现在看得见"。
+
+SHORTCODE_TEMPLATES_KEY = "shortcode_templates"
+
+
+async def get_shortcode_templates(db: AsyncSession) -> dict[str, dict[str, Any]]:
+    """读取 DB 中登记的模板式短代码：``{tag: {replacement, description}}``。"""
+    raw = await _get_kv_json(db, SHORTCODE_TEMPLATES_KEY, {})
+    if not isinstance(raw, dict):
+        logger.warning("SiteConfig %s 结构非对象，已按空清单处理", SHORTCODE_TEMPLATES_KEY)
+        return {}
+    return {
+        tag: spec
+        for tag, spec in raw.items()
+        if isinstance(tag, str)
+        and isinstance(spec, dict)
+        and isinstance(spec.get("replacement"), str)
+    }
+
+
+async def put_shortcode_template(
+    db: AsyncSession, tag: str, *, replacement: str, description: str | None
+) -> dict[str, dict[str, Any]]:
+    """写入/覆盖一个模板短代码，返回写入后的完整清单。"""
+    templates = await get_shortcode_templates(db)
+    templates[tag] = {"replacement": replacement, "description": description or ""}
+    await _set_kv_json(
+        db,
+        SHORTCODE_TEMPLATES_KEY,
+        templates,
+        description="管理 API 注册的模板式短代码（tag → 模板）",
+    )
+    return templates
+
+
+async def delete_shortcode_template(db: AsyncSession, tag: str) -> bool:
+    """从 KV 移除一个模板短代码。返回 DB 里原本是否存在。"""
+    templates = await get_shortcode_templates(db)
+    if tag not in templates:
+        return False
+    templates.pop(tag)
+    await _set_kv_json(
+        db,
+        SHORTCODE_TEMPLATES_KEY,
+        templates,
+        description="管理 API 注册的模板式短代码（tag → 模板）",
+    )
+    return True
+
+
+def apply_shortcode_templates(templates: dict[str, dict[str, Any]]) -> int:
+    """把 KV 清单重放进本进程注册表（幂等，可重复调用）。
+
+    插件自带的同名 tag 优先级更高：插件 ``register()`` 是代码，模板是运营期数据，
+    让后者覆盖前者会让"插件升级换了 [tag] 实现却不生效"这种问题无从排查。
+    """
+    from backend.core.shortcodes import (
+        list_shortcodes,
+        make_template_handler,
+        register_shortcode,
+        unregister_shortcode,
+    )
+
+    owned = {i.tag for i in list_shortcodes() if i.plugin}
+    applied = 0
+    for tag, spec in templates.items():
+        if tag in owned:
+            logger.warning("模板短代码 %s 与插件自带的同名短代码冲突，已跳过注册", tag)
+            continue
+        register_shortcode(
+            tag,
+            make_template_handler(spec["replacement"]),
+            has_paired=True,
+            description=spec.get("description") or None,
+            template=True,
+        )
+        applied += 1
+
+    # KV 已删除而本进程仍持有的模板 → 摘除，否则"删除后前台还在渲染"。
+    for info in list_shortcodes():
+        if info.template and info.tag not in templates:
+            unregister_shortcode(info.tag)
+    return applied
+
+
+async def reconcile_shortcode_templates(db: AsyncSession) -> int:
+    """DB → 本进程注册表的一次对齐（启动 bootstrap 与后台列表前调用）。"""
+    return apply_shortcode_templates(await get_shortcode_templates(db))
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # PluginManager
 # ──────────────────────────────────────────────────────────────────────────
@@ -1874,11 +1974,15 @@ async def bootstrap_extensions(
       { plugins_scanned: (added, refreshed),
         plugins_booted: (success, failed),
         themes_scanned: {added, refreshed, removed},
-        theme_active: slug | None }
+        theme_active: slug | None,
+        shortcodes_replayed: int }
     """
     p_scan = await plugin_manager.scan_local(db, site_id=site_id)
     t_scan = await theme_manager.scan_local(db, site_id=site_id)
     p_ok, p_fail = await plugin_manager.boot_activate_plugins(db, site_id=site_id)
+    # 模板式短代码重放：注册表是进程内存，插件在上面的 boot 阶段已把自己的同名
+    # tag 注册好，这里只补 API 注册的那部分（冲突的会被跳过并告警）。
+    sc_replayed = await reconcile_shortcode_templates(db)
     # Ensure there's always at least 1 active theme if candidates exist
     active = await theme_manager.get_active(db, site_id=site_id)
     if active is None:
@@ -1903,4 +2007,5 @@ async def bootstrap_extensions(
         "plugins_booted": {"success": p_ok, "failed": p_fail},
         "themes_scanned": {"added": t_scan[0], "refreshed": t_scan[1], "removed": t_scan[2]},
         "theme_active": getattr(active, "slug", None) if active else None,
+        "shortcodes_replayed": sc_replayed,
     }

@@ -26,6 +26,9 @@ Shortcode 引擎（WordPress 风格）
        高危 script/style/iframe 等被整段剥离；onxxx= 事件属性、javascript: 协议被删除。
        未列入白名单的标签被转义为实体（保留其包裹的文本，浏览器不渲染）。
     2. 未注册的短代码 **原样保留**（不丢弃用户内容，便于迁移 / 排查）。
+    3. 成对短代码的 body 递归渲染有 ``_MAX_NESTING_DEPTH`` 深度闸门；超限的 body
+       原样输出，避免构造出的深嵌套文本把渲染路径打成 RecursionError（500）。
+
 """
 
 from __future__ import annotations
@@ -58,6 +61,9 @@ class ShortcodeInfo:
     has_paired: bool = True
     plugin: str | None = None
     description: str | None = None
+    #: True = 由管理 API 注册的字符串模板（持久化在 SiteConfig KV 里，可再删可重放）；
+    #: False = 插件在 ``register()`` 里自带。两者的生命周期归属完全不同。
+    template: bool = False
 
     def __iter__(self):
         # 按 (tag, plugin) 顺序解包 → 兼容旧测试 for n, _p in list_shortcodes()
@@ -71,10 +77,23 @@ class _HandlerRecord:
     plugin: str | None = None
     has_paired: bool = True
     description: str | None = None
+    template: bool = False
 
 
 _NAME_PATTERN = r"[A-Za-z_][\w\-]*"
 _NAME_RE = re.compile(_NAME_PATTERN)
+
+# 成对短代码的 body 会递归渲染（见 _do_render_impl），递归深度由内容里的同名嵌套
+# 层数决定。公开渲染接口接受任意文本，1MB 的 ``[a][a]…[/a][/a]`` 就能把深度推到
+# RecursionError——那是渲染路径上的 500，不是"这段不渲染"。实测更糟：把闸门调到
+# 无限大后，96 层同名嵌套在数秒内把单个 pytest 进程吃到 38GB RSS（被迫中断），
+# 因为每层展开都把下一层的整段正文重抄一遍——是指数级膨胀，不是线性。
+# 超限的 body 原样保留，外层照常展开，内容不丢。32 层远超任何真实写作场景
+# （WP 根本不支持同名嵌套）。
+_MAX_NESTING_DEPTH = 32
+
+# 引擎向 handler 注入的三个保留关键字。handler 收到的其余关键字全是短代码属性。
+_RESERVED_KWARGS = ("content", "_content", "ctx")
 
 # 开标签正则： [name(attrs)(/?)]
 _OPEN_RE = re.compile(
@@ -380,6 +399,7 @@ class ShortcodeManager:
         plugin: str | None = None,
         has_paired: bool = True,
         description: str | None = None,
+        template: bool = False,
     ) -> None:
         """注册。重复注册覆盖旧记录。"""
         if not _NAME_RE.fullmatch(name):
@@ -392,6 +412,7 @@ class ShortcodeManager:
             plugin=plugin,
             has_paired=has_paired,
             description=description,
+            template=template,
         )
         logger.debug("Shortcode registered: %s (plugin=%s)", name, plugin)
 
@@ -420,6 +441,16 @@ class ShortcodeManager:
     def is_registered(self, name: str) -> bool:
         return name in self._registry
 
+    def owner(self, name: str) -> str | None:
+        """该 tag 归属的插件 slug；未注册或非插件注册返回 ``None``。
+
+        管理 API 靠它区分「插件自带的短代码」与「API 模板」：前者生命周期由插件
+        启停决定，运行时接口既不该覆盖它，也不该提供一条注销了就找不回来的
+        删除路径（插件不会重新注册，除非重启）。
+        """
+        rec = self._registry.get(name)
+        return rec.plugin if rec is not None else None
+
     def list_registered(self) -> list[ShortcodeInfo]:
         """返回公开的 ShortcodeInfo 列表。"""
         return [
@@ -428,6 +459,7 @@ class ShortcodeManager:
                 has_paired=r.has_paired,
                 plugin=r.plugin,
                 description=r.description,
+                template=r.template,
             )
             for r in self._registry.values()
         ]
@@ -463,7 +495,11 @@ def _do_render_impl(
     registry: dict[str, _HandlerRecord],
     text: str,
     ctx: dict[str, Any],
+    nesting_level: int = 0,
 ) -> str:
+    if nesting_level >= _MAX_NESTING_DEPTH:
+        # 到达闸门：本层不再展开，正文原样返回（内容不丢，只是不再递归）
+        return text
     """基于 index 扫描 + 栈深度的成对匹配。
 
     算法概要：
@@ -535,7 +571,7 @@ def _do_render_impl(
             continue
 
         body_raw = text[m.end() : close_start]
-        body_rendered = _do_render_impl(registry, body_raw, ctx)
+        body_rendered = _do_render_impl(registry, body_raw, ctx, nesting_level + 1)
 
         out.append(text[cursor : m.start()])
         attrs = _parse_attrs(attrs_raw)
@@ -600,6 +636,7 @@ def register_shortcode(
     has_paired: bool = True,
     description: str | None = None,
     handler: Callable[..., Any] | None = None,
+    template: bool = False,
 ) -> None:
     """全局注册（支持 ``name`` / ``tag``，``fn`` / ``handler`` 别名以便调用方使用更语义化名称）。"""
     actual_tag = tag if tag is not None else name
@@ -614,12 +651,40 @@ def register_shortcode(
         plugin=plugin,
         has_paired=has_paired,
         description=description,
+        template=template,
     )
 
 
 def unregister_shortcode(name: str) -> bool:
     """全局注销。返回是否存在。"""
     return shortcode_manager.unregister(name)
+
+
+def shortcode_owner(name: str) -> str | None:
+    """全局注册表里该 tag 的归属插件 slug（无归属/未注册 → ``None``）。"""
+    return shortcode_manager.owner(name)
+
+
+def make_template_handler(replacement: str) -> Callable[..., str]:
+    """构造「字符串模板」式 handler：``{属性名}`` 插值 + ``{content}`` 填正文。
+
+    必须遵循引擎的调用约定 ``fn(**attrs, content=…, _content=…, ctx=…)``
+    （见 ``_call_handler``），所以这里收 ``**kwargs``。位置参数形式的 handler 会
+    在两条回退路径上都 ``TypeError``，最终只输出 ``<!-- shortcode-error … -->``
+    注释——管理 API 早先的 ``def _handler(attrs, content)`` 就是这个问题，
+    注册成功、列表可见、渲染永远是错误注释。
+    """
+
+    def _handler(**kwargs: Any) -> str:
+        content = kwargs.get("content")
+        text = replacement
+        for key, value in kwargs.items():
+            if key in _RESERVED_KWARGS or not isinstance(value, str):
+                continue
+            text = text.replace("{" + key + "}", value)
+        return text.replace("{content}", content if isinstance(content, str) else "")
+
+    return _handler
 
 
 def do_shortcode(
