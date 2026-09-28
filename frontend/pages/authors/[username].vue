@@ -6,13 +6,17 @@
   列表侧的作者过滤按用户名解析（后端 author 参数），所以 SSR 期可以并发取数，
   不需要 useAPI 支持空 URL。
 
-  隐私口径由服务端负责：作者关掉 show_posts 后列表接口直接回空页，
-  本页面因此绝不"猜测"内容是否存在——资料取不到（404 / 空对象）才由
-  useContentStatus 回写真 404；列表为空只是"这位作者还没发文"。
+  隐私口径由服务端负责：作者关掉 show_posts 后列表接口直接回空页，关掉 public_profile 后
+  资料接口直接回 404。本页面因此绝不"猜测"内容是否存在——isContentMissing 判定为真
+  （404 / 取不到资料）才同时换上「不存在」文案并由 useContentStatus 回写真 404；
+  列表为空只是"这位作者还没发文"。
 -->
 <template>
   <div class="container py-16">
-    <header class="mb-12">
+    <header
+      v-if="!notFound"
+      class="mb-12"
+    >
       <!-- 作者封面（User.cover_image，账户设置页可上传）：取不到资料时自然不渲染，
            装饰图 alt 留空——作者名已在下方 h1，重复一遍只会让读屏器多念一次。 -->
       <div
@@ -110,6 +114,19 @@
         />
       </div>
     </template>
+    <template v-else-if="notFound">
+      <div class="py-20 text-center">
+        <div class="mb-4 inline-flex size-16 items-center justify-center rounded-2xl bg-muted">
+          <UserRound class="size-8 text-muted-foreground" />
+        </div>
+        <h1 class="font-display text-xl font-semibold">
+          {{ t('authors.notFoundTitle', '这位作者不存在') }}
+        </h1>
+        <p class="mt-1 text-muted-foreground">
+          {{ t('authors.notFoundDesc', '该主页可能从未存在，或作者已关闭了公开资料。') }}
+        </p>
+      </div>
+    </template>
     <template v-else-if="loadError">
       <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
         {{ t('admin.posts.loadFailed', '加载失败，请稍后重试。') }}
@@ -182,7 +199,7 @@
 
 <script setup lang="ts">
 import { useAPI } from '~~/composables/useApi'
-import { useContentStatus } from '~~/composables/useContentStatus'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
@@ -236,7 +253,7 @@ interface AuthorPostRow {
   [key: string]: unknown
 }
 
-// 资料：用户名不存在 / 资料不公开时后端回 404/403，页面只用兜底 UI + 真状态码表达。
+// 资料：用户名不存在、或作者关了「公开资料」时后端统一回 404（不存在口径，防枚举）。
 const { data: profile, error: profileError } = useAPI<AuthorProfile>(
   `/users/username/${username.value}`,
   { key: computed(() => `author:profile:${username.value}:${locale.value}`), default: () => ({}) }
@@ -262,7 +279,7 @@ watch([currentPage, username, locale], () => {
 
 const displayName = computed(
   () => profile.value?.nickname || profile.value?.username
-    || (pending.value ? '' : t('error.notFoundTitle'))
+    || (pending.value ? '' : t('authors.notFoundTitle'))
 )
 const bio = computed(() => pickLocalized(profile.value?.bio))
 const coverImage = computed(() => profile.value?.cover_image?.trim() || '')
@@ -282,7 +299,12 @@ const posts = computed<AuthorPostRow[]>(
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(profileError.value || postsErr.value))
 // 资料缺失才是"这个作者不存在"；判定时点与口径见 composables/useContentStatus.ts。
-useContentStatus(profileError, computed(() => !profile.value?.username))
+const profileMissing = computed(() => !profile.value?.username)
+useContentStatus(profileError, profileMissing)
+// 页面分支与 HTTP 状态码共用同一个判定：不公开的资料后端也回 404，
+// 所以这里必须走"不存在"文案，不能落到"加载失败，请重试"——那等于对用户说
+// 刷新一下就能看到，而真实状态码已经告诉爬虫这个 URL 没了。
+const notFound = computed(() => isContentMissing(profileError.value, profileMissing.value))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const visiblePages = computed(() => {
@@ -296,9 +318,13 @@ const visiblePages = computed(() => {
 })
 
 useSeo({
-  title: computed(() =>
-    displayName.value ? `${displayName.value} · ${t('authors.eyebrow', '作者主页')}` : t('authors.eyebrow', '作者主页')
-  ),
+  // 不存在的作者不能拿用户名拼标题（任务 85 的同一口径：404 页标题不得由 slug 伪造）
+  title: computed(() => {
+    if (notFound.value) return t('authors.notFoundTitle')
+    return displayName.value
+      ? `${displayName.value} · ${t('authors.eyebrow', '作者主页')}`
+      : t('authors.eyebrow', '作者主页')
+  }),
   description: computed(() => bio.value),
   type: 'website'
 })

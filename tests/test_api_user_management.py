@@ -6,8 +6,11 @@
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.user import User
+from backend.services.cache_service import CacheService
+from backend.services.user_service import UserService
 
 
 class TestUserPasswordChange:
@@ -334,6 +337,50 @@ class TestAdminUserManagement:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
+
+    @pytest.mark.asyncio
+    async def test_repeated_admin_writes_on_the_same_user_read_fresh_state(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        """后台对同一个用户的连续两次写操作都要成立。
+
+        回归：``get_user_by_id`` 带 300 秒缓存，而这六个调用点全在写路径上。
+        第二次请求命中缓存时拿到的是**上一个请求会话**里的实例——那次请求 commit 后
+        它的属性已过期，端点里一句 ``user.is_superuser`` 就能抛 ``DetachedInstanceError``
+        （500）；就算侥幸读得到，写在脱离会话对象上的字段也不会进本次事务，
+        接口回 200 而库里没变（静默丢写）。所以这里连续封禁两次，再解封，
+        逐步核对库里的真实状态。
+        """
+        for attempt in (1, 2):
+            r = await client.post(f"/api/admin/users/{test_user.id}/ban", headers=admin_headers)
+            assert r.status_code == 200, f"第 {attempt} 次封禁不应因缓存实例失效而 500"
+
+        await db_session.refresh(test_user)
+        assert test_user.is_banned is True
+
+        r = await client.post(f"/api/admin/users/{test_user.id}/unban", headers=admin_headers)
+        assert r.status_code == 200
+        await db_session.refresh(test_user)
+        assert test_user.is_banned is False
+
+    @pytest.mark.asyncio
+    async def test_get_user_by_id_is_not_served_from_response_cache(
+        self, db_session: AsyncSession, test_user: User
+    ):
+        """写路径的取用户不得进响应缓存（测试会话共享，上面那条例外复现不出故障）。
+
+        ``get_user_by_id`` 的六个调用点全在后台写路径上。一旦它带缓存，命中时返回的
+        就是别的会话里的实例：读属性 500、写属性静默丢。这里直接钉"缓存里没有这份载荷"。
+        """
+        cache_service = CacheService()
+        service = UserService(db_session, cache=cache_service)
+        await service.get_user_by_id(test_user.id)
+
+        assert await cache_service.get(cache_service.build_key("user", test_user.id)) is None
 
     @pytest.mark.asyncio
     async def test_non_admin_cannot_access(

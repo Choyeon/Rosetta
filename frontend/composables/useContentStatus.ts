@@ -13,6 +13,28 @@
  */
 import type { ComputedRef, Ref } from 'vue'
 
+interface StatusCarrier {
+  status?: number
+  statusCode?: number
+  data?: { status?: number }
+}
+
+/**
+ * 「这个 URL 的内容不存在」的唯一判定口径，供两处共用：
+ * 服务端状态码闸门（下面）与页面自己的兜底 UI 分支。
+ * 写成导出的纯函数是为了不让页面复制一份判断逻辑——两处分叉的表现是
+ * "HTTP 回了 404 而用户看到的是『加载失败，请重试』"。
+ */
+export function isContentMissing(error: unknown, missing: boolean): boolean {
+  const err = error as StatusCarrier | null | undefined
+  const status = err?.status ?? err?.statusCode ?? err?.data?.status ?? 0
+
+  // 404 是后端的明确答复；请求成功但对象为空（null/{}）同样是"不存在"。
+  // 其余（无状态码的故障、5xx）不算缺失——那时内容是否存在未知，
+  // 写成 404 会让搜索引擎把一次临时故障当成永久删除而掉索引，比 200 更难恢复。
+  return status === 404 || (err == null && missing)
+}
+
 export function useContentStatus(
   error: Ref<unknown> | ComputedRef<unknown>,
   missing: Ref<boolean> | ComputedRef<boolean>
@@ -25,13 +47,7 @@ export function useContentStatus(
   if (!event) return
 
   const decide = () => {
-    const err = error.value as { status?: number, statusCode?: number, data?: { status?: number } } | null | undefined
-    const status = err?.status ?? err?.statusCode ?? err?.data?.status ?? 0
-
-    // 404 是后端的明确答复；请求成功但对象为空（null/{}）同样是"不存在"。
-    // 其余（无状态码的故障、5xx）不动状态码——那时内容是否存在未知，
-    // 写成 404 会让搜索引擎把一次临时故障当成永久删除而掉索引。
-    if (status === 404 || (err == null && missing.value)) {
+    if (isContentMissing(error.value, missing.value)) {
       setResponseStatus(event, 404)
     }
   }

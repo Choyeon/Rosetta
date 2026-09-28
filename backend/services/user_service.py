@@ -15,6 +15,7 @@ from typing import Any
 
 from sqlalchemy import inspect, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import make_transient
 
 from backend.core.auth import (
     _add_jti_to_blacklist,
@@ -58,6 +59,24 @@ PREFERENCE_WRITABLE_FIELDS: frozenset[str] = frozenset(
 _AUTHOR_VISIBLE_FIELDS: frozenset[str] = frozenset(
     {"username", "nickname", "avatar", "bio", "website", "github", "cover_image"}
 )
+
+
+def _detach_for_cache(*instances: object | None) -> None:
+    """把要进响应缓存的 ORM 实例摘成 transient（只用于**只读**载荷）。
+
+    缓存载荷跨请求复用，但实例的所有权属于「第一次那次请求」的会话：请求结束时该会话
+    commit / close，`expire_on_commit=True` 会把实例的全部属性标成过期。下一次命中缓存
+    的请求再读任何一个属性（隐私闸门要读 ``preferences.public_profile``、邮箱遮蔽要读
+    ``show_email``、组装响应要读用户列）都会走延迟刷新，而它已经没有会话可刷了 ——
+    ``DetachedInstanceError`` → HTTP 500。表现为「同一个作者主页，第一次 404/200 正常，
+    TTL 内的第二次请求起报服务器错误」。
+
+    ``make_transient`` 把实例从 identity map 里摘掉：属性保持已加载的值，后续 commit
+    也不再碰它。代价是这份载荷只读（改字段再 flush 不会落库），所以只对展示路径使用。
+    """
+    for obj in instances:
+        if obj is not None:
+            make_transient(obj)  # type: ignore[arg-type]
 
 
 class UserService:
@@ -387,13 +406,15 @@ class UserService:
             if profile is None:
                 return None
 
-            return {
+            payload = {
                 "user": profile["user"],
                 "title": profile["title"],
                 "preferences": profile["preferences"],
                 "post_count": profile["post_count"],
                 "comment_count": profile["comment_count"],
             }
+            _detach_for_cache(payload["user"], payload["title"], payload["preferences"])
+            return payload
 
         raw = (
             await self._cache.get_or_set(cache_key, fetch, ttl=USER_PROFILE_TTL)
@@ -598,28 +619,25 @@ class UserService:
     async def get_user_by_id(
         self,
         user_id: int,
-        use_cache: bool = True,
     ) -> User | None:
         """
-        根据 ID 获取用户
+        根据 ID 获取用户（**总是读库，不走缓存**）。
 
         Args:
             user_id: 用户 ID
-            use_cache: 是否使用缓存
 
         Returns:
             用户实例，不存在返回 None
+
+        这里曾经带 300 秒缓存，而六个调用点全在后台**写**路径上（重置密码、删除用户、
+        封禁、改 staff、改头像来源…）。缓存命中时返回的是别的请求会话里的实例：
+        那次请求结束、会话 commit 之后属性全部过期，读任何一个属性直接
+        ``DetachedInstanceError``（500）；而改字段再 flush 作用在当前会话上，
+        那个已脱离会话的对象根本不在 unit of work 里 —— 接口回 200、库里一个字节都没改，
+        管理员看到"操作成功"但状态没变，还会把这份特权/过期对象继续供给别人。
+        写路径必须拿到当前会话的持久实例，所以这里不再缓存。
         """
-        cache_key = self._cache.build_key("user", user_id)
-
-        async def fetch():
-            return await self._user_repo.get_by_id(user_id)
-
-        if use_cache:
-            cached = await self._cache.get_or_set(cache_key, fetch, ttl=USER_PROFILE_TTL)
-            return cached
-
-        return await fetch()
+        return await self._user_repo.get_by_id(user_id)
 
     async def get_user_by_username(
         self,

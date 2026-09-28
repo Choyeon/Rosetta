@@ -750,7 +750,10 @@ async def update_my_preferences(
     "/{user_id}",
     response_model=UserResponse,
     summary="获取用户信息",
-    description="根据 ID 获取用户公开信息。",
+    description=(
+        "根据 ID 获取用户公开信息。用户关闭「公开资料」（`public_profile=False`）时"
+        "对外统一返回 404（与「查无此人」同口径，避免账号枚举），仅本人可读。"
+    ),
 )
 async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = None):
     """获取指定用户信息"""
@@ -764,10 +767,15 @@ async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = Non
             detail="用户不存在",
         )
 
-    if not profile.get("is_public") and not current_user:
+    # 资料不公开一律按"不存在"回 404，且闸门只看 is_public（不区分匿名/登录访客）：
+    # 1) 403 等于承认该账号真实存在（枚举面）；前台作者主页的 404 闸门只认 404/空对象，
+    #    403 会渲染兜底 UI 却返回 HTTP 200，再被该路由的 swr 缓存成一个可索引的错误页。
+    # 2) 服务层对"非本人 + 关了公开"返回的是精简 dict（不含 email），
+    #    放行任何一类访客都会让它走到 build_user_response → UserResponse 必填 email 缺失 → 500。
+    if not profile.get("is_public"):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="用户资料不公开",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
         )
 
     response = build_user_response(profile["user"])
@@ -779,7 +787,10 @@ async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = Non
     "/username/{username}",
     response_model=UserResponse,
     summary="通过用户名获取用户",
-    description="根据用户名获取用户公开信息。",
+    description=(
+        "根据用户名获取用户公开信息。这是前台作者主页 `/authors/<username>` 的资料来源，"
+        "关闭「公开资料」的作者在此对外返回 404（口径同 `GET /users/{user_id}`）。"
+    ),
 )
 async def get_user_by_username(username: str, db: DB, current_user: CurrentUserOptional = None):
     """通过用户名获取用户信息"""
@@ -801,10 +812,12 @@ async def get_user_by_username(username: str, db: DB, current_user: CurrentUserO
             detail="用户不存在",
         )
 
-    if not profile.get("is_public") and not current_user:
+    # 口径同 ``GET /users/{user_id}``：不公开一律 404（防枚举 + 防 swr 缓存可索引错误页 +
+    # 服务层的精简 dict 缺 email，放行任何访客都会变成 500）。
+    if not profile.get("is_public"):
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="用户资料不公开",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
         )
 
     response = build_user_response(user)

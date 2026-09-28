@@ -1146,7 +1146,7 @@
     "profileSaved": "プロフィールを更新しました",
     "tooLong": "{max} 文字以内で入力してください",
     "prefPublicProfile": "プロフィールを公開",
-    "prefPublicProfileHint": "オフの場合、訪問者は 403 を受け取ります。",
+    "prefPublicProfileHint": "オフにすると、プロフィールページは訪問者に「存在しない」（404）として表示されます。閲覧できるのは本人だけです。",
     "prefShowEmail": "メールアドレスを訪問者に表示",
     "prefShowEmailHint": "既定はオフで、マスク表示になります。",
     "prefShowPosts": "自分の記事を表示",
@@ -1561,6 +1561,8 @@
     "joined": "参加日",
     "website": "ウェブサイト",
     "github": "GitHub",
-    "emptyTitle": "公開記事はまだありません"
+    "emptyTitle": "公開記事はまだありません",
+    "notFoundTitle": "この作者は存在しません",
+    "notFoundDesc": "プロフィールが存在しないか、作者が公開設定をオフにしています。"
   }
 }

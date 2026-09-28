@@ -1146,7 +1146,7 @@
     "profileSaved": "Profile updated",
     "tooLong": "Must be no longer than {max} characters",
     "prefPublicProfile": "Public profile",
-    "prefPublicProfileHint": "Visitors get a 403 when this is off.",
+    "prefPublicProfileHint": "When off, your profile page reads as not found (404) to visitors; only you can see it.",
     "prefShowEmail": "Show my email to visitors",
     "prefShowEmailHint": "Off by default; the masked form is shown instead.",
     "prefShowPosts": "Show my posts",
@@ -1561,6 +1561,8 @@
     "joined": "Joined",
     "website": "Website",
     "github": "GitHub",
-    "emptyTitle": "No public posts yet"
+    "emptyTitle": "No public posts yet",
+    "notFoundTitle": "Author not found",
+    "notFoundDesc": "This profile may never have existed, or the author turned off public profiles."
   }
 }

@@ -510,8 +510,8 @@ class TestUserProfileViewerIsolation:
     ):
         """反向毒化：匿名侧的"资料不公开"结论被缓存复用后，本人也拿不回自己的资料。
 
-        公开端点对非本人的不公开资料是 403（不是精简 200），所以这里钉两件事：
-        匿名仍是 403，而本人必须拿到完整资料 + ``is_self``。
+        公开端点对非本人的不公开资料是 404（不存在口径，见 ``GET /users/{user_id}``），
+        所以这里钉两件事：匿名与登录陌生人都 404，而本人必须拿到完整资料 + ``is_self``。
         """
         from backend.models.user import UserPreference
 
@@ -520,7 +520,7 @@ class TestUserProfileViewerIsolation:
         await cache.clear()
 
         anon = await client.get(f"/api/users/{test_user.id}")
-        assert anon.status_code == 403
+        assert anon.status_code == 404
 
         self_resp = await client.get(f"/api/users/{test_user.id}", headers=auth_headers)
         assert self_resp.status_code == 200, "匿名侧的精简视图被缓存复用，本人请求直接序列化失败"

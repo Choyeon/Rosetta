@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1113 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.62%，fail_under=45%）
+├─ tests/                            Pytest（1126 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.75%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -348,7 +348,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1113 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.62%）
+uv run pytest                                        # 1126 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.75%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -361,7 +361,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 29 个 spec，321 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 29 个 spec，333 用例全绿）
 ```
 
 ### 8.3 部署
@@ -386,6 +386,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```
 
 - 新建/更新接口：`db.flush()` 之后服务端生成的列（`created_at` / `updated_at` 这类 onupdate）处于过期状态，直接序列化会在事件循环里触发隐式 IO（异步下表现为 `MissingGreenlet`）。必须回读一次——`await db.refresh(entity)` 与"一条带 `selectinload` 的 SELECT"**二选一**；`refresh` 本身就会连关系一起重载，两条都做等于白发一次往返。
+- **响应缓存的载荷里不得放会话绑定的 ORM 实例。** 缓存跨请求复用，而实例属于"第一次那次请求"的会话：那次请求结束、会话 commit/close 后 `expire_on_commit` 会把它的属性全部标成过期，下一个命中缓存的请求再读任何一个字段就是 `DetachedInstanceError` → HTTP 500（实测表现：作者主页第一次正常，TTL 内刷新即报错）。要么在写缓存前 `make_transient` 摘成只读快照（见 `user_service._detach_for_cache`），要么直接存 `model_dump(mode="json")`（本仓多数接口已是后者）。同一条规则的另一面：**给后台写路径取实体的 getter 一律不能带缓存**（`get_user_by_id` 曾带 300s 缓存，六个调用点全是写操作——读属性 500、写属性落在脱离会话的对象上，接口回 200 而库里没变）。守卫见 `tests/test_author_archive_filter.py::TestCachedProfilePayloadIsReusable`。
 - JSON 多语言列（`title` / `content` / `excerpt` / `meta_*`）写入 Python `None` 时落库是 **JSON null 而不是 SQL NULL**（SQLAlchemy JSON 默认 `none_as_null=False`），所以 `col.is_(None)` 在 SQL 里筛不出"没有内容"的行；判定口径见 `backend/api/admin.py::_missing_i18n_json`。
 - 新 API 路径必须用 `useAPI` 或 `apiFetch` 包装，不得裸写 `$fetch`
 
@@ -395,7 +396,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 321/321（29 个 spec 文件）
+pnpm test          # 333/333（29 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

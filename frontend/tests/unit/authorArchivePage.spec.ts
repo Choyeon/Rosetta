@@ -31,9 +31,8 @@ describe('作者主页取数契约', () => {
   })
 
   it('404 闸门只看资料请求，列表为空不判 404', () => {
-    expect(page).toMatch(
-      /useContentStatus\(profileError, computed\(\(\) => !profile\.value\?\.username\)\)/
-    )
+    expect(page).toMatch(/const profileMissing = computed\(\(\) => !profile\.value\?\.username\)/)
+    expect(page).toMatch(/useContentStatus\(profileError, profileMissing\)/)
     expect(page).not.toMatch(/createError/)
   })
 
@@ -62,7 +61,10 @@ describe('作者主页可达性与文案', () => {
   })
 
   it('四语 authors.* 键集合一致，且分页导航有 aria-label 文案', () => {
-    const expected = ['emptyTitle', 'eyebrow', 'github', 'joined', 'posts', 'website']
+    const expected = [
+      'emptyTitle', 'eyebrow', 'github', 'joined',
+      'notFoundDesc', 'notFoundTitle', 'posts', 'website'
+    ]
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
       const data = JSON.parse(
         readFileSync(resolve(process.cwd(), `i18n/locales/${loc}.json`), 'utf8')

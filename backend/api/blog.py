@@ -3626,8 +3626,8 @@ async def get_sitemap_posts(
     summary="分类 / 标签 / 系列 / 作者归档 Sitemap",
     description=(
         "返回分类、标签、系列的索引页与详情页，外加作者归档落地页 "
-        "`/authors/<username>`（合并文件）。作者清单只含「有已发布文章且未关闭 "
-        "`show_posts`」的作者——空归档页不该出现在爬虫视野里。"
+        "`/authors/<username>`（合并文件）。作者清单只含「有已发布文章，且未关闭 "
+        "`show_posts` / `public_profile`」的作者——空归档页与 404 页都不该出现在爬虫视野里。"
     ),
     responses=raw_content_response("application/xml", "urlset XML 文档。"),
     response_class=Response,
@@ -3645,9 +3645,13 @@ async def get_sitemap_taxonomies(
         (await db.execute(select(PostSeries).where(PostSeries.is_active.is_(True)))).scalars().all()
     )
     # 作者归档清单：一条分组查询同时拿到用户名与最近发布时间（不做 N+1），
-    # 并在同一条语句里排除 `show_posts=false` 的作者——他们的归档页对访客是空页，
-    # 提交给爬虫等于承认一个没有内容的 URL。post_type 口径与作者页读的那份列表一致。
-    hidden_authors = select(UserPreference.user_id).where(UserPreference.show_posts.is_(False))
+    # 并在同一条语句里排除「关了 show_posts」与「关了 public_profile」的作者——
+    # 前者的归档页对访客是空页，后者在 GET /users/username/{u} 上直接回 404，
+    # 提交给爬虫等于承认一个没有内容（甚至不存在）的 URL。
+    # post_type 口径与作者页读的那份列表一致。
+    hidden_authors = select(UserPreference.user_id).where(
+        or_(UserPreference.show_posts.is_(False), UserPreference.public_profile.is_(False))
+    )
     author_rows = (
         await db.execute(
             select(User.username, func.max(Post.published_at))

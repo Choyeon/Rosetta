@@ -13,6 +13,7 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { isContentMissing } from '../../composables/useContentStatus'
 
 const ROOT = resolve(__dirname, '..', '..')
 const helperPath = resolve(ROOT, 'composables/useContentStatus.ts')
@@ -38,8 +39,24 @@ describe('内容页 404 状态码闸门', () => {
     // 在那里读 missing 会把真实页面一起判成 404（第一版就是这么错的）。
     expect(helper).toContain('app:rendered')
     expect(helper).toContain('status === 404')
-    // 故障与 5xx 不得被写成 404（临时故障判成永久删除会掉索引）
-    expect(helper).toContain('err == null && missing.value')
+    // 判定逻辑必须是导出的纯函数（页面兜底 UI 与状态码共用一份口径）
+    expect(helper).toMatch(/export function isContentMissing\(error: unknown, missing: boolean\)/)
+    expect(helper).toContain('isContentMissing(error.value, missing.value)')
+  })
+
+  describe('isContentMissing 判定口径（状态码闸门与页面分支共用）', () => {
+    it.each([
+      ['后端明确 404', { status: 404 }, false, true],
+      ['statusCode 形态', { statusCode: 404 }, false, true],
+      ['信封里带状态码', { data: { status: 404 } }, false, true],
+      ['请求成功但对象为空', null, true, true],
+      ['网络故障（无状态码）', {}, true, false],
+      ['5xx', { status: 503 }, true, false],
+      ['有内容且无错误', null, false, false],
+      ['403 不当成不存在', { status: 403 }, true, false]
+    ])('%s → %s', (_label, err, missing, expected) => {
+      expect(isContentMissing(err, missing)).toBe(expected)
+    })
   })
 
   it.each(PAGES)('%s 接线 helper，且不用页面内 createError 冒充 404', (rel) => {
@@ -63,6 +80,50 @@ describe('内容页 404 状态码闸门', () => {
         readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')
       ) as Record<string, Record<string, string>>
       expect(messages.error?.notFoundTitle, `${loc} 缺 error.notFoundTitle`).toBeTruthy()
+    }
+  })
+})
+
+/**
+ * 作者主页（/authors/{username}）的"不存在"分支。
+ *
+ * 后端对「查无此人」与「作者关了公开资料」统一回 404，页面必须同步换成不存在文案：
+ * 旧实现只看 loadError，404 会落到「加载失败，请稍后重试」——等于一边告诉爬虫这个 URL
+ * 没了，一边告诉用户刷新一下就能看到。
+ */
+describe('作者主页的 404 分支', () => {
+  const rel = 'pages/authors/[username].vue'
+  const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+
+  it('UI 分支与状态码闸门共用同一个判定函数', () => {
+    expect(src).toMatch(
+      /import \{ isContentMissing, useContentStatus \} from '~~\/composables\/useContentStatus'/
+    )
+    expect(src).toContain('isContentMissing(profileError.value, profileMissing.value)')
+    expect(src).toContain('useContentStatus(profileError, profileMissing)')
+  })
+
+  it('notFound 分支排在 loadError 之前，且隐藏作者头', () => {
+    const notFoundAt = src.indexOf('v-else-if="notFound"')
+    const loadErrorAt = src.indexOf('v-else-if="loadError"')
+    expect(notFoundAt).toBeGreaterThan(-1)
+    expect(notFoundAt).toBeLessThan(loadErrorAt)
+    expect(src).toMatch(/<header\s+v-if="!notFound"/)
+    // 兜底文案必须是"不存在"，不能复用重试提示
+    expect(src).toMatch(/t\('authors\.notFoundTitle'/)
+  })
+
+  it('不存在时的标题走 404 文案，不由用户名伪造', () => {
+    expect(src).toMatch(/if \(notFound\.value\) return t\('authors\.notFoundTitle'\)/)
+  })
+
+  it('四语都有 authors.notFoundTitle / notFoundDesc', () => {
+    for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const messages = JSON.parse(
+        readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')
+      ) as Record<string, Record<string, string>>
+      expect(messages.authors?.notFoundTitle, `${loc} 缺 authors.notFoundTitle`).toBeTruthy()
+      expect(messages.authors?.notFoundDesc, `${loc} 缺 authors.notFoundDesc`).toBeTruthy()
     }
   })
 })

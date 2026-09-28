@@ -1146,7 +1146,7 @@
     "profileSaved": "资料已更新",
     "tooLong": "不能超过 {max} 个字符",
     "prefPublicProfile": "公开我的主页",
-    "prefPublicProfileHint": "关闭后访客访问你的主页会收到 403。",
+    "prefPublicProfileHint": "关闭后，你的主页对访客按「内容不存在」（404）呈现，仅登录本人可见。",
     "prefShowEmail": "向访客展示邮箱",
     "prefShowEmailHint": "默认不展示，对外只显示为掩码。",
     "prefShowPosts": "展示我的文章列表",
@@ -1561,6 +1561,8 @@
     "joined": "加入于",
     "website": "网站",
     "github": "GitHub",
-    "emptyTitle": "这位作者还没有公开文章"
+    "emptyTitle": "这位作者还没有公开文章",
+    "notFoundTitle": "这位作者不存在",
+    "notFoundDesc": "该主页可能从未存在，或作者已关闭了公开资料。"
   }
 }
