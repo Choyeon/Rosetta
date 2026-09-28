@@ -13,6 +13,18 @@
 <template>
   <div class="container py-16">
     <header class="mb-12">
+      <!-- 作者封面（User.cover_image，账户设置页可上传）：取不到资料时自然不渲染，
+           装饰图 alt 留空——作者名已在下方 h1，重复一遍只会让读屏器多念一次。 -->
+      <div
+        v-if="coverImage"
+        class="mb-6 overflow-hidden rounded-xl border"
+      >
+        <img
+          :src="coverImage"
+          alt=""
+          class="h-32 w-full object-cover md:h-44"
+        >
+      </div>
       <div class="mb-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
         <span>{{ t('authors.eyebrow', '作者主页') }}</span>
         <span> / </span>
@@ -209,6 +221,7 @@ interface AuthorProfile {
   nickname?: string
   bio?: string
   avatar?: string | null
+  cover_image?: string | null
   resolved_avatar_url?: string | null
   website?: string | null
   github?: string | null
@@ -252,6 +265,7 @@ const displayName = computed(
     || (pending.value ? '' : t('error.notFoundTitle'))
 )
 const bio = computed(() => pickLocalized(profile.value?.bio))
+const coverImage = computed(() => profile.value?.cover_image?.trim() || '')
 const joinedLabel = computed(() => {
   const raw = profile.value?.created_at
   if (!raw) return ''

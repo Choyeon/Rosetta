@@ -91,7 +91,7 @@
 ### users（/api/users）— 14/22 覆盖
 
 ✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`POST /password-reset-request`（fp:141）、`POST /password-reset`（fp:163）、`GET /users/`（用户列表，uam:405）、`GET /username/{username}`（作者主页，aup:214）
-❌（8）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`DELETE /me`、`PUT /me/cover`、`GET /{user_id}`（ID 形态，公开页统一走用户名）、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`（作者主页改用 `GET /blog/posts?author=<username>` 取列表，保留 id 形态给后台/其他消费方）。
+❌（8）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`DELETE /me`、`PUT /me/cover`（与 `PUT /me` 的 `cover_image` 字段是同一次写入的两种入口，账户设置页只保留一个写入口）、`GET /{user_id}`（ID 形态，公开页统一走用户名）、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`（作者主页改用 `GET /blog/posts?author=<username>` 取列表，保留 id 形态给后台/其他消费方）。
 判定：**剩余是真缺口但已不再是"成体系空白"** —— 个人中心 `/account` 接了读自己内容的 6 个端点，账户设置 `/account/settings` 接了改资料/偏好/改密 4 个写端点（accs = `pages/account/settings.vue`），`/forgot-password` 接了自助找回 2 个端点并替换掉 /login 上"忘记密码功能暂未开放"的禁用占位（fp = `pages/forgot-password.vue`）；作者主页 `/authors/[username]`（aup = `pages/authors/[username].vue`）接上了 `GET /username/{username}`，列表侧不再另开 id 依赖链而是给 `GET /blog/posts` 加了 `author=<username>` 过滤（缓存键含作者段，隐私闸门与 `/users/{id}/posts` 同口径）；注销账户刻意不做入口（软删除但无恢复路径，WordPress 后台同样不开放给用户）。
 
 ### core（/api）— 16/19 覆盖

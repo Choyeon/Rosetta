@@ -1,7 +1,7 @@
 <!--
   账户设置 /account/settings（SPA + no-store，继承 routeRules 的 /account/** 反选）：
   接上后端自上线起"就绪、前端零消费"的三组写端点 ——
-    PUT  /users/me            资料（昵称/简介/网站/GitHub/QQ/头像来源）
+    PUT  /users/me            资料（昵称/简介/网站/GitHub/QQ/头像来源/封面图）
     GET/PUT /users/me/preferences  隐私偏好（5 个真实生效的开关）
     POST /users/me/password   改密（成功即全端下线）
   三条硬约束：
@@ -54,6 +54,62 @@
         class="mt-6 flex flex-col gap-5"
         @submit.prevent="saveProfile"
       >
+        <div class="flex flex-col gap-2">
+          <Label for="profile-cover">{{ t('account.fieldCover') }}</Label>
+          <div
+            v-if="profile.cover_image"
+            class="overflow-hidden rounded-xl border"
+          >
+            <img
+              :src="profile.cover_image"
+              :alt="t('account.fieldCover')"
+              class="h-32 w-full object-cover"
+            >
+          </div>
+          <div class="flex flex-wrap items-center gap-3">
+            <input
+              id="profile-cover"
+              ref="coverInput"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              :disabled="savingProfile || coverUploading"
+              @change="handleCoverUpload"
+            >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              :disabled="savingProfile || coverUploading"
+              @click="coverInput?.click()"
+            >
+              <LoaderCircle
+                v-if="coverUploading"
+                data-icon="inline-start"
+                class="animate-spin"
+              />
+              <ImagePlus
+                v-else
+                data-icon="inline-start"
+              />
+              {{ profile.cover_image ? t('account.coverReplace') : t('account.coverUpload') }}
+            </Button>
+            <Button
+              v-if="profile.cover_image"
+              type="button"
+              variant="ghost"
+              size="sm"
+              :disabled="savingProfile || coverUploading"
+              @click="profile.cover_image = ''"
+            >
+              {{ t('account.coverRemove') }}
+            </Button>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            {{ t('account.fieldCoverHint') }}
+          </p>
+        </div>
+
         <div class="flex flex-col gap-2">
           <Label for="profile-nickname">{{ t('account.fieldNickname') }}</Label>
           <Input
@@ -331,7 +387,7 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, LoaderCircle } from '@lucide/vue'
+import { ArrowLeft, ImagePlus, LoaderCircle } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
@@ -346,6 +402,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Switch } from '~~/components/ui/switch'
 import { Textarea } from '~~/components/ui/textarea'
 import { apiFetch, useAPI } from '~~/composables/useApi'
+import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
@@ -365,6 +422,7 @@ interface ProfileForm {
   github: string
   qq: string
   avatar_source: string
+  cover_image: string
 }
 
 // 上限与后端 UserUpdate 的 Field(max_length=...) 同口径，超了先在前端拦住，省一次 422 往返
@@ -386,10 +444,13 @@ const profile = reactive<ProfileForm>({
   website: '',
   github: '',
   qq: '',
-  avatar_source: 'auto'
+  avatar_source: 'auto',
+  cover_image: ''
 })
 const profileErrors = reactive<Record<string, string>>({})
 const savingProfile = ref(false)
+const coverInput = ref<HTMLInputElement | null>(null)
+const coverUploading = ref(false)
 
 /** 首帧用 store 里已有的 /users/me 结果回填，避免表单先空一次再跳值 */
 function seedProfile() {
@@ -401,6 +462,7 @@ function seedProfile() {
   profile.github = String(u.github ?? '')
   profile.qq = String(u.qq ?? '')
   profile.avatar_source = String(u.avatar_source ?? 'auto')
+  profile.cover_image = String(u.cover_image ?? '')
 }
 seedProfile()
 watch(authUser, seedProfile)
@@ -435,7 +497,11 @@ async function saveProfile() {
         website: profile.website,
         github: profile.github,
         qq: profile.qq,
-        avatar_source: profile.avatar_source
+        avatar_source: profile.avatar_source,
+        // 清空必须写 null 而不是 ''：后端 model_dump(exclude_unset=True) 会把显式 null
+        // 落成 SQL NULL，而 '' 会留下一个空字符串封面——读取侧按真值判断，
+        // '' 是假值、null 也是假值，但只有 null 才是"没有封面"的真实存储形态。
+        cover_image: profile.cover_image || null
       }
     })
     // 顶栏头像/昵称与作者卡片读的都是 store，不回读就还是改之前的样子
@@ -445,6 +511,23 @@ async function saveProfile() {
     // 失败提示由 apiFetch 按统一信封负责
   } finally {
     savingProfile.value = false
+  }
+}
+
+/** 封面走 POST /media/cover 拿 URL，再随「保存资料」一起写入：本卡片只有一个写入口。 */
+async function handleCoverUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  coverUploading.value = true
+  try {
+    const res = await useMediaUploadCover(file)
+    if (res?.url) profile.cover_image = res.url
+  } catch {
+    // 上传失败提示由 apiFetch 统一 toast
+  } finally {
+    coverUploading.value = false
+    input.value = ''
   }
 }
 

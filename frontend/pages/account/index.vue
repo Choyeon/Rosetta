@@ -15,6 +15,18 @@
 -->
 <template>
   <div class="container py-16 max-w-3xl mx-auto">
+    <!-- 用户封面：与作者主页同一份数据（User.cover_image），只在设过封面时占位；
+         头像与名字已在下方 header 里，这里按装饰图处理（alt 留空），不做第二处可读文本。 -->
+    <div
+      v-if="coverImage"
+      class="mb-6 overflow-hidden rounded-xl border"
+    >
+      <img
+        :src="coverImage"
+        alt=""
+        class="h-32 w-full object-cover"
+      >
+    </div>
     <header class="mb-10 flex flex-wrap items-center justify-between gap-x-6 gap-y-4">
       <div class="flex items-center gap-4 min-w-0">
         <UserAvatar
@@ -450,6 +462,10 @@ const resolvedAvatarUrl = computed(() => {
 const rawAvatar = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
   return (u?.avatar as string) || ''
+})
+const coverImage = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return String(u?.cover_image ?? '')
 })
 
 const tab = computed<AccountTab>(() => {
