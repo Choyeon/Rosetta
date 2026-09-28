@@ -92,7 +92,7 @@
 
 ### 2.3 公开页 SWR / Cache 头
 
-首页/文章列表 `/posts` swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 分类/标签/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。常规页附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`；高频实时页（`/posts/hot` · `/guestbook`）用较短的 `stale-while-revalidate=600`。
+首页/文章列表 `/posts` swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 分类/标签/作者主页/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。常规页附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`；高频实时页（`/posts/hot` · `/guestbook`）用较短的 `stale-while-revalidate=600`。
 静态资源 `/_nuxt/**` 与 `/themes/**` 使用强缓存 immutable（31536000s）。
 
 ### 2.3.1 动态子路由必须用目录式父页
@@ -219,7 +219,7 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          64 个页面文件 = 26 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 36 个 admin 子页（SPA）
+│  ├─ pages/                          65 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 36 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   27 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1101 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.67%，fail_under=45%）
+├─ tests/                            Pytest（1111 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.60%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -348,7 +348,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1101 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.67%）
+uv run pytest                                        # 1111 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.60%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -361,7 +361,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 27 个 spec，305 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 28 个 spec，313 用例全绿）
 ```
 
 ### 8.3 部署
@@ -395,7 +395,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 305/305（27 个 spec 文件）
+pnpm test          # 313/313（28 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

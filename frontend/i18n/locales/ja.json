@@ -60,7 +60,8 @@
     "by": "作者：",
     "retry": "再試行",
     "prevPage": "前のページ",
-    "nextPage": "次のページ"
+    "nextPage": "次のページ",
+    "pagination": "ページ送りのナビゲーション"
   },
   "nav": {
     "home": "ホーム",
@@ -127,7 +128,8 @@
     "replyingTo": "返信対象",
     "cancelReply": "返信をキャンセル",
     "replyPlaceholder": "このコメントに返信…",
-    "someone": "誰か"
+    "someone": "誰か",
+    "viewAuthorProfile": "作者プロフィールを見る"
   },
   "comment": {
     "title": "コメント",
@@ -1547,5 +1549,13 @@
     "passwordMismatch": "パスワードが一致しません",
     "backToLogin": "ログインに戻る",
     "devCodeHint": "開発環境のみのコード表示：{code}（本番では表示されません）"
+  },
+  "authors": {
+    "eyebrow": "作者プロフィール",
+    "posts": "件の記事",
+    "joined": "参加日",
+    "website": "ウェブサイト",
+    "github": "GitHub",
+    "emptyTitle": "公開記事はまだありません"
   }
 }

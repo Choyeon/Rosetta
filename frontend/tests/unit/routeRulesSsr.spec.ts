@@ -82,7 +82,7 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
         expect(rule.cache, `${path} 必须 no-store`).toContain('no-store')
       }
     }
-    for (const path of ['/', '/posts', '/post/**', '/categories/**', '/tags/**', '/page/**']) {
+    for (const path of ['/', '/posts', '/post/**', '/categories/**', '/tags/**', '/authors/**', '/page/**']) {
       const rule = rules.get(path)
       expect(rule, `公开页 ${path} 必须有 routeRules`).toBeDefined()
       expect(rule!.ssr, `公开页 ${path} 不得反选 SSR`).not.toBe(false)

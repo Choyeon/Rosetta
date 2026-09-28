@@ -238,6 +238,11 @@ export default defineNuxtConfig({
     '/tags': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
     '/tags/**': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
 
+    // 作者主页 /authors/{username}：与分类/标签同档。漏了这条不会报错，只会静默落回
+    // 无缓存 SSR（每访客每页都打后端），所以口径写进下面的测试。
+    '/authors': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
+    '/authors/**': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
+
     '/series': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
     '/series/**': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
 

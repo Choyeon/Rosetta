@@ -60,7 +60,8 @@
     "by": "By",
     "retry": "Retry",
     "prevPage": "Previous page",
-    "nextPage": "Next page"
+    "nextPage": "Next page",
+    "pagination": "Pagination"
   },
   "nav": {
     "home": "Home",
@@ -127,7 +128,8 @@
     "replyingTo": "Replying to",
     "cancelReply": "Cancel reply",
     "replyPlaceholder": "Reply to this comment…",
-    "someone": "someone"
+    "someone": "someone",
+    "viewAuthorProfile": "View author's profile"
   },
   "comment": {
     "title": "Comments",
@@ -1547,5 +1549,13 @@
     "passwordMismatch": "The two passwords do not match",
     "backToLogin": "Back to sign in",
     "devCodeHint": "Dev-only code echo: {code} (never shown in production)"
+  },
+  "authors": {
+    "eyebrow": "Author",
+    "posts": "posts",
+    "joined": "Joined",
+    "website": "Website",
+    "github": "GitHub",
+    "emptyTitle": "No public posts yet"
   }
 }

@@ -60,7 +60,8 @@
     "by": "由",
     "retry": "重試",
     "prevPage": "上一頁",
-    "nextPage": "下一頁"
+    "nextPage": "下一頁",
+    "pagination": "分頁導航"
   },
   "nav": {
     "home": "首頁",
@@ -127,7 +128,8 @@
     "replyingTo": "正在回覆",
     "cancelReply": "取消回覆",
     "replyPlaceholder": "回覆這條評論…",
-    "someone": "某人"
+    "someone": "某人",
+    "viewAuthorProfile": "檢視作者主頁"
   },
   "comment": {
     "title": "留言",
@@ -1547,5 +1549,13 @@
     "passwordMismatch": "兩次輸入的密碼不一致",
     "backToLogin": "返回登入",
     "devCodeHint": "開發環境回顯驗證碼：{code}（生產環境不會出現本提示）"
+  },
+  "authors": {
+    "eyebrow": "作者主頁",
+    "posts": "篇文章",
+    "joined": "加入於",
+    "website": "網站",
+    "github": "GitHub",
+    "emptyTitle": "這位作者還沒有公開文章"
   }
 }

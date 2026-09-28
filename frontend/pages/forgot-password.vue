@@ -171,7 +171,7 @@ async function requestCode() {
   if (requesting.value) return
   requesting.value = true
   try {
-    const res = await apiFetch<ResetRequestResult>('/blog/users/password-reset-request', {
+    const res = await apiFetch<ResetRequestResult>('/users/password-reset-request', {
       method: 'POST',
       body: { email_or_username: account.value.trim() }
     })
@@ -190,7 +190,7 @@ async function resetPassword() {
   if (!canReset.value || resetting.value) return
   resetting.value = true
   try {
-    const res = await apiFetch<{ message?: string }>('/blog/users/password-reset', {
+    const res = await apiFetch<{ message?: string }>('/users/password-reset', {
       method: 'POST',
       body: {
         token_or_email: account.value.trim(),

@@ -219,7 +219,18 @@
                 :show-title="false"
               />
               <div class="min-w-0">
-                <p class="font-display text-lg font-semibold tracking-tight">
+                <NuxtLink
+                  v-if="authorUrl"
+                  :to="authorUrl"
+                  class="font-display text-lg font-semibold tracking-tight transition-colors duration-[var(--motion-duration-base)] hover:text-primary"
+                  :aria-label="t('post.viewAuthorProfile', '查看作者主页')"
+                >
+                  {{ authorName }}
+                </NuxtLink>
+                <p
+                  v-else
+                  class="font-display text-lg font-semibold tracking-tight"
+                >
                   {{ authorName }}
                 </p>
                 <div
@@ -778,6 +789,10 @@ const authorName = computed(() => {
   const a = post.value?.author
   if (!a) return 'Anonymous'
   return a.nickname || a.name || a.username || 'Anonymous'
+})
+const authorUrl = computed(() => {
+  const u = post.value?.author?.username
+  return u ? `/authors/${u}` : ''
 })
 const normalizedTags = computed(() => {
   const tags = post.value?.tags || []

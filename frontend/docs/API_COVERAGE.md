@@ -12,7 +12,7 @@
 - **路径规则**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀，故代码中 `'/admin/guestbook'` == `GET /api/admin/guestbook`
 - 覆盖率 =（✅ + 🟡）/ 后端端点总数
 
-**总计：46 个路由模块文件、351 个端点；✅ 201 + 🟡 8 = 已覆盖 209 个，未消费 142 个，覆盖率 59.6%。**
+**总计：46 个路由模块文件、351 个端点；✅ 202 + 🟡 8 = 已覆盖 210 个，未消费 141 个，覆盖率 59.8%。**
 
 > 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。
 
@@ -65,7 +65,7 @@
 | stats | `/api/admin/stats` | 1 | 1 | 0 | 0 | 100% |
 | translate | `/api/translate` | 1 | 1 | 0 | 0 | 100% |
 | docs | `/api/docs` | 2 | 2 | 0 | 0 | 100% |
-| **合计** | — | **355** | **196** | **8** | **151** | **57.5%** |
+| **合计** | — | **355** | **197** | **8** | **150** | **57.7%** |
 
 ***
 
@@ -88,11 +88,11 @@
 
 > 2026-09-28 口径：内容详情页的「不存在」此前只渲染兜底 UI、HTTP 仍是 200，且带 swr 会被缓存成可索引的空壳（生产实例实测四类页面 × 不存在 slug 全 200，而后端对这些路径明确回 404）。新增 `composables/useContentStatus.ts`，在 `app:rendered` 时点把真实 404 写回 SSR 响应，四类详情页（`pages/posts/[slug] · categories/[slug] · tags/[slug] · page/[slug]`）全部接线；网络故障与 5xx 不改状态码（临时故障判成永久删除会掉索引）。两条时序约束（payload 落值前判定=全站误判 404；异步回调里取 event=闸门静默失效）记在 AGENTS §2.3.2，回归见 `tests/unit/contentNotFoundStatus.spec.ts`。~~残留观感项：这类 404 页的 `<title>` 仍由 slug 人性化生成~~ —— 同轮已收口：四类详情页标题在「取不到内容且非加载中」时统一用 `error.notFoundTitle`（四语齐），加载中仍留空只显站点名，避免好页面闪一下"页面不存在"。WordPress 的 404 页标题就是「页面不存在」口径，不再由 slug 编出一个假装存在的文章/分类名。生产实例实测：四类不存在 slug 均为 `404 + 标题「页面不存在 …」`，真实文章（含中文 slug）/分类/标签/独立页与首页、列表、年归档标题逐条无变化。
 
-### users（/api/users）— 13/22 覆盖
+### users（/api/users）— 14/22 覆盖
 
-✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`POST /password-reset-request`（fp:141）、`POST /password-reset`（fp:163）、`GET /users/`（用户列表，uam:405）
-❌（9）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`DELETE /me`、`PUT /me/cover`、`GET /{user_id}`、`GET /username/{username}`、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`。
-判定：**剩余是真缺口但已不再是"成体系空白"** —— 个人中心 `/account` 接了读自己内容的 6 个端点，账户设置 `/account/settings` 接了改资料/偏好/改密 4 个写端点（accs = `pages/account/settings.vue`），`/forgot-password` 接了自助找回 2 个端点并替换掉 /login 上"忘记密码功能暂未开放"的禁用占位（fp = `pages/forgot-password.vue`）；仍无 UI 的是「他人主页」（`GET /{user_id}` / `GET /username/{username}` 系），注销账户刻意不做入口（软删除但无恢复路径，WordPress 后台同样不开放给用户）。
+✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`POST /password-reset-request`（fp:141）、`POST /password-reset`（fp:163）、`GET /users/`（用户列表，uam:405）、`GET /username/{username}`（作者主页，aup:214）
+❌（8）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`DELETE /me`、`PUT /me/cover`、`GET /{user_id}`（ID 形态，公开页统一走用户名）、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`（作者主页改用 `GET /blog/posts?author=<username>` 取列表，保留 id 形态给后台/其他消费方）。
+判定：**剩余是真缺口但已不再是"成体系空白"** —— 个人中心 `/account` 接了读自己内容的 6 个端点，账户设置 `/account/settings` 接了改资料/偏好/改密 4 个写端点（accs = `pages/account/settings.vue`），`/forgot-password` 接了自助找回 2 个端点并替换掉 /login 上"忘记密码功能暂未开放"的禁用占位（fp = `pages/forgot-password.vue`）；作者主页 `/authors/[username]`（aup = `pages/authors/[username].vue`）接上了 `GET /username/{username}`，列表侧不再另开 id 依赖链而是给 `GET /blog/posts` 加了 `author=<username>` 过滤（缓存键含作者段，隐私闸门与 `/users/{id}/posts` 同口径）；注销账户刻意不做入口（软删除但无恢复路径，WordPress 后台同样不开放给用户）。
 
 ### core（/api）— 16/19 覆盖
 

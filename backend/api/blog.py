@@ -79,7 +79,7 @@ _TAG_PALETTE = [
 ]
 from backend.models.blog import Category, Comment, Post, Tag, post_likes, post_tags
 from backend.models.log import TrashItem
-from backend.models.user import User
+from backend.models.user import User, UserPreference
 from backend.schemas import (
     BaseResponse,
     BatchPostStatusResponse,
@@ -335,6 +335,7 @@ async def _get_post_list_cache_key(
     tag: str | None,
     search: str | None,
     status_filter: str | None,
+    author: str | None = None,
 ) -> str:
     """生成文章列表缓存键"""
     parts = [
@@ -346,6 +347,8 @@ async def _get_post_list_cache_key(
         f"t{tag or 'all'}",
         f"s{search or 'none'}",
         f"st{status_filter or 'published'}",
+        # 作者归档必须自成一条键：少了这一段，A 作者的列表会被当作全站/其他作者的结果命中。
+        f"a{author or 'all'}",
     ]
     return make_cache_key(*parts)
 
@@ -487,7 +490,12 @@ async def _build_post_list_item(
     "/posts",
     response_model=PaginatedResponse,
     summary="文章列表",
-    description="获取文章列表，支持分类、标签筛选和关键词搜索。支持多语言返回。",
+    description=(
+        "获取文章列表，支持分类、标签、作者（用户名）筛选和关键词搜索。支持多语言返回。"
+        "`author` 走作者归档口径：作者不存在返回空页（不 404，让资料接口负责 404）；"
+        "作者把 `show_posts` 关掉后，非本人/非管理员同样返回空页（与 "
+        "`GET /users/{user_id}/posts` 同一道隐私闸门）。"
+    ),
 )
 async def list_posts(
     request: Request,
@@ -496,6 +504,7 @@ async def list_posts(
     page_size: int = Query(12, ge=1, le=200, description="每页数量"),
     category: str | None = Query(None, description="分类 slug"),
     tag: str | None = Query(None, description="标签 slug"),
+    author: str | None = Query(None, max_length=150, description="作者用户名（作者归档）"),
     search: str | None = Query(None, description="搜索关键词"),
     status_filter: str | None = Query(None, alias="status", description="文章状态（需管理员权限）"),
     post_type: str | None = Query(None, description="内容类型（自定义文章类型 key，默认 post）"),
@@ -524,13 +533,42 @@ async def list_posts(
     language = get_language_from_request(request, lang)
 
     is_admin = bool(current_user and (current_user.is_staff or current_user.is_superuser))
+
+    # 作者归档闸门（与 GET /users/{user_id}/posts 同一口径）：
+    #   用户名查无此人 → 空页（404 由资料接口负责，列表不替它表态）；
+    #   作者关了 show_posts → 非本人、非管理员同样空页。
+    # 无偏好行按"可见"处理，和 UserPreference 的建表默认一致。
+    author_id: int | None = None
+    if author:
+        author_id = await db.scalar(select(User.id).where(User.username == author))
+        if author_id is None:
+            return PaginatedResponse(
+                items=[], total=0, page=page, page_size=page_size, total_pages=0
+            )
+        hide_posts = await db.scalar(
+            select(UserPreference.show_posts).where(UserPreference.user_id == author_id)
+        )
+        is_self = bool(current_user and current_user.id == author_id)
+        if hide_posts is False and not is_self and not is_admin:
+            return PaginatedResponse(
+                items=[], total=0, page=page, page_size=page_size, total_pages=0
+            )
+
     # Admin 传 status=all 或不传 status → 返回全部状态；普通用户始终只看 published
     admin_all_statuses = is_admin and (not status_filter or status_filter == "all")
-    use_cache = not is_admin and not search and not created_start and not created_end
+    # 本人看自己的归档页会绕过隐私闸门，这条结果不能进公共缓存（缓存键不含查看者）。
+    viewer_is_author = bool(author_id and current_user and current_user.id == author_id)
+    use_cache = (
+        not is_admin
+        and not search
+        and not created_start
+        and not created_end
+        and not viewer_is_author
+    )
 
     if use_cache:
         cache_key = await _get_post_list_cache_key(
-            language, page, page_size, category, tag, search, status_filter
+            language, page, page_size, category, tag, search, status_filter, author
         )
         cached = await cache.get(cache_key)
         if cached:
@@ -586,6 +624,10 @@ async def list_posts(
 
     if tag:
         query = query.join(Post.tags).where(Tag.slug == tag)
+
+    # 作者归档：用已解析的 author_id 过滤（走 idx 已有的 author_id 列，不再 JOIN users）
+    if author_id is not None:
+        query = query.where(Post.author_id == author_id)
 
     # 内容类型过滤：不传时默认只列博客文章（post），保持向后兼容
     if post_type:

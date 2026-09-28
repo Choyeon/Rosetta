@@ -29,8 +29,10 @@ function section(data: Record<string, Record<string, string>>, name: string): Re
 
 describe('pages/forgot-password.vue', () => {
   it('两个重置端点都以 POST 真实调用，且经由 apiFetch（不裸用 $fetch）', () => {
-    expect(postsTo('/blog/users/password-reset-request')).toBe(true)
-    expect(postsTo('/blog/users/password-reset')).toBe(true)
+    // 前缀必须是 /users：这两条挂在 users.router（/api/users）下，不是 blog 的 /users/me/*。
+    // 写错前缀页面只会静默 404，由 tests/test_frontend_api_path_parity.py 对照 OpenAPI 抓住。
+    expect(postsTo('/users/password-reset-request')).toBe(true)
+    expect(postsTo('/users/password-reset')).toBe(true)
     expect(page).toContain('apiFetch')
     expect(page).not.toContain('$fetch(')
   })
