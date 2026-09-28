@@ -326,6 +326,7 @@ Rosetta/
 
 1. ❌ 给返回裸 dict 的端点加 `response_model=M`——Pydantic 会**静默丢弃**模型里没写的键（SSR 页面正在读 `data` / `total` / `page`）。
    例外：handler 本身就 `return M(...)` 时可以加；提交前用 `model.model_fields` 与 handler `return` 的键集做一次差分，`会被丢弃=[] 必填但缺失=[]` 才算安全。
+   反向同理：**不挂 response_model 时也不要把裸 ORM 实例 `return` 出去**赌编码器兜得住。`jsonable_encoder` 对 SQLAlchemy 对象走「内省已加载属性」——`_sa_instance_state` 会被正确跳过，但没落进 `__dict__` 的列**整键消失**（实测未设 `created_at` 的实例编码后只剩 5 个键）。响应形态因此取决于这一刻对象加载了什么，而不是 `responses={200: {"model": …}}` 承诺了什么；要么按 §9.1 回读一次，要么在 handler 侧显式构造字典（口径见 `api/favorite.py::_favorite_row`）。
 2. ❌ 用 `-> Any` / `-> dict[str, Any]` / `-> list[dict[str, Any]]` 注解"凑"文档——本仓 FastAPI 会把它**派生成真实 response_model**：
    实测端点返回裸 ORM 实例时直接 **500**，而 OpenAPI 里只多出一行 `"title": "Response Xyz…"` 噪声，连 `$ref` 都不产出。守卫见同文件的 `test_no_useless_any_annotations_on_routes`。
 3. ✅ `-> Response` / `-> StreamingResponse` 注解安全（FastAPI 对已是 Response 的返回值短路，不校验）。
