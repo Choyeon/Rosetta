@@ -12,12 +12,23 @@ from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Body, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, select, update
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    delete,
+    func,
+    select,
+    update,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 
 from backend.core.auth import DB, CurrentUser
 from backend.core.concurrency import concurrent_query
-from backend.core.database import Base
+from backend.core.database import AsyncSession, Base
 from backend.utils.compat import UTC
 
 if TYPE_CHECKING:
@@ -234,6 +245,23 @@ def _favorite_row(favorite: Favorite) -> dict[str, Any]:
         "note": favorite.note,
         "created_at": favorite.created_at.isoformat() if favorite.created_at else None,
     }
+
+
+async def _post_favorites(db: AsyncSession, user_id: int, post_id: int) -> list[Favorite]:
+    """当前用户对某篇文章的全部收藏行。
+
+    正常情况下至多一行，但 ``add_favorite`` 的重复判定是「先 SELECT 再 INSERT」，
+    表上又没有 (user_id, post_id) 唯一约束（历史脏数据 + 并发双击都能落两行）。
+    原先这些端点用 ``scalar_one_or_none()`` 取行，重复行直接抛
+    ``MultipleResultsFound`` ⇒ 500，用户表现为「收藏成功了，但备注/移动/取消全报错」
+    且无法自助修复。取行一律按「新→旧」排序，最后一个元素即锚点行。
+    """
+    result = await db.execute(
+        select(Favorite)
+        .where(Favorite.user_id == user_id, Favorite.post_id == post_id)
+        .order_by(Favorite.created_at.desc(), Favorite.id.desc())
+    )
+    return list(result.scalars().all())
 
 
 # ==================== 收藏夹 API ====================
@@ -495,13 +523,14 @@ async def add_favorite(
         )
 
     # 检查是否已收藏
-    existing = await db.execute(
-        select(Favorite).where(
-            Favorite.user_id == current_user.id,
-            Favorite.post_id == post_id,
+    existing = (
+        await db.execute(
+            select(Favorite.id)
+            .where(Favorite.user_id == current_user.id, Favorite.post_id == post_id)
+            .limit(1)
         )
-    )
-    if existing.scalar_one_or_none():
+    ).first()
+    if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="已收藏此文章",
@@ -598,7 +627,10 @@ async def remove_favorite(
 @router.delete(
     "/post/{post_id}",
     summary="按文章ID取消收藏",
-    description="根据文章 ID 取消收藏（需登录）。该文章未被当前用户收藏时 404。",
+    description=(
+        "根据文章 ID 取消收藏（需登录）。该文章未被当前用户收藏时 404。"
+        "历史重复行（同一文章的多条收藏）会被一并清除。"
+    ),
     response_model=None,
     responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
@@ -608,21 +640,20 @@ async def remove_favorite_by_post(
     current_user: CurrentUser,
 ):
     """按文章ID取消收藏"""
-    result = await db.execute(
-        select(Favorite).where(
+    # 「按文章取消收藏」的语义是这篇文章不再被收藏，因此删掉该 (user, post) 的**全部**
+    # 行：只删一行的话，重复数据会让列表里那条收藏继续存在，界面上看就是"取消没生效"。
+    removed = await db.execute(
+        delete(Favorite).where(
             Favorite.user_id == current_user.id,
             Favorite.post_id == post_id,
         )
     )
-    favorite = result.scalar_one_or_none()
-    if not favorite:
+    await db.flush()
+    if not removed.rowcount:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="收藏不存在",
         )
-
-    await db.delete(favorite)
-    await db.flush()
 
     return {"success": True, "message": "已取消收藏"}
 
@@ -631,7 +662,8 @@ async def remove_favorite_by_post(
     "/post/{post_id}/folder",
     summary="按文章ID移动收藏夹",
     description="根据文章 ID 移动收藏到指定收藏夹（需登录，folder_id 传 null 表示移回默认收藏）。"
-    "成功后直接回显更新后的收藏记录行；收藏或目标收藏夹不存在时 404。",
+    "成功后直接回显更新后的收藏记录行（重复行时回显最新一条，且所有重复行同步改夹）；"
+    "收藏或目标收藏夹不存在时 404。",
     response_model=None,
     responses={200: {"model": FavoriteRecordOut, "description": "更新后的收藏记录"}},
 )
@@ -642,14 +674,8 @@ async def move_favorite_by_post(
     folder_id: int | None = Body(None, embed=True),
 ):
     """按文章ID移动收藏夹"""
-    result = await db.execute(
-        select(Favorite).where(
-            Favorite.user_id == current_user.id,
-            Favorite.post_id == post_id,
-        )
-    )
-    favorite = result.scalar_one_or_none()
-    if not favorite:
+    favorites = await _post_favorites(db, current_user.id, post_id)
+    if not favorites:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="收藏不存在",
@@ -662,8 +688,13 @@ async def move_favorite_by_post(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="收藏夹不存在",
             )
-    favorite.folder_id = folder_id
-
+    # 全部行一起改：只动锚点行会让重复数据在列表里同时出现「在夹内」和「未归类」两种状态。
+    await db.execute(
+        update(Favorite)
+        .where(Favorite.user_id == current_user.id, Favorite.post_id == post_id)
+        .values(folder_id=folder_id)
+    )
+    favorite = favorites[0]
     await db.flush()
     await db.refresh(favorite)
 
@@ -674,7 +705,8 @@ async def move_favorite_by_post(
     "/post/{post_id}/note",
     summary="按文章ID更新备注",
     description="根据文章 ID 更新收藏备注（需登录，note 传 null 表示清空备注）。"
-    "成功后直接回显更新后的收藏记录行；收藏不存在时 404。",
+    "成功后直接回显更新后的收藏记录行（重复行时回显最新一条，且所有重复行同步改备注）；"
+    "收藏不存在时 404。",
     response_model=None,
     responses={200: {"model": FavoriteRecordOut, "description": "更新后的收藏记录"}},
 )
@@ -685,20 +717,19 @@ async def update_favorite_note_by_post(
     note: str | None = Body(None, embed=True),
 ):
     """按文章ID更新备注"""
-    result = await db.execute(
-        select(Favorite).where(
-            Favorite.user_id == current_user.id,
-            Favorite.post_id == post_id,
-        )
-    )
-    favorite = result.scalar_one_or_none()
-    if not favorite:
+    favorites = await _post_favorites(db, current_user.id, post_id)
+    if not favorites:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="收藏不存在",
         )
 
-    favorite.note = note
+    await db.execute(
+        update(Favorite)
+        .where(Favorite.user_id == current_user.id, Favorite.post_id == post_id)
+        .values(note=note)
+    )
+    favorite = favorites[0]
     await db.flush()
     await db.refresh(favorite)
 
@@ -719,11 +750,15 @@ async def check_favorites(
     post_ids: list[int] = Body(..., embed=True),
 ):
     """检查收藏状态"""
+    # 与 _post_favorites 同口径：重复行时以最新一条为锚点，保证 check 回给前端的
+    # favorite_id 和「按文章」端点实际操作的那一行是同一行。
     result = await db.execute(
-        select(Favorite.post_id, Favorite.id).where(
+        select(Favorite.post_id, Favorite.id)
+        .where(
             Favorite.user_id == current_user.id,
             Favorite.post_id.in_(post_ids),
         )
+        .order_by(Favorite.created_at.asc(), Favorite.id.asc())
     )
     favorites = {row.post_id: row.id for row in result.all()}
 

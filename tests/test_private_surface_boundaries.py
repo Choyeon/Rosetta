@@ -13,6 +13,10 @@
    亚毫秒错误（429/401 落库为 0）在分母外，比例能报过 100%。
 6. 标记单条私信已读用 403 区分「存在但不是你的」——私信主键连续自增，这等于让攻击者
    逐 id 数出站内外私信的存在性；同族（收藏、通知）本就一律 404，这里是最后一个缺口。
+7. 收藏的三个「按文章 ID」端点假设了一个业务键只有一行（``scalar_one_or_none()``），
+   而表上没有 (user_id, post_id) 唯一约束、查重又是先 SELECT 再 INSERT：并发/重试落下
+   重复行后，抛 MultipleResultsFound ⇒ 500，用户看到的是「收藏成功但改备注/移夹/取消
+   全报错」。同族还有把裸 ORM 实例交给编码器的 PATCH 响应（键集随已加载属性变化）。
 """
 
 from datetime import datetime, timedelta
@@ -487,3 +491,97 @@ class TestPerformanceMetricsErrorRate:
         assert "sample_count" not in data
         assert data["error_count"] >= 1
         assert data["error_rate"] > 0
+
+
+class TestFavoriteDuplicateRowsDoNotBreakByPostEndpoints:
+    """同一 (user, post) 出现重复收藏行时，按文章 ID 的三个端点不得 500。
+
+    ``add_favorite`` 的重复判定是「先 SELECT 再 INSERT」，而 favorites 表上没有
+    (user_id, post_id) 唯一约束——双击、重试或并发都能落两行。届时原先的
+    ``select(...).scalar_one_or_none()`` 抛 ``MultipleResultsFound``（未捕获 ⇒ 500），
+    用户表现为「收藏成功了，但备注/移动/取消全都报错」，且无法自助修复。
+    现按 ``_post_favorites`` 取全部行：取消收藏删干净，改夹/改备注同步全部行后
+    回显最新一条（锚点与 ``/check`` 返回的 favorite_id 同口径）。
+    """
+
+    async def _seed_dupes(self, db_session, test_user, test_post):
+        for offset, note in ((0, "旧备注"), (1, "新备注")):
+            db_session.add(
+                Favorite(
+                    user_id=test_user.id,
+                    post_id=test_post.id,
+                    note=note,
+                    created_at=datetime.now(UTC) - timedelta(minutes=offset),
+                )
+            )
+        await db_session.commit()
+
+    @pytest.mark.asyncio
+    async def test_note_endpoint_survives_duplicates(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        await self._seed_dupes(db_session, test_user, test_post)
+        resp = await client.patch(
+            f"/api/favorites/post/{test_post.id}/note",
+            headers=auth_headers,
+            json={"note": "改过"},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["note"] == "改过"
+
+    @pytest.mark.asyncio
+    async def test_move_endpoint_survives_duplicates(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        folder = FavoriteFolder(user_id=test_user.id, name="去这里")
+        db_session.add(folder)
+        await db_session.commit()
+        await db_session.refresh(folder)
+        await self._seed_dupes(db_session, test_user, test_post)
+        resp = await client.patch(
+            f"/api/favorites/post/{test_post.id}/folder",
+            headers=auth_headers,
+            json={"folder_id": folder.id},
+        )
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["folder_id"] == folder.id
+
+    @pytest.mark.asyncio
+    async def test_unfavorite_by_post_survives_duplicates(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        await self._seed_dupes(db_session, test_user, test_post)
+        resp = await client.delete(f"/api/favorites/post/{test_post.id}", headers=auth_headers)
+        assert resp.status_code == 200, resp.text
+        # 全部重复行都要清掉：只删一行时列表里那条收藏还在，界面看就是"取消没生效"
+        listed = await client.get("/api/favorites", headers=auth_headers)
+        assert listed.json()["items"] == []
+
+    @pytest.mark.asyncio
+    async def test_add_on_duplicate_rows_is_400_not_500(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        """add_favorite 自己的重复判定同样曾抛 MultipleResultsFound。"""
+        await self._seed_dupes(db_session, test_user, test_post)
+        resp = await client.post(
+            "/api/favorites",
+            headers=auth_headers,
+            json={"post_id": test_post.id},
+        )
+        assert resp.status_code == 400, resp.text
+
+    @pytest.mark.asyncio
+    async def test_note_update_reaches_every_duplicate_row(
+        self, client, auth_headers, test_user, test_post, db_session
+    ):
+        """只改锚点行会让同一条收藏在列表里出现两种备注，因此全部行同步。"""
+        await self._seed_dupes(db_session, test_user, test_post)
+        resp = await client.patch(
+            f"/api/favorites/post/{test_post.id}/note",
+            headers=auth_headers,
+            json={"note": "统一后的备注"},
+        )
+        assert resp.status_code == 200
+        listed = await client.get("/api/favorites", headers=auth_headers)
+        notes = [item["note"] for item in listed.json()["items"]]
+        assert notes == ["统一后的备注", "统一后的备注"]

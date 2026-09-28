@@ -222,7 +222,7 @@
 
 | 模块 | 端点数 | 明细与判定 |
 |---|---:|---|
-| favorite（/api/favorites） | 12 | 文件夹 CRUD、收藏列表/增删改、按文章操作、check。**真实缺口**：无"我的收藏"页面；后端为注册用户互动体系预留。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，接入 UI 时可直接用 `total_pages` 翻页。两个 `PATCH /favorites/post/{id}/*` 现显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段（此前把裸 ORM 实例交给 `jsonable_encoder`，它按「已加载属性」出键） |
+| favorite（/api/favorites） | 12 | 文件夹 CRUD、收藏列表/增删改、按文章操作、check。**真实缺口**：无"我的收藏"页面；后端为注册用户互动体系预留。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，接入 UI 时可直接用 `total_pages` 翻页。两个 `PATCH /favorites/post/{id}/*` 现显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段（此前把裸 ORM 实例交给 `jsonable_encoder`，它按「已加载属性」出键）。重复收藏（同一 `(user, post)` 多行，表上**至今没有**唯一约束）不再让三个「按文章 ID」端点抛 `MultipleResultsFound` → 500：取消收藏删净全部行，改夹/改备注同步全部行后回显最新一条。**已知缺口**：根治要加 `(user_id, post_id)` 唯一索引 + 先去重历史数据，本轮只做容忍式修复 |
 | messages（/api/messages） | 6 | 会话列表、未读数、历史、发送、已读、全部已读。**真实缺口**：无私信 UI（需配套用户体系完善后接入）。契约（2026-09-28 修）：`POST /send` 的参数走 JSON 请求体（`{recipient_id, content}`，正文 1–5000），不再接受 query string——正文进 URL 会被 nginx access log 明文落盘；会话列表保证「每个对端一行」且只含本人的消息；按 id 标记已读对他人消息一律 404（不再用 403 承认私信 id 存在） |
 | monitoring（/api/monitoring） | 8 | health/stats/visits/performance/db/cache/trends。刻意保留：Admin 监控面板当前由 `/admin/stats` + `/admin/performance/*` + `/admin/cache/status` 覆盖，此模块为深度诊断接口（运维经 docs/工具页直访） |
 | captcha（/api/captcha） | 2 | 图形验证码生成/校验。注册登录暂未接入（后端已支持，防滥用开关未开）——**待接入缺口** |
