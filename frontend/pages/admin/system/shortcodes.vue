@@ -120,19 +120,34 @@
         <table class="w-full text-sm">
           <thead class="text-xs uppercase text-muted-foreground">
             <tr class="border-b">
-              <th class="text-left font-medium px-5 py-2">
+              <th
+                scope="col"
+                class="text-left font-medium px-5 py-2"
+              >
                 标签
               </th>
-              <th class="text-left font-medium px-3 py-2">
+              <th
+                scope="col"
+                class="text-left font-medium px-3 py-2"
+              >
                 来源
               </th>
-              <th class="text-left font-medium px-3 py-2">
+              <th
+                scope="col"
+                class="text-left font-medium px-3 py-2"
+              >
                 配对
               </th>
-              <th class="text-left font-medium px-3 py-2">
+              <th
+                scope="col"
+                class="text-left font-medium px-3 py-2"
+              >
                 描述
               </th>
-              <th class="text-right font-medium px-5 py-2">
+              <th
+                scope="col"
+                class="text-right font-medium px-5 py-2"
+              >
                 操作
               </th>
             </tr>
