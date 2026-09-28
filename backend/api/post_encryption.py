@@ -21,11 +21,23 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff, aget_password_hash, averify_password
+from backend.core.cache import invalidate_post_detail_cache
 from backend.core.crypto import DecryptionError, decrypt_content, encrypt_content
 from backend.models.blog import Post
 from backend.schemas import BaseResponse
 
 router = APIRouter(tags=["内容加密"])
+
+
+async def _drop_public_caches(post: Post) -> None:
+    """加密状态一翻转就要清文章详情缓存。
+
+    公开详情按 `post:{slug}:{language}` 缓存匿名访客看到的**明文**，而读侧的缓存命中
+    发生在密码/状态判定**之前**（blog.get_post 开头）：加过密码的文章若留着旧缓存，
+    访客在 TTL（600s）内照样读到全文，密码门等于没上。写侧也刻意不给加密文进缓存，
+    所以清掉一次即可回到安全状态。口径见 core.cache.invalidate_post_detail_cache 的说明。
+    """
+    await invalidate_post_detail_cache(post.slug)
 
 
 class EncryptRequest(BaseModel):
@@ -155,6 +167,7 @@ async def encrypt_post(
 
     await db.flush()
     await db.refresh(post)
+    await _drop_public_caches(post)
 
     return BaseResponse(message="加密内容已设置")
 
@@ -241,6 +254,7 @@ async def update_post_encryption(
 
     await db.flush()
     await db.refresh(post)
+    await _drop_public_caches(post)
 
     return BaseResponse(message="加密内容已更新")
 
@@ -279,5 +293,6 @@ async def disable_post_encryption(
 
     await db.flush()
     await db.refresh(post)
+    await _drop_public_caches(post)
 
     return BaseResponse(message="已关闭内容加密")

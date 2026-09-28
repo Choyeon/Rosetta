@@ -336,6 +336,7 @@ async def _get_post_list_cache_key(
     search: str | None,
     status_filter: str | None,
     author: str | None = None,
+    post_type: str | None = None,
 ) -> str:
     """生成文章列表缓存键"""
     parts = [
@@ -349,6 +350,10 @@ async def _get_post_list_cache_key(
         f"st{status_filter or 'published'}",
         # 作者归档必须自成一条键：少了这一段，A 作者的列表会被当作全站/其他作者的结果命中。
         f"a{author or 'all'}",
+        # 内容类型同理：查询侧按 post_type 过滤（不传默认 post），键里少了这一段时，
+        # 匿名访客可以用 ?post_type=任意值 把"空列表"写进首页/列表页共用的键位，
+        # 在 TTL 内对全站投毒。缺省值必须与查询侧的 `else: post_type == "post"` 同口径。
+        f"pt{post_type or 'post'}",
     ]
     return make_cache_key(*parts)
 
@@ -577,7 +582,7 @@ async def list_posts(
 
     if use_cache:
         cache_key = await _get_post_list_cache_key(
-            language, page, page_size, category, tag, search, status_filter, author
+            language, page, page_size, category, tag, search, status_filter, author, post_type
         )
         cached = await cache.get(cache_key)
         if cached:
@@ -1788,7 +1793,15 @@ async def get_category_by_slug(
             detail="分类不存在",
         )
 
-    post_count = await db.scalar(select(func.count()).where(Post.category_id == category.id)) or 0
+    # 计数口径必须与 GET /categories 列表一致（只数 published）：这里此前数全部状态，
+    # 于是同一分类在侧栏和分类落地页上报两个数字，多出来的那部分是草稿/定时文章——
+    # 对匿名访客等于把"还有几篇没写完"这件事公示出去。
+    post_count = (
+        await db.scalar(
+            select(func.count()).where(Post.category_id == category.id, Post.status == "published")
+        )
+        or 0
+    )
 
     return CategoryResponse(
         id=category.id,

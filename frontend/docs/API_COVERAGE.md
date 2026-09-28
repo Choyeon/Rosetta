@@ -122,7 +122,7 @@
 
 ### media（/api/media）— 12/15
 
-✅：`POST /upload`（umd:20）、`POST /upload/stream`（umd:26）、`POST /avatar`（umd:32）、`POST /cover`（umd:38）、`GET /library`（umd:52、uam:1081）、`GET /library/stats`（umd:56、uam:1104）、`POST /library`（umd:65）、`GET/PUT/DELETE /library/{id}`（umd:72,76,83、uam:1080）、`DELETE /library/batch`（umd:89、uam:1084；响应含 `deleted_count` / `refused[{id,reason}]` / `missing_ids`，前端 `pages/admin/media/library.vue` 按三种结果分别 toast，不得只看 `success`）
+✅：`POST /upload`（umd:20）、`POST /upload/stream`（umd:26）、`POST /avatar`（umd:32）、`POST /cover`（umd:38）、`GET /library`（umd:52、uam:1081）、`GET /library/stats`（umd:56、uam:1104）、`POST /library`（umd:65）、`GET/PUT/DELETE /library/{id}`（umd:72,76,83、uam:1080；三者同为 `CurrentStaff` 档——详情读过去误挂在 `CurrentUser` 上，普通登录用户可逐 id 翻库内任意媒体元数据，2026-09-28 与 PUT/DELETE 对齐；前端无 GET 消费方，后台列表一次取整页）、`DELETE /library/batch`（umd:89、uam:1084；响应含 `deleted_count` / `refused[{id,reason}]` / `missing_ids`，前端 `pages/admin/media/library.vue` 按三种结果分别 toast，不得只看 `success`）
 🟡：`GET /{category}/{filename}`——媒体文件直链回源路径（正常 URL 由后端返回、部分场景拼接消费）
 ❌（3）：`POST /library/upload`（与 upload+library 两步流重复——建议统一）、`DELETE /{category}/{filename}`（后台删除走 `/library/{id}`，此裸文件删除为保留能力）、`GET /bing-wallpaper`（**2026-09-26 转为未消费**：前台壁纸统一走 Nitro BFF `server/api/bing-wallpaper.get.ts`（30m SWR + 无 CORS），其零调用的 `useServerBingWallpaper` 包装已删除；后端代理保留给非 Nuxt 消费方）
 

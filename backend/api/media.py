@@ -43,7 +43,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from backend.core.auth import DB, CurrentStaff, CurrentUser, get_current_user
+from backend.core.auth import DB, CurrentStaff, get_current_user
 from backend.core.concurrency import concurrent_query
 from backend.core.plugin_bus import bus
 from backend.models.blog import Category, Post
@@ -1440,15 +1440,15 @@ async def upload_to_library(
     "/library/{media_id}",
     summary="媒体详情",
     description=(
-        "获取单个媒体文件的详细信息。需登录（任意角色，游客 401）；"
-        "记录不存在或 ID 无法解析为整数时分别返回 404 / 422。"
+        "获取单个媒体文件的详细信息。需管理员/编辑权限（与媒体库列表、统计、"
+        "更新、删除同一档位）；记录不存在或 ID 无法解析为整数时分别返回 404 / 422。"
     ),
     responses={200: {"model": MediaDetailResponse}},
 )
 async def get_media_detail(
     media_id: int,
     db: DB,
-    current_user: CurrentUser,
+    current_user: CurrentStaff,
 ):
     """获取媒体详情"""
     result = await db.execute(
