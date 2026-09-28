@@ -13,6 +13,9 @@
 5. 隐私开关对**资料接口**与 **sitemap** 的口径：`public_profile=False` 的作者
    在 `GET /users/{id}` 与 `GET /users/username/{u}` 上统一 404（不是 403/500），
    且与 `show_posts=False` 一样不进作者归档清单。
+6. 主页 404 之后，它**下面**的四个同级入口（文章列表 / 评论列表 / 统计 /
+   隐私开关组）必须一起消失，并且开关变更要失效已缓存的归档列表——
+   见 `TestHiddenProfileSubResources`。
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import object_session
 
 from backend.api.blog import _get_post_list_cache_key
+from backend.core.cache import cache
 from backend.models.blog import Post
 from backend.models.user import User, UserPreference
 from backend.services.cache_service import CacheService
@@ -366,3 +370,133 @@ class TestCachedProfilePayloadIsReusable:
         # 脱离会话后属性仍可读（已加载值），否则展示路径会拿到空对象
         assert raw["user"].username == test_user.username
         assert raw["preferences"].public_profile is True
+
+
+class TestHiddenProfileSubResources:
+    """「关闭公开资料」必须让这个主页的**全部**读取面一起消失。
+
+    资料接口先修成了统一 404，但它下面四个同级入口当时完全不查 `public_profile`：
+    文章列表、评论列表、统计、以及整组隐私开关本身。表现是"主页 404 了，
+    但内容一个不少"——尤其 `GET /users/username/{u}/preferences` 会把
+    `public_profile: false` 原样回给匿名调用方，等于当面承认"这个账号存在，只是藏起来了"，
+    把刻意选 404 的防枚举口径直接打穿。另一半：`show_stats` 开关全仓零读侧消费者，
+    用户在设置页关掉"显示统计"什么也不会发生（死配置）。
+    """
+
+    @staticmethod
+    async def _hide_profile(db_session: AsyncSession, user_id: int) -> None:
+        db_session.add(
+            UserPreference(
+                user_id=user_id,
+                public_profile=False,
+                show_posts=True,
+                show_comments=True,
+                show_stats=True,
+            )
+        )
+        await db_session.commit()
+
+    @pytest.mark.asyncio
+    async def test_anonymous_cannot_read_any_sub_resource(
+        self, client: AsyncClient, db_session: AsyncSession, test_user: User, test_post: Post
+    ):
+        await self._hide_profile(db_session, test_user.id)
+
+        for url in (
+            f"/api/users/{test_user.id}/posts",
+            f"/api/users/{test_user.id}/comments",
+            f"/api/users/{test_user.id}/stats",
+            f"/api/users/username/{test_user.username}/preferences",
+        ):
+            r = await client.get(url)
+            assert r.status_code == 404, f"{url} 应随主页一起 404，实际 {r.status_code}"
+
+        # 作者归档列表：空页 200（列表不替资料接口表态），但一条都不给。
+        r = await client.get("/api/blog/posts", params={"author": test_user.username})
+        assert r.status_code == 200
+        assert _items(r.json()) == []
+
+    @pytest.mark.asyncio
+    async def test_owner_still_reads_every_sub_resource(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+        auth_headers: dict,
+    ):
+        await self._hide_profile(db_session, test_user.id)
+
+        for url in (
+            f"/api/users/{test_user.id}/posts",
+            f"/api/users/{test_user.id}/comments",
+            f"/api/users/{test_user.id}/stats",
+            f"/api/users/username/{test_user.username}/preferences",
+        ):
+            r = await client.get(url, headers=auth_headers)
+            assert r.status_code == 200, f"本人应越过闸门：{url} -> {r.status_code}"
+
+        r = await client.get(
+            "/api/blog/posts", params={"author": test_user.username}, headers=auth_headers
+        )
+        assert [p["slug"] for p in _items(r.json())] == ["test-post"]
+
+    @pytest.mark.asyncio
+    async def test_show_posts_is_empty_list_not_404(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+    ):
+        """两个开关语义不同，不得合并：`show_posts` 是"列表为空"，`public_profile` 才是"页面不存在"。"""
+        db_session.add(UserPreference(user_id=test_user.id, public_profile=True, show_posts=False))
+        await db_session.commit()
+
+        r = await client.get(f"/api/users/{test_user.id}/posts")
+        assert r.status_code == 200
+        assert _items(r.json()) == []
+
+    @pytest.mark.asyncio
+    async def test_show_stats_switch_zeroes_the_counters(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+        auth_headers: dict,
+    ):
+        db_session.add(UserPreference(user_id=test_user.id, public_profile=True, show_stats=False))
+        await db_session.commit()
+
+        hidden = (await client.get(f"/api/users/{test_user.id}/stats")).json()
+        assert hidden["posts_count"] == 0, "show_stats=False 必须真的把统计藏起来"
+        assert hidden["total_views"] == 0 and hidden["total_likes"] == 0
+
+        mine = (await client.get(f"/api/users/{test_user.id}/stats", headers=auth_headers)).json()
+        assert mine["posts_count"] == 1, "本人读到的必须是真实值"
+
+    @pytest.mark.asyncio
+    async def test_hiding_profile_evicts_the_author_list_cache(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+    ):
+        """闸门结果本身进缓存，所以开关变更必须一起失效它——否则 TTL 内访客仍拿到旧列表。"""
+        key = await _get_post_list_cache_key(
+            "zh", 1, 10, None, None, None, None, test_user.username
+        )
+        r = await client.get(
+            "/api/blog/posts",
+            params={"author": test_user.username, "lang": "zh", "page": 1, "page_size": 10},
+        )
+        assert r.status_code == 200 and len(_items(r.json())) == 1
+        # 读写必须走 blog.py 用的同一个入口：列表键由 core.cache.make_cache_key 生成，
+        # 而 CacheService.build_key 带命名空间，用它读这条键会永远得到 None（假失败）。
+        assert await cache.get(key) is not None, "前置条件：作者归档列表应已进缓存"
+
+        service = UserService(db_session)
+        await service.update_preferences(test_user.id, {"public_profile": False})
+        assert await cache.get(key) is None, "隐私开关变更必须清掉该作者的归档列表缓存"

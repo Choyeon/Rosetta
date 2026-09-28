@@ -37,6 +37,7 @@ from backend.repositories.user import (
 )
 from backend.services._avatar_helpers import resolved_for_user
 from backend.services.cache_service import CacheService
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_cache import invalidate_post_caches_by_slugs
 from backend.utils.compat import UTC, timedelta
 
@@ -568,6 +569,15 @@ class UserService:
         await self._db.refresh(preference)
 
         await self._cache.invalidate_user_cache(user_id)
+
+        # 归档可见性两开关（show_posts / public_profile）决定的是"别人的主页在不在"，
+        # 而这份判定结果存在于三处缓存里：作者文章列表（`posts:*a<username>`）、
+        # 作者资料（`user_profile:*`，上面已清）、以及 Nitro 的 swr 页面缓存
+        # （`/authors/<u>` 最长 600s + stale 窗口）。只清第二处会留下
+        # "用户关了公开资料、访客仍能翻出他的文章和整页主页"的 TTL 窗口。
+        if update_data.keys() & {"show_posts", "public_profile"}:
+            await self._invalidate_author_post_caches(user_id)
+            purge_frontend_page_cache("author archive visibility changed")
 
         logger.info(f"用户偏好设置更新成功: user_id={user_id}")
 

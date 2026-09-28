@@ -88,6 +88,8 @@
 
 > 2026-09-28 口径：内容详情页的「不存在」此前只渲染兜底 UI、HTTP 仍是 200，且带 swr 会被缓存成可索引的空壳（生产实例实测四类页面 × 不存在 slug 全 200，而后端对这些路径明确回 404）。新增 `composables/useContentStatus.ts`，在 `app:rendered` 时点把真实 404 写回 SSR 响应，四类详情页（`pages/posts/[slug] · categories/[slug] · tags/[slug] · page/[slug]`）全部接线；网络故障与 5xx 不改状态码（临时故障判成永久删除会掉索引）。两条时序约束（payload 落值前判定=全站误判 404；异步回调里取 event=闸门静默失效）记在 AGENTS §2.3.2，回归见 `tests/unit/contentNotFoundStatus.spec.ts`。~~残留观感项：这类 404 页的 `<title>` 仍由 slug 人性化生成~~ —— 同轮已收口：四类详情页标题在「取不到内容且非加载中」时统一用 `error.notFoundTitle`（四语齐），加载中仍留空只显站点名，避免好页面闪一下"页面不存在"。WordPress 的 404 页标题就是「页面不存在」口径，不再由 slug 编出一个假装存在的文章/分类名。生产实例实测：四类不存在 slug 均为 `404 + 标题「页面不存在 …」`，真实文章（含中文 slug）/分类/标签/独立页与首页、列表、年归档标题逐条无变化。
 
+> 2026-09-28 口径：`public_profile=False` 的隐私闸门此前只挡 `GET /username/{username}` 主文档，`/{user_id}/posts · /comments · /stats` 与 `/{username}/preferences` 仍照常吐数据——等于关掉的只是"目录页"，绕过它直接打子资源就把整个主页内容读走。现这些读取面统一过 `users.py::_profile_is_hidden`：**关主页 = 主文档与全部子资源一律 404**（403/401 等于承认账号存在，会被拿来做存在性枚举）；而 `show_posts/show_comments/show_stats=False` 是"隐藏即空"，返回 200 + 空页/全零计数，两者语义不同不可混。本人和 staff 越过两层。开关写入侧联动清作者归档列表缓存 + `purge_frontend_page_cache`（Nitro SWR 页面上还挂着旧归档）。回归 `tests/test_author_archive_filter.py::TestHiddenProfileSubResources`（5 例，含"改开关必须把已缓存的作者列表键清掉"）。
+
 ### users（/api/users）— 14/22 覆盖
 
 ✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`POST /password-reset-request`（fp:141）、`POST /password-reset`（fp:163）、`GET /users/`（用户列表，uam:405）、`GET /username/{username}`（作者主页，aup:214）

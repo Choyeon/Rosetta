@@ -7,8 +7,9 @@
   三条硬约束：
   1. 偏好里的 ``theme`` 字段**故意不做 UI**：models/user.py 里它没有任何消费点
      （前台主题由 useFrontendTheme + 主题系统决定），放个开关等于骗用户"设置了但没用"。
-     五个隐私开关都有真实强制点：public_profile→user_service、show_email→响应 helper、
-     show_posts/show_comments→users.py 的作者页与评论列表、show_stats→资料读数。
+     五个隐私开关都有真实强制点：public_profile→资料主文档与其子资源（posts/comments/stats/preferences）统一
+     404、show_email→响应 helper、show_posts/show_comments→作者归档与评论列表「隐藏即空」、
+     show_stats→资料读数全零。
   2. 改密成功必须清登录态并跳 /login：后端会 bump token_version 使全部会话失效，
      前端若留在原页，下一个请求就是 401 自动刷新失败 → 被 useAPI 打回登录页，
      用户看到的是"我刚保存就掉线"，而不是"请用小密码重新登录"。

@@ -746,6 +746,28 @@ async def update_my_preferences(
     return UserPreferenceResponse.model_validate(preference)
 
 
+def _profile_is_hidden(
+    preference: UserPreference | None,
+    user_id: int,
+    current_user: User | None,
+) -> bool:
+    """这个用户的资料对外是否应当表现为「不存在」。
+
+    `public_profile=False` 与"查无此人"共用 404 口径（见 `GET /users/{user_id}`）：
+    403/401 等于承认账号真实存在，是账号枚举面；而资料页的**子资源**（文章列表、
+    评论列表、统计、隐私开关组）只要还能匿名读出内容，主页级的 404 就只是把门帘
+    放下、门没关——尤其 `GET /users/username/{u}/preferences` 直接把整组开关回给
+    匿名调用方，等于把"这个人存在，只是藏起来了"念出来。
+
+    本人和管理员越过该闸门；**无偏好行按可见处理**（与 UserPreference 建表默认一致）。
+    """
+    if preference is None or preference.public_profile is not False:
+        return False
+    if current_user is not None and (current_user.id == user_id or current_user.is_staff):
+        return False
+    return True
+
+
 @router.get(
     "/{user_id}",
     response_model=UserResponse,
@@ -832,10 +854,15 @@ async def get_user_by_username(username: str, db: DB, current_user: CurrentUserO
         "获取用户的隐私设置（公开部分）。公开接口、无需鉴权。"
         "响应为裸 dict（5 个布尔开关，无 data 信封）；用户从未动过设置（无偏好行）时"
         "返回与建表默认一致的默认开关组（show_email 默认拒绝）。用户不存在返回 404。"
+        "**资料已关闭公开（`public_profile=False`）时同样返回 404**——把整组开关摊给"
+        "匿名调用方等于宣布「这个账号存在，只是藏起来了」，会打穿资料接口刻意选定的"
+        "统一 404 防枚举口径。仅本人可读到自己的真实开关组。"
     ),
     responses={200: {"model": UserPreferencesPublicDoc}},
 )
-async def get_user_preferences_by_username(username: str, db: DB):
+async def get_user_preferences_by_username(
+    username: str, db: DB, current_user: CurrentUserOptional = None
+):
     """获取用户的隐私设置"""
     result = await db.execute(select(User).where(User.username == username))
     user = result.scalar_one_or_none()
@@ -858,6 +885,13 @@ async def get_user_preferences_by_username(username: str, db: DB):
             "show_comments": True,
             "show_stats": True,
         }
+
+    # 关了公开资料的人，其开关组本身也是"这个主页不存在"的一部分（见 _profile_is_hidden）。
+    if _profile_is_hidden(preference, user.id, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
 
     return {
         "public_profile": preference.public_profile,
@@ -1002,6 +1036,8 @@ async def update_cover(
     description=(
         "获取指定用户发布的文章列表。摘要与 `blog.py` 列表口径一致，"
         "经内容渲染管线处理（短代码 + the_excerpt filter 链），插件不会在此页失效。"
+        "隐私：作者关闭「公开资料」（`public_profile=False`）时返回 404（主页不存在口径），"
+        "只关闭 `show_posts` 时返回空页 200。"
     ),
 )
 async def get_user_posts(
@@ -1034,6 +1070,14 @@ async def get_user_posts(
 
     is_self = current_user and current_user.id == user_id
     is_staff = current_user and current_user.is_staff
+
+    # 资料页整体关闭时，它下面的集合也按"不存在"回 404（口径同 GET /users/{user_id}），
+    # 而 show_posts=false 只是"这个列表是空的"——两个开关语义不同，不要合并。
+    if _profile_is_hidden(preference, user_id, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
 
     if preference and not preference.show_posts and not is_self and not is_staff:
         return PaginatedResponse(items=[], total=0, page=page, page_size=page_size, total_pages=0)
@@ -1146,6 +1190,13 @@ async def get_user_comments(
     is_self = current_user and current_user.id == user_id
     is_staff = current_user and current_user.is_staff
 
+    # 资料整体关闭 → 404（同 /{user_id}/posts）；show_comments=false → 空页。
+    if _profile_is_hidden(preference, user_id, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
     if preference and not preference.show_comments and not is_self and not is_staff:
         return PaginatedResponse(items=[], total=0, page=page, page_size=page_size, total_pages=0)
 
@@ -1211,17 +1262,23 @@ async def get_user_comments(
         "获取指定用户的统计数据。公开接口、无需鉴权。响应为裸 dict"
         "（user_id/posts_count/comments_count/total_views/total_likes/joined_at，无信封）；"
         "计数在无数据时兜底为 0，joined_at 为 ISO 8601 字符串或 null。用户不存在返回 404。"
+        "隐私口径：作者关闭「公开资料」（`public_profile=False`）时返回 404（同资料接口）；"
+        "只关闭「显示统计」（`show_stats=False`）时返回 200 + 全零计数，与"
+        "「还没有任何活动」不可区分正是隐藏语义，且此时不再执行任何聚合查询。"
     ),
     responses={200: {"model": UserStatsDoc}},
 )
 async def get_user_stats(
     user_id: int,
     db: DB,
+    current_user: CurrentUserOptional = None,
 ):
     """
     获取用户统计信息
 
-    性能优化：
+    - 四条聚合（文章数/评论数/浏览量/点赞数）顺序执行，命中隐藏开关时整段跳过。
+    - 隐私两层：`public_profile=False` → 404（资料整体不存在口径）；
+      `show_stats=False` → 200 全零（列表/计数类开关的"隐藏即空"口径）。本人可越过两层。
     """
 
     # 检查用户是否存在
@@ -1231,6 +1288,27 @@ async def get_user_stats(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用户不存在",
         )
+
+    preference = await db.scalar(select(UserPreference).where(UserPreference.user_id == user_id))
+    if _profile_is_hidden(preference, user_id, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    is_self = bool(current_user and current_user.id == user_id)
+    hide_stats = bool(preference and preference.show_stats is False) and not (
+        is_self or (current_user and current_user.is_staff)
+    )
+    if hide_stats:
+        return {
+            "user_id": user_id,
+            "posts_count": 0,
+            "comments_count": 0,
+            "total_views": 0,
+            "total_likes": 0,
+            "joined_at": user.created_at.isoformat() if user.created_at else None,
+        }
 
     # 顺序执行多条统计查询
     posts_count, comments_count, total_views, total_likes = await concurrent_query(

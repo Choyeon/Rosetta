@@ -536,7 +536,9 @@ async def list_posts(
 
     # 作者归档闸门（与 GET /users/{user_id}/posts 同一口径）：
     #   用户名查无此人 → 空页（404 由资料接口负责，列表不替它表态）；
-    #   作者关了 show_posts → 非本人、非管理员同样空页。
+    #   作者关了 show_posts → 非本人、非管理员同样空页；
+    #   作者关了 public_profile → 同样空页：他的 /authors/<u> 主页对访客是 404、
+    #   也已从 sitemap 剔除，留着这份列表等于给一个"不存在"的归档继续供数据。
     # 无偏好行按"可见"处理，和 UserPreference 的建表默认一致。
     author_id: int | None = None
     if author:
@@ -545,11 +547,18 @@ async def list_posts(
             return PaginatedResponse(
                 items=[], total=0, page=page, page_size=page_size, total_pages=0
             )
-        hide_posts = await db.scalar(
-            select(UserPreference.show_posts).where(UserPreference.user_id == author_id)
+        switches = (
+            await db.execute(
+                select(UserPreference.show_posts, UserPreference.public_profile).where(
+                    UserPreference.user_id == author_id
+                )
+            )
+        ).first()
+        archive_hidden = switches is not None and (
+            switches.show_posts is False or switches.public_profile is False
         )
         is_self = bool(current_user and current_user.id == author_id)
-        if hide_posts is False and not is_self and not is_admin:
+        if archive_hidden and not is_self and not is_admin:
             return PaginatedResponse(
                 items=[], total=0, page=page, page_size=page_size, total_pages=0
             )
