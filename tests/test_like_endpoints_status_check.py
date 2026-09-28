@@ -22,7 +22,7 @@ class TestLikeEndpointsCheckStatus:
     ):
         """Pending guestbook entry should not be likable (404)."""
         from backend.models.guestbook import GuestbookEntry
-        
+
         entry = GuestbookEntry(
             author_name="Test User",
             content="Pending entry",
@@ -30,7 +30,7 @@ class TestLikeEndpointsCheckStatus:
         )
         db_session.add(entry)
         await db_session.commit()
-        
+
         r = await client.post(f"/api/guestbook/{entry.id}/like")
         assert r.status_code == 404, f"Expected 404 for pending entry, got {r.status_code}: {r.text}"
 
@@ -40,7 +40,7 @@ class TestLikeEndpointsCheckStatus:
     ):
         """Spam guestbook entry should not be likable (404)."""
         from backend.models.guestbook import GuestbookEntry
-        
+
         entry = GuestbookEntry(
             author_name="Spammer",
             content="Spam entry",
@@ -48,7 +48,7 @@ class TestLikeEndpointsCheckStatus:
         )
         db_session.add(entry)
         await db_session.commit()
-        
+
         r = await client.post(f"/api/guestbook/{entry.id}/like")
         assert r.status_code == 404, f"Expected 404 for spam entry, got {r.status_code}: {r.text}"
 
@@ -58,7 +58,7 @@ class TestLikeEndpointsCheckStatus:
     ):
         """Pending comment should not be likable (404)."""
         from backend.models.blog import Comment
-        
+
         comment = Comment(
             post_id=test_post.id,
             author_name="Test User",
@@ -67,7 +67,7 @@ class TestLikeEndpointsCheckStatus:
         )
         db_session.add(comment)
         await db_session.commit()
-        
+
         r = await client.post(f"/api/comments/{comment.id}/like")
         assert r.status_code == 404, f"Expected 404 for pending comment, got {r.status_code}: {r.text}"
 
@@ -77,7 +77,7 @@ class TestLikeEndpointsCheckStatus:
     ):
         """Spam comment should not be likable (404)."""
         from backend.models.blog import Comment
-        
+
         comment = Comment(
             post_id=test_post.id,
             author_name="Spammer",
@@ -86,7 +86,7 @@ class TestLikeEndpointsCheckStatus:
         )
         db_session.add(comment)
         await db_session.commit()
-        
+
         r = await client.post(f"/api/comments/{comment.id}/like")
         assert r.status_code == 404, f"Expected 404 for spam comment, got {r.status_code}: {r.text}"
 
@@ -96,7 +96,7 @@ class TestLikeEndpointsCheckStatus:
     ):
         """Approved guestbook entry should still be likable."""
         from backend.models.guestbook import GuestbookEntry
-        
+
         entry = GuestbookEntry(
             author_name="Good User",
             content="Approved entry",
@@ -104,7 +104,7 @@ class TestLikeEndpointsCheckStatus:
         )
         db_session.add(entry)
         await db_session.commit()
-        
+
         r = await client.post(f"/api/guestbook/{entry.id}/like")
         assert r.status_code == 200, f"Expected 200 for approved entry, got {r.status_code}: {r.text}"
         data = r.json()
@@ -116,7 +116,7 @@ class TestLikeEndpointsCheckStatus:
     ):
         """Approved comment should still be likable."""
         from backend.models.blog import Comment
-        
+
         comment = Comment(
             post_id=test_post.id,
             author_name="Good User",
@@ -125,7 +125,7 @@ class TestLikeEndpointsCheckStatus:
         )
         db_session.add(comment)
         await db_session.commit()
-        
+
         r = await client.post(f"/api/comments/{comment.id}/like")
         assert r.status_code == 200, f"Expected 200 for approved comment, got {r.status_code}: {r.text}"
         data = r.json()

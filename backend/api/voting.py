@@ -38,8 +38,8 @@ async def list_polls(
 ):
     """获取投票列表
 
-    优化：批量获取投票统计数据，避免 N+1 查询
-    
+    优化：批量获取投票统计数据，避免 N+1 查询。
+
     show_results 闸门：当 poll.show_results=False 时，对非 staff/superuser 隐藏 votes_count / total_votes。
     """
     query = select(Poll).options(selectinload(Poll.choices))
