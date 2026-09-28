@@ -25,6 +25,7 @@ from backend.models.core import Notification
 from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
 from backend.services._avatar_helpers import _user_relationship_safe, resolved_for_comment
+from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.utils.compat import utc_now_naive
 
 if TYPE_CHECKING:
@@ -184,6 +185,29 @@ class CommentService:
         return r.scalars().first()
 
     @staticmethod
+    async def get_readable_post(
+        db: AsyncSession,
+        post_id_or_slug: str | int,
+        current_user: User | None,
+        provided_password: str | None = None,
+    ) -> Post | None:
+        """``get_post_by_any`` + 文章可读性判定。
+
+        返回 None 表示"这篇文章对当前观看者不存在"或"加密且密码未通过"。判据与文章
+        详情端点同源（见 :mod:`backend.services.post_access`）——原先评论口直接按
+        id/slug 查 Post 便放行，草稿与加密文章的**已过审评论正文**对任意匿名访客公开，
+        数字 id 还能枚举。
+        """
+        post = await CommentService.get_post_by_any(db, post_id_or_slug)
+        if post is None:
+            return None
+        if not post_is_publicly_visible(post, current_user):
+            return None
+        if not await post_content_unlocked(post, current_user, provided_password):
+            return None
+        return post
+
+    @staticmethod
     async def list_root_comments(
         db: AsyncSession,
         post: Post,
@@ -337,6 +361,13 @@ class CommentService:
         pres = await db.execute(post_stmt)
         post: Post | None = pres.scalars().first()
         post_author_id = post.author_id if post else None
+
+        # 回复口也要过文章可读性判定：否则给一个 comment_id 就能把草稿/加密文章的
+        # 整棵回复树按 ID 枚举出来（根评论自身的可见性挡不住子行）。
+        if post is not None and not post_is_publicly_visible(post, current_user):
+            return [], 0, None
+        if post is not None and not await post_content_unlocked(post, current_user):
+            return [], 0, None
 
         base_where = [Comment.parent_id == root.id]
         # 可见性（同根的回复可见性）

@@ -45,6 +45,7 @@ from backend.services.content_renderer import (
     render_post_fields,
     render_title,
 )
+from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
     invalidate_post_caches_by_slugs,
@@ -2042,14 +2043,36 @@ async def create_tag(
     "/posts/{post_id}/comments",
     response_model=list[CommentResponse],
     summary="评论列表",
-    description="获取文章的评论树形结构。",
+    description=(
+        "获取文章的评论树形结构。评论树的可读性与文章本体同闸门：草稿/待审/定时未到的文章、"
+        "以及设了密码但本次未带正确密码（``password`` 查询参数或 ``X-Post-Password`` 头，"
+        "作者与 staff 免验）的文章返回空列表——文章详情把正文藏起来却把评论全公开，"
+        "等于绕过密码保护。"
+    ),
 )
-async def list_comments(post_id: int, db: DB):
+async def list_comments(
+    post_id: int,
+    db: DB,
+    password: str | None = Query(None, description="加密文章访问密码（与文章详情同名）"),
+    x_post_password: str | None = Header(None, alias="X-Post-Password"),
+    current_user: CurrentUserOptional = None,
+):
     """获取文章评论（树形结构）。
 
     一次性扁平查询所有相关评论 + eager-load user，避免 ORM 多级 replies
     关系 lazy-load 触发 async greenlet 同步 IO 错误。
     """
+    # 0) 文章可读性闸门。原先这条口**只按 post_id 查评论**，完全不看文章状态/密码，
+    #    于是草稿与加密文章的评论正文匿名可读（详情口却把正文藏了），post_id 还能枚举。
+    #    不可见时回空列表而不是 404：本端点是列表口、前端 SSR 期就调用，
+    #    报错会变成访客可见的红色 toast，而"这里没有内容可看"正是我们要表达的。
+    post_res = await db.execute(select(Post).where(Post.id == post_id))
+    post = post_res.scalar_one_or_none()
+    if post is None or not post_is_publicly_visible(post, current_user):
+        return []
+    if not await post_content_unlocked(post, current_user, x_post_password or password):
+        return []
+
     # 1) 取所有目标 post 下激活的评论，eager-load user（一次性，不分层）
     all_stmt = (
         select(Comment)
@@ -2086,7 +2109,10 @@ async def list_comments(post_id: int, db: DB):
     response_model=CommentResponse,
     status_code=status.HTTP_201_CREATED,
     summary="发表评论",
-    description="在文章下发表评论，支持回复。",
+    description=(
+        "在文章下发表评论，支持回复。文章不可见（草稿/定时未到/加密未解锁）时按 404 处理，"
+        "不接受对看不见的文章写评论；文章禁止评论（allow_comments=false）返回 403。"
+    ),
 )
 async def create_comment(
     post_id: int,
@@ -2105,6 +2131,19 @@ async def create_comment(
     post = result.scalar_one_or_none()
 
     if not post:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
+
+    # 写入口与读取口同闸门：草稿/定时未到/加密未解锁的文章不接受评论。
+    # 这里用 404 而非 403——"你不该看见这篇文章"不该退化成"这篇文章存在但你不能写"。
+    if not post_is_publicly_visible(post, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
+    if not await post_content_unlocked(post, current_user):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文章不存在",

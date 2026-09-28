@@ -133,7 +133,7 @@
 ### comments（/api）— 6/8
 
 ✅：`GET /comments/{id}/replies`（ucm:39,172）、`POST /comments/{id}/like`（ucm:74）、`POST /admin/comments/{id}/approve|reject|spam`（ucm:94,100,106）、`POST /admin/comments/batch`（ucm:112）
-❌（2，**重复别名**）：`GET /posts/{post_id_or_slug}/comments`、`POST /posts/{post_id_or_slug}/comments`——前端统一走 `/blog/posts/{id}/comments`（blog.py 版），此处为同源旧实现，建议统一后下线。`DELETE /comments/{id}` 亦无用户侧调用（用户删评论缺口，管理端删除走 `/admin/comments/{id}`）。→ 计入 ❌ 的 2 条为两个 posts 别名。
+❌（2，**重复别名**）：`GET /posts/{post_id_or_slug}/comments`、`POST /posts/{post_id_or_slug}/comments`——前端统一走 `/blog/posts/{id}/comments`（blog.py 版），此处为同源旧实现，建议统一后下线。`DELETE /comments/{id}` 亦无用户侧调用（用户删评论缺口，管理端删除走 `/admin/comments/{id}`）。→ 计入 ❌ 的 2 条为两个 posts 别名。**两套实现的可读性判据现已统一**（`backend/services/post_access.py`）：草稿/待审/定时未到/加密未解锁文章的评论树对无权观看者一律不可见（列表口回空、写口与 slug 版读口 404）。此前两套实现各自 `select(Post)` 便放行、都不判状态与密码。别名仍存在，等统一后再下线。
 
 ### comment_reactions（/api）— 3/3 ✅
 

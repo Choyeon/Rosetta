@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1180 passed + 3 skipped + 2 xfailed + 2 xpassed，覆盖率 68.39%（须先删 .coverage，见 §8），fail_under=45%）
+├─ tests/                            Pytest（1187 passed + 3 skipped + 2 xfailed + 2 xpassed，覆盖率 68.43%（须先删 .coverage，见 §8），fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -349,11 +349,11 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1180 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 68.39%）
+uv run pytest                                        # 1187 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 68.43%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
-**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
+**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
 
 ### 8.2 frontend/ 目录
 
@@ -388,6 +388,7 @@ uv run pytest                                      # 覆盖率 ≥ fail_under=45
 curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```
 
+- **派生资源必须复用文章本体的可读性判据**：文章的 status / 定时发布 / 访问密码三重判定原先只内联在文章详情端点里，评论的三张读口 + 两张写口各自 `select(Post)` 便放行，表现是"正文已按密码藏好，同一篇文章的评论（常直接引用正文）却匿名全公开"，草稿 id 与 comment_id 还能枚举。判据现在抽在 `backend/services/post_access.py`（`post_is_publicly_visible` + `post_content_unlocked`），评论口一律走它（`CommentService.get_readable_post` / blog.py 的列表口）——**新增任何以 post_id/slug 定位的读或写口，不要再自己查 Post**，那道判据漏一处即成泄漏。不可见时列表口回空、详情型口回 404（不回 403：承认存在即可枚举）。回归 `tests/test_comment_post_access_gate.py`；反证要点：把 `post_is_publicly_visible` 的 status 判据与密码判据**分两轮**变异，混在同一轮里会互相遮蔽（密码变异会让所有未加密文章被判成锁上，草稿泄漏那条反而假绿）。
 - **没有唯一约束就没有"单行"的保证**：按 `(user_id, post_id)` 这类业务键取行时，`scalar_one_or_none()` 在重复行存在时抛 `MultipleResultsFound`（未捕获 ⇒ 500），而"先 SELECT 再 INSERT"的查重挡得住顺序请求、挡不住并发与重试。要么给表加唯一索引，要么按集合处理（`select(...).order_by(...)` 取全部行 + 显式锚点，删除/更新覆盖全部行）——口径见 `api/favorite.py::_post_favorites`。
 - 新建/更新接口：`db.flush()` 之后服务端生成的列（`created_at` / `updated_at` 这类 onupdate）处于过期状态，直接序列化会在事件循环里触发隐式 IO（异步下表现为 `MissingGreenlet`）。必须回读一次——`await db.refresh(entity)` 与"一条带 `selectinload` 的 SELECT"**二选一**；`refresh` 本身就会连关系一起重载，两条都做等于白发一次往返。
 - **响应缓存的载荷里不得放会话绑定的 ORM 实例。** 缓存跨请求复用，而实例属于"第一次那次请求"的会话：那次请求结束、会话 commit/close 后 `expire_on_commit` 会把它的属性全部标成过期，下一个命中缓存的请求再读任何一个字段就是 `DetachedInstanceError` → HTTP 500（实测表现：作者主页第一次正常，TTL 内刷新即报错）。要么在写缓存前 `make_transient` 摘成只读快照（见 `user_service._detach_for_cache`），要么直接存 `model_dump(mode="json")`（本仓多数接口已是后者）。同一条规则的另一面：**给后台写路径取实体的 getter 一律不能带缓存**（`get_user_by_id` 曾带 300s 缓存，六个调用点全是写操作——读属性 500、写属性落在脱离会话的对象上，接口回 200 而库里没变）。守卫见 `tests/test_author_archive_filter.py::TestCachedProfilePayloadIsReusable`。

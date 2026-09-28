@@ -14,6 +14,11 @@ Rosetta 评论 API 路由（独立 comments 模块）
 
 单条 PATCH / DELETE 由 admin.py 统一提供（本模块只留 legacy 子动作）。
 
+文章可读性闸门：本模块所有口（含 `/api/comments/{id}/replies`）的可见性判据都走
+:mod:`backend.services.post_access`，与文章详情端点同源——草稿、定时未到、加密未解锁
+的文章，它的评论树对无权观看者一律不存在（404 / 空）。加新评论口时**不要**再自己
+`select(Post)`，那道判据漏一处就是正文藏住而评论全公开。
+
 缓存口径：文章的 ``comments_count`` 会嵌进列表缓存（``posts*``，读侧不重算）与
 文章详情响应体，所以本模块所有"改变可见评论集合"的写操作都要走
 :func:`backend.services.post_cache.invalidate_post_caches_by_ids`。
@@ -25,7 +30,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from backend.core.deps import (
@@ -137,6 +142,9 @@ def _pagination_to_response(
         "（业务码 POST_NOT_FOUND）。每条根评论附带前 3 条最新回复与 reply_total，"
         "完整回复走 GET /api/comments/{comment_id}/replies。"
         "include_unapproved=true 仅对作者本人/管理员生效，匿名访客始终只见过审评论。"
+        "评论树的可读性判定与文章详情同源：草稿/待审/定时未到的文章、以及设了密码但"
+        "本次未带正确密码（``password`` 查询参数或 ``X-Post-Password`` 头，作者与 staff 免验）"
+        "的文章，对无权观看者一律 404 POST_NOT_FOUND，而不是把正文藏起来却把评论全给你。"
     ),
 )
 async def list_root_comments(
@@ -146,9 +154,13 @@ async def list_root_comments(
     include_unapproved: bool = Query(
         False, description="是否包含待审核/已拒绝（仅作者/管理员可见本人或全部）"
     ),
+    password: str | None = Query(None, description="加密文章访问密码（与文章详情同名）"),
+    x_post_password: str | None = Header(None, alias="X-Post-Password"),
     current_user: CurrentUserOptional = None,
 ):
-    post = await CommentService.get_post_by_any(db, post_id_or_slug)
+    post = await CommentService.get_readable_post(
+        db, post_id_or_slug, current_user, x_post_password or password
+    )
     if post is None:
         raise HTTPException(
             status_code=404,
@@ -207,6 +219,8 @@ async def list_replies(
         "Cookie csrf_token 与 X-CSRF-Token 双提交一致，否则 403（CSRF_CHECK_FAILED）；"
         "匿名请求不带 Authorization 时跳过该校验。"
         "文章不存在返回 404（POST_NOT_FOUND）。"
+        "与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，"
+        "不给草稿或加密文章写评论。"
         "常见失败：422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST /"
         " NESTED_REPLY_TOO_DEEP；404 COMMENT_PARENT_NOT_FOUND；"
         "429 TOO_FREQUENT_COMMENT（Retry-After: 30，同文章同 IP 频控）。"
@@ -219,9 +233,13 @@ async def create_comment(
     data: CommentCreate,
     request: Request,
     db: DB,
+    password: str | None = Query(None, description="加密文章访问密码"),
+    x_post_password: str | None = Header(None, alias="X-Post-Password"),
     current_user: CurrentUserOptional = None,
 ):
-    post = await CommentService.get_post_by_any(db, post_id_or_slug)
+    post = await CommentService.get_readable_post(
+        db, post_id_or_slug, current_user, x_post_password or password
+    )
     if post is None:
         raise HTTPException(
             status_code=404,
