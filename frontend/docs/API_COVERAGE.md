@@ -88,11 +88,11 @@
 
 > 2026-09-28 口径：内容详情页的「不存在」此前只渲染兜底 UI、HTTP 仍是 200，且带 swr 会被缓存成可索引的空壳（生产实例实测四类页面 × 不存在 slug 全 200，而后端对这些路径明确回 404）。新增 `composables/useContentStatus.ts`，在 `app:rendered` 时点把真实 404 写回 SSR 响应，四类详情页（`pages/posts/[slug] · categories/[slug] · tags/[slug] · page/[slug]`）全部接线；网络故障与 5xx 不改状态码（临时故障判成永久删除会掉索引）。两条时序约束（payload 落值前判定=全站误判 404；异步回调里取 event=闸门静默失效）记在 AGENTS §2.3.2，回归见 `tests/unit/contentNotFoundStatus.spec.ts`。~~残留观感项：这类 404 页的 `<title>` 仍由 slug 人性化生成~~ —— 同轮已收口：四类详情页标题在「取不到内容且非加载中」时统一用 `error.notFoundTitle`（四语齐），加载中仍留空只显站点名，避免好页面闪一下"页面不存在"。WordPress 的 404 页标题就是「页面不存在」口径，不再由 slug 编出一个假装存在的文章/分类名。生产实例实测：四类不存在 slug 均为 `404 + 标题「页面不存在 …」`，真实文章（含中文 slug）/分类/标签/独立页与首页、列表、年归档标题逐条无变化。
 
-### users（/api/users）— 7/22 覆盖
+### users（/api/users）— 11/22 覆盖
 
-✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`GET /users/`（用户列表，uam:405）
-❌（15）：`PUT /me`、`POST /password-reset-request`、`POST /password-reset`、`POST /me/password`、`POST /me/change-password`、`GET/PUT /me/preferences`、`DELETE /me`、`PUT /me/cover`、`GET /{user_id}`、`GET /username/{username}`、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`。
-判定：**成体系的真实缺口**——前端没有"用户中心/账号设置/他人主页"页面（pages/ 下仅 settings.vue 且不调这些接口），改密、密码找回、偏好设置均无 UI。
+✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`GET /users/`（用户列表，uam:405）
+❌（11）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`DELETE /me`、`PUT /me/cover`、`POST /password-reset-request`、`POST /password-reset`、`GET /{user_id}`、`GET /username/{username}`、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`。
+判定：**剩余是真缺口但已不再是"成体系空白"** —— 个人中心 `/account` 接了读自己内容的 6 个端点，账户设置 `/account/settings` 接了改资料/偏好/改密 4 个写端点（accs = `pages/account/settings.vue`）；仍无 UI 的是「他人主页」（`GET /{user_id}` 系）与「忘记密码」自助找回流程，注销账户刻意不做入口（软删除但无恢复路径，WordPress 后台同样不开放给用户）。
 
 ### core（/api）— 16/19 覆盖
 

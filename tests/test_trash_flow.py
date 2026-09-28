@@ -53,7 +53,9 @@ class TestSingleDeleteToTrash:
 
         # 原行已删（expire 后 get() 会对已删实例做 refresh 报错，改用 COUNT 直查表）
         remaining = (
-            await db_session.execute(select(func.count()).select_from(Post).where(Post.id == post.id))
+            await db_session.execute(
+                select(func.count()).select_from(Post).where(Post.id == post.id)
+            )
         ).scalar()
         assert remaining == 0
 

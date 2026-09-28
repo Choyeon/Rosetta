@@ -35,6 +35,16 @@
       <p class="text-xs uppercase tracking-wider text-muted-foreground">
         {{ t('account.desc') }}
       </p>
+      <!-- 账户设置（资料/隐私/改密）入口放在本页而非顶栏下拉：/account 本身就只有登录态可达，
+           再往用户菜单里塞第三项只是把同一批链接摊成两处维护。 -->
+      <Button
+        variant="outline"
+        size="sm"
+        @click="navigateTo('/account/settings')"
+      >
+        <Settings data-icon="inline-start" />
+        {{ t('account.settingsTitle') }}
+      </Button>
     </header>
 
     <!-- ===== 读数卡：GET /users/me/stats（后端信封 {success,data,message}，与列表端点不同构） ===== -->
@@ -347,6 +357,7 @@ import {
   Heart,
   MessageSquare,
   RotateCcw,
+  Settings,
   Sparkles,
   ThumbsUp,
   Trash2

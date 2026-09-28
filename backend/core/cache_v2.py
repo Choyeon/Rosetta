@@ -626,28 +626,37 @@ class TwoLevelCache:
             return cached
 
         if settings.redis_enabled:
-            async with distributed_lock(f"cache:{key}", timeout=lock_timeout):
-                cached = await self.get(key)
-                if cached is not None:
-                    return cached
+            # 击穿锁是性能护栏，不是安全门禁：Redis 不可达或锁竞争超时必须降级为
+            # 「不加锁直接回源」。让它冒到 HTTP 层，等于把一次普通的读请求打成 500，
+            # 并把"缓存后端抖动"放大成"整站业务接口不可用"。
+            try:
+                async with distributed_lock(f"cache:{key}", timeout=lock_timeout):
+                    return await self._fetch_and_store(key, fetch_func, ttl, null_ttl)
+            except (TimeoutError, *_redis_retry_errors()) as exc:
+                logger.warning(f"缓存击穿锁不可用，降级为直接回源: {key} -> {exc!r}")
 
-                result = await self._execute_fetch(fetch_func)
+        return await self._fetch_and_store(key, fetch_func, ttl, null_ttl)
 
-                if result is None:
-                    await self.set_null(key, ttl=null_ttl)
-                    return None
+    async def _fetch_and_store(
+        self,
+        key: str,
+        fetch_func: Callable[[], Any],
+        ttl: int,
+        null_ttl: int,
+    ) -> Any | None:
+        """先复查缓存，未命中才回源并写入（空值也写，防穿透）。"""
+        cached = await self.get(key)
+        if cached is not None:
+            return cached
 
-                await self.set(key, result, ttl=ttl)
-                return result
-        else:
-            result = await self._execute_fetch(fetch_func)
+        result = await self._execute_fetch(fetch_func)
 
-            if result is None:
-                await self.set_null(key, ttl=null_ttl)
-                return None
+        if result is None:
+            await self.set_null(key, ttl=null_ttl)
+            return None
 
-            await self.set(key, result, ttl=ttl)
-            return result
+        await self.set(key, result, ttl=ttl)
+        return result
 
     async def _execute_fetch(self, fetch_func: Callable[[], Any]) -> Any:
         """执行数据获取函数"""

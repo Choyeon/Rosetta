@@ -656,8 +656,12 @@ async def change_password_v2(
             new_password=body.new_password,
         )
     except ValueError as e:
+        # 这里**不能**用 401：请求本身是带着有效 access token 进来的，401 的含义是
+        # 「身份凭证失效」，而 apiFetch 见到 401 会走 refreshAccessToken 重试链，重试仍 401
+        # 就 clearTokens + 跳 /login —— 用户只是把旧密码打错一个字符就被整站登出。
+        # 口径与本文件另外两处「当前密码错误」一致（change_password_legacy、delete_account 都用 400）。
         raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e),
         )
 

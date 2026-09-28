@@ -65,9 +65,7 @@ def _titles_of(payload) -> list[str]:
 
 
 @pytest.mark.asyncio
-async def test_archive_endpoints_apply_the_title_filter(
-    db_session: AsyncSession, test_user: User
-):
+async def test_archive_endpoints_apply_the_title_filter(db_session: AsyncSession, test_user: User):
     """三个归档出口的标题都必须带上当前 the_title 链的渲染结果"""
     await _mk_post(db_session, test_user, f"arch-title-{TEST_YEAR}")
 
@@ -96,9 +94,7 @@ async def test_archive_endpoints_apply_the_title_filter(
 
 
 @pytest.mark.asyncio
-async def test_archive_render_happens_before_cache_write(
-    db_session: AsyncSession, test_user: User
-):
+async def test_archive_render_happens_before_cache_write(db_session: AsyncSession, test_user: User):
     """渲染必须在写缓存之前：摘掉 filter 后第二次调用取自缓存，标题仍是渲染后的口径。
 
     如果闸门写在 `cache.set` 之后，第一次响应看起来正确，但缓存里存的是裸字符串，

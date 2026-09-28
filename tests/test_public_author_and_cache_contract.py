@@ -431,9 +431,7 @@ class TestCacheWarmerMatchesReader:
         warmed = await cache.get(make_cache_key("navigations", "header"))
         assert warmed and warmed[0]["icon"] == "house", "预热载荷丢字段"
 
-        hot = _payload(
-            (await client.get("/api/navigations", params={"location": "header"})).json()
-        )
+        hot = _payload((await client.get("/api/navigations", params={"location": "header"})).json())
         assert hot == warmed
 
         await cache.clear()
@@ -474,3 +472,73 @@ class TestCacheWarmerMatchesReader:
         await cache.clear()
         cold = _payload((await client.get("/api/friend-links")).json())
         assert cold == warmed
+
+
+class TestUserProfileViewerIsolation:
+    """``user_profile`` 缓存键只按"被查看者"生成，因此请求者相关的字段
+    （is_self、隐私门收窄后的精简视图、is_public）绝不允许进缓存。
+
+    曾经的缺陷：这些字段在 ``fetch()`` 里就算好再整体落缓存，于是
+    本人看过一次之后，缓存里带着 ``is_self: True``，紧随其后的匿名请求
+    原样拿到这份特权视图 —— 邮箱遮蔽豁免被复用，PII 直接发给陌生人。
+    反向同理：匿名看到精简视图被缓存后，本人再查也拿不回完整资料。
+    """
+
+    async def test_self_view_does_not_leak_privilege_to_anonymous(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+        test_user: User,
+    ):
+        await cache.clear()
+
+        mine = _payload(
+            (await client.get(f"/api/users/{test_user.id}", headers=auth_headers)).json()
+        )
+        assert mine["email"] == "test@example.com", "本人应看到自己的邮箱"
+
+        anon = _payload((await client.get(f"/api/users/{test_user.id}")).json())
+        assert anon["email"] == "***", "本人视图的 is_self 豁免被缓存复用给了匿名请求"
+        assert not anon.get("is_self")
+
+    async def test_private_profile_view_does_not_leak_to_self(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        auth_headers: dict,
+        test_user: User,
+    ):
+        """反向毒化：匿名侧的"资料不公开"结论被缓存复用后，本人也拿不回自己的资料。
+
+        公开端点对非本人的不公开资料是 403（不是精简 200），所以这里钉两件事：
+        匿名仍是 403，而本人必须拿到完整资料 + ``is_self``。
+        """
+        from backend.models.user import UserPreference
+
+        db_session.add(UserPreference(user_id=test_user.id, public_profile=False))
+        await db_session.commit()
+        await cache.clear()
+
+        anon = await client.get(f"/api/users/{test_user.id}")
+        assert anon.status_code == 403
+
+        self_resp = await client.get(f"/api/users/{test_user.id}", headers=auth_headers)
+        assert self_resp.status_code == 200, "匿名侧的精简视图被缓存复用，本人请求直接序列化失败"
+        mine = _payload(self_resp.json())
+        assert mine["email"] == "test@example.com", "本人应看到自己的邮箱，而非匿名侧的遮蔽值"
+
+    async def test_cached_payload_carries_no_viewer_dependent_fields(
+        self,
+        db_session: AsyncSession,
+        test_user: User,
+    ):
+        """结构性守卫：缓存里只允许有与请求者无关的键。"""
+        from backend.services.user_service import get_user_service
+
+        service = await get_user_service(db_session)
+        viewer_cache = service._cache
+        await service.get_user_profile(test_user.id, test_user.id)
+
+        cached = await viewer_cache.get(viewer_cache.build_key("user_profile", test_user.id))
+        assert cached is not None, "用户资料应写入缓存"
+        assert {"is_self", "is_public"}.isdisjoint(cached), "特权字段进缓存，跨请求者复用即泄露"

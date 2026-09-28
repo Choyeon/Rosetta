@@ -99,6 +99,31 @@ class TestUserPasswordChange:
         )
         assert response.status_code == 401
 
+    @pytest.mark.asyncio
+    async def test_change_password_v2_wrong_current_is_not_401(
+        self,
+        client: AsyncClient,
+        auth_headers: dict,
+    ):
+        """新路径「旧密码错误」不得返回 401。
+
+        带有效 token 的请求被打成 401 会被前端 apiFetch 认成凭证失效：
+        它会刷新 token 重试、重试仍 401 就清空登录态跳 /login，
+        于是「打错一个字符的旧密码」= 用户被整站登出。
+        """
+        response = await client.post(
+            "/api/users/me/password",
+            headers=auth_headers,
+            json={
+                "old_password": "TotallyWrongPass1",
+                "new_password": "NewSecure456",
+            },
+        )
+        assert response.status_code == 400, response.text
+        # 会话必须仍然有效：拿同一个 token 再读一次 /me 应当照常 200
+        me = await client.get("/api/users/me", headers=auth_headers)
+        assert me.status_code == 200
+
 
 class TestUserAccountDeletion:
     """测试注销账户功能"""

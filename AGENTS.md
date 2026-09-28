@@ -219,7 +219,7 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          62 个页面文件 = 25 个前台公开页（SSR）+ 1 个登录态个人中心（SPA）+ 36 个 admin 子页（SPA）
+│  ├─ pages/                          63 个页面文件 = 25 个前台公开页（SSR）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 36 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   27 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
@@ -236,7 +236,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1087 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.5%，fail_under=45%）
+├─ tests/                            Pytest（1101 passed + 3 skipped + 2 xfailed + 2 xpassed，实测覆盖率 87.67%，fail_under=45%）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -302,6 +302,9 @@ Rosetta/
 ```
 
 - `401` → apiFetch 自动 `refreshAccessToken`；刷新失败 → 清 login 态 → 跳 `/login`
+- **`401` 只表示「身份凭证失效」**。已登录业务端点的校验失败（旧密码错、二次确认错）必须用 `400`；
+  用 `401` 等于让前端把这次操作判成登录过期——用户只是打错一个字符就被整站登出。回归见
+  `tests/test_api_user_management.py::test_change_password_v2_wrong_current_is_not_401`
 - `503 OOBE_REQUIRED` → 前端跳 `/oobe`
 - 失败**一律** toast 给用户，"静默失败"是 bug
 
@@ -345,7 +348,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1087 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.5%）
+uv run pytest                                        # 1101 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 87.67%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
@@ -358,7 +361,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 25 个 spec，271 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 26 个 spec，281 用例全绿）
 ```
 
 ### 8.3 部署
@@ -392,7 +395,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 271/271（25 个 spec 文件）
+pnpm test          # 281/281（26 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

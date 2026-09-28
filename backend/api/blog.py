@@ -2084,9 +2084,7 @@ async def create_comment(
 # ==================== 归档 API ====================
 
 
-async def _render_archive_post_titles(
-    posts: list[dict], *, language: str
-) -> None:
+async def _render_archive_post_titles(posts: list[dict], *, language: str) -> None:
     """就地给归档条目的每篇标题补上 the_title 渲染链。
 
     三个归档出口（`/archive` · `/archive/{year}` · `/archive/{year}/{month}`）此前直出
@@ -3460,7 +3458,9 @@ def generate_pages_sitemap(
     for path, changefreq, priority in _STATIC_SITEMAP_ROUTES:
         entries.append(_sitemap_url(f"{site_url}{path}", changefreq=changefreq, priority=priority))
     for year in archive_years or []:
-        entries.append(_sitemap_url(f"{site_url}/archive/{year}", changefreq="monthly", priority="0.4"))
+        entries.append(
+            _sitemap_url(f"{site_url}/archive/{year}", changefreq="monthly", priority="0.4")
+        )
     for page in pages:
         if getattr(page, "status", "published") != "published":
             continue
@@ -3599,21 +3599,24 @@ async def get_sitemap_taxonomies(
 )
 async def get_sitemap_pages(db: DB):
     """获取静态路由 / 独立页面 Sitemap XML。"""
-    from backend.models.core import Page
-
     from sqlalchemy import extract
 
     from backend.models import Post
+    from backend.models.core import Page
 
     site_url = _public_site_url()
     pages = (await db.execute(select(Page).where(Page.status == "published"))).scalars().all()
     year_rows = (
-        await db.execute(
-            select(extract("year", Post.published_at))
-            .where(Post.status == "published", Post.published_at.is_not(None))
-            .distinct()
+        (
+            await db.execute(
+                select(extract("year", Post.published_at))
+                .where(Post.status == "published", Post.published_at.is_not(None))
+                .distinct()
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     archive_years = sorted({int(row) for row in year_rows if row}, reverse=True)
     content = generate_pages_sitemap(pages, site_url, archive_years=archive_years)
     return Response(

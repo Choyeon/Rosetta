@@ -76,6 +76,7 @@ async def test_hero_slides_hit_bing_upstream_only_once(
     assert rows[0]["media_url"].startswith("https://cn.bing.com")
     assert rows[0]["title"] == "壁纸标题 0"
     assert rows[0]["subtitle"] == "© 作者 0"
+
     def _key(row: dict) -> tuple:
         return (row["id"], row["title"], row["media_url"], row["sort_order"])
 

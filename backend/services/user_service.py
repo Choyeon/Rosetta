@@ -375,48 +375,72 @@ class UserService:
         cache_key = self._cache.build_key("user_profile", user_id)
 
         async def fetch():
+            """只取「与谁在看无关」的原始资料。
+
+            请求者相关的字段（is_self、隐私门收窄后的精简视图、is_public）一律在
+            缓存之外推导（见 ``_decorate_profile_for_viewer``）：缓存键只按被查看的
+            user_id 生成，如果把 `current_user_id` 的判断结果一起缓存，本人或管理员
+            看过一次之后，缓存里就带着 ``is_self: True`` 与明文邮箱，
+            紧接着的匿名请求会原样拿到这份特权视图。
+            """
             profile = await self._user_repo.get_full_profile(user_id)
             if profile is None:
                 return None
 
-            user = profile["user"]
-            preferences = profile["preferences"]
-
-            if current_user_id != user_id and preferences and not preferences.public_profile:
-                return {
-                    "user": {
-                        "id": user.id,
-                        "username": user.username,
-                        "nickname": user.nickname,
-                        "avatar": user.avatar,
-                        "title": user.title,
-                        "qq": getattr(user, "qq", None),
-                        "github": user.github,
-                        "website": user.website,
-                        "avatar_source": getattr(user, "avatar_source", "auto"),
-                        "resolved_avatar_url": resolved_for_user(user),
-                    },
-                    "is_public": False,
-                }
-
             return {
-                "user": user,
+                "user": profile["user"],
                 "title": profile["title"],
-                "preferences": preferences,
+                "preferences": profile["preferences"],
                 "post_count": profile["post_count"],
                 "comment_count": profile["comment_count"],
-                "is_public": True,
-                "is_self": current_user_id == user_id,
             }
 
-        if use_cache:
-            return await self._cache.get_or_set(
-                cache_key,
-                fetch,
-                ttl=USER_PROFILE_TTL,
-            )
+        raw = (
+            await self._cache.get_or_set(cache_key, fetch, ttl=USER_PROFILE_TTL)
+            if use_cache
+            else await fetch()
+        )
+        if raw is None:
+            return None
 
-        return await fetch()
+        return self._decorate_profile_for_viewer(raw, user_id, current_user_id)
+
+    @staticmethod
+    def _decorate_profile_for_viewer(
+        raw: dict[str, Any],
+        user_id: int,
+        current_user_id: int | None,
+    ) -> dict[str, Any]:
+        """按查看者身份推导资料视图：非本人且关了「公开资料」开关时只回最小字段。"""
+        user = raw["user"]
+        preferences = raw["preferences"]
+
+        if current_user_id != user_id and preferences and not preferences.public_profile:
+            return {
+                "user": {
+                    "id": user.id,
+                    "username": user.username,
+                    "nickname": user.nickname,
+                    "avatar": user.avatar,
+                    "title": user.title,
+                    "qq": getattr(user, "qq", None),
+                    "github": user.github,
+                    "website": user.website,
+                    "avatar_source": getattr(user, "avatar_source", "auto"),
+                    "resolved_avatar_url": resolved_for_user(user),
+                },
+                "is_public": False,
+            }
+
+        return {
+            "user": user,
+            "title": raw["title"],
+            "preferences": preferences,
+            "post_count": raw["post_count"],
+            "comment_count": raw["comment_count"],
+            "is_public": True,
+            "is_self": current_user_id == user_id,
+        }
 
     async def update_profile(
         self,
