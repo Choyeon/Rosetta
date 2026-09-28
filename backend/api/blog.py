@@ -3448,8 +3448,15 @@ def generate_taxonomy_sitemap(
     tags: list[Tag],
     site_url: str,
     series: list | None = None,
+    authors: list[tuple[str, object]] | None = None,
 ) -> str:
-    """生成分类 / 标签 / 系列 sitemap（真实前端路由，合并文件）。"""
+    """生成分类 / 标签 / 系列 / 作者归档 sitemap（真实前端路由，合并文件）。
+
+    ``authors`` 是 `(用户名, 最近发布时间)` 列表：作者主页 (`/authors/<username>`) 是
+    SSR、可索引的落地页，只靠文章详情页的作者卡发现 URL 太弱——与年份归档同理，
+    声明可索引的页面就该进 sitemap。清单由调用方按隐私开关（`show_posts`）与
+    「确有已发布文章」过滤，本函数只负责拼 URL。
+    """
     site_url = site_url.rstrip("/")
     entries: list[str] = [
         _sitemap_url(f"{site_url}/categories", changefreq="weekly", priority="0.5")
@@ -3481,6 +3488,15 @@ def generate_taxonomy_sitemap(
                 lastmod=_iso8601(getattr(s, "updated_at", None)),
                 changefreq="weekly",
                 priority="0.6",
+            )
+        )
+    for username, lastmod in authors or []:
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/authors/{username}",
+                lastmod=_iso8601(lastmod),
+                changefreq="monthly",
+                priority="0.4",
             )
         )
     return _wrap_urlset("\n".join(entries), with_image=False)
@@ -3607,15 +3623,19 @@ async def get_sitemap_posts(
 
 @router.get(
     "/sitemap-taxonomies.xml",
-    summary="分类 / 标签 / 系列 Sitemap",
-    description="返回分类、标签、系列的索引页与详情页（合并文件）。",
+    summary="分类 / 标签 / 系列 / 作者归档 Sitemap",
+    description=(
+        "返回分类、标签、系列的索引页与详情页，外加作者归档落地页 "
+        "`/authors/<username>`（合并文件）。作者清单只含「有已发布文章且未关闭 "
+        "`show_posts`」的作者——空归档页不该出现在爬虫视野里。"
+    ),
     responses=raw_content_response("application/xml", "urlset XML 文档。"),
     response_class=Response,
 )
 async def get_sitemap_taxonomies(
     db: DB,
 ):
-    """获取分类 / 标签 / 系列 Sitemap XML。"""
+    """获取分类 / 标签 / 系列 / 作者归档 Sitemap XML。"""
     from backend.models.post_series import PostSeries
 
     site_url = _public_site_url()
@@ -3624,7 +3644,26 @@ async def get_sitemap_taxonomies(
     series = (
         (await db.execute(select(PostSeries).where(PostSeries.is_active.is_(True)))).scalars().all()
     )
-    content = generate_taxonomy_sitemap(categories, tags, site_url, series=series)
+    # 作者归档清单：一条分组查询同时拿到用户名与最近发布时间（不做 N+1），
+    # 并在同一条语句里排除 `show_posts=false` 的作者——他们的归档页对访客是空页，
+    # 提交给爬虫等于承认一个没有内容的 URL。post_type 口径与作者页读的那份列表一致。
+    hidden_authors = select(UserPreference.user_id).where(UserPreference.show_posts.is_(False))
+    author_rows = (
+        await db.execute(
+            select(User.username, func.max(Post.published_at))
+            .join(Post, Post.author_id == User.id)
+            .where(
+                Post.status == "published",
+                Post.post_type == "post",
+                User.id.not_in(hidden_authors),
+            )
+            .group_by(User.username)
+            .order_by(func.max(Post.published_at).desc())
+        )
+    ).all()
+    authors = [(username, lastmod) for username, lastmod in author_rows if username]
+
+    content = generate_taxonomy_sitemap(categories, tags, site_url, series=series, authors=authors)
     return Response(
         content=content,
         media_type="application/xml",

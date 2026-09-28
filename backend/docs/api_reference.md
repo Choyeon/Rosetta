@@ -1694,7 +1694,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/blog/site-stats` | 站点统计 |
 | `GET` | `/api/blog/sitemap-pages.xml` | 静态路由 / 独立页面 Sitemap |
 | `GET` | `/api/blog/sitemap-posts.xml` | 文章 Sitemap（分页） |
-| `GET` | `/api/blog/sitemap-taxonomies.xml` | 分类 / 标签 / 系列 Sitemap |
+| `GET` | `/api/blog/sitemap-taxonomies.xml` | 分类 / 标签 / 系列 / 作者归档 Sitemap |
 | `GET` | `/api/blog/sitemap.xml` | Sitemap 索引 |
 | `GET` | `/api/blog/tags` | 标签列表 |
 | `POST` | `/api/blog/tags` | 创建标签 |

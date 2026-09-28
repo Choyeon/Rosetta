@@ -159,3 +159,34 @@ class TestAuthorArchiveFilter:
             params={"author": other.username, "category": test_category.slug},
         )
         assert [p["slug"] for p in _items(r.json())] == ["other-author-post"]
+
+
+class TestAuthorArchiveSitemap:
+    """作者归档落地页必须进 sitemap，且隐私关闭的作者不得进。
+
+    与年份归档同一口径：页面声明自己是可索引的 SSR 页，只靠文章详情里的作者卡
+    给爬虫发现 URL 太弱。反过来，`show_posts=False` 的归档页对访客是空页，
+    提交上去等于承认一个没内容的 URL。
+    """
+
+    @pytest.mark.asyncio
+    async def test_author_with_posts_is_listed(
+        self, client: AsyncClient, test_post: Post, test_user: User
+    ):
+        r = await client.get("/api/blog/sitemap-taxonomies.xml")
+        assert r.status_code == 200
+        assert f"/authors/{test_user.username}" in r.text
+
+    @pytest.mark.asyncio
+    async def test_author_with_hidden_posts_is_not_listed(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_post: Post,
+        test_user: User,
+    ):
+        db_session.add(UserPreference(user_id=test_user.id, public_profile=True, show_posts=False))
+        await db_session.commit()
+
+        r = await client.get("/api/blog/sitemap-taxonomies.xml")
+        assert f"/authors/{test_user.username}" not in r.text
