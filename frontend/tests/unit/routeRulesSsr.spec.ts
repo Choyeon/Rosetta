@@ -56,6 +56,8 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
       '/@fs/**',
       '/@id/**',
       '/@vite/**',
+      '/account',
+      '/account/**',
       '/admin',
       '/admin/**',
       '/admin/docs/**',

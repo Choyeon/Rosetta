@@ -12,6 +12,7 @@
 - `/login` / `/register`（表单状态、敏感输入）
 - `/admin/docs/**`（内嵌 Markdown 编辑器）
 - `/search/**`（实时查询）
+- `/account` · `/account/**`（个人中心：逐登录用户内容，且 SSR 期 auth store 还没从 localStorage 回填 token）
 
 `/oobe` **不在**反选之列：它保留 SSR，只设 `swr:false + no-store`——安装完成后 `middleware/oobe.global.ts` 要做 SSR 级 302，`ssr:false` 会让 Nitro 直接吐空壳、不走 middleware SSR 分支（表现为白屏挂死）。
 

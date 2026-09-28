@@ -193,7 +193,7 @@ export default defineNuxtConfig({
     '/@id/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
     '/@fs/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
 
-    // === 后台、登录、注册、docs（文档内嵌工具）、search（实时查询）—— 纯 SPA + 禁止代理/CDN 缓存
+    // === 后台、登录、注册、docs（文档内嵌工具）、search（实时查询）、account（登录态个人中心）—— 纯 SPA + 禁止代理/CDN 缓存
     //     · '/admin' 由 pages/admin/index.vue（Dashboard）承载，无需 redirect 到 /admin/dashboard（不存在会触发 Vue Router R0004 警告与空 dashboard）。
     //     · '/admin/**' 更宽匹配同时覆盖所有子页（包括 /admin/index），已统一 ssr:false。
     // === SPA 精准反选（ssr:false —— 与 Nitro HTTP 级 serverRendered=0 补丁一致）
@@ -210,6 +210,10 @@ export default defineNuxtConfig({
     '/admin': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/admin/docs/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/search/**': { ssr: false, headers: { 'Cache-Control': 'no-store' } },
+    // 个人中心 /account：内容逐登录用户不同（/users/me/*），而 auth store 是 skipHydrate +
+    // localStorage，SSR 期无 token 可用 —— 走 SSR 只会渲染未登录骨架。缓存必须 private。
+    '/account': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
+    '/account/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
 
     // === 公开内容页（SSR + SWR cache 写死，全局 ssr:true 时直接启用）
     '/': { swr: 300, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400' } },

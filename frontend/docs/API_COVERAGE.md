@@ -20,7 +20,7 @@
 
 | 模块（backend/api） | 完整路径前缀 | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
 |---|---|---:|---:|---:|---:|---:|
-| blog | `/api/blog` | 41 | 25 | 5 | 11 | 73% |
+| blog | `/api/blog` | 41 | 35 | 5 | 1 | 98% |
 | users | `/api/users` | 22 | 7 | 0 | 15 | 32% |
 | core | `/api` | 19 | 16 | 0 | 3 | 84% |
 | admin | `/api/admin` | 15 | 15 | 0 | 0 | 100% |
@@ -73,14 +73,16 @@
 
 缩写：`uam`=composables/useAdminManage.ts · `ufl`=composables/useFriendLinks.ts · `up`=composables/usePosts.ts · `ucm`=composables/useComments.ts · `umd`=composables/useMedia.ts · `uoo`=composables/useOOBE.ts · `us`=composables/useSite.ts · `uft`=composables/useFrontendTheme.ts · `ubw`=composables/useBingWallpaper.ts · `udc`=composables/useDocsCatalog.ts · `upm`=composables/usePluginMenu.ts · `sa`=stores/auth.ts · `TM`=components/admin/themes/ThemeManager.vue · `PM`=components/admin/plugins/PluginManager.vue · `NSR`=frontend/server/routes（Nitro BFF）
 
-### blog（/api/blog）— 33/41 覆盖
+### blog（/api/blog）— 40/41 覆盖
 
-✅（31）：`GET /posts`（up:24、pages/categories/[slug].vue:195）、`GET /posts/hot`（pages/posts/hot.vue:139）、`GET /posts/recommended`（pages/index.vue 首页「推荐阅读」区）、`GET /posts/{slug}`（up:65）、`GET /posts/{slug}/adjacent`（pages/posts/[slug].vue:230）、`GET /posts/{post_id}/similar`（up:94）、`POST /posts`（up:109）、`PUT /posts/{post_id}`（up:119 区域，edit 流）、`DELETE /posts/{post_id}`（up:129）、`POST /posts/{post_id}/like`（up:103、pages/posts/[slug].vue:1154）、`POST /posts/batch-status`（up:135、pages/admin/content/posts/index.vue:171）、`GET /posts/{post_id}/edit`（pages/admin/content/posts/[id]/edit.vue:35）、`GET/POST /posts/{post_id}/comments`（ucm:25,60、uam:341）、`GET /categories` + `POST/PUT/DELETE /categories/{id}`（pages/index.vue:1123、uam:590–614）、`GET /categories/slug/{slug}`（pages/categories/[slug].vue:188）、`GET /tags` 及 `POST/PUT/DELETE /tags/{id}`（pages/index.vue:1127、uam:619–640）、`GET /tags/slug/{slug}`（pages/tags/[slug].vue:168）、`GET /archive`（pages/archive/index.vue:180）、`GET /site-stats`（pages/index.vue:1131）
+✅（35）：`GET /posts`（up:24、pages/categories/[slug].vue:195）、`GET /posts/hot`（pages/posts/hot.vue:139）、`GET /posts/recommended`（pages/index.vue 首页「推荐阅读」区）、`GET /posts/{slug}`（up:65）、`GET /posts/{slug}/adjacent`（pages/posts/[slug].vue:230）、`GET /posts/{post_id}/similar`（up:94）、`POST /posts`（up:109）、`PUT /posts/{post_id}`（up:119 区域，edit 流）、`DELETE /posts/{post_id}`（up:129）、`POST /posts/{post_id}/like`（up:103、pages/posts/[slug].vue:1154）、`POST /posts/batch-status`（up:135、pages/admin/content/posts/index.vue:171）、`GET /posts/{post_id}/edit`（pages/admin/content/posts/[id]/edit.vue:35）、`GET/POST /posts/{post_id}/comments`（ucm:25,60、uam:341）、`GET /categories` + `POST/PUT/DELETE /categories/{id}`（pages/index.vue:1123、uam:590–614）、`GET /categories/slug/{slug}`（pages/categories/[slug].vue:188）、`GET /tags` 及 `POST/PUT/DELETE /tags/{id}`（pages/index.vue:1127、uam:619–640）、`GET /tags/slug/{slug}`（pages/tags/[slug].vue:168）、`GET /archive`（pages/archive/index.vue:180）、`GET /site-stats`（pages/index.vue:1131）、`GET /users/me/{stats,posts,comments,likes,history}` + `DELETE /users/me/history`（共 6 个：pages/account/index.vue 个人中心，四档列表共用一个响应式请求）
 🟡（5，仅 Nitro BFF）：`GET /rss`（NSR/rss.xml.get.ts:36）、`GET /sitemap.xml`（NSR/sitemap.xml.get.ts:13）、`GET /sitemap-posts.xml`（NSR/sitemap-posts.xml.get.ts:20）、`GET /sitemap-taxonomies.xml`、`GET /sitemap-pages.xml`（各 .get.ts:10）
-❌（7，**真实缺口**或刻意保留）：`GET /posts/id/{post_id}`（与 slug 版重复——建议统一的别名）、`GET /users/me/comments · /likes · /stats · /posts · /history` 与 `DELETE /users/me/history`（共 6 个：个人中心页未建，前端不存在消费场景——功能预留）。
+❌（1，**重复别名**）：`GET /posts/id/{post_id}`（与 slug 版重复——建议统一的别名）。
 
 > 2026-09-28 口径：归档下钻已接入——新增路由 `pages/archive/[year].vue` 消费 `GET /archive/{year}`，`/archive` 页头部接 `GET /archive/stats` 读数、年份标题改为可点链接（否则新路由不可达）。两条约束写进 `tests/unit/archiveYearRoute.spec.ts`：非法年份参数由命名中间件 `middleware/archive-year.ts` 在进入页面前 `abortNavigation(createError(404))`（页面 setup 里 throw 只渲染 error.vue 但响应仍是 HTTP 200，还会被 swr 缓存成一个可复用的 200 页；闸门放中间件才能真正返回 404，也不把垃圾值发给后端换 422）、日期渲染钉死 `timeZone: UTC` + 固定 locale（两端时区分歧会被 swr 3600 缓存固化，是 /archive 的老 bug 型）。routeRules 同步加 `/archive/**` 同档缓存。
 > 2026-09-28 口径（续）：`GET /archive/{year}/{month}` 也已接入——`pages/archive/[year]/[month].vue` 消费该端点做分页月页，父页按 Nuxt 目录式路由移到 `pages/archive/[year]/index.vue`（写成 `[year].vue` 时子路由会静默渲染没有 `<NuxtPage>` outlet 的父组件），年页的月份标题同时改成链向月页。中间件闸门扩到月份：只有 4 位年 + 1–12 月放行，其余（含 `/2026-13`、`/2026-0`、`/2026-007`）在服务端 `abortNavigation` 真 404，不放垃圾参数给 FastAPI 换 400/422；空月份与越界页由 `useContentStatus` 判真 404（WordPress no-such-date 口径）。
+
+> 2026-09-28 口径：blog `users/me` 系 6 个端点全部接入——新建 `pages/account/index.vue`（个人中心，WordPress「我的账户」同款：统计读数 + 我的文章/评论/点赞/阅读足迹四档），入口在顶栏用户菜单（桌面下拉 + 移动抽屉）。四条约束：① 本页走 `ssr:false`（写进 routeRules，与 `/admin` 同档 `no-store, private`）——内容逐登录用户不同，而 auth store 是 `skipHydrate` + localStorage，SSR 期根本没有 token，走 SSR 只会渲染未登录骨架并逼着缓存公开化；② 登录闸门在命名中间件 `middleware/auth-required.ts`（不进全局链，先 `await authStore.initialize()` 再判，否则已登录用户会被 localStorage 未回填误踢）；③ 取消点赞复用后端 `POST /posts/{id}/like` 的 toggle 语义，不另造 DELETE 端点；清空阅读足迹是不可撤销写操作，必须过 `AlertDialog` 二次确认；④ tab/page 全进 query，可分享、前进后退可用。回归见 `tests/unit/accountPage.spec.ts`。
 
 > 2026-09-28 口径：`GET /posts/recommended` 从缺口转为已接入——首页 editorial 分支在「最新文章」与 CTA 之间新增「推荐阅读」区块（`pages/index.vue` 第 5 个并行 `useAPI`，缓存键 `home:recommended:<locale>`，语言切换随其余请求一起 refresh）。三点约束：① 推荐条目先按本页已展示的 slug 去重，去重后不足 2 条整段不渲染，宁缺不凑数；② 极简主题分支按主题变体契约本就不渲染 sidebar/CTA，推荐区同样只在 editorial 分支出现，不是遗漏；③ 该端点走 `RecommendationService` 的加权算法（浏览 30%/点赞 20%/评论 15%/时间衰减 25%/标签匹配 10%），登录用户的浏览历史才启用标签匹配项，访客态退化为热度加权，因此首页对访客也始终有内容。回归见 `tests/unit/homeRecommendedSection.spec.ts`。
 
@@ -247,10 +249,10 @@
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
-   - **用户体系外围**（users 15 个 + blog users/me 系 6 个 + favorite 12 + messages 6）：个人中心/改密/密码找回/收藏/私信整块无页面；
+   - **用户体系外围**（users 15 个 + favorite 12 + messages 6）：改密/密码找回/他人主页/收藏/私信仍无页面。（原并列的 blog `users/me` 系 6 个已于 2026-09-28 随个人中心 `/account` 接入，移出此项；但 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 等 users 模块自身端点仍未接进该页——个人中心只做「读自己的内容」，改资料/改密仍缺口）
    - **后台运维增强**：hero 轮播管理（×5）；
    - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、captcha 接入（×2）。
 
-> 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
+> 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 
 — 本报告由静态扫描生成（2026-09-26），新增/删除端点后请重跑扫描，勿手改数字。

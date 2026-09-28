@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import { watch, computed, onMounted } from 'vue'
 import {
-  Menu, Search, LogOut, User, Settings, ChevronDown
+  Menu, Search, LogOut, User, UserCircle2, Settings, ChevronDown
 } from '~~/lib/lucide-svg-icons'
 import { Button } from '~~/components/ui/button'
 import {
@@ -423,11 +423,17 @@ const handleSearchClick = () => navigateTo('/search')
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
                 <DropdownMenuItem @click="handleAdmin">
-                  <User class="mr-2 h-4 w-4" />
+                  <User data-icon="inline-start" />
                   <span>{{ t('common.dashboard') || 'Dashboard' }}</span>
                 </DropdownMenuItem>
+                <!-- 个人中心：/account 是 ssr:false 私有页（routeRules），入口只在这里，
+                     不进主导航——未登录访客点它会得到一次跳转，没有意义。 -->
+                <DropdownMenuItem @click="navigateTo('/account')">
+                  <UserCircle2 data-icon="inline-start" />
+                  <span>{{ t('account.title') }}</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem @click="navigateTo('/settings')">
-                  <Settings class="mr-2 h-4 w-4" />
+                  <Settings data-icon="inline-start" />
                   <span>{{ t('common.settings') || '设置' }}</span>
                 </DropdownMenuItem>
               </DropdownMenuGroup>
@@ -436,7 +442,7 @@ const handleSearchClick = () => navigateTo('/search')
                 class="text-error"
                 @click="handleLogout"
               >
-                <LogOut class="mr-2 h-4 w-4" />
+                <LogOut data-icon="inline-start" />
                 <span>{{ t('auth.logout') || '退出登录' }}</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -527,6 +533,17 @@ const handleSearchClick = () => navigateTo('/search')
                           class="mr-2"
                         />
                         {{ t('common.dashboard') || 'Dashboard' }}
+                      </Button>
+                    </SheetClose>
+                    <SheetClose as-child>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="justify-start"
+                        @click="navigateTo('/account')"
+                      >
+                        <UserCircle2 data-icon="inline-start" />
+                        {{ t('account.title') }}
                       </Button>
                     </SheetClose>
                     <Button

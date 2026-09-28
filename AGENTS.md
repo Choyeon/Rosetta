@@ -85,9 +85,10 @@
 | `/oobe`                                       | ✅ 继承全局 | `no-store, private` | 安装完成后 `oobe.global` 要走 SSR 级 302，`ssr:false` 会让它吐空壳并白屏 |
 | `/admin/docs/**`                              | ❌ false | `no-store, private` | 内嵌 Markdown 编辑器与执行工具             |
 | `/search/**`                                  | ❌ false | `no-store`          | 实时查询 + 高频率                      |
+| `/account` · `/account/**`                        | ❌ false | `no-store, private` | 逐登录用户内容 + SSR 期无 token（auth store 是 skipHydrate） |
 | Vite 虚拟文件：`/@vite/**` · `/@id/**` · `/@fs/**` | ❌ false | `no-store`          | 防 HMR 404 被 spa-fallback 拦截      |
 
-上表 6 行覆盖 10 条 routeRules 键，镜像关系由 `frontend/tests/unit/routeRulesSsr.spec.ts` 断言（`ssr:false` 集合精确相等 + `/oobe` 必须保留 SSR + 反选页必须 `no-store`）——改配置不改测试会直接红。
+上表 7 行覆盖 12 条 routeRules 键，镜像关系由 `frontend/tests/unit/routeRulesSsr.spec.ts` 断言（`ssr:false` 集合精确相等 + `/oobe` 必须保留 SSR + 反选页必须 `no-store`）——改配置不改测试会直接红。
 
 ### 2.3 公开页 SWR / Cache 头
 
@@ -218,12 +219,12 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          61 个页面文件 = 25 个前台公开页（SSR）+ 36 个 admin 子页（SPA）
+│  ├─ pages/                          62 个页面文件 = 25 个前台公开页（SSR）+ 1 个登录态个人中心（SPA）+ 36 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   27 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
 │  ├─ stores/                        Pinia：auth.ts（skipHydrate）
-│  ├─ middleware/                    admin.global · layout-scope.global · oobe.global
+│  ├─ middleware/                    admin.global · layout-scope.global · oobe.global（全局）+ archive-year · auth-required（命名，仅挂在与文件名）
 │  ├─ plugins/                       01-site-bootstrap.global / 02-hydration-safety.global.client /
 │  │                                 06-font-stylesheet.client / debug.client / echarts.client /
 │  │                                 error-handler.client / site-title.global / theme.client
@@ -357,7 +358,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 24 个 spec，261 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 25 个 spec，271 用例全绿）
 ```
 
 ### 8.3 部署
@@ -391,7 +392,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 261/261（24 个 spec 文件）
+pnpm test          # 271/271（25 个 spec 文件）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
@@ -401,7 +402,7 @@ pnpm test          # 261/261（24 个 spec 文件）
 - 明/暗主题切换：前台 2 套 + Admin 原生均 OK；Admin 不被前台 CSS 污染
 - 四语切换：zh / en / ja / zh_Hant 无 404
 - SSR 关键页 `Ctrl+U`：首页、文章详情、分类、留言板有真实 HTML
-- SSR 反选页：`/admin/*` · `/login` · `/register` · `/search/*` 是空壳 SPA（`/oobe` 不在此列，它保留 SSR 只禁缓存）；该口径由 `tests/unit/routeRulesSsr.spec.ts` 静态锁定，不必开浏览器复核
+- SSR 反选页：`/admin/*` · `/login` · `/register` · `/search/*` · `/account` 是空壳 SPA（`/oobe` 不在此列，它保留 SSR 只禁缓存）；该口径由 `tests/unit/routeRulesSsr.spec.ts` 静态锁定，不必开浏览器复核
 
 ***
 
