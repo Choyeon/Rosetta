@@ -562,6 +562,60 @@ class UserDetailResponse(UserResponse):
     model_config = {"from_attributes": True}
 
 
+class UserListItem(BaseModel):
+    """用户列表投影（``GET /api/users/``）。
+
+    列表响应**刻意不复用** ``UserResponse``：一条 ``UserResponse`` 含
+    ``email`` + ``bio``（最长 500 字符）+ ``qq`` / ``github`` / ``website``，
+    按 ``page_size=100`` 计算，一页就要把这些字段整体搬 100 份，
+    而列表界面一个都不显示。宽响应在列表端点上是纯粹的带宽与序列化浪费，
+    同时把本该只在详情页出现的联系方式摊给了每一个能过鉴权的人。
+
+    需要完整字段时走 ``GET /users/{id}``（``UserResponse``）；
+    需要管理字段（封禁态、文章/评论计数）时走 ``GET /admin/users``（``AdminUserListItem``）。
+    """
+
+    id: int
+    username: str
+    nickname: str | None = None
+    avatar: str | None = None
+    resolved_avatar_url: str | None = None
+    role: str | None = None
+    title: "UserTitleResponse | None" = None
+    is_active: bool = False
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AdminUserListItem(UserListItem):
+    """后台用户管理列表投影（``GET /api/admin/users``）。
+
+    在上一条 slim 列表的基础上补齐**管理动作真正需要**的字段：
+
+    - ``email``：封禁/重置密码前需要确认账号归属，后台必须可读；
+      前台资料接口仍然按 ``UserPreference.show_email`` 遮蔽，两条路径互不打通。
+    - ``is_banned`` / ``is_active`` / ``is_staff`` / ``is_superuser``：列表页的状态徽章
+      与封禁开关直接绑定这些字段，缺一个就会出现「封禁了但开关还是关」的假状态。
+    - ``posts_count`` / ``comments_count``：删号前要看有没有内容，用两条 GROUP BY 批量算。
+    - ``last_login``：判断僵尸号。
+
+    **不包含** ``bio`` / ``website`` / ``github`` / ``qq`` / ``cover_image`` / ``avatar_source``
+    —— 这些只在 ``GET /admin/users/{id}``（``UserDetailResponse``）和编辑页里出现。
+    """
+
+    email: str | None = None
+    is_staff: bool = False
+    is_superuser: bool = False
+    is_banned: bool = False
+    title_id: int | None = None
+    last_login: datetime | None = None
+    posts_count: int = 0
+    comments_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
 # ==================== 分类相关模型 ====================
 
 
@@ -1070,6 +1124,9 @@ class PostListItemLocalized(BaseModel):
     is_pinned: bool
     created_at: datetime
     published_at: datetime | None = None
+    # 后台列表要回答"这条多久没动过了"，草稿/定时文章没有 published_at，
+    # 只看 created_at 会误判成"刚建好就没管过"。公开列表同样带上，字段是加性的。
+    updated_at: datetime | None = None
     reading_time: int = 1
 
     @classmethod
@@ -1100,6 +1157,7 @@ class PostListItemLocalized(BaseModel):
             is_pinned=post.is_pinned,
             created_at=post.created_at,
             published_at=post.published_at,
+            updated_at=getattr(post, "updated_at", None),
             reading_time=1,
         )
 

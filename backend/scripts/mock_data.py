@@ -375,7 +375,7 @@ async def create_sample_guestbook_entries(db, admin_id: int) -> int:
         user_id=admin_id,
         author_name="Choyeon",
         author_email="choyeon@foxmail.com",
-        author_website="https://rosetta.choyeon.cc",
+        author_website="https://example.com",
         author_ip="127.0.0.1",
         github="Choyeon",
         avatar_source="github",

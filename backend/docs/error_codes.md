@@ -57,18 +57,26 @@
 
 ## 错误码清单（自动生成）
 
-本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **64 个真实存在的错误码**。
+本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **73 个真实存在的错误码**。
 
 - 出处列只列到文件级：同一个码可能出现在多个端点，具体判定看源码。
 - HTTP 列为该码在当前源码里能推断出的状态码；`—` 表示该码由 AppException 子类外的路径抛出且附近没有 `status_code=`（以调用点为准）。
 - 新增/删除错误码后跑 `uv run python -m backend.scripts.gen_error_codes --write`，否则 `tests/test_docs_error_codes_sync.py` 会失败。
 
-### 通用与状态码回退（19）
+### 通用与状态码回退（28）
 
 | 错误码 | HTTP | 说明 | 出处 |
 | --- | --- | --- | --- |
 | `BAD_REQUEST` | 400 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `CONFLICT` | 409 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `DB_AUTH_FAILED` | — | — | `backend/core/setup_database.py` |
+| `DB_DRIVER_MISSING` | — | — | `backend/core/setup_database.py` |
+| `DB_NOT_EXIST` | — | — | `backend/core/setup_database.py` |
+| `DB_OK` | — | — | `backend/core/setup_database.py` |
+| `DB_PERMISSION_DENIED` | — | — | `backend/core/setup_database.py` |
+| `DB_TIMEOUT` | — | — | `backend/core/setup_database.py` |
+| `DB_UNKNOWN` | — | — | `backend/core/setup_database.py` |
+| `DB_UNREACHABLE` | — | — | `backend/core/setup_database.py` |
 | `FORBIDDEN` | 403 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `INTERNAL` | 500 | 服务器错误 | `backend/api/comments.py`<br>`backend/api/guestbook.py` |
 | `INTERNAL_SERVER_ERROR` | — | — | `backend/main.py` |
@@ -86,6 +94,7 @@
 | `UNAUTHORIZED` | 401 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `VALIDATION_ERROR` | 422 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `VALIDATION_FAILED` | — | payload 必须是 object | `backend/plugins/guestbook-rss/plugin.py` |
+| `error_code` | 500 | — | `backend/api/oobe.py` |
 
 ### 认证与授权（2）
 

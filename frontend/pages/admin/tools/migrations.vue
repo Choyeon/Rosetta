@@ -49,7 +49,7 @@
 
     <template v-else>
       <div class="grid md:grid-cols-3 gap-4">
-        <div class="flex flex-col gap-1 rounded-2xl border border-border p-5 bg-card">
+        <div class="card-surface flex flex-col gap-1 p-5">
           <p class="text-xs text-muted-foreground uppercase tracking-wide">
             当前版本
           </p>
@@ -60,7 +60,7 @@
             {{ status.current_version || '未初始化' }}
           </p>
         </div>
-        <div class="flex flex-col gap-1 rounded-2xl border border-border p-5 bg-card">
+        <div class="card-surface flex flex-col gap-1 p-5">
           <p class="text-xs text-muted-foreground uppercase tracking-wide">
             最新版本
           </p>
@@ -71,7 +71,7 @@
             {{ status.latest_version || '-' }}
           </p>
         </div>
-        <div class="flex flex-col gap-2 rounded-2xl border border-border p-5 bg-card">
+        <div class="card-surface flex flex-col gap-2 p-5">
           <p class="text-xs text-muted-foreground uppercase tracking-wide">
             版本状态
           </p>

@@ -57,6 +57,33 @@ def role_from_flags(is_staff: bool, is_superuser: bool) -> str:
     return "subscriber"
 
 
+def effective_role(user: object) -> str:
+    """求用户的**有效角色** —— role 列与旧布尔 flag 取权限更高的一侧。
+
+    这一层是必须的，不能让调用方直接读 ``user.role``：
+
+    - ``role`` 列有 DB 默认值 ``'subscriber'``，历史账号（含 OOBE 创建的那批）里存在
+      ``is_staff=True`` / ``is_superuser=True`` 但 ``role`` 仍是 ``'subscriber'`` 的行。
+    - ``get_current_staff`` 早就做了双源判定（flag 或 role>=admin 都放行），而
+      ``user_has_capability`` 只看 ``role`` 字符串。两套判定不一致的后果是：
+      一个 legacy 管理员过了 `CurrentStaff` 闸门，却在下一行 `require_capability`
+      被判为 subscriber 而 403 —— 权限体系出现"下半身截瘫"。
+    - 另一侧也成立：某些账号 role 列已经提到 editor，但旧的 flag 还没同步，
+      此时也不应被 flag 拉回 subscriber。
+
+    取 max(level) 而非简单的 flag 优先：两条规则都只做提升（is_staff→admin、
+    is_superuser→super_admin），不会互相降级。
+    """
+    from_role = normalize_role(getattr(user, "role", None))
+    from_flags = role_from_flags(
+        bool(getattr(user, "is_staff", False)),
+        bool(getattr(user, "is_superuser", False)),
+    )
+    if from_role is None:
+        return from_flags
+    return from_role if get_role_level(from_role) >= get_role_level(from_flags) else from_flags
+
+
 def normalize_role(role: object) -> str | None:
     """把多种角色输入（str/int/flag）统一为规范角色字符串。
 

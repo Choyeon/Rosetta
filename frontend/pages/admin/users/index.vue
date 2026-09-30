@@ -560,6 +560,7 @@ import {
   deleteAdminUser,
   formatAdminDate,
   formatAdminDateTime,
+  type AdminUserQuery,
   type AdminUserRow
 } from '~~/composables/useAdminManage'
 
@@ -587,26 +588,33 @@ const page = ref(1)
 const pageSize = ref(20)
 const total = ref(0)
 
+/**
+ * 状态（激活 / 未激活 / 封禁）筛到服务端去了：`GET /api/admin/users` 原生支持
+ * is_active / is_banned，只有交给后端才能拿到正确的 total 与分页。
+ * 此前全部在客户端切「当前页的 20 行」，于是「已封禁」这一档永远筛不出东西
+ * （列表接口当时压根不返回 is_banned），而且 total 显示的是未过滤的总数。
+ *
+ * 角色筛选仍在客户端：后端只有 is_staff 一个布尔，没有「超级管理员 / 管理员 / 普通」
+ * 三档参数，为它加一个枚举参数会让列表端点背上前端的展示语义，不划算。
+ * 代价是角色筛选只作用于当前页，这是已知取舍，不是 bug。
+ */
 const filteredUsers = computed<AdminUserRow[]>(() => {
-  let list = [...allUsers.value]
-  if (roleFilter.value !== 'all') {
-    list = list.filter((u) => {
-      if (roleFilter.value === 'superuser') return u.is_superuser
-      if (roleFilter.value === 'staff') return u.is_staff && !u.is_superuser
-      if (roleFilter.value === 'normal') return !u.is_staff && !u.is_superuser
-      return true
-    })
-  }
-  if (statusFilter.value !== 'all') {
-    list = list.filter((u) => {
-      if (statusFilter.value === 'active') return u.is_active && !u.is_banned
-      if (statusFilter.value === 'inactive') return !u.is_active
-      if (statusFilter.value === 'banned') return u.is_banned
-      return true
-    })
-  }
-  return list
+  if (roleFilter.value === 'all') return allUsers.value
+  return allUsers.value.filter((u) => {
+    if (roleFilter.value === 'superuser') return u.is_superuser
+    if (roleFilter.value === 'staff') return u.is_staff && !u.is_superuser
+    if (roleFilter.value === 'normal') return !u.is_staff && !u.is_superuser
+    return true
+  })
 })
+
+/** 状态筛选 → 后端查询参数。三档互斥，未选时为 undefined（= 不过滤）。 */
+function statusQuery(): Pick<AdminUserQuery, 'is_active' | 'is_banned'> {
+  if (statusFilter.value === 'active') return { is_active: true, is_banned: false }
+  if (statusFilter.value === 'inactive') return { is_active: false }
+  if (statusFilter.value === 'banned') return { is_banned: true }
+  return {}
+}
 
 function roleBadgeClass(u: AdminUserRow): string {
   if (u.is_superuser) return 'bg-indigo-100 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300'
@@ -639,7 +647,8 @@ async function fetchData() {
     const res = await fetchAdminUsers({
       page: page.value,
       page_size: pageSize.value,
-      search: searchQuery.value.trim() || undefined
+      search: searchQuery.value.trim() || undefined,
+      ...statusQuery()
     })
     let items = res.items ?? []
     total.value = res.total ?? 0

@@ -98,6 +98,14 @@ export const useAuthStore = defineStore('auth', () => {
     if (import.meta.client) {
       localStorage.removeItem('access_token')
       localStorage.removeItem('refresh_token')
+      // 插件菜单必须与登录态一起清空：usePluginMenu 的 items 是模块级共享 ref，
+      // 且只有 SuperAdmin/有权限的账号才拉得到 /admin/plugins/menu-registry 的内容。
+      // 不 reset 的话，用管理员账号登出后换成编辑账号登录，侧栏会带着上一任账号的
+      // 「插件」分组，点了才 403 —— 典型的越权可见 + 静默降级。
+      // 这里延迟 import 是为了避免 store 与 composable 的循环依赖。
+      import('~~/composables/usePluginMenu')
+        .then(m => m.usePluginMenu().reset())
+        .catch(() => { /* 菜单缓存清不掉不影响登出本身 */ })
     }
   }
 

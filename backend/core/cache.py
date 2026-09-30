@@ -568,7 +568,7 @@ async def invalidate_cache(pattern: str) -> int:
 async def invalidate_post_detail_cache(*slugs: str | None) -> int:
     """按 slug 删除文章详情缓存（覆盖全部语言），返回删除条数。
 
-    详情键形如 ``post:{slug}:{language}``，不在 ``posts`` 前缀下，因此写侧habitually
+    详情键形如 ``post:{slug}:{language}``，不在 ``posts`` 前缀下，因此写侧习惯性
     调用的 ``invalidate_cache("posts")`` 命中不了它。凡是让旧正文失效的操作——删除、
     改名、转草稿、加访问密码——都必须显式调用本函数，否则缓存会在 TTL 内继续把
     已下线/已删除的内容端给匿名访客。改名时把旧 slug 一起传进来。

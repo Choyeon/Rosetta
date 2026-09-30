@@ -47,7 +47,7 @@
 
     <div
       v-else-if="loadError"
-      class="flex flex-col items-start gap-3 p-6 rounded-xl border bg-card"
+      class="flex flex-col items-start gap-3 p-6 card-surface"
     >
       <Alert variant="destructive">
         <AlertTitle>加载动态列表失败</AlertTitle>

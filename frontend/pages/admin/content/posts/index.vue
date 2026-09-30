@@ -1,10 +1,15 @@
 <!--
   文章管理列表页：服务端分页 + 关键字/状态/分类/日期筛选 + 批量发布/转草稿/置顶/删除。
-  硬契约：AdminDataTable 的选择是受控的——翻页、删除、批量成功后必须由本页清空 selectedIds，
-  表格不会自动清（残留 id 会让下一批操作误伤）；任何筛选变化必须先 page=1 再 loadPosts；
-  两个批量接口信封不同：/blog/posts/batch-status 的 updated_count 在 {success,data} 双层里，
-  /admin/posts/batch（删除与置顶走它，一次请求而非逐条 N 次往返）的 affected_count 是平铺的；
-  列表用 shallowRef 整替换，禁止改回 deep ref（大量 Post 对象的递归 Proxy 是白给的性能损耗）。
+  硬契约（都是踩过的坑，改前先读）：
+  1. AdminDataTable 的选择是受控的——翻页、换筛选、删除、批量成功后必须由本页清空
+     selectedIds，表格不会自动清。**翻页残留是最危险的一种**：第 1 页勾三篇、翻到第 2 页
+     再点「批量删除」，删掉的是看不见的那三篇。
+  2. 重载一律走 scheduleLoad()：**任何**"先置 page=1 再手动 loadPosts()"的写法都会发出
+     两条相同请求（page 的 watch 是 pre-flush，下一轮微任务里还会再触发一次），
+     慢的那个回来得晚就会覆盖快的结果。
+  3. 两个批量接口信封不同：/blog/posts/batch-status 的 updated_count 在 {success,data} 双层里，
+     /admin/posts/batch（删除与置顶走它，一次请求而非逐条 N 次往返）的 affected_count 是平铺的；
+  4. 列表用 shallowRef 整替换，禁止改回 deep ref（大量 Post 对象的递归 Proxy 是白给的性能损耗）。
 -->
 <script setup lang="ts">
 import { ref, shallowRef, onMounted, watch } from 'vue'
@@ -22,7 +27,8 @@ import { useToast } from '~~/composables/useToast'
 import type { Post } from '~~/types/api'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
-import { RefreshCw, Plus, Pin } from '@lucide/vue'
+import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
+import { RefreshCw, Plus, Pin, X } from '@lucide/vue'
 import {
   Select,
   SelectContent,
@@ -59,6 +65,7 @@ const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
 const batchDeleteDialogOpen = ref(false)
 const batching = ref(false)
+const loadError = ref<string | null>(null)
 
 const statusOptions = [
   { value: 'all' as const, label: '全部状态' },
@@ -76,15 +83,41 @@ const columns: Column[] = [
   { key: 'likes_count', title: '点赞', align: 'center', class: 'w-20' },
   { key: 'comments_count', title: '评论', align: 'center', class: 'w-20' },
   { key: 'is_pinned', title: '置顶', align: 'center', class: 'w-16' },
-  { key: 'published_at', title: '发布时间', class: 'w-44 text-xs text-muted-foreground' }
+  { key: 'published_at', title: '发布时间', class: 'w-44 text-xs text-muted-foreground' },
+  { key: 'updated_at', title: '最后更新', class: 'w-44 text-xs text-muted-foreground' }
 ]
 
+// 同一轮里可能有多个来源同时要求重载（筛选按钮 + page watch + 多个筛选 watch），
+// 用宏任务合并成一次请求：setTimeout(0) 保证同步赋值与 pre-flush 的 watcher 都先跑完。
+let loadTimer: ReturnType<typeof setTimeout> | null = null
+function scheduleLoad() {
+  if (loadTimer) clearTimeout(loadTimer)
+  loadTimer = setTimeout(() => {
+    loadTimer = null
+    loadPosts()
+  }, 0)
+}
+
+// 条件变化：清选择 + 回到第 1 页。不能既置 page=1 又直接调 loadPosts（见文件头契约 2）
+function reload() {
+  selectedIds.value = []
+  if (page.value !== 1) page.value = 1
+  scheduleLoad()
+}
+
 watch([page, pageSize], () => {
-  loadPosts()
+  scheduleLoad()
+})
+
+// 状态与日期跟分类保持一致：都是下拉/选值，选完就该生效，不该再要求点一次「搜索」。
+// 关键字仍走按钮（用它防抖：每敲一个字打一次请求没必要）。
+watch([statusFilter, createdStart, createdEnd], () => {
+  reload()
 })
 
 const loadPosts = async () => {
   loading.value = true
+  loadError.value = null
   try {
     const result = await fetchAdminPostsPaged<AdminPostListItem>({
       page: page.value,
@@ -103,9 +136,12 @@ const loadPosts = async () => {
       page.value = maxPage
       return
     }
-  } catch {
+  } catch (e) {
     posts.value = []
     total.value = 0
+    // 不能静默：失败时表格是空的，而"筛选后没有结果"长得一模一样，
+    // 管理员无法区分是查不到还是请求挂了。
+    loadError.value = e instanceof Error ? e.message : '加载失败，请稍后重试'
   } finally {
     loading.value = false
   }
@@ -120,23 +156,25 @@ const loadCategories = async () => {
 }
 
 const onSearch = () => {
-  page.value = 1
-  loadPosts()
+  reload()
 }
 
 // 分类下拉在 FilterBar 插槽内，无法复用其搜索按钮语义：选中后立即刷新
 watch(categoryFilter, () => {
-  onSearch()
+  reload()
 })
 
 const onReset = () => {
   categoryFilter.value = 'all'
-  page.value = 1
-  loadPosts()
+  reload()
 }
 
 const refresh = () => {
-  loadPosts()
+  scheduleLoad()
+}
+
+const clearSelection = () => {
+  selectedIds.value = []
 }
 
 function confirmDelete(id: number) {
@@ -147,11 +185,16 @@ function confirmDelete(id: number) {
 async function doDelete() {
   if (pendingDeleteId.value == null) return
   const id = pendingDeleteId.value
-  await deletePost(id)
+  try {
+    await deletePost(id)
+  } catch {
+    // apiFetch 已统一 toast；对话框保持打开供重试（AdminConfirmDialog 的契约）
+    return
+  }
   toast.success('已移入回收站')
   pendingDeleteId.value = null
   selectedIds.value = selectedIds.value.filter(x => x !== id)
-  loadPosts()
+  scheduleLoad()
 }
 
 function confirmBatchDelete() {
@@ -168,7 +211,7 @@ async function doBatchDelete() {
     const resp = await batchAdminPosts('delete', ids)
     toast.success(`已删除 ${resp.affected_count ?? ids.length} 篇文章，回收站 30 天内可恢复`)
     selectedIds.value = []
-    loadPosts()
+    scheduleLoad()
   } catch {
     /* apiFetch 已统一 toast */
   } finally {
@@ -186,7 +229,7 @@ const batchChangeStatus = async (status: 'published' | 'draft' | 'scheduled') =>
     if (unavailableCount === 0) toast.success(`已批量修改 ${updatedCount} 篇文章状态`)
     else toast.warning(`成功修改 ${updatedCount} 篇，未授权或不存在 ${unavailableCount} 篇`)
     selectedIds.value = []
-    await loadPosts()
+    scheduleLoad()
   } catch {
     /* apiFetch 已统一 toast */
   } finally {
@@ -203,7 +246,7 @@ const batchPin = async (action: 'pin' | 'unpin') => {
     if (affected === 0) toast.warning('所选文章已处于目标置顶状态，未做变更')
     else toast.success(`${action === 'pin' ? '已置顶' : '已取消置顶'} ${affected} 篇文章`)
     selectedIds.value = []
-    await loadPosts()
+    scheduleLoad()
   } catch {
     /* apiFetch 已统一 toast */
   } finally {
@@ -255,10 +298,12 @@ onMounted(() => {
                 <SelectItem value="all">
                   全部分类
                 </SelectItem>
+                <!-- 后端 list_posts 的 category 参数是 slug（`Category.slug == category`），
+                     传 id 永远匹配不上，表现为"选了分类却一条都没有" -->
                 <SelectItem
                   v-for="c in categories"
                   :key="c.id"
-                  :value="c.slug || c.id.toString()"
+                  :value="c.slug"
                 >
                   {{ getLocalizedStr(c.name) }}
                 </SelectItem>
@@ -284,8 +329,19 @@ onMounted(() => {
     >
       <span class="text-sm text-primary/90">
         已选择 <strong>{{ selectedIds.length }}</strong> 条记录
+        <span class="text-xs opacity-70 ml-1">（仅当前页）</span>
       </span>
       <div class="flex items-center gap-2 flex-wrap justify-end">
+        <Button
+          variant="ghost"
+          size="sm"
+          class="rounded-[10px] h-9 text-xs"
+          :disabled="batching"
+          @click="clearSelection"
+        >
+          <X data-icon="inline-start" />
+          取消选择
+        </Button>
         <Button
           variant="outline"
           size="sm"
@@ -334,6 +390,28 @@ onMounted(() => {
         </Button>
       </div>
     </div>
+
+    <Alert
+      v-if="loadError"
+      variant="destructive"
+      class="rounded-[12px]"
+    >
+      <AlertTitle class="font-semibold">
+        加载失败
+      </AlertTitle>
+      <AlertDescription class="mt-2 flex items-center gap-3">
+        <span>{{ loadError }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-[10px]"
+          @click="refresh"
+        >
+          <RefreshCw data-icon="inline-start" />
+          重试
+        </Button>
+      </AlertDescription>
+    </Alert>
 
     <AdminDataTable
       :columns="columns"
@@ -400,6 +478,9 @@ onMounted(() => {
       </template>
       <template #cell-published_at="{ row }">
         {{ formatAdminDateTime((row as Post).published_at ?? (row as Post).created_at) }}
+      </template>
+      <template #cell-updated_at="{ row }">
+        {{ formatAdminDateTime((row as AdminPostListItem).updated_at) }}
       </template>
       <template #actions="{ row }">
         <Button

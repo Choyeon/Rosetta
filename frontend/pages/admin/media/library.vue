@@ -114,6 +114,11 @@
             <SelectItem value="video">
               视频
             </SelectItem>
+            <!-- 后端 file_type 白名单是 image/video/audio/document 四类； -->
+            <!-- 此前 UI 漏了 audio，管理员无法单独筛出音频文件 -->
+            <SelectItem value="audio">
+              音频
+            </SelectItem>
             <SelectItem value="document">
               文档
             </SelectItem>
@@ -191,7 +196,7 @@
       v-if="loading"
       :class="viewMode === 'grid'
         ? 'grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4'
-        : 'flex flex-col rounded-xl border bg-card overflow-hidden'"
+        : 'flex flex-col card-surface overflow-hidden'"
     >
       <template v-if="viewMode === 'grid'">
         <div
@@ -270,7 +275,9 @@
       <div
         v-for="m in mediaItems"
         :key="m.id"
-        class="group relative rounded-xl border bg-card overflow-hidden shadow-sm transition-shadow hover:shadow-md cursor-pointer"
+        :class="[
+          'group relative rounded-xl border bg-card overflow-hidden shadow-sm transition-shadow hover:shadow-md cursor-pointer' // panel-exempt: 媒体库缩略图瓦片，内容由图片铺满，card-surface 的渐变玻璃面/内发光无从体现
+        ]"
         role="button"
         tabindex="0"
         :aria-label="`预览文件 ${m.filename}`"
@@ -345,7 +352,7 @@
 
     <div
       v-else
-      class="flex flex-col rounded-xl border bg-card overflow-hidden"
+      class="flex flex-col card-surface overflow-hidden"
     >
       <div
         v-for="m in mediaItems"
@@ -620,9 +627,14 @@ function mimeIcon(mime?: string | null): unknown {
   return FileText
 }
 
-function mimePrefix(): string | undefined {
-  // 'all' 是「全部」选项的哨兵值：reka-ui 的 SelectItem 禁止空串 value
-  return mimeFilter.value === 'all' ? undefined : mimeFilter.value
+/**
+ * 「文件类型」下拉的值其实是后端 ``file_type``（image / video / audio / document），
+ * 不是 MIME 前缀——历史上这里叫 mimePrefix，改名后变量名与语义才对得上。
+ * 'all' 是「全部」选项的哨兵值：reka-ui 的 SelectItem 禁止空串 value。
+ */
+function fileTypeFilter(): string | undefined {
+  const allowed = new Set(['image', 'video', 'audio', 'document'])
+  return allowed.has(mimeFilter.value) ? mimeFilter.value : undefined
 }
 
 /** 区分「筛选无结果」与「库内确实没有文件」，避免给出误导性的上传引导 */
@@ -646,7 +658,7 @@ async function fetchData() {
         page: page.value,
         page_size: pageSize.value,
         search: searchQuery.value.trim() || undefined,
-        mime_prefix: mimePrefix()
+        mime_prefix: fileTypeFilter()
       }),
       fetchAdminMediaStats()
     ])

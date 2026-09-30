@@ -636,6 +636,33 @@
                     <p class="text-sm text-foreground/70">
                       {{ t('oobe.adminNameDesc') }}
                     </p>
+
+                    <!-- 用户名校验反馈：本地格式校验 + 远程 check-username（debounce 500ms）。
+                         后端不可达时静默降级为「未校验」，不阻断（安装时仍有服务端校验兜底）。 -->
+                    <p
+                      v-if="usernameCheckState === 'checking'"
+                      class="flex items-center gap-1.5 text-xs text-foreground/65"
+                      aria-live="polite"
+                    >
+                      <Loader2 class="size-3 animate-spin" />
+                      {{ usernameCheckMessage }}
+                    </p>
+                    <p
+                      v-else-if="usernameCheckState === 'ok'"
+                      class="flex items-center gap-1.5 text-xs text-emerald-300"
+                      aria-live="polite"
+                    >
+                      <CheckCircle2 class="size-3" />
+                      {{ usernameCheckMessage }}
+                    </p>
+                    <p
+                      v-else-if="adminFieldErrors.name || usernameCheckState === 'invalid'"
+                      class="flex items-center gap-1.5 text-xs text-rose-300"
+                      role="alert"
+                    >
+                      <XCircle class="size-3" />
+                      {{ adminFieldErrors.name || usernameCheckMessage }}
+                    </p>
                   </div>
 
                   <div class="flex flex-col gap-2">
@@ -654,6 +681,15 @@
                         class="pl-9 h-11 !bg-white/[0.05] !border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                       />
                     </div>
+
+                    <p
+                      v-if="adminFieldErrors.email"
+                      class="flex items-center gap-1.5 text-xs text-rose-300"
+                      role="alert"
+                    >
+                      <XCircle class="size-3" />
+                      {{ adminFieldErrors.email }}
+                    </p>
                   </div>
 
                   <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -688,6 +724,53 @@
                           />
                         </button>
                       </div>
+
+                      <!-- 密码强度：只做可视化提示，权威判定在 POST /oobe/preflight -->
+                      <div
+                        v-if="adminForm.password"
+                        class="flex flex-col gap-1.5"
+                      >
+                        <div class="flex items-center gap-2">
+                          <div class="h-1.5 flex-1 rounded-full bg-white/10 overflow-hidden">
+                            <div
+                              class="h-full rounded-full transition-all duration-300"
+                              :class="strengthBarClass"
+                              :style="{ width: `${strengthPercent}%` }"
+                            />
+                          </div>
+                          <span
+                            class="text-xs font-medium w-8 text-right"
+                            :class="strengthTextClass"
+                          >{{ strengthLabel }}</span>
+                        </div>
+                        <div class="flex flex-wrap gap-x-3 gap-y-1">
+                          <span
+                            v-for="rule in passwordStrength.rules"
+                            :key="rule.id"
+                            class="inline-flex items-center gap-1 text-[11px]"
+                            :class="rule.passed ? 'text-emerald-300/90' : 'text-foreground/55'"
+                          >
+                            <CheckCircle2
+                              v-if="rule.passed"
+                              class="size-3"
+                            />
+                            <XCircle
+                              v-else
+                              class="size-3"
+                            />
+                            {{ passwordRuleLabel(rule.id) }}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p
+                        v-if="adminFieldErrors.password"
+                        class="flex items-center gap-1.5 text-xs text-rose-300"
+                        role="alert"
+                      >
+                        <XCircle class="size-3" />
+                        {{ adminFieldErrors.password }}
+                      </p>
                     </div>
 
                     <div class="flex flex-col gap-2">
@@ -721,8 +804,27 @@
                           />
                         </button>
                       </div>
+
+                      <p
+                        v-if="adminFieldErrors.confirmPassword"
+                        class="flex items-center gap-1.5 text-xs text-rose-300"
+                        role="alert"
+                      >
+                        <XCircle class="size-3" />
+                        {{ adminFieldErrors.confirmPassword }}
+                      </p>
                     </div>
                   </div>
+
+                  <!-- 分步提交失败的可见反馈（以前只进 console，用户点了没反应） -->
+                  <p
+                    v-if="stepError && step === 2"
+                    class="flex items-start gap-2 text-xs text-rose-300"
+                    role="alert"
+                  >
+                    <XCircle class="size-3.5 shrink-0 mt-0.5" />
+                    {{ stepError }}
+                  </p>
                 </div>
               </template>
 
@@ -979,6 +1081,73 @@
                           />
                         </div>
                       </div>
+
+                      <!-- 连接体检：POST /oobe/test-database（密码走请求体，不进 query string / 访问日志） -->
+                      <div class="flex flex-col gap-2">
+                        <div class="flex items-center justify-between gap-3">
+                          <span class="text-xs text-foreground/65">
+                            {{ dbTestDirty ? t('oobe.dbTestStale', '连接参数已修改，请重新测试') : t('oobe.dbTestHint', '安装前建议先测试连接，避免装到一半才报错') }}
+                          </span>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            class="shrink-0 !border-white/15 bg-white/[0.04] text-foreground hover:bg-white/10"
+                            :disabled="dbTest.status === 'testing'"
+                            @click="runDbTest"
+                          >
+                            <Loader2
+                              v-if="dbTest.status === 'testing'"
+                              data-icon="inline-start"
+                              class="animate-spin"
+                            />
+                            <Cable
+                              v-else
+                              data-icon="inline-start"
+                            />
+                            {{ dbTest.status === 'testing' ? t('oobe.dbTesting', '正在连接数据库…') : t('oobe.dbTestBtn', '测试连接') }}
+                          </Button>
+                        </div>
+
+                        <div
+                          v-if="dbTest.status === 'ok' || dbTest.status === 'error'"
+                          class="flex items-start gap-2.5 p-3 rounded-xl border"
+                          :class="dbTest.status === 'ok'
+                            ? 'border-emerald-400/35 bg-emerald-500/[0.07]'
+                            : 'border-rose-400/35 bg-rose-500/[0.07]'"
+                          role="status"
+                          aria-live="polite"
+                        >
+                          <CheckCircle2
+                            v-if="dbTest.status === 'ok'"
+                            class="size-4 shrink-0 mt-0.5 text-emerald-300"
+                          />
+                          <XCircle
+                            v-else
+                            class="size-4 shrink-0 mt-0.5 text-rose-300"
+                          />
+                          <div class="flex-1 min-w-0 space-y-1">
+                            <div
+                              class="text-sm font-medium"
+                              :class="dbTest.status === 'ok' ? 'text-emerald-200' : 'text-rose-200'"
+                            >
+                              {{ dbTest.message }}
+                            </div>
+                            <div
+                              v-if="dbTest.hint"
+                              class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                            >
+                              {{ dbTest.hint }}
+                            </div>
+                            <div
+                              v-if="dbTest.code && dbTest.code !== 'DB_OK'"
+                              class="text-[11px] font-mono text-foreground/50"
+                            >
+                              {{ dbTest.code }}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </template>
                     <template v-else>
                       <div class="flex flex-col gap-2">
@@ -1101,6 +1270,68 @@
                       </label>
                     </div>
                   </div>
+
+                  <!-- 服务端预检结果（POST /oobe/preflight 只读干跑，error 阻断安装） -->
+                  <div
+                    v-if="preflightState.done && (preflightErrors.length || preflightWarns.length)"
+                    class="flex flex-col gap-2"
+                  >
+                    <div
+                      v-for="issue in preflightErrors"
+                      :key="`e-${issue.field}-${issue.code}`"
+                      class="flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07]"
+                      role="alert"
+                    >
+                      <XCircle class="size-4 shrink-0 mt-0.5 text-rose-300" />
+                      <div class="flex-1 min-w-0 space-y-1">
+                        <div class="text-sm font-medium text-rose-200">
+                          {{ issue.message }}
+                        </div>
+                        <div
+                          v-if="issue.hint"
+                          class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                        >
+                          {{ issue.hint }}
+                        </div>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="shrink-0 h-7 px-2 text-xs"
+                        @click="goFixIssue(issue.field)"
+                      >
+                        {{ t('oobe.preflightGoFix', '去修改') }}
+                      </Button>
+                    </div>
+                    <div
+                      v-for="issue in preflightWarns"
+                      :key="`w-${issue.field}-${issue.code}`"
+                      class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07]"
+                      role="status"
+                    >
+                      <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-300" />
+                      <div class="flex-1 min-w-0 space-y-1">
+                        <div class="text-sm font-medium text-amber-200">
+                          {{ issue.message }}
+                        </div>
+                        <div
+                          v-if="issue.hint"
+                          class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                        >
+                          {{ issue.hint }}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p
+                    v-if="stepError && step === 3"
+                    class="flex items-start gap-2 text-xs text-rose-300"
+                    role="alert"
+                  >
+                    <XCircle class="size-3.5 shrink-0 mt-0.5" />
+                    {{ stepError }}
+                  </p>
                 </div>
               </template>
 
@@ -1276,9 +1507,55 @@
                       </div>
                     </div>
                   </div>
+
+                  <!-- 安装凭据回执：这是用户唯一一次看到这些信息的机会，之后只能靠登录邮箱找回。
+                       密码只显示一次（输入框内容仍在内存里），所以只回显账号与入口，不回显明文口令。 -->
+                  <div class="mt-6 max-w-lg mx-auto rounded-2xl border border-white/10 bg-white/[0.05] p-4 text-left">
+                    <div class="flex items-center gap-2 mb-3 text-sm font-semibold text-foreground">
+                      <ShieldCheck class="size-4 text-emerald-300" />
+                      {{ t('oobe.credTitle', '请记下你的登录信息') }}
+                    </div>
+                    <dl class="flex flex-col gap-2 text-xs">
+                      <div class="flex items-center justify-between gap-3">
+                        <dt class="text-foreground/65">
+                          {{ t('oobe.credUsername', '管理员用户名') }}
+                        </dt>
+                        <dd class="font-mono text-foreground/95 select-all">
+                          {{ adminForm.name }}
+                        </dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt class="text-foreground/65">
+                          {{ t('oobe.credEmail', '管理员邮箱') }}
+                        </dt>
+                        <dd class="font-mono text-foreground/95 select-all">
+                          {{ adminForm.email }}
+                        </dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt class="text-foreground/65">
+                          {{ t('oobe.credAdminUrl', '后台入口') }}
+                        </dt>
+                        <dd class="font-mono text-foreground/95 select-all">
+                          {{ adminEntryUrl }}
+                        </dd>
+                      </div>
+                      <div class="flex items-center justify-between gap-3">
+                        <dt class="text-foreground/65">
+                          {{ t('oobe.credSiteUrl', '站点地址') }}
+                        </dt>
+                        <dd class="font-mono text-foreground/95 select-all">
+                          {{ siteForm.siteUrl }}
+                        </dd>
+                      </div>
+                    </dl>
+                    <p class="mt-3 text-[11px] text-foreground/60 leading-relaxed">
+                      {{ t('oobe.credNote', '密码不会再次显示，请妥善保存。系统已自动为你登录，可直接进入后台。') }}
+                    </p>
+                  </div>
                 </div>
 
-                <!-- 初始进入（安装按钮） -->
+                <!-- 初始进入 / 安装失败后回到这里 -->
                 <div
                   v-else
                   class="text-center py-8"
@@ -1292,6 +1569,51 @@
                   <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
                     {{ t('oobe.readyDesc', '点击下方按钮，系统将完成数据库初始化、写入配置并创建示例数据。整个过程大概需要 10~30 秒。') }}
                   </p>
+
+                  <!-- 安装失败：展示后端给的结构化 error_code + hint（已脱敏，不含数据库口令） -->
+                  <div
+                    v-if="installError"
+                    class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07] text-left"
+                    role="alert"
+                  >
+                    <XCircle class="size-4 shrink-0 mt-0.5 text-rose-300" />
+                    <div class="flex-1 min-w-0 space-y-1">
+                      <div class="text-sm font-medium text-rose-200">
+                        {{ installError.message }}
+                      </div>
+                      <div
+                        v-if="installError.hint"
+                        class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                      >
+                        {{ installError.hint }}
+                      </div>
+                      <div class="text-[11px] font-mono text-foreground/50">
+                        {{ installError.code }}
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 安装前预检结论 -->
+                  <div
+                    v-else-if="preflightState.done && preflightErrors.length"
+                    class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07] text-left"
+                    role="alert"
+                  >
+                    <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-300" />
+                    <div class="flex-1 min-w-0 space-y-1">
+                      <div class="text-sm font-medium text-amber-200">
+                        {{ t('oobe.preflightBlocked', '有 {n} 项配置需要修正后才能安装').replace('{n}', String(preflightErrors.length)) }}
+                      </div>
+                      <ul class="text-xs text-foreground/70 leading-relaxed list-disc pl-4 space-y-0.5">
+                        <li
+                          v-for="issue in preflightErrors"
+                          :key="`s-${issue.field}-${issue.code}`"
+                        >
+                          {{ issue.message }}
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
                 </div>
               </template>
             </div>
@@ -1353,7 +1675,7 @@
                     variant="default"
                     size="lg"
                     class="!bg-emerald-500 !text-zinc-950 hover:!bg-emerald-400"
-                    :disabled="installing || loading"
+                    :disabled="installing || loading || preflightState.running"
                     @click="finishSetup"
                   >
                     <template v-if="installing">
@@ -1362,6 +1684,13 @@
                         class="mr-2 animate-spin"
                       />
                       {{ t('oobe.installingBtn', '安装中…') }}
+                    </template>
+                    <template v-else-if="preflightState.running">
+                      <Loader2
+                        data-icon="inline-start"
+                        class="mr-2 animate-spin"
+                      />
+                      {{ t('oobe.preflightRunning', '正在检查配置…') }}
                     </template>
                     <template v-else>
                       <Rocket
@@ -1540,6 +1869,14 @@ import {
 import { useOOBE, type DepProgressEvt, type InstallProgressEvt } from '~~/composables/useOOBE'
 import { resetOOBECache } from '~~/middleware/oobe.global'
 import { useI18n } from 'vue-i18n'
+// 口令强度只做「可视化」：真正的准入规则由后端 security_password_policy 开关决定，
+// 前端看不到该设置，所以最终以 POST /oobe/preflight 的判定为准（见 runPreflight）。
+import {
+  PASSWORD_MIN_LENGTH,
+  evaluatePasswordStrength,
+  passwordStrengthPercent,
+  type PasswordRuleId
+} from '~~/lib/passwordStrength'
 import {
   RefreshCw,
   Settings2,
@@ -1572,7 +1909,7 @@ import {
   Cable,
   ShieldAlert
 } from '@lucide/vue'
-import { computed, markRaw, nextTick, onMounted, ref } from 'vue'
+import { computed, markRaw, nextTick, onMounted, ref, watch } from 'vue'
 
 definePageMeta({ layout: false })
 
@@ -1592,7 +1929,8 @@ const {
   systemChecks, systemSummary, loading, checkSystem, createAdmin, saveSiteSettings,
   finishOOBE, getOOBEStatus, installDependencies, subscribeDependencyStream,
   effectiveApiBase, setBackendApiBase, probeBackend, normalizeUserApiBase,
-  clearOOBEApiBaseOverrideFromStorage, installSnapshotState, cancelInstallWatch
+  clearOOBEApiBaseOverrideFromStorage, installSnapshotState, cancelInstallWatch,
+  preflight, testDatabase, checkUsername
 } = oobe
 
 // ====== Bing 每日壁纸（后台风格：emerald/teal/cyan 三束光 + 毛玻璃） ======
@@ -1990,6 +2328,9 @@ const appendLog = (text: string, level: DepLogLine['level'] = 'log') => {
   })
 }
 
+// 分步提交失败时的可见反馈（以前只在 console.error 里，用户点了「下一步」没反应）
+const stepError = ref('')
+
 // ----- 安装进度 Step4 相关 -----
 const installing = ref(false)
 const installed = ref(false)
@@ -2168,6 +2509,255 @@ const onTlsGoBack = async () => {
   }
 }
 
+// ====== Step2：管理员字段级校验 + 远程用户名预检 ======
+// 正则与后端 `backend/core/oobe_constants.py` 的 USERNAME_PATTERN / EMAIL_PATTERN 严格对齐。
+// ⚠️ 历史上这里写的是 {3,32} 而后端是 {3,20}，导致 21~32 位用户名前端放行、
+// 提交时被后端 Pydantic 校验 422 弹回 —— 同一字段两套口径，必须共用一份正则。
+const USERNAME_RE = /^[A-Za-z0-9_-]{3,20}$/
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const passwordStrength = computed(() => evaluatePasswordStrength(adminForm.password))
+const strengthPercent = computed(() => passwordStrengthPercent(passwordStrength.value))
+const strengthBarClass = computed(() => ({
+  weak: 'bg-rose-500',
+  fair: 'bg-amber-400',
+  good: 'bg-teal-400',
+  strong: 'bg-emerald-400'
+})[passwordStrength.value.level])
+const strengthTextClass = computed(() => ({
+  weak: 'text-rose-300',
+  fair: 'text-amber-300',
+  good: 'text-teal-300',
+  strong: 'text-emerald-300'
+})[passwordStrength.value.level])
+const strengthLabel = computed(() => ({
+  weak: t('oobe.pwWeak', '弱'),
+  fair: t('oobe.pwFair', '一般'),
+  good: t('oobe.pwGood', '较强'),
+  strong: t('oobe.pwStrong', '强')
+})[passwordStrength.value.level])
+
+const passwordRuleLabel = (id: PasswordRuleId) => ({
+  length: t('oobe.pwRuleLength', '至少 8 位'),
+  lower: t('oobe.pwRuleLower', '含小写字母'),
+  upper: t('oobe.pwRuleUpper', '含大写字母'),
+  digit: t('oobe.pwRuleDigit', '含数字'),
+  blocklist: t('oobe.pwRuleBlocklist', '不是常见弱口令')
+})[id]
+
+/** 已填写但未通过校验的字段 → 提示文案（空值不算错，避免刚进页面就飘红） */
+const adminFieldErrors = computed<Record<string, string>>(() => {
+  const out: Record<string, string> = {}
+  const name = adminForm.name.trim()
+  if (name && !USERNAME_RE.test(name)) {
+    out.name = t('oobe.errUsernameFormat', '用户名需为 3–20 位字母、数字、下划线或短横线')
+  }
+  const email = adminForm.email.trim()
+  if (email && !EMAIL_RE.test(email)) {
+    out.email = t('oobe.errEmailFormat', '邮箱格式不正确')
+  }
+  if (adminForm.password && adminForm.password.length < PASSWORD_MIN_LENGTH) {
+    out.password = t('oobe.errPasswordShort', '密码至少需要 8 位')
+  }
+  if (adminForm.confirmPassword && adminForm.password !== adminForm.confirmPassword) {
+    out.confirmPassword = t('oobe.errPasswordMismatch', '两次输入的密码不一致')
+  }
+  return out
+})
+
+// 远程用户名预检：debounce 500ms，失败一律降级为"未校验"而不是阻断 ——
+// 向导阶段后端可能还没起来，网络错误不该让用户卡在这一步。
+type UsernameCheckState = 'idle' | 'checking' | 'ok' | 'invalid'
+const usernameCheckState = ref<UsernameCheckState>('idle')
+const usernameCheckMessage = ref('')
+let _usernameTimer: ReturnType<typeof setTimeout> | null = null
+
+watch(() => adminForm.name, (val) => {
+  const name = String(val || '').trim()
+  if (_usernameTimer) clearTimeout(_usernameTimer)
+  if (!name) {
+    usernameCheckState.value = 'idle'
+    usernameCheckMessage.value = ''
+    return
+  }
+  if (!USERNAME_RE.test(name)) {
+    // 格式都不对就别浪费一次网络往返，本地校验已经给出提示了
+    usernameCheckState.value = 'invalid'
+    usernameCheckMessage.value = t('oobe.errUsernameFormat', '用户名需为 3–20 位字母、数字、下划线或短横线')
+    return
+  }
+  usernameCheckState.value = 'checking'
+  usernameCheckMessage.value = t('oobe.checkingUsername', '正在检查用户名…')
+  _usernameTimer = setTimeout(async () => {
+    try {
+      const { data, error } = await checkUsername(name)
+      if (error.value || !data.value) {
+        usernameCheckState.value = 'idle'
+        usernameCheckMessage.value = ''
+        return
+      }
+      const payload = data.value as { available?: boolean, message?: string | null }
+      if (payload.available === false) {
+        usernameCheckState.value = 'invalid'
+        usernameCheckMessage.value = payload.message || t('oobe.errUsernameFormat', '用户名需为 3–20 位字母、数字、下划线或短横线')
+      } else {
+        usernameCheckState.value = 'ok'
+        usernameCheckMessage.value = t('oobe.usernameAvailable', '用户名可用')
+      }
+    } catch {
+      usernameCheckState.value = 'idle'
+      usernameCheckMessage.value = ''
+    }
+  }, 500)
+})
+
+// ====== Step3：数据库连接体检 ======
+// 结果里的 code/hint 来自后端 setup_database.classify_db_error，前端只渲染不翻译
+// （code 是稳定的机器码，文案由后端按当前 locale 给出）。
+interface DbTestState {
+  status: 'idle' | 'testing' | 'ok' | 'error'
+  code: string
+  message: string
+  hint: string
+}
+const dbTest = ref<DbTestState>({ status: 'idle', code: '', message: '', hint: '' })
+const dbTestDirty = ref(false)
+
+const runDbTest = async () => {
+  if (dbTest.value.status === 'testing') return
+  dbTestDirty.value = false
+  dbTest.value = { status: 'testing', code: '', message: t('oobe.dbTesting', '正在连接数据库…'), hint: '' }
+  try {
+    const { data, error } = await testDatabase({
+      db_type: siteForm.databaseType,
+      db_host: siteForm.dbHost,
+      db_port: siteForm.dbPort,
+      db_name: siteForm.dbName,
+      db_user: siteForm.dbUser,
+      db_password: siteForm.dbPassword,
+      db_path: siteForm.dbPath
+    })
+    if (error.value || !data.value) {
+      dbTest.value = {
+        status: 'error',
+        code: 'DB_UNKNOWN',
+        message: (error.value as { message?: string } | null)?.message || t('oobe.dbTestFailed', '无法连接数据库'),
+        hint: t('oobe.dbTestFailedHint', '请确认数据库服务已启动，且主机/端口可从此服务器访问。')
+      }
+      return
+    }
+    const r = data.value
+    dbTest.value = {
+      status: r.success ? 'ok' : 'error',
+      code: r.code || (r.success ? 'DB_OK' : 'DB_UNKNOWN'),
+      message: r.message || '',
+      hint: r.hint || ''
+    }
+  } catch (e) {
+    dbTest.value = {
+      status: 'error',
+      code: 'DB_UNKNOWN',
+      message: e instanceof Error ? e.message : String(e),
+      hint: t('oobe.dbTestFailedHint', '请确认数据库服务已启动，且主机/端口可从此服务器访问。')
+    }
+  }
+}
+
+// 改动任一连接参数就作废上一次的体检结论，防止"测过了"标签误导用户
+watch(
+  () => [siteForm.databaseType, siteForm.dbHost, siteForm.dbPort, siteForm.dbName, siteForm.dbUser, siteForm.dbPassword, siteForm.dbPath],
+  () => {
+    if (dbTest.value.status === 'ok' || dbTest.value.status === 'error') {
+      dbTest.value = { status: 'idle', code: '', message: '', hint: '' }
+      dbTestDirty.value = true
+    }
+  }
+)
+
+// ====== Step4：安装前预检 ======
+interface PreflightIssue {
+  field: string
+  level: 'error' | 'warn'
+  code: string
+  message: string
+  hint?: string | null
+}
+const preflightState = ref<{
+  running: boolean
+  done: boolean
+  ok: boolean | null
+  issues: PreflightIssue[]
+  database: { checked: boolean, ok: boolean, code: string, message: string, hint?: string | null, version?: string | null } | null
+}>({ running: false, done: false, ok: null, issues: [], database: null })
+
+/** 预检问题字段 → 所在步骤，用于「跳去修复」 */
+const ISSUE_FIELD_STEP: Record<string, number> = {
+  admin_username: 2,
+  admin_email: 2,
+  admin_password: 2,
+  site_name: 3,
+  site_url: 3,
+  database: 3
+}
+
+const buildPreflightPayload = () => ({
+  admin_username: adminForm.name.trim() || undefined,
+  admin_email: adminForm.email.trim() || undefined,
+  admin_password: adminForm.password || undefined,
+  site_name: siteForm.name.trim() || undefined,
+  site_url: siteForm.siteUrl.trim() || undefined,
+  database_type: siteForm.databaseType,
+  db_host: siteForm.dbHost,
+  db_port: siteForm.dbPort,
+  db_name: siteForm.dbName,
+  db_user: siteForm.dbUser,
+  db_password: siteForm.dbPassword,
+  db_path: siteForm.dbPath,
+  check_database: siteForm.databaseType === 'postgresql'
+})
+
+const runPreflight = async (): Promise<boolean> => {
+  if (preflightState.value.running) return false
+  preflightState.value = { ...preflightState.value, running: true }
+  try {
+    const { data, error } = await preflight(buildPreflightPayload())
+    if (error.value || !data.value) {
+      // 预检本身失败（后端未就绪/网络问题）不阻断：安装路径仍有服务端校验兜底
+      preflightState.value = { running: false, done: false, ok: null, issues: [], database: null }
+      return true
+    }
+    const r = data.value
+    preflightState.value = {
+      running: false,
+      done: true,
+      ok: r.ok !== false,
+      issues: (r.issues as PreflightIssue[]) || [],
+      database: r.database || null
+    }
+    return r.ok !== false
+  } catch {
+    preflightState.value = { running: false, done: false, ok: null, issues: [], database: null }
+    return true
+  }
+}
+
+const preflightErrors = computed(() => preflightState.value.issues.filter(i => i.level === 'error'))
+const preflightWarns = computed(() => preflightState.value.issues.filter(i => i.level === 'warn'))
+
+const goFixIssue = (field: string) => {
+  const target = ISSUE_FIELD_STEP[field] || 3
+  step.value = target
+  preflightState.value = { running: false, done: false, ok: null, issues: [], database: null }
+}
+
+// ====== Step4：安装失败结构化展示 ======
+// 后端现在回 error_code + hint（见 backend/api/oobe.py 的 OOBEInstallFailedException），
+// 以前只能把整段异常文案甩给用户，里面可能夹着带口令的 DSN。
+const installError = ref<{ code: string, message: string, hint: string } | null>(null)
+
+/** 完成后回执里的后台入口：拼站点 URL + /admin，与后端 OobeInstallResponse.admin_url 同口径 */
+const adminEntryUrl = computed(() => `${String(siteForm.siteUrl || '').replace(/\/$/, '')}/admin`)
+
 const canNext = computed(() => {
   if (step.value === 1) {
     // O 系列 Step1：必须先通过后端连接探测，其次系统检测无硬错误
@@ -2177,20 +2767,21 @@ const canNext = computed(() => {
   }
   if (step.value === 2) {
     return (
-      adminForm.name.trim()
-      && /^[A-Za-z0-9_-]{3,32}$/.test(adminForm.name.trim())
+      Object.keys(adminFieldErrors.value).length === 0
+      && adminForm.name.trim()
+      && USERNAME_RE.test(adminForm.name.trim())
       && adminForm.email.trim()
-      && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(adminForm.email.trim())
-      && adminForm.password
-      && adminForm.password.length >= 8
+      && EMAIL_RE.test(adminForm.email.trim())
+      && adminForm.password.length >= PASSWORD_MIN_LENGTH
       && adminForm.password === adminForm.confirmPassword
+      && usernameCheckState.value !== 'invalid'
     )
   }
   if (step.value === 3) {
     return (
       siteForm.name.trim()
       && siteForm.siteUrl.trim()
-      && /^https?:\/\//.test(siteForm.siteUrl.trim())
+      && /^https?:\/\/[^\s/$.?#].[^\s]*$/.test(siteForm.siteUrl.trim())
       && (siteForm.databaseType === 'sqlite'
         || (siteForm.databaseType === 'postgresql' && siteForm.dbName.trim() && siteForm.dbUser.trim()))
     )
@@ -2289,6 +2880,7 @@ const runInstallDependencies = async () => {
 
 const nextStep = async () => {
   if (!canNext.value) return
+  stepError.value = ''
   loading.value = true
   try {
     // Step 1 → 2：强制应用后端地址（防止用户探测后改 URL 未重新探测的边界）；若 systemChecks 仍空再跑一次
@@ -2352,11 +2944,17 @@ const nextStep = async () => {
         enableEncryptedPosts: siteForm.enableEncryptedPosts,
         enableMusicPlayer: siteForm.enableMusicPlayer
       })
+      // 离开 Step3 前跑一次服务端预检：把「提交后被 422 弹回」提前成「当场指出哪一格有问题」。
+      // 预检是只读干跑，失败（后端未就绪）时 runPreflight 返回 true 放行，不阻断。
+      const okToAdvance = await runPreflight()
+      if (!okToAdvance) return
     }
 
     step.value++
   } catch (e) {
     console.error('OOBE step error:', e)
+    const raw = (e as { data?: { message?: string }, message?: string } | null) || {}
+    stepError.value = raw.data?.message || raw.message || t('oobe.stepSaveFailed', '这一步的配置未能保存，请稍后重试。')
   } finally {
     loading.value = false
   }
@@ -2366,6 +2964,9 @@ const prevStep = () => {
   if (step.value > 1) {
     step.value--
   }
+  // 退回上一步时清掉上一次的失败回执，避免"改完了还挂着旧错误"
+  installError.value = null
+  stepError.value = ''
   // 回退到 Step≤2 时，清理之前的安装/进度残留（防止用户 4→3/4→3→2→3→4 时进度假完成/安装假运行）
   if (step.value <= 2) {
     installing.value = false
@@ -2434,6 +3035,12 @@ const onInstallProgress = (evt: InstallProgressEvt) => {
     }
   } else if (evt.type === 'error') {
     installing.value = false
+    // 后端现在给结构化 error_code + hint（已脱敏），直接展示比甩整段异常可读得多
+    installError.value = {
+      code: evt.error_code || 'INSTALL_FAILED',
+      message: evt.message || t('oobe.installFailed', '安装失败'),
+      hint: evt.hint || ''
+    }
     if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
       installSnapshotState.value = 'idle'
     }
@@ -2467,6 +3074,7 @@ const runInstallRetry = async () => {
 const reallyRunInstall = async () => {
   if (installing.value) return
   tlsDialogOpen.value = false
+  installError.value = null
   installing.value = true
   installStepIndex.value = 0
   installPercent.value = 10
@@ -2501,6 +3109,15 @@ const reallyRunInstall = async () => {
     }
   } catch (e) {
     console.error('finishSetup failed:', e)
+    // 已被 SSE error 事件填过结构化信息就不要用原始异常覆盖；否则兜底一条通用文案
+    if (!installError.value) {
+      const raw = (e as { data?: { message?: string, error_code?: string, details?: { hint?: string } }, message?: string } | null) || {}
+      installError.value = {
+        code: raw.data?.error_code || 'INSTALL_FAILED',
+        message: raw.data?.message || raw.message || t('oobe.installFailed', '安装失败'),
+        hint: raw.data?.details?.hint || ''
+      }
+    }
     installing.value = false
     if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
       installSnapshotState.value = 'idle'
@@ -2515,6 +3132,10 @@ const finishSetup = async () => {
     tlsDialogOpen.value = true
     return
   }
+  // 安装前的最后一道闸门：服务端只读干跑。用户可能从 Step4 退回改过表单，
+  // 所以这里必须重新跑一次，不能复用进入 Step4 时的结论。
+  const ok = await runPreflight()
+  if (!ok) return
   await reallyRunInstall()
 }
 

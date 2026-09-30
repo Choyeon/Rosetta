@@ -100,10 +100,9 @@
             <div class="flex flex-col gap-2">
               <Label class="text-sm">导出范围</Label>
               <div
-                class="inline-flex rounded-xl border border-border p-1 bg-card self-start"
                 role="group"
                 aria-label="导出范围"
-              >
+                class="inline-flex rounded-xl border border-border p-1 bg-card self-start" ><!-- panel-exempt: 分段筛选器（segmented control），同 trash.vue；是控件不是内容面板 -->
                 <button
                   v-for="s in scopes"
                   :key="s.key"

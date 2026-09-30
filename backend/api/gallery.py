@@ -28,6 +28,7 @@ from backend.core.auth import CurrentStaff
 from backend.core.cache import cache, make_cache_key
 from backend.core.deps import DB, PaginationParams, get_pagination
 from backend.core.partial_update import apply_partial_update
+from backend.core.plugin_bus import bus
 from backend.models.gallery import Album, Photo
 from backend.schemas import BaseResponse, PaginatedResponse
 from backend.schemas.gallery import (
@@ -39,6 +40,7 @@ from backend.schemas.gallery import (
     PhotoResponse,
     PhotoUpdate,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +72,37 @@ class PhotoBatchDeleteResponse(BaseModel):
 
 
 # ==================== 工具 ====================
+
+
+def _purge_frontend(reason: str) -> None:
+    """写操作后清 Nitro 的页面级 SWR 缓存。
+
+    ``/gallery`` 是 SSR 页（routeRules ``swr: 600``），相册封面与照片数直接渲染进
+    访客拿到**的那段 HTML**。只清后端 ``gallery:*`` 缓存的话，管理员建完相册后
+    访客最长十分钟看到的还是旧列表，新建的甚至完全不出现。
+    """
+    purge_frontend_page_cache(f"相册变更: {reason}")
+
+
+def _album_payload(album: Album) -> dict:
+    """Webhook 只收对外字段，不把整条 ORM 记录交给总线去扫。"""
+    return {
+        "id": album.id,
+        "title": album.title,
+        "is_published": album.is_published,
+        "photo_count": album.photo_count,
+        "cover": album.cover,
+    }
+
+
+def _photo_payload(photo: Photo) -> dict:
+    return {
+        "id": photo.id,
+        "album_id": photo.album_id,
+        "title": photo.title,
+        "url": photo.url,
+        "sort_order": photo.sort_order,
+    }
 
 
 async def _refresh_photo_count(db: DB, album_id: int) -> None:
@@ -226,8 +259,8 @@ async def admin_list_albums(
     status_code=status.HTTP_201_CREATED,
     summary="【管理员】创建相册",
     description=(
-        "需 CurrentStaff。创建后作者记为当前管理员，并立即失效相册公开缓存（gallery:*）。"
-        "非幂等，重复提交会产生同名多相册。"
+        "需 CurrentStaff。创建后作者记为当前管理员，并立即失效相册公开缓存（gallery:*）"
+        "与前台页面缓存（/gallery swr 600）。非幂等，重复提交会产生同名多相册。"
     ),
 )
 async def admin_create_album(
@@ -247,6 +280,10 @@ async def admin_create_album(
     await db.flush()
     await db.refresh(album)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"创建相册 {album.id}")
+    await bus.do_action(
+        "album.created", album, webhook_payload=_album_payload(album)
+    )
     return AlbumResponse.model_validate(album)
 
 
@@ -256,7 +293,7 @@ async def admin_create_album(
     summary="【管理员】更新相册",
     description=(
         "需 CurrentStaff。PATCH 风格局部更新：仅写入请求体中出现的字段（exclude_unset）。"
-        "相册不存在返回 404。保存后失效相册公开缓存。"
+        "相册不存在返回 404。保存后失效相册公开缓存与前台页面缓存。"
     ),
 )
 async def admin_update_album(
@@ -273,6 +310,10 @@ async def admin_update_album(
     await db.flush()
     await db.refresh(album)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"更新相册 {album_id}")
+    await bus.do_action(
+        "album.updated", album, webhook_payload=_album_payload(album)
+    )
     return AlbumResponse.model_validate(album)
 
 
@@ -282,7 +323,7 @@ async def admin_update_album(
     summary="【管理员】删除相册",
     description=(
         "需 CurrentStaff。物理删除相册（级联行为由 ORM relationship 定义），不存在返回 404。"
-        "删除后失效相册公开缓存。不可恢复。"
+        "删除后失效相册公开缓存与前台页面缓存。不可恢复。"
     ),
 )
 async def admin_delete_album(
@@ -293,8 +334,13 @@ async def admin_delete_album(
     album = await db.get(Album, album_id)
     if not album:
         raise HTTPException(status_code=404, detail="相册不存在")
+    # 先取快照：db.delete 之后 ORM 实例进入 deleted 态，此时再读属性取决于
+    # 会话是否恰好过期了它，把事件载荷建立在_delete 之前才稳。
+    payload = _album_payload(album)
     await db.delete(album)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"删除相册 {album_id}")
+    await bus.do_action("album.deleted", album, webhook_payload=payload)
     return BaseResponse(message="相册已删除")
 
 
@@ -343,7 +389,8 @@ async def admin_list_photos(
     summary="【管理员】添加照片到相册",
     description=(
         "需 CurrentStaff。photo.url 应指向 /api/media 上传后的媒体地址（本接口不接收文件本身）。"
-        "写入后同步刷新所属相册 photo_count 并失效相册公开缓存；album_id 对应相册不存在返回 404。"
+        "写入后同步刷新所属相册 photo_count 并失效相册公开缓存与前台页面缓存；"
+        "album_id 对应相册不存在返回 404。"
     ),
 )
 async def admin_create_photo(
@@ -366,6 +413,10 @@ async def admin_create_photo(
     await db.refresh(photo)
     await _refresh_photo_count(db, data.album_id)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"新增照片 {photo.id}")
+    await bus.do_action(
+        "photo.created", photo, webhook_payload=_photo_payload(photo)
+    )
     return PhotoResponse.model_validate(photo)
 
 
@@ -375,7 +426,8 @@ async def admin_create_photo(
     summary="【管理员】更新照片",
     description=(
         "需 CurrentStaff。局部更新（exclude_unset）；若传入新的 album_id 则执行跨相册移动，"
-        "新旧相册的 photo_count 都会重算。照片不存在返回 404。保存后失效相册公开缓存。"
+        "新旧相册的 photo_count 都会重算。照片不存在返回 404，目标相册不存在返回 404。"
+        "保存后失效相册公开缓存与前台页面缓存。"
     ),
 )
 async def admin_update_photo(
@@ -387,6 +439,13 @@ async def admin_update_photo(
     photo = await db.get(Photo, photo_id)
     if not photo:
         raise HTTPException(status_code=404, detail="照片不存在")
+    # 跨相册移动要先确认目标相册存在：SQLite 默认不开外键约束，
+    # 写进去就是一张 album_id 悬空的孤儿照片——它在「照片列表」里永远查不到，
+    # 管理员会认为照片丢了。MySQL/PG 则是 FK 冲突 → 500。两种结局都不能接受。
+    if data.album_id is not None and data.album_id != photo.album_id:
+        target = await db.get(Album, data.album_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="相册不存在")
     old_album_id = photo.album_id
     update_data = data.model_dump(exclude_unset=True)
     apply_partial_update(photo, update_data)
@@ -398,6 +457,10 @@ async def admin_update_photo(
     else:
         await _refresh_photo_count(db, photo.album_id)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"更新照片 {photo_id}")
+    await bus.do_action(
+        "photo.updated", photo, webhook_payload=_photo_payload(photo)
+    )
     return PhotoResponse.model_validate(photo)
 
 
@@ -411,6 +474,7 @@ async def admin_update_photo(
         "响应含 `deleted_count` 与 `missing_ids`（请求里不存在的 ID），"
         "调用方不得只看 `success` 判定全部删除完成。"
         "只删 DB 记录，媒体文件不自动清理，不可恢复。"
+        "会失效相册公开缓存与前台页面缓存，并对每张实际删除的照片发一条 photo.deleted 钩子。"
     ),
     responses={200: {"model": PhotoBatchDeleteResponse}},
 )
@@ -435,6 +499,16 @@ async def admin_delete_photos_batch(
         await _refresh_photo_count(db, album_id)
     await db.flush()
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"批量删除照片 {len(found_ids)} 张")
+
+    # 行已删、只剩 id 可用：为了不把整行 description 载入内存，上面的查询刻意
+    # 只投影了 id / album_id，这里没有 ORM 对象可当位置参数传。事件**名**必须
+    # 与单条删除一致（photo.deleted），否则监听方会因为管理员用了多选就收不到通知；
+    # 代价是这条 hook 不提供位置参数，监听回调一律读 webhook_payload 里的 id。
+    for photo_id, album_id in sorted(rows):
+        await bus.do_action(
+            "photo.deleted", webhook_payload={"id": photo_id, "album_id": album_id}
+        )
 
     missing = sorted(set(ids) - set(found_ids))
     message = f"已删除 {len(found_ids)} 张照片"
@@ -455,7 +529,7 @@ async def admin_delete_photos_batch(
     summary="【管理员】删除照片",
     description=(
         "需 CurrentStaff。物理删除照片并重算所属相册 photo_count，不存在返回 404。"
-        "删除后失效相册公开缓存。不可恢复（仅删 DB 记录，媒体文件不自动清理）。"
+        "删除后失效相册公开缓存与前台页面缓存。不可恢复（仅删 DB 记录，媒体文件不自动清理）。"
     ),
 )
 async def admin_delete_photo(
@@ -467,7 +541,10 @@ async def admin_delete_photo(
     if not photo:
         raise HTTPException(status_code=404, detail="照片不存在")
     album_id = photo.album_id
+    payload = _photo_payload(photo)
     await db.delete(photo)
     await _refresh_photo_count(db, album_id)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
+    _purge_frontend(f"删除照片 {photo_id}")
+    await bus.do_action("photo.deleted", photo, webhook_payload=payload)
     return BaseResponse(message="照片已删除")

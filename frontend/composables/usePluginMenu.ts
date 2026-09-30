@@ -55,8 +55,17 @@ export function usePluginMenu() {
     if (_cache.loaded && !force) {
       return _items.value
     }
+    // force=true 时**不能**复用进行中的旧 Promise：那次请求是在插件启停之前发出的，
+    // 复用它等于用陈旧结果冒充"刚强制刷新过"，侧栏会漏掉 / 残留刚刚变更的管理员菜单。
+    // 正确做法是等旧请求落定再发一次新的 —— 慢一点没关系，语义不能错。
+    // 非 force 的调用才允许共享同一个 in-flight Promise（避免并发重复请求）。
     if (_cache.loadingPromise) {
-      return _cache.loadingPromise
+      if (!force) return _cache.loadingPromise
+      try {
+        await _cache.loadingPromise
+      } catch {
+        /* 旧请求失败不影响本次强制刷新 */
+      }
     }
     loading.value = true
     error.value = null

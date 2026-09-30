@@ -19,6 +19,7 @@ import pytest
 from httpx import AsyncClient
 
 from backend.models.blog import Comment
+from backend.models.user import User
 
 # ============================= 2.1 Tabs / 搜索 / 计数 Badge =============================
 
@@ -308,6 +309,45 @@ class TestCommentSingleAndBatch:
         """C-A5: Subscriber 无权访问 admin/comments — No-Go R1"""
         r = await client.get("/api/admin/comments", headers=subscriber_headers)
         assert r.status_code in (401, 403), f"No-Go R1: 订阅者能看管理评论: {r.status_code}"
+
+    @pytest.mark.asyncio
+    async def test_comment_moderation_stays_at_staff(
+        self, client: AsyncClient, db_session, subscriber_headers: dict, staff_headers: dict
+    ):
+        """评论审核闸门维持在 admin+，不因 ``Cap.MODERATE_COMMENTS`` 而从 editor 起放开。
+
+        背景（防止后人"顺手"放宽）：rbac 矩阵把 ``interaction:moderate_comments``
+        授予 editor，但 ``GET /api/admin/comments`` 的响应含评论者邮箱 / QQ / GitHub，
+        且支持按邮箱、IP 检索。放宽即等于把全站评论的联系方式下沉一级。
+        这里显式构造一个 role=editor 的账号，断言它拿不到，把这条决定钉在测试里。
+        """
+        from backend.core.auth import get_password_hash
+
+        editor = User(
+            username="editor_boundary",
+            email="editor_boundary@example.com",
+            password_hash=get_password_hash("Editor@123"),
+            nickname="编辑账号",
+            is_active=True,
+            is_staff=False,
+            is_superuser=False,
+            role="editor",
+        )
+        db_session.add(editor)
+        await db_session.commit()
+
+        login = await client.post(
+            "/api/users/login",
+            json={"username": "editor_boundary", "password": "Editor@123"},
+        )
+        assert login.status_code == 200, f"editor 登录失败: {login.text}"
+        editor_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+
+        denied = await client.get("/api/admin/comments", headers=editor_headers)
+        assert denied.status_code == 403, f"editor 不应看到全站评论 PII: {denied.status_code}"
+
+        allowed = await client.get("/api/admin/comments", headers=staff_headers)
+        assert allowed.status_code == 200
 
 
 # ============================= 2.5 评论内容安全 / XSS =============================

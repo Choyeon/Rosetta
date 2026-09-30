@@ -11,9 +11,11 @@
 - 标签列表：10 分钟
 """
 
+import asyncio
 import json
 import math
 import re
+from collections.abc import Sequence
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -48,6 +50,7 @@ from backend.services.content_renderer import (
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
+    invalidate_post_caches_by_ids,
     invalidate_post_caches_by_slugs,
 )
 from backend.services.post_revision import (
@@ -328,6 +331,41 @@ def generate_slug(title: str) -> str:
     return slug
 
 
+LIST_SORT_LATEST = "latest"
+LIST_SORT_POPULAR = "popular"
+
+
+def _normalize_list_sort(sort: str | None) -> str:
+    """把 sort 查询参数收敛成两个已知口径。
+
+    未知/空值一律回退 latest：排序只是展示偏好，不是过滤条件，对 `?sort=<垃圾>` 报 422
+    会让一个收藏夹里的旧链接直接打不开，收益远小于代价。
+    """
+    if sort and sort.strip().lower() == LIST_SORT_POPULAR:
+        return LIST_SORT_POPULAR
+    return LIST_SORT_LATEST
+
+
+def _list_order_by(sort: str):
+    """文章列表的排序表达式（置顶恒优先，与既有行为一致）。
+
+    三条约束，缺一个都会出线上事故：
+
+    1. **时间列必须用 coalesce 兜住 NULL。** 草稿与定时文章的 `published_at` 是 NULL，
+       而 SQLite 把 NULL 当最小值（DESC 下沉到末页）、PostgreSQL 把 NULL 当最大值
+       （DESC 浮到首页）——同一个接口在两种库上给出相反的"最新"。管理员刚新建的草稿
+       在 SQLite 上会沉到最后一页，表现为"保存了却看不到"。
+    2. **必须有唯一键做最后 tiebreaker。** `(is_pinned, coalesce(...))` 大量并列时，
+       LIMIT/OFFSET 分页不保证稳定，同一篇文章可能同时出现在第 1 页和第 2 页，
+       而另一篇两页都不出现。
+    3. **popular 也要置顶优先**，否则置顶位在"最热"视图里失效。
+    """
+    freshness = func.coalesce(Post.published_at, Post.created_at).desc()
+    if sort == LIST_SORT_POPULAR:
+        return (Post.is_pinned.desc(), Post.views.desc(), freshness, Post.id.desc())
+    return (Post.is_pinned.desc(), freshness, Post.id.desc())
+
+
 async def _get_post_list_cache_key(
     language: str,
     page: int,
@@ -338,6 +376,7 @@ async def _get_post_list_cache_key(
     status_filter: str | None,
     author: str | None = None,
     post_type: str | None = None,
+    sort: str = LIST_SORT_LATEST,
 ) -> str:
     """生成文章列表缓存键"""
     parts = [
@@ -349,6 +388,8 @@ async def _get_post_list_cache_key(
         f"t{tag or 'all'}",
         f"s{search or 'none'}",
         f"st{status_filter or 'published'}",
+        # 排序必须进键：少了这一段，"最热"视图会命中"最新"视图缓存的那一页。
+        f"so{sort}",
         # 作者归档必须自成一条键：少了这一段，A 作者的列表会被当作全站/其他作者的结果命中。
         f"a{author or 'all'}",
         # 内容类型同理：查询侧按 post_type 过滤（不传默认 post），键里少了这一段时，
@@ -427,6 +468,7 @@ async def _build_post_list_item_from_row(
         is_pinned=post.is_pinned,
         created_at=post.created_at,
         published_at=post.published_at,
+        updated_at=post.updated_at,
         reading_time=post.reading_time or 1,
     )
 
@@ -521,6 +563,15 @@ async def list_posts(
     created_end: str | None = Query(
         None, alias="created_end", description="创建结束日期 ISO（含边界）"
     ),
+    sort: str | None = Query(
+        None,
+        alias="sort",
+        description=(
+            "排序口径：`latest`（默认，按发布时间倒序，置顶优先）、`popular`（按浏览量倒序，"
+            "同浏览按发布时间倒序）。非法取值按 latest 处理，不报错——这个参数是展示偏好，"
+            "不是查询条件，拒绝未知值只会让老链接 422。"
+        ),
+    ),
     current_user: CurrentUserOptional = None,
 ):
     """获取文章列表，支持多语言和缓存
@@ -581,9 +632,20 @@ async def list_posts(
         and not viewer_is_author
     )
 
+    sort_mode = _normalize_list_sort(sort)
+
     if use_cache:
         cache_key = await _get_post_list_cache_key(
-            language, page, page_size, category, tag, search, status_filter, author, post_type
+            language,
+            page,
+            page_size,
+            category,
+            tag,
+            search,
+            status_filter,
+            author,
+            post_type,
+            sort_mode,
         )
         cached = await cache.get(cache_key)
         if cached:
@@ -686,9 +748,7 @@ async def list_posts(
         if search_candidates_cap > 200:
             search_candidates_cap = 200
 
-        coarse_q = query.order_by(Post.is_pinned.desc(), Post.published_at.desc()).limit(
-            search_candidates_cap
-        )
+        coarse_q = query.order_by(*_list_order_by(sort_mode)).limit(search_candidates_cap)
         coarse_result = await db.execute(coarse_q)
         coarse_rows = coarse_result.unique().all()
         coarse_posts = [row.Post for row in coarse_rows]
@@ -715,7 +775,7 @@ async def list_posts(
         query = (
             query.offset((page - 1) * page_size)
             .limit(page_size)
-            .order_by(Post.is_pinned.desc(), Post.published_at.desc())
+            .order_by(*_list_order_by(sort_mode))
         )
 
         result = await db.execute(query)
@@ -2180,8 +2240,20 @@ async def create_comment(
     db.add(comment)
     await db.flush()
     await db.refresh(comment)
+    await db.commit()
 
-    return _comment_to_response(comment)
+    resp = _comment_to_response(comment)
+
+    # 补齐与 POST /api/comments/posts/{id}/comments（comments.py）同构的两件事：
+    # 1) 钩子：`comment.created` 是 WEBHOOK_EVENTS 里的正式事件，而 frontend 发评论
+    #    走的正是本端点（useComments.ts /blog/posts/{id}/comments）。漏发 = 用户配了
+    #    Webhook 却永远收不到评论通知，且与"任何写路径都必须 do_action"的约定冲突。
+    # 2) 缓存：评论直接可见时会改变列表里的 comments_count，必须让列表缓存回源。
+    await bus.do_action("comment.created", resp, db=db)
+    if getattr(comment, "active", False):
+        await invalidate_post_caches_by_ids(db, [post_id])
+
+    return resp
 
 
 # ==================== 归档 API ====================
@@ -2351,16 +2423,24 @@ async def get_site_stats(
     contents = posts_result.scalars().all()
     total_posts = len(contents)
     total_words = 0
-    # 逐篇处理，避免内存和类型问题（Post.content 可能为 dict、str、None）
-    for c in contents:
-        text: str = ""
-        if isinstance(c, dict):
-            # 多语言 dict：优先 zh，否则取第一个非空值，否则空串
-            text = c.get("zh") or next((v for v in c.values() if v), "") or ""
-        elif isinstance(c, str):
-            text = c
-        # None / 其他类型统一视为空串
-        total_words += _count_words_in_content(text)
+    # 逐篇处理，避免内存和类型问题（Post.content 可能为 dict、str、None）。
+    # 这段是纯 CPU 的正则活：几百篇文章 = 几千次 re.sub、数 MB 字符串搬运，
+    # 直接在协程里跑会占住事件循环，冷缓存首请求期间同实例所有请求都被拖慢。
+    # 因此整段推进线程池（与 media_service 的 PIL 处理同一手法）。
+    def _sum_words(items: Sequence[object]) -> int:
+        acc = 0
+        for c in items:
+            text: str = ""
+            if isinstance(c, dict):
+                # 多语言 dict：优先 zh，否则取第一个非空值，否则空串
+                text = c.get("zh") or next((v for v in c.values() if v), "") or ""
+            elif isinstance(c, str):
+                text = c
+            # None / 其他类型统一视为空串
+            acc += _count_words_in_content(text)
+        return acc
+
+    total_words = await asyncio.to_thread(_sum_words, contents)
 
     # 至少有一篇已发布文章的分类数
     total_categories = (

@@ -1,8 +1,14 @@
 <!--
   后台文章编辑表单（new / [id]/edit 两页共用）：i18n 标题/正文/SEO 字段 + 发布设置 + 本地草稿。
-  硬契约：buildPayload 的两条后端语义不可破坏——PUT 是 exclude_unset 增量更新，
-  visibility 必须始终发送（否则"改回公开"永不落库）；password 为空时禁止发送该键
-  （后端收到 password:'' 会清空已有密码哈希）。cover_image 维持"未设置=空"，禁止写回默认封面。
+  硬契约（都是踩过的坑，改前先读）：
+  1. buildPayload 的后端语义不可破坏——PUT 是 exclude_unset 增量更新，
+     visibility 必须始终发送（否则"改回公开"永不落库）；password 为空时禁止发送该键
+     （后端收到 password:'' 会清空已有密码哈希）。
+  2. **要能被清掉的字段必须显式发送空值**。cover_image / category_id 写成 `|| undefined`
+     会被 JSON.stringify 丢掉，后端 exclude_unset 就当这个键没出现过 —— 表现是
+     「清除封面」「无分类」点了没反应。空字符串 / null 才是"清空"的语义。
+  3. **scheduled_at 是本地墙钟，后端按 UTC 解释朴素时间**。回填必须用 toDateTimeLocal、
+     提交必须用 fromDateTimeLocal，直接 slice(0,16) 会让东八区的作者排期偏 8 小时。
 -->
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
@@ -20,6 +26,8 @@ import {
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
+import { toDateTimeLocal, fromDateTimeLocal } from '~~/lib/datetime'
+import { estimateContentStats, slugSourceTitle, scheduledAtError } from '~~/lib/postEditor'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
@@ -118,15 +126,20 @@ const visibilityOptions = [
   { value: 'private' as const, label: '私密', description: '仅管理员可见', icon: EyeOff }
 ]
 
+const slugSource = computed(() => slugSourceTitle(form.title))
+
+const contentStats = computed(() => estimateContentStats(form.content.zh || ''))
+
+const scheduledError = computed(() => scheduledAtError(form.status, fromDateTimeLocal(form.scheduled_at)))
+
 let slugManualEdit = false
-watch(
-  () => form.title.zh,
-  (val) => {
-    if (!slugManualEdit && val) {
-      form.slug = slugify(val)
-    }
+// 只盯 form.title.zh 时，作者先写英文（或繁体）标题就永远拿不到 slug，然后被
+// "请输入 slug" 卡住。取"约定顺序里第一个非空的语言"，zh 仍是首选。
+watch(slugSource, (val) => {
+  if (!slugManualEdit && val) {
+    form.slug = slugify(val)
   }
-)
+})
 
 const handleSlugInput = () => {
   slugManualEdit = true
@@ -161,7 +174,8 @@ const applyInitialData = (data: Post) => {
   form.status = data.status === 'archived' ? 'draft' : data.status
   // 定时文章必须回填计划时间：后端 GET 现已透传 scheduled_at，
   // 不回填则编辑一次就把 scheduled_at 提交为空、文章永远发不出去。
-  form.scheduled_at = data.scheduled_at ? data.scheduled_at.slice(0, 16) : ''
+  // 走 toDateTimeLocal 而不是 slice(0,16)：库里存的是 UTC，datetime-local 要的是本地墙钟。
+  form.scheduled_at = toDateTimeLocal(data.scheduled_at)
   form.is_pinned = data.is_pinned
   form.allow_comments = data.allow_comments
   // 优先读 staff 端点透传的 visibility（private 文章只靠 is_password_protected
@@ -311,13 +325,16 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
     visibility: form.visibility,
     is_pinned: form.is_pinned,
     allow_comments: form.allow_comments,
-    category_id: form.category_id || undefined,
+    // 显式 null 而不是省略：省略 = "这个键没出现过"，后端 exclude_unset 就不会动它，
+    // 于是「无分类」「清除封面」点了没反应。null / '' 才是"我要清掉它"。
+    category_id: form.category_id ?? null,
     tag_ids: form.tag_ids,
     excerpt: toI18nPayload(form.excerpt),
-    cover_image: form.cover_image || undefined
+    cover_image: form.cover_image ?? ''
   }
   if (form.status === 'scheduled' && form.scheduled_at) {
-    payload.scheduled_at = form.scheduled_at
+    // datetime-local 的取值是本地墙钟，转成带偏移的 ISO 后端才能按 UTC 正确落库
+    payload.scheduled_at = fromDateTimeLocal(form.scheduled_at) ?? undefined
   }
   // 空密码不发送：后端收到 password:'' 会清空已有哈希；编辑态哈希不可读，
   // 只有用户明确重新输入时才更新
@@ -343,8 +360,11 @@ const validateBase = (): boolean => {
     toast.error('请输入文章内容（简体中文为主语言）')
     return false
   }
-  if (form.status === 'scheduled' && !form.scheduled_at) {
-    toast.error('请选择定时发布时间')
+  // 后端会把"不晚于现在"的定时文章直接降级成立即发布，作者以为排好了、实际已经发出去了。
+  // 这个偏差只能在提交前拦，发出去之后再解释就晚了。
+  const schedErr = scheduledError.value
+  if (schedErr) {
+    toast.error(schedErr)
     return false
   }
   if (form.visibility === 'password' && !form.password.trim() && !initiallyPasswordProtected.value) {
@@ -553,7 +573,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="flex flex-col lg:flex-row gap-4">
-      <div class="flex-1 lg:w-3/5 min-w-0">
+      <div class="flex-1 lg:w-3/5 min-w-0 flex flex-col gap-1.5">
         <I18nTabsEditor
           v-model="form.content"
           kind="markdown"
@@ -561,6 +581,10 @@ onBeforeUnmount(() => {
           placeholder="开始撰写文章内容"
           required
         />
+        <p class="text-xs text-muted-foreground px-1">
+          约 {{ contentStats.words }} 字 · 预计阅读 {{ contentStats.minutes }} 分钟
+          <span class="opacity-60">（按当前语言标签统计，仅作参考）</span>
+        </p>
       </div>
 
       <div class="w-full lg:w-2/5">
@@ -605,6 +629,18 @@ onBeforeUnmount(() => {
                     type="datetime-local"
                     class="h-9 rounded-[10px] text-sm"
                   />
+                  <p
+                    v-if="scheduledError"
+                    class="text-xs text-destructive mt-1"
+                  >
+                    {{ scheduledError }}
+                  </p>
+                  <p
+                    v-else
+                    class="text-xs text-muted-foreground mt-1"
+                  >
+                    按你所在时区填写，提交时会自动换算为 UTC
+                  </p>
                 </div>
                 <div class="flex items-center justify-between">
                   <Label
@@ -767,7 +803,9 @@ onBeforeUnmount(() => {
                 </div>
                 <div
                   v-if="tagComboboxOpen"
-                  class="absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1"
+                  :class="[
+                    'absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1' // panel-exempt: 标签下拉浮层；card-surface 的 isolation:isolate + backdrop-filter 会打断它与输入框的层叠关系，浮层必须保持素面
+                  ]"
                 >
                   <div
                     v-for="t in filteredTags"
@@ -889,19 +927,31 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="flex items-center justify-between pt-2 border-t border-border">
-      <Button
-        type="button"
-        variant="outline"
-        class="rounded-[12px] h-11 px-6 gap-2"
-        :disabled="savingDraft || submitting"
-        @click="saveDraft"
-      >
-        <Save
-          data-icon="inline-start"
-          class="size-4"
-        />
-        {{ savingDraft ? '保存中...' : '保存草稿' }}
-      </Button>
+      <div class="flex items-center gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          class="rounded-[12px] h-11 px-6 gap-2"
+          :disabled="savingDraft || submitting"
+          @click="saveDraft"
+        >
+          <Save
+            data-icon="inline-start"
+            class="size-4"
+          />
+          {{ savingDraft ? '保存中...' : '保存草稿' }}
+        </Button>
+        <!-- 未保存状态必须可见：离开确认只在"真要离开"那一刻才出现，
+             而作者更需要的是随时知道自己还有东西没存 -->
+        <span
+          v-if="isDirty"
+          class="text-xs text-warning-muted-foreground"
+        >有未保存的更改</span>
+        <span
+          v-else
+          class="text-xs text-muted-foreground"
+        >已同步</span>
+      </div>
       <div class="flex items-center gap-2">
         <Button
           type="button"

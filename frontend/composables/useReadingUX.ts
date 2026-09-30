@@ -3,14 +3,17 @@
  * ---------------------
  * 提供页面常用动效组合方法，避免在各页面重复书写 transition class。
  * 所有动画 CSS 定义在 assets/css/main.css 中（@layer components）。
+ *
+ * 【已删除 pageTransition 常量】这里原先导出
+ *   `export const pageTransition = { name: 'page-fade', mode: 'out-in', appear: true }`
+ * 它与项目的硬约束直接冲突：nuxt.config.ts 已用大段注释说明 mode:'out-in' 会让
+ * SSR 首帧渲染 Comment 占位，进而在 RouterView 边界引发 hydration mismatch →
+ * NUXT_E1005 → 硬恢复重建子树 → refs 空 TypeError。页面过渡必须且只能由
+ * nuxt.config.ts 的 app.pageTransition 提供（无 mode）。
+ * 该常量全仓零引用，但因为 composables 是自动导入目录，任何人写下
+ * `<Transition v-bind="pageTransition">` 都会把这颗雷重新埋回去 —— 故彻底删除。
+ * 需要幻灯片式的元素切换（有 outgoing + incoming）时，请在具体组件里显式声明 mode。
  */
-
-/** 页面 transition 配置：配合 <Transition name="page-fade" mode="out-in"> 使用 */
-export const pageTransition = {
-  name: 'page-fade',
-  mode: 'out-in' as const,
-  appear: true
-}
 
 /**
  * 元素进场：生成 animate-in + stagger 组合 class

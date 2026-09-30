@@ -27,6 +27,12 @@ from backend.utils.compat import UTC, parse_utc_date, timedelta
 # router 自身不再带 /admin 前缀，否则会拼出 /api/admin/admin/* 导致前端 404）。
 router = APIRouter(tags=["导入导出"])
 
+# 备份恢复的体积闸门（详见 backup_restore 内的三层校验）：
+# 备份 ZIP 体积小但解压后可膨胀上千倍，必须同时限制压缩包本体、单条目与解压总量。
+MAX_BACKUP_BYTES = 20 * 1024 * 1024  # 压缩包本体上限
+MAX_BACKUP_ENTRY_BYTES = 100 * 1024 * 1024  # 单个 JSON 条目解压后上限
+MAX_BACKUP_UNCOMPRESSED_BYTES = 300 * 1024 * 1024  # 全部条目解压后总量上限
+
 
 async def _invalidate_content_caches(*extra_prefixes: str) -> None:
     """导入 / 备份恢复之后统一失效内容缓存。
@@ -1216,14 +1222,45 @@ async def backup_restore(
 
     overwrite = strategy == "overwrite"
 
+    # 解压炸弹防护：文件名后缀不足以证明内容安全，ZIP 的压缩比可达 1000:1，
+    # 一个几百 KB 的备份包解压后能吃满内存。三层限额：
+    #   1) 压缩包本体体积上限（与 media 上传同口径，统一 20MB）
+    #   2) 单条目解压后体积上限
+    #   3) 全部条目解压后总体积上限
+    # 恢复是 staff-only 但不能因此假设"可信"——备份包常来自第三方迁移。
     try:
         content = await file.read()
+        if len(content) > MAX_BACKUP_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"备份文件不能超过 {MAX_BACKUP_BYTES // (1024 * 1024)}MB",
+            )
         zip_buffer = io.BytesIO(content)
         with zipfile.ZipFile(zip_buffer, "r") as zf:
+            infos = zf.infolist()
+            total_uncompressed = sum(i.file_size for i in infos)
+            if total_uncompressed > MAX_BACKUP_UNCOMPRESSED_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail=(
+                        "备份包解压后体积过大（疑似压缩炸弹）："
+                        f"{total_uncompressed // (1024 * 1024)}MB > "
+                        f"{MAX_BACKUP_UNCOMPRESSED_BYTES // (1024 * 1024)}MB"
+                    ),
+                )
             names = set(zf.namelist())
 
             def _read(name: str, default):
                 if name in names:
+                    info = zf.getinfo(name)
+                    if info.file_size > MAX_BACKUP_ENTRY_BYTES:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                            detail=(
+                                f"备份条目 {name} 过大："
+                                f"{info.file_size // (1024 * 1024)}MB，已拒绝导入"
+                            ),
+                        )
                     return json.loads(zf.read(name).decode("utf-8"))
                 return default
 
@@ -1241,6 +1278,9 @@ async def backup_restore(
             announcements_data = _read("announcements.json", [])
             hero_slides_data = _read("hero_slides.json", [])
             media_data = _read("media.json", [])
+    except HTTPException:
+        # 体积校验产生的 413 必须原样抛出，不能被下面兜底改成 400 的"解析失败"
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

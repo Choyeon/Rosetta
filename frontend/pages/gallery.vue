@@ -30,12 +30,12 @@
         <div
           v-for="i in 6"
           :key="i"
-          class="rounded-xl overflow-hidden border border-border/60 bg-card animate-pulse"
+          class="rounded-xl overflow-hidden border border-border/60 bg-card"
         >
-          <div class="aspect-[4/3] bg-muted" />
+          <Skeleton class="aspect-[4/3] rounded-none" />
           <div class="p-5 flex flex-col gap-3">
-            <div class="w-1/3 h-5 rounded bg-muted" />
-            <div class="w-full h-3.5 rounded bg-muted" />
+            <Skeleton class="w-1/3 h-5 rounded" />
+            <Skeleton class="w-full h-3.5 rounded" />
           </div>
         </div>
       </div>
@@ -139,10 +139,10 @@
               v-if="albumLoading && currentPhotos.length === 0"
               class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
             >
-              <div
+              <Skeleton
                 v-for="i in 8"
                 :key="i"
-                class="aspect-square rounded-lg bg-muted animate-pulse"
+                class="aspect-square rounded-lg"
               />
             </div>
 
@@ -168,10 +168,26 @@
               v-else
               class="text-center py-16"
             >
-              <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
-              <p class="text-muted-foreground text-sm">
-                {{ t('common.noData') }}
-              </p>
+              <template v-if="detailError">
+                <AlertCircle class="size-12 text-destructive/60 mx-auto mb-3" />
+                <p class="text-sm text-muted-foreground mb-4">
+                  {{ t('common.error') }}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="retryDetail"
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  {{ t('common.retry') }}
+                </Button>
+              </template>
+              <template v-else>
+                <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
+                <p class="text-muted-foreground text-sm">
+                  {{ t('common.noData') }}
+                </p>
+              </template>
             </div>
           </div>
         </ScrollArea>
@@ -186,7 +202,8 @@ import { Badge } from '~~/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~~/components/ui/dialog'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { useI18n } from 'vue-i18n'
-import { Images as ImageIcon, Image as Images } from '@lucide/vue'
+import { Images as ImageIcon, Image as Images, AlertCircle, RefreshCw } from '@lucide/vue'
+import { Button } from '~~/components/ui/button'
 import { useAPI, apiFetch as apiFetchDirect } from '~~/composables/useApi'
 
 definePageMeta({ layout: 'default' })
@@ -243,6 +260,8 @@ const albums = reactive<Album[]>([])
 const dialogOpen = ref(false)
 const activeAlbumId = ref<number | null>(null)
 const albumLoading = ref(false)
+/** 详情请求失败与「相册本来就没照片」必须区分：后者不是错误 */
+const detailError = ref(false)
 const viewerContainerRef = ref<HTMLElement | null>(null)
 let viewerInstance: { destroy: () => void } | null = null
 
@@ -312,16 +331,29 @@ async function loadAlbumDetail(id: number) {
     if (typeof photoCount === 'number') album.photosCount = photoCount
     const cover = data.cover
     if (!album.cover && typeof cover === 'string') album.cover = cover
-  } catch {
-    /* noop */
+  } catch (err) {
+    // 不能静默：失败的表现是「点了相册，对话框里一直转圈然后空空如也」，
+    // 详情页没有任何别的提示渠道，必须显式给一个错误态。
+    detailError.value = true
+    console.error('[gallery] 相册详情加载失败', id, err)
   } finally {
     albumLoading.value = false
   }
 }
 
+/** 重试：清掉 loaded 守卫，否则 loadAlbumDetail 会直接短路返回 */
+function retryDetail() {
+  const album = albums.find(a => a.id === activeAlbumId.value)
+  if (!album) return
+  detailError.value = false
+  album.loaded = false
+  void loadAlbumDetail(album.id).then(() => nextTick(() => initViewer()))
+}
+
 // 打开相册
 function openAlbum(id: number) {
   activeAlbumId.value = id
+  detailError.value = false
   dialogOpen.value = true
   nextTick(() => {
     loadAlbumDetail(id).then(() => {

@@ -16,6 +16,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.models.blog import Post
+from backend.services.cache_service import CacheService
+
+# 推荐/相似/热榜三套 key 走的是 services/cache_service.py 的二级缓存，
+# 命名空间与 core/cache 的 make_cache_key 不同（后者统一带 rosetta:v1 前缀），
+# 所以 invalidate_cache("posts") 之类根本匹配不到它们。漏掉失效的表现是：
+# 文章删除或转草稿后，最长 30 分钟内仍会出现在公开推荐位上。
+_RECOMMENDATION_PATTERNS = ("simv2:*", "hotv2:*", "rosetta:v1:recsv2:*")
+
+
+async def invalidate_recommendation_caches() -> None:
+    """失效相似文章 / 首页推荐 / 热榜三类推荐缓存。
+
+    这三份缓存在 recommendation.py 里写入，但从来没有任何 purge 调用点，
+    TTL 分别是 30min / 5min / 10min。文章行增删改必须连带清掉。
+    """
+    cache_service = CacheService()
+    for pattern in _RECOMMENDATION_PATTERNS:
+        await cache_service.invalidate_pattern(pattern)
 
 
 async def invalidate_post_caches_by_slugs(slugs: Iterable[str]) -> None:
@@ -59,3 +77,5 @@ async def invalidate_post_aggregate_caches() -> None:
     """
     for prefix in _AGGREGATE_PREFIXES:
         await invalidate_cache(prefix)
+    # 推荐位只会引用已发布文章，文章行变化即可能让"相似/推荐/热榜"变成陈旧数据
+    await invalidate_recommendation_caches()

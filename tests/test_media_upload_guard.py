@@ -23,6 +23,7 @@ from backend.api.media import (
     LIBRARY_TYPE_EXTENSIONS,
     _assert_svg_content_safe,
     _file_type_for_ext,
+    _validate_non_image_magic,
     save_upload,
 )
 
@@ -114,6 +115,78 @@ def test_assert_svg_content_safe_allows_plain_vector():
     _assert_svg_content_safe(SAFE_SVG)  # 不抛异常即通过
 
 
+# ── 非图片族（视频/音频/文档）魔术字节校验 ────────────────────────────────────
+# 媒体库允许 mp4/webm/mov/mp3/wav/ogg/pdf/doc/docx/xls/xlsx。曾经这些扩展名
+# **完全没有内容校验**：把 shell 脚本改名为 a.mp4 就能原样存进 /media 静态目录，
+# 并被同源 URL 引用（内容类型的欺骗比 XSS 更隐蔽）。这里用文件头把它们钉住。
+
+NON_IMAGE_VALID_CASES: list[tuple[str, bytes]] = [
+    ("mp4", b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00"),
+    ("mov", b"\x00\x00\x00\x14ftypqt  \x00\x00\x02\x00"),
+    ("webm", b"\x1a\x45\xdf\xa3\x01\x00\x00\x00"),
+    ("mp3", b"ID3\x03\x00\x00\x00\x00\x00\x00"),
+    ("mp3", b"\xff\xfb\x90\x64\x00\x00"),  # 裸 MPEG 帧同步（无 ID3 头）
+    ("wav", b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00"),
+    ("ogg", b"OggS\x00\x02\x00\x00\x00\x00\x00\x00"),
+    ("pdf", b"%PDF-1.7\n%\xe2\xe3\xcf\xd3\n"),
+    ("doc", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1\x00\x00"),
+    ("xls", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1\x00\x00"),
+    ("docx", b"PK\x03\x04\x14\x00\x06\x00\x08\x00"),
+    ("xlsx", b"PK\x03\x04\x14\x00\x06\x00\x08\x00"),
+]
+
+# 伪装案例：每一条都曾经能被"仅看扩展名"的白名单放行
+NON_IMAGE_SPOOFED_CASES: list[tuple[str, bytes]] = [
+    ("mp4", b"#!/bin/sh\nrm -rf /\n"),
+    ("webm", b"<?php system($_GET['c']); ?>"),
+    ("mp3", b"<html><script>alert(1)</script></html>"),
+    ("wav", b"MZ\x90\x00\x03\x00\x00\x00"),  # PE 可执行文件
+    ("pdf", b"#!/usr/bin/env python3\nimport os\n"),
+    ("doc", b"%PDF-1.4 fake is not doc"),  # 族内串号：PDF 头冒充 doc
+    ("docx", b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),  # OLE2 冒充 ZIP 容器
+    ("xlsx", b"\x7fELF\x02\x01\x01\x00"),  # ELF 可执行文件
+]
+
+
+@pytest.mark.parametrize(
+    ("ext", "payload"), NON_IMAGE_VALID_CASES, ids=[f"{e}-{i}" for i, (e, _) in enumerate(NON_IMAGE_VALID_CASES)]
+)
+def test_non_image_magic_accepts_real_containers(ext: str, payload: bytes):
+    _validate_non_image_magic(payload, ext, f"clip.{ext}")  # 不抛异常即通过
+
+
+@pytest.mark.parametrize(
+    ("ext", "payload"),
+    NON_IMAGE_SPOOFED_CASES,
+    ids=[f"{e}-{i}" for i, (e, _) in enumerate(NON_IMAGE_SPOOFED_CASES)],
+)
+def test_non_image_magic_rejects_disguised_payload(ext: str, payload: bytes):
+    with pytest.raises(HTTPException) as excinfo:
+        _validate_non_image_magic(payload, ext, f"evil.{ext}")
+    assert excinfo.value.status_code == 422
+    assert excinfo.value.detail["error_code"] == "UPLOAD_MAGIC_MISMATCH"
+
+
+def test_non_image_magic_ignores_unregistered_extension():
+    """未登记的扩展名直接放行 —— 内容校验不取代白名单，只是它的第二道闸门。"""
+    _validate_non_image_magic(b"whatever", "unknown", "x.unknown")
+
+
+def test_every_library_extension_has_a_magic_rule():
+    """白名单里的每个扩展名都必须有归宿：要么落在表内，要么显式豁免。
+
+    这条守卫防止后人往 LIBRARY_TYPE_EXTENSIONS 里新增扩展名却忘了登记，
+    那样会静默退化成"只看扩展名"的旧状态。
+    """
+    from backend.api.media import _MAGIC_NON_IMAGE
+
+    for ftype, extensions in LIBRARY_TYPE_EXTENSIONS.items():
+        if ftype == "image":
+            continue
+        for ext in extensions:
+            assert ext in _MAGIC_NON_IMAGE, f".{ext} 缺少魔术字节规则，可被任意内容伪造"
+
+
 @pytest.mark.asyncio
 async def test_save_upload_rejects_script_svg_and_writes_nothing(tmp_path: Path):
     upload = UploadFile(
@@ -140,6 +213,72 @@ async def test_save_upload_accepts_plain_svg(tmp_path: Path):
 
 
 # ── 按文件名删除的鉴权口径 ────────────────────────────────────────────────────
+
+
+# ── 公共素材上传的能力闸门 ────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_public_upload_requires_upload_media_capability(
+    client: AsyncClient, auth_headers: dict, staff_headers: dict
+):
+    """``POST /media/upload`` 写的是公共素材目录，subscriber 必须被拒。
+
+    rbac 能力矩阵里 ``media:upload`` 从 contributor(20) 起授予，subscriber 只有
+    ``users:edit_own_profile``（够改自己的头像/封面，不够往公共空间塞文件）。
+    这条用例锁住的是「相对旧行为收紧」的那一步，防止后人把它改回任意登录用户可写。
+    """
+    files = {"file": ("x.png", io.BytesIO(PNG_HEADER), "image/png")}
+
+    denied = await client.post("/api/media/upload", files=files, headers=auth_headers)
+    assert denied.status_code == 403, denied.text
+    assert "media:upload" in denied.text
+
+    # staff 通过能力闸门；后续失败（入库/路径）与鉴权无关，因此只断言不是 401/403
+    allowed = await client.post(
+        "/api/media/upload", files={"file": ("y.png", io.BytesIO(PNG_HEADER), "image/png")},
+        headers=staff_headers,
+    )
+    assert allowed.status_code not in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_upload_stream_shares_the_same_capability_gate(
+    client: AsyncClient, auth_headers: dict, staff_headers: dict
+):
+    """/upload/stream 只是写入方式不同，鉴权口径必须与 /upload 完全一致。"""
+    denied = await client.post(
+        "/api/media/upload/stream",
+        files={"file": ("s.png", io.BytesIO(PNG_HEADER), "image/png")},
+        headers=auth_headers,
+    )
+    assert denied.status_code == 403
+
+    allowed = await client.post(
+        "/api/media/upload/stream",
+        files={"file": ("s.png", io.BytesIO(PNG_HEADER), "image/png")},
+        headers=staff_headers,
+    )
+    assert allowed.status_code not in (401, 403)
+
+
+@pytest.mark.asyncio
+async def test_avatar_and_cover_stay_open_to_plain_users(
+    client: AsyncClient, auth_headers: dict
+):
+    """头像/封面属于 EDIT_OWN_PROFILE：普通注册用户要能换，不能被 UPLOAD_MEDIA 误伤。
+
+    这里只断言「没被能力闸门挡在门外」（非 403）。请求Body 是真实 PNG，
+    后端会继续走 PIL 重编码等后续流程，那条链路的结果不是本用例关心的边界。
+    """
+    for path in ("/api/media/avatar", "/api/media/cover"):
+        r = await client.post(
+            path,
+            files={"file": ("a.png", io.BytesIO(PNG_HEADER), "image/png")},
+            headers=auth_headers,
+        )
+        assert r.status_code != 403, f"{path} 不应要求 UPLOAD_MEDIA: {r.text}"
+        assert r.status_code != 401
 
 
 @pytest.mark.asyncio

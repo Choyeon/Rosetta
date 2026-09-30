@@ -445,12 +445,35 @@ class TestUserAdminPermission:
     """Phase 5 清单 §4 X-6 / No-Go R1：权限红线"""
 
     @pytest.mark.asyncio
-    async def test_staff_cannot_list_users(self, client: AsyncClient, staff_headers: dict):
-        """X-6: Staff 非 superuser 调用 admin/users（CurrentSuperUser 依赖）应 403"""
+    async def test_staff_can_read_user_list(self, client: AsyncClient, staff_headers: dict):
+        """`GET /admin/users` 的**读**放行到 staff（2026-09-29 起）。
+
+        原因：后台用户列表页对 staff 开放（只隐藏写操作入口），但它需要从这一个端点
+        拿 is_banned / posts_count / comments_count。此前读闸门是 CurrentSuperUser，
+        前端被迫退回 `GET /api/users/`（那个投影没有这三个字段），结果封禁徽章恒不亮、
+        计数恒为 0。写端点（创建/改角色/封禁/重置密码/删除）全部维持 CurrentSuperUser，
+        见 test_staff_cannot_write_users。
+        """
         r = await client.get("/api/admin/users", headers=staff_headers)
-        assert r.status_code == 403, (
-            f"No-Go R1: 员工(staff非superuser)居然能访问用户列表! {r.status_code}"
+        assert r.status_code == 200, f"staff 应能读用户列表，实际 {r.status_code}"
+        assert "items" in r.json()
+
+    @pytest.mark.asyncio
+    async def test_staff_cannot_write_users(self, client: AsyncClient, staff_headers: dict):
+        """读放宽了，写必须仍然只放行 super_admin —— 这是本次改动的红线。"""
+        r = await client.post(
+            "/api/admin/users",
+            headers=staff_headers,
+            json={
+                "username": "staff_should_not_create",
+                "email": "staff-create@example.com",
+                "password": "StaffCreate@1",
+                "nickname": "不该被创建",
+                "is_staff": False,
+                "is_active": True,
+            },
         )
+        assert r.status_code == 403, f"staff 不该能建用户，实际 {r.status_code}"
 
     @pytest.mark.asyncio
     async def test_subscriber_cannot_list_users(
@@ -471,3 +494,90 @@ class TestUserAdminPermission:
             json={"nickname": "尝试修改自己"},
         )
         assert r.status_code in (400, 403), f"管理员应被禁止修改自己，实际 {r.status_code}"
+
+
+# ============================= 列表投影收敛 =============================
+
+
+class TestUserListProjection:
+    """`GET /api/users/` 与 `GET /api/admin/users` 的字段投影边界。
+
+    这两条端点以前都直接返回完整 UserResponse / UserDetailResponse，
+    把 bio（最长 500 字符）、邮箱、QQ、GitHub 一股脑摊给列表调用方；
+    而反过来，后台列表页真正需要的 is_banned / posts_count / comments_count
+    在 `/api/users/` 里**没有**，导致界面长期显示错状态。收敛后两侧各归其位。
+    """
+
+    @pytest.mark.asyncio
+    async def test_public_list_is_slim(self, client: AsyncClient, staff_headers: dict):
+        """`GET /api/users/` 只给精简投影：不得含 email / bio / qq / github。"""
+        r = await client.get("/api/users/", headers=staff_headers)
+        assert r.status_code == 200, r.text
+        item = r.json()["items"][0]
+        for leaked in ("email", "bio", "qq", "github", "website", "cover_image"):
+            assert leaked not in item, f"精简列表泄漏了 {leaked}"
+        # 列表页要显示的东西必须在
+        for needed in ("id", "username", "nickname", "resolved_avatar_url", "title", "created_at"):
+            assert needed in item, f"精简列表缺少 {needed}"
+
+    @pytest.mark.asyncio
+    async def test_admin_list_has_management_fields(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        """`GET /api/admin/users` 必须带管理字段，否则后台列表页会显示错状态。"""
+        r = await client.get("/api/admin/users", headers=staff_headers)
+        assert r.status_code == 200, r.text
+        item = r.json()["items"][0]
+        for needed in (
+            "email",
+            "is_banned",
+            "is_active",
+            "is_staff",
+            "is_superuser",
+            "posts_count",
+            "comments_count",
+            "title_id",
+        ):
+            assert needed in item, f"管理列表缺少 {needed}：{sorted(item)}"
+        # 长字段留给详情端点，别塞进列表
+        for bloat in ("bio", "website", "github", "qq", "cover_image"):
+            assert bloat not in item, f"管理列表不该含 {bloat}"
+
+    @pytest.mark.asyncio
+    async def test_admin_list_counts_are_real(
+        self, client: AsyncClient, staff_headers: dict, test_post, test_user, make_comments
+    ):
+        """posts_count / comments_count 必须是真实聚合值，不是恒 0 的占位。
+
+        `author=test_user` 不能省：`make_comments` 不给作者时创建的是**游客评论**
+        （user_id=NULL），而计数是按 `Comment.user_id` GROUP BY 的 —— 游客评论
+        不会计入任何账号，这条用例就会假绿。
+        """
+        await make_comments(test_post, 3, author=test_user)
+
+        r = await client.get(
+            "/api/admin/users", headers=staff_headers, params={"search": "test"}
+        )
+        assert r.status_code == 200, r.text
+        items = r.json()["items"]
+        assert items, "搜索 test 应至少命中一个用户"
+        author = next((i for i in items if i["username"] == "testuser"), None)
+        assert author is not None, f"没找到 testuser 用户：{[i['username'] for i in items]}"
+        assert author["posts_count"] >= 1, f"posts_count 应为真实值，实际 {author['posts_count']}"
+        assert author["comments_count"] >= 3, (
+            f"comments_count 应为真实值，实际 {author['comments_count']}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_admin_list_server_side_ban_filter(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        """封禁筛选走服务端：is_banned=false 的结果里不该出现已封禁账号。"""
+        r = await client.get(
+            "/api/admin/users", headers=staff_headers, params={"is_banned": "false"}
+        )
+        assert r.status_code == 200, r.text
+        data = r.json()
+        assert all(i["is_banned"] is False for i in data["items"]), (
+            "is_banned=false 过滤后仍返回了封禁账号"
+        )

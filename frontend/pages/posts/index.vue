@@ -1,9 +1,13 @@
 <!--
-  文章列表页：GET /blog/posts（分页 / 分类 / 关键词）+ /search-placeholders 占位词轮播。
-  canonical 在 setup 同步阶段用 useRequestURL().origin 拼好：await 之后再调 useHead 会被
-  Nuxt 忽略（NUXT_E1001），SEO 静默失效。query 虽以 computed 传入，真正的重新请求仍由
-  那个 import.meta.client 守卫的 watch 集中触发 —— SSR 首屏由 useFetch 自动完成，服务端
-  refresh 会得到重复请求。
+  文章列表页：GET /blog/posts（分页 / 分类 / 关键词 / 排序）+ /search-placeholders 占位词轮播。
+  硬契约（都是踩过的坑，改前先读）：
+  1. canonical 在 setup 同步阶段用 useRequestURL().origin 拼好：await 之后再调 useHead 会被
+     Nuxt 忽略（NUXT_E1001），SEO 静默失效。
+  2. 列表 useFetch 的 key 固定为 'posts:list'（不用动态 key）。Nuxt 在 SSR 下对 computed query
+     生成的 key 不一定能写进 payload，客户端 hydration 会拿到 undefined 且不会自动重试。
+     重新请求由那个 import.meta.client 守卫的 watch 集中触发 —— SSR 首屏由 useFetch 自动完成。
+  3. canonical 的查询串必须与 URL 同步函数产出完全一致：页面从不把状态写进地址栏却声明
+     /posts?page=N 的话，等于把规范地址指向一个不存在的 URL。
 -->
 <template>
   <div class="container py-16">
@@ -50,6 +54,28 @@
                 </SelectContent>
               </Select>
             </div>
+            <div class="md:w-44">
+              <Select
+                v-model="sortBy"
+                @update:model-value="handleFilter"
+              >
+                <SelectTrigger
+                  class="h-10"
+                  :aria-label="t('posts.sortLabel')"
+                >
+                  <List class="mr-2 size-4 shrink-0 text-muted-foreground" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="latest">
+                    {{ t('posts.sortLatest') }}
+                  </SelectItem>
+                  <SelectItem value="popular">
+                    {{ t('posts.sortPopular') }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
             <Button
               variant="default"
               class="shrink-0"
@@ -75,23 +101,40 @@
       </div>
     </template>
     <template v-else-if="loadError">
-      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center">
-        {{ t('admin.posts.loadFailed') }}
+      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+        <div class="flex flex-col items-center gap-3 text-center">
+          <span>{{ t('admin.posts.loadFailed') }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="retry"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {{ t('common.retry', '重试') }}
+          </Button>
+        </div>
       </div>
     </template>
     <template v-else-if="posts.length > 0">
-      <TransitionGroup
-        tag="div"
-        class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
-        name="list-item"
+      <!-- 翻页/换筛选时旧数据仍在（useFetch 的 data 不清空），只加 dim + aria-busy，
+           不切骨架屏：整块闪成骨架再回来，比"停一下再换"更难读 -->
+      <div
+        :class="busy ? 'opacity-60 transition-opacity' : 'transition-opacity'"
+        :aria-busy="busy"
       >
-        <PostCard
-          v-for="post in posts"
-          :key="post.id"
-          v-memo="[post.id, post.updated_at, post.published_at]"
-          :post="post"
-        />
-      </TransitionGroup>
+        <TransitionGroup
+          tag="div"
+          class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+          name="list-item"
+        >
+          <PostCard
+            v-for="post in posts"
+            :key="post.id"
+            v-memo="[post.id, post.updated_at, post.published_at]"
+            :post="post"
+          />
+        </TransitionGroup>
+      </div>
     </template>
     <template v-else>
       <div class="text-center py-20">
@@ -99,11 +142,24 @@
           <Search class="size-8 text-muted-foreground" />
         </div>
         <h3 class="font-display text-xl font-semibold">
-          {{ t('posts.noPosts') }}
+          {{ hasActiveFilter ? t('posts.noMatch') : t('posts.noPosts') }}
         </h3>
         <p class="text-muted-foreground mt-1">
-          {{ t('posts.noPostsDesc') }}
+          {{ hasActiveFilter ? t('posts.noMatchDesc') : t('posts.noPostsDesc') }}
         </p>
+        <Button
+          v-if="hasActiveFilter"
+          variant="outline"
+          size="sm"
+          class="mt-4"
+          @click="clearFilters"
+        >
+          <X
+            data-icon="inline-start"
+            class="size-4"
+          />
+          {{ t('posts.clearFilters') }}
+        </Button>
       </div>
     </template>
 
@@ -119,7 +175,7 @@
         <Button
           variant="outline"
           size="icon"
-          :disabled="currentPage <= 1"
+          :disabled="currentPage <= 1 || busy"
           :aria-label="t('common.prevPage', '上一页')"
           @click="handlePageChange(currentPage - 1)"
         >
@@ -131,6 +187,7 @@
           :variant="page === currentPage ? 'default' : 'ghost'"
           size="icon"
           class="size-9 min-w-[2.25rem]"
+          :disabled="busy"
           @click="handlePageChange(page)"
         >
           {{ page }}
@@ -138,7 +195,7 @@
         <Button
           variant="outline"
           size="icon"
-          :disabled="currentPage >= totalPages"
+          :disabled="currentPage >= totalPages || busy"
           :aria-label="t('common.nextPage', '下一页')"
           @click="handlePageChange(currentPage + 1)"
         >
@@ -159,13 +216,28 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
-import { Search, Filter, ChevronLeft, ChevronRight } from '~~/lib/lucide-svg-icons'
+import { Search, Filter, ChevronLeft, ChevronRight, List, X, RefreshCw } from '~~/lib/lucide-svg-icons'
 import { watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
+const route = useRoute()
+const router = useRouter()
+
+const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
+  if (val == null) return ''
+  if (typeof val === 'string') return val
+  if (typeof val === 'object') {
+    const localeKey = locale.value as string
+    if (localeKey && val[localeKey]) return val[localeKey]
+    const keys = Object.keys(val)
+    const firstKey = keys.length > 0 ? keys[0]! : ''
+    return firstKey ? (val[firstKey] || '') : ''
+  }
+  return String(val)
+}
 
 // ===== SEO（useSeo composable）=====
 const listTitle = computed(() => t('nav.posts'))
@@ -185,29 +257,41 @@ useBreadcrumbJsonLd([
   { name: String(t('nav.posts') || listTitle.value || '文章'), url: '/posts' }
 ])
 
-const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const localeKey = locale.value as string
-    if (localeKey && val[localeKey]) return val[localeKey]
-    const keys = Object.keys(val)
-    const firstKey = keys.length > 0 ? keys[0]! : ''
-    return firstKey ? (val[firstKey] || '') : ''
-  }
-  return String(val)
-}
-
-const searchInput = ref('')
-const searchQuery = ref('')
-const selectedCategory = ref('')
-const currentPage = ref(1)
+const ALL_CATEGORIES = '__all'
 const pageSize = 9
+
+// ===== 初始状态从 URL 读：分享链接 / 刷新 / 浏览器后退都要能还原 =====
+// 只接受白名单取值，避免 ?sort=<垃圾> 之类被直接透传到接口。
+const searchInput = ref((route.query.search as string) || '')
+const searchQuery = ref((route.query.search as string) || '')
+const selectedCategory = ref((route.query.category as string) || '')
+const sortBy = ref<'latest' | 'popular'>(route.query.sort === 'popular' ? 'popular' : 'latest')
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+
+const hasActiveFilter = computed(
+  () => searchQuery.value !== '' || (selectedCategory.value !== '' && selectedCategory.value !== ALL_CATEGORIES)
+)
 
 // ===== 同步阶段注册 SEO：canonical（await 之后注册触发 NUXT_E1001 → 失效）=====
 const requestURL = useRequestURL()
 const origin = computed(() => requestURL.origin)
-const canonical = computed(() => `${origin.value}/posts?page=${currentPage.value}`)
+
+// canonical 必须与 syncUrl 产出逐字一致：声明的规范地址和实际地址差一个字符，
+// 搜索引擎就会当成两个 URL，分页页还会被判成重复内容。
+const canonicalQuery = computed(() => {
+  const q: Record<string, string> = {}
+  if (currentPage.value > 1) q.page = String(currentPage.value)
+  if (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) {
+    q.category = selectedCategory.value
+  }
+  if (searchQuery.value) q.search = searchQuery.value
+  if (sortBy.value !== 'latest') q.sort = sortBy.value
+  return q
+})
+const canonical = computed(() => {
+  const qs = new URLSearchParams(canonicalQuery.value).toString()
+  return `${origin.value}${route.path}${qs ? `?${qs}` : ''}`
+})
 
 useHead(() => ({
   link: [
@@ -215,7 +299,7 @@ useHead(() => ({
   ]
 }))
 
-const { data: categories, refresh: refreshCategories } = useAPI<Category[]>('/blog/categories', {
+const { data: categories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
   key: computed(() => `posts:categories:${locale.value}`),
   default: () => []
@@ -248,35 +332,25 @@ onMounted(() => {
   if (vm) onBeforeUnmount(() => clearInterval(t))
 })
 
-// TEMP 临时用 plain object（非 computed）测试 SSR payload 是否正常注入
-// 注意：Nuxt useFetch 在 SSR 下 query 如果传 computed/ref ，可能不被序列化为 payload.data key
-//      导致客户端 hydration 拿到 undefined，不会自动重试。
-// 另外：此处不 await，避免 setup 进入 Suspense 微任务 pending → comment/div Hydration mismatch（参见 pages/index.vue）。
 const { data, pending, error: loadError, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
-  // 不用 computed 直接传值，确保 SSR 端能生成正确的 cache key 并写入 payload
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
     page_size: pageSize,
-    category: (selectedCategory.value && selectedCategory.value !== '__all') ? selectedCategory.value : undefined,
-    search: searchQuery.value || undefined
+    category: (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) ? selectedCategory.value : undefined,
+    search: searchQuery.value || undefined,
+    // 后端对未知取值回退 latest，这里同样只发白名单值
+    sort: sortBy.value === 'popular' ? 'popular' : undefined
   })),
   key: 'posts:list'
 })
 
-// 手动监听搜索/分类/语言/分页变化并刷新（仅客户端触发）。
-watch([currentPage, searchQuery, selectedCategory, locale], () => {
-  if (import.meta.client) {
-    refresh()
-    refreshCategories()
-  }
-})
-
 const posts = computed<Post[]>(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
-const loading = computed(() => pending.value && posts.value.length === 0)
-
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
+const loading = computed(() => pending.value && posts.value.length === 0)
+// 翻页/换筛选时 data 仍是上一批：没有 busy 的话界面完全静止，用户会以为点击没生效
+const busy = computed(() => pending.value)
 
 const visiblePages = computed(() => {
   const pages: number[] = []
@@ -292,20 +366,56 @@ const visiblePages = computed(() => {
   return pages
 })
 
+// 分享链接上的页码可能已经越界（比如文章删了一大批）：拉回来再请求，
+// 否则用户拿到的是一个"第 7 页，共 3 页"的空列表且无从自救。
+watch([total, currentPage], () => {
+  if (total.value === 0) return
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+function syncUrl() {
+  if (!import.meta.client) return
+  const q = canonicalQuery.value
+  router.replace({ query: Object.keys(q).length > 0 ? q : {} })
+}
+
+// 手动监听搜索/分类/排序/语言/分页变化并刷新（仅客户端触发）。
+// 分类列表不跟着刷：分类不随这些条件变化，跟着刷只是每次多打一个请求。
+watch([currentPage, searchQuery, selectedCategory, sortBy, locale], () => {
+  if (import.meta.client) {
+    refresh()
+  }
+})
+
 const handleSearch = () => {
   searchQuery.value = searchInput.value.trim()
   currentPage.value = 1
+  syncUrl()
 }
 
 const handleFilter = () => {
   currentPage.value = 1
+  syncUrl()
 }
 
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
+  syncUrl()
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+}
+
+const clearFilters = () => {
+  searchInput.value = ''
+  searchQuery.value = ''
+  selectedCategory.value = ''
+  currentPage.value = 1
+  syncUrl()
+}
+
+const retry = () => {
+  refresh()
 }
 </script>

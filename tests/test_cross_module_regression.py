@@ -256,12 +256,35 @@ class TestPermissionRedlineMatrix:
     # --- Staff 侧：Staff = 仅 评论/导航 允许，用户管理(CurrentSuperUser) 禁 ---
 
     @pytest.mark.asyncio
-    async def test_x_4_staff_cannot_list_users(self, client: AsyncClient, staff_headers: dict):
-        """X-6: Staff 非 superuser 调用 admin/users（CurrentSuperUser 依赖）应 403"""
+    async def test_x_4_staff_can_read_user_list(self, client: AsyncClient, staff_headers: dict):
+        """X-6（已改口径）：staff 读 /api/admin/users → 200。
+
+        原断言是 403。放宽的原因：后台用户列表页对 staff 开放（只隐藏写操作入口），
+        而它的数据源只能是这个端点——`GET /api/users/` 的投影没有 is_banned /
+        posts_count / comments_count，前端用它会静默渲染错状态（封禁徽章恒不显示、
+        计数恒为 0）。「看用户」不等于「管用户」：`Cap.MANAGE_USERS` 仍只授予
+        super_admin，写端点一个都没动，见下面那条 403 红线。
+        """
         r = await client.get("/api/admin/users", headers=staff_headers)
-        assert r.status_code == 403, (
-            f"No-Go R1: 员工(staff非superuser)居然能访问用户列表! {r.status_code}"
+        assert r.status_code == 200, f"staff 应能读用户列表，实际 {r.status_code}"
+        assert "items" in r.json()
+
+    @pytest.mark.asyncio
+    async def test_x_4_staff_cannot_write_users(self, client: AsyncClient, staff_headers: dict):
+        """X-6 红线：读放宽了，写必须仍然只放行 super_admin。"""
+        r = await client.post(
+            "/api/admin/users",
+            headers=staff_headers,
+            json={
+                "username": "staff_should_not_create",
+                "email": "staff-create@example.com",
+                "password": "StaffCreate@1",
+                "nickname": "不该被创建",
+                "is_staff": False,
+                "is_active": True,
+            },
         )
+        assert r.status_code == 403, f"No-Go R1: staff 不该能建用户，实际 {r.status_code}"
 
     @pytest.mark.asyncio
     async def test_x_4_staff_can_list_comments(self, client: AsyncClient, staff_headers: dict):

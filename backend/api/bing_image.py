@@ -200,6 +200,13 @@ async def bing_image_proxy(src: str = Query(..., description="base64(原始图�
     if not url.startswith(("http://", "https://")):
         return RedirectResponse(_FINAL_FALLBACK, status_code=307)
 
+    # 白名单闸门必须先过：`src` 是用户可控的 base64，未限定域名时本端点就是一个
+    # 开放图片代理（可拿去探测内网门户、把任意站点资源<｜hy_place▁holder▁no▁813｜>联系方式 IP）。
+    # net_guard 只挡私有网段，挡不住"任意公网 URL"，所以域名后缀白名单不可省。
+    # （_cache_fp.is_file() 的缓存命中分支也在闸门之后，避免先落盘后被直接读取。）
+    if not _is_bing_host(url):
+        return RedirectResponse(_FINAL_FALLBACK, status_code=307)
+
     # 所有图片（包括 Bing 官方域名）统一走本地下载缓存：
     # - 避免 307 重定向导致浏览器每次重新解析上游缓存头
     # - 统一 max-age=2592000 immutable，浏览器重新打开直接命中磁盘缓存

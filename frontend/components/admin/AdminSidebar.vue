@@ -5,8 +5,7 @@
   mergedMenu 合并插件组时不得修改 adminMenu 原对象（展示期派生，非注册期突变）。
 -->
 <script setup lang="ts">
-import { ChevronLeft, ChevronRight, Globe, Puzzle } from '@lucide/vue'
-import { Button } from '~~/components/ui/button'
+import { ChevronRight, Globe, Puzzle } from '@lucide/vue'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
 import { Badge } from '~~/components/ui/badge'
@@ -131,7 +130,8 @@ function resolveIcon(item: { icon?: unknown }) {
     :class="collapsed ? 'w-[72px]' : 'w-[256px]'"
   >
     <div
-      class="h-16 shrink-0 px-3 md:px-4 flex items-center justify-between border-b border-sidebar-border"
+      class="h-16 shrink-0 px-3 md:px-4 flex items-center border-b border-sidebar-border"
+      :class="collapsed ? 'justify-center px-2' : 'justify-between'"
     >
       <NuxtLink
         to="/admin"
@@ -155,17 +155,8 @@ function resolveIcon(item: { icon?: unknown }) {
           </div>
         </Transition>
       </NuxtLink>
-
-      <Button
-        v-if="!collapsed"
-        variant="ghost"
-        size="icon"
-        class="ml-1 shrink-0 size-8 text-muted-foreground hover:text-sidebar-foreground"
-        aria-label="收起侧边导航"
-        @click="collapsed = true"
-      >
-        <ChevronLeft data-icon="inline-start" />
-      </Button>
+      <!-- 折叠开关已上移到 AdminHeader（navbar 左端）：
+           原先「收起在顶 / 展开在底」两颗按钮位置不一致，同一个动作会跳位。 -->
     </div>
 
     <ScrollArea class="flex-1 py-3 px-2">
@@ -261,6 +252,8 @@ function resolveIcon(item: { icon?: unknown }) {
         to="/"
         target="_blank"
         class="flex-1 min-w-0 flex items-center gap-2 h-9 px-2 rounded-[10px] text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
+        :class="collapsed ? 'justify-center px-0' : ''"
+        :title="collapsed ? '返回前台' : undefined"
       >
         <Globe class="shrink-0 size-[18px] text-muted-foreground" />
         <span
@@ -268,16 +261,6 @@ function resolveIcon(item: { icon?: unknown }) {
           class="text-sm truncate"
         >返回前台</span>
       </NuxtLink>
-      <Button
-        v-if="collapsed"
-        variant="ghost"
-        size="icon"
-        class="shrink-0 size-8 text-muted-foreground hover:text-sidebar-foreground"
-        aria-label="展开侧边导航"
-        @click="collapsed = false"
-      >
-        <ChevronRight data-icon="inline-start" />
-      </Button>
     </div>
   </aside>
 </template>

@@ -107,7 +107,10 @@ export interface PostCreate {
   content: string | Record<string, string>
   excerpt?: string | Record<string, string>
   cover_image?: string
-  category_id?: number
+  // 后端 PostBase/PostUpdate 的 category_id 是 `int | None`：显式 null 表示"取消分类"，
+  // 而省略该键在 exclude_unset 语义下等于"不动它"。类型必须允许 null，否则"无分类"
+  // 这个操作在类型层面就写不出来。
+  category_id?: number | null
   tag_ids?: number[]
   status?: 'draft' | 'published' | 'scheduled'
   visibility?: 'public' | 'password' | 'private'

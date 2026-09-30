@@ -122,6 +122,17 @@ WEBHOOK_EVENTS = {
     "comment.deleted": "评论删除",
     "user.registered": "用户注册",
     "media.uploaded": "媒体上传",
+    "media.updated": "媒体更新",
+    "media.deleted": "媒体删除",
+    "album.created": "相册创建",
+    "album.updated": "相册更新",
+    "album.deleted": "相册删除",
+    "photo.created": "照片创建",
+    "photo.updated": "照片更新",
+    "photo.deleted": "照片删除",
+    "announcement.created": "公告创建",
+    "announcement.updated": "公告更新",
+    "announcement.deleted": "公告删除",
 }
 
 # Provider 只是「这条 URL 属于哪类接收方」的标签，用于后台分组展示；

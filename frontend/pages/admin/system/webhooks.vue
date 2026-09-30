@@ -369,11 +369,40 @@
           </div>
           <div class="flex flex-col gap-2">
             <Label class="text-sm font-medium">订阅事件（多选）</Label>
+            <!-- 「清单为空」有两种成因：接口失败，或后端真的一个事件都没有。
+                 旧实现用 eventCatalog.length === 0 一刀切，成功但为空时也会显示
+                 "加载失败"，让人反复重试一个本来就没问题的接口。 -->
             <div
-              v-if="eventCatalog.length === 0"
+              v-if="eventsError"
+              class="rounded-xl border border-destructive/30 bg-destructive/5 p-4 text-sm"
+              role="alert"
+            >
+              <div class="flex items-start gap-2">
+                <AlertTriangle class="size-4 mt-0.5 shrink-0 text-destructive" />
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-destructive">
+                    事件清单加载失败
+                  </p>
+                  <p class="mt-0.5 text-xs text-muted-foreground break-all">
+                    {{ eventsError }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-2 rounded-lg"
+                    @click="loadAll"
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    重试
+                  </Button>
+                </div>
+              </div>
+            </div>
+            <div
+              v-else-if="eventCatalog.length === 0"
               class="rounded-xl border border-border p-4 bg-muted/20 text-sm text-muted-foreground"
             >
-              事件清单加载失败，请重试列表后再配置订阅。
+              后端暂未注册任何 Webhook 事件。
             </div>
             <div
               v-else
@@ -625,6 +654,7 @@ const loadError = ref('')
 const items = ref<AdminWebhook[]>([])
 /** 可订阅事件的唯一清单：来自 GET /webhooks/events，不在此处硬编码事件名 */
 const eventCatalog = ref<AdminWebhookEvent[]>([])
+const eventsError = ref('')
 const dialogOpen = ref(false)
 const confirmOpen = ref(false)
 const submitting = ref(false)
@@ -686,11 +716,18 @@ function toggleEvent(key: string, checked: boolean | 'indeterminate') {
 async function loadAll() {
   loading.value = true
   loadError.value = ''
+  eventsError.value = ''
   try {
     const [webhooks, events] = await Promise.all([
       fetchAdminWebhooks(),
       // 事件清单失败不阻断列表展示：订阅框会显示占位提示，避免用户勾出一串后端不认的名字
-      fetchAdminWebhookEvents().catch(() => [] as AdminWebhookEvent[])
+      fetchAdminWebhookEvents().catch((err: unknown) => {
+        eventsError.value = extractApiErrorMessage(
+          (err as { data?: unknown, message?: string })?.data,
+          (err as { data?: unknown, message?: string })?.message || 'Webhook 事件清单加载失败'
+        )
+        return [] as AdminWebhookEvent[]
+      })
     ])
     items.value = webhooks
     eventCatalog.value = events

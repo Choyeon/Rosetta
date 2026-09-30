@@ -222,15 +222,21 @@ async def test_modify_4_settings_writes_operation_logs(
 
 
 @pytest.mark.asyncio
-async def test_editor_cannot_access_user_admin_403(
+async def test_non_staff_cannot_access_user_admin_403(
     client: AsyncClient,
-    editor_headers: dict,
+    subscriber_headers: dict,
     admin_headers: dict,
     db_session: AsyncSession,
 ):
     """
-    editor 角色 token 调 GET admin/users → 403；
+    非 staff token 调 GET admin/users → 403；
     操作日志新增一条 permission failed。
+
+    2026-09-29 修订：这里原先用 `editor_headers`，但那个 fixture 是
+    ``is_staff=True``（只是 ``role`` 列还是默认 subscriber），按
+    ``rbac.effective_role`` 双源判定它**是** admin 级，读列表本来就该放行。
+    现在读闸门是 CurrentStaff，真正该被拒的是**非 staff** 账号，
+    所以改用 subscriber_headers —— 否则这条用例断言的是一条已经不存在的边界。
     """
     # 1. 先查下操作日志目前数量，后面增量校验
     before = await db_session.scalar(
@@ -238,10 +244,10 @@ async def test_editor_cannot_access_user_admin_403(
     )
     before = before or 0
 
-    # 2. editor 调 GET /api/admin/users → 403
-    resp = await client.get("/api/admin/users", headers=editor_headers)
+    # 2. 非 staff 调 GET /api/admin/users → 403
+    resp = await client.get("/api/admin/users", headers=subscriber_headers)
     assert resp.status_code == 403, (
-        f"editor 应被 403 拒绝访问 admin/users，实际是 {resp.status_code} {resp.text}"
+        f"非 staff 应被 403 拒绝访问 admin/users，实际是 {resp.status_code} {resp.text}"
     )
 
     # 3. 用 admin 查询日志：action=permission 且 status=failed

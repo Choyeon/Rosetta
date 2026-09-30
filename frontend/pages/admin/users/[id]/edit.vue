@@ -436,7 +436,7 @@ import {
   removeAdminUserTitle,
   RBAC_ROLES,
   rbacRoleLabel,
-  type AdminUserRow,
+  type AdminUserDetail,
   type AdminUserTitle
 } from '~~/composables/useAdminManage'
 import { useMediaUploadAvatar } from '~~/composables/useMedia'
@@ -466,7 +466,7 @@ const loadError = ref(false)
 const loadErrorMsg = ref('')
 const saveError = ref('')
 
-const user = ref<AdminUserRow | null>(null)
+const user = ref<AdminUserDetail | null>(null)
 const titles = ref<AdminUserTitle[]>([])
 // 头衔变更需单独调接口，记录初始值用于 diff
 let originalTitleId = 0
@@ -524,7 +524,7 @@ function validatePassword(pwd: string): boolean {
 }
 
 // 老数据可能没有 role，按布尔标记推导
-function deriveRole(data: AdminUserRow): string {
+function deriveRole(data: AdminUserDetail): string {
   if (data.role && RBAC_ROLES.some(r => r.value === data.role)) return data.role
   if (data.is_superuser) return 'super_admin'
   if (data.is_staff) return 'admin'

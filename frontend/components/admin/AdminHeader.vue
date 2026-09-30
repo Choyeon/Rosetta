@@ -9,7 +9,8 @@
 import {
   Search,
   Bell,
-  Menu as MenuIcon,
+  PanelLeftClose,
+  PanelLeftOpen,
   LogOut,
   User as UserIcon,
   Settings as SettingsIcon,
@@ -57,8 +58,11 @@ defineProps<{
   sidebarCollapsed: boolean
 }>()
 
-// 窄屏下侧栏默认收成 72px 图标轨（见 layouts/admin.vue），但没有可点开的入口；
-// 这个汉堡按钮负责把同一个状态翻回来，必须由布局接管，不能在头部私存一份状态。
+// 侧栏折叠的**唯一**开关放在这里（navbar 左端），两种状态都是同一个按钮、同一个位置。
+// 历史 bug：收起按钮在侧栏顶部、展开按钮在侧栏底部，同一个动作在界面上会"跳位"；
+// 而这里原本还有一个 md:hidden 的汉堡按钮，导致 768–1280px 区间
+// （布局在该断点自动收起侧栏，但汉堡已隐藏）根本没有任何可点入口 —— 折叠后出不去。
+// 收缩：三者合并为一个常态可见的 toggle，状态由布局持有，本组件只 emit。
 const emit = defineEmits<{
   (e: 'toggle-sidebar'): void
 }>()
@@ -350,17 +354,28 @@ watch(
 
 <template>
   <header class="admin-header h-16 shrink-0 border-b border-border bg-background/80 backdrop-blur-md sticky top-0 z-40 px-3 md:px-5 flex items-center gap-3">
-    <!-- 移动端/窄屏：菜单折叠切换 -->
+    <!--
+      侧栏折叠开关：全断点可见且位置恒定（navbar 最左）。
+      图标语义 = "点下去会发生什么"：展开态显示向内收拢，收起态显示向外打开。
+    -->
     <Button
       variant="ghost"
       size="icon"
-      class="md:hidden size-9 text-muted-foreground"
-      aria-label="切换导航菜单"
+      class="shrink-0 size-9 text-muted-foreground hover:text-foreground"
+      :aria-label="sidebarCollapsed ? '展开侧边导航' : '收起侧边导航'"
+      :title="sidebarCollapsed ? '展开侧边导航' : '收起侧边导航'"
       aria-controls="admin-sidebar"
       :aria-expanded="!sidebarCollapsed"
       @click="emit('toggle-sidebar')"
     >
-      <MenuIcon data-icon="inline-start" />
+      <PanelLeftClose
+        v-if="!sidebarCollapsed"
+        data-icon="inline-start"
+      />
+      <PanelLeftOpen
+        v-else
+        data-icon="inline-start"
+      />
     </Button>
 
     <!-- 面包屑 -->

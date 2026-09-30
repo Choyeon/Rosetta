@@ -24,10 +24,12 @@
       class="card-surface no-glow rounded-2xl p-8 mb-10"
     >
       <div class="flex flex-wrap items-center justify-center gap-3">
-        <div
+        <!-- 用共享 Skeleton 而非手写 animate-pulse：宽度错落的假 pill 要暗示"标签"形状，
+             但动效、底色、reduced-motion 行为都交给 Skeleton 统一（不再各自 bg-muted）。 -->
+        <Skeleton
           v-for="i in 12"
           :key="i"
-          class="h-8 rounded-full bg-muted animate-pulse"
+          class="h-8 rounded-full"
           :style="{ width: `${40 + (i % 5) * 24}px` }"
         />
       </div>

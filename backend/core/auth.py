@@ -493,15 +493,24 @@ async def get_current_superuser(
     request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
-    """获取当前超级管理员"""
-    if not current_user.is_superuser:
-        await _write_permission_denied_log(
-            request, db, current_user, detail="需要超级管理员权限", resource="admin:superuser"
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要超级管理员权限",
-        )
+    """获取当前超级管理员
+
+    与 get_current_staff 一样走 rbac.effective_role 双源判定：
+    历史账号可能「role 列是默认 subscriber、但 is_superuser=True」，
+    反过来也可能「role 列已是 super_admin、但 flags 未同步」。取二者权限较高的一侧，
+    避免同一账号在「登录态接口放行 / 能力接口 403」之间自相矛盾。
+    """
+    from backend.core.rbac import effective_role, get_role_level
+
+    if get_role_level(effective_role(current_user)) >= get_role_level("super_admin"):
+        return current_user
+    await _write_permission_denied_log(
+        request, db, current_user, detail="需要超级管理员权限", resource="admin:superuser"
+    )
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="需要超级管理员权限",
+    )
     return current_user
 
 
@@ -511,11 +520,10 @@ async def get_current_staff(
     db: Annotated[AsyncSession, Depends(get_db)],
 ) -> User:
     """获取当前管理员（兼容旧逻辑：is_staff 或 is_superuser；或 role 为 admin 及以上）"""
-    from backend.core.rbac import get_role_level
+    # effective_role 同时认 role 列与旧布尔 flag，二者取权限更高的一侧
+    from backend.core.rbac import effective_role, get_role_level
 
-    if current_user.is_staff or current_user.is_superuser:
-        return current_user
-    if get_role_level(getattr(current_user, "role", None)) >= get_role_level("admin"):
+    if get_role_level(effective_role(current_user)) >= get_role_level("admin"):
         return current_user
     await _write_permission_denied_log(
         request, db, current_user, detail="需要管理员权限", resource="admin:staff"
@@ -550,9 +558,12 @@ def require_capability(cap: str):
         request: Request,
         db: Annotated[AsyncSession, Depends(get_db)],
     ) -> User:
-        from backend.core.rbac import user_has_capability
+        from backend.core.rbac import effective_role, user_has_capability
 
-        if not user_has_capability(getattr(current_user, "role", None), cap):
+        # 有效角色必须走 rbac.effective_role：role 列对历史账号仍可能是默认的
+        # 'subscriber'，而 flags 才是当年的权限来源。只读 role 会把 legacy 管理员
+        # 误判成 subscriber（详见 rbac.effective_role 文档字符串）。
+        if not user_has_capability(effective_role(current_user), cap):
             await _write_permission_denied_log(
                 request, db, current_user, detail=f"缺少权限能力: {cap}", resource=f"cap:{cap}"
             )

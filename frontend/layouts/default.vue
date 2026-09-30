@@ -116,13 +116,15 @@ const { visible: visibleAnns, dismiss: dismissAnn } = useAnnouncementBar(bannerR
       <div class="container mx-auto flex items-start gap-3">
         <Bell class="size-4 shrink-0 mt-0.5 opacity-80" />
         <div class="min-w-0 flex-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <!-- 不用 truncate：公告正文允许写到 2000 字，单行截断后访客只看到十几个字，
+               等于把管理员写的内容吞掉。两行封顶 + 断词换行，既不挤压首屏也不丢信息。 -->
           <strong
             v-if="ann.title"
-            class="font-medium truncate"
+            class="font-medium break-words"
           >{{ ann.title }}</strong>
           <span
             v-if="ann.content && ann.content !== ann.title"
-            class="truncate opacity-90"
+            class="line-clamp-2 break-words opacity-90"
           >{{ ann.content }}</span>
         </div>
         <button

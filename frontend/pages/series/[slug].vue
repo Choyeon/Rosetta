@@ -226,10 +226,13 @@ const formatDate = (v: string | null | undefined) => {
 }
 
 // 真实接口：GET /api/series/{slug}。失败时回退 null，并显示 404 提示，不伪造内容。
+// 【必须 SSR 取数】这里曾经写过 `server: false`，后果是：页面本身走 SSR（全局 ssr:true，
+// 且本页未反选），但数据在服务端永远是 null —— SSR 吐出来的 HTML 是骨架，正文字数=0，
+// useSeo 的 title/description 也拿不到系列名。对爬虫等于空页，对用户等于先闪一下
+// 骨架再补正文（即 SSR 完全白做）。移除后 SSR 输出真实标题/摘要/文章列表。
 const { data: detail, pending, error } = useAPI<SeriesDetail | null>(`/series/${params.slug ?? ''}`, {
   key: 'series:detail:' + (params.slug ?? ''),
-  default: () => null,
-  server: false
+  default: () => null
 })
 
 const notFound = computed(() => !!error.value || (detail.value == null && !pending.value))

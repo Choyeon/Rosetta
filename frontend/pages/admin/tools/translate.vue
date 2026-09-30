@@ -123,6 +123,30 @@
             >
               正在加载文章...
             </div>
+            <!-- 加载失败必须与"真的没有文章"区分开：旧实现 catch 后只剩空数组，
+                 用户看到「暂无文章」，会误以为站点还没建内容，实际上是接口挂了。 -->
+            <div
+              v-else-if="postsError"
+              class="p-5 flex flex-col items-center gap-2 text-center"
+              role="alert"
+            >
+              <AlertTriangle class="size-5 text-warning" />
+              <p class="text-sm font-medium text-foreground/90">
+                文章列表加载失败
+              </p>
+              <p class="text-xs text-muted-foreground break-all">
+                {{ postsError }}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg"
+                @click="loadPosts"
+              >
+                <RotateCcw data-icon="inline-start" />
+                重试
+              </Button>
+            </div>
             <div
               v-else-if="filteredPosts.length === 0"
               class="p-5 text-center text-sm text-muted-foreground"
@@ -281,7 +305,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { fetchRecentPosts, translateAdminText, type AdminPostListItem } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
-import { ClipboardList, Copy, Check, Eraser, Languages, Loader2, Search, Send, Zap } from '@lucide/vue'
+import { ClipboardList, Copy, Check, Eraser, Languages, Loader2, Search, Send, Zap, AlertTriangle, RotateCcw } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Badge } from '~~/components/ui/badge'
@@ -292,6 +316,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from '~~/components/ui/select'
 import { Separator } from '~~/components/ui/separator'
+import { extractApiErrorMessage } from '~~/lib/utils'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -307,6 +332,7 @@ const quickPostId = ref<number>()
 const postSearch = ref('')
 const posts = shallowRef<AdminPostListItem[]>([])
 const postsLoading = ref(false)
+const postsError = ref('')
 const translatingQuick = ref(false)
 const batchSubmitting = ref(false)
 const translatedCount = ref(0)
@@ -417,14 +443,21 @@ async function copyTranslation(row: TranslateResultRow) {
     toast.error('复制失败，请手动选择译文复制')
   }
 }
-onMounted(async () => {
+/** 抽取成具名函数是为了让上面那个「重试」按钮能复用同一段加载逻辑 */
+async function loadPosts() {
   postsLoading.value = true
+  postsError.value = ''
   try {
     posts.value = await fetchRecentPosts(50)
-  } catch {
-    // 文章列表加载失败时保持空列表
+  } catch (e) {
+    // apiFetch 的统一 toast 负责全局提示；这里再补一条内联错误态，
+    // 因为选择器本身是独立的失败界面，空列表会被误读成"没有文章"。
+    posts.value = []
+    const err = e as { data?: unknown, message?: string }
+    postsError.value = extractApiErrorMessage(err?.data, err?.message || '加载文章列表失败')
   } finally {
     postsLoading.value = false
   }
-})
+}
+onMounted(loadPosts)
 </script>

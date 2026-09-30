@@ -6,6 +6,18 @@
 路由设计：
 - 公开接口: GET /api/announcements
 - 管理接口: /api/admin/announcements (GET/POST/PUT/DELETE/toggle)
+
+三条容易被漏掉的横切约束，改动本文件时别只盯着 CRUD：
+
+1. **前台页面缓存必须一起失效。** 公告条渲染在 `layouts/default.vue`，也就是
+   **每一个**前台页面的 SSR HTML 里；Nitro routeRules 对这些页面做了 swr 300~3600s
+   缓存。写操作不调 `purge_frontend_page_cache()` 的话，管理员发布公告后访客最长
+   一小时仍看到旧的那批（新建的甚至完全不出现）。设置页 notice 分组保存时已经这么
+   做了，公告侧补上才不会"同一条横幅两个来源两种生效速度"。
+2. **公开接口有后端缓存，写操作必须失效。** 该接口在每个 SSR 首屏都被 await，
+   不加缓存等于每次首屏一次全表扫描；加了不失效就是"改了公告前台不刷新"。
+3. **写路径必须发钩子。** 与文章/评论同构，插件与 Webhook 外发的唯一触发源
+   就是这里的 `bus.do_action`，事件名同步登记在 `api/webhook.py::WEBHOOK_EVENTS`。
 """
 
 from datetime import datetime
@@ -14,17 +26,63 @@ from fastapi import APIRouter, HTTPException, Query, status
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.cache import cache, make_cache_key
+from backend.core.exceptions import ValidationException
 from backend.core.partial_update import apply_partial_update
+from backend.core.plugin_bus import bus
 from backend.models.announcement import Announcement
 from backend.schemas import BaseResponse
 from backend.schemas.announcement import (
     AnnouncementCreate,
     AnnouncementResponse,
     AnnouncementUpdate,
+    ensure_utc,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["公告"])
+
+# 公开列表缓存。公告是站点级低频变更内容，但每个首屏都要读；60s 是"管理员改完
+# 最坏 60s 内生效"与"别让首屏每次都打库"之间的折中——真正的即时生效靠下面的
+# purge_frontend_page_cache 清 Nitro 的 HTML 缓存。
+ANNOUNCEMENTS_CACHE_TTL = 60
+
+
+def _announcements_cache_key() -> str:
+    return make_cache_key("announcements", "active")
+
+
+async def _invalidate_announcements_cache() -> None:
+    try:
+        await cache.delete(_announcements_cache_key())
+    except Exception:  # noqa: BLE001 - 缓存不可用时不能让写操作失败
+        # 与 settings_groups 同口径：缓存后端挂掉只影响性能，不影响正确性。
+        pass
+
+
+def _purge(reason: str) -> None:
+    """写操作后清前台 SSR 页面缓存（fire-and-forget，见模块文档第 1 条）。"""
+    purge_frontend_page_cache(f"公告变更: {reason}")
+
+
+def _validate_window(start_time: datetime | None, end_time: datetime | None) -> None:
+    """部分更新场景下不能只靠 schema：库里的旧值它看不到。
+
+    只提交 end_time 时，`end <= start` 在 schema 层根本无从判断，而结果同样是
+    "公告被存下来却永远不会下发"。合并库里的现值再判一次。
+
+    两端都必须先 `ensure_utc`：**SQLite 回读的是朴素 datetime**（列的
+    `timezone=True` 对它无效），而入参已被 schema 补成带 tz 的 UTC，直接比会抛
+    `can't compare offset-naive and offset-aware datetimes` → 500。
+    """
+    start = ensure_utc(start_time)
+    end = ensure_utc(end_time)
+    if start and end and end <= start:
+        raise ValidationException(
+            message="结束时间必须晚于开始时间",
+            details={"fields": ["start_time", "end_time"]},
+        )
 
 
 # ==================== 公开接口 ====================
@@ -34,10 +92,20 @@ router = APIRouter(tags=["公告"])
     "/announcements",
     response_model=list[AnnouncementResponse],
     summary="获取当前活跃公告",
-    description="获取当前时间范围内处于激活状态的公告列表，按 sort_order 升序排列。",
+    description=(
+        "获取当前时间范围内处于激活状态的公告列表，按 sort_order 升序排列。"
+        "结果缓存 60 秒，公告写操作会立即失效缓存。"
+    ),
 )
 async def list_active_announcements(db: DB):
     """获取当前生效的公告（公开接口）"""
+    cache_key = _announcements_cache_key()
+    cached = await cache.get(cache_key)
+    if cached is not None:
+        # 存进去的是 model_dump(mode="json") 的纯 JSON 结构（Redis 后端要求可序列化），
+        # response_model 会把它重新校验成 AnnouncementResponse。
+        return cached
+
     now = datetime.now(UTC)
 
     query = (
@@ -49,10 +117,19 @@ async def list_active_announcements(db: DB):
     )
 
     result = await db.execute(query)
-    return result.scalars().all()
+    rows = [AnnouncementResponse.model_validate(a) for a in result.scalars().all()]
+    try:
+        await cache.set(
+            cache_key,
+            [r.model_dump(mode="json") for r in rows],
+            ttl=ANNOUNCEMENTS_CACHE_TTL,
+        )
+    except Exception:  # noqa: BLE001 - 缓存写失败不该让首屏 500
+        pass
+    return rows
 
 
-# ==================== 管理接口 ====================
+# ==================== 管理接口
 
 
 @router.get(
@@ -115,7 +192,11 @@ async def create_announcement(
     await db.flush()
     await db.refresh(announcement)
 
-    return AnnouncementResponse.model_validate(announcement)
+    response = AnnouncementResponse.model_validate(announcement)
+    await bus.do_action("announcement.created", announcement, current_user=current_user, db=db)
+    await _invalidate_announcements_cache()
+    _purge("create")
+    return response
 
 
 @router.put(
@@ -131,8 +212,7 @@ async def update_announcement(
     current_user: CurrentStaff,
 ):
     """更新公告"""
-    result = await db.execute(select(Announcement).where(Announcement.id == announcement_id))
-    announcement = result.scalar_one_or_none()
+    announcement = await db.get(Announcement, announcement_id)
 
     if not announcement:
         raise HTTPException(
@@ -141,11 +221,21 @@ async def update_announcement(
         )
 
     update_data = data.model_dump(exclude_unset=True)
+    # 合并后校验：只传 end_time（或只传 start_time）时，窗口倒挂在 schema 层判不出来。
+    _validate_window(
+        update_data.get("start_time", announcement.start_time),
+        update_data.get("end_time", announcement.end_time),
+    )
     apply_partial_update(announcement, update_data)
 
     await db.flush()
     await db.refresh(announcement)
-    return AnnouncementResponse.model_validate(announcement)
+
+    response = AnnouncementResponse.model_validate(announcement)
+    await bus.do_action("announcement.updated", announcement, current_user=current_user, db=db)
+    await _invalidate_announcements_cache()
+    _purge("update")
+    return response
 
 
 @router.delete(
@@ -160,8 +250,7 @@ async def delete_announcement(
     current_user: CurrentStaff,
 ):
     """删除公告"""
-    result = await db.execute(select(Announcement).where(Announcement.id == announcement_id))
-    announcement = result.scalar_one_or_none()
+    announcement = await db.get(Announcement, announcement_id)
 
     if not announcement:
         raise HTTPException(
@@ -170,6 +259,11 @@ async def delete_announcement(
         )
 
     await db.delete(announcement)
+    await db.flush()
+
+    await bus.do_action("announcement.deleted", announcement, current_user=current_user, db=db)
+    await _invalidate_announcements_cache()
+    _purge("delete")
     return BaseResponse(message="公告已删除")
 
 
@@ -185,8 +279,7 @@ async def toggle_announcement(
     current_user: CurrentStaff,
 ):
     """切换公告激活状态"""
-    result = await db.execute(select(Announcement).where(Announcement.id == announcement_id))
-    announcement = result.scalar_one_or_none()
+    announcement = await db.get(Announcement, announcement_id)
 
     if not announcement:
         raise HTTPException(
@@ -197,4 +290,9 @@ async def toggle_announcement(
     announcement.is_active = not announcement.is_active
     await db.flush()
     await db.refresh(announcement)
-    return AnnouncementResponse.model_validate(announcement)
+
+    response = AnnouncementResponse.model_validate(announcement)
+    await bus.do_action("announcement.updated", announcement, current_user=current_user, db=db)
+    await _invalidate_announcements_cache()
+    _purge("toggle")
+    return response

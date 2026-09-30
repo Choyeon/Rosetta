@@ -217,7 +217,7 @@ onMounted(() => {
       </template>
 
       <template v-else-if="seriesList.length === 0">
-        <div class="rounded-[12px] border border-border bg-card py-24 text-center text-muted-foreground">
+        <div class="card-surface py-24 text-center text-muted-foreground">
           <div class="mb-4 opacity-30 flex items-center justify-center">
             <BookOpen class="size-16" />
           </div>
@@ -235,7 +235,7 @@ onMounted(() => {
           <div
             v-for="s in seriesList"
             :key="s.id"
-            class="rounded-[12px] border border-border bg-card overflow-hidden shadow-sm"
+            class="card-surface overflow-hidden shadow-sm"
           >
             <div
               class="relative h-36 w-full overflow-hidden"

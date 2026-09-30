@@ -49,6 +49,7 @@ from backend.schemas import (
     PasswordChange,
     TokenResponse,
     UserCreate,
+    UserListItem,
     UserPreferenceResponse,
     UserPreferenceUpdate,
     UserResponse,
@@ -905,8 +906,16 @@ async def get_user_preferences_by_username(
 @router.get(
     "/",
     response_model=PaginatedResponse,
-    summary="用户列表",
-    description="获取用户列表，支持搜索和分页（仅限登录用户）。",
+    summary="用户列表（精简投影）",
+    description=(
+        "获取用户列表，支持搜索和分页（需 staff）。"
+        "响应为裸分页 dict（items/total/page/page_size/total_pages，无 success/data 信封）；"
+        "items 内每项是 **UserListItem** 精简投影：只有 id/username/nickname/avatar/"
+        "resolved_avatar_url/role/title/is_active/created_at。"
+        "**不含 email / bio / qq / github / website** —— 列表页不展示这些字段，"
+        "按 page_size=100 一页要多搬 100 份，且会把联系方式摊给所有能过鉴权的人。"
+        "需要完整字段走 `GET /users/{id}`；需要封禁态与内容计数走 `GET /admin/users`。"
+    ),
 )
 async def list_users(
     db: DB,
@@ -918,14 +927,26 @@ async def list_users(
     order: str = Query("desc", description="排序方向：asc|desc"),
 ):
     """
-    获取用户列表
+    获取用户列表（精简投影）
 
     - `defer(User.password_hash)`：列表响应不含哈希，但 `select(User)` 默认取整行，
       每页 100 个用户就多拉 100 条 argon2 哈希（每条几十字节，且是敏感数据）。
     - `selectinload(User.title)`：头衔一次 IN 查完，避免逐行懒加载。
       注意 `concurrent_query` 是**顺序**执行（AsyncSession 非并发安全），别期待并行收益。
+    - 投影在**这一层**收窄（而不是靠 response_model 事后裁剪）：`UserListItem` 只声明
+      9 个字段，`defer` 掉的长文本列（bio 等）连读取都省了。
     """
-    query = select(User).options(selectinload(User.title), defer(User.password_hash))
+    query = select(User).options(
+        selectinload(User.title),
+        defer(User.password_hash),
+        # 只 defer **确定用不到**的宽列：bio 最长 500 字符，一页 100 条就是 50KB 纯浪费。
+        # 注意 qq / github / email / avatar_source **绝对不能 defer** ——
+        # resolved_for_user() 要靠它们算 resolved_avatar_url，defer 之后一旦被访问
+        # 就是异步会话上的懒加载 → MissingGreenlet（这个坑踩过一次）。
+        defer(User.bio),
+        defer(User.website),
+        defer(User.cover_image),
+    )
 
     if search:
         query = query.where(
@@ -953,8 +974,18 @@ async def list_users(
     users = result.scalars().all()
     total = total or 0
 
+    # resolved_avatar_url 不是 ORM 列，是头像代理链算出来的，必须手工回填
+    # （build_user_response 干的就是这件事，但它产出的是宽 UserResponse）。
+    from backend.services._avatar_helpers import resolved_for_user
+
+    items: list[UserListItem] = []
+    for u in users:
+        item = UserListItem.model_validate(u)
+        item.resolved_avatar_url = resolved_for_user(u)
+        items.append(item)
+
     return PaginatedResponse(
-        items=[build_user_response(u) for u in users],
+        items=items,
         total=total,
         page=page,
         page_size=page_size,
@@ -999,9 +1030,9 @@ async def delete_account(
     description="更新当前用户的头像；头像属于作者展示字段，会失效该作者全部文章的缓存。",
 )
 async def update_avatar(
+    current_user: CurrentUser,
+    db: DB,
     avatar: str = Query(..., description="头像 URL"),
-    current_user: CurrentUser = None,
-    db: DB = None,
 ):
     """更新用户头像"""
     service = await get_user_service(db)
@@ -1016,9 +1047,9 @@ async def update_avatar(
     description=("更新当前用户的封面图；封面图属于作者展示字段，会失效该作者全部文章的缓存。"),
 )
 async def update_cover(
+    current_user: CurrentUser,
+    db: DB,
     cover_image: str = Query(..., description="封面图 URL"),
-    current_user: CurrentUser = None,
-    db: DB = None,
 ):
     """更新用户封面图"""
     service = await get_user_service(db)

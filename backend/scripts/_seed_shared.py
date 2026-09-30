@@ -621,7 +621,7 @@ class SeedContext:
                         if is_admin:
                             r_author = "Choyeon"
                             r_email = "choyeon@foxmail.com"
-                            r_site = "https://rosetta.choyeon.cc"
+                            r_site = "https://example.com"
                             r_ip = "127.0.0.1"
                             r_ua = (
                                 "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) "
@@ -693,7 +693,7 @@ class SeedContext:
                 u_id = int(admin_user.id)
                 name = "Choyeon"
                 email = "choyeon@foxmail.com"
-                website = "https://rosetta.choyeon.cc"
+                website = "https://example.com"
                 ip_addr = "127.0.0.1"
                 ua = (
                     "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) "

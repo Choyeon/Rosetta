@@ -14,6 +14,7 @@ OOBE (Out-of-Box Experience) API 路由
 import asyncio
 import json
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -28,6 +29,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from backend.core.auth import aget_password_hash
+from backend.core.config import settings
 from backend.core.database import async_session_maker, init_db, reset_engine
 from backend.core.deps import (
     CurrentUserOptional,
@@ -35,19 +37,28 @@ from backend.core.deps import (
     require_oobe_incomplete,
 )
 from backend.core.exceptions import (
+    AppException,
     OOBEAlreadyCompletedException,
     WeakPasswordException,
 )
 from backend.core.i18n import t
 from backend.core.oobe_constants import (
+    EMAIL_PATTERN,
     FEATURE_FLAG_DB_KEY_MAP,
     PASSWORD_MIN_LENGTH,
     USERNAME_MAX_LENGTH,
     USERNAME_MIN_LENGTH,
+    USERNAME_PATTERN,
 )
 from backend.core.paths import BASE_DIR, CONFIG_FILE, ENV_FILE, OOBE_LOCK_FILE, STATE_FILE
 from backend.core.setup_config import ConfigService, Environment
-from backend.core.setup_database import DatabaseService, generate_database_url
+from backend.core.setup_database import (
+    DB_UNKNOWN,
+    DatabaseService,
+    classify_db_error,
+    generate_database_url,
+    scrub_database_url,
+)
 from backend.core.setup_dependency import DependencyService
 from backend.core.setup_progress import ProgressService
 from backend.core.setup_system import SystemService
@@ -74,23 +85,33 @@ class CombinedInstallRequest(BaseModel):
     redis_port: int = 6379
     redis_password: str = ""
 
-    admin_username: str = Field(
-        default="Choyeon", min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH
-    )
-    admin_email: str = "choyeon@foxmail.com"
-    admin_password: str = Field(default="Choyeon@2025", min_length=PASSWORD_MIN_LENGTH)
-    admin_nickname: str = "Choyeon"
+    # 安全：管理员凭据一律必填，禁止默认值。
+    # 历史版本这里给了 default（明文写死的用户名/邮箱/口令），后果有两个：
+    #   1) POST /oobe/install 是匿名端点，body 省略 admin_password 即按默认口令建超管；
+    #   2) 默认值会进 OpenAPI schema，非生产环境 /docs、/openapi.json 任何人可读到该口令。
+    admin_username: str = Field(..., min_length=USERNAME_MIN_LENGTH, max_length=USERNAME_MAX_LENGTH)
+    admin_email: str = Field(...)
+    admin_password: str = Field(..., min_length=PASSWORD_MIN_LENGTH)
+    # 空串而非写死昵称：`_run_combined_install` 里是 `admin_nickname or admin_username`，
+    # 留空即自动取用户名，不需要任何"看起来像示例"的占位值。
+    admin_nickname: str = ""
 
-    # 管理员扩展资料（简介 / QQ / GitHub / 个人网站）
-    admin_bio: str = "Full-Stack Development"
-    admin_qq: str = "952223950"
-    admin_github: str = "Choyeon"
-    admin_website: str = "https://rosetta.choyeon.cc"
+    # 管理员扩展资料（简介 / QQ / GitHub / 个人网站）。
+    # 全部默认空串：这些字段以前填的是本项目作者的真实 QQ 号与个人域名，
+    # 于是每一个用默认参数装出来的站点都会把作者的联系方式写进管理员资料、写进
+    # 站点 URL 配置。OOBE 是**匿名**端点，等于任何人都能读到并复制这组个人信息。
+    admin_bio: str = ""
+    admin_qq: str = ""
+    admin_github: str = ""
+    admin_website: str = ""
     admin_avatar_source: str = "auto"
 
     site_name: str = "Rosetta"
     site_description: str = "一个功能齐全、主题优雅、开箱即用的现代博客引擎"
-    site_url: str = "https://rosetta.choyeon.cc"
+    # 站点 URL 必填：它会被写进 SiteConfig 并用来拼 admin_url / RSS / sitemap 的绝对地址，
+    # 给默认值就会让所有省略该字段的部署都指向别人的域名。
+    # 前端 OOBE 表单与 scripts/auto_oobe.py 都会显式传，省略只可能来自自研脚本。
+    site_url: str = Field(..., min_length=1, description="站点对外访问地址（用于拼接绝对 URL）")
     site_keywords: str = ""
     site_author: str = ""
     site_email: str = ""
@@ -104,6 +125,33 @@ class CombinedInstallRequest(BaseModel):
     enable_music_player: bool = True
 
     environment: Literal["development", "production"] = "production"
+
+    @field_validator("admin_username")
+    @classmethod
+    def _check_admin_username(cls, v: str) -> str:
+        # 长度由 Field(min_length/max_length) 兜住，这里补**字符集**。
+        # 之前只查长度不查字符集，于是 `admin_username="张 三"` 能通过一键安装，
+        # 却在后台用户列表/登录处表现不一致（`/oobe/check-username` 明明校验了字符集，
+        # 但 install 走的是另一条路 —— 同一个字段两套口径）。
+        if not re.match(USERNAME_PATTERN, v):
+            raise ValueError("管理员用户名需为 3-20 位字母、数字、下划线或短横线")
+        return v
+
+    @field_validator("admin_email")
+    @classmethod
+    def _check_admin_email(cls, v: str) -> str:
+        if not re.match(EMAIL_PATTERN, v):
+            raise ValueError("管理员邮箱格式不正确")
+        return v
+
+    @field_validator("site_url")
+    @classmethod
+    def _check_site_url(cls, v: str) -> str:
+        # 站点 URL 会被写进 SiteConfig 并用于拼 RSS / sitemap / 头像的绝对地址，
+        # 写成 `example.com`（缺协议）会让生成的链接变成相对路径而 404。
+        if not re.match(r"^https?://[^\s/$.?#].[^\s]*$", v):
+            raise ValueError("站点地址需以 http:// 或 https:// 开头")
+        return v.rstrip("/")
 
     @field_validator("admin_password")
     @classmethod
@@ -135,6 +183,19 @@ def _refresh_settings_inplace() -> None:
         )
     except Exception:
         logger.exception("刷新全局 settings 失败（将沿用安装前配置）")
+
+
+class OOBEInstallFailedException(AppException):
+    """安装期失败：带结构化错误码与可操作提示，且不回显数据库口令。
+
+    单独定义而不是直接 `HTTPException(500, str(e))`，是因为后者会把 asyncpg 的
+    异常原文（可能含 `postgresql://user:password@host/db`）原样回给匿名调用方。
+    """
+
+    def __init__(self, message: str, error_code: str, hint: str | None = None):
+        super().__init__(status_code=500, message=message, error_code=error_code,
+                         details={"hint": hint} if hint else None)
+        self.hint = hint
 
 
 router = APIRouter(prefix="/oobe", tags=["OOBE"])
@@ -485,6 +546,59 @@ class OobeEnvironmentResponse(BaseModel):
 
     success: bool = Field(..., description="固定为 true")
     environment: str = Field(..., description="已写入状态的运行环境：development 或 production")
+
+
+class OobePreflightRequest(BaseModel):
+    """安装前干跑校验的请求体：**所有字段可选**，只校验提交上来的那部分。
+
+    设计成可选是因为向导要分步校验：Step2 只带管理员字段、Step3 只带站点与数据库字段，
+    最后一次（点安装前）带全量。若强制必填，前端就得为每一步拼一份假 payload。
+    """
+
+    admin_username: str | None = None
+    admin_email: str | None = None
+    admin_password: str | None = None
+    site_name: str | None = None
+    site_url: str | None = None
+    database_type: Literal["sqlite", "postgresql"] = "sqlite"
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_name: str = "rosetta"
+    db_user: str = ""
+    db_password: str = ""
+    db_path: str = "rosetta.db"
+    # 是否真的去连数据库。默认 True；只想校验表单时传 false 可省掉一次网络往返。
+    check_database: bool = True
+
+
+class OobePreflightIssue(BaseModel):
+    """预检发现的一条问题。前端按 `code` 分支渲染，不要去匹配 `message` 文案。"""
+
+    field: str = Field(..., description="出问题的字段名（admin_username / site_url / database 等）")
+    level: Literal["error", "warn"] = Field(..., description="error 阻断安装；warn 只提示")
+    code: str = Field(..., description="结构化错误码，如 USERNAME_INVALID / DB_AUTH_FAILED")
+    message: str = Field(..., description="人读的问题描述")
+    hint: str | None = Field(default=None, description="可操作的下一步建议；无建议时为 null")
+
+
+class OobePreflightDatabaseResult(BaseModel):
+    """预检里的数据库体检结果。"""
+
+    checked: bool = Field(..., description="是否真的做了连接探测")
+    ok: bool = Field(..., description="是否可继续安装（库不存在但账号能建库时仍为 true）")
+    code: str = Field(..., description="结构化错误码（DB_* 系列）")
+    message: str = Field(..., description="人读结论")
+    hint: str | None = Field(default=None, description="可操作的下一步建议")
+    version: str | None = Field(default=None, description="探测到的 PostgreSQL 版本串")
+
+
+class OobePreflightResponse(BaseModel):
+    """POST /oobe/preflight 的响应体。"""
+
+    success: bool = Field(..., description="固定为 true")
+    ok: bool = Field(..., description="是否没有任何 error 级问题（warn 不影响）")
+    issues: list[OobePreflightIssue] = Field(..., description="问题清单；全绿时为空数组")
+    database: OobePreflightDatabaseResult = Field(..., description="数据库体检结果")
 
 
 class OobeInstallResponse(BaseModel):
@@ -974,9 +1088,11 @@ async def _run_combined_install(req: CombinedInstallRequest):
         return steps[idx][2]
 
     try:
-        for idx, (sid_, msg, _) in enumerate(steps):
-            await _broadcast_progress(sid_, f"正在{msg}...", max(0, _pct(idx) - 4))
-            await asyncio.sleep(0.02)
+        # ⚠️ 这里曾经一进来就把 8 个步骤的「正在…」全部播报一遍再开始干活
+        # （percent 3→96 在 0.16s 内冲完）。后果是 UI 的步骤列表**瞬间全部点亮**、
+        # 进度条直接跳到 96%，然后用户盯着一个"早就走完"的进度条等真正耗时的建表。
+        # 现在改成：每个阶段开始前播「正在…」，结束后播「…完成」，进度条才跟得上真实进度。
+        await _broadcast_progress(steps[0][0], f"正在{steps[0][1]}...", 2)
 
         db_cfg_dict = {
             "db_type": req.database_type,
@@ -1022,6 +1138,7 @@ async def _run_combined_install(req: CombinedInstallRequest):
 
         await _broadcast_progress(steps[0][0], "环境配置已写入", _pct(0))
 
+        await _broadcast_progress(steps[1][0], f"正在{steps[1][1]}...", max(0, _pct(1) - 6))
         await init_db()
         await _broadcast_progress(steps[1][0], "表结构初始化完成", _pct(1))
 
@@ -1030,6 +1147,7 @@ async def _run_combined_install(req: CombinedInstallRequest):
         if is_oobe_complete():
             raise OOBEAlreadyCompletedException()
 
+        await _broadcast_progress(steps[2][0], f"正在{steps[2][1]}...", max(0, _pct(2) - 6))
         admin_id: int | None = None
         async with async_session_maker() as session:
             result = await session.execute(select(User).where(User.username == req.admin_username))
@@ -1098,6 +1216,7 @@ async def _run_combined_install(req: CombinedInstallRequest):
             ),
             ("enable_pio", "false", "启用看板娘(Pio)"),
         ]
+        await _broadcast_progress(steps[3][0], f"正在{steps[3][1]}...", max(0, _pct(3) - 6))
         async with async_session_maker() as session:
             for k, v, desc in site_config_rows:
                 ex = await session.execute(select(DbSiteConfig).where(DbSiteConfig.key == k))
@@ -1109,10 +1228,12 @@ async def _run_combined_install(req: CombinedInstallRequest):
 
         from backend.scripts.mock_data import generate_oobe_mock_data
 
+        await _broadcast_progress(steps[4][0], f"正在{steps[4][1]}...", max(0, _pct(4) - 6))
         async with async_session_maker() as session:
             await generate_oobe_mock_data(session, admin_id=admin_id)
         await _broadcast_progress(steps[4][0], "示例数据生成完成", _pct(4))
 
+        await _broadcast_progress(steps[5][0], f"正在{steps[5][1]}...", max(0, _pct(5) - 6))
         async with async_session_maker() as session:
             existing_about = await session.execute(select(Page).where(Page.slug == "about"))
             if not existing_about.scalar_one_or_none():
@@ -1152,6 +1273,7 @@ async def _run_combined_install(req: CombinedInstallRequest):
             await session.commit()
         await _broadcast_progress(steps[5][0], "默认页面创建完成", _pct(5))
 
+        await _broadcast_progress(steps[6][0], f"正在{steps[6][1]}...", max(0, _pct(6) - 6))
         default_navs = [
             ("首页", "Home", "ホーム", "首頁", "/", 1),
             ("文章", "Posts", "記事", "文章", "/posts", 2),
@@ -1177,6 +1299,7 @@ async def _run_combined_install(req: CombinedInstallRequest):
             await session.commit()
         await _broadcast_progress(steps[6][0], "导航菜单写入完成", _pct(6))
 
+        await _broadcast_progress(steps[7][0], f"正在{steps[7][1]}...", max(0, _pct(7) - 6))
         for sensitive_field in ["admin_password", "db_password", "redis_password"]:
             full_config.pop(sensitive_field, None)
 
@@ -1208,14 +1331,219 @@ async def _run_combined_install(req: CombinedInstallRequest):
 
     except Exception as e:
         logger.exception("OOBE combined install failed")
+        # 分类 + 脱敏：安装期最常见也最要命的失败是「库连不上」。
+        # 原实现直接把异常原文回给客户端，而 asyncpg 的异常文本可能带出
+        # `postgresql+asyncpg://user:PASSWORD@host/db` —— OOBE 是匿名端点，
+        # SSE 缓冲对任何能连 /oobe/install/stream 的人都可见，等于公开数据库口令。
+        code, message, hint = classify_db_error(e)
+        if code == DB_UNKNOWN:
+            # 不是数据库问题：给一句脱敏后的通用说明，细节留在服务端日志里
+            message = f"安装失败：{scrub_database_url(str(e))}"
+            hint = "请查看后端日志定位具体步骤；修正后可重新提交安装（本接口幂等）。"
+        # 失败发生在哪一步：从已播报的进度缓冲里倒着找最后一条 progress。
+        # 不用额外维护游标变量，避免和分散在各阶段的播报点走偏。
+        last_evt = next(
+            (e for e in reversed(_INSTALL_STREAM_BUFFER)
+             if e.get("type") == "progress" and e.get("step_id")),
+            None,
+        )
+        failed_step = (last_evt or {}).get("step_id") or steps[0][0]
         err_evt = {
             "type": "error",
             "success": False,
-            "message": str(e),
-            "traceback": traceback.format_exc(),
+            "step_id": failed_step,
+            "error_code": code,
+            "message": message,
+            "hint": hint,
+            # SSE 订阅端（GET /oobe/install/stream）对匿名可用，堆栈会外泄绝对路径与
+            # 数据库连接信息；完整堆栈只进服务端日志（上面的 logger.exception），
+            # 只有在显式开 DEBUG 时才随事件下发——与 main.py 通用 500 处理器同口径。
+            "traceback": traceback.format_exc() if settings.debug else None,
         }
         _append_progress(err_evt)
-        raise
+        raise OOBEInstallFailedException(message=message, error_code=code, hint=hint) from e
+
+
+@router.post(
+    "/preflight",
+    summary="安装前干跑校验",
+    description=(
+        "匿名可访问（OOBE 白名单），**只读、不写任何文件、不建库、不建账号**。"
+        "把向导里已填的内容提交上来做一次体检：用户名/邮箱/密码强度/站点地址走表单校验，"
+        "数据库（postgresql 时）走真实连接探测并给出结构化错误码。"
+        "**所有字段可选**，只校验提交上来的那部分——因此可分别在管理员步骤和站点步骤调用，"
+        "点安装前再带全量跑一次。返回的 `issues[].code` 是稳定标识，前端按 code 分支渲染，"
+        "不要匹配 `message` 文案（文案会随 i18n 变）。"
+    ),
+    responses={
+        200: {"model": OobePreflightResponse, "description": "体检结果（HTTP 恒为 200，问题放在 issues 里）"},
+    },
+)
+async def oobe_preflight(req: OobePreflightRequest):
+    """安装前干跑校验 —— 让用户在点「安装」之前就知道哪里会炸。
+
+    对标 WordPress 的 `wp-admin/setup-config.php`：WP 也是先让你填库信息、点提交后
+    **当场**连一次库，连不上就把错误直接摆在你眼前，而不是等 install.php 跑到一半
+    再抛 "Error establishing a database connection"。
+    """
+    issues: list[dict] = []
+
+    def _add(field: str, level: str, code: str, message: str, hint: str | None = None):
+        issues.append({"field": field, "level": level, "code": code, "message": message, "hint": hint})
+
+    if req.admin_username is not None:
+        if not re.match(USERNAME_PATTERN, req.admin_username):
+            _add("admin_username", "error", "USERNAME_INVALID",
+                 "用户名需为 3-20 位字母、数字、下划线或短横线",
+                 "去掉空格与中文，改用字母数字组合。")
+    if req.admin_email is not None:
+        if not re.match(EMAIL_PATTERN, req.admin_email):
+            _add("admin_email", "error", "EMAIL_INVALID", "邮箱格式不正确", "例如 admin@example.com")
+    if req.admin_password is not None:
+        if len(req.admin_password) < PASSWORD_MIN_LENGTH:
+            _add("admin_password", "error", "PASSWORD_TOO_SHORT",
+                 f"密码至少 {PASSWORD_MIN_LENGTH} 位")
+        else:
+            # 与注册/改密同口径（受 security_password_policy 开关控制）
+            from backend.core.password_policy import validate_password
+
+            for msg in validate_password(req.admin_password):
+                _add("admin_password", "error", "PASSWORD_WEAK", msg,
+                     "大小写字母 + 数字混合，且不要用常见弱口令。")
+
+    if req.site_url is not None:
+        if not req.site_url.strip():
+            _add("site_url", "error", "SITE_URL_EMPTY", "站点地址不能为空",
+                 "它用于拼接 RSS / sitemap / 头像的绝对地址，例如 https://example.com")
+        elif not re.match(r"^https?://[^\s/$.?#].[^\s]*$", req.site_url.strip()):
+            _add("site_url", "error", "SITE_URL_INVALID", "站点地址需以 http:// 或 https:// 开头")
+        elif req.site_url.strip().startswith("http://"):
+            _add("site_url", "warn", "SITE_URL_INSECURE",
+                 "站点地址使用明文 HTTP，管理员密码与登录态将以明文传输",
+                 "生产环境请配置 HTTPS 后再安装。")
+
+    if req.site_name is not None and not req.site_name.strip():
+        _add("site_name", "error", "SITE_NAME_EMPTY", "站点名称不能为空")
+
+    # ---- 数据库体检 ----
+    db_result = {"checked": False, "ok": True, "code": "DB_SKIPPED", "message": "未做连接探测", "hint": None, "version": None}
+    if req.database_type == "sqlite":
+        db_result = {
+            "checked": False,
+            "ok": True,
+            "code": "DB_SQLITE_NO_PROBE",
+            "message": "SQLite 无需预先连接，安装时会自动创建数据库文件",
+            "hint": None,
+            "version": None,
+        }
+        if not (req.db_path or req.db_name):
+            _add("database", "error", "DB_PATH_EMPTY", "SQLite 数据库文件名不能为空")
+    elif req.check_database:
+        if not req.db_user:
+            _add("database", "error", "DB_USER_EMPTY", "PostgreSQL 需要填写数据库用户名",
+                 "例如 postgres")
+        if not req.db_name:
+            _add("database", "error", "DB_NAME_EMPTY", "数据库名不能为空", "例如 rosetta")
+
+        if req.db_user and req.db_name:
+            res = await database_service.probe_database(
+                host=req.db_host,
+                port=req.db_port,
+                user=req.db_user,
+                password=req.db_password,
+                database=req.db_name,
+                timeout=5,
+            )
+            version = (res.details or {}).get("version") if res.details else None
+            db_result = {
+                "checked": True,
+                "ok": res.success,
+                "code": res.code,
+                "message": res.message,
+                "hint": res.hint,
+                "version": str(version) if version else None,
+            }
+            if not res.success:
+                _add("database", "error", res.code, res.message, res.hint)
+            elif res.code == "DB_NOT_EXIST":
+                # 库不存在但账号有 CREATEDB → 不阻断，给一条提示即可
+                _add("database", "warn", res.code, res.message, res.hint)
+
+    ok = not any(i["level"] == "error" for i in issues)
+    return {"success": True, "ok": ok, "issues": issues, "database": db_result}
+
+
+class DatabaseTestRequest(BaseModel):
+    """POST /oobe/test-database 的请求体。
+
+    为什么必须走 POST：**旧的 GET 版本把数据库密码放在 query string 里**
+    （`?db_password=...`），而 query string 会被 Nginx / uvicorn / 浏览器历史 /
+    各类 APM 原样记进访问日志 —— 等于把数据库口令明文写进日志文件。
+    """
+
+    db_type: str = "sqlite"
+    db_host: str = "localhost"
+    db_port: int = 5432
+    db_name: str = "rosetta"
+    db_user: str = ""
+    db_password: str = ""
+    db_path: str = "rosetta.db"
+
+
+class OobeDatabaseTestPostResponse(BaseModel):
+    """POST /oobe/test-database 的响应体（比 GET 版多 code / hint / exists）。"""
+
+    success: bool = Field(..., description="连接是否成功（SQLite 分支恒为 true）")
+    message: str = Field(..., description="结论文案（已脱敏，不含口令）")
+    code: str = Field(..., description="结构化错误码（DB_* 系列）")
+    hint: str | None = Field(default=None, description="可操作的下一步建议")
+    database_url: str | None = Field(
+        default=None, description="仅 SQLite 分支返回：由表单构建出的连接串（不含凭据）"
+    )
+    details: dict[str, Any] | None = Field(default=None, description="附加信息：version / exists 等")
+
+
+@router.post(
+    "/test-database",
+    summary="测试数据库连接（推荐）",
+    description=(
+        "匿名可访问（OOBE 白名单）。**请优先使用本端点而不是同路径的 GET**："
+        "GET 会把数据库密码带在 query string 里，从而落进访问日志。"
+        "postgresql 分支先连维护库证明账号密码可用，再查目标库是否存在、账号有无建库权限；"
+        "结果以结构化 `code`（DB_* 系列）返回，失败也回 HTTP 200。"
+    ),
+    responses={200: {"model": OobeDatabaseTestPostResponse, "description": "连接测试结果"}},
+)
+async def test_database_post(request: DatabaseTestRequest):
+    """测试数据库连接（POST，密码走请求体）"""
+    if request.db_type == "sqlite":
+        database_url = generate_database_url(
+            {"db_type": "sqlite", "db_name": request.db_name, "db_path": request.db_path}
+        )
+        return {
+            "success": True,
+            "message": t("oobe_sqlite_no_test"),
+            "code": "DB_OK",
+            "hint": None,
+            "database_url": database_url,
+            "details": None,
+        }
+    res = await database_service.probe_database(
+        host=request.db_host,
+        port=request.db_port,
+        user=request.db_user,
+        password=request.db_password,
+        database=request.db_name,
+        timeout=5,
+    )
+    return {
+        "success": res.success,
+        "message": res.message,
+        "code": res.code,
+        "hint": res.hint,
+        "database_url": None,
+        "details": res.details,
+    }
 
 
 @router.post(
@@ -1244,8 +1572,16 @@ async def oobe_install(req: CombinedInstallRequest):
     if is_oobe_complete():
         raise OOBEAlreadyCompletedException()
 
-    if len(req.admin_password) < 8:
-        raise WeakPasswordException("管理员密码至少 8 位")
+    # 与注册/改密走同一套密码策略（受 security_password_policy 开关控制）：
+    # 一键安装此前只查 `len >= 8`，于是超管口令可以是 `12345678` ——
+    # 而同一个系统的普通注册却会被策略拦下，口径是自相矛盾的。
+    if len(req.admin_password) < PASSWORD_MIN_LENGTH:
+        raise WeakPasswordException(f"管理员密码至少 {PASSWORD_MIN_LENGTH} 位")
+    from backend.core.password_policy import validate_password
+
+    pw_errors = validate_password(req.admin_password)
+    if pw_errors:
+        raise WeakPasswordException("；".join(pw_errors))
 
     # R1-U2: 第二层：进程级 asyncio.Lock（单 worker 串行化，避免两请求都过第一层后交错）
     global _INSTALL_LOCK_ACQUIRED
@@ -1257,11 +1593,17 @@ async def oobe_install(req: CombinedInstallRequest):
         # R1-U2: 第三层：拿到锁后立即二次检查（若第一个持锁请求刚完成，第二个直接 409）
         if is_oobe_complete():
             raise OOBEAlreadyCompletedException()
+        # 清空上一轮的安装进度缓冲：SSE 连接时会回放缓冲，
+        # 不清的话「上次失败的 error 帧」会先被重放一遍，UI 一进来就闪红。
+        _INSTALL_STREAM_BUFFER.clear()
         try:
             done = await _run_combined_install(req)
         except OOBEAlreadyCompletedException:
             raise
         except WeakPasswordException:
+            raise
+        except OOBEInstallFailedException:
+            # 已分类 + 已脱敏，原样抛出让全局 AppException 处理器带上 error_code/hint
             raise
         except HTTPException:
             raise
@@ -1377,11 +1719,14 @@ async def save_database_config(request: DatabaseConfigRequest):
 
 @router.get(
     "/test-database",
-    summary="测试数据库连接",
+    summary="测试数据库连接（已废弃）",
     description=(
+        "**Deprecated**：请改用 **POST /oobe/test-database**。本端点把数据库密码放在 "
+        "query string 里（`?db_password=...`），而 query string 会被 Nginx / uvicorn / "
+        "浏览器历史 / APM 原样写进访问日志——等于把口令明文落盘。保留仅为兼容。"
         "匿名可访问（OOBE 白名单，安装前不存在任何凭证可保护它）。sqlite 分支不建连接，"
-        "只回一句提示与由表单参数构建出的连接串；postgresql 分支用 asyncpg 实连系统库做探测，"
-        "连接失败也回 HTTP 200 + success=false（原因在 message/details）。"
+        "只回一句提示与由表单参数构建出的连接串；postgresql 分支用 asyncpg 实连维护库做探测，"
+        "连接失败也回 HTTP 200 + success=false（原因在 message/details，均已脱敏）。"
     ),
     responses={200: {"model": OobeDatabaseTestResponse, "description": "连接测试结果"}},
 )

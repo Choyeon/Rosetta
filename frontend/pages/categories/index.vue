@@ -27,17 +27,18 @@
         :key="i"
         class="h-48 rounded-2xl border border-border/60 bg-card p-6"
       >
+        <!-- 分类卡骨架：与真实卡片同网点布局（图标方块 / 计数徽章 / 标题 / 两行摘要 / 元信息） -->
         <div class="flex items-start justify-between mb-4">
-          <div class="size-12 rounded-xl bg-muted animate-pulse" />
-          <div class="w-12 h-6 rounded-full bg-muted animate-pulse" />
+          <Skeleton class="size-12 rounded-xl" />
+          <Skeleton class="w-12 h-6 rounded-full" />
         </div>
-        <div class="h-5 w-2/3 rounded-full bg-muted animate-pulse mb-3" />
+        <Skeleton class="h-5 w-2/3 rounded-full mb-3" />
         <div class="flex flex-col gap-2 mb-4">
-          <div class="h-4 w-full rounded-full bg-muted animate-pulse" />
-          <div class="h-4 w-5/6 rounded-full bg-muted animate-pulse" />
+          <Skeleton class="h-4 w-full rounded-full" />
+          <Skeleton class="h-4 w-5/6 rounded-full" />
         </div>
         <div class="h-px bg-border/60 my-2" />
-        <div class="h-4 w-1/2 rounded-full bg-muted animate-pulse mt-3" />
+        <Skeleton class="h-4 w-1/2 rounded-full mt-3" />
       </div>
     </div>
 

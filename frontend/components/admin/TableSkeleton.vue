@@ -2,7 +2,9 @@
   表格骨架，当前唯一消费方是 components/admin/plugins/PluginManager.vue（挂在 CardContent 之后，:rows="8" :cols="4"）。
   cols/rows 与真实表格列数没有任何联动，换表结构必须手工改这里的 props，否则骨架与成品宽度跳变。
   本组件不声明 class prop，消费方的 `class="border-0 rounded-none"` 只能属性透传到外层 w-full div，
-  真正画边框的是内层 `rounded-xl border border-border bg-card`——想中和外框得改内层，别指望外部 class。
+  真正画边框的是内层那个带圆角+描边+底色的盒子——想中和外框得改内层，别指望外部 class。
+  内层刻意**不是** .card-surface：它渲染在消费方 <Card>（本身已是 card-surface）的内部，
+  再叠一层渐变玻璃面会变成"盒中盒"，且 card-surface 的 isolation:isolate 会额外建层叠上下文。
 -->
 <script setup lang="ts">
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
@@ -28,7 +30,7 @@ withDefaults(defineProps<Props>(), {
 
 <template>
   <div class="w-full">
-    <div class="rounded-xl border border-border overflow-hidden bg-card">
+    <div class="rounded-xl border border-border overflow-hidden bg-card"><!-- panel-exempt: 骨架内框，位于消费方 <Card> 面层之内，不能叠第二层 card-surface（见文件头注释） -->
       <!-- Header skeleton -->
       <div
         v-if="showHeader"

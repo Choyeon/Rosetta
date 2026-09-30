@@ -22,6 +22,7 @@ import {
   AlertTriangle,
   Puzzle,
   X,
+  Loader2,
   Sparkles,
   Download,
   BookOpen
@@ -223,10 +224,37 @@ async function load() {
   }
 }
 
+/** 返回 Promise，让调用方能 await 到「列表已拉回服务端最新真值」再解锁 busy。
+    这在失败路径上尤其重要：Switch / 批量勾选能不能弹回原位，取决于 reload 完成。 */
 function reload() {
   loading.value = true
-  load()
+  return load()
 }
+
+// ── 忙碌闸门（busy guard）──────────────────────────────────────────────────
+// 背景：写操作此前全部没有「进行中」状态。同一个 Switch 连点两次会发两个
+// PATCH /status，服务端最终态取决于请求到达顺序；批量按钮连点会并发跑两轮
+// bulk（第二轮拿到的 selected 已被 clear，但服务端已经删过一轮）。更糟的是失败时
+// UI 毫无反弹：Switch 回滚了吗？到底删没删？用户只能靠整页刷新确认。
+// 这里统一用「按 slug 粒度 + 全局粒度」两个闸门：
+//   · busySlugs：行级操作（启停 / 升级 / 单条删除）
+//   · busyBulk / busyScan / busySettings / busyDelete：表级或弹窗级操作
+// 判定一律走 helper，模板里禁止直接写 row.status === 'error'，避免两套口径漂移。
+const busySlugs = ref<Set<string>>(new Set())
+const busyBulk = ref(false)
+const busyScan = ref(false)
+const busySettings = ref(false)
+const busyDelete = ref(false)
+
+function setBusy(slug: string, v: boolean) {
+  const next = new Set(busySlugs.value)
+  if (v) next.add(slug)
+  else next.delete(slug)
+  busySlugs.value = next
+}
+const isRowBusy = (slug: string) => busySlugs.value.has(slug)
+/** 行级操作是否整体被占用（批量进行中时也应锁住单行，避免交叉写） */
+const isBusy = computed(() => busyBulk.value || busyScan.value || busyDelete.value)
 
 const { load: loadPluginMenu } = usePluginMenu()
 
@@ -237,26 +265,34 @@ function refreshPluginMenu() {
 }
 
 async function scan() {
+  if (busyScan.value) return
+  busyScan.value = true
   try {
     await $post('/admin/plugins/scan')
     toast.success(t('admin.plugins.scanDone', '扫描完成'))
   } catch {
     /* toast handled by apiFetch */
   } finally {
-    reload()
+    await reload()
     refreshPluginMenu()
+    busyScan.value = false
   }
 }
 
 async function onToggleStatus(row: Plugin, val: boolean) {
+  // 行级互斥：同一行在飞时忽略后续点击，避免两次 PATCH 竞态导致最终态不可预测
+  if (isRowBusy(row.slug) || isBusy.value) return
+  setBusy(row.slug, true)
   try {
     await $patch(`/admin/plugins/${row.slug}/status`, { enabled: val })
     toast.success(val ? t('admin.plugins.activated', '已启用') : t('admin.plugins.deactivated', '已禁用'))
   } catch {
     /* handled */
   } finally {
-    reload()
+    // 无论成功失败都要拉回服务端真值：失败时这一轮 reload 负责把 Switch 弹回原位
+    await reload()
     refreshPluginMenu()
+    setBusy(row.slug, false)
   }
 }
 
@@ -273,8 +309,9 @@ function openSettings(row: Plugin) {
 }
 
 async function saveSettings() {
-  if (!currentPlugin.value) return
-  const props = currentPlugin.value.settings_schema?.properties ?? {}
+  const row = currentPlugin.value
+  if (!row || busySettings.value) return
+  const props = row.settings_schema?.properties ?? {}
   const cleaned: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(settingsForm)) {
     // 数字类型空字符串会导致后端校验失败，跳过未填写项
@@ -282,16 +319,23 @@ async function saveSettings() {
     if ((fieldType === 'integer' || fieldType === 'number') && v === '') continue
     cleaned[k] = v
   }
+  busySettings.value = true
   try {
-    await $patch(`/admin/plugins/${currentPlugin.value.slug}/settings`, {
-      slug: currentPlugin.value.slug,
+    await $patch(`/admin/plugins/${row.slug}/settings`, {
+      slug: row.slug,
       settings: cleaned
     })
     toast.success(t('admin.plugins.settingsSaved', '设置已保存'))
     settingsOpen.value = false
-    reload()
+    await reload()
+    // 关键：插件可以依据 settings 决定是否注册 admin_menu 项（如只在配了 API Key
+    // 之后才露出后台页），改完设置必须同启停一样刷新侧栏「插件」分组，
+    // 否则会出现「设置已生效但菜单要整页刷新才出现」的状态不一致。
+    refreshPluginMenu()
   } catch {
-    /* handled */
+    // 不关闭弹窗：让用户能就地改正后重试，错误文案由 apiFetch 统一 toast
+  } finally {
+    busySettings.value = false
   }
 }
 
@@ -306,35 +350,47 @@ function confirmDeleteBulk() {
 }
 
 async function doDelete() {
+  if (busyDelete.value) return
+  // 失败必须让用户留在弹窗里重试，所以这里**不能**用 finally 关闭。
+  // 旧实现把 confirmDeleteOpen = false 写在 finally 里：删除接口 403/500 时
+  // 弹窗照样消失，用户既没看到失败 toast 也无法重试，只能刷新重来。
+  const target = currentPlugin.value
+  const bulkTargets = target ? [] : [...selected.value]
+  busyDelete.value = true
   try {
-    if (currentPlugin.value) {
-      await $delete(`/admin/plugins/${currentPlugin.value.slug}`)
+    if (target) {
+      await $delete(`/admin/plugins/${target.slug}`)
       toast.success(t('admin.plugins.deleted', '插件已删除'))
-    } else if (selected.value.size > 0) {
-      const resp = await $post<BulkEnvelope>('/admin/plugins/bulk', { action: 'delete', slugs: [...selected.value] })
+    } else if (bulkTargets.length > 0) {
+      const resp = await $post<BulkEnvelope>('/admin/plugins/bulk', { action: 'delete', slugs: bulkTargets })
       const d = resp?.data
       if (d && (d.failed ?? 0) > 0)
         toast.warning(`${t('admin.plugins.bulkDeleted', '批量删除')} 完成 ${d.success}/${d.total}，失败 ${d.failed}`)
       else
         toast.success(t('admin.plugins.bulkDeleted', '批量删除完成'))
-      selected.value.clear()
     }
-  } catch {
-    /* handled */
-  } finally {
+    // 只有走到这里才算成功 —— 此时才清空选中并关窗
+    selected.value.clear()
     confirmDeleteOpen.value = false
-    reload()
+  } catch {
+    /* toast handled by apiFetch；弹窗保持打开 */
+  } finally {
+    await reload()
     refreshPluginMenu()
+    busyDelete.value = false
   }
 }
 
 async function bulkAction(action: string) {
+  if (busyBulk.value) return
   if (selected.value.size === 0) return
+  const targets = [...selected.value]
+  busyBulk.value = true
   try {
-    const resp = await $post<BulkEnvelope>('/admin/plugins/bulk', { action, slugs: [...selected.value] })
+    const resp = await $post<BulkEnvelope>('/admin/plugins/bulk', { action, slugs: targets })
     const d = resp?.data
     const succ = d?.success ?? 0
-    const tot = d?.total ?? selected.value.size
+    const tot = d?.total ?? targets.length
     const failed = d?.failed ?? 0
     const labels: Record<string, string> = {
       activate: t('admin.plugins.bulkActivate', '批量启用'),
@@ -345,23 +401,29 @@ async function bulkAction(action: string) {
       toast.warning(`${labels[action] ?? action} 完成 ${succ}/${tot}，失败 ${failed}`)
     else
       toast.success(`${labels[action] ?? action}完成: ${succ}/${tot}`)
-    selected.value.clear()
-    reload()
-    refreshPluginMenu()
+    // 部分失败时不清空选中，让用户能只对失败项重试
+    if (failed === 0) selected.value.clear()
   } catch {
     /* handled */
+  } finally {
+    await reload()
+    refreshPluginMenu()
+    busyBulk.value = false
   }
 }
 
 async function upgradeSingle(slug: string) {
+  if (isRowBusy(slug) || isBusy.value) return
+  setBusy(slug, true)
   try {
     await $post(`/admin/plugins/${slug}/upgrade`)
     toast.success(t('admin.plugins.upgraded', '升级完成'))
   } catch {
     /* handled */
   } finally {
-    reload()
+    await reload()
     refreshPluginMenu()
+    setBusy(slug, false)
   }
 }
 
@@ -543,9 +605,18 @@ onMounted(() => {
           <Button
             variant="outline"
             size="sm"
+            :disabled="busyScan"
             @click="scan"
           >
-            <FolderSearch data-icon="inline-start" />
+            <Loader2
+              v-if="busyScan"
+              data-icon="inline-start"
+              class="animate-spin"
+            />
+            <FolderSearch
+              v-else
+              data-icon="inline-start"
+            />
             {{ t('admin.plugins.scan', '扫描本地') }}
           </Button>
           <Button
@@ -693,10 +764,18 @@ onMounted(() => {
                 variant="outline"
                 size="sm"
                 class="rounded-xl"
-                :disabled="selected.size === 0"
+                :disabled="selected.size === 0 || busyBulk"
               >
+                <Loader2
+                  v-if="busyBulk"
+                  data-icon="inline-start"
+                  class="animate-spin"
+                />
                 {{ t('admin.plugins.bulkActions', '批量操作') }}
-                <ChevronDown data-icon="inline-start" />
+                <ChevronDown
+                  v-if="!busyBulk"
+                  data-icon="inline-start"
+                />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent
@@ -767,9 +846,18 @@ onMounted(() => {
             </Button>
             <Button
               size="sm"
+              :disabled="busyScan"
               @click="scan"
             >
-              <Sparkles data-icon="inline-start" />
+              <Loader2
+                v-if="busyScan"
+                data-icon="inline-start"
+                class="animate-spin"
+              />
+              <Sparkles
+                v-else
+                data-icon="inline-start"
+              />
               {{ t('admin.plugins.scan', '扫描本地') }}
             </Button>
           </div>
@@ -883,7 +971,8 @@ onMounted(() => {
                     <div class="flex items-center gap-2.5">
                       <Switch
                         :model-value="row.status === 'active'"
-                        :disabled="row.status === 'error'"
+                        :disabled="row.status === 'error' || isRowBusy(row.slug) || isBusy"
+                        :aria-busy="isRowBusy(row.slug)"
                         @update:model-value="(next: boolean) => onToggleStatus(row, next)"
                       />
                       <Badge
@@ -934,16 +1023,25 @@ onMounted(() => {
                           ? t('admin.plugins.upgrade', '升级')
                           : t('admin.plugins.upgradeNoUpdate', '磁盘上没有可同步的新版本')
                       "
-                      :disabled="!row.update_available"
+                      :disabled="!row.update_available || isRowBusy(row.slug) || isBusy"
                       @click="upgradeSingle(row.slug)"
                     >
-                      <Download data-icon="inline-start" />
+                      <Loader2
+                        v-if="isRowBusy(row.slug)"
+                        data-icon="inline-start"
+                        class="animate-spin"
+                      />
+                      <Download
+                        v-else
+                        data-icon="inline-start"
+                      />
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       class="rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
                       :title="t('admin.plugins.delete', '删除')"
+                      :disabled="isRowBusy(row.slug) || isBusy"
                       @click="confirmDelete(row)"
                     >
                       <Trash2 data-icon="inline-start" />
@@ -1069,16 +1167,25 @@ onMounted(() => {
         </div>
         <DialogFooter class="gap-2 sm:gap-0">
           <DialogClose as-child>
-            <Button variant="ghost">
+            <Button
+              variant="ghost"
+              :disabled="busySettings"
+            >
               {{ t('admin.actions.cancel', '取消') }}
             </Button>
           </DialogClose>
           <Button
             variant="default"
             class="shadow-soft"
+            :disabled="busySettings"
             @click="saveSettings"
           >
-            {{ t('admin.actions.save', '保存') }}
+            <Loader2
+              v-if="busySettings"
+              data-icon="inline-start"
+              class="animate-spin"
+            />
+            {{ busySettings ? t('admin.actions.processing', '处理中...') : t('admin.actions.save', '保存') }}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -1114,17 +1221,29 @@ onMounted(() => {
         </DialogHeader>
         <DialogFooter class="gap-2 sm:gap-0 pt-2">
           <DialogClose as-child>
-            <Button variant="outline">
+            <Button
+              variant="outline"
+              :disabled="busyDelete"
+            >
               {{ t('admin.actions.cancel', '取消') }}
             </Button>
           </DialogClose>
           <Button
             variant="destructive"
             class="shadow-soft"
+            :disabled="busyDelete"
             @click="doDelete"
           >
-            <Trash2 data-icon="inline-start" />
-            {{ t('admin.actions.delete', '删除') }}
+            <Loader2
+              v-if="busyDelete"
+              data-icon="inline-start"
+              class="animate-spin"
+            />
+            <Trash2
+              v-else
+              data-icon="inline-start"
+            />
+            {{ busyDelete ? t('admin.actions.processing', '处理中...') : t('admin.actions.delete', '删除') }}
           </Button>
         </DialogFooter>
       </DialogContent>

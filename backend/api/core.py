@@ -1336,7 +1336,11 @@ async def get_site_config(db: DB):
         or '["anime","book","music","game"]',
         # ========== 追番配置 ==========
         anime_bilibili_uid=get_str("ANIME_BILIBILI_UID", "") or "",
-        anime_tmdb_api_key=get_str("ANIME_TMDB_API_KEY", "") or "",
+        # 安全：TMDB API Key 是第三方凭据，而 /api/config 匿名可读、且会被 CDN/Nitro
+        # 缓存，一旦下发等于公开。全仓无任何消费方（前端不读、后端不用），
+        # 需要从后台查看时走 CurrentStaff 的 GET /api/config/full。
+        # （保持模型字段存在以便向后兼容前端类型，公开口恒为空串）
+        anime_tmdb_api_key="",
         anime_tmdb_list_id=get_str("ANIME_TMDB_LIST_ID", "") or "",
         # ========== 分页配置 ==========
         pagination_posts_per_page=get_int("PAGINATION_POSTS_PER_PAGE", "10"),

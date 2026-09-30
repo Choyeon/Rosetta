@@ -365,3 +365,308 @@ async def test_oobe_reset_fails_closed_on_leftover(oobe_client: AsyncClient, mon
 
     assert r.status_code == 500, f"残留文件应显式失败，实际 {r.status_code}: {r.text}"
     assert "env" in r.text
+
+
+# ============================= 安装请求默认值红线 =============================
+
+# 这些字符串是本项目作者的真实个人信息，曾经作为 CombinedInstallRequest 的默认值存在。
+# OOBE 安装端点是**匿名**可调用的，默认值会进 OpenAPI schema（/docs、/openapi.json 可读），
+# 等于把作者的个人联系方式随每个发行版一起公开，并且会被写进每一个用默认参数装出来的站点。
+_PERSONAL_DATA_MARKERS = ("952223950", "rosetta.choyeon.cc", "Choyeon")
+
+
+def test_install_request_has_no_personal_data_defaults():
+    """CombinedInstallRequest 的默认值里不得出现作者个人信息。"""
+    from backend.api.oobe import CombinedInstallRequest
+
+    for name, field in CombinedInstallRequest.model_fields.items():
+        if field.is_required():
+            continue
+        blob = repr(field.default)
+        for marker in _PERSONAL_DATA_MARKERS:
+            assert marker not in blob, (
+                f"CombinedInstallRequest.{name} 的默认值含个人信息 {marker!r}：{blob}"
+            )
+
+
+def test_site_url_is_required():
+    """site_url 必填：省略时会指向别人的域名，且 RSS/sitemap 的绝对地址全错。"""
+    from pydantic import ValidationError
+
+    from backend.api.oobe import CombinedInstallRequest
+
+    base = {
+        "admin_username": "admin",
+        "admin_email": "admin@example.com",
+        "admin_password": "StrongPass123",
+    }
+    with pytest.raises(ValidationError):
+        CombinedInstallRequest(**base)
+
+    ok = CombinedInstallRequest(**base, site_url="https://example.com")
+    assert ok.site_url == "https://example.com"
+
+
+def test_admin_optional_profile_defaults_to_empty():
+    """管理员扩展资料默认空串，由安装者决定填什么。"""
+    from backend.api.oobe import CombinedInstallRequest
+
+    req = CombinedInstallRequest(
+        admin_username="admin",
+        admin_email="admin@example.com",
+        admin_password="StrongPass123",
+        site_url="https://example.com",
+    )
+    assert req.admin_nickname == ""
+    assert req.admin_bio == ""
+    assert req.admin_qq == ""
+    assert req.admin_github == ""
+    assert req.admin_website == ""
+
+
+# ============================= 安装请求强校验（与 /oobe/preflight 同口径） =============================
+# 背景：同一批字段曾经有两套规则 —— `GET /oobe/check-username` 校验字符集，
+# 但 `POST /oobe/install` 只判断 `len(password) >= 8`，用户名/邮箱/站点地址一律放行。
+# 后果是向导本地校验说"通过"、提交后被 422 弹回，用户不知道是哪一格错了。
+
+
+@pytest.mark.parametrize(
+    "bad_username",
+    ["ab", "a b", "管理员", "admin@x", "x" * 21, "admin;drop"],
+)
+@pytest.mark.asyncio
+async def test_install_rejects_bad_username_charset(oobe_client: AsyncClient, bad_username: str):
+    """用户名字符集/长度不合法 → 422，且不产生任何安装副作用。"""
+    payload = {**DEFAULT_INSTALL_PAYLOAD, "admin_username": bad_username}
+    r = await oobe_client.post("/api/oobe/install", json=payload)
+    assert r.status_code == 422, f"{bad_username!r} 应被拒，实际 {r.status_code}: {r.text}"
+    assert not OOBE_COMPLETE.exists(), "校验失败时不得落安装锁"
+
+
+@pytest.mark.asyncio
+async def test_install_rejects_bad_email(oobe_client: AsyncClient):
+    payload = {**DEFAULT_INSTALL_PAYLOAD, "admin_email": "not-an-email"}
+    r = await oobe_client.post("/api/oobe/install", json=payload)
+    assert r.status_code == 422, r.text
+    assert not OOBE_COMPLETE.exists()
+
+
+@pytest.mark.parametrize("bad_url", ["example.com", "ftp://example.com", "//example.com", ""])
+@pytest.mark.asyncio
+async def test_install_rejects_bad_site_url(oobe_client: AsyncClient, bad_url: str):
+    """站点地址必须带 http(s):// —— 它会被写进 SiteConfig 用于拼 RSS / sitemap 绝对地址。"""
+    payload = {**DEFAULT_INSTALL_PAYLOAD, "site_url": bad_url}
+    r = await oobe_client.post("/api/oobe/install", json=payload)
+    assert r.status_code == 422, f"{bad_url!r} 应被拒，实际 {r.status_code}: {r.text}"
+
+
+@pytest.mark.asyncio
+async def test_install_uses_same_password_policy_as_registration(oobe_client: AsyncClient):
+    """安装与注册必须共用一套口令策略。
+
+    '12345678' 长度达标但缺大小写字母：注册路径会拒，安装路径以前只查 `len >= 8` 直接放行，
+    等于给超管发了一个策略不允许的口令。
+    """
+    payload = {**DEFAULT_INSTALL_PAYLOAD, "admin_password": "12345678"}
+    r = await oobe_client.post("/api/oobe/install", json=payload)
+    assert r.status_code == 422, f"缺大小写的口令应被拒，实际 {r.status_code}: {r.text}"
+    assert r.json().get("error_code") == "WEAK_PASSWORD", r.text
+    assert not OOBE_COMPLETE.exists()
+
+
+@pytest.mark.asyncio
+async def test_install_strips_trailing_slash_from_site_url(oobe_client: AsyncClient):
+    """site_url 末尾斜杠要被剥掉，否则拼出来是 https://x.com//admin。"""
+    payload = {**DEFAULT_INSTALL_PAYLOAD, "site_url": "https://example.com/"}
+    r = await oobe_client.post("/api/oobe/install", json=payload)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["admin_url"] == "https://example.com/admin", j
+    assert j["frontend_url"] == "https://example.com", j
+
+
+# ============================= POST /oobe/preflight（安装前干跑） =============================
+
+
+@pytest.mark.asyncio
+async def test_preflight_flags_every_bad_field(oobe_client: AsyncClient):
+    """一次把四格错误全报出来，而不是让用户四轮试错。"""
+    r = await oobe_client.post(
+        "/api/oobe/preflight",
+        json={
+            "admin_username": "a b",
+            "admin_email": "not-an-email",
+            "admin_password": "12345678",
+            "site_name": "   ",
+            "site_url": "example.com",
+            "database_type": "sqlite",
+        },
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] is False
+    codes = {i["code"] for i in j["issues"]}
+    assert {"USERNAME_INVALID", "EMAIL_INVALID", "SITE_URL_INVALID", "SITE_NAME_EMPTY"} <= codes
+    assert "PASSWORD_WEAK" in codes, f"缺大小写的口令应报 PASSWORD_WEAK，实际 {codes}"
+    # 每条 error 都必须带 field，前端要靠它跳回对应步骤
+    for issue in j["issues"]:
+        assert issue["field"], issue
+        assert issue["level"] in ("error", "warn"), issue
+
+
+@pytest.mark.asyncio
+async def test_preflight_all_green_returns_empty_issues(oobe_client: AsyncClient):
+    r = await oobe_client.post(
+        "/api/oobe/preflight",
+        json={
+            "admin_username": "oobeadmin",
+            "admin_email": "admin@example.com",
+            "admin_password": "Str0ngP@ss",
+            "site_name": "Rosetta",
+            "site_url": "https://example.com",
+            "database_type": "sqlite",
+            "db_path": "rosetta.db",
+        },
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] is True, j
+    assert j["issues"] == [], j
+
+
+@pytest.mark.asyncio
+async def test_preflight_is_read_only(oobe_client: AsyncClient):
+    """预检必须零副作用：不落锁、不写配置、不建库、不建账号。
+
+    前端会在离开 Step3 和点安装前各调一次，若它有写副作用，等于把安装入口
+    变成一个可被匿名反复触发的写操作。
+    """
+    await oobe_client.post(
+        "/api/oobe/preflight",
+        json={
+            "admin_username": "oobeadmin",
+            "admin_email": "admin@example.com",
+            "admin_password": "Str0ngP@ss",
+            "site_name": "Rosetta",
+            "site_url": "https://example.com",
+            "database_type": "sqlite",
+        },
+    )
+    assert not OOBE_COMPLETE.exists(), "预检不得落安装锁"
+    assert not ROSETTA_JSON.exists(), "预检不得写站点配置"
+    assert not ENV_FILE.exists(), "预检不得写 .env"
+
+
+@pytest.mark.asyncio
+async def test_preflight_http_url_warns_without_blocking(oobe_client: AsyncClient):
+    """明文 HTTP 站点地址是风险提示，不是硬错误 —— 本地开发就是 http。"""
+    r = await oobe_client.post(
+        "/api/oobe/preflight",
+        json={"site_url": "http://localhost:3000", "database_type": "sqlite"},
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] is True, "warn 不应阻断安装"
+    assert any(i["code"] == "SITE_URL_INSECURE" and i["level"] == "warn" for i in j["issues"]), j
+
+
+@pytest.mark.asyncio
+async def test_preflight_postgresql_requires_credentials(oobe_client: AsyncClient):
+    r = await oobe_client.post(
+        "/api/oobe/preflight",
+        json={"database_type": "postgresql", "check_database": True, "db_user": "", "db_name": ""},
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] is False
+    codes = {i["code"] for i in j["issues"]}
+    assert {"DB_USER_EMPTY", "DB_NAME_EMPTY"} <= codes, j
+
+
+# ============================= POST /oobe/test-database（密码不进 query string） =============================
+
+
+@pytest.mark.asyncio
+async def test_test_database_post_sqlite_always_ok(oobe_client: AsyncClient):
+    r = await oobe_client.post("/api/oobe/test-database", json={"db_type": "sqlite", "db_path": "x.db"})
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["success"] is True
+    assert j["code"] == "DB_OK"
+    assert "code" in j and "hint" in j, "新响应体必须带结构化 code/hint"
+
+
+@pytest.mark.asyncio
+async def test_test_database_post_returns_structured_code_and_never_echoes_password(
+    oobe_client: AsyncClient,
+):
+    """连不上时也要回 200 + 结构化错误码；口令绝不能出现在响应里。
+
+    同路径的 GET 版本把 db_password 放在 query string —— 会被 Nginx/uvicorn/APM
+    原样写进访问日志。这里钉钉 POST 的响应体同样不含口令。
+    """
+    r = await oobe_client.post(
+        "/api/oobe/test-database",
+        json={
+            "db_type": "postgresql",
+            "db_host": "127.0.0.1",
+            "db_port": 1,
+            "db_user": "probe_user",
+            "db_password": "SUPERSECRET123",
+            "db_name": "nope",
+        },
+    )
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert "SUPERSECRET123" not in r.text, "响应体不得回显数据库口令"
+    assert j["success"] is False
+    assert j["code"].startswith("DB_"), j
+    assert j["code"] != "DB_OK"
+
+
+# ============================= 凭据脱敏与错误分类（纯函数） =============================
+
+
+def test_scrub_database_url_masks_password_but_keeps_host():
+    """脱敏要够用：口令抹掉，主机/库名保留（排查时需要知道连的是哪台机器）。"""
+    from backend.core.setup_database import scrub_database_url
+
+    s = scrub_database_url(
+        "could not connect: postgresql+asyncpg://rosetta:S3cr3t@db.internal:5432/rosetta"
+    )
+    assert "S3cr3t" not in s
+    assert "rosetta:***@db.internal:5432/rosetta" in s, s
+    assert scrub_database_url(None) == ""
+    assert scrub_database_url("plain text without url") == "plain text without url"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected_code"),
+    [
+        ("connection refused", "DB_UNREACHABLE"),
+        ("[Errno 111] Connect call failed ('127.0.0.1', 5432)", "DB_UNREACHABLE"),
+        ('password authentication failed for user "rosetta"', "DB_AUTH_FAILED"),
+        ('role "rosetta" does not exist', "DB_AUTH_FAILED"),
+        ('database "rosetta" does not exist', "DB_NOT_EXIST"),
+        ("No module named 'asyncpg'", "DB_DRIVER_MISSING"),
+        ("connection timed out", "DB_TIMEOUT"),
+        ("something utterly unexpected", "DB_UNKNOWN"),
+    ],
+)
+def test_classify_db_error_maps_known_failures(raw: str, expected_code: str):
+    from backend.core.setup_database import classify_db_error
+
+    code, message, hint = classify_db_error(raw)
+    assert code == expected_code, f"{raw!r} → {code}（期望 {expected_code}）"
+    assert message and hint, "每条分类都必须给人读的结论 + 可操作的下一步"
+
+
+def test_classify_db_error_never_leaks_credentials():
+    """asyncpg 的原始异常里会夹着完整 DSN（含口令），分类后必须已脱敏。"""
+    from backend.core.setup_database import classify_db_error
+
+    code, message, hint = classify_db_error(
+        'password authentication failed for user "rosetta" '
+        "(postgresql+asyncpg://rosetta:S3cr3t@db.internal:5432/rosetta)"
+    )
+    assert "S3cr3t" not in (code + message + hint)

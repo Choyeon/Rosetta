@@ -87,6 +87,10 @@ export default defineNuxtConfig({
     // 不要加 mode: 'out-in'。Vue 官方文档关于 Transition mode 章节明确说明 out-in
     // 仅适用于元素切换（有 outgoing、有 incoming），不适合页面初始挂载场景。
     pageTransition: { name: 'page-fade' },
+    // 布局过渡（前台 default ↔ 后台 admin）：两套外壳结构差异极大，不配就是硬切。
+    // 约束同上 —— 只允许 name，**不要加 mode**。duration 刻意取 fast（180ms）：
+    // 布局切换时两侧 DOM 同时存在，长时间过渡会让页面出现滚动条跳动与双份高度。
+    layoutTransition: { name: 'layout-fade' },
     head: {
       title: 'Rosetta',
       htmlAttrs: {
@@ -211,6 +215,13 @@ export default defineNuxtConfig({
     '/admin/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/admin': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
     '/admin/docs/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
+    // ⚠️ '/search' 必须与 '/search/**' 并列写：Nuxt 的 routeRules `path/**` 只匹配
+    // **子路径**，不匹配 path 本身。此前只写了 '/search/**'，而实际路由就是 pages/search.vue
+    // → '/search'：结果该页走 SSR 渲染出真内容，却被 Nitro 的
+    // spa-serverrendered-zero 插件（白名单含 '/search'）把 payload 的 serverRendered
+    // 改成 false，客户端判定"服务端没渲染"→ 丢弃 SSR DOM 重新 CSR → 导航过去先白屏一帧。
+    // 两处口径打架就是白闪的根因，补齐裸路径让 SSR/SPA 判定一致。
+    '/search': { ssr: false, headers: { 'Cache-Control': 'no-store' } },
     '/search/**': { ssr: false, headers: { 'Cache-Control': 'no-store' } },
     // 个人中心 /account：内容逐登录用户不同（/users/me/*），而 auth store 是 skipHydrate +
     // localStorage，SSR 期无 token 可用 —— 走 SSR 只会渲染未登录骨架。缓存必须 private。

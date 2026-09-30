@@ -155,7 +155,7 @@
         v-for="comment in comments"
         :key="comment.id"
         :class="[
-          'rounded-xl border bg-card p-4',
+          'card-surface p-4',
           comment.parent_id ? 'ml-8' : ''
         ]"
       >

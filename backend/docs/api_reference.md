@@ -8,6 +8,17 @@ Rosetta API 是一个现代化的博客平台后端服务，提供完整的博�
 - **认证方式**: Bearer Token (JWT)
 - **内容类型**: `application/json`
 
+## 配套文档
+
+| 文档 | 内容 | 生成方式 |
+| --- | --- | --- |
+| [api_endpoints.md](./api_endpoints.md) | **逐接口字段级契约**（入参/出参字段表、请求与响应示例、错误码） | 脚本从 `app.openapi()` 生成，`backend/scripts/gen_api_detail.py` |
+| [error_codes.md](./error_codes.md) | 语义错误码清单（源码反向提取） | `backend/scripts/gen_error_codes.py` |
+| 本文 | 重点接口的背景、口径与坑 + 文末端点总索引 | 手写 + `backend/scripts/gen_api_index.py` 插桩 |
+
+对接某个具体接口时先看 `api_endpoints.md`；要理解"为什么这么设计"看本文；排错查码用
+`error_codes.md`。
+
 ## 认证
 
 ### 获取令牌
@@ -1621,7 +1632,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **355 个操作 / 284 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **357 个操作 / 285 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1639,7 +1650,7 @@ API 实现了请求限流保护：
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
-| `GET` | `/api/users/` | 用户列表 |
+| `GET` | `/api/users/` | 用户列表（精简投影） |
 | `POST` | `/api/users/login` | 用户登录 |
 | `POST` | `/api/users/logout` | 用户登出 |
 | `GET` | `/api/users/me` | 获取当前用户 |
@@ -1962,7 +1973,7 @@ API 实现了请求限流保护：
 | --- | --- | --- |
 | `POST` | `/api/translate` | 翻译文本 |
 
-### OOBE（16）
+### OOBE（18）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
@@ -1976,12 +1987,14 @@ API 实现了请求限流保护：
 | `POST` | `/api/oobe/install-dependencies` | 一键安装缺失依赖 |
 | `GET` | `/api/oobe/install-dependencies/stream` | 依赖安装进度 SSE 流 |
 | `GET` | `/api/oobe/install/stream` | 一键安装进度 SSE 流 |
+| `POST` | `/api/oobe/preflight` | 安装前干跑校验 |
 | `POST` | `/api/oobe/reset` | 重置 OOBE 状态 |
 | `POST` | `/api/oobe/site-config` | 保存站点配置（已废弃） |
 | `GET` | `/api/oobe/state` | 获取向导断点状态 |
 | `GET` | `/api/oobe/status` | 获取 OOBE 状态 |
 | `GET` | `/api/oobe/system-info` | 获取系统信息 |
-| `GET` | `/api/oobe/test-database` | 测试数据库连接 |
+| `GET` | `/api/oobe/test-database` | 测试数据库连接（已废弃） |
+| `POST` | `/api/oobe/test-database` | 测试数据库连接（推荐） |
 
 ### 公告（6）
 

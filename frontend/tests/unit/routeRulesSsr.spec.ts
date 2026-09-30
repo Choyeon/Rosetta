@@ -46,7 +46,41 @@ function parseRouteRules(source: string): Map<string, RouteRule> {
 
 const rules = parseRouteRules(configSource)
 
+const nitroSource = readFileSync(
+  resolve(process.cwd(), 'server/plugins/spa-serverrendered-zero.nitro.ts'),
+  'utf8'
+)
+
 describe('nuxt.config routeRules · SSR 反选契约', () => {
+  /**
+   * 跨文件隐性耦合守卫：Nitro 插件 spa-serverrendered-zero 会把白名单前缀路径的
+   * payload.serverRendered 改成 false。它只在「路由确实配了 ssr:false」时才正确；
+   * 一旦某个前缀没有对应的 routeRules（Nuxt 里最常见的坑是只写 '/x/**' 而实际路由
+   * 是 '/x' —— `path/**` 不匹配 path 本身），就会出现：
+   *   服务端真的 SSR 出了 HTML  →  插件说没渲染  →  客户端丢掉 SSR DOM 重新 CSR
+   * 表现为导航过去先白屏一帧，且不报任何错。这条断言把两处口径钉在一起。
+   */
+  it('Nitro SPA 白名单的每个前缀都必须在 routeRules 里有 ssr:false 覆盖', () => {
+    const block = /const SPA_PREFIXES[^=]*=\s*\[([\s\S]*?)]\s*as const/.exec(nitroSource)
+    expect(block, '未解析到 SPA_PREFIXES').not.toBeNull()
+    const prefixes = [...block![1]!.matchAll(/'([^']+)'/g)].map(m => m[1]!)
+    expect(prefixes.length).toBeGreaterThan(0)
+
+    const missing: string[] = []
+    for (const prefix of prefixes) {
+      const covered = [...rules.entries()].some(
+        ([path, rule]) =>
+          rule.ssr === false
+          && (path === prefix || path === `${prefix}/**` || path.startsWith(`${prefix}/`))
+      )
+      if (!covered) missing.push(prefix)
+    }
+    expect(
+      missing,
+      `以下前缀被 Nitro 当成 SPA，却没有 ssr:false 的 routeRules：${missing.join(', ')}`
+    ).toEqual([])
+  })
+
   it('ssr:false 的路由集合与 AGENTS.md §2.2 一致，不增不减', () => {
     const spaOnly = [...rules.entries()]
       .filter(([, rule]) => rule.ssr === false)
@@ -64,6 +98,10 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
       '/forgot-password',
       '/login',
       '/register',
+      // '/search' 与 '/search/**' 必须成对存在：Nuxt 的 `path/**` 不匹配 path 自身，
+      // 只写后者会让 /search 落回 SSR，而 Nitro 的 spa-serverrendered-zero 插件
+      // 白名单又含 '/search' → SSR 内容被判定为未渲染而丢弃，导航过去白闪一帧。
+      '/search',
       '/search/**'
     ])
   })

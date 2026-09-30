@@ -338,13 +338,43 @@ class RecommendationService:
         self._db = db
         self._cache = cache or CacheService()
 
+    async def _rebuild_posts_by_ids(self, post_ids: list[int]) -> list[Post]:
+        """按给定顺序把 post_id 重新查成 ORM 对象。
+
+        缓存里**只能存 id**，不能存 Post 实例：
+        - Redis 后端走 JSON 序列化，`json.dumps(Post)` 直接 TypeError，被 cache 层
+          `except` 吞掉后缓存永远写不进，每次都跑全量 TF-IDF 聚合；
+        - 内存后端虽然能存住，但 ORM 实例跨请求持有会带着过期的 IdentityMap/过期状态，
+          调用方访问 `post.author` 时行为不可预期。
+          请以 id 序列为准，每次回源重建，顺便把 LIST 需要的 author/title/category/tags
+          一次性 selectinload 出来，避免调用方逐个懒加载。
+        """
+        if not post_ids:
+            return []
+        res = await self._db.execute(
+            select(Post)
+            .options(
+                selectinload(Post.author).selectinload(User.title),
+                selectinload(Post.category),
+                selectinload(Post.tags),
+            )
+            .where(Post.id.in_(post_ids))
+        )
+        by_id = {p.id: p for p in res.scalars().all()}
+        # 严格按传入顺序返回（IN 查询不保证顺序）；期间被删的文章自然被丢掉
+        return [by_id[i] for i in post_ids if i in by_id]
+
     # ─────────────── 1. 相似文章 ───────────────
     async def get_similar_posts(self, post_id: int, limit: int = 6) -> list[Post]:
         """基于 TF-IDF + 标签 + 分类 + 时间的综合相关度。"""
         cache_key = f"simv2:{post_id}:{limit}"
         cached = await self._cache.get(cache_key)
         if cached is not None:
-            return cached  # type: ignore[no-any-return]
+            # 存的是 id 列表（见 _rebuild_posts_by_ids 说明）； [] 表示"确实没有相似文章"的负缓存
+            cached_ids: list[int] = list(cached)  # type: ignore[arg-type]
+            if not cached_ids:
+                return []
+            return await self._rebuild_posts_by_ids(cached_ids)
 
         # ── 取当前文章 ──
         base_q = (
@@ -484,7 +514,7 @@ class RecommendationService:
         else:
             result = [candidates_by_id[i] for i in selected_ids if i in candidates_by_id]
 
-        await self._cache.set(cache_key, result, ttl=SIMILAR_POSTS_TTL)
+        await self._cache.set(cache_key, [p.id for p in result], ttl=SIMILAR_POSTS_TTL)
         return result
 
     # ─────────────── 2. 首页推荐（多臂老虎机 ε-greedy）───────────────
@@ -504,7 +534,11 @@ class RecommendationService:
         )
         cached = await self._cache.get(cache_key)
         if cached is not None:
-            return cached  # type: ignore[no-any-return]
+            # items 存的是 id 列表，回源后按序重建 ORM 对象
+            cached_out = dict(cached)  # type: ignore[arg-type]
+            cached_items = cached_out.get("items") or []
+            cached_out["items"] = await self._rebuild_posts_by_ids(list(cached_items))
+            return cached_out
 
         exclude_ids = set(exclude_post_ids or [])
         import random
@@ -608,21 +642,25 @@ class RecommendationService:
             items = [m[i] for i in page_ids if i in m]
 
         out = {
-            "items": items,
+            "items": [p.id for p in items],
             "total": total,
             "page": page,
             "page_size": page_size,
             "total_pages": math.ceil(total / page_size) if total else 1,
         }
         await self._cache.set(cache_key, out, ttl=RECOMMENDATION_TTL)
-        return out
+        # 返回值必须是真 ORM 对象（调用方要读 author/tags），缓存里的只是 id
+        return {**out, "items": items}
 
     # ─────────────── 3. 热榜（Hacker News 风格热度）───────────────
     async def get_hot_posts(self, limit: int = 10, days: int = 30) -> list[Post]:
         cache_key = f"hotv2:{limit}:{days}"
         cached = await self._cache.get(cache_key)
         if cached is not None:
-            return cached  # type: ignore[no-any-return]
+            cached_ids = list(cached)  # type: ignore[arg-type]
+            if not cached_ids:
+                return []
+            return await self._rebuild_posts_by_ids(cached_ids)
 
         cutoff = datetime.now(UTC) - timedelta(days=days)
         q = (
@@ -678,7 +716,7 @@ class RecommendationService:
             dr = await self._db.execute(dq)
             m = {p.id: p for p in dr.scalars().all()}
             items = [m[i] for i in top_ids if i in m]
-        await self._cache.set(cache_key, items, ttl=HOT_RANKING_TTL)
+        await self._cache.set(cache_key, [p.id for p in items], ttl=HOT_RANKING_TTL)
         return items
 
     # ─────────────── 4. 搜索评分（BM25-Okapi 风格字段加权）───────────────

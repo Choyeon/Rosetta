@@ -124,21 +124,23 @@
       v-else-if="pending && guestbookList.length === 0"
       class="flex flex-col gap-6 mb-10"
     >
+      <!-- 留言卡片骨架：结构仿照真实的头像 + 昵称 + 正文三行，走共享 Skeleton
+           （原先是外层 animate-pulse 套一堆 bg-muted div，全站口径不统一） -->
       <div
         v-for="i in 3"
         :key="i"
-        class="p-6 rounded-xl bg-card border border-border/60 animate-pulse"
+        class="p-6 rounded-xl bg-card border border-border/60"
       >
         <div class="flex gap-4">
-          <div class="size-10 rounded-full bg-muted shrink-0" />
+          <Skeleton class="size-10 rounded-full shrink-0" />
           <div class="flex flex-col gap-3 flex-1">
             <div class="flex items-center gap-2">
-              <div class="w-24 h-4 rounded-full bg-muted" />
-              <div class="w-16 h-3 rounded-full bg-muted" />
+              <Skeleton class="w-24 h-4 rounded-full" />
+              <Skeleton class="w-16 h-3 rounded-full" />
             </div>
             <div class="flex flex-col gap-2">
-              <div class="w-full h-4 rounded-full bg-muted" />
-              <div class="w-4/5 h-4 rounded-full bg-muted" />
+              <Skeleton class="w-full h-4 rounded-full" />
+              <Skeleton class="w-4/5 h-4 rounded-full" />
             </div>
           </div>
         </div>

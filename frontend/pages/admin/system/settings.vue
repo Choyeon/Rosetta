@@ -42,7 +42,7 @@
       v-if="loading"
       class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
     >
-      <ScrollArea class="rounded-xl border border-border bg-card p-3">
+      <ScrollArea class="card-surface p-3">
         <div class="flex flex-col gap-2">
           <Skeleton
             v-for="i in 17"
@@ -88,7 +88,7 @@
       v-else
       class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
     >
-      <ScrollArea class="rounded-xl border border-border bg-card p-2">
+      <ScrollArea class="card-surface p-2">
         <div class="flex flex-col gap-1 p-1">
           <button
             v-for="g in groups"
@@ -108,7 +108,7 @@
         </div>
       </ScrollArea>
 
-      <ScrollArea class="rounded-xl border border-border bg-card">
+      <ScrollArea class="card-surface">
         <div
           class="flex flex-col gap-6 p-6"
         >

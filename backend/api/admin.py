@@ -32,6 +32,7 @@ from backend.models.guestbook import GuestbookEntry
 from backend.models.user import User
 from backend.schemas import (
     AdminUserCreate,
+    AdminUserListItem,
     AdminUserUpdateFull,
     BaseResponse,
     PaginatedResponse,
@@ -197,11 +198,24 @@ class CommentAdminListResponse(BaseModel):
     "/users",
     response_model=PaginatedResponse,
     summary="用户列表（管理员）",
-    description="获取所有用户列表，支持搜索和分页。",
+    description=(
+        "获取所有用户列表，支持按 staff / 激活 / 封禁状态筛选与分页。"
+        "响应为裸分页 dict（items/total/page/page_size/total_pages，无 success/data 信封）；"
+        "items 内每项是 **AdminUserListItem** 投影（含 email / 封禁态 / 文章与评论计数），"
+        "**不含** bio / website / github / qq / cover_image —— 那些在 "
+        "`GET /admin/users/{id}`（UserDetailResponse）里。"
+    ),
 )
 async def admin_list_users(
     db: DB,
-    current_user: CurrentSuperUser,
+    # 读列表放行到 staff，写端点（创建/改角色/封禁/重置密码/删除）维持 CurrentSuperUser。
+    # 理由：本端点是后台用户列表页唯一的数据源，而那个页面对 staff 是开放的
+    # （只隐藏写操作入口）。此前前端被迫退回到 `GET /api/users/`（CurrentStaff）取列表，
+    # 而那个端点没有 is_banned / posts_count / comments_count —— 结果列表页的
+    # 「已封禁」徽章恒不显示、封禁开关恒为关、内容计数恒为 0。
+    # 「看用户」不等于「管用户」：`Cap.MANAGE_USERS` 只授予 super_admin，
+    # 写的闸门一个都没动。
+    current_user: CurrentStaff,
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     search: str | None = Query(None, description="搜索关键词"),
@@ -212,12 +226,22 @@ async def admin_list_users(
     """
     管理员获取用户列表
 
-    - `defer(User.password_hash)`：列表响应（UserDetailResponse）没有该字段，
+    - `defer(User.password_hash)`：列表响应（AdminUserListItem）没有该字段，
       整行加载只是白白把每页最多 100 条 argon2 哈希读进内存。
+    - 同样 `defer` 掉 bio / website / github / qq / cover_image：列表投影不含这些列，
+      一页 100 条能省下几十 KB 的长文本读取与序列化。
     - 头衔用 selectinload；posts_count/comments_count 用两条 GROUP BY 批量取，
       避免逐行 N+1。计数与列表的顺序执行见 `concurrent_query`。
     """
-    query = select(User).options(selectinload(User.title), defer(User.password_hash))
+    query = select(User).options(
+        selectinload(User.title),
+        defer(User.password_hash),
+        # 同 api/users.py::list_users：只 defer 确定用不到的宽列。
+        # qq / github / email / avatar_source 必须保留，resolved_for_user() 要用。
+        defer(User.bio),
+        defer(User.website),
+        defer(User.cover_image),
+    )
 
     if search:
         query = query.where(
@@ -272,9 +296,13 @@ async def admin_list_users(
         post_map = {}
         comment_map = {}
 
-    items: list[UserDetailResponse] = []
+    # resolved_avatar_url 不是 ORM 列，需手工回填（build_user_response 就是干这个的）
+    from backend.services._avatar_helpers import resolved_for_user
+
+    items: list[AdminUserListItem] = []
     for u in users:
-        d = build_user_detail_response(u)
+        d = AdminUserListItem.model_validate(u)
+        d.resolved_avatar_url = resolved_for_user(u)
         d.posts_count = int(post_map.get(u.id, 0))
         d.comments_count = int(comment_map.get(u.id, 0))
         items.append(d)
@@ -834,6 +862,15 @@ async def admin_list_comments(
 ):
     """
     管理员获取所有评论
+
+    鉴权口径（刻意不加 ``Cap.MODERATE_COMMENTS``，勿"顺手优化"）：
+    rbac 矩阵里 ``interaction:moderate_comments`` 从 editor(40) 起授予，但本端点
+    的响应里带评论者的 ``author_email`` / ``qq`` / ``github``，且支持按邮箱和 IP 检索 ——
+    这是 PII（个人敏感信息）。把它放宽到 editor 等于把全站评论的联系方式下沉一级，
+    而目前并没有 editor 侧的审核界面消费它。因此这里维持 ``CurrentStaff``（admin+）。
+    若将来真的要做「编辑审核评论」，正确做法是**先**加一个脱敏投影（去掉邮箱/IP），
+    再放宽闸门，而不是直接放开这一个端点。
+    回归守卫见 tests/test_admin_comment_crud.py::test_comment_moderation_stays_at_staff。
 
     查询形状说明（三处都是踩过的坑）：
     - `Comment.post` 只用来出 `post_ref`（id/slug/title），必须把正文、加密正文、

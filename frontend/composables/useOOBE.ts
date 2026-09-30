@@ -34,6 +34,10 @@ export interface InstallProgressEvt {
   sid?: string
   buffered?: number
   timestamp?: string
+  /** 失败步骤的机器码（DB_* / INSTALL_FAILED 等），由后端 classify_db_error 给出 */
+  error_code?: string
+  /** 可操作的修复建议（已脱敏，不含数据库口令） */
+  hint?: string | null
 }
 
 interface RawCheckResult {
@@ -586,6 +590,72 @@ export const useOOBE = () => {
     })
   }
 
+  // ----------------------------------------------------------
+  // 安装前干跑校验 / 数据库连接测试 / 用户名查重
+  // ----------------------------------------------------------
+
+  /**
+   * 安装前干跑校验（POST /oobe/preflight）。
+   * 只读、不写文件、不建库、不建账号；**所有字段可选**，只校验提交上来的那部分。
+   * 返回的 `issues[].code` 是权威结论——密码强度是否拦截由后端
+   * `security_password_policy` 开关决定，前端不该自行复制这套规则去硬拦。
+   */
+  const preflight = async (body: Record<string, unknown>) => {
+    return request<{
+      success?: boolean
+      ok?: boolean
+      issues?: Array<{
+        field: string
+        level: 'error' | 'warn'
+        code: string
+        message: string
+        hint?: string | null
+      }>
+      database?: {
+        checked: boolean
+        ok: boolean
+        code: string
+        message: string
+        hint?: string | null
+        version?: string | null
+      }
+    }>('/oobe/preflight', {
+      authStore, apiBase: currentApiBase(), locale: locale.value, method: 'POST', body
+    })
+  }
+
+  /**
+   * 测试数据库连接（POST /oobe/test-database）。
+   * 必须走 POST：同路径的 GET 会把数据库密码带在 query string 里，
+   * 而 query string 会被 Nginx / 浏览器历史 / APM 原样写进日志。
+   */
+  const testDatabase = async (body: {
+    db_type: 'sqlite' | 'postgresql'
+    db_host?: string
+    db_port?: number
+    db_name?: string
+    db_user?: string
+    db_password?: string
+    db_path?: string
+  }) => {
+    return request<{
+      success?: boolean
+      message?: string
+      code?: string
+      hint?: string | null
+      details?: Record<string, unknown> | null
+    }>('/oobe/test-database', {
+      authStore, apiBase: currentApiBase(), locale: locale.value, method: 'POST', body
+    })
+  }
+
+  /** 用户名可用性预检（GET /oobe/check-username）：只校验长度与字符集，不查库 */
+  const checkUsername = async (username: string) => {
+    return request<{ available?: boolean, message?: string | null }>('/oobe/check-username', {
+      authStore, apiBase: currentApiBase(), locale: locale.value, params: { username }
+    })
+  }
+
   /**
    * 订阅依赖安装 SSE 日志流（对标 WordPress 一键安装实时进度）
    */
@@ -1085,6 +1155,9 @@ export const useOOBE = () => {
     installDependencies,
     subscribeDependencyStream,
     install,
+    preflight,
+    testDatabase,
+    checkUsername,
     getInstallStream,
     subscribeInstallStream,
     // wizard-friendly helpers

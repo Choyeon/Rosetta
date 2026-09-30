@@ -12,7 +12,7 @@
     />
 
     <div class="grid grid-cols-1 md:grid-cols-[280px_1fr] gap-6">
-      <div class="rounded-xl border bg-card overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
+      <div class="card-surface overflow-hidden flex flex-col max-h-[calc(100vh-220px)]">
         <div class="p-3 border-b">
           <Button
             class="w-full"
@@ -80,7 +80,7 @@
               ]"
               role="button"
               tabindex="0"
-              :aria-label="`打开相册 ${displayField(a.title)}`"
+              :aria-label="`打开相册 ${plainText(a.title)}`"
               @click="selectAlbum(a.id)"
               @keydown="onAlbumKeydown($event, a.id)"
             >
@@ -89,7 +89,7 @@
                   <img
                     v-if="a.cover_url"
                     :src="a.cover_url"
-                    :alt="displayField(a.title)"
+                    :alt="plainText(a.title)"
                     class="size-full object-cover"
                   >
                   <div
@@ -103,7 +103,7 @@
                   <div class="flex items-start justify-between gap-2">
                     <div class="min-w-0">
                       <p class="text-sm font-medium truncate">
-                        {{ displayField(a.title) }}
+                        {{ plainText(a.title) }}
                       </p>
                       <p class="text-xs text-muted-foreground mt-0.5">
                         {{ a.photos_count || 0 }} 张
@@ -115,7 +115,7 @@
                         size="icon"
                         class="h-6 w-6"
                         title="编辑相册"
-                        :aria-label="`编辑相册 ${displayField(a.title)}`"
+                        :aria-label="`编辑相册 ${plainText(a.title)}`"
                         @click.stop="openEditAlbum(a)"
                       >
                         <Pencil data-icon="inline-start" />
@@ -125,7 +125,7 @@
                         size="icon"
                         class="h-6 w-6 text-destructive hover:text-destructive"
                         title="删除相册"
-                        :aria-label="`删除相册 ${displayField(a.title)}`"
+                        :aria-label="`删除相册 ${plainText(a.title)}`"
                         @click.stop="confirmDeleteAlbum(a.id)"
                       >
                         <Trash2 data-icon="inline-start" />
@@ -151,7 +151,7 @@
       </div>
 
       <!-- 右侧：当前相册的照片管理 -->
-      <div class="rounded-xl border bg-card p-4 min-h-[calc(100vh-220px)]">
+      <div class="card-surface p-4 min-h-[calc(100vh-220px)]">
         <template v-if="!selectedAlbumId">
           <div class="h-full flex items-center justify-center py-20">
             <Alert
@@ -270,7 +270,7 @@
               v-for="(p, idx) in photos"
               :key="p.id"
               :class="[
-                'group relative rounded-xl border bg-card overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md',
+                'group relative rounded-xl border bg-card overflow-hidden shadow-sm transition-shadow duration-200 hover:shadow-md', // panel-exempt: 图片缩略图瓦片，整块被 object-cover 铺满；card-surface 的渐变面/内发光在几十个格子上只剩噪点
                 selectedIds.includes(p.id) ? 'ring-2 ring-primary' : ''
               ]"
             >
@@ -278,7 +278,7 @@
               <div class="aspect-square bg-muted relative overflow-hidden">
                 <img
                   :src="photoSrc(p)"
-                  :alt="displayField(p.title) || 'photo'"
+                  :alt="plainText(p.title) || 'photo'"
                   class="size-full object-cover cursor-zoom-in transition-opacity duration-200 group-hover:opacity-90"
                   loading="lazy"
                   decoding="async"
@@ -361,7 +361,7 @@
 
                 <div class="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
                   <p class="text-xs text-white truncate">
-                    {{ displayField(p.title) || photoFilename(p) }}
+                    {{ plainText(p.title) || photoFilename(p) }}
                   </p>
                 </div>
               </div>
@@ -422,11 +422,35 @@
                   <Crop data-icon="inline-start" />
                   上传并裁剪封面
                 </Button>
+                <Button
+                  v-if="albumForm.cover_url"
+                  variant="ghost"
+                  size="sm"
+                  class="text-muted-foreground"
+                  @click="clearCover"
+                >
+                  <X data-icon="inline-start" />
+                  清除封面
+                </Button>
                 <p class="text-xs text-muted-foreground">
-                  推荐 16:9 比例
+                  推荐 16:9 比例；未设置时前台自动用相册首张照片
                 </p>
               </div>
             </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label for="album-sort-input">排序权重</Label>
+            <Input
+              id="album-sort-input"
+              v-model.number="albumForm.sort_order"
+              type="number"
+              min="0"
+              step="1"
+              class="w-32"
+            />
+            <p class="text-xs text-muted-foreground">
+              数值越小越靠前，前台相册列表按此升序展示
+            </p>
           </div>
           <div class="flex items-center justify-between rounded-xl border p-3">
             <div>
@@ -651,7 +675,7 @@ import ImageLightbox from '~~/components/ImageLightbox.vue'
 import {
   Plus, Image as ImageIcon, Pencil, Trash2, Upload, Info, Loader2,
   Lock, Globe, ChevronUp, ChevronDown, Images, Star, Check, Crop,
-  AlertCircle, RefreshCw
+  AlertCircle, RefreshCw, X
 } from '@lucide/vue'
 import {
   fetchAdminAlbums,
@@ -686,7 +710,7 @@ const selectedIds = ref<number[]>([])
 
 const currentAlbumTitle = computed(() => {
   const a = albums.value.find(x => x.id === selectedAlbumId.value)
-  return a ? displayField(a.title) : ''
+  return a ? plainText(a.title) : ''
 })
 
 const albumFormOpen = ref(false)
@@ -695,6 +719,7 @@ const albumForm = reactive({
   title: '',
   description: '',
   cover_url: '',
+  sort_order: 0,
   is_public: true
 })
 
@@ -720,14 +745,13 @@ const batchDeleteDialogOpen = ref(false)
 const sorting = ref(false)
 const coverSetting = ref(false)
 
-function displayField(v: unknown): string {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  if (typeof v === 'object') {
-    const obj = v as Record<string, unknown>
-    return (obj.zh as string) || (obj.en as string) || (Object.values(obj)[0] as string) || ''
-  }
-  return String(v)
+/**
+ * 相册/照片的文案字段在后端是 String/Text 明文列，类型上也已收窄成 `string | null`。
+ * 这里只做 null 兜底，不再处理 i18n dict——那个分支从来跑不到，留着只会让人以为
+ * 相册标题支持多语言。
+ */
+function plainText(v: string | null | undefined): string {
+  return v ?? ''
 }
 
 /** original_url 在后端响应模型里可空（thumbnail_url 甚至不落库），不能直接当字符串用 */
@@ -752,7 +776,7 @@ const lightboxIndex = ref(0)
 const lightboxImages = computed(() =>
   photos.value.map(p => ({
     url: photoFullSrc(p),
-    title: displayField(p.title) || photoFilename(p)
+    title: plainText(p.title) || photoFilename(p)
   }))
 )
 
@@ -823,19 +847,34 @@ function onAlbumKeydown(ev: KeyboardEvent, id: number) {
 
 function openCreateAlbum() {
   editingAlbumId.value = null
-  Object.assign(albumForm, { title: '', description: '', cover_url: '', is_public: true })
+  // 默认权重放在当前最大值之后：新相册出现在列表末尾而不是插在最前面，
+  // 与「sort_order 升序」的前台口径一致
+  const nextOrder = albums.value.reduce((m, a) => Math.max(m, Number(a.sort_order) || 0), 0) + 1
+  Object.assign(albumForm, {
+    title: '',
+    description: '',
+    cover_url: '',
+    sort_order: nextOrder,
+    is_public: true
+  })
   albumFormOpen.value = true
 }
 
 function openEditAlbum(a: AdminAlbum) {
   editingAlbumId.value = a.id
   Object.assign(albumForm, {
-    title: displayField(a.title),
-    description: displayField(a.description),
+    title: plainText(a.title),
+    description: plainText(a.description),
     cover_url: a.cover_url || '',
+    sort_order: Number(a.sort_order) || 0,
     is_public: a.is_public
   })
   albumFormOpen.value = true
+}
+
+/** 清除封面：只是把表单里的值置空，真正落到后端要等到提交（cover: null） */
+function clearCover() {
+  albumForm.cover_url = ''
 }
 
 /** coverCropperSrc 是 blob: URL，必须由本页面回收（对话框开关多次即泄漏多次） */
@@ -895,6 +934,8 @@ async function submitAlbum() {
     title: albumForm.title.trim(),
     description: albumForm.description.trim() || null,
     cover: albumForm.cover_url || null,
+    // NaN 来自清空 number input；后端 sort_order 是 ge=0 的 int，透传 NaN 会 422
+    sort_order: Number.isFinite(albumForm.sort_order) ? Math.max(0, Math.trunc(albumForm.sort_order)) : 0,
     is_published: albumForm.is_public
   }
   try {
@@ -1007,8 +1048,8 @@ async function onUploaded(items: unknown[]) {
 
 function openEditPhoto(p: AdminPhoto) {
   editingPhoto.value = p
-  photoForm.title = displayField(p.title)
-  photoForm.description = displayField(p.description)
+  photoForm.title = plainText(p.title)
+  photoForm.description = plainText(p.description)
   photoEditOpen.value = true
 }
 

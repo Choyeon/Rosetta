@@ -134,9 +134,12 @@ const TrendIcon = computed(() => {
           >
             {{ value }}
           </span>
-          <span
+          <!-- 加载态走共享 Skeleton：原先这里用 bg-muted + animate-pulse，
+               与 dashbord 其它区块（AdminHeader 通知列表、TableSkeleton）口径不一致，
+               而且共享 Skeleton 的 shimmer 类当时根本没定义（见 assets/css/main.css）。 -->
+          <Skeleton
             v-else
-            class="h-8 w-24 md:w-32 rounded-md bg-muted animate-pulse"
+            class="h-8 w-24 md:w-32 rounded-md"
           />
           <span
             v-if="!loading && subValue"
@@ -194,9 +197,11 @@ const TrendIcon = computed(() => {
           v-if="!loading"
           class="size-[22px]"
         />
+        <!-- 图标位的加载占位：容器本身是渐变底，Skeleton 的 muted 底会糊成一团，
+             所以用半透明白块 + 继承共享 shimmer 动效，保持"在加载"的读数一致。 -->
         <div
           v-else
-          class="size-5 rounded-full bg-white/20 animate-pulse"
+          class="size-5 rounded-full bg-white/20 skeleton-shimmer"
         />
       </div>
     </div>

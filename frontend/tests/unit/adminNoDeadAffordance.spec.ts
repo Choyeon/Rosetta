@@ -81,4 +81,33 @@ describe('Admin UI · 无死壳控件契约', () => {
     expect(themeManager!.text).toContain('theme.parent_theme')
     expect(themeManager!.text).not.toMatch(/parent_theme[\s\S]{0,200}@click/)
   })
+
+  /**
+   * 侧栏折叠开关的位置契约（踩过的坑）：
+   * 曾经的形态是三颗按钮分头管同一份状态 ——
+   *   · AdminSidebar 顶部一颗 ChevronLeft（仅展开态可见）
+   *   · AdminSidebar 底部一颗 ChevronRight（仅收起态可见）
+   *   · AdminHeader 左侧一颗汉堡 MenuIcon（md:hidden，仅 <768px 可见）
+   * 后果有两个：(1) 同一个 toggle 在收起/展开之间会从上跳到下；(2) 布局在 ≥1280px
+   * 才展开侧栏，而汉堡在 ≥768px 就隐藏了，于是 768–1280px 之间 **没有任何可点开关**，
+   * 自动收起后无法再展开。
+   * 修法是把控制权收回 AdminHeader 的一颗常驻按钮，这里把该结构锁死。
+   */
+  it('侧栏折叠开关唯一且在 AdminHeader，侧栏不得再有 toggle', () => {
+    const header = codeOnly.find(s => s.file.endsWith('admin/AdminHeader.vue'))
+    const sidebar = codeOnly.find(s => s.file.endsWith('admin/AdminSidebar.vue'))
+    expect(header, 'AdminHeader.vue 必须在扫描面内').toBeDefined()
+    expect(sidebar, 'AdminSidebar.vue 必须在扫描面内').toBeDefined()
+
+    // AdminHeader 里必须恰好一个 aria-controls="admin-sidebar" 的开关
+    const headerToggles = [...header!.text.matchAll(/aria-controls=["']admin-sidebar["']/g)]
+    expect(headerToggles.length, '折叠开关必须在 AdminHeader 内且唯一').toBe(1)
+    expect(header!.text, '开关必须是全断点可见，禁止再加 md:hidden').not.toMatch(
+      /aria-controls=["']admin-sidebar["'][\s\S]{0,400}?md:hidden|md:hidden[\s\S]{0,400}?aria-controls=["']admin-sidebar["']/
+    )
+
+    // AdminSidebar 不再自己管折叠（只剩 v-model 受控），因此不得出现 toggle 类按钮
+    expect(sidebar!.text, '侧栏不得再放置折叠/展开按钮').not.toMatch(/aria-label=["'](收起|展开)侧边导航/)
+    expect(sidebar!.text, '侧栏仍应保留受控的 collapsed prop').toContain('update:collapsed')
+  })
 })

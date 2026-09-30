@@ -38,19 +38,19 @@
           :key="i"
           class="relative pl-8"
         >
-          <div class="absolute -left-8 top-1.5 size-6 rounded-full bg-muted animate-pulse" />
+          <Skeleton class="absolute -left-8 top-1.5 size-6 rounded-full" />
           <div class="flex flex-col gap-3 p-5 rounded-xl bg-card border border-border/60">
             <div class="flex items-center justify-between gap-3">
               <div class="flex items-center gap-2">
-                <div class="size-5 rounded-full bg-muted animate-pulse" />
-                <div class="w-20 h-4 rounded-full bg-muted animate-pulse" />
+                <Skeleton class="size-5 rounded-full" />
+                <Skeleton class="w-20 h-4 rounded-full" />
               </div>
-              <div class="w-16 h-3 rounded-full bg-muted animate-pulse" />
+              <Skeleton class="w-16 h-3 rounded-full" />
             </div>
             <div class="flex flex-col gap-2">
-              <div class="w-full h-4 rounded-full bg-muted animate-pulse" />
-              <div class="w-4/5 h-4 rounded-full bg-muted animate-pulse" />
-              <div class="w-2/3 h-4 rounded-full bg-muted animate-pulse" />
+              <Skeleton class="w-full h-4 rounded-full" />
+              <Skeleton class="w-4/5 h-4 rounded-full" />
+              <Skeleton class="w-2/3 h-4 rounded-full" />
             </div>
           </div>
         </div>

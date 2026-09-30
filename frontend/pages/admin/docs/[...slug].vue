@@ -196,7 +196,7 @@ watch(slug, () => {
   <div class="docs-shell flex flex-col gap-4 lg:gap-5 lg:flex-row lg:items-start">
     <!-- 侧边栏：文档目录（页面滚动时吸顶，目录过长时卡片内部滚动） -->
     <aside class="shrink-0 w-full lg:w-[260px] xl:w-[280px] lg:sticky lg:top-4 lg:max-h-[calc(100dvh-6.5rem)]">
-      <div class="rounded-xl border border-border/80 bg-card/60 backdrop-blur-md text-card-foreground shadow-soft/60 flex flex-col max-h-full lg:h-full overflow-hidden">
+      <div class="card-surface flex flex-col max-h-full lg:h-full overflow-hidden">
         <div class="flex items-center gap-2 px-4 py-3 border-b shrink-0">
           <span class="font-semibold text-sm">开发文档</span>
           <span class="text-[11px] text-muted-foreground">zh-CN</span>
@@ -259,7 +259,7 @@ watch(slug, () => {
 
     <!-- 正文：随页面整体滚动，不做内部滚动条 -->
     <section class="flex-1 min-w-0">
-      <div class="rounded-xl border border-border/80 bg-card text-card-foreground shadow-soft/60">
+      <div class="card-surface">
         <header class="px-5 md:px-8 py-4 border-b flex flex-wrap items-center gap-x-3 gap-y-1">
           <div class="flex items-center gap-2.5 min-w-0">
             <h1 class="text-xl md:text-2xl font-semibold tracking-tight font-display truncate">

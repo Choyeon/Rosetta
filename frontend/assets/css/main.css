@@ -697,6 +697,64 @@ html.dark.palette-minimal {
     transform: translateY(-4px);
   }
 
+  /* ---- 骨架屏：<Skeleton /> 的 shimmer ----
+     根因修复：components/ui/skeleton/Skeleton.vue 自第一版起就在根节点写
+     `skeleton-shimmer`，但全仓 CSS **从来没有定义过这个类** —— 也就是说共享骨架
+     组件一直是个普通空 div，只有调用方额外传了 bg-muted 才看得见一块静止的灰块，
+     没有任何加载动效。各页面为了让骨架"动起来"，只好各自手写 animate-pulse
+     （pages/activity.vue、categories/index.vue、gallery.vue、guestbook.vue、
+     tags/index.vue 等 24 处），口径五花八门。这里把缺失的类补齐，共享组件才名副其实。
+
+     实现要点：
+     · shimmer 是斜面线性渐变 + background-position 位移，比 animate-pulse 的整块
+       opacity 抖动更接近"正在加载"的语义；
+     · 底色走 --muted，自动跟随亮/暗主题，调用方不必再传 bg-muted;
+     · prefers-reduced-motion 下退化为静态色块（不闪），符合无障碍要求。 */
+  .skeleton-shimmer {
+    background-color: hsl(var(--muted));
+    background-image: linear-gradient(
+      100deg,
+      transparent 20%,
+      hsl(var(--background) / 0.65) 42%,
+      hsl(var(--background) / 0.65) 58%,
+      transparent 80%
+    );
+    background-size: 220% 100%;
+    background-repeat: no-repeat;
+    animation: skeleton-shimmer 1.6s var(--motion-ease-standard) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton-shimmer {
+      background-image: none;
+      animation: none;
+    }
+  }
+
+  @keyframes skeleton-shimmer {
+    0% {
+      background-position: 160% 0;
+    }
+    100% {
+      background-position: -60% 0;
+    }
+  }
+
+  /* ---- 布局过渡：<Transition name="layout-fade" /> ----
+     前台 default ↔ 后台 admin 是两套完全不同的外壳（有无侧栏/顶栏结构），不配
+     layoutTransition 时是硬切：旧布局瞬间消失、新布局瞬间出现，中间一帧背景空白。
+     同样遵守「禁止 mode:out-in」约束（见 nuxt.config.ts app.pageTransition 注释）——
+     out-in 会在 SSR 首帧渲染 Comment 占位，导致 RouterView 边界 hydration mismatch
+     级联 NUXT_E1005。这里只用极短的纯淡入淡出把硬切抹平。 */
+  .layout-fade-enter-active,
+  .layout-fade-leave-active {
+    transition: opacity var(--motion-duration-fast) var(--motion-ease-standard);
+  }
+  .layout-fade-enter-from,
+  .layout-fade-leave-to {
+    opacity: 0;
+  }
+
   /* ---- 元素进场：给任何需要的组件加 animate-in + stagger 类 ---- */
   .animate-in {
     animation: fade-in-up var(--motion-duration-slower) var(--motion-ease-standard) both;

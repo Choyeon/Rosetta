@@ -163,6 +163,8 @@ export interface AdminPostListItem {
   is_pinned: boolean
   created_at: string | null
   published_at: string | null
+  /** 后台列表的「最后更新」列靠它：草稿/定时没有 published_at，只看发布时间会误判 */
+  updated_at?: string | null
   category: { id: number, name: string, color?: string | null } | null
 }
 
@@ -353,27 +355,35 @@ export function replyToComment(
 
 // ==================== 用户管理 ====================
 
+/**
+ * 后台用户管理列表行 —— 与后端 `AdminUserListItem`（`GET /api/admin/users`）逐字段对应。
+ *
+ * 曾踩过的坑：这里原先接的是 `GET /api/users/`（`UserResponse` 投影），
+ * 而响应里**没有** is_banned / posts_count / comments_count / title_id。
+ * 后果不是报错，而是静默错态：列表页的「已封禁」徽章永远不亮、封禁开关永远显示为关、
+ * 文章/评论计数永远渲染成 0（模板里靠 `|| 0` 兜住了，所以没人发现）。
+ * 修法是把数据源换成管理端点，并让这个接口与后端投影严格对齐 —— 少了任何字段，
+ * TS 不会报错，但界面会撒谎。
+ */
 export interface AdminUserRow {
   id: number
   username: string
-  email: string
   nickname: string | null
   avatar: string | null
   resolved_avatar_url: string | null
+  role: string | null
+  title?: AdminUserTitle | null
+  title_id?: number | null
   is_active: boolean
+  created_at: string | null
+  // ↓ 以下是 AdminUserListItem 相对 UserListItem 多出来的管理字段
+  email: string | null
   is_staff: boolean
   is_superuser: boolean
-  role?: string | null
   is_banned: boolean
-  created_at: string | null
   last_login: string | null
   posts_count: number
   comments_count: number
-  title?: AdminUserTitle | null
-  title_id?: number | null
-  /** 仅 GET /admin/users/{id}（UserDetailResponse）返回，列表接口不含 */
-  qq?: string | null
-  avatar_source?: string | null
 }
 
 /** RBAC 角色定义（应与后端 backend.core.rbac 保持一致） */
@@ -392,27 +402,52 @@ export function rbacRoleLabel(role?: string | null): string {
   return RBAC_ROLES.find(r => r.value === role)?.label ?? '订阅者'
 }
 
+/**
+ * 后台用户管理详情 —— `GET /api/admin/users/{id}`（后端 `UserDetailResponse`）。
+ * 在列表行的基础上补上只在编辑页出现的长字段（bio 最长 500 字符等）。
+ * 列表端点刻意不返回它们，所以这里必须是一个**独立类型**而不是复用 AdminUserRow。
+ */
+export interface AdminUserDetail extends AdminUserRow {
+  bio: string | null
+  website: string | null
+  github: string | null
+  qq: string | null
+  avatar_source: string | null
+  cover_image: string | null
+  updated_at: string | null
+}
+
 export interface AdminUserQuery {
   page?: number
   page_size?: number
   search?: string
-  sort?: string
-  order?: string
+  /** 后端 `GET /api/admin/users` 原生支持的三个筛选，走服务端而不是客户端切当前页 */
+  is_staff?: boolean
+  is_active?: boolean
+  is_banned?: boolean
 }
 
-/** GET /api/users —— users.router 挂在 /api/users，@router.get("/") 分页列表 */
+/**
+ * GET /api/admin/users —— admin.router @router.get("/users")，返回 AdminUserListItem 投影。
+ *
+ * 为什么不是 `GET /api/users/`：那个端点是精简的 `UserListItem`（无 is_banned /
+ * posts_count / comments_count / title_id），管理界面缺了这些会直接显示错状态。
+ * 该端点读权限是 staff（写操作仍是 super_admin），与列表页对 staff 开放的策略一致。
+ */
 export function fetchAdminUsers(params: AdminUserQuery): Promise<AdminPaged<AdminUserRow>> {
   const query: Record<string, unknown> = {
     page: params.page ?? 1,
     page_size: params.page_size ?? 20
   }
   if (params.search && params.search.trim()) query.search = params.search.trim()
-  if (params.sort) query.sort = params.sort
-  if (params.order) query.order = params.order
+  // 布尔筛选必须显式传 false：不传 = 不过滤，传 false = 只要未激活/未封禁的，语义完全不同
+  if (typeof params.is_staff === 'boolean') query.is_staff = String(params.is_staff)
+  if (typeof params.is_active === 'boolean') query.is_active = String(params.is_active)
+  if (typeof params.is_banned === 'boolean') query.is_banned = String(params.is_banned)
   const qs = new URLSearchParams(query as Record<string, string>).toString()
   return cachedGet(
     `admin:users:list:${qs || 'default'}`,
-    () => apiFetch<AdminPaged<AdminUserRow>>('/users/', { query }),
+    () => apiFetch<AdminPaged<AdminUserRow>>('/admin/users', { query }),
     20 * 1000 // 用户列表短暂缓存，避免进入编辑页再回列表时重复拉
   )
 }
@@ -494,10 +529,10 @@ export function deleteAdminUser(userId: number): Promise<ApiMessage> {
  * 包含：bio / website / github / qq / avatar_source / resolved_avatar_url /
  *       posts_count / comments_count / is_banned / updated_at / title 等。
  */
-export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
+export function fetchAdminUserDetail(id: number): Promise<AdminUserDetail> {
   return cachedGet(
     `admin:users:detail:${id}`,
-    () => apiFetch<AdminUserRow>(`/admin/users/${id}`),
+    () => apiFetch<AdminUserDetail>(`/admin/users/${id}`),
     10 * 1000 // 短缓存：避免连续进入同一编辑页、或多组件同时读取时重复请求
   )
 }
@@ -509,10 +544,13 @@ export function fetchAdminUserDetail(id: number): Promise<AdminUserRow> {
  * 该 schema 为 extra=forbid（2026-09 起真正生效），**多传一个字段就是 422 而不是被忽略**；
  * title_id 与 is_superuser 不在其列——头衔走 assign/remove 专用端点，超级管理员由 role 反推。
  */
-export function updateAdminUserDetail(id: number, payload: Record<string, unknown>): Promise<AdminUserRow> {
+export function updateAdminUserDetail(
+  id: number,
+  payload: Record<string, unknown>
+): Promise<AdminUserDetail> {
   invalidateMemCache(`admin:users:detail:${id}`)
   invalidateMemCache('admin:users:list:')
-  return apiFetch<AdminUserRow>(`/admin/users/${id}`, { method: 'PUT', body: payload })
+  return apiFetch<AdminUserDetail>(`/admin/users/${id}`, { method: 'PUT', body: payload })
 }
 
 // ==================== 分类 / 标签管理 ====================
@@ -909,32 +947,45 @@ export function batchAdminGuestbook(
 
 // ==================== 公告 ====================
 
+/**
+ * 与后端 schemas/announcement.py::AnnouncementResponse 逐一对应。
+ *
+ * title / content 是**明文字符串**而不是 i18n dict（模型列是 String/Text，
+ * AnnouncementBase 也是 str 字段）——此前这里写成 `string | Record<string, string>`，
+ * 逼着消费侧写一个永远走不到的 dict 分支。
+ */
 export interface AdminAnnouncement {
   id: number
   type: 'info' | 'warning' | 'error' | 'success'
-  title: string | Record<string, string>
-  content?: string | Record<string, string>
+  title: string
+  content: string
   is_active: boolean
   is_dismissible: boolean
+  /** 带偏移的 ISO 字符串；null 表示"立即生效"。 */
+  start_time: string | null
+  /** 带偏移的 ISO 字符串；null 表示"长期有效"。 */
+  end_time: string | null
   sort_order: number
-  created_at: string | null
+  created_at: string
+  updated_at: string
 }
 
 /**
  * GET /api/admin/announcements —— announcement.router 挂在 /api，
  * 管理接口前缀 /admin/announcements；公开 GET /announcements 只返回活跃公告不分页。
+ *
+ * 不带 page/page_size：后端明确声明忽略这两个参数（见该端点的 description），
+ * 传了只会让人误以为分页生效。
  */
-export function fetchAdminAnnouncements(params: { page?: number, page_size?: number } = {}): Promise<AdminPaged<AdminAnnouncement>> {
+export function fetchAdminAnnouncements(): Promise<AdminPaged<AdminAnnouncement>> {
   // 后端 /admin/announcements 返回 list（非分页），前端包装成 AdminPaged 结构。
-  return silentApiFetch<AdminAnnouncement[]>('/admin/announcements', {
-    query: { page: 1, page_size: 20, ...params }
-  }).then((list) => {
+  return silentApiFetch<AdminAnnouncement[]>('/admin/announcements').then((list) => {
     const items = list ?? []
     return {
       items,
       total: items.length,
-      page: params.page ?? 1,
-      page_size: params.page_size ?? 20,
+      page: 1,
+      page_size: items.length || 1,
       total_pages: items.length > 0 ? 1 : 0
     }
   })
@@ -1131,14 +1182,28 @@ export function fetchAdminMediaStats(): Promise<AdminMediaStats> {
 
 // ==================== 相册 Album ====================
 
+/**
+ * 与后端 ``schemas/gallery.py::AlbumResponse`` 逐字段对应。
+ *
+ * ``title`` / ``description`` 是**明文字符串**不是 i18n dict：模型列是 ``String(200)`` /
+ * ``Text``，Pydantic 侧也是 ``str | None``，dict 分支永远走不到——此前这里写成
+ * ``string | Record<string, string>``，逼着消费侧写一个死分支
+ * （见 gallery.vue 里旧的 ``displayField`` 的实现）。
+ *
+ * ``cover_url`` / ``is_public`` / ``photos_count`` 是前端别名，mapAlbum 负责与后端的
+ * ``cover`` / ``is_published`` / ``photo_count`` 互换（与 albumBody 互为逆操作）。
+ */
 export interface AdminAlbum {
   id: number
-  title: string | Record<string, string>
-  description?: string | Record<string, string> | null
-  cover_url?: string | null
+  title: string
+  description: string | null
+  cover_url: string | null
   is_public: boolean
   photos_count: number
+  /** 后台列表按 sort_order 升序排，此前类型里没有它，等于 UI 无法表达排序结果 */
+  sort_order: number
   created_at: string | null
+  updated_at: string | null
 }
 
 export interface AdminPhoto {
@@ -1374,12 +1439,16 @@ function mapAlbum(raw: Record<string, unknown>): AdminAlbum {
   const r = raw as Record<string, unknown>
   return {
     id: Number(r.id) || 0,
-    title: (r.title as AdminAlbum['title']) ?? '',
-    description: (r.description as AdminAlbum['description']) ?? null,
+    // 后端 title/description 是 String/Text 明文列；这里显式收窄成 string，
+    // 不再透传对象形态（历史上曾允许 dict，逼消费侧写一个永远走不到的分支）
+    title: typeof r.title === 'string' ? r.title : '',
+    description: typeof r.description === 'string' ? r.description : null,
     cover_url: (r.cover as string | null) ?? null,
     is_public: typeof r.is_published === 'boolean' ? r.is_published : true,
     photos_count: Number(r.photo_count ?? 0),
-    created_at: (r.created_at as string | null) ?? null
+    sort_order: Number(r.sort_order ?? 0),
+    created_at: (r.created_at as string | null) ?? null,
+    updated_at: (r.updated_at as string | null) ?? null
   }
 }
 
@@ -1392,14 +1461,6 @@ function albumBody(payload: Record<string, unknown>): Record<string, unknown> {
   if ('is_public' in body) {
     body.is_published = body.is_public
     delete body.is_public
-  }
-  if (body.title && typeof body.title === 'object') {
-    const t = body.title as Record<string, string>
-    body.title = t.zh ?? Object.values(t)[0] ?? ''
-  }
-  if (body.description && typeof body.description === 'object') {
-    const d = body.description as Record<string, string>
-    body.description = d.zh ?? Object.values(d)[0] ?? null
   }
   return body
 }
@@ -1979,13 +2040,24 @@ export function fetchAdminMigrationStatus(
 ): Promise<AdminMigrationStatus> {
   return apiFetch<AdminMigrationStatus>('/admin/alembic/status', {
     silentToast: options.silentToast ?? true
-  }).then(r => ({
-    current_version: String(r?.current_version ?? ''),
-    latest_version: String(r?.latest_version ?? ''),
-    is_latest: Boolean(r?.is_latest ?? true),
-    pending: (Array.isArray(r?.pending) ? r.pending : []) as AdminMigrationStatus['pending'],
-    applied: (Array.isArray(r?.applied) ? r.applied : []) as AdminMigrationStatus['applied']
-  }))
+  }).then((r) => {
+    const cur = String(r?.current_version ?? '')
+    const head = String(r?.latest_version ?? '')
+    // is_latest 的默认缺口不能靠 `?? true` 补：那是 fail-open，接口少给一个字段
+    // 就会让界面宣称「已是最新版本」，而页面根据它禁用升级按钮 —— 管理员据此
+    // 跳过 `alembic upgrade head`，生产库静默停在旧 schema 上。
+    // 取值优先级：后端显式给的布尔 → 两个版本号都能拿到时自行比较 → 兜底 false
+    // （页面渲染成"存在待应用迁移"并保留升级按钮，属于可纠错的 fail-closed）。
+    const explicit = r?.is_latest
+    const derived = cur !== '' && head !== '' && cur === head
+    return {
+      current_version: cur,
+      latest_version: head,
+      is_latest: typeof explicit === 'boolean' ? explicit : derived,
+      pending: (Array.isArray(r?.pending) ? r.pending : []) as AdminMigrationStatus['pending'],
+      applied: (Array.isArray(r?.applied) ? r.applied : []) as AdminMigrationStatus['applied']
+    }
+  })
 }
 
 /**

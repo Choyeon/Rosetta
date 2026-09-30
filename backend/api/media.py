@@ -43,9 +43,11 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import selectinload
 
-from backend.core.auth import DB, CurrentStaff, get_current_user
+from backend.core.auth import DB, CurrentStaff, get_current_user, require_capability
 from backend.core.concurrency import concurrent_query
+from backend.core.config import settings
 from backend.core.plugin_bus import bus
+from backend.core.rbac import Cap
 from backend.models.blog import Category, Post
 from backend.models.core import Media, SiteConfig
 from backend.models.gallery import Album, Photo
@@ -59,7 +61,13 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["媒体"])
 
-MEDIA_DIR = Path("media")
+# 磁盘根目录必须与 main.py 挂载 StaticFiles 的那一处同源（BASE_DIR / settings.media_dir）。
+# 此前这里写死 ``Path("media")``：一旦 settings.media_dir 被配置成别的路径，文件会写到
+# 旧目录、而 Nginx / StaticFiles 提供的是新目录 → 上传成功却 404；同时
+# services/media_service.generate_thumbnails 用的又是 settings.media_dir，它的
+# ``out_dir.relative_to(Path(settings.media_dir) / "uploads")`` 会抛异常并静默降级成
+# 「不带子目录」的 URL，缩略图因此指向不存在的地址。两处口径必须合一。
+MEDIA_DIR = Path(settings.media_dir)
 UPLOADS_DIR = MEDIA_DIR / "uploads"
 AVATARS_DIR = MEDIA_DIR / "avatars"
 COVERS_DIR = MEDIA_DIR / "covers"
@@ -142,6 +150,21 @@ async def _delete_media_derivatives(media: Media) -> list[str]:
     return failed
 
 
+def _media_payload(media: Media) -> dict:
+    """Webhook 用的对外字段；必须在 ``db.delete`` **之前**调用。
+
+    ``db.delete`` 之后 ORM 实例进入 deleted 态，属性值还能不能读取决于会话是否
+    恰好把它标成 expired —— 把载荷建立在这个不确定之上，钩子会偶发丢字段。
+    """
+    return {
+        "id": media.id,
+        "filename": media.filename,
+        "file_type": media.file_type,
+        "file_size": media.file_size,
+        "url": media.file,
+    }
+
+
 async def _collect_media_references(db, media_list: list[Media]) -> dict[int, str]:
     """查每条媒体（含其派生档 URL）是否被内容表行引用，返回 media_id → 引用面说明。
 
@@ -194,6 +217,35 @@ MAGIC_SIGNATURES: dict[str, tuple[tuple[bytes, ...], ...]] = {
 }
 
 ALLOWED_IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg"}
+
+# ── 非图片族（视频/音频/文档）的魔术字节校验表 ────────────────────────────────
+# 媒体库允许上传 mp4/webm/mov/mp3/wav/ogg/pdf/doc/docx/xls/xlsx，此前这些扩展名
+# **完全没有内容校验**：改成 xxx.mp4 的可执行文件能被原样存进 /media 静态目录并被同源引用。
+# 初版不想引入 python-magic 之类的三方依赖，故沿用与图片相同的"偏移 + 字面量"手写表。
+#
+# 表结构：ext → 若干候选签名，任一命中即通过；每项为 `(offset, bytes)`。
+# 说明：
+#  - mp4/mov 同属 ISO-BMFF：文件头 4 字节是 box 长度，第 5 字节起才是 `ftyp`；
+#    .mov 也可能是老 QuickTime 的 `moov`/`mdat` 起手，一并放行。
+#  - docx/xlsx 是 ZIP 容器（PK\x03\x04），doc/xls 是 OLE2 复合文档；
+#    两者互不匹配，所以必须分别列出，不能靠"同族合并"偷懒。
+#  - mp3 可能是 ID3 标签头，也可能是裸 MPEG 帧同步（0xFF 0xEx / 0xFx）。
+_MAGIC_NON_IMAGE: dict[str, tuple[tuple[int, bytes], ...]] = {
+    "mp4": ((4, b"ftyp"),),
+    "mov": ((4, b"ftyp"), (4, b"moov"), (4, b"mdat"), (4, b"wide")),
+    "webm": ((0, b"\x1a\x45\xdf\xa3"),),  # EBML header
+    "mp3": ((0, b"ID3"),),
+    "wav": ((0, b"RIFF"), (8, b"WAVE")),
+    "ogg": ((0, b"OggS"),),
+    "pdf": ((0, b"%PDF-"),),
+    "doc": ((0, b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),),  # OLE2 / CFBF
+    "xls": ((0, b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"),),
+    "docx": ((0, b"PK\x03\x04"), (0, b"PK\x05\x06"), (0, b"PK\x07\x08")),
+    "xlsx": ((0, b"PK\x03\x04"), (0, b"PK\x05\x06"), (0, b"PK\x07\x08")),
+}
+
+# MPEG 裸帧同步（无 ID3 标签的 mp3）：前两字节 0xFF + 0xE0~0xFF 的高 3 位为 1
+_MPEG_FRAME_SYNC_MIN = 0xE0
 
 SAFE_NAME_RE = re.compile(r"[^\w\-.一-龠ぁ-ゔァ-ヴー\u4e00-\u9fa5a-zA-Z0-9]")
 
@@ -302,6 +354,48 @@ def _validate_magic(head: bytes, ext: str, filename: str) -> None:
         detail={
             "success": False,
             "message": "上传文件内容与扩展名不匹配",
+            "error_code": UPLOAD_MAGIC_MISMATCH,
+        },
+    )
+
+
+def _validate_non_image_magic(head: bytes, ext: str, filename: str) -> None:
+    """非图片族（视频/音频/文档）的内容校验：扩展名必须与真实容器头部吻合。
+
+    与 ``_validate_magic`` 分开维护的原因：图片那条路径还要服务一个人头像/文章配图的
+    hot path（PIL 解码会二次兜底），误杀成本更高；而媒体库的非图片族此前是零校验，
+    用一个独立函数可以在不影响既有图片语义的前提下把闸门补上。
+
+    ``ext`` 传无点前缀的小写形式（与 ``LIBRARY_TYPE_EXTENSIONS`` 一致）。
+    未登记扩展名直接放行——白名单在调用方已经拦过一轮，这里只补一层内容校验。
+    """
+    signatures = _MAGIC_NON_IMAGE.get(ext)
+    if not signatures:
+        return
+
+    def matches(offset: int, needle: bytes) -> bool:
+        return head[offset : offset + len(needle)] == needle
+
+    if ext == "wav":
+        if matches(0, b"RIFF") and matches(8, b"WAVE"):
+            return
+    elif ext == "mp3":
+        # ID3 标签头，或裸 MPEG 帧同步
+        if matches(0, b"ID3"):
+            return
+        if len(head) >= 2 and head[0] == 0xFF and head[1] >= _MPEG_FRAME_SYNC_MIN:
+            return
+    else:
+        for offset, needle in signatures:
+            if matches(offset, needle):
+                return
+
+    logger.warning("媒体库拒绝疑似伪装文件：%s（扩展名 .%s）", filename, ext)
+    raise HTTPException(
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+        detail={
+            "success": False,
+            "message": f"上传文件内容与扩展名不匹配（.{ext}）",
             "error_code": UPLOAD_MAGIC_MISMATCH,
         },
     )
@@ -810,13 +904,21 @@ class ImageDeleteResponse(BaseModel):
 @router.post("/upload", response_model=ImageUploadResponse, summary="上传图片")
 async def upload_image(
     file: UploadFile = File(...),
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(require_capability(Cap.UPLOAD_MEDIA.value)),
 ) -> ImageUploadResponse:
     """
     上传图片
 
     支持的格式: JPG, PNG, GIF, WebP
     最大文件大小: 10MB
+
+    鉴权说明：
+    这里刻意用 ``Cap.UPLOAD_MEDIA`` 而不是「任意登录用户」。本端点写的是**公共素材目录**
+    （``/uploads/post|gallery/...``），落盘后任何人都可以通过 URL 直接取到，属于可写公共资源；
+    而 ``/media/avatar`` 与 ``/media/cover`` 写的是个人资料图，语义上属于
+    ``Cap.EDIT_OWN_PROFILE``（subscriber 就有），所以那两个端点仍只对登录态开放。
+    按 rbac 能力矩阵，``UPLOAD_MEDIA`` 从 contributor(20) 起授予 —— subscriber 只能改自己的
+    头像/封面，不能往公共空间塞文件。
     """
     await ensure_dirs()
 
@@ -826,10 +928,29 @@ async def upload_image(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"不支持的文件类型: {file.content_type}"
         )
 
+    # content_type 由客户端自报，不能当唯一依据：`image/png` + `x.html`
+    # 就能把可执行文档塞进同源可访问的 uploads 目录（AGENTS §12.7 双校验红线）。
+    # 这里与 /upload/stream 保持同一口径：扩展名白名单 → 写盘前限流 → 魔数 → SVG 主动内容。
+    ext = Path(file.filename or "image.jpg").suffix.lower()
+    if ext not in ALLOWED_IMAGE_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "message": f"不支持的文件扩展名: {ext or '(无扩展名)'}",
+                "error_code": UPLOAD_EXT_REJECTED,
+            },
+        )
+
     # 读取文件内容
     content = await file.read()
     if len(content) > MAX_FILE_SIZE:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件大小不能超过 10MB")
+
+    # 伪装检测：魔数与扩展名必须相符；SVG 额外拒绝脚本/事件处理器（同源渲染 = XSS）
+    _validate_magic(content[:16], ext, file.filename or "")
+    if ext == ".svg":
+        _assert_svg_content_safe(content)
 
     # 异步验证图片
     try:
@@ -839,8 +960,7 @@ async def upload_image(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"无效的图片文件: {str(e)}"
         )
 
-    # 生成文件名
-    ext = Path(file.filename or "image.jpg").suffix or ".jpg"
+    # 生成文件名（扩展名已过白名单，且统一小写化，避免 .JPG/.pHp 等大小写绕过）
     filename = f"{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
     filepath = UPLOADS_DIR / filename
 
@@ -859,13 +979,14 @@ async def upload_image(
 @router.post("/upload/stream", response_model=ImageUploadResponse, summary="流式上传图片")
 async def upload_image_stream(
     file: UploadFile = File(...),
-    current_user: Any = Depends(get_current_user),
+    current_user: Any = Depends(require_capability(Cap.UPLOAD_MEDIA.value)),
 ) -> ImageUploadResponse:
     """
     流式上传图片（支持大文件）
 
     与 `save_upload` 的区别只在写入方式：分块边读边写，避免把整张图先读进内存。
     安全口径（扩展名白名单 + 魔数 + SVG 主动内容 + 大小上限）与 `save_upload` 一致。
+    鉴权口径同 `/upload`：写公共目录，要求 ``Cap.UPLOAD_MEDIA``（见 upload_image 注释）。
     """
     await ensure_dirs()
 
@@ -927,10 +1048,22 @@ async def upload_avatar(
 ) -> ImageResponse:
     """
     上传头像（前端已裁剪）
+
+    鉴权：只要登录态。写的是个人资料图，语义等价 ``Cap.EDIT_OWN_PROFILE``
+    （rbac 矩阵里 subscriber 就拥有），因此**不要**给它套 ``Cap.UPLOAD_MEDIA``
+    —— 那会把「普通注册用户改自己的头像」一起拒掉，与 /account/settings 的现状冲突。
     """
     await ensure_dirs()
 
-    content = await file.read()
+    # 限额读取：头像/封面在 Vue 侧已裁剪，服务端还要再过一次 PIL 重编码，
+    # 但在此之前不能让未登录之外的任意登录用户把整包读进内存（此前无上限，
+    # 并发几发大文件就能打爆后端 RSS）。只多读 1 字节用于判定超限。
+    content = await file.read(MAX_FILE_SIZE + 1)
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"文件大小不能超过 {MAX_FILE_SIZE // (1024 * 1024)}MB",
+        )
 
     # 异步验证图片
     try:
@@ -940,7 +1073,7 @@ async def upload_avatar(
             status_code=status.HTTP_400_BAD_REQUEST, detail=f"无效的图片文件: {str(e)}"
         )
 
-    # 保存
+    # 保存（统一重编码为 JPEG，扩展名服务端固定为 .jpg，无路径穿越/XSS 面）
     filename = f"{current_user.id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
     filepath = AVATARS_DIR / filename
 
@@ -958,10 +1091,19 @@ async def upload_cover(
 ) -> ImageResponse:
     """
     上传封面图（前端已裁剪）
+
+    鉴权同 ``/avatar``：登录态即可。前端 ``/account/settings`` 允许普通注册用户换自己的封面图，
+    所以这里不能收紧到 ``Cap.UPLOAD_MEDIA``（那是公共素材目录的门槛）。
     """
     await ensure_dirs()
 
-    content = await file.read()
+    # 同 upload_avatar：限额读取，避免整包入内存
+    content = await file.read(MAX_FILE_SIZE + 1)
+    if len(content) > MAX_FILE_SIZE:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail=f"文件大小不能超过 {MAX_FILE_SIZE // (1024 * 1024)}MB",
+        )
 
     # 异步验证图片
     try:
@@ -1229,8 +1371,15 @@ async def _save_media_to_library(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="上传文件内容为空",
         )
+    # 内容校验：扩展名是客户端给的，唯一可信依据是文件头。
+    # 图片走既有 RGB 家族表；SVG 按内容扫脚本；其余族（视频/音频/文档）走
+    # _MAGIC_NON_IMAGE。落到 PIL 再失败只会变成 500，这里先给一个干净的 422。
     if ext == "svg":
         _assert_svg_content_safe(content)
+    elif file_type == "image":
+        _validate_magic(content[:16], f".{ext}", file.filename)
+    else:
+        _validate_non_image_magic(content[:16], ext, file.filename)
     await async_write_file(filepath, content)
 
     cdn_prefix = await _read_cdn_prefix(db)
@@ -1525,6 +1674,20 @@ async def update_media(
     await db.flush()
     await db.refresh(media)
 
+    await bus.do_action(
+        "media.updated",
+        media,
+        webhook_payload={
+            "id": media.id,
+            "filename": media.filename,
+            "file_type": media.file_type,
+            "title": media.title,
+            "alt_text": media.alt_text,
+            "description": media.description,
+            "url": media.file,
+        },
+    )
+
     return {
         "success": True,
         "message": "媒体信息已更新",
@@ -1578,6 +1741,7 @@ async def batch_delete_media(
 
     deleted_count = 0
     refused: list[dict] = []
+    deleted_payloads: list[dict] = []
     for media in media_list:
         if media.id in references:
             logger.info("批量删除跳过媒体 %s：被内容引用（%s）", media.id, references[media.id])
@@ -1600,10 +1764,15 @@ async def batch_delete_media(
         await _delete_media_derivatives(media)
 
         # 删除数据库记录
+        deleted_payloads.append(_media_payload(media))
         await db.delete(media)
         deleted_count += 1
 
     await db.flush()
+
+    # 与单条删除同名，监听方不该因为管理员用了多选就失聪
+    for payload in deleted_payloads:
+        await bus.do_action("media.deleted", webhook_payload=payload)
 
     missing = sorted(set(ids) - {m.id for m in media_list})
     message = f"已删除 {deleted_count} 个媒体文件"
@@ -1678,8 +1847,10 @@ async def delete_media_by_id(
     await _delete_media_derivatives(media)
 
     # 删除数据库记录
+    payload = _media_payload(media)
     await db.delete(media)
     await db.flush()
+    await bus.do_action("media.deleted", media, webhook_payload=payload)
 
     return {"success": True, "message": "媒体文件已删除"}
 
