@@ -175,7 +175,7 @@ export default defineNuxtConfig({
         // 双 rAF = 等首帧绘制完成再切，既不阻塞首屏渲染，又让 preload 响应被及时消费。
         {
           tagPosition: 'head',
-          innerHTML: "requestAnimationFrame(function(){requestAnimationFrame(function(){var l=document.querySelectorAll('link[rel=preload][as=style]');for(var i=0;i<l.length;i++){l[i].setAttribute('rel','stylesheet')}})})"
+          innerHTML: 'requestAnimationFrame(function(){requestAnimationFrame(function(){var l=document.querySelectorAll(\'link[rel=preload][as=style]\');for(var i=0;i<l.length;i++){l[i].setAttribute(\'rel\',\'stylesheet\')}})})'
         }
       ]
     }

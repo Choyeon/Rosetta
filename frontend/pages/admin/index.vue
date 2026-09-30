@@ -1443,7 +1443,9 @@ const pillFor = (a: ActivityItem['accent']) =>
       <div
         v-for="card in kpiCards"
         :key="card.key"
-        class="group relative rounded-2xl bg-card border border-border/70 hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden shadow-sm hover:shadow-[0_12px_30px_-16px_rgba(14,165,233,0.35)]" ><!-- panel-exempt: KPI 网格瓦片，6 个并列 + hover 抬升；铺渐变玻璃面观感过重，且 card-surface 的 isolation:isolate 会给每个瓦片建层叠上下文，压住内部 -top-16 的发光球 -->
+        :class="['group relative rounded-2xl bg-card border border-border/70 hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden shadow-sm hover:shadow-[0_12px_30px_-16px_rgba(14,165,233,0.35)]']"
+      >
+        <!-- panel-exempt: KPI 网格瓦片，6 个并列 + hover 抬升；铺渐变玻璃面观感过重，且 card-surface 的 isolation:isolate 会给每个瓦片建层叠上下文，压住内部 -top-16 的发光球 -->
         <!-- subtle accent glow -->
         <div
           aria-hidden="true"
@@ -2073,8 +2075,10 @@ const pillFor = (a: ActivityItem['accent']) =>
               ]"
               :key="q.title"
               type="button"
+              :class="['group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-14px_hsl(var(--primary)/0.45)] hover:border-primary/30 transition-all duration-200 text-left']"
               @click="navigateTo(q.to)"
-              class="group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-14px_hsl(var(--primary)/0.45)] hover:border-primary/30 transition-all duration-200 text-left" ><!-- panel-exempt: 快捷入口按钮组，本质是带图标的列表项而非内容面板；card-surface 的无边框渐变面会让它和同页 KPI 瓦片抢视觉重量 -->
+            >
+              <!-- panel-exempt: 快捷入口按钮组，本质是带图标的列表项而非内容面板；card-surface 的无边框渐变面会让它和同页 KPI 瓦片抢视觉重量 -->
               <div
                 class="shrink-0 size-9 rounded-lg text-white flex items-center justify-center shadow-sm"
                 :style="{ background: `linear-gradient(135deg, hsl(var(${q.colorVar})) 0%, hsl(var(${q.colorVar}) / 0.7) 100%)` }"

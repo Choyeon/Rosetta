@@ -12,7 +12,8 @@
       :icon="ArchiveRestore"
     >
       <template #actions>
-        <div class="inline-flex rounded-xl border border-border p-1 bg-card"><!-- panel-exempt: 分段筛选器（segmented control），是控件不是内容面板；card-surface 的 14px 圆角/无边框渐变面会让它看起来像个空卡片 -->
+        <div :class="['inline-flex rounded-xl border border-border p-1 bg-card']">
+          <!-- panel-exempt: 分段筛选器（segmented control），是控件不是内容面板；card-surface 的 14px 圆角/无边框渐变面会让它看起来像个空卡片 -->
           <button
             v-for="f in typeFilters"
             :key="f.key"

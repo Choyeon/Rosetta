@@ -89,8 +89,8 @@ describe('自定义 class 必须在本仓 CSS 里有定义', () => {
  * 但历史上很多后台页面是手写 `rounded-xl border bg-card` 复制出来的，
  * 于是同一个后台里同时存在「有装饰的卡片」和「素面描边盒子」，且改主题时只有前者会跟着变。
  *
- * 这里只禁**面板级**的手写面层。以下几类刻意放行，但**必须在 offending 行上写明理由**
- * （`panel-exempt: <原因>`，可以是 HTML 注释也可以是 JS 行尾注释）：
+ * 这里只禁**面板级**的手写面层。以下几类刻意放行，但**必须在 offending 行附近写明理由**
+ * （`panel-exempt: <原因>`）：
  *   1. 分段筛选器（`inline-flex ... p-1 bg-card`）—— 是控件不是内容面板；
  *   2. 网格里的瓦片项（KPI 卡、快捷入口、媒体缩略图、主题卡及其加载骨架）——
  *      渐变玻璃面铺到几十个格子上只剩噪点，且要与它替换的真实项同口径，否则加载完成跳变；
@@ -98,6 +98,13 @@ describe('自定义 class 必须在本仓 CSS 里有定义', () => {
  *   4. 已经处在某个 `.card-surface` 内部的内框（盒中盒）。
  * 共同的技术原因：`.card-surface` 带 `isolation: isolate` + `backdrop-filter`，
  * 会为每个元素新建层叠上下文，大面积铺开会压住内部绝对定位装饰、打断浮层层级。
+ *
+ * 豁免位置（结构性约束，勿"收紧"回同一行）：
+ * eslint 的 vue/multiline-html-element-content-newline 强制开标签后换行，
+ * 所以 HTML 注释**写不进 class 所在行**（eslint --fix 会把它挤到下一行）；
+ * 而写进 :class="[...] 数组内的块注释又会被 eslint --fix 在重写表达式时整个吞掉。
+ * 因此豁免标记允许出现在 offending 行**之后 3 行内**的任意行上（注释行紧跟元素，
+ * 不会被误用成远离现场的万能屏蔽词）。
  *
  * 没有理由的裸标记不算豁免（正则要求 `panel-exempt:` 后必须跟非空文本），
  * 避免后人当成万能屏蔽词乱贴。
@@ -116,7 +123,7 @@ describe('后台面板必须走 .card-surface，不得手写面层', () => {
    * 其余字符换成空格以保留行号，报错定位才准。
    */
   function blankComments(src: string): string {
-    return src.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, (m) =>
+    return src.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, m =>
       EXEMPT.test(m) ? m : m.replace(/[^\n]/g, ' ')
     )
   }
@@ -125,20 +132,22 @@ describe('后台面板必须走 .card-surface，不得手写面层', () => {
     walk('pages/admin').concat(walk('components/admin'))
   )('%s 不得手写面板面层', (file) => {
     const src = blankComments(readFileSync(resolve(process.cwd(), file), 'utf8'))
-    const offenders = src
-      .split('\n')
-      .map((line, i) => ({ line: i + 1, text: line.trim() }))
-      .filter(
-        ({ text }) =>
-          (ADHOC_PANEL.test(text) || ADHOC_PANEL_REVERSED.test(text)) &&
-          !text.includes('card-surface') &&
-          !EXEMPT.test(text)
-      )
+    const lines = src.split('\n')
+    const offenders: Array<{ line: number, text: string }> = []
+    for (let i = 0; i < lines.length; i++) {
+      const text = (lines[i] ?? '').trim()
+      if (!(ADHOC_PANEL.test(text) || ADHOC_PANEL_REVERSED.test(text))) continue
+      if (text.includes('card-surface') || EXEMPT.test(text)) continue
+      // 豁免注释可在违规行之后 3 行内（含紧邻行）；多行开标签时中间隔着一行 `>`
+      const near = lines.slice(i + 1, i + 4).map(l => (l ?? '').trim())
+      if (near.some(t => EXEMPT.test(t))) continue
+      offenders.push({ line: i + 1, text })
+    }
     expect(
       offenders,
-      `${file} 里发现手写面层，应改用 .card-surface 或 <AdminCard>；` +
-        '确属豁免类型的，在同一行补 `panel-exempt: <原因>`：\n' +
-        offenders.map(o => `  L${o.line}: ${o.text.slice(0, 120)}`).join('\n')
+      `${file} 里发现手写面层，应改用 .card-surface 或 <AdminCard>；`
+      + '确属豁免类型的，在 offending 行后 3 行内补 `panel-exempt: <原因>`：\n'
+      + offenders.map(o => `  L${o.line}: ${o.text.slice(0, 120)}`).join('\n')
     ).toHaveLength(0)
   })
 })

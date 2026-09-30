@@ -781,7 +781,9 @@ onMounted(() => {
         <div
           v-for="n in Math.min(8, perPage)"
           :key="`sk-${n}`"
-          class="flex flex-col gap-3 p-4 rounded-2xl border border-border/70 bg-card" ><!-- panel-exempt: 主题网格的加载态瓦片；真实项走 bg-card 网格口径，这里换成 card-surface 会在加载完成时面层跳变 -->
+          :class="['flex flex-col gap-3 p-4 rounded-2xl border border-border/70 bg-card']"
+        >
+          <!-- panel-exempt: 主题网格的加载态瓦片；真实项走 bg-card 网格口径，这里换成 card-surface 会在加载完成时面层跳变 -->
           <Skeleton class="aspect-[16/10] rounded-xl" />
           <div class="flex flex-col gap-1.5">
             <Skeleton class="h-5 w-1/2 rounded-full" />

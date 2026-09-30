@@ -102,7 +102,9 @@
               <div
                 role="group"
                 aria-label="导出范围"
-                class="inline-flex rounded-xl border border-border p-1 bg-card self-start" ><!-- panel-exempt: 分段筛选器（segmented control），同 trash.vue；是控件不是内容面板 -->
+                :class="['inline-flex rounded-xl border border-border p-1 bg-card self-start']"
+              >
+                <!-- panel-exempt: 分段筛选器（segmented control），同 trash.vue；是控件不是内容面板 -->
                 <button
                   v-for="s in scopes"
                   :key="s.key"

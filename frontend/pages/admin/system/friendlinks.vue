@@ -10,7 +10,8 @@
       :icon="Link2"
     >
       <template #actions>
-        <div class="inline-flex rounded-xl border border-border p-1 bg-card"><!-- panel-exempt: 分段筛选器（segmented control），同 trash.vue；是控件不是内容面板 -->
+        <div :class="['inline-flex rounded-xl border border-border p-1 bg-card']">
+          <!-- panel-exempt: 分段筛选器（segmented control），同 trash.vue；是控件不是内容面板 -->
           <button
             v-for="s in statusFilters"
             :key="s.key"

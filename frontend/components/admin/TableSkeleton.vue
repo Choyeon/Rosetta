@@ -30,7 +30,8 @@ withDefaults(defineProps<Props>(), {
 
 <template>
   <div class="w-full">
-    <div class="rounded-xl border border-border overflow-hidden bg-card"><!-- panel-exempt: 骨架内框，位于消费方 <Card> 面层之内，不能叠第二层 card-surface（见文件头注释） -->
+    <div :class="['rounded-xl border border-border overflow-hidden bg-card']">
+      <!-- panel-exempt: 骨架内框，位于消费方 <Card> 面层之内，不能叠第二层 card-surface（见文件头注释） -->
       <!-- Header skeleton -->
       <div
         v-if="showHeader"
