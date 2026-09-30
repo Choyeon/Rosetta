@@ -124,9 +124,17 @@ export default defineNuxtConfig({
         // === 字体样式表（Geist / JetBrains Mono / Fraunces）===
         // 用 preload 而不是 stylesheet：`<link rel="stylesheet">` 指向外站时会
         // 阻塞首屏渲染，直到请求成功或超时（Google Fonts 不可达时可拖到数十秒）。
-        // preload 只负责尽早并行下载，真正生效由 plugins/font-stylesheet.client.ts
-        // 在客户端把 rel 换成 stylesheet，因此首屏一定用 main.css 里的本地兜底字体。
-        // display=swap 保证 webfont 后到时平滑替换，不白屏。
+        // preload 只负责尽早并行下载，真正生效由内联脚本在首帧绘制后（双 rAF，
+        // 早于 Nuxt hydration）把 rel 换成 stylesheet，因此首屏一定用 main.css
+        // 里的本地兜底字体。display=swap 保证 webfont 后到时平滑替换，不白屏。
+        {
+          rel: 'preload',
+          as: 'style',
+          href: 'https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap'
+        },
+        // 双 rAF = 等首帧绘制完成后再切换 rel：既不会阻塞首屏，又能让 preload 的
+        // 响应在浏览器「preload 未使用」告警阈值（数秒）内被消费。
+        // 执行体放在下方 script 数组（双 rAF 内联脚本），plugins/06-font-stylesheet.client.ts 是 hydration 后的兜底（幂等）。
         {
           rel: 'preload',
           as: 'style',
@@ -159,6 +167,15 @@ export default defineNuxtConfig({
         {
           tagPosition: 'head',
           innerHTML: '(function(){try{var s=localStorage.getItem("theme")||localStorage.getItem("rosetta-theme");var d=s==="dark"||(s!=="light"&&window.matchMedia&&matchMedia("(prefers-color-scheme: dark)").matches);if(d)document.documentElement.classList.add("dark")}catch(e){}})()'
+        },
+        // ===== 字体 preload → stylesheet 切换（双 rAF，首帧绘制后、hydration 前执行）=====
+        // head 里的 Google Fonts preload 若一直没人消费，Chrome 会在数秒后报
+        // "was preloaded using link preload but not used"。原方案等 hydration 后由
+        // 06-font-stylesheet.client.ts 切 rel，慢网络下 hydration 超出告警阈值。
+        // 双 rAF = 等首帧绘制完成再切，既不阻塞首屏渲染，又让 preload 响应被及时消费。
+        {
+          tagPosition: 'head',
+          innerHTML: "requestAnimationFrame(function(){requestAnimationFrame(function(){var l=document.querySelectorAll('link[rel=preload][as=style]');for(var i=0;i<l.length;i++){l[i].setAttribute('rel','stylesheet')}})})"
         }
       ]
     }

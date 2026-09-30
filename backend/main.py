@@ -581,6 +581,9 @@ def create_application() -> FastAPI:
             allowed_prefixes = (
                 "/api/oobe/",
                 "/api/captcha/",
+                # OOBE 向导页背景壁纸：服务端 Bing 中继（域名白名单 + net_guard，
+                # 无凭据、无个人信息），不放行则向导只能直连 bing.com 被 CORS 拦死。
+                "/api/bing/",
                 "/api/media/bing-wallpaper",
             )
             allowed_exact = (

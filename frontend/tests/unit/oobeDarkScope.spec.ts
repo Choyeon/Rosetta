@@ -33,7 +33,10 @@ function extractVarDecls(source: string, selectorPattern: RegExp): Record<string
     if (source[i] === '{') depth++
     else if (source[i] === '}') {
       depth--
-      if (depth === 0) { end = i; break }
+      if (depth === 0) {
+        end = i
+        break
+      }
     }
   }
   const body = source.slice(open + 1, end)
@@ -41,7 +44,8 @@ function extractVarDecls(source: string, selectorPattern: RegExp): Record<string
   for (const mm of body.matchAll(/--([a-z-]+)\s*:\s*([^;]+);/g)) {
     const name = mm[1]
     const value = mm[2]
-    if (name && value) decls[name] = value.trim()
+    if (!name || !value) continue
+    decls[name] = value.trim()
   }
   return decls
 }

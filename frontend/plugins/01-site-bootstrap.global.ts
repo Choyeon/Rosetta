@@ -64,6 +64,16 @@ export default defineNuxtPlugin(async () => {
 
   const site = useSite()
   const ft = useFrontendTheme()
+
+  // OOBE 向导期（未安装）后端对非白名单接口一律 503 OOBE_REQUIRED，
+  // /settings/public 与 /themes/active 都会失败：既拿不到任何真实数据，
+  // 又在控制台刷 503 网络报错。/oobe 页面自绘整屏、只用默认主题，
+  // 这里直接跳过网络加载（installSnapshotState 完成后由 goAdmin 进后台，
+  // 后台与前台各自的数据加载不受影响；刷新后本插件按正常路径执行）。
+  if (useRoute()?.path?.startsWith('/oobe')) {
+    return
+  }
+
   try {
     await site.ensureLoaded()
     await ft.ensureLoaded()

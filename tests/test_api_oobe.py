@@ -252,6 +252,13 @@ async def test_oobe_required_before_install(oobe_client: AsyncClient):
     r = await oobe_client.get("/api/captcha/image")
     assert r.status_code != 503, f"/api/captcha/* 应放行，实际 {r.status_code}"
 
+    # OOBE 向导页背景壁纸依赖 /api/bing/*（服务端 Bing 中继，无凭据、域名白名单）。
+    # 不放行则向导只能直连 bing.com 被 CORS 拦死。该端点离线时也返回 200 占位。
+    r = await oobe_client.get("/api/bing/wallpapers", params={"n": 1, "market": "zh-CN"})
+    assert r.status_code == 200, (
+        f"安装前 /api/bing/wallpapers 应放行，实际 {r.status_code}: {r.text}"
+    )
+
 
 @pytest.mark.asyncio
 async def test_oobe_reset_and_retrigger(oobe_client: AsyncClient):

@@ -4,12 +4,11 @@
   数据层全走 composables/useOOBE.ts 的裸 fetch + EventSource（localStorage rosetta:oobe:apiBase 现场覆盖后端地址），刻意绕开 useApi：跳登录、统一 toast、CSR 缓存键在"后端地址未定"的时序里三者都错。
   Step1 的 canNext 硬门 = 探测成功且 apiBase 已应用（之后才自动 checkSystem）；Step2/3 在 nextStep 内即时 createAdmin / saveSiteSettings，回退再前进就是重复提交。
   收尾必须 clearOOBEApiBaseOverrideFromStorage() + resetOOBECache(true)，否则 middleware/oobe.global 的 60s 缓存仍把人锁回 /oobe；prod + 明文 HTTP 时 finishSetup 先弹 TLS 二次确认再安装。
+  页根 .oobe-dark 把全部语义令牌钉死为暗色值（本页是「壁纸 + 深色毛玻璃」固定深色设计，表面层硬编码
+  半透明白，跟随全局明暗切换会在亮色下深底配深字；CSS 变量沿子树继承，SSR 首帧即正确，无水合问题），
+  并声明 color-scheme: dark 修正原生控件配色。守卫见 tests/unit/oobeDarkScope.spec.ts。
 -->
 <template>
-  <!-- oobe-dark：本页是「壁纸 + 深色毛玻璃」的固定深色设计，表面层大量硬编码半透明白，
-       文字却走 text-foreground 等语义令牌——若跟随全局明暗切换，亮色下 --foreground 变近黑，
-       深底配深字直接不可读。这里在页根把全部语义令牌钉死为暗色值（CSS 变量沿子树继承，
-       SSR 首帧即正确，无水合问题），并向子树声明 color-scheme: dark 修正原生控件配色。 -->
   <div class="oobe-dark relative min-h-screen overflow-hidden text-foreground isolate">
     <!-- ========== 背景：Bing 每日壁纸 + 多层遮罩 ========== -->
     <div
@@ -1727,13 +1726,14 @@
     </div>
 
     <!-- ========== 左下角：版权 Meta 胶囊 ==========
-         点击整张卡片跳 Bing 官方搜索页；不单独提供下载 icon 按钮（版权图由用户浏览器另存为即可）。 -->
+         点击整张卡片跳 Bing 官方搜索页；不单独提供下载 icon 按钮（版权图由用户浏览器另存为即可）。
+         位置钉在主内容区左下角：lg 下左侧偏移 300px 侧边栏 + 48px 内容区内边距，不覆盖侧边栏。 -->
     <a
       v-if="bwp?.copyright"
       :href="getBwpOfficialLink(bwp)"
       target="_blank"
       rel="noopener noreferrer nofollow"
-      class="fixed bottom-5 left-5 z-40 group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.07] border border-white/10 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-white/[0.11] hover:border-white/15 transition-colors"
+      class="fixed bottom-5 left-5 lg:left-[348px] z-40 group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.07] border border-white/10 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-white/[0.11] hover:border-white/15 transition-colors"
     >
       <div class="relative size-9 shrink-0">
         <img
@@ -1938,8 +1938,9 @@ const {
 } = oobe
 
 // ====== Bing 每日壁纸（后台风格：emerald/teal/cyan 三束光 + 毛玻璃） ======
-// —— 使用 FastAPI /api/bing/wallpapers，与 login/register 的 useBingWallpaper 同源，
-//    避免 devProxy 抢走 Nitro /api/bing-wallpaper 路由导致 404。请求失败时自动回退直连 Bing，最后本地占位。
+// —— 使用 FastAPI /api/bing/wallpapers，与 login/register 的 useBingWallpaper 同源。
+//    该端点在 OOBE 期由 main.py 白名单放行（服务端 Bing 中继，无凭据）。
+//    浏览器直连 bing.com 的回退已删（必被 CORS 拦截）；失败时用本地 Unsplash 占位图。
 const bwpIdx = ref(0)
 const wallpaperLoaded = ref(false)
 const bwpFetching = ref(false)
@@ -2007,37 +2008,9 @@ const fetchBwp = async () => {
         })
       }
     } catch {
-      // 2) 回退：直连 Bing（6s 超时）
-      try {
-        const ctrl = new AbortController()
-        const t = setTimeout(() => ctrl.abort(), 6000)
-        try {
-          const r = await fetch('https://www.bing.com/HPImageArchive.aspx?format=js&idx=0&n=8&mkt=zh-CN', { signal: ctrl.signal })
-          if (r.ok) {
-            const body = (await r.json()) as { images?: BwpImage[] }
-            const arr: BwpImage[] = body?.images || []
-            bwpList.value = arr.map((img: BwpImage) => {
-              const u = img?.url || ''
-              const ub = img?.urlbase || ''
-              const full = u && !u.startsWith('http') ? `https://www.bing.com${u}` : u
-              return {
-                url: u,
-                urlbase: ub,
-                title: img?.title || '',
-                copyright: img?.copyright || '',
-                copyrightlink: img?.copyrightlink || '',
-                startdate: img?.startdate || img?.enddate || '',
-                full_url: full,
-                uhd_url: ub ? `https://www.bing.com${ub}_UHD.jpg` : full
-              }
-            })
-          }
-        } finally {
-          clearTimeout(t)
-        }
-      } catch {
-        // 3) 最终本地兜底
-      }
+      // 2) 直连 bing.com 的回退已删除：浏览器跨域 fetch bing.com 必然被 CORS
+      //    拦截（Bing 不带 Access-Control-Allow-Origin），这条路径从未成功过，
+      //    只会在控制台刷 CORS 报错。失败时直接落到下方本地占位图。
     }
     if (!bwpList.value || bwpList.value.length === 0) {
       const now = Date.now()
