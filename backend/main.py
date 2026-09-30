@@ -657,15 +657,21 @@ def create_application() -> FastAPI:
         if not request.url.path.startswith(
             ("/docs", "/openapi.json", "/redoc", "/media", "/health")
         ):
-            try:
-                from backend.api.monitoring import record_visit
+            # OOBE 未完成时数据库尚未就绪（用户还在向导里填 DATABASE_URL），
+            # visit_logs 表不存在，入队后 flush 循环每批都会刷 OperationalError
+            # Traceback——安装前直接跳过访问日志。
+            from backend.core.deps import is_oobe_complete
 
-                await record_visit(request, response.status_code, process_time)
-            except (ImportError, RuntimeError) as exc:
-                # 遥测不得拖垮业务请求：monitoring 未加载、或此刻没有运行中的事件循环
-                # （record_visit 内部已消化 QueueFull）时跳过这一条即可。
-                # 其余异常（签名改动、属性拼错）是真实缺陷，必须照样抛出而不是被吞。
-                logger.debug("[access-log] 访问记录入队失败：%s", exc)
+            if is_oobe_complete():
+                try:
+                    from backend.api.monitoring import record_visit
+
+                    await record_visit(request, response.status_code, process_time)
+                except (ImportError, RuntimeError) as exc:
+                    # 遥测不得拖垮业务请求：monitoring 未加载、或此刻没有运行中的事件循环
+                    # （record_visit 内部已消化 QueueFull）时跳过这一条即可。
+                    # 其余异常（签名改动、属性拼错）是真实缺陷，必须照样抛出而不是被吞。
+                    logger.debug("[access-log] 访问记录入队失败：%s", exc)
 
         return response
 
