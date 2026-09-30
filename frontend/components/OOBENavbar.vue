@@ -10,11 +10,16 @@ import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 </script>
 
 <template>
-  <header class="sticky top-0 z-40 w-full h-16 border-b bg-background/80 backdrop-blur">
+  <!-- 背景刻意用 bg-black/20 而非 bg-background：本项目 Tailwind 存在两套
+       @theme 产物（inline 的 hsl(var(--background)) 与非 inline 固化到 :root
+       亮色的 var(--color-background)），同名工具类两条规则共存、按加载顺序仲裁，
+       bg-background 在本页可能拿到固化亮色值 → 白底黑字（生产截图实证）。
+       本页是钉死深色设计，直接写死不依赖语义变量最稳。 -->
+  <header class="sticky top-0 z-40 w-full h-16 border-b border-white/10 bg-black/20 backdrop-blur-xl">
     <div class="container mx-auto flex h-full items-center justify-between px-4 lg:px-8">
       <NuxtLink
         to="/"
-        class="inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight"
+        class="inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight text-white"
       >
         <img
           src="/logo/rosetta-primary-icon.png"

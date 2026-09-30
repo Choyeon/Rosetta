@@ -31,7 +31,7 @@
     />
 
     <!-- ========== 顶部 Navbar ========== -->
-    <OOBENavbar class="sticky top-0 z-40 shrink-0 bg-background/5 backdrop-blur-xl border-b border-white/5" />
+    <OOBENavbar class="sticky top-0 z-40 shrink-0" />
 
     <!-- ========== 主体：两栏 ========== -->
     <div class="relative z-10 min-h-[calc(100svh-57px)] grid lg:grid-cols-[300px_1fr] gap-0">
@@ -1742,6 +1742,7 @@
           class="size-9 rounded-full object-cover ring-1 ring-white/15"
           loading="lazy"
           decoding="async"
+          @error="onThumbError"
         >
         <div class="pointer-events-none absolute inset-0 rounded-full ring-[3px] ring-white/0 group-hover:ring-white/10 transition-all" />
       </div>
@@ -2112,12 +2113,31 @@ const thumbUrl = (url?: string) => {
   if (!url) return ''
   try {
     const u = new URL(url, 'https://www.bing.com')
-    const base = u.pathname.replace(/UHD\.jpg$/, '') + '_150x84.jpg'
-    u.pathname = base
+    // Bing 存在两种返回形态：
+    //   ① query 形：/th?id=OHR.xxx_1920x1080.jpg&pid=hp —— 尺寸在 id 参数里；
+    //   ② path 形： /th/OHR.xxx_1920x1080.jpg —— 尺寸在 pathname 里。
+    // 此前的实现只按 pathname 替换，对 query 形会拼出 /th_150x84.jpg 这种
+    // 不存在的地址 → 署名胶囊缩略图裂图（背景图直接用原 url 所以正常）。
+    const id = u.searchParams.get('id')
+    if (id) {
+      u.searchParams.set('id', id.replace(/_\d+x\d+\.jpg$/i, '_150x84.jpg'))
+      return u.toString()
+    }
+    u.pathname = u.pathname.replace(/_\d+x\d+\.jpg$/i, '_150x84.jpg')
     return u.toString()
   } catch {
     return ''
   }
+}
+
+// 缩略图兜底：个别壁纸没有 150x84 变体时回退原图，仍失败则隐藏，不留裂图。
+const onThumbError = (e: Event) => {
+  const img = e.target as HTMLImageElement
+  if (bwp.value?.url && !img.src.endsWith(bwp.value.url)) {
+    img.src = bwp.value.url
+    return
+  }
+  img.style.visibility = 'hidden'
 }
 
 // ====== 原始 OOBE 业务状态 ======
