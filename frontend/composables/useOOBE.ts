@@ -282,21 +282,16 @@ function request<T = unknown>(
       .then((res) => {
         if (cancelled) return
         // 后端返回两种格式：
-        // 1. 包装型：{ success: boolean, data?: T, message?: string, ... }
-        // 2. 扁平型（OOBE接口）：{ success: true, python_version: {...}, uv_installed: {...}, ... }
+        // 1. 包装型：{ success: boolean, data?: T, message?: string, ... } → 取 data
+        // 2. 扁平型（OOBE 接口）：{ success, message, code, hint, ... } → 原样透传。
+        //    ⚠️ 历史事故：这里曾把扁平响应的 success/message/error_code 一并 delete，
+        //    导致 test-database 的失败结果（HTTP 200 + success=false + message）
+        //    到了 UI 手里只剩空串——错误横幅整条空白（2026-10-01 截图实证）。
+        //    调用方的 T 类型本就声明了这些字段，必须完整保留。
         const env = res as unknown as Record<string, unknown>
-        if (env && typeof env === 'object' && 'success' in env) {
-          if (env.data !== undefined && env.data !== null) {
-            data.value = env.data as T | null
-          } else {
-            // 去掉 success 外壳，返回实际检测结果
-            const copy = { ...env }
-            delete copy.success
-            delete copy.message
-            delete copy.error_code
-            delete copy.errors
-            data.value = copy as unknown as T
-          }
+        if (env && typeof env === 'object' && 'success' in env && 'data' in env
+          && env.data !== undefined && env.data !== null) {
+          data.value = env.data as T | null
         } else {
           data.value = res
         }

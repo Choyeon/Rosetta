@@ -105,7 +105,6 @@ const getBrand = (): Promise<BrandInfo> => {
 export default defineNuxtPlugin(async () => {
   if (!import.meta.client) return
 
-  // 先以默认值设置 titleTemplate（保证 SPA 跳转首屏也有统一拼接）
   const defaults: BrandInfo = { siteName: 'Rosetta', siteSub: '', primary: '#0EA5A9', accent: '#0284C7' }
   let siteName = defaults.siteName
   let siteSub = defaults.siteSub
@@ -122,6 +121,17 @@ export default defineNuxtPlugin(async () => {
     return siteSub ? `${siteName} · ${siteSub}` : siteName
   }
 
+  // OOBE 向导期后端对非白名单接口一律 503 OOBE_REQUIRED：
+  // /api/config 必然失败，浏览器控制台刷 "Failed to load resource: 503" +
+  // NUXT_E7902。向导页自绘整屏，直接用默认品牌值，不发请求。
+  // （OOBE 完成后不再命中此分支，正常走缓存 + 网络加载。）
+  if (useRoute().path.startsWith('/oobe')) {
+    useHead({ titleTemplate: buildTitle })
+    applyAppearance(defaults.primary, defaults.accent)
+    return
+  }
+
+  // 先以默认值设置 titleTemplate（保证 SPA 跳转首屏也有统一拼接）
   useHead({ titleTemplate: buildTitle })
 
   try {

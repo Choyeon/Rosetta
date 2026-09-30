@@ -677,12 +677,12 @@
                         {{ usernameCheckMessage }}
                       </p>
                       <p
-                        v-else-if="adminFieldErrors.name || usernameCheckState === 'invalid'"
+                        v-else-if="adminDisplayErrors.name || usernameCheckState === 'invalid'"
                         class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
                         role="alert"
                       >
                         <XCircle class="size-3" />
-                        {{ adminFieldErrors.name || usernameCheckMessage }}
+                        {{ adminDisplayErrors.name || usernameCheckMessage }}
                       </p>
                     </div>
 
@@ -705,12 +705,12 @@
                       </div>
 
                       <p
-                        v-if="adminFieldErrors.email"
+                        v-if="adminDisplayErrors.email"
                         class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
                         role="alert"
                       >
                         <XCircle class="size-3" />
-                        {{ adminFieldErrors.email }}
+                        {{ adminDisplayErrors.email }}
                       </p>
                     </div>
 
@@ -787,12 +787,12 @@
                         </div>
 
                         <p
-                          v-if="adminFieldErrors.password"
+                          v-if="adminDisplayErrors.password"
                           class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
                           role="alert"
                         >
                           <XCircle class="size-3" />
-                          {{ adminFieldErrors.password }}
+                          {{ adminDisplayErrors.password }}
                         </p>
                       </div>
 
@@ -830,12 +830,12 @@
                         </div>
 
                         <p
-                          v-if="adminFieldErrors.confirmPassword"
+                          v-if="adminDisplayErrors.confirmPassword"
                           class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
                           role="alert"
                         >
                           <XCircle class="size-3" />
-                          {{ adminFieldErrors.confirmPassword }}
+                          {{ adminDisplayErrors.confirmPassword }}
                         </p>
                       </div>
                     </div>
@@ -2584,6 +2584,12 @@ const adminFieldErrors = computed<Record<string, string>>(() => {
   return out
 })
 
+/** 输入框下方实际展示的错误 = 本地格式校验 + 远程 preflight 校验（后者优先展示） */
+const adminDisplayErrors = computed<Record<string, string>>(() => ({
+  ...adminFieldErrors.value,
+  ...adminFieldRemoteErrors.value
+}))
+
 // 远程用户名预检：debounce 500ms，失败一律降级为"未校验"而不是阻断 ——
 // 向导阶段后端可能还没起来，网络错误不该让用户卡在这一步。
 type UsernameCheckState = 'idle' | 'checking' | 'ok' | 'invalid'
@@ -2769,6 +2775,38 @@ const goFixIssue = (field: string) => {
   preflightState.value = { running: false, done: false, ok: null, issues: [], database: null }
 }
 
+/**
+ * Step 2 → 3 的权威闸门：管理员字段交后端 preflight 校验。
+ * 密码复杂度策略（大小写/数字/弱口令清单）受 `security_password_policy` 开关控制，
+ * 该开关状态只有后端知道——前端只按长度放行会导致弱口令一路滑到 Step 4 安装时
+ * 才被 422 弹回。preflight 是只读干跑，error 级 issue 直接挡在 Step 2 并展示。
+ * preflight 本身失败（后端未就绪）时放行：安装路径仍有服务端校验兜底。
+ */
+const runAdminPreflight = async (): Promise<boolean> => {
+  const { data, error } = await preflight({
+    admin_username: adminForm.name.trim() || undefined,
+    admin_email: adminForm.email.trim() || undefined,
+    admin_password: adminForm.password || undefined
+  })
+  if (error.value || !data.value) return true
+  const errors = (((data.value as { issues?: PreflightIssue[] }).issues) || []).filter(i => i.level === 'error')
+  if (errors.length === 0) return true
+  // 后端 issues[].field 是 admin_username / admin_email / admin_password 命名空间，
+  // 直接给用户看 message（文案随 Accept-Language 本地化），并标记到对应输入框
+  stepError.value = errors.map(i => i.message).filter(Boolean).join('；')
+  for (const i of errors) {
+    const local = i.field === 'admin_username' ? 'name' : i.field === 'admin_email' ? 'email' : 'password'
+    adminFieldRemoteErrors.value[local] = i.message
+  }
+  return false
+}
+
+/** 远程（后端 preflight）字段级错误：与本地 adminFieldErrors 合并后展示 */
+const adminFieldRemoteErrors = ref<Record<string, string>>({})
+watch([() => adminForm.name, () => adminForm.email, () => adminForm.password, () => adminForm.confirmPassword], () => {
+  adminFieldRemoteErrors.value = {}
+})
+
 // ====== Step4：安装失败结构化展示 ======
 // 后端现在回 error_code + hint（见 backend/api/oobe.py 的 OOBEInstallFailedException），
 // 以前只能把整段异常文案甩给用户，里面可能夹着带口令的 DSN。
@@ -2793,7 +2831,9 @@ const canNext = computed(() => {
       && EMAIL_RE.test(adminForm.email.trim())
       && adminForm.password.length >= PASSWORD_MIN_LENGTH
       && adminForm.password === adminForm.confirmPassword
+      // 远程用户名预检完成前不允许过（checking 结束后会落到 ok/invalid/idle 重新求值）
       && usernameCheckState.value !== 'invalid'
+      && usernameCheckState.value !== 'checking'
     )
   }
   if (step.value === 3) {
@@ -2927,6 +2967,9 @@ const nextStep = async () => {
     }
 
     if (step.value === 2) {
+      // 权威校验闸门：密码策略/用户名/邮箱交后端 preflight 干跑，error 级挡在本步
+      const adminOk = await runAdminPreflight()
+      if (!adminOk) return
       await createAdmin({
         username: adminForm.name.trim(),
         email: adminForm.email.trim(),
