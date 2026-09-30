@@ -6,7 +6,11 @@
   收尾必须 clearOOBEApiBaseOverrideFromStorage() + resetOOBECache(true)，否则 middleware/oobe.global 的 60s 缓存仍把人锁回 /oobe；prod + 明文 HTTP 时 finishSetup 先弹 TLS 二次确认再安装。
 -->
 <template>
-  <div class="relative min-h-screen overflow-hidden text-foreground isolate">
+  <!-- oobe-dark：本页是「壁纸 + 深色毛玻璃」的固定深色设计，表面层大量硬编码半透明白，
+       文字却走 text-foreground 等语义令牌——若跟随全局明暗切换，亮色下 --foreground 变近黑，
+       深底配深字直接不可读。这里在页根把全部语义令牌钉死为暗色值（CSS 变量沿子树继承，
+       SSR 首帧即正确，无水合问题），并向子树声明 color-scheme: dark 修正原生控件配色。 -->
+  <div class="oobe-dark relative min-h-screen overflow-hidden text-foreground isolate">
     <!-- ========== 背景：Bing 每日壁纸 + 多层遮罩 ========== -->
     <div
       class="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat transition-opacity duration-700"
@@ -3160,3 +3164,75 @@ const goAdmin = async () => {
   }
 }
 </script>
+
+<style>
+/* ============ OOBE 固定深色令牌 ============
+   值与 assets/css/main.css 的 .dark 块逐一对应（默认色板，无 palette 覆盖）。
+   只作用于 .oobe-dark 子树：CSS 自定义属性按继承下传，Tailwind 的
+   hsl(var(--xxx)) 工具类在此子树内一律取到暗色值，与全局 html.dark 互不影响。
+   改暗色板时请同步这里，守卫测试见 frontend/tests/unit/oobeDarkScope.spec.ts。 */
+.oobe-dark {
+  color-scheme: dark;
+
+  --background: 224 71% 4%;
+  --foreground: 213 31% 91%;
+
+  --muted: 223 47% 11%;
+  --muted-foreground: 215 16% 57%;
+
+  --popover: 224 71% 4%;
+  --popover-foreground: 215 20% 65%;
+
+  --card: 224 71% 4%;
+  --card-foreground: 213 31% 91%;
+
+  --border: 216 34% 17%;
+  --input: 216 34% 17%;
+
+  --primary: 201 98% 76%;
+  --primary-foreground: 224 71% 4%;
+  --primary-muted: 201 45% 18%;
+  --primary-muted-foreground: 201 90% 82%;
+
+  --secondary: 222 47% 11%;
+  --secondary-foreground: 210 40% 98%;
+
+  --accent: 216 34% 17%;
+  --accent-foreground: 210 40% 98%;
+
+  --ring: 201 98% 76%;
+
+  --info: 199 88% 70%;
+  --info-foreground: 224 71% 4%;
+  --info-muted: 199 48% 20%;
+  --info-muted-foreground: 199 92% 90%;
+
+  --success: 172 72% 62%;
+  --success-foreground: 224 71% 4%;
+  --success-muted: 172 42% 18%;
+  --success-muted-foreground: 172 88% 86%;
+
+  --warning: 38 95% 68%;
+  --warning-foreground: 30 40% 10%;
+  --warning-muted: 38 48% 20%;
+  --warning-muted-foreground: 38 96% 90%;
+
+  --error: 355 84% 72%;
+  --error-foreground: 224 71% 4%;
+  --error-muted: 355 44% 22%;
+  --error-muted-foreground: 355 92% 90%;
+  --destructive: 355 84% 72%;
+  --destructive-foreground: 224 71% 4%;
+  --destructive-muted: 355 44% 22%;
+  --destructive-muted-foreground: 355 92% 90%;
+
+  --sidebar-background: 240 6% 10%;
+  --sidebar-foreground: 240 5% 96%;
+  --sidebar-primary: 201 98% 72%;
+  --sidebar-primary-foreground: 224 71% 4%;
+  --sidebar-accent: 240 4% 16%;
+  --sidebar-accent-foreground: 240 5% 96%;
+  --sidebar-border: 240 4% 16%;
+  --sidebar-ring: 201 98% 76%;
+}
+</style>
