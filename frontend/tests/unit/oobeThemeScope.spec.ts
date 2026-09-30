@@ -70,7 +70,7 @@ const DARK_TONE_TOKENS = [
 const DARK_SURFACE_PINS: Array<[string, string]> = [
   ['主卡片', 'bg-white/70 dark:bg-zinc-950/60'],
   ['桌面侧栏', 'bg-white/65 dark:bg-zinc-950/55'],
-  ['@supports 降级(卡)', 'dark:[@supports_not_(backdrop-filter)]:bg-zinc-950/95'],
+  ['@supports 降级(卡)', 'dark:[@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-zinc-950/95'],
   ['下拉弹层', '!bg-white/95 dark:!bg-zinc-950/95']
 ]
 
@@ -125,6 +125,11 @@ describe('oobe 明暗双主题', () => {
   it('OOBENavbar 品牌文字走 text-foreground，不再硬编码白色', () => {
     expect(navbarVue).not.toMatch(/text-white/)
     expect(navbarVue).toMatch(/text-foreground/)
+  })
+
+  it('main.css 注册 class 版 dark: 变体（禁止退回 prefers-color-scheme 媒体查询）', () => {
+    const mainCss = readFileSync(resolve(root, 'assets/css/main.css'), 'utf-8')
+    expect(mainCss).toMatch(/@custom-variant dark \(&:where\(\.dark, \.dark \*\)\)/)
   })
 
   it('步骤切换过渡存在，且带 prefers-reduced-motion 降级', () => {

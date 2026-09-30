@@ -35,7 +35,7 @@
     <!-- ========== 主体：两栏 ========== -->
     <div class="relative z-10 min-h-[calc(100svh-57px)] grid lg:grid-cols-[300px_1fr] gap-0">
       <!-- 侧边栏：高模糊毛玻璃 -->
-      <aside class="hidden lg:flex flex flex-col border-r border-zinc-900/10 dark:border-white/10 bg-white/65 dark:bg-zinc-950/55 backdrop-blur-[28px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/90 dark:[@supports_not_(backdrop-filter)]:bg-zinc-950/95">
+      <aside class="hidden lg:flex flex flex-col border-r border-zinc-900/10 dark:border-white/10 bg-white/65 dark:bg-zinc-950/55 backdrop-blur-[28px] saturate-[200%] [@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-white/90 dark:[@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-zinc-950/95">
         <div class="p-8 flex flex-col gap-8 flex-1">
           <NuxtLink
             to="/"
@@ -98,7 +98,7 @@
         <!-- 毛玻璃 Card（32px 高模糊，外层渐变描边 + 深邃投影） -->
         <div class="relative w-full max-w-5xl">
           <div class="absolute -inset-px rounded-[28px] bg-[linear-gradient(135deg,rgba(16,185,129,0.45),rgba(14,165,233,0.28)_40%,rgba(56,189,248,0.15)_60%,rgba(20,184,166,0.45))] opacity-80 [mask:linear-gradient(#000_0_0)_content-box,linear-gradient(#000_0_0)] [mask-composite:exclude] pointer-events-none" />
-          <div class="relative rounded-[28px] p-7 md:p-9 bg-white/70 dark:bg-zinc-950/60 backdrop-blur-[32px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/90 dark:[@supports_not_(backdrop-filter)]:bg-zinc-950/95 border border-zinc-900/10 dark:border-white/10 shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)] dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)]">
+          <div class="relative rounded-[28px] p-7 md:p-9 bg-white/70 dark:bg-zinc-950/60 backdrop-blur-[32px] saturate-[200%] [@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-white/90 dark:[@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-zinc-950/95 border border-zinc-900/10 dark:border-white/10 shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)] dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)]">
             <div class="pb-2">
               <div class="lg:hidden flex items-center gap-2 text-sm text-foreground/80 mb-4">
                 <span>{{ t('oobe.step') }} {{ step }}/4</span>
