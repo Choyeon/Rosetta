@@ -15,7 +15,7 @@ import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 
 <template>
   <header
-    class="sticky top-0 z-40 w-full h-16 border-b border-zinc-900/10 bg-white/55 dark:border-white/10 dark:bg-black/20 backdrop-blur-xl"
+    class="sticky top-0 z-40 w-full h-16 border-b border-zinc-900/10 bg-white/55 dark:border-white/10 dark:bg-black/40 backdrop-blur-xl"
   >
     <div class="container mx-auto flex h-full items-center justify-between px-4 lg:px-8">
       <NuxtLink

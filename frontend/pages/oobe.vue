@@ -35,7 +35,7 @@
     <!-- ========== 主体：两栏 ========== -->
     <div class="relative z-10 min-h-[calc(100svh-57px)] grid lg:grid-cols-[300px_1fr] gap-0">
       <!-- 侧边栏：高模糊毛玻璃 -->
-      <aside class="hidden lg:flex flex flex-col border-r border-zinc-900/10 dark:border-white/10 bg-white/65 dark:bg-white/[0.06] backdrop-blur-[28px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/90 dark:[@supports_not_(backdrop-filter)]:bg-zinc-900/95">
+      <aside class="hidden lg:flex flex flex-col border-r border-zinc-900/10 dark:border-white/10 bg-white/65 dark:bg-zinc-950/55 backdrop-blur-[28px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/90 dark:[@supports_not_(backdrop-filter)]:bg-zinc-950/95">
         <div class="p-8 flex flex-col gap-8 flex-1">
           <NuxtLink
             to="/"
@@ -98,7 +98,7 @@
         <!-- 毛玻璃 Card（32px 高模糊，外层渐变描边 + 深邃投影） -->
         <div class="relative w-full max-w-5xl">
           <div class="absolute -inset-px rounded-[28px] bg-[linear-gradient(135deg,rgba(16,185,129,0.45),rgba(14,165,233,0.28)_40%,rgba(56,189,248,0.15)_60%,rgba(20,184,166,0.45))] opacity-80 [mask:linear-gradient(#000_0_0)_content-box,linear-gradient(#000_0_0)] [mask-composite:exclude] pointer-events-none" />
-          <div class="relative rounded-[28px] p-7 md:p-9 bg-white/70 dark:bg-white/[0.07] backdrop-blur-[32px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/90 dark:[@supports_not_(backdrop-filter)]:bg-zinc-900/95 border border-zinc-900/10 dark:border-white/10 shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)] dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)]">
+          <div class="relative rounded-[28px] p-7 md:p-9 bg-white/70 dark:bg-zinc-950/60 backdrop-blur-[32px] saturate-[200%] [@supports_not_(backdrop-filter)]:bg-white/90 dark:[@supports_not_(backdrop-filter)]:bg-zinc-950/95 border border-zinc-900/10 dark:border-white/10 shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)] dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)]">
             <div class="pb-2">
               <div class="lg:hidden flex items-center gap-2 text-sm text-foreground/80 mb-4">
                 <span>{{ t('oobe.step') }} {{ step }}/4</span>
@@ -117,1508 +117,1517 @@
               </div>
             </div>
 
-            <div class="pt-6">
-              <!-- ============== Step 1: 系统环境 + 依赖安装 ============== -->
-              <template v-if="step === 1">
-                <div class="flex flex-col gap-5">
-                  <!-- ============ 卡 1：后端连接配置（O 系列 Step1 顶卡） ============ -->
-                  <div class="flex flex-col gap-4 p-5 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                    <div class="flex items-center justify-between gap-3 flex-wrap">
-                      <div class="flex items-center gap-3 min-w-0">
-                        <div class="size-10 rounded-xl bg-gradient-to-br from-emerald-400/25 via-teal-400/25 to-cyan-400/25 ring-1 ring-zinc-900/10 dark:ring-white/10 flex items-center justify-center shrink-0">
-                          <Server class="size-5 text-emerald-700 dark:text-emerald-300" />
-                        </div>
-                        <div class="min-w-0">
-                          <div class="font-semibold text-foreground">
-                            {{ t('oobe.connTitle') }}
+            <!-- 步骤切换过渡：out-in 轻微位移 + 淡入淡出（prefers-reduced-motion 下禁用，见页尾 style） -->
+            <Transition
+              name="oobe-step"
+              mode="out-in"
+            >
+              <div
+                :key="step"
+                class="pt-6"
+              >
+                <!-- ============== Step 1: 系统环境 + 依赖安装 ============== -->
+                <template v-if="step === 1">
+                  <div class="flex flex-col gap-5">
+                    <!-- ============ 卡 1：后端连接配置（O 系列 Step1 顶卡） ============ -->
+                    <div class="flex flex-col gap-4 p-5 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
+                      <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div class="flex items-center gap-3 min-w-0">
+                          <div class="size-10 rounded-xl bg-gradient-to-br from-emerald-400/25 via-teal-400/25 to-cyan-400/25 ring-1 ring-zinc-900/10 dark:ring-white/10 flex items-center justify-center shrink-0">
+                            <Server class="size-5 text-emerald-700 dark:text-emerald-300" />
                           </div>
-                          <div class="text-xs text-foreground/70 mt-0.5">
-                            {{ t('oobe.connDesc') }}
+                          <div class="min-w-0">
+                            <div class="font-semibold text-foreground">
+                              {{ t('oobe.connTitle') }}
+                            </div>
+                            <div class="text-xs text-foreground/70 mt-0.5">
+                              {{ t('oobe.connDesc') }}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                      <Badge
-                        variant="outline"
-                        class="text-xs !border-zinc-900/15 dark:!border-white/15 text-foreground/85 shrink-0"
-                      >
-                        <component
-                          :is="connMode === 'dev' ? Cpu : Cable"
-                          data-icon="inline-start"
-                          class="mr-1.5 inline-block align-middle -mt-0.5"
-                        />
-                        {{ connMode === 'dev' ? t('oobe.connModeDev') : t('oobe.connModeProd') }}
-                      </Badge>
-                    </div>
-                    <p class="text-sm text-foreground/70 leading-relaxed">
-                      {{ t('oobe.connLongDesc') }}
-                    </p>
-
-                    <!-- 模式 Switch：Dev <-> Prod（FieldSet + FieldLegend 满足 WCAG 可访问命名，避免两个 label 指向同一 Switch id） -->
-                    <FieldSet class="!gap-2 p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.03] dark:bg-white/[0.03]">
-                      <FieldLegend
-                        id="oobe-mode-legend"
-                        class="!mb-1 !text-sm font-semibold text-foreground/90"
-                      >
-                        {{ t('oobe.connMode') }}
-                      </FieldLegend>
-                      <div class="flex items-center gap-3">
-                        <div
-                          class="font-semibold text-sm transition-colors select-none cursor-pointer"
-                          :class="connMode === 'dev' ? 'text-emerald-800 dark:text-emerald-200' : 'text-foreground/70'"
-                          @click="onConnModeChange('dev')"
+                        <Badge
+                          variant="outline"
+                          class="text-xs !border-zinc-900/15 dark:!border-white/15 text-foreground/85 shrink-0"
                         >
-                          {{ t('oobe.connModeDev') }}
-                        </div>
-                        <Separator
-                          orientation="vertical"
-                          class="h-3.5 bg-zinc-900/15 dark:bg-white/15"
-                        />
-                        <Switch
-                          id="oobe-mode-switch"
-                          :model-value="connMode === 'prod'"
-                          :aria-labelledby="'oobe-mode-legend'"
-                          @update:model-value="switchProdMode"
-                        />
-                        <Separator
-                          orientation="vertical"
-                          class="h-3.5 bg-zinc-900/15 dark:bg-white/15"
-                        />
-                        <div
-                          class="font-semibold text-sm transition-colors select-none cursor-pointer"
-                          :class="connMode === 'prod' ? 'text-emerald-800 dark:text-emerald-200' : 'text-foreground/70'"
-                          @click="onConnModeChange('prod')"
-                        >
-                          {{ t('oobe.connModeProd') }}
-                        </div>
-                      </div>
-                      <div class="text-xs text-foreground/65 pt-0.5">
-                        {{ connMode === 'dev' ? t('oobe.connModeDevHint') : t('oobe.connModeProdHint') }}
-                      </div>
-                    </FieldSet>
-
-                    <!-- 后端 API URL Input + 探测按钮 -->
-                    <div class="grid grid-cols-1 gap-3">
-                      <div class="flex items-end gap-3">
-                        <div class="flex-1 min-w-0">
-                          <Label
-                            for="oobe-api-url"
-                            class="text-xs text-foreground/80 mb-1.5 block"
-                          >
-                            {{ t('oobe.connApiUrl') }}
-                          </Label>
-                          <Input
-                            id="oobe-api-url"
-                            ref="apiUrlInputRef"
-                            v-model="connApiUrl"
-                            type="url"
-                            inputmode="url"
-                            spellcheck="false"
-                            autocomplete="off"
-                            :placeholder="connMode === 'dev' ? 'http://127.0.0.1:8000/api' : '/api'"
-                            :aria-invalid="connApiUrlInvalid"
-                            class="bg-zinc-900/[0.04] dark:bg-white/[0.04] !border-zinc-900/15 dark:!border-white/15 placeholder:text-foreground/40 text-foreground"
-                            :class="connApiUrlInvalid ? '!border-rose-600/45 dark:!border-rose-400/40 focus-visible:!ring-rose-400/40' : ''"
-                            @input="resetProbeStateOnEdit"
-                            @keydown.enter.prevent="runProbeBackend"
+                          <component
+                            :is="connMode === 'dev' ? Cpu : Cable"
+                            data-icon="inline-start"
+                            class="mr-1.5 inline-block align-middle -mt-0.5"
                           />
-                          <p
-                            class="text-[11px] mt-1.5 leading-relaxed"
-                            :class="connApiUrlInvalid ? 'text-rose-700 dark:text-rose-300' : 'text-foreground/60'"
-                          >
-                            {{ connApiUrlHintText }}
-                          </p>
-                        </div>
-                        <div class="shrink-0 flex flex-col gap-2">
-                          <Button
-                            size="sm"
-                            class="min-w-[9rem]"
-                            :disabled="backendProbeRunning"
-                            @click="runProbeBackend"
-                          >
-                            <Loader2
-                              v-if="backendProbeRunning"
-                              data-icon="inline-start"
-                              class="animate-spin"
-                            />
-                            <component
-                              :is="Wifi"
-                              v-else-if="backendProbeResult.ok"
-                              data-icon="inline-start"
-                            />
-                            <component
-                              :is="WifiOff"
-                              v-else
-                              data-icon="inline-start"
-                            />
-                            {{ backendProbeRunning ? t('oobe.connProbing') : t('oobe.connProbe') }}
-                          </Button>
-                        </div>
+                          {{ connMode === 'dev' ? t('oobe.connModeDev') : t('oobe.connModeProd') }}
+                        </Badge>
                       </div>
+                      <p class="text-sm text-foreground/70 leading-relaxed">
+                        {{ t('oobe.connLongDesc') }}
+                      </p>
 
-                      <!-- 端口快选（仅 Dev 模式）：ToggleGroup + FieldSet/FieldLegend（shadcn forms 规范 + a11y） -->
-                      <FieldSet
-                        v-if="connMode === 'dev'"
-                        class="!gap-2"
-                      >
+                      <!-- 模式 Switch：Dev <-> Prod（FieldSet + FieldLegend 满足 WCAG 可访问命名，避免两个 label 指向同一 Switch id） -->
+                      <FieldSet class="!gap-2 p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.03] dark:bg-white/[0.03]">
                         <FieldLegend
-                          id="oobe-port-legend"
-                          class="!mb-1 !text-[11px] uppercase tracking-wider text-foreground/65"
+                          id="oobe-mode-legend"
+                          class="!mb-1 !text-sm font-semibold text-foreground/90"
                         >
-                          {{ t('oobe.connPortQuick') }}
+                          {{ t('oobe.connMode') }}
                         </FieldLegend>
-                        <div class="flex flex-wrap gap-2 items-center">
-                          <ToggleGroup
-                            type="single"
-                            :value="connActivePort"
-                            aria-labelledby="oobe-port-legend"
-                            class="justify-start"
-                            @update:model-value="(p) => applyQuickPort(String(p ?? ''))"
+                        <div class="flex items-center gap-3">
+                          <div
+                            class="font-semibold text-sm transition-colors select-none cursor-pointer"
+                            :class="connMode === 'dev' ? 'text-emerald-800 dark:text-emerald-200' : 'text-foreground/70'"
+                            @click="onConnModeChange('dev')"
                           >
-                            <ToggleGroupItem
-                              v-for="p in quickPorts"
-                              :key="p"
-                              :value="p"
-                              size="sm"
-                              class="!border-zinc-900/15 dark:!border-white/15 aria-pressed:!bg-emerald-500/15 aria-pressed:!text-emerald-800 dark:aria-pressed:!text-emerald-200 aria-pressed:!border-emerald-600/40 dark:aria-pressed:!border-emerald-400/30"
-                            >
-                              :{{ p }}
-                            </ToggleGroupItem>
-                          </ToggleGroup>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled
-                            class="!border-dashed !border-zinc-900/15 dark:!border-white/15 text-foreground/65 hover:bg-zinc-900/10 dark:hover:bg-white/10 opacity-80"
-                            @click="customPortNoop"
+                            {{ t('oobe.connModeDev') }}
+                          </div>
+                          <Separator
+                            orientation="vertical"
+                            class="h-3.5 bg-zinc-900/15 dark:bg-white/15"
+                          />
+                          <Switch
+                            id="oobe-mode-switch"
+                            :model-value="connMode === 'prod'"
+                            :aria-labelledby="'oobe-mode-legend'"
+                            @update:model-value="switchProdMode"
+                          />
+                          <Separator
+                            orientation="vertical"
+                            class="h-3.5 bg-zinc-900/15 dark:bg-white/15"
+                          />
+                          <div
+                            class="font-semibold text-sm transition-colors select-none cursor-pointer"
+                            :class="connMode === 'prod' ? 'text-emerald-800 dark:text-emerald-200' : 'text-foreground/70'"
+                            @click="onConnModeChange('prod')"
                           >
-                            {{ t('oobe.connCustomPort') }}
-                          </Button>
+                            {{ t('oobe.connModeProd') }}
+                          </div>
+                        </div>
+                        <div class="text-xs text-foreground/65 pt-0.5">
+                          {{ connMode === 'dev' ? t('oobe.connModeDevHint') : t('oobe.connModeProdHint') }}
                         </div>
                       </FieldSet>
 
-                      <!-- 当前生效地址 -->
-                      <div
-                        v-if="backendProbeApplied && effectiveApiBase"
-                        class="flex items-start gap-2 p-3 rounded-xl border border-emerald-600/35 dark:border-emerald-400/25 bg-emerald-500/[0.06]"
-                      >
-                        <CheckCircle2 class="size-4 text-emerald-700 dark:text-emerald-300 mt-0.5 shrink-0" />
-                        <div class="min-w-0">
-                          <div class="text-[11px] uppercase tracking-wider text-emerald-800/85 dark:text-emerald-200/80">
-                            {{ t('oobe.connCurrentHint') }} · {{ t('oobe.connAppliedHint') }}
+                      <!-- 后端 API URL Input + 探测按钮 -->
+                      <div class="grid grid-cols-1 gap-3">
+                        <div class="flex items-end gap-3">
+                          <div class="flex-1 min-w-0">
+                            <Label
+                              for="oobe-api-url"
+                              class="text-xs text-foreground/80 mb-1.5 block"
+                            >
+                              {{ t('oobe.connApiUrl') }}
+                            </Label>
+                            <Input
+                              id="oobe-api-url"
+                              ref="apiUrlInputRef"
+                              v-model="connApiUrl"
+                              type="url"
+                              inputmode="url"
+                              spellcheck="false"
+                              autocomplete="off"
+                              :placeholder="connMode === 'dev' ? 'http://127.0.0.1:8000/api' : '/api'"
+                              :aria-invalid="connApiUrlInvalid"
+                              class="bg-zinc-900/[0.04] dark:bg-white/[0.04] !border-zinc-900/15 dark:!border-white/15 placeholder:text-foreground/40 text-foreground"
+                              :class="connApiUrlInvalid ? '!border-rose-600/45 dark:!border-rose-400/40 focus-visible:!ring-rose-400/40' : ''"
+                              @input="resetProbeStateOnEdit"
+                              @keydown.enter.prevent="runProbeBackend"
+                            />
+                            <p
+                              class="text-[11px] mt-1.5 leading-relaxed"
+                              :class="connApiUrlInvalid ? 'text-rose-700 dark:text-rose-300' : 'text-foreground/60'"
+                            >
+                              {{ connApiUrlHintText }}
+                            </p>
+                          </div>
+                          <div class="shrink-0 flex flex-col gap-2">
+                            <Button
+                              size="sm"
+                              class="min-w-[9rem]"
+                              :disabled="backendProbeRunning"
+                              @click="runProbeBackend"
+                            >
+                              <Loader2
+                                v-if="backendProbeRunning"
+                                data-icon="inline-start"
+                                class="animate-spin"
+                              />
+                              <component
+                                :is="Wifi"
+                                v-else-if="backendProbeResult.ok"
+                                data-icon="inline-start"
+                              />
+                              <component
+                                :is="WifiOff"
+                                v-else
+                                data-icon="inline-start"
+                              />
+                              {{ backendProbeRunning ? t('oobe.connProbing') : t('oobe.connProbe') }}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <!-- 端口快选（仅 Dev 模式）：ToggleGroup + FieldSet/FieldLegend（shadcn forms 规范 + a11y） -->
+                        <FieldSet
+                          v-if="connMode === 'dev'"
+                          class="!gap-2"
+                        >
+                          <FieldLegend
+                            id="oobe-port-legend"
+                            class="!mb-1 !text-[11px] uppercase tracking-wider text-foreground/65"
+                          >
+                            {{ t('oobe.connPortQuick') }}
+                          </FieldLegend>
+                          <div class="flex flex-wrap gap-2 items-center">
+                            <ToggleGroup
+                              type="single"
+                              :value="connActivePort"
+                              aria-labelledby="oobe-port-legend"
+                              class="justify-start"
+                              @update:model-value="(p) => applyQuickPort(String(p ?? ''))"
+                            >
+                              <ToggleGroupItem
+                                v-for="p in quickPorts"
+                                :key="p"
+                                :value="p"
+                                size="sm"
+                                class="!border-zinc-900/15 dark:!border-white/15 aria-pressed:!bg-emerald-500/15 aria-pressed:!text-emerald-800 dark:aria-pressed:!text-emerald-200 aria-pressed:!border-emerald-600/40 dark:aria-pressed:!border-emerald-400/30"
+                              >
+                                :{{ p }}
+                              </ToggleGroupItem>
+                            </ToggleGroup>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled
+                              class="!border-dashed !border-zinc-900/15 dark:!border-white/15 text-foreground/65 hover:bg-zinc-900/10 dark:hover:bg-white/10 opacity-80"
+                              @click="customPortNoop"
+                            >
+                              {{ t('oobe.connCustomPort') }}
+                            </Button>
+                          </div>
+                        </FieldSet>
+
+                        <!-- 当前生效地址 -->
+                        <div
+                          v-if="backendProbeApplied && effectiveApiBase"
+                          class="flex items-start gap-2 p-3 rounded-xl border border-emerald-600/35 dark:border-emerald-400/25 bg-emerald-500/[0.06]"
+                        >
+                          <CheckCircle2 class="size-4 text-emerald-700 dark:text-emerald-300 mt-0.5 shrink-0" />
+                          <div class="min-w-0">
+                            <div class="text-[11px] uppercase tracking-wider text-emerald-800/85 dark:text-emerald-200/80">
+                              {{ t('oobe.connCurrentHint') }} · {{ t('oobe.connAppliedHint') }}
+                            </div>
+                            <div
+                              class="text-sm font-mono text-emerald-900 dark:text-emerald-100 truncate mt-0.5"
+                              :title="String(effectiveApiBase)"
+                            >
+                              {{ effectiveApiBase }}
+                            </div>
+                          </div>
+                        </div>
+
+                        <!-- 探测结果 -->
+                        <div
+                          v-if="backendProbeResult.stage !== 'init'"
+                          class="flex flex-col gap-2"
+                        >
+                          <div class="flex items-center gap-2 flex-wrap">
+                            <Badge
+                              :variant="backendProbeResult.ok ? 'default' : 'destructive'"
+                              :class="backendProbeResult.ok ? 'bg-emerald-500/90 text-zinc-950 hover:bg-emerald-500/90' : ''"
+                            >
+                              <CheckCircle2
+                                v-if="backendProbeResult.ok"
+                                data-icon="inline-start"
+                              />
+                              <XCircle
+                                v-else
+                                data-icon="inline-start"
+                              />
+                              {{ backendProbeResult.ok ? t('oobe.connProbeOK') : t('oobe.connProbeFail') }}
+                            </Badge>
+                            <Badge
+                              v-if="backendProbeResult.oobeRequired"
+                              variant="outline"
+                              class="!border-amber-600/40 dark:!border-amber-400/30 text-amber-800 dark:text-amber-200"
+                            >
+                              <AlertTriangle data-icon="inline-start" />
+                              {{ t('oobe.connProbeOOBERequired') }}
+                            </Badge>
+                            <Badge
+                              v-else-if="backendProbeResult.oobeComplete"
+                              variant="outline"
+                              class="!border-emerald-600/40 dark:!border-emerald-400/30 text-emerald-800 dark:text-emerald-200"
+                            >
+                              <CheckCircle2 data-icon="inline-start" />
+                              {{ t('oobe.connProbeAlreadyDone') }}
+                            </Badge>
+                            <span class="text-xs text-foreground/60">
+                              <span>{{ backendProbeResult.stage === 'health' ? t('oobe.connProbeStageHealth') : t('oobe.connProbeStageStatus') }}</span>
+                              <span
+                                v-if="backendProbeResult.code"
+                                class="ml-1 font-mono"
+                              >· HTTP {{ backendProbeResult.code }}</span>
+                            </span>
                           </div>
                           <div
-                            class="text-sm font-mono text-emerald-900 dark:text-emerald-100 truncate mt-0.5"
-                            :title="String(effectiveApiBase)"
+                            v-if="!backendProbeResult.ok && watchProbeFailText"
+                            class="text-xs text-rose-200/90 leading-relaxed p-3 rounded-xl bg-rose-500/[0.08] border border-rose-600/30 dark:border-rose-400/20"
                           >
-                            {{ effectiveApiBase }}
+                            {{ watchProbeFailText }}
+                          </div>
+                          <div
+                            v-if="!backendProbeResult.ok"
+                            class="text-xs text-amber-800/90 dark:text-amber-200/85 flex items-center gap-1.5"
+                          >
+                            <AlertTriangle class="size-3.5 shrink-0" />
+                            <span>{{ t('oobe.connProbeHintNext') }}</span>
                           </div>
                         </div>
                       </div>
+                    </div>
 
-                      <!-- 探测结果 -->
+                    <!-- 环境摘要卡片 -->
+                    <div
+                      v-if="systemSummary && typeof systemSummary === 'object'"
+                      class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-2xl bg-zinc-900/[0.05] dark:bg-white/[0.05] border border-zinc-900/10 dark:border-white/10"
+                    >
+                      <div>
+                        <div class="text-[10px] uppercase tracking-wider text-foreground/65">
+                          {{ t('oobe.envOS') }}
+                        </div>
+                        <div
+                          class="text-sm font-medium mt-0.5 truncate text-foreground"
+                          :title="`${systemSummary?.osName ?? ''} (${systemSummary?.osVersion ?? ''})`"
+                        >
+                          {{ systemSummary?.osName || '—' }}
+                        </div>
+                        <div class="text-[11px] text-foreground/65 mt-0.5 truncate">
+                          {{ systemSummary?.architecture || '—' }} · {{ systemSummary?.hostname || '—' }}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-[10px] uppercase tracking-wider text-foreground/65">
+                          {{ t('oobe.envCPU') }}
+                        </div>
+                        <div class="text-sm font-medium mt-0.5 text-foreground">
+                          {{ systemSummary?.cpuCount ?? '?' }} {{ t('oobe.envCores') }}
+                        </div>
+                        <div
+                          class="text-[11px] text-foreground/65 mt-0.5 truncate"
+                          :title="systemSummary?.processor || ''"
+                        >
+                          {{ systemSummary?.processor || '—' }}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-[10px] uppercase tracking-wider text-foreground/65">
+                          {{ t('oobe.envMemory') }}
+                        </div>
+                        <div class="text-sm font-medium mt-0.5 text-foreground">
+                          {{ systemSummary?.totalMemoryGB || '—' }}
+                        </div>
+                        <div class="text-[11px] text-foreground/65 mt-0.5">
+                          {{ t('oobe.envAvail') }}: {{ systemSummary?.availableMemoryGB || '—' }}
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-[10px] uppercase tracking-wider text-foreground/65">
+                          {{ t('oobe.envDisk') }}
+                        </div>
+                        <div class="text-sm font-medium mt-0.5 text-foreground">
+                          {{ systemSummary?.totalDiskGB || '—' }}
+                        </div>
+                        <div class="text-[11px] text-foreground/65 mt-0.5">
+                          {{ t('oobe.envFree') }}: {{ systemSummary?.freeDiskGB || '—' }} · Py{{ systemSummary?.pythonVersion || '—' }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 检测结果 -->
+                    <div class="flex flex-col gap-3">
                       <div
-                        v-if="backendProbeResult.stage !== 'init'"
-                        class="flex flex-col gap-2"
+                        v-for="check in systemChecks"
+                        :key="check.name"
+                        class="flex items-center justify-between p-4 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]"
                       >
-                        <div class="flex items-center gap-2 flex-wrap">
-                          <Badge
-                            :variant="backendProbeResult.ok ? 'default' : 'destructive'"
-                            :class="backendProbeResult.ok ? 'bg-emerald-500/90 text-zinc-950 hover:bg-emerald-500/90' : ''"
+                        <div class="flex items-center gap-3 min-w-0">
+                          <div
+                            class="size-9 rounded-xl flex items-center justify-center shrink-0"
+                            :class="check.status === 'ok' ? 'bg-emerald-500/20 ring-1 ring-emerald-400/30' : check.status === 'warn' ? 'bg-amber-500/20 ring-1 ring-amber-400/30' : 'bg-rose-500/20 ring-1 ring-rose-400/30'"
                           >
                             <CheckCircle2
-                              v-if="backendProbeResult.ok"
-                              data-icon="inline-start"
+                              v-if="check.status === 'ok'"
+                              class="size-4 text-emerald-700 dark:text-emerald-300"
+                            />
+                            <AlertTriangle
+                              v-else-if="check.status === 'warn'"
+                              class="size-4 text-amber-700 dark:text-amber-300"
                             />
                             <XCircle
                               v-else
-                              data-icon="inline-start"
+                              class="size-4 text-rose-700 dark:text-rose-300"
                             />
-                            {{ backendProbeResult.ok ? t('oobe.connProbeOK') : t('oobe.connProbeFail') }}
-                          </Badge>
-                          <Badge
-                            v-if="backendProbeResult.oobeRequired"
-                            variant="outline"
-                            class="!border-amber-600/40 dark:!border-amber-400/30 text-amber-800 dark:text-amber-200"
-                          >
-                            <AlertTriangle data-icon="inline-start" />
-                            {{ t('oobe.connProbeOOBERequired') }}
-                          </Badge>
-                          <Badge
-                            v-else-if="backendProbeResult.oobeComplete"
-                            variant="outline"
-                            class="!border-emerald-600/40 dark:!border-emerald-400/30 text-emerald-800 dark:text-emerald-200"
-                          >
-                            <CheckCircle2 data-icon="inline-start" />
-                            {{ t('oobe.connProbeAlreadyDone') }}
-                          </Badge>
-                          <span class="text-xs text-foreground/60">
-                            <span>{{ backendProbeResult.stage === 'health' ? t('oobe.connProbeStageHealth') : t('oobe.connProbeStageStatus') }}</span>
-                            <span
-                              v-if="backendProbeResult.code"
-                              class="ml-1 font-mono"
-                            >· HTTP {{ backendProbeResult.code }}</span>
-                          </span>
+                          </div>
+                          <div class="min-w-0">
+                            <div class="font-semibold text-sm text-foreground">
+                              {{ check.name }}
+                            </div>
+                            <div class="text-xs text-foreground/70 truncate">
+                              {{ check.detail }}
+                            </div>
+                          </div>
                         </div>
-                        <div
-                          v-if="!backendProbeResult.ok && watchProbeFailText"
-                          class="text-xs text-rose-200/90 leading-relaxed p-3 rounded-xl bg-rose-500/[0.08] border border-rose-600/30 dark:border-rose-400/20"
+                        <Badge
+                          :variant="check.status === 'ok' ? 'default' : check.status === 'warn' ? 'secondary' : 'destructive'"
+                          class="shrink-0"
+                          :class="check.status === 'ok' ? 'bg-emerald-500/90 hover:bg-emerald-500/90 text-zinc-950' : ''"
                         >
-                          {{ watchProbeFailText }}
-                        </div>
-                        <div
-                          v-if="!backendProbeResult.ok"
-                          class="text-xs text-amber-800/90 dark:text-amber-200/85 flex items-center gap-1.5"
-                        >
-                          <AlertTriangle class="size-3.5 shrink-0" />
-                          <span>{{ t('oobe.connProbeHintNext') }}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 环境摘要卡片 -->
-                  <div
-                    v-if="systemSummary && typeof systemSummary === 'object'"
-                    class="grid grid-cols-2 md:grid-cols-4 gap-3 p-4 rounded-2xl bg-zinc-900/[0.05] dark:bg-white/[0.05] border border-zinc-900/10 dark:border-white/10"
-                  >
-                    <div>
-                      <div class="text-[10px] uppercase tracking-wider text-foreground/65">
-                        {{ t('oobe.envOS') }}
+                          {{ check.statusText }}
+                        </Badge>
                       </div>
                       <div
-                        class="text-sm font-medium mt-0.5 truncate text-foreground"
-                        :title="`${systemSummary?.osName ?? ''} (${systemSummary?.osVersion ?? ''})`"
+                        v-if="systemChecks.length === 0"
+                        class="p-8 text-center text-sm text-foreground/70"
                       >
-                        {{ systemSummary?.osName || '—' }}
-                      </div>
-                      <div class="text-[11px] text-foreground/65 mt-0.5 truncate">
-                        {{ systemSummary?.architecture || '—' }} · {{ systemSummary?.hostname || '—' }}
-                      </div>
-                    </div>
-                    <div>
-                      <div class="text-[10px] uppercase tracking-wider text-foreground/65">
-                        {{ t('oobe.envCPU') }}
-                      </div>
-                      <div class="text-sm font-medium mt-0.5 text-foreground">
-                        {{ systemSummary?.cpuCount ?? '?' }} {{ t('oobe.envCores') }}
-                      </div>
-                      <div
-                        class="text-[11px] text-foreground/65 mt-0.5 truncate"
-                        :title="systemSummary?.processor || ''"
-                      >
-                        {{ systemSummary?.processor || '—' }}
-                      </div>
-                    </div>
-                    <div>
-                      <div class="text-[10px] uppercase tracking-wider text-foreground/65">
-                        {{ t('oobe.envMemory') }}
-                      </div>
-                      <div class="text-sm font-medium mt-0.5 text-foreground">
-                        {{ systemSummary?.totalMemoryGB || '—' }}
-                      </div>
-                      <div class="text-[11px] text-foreground/65 mt-0.5">
-                        {{ t('oobe.envAvail') }}: {{ systemSummary?.availableMemoryGB || '—' }}
-                      </div>
-                    </div>
-                    <div>
-                      <div class="text-[10px] uppercase tracking-wider text-foreground/65">
-                        {{ t('oobe.envDisk') }}
-                      </div>
-                      <div class="text-sm font-medium mt-0.5 text-foreground">
-                        {{ systemSummary?.totalDiskGB || '—' }}
-                      </div>
-                      <div class="text-[11px] text-foreground/65 mt-0.5">
-                        {{ t('oobe.envFree') }}: {{ systemSummary?.freeDiskGB || '—' }} · Py{{ systemSummary?.pythonVersion || '—' }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 检测结果 -->
-                  <div class="flex flex-col gap-3">
-                    <div
-                      v-for="check in systemChecks"
-                      :key="check.name"
-                      class="flex items-center justify-between p-4 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]"
-                    >
-                      <div class="flex items-center gap-3 min-w-0">
-                        <div
-                          class="size-9 rounded-xl flex items-center justify-center shrink-0"
-                          :class="check.status === 'ok' ? 'bg-emerald-500/20 ring-1 ring-emerald-400/30' : check.status === 'warn' ? 'bg-amber-500/20 ring-1 ring-amber-400/30' : 'bg-rose-500/20 ring-1 ring-rose-400/30'"
+                        <img
+                          src="/logo/rosetta-primary-icon.png"
+                          alt=""
+                          class="size-6 mx-auto mb-2 opacity-70"
                         >
-                          <CheckCircle2
-                            v-if="check.status === 'ok'"
-                            class="size-4 text-emerald-700 dark:text-emerald-300"
-                          />
-                          <AlertTriangle
-                            v-else-if="check.status === 'warn'"
-                            class="size-4 text-amber-700 dark:text-amber-300"
-                          />
-                          <XCircle
-                            v-else
-                            class="size-4 text-rose-700 dark:text-rose-300"
-                          />
-                        </div>
-                        <div class="min-w-0">
-                          <div class="font-semibold text-sm text-foreground">
-                            {{ check.name }}
-                          </div>
-                          <div class="text-xs text-foreground/70 truncate">
-                            {{ check.detail }}
-                          </div>
-                        </div>
+                        {{ t('oobe.step1EmptyHint') }}
                       </div>
-                      <Badge
-                        :variant="check.status === 'ok' ? 'default' : check.status === 'warn' ? 'secondary' : 'destructive'"
-                        class="shrink-0"
-                        :class="check.status === 'ok' ? 'bg-emerald-500/90 hover:bg-emerald-500/90 text-zinc-950' : ''"
-                      >
-                        {{ check.statusText }}
-                      </Badge>
                     </div>
+
+                    <!-- QW-C：系统检测控制条（重新检测按钮 + 显式 loading）— 专业 CMS 级可操作 -->
                     <div
-                      v-if="systemChecks.length === 0"
-                      class="p-8 text-center text-sm text-foreground/70"
+                      class="flex items-center justify-between gap-3 flex-wrap p-4 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.03] dark:bg-white/[0.03]"
                     >
-                      <img
-                        src="/logo/rosetta-primary-icon.png"
-                        alt=""
-                        class="size-6 mx-auto mb-2 opacity-70"
-                      >
-                      {{ t('oobe.step1EmptyHint') }}
-                    </div>
-                  </div>
-
-                  <!-- QW-C：系统检测控制条（重新检测按钮 + 显式 loading）— 专业 CMS 级可操作 -->
-                  <div
-                    class="flex items-center justify-between gap-3 flex-wrap p-4 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.03] dark:bg-white/[0.03]"
-                  >
-                    <div class="text-xs text-foreground/70">
-                      <span v-if="checking">{{ t('oobe.checking', { default: '正在分析系统环境…' }) }}</span>
-                      <span v-else-if="systemChecks.length > 0">{{ t('oobe.checkedNitems', { n: systemChecks.length, default: `已完成 ${systemChecks.length} 项环境检查` }) }}</span>
-                      <span v-else>{{ t('oobe.step1EmptyHint') }}</span>
-                    </div>
-                    <div class="flex items-center gap-2 shrink-0">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        :disabled="checking || !backendProbeApplied"
-                        @click="runCheckSystem"
-                      >
-                        <RefreshCw
-                          :class="checking ? 'animate-spin' : ''"
-                          data-icon="inline-start"
-                        />
-                        {{ checking ? t('oobe.checking', { default: '正在分析系统环境…' }) : t('oobe.runCheck', { default: '重新检测' }) }}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <!-- 一键依赖安装 -->
-                  <div class="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] p-4">
-                    <div class="flex items-center justify-between gap-3 flex-wrap">
-                      <div class="flex items-center gap-3 min-w-0">
-                        <div class="size-9 rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/25 flex items-center justify-center shrink-0">
-                          <Wrench class="size-4 text-emerald-700 dark:text-emerald-300" />
-                        </div>
-                        <div class="min-w-0">
-                          <div class="font-semibold text-sm text-foreground">
-                            {{ t('oobe.depInstallTitle', '一键安装依赖') }}
-                          </div>
-                          <div class="text-xs text-foreground/70 truncate">
-                            {{ t('oobe.depInstallDesc', '自动安装 uv / Node.js / pnpm 与项目依赖（uv sync + pnpm install）') }}
-                          </div>
-                        </div>
+                      <div class="text-xs text-foreground/70">
+                        <span v-if="checking">{{ t('oobe.checking', { default: '正在分析系统环境…' }) }}</span>
+                        <span v-else-if="systemChecks.length > 0">{{ t('oobe.checkedNitems', { n: systemChecks.length, default: `已完成 ${systemChecks.length} 项环境检查` }) }}</span>
+                        <span v-else>{{ t('oobe.step1EmptyHint') }}</span>
                       </div>
                       <div class="flex items-center gap-2 shrink-0">
-                        <Badge
+                        <Button
+                          size="sm"
                           variant="outline"
-                          class="text-xs border-zinc-900/15 dark:border-white/15 text-foreground/85"
+                          :disabled="checking || !backendProbeApplied"
+                          @click="runCheckSystem"
                         >
-                          {{ depInstalled ? t('oobe.depDone', '已完成') : installRunning ? `${installPercent}%` : t('oobe.depReady', '待安装') }}
-                        </Badge>
-                        <Button
-                          size="sm"
-                          :disabled="!!installRunning || checking"
-                          @click="runInstallDependencies"
-                        >
-                          <Download
-                            v-if="!installRunning"
+                          <RefreshCw
+                            :class="checking ? 'animate-spin' : ''"
                             data-icon="inline-start"
-                            class="mr-2"
                           />
-                          <Loader2
-                            v-else
-                            data-icon="inline-start"
-                            class="mr-2 animate-spin"
-                          />
-                          {{ installRunning ? t('oobe.depInstalling', '安装中…') : t('oobe.depInstallBtn', '一键安装') }}
+                          {{ checking ? t('oobe.checking', { default: '正在分析系统环境…' }) : t('oobe.runCheck', { default: '重新检测' }) }}
                         </Button>
                       </div>
                     </div>
 
-                    <!-- 进度条 -->
-                    <div
-                      v-if="installRunning || depInstalled"
-                      class="flex flex-col gap-1"
-                    >
-                      <div class="h-2 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
-                        <div
-                          class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 transition-all duration-500"
-                          :style="{ width: `${installPercent}%` }"
-                        />
-                      </div>
-                      <div class="text-xs text-foreground/70 flex items-center gap-2">
-                        <span>{{ installStatusText }}</span>
-                        <span
-                          v-if="installSummary.success !== undefined"
-                          class="ml-auto"
-                        >
-                          {{ t('oobe.depSummary', { s: installSummary.success ?? 0, f: installSummary.failed ?? 0 }) }}
-                        </span>
-                      </div>
-                    </div>
-
-                    <!-- 日志终端 -->
-                    <div
-                      v-if="depLogLines.length || installRunning"
-                      class="flex flex-col gap-2"
-                    >
-                      <div class="flex items-center justify-between">
-                        <div class="text-xs font-semibold text-foreground/70 uppercase tracking-wider">
-                          {{ t('oobe.logs', '安装日志') }}
-                        </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          class="h-7 px-2 text-xs text-foreground/80 hover:text-foreground hover:bg-zinc-900/10 dark:hover:bg-white/10"
-                          @click="depLogLines = []"
-                        >
-                          {{ t('oobe.clearLogs', '清空') }}
-                        </Button>
-                      </div>
-                      <div
-                        ref="logBoxRef"
-                        class="h-56 overflow-auto rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-950/70 backdrop-blur text-emerald-300/90 font-mono text-xs p-3 leading-relaxed whitespace-pre-wrap break-words select-all"
-                      >
-                        <template v-if="depLogLines.length === 0">
-                          <span class="text-zinc-500">{{ t('oobe.logsEmpty', '（等待日志输出…）') }}</span>
-                        </template>
-                        <div
-                          v-for="(ln, i) in depLogLines"
-                          :key="i"
-                          :class="ln.level === 'error' ? 'text-rose-600 dark:text-rose-400' : ln.level === 'success' ? 'text-emerald-600 dark:text-emerald-400' : ln.level === 'warn' ? 'text-amber-700 dark:text-amber-300' : ''"
-                        >
-                          <span class="text-zinc-500 mr-2 select-none">{{ ln.time }}</span>{{ ln.text }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </template>
-
-              <!-- ============== Step 2: 管理员账户 ============== -->
-              <template v-else-if="step === 2">
-                <div class="flex flex-col gap-4">
-                  <div class="flex flex-col gap-2">
-                    <Label
-                      for="oobe-admin-name"
-                      class="text-foreground/90"
-                    >{{ t('oobe.adminName') }} *</Label>
-
-                    <div class="relative">
-                      <UserPlus class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
-                      <Input
-                        id="oobe-admin-name"
-                        v-model="adminForm.name"
-                        :placeholder="t('oobe.adminNamePlaceholder')"
-                        class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                      />
-                    </div>
-
-                    <p class="text-sm text-foreground/70">
-                      {{ t('oobe.adminNameDesc') }}
-                    </p>
-
-                    <!-- 用户名校验反馈：本地格式校验 + 远程 check-username（debounce 500ms）。
-                         后端不可达时静默降级为「未校验」，不阻断（安装时仍有服务端校验兜底）。 -->
-                    <p
-                      v-if="usernameCheckState === 'checking'"
-                      class="flex items-center gap-1.5 text-xs text-foreground/65"
-                      aria-live="polite"
-                    >
-                      <Loader2 class="size-3 animate-spin" />
-                      {{ usernameCheckMessage }}
-                    </p>
-                    <p
-                      v-else-if="usernameCheckState === 'ok'"
-                      class="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"
-                      aria-live="polite"
-                    >
-                      <CheckCircle2 class="size-3" />
-                      {{ usernameCheckMessage }}
-                    </p>
-                    <p
-                      v-else-if="adminFieldErrors.name || usernameCheckState === 'invalid'"
-                      class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
-                      role="alert"
-                    >
-                      <XCircle class="size-3" />
-                      {{ adminFieldErrors.name || usernameCheckMessage }}
-                    </p>
-                  </div>
-
-                  <div class="flex flex-col gap-2">
-                    <Label
-                      for="oobe-admin-email"
-                      class="text-foreground/90"
-                    >{{ t('oobe.adminEmail') }} *</Label>
-
-                    <div class="relative">
-                      <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
-                      <Input
-                        id="oobe-admin-email"
-                        v-model="adminForm.email"
-                        type="email"
-                        :placeholder="t('oobe.adminEmailPlaceholder')"
-                        class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                      />
-                    </div>
-
-                    <p
-                      v-if="adminFieldErrors.email"
-                      class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
-                      role="alert"
-                    >
-                      <XCircle class="size-3" />
-                      {{ adminFieldErrors.email }}
-                    </p>
-                  </div>
-
-                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div class="flex flex-col gap-2">
-                      <Label
-                        for="oobe-admin-password"
-                        class="text-foreground/90"
-                      >{{ t('oobe.adminPassword') }} * <span class="text-xs text-foreground/65">({{ t('oobe.adminPasswordHint') }})</span></Label>
-
-                      <div class="relative">
-                        <ShieldCheck class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
-                        <Input
-                          id="oobe-admin-password"
-                          v-model="adminForm.password"
-                          :type="showAdminPassword ? 'text' : 'password'"
-                          :placeholder="t('oobe.adminPasswordPlaceholder')"
-                          class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                        />
-                        <button
-                          type="button"
-                          class="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/60 hover:text-foreground transition-colors"
-                          tabindex="-1"
-                          @click="showAdminPassword = !showAdminPassword"
-                        >
-                          <Eye
-                            v-if="!showAdminPassword"
-                            class="size-4"
-                          />
-                          <EyeOff
-                            v-else
-                            class="size-4"
-                          />
-                        </button>
-                      </div>
-
-                      <!-- 密码强度：只做可视化提示，权威判定在 POST /oobe/preflight -->
-                      <div
-                        v-if="adminForm.password"
-                        class="flex flex-col gap-1.5"
-                      >
-                        <div class="flex items-center gap-2">
-                          <div class="h-1.5 flex-1 rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
-                            <div
-                              class="h-full rounded-full transition-all duration-300"
-                              :class="strengthBarClass"
-                              :style="{ width: `${strengthPercent}%` }"
-                            />
+                    <!-- 一键依赖安装 -->
+                    <div class="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] p-4">
+                      <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div class="flex items-center gap-3 min-w-0">
+                          <div class="size-9 rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/25 flex items-center justify-center shrink-0">
+                            <Wrench class="size-4 text-emerald-700 dark:text-emerald-300" />
                           </div>
-                          <span
-                            class="text-xs font-medium w-8 text-right"
-                            :class="strengthTextClass"
-                          >{{ strengthLabel }}</span>
+                          <div class="min-w-0">
+                            <div class="font-semibold text-sm text-foreground">
+                              {{ t('oobe.depInstallTitle', '一键安装依赖') }}
+                            </div>
+                            <div class="text-xs text-foreground/70 truncate">
+                              {{ t('oobe.depInstallDesc', '自动安装 uv / Node.js / pnpm 与项目依赖（uv sync + pnpm install）') }}
+                            </div>
+                          </div>
                         </div>
-                        <div class="flex flex-wrap gap-x-3 gap-y-1">
-                          <span
-                            v-for="rule in passwordStrength.rules"
-                            :key="rule.id"
-                            class="inline-flex items-center gap-1 text-[11px]"
-                            :class="rule.passed ? 'text-emerald-700/90 dark:text-emerald-300/90' : 'text-foreground/55'"
+                        <div class="flex items-center gap-2 shrink-0">
+                          <Badge
+                            variant="outline"
+                            class="text-xs border-zinc-900/15 dark:border-white/15 text-foreground/85"
                           >
-                            <CheckCircle2
-                              v-if="rule.passed"
-                              class="size-3"
+                            {{ depInstalled ? t('oobe.depDone', '已完成') : installRunning ? `${installPercent}%` : t('oobe.depReady', '待安装') }}
+                          </Badge>
+                          <Button
+                            size="sm"
+                            :disabled="!!installRunning || checking"
+                            @click="runInstallDependencies"
+                          >
+                            <Download
+                              v-if="!installRunning"
+                              data-icon="inline-start"
+                              class="mr-2"
                             />
-                            <XCircle
+                            <Loader2
                               v-else
-                              class="size-3"
+                              data-icon="inline-start"
+                              class="mr-2 animate-spin"
                             />
-                            {{ passwordRuleLabel(rule.id) }}
+                            {{ installRunning ? t('oobe.depInstalling', '安装中…') : t('oobe.depInstallBtn', '一键安装') }}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <!-- 进度条 -->
+                      <div
+                        v-if="installRunning || depInstalled"
+                        class="flex flex-col gap-1"
+                      >
+                        <div class="h-2 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
+                          <div
+                            class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 transition-all duration-500"
+                            :style="{ width: `${installPercent}%` }"
+                          />
+                        </div>
+                        <div class="text-xs text-foreground/70 flex items-center gap-2">
+                          <span>{{ installStatusText }}</span>
+                          <span
+                            v-if="installSummary.success !== undefined"
+                            class="ml-auto"
+                          >
+                            {{ t('oobe.depSummary', { s: installSummary.success ?? 0, f: installSummary.failed ?? 0 }) }}
                           </span>
                         </div>
                       </div>
 
-                      <p
-                        v-if="adminFieldErrors.password"
-                        class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
-                        role="alert"
+                      <!-- 日志终端 -->
+                      <div
+                        v-if="depLogLines.length || installRunning"
+                        class="flex flex-col gap-2"
                       >
-                        <XCircle class="size-3" />
-                        {{ adminFieldErrors.password }}
-                      </p>
-                    </div>
-
-                    <div class="flex flex-col gap-2">
-                      <Label
-                        for="oobe-admin-confirm-password"
-                        class="text-foreground/90"
-                      >{{ t('oobe.adminConfirmPassword') }} *</Label>
-
-                      <div class="relative">
-                        <CheckCircle2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
-                        <Input
-                          id="oobe-admin-confirm-password"
-                          v-model="adminForm.confirmPassword"
-                          :type="showAdminConfirmPassword ? 'text' : 'password'"
-                          :placeholder="t('oobe.adminConfirmPasswordPlaceholder')"
-                          class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                        />
-                        <button
-                          type="button"
-                          class="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/60 hover:text-foreground transition-colors"
-                          tabindex="-1"
-                          @click="showAdminConfirmPassword = !showAdminConfirmPassword"
+                        <div class="flex items-center justify-between">
+                          <div class="text-xs font-semibold text-foreground/70 uppercase tracking-wider">
+                            {{ t('oobe.logs', '安装日志') }}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            class="h-7 px-2 text-xs text-foreground/80 hover:text-foreground hover:bg-zinc-900/10 dark:hover:bg-white/10"
+                            @click="depLogLines = []"
+                          >
+                            {{ t('oobe.clearLogs', '清空') }}
+                          </Button>
+                        </div>
+                        <div
+                          ref="logBoxRef"
+                          class="h-56 overflow-auto rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-950/70 backdrop-blur text-emerald-300/90 font-mono text-xs p-3 leading-relaxed whitespace-pre-wrap break-words select-all"
                         >
-                          <Eye
-                            v-if="!showAdminConfirmPassword"
-                            class="size-4"
-                          />
-                          <EyeOff
-                            v-else
-                            class="size-4"
-                          />
-                        </button>
+                          <template v-if="depLogLines.length === 0">
+                            <span class="text-zinc-500">{{ t('oobe.logsEmpty', '（等待日志输出…）') }}</span>
+                          </template>
+                          <div
+                            v-for="(ln, i) in depLogLines"
+                            :key="i"
+                            :class="ln.level === 'error' ? 'text-rose-600 dark:text-rose-400' : ln.level === 'success' ? 'text-emerald-600 dark:text-emerald-400' : ln.level === 'warn' ? 'text-amber-700 dark:text-amber-300' : ''"
+                          >
+                            <span class="text-zinc-500 mr-2 select-none">{{ ln.time }}</span>{{ ln.text }}
+                          </div>
+                        </div>
                       </div>
-
-                      <p
-                        v-if="adminFieldErrors.confirmPassword"
-                        class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
-                        role="alert"
-                      >
-                        <XCircle class="size-3" />
-                        {{ adminFieldErrors.confirmPassword }}
-                      </p>
                     </div>
                   </div>
+                </template>
 
-                  <!-- 分步提交失败的可见反馈（以前只进 console，用户点了没反应） -->
-                  <p
-                    v-if="stepError && step === 2"
-                    class="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300"
-                    role="alert"
-                  >
-                    <XCircle class="size-3.5 shrink-0 mt-0.5" />
-                    {{ stepError }}
-                  </p>
-                </div>
-              </template>
-
-              <!-- ============== Step 3: 站点 + 数据库 + 特性开关 ============== -->
-              <template v-else-if="step === 3">
-                <div class="flex flex-col gap-6">
-                  <!-- 站点信息 -->
+                <!-- ============== Step 2: 管理员账户 ============== -->
+                <template v-else-if="step === 2">
                   <div class="flex flex-col gap-4">
-                    <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <Globe2 class="size-4 text-emerald-700 dark:text-emerald-300" />
-                      <span>{{ t('oobe.groupSite', '站点信息') }}</span>
-                    </div>
-
                     <div class="flex flex-col gap-2">
                       <Label
-                        for="oobe-site-name"
+                        for="oobe-admin-name"
                         class="text-foreground/90"
-                      >{{ t('oobe.siteName') }} *</Label>
+                      >{{ t('oobe.adminName') }} *</Label>
 
                       <div class="relative">
-                        <Globe2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                        <UserPlus class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                         <Input
-                          id="oobe-site-name"
-                          v-model="siteForm.name"
-                          :placeholder="t('oobe.siteNamePlaceholder')"
-                          class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                        />
-                      </div>
-                    </div>
-
-                    <div class="flex flex-col gap-2">
-                      <Label
-                        for="oobe-site-url"
-                        class="text-foreground/90"
-                      >{{ t('oobe.siteUrl') }} *</Label>
-
-                      <div class="relative">
-                        <LinkIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
-                        <Input
-                          id="oobe-site-url"
-                          v-model="siteForm.siteUrl"
-                          type="url"
-                          :placeholder="t('oobe.siteUrlPlaceholder')"
+                          id="oobe-admin-name"
+                          v-model="adminForm.name"
+                          :placeholder="t('oobe.adminNamePlaceholder')"
                           class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                         />
                       </div>
 
                       <p class="text-sm text-foreground/70">
-                        {{ t('oobe.siteUrlDesc') }}
+                        {{ t('oobe.adminNameDesc') }}
+                      </p>
+
+                      <!-- 用户名校验反馈：本地格式校验 + 远程 check-username（debounce 500ms）。
+                         后端不可达时静默降级为「未校验」，不阻断（安装时仍有服务端校验兜底）。 -->
+                      <p
+                        v-if="usernameCheckState === 'checking'"
+                        class="flex items-center gap-1.5 text-xs text-foreground/65"
+                        aria-live="polite"
+                      >
+                        <Loader2 class="size-3 animate-spin" />
+                        {{ usernameCheckMessage }}
+                      </p>
+                      <p
+                        v-else-if="usernameCheckState === 'ok'"
+                        class="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"
+                        aria-live="polite"
+                      >
+                        <CheckCircle2 class="size-3" />
+                        {{ usernameCheckMessage }}
+                      </p>
+                      <p
+                        v-else-if="adminFieldErrors.name || usernameCheckState === 'invalid'"
+                        class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                        role="alert"
+                      >
+                        <XCircle class="size-3" />
+                        {{ adminFieldErrors.name || usernameCheckMessage }}
                       </p>
                     </div>
 
                     <div class="flex flex-col gap-2">
                       <Label
-                        for="oobe-site-description"
+                        for="oobe-admin-email"
                         class="text-foreground/90"
-                      >{{ t('oobe.siteDescription') }}</Label>
+                      >{{ t('oobe.adminEmail') }} *</Label>
 
-                      <Textarea
-                        id="oobe-site-description"
-                        v-model="siteForm.description"
-                        :placeholder="t('oobe.siteDescriptionPlaceholder')"
-                        rows="3"
-                        class="resize-none !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                      />
+                      <div class="relative">
+                        <Mail class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                        <Input
+                          id="oobe-admin-email"
+                          v-model="adminForm.email"
+                          type="email"
+                          :placeholder="t('oobe.adminEmailPlaceholder')"
+                          class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                        />
+                      </div>
+
+                      <p
+                        v-if="adminFieldErrors.email"
+                        class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                        role="alert"
+                      >
+                        <XCircle class="size-3" />
+                        {{ adminFieldErrors.email }}
+                      </p>
                     </div>
 
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div class="flex flex-col gap-2">
                         <Label
-                          for="oobe-default-language"
+                          for="oobe-admin-password"
                           class="text-foreground/90"
-                        >{{ t('oobe.defaultLanguage') }}</Label>
-                        <Select v-model="siteForm.locale">
-                          <SelectTrigger
-                            id="oobe-default-language"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-emerald-400/40"
+                        >{{ t('oobe.adminPassword') }} * <span class="text-xs text-foreground/65">({{ t('oobe.adminPasswordHint') }})</span></Label>
+
+                        <div class="relative">
+                          <ShieldCheck class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                          <Input
+                            id="oobe-admin-password"
+                            v-model="adminForm.password"
+                            :type="showAdminPassword ? 'text' : 'password'"
+                            :placeholder="t('oobe.adminPasswordPlaceholder')"
+                            class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                          />
+                          <button
+                            type="button"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/60 hover:text-foreground transition-colors"
+                            tabindex="-1"
+                            @click="showAdminPassword = !showAdminPassword"
                           >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent class="!bg-white/95 dark:!bg-zinc-900/95 backdrop-blur-xl !border-zinc-900/10 dark:!border-white/10">
-                            <SelectItem value="zh">
-                              简体中文
-                            </SelectItem>
-                            <SelectItem value="en">
-                              English
-                            </SelectItem>
-                            <SelectItem value="ja">
-                              日本語
-                            </SelectItem>
-                            <SelectItem value="zh_Hant">
-                              繁體中文
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
+                            <Eye
+                              v-if="!showAdminPassword"
+                              class="size-4"
+                            />
+                            <EyeOff
+                              v-else
+                              class="size-4"
+                            />
+                          </button>
+                        </div>
+
+                        <!-- 密码强度：只做可视化提示，权威判定在 POST /oobe/preflight -->
+                        <div
+                          v-if="adminForm.password"
+                          class="flex flex-col gap-1.5"
+                        >
+                          <div class="flex items-center gap-2">
+                            <div class="h-1.5 flex-1 rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
+                              <div
+                                class="h-full rounded-full transition-all duration-300"
+                                :class="strengthBarClass"
+                                :style="{ width: `${strengthPercent}%` }"
+                              />
+                            </div>
+                            <span
+                              class="text-xs font-medium w-8 text-right"
+                              :class="strengthTextClass"
+                            >{{ strengthLabel }}</span>
+                          </div>
+                          <div class="flex flex-wrap gap-x-3 gap-y-1">
+                            <span
+                              v-for="rule in passwordStrength.rules"
+                              :key="rule.id"
+                              class="inline-flex items-center gap-1 text-[11px]"
+                              :class="rule.passed ? 'text-emerald-700/90 dark:text-emerald-300/90' : 'text-foreground/55'"
+                            >
+                              <CheckCircle2
+                                v-if="rule.passed"
+                                class="size-3"
+                              />
+                              <XCircle
+                                v-else
+                                class="size-3"
+                              />
+                              {{ passwordRuleLabel(rule.id) }}
+                            </span>
+                          </div>
+                        </div>
+
+                        <p
+                          v-if="adminFieldErrors.password"
+                          class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                          role="alert"
+                        >
+                          <XCircle class="size-3" />
+                          {{ adminFieldErrors.password }}
+                        </p>
                       </div>
 
                       <div class="flex flex-col gap-2">
                         <Label
-                          for="oobe-seo-keywords"
+                          for="oobe-admin-confirm-password"
                           class="text-foreground/90"
-                        >{{ t('oobe.seoKeywords') }}</Label>
+                        >{{ t('oobe.adminConfirmPassword') }} *</Label>
 
                         <div class="relative">
-                          <Tag class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                          <CheckCircle2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
                           <Input
-                            id="oobe-seo-keywords"
-                            v-model="siteForm.keywords"
-                            :placeholder="t('oobe.seoKeywordsPlaceholder')"
+                            id="oobe-admin-confirm-password"
+                            v-model="adminForm.confirmPassword"
+                            :type="showAdminConfirmPassword ? 'text' : 'password'"
+                            :placeholder="t('oobe.adminConfirmPasswordPlaceholder')"
+                            class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                          />
+                          <button
+                            type="button"
+                            class="absolute right-3 top-1/2 -translate-y-1/2 text-foreground/60 hover:text-foreground transition-colors"
+                            tabindex="-1"
+                            @click="showAdminConfirmPassword = !showAdminConfirmPassword"
+                          >
+                            <Eye
+                              v-if="!showAdminConfirmPassword"
+                              class="size-4"
+                            />
+                            <EyeOff
+                              v-else
+                              class="size-4"
+                            />
+                          </button>
+                        </div>
+
+                        <p
+                          v-if="adminFieldErrors.confirmPassword"
+                          class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                          role="alert"
+                        >
+                          <XCircle class="size-3" />
+                          {{ adminFieldErrors.confirmPassword }}
+                        </p>
+                      </div>
+                    </div>
+
+                    <!-- 分步提交失败的可见反馈（以前只进 console，用户点了没反应） -->
+                    <p
+                      v-if="stepError && step === 2"
+                      class="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300"
+                      role="alert"
+                    >
+                      <XCircle class="size-3.5 shrink-0 mt-0.5" />
+                      {{ stepError }}
+                    </p>
+                  </div>
+                </template>
+
+                <!-- ============== Step 3: 站点 + 数据库 + 特性开关 ============== -->
+                <template v-else-if="step === 3">
+                  <div class="flex flex-col gap-6">
+                    <!-- 站点信息 -->
+                    <div class="flex flex-col gap-4">
+                      <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Globe2 class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        <span>{{ t('oobe.groupSite', '站点信息') }}</span>
+                      </div>
+
+                      <div class="flex flex-col gap-2">
+                        <Label
+                          for="oobe-site-name"
+                          class="text-foreground/90"
+                        >{{ t('oobe.siteName') }} *</Label>
+
+                        <div class="relative">
+                          <Globe2 class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                          <Input
+                            id="oobe-site-name"
+                            v-model="siteForm.name"
+                            :placeholder="t('oobe.siteNamePlaceholder')"
                             class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                           />
                         </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <!-- 环境与数据库 -->
-                  <Separator class="my-1 !bg-zinc-900/10 dark:!bg-white/10" />
-                  <div class="flex flex-col gap-4">
-                    <div class="flex items-center justify-between gap-3 flex-wrap">
-                      <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <Database class="size-4 text-emerald-700 dark:text-emerald-300" />
-                        <span>{{ t('oobe.groupEnv', '运行环境与数据库') }}</span>
+                      <div class="flex flex-col gap-2">
+                        <Label
+                          for="oobe-site-url"
+                          class="text-foreground/90"
+                        >{{ t('oobe.siteUrl') }} *</Label>
+
+                        <div class="relative">
+                          <LinkIcon class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                          <Input
+                            id="oobe-site-url"
+                            v-model="siteForm.siteUrl"
+                            type="url"
+                            :placeholder="t('oobe.siteUrlPlaceholder')"
+                            class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                          />
+                        </div>
+
+                        <p class="text-sm text-foreground/70">
+                          {{ t('oobe.siteUrlDesc') }}
+                        </p>
                       </div>
-                      <div class="flex items-center gap-2">
-                        <Badge
-                          variant="outline"
-                          class="text-xs border-zinc-900/15 dark:border-white/15 text-foreground/85"
-                        >
-                          {{ siteForm.environment === 'production' ? t('oobe.envProd', '生产') : t('oobe.envDev', '开发') }}
-                        </Badge>
-                        <Switch
-                          v-model="isProductionEnv"
+
+                      <div class="flex flex-col gap-2">
+                        <Label
+                          for="oobe-site-description"
+                          class="text-foreground/90"
+                        >{{ t('oobe.siteDescription') }}</Label>
+
+                        <Textarea
+                          id="oobe-site-description"
+                          v-model="siteForm.description"
+                          :placeholder="t('oobe.siteDescriptionPlaceholder')"
+                          rows="3"
+                          class="resize-none !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                         />
                       </div>
-                    </div>
 
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      <div class="flex flex-col gap-2">
-                        <Label
-                          for="oobe-db-type"
-                          class="text-foreground/90"
-                        >{{ t('oobe.dbType', '数据库类型') }}</Label>
-                        <Select v-model="siteForm.databaseType">
-                          <SelectTrigger
-                            id="oobe-db-type"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-emerald-400/40"
-                          >
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent class="!bg-white/95 dark:!bg-zinc-900/95 backdrop-blur-xl !border-zinc-900/10 dark:!border-white/10">
-                            <SelectItem value="sqlite">
-                              SQLite {{ t('oobe.dbNoInstall', '（无需安装）') }}
-                            </SelectItem>
-                            <SelectItem value="postgresql">
-                              PostgreSQL {{ t('oobe.dbNeedInstall', '（需单独安装）') }}
-                            </SelectItem>
-                          </SelectContent>
-                        </Select>
-                        <p
-                          v-if="siteForm.databaseType === 'sqlite'"
-                          class="text-sm text-foreground/70"
-                        >
-                          {{ t('oobe.sqliteHint', '适合单机/演示，零配置即用') }}
-                        </p>
-                        <p
-                          v-else
-                          class="text-sm text-foreground/70"
-                        >
-                          {{ t('oobe.pgHint', '推荐生产环境使用，需填写下方连接信息') }}
-                        </p>
-                      </div>
-                      <div class="flex flex-col gap-2">
-                        <Label
-                          for="oobe-redis-enabled"
-                          class="text-foreground/90"
-                        >{{ t('oobe.redis', 'Redis 缓存') }}</Label>
-                        <div class="flex items-center h-11 px-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] justify-between">
-                          <span class="text-sm text-foreground/75">{{ siteForm.redisEnabled ? t('oobe.on', '开启') : t('oobe.off', '关闭') }}</span>
-                          <Switch
-                            id="oobe-redis-enabled"
-                            v-model="siteForm.redisEnabled"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <template v-if="siteForm.databaseType === 'postgresql'">
-                      <div class="grid grid-cols-2 gap-4">
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div class="flex flex-col gap-2">
                           <Label
-                            for="oobe-db-host"
+                            for="oobe-default-language"
                             class="text-foreground/90"
-                          >{{ t('oobe.dbHost', '主机') }}</Label>
-
-                          <Input
-                            id="oobe-db-host"
-                            v-model="siteForm.dbHost"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                            placeholder="localhost"
-                          />
+                          >{{ t('oobe.defaultLanguage') }}</Label>
+                          <Select v-model="siteForm.locale">
+                            <SelectTrigger
+                              id="oobe-default-language"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-emerald-400/40"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent class="!bg-white/95 dark:!bg-zinc-950/95 backdrop-blur-xl !border-zinc-900/10 dark:!border-white/10">
+                              <SelectItem value="zh">
+                                简体中文
+                              </SelectItem>
+                              <SelectItem value="en">
+                                English
+                              </SelectItem>
+                              <SelectItem value="ja">
+                                日本語
+                              </SelectItem>
+                              <SelectItem value="zh_Hant">
+                                繁體中文
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
                         </div>
+
                         <div class="flex flex-col gap-2">
                           <Label
-                            for="oobe-db-port"
+                            for="oobe-seo-keywords"
                             class="text-foreground/90"
-                          >{{ t('oobe.dbPort', '端口') }}</Label>
+                          >{{ t('oobe.seoKeywords') }}</Label>
 
-                          <Input
-                            id="oobe-db-port"
-                            v-model.number="siteForm.dbPort"
-                            type="number"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                            placeholder="5432"
-                          />
-                        </div>
-                        <div class="flex flex-col gap-2">
-                          <Label
-                            for="oobe-db-name"
-                            class="text-foreground/90"
-                          >{{ t('oobe.dbName', '数据库名') }}</Label>
-
-                          <Input
-                            id="oobe-db-name"
-                            v-model="siteForm.dbName"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                            placeholder="rosetta"
-                          />
-                        </div>
-                        <div class="flex flex-col gap-2">
-                          <Label
-                            for="oobe-db-user"
-                            class="text-foreground/90"
-                          >{{ t('oobe.dbUser', '用户名') }}</Label>
-
-                          <Input
-                            id="oobe-db-user"
-                            v-model="siteForm.dbUser"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                            placeholder="postgres"
-                          />
-                        </div>
-                        <div class="flex flex-col gap-2 col-span-2">
-                          <Label
-                            for="oobe-db-password"
-                            class="text-foreground/90"
-                          >{{ t('oobe.dbPassword', '密码') }}</Label>
-
-                          <Input
-                            id="oobe-db-password"
-                            v-model="siteForm.dbPassword"
-                            type="password"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                          />
-                        </div>
-                      </div>
-
-                      <!-- 连接体检：POST /oobe/test-database（密码走请求体，不进 query string / 访问日志） -->
-                      <div class="flex flex-col gap-2">
-                        <div class="flex items-center justify-between gap-3">
-                          <span class="text-xs text-foreground/65">
-                            {{ dbTestDirty ? t('oobe.dbTestStale', '连接参数已修改，请重新测试') : t('oobe.dbTestHint', '安装前建议先测试连接，避免装到一半才报错') }}
-                          </span>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            class="shrink-0 !border-zinc-900/15 dark:!border-white/15 bg-zinc-900/[0.04] dark:bg-white/[0.04] text-foreground hover:bg-zinc-900/10 dark:hover:bg-white/10"
-                            :disabled="dbTest.status === 'testing'"
-                            @click="runDbTest"
-                          >
-                            <Loader2
-                              v-if="dbTest.status === 'testing'"
-                              data-icon="inline-start"
-                              class="animate-spin"
+                          <div class="relative">
+                            <Tag class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-foreground/60" />
+                            <Input
+                              id="oobe-seo-keywords"
+                              v-model="siteForm.keywords"
+                              :placeholder="t('oobe.seoKeywordsPlaceholder')"
+                              class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                             />
-                            <Cable
-                              v-else
-                              data-icon="inline-start"
-                            />
-                            {{ dbTest.status === 'testing' ? t('oobe.dbTesting', '正在连接数据库…') : t('oobe.dbTestBtn', '测试连接') }}
-                          </Button>
-                        </div>
-
-                        <div
-                          v-if="dbTest.status === 'ok' || dbTest.status === 'error'"
-                          class="flex items-start gap-2.5 p-3 rounded-xl border"
-                          :class="dbTest.status === 'ok'
-                            ? 'border-emerald-400/35 bg-emerald-500/[0.07]'
-                            : 'border-rose-400/35 bg-rose-500/[0.07]'"
-                          role="status"
-                          aria-live="polite"
-                        >
-                          <CheckCircle2
-                            v-if="dbTest.status === 'ok'"
-                            class="size-4 shrink-0 mt-0.5 text-emerald-700 dark:text-emerald-300"
-                          />
-                          <XCircle
-                            v-else
-                            class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300"
-                          />
-                          <div class="flex-1 min-w-0 space-y-1">
-                            <div
-                              class="text-sm font-medium"
-                              :class="dbTest.status === 'ok' ? 'text-emerald-800 dark:text-emerald-200' : 'text-rose-800 dark:text-rose-200'"
-                            >
-                              {{ dbTest.message }}
-                            </div>
-                            <div
-                              v-if="dbTest.hint"
-                              class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
-                            >
-                              {{ dbTest.hint }}
-                            </div>
-                            <div
-                              v-if="dbTest.code && dbTest.code !== 'DB_OK'"
-                              class="text-[11px] font-mono text-foreground/50"
-                            >
-                              {{ dbTest.code }}
-                            </div>
                           </div>
                         </div>
                       </div>
-                    </template>
-                    <template v-else>
-                      <div class="flex flex-col gap-2">
-                        <Label
-                          for="oobe-db-path"
-                          class="text-foreground/90"
-                        >{{ t('oobe.dbPath', 'SQLite 文件路径') }}</Label>
+                    </div>
 
-                        <Input
-                          id="oobe-db-path"
-                          v-model="siteForm.dbPath"
-                          class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                          placeholder="rosetta.db"
-                        />
-                      </div>
-                    </template>
-
-                    <template v-if="siteForm.redisEnabled">
-                      <div class="grid grid-cols-3 gap-4">
-                        <div class="flex flex-col gap-2">
-                          <Label
-                            for="oobe-redis-host"
-                            class="text-foreground/90"
-                          >{{ t('oobe.redisHost', 'Redis 主机') }}</Label>
-
-                          <Input
-                            id="oobe-redis-host"
-                            v-model="siteForm.redisHost"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                            placeholder="localhost"
-                          />
+                    <!-- 环境与数据库 -->
+                    <Separator class="my-1 !bg-zinc-900/10 dark:!bg-white/10" />
+                    <div class="flex flex-col gap-4">
+                      <div class="flex items-center justify-between gap-3 flex-wrap">
+                        <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                          <Database class="size-4 text-emerald-700 dark:text-emerald-300" />
+                          <span>{{ t('oobe.groupEnv', '运行环境与数据库') }}</span>
                         </div>
-                        <div class="flex flex-col gap-2">
-                          <Label
-                            for="oobe-redis-port"
-                            class="text-foreground/90"
-                          >{{ t('oobe.redisPort', '端口') }}</Label>
-
-                          <Input
-                            id="oobe-redis-port"
-                            v-model.number="siteForm.redisPort"
-                            type="number"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
-                            placeholder="6379"
-                          />
-                        </div>
-                        <div class="flex flex-col gap-2">
-                          <Label
-                            for="oobe-redis-password"
-                            class="text-foreground/90"
-                          >{{ t('oobe.redisPassword', '密码') }}</Label>
-
-                          <Input
-                            id="oobe-redis-password"
-                            v-model="siteForm.redisPassword"
-                            type="password"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                        <div class="flex items-center gap-2">
+                          <Badge
+                            variant="outline"
+                            class="text-xs border-zinc-900/15 dark:border-white/15 text-foreground/85"
+                          >
+                            {{ siteForm.environment === 'production' ? t('oobe.envProd', '生产') : t('oobe.envDev', '开发') }}
+                          </Badge>
+                          <Switch
+                            v-model="isProductionEnv"
                           />
                         </div>
                       </div>
-                    </template>
-                  </div>
 
-                  <!-- 特性开关 -->
-                  <Separator class="my-1 !bg-zinc-900/10 dark:!bg-white/10" />
-                  <div class="flex flex-col gap-4">
-                    <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                      <Sparkles class="size-4 text-emerald-700 dark:text-emerald-300" />
-                      <span>{{ t('oobe.groupFeatures', '功能开关') }}</span>
-                    </div>
-                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fComments', '评论') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fCommentsDesc', '允许访客在文章下留言') }}</div>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div class="flex flex-col gap-2">
+                          <Label
+                            for="oobe-db-type"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbType', '数据库类型') }}</Label>
+                          <Select v-model="siteForm.databaseType">
+                            <SelectTrigger
+                              id="oobe-db-type"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-emerald-400/40"
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent class="!bg-white/95 dark:!bg-zinc-950/95 backdrop-blur-xl !border-zinc-900/10 dark:!border-white/10">
+                              <SelectItem value="sqlite">
+                                SQLite {{ t('oobe.dbNoInstall', '（无需安装）') }}
+                              </SelectItem>
+                              <SelectItem value="postgresql">
+                                PostgreSQL {{ t('oobe.dbNeedInstall', '（需单独安装）') }}
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <p
+                            v-if="siteForm.databaseType === 'sqlite'"
+                            class="text-sm text-foreground/70"
+                          >
+                            {{ t('oobe.sqliteHint', '适合单机/演示，零配置即用') }}
+                          </p>
+                          <p
+                            v-else
+                            class="text-sm text-foreground/70"
+                          >
+                            {{ t('oobe.pgHint', '推荐生产环境使用，需填写下方连接信息') }}
+                          </p>
                         </div>
-                        <Switch v-model="siteForm.enableComments" />
-                      </label>
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fRegister', '开放注册') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fRegisterDesc', '允许新用户自助注册（默认关）') }}</div>
+                        <div class="flex flex-col gap-2">
+                          <Label
+                            for="oobe-redis-enabled"
+                            class="text-foreground/90"
+                          >{{ t('oobe.redis', 'Redis 缓存') }}</Label>
+                          <div class="flex items-center h-11 px-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] justify-between">
+                            <span class="text-sm text-foreground/75">{{ siteForm.redisEnabled ? t('oobe.on', '开启') : t('oobe.off', '关闭') }}</span>
+                            <Switch
+                              id="oobe-redis-enabled"
+                              v-model="siteForm.redisEnabled"
+                            />
+                          </div>
                         </div>
-                        <Switch v-model="siteForm.enableRegistration" />
-                      </label>
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fRss', 'RSS 订阅') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fRssDesc', '生成 /feed.xml 订阅源') }}</div>
-                        </div>
-                        <Switch v-model="siteForm.enableRss" />
-                      </label>
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fBing', 'Bing 每日壁纸') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fBingDesc', '首页展示 Bing 每日壁纸背景') }}</div>
-                        </div>
-                        <Switch v-model="siteForm.enableBingWallpaper" />
-                      </label>
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fPagefind', '站内搜索') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fPagefindDesc', '启用 Pagefind 客户端全文搜索') }}</div>
-                        </div>
-                        <Switch v-model="siteForm.enablePagefindSearch" />
-                      </label>
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fCrypto', '加密文章') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fCryptoDesc', '发布受密码保护的加密文章') }}</div>
-                        </div>
-                        <Switch v-model="siteForm.enableEncryptedPosts" />
-                      </label>
-                      <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors sm:col-span-2 text-foreground">
-                        <div>
-                          <div class="text-sm font-medium">{{ t('oobe.fMusic', '背景音乐播放器') }}</div>
-                          <div class="text-xs text-foreground/70">{{ t('oobe.fMusicDesc', '侧边栏显示音乐播放组件（需在后台配置播放源）') }}</div>
-                        </div>
-                        <Switch v-model="siteForm.enableMusicPlayer" />
-                      </label>
-                    </div>
-                  </div>
+                      </div>
 
-                  <!-- 服务端预检结果（POST /oobe/preflight 只读干跑，error 阻断安装） -->
-                  <div
-                    v-if="preflightState.done && (preflightErrors.length || preflightWarns.length)"
-                    class="flex flex-col gap-2"
-                  >
+                      <template v-if="siteForm.databaseType === 'postgresql'">
+                        <div class="grid grid-cols-2 gap-4">
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-db-host"
+                              class="text-foreground/90"
+                            >{{ t('oobe.dbHost', '主机') }}</Label>
+
+                            <Input
+                              id="oobe-db-host"
+                              v-model="siteForm.dbHost"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              placeholder="localhost"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-db-port"
+                              class="text-foreground/90"
+                            >{{ t('oobe.dbPort', '端口') }}</Label>
+
+                            <Input
+                              id="oobe-db-port"
+                              v-model.number="siteForm.dbPort"
+                              type="number"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              placeholder="5432"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-db-name"
+                              class="text-foreground/90"
+                            >{{ t('oobe.dbName', '数据库名') }}</Label>
+
+                            <Input
+                              id="oobe-db-name"
+                              v-model="siteForm.dbName"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              placeholder="rosetta"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-db-user"
+                              class="text-foreground/90"
+                            >{{ t('oobe.dbUser', '用户名') }}</Label>
+
+                            <Input
+                              id="oobe-db-user"
+                              v-model="siteForm.dbUser"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              placeholder="postgres"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-2 col-span-2">
+                            <Label
+                              for="oobe-db-password"
+                              class="text-foreground/90"
+                            >{{ t('oobe.dbPassword', '密码') }}</Label>
+
+                            <Input
+                              id="oobe-db-password"
+                              v-model="siteForm.dbPassword"
+                              type="password"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            />
+                          </div>
+                        </div>
+
+                        <!-- 连接体检：POST /oobe/test-database（密码走请求体，不进 query string / 访问日志） -->
+                        <div class="flex flex-col gap-2">
+                          <div class="flex items-center justify-between gap-3">
+                            <span class="text-xs text-foreground/65">
+                              {{ dbTestDirty ? t('oobe.dbTestStale', '连接参数已修改，请重新测试') : t('oobe.dbTestHint', '安装前建议先测试连接，避免装到一半才报错') }}
+                            </span>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              class="shrink-0 !border-zinc-900/15 dark:!border-white/15 bg-zinc-900/[0.04] dark:bg-white/[0.04] text-foreground hover:bg-zinc-900/10 dark:hover:bg-white/10"
+                              :disabled="dbTest.status === 'testing'"
+                              @click="runDbTest"
+                            >
+                              <Loader2
+                                v-if="dbTest.status === 'testing'"
+                                data-icon="inline-start"
+                                class="animate-spin"
+                              />
+                              <Cable
+                                v-else
+                                data-icon="inline-start"
+                              />
+                              {{ dbTest.status === 'testing' ? t('oobe.dbTesting', '正在连接数据库…') : t('oobe.dbTestBtn', '测试连接') }}
+                            </Button>
+                          </div>
+
+                          <div
+                            v-if="dbTest.status === 'ok' || dbTest.status === 'error'"
+                            class="flex items-start gap-2.5 p-3 rounded-xl border"
+                            :class="dbTest.status === 'ok'
+                              ? 'border-emerald-400/35 bg-emerald-500/[0.07]'
+                              : 'border-rose-400/35 bg-rose-500/[0.07]'"
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <CheckCircle2
+                              v-if="dbTest.status === 'ok'"
+                              class="size-4 shrink-0 mt-0.5 text-emerald-700 dark:text-emerald-300"
+                            />
+                            <XCircle
+                              v-else
+                              class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300"
+                            />
+                            <div class="flex-1 min-w-0 space-y-1">
+                              <div
+                                class="text-sm font-medium"
+                                :class="dbTest.status === 'ok' ? 'text-emerald-800 dark:text-emerald-200' : 'text-rose-800 dark:text-rose-200'"
+                              >
+                                {{ dbTest.message }}
+                              </div>
+                              <div
+                                v-if="dbTest.hint"
+                                class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                              >
+                                {{ dbTest.hint }}
+                              </div>
+                              <div
+                                v-if="dbTest.code && dbTest.code !== 'DB_OK'"
+                                class="text-[11px] font-mono text-foreground/50"
+                              >
+                                {{ dbTest.code }}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </template>
+                      <template v-else>
+                        <div class="flex flex-col gap-2">
+                          <Label
+                            for="oobe-db-path"
+                            class="text-foreground/90"
+                          >{{ t('oobe.dbPath', 'SQLite 文件路径') }}</Label>
+
+                          <Input
+                            id="oobe-db-path"
+                            v-model="siteForm.dbPath"
+                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            placeholder="rosetta.db"
+                          />
+                        </div>
+                      </template>
+
+                      <template v-if="siteForm.redisEnabled">
+                        <div class="grid grid-cols-3 gap-4">
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-redis-host"
+                              class="text-foreground/90"
+                            >{{ t('oobe.redisHost', 'Redis 主机') }}</Label>
+
+                            <Input
+                              id="oobe-redis-host"
+                              v-model="siteForm.redisHost"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              placeholder="localhost"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-redis-port"
+                              class="text-foreground/90"
+                            >{{ t('oobe.redisPort', '端口') }}</Label>
+
+                            <Input
+                              id="oobe-redis-port"
+                              v-model.number="siteForm.redisPort"
+                              type="number"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              placeholder="6379"
+                            />
+                          </div>
+                          <div class="flex flex-col gap-2">
+                            <Label
+                              for="oobe-redis-password"
+                              class="text-foreground/90"
+                            >{{ t('oobe.redisPassword', '密码') }}</Label>
+
+                            <Input
+                              id="oobe-redis-password"
+                              v-model="siteForm.redisPassword"
+                              type="password"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            />
+                          </div>
+                        </div>
+                      </template>
+                    </div>
+
+                    <!-- 特性开关 -->
+                    <Separator class="my-1 !bg-zinc-900/10 dark:!bg-white/10" />
+                    <div class="flex flex-col gap-4">
+                      <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
+                        <Sparkles class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        <span>{{ t('oobe.groupFeatures', '功能开关') }}</span>
+                      </div>
+                      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fComments', '评论') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fCommentsDesc', '允许访客在文章下留言') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enableComments" />
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fRegister', '开放注册') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fRegisterDesc', '允许新用户自助注册（默认关）') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enableRegistration" />
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fRss', 'RSS 订阅') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fRssDesc', '生成 /feed.xml 订阅源') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enableRss" />
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fBing', 'Bing 每日壁纸') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fBingDesc', '首页展示 Bing 每日壁纸背景') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enableBingWallpaper" />
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fPagefind', '站内搜索') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fPagefindDesc', '启用 Pagefind 客户端全文搜索') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enablePagefindSearch" />
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fCrypto', '加密文章') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fCryptoDesc', '发布受密码保护的加密文章') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enableEncryptedPosts" />
+                        </label>
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors sm:col-span-2 text-foreground">
+                          <div>
+                            <div class="text-sm font-medium">{{ t('oobe.fMusic', '背景音乐播放器') }}</div>
+                            <div class="text-xs text-foreground/70">{{ t('oobe.fMusicDesc', '侧边栏显示音乐播放组件（需在后台配置播放源）') }}</div>
+                          </div>
+                          <Switch v-model="siteForm.enableMusicPlayer" />
+                        </label>
+                      </div>
+                    </div>
+
+                    <!-- 服务端预检结果（POST /oobe/preflight 只读干跑，error 阻断安装） -->
                     <div
-                      v-for="issue in preflightErrors"
-                      :key="`e-${issue.field}-${issue.code}`"
-                      class="flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07]"
+                      v-if="preflightState.done && (preflightErrors.length || preflightWarns.length)"
+                      class="flex flex-col gap-2"
+                    >
+                      <div
+                        v-for="issue in preflightErrors"
+                        :key="`e-${issue.field}-${issue.code}`"
+                        class="flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07]"
+                        role="alert"
+                      >
+                        <XCircle class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300" />
+                        <div class="flex-1 min-w-0 space-y-1">
+                          <div class="text-sm font-medium text-rose-800 dark:text-rose-200">
+                            {{ issue.message }}
+                          </div>
+                          <div
+                            v-if="issue.hint"
+                            class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                          >
+                            {{ issue.hint }}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          class="shrink-0 h-7 px-2 text-xs"
+                          @click="goFixIssue(issue.field)"
+                        >
+                          {{ t('oobe.preflightGoFix', '去修改') }}
+                        </Button>
+                      </div>
+                      <div
+                        v-for="issue in preflightWarns"
+                        :key="`w-${issue.field}-${issue.code}`"
+                        class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07]"
+                        role="status"
+                      >
+                        <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
+                        <div class="flex-1 min-w-0 space-y-1">
+                          <div class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                            {{ issue.message }}
+                          </div>
+                          <div
+                            v-if="issue.hint"
+                            class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
+                          >
+                            {{ issue.hint }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <p
+                      v-if="stepError && step === 3"
+                      class="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300"
+                      role="alert"
+                    >
+                      <XCircle class="size-3.5 shrink-0 mt-0.5" />
+                      {{ stepError }}
+                    </p>
+                  </div>
+                </template>
+
+                <!-- ============== Step 4: 安装进度 + 完成 ============== -->
+                <template v-else-if="step === 4">
+                  <!-- 安装中：进度展示 -->
+                  <div
+                    v-if="installing"
+                    class="flex flex-col gap-5 py-2"
+                  >
+                    <div class="text-center">
+                      <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
+                        <Loader2 class="size-10 text-emerald-700 dark:text-emerald-300 animate-spin" />
+                      </div>
+                      <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
+                        {{ t('oobe.installing', '正在配置您的站点…') }}
+                      </h3>
+                      <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
+                        {{ installStepMessage || t('oobe.installingDesc', '数据库初始化、写入配置、创建示例数据，请稍候。') }}
+                      </p>
+                    </div>
+
+                    <div class="flex flex-col gap-2">
+                      <div class="flex items-center justify-between text-xs text-foreground/70">
+                        <span>{{ t('oobe.totalProgress', '总体进度') }}</span>
+                        <span>{{ installPercent }}%</span>
+                      </div>
+                      <div class="h-2.5 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
+                        <div
+                          class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 transition-all duration-500 relative"
+                          :style="{ width: `${installPercent}%` }"
+                        >
+                          <div class="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%)] bg-[length:20px_20px] animate-progress-stripe" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 8 步步骤列表 -->
+                    <div class="flex flex-col gap-2">
+                      <div
+                        v-for="(st, idx) in installStepList"
+                        :key="st.id"
+                        class="flex items-center gap-3 p-3 rounded-xl border"
+                        :class="{
+                          'bg-emerald-500/10 border-emerald-400/40': installStepIndex === idx,
+                          'bg-emerald-500/5 border-emerald-600/40 dark:border-emerald-400/30': st.done,
+                          'border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]': !st.done && installStepIndex !== idx
+                        }"
+                      >
+                        <div
+                          class="size-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold transition-colors"
+                          :class="{
+                            'bg-emerald-500 text-zinc-950': st.done,
+                            'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 animate-pulse ring-1 ring-emerald-400/40': installStepIndex === idx && !st.done,
+                            'bg-zinc-900/10 dark:bg-white/10 text-foreground/70': installStepIndex !== idx && !st.done
+                          }"
+                        >
+                          <CheckCircle2
+                            v-if="st.done"
+                            class="size-3.5"
+                          />
+                          <Loader2
+                            v-else-if="installStepIndex === idx"
+                            class="size-3.5 animate-spin"
+                          />
+                          <span v-else>{{ idx + 1 }}</span>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                          <div
+                            class="text-sm font-medium"
+                            :class="installStepIndex === idx ? 'text-emerald-800 dark:text-emerald-200' : st.done ? 'text-foreground' : 'text-foreground/75'"
+                          >
+                            {{ st.label }}
+                          </div>
+                          <div
+                            v-if="installStepIndex === idx && installStepMessage"
+                            class="text-xs text-foreground/70 truncate mt-0.5"
+                          >
+                            {{ installStepMessage }}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- SSE 快照兜底 banner：timeout / polling / retrying -->
+                    <div
+                      v-if="installSnapshotState === 'timeout' || installSnapshotState === 'polling' || installSnapshotState === 'retrying'"
+                      class="flex items-start gap-3 p-3 rounded-xl border"
+                      :class="installSnapshotState === 'timeout'
+                        ? 'border-amber-400/35 bg-amber-500/[0.07]'
+                        : 'border-sky-600/40 bg-sky-500/[0.06] dark:border-sky-400/30'"
+                      role="status"
+                      aria-live="polite"
+                    >
+                      <AlertTriangle
+                        data-icon="inline-start"
+                        class="size-4 shrink-0 mt-0.5"
+                        :class="installSnapshotState === 'timeout' ? 'text-amber-700 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300'"
+                      />
+                      <div class="flex-1 min-w-0 space-y-1">
+                        <div class="text-sm font-medium text-foreground">
+                          {{ installSnapshotState === 'timeout' ? t('oobe.installSnapshotTimeout') : t('oobe.installSnapshotPolling') }}
+                        </div>
+                        <div class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line">
+                          {{ installSnapshotState === 'timeout' ? t('oobe.installSnapshotTimeoutDetail') : t('oobe.installSnapshotPollingDetail') }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 安装中：Cancel/Retry 行（解决 SSE 假死死穴） -->
+                    <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        :disabled="!installing"
+                        @click="runInstallCancel"
+                      >
+                        <XCircle data-icon="inline-start" />
+                        {{ t('oobe.installSnapshotCancelBtn') }}
+                      </Button>
+                      <Button
+                        size="sm"
+                        :disabled="installing || installSnapshotState === 'timeout'"
+                        @click="runInstallRetry"
+                      >
+                        <RefreshCw
+                          data-icon="inline-start"
+                          :class="{ 'animate-spin': installing }"
+                        />
+                        {{ t('oobe.installSnapshotRetryBtn') }}
+                      </Button>
+                    </div>
+                  </div>
+
+                  <!-- 安装完成 -->
+                  <div
+                    v-else-if="installed"
+                    class="text-center py-6 animate-in fade-in"
+                  >
+                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
+                      <CheckCircle2 class="size-10 text-emerald-700 dark:text-emerald-300" />
+                    </div>
+                    <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
+                      {{ t('oobe.completeTitle') }}
+                    </h3>
+                    <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
+                      {{ t('oobe.completeDesc') }}
+                    </p>
+
+                    <div class="mt-8 grid grid-cols-3 gap-3 max-w-lg mx-auto">
+                      <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
+                        <div class="size-8 rounded-xl bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center mx-auto mb-2">
+                          <Settings2 class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        </div>
+                        <div class="text-xs font-semibold text-foreground/90">
+                          {{ t('oobe.completeSummary1') }}
+                        </div>
+                      </div>
+                      <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
+                        <div class="size-8 rounded-xl bg-cyan-500/20 ring-1 ring-cyan-400/30 flex items-center justify-center mx-auto mb-2">
+                          <UserPlus class="size-4 text-cyan-700 dark:text-cyan-300" />
+                        </div>
+                        <div class="text-xs font-semibold text-foreground/90">
+                          {{ t('oobe.completeSummary2') }}
+                        </div>
+                      </div>
+                      <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
+                        <div class="size-8 rounded-xl bg-teal-500/20 ring-1 ring-teal-400/30 flex items-center justify-center mx-auto mb-2">
+                          <Globe2 class="size-4 text-teal-700 dark:text-teal-300" />
+                        </div>
+                        <div class="text-xs font-semibold text-foreground/90">
+                          {{ t('oobe.completeSummary3') }}
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- 安装凭据回执：这是用户唯一一次看到这些信息的机会，之后只能靠登录邮箱找回。
+                       密码只显示一次（输入框内容仍在内存里），所以只回显账号与入口，不回显明文口令。 -->
+                    <div class="mt-6 max-w-lg mx-auto rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] p-4 text-left">
+                      <div class="flex items-center gap-2 mb-3 text-sm font-semibold text-foreground">
+                        <ShieldCheck class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        {{ t('oobe.credTitle', '请记下你的登录信息') }}
+                      </div>
+                      <dl class="flex flex-col gap-2 text-xs">
+                        <div class="flex items-center justify-between gap-3">
+                          <dt class="text-foreground/65">
+                            {{ t('oobe.credUsername', '管理员用户名') }}
+                          </dt>
+                          <dd class="font-mono text-foreground/95 select-all">
+                            {{ adminForm.name }}
+                          </dd>
+                        </div>
+                        <div class="flex items-center justify-between gap-3">
+                          <dt class="text-foreground/65">
+                            {{ t('oobe.credEmail', '管理员邮箱') }}
+                          </dt>
+                          <dd class="font-mono text-foreground/95 select-all">
+                            {{ adminForm.email }}
+                          </dd>
+                        </div>
+                        <div class="flex items-center justify-between gap-3">
+                          <dt class="text-foreground/65">
+                            {{ t('oobe.credAdminUrl', '后台入口') }}
+                          </dt>
+                          <dd class="font-mono text-foreground/95 select-all">
+                            {{ adminEntryUrl }}
+                          </dd>
+                        </div>
+                        <div class="flex items-center justify-between gap-3">
+                          <dt class="text-foreground/65">
+                            {{ t('oobe.credSiteUrl', '站点地址') }}
+                          </dt>
+                          <dd class="font-mono text-foreground/95 select-all">
+                            {{ siteForm.siteUrl }}
+                          </dd>
+                        </div>
+                      </dl>
+                      <p class="mt-3 text-[11px] text-foreground/60 leading-relaxed">
+                        {{ t('oobe.credNote', '密码不会再次显示，请妥善保存。系统已自动为你登录，可直接进入后台。') }}
+                      </p>
+                    </div>
+                  </div>
+
+                  <!-- 初始进入 / 安装失败后回到这里 -->
+                  <div
+                    v-else
+                    class="text-center py-8"
+                  >
+                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
+                      <Rocket class="size-10 text-emerald-700 dark:text-emerald-300" />
+                    </div>
+                    <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
+                      {{ t('oobe.readyTitle', '配置已准备就绪') }}
+                    </h3>
+                    <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
+                      {{ t('oobe.readyDesc', '点击下方按钮，系统将完成数据库初始化、写入配置并创建示例数据。整个过程大概需要 10~30 秒。') }}
+                    </p>
+
+                    <!-- 安装失败：展示后端给的结构化 error_code + hint（已脱敏，不含数据库口令） -->
+                    <div
+                      v-if="installError"
+                      class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07] text-left"
                       role="alert"
                     >
                       <XCircle class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300" />
                       <div class="flex-1 min-w-0 space-y-1">
                         <div class="text-sm font-medium text-rose-800 dark:text-rose-200">
-                          {{ issue.message }}
+                          {{ installError.message }}
                         </div>
                         <div
-                          v-if="issue.hint"
+                          v-if="installError.hint"
                           class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
                         >
-                          {{ issue.hint }}
+                          {{ installError.hint }}
+                        </div>
+                        <div class="text-[11px] font-mono text-foreground/50">
+                          {{ installError.code }}
                         </div>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        class="shrink-0 h-7 px-2 text-xs"
-                        @click="goFixIssue(issue.field)"
-                      >
-                        {{ t('oobe.preflightGoFix', '去修改') }}
-                      </Button>
                     </div>
+
+                    <!-- 安装前预检结论 -->
                     <div
-                      v-for="issue in preflightWarns"
-                      :key="`w-${issue.field}-${issue.code}`"
-                      class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07]"
-                      role="status"
+                      v-else-if="preflightState.done && preflightErrors.length"
+                      class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07] text-left"
+                      role="alert"
                     >
                       <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
                       <div class="flex-1 min-w-0 space-y-1">
                         <div class="text-sm font-medium text-amber-800 dark:text-amber-200">
-                          {{ issue.message }}
+                          {{ t('oobe.preflightBlocked', '有 {n} 项配置需要修正后才能安装').replace('{n}', String(preflightErrors.length)) }}
                         </div>
-                        <div
-                          v-if="issue.hint"
-                          class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
-                        >
-                          {{ issue.hint }}
-                        </div>
+                        <ul class="text-xs text-foreground/70 leading-relaxed list-disc pl-4 space-y-0.5">
+                          <li
+                            v-for="issue in preflightErrors"
+                            :key="`s-${issue.field}-${issue.code}`"
+                          >
+                            {{ issue.message }}
+                          </li>
+                        </ul>
                       </div>
                     </div>
                   </div>
-
-                  <p
-                    v-if="stepError && step === 3"
-                    class="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300"
-                    role="alert"
-                  >
-                    <XCircle class="size-3.5 shrink-0 mt-0.5" />
-                    {{ stepError }}
-                  </p>
-                </div>
-              </template>
-
-              <!-- ============== Step 4: 安装进度 + 完成 ============== -->
-              <template v-else-if="step === 4">
-                <!-- 安装中：进度展示 -->
-                <div
-                  v-if="installing"
-                  class="flex flex-col gap-5 py-2"
-                >
-                  <div class="text-center">
-                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
-                      <Loader2 class="size-10 text-emerald-700 dark:text-emerald-300 animate-spin" />
-                    </div>
-                    <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
-                      {{ t('oobe.installing', '正在配置您的站点…') }}
-                    </h3>
-                    <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
-                      {{ installStepMessage || t('oobe.installingDesc', '数据库初始化、写入配置、创建示例数据，请稍候。') }}
-                    </p>
-                  </div>
-
-                  <div class="flex flex-col gap-2">
-                    <div class="flex items-center justify-between text-xs text-foreground/70">
-                      <span>{{ t('oobe.totalProgress', '总体进度') }}</span>
-                      <span>{{ installPercent }}%</span>
-                    </div>
-                    <div class="h-2.5 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
-                      <div
-                        class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 transition-all duration-500 relative"
-                        :style="{ width: `${installPercent}%` }"
-                      >
-                        <div class="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%)] bg-[length:20px_20px] animate-progress-stripe" />
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 8 步步骤列表 -->
-                  <div class="flex flex-col gap-2">
-                    <div
-                      v-for="(st, idx) in installStepList"
-                      :key="st.id"
-                      class="flex items-center gap-3 p-3 rounded-xl border"
-                      :class="{
-                        'bg-emerald-500/10 border-emerald-400/40': installStepIndex === idx,
-                        'bg-emerald-500/5 border-emerald-600/40 dark:border-emerald-400/30': st.done,
-                        'border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]': !st.done && installStepIndex !== idx
-                      }"
-                    >
-                      <div
-                        class="size-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold transition-colors"
-                        :class="{
-                          'bg-emerald-500 text-zinc-950': st.done,
-                          'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 animate-pulse ring-1 ring-emerald-400/40': installStepIndex === idx && !st.done,
-                          'bg-zinc-900/10 dark:bg-white/10 text-foreground/70': installStepIndex !== idx && !st.done
-                        }"
-                      >
-                        <CheckCircle2
-                          v-if="st.done"
-                          class="size-3.5"
-                        />
-                        <Loader2
-                          v-else-if="installStepIndex === idx"
-                          class="size-3.5 animate-spin"
-                        />
-                        <span v-else>{{ idx + 1 }}</span>
-                      </div>
-                      <div class="flex-1 min-w-0">
-                        <div
-                          class="text-sm font-medium"
-                          :class="installStepIndex === idx ? 'text-emerald-800 dark:text-emerald-200' : st.done ? 'text-foreground' : 'text-foreground/75'"
-                        >
-                          {{ st.label }}
-                        </div>
-                        <div
-                          v-if="installStepIndex === idx && installStepMessage"
-                          class="text-xs text-foreground/70 truncate mt-0.5"
-                        >
-                          {{ installStepMessage }}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- SSE 快照兜底 banner：timeout / polling / retrying -->
-                  <div
-                    v-if="installSnapshotState === 'timeout' || installSnapshotState === 'polling' || installSnapshotState === 'retrying'"
-                    class="flex items-start gap-3 p-3 rounded-xl border"
-                    :class="installSnapshotState === 'timeout'
-                      ? 'border-amber-400/35 bg-amber-500/[0.07]'
-                      : 'border-sky-600/40 bg-sky-500/[0.06] dark:border-sky-400/30'"
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <AlertTriangle
-                      data-icon="inline-start"
-                      class="size-4 shrink-0 mt-0.5"
-                      :class="installSnapshotState === 'timeout' ? 'text-amber-700 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300'"
-                    />
-                    <div class="flex-1 min-w-0 space-y-1">
-                      <div class="text-sm font-medium text-foreground">
-                        {{ installSnapshotState === 'timeout' ? t('oobe.installSnapshotTimeout') : t('oobe.installSnapshotPolling') }}
-                      </div>
-                      <div class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line">
-                        {{ installSnapshotState === 'timeout' ? t('oobe.installSnapshotTimeoutDetail') : t('oobe.installSnapshotPollingDetail') }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 安装中：Cancel/Retry 行（解决 SSE 假死死穴） -->
-                  <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      :disabled="!installing"
-                      @click="runInstallCancel"
-                    >
-                      <XCircle data-icon="inline-start" />
-                      {{ t('oobe.installSnapshotCancelBtn') }}
-                    </Button>
-                    <Button
-                      size="sm"
-                      :disabled="installing || installSnapshotState === 'timeout'"
-                      @click="runInstallRetry"
-                    >
-                      <RefreshCw
-                        data-icon="inline-start"
-                        :class="{ 'animate-spin': installing }"
-                      />
-                      {{ t('oobe.installSnapshotRetryBtn') }}
-                    </Button>
-                  </div>
-                </div>
-
-                <!-- 安装完成 -->
-                <div
-                  v-else-if="installed"
-                  class="text-center py-6 animate-in fade-in"
-                >
-                  <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
-                    <CheckCircle2 class="size-10 text-emerald-700 dark:text-emerald-300" />
-                  </div>
-                  <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
-                    {{ t('oobe.completeTitle') }}
-                  </h3>
-                  <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
-                    {{ t('oobe.completeDesc') }}
-                  </p>
-
-                  <div class="mt-8 grid grid-cols-3 gap-3 max-w-lg mx-auto">
-                    <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                      <div class="size-8 rounded-xl bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center mx-auto mb-2">
-                        <Settings2 class="size-4 text-emerald-700 dark:text-emerald-300" />
-                      </div>
-                      <div class="text-xs font-semibold text-foreground/90">
-                        {{ t('oobe.completeSummary1') }}
-                      </div>
-                    </div>
-                    <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                      <div class="size-8 rounded-xl bg-cyan-500/20 ring-1 ring-cyan-400/30 flex items-center justify-center mx-auto mb-2">
-                        <UserPlus class="size-4 text-cyan-700 dark:text-cyan-300" />
-                      </div>
-                      <div class="text-xs font-semibold text-foreground/90">
-                        {{ t('oobe.completeSummary2') }}
-                      </div>
-                    </div>
-                    <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                      <div class="size-8 rounded-xl bg-teal-500/20 ring-1 ring-teal-400/30 flex items-center justify-center mx-auto mb-2">
-                        <Globe2 class="size-4 text-teal-700 dark:text-teal-300" />
-                      </div>
-                      <div class="text-xs font-semibold text-foreground/90">
-                        {{ t('oobe.completeSummary3') }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 安装凭据回执：这是用户唯一一次看到这些信息的机会，之后只能靠登录邮箱找回。
-                       密码只显示一次（输入框内容仍在内存里），所以只回显账号与入口，不回显明文口令。 -->
-                  <div class="mt-6 max-w-lg mx-auto rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] p-4 text-left">
-                    <div class="flex items-center gap-2 mb-3 text-sm font-semibold text-foreground">
-                      <ShieldCheck class="size-4 text-emerald-700 dark:text-emerald-300" />
-                      {{ t('oobe.credTitle', '请记下你的登录信息') }}
-                    </div>
-                    <dl class="flex flex-col gap-2 text-xs">
-                      <div class="flex items-center justify-between gap-3">
-                        <dt class="text-foreground/65">
-                          {{ t('oobe.credUsername', '管理员用户名') }}
-                        </dt>
-                        <dd class="font-mono text-foreground/95 select-all">
-                          {{ adminForm.name }}
-                        </dd>
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <dt class="text-foreground/65">
-                          {{ t('oobe.credEmail', '管理员邮箱') }}
-                        </dt>
-                        <dd class="font-mono text-foreground/95 select-all">
-                          {{ adminForm.email }}
-                        </dd>
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <dt class="text-foreground/65">
-                          {{ t('oobe.credAdminUrl', '后台入口') }}
-                        </dt>
-                        <dd class="font-mono text-foreground/95 select-all">
-                          {{ adminEntryUrl }}
-                        </dd>
-                      </div>
-                      <div class="flex items-center justify-between gap-3">
-                        <dt class="text-foreground/65">
-                          {{ t('oobe.credSiteUrl', '站点地址') }}
-                        </dt>
-                        <dd class="font-mono text-foreground/95 select-all">
-                          {{ siteForm.siteUrl }}
-                        </dd>
-                      </div>
-                    </dl>
-                    <p class="mt-3 text-[11px] text-foreground/60 leading-relaxed">
-                      {{ t('oobe.credNote', '密码不会再次显示，请妥善保存。系统已自动为你登录，可直接进入后台。') }}
-                    </p>
-                  </div>
-                </div>
-
-                <!-- 初始进入 / 安装失败后回到这里 -->
-                <div
-                  v-else
-                  class="text-center py-8"
-                >
-                  <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
-                    <Rocket class="size-10 text-emerald-700 dark:text-emerald-300" />
-                  </div>
-                  <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
-                    {{ t('oobe.readyTitle', '配置已准备就绪') }}
-                  </h3>
-                  <p class="text-foreground/75 max-w-md mx-auto leading-relaxed">
-                    {{ t('oobe.readyDesc', '点击下方按钮，系统将完成数据库初始化、写入配置并创建示例数据。整个过程大概需要 10~30 秒。') }}
-                  </p>
-
-                  <!-- 安装失败：展示后端给的结构化 error_code + hint（已脱敏，不含数据库口令） -->
-                  <div
-                    v-if="installError"
-                    class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07] text-left"
-                    role="alert"
-                  >
-                    <XCircle class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300" />
-                    <div class="flex-1 min-w-0 space-y-1">
-                      <div class="text-sm font-medium text-rose-800 dark:text-rose-200">
-                        {{ installError.message }}
-                      </div>
-                      <div
-                        v-if="installError.hint"
-                        class="text-xs text-foreground/70 leading-relaxed whitespace-pre-line"
-                      >
-                        {{ installError.hint }}
-                      </div>
-                      <div class="text-[11px] font-mono text-foreground/50">
-                        {{ installError.code }}
-                      </div>
-                    </div>
-                  </div>
-
-                  <!-- 安装前预检结论 -->
-                  <div
-                    v-else-if="preflightState.done && preflightErrors.length"
-                    class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07] text-left"
-                    role="alert"
-                  >
-                    <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
-                    <div class="flex-1 min-w-0 space-y-1">
-                      <div class="text-sm font-medium text-amber-800 dark:text-amber-200">
-                        {{ t('oobe.preflightBlocked', '有 {n} 项配置需要修正后才能安装').replace('{n}', String(preflightErrors.length)) }}
-                      </div>
-                      <ul class="text-xs text-foreground/70 leading-relaxed list-disc pl-4 space-y-0.5">
-                        <li
-                          v-for="issue in preflightErrors"
-                          :key="`s-${issue.field}-${issue.code}`"
-                        >
-                          {{ issue.message }}
-                        </li>
-                      </ul>
-                    </div>
-                  </div>
-                </div>
-              </template>
-            </div>
+                </template>
+              </div>
+            </Transition>
 
             <div class="flex justify-between pt-4">
               <Button
@@ -1732,7 +1741,7 @@
       :href="getBwpOfficialLink(bwp)"
       target="_blank"
       rel="noopener noreferrer nofollow"
-      class="fixed bottom-5 left-5 lg:left-[348px] z-40 group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-zinc-950/45 dark:bg-white/[0.07] border border-white/20 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-zinc-950/60 dark:hover:bg-white/[0.11] hover:border-white/30 transition-colors"
+      class="fixed bottom-5 left-5 lg:left-[348px] z-40 group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-zinc-950/55 border border-white/20 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-zinc-950/70 hover:border-white/30 transition-colors"
     >
       <div class="relative size-9 shrink-0">
         <img
@@ -3199,5 +3208,25 @@ const goAdmin = async () => {
   background-image:
     linear-gradient(rgba(255, 255, 255, 0.5) 1px, transparent 1px),
     linear-gradient(90deg, rgba(255, 255, 255, 0.5) 1px, transparent 1px);
+}
+
+/* ============ 步骤切换过渡（out-in） ============ */
+.oobe-step-enter-active,
+.oobe-step-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+.oobe-step-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+.oobe-step-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .oobe-step-enter-active,
+  .oobe-step-leave-active {
+    transition: none;
+  }
 }
 </style>

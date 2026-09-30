@@ -211,6 +211,9 @@
 
   /* ---- 暗色模式：对应每一个亮色 token，确保色相关系一致，对比 AA ---- */
   .dark {
+    /* 原生控件配色跟随暗色（表单/下拉/滚动条/autofill） */
+    color-scheme: dark;
+
     --background: 224 71% 4%;
     --foreground: 213 31% 91%;
 
