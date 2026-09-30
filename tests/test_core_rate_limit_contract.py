@@ -102,9 +102,10 @@ class TestMiddlewareEnvelope:
     async def test_429_body_is_unified_envelope(self):
         """命中限流必须返回 success/error_code/message，而不是 {"detail": {...}}。"""
         app = self._app(RateLimitRule(requests=1, window_seconds=60, key_prefix="mw-env"))
+        ext = {"X-Forwarded-For": "203.0.113.7"}
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            ok = await ac.get("/probe/limited")
-            blocked = await ac.get("/probe/limited")
+            ok = await ac.get("/probe/limited", headers=ext)
+            blocked = await ac.get("/probe/limited", headers=ext)
 
         assert ok.status_code == 200
         assert blocked.status_code == 429
@@ -118,10 +119,28 @@ class TestMiddlewareEnvelope:
         assert int(blocked.headers["Retry-After"]) >= 1
 
     @pytest.mark.asyncio
+    async def test_internal_direct_traffic_bypasses_limit(self, monkeypatch):
+        """受信代理直连且无转发头（SSR / 健康检查）必须绕过限流。
+
+        生产实锤：Nitro SSR 全部经 127.0.0.1:8000 直连后端、共享同一
+        client_ip 桶，渲染高峰 /api/blog/categories 整体 429，访客页面缺导航。
+        """
+        from backend.core.config import settings
+
+        monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
+        app = self._app(RateLimitRule(requests=1, window_seconds=60, key_prefix="mw-int"))
+        async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
+            first = await ac.get("/probe/limited")
+            second = await ac.get("/probe/limited")  # 已超限，但内部直连 → 放行
+        assert first.status_code == 200
+        assert second.status_code == 200
+        assert "X-RateLimit-Limit" not in second.headers
+
+    @pytest.mark.asyncio
     async def test_allowed_response_carries_threshold_header(self):
         app = self._app(RateLimitRule(requests=3, window_seconds=60, key_prefix="mw-ok"))
         async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
-            ok = await ac.get("/probe/limited")
+            ok = await ac.get("/probe/limited", headers={"X-Forwarded-For": "203.0.113.7"})
         assert ok.status_code == 200
         assert ok.headers["X-RateLimit-Limit"] == "3"
         assert ok.headers["X-RateLimit-Remaining"] == "2"

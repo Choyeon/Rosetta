@@ -561,6 +561,24 @@ def get_client_ip(request: Request) -> str:
     return "unknown"
 
 
+def is_internal_request(request: Request) -> bool:
+    """是否为受信代理的「内部直连」请求（无任何转发头）
+
+    判定：socket 对端在 TRUSTED_PROXY_IPS 内，且请求不带 X-Forwarded-For /
+    X-Real-IP。生产 Nginx 对所有代理 location 无条件追加这两个头，因此
+    「受信对端 + 无转发头」只可能是本机服务直连（Nitro SSR 经
+    SSR_API_BASE_URL 打 127.0.0.1:8000、健康检查等）——它们不是外部访客
+    请求，却共享同一 client_ip 限流桶，SSR 渲染高峰会整体 429（生产实测
+    /api/blog/categories 大面积命中），必须绕过限流。
+    """
+    peer = request.client.host if request.client else None
+    if not peer or peer not in _trusted_proxies():
+        return False
+    return not (
+        request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip")
+    )
+
+
 def generate_rate_limit_key(request: Request, identifier: str | None = None) -> str:
     """生成限流键"""
     if identifier:
@@ -687,6 +705,10 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
 
         if self._is_whitelisted(path):
+            return await call_next(request)
+
+        # 内部直连流量（SSR / 健康检查）不占限流桶
+        if is_internal_request(request):
             return await call_next(request)
 
         rule = self._get_rule_for_path(path)
