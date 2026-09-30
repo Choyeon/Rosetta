@@ -64,226 +64,289 @@
           </CardContent>
         </Card>
 
-        <Tabs
-          default-value="bio"
-          class="w-full"
-        >
-          <TabsList class="grid grid-cols-3 sm:grid-cols-4 mb-8">
-            <TabsTrigger
-              value="bio"
-              class="data-[state=active]:shadow-none"
-            >
-              <UserCircle2 class="size-4 mr-2 hidden sm:block" />
-              {{ t('about.tabBio') }}
-            </TabsTrigger>
-            <TabsTrigger
-              value="skills"
-              class="data-[state=active]:shadow-none"
-            >
-              <Wrench class="size-4 mr-2 hidden sm:block" />
-              {{ t('about.tabSkills') }}
-            </TabsTrigger>
-            <TabsTrigger
-              value="contact"
-              class="data-[state=active]:shadow-none"
-            >
-              <Mail class="size-4 mr-2 hidden sm:block" />
-              {{ t('about.tabContact') }}
-            </TabsTrigger>
-            <TabsTrigger
-              value="rss"
-              class="data-[state=active]:shadow-none"
-            >
-              <Rss class="size-4 mr-2 hidden sm:block" />
-              {{ t('about.tabRss') || '订阅' }}
-            </TabsTrigger>
-          </TabsList>
+        <!-- ClientOnly：reka TabsRoot 在 SSR 产物里因双 vue 实例渲染成空注释节点
+             （见 nuxt.config nitro 段注释），水合时触发节点级 mismatch。
+             fallback 复刻默认 bio Tab 的静态视图（TabsList 样式 + bio Card），
+             水合后无缝替换为真 Tabs，默认选中态一致。 -->
+        <ClientOnly>
+          <Tabs
+            default-value="bio"
+            class="w-full"
+          >
+            <TabsList class="grid grid-cols-3 sm:grid-cols-4 mb-8">
+              <TabsTrigger
+                value="bio"
+                class="data-[state=active]:shadow-none"
+              >
+                <UserCircle2 class="size-4 mr-2 hidden sm:block" />
+                {{ t('about.tabBio') }}
+              </TabsTrigger>
+              <TabsTrigger
+                value="skills"
+                class="data-[state=active]:shadow-none"
+              >
+                <Wrench class="size-4 mr-2 hidden sm:block" />
+                {{ t('about.tabSkills') }}
+              </TabsTrigger>
+              <TabsTrigger
+                value="contact"
+                class="data-[state=active]:shadow-none"
+              >
+                <Mail class="size-4 mr-2 hidden sm:block" />
+                {{ t('about.tabContact') }}
+              </TabsTrigger>
+              <TabsTrigger
+                value="rss"
+                class="data-[state=active]:shadow-none"
+              >
+                <Rss class="size-4 mr-2 hidden sm:block" />
+                {{ t('about.tabRss') || '订阅' }}
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="bio">
-            <Card>
-              <CardContent class="flex flex-col gap-5 p-6 md:p-8 text-foreground/90 leading-relaxed">
-                <p>{{ t('about.bioP1') }}</p>
-                <p>{{ t('about.bioP2') }}</p>
-                <p>{{ t('about.bioP3') }}</p>
-                <div class="rounded-xl border-dashed border-2 border-border/80 p-5 bg-muted/30 mt-6">
-                  <div class="font-medium mb-2 flex items-center gap-2">
-                    <Quote class="size-4 text-primary" />
-                    {{ t('about.mottoLabel') }}
-                  </div>
-                  <p class="text-foreground/80 italic">
-                    {{ t('about.motto') }}
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="skills">
-            <Card>
-              <CardHeader class="pb-4">
-                <CardTitle class="text-lg flex items-center gap-2">
-                  <Layers class="size-4 text-primary" />
-                  {{ t('about.techStack') }}
-                </CardTitle>
-                <CardDescription>{{ t('about.techStackDesc') }}</CardDescription>
-              </CardHeader>
-              <CardContent class="pt-0">
-                <div class="flex flex-wrap gap-2 mb-8">
-                  <Badge
-                    v-for="tech in techStack"
-                    :key="tech.name"
-                    :style="{ background: tech.bg, color: tech.color }"
-                    class="text-sm px-4 py-1.5 font-medium shadow-sm border-0"
-                  >
-                    {{ tech.name }}
-                  </Badge>
-                </div>
-
-                <div class="flex flex-col gap-5">
-                  <div
-                    v-for="group in skillGroups"
-                    :key="group.title"
-                  >
-                    <div class="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
-                      <component
-                        :is="group.icon"
-                        class="size-4"
-                      />
-                      {{ group.title }}
+            <TabsContent value="bio">
+              <Card>
+                <CardContent class="flex flex-col gap-5 p-6 md:p-8 text-foreground/90 leading-relaxed">
+                  <p>{{ t('about.bioP1') }}</p>
+                  <p>{{ t('about.bioP2') }}</p>
+                  <p>{{ t('about.bioP3') }}</p>
+                  <div class="rounded-xl border-dashed border-2 border-border/80 p-5 bg-muted/30 mt-6">
+                    <div class="font-medium mb-2 flex items-center gap-2">
+                      <Quote class="size-4 text-primary" />
+                      {{ t('about.mottoLabel') }}
                     </div>
-                    <div class="flex flex-wrap gap-2">
-                      <Badge
-                        v-for="skill in group.items"
-                        :key="skill"
-                        variant="secondary"
-                        class="text-xs"
-                      >
-                        {{ skill }}
-                      </Badge>
-                    </div>
+                    <p class="text-foreground/80 italic">
+                      {{ t('about.motto') }}
+                    </p>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <TabsContent value="contact">
-            <Card>
-              <CardContent class="p-6 md:p-8">
-                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <a
-                    v-for="contact in contacts"
-                    :key="contact.label"
-                    :href="contact.href"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="flex items-center gap-4 p-4 rounded-xl border border-border/60 hover:shadow-soft hover:bg-accent/30 transition-all duration-300"
-                  >
+            <TabsContent value="skills">
+              <Card>
+                <CardHeader class="pb-4">
+                  <CardTitle class="text-lg flex items-center gap-2">
+                    <Layers class="size-4 text-primary" />
+                    {{ t('about.techStack') }}
+                  </CardTitle>
+                  <CardDescription>{{ t('about.techStackDesc') }}</CardDescription>
+                </CardHeader>
+                <CardContent class="pt-0">
+                  <div class="flex flex-wrap gap-2 mb-8">
+                    <Badge
+                      v-for="tech in techStack"
+                      :key="tech.name"
+                      :style="{ background: tech.bg, color: tech.color }"
+                      class="text-sm px-4 py-1.5 font-medium shadow-sm border-0"
+                    >
+                      {{ tech.name }}
+                    </Badge>
+                  </div>
+
+                  <div class="flex flex-col gap-5">
                     <div
-                      class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-primary/10"
+                      v-for="group in skillGroups"
+                      :key="group.title"
                     >
-                      <component
-                        :is="contact.icon"
-                        class="size-5 text-primary"
-                      />
+                      <div class="text-sm font-medium mb-3 text-muted-foreground flex items-center gap-2">
+                        <component
+                          :is="group.icon"
+                          class="size-4"
+                        />
+                        {{ group.title }}
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        <Badge
+                          v-for="skill in group.items"
+                          :key="skill"
+                          variant="secondary"
+                          class="text-xs"
+                        >
+                          {{ skill }}
+                        </Badge>
+                      </div>
                     </div>
-                    <div class="min-w-0">
-                      <div class="text-xs text-muted-foreground mb-0.5">{{ contact.label }}</div>
-                      <div class="font-medium truncate">{{ contact.value }}</div>
-                    </div>
-                  </a>
-                </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-                <div
-                  v-if="contacts.length === 0"
-                  class="text-center py-8 text-muted-foreground"
+            <TabsContent value="contact">
+              <Card>
+                <CardContent class="p-6 md:p-8">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <a
+                      v-for="contact in contacts"
+                      :key="contact.label"
+                      :href="contact.href"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      class="flex items-center gap-4 p-4 rounded-xl border border-border/60 hover:shadow-soft hover:bg-accent/30 transition-all duration-300"
+                    >
+                      <div
+                        class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-primary/10"
+                      >
+                        <component
+                          :is="contact.icon"
+                          class="size-5 text-primary"
+                        />
+                      </div>
+                      <div class="min-w-0">
+                        <div class="text-xs text-muted-foreground mb-0.5">{{ contact.label }}</div>
+                        <div class="font-medium truncate">{{ contact.value }}</div>
+                      </div>
+                    </a>
+                  </div>
+
+                  <div
+                    v-if="contacts.length === 0"
+                    class="text-center py-8 text-muted-foreground"
+                  >
+                    {{ t('about.noContacts') || '管理员暂未公开联系方式。' }}
+                  </div>
+
+                  <div class="mt-8 rounded-xl border-dashed border-2 border-border/80 p-6 bg-muted/30">
+                    <div class="flex items-start gap-3">
+                      <Coffee class="size-5 shrink-0 text-warning mt-0.5" />
+                      <div>
+                        <div class="font-medium mb-1.5">
+                          {{ t('about.buyMeCoffee') }}
+                        </div>
+                        <p class="text-sm text-muted-foreground leading-relaxed">
+                          {{ t('about.buyMeCoffeeDesc') }}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            <TabsContent value="rss">
+              <Card>
+                <CardContent class="flex flex-col gap-4 p-6 md:p-8">
+                  <div class="rounded-xl border border-border/60 p-5">
+                    <div class="flex items-center justify-between flex-wrap gap-3">
+                      <div class="flex items-center gap-3">
+                        <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-orange-100 dark:bg-orange-950/40">
+                          <Rss class="size-5 text-orange-600 dark:text-orange-400" />
+                        </div>
+                        <div>
+                          <div class="font-medium">
+                            {{ t('about.rssFeed') || 'RSS 订阅' }}
+                          </div>
+                          <div class="text-xs text-muted-foreground break-all">
+                            /rss.xml
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        @click="navigateTo('/rss.xml', { external: true })"
+                      >
+                        <ExternalLink
+                          data-icon="inline-start"
+                          class="mr-2"
+                        />
+                        {{ t('common.open') || '打开' }}
+                      </Button>
+                    </div>
+                  </div>
+                  <div class="rounded-xl border border-border/60 p-5">
+                    <div class="flex items-center justify-between flex-wrap gap-3">
+                      <div class="flex items-center gap-3">
+                        <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-emerald-100 dark:bg-emerald-950/40">
+                          <Map class="size-5 text-emerald-600 dark:text-emerald-400" />
+                        </div>
+                        <div>
+                          <div class="font-medium">
+                            {{ t('about.sitemap') || '站点地图 Sitemap' }}
+                          </div>
+                          <div class="text-xs text-muted-foreground break-all">
+                            /sitemap.xml
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        @click="navigateTo('/sitemap.xml', { external: true })"
+                      >
+                        <ExternalLink
+                          data-icon="inline-start"
+                          class="mr-2"
+                        />
+                        {{ t('common.open') || '打开' }}
+                      </Button>
+                    </div>
+                  </div>
+                  <p class="text-sm text-muted-foreground leading-relaxed pt-2">
+                    {{ t('about.rssHint') || '通过 RSS 或站点地图，可以及时获取最新文章更新，或被搜索引擎正常收录。' }}
+                  </p>
+                </CardContent>
+              </Card>
+            </TabsContent>
+          </Tabs>
+
+          <template #fallback>
+            <div class="w-full">
+              <!-- 复刻 TabsList（默认 bio 激活态） -->
+              <div
+                class="grid grid-cols-3 sm:grid-cols-4 mb-8 inline-flex items-center justify-center rounded-md bg-muted p-1 text-muted-foreground w-full gap-1"
+                role="tablist"
+                aria-hidden="true"
+              >
+                <button
+                  type="button"
+                  tabindex="-1"
+                  class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium bg-background text-foreground shadow-sm"
                 >
-                  {{ t('about.noContacts') || '管理员暂未公开联系方式。' }}
-                </div>
-
-                <div class="mt-8 rounded-xl border-dashed border-2 border-border/80 p-6 bg-muted/30">
-                  <div class="flex items-start gap-3">
-                    <Coffee class="size-5 shrink-0 text-warning mt-0.5" />
-                    <div>
-                      <div class="font-medium mb-1.5">
-                        {{ t('about.buyMeCoffee') }}
-                      </div>
-                      <p class="text-sm text-muted-foreground leading-relaxed">
-                        {{ t('about.buyMeCoffeeDesc') }}
-                      </p>
+                  {{ t('about.tabBio') }}
+                </button>
+                <button
+                  type="button"
+                  tabindex="-1"
+                  class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium"
+                >
+                  {{ t('about.tabSkills') }}
+                </button>
+                <button
+                  type="button"
+                  tabindex="-1"
+                  class="inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium"
+                >
+                  {{ t('about.tabContact') }}
+                </button>
+                <button
+                  type="button"
+                  tabindex="-1"
+                  class="hidden sm:inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium"
+                >
+                  {{ t('about.tabRss') || '订阅' }}
+                </button>
+              </div>
+              <!-- 复刻默认 bio TabsContent -->
+              <Card>
+                <CardContent class="flex flex-col gap-5 p-6 md:p-8 text-foreground/90 leading-relaxed">
+                  <p>{{ t('about.bioP1') }}</p>
+                  <p>{{ t('about.bioP2') }}</p>
+                  <p>{{ t('about.bioP3') }}</p>
+                  <div class="rounded-xl border-dashed border-2 border-border/80 p-5 bg-muted/30 mt-6">
+                    <div class="font-medium mb-2 flex items-center gap-2">
+                      <Quote class="size-4 text-primary" />
+                      {{ t('about.mottoLabel') }}
                     </div>
+                    <p class="text-foreground/80 italic">
+                      {{ t('about.motto') }}
+                    </p>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="rss">
-            <Card>
-              <CardContent class="flex flex-col gap-4 p-6 md:p-8">
-                <div class="rounded-xl border border-border/60 p-5">
-                  <div class="flex items-center justify-between flex-wrap gap-3">
-                    <div class="flex items-center gap-3">
-                      <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-orange-100 dark:bg-orange-950/40">
-                        <Rss class="size-5 text-orange-600 dark:text-orange-400" />
-                      </div>
-                      <div>
-                        <div class="font-medium">
-                          {{ t('about.rssFeed') || 'RSS 订阅' }}
-                        </div>
-                        <div class="text-xs text-muted-foreground break-all">
-                          /rss.xml
-                        </div>
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      @click="navigateTo('/rss.xml', { external: true })"
-                    >
-                      <ExternalLink
-                        data-icon="inline-start"
-                        class="mr-2"
-                      />
-                      {{ t('common.open') || '打开' }}
-                    </Button>
-                  </div>
-                </div>
-                <div class="rounded-xl border border-border/60 p-5">
-                  <div class="flex items-center justify-between flex-wrap gap-3">
-                    <div class="flex items-center gap-3">
-                      <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-emerald-100 dark:bg-emerald-950/40">
-                        <Map class="size-5 text-emerald-600 dark:text-emerald-400" />
-                      </div>
-                      <div>
-                        <div class="font-medium">
-                          {{ t('about.sitemap') || '站点地图 Sitemap' }}
-                        </div>
-                        <div class="text-xs text-muted-foreground break-all">
-                          /sitemap.xml
-                        </div>
-                      </div>
-                    </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      @click="navigateTo('/sitemap.xml', { external: true })"
-                    >
-                      <ExternalLink
-                        data-icon="inline-start"
-                        class="mr-2"
-                      />
-                      {{ t('common.open') || '打开' }}
-                    </Button>
-                  </div>
-                </div>
-                <p class="text-sm text-muted-foreground leading-relaxed pt-2">
-                  {{ t('about.rssHint') || '通过 RSS 或站点地图，可以及时获取最新文章更新，或被搜索引擎正常收录。' }}
-                </p>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+                </CardContent>
+              </Card>
+            </div>
+          </template>
+        </ClientOnly>
       </div>
     </template>
   </div>

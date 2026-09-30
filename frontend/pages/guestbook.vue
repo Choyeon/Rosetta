@@ -121,7 +121,7 @@
     </div>
 
     <div
-      v-else-if="pending && guestbookList.length === 0"
+      v-else-if="pending && displayList.length === 0"
       class="flex flex-col gap-6 mb-10"
     >
       <!-- 留言卡片骨架：结构仿照真实的头像 + 昵称 + 正文三行，走共享 Skeleton
@@ -152,7 +152,7 @@
       class="flex flex-col gap-6"
     >
       <div
-        v-for="item in guestbookList"
+        v-for="item in displayList"
         :key="item.id"
         class="relative"
       >
@@ -221,7 +221,7 @@
     </div>
 
     <div
-      v-if="!pending && !loadFailed && guestbookList.length === 0"
+      v-if="!pending && !loadFailed && displayList.length === 0"
       class="text-center py-20"
     >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
@@ -457,6 +457,21 @@ watch(
   },
   { immediate: true }
 )
+
+// ===== SSR 渲染真源（2026-10-01 hydration mismatch 修复）=====
+// Vue SSR 不执行任何 watch 回调（无 effect scheduling）——SSR 渲染期
+// guestbookList 恒为初始 []，即使 gbResp 已在 Suspense 阶段拿到数据，
+// SSR 也只会渲染空列表 + 空状态，客户端水合后列表项出现 →
+// children/node 级 hydration mismatch（生产同样成立，与构建环境无关）。
+// 渲染入口统一走 displayList：SSR 从 gbResp 现算快照；客户端水合后
+// 回落到 watch 维护的可写 ref（点赞就地 mutate 不被重算冲掉）。
+const displayList = computed<GuestbookItem[]>(() => {
+  if (import.meta.server) {
+    const items = gbResp.value?.items
+    return Array.isArray(items) ? items.map(mapGuestbookRow) : []
+  }
+  return guestbookList.value
+})
 
 // Intl 本地化日期（与项目其余页面一致，跟随当前 locale）
 const formatDate = (dateStr: string) => {

@@ -292,12 +292,25 @@ export const useAuthStore = defineStore('auth', () => {
     const nuxtApp = useNuxtApp()
     // 判断是否仍处于「有真实 HTML 待 hydrate 且尚未完成」的首屏阶段：
     //   · payload.serverRendered=false → 纯 CSR 首渲染，写状态就是首帧本身，无 mismatch
+    //   · app:mounted 已错过（__ROSETTA_APP_MOUNTED__，见 02-hydration-safety 插件）
+    //     → 写状态是挂载完成后的响应式 patch，无 mismatch
     //   · document.readyState === 'loading' → 还在解析 HTML，必是首屏 hydrating
     //   · window.__NUXT_HYDRATED__ 未打标 → 仍在 hydrate 过程中
+    //
+    // ⚠️ 2026-10-01 实证：生产构建中 entry 在 mount() 返回后立刻
+    // callHook('app:mounted')，而根 Suspense（异步 layout chunk）resolve 晚于
+    // 该 callHook —— 无 auth 中间件的公开页上，initialize() 首次调用发生在
+    // app.vue onMounted（晚于 callHook），此时再注册 app:mounted 监听永远等
+    // 不到 → 登录态恢复死锁（生产全站刷新即被登出）。旧判定里的
+    // __NUXT_HYDRATED__ 是本函数自己写的标记，首次调用恒 undefined，
+    // 检测不出「hook 已错过」——必须用插件阶段预注册的已触发标记。
+    const win = window as unknown as { __NUXT_HYDRATED__?: boolean, __ROSETTA_APP_MOUNTED__?: boolean }
     const serverRendered = !!nuxtApp.payload?.serverRendered
+    const appMountedAlreadyFired = win.__ROSETTA_APP_MOUNTED__ === true
     const isHydrating = serverRendered
+      && !appMountedAlreadyFired
       && ((typeof document !== 'undefined' && document.readyState === 'loading')
-        || !(typeof window !== 'undefined' && (window as { __NUXT_HYDRATED__?: boolean }).__NUXT_HYDRATED__))
+        || !win.__NUXT_HYDRATED__)
 
     initPromise = (async () => {
       try {

@@ -106,93 +106,99 @@
     </section>
 
     <!-- Album Detail Dialog -->
-    <Dialog v-model:open="dialogOpen">
-      <DialogContent
-        class="sm:max-w-5xl w-[95vw] max-h-[90vh] p-0 flex flex-col gap-0 overflow-hidden"
-      >
-        <!-- Header -->
-        <div class="shrink-0 p-6 border-b border-border/60">
-          <div class="flex items-start justify-between gap-4">
-            <div class="min-w-0">
-              <DialogTitle class="font-display text-2xl font-bold tracking-tight truncate">
-                {{ currentAlbum?.title }}
-              </DialogTitle>
-              <DialogDescription class="mt-1 text-sm text-muted-foreground line-clamp-2">
-                {{ currentAlbum?.description || '' }}
-              </DialogDescription>
-            </div>
-            <Badge
-              variant="secondary"
-              class="shrink-0"
-            >
-              <ImageIcon class="size-3.5 mr-1" />
-              {{ currentAlbum?.photosCount }} {{ t('gallery.photos') }}
-            </Badge>
-          </div>
-        </div>
-
-        <!-- Photos -->
-        <ScrollArea class="flex-1 min-h-0">
-          <div class="p-6">
-            <!-- Loading -->
-            <div
-              v-if="albumLoading && currentPhotos.length === 0"
-              class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
-            >
-              <Skeleton
-                v-for="i in 8"
-                :key="i"
-                class="aspect-square rounded-lg"
-              />
-            </div>
-
-            <!-- Photos with viewerjs -->
-            <div
-              v-else-if="currentPhotos.length > 0"
-              ref="viewerContainerRef"
-              class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
-            >
-              <img
-                v-for="(photo, idx) in currentPhotos"
-                :key="idx"
-                :src="photo"
-                :data-original="photo"
-                :alt="`${currentAlbum?.title || ''} ${idx + 1}`"
-                class="aspect-square w-full object-cover rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity shadow-sm"
-                loading="lazy"
+    <!-- ClientOnly：reka DialogRoot 在 SSR 产物里因双 vue 实例渲染成空注释节点
+         （见 nuxt.config nitro 段注释），而客户端 DialogRoot 渲染 fragment，
+         水合时触发页面根部的节点级 mismatch。Dialog 只响应点击打开，
+         无需参与 SSR 首帧，整体推迟到客户端挂载。 -->
+    <ClientOnly>
+      <Dialog v-model:open="dialogOpen">
+        <DialogContent
+          class="sm:max-w-5xl w-[95vw] max-h-[90vh] p-0 flex flex-col gap-0 overflow-hidden"
+        >
+          <!-- Header -->
+          <div class="shrink-0 p-6 border-b border-border/60">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <DialogTitle class="font-display text-2xl font-bold tracking-tight truncate">
+                  {{ currentAlbum?.title }}
+                </DialogTitle>
+                <DialogDescription class="mt-1 text-sm text-muted-foreground line-clamp-2">
+                  {{ currentAlbum?.description || '' }}
+                </DialogDescription>
+              </div>
+              <Badge
+                variant="secondary"
+                class="shrink-0"
               >
-            </div>
-
-            <!-- Empty -->
-            <div
-              v-else
-              class="text-center py-16"
-            >
-              <template v-if="detailError">
-                <AlertCircle class="size-12 text-destructive/60 mx-auto mb-3" />
-                <p class="text-sm text-muted-foreground mb-4">
-                  {{ t('common.error') }}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  @click="retryDetail"
-                >
-                  <RefreshCw data-icon="inline-start" />
-                  {{ t('common.retry') }}
-                </Button>
-              </template>
-              <template v-else>
-                <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
-                <p class="text-muted-foreground text-sm">
-                  {{ t('common.noData') }}
-                </p>
-              </template>
+                <ImageIcon class="size-3.5 mr-1" />
+                {{ currentAlbum?.photosCount }} {{ t('gallery.photos') }}
+              </Badge>
             </div>
           </div>
-        </ScrollArea>
-      </DialogContent>
-    </Dialog>
+
+          <!-- Photos -->
+          <ScrollArea class="flex-1 min-h-0">
+            <div class="p-6">
+              <!-- Loading -->
+              <div
+                v-if="albumLoading && currentPhotos.length === 0"
+                class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
+              >
+                <Skeleton
+                  v-for="i in 8"
+                  :key="i"
+                  class="aspect-square rounded-lg"
+                />
+              </div>
+
+              <!-- Photos with viewerjs -->
+              <div
+                v-else-if="currentPhotos.length > 0"
+                ref="viewerContainerRef"
+                class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4"
+              >
+                <img
+                  v-for="(photo, idx) in currentPhotos"
+                  :key="idx"
+                  :src="photo"
+                  :data-original="photo"
+                  :alt="`${currentAlbum?.title || ''} ${idx + 1}`"
+                  class="aspect-square w-full object-cover rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity shadow-sm"
+                  loading="lazy"
+                >
+              </div>
+
+              <!-- Empty -->
+              <div
+                v-else
+                class="text-center py-16"
+              >
+                <template v-if="detailError">
+                  <AlertCircle class="size-12 text-destructive/60 mx-auto mb-3" />
+                  <p class="text-sm text-muted-foreground mb-4">
+                    {{ t('common.error') }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="retryDetail"
+                  >
+                    <RefreshCw data-icon="inline-start" />
+                    {{ t('common.retry') }}
+                  </Button>
+                </template>
+                <template v-else>
+                  <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
+                  <p class="text-muted-foreground text-sm">
+                    {{ t('common.noData') }}
+                  </p>
+                </template>
+              </div>
+            </div>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </ClientOnly>
   </div>
 </template>
 

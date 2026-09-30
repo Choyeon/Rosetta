@@ -33,48 +33,81 @@
               />
             </div>
             <div class="md:w-56">
-              <Select
-                v-model="selectedCategory"
-                @update:model-value="handleFilter"
-              >
-                <SelectTrigger class="h-10">
-                  <SelectValue :placeholder="t('posts.selectCategory')" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="__all">
-                    {{ t('posts.allCategories') }}
-                  </SelectItem>
-                  <SelectItem
-                    v-for="cat in categories"
-                    :key="cat.id"
-                    :value="cat.slug"
+              <!-- ClientOnly：reka Select 在 SSR 产物里因双 vue 实例渲染成空注释节点
+                   （见 nuxt.config nitro 段注释），水合时触发节点级 mismatch。
+                   fallback 复刻 SelectTrigger 的视觉（h-10 圆角边框 + 占位文案 +
+                   ChevronDown），水合后无缝替换为真 Select。 -->
+              <ClientOnly>
+                <Select
+                  v-model="selectedCategory"
+                  @update:model-value="handleFilter"
+                >
+                  <SelectTrigger class="h-10">
+                    <SelectValue :placeholder="t('posts.selectCategory')" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__all">
+                      {{ t('posts.allCategories') }}
+                    </SelectItem>
+                    <SelectItem
+                      v-for="cat in categories"
+                      :key="cat.id"
+                      :value="cat.slug"
+                    >
+                      {{ pickLocalized(cat.name) }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <template #fallback>
+                  <button
+                    type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground text-start"
                   >
-                    {{ pickLocalized(cat.name) }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                    <span class="truncate">{{ t('posts.selectCategory') }}</span>
+                    <ChevronDown class="size-4 opacity-50 shrink-0" />
+                  </button>
+                </template>
+              </ClientOnly>
             </div>
             <div class="md:w-44">
-              <Select
-                v-model="sortBy"
-                @update:model-value="handleFilter"
-              >
-                <SelectTrigger
-                  class="h-10"
-                  :aria-label="t('posts.sortLabel')"
+              <ClientOnly>
+                <Select
+                  v-model="sortBy"
+                  @update:model-value="handleFilter"
                 >
-                  <List class="mr-2 size-4 shrink-0 text-muted-foreground" />
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="latest">
-                    {{ t('posts.sortLatest') }}
-                  </SelectItem>
-                  <SelectItem value="popular">
-                    {{ t('posts.sortPopular') }}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
+                  <SelectTrigger
+                    class="h-10"
+                    :aria-label="t('posts.sortLabel')"
+                  >
+                    <List class="mr-2 size-4 shrink-0 text-muted-foreground" />
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="latest">
+                      {{ t('posts.sortLatest') }}
+                    </SelectItem>
+                    <SelectItem value="popular">
+                      {{ t('posts.sortPopular') }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <template #fallback>
+                  <button
+                    type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground text-start"
+                  >
+                    <span class="flex items-center gap-2 truncate">
+                      <List class="size-4 opacity-50 shrink-0" />
+                      {{ t('posts.sortLatest') }}
+                    </span>
+                    <ChevronDown class="size-4 opacity-50 shrink-0" />
+                  </button>
+                </template>
+              </ClientOnly>
             </div>
             <Button
               variant="default"
@@ -216,7 +249,7 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
-import { Search, Filter, ChevronLeft, ChevronRight, List, X, RefreshCw } from '~~/lib/lucide-svg-icons'
+import { Search, Filter, ChevronLeft, ChevronRight, List, X, RefreshCw, ChevronDown } from '~~/lib/lucide-svg-icons'
 import { watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 
 definePageMeta({ layout: 'default' })

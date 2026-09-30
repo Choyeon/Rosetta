@@ -1,5 +1,5 @@
 // https://nuxt.com/docs/api/configuration/nuxt-config
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
 
@@ -26,6 +26,9 @@ const SITE_URL = process.env.SITE_URL || ''
 // 需要线上排查时设置 NUXT_CLIENT_SOURCE_MAP=true 临时开启。
 // 服务端 sourcemap 始终保留（仅用于错误日志回溯，不发送给浏览器）。
 const CLIENT_SOURCE_MAP = process.env.NUXT_CLIENT_SOURCE_MAP === 'true'
+
+// rosetta-lucide-ssr-fix 拦截标记（跨 client/server 两次构建共享，仅 SSR 构建置 true）
+let ssrLucideFixIntercepted = false
 
 function resolveSsrApiBase(): string {
   if (SSR_API_BASE) return SSR_API_BASE
@@ -357,6 +360,38 @@ export default defineNuxtConfig({
     // 从而丢失 Nitro SSR、Server Routes (RSS/Sitemap/Robots/Bing)、SWR 缓存与后台动态 API。
     preset: 'node-server',
 
+    // ===== 已论证不可行，记录避免后人再踩（2026-10-01）=====
+    // reka-ui 组件在 SSR 渲染 <!----> 的根因是「双 Vue 实例」：rolldown-vite 的
+    // SSR 产物把主 app 的 vue runtime 以绝对路径 import 输出（Nitro 内嵌），而
+    // reka-ui 等 UI 库命中 Nuxt 默认 ssr.external → bare import 输出（Nitro
+    // externalize + trace 拷贝）→ 运行时两份 vue，provide/inject 跨实例静默失效。
+    // 尝试过的三条修复路径全部失败：
+    // 1) vite.ssr.noExternal: true（全量 inline）→ Nuxt/Nitro 运行时被一起重打包，
+    //    页面 SSR 主体渲染为空（渲染在 app.vue 分路处静默中断）。
+    // 2) nitro.externals.inline: ['reka-ui',...] → inline 生效但 reka 内的
+    //    import 'vue' 仍被 externalize → 双实例依旧；且 trace 拷贝缺 estree-walker
+    //    （renderer.mjs 的 bare import "vue" 走 vue/index.mjs → index.js CJS
+    //    full build → @vue/compiler-dom → estree-walker，pnpm 隔离下 trace 漏拷）
+    //    → 启动 MODULE_NOT_FOUND。compiled 钩子补拷可解启动崩溃，但双实例依旧。
+    // 3) nitro.externals.inline + /^@vue\// RegExp → page chunks 残留
+    //    import"estree-walker" 等 side-effect 裸导入 → 请求期 500。
+    // 结论：rolldown-vite + nitropack@2.13 的 externals 组合在「让组件库与主
+    // app 共享同一 vue 实例」上无干净开关，等上游修复后可整体移除本段落；
+    // 当前的 hydration mismatch 在应用层绕过（UserAvatar 手写、Select 用
+    // ClientOnly、Separator 原生复刻、lucide 用本地 shim——均已落地）。
+
+    // ===== 关闭 node-file-trace 拷贝（2026-10-01）=====
+    // 实证：nitropack@2.13 的 node-file-trace 在 pnpm 隔离布局下拷贝不完整 ——
+    // estree-walker@2 整包缺失（启动即 MODULE_NOT_FOUND）、lru-cache@11 缺
+    // dist/*/index 入口、whatwg-mimetype 缺 MIMEType 类（分别引爆于启动期、
+    // NuxtLayout 异步组件加载期、请求期）。逐包补拷是打地鼠。
+    // trace: false 后产物 bare import 直接解析 frontend/node_modules（pnpm
+    // 安装的真实树），部署形态不变：生产为系统级原生部署，systemd 单元
+    // WorkingDirectory 指向 frontend/，node_modules 常驻（见部署文档）。
+    externals: {
+      trace: false
+    },
+
     // ===== 主题静态资源挂载：将 frontend/themes/<slug>/* 暴露到站点根路径 /themes/<slug>/*
     // 让 manifest 里的 screenshot_urls 写相对路径（例：screenshot.png）以及 useFrontendTheme
     // 注入的 /themes/{slug}/style.css 在开发 & 构建产物中都能直接访问，无需后端二次代理。
@@ -411,6 +446,38 @@ export default defineNuxtConfig({
   vite: {
     plugins: [
       tailwindcss(),
+      // ===== vue external 方案已论证不可行（2026-10-01），记录避免再踩 =====
+      // 尝试在 SSR 构建期把 'vue' 强制 external（resolveId 返回 {external:true}）
+      // 以求主 app 与 reka-ui 共用 node_modules 的同一份 vue。结果：主 app 的
+      // createSSRApp 用 external vue，而 RouterLink/pinia 等仍内嵌 → 又一套
+      // 双实例 → RouterLink 渲染成 <routerlink> 未知元素，首页 352 条
+      // mismatch。vue 生态组件必须与主 app 同实例，rolldown-vite 当前无法
+      // 做到「vue 全家 external」或「vue 全家内嵌且组件库同实例」，
+      // 等 Nuxt/rolldown 上游修复后再做系统级处理。
+      // 现行策略：trace:false 修掉 trace 拷贝残缺（layout 空渲染），reka 双
+      // 实例的 mismatch 在应用层绕过（UserAvatar 手写、Select/Tabs 用 ClientOnly）。
+      // lucide-ssr-fix 拦截计数（构建结束打印，用于验证插件真的生效）
+      // —— 2026-10-01 实证：插件静默失效（Vite 8 无 this.ssr）时 SSR 产物
+      //    保留运行时 import "@lucide/vue"，Windows SSR 渲染空 <!----> →
+      //    首页 97 处 hydration mismatch，且构建期无任何报错。
+      {
+        name: 'rosetta-lucide-ssr-fix-verify',
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        closeBundle(this: any) {
+          // vitest 经 defineVitestConfig 注入本插件但没有真正的 SSR 构建，
+          // 拦截永远不会发生 → 恒报 FAILED 误警，直接跳过。
+          if (process.env.VITEST) return
+          const envName = this.environment?.name ?? (this.ssr ? 'ssr' : 'client')
+          if (envName === 'ssr') {
+            if (ssrLucideFixIntercepted) {
+              console.info('[rosetta-lucide-ssr-fix] OK: @lucide/vue intercepted for SSR build')
+            } else {
+              console.warn('[rosetta-lucide-ssr-fix] FAILED: @lucide/vue was NOT intercepted in SSR build — hydration mismatch will recur!')
+            }
+          }
+        }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
       // === Vue runtime-core setRef NPE 终根治（Vite Transform Plugin）===
       //
       // 问题：Nuxt 4 Nitro standalone 下 ssr:false 路径（/login /register
@@ -600,11 +667,24 @@ export default defineNuxtConfig({
       {
         name: 'rosetta-lucide-ssr-fix',
         enforce: 'pre',
-        resolveId(this: { ssr?: boolean }, source: string) {
+        resolveId(this: { ssr?: boolean, environment?: { name?: string } }, source: string) {
           // 限定 SSR + 精确匹配 @lucide/vue（不要匹配 `@lucide/vue/*` 子路径，
           // 目前 lucide 无 deep subpath 包，但防 future）。
-          if (this.ssr && source === '@lucide/vue') {
-            return pathToFileURL(resolve(__dirname, 'lib/lucide-svg-icons-all.ts')).href
+          //
+          // ⚠️ 2026-10-01：Vite 8（rolldown 内核）下插件上下文不再注入 legacy
+          // `this.ssr`（恒 undefined）→ 旧判定恒 false → SSR 产物保留运行时
+          // `import "@lucide/vue"`（Nitro 外置）→ Windows SSR 又开始渲染空
+          // `<!---->` → 首页级联 97 处 hydration mismatch 复发。
+          // 改用 Vite 6+ Environments API `this.environment.name === 'ssr'`，
+          // 并保留 `this.ssr` 兼容旧内核。
+          const envName = (this as { environment?: { name?: string } }).environment?.name
+          const isSSRBuild = this.ssr === true || envName === 'ssr'
+          if (isSSRBuild && source === '@lucide/vue') {
+            ssrLucideFixIntercepted = true
+            // ⚠️ 必须返回 OS 绝对路径而非 pathToFileURL().href：rolldown
+            // （Vite 8）在 Windows 上对 file:// 形式的 resolveId 结果报
+            // os error 123（文件名、目录名或卷标语法不正确）。
+            return resolve(__dirname, 'lib/lucide-svg-icons-all.ts')
           }
           return null
         }

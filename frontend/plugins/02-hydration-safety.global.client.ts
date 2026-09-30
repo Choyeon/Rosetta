@@ -23,6 +23,20 @@
 export default defineNuxtPlugin((nuxtApp) => {
   if (!import.meta.client) return
 
+  // ====== app:mounted 已触发标记（stores/auth.initialize 时序依赖）======
+  // 2026-10-01 实证（生产构建 + probe 生命周期追踪）：Nuxt entry 在
+  // `vueApp.mount()` 返回后立刻 callHook('app:mounted')，但生产构建里根
+  // Suspense（异步 layout/page chunk）resolve 晚于该 callHook —— 组件级
+  // onMounted（app.vue / layouts / pages）全部在 callHook 之后才跑。
+  // 若 initialize() 首次调用发生在组件 onMounted（无 auth 中间件的公开页），
+  // 它再注册 app:mounted 监听就永远等不到 → 登录态恢复死锁（生产全站
+  // hydrated=null，用户刷新后全部被登出）。
+  // 这里在插件阶段（早于 mount）注册一次 hookOnce，把「app:mounted 是否
+  // 已错过」暴露给 auth.initialize() 做判定。
+  nuxtApp.hooks.hookOnce('app:mounted', () => {
+    ;(window as unknown as { __ROSETTA_APP_MOUNTED__?: boolean }).__ROSETTA_APP_MOUNTED__ = true
+  })
+
   const rootKey = useState<number>('__hydration_safety_root_key__', () => 0)
 
   // WHY 硬上限：历史上无上限的 rootKey++ 循环曾把每次导航变成 30~80 次重挂
