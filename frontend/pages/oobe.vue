@@ -635,7 +635,14 @@
 
                 <!-- ============== Step 2: 管理员账户 ============== -->
                 <template v-else-if="step === 2">
-                  <div class="flex flex-col gap-4">
+                  <!-- 真实 form 包裹（@submit.prevent 吞回车提交）：Chrome 会对
+                       不在 form 内的 password 输入框刷 [DOM] 警告，且 form 语义
+                       能让密码管理器正确识别「创建账号」场景 -->
+                  <form
+                    class="flex flex-col gap-4"
+                    autocomplete="on"
+                    @submit.prevent
+                  >
                     <div class="flex flex-col gap-2">
                       <Label
                         for="oobe-admin-name"
@@ -850,7 +857,7 @@
                       <XCircle class="size-3.5 shrink-0 mt-0.5" />
                       {{ stepError }}
                     </p>
-                  </div>
+                  </form>
                 </template>
 
                 <!-- ============== Step 3: 站点 + 数据库 + 特性开关 ============== -->

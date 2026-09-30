@@ -29,11 +29,13 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from backend.core.config import settings
 from backend.core.database import Base
 from backend.core.tenant import TenantMixin
 
-JSON_TYPE = JSONB if settings.is_postgresql else JSON
+# 按连接方言在 DDL 编译期决定 JSON/JSONB：OOBE 期进程以 SQLite 配置启动、安装时切到
+# PG 连接 create_all——若在 import 期按 settings 固化类型，PG 会拿到 json 列，
+# 与 GIN 索引不兼容（json 无默认 gin 算子类）。with_variant 由 bind 方言解析。
+JSON_TYPE = JSON().with_variant(JSONB(), "postgresql")
 
 if TYPE_CHECKING:
     from backend.models.user import User
