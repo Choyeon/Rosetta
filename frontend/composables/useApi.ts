@@ -303,7 +303,11 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
     }
 
     if (isOobeRequiredError(status, e.data)) {
-      await navigateTo('/oobe')
+      // SSR 端绝不 navigateTo：Nitro 渲染线程没有客户端路由，调用会让渲染 Promise
+      // 永远 pending（表现为 NUXT_E1001），更糟的是渲染 /oobe 时又把 /oobe 302 到
+      // /oobe 自身——首次访问直接死循环、向导页永远打不开。
+      // 跳转只交给客户端；服务端照常抛出，由调用方降级（OOBE 期接口本来就 503）。
+      if (import.meta.client) await navigateTo('/oobe')
       throw err
     }
 
@@ -342,7 +346,8 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
             throw Object.assign(new Error(hint), { status: 0, code: 'NETWORK_ERROR', cause: retryErr })
           }
           if (isOobeRequiredError(retryStatus, re.data)) {
-            await navigateTo('/oobe')
+            // 同上：SSR 端不跳转，仅客户端跳向导页。
+            if (import.meta.client) await navigateTo('/oobe')
             throw retryErr
           }
           if (retryStatus === 401) {
