@@ -39,6 +39,7 @@
         <div class="p-8 flex flex-col gap-8 flex-1">
           <NuxtLink
             to="/"
+            :prefetch="false"
             class="inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight text-foreground"
           >
             <img
@@ -1762,7 +1763,6 @@
           :src="thumbUrl(bwp?.url)"
           :alt="bwp?.title || ''"
           class="size-9 rounded-full object-cover ring-1 ring-zinc-900/15 dark:ring-white/15"
-          loading="lazy"
           decoding="async"
           @error="onThumbError"
         >

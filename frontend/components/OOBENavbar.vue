@@ -20,6 +20,7 @@ import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
     <div class="container mx-auto flex h-full items-center justify-between px-4 lg:px-8">
       <NuxtLink
         to="/"
+        :prefetch="false"
         class="inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight text-foreground"
       >
         <img
