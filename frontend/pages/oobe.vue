@@ -95,10 +95,18 @@
 
       <!-- 内容区：居中大图卡 -->
       <div class="p-5 sm:p-8 lg:p-12 flex items-start justify-center overflow-auto">
-        <!-- 毛玻璃 Card（32px 高模糊，外层渐变描边 + 深邃投影） -->
+        <!-- 毛玻璃 Card（32px 高模糊，外层渐变描边 + 深邃投影）
+             ⚠️ 玻璃层必须是内容层的「兄弟节点」而不能是其祖先：输入框位于任何
+             backdrop-filter 祖先之内时，Chromium 会把浏览器级悬浮窗（自动填充
+             下拉 / IME 候选条）裁切进该合成层、画到卡片底下，只露出一条灰边。
+             内容层保持无滤镜，玻璃质感由下方 absolute 兄弟层提供。 -->
         <div class="relative w-full max-w-5xl">
           <div class="absolute -inset-px rounded-[28px] bg-[linear-gradient(135deg,rgba(16,185,129,0.45),rgba(14,165,233,0.28)_40%,rgba(56,189,248,0.15)_60%,rgba(20,184,166,0.45))] opacity-80 [mask:linear-gradient(#000_0_0)_content-box,linear-gradient(#000_0_0)] [mask-composite:exclude] pointer-events-none" />
-          <div class="relative rounded-[28px] p-7 md:p-9 bg-white/70 dark:bg-zinc-950/60 backdrop-blur-[32px] saturate-[200%] [@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-white/90 dark:[@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-zinc-950/95 border border-zinc-900/10 dark:border-white/10 shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)] dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)]">
+          <div
+            aria-hidden="true"
+            class="absolute inset-0 rounded-[28px] bg-white/70 dark:bg-zinc-950/60 backdrop-blur-[32px] saturate-[200%] [@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-white/90 dark:[@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-zinc-950/95 border border-zinc-900/10 dark:border-white/10 shadow-[0_30px_80px_-20px_rgba(15,23,42,0.18)] dark:shadow-[0_30px_80px_-20px_rgba(0,0,0,0.65)]"
+          />
+          <div class="relative rounded-[28px] p-7 md:p-9">
             <div class="pb-2">
               <div class="lg:hidden flex items-center gap-2 text-sm text-foreground/80 mb-4">
                 <span>{{ t('oobe.step') }} {{ step }}/4</span>
@@ -638,6 +646,9 @@
                         <Input
                           id="oobe-admin-name"
                           v-model="adminForm.name"
+                          autocomplete="username"
+                          autocapitalize="none"
+                          spellcheck="false"
                           :placeholder="t('oobe.adminNamePlaceholder')"
                           class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                         />
@@ -687,6 +698,7 @@
                           id="oobe-admin-email"
                           v-model="adminForm.email"
                           type="email"
+                          autocomplete="email"
                           :placeholder="t('oobe.adminEmailPlaceholder')"
                           class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                         />
@@ -715,6 +727,7 @@
                             id="oobe-admin-password"
                             v-model="adminForm.password"
                             :type="showAdminPassword ? 'text' : 'password'"
+                            autocomplete="new-password"
                             :placeholder="t('oobe.adminPasswordPlaceholder')"
                             class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                           />
@@ -795,6 +808,7 @@
                             id="oobe-admin-confirm-password"
                             v-model="adminForm.confirmPassword"
                             :type="showAdminConfirmPassword ? 'text' : 'password'"
+                            autocomplete="new-password"
                             :placeholder="t('oobe.adminConfirmPasswordPlaceholder')"
                             class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
                           />

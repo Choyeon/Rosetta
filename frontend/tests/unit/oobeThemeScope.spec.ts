@@ -20,7 +20,10 @@
  *  5. 暗色系硬编码类全部成对出现（白名单豁免：署名胶囊/日志控制台）；
  *  6. OOBENavbar 挂 ThemeToggle 且品牌文字不硬编码白色；
  *  7. 步骤切换过渡存在且带 prefers-reduced-motion 降级；
- *  8. 模板用到的 oobe.* i18n 键在 zh/en/ja/zh_Hant 四语全部存在。
+ *  8. 模板用到的 oobe.* i18n 键在 zh/en/ja/zh_Hant 四语全部存在；
+ *  9. 主卡玻璃层是内容层的兄弟节点（backdrop-filter 不得成为输入框祖链），
+ *     否则 Chromium 把自动填充/IME 悬浮窗裁切进卡片合成层（2026-10-01 截图实证）；
+ * 10. 管理员四个输入框带语义化 autocomplete（创建账号 = username/email/new-password）。
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -125,6 +128,22 @@ describe('oobe 明暗双主题', () => {
   it('OOBENavbar 品牌文字走 text-foreground，不再硬编码白色', () => {
     expect(navbarVue).not.toMatch(/text-white/)
     expect(navbarVue).toMatch(/text-foreground/)
+  })
+
+  it('主卡玻璃层是内容层的兄弟节点：内容层不得携带任何滤镜类', () => {
+    // 内容层（p-7 md:p-9 圆角容器）必须无 backdrop-blur / saturate
+    const contentDiv = oobeVue.match(/<div class="relative rounded-\[28px\] p-7 md:p-9"[^>]*>/)
+    expect(contentDiv, '主卡内容层结构被改动').toBeTruthy()
+    expect(contentDiv![0]).not.toMatch(/backdrop-blur|saturate-/)
+    // 玻璃质感由 absolute 兄弟层提供（inset-0 + aria-hidden）
+    expect(oobeVue).toMatch(/<div\s+aria-hidden="true"\s+class="absolute inset-0 rounded-\[28px\][^"]*backdrop-blur-\[32px\]/)
+  })
+
+  it('管理员输入框带语义化 autocomplete（创建账号场景）', () => {
+    expect(oobeVue).toMatch(/id="oobe-admin-name"[\s\S]{0,200}autocomplete="username"/)
+    expect(oobeVue).toMatch(/id="oobe-admin-email"[\s\S]{0,200}autocomplete="email"/)
+    expect(oobeVue).toMatch(/id="oobe-admin-password"[\s\S]{0,200}autocomplete="new-password"/)
+    expect(oobeVue).toMatch(/id="oobe-admin-confirm-password"[\s\S]{0,300}autocomplete="new-password"/)
   })
 
   it('main.css 注册 class 版 dark: 变体（禁止退回 prefers-color-scheme 媒体查询）', () => {
