@@ -102,6 +102,34 @@ async def isolate_caches():
     await _level2.invalidate_pattern("*")
 
 
+@pytest.fixture(autouse=True)
+def neutralize_visit_telemetry(monkeypatch):
+    """测试禁用访问日志后台落库（visit_logs flush 单例任务）。
+
+    `record_visit` 会懒启动**模块级** flush 后台任务，且跨测试存活：后台批量
+    写入与测试自身的事务在 StaticPool 共享的同一条 aiosqlite 连接上交叉执行，
+    触发 `cannot commit transaction - SQL statements in progress`；残留队列还
+    会往下一个用例（尚无 visit_logs 表的内存库）里写，刷 `no such table`。
+    两者都是 CI 实锤过的 flake（本地时序不同所以难复现）。
+
+    不能用关 `is_oobe_complete()` 的方式解决——client 夹具靠它返回 True 来
+    绕过 OOBE 503——所以直接把中间件调用的 `record_visit` 桩成 no-op，
+    并在每个用例结束后取消残留的 flush 任务、重置单例。
+    """
+    import backend.api.monitoring as _mon
+
+    async def _noop_record(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(_mon, "record_visit", _noop_record)
+    yield
+    task = _mon._visit_flusher
+    _mon._visit_queue = None
+    _mon._visit_flusher = None
+    if task is not None and not task.done():
+        task.cancel()
+
+
 @pytest_asyncio.fixture(scope="function")
 async def test_engine():
     """创建测试数据库引擎
