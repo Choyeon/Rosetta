@@ -33,6 +33,13 @@ async def performance_middleware(request: Request, call_next):
     response = await call_next(request)
     duration_ms = int((time.time() - start_time) * 1000)
 
+    # OOBE 未完成时数据库尚未就绪（DATABASE_URL 由用户在向导里填写），
+    # performance_metrics 表不存在，写库只会每批刷 OperationalError——直接跳过。
+    from backend.core.deps import is_oobe_complete
+
+    if not is_oobe_complete():
+        return response
+
     # 采样策略：所有 >500ms 的请求 或 10% 概率的普通请求
     should_record = duration_ms > SLOW_REQUEST_THRESHOLD_MS or random.random() < SAMPLE_RATE
 
