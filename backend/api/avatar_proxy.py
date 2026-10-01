@@ -3,7 +3,8 @@
 对外：GET /media/avatar?src=<urlsafe_b64(original_url)>[&fallback=1]
 
 策略：
-- 白名单域名（github/gravatar/qq/dicebear 等）→ 307 直跳（省带宽、浏览器缓存友好）
+- 白名单域名（gravatar/qq/dicebear 等）→ 307 直跳（省带宽、浏览器缓存友好）；
+  github.com 例外，见 _ALLOWED_HOST_SUFFIXES 内注释
 - fallback=1 或非白名单域名 → 服务端流式代理：
     - 上游 4xx/5xx → 307 到最终兜底（本地静态图）
     - 上游 Content-Type 非 image/* → 307 兜底（防止 example.com 的 HTML/CORS/ORB 污染，Chromium 会以 ERR_BLOCKED_BY_ORB 杀掉这类响应）
@@ -35,7 +36,11 @@ _ALLOWED_HOST_SUFFIXES = (
     "gravatar.com",
     "gravatar.cn",
     "wp.com",  # Gravatar 0.gravatar.com 等别名 CNAME 最终走 wp.com
-    "github.com",
+    # github.com 刻意不在白名单：github.com/{user}.png 对不存在/受限用户返回的是
+    # HTML 页（302→404 页面），307 直跳后浏览器直连会被 Chromium 以
+    # ERR_BLOCKED_BY_ORB 杀掉（生产实测 2026-10-01）。走服务端流式代理，
+    # 上游非 image/* 时安全回落到 _FINAL_FALLBACK，浏览器全程只见本站响应。
+    # 最终图片 CDN avatars.githubusercontent.com 返回真 image/*，保留直跳。
     "githubusercontent.com",
     # ── DiceBear（矢量 fallback 头像） ──
     "dicebear.com",
