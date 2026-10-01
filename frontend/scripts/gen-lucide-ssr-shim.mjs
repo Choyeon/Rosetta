@@ -126,6 +126,16 @@ const defaultAttrs: Record<string, string | number> = {
   'stroke-linejoin': 'round'
 }
 
+const toPascal = (s: string): string =>
+  s.split('-').map((p) => (p ? p[0].toUpperCase() + p.slice(1) : '')).join('')
+const toKebab = (s: string): string => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
+// ⚠️ 与 npm Icon.mjs 逐字节对齐：第一段 class 走 kebab(pascal(name)) 往返，
+// 名字含数字时连字符会在 Pascal 化时被合并（link-2 -> Link2 -> link2），
+// 这是 @lucide/vue v1.37 客户端的实际行为（含 bug 语义），SSR shim 必须复刻，
+// 否则出现 Hydration class mismatch（/friends 页 lucide-link-2 实证 2026-10-01）。
+const iconClass = (name: string): string =>
+  \`lucide lucide-\${toKebab(toPascal(name))}-icon lucide-\${toKebab(name)}\`
+
 const ssrIcon = (name: string, iconNode: IconNode): DefineComponent =>
   defineComponent({
     name: \`LucideSSR_\${name}\`,
@@ -134,7 +144,7 @@ const ssrIcon = (name: string, iconNode: IconNode): DefineComponent =>
       return () =>
         h(
           'svg',
-          { ...defaultAttrs, class: \`lucide lucide-\${name}-icon lucide-\${name}\` },
+          { ...defaultAttrs, class: iconClass(name) },
           iconNode.map(([tag, props]) => h(tag, props))
         )
     }
@@ -147,7 +157,7 @@ const stubIcon = (name: string): DefineComponent =>
     inheritAttrs: true,
     setup() {
       return () =>
-        h('svg', { ...defaultAttrs, class: \`lucide lucide-\${name}-icon lucide-\${name}\` }, [
+        h('svg', { ...defaultAttrs, class: iconClass(name) }, [
           h('rect', { x: 3, y: 3, width: 18, height: 18, rx: 2, ry: 2, opacity: 0 })
         ])
     }
