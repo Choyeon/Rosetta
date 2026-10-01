@@ -12,8 +12,8 @@
  *
  * 输出：
  *   - 返回适合直接填进 <AvatarImage :src="..." /> 的最终字符串 URL
- *   - 空值时返回 DiceBear identicon 确定性默认头像（按 seed 生成；若未传 seed，
- *     则按浏览器当前用户名/站点名生成可复现的 seed）。
+ *   - 空值时返回本地生成的确定性默认头像（内联 SVG data URI：按 seed 取色的渐变 +
+ *     首字母），零网络请求、SSR/CSR 一致；未传 seed 时落到固定站点 seed（不再掺时间）。
  */
 
 import { computed } from 'vue'
@@ -21,6 +21,8 @@ import { computed } from 'vue'
 export interface ResolveAvatarOptions {
   /** 生成默认头像的确定性种子（建议：username / email） */
   seed?: string
+  /** 默认头像上叠的首字母来源（通常传昵称/用户名）；不传则只画渐变底 */
+  label?: string
 }
 
 const KNOWN_ABSOLUTE_RE = /^https?:\/\//i
@@ -74,19 +76,52 @@ function fnv1aHash(text: string): string {
   return h.toString(16).padStart(8, '0')
 }
 
-function defaultSeedFromEnv(): string {
-  // SSR 环境无 window，直接用固定 token，保持可复现
-  const host = (typeof window !== 'undefined' ? window.location.hostname : 'rosetta') || 'rosetta'
-  return fnv1aHash(`${host}|guest|${Date.now().toString().slice(0, -6)}`)
+/**
+ * 默认头像配色：由 seed 确定性推导的渐变——同一 seed 永远同一组颜色。
+ * 色相取哈希前 16 bit；饱和度/亮度固定在主题友好区间（不撞纯灰、不刺眼）。
+ * 该算法同时被 UserAvatar 的「加载中 / 加载失败」占位层复用，保证三种状态视觉统一。
+ */
+export function avatarAccent(seed?: string | null): { hue: number, from: string, to: string } {
+  const raw = String(seed ?? '').trim()
+  const hue = parseInt(fnv1aHash(raw || 'rosetta').slice(0, 4), 16) % 360
+  return {
+    hue,
+    from: `hsl(${hue} 64% 58%)`,
+    to: `hsl(${(hue + 42) % 360} 66% 46%)`
+  }
+}
+
+/** 首字母：取第一个码点（兼容中文与 emoji 代理对）；无名字时返回空串（只画渐变底） */
+export function avatarInitial(label?: string | null): string {
+  const s = String(label ?? '').trim()
+  if (!s) return ''
+  return (Array.from(s)[0] || '').toUpperCase()
+}
+
+function _escapeXml(s: string): string {
+  return s.replace(/[&<>"']/g, c => `&#${c.charCodeAt(0)};`)
 }
 
 /**
- * DiceBear 9.x 公开端点：全球 CDN 稳定、免 key、SVG 矢量、体积小。
- * 选择 identicon：简洁、类似 GitHub 默认头像风格、性别中立。
+ * 默认头像：内联 SVG data URI（确定性渐变 + 首字母），零网络请求。
+ *
+ * 为什么不再外链 DiceBear（2026-10-01）：
+ * - 每个头像都要打一次 /api/media/avatar 代理（首页 25 个），首屏被外部 CDN 拖慢，
+ *   外部不可用时整站默认头像一起消失；
+ * - 旧实现 seed 缺失时把 Date.now() 混进 seed → SSR 与客户端算出的值不同，同一个人
+ *   刷新页面头像会变，且是潜在的 hydration 不一致源；
+ * - 本地生成后默认头像即时可见，且与「加载中 / 加载失败」占位同一套配色，视觉统一。
+ *
+ * 后端 /api/media/avatar 的 DiceBear 兜底保留：它负责「自定义/外部头像加载失败」场景。
  */
-function dicebearAvatarUrl(seed: string): string {
-  const s = encodeURIComponent(seed || defaultSeedFromEnv())
-  return `https://api.dicebear.com/9.x/identicon/svg?seed=${s}&backgroundType=gradientLinear&backgroundRotation=0,360`
+export function defaultAvatarDataUri(seed?: string | null, label?: string | null): string {
+  const { from, to } = avatarAccent(seed)
+  const initial = _escapeXml(avatarInitial(label))
+  const text = initial
+    ? `<text x="32" y="32" text-anchor="middle" dominant-baseline="central" font-family="ui-sans-serif,system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="30" font-weight="600" fill="#fff">${initial}</text>`
+    : ''
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${from}"/><stop offset="1" stop-color="${to}"/></linearGradient></defs><rect width="64" height="64" rx="32" fill="url(#g)"/>${text}</svg>`
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
 }
 
 /**
@@ -140,17 +175,10 @@ export function resolveAvatarUrl(
     // 未知格式的裸串（例如 "/avatar.png"）：可能是占位，跳过，不包装
   }
 
-  // 全部候选失败 → 使用 DiceBear 稳定默认头像（通过站点 /api/media/avatar 代理走
-  // 后端兜底链路：白名单直跳→流式代理→DiceBear SVG 兜底。避免浏览器直接外链
-  // api.dicebear.com 导致 CORS / ERR_ABORTED / 控制台红 error（D3 项必须零误差）。
-  const seed = opts.seed && String(opts.seed).trim() ? fnv1aHash(String(opts.seed).trim()) : defaultSeedFromEnv()
-  const direct = dicebearAvatarUrl(seed)
-  try {
-    const encoded = btoa(unescape(encodeURIComponent(direct)))
-    return `${apiBase}/media/avatar?src=${encoded}&fallback=1`
-  } catch {
-    return direct
-  }
+  // 全部候选失败 → 本地生成的确定性默认头像（零请求、SSR/CSR 完全一致）。
+  // 不再外链 DiceBear：它退居后端 /api/media/avatar 的「外部头像加载失败兜底」，
+  // 前端不主动为每个默认头像发起代理请求。
+  return defaultAvatarDataUri(opts.seed, opts.label)
 }
 
 /**
