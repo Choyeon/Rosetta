@@ -332,12 +332,20 @@ export default defineNuxtConfig({
   // Nuxt 4 实验项：仅保留 4.5.2 schema 已声明且无类型错误、对 SPA 有益的字段；
   // - componentIslands: 保持默认 'auto'（组件岛强制 true 会把全部静态组件拆为独立 chunk，
   //   SPA 模式下网络并发请求反而拖慢首屏；渐进 SSR 时再按页面开启）。
-  // - sharedPrerenderData / payloadExtraction：在 SPA（ssr:false）模式下被 schema 强制置 false，
+  // - sharedPrerenderData：在 SPA（ssr:false）模式下被 schema 强制置 false，
   //   保留声明仅作为未来切 SSR 时的预设位。
   // - lazyHydration：默认 true 已启用；显式写 true 仅语义化、无额外体积。
   experimental: {
-    // SPA 基线 ssr:false 时被 $resolve 强制为 false；这里留声明便于未来按页面切 SSR。
-    payloadExtraction: true,
+    // ⚠️ 必须 false（2026-10-01 生产 hydration mismatch 根因）：
+    // true 时 SSR 页面的 payload 外置为 <route>/_payload.json 且被 Nitro 独立缓存
+    // （s-maxage=3600），与页面 HTML 的 swr 缓存（300~3600s）各自计时 revalidate。
+    // 页面渲染含时变数据（文章浏览量 views：详情接口每次浏览 +1），两层缓存
+    // 生成时刻一错位，浏览器就拿到「HTML=新值 + payload=旧值」→ hydration 按
+    // payload 渲染出与 SSR HTML 不同的文本 → 「Hydration completed but contains
+    // mismatches.」，随缓存老化必现（当日中午部署全绿、傍晚必红）。
+    // false 后 payload 内嵌 HTML、同生同灭，永不错位；代价仅是客户端导航改为
+    // 直接请求 API（API 本身有后端缓存），博客站完全可接受。
+    payloadExtraction: false,
     // 同理：SPA 无 prerender 过程，但保留声明。
     sharedPrerenderData: true,
     // 外链资源（CDN/OSS）的预取提示（preconnect/prefetch）：对前台直接外链资源减少 RTT。
@@ -444,6 +452,8 @@ export default defineNuxtConfig({
   // TW4 将 PostCSS 插件迁移到了 @tailwindcss/postcss；而 Nuxt 推荐通过 Vite 接入获得
   // 10x Oxide 构建加速，且不与 nuxt-tailwindcss 旧版 postcss 注册冲突。
   vite: {
+    // 临时诊断：让生产构建输出 hydration mismatch 的节点级明细（诊断完撤销）
+    define: { __VUE_PROD_HYDRATION_MISMATCH_DETAILS__: 'true' },
     plugins: [
       tailwindcss(),
       // ===== vue external 方案已论证不可行（2026-10-01），记录避免再踩 =====
