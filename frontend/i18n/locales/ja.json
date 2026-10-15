@@ -151,6 +151,17 @@
     "daysAgo": " 天前",
     "like": "いいね"
   },
+  "poll": {
+    "title": "投票",
+    "submit": "投票する",
+    "submitting": "送信中…",
+    "thanks": "ご参加ありがとうございます！",
+    "closed": "投票は終了しました",
+    "pickAtLeastOne": "少なくとも 1 つを選択してください",
+    "submitFailed": "送信に失敗しました。後でもう一度お試しください",
+    "totalVotes": "合計 {n} 票",
+    "multipleHint": "複数選択可"
+  },
   "auth": {
     "username": "ユーザー名",
     "usernameOrEmail": "ユーザー名またはメールアドレス",

@@ -151,6 +151,17 @@
     "loginToComment": "登录后才能评论",
     "like": "点赞"
   },
+  "poll": {
+    "title": "投票",
+    "submit": "提交投票",
+    "submitting": "提交中…",
+    "thanks": "感谢参与！",
+    "closed": "投票已结束",
+    "pickAtLeastOne": "请先选择一个选项",
+    "submitFailed": "提交失败，请稍后重试",
+    "totalVotes": "共 {n} 票",
+    "multipleHint": "可多选"
+  },
   "auth": {
     "username": "用户名",
     "usernameOrEmail": "用户名或邮箱",

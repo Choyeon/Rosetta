@@ -330,6 +330,13 @@
             </NuxtLink>
           </nav>
 
+          <!-- ========= 全局投票 MVP：Poll 与 Post 尚未建关联，此处展示全站激活中的投票 ========= -->
+          <PollCard
+            v-for="poll in activePolls"
+            :key="poll.id"
+            :poll="poll"
+          />
+
           <Separator class="my-12" />
 
           <section>
@@ -566,9 +573,11 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import TagBadge from '~~/components/TagBadge.vue'
 import CommentItem from '~~/components/CommentItem.vue'
+import PollCard from '~~/components/PollCard.vue'
 import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
+import { usePolls, type Poll } from '~~/composables/usePolls'
 import { useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
@@ -683,6 +692,10 @@ interface SimilarPostRow { id: number | string, slug?: string, title?: unknown, 
 interface AdjacentRef { slug: string, title: string }
 const similarPosts = ref<SimilarPostRow[]>([])
 const adjacent = ref<{ previous: AdjacentRef | null, next: AdjacentRef | null }>({ previous: null, next: null })
+// 全局投票 MVP：Poll 未与 Post 关联，仅客户端挂载后拉一次激活中的投票；
+// 密码闸门未解锁时不拉，避免把 poll 露在闸门上方。
+const activePolls = ref<Poll[]>([])
+const pollsAPI = usePolls()
 const likeCount = ref<number>(0)
 const likedByMe = ref<boolean>(false)
 const submittingLike = ref<boolean>(false)
@@ -1251,6 +1264,10 @@ onMounted(async () => {
   if (articleStoredPwd.value && needPassword.value) {
     void refreshPostWithStoredPassword()
   }
+  // 全局投票：闸门未解锁时不拉，防止 poll 内容出现在密码框上方。
+  if (!needPassword.value) {
+    activePolls.value = await pollsAPI.fetchActivePolls(3)
+  }
   // 三个独立任务并行执行：评论、相似文章、TOC 重建互不依赖
   await Promise.all([
     loadCommentsForCurrentPost(),
@@ -1261,6 +1278,12 @@ onMounted(async () => {
     // 字体 / 懒加载图片导致布局变化后的兜底刷新（3 秒内再补几次）。
     const retries = [400, 1200, 3000]
     retries.forEach(delay => setTimeout(() => void rebuildTOC(), delay))
+  }
+})
+// 密码解锁后 needPassword 由 true→false，此时才允许拉全局投票卡片。
+watch(needPassword, async (locked, prev) => {
+  if (prev && !locked && !activePolls.value.length) {
+    activePolls.value = await pollsAPI.fetchActivePolls(3)
   }
 })
 onActivated(async () => {

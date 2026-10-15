@@ -143,6 +143,14 @@ export const Lock = S(undefined,
   h('path', { d: 'M7 11V7a5 5 0 0 1 10 0v4' })
 )
 
+// BarChart3
+export const BarChart3 = S(undefined,
+  h('path', { d: 'M3 3v18h18' }),
+  h('path', { d: 'M18 17V9' }),
+  h('path', { d: 'M13 17V5' }),
+  h('path', { d: 'M8 17v-3' })
+)
+
 /* ------------------------------------------------------------------ */
 /*  5. shadcn/ui Chevron/Breadcrumb/Accordion                          */
 /* ------------------------------------------------------------------ */

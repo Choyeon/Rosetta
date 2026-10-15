@@ -151,6 +151,17 @@
     "loginToComment": "Please login to comment",
     "like": "Like"
   },
+  "poll": {
+    "title": "Poll",
+    "submit": "Submit vote",
+    "submitting": "Submitting…",
+    "thanks": "Thanks for voting!",
+    "closed": "This poll has closed",
+    "pickAtLeastOne": "Please pick at least one option",
+    "submitFailed": "Failed to submit, please retry",
+    "totalVotes": "{n} votes",
+    "multipleHint": "Multiple choice"
+  },
   "auth": {
     "username": "Username",
     "usernameOrEmail": "Username or Email",

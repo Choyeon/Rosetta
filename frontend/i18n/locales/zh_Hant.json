@@ -151,6 +151,17 @@
     "daysAgo": " 天前",
     "like": "點讚"
   },
+  "poll": {
+    "title": "投票",
+    "submit": "提交投票",
+    "submitting": "提交中…",
+    "thanks": "感謝參與！",
+    "closed": "投票已結束",
+    "pickAtLeastOne": "請先選擇一個選項",
+    "submitFailed": "提交失敗，請稍後重試",
+    "totalVotes": "共 {n} 票",
+    "multipleHint": "可多選"
+  },
   "auth": {
     "username": "使用者名稱",
     "usernameOrEmail": "使用者名稱或電子郵件",
