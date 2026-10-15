@@ -146,7 +146,7 @@
 的 `definePageMeta({ middleware: 'archive-year' })`，契约见 `archiveYearRoute.spec.ts`。
 附带收益：垃圾参数不会走到 `useAPI`，后端也就拿不到机会返回 422。
 
-**依赖异步数据的 404 判定**（内容详情页：文章 / 分类 / 标签 / 独立页）另有两条坑，
+**依赖异步数据的 404 判定**（内容详情页：文章 / 分类 / 标签 / 独立页 / 系列 / 作者 / 归档月）另有三条坑，
 实测踩过，口径见 `frontend/composables/useContentStatus.ts`：
 
 1. `useFetch / useAsyncData` 的 payload 是 Nuxt 在渲染前才 await 落值的——**setup 同步期
@@ -156,6 +156,14 @@
    （本仓未开 `nitroAsyncContext`），闸门会静默失效、页面全回 200。
 3. 只有后端明确 404、或请求成功但对象为空才改状态码；网络故障 / 5xx 一律不动——
    把一次临时故障写成 404，搜索引擎会当成永久删除而掉索引，比 200 更难恢复。
+4. **`<title>` 必须与状态码同口径**：404 响应配一个"看起来正常"的标题（`系列 · 系列`、
+   `2026-09 归档`）等于给搜索引擎两份互相矛盾的信号。判定共用导出的
+   `isContentMissing()`，页面侧不要再写一套 `!data`。
+
+清单由 `frontend/tests/unit/contentNotFoundStatus.spec.ts` 递归清点 `pages/` 下带动态段的
+公开页来兜：新增一页若没接闸门（也没挂 `archive-year` 这类命名中间件），测试直接红。
+系列详情页就是手写清单漏掉的那一条——渲染了"系列不存在"，HTTP 仍是 200，还被
+`/series/**` 的 swr 3600 缓存成可复用页面。
 
 独立页有两个入口：`pages/page/[slug].vue` 只做兼容重定向，**顶级 catchall `pages/[slug].vue`
 才是真实落地路由**——它接住每一条形如 `/任意单段` 的 URL，所以 404 闸门与
