@@ -771,18 +771,22 @@ async function submitArticlePassword() {
   submittingArticlePassword.value = true
   articlePwdError.value = false
   try {
-    // POST /posts/{id}/decrypt → 验证密码，拿解密正文
-    await apiFetch<{ success: boolean }>(
-      `/blog/posts/${post.value?.id || slug.value}/decrypt`,
-      { method: 'POST', body: { password: pwd } }
-    )
-    // 写入 sessionStorage，等待存储落盘后重新拉取全文
+    // 走 GET + X-Post-Password 让 blog.py 的 can_access_content 判定放行，
+    // 后端返回完整正文；这条路径同时覆盖"仅密码保护（明文正文）"这一常见形态。
+    articleStoredPwd.value = pwd
     if (import.meta.client && typeof sessionStorage !== 'undefined') {
       sessionStorage.setItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value, pwd)
     }
-    articleStoredPwd.value = pwd
-    await new Promise(r => setTimeout(r, 50))
     await refreshPost()
+    if (needPassword.value) {
+      // 拿正文仍为空 ⇒ 密码错，回滚状态并提示
+      articlePwdError.value = true
+      articleStoredPwd.value = ''
+      if (import.meta.client && typeof sessionStorage !== 'undefined') {
+        sessionStorage.removeItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value)
+      }
+      return
+    }
     articlePwdInput.value = ''
   } catch {
     articlePwdError.value = true
