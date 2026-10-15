@@ -196,7 +196,6 @@
               </Alert>
             </ClientOnly>
           </div>
-        </div>
 
           <div
             v-if="normalizedTags.length"
