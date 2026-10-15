@@ -11,6 +11,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/toolti
 import { Badge } from '~~/components/ui/badge'
 import { adminMenu } from '~~/config/admin-menu'
 import { usePluginMenuGroup } from '~~/composables/usePluginMenu'
+import { stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 const props = defineProps<{
   collapsed?: boolean
@@ -88,8 +89,7 @@ const isActive = (path: string) => {
   // i18n prefix_except_default：菜单项 path 是默认语言形态（/admin/xxx），
   // route.path 在英/日/繁下带前缀（/en/admin/xxx）。剥前缀后再比对，
   // 保证高亮判定与语言无关。
-  const rpRaw = route.path
-  const rp = rpRaw.replace(/^\/(?:en|ja|zh_Hant)(?=\/|$)/, '') || '/'
+  const rp = stripLocalePathPrefix(route.path)
   if (path === '/admin') return rp === '/admin' || rp === '/admin/'
   if (rp === path) return true
   const prefix = path + '/'

@@ -157,4 +157,22 @@ describe('URL 派生的单源约束（静态）', () => {
     const footer = readFileSync(resolve(ROOT, 'components/AppFooter.vue'), 'utf-8')
     expect(footer).toContain('applyLocalePrefix(route.fullPath')
   })
+
+  it('路径归属判定一律先剥语言前缀（后台外壳不能只认裸 /admin）', () => {
+    // 后台是可带前缀访问的（/en/admin/...）：admin-menu 的键、主题视觉排除名单、
+    // 侧栏高亮比的都是默认语言形态。谁直接用 raw route.path 做归属判定，
+    // 英文界面下就表现为面包屑退化成 URL 末段、菜单不高亮。
+    for (const file of ['components/admin/AdminHeader.vue', 'components/admin/AdminSidebar.vue']) {
+      const src = readFileSync(resolve(ROOT, file), 'utf-8')
+      expect(src, `${file} 没走共享的剥前缀 helper`).toContain('stripLocalePathPrefix(')
+      // 各写一套正则 = 下一轮加语言时漏改一处；口径唯一清单在 lib/rosetta-themes.ts
+      expect(src, `${file} 自己拼了语言前缀正则`).not.toContain('en|ja|zh_Hant')
+    }
+    expect(readFileSync(resolve(ROOT, 'components/admin/AdminHeader.vue'), 'utf-8'))
+      .not.toMatch(/findMenu(?:Item|Group)\(route\.path\)/)
+
+    const lib = readFileSync(resolve(ROOT, 'lib/rosetta-themes.ts'), 'utf-8')
+    expect(lib).toContain('export function isThemeVisualExcluded')
+    expect(lib).toContain('stripLocalePathPrefix(path)')
+  })
 })

@@ -53,6 +53,7 @@ import {
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import { findMenuItem, findMenuGroup } from '~~/config/admin-menu'
+import { stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 defineProps<{
   sidebarCollapsed: boolean
@@ -76,10 +77,17 @@ const toast = useToast()
 /**
  * 菜单项路径可能比当前路由短（如 /admin/docs/index 覆盖 /admin/docs/<slug>、
  * /admin/users/12/edit 覆盖 /admin/users），因此逐级裁剪 path segment 匹配父菜单。
+ *
+ * admin-menu 的键是默认语言形态（/admin/xxx），而 i18n prefix_except_default 下
+ * route.path 可能是 /en/admin/xxx。这里必须先 stripLocalePathPrefix——侧栏
+ * （AdminSidebar.isActive）同口径，漏一处就是"英文界面下面包屑显示 URL 末段、
+ * 分组退回总览"。
  */
+const adminPath = computed(() => stripLocalePathPrefix(route.path))
 const matchedMenuPath = computed<string | null>(() => {
-  if (findMenuItem(route.path)) return route.path
-  const segs = route.path.split('/').filter(Boolean)
+  const path = adminPath.value
+  if (findMenuItem(path)) return path
+  const segs = path.split('/').filter(Boolean)
   while (segs.length > 1) {
     segs.pop()
     const p = '/' + segs.join('/')
@@ -88,14 +96,14 @@ const matchedMenuPath = computed<string | null>(() => {
   return null
 })
 const currentGroup = computed(() => {
-  const grp = findMenuGroup(route.path) ?? findMenuGroup(matchedMenuPath.value || '')
+  const grp = findMenuGroup(adminPath.value) ?? findMenuGroup(matchedMenuPath.value || '')
   return grp?.label ?? '总览'
 })
 const currentPage = computed(() => {
-  const path = matchedMenuPath.value || route.path
+  const path = matchedMenuPath.value || adminPath.value
   const item = findMenuItem(path)
   if (item) return item.label
-  return route.path.split('/').filter(Boolean).pop() || ''
+  return adminPath.value.split('/').filter(Boolean).pop() || ''
 })
 
 // ==================== 用户信息 ====================
