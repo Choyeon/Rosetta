@@ -739,11 +739,8 @@ const articleStoredPwd = ref('')
 const articlePwdInput = ref('')
 const articlePwdError = ref(false)
 const submittingArticlePassword = ref(false)
-const postEncryptionHint = ref<string | null>(null)
-/** 是否因密码未解锁而需要显示闸门 UI */
-const needPassword = ref(false)
-/** 后端返回 is_password_protected=true（作者/staff 免密但前端仍应展示完整内容）*/
-const postHasPassword = ref(false)
+// needPassword / postEncryptionHint 使用 computed，
+// 在下方 post 定义之后声明，避免 SSR 里 watch 不重触发导致的闸门失效。
 
 /** 用存储的密码重新拉取文章 */
 async function refreshPostWithStoredPassword() {
@@ -897,28 +894,20 @@ const showRelatedPosts = computed(() => ft.showRelatedPosts.value)
 const showAvatar = computed(() => ft.showAvatar.value)
 
 // 密码保护闸门状态 =====
-watch(post, (next) => {
-  if (!next) {
-    needPassword.value = false
-    postHasPassword.value = false
-    postEncryptionHint.value = null
-    return
-  }
-  const detail = next as unknown as Record<string, unknown>
-  postHasPassword.value = Boolean(detail.is_password_protected)
-  // content 为空且标记为加密 → 需要显示密码输入 UI（作者/staff 会拿到完整正文，不走此分支）
-  const content = pickLocalized(next.content || '')
-  needPassword.value = !!(detail.is_password_protected && !content)
-  // 提取 hint
+// 走 computed：SSR 里 useAsyncData 的 promise 在 setup 之后才落值，watch(post)
+// 的 immediate 回调只会拿到 null，之后的赋值不会在 renderToString 前触发；
+// computed 保证模板渲染时读到 post 的当前值，闸门/隐藏判定与正文渲染同源。
+const postEncryptionHint = computed<string | null>(() => {
+  const detail = (post.value ?? {}) as unknown as Record<string, unknown>
   const rawHint = detail.encryption_hint ?? detail.hint
-  if (typeof rawHint === 'string' && rawHint) {
-    postEncryptionHint.value = rawHint
-  } else {
-    postEncryptionHint.value = null
-  }
-  // 切换文章/重新加载时清除上一轮的密码错误提示
-  articlePwdError.value = false
-}, { immediate: true })
+  return typeof rawHint === 'string' && rawHint ? rawHint : null
+})
+const needPassword = computed(() => {
+  if (!post.value) return false
+  const detail = post.value as unknown as Record<string, unknown>
+  const content = pickLocalized(post.value.content ?? '')
+  return Boolean(detail.is_password_protected) && !content
+})
 
 const postTitle = computed(() => pickLocalized(post.value?.title))
 const displayPostTitle = computed(() => {
