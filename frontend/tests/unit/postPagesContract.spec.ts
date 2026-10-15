@@ -28,15 +28,15 @@ describe('公开文章列表页', () => {
     expect(publicList).toMatch(/route\.query\.sort === 'popular' \? 'popular' : 'latest'/)
   })
 
-  it('canonical 与 URL 同步函数同源（不能声明一个不存在的规范地址）', () => {
-    // 都读 canonicalQuery，避免两处各写一份查询串慢慢漂开
+  it('canonical 由 useSeo 单源产出，页面只保留地址栏同步用的查询串', () => {
+    // 旧口径是页面自己拼一份 canonical：与 useSeo 的那条并存 → <head> 里两条规范地址，
+    // 且地址取自请求 Host（swr 缓存会把 Host 固化给所有访客）。
     expect(publicList).toMatch(/const canonicalQuery = computed/)
-    const canonicalIdx = publicList.indexOf('const canonical = computed')
-    const syncIdx = publicList.indexOf('function syncUrl')
-    expect(canonicalIdx).toBeGreaterThan(-1)
-    expect(syncIdx).toBeGreaterThan(-1)
-    expect(publicList.slice(canonicalIdx)).toMatch(/canonicalQuery\.value/)
-    expect(publicList.slice(syncIdx)).toMatch(/canonicalQuery\.value/)
+    expect(publicList).toMatch(/function syncUrl/)
+    expect(publicList).toMatch(/syncUrl[\s\S]{0,200}canonicalQuery\.value/)
+    expect(publicList).not.toMatch(/const canonical = computed/)
+    expect(publicList).not.toMatch(/rel: 'canonical'/)
+    expect(publicList).toMatch(/useSeo\(\{[\s\S]{0,200}?\}\)/)
   })
 
   it('翻页/换筛选时有进行中状态（旧数据仍在，不能只靠骨架屏）', () => {

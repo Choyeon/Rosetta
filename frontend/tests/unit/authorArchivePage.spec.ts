@@ -55,7 +55,8 @@ function section(data: Record<string, Record<string, string>>, name: string): Re
 describe('作者主页可达性与文案', () => {
   it('文章详情作者卡链接到作者主页，缺 username 时退回纯文本（不留死链）', () => {
     expect(postPage).toMatch(/const authorUrl = computed\(\(\) =>/)
-    expect(postPage).toMatch(/:to="authorUrl"/)
+    // prefix_except_default：作者主页链接也要挂当前语言前缀（localeHref 对站内路径生效）
+    expect(postPage).toMatch(/:to="localeHref\(authorUrl\)"/)
     expect(postPage).toMatch(/v-if="authorUrl"/)
     expect(postPage).toMatch(/v-else/)
   })
