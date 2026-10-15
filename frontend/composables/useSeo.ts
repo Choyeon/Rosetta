@@ -123,12 +123,22 @@ function usePublicSiteUrl(): Ref<string> {
   const cfg = useRuntimeConfig()
   // 客户端无 SITE_URL 时回退到当前 origin（避免空串导致 broken absolute URL）
   const site = cfg.public?.siteUrl as string | undefined
+  // SSR 期没有 window；用请求头推断 origin 兜底，让 canonical / hreflang 不再吐相对路径。
+  // 只有 NUXT_PUBLIC_SITE_URL 未注入时才会命中，正常部署下 site 非空即直接返回。
+  const reqHeaders = import.meta.server ? useRequestHeaders(['host', 'x-forwarded-proto']) : null
+  const ssrOrigin = (() => {
+    if (!import.meta.server || !reqHeaders) return ''
+    const host = reqHeaders.host || reqHeaders['x-forwarded-host']
+    if (!host) return ''
+    const proto = reqHeaders['x-forwarded-proto'] || 'https'
+    return `${proto}://${host}`
+  })()
   return computed(() => {
     if (site && site.trim() !== '') return site.replace(/\/$/, '')
     if (import.meta.client && typeof window !== 'undefined') {
       return window.location.origin
     }
-    return ''
+    return ssrOrigin
   })
 }
 
