@@ -566,15 +566,18 @@ async def get_robots_txt() -> PlainTextResponse:
 
     根据站点设置动态生成 robots.txt 内容。
     """
-    # 检查缓存
-    cached = await cache.get("robots_txt")
+    # 检查缓存。键位必须走 make_cache_key("seo", …)：`PUT /seo/config` 清的是
+    # `seo:*` / `site_config*` 两个模式，裸键 "robots_txt" 不在其中——管理员改了
+    # robots 全文后，旧内容会在 1 小时 TTL 内继续对爬虫生效（后台显示已保存）。
+    robots_cache_key = make_cache_key("seo", "robots_txt")
+    cached = await cache.get(robots_cache_key)
     if cached:
         return PlainTextResponse(content=cached)
 
-    # 从站点配置获取或生成默认内容
-    from backend.core.site_config import get_site_config_value
-
-    robots_content = await get_site_config_value("ROBOTS_TXT")
+    # 从站点配置获取或生成默认内容。key 必须是 SEO_CONFIG_KEYS 里声明过的
+    # `SEO_ROBOTS`——后台 /admin/tools/seo 写的就是它；读成别的名字等于
+    # "保存成功但永不生效"（历史缺陷：这里曾读未声明的 ROBOTS_TXT）。
+    robots_content = await get_site_config_value("SEO_ROBOTS")
 
     if not robots_content:
         # 默认 robots.txt（最佳实践）：与前端根级 Nitro 路由对齐
@@ -590,7 +593,7 @@ async def get_robots_txt() -> PlainTextResponse:
         private_paths = ["/admin/"]
         locale_prefixes = ["", "/en", "/ja", "/zh_Hant"]
         disallow_lines = "\n".join(
-            f"Disallow:{prefix}{path}"
+            f"Disallow: {prefix}{path}"
             for path in private_paths
             for prefix in locale_prefixes
         )

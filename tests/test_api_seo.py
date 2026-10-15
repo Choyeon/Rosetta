@@ -218,15 +218,52 @@ async def test_get_robots_txt(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_get_robots_txt_with_config(client: AsyncClient, staff_headers: dict):
-    """SEO_ROBOTS 配置会注入 robots.txt"""
-    await client.put(
+    """后台写的 `SEO_ROBOTS` 全文必须真的出现在 robots.txt 里。
+
+    历史缺陷有两层，都要守：
+    1. 读取键写成未声明的 `ROBOTS_TXT` → 配置项写了却永远不生效（后台显示已保存）；
+    2. 缓存键写成裸 `robots_txt` → `PUT /seo/config` 清的是 `seo:*` 模式，
+       改完还要等 1 小时 TTL 才对爬虫生效。这里刻意不预先清缓存，让第 2 条也过闸门。
+    """
+    marker = "# rosetta-robots-marker"
+    put = await client.put(
         "/api/seo/config",
-        json={"SEO_ROBOTS": "Disallow: /admin/"},
+        json={"SEO_ROBOTS": f"User-agent: *\n{marker}\nDisallow: /admin/"},
         headers=staff_headers,
     )
+    assert put.status_code == 200, put.text
+
     r = await client.get("/api/seo/robots.txt")
     assert r.status_code == 200
-    assert "Disallow: /admin/" in r.text
+    assert marker in r.text, "SEO_ROBOTS 没生效（读错键，或缓存键不在 seo:* 清理范围内）"
+
+
+@pytest.mark.asyncio
+async def test_default_robots_txt_has_spaced_disallow_and_locale_admin(
+    client: AsyncClient, staff_headers: dict
+):
+    """缺省 robots.txt：`Disallow: ` 带空格，且后台四语前缀一个都不能少。
+
+    `/login` `/register` `/account` `/search` `/oobe` 不在名单里——它们自带
+    `noindex, follow`，被 Disallow 挡住抓取反而读不到那行 meta。
+    """
+    import backend.core.cache as _c
+
+    # 清空自定义全文（上一例写过 SEO_ROBOTS；站点配置是共享表，不留空就会读到它）
+    await client.put(
+        "/api/seo/config", json={"SEO_ROBOTS": ""}, headers=staff_headers
+    )
+    await _c.cache.delete_pattern("seo:robots_txt")
+    r = await client.get("/api/seo/robots.txt")
+    assert r.status_code == 200
+    text = r.text
+
+    for prefix in ("", "/en", "/ja", "/zh_Hant"):
+        assert f"Disallow: {prefix}/admin/" in text, f"缺 Disallow: {prefix}/admin/\n{text}"
+    assert "Disallow: /api/" in text
+    assert text.count("Disallow: /api/") == 1, "/api/ 重复提交（模板与交叉积各写了一份）"
+    for moved in ("/login", "/register", "/account", "/search", "/oobe"):
+        assert f"Disallow: {moved}" not in text, f"{moved} 应交给页面 noindex，而不是 Disallow"
 
 
 @pytest.mark.asyncio
