@@ -11,11 +11,17 @@ export default withNuxt(
     // 只有在忽略产物后才可复现。
     // lib/lucide-svg-icons-all.ts 是 scripts/gen-lucide-ssr-shim.mjs 的生成产物
     // （全量图标 SSR shim，单行 import 数千条），不按源码风格约束。
+    //
+    // `.output*`（不是 `.output`）：生产机上部署脚本会把上一次构建留成
+    // `.output.bak-20261001b/` 这类备份目录，它不在仓库里、只在那台机器上存在，
+    // 精确写死 `.output/**` 就挡不住它（实测又是 290 万条 error，且 pnpm 的退出码
+    // 被吞成 0，看起来像"绿"）。产物目录一律按前缀忽略。
     ignores: [
       '.nuxt/**',
       'output/**',
       'dist/**',
-      '.output/**',
+      '.output*/**',
+      '**/.output*/**',
       'lib/lucide-svg-icons-all.ts'
     ]
   }
