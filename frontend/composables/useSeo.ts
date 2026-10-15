@@ -185,10 +185,15 @@ export function usePublicSiteUrl(): Ref<string> {
 }
 
 function asAbsolute(path: string | undefined, siteUrl: string): string {
-  if (!path) return ''
-  if (/^https?:\/\//i.test(path)) return path
-  if (!siteUrl) return path // 缺失时退化为相对路径
-  return path.startsWith('/') ? `${siteUrl}${path}` : `${siteUrl}/${path}`
+  // 出口闸门：opts.url 由 30 个页面各自传入（有的还是 ref/响应式包装），一旦传进来的是
+  // 对象，`path.startsWith` 会抛 `e.startsWith is not a function`——而这段代码跑在 SSR 的
+  // useSeo 里，异常直接掀掉整页（实测线上文章详情页四语全 500）。宁可少一条 canonical，
+  // 也不能让一个 meta 字段决定页面存活。
+  const p = typeof path === 'string' ? path : ''
+  if (!p) return ''
+  if (/^https?:\/\//i.test(p)) return p
+  if (!siteUrl) return p // 缺失时退化为相对路径
+  return p.startsWith('/') ? `${siteUrl}${p}` : `${siteUrl}/${p}`
 }
 
 /** 取任意 string | string[] | undefined 或响应式包装 { value: T } 的"裸值"。所有 Article 字段均可响应式。 */
@@ -235,7 +240,7 @@ function plainTextMeta(input: unknown): string {
  */
 const CANONICAL_QUERY_KEYS = ['page']
 
-function canonicalFromRoute(route: { path: string; query: Record<string, unknown> }): string {
+function canonicalFromRoute(route: { path: string, query: Record<string, unknown> }): string {
   const kept: string[] = []
   for (const key of CANONICAL_QUERY_KEYS) {
     const value = route.query[key]
@@ -311,7 +316,7 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       ? opts.url
       : (opts.url?.value ?? '')
     if (raw) return raw
-    return canonicalFromRoute(route as unknown as { path: string; query: Record<string, unknown> })
+    return canonicalFromRoute(route as unknown as { path: string, query: Record<string, unknown> })
   })
   const _url = computed(() => asAbsolute(_rawUrl.value, siteUrl.value))
   /**
@@ -332,11 +337,11 @@ export function useSeo(opts: SeoMetaOptions = {}) {
    * Google 会忽略 noindex 页上的 hreflang，而这一组地址指向的其它语言变体若可收录，
    * 就等于用一条不该存在的边把它们拉进同一个集群（自相矛盾的规范信号）。
    */
-  const localeAlternates = computed<Array<{ hreflang: string; href: string }>>(() => {
+  const localeAlternates = computed<Array<{ hreflang: string, href: string }>>(() => {
     const raw = _rawUrl.value
     if (_noindex.value) return []
     if (!raw || /^https?:\/\//i.test(raw)) return []
-    const out: Array<{ hreflang: string; href: string }> = []
+    const out: Array<{ hreflang: string, href: string }> = []
     for (const code of Object.keys(HREFLANG_MAP)) {
       const abs = asAbsolute(applyLocalePrefix(raw, code), siteUrl.value)
       if (abs) out.push({ hreflang: HREFLANG_MAP[code]!, href: abs })
