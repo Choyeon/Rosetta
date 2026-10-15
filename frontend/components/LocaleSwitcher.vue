@@ -2,8 +2,10 @@
   顶栏语言下拉（DropdownMenuRadioGroup 受控于当前 locale）。
   setLocale 之后必须手写两枚 cookie：rosetta_lang 供后端 i18n 中间件识别语言（管理端
   name/title 等 i18n dict 的返回跟随它），i18n_redirected 是 @nuxtjs/i18n 检测语言的约定名，
-  少写前者会出现"界面换语、接口仍回旧语言"。语言集合硬编码四语（no_prefix 策略，整包切换
-  而非路由前缀），不得增删码值。
+  少写前者会出现"界面换语、接口仍回旧语言"。语言集合硬编码四语。
+  策略：prefix_except_default —— 中文裸路径 /，其它三语 /en /ja /zh_Hant 前缀。
+  切换必须走 switchLocalePath(当前 route.fullPath) 生成带前缀的同页 URL，
+  再 navigateTo，不能只 setLocale（那只换 i18n 内部状态、URL 留在旧语言前缀）。
 -->
 <script setup lang="ts">
 import { Globe, Check, ChevronDown } from '~~/lib/lucide-svg-icons'
@@ -20,6 +22,9 @@ import {
 } from '~~/components/ui/dropdown-menu'
 
 const { t, locale, setLocale } = useI18n()
+const switchLocalePath = useSwitchLocalePath()
+const route = useRoute()
+const router = useRouter()
 
 interface LocaleOption {
   code: 'zh' | 'en' | 'ja' | 'zh_Hant'
@@ -41,12 +46,20 @@ const shortOf = (code: string) =>
   displayLocales.find(l => l.code === code)?.short || '文A'
 
 const handleSetLocale = async (code: string) => {
+  if (code === locale.value) return
+  // 先切 i18n 内部状态（影响 useI18n 输出），再跳目标语言的等价路径。
   await setLocale(code as LocaleOption['code'])
   if (!import.meta.client) return
   try {
     document.cookie = 'rosetta_lang=' + code + '; path=/; max-age=31536000; SameSite=Lax'
     document.cookie = 'i18n_redirected=' + code + '; path=/; max-age=31536000; SameSite=Lax'
   } catch { /* ignore */ }
+  // 用当前 fullPath（保留 path/query/hash）换目标语言路径；返回空串说明该路径
+  // 在目标语言下无路由（如某些只注册默认语言的路由），此时留在原路径只换语言。
+  const next = switchLocalePath(code as LocaleOption['code'])
+  if (next && next !== route.fullPath) {
+    await router.push(next)
+  }
 }
 </script>
 

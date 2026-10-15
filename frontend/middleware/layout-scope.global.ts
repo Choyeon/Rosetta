@@ -21,18 +21,21 @@
  *   所以这里只改 data-layout-scope，不做重的 DOM 操作；真正清理 <link>/<class>/<color>
  *   还是由布局的 onMounted 做。
  */
-import { isThemeVisualExcluded, KNOWN_ROSETTA_THEMES } from '~~/lib/rosetta-themes'
+import { isThemeVisualExcluded, KNOWN_ROSETTA_THEMES, stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 export default defineNuxtRouteMiddleware((to) => {
   const path = to.path
+  // i18n prefix_except_default：/en/login 与 /login 是同一个 SPA 认证页，
+  // 判定前必须剥语言前缀。
+  const neutralPath = stripLocalePathPrefix(path) || '/'
 
   let scope: 'admin' | 'frontend' | 'public-auth'
   if (isThemeVisualExcluded(path)) {
     scope = 'admin'
   } else if (
-    ['/login', '/register'].includes(path)
-    || path.startsWith('/login/')
-    || path.startsWith('/register/')
+    ['/login', '/register'].includes(neutralPath)
+    || neutralPath.startsWith('/login/')
+    || neutralPath.startsWith('/register/')
   ) {
     scope = 'public-auth'
   } else {

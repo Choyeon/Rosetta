@@ -125,7 +125,7 @@ export default defineNuxtPlugin(async () => {
   // /api/config 必然失败，浏览器控制台刷 "Failed to load resource: 503" +
   // NUXT_E7902。向导页自绘整屏，直接用默认品牌值，不发请求。
   // （OOBE 完成后不再命中此分支，正常走缓存 + 网络加载。）
-  if (useRoute().path.startsWith('/oobe')) {
+  if (/^\/(?:en|ja|zh_Hant)?\/?oobe(?:\/|$)/.test(useRoute().path)) {
     useHead({ titleTemplate: buildTitle })
     applyAppearance(defaults.primary, defaults.accent)
     return

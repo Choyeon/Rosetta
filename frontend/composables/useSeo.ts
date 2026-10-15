@@ -60,6 +60,28 @@ export const OG_LOCALE_MAP: Record<string, string> = {
   zh_Hant: 'zh_TW'
 }
 
+/** hreflang 期望 BCP-47 短标签；zh_Hant → zh-Hant（下划线换连字符）。 */
+export const HREFLANG_MAP: Record<string, string> = {
+  zh: 'zh-CN',
+  en: 'en',
+  ja: 'ja',
+  zh_Hant: 'zh-Hant'
+}
+
+/** 非默认语言在 URL 上挂的前缀；默认语言 zh 裸路径。 */
+export const NON_DEFAULT_LOCALE_CODES = ['en', 'ja', 'zh_Hant'] as const
+
+/** 剥掉路径开头的 /en /ja /zh_Hant 段，得到"中性"路径供 localePath 重挂。 */
+function stripLocalePrefix(path: string): string {
+  if (!path) return path
+  for (const code of NON_DEFAULT_LOCALE_CODES) {
+    const p = '/' + code
+    if (path === p) return '/'
+    if (path.startsWith(p + '/')) return path.slice(p.length)
+  }
+  return path
+}
+
 export interface BreadcrumbItem {
   /** 面包屑层级显示名称 */
   name: string
@@ -158,6 +180,9 @@ export function useSeo(opts: SeoMetaOptions = {}) {
   const i18n = useI18n()
   const { locale } = i18n
   const site = useSite()
+  // prefix_except_default 策略下：所有 canonical / hreflang 都通过 localePath
+  // 从"中性路径"派生。中性路径 = 剥掉 /en /ja /zh_Hant 前缀后的路径。
+  const localePath = useLocalePath()
 
   const siteName = computed(() => site.siteTitle.value || 'Rosetta')
   const defaultDescription = computed(
@@ -213,6 +238,43 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       siteUrl.value
     )
   )
+  /**
+   * canonical 走当前语言的实际 URL：先把 opts.url 剥成中性路径（/en/posts/x → /posts/x），
+   * 再 localePath(中性, 当前 locale) 让 @nuxtjs/i18n 按 strategy 挂前缀，最后补站点根。
+   * 已经是绝对 URL 的入参（http/https 开头）视作调用方接管，原样透传。
+   */
+  const canonicalUrl = computed(() => {
+    const raw = typeof opts.url === 'string'
+      ? opts.url
+      : (opts.url?.value ?? '')
+    if (!raw) return ''
+    if (/^https?:\/\//i.test(raw)) return raw
+    const neutral = stripLocalePrefix(raw)
+    const localized = localePath(neutral as any, locale.value as any) as string
+    return asAbsolute(localized || neutral, siteUrl.value)
+  })
+  /**
+   * hreflang alternates：对 OG_LOCALE_MAP 里的每个 locale 生成一份"该 locale 下的
+   * 本页面绝对 URL"。搜索引擎据此把中英日韩四份内容识别为同一页的语言变体。
+   * 与 canonical 同源，只在 opts.url 缺省时回退到当前 route.fullPath。
+   */
+  const localeAlternates = computed<Array<{ hreflang: string; href: string }>>(() => {
+    const raw = typeof opts.url === 'string'
+      ? opts.url
+      : (opts.url?.value ?? '')
+    if (!raw || /^https?:\/\//i.test(raw)) return []
+    const neutral = stripLocalePrefix(raw)
+    const out: Array<{ hreflang: string; href: string }> = []
+    for (const code of Object.keys(HREFLANG_MAP)) {
+      const localized = localePath(neutral as any, code as any) as string
+      const abs = asAbsolute(localized || neutral, siteUrl.value)
+      if (abs) out.push({ hreflang: HREFLANG_MAP[code]!, href: abs })
+    }
+    // x-default：prefix_except_default 语义下 = 默认语言（zh）路径
+    const zhPath = asAbsolute(localePath(neutral as any, 'zh' as any) as string || neutral, siteUrl.value)
+    if (zhPath) out.push({ hreflang: 'x-default', href: zhPath })
+    return out
+  })
   const _extraMeta = computed<Array<Record<string, string>>>(() => {
     if (!opts.extraMeta) return []
     if (Array.isArray(opts.extraMeta)) return opts.extraMeta
@@ -253,7 +315,7 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       }
     }
     if (_url.value) {
-      meta.push({ property: 'og:url', content: _url.value })
+      meta.push({ property: 'og:url', content: canonicalUrl.value || _url.value })
     }
     if (_twitterSite.value) {
       meta.push({ name: 'twitter:site', content: _twitterSite.value })
@@ -281,8 +343,15 @@ export function useSeo(opts: SeoMetaOptions = {}) {
     // canonical：noindex 页不输出（搜索结果页 / 分页尾页自身 canonical 会诱使
     // 搜索引擎把候选页当"重复内容"合并掉，反而不利收录）。
     const link: Array<Record<string, string>> = []
-    if (!_noindex.value && _url.value) {
-      link.push({ rel: 'canonical', href: _url.value })
+    if (!_noindex.value && canonicalUrl.value) {
+      link.push({ rel: 'canonical', href: canonicalUrl.value })
+    }
+    // hreflang alternates：让爬虫知道中英日韩四份内容互为语言变体。
+    // noindex 页也跳过（避免搜索引擎把非索引页当作语言变体候选）。
+    if (!_noindex.value) {
+      for (const alt of localeAlternates.value) {
+        link.push({ rel: 'alternate', hreflang: alt.hreflang, href: alt.href })
+      }
     }
 
     // Nuxt useHead（@zhead/schema）对 meta 联合类型约束过严，使用 unknown 断
@@ -461,6 +530,8 @@ function jsonLdStringify(value: unknown): string {
 
 export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   const siteUrl = usePublicSiteUrl()
+  const { locale } = useI18n()
+  const localePath = useLocalePath()
 
   // 全部字段都支持 Ref：用 computed 包装，由 useHead 闭包响应式追踪
   const _slug = computed(() => unrefVal(opts.slug))
@@ -490,7 +561,14 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
     const slug = _slug.value
     if (!slug) return { script: [] }
 
-    const articleUrl = asAbsolute(`/posts/${slug}`, base)
+    const articlePath = `/posts/${slug}`
+    // prefix_except_default：详情页 JSON-LD 的 url/mainEntityOfPage 必须落到
+    // 当前语言的实际 URL（中文裸路径 /en/ja/zh_Hant 挂前缀），否则中英日
+    // 三语页面在 schema.org 里会共享同一个 zh canonical，Google 富媒体测试报
+    // "URL does not match page"。
+    const localizedArticlePath
+      = (localePath(articlePath as any, locale.value as any) as string) || articlePath
+    const articleUrl = asAbsolute(localizedArticlePath, base)
     const cover = _cover.value ? asAbsolute(_cover.value, base) : undefined
     const published = safeIsoDate(_publishedAt.value)
     const updated = safeIsoDate(_updatedAt.value) ?? published
@@ -563,6 +641,8 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
 
 export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem[]>) {
   const siteUrl = usePublicSiteUrl()
+  const { locale } = useI18n()
+  const localePath = useLocalePath()
 
   useHead(() => {
     const list
@@ -574,12 +654,21 @@ export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem
       '@type': 'BreadcrumbList',
       'itemListElement': list
         .filter(i => i && i.name)
-        .map((item, idx) => ({
-          '@type': 'ListItem',
-          'position': idx + 1,
-          'name': item.name,
-          'item': asAbsolute(item.url, base)
-        }))
+        .map((item, idx) => {
+          // 与 useArticleJsonLd 同口径：面包屑里的相对路径必须走 localePath
+          // 才能带上 /en /ja /zh_Hant 前缀，绝对 URL 原样透传。
+          const raw = item.url || ''
+          const localized = /^https?:\/\//i.test(raw) || !raw
+            ? raw
+            : ((localePath(stripLocalePrefix(raw) as any, locale.value as any) as string)
+              || stripLocalePrefix(raw))
+          return {
+            '@type': 'ListItem',
+            'position': idx + 1,
+            'name': item.name,
+            'item': asAbsolute(localized, base)
+          }
+        })
     }
 
     return {

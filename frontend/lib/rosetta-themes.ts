@@ -33,10 +33,27 @@ export const MINIMAL_THEME_SLUGS: ReadonlySet<string> = new Set(['astro-paper-in
  */
 export const THEME_VISUAL_EXCLUDE_PREFIXES: readonly string[] = ['/admin', '/oobe']
 
+/**
+ * i18n prefix_except_default 策略下 /en /ja /zh_Hant 是语言前缀，
+ * /en/admin 与 /admin 语义完全一致。所有以 startsWith 判定路径归属的地方
+ * 都必须先剥前缀，否则带前缀的后台/OOBE 页会被误判为前台。
+ */
+export const I18N_URL_PREFIXES = ['/en', '/ja', '/zh_Hant'] as const
+
+export function stripLocalePathPrefix(path: string | undefined | null): string {
+  if (!path) return ''
+  for (const p of I18N_URL_PREFIXES) {
+    if (path === p) return '/'
+    if (path.startsWith(p + '/')) return path.slice(p.length)
+  }
+  return path
+}
+
 /** 路径是否命中主题视觉排除名单（前缀匹配）。 */
 export function isThemeVisualExcluded(path: string | undefined | null): boolean {
   if (!path) return false
-  return THEME_VISUAL_EXCLUDE_PREFIXES.some(prefix => path.startsWith(prefix))
+  const stripped = stripLocalePathPrefix(path)
+  return THEME_VISUAL_EXCLUDE_PREFIXES.some(prefix => stripped.startsWith(prefix))
 }
 
 /**

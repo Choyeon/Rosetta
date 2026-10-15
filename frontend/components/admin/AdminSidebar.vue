@@ -85,7 +85,11 @@ const mergedMenu = computed(() => {
  *  - 同前缀下出现兄弟菜单段（如 /admin/users/titles 中的 titles）→ 不激活父项
  */
 const isActive = (path: string) => {
-  const rp = route.path
+  // i18n prefix_except_default：菜单项 path 是默认语言形态（/admin/xxx），
+  // route.path 在英/日/繁下带前缀（/en/admin/xxx）。剥前缀后再比对，
+  // 保证高亮判定与语言无关。
+  const rpRaw = route.path
+  const rp = rpRaw.replace(/^\/(?:en|ja|zh_Hant)(?=\/|$)/, '') || '/'
   if (path === '/admin') return rp === '/admin' || rp === '/admin/'
   if (rp === path) return true
   const prefix = path + '/'

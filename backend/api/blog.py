@@ -3464,6 +3464,35 @@ def _xml_escape(text: str) -> str:
 # Sitemap 协议常量
 _SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 _SITEMAP_IMG_NS = "http://www.google.com/schemas/sitemap-image/1.1"
+_SITEMAP_XHTML_NS = "http://www.w3.org/1999/xhtml"
+
+# i18n 四语 → hreflang (BCP-47) 映射；prefix_except_default 策略下默认语言 (zh)
+# 挂裸路径，其它三语挂 /en /ja /zh_Hant 前缀。与 frontend/composables/useSeo.ts
+# 的 HREFLANG_MAP 同口径，新增语言两处必须一起改。
+_SITEMAP_HREFLANG_MAP: dict[str, str] = {
+    "zh": "zh-CN",
+    "en": "en",
+    "ja": "ja",
+    "zh_Hant": "zh-Hant",
+}
+_SITEMAP_NON_DEFAULT_PREFIXES = ("en", "ja", "zh_Hant")
+
+
+def _locale_path_variants(path: str) -> dict[str, str]:
+    """给定默认语言路径（如 /posts/xxx 或 /），返回 4 语言变体。
+
+    首页 (path='/') → zh 是 '/'，其它是 '/en'、'/ja'、'/zh_Hant'（无末尾斜杠）。
+    其它路径按前缀拼接。已是绝对 URL 或非默认语言前缀开头的入参原样视为 zh 变体。
+    """
+    if not path.startswith("/"):
+        path = "/" + path
+    variants: dict[str, str] = {"zh": path}
+    for code in _SITEMAP_NON_DEFAULT_PREFIXES:
+        if path == "/":
+            variants[code] = f"/{code}"
+        else:
+            variants[code] = f"/{code}{path}"
+    return variants
 
 # 固定公开路由：(路径, 更新频率, 优先级)。
 # /search（noindex）、/login、/register、/oobe、/admin/** 一律不收录。
@@ -3498,8 +3527,16 @@ def _sitemap_url(
     changefreq: str | None = None,
     priority: str | None = None,
     images: list[str] | None = None,
+    rel_path: str | None = None,
+    site_url: str | None = None,
 ) -> str:
-    """生成单个 ``<url>`` 条目。"""
+    """生成单个 ``<url>`` 条目。
+
+    rel_path + site_url 同时提供时，会额外输出 4 条 ``<xhtml:link rel="alternate">``
+    （zh-CN / en / ja / zh-Hant）+ 1 条 ``x-default``，指向同一内容的其它语言 URL。
+    这是 Google 官方推荐的 sitemap 侧 hreflang 声明方式（页面 `<link rel=alternate>`
+    在 SSR HTML 已同步输出，二者一致时不冲突）。
+    """
     parts = ["  <url>", f"    <loc>{_xml_escape(loc)}</loc>"]
     if lastmod:
         parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
@@ -3512,15 +3549,31 @@ def _sitemap_url(
             parts.append("    <image:image>")
             parts.append(f"      <image:loc>{_xml_escape(img)}</image:loc>")
             parts.append("    </image:image>")
+    if rel_path is not None and site_url:
+        base = site_url.rstrip("/")
+        variants = _locale_path_variants(rel_path)
+        for code, hreflang in _SITEMAP_HREFLANG_MAP.items():
+            href = f"{base}{variants[code]}"
+            parts.append(
+                f'    <xhtml:link rel="alternate" hreflang="{hreflang}" '
+                f'href="{_xml_escape(href)}" />'
+            )
+        # x-default = 默认语言变体（zh 裸路径）
+        parts.append(
+            f'    <xhtml:link rel="alternate" hreflang="x-default" '
+            f'href="{_xml_escape(base + variants["zh"])}" />'
+        )
     parts.append("  </url>")
     return "\n".join(parts)
 
 
-def _wrap_urlset(body: str, *, with_image: bool) -> str:
+def _wrap_urlset(body: str, *, with_image: bool, with_xhtml: bool = True) -> str:
     """用 urlset 外壳包裹条目正文。"""
     ns = f'<urlset xmlns="{_SITEMAP_NS}"'
     if with_image:
         ns += f' xmlns:image="{_SITEMAP_IMG_NS}"'
+    if with_xhtml:
+        ns += f' xmlns:xhtml="{_SITEMAP_XHTML_NS}"'
     ns += ">"
     return f'<?xml version="1.0" encoding="UTF-8"?>\n{ns}\n{body}\n</urlset>'
 
@@ -3543,6 +3596,8 @@ def generate_sitemap(
                 changefreq="weekly",
                 priority="0.8",
                 images=[cover] if cover else None,
+                rel_path=f"/posts/{post.slug}",
+                site_url=site_url,
             )
         )
     for category in categories:
@@ -3552,6 +3607,8 @@ def generate_sitemap(
                 lastmod=_iso8601(getattr(category, "updated_at", None)),
                 changefreq="weekly",
                 priority="0.6",
+                rel_path=f"/categories/{category.slug}",
+                site_url=site_url,
             )
         )
     for tag in tags:
@@ -3561,6 +3618,8 @@ def generate_sitemap(
                 lastmod=_iso8601(getattr(tag, "updated_at", None)),
                 changefreq="monthly",
                 priority="0.5",
+                rel_path=f"/tags/{tag.slug}",
+                site_url=site_url,
             )
         )
     return _wrap_urlset("\n".join(entries), with_image=True)
@@ -3579,6 +3638,8 @@ def generate_post_sitemap_page(posts: list[Post], site_url: str) -> str:
                 changefreq="weekly",
                 priority="0.8",
                 images=[cover] if cover else None,
+                rel_path=f"/posts/{post.slug}",
+                site_url=site_url,
             )
         )
     return _wrap_urlset("\n".join(entries), with_image=True)
@@ -3600,7 +3661,13 @@ def generate_taxonomy_sitemap(
     """
     site_url = site_url.rstrip("/")
     entries: list[str] = [
-        _sitemap_url(f"{site_url}/categories", changefreq="weekly", priority="0.5")
+        _sitemap_url(
+            f"{site_url}/categories",
+            changefreq="weekly",
+            priority="0.5",
+            rel_path="/categories",
+            site_url=site_url,
+        )
     ]
     for category in categories:
         entries.append(
@@ -3609,9 +3676,19 @@ def generate_taxonomy_sitemap(
                 lastmod=_iso8601(getattr(category, "updated_at", None)),
                 changefreq="weekly",
                 priority="0.6",
+                rel_path=f"/categories/{category.slug}",
+                site_url=site_url,
             )
         )
-    entries.append(_sitemap_url(f"{site_url}/tags", changefreq="weekly", priority="0.4"))
+    entries.append(
+        _sitemap_url(
+            f"{site_url}/tags",
+            changefreq="weekly",
+            priority="0.4",
+            rel_path="/tags",
+            site_url=site_url,
+        )
+    )
     for tag in tags:
         entries.append(
             _sitemap_url(
@@ -3619,9 +3696,19 @@ def generate_taxonomy_sitemap(
                 lastmod=_iso8601(getattr(tag, "updated_at", None)),
                 changefreq="monthly",
                 priority="0.5",
+                rel_path=f"/tags/{tag.slug}",
+                site_url=site_url,
             )
         )
-    entries.append(_sitemap_url(f"{site_url}/series", changefreq="weekly", priority="0.5"))
+    entries.append(
+        _sitemap_url(
+            f"{site_url}/series",
+            changefreq="weekly",
+            priority="0.5",
+            rel_path="/series",
+            site_url=site_url,
+        )
+    )
     for s in series or []:
         entries.append(
             _sitemap_url(
@@ -3629,6 +3716,8 @@ def generate_taxonomy_sitemap(
                 lastmod=_iso8601(getattr(s, "updated_at", None)),
                 changefreq="weekly",
                 priority="0.6",
+                rel_path=f"/series/{s.slug}",
+                site_url=site_url,
             )
         )
     for username, lastmod in authors or []:
@@ -3638,6 +3727,8 @@ def generate_taxonomy_sitemap(
                 lastmod=_iso8601(lastmod),
                 changefreq="monthly",
                 priority="0.4",
+                rel_path=f"/authors/{username}",
+                site_url=site_url,
             )
         )
     return _wrap_urlset("\n".join(entries), with_image=False)
@@ -3655,10 +3746,24 @@ def generate_pages_sitemap(
     site_url = site_url.rstrip("/")
     entries: list[str] = []
     for path, changefreq, priority in _STATIC_SITEMAP_ROUTES:
-        entries.append(_sitemap_url(f"{site_url}{path}", changefreq=changefreq, priority=priority))
+        entries.append(
+            _sitemap_url(
+                f"{site_url}{path}",
+                changefreq=changefreq,
+                priority=priority,
+                rel_path=path,
+                site_url=site_url,
+            )
+        )
     for year in archive_years or []:
         entries.append(
-            _sitemap_url(f"{site_url}/archive/{year}", changefreq="monthly", priority="0.4")
+            _sitemap_url(
+                f"{site_url}/archive/{year}",
+                changefreq="monthly",
+                priority="0.4",
+                rel_path=f"/archive/{year}",
+                site_url=site_url,
+            )
         )
     for page in pages:
         if getattr(page, "status", "published") != "published":
@@ -3669,6 +3774,8 @@ def generate_pages_sitemap(
                 lastmod=_iso8601(getattr(page, "updated_at", None)),
                 changefreq="monthly",
                 priority="0.5",
+                rel_path=f"/page/{page.slug}",
+                site_url=site_url,
             )
         )
     return _wrap_urlset("\n".join(entries), with_image=False)

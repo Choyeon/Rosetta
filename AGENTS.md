@@ -90,6 +90,27 @@
 
 上表 7 行覆盖 13 条 routeRules 键，镜像关系由 `frontend/tests/unit/routeRulesSsr.spec.ts` 断言（`ssr:false` 集合精确相等 + `/oobe` 必须保留 SSR + 反选页必须 `no-store`）——改配置不改测试会直接红。
 
+### 2.2.1 i18n URL 前缀（`prefix_except_default`）
+
+`nuxt.config.i18n.strategy = 'prefix_except_default'`，`defaultLocale = 'zh'`：
+
+| 语言 | 首页 | 文章详情 |
+| ---- | ---- | -------- |
+| zh（默认，裸路径） | `/` | `/posts/xxx` |
+| en | `/en` | `/en/posts/xxx` |
+| ja | `/ja` | `/ja/posts/xxx` |
+| zh_Hant | `/zh_Hant` | `/zh_Hant/posts/xxx` |
+
+关键约束：
+
+1. **routeRules 自动镜像**：`nuxt.config.ts::expandLocaleRouteRules()` 会把上表每一条非 Vite/静态资源规则复制成 `/en/xxx`、`/ja/xxx`、`/zh_Hant/xxx` 三份。新增公开页 SSR/缓存规则只需写默认形态；漏写镜像不会报错，但带前缀页面会静默落回 SSR/无缓存。Vite 虚拟文件、`/_nuxt/**`、`/themes/**`、`/api` 前缀、`/rss.xml`、`/sitemap.xml`、`/robots.txt` 不镜像。
+2. **SPA 反选白名单同步**：`server/plugins/spa-serverrendered-zero.nitro.ts` 的 `isSpa()` 会先剥 `/en /ja /zh_Hant` 前缀，再匹配 `/login /register /search /admin`；新增 SPA 前缀要两处一起写。
+3. **canonical + hreflang**：`composables/useSeo.ts` 内 canonical 与 `<link rel=alternate hreflang>` 都通过 `useLocalePath()(中性路径, locale)` 派生；`opts.url` 传入前请写"默认语言下的路径"（如 `/posts/xxx`），带前缀形态会被 `stripLocalePrefix` 剥掉再重挂。
+4. **JSON-LD url/mainEntityOfPage**：`useArticleJsonLd` / `useBreadcrumbJsonLd` 都走 `localePath`，避免英文页面的 JSON-Ld 声明中文 canonical。
+5. **语言切换**：`components/LocaleSwitcher.vue` 必须走 `useSwitchLocalePath()` + `router.push(next)`，仅 `setLocale(code)` 只换 i18n 内部状态、URL 留在旧前缀会导致下钻链接掉回原语言。
+6. **`<meta property=og:locale>`**：`useSeo.ts::OG_LOCALE_MAP` 输出 `zh_CN/en_US/ja_JP/zh_TW`，`og:locale:alternate` 自动列出其它三语。
+7. **Sitemap / RSS**：`backend/api/blog.py::sitemap_*` 与 `blog/rss` 目前只输出**默认语言**（zh）URL；扩展多语 `<xhtml:link>` 前请先补齐 localePath 服务端口。
+
 ### 2.3 公开页 SWR / Cache 头
 
 首页/文章列表 `/posts` swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 分类/标签/作者主页/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。常规页附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`；高频实时页（`/posts/hot` · `/guestbook`）用较短的 `stale-while-revalidate=600`。

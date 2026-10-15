@@ -70,7 +70,9 @@ export default defineNuxtPlugin(async () => {
   // 又在控制台刷 503 网络报错。/oobe 页面自绘整屏、只用默认主题，
   // 这里直接跳过网络加载（installSnapshotState 完成后由 goAdmin 进后台，
   // 后台与前台各自的数据加载不受影响；刷新后本插件按正常路径执行）。
-  if (useRoute()?.path?.startsWith('/oobe')) {
+  // prefix_except_default：/en/oobe 等语言前缀变体同属 OOBE 向导；剥前缀再判。
+  const _ro = useRoute()
+  if (/^\/(?:en|ja|zh_Hant)?\/?oobe(?:\/|$)/.test(_ro?.path ?? '')) {
     return
   }
 

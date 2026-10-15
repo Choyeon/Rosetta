@@ -31,10 +31,24 @@ const SPA_PREFIXES: ReadonlyArray<string> = [
   '/admin'
 ] as const
 
+// prefix_except_default 策略下 /en/admin /ja/admin /zh_Hant/admin 也是 SPA，
+// 但 routeRules 由 nuxt.config 的 expandLocaleRouteRules 自动镜像；这里必须同
+// 口径剥前缀，否则带前缀的 SPA 页会漏过本补丁，触发 NUXT_E1005。
+const NON_DEFAULT_LOCALES = ['/en', '/ja', '/zh_Hant'] as const
+
+function stripLocalePrefix(pathname: string): string {
+  for (const p of NON_DEFAULT_LOCALES) {
+    if (pathname === p) return '/'
+    if (pathname.startsWith(p + '/')) return pathname.slice(p.length)
+  }
+  return pathname
+}
+
 function isSpa(p: string): boolean {
+  const stripped = stripLocalePrefix(p)
   for (const prefix of SPA_PREFIXES) {
-    if (p === prefix) return true
-    if (p.startsWith(prefix + '/')) return true
+    if (stripped === prefix) return true
+    if (stripped.startsWith(prefix + '/')) return true
   }
   return false
 }

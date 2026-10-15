@@ -22,6 +22,16 @@ const STATUS_TIMEOUT_MS = 8_000
 const SSR_STATE_KEY = 'oobe:status'
 const STATIC_OR_API_RE = /^\/(?:favicon|api|media|_nuxt|_ipx|site\.webmanifest|logo|assets|apple-touch-icon)/
 
+// i18n prefix_except_default：/en/oobe /ja/oobe /zh_Hant/oobe 与 /oobe 同页；
+// 任何基于 path 判定 OOBE 归属的分支必须先剥前缀，否则带前缀会被当成普通
+// 前台页而跳过 302（表现为「安装完成前访问 /en 直落首页」）。
+const I18N_PATH_PREFIX_RE = /^\/(?:en|ja|zh_Hant)(?=\/|$)/
+
+function stripLocalePrefix(path: string): string {
+  const stripped = path.replace(I18N_PATH_PREFIX_RE, '')
+  return stripped || '/'
+}
+
 function shouldSkipRoute(path: string): boolean {
   if (STATIC_OR_API_RE.test(path)) return true
   if (path.endsWith('.png') || path.endsWith('.jpg') || path.endsWith('.jpeg')
@@ -139,7 +149,10 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (shouldSkipRoute(path)) return
 
-  const isOOBEPage = path === '/oobe' || path.startsWith('/oobe/')
+  const isOOBEPage = (() => {
+    const p = stripLocalePrefix(path)
+    return p === '/oobe' || p.startsWith('/oobe/')
+  })()
 
   // ===== SSR 分支：首字节决定是否 302 重定向，避免"先吐 SPA 壳再在客户端跳"的白屏 =====
   //

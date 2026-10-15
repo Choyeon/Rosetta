@@ -39,6 +39,46 @@ function resolveSsrApiBase(): string {
   return ''
 }
 
+/**
+ * prefix_except_default 策略下，中文裸路径不变，其它三语在 URL 上挂 /en /ja /zh_Hant。
+ * routeRules 必须为每个业务前缀镜像一份，否则 /en/admin/** 会落回 SSR、/en/posts/**
+ * 会失去 swr 缓存，静默导致后台 SSR 崩溃与前台每访客每页打后端。
+ * 非业务前缀（Vite 虚拟文件、/_nuxt 构建产物、/themes 主题资源、RSS/sitemap/robots
+ * server-routes、/api 后端）不参与镜像。
+ */
+const NON_LOCALIZED_PREFIXES = [
+  '/@vite',
+  '/@id',
+  '/@fs',
+  '/_nuxt',
+  '/themes',
+  '/api',
+  '/favicon',
+  '/rss.xml',
+  '/sitemap.xml',
+  '/robots.txt',
+  '/site.webmanifest',
+  '/manifest',
+  '/apple-touch-icon'
+]
+const LOCALE_URL_PREFIXES = ['/en', '/ja', '/zh_Hant']
+
+function expandLocaleRouteRules<T extends Record<string, unknown>>(rules: T): T {
+  const out: Record<string, unknown> = { ...rules }
+  for (const key of Object.keys(rules)) {
+    const skip = NON_LOCALIZED_PREFIXES.some(
+      p => key === p || key.startsWith(p) || key.startsWith(p + '/')
+    )
+    if (skip) continue
+    for (const prefix of LOCALE_URL_PREFIXES) {
+      // 首页 '/' → '/en' / '/ja' / '/zh_Hant'；其它 '/xxx' → '/en/xxx'
+      const nextKey = key === '/' ? prefix : `${prefix}${key}`
+      out[nextKey] = rules[key]
+    }
+  }
+  return out as T
+}
+
 export default defineNuxtConfig({
   modules: [
     '@nuxt/eslint',
@@ -207,7 +247,7 @@ export default defineNuxtConfig({
   //   · 后台/login/register/docs/search 个性化/重度交互页面 → ssr:false + 禁止缓存。
   //   · /oobe → 保留 SSR，只禁止缓存（见下方 routeRules 说明）。
   // ============================================================
-  routeRules: {
+  routeRules: expandLocaleRouteRules({
     // === Vite 内部虚拟文件：禁止 swr/ssr 缓存与 spa-fallback 拦截
     '/@vite/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
     '/@id/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
@@ -307,7 +347,7 @@ export default defineNuxtConfig({
         'Cache-Control': 'public, max-age=3600, s-maxage=3600'
       }
     }
-  },
+  }),
 
   // ============================================================
   //  SOURCE MAP (生产排错模式)
@@ -786,7 +826,11 @@ export default defineNuxtConfig({
     defaultLocale: 'zh',
     langDir: './locales',
     vueI18n: './index.ts',
-    strategy: 'no_prefix',
+    // prefix_except_default：中文（默认）裸路径不变，其它三语挂 /en /ja /zh_Hant 前缀。
+    // 这样能真正给出可爬的 hreflang alternates，同时避免 zh 侧历史 URL / SEO 权重清零。
+    // 注意：切策略后 routeRules 必须为每个非默认前缀镜像一份（见下方 /en/** 等段），
+    // 且 SSR 反选页在带前缀形态下同样是 ssr:false。
+    strategy: 'prefix_except_default',
     detectBrowserLanguage: {
       useCookie: true,
       cookieKey: 'rosetta_lang',

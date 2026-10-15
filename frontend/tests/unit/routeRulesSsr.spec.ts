@@ -129,4 +129,24 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
       expect(rule!.cache, `公开页 ${path} 必须共享缓存`).toMatch(/s-maxage=\d+/)
     }
   })
+
+  /**
+   * i18n prefix_except_default 契约（AGENTS.md §2.2.1）：
+   * nuxt.config.ts 里 routeRules 必须走 `expandLocaleRouteRules({...})` 包装，
+   * 否则 /en/admin/** /ja/admin/** /zh_Hant/admin/** 会落回 SSR 触发 NUXT_E1005，
+   * 公开带前缀页会静默失去 swr 缓存变成每访客每页打后端。
+   * 这里是静态源码守卫：包装函数存在 + 被调用；真正的镜像展开由运行时执行。
+   */
+  it('routeRules 必须走 expandLocaleRouteRules 包装（i18n prefix_except_default）', () => {
+    expect(configSource).toMatch(/function\s+expandLocaleRouteRules/)
+    expect(configSource).toMatch(/routeRules:\s*expandLocaleRouteRules\s*\(/)
+    // i18n strategy 与镜像函数不能各自漂移
+    expect(configSource).toMatch(/strategy:\s*'prefix_except_default'/)
+    // 三个非默认前缀必须在镜像表里出现
+    expect(configSource).toMatch(/LOCALE_URL_PREFIXES\s*=\s*\[[^\]]*'/)
+    for (const prefix of ['/en', '/ja', '/zh_Hant']) {
+      // 前缀字符串本身要在源码里出现
+      expect(configSource, `缺少语言前缀 ${prefix}`).toContain(`'${prefix.slice(1)}'`)
+    }
+  })
 })
