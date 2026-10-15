@@ -7,6 +7,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import type { Component } from 'vue'
 import { toast } from 'vue-sonner'
 import { apiFetch } from '~~/composables/useApi'
 import {
@@ -150,6 +151,15 @@ const activeCount = computed(() => plugins.value.filter(p => p.status === 'activ
 const inactiveCount = computed(() => plugins.value.filter(p => p.status === 'inactive' || p.status === 'installed').length)
 const errorCount = computed(() => plugins.value.filter(p => p.status === 'error').length)
 const updatableCount = computed(() => plugins.value.filter(p => p.update_available).length)
+
+// 统计条走共享 StatCard：原先是 5 张手写 Card + 渐变球，与后台其它页面的统计卡口径分叉。
+const pluginStats = computed<Array<{ key: string, label: string, value: number, icon: Component, accent: 'primary' | 'success' | 'info' | 'warning' | 'error', klass?: string }>>(() => [
+  { key: 'installed', label: t('admin.plugins.stats.installed', '已安装'), value: totalInstalled.value, icon: Puzzle, accent: 'primary' },
+  { key: 'active', label: t('admin.plugins.stats.active', '已启用'), value: activeCount.value, icon: Check, accent: 'success' },
+  { key: 'inactive', label: t('admin.plugins.stats.inactive', '未启用'), value: inactiveCount.value, icon: X, accent: 'info' },
+  { key: 'updates', label: t('admin.plugins.stats.updates', '可升级'), value: updatableCount.value, icon: ArrowUpCircle, accent: 'warning' },
+  { key: 'errors', label: t('admin.plugins.stats.errors', '异常'), value: errorCount.value, icon: AlertTriangle, accent: 'error', klass: 'col-span-2 md:col-span-1' }
+])
 
 const filtered = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -570,21 +580,12 @@ onMounted(() => {
   <div class="flex flex-col gap-5">
     <!-- ========= Header + Stats strip ========= -->
     <div class="flex flex-col gap-4">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="flex items-start gap-3">
-          <div class="shrink-0 size-11 rounded-2xl bg-gradient-to-br from-primary/90 to-accent/80 text-primary-foreground flex items-center justify-center shadow-pop">
-            <Puzzle class="size-5" />
-          </div>
-          <div class="flex flex-col gap-1 min-w-0">
-            <h2 class="text-2xl font-semibold tracking-tight font-display">
-              {{ t('admin.plugins.title', '插件管理') }}
-            </h2>
-            <p class="text-sm text-muted-foreground">
-              {{ t('admin.plugins.desc', '安装、启用、配置并升级你的 Rosetta 插件') }}
-            </p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
+      <AdminPageHeader
+        :title="t('admin.plugins.title', '插件管理')"
+        :description="t('admin.plugins.desc', '安装、启用、配置并升级你的 Rosetta 插件')"
+        :icon="Puzzle"
+      >
+        <template #actions>
           <Button
             variant="outline"
             size="sm"
@@ -628,97 +629,21 @@ onMounted(() => {
             <UploadCloud data-icon="inline-start" />
             {{ t('admin.plugins.install', '安装新插件') }}
           </Button>
-        </div>
-      </div>
+        </template>
+      </AdminPageHeader>
 
       <!-- Stats cards -->
       <div class="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-3">
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.plugins.stats.installed', '已安装') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums">
-                {{ totalInstalled }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-              <Puzzle class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-success/10 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.plugins.stats.active', '已启用') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums text-success">
-                +{{ activeCount }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-success/10 text-success flex items-center justify-center">
-              <Check class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-muted/50 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.plugins.stats.inactive', '未启用') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums text-muted-foreground">
-                {{ inactiveCount }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-muted/70 text-muted-foreground flex items-center justify-center">
-              <X class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-info/15 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.plugins.stats.updates', '可升级') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums">
-                {{ updatableCount }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-info/10 text-info flex items-center justify-center">
-              <ArrowUpCircle class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative col-span-2 md:col-span-1">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-warning/15 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.plugins.stats.errors', '异常') }}
-              </div>
-              <div
-                class="mt-1 font-display text-2xl font-semibold tabular-nums"
-                :class="errorCount ? 'text-destructive' : 'text-muted-foreground'"
-              >
-                {{ errorCount }}
-              </div>
-            </div>
-            <div
-              class="size-10 rounded-xl flex items-center justify-center"
-              :class="errorCount ? 'bg-destructive/10 text-destructive' : 'bg-muted/70 text-muted-foreground'"
-            >
-              <AlertTriangle class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          v-for="s in pluginStats"
+          :key="s.key"
+          :title="s.label"
+          :value="s.value"
+          :icon="s.icon"
+          :accent="s.accent"
+          :class="s.klass"
+          :loading="loading"
+        />
       </div>
     </div>
 

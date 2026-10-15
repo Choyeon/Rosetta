@@ -22,7 +22,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify, CONTENT_SLUG_PATTERN } from '~~/composables/useAdminI18n'
-import { BookOpen, ChevronDown, Plus } from '@lucide/vue'
+import { BookOpen, ChevronDown, Layers, Plus } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -192,6 +192,7 @@ onMounted(() => {
 <template>
   <AdminListPage
     title="系列管理"
+    :icon="Layers"
     description="系列是一组相关文章的有序集合，方便读者按顺序阅读。"
     :count="seriesList.length"
   >
@@ -252,7 +253,7 @@ onMounted(() => {
                 class="size-full bg-primary/85 cursor-pointer"
               />
               <div class="absolute top-3 left-3 flex items-center gap-2">
-                <Badge class="rounded-[10px] border border-white/30 bg-white/90 text-stone-700 backdrop-blur-sm">
+                <Badge class="rounded-[10px] border border-white/30 bg-background/90 text-popover-foreground backdrop-blur-sm">
                   {{ s.posts_count }} 篇
                 </Badge>
               </div>
@@ -301,7 +302,7 @@ onMounted(() => {
 
             <div
               v-if="expandedId === s.id"
-              class="border-t border-border bg-stone-50/40 p-4"
+              class="border-t border-border bg-muted/40 p-4"
             >
               <div class="flex items-center justify-between mb-3">
                 <h4 class="text-sm font-medium">

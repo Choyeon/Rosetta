@@ -384,8 +384,10 @@ function linePrefix(type: DiffLineType): string {
 }
 
 function lineClass(type: DiffLineType): string {
-  if (type === 'added') return 'bg-success-muted text-success-foreground'
-  if (type === 'removed') return 'bg-error-muted text-error-foreground'
+  // bg-X-muted 必须配 text-X-muted-foreground（AGENTS.md 语义色配对铁律）：
+  // text-*-foreground 是给「实色底」用的白字，压在淡色 muted 底上等于隐形文本。
+  if (type === 'added') return 'bg-success-muted text-success-muted-foreground'
+  if (type === 'removed') return 'bg-error-muted text-error-muted-foreground'
   return 'text-muted-foreground'
 }
 

@@ -23,7 +23,7 @@ import { Switch } from '~~/components/ui/switch'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import { getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
-import { Search, Plus, Pencil, Trash2, Tag } from '@lucide/vue'
+import { Search, Plus, Pencil, Trash2, Tag, Tags } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -181,6 +181,7 @@ onMounted(() => {
 <template>
   <AdminListPage
     title="标签管理"
+    :icon="Tags"
     description="标签可用于文章的快速分类与搜索聚合。"
     :count="tags.length"
   >
@@ -259,7 +260,7 @@ onMounted(() => {
                 </button>
                 <button
                   type="button"
-                  class="h-7 w-7 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-red-50 hover:text-destructive transition-colors"
+                  class="h-7 w-7 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-error-muted hover:text-destructive transition-colors"
                   title="删除"
                   aria-label="删除标签"
                   @click.stop="confirmDelete(t.id)"

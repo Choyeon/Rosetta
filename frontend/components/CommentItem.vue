@@ -11,7 +11,8 @@
   >
     <UserAvatar
       :avatar="comment.author?.avatar"
-      :seed="comment.author?.name"
+      :resolved-avatar-url="comment.author?.resolvedAvatarUrl"
+      :seed="comment.author?.username || comment.author?.name"
       :name="comment.author?.name || 'Anonymous'"
       :title="comment.author?.title || null"
       :size="36"
@@ -84,6 +85,10 @@ interface Props {
       name: string
       avatar?: string
       email?: string
+      /** 后端解析链产出的代理 URL，优先级高于 avatar */
+      resolvedAvatarUrl?: string | null
+      /** 稳定的头像配色种子（用户名） */
+      username?: string | null
       title?: {
         id?: number
         name: string

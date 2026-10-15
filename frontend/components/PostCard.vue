@@ -1,9 +1,10 @@
 <!--
-  文章卡片（default 网格版 / compact 横条版两副骨架，由 variant 选择）。
+  文章卡片（default 网格版 / compact 横条版 / feature 通栏特写版三副骨架，由 variant 选择）。
   字段读取一律 snake_case + camelCase 双写兜底：后端不同接口混用两种命名，只留一种会静默丢值。
   title/excerpt/category.name 假定后端返回完整四语 dict（缺 key 即无兜底，见 §7.3）；
   封面只允许走 lib/post-cover 的 postCoverUrl —— picsum seed 两端派生，改成随机或本地时态
-  会直接造成水合 mismatch。compact 变体 Tag 封顶 4 个属有意的排版契约。
+  会直接造成水合 mismatch。feature 取 DETAIL 尺寸（通栏宽度下 CARD 尺寸会糊）。
+  compact 变体 Tag 封顶 4 个属有意的排版契约。
 -->
 <template>
   <article
@@ -74,7 +75,8 @@
         <div class="flex items-center gap-2 min-w-0">
           <UserAvatar
             :avatar="post.author?.avatar"
-            :seed="authorName"
+            :resolved-avatar-url="post.author?.resolved_avatar_url"
+            :seed="post.author?.username || authorName"
             :name="authorName"
             :title="post.author?.title || null"
             :size="20"
@@ -117,6 +119,102 @@
             {{ commentsCount }}
           </span>
         </div>
+      </div>
+    </div>
+  </article>
+
+  <article
+    v-else-if="variant === 'feature'"
+    class="card-surface lift-hover group overflow-hidden text-card-foreground grid md:grid-cols-[minmax(0,7fr)_minmax(0,5fr)]"
+  >
+    <NuxtLink
+      v-if="coverImage"
+      :to="`/posts/${postSlug}`"
+      class="relative block aspect-[16/9] md:aspect-auto md:min-h-[300px] overflow-hidden bg-muted"
+    >
+      <img
+        :src="coverImage"
+        :alt="postTitle"
+        class="h-full w-full object-cover transition-transform transition-duration-[600ms] ease-out group-hover:scale-[1.03]"
+        loading="lazy"
+        decoding="async"
+        sizes="(max-width: 768px) 100vw, 58vw"
+      >
+      <span class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/15 to-transparent opacity-70" />
+    </NuxtLink>
+    <!-- 无封面：占位渐变砖块撑住通栏左半，别让特写塌成一坨文字（feature） -->
+    <div
+      v-else
+      aria-hidden="true"
+      class="aspect-[16/9] md:aspect-auto md:min-h-[300px] flex items-center justify-center bg-gradient-to-br from-muted via-muted to-primary/10"
+    >
+      <FileImage class="size-10 text-muted-foreground/40" />
+    </div>
+
+    <div class="flex flex-col justify-center gap-3 p-6 md:p-8">
+      <div class="flex items-center gap-2 flex-wrap">
+        <CategoryBadge
+          v-if="categoryName"
+          :color="categoryColor"
+          :icon="post.category?.icon ?? null"
+          :label="categoryName"
+          :to="categoryLink"
+        />
+        <Badge
+          v-if="isPinned"
+          variant="default"
+          class="ap-pinned-badge"
+        >
+          {{ t('posts.pinned') }}
+        </Badge>
+        <TagBadge
+          v-for="tag in compactTags"
+          :key="tag.id"
+          :color="tag.color"
+          :label="tag.name"
+          :to="`/posts?tag=${tag.slug}`"
+        />
+      </div>
+
+      <h2 class="font-display text-2xl md:text-3xl font-bold leading-tight tracking-tight line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
+        <NuxtLink :to="`/posts/${postSlug}`">{{ postTitle }}</NuxtLink>
+      </h2>
+
+      <p class="text-muted-foreground leading-relaxed line-clamp-3 md:text-[15px]">
+        {{ postExcerpt || t('post.noExcerpt') }}
+      </p>
+
+      <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
+        <div class="flex items-center gap-2 min-w-0">
+          <UserAvatar
+            :avatar="post.author?.avatar"
+            :resolved-avatar-url="post.author?.resolved_avatar_url"
+            :seed="post.author?.username || authorName"
+            :name="authorName"
+            :title="post.author?.title || null"
+            :size="24"
+            :show-title="true"
+          />
+          <span class="font-medium text-foreground truncate">{{ authorName }}</span>
+          <span
+            v-if="publishedAt"
+            class="shrink-0"
+          >·</span>
+          <span
+            v-if="publishedAt"
+            class="shrink-0 tabular-nums"
+          >{{ formatDate(publishedAt) }}</span>
+        </div>
+        <NuxtLink
+          :to="`/posts/${postSlug}`"
+          class="inline-flex items-center gap-1 font-medium text-primary hover:underline underline-offset-4 ml-auto"
+        >
+          {{ t('common.readMore') }}
+          <ArrowRight
+            class="size-3.5 shrink-0"
+            aria-hidden="true"
+          />
+        </NuxtLink>
       </div>
     </div>
   </article>
@@ -193,7 +291,8 @@
       <div class="flex items-center gap-2 min-w-0">
         <UserAvatar
           :avatar="post.author?.avatar"
-          :seed="authorName"
+          :resolved-avatar-url="post.author?.resolved_avatar_url"
+          :seed="post.author?.username || authorName"
           :name="authorName"
           :title="post.author?.title || null"
           :size="24"
@@ -241,7 +340,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Calendar, Eye, FileImage, MessageCircle } from '@lucide/vue'
+import { Calendar, Eye, FileImage, MessageCircle, ArrowRight } from '@lucide/vue'
 import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
@@ -249,9 +348,9 @@ import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
-import { postCoverUrl, POST_COVER_CARD } from '~~/lib/post-cover'
+import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 
-type PostCardVariant = 'default' | 'compact'
+type PostCardVariant = 'default' | 'compact' | 'feature'
 
 interface TagLike {
   id: number | string
@@ -282,6 +381,8 @@ interface Props {
       nickname?: string
       username?: string
       avatar?: string
+      /** 后端解析链产出的代理头像 URL，优先级高于 avatar */
+      resolved_avatar_url?: string | null
       title?: {
         id?: number
         name: string | Record<string, string>
@@ -312,7 +413,11 @@ const { t } = useI18n()
 const { resolveLocalized, formatDate } = useI18nHelpers()
 
 // 无封面文章不再留白：回落到按文章标识派生的 picsum seed 图（篇篇不同、同篇恒定）
-const coverImage = computed(() => postCoverUrl(props.post, POST_COVER_CARD))
+// 通栏特写占满整行宽，回落图仍取卡片尺寸会糊，故按变体选尺寸
+const coverImage = computed(() => postCoverUrl(
+  props.post,
+  props.variant === 'feature' ? POST_COVER_DETAIL : POST_COVER_CARD
+))
 const publishedAt = computed(() => props.post.published_at || props.post.publishedAt || props.post.created_at || '')
 const views = computed(() => props.post.views ?? props.post.views_count ?? 0)
 const commentsCount = computed(() => props.post.comments_count ?? props.post.commentsCount ?? 0)

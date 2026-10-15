@@ -24,7 +24,9 @@
  * translatable: 开启后每个非 zh tab 提供「一键翻译」按钮（基于 zh 值调用 /api/translate 填充）
  */
 import { computed, ref, watch } from 'vue'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import { Tabs, TabsContent } from '~~/components/ui/tabs'
+import AdminTabList from '~~/components/admin/AdminTabList.vue'
+import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
@@ -165,17 +167,17 @@ async function translateLocale(lang: string) {
     </div>
 
     <Tabs default-value="zh">
-      <TabsList class="grid grid-cols-4 w-full h-9 rounded-[10px]">
-        <TabsTrigger
+      <AdminTabList class="grid grid-cols-4 w-full h-9 rounded-[10px]">
+        <AdminTabTrigger
           v-for="l in LOCALES"
           :key="l.key"
           :value="l.key"
-          class="h-8 text-xs data-[state=active]:shadow-none"
+          class="h-8 px-1 text-xs data-[state=active]:shadow-none"
         >
           <span class="mr-1 opacity-70">{{ l.short }}</span>
           <span class="hidden sm:inline">{{ l.label }}</span>
-        </TabsTrigger>
-      </TabsList>
+        </AdminTabTrigger>
+      </AdminTabList>
 
       <div
         v-for="l in LOCALES"

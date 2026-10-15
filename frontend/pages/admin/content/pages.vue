@@ -7,6 +7,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
+import { FileStack } from '@lucide/vue'
 import {
   fetchAdminPages,
   createAdminPage,
@@ -203,6 +204,7 @@ onMounted(() => {
 <template>
   <AdminListPage
     title="独立页面"
+    :icon="FileStack"
     description="独立页面用于创建关于、联系等非常规文章的页面。"
     :count="total"
   >

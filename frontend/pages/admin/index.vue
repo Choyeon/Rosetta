@@ -36,7 +36,9 @@ import UserAvatar from '~~/components/UserAvatar.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
-import { Tabs, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import { Tabs } from '~~/components/ui/tabs'
+import AdminTabList from '~~/components/admin/AdminTabList.vue'
+import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import { useAuthStore } from '~~/stores/auth'
 import { useToast } from '~~/composables/useToast'
 import { useTheme } from '~~/composables/useTheme'
@@ -61,104 +63,101 @@ const authStore = useAuthStore()
 useToast() // 统一 toast 封装（apiFetch 自动 toast，页面无需手动调用 error）
 const { isDark } = useTheme()
 
-// ============== Hero 头部卡片 · 双主题渐变配色 ==============
+/**
+ * 设计令牌 → 实色。仪表盘要渲染 ECharts（canvas）与内联渐变，两者都不吃 var()，
+ * 所以必须把令牌落成实色字符串；main.css 里令牌是裸 HSL 三元组（`201 96% 35%`），
+ * 这里补上 hsl() 外壳。颜色只有一个来源＝令牌，改主题时仪表盘自动跟随，
+ * 不再出现「全站换色、后台仍是硬编码天蓝」的漂移。
+ *
+ * 值缓存在 shallowRef 里：computed 通过 token() 读它就是正常响应式依赖，
+ * 主题翻转（class 由 plugins/theme.client.ts 在 Hydrate 后补写）后重读一次。
+ */
+const TOKEN_NAMES = [
+  '--primary', '--info', '--success', '--warning', '--error',
+  '--foreground', '--muted', '--muted-foreground', '--card', '--border', '--popover'
+]
+
+const tokens = shallowRef<Record<string, string>>({})
+function readTokens() {
+  const cs = getComputedStyle(document.documentElement)
+  const next: Record<string, string> = {}
+  for (const name of TOKEN_NAMES) next[name] = cs.getPropertyValue(name).trim()
+  tokens.value = next
+}
+function token(name: string, alpha?: number): string {
+  const raw = tokens.value[name] ?? ''
+  if (!raw) return 'transparent'
+  return alpha === undefined ? `hsl(${raw})` : `hsl(${raw} / ${alpha})`
+}
+onMounted(readTokens)
+watch(isDark, () => nextTick(readTokens))
+
+// ============== Hero 头部卡片 · 令牌化配色 ==============
 const heroBgStyle = computed(() => {
-  if (isDark.value) {
-    // 暗色：冷蓝紫 + 靛青多光球深度渐变（Glow + Grain 风格）
-    return {
-      background:
-        'radial-gradient(900px 300px at 0% -20%, rgba(56,189,248,0.30) 0%, transparent 60%),'
-        + 'radial-gradient(700px 260px at 100% -10%, rgba(129,140,248,0.24) 0%, transparent 55%),'
-        + 'radial-gradient(620px 300px at 60% 130%, rgba(45,212,191,0.12) 0%, transparent 55%),'
-        + 'linear-gradient(135deg, oklch(0.29 0.12 240) 0%, oklch(0.23 0.10 250) 48%, oklch(0.17 0.04 260) 100%)'
-    }
-  }
-  // 亮色：暖白纸质 + 天蓝/紫丁香柔光渐变（Editorial 质感）
+  const glow = isDark.value ? 0.30 : 0.20
   return {
     background:
-      'radial-gradient(900px 300px at 0% -20%, rgba(56,189,248,0.22) 0%, transparent 60%),'
-      + 'radial-gradient(700px 260px at 100% -10%, rgba(167,139,250,0.20) 0%, transparent 55%),'
-      + 'radial-gradient(500px 260px at 50% 130%, rgba(20,184,166,0.10) 0%, transparent 55%),'
-      + 'linear-gradient(135deg, oklch(0.985 0.012 230) 0%, oklch(0.968 0.022 235) 50%, oklch(0.948 0.030 240) 100%)'
+      `radial-gradient(900px 300px at 0% -20%, ${token('--primary', glow)} 0%, transparent 60%),`
+      + `radial-gradient(700px 260px at 100% -10%, ${token('--info', glow * 0.8)} 0%, transparent 55%),`
+      + `radial-gradient(620px 300px at 60% 130%, ${token('--success', glow * 0.45)} 0%, transparent 55%),`
+      + `linear-gradient(135deg, ${token('--card')} 0%, ${token('--muted')} 100%)`
   }
 })
 const heroShadowClass = computed(() =>
   isDark.value
-    ? 'shadow-[0_22px_45px_-18px_rgba(14,165,233,0.55)] border-white/10'
-    : 'shadow-[0_18px_38px_-20px_rgba(14,165,233,0.35)] border-sky-200/60'
+    ? 'shadow-sm border-white/10'
+    : 'shadow-sm border-border/70'
 )
 // 主色（标题强调色 · 圆点分隔符）
-const heroAccent = computed(() => (isDark.value ? 'text-sky-300' : 'text-sky-600'))
-const heroTextPrimary = computed(() => (isDark.value ? 'text-white' : 'text-slate-900'))
-const heroTextSecondary = computed(() =>
-  isDark.value ? 'text-white/75' : 'text-slate-600'
-)
-// SVG 光球颜色（亮暗切换）
+const heroAccent = computed(() => 'text-primary')
+const heroTextPrimary = computed(() => 'text-foreground')
+const heroTextSecondary = computed(() => 'text-muted-foreground')
+// SVG 光球颜色（stop-color 是属性，不吃 var()，必须给解析后的实色）
 const orbColors = computed(() => {
   if (isDark.value) {
     return {
-      o1Center: '#38BDF8',
+      o1Center: token('--primary'),
       o1Opacity: '0.42',
-      o2Center: '#818CF8',
+      o2Center: token('--info'),
       o2Opacity: '0.32',
       mixBlend: 'mix-blend-screen'
     }
   }
   return {
-    o1Center: '#0EA5E9',
+    o1Center: token('--primary'),
     o1Opacity: '0.22',
-    o2Center: '#A78BFA',
+    o2Center: token('--info'),
     o2Opacity: '0.18',
     mixBlend: 'mix-blend-multiply opacity-70'
   }
 })
 
 const palette = computed(() => {
-  if (isDark.value) {
-    return {
-      bg: 'transparent',
-      text: '#CBD5E1',
-      textSoft: '#64748B',
-      border: '#1E293B',
-      gridLine: '#1E293B',
-      primary: '#38BDF8', // sky-400
-      primaryLight: 'rgba(56,189,248,0.25)',
-      indigo: '#818CF8', // indigo-400
-      indigoLight: 'rgba(129,140,248,0.22)',
-      teal: '#2DD4BF', // teal-400
-      tealLight: 'rgba(45,212,191,0.22)',
-      amber: '#FBBF24', // amber-400
-      amberLight: 'rgba(251,191,36,0.22)',
-      rose: '#FB7185', // rose-400
-      roseLight: 'rgba(251,113,133,0.22)',
-      success: '#34D399',
-      warning: '#FBBF24',
-      danger: '#F87171',
-      tooltipBg: '#0F172A',
-      tooltipBorder: '#334155'
-    }
-  }
   return {
     bg: 'transparent',
-    text: '#0F172A',
-    textSoft: '#64748B',
-    border: '#E2E8F0',
-    gridLine: '#F1F5F9',
-    primary: '#0284C7', // sky-600
-    primaryLight: 'rgba(14,165,233,0.18)',
-    indigo: '#4F46E5', // indigo-600
-    indigoLight: 'rgba(99,102,241,0.15)',
-    teal: '#0D9488', // teal-600
-    tealLight: 'rgba(20,184,166,0.14)',
-    amber: '#D97706', // amber-600
-    amberLight: 'rgba(245,158,11,0.14)',
-    rose: '#E11D48', // rose-600
-    roseLight: 'rgba(225,29,72,0.12)',
-    success: '#059669',
-    warning: '#D97706',
-    danger: '#DC2626',
-    tooltipBg: '#FFFFFF',
-    tooltipBorder: '#E2E8F0'
+    text: token('--foreground'),
+    textSoft: token('--muted-foreground'),
+    border: token('--border'),
+    gridLine: token('--border', 0.6),
+    primary: token('--primary'),
+    primaryLight: token('--primary', 0.22),
+    indigo: token('--info'),
+    indigoLight: token('--info', 0.2),
+    teal: token('--success'),
+    tealLight: token('--success', 0.2),
+    amber: token('--warning'),
+    amberLight: token('--warning', 0.2),
+    rose: token('--error'),
+    roseLight: token('--error', 0.2),
+    success: token('--success'),
+    warning: token('--warning'),
+    danger: token('--destructive'),
+    tooltipBg: token('--popover'),
+    tooltipBorder: token('--border'),
+    primaryFade: token('--primary', 0.03),
+    indigoFade: token('--info', 0.03),
+    primarySoft: token('--primary', 0.25),
+    indigoSoft: token('--info', 0.25)
   }
 })
 
@@ -630,7 +629,7 @@ const trafficOption = computed(() => {
               x: 0, y: 0, x2: 0, y2: 1,
               colorStops: [
                 { offset: 0, color: P.primaryLight },
-                { offset: 1, color: 'rgba(14,165,233,0.02)' }
+                { offset: 1, color: P.primaryFade }
               ]
             }
           },
@@ -653,7 +652,7 @@ const trafficOption = computed(() => {
               x: 0, y: 0, x2: 0, y2: 1,
               colorStops: [
                 { offset: 0, color: P.indigoLight },
-                { offset: 1, color: 'rgba(99,102,241,0.02)' }
+                { offset: 1, color: P.indigoFade }
               ]
             }
           },
@@ -919,7 +918,7 @@ const topArticlesOption = computed(() => {
           color: {
             type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
             colorStops: [
-              { offset: 0, color: 'rgba(14,165,233,0.25)' },
+              { offset: 0, color: P.primarySoft },
               { offset: 1, color: P.primary }
             ]
           }
@@ -935,7 +934,7 @@ const topArticlesOption = computed(() => {
           color: {
             type: 'linear', x: 0, y: 0, x2: 1, y2: 0,
             colorStops: [
-              { offset: 0, color: 'rgba(99,102,241,0.25)' },
+              { offset: 0, color: P.indigoSoft },
               { offset: 1, color: P.indigo }
             ]
           }
@@ -1060,7 +1059,7 @@ const healthRadarOption = computed(() => {
                 x: 0.5, y: 0.5, r: 0.5,
                 colorStops: [
                   { offset: 0, color: P.primaryLight },
-                  { offset: 1, color: 'rgba(14,165,233,0.05)' }
+                  { offset: 1, color: P.primaryFade }
                 ]
               }
             }
@@ -1145,7 +1144,16 @@ const healthGaugeOption = computed(() => {
 })
 
 // 4.4 活跃评论者 Leaderboard：头像 + 进度条（无图表库，直接纯 UI，性能好）
-type CommenterRow = { name: string, avatar: string | null, comments_count: number, title?: { id?: number, name: string, icon?: string, color?: string } | null }
+// resolved_avatar_url / username 后端尚未下发（ActiveCommenterDoc 暂未填充），
+// 声明为可选：将来后端补上后前端无需再改。
+type CommenterRow = {
+  name: string
+  avatar: string | null
+  comments_count: number
+  resolved_avatar_url?: string | null
+  username?: string | null
+  title?: { id?: number, name: string, icon?: string, color?: string } | null
+}
 const commenters = computed<CommenterRow[]>(
   () => (statsRaw.value?.active_commenters ?? []) as CommenterRow[]
 )
@@ -1171,7 +1179,7 @@ const pillFor = (a: ActivityItem['accent']) =>
 </script>
 
 <template>
-  <div class="flex flex-col gap-5 admin-dashboard-v2 py-1 animate-in">
+  <div class="flex flex-col gap-5 admin-dashboard-v2 animate-in">
     <!-- =============== HERO =============== -->
     <section
       class="relative overflow-hidden rounded-2xl p-6 md:p-7 border"
@@ -1239,7 +1247,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           cy="130"
           r="82"
           fill="none"
-          :stroke="isDark ? '#fff' : '#0F172A'"
+          :stroke="palette.text"
           :stroke-opacity="isDark ? 0.08 : 0.12"
           stroke-width="1"
           stroke-dasharray="3 5"
@@ -1249,7 +1257,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           cy="130"
           r="54"
           fill="none"
-          :stroke="isDark ? '#fff' : '#0F172A'"
+          :stroke="palette.text"
           :stroke-opacity="isDark ? 0.1 : 0.15"
           stroke-width="1"
         />
@@ -1273,7 +1281,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           </h1>
           <p
             class="mt-2 text-sm max-w-2xl leading-relaxed"
-            :class="isDark ? 'text-white/80' : 'text-slate-700'"
+            :class="heroTextSecondary"
           >
             今日博客获
             <span
@@ -1298,13 +1306,9 @@ const pillFor = (a: ActivityItem['accent']) =>
             篇草稿待发布。
           </p>
           <div class="mt-5 flex items-center gap-2.5 flex-wrap">
-            <!-- 主按钮：暗色=白底蓝字 / 亮色=sky 深蓝底白字 -->
             <Button
               size="sm"
-              class="h-9 rounded-xl font-semibold shadow-lg"
-              :class="isDark
-                ? 'bg-white text-[#075985] hover:bg-white/90 shadow-black/10'
-                : 'bg-sky-600 text-white hover:bg-sky-700 shadow-sky-600/25'"
+              class="h-9 rounded-xl font-semibold"
               @click="navigateTo('/admin/content/posts/new')"
             >
               <PencilLine
@@ -1316,10 +1320,7 @@ const pillFor = (a: ActivityItem['accent']) =>
             <Button
               size="sm"
               variant="outline"
-              class="h-9 rounded-xl backdrop-blur"
-              :class="isDark
-                ? 'bg-white/10 border-white/20 text-white hover:bg-white/20 hover:text-white'
-                : 'bg-white/60 border-slate-300/70 text-slate-800 hover:bg-white hover:text-slate-900 hover:border-sky-400'"
+              class="h-9 rounded-xl bg-card/60 backdrop-blur"
               @click="openHomepage"
             >
               <LayoutDashboard
@@ -1331,10 +1332,7 @@ const pillFor = (a: ActivityItem['accent']) =>
             <Button
               size="sm"
               variant="outline"
-              class="h-9 rounded-xl backdrop-blur"
-              :class="isDark
-                ? 'bg-white/5 border-white/15 text-white/90 hover:bg-white/15 hover:text-white'
-                : 'bg-white/40 border-slate-300/60 text-slate-700 hover:bg-white/80 hover:text-slate-900 hover:border-sky-400'"
+              class="h-9 rounded-xl bg-card/60 backdrop-blur"
               @click="navigateTo('/admin/tools/seo')"
             >
               <Search
@@ -1350,73 +1348,29 @@ const pillFor = (a: ActivityItem['accent']) =>
         <div class="relative grid grid-cols-3 gap-3 w-full md:max-w-[380px] md:shrink-0">
           <div
             v-for="tile in [
-              {
-                label: '已发布',
-                value: summary.publishedCount,
-                dark: { grad: 'from-sky-300/30 to-sky-500/30', ring: 'ring-sky-300/40' },
-                light: { grad: 'from-sky-400/20 to-sky-600/18', ring: 'ring-sky-300/50' }
-              },
-              {
-                label: '今日评论',
-                value: summary.totalCommentsToday,
-                dark: { grad: 'from-indigo-300/30 to-indigo-500/30', ring: 'ring-indigo-300/40' },
-                light: { grad: 'from-indigo-400/22 to-indigo-600/18', ring: 'ring-indigo-300/55' }
-              },
-              {
-                label: '注册用户',
-                value: summary.usersCount,
-                dark: { grad: 'from-teal-300/30 to-teal-500/30', ring: 'ring-teal-300/40' },
-                light: { grad: 'from-teal-400/22 to-teal-600/18', ring: 'ring-teal-300/55' }
-              }
+              { label: '已发布', value: summary.publishedCount, tone: 'ring-primary/30 text-primary' },
+              { label: '今日评论', value: summary.totalCommentsToday, tone: 'ring-info/30 text-info' },
+              { label: '注册用户', value: summary.usersCount, tone: 'ring-success/30 text-success' }
             ]"
             :key="tile.label"
-            class="relative rounded-xl p-3.5 ring-1 ring-inset backdrop-blur"
-            :class="[
-              isDark
-                ? 'bg-white/5 border border-white/10 text-white'
-                : 'bg-white/70 border border-slate-200/80 text-slate-900 shadow-sm',
-              (isDark ? tile.dark.ring : tile.light.ring)
-            ]"
+            class="relative rounded-xl p-3.5 ring-1 ring-inset backdrop-blur bg-card/60"
+            :class="tile.tone"
           >
-            <div
-              class="absolute inset-0 rounded-xl bg-gradient-to-br pointer-events-none"
-              :class="[isDark ? 'opacity-60' : 'opacity-70', isDark ? tile.dark.grad : tile.light.grad]"
-            />
-            <p
-              class="relative text-[11px]"
-              :class="isDark ? 'text-white/70' : 'text-slate-500'"
-            >
+            <p class="relative text-[11px] text-muted-foreground">
               {{ tile.label }}
             </p>
-            <p
-              class="relative mt-1 text-2xl font-bold tabular-nums tracking-tight"
-              :class="isDark ? 'text-white drop-shadow-sm' : 'text-slate-900'"
-            >
+            <p class="relative mt-1 text-2xl font-bold tabular-nums tracking-tight text-foreground">
               {{ Number(tile.value).toLocaleString() }}
             </p>
           </div>
-          <div
-            class="col-span-3 rounded-xl p-3.5 backdrop-blur flex items-center justify-between border"
-            :class="isDark
-              ? 'bg-black/15 border-white/10 text-white'
-              : 'bg-white/80 border-slate-200/70 text-slate-900 shadow-sm'"
-          >
+          <div class="col-span-3 rounded-xl p-3.5 backdrop-blur flex items-center justify-between ring-1 ring-inset ring-muted-foreground/15 bg-card/60">
             <div class="min-w-0">
-              <p
-                class="text-[11px]"
-                :class="isDark ? 'text-white/70' : 'text-slate-500'"
-              >
+              <p class="text-[11px] text-muted-foreground">
                 健康分数
               </p>
-              <p
-                class="mt-0.5 text-3xl font-bold tabular-nums tracking-tight"
-                :class="heroTextPrimary"
-              >
+              <p class="mt-0.5 text-3xl font-bold tabular-nums tracking-tight text-foreground">
                 {{ healthScore ?? '—' }}
-                <span
-                  class="text-sm font-semibold ml-0.5"
-                  :class="isDark ? 'text-white/70' : 'text-slate-500'"
-                >/ 100</span>
+                <span class="text-sm font-semibold ml-0.5 text-muted-foreground">/ 100</span>
               </p>
             </div>
             <div class="shrink-0 flex items-center gap-2">
@@ -1424,10 +1378,7 @@ const pillFor = (a: ActivityItem['accent']) =>
               <Badge
                 v-if="statsRaw"
                 variant="outline"
-                class="rounded-full backdrop-blur"
-                :class="isDark
-                  ? 'border-white/30 text-white/90 bg-white/5'
-                  : 'border-sky-400/40 text-sky-700 bg-sky-50/80'"
+                class="rounded-full border-primary/40 bg-primary/10 text-primary"
               >
                 <CheckCircle2 class="size-3 mr-1" />
                 实时监控
@@ -1443,7 +1394,7 @@ const pillFor = (a: ActivityItem['accent']) =>
       <div
         v-for="card in kpiCards"
         :key="card.key"
-        :class="['group relative rounded-2xl bg-card border border-border/70 hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden shadow-sm hover:shadow-[0_12px_30px_-16px_rgba(14,165,233,0.35)]']"
+        :class="['group relative rounded-2xl bg-card border border-border/70 hover:border-primary/30 hover:-translate-y-0.5 transition-all duration-200 overflow-hidden shadow-sm hover:shadow-md']"
       >
         <!-- panel-exempt: KPI 网格瓦片，6 个并列 + hover 抬升；铺渐变玻璃面观感过重，且 card-surface 的 isolation:isolate 会给每个瓦片建层叠上下文，压住内部 -top-16 的发光球 -->
         <!-- subtle accent glow -->
@@ -1452,25 +1403,23 @@ const pillFor = (a: ActivityItem['accent']) =>
           class="pointer-events-none absolute -top-16 -right-14 size-40 rounded-full opacity-30 blur-3xl transition-opacity group-hover:opacity-60"
           :class="{
             'bg-primary/50': card.accent === 'primary',
-            'bg-indigo-500/50': card.accent === 'indigo',
-            'bg-teal-500/50': card.accent === 'teal',
-            'bg-amber-500/50': card.accent === 'amber',
-            'bg-rose-500/50': card.accent === 'rose',
-            'bg-emerald-500/50': card.accent === 'success'
+            'bg-info/50': card.accent === 'indigo',
+            'bg-success/50': card.accent === 'teal' || card.accent === 'success',
+            'bg-warning/50': card.accent === 'amber',
+            'bg-error/50': card.accent === 'rose'
           }"
         />
 
         <div class="relative p-4 pb-3.5">
           <div class="flex items-start justify-between gap-3">
             <div
-              class="shrink-0 size-10 rounded-xl flex items-center justify-center text-white shadow-sm"
+              class="shrink-0 size-10 rounded-xl flex items-center justify-center"
               :class="{
-                'bg-gradient-to-br from-sky-500 to-sky-600': card.accent === 'primary',
-                'bg-gradient-to-br from-indigo-500 to-indigo-600': card.accent === 'indigo',
-                'bg-gradient-to-br from-teal-500 to-teal-600': card.accent === 'teal',
-                'bg-gradient-to-br from-amber-500 to-amber-600': card.accent === 'amber',
-                'bg-gradient-to-br from-rose-500 to-rose-600': card.accent === 'rose',
-                'bg-gradient-to-br from-emerald-500 to-emerald-600': card.accent === 'success'
+                'bg-primary-muted text-primary-muted-foreground': card.accent === 'primary',
+                'bg-info-muted text-info-muted-foreground': card.accent === 'indigo',
+                'bg-success-muted text-success-muted-foreground': card.accent === 'teal' || card.accent === 'success',
+                'bg-warning-muted text-warning-muted-foreground': card.accent === 'amber',
+                'bg-error-muted text-error-muted-foreground': card.accent === 'rose'
               }"
             >
               <component
@@ -1482,13 +1431,13 @@ const pillFor = (a: ActivityItem['accent']) =>
               v-if="card.trend"
               class="flex items-center gap-0.5 text-[11px] font-medium tabular-nums rounded-full px-2 py-0.5"
               :class="{
-                'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400':
+                'bg-success-muted text-success-muted-foreground':
                   card.trend.dir === 'up' && card.accent !== 'amber',
-                'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400':
+                'bg-warning-muted text-warning-muted-foreground':
                   card.trend.dir === 'up' && card.accent === 'amber',
-                'bg-rose-50 text-rose-700 dark:bg-rose-500/10 dark:text-rose-400':
+                'bg-error-muted text-error-muted-foreground':
                   card.trend.dir === 'down',
-                'bg-slate-50 text-slate-600 dark:bg-slate-500/10 dark:text-slate-400':
+                'bg-muted text-muted-foreground':
                   card.trend.dir === 'flat'
               }"
             >
@@ -1637,22 +1586,22 @@ const pillFor = (a: ActivityItem['accent']) =>
               class="w-auto"
               @update:model-value="(v: any) => trafficMode = String(v) as 'overview' | 'content'"
             >
-              <TabsList class="h-8 rounded-lg">
-                <TabsTrigger
+              <AdminTabList class="h-8">
+                <AdminTabTrigger
                   value="overview"
-                  class="h-7 px-3 text-xs data-[state=active]:shadow-sm"
+                  class="h-7 px-3 text-xs"
                 >
                   <Eye class="size-3.5 shrink-0 opacity-90" />
                   <span class="truncate">流量总览</span>
-                </TabsTrigger>
-                <TabsTrigger
+                </AdminTabTrigger>
+                <AdminTabTrigger
                   value="content"
-                  class="h-7 px-3 text-xs data-[state=active]:shadow-sm"
+                  class="h-7 px-3 text-xs"
                 >
                   <MessageCircleMore class="size-3.5 shrink-0 opacity-90" />
                   <span class="truncate">互动 & 内容</span>
-                </TabsTrigger>
-              </TabsList>
+                </AdminTabTrigger>
+              </AdminTabList>
             </Tabs>
             <div class="inline-flex rounded-lg border border-border overflow-hidden">
               <button
@@ -1910,11 +1859,11 @@ const pillFor = (a: ActivityItem['accent']) =>
                 class="shrink-0 size-7 rounded-full flex items-center justify-center"
                 :class="
                   idx === 0
-                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400'
+                    ? 'bg-warning-muted text-warning-muted-foreground'
                     : idx === 1
-                      ? 'bg-slate-100 text-slate-600 dark:bg-slate-500/20 dark:text-slate-300'
+                      ? 'bg-muted text-muted-foreground'
                       : idx === 2
-                        ? 'bg-orange-100 text-orange-700 dark:bg-orange-500/20 dark:text-orange-400'
+                        ? 'bg-primary-muted text-primary-muted-foreground'
                         : 'bg-muted text-muted-foreground'
                 "
               >
@@ -1935,7 +1884,8 @@ const pillFor = (a: ActivityItem['accent']) =>
               </div>
               <UserAvatar
                 :avatar="c.avatar"
-                :seed="c.name"
+                :resolved-avatar-url="c.resolved_avatar_url"
+                :seed="c.username || c.name"
                 :name="c.name"
                 :title="c.title || null"
                 :size="36"
@@ -2075,12 +2025,12 @@ const pillFor = (a: ActivityItem['accent']) =>
               ]"
               :key="q.title"
               type="button"
-              :class="['group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:-translate-y-0.5 hover:shadow-[0_10px_22px_-14px_hsl(var(--primary)/0.45)] hover:border-primary/30 transition-all duration-200 text-left']"
+              :class="['group flex items-center gap-3 p-3 rounded-xl border border-border bg-card hover:-translate-y-0.5 hover:shadow-md hover:border-primary/30 transition-all duration-200 text-left']"
               @click="navigateTo(q.to)"
             >
               <!-- panel-exempt: 快捷入口按钮组，本质是带图标的列表项而非内容面板；card-surface 的无边框渐变面会让它和同页 KPI 瓦片抢视觉重量 -->
               <div
-                class="shrink-0 size-9 rounded-lg text-white flex items-center justify-center shadow-sm"
+                class="shrink-0 size-9 rounded-lg text-background flex items-center justify-center"
                 :style="{ background: `linear-gradient(135deg, hsl(var(${q.colorVar})) 0%, hsl(var(${q.colorVar}) / 0.7) 100%)` }"
               >
                 <component

@@ -64,7 +64,8 @@
           <div class="flex flex-wrap items-center gap-3 mt-6 text-sm text-muted-foreground">
             <UserAvatar
               :avatar="post?.author?.avatar"
-              :seed="authorName"
+              :resolved-avatar-url="post?.author?.resolved_avatar_url"
+              :seed="post?.author?.username || authorName"
               :name="authorName"
               :title="post?.author?.title || null"
               :size="32"
@@ -126,40 +127,76 @@
             >
           </div>
 
-          <article
-            v-show="!!post"
-            ref="articleEl"
-            class="prose-shadcn prose-shadcn-dark mt-12 mx-auto max-w-none"
-            v-html="post ? renderedContent : ''"
-          />
-          <ClientOnly>
-            <template #fallback>
-              <span class="hidden" />
-            </template>
-            <Skeleton
-              v-if="loadingPost && !post"
-              class="mt-12 h-[400px] w-full rounded-2xl"
+          <!-- ========= 密码保护闸门：后端返回 is_password_protected=true + 空正文 → 要求输入密码 ========= -->
+          <div v-if="needPassword && !postHasPassword">
+            <Card class="max-w-xl mx-auto mt-10">
+              <CardContent class="p-6 flex flex-col items-center gap-4 text-center">
+                <Lock class="size-8 text-muted-foreground" />
+                <h3 class="text-lg font-semibold">{{ t('post.requiresPassword', '这篇文章需要访问密码') }}</h3>
+                <p v-if="postEncryptionHint" class="text-sm text-muted-foreground">
+                  {{ t('post.encryptionHint', '提示：{hint}').replace('{hint}', postEncryptionHint) }}
+                </p>
+                <div v-else class="text-sm text-muted-foreground">
+                  {{ t('post.enterPassword', '请输入密码以阅读完整内容') }}
+                </div>
+                <form @submit.prevent="submitArticlePassword" class="flex w-full max-w-sm gap-2">
+                  <Input
+                    v-model="articlePwdInput"
+                    type="password"
+                    :placeholder="t('common.password', '密码')"
+                    autocomplete="off"
+                    autofocus
+                    class="flex-1"
+                  />
+                  <Button type="submit" :disabled="submittingArticlePassword">
+                    <Check v-if="!submittingArticlePassword" class="size-4 mr-2" />
+                    {{ submittingArticlePassword ? t('common.submitting', '提交中…') : t('post.unlock', '解锁') }}
+                  </Button>
+                </form>
+                <p v-if="articlePwdError" class="text-xs text-destructive">
+                  {{ t('post.wrongPassword', '密码错误，请重试') }}
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div v-show="!(needPassword && !postHasPassword)">
+            <article
+              v-show="!!post"
+              ref="articleEl"
+              class="prose-shadcn prose-shadcn-dark mt-12 mx-auto max-w-none"
+              v-html="post ? renderedContent : ''"
             />
-            <Alert
-              v-else-if="loadError && !post"
-              variant="destructive"
-              class="mt-12"
-            >
-              <AlertTitle class="flex items-center gap-2">
-                <ShieldCheck class="size-4" />
-                {{ t('post.loadFailed', '文章加载失败') }}
-              </AlertTitle>
-              <AlertDescription>
-                {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
-                <NuxtLink
-                  to="/posts"
-                  class="text-primary underline underline-offset-2 ml-1"
-                >
-                  {{ t('post.backToList', '返回文章列表') }}
-                </NuxtLink>
-              </AlertDescription>
-            </Alert>
-          </ClientOnly>
+            <ClientOnly>
+              <template #fallback>
+                <span class="hidden" />
+              </template>
+              <Skeleton
+                v-if="loadingPost && !post"
+                class="mt-12 h-[400px] w-full rounded-2xl"
+              />
+              <Alert
+                v-else-if="loadError && !post"
+                variant="destructive"
+                class="mt-12"
+              >
+                <AlertTitle class="flex items-center gap-2">
+                  <ShieldCheck class="size-4" />
+                  {{ t('post.loadFailed', '文章加载失败') }}
+                </AlertTitle>
+                <AlertDescription>
+                  {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
+                  <NuxtLink
+                    to="/posts"
+                    class="text-primary underline underline-offset-2 ml-1"
+                  >
+                    {{ t('post.backToList', '返回文章列表') }}
+                  </NuxtLink>
+                </AlertDescription>
+              </Alert>
+            </ClientOnly>
+          </div>
+        </div>
 
           <div
             v-if="normalizedTags.length"
@@ -212,7 +249,8 @@
               <UserAvatar
                 v-if="showAvatar"
                 :avatar="post?.author?.avatar"
-                :seed="authorName"
+                :resolved-avatar-url="post?.author?.resolved_avatar_url"
+                :seed="post?.author?.username || authorName"
                 :name="authorName"
                 :title="post?.author?.title || null"
                 :size="48"
@@ -513,6 +551,7 @@ import {
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Card, CardContent } from '~~/components/ui/card'
+import { Input } from '~~/components/ui/input'
 import { Separator } from '~~/components/ui/separator'
 import { Textarea } from '~~/components/ui/textarea'
 import { Button } from '~~/components/ui/button'
@@ -545,7 +584,9 @@ import {
   ThumbsUp,
   ChevronLeft,
   ChevronRight,
-  X
+  X,
+  Lock,
+  Check
 } from '~~/lib/lucide-svg-icons'
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
@@ -588,6 +629,8 @@ interface PostDetail {
     name?: string
     username?: string
     avatar?: string
+    /** 后端解析链产出的代理头像 URL，优先级高于 avatar */
+    resolved_avatar_url?: string | null
     title?: {
       id?: number
       name: string
@@ -607,6 +650,10 @@ type PostComment = {
     name: string
     avatar?: string
     email?: string
+    /** 后端解析链产出的代理 URL，优先级高于 avatar（见 UserAvatar 契约） */
+    resolvedAvatarUrl?: string | null
+    /** 稳定的头像配色种子（用户名），不要用昵称 */
+    username?: string | null
   }
   content: string
   createdAt: string
@@ -677,6 +724,78 @@ async function loadSimilarAndLikeState(pid: number | string | null | undefined) 
 const slug = computed(() => route.params.slug as string)
 const requestURL = useRequestURL()
 
+// ========= 文章密码保护（sessionStorage 持久，刷新页面不用重输）=========
+const ARTICLE_PASSWORD_KEY = 'rosetta:post-password'
+const articleStoredPwd = import.meta.client && typeof sessionStorage !== 'undefined'
+  ? sessionStorage.getItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value) || ''
+  : ''
+const articlePwdInput = ref(articleStoredPwd)
+const articlePwdError = ref(false)
+const submittingArticlePassword = ref(false)
+const postEncryptionHint = ref<string | null>(null)
+/** 是否因密码未解锁而需要显示闸门 UI */
+const needPassword = ref(false)
+/** 后端返回 is_password_protected=true（作者/staff 免密但前端仍应展示完整内容）*/
+const postHasPassword = ref(false)
+
+/** 用存储的密码重新拉取文章 */
+async function refreshPostWithStoredPassword() {
+  if (!articleStoredPwd) return
+  try {
+    const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
+    const headers: Record<string, string> = {
+      'Accept-Language': postFetchLocaleStr,
+      'X-Post-Password': articleStoredPwd
+    }
+    if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
+    const raw = await $fetch<{ success: boolean, data: PostDetail, message?: string }>(
+      `/blog/posts/${postSlug.value}`,
+      {
+        baseURL,
+        headers,
+        query: { lang: postFetchLocaleStr }
+      }
+    )
+    const unwrap = raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw as unknown as PostDetail
+    postData.value = unwrap as unknown as ReturnType<typeof useAsyncData<PostDetail>>['data']
+  } catch { /* ignored — 下次循环 re-check */ }
+}
+
+async function submitArticlePassword() {
+  const pwd = articlePwdInput.value.trim()
+  if (!pwd) return
+  submittingArticlePassword.value = true
+  articlePwdError.value = false
+  try {
+    // POST /posts/{id}/decrypt → 验证密码，拿解密正文
+    await apiFetch<{ success: boolean }>(
+      `/blog/posts/${post.value?.id || slug.value}/decrypt`,
+      { method: 'POST', body: { password: pwd } }
+    )
+    // 写入 sessionStorage，等待存储落盘后重新拉取全文
+    if (import.meta.client && typeof sessionStorage !== 'undefined') {
+      sessionStorage.setItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value, pwd)
+    }
+    await new Promise(r => setTimeout(r, 50))
+    await refreshPost()
+    articlePwdInput.value = ''
+  } catch {
+    articlePwdError.value = true
+  } finally {
+    submittingArticlePassword.value = false
+  }
+}
+
+/** 清除已保存的密码并重试 */
+function clearSavedPassword() {
+  if (import.meta.client && typeof sessionStorage !== 'undefined') {
+    sessionStorage.removeItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value)
+  }
+  articlePwdInput.value = ''
+  articlePwdError.value = false
+  refreshPost()
+}
+
 // useFetch 的 URL/query 通过 computed 函数 / Ref 自动响应式，不再显式 watch。
 // 关键点：避免 SSR 下 watch: [...] 让 useFetch 认为"只依赖 watch 触发"而跳过初始请求，
 // 导致服务端不拉真实数据，页面 SSR 渲染成错误态。
@@ -701,6 +820,10 @@ const { data: postData, pending: loadingPost, error: fetchError, refresh: refres
         'Accept-Language': postFetchLocaleStr
       }
       if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
+      // 携带存储的密码（sessionStorage），避免每次首屏都触发密码闸门
+      if (articleStoredPwd && !import.meta.server) {
+        headers['X-Post-Password'] = articleStoredPwd
+      }
       // 解包 useAPI 返回的 { success, data, message } 统一结构
       return $fetch<{ success: boolean, data: PostDetail, message?: string }>(
         `/blog/posts/${postSlug.value}`,
@@ -763,6 +886,30 @@ const ft = useFrontendTheme()
 const showAuthorBox = computed(() => ft.showAuthorBox.value)
 const showRelatedPosts = computed(() => ft.showRelatedPosts.value)
 const showAvatar = computed(() => ft.showAvatar.value)
+
+// 密码保护闸门状态 =====
+watch(post, (next) => {
+  if (!next) {
+    needPassword.value = false
+    postHasPassword.value = false
+    postEncryptionHint.value = null
+    return
+  }
+  const detail = next as unknown as Record<string, unknown>
+  postHasPassword.value = Boolean(detail.is_password_protected)
+  // content 为空且标记为加密 → 需要显示密码输入 UI（作者/staff 会拿到完整正文，不走此分支）
+  const content = pickLocalized(next.content || '')
+  needPassword.value = !!(detail.is_password_protected && !content)
+  // 提取 hint
+  const rawHint = detail.encryption_hint ?? detail.hint
+  if (typeof rawHint === 'string' && rawHint) {
+    postEncryptionHint.value = rawHint
+  } else {
+    postEncryptionHint.value = null
+  }
+  // 切换文章/重新加载时清除上一轮的密码错误提示
+  articlePwdError.value = false
+}, { immediate: true })
 
 const postTitle = computed(() => pickLocalized(post.value?.title))
 const displayPostTitle = computed(() => {
@@ -1043,6 +1190,30 @@ const formatDate = (date: string) => {
   }
 }
 
+// ===== 评论：后端是扁平 snake_case（author_name / author_avatar / resolved_avatar_url /
+//      qq / github），CommentItem 期望 camelCase 的 author 对象。此前直接 `as unknown as`
+//      硬断言 → author 恒 undefined → 评论昵称一律 Anonymous、头像一律默认字母色块，
+//      与同一作者在其他位置的头像不一致（2026-10-01 修）。统一走这里做投影。
+const normalizeComment = (raw: Record<string, any>): PostComment => {
+  const name = raw.author_name || raw.authorName || 'Anonymous'
+  return {
+    id: raw.id,
+    author: {
+      id: raw.user_id ?? raw.userId ?? raw.id,
+      name,
+      // 头像优先级与 UserAvatar 契约一致：解析后的代理 URL > 原始 avatar 列。
+      resolvedAvatarUrl: raw.resolved_avatar_url ?? raw.resolvedAvatarUrl ?? null,
+      avatar: raw.author_avatar ?? raw.authorAvatar ?? '',
+      email: raw.author_email ?? raw.authorEmail ?? '',
+      username: raw.username ?? raw.github ?? name
+    },
+    content: raw.content ?? '',
+    createdAt: raw.created_at ?? raw.createdAt ?? '',
+    parentId: raw.parent_id ?? raw.parentId ?? null,
+    likesCount: raw.likes_count ?? raw.likesCount ?? 0
+  }
+}
+
 // 首屏由 SSR + payload 注入文章详情；这里只刷新评论。
 // 注意：不要在 onMounted 里 refresh() 文章本身——客户端接管时会取消 SSR 发起的、仍在传输中的请求，
 // 浏览器 Network 面板里就会看到 net::ERR_ABORTED（尤其是正文较大的中/长文）。
@@ -1053,7 +1224,7 @@ const loadCommentsForCurrentPost = async () => {
   try {
     if (post.value?.id && commentsAPI.fetchComments) {
       await commentsAPI.fetchComments(post.value.id)
-      comments.value = (commentsAPI.comments?.value || []) as unknown as PostComment[]
+      comments.value = ((commentsAPI.comments?.value || []) as unknown as Record<string, any>[]).map(normalizeComment)
     } else {
       comments.value = []
     }
@@ -1155,7 +1326,7 @@ const handleSubmitComment = async () => {
       replyingTo.value = null
       if (commentsAPI.fetchComments) {
         await commentsAPI.fetchComments(post.value.id)
-        comments.value = (commentsAPI.comments?.value || []) as unknown as PostComment[]
+        comments.value = ((commentsAPI.comments?.value || []) as unknown as Record<string, any>[]).map(normalizeComment)
       }
     }
   } catch (e) {

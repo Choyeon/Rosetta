@@ -106,6 +106,7 @@ const FALLBACK_NAV: { label: string, to: string, target?: string }[] = [
   { label: t('nav.about') || t('common.about') || t('about.title') || '关于', to: '/about' },
   { label: t('nav.friends') || t('friends.title') || '友情链接', to: '/friends' },
   { label: t('nav.gallery') || t('gallery.title') || '相册', to: '/gallery' },
+  { label: t('nav.activity') || t('activity.title') || '动态', to: '/activity' },
   { label: t('nav.guestbook') || t('common.guestbook') || t('guestbook.title') || '留言板', to: '/guestbook' }
 ]
 
@@ -123,6 +124,7 @@ const ENSURE_PRESENT: { label: () => string, to: string }[] = [
   { label: () => t('nav.about') || t('common.about') || t('about.title') || '关于', to: '/about' },
   { label: () => t('nav.friends') || t('friends.title') || '友情链接', to: '/friends' },
   { label: () => t('nav.gallery') || t('gallery.title') || '相册', to: '/gallery' },
+  { label: () => t('nav.activity') || t('activity.title') || '动态', to: '/activity' },
   { label: () => t('nav.guestbook') || t('common.guestbook') || t('guestbook.title') || '留言板', to: '/guestbook' }
 ]
 
@@ -388,6 +390,7 @@ const handleSearchClick = () => navigateTo('/search')
                 <UserAvatar
                   :resolved-avatar-url="userInfoReady ? (authStore.user as Record<string, unknown> | null)?.resolved_avatar_url as string : ''"
                   :avatar="userInfoReady ? (authStore.user as Record<string, unknown> | null)?.avatar as string : ''"
+                  :seed="userInfoReady ? ((authStore.user as Record<string, unknown> | null)?.username as string) : ''"
                   :name="safeDisplayName || 'U'"
                   :size="28"
                   :show-title="false"
@@ -403,6 +406,7 @@ const handleSearchClick = () => navigateTo('/search')
                   <UserAvatar
                     :resolved-avatar-url="userInfoReady ? (authStore.user as Record<string, unknown> | null)?.resolved_avatar_url as string : ''"
                     :avatar="userInfoReady ? (authStore.user as Record<string, unknown> | null)?.avatar as string : ''"
+                    :seed="userInfoReady ? ((authStore.user as Record<string, unknown> | null)?.username as string) : ''"
                     :name="safeDisplayName || 'U'"
                     :size="40"
                     :show-title="false"
@@ -504,6 +508,7 @@ const handleSearchClick = () => navigateTo('/search')
                     <UserAvatar
                       :resolved-avatar-url="(authStore.user as Record<string, unknown> | null)?.resolved_avatar_url as string || ''"
                       :avatar="(authStore.user as Record<string, unknown> | null)?.avatar as string || ''"
+                      :seed="(authStore.user as Record<string, unknown> | null)?.username as string || ''"
                       :name="userDisplayName || 'U'"
                       :size="40"
                       :show-title="false"

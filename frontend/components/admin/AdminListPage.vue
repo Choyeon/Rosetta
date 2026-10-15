@@ -6,7 +6,7 @@
   「新建」按钮全部消失）。
 -->
 <script setup lang="ts">
-import type { HTMLAttributes } from 'vue'
+import type { Component, HTMLAttributes } from 'vue'
 import { cn } from '~~/lib/utils'
 import AdminCard from './AdminCard.vue'
 
@@ -15,6 +15,8 @@ interface Props {
   description?: string
   /** 数据总数（用于标题旁的计数徽标） */
   count?: number
+  /** 页头图标 —— AdminPageHeader 的图标方块是唯一口径，列表页不得缺席 */
+  icon?: Component
   class?: HTMLAttributes['class']
 }
 
@@ -28,12 +30,13 @@ const props = defineProps<Props>()
     <AdminPageHeader
       :title="title"
       :description="description"
+      :icon="icon"
     >
       <template #meta>
         <Badge
           v-if="count !== undefined"
           variant="secondary"
-          class="rounded-[10px] px-3 py-1 bg-stone-100 text-stone-700 border-stone-200"
+          class="rounded-[10px] px-3 py-1 tabular-nums"
         >
           共 {{ count }} 项
         </Badge>

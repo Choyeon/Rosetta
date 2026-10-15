@@ -32,6 +32,7 @@
         <UserAvatar
           :resolved-avatar-url="resolvedAvatarUrl"
           :avatar="rawAvatar"
+          :seed="accountSeed"
           :name="displayName"
           :size="56"
         />
@@ -462,6 +463,11 @@ const resolvedAvatarUrl = computed(() => {
 const rawAvatar = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
   return (u?.avatar as string) || ''
+})
+// 头像配色种子必须用稳定的 username：昵称可改，改了会让默认头像换色。
+const accountSeed = computed(() => {
+  const u = authStore.user as Record<string, unknown> | null
+  return (u?.username as string) || displayName.value || ''
 })
 const coverImage = computed(() => {
   const u = authStore.user as Record<string, unknown> | null

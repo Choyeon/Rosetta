@@ -6,6 +6,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
+import { FolderTree } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   fetchAdminCategories,
@@ -181,6 +182,7 @@ onMounted(() => {
 <template>
   <AdminListPage
     title="分类管理"
+    :icon="FolderTree"
     description="分类用于文章的主题组织，支持颜色与图标快速区分。"
     :count="categories.length"
   >

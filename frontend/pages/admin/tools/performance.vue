@@ -89,41 +89,20 @@
       v-model="activeTab"
       class="w-full"
     >
-      <TabsList class="rounded-xl p-1 bg-muted/40">
-        <TabsTrigger
-          value="overview"
-          class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :class="activeTab === 'overview' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <BarChart3
-            class="size-4"
-            data-icon="inline-start"
-          />
+      <AdminTabList>
+        <AdminTabTrigger value="overview">
+          <BarChart3 class="size-4" />
           概览
-        </TabsTrigger>
-        <TabsTrigger
-          value="slow"
-          class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :class="activeTab === 'slow' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <Clock
-            class="size-4"
-            data-icon="inline-start"
-          />
+        </AdminTabTrigger>
+        <AdminTabTrigger value="slow">
+          <Clock class="size-4" />
           慢请求明细
-        </TabsTrigger>
-        <TabsTrigger
-          value="storage"
-          class="rounded-lg data-[state=active]:text-white data-[state=active]:shadow-sm"
-          :class="activeTab === 'storage' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <Database
-            class="size-4"
-            data-icon="inline-start"
-          />
+        </AdminTabTrigger>
+        <AdminTabTrigger value="storage">
+          <Database class="size-4" />
           存储与清理
-        </TabsTrigger>
-      </TabsList>
+        </AdminTabTrigger>
+      </AdminTabList>
 
       <TabsContent
         value="overview"
@@ -600,7 +579,9 @@ import AdminCard from '~~/components/admin/AdminCard.vue'
 import AdminPageHeader from '~~/components/admin/AdminPageHeader.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import StatCard from '~~/components/admin/StatCard.vue'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import { Tabs, TabsContent } from '~~/components/ui/tabs'
+import AdminTabList from '~~/components/admin/AdminTabList.vue'
+import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Separator } from '~~/components/ui/separator'

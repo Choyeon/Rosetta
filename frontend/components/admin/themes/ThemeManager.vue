@@ -8,6 +8,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
+import type { Component } from 'vue'
 import { toast } from 'vue-sonner'
 import { apiFetch } from '~~/composables/useApi'
 import {
@@ -175,6 +176,14 @@ const activeCount = computed(() => themes.value.filter(t => t.is_active).length)
 const restCount = computed(() => themes.value.filter(t => !t.is_active).length)
 const customizableCount = computed(() => themes.value.filter(t => !!t.mods_schema && Object.keys(t.mods_schema?.properties ?? {}).length > 0).length)
 const errorCount = computed(() => themes.value.filter(t => t.status === 'error' || t.error_message).length)
+
+// 统计条走共享 StatCard：原先是 4 张手写 Card + 渐变球，与仪表盘等后台页的统计卡口径分叉。
+const themeStats = computed<Array<{ key: string, label: string, value: number, icon: Component, accent: 'primary' | 'success' | 'info' | 'error' }>>(() => [
+  { key: 'total', label: t('admin.themes.stats.total', '主题总数'), value: totalInstalled.value, icon: LayoutDashboard, accent: 'primary' },
+  { key: 'active', label: t('admin.themes.stats.active', '已激活'), value: activeCount.value, icon: CheckCircle2, accent: 'success' },
+  { key: 'customizable', label: t('admin.themes.stats.customizable', '可自定义'), value: customizableCount.value, icon: SlidersHorizontal, accent: 'info' },
+  { key: 'errors', label: t('admin.themes.stats.errors', '异常'), value: errorCount.value, icon: AlertTriangle, accent: 'error' }
+])
 
 // 与 customizableCount 同一判定：mods_schema 存在但 properties 为空的主题，
 // 打开 Customizer 只有"暂无可自定义项"占位，按钮应直接置灰而非可点空弹窗。
@@ -616,22 +625,12 @@ onMounted(() => {
   <div class="flex flex-col gap-5">
     <!-- ========= Header + Stats strip ========= -->
     <div class="flex flex-col gap-4">
-      <div class="flex flex-wrap items-start justify-between gap-4">
-        <div class="flex items-start gap-3">
-          <div class="shrink-0 size-11 rounded-2xl bg-gradient-to-br from-purple-500/90 via-primary/80 to-accent/80 text-primary-foreground flex items-center justify-center shadow-pop relative overflow-hidden">
-            <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--accent)/0.35),transparent_60%)]" />
-            <Palette class="size-5 relative" />
-          </div>
-          <div class="flex flex-col gap-1 min-w-0">
-            <h2 class="text-2xl font-semibold tracking-tight font-display">
-              {{ t('admin.themes.title', '主题管理') }}
-            </h2>
-            <p class="text-sm text-muted-foreground">
-              {{ t('admin.themes.desc', '切换与自定义 Rosetta 博客外观') }}
-            </p>
-          </div>
-        </div>
-        <div class="flex items-center gap-2 flex-wrap">
+      <AdminPageHeader
+        :title="t('admin.themes.title', '主题管理')"
+        :description="t('admin.themes.desc', '切换与自定义 Rosetta 博客外观')"
+        :icon="Palette"
+      >
+        <template #actions>
           <Button
             variant="outline"
             size="sm"
@@ -666,81 +665,20 @@ onMounted(() => {
             <UploadCloud data-icon="inline-start" />
             {{ t('admin.themes.install', '安装新主题') }}
           </Button>
-        </div>
-      </div>
+        </template>
+      </AdminPageHeader>
 
       <!-- Stats cards -->
       <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-primary/10 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.themes.stats.total', '主题总数') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums">
-                {{ totalInstalled }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-              <LayoutDashboard class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-success/10 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.themes.stats.active', '已激活') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums text-success">
-                {{ activeCount }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-success/10 text-success flex items-center justify-center">
-              <CheckCircle2 class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-info/15 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.themes.stats.customizable', '可自定义') }}
-              </div>
-              <div class="mt-1 font-display text-2xl font-semibold tabular-nums">
-                {{ customizableCount }}
-              </div>
-            </div>
-            <div class="size-10 rounded-xl bg-info/10 text-info flex items-center justify-center">
-              <SlidersHorizontal class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
-        <Card class="overflow-hidden border-border/80 shadow-soft/60 relative">
-          <div class="absolute -top-10 -right-10 size-28 rounded-full bg-warning/15 blur-2xl pointer-events-none" />
-          <CardContent class="p-4 flex items-center justify-between gap-3 relative">
-            <div class="min-w-0">
-              <div class="text-xs uppercase tracking-[0.14em] text-muted-foreground">
-                {{ t('admin.themes.stats.errors', '异常') }}
-              </div>
-              <div
-                class="mt-1 font-display text-2xl font-semibold tabular-nums"
-                :class="errorCount ? 'text-destructive' : 'text-muted-foreground'"
-              >
-                {{ errorCount }}
-              </div>
-            </div>
-            <div
-              class="size-10 rounded-xl flex items-center justify-center"
-              :class="errorCount ? 'bg-destructive/10 text-destructive' : 'bg-muted/70 text-muted-foreground'"
-            >
-              <AlertTriangle class="size-4.5" />
-            </div>
-          </CardContent>
-        </Card>
+        <StatCard
+          v-for="s in themeStats"
+          :key="s.key"
+          :title="s.label"
+          :value="s.value"
+          :icon="s.icon"
+          :accent="s.accent"
+          :loading="loading"
+        />
       </div>
     </div>
 
@@ -802,7 +740,7 @@ onMounted(() => {
         class="px-6 py-20 border-t border-border"
       >
         <div class="flex flex-col items-center justify-center gap-3 text-center">
-          <div class="size-16 rounded-2xl bg-gradient-to-br from-purple-500/20 via-primary/15 to-accent/20 flex items-center justify-center relative overflow-hidden">
+          <div class="size-16 rounded-2xl bg-gradient-to-br from-primary/20 via-accent/15 to-info/20 flex items-center justify-center relative overflow-hidden">
             <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--primary)/0.22),transparent_55%)]" />
             <Palette class="size-7 text-primary relative" />
           </div>
@@ -1081,7 +1019,7 @@ onMounted(() => {
       <DialogContent class="max-w-3xl">
         <DialogHeader>
           <DialogTitle class="flex items-center gap-2.5">
-            <span class="size-9 rounded-xl bg-gradient-to-br from-purple-500/25 via-primary/20 to-accent/25 text-primary flex items-center justify-center relative overflow-hidden">
+            <span class="size-9 rounded-xl bg-gradient-to-br from-primary/25 via-accent/20 to-info/25 text-primary flex items-center justify-center relative overflow-hidden">
               <div class="absolute inset-0 bg-[radial-gradient(circle_at_30%_20%,hsl(var(--primary)/0.25),transparent_60%)]" />
               <SlidersHorizontal class="size-4.5 relative" />
             </span>

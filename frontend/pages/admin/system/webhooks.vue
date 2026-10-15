@@ -695,8 +695,9 @@ function providerIcon(p: string) {
 }
 
 function providerClass(p: string): string {
-  if (p === 'github') return 'bg-slate-800 text-white border-transparent'
-  if (p === 'feishu') return 'bg-[#3370FF]/15 text-[#3370FF] border-transparent'
+  // 第三方渠道标识按品牌原色渲染（换成主题色就认不出是谁了），故在此豁免令牌规则
+  if (p === 'github') return 'bg-slate-800 text-white border-transparent' // brand-exempt: GitHub 官方深色
+  if (p === 'feishu') return 'bg-[#3370FF]/15 text-[#3370FF] border-transparent' // brand-exempt: 飞书官方蓝
   if (p === 'email') return 'bg-success-muted text-success-muted-foreground border-transparent'
   return 'bg-primary-muted text-primary-muted-foreground border-transparent'
 }

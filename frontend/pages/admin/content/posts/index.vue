@@ -444,9 +444,9 @@ onMounted(() => {
             variant="secondary"
             class="rounded-[10px] font-normal"
             :style="{
-              background: ((row as Post).category?.color ? `${(row as Post).category!.color}20` : '#f5f5f4'),
-              color: (row as Post).category?.color || '#78716c',
-              border: (row as Post).category?.color ? `1px solid ${(row as Post).category!.color}40` : '1px solid #e7e5e4'
+              background: ((row as Post).category?.color ? `${(row as Post).category!.color}20` : 'hsl(var(--muted))'),
+              color: (row as Post).category?.color || 'hsl(var(--muted-foreground))',
+              border: (row as Post).category?.color ? `1px solid ${(row as Post).category!.color}40` : '1px solid hsl(var(--border))'
             }"
           >
             {{ getLocalizedStr((row as Post).category?.name) }}

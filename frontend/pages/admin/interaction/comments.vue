@@ -11,23 +11,15 @@
     />
 
     <Tabs v-model="activeTab">
-      <TabsList>
-        <TabsTrigger value="all">
-          全部
-        </TabsTrigger>
-        <TabsTrigger value="pending">
-          待审
-        </TabsTrigger>
-        <TabsTrigger value="approved">
-          已通过
-        </TabsTrigger>
-        <TabsTrigger value="rejected">
-          已拒绝
-        </TabsTrigger>
-        <TabsTrigger value="spam">
-          垃圾
-        </TabsTrigger>
-      </TabsList>
+      <AdminTabList>
+        <AdminTabTrigger
+          v-for="tab in COMMENT_TABS"
+          :key="tab.value"
+          :value="tab.value"
+        >
+          {{ tab.label }}
+        </AdminTabTrigger>
+      </AdminTabList>
 
       <TabsContent
         value="all"
@@ -64,7 +56,9 @@
 </template>
 
 <script setup lang="ts">
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import { Tabs, TabsContent } from '~~/components/ui/tabs'
+import AdminTabList from '~~/components/admin/AdminTabList.vue'
+import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import { MessageSquare } from '@lucide/vue'
 import CommentListContent from './_parts/CommentListContent.vue'
 
@@ -72,5 +66,13 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 // TabsContent 只渲染当前激活项：切 tab 会挂载新的列表实例并自行首屏请求，
 // 不需要额外的刷新信号。
-const activeTab = ref('all')
+const COMMENT_TABS = [
+  { value: 'all', label: '全部' },
+  { value: 'pending', label: '待审' },
+  { value: 'approved', label: '已通过' },
+  { value: 'rejected', label: '已拒绝' },
+  { value: 'spam', label: '垃圾' }
+] as const
+
+const activeTab = ref<string>('all')
 </script>

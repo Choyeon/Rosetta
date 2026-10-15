@@ -14,29 +14,17 @@
       v-model="activeTab"
       class="w-full"
     >
-      <TabsList class="rounded-xl p-1 bg-muted/40">
-        <TabsTrigger
-          value="sitemap"
-          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-          :class="activeTab === 'sitemap' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <Map class="size-4 mr-1.5" /> 站点地图
-        </TabsTrigger>
-        <TabsTrigger
-          value="score"
-          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-          :class="activeTab === 'score' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <LineChart class="size-4 mr-1.5" /> SEO 评分
-        </TabsTrigger>
-        <TabsTrigger
-          value="links"
-          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-          :class="activeTab === 'links' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <Link2 class="size-4 mr-1.5" /> 内容体检
-        </TabsTrigger>
-      </TabsList>
+      <AdminTabList>
+        <AdminTabTrigger value="sitemap">
+          <Map class="size-4" /> 站点地图
+        </AdminTabTrigger>
+        <AdminTabTrigger value="score">
+          <LineChart class="size-4" /> SEO 评分
+        </AdminTabTrigger>
+        <AdminTabTrigger value="links">
+          <Link2 class="size-4" /> 内容体检
+        </AdminTabTrigger>
+      </AdminTabList>
 
       <TabsContent
         value="sitemap"
@@ -719,7 +707,9 @@ import {
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import AdminTabList from '~~/components/admin/AdminTabList.vue'
+import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
+import { Tabs, TabsContent } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Separator } from '~~/components/ui/separator'

@@ -15,22 +15,14 @@
       v-model="activeTab"
       class="w-full"
     >
-      <TabsList class="rounded-xl p-1 bg-muted/40">
-        <TabsTrigger
-          value="export"
-          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-          :class="activeTab === 'export' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <Upload class="size-4 mr-1.5" /> 导出
-        </TabsTrigger>
-        <TabsTrigger
-          value="import"
-          class="rounded-lg data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
-          :class="activeTab === 'import' ? 'bg-primary text-primary-foreground' : ''"
-        >
-          <Download class="size-4 mr-1.5" /> 导入
-        </TabsTrigger>
-      </TabsList>
+      <AdminTabList>
+        <AdminTabTrigger value="export">
+          <Upload class="size-4" /> 导出
+        </AdminTabTrigger>
+        <AdminTabTrigger value="import">
+          <Download class="size-4" /> 导入
+        </AdminTabTrigger>
+      </AdminTabList>
 
       <TabsContent
         value="export"
@@ -597,8 +589,10 @@ import {
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import AdminTabList from '~~/components/admin/AdminTabList.vue'
+import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '~~/components/ui/tabs'
+import { Tabs, TabsContent } from '~~/components/ui/tabs'
 import { Label } from '~~/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Checkbox } from '~~/components/ui/checkbox'
