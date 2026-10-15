@@ -16,6 +16,7 @@ import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
 
 const { t, locale, setLocale } = useI18n()
 const { localeHref } = useLocaleLink()
+const route = useRoute()
 
 const currentYear = new Date().getFullYear()
 

@@ -679,6 +679,12 @@ interface PostDetail {
     } | null
   }
   tags: PostDetailTag[]
+  /** 后台单篇 SEO 三件套：后端按当前 lang 解析成字符串（schemas.PostLocalizedResponse 的 i18n 出口）。
+   *  刻意不用 `as unknown as Record<string, unknown>` 绕开声明——那样 meta_keywords
+   *  拼错了 TS 也不会响，页面只会安静地输出空 keywords。 */
+  meta_title?: string | null
+  meta_description?: string | null
+  meta_keywords?: string | null
 }
 
 // 后端 Comment（snake_case）与 CommentItem 期望的展示结构（camelCase）存在差异，
@@ -807,7 +813,7 @@ async function refreshPostWithStoredPassword() {
       }
     )
     const unwrap = raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw as unknown as PostDetail
-    postData.value = unwrap as unknown as ReturnType<typeof useAsyncData<PostDetail>>['data']
+    postData.value = unwrap
   } catch { /* ignored — 下次循环 re-check */ }
 }
 
@@ -1001,15 +1007,13 @@ const normalizedTags = computed(() => {
 
 const seoTitle = computed(() => {
   // 后台"SEO 标题"优先；未填回落到文章 title（WordPress Yoast 同规则）。
-  const detail = (post.value ?? {}) as unknown as Record<string, unknown>
-  const mt = pickLocalized(detail.meta_title as never)
+  const mt = pickLocalized(post.value?.meta_title)
   return mt || pickLocalized(post.value?.title) || displayPostTitle.value || ''
 })
 const seoExcerpt = computed(() => pickLocalized(post.value?.excerpt))
 // 后台"SEO 描述"优先；未填回落 excerpt；再无则剥 HTML 取正文首段。
 const seoDescription = computed(() => {
-  const detail = (post.value ?? {}) as unknown as Record<string, unknown>
-  const md = pickLocalized(detail.meta_description as never)
+  const md = pickLocalized(post.value?.meta_description)
   if (md) return md.slice(0, 180)
   if (seoExcerpt.value) return seoExcerpt.value.slice(0, 180)
   return pickLocalized(post.value?.content || '')
@@ -1071,13 +1075,13 @@ const seoCategoryName = computed(() => {
   const c = extractPostField(post.value, 'category')
   if (typeof c === 'object' && c) {
     const name = (c as Record<string, unknown>).name
-    return pickLocalized(name as unknown as never)
+    return pickLocalized(name)
   }
   return undefined
 })
 const seoKeywords = computed(() => {
   // 后台 SEO 关键词优先（逗号或分号分隔），叠加标签集合去重
-  const raw = pickLocalized(post.value?.meta_keywords as never)
+  const raw = pickLocalized(post.value?.meta_keywords)
   const custom = (raw || '')
     .split(/[,;，；]/)
     .map(s => s.trim())

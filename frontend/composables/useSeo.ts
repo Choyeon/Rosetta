@@ -380,7 +380,7 @@ export function useSeo(opts: SeoMetaOptions = {}) {
     // 其它三语 og:locale:alternate —— 社交分享爬虫据此判断站点多语言可用性
     for (const code of Object.keys(OG_LOCALE_MAP)) {
       if (code === locale.value) continue
-      meta.push({ property: 'og:locale:alternate', content: OG_LOCALE_MAP[code] })
+      meta.push({ property: 'og:locale:alternate', content: OG_LOCALE_MAP[code] ?? code })
     }
 
     if (_image.value) {

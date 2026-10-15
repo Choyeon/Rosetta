@@ -38,14 +38,20 @@ const CUSTOM_TITLE_PAGES = ['pages/series/[slug].vue', 'pages/authors/[username]
 /** 用路由中间件判 404 的那一页（口径见 AGENTS §2.3.2），与 useContentStatus 并列的第二种合法答案。 */
 const MIDDLEWARE_PAGES = ['pages/archive/[year]/index.vue']
 
-/** 递归列出 pages/ 下所有动态段页面（文件名含 `[`），后台页不在公开索引范围内。 */
-function dynamicPublicPages(dir = 'pages', acc: string[] = []): string[] {
+/**
+ * 递归列出 pages/ 下所有"URL 带动态段"的公开页。判定不是"文件名含 [`"而是
+ * "自己或任一祖先目录名含 [`"：`pages/archive/[year]/index.vue` 的文件名是 index，
+ * 但它对应的路由 `/archive/{year}` 同样是动态段，漏判等于把这一页排除在清单之外。
+ * 后台页（pages/admin/**）不参与公开索引，整棵子树跳过。
+ */
+function dynamicPublicPages(dir = 'pages', acc: string[] = [], insideDynamic = false): string[] {
   for (const entry of readdirSync(resolve(ROOT, dir), { withFileTypes: true })) {
     const rel = `${dir}/${entry.name}`
+    const dynamic = insideDynamic || entry.name.includes('[')
     if (entry.isDirectory()) {
       if (entry.name === 'admin') continue
-      dynamicPublicPages(rel, acc)
-    } else if (entry.name.includes('[') && entry.name.endsWith('.vue')) {
+      dynamicPublicPages(rel, acc, dynamic)
+    } else if (dynamic && entry.name.endsWith('.vue')) {
       acc.push(rel)
     }
   }
