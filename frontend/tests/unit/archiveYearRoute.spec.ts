@@ -105,6 +105,19 @@ describe('单月归档 /archive/[year]/[month]', () => {
     expect(monthPage).not.toContain('createError(')
   })
 
+  it('闸门判定前先剥语言前缀（prefix_except_default 下 /en/archive/abcd 也是同一页）', () => {
+    // 带前缀的非法年份若放行到页面，后端回 422、页面回 200 并被 /archive/** 的 swr
+    // 缓存成一个可复用的"正常页"——与不带前缀时同一个缺陷，只是换了 URL 形态。
+    expect(middleware).toContain('LOCALE_PREFIX_RE')
+    expect(middleware).toMatch(/en\|ja\|zh_Hant/)
+    // 三条闸门必须全部跑在剥过前缀的局部变量上，不能继续用 to.path
+    expect(middleware).toMatch(/const p = to\.path\.replace\(LOCALE_PREFIX_RE/)
+    for (const needle of ['YEAR_ONLY.test(p)', 'YEAR_MONTH.test(p)', 'test(p)']) {
+      expect(middleware).toContain(needle)
+    }
+    expect(middleware).not.toContain('to.path)')
+  })
+
   it('月页与年页同口径：钉时区、空数据走 useContentStatus 真 404', () => {
     expect(monthPage).toContain('composables/useContentStatus')
     expect(monthPage).toContain('Intl.DateTimeFormat')

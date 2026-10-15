@@ -745,7 +745,6 @@ async function loadSimilarAndLikeState(pid: number | string | null | undefined) 
 }
 
 const slug = computed(() => route.params.slug as string)
-const requestURL = useRequestURL()
 
 // ========= 文章密码保护（sessionStorage 持久，刷新页面不用重输）=========
 const ARTICLE_PASSWORD_KEY = 'rosetta:post-password'
@@ -997,12 +996,43 @@ function extractPostField<T = unknown>(post: unknown, field: string): T {
   return p[field] as T
 }
 
+// article:publisher / article:author 是 URL 字段，需要站点根；与 useSeo 内部同源
+// （SSR 期缺 NUXT_PUBLIC_SITE_URL 时按请求 Host 推导），不要在这里再拼一次字面量。
+const publicSiteUrl = usePublicSiteUrl()
+
 const seoExtraMeta = computed(() => {
-  const pa = publishedAt.value
-  const ua = updatedAt.value
-  const result: Array<Record<string, string>> = []
-  if (pa) result.push({ property: 'article:published_time', content: new Date(pa).toISOString() })
-  if (ua) result.push({ property: 'article:modified_time', content: new Date(ua).toISOString() })
+  const result: Array<Record<string, string>> = []  // 时间必须过一遍有效性检查：new Date(脏字符串).toISOString() 抛 RangeError，
+  // 而这段跑在 useHead 的求值路径上——一篇文章的脏时间就能让详情页整页 500。
+  const iso = (val: string | undefined) => {
+    if (!val) return ''
+    const d = new Date(val)
+    return Number.isNaN(d.getTime()) ? '' : d.toISOString()
+  }
+  const pa = iso(publishedAt.value)
+  const ua = iso(updatedAt.value)
+  if (pa) result.push({ property: 'article:published_time', content: pa })
+  if (ua) result.push({ property: 'article:modified_time', content: ua })
+
+  // Facebook/LinkedIn 的 Article 富媒体字段：section 用分类名，tag 每个标签一条
+  // （OG 协议允许 article:tag 重复出现，与 <meta name="keywords"> 的逗号串是两回事）。
+  const section = seoCategoryName.value
+  if (section) result.push({ property: 'article:section', content: section })
+  for (const tag of normalizedTags.value) {
+    if (tag.name) result.push({ property: 'article:tag', content: tag.name })
+  }
+  // article:publisher / article:author 要的是**个人资料页 URL**，不是姓名；
+  // 缺 URL 的作者（匿名）就不输出，写空串会被校验器判成 broken profile link。
+  const siteRoot = publicSiteUrl.value
+  if (authorUrl.value) {
+    result.push({
+      property: 'article:author',
+      content: siteRoot ? `${siteRoot}${authorUrl.value}` : authorUrl.value
+    })
+    result.push({ name: 'author', content: authorName.value })
+  }
+  if (siteRoot) {
+    result.push({ property: 'article:publisher', content: siteRoot })
+  }
   return result
 })
 const seoCategoryName = computed(() => {
@@ -1063,8 +1093,6 @@ useArticleJsonLd({
   category: seoCategoryName,
   keywords: seoKeywords
 })
-
-const canonicalUrl = computed(() => requestURL.href)
 
 const escapeHtml = (value: string): string => value
   .replaceAll('&', '&amp;')
@@ -1201,15 +1229,9 @@ const readingTime = computed(() => readingStats.value.minutes)
 const wordCount = computed(() => readingStats.value.words)
 const charCount = computed(() => readingStats.value.chars)
 
-// ===== 补充 SEO：canonical（useSeoMeta / useArticleJsonLd 不处理此项）=====
-useHead(() => ({
-  link: [
-    {
-      rel: 'canonical',
-      href: canonicalUrl.value
-    }
-  ]
-}))
+// canonical / hreflang / og:url 全部由 useSeo 单源产出（语言感知 + 站点根绝对化）。
+// 这里曾经另起一个 useHead 用 requestURL.href 再写一遍 canonical：同一个 rel 两处来源
+// 的结果是 unhead 合并后只剩一条，留哪条取决于注入顺序，改不动也测不准。
 
 const formatDate = (date: string) => {
   if (!date) return ''

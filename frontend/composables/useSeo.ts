@@ -71,8 +71,11 @@ export const HREFLANG_MAP: Record<string, string> = {
 /** 非默认语言在 URL 上挂的前缀；默认语言 zh 裸路径。 */
 export const NON_DEFAULT_LOCALE_CODES = ['en', 'ja', 'zh_Hant'] as const
 
-/** 剥掉路径开头的 /en /ja /zh_Hant 段，得到"中性"路径供 localePath 重挂。 */
-function stripLocalePrefix(path: string): string {
+/** 与 nuxt.config i18n.defaultLocale 同源；改默认语言必须三处一起改。 */
+export const DEFAULT_LOCALE_CODE = 'zh'
+
+/** 剥掉路径开头的 /en /ja /zh_Hant 段，得到"中性"路径供 applyLocalePrefix 重挂。 */
+export function stripLocalePrefix(path: string): string {
   if (!path) return path
   for (const code of NON_DEFAULT_LOCALE_CODES) {
     const p = '/' + code
@@ -80,6 +83,30 @@ function stripLocalePrefix(path: string): string {
     if (path.startsWith(p + '/')) return path.slice(p.length)
   }
   return path
+}
+
+/**
+ * 中性路径 + 语言码 → 该语言下的真实路径（prefix_except_default 的算术形式）。
+ *
+ * 为什么不用 @nuxtjs/i18n 的 localePath()：它按**路由名**解析传入的字符串，
+ * 而详情页的 `/posts/{中文 slug}` 需要先被 vue-router 解码再匹配 dynamic 段，
+ * SSR 期实测回过非字符串对象，直接把 asAbsolute 打进 `e.startsWith is not a function`
+ * ——表现是文章详情页整页 500。本仓 i18n 没有配置 per-locale 自定义路径
+ * （nuxt.config 的 i18n 块无 `routes`），"默认语言裸路径 + 其余挂 /code 前缀"
+ * 就是策略的完整定义，纯字符串拼接既没有解析失败面，也省掉一次 router.resolve。
+ */
+export function applyLocalePrefix(neutralPath: string, code: string): string {
+  const p = stripLocalePrefix(neutralPath || '')
+  if (!p) return p
+  if (code === DEFAULT_LOCALE_CODE || !NON_DEFAULT_LOCALE_CODES.includes(code as any)) {
+    return p
+  }
+  // 查询串/锚点必须留在末尾：/en/posts/x?page=2，不能拼成 /en?page=2/posts/x
+  const queryIndex = p.search(/[?#]/)
+  const pathname = queryIndex === -1 ? p : p.slice(0, queryIndex)
+  const tail = queryIndex === -1 ? '' : p.slice(queryIndex)
+  const prefixed = pathname === '/' ? '' : pathname
+  return `/${code}${prefixed}${tail}`
 }
 
 export interface BreadcrumbItem {
@@ -119,19 +146,27 @@ export interface ArticleJsonLdOptions {
 // 内部帮助
 // ---------------------------------------------------------------------------
 
-function usePublicSiteUrl(): Ref<string> {
+/**
+ * 允许用请求 Host 兜底推导站点根的只有本机开发地址。
+ * 生产必须显式配 SITE_URL / NUXT_PUBLIC_SITE_URL。
+ */
+const LOOPBACK_HOST_RE = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/
+
+export function usePublicSiteUrl(): Ref<string> {
   const cfg = useRuntimeConfig()
   // 客户端无 SITE_URL 时回退到当前 origin（避免空串导致 broken absolute URL）
   const site = cfg.public?.siteUrl as string | undefined
-  // SSR 期没有 window；用请求头推断 origin 兜底，让 canonical / hreflang 不再吐相对路径。
-  // 只有 NUXT_PUBLIC_SITE_URL 未注入时才会命中，正常部署下 site 非空即直接返回。
-  const reqHeaders = import.meta.server ? useRequestHeaders(['host', 'x-forwarded-proto']) : null
+  // SSR 期没有 window。缺配置时**只**在回环地址上按请求 Host 兜底，让本地开发
+  // 也能拿到绝对 canonical；生产环境不接受 Host 推导——公开页带 s-maxage 缓存，
+  // 而 Nitro 的缓存键不含 Host，伪造一次 Host 就能把攻击者域名写成整站的
+  // canonical / og:url / hreflang 并在 TTL 内投毒（同一口径见
+  // server/routes/robots.txt.get.ts 的 resolveConfiguredOrigin）。
   const ssrOrigin = (() => {
-    if (!import.meta.server || !reqHeaders) return ''
-    const host = reqHeaders.host || reqHeaders['x-forwarded-host']
-    if (!host) return ''
-    const proto = reqHeaders['x-forwarded-proto'] || 'https'
-    return `${proto}://${host}`
+    if (!import.meta.server) return ''
+    const headers = useRequestHeaders(['host'])
+    const host = headers.host || ''
+    if (!LOOPBACK_HOST_RE.test(host)) return ''
+    return `http://${host}`
   })()
   return computed(() => {
     if (site && site.trim() !== '') return site.replace(/\/$/, '')
@@ -185,14 +220,37 @@ function plainTextMeta(input: unknown): string {
 // 1. 通用 Meta：title / description / og / twitter
 // ---------------------------------------------------------------------------
 
+/**
+ * 自动 canonical 的查询串白名单：只有真正"另一张页"的参数才留在规范链接里。
+ * /posts 的 search / category / sort 是同一份列表的视图变体，把它们写进 canonical
+ * 等于向搜索引擎声明"每个筛选组合都是一个独立页面"——正是重复内容收录的成因。
+ * page=1 不保留：第 1 页的规范链接就是裸路径。
+ */
+const CANONICAL_QUERY_KEYS = ['page']
+
+function canonicalFromRoute(route: { path: string; query: Record<string, unknown> }): string {
+  const kept: string[] = []
+  for (const key of CANONICAL_QUERY_KEYS) {
+    const value = route.query[key]
+    const single = Array.isArray(value) ? value[0] : value
+    if (typeof single === 'string' && single && single !== '1') {
+      kept.push(`${key}=${encodeURIComponent(single)}`)
+    }
+  }
+  return route.path + (kept.length ? `?${kept.join('&')}` : '')
+}
+
 export function useSeo(opts: SeoMetaOptions = {}) {
   const siteUrl = usePublicSiteUrl()
   const i18n = useI18n()
   const { locale } = i18n
   const site = useSite()
-  // prefix_except_default 策略下：所有 canonical / hreflang 都通过 localePath
-  // 从"中性路径"派生。中性路径 = 剥掉 /en /ja /zh_Hant 前缀后的路径。
-  const localePath = useLocalePath()
+  const route = useRoute()
+  // prefix_except_default 策略下：所有 canonical / hreflang 都从"中性路径"派生
+  // （见 applyLocalePrefix 的说明——不走 localePath，详情页踩过解析坑）。
+  // opts.url 缺省时回落到当前页路径（只保留分页参数，见 canonicalFromRoute）：
+  // 分类/标签/归档/作者/留言板这些页过去不传 url，结果整页既没有 canonical
+  // 也没有 hreflang，四语版本在爬虫眼里是四个互不相关的 URL。
 
   const siteName = computed(() => site.siteTitle.value || 'Rosetta')
   const defaultDescription = computed(
@@ -240,48 +298,41 @@ export function useSeo(opts: SeoMetaOptions = {}) {
     const handle = (site.seo.value as Record<string, unknown>)?.twitter_handle
     return typeof handle === 'string' ? handle : ''
   })
-  const _url = computed(() =>
-    asAbsolute(
-      typeof opts.url === 'string'
-        ? opts.url
-        : (opts.url?.value ?? ''),
-      siteUrl.value
-    )
-  )
+  /** canonical / hreflang / og:url 的共同入参：显式 opts.url 优先，否则当前页 fullPath */
+  const _rawUrl = computed(() => {
+    const raw = typeof opts.url === 'string'
+      ? opts.url
+      : (opts.url?.value ?? '')
+    if (raw) return raw
+    return canonicalFromRoute(route as unknown as { path: string; query: Record<string, unknown> })
+  })
+  const _url = computed(() => asAbsolute(_rawUrl.value, siteUrl.value))
   /**
-   * canonical 走当前语言的实际 URL：先把 opts.url 剥成中性路径（/en/posts/x → /posts/x），
-   * 再 localePath(中性, 当前 locale) 让 @nuxtjs/i18n 按 strategy 挂前缀，最后补站点根。
+   * canonical 走当前语言的实际 URL：先把入参剥成中性路径（/en/posts/x → /posts/x），
+   * 再按 strategy 挂回当前语言的前缀，最后补站点根。
    * 已经是绝对 URL 的入参（http/https 开头）视作调用方接管，原样透传。
    */
   const canonicalUrl = computed(() => {
-    const raw = typeof opts.url === 'string'
-      ? opts.url
-      : (opts.url?.value ?? '')
+    const raw = _rawUrl.value
     if (!raw) return ''
     if (/^https?:\/\//i.test(raw)) return raw
-    const neutral = stripLocalePrefix(raw)
-    const localized = localePath(neutral as any, locale.value as any) as string
-    return asAbsolute(localized || neutral, siteUrl.value)
+    return asAbsolute(applyLocalePrefix(raw, locale.value), siteUrl.value)
   })
   /**
-   * hreflang alternates：对 OG_LOCALE_MAP 里的每个 locale 生成一份"该 locale 下的
+   * hreflang alternates：对 HREFLANG_MAP 里的每个 locale 生成一份"该 locale 下的
    * 本页面绝对 URL"。搜索引擎据此把中英日韩四份内容识别为同一页的语言变体。
-   * 与 canonical 同源，只在 opts.url 缺省时回退到当前 route.fullPath。
+   * 绝对 URL 入参（调用方接管）不再产出语言变体。
    */
   const localeAlternates = computed<Array<{ hreflang: string; href: string }>>(() => {
-    const raw = typeof opts.url === 'string'
-      ? opts.url
-      : (opts.url?.value ?? '')
+    const raw = _rawUrl.value
     if (!raw || /^https?:\/\//i.test(raw)) return []
-    const neutral = stripLocalePrefix(raw)
     const out: Array<{ hreflang: string; href: string }> = []
     for (const code of Object.keys(HREFLANG_MAP)) {
-      const localized = localePath(neutral as any, code as any) as string
-      const abs = asAbsolute(localized || neutral, siteUrl.value)
+      const abs = asAbsolute(applyLocalePrefix(raw, code), siteUrl.value)
       if (abs) out.push({ hreflang: HREFLANG_MAP[code]!, href: abs })
     }
     // x-default：prefix_except_default 语义下 = 默认语言（zh）路径
-    const zhPath = asAbsolute(localePath(neutral as any, 'zh' as any) as string || neutral, siteUrl.value)
+    const zhPath = asAbsolute(applyLocalePrefix(raw, DEFAULT_LOCALE_CODE), siteUrl.value)
     if (zhPath) out.push({ hreflang: 'x-default', href: zhPath })
     return out
   })
@@ -320,8 +371,17 @@ export function useSeo(opts: SeoMetaOptions = {}) {
     if (_image.value) {
       meta.push({ property: 'og:image', content: _image.value })
       meta.push({ name: 'twitter:image', content: _image.value })
+      // https 页面补 secure_url（OG 协议里与 og:image 成对，Facebook 据此选缓存变体）；
+      // 图片是相对路径时 asAbsolute 已拼过站点根，这里只判最终协议。
+      if (/^https:\/\//i.test(_image.value)) {
+        meta.push({ property: 'og:image:secure_url', content: _image.value })
+      }
+      // 尺寸提示只在图片 URL 自身声明了尺寸时可推导（本仓封面来自用户上传，无单源），
+      // 所以宁缺毋滥：写一个猜出来的 1200×630 会让爬虫按错比例预留预览框。
       if (_imageAlt.value) {
         meta.push({ property: 'og:image:alt', content: _imageAlt.value })
+        // Twitter Card 的 alt 是独立字段，缺了读屏软件在 X 的预览里拿不到描述。
+        meta.push({ name: 'twitter:image:alt', content: _imageAlt.value })
       }
     }
     if (_url.value) {
@@ -541,7 +601,8 @@ function jsonLdStringify(value: unknown): string {
 export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   const siteUrl = usePublicSiteUrl()
   const { locale } = useI18n()
-  const localePath = useLocalePath()
+  const site = useSite()
+  const siteNameForJsonLd = computed(() => site.siteTitle.value || 'Rosetta')
 
   // 全部字段都支持 Ref：用 computed 包装，由 useHead 闭包响应式追踪
   const _slug = computed(() => unrefVal(opts.slug))
@@ -576,9 +637,7 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
     // 当前语言的实际 URL（中文裸路径 /en/ja/zh_Hant 挂前缀），否则中英日
     // 三语页面在 schema.org 里会共享同一个 zh canonical，Google 富媒体测试报
     // "URL does not match page"。
-    const localizedArticlePath
-      = (localePath(articlePath as any, locale.value as any) as string) || articlePath
-    const articleUrl = asAbsolute(localizedArticlePath, base)
+    const articleUrl = asAbsolute(applyLocalePrefix(articlePath, locale.value), base)
     const cover = _cover.value ? asAbsolute(_cover.value, base) : undefined
     const published = safeIsoDate(_publishedAt.value)
     const updated = safeIsoDate(_updatedAt.value) ?? published
@@ -629,7 +688,9 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
     }
     payload.publisher = {
       '@type': 'Organization',
-      'name': 'Rosetta',
+      // publisher.name 必须与站点名一致（Google 会把 Article 的 publisher 与
+      // 站点品牌对齐）；写死 'Rosetta' 会让实际站名不同的部署产出错的组织名。
+      'name': siteNameForJsonLd.value,
       'url': base
     }
 
@@ -652,7 +713,6 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
 export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem[]>) {
   const siteUrl = usePublicSiteUrl()
   const { locale } = useI18n()
-  const localePath = useLocalePath()
 
   useHead(() => {
     const list
@@ -665,13 +725,12 @@ export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem
       'itemListElement': list
         .filter(i => i && i.name)
         .map((item, idx) => {
-          // 与 useArticleJsonLd 同口径：面包屑里的相对路径必须走 localePath
-          // 才能带上 /en /ja /zh_Hant 前缀，绝对 URL 原样透传。
+          // 与 useArticleJsonLd 同口径：面包屑里的相对路径必须挂上当前语言前缀
+          // 才能与页面 URL 一致，绝对 URL 原样透传。
           const raw = item.url || ''
           const localized = /^https?:\/\//i.test(raw) || !raw
             ? raw
-            : ((localePath(stripLocalePrefix(raw) as any, locale.value as any) as string)
-              || stripLocalePrefix(raw))
+            : applyLocalePrefix(raw, locale.value)
           return {
             '@type': 'ListItem',
             'position': idx + 1,

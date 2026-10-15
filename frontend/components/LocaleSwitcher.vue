@@ -10,6 +10,7 @@
 <script setup lang="ts">
 import { Globe, Check, ChevronDown } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
+import { applyLocalePrefix } from '~~/composables/useSeo'
 import { Button } from '~~/components/ui/button'
 import {
   DropdownMenu,
@@ -22,7 +23,6 @@ import {
 } from '~~/components/ui/dropdown-menu'
 
 const { t, locale, setLocale } = useI18n()
-const switchLocalePath = useSwitchLocalePath()
 const route = useRoute()
 const router = useRouter()
 
@@ -54,9 +54,12 @@ const handleSetLocale = async (code: string) => {
     document.cookie = 'rosetta_lang=' + code + '; path=/; max-age=31536000; SameSite=Lax'
     document.cookie = 'i18n_redirected=' + code + '; path=/; max-age=31536000; SameSite=Lax'
   } catch { /* ignore */ }
-  // 用当前 fullPath（保留 path/query/hash）换目标语言路径；返回空串说明该路径
-  // 在目标语言下无路由（如某些只注册默认语言的路由），此时留在原路径只换语言。
-  const next = switchLocalePath(code as LocaleOption['code'])
+  // 用当前 fullPath（保留 path/query/hash）换目标语言路径。不走 @nuxtjs/i18n 的
+  // switchLocalePath()：它按路由名解析，而本仓 i18n 没有 per-locale 自定义路径，
+  // "默认语言裸路径 + 其余挂 /code 前缀"就是策略全貌（口径见 useSeo 的
+  // applyLocalePrefix——详情页的 /posts/{中文 slug} 在 localePath 下实测会
+  // 产出非字符串，同一个解析坑会让切换按钮跳到 [object Object]）。
+  const next = applyLocalePrefix(route.fullPath, code)
   if (next && next !== route.fullPath) {
     await router.push(next)
   }

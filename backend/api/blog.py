@@ -256,8 +256,8 @@ async def generate_rss_feed(
 
         lines.append("    <item>")
         lines.append(f"      <title>{_cdata(title)}</title>")
-        lines.append(f"      <link>{_xml_escape(link)}</link>")
-        lines.append(f'      <guid isPermaLink="true">{_xml_escape(link)}</guid>')
+        lines.append(f"      <link>{_xml_url(link)}</link>")
+        lines.append(f'      <guid isPermaLink="true">{_xml_url(link)}</guid>')
         if pub_dt is not None:
             lines.append(f"      <pubDate>{_rfc822(pub_dt)}</pubDate>")
         lines.append(f"      <description>{_cdata(excerpt_html)}</description>")
@@ -281,10 +281,10 @@ async def generate_rss_feed(
         cover = _absolute_media(post.cover_image, site_url)
         if cover:
             lines.append(
-                f'      <enclosure url="{_xml_escape(cover)}" length="0" type="image/jpeg" />'
+                f'      <enclosure url="{_xml_url(cover)}" length="0" type="image/jpeg" />'
             )
             lines.append(
-                f'      <media:content url="{_xml_escape(cover)}" type="image/jpeg" medium="image" />'
+                f'      <media:content url="{_xml_url(cover)}" type="image/jpeg" medium="image" />'
             )
 
         lines.append("    </item>")
@@ -3461,6 +3461,20 @@ def _xml_escape(text: str) -> str:
     )
 
 
+def _xml_url(url: str) -> str:
+    """sitemap / RSS 里的 URL 出口：先按协议百分号编码，再做 XML 实体转义。
+
+    sitemaps.org 要求 `<loc>` 只含 ASCII（RSS 的 `<link>`/`<guid>` 同族）。
+    本站 slug 允许中文（`post-32-Alembic深度`），原样写进 XML 时 Google 能容错读取，
+    但 Bing/Yandex/百度按协议校验会判 invalid 并丢弃整条，Search Console 侧则表现为
+    "已发现但未编入索引"；阅读器拿到的 guid 也不是可点开的链接。
+    `safe` 保留结构与已编码的 `%`，避免把 `%20` 二次编码成 `%2520`。
+    """
+    from urllib.parse import quote
+
+    return _xml_escape(quote(url, safe=":/?=&#%~-_.!()*[],;$+@"))
+
+
 # Sitemap 协议常量
 _SITEMAP_NS = "http://www.sitemaps.org/schemas/sitemap/0.9"
 _SITEMAP_IMG_NS = "http://www.google.com/schemas/sitemap-image/1.1"
@@ -3537,7 +3551,7 @@ def _sitemap_url(
     这是 Google 官方推荐的 sitemap 侧 hreflang 声明方式（页面 `<link rel=alternate>`
     在 SSR HTML 已同步输出，二者一致时不冲突）。
     """
-    parts = ["  <url>", f"    <loc>{_xml_escape(loc)}</loc>"]
+    parts = ["  <url>", f"    <loc>{_xml_url(loc)}</loc>"]
     if lastmod:
         parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
     if changefreq:
@@ -3547,7 +3561,7 @@ def _sitemap_url(
     for img in images or []:
         if img:
             parts.append("    <image:image>")
-            parts.append(f"      <image:loc>{_xml_escape(img)}</image:loc>")
+            parts.append(f"      <image:loc>{_xml_url(img)}</image:loc>")
             parts.append("    </image:image>")
     if rel_path is not None and site_url:
         base = site_url.rstrip("/")
@@ -3556,12 +3570,12 @@ def _sitemap_url(
             href = f"{base}{variants[code]}"
             parts.append(
                 f'    <xhtml:link rel="alternate" hreflang="{hreflang}" '
-                f'href="{_xml_escape(href)}" />'
+                f'href="{_xml_url(href)}" />'
             )
         # x-default = 默认语言变体（zh 裸路径）
         parts.append(
             f'    <xhtml:link rel="alternate" hreflang="x-default" '
-            f'href="{_xml_escape(base + variants["zh"])}" />'
+            f'href="{_xml_url(base + variants["zh"])}" />'
         )
     parts.append("  </url>")
     return "\n".join(parts)
