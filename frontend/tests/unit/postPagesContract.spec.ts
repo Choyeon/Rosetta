@@ -158,7 +158,8 @@ describe('后端文章列表接口', () => {
 describe('密码保护文章详情页闸门', () => {
   it('闸门与提示走 computed，且与正文同源', () => {
     expect(postDetail).toMatch(/const needPassword = computed\(/)
-    expect(postDetail).toMatch(/const postEncryptionHint = computed\(/)
+    // 允许带泛型实参：postEncryptionHint 实际写成 computed<string | null>(…)
+    expect(postDetail).toMatch(/const postEncryptionHint = computed(<[^>]*>)?\(/)
     // 判据必须同时看后端的 is_password_protected 与"正文是否为空"：
     // 只看前者会在已解锁的会话里再次锁上，只看后者会把普通空正文判成加密。
     expect(postDetail).toMatch(/is_password_protected[\s\S]{0,120}!\s*content/)
