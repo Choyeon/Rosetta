@@ -35,11 +35,12 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/toolti
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { MINIMAL_THEME_SLUGS, stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
 const route = useRoute()
+const { localeHref } = useLocaleLink()
 
 /**
  * Header 导航栏：
@@ -223,8 +224,11 @@ const navItems = computed(() => {
 })
 
 const isActive = (to: string) => {
-  if (to === '/') return route.path === '/'
-  return route.path === to || route.path.startsWith(to + '/')
+  // 导航项的 to 是中性路径（/posts），而 route.path 在带前缀的语言下是 /en/posts。
+  // 不先剥前缀，英文/日文/繁体页面上整条导航的高亮全都不亮（首页那条还会误亮）。
+  const current = stripLocalePathPrefix(route.path)
+  if (to === '/') return current === '/'
+  return current === to || current.startsWith(to + '/')
 }
 
 // ===== 导航分组：仅极简主题（窄栏）把第 6 项起收进「更多」下拉；默认主题全量平铺 =====
@@ -258,7 +262,7 @@ const handleSearchClick = () => navigateTo('/search')
       class="container mx-auto flex items-center justify-between gap-4 h-16"
     >
       <NuxtLink
-        to="/"
+        :to="localeHref('/')"
         data-navbar="brand"
         class="flex items-center gap-2 font-display font-bold tracking-tight min-w-0 shrink-0 text-lg sm:text-xl"
       >
@@ -281,7 +285,7 @@ const handleSearchClick = () => navigateTo('/search')
         <NuxtLink
           v-for="item in primaryNavItems"
           :key="item.to"
-          :to="item.to"
+          :to="localeHref(item.to)"
           :target="item.target"
           :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
           data-navbar="link"
@@ -320,7 +324,7 @@ const handleSearchClick = () => navigateTo('/search')
               as-child
             >
               <NuxtLink
-                :to="item.to"
+                :to="localeHref(item.to)"
                 :target="item.target"
                 :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
                 :class="isActive(item.to) ? 'font-semibold' : ''"
@@ -472,7 +476,7 @@ const handleSearchClick = () => navigateTo('/search')
                   {{ t('common.titleMenu') || 'Menu' }}
                 </SheetTitle>
                 <NuxtLink
-                  to="/"
+                  :to="localeHref('/')"
                   class="flex items-center gap-2 font-display text-xl font-bold tracking-tight"
                 >
                   <img
@@ -491,7 +495,7 @@ const handleSearchClick = () => navigateTo('/search')
                   as-child
                 >
                   <NuxtLink
-                    :to="item.to"
+                    :to="localeHref(item.to)"
                     :class="[
                       'px-3 py-2.5 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
                       isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'

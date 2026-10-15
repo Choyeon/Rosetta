@@ -14,6 +14,7 @@ import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
 
 const { t, locale, setLocale } = useI18n()
+const { localeHref } = useLocaleLink()
 
 const currentYear = new Date().getFullYear()
 
@@ -274,7 +275,7 @@ const handleSetLocale = async (code: string) => {
         <!-- Brand column -->
         <div class="lg:col-span-4">
           <NuxtLink
-            to="/"
+            :to="localeHref('/')"
             class="inline-flex items-center gap-2 font-display text-xl font-bold tracking-tight mb-4"
           >
             <img
@@ -351,7 +352,7 @@ const handleSetLocale = async (code: string) => {
               :key="link.to"
             >
               <NuxtLink
-                :to="link.to!"
+                :to="localeHref(link.to!)"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 {{ siteLabel(link) }}
@@ -378,7 +379,7 @@ const handleSetLocale = async (code: string) => {
               :key="link.to"
             >
               <NuxtLink
-                :to="link.to!"
+                :to="localeHref(link.to!)"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
                 {{ link.labelKey }}
@@ -481,7 +482,7 @@ const handleSetLocale = async (code: string) => {
         <NuxtLink
           v-for="link in siteLinks"
           :key="link.to"
-          :to="link.to!"
+          :to="localeHref(link.to!)"
           class="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {{ siteLabel(link) }}

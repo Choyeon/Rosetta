@@ -22,17 +22,15 @@ export default defineEventHandler((event) => {
   const origin = resolveConfiguredOrigin(runtime)
 
   // 与 backend/api/seo.py::get_robots_txt 的默认段同口径（改一处要改两处，
-  // 因为上游不可达时这里才是访客实际拿到的文件）。/account 与 /forgot-password
-  // 也在名单里：它们是登录态页，被抓到了也只是空壳，但留在索引里是噪音。
-  const privatePaths = [
-    '/admin/',
-    '/login',
-    '/register',
-    '/forgot-password',
-    '/account',
-    '/oobe',
-    '/search'
-  ]
+  // 因为上游不可达时这里才是访客实际拿到的文件）。
+  //
+  // 名单只留"根本不该被抓"的机器面：/api/ 与后台。/login /register /forgot-password
+  // /account /search /oobe 已从 Disallow 移出——robots.txt 挡的是抓取，抓不到就读不到
+  // 页面里的 <meta name=robots content=noindex>，Google 反而会按已发现的链接生成
+  // "无摘要索引条目"。这几页现在自带 noindex, follow（见 composables/useSeo.ts 的
+  // useNoindexPage），必须允许抓取才能让闸门生效。后台正相反：永远不该被抓，
+  // 所以 Disallow 就是它的主闸门，meta 只是纵深防御。
+  const privatePaths = ['/api/', '/admin/']
   // prefix_except_default：中文裸路径 + 三种带前缀形态都要挡（robots 只做前缀匹配）
   const localePrefixes = ['', '/en', '/ja', '/zh_Hant']
   const disallow = privatePaths

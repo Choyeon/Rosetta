@@ -82,18 +82,50 @@ describe('URL 派生的单源约束（静态）', () => {
 
   it('详情页不再另写一份 canonical', () => {
     const page = readFileSync(resolve(ROOT, 'pages/posts/[slug].vue'), 'utf-8')
-    expect(page).not.toContain('requestURL')
+    expect(page).not.toContain('useRequestURL')
     expect(page).toContain('article:publisher')
     expect(page).toContain('article:tag')
   })
 
-  it('语言切换与 robots.txt 都按四语前缀处理', () => {
+  it('robots.txt 只挡机器面，语言前缀四份都要写', () => {
     const switcher = readFileSync(resolve(ROOT, 'components/LocaleSwitcher.vue'), 'utf-8')
     expect(switcher).not.toContain('useSwitchLocalePath')
     expect(switcher).toContain('applyLocalePrefix')
 
     const robots = readFileSync(resolve(ROOT, 'server/routes/robots.txt.get.ts'), 'utf-8')
     expect(robots).toContain('/zh_Hant')
-    expect(robots).toContain('/account')
+    expect(robots).toContain('/admin/')
+    // /login /register /account /search /oobe 必须由 Disallow 挪到页面 meta：
+    // 抓不到就读不到 noindex，Google 会按已发现的链接生成"无摘要索引条目"。
+    for (const moved of ['/login', '/register', '/account', '/search', '/oobe']) {
+      expect(robots, `robots.txt 仍挡着 ${moved}，页面自带 noindex 就永远读不到`)
+        .not.toContain(`'${moved}'`)
+    }
+  })
+
+  it('不可索引页各自带 noindex 闸门（Disallow 不等于 noindex）', () => {
+    const seo = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
+    expect(seo).toContain('export function useNoindexPage')
+    expect(seo).toContain('noindex, follow')
+    for (const page of [
+      'pages/login.vue',
+      'pages/register.vue',
+      'pages/forgot-password.vue',
+      'pages/account/index.vue',
+      'pages/account/settings.vue',
+      'pages/oobe.vue'
+    ]) {
+      expect(readFileSync(resolve(ROOT, page), 'utf-8'), `${page} 缺 noindex 闸门`)
+        .toContain('useNoindexPage()')
+    }
+  })
+
+  it('canonical 全站单源：首页与列表页不得再手写第二份', () => {
+    for (const page of ['pages/index.vue', 'pages/posts/index.vue']) {
+      const src = readFileSync(resolve(ROOT, page), 'utf-8')
+      // 请求 Host 派生的 origin 会被 swr 缓存固化成所有访客看到的规范地址
+      expect(src, `${page} 仍在用 useRequestURL 拼 SEO 地址`).not.toContain('useRequestURL')
+      expect(src, `${page} 自己发了一条 canonical`).not.toContain(`rel: 'canonical'`)
+    }
   })
 })

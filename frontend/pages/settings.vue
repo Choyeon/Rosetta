@@ -100,6 +100,8 @@ onMounted(() => {
 useSeo({
   title: computed(() => String(t('settings.title'))),
   description: computed(() => String(t('settings.desc'))),
-  type: 'website'
+  type: 'website',
+  // 偏好设置页只有主题开关，是薄内容工具页；无 Disallow 兜底，只能自带 noindex。
+  noindex: true
 })
 </script>

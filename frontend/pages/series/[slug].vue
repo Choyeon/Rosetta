@@ -11,13 +11,13 @@
         <BreadcrumbList>
           <BreadcrumbItem>
             <BreadcrumbLink as-child>
-              <NuxtLink to="/">{{ t('series.home', '首页') }}</NuxtLink>
+              <NuxtLink :to="localeHref('/')">{{ t('series.home', '首页') }}</NuxtLink>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
           <BreadcrumbItem>
             <BreadcrumbLink as-child>
-              <NuxtLink to="/series">{{ t('series.all', '系列') }}</NuxtLink>
+              <NuxtLink :to="localeHref('/series')">{{ t('series.all', '系列') }}</NuxtLink>
             </BreadcrumbLink>
           </BreadcrumbItem>
           <BreadcrumbSeparator />
@@ -118,7 +118,7 @@
                 :key="p.id"
               >
                 <NuxtLink
-                  :to="`/posts/${p.slug}`"
+                  :to="localeHref(`/posts/${p.slug}`)"
                   class="flex items-start gap-4 py-4 group transition-colors hover:bg-accent/40 rounded-lg px-3 -mx-3"
                 >
                   <div class="shrink-0 size-10 rounded-lg bg-muted flex items-center justify-center font-display font-semibold text-muted-foreground group-hover:bg-primary group-hover:text-primary-foreground transition-colors">
@@ -177,6 +177,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const { localeHref } = useLocaleLink()
 const params = route.params as { slug?: string }
 
 interface SeriesPostRow {

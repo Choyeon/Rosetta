@@ -57,7 +57,7 @@
             class="ap-post-item group"
           >
             <NuxtLink
-              :to="`/${post.slug}`"
+              :to="localeHref(`/${post.slug}`)"
               class="block group-hover:no-underline"
             >
               <div class="ap-post-date text-xs uppercase tracking-[0.14em] text-muted-foreground tabular-nums mb-2">
@@ -81,7 +81,7 @@
           class="mt-12 md:mt-14"
         >
           <NuxtLink
-            to="/posts"
+            :to="localeHref('/posts')"
             class="text-sm font-medium inline-flex items-center gap-1.5 text-foreground/90 hover:text-foreground hover:underline underline-offset-4"
           >
             {{ t('home.viewAll') || 'All Posts' }}
@@ -157,14 +157,14 @@
               </div>
               <div class="mt-8 flex flex-wrap items-center gap-3">
                 <NuxtLink
-                  :to="_heroCtaUrl"
+                  :to="localeHref(_heroCtaUrl)"
                   class="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-xl shadow-black/30 hover:bg-primary/90 transition-colors"
                 >
                   {{ _heroCtaText }}
                   <ArrowRight class="size-4" />
                 </NuxtLink>
                 <NuxtLink
-                  to="/posts"
+                  :to="localeHref('/posts')"
                   class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur-xl hover:bg-white/20 transition-colors"
                 >
                   {{ t('home.viewAll') || '浏览全部文章' }}
@@ -481,7 +481,7 @@
                     :color="category.color ?? null"
                     :icon="category.icon ?? null"
                     :label="pickLocalized(category.name)"
-                    :to="`/categories/${category.slug}`"
+                    :to="localeHref(`/categories/${category.slug}`)"
                   />
                 </div>
                 <div
@@ -557,7 +557,7 @@
                 </h2>
               </div>
               <NuxtLink
-                to="/posts"
+                :to="localeHref('/posts')"
                 class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
               >
                 {{ t('home.viewAll') }}
@@ -784,7 +784,7 @@
                     :color="category.color ?? null"
                     :icon="category.icon ?? null"
                     :label="pickLocalized(category.name)"
-                    :to="`/categories/${category.slug}`"
+                    :to="localeHref(`/categories/${category.slug}`)"
                   />
                 </div>
                 <div
@@ -940,6 +940,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const { formatDate: i18nFormatDate, pickLocalized } = useI18nHelpers()
+const { localeHref } = useLocaleLink()
 
 // ===== 站点动态配置：<title>/hero/SEO/颜色都来自 settings（/api/settings + /api/config fallback）
 const site = useSite()
@@ -1087,20 +1088,11 @@ const _heroCtaUrl = computed(() => String(site.hero.value.cta_url || '/posts'))
 // ===== SEO（useSeo composable）=====
 const homeTitle = computed(() => t?.('nav.home') || site.siteSubtitle.value || '')
 const homeDescription = computed(() => site.siteDescription.value || t?.('home.heroSubtitle')?.toString?.() || undefined)
-const requestURL = useRequestURL()
-const origin = computed(() => requestURL.origin)
+// og:image 交给 useSeo 用站点根（配置单源）绝对化：在这里用请求 Host 拼绝对地址，
+// 会让首页 swr 缓存把 Host 固化成所有访客看到的 og:image 域名。
 const seoOgImage = computed(() => {
   const configured = site.seo.value.og_image
-  if (configured) {
-    const raw = String(configured)
-    if (raw.startsWith('http')) return raw
-    try {
-      return new URL(raw, origin.value).href
-    } catch {
-      return raw
-    }
-  }
-  return undefined
+  return configured ? String(configured) : undefined
 })
 
 useSeo({
@@ -1255,16 +1247,12 @@ const formatStat = (value: number | undefined | null): string => {
   return n.toLocaleString('en-US')
 }
 
-// ===== 补充 SEO：keywords + canonical（useSeoMeta 不处理这两项）=====
-const canonical = computed(() => requestURL.href)
+// ===== 补充 SEO：keywords（canonical / hreflang 由 useSeo 单源产出，不再另写一份）=====
 const siteKeywords = computed(() => site.siteKeywords.value)
 
 useHead({
   meta: [
     { name: 'keywords', content: siteKeywords }
-  ],
-  link: [
-    { rel: 'canonical', href: canonical }
   ]
 })
 </script>

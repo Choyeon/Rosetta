@@ -15,7 +15,7 @@
   <div class="container py-16 max-w-3xl mx-auto">
     <header class="mb-10">
       <NuxtLink
-        to="/archive"
+        :to="localeHref('/archive')"
         class="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft class="size-4" />
@@ -77,7 +77,7 @@
         <div class="mb-4 flex items-end justify-between gap-3">
           <h2 class="font-display text-2xl font-bold tracking-tight tabular-nums">
             <NuxtLink
-              :to="`/archive/${year}/${padMonth(group.month)}`"
+              :to="localeHref(`/archive/${year}/${padMonth(group.month)}`)"
               class="transition-colors hover:text-primary"
             >
               {{ year }}-{{ padMonth(group.month) }}
@@ -105,7 +105,7 @@
                 {{ formatDate(post.published_at || post.created_at) }}
               </Badge>
               <NuxtLink
-                :to="`/posts/${post.slug}`"
+                :to="localeHref(`/posts/${post.slug}`)"
                 class="truncate font-medium transition-colors group-hover/item:text-primary"
               >
                 {{ titleOf(post) }}
@@ -161,6 +161,7 @@ interface ArchiveMonthGroup {
 const { t, locale } = useI18n()
 const route = useRoute()
 const site = useSite()
+const { localeHref } = useLocaleLink()
 
 // 年份合法性由 middleware/archive-year.ts 在进入本组件前判定并 abort，
 // 走到这里参数一定已经是 4 位数字。

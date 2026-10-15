@@ -59,7 +59,7 @@
         v-for="cat in categories"
         :key="cat.id"
         v-memo="[cat.id, cat.slug, cat.post_count ?? cat.postsCount]"
-        :to="`/categories/${cat.slug}`"
+        :to="localeHref(`/categories/${cat.slug}`)"
         class="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
         <Card class="h-full group transition-all hover:shadow-soft hover:-translate-y-0.5 duration-300 overflow-hidden">
@@ -130,6 +130,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
+const { localeHref } = useLocaleLink()
 
 // ===== SEO：基于 i18n + 站点设置 =====
 useSeo({

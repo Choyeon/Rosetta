@@ -1,13 +1,16 @@
 <!--
   文章列表页：GET /blog/posts（分页 / 分类 / 关键词 / 排序）+ /search-placeholders 占位词轮播。
   硬契约（都是踩过的坑，改前先读）：
-  1. canonical 在 setup 同步阶段用 useRequestURL().origin 拼好：await 之后再调 useHead 会被
-     Nuxt 忽略（NUXT_E1001），SEO 静默失效。
+  1. canonical 只由 useSeo 单源产出（路径取自当前路由，查询串只保留 page）。
+     本页曾另发一条请求 URL 拼一份写进 useHead，结果是同一个 <head> 里两条
+     canonical，而且那段地址取自请求 Host —— 页面带 swr 缓存，Host 会被固化进缓存里
+     所有访客的规范地址。useSeo 在 setup 同步阶段注册，不存在 await 之后 NUXT_E1001 的问题。
   2. 列表 useFetch 的 key 固定为 'posts:list'（不用动态 key）。Nuxt 在 SSR 下对 computed query
      生成的 key 不一定能写进 payload，客户端 hydration 会拿到 undefined 且不会自动重试。
      重新请求由那个 import.meta.client 守卫的 watch 集中触发 —— SSR 首屏由 useFetch 自动完成。
-  3. canonical 的查询串必须与 URL 同步函数产出完全一致：页面从不把状态写进地址栏却声明
-     /posts?page=N 的话，等于把规范地址指向一个不存在的 URL。
+  3. syncUrl 的查询串就是地址栏的真实状态：分页写成 /posts?page=N 必须由 canonical 体现，
+     而 search / category / sort 是同一份列表的视图变体，规范地址统一收敛到裸路径
+     （见 useSeo 的 CANONICAL_QUERY_KEYS），否则每个筛选组合都是一个可收录的重复页。
 -->
 <template>
   <div class="container py-16">
@@ -282,8 +285,7 @@ const listDescription = computed(
 useSeo({
   title: listTitle,
   description: listDescription,
-  type: 'website',
-  url: '/posts'
+  type: 'website'
 })
 useBreadcrumbJsonLd([
   { name: String(t('nav.home') || '首页'), url: '/' },
@@ -305,12 +307,7 @@ const hasActiveFilter = computed(
   () => searchQuery.value !== '' || (selectedCategory.value !== '' && selectedCategory.value !== ALL_CATEGORIES)
 )
 
-// ===== 同步阶段注册 SEO：canonical（await 之后注册触发 NUXT_E1001 → 失效）=====
-const requestURL = useRequestURL()
-const origin = computed(() => requestURL.origin)
-
-// canonical 必须与 syncUrl 产出逐字一致：声明的规范地址和实际地址差一个字符，
-// 搜索引擎就会当成两个 URL，分页页还会被判成重复内容。
+// ===== 地址栏同步用的查询串（canonical 由 useSeo 单源产出，见文件头契约 1/3）=====
 const canonicalQuery = computed(() => {
   const q: Record<string, string> = {}
   if (currentPage.value > 1) q.page = String(currentPage.value)
@@ -321,16 +318,6 @@ const canonicalQuery = computed(() => {
   if (sortBy.value !== 'latest') q.sort = sortBy.value
   return q
 })
-const canonical = computed(() => {
-  const qs = new URLSearchParams(canonicalQuery.value).toString()
-  return `${origin.value}${route.path}${qs ? `?${qs}` : ''}`
-})
-
-useHead(() => ({
-  link: [
-    { rel: 'canonical', href: canonical.value }
-  ]
-}))
 
 const { data: categories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },

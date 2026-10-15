@@ -13,7 +13,7 @@
   >
     <NuxtLink
       v-if="coverImage"
-      :to="`/posts/${postSlug}`"
+      :to="localeHref(`/posts/${postSlug}`)"
       class="block shrink-0 w-[120px] sm:w-[168px] md:w-[180px] aspect-[4/3] sm:aspect-auto sm:h-auto sm:min-h-full overflow-hidden bg-muted"
     >
       <img
@@ -58,13 +58,13 @@
           :key="tag.id"
           :color="tag.color"
           :label="tag.name"
-          :to="`/posts?tag=${tag.slug}`"
+          :to="localeHref(`/posts?tag=${tag.slug}`)"
           size="sm"
         />
       </div>
 
       <h2 class="font-display text-base sm:text-lg leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
-        <NuxtLink :to="`/posts/${postSlug}`">{{ postTitle }}</NuxtLink>
+        <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
       </h2>
 
       <p class="line-clamp-2 text-muted-foreground leading-relaxed mt-2 text-sm">
@@ -129,7 +129,7 @@
   >
     <NuxtLink
       v-if="coverImage"
-      :to="`/posts/${postSlug}`"
+      :to="localeHref(`/posts/${postSlug}`)"
       class="relative block aspect-[16/9] md:aspect-auto md:min-h-[300px] overflow-hidden bg-muted"
     >
       <img
@@ -172,12 +172,12 @@
           :key="tag.id"
           :color="tag.color"
           :label="tag.name"
-          :to="`/posts?tag=${tag.slug}`"
+          :to="localeHref(`/posts?tag=${tag.slug}`)"
         />
       </div>
 
       <h2 class="font-display text-2xl md:text-3xl font-bold leading-tight tracking-tight line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
-        <NuxtLink :to="`/posts/${postSlug}`">{{ postTitle }}</NuxtLink>
+        <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
       </h2>
 
       <p class="text-muted-foreground leading-relaxed line-clamp-3 md:text-[15px]">
@@ -206,7 +206,7 @@
           >{{ formatDate(publishedAt) }}</span>
         </div>
         <NuxtLink
-          :to="`/posts/${postSlug}`"
+          :to="localeHref(`/posts/${postSlug}`)"
           class="inline-flex items-center gap-1 font-medium text-primary hover:underline underline-offset-4 ml-auto"
         >
           {{ t('common.readMore') }}
@@ -225,7 +225,7 @@
   >
     <NuxtLink
       v-if="coverImage"
-      :to="`/posts/${postSlug}`"
+      :to="localeHref(`/posts/${postSlug}`)"
       class="block aspect-[16/9] overflow-hidden bg-muted relative"
     >
       <img
@@ -271,11 +271,11 @@
           :key="tag.id"
           :color="tag.color"
           :label="tag.name"
-          :to="`/posts?tag=${tag.slug}`"
+          :to="localeHref(`/posts?tag=${tag.slug}`)"
         />
       </div>
       <h2 class="mt-2 font-display leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border text-xl">
-        <NuxtLink :to="`/posts/${postSlug}`">{{ postTitle }}</NuxtLink>
+        <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
       </h2>
     </header>
 
@@ -411,6 +411,7 @@ const props = withDefaults(defineProps<Props>(), {
 
 const { t } = useI18n()
 const { resolveLocalized, formatDate } = useI18nHelpers()
+const { localeHref } = useLocaleLink()
 
 // 无封面文章不再留白：回落到按文章标识派生的 picsum seed 图（篇篇不同、同篇恒定）
 // 通栏特写占满整行宽，回落图仍取卡片尺寸会糊，故按变体选尺寸
@@ -433,7 +434,7 @@ const categoryColor = computed(() => props.post.category?.color ?? null)
 /** 分类 chip 跳转目标：与标签的 /posts?tag= 相呼应，分类走独立详情页。 */
 const categoryLink = computed(() => {
   const slug = props.post.category?.slug
-  return slug ? `/categories/${slug}` : undefined
+  return slug ? localeHref(`/categories/${slug}`) : undefined
 })
 
 const postTitle = computed(() => resolveLocalized(props.post.title))

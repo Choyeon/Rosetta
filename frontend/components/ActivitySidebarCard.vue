@@ -42,6 +42,7 @@ interface ActivitiesPage {
 }
 
 const { t, locale } = useI18n()
+const { localeHref } = useLocaleLink()
 
 const { data, pending, error } = useAPI<ActivitiesPage>('/activities', {
   query: computed(() => ({ page: 1, page_size: 3, lang: locale.value })),
@@ -75,7 +76,7 @@ const isoDate = (value: string) => (typeof value === 'string' ? value.slice(0, 1
         </span>
       </CardTitle>
       <NuxtLink
-        to="/activity"
+        :to="localeHref('/activity')"
         class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
       >
         {{ t('home.viewAll') }}

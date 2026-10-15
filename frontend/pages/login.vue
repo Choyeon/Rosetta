@@ -483,6 +483,8 @@ import {
 } from '@lucide/vue'
 
 definePageMeta({ layout: false, ssr: false })
+// robots.txt 的 Disallow 挡不住收录（抓不到就读不到 meta），入索引闸门必须页面自带。
+useNoindexPage()
 
 const route = useRoute()
 const { t } = useI18n()

@@ -14,7 +14,7 @@
   <div class="container py-16 max-w-3xl mx-auto">
     <header class="mb-10">
       <NuxtLink
-        :to="`/archive/${year}`"
+        :to="localeHref(`/archive/${year}`)"
         class="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
       >
         <ArrowLeft class="size-4" />
@@ -65,7 +65,7 @@
           class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
         >
           <NuxtLink
-            :to="`/posts/${post.slug}`"
+            :to="localeHref(`/posts/${post.slug}`)"
             class="text-base transition-colors hover:text-primary"
           >
             {{ titleOf(post) }}
@@ -92,7 +92,7 @@
       >
         <NuxtLink
           v-if="page > 1"
-          :to="pageLink(page - 1)"
+          :to="localeHref(pageLink(page - 1))"
           class="inline-flex items-center gap-1 text-sm transition-colors hover:text-primary"
           :aria-label="`${t('archive.prevPage')} ${t('archive.posts')} ${page - 1}`"
         >
@@ -104,7 +104,7 @@
         </span>
         <NuxtLink
           v-if="page < totalPages"
-          :to="pageLink(page + 1)"
+          :to="localeHref(pageLink(page + 1))"
           class="inline-flex items-center gap-1 text-sm transition-colors hover:text-primary"
           :aria-label="`${t('archive.nextPage')} ${t('archive.posts')} ${page + 1}`"
         >
@@ -148,6 +148,7 @@ definePageMeta({ layout: 'default', middleware: 'archive-year' })
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const { localeHref } = useLocaleLink()
 
 // 参数合法性（年份 4 位 + 月份 1-12）已由中间件闸门保证，走到这里一定是规范化后的值。
 const year = Number(route.params.year)
@@ -204,5 +205,18 @@ useContentStatus(
   computed(() => posts.value.length === 0 || page.value > (totalPages.value || 1))
 )
 
-useHead(() => ({ title: `${year}-${padMonth(month)} · ${t('archive.title')}` }))
+// SEO 单源走 useSeo：本页曾只有一个裸 useHead title，四语版本既没有 canonical
+// 也没有 hreflang，爬虫把它们当成三个互不相关的归档页。
+useSeo({
+  title: computed(() => `${year}-${padMonth(month)} ${t('archive.title')}`),
+  description: computed(() => t('archive.statsTotal', { count: total.value }) as string),
+  type: 'website'
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home') as string, url: '/' },
+  { name: t('nav.archive') as string, url: '/archive' },
+  { name: String(year), url: `/archive/${year}` },
+  { name: `${year}-${padMonth(month)}`, url: `/archive/${year}/${padMonth(month)}` }
+])
 </script>

@@ -85,7 +85,7 @@
         <div class="flex items-end justify-between mb-4">
           <h2 class="font-display text-2xl font-bold tracking-tight flex items-center gap-3">
             <NuxtLink
-              :to="`/archive/${group.year}`"
+              :to="localeHref(`/archive/${group.year}`)"
               class="tabular-nums transition-colors hover:text-primary"
             >
               {{ group.year }}
@@ -113,7 +113,7 @@
                 {{ formatMonthDay(getPublishedAt(post)) }}
               </Badge>
               <NuxtLink
-                :to="`/posts/${post.slug}`"
+                :to="localeHref(`/posts/${post.slug}`)"
                 class="font-medium truncate group-hover/item:text-primary transition-colors"
               >
                 {{ getPostTitle(post) }}
@@ -162,6 +162,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
+const { localeHref } = useLocaleLink()
 
 // ===== SEO：基于 i18n + 站点设置 =====
 useSeo({

@@ -211,6 +211,8 @@ async function resetPassword() {
 }
 
 useHead(() => ({ title: t('forgotPassword.title') }))
+// 见 login.vue 同一口径：登录/注册页自带 noindex。
+useNoindexPage()
 </script>
 
 <style scoped>

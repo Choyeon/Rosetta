@@ -10,7 +10,7 @@
       <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
         <span class="size-1.5 rounded-full bg-warning" />
         <NuxtLink
-          to="/categories"
+          :to="localeHref('/categories')"
           class="hover:text-foreground transition-colors"
         >{{ t('categories.title', '分类') }}</NuxtLink>
         <span>/</span>
@@ -140,6 +140,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const { localeHref } = useLocaleLink()
 
 const slug = computed(() => typeof route.params.slug === 'string' ? route.params.slug : '')
 const currentPage = ref(1)

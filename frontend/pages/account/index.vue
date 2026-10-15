@@ -610,6 +610,8 @@ async function clearHistory() {
 }
 
 useHead(() => ({ title: `${t('account.title')} · ${locale.value}` }))
+// 个人中心是逐登录用户内容，robots.txt 的 Disallow 不足以挡住收录（见 login.vue 同口径）。
+useNoindexPage()
 </script>
 
 <style scoped>

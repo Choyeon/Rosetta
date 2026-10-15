@@ -2,7 +2,9 @@
   独立页（顶级 catchall）：GET /pages/<slug> → marked 渲染 + isomorphic-dompurify 白名单清洗。
   污染 URL 自愈只折叠 %25 层、绝不整体 decode（过度解码会吞掉 %2D 造出死链）；slug 命中文章
   形态时 301/replace 跳 /posts/<slug>，因此新增顶级路由前必须确认不被这里的 catchall 抢占。
+  跳走的那条不写状态码（redirectedAway），否则 301 会被 404 闸门覆盖成永久删除。
   sanitize 配置两端共用一份：SSR 直出的 HTML 与客户端重算结果要逐字节一致，否则水合错位。
+  标题与 description 只由 useSeo 产出，裸 useHead 会让 <head> 里出现第二条 description。
 -->
 <template>
   <div class="container max-w-4xl mx-auto py-16">
@@ -73,6 +75,7 @@
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Button } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
+import { useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
@@ -153,6 +156,9 @@ const unwrapResp = (r: unknown): PageDetail | null => {
 }
 
 const nuxtApp = useNuxtApp()
+// 自愈 301 与 404 是互斥的两个出口：跳走的那条已经写好了重定向状态码，
+// 不能再被下面的状态码闸门覆盖成 404（301 变 404 会把可恢复的死链做成永久删除）。
+const redirectedAway = ref(false)
 const { data: raw, pending, error } = useAsyncData<PageDetail | null>(
   computed(() => `page:slug:${slug.value}:${locale.value}`),
   async () => {
@@ -170,6 +176,7 @@ const { data: raw, pending, error } = useAsyncData<PageDetail | null>(
           const pd = unwrapResp(p)
           if (pd?.slug) {
             // handler 在异步上下文中执行，navigateTo 需显式恢复 Nuxt 上下文（NUXT_E1001）
+            redirectedAway.value = true
             await nuxtApp.runWithContext(() => navigateTo(`/posts/${pd.slug}`, { redirectCode: 301, replace: true }))
             return null
           }
@@ -188,8 +195,17 @@ const page = computed<PageDetail | null>(() => {
   return (r as PageDetail | null) ?? null
 })
 const loadError = computed(() => !!error.value || !page.value)
+// 顶级 catchall 会接住每一条形如 /任意单段 的 URL：此前"独立页不存在"只渲染兜底 UI、
+// 响应仍是 200（并且会被 swr 缓存固化），爬虫会把垃圾 URL 收进索引。
+// 闸门口径与其余内容详情页一致（见 composables/useContentStatus.ts），
+// 但跳走的那一条除外——它已经带着 301，不能再被改成 404。
+useContentStatus(error, computed(() => !page.value && !redirectedAway.value))
 
-const title = computed(() => pickLocalized(page.value?.title) || slug.value)
+// 加载中留空（只显站点名，不闪"页面不存在"）；确实取不到内容时用 404 口径标题，
+// 不再把 slug 人性化成一个假装存在的页面名（响应侧已由 useContentStatus 回写 404）。
+const title = computed(() =>
+  pickLocalized(page.value?.title) || (pending.value ? '' : t('error.notFoundTitle'))
+)
 
 const md = new Marked()
 // isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch
@@ -233,11 +249,8 @@ const formatDate = (iso: string) => {
   } catch { return '' }
 }
 
-useHead(() => ({
-  title: title.value,
-  meta: [{ name: 'description', content: metaDescription.value }]
-}))
-
+// 标题与 description 由 useSeo 单源产出：这里再裸写一份 useHead 会在 <head> 里
+// 留下第二条 name=description（unhead 按入队顺序合并，两份裁切长度不同）。
 useSeo({
   title,
   description: metaDescription,
@@ -254,6 +267,6 @@ useArticleJsonLd({
 })
 useBreadcrumbJsonLd([
   { name: t('nav.home', '首页') as string, url: '/' },
-  { name: title.value || slug.value, url: `/${slug.value}` }
+  { name: title.value, url: `/${slug.value}` }
 ])
 </script>

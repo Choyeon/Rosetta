@@ -49,7 +49,7 @@
             v-for="tag in sortedTags"
             :key="tag.id"
             v-memo="[tag.id, tag.slug, tag.color]"
-            :to="`/tags/${tag.slug}`"
+            :to="localeHref(`/tags/${tag.slug}`)"
             class="no-underline"
             :style="cloudStyle(tag)"
           >
@@ -78,7 +78,7 @@
           v-for="tag in sortedTags"
           :key="tag.id"
           v-memo="[tag.id, tag.slug, tag.color]"
-          :to="`/tags/${tag.slug}`"
+          :to="localeHref(`/tags/${tag.slug}`)"
           class="no-underline group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
         >
           <div class="card-surface glow-ring h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
@@ -112,6 +112,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
+const { localeHref } = useLocaleLink()
 
 // ===== SEO：基于 i18n + 站点设置 =====
 useSeo({

@@ -23,7 +23,7 @@
               <BreadcrumbItem>
                 <BreadcrumbLink as-child>
                   <NuxtLink
-                    to="/"
+                    :to="localeHref('/')"
                     class="inline-flex items-center align-middle"
                   >
                     <Globe2 class="size-3.5 mr-1 shrink-0" />
@@ -35,7 +35,7 @@
               <BreadcrumbItem>
                 <BreadcrumbLink as-child>
                   <NuxtLink
-                    to="/posts"
+                    :to="localeHref('/posts')"
                     class="inline-flex items-center align-middle"
                   >
                     {{ t('post.posts') }}
@@ -198,7 +198,7 @@
                 <AlertDescription>
                   {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
                   <NuxtLink
-                    to="/posts"
+                    :to="localeHref('/posts')"
                     class="text-primary underline underline-offset-2 ml-1"
                   >
                     {{ t('post.backToList', '返回文章列表') }}
@@ -217,7 +217,7 @@
               :key="tag.id"
               :color="tag.color"
               :label="tag.name"
-              :to="`/posts?tag=${tag.slug}`"
+              :to="localeHref(`/posts?tag=${tag.slug}`)"
               show-icon
             />
           </div>
@@ -269,7 +269,7 @@
               <div class="min-w-0">
                 <NuxtLink
                   v-if="authorUrl"
-                  :to="authorUrl"
+                  :to="localeHref(authorUrl)"
                   class="font-display text-lg font-semibold tracking-tight transition-colors duration-[var(--motion-duration-base)] hover:text-primary"
                   :aria-label="t('post.viewAuthorProfile', '查看作者主页')"
                 >
@@ -302,7 +302,7 @@
           >
             <NuxtLink
               v-if="adjacent.previous"
-              :to="`/posts/${adjacent.previous.slug}`"
+              :to="localeHref(`/posts/${adjacent.previous.slug}`)"
               class="group flex flex-col rounded-xl border border-border/60 bg-card/60 p-4 transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
             >
               <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -320,7 +320,7 @@
             />
             <NuxtLink
               v-if="adjacent.next"
-              :to="`/posts/${adjacent.next.slug}`"
+              :to="localeHref(`/posts/${adjacent.next.slug}`)"
               class="group flex flex-col items-end rounded-xl border border-border/60 bg-card/60 p-4 text-right transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
             >
               <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -474,7 +474,7 @@
               <NuxtLink
                 v-for="sp in similarPosts"
                 :key="sp.id"
-                :to="`/posts/${sp.slug}`"
+                :to="localeHref(`/posts/${sp.slug}`)"
                 class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
               >
                 <div
@@ -616,6 +616,7 @@ definePageMeta({ layout: 'default' })
 const route = useRoute()
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
+const { localeHref } = useLocaleLink()
 
 // composables 必须在 setup 顶层调用：Transition 依赖单根 + 保持上下文
 const commentsAPI = useComments()

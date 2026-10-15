@@ -1946,6 +1946,8 @@ import {
 import { computed, markRaw, nextTick, onMounted, ref, watch } from 'vue'
 
 definePageMeta({ layout: false })
+// 安装向导对访客永远是 302 到首页，留在索引里只是噪音（见 login.vue 同口径）。
+useNoindexPage()
 
 interface BingWallpaperPayload {
   url: string

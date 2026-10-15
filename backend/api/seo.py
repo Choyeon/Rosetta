@@ -582,15 +582,12 @@ async def get_robots_txt() -> PlainTextResponse:
         # i18n 走 prefix_except_default：中文裸路径，其余三语挂 /en /ja /zh_Hant 前缀。
         # robots 的模式是**前缀**匹配且不带语言概念，少写一条 /en/admin/ 就等于
         # 允许爬虫去抓带前缀的后台页（那些页 ssr:false，抓到的空壳会被当成内容页）。
-        private_paths = [
-            "/admin/",
-            "/login",
-            "/register",
-            "/forgot-password",
-            "/account",
-            "/oobe",
-            "/search",
-        ]
+        #
+        # 名单只留"根本不该被抓"的机器面。/login /register /forgot-password /account
+        # /search /oobe 已移出：Disallow 挡的是抓取，页面抓不到就读不到它自带的
+        # <meta name=robots content="noindex, follow">，Google 反而会按已发现的链接
+        # 生成"无摘要索引条目"。那几页现在由前端自带 noindex，必须允许抓取闸门才生效。
+        private_paths = ["/admin/"]
         locale_prefixes = ["", "/en", "/ja", "/zh_Hant"]
         disallow_lines = "\n".join(
             f"Disallow:{prefix}{path}"

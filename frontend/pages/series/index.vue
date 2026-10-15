@@ -58,7 +58,7 @@
         v-for="s in seriesList"
         :key="s.id"
         v-memo="[s.id, s.slug, s.post_count]"
-        :to="`/series/${s.slug}`"
+        :to="localeHref(`/series/${s.slug}`)"
         class="no-underline group"
       >
         <Card class="h-full overflow-hidden group transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
@@ -119,6 +119,7 @@ import { useI18n } from 'vue-i18n'
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const { localeHref } = useLocaleLink()
 
 interface SeriesRow {
   id: number | string

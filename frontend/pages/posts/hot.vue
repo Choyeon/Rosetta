@@ -80,7 +80,7 @@
           variant="outline"
           class="mt-6"
         >
-          <NuxtLink to="/posts">{{ t('nav.posts') || '全部文章' }}</NuxtLink>
+          <NuxtLink :to="localeHref('/posts')">{{ t('nav.posts') || '全部文章' }}</NuxtLink>
         </Button>
       </div>
     </template>
@@ -101,6 +101,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
+const { localeHref } = useLocaleLink()
 
 // ===== SEO（useSeo composable）=====
 const hotTitle = computed(() => t('posts.hotTitle') || '热门榜单')

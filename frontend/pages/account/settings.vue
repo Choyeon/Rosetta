@@ -613,6 +613,8 @@ async function savePassword() {
 }
 
 useHead(() => ({ title: `${t('account.settingsTitle')} · ${locale.value}` }))
+// 见 account/index.vue 同口径：登录态页面自带 noindex。
+useNoindexPage()
 </script>
 
 <style scoped>

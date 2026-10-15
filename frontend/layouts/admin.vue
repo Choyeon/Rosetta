@@ -14,6 +14,9 @@ import { useAuthStore } from '~~/stores/auth'
 import { useFrontendTheme } from '~~/composables/useFrontendTheme'
 
 useTheme()
+// 纵深防御：robots.txt 的 Disallow: /admin/ 是主闸门，这里再自带一份 noindex，
+// 免得将来有人调整 robots.txt 就把后台整层暴露进索引。
+useNoindexPage()
 const authStore = useAuthStore()
 const ft = useFrontendTheme()
 const route = useRoute()

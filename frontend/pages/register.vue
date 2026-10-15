@@ -599,6 +599,8 @@ import {
 } from '@lucide/vue'
 
 definePageMeta({ layout: false, ssr: false })
+// 见 login.vue 同一口径：登录/注册页自带 noindex。
+useNoindexPage()
 
 const { t } = useI18n()
 const authStore = useAuthStore()

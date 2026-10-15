@@ -1,12 +1,12 @@
 /**
  * 内容不存在时的真实 HTTP 状态码契约（静态源码断言）。
  *
- * 实测（生产构建 + 独立实例）：/posts、/categories、/tags、/page 四类动态详情页对
- * 不存在的 slug 全部返回 HTTP 200 的兜底 UI——后端这些路径明确回 404，前端把状态码
- * 吞掉了。WordPress 口径下"不存在的内容"必须是 404，否则爬虫会把空壳收进索引，
- * 而且这些路由带 swr，200 会被缓存成可复用的"正常页"。
+ * 实测（生产构建 + 独立实例）：/posts、/categories、/tags、独立页（顶级 catchall 与
+ * /page/<slug> 兼容路由）这几类动态详情页对不存在的 slug 全部返回 HTTP 200 的兜底 UI——
+ * 后端这些路径明确回 404，前端把状态码吞掉了。WordPress 口径下"不存在的内容"必须是 404，
+ * 否则爬虫会把空壳收进索引，而且这些路由带 swr，200 会被缓存成可复用的"正常页"。
  *
- * 本测试钉住四页都接了 useContentStatus，且没有改用页面内 throw createError
+ * 本测试钉住这些页都接了 useContentStatus，且没有改用页面内 throw createError
  * （那条路径渲染 error.vue 但响应仍是 200，见 AGENTS §2.3.2）。
  */
 
@@ -23,6 +23,9 @@ const PAGES = [
   'pages/posts/[slug].vue',
   'pages/categories/[slug].vue',
   'pages/tags/[slug].vue',
+  // 顶级 catchall 才是独立页的真实落地路由（/page/<slug> 只做重定向）：它接住每一条
+  // 形如 /任意单段 的 URL，漏了它等于给垃圾 URL 发 200。
+  'pages/[slug].vue',
   'pages/page/[slug].vue'
 ]
 
