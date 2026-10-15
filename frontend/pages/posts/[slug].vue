@@ -135,14 +135,25 @@
             <Card class="max-w-xl mx-auto mt-10">
               <CardContent class="p-6 flex flex-col items-center gap-4 text-center">
                 <Lock class="size-8 text-muted-foreground" />
-                <h3 class="text-lg font-semibold">{{ t('post.requiresPassword', '这篇文章需要访问密码') }}</h3>
-                <p v-if="postEncryptionHint" class="text-sm text-muted-foreground">
+                <h3 class="text-lg font-semibold">
+                  {{ t('post.requiresPassword', '这篇文章需要访问密码') }}
+                </h3>
+                <p
+                  v-if="postEncryptionHint"
+                  class="text-sm text-muted-foreground"
+                >
                   {{ t('post.encryptionHint', '提示：{hint}').replace('{hint}', postEncryptionHint) }}
                 </p>
-                <div v-else class="text-sm text-muted-foreground">
+                <div
+                  v-else
+                  class="text-sm text-muted-foreground"
+                >
                   {{ t('post.enterPassword', '请输入密码以阅读完整内容') }}
                 </div>
-                <form @submit.prevent="submitArticlePassword" class="flex w-full max-w-sm gap-2">
+                <form
+                  class="flex w-full max-w-sm gap-2"
+                  @submit.prevent="submitArticlePassword"
+                >
                   <Input
                     v-model="articlePwdInput"
                     type="password"
@@ -151,12 +162,21 @@
                     autofocus
                     class="flex-1"
                   />
-                  <Button type="submit" :disabled="submittingArticlePassword">
-                    <Check v-if="!submittingArticlePassword" class="size-4 mr-2" />
+                  <Button
+                    type="submit"
+                    :disabled="submittingArticlePassword"
+                  >
+                    <Check
+                      v-if="!submittingArticlePassword"
+                      class="size-4 mr-2"
+                    />
                     {{ submittingArticlePassword ? t('common.submitting', '提交中…') : t('post.unlock', '解锁') }}
                   </Button>
                 </form>
-                <p v-if="articlePwdError" class="text-xs text-destructive">
+                <p
+                  v-if="articlePwdError"
+                  class="text-xs text-destructive"
+                >
                   {{ t('post.wrongPassword', '密码错误，请重试') }}
                 </p>
                 <button
@@ -1002,7 +1022,8 @@ function extractPostField<T = unknown>(post: unknown, field: string): T {
 const publicSiteUrl = usePublicSiteUrl()
 
 const seoExtraMeta = computed(() => {
-  const result: Array<Record<string, string>> = []  // 时间必须过一遍有效性检查：new Date(脏字符串).toISOString() 抛 RangeError，
+  const result: Array<Record<string, string>> = []
+  // 时间必须过一遍有效性检查：new Date(脏字符串).toISOString() 抛 RangeError，
   // 而这段跑在 useHead 的求值路径上——一篇文章的脏时间就能让详情页整页 500。
   const iso = (val: string | undefined) => {
     if (!val) return ''
@@ -1253,23 +1274,40 @@ const formatDate = (date: string) => {
 //      qq / github），CommentItem 期望 camelCase 的 author 对象。此前直接 `as unknown as`
 //      硬断言 → author 恒 undefined → 评论昵称一律 Anonymous、头像一律默认字母色块，
 //      与同一作者在其他位置的头像不一致（2026-10-01 修）。统一走这里做投影。
-const normalizeComment = (raw: Record<string, any>): PostComment => {
-  const name = raw.author_name || raw.authorName || 'Anonymous'
+/**
+ * 评论行的输入形态：`commentsAPI.comments` 的内部类型与后端 snake_case 并不同源，
+ * 字段一律按 unknown 处理、在 normalizeComment 里逐字段收敛（禁止 any 穿透——
+ * 一旦穿透，脏字段会直接落到 CommentItem 的 props 上）。
+ */
+type CommentRaw = Record<string, unknown>
+
+const rawText = (v: unknown, fallback = ''): string =>
+  typeof v === 'string' && v !== '' ? v : fallback
+const rawId = (v: unknown): number | string | undefined =>
+  typeof v === 'number' || typeof v === 'string' ? v : undefined
+const rawCount = (v: unknown): number => {
+  const n = Number(v)
+  return Number.isFinite(n) ? n : 0
+}
+
+const normalizeComment = (raw: CommentRaw): PostComment => {
+  const name = rawText(raw.author_name) || rawText(raw.authorName) || 'Anonymous'
+  const id = rawId(raw.id)
   return {
-    id: raw.id,
+    id: id ?? 0,
     author: {
-      id: raw.user_id ?? raw.userId ?? raw.id,
+      id: rawId(raw.user_id) ?? rawId(raw.userId) ?? id ?? 0,
       name,
       // 头像优先级与 UserAvatar 契约一致：解析后的代理 URL > 原始 avatar 列。
-      resolvedAvatarUrl: raw.resolved_avatar_url ?? raw.resolvedAvatarUrl ?? null,
-      avatar: raw.author_avatar ?? raw.authorAvatar ?? '',
-      email: raw.author_email ?? raw.authorEmail ?? '',
-      username: raw.username ?? raw.github ?? name
+      resolvedAvatarUrl: rawText(raw.resolved_avatar_url) || rawText(raw.resolvedAvatarUrl) || null,
+      avatar: rawText(raw.author_avatar) || rawText(raw.authorAvatar),
+      email: rawText(raw.author_email) || rawText(raw.authorEmail),
+      username: rawText(raw.username) || rawText(raw.github) || name
     },
-    content: raw.content ?? '',
-    createdAt: raw.created_at ?? raw.createdAt ?? '',
-    parentId: raw.parent_id ?? raw.parentId ?? null,
-    likesCount: raw.likes_count ?? raw.likesCount ?? 0
+    content: rawText(raw.content),
+    createdAt: rawText(raw.created_at) || rawText(raw.createdAt),
+    parentId: rawId(raw.parent_id) ?? rawId(raw.parentId) ?? null,
+    likesCount: rawCount(raw.likes_count ?? raw.likesCount)
   }
 }
 
@@ -1283,7 +1321,7 @@ const loadCommentsForCurrentPost = async () => {
   try {
     if (post.value?.id && commentsAPI.fetchComments) {
       await commentsAPI.fetchComments(post.value.id)
-      comments.value = ((commentsAPI.comments?.value || []) as unknown as Record<string, any>[]).map(normalizeComment)
+      comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
     } else {
       comments.value = []
     }
@@ -1408,7 +1446,7 @@ const handleSubmitComment = async () => {
       replyingTo.value = null
       if (commentsAPI.fetchComments) {
         await commentsAPI.fetchComments(post.value.id)
-        comments.value = ((commentsAPI.comments?.value || []) as unknown as Record<string, any>[]).map(normalizeComment)
+        comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
       }
     }
   } catch (e) {
