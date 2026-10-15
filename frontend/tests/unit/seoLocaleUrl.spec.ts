@@ -142,8 +142,10 @@ describe('URL 派生的单源约束（静态）', () => {
     // detectBrowserLanguage(redirectOn: root) 会让 Googlebot（Accept-Language: en）
     // 在 GET / 上跳到 /en，中文首页与它的自指 canonical 就对不上了。
     const config = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
+    // 只断言"配置项不存在"，不断言源码里没这个单词——上面那段口径注释本身就写着
+    // redirectOn，用 toContain 会把解释性的话当成配置。
     expect(config).toContain('detectBrowserLanguage: false')
-    expect(config).not.toContain('redirectOn')
+    expect(config).not.toMatch(/^\s*redirectOn\s*:/m)
 
     // 兜底中间件同口径：裸 `/` 是默认语言首页（也是 x-default），不改写。
     const middleware = readFileSync(
