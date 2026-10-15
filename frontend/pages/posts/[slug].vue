@@ -513,10 +513,10 @@
                     {{ pickLocalized(sp.title) }}
                   </h4>
                   <p
-                    v-if="pickLocalized((sp as any).excerpt)"
+                    v-if="pickLocalized(sp.excerpt)"
                     class="mt-2 text-xs text-muted-foreground line-clamp-2 leading-relaxed"
                   >
-                    {{ pickLocalized((sp as any).excerpt) }}
+                    {{ pickLocalized(sp.excerpt) }}
                   </p>
                 </div>
               </NuxtLink>
@@ -712,7 +712,17 @@ const articleEl = ref<HTMLElement | null>(null)
 const { activeId, scrollTo } = useTOCScrollSpy(() => tocItems.value)
 
 // ========= 相似文章 & 上一篇/下一篇（真实接口，空数据=不渲染，无占位假内容）=========
-interface SimilarPostRow { id: number | string, slug?: string, title?: unknown, cover_image?: string, coverImage?: string, excerpt?: unknown }
+/** 相似文章行：title/excerpt 与后端列表项同形（i18n dict 或纯字符串）。刻意不写成
+ *  unknown——unknown 会让模板里的 pickLocalized 只能靠 `as any` 过编译，
+ *  既过不了 lint，也丢掉了"字段只可能是这两种形态"这一条真实约束。 */
+interface SimilarPostRow {
+  id: number | string
+  slug?: string
+  title?: string | Record<string, string>
+  cover_image?: string
+  coverImage?: string
+  excerpt?: string | Record<string, string>
+}
 interface AdjacentRef { slug: string, title: string }
 const similarPosts = ref<SimilarPostRow[]>([])
 const adjacent = ref<{ previous: AdjacentRef | null, next: AdjacentRef | null }>({ previous: null, next: null })

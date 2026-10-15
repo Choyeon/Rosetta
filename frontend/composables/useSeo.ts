@@ -105,7 +105,7 @@ export function applyLocalePrefix(neutralPath: string, code: string): string {
   if (!input.startsWith('/') || /^\/\//.test(input)) return input
   const p = stripLocalePrefix(input)
   if (!p) return p
-  if (code === DEFAULT_LOCALE_CODE || !NON_DEFAULT_LOCALE_CODES.includes(code as any)) {
+  if (code === DEFAULT_LOCALE_CODE || !(NON_DEFAULT_LOCALE_CODES as readonly string[]).includes(code)) {
     return p
   }
   // 查询串/锚点必须留在末尾：/en/posts/x?page=2，不能拼成 /en?page=2/posts/x
