@@ -161,7 +161,7 @@
             <div class="flex gap-4">
               <UserAvatar
                 :avatar="item.avatar"
-                :seed="item.nickname"
+                :seed="item.user_id != null ? String(item.user_id) : item.nickname"
                 :name="item.nickname || 'Guest'"
                 :title="item.title || null"
                 :size="40"
@@ -311,6 +311,8 @@ useBreadcrumbJsonLd([
 
 interface GuestbookItem {
   id: number
+  /** 登录留言者的用户 id；用作默认头像的**稳定**配色种子（昵称可改，改了会换色） */
+  user_id?: number | null
   nickname: string
   author_email?: string
   website?: string
@@ -431,6 +433,7 @@ const mapGuestbookRow = (raw: unknown): GuestbookItem => {
     : null
   return {
     id: pickNum('id', 0),
+    user_id: typeof r.user_id === 'number' ? r.user_id : null,
     nickname: pickStr('author_name') || pickStr('nickname'),
     author_email: pickStr('author_email') || undefined,
     website: pickStr('author_website') || pickStr('website') || undefined,

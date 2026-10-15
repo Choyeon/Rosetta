@@ -38,8 +38,9 @@
       <div class="flex flex-wrap items-start justify-between gap-4">
         <div class="flex min-w-0 items-center gap-4">
           <UserAvatar
-            :avatar="profile?.resolved_avatar_url || profile?.avatar || null"
-            :seed="displayName"
+            :resolved-avatar-url="profile?.resolved_avatar_url"
+            :avatar="profile?.avatar || null"
+            :seed="profile?.username || displayName"
             :name="displayName"
             :title="profile?.title ?? null"
             :size="72"

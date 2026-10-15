@@ -1039,6 +1039,7 @@ class PostLocalizedResponse(BaseModel):
             category = CategoryLocalizedResponse.from_category(post.category, lang)
 
         tags = [TagLocalizedResponse.from_tag(tag, lang) for tag in post.tags]
+        from backend.api._user_response_helper import build_public_user_response
 
         return cls(
             id=post.id,
@@ -1053,7 +1054,7 @@ class PostLocalizedResponse(BaseModel):
             content=get_i18n_value(post.content, lang),
             excerpt=get_i18n_value(post.excerpt, lang) if post.excerpt else None,
             cover_image=post.cover_image,
-            author=PublicUserResponse.model_validate(post.author),
+            author=build_public_user_response(post.author),
             category=category,
             tags=tags,
             status=post.status,
@@ -1139,6 +1140,7 @@ class PostListItemLocalized(BaseModel):
         tags = [TagLocalizedResponse.from_tag(tag, lang) for tag in post.tags]
 
         excerpt = get_i18n_value(post.excerpt, lang) if post.excerpt else None
+        from backend.api._user_response_helper import build_public_user_response
 
         return cls(
             id=post.id,
@@ -1147,7 +1149,7 @@ class PostListItemLocalized(BaseModel):
             slug=post.slug,
             excerpt=excerpt,
             cover_image=post.cover_image,
-            author=PublicUserResponse.model_validate(post.author),
+            author=build_public_user_response(post.author),
             category=category,
             tags=tags,
             status=post.status,

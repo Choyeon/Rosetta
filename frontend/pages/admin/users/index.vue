@@ -225,6 +225,7 @@
                   <div class="flex items-center gap-3">
                     <UserAvatar
                       :avatar="u.avatar"
+                      :resolved-avatar-url="u.resolved_avatar_url"
                       :seed="u.username"
                       :name="u.nickname || u.username"
                       :size="36"
@@ -272,6 +273,7 @@
                   <div class="inline-flex items-center gap-2">
                     <UserAvatar
                       :avatar="u.avatar"
+                      :resolved-avatar-url="u.resolved_avatar_url"
                       :seed="u.username"
                       :name="u.nickname || u.username"
                       :size="32"
@@ -617,7 +619,7 @@ function statusQuery(): Pick<AdminUserQuery, 'is_active' | 'is_banned'> {
 }
 
 function roleBadgeClass(u: AdminUserRow): string {
-  if (u.is_superuser) return 'bg-indigo-100 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-300'
+  if (u.is_superuser) return 'bg-primary-muted text-primary-muted-foreground hover:bg-primary-muted'
   if (u.is_staff) return 'bg-warning-muted text-warning-muted-foreground hover:bg-warning-muted'
   return 'bg-muted text-muted-foreground'
 }

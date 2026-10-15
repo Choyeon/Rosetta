@@ -71,14 +71,14 @@ class ActivityLocalizedResponse(BaseModel):
     @classmethod
     def from_activity(cls, activity, lang: str = "zh") -> "ActivityLocalizedResponse":
         """从活动模型创建本地化响应"""
+        from backend.api._user_response_helper import build_public_user_response
         from backend.core.i18n import get_i18n_value
-        from backend.schemas import PublicUserResponse
 
         return cls(
             id=activity.id,
             content=get_i18n_value(activity.content, lang),
             type=activity.type,
-            author=PublicUserResponse.model_validate(activity.author),
+            author=build_public_user_response(activity.author),
             is_published=activity.is_published,
             created_at=activity.created_at,
             updated_at=activity.updated_at,

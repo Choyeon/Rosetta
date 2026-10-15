@@ -291,6 +291,11 @@
         >
           {{ t('admin.posts.empty') }}
         </div>
+        <PostCard
+          v-else-if="singlePinnedPost"
+          :post="singlePinnedPost"
+          variant="feature"
+        />
         <div
           v-else
           :class="['grid', pinnedGridClass, 'items-start']"
@@ -321,6 +326,9 @@
             v-if="showSidebar && sidebarPosition === 'left'"
             class="flex flex-col gap-6 order-2 lg:order-1"
           >
+            <!-- 最新动态（最近 3 条）+ 全部动态入口 -->
+            <ActivitySidebarCard />
+
             <!-- Site stats -->
             <Card>
               <CardHeader>
@@ -621,6 +629,9 @@
             v-if="showSidebar && sidebarPosition === 'right'"
             class="flex flex-col gap-6 order-3"
           >
+            <!-- 最新动态（最近 3 条）+ 全部动态入口 -->
+            <ActivitySidebarCard />
+
             <!-- Site stats -->
             <Card>
               <CardHeader>
@@ -1025,7 +1036,8 @@ const allDisplayPosts = computed<Post[]>(() => {
 })
 const showSidebar = computed(() => ft.showSidebar.value)
 const sidebarPosition = computed(() => ft.sidebarPosition.value)
-// pinnedPosts 固定 3 列（feature block 展示）；latest 列表 + 侧栏区块按 theme.postsPerRow 决定"无侧栏时首页主区的文章每行多少列"。
+// 置顶区块：单篇走 feature 通栏特写，≥2 篇走网格（列数由实际条数封顶，见 pinnedGridClass）；
+// latest 列表 + 侧栏区块按 theme.postsPerRow 决定"无侧栏时首页主区的文章每行多少列"。
 const mainGridColsClass = computed(() => {
   if (!showSidebar.value) {
     // 无侧栏 → 主区独占整行，直接按 posts_per_row 做网格
@@ -1048,15 +1060,23 @@ const latestGridClass = computed(() => {
   return map[n] ?? map[3]
 })
 const pinnedGridClass = computed(() => {
-  const n = ft.postsPerRow.value
+  // posts_per_row 是列数上限，不是固定列数：2 篇置顶时摊满 3 列会留下一格空槽，
+  // 表现为一块"缺角"横幅。条数为 0（加载骨架/空态）时仍按设置出列，占位才不跳列。
+  const n = pinnedPosts.value.length
+  const cap = n === 0 ? ft.postsPerRow.value : Math.min(ft.postsPerRow.value, n)
   const map: Record<number, string> = {
     1: 'grid-cols-1 gap-6',
     2: 'grid-cols-1 md:grid-cols-2 gap-6',
     3: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6',
     4: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6'
   }
-  return map[n] ?? map[3]
+  return map[cap] ?? map[3]
 })
+// 单篇置顶走 feature 通栏特写（左大图 + 右标题摘要）：竖版卡片摊满整行会把 16:9 封面拉成巨幅，
+// 而两列结构本就是为整行宽度设计的。篇数 ≥2 才回到网格。
+const singlePinnedPost = computed(() => (
+  pinnedPosts.value.length === 1 ? pinnedPosts.value[0] : null
+))
 
 const _heroTitle = computed(() => site.pickI18n(site.hero.value.title))
 const _heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))

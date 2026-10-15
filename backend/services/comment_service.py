@@ -142,7 +142,11 @@ def _comment_to_response(
         )
         author_email = c.author_email or (getattr(user, "email", None) if user else None) or ""
         author_website = c.author_website
-    avatar = gravatar_avatar(author_email, author_name)
+    # 2026-10-01：作者对登录评论者曾用 gravatar 硬算（忽略其自定义 / GitHub / QQ 头像），
+    # 于是"同一个人在导航栏是真头像、在评论区是灰头像"。改为优先用统一解析链，
+    # 只有解析不出（游客 / 无头像来源）时才回落到 gravatar。
+    resolved = resolved_for_comment(c)
+    avatar = resolved or gravatar_avatar(author_email, author_name)
     return CommentResponse(
         id=c.id,
         post_id=c.post_id,
@@ -161,7 +165,7 @@ def _comment_to_response(
         qq=getattr(c, "qq", None),
         github=getattr(c, "github", None),
         avatar_source=getattr(c, "avatar_source", None),
-        resolved_avatar_url=resolved_for_comment(c),
+        resolved_avatar_url=resolved,
     )
 
 

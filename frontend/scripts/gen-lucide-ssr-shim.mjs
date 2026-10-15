@@ -127,7 +127,7 @@ const defaultAttrs: Record<string, string | number> = {
 }
 
 const toPascal = (s: string): string =>
-  s.split('-').map((p) => (p ? p[0].toUpperCase() + p.slice(1) : '')).join('')
+  s.split('-').map((p) => (p ? p.charAt(0).toUpperCase() + p.slice(1) : '')).join('')
 const toKebab = (s: string): string => s.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()
 // ⚠️ 与 npm Icon.mjs 逐字节对齐：第一段 class 走 kebab(pascal(name)) 往返，
 // 名字含数字时连字符会在 Pascal 化时被合并（link-2 -> Link2 -> link2），
