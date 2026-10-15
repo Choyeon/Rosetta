@@ -11,6 +11,7 @@ import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { applyLocalePrefix } from '~~/composables/useSeo'
 import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
 
 const { t, locale, setLocale } = useI18n()
@@ -254,14 +255,20 @@ const quickLocales = [
 ]
 
 const handleSetLocale = async (code: string) => {
+  if (code === locale.value) return
   await setLocale(code as 'zh' | 'en' | 'ja' | 'zh_Hant')
+  if (!import.meta.client) return
   try {
-    if (import.meta.client) {
-      document.cookie = `i18n_redirected=${code}; path=/; max-age=31536000; SameSite=Lax`
-    }
+    // 单一持久位：rosetta_lang 既给后端 i18n 中间件读，也给
+    // locale-prefix.global.client.ts 做跨页保序（@nuxtjs/i18n 的语言检测已整个关掉）。
+    document.cookie = `rosetta_lang=${code}; path=/; max-age=31536000; SameSite=Lax`
   } catch {
     /* ignore */
   }
+  // 只 setLocale 不改 URL 的话，页面内容换了语言、地址栏却还是默认语言的路径，
+  // 与 canonical/hreflang 判成的"这一页是中文版"直接冲突（顶部切换器同口径）。
+  const next = applyLocalePrefix(route.fullPath, code)
+  if (next && next !== route.fullPath) await navigateTo(next, { redirectCode: 302, replace: true })
 }
 </script>
 

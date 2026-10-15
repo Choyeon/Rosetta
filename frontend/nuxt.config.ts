@@ -831,10 +831,13 @@ export default defineNuxtConfig({
     // 注意：切策略后 routeRules 必须为每个非默认前缀镜像一份（见下方 /en/** 等段），
     // 且 SSR 反选页在带前缀形态下同样是 ssr:false。
     strategy: 'prefix_except_default',
-    detectBrowserLanguage: {
-      useCookie: true,
-      cookieKey: 'rosetta_lang',
-      redirectOn: 'root'
-    }
+    // 语言真相只有一个：URL 前缀。这里刻意关掉浏览器语言检测。
+    // 开着它（redirectOn: 'root'）时，Googlebot 带的 Accept-Language: en 会让
+    // `GET /` 客户端跳到 /en —— 中文首页在搜索引擎眼里就变成了英文页，
+    // hreflang 里 zh 那条自指地址与实拿内容相反。Google 官方口径也是
+    // "按语言给候选、由用户点选，不要因为 Accept-Language 重定向"。
+    // 回访用户的语言连续性由 locale-prefix.global.client.ts 读 rosetta_lang cookie 保证
+    // （该中间件不改写裸 `/`），语言切换入口是 LocaleSwitcher / 页脚。
+    detectBrowserLanguage: false
   }
 })

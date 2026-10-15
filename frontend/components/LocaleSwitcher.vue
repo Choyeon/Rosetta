@@ -1,11 +1,11 @@
 <!--
   顶栏语言下拉（DropdownMenuRadioGroup 受控于当前 locale）。
-  setLocale 之后必须手写两枚 cookie：rosetta_lang 供后端 i18n 中间件识别语言（管理端
-  name/title 等 i18n dict 的返回跟随它），i18n_redirected 是 @nuxtjs/i18n 检测语言的约定名，
-  少写前者会出现"界面换语、接口仍回旧语言"。语言集合硬编码四语。
+  语言持久位只有一枚：rosetta_lang —— 后端 i18n 中间件按它决定接口返回的语言，
+  前端 locale-prefix.global.client.ts 按它给裸路径补语言前缀。（@nuxtjs/i18n 自带的
+  浏览器语言检测已在 nuxt.config 关闭，所以不再写它约定的 i18n_redirected。）
   策略：prefix_except_default —— 中文裸路径 /，其它三语 /en /ja /zh_Hant 前缀。
-  切换必须走 switchLocalePath(当前 route.fullPath) 生成带前缀的同页 URL，
-  再 navigateTo，不能只 setLocale（那只换 i18n 内部状态、URL 留在旧语言前缀）。
+  切换必须"setLocale + 跳到同页的目标语言 URL"两步都做，只 setLocale 会让内容换了
+  语言、地址栏仍是默认语言路径，与 canonical/hreflang 的判定互相矛盾。
 -->
 <script setup lang="ts">
 import { Globe, Check, ChevronDown } from '~~/lib/lucide-svg-icons'
@@ -52,7 +52,6 @@ const handleSetLocale = async (code: string) => {
   if (!import.meta.client) return
   try {
     document.cookie = 'rosetta_lang=' + code + '; path=/; max-age=31536000; SameSite=Lax'
-    document.cookie = 'i18n_redirected=' + code + '; path=/; max-age=31536000; SameSite=Lax'
   } catch { /* ignore */ }
   // 用当前 fullPath（保留 path/query/hash）换目标语言路径。不走 @nuxtjs/i18n 的
   // switchLocalePath()：它按路由名解析，而本仓 i18n 没有 per-locale 自定义路径，

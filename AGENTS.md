@@ -146,6 +146,50 @@
 3. 只有后端明确 404、或请求成功但对象为空才改状态码；网络故障 / 5xx 一律不动——
    把一次临时故障写成 404，搜索引擎会当成永久删除而掉索引，比 200 更难恢复。
 
+独立页有两个入口：`pages/page/[slug].vue` 只做兼容重定向，**顶级 catchall `pages/[slug].vue`
+才是真实落地路由**——它接住每一条形如 `/任意单段` 的 URL，所以 404 闸门与
+`useContentStatus` 必须接在它上面（自愈 301 跳走的那条要排除在外，否则 301 会被改成 404）。
+
+### 2.3.3 语言前缀下的 URL 单源（SEO 与链接图）
+
+i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且**没有** per-locale 自定义
+路由路径，所以"某页在某语言下的 URL"就是一道纯字符串算术。五条口径：
+
+1. canonical / hreflang / og:url / JSON-LD 的 URL 一律走 `applyLocalePrefix(中性路径, locale)`
+   （`frontend/composables/useSeo.ts`）。**禁止** `localePath()` / `switchLocalePath()`：它们按
+   **路由名**解析传入字符串，`/posts/{中文 slug}` 在 SSR 期产出过非字符串，`asAbsolute` 于是在
+   `path.startsWith` 上抛 TypeError，而这段跑在 `useHead` 求值路径上 → **每一篇文章详情页整页 500**。
+   旧构建因 `siteUrl` 为空串提前 return，把这个坑藏了整整一轮。
+2. 模板里爬虫能读到的站内链接一律 `:to="localeHref(path)"`（`frontend/composables/useLocaleLink.ts`，
+   与 SEO 侧同一个 helper）。SSR 里的 href 是爬虫看到的**唯一**链接图，不挂前缀等于把站内权重
+   全推给默认语言版本。`localeHref` 对外链 / 锚点 / `//host` 原样透传（后台配置的导航与 CTA 可能是
+   外链，硬挂前缀会产出 `/enhttps://…` 死链）。`middleware/locale-prefix.global.client.ts` 只是
+   客户端兜底重写，**不能**当作爬虫面。
+3. 全站每个页面只有一条 canonical，由 `useSeo` 产出：缺省 `url` 时按当前路由派生，查询串白名单
+   只有 `page`（`CANONICAL_QUERY_KEYS`）——`search` / `category` / `sort` 是同一份列表的视图变体，
+   写进规范地址等于向搜索引擎声明每个筛选组合都是独立页面。**不得**在页面里再拼一份
+   `rel: 'canonical'`，尤其不能用 `useRequestURL()` / 请求 Host 拼地址：Nitro 的 swr 缓存按路径分键、
+   不含 Host，一次请求的 Host 会被固化成 TTL 内所有访客看到的规范地址（缓存投毒面）。站点根单源是
+   `usePublicSiteUrl()`，生产只接受 `NUXT_PUBLIC_SITE_URL`，仅回环 Host 允许推导（`LOOPBACK_HOST_RE`）。
+4. robots.txt 只挡"根本不该被抓"的机器面（`/api/`、`/admin/`）。`/login` · `/register` ·
+   `/forgot-password` · `/account` · `/search` · `/oobe` 改为页面自带
+   `<meta name="robots" content="noindex, follow">`（`useNoindexPage()`）并**从 Disallow 移出**——
+   Disallow 挡的是抓取，抓不到就读不到 noindex，Google 反而会按已发现的链接生成"无摘要索引条目"。
+   robots 的模式是纯前缀匹配、没有语言概念，剩下每条 Disallow 必须 ×4 语言前缀，且
+   `frontend/server/routes/robots.txt.get.ts`（回退）与 `backend/api/seo.py`（真源）两段同口径。
+5. 任何用 `startsWith` / 前缀判定路径归属的地方必须先过 `stripLocalePathPrefix()`
+   （`frontend/lib/rosetta-themes.ts`）。漏一处的表现：`/en/admin` 被当成前台页、英文页导航整条不亮、
+   `/en/posts` 落回无缓存 SSR（`nuxt.config.ts::expandLocaleRouteRules` 负责 routeRules 那一侧的镜像）。
+6. **语言真相只有 URL 前缀**：`i18n.detectBrowserLanguage` 必须是 `false`。开着它（`redirectOn: 'root'`）
+   时 Googlebot 带的 `Accept-Language: en` 会让 `GET /` 跳到 `/en`，中文首页与它自指的 canonical
+   就对不上（Google 官方口径也是"给候选、由用户点选，不要按 Accept-Language 重定向"）。
+   回访保序靠 `rosetta_lang` cookie + `middleware/locale-prefix.global.client.ts`，且该中间件
+   **不改写裸 `/`**（它是默认语言首页、也是 `x-default` 指的位置）；语言入口是顶栏与页脚切换器，
+   两者都必须 `setLocale` 后跳到前缀化的同页 URL，只 `setLocale` 等于内容与地址栏的语言互相判逆。
+
+契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
+`contentNotFoundStatus.spec.ts`。
+
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
 
 1. 组件 `setup()` 顶层禁止直接读 `window / document / localStorage / navigator / matchMedia`；必须包 `if (import.meta.client) { … }` 或 `onMounted`
@@ -242,10 +286,10 @@ Rosetta/
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
 │  ├─ pages/                          66 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 37 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
-│  ├─ composables/                   27 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
+│  ├─ composables/                   30 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
 │  ├─ stores/                        Pinia：auth.ts（skipHydrate）
-│  ├─ middleware/                    admin.global · layout-scope.global · oobe.global（全局）+ archive-year · auth-required（命名，仅挂在与文件名）
+│  ├─ middleware/                    admin.global · layout-scope.global · oobe.global · locale-prefix.global.client（全局）+ archive-year · auth-required（命名，仅挂在与文件名）
 │  ├─ plugins/                       01-site-bootstrap.global / 02-hydration-safety.global.client /
 │  │                                 06-font-stylesheet.client / debug.client / echarts.client /
 │  │                                 error-handler.client / site-title.global / theme.client

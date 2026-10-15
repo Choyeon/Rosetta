@@ -52,6 +52,15 @@ describe('applyLocalePrefix / stripLocalePrefix', () => {
     expect(applyLocalePrefix('/posts/hello#comments', 'ja')).toBe('/ja/posts/hello#comments')
   })
 
+  it('外链、协议相对 URL 与页面内锚点不参与语言前缀', () => {
+    // 导航项 / 页脚链接 / 首页 CTA 的 to 都可能来自后台配置，
+    // 给外链挂前缀会产出 /enhttps://example.com 这种死链。
+    expect(applyLocalePrefix('https://example.com/friend', 'en')).toBe('https://example.com/friend')
+    expect(applyLocalePrefix('//example.com/friend', 'en')).toBe('//example.com/friend')
+    expect(applyLocalePrefix('#toc', 'ja')).toBe('#toc')
+    expect(applyLocalePrefix('', 'en')).toBe('')
+  })
+
   it('hreflang / og:locale 两张表覆盖全部四语（新增语言必须同步）', () => {
     const codes = Object.keys(HREFLANG_MAP)
     expect(codes).toEqual(Object.keys(OG_LOCALE_MAP))
@@ -127,5 +136,23 @@ describe('URL 派生的单源约束（静态）', () => {
       expect(src, `${page} 仍在用 useRequestURL 拼 SEO 地址`).not.toContain('useRequestURL')
       expect(src, `${page} 自己发了一条 canonical`).not.toContain(`rel: 'canonical'`)
     }
+  })
+
+  it('语言真相只有 URL 前缀：不接受 Accept-Language 重定向', () => {
+    // detectBrowserLanguage(redirectOn: root) 会让 Googlebot（Accept-Language: en）
+    // 在 GET / 上跳到 /en，中文首页与它的自指 canonical 就对不上了。
+    const config = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
+    expect(config).toContain('detectBrowserLanguage: false')
+    expect(config).not.toContain('redirectOn')
+
+    // 兜底中间件同口径：裸 `/` 是默认语言首页（也是 x-default），不改写。
+    const middleware = readFileSync(
+      resolve(ROOT, 'middleware/locale-prefix.global.client.ts'), 'utf-8'
+    )
+    expect(middleware).toContain(`to.path === '/'`)
+
+    // 页脚切换器必须和顶栏一样换 URL，只 setLocale 会让内容与地址栏的语言互相判逆。
+    const footer = readFileSync(resolve(ROOT, 'components/AppFooter.vue'), 'utf-8')
+    expect(footer).toContain('applyLocalePrefix(route.fullPath')
   })
 })

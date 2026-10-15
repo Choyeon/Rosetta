@@ -18,18 +18,8 @@ import { applyLocalePrefix } from './useSeo'
 export function useLocaleLink() {
   const { locale } = useI18n()
 
-  /**
-   * 中性路径（或已带前缀的路径）→ 当前语言的真实 href。
-   *
-   * 外链与锚点原样透传：导航项、友情链接、首页 CTA 的 to 都可能来自后台配置
-   * （https://example.com 或 #section），给它们挂语言前缀会产出
-   * `/enhttps://example.com` 这种死链。语言前缀只属于站内绝对路径。
-   */
-  const localeHref = (path: string) => {
-    const raw = path || ''
-    if (!raw.startsWith('/') || /^\/\//.test(raw)) return raw
-    return applyLocalePrefix(raw, locale.value)
-  }
+  /** 中性路径（或已带前缀的路径）→ 当前语言的真实 href；外链/锚点原样透传 */
+  const localeHref = (path: string) => applyLocalePrefix(path || '', locale.value)
 
   return { localeHref }
 }

@@ -94,9 +94,16 @@ export function stripLocalePrefix(path: string): string {
  * ——表现是文章详情页整页 500。本仓 i18n 没有配置 per-locale 自定义路径
  * （nuxt.config 的 i18n 块无 `routes`），"默认语言裸路径 + 其余挂 /code 前缀"
  * 就是策略的完整定义，纯字符串拼接既没有解析失败面，也省掉一次 router.resolve。
+ *
+ * 语言前缀只属于站内绝对路径：绝对 URL、协议相对 URL（//host）、页面内锚点一律
+ * 原样透传。导航项 / 页脚链接 / 首页 CTA 的 to 都可能来自后台配置，给外链挂前缀
+ * 会产出 `/enhttps://example.com` 这种死链。
  */
 export function applyLocalePrefix(neutralPath: string, code: string): string {
-  const p = stripLocalePrefix(neutralPath || '')
+  const input = neutralPath || ''
+  // 站内绝对路径才挂语言前缀；`#top` 这类页面内锚点也走透传分支。
+  if (!input.startsWith('/') || /^\/\//.test(input)) return input
+  const p = stripLocalePrefix(input)
   if (!p) return p
   if (code === DEFAULT_LOCALE_CODE || !NON_DEFAULT_LOCALE_CODES.includes(code as any)) {
     return p
