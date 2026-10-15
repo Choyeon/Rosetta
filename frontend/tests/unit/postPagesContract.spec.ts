@@ -12,6 +12,7 @@ import { describe, expect, it } from 'vitest'
 const read = (rel: string) => readFileSync(resolve(process.cwd(), rel), 'utf8')
 
 const publicList = read('pages/posts/index.vue')
+const postDetail = read('pages/posts/[slug].vue')
 const adminList = read('pages/admin/content/posts/index.vue')
 const postForm = read('components/admin/PostForm.vue')
 // vitest 的 cwd 是仓库根（不是 frontend/），后端源码要往回一层
@@ -142,5 +143,50 @@ describe('后端文章列表接口', () => {
   it('未知 sort 回退 latest 而不是 422', () => {
     expect(blogApi).toMatch(/def _normalize_list_sort/)
     expect(blogApi).toMatch(/return LIST_SORT_LATEST/)
+  })
+})
+
+/**
+ * 密码保护文章的详情页闸门。
+ *
+ * 这条链路曾有三个各自独立、且都只在运行时才暴露的缺陷（生产表现：点进加密文章
+ * 整页空白）：闸门状态用 watch+ref 维护（SSR 期 watch 的 immediate 回调拿到的是
+ * null，正文与闸门判定分家）、正文容器用 v-if 隐藏（SSR 与 hydration 的节点树
+ * 不一致）、解锁走会吞掉 401 的口子（用户被判成"登录过期"）。模板与状态机
+ * 拼错都不报错，只有真实浏览器里才看得见，所以钉成静态契约。
+ */
+describe('密码保护文章详情页闸门', () => {
+  it('闸门与提示走 computed，且与正文同源', () => {
+    expect(postDetail).toMatch(/const needPassword = computed\(/)
+    expect(postDetail).toMatch(/const postEncryptionHint = computed\(/)
+    // 判据必须同时看后端的 is_password_protected 与"正文是否为空"：
+    // 只看前者会在已解锁的会话里再次锁上，只看后者会把普通空正文判成加密。
+    expect(postDetail).toMatch(/is_password_protected[\s\S]{0,120}!\s*content/)
+  })
+
+  it('闸门未打开时不渲染正文，也不去拉投票（投票卡会出现在密码框上方）', () => {
+    // 闸门与正文在模板里必须是同一个 needPassword：两个分支若各自判一次，
+    // "闸门说锁着、正文说开着"就会渲染出一片空白。
+    const gateAt = postDetail.indexOf('<div v-if="needPassword">')
+    const bodyAt = postDetail.indexOf('<div v-show="!needPassword">')
+    expect(gateAt, '闸门分支没走 needPassword').toBeGreaterThan(-1)
+    // 正文容器必须是 v-show：v-if 让 SSR 与 hydration 的节点数不同，
+    // 表现为整页 hydration 警告 + 空白。
+    expect(bodyAt, '正文容器没用 v-show 隐藏').toBeGreaterThan(gateAt)
+    expect(postDetail).not.toMatch(/<div v-if="!needPassword">/)
+    const pollsAt = postDetail.indexOf('if (!needPassword.value) {\n    activePolls.value')
+    expect(pollsAt, '拉投票前没有闸门判定').toBeGreaterThan(bodyAt)
+  })
+
+  it('密码经 X-Post-Password 头随 GET 发送，不进查询串', () => {
+    // 查询串会被 nginx access log 明文落盘，长正文/长密码还会撞 414。
+    expect(postDetail).toMatch(/'X-Post-Password': articleStoredPwd\.value/)
+    expect(postDetail).toMatch(/headers\['X-Post-Password'\] = articleStoredPwd\.value/)
+    expect(postDetail).not.toMatch(/query:\s*\{[^}]*password/i)
+  })
+
+  it('解锁失败只回到错误态，不清登录态也不跳登录页', () => {
+    expect(postDetail).toMatch(/articlePwdError\.value = true/)
+    expect(postDetail).not.toMatch(/authStore\.logout|navigateTo\('\/login/)
   })
 })
