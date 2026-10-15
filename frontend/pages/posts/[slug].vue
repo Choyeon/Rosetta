@@ -128,7 +128,7 @@
           </div>
 
           <!-- ========= 密码保护闸门：后端返回 is_password_protected=true + 空正文 → 要求输入密码 ========= -->
-          <div v-if="needPassword && !postHasPassword">
+          <div v-if="needPassword">
             <Card class="max-w-xl mx-auto mt-10">
               <CardContent class="p-6 flex flex-col items-center gap-4 text-center">
                 <Lock class="size-8 text-muted-foreground" />
@@ -156,11 +156,19 @@
                 <p v-if="articlePwdError" class="text-xs text-destructive">
                   {{ t('post.wrongPassword', '密码错误，请重试') }}
                 </p>
+                <button
+                  v-if="articleStoredPwd"
+                  type="button"
+                  class="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                  @click="clearSavedPassword"
+                >
+                  {{ t('post.clearSavedPassword', '清除本地已保存的密码') }}
+                </button>
               </CardContent>
             </Card>
           </div>
 
-          <div v-show="!(needPassword && !postHasPassword)">
+          <div v-show="!needPassword">
             <article
               v-show="!!post"
               ref="articleEl"
@@ -725,10 +733,10 @@ const requestURL = useRequestURL()
 
 // ========= 文章密码保护（sessionStorage 持久，刷新页面不用重输）=========
 const ARTICLE_PASSWORD_KEY = 'rosetta:post-password'
-const articleStoredPwd = import.meta.client && typeof sessionStorage !== 'undefined'
-  ? sessionStorage.getItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value) || ''
-  : ''
-const articlePwdInput = ref(articleStoredPwd)
+// SSR / Hydrate 一致性：两端 setup 都初始化为空，避免 <div v-if="articleStoredPwd">
+// 的 SSR 分支与客户端首次渲染的分支不一致。onMounted 再从 sessionStorage 回填。
+const articleStoredPwd = ref('')
+const articlePwdInput = ref('')
 const articlePwdError = ref(false)
 const submittingArticlePassword = ref(false)
 const postEncryptionHint = ref<string | null>(null)
@@ -739,12 +747,12 @@ const postHasPassword = ref(false)
 
 /** 用存储的密码重新拉取文章 */
 async function refreshPostWithStoredPassword() {
-  if (!articleStoredPwd) return
+  if (!articleStoredPwd.value) return
   try {
     const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
     const headers: Record<string, string> = {
       'Accept-Language': postFetchLocaleStr,
-      'X-Post-Password': articleStoredPwd
+      'X-Post-Password': articleStoredPwd.value
     }
     if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
     const raw = await $fetch<{ success: boolean, data: PostDetail, message?: string }>(
@@ -775,6 +783,7 @@ async function submitArticlePassword() {
     if (import.meta.client && typeof sessionStorage !== 'undefined') {
       sessionStorage.setItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value, pwd)
     }
+    articleStoredPwd.value = pwd
     await new Promise(r => setTimeout(r, 50))
     await refreshPost()
     articlePwdInput.value = ''
@@ -790,6 +799,7 @@ function clearSavedPassword() {
   if (import.meta.client && typeof sessionStorage !== 'undefined') {
     sessionStorage.removeItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value)
   }
+  articleStoredPwd.value = ''
   articlePwdInput.value = ''
   articlePwdError.value = false
   refreshPost()
@@ -820,8 +830,8 @@ const { data: postData, pending: loadingPost, error: fetchError, refresh: refres
       }
       if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
       // 携带存储的密码（sessionStorage），避免每次首屏都触发密码闸门
-      if (articleStoredPwd && !import.meta.server) {
-        headers['X-Post-Password'] = articleStoredPwd
+      if (articleStoredPwd.value && !import.meta.server) {
+        headers['X-Post-Password'] = articleStoredPwd.value
       }
       // 解包 useAPI 返回的 { success, data, message } 统一结构
       return $fetch<{ success: boolean, data: PostDetail, message?: string }>(
@@ -1235,6 +1245,19 @@ const loadCommentsForCurrentPost = async () => {
   }
 }
 onMounted(async () => {
+  // Hydrate 之后：从 sessionStorage 回填密码（SSR 拿不到，setup 只能初始化为空）。
+  if (typeof sessionStorage !== 'undefined') {
+    const saved = sessionStorage.getItem(ARTICLE_PASSWORD_KEY + ':' + postSlug.value) || ''
+    if (saved) {
+      articleStoredPwd.value = saved
+      articlePwdInput.value = saved
+    }
+  }
+  // 若 SSR 期没有 sessionStorage（服务端拿不到密码）而客户端本地存有旧密码，
+  // 则用带 X-Post-Password 的一次独立请求把解锁正文换回页面，避免重输。
+  if (articleStoredPwd.value && needPassword.value) {
+    void refreshPostWithStoredPassword()
+  }
   // 三个独立任务并行执行：评论、相似文章、TOC 重建互不依赖
   await Promise.all([
     loadCommentsForCurrentPost(),

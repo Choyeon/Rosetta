@@ -112,6 +112,8 @@
     "unlock": "Unlock",
     "wrongPassword": "Wrong password, please try again",
     "encryptionHint": "Hint: {hint}",
+    "requiresPassword": "This post requires a password",
+    "clearSavedPassword": "Clear the locally saved password",
     "home": "Home",
     "posts": "Posts",
     "loading": "Loading…",

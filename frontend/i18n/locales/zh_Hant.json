@@ -104,6 +104,8 @@
     "unlock": "解鎖",
     "wrongPassword": "密碼錯誤，請重試",
     "encryptionHint": "提示：{hint}",
+    "requiresPassword": "這篇文章需要存取密碼",
+    "clearSavedPassword": "清除本地已儲存的密碼",
     "minRead": " 分鐘阅读",
     "commentPlaceholder": "撰寫評論…",
     "submitting": "提交中…",

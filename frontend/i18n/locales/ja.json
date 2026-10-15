@@ -104,6 +104,8 @@
     "unlock": "ロック解除",
     "wrongPassword": "パスワードが間違っています。もう一度お試しください",
     "encryptionHint": "ヒント: {hint}",
+    "requiresPassword": "この記事は閲覧パスワードが必要です",
+    "clearSavedPassword": "ローカル保存のパスワードをクリア",
     "minRead": " 分で読了",
     "commentPlaceholder": "コメントを書く…",
     "submitting": "送信中…",
