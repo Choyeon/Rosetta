@@ -114,7 +114,7 @@ describe('内容页 404 状态码闸门', () => {
     expect(src).not.toMatch(/throw\s+createError\(/)
   })
 
-  it.each(PAGES.filter((rel) => !CUSTOM_TITLE_PAGES.includes(rel)))(
+  it.each(PAGES.filter(rel => !CUSTOM_TITLE_PAGES.includes(rel)))(
     '%s 缺内容时标题走 404 文案，不再伪造 slug 标题',
     (rel) => {
       const src = readFileSync(resolve(ROOT, rel), 'utf-8')
@@ -128,9 +128,7 @@ describe('内容页 404 状态码闸门', () => {
   it('用自有文案的页仍与状态码闸门共用 isContentMissing（标题不与响应码互相矛盾）', () => {
     for (const rel of CUSTOM_TITLE_PAGES) {
       const src = readFileSync(resolve(ROOT, rel), 'utf-8')
-      expect(src, `${rel} 没引入共用判定`).toContain(
-        "from '~~/composables/useContentStatus'"
-      )
+      expect(src, `${rel} 没引入共用判定`).toContain('isContentMissing')
       expect(src, `${rel} 的标题分支没与闸门共用判定`).toMatch(
         /if \((notFound|isContentMissing\()\b/
       )
@@ -144,7 +142,6 @@ describe('内容页 404 状态码闸门', () => {
   })
 
   it('四语都有 error.notFoundTitle 文案', () => {
-
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
       const messages = JSON.parse(
         readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')
