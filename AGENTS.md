@@ -105,11 +105,22 @@
 
 1. **routeRules 自动镜像**：`nuxt.config.ts::expandLocaleRouteRules()` 会把上表每一条非 Vite/静态资源规则复制成 `/en/xxx`、`/ja/xxx`、`/zh_Hant/xxx` 三份。新增公开页 SSR/缓存规则只需写默认形态；漏写镜像不会报错，但带前缀页面会静默落回 SSR/无缓存。Vite 虚拟文件、`/_nuxt/**`、`/themes/**`、`/api` 前缀、`/rss.xml`、`/sitemap.xml`、`/robots.txt` 不镜像。
 2. **SPA 反选白名单同步**：`server/plugins/spa-serverrendered-zero.nitro.ts` 的 `isSpa()` 会先剥 `/en /ja /zh_Hant` 前缀，再匹配 `/login /register /search /admin`；新增 SPA 前缀要两处一起写。
-3. **canonical + hreflang**：`composables/useSeo.ts` 内 canonical 与 `<link rel=alternate hreflang>` 都通过 `useLocalePath()(中性路径, locale)` 派生；`opts.url` 传入前请写"默认语言下的路径"（如 `/posts/xxx`），带前缀形态会被 `stripLocalePrefix` 剥掉再重挂。
-4. **JSON-LD url/mainEntityOfPage**：`useArticleJsonLd` / `useBreadcrumbJsonLd` 都走 `localePath`，避免英文页面的 JSON-Ld 声明中文 canonical。
-5. **语言切换**：`components/LocaleSwitcher.vue` 必须走 `useSwitchLocalePath()` + `router.push(next)`，仅 `setLocale(code)` 只换 i18n 内部状态、URL 留在旧前缀会导致下钻链接掉回原语言。
+3. **canonical + hreflang**：都由 `composables/useSeo.ts` 单源产出，走纯字符串 helper
+   `applyLocalePrefix(中性路径, locale)`（口径与禁令见 §2.3.3 第 1 条，**不要**再回到
+   `useLocalePath()`）。`opts.url` 传"默认语言下的路径"（如 `/posts/xxx`）；带前缀形态会被
+   `stripLocalePrefix` 剥掉再重挂。省略 `opts.url` 时按当前路由派生，noindex 页不产出 hreflang 集群。
+4. **JSON-LD url/mainEntityOfPage**：`useArticleJsonLd` / `useBreadcrumbJsonLd` 同样走
+   `applyLocalePrefix`，避免英文页面的 JSON-LD 声明中文 canonical。
+5. **语言切换**：`components/LocaleSwitcher.vue` 与 `components/AppFooter.vue` 必须
+   `setLocale(code)` 之后跳 `applyLocalePrefix(route.fullPath, code)` 得到的同页 URL；
+   仅 `setLocale` 只换 i18n 内部状态、URL 留在旧前缀，等于内容与地址栏的语言互相判逆。
 6. **`<meta property=og:locale>`**：`useSeo.ts::OG_LOCALE_MAP` 输出 `zh_CN/en_US/ja_JP/zh_TW`，`og:locale:alternate` 自动列出其它三语。
-7. **Sitemap / RSS**：`backend/api/blog.py::sitemap_*` 与 `blog/rss` 目前只输出**默认语言**（zh）URL；扩展多语 `<xhtml:link>` 前请先补齐 localePath 服务端口。
+7. **Sitemap**：`backend/api/blog.py::_sitemap_url` 给每个内容输出 **4 条 `<url>`**
+   （zh 裸路径 + `/en` `/ja` `/zh_Hant`），每条自带 5 个 `<xhtml:link rel=alternate>`
+   （4 语 + `x-default`）。Google 要求带 hreflang 标注的每个 URL 都出现在 sitemap 里，
+   只提交默认语言那条会让三个语言变体只剩"页面内 hreflang"这一个发现入口。
+   守卫见 `tests/test_api_seo.py::test_sitemap_children_have_no_duplicate_loc`。
+   **RSS** 仍是单语言（默认语言）源，语言入口靠 sitemap 与页面 hreflang，不重复挂 `<xhtml:link>`。
 
 ### 2.3 公开页 SWR / Cache 头
 
@@ -178,8 +189,12 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    robots 的模式是纯前缀匹配、没有语言概念，剩下每条 Disallow 必须 ×4 语言前缀，且
    `frontend/server/routes/robots.txt.get.ts`（回退）与 `backend/api/seo.py`（真源）两段同口径。
 5. 任何用 `startsWith` / 前缀判定路径归属的地方必须先过 `stripLocalePathPrefix()`
-   （`frontend/lib/rosetta-themes.ts`）。漏一处的表现：`/en/admin` 被当成前台页、英文页导航整条不亮、
-   `/en/posts` 落回无缓存 SSR（`nuxt.config.ts::expandLocaleRouteRules` 负责 routeRules 那一侧的镜像）。
+   （`frontend/lib/rosetta-themes.ts`，语言前缀唯一清单是同文件的 `I18N_URL_PREFIXES`，
+   消费方不得再自己拼 `(en|ja|zh_Hant)` 正则）。漏一处的表现：`/en/admin` 被当成前台页、
+   英文页导航整条不亮、`/en/posts` 落回无缓存 SSR（`nuxt.config.ts::expandLocaleRouteRules`
+   负责 routeRules 那一侧的镜像）；后台外壳的两个实例是 `components/admin/AdminHeader.vue`
+   的面包屑（`findMenuItem/findMenuGroup` 的键是 `/admin/xxx` 形态）与
+   `components/admin/AdminSidebar.vue` 的菜单高亮。
 6. **语言真相只有 URL 前缀**：`i18n.detectBrowserLanguage` 必须是 `false`。开着它（`redirectOn: 'root'`）
    时 Googlebot 带的 `Accept-Language: en` 会让 `GET /` 跳到 `/en`，中文首页与它自指的 canonical
    就对不上（Google 官方口径也是"给候选、由用户点选，不要按 Accept-Language 重定向"）。

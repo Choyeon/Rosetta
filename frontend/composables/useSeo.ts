@@ -327,11 +327,14 @@ export function useSeo(opts: SeoMetaOptions = {}) {
   })
   /**
    * hreflang alternates：对 HREFLANG_MAP 里的每个 locale 生成一份"该 locale 下的
-   * 本页面绝对 URL"。搜索引擎据此把中英日韩四份内容识别为同一页的语言变体。
-   * 绝对 URL 入参（调用方接管）不再产出语言变体。
+   * 本页面绝对 URL"。搜索引擎据此把中/英/日/繁中四份内容识别为同一页的语言变体。
+   * 绝对 URL 入参（调用方接管）不再产出语言变体；noindex 页同样不产出——
+   * Google 会忽略 noindex 页上的 hreflang，而这一组地址指向的其它语言变体若可收录，
+   * 就等于用一条不该存在的边把它们拉进同一个集群（自相矛盾的规范信号）。
    */
   const localeAlternates = computed<Array<{ hreflang: string; href: string }>>(() => {
     const raw = _rawUrl.value
+    if (_noindex.value) return []
     if (!raw || /^https?:\/\//i.test(raw)) return []
     const out: Array<{ hreflang: string; href: string }> = []
     for (const code of Object.keys(HREFLANG_MAP)) {

@@ -92,7 +92,7 @@
             </div>
             <div class="flex flex-col gap-1 rounded-xl border border-border p-4 bg-muted/20">
               <p class="text-xs text-muted-foreground uppercase tracking-wide">
-                包含 URL 数量
+                已发布内容数
               </p>
               <p class="font-semibold tabular-nums text-2xl">
                 {{ sitemapCheck?.url_count ?? '-' }}
@@ -457,7 +457,7 @@
               <div class="grid md:grid-cols-3 gap-4">
                 <div class="flex flex-col gap-1 rounded-xl border border-border p-4 bg-muted/20">
                   <div class="text-xs text-muted-foreground uppercase tracking-wide">
-                    已发布文章数（= sitemap URL 数）
+                    已发布文章数（sitemap 每篇提交 4 个语言变体）
                   </div>
                   <div class="font-semibold tabular-nums text-2xl">
                     {{ checkResult.url_count }}

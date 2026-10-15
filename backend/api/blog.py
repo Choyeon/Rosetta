@@ -3534,23 +3534,16 @@ def _iso8601(dt: datetime | None) -> str | None:
     return aware.isoformat(timespec="seconds")
 
 
-def _sitemap_url(
+def _sitemap_entry(
     loc: str,
     *,
     lastmod: str | None = None,
     changefreq: str | None = None,
     priority: str | None = None,
     images: list[str] | None = None,
-    rel_path: str | None = None,
-    site_url: str | None = None,
+    alternates: list[str] | None = None,
 ) -> str:
-    """生成单个 ``<url>`` 条目。
-
-    rel_path + site_url 同时提供时，会额外输出 4 条 ``<xhtml:link rel="alternate">``
-    （zh-CN / en / ja / zh-Hant）+ 1 条 ``x-default``，指向同一内容的其它语言 URL。
-    这是 Google 官方推荐的 sitemap 侧 hreflang 声明方式（页面 `<link rel=alternate>`
-    在 SSR HTML 已同步输出，二者一致时不冲突）。
-    """
+    """生成单个 ``<url>`` 块（不含 ``<urlset>`` 外壳）。"""
     parts = ["  <url>", f"    <loc>{_xml_url(loc)}</loc>"]
     if lastmod:
         parts.append(f"    <lastmod>{_xml_escape(lastmod)}</lastmod>")
@@ -3563,22 +3556,61 @@ def _sitemap_url(
             parts.append("    <image:image>")
             parts.append(f"      <image:loc>{_xml_url(img)}</image:loc>")
             parts.append("    </image:image>")
-    if rel_path is not None and site_url:
-        base = site_url.rstrip("/")
-        variants = _locale_path_variants(rel_path)
-        for code, hreflang in _SITEMAP_HREFLANG_MAP.items():
-            href = f"{base}{variants[code]}"
-            parts.append(
-                f'    <xhtml:link rel="alternate" hreflang="{hreflang}" '
-                f'href="{_xml_url(href)}" />'
-            )
-        # x-default = 默认语言变体（zh 裸路径）
-        parts.append(
-            f'    <xhtml:link rel="alternate" hreflang="x-default" '
-            f'href="{_xml_url(base + variants["zh"])}" />'
-        )
+    parts.extend(alternates or [])
     parts.append("  </url>")
     return "\n".join(parts)
+
+
+def _sitemap_url(
+    loc: str,
+    *,
+    lastmod: str | None = None,
+    changefreq: str | None = None,
+    priority: str | None = None,
+    images: list[str] | None = None,
+    rel_path: str | None = None,
+    site_url: str | None = None,
+) -> str:
+    """生成一个内容的全部语言变体 ``<url>`` 条目（可能多于一条）。
+
+    rel_path + site_url 同时提供时，四语（zh 裸路径 + /en /ja /zh_Hant）各自成为独立
+    条目，每条都带同一组 5 个 ``<xhtml:link rel="alternate">``（4 语 + ``x-default``，
+    含自指）。Google 口径是"**带 hreflang 标注的每个 URL 都要出现在 sitemap 里**"：
+    只提交默认语言那条、把英/日/繁仅写成 alternate，语言变体就只剩"页面里的 hreflang"
+    这一个发现入口——没有内链指向它时（新文章在其它语言下还没被任何列表页链到），
+    它连"被发现"都谈不上，更别提进索引。页面 SSR 里的 ``<link rel=alternate>``
+    与本函数同源同口径，两处一致时不冲突。
+    """
+    if rel_path is None or not site_url:
+        return _sitemap_entry(
+            loc, lastmod=lastmod, changefreq=changefreq, priority=priority, images=images
+        )
+
+    base = site_url.rstrip("/")
+    variants = _locale_path_variants(rel_path)
+    alternates: list[str] = []
+    for code, hreflang in _SITEMAP_HREFLANG_MAP.items():
+        alternates.append(
+            f'    <xhtml:link rel="alternate" hreflang="{hreflang}" '
+            f'href="{_xml_url(f"{base}{variants[code]}")}" />'
+        )
+    # x-default = 默认语言变体（zh 裸路径）
+    alternates.append(
+        f'    <xhtml:link rel="alternate" hreflang="x-default" '
+        f'href="{_xml_url(base + variants["zh"])}" />'
+    )
+    return "\n".join(
+        _sitemap_entry(
+            f"{base}{variants[code]}",
+            lastmod=lastmod,
+            changefreq=changefreq,
+            priority=priority,
+            images=images,
+            alternates=alternates,
+        )
+        # zh 在前，与页面 hreflang 清单顺序一致，便于人工比对
+        for code in _SITEMAP_HREFLANG_MAP
+    )
 
 
 def _wrap_urlset(body: str, *, with_image: bool, with_xhtml: bool = True) -> str:

@@ -300,14 +300,20 @@ async def test_meta_descriptions_strip_shortcodes_and_html(client: AsyncClient, 
 
 @pytest.mark.asyncio
 async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
-    """三份子 sitemap 合并后不得出现重复 <loc>。
+    """三份子 sitemap 合并后不得出现重复 `<loc>`，且语言变体必须各自成条。
 
-    历史缺陷：`/categories` `/tags` `/series` 同时写在固定路由表和分类学表里，
+    历史缺陷一：`/categories` `/tags` `/series` 同时写在固定路由表和分类学表里，
     索引对同一 URL 提交两次，Search Console 报"重复网址"。这里按 URL 集合守，
     任何人再往 `_STATIC_SITEMAP_ROUTES` 塞分类学根路径都会立刻红。
+
+    历史缺陷二（prefix_except_default 之后）：`<url>` 只提交默认语言那条，
+    英/日/繁仅作为 `<xhtml:link>` 的 alternate 出现。Google 要求带 hreflang 标注的
+    **每个** URL 都在 sitemap 里，只写 alternate 时语言变体只剩"页面内的 hreflang"
+    这一个发现入口——没有内链指向它的那些变体连被发现都谈不上。
     """
     import re
     from collections import Counter
+    from urllib.parse import urlsplit
 
     import backend.core.cache as _c
     import backend.core.cache_v2 as _cv2
@@ -324,27 +330,53 @@ async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
         "/api/blog/sitemap-taxonomies.xml",
     ]
     locs: list[str] = []
+    bodies: list[str] = []
     for path in children:
         r = await client.get(path)
         assert r.status_code == 200, path
         assert r.headers["content-type"].startswith("application/xml"), path
         locs.extend(re.findall(r"<loc>(.*?)</loc>", r.text))
+        bodies.append(r.text)
 
     assert locs, "三份子 sitemap 全空，断言会变成假通过"
     dupes = [url for url, n in Counter(locs).items() if n > 1]
     assert not dupes, f"重复提交的 sitemap URL: {dupes}"
 
-    # 三个根路径必须各出现一次（由分类学表负责，哪怕站点还没有任何分类）
+    def strip_locale_prefix(path: str) -> str:
+        for code in ("en", "ja", "zh_Hant"):
+            if path == f"/{code}":
+                return "/"
+            if path.startswith(f"/{code}/"):
+                return path[len(f"/{code}") :]
+        return path
+
+    # 三个根路径必须每种语言各提交一次（由分类学表负责，哪怕站点还没有任何分类）
     for root in ("/categories", "/tags", "/series"):
-        hits = [u for u in locs if u.endswith(root)]
-        assert len(hits) == 1, f"{root} 应恰好提交一次，实际 {len(hits)} 次: {hits}"
+        hits = [u for u in locs if urlsplit(u).path.endswith(root)]
+        paths = {urlsplit(u).path for u in hits}
+        assert len(hits) == 4, f"{root} 应提交 4 个语言变体，实际 {len(hits)} 次: {hits}"
+        # zh 裸路径 + 三语前缀，一个都不能缺，也不许混进别的页面
+        assert paths == {
+            root,
+            f"/en{root}",
+            f"/ja{root}",
+            f"/zh_Hant{root}",
+        }, f"{root} 的语言变体不齐：{paths}"
 
-    # noindex / 后台路由永不收录：只比较 URL 的 path 段，避免域名里含 "admin" 误判
-    from urllib.parse import urlsplit
+    # 每条 `<url>` 都要带完整 alternates（4 语 + x-default）；只给默认语言那条挂
+    # alternate 等于其它三语没有自指声明。
+    for body in bodies:
+        for block in re.findall(r"<url>(.*?)</url>", body, re.S):
+            if "xhtml:link" not in block:
+                continue
+            assert block.count('hreflang="x-default"') == 1, block
+            for hl in ("zh-CN", "en", "ja", "zh-Hant"):
+                assert f'hreflang="{hl}"' in block, f"条目缺 {hl} alternate: {block}"
 
+    # noindex / 后台路由永不收录：先剥语言前缀，否则 /en/admin 会从这条闸门漏出去
     banned_prefixes = ("/admin", "/login", "/register", "/oobe", "/search")
     for url in locs:
-        path = urlsplit(url).path
+        path = strip_locale_prefix(urlsplit(url).path)
         assert not any(
             path == prefix or path.startswith(f"{prefix}/") for prefix in banned_prefixes
         ), f"{url} 不应出现在 sitemap"
