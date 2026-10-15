@@ -267,6 +267,27 @@ async def test_default_robots_txt_has_spaced_disallow_and_locale_admin(
 
 
 @pytest.mark.asyncio
+async def test_robots_cache_key_roundtrip(client: AsyncClient):
+    """robots 的读键与写键必须是同一个 namespaced 键。
+
+    写成裸 `robots_txt` 的历史形态有两处坏：这条缓存永远不会被下一次请求读到
+    （读的是 `seo:robots_txt`，等于每次请求重算），而那个裸键又不落在 `seo:*`
+    清理模式里，`PUT /seo/config` 永远删不掉它。
+    """
+    import backend.core.cache as _c
+    from backend.core.cache import make_cache_key
+
+    namespaced = make_cache_key("seo", "robots_txt")
+    await _c.cache.delete_pattern("seo:*")
+    await _c.cache.delete("robots_txt")
+
+    r = await client.get("/api/seo/robots.txt")
+    assert r.status_code == 200
+    assert await _c.cache.get(namespaced), "响应生成了内容却没写进读的那把键（缓存永不命中）"
+    assert (await _c.cache.get("robots_txt")) is None, "写了裸键 robots_txt，seo:* 清理模式覆盖不到"
+
+
+@pytest.mark.asyncio
 async def test_schema_unsupported_type(client: AsyncClient):
     """不支持的 resource_type 返回 error"""
     r = await client.get("/api/seo/schema/unknown/1")

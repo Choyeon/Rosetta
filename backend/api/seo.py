@@ -611,8 +611,10 @@ Disallow: /api/
 Sitemap: {site_url}/sitemap.xml
 """
 
-    # 缓存 1 小时
-    await cache.set("robots_txt", robots_content, 3600)
+    # 缓存 1 小时。写回必须用上面那个 namespaced 键：写成裸键 "robots_txt" 等于
+    # 这条缓存永远不会命中（读的是 seo:robots_txt），而那个裸键又不在 `seo:*`
+    # 清理模式里——既白占一份缓存，管理员改完 robots 也看不见任何生效路径。
+    await cache.set(robots_cache_key, robots_content, 3600)
 
     return PlainTextResponse(content=robots_content)
 
