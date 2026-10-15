@@ -216,7 +216,9 @@ useSeo({
       : (t('search.title') as string || '搜索')
   }),
   description: computed(() => t('search.desc') as string),
-  type: 'website'
+  type: 'website',
+  // 搜索结果不进索引：查询参数变体是薄内容页面，Google 官方口径就是 noindex
+  noindex: true
 })
 useWebsiteJsonLd()
 useBreadcrumbJsonLd([

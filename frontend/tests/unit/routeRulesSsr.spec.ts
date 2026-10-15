@@ -120,7 +120,9 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
         expect(rule.cache, `${path} 必须 no-store`).toContain('no-store')
       }
     }
-    for (const path of ['/', '/posts', '/post/**', '/categories/**', '/tags/**', '/authors/**', '/page/**']) {
+    // 详情页真实前缀 '/posts/**'（pages/posts/[slug].vue）；曾经这里写着 '/post/**'
+    // 是死规则，routeRules 从未命中过真实路由。修正为 '/posts/**'。
+    for (const path of ['/', '/posts', '/posts/**', '/categories/**', '/tags/**', '/authors/**', '/page/**']) {
       const rule = rules.get(path)
       expect(rule, `公开页 ${path} 必须有 routeRules`).toBeDefined()
       expect(rule!.ssr, `公开页 ${path} 不得反选 SSR`).not.toBe(false)

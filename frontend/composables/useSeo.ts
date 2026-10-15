@@ -27,6 +27,8 @@ export interface SeoMetaOptions {
   description?: string | { readonly value?: string | undefined }
   /** 分享预览图。支持 Ref/ComputedRef（允许内部 value 为 undefined） */
   image?: string | { readonly value?: string | undefined }
+  /** og:image:alt 分享预览图描述。支持 Ref/ComputedRef */
+  imageAlt?: string | { readonly value?: string | undefined }
   /** 规范链接；留空时由 useHead 推导当前 URL */
   url?: string | { readonly value?: string | undefined }
   /** og:type，默认 "website"；文章详情页传 "article" */
@@ -40,6 +42,22 @@ export interface SeoMetaOptions {
   extraMeta?:
     | Array<Record<string, string>>
     | { readonly value?: Array<Record<string, string>> | undefined }
+  /** noindex:true 输出 `<meta name="robots" content="noindex, nofollow">` + 抑制 canonical。搜索结果页与分页尾页用 */
+  noindex?: boolean | { readonly value?: boolean | undefined }
+  /** 覆盖 site.seo.twitter_handle（一般不用） */
+  twitterSite?: string | { readonly value?: string | undefined }
+}
+
+/**
+ * 语言码 → Open Graph 期望的 locale 形式（<lang>_<COUNTRY>）。
+ * raw code 'zh' / 'en' / 'ja' / 'zh_Hant' 直接输出会被爬虫标为 invalid。
+ * 新增语言：同步更新此处与 nuxt.config i18n.locales。
+ */
+export const OG_LOCALE_MAP: Record<string, string> = {
+  zh: 'zh_CN',
+  en: 'en_US',
+  ja: 'ja_JP',
+  zh_Hant: 'zh_TW'
 }
 
 export interface BreadcrumbItem {
@@ -168,6 +186,25 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       siteUrl.value
     )
   )
+  const _imageAlt = computed(() =>
+    typeof opts.imageAlt === 'string'
+      ? opts.imageAlt
+      : (opts.imageAlt?.value ?? '')
+  )
+  const _noindex = computed(() =>
+    typeof opts.noindex === 'boolean'
+      ? opts.noindex
+      : Boolean((opts.noindex as { value?: boolean } | undefined)?.value)
+  )
+  const _twitterSite = computed(() => {
+    const override
+      = typeof opts.twitterSite === 'string'
+        ? opts.twitterSite
+        : (opts.twitterSite?.value ?? '')
+    if (override) return override
+    const handle = (site.seo.value as Record<string, unknown>)?.twitter_handle
+    return typeof handle === 'string' ? handle : ''
+  })
   const _url = computed(() =>
     asAbsolute(
       typeof opts.url === 'string'
@@ -187,6 +224,7 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       ? `${_title.value} · ${siteName.value}`
       : siteName.value
 
+    const ogLocale = OG_LOCALE_MAP[locale.value] ?? locale.value
     const meta = [
       { name: 'description', content: _description.value },
       // OpenGraph
@@ -194,22 +232,57 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       { property: 'og:type', content: opts.type ?? 'website' },
       { property: 'og:title', content: fullTitle },
       { property: 'og:description', content: _description.value },
-      { property: 'og:locale', content: locale.value },
+      { property: 'og:locale', content: ogLocale },
       // Twitter
       { name: 'twitter:card', content: 'summary_large_image' },
       { name: 'twitter:title', content: fullTitle },
       { name: 'twitter:description', content: _description.value }
     ] as Array<Record<string, string>>
 
+    // 其它三语 og:locale:alternate —— 社交分享爬虫据此判断站点多语言可用性
+    for (const code of Object.keys(OG_LOCALE_MAP)) {
+      if (code === locale.value) continue
+      meta.push({ property: 'og:locale:alternate', content: OG_LOCALE_MAP[code] })
+    }
+
     if (_image.value) {
       meta.push({ property: 'og:image', content: _image.value })
       meta.push({ name: 'twitter:image', content: _image.value })
+      if (_imageAlt.value) {
+        meta.push({ property: 'og:image:alt', content: _imageAlt.value })
+      }
     }
     if (_url.value) {
       meta.push({ property: 'og:url', content: _url.value })
     }
+    if (_twitterSite.value) {
+      meta.push({ name: 'twitter:site', content: _twitterSite.value })
+    }
+    if (_noindex.value) {
+      meta.push({ name: 'robots', content: 'noindex, nofollow' })
+    } else {
+      meta.push({ name: 'robots', content: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' })
+    }
+
+    // 站点所有权验证：管理员在 后台 → 站点设置 → SEO 填一次即全站生效。
+    const googleV = (site.seo.value as Record<string, unknown>).google_verification
+    if (typeof googleV === 'string' && googleV) {
+      meta.push({ name: 'google-site-verification', content: googleV })
+    }
+    const baiduV = (site.seo.value as Record<string, unknown>).baidu_verification
+    if (typeof baiduV === 'string' && baiduV) {
+      meta.push({ name: 'baidu-site-verification', content: baiduV })
+    }
+
     if (_extraMeta.value && _extraMeta.value.length > 0) {
       meta.push(..._extraMeta.value)
+    }
+
+    // canonical：noindex 页不输出（搜索结果页 / 分页尾页自身 canonical 会诱使
+    // 搜索引擎把候选页当"重复内容"合并掉，反而不利收录）。
+    const link: Array<Record<string, string>> = []
+    if (!_noindex.value && _url.value) {
+      link.push({ rel: 'canonical', href: _url.value })
     }
 
     // Nuxt useHead（@zhead/schema）对 meta 联合类型约束过严，使用 unknown 断
@@ -217,7 +290,8 @@ export function useSeo(opts: SeoMetaOptions = {}) {
     const head = {
       title: fullTitle,
       htmlAttrs: { lang: locale.value },
-      meta
+      meta,
+      link
     }
     return head as unknown as never
   })

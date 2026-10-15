@@ -138,11 +138,7 @@ export default defineNuxtConfig({
         // 双 rAF = 等首帧绘制完成后再切换 rel：既不会阻塞首屏，又能让 preload 的
         // 响应在浏览器「preload 未使用」告警阈值（数秒）内被消费。
         // 执行体放在下方 script 数组（双 rAF 内联脚本），plugins/06-font-stylesheet.client.ts 是 hydration 后的兜底（幂等）。
-        {
-          rel: 'preload',
-          as: 'style',
-          href: 'https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=JetBrains+Mono:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700;9..144,800&display=swap'
-        },
+        // 同一 href 二次 preload 无收益且会让 devtools 报 duplicate，已合并。
 
         // === 第三方样式（语言国旗图标）===
         { rel: 'stylesheet', href: 'https://cdn.jsdelivr.net/npm/flag-icons@7.2.3/css/flag-icons.min.css' },
@@ -280,7 +276,8 @@ export default defineNuxtConfig({
     '/guestbook': { swr: 60, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=60, stale-while-revalidate=600' } },
 
     // === 单篇文章 / 独立页面：SEO 收益最高；SSR + cache 头
-    '/post/**': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
+    // 注意：详情页真实前缀是 /posts/（pages/posts/[slug].vue），不是 /post/。
+    // 曾经这里挂着一整条 '/post/**' 规则永远不会命中，纯噪声 —— 已删。
     '/page/**': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
 
     // === 静态构建产物：强缓存 + immutable contenthash

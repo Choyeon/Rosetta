@@ -123,7 +123,10 @@
               :src="coverImage"
               :alt="postTitle"
               class="w-full aspect-[21/9] object-cover rounded-2xl shadow-soft"
+              fetchpriority="high"
               decoding="async"
+              width="1200"
+              height="514"
             >
           </div>
 
@@ -966,11 +969,18 @@ const normalizedTags = computed(() => {
   })).filter(tag => tag.id && tag.slug)
 })
 
-const seoTitle = computed(() => pickLocalized(post.value?.title) || displayPostTitle.value || '')
+const seoTitle = computed(() => {
+  // 后台"SEO 标题"优先；未填回落到文章 title（WordPress Yoast 同规则）。
+  const detail = (post.value ?? {}) as unknown as Record<string, unknown>
+  const mt = pickLocalized(detail.meta_title as never)
+  return mt || pickLocalized(post.value?.title) || displayPostTitle.value || ''
+})
 const seoExcerpt = computed(() => pickLocalized(post.value?.excerpt))
-// 回退到正文时必须剥掉 HTML 标签：详情端点返回的是服务端渲染后的 HTML，
-// 直接 slice 会把标签碎片写进 meta description。
+// 后台"SEO 描述"优先；未填回落 excerpt；再无则剥 HTML 取正文首段。
 const seoDescription = computed(() => {
+  const detail = (post.value ?? {}) as unknown as Record<string, unknown>
+  const md = pickLocalized(detail.meta_description as never)
+  if (md) return md.slice(0, 180)
   if (seoExcerpt.value) return seoExcerpt.value.slice(0, 180)
   return pickLocalized(post.value?.content || '')
     .replace(/<[^>]+>/g, ' ')
@@ -1003,9 +1013,16 @@ const seoCategoryName = computed(() => {
   }
   return undefined
 })
-const seoKeywords = computed(() =>
-  normalizedTags.value.map(t => t.name)
-)
+const seoKeywords = computed(() => {
+  // 后台 SEO 关键词优先（逗号或分号分隔），叠加标签集合去重
+  const raw = pickLocalized(post.value?.meta_keywords as never)
+  const custom = (raw || '')
+    .split(/[,;，；]/)
+    .map(s => s.trim())
+    .filter(Boolean)
+  const tagNames = normalizedTags.value.map(t => t.name)
+  return Array.from(new Set([...custom, ...tagNames]))
+})
 const seoAuthorAvatar = computed<string | undefined>(() => {
   const author = extractPostField(post.value, 'author')
   if (typeof author === 'object' && author) {
@@ -1015,13 +1032,17 @@ const seoAuthorAvatar = computed<string | undefined>(() => {
   return undefined
 })
 const seoPostSlug = computed(() => String(route.params.slug))
+// useSeo 内部会 asAbsolute 拼站点根；这里必须是路径形式 `/posts/xxx`，
+// 直接传裸 slug 会被拼成 `<site>/<slug>`（丢掉 /posts 段）。
+const seoPostPath = computed(() => `/posts/${seoPostSlug.value}`)
 
 useSeo({
   title: seoTitle,
   description: seoDescription,
   image: coverImage,
+  imageAlt: seoTitle,
   type: 'article',
-  url: seoPostSlug,
+  url: seoPostPath,
   extraMeta: seoExtraMeta
 })
 
