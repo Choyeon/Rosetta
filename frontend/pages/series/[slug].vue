@@ -172,6 +172,7 @@ import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Button } from '~~/components/ui/button'
 import { AlertCircle, ArrowUpRight, CalendarDays, Eye, ListOrdered } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import { useContentStatus } from '~~/composables/useContentStatus'
 
 definePageMeta({ layout: 'default' })
 
@@ -238,7 +239,9 @@ const { data: detail, pending, error } = useAPI<SeriesDetail | null>(`/series/${
 
 const notFound = computed(() => !!error.value || (detail.value == null && !pending.value))
 const series = computed<SeriesDetail | null>(() => detail.value ?? null)
-const postsList = computed<SeriesPostRow[]>(() => {
+// 系列不存在时让 SSR 响应带上真 404：本页 routeRules 是 swr 3600，200 的「系列不存在」
+// 空壳会被缓存成可复用页面，爬虫据此收录一个实际无内容的 URL。口径见 useContentStatus.ts。
+useContentStatus(error, computed(() => series.value == null && !pending.value))const postsList = computed<SeriesPostRow[]>(() => {
   const items = series.value?.posts
   if (!Array.isArray(items)) return []
   return items
