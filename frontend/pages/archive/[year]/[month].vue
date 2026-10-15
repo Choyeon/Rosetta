@@ -121,7 +121,7 @@ import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Eye } from '@lucide
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
-import { useContentStatus } from '~~/composables/useContentStatus'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { useI18n } from 'vue-i18n'
 
 /** GET /blog/archive/{year}/{month} 的响应（与后端 ArchiveMonthPage 同构） */
@@ -200,15 +200,21 @@ function formatDate(value?: string | null): string {
 }
 
 // 空月份 / 越界页 = 真 404（不改网络故障与 5xx 的状态码，判据见 useContentStatus）。
-useContentStatus(
-  error,
-  computed(() => posts.value.length === 0 || page.value > (totalPages.value || 1))
+const monthMissing = computed(
+  () => posts.value.length === 0 || page.value > (totalPages.value || 1)
 )
+useContentStatus(error, monthMissing)
 
 // SEO 单源走 useSeo：本页曾只有一个裸 useHead title，四语版本既没有 canonical
 // 也没有 hreflang，爬虫把它们当成三个互不相关的归档页。
+// 缺失分支必须换标题：404 响应配一个"看起来正常"的归档标题，等于给搜索引擎
+// 两份互相矛盾的信号（余下内容详情页都是这个口径）。
 useSeo({
-  title: computed(() => `${year}-${padMonth(month)} ${t('archive.title')}`),
+  title: computed(() =>
+    isContentMissing(error.value, monthMissing.value)
+      ? (t('error.notFoundTitle') as string)
+      : `${year}-${padMonth(month)} ${t('archive.title')}`
+  ),
   description: computed(() => t('archive.statsTotal', { count: total.value }) as string),
   type: 'website'
 })

@@ -10,7 +10,7 @@
  * （那条路径渲染 error.vue 但响应仍是 200，见 AGENTS §2.3.2）。
  */
 
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { isContentMissing } from '../../composables/useContentStatus'
@@ -26,10 +26,47 @@ const PAGES = [
   // 顶级 catchall 才是独立页的真实落地路由（/page/<slug> 只做重定向）：它接住每一条
   // 形如 /任意单段 的 URL，漏了它等于给垃圾 URL 发 200。
   'pages/[slug].vue',
-  'pages/page/[slug].vue'
+  'pages/page/[slug].vue',
+  'pages/series/[slug].vue',
+  'pages/authors/[username].vue',
+  'pages/archive/[year]/[month].vue'
 ]
 
+/** 用各自的文案命名空间（authors./series./archive.）而不是 error.notFoundTitle 的页。 */
+const CUSTOM_TITLE_PAGES = ['pages/series/[slug].vue', 'pages/authors/[username].vue']
+
+/** 用路由中间件判 404 的那一页（口径见 AGENTS §2.3.2），与 useContentStatus 并列的第二种合法答案。 */
+const MIDDLEWARE_PAGES = ['pages/archive/[year]/index.vue']
+
+/** 递归列出 pages/ 下所有动态段页面（文件名含 `[`），后台页不在公开索引范围内。 */
+function dynamicPublicPages(dir = 'pages', acc: string[] = []): string[] {
+  for (const entry of readdirSync(resolve(ROOT, dir), { withFileTypes: true })) {
+    const rel = `${dir}/${entry.name}`
+    if (entry.isDirectory()) {
+      if (entry.name === 'admin') continue
+      dynamicPublicPages(rel, acc)
+    } else if (entry.name.includes('[') && entry.name.endsWith('.vue')) {
+      acc.push(rel)
+    }
+  }
+  return acc
+}
+
 describe('内容页 404 状态码闸门', () => {
+  it('公开动态路由页清单：新增一页必须显式归类，不能默认漏掉 404 闸门', () => {
+    // 系列详情页就是这条清单该挡住而当时没挡住的漏网之鱼——它渲染了「系列不存在」
+    // 兜底 UI，HTTP 却仍是 200，还被 /series/** 的 swr 3600 缓存成可复用页面。
+    const listed = [...PAGES, ...MIDDLEWARE_PAGES].sort()
+    expect(dynamicPublicPages().sort()).toEqual(listed)
+  })
+
+  it('中间件判定的页面确实挂了命名中间件（不是把闸门整个删了）', () => {
+    for (const rel of MIDDLEWARE_PAGES) {
+      const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+      expect(src, `${rel} 未挂 archive-year 中间件`).toMatch(/middleware:\s*'archive-year'/)
+    }
+  })
+
   it('helper 只在服务端改状态码，且只认明确 404 / 成功但空对象', () => {
     expect(existsSync(helperPath)).toBe(true)
     // 注意：needle 不能写成完整的 'import.meta.server' —— vitest 会把这个字面量
@@ -66,18 +103,42 @@ describe('内容页 404 状态码闸门', () => {
     const src = readFileSync(resolve(ROOT, rel), 'utf-8')
     expect(src).toContain('useContentStatus')
     expect(src).toContain('composables/useContentStatus')
-    expect(src).not.toContain('createError')
+    // 反证只针对真实写法：归档页的头部注释里就写着「页面内 throw createError 仍是 HTTP 200」，
+    // 用裸 toContain('createError') 会把这条口径说明判成违规。
+    expect(src).not.toMatch(/throw\s+createError\(/)
   })
 
-  it.each(PAGES)('%s 缺内容时标题走 404 文案，不再伪造 slug 标题', (rel) => {
-    const src = readFileSync(resolve(ROOT, rel), 'utf-8')
-    expect(src).toContain('error.notFoundTitle')
-    // 旧口径是 `pickLocalized(...) || slug.value || ''`：404 页的 <title> 变成一串
-    // 假装是分类名的乱码。WordPress 的 404 标题就是"页面不存在"。
-    expect(src).not.toMatch(/\|\|\s*slug\.value \|\| ''/)
+  it.each(PAGES.filter((rel) => !CUSTOM_TITLE_PAGES.includes(rel)))(
+    '%s 缺内容时标题走 404 文案，不再伪造 slug 标题',
+    (rel) => {
+      const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+      expect(src).toContain('error.notFoundTitle')
+      // 旧口径是 `pickLocalized(...) || slug.value || ''`：404 页的 <title> 变成一串
+      // 假装是分类名的乱码。WordPress 的 404 标题就是"页面不存在"。
+      expect(src).not.toMatch(/\|\|\s*slug\.value \|\| ''/)
+    }
+  )
+
+  it('用自有文案的页仍与状态码闸门共用 isContentMissing（标题不与响应码互相矛盾）', () => {
+    for (const rel of CUSTOM_TITLE_PAGES) {
+      const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+      expect(src, `${rel} 没引入共用判定`).toContain(
+        "from '~~/composables/useContentStatus'"
+      )
+      expect(src, `${rel} 的标题分支没与闸门共用判定`).toMatch(
+        /if \((notFound|isContentMissing\()\b/
+      )
+    }
+    for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const messages = JSON.parse(
+        readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')
+      ) as Record<string, Record<string, string>>
+      expect(messages.series?.notFoundTitle, `${loc} 缺 series.notFoundTitle`).toBeTruthy()
+    }
   })
 
   it('四语都有 error.notFoundTitle 文案', () => {
+
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
       const messages = JSON.parse(
         readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')
