@@ -339,7 +339,7 @@
                 <Select
                   :model-value="String(row.folder_id ?? 'none')"
                   :disabled="busyFavoriteId !== null"
-                  @update:model-value="(v: string | number | symbol | null) => moveToFolder(row, v)"
+                  @update:model-value="(v: unknown) => moveToFolder(row, v)"
                 >
                   <SelectTrigger
                     class="h-8 w-40"
@@ -840,7 +840,7 @@ async function unfavorite(row: FavoriteRow) {
   }
 }
 
-async function moveToFolder(row: FavoriteRow, value: string | number | symbol | null) {
+async function moveToFolder(row: FavoriteRow, value: unknown) {
   const postId = Number(row.post?.id)
   if (!postId) return
   const folderId = value === 'none' || value == null ? null : Number(value)
