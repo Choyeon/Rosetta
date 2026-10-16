@@ -616,9 +616,7 @@ class TestFavoriteFolderNameBounds:
         assert resp.status_code == 422, resp.text
 
     @pytest.mark.asyncio
-    async def test_rename_bounds_match_create(
-        self, client, auth_headers, test_user, db_session
-    ):
+    async def test_rename_bounds_match_create(self, client, auth_headers, test_user, db_session):
         folder = FavoriteFolder(user_id=test_user.id, name="原名")
         db_session.add(folder)
         await db_session.commit()

@@ -50,9 +50,7 @@ def _operations() -> set[str]:
 
 
 def _frontend_text() -> str:
-    return "\n".join(
-        f.read_text(encoding="utf-8") for f in (COMPOSABLE, COMMENT_ITEM)
-    )
+    return "\n".join(f.read_text(encoding="utf-8") for f in (COMPOSABLE, COMMENT_ITEM))
 
 
 @pytest.mark.parametrize(("operation", "literal", "where"), FRONTEND_CONSUMED)
@@ -66,8 +64,7 @@ def test_read_and_add_mouths_go_through_the_post_access_gate():
     """GET 与 POST 都必须调 _readable_comment；DELETE 刻意不接（见模块 docstring）。"""
     src = BACKEND_ROUTES.read_text(encoding="utf-8")
     assert src.count("await _readable_comment(db, comment_id, current_user)") == 2, (
-        "反应口只剩一处或涨到多处闸门调用都值得重看："
-        "GET/POST 两个口要各调一次，DELETE 不该调"
+        "反应口只剩一处或涨到多处闸门调用都值得重看：GET/POST 两个口要各调一次，DELETE 不该调"
     )
     assert "post_is_publicly_visible" in src and "post_content_unlocked" in src, (
         "闸门必须复用 services/post_access 的判据，不要在路由里另写一套 status/密码判定"

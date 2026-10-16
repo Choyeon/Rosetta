@@ -86,9 +86,7 @@ class TestReactionReadGate:
     ):
         """加密文章：与评论列表口同判据——解不开正文就读不到它的衍生计数。"""
         secret = "rx-locked"
-        post = await _make_post(
-            db_session, test_user.id, password=await aget_password_hash(secret)
-        )
+        post = await _make_post(db_session, test_user.id, password=await aget_password_hash(secret))
         comment = await _make_comment(db_session, post.id)
         resp = await client.get(f"/api/comments/{comment.id}/reactions")
         assert resp.status_code == 404, resp.text
@@ -112,10 +110,14 @@ class TestReactionWriteGate:
         )
         assert resp.status_code == 404, resp.text
         rows = (
-            await db_session.execute(
-                select(CommentReaction).where(CommentReaction.comment_id == comment.id)
+            (
+                await db_session.execute(
+                    select(CommentReaction).where(CommentReaction.comment_id == comment.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert list(rows) == []
 
     async def test_public_comment_still_accepts_reaction(
@@ -130,7 +132,5 @@ class TestReactionWriteGate:
         )
         assert resp.status_code == 201, resp.text
         # reacted 只对登录用户有意义：同一 token 再读统计必须点亮
-        listed = await client.get(
-            f"/api/comments/{comment.id}/reactions", headers=auth_headers
-        )
+        listed = await client.get(f"/api/comments/{comment.id}/reactions", headers=auth_headers)
         assert listed.json()["reactions"] == [{"emoji": "🎉", "count": 1, "reacted": True}]
