@@ -224,7 +224,11 @@ function unrefVal<T extends string | string[] | undefined>(
 ): T {
   if (val == null) return undefined as T
   const asObj = val as { value?: T }
-  if (typeof asObj === 'object' && Object.prototype.hasOwnProperty.call(asObj, 'value')) {
+  // 必须用 `in` 而不是 hasOwnProperty：Vue 3.5 的 computed() 返回 class 实例，
+  // `value` 是**原型链上的 getter**，hasOwnProperty 看不到它，于是把整个 ComputedRef
+  // 当裸值返回；下游 `applyLocalePrefix(对象)` 在 .startsWith 上抛 TypeError，
+  // 而这段跑在 useHead 求值路径上 = 整页 500（实测 /zzznotexist 独立页口）。
+  if (typeof asObj === 'object' && 'value' in asObj) {
     return (asObj.value as T) ?? (undefined as T)
   }
   return val as T
@@ -232,8 +236,7 @@ function unrefVal<T extends string | string[] | undefined>(
 
 // SEO 描述出口的最后一道防线：剥掉短代码与 HTML 标签、压缩空白并封顶长度。
 // 各页面理应在调用侧先裁成纯文本；这里兜住新页面直传渲染后 HTML 的回退。
-// 入参可能是未解包的 ComputedRef（unrefVal 的 hasOwnProperty 检查看不到
-// 原型链上的 value getter，JSON-LD 路径靠 jsonLdStringify 兜底解包），
+// 入参可能是未解包的 ComputedRef（见 unrefVal 的原型链 getter 说明），
 // 所以先手动解一层 ref 再校验类型，非字符串一律安全返回空。
 const SEO_DESC_LIMIT = 200
 function plainTextMeta(input: unknown): string {

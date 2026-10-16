@@ -158,6 +158,15 @@ describe('URL 派生的单源约束（静态）', () => {
     expect(footer).toContain('applyLocalePrefix(route.fullPath')
   })
 
+  it('useSeo 解响应式入参必须认原型链上的 value getter', () => {
+    // Vue 3.5 的 computed() 是 class 实例，value 在原型上。hasOwnProperty 看不到它，
+    // 于是把整个 ComputedRef 当字符串返回 → applyLocalePrefix 在 .startsWith 上抛
+    // TypeError，跑在 useHead 求值路径上 = 整页 500（实测线上 /独立页 口）。
+    const src = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
+    expect(src).toContain("'value' in asObj")
+    expect(src).not.toMatch(/hasOwnProperty\.call\(\s*asObj/)
+  })
+
   it('路径归属判定一律先剥语言前缀（后台外壳不能只认裸 /admin）', () => {
     // 后台是可带前缀访问的（/en/admin/...）：admin-menu 的键、主题视觉排除名单、
     // 侧栏高亮比的都是默认语言形态。谁直接用 raw route.path 做归属判定，
