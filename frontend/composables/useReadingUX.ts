@@ -1,7 +1,7 @@
 /**
- * 全站统一动效快捷入口
+ * 全站统一阅读动效快捷入口
  * ---------------------
- * 提供页面常用动效组合方法，避免在各页面重复书写 transition class。
+ * 滚动显现 / 阅读进度 / TOC scroll-spy。
  * 所有动画 CSS 定义在 assets/css/main.css 中（@layer components）。
  *
  * 【已删除 pageTransition 常量】这里原先导出
@@ -13,36 +13,6 @@
  * 该常量全仓零引用，但因为 composables 是自动导入目录，任何人写下
  * `<Transition v-bind="pageTransition">` 都会把这颗雷重新埋回去 —— 故彻底删除。
  * 需要幻灯片式的元素切换（有 outgoing + incoming）时，请在具体组件里显式声明 mode。
- */
-
-/**
- * 元素进场：生成 animate-in + stagger 组合 class
- * 用法：<div :class="staggerIn(1)">...</div>
- */
-export const staggerIn = (order = 0, extra = '') => {
-  const steps = ['stagger-1', 'stagger-2', 'stagger-3', 'stagger-4', 'stagger-5', 'stagger-6']
-  const step = steps[Math.max(0, Math.min(order, steps.length - 1))]
-  return ['animate-in', step, extra].filter(Boolean).join(' ')
-}
-
-/**
- * 滚动显现快捷 class 组合
- * 用法：<div :class="reveal()">进入视口会自动淡入上移</div>
- */
-export const reveal = (extra = '') => {
-  return ['scroll-reveal', extra].filter(Boolean).join(' ')
-}
-
-/**
- * 卡片 Hover 抬升快捷 class
- */
-export const cardLift = (extra = '') => {
-  return ['lift-hover', 'rounded-xl', 'border', 'border-border', 'bg-card', 'shadow-sm', extra].filter(Boolean).join(' ')
-}
-
-/**
- * 统一滚动显现 + 阅读进度 + TOC 激活联动
- * 全部基于 IntersectionObserver + window scroll 事件，无额外依赖
  */
 
 /**

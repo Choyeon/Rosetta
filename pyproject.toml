@@ -107,11 +107,8 @@ omit = [
     "backend/core/cache_v2.py",
     "backend/core/cache_warmer.py",
     "backend/core/rate_limit.py",
-    "backend/core/crud.py",
     "backend/core/maintenance.py",
     "backend/core/logging_middleware.py",
-    "backend/core/search_indexer.py",
-    "backend/core/session.py",
 
     # --- 仓储层（纯转发无决策分支；由 Service / API 联合断言覆盖）
     "backend/repositories/*",
@@ -138,14 +135,10 @@ omit = [
     "backend/api/notification.py",
     "backend/api/webhook.py",
 
-    # --- Schema I18N（纯声明，0 分支）
-    "backend/schemas/i18n.py",
-
     # --- ORM Models（SQLAlchemy 列声明，0 业务分支）
     "backend/models/blog.py",
     "backend/models/core.py",
     "backend/models/activity.py",
-    "backend/models/i18n.py",
 ]
 
 [tool.coverage.report]

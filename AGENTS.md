@@ -317,7 +317,7 @@ Rosetta/
 │  ├─ core/                          基础设施（config / database / auth / cache / csrf / rate_limit / exceptions /
 │  │                                 plugin_loader + plugin_bus + hooks（插件引擎）…）
 │  ├─ models/                        SQLAlchemy 2.0 DeclarativeBase（blog / user / gallery / site …）
-│  ├─ schemas/                       Pydantic v2 请求/响应模型 + i18n dict 工厂
+│  ├─ schemas/                       Pydantic v2 请求/响应模型（多语言 dict 的真源在 core/i18n.py）
 │  ├─ repositories/                  Repository 层（base / post / user）
 │  ├─ services/                      业务层（user_service / media_service / email_service / avatar_resolver / recommendation …）
 │  ├─ migrations/                       Alembic 版本化迁移（4 个历史文件名含中文，git ls-files
@@ -610,6 +610,6 @@ PR 标题：`{scope}: {message}`，例如 `feat(frontend): SSR 留言板 apiFetc
 - 本文档随代码演进。发现规范与实际冲突时，修改代码或修改本规范二选一，不得长期不一致。
 - 新增内建主题：`frontend/themes/{slug}/` 创建 `rosetta-theme.json + style.css + screenshot`，`style.css` 必须满足 §3 CSS 守卫；`mods_schema.properties` 是 Customizer 控件的唯一清单（后端只接受已声明键，前端只消费有真实消费点的键）。若新主题需要**独立的 DOM 骨架**（首页/页脚/登录注册/错误页结构分支），还必须在 `frontend/lib/rosetta-themes.ts` 的 `MINIMAL_THEME_SLUGS` 登记；只换皮肤的主题不登记，自动落回默认骨架 —— 详见 `frontend/AGENTS.md`「主题变体契约」。
 - 新增插件：`backend/plugins/{slug}/` 创建 `rosetta-plugin.json + plugin.py`，注册入口是同步 `register(app, ctx)`。
-- 新增语言：必须先在 §13.2 去掉禁止，然后同步补 `i18n.config.ts` · `i18n/locales/xx.json` · `schemas/i18n.py` · site_settings 默认值全链路。
+- 新增语言：必须先在 §13.2 去掉禁止，然后同步补 `i18n.config.ts` · `i18n/locales/xx.json` · `backend/core/i18n.py`（`SUPPORTED_LANGUAGES` / `LANGUAGE_CODES`，语言清单唯一真源）· site_settings 默认值全链路。
 
 — 本文件 v2026.09 由 Rosetta 项目组维护，对应代码基线 v2.1.1 —
