@@ -114,6 +114,30 @@ class TestSecurityMiddleware:
             assert h in headers, f"缺少安全头 {h}: {headers}"
         assert "nonce-" in headers["content-security-policy"]
 
+    def test_permissions_policy_has_no_removed_feature_tokens(self):
+        """Permissions-Policy 里不得再出现浏览器已不认识的令牌。
+
+        漏守的表现：`interest-cohort=()` 随 Privacy Sandbox/GEL 下线被 Chromium 移除后，
+        每个 /api 响应都会在访客控制台里展开成 4 条 "Unrecognized feature" 报错
+        （attribution-reporting / private-aggregation / join-ad-interest-group /
+        run-ad-auction），而它本来什么也挡不住。
+        """
+        from backend.core.security_middleware import PERMISSIONS_POLICY
+
+        removed = (
+            "interest-cohort",
+            "attribution-reporting",
+            "private-aggregation",
+            "join-ad-interest-group",
+            "run-ad-auction",
+        )
+        tokens = {item.split("=")[0] for item in PERMISSIONS_POLICY.replace(" ", "").split(",")}
+        assert tokens.isdisjoint(removed), f"Permissions-Policy 含已下线令牌: {tokens & set(removed)}"
+        # 反向保底：收紧的那 4 项必须还在，别把修复做成"整条头删掉"
+        compact = PERMISSIONS_POLICY.replace(" ", "")
+        for kept in ("camera", "microphone", "geolocation", "payment"):
+            assert f"{kept}=()" in compact, f"Permissions-Policy 丢了 {kept} 的拒绝策略"
+
     @pytest.mark.asyncio
     async def test_hsts_via_force_hsts(self, client: AsyncClient, monkeypatch):
         from backend.core.config import settings

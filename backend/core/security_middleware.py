@@ -60,7 +60,11 @@ def _build_csp(nonce: str, allow_inline_scripts: bool = False) -> str:
 HSTS_HEADER = "max-age=63072000; includeSubDomains; preload"
 NOSNIFF = "nosniff"
 REFERRER_POLICY = "strict-origin-when-cross-origin"
-PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=()"
+# 不含 interest-cohort：GEL 已于 2024-08 随 Privacy Sandbox 下线并从 Chromium 移除，
+# 现代浏览器不再认识这个令牌——它会在每个 /api 响应上展开成 4 条
+# "Unrecognized feature" 控制台报错（attribution-reporting / private-aggregation /
+# join-ad-interest-group / run-ad-auction）。留着挡不住任何真实能力，只污染控制台。
+PERMISSIONS_POLICY = "camera=(), microphone=(), geolocation=(), payment=()"
 XFRAME_SAMEORIGIN = "SAMEORIGIN"
 
 
