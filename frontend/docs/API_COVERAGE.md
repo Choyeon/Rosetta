@@ -16,6 +16,8 @@
 
 > **2026-10-16 局部更新（favorite 一族，+10 条已覆盖）**：本行以上的汇总仍是 2026-09-26 全量扫描的快照，未按本轮手改（末行「勿手改数字」的口径）；按 favorite 的增量，等价数字为 ✅ 216 + 🟡 8 = 224 / 351 ≈ 63.8%。同日另跑了一次独立扫描（读生成后的 `app.openapi()["paths"]`，357 个 operation，前端字面量按 `${x}` 通配匹配并排除 `.output*` 构建产物与 Nitro 代理中间件的 `/api` catch-all）：**已覆盖 295 / 357 ≈ 82.6%**。两个口径差在分母与"仅 URL 拼接/仅 Nitro 侧消费"的计入方式，不要混用；下一次全量刷新时以扫描器为准并回填本节。
 
+> **扫描器看不见的一类假阳性（2026-10-16 记录）**：本表的 ✅ 判定只看"代码里有没有这条 URL 字面量"，看不见**这个封装有没有 UI 消费点**。实例：`comment_reactions` 三条口与 `useFavorites` 删除前的 `getFavorites`（导出一个未定义的名字）都曾被计成 ✅，而界面上从未发过这些请求。同族里"封装存在但没人点"的条目在下一次全量扫描时应单列一档；已确认并落地的例子见下面 `comment_reactions` 一节（2026-10-16 真正接进 `CommentItem.vue`）。
+
 > 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点，见下文的「扫描手法」）；这正是不要手改本表的原因——下一次扫描会重算。
 
 ## 全模块汇总表
