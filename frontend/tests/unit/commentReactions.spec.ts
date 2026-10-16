@@ -57,4 +57,11 @@ describe('CommentItem 的反应条', () => {
     expect(item).toMatch(/import \{[^}]*Smile[^}]*\} from '~~\/lib\/lucide-svg-icons'/)
     expect(item).not.toContain('@lucide/vue')
   })
+
+  it('四语都有 comment.react（缺一种就是那个语言下按钮没有无障碍名）', () => {
+    for (const locale of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const dict = JSON.parse(read(`i18n/locales/${locale}.json`)) as Record<string, { react?: string }>
+      expect(typeof dict.comment?.react, locale).toBe('string')
+    }
+  })
 })
