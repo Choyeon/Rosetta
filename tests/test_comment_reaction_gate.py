@@ -98,10 +98,14 @@ class TestReactionReadGate:
 
 class TestReactionWriteGate:
     async def test_cannot_react_on_hidden_comment(
-        self, client: AsyncClient, auth_headers, db_session, test_user
+        self, client: AsyncClient, auth_headers, db_session, admin_user
     ):
-        """挡不住写口等于让任何登录用户往看不见的评论上堆计数。"""
-        draft = await _make_post(db_session, test_user.id, status="draft")
+        """挡不住写口等于让任何登录用户往看不见的评论上堆计数。
+
+        文章作者本人要留给 admin_user：`post_is_publicly_visible` 对作者放行自己的草稿，
+        用 test_user 当作者就等于测另一条正向路径。
+        """
+        draft = await _make_post(db_session, admin_user.id, status="draft")
         comment = await _make_comment(db_session, draft.id)
         resp = await client.post(
             f"/api/comments/{comment.id}/reactions",
