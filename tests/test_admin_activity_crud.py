@@ -300,6 +300,12 @@ class TestActivityAdminCrud:
         target = next(i for i in listed.json()["items"] if i["id"] == aid)
         assert target["likes_count"] == 2, target
 
+        # 公开列表走的是另一个模型（ActivityLocalizedResponse）。它漏传 likes_count 时
+        # 不会报错，只会让前台点赞数恒为 0 —— 两个口都要断言才算覆盖这条链路。
+        public = await client.get("/api/activities", params={"page_size": 50})
+        pub_target = next(i for i in public.json()["items"] if i["id"] == aid)
+        assert pub_target["likes_count"] == 2, pub_target
+
     @pytest.mark.asyncio
     async def test_like_missing_activity_is_404(self, client: AsyncClient):
         r = await client.post("/api/activities/999999/like")

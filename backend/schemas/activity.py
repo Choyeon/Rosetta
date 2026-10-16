@@ -109,6 +109,9 @@ class ActivityLocalizedResponse(BaseModel):
             type=activity.type,
             author=build_public_user_response(activity.author),
             is_published=activity.is_published,
+            # 漏传这一行时前台永远显示 0 赞：模型默认值是 0，序列化不会报错，
+            # 只有真点一次赞再读公开列表才暴露（回归见 tests/test_admin_activity_crud.py）
+            likes_count=activity.likes_count,
             created_at=activity.created_at,
             updated_at=activity.updated_at,
         )
