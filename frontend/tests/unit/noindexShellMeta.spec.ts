@@ -149,6 +149,7 @@ describe('服务端注入实现', () => {
     // 取 routeRules 块里的键，过滤出带 ssr: false 的那些（口径见 AGENTS §2.2）
     const spaPaths = [...cfg.matchAll(/'(\/[^']*)':\s*\{[^}]*ssr:\s*false/g)]
       .map(m => m[1])
+      .filter((p): p is string => Boolean(p))
       .filter(p => !p.startsWith('/@'))
       .map(p => p.replace(/\/\*\*$/, ''))
     expect(spaPaths.length).toBeGreaterThan(0)
