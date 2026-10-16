@@ -1141,6 +1141,20 @@
     "removed": "保存を解除しました",
     "loginRequired": "ログインすると記事を保存できます"
   },
+  "messages": {
+    "title": "ダイレクトメッセージ",
+    "fromProfile": "メッセージを送る",
+    "unreadTotal": "未読 {count} 件",
+    "markRead": "既読にする",
+    "empty": "メッセージはまだありません",
+    "loadFailed": "会話の読み込みに失敗しました",
+    "selectHint": "左から会話を選択してください",
+    "emptyThread": "まだ会話がありません。最初の1通を送りましょう",
+    "placeholder": "メッセージを入力…",
+    "send": "送信",
+    "sending": "送信中…",
+    "limit": "最大5000文字"
+  },
   "account": {
     "title": "マイアカウント",
     "desc": "投稿・コメント・いいね・保存・閲覧履歴",

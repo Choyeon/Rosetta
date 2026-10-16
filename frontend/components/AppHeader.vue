@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import { watch, computed, onMounted } from 'vue'
 import {
-  Menu, Search, LogOut, User, UserCircle2, Settings, ChevronDown
+  Menu, Search, LogOut, User, UserCircle2, Settings, ChevronDown, MessageSquare
 } from '~~/lib/lucide-svg-icons'
 import { Button } from '~~/components/ui/button'
 import {
@@ -440,6 +440,11 @@ const handleSearchClick = () => navigateTo('/search')
                   <UserCircle2 data-icon="inline-start" />
                   <span>{{ t('account.title') }}</span>
                 </DropdownMenuItem>
+                <!-- 私信：与 /account 同档 ssr:false 私有页，入口同样只放在登录态菜单里。 -->
+                <DropdownMenuItem @click="navigateTo('/account/messages')">
+                  <MessageSquare data-icon="inline-start" />
+                  <span>{{ t('messages.title') }}</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem @click="navigateTo('/settings')">
                   <Settings data-icon="inline-start" />
                   <span>{{ t('common.settings') || '设置' }}</span>
@@ -553,6 +558,17 @@ const handleSearchClick = () => navigateTo('/search')
                       >
                         <UserCircle2 data-icon="inline-start" />
                         {{ t('account.title') }}
+                      </Button>
+                    </SheetClose>
+                    <SheetClose as-child>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="justify-start"
+                        @click="navigateTo('/account/messages')"
+                      >
+                        <MessageSquare data-icon="inline-start" />
+                        {{ t('messages.title') }}
                       </Button>
                     </SheetClose>
                     <Button

@@ -90,6 +90,21 @@
                 {{ t('authors.github', 'GitHub') }}
               </a>
             </div>
+            <!-- 发私信：入口放在作者主页而非主导航。/account/messages 是登录态私有页，
+                 未登录点过去只会得到一次跳转；本人主页也不需要给自己发私信。
+                 ClientOnly 是必需的：SSR 期 auth store 走 skipHydrate（拿不到 token），
+                 服务端渲染成「无链接」、客户端渲染成「有链接」，不包就是节点级 hydration mismatch。 -->
+            <ClientOnly>
+              <div v-if="canMessage" class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+                <NuxtLink
+                  :to="messageHref"
+                  class="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary"
+                >
+                  <MessageSquare class="size-3.5" />
+                  {{ t('messages.fromProfile') }}
+                </NuxtLink>
+              </div>
+            </ClientOnly>
             <p
               v-if="joinedLabel"
               class="mt-2 text-xs text-muted-foreground"
@@ -206,14 +221,16 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
-import { ChevronLeft, ChevronRight, ExternalLink, Globe, UserRound } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, ExternalLink, Globe, MessageSquare, UserRound } from '@lucide/vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
+import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const route = useRoute()
+const authStore = useAuthStore()
 
 const username = computed(() =>
   typeof route.params.username === 'string' ? route.params.username : ''
@@ -301,6 +318,17 @@ const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(profileError.value || postsErr.value))
 // 资料缺失才是"这个作者不存在"；判定时点与口径见 composables/useContentStatus.ts。
 const profileMissing = computed(() => !profile.value?.username)
+
+// 发私信入口：只对「已登录 + 拿到对端 id + 不是本人」三者同时成立时出现。
+// 中性路径带 ?to= 查询串，applyLocalePrefix 会把查询留在末尾（/en/account/messages?to=7）。
+const canMessage = computed(() =>
+  Boolean(authStore.accessToken)
+  && Boolean(profile.value?.id)
+  && profile.value?.id !== authStore.user?.id
+)
+const messageHref = computed(() =>
+  applyLocalePrefix(`/account/messages?to=${profile.value?.id ?? 0}`, locale.value)
+)
 useContentStatus(profileError, profileMissing)
 // 页面分支与 HTTP 状态码共用同一个判定：不公开的资料后端也回 404，
 // 所以这里必须走"不存在"文案，不能落到"加载失败，请重试"——那等于对用户说

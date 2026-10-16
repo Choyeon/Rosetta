@@ -1141,6 +1141,20 @@
     "removed": "已取消收藏",
     "loginRequired": "登录后才能收藏文章"
   },
+  "messages": {
+    "title": "私信",
+    "fromProfile": "发私信",
+    "unreadTotal": "{count} 封未读",
+    "markRead": "标为已读",
+    "empty": "还没有收到私信",
+    "loadFailed": "会话加载失败",
+    "selectHint": "从左侧选择一个会话",
+    "emptyThread": "还没有对话，发出第一条私信",
+    "placeholder": "输入消息…",
+    "send": "发送",
+    "sending": "发送中…",
+    "limit": "最多 5000 字"
+  },
   "account": {
     "title": "个人中心",
     "desc": "你的文章、评论、点赞、收藏与阅读足迹",

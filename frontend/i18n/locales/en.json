@@ -1141,6 +1141,20 @@
     "removed": "Removed from saved posts",
     "loginRequired": "Sign in to save posts"
   },
+  "messages": {
+    "title": "Direct messages",
+    "fromProfile": "Message",
+    "unreadTotal": "{count} unread",
+    "markRead": "Mark as read",
+    "empty": "No messages yet",
+    "loadFailed": "Failed to load conversations",
+    "selectHint": "Pick a conversation on the left",
+    "emptyThread": "Nothing here yet — send the first message",
+    "placeholder": "Write a message…",
+    "send": "Send",
+    "sending": "Sending…",
+    "limit": "Up to 5000 characters"
+  },
   "account": {
     "title": "My account",
     "desc": "Your posts, comments, likes, saved posts and reading history",

@@ -1141,6 +1141,20 @@
     "removed": "已取消收藏",
     "loginRequired": "登入後才能收藏文章"
   },
+  "messages": {
+    "title": "私訊",
+    "fromProfile": "發私訊",
+    "unreadTotal": "{count} 封未讀",
+    "markRead": "標為已讀",
+    "empty": "還沒有收到私訊",
+    "loadFailed": "對話載入失敗",
+    "selectHint": "從左側選擇一個對話",
+    "emptyThread": "還沒有對話，發出第一則私訊",
+    "placeholder": "輸入訊息…",
+    "send": "傳送",
+    "sending": "傳送中…",
+    "limit": "最多 5000 字"
+  },
   "account": {
     "title": "個人中心",
     "desc": "你的文章、留言、按讚、收藏與閱讀軌跡",
