@@ -42,15 +42,15 @@ const FAVORITES_KEYS = ['add', 'favorited', 'added', 'removed', 'loginRequired']
 
 describe('composables/useFavorites.ts 是收藏族的唯一出口', () => {
   it.each([
-    ["GET 列表", "useAPI<FavoriteFolderList>('/favorites/folders'"],
-    ["POST check", "apiFetch<FavoriteCheckResult>('/favorites/check'"],
-    ["POST 收藏", "apiFetch<FavoriteActionResponse>('/favorites'"],
-    ["DELETE 按文章取消", "`/favorites/post/${postId}`, { method: 'DELETE' }"],
-    ["PATCH 按文章移夹", "`/favorites/post/${postId}/folder`"],
-    ["PATCH 按文章改备注", "`/favorites/post/${postId}/note`"],
-    ["POST 建收藏夹", "apiFetch<FavoriteActionResponse>('/favorites/folders'"],
-    ["PUT 改收藏夹", "`/favorites/folders/${folderId}`"],
-    ["DELETE 删收藏夹", "`/favorites/folders/${folderId}`, { method: 'DELETE' }"]
+    ['GET 列表', 'useAPI<FavoriteFolderList>(\'/favorites/folders\''],
+    ['POST check', 'apiFetch<FavoriteCheckResult>(\'/favorites/check\''],
+    ['POST 收藏', 'apiFetch<FavoriteActionResponse>(\'/favorites\''],
+    ['DELETE 按文章取消', '`/favorites/post/${postId}`, { method: \'DELETE\' }'],
+    ['PATCH 按文章移夹', '`/favorites/post/${postId}/folder`'],
+    ['PATCH 按文章改备注', '`/favorites/post/${postId}/note`'],
+    ['POST 建收藏夹', 'apiFetch<FavoriteActionResponse>(\'/favorites/folders\''],
+    ['PUT 改收藏夹', '`/favorites/folders/${folderId}`'],
+    ['DELETE 删收藏夹', '`/favorites/folders/${folderId}`, { method: \'DELETE\' }']
   ])('%s 走与后端一致的字面量：%s', (_name, literal) => {
     expect(favorites).toContain(literal)
   })
