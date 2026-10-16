@@ -156,9 +156,21 @@
    （本仓未开 `nitroAsyncContext`），闸门会静默失效、页面全回 200。
 3. 只有后端明确 404、或请求成功但对象为空才改状态码；网络故障 / 5xx 一律不动——
    把一次临时故障写成 404，搜索引擎会当成永久删除而掉索引，比 200 更难恢复。
-4. **`<title>` 必须与状态码同口径**：404 响应配一个"看起来正常"的标题（`系列 · 系列`、
+4. **`<title>` / robots / canonical 必须与状态码同口径**：404 响应配一个"看起来正常"的标题（`系列 · 系列`、
    `2026-09 归档`）等于给搜索引擎两份互相矛盾的信号。判定共用导出的
    `isContentMissing()`，页面侧不要再写一套 `!data`。
+   实测另一半：闸门回了 404，`useSeo` 仍默认输出 `index, follow, max-image-preview:large…`
+   并自带一条指向自己的 canonical + hreflang 集群——爬虫挑哪份信号不可控。口径是把
+   `isContentMissing` 提成页面自己的 `*NotFound` 计算属性，同时喂给标题、
+   `useSeo({ noindex: *NotFound })`、JSON-LD 三处（noindex 内部已抑制 canonical/hreflang，
+   不要给常量 `noindex: true`，那会把有内容的这一页一起禁索引）；契约见
+   `contentNotFoundStatus.spec.ts`。独立页口（顶级 catchall）的 Article JSON-LD 走
+   `useArticleJsonLd({ path })`，`/page/<slug>` 兼容口同理，缺内容时传空串 = 不输出。
+5. **`useSeo` 里"支持 Ref 的入参"一律用 `'value' in obj` 解包，不得用 `hasOwnProperty`**：
+   Vue 3.5 的 `computed()` 是 class 实例，`value` 是原型链上的 getter，`hasOwnProperty`
+   看不到它 → 整个 ComputedRef 被当裸字符串交给 `applyLocalePrefix` → `.startsWith` 抛
+   TypeError，而这段跑在 `useHead` 求值路径上 = 整页 500（实测独立页口）。同一坑的
+   另一种表现见 §2.3.3 第 1 条，`seoLocaleUrl.spec.ts` 钉住解包写法。
 
 清单由 `frontend/tests/unit/contentNotFoundStatus.spec.ts` 递归清点 `pages/` 下带动态段的
 公开页来兜：新增一页若没接闸门（也没挂 `archive-year` 这类命名中间件），测试直接红。
@@ -461,7 +473,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 47 个 spec；用例数以生产机最近一次全绿实测量为准）
+pnpm test                     # Vitest 单测（tests/unit/ 47 个 spec；755 用例，生产机 2026-10-16 全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -516,7 +528,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 全绿（47 个 spec 文件；用例数以生产机实测量为准）
+pnpm test          # 全绿（47 个 spec 文件；755 用例）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
