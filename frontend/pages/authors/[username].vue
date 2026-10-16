@@ -95,7 +95,10 @@
                  ClientOnly 是必需的：SSR 期 auth store 走 skipHydrate（拿不到 token），
                  服务端渲染成「无链接」、客户端渲染成「有链接」，不包就是节点级 hydration mismatch。 -->
             <ClientOnly>
-              <div v-if="canMessage" class="mt-3 flex flex-wrap items-center gap-4 text-sm">
+              <div
+                v-if="canMessage"
+                class="mt-3 flex flex-wrap items-center gap-4 text-sm"
+              >
                 <NuxtLink
                   :to="messageHref"
                   class="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary"

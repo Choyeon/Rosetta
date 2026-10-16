@@ -9,7 +9,7 @@
   `composables/useMessages.ts` 文件头与 `docs/API_COVERAGE.md`。
 
   三条契约决定了下面的写法：
-  1. ssr:false 由 `nuxt.config.ts` 的 `/account/**` routeRules 精准反选（页面不重复声明），
+  1. ssr 档位由 `nuxt.config.ts` 的 `/account/**` routeRules 精准反选（页面不重复声明），
      所以这里可以直接在 setup 期用 useAPI：没有首屏白屏问题，也没有 SSR 期无 token 的问题。
   2. 未读总数只能来自 `/messages/unread/count`：会话列表是分页的，翻页外的对端未读数拿不到，
      把本页的 `unread_count` 加总当成全站未读会少报。
@@ -20,11 +20,17 @@
   <div class="mx-auto w-full max-w-6xl px-4 py-8">
     <header class="mb-6 flex flex-wrap items-center justify-between gap-3">
       <div class="flex items-center gap-2">
-        <MessageSquare class="size-5 text-primary" aria-hidden="true" />
+        <MessageSquare
+          class="size-5 text-primary"
+          aria-hidden="true"
+        />
         <h1 class="text-xl font-semibold">
           {{ t('messages.title') }}
         </h1>
-        <Badge v-if="unreadTotal" variant="secondary">
+        <Badge
+          v-if="unreadTotal"
+          variant="secondary"
+        >
           {{ t('messages.unreadTotal', { count: unreadTotal }) }}
         </Badge>
       </div>
@@ -36,7 +42,10 @@
       </NuxtLink>
     </header>
 
-    <p v-if="convError" class="mb-4 text-sm text-destructive">
+    <p
+      v-if="convError"
+      class="mb-4 text-sm text-destructive"
+    >
       {{ t('messages.loadFailed') }}
     </p>
 
@@ -44,7 +53,10 @@
       <!-- ===== 左：会话列表 ===== -->
       <Card class="overflow-hidden">
         <CardContent class="p-0">
-          <ul v-if="conversations.length" class="divide-y">
+          <ul
+            v-if="conversations.length"
+            class="divide-y"
+          >
             <li
               v-for="row in conversations"
               :key="row.user.id"
@@ -65,7 +77,11 @@
                 <span class="min-w-0 flex-1">
                   <span class="flex items-center gap-2">
                     <span class="truncate text-sm font-medium">{{ peerLabel(row.user) }}</span>
-                    <Badge v-if="row.unread_count" variant="destructive" class="shrink-0">
+                    <Badge
+                      v-if="row.unread_count"
+                      variant="destructive"
+                      class="shrink-0"
+                    >
                       {{ row.unread_count }}
                     </Badge>
                   </span>
@@ -87,15 +103,27 @@
               </Button>
             </li>
           </ul>
-          <p v-else-if="convPending" class="p-4 text-sm text-muted-foreground">
+          <p
+            v-else-if="convPending"
+            class="p-4 text-sm text-muted-foreground"
+          >
             {{ t('common.loading') }}
           </p>
-          <p v-else class="flex items-center gap-2 p-4 text-sm text-muted-foreground">
-            <Inbox class="size-4" aria-hidden="true" />
+          <p
+            v-else
+            class="flex items-center gap-2 p-4 text-sm text-muted-foreground"
+          >
+            <Inbox
+              class="size-4"
+              aria-hidden="true"
+            />
             {{ t('messages.empty') }}
           </p>
 
-          <div v-if="convTotalPages > 1" class="flex items-center justify-between border-t p-3">
+          <div
+            v-if="convTotalPages > 1"
+            class="flex items-center justify-between border-t p-3"
+          >
             <Button
               variant="outline"
               size="sm"
@@ -139,14 +167,22 @@
                 :name="peerLabel(threadPeer)"
                 size="sm"
               />
-              <span class="truncate text-sm font-medium">{{ threadPeer ? peerLabel(threadPeer) : '' }}</span>
+              <span class="truncate text-sm font-medium">
+                {{ threadPeer ? peerLabel(threadPeer) : '' }}
+              </span>
             </div>
 
             <div class="flex-1 space-y-2 overflow-y-auto">
-              <p v-if="threadPending" class="text-sm text-muted-foreground">
+              <p
+                v-if="threadPending"
+                class="text-sm text-muted-foreground"
+              >
                 {{ t('common.loading') }}
               </p>
-              <p v-else-if="!threadItems.length" class="text-sm text-muted-foreground">
+              <p
+                v-else-if="!threadItems.length"
+                class="text-sm text-muted-foreground"
+              >
                 {{ t('messages.emptyThread') }}
               </p>
               <div
@@ -174,14 +210,21 @@
               />
               <div class="flex items-center justify-between gap-2">
                 <span class="text-xs text-muted-foreground">{{ t('messages.limit') }}</span>
-                <Button size="sm" :disabled="sending || !draft.trim()" @click="handleSend">
+                <Button
+                  size="sm"
+                  :disabled="sending || !draft.trim()"
+                  @click="handleSend"
+                >
                   <Send data-icon="inline-start" />
                   {{ sending ? t('messages.sending') : t('messages.send') }}
                 </Button>
               </div>
             </div>
           </template>
-          <p v-else class="self-center text-sm text-muted-foreground">
+          <p
+            v-else
+            class="self-center text-sm text-muted-foreground"
+          >
             {{ t('messages.selectHint') }}
           </p>
         </CardContent>

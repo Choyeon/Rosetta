@@ -37,33 +37,33 @@ describe('useMessages 封装', () => {
     'getUnreadMessageCount',
     'sendPrivateMessage',
     'markConversationRead'
-  ])('导出 %s（有真实消费点才允许出现在这一族里）', name => {
+  ])('导出 %s（有真实消费点才允许出现在这一族里）', (name) => {
     expect(composable).toContain(`const ${name} =`)
     expect(composable.slice(composable.lastIndexOf('return {'))).toContain(name)
   })
 
   it('未读总数走静默口：轮询失败不该弹 toast', () => {
     expect(composable).toContain(
-      "silentApiFetch<{ count: number }>('/messages/unread/count')"
+      'silentApiFetch<{ count: number }>(\'/messages/unread/count\')'
     )
   })
 
   it('发送把正文放进请求体而不是查询串', () => {
-    expect(composable).toContain("apiFetch<MessageSendResult>('/messages'")
+    expect(composable).toContain('apiFetch<MessageSendResult>(\'/messages\'')
     expect(composable).toContain('body: { recipient_id: recipientId, content }')
     expect(composable).not.toContain('query: { recipient_id')
   })
 
   it('整段标已读用 PUT /messages/read-all/{对端}，且不出现按单条标已读的形态', () => {
     expect(composable).toContain('`/messages/read-all/${peerId}`')
-    expect(composable).toContain("method: 'PUT'")
+    expect(composable).toContain('method: \'PUT\'')
     expect(/\/messages\/\$\{[^}]+\}\/read(?![\w-])/.test(composable)).toBe(false)
   })
 })
 
 describe('/account/messages 页面', () => {
   it('列表与正文都走 useAPI 单源，URL 随分页/选中对端变化', () => {
-    expect(page).toContain("useAPI<MessageConversationList>('/messages/conversations'")
+    expect(page).toContain('useAPI<MessageConversationList>(\'/messages/conversations\'')
     expect(page).toContain('`/messages/${peerId.value ?? 0}`')
     expect(page).toContain('query: computed(() => ({ page: convPage.value, page_size: 20 }))')
     expect(page).not.toContain('$fetch(')
@@ -86,7 +86,7 @@ describe('/account/messages 页面', () => {
   })
 
   it('登录态私有页：档位由 routeRules 单源，页面自带 noindex', () => {
-    expect(page).toContain("definePageMeta({ layout: 'default', middleware: 'auth-required' })")
+    expect(page).toContain('definePageMeta({ layout: \'default\', middleware: \'auth-required\' })')
     expect(/definePageMeta\([^)]*ssr/.test(page)).toBe(false)
     expect(page).toContain('useNoindexPage()')
   })
@@ -99,7 +99,7 @@ describe('/account/messages 页面', () => {
 
 describe('入口', () => {
   it('顶栏桌面下拉与移动抽屉各有一个私信入口', () => {
-    expect(header.split("navigateTo('/account/messages')").length - 1).toBe(2)
+    expect(header.split('navigateTo(\'/account/messages\')').length - 1).toBe(2)
   })
 
   it('作者主页入口只对「已登录 + 非本人」出现，且包在 ClientOnly 里', () => {
@@ -112,7 +112,7 @@ describe('入口', () => {
 })
 
 describe('四语键', () => {
-  it.each(['zh', 'en', 'ja', 'zh_Hant'])('%s 补齐 messages.*', code => {
+  it.each(['zh', 'en', 'ja', 'zh_Hant'])('%s 补齐 messages.*', (code) => {
     const json = JSON.parse(read(`i18n/locales/${code}.json`)) as Record<string, Record<string, string>>
     expect(json.messages).toBeDefined()
     for (const key of MESSAGE_KEYS) {
