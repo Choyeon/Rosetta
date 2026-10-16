@@ -328,7 +328,7 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          66 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 2 个登录态个人中心（`/account` + `/account/settings`，SPA）+ 37 个 admin 子页（SPA）
+│  ├─ pages/                          67 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 3 个登录态个人中心（`/account` + `/account/settings` + `/account/messages`，SPA）+ 37 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   30 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
@@ -486,7 +486,11 @@ pnpm test                     # Vitest 单测（tests/unit/ 47 个 spec；755 �
 单独跑这个文件时挂的却是**另一条**，报错都是 `attached to a different loop` 一类的事件循环串台。
 判定口径：挂的集合随运行范围变化 ⇒ 是用例间共享 fixture 的隔离问题，与被测代码无关；
 确认方法是单点跑那一条用例（`uv run pytest tests/...py::TestMainTopRoutes::test_health_route`），单点绿即噪声。
-修它要重排该文件的 fixture 作用域，是独立工程，勿与功能改动混做。
+**同一族的噪声不止这一个文件**：2026-10-16 全量跑（1332 passed / 2 failed）另挂
+`tests/test_market_index.py::test_plugin_market_route_registered`，报错在
+`TestClient(app).__enter__` 的 lifespan 启动处（不是断言处），单点跑绿——判据同样是"前面用例把
+连接/事件循环弄脏了"。看到新的挂点先按这条流程判（单点跑），别去改被测代码。
+修它要重排相关文件的 fixture 作用域，是独立工程，勿与功能改动混做。
 
 ### 8.3 部署
 
