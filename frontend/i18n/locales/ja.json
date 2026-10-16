@@ -149,7 +149,8 @@
     "minutesAgo": " 分前",
     "hoursAgo": " 時間前",
     "daysAgo": " 天前",
-    "like": "いいね"
+    "like": "いいね",
+    "react": "リアクション"
   },
   "poll": {
     "title": "投票",

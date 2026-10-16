@@ -139,7 +139,18 @@
 
 ### comment_reactions（/api）— 3/3 ✅
 
-`GET/POST/DELETE /comments/{id}/reactions[/{emoji}]`（ucm:48,80,87）
+`GET/POST/DELETE /comments/{id}/reactions[/{emoji}]`（`composables/useComments.ts` 的
+`loadCommentReactions` / `addCommentReaction` / `removeCommentReaction`）
+
+> 2026-09 版把这一族记成 ✅ 是**名义覆盖**：封装存在但全项目没有 UI 调用点，界面从未发过这些请求。
+> 2026-10-16 真正落到 `components/CommentItem.vue` 的反应条（点开面板才拉统计：后端没有批量反应口，
+> 逐条预取就是 N+1；每次 toggle 后以 GET 结果为真源，本地不自增计数）。
+> 同批给 `GET`/`POST` 两个口补上文章可读性闸门（`backend/api/comment_reactions.py::_readable_comment`）：
+> 此前它们只按 `Comment.id` 查存在与否，草稿/加密文章的评论即使正文被评论口挡住，它的**表情计数**
+> 仍能按 comment_id 枚举，且任何登录用户能往看不见的评论上写反应。`DELETE` 刻意不接闸门
+> （只删调用者自己的行，两种情况都回同样的 404）。契约见 `tests/test_comment_reaction_gate.py`
+> 与 `tests/test_comment_reactions_frontend_contract.py`、前端侧 `tests/unit/commentReactions.spec.ts`。
+> emoji 必须放在 DELETE 的**路径**上——放 body 会命中集合路径的 405，表现为"点亮了取消不掉"。
 
 ### activity（/api）— 6/8
 

@@ -11,10 +11,27 @@
  *
  * 后台审核类（approve/reject/spam/batch）只是前台视角的薄封装；
  * 评论管理页的实现在 useAdminManage.ts（带分页/筛选的完整列表契约）。
+ *
+ * 例外一档：`loadCommentReactions` 是 `apiFetch` GET，按**单条评论**在交互时拉表情统计——
+ * 既不是 setup 顶层的 `get*`（AsyncData 口），也不写回 state，所以不叫 `fetch*`。
+ * 后端没有批量反应口，逐条预取就是 N+1，因此只在点开反应条时拉一次。
  */
 import { ref, shallowRef } from 'vue'
 import type { Comment, PaginatedResponse } from '~~/types/api'
 import { useAPI, apiFetch, type ApiFetchOptions } from '~~/composables/useApi'
+
+/** GET /comments/{id}/reactions 的单档统计（reacted 只对当前登录用户有意义） */
+export interface CommentReactionSummary {
+  emoji: string
+  count: number
+  reacted: boolean
+}
+
+export interface CommentReactionSummaryList {
+  comment_id: number
+  reactions: CommentReactionSummary[]
+  total: number
+}
 
 export function useComments() {
   const { locale } = useI18n()
@@ -57,8 +74,8 @@ export function useComments() {
     })
   }
 
-  const getCommentReactions = (id: number | string) => {
-    return useAPI<unknown>(`/comments/${id}/reactions`)
+  const loadCommentReactions = (id: number | string) => {
+    return apiFetch<CommentReactionSummaryList>(`/comments/${id}/reactions`)
   }
 
   // ===== 提交/交互类（apiFetch，可在回调、onMounted、watch 里调用） =====
@@ -209,8 +226,8 @@ export function useComments() {
     // setup 顶层 AsyncData 封装
     getComments,
     getCommentReplies,
-    getCommentReactions,
     // 提交/交互
+    loadCommentReactions,
     createComment,
     likeComment,
     addCommentReaction,

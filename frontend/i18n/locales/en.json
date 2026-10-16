@@ -149,7 +149,8 @@
     "replyTo": "Reply to",
     "noComments": "No comments yet. Be the first!",
     "loginToComment": "Please login to comment",
-    "like": "Like"
+    "like": "Like",
+    "react": "Reaction"
   },
   "poll": {
     "title": "Poll",

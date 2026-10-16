@@ -1,8 +1,11 @@
 <!--
-  单条评论行（含点赞与回复入口）。
+  单条评论行（含点赞、表情反应与回复入口）。
   后端 POST /comments/{id}/like 是纯计数 +1、无取消语义，故 isLiked 一旦置真就永久锁按钮；
   响应里 likes_count 位置不固定（信封层 / data 层都要探测）。点赞状态只存在本组件、不回写
   父列表，父页面 refresh 后本地点赞会丢；depth 仅是视觉缩进且封顶 2 级，不代表真实树深度。
+  表情反应走 /comments/{id}/reactions 三条口（GET 统计 / POST 添加 / DELETE /{emoji} 取消）：
+  计数与 reacted 一律以 GET 结果为真源，本地不猜；这条 GET 公开可读但对草稿/加密文章的
+  评论回 404（闸门见 backend/api/comment_reactions.py），所以拉取失败只 toast、不锁面板。
 -->
 <template>
   <div
@@ -64,6 +67,55 @@
           />
           <span class="text-xs">{{ t('comment.reply') }}</span>
         </Button>
+
+        <!-- 表情反应：已存在的计数先摊出来，面板点了才展开 -->
+        <Button
+          v-for="item in reactions"
+          :key="`chip-${item.emoji}`"
+          variant="ghost"
+          size="sm"
+          class="h-7 gap-1 px-2"
+          :class="item.reacted ? 'border-primary/50 text-primary' : ''"
+          :disabled="reactionBusy"
+          :aria-pressed="item.reacted"
+          @click="toggleReaction(item.emoji)"
+        >
+          <span class="text-xs leading-none">{{ item.emoji }}</span>
+          <span class="text-xs tabular-nums">{{ item.count }}</span>
+        </Button>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2"
+          :disabled="reactionBusy"
+          :aria-expanded="reactionPanel"
+          :aria-label="t('comment.react')"
+          @click="toggleReactionPanel"
+        >
+          <Smile
+            data-icon="inline-start"
+            class="size-3.5"
+          />
+        </Button>
+      </div>
+
+      <div
+        v-if="reactionPanel"
+        class="mt-2 flex flex-wrap gap-1"
+      >
+        <Button
+          v-for="emoji in REACTION_EMOJIS"
+          :key="`pick-${emoji}`"
+          variant="outline"
+          size="sm"
+          class="h-7 px-2"
+          :disabled="reactionBusy"
+          :aria-label="emoji"
+          @click="toggleReaction(emoji)"
+        >
+          {{ emoji }}
+        </Button>
       </div>
     </div>
   </div>
@@ -73,9 +125,9 @@
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
-import { Heart, MessageSquare } from '~~/lib/lucide-svg-icons'
+import { Heart, MessageSquare, Smile } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
-import { useComments } from '~~/composables/useComments'
+import { useComments, type CommentReactionSummary } from '~~/composables/useComments'
 
 interface Props {
   comment: {
@@ -114,7 +166,7 @@ defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
-const { likeComment } = useComments()
+const { likeComment, loadCommentReactions, addCommentReaction, removeCommentReaction } = useComments()
 
 // 点赞：真实调用 POST /api/comments/{id}/like（后端为纯计数 +1，无取消语义），
 // 成功后以响应 likes_count 为准更新计数并锁定按钮，防止重复计数。
@@ -139,6 +191,48 @@ const handleLike = async () => {
     // apiFetch 已统一 toast（无 silentToast），此处仅终止本地 loading
   } finally {
     liking.value = false
+  }
+}
+
+// 表情反应：后端没有批量统计口，逐条预取就是 N+1，所以只在第一次点开面板时拉一次；
+// 每次 toggle 后以重拉为准（POST 幂等、DELETE 对已取消的回 404，本地增量算会漂）。
+const REACTION_EMOJIS = ['👍', '❤️', '🎉', '😄', '😢', '😡']
+const reactions = ref<CommentReactionSummary[]>([])
+const reactionPanel = ref(false)
+const reactionLoaded = ref(false)
+const reactionBusy = ref(false)
+
+async function reloadReactions() {
+  const res = await loadCommentReactions(props.comment.id)
+  reactions.value = res?.reactions ?? []
+  reactionLoaded.value = true
+}
+
+async function toggleReactionPanel() {
+  reactionPanel.value = !reactionPanel.value
+  if (!reactionPanel.value || reactionLoaded.value || reactionBusy.value) return
+  reactionBusy.value = true
+  try {
+    await reloadReactions()
+  } catch {
+    // apiFetch 已 toast，面板留着让用户能再点
+  } finally {
+    reactionBusy.value = false
+  }
+}
+
+async function toggleReaction(emoji: string) {
+  if (reactionBusy.value) return
+  reactionBusy.value = true
+  try {
+    const hit = reactions.value.find(item => item.emoji === emoji)
+    if (hit?.reacted) await removeCommentReaction(props.comment.id, emoji)
+    else await addCommentReaction(props.comment.id, emoji)
+    await reloadReactions()
+  } catch {
+    // 同上：失败态由 apiFetch 统一 toast，计数不本地猜
+  } finally {
+    reactionBusy.value = false
   }
 }
 

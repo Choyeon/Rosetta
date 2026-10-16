@@ -520,6 +520,14 @@ export const Bookmark = S(undefined,
   h('path', { d: 'm19 21-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z' })
 )
 
+// Smile（评论表情反应入口）
+export const Smile = S(undefined,
+  h('circle', { cx: '12', cy: '12', r: '10' }),
+  h('path', { d: 'M8 14s1.5 2 4 2 4-2 4-2' }),
+  h('line', { x1: '9', x2: '9.01', y1: '9', y2: '9' }),
+  h('line', { x1: '15', x2: '15.01', y1: '9', y2: '9' })
+)
+
 // Images (stacked photos)
 export const Images = S(undefined,
   h('path', { d: 'M3 16V5a2 2 0 0 1 2-2h11' }),

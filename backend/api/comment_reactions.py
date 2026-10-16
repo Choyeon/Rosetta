@@ -7,14 +7,20 @@
 - 添加反应（需登录）: POST /api/comments/{comment_id}/reactions
 - 取消反应（需登录）: DELETE /api/comments/{comment_id}/reactions/{emoji}
 - 公开统计: GET /api/comments/{comment_id}/reactions
+
+读口与"添加"口都走 :func:`_readable_comment` 的文章可读性闸门；"取消"口刻意不走——
+它只删调用者自己的行，两种情况都回同样的 404，问不出任何信息，而闸门会让"文章转草稿后
+取消不了已存在的反应"这种真实场景变得无从解释。
 """
 
 from fastapi import APIRouter, HTTPException, status
 from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.auth import DB, CurrentUser, CurrentUserOptional
-from backend.models.blog import Comment
+from backend.models.blog import Comment, Post
 from backend.models.comment_reaction import CommentReaction
+from backend.models.user import User
 from backend.schemas import BaseResponse
 from backend.schemas.comment_reaction import (
     CommentReactionCreate,
@@ -22,8 +28,35 @@ from backend.schemas.comment_reaction import (
     CommentReactionSummary,
     CommentReactionSummaryList,
 )
+from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 
 router = APIRouter(tags=["评论表情反应"])
+
+
+async def _readable_comment(
+    db: AsyncSession, comment_id: int, current_user: User | None
+) -> Comment:
+    """统计口与添加口共用文章可读性闸门。
+
+    评论表上的 reactions 是公开的（GET 接受匿名），所以没有这道闸门时，草稿与加密文章
+    的评论即使正文被 `/comments?post=` 挡住了，它的**表情计数**仍能按 comment_id 枚举出来，
+    等于绕过闸门承认"这条评论存在"。判据与文章详情/评论口同源（见 services/post_access）。
+    """
+    row = (
+        await db.execute(
+            select(Comment, Post)
+            .join(Post, Post.id == Comment.post_id)
+            .where(Comment.id == comment_id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="评论不存在")
+    comment, post = row
+    if not post_is_publicly_visible(post, current_user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="评论不存在")
+    if not await post_content_unlocked(post, current_user):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="评论不存在")
+    return comment
 
 
 @router.post(
@@ -40,13 +73,7 @@ async def add_comment_reaction(
     current_user: CurrentUser,
 ):
     """添加评论表情反应"""
-    # 检查评论是否存在
-    comment = await db.scalar(select(Comment).where(Comment.id == comment_id))
-    if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="评论不存在",
-        )
+    await _readable_comment(db, comment_id, current_user)
 
     # 幂等：若已存在相同反应，直接返回已有记录
     existing = await db.scalar(
@@ -110,13 +137,7 @@ async def list_comment_reactions(
     current_user: CurrentUserOptional,
 ):
     """获取评论表情反应统计"""
-    # 检查评论是否存在
-    comment = await db.scalar(select(Comment).where(Comment.id == comment_id))
-    if not comment:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="评论不存在",
-        )
+    await _readable_comment(db, comment_id, current_user)
 
     # 按表情分组统计
     query = (

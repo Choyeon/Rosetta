@@ -149,7 +149,8 @@
     "minutesAgo": " 分鐘前",
     "hoursAgo": " 小時前",
     "daysAgo": " 天前",
-    "like": "點讚"
+    "like": "點讚",
+    "react": "表情反應"
   },
   "poll": {
     "title": "投票",

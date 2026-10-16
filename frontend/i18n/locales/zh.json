@@ -149,7 +149,8 @@
     "replyTo": "回复给",
     "noComments": "暂无评论，来发表第一条评论吧！",
     "loginToComment": "登录后才能评论",
-    "like": "点赞"
+    "like": "点赞",
+    "react": "表情反应"
   },
   "poll": {
     "title": "投票",
