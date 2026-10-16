@@ -589,7 +589,12 @@ async def get_robots_txt() -> PlainTextResponse:
         # 名单只留"根本不该被抓"的机器面。/login /register /forgot-password /account
         # /search /oobe 已移出：Disallow 挡的是抓取，页面抓不到就读不到它自带的
         # <meta name=robots content="noindex, follow">，Google 反而会按已发现的链接
-        # 生成"无摘要索引条目"。那几页现在由前端自带 noindex，必须允许抓取闸门才生效。
+        # 生成"无摘要索引条目"。
+        # 前提：那行 meta 必须在**原始 HTML** 里，否则不执行 JS 的抓取器读不到，
+        # "允许抓取换 noindex"这笔交易就是净亏。ssr:false 的页面靠页面级 useSeo
+        # 拿不到这一点（head 只在 hydration 后写），由前端 Nitro 插件
+        # `server/plugins/noindex-shell-meta.nitro.ts` 在服务端字节里补上，
+        # 名单与服务端路径前缀的同步由 `tests/unit/noindexShellMeta.spec.ts` 守住。
         private_paths = ["/admin/"]
         locale_prefixes = ["", "/en", "/ja", "/zh_Hant"]
         disallow_lines = "\n".join(

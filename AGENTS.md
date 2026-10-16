@@ -194,6 +194,15 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    `/forgot-password` · `/account` · `/search` · `/oobe` 改为页面自带
    `<meta name="robots" content="noindex, follow">`（`useNoindexPage()`）并**从 Disallow 移出**——
    Disallow 挡的是抓取，抓不到就读不到 noindex，Google 反而会按已发现的链接生成"无摘要索引条目"。
+   **但这条交易只在"meta 真的出现在原始 HTML 里"时成立**：ssr:false 反选页的 `useNoindexPage()`
+   只在 hydration 后写 `<head>`，curl 拿到的空壳一行 robots 都没有，不执行 JS 的抓取器读不到。
+   所以服务端必须补这一行——`frontend/server/utils/noindex-shell.ts`（路径前缀唯一清单，
+   含三种语言前缀形态）+ `frontend/server/plugins/noindex-shell-meta.nitro.ts`（`render:html`
+   注入，检测到已有 robots 就跳过，SSR 页不会出两条规范）。新增 noindex 页只改 .vue 不登记名单
+   =静默失效，由 `frontend/tests/unit/noindexShellMeta.spec.ts` 递归扫 `pages/` 双向钉住
+   （声明了 noindex 却没进名单、进了名单却无对应页、ssr:false 路径漏覆盖，都会红）。
+   全仓只允许一种写法：`noindex, follow`（单源常量 `useSeo.ts` 的 `NOINDEX_ROBOTS`）；
+   写 `noindex, nofollow` 等于一边声明"允许抓取"一边掐断这些页面上所有内链的抓取。
    robots 的模式是纯前缀匹配、没有语言概念，剩下每条 Disallow 必须 ×4 语言前缀，且
    `frontend/server/routes/robots.txt.get.ts`（回退）与 `backend/api/seo.py`（真源）两段同口径。
 5. 任何用 `startsWith` / 前缀判定路径归属的地方必须先过 `stripLocalePathPrefix()`
@@ -324,7 +333,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1195 passed + 3 skipped + 2 xfailed + 2 xpassed，覆盖率 68.65%（须先删 .coverage，见 §8），fail_under=45%）
+├─ tests/                            Pytest（1302 passed + 3 skipped + 3 xfailed + 1 xpassed，覆盖率 68.55%（须先删 .coverage，见 §8），fail_under=45%；另有 test_coverage_main_and_middleware 两条**顺序性**假失败，见 §8.4）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -437,11 +446,11 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1195 passed + 3 skipped + 2 xfailed + 2 xpassed；覆盖率 ≥45%（实测 68.65%）
+uv run pytest                                        # 1302 passed + 3 skipped + 3 xfailed + 1 xpassed；覆盖率 ≥45%（实测 68.55%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
-**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
+**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7；第三十八场 robots 缓存键 + noindex 闸门收口：**68.55%** / 1302 passed，本轮只采到总百分比，stmts 待复测）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
 
 ### 8.2 frontend/ 目录
 
@@ -452,8 +461,20 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 30 个 spec，344 用例全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 47 个 spec；用例数以生产机最近一次全绿实测量为准）
+                              # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
+                              # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
+
+### 8.4 已知测试噪声（不是回归，别照着它改代码）
+
+`tests/test_coverage_main_and_middleware.py` 在全量跑里稳定挂 2 条
+（`TestMainTopRoutes::test_health_route`、
+`TestPerformanceMiddleware::test_slow_request_triggers_should_record_with_except_fallback`），
+单独跑这个文件时挂的却是**另一条**，报错都是 `attached to a different loop` 一类的事件循环串台。
+判定口径：挂的集合随运行范围变化 ⇒ 是用例间共享 fixture 的隔离问题，与被测代码无关；
+确认方法是单点跑那一条用例（`uv run pytest tests/...py::TestMainTopRoutes::test_health_route`），单点绿即噪声。
+修它要重排该文件的 fixture 作用域，是独立工程，勿与功能改动混做。
 
 ### 8.3 部署
 
@@ -495,7 +516,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 344/344（30 个 spec 文件）
+pnpm test          # 全绿（47 个 spec 文件；用例数以生产机实测量为准）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

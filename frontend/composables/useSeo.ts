@@ -16,6 +16,18 @@
 
 import { computed } from 'vue'
 
+/**
+ * 不可索引页的唯一 robots 口径。
+ *
+ * 刻意用 `follow` 而不是 `nofollow`：robots.txt 已把这些路径从 Disallow 移出，
+ * 移出的理由正是"允许抓取、只禁止入索引"；再叠一层 nofollow 等于把 /search
+ * 这类站内链接枢纽上的文章链接也一并掐断，Google 只能靠 sitemap 发现新文章。
+ * noindex 本身就足以让页面退出索引。
+ *
+ * 服务端注入见 `server/utils/noindex-shell.ts`（ssr:false 空壳拿不到这里）。
+ */
+export const NOINDEX_ROBOTS = 'noindex, follow'
+
 // ---------------------------------------------------------------------------
 // 基础类型
 // ---------------------------------------------------------------------------
@@ -42,7 +54,7 @@ export interface SeoMetaOptions {
   extraMeta?:
     | Array<Record<string, string>>
     | { readonly value?: Array<Record<string, string>> | undefined }
-  /** noindex:true 输出 `<meta name="robots" content="noindex, nofollow">` + 抑制 canonical。搜索结果页与分页尾页用 */
+  /** noindex:true 输出 `NOINDEX_ROBOTS`（noindex, follow）+ 抑制 canonical/hreflang。搜索结果页与设置页用 */
   noindex?: boolean | { readonly value?: boolean | undefined }
   /** 覆盖 site.seo.twitter_handle（一般不用） */
   twitterSite?: string | { readonly value?: string | undefined }
@@ -406,7 +418,7 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       meta.push({ name: 'twitter:site', content: _twitterSite.value })
     }
     if (_noindex.value) {
-      meta.push({ name: 'robots', content: 'noindex, nofollow' })
+      meta.push({ name: 'robots', content: NOINDEX_ROBOTS })
     } else {
       meta.push({ name: 'robots', content: 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' })
     }
@@ -463,10 +475,15 @@ export function useSeo(opts: SeoMetaOptions = {}) {
  *
  * 独立于 useSeo：这些页面是 ssr:false 的 SPA（见 routeRules 反选表），
  * 不能走 useSeo 的站点根推导（会读请求 Host），也不能引入主题副作用。
+ *
+ * ⚠️ 这里只保证 **hydration 后** 的 DOM 有这行 meta。ssr:false 路径的原始 HTML
+ * 是一份不含任何页面 head 的空壳，不执行 JS 的抓取器读不到 noindex —— 那行 meta
+ * 由 `server/utils/noindex-shell.ts` + Nitro 插件在服务端字节里补上，
+ * 两边的路径清单由 `tests/unit/noindexShellMeta.spec.ts` 钉成同一份。
  */
 export function useNoindexPage() {
   useHead(() => ({
-    meta: [{ name: 'robots', content: 'noindex, follow' }]
+    meta: [{ name: 'robots', content: NOINDEX_ROBOTS }]
   }))
 }
 
