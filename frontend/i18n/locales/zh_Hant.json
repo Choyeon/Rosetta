@@ -1559,6 +1559,9 @@
     "type_notice": "公告",
     "type_link": "連結分享",
     "liked": "讚了這篇文章",
+    "like": "按讚",
+    "publish": "發布",
+    "composerPlaceholder": "說點什麼…",
     "noActivity": "暫無動態"
   },
   "about": {

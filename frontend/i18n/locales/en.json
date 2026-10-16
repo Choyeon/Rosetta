@@ -1354,6 +1354,9 @@
     "type_notice": "Announcement",
     "type_link": "Link Share",
     "liked": "liked the post",
+    "like": "Like",
+    "publish": "Post",
+    "composerPlaceholder": "Say something…",
     "noActivity": "No activity yet"
   },
   "about": {

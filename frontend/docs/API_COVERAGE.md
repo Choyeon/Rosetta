@@ -18,6 +18,8 @@
 
 > **2026-10-16 局部更新（messages 一族，+5 条已覆盖）**：同上口径手记一条增量——私信 6 条已接 5 条进 `/account/messages`（余 1 条 `PUT /api/messages/{message_id}/read` 属「刻意不消费」，理由见下表 messages 行）。按 favorite + messages 两轮增量合并的等价数字：✅ 221 + 🟡 8 = 229 / 351 ≈ 65.2%。
 
+> **2026-10-16 局部更新（activity 一族，+2 条已覆盖）**：`POST /activities/{id}/like` 与 `POST /activities`（登录用户发布说说）接进 `pages/activity.vue`，同族 8 条只剩 `…/toggle` 一条刻意不消费。等价数字：✅ 223 + 🟡 8 = 231 / 351 ≈ 65.8%。
+
 > **扫描器看不见的一类假阳性（2026-10-16 记录）**：本表的 ✅ 判定只看"代码里有没有这条 URL 字面量"，看不见**这个封装有没有 UI 消费点**。实例：`comment_reactions` 三条口与 `useFavorites` 删除前的 `getFavorites`（导出一个未定义的名字）都曾被计成 ✅，而界面上从未发过这些请求。同族里"封装存在但没人点"的条目在下一次全量扫描时应单列一档；已确认并落地的例子见下面 `comment_reactions` 一节（2026-10-16 真正接进 `CommentItem.vue`）。
 
 > 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点，见下文的「扫描手法」）；这正是不要手改本表的原因——下一次扫描会重算。
@@ -38,7 +40,7 @@
 | themes_ext | `/api/admin/themes` | 12 | 6 | 0 | 6 | 50% |
 | guestbook | `/api` | 11 | 11 | 0 | 0 | 100% |
 | gallery | `/api/gallery` · `/api/admin/gallery` | 10 | 10 | 0 | 0 | 100% |
-| activity | `/api` | 8 | 6 | 0 | 2 | 75% |
+| activity | `/api` | 8 | 7 | 0 | 1 | 88% |
 | comments | `/api` | 8 | 6 | 0 | 2 | 75% |
 | monitoring | `/api/monitoring` | 8 | 0 | 0 | 8 | 0% |
 | post_series | `/api` | 8 | 6 | 0 | 2 | 75% |
@@ -156,10 +158,17 @@
 > 与 `tests/test_comment_reactions_frontend_contract.py`、前端侧 `tests/unit/commentReactions.spec.ts`。
 > emoji 必须放在 DELETE 的**路径**上——放 body 会命中集合路径的 405，表现为"点亮了取消不掉"。
 
-### activity（/api）— 6/8
+### activity（/api）— 7/8
 
-✅：`GET /activities`（pages/activity.vue:258）、`GET/POST /admin/activities`、`PUT/DELETE /admin/activities/{id}`（uam:979–996）
-❌（2）：`POST /activities/{id}/like`（前端未做点赞按钮——小缺口）、`PUT /admin/activities/{id}/toggle`（后台用 PUT 详情代替——重复入口）
+✅：`GET /activities`（pages/activity.vue 的 `useAPI('/activities')` + components/ActivitySidebarCard.vue 首页侧栏）、`POST /activities`（同页发布框 `publishActivity`）、`POST /activities/{id}/like`（同页 `likeActivity`）、`GET/POST /admin/activities`、`PUT/DELETE /admin/activities/{id}`（composables/useAdminManage.ts:1029–1048）
+❌（1，**重复入口**）：`PUT /admin/activities/{id}/toggle`（后台用 PUT 详情提交 `is_published`——再造一个按钮就是第二个真相来源）
+> 2026-10-16 口径：点赞后端**只增不减、允许匿名**，与评论点赞同语义，所以按钮不做取消态、
+> 计数以 `refresh()` 拉服务端权威值（本页 swr 600 共享缓存，本地 +1 会与其它访客读数长期不一致）。
+> 发布框整块包 `<ClientOnly>`：`/activity` 是公开 SSR 缓存页，auth store 是 skipHydrate，
+> 服务端渲染出的登录态外壳会把某一个访客的登录状态冻进共享 HTML。
+> 正文上限 `MAX_ACTIVITY_CONTENT_CHARS = 1000`（每种语言各计），是 `POST /activities` 这个
+> 公开写口的唯一闸门；前端 `maxlength` 只是提前提示，不是边界。
+> 契约见 `tests/test_activity_frontend_contract.py`、`tests/test_admin_activity_crud.py`。
 
 ### announcement（/api）— 5/6
 
@@ -268,10 +277,15 @@
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
-   - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）：改密/密码找回仍无独立页面。（原并列的 blog `users/me` 系 6 个已于 2026-09-28 随个人中心 `/account` 接入，私信已随 `/account/messages` 接入，作者主页 `pages/authors/[username].vue` 也早已是 SSR 页，三者移出此项；但 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 等 users 模块自身端点仍未接进该页——个人中心只做「读自己的内容」，改资料/改密仍缺口）
+   - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；users 一族剩下的 8 条见上表 ❌ 行的逐条判定——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
 
    - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：hero 轮播管理（×5）；
    - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、captcha 接入（×2）。
+     **2026-10-16 判定：加密这两族不接 UI。** 真实在用的加密链路是 `Post.password` 列 +
+     `GET /blog/posts/{slug}` 的 `X-Post-Password` 头（`backend/api/blog.py:1238-1252`，
+     前端密码门已上线并有回归），而 post_encryption / post_crypto 是另一套并行设计（独立表 + 独立接口）。
+     给第二个真相源做界面，等于让"同一篇文章有两个密码来源、改一个另一个不生效"变成用户可见的 bug；
+     要收敛应该先在后端二选一并删表，那是一项独立工程，不属于"补前端消费点"。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 

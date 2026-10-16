@@ -1354,6 +1354,9 @@
     "type_notice": "公告",
     "type_link": "友链推荐",
     "liked": "点赞了文章",
+    "like": "点赞",
+    "publish": "发布",
+    "composerPlaceholder": "说点什么…",
     "noActivity": "暂无动态"
   },
   "about": {

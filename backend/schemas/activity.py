@@ -7,13 +7,32 @@
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 if TYPE_CHECKING:
     from backend.schemas import PublicUserResponse
 
 
 ActivityType = Literal["say", "article", "update", "notice", "link"]
+
+# 每种语言正文的字符上限。这是动态唯一的长度闸门：模型侧的 ``content`` 是 JSON 列，
+# 没有列宽限制，而 ``POST /activities`` 对任何登录用户开放——没有上限时，一个脚本就能把
+# 动态表与按语言分键的响应缓存（每页 4 个键）无上限地撑大。
+MAX_ACTIVITY_CONTENT_CHARS = 1000
+
+
+def _bound_activity_content(value: dict[str, str] | None) -> dict[str, str] | None:
+    if value is None:
+        return None
+    too_long = [
+        code
+        for code, text in value.items()
+        if isinstance(text, str) and len(text) > MAX_ACTIVITY_CONTENT_CHARS
+    ]
+    if too_long:
+        codes = ", ".join(sorted(too_long))
+        raise ValueError(f"动态内容过长（每种语言最多 {MAX_ACTIVITY_CONTENT_CHARS} 字）：{codes}")
+    return value
 
 
 class ActivityBase(BaseModel):
@@ -25,6 +44,11 @@ class ActivityBase(BaseModel):
     )
     type: ActivityType = Field(default="say", description="动态类型")
     is_published: bool = Field(default=True, description="是否已发布")
+
+    @field_validator("content")
+    @classmethod
+    def _content_within_limit(cls, value: dict[str, str]) -> dict[str, str]:
+        return _bound_activity_content(value)
 
 
 class ActivityCreate(ActivityBase):
@@ -39,6 +63,11 @@ class ActivityUpdate(BaseModel):
     content: dict[str, str] | None = None
     type: ActivityType | None = None
     is_published: bool | None = None
+
+    @field_validator("content")
+    @classmethod
+    def _content_within_limit(cls, value: dict[str, str] | None) -> dict[str, str] | None:
+        return _bound_activity_content(value)
 
 
 class ActivityResponse(BaseModel):

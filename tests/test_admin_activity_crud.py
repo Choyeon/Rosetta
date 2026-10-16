@@ -121,6 +121,33 @@ class TestActivityCreate:
         assert body["created_at"] and body["updated_at"], "服务端生成列未回读"
 
     @pytest.mark.asyncio
+    async def test_content_length_boundary_is_enforced(
+        self, client: AsyncClient, auth_headers: dict
+    ):
+        """``POST /activities`` 对任何登录用户开放，1000 字上限是唯一的写入闸门。
+
+        动态的 ``content`` 是 JSON 列（没有列宽限制），而列表缓存按语言分键；没有上限时一个脚本
+        就能把 activities 表与缓存无边界撑大。前端 ``pages/activity.vue`` 的 maxlength 只是体验，
+        这一条才守住边界（AGENTS.md §9.1：只在系统边界做校验）。
+        """
+        from backend.schemas.activity import MAX_ACTIVITY_CONTENT_CHARS as LIMIT
+
+        ok = await client.post(
+            "/api/activities",
+            headers=auth_headers,
+            json=_payload("呀" * LIMIT),
+        )
+        assert ok.status_code == 201, ok.text
+
+        too_long = await client.post(
+            "/api/activities",
+            headers=auth_headers,
+            json=_payload("呀" * (LIMIT + 1)),
+        )
+        assert too_long.status_code == 422, too_long.text
+        assert "过长" in too_long.text, too_long.text
+
+    @pytest.mark.asyncio
     async def test_admin_create_activity_reads_activities_once(
         self, client: AsyncClient, admin_headers: dict, test_engine
     ):
@@ -215,6 +242,33 @@ class TestActivityAdminCrud:
         assert body["content"]["zh"] == "改后"
         assert body["type"] == "say", "部分更新不应清空未提交字段"
         assert body["author"]["id"], "PUT 响应缺少 author 关联"
+
+    @pytest.mark.asyncio
+    async def test_admin_update_applies_the_same_content_limit(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """后台改正文走同一个 ``ActivityUpdate`` 模型，超限必须 422 且不落库。
+
+        漏守的表现：前端 maxlength 只挡新提交，后台把正文粘成几十万字仍能存进去，
+        下次公开列表（``GET /api/activities``）序列化整段文本，页面直接卡死。
+        """
+        from backend.schemas.activity import MAX_ACTIVITY_CONTENT_CHARS as LIMIT
+
+        aid = (
+            await client.post("/api/admin/activities", headers=admin_headers, json=_payload("原文"))
+        ).json()["id"]
+
+        r = await client.put(
+            f"/api/admin/activities/{aid}",
+            headers=admin_headers,
+            json={"content": {"zh": "呀" * (LIMIT + 1)}},
+        )
+        assert r.status_code == 422, r.text
+        assert "过长" in r.text, r.text
+
+        listed = await client.get("/api/admin/activities", headers=admin_headers)
+        row = next(i for i in listed.json()["items"] if i["id"] == aid)
+        assert row["content"]["zh"] == "原文", "422 的写入不该留下半个正文"
 
     @pytest.mark.asyncio
     async def test_toggle_flips_publish_state(self, client: AsyncClient, admin_headers: dict):

@@ -29,6 +29,38 @@
     </header>
 
     <div class="max-w-2xl mx-auto">
+      <!-- 发布动态：POST /api/activities（仅登录用户）。整块包 <ClientOnly> 是必须的——
+           本页是 swr 600 的公开 SSR 页，而 auth store 走 skipHydrate（SSR 期没有 token），
+           在 SSR 里渲染这个框要么把某个访客的登录态固化进共享缓存，要么 hydration mismatch。 -->
+      <ClientOnly>
+        <Card
+          v-if="authStore.isAuthenticated"
+          class="mb-8"
+        >
+          <CardContent class="p-4">
+            <Textarea
+              v-model="draft"
+              :placeholder="t('activity.composerPlaceholder')"
+              :maxlength="MAX_CONTENT"
+              :disabled="publishing"
+              rows="2"
+              class="resize-none"
+            />
+            <div class="mt-3 flex items-center justify-between gap-3">
+              <span class="text-xs text-muted-foreground">{{ draft.length }} / {{ MAX_CONTENT }}</span>
+              <Button
+                type="button"
+                size="sm"
+                :disabled="!draft.trim() || publishing"
+                @click="publishActivity"
+              >
+                {{ publishing ? t('common.submitting') : t('activity.publish') }}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </ClientOnly>
+
       <div
         v-if="pending && activityList.length === 0"
         class="flex flex-col gap-8 mb-8"
@@ -75,7 +107,7 @@
         <div
           v-for="item in activityList"
           :key="item.id"
-          v-memo="[item.id, item.type, item.likes_count, item.created_at]"
+          v-memo="[item.id, item.type, item.likes_count, item.created_at, pendingLikeId === item.id]"
           class="relative mb-8 last:mb-0"
         >
           <div
@@ -116,11 +148,16 @@
                 {{ item.content }}
               </div>
 
-              <div
-                v-if="(item.likes_count ?? 0) > 0"
-                class="mt-3 pt-3 border-t border-border/50 flex items-center gap-4 text-xs text-muted-foreground"
-              >
-                <span class="inline-flex items-center gap-1">
+              <div class="mt-3 pt-3 border-t border-border/50 flex items-center gap-4 text-xs text-muted-foreground">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  class="h-auto gap-1.5 px-2"
+                  :disabled="pendingLikeId === item.id"
+                  :aria-label="t('activity.like')"
+                  @click="likeActivity(item.id)"
+                >
                   <svg
                     viewBox="0 0 24 24"
                     fill="currentColor"
@@ -128,12 +165,12 @@
                     stroke-width="1.5"
                     stroke-linecap="round"
                     stroke-linejoin="round"
-                    class="size-3.5 fill-error text-error"
+                    class="fill-error text-error"
                   >
                     <path :d="ICONS.heart?.d ?? ''" />
                   </svg>
-                  {{ item.likes_count }}
-                </span>
+                  {{ item.likes_count ?? 0 }}
+                </Button>
               </div>
             </CardContent>
           </Card>
@@ -175,6 +212,10 @@
 <script setup lang="ts">
 import { Card, CardContent } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
+import { Button } from '~~/components/ui/button'
+import { Textarea } from '~~/components/ui/textarea'
+import { apiFetch } from '~~/composables/useApi'
+import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 
 /**
@@ -215,6 +256,11 @@ const getIcon = (key: string): IconDef => ((ICONS as Record<IconKey, IconDef>)[k
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const authStore = useAuthStore()
+
+// 与后端 MAX_ACTIVITY_CONTENT_CHARS 同值：schemas/activity.py 对每种语言正文各限 1000 字，
+// 这里只是让用户在提交前就看到边界，不是安全边界（后端 422 才是）。
+const MAX_CONTENT = 1000
 
 interface ActivityItem {
   id: number
@@ -300,6 +346,46 @@ const activityList = computed<ActivityItem[]>(() => {
 watch(locale, () => {
   refresh().catch(() => undefined)
 })
+
+// 点赞：POST /api/activities/{id}/like（只增不减、允许匿名，与已上线的评论点赞同语义）。
+// 端点不返回新计数，所以成功后 refresh 取服务端权威值，不在本地 +1——本页是 swr 600 的缓存页，
+// 本地累加会让这一屏的读数与其它访客看到的服务端值长期对不上。
+const pendingLikeId = ref<number | null>(null)
+async function likeActivity(id: number) {
+  if (pendingLikeId.value !== null) return
+  pendingLikeId.value = id
+  try {
+    await apiFetch(`/activities/${id}/like`, { method: 'POST' })
+    await refresh()
+  } catch {
+    // 失败提示由 apiFetch 统一 toast，这里只吞 rejection 防未处理异常
+  } finally {
+    pendingLikeId.value = null
+  }
+}
+
+// 发布动态：POST /api/activities。content 是多语言 dict，用户只写当前语言那一份，
+// 其余语言由后端 get_i18n_value 的回退链（请求语言 → zh → 第一个非空）兜住，
+// 不做机器翻译（AGENTS.md §7.3：UGC 存明文、禁止自动翻译）。
+const draft = ref('')
+const publishing = ref(false)
+async function publishActivity() {
+  const text = draft.value.trim()
+  if (!text || publishing.value) return
+  publishing.value = true
+  try {
+    await apiFetch('/activities', {
+      method: 'POST',
+      body: { content: { [locale.value]: text }, type: 'say' }
+    })
+    draft.value = ''
+    await refresh()
+  } catch {
+    // 401（会话失效）与 422（超长）由 apiFetch 统一 toast，正文留在输入框
+  } finally {
+    publishing.value = false
+  }
+}
 
 useSeo({
   title: computed(() => t('activity.title') as string || '动态'),
