@@ -161,7 +161,7 @@
 ### activity（/api）— 7/8
 
 ✅：`GET /activities`（pages/activity.vue 的 `useAPI('/activities')` + components/ActivitySidebarCard.vue 首页侧栏）、`POST /activities`（同页发布框 `publishActivity`）、`POST /activities/{id}/like`（同页 `likeActivity`）、`GET/POST /admin/activities`、`PUT/DELETE /admin/activities/{id}`（composables/useAdminManage.ts:1029–1048）
-❌（1，**重复入口**）：`PUT /admin/activities/{id}/toggle`（后台用 PUT 详情提交 `is_published`——再造一个按钮就是第二个真相来源）
+❌（1，**重复入口**）：`PUT /api/admin/activities/{activity_id}/toggle`（后台用 PUT 详情提交 `is_published`——再造一个按钮就是第二个真相来源）
 > 2026-10-16 口径：点赞后端**只增不减、允许匿名**，与评论点赞同语义，所以按钮不做取消态、
 > 计数以 `refresh()` 拉服务端权威值（本页 swr 600 共享缓存，本地 +1 会与其它访客读数长期不一致）。
 > 发布框整块包 `<ClientOnly>`：`/activity` 是公开 SSR 缓存页，auth store 是 skipHydrate，
