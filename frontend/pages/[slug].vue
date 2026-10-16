@@ -264,7 +264,7 @@ useArticleJsonLd({
   slug,
   // 独立页的落地地址是 /<slug>（本页就是那条路由），不是 /posts/<slug>。
   // 缺内容时传空串 → useArticleJsonLd 不输出，404 页不会挂一份指向不存在 URL 的 Article。
-  path: computed(() => (pageNotFound.value ? '' : `/${slug.value}`)),
+  'path': computed(() => (pageNotFound.value ? '' : `/${slug.value}`)),
   title,
   'headline': title,
   'description': metaDescription,

@@ -163,7 +163,7 @@ describe('URL 派生的单源约束（静态）', () => {
     // 于是把整个 ComputedRef 当字符串返回 → applyLocalePrefix 在 .startsWith 上抛
     // TypeError，跑在 useHead 求值路径上 = 整页 500（实测线上 /独立页 口）。
     const src = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
-    expect(src).toContain("'value' in asObj")
+    expect(src).toMatch(/'value' in asObj/)
     expect(src).not.toMatch(/hasOwnProperty\.call\(\s*asObj/)
   })
 

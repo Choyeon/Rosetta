@@ -156,7 +156,7 @@ useSeo({
 })
 useArticleJsonLd({
   slug,
-  path: computed(() => (compatPageNotFound.value || !slug.value ? '' : `/${slug.value}`)),
+  'path': computed(() => (compatPageNotFound.value || !slug.value ? '' : `/${slug.value}`)),
   title,
   'headline': title,
   'description': metaDescription,

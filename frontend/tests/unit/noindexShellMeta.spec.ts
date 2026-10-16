@@ -53,7 +53,7 @@ function routeOf(pagePath: string): string {
 
 /** 声明了 noindex 的公开页路由（useNoindexPage() 或 useSeo({ noindex: true })）。 */
 const noindexRoutes = collectPages()
-  .filter(p => {
+  .filter((p) => {
     const src = readFileSync(resolve(ROOT, p), 'utf-8')
     return src.includes('useNoindexPage(') || /noindex:\s*true/.test(src)
   })
@@ -133,7 +133,7 @@ describe('服务端注入实现', () => {
     expect(plugin).toContain(`content="${content}"`)
     // 全仓只允许一种 noindex 写法：robots.txt 的移出 Disallow 论证依赖 "follow"
     expect(plugin).not.toContain('noindex, nofollow')
-    expect(useSeo).not.toContain("'noindex, nofollow'")
+    expect(useSeo).not.toMatch(/'noindex, nofollow'/)
   })
 
   it('注入前先查已有 robots（SSR 页不能出现两条规范）', () => {
