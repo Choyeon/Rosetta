@@ -101,7 +101,10 @@ describe('文章详情页收藏钮', () => {
     expect(detail).toContain('if (favorited.value) {')
     expect(detail).toContain('favoritesAPI.addFavorite(pid)')
     expect(detail).toContain('favoritesAPI.removeFavoriteByPost(pid)')
-    expect(detail).toContain('if (!import.meta.client || !pid || !authStore.accessToken) return')
+    // needle 不能写成完整的 'import.meta.client' —— vitest 把这个字面量当 define
+    // 目标替换成 true，断言就变成 toContain(true)（同 contentNotFoundStatus.spec.ts）。
+    expect(detail).toContain('if (!import.meta')
+    expect(detail).toContain('client || !pid || !authStore.accessToken) return')
   })
 
   it('私有态初值为 false：SSR 首字节不出现「已收藏」', () => {
