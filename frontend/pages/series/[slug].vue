@@ -243,6 +243,8 @@ const notFound = computed(() => !!error.value || seriesMissing.value)
 // 系列不存在时让 SSR 响应带上真 404：本页 routeRules 是 swr 3600，200 的「系列不存在」
 // 空壳会被缓存成可复用页面，爬虫据此收录一个实际无内容的 URL。口径见 useContentStatus.ts。
 useContentStatus(error, seriesMissing)
+// 状态码 / 标题 / robots / canonical 四处信号共用这一条判定
+const seriesNotFound = computed(() => isContentMissing(error.value, seriesMissing.value))
 
 const postsList = computed<SeriesPostRow[]>(() => {
   const items = series.value?.posts
@@ -254,13 +256,14 @@ useSeo({
   title: computed(() => {
     // 「不存在」分支的标题必须与响应码同一口径（共用 isContentMissing）：
     // 404 配一个正常的"系列"标题，等于给搜索引擎两份互相矛盾的信号。
-    if (isContentMissing(error.value, seriesMissing.value)) {
+    if (seriesNotFound.value) {
       return t('series.notFoundTitle', '系列不存在') as string
     }
     const sName = pickStr(series.value?.title) || pickStr(series.value?.name || '') || params.slug || ''
     return sName ? `${sName} · ${t('series.all', '系列')}` : t('series.all', '系列')
   }),
   description: computed(() => pickStr(series.value?.description)),
+  noindex: seriesNotFound,
   type: 'website'
 })
 useWebsiteJsonLd()

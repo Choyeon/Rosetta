@@ -12,7 +12,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Button } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { useAPI } from '~~/composables/useApi'
-import { useContentStatus } from '~~/composables/useContentStatus'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
@@ -88,7 +88,10 @@ const page = computed<PageDetail | null>(() => {
 })
 const loadError = computed(() => !!error.value || !page.value)
 // 独立页不存在/未发布时让 SSR 响应带 404（兜底 UI 不变）；见 composables/useContentStatus.ts。
-useContentStatus(error, computed(() => !page.value))
+const compatPageMissing = computed(() => !page.value)
+// 状态码 / robots / canonical 同源判定
+const compatPageNotFound = computed(() => isContentMissing(error.value, compatPageMissing.value))
+useContentStatus(error, compatPageMissing)
 
 // 加载中留空（只显站点名，不闪"页面不存在"）；确实取不到内容时用 404 口径标题，
 // 不再把 slug 人性化成一个假装存在的页面名（响应侧已由 useContentStatus 回写 404）。
@@ -144,10 +147,16 @@ useHead(() => ({
 useSeo({
   title,
   description: metaDescription,
+  // /page/<slug> 只是旧 WordPress 链接的兼容口，同一份内容的规范地址是顶级 catchall
+  // 的 /<slug>。这里若让 canonical 由当前路由派生，两个地址会各自声明自己是规范版 →
+  // 一对重复内容页。显式指向 /<slug> 后，兼容口把权重交出去（客户端那条 301 继续走）。
+  url: computed(() => (slug.value ? `/${slug.value}` : '')),
+  noindex: compatPageNotFound,
   type: 'article'
 })
 useArticleJsonLd({
   slug,
+  path: computed(() => (compatPageNotFound.value || !slug.value ? '' : `/${slug.value}`)),
   title,
   'headline': title,
   'description': metaDescription,

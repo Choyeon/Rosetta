@@ -129,7 +129,7 @@
 
 <script setup lang="ts">
 import { useAPI } from '~~/composables/useApi'
-import { useContentStatus } from '~~/composables/useContentStatus'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import { Button } from '~~/components/ui/button'
@@ -229,7 +229,11 @@ const posts = computed<CategoryPostRow[]>(() => Array.isArray(postsRaw.value?.it
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(catError.value || postsErr.value))
 // 分类不存在时让 SSR 响应带 404（兜底 UI 不变）；判定口径见 composables/useContentStatus.ts。
-useContentStatus(catError, computed(() => !pickLocalized(catRaw.value?.name)))
+const catMissing = computed(() => !pickLocalized(catRaw.value?.name))
+// 404 与 robots/canonical 必须同源判定：状态码回了 404 却写着 `index, follow` +
+// 自指 canonical，等于给搜索引擎两份互相矛盾的答复。
+const catNotFound = computed(() => isContentMissing(catError.value, catMissing.value))
+useContentStatus(catError, catMissing)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
 const visiblePages = computed(() => {
@@ -250,6 +254,7 @@ useHead(() => ({
 useSeo({
   title: computed(() => categoryName.value ? `${categoryName.value} · ${t('categories.title', '分类')}` : t('categories.title', '分类')),
   description: computed(() => categoryDesc.value),
+  noindex: catNotFound,
   type: 'website'
 })
 useWebsiteJsonLd()

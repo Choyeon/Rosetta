@@ -204,6 +204,8 @@ const monthMissing = computed(
   () => posts.value.length === 0 || page.value > (totalPages.value || 1)
 )
 useContentStatus(error, monthMissing)
+// 状态码 / 标题 / robots / canonical 四处信号共用这一条判定
+const monthNotFound = computed(() => isContentMissing(error.value, monthMissing.value))
 
 // SEO 单源走 useSeo：本页曾只有一个裸 useHead title，四语版本既没有 canonical
 // 也没有 hreflang，爬虫把它们当成三个互不相关的归档页。
@@ -211,11 +213,13 @@ useContentStatus(error, monthMissing)
 // 两份互相矛盾的信号（余下内容详情页都是这个口径）。
 useSeo({
   title: computed(() =>
-    isContentMissing(error.value, monthMissing.value)
+    monthNotFound.value
       ? (t('error.notFoundTitle') as string)
       : `${year}-${padMonth(month)} ${t('archive.title')}`
   ),
   description: computed(() => t('archive.statsTotal', { count: total.value }) as string),
+  // 状态码 / 标题 / robots / canonical 同源判定（与上面的标题同一口径）
+  noindex: monthNotFound,
   type: 'website'
 })
 useWebsiteJsonLd()

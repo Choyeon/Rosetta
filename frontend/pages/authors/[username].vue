@@ -327,6 +327,8 @@ useSeo({
       : t('authors.eyebrow', '作者主页')
   }),
   description: computed(() => bio.value),
+  // 404 与 robots/canonical 同源：不存在的作者页不得声明 index,follow 或自指 canonical
+  noindex: notFound,
   type: 'website'
 })
 useWebsiteJsonLd()

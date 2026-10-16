@@ -137,6 +137,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default', middleware: 'archive-year' })
@@ -167,7 +168,7 @@ const { localeHref } = useLocaleLink()
 // 走到这里参数一定已经是 4 位数字。
 const year = Number(route.params.year)
 
-const { data: groupsData, pending: _pending } = useAPI<ArchiveMonthGroup[]>(
+const { data: groupsData, pending: _pending, error: groupsError } = useAPI<ArchiveMonthGroup[]>(
   `/blog/archive/${year}`,
   {
     query: { lang: locale.value },
@@ -178,6 +179,12 @@ const { data: groupsData, pending: _pending } = useAPI<ArchiveMonthGroup[]>(
 const months = computed<ArchiveMonthGroup[]>(() =>
   [...(groupsData.value ?? [])].sort((a, b) => b.month - a.month)
 )
+// 年份格式合法但这一年没有文章：WordPress 的 date archive 口径是直接 404，
+// 而不是给每个空年份发一份"可索引的空页"（/archive/** 带 swr 3600，200 会被缓存复用）。
+// 闸门只认"后端明确 404"与"请求成功但分组为空"，临时故障/5xx 不动状态码。
+const yearMissing = computed(() => months.value.length === 0)
+const yearNotFound = computed(() => isContentMissing(groupsError.value, yearMissing.value))
+useContentStatus(groupsError, yearMissing)
 const totalInYear = computed(() =>
   months.value.reduce((sum, group) => sum + (group.posts?.length ?? 0), 0)
 )
@@ -209,8 +216,12 @@ function formatDate(value?: string | null): string {
 }
 
 useSeo({
-  title: computed(() => t('archive.yearTitle', { year }) as string),
+  // 404 响应的标题必须同口径（其余内容详情页已是这个规矩）
+  title: computed(() =>
+    yearNotFound.value ? (t('error.notFoundTitle') as string) : (t('archive.yearTitle', { year }) as string)
+  ),
   description: computed(() => site.siteDescription.value),
+  noindex: yearNotFound,
   type: 'website'
 })
 useWebsiteJsonLd()

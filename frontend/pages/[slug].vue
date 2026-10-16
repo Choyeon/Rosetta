@@ -75,7 +75,7 @@
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Button } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
-import { useContentStatus } from '~~/composables/useContentStatus'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
@@ -199,7 +199,10 @@ const loadError = computed(() => !!error.value || !page.value)
 // 响应仍是 200（并且会被 swr 缓存固化），爬虫会把垃圾 URL 收进索引。
 // 闸门口径与其余内容详情页一致（见 composables/useContentStatus.ts），
 // 但跳走的那一条除外——它已经带着 301，不能再被改成 404。
-useContentStatus(error, computed(() => !page.value && !redirectedAway.value))
+const pageMissing = computed(() => !page.value && !redirectedAway.value)
+// 状态码 / robots / canonical 同源判定（404 却写 index,follow + 自指 canonical 是两份矛盾信号）
+const pageNotFound = computed(() => isContentMissing(error.value, pageMissing.value))
+useContentStatus(error, pageMissing)
 
 // 加载中留空（只显站点名，不闪"页面不存在"）；确实取不到内容时用 404 口径标题，
 // 不再把 slug 人性化成一个假装存在的页面名（响应侧已由 useContentStatus 回写 404）。
@@ -254,10 +257,14 @@ const formatDate = (iso: string) => {
 useSeo({
   title,
   description: metaDescription,
+  noindex: pageNotFound,
   type: 'article'
 })
 useArticleJsonLd({
   slug,
+  // 独立页的落地地址是 /<slug>（本页就是那条路由），不是 /posts/<slug>。
+  // 缺内容时传空串 → useArticleJsonLd 不输出，404 页不会挂一份指向不存在 URL 的 Article。
+  path: computed(() => (pageNotFound.value ? '' : `/${slug.value}`)),
   title,
   'headline': title,
   'description': metaDescription,

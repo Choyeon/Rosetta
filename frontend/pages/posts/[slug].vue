@@ -601,7 +601,7 @@ import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-co
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
 import { usePolls, type Poll } from '~~/composables/usePolls'
-import { useContentStatus } from '~~/composables/useContentStatus'
+import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js'
@@ -908,7 +908,11 @@ const post = computed(() => postData.value ?? null)
 const loadError = computed(() => !!fetchError.value)
 // 后端明确 404（不存在/草稿/密码保护未授权）时，本页兜底 UI 之外还要让 SSR 响应带 404，
 // 否则不存在的文章是"可索引的 200 空壳"。判定与理由见 composables/useContentStatus.ts。
-useContentStatus(fetchError, computed(() => !post.value))
+const postMissing = computed(() => !post.value)
+// 状态码、robots、canonical 三处信号必须同源：404 响应却写着 `index, follow` +
+// 自指 canonical，等于给搜索引擎两份互相矛盾的答复（口径见 AGENTS §2.3.2）。
+const postNotFound = computed(() => isContentMissing(fetchError.value, postMissing.value))
+useContentStatus(fetchError, postMissing)
 
 const pickLocalized = (val: unknown): string => {
   if (val == null) return ''
@@ -1109,11 +1113,16 @@ useSeo({
   imageAlt: seoTitle,
   type: 'article',
   url: seoPostPath,
+  // 不存在的文章：noindex 会同时抑制 canonical 与 hreflang 集群（useSeo 内部口径），
+  // 于是响应码 / robots / canonical 三条信号一致。
+  noindex: postNotFound,
   extraMeta: seoExtraMeta
 })
 
 useArticleJsonLd({
-  slug: seoPostSlug,
+  // 缺失时把 slug 交给空串：useArticleJsonLd 的 `if (!slug) return { script: [] }`
+  // 是它自带的抑制口，不给 404 页挂一份 mainEntityOfPage 指向不存在 URL 的 Article。
+  slug: computed(() => (postNotFound.value ? '' : seoPostSlug.value)),
   title: seoTitle,
   headline: seoTitle,
   description: seoDescription,

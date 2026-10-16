@@ -159,6 +159,16 @@ export interface ArticleJsonLdOptions {
   'keywords'?: string[] | { readonly value?: string[] | undefined }
   /** BlogPosting / Article / NewsArticle（默认 BlogPosting） */
   '@type'?: 'BlogPosting' | 'Article' | 'NewsArticle'
+  /**
+   * 结构化数据里 url / mainEntityOfPage 用的路径（中性形态，内部挂语言前缀）。
+   *
+   * 默认 `/posts/${slug}` ——那是文章详情页的形态。独立页（顶级 catchall `/xxx`
+   * 与兼容口 `/page/xxx`）必须显式传自己的路径，否则 Article 的 mainEntityOfPage
+   * 会指向一条并不存在的文章 URL，而同一页的 canonical 指向另一个地址：schema.org
+   * 校验报 "URL does not match page"，Google 富媒体也不会认这条。
+   * 传空串 = 明确要求不输出这块 JSON-LD（内容不存在的 404 分支用）。
+   */
+  'path'?: string | { readonly value?: string | undefined }
 }
 
 // ---------------------------------------------------------------------------
@@ -681,9 +691,15 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   useHead(() => {
     const base = siteUrl.value || (import.meta.client ? window.location.origin : '')
     const slug = _slug.value
-    if (!slug) return { script: [] }
+    // path 显式传了就以它为准（独立页形态）；空串是调用方的"别说这块"信号。
+    const pathOverride = opts.path === undefined ? undefined : unrefVal(opts.path)
+    if (pathOverride !== undefined) {
+      if (!pathOverride) return { script: [] }
+    } else if (!slug) {
+      return { script: [] }
+    }
 
-    const articlePath = `/posts/${slug}`
+    const articlePath = pathOverride ?? `/posts/${slug}`
     // prefix_except_default：详情页 JSON-LD 的 url/mainEntityOfPage 必须落到
     // 当前语言的实际 URL（中文裸路径 /en/ja/zh_Hant 挂前缀），否则中英日
     // 三语页面在 schema.org 里会共享同一个 zh canonical，Google 富媒体测试报

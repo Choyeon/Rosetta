@@ -29,13 +29,20 @@ const PAGES = [
   'pages/page/[slug].vue',
   'pages/series/[slug].vue',
   'pages/authors/[username].vue',
-  'pages/archive/[year]/[month].vue'
+  'pages/archive/[year]/[month].vue',
+  // 单年归档：格式合法的年份（/archive/1999）曾对"这一年没有任何文章"回 200 的
+  // 空分组页，还被 /archive/** 的 swr 3600 缓存复用 —— WordPress 的 date archive
+  // 口径是空年份直接 404。它同时挂着 archive-year 中间件（管格式），两闸门并存。
+  'pages/archive/[year]/index.vue'
 ]
 
 /** 用各自的文案命名空间（authors./series./archive.）而不是 error.notFoundTitle 的页。 */
 const CUSTOM_TITLE_PAGES = ['pages/series/[slug].vue', 'pages/authors/[username].vue']
 
-/** 用路由中间件判 404 的那一页（口径见 AGENTS §2.3.2），与 useContentStatus 并列的第二种合法答案。 */
+/**
+ * 额外挂命名中间件的那一页：中间件只管**年份格式**（把垃圾参数挡在后端 422 之前），
+ * 内容是否存在仍由 useContentStatus 判。两类闸门口径见 AGENTS §2.3.2。
+ */
 const MIDDLEWARE_PAGES = ['pages/archive/[year]/index.vue']
 
 /**
@@ -62,8 +69,12 @@ describe('内容页 404 状态码闸门', () => {
   it('公开动态路由页清单：新增一页必须显式归类，不能默认漏掉 404 闸门', () => {
     // 系列详情页就是这条清单该挡住而当时没挡住的漏网之鱼——它渲染了「系列不存在」
     // 兜底 UI，HTTP 却仍是 200，还被 /series/** 的 swr 3600 缓存成可复用页面。
-    const listed = [...PAGES, ...MIDDLEWARE_PAGES].sort()
+    const listed = [...PAGES].sort()
     expect(dynamicPublicPages().sort()).toEqual(listed)
+    // 挂中间件的页也必须在这份清单里（否则它被两套口径同时漏掉）
+    for (const rel of MIDDLEWARE_PAGES) {
+      expect(PAGES, `${rel} 只登记在中间件清单里，状态码闸门会漏`).toContain(rel)
+    }
   })
 
   it('中间件判定的页面确实挂了命名中间件（不是把闸门整个删了）', () => {
@@ -130,7 +141,7 @@ describe('内容页 404 状态码闸门', () => {
       const src = readFileSync(resolve(ROOT, rel), 'utf-8')
       expect(src, `${rel} 没引入共用判定`).toContain('isContentMissing')
       expect(src, `${rel} 的标题分支没与闸门共用判定`).toMatch(
-        /if \((notFound|isContentMissing\()\b/
+        /if \(([A-Za-z]*[Nn]otFound|isContentMissing\()\b/
       )
     }
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
@@ -139,6 +150,20 @@ describe('内容页 404 状态码闸门', () => {
       ) as Record<string, Record<string, string>>
       expect(messages.series?.notFoundTitle, `${loc} 缺 series.notFoundTitle`).toBeTruthy()
     }
+  })
+
+  it.each(PAGES)('%s 把同一条判定喂给 useSeo 的 noindex（响应码 / robots / canonical 同源）', (rel) => {
+    const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+    // 实测：404 的 /posts/zzz、/series/zzz、/archive/2099 全都写着
+    // `index, follow, max-image-preview:large…` 并自带一条指向自己的 canonical +
+    // hreflang 集群。状态码说"没了"，head 说"收我"——两份矛盾信号里爬虫挑哪份不可控。
+    expect(src, `${rel} 未把 noindex 接到闸门判定上`).toMatch(
+      /noindex:\s*(?:[A-Za-z]*[Nn]otFound|computed\(\(\) => isContentMissing)/
+    )
+    // 不许硬编码：noindex: true 会把正常内容的这一页一起禁掉
+    expect(src, `${rel} 的 noindex 是常量，会把真实内容页一起禁索引`).not.toMatch(/noindex:\s*true/)
+    // 且 noindex 必须与 useContentStatus 同源（同一个 *NotFound 计算属性）
+    expect(src).toMatch(/useContentStatus\(/)
   })
 
   it('四语都有 error.notFoundTitle 文案', () => {
