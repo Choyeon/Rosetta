@@ -97,9 +97,12 @@ export function useComments() {
   }
 
   const removeCommentReaction = (id: number | string, emoji: string) => {
-    return apiFetch<unknown>(`/comments/${id}/reactions`, {
-      method: 'DELETE',
-      body: { emoji }
+    // 取消反应的真源路由把 emoji 放在**路径**上（api/comment_reactions.py
+    // @router.delete("/comments/{comment_id}/reactions/{emoji}")）。
+    // 写成 DELETE /comments/{id}/reactions + body 会命中集合路径的 405，
+    // emoji 永远解不掉——界面点亮了就再也取消不了。
+    return apiFetch<unknown>(`/comments/${id}/reactions/${encodeURIComponent(emoji)}`, {
+      method: 'DELETE'
     })
   }
 

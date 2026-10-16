@@ -585,3 +585,58 @@ class TestFavoriteDuplicateRowsDoNotBreakByPostEndpoints:
         listed = await client.get("/api/favorites", headers=auth_headers)
         notes = [item["note"] for item in listed.json()["items"]]
         assert notes == ["统一后的备注", "统一后的备注"]
+
+
+class TestFavoriteFolderNameBounds:
+    """收藏夹名的上下界要落在 Pydantic 上，而不是靠 SQL 列宽兜底。
+
+    ``FavoriteFolder.name`` 是 ``String(100)``，而 ``FolderCreate.name`` 原先是无约束
+    ``str``：101 字符直穿到 SQL，PostgreSQL 报 StringDataRightTruncation ⇒ 500；
+    空串则建出一个标签为空的收藏夹——筛选条与移动菜单里都无法再定位它。
+    个人中心 /account 的「管理收藏夹」现在真的把这两个口接到界面上，
+    这是用户点得到的路径，所以在共享层（schema）收一次口。
+    """
+
+    @pytest.mark.asyncio
+    async def test_overlong_name_is_422_not_500(self, client, auth_headers):
+        resp = await client.post(
+            "/api/favorites/folders",
+            headers=auth_headers,
+            json={"name": "长" * 101},
+        )
+        assert resp.status_code == 422, resp.text
+
+    @pytest.mark.asyncio
+    async def test_blank_name_is_422(self, client, auth_headers):
+        resp = await client.post(
+            "/api/favorites/folders",
+            headers=auth_headers,
+            json={"name": ""},
+        )
+        assert resp.status_code == 422, resp.text
+
+    @pytest.mark.asyncio
+    async def test_rename_bounds_match_create(
+        self, client, auth_headers, test_user, db_session
+    ):
+        folder = FavoriteFolder(user_id=test_user.id, name="原名")
+        db_session.add(folder)
+        await db_session.commit()
+        await db_session.refresh(folder)
+
+        rejected = await client.put(
+            f"/api/favorites/folders/{folder.id}",
+            headers=auth_headers,
+            json={"name": "长" * 101},
+        )
+        assert rejected.status_code == 422, rejected.text
+
+        accepted = await client.put(
+            f"/api/favorites/folders/{folder.id}",
+            headers=auth_headers,
+            json={"name": "改名"},
+        )
+        assert accepted.status_code == 200, accepted.text
+        listed = await client.get("/api/favorites/folders", headers=auth_headers)
+        names = [item["name"] for item in listed.json()["items"]]
+        assert names == ["改名"]

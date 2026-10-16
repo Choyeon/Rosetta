@@ -91,7 +91,10 @@ router = APIRouter(tags=["收藏"])
 class FolderCreate(BaseModel):
     """创建收藏夹"""
 
-    name: str
+    # name 落库列是 String(100)（见 FavoriteFolder.name）。不声明约束时长名会穿过
+    # Pydantic 直达 SQL，在 PostgreSQL 上是 StringDataRightTruncation ⇒ 500，
+    # 空名则建出一个标签为空、界面无法再定位的收藏夹。
+    name: str = Field(..., min_length=1, max_length=100)
     description: str | None = None
     is_public: bool = False
 
@@ -99,7 +102,7 @@ class FolderCreate(BaseModel):
 class FolderUpdate(BaseModel):
     """更新收藏夹"""
 
-    name: str | None = None
+    name: str | None = Field(None, min_length=1, max_length=100)
     description: str | None = None
     is_public: bool | None = None
 

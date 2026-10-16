@@ -14,7 +14,9 @@
 
 **总计：46 个路由模块文件、351 个端点；✅ 206 + 🟡 8 = 已覆盖 214 个，未消费 137 个，覆盖率 61.0%。**
 
-> 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。
+> **2026-10-16 局部更新（favorite 一族，+10 条已覆盖）**：本行以上的汇总仍是 2026-09-26 全量扫描的快照，未按本轮手改（末行「勿手改数字」的口径）；按 favorite 的增量，等价数字为 ✅ 216 + 🟡 8 = 224 / 351 ≈ 63.8%。同日另跑了一次独立扫描（读生成后的 `app.openapi()["paths"]`，357 个 operation，前端字面量按 `${x}` 通配匹配并排除 `.output*` 构建产物与 Nitro 代理中间件的 `/api` catch-all）：**已覆盖 295 / 357 ≈ 82.6%**。两个口径差在分母与"仅 URL 拼接/仅 Nitro 侧消费"的计入方式，不要混用；下一次全量刷新时以扫描器为准并回填本节。
+
+> 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点，见下文的「扫描手法」）；这正是不要手改本表的原因——下一次扫描会重算。
 
 ## 全模块汇总表
 
@@ -26,7 +28,7 @@
 | admin | `/api/admin` | 15 | 15 | 0 | 0 | 100% |
 | oobe | `/api/oobe` | 16 | 8 | 0 | 8 | 50% |
 | media | `/api/media` | 15 | 11 | 1 | 3 | 80% |
-| favorite | `/api/favorites` | 12 | 0 | 0 | 12 | 0% |
+| favorite | `/api/favorites` | 12 | 10 | 0 | 2 | 83% |
 | plugins | `/api/admin/plugins` | 16 | 11 | 0 | 5 | 69% |
 | advanced | `/api/admin` | 11 | 11 | 0 | 0 | 100% |
 | themes_ext | `/api/admin/themes` | 12 | 6 | 0 | 6 | 50% |
@@ -222,7 +224,7 @@
 
 | 模块 | 端点数 | 明细与判定 |
 |---|---:|---|
-| favorite（/api/favorites） | 12 | 文件夹 CRUD、收藏列表/增删改、按文章操作、check。**真实缺口**：无"我的收藏"页面；后端为注册用户互动体系预留。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，接入 UI 时可直接用 `total_pages` 翻页。两个 `PATCH /favorites/post/{id}/*` 现显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段（此前把裸 ORM 实例交给 `jsonable_encoder`，它按「已加载属性」出键）。重复收藏（同一 `(user, post)` 多行，表上**至今没有**唯一约束）不再让三个「按文章 ID」端点抛 `MultipleResultsFound` → 500：取消收藏删净全部行，改夹/改备注同步全部行后回显最新一条。**已知缺口**：根治要加 `(user_id, post_id)` 唯一索引 + 先去重历史数据，本轮只做容忍式修复 |
+| favorite（/api/favorites） | 12 | **2026-10-16 已接入 10 条**：文章详情页收藏钮（`POST /favorites/check` 先取状态 → 收藏/取消）+ 个人中心 `/account` 的「我的收藏」档位（`GET /favorites` 带 `folder_id` 翻页、`DELETE /favorites/post/{id}` 取消、`PATCH /favorites/post/{id}/{folder,note}` 移夹与备注、`GET/POST /favorites/folders` 与 `PUT/DELETE /favorites/folders/{id}` 管理）。前端唯一出口是 `composables/useFavorites.ts`，路径契约由 `frontend/tests/unit/favoritesLanding.spec.ts` + `tests/test_favorites_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**仍未消费的 2 条是决定不是缺口**：`PUT /api/favorites/{favorite_id}` 与 `DELETE /api/favorites/{favorite_id}` 按收藏行 ID 操作，而 `favorites` 表**至今没有** `(user_id, post_id)` 唯一约束（历史脏数据 + 先 SELECT 再 INSERT 的查重挡不住并发），按行删只删一条重复行、界面表现为「取消没生效」；by-post 变体删/改全部行，故前端只用 by-post。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，可直接用 `total_pages` 翻页；两个 by-post PATCH 显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段；重复收藏不再让三个「按文章 ID」端点抛 `MultipleResultsFound` → 500。**已知缺口**：根治要加 `(user_id, post_id)` 唯一索引 + 先去重历史行。另：`FolderCreate/FolderUpdate.name` 现声明 `min_length=1, max_length=100`（列宽 `String(100)`），超长名此前直穿到 SQL 在 PostgreSQL 上报 StringDataRightTruncation ⇒ 500，空名则建出标签为空、界面无法定位的收藏夹 |
 | messages（/api/messages） | 6 | 会话列表、未读数、历史、发送、已读、全部已读。**真实缺口**：无私信 UI（需配套用户体系完善后接入）。契约（2026-09-28 修）：`POST /send` 的参数走 JSON 请求体（`{recipient_id, content}`，正文 1–5000），不再接受 query string——正文进 URL 会被 nginx access log 明文落盘；会话列表保证「每个对端一行」且只含本人的消息；按 id 标记已读对他人消息一律 404（不再用 403 承认私信 id 存在） |
 | monitoring（/api/monitoring） | 8 | health/stats/visits/performance/db/cache/trends。刻意保留：Admin 监控面板当前由 `/admin/stats` + `/admin/performance/*` + `/admin/cache/status` 覆盖，此模块为深度诊断接口（运维经 docs/工具页直访） |
 | captcha（/api/captcha） | 2 | 图形验证码生成/校验。注册登录暂未接入（后端已支持，防滥用开关未开）——**待接入缺口** |
@@ -251,9 +253,9 @@
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
-   - **用户体系外围**（users 15 个 + favorite 12 + messages 6）：改密/密码找回/他人主页/收藏/私信仍无页面。（原并列的 blog `users/me` 系 6 个已于 2026-09-28 随个人中心 `/account` 接入，移出此项；但 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 等 users 模块自身端点仍未接进该页——个人中心只做「读自己的内容」，改资料/改密仍缺口）
+   - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行）：改密/密码找回/他人主页/私信仍无页面。（原并列的 blog `users/me` 系 6 个已于 2026-09-28 随个人中心 `/account` 接入，移出此项；但 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 等 users 模块自身端点仍未接进该页——个人中心只做「读自己的内容」，改资料/改密仍缺口）
 
-   - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。   - **后台运维增强**：hero 轮播管理（×5）；
+   - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：hero 轮播管理（×5）；
    - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、captcha 接入（×2）。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。

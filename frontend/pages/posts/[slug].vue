@@ -264,6 +264,25 @@
                 {{ likeCount }}
               </span>
             </Button>
+
+            <!-- 收藏：私有计数，后端不给未登录用户读，故不显示数字，只标"已收藏"态。
+                 SSR 首帧两端都渲染未选中态（favorited 初值 false），登录用户的选中态在
+                 onMounted 的 check 之后才出现 —— 不在首字节里泄漏私有状态。 -->
+            <Button
+              variant="outline"
+              size="sm"
+              class="group transition-colors hover:border-primary/50 hover:text-primary"
+              :disabled="submittingFavorite"
+              :aria-pressed="favorited"
+              @click="handleToggleFavorite"
+            >
+              <Bookmark
+                data-icon="inline-start"
+                class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
+                :class="favorited ? 'text-primary fill-primary/30' : ''"
+              />
+              <span>{{ favorited ? t('favorites.favorited') : t('favorites.add') }}</span>
+            </Button>
           </div>
 
           <!-- ========= 作者信息卡：主题 mods show_author_box 控制（作者数据缺失时不渲染空卡） ========= -->
@@ -625,7 +644,8 @@ import {
   ChevronRight,
   X,
   Lock,
-  Check
+  Check,
+  Bookmark
 } from '~~/lib/lucide-svg-icons'
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
@@ -740,12 +760,59 @@ const likeCount = ref<number>(0)
 const likedByMe = ref<boolean>(false)
 const submittingLike = ref<boolean>(false)
 
+// ===== 收藏 =====
+// 后端 POST /favorites 对重复收藏回 400（不是 toggle），所以按钮必须先拿到状态：
+// 已收藏 → DELETE /favorites/post/{id}，未收藏 → POST /favorites。
+// check 只在客户端、且有 token 时发：/account 同族，SSR 期 auth store 还没回填 token。
+const favoritesAPI = useFavorites()
+const toast = useToast()
+const favorited = ref<boolean>(false)
+const submittingFavorite = ref<boolean>(false)
+
+async function loadFavoriteState(pid: number | string | null | undefined) {
+  favorited.value = false
+  if (!import.meta.client || !pid || !authStore.accessToken) return
+  try {
+    const res = await favoritesAPI.checkFavorites([Number(pid)], { silentToast: true })
+    favorited.value = Boolean(res?.favorites?.[String(pid)]?.is_favorited)
+  } catch {
+    // 装饰态：读不到就按"未收藏"渲染，不打扰阅读（失败原因由登录态/网络决定）
+  }
+}
+
+async function handleToggleFavorite() {
+  const pid = Number(post.value?.id)
+  if (!pid || submittingFavorite.value) return
+  if (!authStore.isAuthenticated) {
+    toast.info(t('favorites.loginRequired'))
+    await navigateTo(`/login?redirect=${encodeURIComponent(route.fullPath)}`, { replace: true })
+    return
+  }
+  submittingFavorite.value = true
+  try {
+    if (favorited.value) {
+      await favoritesAPI.removeFavoriteByPost(pid)
+      favorited.value = false
+      toast.success(t('favorites.removed'))
+    } else {
+      await favoritesAPI.addFavorite(pid)
+      favorited.value = true
+      toast.success(t('favorites.added'))
+    }
+  } catch {
+    // 失败提示由 apiFetch 统一 toast，这里只吞 rejection 防未处理异常
+  } finally {
+    submittingFavorite.value = false
+  }
+}
+
 async function loadSimilarAndLikeState(pid: number | string | null | undefined) {
   if (!pid) {
     similarPosts.value = []
     adjacent.value = { previous: null, next: null }
     likeCount.value = 0
     likedByMe.value = false
+    favorited.value = false
     return
   }
   // 1) similar posts（辅助推荐，失败静默降级为空）
@@ -779,6 +846,8 @@ async function loadSimilarAndLikeState(pid: number | string | null | undefined) 
   } catch {
     adjacent.value = { previous: null, next: null }
   }
+  // 3) 收藏状态：只在客户端且已登录时才真的发请求（见 loadFavoriteState 的守卫）
+  await loadFavoriteState(pid)
 }
 
 const slug = computed(() => route.params.slug as string)

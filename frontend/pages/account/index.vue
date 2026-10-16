@@ -1,7 +1,8 @@
 <!--
-  个人中心 /account（SPA + no-store）：把后端自上线起一直"就绪、前端零消费"的 6 个
-  /blog/users/me/* 端点接成 WordPress「我的账户」同款落地页 —— stats（文章/评论/获赞读数）、
-  posts（我的文章，含草稿）、comments（我的评论）、likes（我的点赞，可取消）、
+  个人中心 /account（SPA + no-store）：把后端自上线起一直"就绪、前端零消费"的
+  /blog/users/me/* 与 /favorites* 端点接成 WordPress「我的账户」同款落地页 ——
+  stats（文章/评论/获赞读数）、posts（我的文章，含草稿）、comments（我的评论）、
+  likes（我的点赞，可取消）、favorites（我的收藏：收藏夹筛选、移动、备注、取消）、
   history（阅读历史，可清空）。
   四条硬约束：
   1. ssr:false 写在 routeRules（不在页面里重复声明）：本页内容逐登录用户不同，而 auth store
@@ -9,8 +10,9 @@
      成"公共页面"，缓存头也就不能是公开 s-maxage。故与 /admin 同档：ssr:false + no-store, private。
   2. 登录闸门在命名中间件 auth-required（不进全局链），未登录带 ?redirect= 跳 /login；
      页面 setup 只管渲染，不做第二套状态判定（AGENTS.md §2.3.2 同源理由）。
-  3. 一次只发「统计 + 当前 tab」两个请求：tab 与 page 都在 query 里，useAPI 的 url/key 随之
-     变化，切 tab 不会把另外三档全量拉一遍。
+  3. 一次只发「统计 + 当前 tab + 收藏夹名册」三个请求：tab、page 与收藏档位用的都是响应式
+     url/key，切 tab 不会把另外几档全量拉一遍；名册只有三条消费点（筛选条、移动菜单、管理弹窗），
+     一次拉全量比按档位重复拉更省。
   4. 日期格式化钉死 locale + timeZone：本仓两端时区不一致过，归档侧已按同口径修过一轮。
 -->
 <template>
@@ -85,7 +87,7 @@
       class="w-full"
       @update:model-value="onTabChange"
     >
-      <TabsList class="grid w-full grid-cols-2 sm:grid-cols-4 mb-8">
+      <TabsList class="grid w-full grid-cols-2 sm:grid-cols-5 mb-8">
         <TabsTrigger
           v-for="item in tabItems"
           :key="item.value"
@@ -261,6 +263,126 @@
           </ul>
         </div>
 
+        <!-- ===== 我的收藏：后端 /api/favorites 全家（列表/取消/收藏夹/备注）的落地面 ===== -->
+        <div v-else-if="item.value === 'favorites'">
+          <!-- 收藏夹筛选条：全部 + 每个收藏夹（带篇数）。folder 写进 query，与 tab/page 同机制。 -->
+          <div class="mb-4 flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              :class="folderFilter === null ? 'border-primary text-primary' : ''"
+              @click="selectFolder(null)"
+            >
+              {{ t('account.folderAll') }}
+              <span class="ml-1.5 text-xs tabular-nums text-muted-foreground">{{ foldersTotal }}</span>
+            </Button>
+            <Button
+              v-for="folder in folders"
+              :key="`chip-${folder.id}`"
+              variant="outline"
+              size="sm"
+              :class="folderFilter === folder.id ? 'border-primary text-primary' : ''"
+              @click="selectFolder(folder.id)"
+            >
+              {{ folder.name }}
+              <span class="ml-1.5 text-xs tabular-nums text-muted-foreground">{{ folder.count ?? 0 }}</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              @click="folderDialogOpen = true"
+            >
+              <FolderOpen data-icon="inline-start" />
+              {{ t('account.manageFolders') }}
+            </Button>
+          </div>
+
+          <Separator />
+          <ul class="flex flex-col gap-4">
+            <li
+              v-for="row in favoriteRows"
+              :key="String(row.id)"
+              class="py-2"
+            >
+              <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+                <NuxtLink
+                  v-if="row.post"
+                  :to="`/posts/${row.post.slug}`"
+                  class="text-base transition-colors hover:text-primary"
+                >
+                  {{ resolveLocalized(row.post.title) }}
+                </NuxtLink>
+                <span
+                  v-else
+                  class="text-sm text-muted-foreground"
+                >{{ t('account.deletedPost') }}</span>
+                <span class="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
+                  <span>{{ formatDate(row.created_at) }}</span>
+                  <span
+                    v-if="row.post?.views != null"
+                    class="inline-flex items-center gap-1"
+                  >
+                    <Eye class="size-3.5" />
+                    {{ row.post.views }}
+                  </span>
+                </span>
+              </div>
+
+              <p
+                v-if="row.note"
+                class="mt-1.5 text-sm text-muted-foreground leading-relaxed"
+              >
+                {{ row.note }}
+              </p>
+
+              <div class="mt-2 flex flex-wrap items-center gap-2">
+                <Select
+                  :model-value="String(row.folder_id ?? 'none')"
+                  :disabled="busyFavoriteId !== null"
+                  @update:model-value="(v: string | number | symbol | null) => moveToFolder(row, v)"
+                >
+                  <SelectTrigger
+                    class="h-8 w-40"
+                    :aria-label="t('account.moveFolder')"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">
+                      {{ t('account.folderNone') }}
+                    </SelectItem>
+                    <SelectItem
+                      v-for="folder in folders"
+                      :key="`move-${folder.id}`"
+                      :value="String(folder.id)"
+                    >
+                      {{ folder.name }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  :disabled="busyFavoriteId !== null"
+                  @click="openNoteDialog(row)"
+                >
+                  <Pencil data-icon="inline-start" />
+                  {{ t('account.editNote') }}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  :disabled="busyFavoriteId !== null || !row.post"
+                  @click="unfavorite(row)"
+                >
+                  <Trash2 data-icon="inline-start" />
+                  {{ t('account.unfavorite') }}
+                </Button>
+              </div>
+            </li>
+          </ul>
+        </div>
+
         <!-- ===== 阅读历史（后端在无对应文章时跳过该行，故行数可能少于 page_size） ===== -->
         <div v-else>
           <Separator />
@@ -357,18 +479,120 @@
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
+
+    <!-- ===== 收藏夹管理：新建 + 改名 + 删除（删除只把收藏移回未归类，不删收藏本身） ===== -->
+    <Dialog
+      :open="folderDialogOpen"
+      @update:open="(v: boolean) => { folderDialogOpen = v }"
+    >
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t('account.manageFolders') }}</DialogTitle>
+          <DialogDescription>{{ t('account.manageFoldersHint') }}</DialogDescription>
+        </DialogHeader>
+        <ul class="flex flex-col gap-3">
+          <li
+            v-for="folder in folders"
+            :key="`mgr-${folder.id}`"
+            class="flex items-center gap-2"
+          >
+            <Input
+              v-model="folderDrafts[folder.id]"
+              :placeholder="folder.name"
+              class="h-9"
+              :aria-label="folder.name"
+            />
+            <Button
+              variant="outline"
+              size="sm"
+              :disabled="busyFolderId !== null"
+              @click="renameFolder(folder)"
+            >
+              {{ t('common.save') }}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              :disabled="busyFolderId !== null"
+              @click="removeFolder(folder)"
+            >
+              <Trash2 data-icon="inline-start" />
+              {{ t('common.delete') }}
+            </Button>
+          </li>
+          <li
+            v-if="folders.length === 0"
+            class="text-sm text-muted-foreground"
+          >
+            {{ t('account.noFolders') }}
+          </li>
+        </ul>
+        <div class="flex items-center gap-2 border-t pt-3">
+          <Input
+            v-model="newFolderName"
+            class="h-9"
+            :placeholder="t('account.newFolderPlaceholder')"
+            :aria-label="t('account.newFolderPlaceholder')"
+          />
+          <Button
+            size="sm"
+            :disabled="busyFolderId !== null || !newFolderName.trim()"
+            @click="createFolder"
+          >
+            {{ t('account.addFolder') }}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+
+    <!-- ===== 单条收藏的备注（PATCH /favorites/post/{id}/note，留空即清空） ===== -->
+    <Dialog
+      :open="noteDialogOpen"
+      @update:open="(v: boolean) => { noteDialogOpen = v }"
+    >
+      <DialogContent class="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t('account.noteTitle') }}</DialogTitle>
+          <DialogDescription>{{ t('account.noteHint') }}</DialogDescription>
+        </DialogHeader>
+        <Input
+          v-model="noteDraft"
+          :aria-label="t('account.noteTitle')"
+          :placeholder="t('account.notePlaceholder')"
+        />
+        <div class="flex justify-end gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            @click="noteDialogOpen = false"
+          >
+            {{ t('common.cancel') }}
+          </Button>
+          <Button
+            size="sm"
+            :disabled="busyFavoriteId !== null"
+            @click="saveNote"
+          >
+            {{ t('common.save') }}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import {
+  Bookmark,
   CalendarClock,
   ChevronLeft,
   ChevronRight,
   Eye,
   FileText,
+  FolderOpen,
   Heart,
   MessageSquare,
+  Pencil,
   RotateCcw,
   Settings,
   Sparkles,
@@ -379,6 +603,21 @@ import { Badge } from '~~/components/ui/badge'
 import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
+import { Input } from '~~/components/ui/input'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle
+} from '~~/components/ui/dialog'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue
+} from '~~/components/ui/select'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -397,6 +636,8 @@ import {
 } from '~~/components/ui/tabs'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import { apiFetch, useAPI } from '~~/composables/useApi'
+import { useFavorites, type FavoriteRow } from '~~/composables/useFavorites'
+import { useI18nHelpers } from '~~/composables/useI18nHelpers'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
@@ -439,8 +680,8 @@ interface AccountList {
   total_pages: number
 }
 
-type AccountTab = 'posts' | 'comments' | 'likes' | 'history'
-const TAB_VALUES: AccountTab[] = ['posts', 'comments', 'likes', 'history']
+type AccountTab = 'posts' | 'comments' | 'likes' | 'favorites' | 'history'
+const TAB_VALUES: AccountTab[] = ['posts', 'comments', 'likes', 'favorites', 'history']
 
 // ssr:false 由 routeRules 精准反选（与 /admin 同档），页面不重复声明，避免两处口径漂移。
 definePageMeta({ layout: 'default', middleware: 'auth-required' })
@@ -487,6 +728,7 @@ const tabItems = computed(() => [
   { value: 'posts' as const, label: t('account.tabPosts'), icon: FileText },
   { value: 'comments' as const, label: t('account.tabComments'), icon: MessageSquare },
   { value: 'likes' as const, label: t('account.tabLikes'), icon: ThumbsUp },
+  { value: 'favorites' as const, label: t('account.tabFavorites'), icon: Bookmark },
   { value: 'history' as const, label: t('account.tabHistory'), icon: CalendarClock }
 ])
 
@@ -508,19 +750,38 @@ const metrics = computed(() => {
   ]
 })
 
-// ===== 当前 tab 的列表：url 与 key 都随 tab/page 变化，切档才发新请求 =====
+// ===== 当前 tab 的列表：url/key 都随档位变化，切档才发新请求 =====
+// 收藏档位走另一个端点族（/favorites，带 folder_id 筛选），其余档位走 /blog/users/me/{tab}。
+const favoritesAPI = useFavorites()
+const { resolveLocalized } = useI18nHelpers()
+
+const folderFilter = computed(() => {
+  const raw = Number(route.query.folder ?? 0)
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : null
+})
+
+const listUrl = computed(() =>
+  tab.value === 'favorites' ? '/favorites' : `/blog/users/me/${tab.value}`
+)
+const listQuery = computed(() =>
+  tab.value === 'favorites'
+    ? { folder_id: folderFilter.value ?? undefined, page: page.value, page_size: 10 }
+    : { lang: locale.value, page: page.value, page_size: 10 }
+)
+const listKey = computed(() =>
+  tab.value === 'favorites'
+    ? `account:favorites:${folderFilter.value ?? 'all'}:${page.value}`
+    : `account:list:${tab.value}:${locale.value}:${page.value}`
+)
 const {
   data: listData,
   pending,
   error: listError,
   refresh
-} = useAPI<AccountList>(
-  () => `/blog/users/me/${tab.value}`,
-  {
-    query: computed(() => ({ lang: locale.value, page: page.value, page_size: 10 })),
-    key: computed(() => `account:list:${tab.value}:${locale.value}:${page.value}`)
-  }
-)
+} = useAPI<AccountList>(() => listUrl.value, {
+  query: listQuery,
+  key: listKey
+})
 
 const rows = computed(() => listData.value?.items ?? [])
 const total = computed(() => listData.value?.total ?? 0)
@@ -534,6 +795,139 @@ const commentRows = computed<AccountCommentRow[]>(() =>
 const historyRows = computed<AccountHistoryRow[]>(() =>
   tab.value === 'history' ? (rows.value as AccountHistoryRow[]) : []
 )
+const favoriteRows = computed<FavoriteRow[]>(() =>
+  tab.value === 'favorites' ? (rows.value as FavoriteRow[]) : []
+)
+
+// ===== 收藏夹：一次拉全量（列表短、用于筛选条 + 移动菜单 + 管理弹窗三处） =====
+const { data: foldersData, refresh: refreshFolders } = favoritesAPI.getFavoriteFolders()
+const folders = computed(() => foldersData.value?.items ?? [])
+const foldersTotal = computed(() => folders.value.reduce((sum, f) => sum + (f.count ?? 0), 0))
+/** 每个收藏夹的改名草稿；键是 folder.id，初始为空表示"未改"。 */
+const folderDrafts = ref<Record<number, string>>({})
+const newFolderName = ref('')
+const folderDialogOpen = ref(false)
+const busyFolderId = ref<number | null>(null)
+
+const noteDialogOpen = ref(false)
+const noteTarget = ref<FavoriteRow | null>(null)
+const noteDraft = ref('')
+const busyFavoriteId = ref<number | null>(null)
+
+function selectFolder(id: number | null) {
+  const merged: Record<string, string> = { ...route.query as Record<string, string> }
+  if (id === null) delete merged.folder
+  else merged.folder = String(id)
+  // 换收藏夹必须回第 1 页；page=1 是默认态，用 delete 而不是写 '1'（与 writeQuery 同口径）。
+  delete merged.page
+  void router.push({ path: route.path, query: merged })
+}
+
+async function unfavorite(row: FavoriteRow) {
+  const postId = Number(row.post?.id)
+  if (!postId || busyFavoriteId.value !== null) return
+  busyFavoriteId.value = row.id
+  try {
+    // 按文章取消（DELETE /favorites/post/{id}）而不是按收藏行 ID：后端语义是
+    // "这篇不再收藏"，会清掉该 (user, post) 的全部行；按行 ID 删会让历史重复行留下。
+    await favoritesAPI.removeFavoriteByPost(postId)
+    toast.success(t('account.unfavorited'))
+    await Promise.all([refresh(), refreshFolders()])
+  } catch {
+    // apiFetch 已 toast
+  } finally {
+    busyFavoriteId.value = null
+  }
+}
+
+async function moveToFolder(row: FavoriteRow, value: string | number | symbol | null) {
+  const postId = Number(row.post?.id)
+  if (!postId) return
+  const folderId = value === 'none' || value == null ? null : Number(value)
+  if (folderId === (row.folder_id ?? null)) return
+  busyFavoriteId.value = row.id
+  try {
+    await favoritesAPI.moveFavoriteByPost(postId, folderId)
+    toast.success(t('account.moved'))
+    await Promise.all([refresh(), refreshFolders()])
+  } catch {
+    /* 同上 */
+  } finally {
+    busyFavoriteId.value = null
+  }
+}
+
+function openNoteDialog(row: FavoriteRow) {
+  noteTarget.value = row
+  noteDraft.value = row.note ?? ''
+  noteDialogOpen.value = true
+}
+
+async function saveNote() {
+  const row = noteTarget.value
+  const postId = Number(row?.post?.id)
+  if (!row || !postId) return
+  busyFavoriteId.value = row.id
+  try {
+    // 空串 → null：后端 PATCH 的 note=null 才是"清空备注"，传 '' 会在列表里留一条空备注。
+    await favoritesAPI.setFavoriteNote(postId, noteDraft.value.trim() || null)
+    toast.success(t('account.noteSaved'))
+    noteDialogOpen.value = false
+    await refresh()
+  } catch {
+    /* 同上 */
+  } finally {
+    busyFavoriteId.value = null
+  }
+}
+
+async function createFolder() {
+  const name = newFolderName.value.trim()
+  if (!name || busyFolderId.value !== null) return
+  busyFolderId.value = 0
+  try {
+    await favoritesAPI.createFolder(name)
+    newFolderName.value = ''
+    toast.success(t('account.folderCreated'))
+    await refreshFolders()
+  } catch {
+    /* 同上 */
+  } finally {
+    busyFolderId.value = null
+  }
+}
+
+async function renameFolder(folder: { id: number, name: string }) {
+  const next = (folderDrafts.value[folder.id] ?? '').trim()
+  if (!next || next === folder.name || busyFolderId.value !== null) return
+  busyFolderId.value = folder.id
+  try {
+    await favoritesAPI.updateFolder(folder.id, { name: next })
+    folderDrafts.value = { ...folderDrafts.value, [folder.id]: '' }
+    toast.success(t('account.folderRenamed'))
+    await Promise.all([refreshFolders(), refresh()])
+  } catch {
+    /* 同上 */
+  } finally {
+    busyFolderId.value = null
+  }
+}
+
+async function removeFolder(folder: { id: number, name: string }) {
+  if (busyFolderId.value !== null) return
+  busyFolderId.value = folder.id
+  try {
+    await favoritesAPI.deleteFolder(folder.id)
+    toast.success(t('account.folderDeleted'))
+    // 收藏夹没了还留在筛选条件里 = 一片空白页；删完把筛选复位到"全部"。
+    if (folderFilter.value === folder.id) selectFolder(null)
+    await Promise.all([refreshFolders(), refresh()])
+  } catch {
+    /* 同上 */
+  } finally {
+    busyFolderId.value = null
+  }
+}
 
 function cap(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1)
