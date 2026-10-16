@@ -26,8 +26,11 @@ describe('作者主页取数契约', () => {
   it('列表用 author query 过滤，不做 username→id 的依赖式二次请求', () => {
     expect(page).toMatch(/'\/blog\/posts'/)
     expect(page).toMatch(/author: username\.value/)
-    // 依赖链的形态（先取资料再拼 id）不应该出现在这一页
-    expect(page).not.toMatch(/user_id|profile\.value\?\.id/)
+    // 依赖链的形态（先取资料、再拼 id、再发第三条请求）不应该出现在这一页。
+    // 闸门按「取数请求的条数」来挡，而不是禁掉 profile.value?.id 这个表达式本身：
+    // 私信入口合法地用 profile.value?.id 拼跳转地址（?to=<用户 id>），那是跳转不是取数依赖。
+    expect((page.match(/useAPI[<(]/g) ?? []).length).toBe(2)
+    expect(page).not.toMatch(/user_id/)
   })
 
   it('404 闸门只看资料请求，列表为空不判 404', () => {
