@@ -383,6 +383,52 @@ async def test_email_notifications_switch_is_read_by_caller(client, staff_header
     assert await email_notifications_enabled() is True
 
 
+@pytest.mark.asyncio
+async def test_security_group_lockout_threshold_and_duration(client, staff_headers):
+    """security 分组历史上只有 env 版生效：后台把"最大登录次数"改成 2、锁定时长改成 60s，
+    响应里看到的仍是 .env 的 5 次 / 10 分钟。
+
+    用一次性账号，不碰共享的 test_user——这里没有解锁接口，锁定只能等它自然过期，
+    锁到 test_user 身上会把后续用例的登录全变成 423。
+    """
+    reg = await client.post(
+        "/api/users/register",
+        json={
+            "username": "secgrpuser",
+            "email": "secgrp@example.com",
+            "password": "Testpass999",
+        },
+    )
+    assert reg.status_code in (200, 201), reg.text
+
+    await _patch(
+        client, staff_headers, "security", {"max_login_attempts": 2, "lockout_duration_sec": 60}
+    )
+    try:
+        for i in range(2):
+            r = await client.post(
+                "/api/users/login",
+                json={"username": "secgrpuser", "password": f"Wrongpass-secgrp-{i}"},
+                headers=_fresh_ip(),
+            )
+            assert r.status_code == 401, r.text
+        locked = await client.post(
+            "/api/users/login",
+            json={"username": "secgrpuser", "password": "Whatever"},
+            headers=_fresh_ip(),
+        )
+        assert locked.status_code == 423, locked.text
+        wait = int(locked.headers.get("Retry-After") or 0)
+        assert 0 < wait <= 60, f"锁定秒数应来自分组 lockout_duration_sec=60，实得 {wait}"
+    finally:
+        await _patch(
+            client,
+            staff_headers,
+            "security",
+            {"max_login_attempts": 5, "lockout_duration_sec": 1800},
+        )
+
+
 # ==================== ⑤ 解析工具：坏配置不能炸主流程 ====================
 
 

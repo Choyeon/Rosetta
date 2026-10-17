@@ -303,10 +303,21 @@ async def login(
         # 登录失败 → 计数 +1，达到阈值则锁定
         if user is not None:
             user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
-            max_attempts = getattr(settings, "max_login_attempts", 10)
+            # 阈值读 security 分组（后台"登录保护"），env 只做未配置时的兜底。
+            # 分组未落库时 lockout_duration_sec 不参与：它默认 1800s，而 env 的
+            # login_lockout_minutes 是 10 分钟，直接换成默认值等于改变现有站点行为。
+            from backend.services.site_settings import int_of, read_group
+
+            sec = await read_group("security", db)
+            env_max = int(getattr(settings, "max_login_attempts", 10))
+            max_attempts = max(1, int_of(sec, "max_login_attempts", env_max))
             if user.failed_login_attempts >= max_attempts:
-                lock_min = getattr(settings, "login_lockout_minutes", 10)
-                user.locked_until = datetime.now(UTC) + timedelta(minutes=lock_min)
+                lock_sec = int_of(
+                    sec,
+                    "lockout_duration_sec",
+                    int(getattr(settings, "login_lockout_minutes", 10)) * 60,
+                )
+                user.locked_until = datetime.now(UTC) + timedelta(seconds=max(60, lock_sec))
                 user.failed_login_attempts = max_attempts
             await db.commit()
         with suppress(Exception):
