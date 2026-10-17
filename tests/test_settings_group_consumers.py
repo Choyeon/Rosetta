@@ -48,9 +48,10 @@ def _fresh_ip() -> dict:
 
     评论写口有"同 post + 同 IP 30s 防重"（429 TOO_FREQUENT_COMMENT），同一条用例里
     连发两条就会被它拦下——那是频控在正常工作，不是分组设置没生效。
+    IP 落库前先脱敏成 ``<前两段>.x.x``（mask_ip），所以必须换**第二段**才算不同访客。
     """
     n = next(_IP_SEQ)
-    return {"X-Forwarded-For": f"10.77.{n // 250 % 250}.{n % 250}"}
+    return {"X-Forwarded-For": f"10.{n % 200 + 1}.1.1"}
 
 
 async def _post_comment(client, post_id: int, content: str = "这是一条测试评论内容"):
