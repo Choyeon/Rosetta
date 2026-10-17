@@ -66,7 +66,9 @@ function resAccessor(res: unknown): Accessor | null {
   return {
     get: name => asString(r.getHeader?.(name)),
     set: (name, value) => {
-      try { r.setHeader?.(name, value) } catch { /* 头部已发出，改不动就算了 */ }
+      try {
+        r.setHeader?.(name, value)
+      } catch { /* 头部已发出，改不动就算了 */ }
     }
   }
 }
