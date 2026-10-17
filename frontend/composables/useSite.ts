@@ -29,7 +29,6 @@ const PUBLIC_CONFIG_FALLBACK: Record<string, unknown> = {
   site_url: '',
   site_logo: null,
   icp_number: null,
-  about_content: '',
   about_page_html: '',
   footer_text: 'Powered by Rosetta',
   footer_slogan: 'Share knowledge, inspire creativity',
@@ -105,7 +104,6 @@ export function useSite() {
     const publicUrl = (p.site_url as string) || ''
     const publicLogo = (p.site_logo as string) || ''
     const publicIcp = (p.icp_number as string) || ''
-    const publicAbout = (p.about_content as string) || ''
     // 关于页完整 HTML 内容：admin 在 basic.about_page_html 字段里用 HTML 方式直接编辑
     // 前台 /about 页面若此字段非空，直接 v-html 渲染；为空时展示 about.vue 默认 Tab 结构
     const publicAboutHtml = (p.about_page_html as string) || ''
@@ -117,7 +115,6 @@ export function useSite() {
       site_url: publicUrl,
       logo: publicLogo,
       icp_number: publicIcp,
-      about_content: publicAbout,
       about_page_html: publicAboutHtml
     }
   })
@@ -128,8 +125,6 @@ export function useSite() {
     default_keywords: basic.value.keywords,
     og_image: (state.value.publicConfig?.default_og_image as string) || '',
     twitter_handle: '',
-    google_analytics_id: '',
-    baidu_analytics_id: '',
     google_verification: '',
     baidu_verification: '',
     robots_txt: 'User-agent: *\nAllow: /'

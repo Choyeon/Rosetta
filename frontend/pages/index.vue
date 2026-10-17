@@ -94,6 +94,7 @@
     <!-- ================= Default (Editorial WP-Style) Hero + Post Grid ================= -->
     <template v-else>
       <section
+        v-if="heroEnabled"
         :class="[
           'relative overflow-hidden',
           isEditorialTheme
@@ -1073,8 +1074,10 @@ const singlePinnedPost = computed(() => (
   pinnedPosts.value.length === 1 ? pinnedPosts.value[0] : null
 ))
 
-const _heroTitle = computed(() => site.pickI18n(site.hero.value.title))
-const _heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
+// hero.enable：后台「启用 Hero」开关。此前整段 hero 无条件渲染，关掉开关只是存库；
+// 现在关掉即不渲染这一段（首页直接从置顶/最新开始），同时不再请求 Bing 壁纸。
+const heroEnabled = computed(() => site.hero.value.enable !== false)
+const _heroTitle = computed(() => site.pickI18n(site.hero.value.title))const _heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
 const _heroCaption = computed(() => site.pickI18n(site.hero.value.caption))
 const _heroCtaText = computed(() => site.pickI18n(site.hero.value.cta_text))
 const _heroCtaUrl = computed(() => String(site.hero.value.cta_url || '/posts'))
@@ -1148,7 +1151,7 @@ const heroStyle = computed(() => {
 
 onMounted(() => {
   // Minimal 主题不渲染 Bing Hero，跳过壁纸请求（避免无意义的网络访问与延迟）
-  if (!isMinimalTheme.value) fetchWallpapers()
+  if (!isMinimalTheme.value && heroEnabled.value) fetchWallpapers()
 })
 
 // 并行发起 5 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成

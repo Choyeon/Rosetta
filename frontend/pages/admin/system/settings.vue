@@ -491,7 +491,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   const label = {
     site_name: '站点名称', subtitle: '站点副标题', logo: 'Logo 图片 URL',
     description: '站点描述', keywords: 'SEO 关键词（逗号分隔）', site_url: '站点首页 URL',
-    icp_number: 'ICP 备案号', about_content: '关于页面简介正文（纯文字/Markdown 片段）',
+    icp_number: 'ICP 备案号',
     about_page_html: '关于页面完整 HTML（直接渲染，优先级高于默认 Tabs 结构）',
     posts_per_page: '每页文章数', show_reading_time: '显示预估阅读时间',
     show_word_count: '显示字数统计', show_toc: '启用文章目录',
@@ -503,14 +503,11 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     max_upload_size: '单文件最大上传大小（字节）',
     allowed_image_types: '允许上传的图片类型（逗号分隔）',
     allowed_file_types: '允许上传的文件类型（逗号分隔）',
-    default_post_cover: '文章默认封面图 URL',
-    default_avatar: '用户默认头像 URL',
     use_cdn: '媒体文件启用 CDN 前缀', cdn_prefix: '媒体 CDN 地址前缀',
     watermark_text: '图片水印文字（留空则不加水印；上传时烧录到图片右下角）',
     default_title: '页面默认标题', default_description: '页面默认描述',
     default_keywords: '页面默认关键词', og_image: 'OG 分享默认图',
-    twitter_handle: 'Twitter 账号', google_analytics_id: 'Google Analytics ID',
-    baidu_analytics_id: '百度统计 ID', google_verification: 'Google 站点验证码',
+    twitter_handle: 'Twitter 账号', google_verification: 'Google 站点验证码',
     baidu_verification: '百度站点验证码', robots_txt: 'robots.txt 内容',
     smtp_host: 'SMTP 服务器地址', smtp_port: 'SMTP 端口',
     smtp_user: 'SMTP 用户名', smtp_password: 'SMTP 密码',
@@ -576,7 +573,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     return { label: resolvedLabel, type: 'color' }
   }
   const sensitive = isSensitiveSettingKey(key)
-  const longKeys = ['description', 'about_content', 'about_page_html', 'robots_txt', 'content_md']
+  const longKeys = ['description', 'about_page_html', 'robots_txt', 'content_md']
   const long = longKeys.includes(key) || (typeof value === 'string' && value.length > 80)
   const help: Record<string, string> = {
     site_url: '建议包含协议前缀，如 https://example.com',
@@ -640,11 +637,11 @@ const currentGroupSchemas = computed(() => {
 
 function getDefaultsFor(group: string): Record<string, SettingsValue> {
   const m: Record<string, Record<string, SettingsValue>> = {
-    basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_content: '', about_page_html: '' },
+    basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_page_html: '' },
     reading: { posts_per_page: 12, show_reading_time: true, show_word_count: true, show_toc: true, toc_depth: 3, line_height: 1.7, font_size: 16 },
     comments: { enable: true, require_approval: false, allow_guest: true, max_length: 3000, enable_antispam: true, enable_nested: true },
-    media: { max_upload_size: 10485760, allowed_image_types: 'jpg,jpeg,png,gif,webp,svg', allowed_file_types: 'mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx', default_post_cover: '', default_avatar: '', use_cdn: false, cdn_prefix: '', watermark_text: '' },
-    seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_analytics_id: '', baidu_analytics_id: '', google_verification: '', baidu_verification: '', robots_txt: '' },
+    media: { max_upload_size: 10485760, allowed_image_types: 'jpg,jpeg,png,gif,webp,svg', allowed_file_types: 'mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx', use_cdn: false, cdn_prefix: '', watermark_text: '' },
+    seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_verification: '', baidu_verification: '', robots_txt: '' },
     email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false },
     security: { max_login_attempts: 5, lockout_duration_sec: 1800 },
     features: { enable_comments: true, enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true },

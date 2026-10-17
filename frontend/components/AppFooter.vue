@@ -164,6 +164,7 @@ interface SiteConfigLite {
   copyright_text: string | null
   footer_custom_html: string
   icp_number: string
+  police_icp_number: string
   github_url: string | null
   x_url: string | null
   bilibili_url: string | null
@@ -216,6 +217,9 @@ const siteConfig = computed<SiteConfigLite>(() => {
     copyright_text: copyrightText && String(copyrightText).trim() ? String(copyrightText) : null,
     footer_custom_html: footerCustomHtml,
     icp_number: b.icp_number || f.icp_number || readStr('icp_number', ''),
+    // footer.police_icp_number：公安备案号此前只进库不渲染，备案号属于法定展示项，
+    // 与"显示版权声明"开关无关（关掉版权行也照样显示）。
+    police_icp_number: f.police_icp_number || readStr('police_icp_number', ''),
     github_url: readNullable('github_url'),
     x_url: readNullable('x_url'),
     bilibili_url: readNullable('bilibili_url'),
@@ -233,6 +237,8 @@ const siteConfig = computed<SiteConfigLite>(() => {
 const footerCustomHtml = computed(() => sanitizeTrustedAdminHtml(siteConfig.value.footer_custom_html))
 
 const socialLinks = computed<FooterLink[]>(() => {
+  // footer.show_social_links：后台关掉即整段不渲染（此前这个开关没有任何消费点）。
+  if (site.footer.value.show_social_links === false) return []
   const cfg = siteConfig.value
   const list: FooterLink[] = []
   if (cfg.github_url) list.push({ labelKey: 'footer.socialGithub', href: cfg.github_url, external: true })
@@ -465,6 +471,7 @@ const handleSetLocale = async (code: string) => {
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div class="text-xs text-muted-foreground text-center md:text-left">
           <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
+          <span v-if="siteConfig.police_icp_number">{{ siteConfig.police_icp_number }} · </span>
           <template v-if="showCopyright">
             {{ copyrightLine }}
           </template>
@@ -545,6 +552,7 @@ const handleSetLocale = async (code: string) => {
       <!-- 版权 -->
       <div class="text-xs text-muted-foreground">
         <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
+        <span v-if="siteConfig.police_icp_number">{{ siteConfig.police_icp_number }} · </span>
         <template v-if="showCopyright">
           {{ copyrightLine }}
         </template>

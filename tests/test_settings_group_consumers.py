@@ -130,6 +130,14 @@ _INERT_KEYS = {
     "show_music",
     "show_statistics",
     "show_dynamics",
+    # 第二轮收口：about_content 被 about_page_html 取代；媒体默认封面/头像没有任何读取点
+    # （封面走 lib/post-cover.ts 的 picsum seed，头像走 core/avatar_resolver 的 DiceBear）；
+    # 两个统计 ID 没有注入口，补注入口要放松 CSP（AGENTS §12.6 禁止）。
+    "about_content",
+    "default_post_cover",
+    "default_avatar",
+    "google_analytics_id",
+    "baidu_analytics_id",
 }
 
 _INERT_GROUPS = {"cdn", "cache", "friendlinks", "sidebar"}

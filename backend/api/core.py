@@ -967,8 +967,6 @@ async def get_site_config(db: DB):
                         cfg_base["site_logo"] = str(parsed["logo"])
                     if parsed.get("icp_number") is not None:
                         cfg_base["icp_number"] = str(parsed["icp_number"]) or None
-                    if parsed.get("about_content") is not None:
-                        cfg_base["about_content"] = str(parsed["about_content"])
                     if parsed.get("about_page_html") is not None:
                         cfg_base["about_page_html"] = str(parsed["about_page_html"])
             # seo
@@ -1056,10 +1054,6 @@ async def get_site_config(db: DB):
                     for k in ("allowed_image_types", "allowed_file_types"):
                         if parsed.get(k):
                             cfg_base[k] = str(parsed[k])
-                    if parsed.get("default_post_cover"):
-                        cfg_base["default_post_cover"] = str(parsed["default_post_cover"])
-                    if parsed.get("default_avatar"):
-                        cfg_base["default_avatar"] = str(parsed["default_avatar"])
             # reading（文章列表每页条数 + 目录/阅读时间/字数三处 UI 开关）
             raw_reading = _cfg_raw("reading")
             if raw_reading:
@@ -1080,8 +1074,6 @@ async def get_site_config(db: DB):
                 parsed = _json_.loads(raw_seo_full)
                 if isinstance(parsed, dict):
                     for gk, ck in (
-                        ("google_analytics_id", "google_analytics_id"),
-                        ("baidu_analytics_id", "baidu_analytics_id"),
                         ("google_verification", "google_site_verification"),
                         ("baidu_verification", "baidu_site_verification"),
                         ("robots_txt", "robots_txt"),
@@ -1123,20 +1115,9 @@ async def get_site_config(db: DB):
             # 只收窄到 JSON/类型错误，NameError 等真实缺陷必须照样抛出。
             pass
 
-    # 从 basic 分组 JSON 中读取 about_content
+    # 关于页纯文字正文：只兜历史 SiteConfig 行 / 环境变量；
+    # basic 分组里的 about_content 已删除（前台 /about 只渲染 about_page_html）。
     about_content = _configs_ci.get("ABOUT_CONTENT", "") or configs.get("ABOUT_CONTENT", "")
-    if not about_content:
-        raw_basic_json = configs.get("basic") or _configs_ci.get("BASIC")
-        if raw_basic_json:
-            try:
-                import json as _json
-
-                parsed_basic = _json.loads(raw_basic_json)
-                if isinstance(parsed_basic, dict):
-                    about_content = parsed_basic.get("about_content", "")
-            except (ValueError, TypeError):
-                # 同上：坏 JSON 回退空内容，不吞非解析类错误
-                pass
 
     def get_bool(key: str, default: str = "true") -> bool:
         return _configs_ci.get(key.upper(), default).lower() == "true"
