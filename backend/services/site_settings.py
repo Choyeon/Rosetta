@@ -5,8 +5,8 @@
 （评论审核、上传大小、robots 正文）读的是环境变量或硬编码常量，于是出现
 "后台改了、前台不生效"——设置项存进库却没有任何代码分支去判断它。
 
-本模块给执行点一个统一入口：不依赖请求会话（自己开 session），带 TTL 缓存，
-``PATCH /api/settings/{group}`` 保存时同键失效（见 api/settings_groups.py）。
+本模块给执行点一个统一入口：优先复用请求会话（无会话的调用点自行开一条），
+带 TTL 缓存，``PATCH /api/settings/{group}`` 保存时同键失效（见 api/settings_groups.py）。
 
 **返回库内存值，不合并默认值**：调用点各自决定"这一项没配过时的既有行为"
 （环境变量 / 硬编码常量）。若在这里合并 ``_default_*``，未保存过分组的站点会被
@@ -29,8 +29,15 @@ logger = logging.getLogger(__name__)
 GROUP_CACHE_TTL = 300
 
 
-async def read_group(name: str) -> dict:
-    """读取某分组**已保存**的键值；未保存过（或数据损坏）返回 ``{}``。"""
+async def read_group(name: str, db=None) -> dict:
+    """读取某分组**已保存**的键值；未保存过（或数据损坏）返回 ``{}``。
+
+    ``db``：在请求处理链里调用时**必须**传入请求会话。测试环境的 SQLite 用
+    StaticPool（全局共享一条连接），请求会话还开着事务时再开第二个会话会和它
+    抢同一条连接，把请求侧已加载的 ORM 对象顶成过期状态，后续属性读取即在
+    greenlet 之外触发隐式 IO（``MissingGreenlet`` → 500）。
+    无请求会话的调用点（Nitro 之外的独立端点）可以不传，自行开带缓存的读取。
+    """
     # 延迟导入：service 层在模块加载期不应依赖 api 层与 DB 引擎
     from backend.api.settings_groups import SETTING_GROUPS_17
     from backend.core.cache import cache, make_cache_key
@@ -50,8 +57,13 @@ async def read_group(name: str) -> dict:
 
     value: str | None = None
     try:
-        async with async_session_maker() as session:
-            value = await session.scalar(select(SiteConfig.value).where(SiteConfig.key == name))
+        if db is not None:
+            value = await db.scalar(select(SiteConfig.value).where(SiteConfig.key == name))
+        else:
+            async with async_session_maker() as session:
+                value = await session.scalar(
+                    select(SiteConfig.value).where(SiteConfig.key == name)
+                )
     except Exception:
         logger.warning("settings_group db read failed: %s", name, exc_info=True)
         return {}

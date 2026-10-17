@@ -481,7 +481,7 @@ class CommentService:
         """创建一条评论（游客或登录用户均可）。内部处理：站点评论开关、敏感词、status 决策、嵌套深度校验。"""
         # 0. 后台「评论」分组（site_configs.key="comments"）——两个写口（comments.py 与
         #    blog.py）都经过这里，闸门只写一次。未保存过的键保持既有行为（环境变量/默认值）。
-        cst = await read_group("comments")
+        cst = await read_group("comments", db)
         if not bool_of(cst, "enable", True):
             raise ValueError("COMMENTS_DISABLED")
         # 兜底值取**既有行为**而不是 _default_comments：未保存过分组的站点不能被这次改动
