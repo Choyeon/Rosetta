@@ -47,8 +47,12 @@ describe('后台菜单与投票入口', () => {
     for (const fn of ['fetchAllPolls', 'createPoll', 'deletePoll']) {
       expect(pollsPage, `投票页必须调用 ${fn}()`).toContain(`pollsAPI.${fn}(`)
     }
-    expect(pollsComposable).toContain("apiFetch<Poll>('/voting/polls'")
-    expect(pollsComposable).toContain('`/voting/polls/${pollId}`')
+    // 只断言到"方法 + 路径"这一层：引号形态（单引号 / 反引号模板）不是契约，
+    // 写死引号会让一次无害的字符串改写变成假红灯。
+    const RE_CREATE = /apiFetch<Poll>\(\s*['"`]\/voting\/polls['"`],\s*\{ method: 'POST'/
+    const RE_DELETE = /apiFetch<unknown>\(\s*['"`]\/voting\/polls\/\$\{pollId\}['"`],\s*\{ method: 'DELETE'/
+    expect(pollsComposable, '创建必须打 POST /voting/polls').toMatch(RE_CREATE)
+    expect(pollsComposable, '删除必须打 DELETE /voting/polls/{id}').toMatch(RE_DELETE)
     // 后端只有 POST/DELETE，没有 PUT：页面不得伪装出"编辑"入口
     expect(pollsPage, '后端无更新接口，页面不得出现假编辑按钮').not.toContain('openEdit')
   })
