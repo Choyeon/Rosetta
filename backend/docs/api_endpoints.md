@@ -2690,6 +2690,8 @@ _无路径 / query 参数_
 | meta_title | object<string, string> \| null | 否 |  |
 | published_at | string \| null | 否 |  |
 | scheduled_at | string \| null | 否 |  |
+| series_id | integer \| null | 否 |  |
+| series_order | integer \| null | 否 |  |
 | slug | string | 是 |  |
 | source | string | 是 |  |
 | source_url | string \| null | 否 |  |
@@ -2721,6 +2723,8 @@ _无路径 / query 参数_
   "meta_title": "string",
   "published_at": "string",
   "scheduled_at": "string",
+  "series_id": "string",
+  "series_order": "string",
   "slug": "string",
   "source": "string",
   "source_url": "string",
@@ -11918,6 +11922,7 @@ _无路径 / query 参数_
         "avatar": "…",
         "id": "…",
         "nickname": "…",
+        "resolved_avatar_url": "…",
         "username": "…"
       }
     }
@@ -12051,9 +12056,10 @@ _无路径 / query 参数_
 | --- | --- | --- | --- |
 | items | object[] | 是 | 本页消息列表，按时间正序 |
 | other_user | object | 是 | 会话对端用户的公开资料 |
-| other_user.avatar | string \| null | 否 | 头像 URL，未设置时为 null |
+| other_user.avatar | string \| null | 否 | 原始头像列，未设置时为 null |
 | other_user.id | integer | 是 | 对端用户 ID |
 | other_user.nickname | string \| null | 否 | 昵称，未设置时为 null |
+| other_user.resolved_avatar_url | string \| null | 否 | 后端头像解析链算出的真实头像（代理 URL 或本站相对路径），未解析出任何来源时为 null |
 | other_user.username | string | 是 | 用户名 |
 | page | integer | 是 | 当前页码，从 1 开始 |
 | page_size | integer | 是 | 每页条数 |
@@ -12077,6 +12083,7 @@ _无路径 / query 参数_
     "avatar": "string",
     "id": 0,
     "nickname": "string",
+    "resolved_avatar_url": "string",
     "username": "string"
   },
   "page": 0,
@@ -15968,6 +15975,7 @@ _无路径 / query 参数_
         "avatar": "…",
         "comments_count": "…",
         "name": "…",
+        "resolved_avatar_url": "…",
         "title": "…"
       }
     ],
@@ -16249,7 +16257,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：获取所有设置分组
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需管理员（CurrentStaff）。返回全部 17 组分组的配置项（含敏感明文值，如 SMTP 密码）；前台/SSR 一律改用 GET /settings/public，不得调用本接口。只读、幂等。
+需管理员（CurrentStaff）。返回全部 13 组分组的配置项（含敏感明文值，如 SMTP 密码）；前台/SSR 一律改用 GET /settings/public，不得调用本接口。只读、幂等。
 
 **入参**
 
@@ -16261,7 +16269,7 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| groups | object | 是 | 全部 17 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值） |
+| groups | object | 是 | 全部 13 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值） |
 
 响应示例：
 
@@ -16311,7 +16319,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：获取单个设置分组
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需管理员（CurrentStaff）。返回指定分组（17 组之一）合并默认值后的完整配置；未知分组 404。直接返回 {group, data} 裸对象（无 success 信封）。只读、幂等。
+需管理员（CurrentStaff）。返回指定分组（13 组之一）合并默认值后的完整配置；未知分组 404。直接返回 {group, data} 裸对象（无 success 信封）。只读、幂等。
 
 **入参**
 
@@ -16324,7 +16332,7 @@ _无路径 / query 参数_
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | data | object | 是 | 该分组的完整配置（默认值与 DB 存值的合并结果） |
-| group | string | 是 | 分组键（17 组之一） |
+| group | string | 是 | 分组键（13 组之一） |
 
 响应示例：
 
