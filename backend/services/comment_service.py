@@ -629,7 +629,21 @@ class CommentService:
         """
         try:
             from backend.core.database import async_session_maker  # 延迟 import 避免循环
-            from backend.services.email_service import get_email_service  # type: ignore
+            from backend.services.email_service import (  # type: ignore
+                email_notifications_enabled,
+                get_email_service,
+            )
+
+            # 通知开关 + SMTP 可用性都在 adb 之前判定：read_group 自开会话，
+            # 放在 adb 作用域里等于同时占两条连接（小连接池部署会互等）。
+            # 可用性必须走 smtp_is_configured()（email 分组 + env 合并）——
+            # 原先直判 settings.smtp_*，"只在后台配好 SMTP"的站点一封不发且无报错；
+            # enable_notifications 则从未被读，后台关了照发。
+            es = get_email_service()
+            mail_wanted = bool(await email_notifications_enabled())
+            if mail_wanted and not await es.smtp_is_configured():
+                logger.warning("SMTP 未配置（email 分组与 .env 均不全），跳过评论通知邮件")
+                mail_wanted = False
 
             async with async_session_maker() as adb:
                 recipients: list[tuple[int, str, str]] = []  # (recipient_id, verb, message_zh)
@@ -690,17 +704,7 @@ class CommentService:
 
                 # 邮件发送
                 try:
-                    from backend.services.email_service import email_notifications_enabled
-
-                    es = get_email_service()
-                    # 通知开关 + 可用性判定都必须读 email 分组（env 兜底）。
-                    # 原先直判 settings.smtp_*：后台配好 SMTP 但 .env 没写 → 一封不发；
-                    # enable_notifications 则从来没被读过 → 后台关了照发。
-                    smtp_ready = bool(recipients) and await email_notifications_enabled()
-                    if smtp_ready and not await es.smtp_is_configured():
-                        logger.warning("SMTP 未配置（email 分组与 .env 均不全），跳过评论通知邮件")
-                        smtp_ready = False
-                    if smtp_ready:
+                    if recipients and mail_wanted:
                         # 一次 IN 查询拿全部收件人邮箱；原先逐个 SELECT 整行 User
                         # （连 password_hash 一起读出来），且查询数随收件人线性增长。
                         email_rows = await adb.execute(
