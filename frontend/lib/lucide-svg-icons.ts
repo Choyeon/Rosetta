@@ -445,6 +445,15 @@ export const Link2 = S(undefined,
   h('line', { x1: '8', x2: '16', y1: '12', y2: '12' })
 )
 
+// Share2
+export const Share2 = S(undefined,
+  h('circle', { cx: '18', cy: '5', r: '3' }),
+  h('circle', { cx: '6', cy: '12', r: '3' }),
+  h('circle', { cx: '18', cy: '19', r: '3' }),
+  h('line', { x1: '8.59', x2: '15.42', y1: '13.51', y2: '17.49' }),
+  h('line', { x1: '15.41', x2: '8.59', y1: '6.51', y2: '10.49' })
+)
+
 // User2
 export const User2 = S(undefined,
   h('circle', { cx: '12', cy: '8', r: '5' }),

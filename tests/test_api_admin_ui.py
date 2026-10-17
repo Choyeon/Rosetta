@@ -150,23 +150,19 @@ async def test_modify_4_settings_writes_operation_logs(
     db_session: AsyncSession,
 ):
     """
-    用 admin token PATCH 4 次 settings：basic + friendlinks + hero + notice
+    用 admin token PATCH 4 次 settings：basic + appearance + hero + notice
     → GET admin/logs action=settings 数量=4 且 target_type=settings
     """
     # 1. 先执行 4 次 PATCH /api/settings/{group}
     patches = [
         ("basic", {"site_name": "Rosetta", "site_url": "https://roetta.dev"}),
         (
-            "friendlinks",
+            "appearance",
             {
-                "links": [
-                    {
-                        "name": "Rosetta Hub",
-                        "url": "https://rosetta.dev",
-                        "desc": "官方社区",
-                        "avatar": "",
-                    }
-                ],
+                "primary_color": "#0EA5A9",
+                "accent_color": "#8B5CF6",
+                "page_width_px": 1180,
+                "show_copyright": True,
             },
         ),
         (
@@ -182,7 +178,7 @@ async def test_modify_4_settings_writes_operation_logs(
         (
             "notice",
             {
-                "enabled": True,
+                "enable": True,
                 "content_md": "系统将于本周六凌晨进行例行维护，预计 1 小时。",
             },
         ),

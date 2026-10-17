@@ -1,4 +1,4 @@
-"""站点设置分组「保存即生效」契约回归（后台 17 组 → 真实执行点）。
+"""站点设置分组「保存即生效」契约回归（后台 13 组 → 真实执行点）。
 
 起因：设置页写的是 site_configs 里 ``key=分组名`` 的整段 JSON，而历史上只有
 ``/api/config`` 与 ``/settings/public`` 两条读口会把其中一部分叠进返回值。于是两类
@@ -28,7 +28,7 @@ from backend.api.media import (
     _effective_library_exts,
     _effective_upload_limit,
 )
-from backend.api.settings_groups import SETTING_GROUPS_17, _default_for
+from backend.api.settings_groups import SETTING_GROUPS, _default_for
 from backend.services.site_settings import bool_of, int_of
 
 SETTINGS_PAGE = Path(__file__).resolve().parents[1] / "frontend/pages/admin/system/settings.vue"
@@ -82,7 +82,7 @@ def test_settings_page_submits_only_writable_keys():
     ``_save_group`` 的 ``if k in base`` 是静默丢弃，不是报错：这条断言是它唯一的暴露面。
     """
     ui = _ui_group_fields()
-    assert set(ui) == set(SETTING_GROUPS_17), f"设置页分组与后端 17 组不一致：{set(ui) ^ set(SETTING_GROUPS_17)}"
+    assert set(ui) == set(SETTING_GROUPS), f"设置页分组与后端 13 组不一致：{set(ui) ^ set(SETTING_GROUPS)}"
     unwritable = {
         g: sorted(keys - set(_default_for(g))) for g, keys in ui.items() if keys - set(_default_for(g))
     }
@@ -90,6 +90,83 @@ def test_settings_page_submits_only_writable_keys():
         "这些键设置页会提交但后端存不进去（不在分组默认值里，_save_group 静默丢弃）："
         f"{unwritable}；要么补进 _default_*，要么从设置页移除"
     )
+
+
+# 已删除的死配置：能存、能回显，但 read_group / /api/config 分组覆写 / 前端消费方三处全空。
+# CDN 前缀的真实执行点是 media.use_cdn + media.cdn_prefix；缓存后端与 TTL 只在环境变量里；
+# 友情链接走 friend_links 表 + /api/friend-links；侧边栏显示/位置走主题 Customizer 的 mods
+# （show_sidebar / sidebar_position），代码配色走 --hljs-* 令牌，明暗首帧走 localStorage.theme。
+# 留着它们只等于给管理员一批假开关。
+_INERT_KEYS = {
+    "cdn_url",
+    "image_cdn_url",
+    "static_cdn_url",
+    "purge_token",
+    "site_config_ttl",
+    "post_list_ttl",
+    "flush_on_post_update",
+    "session_timeout_sec",
+    "enable_rate_limit",
+    "allowed_hosts",
+    "cors_origins",
+    "require_email_verification",
+    "allow_password_reset",
+    "custom_links",
+    "auto_approve",
+    "max_nested_depth",
+    "admin_email",
+    "code_theme",
+    "code_theme_dark",
+    "default_theme",
+    "font_family",
+    "widget_order",
+    "show_profile",
+    "show_categories",
+    "show_tags",
+    "show_recent_posts",
+    "show_recent_comments",
+    "show_tag_cloud",
+    "show_site_info",
+    "show_music",
+    "show_statistics",
+    "show_dynamics",
+}
+
+_INERT_GROUPS = {"cdn", "cache", "friendlinks", "sidebar"}
+
+
+def test_inert_setting_keys_stay_removed():
+    """死配置不得回流：一旦被重新放进 _default_*，设置页就能提交一个没人执行的开关。"""
+    live = {k for g in SETTING_GROUPS for k in _default_for(g)}
+    assert not (live & _INERT_KEYS), f"这些键没有任何执行点，却被放回分组默认值：{sorted(live & _INERT_KEYS)}"
+    assert set(SETTING_GROUPS).isdisjoint(_INERT_GROUPS)
+
+
+@pytest.mark.asyncio
+async def test_stale_keys_in_stored_blob_are_not_resurfaced(client, staff_headers, db_session):
+    """库里残留的已删除键不得再被接口回显。
+
+    ``_load_all_groups`` 曾整段透出存量 JSON：删掉一个死键后旧 JSON 里它还在，
+    设置页读出来再提交回去 = 刚删的开关被写回库，"删了但没删干净"。
+    """
+    from sqlalchemy import select
+
+    from backend.models.core import SiteConfig
+
+    row = (
+        await db_session.execute(select(SiteConfig).where(SiteConfig.key == "navigation"))
+    ).scalar_one_or_none()
+    if row is None:
+        row = SiteConfig(key="navigation", value="{}", description="系统设置 - navigation")
+        db_session.add(row)
+    row.value = '{"header_style": "static", "custom_links": [{"label": "旧链接"}]}'
+    await db_session.commit()
+
+    resp = await client.get("/api/settings/navigation", headers=staff_headers)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    assert "custom_links" not in data
+    assert data["header_style"] == "static"  # 存量里的活键必须原样保留
 
 
 # ==================== ② 执行点：comments 分组真的决定评论行为 ====================

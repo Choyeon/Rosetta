@@ -295,6 +295,50 @@
               />
               <span>{{ favorited ? t('favorites.favorited') : t('favorites.add') }}</span>
             </Button>
+
+            <!-- 分享：features.enable_share_buttons 的唯一消费点（关掉即整组不渲染）。
+                 地址与 canonical 同算法（站点根 + applyLocalePrefix），不用 window.location：
+                 那会把 ?query 与地址栏形态一起交给第三方站点。品牌名不翻译。 -->
+            <template v-if="showShareBar">
+              <Separator
+                decorative
+                orientation="vertical"
+                class="h-6"
+              />
+              <Button
+                v-if="canNativeShare"
+                variant="outline"
+                size="sm"
+                class="group transition-colors hover:border-primary/50 hover:text-primary"
+                @click="shareNative"
+              >
+                <Share2
+                  data-icon="inline-start"
+                  class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
+                />
+                <span>{{ t('post.share') }}</span>
+              </Button>
+              <a
+                v-for="net in shareNetworks"
+                :key="net.label"
+                :href="net.href"
+                target="_blank"
+                rel="noopener noreferrer"
+                class="inline-flex h-8 items-center rounded-md border border-border/60 px-3 text-sm transition-colors hover:border-primary/50 hover:text-primary"
+              >{{ net.label }}</a>
+              <Button
+                variant="outline"
+                size="sm"
+                class="group transition-colors hover:border-primary/50 hover:text-primary"
+                @click="copyShareLink"
+              >
+                <Link2
+                  data-icon="inline-start"
+                  class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
+                />
+                <span>{{ t('post.copyLink') }}</span>
+              </Button>
+            </template>
           </div>
 
           <!-- ========= 作者信息卡：主题 mods show_author_box 控制（作者数据缺失时不渲染空卡） ========= -->
@@ -674,8 +718,11 @@ import {
   X,
   Lock,
   Check,
-  Bookmark
+  Bookmark,
+  Share2,
+  Link2
 } from '~~/lib/lucide-svg-icons'
+import { applyLocalePrefix } from '~~/composables/useSeo'
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
 import type { TocItem } from '~~/composables/useReadingUX'
@@ -1257,6 +1304,63 @@ useArticleJsonLd({
   category: seoCategoryName,
   keywords: seoKeywords
 })
+
+// ===== 分享条：features.enable_share_buttons 的唯一消费点 =====
+// 分享地址走 canonical 同款算法（站点根 + applyLocalePrefix），不用 window.location.href：
+// 那会把 ?query 一起递给第三方，且在 SSR 期根本不存在。
+const showShareBar = computed(() => site.features.value.enable_share_buttons !== false)
+const shareUrl = computed(() => {
+  const path = applyLocalePrefix(seoPostPath.value, locale.value || 'zh')
+  const base = publicSiteUrl.value.replace(/\/$/, '')
+  return base ? `${base}${path}` : path
+})
+const shareTitleText = computed(() => String(seoTitle.value ?? ''))
+const shareNetworks = computed(() => {
+  const u = encodeURIComponent(shareUrl.value)
+  const title = encodeURIComponent(shareTitleText.value)
+  return [
+    { label: 'X', href: `https://twitter.com/intent/tweet?url=${u}&text=${title}` },
+    { label: '微博', href: `https://service.weibo.com/share/share.php?url=${u}&title=${title}` },
+    { label: 'Telegram', href: `https://t.me/share/url?url=${u}&text=${title}` }
+  ]
+})
+// Web Share API 只在安全上下文的移动端存在；首帧两端都是 false，挂载后再开，
+// 避免 SSR 与客户端的按钮数量对不上（同一口径见 §2.4 首渲染字节级一致）。
+const canNativeShare = ref(false)
+onMounted(() => {
+  canNativeShare.value = typeof navigator.share === 'function'
+})
+
+async function shareNative() {
+  try {
+    await navigator.share({ title: shareTitleText.value, url: shareUrl.value })
+  } catch (e) {
+    // 用户点了"取消"同样是 reject（AbortError），那不是故障，不该弹错误条
+    if ((e as Error)?.name !== 'AbortError') toast.error(t('post.shareFailed'))
+  }
+}
+
+async function copyShareLink() {
+  const url = shareUrl.value
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success(t('post.linkCopied'))
+    return
+  } catch {
+    // Clipboard API 只在安全上下文可用（http 内网直连下 navigator.clipboard 是 undefined，
+    // 这里连读都会抛），退回临时 textarea，让"复制链接"在两种环境里都真的能复制。
+  }
+  const area = document.createElement('textarea')
+  area.value = url
+  area.setAttribute('readonly', 'true')
+  area.className = 'fixed left-[-9999px] opacity-0'
+  document.body.appendChild(area)
+  area.select()
+  const copied = document.execCommand('copy')
+  area.remove()
+  if (copied) toast.success(t('post.linkCopied'))
+  else toast.error(t('post.copyFailed'))
+}
 
 const escapeHtml = (value: string): string => value
   .replaceAll('&', '&amp;')

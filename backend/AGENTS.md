@@ -80,11 +80,18 @@ api → services → repositories → models
 
 ## 站点设置
 
-`/api/settings` 支持 17 个分组（`settings_groups.py` 的 `SETTING_GROUPS_17`；公开白名单为 `PUBLIC_SETTING_GROUPS`，11 组）。
+`/api/settings` 支持 13 个分组（`settings_groups.py` 的 `SETTING_GROUPS`；公开白名单为 `PUBLIC_SETTING_GROUPS`，9 组）。
+
+分组键集是唯一清单：**没有执行点的开关不得放进 `_default_*`**。历史上 `cdn` / `cache` / `friendlinks` /
+`sidebar` 四组，以及 `security` 的会话/CORS、`appearance` 的代码高亮主题与字体族等键属于"能存能回显、但没人读"，
+已全部删除——CDN 前缀看 `media.use_cdn` + `media.cdn_prefix`，缓存后端与 TTL 只看环境变量，友情链接走
+`friend_links` 表，侧边栏显示/位置看主题 Customizer 的 mods（`show_sidebar` / `sidebar_position`），
+代码配色看 `assets/css/main.css` 的 `--hljs-*` 令牌，明/暗首帧看 `localStorage.theme`。
+读写两侧都按 `_default_<group>()` 的键集过滤（`_only_known_keys`），所以库里残留的旧键不会再被回显。
 
 | 端点 | 鉴权 | 返回内容 |
 |------|------|---------|
-| `GET /api/settings` | 需管理员（`CurrentStaff`） | 全部 17 组，含敏感明文值 |
+| `GET /api/settings` | 需管理员（`CurrentStaff`） | 全部 13 组，含敏感明文值 |
 | `GET /api/settings/{group}` | 需管理员 | 单组原文 |
 | `PATCH /api/settings/{group}` | 需管理员 | 写日志 + 失效公开缓存 |
 | `GET /api/settings/public` | **无鉴权** | `PUBLIC_SETTING_GROUPS` 白名单，敏感值替换为 `******` |

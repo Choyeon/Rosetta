@@ -1,4 +1,4 @@
-"""站点设置分组（17 组）的服务层读取口。
+"""站点设置分组（13 组）的服务层读取口。
 
 背景：设置页保存的是 site_configs 表里 ``key=分组名`` 的整段 JSON，但此前只有
 ``/api/config`` 与 ``/settings/public`` 两条读口会把它们叠进返回值。真正的**执行点**
@@ -39,12 +39,12 @@ async def read_group(name: str, db=None) -> dict:
     无请求会话的调用点（Nitro 之外的独立端点）可以不传，自行开带缓存的读取。
     """
     # 延迟导入：service 层在模块加载期不应依赖 api 层与 DB 引擎
-    from backend.api.settings_groups import SETTING_GROUPS_17
+    from backend.api.settings_groups import SETTING_GROUPS
     from backend.core.cache import cache, make_cache_key
     from backend.core.database import async_session_maker
     from backend.models.core import SiteConfig
 
-    if name not in SETTING_GROUPS_17:  # pragma: no cover - 调用方写错分组名
+    if name not in SETTING_GROUPS:  # pragma: no cover - 调用方写错分组名
         return {}
 
     cache_key = make_cache_key("settings_group", name)

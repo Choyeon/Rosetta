@@ -6,8 +6,8 @@
  *   - theme primary & accent tokens          —— from settings.appearance
  *   - hero/footer/notice copy                —— hero/footer/notice groups
  *
- * Data source (matches backend 17 settings groups):
- *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/sidebar/...)
+ * Data source (matches backend 13 settings groups):
+ *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/navigation/reading/features)
  *   GET /api/config           (公开兜底同步 fallback)
  */
 import { computed } from 'vue'
@@ -46,9 +46,9 @@ const mergePublic = (p: Record<string, unknown> | null | undefined): Record<stri
 
 type GroupKeys
   = | 'basic' | 'seo' | 'appearance' | 'hero' | 'footer'
-    | 'notice' | 'sidebar' | 'reading' | 'features'
-    | 'friendlinks' | 'navigation' | 'media' | 'comments'
-    | 'cache' | 'cdn' | 'email' | 'security'
+    | 'notice' | 'reading' | 'features'
+    | 'navigation' | 'media' | 'comments'
+    | 'email' | 'security'
 
 interface UseSiteState {
   loaded: boolean
@@ -137,12 +137,8 @@ export function useSite() {
 
   const appearance = computed(() => {
     const base = readGroup(state.value, 'appearance', {
-      code_theme: 'github',
-      code_theme_dark: 'github-dark',
-      default_theme: 'system',
       primary_color: (state.value.publicConfig?.theme_primary as string) || '#0EA5A9',
       accent_color: (state.value.publicConfig?.theme_accent as string) || '#0284C7',
-      font_family: '',
       page_width_px: 1200,
       show_copyright: true,
       show_powered_by: true
@@ -285,7 +281,8 @@ export function useSite() {
    * 「导航」分组。顶栏三个入口开关与吸顶样式由 AppHeader 消费；
    * 与 features 分组的同义项（enable_search / enable_dark_mode）是"与"关系：
    * features 决定这个功能在这个站点是否**存在**，navigation 决定顶栏是否**放入口**。
-   * 注：custom_links（自定义链接）目前仍没有任何消费点，不要按"可配置导航"来读它。
+   * 注：custom_links（自定义链接）已删除——它从未被顶栏读取，导航条的唯一清单是
+   * 后台「导航菜单」页面的导航项 CRUD（/api/navigations）。
    */
   const navigation = computed(() => readGroup(state.value, 'navigation', {
     header_style: 'sticky',

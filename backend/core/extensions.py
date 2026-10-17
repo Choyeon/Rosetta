@@ -83,7 +83,7 @@ def _safe_zip_extract_path(target_dir: Path, rel: str) -> Path:
     return out
 
 
-# ── SiteConfig KV 命名空间 (F3: 防止与 17 组 settings_groups 冲突) ────────
+# ── SiteConfig KV 命名空间 (F3: 防止与 settings_groups 分组键冲突) ────────
 
 PLUGIN_SETTINGS_PREFIX = "plugin_settings:"
 THEME_MODS_PREFIX = "theme_mods:"

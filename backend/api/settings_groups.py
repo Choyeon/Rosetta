@@ -1,13 +1,21 @@
 """
-17 组系统设置 API（与前端 Tab 1:1 对应）
+13 组系统设置 API（与前端 Tab 1:1 对应）
 
-17 groups: basic, reading, comments, media, seo, email, cdn, cache,
-           security, features, appearance, navigation, friendlinks,
-           hero, notice, sidebar, footer
+13 groups: basic, reading, comments, media, seo, email, security, features,
+           appearance, navigation, hero, notice, footer
 
-- GET /api/settings → 返回 { group_key: {...} } 全部 17 组
+- GET /api/settings → 返回 { group_key: {...} } 全部 13 组
 - GET /api/settings/{group} → 返回单组 dict
 - PATCH /api/settings/{group} → 保存单组（写入 site_configs：每 group 存一条 key=group, value=JSON 字符串）
+
+历史上这里还有 cdn / cache / friendlinks / sidebar 四组，以及 security 的会话与主机白名单、
+appearance 的代码高亮主题与字体族等键。它们没有任何执行点（既不进 read_group，也不进
+/api/config 的分组覆写，前端也没有消费方），设置页却能勾选、保存并回显——
+"改了没生效"的开关比没有开关更糟，所以整组删除：
+CDN 前缀由 media.use_cdn + media.cdn_prefix 决定，缓存后端与 TTL 由环境变量决定，
+友情链接由 friend_links 表 + /api/friend-links 决定，
+侧边栏显示/位置由主题 Customizer 的 show_sidebar / sidebar_position（mods）决定，
+代码高亮配色由 assets/css/main.css 的 --hljs-* 令牌决定，明暗首帧由 localStorage.theme 决定。
 """
 
 from __future__ import annotations
@@ -33,23 +41,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/settings", tags=["系统设置"])
 
 
-SETTING_GROUPS_17 = [
+SETTING_GROUPS = [
     "basic",
     "reading",
     "comments",
     "media",
     "seo",
     "email",
-    "cdn",
-    "cache",
     "security",
     "features",
     "appearance",
     "navigation",
-    "friendlinks",
     "hero",
     "notice",
-    "sidebar",
     "footer",
 ]
 
@@ -65,9 +69,7 @@ PUBLIC_SETTING_GROUPS = [
     "footer",
     "seo",
     "notice",
-    "sidebar",
     "navigation",
-    "friendlinks",
     "reading",
     "features",
 ]
@@ -78,7 +80,7 @@ _SENSITIVE_KEY_RE = re.compile(r"(password|secret|token|api_?key|private_key|aut
 
 def _redact(data: dict) -> dict:
     """把 dict 中疑似敏感键的值替换为掩码字符串（仅在顶层做一次浅层脱敏即可，
-    因为 17 组配置的值都是扁平标量 / 一维数组）。"""
+    因为各分组存的值都是扁平标量 / 一维数组）。"""
     out: dict[str, Any] = {}
     for k, v in data.items():
         if _SENSITIVE_KEY_RE.search(str(k)) and v not in (None, "", [], {}):
@@ -127,8 +129,9 @@ def _default_comments() -> dict:
         "allow_guest": True,
         "max_length": 3000,
         "enable_antispam": True,
+        # 嵌套回复只允许"根评论 + 一层回复"（comment_service.validate_parent_depth 硬钉
+        # parent.parent_id 必须为空）。可配置层数从来没有人读，留着等于给管理员一个假开关。
         "enable_nested": True,
-        "max_nested_depth": 3,
     }
 
 
@@ -175,42 +178,17 @@ def _default_email() -> dict:
         "from_address": "",
         "from_name": "Rosetta",
         "enable_notifications": False,
-        "admin_email": "",
-    }
-
-
-def _default_cdn() -> dict:
-    return {
-        "enable": False,
-        "provider": "",
-        "cdn_url": "",
-        "image_cdn_url": "",
-        "static_cdn_url": "",
-        "purge_token": "",
-    }
-
-
-def _default_cache() -> dict:
-    return {
-        "enable": True,
-        "backend": "memory",
-        "default_ttl": 3600,
-        "site_config_ttl": 3600,
-        "post_list_ttl": 600,
-        "flush_on_post_update": True,
     }
 
 
 def _default_security() -> dict:
+    # 只保留有执行点的两项（api/users.py 登录失败计数）。
+    # 会话超时由 JWT TTL（core/config.py）决定，频率限制由 core/rate_limit.py 的环境规则决定，
+    # CORS / TrustedHost 只在启动时按 env 装配——把它们做成"后台可改"会诱导管理员
+    # 改一个永远不会生效的开关，还可能让人误以为跨域已被收紧。
     return {
-        "require_email_verification": False,
-        "allow_password_reset": True,
-        "session_timeout_sec": 3600,
         "max_login_attempts": 5,
         "lockout_duration_sec": 1800,
-        "enable_rate_limit": True,
-        "allowed_hosts": "*",
-        "cors_origins": "*",
     }
 
 
@@ -230,12 +208,13 @@ def _default_features() -> dict:
 
 
 def _default_appearance() -> dict:
+    # code_theme / code_theme_dark / default_theme / font_family 曾在这里：
+    #   - 代码高亮配色由 assets/css/main.css 的 --hljs-* 令牌单源，明暗两套各一份；
+    #   - 明/暗首帧由 useTheme.ts 读 localStorage.theme 决定，跟随的是浏览器偏好而非站点配置；
+    #   - 字体族由 Tailwind preset 管理。
+    # 四个键写进库、下发到 /api/config，却没有任何渲染点读它们——纯假开关，删除。
     return {
-        "code_theme": "github",
-        "code_theme_dark": "github-dark",
-        "default_theme": "system",
         "primary_color": "#0EA5A9",
-        "font_family": "",
         "page_width_px": 1200,
         "accent_color": "#8B5CF6",
         "show_copyright": True,
@@ -244,27 +223,12 @@ def _default_appearance() -> dict:
 
 
 def _default_navigation() -> dict:
+    # custom_links 曾在这里：没有任何组件读它，顶栏链接实际来自导航表（/api/navigations）。
     return {
         "header_style": "sticky",
         "show_search": True,
         "show_language_switch": True,
         "show_theme_toggle": True,
-        "custom_links": [],
-    }
-
-
-def _default_friendlinks() -> dict:
-    return {
-        "enable": True,
-        "links": [
-            {
-                "name": "Rosetta",
-                "url": "https://github.com/rosetta-blog",
-                "desc": "Rosetta 官方仓库",
-                "avatar": "",
-            }
-        ],
-        "auto_approve": False,
     }
 
 
@@ -292,32 +256,6 @@ def _default_notice() -> dict:
     }
 
 
-def _default_sidebar() -> dict:
-    return {
-        "show_profile": True,
-        "show_categories": True,
-        "show_tags": True,
-        "show_recent_posts": True,
-        "show_recent_comments": True,
-        "show_tag_cloud": True,
-        "show_site_info": True,
-        "show_music": True,
-        "show_statistics": True,
-        "show_dynamics": True,
-        "widget_order": [
-            "profile",
-            "site_info",
-            "statistics",
-            "dynamics",
-            "music",
-            "categories",
-            "tags",
-            "recent_posts",
-            "recent_comments",
-        ],
-    }
-
-
 def _default_footer() -> dict:
     return {
         "text": "Powered by Rosetta",
@@ -337,16 +275,12 @@ _GROUP_DEFAULTS = {
     "media": _default_media,
     "seo": _default_seo,
     "email": _default_email,
-    "cdn": _default_cdn,
-    "cache": _default_cache,
     "security": _default_security,
     "features": _default_features,
     "appearance": _default_appearance,
     "navigation": _default_navigation,
-    "friendlinks": _default_friendlinks,
     "hero": _default_hero,
     "notice": _default_notice,
-    "sidebar": _default_sidebar,
     "footer": _default_footer,
 }
 
@@ -355,11 +289,17 @@ def _default_for(group: str) -> dict:
     return _GROUP_DEFAULTS[group]()
 
 
+def _only_known_keys(base: dict, data: dict) -> dict:
+    """按该组**当前**默认键集过滤：读写两侧都要过这道，
+    否则已从 _default_* 删掉的死键会一直留在库里的 JSON 中并被回显。"""
+    return {k: v for k, v in data.items() if k in base}
+
+
 async def _load_all_groups(db: DB) -> dict[str, dict]:
     rows = (await db.execute(select(SiteConfig))).scalars().all()
     db_map: dict[str, dict] = {}
     for r in rows:
-        if r.key in SETTING_GROUPS_17:
+        if r.key in SETTING_GROUPS:
             try:
                 db_map[r.key] = json.loads(r.value) if r.value else {}
             except (json.JSONDecodeError, TypeError) as exc:
@@ -369,11 +309,12 @@ async def _load_all_groups(db: DB) -> dict[str, dict]:
                 db_map[r.key] = {}
 
     out: dict[str, dict] = {}
-    for g in SETTING_GROUPS_17:
+    for g in SETTING_GROUPS:
         base = _default_for(g)
-        if g in db_map and isinstance(db_map[g], dict):
-            merged = {**base, **db_map[g]}
-            out[g] = merged
+        stored = db_map.get(g)
+        # 不过滤存量键 = 已删除的死配置继续回显，设置页再把它提交回来。
+        if isinstance(stored, dict):
+            out[g] = {**base, **_only_known_keys(base, stored)}
         else:
             out[g] = base
     return out
@@ -394,7 +335,7 @@ async def _save_group(db: DB, group: str, data: dict) -> dict:
                 stored = parsed
         except (json.JSONDecodeError, TypeError) as exc:
             logger.warning(f"[settings] {group} 存量值不是合法 JSON，本组按默认值重建: {exc}")
-    merged = {**base, **stored, **{k: v for k, v in data.items() if k in base}}
+    merged = {**base, **_only_known_keys(base, stored), **_only_known_keys(base, data)}
     val_json = json.dumps(merged, ensure_ascii=False)
     if row is None:
         row = SiteConfig(key=group, value=val_json, description=f"系统设置 - {group}")
@@ -409,7 +350,7 @@ async def _save_group(db: DB, group: str, data: dict) -> dict:
 class SettingsGroupResponse(BaseModel):
     """``GET /api/settings/{group}`` 直接返回的裸对象（无 success 信封）。"""
 
-    group: str = Field(..., description="分组键（17 组之一）")
+    group: str = Field(..., description="分组键（13 组之一）")
     data: dict[str, Any] = Field(..., description="该分组的完整配置（默认值与 DB 存值的合并结果）")
 
 
@@ -430,7 +371,7 @@ class SettingsAllResponse(BaseModel):
 
     groups: dict[str, Any] = Field(
         ...,
-        description="全部 17 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值）",
+        description="全部 13 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值）",
     )
 
 
@@ -481,7 +422,7 @@ async def get_public_settings(db: DB):
     "",
     summary="获取所有设置分组",
     description=(
-        "需管理员（CurrentStaff）。返回全部 17 组分组的配置项（含敏感明文值，"
+        "需管理员（CurrentStaff）。返回全部 13 组分组的配置项（含敏感明文值，"
         "如 SMTP 密码）；前台/SSR 一律改用 GET /settings/public，不得调用本接口。只读、幂等。"
     ),
     responses={200: {"model": SettingsAllResponse}},
@@ -495,7 +436,7 @@ async def get_all_settings(db: DB, current_user: CurrentStaff):
     "/{group}",
     summary="获取单个设置分组",
     description=(
-        "需管理员（CurrentStaff）。返回指定分组（17 组之一）合并默认值后的完整配置；"
+        "需管理员（CurrentStaff）。返回指定分组（13 组之一）合并默认值后的完整配置；"
         "未知分组 404。直接返回 {group, data} 裸对象（无 success 信封）。只读、幂等。"
     ),
     responses={
@@ -508,7 +449,7 @@ async def get_one_setting(
     current_user: CurrentStaff,
     group: str = Path(..., description="设置分组"),
 ):
-    if group not in SETTING_GROUPS_17:
+    if group not in SETTING_GROUPS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"未知设置分组: {group}")
     all_g = await _load_all_groups(db)
     return SettingsGroupResponse(group=group, data=all_g[group])
@@ -537,7 +478,7 @@ async def patch_one_setting(
     group: str = Path(..., description="设置分组"),
     payload: dict[str, Any] = Body(...),
 ):
-    if group not in SETTING_GROUPS_17:
+    if group not in SETTING_GROUPS:
         raise HTTPException(status.HTTP_404_NOT_FOUND, f"未知设置分组: {group}")
     if not isinstance(payload, dict):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "payload 必须为对象")

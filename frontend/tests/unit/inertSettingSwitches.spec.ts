@@ -6,6 +6,7 @@
  * 只能靠 grep 全仓才发现。这三项是扫描出来的存量，钉住防止再次退化成死字段：
  * - hero.bg_image / hero.bg_gradient → pages/index.vue 的 hero section 背景
  * - footer.show_back_to_top          → layouts/default.vue 的回到顶部按钮
+ * - features.enable_share_buttons    → pages/posts/[slug].vue 的分享条
  */
 
 import { describe, it, expect } from 'vitest'
@@ -14,6 +15,7 @@ import { resolve } from 'node:path'
 
 const homePage = readFileSync(resolve(process.cwd(), 'pages/index.vue'), 'utf8')
 const defaultLayout = readFileSync(resolve(process.cwd(), 'layouts/default.vue'), 'utf8')
+const postPage = readFileSync(resolve(process.cwd(), 'pages/posts/[slug].vue'), 'utf8')
 
 describe('站点设置开关必须有真实消费点', () => {
   it('首页 hero 背景读取 hero.bg_image 与 hero.bg_gradient', () => {
@@ -27,5 +29,14 @@ describe('站点设置开关必须有真实消费点', () => {
   it('页脚「回到顶部」读取 footer.show_back_to_top', () => {
     expect(defaultLayout).toContain('site.footer.value.show_back_to_top')
     expect(defaultLayout).toMatch(/aria-label="t\('a11y\.backToTop'\)"/)
+  })
+
+  it('文章分享条读取 features.enable_share_buttons', () => {
+    expect(postPage).toContain('site.features.value.enable_share_buttons')
+    expect(postPage, '分享地址必须走 canonical 同款前缀算法，不能拼 window.location')
+      .toContain('applyLocalePrefix(seoPostPath.value')
+    expect(postPage).toMatch(/rel="noopener noreferrer"/)
+    expect(postPage, 'Clipboard API 在 http 下会 reject，必须有 textarea 兜底，否则按钮形同虚设')
+      .toContain('document.execCommand')
   })
 })

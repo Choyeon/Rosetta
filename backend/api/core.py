@@ -930,7 +930,7 @@ async def get_site_config(db: DB):
         oobe_kwargs.update(_sidebar_dict_to_flat(default_sidebar))
         return SiteConfigResponse(**oobe_kwargs)
 
-    # 合并 17 组设置 JSON 进入 /api/config 返回值。分组不是独立的表：
+    # 合并 13 组设置 JSON 进入 /api/config 返回值。分组不是独立的表：
     # 它们是 site_configs 表里 key 为小写分组名（basic/seo/footer/...）的整段 JSON 行，
     # 由 PATCH /api/settings/{group} 写入（见 api/settings_groups.py::_save_group）。
     # 优先级：site_configs 扁平 UPPERCASE key → 分组 JSON（覆盖/补充） → 环境 fallback。
@@ -993,14 +993,10 @@ async def get_site_config(db: DB):
                     if parsed.get("accent_color"):
                         cfg_base["theme_accent"] = str(parsed["accent_color"])
                         cfg_base["accent_color"] = str(parsed["accent_color"])
-                    if parsed.get("default_theme"):
-                        cfg_base["default_theme"] = str(parsed["default_theme"])
-                    if parsed.get("code_theme"):
-                        cfg_base["code_theme"] = str(parsed["code_theme"])
-                    if parsed.get("code_theme_dark"):
-                        cfg_base["code_theme_dark"] = str(parsed["code_theme_dark"])
-                    if parsed.get("font_family"):
-                        cfg_base["font_family"] = str(parsed["font_family"])
+                    # 不再覆写 default_theme / code_theme / code_theme_dark / font_family：
+                    # 这四个分组键已从 _default_appearance 删除（没有任何渲染点读它们），
+                    # 留着这段覆写等于让库里残留的旧键继续改写 /api/config。
+                    # 明/暗首帧归 localStorage.theme，代码配色归 --hljs-* 令牌，字体族归 Tailwind preset。
             # footer
             raw_footer = _cfg_raw("footer")
             if raw_footer:
@@ -1197,7 +1193,7 @@ async def get_site_config(db: DB):
         enable_like_button=get_bool("ENABLE_LIKE_BUTTON", "true"),
         enable_share_buttons=get_bool("ENABLE_SHARE_BUTTONS", "true"),
         enable_toc=get_bool("ENABLE_TOC", "true"),
-        # OOBE 种子里额外写入的一组能力开关（与上面 17 组 settings_groups 里的独立域做兼容）
+        # OOBE 种子里额外写入的一组能力开关（与上面 13 组 settings_groups 里的独立域做兼容）
         enable_bing_wallpaper=get_bool("ENABLE_BING_WALLPAPER", "true"),
         enable_pagefind_search=get_bool("ENABLE_PAGEFIND_SEARCH", "true"),
         enable_encrypted_posts=get_bool("ENABLE_ENCRYPTED_POSTS", "false"),
@@ -1442,7 +1438,7 @@ async def get_site_config(db: DB):
         or "https://www.plantuml.com/plantuml",
     )
     response_dict.update(_sidebar_dict_to_flat(sidebar))
-    # 把后台 17 组 settings 合并进 /api/config 公开返回
+    # 把后台 13 组 settings 合并进 /api/config 公开返回
     response_dict = _apply_settings_groups(response_dict)
     response = SiteConfigResponse(**response_dict)
 

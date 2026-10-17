@@ -1,7 +1,8 @@
 <!--
   站点设置页：按组分栏编辑后端返回的全部站点配置，表单控件由值类型反向推断（inferSchema），保存以单组为粒度。
   契约：与主题 Customizer 重复的键（primary_color / hero.title / footer.copyright 等）不仅 UI 屏蔽，保存 payload 也必须强制剥离，防止站点设置回写覆盖主题色（双写冲突）；
-  default_theme 只允许 light/dark——system 已移除以避免前后台切换黑屏；isDirty 只对比当前激活组与最近一次服务端回包。
+  isDirty 只对比当前激活组与最近一次服务端回包。分组键集以后端 _default_<group>() 为唯一清单，
+  没有执行点的开关不得出现在这里（回归见 tests/test_settings_group_consumers.py）。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -339,8 +340,8 @@ import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   Settings, Save, Loader2, Eye, EyeOff, AlertTriangle, RotateCcw,
-  Globe, BookOpen, MessageSquare, Image, Search, Mail, Cloud, Database,
-  Shield, ToggleLeft, Palette, Menu, Link2, Sparkles, Bell, LayoutPanelLeft,
+  Globe, BookOpen, MessageSquare, Image, Search, Mail,
+  Shield, ToggleLeft, Palette, Menu, Sparkles, Bell,
   LayoutTemplate
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
@@ -372,9 +373,11 @@ interface FieldSchema {
 
 /**
  * 后台设置分组（已精简）：
- *  - 移除外观主题（appearance）中的 primary_color / accent_color / font_family / default_theme 等由 CSS token 统一管理的字段，
- *    避免"后台改了但 CSS 已写死"的无意义配置；
- *  - system 模式的 default_theme 已按 project_memory 规定移除，只能 light / dark。
+ *  - appearance 只留有真实消费方的五项（主色/强调色由主题 Customizer 覆写、
+ *    宽度由首页读取、版权与 Powered by 由页脚读取）；
+ *  - 代码高亮配色归 assets/css/main.css 的 --hljs-* 令牌，明/暗首帧归 localStorage.theme，
+ *    字体族归 Tailwind preset，侧边栏显示与位置归主题 Customizer 的 mods，
+ *    所以 code_theme / default_theme / font_family 与整个 sidebar 分组已删除。
  */
 const groups = [
   { key: 'basic', label: '基础信息', icon: Globe, desc: '站点名称、副标题、描述等基础资料' },
@@ -382,17 +385,13 @@ const groups = [
   { key: 'comments', label: '评论设置', icon: MessageSquare, desc: '评论开关、审核、反垃圾等' },
   { key: 'media', label: '媒体上传', icon: Image, desc: '上传大小限制、文件类型、CDN 前缀' },
   { key: 'seo', label: 'SEO 优化', icon: Search, desc: '默认标题、关键词、分析 ID 等' },
-  { key: 'email', label: '邮件通知', icon: Mail, desc: 'SMTP 服务器配置、收件人设置' },
-  { key: 'cdn', label: 'CDN 加速', icon: Cloud, desc: 'CDN 提供商、地址前缀、刷新 Token' },
-  { key: 'cache', label: '缓存策略', icon: Database, desc: '缓存开关、TTL、自动清退规则' },
-  { key: 'security', label: '安全策略', icon: Shield, desc: '会话超时、登录尝试、CORS 等' },
+  { key: 'email', label: '邮件通知', icon: Mail, desc: 'SMTP 服务器配置、发件人设置' },
+  { key: 'security', label: '安全策略', icon: Shield, desc: '登录失败次数阈值与锁定时长' },
   { key: 'features', label: '功能开关', icon: ToggleLeft, desc: '全局功能模块开关控制' },
-  { key: 'appearance', label: '外观主题', icon: Palette, desc: '代码高亮、默认主题（light/dark）、页面宽度' },
+  { key: 'appearance', label: '外观主题', icon: Palette, desc: '版权与 Powered by 标识（主色 / 强调色 / 宽度请在主题自定义中改）' },
   { key: 'navigation', label: '导航菜单', icon: Menu, desc: '导航栏样式、顶栏组件开关' },
-  { key: 'friendlinks', label: '友情链接', icon: Link2, desc: '友链开关、默认示例、自动审核' },
   { key: 'hero', label: '首页横幅', icon: Sparkles, desc: 'Hero 区域标题、CTA、背景图' },
   { key: 'notice', label: '站点公告', icon: Bell, desc: '公告条类型、正文、可关闭' },
-  { key: 'sidebar', label: '侧边栏', icon: LayoutPanelLeft, desc: '侧边栏组件开关与排序' },
   { key: 'footer', label: '页脚', icon: LayoutTemplate, desc: '版权信息、ICP、社交链接' }
 ]
 
@@ -501,7 +500,6 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     enable: '启用评论功能', require_approval: '新评论需审核',
     allow_guest: '允许访客匿名评论', max_length: '评论最大字符数',
     enable_antispam: '启用反垃圾过滤', enable_nested: '启用嵌套回复',
-    max_nested_depth: '最大嵌套层级',
     max_upload_size: '单文件最大上传大小（字节）',
     allowed_image_types: '允许上传的图片类型（逗号分隔）',
     allowed_file_types: '允许上传的文件类型（逗号分隔）',
@@ -518,48 +516,25 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     smtp_user: 'SMTP 用户名', smtp_password: 'SMTP 密码',
     use_tls: '启用 TLS 加密', from_address: '发件人邮箱地址',
     from_name: '发件人显示名称', enable_notifications: '启用邮件通知',
-    admin_email: '管理员收件邮箱',
-    provider: 'CDN 服务提供商', cdn_url: '全站 CDN 前缀',
-    image_cdn_url: '图片专用 CDN 前缀', static_cdn_url: '静态资源 CDN 前缀',
-    purge_token: 'CDN 刷新 Token',
-    backend: '缓存后端（memory/redis）', default_ttl: '默认缓存 TTL（秒）',
-    site_config_ttl: '站点配置缓存 TTL（秒）', post_list_ttl: '文章列表缓存 TTL（秒）',
-    flush_on_post_update: '文章更新时自动清退相关缓存',
-    require_email_verification: '用户注册需邮箱验证',
-    allow_password_reset: '允许用户自助重置密码',
-    session_timeout_sec: '会话超时时间（秒）',
     max_login_attempts: '登录失败最大尝试次数',
     lockout_duration_sec: '登录锁定时长（秒）',
-    enable_rate_limit: '启用 API 频率限制',
-    allowed_hosts: '允许的 Host（逗号分隔，* 为全部）',
-    cors_origins: 'CORS 允许来源（逗号分隔）',
     enable_comments: '评论模块', enable_registration: '开放用户注册',
     enable_rss: 'RSS 订阅', enable_search: '站内搜索',
     enable_sitemap: '站点地图', enable_guestbook: '留言板',
     enable_dark_mode: '深色模式切换', enable_like_button: '文章点赞按钮',
     enable_share_buttons: '社交分享按钮', enable_reading_progress: '阅读进度条',
-    code_theme: '浅色代码主题', code_theme_dark: '深色代码主题',
-    default_theme: '默认主题（system/light/dark）',
-    primary_color: '主色调 Primary', font_family: '正文字体族',
+    primary_color: '主色调 Primary',
     page_width_px: '内容区最大宽度（px）',
     accent_color: '强调色 Accent', show_copyright: '显示版权声明',
     show_powered_by: '显示 Powered by 标识',
     header_style: '顶栏样式（sticky/static）', show_search: '显示搜索框',
     show_language_switch: '显示语言切换', show_theme_toggle: '显示主题切换',
-    custom_links: '自定义链接（JSON 数组）',
-    links: '推荐友情链接（JSON 数组）', auto_approve: '自动审核通过申请',
     title: 'Hero 标题（多语言 JSON）',
     caption: '底部小字标语', cta_text: 'CTA 按钮文字', cta_url: 'CTA 跳转链接',
     bg_image: '背景图片 URL', bg_gradient: '背景渐变色 CSS',
     type: '公告类型（info/warning/success/error）',
     content_md: '公告正文（Markdown）', dismissible: '允许用户手动关闭',
     sticky: '滚动时仍然显示',
-    show_profile: '显示博主资料卡', show_categories: '显示分类列表',
-    show_tags: '显示标签列表', show_recent_posts: '显示近期文章',
-    show_recent_comments: '显示最新评论', show_tag_cloud: '显示标签云',
-    show_site_info: '显示站点统计', show_music: '显示音乐播放器',
-    show_statistics: '显示数据统计', show_dynamics: '显示动态说说',
-    widget_order: '组件排序（JSON 数组）',
     text: '页脚底部文字', slogan: '站点口号标语',
     copyright: '版权声明文字', police_icp_number: '公安备案号',
     show_social_links: '显示社交链接图标', show_back_to_top: '显示回到顶部按钮'
@@ -584,13 +559,8 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
       line_height: { min: 1, max: 2.5, placeholder: '1.0 - 2.5' },
       font_size: { min: 12, max: 24, placeholder: '12 - 24' },
       max_length: { min: 100, max: 5000, placeholder: '100 - 5000' },
-      max_nested_depth: { min: 1, max: 8, placeholder: '1 - 8' },
       max_upload_size: { min: 102400, placeholder: '单位：字节，如 10485760 = 10MB' },
       smtp_port: { min: 1, max: 65535, placeholder: '常用：465/587/25' },
-      default_ttl: { min: 60, placeholder: '单位：秒' },
-      site_config_ttl: { min: 60, placeholder: '单位：秒' },
-      post_list_ttl: { min: 30, placeholder: '单位：秒' },
-      session_timeout_sec: { min: 300, placeholder: '单位：秒，如 3600 = 1h' },
       max_login_attempts: { min: 1, max: 20 },
       lockout_duration_sec: { min: 60, placeholder: '单位：秒' },
       page_width_px: { min: 800, max: 2000, placeholder: '如 1200' }
@@ -606,28 +576,22 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     return { label: resolvedLabel, type: 'color' }
   }
   const sensitive = isSensitiveSettingKey(key)
-  const longKeys = ['description', 'about_content', 'about_page_html', 'robots_txt', 'content_md', 'custom_links', 'widget_order', 'links']
+  const longKeys = ['description', 'about_content', 'about_page_html', 'robots_txt', 'content_md']
   const long = longKeys.includes(key) || (typeof value === 'string' && value.length > 80)
   const help: Record<string, string> = {
     site_url: '建议包含协议前缀，如 https://example.com',
     keywords: '多个关键词之间使用英文逗号分隔',
-    allowed_hosts: '* 代表允许所有 Host；多个域名逗号分隔',
-    cors_origins: '* 代表允许任意来源；多个来源逗号分隔',
-    icp_number: '如：京ICP备XXXXXXXX号',
-    default_theme: '仅支持 light / dark；为避免前后台切换主题黑屏，不再提供 system 跟随系统'
+    icp_number: '如：京ICP备XXXXXXXX号'
   }
   return { label: resolvedLabel, type: 'string', long, sensitive, help: help[key] }
 }
 
 /**
  * 去重：站点设置中与"主题 Customizer"重复的字段统一屏蔽。
- * 外观颜色 / 宽度、Hero 文案 / CTA、页脚版权文字、侧边栏显示 / 位置、
- * 首页每行文章数、作者卡、相关文章等均由"主题自定义"作为唯一入口管理。
- * appearance 里仅保留：代码高亮主题、明/暗默认主题（非调色板）、
- * 显示版权 / Powered by 标识等不与 Customizer 冲突的全局视觉开关。
+ * 外观颜色 / 宽度由"主题自定义"作为唯一入口管理（useSite 里 mods 优先覆写）。
+ * appearance 组里剩下的 show_copyright / show_powered_by 不与 Customizer 冲突。
  */
 const APPEARANCE_BLOCK_KEYS = new Set<string>([
-  'font_family', // 字体族由 Tailwind preset 管理
   'primary_color', // 主色 → 主题 Customizer（accent_color 也在 mods）
   'accent_color', // 强调色 → 主题 Customizer
   'page_width_px' // 内容区宽度 → 主题 Customizer（layout_width）
@@ -648,16 +612,6 @@ const HERO_BLOCK_KEYS = new Set<string>(['title', 'subtitle'])
 const FOOTER_BLOCK_KEYS = new Set<string>(['copyright'])
 
 /**
- * sidebar 组里与主题 Customizer 重复的字段：
- *   - 全局显示/隐藏由 theme.show_sidebar / sidebar_position 控制（字段在 mods 里），
- *     站点 settings 侧不再暴露侧边栏"整组级"的主控开关；
- *   - 组件级开关（show_profile / show_categories / ...）仍保留在站点设置。
- * 注：Customizer 里 mods 没有单独字段会覆盖"具体组件"，所以这里只做占位；
- *     若未来新增 show_sidebar_total 字段名，可加到此处。
- */
-const SIDEBAR_BLOCK_KEYS = new Set<string>([])
-
-/**
  * reading 组里与主题 Customizer 重复的字段：
  *   - show_author_box / show_related_posts 由主题 mods 控制
  *     （reading 里的字段名可不同，但 reading 组目前不存在这些键 ——
@@ -665,14 +619,10 @@ const SIDEBAR_BLOCK_KEYS = new Set<string>([])
  */
 const READING_BLOCK_KEYS = new Set<string>([])
 
-/** default_theme 允许的值（不再支持 system） */
-const ALLOWED_DEFAULT_THEMES = new Set(['light', 'dark'])
-
 const GROUP_BLOCK_KEYS: Record<string, Set<string>> = {
   appearance: APPEARANCE_BLOCK_KEYS,
   hero: HERO_BLOCK_KEYS,
   footer: FOOTER_BLOCK_KEYS,
-  sidebar: SIDEBAR_BLOCK_KEYS,
   reading: READING_BLOCK_KEYS
 }
 
@@ -692,20 +642,16 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
   const m: Record<string, Record<string, SettingsValue>> = {
     basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_content: '', about_page_html: '' },
     reading: { posts_per_page: 12, show_reading_time: true, show_word_count: true, show_toc: true, toc_depth: 3, line_height: 1.7, font_size: 16 },
-    comments: { enable: true, require_approval: false, allow_guest: true, max_length: 3000, enable_antispam: true, enable_nested: true, max_nested_depth: 3 },
+    comments: { enable: true, require_approval: false, allow_guest: true, max_length: 3000, enable_antispam: true, enable_nested: true },
     media: { max_upload_size: 10485760, allowed_image_types: 'jpg,jpeg,png,gif,webp,svg', allowed_file_types: 'mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx', default_post_cover: '', default_avatar: '', use_cdn: false, cdn_prefix: '', watermark_text: '' },
     seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_analytics_id: '', baidu_analytics_id: '', google_verification: '', baidu_verification: '', robots_txt: '' },
-    email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false, admin_email: '' },
-    cdn: { enable: false, provider: '', cdn_url: '', image_cdn_url: '', static_cdn_url: '', purge_token: '' },
-    cache: { enable: true, backend: 'memory', default_ttl: 3600, site_config_ttl: 3600, post_list_ttl: 600, flush_on_post_update: true },
-    security: { require_email_verification: false, allow_password_reset: true, session_timeout_sec: 3600, max_login_attempts: 5, lockout_duration_sec: 1800, enable_rate_limit: true, allowed_hosts: '*', cors_origins: '*' },
+    email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false },
+    security: { max_login_attempts: 5, lockout_duration_sec: 1800 },
     features: { enable_comments: true, enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true },
-    appearance: { code_theme: '', code_theme_dark: '', default_theme: 'light', page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
-    navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true, custom_links: [] },
-    friendlinks: { enable: true, links: [], auto_approve: false },
+    appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
+    navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true },
     hero: { enable: true, title: {}, subtitle: {}, caption: '', cta_text: {}, cta_url: '', bg_image: '', bg_gradient: '' },
     notice: { enable: false, type: 'info', title: '', content_md: '', dismissible: true, sticky: true },
-    sidebar: { show_profile: true, show_categories: true, show_tags: true, show_recent_posts: true, show_recent_comments: true, show_tag_cloud: true, show_site_info: true, show_music: true, show_statistics: true, show_dynamics: true, widget_order: [] },
     footer: { text: '', slogan: '', copyright: '', icp_number: '', police_icp_number: '', show_social_links: true, show_back_to_top: true }
   }
   return m[group] || {}
@@ -744,17 +690,6 @@ async function handleSaveCurrentGroup() {
       for (const k of blocks) {
         // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
         delete payload[k]
-      }
-    }
-    if (groupKey === 'appearance') {
-      for (const k of APPEARANCE_BLOCK_KEYS) {
-        // eslint-disable-next-line @typescript-eslint/no-dynamic-delete
-        delete payload[k]
-      }
-      if (typeof payload.default_theme === 'string') {
-        payload.default_theme = ALLOWED_DEFAULT_THEMES.has(payload.default_theme)
-          ? payload.default_theme
-          : 'light'
       }
     }
     const r = await saveSettingsGroup(groupKey, payload)
