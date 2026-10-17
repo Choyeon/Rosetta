@@ -15,6 +15,7 @@
 以及关键分组的值必须在**读者真正拿到的那份响应里**生效。
 """
 
+import itertools
 import re
 from pathlib import Path
 
@@ -39,10 +40,24 @@ async def _patch(client, staff_headers, group: str, payload: dict):
     return resp.json()["data"]
 
 
+_IP_SEQ = itertools.count(1)
+
+
+def _fresh_ip() -> dict:
+    """每次换一个新访客 IP。
+
+    评论写口有"同 post + 同 IP 30s 防重"（429 TOO_FREQUENT_COMMENT），同一条用例里
+    连发两条就会被它拦下——那是频控在正常工作，不是分组设置没生效。
+    """
+    n = next(_IP_SEQ)
+    return {"X-Forwarded-For": f"10.77.{n // 250 % 250}.{n % 250}"}
+
+
 async def _post_comment(client, post_id: int, content: str = "这是一条测试评论内容"):
     return await client.post(
         f"/api/posts/{post_id}/comments",
         json={"content": content, "author_name": "读友"},
+        headers=_fresh_ip(),
     )
 
 
@@ -94,14 +109,15 @@ async def test_comments_group_disabling_blocks_new_comments(client, staff_header
 @pytest.mark.asyncio
 async def test_comments_require_approval_group_overrides_env(client, staff_headers, test_post):
     """分组里勾了"新评论需审核" → 落库状态是 pending，不是环境变量算出来的 approved。"""
+    pid = test_post.id
     await _patch(client, staff_headers, "comments", {"require_approval": True})
     try:
-        resp = await _post_comment(client, test_post.id)
+        resp = await _post_comment(client, pid)
         assert resp.status_code in (200, 201), resp.text
         assert resp.json()["status"] == "pending"
     finally:
         await _patch(client, staff_headers, "comments", {"require_approval": False})
-    after = await _post_comment(client, test_post.id)
+    after = await _post_comment(client, pid)
     assert after.status_code in (200, 201), after.text
     assert after.json()["status"] == "approved"
     # 用后即弃：别把测试评论留给其它用例当"已有评论"读
@@ -117,15 +133,18 @@ async def test_comments_guest_toggle_rejects_anonymous_only(
     client, staff_headers, test_post, auth_headers
 ):
     """allow_guest=false：匿名 403，登录用户照写（用 401 会把前端判成登录过期）。"""
+    # 先取好 id：请求失败路径上的 rollback 会把测试会话里的 ORM 行标记为过期，
+    # 之后在测试代码里再读 test_post.id 会在 greenlet 外触发隐式 IO（MissingGreenlet）。
+    pid = test_post.id
     await _patch(client, staff_headers, "comments", {"allow_guest": False})
     try:
-        anon = await _post_comment(client, test_post.id)
+        anon = await _post_comment(client, pid)
         assert anon.status_code == 403, anon.text
         assert anon.json()["error_code"] == "COMMENT_GUEST_NOT_ALLOWED"
         member = await client.post(
-            f"/api/posts/{test_post.id}/comments",
+            f"/api/posts/{pid}/comments",
             json={"content": "登录用户的测试评论"},
-            headers=auth_headers,
+            headers={**auth_headers, **_fresh_ip()},
         )
         assert member.status_code in (200, 201), member.text
     finally:
