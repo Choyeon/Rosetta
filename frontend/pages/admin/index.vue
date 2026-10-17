@@ -1144,8 +1144,8 @@ const healthGaugeOption = computed(() => {
 })
 
 // 4.4 活跃评论者 Leaderboard：头像 + 进度条（无图表库，直接纯 UI，性能好）
-// resolved_avatar_url / username 后端尚未下发（ActiveCommenterDoc 暂未填充），
-// 声明为可选：将来后端补上后前端无需再改。
+// resolved_avatar_url 由后端 /admin/stats 的头像解析链回填（avatar 是原始列，
+// GitHub/QQ/Gravatar 来源时它是 null，只取 avatar 会整列掉成字母兜底）。
 type CommenterRow = {
   name: string
   avatar: string | null
