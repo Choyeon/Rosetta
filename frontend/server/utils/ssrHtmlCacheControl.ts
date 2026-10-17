@@ -26,7 +26,7 @@ const MAX_AGE_RE = /\bmax-age=/
 // 给它们也补 86400 等于把"60 秒热榜"的窗口撑成一整天。
 // 新增带其它 swr 窗口的公开页时，在这里按 s-maxage 登记一条。
 const BARE_SWR_RE = /\bstale-while-revalidate\b(?!=)/
-const SWR_BY_SMAXAGE: Readonly<Record<string, string>> = { '60': '600' } as const
+const SWR_BY_SMAXAGE: Readonly<Record<string, string>> = { 60: '600' }
 const DEFAULT_SWR = '86400'
 
 /** 已合规（同时有 max-age 与 s-maxage）或不属于本页口径 → null 表示不改写。 */
