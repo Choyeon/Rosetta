@@ -584,7 +584,10 @@ const handleSearchClick = () => navigateTo('/search')
                     </div>
                   </div>
                   <div class="flex flex-col gap-1">
-                    <SheetClose v-if="authStore.isAdmin" as-child>
+                    <SheetClose
+                      v-if="authStore.isAdmin"
+                      as-child
+                    >
                       <Button
                         variant="ghost"
                         size="sm"

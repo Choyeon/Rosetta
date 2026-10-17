@@ -1077,7 +1077,8 @@ const singlePinnedPost = computed(() => (
 // hero.enable：后台「启用 Hero」开关。此前整段 hero 无条件渲染，关掉开关只是存库；
 // 现在关掉即不渲染这一段（首页直接从置顶/最新开始），同时不再请求 Bing 壁纸。
 const heroEnabled = computed(() => site.hero.value.enable !== false)
-const _heroTitle = computed(() => site.pickI18n(site.hero.value.title))const _heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
+const _heroTitle = computed(() => site.pickI18n(site.hero.value.title))
+const _heroSubtitle = computed(() => site.pickI18n(site.hero.value.subtitle))
 const _heroCaption = computed(() => site.pickI18n(site.hero.value.caption))
 const _heroCtaText = computed(() => site.pickI18n(site.hero.value.cta_text))
 const _heroCtaUrl = computed(() => String(site.hero.value.cta_url || '/posts'))

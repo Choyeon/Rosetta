@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Megaphone,
   Activity as ActivityIcon,
+  ChartColumn,
   Users,
   Award,
   Image as ImageIcon,
@@ -85,6 +86,7 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/interaction/comments', label: '评论', icon: MessageSquare },
       { path: '/admin/interaction/guestbook', label: '留言板', icon: MessageCircle },
       { path: '/admin/interaction/announcements', label: '公告', icon: Megaphone },
+      { path: '/admin/interaction/polls', label: '投票', icon: ChartColumn },
       { path: '/admin/interaction/activities', label: '动态', icon: ActivityIcon }
     ]
   },

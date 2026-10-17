@@ -82,6 +82,34 @@ export function usePolls() {
   }
 
   /**
+   * 后台用：不带 is_active 过滤、失败要报（走 apiFetch 默认 toast）。
+   * 与 fetchActivePolls 分开是因为后者必须"没有投票就不打扰访客"，
+   * 而后台把故障咽成空列表会让管理员以为投票被删光了。
+   */
+  const fetchAllPolls = async (limit = 100): Promise<Poll[]> => {
+    const res = await apiFetch<PollsListResponse>(
+      '/voting/polls',
+      { query: { page: '1', page_size: String(limit) } }
+    )
+    const items = (res as unknown as PollsListResponse)?.items
+    return Array.isArray(items) ? items : []
+  }
+
+  /** POST /voting/polls（PollCreate：title + choices: string[]，另带三个开关）。 */
+  const createPoll = async (payload: {
+    title: string
+    description?: string | null
+    is_active: boolean
+    allow_multiple: boolean
+    show_results: boolean
+    choices: string[]
+  }): Promise<Poll> =>
+    apiFetch<Poll>('/voting/polls', { method: 'POST', body: payload })
+
+  const deletePoll = async (pollId: number): Promise<unknown> =>
+    apiFetch<unknown>(`/voting/polls/${pollId}`, { method: 'DELETE' })
+
+  /**
    * 提交投票。返回 'ok' | 'duplicate' | 'closed' | 'error'，由调用方决定 UI 反应。
    * 后端约定：409 = 已登录重复；400 = 已结束 / 单选塞多选 / 选项 id 非法；其余按通用错误处理。
    */
@@ -104,5 +132,5 @@ export function usePolls() {
     }
   }
 
-  return { fetchActivePolls, vote, readVotedPollIds }
+  return { fetchActivePolls, fetchAllPolls, createPoll, deletePoll, vote, readVotedPollIds }
 }
