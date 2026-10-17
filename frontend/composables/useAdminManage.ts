@@ -1840,8 +1840,8 @@ export function fetchAdminAuditLogs(params: { page?: number, page_size?: number,
           user_id: uid,
           username: uname,
           avatar: userObj?.avatar ?? (raw.user_avatar as string | null | undefined) ?? null,
-          resolved_avatar_url: userObj?.resolved_avatar_url
-          ?? (raw.user_resolved_avatar as string | null | undefined) ?? null,
+          resolved_avatar_url:
+            userObj?.resolved_avatar_url ?? (raw.user_resolved_avatar as string | null | undefined) ?? null,
           action: raw.action as string,
           target_type: (raw.target_type ?? raw.resource_type ?? null) as string | null,
           target_id: (raw.target_id ?? raw.resource_id ?? null) as string | number | null,

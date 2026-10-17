@@ -75,13 +75,15 @@ useHead(() => {
   const f = site.features.value
   // RSS / Sitemap 的总开关关掉后，`<link>` 指向的入口本身必须消失：
   // 留着等于告诉爬虫"这里有订阅源"，而它拿到的是 404 空壳。
+  // rel 必须是字面量：unhead 按 rel 的具体值挑 link 变体，写成 string 会让整段
+  // useHead 入参判给 UseHeadInput 失败（typecheck 直接红）。
   return {
     link: [
       ...(f.enable_rss
-        ? [{ rel: 'alternate', type: 'application/rss+xml', title: `${siteTitle} · RSS`, href: '/rss.xml' }]
+        ? [{ rel: 'alternate', type: 'application/rss+xml', title: `${siteTitle} · RSS`, href: '/rss.xml' } as const]
         : []),
       ...(f.enable_sitemap
-        ? [{ rel: 'sitemap', type: 'application/xml', title: `${siteTitle} · Sitemap`, href: '/sitemap.xml' }]
+        ? [{ rel: 'sitemap', type: 'application/xml', title: `${siteTitle} · Sitemap`, href: '/sitemap.xml' } as const]
         : [])
     ]
   }

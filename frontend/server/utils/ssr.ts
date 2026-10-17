@@ -135,8 +135,11 @@ export async function proxyUpstreamText(
       setHeader(event, 'cache-control', cacheControl)
       return body
     }
-  } catch (e: any) {
-    const upstreamStatus = Number(e?.response?.status ?? 0)
+  } catch (e) {
+    // ofetch 的 FetchError 把上游响应挂在 e.response 上；这里只认 404/410 两个
+    // "站长主动关掉"的状态码，其余（网络故障、5xx、超时）继续走 200 回退。
+    const response = (e as { response?: { status?: number } })?.response
+    const upstreamStatus = Number(response?.status ?? 0)
     if (upstreamStatus === 404 || upstreamStatus === 410) {
       setResponseStatus(event, upstreamStatus)
       setHeader(event, 'content-type', contentType)

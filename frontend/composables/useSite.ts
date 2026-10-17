@@ -242,7 +242,7 @@ export function useSite() {
    * 兜底值取**改动前各页面实际使用的那组数**，保证未保存过分组的站点渲染结果不变。
    */
   const reading = computed(() => {
-    const g = readGroup(state.value, 'reading', {})
+    const g = readGroup(state.value, 'reading', {} as Record<string, unknown>)
     const pos = (k: string, d: number) => {
       const n = Number(g[k])
       return Number.isFinite(n) && n > 0 ? n : d
@@ -265,7 +265,7 @@ export function useSite() {
    * 评论写口与 RSS/sitemap 的服务端闸门在后端，这里只负责"后台关了前台就别再显示入口"。
    */
   const features = computed(() => {
-    const g = readGroup(state.value, 'features', {})
+    const g = readGroup(state.value, 'features', {} as Record<string, unknown>)
     const flag = (k: string, d = true) => (typeof g[k] === 'boolean' ? g[k] : d)
     return {
       enable_comments: flag('enable_comments'),

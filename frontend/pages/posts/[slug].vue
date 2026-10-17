@@ -391,7 +391,10 @@
             :poll="poll"
           />
 
-          <Separator v-if="showCommentsSection" class="my-12" />
+          <Separator
+            v-if="showCommentsSection"
+            class="my-12"
+          />
 
           <section v-if="showCommentsSection">
             <h3 class="font-display text-2xl font-bold tracking-tight mt-12 mb-6 flex items-center gap-2">
@@ -554,8 +557,14 @@
             </div>
           </section>
         </div>
-        <aside v-if="showAside" class="hidden lg:block sticky top-24 self-start">
-          <div v-if="showToc" class="flex flex-col gap-3">
+        <aside
+          v-if="showAside"
+          class="hidden lg:block sticky top-24 self-start"
+        >
+          <div
+            v-if="showToc"
+            class="flex flex-col gap-3"
+          >
             <h4 class="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
               <List class="size-4" /> {{ t('post.toc', '目录') }}
             </h4>
@@ -585,9 +594,15 @@
               {{ t('post.tocEmpty', '暂无目录') }}
             </p>
           </div>
-          <Card v-if="showReadingTime || showWordCount" class="mt-8 border-border/60 bg-muted/30">
+          <Card
+            v-if="showReadingTime || showWordCount"
+            class="mt-8 border-border/60 bg-muted/30"
+          >
             <CardContent class="flex flex-col gap-2.5 p-4 text-sm">
-              <div v-if="showReadingTime" class="flex items-center justify-between">
+              <div
+                v-if="showReadingTime"
+                class="flex items-center justify-between"
+              >
                 <span class="text-muted-foreground inline-flex items-center gap-1.5"><Clock3 class="size-3.5" />{{ t('post.readingTime', '阅读时间') }}</span>
                 <span class="font-medium">{{ readingTime }} {{ t('post.minRead') }}</span>
               </div>
