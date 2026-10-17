@@ -6,6 +6,7 @@
 - 列表（GET /api/admin/trash）返回裸分页对象并含快照字段；
 - 恢复（POST /api/admin/trash/{id}/restore）重建文章并消费记录（一次性）；
 - 永久删除（DELETE /api/admin/trash/{id}）只删记录。
+- 审计行必须带请求上下文（走 log_operation，而不是裸 new OperationLog）。
 """
 
 import pytest
@@ -14,6 +15,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.blog import Category, Post
+from backend.models.log import OperationLog
 from backend.models.user import User
 
 
@@ -140,3 +142,49 @@ class TestSingleDeleteToTrash:
             f"/api/admin/trash/{entry['id']}/restore", headers=admin_headers
         )
         assert re_restore.status_code == 404
+
+
+class TestAuditRowIsAttributable:
+    """恢复操作的审计行必须能归因到"谁、从哪条请求"。
+
+    口径：直接 ``new OperationLog`` 会正常落库，但 user_agent / request_path /
+    request_method / created_at 全是空的——后台审计页"设备"列下的 ``v-if``
+    因此永远不渲染。表现不是报错，是出了事查不到人，所以钉成回归。
+    """
+
+    @pytest.mark.asyncio
+    async def test_restore_audit_row_carries_request_context(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        test_user: User,
+        test_category: Category,
+        db_session: AsyncSession,
+    ):
+        post = await _new_post(db_session, test_user, test_category)
+        await client.delete(f"/api/blog/posts/{post.id}", headers=admin_headers)
+
+        listing = await client.get(
+            "/api/admin/trash", params={"resource_type": "post"}, headers=admin_headers
+        )
+        entry = next(i for i in listing.json()["items"] if i["resource_id"] == post.id)
+
+        restored = await client.post(
+            f"/api/admin/trash/{entry['id']}/restore", headers=admin_headers
+        )
+        assert restored.status_code == 200
+
+        log = (
+            await db_session.execute(
+                select(OperationLog)
+                .where(OperationLog.action == "restore")
+                .order_by(OperationLog.id.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+        assert log.user_id == test_user.id
+        assert log.resource_type == "post"
+        assert log.request_path == f"/api/admin/trash/{entry['id']}/restore"
+        assert log.request_method == "POST"
+        assert log.user_agent, "缺 user_agent：说明没走 log_operation"
+        assert log.created_at is not None
