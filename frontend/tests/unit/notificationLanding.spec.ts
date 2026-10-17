@@ -47,7 +47,8 @@ describe('站内通知 · 前台落地契约', () => {
   })
 
   it('通知标题/正文来自 UGC，只能文本插值', () => {
-    expect(page, 'v-html 会把留言摘要当标记渲染').not.toMatch(/v-html/)
+    // 只查真实指令绑定：文件头注释里写"绝不 v-html"不算违规
+    expect(page, 'v-html 会把留言摘要当标记渲染').not.toMatch(/v-html\s*=/)
     expect(page).toMatch(/\{\{ row\.title \}\}/)
     expect(page).toMatch(/\{\{ row\.message \}\}/)
   })
@@ -62,7 +63,7 @@ describe('站内通知 · 前台落地契约', () => {
     expect(keys.length, '页面必须用到 notifications 命名空间').toBeGreaterThan(5)
     const missing: string[] = []
     for (const loc of LOCALES) {
-      const ns = dicts[loc].notifications as Record<string, unknown> | undefined
+      const ns = dicts[loc]?.notifications as Record<string, unknown> | undefined
       for (const key of new Set(keys)) {
         if (!ns || typeof ns[key] !== 'string' || ns[key] === '') missing.push(`${loc}: notifications.${key}`)
       }

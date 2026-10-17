@@ -214,7 +214,9 @@
                 </p>
                 <div class="flex items-center gap-4 mt-3">
                   <button
+                    type="button"
                     class="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                    :aria-label="t('activity.like')"
                     :disabled="!!item.liking"
                     @click="toggleLike(item)"
                   >

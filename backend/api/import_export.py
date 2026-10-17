@@ -10,7 +10,7 @@ import json
 import zipfile
 from datetime import datetime
 
-from fastapi import APIRouter, File, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, Request, Response, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import select
@@ -18,8 +18,8 @@ from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache
+from backend.core.logging_middleware import log_operation
 from backend.models.blog import Category, Post, Tag
-from backend.models.log import OperationLog
 from backend.schemas import raw_content_response
 from backend.utils.compat import UTC, parse_utc_date, timedelta
 
@@ -125,6 +125,7 @@ def _extract_import_payloads(content: bytes) -> tuple[list, list, list]:
     response_class=Response,
 )
 async def export_posts(
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
     include_drafts: bool = False,
@@ -250,20 +251,18 @@ async def export_posts(
     zip_buffer = io.BytesIO(await asyncio.to_thread(_build_zip, zip_entries))
     zip_buffer.seek(0)
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（走 log_operation：导出可能带走全文，审计必须能归因到操作者与来源）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="export",
-        resource_type="post",
-        detail=json.dumps(
-            {
-                "posts_count": len(posts_data),
-                "include_drafts": include_drafts,
-            }
-        ),
+        target_type="post",
+        details={
+            "posts_count": len(posts_data),
+            "include_drafts": include_drafts,
+        },
     )
-    db.add(log)
-    await db.flush()
 
     return StreamingResponse(
         zip_buffer,
@@ -447,6 +446,7 @@ def _overwrite_post_from_import(post: Post, post_data: dict, category: Category 
     responses={200: {"model": ImportResult}},
 )
 async def import_posts(
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
     file: UploadFile = File(...),
@@ -640,21 +640,19 @@ async def import_posts(
             error_count += 1
             errors.append(f"导入文章失败: {post_data.get('slug', 'unknown')} - {str(e)}")
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（口径同 export：导入是覆盖面最大的写操作）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="import",
-        resource_type="post",
-        detail=json.dumps(
-            {
-                "created_count": created_count,
-                "skipped_count": skipped_count,
-                "error_count": error_count,
-            }
-        ),
+        target_type="post",
+        details={
+            "created_count": created_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+        },
     )
-    db.add(log)
-    await db.flush()
     await _invalidate_content_caches()
 
     return ImportResult(
@@ -861,6 +859,7 @@ async def backup_info(
     response_class=Response,
 )
 async def backup_full(
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
 ) -> StreamingResponse:
@@ -1172,15 +1171,15 @@ async def backup_full(
     zip_buffer = io.BytesIO(await asyncio.to_thread(_build_zip, backup_entries))
     zip_buffer.seek(0)
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（走 log_operation：整站备份是高危出口，审计要能归因到操作者设备）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="backup",
-        resource_type="site",
-        detail=json.dumps({"counts": manifest["counts"]}),
+        target_type="site",
+        details={"counts": manifest["counts"]},
     )
-    db.add(log)
-    await db.flush()
 
     filename = f"rosetta_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
     return StreamingResponse(
@@ -1208,6 +1207,7 @@ async def backup_full(
     responses={200: {"model": ImportResult}},
 )
 async def backup_restore(
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
     file: UploadFile = File(...),
@@ -1892,23 +1892,21 @@ async def backup_restore(
         except Exception as e:
             _err(f"媒体 {item.get('file', 'unknown')} 导入失败: {e}")
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（走 log_operation：恢复会覆盖整站数据，审计必须留下可归因的入口与设备）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="restore",
-        resource_type="site",
-        detail=json.dumps(
-            {
-                "strategy": strategy,
-                "created_count": created_count,
-                "skipped_count": skipped_count,
-                "error_count": error_count,
-                "manifest": manifest,
-            }
-        ),
+        target_type="site",
+        details={
+            "strategy": strategy,
+            "created_count": created_count,
+            "skipped_count": skipped_count,
+            "error_count": error_count,
+            "manifest": manifest,
+        },
     )
-    db.add(log)
-    await db.flush()
     # 整站恢复触及文章之外的站点配置/导航/友情链接/相册，这些缓存同样要一起失效，
     # 否则"恢复完成"后前台仍会按备份前的配置渲染。
     await _invalidate_content_caches(

@@ -10,7 +10,7 @@ import math
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Body, HTTPException, Query, status
+from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.core.concurrency import concurrent_query
+from backend.core.logging_middleware import log_operation
 from backend.core.plugin_bus import bus
 from backend.models.blog import Category, Comment, Post, Tag
 from backend.models.log import OperationLog, TrashItem
@@ -192,6 +193,7 @@ async def list_trash(
 )
 async def restore_trash_item(
     trash_id: int,
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
 ):
@@ -244,19 +246,21 @@ async def restore_trash_item(
         )
         db.add(comment)
 
-    # 删除回收站记录
-    await db.delete(trash_item)
-
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（走 log_operation：自带 ip/UA/path/method 与 IP 掩码，
+    # 直接构造 OperationLog 会让审计页那一行的"操作者"列永远是空的）。
+    # 放在 delete 之前：delete 之后再读 trash_item 的列，等于在已删除对象上取属性。
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="restore",
-        resource_type=trash_item.resource_type,
-        resource_id=trash_item.resource_id,
-        detail=json.dumps({"from_trash": True}),
+        target_type=trash_item.resource_type,
+        target_id=trash_item.resource_id,
+        details={"from_trash": True},
     )
-    db.add(log)
-    await db.flush()
+
+    # 删除回收站记录
+    await db.delete(trash_item)
 
     return {"success": True, "message": "项目已恢复"}
 
@@ -275,6 +279,7 @@ async def restore_trash_item(
 )
 async def permanently_delete(
     trash_id: int,
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
 ):
@@ -293,15 +298,15 @@ async def permanently_delete(
 
     await db.delete(trash_item)
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（口径同 restore：审计要能归因到操作者设备）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="permanent_delete",
-        resource_type=resource_type,
-        resource_id=resource_id,
+        target_type=resource_type,
+        target_id=resource_id,
     )
-    db.add(log)
-    await db.flush()
 
     return {"success": True, "message": "项目已永久删除"}
 
@@ -376,6 +381,7 @@ class BatchActionResponse(BaseModel):
     },
 )
 async def batch_action_posts(
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
     request: BatchActionRequest = Body(...),
@@ -518,20 +524,18 @@ async def batch_action_posts(
             detail=f"不支持的操作: {request.action}",
         )
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（批量口同样是审计面：走 log_operation 才有 ip/UA/path）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action=f"batch_{request.action}",
-        resource_type="post",
-        detail=json.dumps(
-            {
-                "post_ids": request.post_ids,
-                "affected_count": affected_count,
-            }
-        ),
+        target_type="post",
+        details={
+            "post_ids": request.post_ids,
+            "affected_count": affected_count,
+        },
     )
-    db.add(log)
-    await db.flush()
 
     # 批量操作绕过了 blog.py 的写侧失效逻辑：列表类缓存在 posts 前缀下，详情缓存是
     # 逐 slug/语言的 post:{slug}:{lang}，两层都要清，否则转草稿/删除的文章会继续对外可见。
@@ -828,6 +832,7 @@ async def get_post_revision(
 async def restore_post_revision(
     post_id: int,
     revision_id: int,
+    http_request: Request,
     db: DB,
     current_user: CurrentStaff,
 ):
@@ -883,21 +888,19 @@ async def restore_post_revision(
     # 不重算会让"恢复版本"后的文章继续显示旧内容的时长（blog.py 更新路径同样这么做）。
     post.reading_time = compute_reading_time_from_content(post.content)
 
-    # 记录操作日志
-    log = OperationLog(
+    # 记录操作日志（走 log_operation：正文整体回退是最需要归因的操作）
+    await log_operation(
+        db,
+        http_request,
         user_id=current_user.id,
         action="restore_revision",
-        resource_type="post",
-        resource_id=post_id,
-        detail=json.dumps(
-            {
-                "revision_id": revision_id,
-                "revision_number": revision.revision_number,
-            }
-        ),
+        target_type="post",
+        target_id=post_id,
+        details={
+            "revision_id": revision_id,
+            "revision_number": revision.revision_number,
+        },
     )
-    db.add(log)
-    await db.flush()
 
     # 正文已整体回退，两层缓存都会失真：详情缓存存的是新版正文，列表缓存的排序/摘要同样过期
     await invalidate_post_detail_cache(post.slug)
