@@ -236,6 +236,64 @@ export function useSite() {
     sticky: true
   }))
 
+  /**
+   * 「阅读体验」分组（后端 _default_reading 同构）。
+   * 此前这 7 个键只进库不进制：列表每页条数、目录/字数/阅读时间三处 UI 全部硬编码。
+   * 兜底值取**改动前各页面实际使用的那组数**，保证未保存过分组的站点渲染结果不变。
+   */
+  const reading = computed(() => {
+    const g = readGroup(state.value, 'reading', {})
+    const pos = (k: string, d: number) => {
+      const n = Number(g[k])
+      return Number.isFinite(n) && n > 0 ? n : d
+    }
+    const flag = (k: string) => g[k] !== false
+    return {
+      // 前台列表是 3 列网格，默认沿用 9（= 3 行）而不是分组默认 12，避免未配置站点版式突变
+      posts_per_page: pos('posts_per_page', 9),
+      show_reading_time: flag('show_reading_time'),
+      show_word_count: flag('show_word_count'),
+      show_toc: flag('show_toc'),
+      toc_depth: pos('toc_depth', 3),
+      line_height: pos('line_height', 1.7),
+      font_size: pos('font_size', 16)
+    }
+  })
+
+  /**
+   * 「功能开关」分组。后端把同一份值叠进 /api/config（core.py::_apply_settings_groups），
+   * 评论写口与 RSS/sitemap 的服务端闸门在后端，这里只负责"后台关了前台就别再显示入口"。
+   */
+  const features = computed(() => {
+    const g = readGroup(state.value, 'features', {})
+    const flag = (k: string, d = true) => (typeof g[k] === 'boolean' ? g[k] : d)
+    return {
+      enable_comments: flag('enable_comments'),
+      enable_registration: flag('enable_registration'),
+      enable_rss: flag('enable_rss'),
+      enable_search: flag('enable_search'),
+      enable_sitemap: flag('enable_sitemap'),
+      enable_guestbook: flag('enable_guestbook'),
+      enable_dark_mode: flag('enable_dark_mode'),
+      enable_like_button: flag('enable_like_button'),
+      enable_share_buttons: flag('enable_share_buttons'),
+      enable_reading_progress: flag('enable_reading_progress')
+    }
+  })
+
+  /**
+   * 「导航」分组。顶栏三个入口开关与吸顶样式由 AppHeader 消费；
+   * 与 features 分组的同义项（enable_search / enable_dark_mode）是"与"关系：
+   * features 决定这个功能在这个站点是否**存在**，navigation 决定顶栏是否**放入口**。
+   * 注：custom_links（自定义链接）目前仍没有任何消费点，不要按"可配置导航"来读它。
+   */
+  const navigation = computed(() => readGroup(state.value, 'navigation', {
+    header_style: 'sticky',
+    show_search: true,
+    show_language_switch: true,
+    show_theme_toggle: true
+  }))
+
   const siteTitle = computed(() => basic.value.site_name)
   const siteSubtitle = computed(() => basic.value.subtitle || seo.value.default_title)
   const siteDescription = computed(() => seo.value.default_description || basic.value.description)
@@ -347,6 +405,9 @@ export function useSite() {
     hero,
     footer,
     notice,
+    reading,
+    features,
+    navigation,
     siteTitle,
     siteSubtitle,
     siteDescription,

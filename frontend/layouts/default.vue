@@ -72,10 +72,17 @@ watch(() => route.path, () => applyFrontendShell(), { flush: 'post' })
 const siteTitleForHead = computed(() => site.siteTitle.value || 'Rosetta')
 useHead(() => {
   const siteTitle = siteTitleForHead.value
+  const f = site.features.value
+  // RSS / Sitemap 的总开关关掉后，`<link>` 指向的入口本身必须消失：
+  // 留着等于告诉爬虫"这里有订阅源"，而它拿到的是 404 空壳。
   return {
     link: [
-      { rel: 'alternate', type: 'application/rss+xml', title: `${siteTitle} · RSS`, href: '/rss.xml' },
-      { rel: 'sitemap', type: 'application/xml', title: `${siteTitle} · Sitemap`, href: '/sitemap.xml' }
+      ...(f.enable_rss
+        ? [{ rel: 'alternate', type: 'application/rss+xml', title: `${siteTitle} · RSS`, href: '/rss.xml' }]
+        : []),
+      ...(f.enable_sitemap
+        ? [{ rel: 'sitemap', type: 'application/xml', title: `${siteTitle} · Sitemap`, href: '/sitemap.xml' }]
+        : [])
     ]
   }
 })

@@ -138,17 +138,20 @@ const slugify = (text: string, existing: Set<string>): string => {
   return id
 }
 
-export const extractTOC = (container: HTMLElement | null): TocItem[] => {
+export const extractTOC = (container: HTMLElement | null, maxLevel = 4): TocItem[] => {
   if (!container) return []
   const headings = container.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4')
   const items: TocItem[] = []
   const used = new Set<string>()
   headings.forEach((h) => {
+    const level = Number(h.tagName[1]) as TocItem['level']
+    // 超过「目录最大层级深度」的标题不进目录，但仍然拿到 id（锚点与滚动高亮要用）
     if (!h.id) h.id = slugify(h.textContent || '', used)
+    if (level > maxLevel) return
     items.push({
       id: h.id,
       text: (h.textContent || '').trim(),
-      level: Number(h.tagName[1]) as TocItem['level'],
+      level,
       offsetTop: Math.round(h.getBoundingClientRect().top + window.scrollY - 88),
       _el: h
     })

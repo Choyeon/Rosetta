@@ -9,14 +9,20 @@
 <template>
   <div>
     <!-- eslint-disable vue/no-v-html -- Vue 3；文章 HTML 已用 DOMPurify 净化 -->
-    <div class="fixed top-0 left-0 right-0 z-[60] h-[3px] bg-transparent pointer-events-none">
+    <div
+      v-if="showReadingProgress"
+      class="fixed top-0 left-0 right-0 z-[60] h-[3px] bg-transparent pointer-events-none"
+    >
       <div
         class="h-full bg-gradient-to-r from-primary/60 via-primary to-primary/60 origin-left shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
         :style="{ width: `${progress}%`, transition: 'width var(--motion-duration-fast) linear' }"
       />
     </div>
     <div class="relative container mx-auto px-4 md:px-6 py-16 max-w-7xl">
-      <div class="grid grid-cols-1 lg:grid-cols-[1fr_240px] gap-10 lg:gap-12">
+      <div
+        class="grid grid-cols-1 gap-10 lg:gap-12"
+        :class="showAside ? 'lg:grid-cols-[1fr_240px]' : ''"
+      >
         <div class="min-w-0">
           <Breadcrumb>
             <BreadcrumbList>
@@ -85,26 +91,30 @@
               <CalendarDays class="size-3.5" />
               {{ formatDate(publishedAt) }}
             </span>
-            <span>·</span>
-            <span class="inline-flex items-center gap-1.5">
-              <Clock3 class="size-3.5" />
-              {{ readingTime }} {{ t('post.minRead') }}
-            </span>
+            <template v-if="showReadingTime">
+              <span>·</span>
+              <span class="inline-flex items-center gap-1.5">
+                <Clock3 class="size-3.5" />
+                {{ readingTime }} {{ t('post.minRead') }}
+              </span>
+            </template>
             <span>·</span>
             <span class="inline-flex items-center gap-1.5">
               <Eye class="size-3.5" />
               {{ views }} {{ t('post.views') }}
             </span>
-            <span>·</span>
-            <span class="inline-flex items-center gap-1.5">
-              <FileText class="size-3.5" />
-              {{ wordCount.toLocaleString() }} {{ t('post.words', '字') }}
-            </span>
-            <span>·</span>
-            <span class="inline-flex items-center gap-1.5">
-              <Hash class="size-3.5" />
-              {{ charCount.toLocaleString() }} {{ t('post.chars', '字符') }}
-            </span>
+            <template v-if="showWordCount">
+              <span>·</span>
+              <span class="inline-flex items-center gap-1.5">
+                <FileText class="size-3.5" />
+                {{ wordCount.toLocaleString() }} {{ t('post.words', '字') }}
+              </span>
+              <span>·</span>
+              <span class="inline-flex items-center gap-1.5">
+                <Hash class="size-3.5" />
+                {{ charCount.toLocaleString() }} {{ t('post.chars', '字符') }}
+              </span>
+            </template>
             <span v-if="updatedAt && new Date(updatedAt) > new Date(publishedAt)">·</span>
             <span
               v-if="updatedAt && new Date(updatedAt) > new Date(publishedAt)"
@@ -196,6 +206,7 @@
               v-show="!!post"
               ref="articleEl"
               class="prose-shadcn prose-shadcn-dark mt-12 mx-auto max-w-none"
+              :style="proseStyle"
               v-html="post ? renderedContent : ''"
             />
             <ClientOnly>
@@ -245,6 +256,7 @@
           <!-- 互动行：点赞（真实接口）；后端未返回数据时完全隐藏，绝不显示 0 作为占位假计数 -->
           <div class="mt-8 flex items-center gap-3 flex-wrap">
             <Button
+              v-if="showLikeButton"
               variant="outline"
               size="sm"
               class="group transition-colors hover:border-primary/50 hover:text-primary"
@@ -379,9 +391,9 @@
             :poll="poll"
           />
 
-          <Separator class="my-12" />
+          <Separator v-if="showCommentsSection" class="my-12" />
 
-          <section>
+          <section v-if="showCommentsSection">
             <h3 class="font-display text-2xl font-bold tracking-tight mt-12 mb-6 flex items-center gap-2">
               <MessageSquare class="size-5 text-primary" />
               {{ t('post.comments') }} ({{ comments.length }})
@@ -542,8 +554,8 @@
             </div>
           </section>
         </div>
-        <aside class="hidden lg:block sticky top-24 self-start">
-          <div class="flex flex-col gap-3">
+        <aside v-if="showAside" class="hidden lg:block sticky top-24 self-start">
+          <div v-if="showToc" class="flex flex-col gap-3">
             <h4 class="font-display text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-4 flex items-center gap-2">
               <List class="size-4" /> {{ t('post.toc', '目录') }}
             </h4>
@@ -573,20 +585,22 @@
               {{ t('post.tocEmpty', '暂无目录') }}
             </p>
           </div>
-          <Card class="mt-8 border-border/60 bg-muted/30">
+          <Card v-if="showReadingTime || showWordCount" class="mt-8 border-border/60 bg-muted/30">
             <CardContent class="flex flex-col gap-2.5 p-4 text-sm">
-              <div class="flex items-center justify-between">
+              <div v-if="showReadingTime" class="flex items-center justify-between">
                 <span class="text-muted-foreground inline-flex items-center gap-1.5"><Clock3 class="size-3.5" />{{ t('post.readingTime', '阅读时间') }}</span>
                 <span class="font-medium">{{ readingTime }} {{ t('post.minRead') }}</span>
               </div>
-              <div class="flex items-center justify-between">
-                <span class="text-muted-foreground inline-flex items-center gap-1.5"><FileText class="size-3.5" />{{ t('post.words', '字数') }}</span>
-                <span class="font-medium">{{ wordCount.toLocaleString() }}</span>
-              </div>
-              <div class="flex items-center justify-between">
-                <span class="text-muted-foreground inline-flex items-center gap-1.5"><Hash class="size-3.5" />{{ t('post.chars', '字符') }}</span>
-                <span class="font-medium">{{ charCount.toLocaleString() }}</span>
-              </div>
+              <template v-if="showWordCount">
+                <div class="flex items-center justify-between">
+                  <span class="text-muted-foreground inline-flex items-center gap-1.5"><FileText class="size-3.5" />{{ t('post.words', '字数') }}</span>
+                  <span class="font-medium">{{ wordCount.toLocaleString() }}</span>
+                </div>
+                <div class="flex items-center justify-between">
+                  <span class="text-muted-foreground inline-flex items-center gap-1.5"><Hash class="size-3.5" />{{ t('post.chars', '字符') }}</span>
+                  <span class="font-medium">{{ charCount.toLocaleString() }}</span>
+                </div>
+              </template>
             </CardContent>
           </Card>
         </aside>
@@ -662,6 +676,27 @@ const { localeHref } = useLocaleLink()
 const commentsAPI = useComments()
 
 const { progress } = useReadingProgress()
+
+/**
+ * 后台设置的两组开关在这里落地（此前全是硬编码）：
+ * - reading 分组：目录、字数/字符、阅读时间三处 UI
+ * - features 分组：评论区、点赞、顶部阅读进度条
+ * 值来自 useSite()（layouts/default.vue setup 期已 await ensureLoaded），
+ * 因此 SSR 与客户端首帧拿到的是同一份，不产生 Hydrate 差异。
+ */
+const site = useSite()
+const showToc = computed(() => site.reading.value.show_toc)
+const showReadingTime = computed(() => site.reading.value.show_reading_time)
+const showWordCount = computed(() => site.reading.value.show_word_count)
+const showAside = computed(() => showToc.value || showReadingTime.value || showWordCount.value)
+const showCommentsSection = computed(() => site.features.value.enable_comments)
+const showLikeButton = computed(() => site.features.value.enable_like_button)
+const showReadingProgress = computed(() => site.features.value.enable_reading_progress)
+// 正文行高/字号：后台 reading 分组的两个数值项此前没有任何消费点， prose 版式完全写死。
+const proseStyle = computed(() => {
+  const r = site.reading.value
+  return { fontSize: `${r.font_size}px`, lineHeight: String(r.line_height) }
+})
 
 interface PostDetailTag {
   id: number
@@ -1490,7 +1525,7 @@ const rebuildTOC = async () => {
   const el = articleEl.value ?? (document.querySelector('article.prose-shadcn') as HTMLElement | null)
   if (!el) return
   articleEl.value = el
-  tocItems.value = extractTOC(el)
+  tocItems.value = extractTOC(el, site.reading.value.toc_depth)
 
   // 若文章正文有 <img>：全部解码完再更新一次 TOC 位置（scroll-spy 内部使用 realOffset）。
   const imgs = Array.from(el.querySelectorAll<HTMLImageElement>('img'))

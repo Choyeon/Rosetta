@@ -170,6 +170,20 @@ async def create_guestbook_entry(
     current_user: CurrentUserOptional = None,
 ):
     try:
+        from backend.services.site_settings import bool_of, read_group
+
+        feats = await read_group("features", db)
+        # 留言板历史上没有总开关（只有同 IP 频控），未配置过该分组时保持开放；
+        # settings 里没有 enable_guestbook 这个扁平字段，别去读一个不存在的键。
+        if not bool_of(feats, "enable_guestbook", True):
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "success": False,
+                    "message": "留言板已关闭",
+                    "error_code": "GUESTBOOK_DISABLED",
+                },
+            )
         client_ip = get_client_ip(request)
         ua = request.headers.get("User-Agent")
         resp = await GuestbookService.create_entry(

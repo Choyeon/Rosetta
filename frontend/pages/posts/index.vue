@@ -293,7 +293,8 @@ useBreadcrumbJsonLd([
 ])
 
 const ALL_CATEGORIES = '__all'
-const pageSize = 9
+// 每页条数来自后台「阅读体验」分组；未保存过该分组时沿用 9（3 列网格 × 3 行）
+const pageSize = computed(() => site.reading.value.posts_per_page)
 
 // ===== 初始状态从 URL 读：分享链接 / 刷新 / 浏览器后退都要能还原 =====
 // 只接受白名单取值，避免 ?sort=<垃圾> 之类被直接透传到接口。
@@ -356,7 +357,7 @@ const { data, pending, error: loadError, refresh } = useAPI<PaginatedResponse<Po
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     category: (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) ? selectedCategory.value : undefined,
     search: searchQuery.value || undefined,
     // 后端对未知取值回退 latest，这里同样只发白名单值
@@ -367,7 +368,7 @@ const { data, pending, error: loadError, refresh } = useAPI<PaginatedResponse<Po
 
 const posts = computed<Post[]>(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
-const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
+const totalPages = computed(() => Math.ceil(total.value / pageSize.value) || 1)
 const loading = computed(() => pending.value && posts.value.length === 0)
 // 翻页/换筛选时 data 仍是上一批：没有 busy 的话界面完全静止，用户会以为点击没生效
 const busy = computed(() => pending.value)

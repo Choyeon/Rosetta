@@ -137,7 +137,9 @@ const { localeHref } = useLocaleLink()
 
 const slug = computed(() => typeof route.params.slug === 'string' ? route.params.slug : '')
 const currentPage = ref(1)
-const pageSize = 9
+const site = useSite()
+// 每页条数取后台「阅读体验」分组；未配置时沿用 9
+const pageSize = computed(() => site.reading.value.posts_per_page)
 
 const pickLocalized = (val: unknown): string => {
   if (val == null) return ''
@@ -185,7 +187,7 @@ const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{ items?: T
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     tag: slug.value || undefined
   })),
   key: computed(() => `tag:posts:${slug.value}:${locale.value}:${currentPage.value}`)
@@ -215,7 +217,7 @@ const tagMissing = computed(() => !pickLocalized(tagRaw.value?.name))
 const tagNotFound = computed(() => isContentMissing(tagErr.value, tagMissing.value))
 useContentStatus(tagErr, tagMissing)
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const visiblePages = computed(() => {
   const pages: number[] = []
   const max = 5

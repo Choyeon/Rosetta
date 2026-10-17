@@ -176,6 +176,15 @@ interface SiteConfigLite {
 
 // useSite 由 layouts/default.vue 提前 ensureLoaded()，这里 state 已填充完毕
 const site = useSite()
+// features 分组关掉 RSS / Sitemap 后，页脚文字链与订阅图标必须一起消失：
+// 留着就是指向 404 的入口，还会让爬虫以为站点有订阅源。
+const visibleResourceLinks = computed(() => resourceLinks.filter((link) => {
+  const f = site.features.value
+  if (link.labelKey === 'footer.linkRSS') return f.enable_rss
+  if (link.labelKey === 'footer.linkSitemap') return f.enable_sitemap
+  return true
+}))
+const showRssIcon = computed(() => site.features.value.enable_rss)
 const siteConfig = computed<SiteConfigLite>(() => {
   const publicCfg = (site.state.value.publicConfig || {}) as Record<string, unknown>
   const b = site.basic.value
@@ -327,6 +336,7 @@ const handleSetLocale = async (code: string) => {
               </svg>
             </a>
             <a
+              v-if="showRssIcon"
               href="/rss.xml"
               :aria-label="t('footer.rssLabel', 'RSS')"
               class="inline-flex h-9 w-9 items-center justify-center rounded-md text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0"
@@ -415,7 +425,7 @@ const handleSetLocale = async (code: string) => {
           </h4>
           <ul class="flex flex-col gap-3">
             <li
-              v-for="link in resourceLinks"
+              v-for="link in visibleResourceLinks"
               :key="link.href"
             >
               <a

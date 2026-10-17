@@ -239,7 +239,9 @@ const username = computed(() =>
   typeof route.params.username === 'string' ? route.params.username : ''
 )
 const currentPage = ref(1)
-const pageSize = 9
+const site = useSite()
+// 每页条数取后台「阅读体验」分组；未配置时沿用 9
+const pageSize = computed(() => site.reading.value.posts_per_page)
 
 const pickLocalized = (val: unknown): string => {
   if (val == null) return ''
@@ -288,7 +290,7 @@ const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     author: username.value || undefined
   })),
   key: computed(() => `author:posts:${username.value}:${locale.value}:${currentPage.value}`)
@@ -338,7 +340,7 @@ useContentStatus(profileError, profileMissing)
 // 刷新一下就能看到，而真实状态码已经告诉爬虫这个 URL 没了。
 const notFound = computed(() => isContentMissing(profileError.value, profileMissing.value))
 
-const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)))
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const visiblePages = computed(() => {
   const pages: number[] = []
   const max = 5

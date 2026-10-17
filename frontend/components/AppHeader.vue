@@ -80,6 +80,18 @@ const site = useSite()
 const brandName = computed(() => site.basic.value.site_name || 'Rosetta')
 const brandLogo = computed(() => site.basic.value.logo || '/logo/rosetta-primary-icon.png')
 
+// features 分组关掉功能时顶栏入口必须消失；navigation 分组是同一层的显示开关，两者取与。
+const showSearch = computed(() => site.features.value.enable_search && site.navigation.value.show_search)
+const showRegister = computed(() => site.features.value.enable_registration)
+const showDarkModeToggle = computed(() => site.features.value.enable_dark_mode && site.navigation.value.show_theme_toggle)
+const showLanguageSwitch = computed(() => site.navigation.value.show_language_switch)
+// header_style 只有"吸顶/随页面滚走"两种；非吸顶时去掉 sticky+top-0+z-40。
+const headerClass = computed(() =>
+  site.navigation.value.header_style === 'sticky'
+    ? 'sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60'
+    : 'relative w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60'
+)
+
 interface NavApiRow {
   id?: number | string
   label?: string | Record<string, string>
@@ -264,7 +276,7 @@ const handleSearchClick = () => navigateTo('/search')
   <header
     id="app-header"
     data-navbar="root"
-    class="sticky top-0 z-40 w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+    :class="headerClass"
   >
     <div
       class="container mx-auto flex items-center justify-between gap-4 h-16"
@@ -375,7 +387,7 @@ const handleSearchClick = () => navigateTo('/search')
           data-navbar="actions"
           class="flex shrink-0 items-center gap-1"
         >
-          <Tooltip>
+          <Tooltip v-if="showSearch">
             <TooltipTrigger as-child>
               <Button
                 variant="ghost"
@@ -391,9 +403,9 @@ const handleSearchClick = () => navigateTo('/search')
             </TooltipContent>
           </Tooltip>
 
-          <ThemeToggle />
+          <ThemeToggle v-if="showDarkModeToggle" />
 
-          <LocaleSwitcher />
+          <LocaleSwitcher v-if="showLanguageSwitch" />
 
           <div
             v-if="!authStore.isAuthenticated"
@@ -407,6 +419,7 @@ const handleSearchClick = () => navigateTo('/search')
               {{ t('auth.login') || '登录' }}
             </Button>
             <Button
+              v-if="showRegister"
               variant="default"
               size="sm"
               @click="handleRegister"
@@ -626,6 +639,7 @@ const handleSearchClick = () => navigateTo('/search')
                       {{ t('auth.login') || '登录' }}
                     </Button>
                     <Button
+                      v-if="showRegister"
                       variant="default"
                       class="w-full"
                       @click="handleRegister"
@@ -637,7 +651,7 @@ const handleSearchClick = () => navigateTo('/search')
               </div>
               <Separator class="mb-4" />
               <div class="flex items-center justify-end gap-1 ml-auto">
-                <LocaleSwitcher />
+                <LocaleSwitcher v-if="showLanguageSwitch" />
               </div>
             </SheetContent>
           </Sheet>

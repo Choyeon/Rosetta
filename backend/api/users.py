@@ -174,7 +174,12 @@ async def register(
     _rl=Depends(rate_limit_sensitive("register")),
 ):
     """用户注册"""
-    if not settings.enable_registration:
+    # 后台「功能开关」分组优先；未保存过该分组时沿用环境变量 ENABLE_REGISTRATION。
+    # 只读 env 的表现是"设置页关掉注册、接口照样开"——分组是设置页的唯一写口。
+    from backend.services.site_settings import bool_of, read_group
+
+    features_cfg = await read_group("features", db)
+    if not bool_of(features_cfg, "enable_registration", bool(settings.enable_registration)):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="注册功能已关闭",

@@ -605,6 +605,7 @@ useNoindexPage()
 const { t } = useI18n()
 const authStore = useAuthStore()
 const toast = useToast()
+const site = useSite()
 
 // 极简主题激活时切换到纯纸面注册分支（与 login.vue 一致）
 const ft = useFrontendTheme()
@@ -680,6 +681,14 @@ onMounted(async () => {
   await authStore.initialize()
   if (authStore.isAuthenticated) {
     navigateTo('/admin')
+    return
+  }
+
+  // 站点关闭注册时这里没有可用表单：直接送回登录页，而不是让用户填完再吃 403
+  await site.ensureLoaded()
+  if (!site.features.value.enable_registration) {
+    toast.warning(t('auth.registerClosed', '站点已关闭注册，请使用已有账号登录。'))
+    navigateTo('/login')
   }
 })
 

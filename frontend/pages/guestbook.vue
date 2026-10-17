@@ -19,7 +19,10 @@
       </p>
     </header>
 
-    <Card class="mb-12 border-dashed">
+    <Card
+      v-if="guestbookEnabled"
+      class="mb-12 border-dashed"
+    >
       <CardHeader class="pb-4">
         <CardTitle class="text-lg flex items-center gap-2">
           <PenLine class="size-4 text-muted-foreground" />
@@ -102,6 +105,12 @@
         </p>
       </CardContent>
     </Card>
+    <p
+      v-else
+      class="mb-10 rounded-xl border border-border border-dashed p-6 text-sm text-muted-foreground"
+    >
+      {{ t('guestbook.closed', '留言板当前已关闭，仅可浏览既有留言。') }}
+    </p>
 
     <div
       v-if="loadFailed && !pending"
@@ -296,6 +305,9 @@ const { t, locale } = useI18n()
 const site = useSite()
 const toast = useToast()
 const authStore = useAuthStore()
+
+// features.enable_guestbook=false 时后端 POST /guestbook 直接 403，表单必须同步收起。
+const guestbookEnabled = computed(() => site.features.value.enable_guestbook)
 
 // ===== SEO：基于 i18n + 站点设置 =====
 useSeo({

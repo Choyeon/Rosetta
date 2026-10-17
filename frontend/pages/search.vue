@@ -154,14 +154,16 @@ const router = useRouter()
 
 const keyword = ref<string>((route.query.q as string) || '')
 const currentPage = ref(1)
-const pageSize = 9
+const site = useSite()
+// 每页条数取后台「阅读体验」分组；未配置时沿用 9
+const pageSize = computed(() => site.reading.value.posts_per_page)
 
 // 以路由 query.q 作为检索词的唯一真值来源：SSR 可渲染、结果可分享。
 const { data, pending, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: pageSize.value,
     search: (route.query.q as string) || undefined
   })),
   key: computed(() => `search:${route.query.q || ''}:${currentPage.value}`)
@@ -169,7 +171,7 @@ const { data, pending, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts'
 
 const posts = computed<Post[]>(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
-const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
+const totalPages = computed(() => Math.ceil(total.value / pageSize.value) || 1)
 
 const visiblePages = computed(() => {
   const pages: number[] = []

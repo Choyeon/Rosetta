@@ -248,6 +248,50 @@ async def test_features_group_reaches_api_config(client, staff_headers):
     assert cfg.json()["enable_guestbook"] is True
 
 
+@pytest.mark.asyncio
+async def test_features_registration_gate_blocks_register(client, staff_headers):
+    """enable_registration 曾只用来藏前端按钮；执行点读扁平 ENABLE_REGISTRATION，
+
+    于是"后台关掉注册"之后直接 POST /api/users/register 仍然能建号。
+    """
+    await _patch(client, staff_headers, "features", {"enable_registration": False})
+    try:
+        resp = await client.post(
+            "/api/users/register",
+            json={"username": "gateduser", "email": "gated@example.com", "password": "Testpass999"},
+        )
+        assert resp.status_code == 403, resp.text
+    finally:
+        await _patch(client, staff_headers, "features", {"enable_registration": True})
+    resp = await client.post(
+        "/api/users/register",
+        json={"username": "gateduser2", "email": "gated2@example.com", "password": "Testpass999"},
+    )
+    assert resp.status_code in (200, 201), resp.text
+
+
+@pytest.mark.asyncio
+async def test_features_guestbook_gate_blocks_post(client, staff_headers):
+    """留言板历史上只有同 IP 频控，enable_guestbook 这个开关完全没有执行点。"""
+    await _patch(client, staff_headers, "features", {"enable_guestbook": False})
+    try:
+        resp = await client.post(
+            "/api/guestbook",
+            json={"content": "这条应该被闸门挡住", "author_name": "读友"},
+            headers=_fresh_ip(),
+        )
+        assert resp.status_code == 403, resp.text
+        assert resp.json().get("error_code") == "GUESTBOOK_DISABLED"
+    finally:
+        await _patch(client, staff_headers, "features", {"enable_guestbook": True})
+    resp = await client.post(
+        "/api/guestbook",
+        json={"content": "闸门打开后应当可以写入", "author_name": "读友"},
+        headers=_fresh_ip(),
+    )
+    assert resp.status_code in (200, 201), resp.text
+
+
 # ==================== ⑤ 解析工具：坏配置不能炸主流程 ====================
 
 
