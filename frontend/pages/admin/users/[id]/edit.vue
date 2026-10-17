@@ -105,6 +105,7 @@
             <div class="flex flex-col sm:flex-row items-start sm:items-center gap-4">
               <UserAvatar
                 :avatar="form.avatar || null"
+                :resolved-avatar-url="user.resolved_avatar_url || null"
                 :seed="user.username"
                 :name="form.nickname || user.username"
                 :title="user.title || null"

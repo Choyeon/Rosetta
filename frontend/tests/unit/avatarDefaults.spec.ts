@@ -15,8 +15,14 @@
  */
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { avatarAccent, avatarInitial, defaultAvatarDataUri } from '~~/composables/useResolvedAvatar'
+import { describe, expect, it, vi } from 'vitest'
+import { avatarAccent, avatarInitial, defaultAvatarDataUri, resolveAvatarUrl } from '~~/composables/useResolvedAvatar'
+
+// resolveAvatarUrl 会读 runtimeConfig.public.apiBase 决定代理前缀，桩掉 Nuxt 运行时
+vi.mock('#app/nuxt', async (orig) => {
+  const actual = await (orig as () => Promise<Record<string, unknown>>)()
+  return { ...actual, useRuntimeConfig: () => ({ public: { apiBase: '/api' } }) }
+})
 
 const frontendRoot = resolve(__dirname, '../..')
 const readSrc = (rel: string) => readFileSync(resolve(frontendRoot, rel), 'utf-8')
@@ -106,6 +112,42 @@ describe('默认头像 data URI（defaultAvatarDataUri）', () => {
 
   it('体积可控：单个默认头像远小于一次网络往返', () => {
     expect(defaultAvatarDataUri('choyeon', 'choyeon').length).toBeLessThan(1200)
+  })
+})
+
+describe('候选 URL 归类（resolveAvatarUrl）', () => {
+  it('本站自托管头像路径原样返回，不得挂 /api 前缀', () => {
+    // /media、/uploads、/static 由后端 StaticFiles + nginx 直接服务，
+    // 挂上 apiBase 会变成 /api/media/avatars/x.jpg → 404 → 上传的头像永远不显示。
+    for (const p of ['/media/avatars/1_20260101.jpg', '/uploads/x.png', '/static/y.svg']) {
+      expect(resolveAvatarUrl(p)).toBe(p)
+    }
+  })
+
+  it('后端代理串与品牌静态资源同样原样返回', () => {
+    expect(resolveAvatarUrl('/api/media/avatar?src=abc&fallback=1')).toBe('/api/media/avatar?src=abc&fallback=1')
+    expect(resolveAvatarUrl('/logo/rosetta.svg')).toBe('/logo/rosetta.svg')
+  })
+
+  it('其余相对路径才挂 apiBase（后端 API 相对口）', () => {
+    expect(resolveAvatarUrl('/avatars/relative.png')).toBe('/api/avatars/relative.png')
+  })
+
+  it('外链走代理，占位/内网域名直接丢弃并落到本地默认头像', () => {
+    const proxied = resolveAvatarUrl('https://avatars.githubusercontent.com/u/1?v=4')
+    expect(proxied.startsWith('/api/media/avatar?src=')).toBe(true)
+    expect(proxied).toContain('&fallback=1')
+    expect(resolveAvatarUrl('https://example.com/avatar.png')).toMatch(/^data:image\/svg\+xml/)
+  })
+
+  it('resolved 优先于原始 avatar（同一人两套字段时不能退回字母兜底）', () => {
+    expect(resolveAvatarUrl(
+      { seed: 'choyeon', label: 'choyeon' },
+      '/api/media/avatar?src=QQ',
+      undefined
+    )).toBe('/api/media/avatar?src=QQ')
+    // 两个候选都为空 → 本地默认头像，零网络请求
+    expect(resolveAvatarUrl({ seed: 'choyeon', label: 'choyeon' }, null, undefined)).toMatch(/^data:image\/svg\+xml/)
   })
 })
 

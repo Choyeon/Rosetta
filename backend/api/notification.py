@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentUser
 from backend.core.concurrency import concurrent_query
 from backend.models.core import Notification
+from backend.services._avatar_helpers import resolved_for_user
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,11 @@ class NotificationActorOut(BaseModel):
     id: int = Field(..., description="触发者用户 ID")
     username: str = Field(..., description="用户名")
     nickname: str | None = Field(None, description="昵称，未设置时为 null")
-    avatar: str | None = Field(None, description="头像 URL，未设置时为 null")
+    avatar: str | None = Field(None, description="原始头像列，未设置时为 null")
+    resolved_avatar_url: str | None = Field(
+        None,
+        description="后端头像解析链算出的真实头像（代理 URL 或本站相对路径），未解析出任何来源时为 null",
+    )
 
 
 class NotificationItemOut(BaseModel):
@@ -194,6 +199,7 @@ async def list_notifications(
                     "username": n.actor.username,
                     "nickname": n.actor.nickname,
                     "avatar": n.actor.avatar,
+                    "resolved_avatar_url": resolved_for_user(n.actor),
                 }
                 if n.actor
                 else None,

@@ -41,6 +41,7 @@ from backend.core.i18n import (
     get_language_from_request,
 )
 from backend.core.plugin_bus import bus
+from backend.services._avatar_helpers import resolved_for_user
 from backend.services.content_renderer import (
     render_content,
     render_excerpt,
@@ -422,6 +423,11 @@ def _build_author_data(author: User | None) -> dict | None:
         "username": author.username,
         "nickname": author.nickname,
         "avatar": author.avatar,
+        # resolved_avatar_url 不是 ORM 列，必须由这里手工回填（口径同
+        # _user_response_helper.build_public_user_response）。漏这一行的表现是：
+        # 用 GitHub/QQ/Gravatar 头像的作者，文章列表与详情显示字母兜底，
+        # 而同一个人在导航栏（/users/me 链路）显示真头像——全站头像两套样子。
+        "resolved_avatar_url": resolved_for_user(author),
         "bio": author.bio,
         "website": author.website,
         "github": author.github,

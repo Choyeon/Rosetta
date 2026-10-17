@@ -23,6 +23,7 @@ from backend.core.plugin_bus import bus
 from backend.models.blog import Category, Comment, Post, Tag
 from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
+from backend.services._avatar_helpers import resolved_for_user
 from backend.services.post_cache import invalidate_post_aggregate_caches
 from backend.services.post_revision import snapshot_post_revision
 from backend.utils.compat import UTC, parse_utc_date, timedelta
@@ -56,6 +57,11 @@ class OperatorOut(BaseModel):
     id: int = Field(..., description="用户 ID")
     username: str = Field(..., description="登录用户名")
     nickname: str | None = Field(default=None, description="昵称；未设置时为 null")
+    avatar: str | None = Field(default=None, description="原始头像列，未设置时为 null")
+    resolved_avatar_url: str | None = Field(
+        default=None,
+        description="后端头像解析链算出的真实头像（代理 URL 或本站相对路径）；未解析出任何来源时为 null",
+    )
 
 
 class TrashEntryOut(BaseModel):
@@ -1021,6 +1027,8 @@ async def list_operation_logs(
                     "id": log.user.id,
                     "username": log.user.username,
                     "nickname": log.user.nickname,
+                    "avatar": log.user.avatar,
+                    "resolved_avatar_url": resolved_for_user(log.user),
                 }
                 if log.user
                 else None,

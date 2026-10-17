@@ -70,6 +70,7 @@
               >
                 <UserAvatar
                   :avatar="row.user.avatar"
+                  :resolved-avatar-url="row.user.resolved_avatar_url"
                   :seed="String(row.user.id)"
                   :name="peerLabel(row.user)"
                   size="sm"
@@ -163,6 +164,7 @@
               <UserAvatar
                 v-if="threadPeer"
                 :avatar="threadPeer.avatar"
+                :resolved-avatar-url="threadPeer.resolved_avatar_url"
                 :seed="String(threadPeer.id)"
                 :name="peerLabel(threadPeer)"
                 size="sm"

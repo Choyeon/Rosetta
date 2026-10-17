@@ -106,6 +106,81 @@ class TestPublicAuthorContract:
         assert set(public["properties"]) & PRIVATE_USER_FIELDS == set()
 
 
+class TestAuthorAvatarIsResolved:
+    """作者头像单源：公开 author 载荷必须带后端解析链算出的 resolved_avatar_url。
+
+    回归的是「文章列表显示字母兜底、导航栏显示真头像」这类全站头像不一致：
+    ``resolved_avatar_url`` 不是 ORM 列，``blog._build_author_data`` 少回填这一行，
+    前端 ``UserAvatar`` 就只能取 ``avatar`` 原始列——而 QQ/GitHub/Gravatar 来源的
+    用户那里它是 null。生产实测（2026-10-17）：``GET /blog/posts`` 的
+    ``author.avatar`` 与 ``author.resolved_avatar_url`` 双 null，
+    ``GET /users/1`` 却给出 qlogo 代理串，同一个作者两张脸。
+    """
+
+    @pytest.mark.asyncio
+    async def test_qq_source_author_resolves_on_list_and_detail(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+    ):
+        test_user.qq = "123456789"
+        test_user.avatar_source = "qq"
+        await db_session.commit()
+
+        detail = await client.get(f"/api/blog/posts/{test_post.slug}", params={"lang": "zh"})
+        assert detail.status_code == 200
+        author = _payload(detail.json())["author"]
+
+        listing = await client.get("/api/blog/posts", params={"page_size": 10})
+        assert listing.status_code == 200
+        row = next(i for i in _payload(listing.json())["items"] if i["slug"] == test_post.slug)
+
+        # 原始列仍是 null（没头像文件），但解析链必须产出代理串，且两个口口径一致
+        assert author["avatar"] is None
+        assert str(author["resolved_avatar_url"]).startswith("/api/media/avatar?src=")
+        assert row["author"]["resolved_avatar_url"] == author["resolved_avatar_url"]
+
+    @pytest.mark.asyncio
+    async def test_first_party_relative_avatar_is_not_proxied(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+    ):
+        """本站自托管头像（``/media/avatars/x.jpg``）原样透出，不包代理也不被判成非法。
+
+        旧口径只认 ``^https?://``：上传接口落库的相对路径会被 ``validate_input``
+        直接丢成 null，于是"用户明明传过头像"却永远解析不出来。
+        """
+        test_user.avatar = "/media/avatars/1_20260101000000.jpg"
+        test_user.avatar_source = "custom"
+        await db_session.commit()
+
+        detail = await client.get(f"/api/blog/posts/{test_post.slug}", params={"lang": "zh"})
+        assert detail.status_code == 200
+        assert _payload(detail.json())["author"]["resolved_avatar_url"] == test_user.avatar
+
+    @pytest.mark.asyncio
+    async def test_protocol_relative_avatar_is_rejected(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_post: Post,
+    ):
+        """``//host/path`` 是协议相对外链，不能算站内路径放行（会绕过代理的 SSRF 闸门）。"""
+        test_user.avatar = "//evil.example.com/a.png"
+        test_user.avatar_source = "custom"
+        await db_session.commit()
+
+        detail = await client.get(f"/api/blog/posts/{test_post.slug}", params={"lang": "zh"})
+        assert detail.status_code == 200
+        assert _payload(detail.json())["author"]["resolved_avatar_url"] is None
+
+
 class TestEmailPrivacy:
     """show_email 开关在两个公开路由上口径一致，且默认拒绝"""
 

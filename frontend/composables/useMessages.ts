@@ -26,6 +26,8 @@ export interface MessagePeer {
   username: string
   nickname?: string | null
   avatar?: string | null
+  /** 后端头像解析链算出的真实头像，渲染时优先于 avatar */
+  resolved_avatar_url?: string | null
 }
 
 export interface MessageLastLine {

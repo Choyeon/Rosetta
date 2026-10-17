@@ -232,6 +232,8 @@
             <div class="flex items-start gap-4">
               <div class="pt-1">
                 <UserAvatar
+                  :avatar="log.avatar"
+                  :resolved-avatar-url="log.resolved_avatar_url"
                   :seed="`${log.username || 'user'}|${log.user_id ?? ''}`"
                   :name="log.username || `User #${log.user_id ?? '-'}`"
                   :size="36"

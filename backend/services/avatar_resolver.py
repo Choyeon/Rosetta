@@ -2,7 +2,7 @@
 头像解析器（纯函数，无 DB/HTTP IO）。
 
 Avatar 选择优先级（当 avatar_source == "auto" 时，从高到低）：
-  1) custom 且 avatar URL 非空 → 直接用 avatar
+  1) custom 且 avatar URL 非空 → 直接用 avatar（外链或本站相对路径 /media/…）
   2) github 非空 → "https://github.com/{github}.png?size=160"
   3) qq 非空 → "https://q1.qlogo.cn/g?b=qq&nk={qq}&s=160"
   4) email 非空 → Gravatar MD5 + d=mp + s=160（默认国内镜像，可通过 settings 覆盖）
@@ -26,6 +26,14 @@ GITHUB_USERNAME_RE = re.compile(r"^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$")
 QQ_RE = re.compile(r"^\d{5,11}$")
 WEBSITE_URL_RE = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+# 本站自托管头像：POST /api/media/avatar 上传后落库的就是 `/media/avatars/<file>` 这种相对路径。
+# 只认这三个目录、且必须是单斜杠开头——`//host/path` 是协议相对的外链，不能当站内路径放行。
+FIRST_PARTY_AVATAR_RE = re.compile(r"^/(?:media|uploads|static)/[^\s<>\"']*$")
+
+
+def is_first_party_avatar(raw: str) -> bool:
+    """是否本站自托管头像路径（不需要走外链代理，也不该被代理包装）。"""
+    return bool(FIRST_PARTY_AVATAR_RE.match(raw.strip()))
 
 
 def _gravatar_base() -> str:
@@ -79,7 +87,15 @@ def validate_input(inp: AvatarInput) -> dict[str, str | None]:
         "github": _normalize_github(inp.github),
         "qq": _normalize_qq(inp.qq),
         "email": inp.email if (inp.email and EMAIL_RE.match(inp.email.strip())) else None,
-        "avatar": inp.avatar if (inp.avatar and WEBSITE_URL_RE.match(inp.avatar.strip())) else None,
+        "avatar": inp.avatar
+        if (
+            inp.avatar
+            and (
+                WEBSITE_URL_RE.match(inp.avatar.strip())
+                or is_first_party_avatar(inp.avatar)
+            )
+        )
+        else None,
     }
 
 

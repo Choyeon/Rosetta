@@ -37,6 +37,7 @@ from backend.models.blog import Comment, Post
 from backend.models.monitoring import VisitLog
 from backend.models.user import User, UserTitle
 from backend.schemas.admin_reads import UserTitleBadgeDoc
+from backend.services._avatar_helpers import resolved_for_profile
 from backend.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,10 @@ class ActiveCommenterDoc(BaseModel):
 
     name: str = Field(..., description="显示名：nickname → username → 兜底字符串「User」")
     avatar: str | None = Field(None, description="头像原始 URL，未设置时为空串归一成 null")
+    resolved_avatar_url: str | None = Field(
+        None,
+        description="后端头像解析链算出的真实头像（代理 URL 或本站相对路径），未解析出任何来源时为 null",
+    )
     comments_count: int = Field(..., description="该用户的评论条数（含未过审，JOIN 全量计数）")
     title: UserTitleBadgeDoc | None = Field(
         None,
@@ -449,6 +454,13 @@ async def get_admin_stats(
             User.nickname,
             User.username,
             User.avatar,
+            # 头像解析链的输入列：只有 avatar 时，GitHub/QQ/Gravatar 来源的作者
+            # 一律解析不出来，后台"活跃评论人"就全显示字母兜底。
+            # PG 允许在 GROUP BY 主键的前提下选择同表其他列（函数依赖）。
+            User.github,
+            User.qq,
+            User.email,
+            User.avatar_source,
             User.title_id,
             func.count(Comment.id).label("c"),
         )
@@ -479,6 +491,13 @@ async def get_admin_stats(
             {
                 "name": name,
                 "avatar": r.avatar or None,
+                "resolved_avatar_url": resolved_for_profile(
+                    avatar=r.avatar,
+                    github=r.github,
+                    qq=r.qq,
+                    email=r.email,
+                    avatar_source=r.avatar_source,
+                ),
                 "comments_count": int(r.c),
                 "title": title_data,
             }

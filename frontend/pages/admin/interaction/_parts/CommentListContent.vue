@@ -167,7 +167,7 @@
             @update:model-value="toggleSelect(comment.id, $event)"
           />
           <UserAvatar
-            :avatar="comment.resolved_avatar_url"
+            :resolved-avatar-url="comment.resolved_avatar_url"
             :seed="comment.author_name"
             :name="comment.author_name"
             :title="comment.title || null"

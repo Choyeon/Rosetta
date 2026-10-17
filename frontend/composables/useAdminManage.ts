@@ -123,6 +123,8 @@ export interface TopArticle {
 export interface ActiveCommenter {
   name: string
   avatar: string | null
+  /** 后端解析链算出的真实头像；渲染时必须优先于 avatar，否则 QQ/GitHub 来源全显示字母兜底 */
+  resolved_avatar_url?: string | null
   comments_count: number
 }
 
@@ -1805,6 +1807,10 @@ export interface AdminAuditLog {
   id: number
   user_id: number | null
   username?: string | null
+  /** 原始头像列（后端 user.avatar），未设置时为 null */
+  avatar?: string | null
+  /** 后端头像解析链算出的真实头像；渲染时必须优先于 avatar */
+  resolved_avatar_url?: string | null
   action: string
   target_type?: string | null
   target_id?: string | number | null
@@ -1824,13 +1830,18 @@ export function fetchAdminAuditLogs(params: { page?: number, page_size?: number,
   return apiFetch<AdminPaged<Record<string, unknown>>>('/admin/logs', { query: { page: 1, page_size: 20, ...params } })
     .then((resp) => {
       const normalized = (resp?.items ?? []).map((raw: Record<string, unknown>) => {
-        const userObj = (raw.user ?? null) as { id?: number, username?: string, nickname?: string } | null
+        const userObj = (raw.user ?? null) as
+          | { id?: number, username?: string, nickname?: string, avatar?: string | null, resolved_avatar_url?: string | null }
+          | null
         const uid = userObj?.id ?? (raw.user_id as number | null | undefined) ?? null
         const uname = userObj?.username ?? (raw.username as string | null | undefined) ?? (raw.user_name as string | null | undefined) ?? null
         return {
           id: raw.id as number,
           user_id: uid,
           username: uname,
+          avatar: userObj?.avatar ?? (raw.user_avatar as string | null | undefined) ?? null,
+          resolved_avatar_url: userObj?.resolved_avatar_url
+          ?? (raw.user_resolved_avatar as string | null | undefined) ?? null,
           action: raw.action as string,
           target_type: (raw.target_type ?? raw.resource_type ?? null) as string | null,
           target_id: (raw.target_id ?? raw.resource_id ?? null) as string | number | null,
@@ -2194,6 +2205,15 @@ export interface AdminCacheStatus {
 
 export type NotificationLevel = 'info' | 'success' | 'warning' | 'error'
 
+/** 通知触发者摘要；resolved_avatar_url 是后端解析链算出的真实头像，渲染时优先于 avatar。 */
+export interface NotificationActor {
+  id: number
+  username: string
+  nickname?: string | null
+  avatar?: string | null
+  resolved_avatar_url?: string | null
+}
+
 export interface AdminNotification {
   id: number
   level: NotificationLevel
@@ -2202,7 +2222,7 @@ export interface AdminNotification {
   verb?: string | null
   link?: string | null
   is_read: boolean
-  actor?: { id: number, username: string, nickname?: string | null, avatar?: string | null } | null
+  actor?: NotificationActor | null
   created_at: string | null
 }
 

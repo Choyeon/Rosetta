@@ -27,6 +27,11 @@ export interface ResolveAvatarOptions {
 
 const KNOWN_ABSOLUTE_RE = /^https?:\/\//i
 const API_MEDIA_RE = /^\/api\/media\//i
+/**
+ * 本站自托管静态目录（与 backend/services/avatar_resolver.py 的 FIRST_PARTY_AVATAR_RE 同清单）。
+ * 后端解析链会把这一类原样透出，前端也必须原样用，不能再挂 apiBase。
+ */
+const SITE_ROOT_STATIC_RE = /^\/(?:media|uploads|static)\//i
 
 /**
  * 明显无效/占位的头像 URL 黑名单：
@@ -168,7 +173,9 @@ export function resolveAvatarUrl(
       }
     }
     if (v.startsWith('/')) {
-      if (v.startsWith('/logo/') || v.startsWith('/favicon')) return v
+      // 站内静态资源根：由后端 StaticFiles（/media、/favicon）与 nginx 直接服务，
+      // 不能挂 apiBase —— /api + /media/avatars/x.jpg 是一条 404。
+      if (SITE_ROOT_STATIC_RE.test(v) || v.startsWith('/logo/') || v.startsWith('/favicon')) return v
       return `${apiBase}${v}`
     }
     if (v.startsWith('data:')) return v

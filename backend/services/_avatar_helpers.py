@@ -33,6 +33,12 @@ def wrap_proxy(original_url: str | None) -> str | None:
     if not url or url.lower() in {"none", "null", "undefined", "n/a"}:
         return None
 
+    # 本站自托管头像（/media/avatars/xxx.jpg）原样返回：它本来就是我们自己发的图，
+    # 包进代理只会多一次解码转发，还把 immutable 缓存头换成代理的 7 天。
+    # `//host/path` 是协议相对外链，不在这一支（由 avatar_resolver 的白名单正则挡掉）。
+    if url.startswith("/") and not url.startswith("//"):
+        return url
+
     # 仅当 http(s):// 时校验 host
     if url.lower().startswith(("http://", "https://")):
         from urllib.parse import urlparse
@@ -64,18 +70,40 @@ def wrap_proxy(original_url: str | None) -> str | None:
     return _PROXY_PREFIX + b64
 
 
+def resolved_for_profile(
+    *,
+    avatar: str | None = None,
+    github: str | None = None,
+    qq: str | None = None,
+    email: str | None = None,
+    avatar_source: str | None = "auto",
+) -> str | None:
+    """头像字段（不必是 ORM 对象）→ resolved_avatar_url。
+
+    列表类接口只投影了展示列（`select(User.avatar, ...)`）时没有 ORM 实例，
+    就按这一支传字段；有完整 User 对象的一律走 resolved_for_user。
+    """
+    inp = AvatarInput(
+        avatar_source=(avatar_source or "auto"),  # type: ignore[arg-type]
+        avatar=avatar,
+        github=github,
+        qq=qq,
+        email=email,
+    )
+    return wrap_proxy(_resolve_avatar(inp))
+
+
 def resolved_for_user(user) -> str | None:
     """User ORM instance → 包装代理后的 resolved_avatar_url。user=None 也安全返回 None。"""
     if user is None:
         return None
-    inp = AvatarInput(
-        avatar_source=getattr(user, "avatar_source", "auto") or "auto",
+    return resolved_for_profile(
         avatar=getattr(user, "avatar", None),
         github=getattr(user, "github", None),
         qq=getattr(user, "qq", None),
         email=getattr(user, "email", None),
+        avatar_source=getattr(user, "avatar_source", "auto"),
     )
-    return wrap_proxy(_resolve_avatar(inp))
 
 
 def _user_relationship_safe(orm_obj, rel_name: str = "user"):

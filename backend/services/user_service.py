@@ -58,7 +58,19 @@ PREFERENCE_WRITABLE_FIELDS: frozenset[str] = frozenset(
 # 会被嵌进文章详情缓存 author 段的展示字段（见 blog._build_author_data）。
 # 只有这些字段变更才需要顺带失效文章缓存；email/qq/password 等隐私字段不进 author 段。
 _AUTHOR_VISIBLE_FIELDS: frozenset[str] = frozenset(
-    {"username", "nickname", "avatar", "bio", "website", "github", "cover_image"}
+    {
+        "username",
+        "nickname",
+        "avatar",
+        "bio",
+        "website",
+        "github",
+        "cover_image",
+        # qq / avatar_source 决定 resolved_avatar_url 走哪条解析分支：漏进这个集合，
+        # 用户改 QQ 号或切换头像来源后接口回 200，但文章列表/详情缓存仍是旧头像。
+        "qq",
+        "avatar_source",
+    }
 )
 
 

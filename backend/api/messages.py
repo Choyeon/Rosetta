@@ -7,6 +7,7 @@ from sqlalchemy import and_, case, desc, func, or_, select, update
 from backend.core.auth import DB, CurrentUser
 from backend.models.message import PrivateMessage
 from backend.models.user import User
+from backend.services._avatar_helpers import resolved_for_user
 
 router = APIRouter(prefix="/messages", tags=["私信"])
 
@@ -22,7 +23,11 @@ class MessagePeerUserOut(BaseModel):
     id: int = Field(..., description="对端用户 ID")
     username: str = Field(..., description="用户名")
     nickname: str | None = Field(None, description="昵称，未设置时为 null")
-    avatar: str | None = Field(None, description="头像 URL，未设置时为 null")
+    avatar: str | None = Field(None, description="原始头像列，未设置时为 null")
+    resolved_avatar_url: str | None = Field(
+        None,
+        description="后端头像解析链算出的真实头像（代理 URL 或本站相对路径），未解析出任何来源时为 null",
+    )
 
 
 class MessageLastMessageOut(BaseModel):
@@ -198,6 +203,7 @@ async def get_conversations(
                             "username": other_user.username,
                             "nickname": other_user.nickname,
                             "avatar": other_user.avatar,
+                            "resolved_avatar_url": resolved_for_user(other_user),
                         },
                         "last_message": {
                             "content": msg.content[:100] + "..."

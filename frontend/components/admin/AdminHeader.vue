@@ -636,6 +636,7 @@ watch(
                       >
                         <UserAvatar
                           :avatar="n.actor.avatar || null"
+                          :resolved-avatar-url="n.actor.resolved_avatar_url || null"
                           :seed="n.actor.username"
                           :name="n.actor.nickname || n.actor.username"
                           :size="16"

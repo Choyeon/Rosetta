@@ -335,7 +335,9 @@ const activityList = computed<ActivityItem[]>(() => {
       type: safeType,
       content: (typeof r.content === 'string' && r.content) || '',
       author_name: authorName || undefined,
-      author_avatar: ((typeof author.avatar === 'string' && author.avatar) || (typeof author.resolved_avatar_url === 'string' && author.resolved_avatar_url)) || undefined,
+      // 后端解析链的 resolved_avatar_url 优先：avatar 是原始列，
+      // 用 GitHub/QQ/Gravatar 头像的作者那里是 null，反过来取就会一路掉到字母兜底。
+      author_avatar: ((typeof author.resolved_avatar_url === 'string' && author.resolved_avatar_url) || (typeof author.avatar === 'string' && author.avatar)) || undefined,
       likes_count: typeof r.likes_count === 'number' ? r.likes_count : 0,
       created_at: (typeof r.created_at === 'string' && r.created_at) || new Date().toISOString()
     }
