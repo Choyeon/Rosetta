@@ -81,6 +81,9 @@ export interface Post {
   author?: PublicUser
   category?: Category
   tags: Tag[]
+  /** 所属系列（章节容器）：编辑器回填后 PUT 必须原样带上，否则一次普通编辑就把文章踢出系列 */
+  series_id?: number | null
+  series_order?: number | null
   status: 'draft' | 'published' | 'archived' | 'scheduled'
   /** 仅 status=scheduled 时有值；库内为 UTC，编辑表单按 UTC 字面值回填。 */
   scheduled_at?: string
@@ -112,6 +115,8 @@ export interface PostCreate {
   // 这个操作在类型层面就写不出来。
   category_id?: number | null
   tag_ids?: number[]
+  series_id?: number | null
+  series_order?: number
   status?: 'draft' | 'published' | 'scheduled'
   visibility?: 'public' | 'password' | 'private'
   scheduled_at?: string

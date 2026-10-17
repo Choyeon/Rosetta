@@ -1404,9 +1404,15 @@ async def create_post(
     )
     slug = post_data.slug or generate_slug(zh_title)
 
-    existing = await db.execute(select(Post).where(Post.slug == slug))
-    if existing.scalar_one_or_none():
-        slug = f"{slug}-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    # slug 冲突不再静默改名（旧行为：加一段时间戳后缀）。作者按下发布时以为地址是
+    # /posts/my-post，实际拿到 /posts/my-post-20261017120000，分享出去才对不上；
+    # 而 Post.slug 上有唯一约束，改名只是把冲突藏起来，拒绝才能让编辑器提示出来。
+    existing = await db.scalar(select(Post.id).where(Post.slug == slug))
+    if existing is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="该 slug 已被其它文章占用，请改用其它别名",
+        )
 
     # 处理密码加密
     password = None
@@ -1636,6 +1642,19 @@ async def update_post(
                 else f"{previous_status} → {new_status} 变更前"
             ),
         )
+
+    # 改名撞到别的文章时给 409，而不是让唯一索引抛 IntegrityError（表现为 500 +
+    # 「服务器内部错误」，作者不知道是 slug 的问题）
+    new_slug = update_data.get("slug")
+    if new_slug and new_slug != post.slug:
+        taken = await db.scalar(
+            select(Post.id).where(Post.slug == new_slug, Post.id != post.id)
+        )
+        if taken is not None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="该 slug 已被其它文章占用，请改用其它别名",
+            )
 
     apply_partial_update(post, update_data)
 

@@ -329,6 +329,92 @@ class TestPostCreate:
         assert response.status_code in [401, 403]
 
 
+    @pytest.mark.asyncio
+    async def test_create_post_duplicate_slug_is_rejected_not_renamed(
+        self, client: AsyncClient, admin_headers: dict, test_post: Post
+    ):
+        """slug 撞车必须回 409，不能再静默改名。
+
+        旧行为：撞车时给 slug 加一段时间戳后缀。作者按下发布时以为地址是
+        /posts/<他写的 slug>，实际拿到 /posts/<slug>-20261017120000 —— 不报错、
+        不提示，分享出去才对不上；而 Post.slug 本就有唯一约束，改名只是把冲突藏起来。
+        """
+        response = await client.post(
+            "/api/blog/posts",
+            headers=admin_headers,
+            json={
+                "title": {"zh": "撞名文章"},
+                "slug": test_post.slug,
+                "content": {"zh": "内容"},
+                "status": "draft",
+            },
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_update_post_to_taken_slug_is_rejected(
+        self, client: AsyncClient, admin_headers: dict, test_post: Post, db_session
+    ):
+        """改名撞到别人的 slug 时给 409，而不是让唯一索引抛 IntegrityError（表现是 500）。"""
+        other = Post(
+            title={"zh": "另一篇"},
+            slug="the-other-slug",
+            content={"zh": "内容"},
+            author_id=test_post.author_id,
+            status="published",
+        )
+        db_session.add(other)
+        await db_session.flush()
+
+        response = await client.put(
+            f"/api/blog/posts/{test_post.id}",
+            headers=admin_headers,
+            json={"slug": "the-other-slug"},
+        )
+        assert response.status_code == 409
+
+    @pytest.mark.asyncio
+    async def test_update_post_keeps_own_slug(
+        self, client: AsyncClient, admin_headers: dict, test_post: Post
+    ):
+        """编辑器每次 PUT 都整份提交，slug 原样回传不能被判成"和别人撞名"。"""
+        response = await client.put(
+            f"/api/blog/posts/{test_post.id}",
+            headers=admin_headers,
+            json={"slug": test_post.slug, "title": {"zh": "改标题"}},
+        )
+        assert response.status_code == 200
+
+
+class TestPostSeriesRoundTrip:
+    """系列章节必须能被编辑器读回来再写回去。
+
+    GET /blog/posts/{id}/edit 不回 series_id 时，编辑器 PUT 整份表单就等于每次都提交
+    "没有系列"，一次普通的改标题就把文章踢出系列（前台系列页章节目录随之清空）。
+    """
+
+    @pytest.mark.asyncio
+    async def test_edit_endpoint_exposes_series(self, client: AsyncClient, admin_headers: dict, test_post: Post, db_session):
+        from backend.models import PostSeries
+
+        series = PostSeries(title={"zh": "测试系列"}, slug="round-trip-series")
+        db_session.add(series)
+        await db_session.flush()
+
+        put = await client.put(
+            f"/api/blog/posts/{test_post.id}",
+            headers=admin_headers,
+            json={"series_id": series.id, "series_order": 3},
+        )
+        assert put.status_code == 200
+
+        got = await client.get(f"/api/blog/posts/{test_post.id}/edit", headers=admin_headers)
+        assert got.status_code == 200
+        body = got.json()
+        assert body["series_id"] == series.id
+        assert body["series_order"] == 3
+
+
 class TestPostUpdate:
     """更新文章测试"""
 

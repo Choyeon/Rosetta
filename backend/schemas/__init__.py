@@ -941,6 +941,10 @@ class PostEditResponse(BaseModel):
     scheduled_at: datetime | None = None
     category: dict[str, Any] | None = None
     tags: list[dict[str, Any]] = []
+    # 编辑器必须能还原「这篇属于哪个系列的第几章」：不回填就等于每次 PUT 都把
+    # series_id 提交成 null，系列页的章节目录会在一次普通编辑后清空。
+    series_id: int | None = None
+    series_order: int | None = None
     is_pinned: bool
     allow_comments: bool
     meta_description: dict[str, str] | None = None
@@ -980,6 +984,8 @@ class PostEditResponse(BaseModel):
             scheduled_at=post.scheduled_at,
             category=category,
             tags=tags,
+            series_id=post.series_id,
+            series_order=post.series_order,
             is_pinned=post.is_pinned or False,
             allow_comments=post.allow_comments if hasattr(post, "allow_comments") else True,
             meta_description=post.meta_description,

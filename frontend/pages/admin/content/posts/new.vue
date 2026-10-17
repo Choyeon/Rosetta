@@ -14,12 +14,19 @@ definePageMeta({ ssr: false, layout: 'admin' })
 const router = useRouter()
 const toast = useToast()
 
-const onSubmitSuccess = async (_payload: unknown, isNew: boolean) => {
-  if (isNew) {
-    toast.success('创建成功')
-    await new Promise(r => setTimeout(r, 400))
-    router.push('/admin/content/posts')
+const onSubmitSuccess = async (payload: unknown, isNew: boolean) => {
+  if (!isNew) return
+  const saved = payload as { id?: number, status?: string }
+  // 存草稿 = 这篇已经有身份了。继续留在 /new 的话，下一次保存又是一次 POST：
+  // slug 唯一约束在，后端要么撞 409 要么（旧行为）静默改名造出一篇重复文章。
+  // 所以换成编辑态地址，后续保存走 PUT /blog/posts/{id}。
+  if (saved.status === 'draft' && saved.id) {
+    await router.replace(`/admin/content/posts/${saved.id}/edit`)
+    return
   }
+  toast.success('创建成功')
+  await new Promise(r => setTimeout(r, 400))
+  router.push('/admin/content/posts')
 }
 </script>
 

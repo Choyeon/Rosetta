@@ -62,12 +62,14 @@ const loadData = async () => {
   }
 }
 
-const onSubmitSuccess = async (_payload: unknown, isNew: boolean) => {
-  if (!isNew) {
-    toast.success('保存成功')
-    await new Promise(r => setTimeout(r, 400))
-    router.push('/admin/content/posts')
-  }
+const onSubmitSuccess = async (payload: unknown, isNew: boolean) => {
+  if (isNew) return
+  // 存草稿留在原页继续写（PostForm 已 toast「草稿保存成功」并把当前表单认作干净基线）；
+  // 跳列表会让作者丢掉光标位置和滚动位置，接着改还得重新点开。
+  if ((payload as { status?: string }).status === 'draft') return
+  toast.success('保存成功')
+  await new Promise(r => setTimeout(r, 400))
+  router.push('/admin/content/posts')
 }
 
 const retry = () => {

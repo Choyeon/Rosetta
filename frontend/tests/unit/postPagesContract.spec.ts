@@ -147,6 +147,55 @@ describe('后端文章列表接口', () => {
 })
 
 /**
+ * 文章编辑流程的收敛契约：草稿不踢出编辑器、slug 冲突不静默改名、系列能读回来。
+ *
+ * 这三条都属"接口回 200、用户看不出来"的一类：只有真去存一次草稿 / 撞一次名 /
+ * 改一次标题才知道，所以钉成静态扫描。
+ */
+describe('文章编辑流程收敛', () => {
+  const newPage = read('pages/admin/content/posts/new.vue')
+  const editPage = read('pages/admin/content/posts/[id]/edit.vue')
+  const editSchema = read('../backend/schemas/__init__.py')
+
+  it('新建页存完草稿换成编辑态地址（留在 /new 会让下一次保存再 POST 一篇）', () => {
+    expect(postForm).toMatch(/const settleAfterSave = /)
+    expect(newPage).toMatch(/router\.replace\(`\/admin\/content\/posts\/\$\{saved\.id\}\/edit`\)/)
+  })
+
+  it('编辑页存草稿留在原页继续写，只有发布/定时才跳列表', () => {
+    expect(editPage).toMatch(/status === 'draft'\) return/)
+    // 留在原页时 submitted 必须保持 false：置真会一并关掉离开确认、beforeunload
+    // 与卸载时写本地草稿，之后所有改动都变成"静默丢稿"
+    expect(postForm).toMatch(/if \(props\.mode === 'edit' && status === 'draft'\)/)
+    expect(postForm).toMatch(/initialStateSnapshot\.value = JSON\.stringify\(form\)\n\s*try \{/)
+  })
+
+  it('系列与章节序号显式提交，且编辑端点会读回来', () => {
+    expect(postForm).toMatch(/series_id: form\.series_id \?\? null,/)
+    expect(postForm).toMatch(/series_order: form\.series_order \|\| 0,/)
+    expect(postForm).toMatch(/form\.series_id = data\.series_id \?\? null/)
+    expect(editSchema).toMatch(/series_id=post\.series_id,/)
+    expect(editSchema).toMatch(/series_order=post\.series_order,/)
+  })
+
+  it('slug 冲突改成明确拒绝，不再加时间戳后缀把冲突藏起来', () => {
+    expect(blogApi).not.toMatch(/strftime\('%Y%m%d%H%M%S'\)/)
+    expect(blogApi).toMatch(/该 slug 已被其它文章占用/)
+    // PUT 路径也要挡：Post.slug 有唯一约束，不挡就是 IntegrityError → 500
+    expect(blogApi).toMatch(/Post\.slug == new_slug, Post\.id != post\.id/)
+  })
+
+  it('未发布文章点预览先说明前台会 404（预览读的是库里已保存的那一篇）', () => {
+    expect(postForm).toMatch(/if \(form\.status !== 'published'\)/)
+  })
+
+  it('分类/标签色点的缺省色走主题令牌，不写死十六进制', () => {
+    expect(postForm).not.toMatch(/#94a3b8/)
+    expect(postForm).toMatch(/:class="c\.color \? '' : 'bg-muted-foreground\/40'/)
+  })
+})
+
+/**
  * 密码保护文章的详情页闸门。
  *
  * 这条链路曾有三个各自独立、且都只在运行时才暴露的缺陷（生产表现：点进加密文章

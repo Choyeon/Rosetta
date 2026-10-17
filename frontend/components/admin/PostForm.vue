@@ -20,8 +20,10 @@ import { usePosts } from '~~/composables/usePosts'
 import {
   fetchAdminCategories,
   fetchAdminTags,
+  fetchAdminSeries,
   type AdminCategory,
-  type AdminTag
+  type AdminTag,
+  type AdminSeries
 } from '~~/composables/useAdminManage'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
@@ -86,6 +88,10 @@ const form = reactive({
   password: '',
   category_id: null as number | null,
   tag_ids: [] as number[],
+  // 系列章节：后端 PostEditResponse 已回填这两列，PUT 也必须始终带上，
+  // 否则「改一次标题保存」就把文章踢出系列（系列页章节目录清空）。
+  series_id: null as number | null,
+  series_order: 0,
   excerpt: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
   cover_image: '',
   meta_title: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
@@ -96,6 +102,7 @@ const form = reactive({
 const initialStateSnapshot = ref<string>('')
 const categories = ref<AdminCategory[]>([])
 const tags = ref<AdminTag[]>([])
+const seriesList = ref<AdminSeries[]>([])
 const categoriesLoading = ref(false)
 const tagsLoading = ref(false)
 const submitting = ref(false)
@@ -125,6 +132,11 @@ const visibilityOptions = [
   { value: 'password' as const, label: '密码保护', description: '需要密码才能查看', icon: Lock },
   { value: 'private' as const, label: '私密', description: '仅管理员可见', icon: EyeOff }
 ]
+
+// 系列选择器里的中文标题：AdminSeries.name 实际是后端 title 的多语言 dict
+const seriesOptions = computed(() =>
+  seriesList.value.map(s => ({ id: s.id, label: getLocalizedStr(s.name) || s.slug }))
+)
 
 const slugSource = computed(() => slugSourceTitle(form.title))
 
@@ -167,6 +179,14 @@ const loadTags = async () => {
   }
 }
 
+const loadSeries = async () => {
+  try {
+    seriesList.value = await fetchAdminSeries()
+  } catch {
+    // apiFetch 已统一 toast 错误，不再二次弹
+  }
+}
+
 const applyInitialData = (data: Post) => {
   form.title = normalizeI18nDict(data.title)
   form.slug = data.slug
@@ -187,6 +207,8 @@ const applyInitialData = (data: Post) => {
   initiallyPasswordProtected.value = form.visibility === 'password'
   form.category_id = data.category?.id ?? null
   form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
+  form.series_id = data.series_id ?? null
+  form.series_order = data.series_order ?? 0
   form.excerpt = normalizeI18nDict(data.excerpt)
   form.cover_image = data.cover_image || ''
   form.meta_title = normalizeI18nDict(data.meta_title)
@@ -329,6 +351,8 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
     // 于是「无分类」「清除封面」点了没反应。null / '' 才是"我要清掉它"。
     category_id: form.category_id ?? null,
     tag_ids: form.tag_ids,
+    series_id: form.series_id ?? null,
+    series_order: form.series_order || 0,
     excerpt: toI18nPayload(form.excerpt),
     cover_image: form.cover_image ?? ''
   }
@@ -388,6 +412,26 @@ const markSubmitted = () => {
   }
 }
 
+// 保存后的收尾分两条路：草稿**留在编辑器里继续写**（把当前表单认作新的干净基线），
+// 发布/定时才交还给外层页面跳列表。
+// 旧行为是无条件 submitted=true + 立刻跳列表，两处毛病：
+// 1) 存一次草稿就被踢出编辑器，接着写要重新点开、还会撞上"未保存"确认；
+// 2) 若页面选择不跳（编辑态存草稿），submitted 已永久为真 → 之后的所有改动都不再
+//    触发离开确认 / beforeunload / 卸载时写本地草稿，关标签页等于静默丢稿。
+const settleAfterSave = (data: unknown) => {
+  const status = (data as { status?: string } | null)?.status
+  if (props.mode === 'edit' && status === 'draft') {
+    initialStateSnapshot.value = JSON.stringify(form)
+    try {
+      localStorage.removeItem(draftLocalStorageKey.value)
+    } catch {
+      /* storage disabled */
+    }
+    return
+  }
+  markSubmitted()
+}
+
 const saveDraft = async () => {
   if (!validateBase()) return
   savingDraft.value = true
@@ -395,13 +439,13 @@ const saveDraft = async () => {
     const payload = buildPayload('draft')
     if (props.mode === 'new') {
       const data = await createPost(payload)
-      markSubmitted()
       toast.success('草稿保存成功')
+      settleAfterSave(data)
       emits('submitSuccess', data, true)
     } else if (props.postId) {
       const data = await updatePost(props.postId, payload)
-      markSubmitted()
       toast.success('草稿保存成功')
+      settleAfterSave(data)
       emits('submitSuccess', data, false)
     }
   } catch {
@@ -418,11 +462,11 @@ const publishPost = async () => {
     const payload = buildPayload(form.status)
     if (props.mode === 'new') {
       const data = await createPost(payload)
-      markSubmitted()
+      settleAfterSave(data)
       emits('submitSuccess', data, true)
     } else if (props.postId) {
       const data = await updatePost(props.postId, payload)
-      markSubmitted()
+      settleAfterSave(data)
       emits('submitSuccess', data, false)
     }
   } catch {
@@ -433,11 +477,17 @@ const publishPost = async () => {
 }
 
 const openPreview = () => {
-  if (form.slug) {
-    window.open(`/posts/${form.slug}`, '_blank')
-  } else {
+  if (!form.slug) {
     toast.warning('请先输入 slug 后再预览')
+    return
   }
+  // 预览打开的是**已保存到库里**的那一篇，且只有 published 能公开访问：
+  // 草稿/定时走的是同一道可见性闸门（post_is_publicly_visible），新标签页只会看到 404。
+  // 不提示的话作者以为是"编辑器没生效"，回头去改表单。
+  if (form.status !== 'published') {
+    toast.warning('预览打开的是已保存的公开页面；未发布的文章前台会显示 404，请先保存草稿再发布')
+  }
+  window.open(`/posts/${form.slug}`, '_blank')
 }
 
 const onKeyDown = (e: KeyboardEvent) => {
@@ -497,7 +547,7 @@ onMounted(async () => {
   document.addEventListener('click', onClickOutsideTagCombobox)
 
   checkExistingDraft()
-  await Promise.all([loadCategories(), loadTags()])
+  await Promise.all([loadCategories(), loadTags(), loadSeries()])
 
   if (props.initialData) {
     applyInitialData(props.initialData)
@@ -754,7 +804,8 @@ onBeforeUnmount(() => {
                     <div class="flex items-center gap-2">
                       <span
                         class="size-2.5 rounded-full inline-block"
-                        :style="{ background: c.color || '#94a3b8' }"
+                        :class="c.color ? '' : 'bg-muted-foreground/40'"
+                        :style="c.color ? { background: c.color } : undefined"
                       />
                       {{ getLocalizedStr(c.name) }}
                     </div>
@@ -817,7 +868,8 @@ onBeforeUnmount(() => {
                     <div class="flex items-center gap-2">
                       <span
                         class="size-2 rounded-full inline-block"
-                        :style="{ background: t.color || '#94a3b8' }"
+                        :class="t.color ? '' : 'bg-muted-foreground/40'"
+                        :style="t.color ? { background: t.color } : undefined"
                       />
                       {{ getLocalizedStr(t.name) }}
                       <span class="text-xs text-muted-foreground">({{ t.post_count }})</span>
@@ -834,6 +886,54 @@ onBeforeUnmount(() => {
                     无匹配标签
                   </div>
                 </div>
+              </div>
+            </div>
+
+            <div class="flex items-end gap-2">
+              <div class="flex-1 min-w-0">
+                <Label
+                  for="post-form-series"
+                  class="text-xs text-muted-foreground mb-1 block"
+                >系列</Label>
+                <Select
+                  :model-value="form.series_id?.toString() ?? '0'"
+                  @update:model-value="(v: string | undefined) => form.series_id = Number(v) || null"
+                >
+                  <SelectTrigger
+                    id="post-form-series"
+                    class="h-9 rounded-[10px]"
+                  >
+                    <SelectValue placeholder="无系列" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="0">
+                      无系列
+                    </SelectItem>
+                    <SelectItem
+                      v-for="s in seriesOptions"
+                      :key="s.id"
+                      :value="s.id.toString()"
+                    >
+                      {{ s.label }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div
+                v-if="form.series_id"
+                class="w-24"
+              >
+                <Label
+                  for="post-form-series-order"
+                  class="text-xs text-muted-foreground mb-1 block"
+                >序号</Label>
+                <Input
+                  id="post-form-series-order"
+                  v-model.number="form.series_order"
+                  type="number"
+                  min="0"
+                  class="h-9 rounded-[10px] text-sm"
+                />
               </div>
             </div>
 
