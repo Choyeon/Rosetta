@@ -465,8 +465,15 @@ const handleSetLocale = async (code: string) => {
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div class="text-xs text-muted-foreground text-center md:text-left">
           <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
-          <template v-if="showCopyright">{{ copyrightLine }}</template>
-          <span v-if="showPoweredBy" class="block">{{ t('footer.poweredBy', 'Powered by Rosetta') }}</span>
+          <template v-if="showCopyright">
+            {{ copyrightLine }}
+          </template>
+          <span
+            v-if="showPoweredBy"
+            class="block"
+          >
+            {{ t('footer.poweredBy', 'Powered by Rosetta') }}
+          </span>
         </div>
         <!-- Quick locale switch (with flags) -->
         <div class="flex items-center gap-2 flex-wrap">
@@ -538,8 +545,15 @@ const handleSetLocale = async (code: string) => {
       <!-- 版权 -->
       <div class="text-xs text-muted-foreground">
         <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
-        <template v-if="showCopyright">{{ copyrightLine }}</template>
-        <span v-if="showPoweredBy" class="block">{{ t('footer.poweredBy', 'Powered by Rosetta') }}</span>
+        <template v-if="showCopyright">
+          {{ copyrightLine }}
+        </template>
+        <span
+          v-if="showPoweredBy"
+          class="block"
+        >
+          {{ t('footer.poweredBy', 'Powered by Rosetta') }}
+        </span>
       </div>
     </div>
   </footer>
