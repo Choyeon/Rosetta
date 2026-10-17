@@ -157,6 +157,7 @@ class TestAuditRowIsAttributable:
         self,
         client: AsyncClient,
         admin_headers: dict,
+        admin_user: User,
         test_user: User,
         test_category: Category,
         db_session: AsyncSession,
@@ -182,7 +183,7 @@ class TestAuditRowIsAttributable:
                 .limit(1)
             )
         ).scalar_one()
-        assert log.user_id == test_user.id
+        assert log.user_id == admin_user.id
         assert log.resource_type == "post"
         assert log.request_path == f"/api/admin/trash/{entry['id']}/restore"
         assert log.request_method == "POST"
