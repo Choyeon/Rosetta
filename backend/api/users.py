@@ -58,7 +58,7 @@ from backend.schemas import (
 from backend.services.content_renderer import render_excerpt
 from backend.services.email_service import get_email_service
 from backend.services.user_service import get_user_service
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, ensure_aware
 
 router = APIRouter(tags=["用户"])
 
@@ -262,8 +262,12 @@ async def login(
     # Step 1: 即使账号不存在也做延迟/锁定检查？这里不泄露账号是否存在，仅对已知 user 做锁定
     if user is not None:
         now = datetime.now(UTC)
-        if user.locked_until is not None and user.locked_until > now:
-            wait_secs = int((user.locked_until - now).total_seconds())
+        # SQLite 会把 DateTime(timezone=True) 的 tzinfo 丢掉（PG 读回是 aware），
+        # 不归一化的话下面两处比较直接抛 TypeError：账号一旦锁定，之后每次登录都
+        # 500，而"锁定到期自动解锁"这支也永远走不到，等于把账号永久锁死。
+        locked_until = ensure_aware(user.locked_until)
+        if locked_until is not None and locked_until > now:
+            wait_secs = int((locked_until - now).total_seconds())
             headers = {"Retry-After": str(wait_secs)}
             with suppress(Exception):
                 await log_operation(
@@ -288,7 +292,7 @@ async def login(
                 headers=headers,
             )
         # 锁定到期重置失败计数
-        if user.locked_until is not None and user.locked_until <= now:
+        if locked_until is not None and locked_until <= now:
             user.failed_login_attempts = 0
             user.locked_until = None
             await db.flush()

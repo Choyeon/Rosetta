@@ -5,7 +5,20 @@ UTC = timezone.utc
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["UTC", "parse_utc_date", "timedelta", "utc_now_naive"]
+__all__ = ["UTC", "ensure_aware", "parse_utc_date", "timedelta", "utc_now_naive"]
+
+
+def ensure_aware(value: datetime | None) -> datetime | None:
+    """无时区的时间一律按 UTC 解释（与 ``services/post_access.py`` 同口径）。
+
+    同一列 ``DateTime(timezone=True)`` 在 PG 下读回是 aware，在 SQLite 下 tz 会被
+    丢弃读回 naive。拿 naive 去和 ``datetime.now(UTC)`` 比较直接抛 ``TypeError``——
+    实测表现是登录锁定一旦落库，SQLite 部署下之后每次登录都 500，而"锁定到期
+    自动解锁"那支同样走不到，账号等于永久锁死。
+    """
+    if value is None or value.tzinfo is not None:
+        return value
+    return value.replace(tzinfo=UTC)
 
 
 def utc_now_naive() -> datetime:
