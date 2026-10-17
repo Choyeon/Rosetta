@@ -114,7 +114,9 @@ const { visible: visibleAnns, dismiss: dismissAnn } = useAnnouncementBar(bannerR
  */
 const showBackToTop = computed(() => site.footer.value.show_back_to_top !== false)
 const scrolled = ref(false)
-const onScroll = () => { scrolled.value = window.scrollY > 600 }
+const onScroll = () => {
+  scrolled.value = window.scrollY > 600
+}
 const scrollToTop = () => {
   const behavior: ScrollBehavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
     ? 'auto'

@@ -26,6 +26,6 @@ describe('站点设置开关必须有真实消费点', () => {
 
   it('页脚「回到顶部」读取 footer.show_back_to_top', () => {
     expect(defaultLayout).toContain('site.footer.value.show_back_to_top')
-    expect(defaultLayout).toContain("t('a11y.backToTop')")
+    expect(defaultLayout).toMatch(/aria-label="t\('a11y\.backToTop'\)"/)
   })
 })
