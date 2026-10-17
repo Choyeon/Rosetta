@@ -45,10 +45,12 @@ const { localeHref } = useLocaleLink()
 /**
  * Header 导航栏：
  *  · 品牌为纯文字（logo 图片由各主题 style.css 决定是否展示）
- *  · 桌面主菜单：极简主题（窄栏 760~880px）只放前 5 项、其余收进「更多」下拉；
- *    默认主题（宽栏）完整平铺全部导航项——主题骨架差异走 MINIMAL_THEME_SLUGS 分支，
- *    不允许一个主题的排版约束泄漏到另一个主题
- *  · 移动端一律折叠进 Sheet
+ *  · 桌面主菜单（lg 起，版心最窄的一档实测能容纳 5 项 + 「更多」）：前 NAV_PRIMARY_MAX 项常驻，
+ *    其余收进「更多」下拉；默认主题另有平铺档（见 NAV_FLAT_MAX 与 flatOverflowAtWide）。
+ *    主题骨架差异走 MINIMAL_THEME_SLUGS 分支，不允许一个主题的排版约束泄漏到另一个主题。
+ *  · 每个导航项都带 whitespace-nowrap + shrink-0：中文标签可以在任意字符处断行，
+ *    一旦 flex 容器把项压到内容宽度以下就会竖排成"留言板"三行，把 h-16 的单行顶栏撑坏。
+ *  · lg 以下一律折叠进 Sheet（与导航同一个断点，两处必须一起改，否则中间带宽屏既无导航也无汉堡）
  *  · 右侧控件：搜索 / 明暗切换 / 语言切换（文字标签）/ 登录态
  */
 const ft = useFrontendTheme()
@@ -231,14 +233,20 @@ const isActive = (to: string) => {
   return current === to || current.startsWith(to + '/')
 }
 
-// ===== 导航分组：仅极简主题（窄栏）把第 6 项起收进「更多」下拉；默认主题全量平铺 =====
-const NAV_PRIMARY_MAX = 5
-const primaryNavItems = computed(() =>
-  isMinimalTheme.value ? navItems.value.slice(0, NAV_PRIMARY_MAX) : navItems.value
+// ===== 导航分组 =====
+// 折叠条数按主题取：极简主题的顶栏 gap 是 1.25rem（默认主题 gap-1 的 5 倍）、品牌字号更大，
+// 1024 宽下第 5 项就已放不下；写死同一个数会让极简主题在小屏笔记本上溢出
+// （导航项 nowrap，溢出表现为「更多」被裁掉 = 那些页面再也进不去）。
+const NAV_PRIMARY_MAX = computed(() => (isMinimalTheme.value ? 4 : 5))
+// 宽屏平铺闸门：默认主题在 2xl（版心 1536）起把溢出项也平铺出来——
+// 溢出项在 SSR HTML 里始终是真实 `<a>`（下拉里的只在展开时存在），平铺让桌面爬虫读到完整内链图。
+// 上限 12：按实测英文标签（最宽的一档）12 项约 944px，仍小于 2xl 下扣掉品牌与控件后的 ~1053px。
+const NAV_FLAT_MAX = 12
+const flatOverflowAtWide = computed(() =>
+  !isMinimalTheme.value && navItems.value.length <= NAV_FLAT_MAX
 )
-const overflowNavItems = computed(() =>
-  isMinimalTheme.value ? navItems.value.slice(NAV_PRIMARY_MAX) : []
-)
+const primaryNavItems = computed(() => navItems.value.slice(0, NAV_PRIMARY_MAX.value))
+const overflowNavItems = computed(() => navItems.value.slice(NAV_PRIMARY_MAX.value))
 const moreActive = computed(() => overflowNavItems.value.some(item => isActive(item.to)))
 
 const handleLogout = async () => {
@@ -278,9 +286,12 @@ const handleSearchClick = () => navigateTo('/search')
         >{{ brandName }}</span>
       </NuxtLink>
 
+      <!-- hidden!/lg:flex! 必须带 important：极简主题在 [data-layout-scope=frontend] 嵌套里写了
+           本导航的 display:flex，编译后选择器权重高于 Tailwind 的 .hidden，
+           不加 ! 的话折叠断点在极简主题下整个失效（手机上同时出现挤压的横排导航和汉堡按钮）。 -->
       <nav
         data-navbar="menu"
-        class="md:flex hidden items-center gap-1 min-w-0"
+        class="hidden! lg:flex! items-center gap-1 min-w-0 overflow-hidden"
       >
         <NuxtLink
           v-for="item in primaryNavItems"
@@ -290,14 +301,33 @@ const handleSearchClick = () => navigateTo('/search')
           :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
           data-navbar="link"
           :class="[
-            'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+            'shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
             isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
           ]"
         >
           {{ item.label }}
         </NuxtLink>
 
-        <!-- 溢出导航：第 6 项起收进「更多」下拉，保持窄栏不拥挤 -->
+        <!-- 溢出导航（默认主题、条数在平铺闸门内）：2xl 起继续平铺，窄处交给下面的「更多」下拉 -->
+        <template v-if="flatOverflowAtWide">
+          <NuxtLink
+            v-for="item in overflowNavItems"
+            :key="`wide-${item.to}`"
+            :to="localeHref(item.to)"
+            :target="item.target"
+            :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
+            data-navbar="link"
+            :class="[
+              'hidden shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground 2xl:inline-flex',
+              isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
+            ]"
+          >
+            {{ item.label }}
+          </NuxtLink>
+        </template>
+
+        <!-- 溢出导航收纳口：第 6 项（极简主题第 5 项）起进下拉，保证顶栏永远是单行；
+             平铺档生效时它只在 2xl 以下出现（上面已平铺） -->
         <DropdownMenu v-if="overflowNavItems.length > 0">
           <DropdownMenuTrigger as-child>
             <button
@@ -306,7 +336,8 @@ const handleSearchClick = () => navigateTo('/search')
               data-navbar-more
               :data-active="moreActive || undefined"
               :class="[
-                'inline-flex items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
+                'inline-flex shrink-0 whitespace-nowrap items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
+                flatOverflowAtWide ? '2xl:hidden' : '',
                 moreActive ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
               ]"
             >
@@ -342,7 +373,7 @@ const handleSearchClick = () => navigateTo('/search')
       <ClientOnly>
         <div
           data-navbar="actions"
-          class="flex items-center gap-1"
+          class="flex shrink-0 items-center gap-1"
         >
           <Tooltip>
             <TooltipTrigger as-child>
@@ -466,7 +497,7 @@ const handleSearchClick = () => navigateTo('/search')
               <Button
                 variant="ghost"
                 size="icon"
-                class="md:hidden"
+                class="lg:hidden"
                 :aria-label="t('common.titleMenu') || 'Menu'"
               >
                 <Menu data-icon="inline-start" />
