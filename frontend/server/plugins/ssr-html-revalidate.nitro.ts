@@ -11,58 +11,66 @@
  * 归一函数幂等：第二次拿到已合规的字符串会返回 null 直接跳过。
  */
 import type { NitroApp } from 'nitropack'
-import type { H3Event } from 'h3'
 import { normalizeHtmlCacheControl } from '../utils/ssrHtmlCacheControl'
 
-function headerOf(headers: unknown, name: string): string | null {
+type HeaderBag = Record<string, unknown> | undefined
+
+type NitroHookShape = {
+  hook: (name: string, handler: (a: unknown, b?: unknown) => void | Promise<void>) => unknown
+}
+
+function headerOf(headers: HeaderBag, name: string): string | null {
   if (!headers || typeof headers !== 'object') return null
-  const bag = headers as Record<string, unknown>
-  for (const key of Object.keys(bag)) {
+  for (const key of Object.keys(headers)) {
     if (key.toLowerCase() !== name) continue
-    const v = bag[key]
+    const v = headers[key]
     if (typeof v === 'string') return v
     if (Array.isArray(v)) return String(v[0] ?? '')
   }
   return null
 }
 
-function setHeader(headers: unknown, name: string, value: string): void {
+function setHeader(headers: HeaderBag, name: string, value: string): void {
   if (!headers || typeof headers !== 'object') return
-  const bag = headers as Record<string, unknown>
-  for (const key of Object.keys(bag)) {
+  for (const key of Object.keys(headers)) {
     if (key.toLowerCase() === name) {
-      bag[key] = value
+      headers[key] = value
       return
     }
   }
-  bag[name] = value
+  headers[name] = value
 }
 
-/** 只动 text/html；其余（JSON / 静态资源 / no-store 页）原样返回 false。 */
-function isHtmlResponse(headers: unknown): boolean {
+/** 只动 text/html；其余（JSON / 静态资源 / no-store 页）一律不碰。 */
+function normalizeHeaders(headers: HeaderBag): void {
   const ct = headerOf(headers, 'content-type') ?? ''
-  return ct.includes('text/html')
+  if (!ct.includes('text/html')) return
+  const fixed = normalizeHtmlCacheControl(headerOf(headers, 'cache-control'))
+  if (fixed) setHeader(headers, 'cache-control', fixed)
 }
 
-function apply(event: H3Event | undefined, headers: unknown): void {
-  if (!isHtmlResponse(headers)) return
-  const fixed = normalizeHtmlCacheControl(headerOf(headers, 'cache-control'))
-  if (!fixed) return
-  setHeader(headers, 'cache-control', fixed)
+function headersFrom(primary?: unknown, fallback?: unknown): HeaderBag {
+  for (const candidate of [primary, fallback]) {
+    const headers = (candidate as { headers?: HeaderBag } | undefined)?.headers
+    if (headers) return headers
+  }
+  return undefined
 }
 
 export default defineNitroPlugin((nitroApp: NitroApp) => {
-  type HeaderCarrier = { headers?: unknown }
+  const hooks = nitroApp.hooks as unknown as NitroHookShape
 
+  // render:response —— Nuxt SSR 真实渲染完成时（缓存复用不触发这一道）。
   try {
-    nitroApp.hooks.hook('render:response' as never, (response: HeaderCarrier, ctx: { event?: H3Event }) => {
-      apply(ctx?.event, response?.headers)
+    hooks.hook('render:response', (response: unknown) => {
+      normalizeHeaders(headersFrom(response))
     })
   } catch { /* 老版本 Nitro 缺该钩子：beforeResponse 仍然生效 */ }
 
+  // beforeResponse —— 每个响应写回 client 前的最后一步，覆盖 swr 缓存复用。
   try {
-    nitroApp.hooks.hook('beforeResponse' as never, (event: H3Event, response: HeaderCarrier) => {
-      apply(event, response?.headers ?? (event as unknown as HeaderCarrier)?.headers)
+    hooks.hook('beforeResponse', (event: unknown, response?: unknown) => {
+      normalizeHeaders(headersFrom(response, event))
     })
   } catch { /* ignore hook unavailability */ }
 })

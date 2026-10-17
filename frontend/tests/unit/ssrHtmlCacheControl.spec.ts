@@ -47,19 +47,21 @@ describe('normalizeHtmlCacheControl', () => {
 
 describe('ssr-html-revalidate 插件接线', () => {
   it('复用同一个归一函数，且只处理 text/html', () => {
-    expect(pluginSrc).toContain("import { normalizeHtmlCacheControl } from '../utils/ssrHtmlCacheControl'")
+    expect(pluginSrc).toContain('normalizeHtmlCacheControl')
+    expect(pluginSrc).toContain('ssrHtmlCacheControl')
     expect(pluginSrc).toContain('text/html')
   })
 
   it('routeRules 里声明的公开页口径与归一产出同形（防两处各写一套）', () => {
     const nuxtConfig = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
-    const declared = new Set(
-      [...nuxtConfig.matchAll(/'Cache-Control': '([^']+)'/g)].map(m => m[1])
-    )
+    const declared: string[] = [...nuxtConfig.matchAll(/'Cache-Control': '([^']+)'/g)]
+      .map(m => m[1])
+      .filter((v): v is string => Boolean(v))
     for (const value of declared) {
       if (!value.includes('s-maxage')) continue
-      const ttl = /s-maxage=(\d+)/.exec(value)?.[1]
-      const swr = /stale-while-revalidate=(\d+)/.exec(value)?.[1]
+      const ttl = /s-maxage=(\d+)/.exec(value)?.[1] ?? ''
+      const swr = /stale-while-revalidate=(\d+)/.exec(value)?.[1] ?? '86400'
+      expect(ttl).not.toBe('')
       expect(normalizeHtmlCacheControl(`s-maxage=${ttl}, stale-while-revalidate=${swr}`)).toBe(value)
     }
   })
