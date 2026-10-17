@@ -2019,7 +2019,7 @@ const pillFor = (a: ActivityItem['accent']) =>
                 { title: '新建文章', icon: PenTool, to: '/admin/content/posts/new', colorVar: '--primary' },
                 { title: '站点设置', icon: Settings, to: '/admin/system/settings', colorVar: '--info' },
                 { title: '媒体库', icon: LibraryBig, to: '/admin/media/library', colorVar: '--success' },
-                { title: '权限管理', icon: ShieldCheck, to: '/admin/roles', colorVar: '--primary' },
+                { title: '用户管理', icon: ShieldCheck, to: '/admin/users', colorVar: '--primary' },
                 { title: '审核评论', icon: MessageSquare, to: '/admin/interaction/comments', colorVar: '--warning' },
                 { title: 'SEO 工具', icon: Search, to: '/admin/tools/seo', colorVar: '--info' }
               ]"

@@ -474,7 +474,12 @@ const handleSearchClick = () => navigateTo('/search')
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
-                <DropdownMenuItem @click="handleAdmin">
+                <!-- 「Dashboard」入口只对 staff 显示：/admin/** 的 admin.global 中间件会把
+                     普通成员静默弹回 /，看得见却点不进去比看不见更让人困惑。 -->
+                <DropdownMenuItem
+                  v-if="authStore.isAdmin"
+                  @click="handleAdmin"
+                >
                   <User data-icon="inline-start" />
                   <span>{{ t('common.dashboard') || 'Dashboard' }}</span>
                 </DropdownMenuItem>
@@ -579,7 +584,7 @@ const handleSearchClick = () => navigateTo('/search')
                     </div>
                   </div>
                   <div class="flex flex-col gap-1">
-                    <SheetClose as-child>
+                    <SheetClose v-if="authStore.isAdmin" as-child>
                       <Button
                         variant="ghost"
                         size="sm"
@@ -613,6 +618,17 @@ const handleSearchClick = () => navigateTo('/search')
                       >
                         <MessageSquare data-icon="inline-start" />
                         {{ t('messages.title') }}
+                      </Button>
+                    </SheetClose>
+                    <SheetClose as-child>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="justify-start"
+                        @click="navigateTo('/settings')"
+                      >
+                        <Settings data-icon="inline-start" />
+                        {{ t('common.settings') || '设置' }}
                       </Button>
                     </SheetClose>
                     <Button

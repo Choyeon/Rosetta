@@ -1320,6 +1320,7 @@
     "desc": "旅途、日常、光影。用镜头定格的每一片时间切片。",
     "photos": "张",
     "noDesc": "暂无描述",
+    "loadFailed": "相册加载失败",
     "noAlbums": "还没有上传相册",
     "photosCountHint": "共 {count} 张照片 · 按 {sortOrder} 排序",
     "hint": "点击任意图片可放大查看。",
@@ -1341,6 +1342,7 @@
     "startPrompt": "开始搜索",
     "startDesc": "在上方输入关键词，支持标题、正文、标签和分类全文检索。",
     "resultCount": "找到 {count} 条与「{keyword}」相关的结果",
+    "loadFailed": "搜索失败，请稍后重试",
     "noResults": "没有找到匹配的内容",
     "noResultsDesc": "没有包含「{keyword}」的文章，试试换一个关键词，或者清除搜索查看全部。"
   },

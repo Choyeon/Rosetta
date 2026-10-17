@@ -1320,6 +1320,7 @@
     "desc": "Travels, daily life, light and shadow. Slices of time frozen through the lens.",
     "photos": "photos",
     "noDesc": "No description",
+    "loadFailed": "Failed to load albums",
     "noAlbums": "No albums yet",
     "photosCountHint": "{count} photos · sorted by {sortOrder}",
     "hint": "Click any photo to view it enlarged.",
@@ -1341,6 +1342,7 @@
     "startPrompt": "Start searching",
     "startDesc": "Enter keywords above to search across titles, bodies, tags and categories.",
     "resultCount": "Found {count} result(s) related to \"{keyword}\"",
+    "loadFailed": "Search failed, please try again",
     "noResults": "No matches found",
     "noResultsDesc": "No articles contain \"{keyword}\". Try another keyword or clear the search to see everything."
   },

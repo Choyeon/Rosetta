@@ -3,7 +3,7 @@
 
   契约与取舍：
   · 后端 /admin/announcements 有意忽略分页参数返回全量（故本页刻意无分页器）；列表走
-    silentApiFetch 不自动 toast，错误态必须由本页自行呈现。
+    silentApiFetch 会把失败咽成 null（页面看起来像"没有公告"），所以列表改走 apiFetch：失败即 reject。
   · announcements 是 shallowRef——开关等单字段更新必须 map 整体替换行引用才会触发渲染。
   · title/content 恒为明文字符串（不是 i18n dict），删掉旧的 displayField 兼容分支。
   · 排期（start_time / end_time）与排序（sort_order）后端一直支持，但此前 UI 上完全不可达：
@@ -46,7 +46,7 @@
           </div>
         </div>
 
-        <!-- silentApiFetch 不会自动 toast，错误状态必须在这一层呈现 -->
+        <!-- apiFetch 已经统一 toast，这里再给一条可重试的行内错误状态 -->
         <div
           v-else-if="loadError"
           class="flex flex-col items-start gap-3 p-6"
@@ -630,12 +630,12 @@ async function fetchData() {
     const res = await fetchAdminAnnouncements()
     announcements.value = res.items ?? []
   } catch (err) {
-    // fetchAdminAnnouncements 走 silentApiFetch：不会自动 toast，需要页面自行提示
+    // fetchAdminAnnouncements 走 apiFetch：失败已经由 useApi 统一 toast，
+    // 这里只补内联的"加载失败 + 重试"面板，不再重复弹一次。
     console.error('fetch announcements error', err)
     announcements.value = []
     loadError.value = true
     loadErrorMsg.value = err instanceof Error ? err.message : ''
-    toast.error('加载公告列表失败')
   } finally {
     loading.value = false
   }

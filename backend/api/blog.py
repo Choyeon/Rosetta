@@ -893,6 +893,7 @@ async def get_recommended_posts(
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
+                updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
             )
         )
@@ -972,6 +973,7 @@ async def get_similar_posts(
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
+                updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
             )
         )
@@ -1043,6 +1045,7 @@ async def list_hot_posts(
                 is_pinned=post.is_pinned,
                 created_at=post.created_at,
                 published_at=post.published_at,
+                updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
             )
         )

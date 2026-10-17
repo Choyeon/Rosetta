@@ -1525,6 +1525,7 @@
     "desc": "旅行、日常、光與影。鏡頭凍結的時間切片。",
     "photos": " 張",
     "noDesc": "暫無描述",
+    "loadFailed": "相簿載入失敗",
     "noAlbums": "尚無相簿",
     "photosCountHint": "共 {count} 張照片 · 按 {sortOrder} 排序",
     "hint": "點擊任意圖片可放大查看。",
@@ -1546,6 +1547,7 @@
     "startPrompt": "開始搜尋",
     "startDesc": "在上方輸入關鍵詞，支援標題、正文、標籤和分類全文檢索。",
     "resultCount": "找到 {count} 條與「{keyword}」相關的結果",
+    "loadFailed": "搜尋失敗，請稍後重試",
     "noResults": "沒有找到匹配的內容",
     "noResultsDesc": "沒有包含「{keyword}」的文章，試試換一個關鍵詞，或者清除搜尋查看全部。"
   },

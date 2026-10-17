@@ -150,6 +150,29 @@ interface ResponseErrorCtx {
   [key: string]: unknown
 }
 
+/**
+ * 会话过期提示的去重时间戳（模块级 = 整个客户端进程共享）。
+ * 一次页面加载可能并发发出多个 apiFetch，token 过期时它们会**同时**走到 401 终态，
+ * 每个都弹一条等于给用户糊一屏重复提示。
+ */
+let lastExpiryToastAt = 0
+
+/**
+ * 401 终态（刷新失败 / 重放仍 401）的唯一提示出口。
+ * 此前这条路径只 clearTokens + navigateTo('/login') 就抛错，**不 toast**：
+ * 表现是管理员点了「删除用户」，界面什么都不说就把人扔到登录页，
+ * 用户判定为"按钮没反应/系统自己登出"。AGENTS §7.2「失败一律 toast」要求这里也弹。
+ * 登录接口本身（/users/login）走 store 里的裸 $fetch，不经过 apiFetch，因此不存在
+ * "密码错误弹两条"的问题。
+ */
+function announceSessionExpiry(silentToast: boolean | undefined, hadCredentials: boolean) {
+  if (silentToast) return
+  const now = Date.now()
+  if (now - lastExpiryToastAt < 3000) return
+  lastExpiryToastAt = now
+  safeToastError(hadCredentials ? '登录状态已过期，请重新登录' : '请先登录')
+}
+
 export function useAPI<T>(url: string | (() => string), options?: ApiUseFetchOptions<T>) {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
@@ -252,6 +275,8 @@ export function useAPI<T>(url: string | (() => string), options?: ApiUseFetchOpt
 export async function apiFetch<T = unknown>(url: string, options: ApiFetchOptions = {}): Promise<T> {
   const config = useRuntimeConfig()
   const authStore = useAuthStore()
+  // 发起请求时是否带凭证：401 终态的提示文案要区分"过期"和"根本没登录"。
+  const hadCredentials = Boolean(authStore.accessToken || authStore.refreshToken)
 
   const buildHeaders = (): Record<string, string> => {
     const h: Record<string, string> = { ...options.headers, 'Accept-Language': currentLocale() }
@@ -351,6 +376,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
             throw retryErr
           }
           if (retryStatus === 401) {
+            announceSessionExpiry(options.silentToast, hadCredentials)
             authStore.clearTokens()
             await navigateTo('/login')
             throw retryErr
@@ -361,6 +387,7 @@ export async function apiFetch<T = unknown>(url: string, options: ApiFetchOption
           throw retryErr
         }
       }
+      announceSessionExpiry(options.silentToast, hadCredentials)
       authStore.clearTokens()
       await navigateTo('/login')
       throw err

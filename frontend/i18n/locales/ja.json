@@ -1525,6 +1525,7 @@
     "desc": "旅、日常、光と影。レンズに切り取った時間の断片。",
     "photos": " 枚",
     "noDesc": "説明なし",
+    "loadFailed": "アルバムの読み込みに失敗しました",
     "noAlbums": "アルバムはまだありません",
     "photosCountHint": "{count} 枚 · {sortOrder} 順",
     "hint": "画像をクリックすると拡大表示できます。",
@@ -1546,6 +1547,7 @@
     "startPrompt": "検索を始める",
     "startDesc": "上でキーワードを入力すると、タイトル・本文・タグ・カテゴリーを検索できます。",
     "resultCount": "「{keyword}」関連の結果 {count} 件",
+    "loadFailed": "検索に失敗しました。しばらくしてから再度お試しください",
     "noResults": "該当する結果がありません",
     "noResultsDesc": "「{keyword}」を含む記事が見つかりません。キーワードを変えるか、検索をクリアして全体をご覧ください。"
   },

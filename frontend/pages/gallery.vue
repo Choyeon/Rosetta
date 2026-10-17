@@ -88,6 +88,27 @@
         </article>
       </div>
 
+      <!-- Load failed：与"没有相册"分开 -->
+      <div
+        v-else-if="albumsError"
+        class="text-center py-24"
+      >
+        <div class="inline-flex items-center justify-center size-20 rounded-2xl bg-muted mb-6">
+          <AlertCircle class="size-10 text-muted-foreground" />
+        </div>
+        <h3 class="font-display text-xl font-semibold">
+          {{ t('gallery.loadFailed') }}
+        </h3>
+        <Button
+          variant="outline"
+          class="mt-4"
+          @click="refreshAlbums()"
+        >
+          <RefreshCw data-icon="inline-start" />
+          {{ t('common.retry') }}
+        </Button>
+      </div>
+
       <!-- Empty -->
       <div
         v-else
@@ -277,7 +298,9 @@ const currentAlbum = computed(() =>
 const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
 
 // 拉取相册列表
-const { data: albumsResp, pending } = useAPI<{ items: AlbumResp[], total?: number }>(
+// error 必须单独渲染：后端故障时 albums 是空数组，走 v-else 会显示
+// "还没有相册"——访客据此判定站主没上传照片，而真实情况只是这次请求挂了。
+const { data: albumsResp, pending, error: albumsError, refresh: refreshAlbums } = useAPI<{ items: AlbumResp[], total?: number }>(
   '/gallery/albums',
   {
     query: { page: 1, page_size: 50, lang: locale }

@@ -118,6 +118,26 @@
       </div>
     </template>
 
+    <!-- 后端故障 ≠ 查无结果：两者都落到 v-else 时，用户会反复换关键词，
+         而真实情况只是这一次检索请求失败了。 -->
+    <template v-else-if="searchError">
+      <div class="text-center py-20">
+        <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
+          <SearchX class="size-8 text-muted-foreground" />
+        </div>
+        <h3 class="font-display text-xl font-semibold">
+          {{ t('search.loadFailed') }}
+        </h3>
+        <Button
+          variant="outline"
+          class="mt-4"
+          @click="refresh()"
+        >
+          {{ t('common.retry') }}
+        </Button>
+      </div>
+    </template>
+
     <template v-else>
       <div class="text-center py-20">
         <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
@@ -159,7 +179,7 @@ const site = useSite()
 const pageSize = computed(() => site.reading.value.posts_per_page)
 
 // 以路由 query.q 作为检索词的唯一真值来源：SSR 可渲染、结果可分享。
-const { data, pending, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
+const { data, pending, error: searchError, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,

@@ -181,6 +181,23 @@
               >
                 {{ t('common.loading') }}
               </p>
+              <!-- 后端故障必须和"这个会话还没有消息"分开：两者都渲染成空列表时，
+                   用户会以为对方没回过话，实际是请求挂了。 -->
+              <div
+                v-else-if="threadError"
+                class="flex flex-col items-start gap-2"
+              >
+                <p class="text-sm text-error">
+                  {{ t('messages.loadFailed') }}
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  @click="refreshThread()"
+                >
+                  {{ t('common.retry') }}
+                </Button>
+              </div>
               <p
                 v-else-if="!threadItems.length"
                 class="text-sm text-muted-foreground"
@@ -296,14 +313,20 @@ const gotoConvPage = (next: number) => {
 
 // ===== 会话正文：URL 随选中的对端变化；未选中时不发请求 =====
 // immediate 只在 setup 期求值一次：直接带 ?to= 进来时首轮就要发。
+// 不用 useFetch 的 watch: [peerId]：「返回」把 peerId 置回 null 时它也会触发，
+// 于是发出 GET /api/messages/0 ——后端必定 404，前端还会跟着弹一条无意义错误，
+// 而正文区本来就是 v-if="peerId"。改成显式 watch，只在真的选中某人时重取。
 const {
   data: threadData,
   pending: threadPending,
+  error: threadError,
   refresh: refreshThread
 } = useAPI<MessageThread>(() => `/messages/${peerId.value ?? 0}`, {
   key: computed(() => `messages:thread:${peerId.value ?? 'none'}`),
-  immediate: peerId.value != null,
-  watch: [peerId]
+  immediate: peerId.value != null
+})
+watch(peerId, (next) => {
+  if (next != null) void refreshThread()
 })
 const threadItems = computed(() => threadData.value?.items ?? [])
 const threadPeer = computed<MessagePeer | null>(() => threadData.value?.other_user ?? null)

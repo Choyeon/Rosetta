@@ -8,8 +8,7 @@
  * - 前端 apiFetch 的相对路径（不带 /api 前缀）将自动拼接 useRuntimeConfig().public.apiBase
  */
 import {
-  apiFetch,
-  silentApiFetch
+  apiFetch
 } from '~~/composables/useApi'
 
 // ========= 轻量级内存缓存（短 TTL） =========
@@ -981,7 +980,9 @@ export interface AdminAnnouncement {
  */
 export function fetchAdminAnnouncements(): Promise<AdminPaged<AdminAnnouncement>> {
   // 后端 /admin/announcements 返回 list（非分页），前端包装成 AdminPaged 结构。
-  return silentApiFetch<AdminAnnouncement[]>('/admin/announcements').then((list) => {
+  // 必须用 apiFetch：silentApiFetch 把失败咽成 null，页面会渲染成"暂无公告"——
+  // 后端宕机/token 过期看起来和"真的没有公告"一模一样，管理员无从判断。
+  return apiFetch<AdminAnnouncement[]>('/admin/announcements').then((list) => {
     const items = list ?? []
     return {
       items,

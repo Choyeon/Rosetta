@@ -929,6 +929,10 @@ class OperationLogEntryOut(BaseModel):
         default=None, description="详情载荷（能解析为 JSON 时给对象，否则原样字符串）"
     )
     ip_address: str | None = Field(default=None, description="请求来源 IP；取不到时为 null")
+    user_agent: str | None = Field(
+        default=None,
+        description="操作者浏览器 UA（OperationLog.user_agent 原值）；老数据或取不到时为 null",
+    )
     status: str | None = Field(default=None, description="操作结果状态（成功/失败标记）")
     created_at: str | None = Field(
         default=None, description="日志时间（ISO 8601）；异常数据下可能为 null"
@@ -1039,6 +1043,7 @@ async def list_operation_logs(
                 if log.detail and isinstance(log.detail, str)
                 else log.detail,
                 "ip_address": log.ip_address,
+                "user_agent": log.user_agent,
                 "status": log.status,
                 "created_at": log.created_at.isoformat() if log.created_at else None,
             }
