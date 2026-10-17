@@ -1931,6 +1931,20 @@ export function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url)
 }
 
+/**
+ * DELETE /api/admin/logs/retention —— 手动清理早于 days 天的**操作日志**（operation_logs 表）。
+ * 响应是裸 `{deleted_count, before}`，无信封；days 后端限 1–3650，越界 422。
+ * 只影响操作留痕：访问日志与性能指标由服务端保留循环按 LOG_RETENTION_DAYS 处理，本接口动不到它们。
+ * silentToast：失败由 DangerConfirmDialog 内联展示，避免 toast + 内联双报。
+ */
+export function cleanupAdminAuditLogs(days: number) {
+  return apiFetch<{ deleted_count: number, before: string }>('/admin/logs/retention', {
+    method: 'DELETE',
+    query: { days },
+    silentToast: true
+  })
+}
+
 // ==================== 文章批量操作 ====================
 
 export type AdminPostBatchAction = 'publish' | 'draft' | 'delete' | 'move_category' | 'add_tag' | 'remove_tag' | 'pin' | 'unpin'

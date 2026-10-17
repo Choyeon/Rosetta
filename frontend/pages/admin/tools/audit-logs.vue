@@ -3,6 +3,8 @@
   契约：筛选条件须点「应用筛选」才生效且必须把页码重置回 1（否则停留越界空页）；结果缩小时钳制回最后一页并只重试一次防循环；
   日期区间保证"结束不早于开始"，自动弹出结束选择器需等 DOM 同步（nextTick + showPicker）。
   导出（CSV/JSON）复用同一组筛选条件打 /admin/logs/export，后端上限 1000 条，提示语须如实写明"按当前筛选"。
+  清理旧日志走 DELETE /admin/logs/retention?days=N（days 限 1-3650）：它只删操作留痕，访问日志/性能指标由服务端
+  LOG_RETENTION_DAYS 保留循环处理，文案不得写成"清理全部日志"；清理后必须重读列表，否则界面仍显示已删的行。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -29,6 +31,36 @@
           @click="handleExport('json')"
         >
           {{ exporting === 'json' ? '导出中…' : '导出 JSON' }}
+        </Button>
+        <Label
+          for="audit-cleanup-days"
+          class="sr-only"
+        >保留期限</Label>
+        <Select v-model="cleanupDays">
+          <SelectTrigger
+            id="audit-cleanup-days"
+            class="h-9 w-[7.5rem] rounded-xl"
+          >
+            <SelectValue placeholder="保留期限" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="d in cleanupDayOptions"
+              :key="d"
+              :value="d"
+            >
+              保留 {{ d }} 天
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-xl"
+          :disabled="exporting !== ''"
+          @click="cleanupOpen = true"
+        >
+          清理旧日志
         </Button>
       </template>
     </AdminPageHeader>
@@ -335,6 +367,15 @@
         </div>
       </div>
     </AdminCard>
+
+    <DangerConfirmDialog
+      v-model:open="cleanupOpen"
+      title="清理历史操作日志"
+      :description="cleanupDescription"
+      confirm-text="确认清理"
+      confirm-phrase="清理日志"
+      :on-confirm="runCleanup"
+    />
   </div>
 </template>
 
@@ -345,6 +386,7 @@ import {
   formatAdminDateTime,
   type AdminAuditLog,
   exportAdminAuditLogs,
+  cleanupAdminAuditLogs,
   downloadBlob
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
@@ -367,6 +409,7 @@ import {
   Tooltip, TooltipContent, TooltipTrigger
 } from '~~/components/ui/tooltip'
 import UserAvatar from '~~/components/UserAvatar.vue'
+import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -412,6 +455,19 @@ const total = ref(0)
 const expandedId = ref<number | null>(null)
 /** 导出中标记：兼作按钮禁用与文案切换，避免连点起两个下载。 */
 const exporting = ref<'' | 'csv' | 'json'>('')
+
+/**
+ * 手动清理：值必须是字符串（reka-ui Select 的 value 口径），调用时再转数字。
+ * 后端 days 允许 1–3650，这里只给常用档位，避免管理员误填成"保留 1 天"而清空留痕。
+ */
+const cleanupDayOptions = ['7', '30', '90', '180', '365']
+const cleanupDays = ref('90')
+const cleanupOpen = ref(false)
+const cleanupDescription = computed(() =>
+  `将删除 ${cleanupDays.value} 天之前的操作日志记录，并保留最近 ${cleanupDays.value} 天的留痕。`
+  + '此操作不可撤销：删掉之后无法再追溯那些动作是谁、从哪台设备做的。'
+  + '访问日志与性能指标不在本接口范围内，由服务端保留策略定时处理。'
+)
 
 const toDateInputRef = ref<HTMLInputElement | null>(null)
 
@@ -504,6 +560,23 @@ async function handleExport(format: 'csv' | 'json') {
   } finally {
     exporting.value = ''
   }
+}
+
+/**
+ * 由 DangerConfirmDialog 的 onConfirm 调用：请求失败时抛错 → 弹窗保持打开并内联展示，不会误报"已清理"。
+ * 成功口径取接口返回的真实截止时间，且必须重读列表——记录已经在库里没了，界面上却还留着行。
+ */
+async function runCleanup() {
+  const r = await cleanupAdminAuditLogs(Number(cleanupDays.value))
+  const cutoff = formatAdminDateTime(r?.before)
+  const deleted = r?.deleted_count ?? 0
+  if (deleted > 0) {
+    toast.success(`已清理 ${deleted} 条早于 ${cutoff} 的操作日志`)
+  } else {
+    toast.info(`保留期内没有需要清理的日志（截止时间 ${cutoff}）`)
+  }
+  page.value = 1
+  await loadLogs()
 }
 
 function resetFilters() {

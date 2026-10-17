@@ -25,7 +25,7 @@ describe('全站备份/恢复 · 后台落地契约', () => {
     for (const path of ['/admin/backup/info', '/admin/backup/full', '/admin/backup/restore']) {
       expect(page, `页面必须调用 ${path}`).toContain(`'${path}'`)
     }
-    expect(page).toContain("apiFetch<Blob>('/admin/backup/full'")
+    expect(page).toContain(`apiFetch<Blob>('/admin/backup/full'`)
     // 恢复是 multipart：文件走请求体，不能拼进 URL
     expect(page).toMatch(/fd\.append\('file', restoreForm\.file\)/)
   })
