@@ -292,6 +292,50 @@ async def test_features_guestbook_gate_blocks_post(client, staff_headers):
     assert resp.status_code in (200, 201), resp.text
 
 
+@pytest.mark.asyncio
+async def test_features_enable_rss_gate_blocks_feed(client, staff_headers):
+    """enable_rss 曾只控制页脚链接显示；/api/blog/rss 永远吐 200 的合法源。
+
+    关掉之后爬虫与阅读器仍能订阅到全文，等于后台的开关只对自己人有效。
+    """
+    before = await client.get("/api/blog/rss")
+    assert before.status_code == 200
+    assert "<rss" in before.text
+
+    await _patch(client, staff_headers, "features", {"enable_rss": False})
+    try:
+        resp = await client.get("/api/blog/rss")
+        assert resp.status_code == 404, resp.text
+        assert resp.json()["error_code"] == "RSS_DISABLED"
+    finally:
+        await _patch(client, staff_headers, "features", {"enable_rss": True})
+    after = await client.get("/api/blog/rss")
+    assert after.status_code == 200
+    assert "<rss" in after.text
+
+
+@pytest.mark.asyncio
+async def test_features_enable_sitemap_gate_blocks_all_routes(client, staff_headers):
+    """enable_sitemap 同理：index + 四个分片必须一起关，只关 index 会让已提交的
+    分片 URL 继续被读取（Google 按分片独立抓取）。"""
+    paths = [
+        "/api/blog/sitemap.xml",
+        "/api/blog/sitemap-posts.xml",
+        "/api/blog/sitemap-taxonomies.xml",
+        "/api/blog/sitemap-pages.xml",
+    ]
+    await _patch(client, staff_headers, "features", {"enable_sitemap": False})
+    try:
+        for p in paths:
+            resp = await client.get(p)
+            assert resp.status_code == 404, f"{p} -> {resp.status_code}"
+            assert resp.json()["error_code"] == "SITEMAP_DISABLED"
+    finally:
+        await _patch(client, staff_headers, "features", {"enable_sitemap": True})
+    for p in paths:
+        assert (await client.get(p)).status_code == 200, p
+
+
 # ==================== ⑤ 解析工具：坏配置不能炸主流程 ====================
 
 

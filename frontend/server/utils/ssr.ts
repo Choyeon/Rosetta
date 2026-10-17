@@ -108,6 +108,10 @@ interface ProxyTextOptions {
 /**
  * 代理上游文本（RSS / Sitemap / robots）：成功则透传文本与缓存头，
  * 失败则返回 ``fallback``，保证爬虫/阅读器永远拿到 200 的合法内容。
+ *
+ * 例外：上游 404/410 表示"这个源被站长关掉了"（见 backend/api/blog.py::_ensure_seo_feed_enabled），
+ * 不是"后端暂时连不上"。这种情况下必须把状态码透传出去——用 200 的空壳顶替，
+ * 等于一边在后台关掉 RSS/Sitemap、一边继续向爬虫承认这里有一份可用的订阅源。
  */
 export async function proxyUpstreamText(
   event: H3Event,
@@ -131,7 +135,14 @@ export async function proxyUpstreamText(
       setHeader(event, 'cache-control', cacheControl)
       return body
     }
-  } catch (e) {
+  } catch (e: any) {
+    const upstreamStatus = Number(e?.response?.status ?? 0)
+    if (upstreamStatus === 404 || upstreamStatus === 410) {
+      setResponseStatus(event, upstreamStatus)
+      setHeader(event, 'content-type', contentType)
+      setHeader(event, 'cache-control', 'no-store')
+      return ''
+    }
     console.warn(`[proxy] upstream unavailable (${target}), using fallback.`, String(e))
   }
   setHeader(event, 'content-type', contentType)

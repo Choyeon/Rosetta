@@ -3421,6 +3421,28 @@ async def _effective_site_meta() -> dict[str, str]:
     return {"site_name": site_name, "site_url": site_url}
 
 
+async def _ensure_seo_feed_enabled(db, key: str, env_key: str) -> None:
+    """RSS / Sitemap 的 features 分组闸门：关掉即 404，前端与爬虫都拿不到内容。
+
+    未保存过 features 分组时沿用环境变量口径（历史上这两个源一直是开的）。
+    """
+    from backend.core.config import settings
+    from backend.services.site_settings import bool_of, read_group
+
+    if not bool_of(
+        await read_group("features", db), key, bool(getattr(settings, env_key, True))
+    ):
+        is_rss = key == "enable_rss"
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "message": "订阅源已关闭" if is_rss else "站点地图已关闭",
+                "error_code": "RSS_DISABLED" if is_rss else "SITEMAP_DISABLED",
+            },
+        )
+
+
 @router.get(
     "/rss",
     summary="RSS 订阅",
@@ -3438,6 +3460,8 @@ async def get_rss_feed(
     from fastapi.responses import Response
 
     from backend.core.config import settings
+
+    await _ensure_seo_feed_enabled(db, "enable_rss", "enable_rss_feed")
 
     language = get_language_from_request(request, lang)
 
@@ -3889,6 +3913,7 @@ async def get_sitemap_index(
     request: Request,
 ):
     """获取 Sitemap 索引 XML。"""
+    await _ensure_seo_feed_enabled(db, "enable_sitemap", "enable_sitemap")
     site_url = _public_site_url()
     today = datetime.now(_tz.utc).strftime("%Y-%m-%d")
 
@@ -3922,6 +3947,7 @@ async def get_sitemap_posts(
     page: int = Query(1, ge=1, description="页码，从 1 开始"),
 ):
     """获取分页文章 Sitemap XML。"""
+    await _ensure_seo_feed_enabled(db, "enable_sitemap", "enable_sitemap")
     site_url = _public_site_url()
     offset = (page - 1) * SITEMAP_PAGE_SIZE
     posts_result = await db.execute(
@@ -3955,6 +3981,7 @@ async def get_sitemap_taxonomies(
     db: DB,
 ):
     """获取分类 / 标签 / 系列 / 作者归档 Sitemap XML。"""
+    await _ensure_seo_feed_enabled(db, "enable_sitemap", "enable_sitemap")
     from backend.models.post_series import PostSeries
 
     site_url = _public_site_url()
@@ -4003,6 +4030,7 @@ async def get_sitemap_taxonomies(
 )
 async def get_sitemap_pages(db: DB):
     """获取静态路由 / 独立页面 Sitemap XML。"""
+    await _ensure_seo_feed_enabled(db, "enable_sitemap", "enable_sitemap")
     from sqlalchemy import extract
 
     from backend.models import Post
