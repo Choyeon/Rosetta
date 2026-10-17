@@ -56,6 +56,12 @@ describe('ssr-html-revalidate 插件接线', () => {
     expect(pluginSrc).toContain('text/html')
   })
 
+  it('必须覆盖 Node ServerResponse 上的头（swr 覆写实际落在那里）', () => {
+    // 只改钩子 payload 里的 headers 袋 = 线上毫无变化，实测踩过
+    expect(pluginSrc).toContain('getHeader')
+    expect(pluginSrc).toContain('setHeader')
+  })
+
   it('Nitro 截断形态能还原回 routeRules 声明的口径', () => {
     expect(normalizeHtmlCacheControl('s-maxage=1800')).toBe('public, max-age=0, s-maxage=1800')
   })
