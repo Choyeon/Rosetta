@@ -381,9 +381,21 @@ async def _load_all_groups(db: DB) -> dict[str, dict]:
 
 async def _save_group(db: DB, group: str, data: dict) -> dict:
     base = _default_for(group)
-    merged = {**base, **{k: v for k, v in data.items() if k in base}}
-    val_json = json.dumps(merged, ensure_ascii=False)
     row = (await db.execute(select(SiteConfig).where(SiteConfig.key == group))).scalar_one_or_none()
+    # PATCH 是"部分更新"语义：没出现在请求体里的键，必须保留库里已有的值。
+    # 旧实现只拿默认值当底（{**base, **incoming}），于是"只发一个键"的 PATCH 会把
+    # 同组其余配置静默打回默认。Admin 界面每次提交整组，所以这条从没暴露过；
+    # 插件或脚本走 API 做一次局部保存就会丢配置，而且丢在写入侧、读侧看不出来。
+    stored: dict = {}
+    if row is not None and row.value:
+        try:
+            parsed = json.loads(row.value)
+            if isinstance(parsed, dict):
+                stored = parsed
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.warning(f"[settings] {group} 存量值不是合法 JSON，本组按默认值重建: {exc}")
+    merged = {**base, **stored, **{k: v for k, v in data.items() if k in base}}
+    val_json = json.dumps(merged, ensure_ascii=False)
     if row is None:
         row = SiteConfig(key=group, value=val_json, description=f"系统设置 - {group}")
         db.add(row)
