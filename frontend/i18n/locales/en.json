@@ -1624,7 +1624,8 @@
     "closeMenu": "Close menu",
     "toggleSidebar": "Toggle sidebar",
     "announcementBar": "Site announcement",
-    "closeAnnouncement": "Dismiss announcement"
+    "closeAnnouncement": "Dismiss announcement",
+    "backToTop": "Back to top"
   },
   "settings": {
     "title": "My Settings",

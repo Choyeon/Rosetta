@@ -1624,7 +1624,8 @@
     "closeMenu": "關閉選單",
     "toggleSidebar": "切換側邊欄",
     "announcementBar": "網站公告",
-    "closeAnnouncement": "關閉公告"
+    "closeAnnouncement": "關閉公告",
+    "backToTop": "回到頂部"
   },
   "settings": {
     "title": "個人設定",

@@ -99,18 +99,12 @@
           isEditorialTheme
             ? 'min-h-[72vh] md:min-h-[78vh]'
             : 'min-h-[80vh] md:min-h-[86vh]',
-          // 无壁纸时的兜底渐变属于主题皮肤，定义在 editorial 主题 CSS 内
-          currentWallpaper ? '' : 'ed-hero-fallback'
+          // 无壁纸且站长也没自配背景时的兜底渐变属于主题皮肤，定义在 editorial 主题 CSS 内
+          currentWallpaper || heroHasOwnBg ? '' : 'ed-hero-fallback'
         ]"
         aria-label="hero"
         data-editorial-section="hero"
-        :style="currentWallpaper ? {
-          backgroundImage: `url(${currentWallpaper.fullUrl})`,
-          backgroundSize: 'cover',
-          backgroundPosition: 'center center',
-          backgroundRepeat: 'no-repeat',
-          backgroundAttachment: 'local'
-        } : {}"
+        :style="heroStyle"
       >
         <!-- Subtle depth overlays (keep cinematics — dim for editorial wallpaper-only view) -->
         <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-black/22 pointer-events-none" />
@@ -1120,6 +1114,37 @@ const {
 } = useBingWallpaper()
 
 const currentWallpaper = computed(() => currentImage.value)
+
+// ===== hero 分组「背景图片 URL / 背景渐变色 CSS」落地 =====
+// 这两项此前只进库不进页面：壁纸开着时永远被 Bing 图盖住，壁纸没了也只是主题的
+// 兜底渐变（ed-hero-fallback），后台那两个输入框形同虚设。
+// 优先级：站长显式配的图 > 每日壁纸 > 配的渐变 > 主题兜底渐变。
+// 值会写进 el.style（CSSOM 解析，非法声明被丢弃），但仍先过白名单：
+// 后台输入框不是可信来源，含 ; } " 的拼接必须原样拒掉而不是塞给样式引擎。
+const HERO_BG_URL_RE = /^(?:https?:\/\/|\/\/|\/)[^\s"'()\\]*$/
+const HERO_BG_GRADIENT_RE = /^(?:linear|radial|conic)-gradient\([^;{}'"]*\)$/i
+const heroBgImage = computed(() => {
+  const raw = String(site.hero.value.bg_image || '').trim()
+  return HERO_BG_URL_RE.test(raw) ? raw : ''
+})
+const heroBgGradient = computed(() => {
+  const raw = String(site.hero.value.bg_gradient || '').trim()
+  return HERO_BG_GRADIENT_RE.test(raw) ? raw : ''
+})
+const heroBgUrl = computed(() => heroBgImage.value || currentWallpaper.value?.fullUrl || '')
+const heroHasOwnBg = computed(() => Boolean(heroBgImage.value || heroBgGradient.value))
+const heroStyle = computed(() => {
+  if (heroBgUrl.value) {
+    return {
+      backgroundImage: `url("${heroBgUrl.value}")`,
+      backgroundSize: 'cover',
+      backgroundPosition: 'center center',
+      backgroundRepeat: 'no-repeat',
+      backgroundAttachment: 'local'
+    }
+  }
+  return heroBgGradient.value ? { background: heroBgGradient.value } : {}
+})
 
 onMounted(() => {
   // Minimal 主题不渲染 Bing Hero，跳过壁纸请求（避免无意义的网络访问与延迟）

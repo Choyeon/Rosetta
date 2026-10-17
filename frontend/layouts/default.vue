@@ -12,7 +12,7 @@ import AppFooter from '~~/components/AppFooter.vue'
 import { useTheme } from '~~/composables/useTheme'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
-import { Bell, X } from '~~/lib/lucide-svg-icons'
+import { Bell, ChevronUp, X } from '~~/lib/lucide-svg-icons'
 import { useFrontendTheme } from '~~/composables/useFrontendTheme'
 import {
   announcementVariantClass,
@@ -106,6 +106,23 @@ const bannerRows = computed(() => mergeAnnouncementRows(
   site.notice.value.sticky !== false
 ))
 const { visible: visibleAnns, dismiss: dismissAnn } = useAnnouncementBar(bannerRows)
+
+/**
+ * 「回到顶部」按钮：footer 分组的 show_back_to_top 此前没有任何消费点——后台把开关
+ * 拨到关/开，前台都不会有任何变化。按钮本身也是新补的：滚动过 600px 才出现。
+ * scrolled 首帧两端都是 false，所以 SSR 字节一致、无 hydration 风险。
+ */
+const showBackToTop = computed(() => site.footer.value.show_back_to_top !== false)
+const scrolled = ref(false)
+const onScroll = () => { scrolled.value = window.scrollY > 600 }
+const scrollToTop = () => {
+  const behavior: ScrollBehavior = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    ? 'auto'
+    : 'smooth'
+  window.scrollTo({ top: 0, behavior })
+}
+onMounted(() => window.addEventListener('scroll', onScroll, { passive: true }))
+onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
 <template>
@@ -155,5 +172,15 @@ const { visible: visibleAnns, dismiss: dismissAnn } = useAnnouncementBar(bannerR
       <slot />
     </main>
     <AppFooter />
+
+    <button
+      v-if="showBackToTop && scrolled"
+      type="button"
+      class="fixed bottom-6 right-6 z-40 grid size-11 place-items-center rounded-full border border-border bg-card/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
+      :aria-label="t('a11y.backToTop')"
+      @click="scrollToTop"
+    >
+      <ChevronUp class="size-5" />
+    </button>
   </div>
 </template>

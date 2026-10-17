@@ -1624,7 +1624,8 @@
     "closeMenu": "メニューを閉じる",
     "toggleSidebar": "サイドバーの切り替え",
     "announcementBar": "サイトのお知らせ",
-    "closeAnnouncement": "お知らせを閉じる"
+    "closeAnnouncement": "お知らせを閉じる",
+    "backToTop": "トップに戻る"
   },
   "settings": {
     "title": "個人設定",

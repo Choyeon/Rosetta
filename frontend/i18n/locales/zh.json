@@ -1624,7 +1624,8 @@
     "closeMenu": "关闭菜单",
     "toggleSidebar": "切换侧边栏",
     "announcementBar": "站点公告",
-    "closeAnnouncement": "关闭公告"
+    "closeAnnouncement": "关闭公告",
+    "backToTop": "回到顶部"
   },
   "settings": {
     "title": "个人设置",
