@@ -127,6 +127,21 @@
 首页/文章列表 `/posts` swr 300s · 归档/关于/友情/系列 swr 3600s · 活动/图库 swr 600s · 分类/标签/作者主页/文章详情/独立页 swr 600s · 热门榜 `/posts/hot` swr 60s · 留言板 swr 60s。常规页附带 `Cache-Control: public, max-age=0, s-maxage=<T>, stale-while-revalidate=86400`；高频实时页（`/posts/hot` · `/guestbook`）用较短的 `stale-while-revalidate=600`。
 静态资源 `/_nuxt/**` 与 `/themes/**` 使用强缓存 immutable（31536000s）。
 
+**这条口径不是 routeRules 写下去就自动成立的**：Nitro 的 swr 缓存处理器会在响应阶段把
+`Cache-Control` **整条覆写**成 `s-maxage=<T>, stale-while-revalidate`（丢掉 `public, max-age=0`，
+也丢掉 swr 的秒值）。只剩 `s-maxage` 时浏览器私有缓存没有显式新鲜期，退化成 HTTP 启发式新鲜期
+（`(Date − Last-Modified)` 的 10%），实测表现是"后台改了站点设置、Nitro 页面缓存已清、curl 立刻拿到新值，
+但回访访客的 Chrome 直接用磁盘里的旧 HTML"（`navigation[0].transferSize === 0`）——而站点设置是 SSR 时
+烘进 `__NUXT_DATA__` payload 的，`useSite` 客户端见 `loaded=true` 就不再拉 `/api/settings/public`。
+裸的 `stale-while-revalidate` 还不合 RFC 5861（必须带 delta-seconds），可能被整条忽略。
+口径由 `frontend/server/plugins/ssr-html-revalidate.nitro.ts`（`render:response` + `beforeResponse` 双跑，
+归一函数幂等）+ `frontend/server/utils/ssrHtmlCacheControl.ts` 补回，只补 `public, max-age=0`
+并按本页 `s-maxage` 档回填 swr 秒值（`SWR_BY_SMAXAGE`，默认 86400）——**新增带其它 swr 窗口的公开页时，
+除 routeRules 外还要在该映射里登记一条**。两个坑踩过：①只改钩子 payload 里的 `headers` 袋无效，
+线上那份头真正写在 Node `ServerResponse` / h3 `outHeaders` 上（`ssrHtmlCacheControl.spec.ts` 有接线断言）；
+②无条件补 86400 会把 60s 热榜的软过期窗口撑成一整天。`no-store` 的后台/登录/搜索页与强缓存静态资源
+必须原样不动。
+
 ### 2.3.1 动态子路由必须用目录式父页
 
 `pages/x.vue` 与 `pages/x/[id].vue` **不能并存**：前者会变成没有 `<NuxtPage>` outlet 的父路由，
