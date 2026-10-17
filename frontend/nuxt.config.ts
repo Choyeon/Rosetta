@@ -189,12 +189,10 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/favicon-32x32.png' },
         { rel: 'icon', type: 'image/png', sizes: '48x48', href: '/favicon-48x48.png' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/apple-touch-icon.png' },
-        { rel: 'manifest', href: '/site.webmanifest' },
-
-        // RSS 订阅：让浏览器 / RSS 阅读器自动发现
-        { rel: 'alternate', type: 'application/rss+xml', title: 'Rosetta · RSS Feed', href: '/rss.xml' },
-        // Sitemap 提示
-        { rel: 'sitemap', type: 'application/xml', title: 'Sitemap', href: '/sitemap.xml' }
+        { rel: 'manifest', href: '/site.webmanifest' }
+        // RSS / Sitemap 的 <link> 不在这里写死：它是构建期常量，读不到运行期的
+        // features 开关，关掉开关后 head 仍向爬虫承诺"这里有订阅源"，而对方拿到的是
+        // 404 空壳。条件输出口在 layouts/default.vue（单源 site.features）。
       ],
       script: [
         // ===== 明暗偏好预检（阻塞式内联，首帧渲染前执行）=====
