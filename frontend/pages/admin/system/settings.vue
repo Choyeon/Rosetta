@@ -692,8 +692,8 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
   const m: Record<string, Record<string, SettingsValue>> = {
     basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_content: '', about_page_html: '' },
     reading: { posts_per_page: 12, show_reading_time: true, show_word_count: true, show_toc: true, toc_depth: 3, line_height: 1.7, font_size: 16 },
-    comments: { enable: true, require_approval: false, allow_guest: false, max_length: 1000, enable_antispam: true, enable_nested: true, max_nested_depth: 3 },
-    media: { max_upload_size: 10485760, allowed_image_types: '', allowed_file_types: '', default_post_cover: '', default_avatar: '', use_cdn: false, cdn_prefix: '', watermark_text: '' },
+    comments: { enable: true, require_approval: false, allow_guest: true, max_length: 3000, enable_antispam: true, enable_nested: true, max_nested_depth: 3 },
+    media: { max_upload_size: 10485760, allowed_image_types: 'jpg,jpeg,png,gif,webp,svg', allowed_file_types: 'mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx', default_post_cover: '', default_avatar: '', use_cdn: false, cdn_prefix: '', watermark_text: '' },
     seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_analytics_id: '', baidu_analytics_id: '', google_verification: '', baidu_verification: '', robots_txt: '' },
     email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false, admin_email: '' },
     cdn: { enable: false, provider: '', cdn_url: '', image_cdn_url: '', static_cdn_url: '', purge_token: '' },

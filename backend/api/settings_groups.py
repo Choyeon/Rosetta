@@ -117,11 +117,15 @@ def _default_reading() -> dict:
 
 
 def _default_comments() -> dict:
+    # 默认值必须等于**装好系统后的既有行为**：_save_group 每次都是「默认值 + payload」整段
+    # 落库，管理员改任意一个评论开关都会把这一整组写进库。若默认值与实际行为不一致
+    # （旧版 allow_guest=False、max_length=1000），表现就是"我只是勾了个审核，
+    # 访客评论全站被打死、长评论开始报 422"。
     return {
         "enable": True,
         "require_approval": False,
-        "allow_guest": False,
-        "max_length": 1000,
+        "allow_guest": True,
+        "max_length": 3000,
         "enable_antispam": True,
         "enable_nested": True,
         "max_nested_depth": 3,
@@ -129,10 +133,14 @@ def _default_comments() -> dict:
 
 
 def _default_media() -> dict:
+    # 同 _default_comments：这两个类型清单会被整段落库，并与服务端安全白名单取交集，
+    # 所以默认值必须**等于**内置清单。旧文案里的 ppt/pptx/zip/rar 从来没被真正放行过
+    # （LIBRARY_ALLOWED_EXTENSIONS 里没有它们），而漏写的 mp4/webm/mov/mp3/wav/ogg
+    # 会在一次无关保存后突然传不上去——那才是这份"看起来没生效"的清单真正会生效的时刻。
     return {
         "max_upload_size": 10485760,
         "allowed_image_types": "jpg,jpeg,png,gif,webp,svg",
-        "allowed_file_types": "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
+        "allowed_file_types": "mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx",
         "default_post_cover": "",
         "default_avatar": "",
         "use_cdn": False,

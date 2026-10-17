@@ -55,7 +55,7 @@ def _ui_group_fields() -> dict[str, set[str]]:
     body = re.search(r"function getDefaultsFor.*?\n\}", text, re.S)
     assert body, "设置页里找不到 getDefaultsFor —— 该回归的前提已经变了，请同步改这个测试"
     out: dict[str, set[str]] = {}
-    for gm in re.finditer(r"^\s{4}(\w+): \{([^}]*)\},?$", body.group(0), re.M):
+    for gm in re.finditer(r"^\s{4}(\w+): \{(.*)\},?$", body.group(0), re.M):
         out[gm.group(1)] = {km.group(1) for km in re.finditer(r"([A-Za-z_]\w*)\s*:", gm.group(2))}
     return out
 
@@ -86,7 +86,7 @@ async def test_comments_group_disabling_blocks_new_comments(client, staff_header
     try:
         resp = await _post_comment(client, test_post.id)
         assert resp.status_code == 403, resp.text
-        assert resp.json()["detail"]["error_code"] == "COMMENTS_DISABLED"
+        assert resp.json()["error_code"] == "COMMENTS_DISABLED"
     finally:
         await _patch(client, staff_headers, "comments", {"enable": True})
 
@@ -121,7 +121,7 @@ async def test_comments_guest_toggle_rejects_anonymous_only(
     try:
         anon = await _post_comment(client, test_post.id)
         assert anon.status_code == 403, anon.text
-        assert anon.json()["detail"]["error_code"] == "COMMENT_GUEST_NOT_ALLOWED"
+        assert anon.json()["error_code"] == "COMMENT_GUEST_NOT_ALLOWED"
         member = await client.post(
             f"/api/posts/{test_post.id}/comments",
             json={"content": "登录用户的测试评论"},
@@ -145,9 +145,9 @@ async def test_comments_max_length_from_group(client, staff_headers, test_post):
     try:
         resp = await _post_comment(client, test_post.id, content="十个字不够用这条应该被拒掉的")
         assert resp.status_code == 422, resp.text
-        assert resp.json()["detail"]["error_code"] == "COMMENT_TOO_LONG"
+        assert resp.json()["error_code"] == "COMMENT_TOO_LONG"
     finally:
-        await _patch(client, staff_headers, "comments", {"max_length": 1000})
+        await _patch(client, staff_headers, "comments", {"max_length": 3000})
 
 
 # ==================== ③ media 分组：收紧生效，放松无效 ====================

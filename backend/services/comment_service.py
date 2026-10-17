@@ -535,8 +535,12 @@ class CommentService:
             cst, "require_approval", bool(getattr(settings, "comment_require_approval", True))
         )
         auto_reject = AUTO_REJECT_ON_SENSITIVE_DEFAULT
+        # 「启用反垃圾过滤」= 敏感词命中是否参与 status 决策；关掉后只按审核开关走。
+        antispam = bool_of(cst, "enable_antispam", True)
         status: str
-        if mod.level == "black" and auto_reject:
+        if not antispam:
+            status = "pending" if require_approval else "approved"
+        elif mod.level == "black" and auto_reject:
             status = "rejected"
         elif mod.level == "gray":
             status = "pending"
