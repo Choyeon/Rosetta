@@ -257,6 +257,10 @@ const copyrightLine = computed(() => {
   return `© ${currentYear} ${owner} · ${t('footer.rightsReserved', 'All rights reserved.')}`
 })
 
+// appearance.show_copyright：后台"显示版权声明"开关（此前只进库，页脚始终渲染版权行）。
+// ICP 备案号与它无关，关掉开关时仍然显示。
+const showCopyright = computed(() => site.appearance.value.show_copyright !== false)
+
 const quickLocales = [
   { code: 'zh', label: '简体中文', flag: 'cn' },
   { code: 'en', label: 'English', flag: 'us' },
@@ -457,7 +461,7 @@ const handleSetLocale = async (code: string) => {
       <div class="flex flex-col md:flex-row justify-between items-center gap-4">
         <div class="text-xs text-muted-foreground text-center md:text-left">
           <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
-          {{ copyrightLine }}
+          <template v-if="showCopyright">{{ copyrightLine }}</template>
         </div>
         <!-- Quick locale switch (with flags) -->
         <div class="flex items-center gap-2 flex-wrap">
@@ -529,7 +533,7 @@ const handleSetLocale = async (code: string) => {
       <!-- 版权 -->
       <div class="text-xs text-muted-foreground">
         <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
-        {{ copyrightLine }}
+        <template v-if="showCopyright">{{ copyrightLine }}</template>
       </div>
     </div>
   </footer>
