@@ -269,8 +269,53 @@ UPLOAD_SVG_UNSAFE = "UPLOAD_SVG_UNSAFE"
 _SVG_UNSAFE_RE = re.compile(rb"<script|\son[a-z]+\s*=|javascript:", re.IGNORECASE)
 
 
+# 站点设置里的 media 分组（后台「媒体与上传」）可以**收紧**上传策略，但不能放松：
+# - 大小上限钳进 [FLOOR, CEILING]：管理员填 0 或填错单位不该让上传全挂，也不该放开到
+#   把这台小内存 VPS 打爆的量级（Nginx 的 client_max_body_size 之前还有一层）。
+# - 扩展名与 LIBRARY_ALLOWED_EXTENSIONS **取交集**：内置白名单每一项都有对应魔术字节表，
+#   放开到表外扩展名 = 把改名可执行文件存进同源可访问的 /media（AGENTS §12.7 红线）。
+UPLOAD_SIZE_CEILING_BYTES = 100 * 1024 * 1024
+UPLOAD_SIZE_FLOOR_BYTES = 64 * 1024
+
+
+def _effective_upload_limit(cfg: dict, fallback: int) -> int:
+    """media.max_upload_size（字节）钳进安全区间；未配置则用调用点既有上限。"""
+    try:
+        val = int(cfg["max_upload_size"])
+    except (KeyError, TypeError, ValueError):
+        return fallback
+    return max(UPLOAD_SIZE_FLOOR_BYTES, min(val, UPLOAD_SIZE_CEILING_BYTES))
+
+
+def _effective_library_exts(cfg: dict) -> frozenset[str]:
+    """media.allowed_image_types / allowed_file_types（逗号分隔）与安全白名单求交集。
+
+    两项都留空 = 不收紧，沿用服务端内置清单（内置清单是安全边界，不是偏好项）。
+    """
+    listed: set[str] = set()
+    for key in ("allowed_image_types", "allowed_file_types"):
+        raw = cfg.get(key)
+        if isinstance(raw, str) and raw.strip():
+            listed |= {e.strip().lstrip(".").lower() for e in raw.split(",") if e.strip()}
+    if not listed:
+        return LIBRARY_ALLOWED_EXTENSIONS
+    return LIBRARY_ALLOWED_EXTENSIONS & frozenset(listed)
+
+
+async def _image_upload_limit() -> int:
+    """图片/头像/封面端点的单文件上限：media.max_upload_size 生效，未配置沿用 10MB。
+
+    shortcut: 这些端点没有请求会话（只有 UploadFile + 鉴权依赖），所以走
+    site_settings.read_group 的独立带缓存读取；若上传接口改为按用户配额限制，
+    这里要换成请求内一次读取。
+    """
+    from backend.services.site_settings import read_group
+
+    return _effective_upload_limit(await read_group("media"), MAX_FILE_SIZE)
+
+
 def _file_type_for_ext(ext: str) -> str:
-    """扩展名 → 文件格式分类；调用前必须先过 LIBRARY_ALLOWED_EXTENSIONS。"""
+    """扩展名 → 文件格式分类；调用前必须先过 _effective_library_exts 的白名单。"""
     for ftype, extensions in LIBRARY_TYPE_EXTENSIONS.items():
         if ext in extensions:
             return ftype
@@ -943,9 +988,13 @@ async def upload_image(
         )
 
     # 读取文件内容
+    limit = await _image_upload_limit()
     content = await file.read()
-    if len(content) > MAX_FILE_SIZE:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="文件大小不能超过 10MB")
+    if len(content) > limit:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件大小不能超过 {limit // (1024 * 1024)}MB",
+        )
 
     # 伪装检测：魔数与扩展名必须相符；SVG 额外拒绝脚本/事件处理器（同源渲染 = XSS）
     _validate_magic(content[:16], ext, file.filename or "")
@@ -1014,7 +1063,7 @@ async def upload_image_stream(
     filepath = UPLOADS_DIR / filename
 
     # 流式保存文件（超限即在写入过程中中断并清理半成品）
-    total_size = await async_save_stream(filepath, file, max_bytes=MAX_FILE_SIZE)
+    total_size = await async_save_stream(filepath, file, max_bytes=await _image_upload_limit())
 
     # 校验内容与扩展名相符，且不是伪装成图片的脚本载体
     try:
@@ -1058,11 +1107,12 @@ async def upload_avatar(
     # 限额读取：头像/封面在 Vue 侧已裁剪，服务端还要再过一次 PIL 重编码，
     # 但在此之前不能让未登录之外的任意登录用户把整包读进内存（此前无上限，
     # 并发几发大文件就能打爆后端 RSS）。只多读 1 字节用于判定超限。
-    content = await file.read(MAX_FILE_SIZE + 1)
-    if len(content) > MAX_FILE_SIZE:
+    limit = await _image_upload_limit()
+    content = await file.read(limit + 1)
+    if len(content) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"文件大小不能超过 {MAX_FILE_SIZE // (1024 * 1024)}MB",
+            detail=f"文件大小不能超过 {limit // (1024 * 1024)}MB",
         )
 
     # 异步验证图片
@@ -1098,11 +1148,12 @@ async def upload_cover(
     await ensure_dirs()
 
     # 同 upload_avatar：限额读取，避免整包入内存
-    content = await file.read(MAX_FILE_SIZE + 1)
-    if len(content) > MAX_FILE_SIZE:
+    limit = await _image_upload_limit()
+    content = await file.read(limit + 1)
+    if len(content) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"文件大小不能超过 {MAX_FILE_SIZE // (1024 * 1024)}MB",
+            detail=f"文件大小不能超过 {limit // (1024 * 1024)}MB",
         )
 
     # 异步验证图片
@@ -1329,16 +1380,20 @@ async def _save_media_to_library(
             detail="文件名不能为空",
         )
 
-    # 校验单文件大小：20MB（含非图片文件），避免 uvicorn 被大文件打爆连接
+    # 校验单文件大小：默认 20MB（含非图片文件），避免 uvicorn 被大文件打爆连接；
+    # 后台「媒体与上传」里的 max_upload_size / 允许类型会在这里生效（只能收紧，见上面注释）。
+    mcfg = await _read_media_settings(db)
+    max_bytes = _effective_upload_limit(mcfg, MAX_UPLOAD_BYTES)
+    allowed_exts = _effective_library_exts(mcfg)
     size_hint = getattr(file, "size", None)
-    if isinstance(size_hint, int) and size_hint > MAX_UPLOAD_BYTES:
+    if isinstance(size_hint, int) and size_hint > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"文件过大，最大允许 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+            detail=f"文件过大，最大允许 {max_bytes // 1024 // 1024}MB",
         )
 
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else ""
-    if ext not in LIBRARY_ALLOWED_EXTENSIONS:
+    if ext not in allowed_exts:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -1361,10 +1416,10 @@ async def _save_media_to_library(
     filepath = upload_dir / new_filename
 
     content = await file.read()
-    if len(content) > MAX_UPLOAD_BYTES:
+    if len(content) > max_bytes:
         raise HTTPException(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            detail=f"文件过大，最大允许 {MAX_UPLOAD_BYTES // 1024 // 1024}MB",
+            detail=f"文件过大，最大允许 {max_bytes // 1024 // 1024}MB",
         )
     if not content:
         raise HTTPException(

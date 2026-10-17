@@ -98,6 +98,9 @@ def _default_basic() -> dict:
         "site_url": "https://example.com",
         "icp_number": "",
         "about_content": "",
+        # 关于页完整 HTML：设置页会提交、/api/config 与前台 /about 会读取。
+        # 缺这里 = _save_group 的 `if k in base` 把它静默丢弃，管理员改了永远不生效。
+        "about_page_html": "",
     }
 
 
@@ -134,6 +137,8 @@ def _default_media() -> dict:
         "default_avatar": "",
         "use_cdn": False,
         "cdn_prefix": "",
+        # 水印：api/media.py::_read_watermark_text 已在读这个键，缺这里等于永远写不进去。
+        "watermark_text": "",
     }
 
 
@@ -540,6 +545,19 @@ async def patch_one_setting(
         await cache.delete(make_cache_key("settings_public"))
     except Exception:
         logger.debug("cache delete for settings_public failed", exc_info=True)
+    # 执行点（评论闸门、上传限制、robots 正文）读的是 backend/services/site_settings.py
+    # 的分组缓存，不删它则"保存成功但要等 5 分钟才生效"——和上面两个键同一条口径。
+    try:
+        await cache.delete(make_cache_key("settings_group", group))
+    except Exception:
+        logger.debug("cache delete for settings_group failed", exc_info=True)
+    # GET /api/robots.txt 把整份正文缓在 seo:robots_txt（1 小时）。它现在会读 seo 分组，
+    # 不清这个键等于"改了 robots、爬虫 1 小时内继续看旧的"。
+    if group == "seo":
+        try:
+            await cache.delete(make_cache_key("seo", "robots_txt"))
+        except Exception:
+            logger.debug("cache delete for seo:robots_txt failed", exc_info=True)
     # site_config 缓存（TTL 3600s）里叠了本分组的 JSON 覆写（见 core.py::_apply_settings_groups）：
     # 分组保存后不删它，站点名/简介/侧栏最长 1 小时不生效，RSS channel（同源读缓存）一起陈旧。
     try:

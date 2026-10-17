@@ -577,7 +577,23 @@ async def get_robots_txt() -> PlainTextResponse:
     # 从站点配置获取或生成默认内容。key 必须是 SEO_CONFIG_KEYS 里声明过的
     # `SEO_ROBOTS`——后台 /admin/tools/seo 写的就是它；读成别的名字等于
     # "保存成功但永不生效"（历史缺陷：这里曾读未声明的 ROBOTS_TXT）。
-    robots_content = await get_site_config_value("SEO_ROBOTS")
+    #
+    # 后台「站点设置 → SEO」的 robots_txt 走的是 **seo 分组 JSON**（PATCH /api/settings/seo），
+    # 与上面的扁平 key 是两个写口，这里按"分组优先、占位值视同未配置"合并：
+    # 设置页把 _default_seo 的那两行文本原样预填进输入框，管理员改别的字段顺手保存时
+    # 也会把这两行写进库——若把它当成"管理员配置的正文"直接下发，等于一次无关保存
+    # 就把 /api/ 与四语言 /admin/ 的 Disallow 全部撤掉（后台目录对爬虫敞开）。
+    from backend.api.settings_groups import _default_seo
+    from backend.services.site_settings import read_group
+
+    seo_cfg = await read_group("seo")
+    custom_robots = str(seo_cfg.get("robots_txt") or "").strip()
+    placeholder = _default_seo()["robots_txt"].strip()
+    robots_content = (
+        custom_robots
+        if custom_robots and custom_robots != placeholder
+        else await get_site_config_value("SEO_ROBOTS")
+    )
 
     if not robots_content:
         # 默认 robots.txt（最佳实践）：与前端根级 Nitro 路由对齐

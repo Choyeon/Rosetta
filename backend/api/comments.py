@@ -106,6 +106,13 @@ def _service_err_to_http(exc: ValueError) -> HTTPException:
         "COMMENT_PARENT_WRONG_POST": (422, "回复的目标评论不属于这篇文章"),
         "NESTED_REPLY_TOO_DEEP": (422, "嵌套回复不能超过 1 层，请直接回复根评论"),
         "TOO_FREQUENT_COMMENT": (429, "你在这篇文章发表评论太频繁了，请稍后再试"),
+        # 以下四条来自后台「评论」分组（site_configs.key="comments"）：
+        # 403 是站点策略（关评论 / 关访客评论），不是凭证失效——用 401 会让前端
+        # apiFetch 把这次操作判成"登录过期"并清登录态（AGENTS §7.2 红线）。
+        "COMMENTS_DISABLED": (403, "站点已关闭评论功能"),
+        "COMMENT_GUEST_NOT_ALLOWED": (403, "本站评论需要登录，请先登录"),
+        "COMMENT_NESTING_DISABLED": (422, "本站已关闭嵌套回复，请直接发表评论"),
+        "COMMENT_TOO_LONG": (422, "评论内容超出本站允许的最大长度"),
         "COMMENT_NOT_FOUND": (404, "评论不存在"),
         "INVALID_ACTION": (422, "未知批量操作类型"),
     }

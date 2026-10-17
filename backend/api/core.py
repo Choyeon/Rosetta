@@ -1026,6 +1026,72 @@ async def get_site_config(db: DB):
                             cfg_base["sidebar_widget_order"] = v
                         else:
                             cfg_base[f"sidebar_{k}"] = bool(v) if isinstance(v, bool) else v
+            # comments（执行点在 CommentService.create_comment 读同一份分组，这里只下发给 UI）
+            raw_comments = _cfg_raw("comments")
+            if raw_comments:
+                parsed = _json_.loads(raw_comments)
+                if isinstance(parsed, dict):
+                    if parsed.get("enable") is not None:
+                        cfg_base["enable_comments"] = bool(parsed["enable"])
+                    for gk, ck in (
+                        ("require_approval", "comment_require_approval"),
+                        ("allow_guest", "comment_allow_guest"),
+                        ("enable_antispam", "comment_antispam"),
+                    ):
+                        if parsed.get(gk) is not None:
+                            cfg_base[ck] = bool(parsed[gk])
+                    if parsed.get("max_length"):
+                        cfg_base["comment_max_length"] = int(parsed["max_length"])
+            # features（后台「功能开关」分组 —— 此前只读扁平 ENABLE_*，分组存了没人读）
+            raw_features = _cfg_raw("features")
+            if raw_features:
+                parsed = _json_.loads(raw_features)
+                if isinstance(parsed, dict):
+                    for k, v in parsed.items():
+                        if isinstance(v, bool) and k in SiteConfigResponse.model_fields:
+                            cfg_base[k] = v
+            # media（上传大小与扩展名白名单：真正执行的是 api/media.py，这里下发给前端预检）
+            raw_media = _cfg_raw("media")
+            if raw_media:
+                parsed = _json_.loads(raw_media)
+                if isinstance(parsed, dict):
+                    if parsed.get("max_upload_size"):
+                        cfg_base["max_upload_size"] = int(parsed["max_upload_size"])
+                    for k in ("allowed_image_types", "allowed_file_types"):
+                        if parsed.get(k):
+                            cfg_base[k] = str(parsed[k])
+                    if parsed.get("default_post_cover"):
+                        cfg_base["default_post_cover"] = str(parsed["default_post_cover"])
+                    if parsed.get("default_avatar"):
+                        cfg_base["default_avatar"] = str(parsed["default_avatar"])
+            # reading（文章列表每页条数 + 目录/阅读时间/字数三处 UI 开关）
+            raw_reading = _cfg_raw("reading")
+            if raw_reading:
+                parsed = _json_.loads(raw_reading)
+                if isinstance(parsed, dict):
+                    if parsed.get("posts_per_page"):
+                        cfg_base["pagination_page_size"] = int(parsed["posts_per_page"])
+                    for gk, ck in (
+                        ("show_reading_time", "enable_reading_time"),
+                        ("show_word_count", "enable_word_count"),
+                        ("show_toc", "enable_toc"),
+                    ):
+                        if parsed.get(gk) is not None:
+                            cfg_base[ck] = bool(parsed[gk])
+            # seo（验证码/统计码/robots 正文：分组是设置页唯一写口，扁平 key 只兜历史数据）
+            raw_seo_full = _cfg_raw("seo")
+            if raw_seo_full:
+                parsed = _json_.loads(raw_seo_full)
+                if isinstance(parsed, dict):
+                    for gk, ck in (
+                        ("google_analytics_id", "google_analytics_id"),
+                        ("baidu_analytics_id", "baidu_analytics_id"),
+                        ("google_verification", "google_site_verification"),
+                        ("baidu_verification", "baidu_site_verification"),
+                        ("robots_txt", "robots_txt"),
+                    ):
+                        if parsed.get(gk):
+                            cfg_base[ck] = str(parsed[gk])
         except Exception as exc:  # 任何合并异常不影响核心配置返回
             logger.warning("merge settings_groups into /config failed: %s", exc)
         return cfg_base

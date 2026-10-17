@@ -26,6 +26,7 @@ from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
 from backend.services._avatar_helpers import _user_relationship_safe, resolved_for_comment
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
+from backend.services.site_settings import bool_of, int_of, read_group
 from backend.utils.compat import utc_now_naive
 
 if TYPE_CHECKING:
@@ -477,7 +478,22 @@ class CommentService:
         user_agent: str | None,
         current_user: User | None,
     ) -> CommentResponse:
-        """创建一条评论（游客或登录用户均可）。内部处理：敏感词、status 决策、嵌套深度校验。"""
+        """创建一条评论（游客或登录用户均可）。内部处理：站点评论开关、敏感词、status 决策、嵌套深度校验。"""
+        # 0. 后台「评论」分组（site_configs.key="comments"）——两个写口（comments.py 与
+        #    blog.py）都经过这里，闸门只写一次。未保存过的键保持既有行为（环境变量/默认值）。
+        cst = await read_group("comments")
+        if not bool_of(cst, "enable", True):
+            raise ValueError("COMMENTS_DISABLED")
+        # 兜底值取**既有行为**而不是 _default_comments：未保存过分组的站点不能被这次改动
+        # 静默改写（访客评论本来就开放；正文上限历史上由 CommentCreate 的 3000 兜着）。
+        if current_user is None and not bool_of(cst, "allow_guest", True):
+            raise ValueError("COMMENT_GUEST_NOT_ALLOWED")
+        max_len = int_of(cst, "max_length", 3000)
+        if len((data.content or "").strip()) > max_len:
+            raise ValueError("COMMENT_TOO_LONG")
+        if data.parent_id is not None and not bool_of(cst, "enable_nested", True):
+            raise ValueError("COMMENT_NESTING_DISABLED")
+
         # 1. 基本字段校验：游客必填 author_name；登录用户可从 user 派生但冗余存 author_name
         author_name = (data.author_name or "").strip()
         if not author_name:
@@ -514,7 +530,10 @@ class CommentService:
         #    - XSS 防御由前端模板 escape + 详情页 HTML 渲染器 allowlist 共同承担
         safe_content_for_analysis = sanitize_html(data.content)
         mod = moderate_text(safe_content_for_analysis)
-        require_approval = bool(getattr(settings, "comment_require_approval", True))
+        # 分组里显式配过 → 设置页说了算；没配过 → 保持环境变量口径（历史行为）。
+        require_approval = bool_of(
+            cst, "require_approval", bool(getattr(settings, "comment_require_approval", True))
+        )
         auto_reject = AUTO_REJECT_ON_SENSITIVE_DEFAULT
         status: str
         if mod.level == "black" and auto_reject:
