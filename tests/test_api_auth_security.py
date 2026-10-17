@@ -17,6 +17,15 @@ from backend.models.core import Notification
 from backend.services.email_service import EmailResult
 
 
+async def _smtp_unavailable(_self=None) -> bool:
+    """替 EmailService.smtp_is_configured() 回假：作为类属性挂上即成绑定方法。"""
+    return False
+
+
+async def _smtp_available(_self=None) -> bool:
+    return True
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _setup(monkeypatch, tmp_path):
     """
@@ -267,7 +276,9 @@ async def test_password_reset_flow(
     monkeypatch.setattr(
         _u_mod,
         "get_email_service",
-        lambda *a, **k: type("_NoSmtp", (), {"is_configured": False})(),
+        lambda *a, **k: type(
+            "_NoSmtp", (), {"is_configured": False, "smtp_is_configured": _smtp_unavailable}
+        )(),
     )
 
     monkeypatch.setattr(_cfg.settings, "debug", True)
@@ -362,7 +373,9 @@ async def test_password_reset_without_smtp_fails_loudly(
     monkeypatch.setattr(
         _u_mod,
         "get_email_service",
-        lambda *a, **k: type("_NoSmtp", (), {"is_configured": False})(),
+        lambda *a, **k: type(
+            "_NoSmtp", (), {"is_configured": False, "smtp_is_configured": _smtp_unavailable}
+        )(),
     )
 
     with caplog.at_level(logging.ERROR, logger="backend.api.users"):
@@ -430,6 +443,7 @@ async def test_password_reset_email_send_failure_is_observable(
 
     class _FailingEmailService:
         is_configured = True
+        smtp_is_configured = _smtp_available
 
         async def send_email(self, to: str, subject: str, body: str, **kwargs):
             return EmailResult(success=False, error="(535) Login failed")
@@ -499,6 +513,7 @@ async def test_password_reset_sends_email_when_configured(
 
     class _FakeEmailService:
         is_configured = True
+        smtp_is_configured = _smtp_available
 
         async def send_email(self, to: str, subject: str, body: str, **kwargs):
             sent.append({"to": to, "subject": subject, "body": body})

@@ -230,20 +230,54 @@ class EmailService:
         """
         return bool(self.smtp_host and self.smtp_user and self.smtp_password)
 
-    def _create_message(self, email: EmailMessage) -> MIMEMultipart:
+    async def resolved_smtp(self) -> dict[str, Any]:
+        """环境变量兜底 + 后台 ``email`` 分组覆写，产出本次发送真正使用的参数。
+
+        分组里 smtp_password / smtp_user 留空**不覆写**：``_save_group`` 是整段 JSON 落库，
+        而设置页出于安全从不回显已存密码——管理员改一次 SMTP 主机就顺带把凭据提交成空串。
+        """
+        from backend.services.site_settings import int_of, read_group
+
+        cfg = await read_group("email")
+
+        def pick(key: str, current: str) -> str:
+            raw = cfg.get(key)
+            return raw.strip() if isinstance(raw, str) and raw.strip() else current
+
+        return {
+            "host": pick("smtp_host", self.smtp_host),
+            "port": int_of(cfg, "smtp_port", int(self.smtp_port or 0)),
+            "user": pick("smtp_user", self.smtp_user),
+            "password": pick("smtp_password", self.smtp_password),
+            "tls": cfg.get("use_tls") if isinstance(cfg.get("use_tls"), bool) else self.smtp_use_tls,
+            "from_email": pick("from_address", self.from_email),
+            "from_name": pick("from_name", self.from_name),
+        }
+
+    async def smtp_is_configured(self) -> bool:
+        """分组 + 环境变量合并后的可用判定。
+
+        ``is_configured`` 只看环境变量，所以只填了后台邮件设置时它会假报"未配置"，
+        调用方据此跳过发信——表现正是"SMTP 在后台配好了，通知邮件一封都不发"。
+        """
+        cfg = await self.resolved_smtp()
+        return bool(cfg["host"] and cfg["user"] and cfg["password"])
+
+    def _create_message(self, email: EmailMessage, smtp: dict[str, Any]) -> MIMEMultipart:
         """
         创建 MIME 消息对象
 
         Args:
             email: 邮件消息
+            smtp: resolved_smtp() 产出的生效参数（分组覆写 + env 兜底）
 
         Returns:
             MIMEMultipart: MIME 消息对象
         """
         msg = MIMEMultipart("alternative")
 
-        from_name = email.from_name or self.from_name
-        from_email = email.from_email or self.from_email
+        from_name = email.from_name or smtp["from_name"]
+        from_email = email.from_email or smtp["from_email"]
         msg["From"] = formataddr((from_name, from_email))
         msg["To"] = email.to
         msg["Subject"] = email.subject
@@ -275,7 +309,8 @@ class EmailService:
         Returns:
             EmailResult: 发送结果
         """
-        if not self.is_configured:
+        smtp_cfg = await self.resolved_smtp()
+        if not (smtp_cfg["host"] and smtp_cfg["user"] and smtp_cfg["password"]):
             logger.warning("邮件服务未配置，跳过发送")
             return EmailResult(
                 success=False,
@@ -283,7 +318,7 @@ class EmailService:
             )
 
         try:
-            msg = self._create_message(email)
+            msg = self._create_message(email, smtp_cfg)
 
             recipients = [email.to]
             if email.cc:
@@ -294,15 +329,15 @@ class EmailService:
             loop = asyncio.get_event_loop()
 
             def send() -> None:
-                if self.smtp_use_tls:
-                    smtp = smtplib.SMTP_SSL(self.smtp_host, self.smtp_port, timeout=_SMTP_TIMEOUT)
+                if smtp_cfg["tls"]:
+                    smtp = smtplib.SMTP_SSL(smtp_cfg["host"], smtp_cfg["port"], timeout=_SMTP_TIMEOUT)
                 else:
-                    smtp = smtplib.SMTP(self.smtp_host, self.smtp_port, timeout=_SMTP_TIMEOUT)
+                    smtp = smtplib.SMTP(smtp_cfg["host"], smtp_cfg["port"], timeout=_SMTP_TIMEOUT)
                     smtp.starttls()
 
                 try:
-                    smtp.login(self.smtp_user, self.smtp_password)
-                    smtp.sendmail(self.from_email, recipients, msg.as_string())
+                    smtp.login(smtp_cfg["user"], smtp_cfg["password"])
+                    smtp.sendmail(smtp_cfg["from_email"], recipients, msg.as_string())
                 finally:
                     # 不写 finally 则每次发送失败都漏一条 SMTP 连接
                     smtp.quit()
@@ -741,6 +776,18 @@ async def send_email_task(
         html_body=html_body,
     )
     return await service._send_sync(email)
+
+
+async def email_notifications_enabled() -> bool:
+    """``email.enable_notifications`` —— 通知类邮件（评论/回复提醒）的总开关。
+
+    未保存过该分组时保持历史行为（发送）：分组默认值是 false，但 ``read_group`` 只返回
+    库里真正存过的键，没存过就不该因为"默认值长这样"而停掉一直在发的通知。
+    注册欢迎信与密码重置验证码属于事务性邮件，不受此开关影响。
+    """
+    from backend.services.site_settings import bool_of, read_group
+
+    return bool_of(await read_group("email"), "enable_notifications", True)
 
 
 def get_email_service(

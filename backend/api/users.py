@@ -424,11 +424,14 @@ async def password_reset_request(
 
     code = await _gen_reset_code(user)
 
-    # is_configured 同时要求 host/user/password 齐备；
+    # 可用性判定同时要求 host/user/password 齐备；
     # 单看 smtp_host 会被 config.py 的默认值 "smtp.qq.com" 恒真欺骗。
+    # 必须走 smtp_is_configured()（后台 email 分组 + 环境变量合并），
+    # 用 is_configured 属性会让"只在后台配了 SMTP"的站点永远发不出重置邮件。
     email_service = get_email_service()
+    smtp_ready = await email_service.smtp_is_configured()
     email_sent = False
-    if user.email and email_service.is_configured:
+    if user.email and smtp_ready:
         try:
             # 同步等待（background=False）：只有拿到确定结果才能判定投递成败
             mail_result = await email_service.send_email(
@@ -451,7 +454,7 @@ async def password_reset_request(
             "密码重置请求无法投递：SMTP 未配置或用户无邮箱 user_id=%s has_email=%s smtp=%s",
             user.id,
             bool(user.email),
-            email_service.is_configured,
+            smtp_ready,
         )
 
     # 仅本地开发便利：生产环境即使 debug=True 也不回传重置凭证，

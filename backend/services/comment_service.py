@@ -690,14 +690,17 @@ class CommentService:
 
                 # 邮件发送
                 try:
-                    smtp_ready = bool(
-                        getattr(settings, "smtp_host", "")
-                        and getattr(settings, "smtp_user", "")
-                        and getattr(settings, "smtp_password", "")
-                        and getattr(settings, "smtp_from_email", "")
-                    )
-                    if smtp_ready and recipients:
-                        es = get_email_service()
+                    from backend.services.email_service import email_notifications_enabled
+
+                    es = get_email_service()
+                    # 通知开关 + 可用性判定都必须读 email 分组（env 兜底）。
+                    # 原先直判 settings.smtp_*：后台配好 SMTP 但 .env 没写 → 一封不发；
+                    # enable_notifications 则从来没被读过 → 后台关了照发。
+                    smtp_ready = bool(recipients) and await email_notifications_enabled()
+                    if smtp_ready and not await es.smtp_is_configured():
+                        logger.warning("SMTP 未配置（email 分组与 .env 均不全），跳过评论通知邮件")
+                        smtp_ready = False
+                    if smtp_ready:
                         # 一次 IN 查询拿全部收件人邮箱；原先逐个 SELECT 整行 User
                         # （连 password_hash 一起读出来），且查询数随收件人线性增长。
                         email_rows = await adb.execute(

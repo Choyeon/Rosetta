@@ -261,6 +261,10 @@ const copyrightLine = computed(() => {
 // ICP 备案号与它无关，关掉开关时仍然显示。
 const showCopyright = computed(() => site.appearance.value.show_copyright !== false)
 
+// appearance.show_powered_by：后台"显示 Powered by 标识"。此前整页没有这一行，
+// 开关自然无人消费；现在是真渲染，关掉即消失（不留 visibility:hidden 的假开关）。
+const showPoweredBy = computed(() => site.appearance.value.show_powered_by !== false)
+
 const quickLocales = [
   { code: 'zh', label: '简体中文', flag: 'cn' },
   { code: 'en', label: 'English', flag: 'us' },
@@ -462,6 +466,7 @@ const handleSetLocale = async (code: string) => {
         <div class="text-xs text-muted-foreground text-center md:text-left">
           <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
           <template v-if="showCopyright">{{ copyrightLine }}</template>
+          <span v-if="showPoweredBy" class="block">{{ t('footer.poweredBy', 'Powered by Rosetta') }}</span>
         </div>
         <!-- Quick locale switch (with flags) -->
         <div class="flex items-center gap-2 flex-wrap">
@@ -534,6 +539,7 @@ const handleSetLocale = async (code: string) => {
       <div class="text-xs text-muted-foreground">
         <span v-if="siteConfig.icp_number">{{ siteConfig.icp_number }} · </span>
         <template v-if="showCopyright">{{ copyrightLine }}</template>
+        <span v-if="showPoweredBy" class="block">{{ t('footer.poweredBy', 'Powered by Rosetta') }}</span>
       </div>
     </div>
   </footer>

@@ -336,6 +336,53 @@ async def test_features_enable_sitemap_gate_blocks_all_routes(client, staff_head
         assert (await client.get(p)).status_code == 200, p
 
 
+@pytest.mark.asyncio
+async def test_email_group_overrides_env_for_outbound_config(client, staff_headers):
+    """email 分组历史上只有 settings.vue 在读写它，发信用的仍是构造时快照的 env。
+
+    钉住两件事：后台填了的 from_address/from_name 必须真的进发信参数；
+    后台留空的 smtp_password 不得把 .env 里的凭据清掉（整段落库 + 密码不回显）。
+    """
+    from backend.services.email_service import get_email_service
+
+    svc = get_email_service()
+    await _patch(
+        client,
+        staff_headers,
+        "email",
+        {"from_address": "blog@example.com", "from_name": "读友小站", "smtp_password": ""},
+    )
+    try:
+        cfg = await svc.resolved_smtp()
+        assert cfg["from_email"] == "blog@example.com"
+        assert cfg["from_name"] == "读友小站"
+        assert cfg["password"] == svc.smtp_password  # 空串 = 不覆写
+        assert await svc.smtp_is_configured() == bool(
+            cfg["host"] and cfg["user"] and cfg["password"]
+        )
+    finally:
+        await _patch(client, staff_headers, "email", {"from_address": "", "from_name": ""})
+    back = await svc.resolved_smtp()
+    assert back["from_email"] != "blog@example.com"
+
+
+@pytest.mark.asyncio
+async def test_email_notifications_switch_is_read_by_caller(client, staff_headers):
+    """enable_notifications 必须有人读（comment_service 在门它）。
+
+    不在这里断言"未保存 = True"：上面那条用例已经把该分组落库，分组默认值
+    enable_notifications=false 会跟着整段写进去——那正是该开关的语义，不是 bug。
+    """
+    from backend.services.email_service import email_notifications_enabled
+
+    await _patch(client, staff_headers, "email", {"enable_notifications": False})
+    try:
+        assert await email_notifications_enabled() is False
+    finally:
+        await _patch(client, staff_headers, "email", {"enable_notifications": True})
+    assert await email_notifications_enabled() is True
+
+
 # ==================== ⑤ 解析工具：坏配置不能炸主流程 ====================
 
 
