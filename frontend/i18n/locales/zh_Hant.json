@@ -1671,5 +1671,19 @@
     "emptyTitle": "這位作者還沒有公開文章",
     "notFoundTitle": "這位作者不存在",
     "notFoundDesc": "該主頁可能從未存在，或作者已關閉了公開資料。"
+  },
+  "notifications": {
+    "title": "通知中心",
+    "all": "全部",
+    "unreadOnly": "僅看未讀",
+    "unread": "未讀",
+    "unreadCount": "未讀 {count} 則",
+    "markAllRead": "全部標為已讀",
+    "markRead": "標為已讀",
+    "open": "檢視原文",
+    "empty": "暫無通知",
+    "loadFailed": "通知載入失敗，請稍後重試",
+    "actionFailed": "操作失敗，請稍後重試",
+    "pageInfo": "第 {page} / {total} 頁"
   }
 }

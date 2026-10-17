@@ -1671,5 +1671,19 @@
     "emptyTitle": "公開記事はまだありません",
     "notFoundTitle": "この作者は存在しません",
     "notFoundDesc": "プロフィールが存在しないか、作者が公開設定をオフにしています。"
+  },
+  "notifications": {
+    "title": "通知",
+    "all": "すべて",
+    "unreadOnly": "未読のみ",
+    "unread": "未読",
+    "unreadCount": "未読 {count} 件",
+    "markAllRead": "すべて既読にする",
+    "markRead": "既読にする",
+    "open": "原文を見る",
+    "empty": "通知はまだありません",
+    "loadFailed": "通知の読み込みに失敗しました。しばらくしてから再度お試しください",
+    "actionFailed": "操作に失敗しました。しばらくしてから再度お試しください",
+    "pageInfo": "{page} / {total} ページ"
   }
 }

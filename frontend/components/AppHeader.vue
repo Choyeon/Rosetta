@@ -8,7 +8,7 @@
 <script setup lang="ts">
 import { watch, computed, onMounted } from 'vue'
 import {
-  Menu, Search, LogOut, User, UserCircle2, Settings, ChevronDown, MessageSquare
+  Menu, Search, LogOut, User, UserCircle2, Settings, ChevronDown, MessageSquare, Bell
 } from '~~/lib/lucide-svg-icons'
 import { Button } from '~~/components/ui/button'
 import {
@@ -494,6 +494,12 @@ const handleSearchClick = () => navigateTo('/search')
                   <MessageSquare data-icon="inline-start" />
                   <span>{{ t('messages.title') }}</span>
                 </DropdownMenuItem>
+                <!-- 站内通知：/api/notifications 只要求登录，普通成员也会收到"评论已通过"
+                     这类回执。入口与 /account 同档（ssr:false 私有页），不进主导航。 -->
+                <DropdownMenuItem @click="navigateTo('/account/notifications')">
+                  <Bell data-icon="inline-start" />
+                  <span>{{ t('notifications.title') }}</span>
+                </DropdownMenuItem>
                 <DropdownMenuItem @click="navigateTo('/settings')">
                   <Settings data-icon="inline-start" />
                   <span>{{ t('common.settings') || '设置' }}</span>
@@ -621,6 +627,17 @@ const handleSearchClick = () => navigateTo('/search')
                       >
                         <MessageSquare data-icon="inline-start" />
                         {{ t('messages.title') }}
+                      </Button>
+                    </SheetClose>
+                    <SheetClose as-child>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        class="justify-start"
+                        @click="navigateTo('/account/notifications')"
+                      >
+                        <Bell data-icon="inline-start" />
+                        {{ t('notifications.title') }}
                       </Button>
                     </SheetClose>
                     <SheetClose as-child>

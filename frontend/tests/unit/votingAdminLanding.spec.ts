@@ -19,7 +19,7 @@ const pollsComposable = readFileSync(resolve(process.cwd(), 'composables/usePoll
 const header = readFileSync(resolve(process.cwd(), 'components/AppHeader.vue'), 'utf8')
 
 /** adminMenu 里声明的全部 path（单源：config/admin-menu.ts）。 */
-const menuPaths = [...menuSrc.matchAll(/path:\s*'([^']+)'/g)].map(m => m[1])
+const menuPaths: string[] = [...menuSrc.matchAll(/path:\s*'([^']+)'/g)].map(m => m[1] ?? '')
 
 function pageFileFor(path: string): string | null {
   const rel = path === '/admin' ? 'pages/admin/index' : `pages${path}`
