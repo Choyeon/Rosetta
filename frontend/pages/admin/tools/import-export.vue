@@ -734,7 +734,7 @@
                     variant="default"
                     size="sm"
                     class="mt-3 rounded-lg bg-success text-success-foreground hover:bg-success/90"
-                    @click="saveBlob(backupDownload.blob, backupDownload.fileName)"
+                    @click="downloadBlob(backupDownload.blob, backupDownload.fileName)"
                   >
                     <Download data-icon="inline-start" /> 立即下载
                   </Button>
@@ -947,6 +947,7 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { apiFetch } from '~~/composables/useApi'
+import { downloadBlob } from '~~/composables/useAdminManage'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
@@ -1154,20 +1155,9 @@ async function handleExport() {
   }
 }
 
-function saveBlob(blob: Blob, fileName: string) {
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = fileName
-  document.body.appendChild(a)
-  a.click()
-  document.body.removeChild(a)
-  setTimeout(() => URL.revokeObjectURL(url), 5000)
-}
-
 function doDownload() {
   if (!downloadReady.value) return
-  saveBlob(downloadReady.value.blob, downloadReady.value.fileName)
+  downloadBlob(downloadReady.value.blob, downloadReady.value.fileName)
 }
 
 /**
