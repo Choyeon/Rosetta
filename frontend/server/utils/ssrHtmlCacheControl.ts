@@ -20,18 +20,25 @@
 const S_MAXAGE_RE = /\bs-maxage=(\d+)/
 const MAX_AGE_RE = /\bmax-age=/
 // Nitro 会输出裸的 `stale-while-revalidate`（丢掉秒值），而 HTTP 要求它带 delta-seconds，
-// 裸形式浏览器/中间代理都会整条忽略 → 按 routeRules 声明的意图补回 86400。
+// 裸形式浏览器/中间代理会整条忽略（连 max-age=0 一起丢）→ 必须补回秒值。
+// 补多少不能瞎猜：按本页自己的 s-maxage 回填。公开页默认口径是 86400（AGENTS §2.3），
+// 只有 s-maxage 短的高频实时页（/posts/hot · /guestbook）声明的是 600，
+// 给它们也补 86400 等于把"60 秒热榜"的窗口撑成一整天。
+// 新增带其它 swr 窗口的公开页时，在这里按 s-maxage 登记一条。
 const BARE_SWR_RE = /\bstale-while-revalidate\b(?!=)/
+const SWR_BY_SMAXAGE: Readonly<Record<string, string>> = { '60': '600' } as const
+const DEFAULT_SWR = '86400'
 
 /** 已合规（同时有 max-age 与 s-maxage）或不属于本页口径 → null 表示不改写。 */
 export function normalizeHtmlCacheControl(raw: string | null | undefined): string | null {
   if (!raw) return null
-  if (!S_MAXAGE_RE.test(raw)) return null
+  const sMaxage = S_MAXAGE_RE.exec(raw)?.[1]
+  if (!sMaxage) return null
   if (MAX_AGE_RE.test(raw)) return null
   const restored = raw
     .trim()
     .replace(/,\s*/g, ', ')
-    .replace(BARE_SWR_RE, 'stale-while-revalidate=86400')
+    .replace(BARE_SWR_RE, `stale-while-revalidate=${SWR_BY_SMAXAGE[sMaxage] ?? DEFAULT_SWR}`)
     .replace(/^public,\s*/, '')
   return `public, max-age=0, ${restored}`
 }

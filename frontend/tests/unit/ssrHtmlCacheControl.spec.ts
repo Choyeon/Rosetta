@@ -27,6 +27,10 @@ describe('normalizeHtmlCacheControl', () => {
     expect(normalizeHtmlCacheControl('s-maxage=60, stale-while-revalidate=600')).toBe(
       'public, max-age=0, s-maxage=60, stale-while-revalidate=600'
     )
+    // 裸形式回填必须按本页 s-maxage 档：热榜 60s 的窗口是 600，不是公开页默认的 86400
+    expect(normalizeHtmlCacheControl('s-maxage=60, stale-while-revalidate')).toBe(
+      'public, max-age=0, s-maxage=60, stale-while-revalidate=600'
+    )
   })
 
   it('已合规的响应不改写（幂等，可被两道钩子双跑）', () => {
