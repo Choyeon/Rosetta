@@ -19,14 +19,19 @@
 
 const S_MAXAGE_RE = /\bs-maxage=(\d+)/
 const MAX_AGE_RE = /\bmax-age=/
-const SWR_VALUE_RE = /\bstale-while-revalidate=(\d+)/
+// Nitro 会输出裸的 `stale-while-revalidate`（丢掉秒值），而 HTTP 要求它带 delta-seconds，
+// 裸形式浏览器/中间代理都会整条忽略 → 按 routeRules 声明的意图补回 86400。
+const BARE_SWR_RE = /\bstale-while-revalidate\b(?!=)/
 
 /** 已合规（同时有 max-age 与 s-maxage）或不属于本页口径 → null 表示不改写。 */
 export function normalizeHtmlCacheControl(raw: string | null | undefined): string | null {
   if (!raw) return null
-  const sMaxage = S_MAXAGE_RE.exec(raw)
-  if (!sMaxage) return null
+  if (!S_MAXAGE_RE.test(raw)) return null
   if (MAX_AGE_RE.test(raw)) return null
-  const swr = SWR_VALUE_RE.exec(raw)?.[1] ?? '86400'
-  return `public, max-age=0, s-maxage=${sMaxage[1]}, stale-while-revalidate=${swr}`
+  const restored = raw
+    .trim()
+    .replace(/,\s*/g, ', ')
+    .replace(BARE_SWR_RE, 'stale-while-revalidate=86400')
+    .replace(/^public,\s*/, '')
+  return `public, max-age=0, ${restored}`
 }

@@ -52,17 +52,28 @@ describe('ssr-html-revalidate 插件接线', () => {
     expect(pluginSrc).toContain('text/html')
   })
 
+  it('Nitro 截断形态能还原回 routeRules 声明的口径', () => {
+    expect(normalizeHtmlCacheControl('s-maxage=1800')).toBe('public, max-age=0, s-maxage=1800')
+  })
+
   it('routeRules 里声明的公开页口径与归一产出同形（防两处各写一套）', () => {
     const nuxtConfig = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
     const declared: string[] = [...nuxtConfig.matchAll(/'Cache-Control': '([^']+)'/g)]
       .map(m => m[1])
       .filter((v): v is string => Boolean(v))
-    for (const value of declared) {
-      if (!value.includes('s-maxage')) continue
-      const ttl = /s-maxage=(\d+)/.exec(value)?.[1] ?? ''
-      const swr = /stale-while-revalidate=(\d+)/.exec(value)?.[1] ?? '86400'
-      expect(ttl).not.toBe('')
-      expect(normalizeHtmlCacheControl(`s-maxage=${ttl}, stale-while-revalidate=${swr}`)).toBe(value)
+    const swrPages = declared.filter(v => v.includes('s-maxage'))
+    // 覆盖度自检：这条测试真的扫到公开页规则，而不是空集合静默通过
+    expect(swrPages.length).toBeGreaterThan(3)
+    for (const value of swrPages) {
+      if (!value.includes('max-age=0')) {
+        // 显式私有 max-age（媒体/静态资源）不属本页口径：归一函数必须不动它
+        expect(normalizeHtmlCacheControl(value)).toBeNull()
+        continue
+      }
+      const nitroForm = value
+        .replace('public, max-age=0, ', '')
+        .replace(/, stale-while-revalidate=\d+/, ', stale-while-revalidate')
+      expect(normalizeHtmlCacheControl(nitroForm)).toBe(value)
     }
   })
 })
