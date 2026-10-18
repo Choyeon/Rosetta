@@ -70,95 +70,58 @@
         v-else
         class="overflow-x-auto"
       >
-        <table class="w-full text-sm">
-          <caption class="sr-only">
-            头衔列表：ID、名称、图标预览、描述与操作
-          </caption>
-          <thead>
-            <tr class="border-b bg-muted/30">
-              <th
-                scope="col"
-                class="text-left font-medium p-4 w-16"
+        <AdminDataTable
+          :columns="columns"
+          :data="titles"
+          row-key="id"
+          header-class="border-b bg-muted/30"
+          :row-class="(_t, i) => (i % 2 === 1 ? 'bg-muted/20' : '')"
+        >
+          <template #cell-id="{ row }">
+            <span class="text-muted-foreground tabular-nums">#{{ (row as AdminUserTitle).id }}</span>
+          </template>
+          <template #cell-name="{ row }">
+            <div class="inline-flex items-center gap-2">
+              <span
+                class="size-2.5 rounded-full shrink-0"
+                :style="{ backgroundColor: (row as AdminUserTitle).color || '#94a3b8' }"
+              />
+              <span class="font-medium">{{ getLocalizedStr((row as AdminUserTitle).name) }}</span>
+            </div>
+          </template>
+          <template #cell-icon="{ row }">
+            <TitleBadge
+              :title="row as AdminUserTitle"
+              size="md"
+            />
+          </template>
+          <template #cell-description="{ row }">
+            <span class="text-muted-foreground block max-w-md break-words">
+              {{ getLocalizedStr((row as AdminUserTitle).description) || '—' }}
+            </span>
+          </template>
+          <template #actions="{ row }">
+            <div class="inline-flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="编辑头衔"
+                @click="openEdit(row as AdminUserTitle)"
               >
-                ID
-              </th>
-              <th
-                scope="col"
-                class="text-left font-medium p-4"
+                <Pencil data-icon="inline-start" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                class="text-destructive hover:text-destructive"
+                aria-label="删除头衔"
+                @click="confirmDelete(row as AdminUserTitle)"
               >
-                名称
-              </th>
-              <th
-                scope="col"
-                class="text-left font-medium p-4 w-28"
-              >
-                图标预览
-              </th>
-              <th
-                scope="col"
-                class="text-left font-medium p-4"
-              >
-                描述
-              </th>
-              <th
-                scope="col"
-                class="text-right font-medium p-4 w-28"
-              >
-                操作
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="(t, i) in titles"
-              :key="t.id"
-              :class="i % 2 === 1 ? 'bg-muted/20' : ''"
-            >
-              <td class="p-4 text-muted-foreground tabular-nums">
-                #{{ t.id }}
-              </td>
-              <td class="p-4">
-                <div class="inline-flex items-center gap-2">
-                  <span
-                    class="size-2.5 rounded-full shrink-0"
-                    :style="{ backgroundColor: t.color || '#94a3b8' }"
-                  />
-                  <span class="font-medium">{{ getLocalizedStr(t.name) }}</span>
-                </div>
-              </td>
-              <td class="p-4">
-                <TitleBadge
-                  :title="t"
-                  size="md"
-                />
-              </td>
-              <td class="p-4 text-muted-foreground max-w-md break-words">
-                {{ getLocalizedStr(t.description) || '—' }}
-              </td>
-              <td class="p-4 text-right">
-                <div class="inline-flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label="编辑头衔"
-                    @click="openEdit(t)"
-                  >
-                    <Pencil data-icon="inline-start" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="text-destructive hover:text-destructive"
-                    aria-label="删除头衔"
-                    @click="confirmDelete(t)"
-                  >
-                    <Trash2 data-icon="inline-start" />
-                  </Button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                <Trash2 data-icon="inline-start" />
+              </Button>
+            </div>
+          </template>
+        </AdminDataTable>
       </div>
     </AdminCard>
 
@@ -341,11 +304,19 @@ import {
 } from '~~/composables/useAdminManage'
 import { TITLE_PRESET_ICONS } from '~~/composables/titlePresets'
 import { getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
+import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 const presetIcons = TITLE_PRESET_ICONS
+
+const columns: Column[] = [
+  { key: 'id', title: 'ID', class: 'w-16' },
+  { key: 'name', title: '名称' },
+  { key: 'icon', title: '图标预览', class: 'w-28' },
+  { key: 'description', title: '描述' }
+]
 
 const loading = ref(false)
 const submitting = ref(false)
