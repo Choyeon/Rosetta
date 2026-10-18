@@ -48,6 +48,7 @@ from backend.services.content_renderer import (
     render_post_fields,
     render_title,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
@@ -1956,6 +1957,7 @@ async def create_category(
     await db.refresh(category)
 
     await invalidate_cache("categories")
+    purge_frontend_page_cache("分类变更")
 
     return CategoryResponse(
         id=category.id,
@@ -2111,6 +2113,7 @@ async def create_tag(
     await db.refresh(tag)
 
     await invalidate_cache("tags")
+    purge_frontend_page_cache("标签变更")
 
     return TagResponse(
         id=tag.id,
@@ -2742,6 +2745,7 @@ async def update_category(
     await db.flush()
     await db.refresh(category)
     await invalidate_cache("categories")
+    purge_frontend_page_cache("分类变更")
 
     affected_slugs = await _category_post_slugs(db, category.id)
     await invalidate_post_caches_by_slugs(affected_slugs)
@@ -2790,6 +2794,7 @@ async def delete_category(
 
     await db.delete(category)
     await invalidate_cache("categories")
+    purge_frontend_page_cache("分类变更")
     await invalidate_post_caches_by_slugs(affected_slugs)
 
     return BaseResponse(message="分类已删除")
@@ -2830,6 +2835,7 @@ async def update_tag(
     await db.flush()
     await db.refresh(tag)
     await invalidate_cache("tags")
+    purge_frontend_page_cache("标签变更")
 
     affected_slugs = await _tag_post_slugs(db, tag.id)
     await invalidate_post_caches_by_slugs(affected_slugs)
@@ -2877,6 +2883,7 @@ async def delete_tag(
 
     await db.delete(tag)
     await invalidate_cache("tags")
+    purge_frontend_page_cache("标签变更")
     await invalidate_post_caches_by_slugs(affected_slugs)
 
     return BaseResponse(message="标签已删除")

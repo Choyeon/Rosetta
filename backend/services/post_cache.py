@@ -48,6 +48,10 @@ async def invalidate_post_caches_by_slugs(slugs: Iterable[str]) -> None:
         return
     await invalidate_post_detail_cache(*unique)
     await invalidate_cache("posts")
+    # 文章详情缓存变了 = 详情页 SSR HTML 里的 comments_count / excerpt 陈旧；
+    # Nitro 对 /posts/{slug} 做 600s swr，不通知前端就等于评论提交后一小时内
+    # 访客仍拿到"0 评论"的旧页。fire-and-forget，一次 HTTP POST 的成本。
+    purge_frontend_page_cache("post detail caches by slugs")
 
 
 async def invalidate_post_caches_by_ids(db: AsyncSession, post_ids: Iterable[int]) -> None:

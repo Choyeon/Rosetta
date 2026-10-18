@@ -461,6 +461,7 @@ async def create_navigation(data: NavigationCreate, current_user: CurrentStaff, 
     await db.refresh(nav)
 
     await invalidate_cache("navigations")
+    purge_frontend_page_cache("导航变更")
 
     return NavigationResponse.model_validate(nav)
 
@@ -490,6 +491,7 @@ async def update_navigation(
     await db.flush()
     await db.refresh(nav)
     await invalidate_cache("navigations")
+    purge_frontend_page_cache("导航变更")
 
     return NavigationResponse.model_validate(nav)
 
@@ -513,6 +515,7 @@ async def delete_navigation(nav_id: int, current_user: CurrentStaff, db: DB):
 
     await db.delete(nav)
     await invalidate_cache("navigations")
+    purge_frontend_page_cache("导航变更")
 
     return BaseResponse(message="导航已删除")
 
@@ -600,6 +603,7 @@ async def create_friend_link(data: FriendLinkCreate, current_user: CurrentStaff,
     await db.refresh(link)
 
     await invalidate_cache("friend_links")
+    purge_frontend_page_cache("友情链接变更")
 
     return FriendLinkResponse.model_validate(link)
 
@@ -623,6 +627,7 @@ async def delete_friend_link(link_id: int, current_user: CurrentStaff, db: DB):
 
     await db.delete(link)
     await invalidate_cache("friend_links")
+    purge_frontend_page_cache("友情链接变更")
 
     return BaseResponse(message="友情链接已删除")
 
@@ -655,6 +660,7 @@ async def update_friend_link(
     await db.flush()
     await db.refresh(link)
     await invalidate_cache("friend_links")
+    purge_frontend_page_cache("友情链接变更")
 
     return FriendLinkResponse.model_validate(link)
 
