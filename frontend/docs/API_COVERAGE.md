@@ -108,6 +108,12 @@
 
 `GET /pages`（uam:805）`GET /pages/{slug}`（pages/page/[slug].vue:67、pages/[slug].vue:155）、`POST /pages`（uam:834）、`PUT/DELETE /pages/{id}`（uam:838,842）、`GET /navigations`（components/AppHeader.vue:121）、`POST/PUT/DELETE /navigations/{id}`（uam:1256–1264）、`GET /admin/navigations`（uam:1218）、`GET /friend-links`（ufl:11）、`POST /friend-links`（uam:1300）、`PUT/DELETE /friend-links/{id}`（uam:1304,1308）、`GET /search-placeholders`（pages/posts/index.vue:218）、`GET /config`（us:285）
 ❌（3）：`GET /sponsors`、`GET /config/full`、`POST /admin/settings`——原先仅被已删除的 `useCore.ts` 名义消费，全站无真实调用方（settings 走 `PATCH /settings/{group}`）。
+> 2026-10-18 补充（捐助口径）：打赏/收款面已改由 **`donate` 设置分组**单源驱动——后台站点设置
+> 「捐助」分组可上传多张支付宝/微信等收款码图片，前台 `pages/sponsor.vue` 直接消费
+> `useSite().donate`。`GET /sponsors`（读 SiteConfig `SPONSORS` 的打赏者名单）与
+> `sponsor_page_title` / `sponsor_methods_json` 等 `sponsor_*` 旧字段因此是**第二套真相源且零消费点**：
+> 保留它们只是为了不改动 `SiteFullConfig` 的输出形状，任何新界面**不得**再接它们；
+> 彻底下线属独立工程（删 schema 字段 + `core.py` 读写映射 + 相应夹具），不属于"补前端消费点"。
 
 ### admin（/api/admin）— 15/15 全覆盖 ✅
 

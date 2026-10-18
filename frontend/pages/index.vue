@@ -1185,7 +1185,7 @@ const { buildInfo } = await siteVersionsPromise
 // ===== Hero 轮播状态 =====
 // 后端 title/subtitle/cta_text 三种形态都要接住：虚拟兜底项已按 lang 本地化成纯字符串，
 // DB 项是 JSON 字符串，管理接口也可能直接给对象。统一收敛成 pickSlideText。
-const pickSlideText = (raw: HeroSlideApi['title']): string => {
+const pickSlideText = (raw: HeroSlideApi['title'] | undefined): string => {
   if (raw == null) return ''
   if (typeof raw === 'string') {
     const s = raw.trim()

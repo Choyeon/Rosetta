@@ -25,7 +25,7 @@ const manage = readFileSync(resolve(process.cwd(), managePath), 'utf8')
 describe('后台首页轮播管理页', () => {
   it('页面存在且已登记进侧栏菜单（防死链 / 防做出来进不去）', () => {
     expect(page, 'pages/admin/content/hero.vue 必须存在').not.toBe('')
-    expect(menu).toContain("path: '/admin/content/hero'")
+    expect(menu).toMatch(/path: '\/admin\/content\/hero'/)
   })
 
   it('五个管理端点全部有真实调用点', () => {
@@ -50,7 +50,7 @@ describe('后台首页轮播管理页', () => {
   })
 
   it('只提供 image 媒体类型（首页无视频渲染面）', () => {
-    expect(page).toContain("media_type: 'image'")
+    expect(page).toMatch(/media_type: 'image'/)
     expect(page, '不得给出 video/youtube 选项').not.toMatch(/value:\s*'(video|youtube)'/)
   })
 
