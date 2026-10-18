@@ -351,7 +351,10 @@ const quickQuery = ref('')
 const quickOpen = ref(false)
 const quickActive = ref(0)
 const quickMatches = computed(() => filterAdminMenuItems(quickQuery.value))
-watch(quickMatches, () => { quickActive.value = 0 })
+// 查询变了，高亮位必须回到第一条，否则 Enter 会打开上一轮的候选
+watch(quickMatches, () => {
+  quickActive.value = 0
+})
 
 const QUICK_INPUT_ID = 'admin-quick-search'
 
@@ -366,8 +369,7 @@ function onQuickKeydown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     quickOpen.value = false
     return
-  }
-  const total = quickMatches.value.length
+  }  const total = quickMatches.value.length
   if (total === 0) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
@@ -515,7 +517,10 @@ watch(
           :class="index === quickActive && 'bg-accent'"
           @mousedown.prevent="goQuick(item.path)"
         >
-          <component :is="item.icon" class="size-4 shrink-0 text-muted-foreground" />
+          <component
+            :is="item.icon"
+            class="size-4 shrink-0 text-muted-foreground"
+          />
           <span class="truncate">{{ item.label }}</span>
           <span class="ml-auto shrink-0 text-xs text-muted-foreground/60">{{ item.path }}</span>
         </button>

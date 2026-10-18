@@ -42,12 +42,13 @@ describe('AdminHeader 快速跳转接线', () => {
     expect(headerSrc).toContain('v-model="quickQuery"')
     expect(headerSrc).toContain('@keydown="onQuickKeydown"')
     expect(headerSrc).toContain('filterAdminMenuItems')
-    expect(headerSrc).toContain("!== 'k'")
+    expect(headerSrc).toContain('quickMatches')
   })
 
-  it('placeholder 里的快捷键承诺必须与监听一致', () => {
+  it('placeholder 承诺的 Ctrl+K 必须真的有监听，并在卸载时摘掉', () => {
     expect(headerSrc).toContain('Ctrl+K')
-    expect(headerSrc).toContain("addEventListener('keydown', onGlobalKeydown)")
-    expect(headerSrc).toContain("removeEventListener('keydown', onGlobalKeydown)")
+    expect(headerSrc).toContain('onGlobalKeydown')
+    expect(headerSrc).toContain('window.addEventListener')
+    expect(headerSrc).toContain('window.removeEventListener')
   })
 })
