@@ -206,15 +206,21 @@ Authorization: Bearer <access_token>
 ### 更新头像
 
 ```http
-PUT /api/users/me/avatar?avatar=/media/avatars/new_avatar.jpg
+PUT /api/users/me/avatar
 Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"avatar": "/media/avatars/new_avatar.jpg"}
 ```
 
 ### 更新封面图
 
 ```http
-PUT /api/users/me/cover?cover_image=/media/covers/new_cover.jpg
+PUT /api/users/me/cover
 Authorization: Bearer <access_token>
+Content-Type: application/json
+
+{"cover_image": "/media/covers/new_cover.jpg"}
 ```
 
 ---

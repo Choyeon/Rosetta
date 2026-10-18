@@ -465,6 +465,18 @@ _无路径 / query 参数_
 
 _无路径 / query 参数_
 
+**请求体**（`application/json`，模型 `_AvatarBody`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| avatar | string | 是 | 头像 URL（1–2048 字符；走 body 而非 Query，AGENTS §12） |
+
+```json
+{
+  "avatar": "string"
+}
+```
+
 **出参**
 
 `200` · 模型 `UserResponse`
@@ -582,6 +594,18 @@ _无路径 / query 参数_
 **入参**
 
 _无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `_CoverBody`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| cover_image | string | 是 | 封面图 URL（1–2048 字符；走 body 而非 Query，AGENTS §12） |
+
+```json
+{
+  "cover_image": "string"
+}
+```
 
 **出参**
 

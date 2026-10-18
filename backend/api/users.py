@@ -88,6 +88,18 @@ class _DeleteAccountBody(BaseModel):
     password: str = Field(..., min_length=1, max_length=255, description="当前密码验证")
 
 
+class _AvatarBody(BaseModel):
+    """头像写入体：URL 走 body 不走 Query（AGENTS §12：用户内容/隐私字段一律走请求体）。"""
+
+    avatar: str = Field(..., min_length=1, max_length=2048, description="头像 URL")
+
+
+class _CoverBody(BaseModel):
+    """封面图写入体：同 _AvatarBody 口径。"""
+
+    cover_image: str = Field(..., min_length=1, max_length=2048, description="封面图 URL")
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 响应体文档模型（仅供 OpenAPI `responses={200: {"model": ...}}` 声明使用，
 # 运行时不做序列化过滤——实际响应以 handler 返回字面量为准）
@@ -1055,11 +1067,11 @@ async def delete_account(
 async def update_avatar(
     current_user: CurrentUser,
     db: DB,
-    avatar: str = Query(..., description="头像 URL"),
+    payload: _AvatarBody,
 ):
     """更新用户头像"""
     service = await get_user_service(db)
-    updated_user = await service.update_profile(current_user.id, {"avatar": avatar})
+    updated_user = await service.update_profile(current_user.id, {"avatar": payload.avatar})
     return build_user_response(updated_user)
 
 
@@ -1072,11 +1084,11 @@ async def update_avatar(
 async def update_cover(
     current_user: CurrentUser,
     db: DB,
-    cover_image: str = Query(..., description="封面图 URL"),
+    payload: _CoverBody,
 ):
     """更新用户封面图"""
     service = await get_user_service(db)
-    updated_user = await service.update_profile(current_user.id, {"cover_image": cover_image})
+    updated_user = await service.update_profile(current_user.id, {"cover_image": payload.cover_image})
     return build_user_response(updated_user)
 
 
