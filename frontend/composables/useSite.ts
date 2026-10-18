@@ -10,10 +10,36 @@
  *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/navigation/reading/features/donate)
  *   GET /api/config           (公开兜底同步 fallback)
  */
-import { computed } from 'vue'
+import { computed, getCurrentInstance } from 'vue'
 import type { AllSettingsGroups } from '~~/composables/useAdminManage'
 import { apiFetch } from '~~/composables/useApi'
 import { hexToHsl } from '~~/lib/utils'
+
+/**
+ * 组件实例之外求值的 computed 里不能直接 useI18n()：unhead 在 SSR 收尾期解析
+ * useSeo() 收进去的 Ref，watch 回调里的第一次求值同样没有组件实例，这两种情况下
+ * vue-i18n 抛 code 26（MUST_BE_CALL_SETUP_TOP）= 整页 500（实测 /sponsor 全语言）。
+ * 所以优先用实例内 composer，拿不到就回落到 Nuxt 注入的全局 composer，最后返回空串
+ * （空串让 pickI18n 走 dict 自带的 zh/en 兜底，而不是把访客页打成错误页）。
+ */
+function safeI18n(): { t: (key: string) => string, locale: string } {
+  if (getCurrentInstance()) {
+    try {
+      const c = useI18n()
+      return { t: (key: string) => String(c.t(key)), locale: String(c.locale.value) }
+    } catch {
+      // 实例存在但 composer 不可用（极端挂载时序）：继续走全局回落分支
+    }
+  }
+  try {
+    const g = useNuxtApp().$i18n as { locale?: unknown, t?: (key: string) => unknown } | undefined
+    const raw = g?.locale
+    const locale = typeof raw === 'string' ? raw : String((raw as { value?: unknown })?.value ?? '')
+    return { t: (key: string) => String(g?.t?.(key) ?? ''), locale }
+  } catch {
+    return { t: () => '', locale: '' }
+  }
+}
 
 /**
  * 与 GET /api/config 返回值完全一致的首屏默认值。
@@ -152,7 +178,7 @@ export function useSite() {
     //   1) settings.hero.* (管理员手动在后台配置，多语言 i18n dict)
     //   2) theme mods：hero_title / hero_subtitle（主题 Customizer，纯字符串 → 被写成多语言副本）
     //   3) i18n home.heroTitle / home.heroSubtitle（四种语言都有，兜底不会出现 site_name 当大标题）
-    const { t, locale } = useI18n()
+    const { t, locale } = safeI18n()
     const fallbackTitle = {
       zh: String(t('home.heroTitle') || '代码、文字、光与影'),
       en: String(t('home.heroTitle') || 'Write. Think. Settle.'),
@@ -184,13 +210,13 @@ export function useSite() {
     if (themeOverrides.hero_title.value) {
       const v = String(themeOverrides.hero_title.value)
       base.title = { zh: v, en: v, ja: v, zh_Hant: v } as Record<string, string>
-    } else if (!base.title || typeof base.title !== 'object' || !String(base.title[locale.value] || base.title.zh || '').trim()) {
+    } else if (!base.title || typeof base.title !== 'object' || !String(base.title[locale] || base.title.zh || '').trim()) {
       base.title = fallbackTitle as Record<string, string>
     }
     if (themeOverrides.hero_subtitle.value) {
       const v = String(themeOverrides.hero_subtitle.value)
       base.subtitle = { zh: v, en: v, ja: v, zh_Hant: v } as Record<string, string>
-    } else if (!base.subtitle || typeof base.subtitle !== 'object' || !String(base.subtitle[locale.value] || base.subtitle.zh || '').trim()) {
+    } else if (!base.subtitle || typeof base.subtitle !== 'object' || !String(base.subtitle[locale] || base.subtitle.zh || '').trim()) {
       base.subtitle = fallbackSubtitle as Record<string, string>
     }
     return base
@@ -307,8 +333,8 @@ export function useSite() {
     value: string | Record<string, string> | undefined,
     locale?: string
   ): string => {
-    const { locale: cur } = useI18n()
-    const loc = locale || cur.value
+    const { locale: cur } = safeI18n()
+    const loc = locale || cur
     if (value == null) return ''
     if (typeof value === 'string') return value
     if (typeof value !== 'object') return ''
