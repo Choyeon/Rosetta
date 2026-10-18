@@ -53,7 +53,7 @@
 | messages | `/api/messages` | 6 | 0 | 0 | 6 | 0% |
 | voting | `/api/voting` | 5 | 2 | 0 | 3 | 40% |
 | shortcodes | `/api` | 5 | 4 | 0 | 1 | 80% |
-| hero | `/api` | 6 | 0 | 0 | 6 | 0% |
+| hero | `/api` | 6 | 1 | 0 | 5 | 17% |
 | admin_tools | `/api/admin`（alembic/cache） | 4 | 4 | 0 | 0 | 100% |
 | migration | `/api/admin/migration` | 4 | 4 | 0 | 0 | 100% |
 | performance | `/api/admin` | 4 | 4 | 0 | 0 | 100% |
@@ -176,11 +176,21 @@
 ❌（1，**重复入口**）：`PUT /admin/announcements/{id}/toggle`（被 PUT 详情替代——重复入口）
 > 2026-09-28 口径：公告条是**两个来源合一**——公告表（多条、带生效时间窗）与设置页 `notice` 分组（全站置顶单条）。后者此前属于"能存能读却无人渲染"的死配置，现由 `useSite().notice` → `noticeToRow()` 接入，`sticky=false` 时排在表格公告之后。两处正文都允许写 Markdown，而横幅是单行纯文本位，统一由 `stripInlineMarkdown()` 剥标记（不为此引入公共页 v-html）。回归见 `tests/unit/announcementBar.spec.ts`。
 
-### hero（/api）— 0/6
+### hero（/api）— 1/6
 
-❌（6）：`GET /hero/slides` 与 `/admin/hero/slides` 全家桶（GET/POST/PUT/DELETE/toggle）——`GET /hero/slides` 原先只被已删除的 `useCore.ts` 名义消费、无真实调用方；后台亦无轮播管理页，前端真实缺口（首页 hero 数据当前由 settings 驱动）。
+✅（1）：`GET /hero/slides` —— `pages/index.vue` 首页横幅轮播（六路并行 useAPI 之一，缓存键带 locale）。
+❌（5）：`/admin/hero/slides` 全家桶（GET/POST/PUT/DELETE/toggle）——后台尚无轮播管理页。
 
-> 2026-09-28 复核：hero 轮播是**与首页并行的第二套 hero**（首页真实数据源是 settings 的 `hero` 分组），补齐管理页会造出两个真相源，故**不接 UI**、维持缺口诚实。但 `GET /hero/slides` 曾在模块内自带一份 httpx 直连 Bing 的兜底抓取（独立上游域名、15s 超时、不进响应缓存），使这个公开端点在默认安装（DB 无轮播）下**每个访客请求都对站外发一次 HTTP**，且 Bing 故障时无负缓存、重试无上界。现改为委托 `backend/api/bing.py::get_bing_wallpapers`（全站唯一一份抓取 + 1h 缓存），bing 侧空结果补 60s 短缓存防穿透。回归 `tests/test_hero_bing_fetch_dedup.py`（含"hero.py 不得再出现自有抓取"的源码门禁）。
+> 2026-10-18 口径反转：首页横幅的内容源已从「Bing 每日壁纸」改为「/hero/slides」，
+> 于是 hero 分组不再是与首页并行的第二套真相——`hero` 分组的 `bg_image`/`bg_gradient`
+> 退为"站长显式覆盖轮播图"的兜底，settings 的 `hero.title/subtitle/cta_*` 退为"没有幻灯片时"的兜底文案。
+> 后端 `list_active_hero_slides` 的兜底也同步改为高热度文章（不再委托 bing 侧抓取），
+> Bing 壁纸现在只服务登录/注册/OOBE 三个页面。
+> 旧回归 `tests/test_hero_bing_fetch_dedup.py` 钉的是"委托 bing 抓取"这条已反转的契约，随之下线；
+> 新回归 `tests/test_hero_hot_posts_fallback.py`（含"hero.py 不得出现自有抓取"的源码门禁 +
+> "兜底项用负 ID 且本地化随 lang 变化"）。
+> 仍待办：后台轮播 CRUD 一旦落地，DB 记录会优先于热榜兜底，届时需要与 `hero` 分组明确谁覆盖谁。
+
 
 ### post_series（/api）— 6/8
 

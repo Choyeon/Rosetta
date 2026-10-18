@@ -25,9 +25,17 @@ describe('站点设置开关必须有真实消费点', () => {
   it('首页 hero 背景读取 hero.bg_image 与 hero.bg_gradient', () => {
     expect(homePage).toContain('site.hero.value.bg_image')
     expect(homePage).toContain('site.hero.value.bg_gradient')
-    expect(homePage, '自配背景必须能压过每日壁纸，否则配了等于没配')
-      .toMatch(/heroBgImage\.value\s*\|\|\s*currentWallpaper\.value/)
+    expect(homePage, '自配背景必须能压过轮播图，否则配了等于没配')
+      .toMatch(/heroBgImage\.value\s*\|\|\s*heroSlideMedia\.value/)
     expect(homePage, '写进 style 的 URL 必须先过白名单正则').toMatch(/HERO_BG_URL_RE\.test/)
+  })
+
+  it('首页横幅内容源是 /hero/slides，不再请求 Bing 每日壁纸', () => {
+    expect(homePage).toContain("useAPI<HeroSlideApi[]>('/hero/slides'")
+    expect(homePage, '首页引入 useBingWallpaper 会把首屏绑到站外图片（壁纸只服务登录/注册页）')
+      .not.toContain('useBingWallpaper')
+    expect(homePage, '轮播必须有真实切换面，否则只有第一张能用')
+      .toMatch(/function selectHeroSlide/)
   })
 
   it('页脚「回到顶部」读取 footer.show_back_to_top', () => {

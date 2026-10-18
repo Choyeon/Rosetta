@@ -1,8 +1,8 @@
 <!--
-  首页（SSR）骨架三态：isMinimalTheme（MINIMAL_THEME_SLUGS）→ 纯竖排列表且不请求 Bing 壁纸；
+  首页（SSR）骨架三态：isMinimalTheme（MINIMAL_THEME_SLUGS）→ 纯竖排列表且不渲染 Hero 轮播；
   isEditorialTheme 在"无激活主题（slug=null）"时也成立，只有既非极简又非 editorial 的 slug 才走文字 Hero 杂志风。
   时序硬约束：先 await site.ensureLoaded() 再 await ft.ensureLoaded()（首帧两端同判），
-  随后 5 个 useAPI 先并行发出、再统一 Promise.all await（省 4 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
+  随后 6 个 useAPI 先并行发出、再统一 Promise.all await（省 5 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
   防御性去重：posts 按 slug/id、categories/tags 按本地化名称，兜的是后端/mock 重复行；formatStat 固定 en-US 千分位保 SSR 一致。
 -->
 
@@ -11,7 +11,7 @@
     <!-- =========================================================
          当 activeThemeSlug 为极简主题 slug → AstroPaper 风格首页
          · astro-paper-inspired  极简主题（内建，除默认主题外唯一保留）
-         · 无大图 Bing 壁纸 Hero（不请求壁纸、不渲染图片区）
+         · 不渲染 Hero 轮播（首页不请求 /hero/slides 的渲染面）
          · 无文字 Hero（极简主题不渲染任何 hero header）
          · 不渲染 Pinned 段、不渲染 Sidebar、不渲染 Newsletter CTA
          · 最新文章用纯竖排列表：日期 · 标题 · 摘要，一条一行（非卡片）
@@ -100,15 +100,32 @@
           isEditorialTheme
             ? 'min-h-[72vh] md:min-h-[78vh]'
             : 'min-h-[80vh] md:min-h-[86vh]',
-          // 无壁纸且站长也没自配背景时的兜底渐变属于主题皮肤，定义在 editorial 主题 CSS 内
-          currentWallpaper || heroHasOwnBg ? '' : 'ed-hero-fallback'
+          // 轮播图与站长自配背景都没有时的兜底渐变属于主题皮肤，定义在 editorial 主题 CSS 内
+          heroHasBg ? '' : 'ed-hero-fallback'
         ]"
         aria-label="hero"
+        aria-roledescription="carousel"
         data-editorial-section="hero"
-        :style="heroStyle"
+        @pointerenter="heroPaused = true"
+        @pointerleave="heroPaused = false"
       >
-        <!-- Subtle depth overlays (keep cinematics — dim for editorial wallpaper-only view) -->
+        <!-- 背景层：新旧两层都绝对定位，切换时交叉淡入（reduced-motion 下由 CSS 关闭动画） -->
+        <div class="absolute inset-0 z-0">
+          <Transition name="hero-xfade">
+            <div
+              :key="heroBgUrl || 'fallback'"
+              class="absolute inset-0 bg-cover bg-center bg-no-repeat"
+              :style="heroLayerStyle"
+            />
+          </Transition>
+        </div>
+
+        <!-- Subtle depth overlays (keep cinematics) + 幻灯片自带的可读性遮罩 -->
         <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-black/22 pointer-events-none" />
+        <div
+          class="absolute inset-0 pointer-events-none transition-opacity duration-500"
+          :style="heroOverlayStyle"
+        />
         <div
           :class="[
             'absolute inset-0 pointer-events-none',
@@ -118,16 +135,19 @@
           ]"
         />
 
-        <!-- Hero copy: Editorial theme → wallpaper-only (no title/CTA overlays on top).
-             Non-Editorial (fallback magazine-style) retains title/CTA for visual emphasis. -->
-        <template v-if="!isEditorialTheme">
-          <div
-            class="relative z-20 container pt-24 md:pt-32"
-            :style="containerMaxStyle"
-          >
-            <div class="max-w-3xl">
+        <!-- Hero copy：轮播项本身就是内容（热榜文章标题/摘要/链接），所以两套主题都要显示，
+             不再"只当壁纸"；没有幻灯片时退回站点设置里的 hero 文案。 -->
+        <div
+          class="relative z-20 flex min-h-[inherit] items-center container pt-24 pb-28 md:pt-32"
+          :style="containerMaxStyle"
+        >
+          <Transition name="hero-copy" mode="out-in">
+            <div
+              :key="heroSlide ? heroSlide.id : 'static'"
+              :class="['flex max-w-3xl flex-col', heroAlign]"
+            >
               <span
-                class="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/70 backdrop-blur-xl"
+                class="inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/70 backdrop-blur-xl"
               >
                 <span class="size-1.5 rounded-full bg-primary" />
                 {{ site.siteTitle.value }}
@@ -136,13 +156,13 @@
                 data-hero-title
                 class="mt-5 font-display text-4xl md:text-6xl font-black leading-[1.05] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)]"
               >
-                {{ _heroTitle }}
+                {{ heroTitle }}
               </h1>
               <p
                 data-hero-subtitle
                 class="mt-5 max-w-2xl text-base md:text-xl text-white/85 leading-relaxed drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]"
               >
-                {{ _heroSubtitle }}
+                {{ heroSubtitle }}
               </p>
               <div
                 v-if="_heroCaption"
@@ -152,10 +172,10 @@
               </div>
               <div class="mt-8 flex flex-wrap items-center gap-3">
                 <NuxtLink
-                  :to="localeHref(_heroCtaUrl)"
+                  :to="localeHref(heroCtaUrl)"
                   class="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-xl shadow-black/30 hover:bg-primary/90 transition-colors"
                 >
-                  {{ _heroCtaText }}
+                  {{ heroCtaText || t('home.readArticle') }}
                   <ArrowRight class="size-4" />
                 </NuxtLink>
                 <NuxtLink
@@ -166,10 +186,10 @@
                 </NuxtLink>
               </div>
             </div>
-          </div>
-        </template>
+          </Transition>
+        </div>
 
-        <!-- Bottom HUD: 7-day switcher (left) + Photo meta + credit (right) -->
+        <!-- Bottom HUD: 幻灯片缩略图切换（左）+ 内容来源说明（右） -->
         <div class="absolute bottom-0 left-0 right-0 z-20">
           <div
             :class="[
@@ -178,40 +198,36 @@
             ]"
             :style="containerMaxStyle"
           >
-            <!-- 7-day switcher → elegant per-day cards: gradient underlay + img overlay + center date -->
             <div
+              v-if="heroCount > 1"
               class="rounded-2xl border border-white/15 bg-black/45 backdrop-blur-xl px-3 py-3 flex items-center gap-2 shadow-2xl shadow-black/40"
             >
               <div class="hidden sm:flex flex-col pr-2 pl-1 border-r border-white/10 justify-center">
-                <span class="text-[10px] uppercase tracking-[0.14em] text-white/60">{{ t('home.wallpaper') }}</span>
-                <span class="text-xs font-medium text-white/90">{{ t('home.recent7Days') }}</span>
+                <span class="text-[10px] uppercase tracking-[0.14em] text-white/60">{{ t('home.hotPicks') }}</span>
+                <span class="text-xs font-medium text-white/90">{{ heroIdx + 1 }} / {{ heroCount }}</span>
               </div>
               <div class="flex items-center gap-2">
                 <button
-                  v-for="day in recentDays"
-                  :key="day.index"
+                  v-for="(slide, i) in heroSlides"
+                  :key="slide.id"
                   type="button"
                   class="group relative size-11 sm:size-14 rounded-lg overflow-hidden ring-1 ring-white/15 transition-all duration-200 shrink-0"
-                  :class="currentIdx === day.index
+                  :class="i === heroIdx
                     ? 'ring-2 ring-white/90 scale-105 shadow-[0_0_0_2px_rgba(255,255,255,0.1),0_8px_24px_-6px_rgba(0,0,0,0.6)]'
                     : 'hover:ring-white/60 hover:scale-[1.03] opacity-85 hover:opacity-100'"
-                  :aria-label="day.label"
-                  :title="day.title || day.label"
-                  @click="selectWallpaper(day.index)"
+                  :aria-label="pickSlideText(slide.title) || String(i + 1)"
+                  :aria-current="i === heroIdx ? 'true' : undefined"
+                  :title="pickSlideText(slide.title)"
+                  @click="selectHeroSlide(i)"
                 >
                   <div class="absolute inset-0 z-10 flex flex-col items-center justify-center text-white">
                     <span class="text-[15px] sm:text-[17px] font-bold leading-none tracking-tight drop-shadow-[0_1px_4px_rgba(0,0,0,0.5)]">
-                      {{ day.dateCompact.main }}
-                    </span>
-                    <span class="text-[9px] sm:text-[10px] mt-1 leading-none tracking-[0.08em] opacity-90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]">
-                      {{ day.dateCompact.sub }}
+                      {{ i + 1 }}
                     </span>
                   </div>
-                  <!-- Thumbnail image → covers gradient when successfully loaded -->
                   <img
-                    v-if="day.thumbnail"
-                    :src="day.thumbnail"
-                    :alt="day.title || day.label"
+                    :src="slide.media_url"
+                    :alt="pickSlideText(slide.title)"
                     class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-20"
                     loading="lazy"
                   >
@@ -219,27 +235,11 @@
               </div>
             </div>
 
-            <!-- Photo credit (right) → no COPYRIGHT label prefix; show image title first, then credit.
-               点击整张 meta 卡片，统一跳 Bing 官方搜索页（Bing API copyrightlink → 按 title 搜 → bing.com 首页）。
-               不提供下载按钮：下载版权图片属于用户本地浏览器另存为即可，不提供专用 icon。 -->
-            <a
-              v-if="currentWallpaper?.copyright || currentWallpaper?.title || currentWallpaper?.copyrightlink"
-              :href="getBingOfficialLink(currentWallpaper)"
-              target="_blank"
-              rel="noreferrer noopener"
-              class="rounded-2xl border border-white/15 bg-black/45 backdrop-blur-xl px-4 py-3 max-w-lg sm:text-right text-xs sm:text-sm text-white/85 hover:text-white transition-colors shadow-2xl shadow-black/40 hover:bg-black/60"
+            <div
+              class="rounded-2xl border border-white/15 bg-black/45 backdrop-blur-xl px-4 py-3 max-w-lg sm:text-right text-xs sm:text-sm text-white/85 shadow-2xl shadow-black/40"
             >
-              <div
-                v-if="currentWallpaper.title"
-                class="text-sm sm:text-base font-semibold text-white leading-snug mb-1"
-              >
-                {{ currentWallpaper.title }}
-              </div>
-              <span
-                v-if="currentWallpaper.copyright"
-                class="line-clamp-2 leading-snug text-white/75"
-              >{{ currentWallpaper.copyright }}</span>
-            </a>
+              {{ t('home.heroHint') }}
+            </div>
           </div>
         </div>
       </section>
@@ -924,14 +924,27 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
 import type { Category, PaginatedResponse, Post, SiteStats, Tag as BlogTag } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
-import { useBingWallpaper } from '~~/composables/useBingWallpaper'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
-import { watch, computed, onMounted } from 'vue'
+import { watch, computed, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ layout: 'default' })
+
+/** GET /hero/slides 响应（backend/schemas/hero.py::HeroSlideResponse）中被首页真正消费的字段 */
+interface HeroSlideApi {
+  id: number
+  title: string | Record<string, string> | null
+  subtitle: string | Record<string, string> | null
+  media_type: 'image' | 'video' | 'youtube'
+  media_url: string
+  overlay_opacity: number
+  overlay_color: string
+  cta_text?: string | Record<string, string> | null
+  cta_url?: string | null
+  text_align?: 'left' | 'center' | 'right'
+}
 
 const { t, locale } = useI18n()
 const { formatDate: i18nFormatDate, pickLocalized } = useI18nHelpers()
@@ -1107,22 +1120,8 @@ useWebsiteJsonLd()
 // 与下方 4 个首页数据请求并行，在 Promise.all 之后统一 await（见下）。
 const siteVersionsPromise = useSiteVersions()
 
-// ===== Bing wallpaper =====
-const {
-  currentImage,
-  currentIdx,
-  recentDays,
-  selectDay: selectWallpaper,
-  fetchWallpapers,
-  getBingOfficialLink
-} = useBingWallpaper()
-
-const currentWallpaper = computed(() => currentImage.value)
-
 // ===== hero 分组「背景图片 URL / 背景渐变色 CSS」落地 =====
-// 这两项此前只进库不进页面：壁纸开着时永远被 Bing 图盖住，壁纸没了也只是主题的
-// 兜底渐变（ed-hero-fallback），后台那两个输入框形同虚设。
-// 优先级：站长显式配的图 > 每日壁纸 > 配的渐变 > 主题兜底渐变。
+// 优先级：站长显式配的整屏背景图 > 当前轮播幻灯片媒体 > 配的渐变 > 主题兜底渐变。
 // 值会写进 el.style（CSSOM 解析，非法声明被丢弃），但仍先过白名单：
 // 后台输入框不是可信来源，含 ; } " 的拼接必须原样拒掉而不是塞给样式引擎。
 const HERO_BG_URL_RE = /^(?:https?:\/\/|\/\/|\/)[^\s"'()\\]*$/
@@ -1135,28 +1134,9 @@ const heroBgGradient = computed(() => {
   const raw = String(site.hero.value.bg_gradient || '').trim()
   return HERO_BG_GRADIENT_RE.test(raw) ? raw : ''
 })
-const heroBgUrl = computed(() => heroBgImage.value || currentWallpaper.value?.fullUrl || '')
-const heroHasOwnBg = computed(() => Boolean(heroBgImage.value || heroBgGradient.value))
-const heroStyle = computed(() => {
-  if (heroBgUrl.value) {
-    return {
-      backgroundImage: `url("${heroBgUrl.value}")`,
-      backgroundSize: 'cover',
-      backgroundPosition: 'center center',
-      backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'local'
-    }
-  }
-  return heroBgGradient.value ? { background: heroBgGradient.value } : {}
-})
 
-onMounted(() => {
-  // Minimal 主题不渲染 Bing Hero，跳过壁纸请求（避免无意义的网络访问与延迟）
-  if (!isMinimalTheme.value && heroEnabled.value) fetchWallpapers()
-})
-
-// 并行发起 5 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成
-// 比逐个 await 减少 4 个 RTT 的串行等待
+// 并行发起 6 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成
+// 比逐个 await 减少 5 个 RTT 的串行等待
 const postsPromise = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: { lang: locale.value, page: 1, page_size: 20 },
   key: computed(() => 'home:posts:' + locale.value)
@@ -1178,17 +1158,87 @@ const recommendedPromise = useAPI<PaginatedResponse<Post>>('/blog/posts/recommen
   query: { lang: locale.value, page: 1, page_size: 8 },
   key: computed(() => 'home:recommended:' + locale.value)
 })
+// 首页横幅的内容源：后台配置的轮播优先，没有则后端用近 30 天高热度文章兜底（负 ID 虚拟项）。
+// 首页横幅的职责是推荐内容而不是装饰图片，所以这里不再请求任何站外壁纸。
+const heroSlidesPromise = useAPI<HeroSlideApi[]>('/hero/slides', {
+  query: { lang: locale.value },
+  key: computed(() => 'home:hero:' + locale.value)
+})
 
 const [
   { data: postsData, pending: postsPending, error: postsError, refresh: refreshPosts },
   { data: categoriesData, pending: categoriesPending, error: categoriesError, refresh: refreshCategories },
   { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags },
   { data: siteStats, pending: siteStatsPending, error: siteStatsError },
-  { data: recommendedData, refresh: refreshRecommended }
-] = await Promise.all([postsPromise, categoriesPromise, tagsPromise, siteStatsPromise, recommendedPromise])
+  { data: recommendedData, refresh: refreshRecommended },
+  { data: heroSlidesData, refresh: refreshHeroSlides }
+] = await Promise.all([
+  postsPromise, categoriesPromise, tagsPromise, siteStatsPromise, recommendedPromise, heroSlidesPromise
+])
 
 // 版本信息（rosetta 来自后端 /health，其余来自 package.json / vue 运行时）
 const { buildInfo } = await siteVersionsPromise
+
+// ===== Hero 轮播状态 =====
+// 后端 title/subtitle/cta_text 三种形态都要接住：虚拟兜底项已按 lang 本地化成纯字符串，
+// DB 项是 JSON 字符串，管理接口也可能直接给对象。统一收敛成 pickSlideText。
+const pickSlideText = (raw: HeroSlideApi['title']): string => {
+  if (raw == null) return ''
+  if (typeof raw === 'string') {
+    const s = raw.trim()
+    if (!s.startsWith('{')) return s
+    try { return site.pickI18n(JSON.parse(s) as Record<string, string>) } catch { return s }
+  }
+  return site.pickI18n(raw as unknown as Record<string, string>)
+}
+
+const heroSlides = computed(() => (heroSlidesData.value ?? []).filter(s => s.media_url))
+const heroCount = computed(() => heroSlides.value.length)
+// 首帧两端都必须是 0：autoplay 只在客户端 onMounted 之后推进，SSR 与 hydration 才字节一致。
+const heroIdx = ref(0)
+const heroPaused = ref(false)
+const heroSlide = computed(() => {
+  const n = heroCount.value
+  if (!n) return null
+  return heroSlides.value[((heroIdx.value % n) + n) % n] ?? null
+})
+const heroSlideMedia = computed(() => heroSlide.value?.media_url || '')
+const heroBgUrl = computed(() => heroBgImage.value || heroSlideMedia.value)
+const heroHasBg = computed(() => Boolean(heroBgUrl.value || heroBgGradient.value))
+const heroLayerStyle = computed(() => {
+  if (heroBgUrl.value) return { backgroundImage: `url("${heroBgUrl.value}")` }
+  return heroBgGradient.value ? { background: heroBgGradient.value } : {}
+})
+const heroTitle = computed(() => pickSlideText(heroSlide.value?.title) || _heroTitle.value)
+const heroSubtitle = computed(() => pickSlideText(heroSlide.value?.subtitle) || _heroSubtitle.value)
+const heroCtaText = computed(() => pickSlideText(heroSlide.value?.cta_text) || _heroCtaText.value)
+const heroCtaUrl = computed(() => heroSlide.value?.cta_url || _heroCtaUrl.value)
+// 幻灯片自带的遮罩强度/颜色优先（后台可读性配置）；兜底项由后端给固定 45%。
+const heroOverlayStyle = computed(() => ({
+  backgroundColor: heroSlide.value?.overlay_color || '#000000',
+  opacity: (heroSlide.value?.overlay_opacity ?? 45) / 100
+}))
+const heroAlign = computed(() => {
+  const a = heroSlide.value?.text_align
+  return a === 'center' ? 'items-center text-center' : a === 'right' ? 'items-end text-right' : ''
+})
+
+let heroTimer: ReturnType<typeof setInterval> | null = null
+function selectHeroSlide(i: number) {
+  heroIdx.value = ((i % heroCount.value) + heroCount.value) % heroCount.value
+}
+onMounted(() => {
+  // 单张不轮播；尊重 prefers-reduced-motion；鼠标悬停在横幅上时暂停，避免读一半被换走。
+  if (heroCount.value < 2 || !heroEnabled.value) return
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  heroTimer = setInterval(() => {
+    if (!heroPaused.value) heroIdx.value = (heroIdx.value + 1) % heroCount.value
+  }, 6000)
+})
+onBeforeUnmount(() => {
+  if (heroTimer) clearInterval(heroTimer)
+  heroTimer = null
+})
 
 // Inline tech rows — no defineComponent() with runtime string-template,
 // which breaks Vue runtime + Nuxt auto-injection on Windows.
@@ -1209,7 +1259,8 @@ watch(locale, async () => {
     refreshPosts(),
     refreshCategories(),
     refreshTags(),
-    refreshRecommended()
+    refreshRecommended(),
+    refreshHeroSlides()
   ])
 })
 
@@ -1285,3 +1336,22 @@ useHead({
   ]
 })
 </script>
+
+<style scoped>
+/* 轮播切换动效：背景交叉淡入 + 文案落位。放在页面内而不是 main.css：
+   这是首页横幅的行为而非主题皮肤（AGENTS.md §3 三层 CSS 职责互斥）。 */
+.hero-xfade-enter-active,
+.hero-xfade-leave-active { transition: opacity 900ms ease; }
+.hero-xfade-enter-from,
+.hero-xfade-leave-to { opacity: 0; }
+.hero-copy-enter-active { transition: opacity 420ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
+.hero-copy-leave-active { transition: opacity 180ms ease; }
+.hero-copy-enter-from { opacity: 0; transform: translateY(14px); }
+.hero-copy-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .hero-xfade-enter-active,
+  .hero-xfade-leave-active,
+  .hero-copy-enter-active,
+  .hero-copy-leave-active { transition: none; }
+}
+</style>

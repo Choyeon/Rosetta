@@ -7,9 +7,11 @@ Hero 轮播 API
 - 公开接口: GET /api/hero/slides
 - 管理接口: /api/admin/hero/slides (GET/POST/PUT/DELETE/toggle)
 
-硬契约：DB 无生效轮播时的 Bing 壁纸兜底**必须**委托 `backend.api.bing.get_bing_wallpapers`
-（全站唯一一份上游抓取 + 响应缓存）。本模块不得自行 httpx 直连——历史上那样做过，
-结果是公开端点每次请求都对站外发一次最长 15s 的 HTTP，且与首页壁纸各打各的上游域名。
+硬契约：DB 无生效轮播时的兜底内容源是**高热度文章**（`RecommendationService.get_hot_posts`，
+与前台热榜同一个算法与缓存），不再回退到 Bing 每日壁纸。首页横幅的职责是"推荐内容"，
+不是"装饰图片"；把壁纸当轮播会让首页首屏依赖站外图片。历史上这里确实直连过 Bing，
+结果是公开端点每次请求都对站外发一次最长 15s 的 HTTP。
+Bing 壁纸现在只服务登录/注册页（`composables/useBingWallpaper.ts`）。
 兜底项用负 ID 标记，不与 DB 记录冲突。
 """
 
@@ -18,13 +20,12 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 
-from backend.api.bing import get_bing_wallpapers
 from backend.core.auth import DB, CurrentStaff
+from backend.core.i18n import get_i18n_value, get_language_from_request
 from backend.core.partial_update import apply_partial_update
-from backend.core.site_config import get_site_config_value
 from backend.models.hero import HeroSlide
 from backend.schemas import BaseResponse
 from backend.schemas.hero import (
@@ -32,12 +33,18 @@ from backend.schemas.hero import (
     HeroSlideResponse,
     HeroSlideUpdate,
 )
+from backend.services.content_renderer import render_title
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.recommendation import RecommendationService
 from backend.utils.compat import UTC
 
 logger = logging.getLogger("rosetta.api.hero")
 
 router = APIRouter(tags=["Hero轮播"])
+
+# 兜底轮播封面缺省尺寸：与前端 lib/post-cover.ts 的 picsum 兜底同一 seed 口径，
+# 同一篇文章在卡片与横幅上拿到同一张占位图。
+_FALLBACK_COVER_SIZE = "1600/900"
 
 
 # ==================== 公开接口 ====================
@@ -47,9 +54,18 @@ router = APIRouter(tags=["Hero轮播"])
     "/hero/slides",
     response_model=list[HeroSlideResponse],
     summary="获取当前活跃 Hero 幻灯片",
-    description="获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。若尚未配置任何轮播且开启 Bing 壁纸，则自动用 Bing 最近几日壁纸作为虚拟轮播填充。",
+    description=(
+        "公开接口、无需鉴权。获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。"
+        "若尚未配置任何轮播，则用近 30 天高热度文章自动填充（标题 / 摘要 / 封面 / 文章链接），"
+        "这些兜底项带负 ID、不落库、不可在后台编辑。"
+        "lang 支持 zh|en|ja|zh_Hant，缺省按请求头与 rosetta_lang cookie 推断。"
+    ),
 )
-async def list_active_hero_slides(db: DB):
+async def list_active_hero_slides(
+    db: DB,
+    request: Request,
+    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+):
     """获取当前生效的 Hero 幻灯片（公开接口）"""
     now = datetime.now(UTC)
 
@@ -67,48 +83,34 @@ async def list_active_hero_slides(db: DB):
     if slides:
         return slides
 
-    # ========== DB 无轮播时：Bing 壁纸作为虚拟轮播 fallback ==========
-    # 读取 Bing 壁纸开关（site_configs 大小写不敏感；默认 True）
-    bing_enabled_raw = await get_site_config_value("enable_bing_wallpaper")
-    if bing_enabled_raw is None:
-        bing_enabled_raw = await get_site_config_value("ENABLE_BING_WALLPAPER")
-    bing_enabled = True
-    if isinstance(bing_enabled_raw, str):
-        bing_enabled = bing_enabled_raw.strip().lower() not in ("0", "false", "no", "off", "")
-    elif bing_enabled_raw is None:
-        bing_enabled = True
-    else:
-        bing_enabled = bool(bing_enabled_raw)
-
-    if not bing_enabled:
-        return []
-
-    # 委托 Bing 壁纸共享端点：上游抓取只有一份实现，且结果进响应缓存（1h），
-    # 本站点多个消费者（首页壁纸、hero 虚拟轮播）共用同一个键。
-    wallpapers = (await get_bing_wallpapers(n=8, market="zh-CN")).images
+    # ========== DB 无轮播时：高热度文章作为虚拟轮播 fallback ==========
+    language = get_language_from_request(request, lang)
+    hot_posts = await RecommendationService(db).get_hot_posts(limit=5, days=30)
     now_ts = datetime.now(UTC)
     virtual: list[HeroSlideResponse] = []
-    for i, wp in enumerate(wallpapers):
-        full_url = wp.full_url
-        if not full_url:
-            continue
-        title = wp.title or ""
-        copyright_text = wp.copyright or ""
-        # 主标题使用 Bing 标题；副标题使用版权说明作为信息
+    for i, post in enumerate(hot_posts):
+        title = await render_title(
+            get_i18n_value(post.title, language), post=post, language=language
+        )
+        excerpt = get_i18n_value(post.excerpt, language) if post.excerpt else ""
+        # 主标题走 the_title 钩子链（与列表 / RSS / 详情页同口径），
+        # 副标题用摘要截断；CTA 指向文章详情的中性路径，语言前缀由前端 localeHref 负责。
         virtual.append(
             HeroSlideResponse(
-                id=-(i + 1),  # 负 ID 表示「Bing 虚拟轮播」，避免与 DB 冲突
+                id=-(i + 1),  # 负 ID 表示「热榜虚拟轮播」，避免与 DB 冲突
                 created_at=now_ts,
                 updated_at=now_ts,
-                title=title or copyright_text or "Bing 每日壁纸",
-                subtitle=copyright_text if title else None,
+                title=title or post.slug,
+                subtitle=(excerpt.strip()[:140] or None),
                 media_type="image",
-                media_url=full_url,
-                overlay_opacity=35,
+                media_url=post.cover_image
+                or f"https://picsum.photos/seed/rosetta-post-{post.id}/{_FALLBACK_COVER_SIZE}",
+                overlay_opacity=45,
                 overlay_color="#000000",
+                cta_url=f"/posts/{post.slug}",
                 sort_order=i,
                 is_active=True,
-                text_align="center",
+                text_align="left",
                 text_color="light",
             )
         )
