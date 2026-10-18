@@ -31,8 +31,20 @@ from backend.schemas.activity import (
     ActivityResponse,
     ActivityUpdate,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 router = APIRouter(tags=["网站动态"])
+
+
+async def _invalidate_activity_caches(reason: str) -> None:
+    """动态写侧统一失效：后端 `activities:*` 响应缓存 + 前端 swr 页面缓存。
+
+    动态列表挂在首页右侧卡片（`LatestActivitiesCard`）与独立 `/activities` 页；
+    Nitro 对 '/' 做 300s swr、'/activities' 也做 swr。管理员发布/删除/改动态后
+    只清后端缓存 = 访客 TTL 内首页仍显示旧动态。
+    """
+    await cache.delete_pattern(make_cache_key("activities", "*"))
+    purge_frontend_page_cache(f"activity change: {reason}")
 
 
 async def _get_activities_cache_key(
@@ -161,7 +173,7 @@ async def create_activity_public(
     db.add(activity)
     await db.flush()
     activity = await _reload_activity(db, activity.id)
-    await cache.delete_pattern(make_cache_key("activities", "*"))
+    await _invalidate_activity_caches("write")
     return ActivityResponse.model_validate(activity)
 
 
@@ -182,7 +194,7 @@ async def like_activity(activity_id: int, db: DB):
         )
     activity.likes_count = (activity.likes_count or 0) + 1
     await db.flush()
-    await cache.delete_pattern(make_cache_key("activities", "*"))
+    await _invalidate_activity_caches("write")
     return BaseResponse(message="点赞成功", success=True)
 
 
@@ -267,7 +279,7 @@ async def create_activity(
     await db.flush()
     activity = await _reload_activity(db, activity.id)
 
-    await cache.delete_pattern(make_cache_key("activities", "*"))
+    await _invalidate_activity_caches("write")
 
     return ActivityResponse.model_validate(activity)
 
@@ -300,7 +312,7 @@ async def update_activity(
     await db.flush()
     activity = await _reload_activity(db, activity_id)
 
-    await cache.delete_pattern(make_cache_key("activities", "*"))
+    await _invalidate_activity_caches("write")
 
     return ActivityResponse.model_validate(activity)
 
@@ -328,7 +340,7 @@ async def delete_activity(
 
     await db.delete(activity)
 
-    await cache.delete_pattern(make_cache_key("activities", "*"))
+    await _invalidate_activity_caches("write")
 
     return BaseResponse(message="动态已删除")
 
@@ -358,6 +370,6 @@ async def toggle_activity(
     await db.flush()
     activity = await _reload_activity(db, activity_id)
 
-    await cache.delete_pattern(make_cache_key("activities", "*"))
+    await _invalidate_activity_caches("write")
 
     return ActivityResponse.model_validate(activity)

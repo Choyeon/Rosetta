@@ -23,6 +23,7 @@ from backend.core.partial_update import apply_partial_update
 from backend.models.blog import Category, Post
 from backend.models.post_series import PostSeries
 from backend.schemas import BaseResponse
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.schemas.post_series import (
     PostSeriesCreate,
     PostSeriesResponse,
@@ -257,6 +258,7 @@ async def create_series(
     db.add(series)
     await db.flush()
     await db.refresh(series)
+    purge_frontend_page_cache("series create")
 
     return _to_response(series, 0)
 
@@ -305,6 +307,7 @@ async def update_series(
         or 0
     )
 
+    purge_frontend_page_cache("series update")
     return _to_response(series, post_count)
 
 
@@ -330,6 +333,7 @@ async def delete_series(
         )
 
     await db.delete(series)
+    purge_frontend_page_cache("series delete")
     return BaseResponse(message="系列已删除")
 
 
@@ -363,6 +367,7 @@ async def toggle_series(
         or 0
     )
 
+    purge_frontend_page_cache("series toggle")
     return _to_response(series, post_count)
 
 

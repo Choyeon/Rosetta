@@ -32,6 +32,7 @@ from backend.schemas.hero import (
     HeroSlideResponse,
     HeroSlideUpdate,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.utils.compat import UTC
 
 logger = logging.getLogger("rosetta.api.hero")
@@ -173,6 +174,7 @@ async def create_hero_slide(
     db.add(slide)
     await db.flush()
     await db.refresh(slide)
+    purge_frontend_page_cache("hero slide create")
 
     return HeroSlideResponse.model_validate(slide)
 
@@ -204,6 +206,7 @@ async def update_hero_slide(
 
     await db.flush()
     await db.refresh(slide)
+    purge_frontend_page_cache("hero slide update")
     return HeroSlideResponse.model_validate(slide)
 
 
@@ -229,6 +232,7 @@ async def delete_hero_slide(
         )
 
     await db.delete(slide)
+    purge_frontend_page_cache("hero slide delete")
     return BaseResponse(message="Hero 幻灯片已删除")
 
 
@@ -256,4 +260,5 @@ async def toggle_hero_slide(
     slide.is_active = not slide.is_active
     await db.flush()
     await db.refresh(slide)
+    purge_frontend_page_cache("hero slide toggle")
     return HeroSlideResponse.model_validate(slide)
