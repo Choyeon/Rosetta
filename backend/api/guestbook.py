@@ -165,8 +165,9 @@ async def list_guestbook_entries(
     summary="发表留言（游客或登录用户均可）",
     description=(
         "公开写入接口，携带可选 Bearer Token 时自动关联登录用户身份。"
-        "服务端记录客户端 IP 与 User-Agent 用于审核追溯；留言进入审核流，"
-        "管理员批准后才对公众可见。"
+        "服务端记录客户端 IP 与 User-Agent 用于审核追溯；命中敏感词按评论审核策略处理，"
+        "是否需要管理员批准由「评论设置 → 新评论需审核 / 启用反垃圾」统一控制"
+        "（关闭审核时自动通过并直接公开）。"
         "受敏感接口限流与同 IP 频控保护：过于频繁返回 429（业务码 TOO_FREQUENT_GUESTBOOK，"
         "响应头带 Retry-After: 30）。字段校验失败返回 422："
         "AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / CONTENT_TOO_SHORT / CONTENT_TOO_LONG。"
