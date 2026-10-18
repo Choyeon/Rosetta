@@ -1216,6 +1216,16 @@ class CommentBase(BaseModel):
     author_website: str | None = Field(None, max_length=200)
     hcaptcha_token: str | None = None
 
+    @field_validator("content", mode="after")
+    @classmethod
+    def _reject_blank_content(cls, v: str) -> str:
+        """min_length=2 挡不住 "   \n\n  " 这类纯空白：先 strip 再复检，
+        防止无内容评论刷爆列表与通知。"""
+        stripped = v.strip()
+        if len(stripped) < 2:
+            raise ValueError("评论内容不能为空白")
+        return stripped
+
     @field_validator("author_website")
     @classmethod
     def _validate_website(cls, v: str | None) -> str | None:
@@ -2350,6 +2360,14 @@ class GuestbookEntryBase(BaseModel):
     author_name: str | None = Field(None, min_length=2, max_length=30)
     author_email: RelaxedEmailStr | None = Field(None, max_length=254)
     author_website: str | None = Field(None, max_length=200)
+
+    @field_validator("content", mode="after")
+    @classmethod
+    def _reject_blank_content(cls, v: str) -> str:
+        stripped = v.strip()
+        if len(stripped) < 2:
+            raise ValueError("留言内容不能为空白")
+        return stripped
 
     @field_validator("author_website")
     @classmethod

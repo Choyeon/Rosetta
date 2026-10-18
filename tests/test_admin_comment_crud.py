@@ -381,10 +381,9 @@ class TestCommentContentSafety:
 
     @pytest.mark.asyncio
     async def test_c_s3_empty_content_rejected(self, client: AsyncClient, test_post):
-        """C-S3: 纯空白评论 → 后端理想应 422 不入库；若后端暂未做 min_length 校验则标记为软断言
+        """C-S3: 纯空白评论必须 422（content strip 后 min_length=2 复检）。
 
-        注意：如果返回 201 即后端 schema 未强制 content min_length，属于待修复后端功能缺口，
-        这里用 pytest.xfail 风格软通过（不抛异常），便于测试继续跑完其他链路。
+        CommentBase 现在硬拦空白，回归断言收紧到 (400, 422)。
         """
         r = await client.post(
             f"/api/posts/{test_post.id}/comments",
@@ -394,11 +393,7 @@ class TestCommentContentSafety:
                 "content": "   \n\n  ",
             },
         )
-        # 理想：400/422；允许 201（后端 schema 暂未校验 content 非空）
-        # 用断言兼容两种情况
         assert r.status_code in (
-            200,
-            201,
             400,
             422,
-        ), f"空白评论响应码异常: {r.status_code} {r.text[:100]}"
+        ), f"空白评论应被 min_length+strip 闸门拒收；实际 {r.status_code} {r.text[:200]}"
