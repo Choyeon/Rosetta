@@ -42,11 +42,22 @@ from backend.schemas import (
     GuestbookEntryPagedResponse,
     GuestbookEntryResponse,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.guestbook_service import GuestbookService
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["留言板"])
+
+
+def _purge_guestbook_page(reason: str) -> None:
+    """留言板写侧统一通知前端。
+
+    Nitro 对 /guestbook 与语言变体做 60s swr HTML 缓存；审核批准/删除/置顶切换
+    后不通知前端 = 下一分钟访客仍看到旧列表。留言点赞刻意不接：likes_count 是
+    高频匿名计数，缓存 TTL 内的轻微陈旧可接受，不值得为每次点击打一发 purge。
+    """
+    purge_frontend_page_cache(f"guestbook change: {reason}")
 
 
 _like_rule = RateLimitRule(
@@ -283,6 +294,7 @@ async def admin_toggle_pin(_staff: CurrentStaff, entry_id: int, db: DB):
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
+    _purge_guestbook_page("pin")
     return r
 
 
@@ -302,6 +314,7 @@ async def admin_toggle_feature(_staff: CurrentStaff, entry_id: int, db: DB):
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
+    _purge_guestbook_page("feature")
     return r
 
 
@@ -322,6 +335,7 @@ async def admin_approve(_staff: CurrentStaff, entry_id: int, db: DB):
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
+    _purge_guestbook_page("approve")
     return r
 
 
@@ -341,6 +355,7 @@ async def admin_reject(_staff: CurrentStaff, entry_id: int, db: DB):
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
+    _purge_guestbook_page("reject")
     return r
 
 
@@ -360,6 +375,7 @@ async def admin_spam(_staff: CurrentStaff, entry_id: int, db: DB):
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
+    _purge_guestbook_page("spam")
     return r
 
 
@@ -380,6 +396,7 @@ async def admin_batch(_staff: CurrentStaff, body: GuestbookBatchAction, db: DB):
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
+    _purge_guestbook_page(f"batch:{body.action}")
     return BaseResponse(success=True, message=f"已处理 {result.get('processed', 0)} 条")
 
 
@@ -401,4 +418,5 @@ async def admin_delete_entry(_staff: CurrentStaff, entry_id: int, db: DB):
         raise _service_err_to_http(e) from e
     if result.get("processed", 0) == 0:
         raise HTTPException(status_code=404, detail=f"留言 {entry_id} 不存在或已被删除")
+    _purge_guestbook_page("delete")
     return BaseResponse(success=True, message="留言已删除")
