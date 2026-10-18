@@ -18,9 +18,12 @@ import { describe, expect, it } from 'vitest'
 const siteSrc = readFileSync(resolve(process.cwd(), 'composables/useSite.ts'), 'utf8')
 
 describe('useSite 的 i18n 访问不得依赖组件实例', () => {
-  it('useSite.ts 内不再有任何裸 useI18n() 调用（全部走 safeI18n）', () => {
-    expect(siteSrc, 'useSite.ts 不得直接调用 useI18n()').not.toMatch(/=\s*useI18n\(\)/)
-    expect(siteSrc).toMatch(/function safeI18n\(/)
+  it('全文件只允许 safeI18n 内部一次 useI18n()，且必须在 useSite 之前', () => {
+    const hits = [...siteSrc.matchAll(/useI18n\(\)/g)].map(m => m.index)
+    expect(hits.length, `useI18n() 只应在 safeI18n 内出现一次，实际 ${hits.length} 次`).toBe(1)
+    const only = hits[0]
+    expect(only).toBeGreaterThan(siteSrc.indexOf('function safeI18n('))
+    expect(only, 'safeI18n 之后的任何 i18n 访问都会重新引入实例依赖').toBeLessThan(siteSrc.indexOf('export function useSite'))
   })
 
   it('safeI18n 三层回落：实例 composer → 全局 $i18n → 空串，且用 getCurrentInstance 预判', () => {
