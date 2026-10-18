@@ -215,6 +215,36 @@ async def test_comments_require_approval_group_overrides_env(client, staff_heade
 
 
 @pytest.mark.asyncio
+async def test_comments_require_approval_group_drives_guestbook(
+    client, staff_headers
+):
+    """留言板必须读同一份 comments.require_approval 分组（此前只按环境变量走，
+    后台"新评论需审核"对留言静默失效）：勾上→pending，取消→approved。"""
+    async def post_gb():
+        return await client.post(
+            "/api/guestbook",
+            json={"content": "这是一条测试留言内容", "author_name": "读友"},
+            headers=_fresh_ip(),
+        )
+
+    await _patch(client, staff_headers, "comments", {"require_approval": True})
+    try:
+        resp = await post_gb()
+        assert resp.status_code in (200, 201), resp.text
+        assert resp.json()["status"] == "pending", "分组勾了审核，留言却未进 pending"
+    finally:
+        await _patch(client, staff_headers, "comments", {"require_approval": False})
+    after = await post_gb()
+    assert after.status_code in (200, 201), after.text
+    assert after.json()["status"] == "approved"
+    await client.post(
+        "/api/admin/guestbook/batch",
+        json={"action": "delete", "ids": [resp.json()["id"], after.json()["id"]]},
+        headers=staff_headers,
+    )
+
+
+@pytest.mark.asyncio
 async def test_comments_guest_toggle_rejects_anonymous_only(
     client, staff_headers, test_post, auth_headers
 ):

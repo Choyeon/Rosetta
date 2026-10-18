@@ -24,6 +24,7 @@ from backend.models.guestbook import GuestbookEntry
 from backend.models.user import User
 from backend.schemas import GuestbookEntryCreate, GuestbookEntryResponse
 from backend.services._avatar_helpers import resolved_for_guestbook
+from backend.services.site_settings import bool_of, read_group
 from backend.utils.compat import utc_now_naive
 
 logger = logging.getLogger(__name__)
@@ -276,7 +277,12 @@ class GuestbookService:
             raise ValueError("TOO_FREQUENT_GUESTBOOK")
 
         mod = moderate_text(data.content)
-        require_approval = bool(getattr(settings, "comment_require_approval", True))
+        # 与 comment_service 同口径：后台「评论设置 → 新评论需审核」写进 DB comments 分组，
+        # 留言板必须读同一份分组，否则该开关对留言静默失效（仅按环境变量走）。
+        cst = await read_group("comments", db)
+        require_approval = bool_of(
+            cst, "require_approval", bool(getattr(settings, "comment_require_approval", True))
+        )
         auto_reject = AUTO_REJECT_ON_SENSITIVE_DEFAULT
         status: str
         if mod.level == "black" and auto_reject:
