@@ -244,78 +244,59 @@
               v-else
               class="overflow-x-auto"
             >
-              <table class="w-full text-sm">
-                <thead class="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                  <tr>
-                    <th class="text-left font-medium px-5 py-3 w-[40%]">
-                      标题
-                    </th>
-                    <th class="text-left font-medium px-5 py-3 w-[24%]">
-                      得分
-                    </th>
-                    <th class="text-left font-medium px-5 py-3">
-                      优化建议
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                  <tr
-                    v-for="s in scores"
-                    :key="s.id"
-                    class="hover:bg-muted/30"
-                  >
-                    <td class="px-5 py-4">
-                      <div class="font-medium truncate">
-                        {{ s.title }}
-                      </div>
-                      <div class="text-xs text-muted-foreground font-mono">
-                        {{ s.slug }}
-                      </div>
-                    </td>
-                    <td class="px-5 py-4">
-                      <div class="flex items-center gap-3 max-w-[260px]">
-                        <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
-                          <div
-                            class="h-full rounded-full transition-all"
-                            :style="{
-                              width: `${s.score}%`,
-                              backgroundColor: s.score >= 80
-                                ? 'hsl(var(--success))'
-                                : s.score >= 60
-                                  ? 'hsl(var(--primary))'
-                                  : 'hsl(var(--destructive))'
-                            }"
-                          />
-                        </div>
-                        <span
-                          class="font-bold tabular-nums min-w-[38px] text-right"
-                          :class="s.score >= 80 ? 'text-success' : s.score >= 60 ? 'text-warning' : 'text-error'"
-                        >
-                          {{ s.score }}
-                        </span>
-                      </div>
-                    </td>
-                    <td class="px-5 py-4">
-                      <ul
-                        class="flex flex-col gap-0.5 text-xs text-muted-foreground"
-                      >
-                        <li
-                          v-for="(sug, i) in s.suggestions.slice(0, 2)"
-                          :key="i"
-                        >
-                          · {{ sug }}
-                        </li>
-                        <li
-                          v-if="s.suggestions.length > 2"
-                          class="italic opacity-70"
-                        >
-                          另有 {{ s.suggestions.length - 2 }} 条建议…
-                        </li>
-                      </ul>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+              <AdminDataTable
+                :columns="scoreColumns"
+                :data="scores"
+                row-key="id"
+              >
+                <template #cell-title="{ row }">
+                  <div class="font-medium truncate">
+                    {{ (row as AdminSeoScore).title }}
+                  </div>
+                  <div class="text-xs text-muted-foreground font-mono">
+                    {{ (row as AdminSeoScore).slug }}
+                  </div>
+                </template>
+                <template #cell-score="{ row }">
+                  <div class="flex items-center gap-3 max-w-[260px]">
+                    <div class="flex-1 h-2 rounded-full bg-muted overflow-hidden">
+                      <div
+                        class="h-full rounded-full transition-all"
+                        :style="{
+                          width: `${(row as AdminSeoScore).score}%`,
+                          backgroundColor: (row as AdminSeoScore).score >= 80
+                            ? 'hsl(var(--success))'
+                            : (row as AdminSeoScore).score >= 60
+                              ? 'hsl(var(--primary))'
+                              : 'hsl(var(--destructive))'
+                        }"
+                      />
+                    </div>
+                    <span
+                      class="font-bold tabular-nums min-w-[38px] text-right"
+                      :class="(row as AdminSeoScore).score >= 80 ? 'text-success' : (row as AdminSeoScore).score >= 60 ? 'text-warning' : 'text-error'"
+                    >
+                      {{ (row as AdminSeoScore).score }}
+                    </span>
+                  </div>
+                </template>
+                <template #cell-suggestions="{ row }">
+                  <ul class="flex flex-col gap-0.5 text-xs text-muted-foreground">
+                    <li
+                      v-for="(sug, i) in (row as AdminSeoScore).suggestions.slice(0, 2)"
+                      :key="i"
+                    >
+                      · {{ sug }}
+                    </li>
+                    <li
+                      v-if="(row as AdminSeoScore).suggestions.length > 2"
+                      class="italic opacity-70"
+                    >
+                      另有 {{ (row as AdminSeoScore).suggestions.length - 2 }} 条建议…
+                    </li>
+                  </ul>
+                </template>
+              </AdminDataTable>
             </div>
             <div
               v-if="scores.length === 0 && !scoresLoading && !scoresError"
@@ -709,6 +690,7 @@ import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import AdminTabList from '~~/components/admin/AdminTabList.vue'
 import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
+import type { AdminColumn as Column } from '~~/types/admin'
 import { Tabs, TabsContent } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
@@ -735,6 +717,12 @@ const regenerating = ref(false)
 const regenerateError = ref('')
 
 const scores = shallowRef<AdminSeoScore[]>([])
+
+const scoreColumns: Column[] = [
+  { key: 'title', title: '标题', class: 'w-[40%]' },
+  { key: 'score', title: '得分', class: 'w-[24%]' },
+  { key: 'suggestions', title: '优化建议' }
+]
 const scoresLoading = ref(true)
 const scoresError = ref('')
 const scoresPage = ref(1)
