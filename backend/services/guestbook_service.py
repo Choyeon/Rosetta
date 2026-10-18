@@ -277,15 +277,19 @@ class GuestbookService:
             raise ValueError("TOO_FREQUENT_GUESTBOOK")
 
         mod = moderate_text(data.content)
-        # 与 comment_service 同口径：后台「评论设置 → 新评论需审核」写进 DB comments 分组，
-        # 留言板必须读同一份分组，否则该开关对留言静默失效（仅按环境变量走）。
+        # 与 comment_service 同口径：后台「评论设置」写进 DB comments 分组，
+        # 留言板必须读同一份分组（require_approval / enable_antispam），否则这两个开关
+        # 对留言静默失效（此前只按环境变量走）。
         cst = await read_group("comments", db)
         require_approval = bool_of(
             cst, "require_approval", bool(getattr(settings, "comment_require_approval", True))
         )
+        antispam = bool_of(cst, "enable_antispam", True)
         auto_reject = AUTO_REJECT_ON_SENSITIVE_DEFAULT
         status: str
-        if mod.level == "black" and auto_reject:
+        if not antispam:
+            status = "pending" if require_approval else "approved"
+        elif mod.level == "black" and auto_reject:
             status = "rejected"
         elif mod.level == "gray":
             status = "pending"

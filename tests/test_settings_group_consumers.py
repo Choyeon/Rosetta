@@ -245,6 +245,39 @@ async def test_comments_require_approval_group_drives_guestbook(
 
 
 @pytest.mark.asyncio
+async def test_comments_antispam_toggle_drives_guestbook(client, staff_headers):
+    """留言板必须读 comments.enable_antispam：开着时黑名单词直接 rejected，
+    关掉后跳过敏感词判定、只按 require_approval 走（此前留言板恒按黑名单拒绝，开关无效）。"""
+    black = "这是一条含 porn 的测试留言"
+
+    async def post_black():
+        return await client.post(
+            "/api/guestbook",
+            json={"content": black, "author_name": "读友"},
+            headers=_fresh_ip(),
+        )
+
+    await _patch(client, staff_headers, "comments", {"enable_antispam": True, "require_approval": False})
+    on = await post_black()
+    assert on.status_code in (200, 201), on.text
+    assert on.json()["status"] == "rejected"
+
+    try:
+        await _patch(client, staff_headers, "comments", {"enable_antispam": False})
+        off = await post_black()
+        assert off.status_code in (200, 201), off.text
+        assert off.json()["status"] == "approved", "关掉反垃圾后黑名单词不应再被自动拒绝"
+    finally:
+        await _patch(client, staff_headers, "comments", {"enable_antispam": True})
+
+    await client.post(
+        "/api/admin/guestbook/batch",
+        json={"action": "delete", "ids": [on.json()["id"], off.json()["id"]]},
+        headers=staff_headers,
+    )
+
+
+@pytest.mark.asyncio
 async def test_comments_guest_toggle_rejects_anonymous_only(
     client, staff_headers, test_post, auth_headers
 ):
