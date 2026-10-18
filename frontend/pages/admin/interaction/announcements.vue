@@ -83,150 +83,93 @@
           v-else
           class="overflow-x-auto"
         >
-          <table class="w-full text-sm">
-            <caption class="sr-only">
-              公告列表：状态、类型、标题与内容、展示时段、排序、可关闭、启用与操作
-            </caption>
-            <thead>
-              <tr class="border-b bg-muted/30">
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4 whitespace-nowrap"
-                >
-                  状态
-                </th>
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4 whitespace-nowrap"
-                >
-                  类型
-                </th>
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4"
-                >
-                  标题与内容
-                </th>
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4 whitespace-nowrap"
-                >
-                  展示时段
-                </th>
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4 whitespace-nowrap"
-                >
-                  排序
-                </th>
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4 whitespace-nowrap"
-                >
-                  可关闭
-                </th>
-                <th
-                  scope="col"
-                  class="text-left font-medium p-4 whitespace-nowrap"
-                >
-                  启用
-                </th>
-                <th
-                  scope="col"
-                  class="text-right font-medium p-4 whitespace-nowrap"
-                >
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="(a, i) in announcements"
-                :key="a.id"
-                :class="i % 2 === 1 ? 'bg-muted/20' : ''"
+          <AdminDataTable
+            :columns="announcementColumns"
+            :data="announcements"
+            row-key="id"
+            header-class="border-b bg-muted/30"
+            :row-class="(_a, i) => (i % 2 === 1 ? 'bg-muted/20' : '')"
+          >
+            <template #cell-state="{ row: a }">
+              <Badge
+                :class="[statusBadgeClass(statusOf(a as AdminAnnouncement)), 'gap-1']"
+                :title="statusHint(statusOf(a as AdminAnnouncement))"
               >
-                <td class="p-4">
-                  <Badge
-                    :class="[statusBadgeClass(statusOf(a)), 'gap-1']"
-                    :title="statusHint(statusOf(a))"
-                  >
-                    <component
-                      :is="statusIcon(statusOf(a))"
-                      class="size-3.5"
-                    />
-                    {{ statusText(statusOf(a)) }}
-                  </Badge>
-                </td>
-                <td class="p-4">
-                  <Badge
-                    :class="[typeBadgeClass(a.type), 'gap-1']"
-                  >
-                    <component
-                      :is="typeIcon(a.type)"
-                      class="size-3.5"
-                    />
-                    {{ typeText(a.type) }}
-                  </Badge>
-                </td>
-                <td class="p-4 max-w-md">
-                  <div class="font-medium break-words">
-                    {{ a.title }}
-                  </div>
-                  <div
-                    v-if="a.content"
-                    class="mt-0.5 text-xs text-muted-foreground break-words line-clamp-2"
-                  >
-                    {{ a.content }}
-                  </div>
-                </td>
-                <td class="p-4 text-muted-foreground whitespace-nowrap">
-                  {{ scheduleText(a) }}
-                </td>
-                <td class="p-4 text-muted-foreground tabular-nums">
-                  {{ a.sort_order }}
-                </td>
-                <td class="p-4">
-                  <Check
-                    v-if="a.is_dismissible"
-                    class="size-4 text-success"
-                    aria-label="允许用户关闭"
-                  />
-                  <span
-                    v-else
-                    class="text-muted-foreground"
-                  >-</span>
-                </td>
-                <td class="p-4">
-                  <Switch
-                    :model-value="a.is_active"
-                    :aria-label="`启用公告：${a.title}`"
-                    @update:model-value="toggleActive(a, $event)"
-                  />
-                </td>
-                <td class="p-4 text-right">
-                  <div class="inline-flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      :aria-label="`编辑公告：${a.title}`"
-                      @click="openEdit(a)"
-                    >
-                      <Pencil data-icon="inline-start" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      class="text-destructive hover:text-destructive"
-                      :aria-label="`删除公告：${a.title}`"
-                      @click="confirmDelete(a)"
-                    >
-                      <Trash2 data-icon="inline-start" />
-                    </Button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                <component
+                  :is="statusIcon(statusOf(a as AdminAnnouncement))"
+                  class="size-3.5"
+                />
+                {{ statusText(statusOf(a as AdminAnnouncement)) }}
+              </Badge>
+            </template>
+            <template #cell-type="{ row: a }">
+              <Badge :class="[typeBadgeClass((a as AdminAnnouncement).type), 'gap-1']">
+                <component
+                  :is="typeIcon((a as AdminAnnouncement).type)"
+                  class="size-3.5"
+                />
+                {{ typeText((a as AdminAnnouncement).type) }}
+              </Badge>
+            </template>
+            <template #cell-title="{ row: a }">
+              <div class="max-w-md">
+                <div class="font-medium break-words">
+                  {{ (a as AdminAnnouncement).title }}
+                </div>
+                <div
+                  v-if="(a as AdminAnnouncement).content"
+                  class="mt-0.5 text-xs text-muted-foreground break-words line-clamp-2"
+                >
+                  {{ (a as AdminAnnouncement).content }}
+                </div>
+              </div>
+            </template>
+            <template #cell-schedule="{ row: a }">
+              <span class="text-muted-foreground whitespace-nowrap">{{ scheduleText(a as AdminAnnouncement) }}</span>
+            </template>
+            <template #cell-sort_order="{ row: a }">
+              <span class="text-muted-foreground tabular-nums">{{ (a as AdminAnnouncement).sort_order }}</span>
+            </template>
+            <template #cell-is_dismissible="{ row: a }">
+              <Check
+                v-if="(a as AdminAnnouncement).is_dismissible"
+                class="size-4 text-success"
+                aria-label="允许用户关闭"
+              />
+              <span
+                v-else
+                class="text-muted-foreground"
+              >-</span>
+            </template>
+            <template #cell-is_active="{ row: a }">
+              <Switch
+                :model-value="(a as AdminAnnouncement).is_active"
+                :aria-label="`启用公告：${(a as AdminAnnouncement).title}`"
+                @update:model-value="toggleActive(a as AdminAnnouncement, $event)"
+              />
+            </template>
+            <template #actions="{ row: a }">
+              <div class="inline-flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  :aria-label="`编辑公告：${(a as AdminAnnouncement).title}`"
+                  @click="openEdit(a as AdminAnnouncement)"
+                >
+                  <Pencil data-icon="inline-start" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-destructive hover:text-destructive"
+                  :aria-label="`删除公告：${(a as AdminAnnouncement).title}`"
+                  @click="confirmDelete(a as AdminAnnouncement)"
+                >
+                  <Trash2 data-icon="inline-start" />
+                </Button>
+              </div>
+            </template>
+          </AdminDataTable>
         </div>
       </div>
     </AdminCard>
@@ -465,6 +408,7 @@
 import { computed, onMounted, reactive, ref, shallowRef } from 'vue'
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
+import type { AdminColumn as Column } from '~~/types/admin'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
@@ -515,6 +459,16 @@ const submitting = ref(false)
 const loadError = ref(false)
 const loadErrorMsg = ref('')
 const announcements = shallowRef<AdminAnnouncement[]>([])
+
+const announcementColumns: Column[] = [
+  { key: 'state', title: '状态', class: 'whitespace-nowrap' },
+  { key: 'type', title: '类型', class: 'whitespace-nowrap' },
+  { key: 'title', title: '标题与内容' },
+  { key: 'schedule', title: '展示时段', class: 'whitespace-nowrap' },
+  { key: 'sort_order', title: '排序', class: 'whitespace-nowrap' },
+  { key: 'is_dismissible', title: '可关闭', class: 'whitespace-nowrap' },
+  { key: 'is_active', title: '启用', class: 'whitespace-nowrap' }
+]
 
 const formDialogOpen = ref(false)
 const editingId = ref<number | null>(null)
