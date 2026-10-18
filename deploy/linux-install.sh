@@ -117,6 +117,9 @@ info "准备 .env 文件"
 if [[ ! -f .env ]]; then
     if [[ -f .env.example ]]; then
         cp .env.example .env
+        # 主题切换后 Nitro 页面缓存清除：两侧共享密钥必须同值，
+        # 且前端 .panel.env 里的 NUXT_PURGE_SECRET 与之配对（同一段随机串）。
+        PURGE_SECRET="$(openssl rand -hex 32 2>/dev/null || echo change-me-purge-secret-change-me)"
         # 替换一些生产友好的默认值：
         sed -i.bak \
             -e 's|^DATABASE_URL=sqlite.*|DATABASE_URL=postgresql+asyncpg://rosetta:rosetta_secret@127.0.0.1:5432/rosetta|' \
@@ -124,8 +127,11 @@ if [[ ! -f .env ]]; then
             -e 's|^DEBUG=true|DEBUG=false|' \
             -e 's|^APP_ENV=development|APP_ENV=production|' \
             -e "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo change-me-change-me-change-me)|" \
+            -e "s|^# FRONTEND_BASE_URL=.*|FRONTEND_BASE_URL=http://127.0.0.1:3000|" \
+            -e "s|^# FRONTEND_PURGE_SECRET=.*|FRONTEND_PURGE_SECRET=${PURGE_SECRET}|" \
+            -e "s|^# NUXT_PURGE_SECRET=.*|NUXT_PURGE_SECRET=${PURGE_SECRET}|" \
             .env && rm -f .env.bak
-        ok ".env 已生成 (PostgreSQL/Redis 默认配置, 请按需修改)"
+        ok ".env 已生成 (PostgreSQL/Redis 默认配置 + 主题缓存清除密钥; 请按需修改 SITE_URL / 域名)"
     else
         ENV_FILE_MISSING=1
         warn ".env.example 不存在, 请手工创建 .env"
@@ -188,6 +194,9 @@ cat <<EOF
 下一步建议：
 
   1. 编辑 .env 确认 SECRET_KEY / ADMIN_PASSWORD / DATABASE_URL / SITE_URL。
+     若用独立 systemd/nginx 起前端：把 .env 里的 NUXT_PURGE_SECRET 值原样写到
+     frontend/.env（Nitro 构建/运行只读工作目录下的 .env；两侧密钥一致才能触发
+     POST /_rosetta/purge-cache，主题切换后不再闪旧皮肤）。
   2. 若使用 systemd：
         systemctl status rosetta-backend
         journalctl -u rosetta-backend -f
