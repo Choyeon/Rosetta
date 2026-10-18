@@ -270,23 +270,15 @@
                   {{ formatAdminDateTime(u.last_login) }}
                 </td>
                 <td class="p-4">
-                  <div class="inline-flex items-center gap-2">
-                    <UserAvatar
-                      :avatar="u.avatar"
-                      :resolved-avatar-url="u.resolved_avatar_url"
-                      :seed="u.username"
-                      :name="u.nickname || u.username"
-                      :size="32"
-                      :show-title="true"
-                      :title="u.title || null"
-                    />
-                    <span
-                      class="text-sm font-medium text-foreground truncate max-w-[120px]"
-                      :title="u.nickname || u.username || u.email"
-                    >
-                      {{ u.nickname || u.username || u.email }}
-                    </span>
-                  </div>
+                  <TitleBadge
+                    v-if="u.title"
+                    :title="u.title"
+                    size="md"
+                  />
+                  <span
+                    v-else
+                    class="text-xs text-muted-foreground"
+                  >—</span>
                 </td>
                 <td class="p-4 text-center">
                   <div class="inline-flex flex flex-col items-center gap-1">
@@ -535,6 +527,7 @@
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
+import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Badge } from '~~/components/ui/badge'
