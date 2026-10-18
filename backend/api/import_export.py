@@ -21,6 +21,7 @@ from backend.core.cache import invalidate_cache
 from backend.core.logging_middleware import log_operation
 from backend.models.blog import Category, Post, Tag
 from backend.schemas import raw_content_response
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.utils.compat import UTC, parse_utc_date, timedelta
 
 # 注意：main.py 以 prefix="/api/admin" 挂载本路由（与 admin_tools.py 一致，
@@ -43,6 +44,9 @@ async def _invalidate_content_caches(*extra_prefixes: str) -> None:
     """
     for prefix in ("posts", "post:", "categories", "tags", *extra_prefixes):
         await invalidate_cache(prefix)
+    # 整站内容一次性换血 = 首页 / 归档 / 分类 / 标签 / 详情页 SSR HTML 全部陈旧；
+    # Nitro 侧对每种页分别做 600–3600s swr，不通知前端 = 访客在 TTL 内继续看到旧站。
+    purge_frontend_page_cache("import/backup content change")
 
 
 # ==================== 导出 API ====================

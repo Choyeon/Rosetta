@@ -24,6 +24,7 @@ from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.models.blog import Post
 from backend.schemas import BaseResponse
+from backend.services.post_cache import invalidate_post_aggregate_caches
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["定时发布"])
@@ -75,6 +76,9 @@ async def publish_due_posts(db) -> int:
         # 到点的定时文章此前对匿名访客是 404，列表缓存里也不存在；不立刻失效的话，
         # posts:* 最长 300s 仍按"未发布"返回，首页/分类会在到点后几分钟内继续查不到它。
         await invalidate_cache("posts")
+        # 聚合缓存 + 前端 swr 页面同属读侧：定时发布首次让文章对匿名方可见，
+        # 归档计数、首页统计、推荐位、Nitro 页面缓存全部失真。
+        await invalidate_post_aggregate_caches()
 
     return count
 
@@ -186,14 +190,20 @@ async def schedule_post(
             post.published_at = scheduled_at
         post.scheduled_at = None
         message = "文章已立即发布"
+        just_published = True
     else:
         post.scheduled_at = scheduled_at
         message = "定时发布已设置"
+        just_published = False
 
     await db.flush()
 
     await invalidate_cache("posts")
     await invalidate_post_detail_cache(post.slug)
+    # 立即发布 = 文章首次对匿名方可见。归档计数 / 首页统计 / 推荐位 / Nitro 600s swr
+    # 页面都会失真（前台表现："定时已到但首页仍看不到新文章"）。
+    if just_published:
+        await invalidate_post_aggregate_caches()
 
     return BaseResponse(message=message)
 

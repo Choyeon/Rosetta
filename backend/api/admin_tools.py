@@ -22,6 +22,7 @@ from pydantic import BaseModel, Field
 from backend.core.auth import CurrentStaff
 from backend.core.cache import cache, invalidate_cache
 from backend.core.config import settings
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 logger = logging.getLogger(__name__)
 
@@ -303,6 +304,9 @@ async def flush_cache(req: CacheFlushRequest, current_user: CurrentStaff) -> Cac
         ok = await cache.clear()
         deleted_total = 1 if ok else 0
         message = "全部缓存已清退" if ok else "缓存清退失败，后端未返回成功标记"
+        # 后台点了"清退全部"，前端 swr HTML 还在 = 访客继续看到旧页；
+        # 这条按钮的语义必须覆盖两层，否则管理员看到的第一反应是"按钮坏了"。
+        purge_frontend_page_cache("admin flush all")
         return CacheFlushResponse(mode=mode, deleted_keys=deleted_total, message=message)
 
     prefixes = MODE_PREFIXES.get(mode)
@@ -313,6 +317,8 @@ async def flush_cache(req: CacheFlushRequest, current_user: CurrentStaff) -> Cac
         # CACHE_TTL 的 key 前缀可能是 "post_list" 这种，配合 make_cache_key 会拼成 "post_list:<args>:<kwargs>"
         # 因此 MODE_PREFIXES 里统一写裸前缀，这里只去掉示例里的 ":" / "*" 尾巴
         deleted_total += await invalidate_cache(prefix.rstrip("*").rstrip(":"))
+
+    purge_frontend_page_cache(f"admin flush mode={mode}")
 
     return CacheFlushResponse(
         mode=mode,
