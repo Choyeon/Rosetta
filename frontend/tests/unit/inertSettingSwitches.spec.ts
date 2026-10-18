@@ -10,6 +10,7 @@
  * - footer.show_social_links         → components/AppFooter.vue 的 socialLinks 计算属性
  * - footer.police_icp_number         → components/AppFooter.vue 两套页脚的备案行
  * - features.enable_share_buttons    → pages/posts/[slug].vue 的分享条
+ * - enable_bing_wallpaper            → pages/login.vue + pages/register.vue 的壁纸拉取与切壁纸控件
  */
 
 import { describe, it, expect } from 'vitest'
@@ -17,6 +18,8 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 const homePage = readFileSync(resolve(process.cwd(), 'pages/index.vue'), 'utf8')
+const loginPage = readFileSync(resolve(process.cwd(), 'pages/login.vue'), 'utf8')
+const registerPage = readFileSync(resolve(process.cwd(), 'pages/register.vue'), 'utf8')
 const defaultLayout = readFileSync(resolve(process.cwd(), 'layouts/default.vue'), 'utf8')
 const postPage = readFileSync(resolve(process.cwd(), 'pages/posts/[slug].vue'), 'utf8')
 const footerComp = readFileSync(resolve(process.cwd(), 'components/AppFooter.vue'), 'utf8')
@@ -36,6 +39,17 @@ describe('站点设置开关必须有真实消费点', () => {
       .not.toContain('useBingWallpaper')
     expect(homePage, '轮播必须有真实切换面，否则只有第一张能用')
       .toMatch(/function selectHeroSlide/)
+  })
+
+  it('登录/注册页尊重 enable_bing_wallpaper 开关', () => {
+    for (const [name, src] of [['login.vue', loginPage], ['register.vue', registerPage]] as const) {
+      expect(src, `${name} 必须从 /api/config 的 publicConfig 读这一项`)
+        .toContain('publicConfig?.enable_bing_wallpaper')
+      expect(src, `${name} 关开关后不得再打壁纸请求（否则站外图片仍然出现在登录页）`)
+        .toMatch(/!isMinimalAuth\.value && bingWallpaperEnabled\.value/)
+      expect(src, `${name} 的切壁纸控件要一起隐藏，不留没有内容的可点外壳`)
+        .toMatch(/v-if="bingWallpaperEnabled"[\s\S]{0,200}pointer-events-auto/)
+    }
   })
 
   it('页脚「回到顶部」读取 footer.show_back_to_top', () => {

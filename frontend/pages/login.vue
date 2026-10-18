@@ -419,8 +419,11 @@
         </div>
       </a>
 
-      <!-- 切壁纸控件：8 天内切换 + 刷新当前 -->
-      <div class="pointer-events-auto flex items-center gap-1 rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.08] border border-white/12 p-1 shadow-lg shadow-black/40">
+      <!-- 切壁纸控件：8 天内切换 + 刷新当前（站长关闭壁纸时整组不给可点外壳） -->
+      <div
+        v-if="bingWallpaperEnabled"
+        class="pointer-events-auto flex items-center gap-1 rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.08] border border-white/12 p-1 shadow-lg shadow-black/40"
+      >
         <button
           type="button"
           class="size-8 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/15 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
@@ -494,6 +497,11 @@ const authStore = useAuthStore()
 const ft = useFrontendTheme()
 const isMinimalAuth = computed(() => MINIMAL_THEME_SLUGS.has(ft.slug.value || ''))
 
+// Bing 壁纸开关唯一来源是 /api/config 的 enable_bing_wallpaper（OOBE 第 4 步写入）。
+// 缺省视为开启：老站点没有写过这一项，读不到并不表示用户把它关了。
+const site = useSite()
+const bingWallpaperEnabled = computed(() => site.state.value.publicConfig?.enable_bing_wallpaper !== false)
+
 const form = reactive({
   username: '',
   password: '',
@@ -555,9 +563,9 @@ const thumbError = ref(false)
 
 // 首次进入拉取（ssr:false，客户端拉即可）
 onMounted(async () => {
-  // 先确定主题归属：极简激活时跳过壁纸拉取（纯纸面分支不消费 Bing 数据）
-  await ft.ensureLoaded()
-  if (!isMinimalAuth.value) {
+  // 先确定主题归属与站点配置：极简激活、或站长关掉 Bing 壁纸时都跳过拉取
+  await site.ensureLoaded()
+  if (!isMinimalAuth.value && bingWallpaperEnabled.value) {
     try {
       await fetchWallpapers()
     } catch {
