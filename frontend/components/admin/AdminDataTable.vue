@@ -20,13 +20,17 @@ interface Props {
   selectable?: boolean
   selectedIds?: Array<string | number>
   skeletonRows?: number
+  headerClass?: string
+  rowClass?: (row: T, index: number) => string | undefined
 }
 
 const props = withDefaults(defineProps<Props>(), {
   loading: false,
   selectable: false,
   selectedIds: () => [],
-  skeletonRows: 5
+  skeletonRows: 5,
+  headerClass: undefined,
+  rowClass: undefined
 })
 
 const emit = defineEmits<{
@@ -68,7 +72,7 @@ const alignClass: Record<string, string> = {
 <template>
   <Table>
     <TableHeader>
-      <TableRow class="hover:bg-transparent">
+      <TableRow :class="cn('hover:bg-transparent', headerClass)">
         <TableHead
           v-if="selectable"
           class="w-10"
@@ -132,9 +136,10 @@ const alignClass: Record<string, string> = {
 
       <!-- 数据行 -->
       <TableRow
-        v-for="row in data"
+        v-for="(row, i) in data"
         :key="getKey(row)"
         :data-state="isSelected(row) ? 'selected' : undefined"
+        :class="rowClass && rowClass(row, i)"
         @click="emit('row-click', row)"
       >
         <TableCell v-if="selectable">
