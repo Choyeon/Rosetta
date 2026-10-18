@@ -37,6 +37,7 @@ import {
   Brush,
   BookOpen,
   Code2,
+  MonitorPlay,
   ArchiveRestore
 } from '@lucide/vue'
 
@@ -76,6 +77,7 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/content/tags', label: '标签', icon: Tags },
       { path: '/admin/content/series', label: '系列', icon: Layers },
       { path: '/admin/content/pages', label: '页面', icon: FileStack },
+      { path: '/admin/content/hero', label: '首页轮播', icon: MonitorPlay },
       { path: '/admin/content/trash', label: '回收站', icon: ArchiveRestore }
     ]
   },

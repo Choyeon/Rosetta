@@ -53,7 +53,7 @@
 | messages | `/api/messages` | 6 | 0 | 0 | 6 | 0% |
 | voting | `/api/voting` | 5 | 2 | 0 | 3 | 40% |
 | shortcodes | `/api` | 5 | 4 | 0 | 1 | 80% |
-| hero | `/api` | 6 | 1 | 0 | 5 | 17% |
+| hero | `/api` | 6 | 6 | 0 | 0 | 100% |
 | admin_tools | `/api/admin`（alembic/cache） | 4 | 4 | 0 | 0 | 100% |
 | migration | `/api/admin/migration` | 4 | 4 | 0 | 0 | 100% |
 | performance | `/api/admin` | 4 | 4 | 0 | 0 | 100% |
@@ -61,7 +61,7 @@
 | settings_groups | `/api/settings` | 4 | 3 | 0 | 1 | 75% |
 | themes | `/api` | 4 | 1 | 0 | 3 | 25% |
 | bing_image | `/api/bing/image` | 3 | 1 | 0 | 2 | 33% |
-| captcha | `/api/captcha` | 2 | 0 | 0 | 2 | 0% |
+| captcha | `/api/captcha` | 2 | 1 | 0 | 1 | 50% |
 | post_crypto | `/api/post_crypto` | 3 | 0 | 0 | 3 | 0% |
 | scheduled_posts | `/api` | 3 | 0 | 0 | 3 | 0% |
 | comment_reactions | `/api` | 3 | 3 | 0 | 0 | 100% |
@@ -176,10 +176,11 @@
 ❌（1，**重复入口**）：`PUT /admin/announcements/{id}/toggle`（被 PUT 详情替代——重复入口）
 > 2026-09-28 口径：公告条是**两个来源合一**——公告表（多条、带生效时间窗）与设置页 `notice` 分组（全站置顶单条）。后者此前属于"能存能读却无人渲染"的死配置，现由 `useSite().notice` → `noticeToRow()` 接入，`sticky=false` 时排在表格公告之后。两处正文都允许写 Markdown，而横幅是单行纯文本位，统一由 `stripInlineMarkdown()` 剥标记（不为此引入公共页 v-html）。回归见 `tests/unit/announcementBar.spec.ts`。
 
-### hero（/api）— 1/6
+### hero（/api）— 6/6
 
-✅（1）：`GET /hero/slides` —— `pages/index.vue` 首页横幅轮播（六路并行 useAPI 之一，缓存键带 locale）。
-❌（5）：`/admin/hero/slides` 全家桶（GET/POST/PUT/DELETE/toggle）——后台尚无轮播管理页。
+✅（6）：`GET /hero/slides` —— `pages/index.vue` 首页横幅轮播（六路并行 useAPI 之一，缓存键带 locale）。
+`GET/POST /admin/hero/slides`、`PUT/DELETE /admin/hero/slides/{id}`、`PUT /admin/hero/slides/{id}/toggle` ——
+`pages/admin/content/hero.vue`（侧栏「内容 › 首页轮播」）+ `composables/useAdminManage.ts` 五个 wrapper。
 
 > 2026-10-18 口径反转：首页横幅的内容源已从「Bing 每日壁纸」改为「/hero/slides」，
 > 于是 hero 分组不再是与首页并行的第二套真相——`hero` 分组的 `bg_image`/`bg_gradient`
@@ -189,7 +190,9 @@
 > 旧回归 `tests/test_hero_bing_fetch_dedup.py` 钉的是"委托 bing 抓取"这条已反转的契约，随之下线；
 > 新回归 `tests/test_hero_hot_posts_fallback.py`（含"hero.py 不得出现自有抓取"的源码门禁 +
 > "兜底项用负 ID 且本地化随 lang 变化"）。
-> 仍待办：后台轮播 CRUD 一旦落地，DB 记录会优先于热榜兜底，届时需要与 `hero` 分组明确谁覆盖谁。
+> 2026-10-18 补充（覆盖谁的问题已在管理页文档头写死）：DB 有生效行时优先用之，一行都没有才落回热榜兜底；
+> 后台只有 `media_type: image`（首页仅背景图层，选 video 会存进去却永不渲染＝静默失效），
+> `start_time/end_time` 排期窗与 `cta_secondary_*` 次按钮暂未开放界面（后端仍接受）。
 
 
 ### post_series（/api）— 6/8
@@ -261,7 +264,7 @@
 | favorite（/api/favorites） | 12 | **2026-10-16 已接入 10 条**：文章详情页收藏钮（`POST /favorites/check` 先取状态 → 收藏/取消）+ 个人中心 `/account` 的「我的收藏」档位（`GET /favorites` 带 `folder_id` 翻页、`DELETE /favorites/post/{id}` 取消、`PATCH /favorites/post/{id}/{folder,note}` 移夹与备注、`GET/POST /favorites/folders` 与 `PUT/DELETE /favorites/folders/{id}` 管理）。前端唯一出口是 `composables/useFavorites.ts`，路径契约由 `frontend/tests/unit/favoritesLanding.spec.ts` + `tests/test_favorites_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**仍未消费的 2 条是决定不是缺口**：`PUT /api/favorites/{favorite_id}` 与 `DELETE /api/favorites/{favorite_id}` 按收藏行 ID 操作，而 `favorites` 表**至今没有** `(user_id, post_id)` 唯一约束（历史脏数据 + 先 SELECT 再 INSERT 的查重挡不住并发），按行删只删一条重复行、界面表现为「取消没生效」；by-post 变体删/改全部行，故前端只用 by-post。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，可直接用 `total_pages` 翻页；两个 by-post PATCH 显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段；重复收藏不再让三个「按文章 ID」端点抛 `MultipleResultsFound` → 500。**已知缺口**：根治要加 `(user_id, post_id)` 唯一索引 + 先去重历史行。另：`FolderCreate/FolderUpdate.name` 现声明 `min_length=1, max_length=100`（列宽 `String(100)`），超长名此前直穿到 SQL 在 PostgreSQL 上报 StringDataRightTruncation ⇒ 500，空名则建出标签为空、界面无法定位的收藏夹 |
 | messages（/api/messages） | 6 | **2026-10-16 已接入 5 条**：`/account/messages`（登录态私有页，`ssr:false` 走 `/account/**` routeRules 反选）= 会话列表 `GET /messages/conversations`（每对端一行、`?page=` 翻页）+ 会话正文 `GET /messages/{user_id}` + 发送 `POST /messages` + 整段标已读 `PUT /messages/read-all/{user_id}` + 未读角标 `GET /messages/unread/count`；两个入口：顶栏登录菜单（桌面下拉与移动抽屉各一条）与作者主页 `pages/authors/[username].vue` 的「发私信」（`?to=<用户 id>`，包在 `ClientOnly` 里——SSR 期 auth store 是 skipHydrate 拿不到 token，不包就是节点级 hydration mismatch）。前端唯一出口是 `composables/useMessages.ts`，契约由 `frontend/tests/unit/messagesLanding.spec.ts` + `tests/test_messages_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**仍未消费的 1 条是决定不是缺口**：`PUT /api/messages/{message_id}/read` 按单条标已读，而读正文那条已经带副作用把整个会话置为已读，界面不存在「同一会话里只有某几条未读」可展示的状态，包了就是一个无人调的 wrapper 冒充覆盖。契约（2026-09-28 修，2026-10-16 核对路径）：发送的参数走 JSON 请求体（`{recipient_id, content}`，正文 1–5000；文档旧写法 `POST /send` 实为 `POST /api/messages`），不接受 query string——正文进 URL 会被 nginx access log 明文落盘；会话列表保证「每个对端一行」且只含本人的消息；按 id 标记已读对他人消息一律 404（不再用 403 承认私信 id 存在） |
 | monitoring（/api/monitoring） | 8 | health/stats/visits/performance/db/cache/trends。刻意保留：Admin 监控面板当前由 `/admin/stats` + `/admin/performance/*` + `/admin/cache/status` 覆盖，此模块为深度诊断接口（运维经 docs/工具页直访） |
-| captcha（/api/captcha） | 2 | 图形验证码生成/校验。注册登录暂未接入（后端已支持，防滥用开关未开）——**待接入缺口** |
+| captcha（/api/captcha） | 2 | ✅ `GET /captcha` 由 `components/CaptchaField.vue` 消费（留言板写入口，开关 `features.enable_captcha`）。❌ `POST /captcha/verify` 刻意不接：写入侧闸门 `services/captcha_service.ensure_captcha_for_guest` 已经在同一次请求里校验，前端再预校验一次是第二个真相源，且"预校验通过→提交"之间有竞态（答案一次性消费）。 |
 | shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
 | toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |
 | scheduled_posts（/api） | 3 | 定时发布列表/改期/取消。前端以 `status=scheduled` + PUT 文章实现——**重复入口，建议统一** |
@@ -289,8 +292,8 @@
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
    - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；users 一族剩下的 8 条见上表 ❌ 行的逐条判定——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
 
-   - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：hero 轮播管理（×5）；
-   - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、captcha 接入（×2）。
+   - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：~~hero 轮播管理（×5）~~（2026-10-18 已落地 `pages/admin/content/hero.vue`，本项不再是缺口）；
+   - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、~~captcha 接入（×2）~~（2026-10-18 留言板写入口已接，见上 captcha 行；评论侧只有服务端闸门）。
      **2026-10-16 判定：加密这两族不接 UI。** 真实在用的加密链路是 `Post.password` 列 +
      `GET /blog/posts/{slug}` 的 `X-Post-Password` 头（`backend/api/blog.py:1238-1252`，
      前端密码门已上线并有回归），而 post_encryption / post_crypto 是另一套并行设计（独立表 + 独立接口）。

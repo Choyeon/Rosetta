@@ -141,7 +141,10 @@
           class="relative z-20 flex min-h-[inherit] items-center container pt-24 pb-28 md:pt-32"
           :style="containerMaxStyle"
         >
-          <Transition name="hero-copy" mode="out-in">
+          <Transition
+            name="hero-copy"
+            mode="out-in"
+          >
             <div
               :key="heroSlide ? heroSlide.id : 'static'"
               :class="['flex max-w-3xl flex-col', heroAlign]"
@@ -1187,9 +1190,13 @@ const pickSlideText = (raw: HeroSlideApi['title']): string => {
   if (typeof raw === 'string') {
     const s = raw.trim()
     if (!s.startsWith('{')) return s
-    try { return site.pickI18n(JSON.parse(s) as Record<string, string>) } catch { return s }
+    try {
+      return site.pickI18n(JSON.parse(s) as Record<string, string>)
+    } catch {
+      return s
+    }
   }
-  return site.pickI18n(raw as unknown as Record<string, string>)
+  return site.pickI18n(raw)
 }
 
 const heroSlides = computed(() => (heroSlidesData.value ?? []).filter(s => s.media_url))
@@ -1220,7 +1227,7 @@ const heroOverlayStyle = computed(() => ({
 }))
 const heroAlign = computed(() => {
   const a = heroSlide.value?.text_align
-  return a === 'center' ? 'items-center text-center' : a === 'right' ? 'items-end text-right' : ''
+  return a === 'center' ? 'mx-auto items-center text-center' : a === 'right' ? 'ml-auto items-end text-right' : ''
 })
 
 let heroTimer: ReturnType<typeof setInterval> | null = null

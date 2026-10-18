@@ -2347,3 +2347,60 @@ export function deleteNotification(
     silentToast: options.silentToast ?? false
   }).then(() => undefined)
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Hero 轮播（/admin/hero/slides）—— 首页横幅的内容源
+// 后端 HeroSlide* 是 extra=forbid 且 title/subtitle/cta_* 声明为 str，
+// 因此多语言字典必须在提交前 JSON.stringify，回显时再解析。
+// ═══════════════════════════════════════════════════════════════════════════
+
+export interface AdminHeroSlide {
+  id: number
+  title: string | null
+  subtitle: string | null
+  media_type: 'image' | 'video' | 'youtube'
+  media_url: string
+  poster_url: string | null
+  overlay_opacity: number
+  overlay_color: string
+  cta_text: string | null
+  cta_url: string | null
+  cta_secondary_text: string | null
+  cta_secondary_url: string | null
+  text_align: 'left' | 'center' | 'right'
+  text_color: 'light' | 'dark'
+  is_active: boolean
+  sort_order: number
+  start_time: string | null
+  end_time: string | null
+}
+
+export type AdminHeroSlidePayload = Partial<Omit<AdminHeroSlide, 'id'>>
+
+/** GET /api/admin/hero/slides */
+export function fetchAdminHeroSlides(): Promise<AdminHeroSlide[]> {
+  return apiFetch<AdminHeroSlide[]>('/admin/hero/slides')
+}
+
+/** POST /api/admin/hero/slides */
+export function createAdminHeroSlide(payload: AdminHeroSlidePayload): Promise<AdminHeroSlide> {
+  return apiFetch<AdminHeroSlide>('/admin/hero/slides', { method: 'POST', body: payload })
+}
+
+/** PUT /api/admin/hero/slides/{id} */
+export function updateAdminHeroSlide(
+  id: number,
+  payload: AdminHeroSlidePayload
+): Promise<AdminHeroSlide> {
+  return apiFetch<AdminHeroSlide>(`/admin/hero/slides/${id}`, { method: 'PUT', body: payload })
+}
+
+/** DELETE /api/admin/hero/slides/{id} */
+export function deleteAdminHeroSlide(id: number): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/admin/hero/slides/${id}`, { method: 'DELETE' })
+}
+
+/** PUT /api/admin/hero/slides/{id}/toggle —— 后端翻转 is_active，无需请求体 */
+export function toggleAdminHeroSlide(id: number): Promise<AdminHeroSlide> {
+  return apiFetch<AdminHeroSlide>(`/admin/hero/slides/${id}/toggle`, { method: 'PUT' })
+}

@@ -31,7 +31,7 @@ describe('站点设置开关必须有真实消费点', () => {
   })
 
   it('首页横幅内容源是 /hero/slides，不再请求 Bing 每日壁纸', () => {
-    expect(homePage).toContain("useAPI<HeroSlideApi[]>('/hero/slides'")
+    expect(homePage).toContain('useAPI<HeroSlideApi[]>(\'/hero/slides\'')
     expect(homePage, '首页引入 useBingWallpaper 会把首屏绑到站外图片（壁纸只服务登录/注册页）')
       .not.toContain('useBingWallpaper')
     expect(homePage, '轮播必须有真实切换面，否则只有第一张能用')

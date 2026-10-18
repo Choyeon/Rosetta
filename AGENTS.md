@@ -54,7 +54,7 @@
 | 缓存        | Redis 8 + Memory 双后端；分布式锁 / 预热器                                                                              | `backend/core/cache*.py` · `cache_warmer.py` · `distributed_lock.py`                      |
 | 认证        | PyJWT 2.10+ + argon2-cffi 24+ + bcrypt 5+ + cryptography 45+                                                 | `backend/core/auth.py` / `stores/auth.ts`                                                 |
 | 国际化 i18n  | 固定四语：`zh` · `en` · `ja` · `zh_Hant`（fallbackLocale=`en`）                                                     | `frontend/i18n.config.ts` · `frontend/i18n/locales/*.json` + `frontend/i18n/index.ts` 双加载 |
-| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 37 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
+| 管理端 UI    | shadcn-vue（reka-ui / radix-vue）+ Pinia + 39 个 admin 子页（`/admin/**`）                                          | `frontend/pages/admin/*` · `frontend/components/admin/*` · `frontend/components/ui/*`     |
 | 测试        | 后端 pytest-asyncio 自动模式 + pytest-cov 45% fail\_under；前端 vitest 单测 happy-dom                                   | `tests/test_*.py` · `frontend/tests/unit/*.spec.ts`                                       |
 | CI        | GitHub Actions（`.github/workflows/ci.yml`、`frontend/.github/workflows/ci.yml`）                                          | lint + typecheck + pytest + coverage 底线                                                   |
 
@@ -343,7 +343,7 @@ Rosetta/
 │  └─ data/                          四语 seed_content + 市场缓存
 │
 ├─ frontend/                         Nuxt 4.5 前端（srcDir = 根 `frontend/`，无 app/ 目录）
-│  ├─ pages/                          67 个页面文件 = 27 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 3 个登录态个人中心（`/account` + `/account/settings` + `/account/messages`，SPA）+ 37 个 admin 子页（SPA）
+│  ├─ pages/                          71 个页面文件 = 28 个前台公开页（SSR，含 /login /register /forgot-password 三条 SPA 反选）+ 4 个登录态个人中心（`/account` + `/account/settings` + `/account/messages` + `/account/notifications`，SPA）+ 39 个 admin 子页（SPA）
 │  ├─ components/                    共享组件 + admin/ + ui/（shadcn-vue 31 种原子组件）
 │  ├─ composables/                   30 个文件（useXxx 组合函数 + i18n/图标常量等非 composable 辅助）
 │  ├─ layouts/                       default.vue（前台）· admin.vue（后台）
