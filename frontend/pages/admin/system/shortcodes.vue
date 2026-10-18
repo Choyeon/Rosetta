@@ -117,127 +117,86 @@
         </Button>
       </div>
       <div class="overflow-x-auto">
-        <table class="w-full text-sm">
-          <thead class="text-xs uppercase text-muted-foreground">
-            <tr class="border-b">
-              <th
-                scope="col"
-                class="text-left font-medium px-5 py-2"
-              >
-                标签
-              </th>
-              <th
-                scope="col"
-                class="text-left font-medium px-3 py-2"
-              >
-                来源
-              </th>
-              <th
-                scope="col"
-                class="text-left font-medium px-3 py-2"
-              >
-                配对
-              </th>
-              <th
-                scope="col"
-                class="text-left font-medium px-3 py-2"
-              >
-                描述
-              </th>
-              <th
-                scope="col"
-                class="text-right font-medium px-5 py-2"
-              >
-                操作
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr
-              v-for="item in sortedItems"
-              :key="item.tag"
-              class="border-b last:border-0"
+        <AdminDataTable
+          :columns="shortcodeColumns"
+          :data="sortedItems"
+          :loading="loading"
+          row-key="tag"
+        >
+          <template #cell-tag="{ row }">
+            <span class="font-mono">[{{ (row as ShortcodeDefinition).tag }}]</span>
+          </template>
+          <template #cell-source="{ row }">
+            <Badge
+              :variant="(row as ShortcodeDefinition).plugin ? 'secondary' : 'outline'"
+              class="rounded-md"
             >
-              <td class="px-5 py-2.5 font-mono">
-                [{{ item.tag }}]
-              </td>
-              <td class="px-3 py-2.5">
-                <Badge
-                  :variant="item.plugin ? 'secondary' : 'outline'"
-                  class="rounded-md"
-                >
-                  {{ item.plugin ? `插件 ${item.plugin}` : (item.template ? '模板' : '内建') }}
-                </Badge>
-              </td>
-              <td class="px-3 py-2.5 text-muted-foreground">
-                {{ item.has_paired ? '[x]…[/x]' : '[x /]' }}
-              </td>
-              <td class="px-3 py-2.5 text-muted-foreground max-w-[28rem] truncate">
-                {{ item.description || '—' }}
-              </td>
-              <td class="px-5 py-2.5 text-right">
-                <span
-                  v-if="item.plugin"
-                  class="text-xs text-muted-foreground"
-                >
-                  随插件管理
-                </span>
-                <div
-                  v-else-if="pendingDelete !== item.tag"
-                  class="flex items-center justify-end gap-2"
-                >
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="rounded-lg"
-                    @click="fillPreview(item.tag)"
-                  >
-                    预览
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    class="rounded-lg"
-                    @click="pendingDelete = item.tag"
-                  >
-                    <Trash2 data-icon="inline-start" />
-                    删除
-                  </Button>
-                </div>
-                <div
-                  v-else
-                  class="flex items-center justify-end gap-2"
-                >
-                  <span class="text-xs text-destructive">确认删除 [{{ item.tag }}]？</span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="rounded-lg"
-                    @click="pendingDelete = null"
-                  >
-                    取消
-                  </Button>
-                  <Button
-                    size="sm"
-                    class="rounded-lg"
-                    :disabled="deleting"
-                    @click="removeTemplate(item.tag)"
-                  >
-                    确认
-                  </Button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="!sortedItems.length">
-              <td
-                colspan="5"
-                class="px-5 py-8 text-center text-muted-foreground"
+              {{ (row as ShortcodeDefinition).plugin
+                ? `插件 ${(row as ShortcodeDefinition).plugin}`
+                : ((row as ShortcodeDefinition).template ? '模板' : '内建') }}
+            </Badge>
+          </template>
+          <template #cell-has_paired="{ row }">
+            {{ (row as ShortcodeDefinition).has_paired ? '[x]…[/x]' : '[x /]' }}
+          </template>
+          <template #cell-description="{ row }">
+            <span class="block max-w-[28rem] truncate">
+              {{ (row as ShortcodeDefinition).description || '—' }}
+            </span>
+          </template>
+          <template #actions="{ row }">
+            <span
+              v-if="(row as ShortcodeDefinition).plugin"
+              class="text-xs text-muted-foreground"
+            >
+              随插件管理
+            </span>
+            <div
+              v-else-if="pendingDelete !== (row as ShortcodeDefinition).tag"
+              class="flex items-center justify-end gap-2"
+            >
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg"
+                @click="fillPreview((row as ShortcodeDefinition).tag)"
               >
-                {{ loading ? '加载中…' : '注册表为空' }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+                预览
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg"
+                @click="pendingDelete = (row as ShortcodeDefinition).tag"
+              >
+                <Trash2 data-icon="inline-start" />
+                删除
+              </Button>
+            </div>
+            <div
+              v-else
+              class="flex items-center justify-end gap-2"
+            >
+              <span class="text-xs text-destructive">确认删除 [{{ (row as ShortcodeDefinition).tag }}]？</span>
+              <Button
+                variant="ghost"
+                size="sm"
+                class="rounded-lg"
+                @click="pendingDelete = null"
+              >
+                取消
+              </Button>
+              <Button
+                size="sm"
+                class="rounded-lg"
+                :disabled="deleting"
+                @click="removeTemplate((row as ShortcodeDefinition).tag)"
+              >
+                确认
+              </Button>
+            </div>
+          </template>
+        </AdminDataTable>
       </div>
     </AdminCard>
 
@@ -384,8 +343,16 @@ import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Skeleton } from '~~/components/ui/skeleton'
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import AdminPageHeader from '~~/components/admin/AdminPageHeader.vue'
+import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
+
+const shortcodeColumns: Column[] = [
+  { key: 'tag', title: '标签', class: 'w-32' },
+  { key: 'source', title: '来源', class: 'w-32' },
+  { key: 'has_paired', title: '配对', class: 'w-24 text-muted-foreground' },
+  { key: 'description', title: '描述', class: 'text-muted-foreground' }
+]
 
 interface ShortcodeDefinition {
   tag: string

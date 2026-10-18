@@ -276,80 +276,59 @@
               v-else
               class="overflow-x-auto"
             >
-              <table class="w-full text-sm">
-                <caption class="sr-only">
-                  最近 7 天最慢请求列表
-                </caption>
-                <thead class="bg-muted/40 text-muted-foreground text-xs uppercase tracking-wide">
-                  <tr>
-                    <th class="text-left font-medium px-5 py-3">
-                      方法
-                    </th>
-                    <th class="text-left font-medium px-5 py-3">
-                      路径
-                    </th>
-                    <th class="text-right font-medium px-5 py-3">
-                      耗时
-                    </th>
-                    <th class="text-right font-medium px-5 py-3">
-                      状态码
-                    </th>
-                    <th class="text-left font-medium px-5 py-3">
-                      IP
-                    </th>
-                    <th class="text-left font-medium px-5 py-3">
-                      UA
-                    </th>
-                    <th class="text-right font-medium px-5 py-3">
-                      时间
-                    </th>
-                  </tr>
-                </thead>
-                <tbody class="divide-y divide-border">
-                  <tr
-                    v-for="r in slowRows"
-                    :key="r.id"
-                    class="hover:bg-muted/30"
+              <AdminDataTable
+                :columns="slowColumns"
+                :data="slowRows"
+                row-key="id"
+              >
+                <template #cell-method="{ row }">
+                  <Badge
+                    :class="methodClass((row as SlowRow).method)"
+                    class="rounded-lg text-[11px] uppercase tracking-wide"
                   >
-                    <td class="px-5 py-4">
-                      <Badge
-                        :class="methodClass(r.method)"
-                        class="rounded-lg text-[11px] uppercase tracking-wide"
-                      >
-                        {{ r.method }}
-                      </Badge>
-                    </td>
-                    <td class="px-5 py-4 font-mono text-xs max-w-[300px] truncate">
-                      {{ r.path }}
-                    </td>
-                    <td
-                      class="px-5 py-4 text-right tabular-nums font-semibold"
-                      :class="r.duration_ms > 500 ? 'text-error' : r.duration_ms > 200 ? 'text-warning' : ''"
-                    >
-                      {{ r.duration_ms }} ms
-                    </td>
-                    <td class="px-5 py-4 text-right tabular-nums">
-                      <span
-                        :class="String(r.status_code).startsWith('5') ? 'text-error font-semibold' : String(r.status_code).startsWith('4') ? 'text-warning font-medium' : ''"
-                      >
-                        {{ r.status_code }}
-                      </span>
-                    </td>
-                    <td class="px-5 py-4 text-xs text-muted-foreground tabular-nums whitespace-nowrap">
-                      {{ r.ip || '-' }}
-                    </td>
-                    <td
-                      class="px-5 py-4 text-xs text-muted-foreground max-w-[220px] truncate"
-                      :title="r.user_agent ?? ''"
-                    >
-                      {{ r.user_agent || '-' }}
-                    </td>
-                    <td class="px-5 py-4 text-xs text-muted-foreground text-right tabular-nums whitespace-nowrap">
-                      {{ formatAdminDateTime(r.created_at) }}
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
+                    {{ (row as SlowRow).method }}
+                  </Badge>
+                </template>
+                <template #cell-path="{ row }">
+                  <span class="font-mono text-xs block max-w-[300px] truncate">
+                    {{ (row as SlowRow).path }}
+                  </span>
+                </template>
+                <template #cell-duration_ms="{ row }">
+                  <span
+                    class="tabular-nums font-semibold"
+                    :class="(row as SlowRow).duration_ms > 500 ? 'text-error' : (row as SlowRow).duration_ms > 200 ? 'text-warning' : ''"
+                  >
+                    {{ (row as SlowRow).duration_ms }} ms
+                  </span>
+                </template>
+                <template #cell-status_code="{ row }">
+                  <span
+                    class="tabular-nums"
+                    :class="String((row as SlowRow).status_code).startsWith('5') ? 'text-error font-semibold' : String((row as SlowRow).status_code).startsWith('4') ? 'text-warning font-medium' : ''"
+                  >
+                    {{ (row as SlowRow).status_code }}
+                  </span>
+                </template>
+                <template #cell-ip="{ row }">
+                  <span class="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {{ (row as SlowRow).ip || '-' }}
+                  </span>
+                </template>
+                <template #cell-user_agent="{ row }">
+                  <span
+                    class="text-xs text-muted-foreground block max-w-[220px] truncate"
+                    :title="(row as SlowRow).user_agent ?? ''"
+                  >
+                    {{ (row as SlowRow).user_agent || '-' }}
+                  </span>
+                </template>
+                <template #cell-created_at="{ row }">
+                  <span class="text-xs text-muted-foreground tabular-nums whitespace-nowrap">
+                    {{ formatAdminDateTime((row as SlowRow).created_at) }}
+                  </span>
+                </template>
+              </AdminDataTable>
             </div>
             <div
               v-if="!slowLoading && !slowError && slowRows.length === 0"
@@ -582,6 +561,7 @@ import StatCard from '~~/components/admin/StatCard.vue'
 import { Tabs, TabsContent } from '~~/components/ui/tabs'
 import AdminTabList from '~~/components/admin/AdminTabList.vue'
 import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
+import type { AdminColumn as Column } from '~~/types/admin'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Separator } from '~~/components/ui/separator'
@@ -640,6 +620,16 @@ const slowError = ref('')
 const slowLimit = ref('20')
 const slowLimitOptions = ['20', '50', '100']
 const slowRows = shallowRef<SlowRow[]>([])
+
+const slowColumns: Column[] = [
+  { key: 'method', title: '方法' },
+  { key: 'path', title: '路径' },
+  { key: 'duration_ms', title: '耗时', align: 'right' },
+  { key: 'status_code', title: '状态码', align: 'right' },
+  { key: 'ip', title: 'IP' },
+  { key: 'user_agent', title: 'UA' },
+  { key: 'created_at', title: '时间', align: 'right' }
+]
 
 function methodClass(m: string): string {
   const up = m.toUpperCase()
