@@ -25,7 +25,12 @@ from backend.models.blog import Category, Comment, Post, Tag
 from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
 from backend.services._avatar_helpers import resolved_for_user
-from backend.services.post_cache import invalidate_post_aggregate_caches
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.post_cache import (
+    invalidate_post_aggregate_caches,
+    invalidate_post_caches_by_ids,
+    invalidate_post_caches_by_slugs,
+)
 from backend.services.post_revision import snapshot_post_revision
 from backend.utils.compat import UTC, parse_utc_date, timedelta
 from backend.utils.reading_time import compute_reading_time_from_content
@@ -260,7 +265,20 @@ async def restore_trash_item(
     )
 
     # 删除回收站记录
+    restored_type = trash_item.resource_type
     await db.delete(trash_item)
+
+    # 恢复 = 一条已发布文章/一条评论重新出现在读侧。
+    # 详情缓存 post:{slug}:{lang} / 列表 posts 前缀 / 归档计数 / Nitro swr 页面都会失真，
+    # 不处理的表现：回收站恢复后 TTL 内前台首页与文章列表仍显示"这篇不存在"。
+    # 用 delete 前捕获的 restored_type + resource_data（同为提前取出），不再触碰已删对象。
+    if restored_type == "post":
+        slug = resource_data.get("slug")
+        if slug:
+            await invalidate_post_caches_by_slugs([slug])
+        await invalidate_post_aggregate_caches()
+    elif restored_type == "comment":
+        await invalidate_post_caches_by_ids(db, [resource_data.get("post_id")])
 
     return {"success": True, "message": "项目已恢复"}
 
@@ -905,6 +923,8 @@ async def restore_post_revision(
     # 正文已整体回退，两层缓存都会失真：详情缓存存的是新版正文，列表缓存的排序/摘要同样过期
     await invalidate_post_detail_cache(post.slug)
     await invalidate_cache("posts")
+    # 详情 /posts/{slug} 有 Nitro swr 600s，不通知前端 = 回退后访客仍看到旧正文一小时
+    purge_frontend_page_cache("文章版本回退")
 
     return {
         "success": True,
