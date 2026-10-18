@@ -123,43 +123,43 @@
           :loading="loading"
           row-key="tag"
         >
-          <template #cell-tag="{ row }">
-            <span class="font-mono">[{{ (row as ShortcodeDefinition).tag }}]</span>
+          <template #cell-tag="{ row: item }">
+            <span class="font-mono">[{{ (item as ShortcodeDefinition).tag }}]</span>
           </template>
-          <template #cell-source="{ row }">
+          <template #cell-source="{ row: item }">
             <Badge
-              :variant="(row as ShortcodeDefinition).plugin ? 'secondary' : 'outline'"
+              :variant="(item as ShortcodeDefinition).plugin ? 'secondary' : 'outline'"
               class="rounded-md"
             >
-              {{ (row as ShortcodeDefinition).plugin
-                ? `插件 ${(row as ShortcodeDefinition).plugin}`
-                : ((row as ShortcodeDefinition).template ? '模板' : '内建') }}
+              {{ (item as ShortcodeDefinition).plugin
+                ? `插件 ${(item as ShortcodeDefinition).plugin}`
+                : ((item as ShortcodeDefinition).template ? '模板' : '内建') }}
             </Badge>
           </template>
-          <template #cell-has_paired="{ row }">
-            {{ (row as ShortcodeDefinition).has_paired ? '[x]…[/x]' : '[x /]' }}
+          <template #cell-has_paired="{ row: item }">
+            {{ (item as ShortcodeDefinition).has_paired ? '[x]…[/x]' : '[x /]' }}
           </template>
-          <template #cell-description="{ row }">
+          <template #cell-description="{ row: item }">
             <span class="block max-w-[28rem] truncate">
-              {{ (row as ShortcodeDefinition).description || '—' }}
+              {{ (item as ShortcodeDefinition).description || '—' }}
             </span>
           </template>
-          <template #actions="{ row }">
+          <template #actions="{ row: item }">
             <span
-              v-if="(row as ShortcodeDefinition).plugin"
+              v-if="(item as ShortcodeDefinition).plugin"
               class="text-xs text-muted-foreground"
             >
               随插件管理
             </span>
             <div
-              v-else-if="pendingDelete !== (row as ShortcodeDefinition).tag"
+              v-else-if="pendingDelete !== (item as ShortcodeDefinition).tag"
               class="flex items-center justify-end gap-2"
             >
               <Button
                 variant="outline"
                 size="sm"
                 class="rounded-lg"
-                @click="fillPreview((row as ShortcodeDefinition).tag)"
+                @click="fillPreview((item as ShortcodeDefinition).tag)"
               >
                 预览
               </Button>
@@ -167,7 +167,7 @@
                 variant="outline"
                 size="sm"
                 class="rounded-lg"
-                @click="pendingDelete = (row as ShortcodeDefinition).tag"
+                @click="pendingDelete = (item as ShortcodeDefinition).tag"
               >
                 <Trash2 data-icon="inline-start" />
                 删除
@@ -177,7 +177,7 @@
               v-else
               class="flex items-center justify-end gap-2"
             >
-              <span class="text-xs text-destructive">确认删除 [{{ (row as ShortcodeDefinition).tag }}]？</span>
+              <span class="text-xs text-destructive">确认删除 [{{ (item as ShortcodeDefinition).tag }}]？</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -190,7 +190,7 @@
                 size="sm"
                 class="rounded-lg"
                 :disabled="deleting"
-                @click="removeTemplate((row as ShortcodeDefinition).tag)"
+                @click="removeTemplate((item as ShortcodeDefinition).tag)"
               >
                 确认
               </Button>

@@ -50,10 +50,14 @@ describe('预览结果必须是纯文本', () => {
 
 describe('插件归属行只读', () => {
   it('item.plugin 分支内不含任何 Button', () => {
-    const branch = page.slice(
-      page.indexOf('v-if="item.plugin"'),
-      page.indexOf('v-else-if="pendingDelete')
-    )
+    // 表格迁移到 AdminDataTable 后，slot 里对 item 的引用可能带 TS 类型断言
+    // `(item as ShortcodeDefinition).plugin`；判定契约（plugin 分支只读）不变，
+    // 因此把两种形态都视为同一条分支起点。
+    const start = page.search(/v-if="(?:\(item as \w+\)\.)?plugin"/)
+    const end = page.indexOf('v-else-if="pendingDelete')
+    const branch = page.slice(start, end)
+    expect(start).toBeGreaterThan(-1)
+    expect(end).toBeGreaterThan(start)
     expect(branch.length).toBeGreaterThan(0)
     expect(branch).not.toMatch(/<Button/)
     expect(branch).toMatch(/随插件管理/)
@@ -61,7 +65,7 @@ describe('插件归属行只读', () => {
 
   it('删除只作用于模板行：removeTemplate 仅出现在确认分支', () => {
     expect(page.match(/@click="removeTemplate/g)).toHaveLength(1)
-    expect(page.match(/@click="pendingDelete = item\.tag"/g)).toHaveLength(1)
+    expect(page.match(/@click="pendingDelete = (?:\(item as \w+\)\.)?tag"/g)).toHaveLength(1)
   })
 })
 
