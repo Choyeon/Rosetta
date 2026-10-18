@@ -1336,6 +1336,22 @@
     "noLinks": "No friend links yet",
     "loadFailed": "Failed to load"
   },
+  "sponsor": {
+    "title": "Support the blog",
+    "desc": "If these words helped you, buy me a coffee.",
+    "scan": "Scan to support",
+    "imageAlt": "payment QR code",
+    "empty": "Donations are not open yet",
+    "emptyHint": "Add payment QR codes in Admin → Site Settings → Donate to show them here."
+  },
+  "captcha": {
+    "label": "Captcha",
+    "placeholder": "Click the image for a new one",
+    "imageAlt": "Captcha image",
+    "loading": "Loading...",
+    "retry": "Click to refresh",
+    "required": "Please enter the captcha"
+  },
   "search": {
     "title": "Search",
     "desc": "Find articles by title, content, tags or categories — full-text at your fingertips.",

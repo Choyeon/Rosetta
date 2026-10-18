@@ -113,6 +113,11 @@ def _service_err_to_http(exc: ValueError) -> HTTPException:
         "COMMENT_GUEST_NOT_ALLOWED": (403, "本站评论需要登录，请先登录"),
         "COMMENT_NESTING_DISABLED": (422, "本站已关闭嵌套回复，请直接发表评论"),
         "COMMENT_TOO_LONG": (422, "评论内容超出本站允许的最大长度"),
+        # 图形验证码（后台「功能开关 → 图形验证码」打开后，匿名提交必须带）：
+        # 400 而不是 401——验证码错不等于登录凭证失效（AGENTS §7.2）。
+        "CAPTCHA_REQUIRED": (400, "请填写验证码"),
+        "CAPTCHA_EXPIRED": (400, "验证码已过期，请重新获取"),
+        "CAPTCHA_INVALID": (400, "验证码错误，请重试"),
         "COMMENT_NOT_FOUND": (404, "评论不存在"),
         "INVALID_ACTION": (422, "未知批量操作类型"),
     }

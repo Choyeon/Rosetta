@@ -79,6 +79,12 @@
           class="resize-none mb-4"
           :disabled="submitting"
         />
+        <CaptchaField
+          v-if="needCaptcha"
+          ref="captchaRef"
+          :enabled="needCaptcha"
+          class="mb-4"
+        />
         <div class="flex justify-end">
           <Button
             :disabled="submitting"
@@ -292,6 +298,7 @@ import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
+import CaptchaField from '~~/components/CaptchaField.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { useI18n } from 'vue-i18n'
 import { MessageSquare, PenLine, Send, Heart } from '@lucide/vue'
@@ -310,6 +317,11 @@ const authStore = useAuthStore()
 
 // features.enable_guestbook=false 时后端 POST /guestbook 直接 403，表单必须同步收起。
 const guestbookEnabled = computed(() => site.features.value.enable_guestbook)
+
+// features.enable_captcha=true 且未登录时，后端写口会拒掉没有验证码的留言（400 CAPTCHA_REQUIRED），
+// 表单必须同步出现这一栏，否则用户只看到一个看不懂的错误。
+const needCaptcha = computed(() => !authStore.isAuthenticated && site.features.value.enable_captcha)
+const captchaRef = ref<InstanceType<typeof CaptchaField> | null>(null)
 
 // ===== SEO：基于 i18n + 站点设置 =====
 useSeo({
@@ -532,11 +544,16 @@ const submitGuestbook = async () => {
     submitError.value = String(t('guestbook.nicknameRequired', '请填写昵称'))
     return
   }
+  if (needCaptcha.value && !captchaRef.value?.valid()) {
+    submitError.value = String(t('captcha.required', '请填写验证码'))
+    return
+  }
   submitting.value = true
   submitError.value = null
   try {
     const payload: Record<string, string> = {
-      content: form.content.trim()
+      content: form.content.trim(),
+      ...(captchaRef.value?.payload() ?? {})
     }
     if (form.author_name.trim()) payload.author_name = form.author_name.trim()
     if (form.author_email.trim()) payload.author_email = form.author_email.trim()
@@ -572,6 +589,8 @@ const submitGuestbook = async () => {
   } finally {
     // 登录用户清空后回填账号信息，保持表单可用
     prefillFromAuth()
+    // 验证码答案一次性：无论成功还是失败都已被服务端 consume，必须换一张再让用户提交
+    if (needCaptcha.value) captchaRef.value?.refresh()
     submitting.value = false
   }
 }

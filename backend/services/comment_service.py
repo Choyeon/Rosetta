@@ -25,6 +25,7 @@ from backend.models.core import Notification
 from backend.models.user import User
 from backend.schemas import CommentCreate, CommentResponse
 from backend.services._avatar_helpers import _user_relationship_safe, resolved_for_comment
+from backend.services.captcha_service import ensure_captcha_for_guest
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.site_settings import bool_of, int_of, read_group
 from backend.utils.compat import utc_now_naive
@@ -493,6 +494,14 @@ class CommentService:
             raise ValueError("COMMENT_TOO_LONG")
         if data.parent_id is not None and not bool_of(cst, "enable_nested", True):
             raise ValueError("COMMENT_NESTING_DISABLED")
+        # 图形验证码闸门（后台「功能开关 → 图形验证码」）：只挡匿名提交，
+        # 放在内容校验之后、频控与敏感词之前——机器人应在被计数之前就挡住。
+        await ensure_captcha_for_guest(
+            db,
+            current_user=current_user,
+            captcha_key=getattr(data, "captcha_key", None),
+            captcha_code=getattr(data, "captcha_code", None),
+        )
 
         # 1. 基本字段校验：游客必填 author_name；登录用户可从 user 派生但冗余存 author_name
         author_name = (data.author_name or "").strip()

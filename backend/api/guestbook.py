@@ -81,6 +81,10 @@ def _service_err_to_http(exc: ValueError) -> HTTPException:
         "CONTENT_TOO_SHORT": (422, "留言内容至少 2 个字符"),
         "CONTENT_TOO_LONG": (422, "留言内容不能超过 3000 字符"),
         "TOO_FREQUENT_GUESTBOOK": (429, "你在留言板发表留言太频繁了，请稍后再试"),
+        # 图形验证码（后台「功能开关 → 图形验证码」）：400，不是 401（AGENTS §7.2）。
+        "CAPTCHA_REQUIRED": (400, "请填写验证码"),
+        "CAPTCHA_EXPIRED": (400, "验证码已过期，请重新获取"),
+        "CAPTCHA_INVALID": (400, "验证码错误，请重试"),
         "GUESTBOOK_ENTRY_NOT_FOUND": (404, "留言不存在"),
         "INVALID_ACTION": (422, "未知批量操作类型"),
     }

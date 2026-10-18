@@ -309,6 +309,123 @@
                 </div>
               </template>
             </template>
+
+            <div
+              v-if="activeGroup === 'donate'"
+              class="flex flex-col gap-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col gap-0.5">
+                  <Label class="text-sm font-medium">收款方式</Label>
+                  <p class="text-xs text-muted-foreground">
+                    按顺序展示在 /sponsor 页；名称与图片都为空的行不会保存。
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="rounded-xl h-9 shrink-0"
+                  @click="addDonateMethod"
+                >
+                  添加收款方式
+                </Button>
+              </div>
+
+              <p
+                v-if="donateMethods.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                还没有收款方式，访客会看到"暂未开启捐助"。
+              </p>
+
+              <div
+                v-for="(method, index) in donateMethods"
+                :key="index"
+                class="flex flex-col gap-3 rounded-xl border border-border p-4"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="size-28 shrink-0 overflow-hidden rounded-lg border border-border bg-muted/30 flex items-center justify-center">
+                    <img
+                      v-if="method.image"
+                      :src="method.image"
+                      :alt="method.name || `收款码 ${index + 1}`"
+                      class="size-full object-contain"
+                    >
+                    <span
+                      v-else
+                      class="px-2 text-center text-xs text-muted-foreground"
+                    >未上传</span>
+                  </div>
+                  <div class="flex flex-1 flex-col gap-2">
+                    <div class="flex flex-col gap-1">
+                      <Label
+                        :for="`donate-name-${index}`"
+                        class="text-xs"
+                      >名称</Label>
+                      <Input
+                        :id="`donate-name-${index}`"
+                        v-model="method.name"
+                        maxlength="30"
+                        placeholder="支付宝 / 微信支付 / PayPal"
+                        class="rounded-xl"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <Label
+                        :for="`donate-note-${index}`"
+                        class="text-xs"
+                      >附注（可选）</Label>
+                      <Input
+                        :id="`donate-note-${index}`"
+                        v-model="method.note"
+                        maxlength="60"
+                        placeholder="如：金额不限，感谢支持"
+                        class="rounded-xl"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="rounded-xl h-9"
+                    :disabled="donateBusy === index"
+                    @click="pickDonateImage(index)"
+                  >
+                    {{ donateBusy === index ? '上传中...' : (method.image ? '更换收款码' : '上传收款码') }}
+                  </Button>
+                  <Button
+                    v-if="method.image"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="rounded-xl h-9 text-destructive hover:text-destructive"
+                    @click="method.image = ''"
+                  >
+                    清除
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="rounded-xl h-9 text-muted-foreground"
+                    @click="removeDonateMethod(index)"
+                  >
+                    删除
+                  </Button>
+                  <input
+                    :id="`donate-file-${index}`"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="uploadDonateImage(index, $event)"
+                  >
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </ScrollArea>
@@ -337,12 +454,13 @@ import {
   type SettingsValue
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { useMediaUploadCover } from '~~/composables/useMedia'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   Settings, Save, Loader2, Eye, EyeOff, AlertTriangle, RotateCcw,
   Globe, BookOpen, MessageSquare, Image, Search, Mail,
   Shield, ToggleLeft, Palette, Menu, Sparkles, Bell,
-  LayoutTemplate
+  LayoutTemplate, Heart
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
@@ -392,7 +510,8 @@ const groups = [
   { key: 'navigation', label: '导航菜单', icon: Menu, desc: '导航栏样式、顶栏组件开关' },
   { key: 'hero', label: '首页横幅', icon: Sparkles, desc: 'Hero 区域标题、CTA、背景图' },
   { key: 'notice', label: '站点公告', icon: Bell, desc: '公告条类型、正文、可关闭' },
-  { key: 'footer', label: '页脚', icon: LayoutTemplate, desc: '版权信息、ICP、社交链接' }
+  { key: 'footer', label: '页脚', icon: LayoutTemplate, desc: '版权信息、ICP、社交链接' },
+  { key: 'donate', label: '捐助打赏', icon: Heart, desc: '收款码图片、标题与说明（前台 /sponsor 页唯一内容源）' }
 ]
 
 const activeGroup = ref('basic')
@@ -487,6 +606,83 @@ function colorRef(key: string): WritableComputedRef<string> {
   })
 }
 
+/** donate.methods 单项：name=渠道名，image=收款码图片 URL，note=展示给访客的附注。 */
+interface DonateMethod {
+  name: string
+  image: string
+  note: string
+}
+
+/**
+ * 存量 JSON 可能是历史手写或半截数组，直接 push 会写坏载荷，
+ * 所以读入时归一化成 {name,image,note} 三项字符串。
+ */
+function normalizeDonateMethods(raw: unknown): DonateMethod[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map(item => ({
+    name: typeof item?.name === 'string' ? item.name : '',
+    image: typeof item?.image === 'string' ? item.image : '',
+    note: typeof item?.note === 'string' ? item.note : ''
+  }))
+}
+
+/**
+ * 编辑器持有的就是 formState.donate.methods 这一个数组引用（见 loadAll），
+ * 所以增删改直接落到待提交的分组数据上：不需要 watch，也不需要保存前回写。
+ */
+const donateMethods = ref<DonateMethod[]>([])
+
+const donateBusy = ref<number | null>(null)
+
+function addDonateMethod() {
+  donateMethods.value.push({ name: '', image: '', note: '' })
+}
+
+function removeDonateMethod(index: number) {
+  donateMethods.value.splice(index, 1)
+}
+
+/** 上传控件藏在 Button 后面（沿用 series.vue 的隐藏 input 模式），按行 id 触发。 */
+function pickDonateImage(index: number) {
+  document.getElementById(`donate-file-${index}`)?.click()
+}
+
+async function uploadDonateImage(index: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  donateBusy.value = index
+  try {
+    const result = await useMediaUploadCover(file)
+    const item = donateMethods.value[index]
+    if (item && result?.url) {
+      item.image = result.url
+      toast.success('收款码上传成功')
+    } else {
+      toast.error('收款码上传失败')
+    }
+  } catch (e) {
+    // 上传失败提示由 apiFetch 统一 toast，此处不重复弹错
+    console.error('[donate] uploadDonateImage failed:', e)
+  } finally {
+    donateBusy.value = null
+    input.value = ''
+  }
+}
+
+/**
+ * 分组级标签覆写：通用标签表按 key 单源，跨分组撞名时必须按分组改正本。
+ * donate 的 `title` / `description` 与 hero、notice、basic 的同名键语义不同；
+ * `methods` 走专用收款码编辑器，不进通用 schema。
+ */
+const GROUP_LABELS: Record<string, Record<string, string>> = {
+  donate: {
+    enable: '启用捐助页',
+    title: '捐助页标题（多语言 JSON）',
+    description: '捐助页说明（多语言 JSON）'
+  }
+}
+
 function inferSchema(key: string, value: SettingsValue, defaults: Record<string, SettingsValue>): FieldSchema {
   const label = {
     site_name: '站点名称', subtitle: '站点副标题', logo: 'Logo 图片 URL',
@@ -539,7 +735,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
 
   const resolvedLabel = (activeGroup.value === 'hero' && key === 'subtitle')
     ? 'Hero 副标题'
-    : label
+    : (GROUP_LABELS[activeGroup.value]?.[key] ?? label)
 
   if (value === null || value === undefined) {
     const d = defaults[key]
@@ -616,6 +812,15 @@ const FOOTER_BLOCK_KEYS = new Set<string>(['copyright'])
  */
 const READING_BLOCK_KEYS = new Set<string>([])
 
+/**
+ * 由专用编辑器承载、不进通用 schema 的键。
+ * 与 GROUP_BLOCK_KEYS 区别：block 会在保存时从 payload 剥离（Customizer 去重），
+ * editor-owned 键仍然要提交，否则收款码编辑器改了等于没改。
+ */
+const GROUP_EDITOR_KEYS: Record<string, Set<string>> = {
+  donate: new Set<string>(['methods'])
+}
+
 const GROUP_BLOCK_KEYS: Record<string, Set<string>> = {
   appearance: APPEARANCE_BLOCK_KEYS,
   hero: HERO_BLOCK_KEYS,
@@ -627,9 +832,11 @@ const currentGroupSchemas = computed(() => {
   const data = formState[activeGroup.value] || {}
   const defaults = getDefaultsFor(activeGroup.value)
   const blocks = GROUP_BLOCK_KEYS[activeGroup.value]
+  const editors = GROUP_EDITOR_KEYS[activeGroup.value]
   const out: Record<string, FieldSchema> = {}
   for (const [k, v] of Object.entries(data)) {
     if (blocks && blocks.has(k)) continue
+    if (editors && editors.has(k)) continue
     out[k] = inferSchema(k, v, defaults)
   }
   return out
@@ -649,7 +856,8 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true },
     hero: { enable: true, title: {}, subtitle: {}, caption: '', cta_text: {}, cta_url: '', bg_image: '', bg_gradient: '' },
     notice: { enable: false, type: 'info', title: '', content_md: '', dismissible: true, sticky: true },
-    footer: { text: '', slogan: '', copyright: '', icp_number: '', police_icp_number: '', show_social_links: true, show_back_to_top: true }
+    footer: { text: '', slogan: '', copyright: '', icp_number: '', police_icp_number: '', show_social_links: true, show_back_to_top: true },
+    donate: { enable: true, title: {}, description: {}, methods: [] }
   }
   return m[group] || {}
 }
@@ -659,10 +867,13 @@ async function loadAll() {
   loadError.value = ''
   try {
     const data = await fetchAllSettings()
+    const storedMethods = normalizeDonateMethods(data.donate?.methods)
+    if (data.donate) data.donate.methods = storedMethods
     originalState.value = JSON.parse(JSON.stringify(data))
     for (const [k, v] of Object.entries(data)) {
       formState[k] = v as SettingsGroupData
     }
+    donateMethods.value = (formState.donate?.methods as DonateMethod[] | undefined) ?? []
   } catch (e) {
     // fetchAllSettings 内部的 apiFetch 已 toast，这里只补充可见的内联错误态（含重试）
     const err = e as { data?: unknown, message?: string }
@@ -680,6 +891,10 @@ async function handleSaveCurrentGroup() {
   try {
     // 清洗 payload，避免无意义或被禁止的字段被后端接收
     const payload: SettingsGroupData = { ...raw }
+    if (groupKey === 'donate') {
+      // 空行只属于编辑器状态（用户点了"添加"没填），不该推给前台渲染
+      payload.methods = donateMethods.value.filter(item => item.name.trim() || item.image.trim())
+    }
     // 去重：主题 Customizer 中已接管的字段在"站点设置"保存时强制剥离，
     // 防止"先在 Customizer 调过颜色 → 再保存站点设置 → 把主题色覆盖"的双写冲突。
     const blocks = GROUP_BLOCK_KEYS[groupKey]
@@ -691,6 +906,11 @@ async function handleSaveCurrentGroup() {
     }
     const r = await saveSettingsGroup(groupKey, payload)
     originalState.value[groupKey] = JSON.parse(JSON.stringify(r.data))
+    if (groupKey === 'donate') {
+      // 以后端回读为准重建编辑器数组（空行已被剥离），同时保持与 formState 同一个引用
+      donateMethods.value = (r.data.methods as DonateMethod[] | undefined) ?? []
+      if (formState.donate) formState.donate.methods = donateMethods.value
+    }
     toast.success(`已保存：${currentGroupMeta.value?.label ?? groupKey}`)
   } catch (e) {
     // saveSettingsGroup 的 apiFetch 失败时已 toast 展示后端错误；

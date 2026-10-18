@@ -1,8 +1,8 @@
 """
-13 组系统设置 API（与前端 Tab 1:1 对应）
+14 组系统设置 API（与前端 Tab 1:1 对应）
 
-13 groups: basic, reading, comments, media, seo, email, security, features,
-           appearance, navigation, hero, notice, footer
+14 groups: basic, reading, comments, media, seo, email, security, features,
+           appearance, navigation, hero, notice, footer, donate
 
 - GET /api/settings → 返回 { group_key: {...} } 全部 13 组
 - GET /api/settings/{group} → 返回单组 dict
@@ -55,6 +55,7 @@ SETTING_GROUPS = [
     "hero",
     "notice",
     "footer",
+    "donate",
 ]
 
 # ===== 公开可读分组（GET /api/settings/public，无需登录）=====
@@ -72,6 +73,7 @@ PUBLIC_SETTING_GROUPS = [
     "navigation",
     "reading",
     "features",
+    "donate",
 ]
 
 # 即便在公开分组内，这些键也一律脱敏（避免误配导致凭据外泄）
@@ -204,6 +206,11 @@ def _default_features() -> dict:
         "enable_like_button": True,
         "enable_share_buttons": True,
         "enable_reading_progress": True,
+        # 图形验证码闸门（评论 + 留言的匿名写口，见 services/captcha_service.py）。
+        # 默认 False = 存量站点行为不变；打开后匿名提交必须带 captcha_key/captcha_code，
+        # 登录用户始终免验。放在 features 而不是 comments：前台表单要从
+        # /settings/public 读它决定是否渲染验证码输入框，而 comments 组不是公开组。
+        "enable_captcha": False,
     }
 
 
@@ -256,6 +263,21 @@ def _default_notice() -> dict:
     }
 
 
+def _default_donate() -> dict:
+    # 捐助/打赏页（前台 /sponsor 的唯一内容源）。`methods` 每项形如
+    # {name, image, note}：name 是收款方式名（支付宝/微信…），image 是收款码图片
+    # （后台「媒体上传」产出的相对路径，前台按 <img :src> 渲染，不做 v-html），
+    # note 是该通道的一句话说明（可选）。
+    # 历史上这里还挂过 `/api/sponsors`（捐赠者名单）与 /api/config 的 sponsor_* 七个键，
+    # 两边都没有写入方也没有读取方——本组是捐助功能的新唯一真源。
+    return {
+        "enable": True,
+        "title": {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
+        "description": {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
+        "methods": [],
+    }
+
+
 def _default_footer() -> dict:
     return {
         "text": "Powered by Rosetta",
@@ -282,6 +304,7 @@ _GROUP_DEFAULTS = {
     "hero": _default_hero,
     "notice": _default_notice,
     "footer": _default_footer,
+    "donate": _default_donate,
 }
 
 

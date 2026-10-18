@@ -6,8 +6,8 @@
  *   - theme primary & accent tokens          —— from settings.appearance
  *   - hero/footer/notice copy                —— hero/footer/notice groups
  *
- * Data source (matches backend 13 settings groups):
- *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/navigation/reading/features)
+ * Data source (matches backend 14 settings groups):
+ *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/navigation/reading/features/donate)
  *   GET /api/config           (公开兜底同步 fallback)
  */
 import { computed } from 'vue'
@@ -47,7 +47,7 @@ type GroupKeys
   = | 'basic' | 'seo' | 'appearance' | 'hero' | 'footer'
     | 'notice' | 'reading' | 'features'
     | 'navigation' | 'media' | 'comments'
-    | 'email' | 'security'
+    | 'email' | 'security' | 'donate'
 
 interface UseSiteState {
   loaded: boolean
@@ -268,7 +268,9 @@ export function useSite() {
       enable_dark_mode: flag('enable_dark_mode'),
       enable_like_button: flag('enable_like_button'),
       enable_share_buttons: flag('enable_share_buttons'),
-      enable_reading_progress: flag('enable_reading_progress')
+      enable_reading_progress: flag('enable_reading_progress'),
+      // 默认关：老站点没勾过这一项，评论/留言必须保持"无需验证码也能发"。
+      enable_captcha: flag('enable_captcha', false)
     }
   })
 
@@ -316,6 +318,36 @@ export function useSite() {
       || Object.values(value as Record<string, string>)[0]
       || ''
   }
+
+  /**
+   * 「捐助」分组：/sponsor 页的唯一内容源。
+   * methods 每项 {name,image,note}；名称与图片都为空的行不渲染（后台保存时已剥离，
+   * 这里再挡一次存量脏数据）。
+   */
+  const donate = computed(() => {
+    const g = readGroup(state.value, 'donate', {
+      enable: true,
+      title: {} as Record<string, string>,
+      description: {} as Record<string, string>,
+      methods: [] as unknown[]
+    })
+    const methods = (Array.isArray(g.methods) ? g.methods : [])
+      .map((raw): { name: string, image: string, note: string } => {
+        const item = (raw ?? {}) as Record<string, unknown>
+        return {
+          name: typeof item.name === 'string' ? item.name : '',
+          image: typeof item.image === 'string' ? item.image : '',
+          note: typeof item.note === 'string' ? item.note : ''
+        }
+      })
+      .filter(m => m.name.trim() || m.image.trim())
+    return {
+      enable: g.enable !== false,
+      title: pickI18n(g.title),
+      description: pickI18n(g.description),
+      methods
+    }
+  })
 
   const applyAppearanceTokens = () => {
     if (!import.meta.client) return
@@ -400,6 +432,7 @@ export function useSite() {
     reading,
     features,
     navigation,
+    donate,
     siteTitle,
     siteSubtitle,
     siteDescription,

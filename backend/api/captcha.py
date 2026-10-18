@@ -14,8 +14,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Boolean, DateTime, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from backend.core.cache import cache
 from backend.core.database import Base
+from backend.services.captcha_service import consume_captcha, store_captcha_answer
 from backend.utils.compat import UTC
 
 
@@ -159,8 +159,9 @@ async def get_captcha():
     image_bytes = generate_captcha_image(code)
     image_base64 = base64.b64encode(image_bytes).decode("utf-8")
 
-    # 存储到缓存（5 分钟有效）
-    await cache.set(f"captcha:{key}", code.lower(), 300)
+    # 存储到缓存（5 分钟有效）；键位与消费口径单源在 services/captcha_service.py，
+    # 评论/留言写口的闸门读的是同一份。
+    await store_captcha_answer(key, code)
 
     return CaptchaResponse(
         key=key,
@@ -188,49 +189,17 @@ async def verify_captcha(
 
     验证成功后验证码失效。
     """
-    # 从缓存获取验证码
-    stored_code = await cache.get(f"captcha:{data.key}")
-
-    if not stored_code:
+    try:
+        await consume_captcha(data.key, data.code)
+    except ValueError as exc:
+        message = {
+            "CAPTCHA_REQUIRED": "请填写验证码",
+            "CAPTCHA_EXPIRED": "验证码已过期或不存在",
+            "CAPTCHA_INVALID": "验证码错误",
+        }.get(str(exc), "验证码错误")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码已过期或不存在",
-        )
-
-    # 验证（不区分大小写）
-    if data.code.lower() != stored_code.lower():
-        # 错误即作废：验证码字符集只有 32^4≈100 万组合，
-        # 若失败不作废，5 分钟有效期内可被在线暴力枚举
-        await cache.delete(f"captcha:{data.key}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="验证码错误",
-        )
-
-    # 验证成功后删除验证码
-    await cache.delete(f"captcha:{data.key}")
+            detail=message,
+        ) from exc
 
     return {"success": True, "message": "验证成功"}
-
-
-async def check_captcha_required(ip_address: str) -> bool:
-    """
-    检查是否需要验证码
-
-    根据登录失败次数判断是否需要验证码。
-    """
-    # 获取该 IP 的失败次数
-    fail_count = await cache.get(f"login_fail:{ip_address}") or 0
-    return fail_count >= 3
-
-
-async def record_login_fail(ip_address: str):
-    """记录登录失败"""
-    key = f"login_fail:{ip_address}"
-    count = await cache.get(key) or 0
-    await cache.set(key, count + 1, 1800)  # 30 分钟
-
-
-async def clear_login_fail(ip_address: str):
-    """清除登录失败记录"""
-    await cache.delete(f"login_fail:{ip_address}")

@@ -1541,6 +1541,22 @@
     "noLinks": "尚無友情連結",
     "loadFailed": "加載失敗"
   },
+  "sponsor": {
+    "title": "捐助支持",
+    "desc": "如果這些文字對你有幫助，可以請我喝一杯咖啡。",
+    "scan": "掃碼支持",
+    "imageAlt": "收款碼",
+    "empty": "暫未開啟捐助",
+    "emptyHint": "後台「站點設置 → 捐助打賞」上傳收款碼後，這裡就會展示。"
+  },
+  "captcha": {
+    "label": "驗證碼",
+    "placeholder": "點擊圖片可換一張",
+    "imageAlt": "驗證碼圖片",
+    "loading": "加載中...",
+    "retry": "點擊刷新",
+    "required": "請填寫驗證碼"
+  },
   "search": {
     "title": "搜尋",
     "desc": "從標題、內容、標籤、分類中快速找到你想看的文章。",

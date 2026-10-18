@@ -1215,6 +1215,10 @@ class CommentBase(BaseModel):
     author_email: RelaxedEmailStr | None = Field(None, max_length=254)
     author_website: str | None = Field(None, max_length=200)
     hcaptcha_token: str | None = None
+    # 图形验证码（后台「功能开关 → 图形验证码」打开后，匿名提交必填）。
+    # key 来自 GET /api/captcha，code 是用户输入的 4 位字符；两者一次性消费。
+    captcha_key: str | None = Field(None, max_length=64, description="验证码 key")
+    captcha_code: str | None = Field(None, max_length=10, description="验证码字符")
 
     @field_validator("content", mode="after")
     @classmethod
@@ -2360,6 +2364,9 @@ class GuestbookEntryBase(BaseModel):
     author_name: str | None = Field(None, min_length=2, max_length=30)
     author_email: RelaxedEmailStr | None = Field(None, max_length=254)
     author_website: str | None = Field(None, max_length=200)
+    # 图形验证码（与评论同一闸门，见 services/captcha_service.py）
+    captcha_key: str | None = Field(None, max_length=64, description="验证码 key")
+    captcha_code: str | None = Field(None, max_length=10, description="验证码字符")
 
     @field_validator("content", mode="after")
     @classmethod

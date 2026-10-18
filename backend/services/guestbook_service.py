@@ -24,6 +24,7 @@ from backend.models.guestbook import GuestbookEntry
 from backend.models.user import User
 from backend.schemas import GuestbookEntryCreate, GuestbookEntryResponse
 from backend.services._avatar_helpers import resolved_for_guestbook
+from backend.services.captcha_service import ensure_captcha_for_guest
 from backend.services.site_settings import bool_of, read_group
 from backend.utils.compat import utc_now_naive
 
@@ -270,6 +271,14 @@ class GuestbookService:
             author_email = data.author_email
 
         author_website = data.author_website
+
+        # 图形验证码闸门：与评论同一个开关、同一份实现（后台「功能开关 → 图形验证码」）。
+        await ensure_captcha_for_guest(
+            db,
+            current_user=current_user,
+            captcha_key=getattr(data, "captcha_key", None),
+            captcha_code=getattr(data, "captcha_code", None),
+        )
 
         masked = mask_ip(client_ip)
         dup = await GuestbookService.check_same_ip_duplicate(db, masked, 30)

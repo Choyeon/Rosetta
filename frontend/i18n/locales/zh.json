@@ -1336,6 +1336,22 @@
     "noLinks": "还没有友链",
     "loadFailed": "加载失败"
   },
+  "sponsor": {
+    "title": "捐助支持",
+    "desc": "如果这些文字对你有用，可以请我喝一杯咖啡。",
+    "scan": "扫码支持",
+    "imageAlt": "收款码",
+    "empty": "暂未开启捐助",
+    "emptyHint": "后台「站点设置 → 捐助打赏」上传收款码后，这里就会展示。"
+  },
+  "captcha": {
+    "label": "验证码",
+    "placeholder": "点击图片可换一张",
+    "imageAlt": "验证码图片",
+    "loading": "加载中...",
+    "retry": "点击刷新",
+    "required": "请填写验证码"
+  },
   "search": {
     "title": "搜索",
     "desc": "从标题、内容、标签、分类中快速找到你想看的文章。",
