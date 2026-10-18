@@ -1515,6 +1515,8 @@
     "contentPlaceholder": "ここに入力…",
     "replyPlaceholder": "このメッセージに返信…",
     "noMessages": "まだメッセージがありません。最初のひとことをどうぞ！",
+    "contentRequired": "まずメッセージを入力してください",
+    "nicknameRequired": "ニックネームを入力してください",
     "submitFailed": "送信に失敗しました。後ほど再度お試しください",
     "loadFailed": "メッセージの読み込みに失敗しました。しばらくしてからもう一度お試しください",
     "postingAs": "現在のアカウントで投稿します",

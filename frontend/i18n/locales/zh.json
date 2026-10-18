@@ -1310,6 +1310,8 @@
     "contentPlaceholder": "在这里输入你想说的话…",
     "replyPlaceholder": "回复这条留言…",
     "noMessages": "还没有留言，来写下第一条吧！",
+    "contentRequired": "请先写下留言内容",
+    "nicknameRequired": "请填写昵称",
     "submitFailed": "提交失败，请稍后再试",
     "loadFailed": "留言加载失败，请稍后重试",
     "postingAs": "将以当前账号发表",

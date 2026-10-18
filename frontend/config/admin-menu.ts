@@ -147,3 +147,15 @@ export function findMenuItem(path: string): AdminMenuItem | undefined {
 export function findMenuGroup(path: string): AdminMenuGroup | undefined {
   return adminMenu.find(g => g.items.some(item => item.path === path))
 }
+
+/**
+ * 顶栏「快速跳转」的唯一匹配口径：label / path 大小写不敏感子串。
+ * 空查询返回空数组（下拉只在用户真的打字时出现）。
+ */
+export function filterAdminMenuItems(query: string, limit = 8): AdminMenuItem[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return []
+  return adminMenuFlat
+    .filter(item => item.label.toLowerCase().includes(q) || item.path.toLowerCase().includes(q))
+    .slice(0, limit)
+}

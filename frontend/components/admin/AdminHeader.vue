@@ -52,7 +52,7 @@ import {
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
-import { findMenuItem, findMenuGroup } from '~~/config/admin-menu'
+import { filterAdminMenuItems, findMenuItem, findMenuGroup } from '~~/config/admin-menu'
 import { stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 defineProps<{
@@ -69,7 +69,7 @@ const emit = defineEmits<{
 }>()
 
 const authStore = useAuthStore()
-const _router = useRouter()
+const router = useRouter()
 const route = useRoute()
 const toast = useToast()
 
@@ -342,8 +342,72 @@ function scheduleLoadBadge() {
   }
 }
 
+// ==================== 顶栏快速跳转（Ctrl/⌘+K） ====================
+// 原状：这个搜索框既没有 v-model 也没有任何处理器，placeholder 却写着 "(Ctrl+K)"
+// —— 一个会撒谎的死控件：管理员敲了词、按了回车，界面上什么都没有发生。
+// 口径：候选唯一来自 config/admin-menu 的 adminMenuFlat（与侧栏、面包屑同一个真源），
+// 只做"跳到哪个后台页面"，不做内容检索（内容检索在各列表页自己的搜索框里）。
+const quickQuery = ref('')
+const quickOpen = ref(false)
+const quickActive = ref(0)
+const quickMatches = computed(() => filterAdminMenuItems(quickQuery.value))
+watch(quickMatches, () => { quickActive.value = 0 })
+
+const QUICK_INPUT_ID = 'admin-quick-search'
+
+function goQuick(path: string | undefined): void {
+  if (!path) return
+  quickOpen.value = false
+  quickQuery.value = ''
+  router.push(path)
+}
+
+function onQuickKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    quickOpen.value = false
+    return
+  }
+  const total = quickMatches.value.length
+  if (total === 0) return
+  if (e.key === 'ArrowDown') {
+    e.preventDefault()
+    quickActive.value = (quickActive.value + 1) % total
+    return
+  }
+  if (e.key === 'ArrowUp') {
+    e.preventDefault()
+    quickActive.value = (quickActive.value - 1 + total) % total
+    return
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    goQuick(quickMatches.value[quickActive.value]?.path)
+  }
+}
+
+function onQuickFocusOut(e: FocusEvent): void {
+  // 候选按钮上用 @mousedown.prevent，点击不会先丢焦点；这里只认真正离开容器
+  const next = e.relatedTarget as Node | null
+  const container = e.currentTarget as Node | null
+  if (next && container?.contains?.(next)) return
+  quickOpen.value = false
+}
+
+// placeholder 承诺了 Ctrl+K，就必须真的把焦点交给输入框
+function onGlobalKeydown(e: KeyboardEvent): void {
+  if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'k') return
+  e.preventDefault()
+  quickOpen.value = true
+  document.getElementById(QUICK_INPUT_ID)?.focus()
+}
+
 onMounted(() => {
   if (authStore.isAuthenticated) scheduleLoadBadge()
+  window.addEventListener('keydown', onGlobalKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
 })
 
 // authStore 登录态变化时（从 login → /admin 跳转）再拉一次
@@ -403,19 +467,58 @@ watch(
       </span>
     </nav>
 
-    <!-- 搜索框（中大屏） -->
-    <div class="hidden lg:flex flex-1 max-w-md mx-auto">
+    <!-- 顶栏快速跳转（中大屏）：打字即筛后台页面，Enter 打开第一条 -->
+    <div
+      class="hidden lg:flex flex-1 max-w-md mx-auto relative"
+      @focusout="onQuickFocusOut"
+    >
       <div class="relative w-full">
         <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
+          id="admin-quick-search"
+          v-model="quickQuery"
           class="pl-9 h-9 rounded-[10px] bg-muted/50 focus:bg-background"
-          placeholder="搜索文章/用户/设置 (Ctrl+K)"
+          placeholder="搜索后台页面 (Ctrl+K)"
+          autocomplete="off"
+          role="combobox"
+          :aria-expanded="quickOpen"
+          aria-controls="admin-quick-search-results"
+          aria-autocomplete="list"
+          @focus="quickOpen = true"
+          @keydown="onQuickKeydown"
         />
         <kbd
           class="absolute right-2.5 top-1/2 -translate-y-1/2 inline-flex items-center gap-0.5 px-1.5 h-5 rounded-[6px] border border-border bg-background text-[10px] font-medium text-muted-foreground"
         >
           ⌘K
         </kbd>
+      </div>
+      <div
+        v-if="quickOpen && quickQuery.trim()"
+        id="admin-quick-search-results"
+        role="listbox"
+        class="absolute top-full left-0 z-50 mt-1 w-full rounded-[10px] border border-border bg-popover p-1 shadow-lg"
+      >
+        <p
+          v-if="quickMatches.length === 0"
+          class="px-2 py-1.5 text-sm text-muted-foreground"
+        >
+          没有匹配的后台页面
+        </p>
+        <button
+          v-for="(item, index) in quickMatches"
+          :key="item.path"
+          type="button"
+          role="option"
+          :aria-selected="index === quickActive"
+          class="flex w-full items-center gap-2 rounded-[6px] px-2 py-1.5 text-sm text-foreground hover:bg-accent"
+          :class="index === quickActive && 'bg-accent'"
+          @mousedown.prevent="goQuick(item.path)"
+        >
+          <component :is="item.icon" class="size-4 shrink-0 text-muted-foreground" />
+          <span class="truncate">{{ item.label }}</span>
+          <span class="ml-auto shrink-0 text-xs text-muted-foreground/60">{{ item.path }}</span>
+        </button>
       </div>
     </div>
 

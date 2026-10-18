@@ -594,7 +594,7 @@ async function onAvatarFileChange(ev: Event) {
   try {
     const res = await useMediaUploadAvatar(file)
     if (res && res.url) {
-      // 仅暂存到表单，随「保存」写入目标用户；不能再调 auth.updateAvatar（那是修改当前管理员自己的资料）
+      // 仅暂存到表单，随「保存」写入目标用户；不能立刻写当前登录管理员自己的资料（上传的是别人的头像）
       form.avatar = res.url
       toast.success('头像上传成功')
     }

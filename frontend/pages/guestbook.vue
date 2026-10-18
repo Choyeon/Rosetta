@@ -523,8 +523,15 @@ watch(
 const submitGuestbook = async () => {
   if (submitting.value) return
   // 登录用户昵称/邮箱由后端按账号识别，不再强制前端必填
-  if (!form.content.trim()) return
-  if (!authStore.isAuthenticated && !form.author_name.trim()) return
+  // 校验失败必须写行内 submitError：静默 return 的表现是"点了提交，什么都没发生"
+  if (!form.content.trim()) {
+    submitError.value = String(t('guestbook.contentRequired', '请先写下留言内容'))
+    return
+  }
+  if (!authStore.isAuthenticated && !form.author_name.trim()) {
+    submitError.value = String(t('guestbook.nicknameRequired', '请填写昵称'))
+    return
+  }
   submitting.value = true
   submitError.value = null
   try {

@@ -1515,6 +1515,8 @@
     "contentPlaceholder": "在此輸入…",
     "replyPlaceholder": "回覆這條留言…",
     "noMessages": "還沒有留言。來當第一個打招呼的人吧！",
+    "contentRequired": "請先寫下留言內容",
+    "nicknameRequired": "請填寫暱稱",
     "submitFailed": "提交失敗，請稍後重試",
     "loadFailed": "留言加載失敗，請稍後重試",
     "postingAs": "將以當前帳號發表",

@@ -1310,6 +1310,8 @@
     "contentPlaceholder": "Type something here…",
     "replyPlaceholder": "Reply to this message…",
     "noMessages": "No messages yet. Be the first to say hi!",
+    "contentRequired": "Please write a message first",
+    "nicknameRequired": "Please fill in your nickname",
     "submitFailed": "Submit failed, please try again later",
     "loadFailed": "Failed to load guestbook entries, please try again later",
     "postingAs": "Posting with your current account",

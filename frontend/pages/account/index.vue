@@ -505,7 +505,7 @@
             <Button
               variant="outline"
               size="sm"
-              :disabled="busyFolderId !== null"
+              :disabled="busyFolderId !== null || !canRename(folder)"
               @click="renameFolder(folder)"
             >
               {{ t('common.save') }}
@@ -895,6 +895,12 @@ async function createFolder() {
   } finally {
     busyFolderId.value = null
   }
+}
+
+/** 改名按钮的唯一可用口径：草稿非空且与现名不同 —— 否则点击必然是静默 no-op */
+function canRename(folder: { id: number, name: string }): boolean {
+  const next = (folderDrafts.value[folder.id] ?? '').trim()
+  return Boolean(next) && next !== folder.name
 }
 
 async function renameFolder(folder: { id: number, name: string }) {

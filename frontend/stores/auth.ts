@@ -197,34 +197,6 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  /**
-   * Replace user's avatar URL locally and notify backend via PUT /users/me/avatar.
-   * Backend reads the avatar from the `avatar` query parameter (see backend/api/users.py).
-   * Backend call is best-effort: even when offline the UI reflects the new avatar
-   * so user can see crop + upload result visually immediately.
-   */
-  async function updateAvatar(url: string) {
-    if (!url) return
-    const prev = user.value?.avatar ?? null
-    if (user.value && typeof user.value === 'object') {
-      user.value = { ...user.value, avatar: url }
-    }
-    try {
-      await $fetch('/users/me/avatar', {
-        baseURL: getApiBase(),
-        method: 'PUT',
-        query: { avatar: url },
-        headers: accessToken.value ? { Authorization: `Bearer ${accessToken.value}` } : {}
-      })
-    } catch (err) {
-      // rollback if API disagrees
-      if (prev && user.value && typeof user.value === 'object') {
-        user.value = { ...user.value, avatar: prev }
-      }
-      console.warn('[auth.updateAvatar] backend unreachable, kept UI-only avatar:', err)
-    }
-  }
-
   // 并发 401 刷新互斥：多个请求同时拿过期 access token 撞 401 时，
   // 只允许一个真正的 /users/refresh 请求（后端是 rotate 语义，刷新令牌单次有效；
   // 并发刷新会让第 2..N 个请求吃到 TOKEN_REUSED，把刚刷新成功的用户踢下线）。
@@ -364,7 +336,6 @@ export const useAuthStore = defineStore('auth', () => {
     login,
     register,
     logout,
-    updateAvatar,
     refreshAccessToken,
     initialize
   }
