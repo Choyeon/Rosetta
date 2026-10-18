@@ -47,6 +47,7 @@ from backend.schemas.admin_reads import (
     UserTitleBadgeDoc,
 )
 from backend.services.post_cache import invalidate_post_caches_by_ids
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.user_service import get_user_service
 
 logger = logging.getLogger(__name__)
@@ -1463,6 +1464,7 @@ async def optimize_search(
     if touched_slugs:
         await invalidate_post_detail_cache(*touched_slugs)
         await invalidate_cache("posts")
+        purge_frontend_page_cache("admin slug/summary 回填")
 
     return {
         "success": True,

@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.models.blog import Post
 from backend.services.cache_service import CacheService
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 # 推荐/相似/热榜三套 key 走的是 services/cache_service.py 的二级缓存，
 # 命名空间与 core/cache 的 make_cache_key 不同（后者统一带 rosetta:v1 前缀），
@@ -79,3 +80,7 @@ async def invalidate_post_aggregate_caches() -> None:
         await invalidate_cache(prefix)
     # 推荐位只会引用已发布文章，文章行变化即可能让"相似/推荐/热榜"变成陈旧数据
     await invalidate_recommendation_caches()
+    # 后端响应缓存清干净还不够：Nitro routeRules 对 '/' / '/posts' / '/archive/**'
+    # 分别做 300–3600s 的 swr HTML 缓存，管理员发文章/改状态后不通知前端，
+    # 访客在 TTL 内拿到的仍是旧首页与旧归档页（新文章不出现）。
+    purge_frontend_page_cache("post aggregate change")
