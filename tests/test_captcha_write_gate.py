@@ -157,7 +157,7 @@ async def test_captcha_flag_is_public_for_the_form(client: AsyncClient) -> None:
     """前台表单要在未登录时读到这个开关——所以它必须在公开分组白名单里。"""
     pub = await client.get("/api/settings/public")
     assert pub.status_code == 200, pub.text
-    data = pub.json()["data"]
+    data = pub.json()["groups"]
     assert "features" in data
     assert "enable_captcha" in data["features"]
 
