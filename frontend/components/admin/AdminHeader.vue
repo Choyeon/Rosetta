@@ -369,7 +369,8 @@ function onQuickKeydown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     quickOpen.value = false
     return
-  }  const total = quickMatches.value.length
+  }
+  const total = quickMatches.value.length
   if (total === 0) return
   if (e.key === 'ArrowDown') {
     e.preventDefault()
