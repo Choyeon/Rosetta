@@ -215,11 +215,10 @@ async def test_comments_require_approval_group_overrides_env(client, staff_heade
 
 
 @pytest.mark.asyncio
-async def test_comments_require_approval_group_drives_guestbook(
-    client, staff_headers
-):
+async def test_comments_require_approval_group_drives_guestbook(client, staff_headers):
     """留言板必须读同一份 comments.require_approval 分组（此前只按环境变量走，
     后台"新评论需审核"对留言静默失效）：勾上→pending，取消→approved。"""
+
     async def post_gb():
         return await client.post(
             "/api/guestbook",
@@ -257,7 +256,9 @@ async def test_comments_antispam_toggle_drives_guestbook(client, staff_headers):
             headers=_fresh_ip(),
         )
 
-    await _patch(client, staff_headers, "comments", {"enable_antispam": True, "require_approval": False})
+    await _patch(
+        client, staff_headers, "comments", {"enable_antispam": True, "require_approval": False}
+    )
     on = await post_black()
     assert on.status_code in (200, 201), on.text
     assert on.json()["status"] == "rejected"
