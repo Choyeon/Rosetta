@@ -137,15 +137,23 @@ async def test_wrong_type_is_rejected(
     assert key in resp.text
 
 
-@pytest.mark.parametrize("bad", [float("nan"), float("inf"), float("-inf")])
-async def test_non_finite_number_is_rejected(client: AsyncClient, admin_headers: dict, bad: float):
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+async def test_non_finite_number_is_rejected(
+    client: AsyncClient, admin_headers: dict, literal: str
+):
     """json.loads 接受 NaN/Infinity 字面量，它们既能被存进库、又能让前台 JSON.parse 炸。
 
     NaN 还有一条更阴的路径：`lo <= NaN <= hi` 为 False 不代表它安全——它会被 json.dumps
     原样写回（allow_nan 默认 True），于是 /api/settings 的响应体不再是合法 JSON。
+
+    请求体必须手写 JSON 文本：`json={"posts_per_page": float("nan")}` 在 httpx 本地就
+    抛 ValueError（Out of range float values are not JSON compliant），根本到不了服务端，
+    而真实的攻击面是过网络送进来的裸字面量。
     """
     resp = await client.patch(
-        "/api/settings/reading", headers=admin_headers, json={"posts_per_page": bad}
+        "/api/settings/reading",
+        headers={**admin_headers, "Content-Type": "application/json"},
+        content=f'{{"posts_per_page": {literal}}}',
     )
 
     assert resp.status_code == 400, resp.text

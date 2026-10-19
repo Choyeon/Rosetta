@@ -407,15 +407,38 @@ async def test_comments_guest_toggle_rejects_anonymous_only(
 
 
 @pytest.mark.asyncio
-async def test_comments_max_length_from_group(client, staff_headers, test_post):
-    """max_length=10 → 20 字正文被拒（历史上只有 Pydantic 的 3000 硬编码在守）。"""
-    await _patch(client, staff_headers, "comments", {"max_length": 10})
+async def test_comments_max_length_from_group(client, staff_headers, auth_headers, test_post):
+    """max_length=100 → 200 字正文被拒、60 字正文通过（历史上只有 Pydantic 的 3000 硬编码在守）。
+
+    两边都要断言：只测拒收，无法区分"闸门读的是分组值"和"另有一个未知常量在挡"。
+    100 是写入侧区间下限（_NUMERIC_BOUNDS 的 comments.max_length），再小（如原来的 10）
+    会在 PATCH 阶段就 400——那种设置等于关掉评论，正是区间闸门要拦的误操作。
+    """
+    # 先取好 id：422 路径上的 rollback 会把 test_post 标成过期，之后再读会在 greenlet 外触发隐式 IO。
+    pid = test_post.id
+    await _patch(client, staff_headers, "comments", {"max_length": 100})
+    accepted_id = None
     try:
-        resp = await _post_comment(client, test_post.id, content="十个字不够用这条应该被拒掉的")
-        assert resp.status_code == 422, resp.text
-        assert resp.json()["error_code"] == "COMMENT_TOO_LONG"
+        long = await _post_comment(client, pid, content="评论长度闸门探针正文" * 20)
+        assert long.status_code == 422, long.text
+        assert long.json()["error_code"] == "COMMENT_TOO_LONG"
+        # 正向那半边走登录用户：匿名口还叠了验证码/审核闸门，会把"长度没超限"
+        # 这一判定污染成别的错误码。
+        short = await client.post(
+            f"/api/posts/{pid}/comments",
+            json={"content": "六十个字的评论正文。" * 6},
+            headers={**auth_headers, **_fresh_ip()},
+        )
+        assert short.status_code in (200, 201), short.text
+        accepted_id = short.json().get("id")
     finally:
         await _patch(client, staff_headers, "comments", {"max_length": 3000})
+    if accepted_id:
+        await client.post(
+            "/api/admin/comments/batch",
+            json={"action": "delete", "ids": [accepted_id]},
+            headers=staff_headers,
+        )
 
 
 # ==================== ③ media 分组：收紧生效，放松无效 ====================
