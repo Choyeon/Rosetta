@@ -26,6 +26,18 @@ jobs:
           export PATH="$HOME/.local/bin:$PATH"
           uv sync --extra dev
 
+      - name: Lint backend
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run ruff check backend tests
+
+      - name: Check backend formatting
+        # AGENTS §8.1 的三条后端门禁里，只有这一条没有自动化兜底：一旦没人跑，
+        # 仓库会悄悄漂移到"人人都得在无关 PR 里顺手 reformat 27 个文件"。
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          uv run ruff format --check backend tests
+
       - name: Run backend tests
         env:
           # 测试使用独立临时 SQLite，不依赖外部服务
