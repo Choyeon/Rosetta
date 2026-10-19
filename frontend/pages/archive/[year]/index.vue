@@ -191,13 +191,10 @@ const totalInYear = computed(() =>
 
 // 后端读者侧已按 lang 本地化，这里只兜多语言 dict 残留与字符串两种形态。
 function titleOf(post: ArchiveMonthGroup['posts'][number]): string {
-  const title = post.title as string | Record<string, string> | undefined
-  return typeof title === 'string' ? title : (title?.[locale.value] ?? Object.values(title ?? {})[0] ?? '')
+  return pickLocalizedText(post.title, locale.value as string)
 }
 function categoryOf(post: ArchiveMonthGroup['posts'][number]): string {
-  const name = post.category?.name as string | Record<string, string> | undefined
-  if (!name) return ''
-  return typeof name === 'string' ? name : (name[locale.value] ?? '')
+  return pickLocalizedText(post.category?.name, locale.value as string)
 }
 function padMonth(month: number): string {
   return String(month).padStart(2, '0')

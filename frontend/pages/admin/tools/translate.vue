@@ -351,13 +351,8 @@ const copiedKey = ref<string | null>(null)
 let rowSeq = 0
 /** 多语言文章的 title 可能是 {zh,en,ja,zh_Hant} 对象，直接 String() 会得到 [object Object] */
 function titleText(title: unknown): string {
-  if (title && typeof title === 'object') {
-    const t = title as Record<string, unknown>
-    const v = t.zh ?? t.en ?? t.ja ?? t.zh_Hant
-      ?? Object.values(t).find(x => typeof x === 'string' && x.length > 0)
-    return String(v ?? '')
-  }
-  return String(title ?? '')
+  // 译文工具要的是"这份内容长什么样"，与界面语言无关，所以固定按 zh 优先取。
+  return pickLocalizedText(title, 'zh')
 }
 const filteredPosts = computed(() => {
   const keyword = postSearch.value.trim().toLowerCase()

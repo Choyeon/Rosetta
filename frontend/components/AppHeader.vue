@@ -150,15 +150,8 @@ const { data: navRowsRef, refresh: refreshNav } = useAPI<NavApiRow[]>('/navigati
 // 语言切换时，用新的 Accept-Language 头重新拉导航（否则导航仍缓存旧语言的 label/i18n）
 watch(locale, () => void refreshNav())
 
-const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: string): string => {
-  if (v == null) return fb
-  if (typeof v === 'string') return v || fb
-  const l = locale.value as string
-  if (l && v[l]) return v[l] || fb
-  const keys = Object.keys(v)
-  const first = keys[0]
-  return (first ? v[first] : '') || fb
-}
+const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: string): string =>
+  pickLocalizedText(v, locale.value as string, fb)
 
 /**
  * 规范化后端导航菜单返回的内部 URL 路径。

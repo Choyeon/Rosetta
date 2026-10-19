@@ -8,6 +8,8 @@
  *     严重时会打断 hydration，导致整页白屏。
  *  2. localStorage / fetch 直连 Bing 仅客户端可用，使用 import.meta.client 守卫。
  */
+import { MONTH_TABLE } from '~~/composables/useI18nHelpers'
+
 export interface BingImage {
   url: string
   urlbase: string
@@ -32,20 +34,8 @@ interface BingRawImage {
   enddate?: string
 }
 
-const WALLPAPER_MONTHS_LABEL: Record<string, string[]> = {
-  zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-  zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
-}
-
 const WALLPAPER_CACHE_KEY = 'bing_wallpaper_cache_v1'
 const WALLPAPER_CACHE_TTL = 3600_000 // 1 小时（与后端缓存对齐）
-
-const WALLPAPER_MONTHS_COMPACT_EN: string[] = [
-  'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-  'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
-]
 
 export const useBingWallpaper = () => {
   // ===== Nuxt / Vue 上下文必须在 composable 顶层调用，避免 NUXT_E1001 =====
@@ -70,7 +60,7 @@ export const useBingWallpaper = () => {
     const m = enddate.substring(4, 6)
     const d = enddate.substring(6, 8)
     const locale = (i18nLocale.value as string) || 'zh'
-    const months = (WALLPAPER_MONTHS_LABEL[locale] || WALLPAPER_MONTHS_LABEL.en || []) as string[]
+    const months = (MONTH_TABLE[locale] || MONTH_TABLE.en || []) as string[]
     const monthStr = months[parseInt(m, 10) - 1] || m
     const dayNum = String(parseInt(d, 10))
     switch (locale) {
@@ -104,7 +94,7 @@ export const useBingWallpaper = () => {
         break
       case 'en':
       default:
-        sub = WALLPAPER_MONTHS_COMPACT_EN[monthInt - 1] || String(monthInt)
+        sub = (MONTH_TABLE.en || [])[monthInt - 1] || String(monthInt)
     }
     return { main: String(parseInt(d, 10)), sub } as const
   }
