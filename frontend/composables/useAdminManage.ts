@@ -339,8 +339,11 @@ export interface ReplyCommentResult {
 }
 
 /**
- * POST /api/blog/posts/{postId}/comments —— blog.router 挂在 /api/blog，
- * 内部 @router.post("/posts/{post_id_or_slug}/comments")
+ * POST /api/posts/{postId}/comments —— 评论写入的唯一口（comments.py，游客与登录用户同一条）：
+ * 长度上限、嵌套开关、审核状态、CSRF 与 IP 频控都只在那一处实现。
+ * 后台原先走 /blog/posts/{id}/comments（blog.py 里另一份登录态实现），那条口没有
+ * 这些闸门，管理员能在关闭嵌套时写出多层回复，也能写出超过 max_length 的评论——
+ * 前台渲染不出来，接口却返回 201。那个重复端点已删除。
  * 后端嵌套回复限制 1 层：目标一律为根评论（parent_id 为空时用自身 id）。
  */
 export function replyToComment(
@@ -348,7 +351,7 @@ export function replyToComment(
   rootCommentId: number,
   content: string
 ): Promise<ReplyCommentResult> {
-  return apiFetch<ReplyCommentResult>(`/blog/posts/${postId}/comments`, {
+  return apiFetch<ReplyCommentResult>(`/posts/${postId}/comments`, {
     method: 'POST',
     body: { content, parent_id: rootCommentId }
   })

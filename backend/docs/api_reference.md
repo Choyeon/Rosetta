@@ -577,9 +577,12 @@ GET /api/blog/posts/{post_id}/comments
 
 ### 发表评论
 
+> `POST /api/blog/posts/{post_id}/comments` 已删除（它不读 comments 分组的长度/嵌套开关，
+> 也不过 CSRF 与 IP 频控，等于给全站留了第二套闸门更松的写入口）。
+> 唯一写入口：`POST /api/posts/{post_id_or_slug}/comments`（游客与登录用户同一条，见 comments 章节）。
+
 ```http
-POST /api/blog/posts/{post_id}/comments
-Authorization: Bearer <access_token>
+POST /api/posts/{post_id_or_slug}/comments
 Content-Type: application/json
 
 {
@@ -587,6 +590,8 @@ Content-Type: application/json
   "parent_id": null
 }
 ```
+
+登录用户发帖时仍需 `Authorization: Bearer <access_token>` 并带 CSRF 头；匿名发帖不带 Authorization。
 
 ### RSS 订阅
 
@@ -1701,7 +1706,7 @@ API 实现了请求限流保护：
 | `PUT` | `/api/blog/posts/{post_id}` | 更新文章 |
 | `DELETE` | `/api/blog/posts/{post_id}` | 删除文章 |
 | `GET` | `/api/blog/posts/{post_id}/comments` | 评论列表 |
-| `POST` | `/api/blog/posts/{post_id}/comments` | 发表评论 |
+| `POST` | `/api/posts/{post_id_or_slug}/comments` | 发表评论（唯一写入口，游客/登录同一条） |
 | `GET` | `/api/blog/posts/{post_id}/edit` | 获取文章用于编辑 |
 | `POST` | `/api/blog/posts/{post_id}/like` | 点赞/取消点赞 |
 | `GET` | `/api/blog/posts/{post_id}/similar` | 相似文章推荐 |

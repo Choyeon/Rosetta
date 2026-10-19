@@ -61,6 +61,17 @@ describe('comments 分组：值必须下发并落到界面上', () => {
   })
 })
 
+describe('评论写入只有一个口', () => {
+  const adminManageSource = read('composables/useAdminManage.ts')
+
+  it('后台审核回复也走 canonical /posts/{id}/comments', () => {
+    // blog.py 那份重复实现没有 comments 分组闸门（长度 / 嵌套开关 / CSRF / 频控），
+    // 后台回复仍能写出被关掉的嵌套层。它已删除，消费点必须跟着换。
+    expect(adminManageSource).toContain('`/posts/${postId}/comments`')
+    expect(adminManageSource).not.toContain('/blog/posts/${postId}/comments')
+  })
+})
+
 describe('新增文案的 i18n 键四语齐全', () => {
   const locales = ['zh', 'en', 'ja', 'zh_Hant']
   const keys = [

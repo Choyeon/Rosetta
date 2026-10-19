@@ -314,7 +314,7 @@
                 <MessageCircle class="size-3.5" />
                 {{ comment.reply_total || 0 }}
               </span>
-              <!-- 留言不属于任何文章，无法走 /blog/posts/{id}/comments 回复接口，隐藏入口 -->
+              <!-- 留言不属于任何文章，无法走 /posts/{id}/comments 回复接口，隐藏入口 -->
               <Button
                 v-if="!isGuestbook"
                 variant="ghost"

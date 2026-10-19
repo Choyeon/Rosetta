@@ -480,8 +480,10 @@ class CommentService:
         current_user: User | None,
     ) -> CommentResponse:
         """创建一条评论（游客或登录用户均可）。内部处理：站点评论开关、敏感词、status 决策、嵌套深度校验。"""
-        # 0. 后台「评论」分组（site_configs.key="comments"）——两个写口（comments.py 与
-        #    blog.py）都经过这里，闸门只写一次。未保存过的键保持既有行为（环境变量/默认值）。
+        # 0. 后台「评论」分组（site_configs.key="comments"）——评论只有一个写口经过这里
+        #    （POST /api/posts/{post_id_or_slug}/comments），闸门只写一次。blog.py 里曾有
+        #    第二份登录态实现，它不读这些开关，于是"关闭嵌套/限长"对后台回复口无效，已删除。
+        #    未保存过的键保持既有行为（环境变量/默认值）。
         cst = await read_group("comments", db)
         if not bool_of(cst, "enable", True):
             raise ValueError("COMMENTS_DISABLED")

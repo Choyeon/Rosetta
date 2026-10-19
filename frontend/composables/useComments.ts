@@ -87,6 +87,7 @@ export function useComments() {
    * 于是后台「允许访客匿名评论」这个开关在前台永远没有执行点（表单只给登录用户渲染，
    * 访客连输入框都看不到）。comments.py 那条口是 `CurrentUserOptional` + 同 IP 频控 +
    * CSRF，评论服务里的 allow_guest / 验证码 / 审核闸门也都挂在它身上。
+   * （blog.py 的那条重复写口现已删除，只剩 `GET /blog/posts/{id}/comments` 读口在用。）
    */
   const createComment = (
     post_id: number | string,

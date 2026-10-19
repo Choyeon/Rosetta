@@ -52,7 +52,6 @@ from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
-    invalidate_post_caches_by_ids,
     invalidate_post_caches_by_slugs,
 )
 from backend.services.post_revision import (
@@ -94,7 +93,6 @@ from backend.schemas import (
     CategoryLocalizedResponse,
     CategoryResponse,
     CategoryUpdate,
-    CommentCreate,
     CommentResponse,
     PaginatedResponse,
     PostCreate,
@@ -2193,98 +2191,6 @@ async def list_comments(
         return result
 
     return build(None)
-
-
-@router.post(
-    "/posts/{post_id}/comments",
-    response_model=CommentResponse,
-    status_code=status.HTTP_201_CREATED,
-    summary="发表评论",
-    description=(
-        "在文章下发表评论，支持回复。文章不可见（草稿/定时未到/加密未解锁）时按 404 处理，"
-        "不接受对看不见的文章写评论；文章禁止评论（allow_comments=false）返回 403。"
-    ),
-)
-async def create_comment(
-    post_id: int,
-    data: CommentCreate,
-    current_user: CurrentUser,
-    db: DB,
-):
-    """发表评论"""
-    if not settings.enable_comments:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="评论功能已关闭",
-        )
-
-    result = await db.execute(select(Post).where(Post.id == post_id))
-    post = result.scalar_one_or_none()
-
-    if not post:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文章不存在",
-        )
-
-    # 写入口与读取口同闸门：草稿/定时未到/加密未解锁的文章不接受评论。
-    # 这里用 404 而非 403——"你不该看见这篇文章"不该退化成"这篇文章存在但你不能写"。
-    if not post_is_publicly_visible(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文章不存在",
-        )
-    if not await post_content_unlocked(post, current_user):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文章不存在",
-        )
-
-    if not post.allow_comments:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="该文章禁止评论",
-        )
-
-    if data.parent_id:
-        parent_result = await db.execute(
-            select(Comment).where(Comment.id == data.parent_id, Comment.post_id == post_id)
-        )
-        if not parent_result.scalar_one_or_none():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="父评论不存在",
-            )
-
-    comment = Comment(
-        post_id=post_id,
-        user_id=current_user.id,
-        parent_id=data.parent_id,
-        content=data.content,
-        active=not settings.comment_require_approval,
-        # 从登录态回填 author 字段：兼容 Comment NOT NULL 约束与对外响应
-        author_name=getattr(current_user, "nickname", None)
-        or getattr(current_user, "username", "匿名"),
-        author_email=getattr(current_user, "email", None),
-        author_website=None,
-    )
-    db.add(comment)
-    await db.flush()
-    await db.refresh(comment)
-    await db.commit()
-
-    resp = _comment_to_response(comment)
-
-    # 补齐与 POST /api/comments/posts/{id}/comments（comments.py）同构的两件事：
-    # 1) 钩子：`comment.created` 是 WEBHOOK_EVENTS 里的正式事件，而 frontend 发评论
-    #    走的正是本端点（useComments.ts /blog/posts/{id}/comments）。漏发 = 用户配了
-    #    Webhook 却永远收不到评论通知，且与"任何写路径都必须 do_action"的约定冲突。
-    # 2) 缓存：评论直接可见时会改变列表里的 comments_count，必须让列表缓存回源。
-    await bus.do_action("comment.created", resp, db=db)
-    if getattr(comment, "active", False):
-        await invalidate_post_caches_by_ids(db, [post_id])
-
-    return resp
 
 
 # ==================== 归档 API ====================
