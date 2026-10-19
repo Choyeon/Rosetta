@@ -139,7 +139,7 @@ import { UploadCloud, Check, X } from '@lucide/vue'
 import { compressImage, formatBytes, type CompressResult } from '~~/composables/useImageCompress'
 import { useMediaLibrary } from '~~/composables/useMedia'
 import { useSite } from '~~/composables/useSite'
-import { resolveUploadLimitBytes } from '~~/composables/useUploadProgress'
+import { extensionOf, resolveAllowedExtensions, resolveUploadLimitBytes } from '~~/composables/useUploadProgress'
 
 interface UploadItem {
   id: string
@@ -185,6 +185,11 @@ const props = withDefaults(defineProps<Props>(), {
 const { state: siteState } = useSite()
 const limitBytes = computed(() => resolveUploadLimitBytes(siteState.value.publicConfig?.max_upload_size))
 const limitLabel = computed(() => formatBytes(limitBytes.value))
+/** 扩展名白名单同样跟后台走（内置安全清单 ∩ media.allowed_*_types），未配置＝不收紧。 */
+const allowedExtensions = computed(() => resolveAllowedExtensions(
+  siteState.value.publicConfig?.allowed_image_types,
+  siteState.value.publicConfig?.allowed_file_types
+))
 
 const emit = defineEmits<{
   (e: 'uploaded', items: unknown[]): void
@@ -253,6 +258,14 @@ function handleFiles(files: File[]) {
   const valid = files.filter((f) => {
     if (!f.type.startsWith('image/')) {
       emit('error', `${f.name} 不是图片文件`)
+      return false
+    }
+    // 扩展名跟着后台「媒体与上传 · 允许的文件类型」走（口径同服务端 _effective_library_exts：
+    // 内置安全清单 ∩ 配置清单）。写死图片 MIME 判定挡不住"管理员把 svg 从白名单里去掉"，
+    // 表现又是"这个设置没生效"——选择器放行、后端 400 UPLOAD_EXT_REJECTED。
+    const ext = extensionOf(f.name)
+    if (!allowedExtensions.value.includes(ext)) {
+      emit('error', `${f.name}：后台未允许 .${ext || '?'} 类型`)
       return false
     }
     if (f.size > limitBytes.value) {

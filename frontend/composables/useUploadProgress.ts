@@ -3,7 +3,8 @@
  * 刻意不用 apiFetch：ofetch 在浏览器端取不到 upload 进度，这里用 XMLHttpRequest 自己拼
  * Authorization + X-CSRF-Token（cookie `csrf_token`，后端双提交），401 刷新后只重试一次。
  * 上限与扩展名白名单只是客户端预筛（不承担安全职责）；上限跟站点设置
- * media.max_upload_size 走同一份值（见 resolveUploadLimitBytes），MAX_UPLOAD_BYTES 仅是缺省兜底。
+ * media.max_upload_size 走同一份值（见 resolveUploadLimitBytes），MAX_UPLOAD_BYTES 仅是缺省兜底；
+ * 白名单跟 media.allowed_image_types / allowed_file_types 走同一份交集（见 resolveAllowedExtensions）。
  * 队列项 id 是本地生成的（不是 Media.id），removeItem 必须顺手 abort 在飞的 XHR，
  * 且「用户主动中断」单列 aborted 计数，不能和 failed 混在一起。
  */
@@ -25,13 +26,39 @@ export function resolveUploadLimitBytes(raw: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : MAX_UPLOAD_BYTES
 }
 
-/** 允许上传的扩展名白名单（与后端 allowed_types 保持一致）。 */
+/** 允许上传的扩展名白名单（= 服务端内置安全清单 LIBRARY_ALLOWED_EXTENSIONS）。 */
 export const ALLOWED_UPLOAD_EXTENSIONS: readonly string[] = [
   'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg',
   'mp4', 'webm', 'mov',
   'mp3', 'wav', 'ogg',
   'pdf', 'doc', 'docx', 'xls', 'xlsx'
 ]
+
+/**
+ * 站点设置 `media.allowed_image_types` + `allowed_file_types`（逗号分隔，经 `/api/config`
+ * 同名扁平行下发）→ 本页面真正能传成功的扩展名集合。
+ *
+ * 口径与服务端 `api/media.py::_effective_library_exts` 逐字对齐：**只能收紧、不能放松**
+ * （与内置清单求交集，交集外的一律滤掉），两项都留空＝不收紧。
+ * 管理员把 svg 从清单里去掉后，选择器与拒绝文案还在放行 .svg 的表现就是"这个设置没生效"，
+ * 而真实结果是一次注定 400 UPLOAD_EXT_REJECTED 的往返。
+ * 内置清单是安全边界（每一项都有对应魔术字节表），所以这里绝不因为配置里写了 zip/pptx 就放开。
+ */
+export function resolveAllowedExtensions(
+  imageTypes: unknown,
+  fileTypes: unknown
+): readonly string[] {
+  const listed = new Set<string>()
+  for (const raw of [imageTypes, fileTypes]) {
+    if (typeof raw !== 'string') continue
+    for (const part of raw.split(',')) {
+      const ext = part.trim().replace(/^\.+/, '').toLowerCase()
+      if (ext) listed.add(ext)
+    }
+  }
+  if (listed.size === 0) return ALLOWED_UPLOAD_EXTENSIONS
+  return ALLOWED_UPLOAD_EXTENSIONS.filter(ext => listed.has(ext))
+}
 
 export type UploadItemStatus = 'uploading' | 'success' | 'error'
 
@@ -59,7 +86,7 @@ export interface FileValidationResult {
   rejected: FileRejection[]
 }
 
-function extensionOf(filename: string): string {
+export function extensionOf(filename: string): string {
   const idx = filename.lastIndexOf('.')
   return idx >= 0 ? filename.slice(idx + 1).toLowerCase() : ''
 }
@@ -72,17 +99,19 @@ function extensionOf(filename: string): string {
  * 即后台「媒体与上传 · 单文件大小上限」）传入，缺省走 `resolveUploadLimitBytes` 的兜底。
  * 写死常量时管理员把上限改成 5MB 或 50MB，选择器与拒绝文案仍报 20MB，
  * 表现是"这个设置没生效"。预筛只影响体验，服务端仍自己再判一次。
+ * `limits.allowedExtensions` 同理，走 `resolveAllowedExtensions`（后台「允许的文件类型」两项）。
  */
 export function validateUploadFiles(
   files: File[],
-  limits: { maxBytes?: number } = {}
+  limits: { maxBytes?: number, allowedExtensions?: readonly string[] } = {}
 ): FileValidationResult {
   const maxBytes = resolveUploadLimitBytes(limits.maxBytes)
+  const allowed = limits.allowedExtensions ?? ALLOWED_UPLOAD_EXTENSIONS
   const accepted: File[] = []
   const rejected: FileRejection[] = []
   for (const file of files) {
     const ext = extensionOf(file.name)
-    if (!ALLOWED_UPLOAD_EXTENSIONS.includes(ext)) {
+    if (!allowed.includes(ext)) {
       rejected.push({ name: file.name, reason: `不支持的文件类型 .${ext || '?'}` })
       continue
     }

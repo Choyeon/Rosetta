@@ -491,7 +491,7 @@ import {
   fetchAdminMediaStats,
   type AdminMediaStats
 } from '~~/composables/useAdminManage'
-import { useUploadProgress, validateUploadFiles, resolveUploadLimitBytes, ALLOWED_UPLOAD_EXTENSIONS } from '~~/composables/useUploadProgress'
+import { useUploadProgress, validateUploadFiles, resolveUploadLimitBytes, resolveAllowedExtensions } from '~~/composables/useUploadProgress'
 import type { MediaLibraryItem } from '~~/types/media-library'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -518,15 +518,22 @@ const total = ref(0)
 const selectedIds = ref<number[]>([])
 
 const uploadInputRef = ref<HTMLInputElement | null>(null)
-/** 与 validateUploadFiles / 后端 allowed_types 同一份白名单，避免选择器里挑到必然被拒的文件 */
-const uploadAccept = ALLOWED_UPLOAD_EXTENSIONS.map(ext => `.${ext}`).join(',')
 
 /**
  * 后台「媒体与上传 · 单文件大小上限」（media.max_upload_size）经 /api/config 下发；
  * 缺省时 resolveUploadLimitBytes 回落 20MB 常量。
+ * 两项「允许的文件类型」（media.allowed_image_types / allowed_file_types）同批下发，
+ * resolveAllowedExtensions 与服务端 _effective_library_exts 一样只跟内置安全清单求交集，
+ * 所以选择器与 <input accept> 都跟着后台收紧，挑不到"必然被 400 拒掉"的文件。
  */
 const { state: siteState } = useSite()
 const uploadMaxBytes = computed(() => resolveUploadLimitBytes(siteState.value.publicConfig?.max_upload_size))
+const uploadExtensions = computed(() => resolveAllowedExtensions(
+  siteState.value.publicConfig?.allowed_image_types,
+  siteState.value.publicConfig?.allowed_file_types
+))
+/** 与 validateUploadFiles / 后端 allowed_types 同一份白名单，避免选择器里挑到必然被拒的文件 */
+const uploadAccept = computed(() => uploadExtensions.value.map(ext => `.${ext}`).join(','))
 
 const deleteDialogOpen = ref(false)
 const deleteTargetId = ref<number | null>(null)
@@ -747,7 +754,10 @@ async function onFilesUpload(ev: Event) {
   if (!files.length) return
 
   // 客户端预校验：站点设置里的单文件上限 + 扩展名白名单，被拒绝的文件逐个 toast 原因
-  const { accepted, rejected } = validateUploadFiles(files, { maxBytes: uploadMaxBytes.value })
+  const { accepted, rejected } = validateUploadFiles(files, {
+    maxBytes: uploadMaxBytes.value,
+    allowedExtensions: uploadExtensions.value
+  })
   for (const r of rejected) {
     toast.error(`${r.name}：${r.reason}`)
   }
