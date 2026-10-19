@@ -239,7 +239,8 @@
     "logoAlt": "Rosetta — colorful square logo",
     "prevDay": "Previous day",
     "nextDay": "Next day (newer)",
-    "refreshWallpaper": "Refresh current wallpaper"
+    "refreshWallpaper": "Refresh current wallpaper",
+    "registerClosed": "Registration is closed. Please sign in with an existing account."
   },
   "error": {
     "notFoundTitle": "Page Not Found",
@@ -651,7 +652,8 @@
       "save": "Save",
       "clear": "Clear filters",
       "delete": "Delete",
-      "saving": "Saving…"
+      "saving": "Saving…",
+      "processing": "Processing..."
     },
     "pagination": {
       "page": "Page {page}",
@@ -1315,7 +1317,8 @@
     "submitFailed": "Submit failed, please try again later",
     "loadFailed": "Failed to load guestbook entries, please try again later",
     "postingAs": "Posting with your current account",
-    "submitSuccess": "Message submitted. It will appear in the list after approval."
+    "submitSuccess": "Message submitted. It will appear in the list after approval.",
+    "closed": "The guestbook is currently closed. Existing messages can still be read."
   },
   "gallery": {
     "title": "Gallery",
@@ -1350,6 +1353,7 @@
     "imageAlt": "Captcha image",
     "loading": "Loading...",
     "retry": "Click to refresh",
+    "refresh": "Refresh captcha",
     "required": "Please enter the captcha"
   },
   "search": {
@@ -1499,7 +1503,8 @@
     "twitterLabel": "Twitter / X",
     "rssLabel": "RSS",
     "privacy": "Guestbook",
-    "terms": "About"
+    "terms": "About",
+    "poweredBy": "Powered by Rosetta"
   },
   "adminNav": {
     "overview": "Overview",

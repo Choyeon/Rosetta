@@ -239,7 +239,8 @@
     "logoAlt": "Rosetta — 彩色方形 Logo",
     "prevDay": "上一天",
     "nextDay": "下一天（越新）",
-    "refreshWallpaper": "重新整理當前桌布"
+    "refreshWallpaper": "重新整理當前桌布",
+    "registerClosed": "站點已關閉註冊，請使用既有帳號登入。"
   },
   "error": {
     "notFoundTitle": "頁面不存在",
@@ -651,7 +652,8 @@
       "save": "儲存",
       "clear": "清除篩選",
       "delete": "刪除",
-      "saving": "儲存中…"
+      "saving": "儲存中…",
+      "processing": "處理中..."
     },
     "pagination": {
       "page": "第 {page} 頁",
@@ -1375,7 +1377,8 @@
     "twitterLabel": "Twitter / X",
     "rssLabel": "RSS",
     "privacy": "留言板",
-    "terms": "關於本站"
+    "terms": "關於本站",
+    "poweredBy": "由 Rosetta 提供技術支援"
   },
   "adminNav": {
     "overview": "總覽",
@@ -1519,7 +1522,8 @@
     "submitFailed": "提交失敗，請稍後重試",
     "loadFailed": "留言加載失敗，請稍後重試",
     "postingAs": "將以當前帳號發表",
-    "submitSuccess": "留言已提交，審核通過後會顯示在列表中"
+    "submitSuccess": "留言已提交，審核通過後會顯示在列表中",
+    "closed": "留言板目前已關閉，僅能檢視既有留言。"
   },
   "gallery": {
     "title": "相簿",
@@ -1554,6 +1558,7 @@
     "imageAlt": "驗證碼圖片",
     "loading": "加載中...",
     "retry": "點擊刷新",
+    "refresh": "重新整理驗證碼",
     "required": "請填寫驗證碼"
   },
   "search": {

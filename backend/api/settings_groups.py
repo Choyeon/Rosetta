@@ -244,7 +244,7 @@ def _default_hero() -> dict:
         "enable": True,
         "title": {"zh": "欢迎来到 Rosetta", "en": "Welcome to Rosetta"},
         "subtitle": {"zh": "一个现代化的开源博客平台", "en": "A modern open-source blog platform"},
-        "caption": "Powered by FastAPI + Astro + Svelte",
+        "caption": "Powered by FastAPI + Nuxt 4",
         "cta_text": {"zh": "开始阅读", "en": "Start Reading"},
         "cta_url": "/posts",
         "bg_image": "",

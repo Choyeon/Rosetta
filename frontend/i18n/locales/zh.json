@@ -239,7 +239,8 @@
     "logoAlt": "Rosetta — 彩色方形 Logo",
     "prevDay": "上一天",
     "nextDay": "下一天（越新）",
-    "refreshWallpaper": "刷新当前壁纸"
+    "refreshWallpaper": "刷新当前壁纸",
+    "registerClosed": "站点已关闭注册，请使用已有账号登录。"
   },
   "error": {
     "notFoundTitle": "页面不存在",
@@ -651,7 +652,8 @@
       "save": "保存",
       "clear": "清除筛选",
       "delete": "删除",
-      "saving": "保存中…"
+      "saving": "保存中…",
+      "processing": "处理中..."
     },
     "pagination": {
       "page": "第 {page} 页",
@@ -1315,7 +1317,8 @@
     "submitFailed": "提交失败，请稍后再试",
     "loadFailed": "留言加载失败，请稍后重试",
     "postingAs": "将以当前账号发表",
-    "submitSuccess": "留言已提交，审核通过后会显示在列表中"
+    "submitSuccess": "留言已提交，审核通过后会显示在列表中",
+    "closed": "留言板当前已关闭，仅可浏览既有留言。"
   },
   "gallery": {
     "title": "相册",
@@ -1350,6 +1353,7 @@
     "imageAlt": "验证码图片",
     "loading": "加载中...",
     "retry": "点击刷新",
+    "refresh": "刷新验证码",
     "required": "请填写验证码"
   },
   "search": {
@@ -1499,7 +1503,8 @@
     "linkRepo": "源代码",
     "linkPrivacy": "隐私说明",
     "linkTerms": "使用条款",
-    "linkSitemap": "网站地图"
+    "linkSitemap": "网站地图",
+    "poweredBy": "由 Rosetta 提供技术支持"
   },
   "adminNav": {
     "overview": "总览",

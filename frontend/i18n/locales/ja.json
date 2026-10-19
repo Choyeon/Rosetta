@@ -239,7 +239,8 @@
     "logoAlt": "Rosetta — カラースクエアロゴ",
     "prevDay": "前日へ",
     "nextDay": "次の日へ（新しい方）",
-    "refreshWallpaper": "現在の壁紙を更新"
+    "refreshWallpaper": "現在の壁紙を更新",
+    "registerClosed": "新規登録は停止中です。既存のアカウントでログインしてください。"
   },
   "error": {
     "notFoundTitle": "ページが見つかりません",
@@ -651,7 +652,8 @@
       "save": "保存",
       "clear": "フィルターをクリア",
       "delete": "削除",
-      "saving": "保存中…"
+      "saving": "保存中…",
+      "processing": "処理中..."
     },
     "pagination": {
       "page": "{page} ページ目",
@@ -1375,7 +1377,8 @@
     "twitterLabel": "Twitter / X",
     "rssLabel": "RSS",
     "privacy": "ゲストブック",
-    "terms": "このサイトについて"
+    "terms": "このサイトについて",
+    "poweredBy": "Rosetta によって提供されています"
   },
   "adminNav": {
     "overview": "全体",
@@ -1519,7 +1522,8 @@
     "submitFailed": "送信に失敗しました。後ほど再度お試しください",
     "loadFailed": "メッセージの読み込みに失敗しました。しばらくしてからもう一度お試しください",
     "postingAs": "現在のアカウントで投稿します",
-    "submitSuccess": "メッセージを送信しました。承認後にリストに表示されます。"
+    "submitSuccess": "メッセージを送信しました。承認後にリストに表示されます。",
+    "closed": "留言板は現在閉じています。既存のメッセージは閲覧できます。"
   },
   "gallery": {
     "title": "ギャラリー",
@@ -1554,6 +1558,7 @@
     "imageAlt": "認証コード画像",
     "loading": "読み込み中...",
     "retry": "クリックで更新",
+    "refresh": "認証コードを更新",
     "required": "認証コードを入力してください"
   },
   "search": {
