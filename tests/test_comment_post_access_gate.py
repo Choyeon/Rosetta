@@ -146,13 +146,17 @@ class TestCommentReadFollowsPostVisibility:
 
 
 class TestCommentWriteFollowsPostVisibility:
-    async def test_cannot_comment_on_draft_via_blog_route(
+    async def test_cannot_comment_on_draft_via_write_route(
         self, client: AsyncClient, auth_headers, admin_headers, db_session, admin_user, test_user
     ):
-        """非作者登录用户对草稿文章评论 = 404（文章作者本人仍可，见下一例）。"""
+        """非作者登录用户对草稿文章评论 = 404（文章作者本人仍可，见下一例）。
+
+        写入口只有一条（comments.py 的 `/api/posts/{id_or_slug}/comments`）：blog.py
+        那份重复实现没有 comments 分组闸门，已删除。
+        """
         draft = await _make_post(db_session, admin_user.id, status="draft")
         resp = await client.post(
-            f"/api/blog/posts/{draft.id}/comments",
+            f"/api/posts/{draft.id}/comments",
             json={"content": "给草稿留言"},
             headers=auth_headers,
         )
@@ -162,7 +166,7 @@ class TestCommentWriteFollowsPostVisibility:
         assert still_there is not None  # 文章本身还在，只是评论口对它关门
 
         as_author = await client.post(
-            f"/api/blog/posts/{draft.id}/comments",
+            f"/api/posts/{draft.id}/comments",
             json={"content": "作者给自己的草稿留言"},
             headers=admin_headers,
         )

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
-LEGACY_PATH = "/blog/posts/{post_id}/comments"
-CANONICAL_PATH = "/posts/{post_id_or_slug}/comments"
+LEGACY_PATH = "/api/blog/posts/{post_id}/comments"
+CANONICAL_PATH = "/api/posts/{post_id_or_slug}/comments"
 
 
 def test_legacy_comment_post_is_retired_in_openapi() -> None:
@@ -26,10 +26,11 @@ def test_legacy_comment_post_is_retired_in_openapi() -> None:
     assert "post" in paths[CANONICAL_PATH]
 
 
-async def test_legacy_comment_post_returns_404(client: AsyncClient, staff_headers: dict) -> None:
+async def test_legacy_comment_post_is_not_writable(client: AsyncClient, staff_headers: dict) -> None:
+    """路径只剩读口：POST 落到 405，而不是另有一套宽松实现接住。"""
     resp = await client.post(
         "/api/blog/posts/1/comments",
         json={"content": "这条不应该写得进来"},
         headers=staff_headers,
     )
-    assert resp.status_code == 404
+    assert resp.status_code == 405, resp.text
