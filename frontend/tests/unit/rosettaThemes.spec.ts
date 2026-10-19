@@ -73,7 +73,7 @@ describe('lib/rosetta-themes 主题变体契约', () => {
     it('前台路径与近似前缀不误伤', () => {
       expect(isThemeVisualExcluded('/')).toBe(false)
       expect(isThemeVisualExcluded('/posts/hello')).toBe(false)
-      expect(isThemeVisualExcluded('/admin-guide')).toBe(true) // 前缀语义：startsWith，非段边界
+      expect(isThemeVisualExcluded('/admin-guide')).toBe(false) // 段边界匹配：同前缀的独立前台路由不误伤
       expect(isThemeVisualExcluded('/management')).toBe(false)
     })
 

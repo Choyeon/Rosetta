@@ -28,9 +28,13 @@ from backend.schemas.strict_config import apply_strict_extra_forbid
 
 
 def _validator_of(schema, field):
-    """取该 schema 上绑定到 field 的那个 field_validator 原函数。"""
+    """取该 schema 上绑定到 field 的那个 field_validator 原函数。
+
+    pydantic 2.13 的 `Decorator` 把绑定字段放在 `info.fields` 上（早期版本才有顶层
+    `.fields`），读错位置会让这道守卫永远取不到 validator 而直接红。
+    """
     info = schema.__pydantic_decorators__.field_validators
-    matched = [d for d in info.values() if field in d.fields]
+    matched = [d for d in info.values() if field in d.info.fields]
     assert matched, f"{schema.__name__} 上没有 {field} 的 field_validator"
     return matched[0].func
 
@@ -137,12 +141,16 @@ def test_ugc_url_rule_is_single_sourced(schema, field):
 
 
 def test_password_rule_still_rejects_weak_values():
-    """收口不许改行为：三条强度规则逐条仍然生效，强密码仍然放行。"""
+    """收口不许改行为：三条强度规则逐条仍然生效，强密码仍然放行。
+
+    `_check_password_strength` 是**短路**的（长度→大写→小写→数字，第一条不满足即抛），
+    所以每个样本必须只缺它要测的那一条，否则报的是前面那条规则的消息。
+    """
     base = {"username": "tester1", "email": "t@example.com"}
     for value, msg in [
         ("abcd1234", "一个大写字母"),
         ("ABCD1234", "一个小写字母"),
-        ("abcdefgh", "一个数字"),
+        ("abcdEFGH", "一个数字"),
     ]:
         with pytest.raises(ValidationError) as excinfo:
             UserCreate.model_validate({**base, "password": value})

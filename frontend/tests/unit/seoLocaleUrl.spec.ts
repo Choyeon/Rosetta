@@ -23,6 +23,7 @@ import {
   OG_LOCALE_MAP,
   stripLocalePrefix
 } from '../../composables/useSeo'
+import { LOCALE_PATH_PREFIX_VARIANTS } from '../../lib/rosetta-themes'
 
 const ROOT = resolve(__dirname, '..', '..')
 
@@ -102,8 +103,12 @@ describe('URL 派生的单源约束（静态）', () => {
     expect(switcher).toContain('applyLocalePrefix')
 
     const robots = readFileSync(resolve(ROOT, 'server/routes/robots.txt.get.ts'), 'utf-8')
-    expect(robots).toContain('/zh_Hant')
+    // 前缀清单已收口到 lib/rosetta-themes 单源，本文件不再写死 `zh_Hant` 字面量。
+    // 口径改为"确实按单源做交叉积"，四份形态由单源那条断言保证。
+    expect(robots).toContain('LOCALE_PATH_PREFIX_VARIANTS')
+    expect(robots).toMatch(/privatePaths[\s\S]*\.flatMap\([\s\S]*prefix/)
     expect(robots).toContain('/admin/')
+    expect([...LOCALE_PATH_PREFIX_VARIANTS]).toEqual(['', '/en', '/ja', '/zh_Hant'])
     // /login /register /account /search /oobe 必须由 Disallow 挪到页面 meta：
     // 抓不到就读不到 noindex，Google 会按已发现的链接生成"无摘要索引条目"。
     for (const moved of ['/login', '/register', '/account', '/search', '/oobe']) {
@@ -194,7 +199,10 @@ describe('URL 派生的单源约束（静态）', () => {
     const walk = (dir: string): void => {
       for (const entry of readdirSync(resolve(ROOT, dir), { withFileTypes: true })) {
         const rel = `${dir}/${entry.name}`
-        if (entry.isDirectory()) { walk(rel); continue }
+        if (entry.isDirectory()) {
+          walk(rel)
+          continue
+        }
         if (!/\.(ts|vue)$/.test(entry.name)) continue
         const src = readFileSync(resolve(ROOT, rel), 'utf-8')
         if (/en\|ja\|zh_Hant/.test(src) || /'\/en',\s*'\/ja'/.test(src)) offenders.push(rel)

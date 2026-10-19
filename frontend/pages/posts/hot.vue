@@ -143,7 +143,4 @@ const posts = computed<Post[]>(() => {
   if (d && Array.isArray(d.items)) return d.items
   return []
 })
-
-// 避免 unused local lint 警告
-void pickLocalized
 </script>
