@@ -491,7 +491,7 @@ import {
   fetchAdminMediaStats,
   type AdminMediaStats
 } from '~~/composables/useAdminManage'
-import { useUploadProgress, validateUploadFiles, ALLOWED_UPLOAD_EXTENSIONS } from '~~/composables/useUploadProgress'
+import { useUploadProgress, validateUploadFiles, resolveUploadLimitBytes, ALLOWED_UPLOAD_EXTENSIONS } from '~~/composables/useUploadProgress'
 import type { MediaLibraryItem } from '~~/types/media-library'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -520,6 +520,13 @@ const selectedIds = ref<number[]>([])
 const uploadInputRef = ref<HTMLInputElement | null>(null)
 /** 与 validateUploadFiles / 后端 allowed_types 同一份白名单，避免选择器里挑到必然被拒的文件 */
 const uploadAccept = ALLOWED_UPLOAD_EXTENSIONS.map(ext => `.${ext}`).join(',')
+
+/**
+ * 后台「媒体与上传 · 单文件大小上限」（media.max_upload_size）经 /api/config 下发；
+ * 缺省时 resolveUploadLimitBytes 回落 20MB 常量。
+ */
+const { state: siteState } = useSite()
+const uploadMaxBytes = computed(() => resolveUploadLimitBytes(siteState.value.publicConfig?.max_upload_size))
 
 const deleteDialogOpen = ref(false)
 const deleteTargetId = ref<number | null>(null)
@@ -739,8 +746,8 @@ async function onFilesUpload(ev: Event) {
   if (target) target.value = ''
   if (!files.length) return
 
-  // 客户端预校验：≤20MB + 扩展名白名单，被拒绝的文件逐个 toast 原因
-  const { accepted, rejected } = validateUploadFiles(files)
+  // 客户端预校验：站点设置里的单文件上限 + 扩展名白名单，被拒绝的文件逐个 toast 原因
+  const { accepted, rejected } = validateUploadFiles(files, { maxBytes: uploadMaxBytes.value })
   for (const r of rejected) {
     toast.error(`${r.name}：${r.reason}`)
   }

@@ -36,7 +36,7 @@
           {{ multiple ? '点击或拖拽图片到此处上传' : '点击或拖拽图片到此处' }}
         </p>
         <p class="text-xs text-muted-foreground mt-1">
-          支持 JPG / PNG / WebP / GIF{{ maxSize ? `，单张最大 ${maxSize}MB` : '' }}
+          支持 JPG / PNG / WebP / GIF，单张最大 {{ limitLabel }}
         </p>
         <p
           v-if="autoCompress"
@@ -134,10 +134,12 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { UploadCloud, Check, X } from '@lucide/vue'
 import { compressImage, formatBytes, type CompressResult } from '~~/composables/useImageCompress'
 import { useMediaLibrary } from '~~/composables/useMedia'
+import { useSite } from '~~/composables/useSite'
+import { resolveUploadLimitBytes } from '~~/composables/useUploadProgress'
 
 interface UploadItem {
   id: string
@@ -159,8 +161,6 @@ interface Props {
   multiple?: boolean
   /** 接受的文件类型 */
   accept?: string
-  /** 单文件最大 MB */
-  maxSize?: number
   /** 是否自动压缩 */
   autoCompress?: boolean
   /** 是否禁用 */
@@ -171,10 +171,20 @@ const props = withDefaults(defineProps<Props>(), {
   category: undefined,
   multiple: true,
   accept: 'image/jpeg,image/png,image/webp,image/gif',
-  maxSize: 20,
   autoCompress: true,
   disabled: false
 })
+
+/**
+ * 单张上限的唯一真源是后台「媒体与上传 · 单文件大小上限」（media.max_upload_size），
+ * 图片上传口 api/media.py::_image_upload_limit 判的就是它。组件原先自带 `maxSize` prop
+ * 且默认写死 20：没有调用方传过它，于是提示语说"单张最大 20MB"、后端按 10MB 回 413，
+ * 管理员调小调大这里都不动——同一条设置在同一个页面上给出两个互相矛盾的数。
+ * /api/config 未加载或值非法时回落 20MB 兜底常量。
+ */
+const { state: siteState } = useSite()
+const limitBytes = computed(() => resolveUploadLimitBytes(siteState.value.publicConfig?.max_upload_size))
+const limitLabel = computed(() => formatBytes(limitBytes.value))
 
 const emit = defineEmits<{
   (e: 'uploaded', items: unknown[]): void
@@ -245,8 +255,8 @@ function handleFiles(files: File[]) {
       emit('error', `${f.name} 不是图片文件`)
       return false
     }
-    if (props.maxSize && f.size > props.maxSize * 1024 * 1024) {
-      emit('error', `${f.name} 超过 ${props.maxSize}MB 限制`)
+    if (f.size > limitBytes.value) {
+      emit('error', `${f.name} 超过 ${limitLabel.value} 限制`)
       return false
     }
     return true

@@ -2,16 +2,28 @@
  * useUploadProgress —— 媒体库「带进度」上传队列（POST 到 <baseURL>/media/library）。
  * 刻意不用 apiFetch：ofetch 在浏览器端取不到 upload 进度，这里用 XMLHttpRequest 自己拼
  * Authorization + X-CSRF-Token（cookie `csrf_token`，后端双提交），401 刷新后只重试一次。
- * MAX_UPLOAD_BYTES 与扩展名白名单只是客户端预筛（口径跟后端对齐，不承担安全职责）。
+ * 上限与扩展名白名单只是客户端预筛（不承担安全职责）；上限跟站点设置
+ * media.max_upload_size 走同一份值（见 resolveUploadLimitBytes），MAX_UPLOAD_BYTES 仅是缺省兜底。
  * 队列项 id 是本地生成的（不是 Media.id），removeItem 必须顺手 abort 在飞的 XHR，
  * 且「用户主动中断」单列 aborted 计数，不能和 failed 混在一起。
  */
 
 import { extractApiErrorMessage } from '~~/lib/utils'
+import { formatBytes } from '~~/composables/useImageCompress'
 import { useAuthStore } from '~~/stores/auth'
 
-/** 单文件上传大小上限：20MB（与后端 _save_media_to_library 的 MAX_UPLOAD_BYTES 对齐）。 */
+/** 后台没配（或配了个非正数）时的兜底单文件上限：20MB。 */
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+
+/**
+ * 站点设置 `media.max_upload_size`（经公开口 `/api/config` 的 `max_upload_size` 下发）
+ * → 字节数。非数字 / 0 / 负数一律回落兜底常量。
+ * 服务端仍按自己的区间（[64KB, 100MB] 钳位）二次判定，这里只负责别把设置写死。
+ */
+export function resolveUploadLimitBytes(raw: unknown): number {
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : MAX_UPLOAD_BYTES
+}
 
 /** 允许上传的扩展名白名单（与后端 allowed_types 保持一致）。 */
 export const ALLOWED_UPLOAD_EXTENSIONS: readonly string[] = [
@@ -53,10 +65,19 @@ function extensionOf(filename: string): string {
 }
 
 /**
- * 客户端预校验：大小 ≤20MB + 扩展名白名单。
+ * 客户端预校验：大小 + 扩展名白名单。
  * 在真正发起上传前过滤，被拒绝的文件带原因返回，由调用方统一 toast。
+ *
+ * `limits.maxBytes` 由调用方从站点设置（`/api/config` 的 `max_upload_size`，
+ * 即后台「媒体与上传 · 单文件大小上限」）传入，缺省走 `resolveUploadLimitBytes` 的兜底。
+ * 写死常量时管理员把上限改成 5MB 或 50MB，选择器与拒绝文案仍报 20MB，
+ * 表现是"这个设置没生效"。预筛只影响体验，服务端仍自己再判一次。
  */
-export function validateUploadFiles(files: File[]): FileValidationResult {
+export function validateUploadFiles(
+  files: File[],
+  limits: { maxBytes?: number } = {}
+): FileValidationResult {
+  const maxBytes = resolveUploadLimitBytes(limits.maxBytes)
   const accepted: File[] = []
   const rejected: FileRejection[] = []
   for (const file of files) {
@@ -65,8 +86,8 @@ export function validateUploadFiles(files: File[]): FileValidationResult {
       rejected.push({ name: file.name, reason: `不支持的文件类型 .${ext || '?'}` })
       continue
     }
-    if (file.size > MAX_UPLOAD_BYTES) {
-      rejected.push({ name: file.name, reason: `文件过大（${(file.size / 1024 / 1024).toFixed(1)}MB > 20MB）` })
+    if (file.size > maxBytes) {
+      rejected.push({ name: file.name, reason: `文件过大（${formatBytes(file.size)} > ${formatBytes(maxBytes)}）` })
       continue
     }
     accepted.push(file)
