@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **357 个操作 / 285 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **356 个操作 / 285 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1684,7 +1684,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/users/{user_id}/posts` | 用户文章列表 |
 | `GET` | `/api/users/{user_id}/stats` | 用户统计信息 |
 
-### 博客（41）
+### 博客（40）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
@@ -1706,7 +1706,6 @@ API 实现了请求限流保护：
 | `PUT` | `/api/blog/posts/{post_id}` | 更新文章 |
 | `DELETE` | `/api/blog/posts/{post_id}` | 删除文章 |
 | `GET` | `/api/blog/posts/{post_id}/comments` | 评论列表 |
-| `POST` | `/api/posts/{post_id_or_slug}/comments` | 发表评论（唯一写入口，游客/登录同一条） |
 | `GET` | `/api/blog/posts/{post_id}/edit` | 获取文章用于编辑 |
 | `POST` | `/api/blog/posts/{post_id}/like` | 点赞/取消点赞 |
 | `GET` | `/api/blog/posts/{post_id}/similar` | 相似文章推荐 |
