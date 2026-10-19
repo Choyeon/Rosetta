@@ -72,6 +72,7 @@ _HEADERS_PASS_THOUGH = {
     ),
 }
 
+
 def _b64url_decode(src: str) -> str:
     padding = "=" * (-len(src) % 4)
     raw = base64.urlsafe_b64decode(src + padding)
