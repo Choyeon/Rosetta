@@ -4,6 +4,7 @@
 //    useAuthStore 等 composable，避免在 Vite diagnostics 热链路上触发 NUXT_E1001。
 //    （lib/utils 是无 Nuxt 上下文依赖的纯函数库，import 它不破坏该解耦）
 //  - 仅客户端生效（SSR 时由各页面 useSeoMeta/useHead 生成标题，避免双链路冲突）。
+import { matchesNeutralRoot } from '~~/lib/rosetta-themes'
 import { hexToHsl, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
 
 function applyAppearance(primary: string, accent: string) {
@@ -129,7 +130,7 @@ export default defineNuxtPlugin(async () => {
   // /api/config 必然失败，浏览器控制台刷 "Failed to load resource: 503" +
   // NUXT_E7902。向导页自绘整屏，直接用默认品牌值，不发请求。
   // （OOBE 完成后不再命中此分支，正常走缓存 + 网络加载。）
-  if (/^\/(?:en|ja|zh_Hant)?\/?oobe(?:\/|$)/.test(useRoute().path)) {
+  if (matchesNeutralRoot(useRoute().path, '/oobe')) {
     useHead({ titleTemplate: buildTitle })
     applyAppearance(defaults.primary, defaults.accent)
     return

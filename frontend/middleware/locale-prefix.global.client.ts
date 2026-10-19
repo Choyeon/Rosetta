@@ -16,7 +16,8 @@
  * 已带前缀的目标路径（/en/posts/xxx、/ja/、/zh_Hant/admin 等）直接放行。
  * 静态资源、_nuxt、api、favicon 一律放行。
  */
-const LOCALE_RE = /^\/(en|ja|zh_Hant)(?=\/|$)/
+import { hasLocalePathPrefix, NON_DEFAULT_LOCALE_CODES } from '~~/lib/rosetta-themes'
+
 const SKIP_RE = /^\/(?:_nuxt|api|media|favicon|logo|assets|themes|@vite|@id|@fs|robots\.txt|sitemap|rss|sitemap\.xml|rss\.xml|site\.webmanifest|manifest|apple-touch-icon)/
 
 export default defineNuxtRouteMiddleware((to) => {
@@ -28,9 +29,11 @@ export default defineNuxtRouteMiddleware((to) => {
   const raw = document.cookie.match(/(?:^|;\s*)rosetta_lang=([^;]+)/)?.[1]
   const cookieLocale = raw ? decodeURIComponent(raw) : null
   if (!cookieLocale || cookieLocale === 'zh') return
+  // cookie 值来自客户端，只认清单内的语言码：否则任意字符串会被拼进跳转目标路径
+  if (!(NON_DEFAULT_LOCALE_CODES as readonly string[]).includes(cookieLocale)) return
 
   // 目标已经带前缀（无论是否与 cookie 一致）→ 交给 i18n 处理，不重复改写
-  if (LOCALE_RE.test(to.path)) return
+  if (hasLocalePathPrefix(to.path)) return
 
   // 目标是无前缀路径 → 挂 cookie 语言前缀
   const next = `/${cookieLocale}${to.fullPath === '/' ? '' : to.fullPath}`

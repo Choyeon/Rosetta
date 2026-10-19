@@ -6,11 +6,12 @@
  * - 已登录但非管理员 → 跳转首页
  */
 import { useAuthStore } from '~~/stores/auth'
+import { matchesNeutralRoot } from '~~/lib/rosetta-themes'
 
 export default defineNuxtRouteMiddleware(async (to) => {
   if (!import.meta.client) return
   // i18n prefix_except_default：/admin 与 /en/admin /ja/admin /zh_Hant/admin 同页
-  if (!/^\/(?:en|ja|zh_Hant)?\/admin(?:\/|$)/.test(to.path)) return
+  if (!matchesNeutralRoot(to.path, '/admin')) return
 
   const authStore = useAuthStore()
   await authStore.initialize()

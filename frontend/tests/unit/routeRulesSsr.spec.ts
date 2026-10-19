@@ -142,11 +142,12 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
     expect(configSource).toMatch(/routeRules:\s*expandLocaleRouteRules\s*\(/)
     // i18n strategy 与镜像函数不能各自漂移
     expect(configSource).toMatch(/strategy:\s*'prefix_except_default'/)
-    // 三个非默认前缀必须在镜像表里出现
-    expect(configSource).toMatch(/LOCALE_URL_PREFIXES\s*=\s*\[[^\]]*'/)
-    for (const prefix of ['/en', '/ja', '/zh_Hant']) {
-      // 前缀字符串本身要在源码里出现
-      expect(configSource, `缺少语言前缀 ${prefix}`).toContain(`'${prefix.slice(1)}'`)
+    // 三个非默认前缀必须由 lib/rosetta-themes 单源提供，config 只做 import
+    expect(configSource).toMatch(/import\s*\{\s*I18N_URL_PREFIXES\s*\}\s*from\s*'\.\/lib\/rosetta-themes'/)
+    expect(configSource).toMatch(/const LOCALE_URL_PREFIXES\s*=\s*I18N_URL_PREFIXES/)
+    const libSource = readFileSync(resolve(process.cwd(), 'lib/rosetta-themes.ts'), 'utf8')
+    for (const code of ['en', 'ja', 'zh_Hant']) {
+      expect(libSource, `语言前缀清单缺少 ${code}`).toContain(`'${code}'`)
     }
   })
 })

@@ -15,6 +15,7 @@
  */
 
 import { computed } from 'vue'
+import { NON_DEFAULT_LOCALE_CODES, stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 /**
  * 不可索引页的唯一 robots 口径。
@@ -80,21 +81,15 @@ export const HREFLANG_MAP: Record<string, string> = {
   zh_Hant: 'zh-Hant'
 }
 
-/** 非默认语言在 URL 上挂的前缀；默认语言 zh 裸路径。 */
-export const NON_DEFAULT_LOCALE_CODES = ['en', 'ja', 'zh_Hant'] as const
+/** 非默认语言在 URL 上挂的前缀；默认语言 zh 裸路径。清单唯一来源 lib/rosetta-themes。 */
+export { NON_DEFAULT_LOCALE_CODES }
 
 /** 与 nuxt.config i18n.defaultLocale 同源；改默认语言必须三处一起改。 */
 export const DEFAULT_LOCALE_CODE = 'zh'
 
 /** 剥掉路径开头的 /en /ja /zh_Hant 段，得到"中性"路径供 applyLocalePrefix 重挂。 */
 export function stripLocalePrefix(path: string): string {
-  if (!path) return path
-  for (const code of NON_DEFAULT_LOCALE_CODES) {
-    const p = '/' + code
-    if (path === p) return '/'
-    if (path.startsWith(p + '/')) return path.slice(p.length)
-  }
-  return path
+  return stripLocalePathPrefix(path)
 }
 
 /**

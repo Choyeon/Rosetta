@@ -9,16 +9,18 @@
  *
  * 顺带挡住的是把垃圾参数发给后端：/blog/archive/abcd 会被 FastAPI 判 422。
  */
+import { stripLocalePathPrefix } from '~~/lib/rosetta-themes'
+
 const YEAR_ONLY = /^\/archive\/[^/]+$/
 const YEAR_MONTH = /^\/archive\/(\d{1,4})\/(\d{1,2})$/
 
 // i18n prefix_except_default：/en/archive/2026 /ja/archive/... /zh_Hant/archive/...
 // 与裸 /archive/... 是同一页，闸门判定必须先剥前缀，否则非法年份在带前缀语言下
 // 会静默放行到 useAsyncData（后端 422 + 页面 200 被 swr 缓存成"正常页"）。
-const LOCALE_PREFIX_RE = /^\/(?:en|ja|zh_Hant)(?=\/|$)/
+// 前缀唯一清单见 lib/rosetta-themes 的 I18N_URL_PREFIXES。
 
 export default defineNuxtRouteMiddleware((to) => {
-  const p = to.path.replace(LOCALE_PREFIX_RE, '') || '/'
+  const p = stripLocalePathPrefix(to.path)
 
   // 单年 /archive/<year>：只接受 4 位数字
   if (YEAR_ONLY.test(p) && !/^\/archive\/\d{4}$/.test(p)) {

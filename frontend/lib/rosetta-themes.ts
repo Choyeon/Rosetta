@@ -34,12 +34,28 @@ export const MINIMAL_THEME_SLUGS: ReadonlySet<string> = new Set(['astro-paper-in
 export const THEME_VISUAL_EXCLUDE_PREFIXES: readonly string[] = ['/admin', '/oobe']
 
 /**
- * i18n prefix_except_default 策略下 /en /ja /zh_Hant 是语言前缀，
- * /en/admin 与 /admin 语义完全一致。所有以 startsWith 判定路径归属的地方
- * 都必须先剥前缀，否则带前缀的后台/OOBE 页会被误判为前台。
+ * i18n prefix_except_default 策略：默认语言 zh 走裸路径，其余三语在 URL 上挂前缀。
+ *
+ * 这份清单是全仓**唯一**的语言前缀真源。历史上它在 12 处各写一份（4 个中间件、
+ * 2 个插件、nuxt.config 镜像表、3 个 Nitro server 文件、useSeo），加一种语言或
+ * 改一个前缀要同时数对十二个地方；漏一处的表现都静默——带前缀的后台被判成前台页、
+ * /en/login 读不到服务端 noindex、非法归档年在 /ja 下返回 200 并被 swr 缓存。
+ * 新增消费方一律 import 本模块，禁止再写语言前缀的字面量正则或数组副本。
  */
-export const I18N_URL_PREFIXES = ['/en', '/ja', '/zh_Hant'] as const
+export const NON_DEFAULT_LOCALE_CODES = ['en', 'ja', 'zh_Hant'] as const
 
+/** 语言码对应的 URL 前缀形态（/en、/ja、/zh_Hant）。 */
+export const I18N_URL_PREFIXES: readonly string[] = NON_DEFAULT_LOCALE_CODES.map(
+  code => `/${code}`
+)
+
+/** robots.txt 这类纯前缀拼接需要的全部形态：默认语言裸路径 + 三个前缀。 */
+export const LOCALE_PATH_PREFIX_VARIANTS: readonly string[] = ['', ...I18N_URL_PREFIXES]
+
+/**
+ * 剥掉开头的语言前缀，得到"中性"路径。只认整段：/encyclopedia 不是 /en 前缀。
+ * 空/undefined 返回 ''（调用方按"无路径"处理）。
+ */
 export function stripLocalePathPrefix(path: string | undefined | null): string {
   if (!path) return ''
   for (const p of I18N_URL_PREFIXES) {
@@ -49,11 +65,31 @@ export function stripLocalePathPrefix(path: string | undefined | null): string {
   return path
 }
 
-/** 路径是否命中主题视觉排除名单（前缀匹配）。 */
+/** 路径是否已经带语言前缀（整段匹配，/en-post 不算）。 */
+export function hasLocalePathPrefix(path: string | undefined | null): boolean {
+  if (!path) return false
+  return I18N_URL_PREFIXES.some(p => path === p || path.startsWith(p + '/'))
+}
+
+/**
+ * 路径是否命中某个站内根路径：等于它，或是它的子路径。
+ * 必须显式比 `root + '/'`——裸 startsWith 会把 /admin-x 判进 /admin、
+ * /login-x 判进 /login（这些是同前缀的独立路由，口径由回归用例钉着）。
+ */
+export function matchesPathRoot(path: string | undefined | null, root: string): boolean {
+  if (!path) return false
+  return path === root || path.startsWith(`${root}/`)
+}
+
+/** 与语言前缀无关的根路径命中判定：/en/admin 与 /admin 同页。 */
+export function matchesNeutralRoot(path: string | undefined | null, root: string): boolean {
+  return matchesPathRoot(stripLocalePathPrefix(path), root)
+}
+
+/** 路径是否命中主题视觉排除名单（前缀匹配，语言前缀不参与判定）。 */
 export function isThemeVisualExcluded(path: string | undefined | null): boolean {
   if (!path) return false
-  const stripped = stripLocalePathPrefix(path)
-  return THEME_VISUAL_EXCLUDE_PREFIXES.some(prefix => stripped.startsWith(prefix))
+  return THEME_VISUAL_EXCLUDE_PREFIXES.some(prefix => matchesNeutralRoot(path, prefix))
 }
 
 /**

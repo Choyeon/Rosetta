@@ -7,6 +7,8 @@
  *   首屏复用）；客户端进程内 60s（浏览器标签页视角，跨导航复用没问题）。
  */
 
+import { matchesNeutralRoot } from '~~/lib/rosetta-themes'
+
 // ===== 客户端（浏览器标签页）缓存：模块级变量在浏览器里天然按标签页隔离 =====
 let cachedStatus: boolean | null = null
 let cachedStatusAt = 0
@@ -24,13 +26,8 @@ const STATIC_OR_API_RE = /^\/(?:favicon|api|media|_nuxt|_ipx|site\.webmanifest|l
 
 // i18n prefix_except_default：/en/oobe /ja/oobe /zh_Hant/oobe 与 /oobe 同页；
 // 任何基于 path 判定 OOBE 归属的分支必须先剥前缀，否则带前缀会被当成普通
-// 前台页而跳过 302（表现为「安装完成前访问 /en 直落首页」）。
-const I18N_PATH_PREFIX_RE = /^\/(?:en|ja|zh_Hant)(?=\/|$)/
-
-function stripLocalePrefix(path: string): string {
-  const stripped = path.replace(I18N_PATH_PREFIX_RE, '')
-  return stripped || '/'
-}
+// 前台页而跳过 302（表现为「安装完成前访问 /en 直落首页」）。前缀唯一清单见
+// lib/rosetta-themes 的 I18N_URL_PREFIXES。
 
 function shouldSkipRoute(path: string): boolean {
   if (STATIC_OR_API_RE.test(path)) return true
@@ -149,10 +146,7 @@ export default defineNuxtRouteMiddleware(async (to) => {
 
   if (shouldSkipRoute(path)) return
 
-  const isOOBEPage = (() => {
-    const p = stripLocalePrefix(path)
-    return p === '/oobe' || p.startsWith('/oobe/')
-  })()
+  const isOOBEPage = matchesNeutralRoot(path, '/oobe')
 
   // ===== SSR 分支：首字节决定是否 302 重定向，避免"先吐 SPA 壳再在客户端跳"的白屏 =====
   //

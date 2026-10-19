@@ -14,6 +14,8 @@
  * 把每个写了 noindex 的路由反查回这份名单。
  */
 
+import { matchesPathRoot, stripLocalePathPrefix } from '../../lib/rosetta-themes'
+
 /** 需要服务端补 noindex 的路径前缀（裸路径 + 子路径都算命中）。 */
 export const NOINDEX_SHELL_PREFIXES: readonly string[] = [
   '/login',
@@ -27,27 +29,13 @@ export const NOINDEX_SHELL_PREFIXES: readonly string[] = [
 ]
 
 /**
- * prefix_except_default：/en/login、/ja/admin/… 同样是 SPA 空壳，
- * 判定前必须先剥语言前缀，否则带前缀的形态会整批漏掉。
- */
-const NON_DEFAULT_LOCALES = ['/en', '/ja', '/zh_Hant'] as const
-
-export function stripLocaleShellPrefix(pathname: string): string {
-  for (const p of NON_DEFAULT_LOCALES) {
-    if (pathname === p) return '/'
-    if (pathname.startsWith(p + '/')) return pathname.slice(p.length)
-  }
-  return pathname
-}
-
-/**
  * 这个请求路径的服务端 HTML 是否必须带 noindex？
  *
  * 只匹配"裸路径或带 `/` 的子路径"，避免 `/login-x` 这类同前缀的公开页被误伤。
+ * prefix_except_default 的 /en/login、/ja/admin/… 同样是 SPA 空壳，判定前先剥前缀
+ * （清单唯一来源是 lib/rosetta-themes，历史上 server 侧各存一份副本）。
  */
 export function needsNoindexShell(pathname: string): boolean {
-  const stripped = stripLocaleShellPrefix(pathname.split('?')[0] ?? '')
-  return NOINDEX_SHELL_PREFIXES.some(
-    prefix => stripped === prefix || stripped.startsWith(prefix + '/')
-  )
+  const stripped = stripLocalePathPrefix(pathname.split('?')[0] ?? '')
+  return NOINDEX_SHELL_PREFIXES.some(prefix => matchesPathRoot(stripped, prefix))
 }

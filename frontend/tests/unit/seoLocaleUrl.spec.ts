@@ -13,7 +13,7 @@
  * 这里同时钉住：不得再退回 localePath，且所有产出 URL 的地方共用同一个 helper。
  */
 
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -183,5 +183,26 @@ describe('URL 派生的单源约束（静态）', () => {
     const lib = readFileSync(resolve(ROOT, 'lib/rosetta-themes.ts'), 'utf-8')
     expect(lib).toContain('export function isThemeVisualExcluded')
     expect(lib).toContain('stripLocalePathPrefix(path)')
+  })
+
+  it('全仓不再出现第二份语言前缀清单（唯一真源 lib/rosetta-themes）', () => {
+    // 历史形态：`/^\/(?:en|ja|zh_Hant)(?=\/|$)/` 与 `['/en', '/ja', '/zh_Hant']`
+    // 在 4 个中间件、2 个插件、nuxt.config、3 个 Nitro 文件里各写一份。
+    // 加一种语言时漏改任一处都是静默失效，且没有任何运行时错误可查。
+    const scanDirs = ['middleware', 'plugins', 'composables', 'server', 'components', 'lib']
+    const offenders: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(resolve(ROOT, dir), { withFileTypes: true })) {
+        const rel = `${dir}/${entry.name}`
+        if (entry.isDirectory()) { walk(rel); continue }
+        if (!/\.(ts|vue)$/.test(entry.name)) continue
+        const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+        if (/en\|ja\|zh_Hant/.test(src) || /'\/en',\s*'\/ja'/.test(src)) offenders.push(rel)
+      }
+    }
+    for (const dir of scanDirs) walk(dir)
+    const config = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
+    if (/'\/en',\s*'\/ja'/.test(config)) offenders.push('nuxt.config.ts')
+    expect(offenders, `这些文件自己拼了语言前缀清单：${offenders.join(', ')}`).toEqual([])
   })
 })

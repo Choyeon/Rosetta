@@ -15,11 +15,8 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import {
-  NOINDEX_SHELL_PREFIXES,
-  needsNoindexShell,
-  stripLocaleShellPrefix
-} from '../../server/utils/noindex-shell'
+import { NOINDEX_SHELL_PREFIXES, needsNoindexShell } from '../../server/utils/noindex-shell'
+import { I18N_URL_PREFIXES, stripLocalePathPrefix } from '../../lib/rosetta-themes'
 
 const ROOT = resolve(__dirname, '..', '..')
 const shellUtil = readFileSync(resolve(ROOT, 'server/utils/noindex-shell.ts'), 'utf-8')
@@ -110,14 +107,26 @@ describe('不可索引页清单', () => {
     }
   })
 
-  it('语言前缀剥离与 nuxt.config 的 LOCALE_URL_PREFIXES 同口径', () => {
-    const cfg = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
-    const declared = cfg.match(/const LOCALE_URL_PREFIXES\s*=\s*\[([^\]]*)\]/)?.[1] ?? ''
-    for (const raw of declared.split(',').map(s => s.trim().replace(/['"]/g, '')).filter(Boolean)) {
-      expect(stripLocaleShellPrefix(`${raw}/login`), `${raw}/login 没剥前缀`).toBe('/login')
+  it('语言前缀只有 lib/rosetta-themes 一个真源，server 判定与 nuxt.config 都读它', () => {
+    // 曾经 server 侧、nuxt.config 镜像表、中间件各写一份 ['\/en','\/ja','\/zh_Hant']：
+    // 加语言时漏改任一处都是静默失效（带前缀的页面整批拿不到 noindex）。
+    for (const [file, src] of [
+      ['nuxt.config.ts', readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')],
+      ['server/utils/noindex-shell.ts', shellUtil],
+      ['server/utils/spaShellBrand.ts', readFileSync(resolve(ROOT, 'server/utils/spaShellBrand.ts'), 'utf-8')],
+      ['server/plugins/spa-serverrendered-zero.nitro.ts',
+        readFileSync(resolve(ROOT, 'server/plugins/spa-serverrendered-zero.nitro.ts'), 'utf-8')],
+      ['server/routes/robots.txt.get.ts', readFileSync(resolve(ROOT, 'server/routes/robots.txt.get.ts'), 'utf-8')]
+    ] as const) {
+      expect(src, `${file} 没有从 lib/rosetta-themes 取语言前缀`)
+        .toMatch(/from '[^']*lib\/rosetta-themes'/)
+      expect(src, `${file} 自己拼了语言前缀清单`).not.toMatch(/en\|ja\|zh_Hant|'\/en',\s*'\/ja'/)
     }
-    expect(stripLocaleShellPrefix('/')).toBe('/')
-    expect(stripLocaleShellPrefix('/posts')).toBe('/posts')
+    for (const raw of I18N_URL_PREFIXES) {
+      expect(stripLocalePathPrefix(`${raw}/login`), `${raw}/login 没剥前缀`).toBe('/login')
+    }
+    expect(stripLocalePathPrefix('/')).toBe('/')
+    expect(stripLocalePathPrefix('/posts')).toBe('/posts')
   })
 
   it('查询串不影响判定（/search?q=… 与带前缀形态同样命中）', () => {

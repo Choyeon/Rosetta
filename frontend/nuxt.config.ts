@@ -2,6 +2,7 @@
 import { fileURLToPath } from 'node:url'
 import { dirname, resolve } from 'node:path'
 import tailwindcss from '@tailwindcss/vite'
+import { I18N_URL_PREFIXES } from './lib/rosetta-themes'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = dirname(__filename)
@@ -61,7 +62,9 @@ const NON_LOCALIZED_PREFIXES = [
   '/manifest',
   '/apple-touch-icon'
 ]
-const LOCALE_URL_PREFIXES = ['/en', '/ja', '/zh_Hant']
+// 语言前缀唯一清单在 lib/rosetta-themes：routeRules 镜像、4 个中间件、2 个插件和
+// Nitro server 侧的剥前缀判定全部读它，新增语言只需要改那一处。
+const LOCALE_URL_PREFIXES = I18N_URL_PREFIXES
 
 function expandLocaleRouteRules<T extends Record<string, unknown>>(rules: T): T {
   const out: Record<string, unknown> = { ...rules }

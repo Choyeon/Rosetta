@@ -12,7 +12,7 @@
  * 并且同样先剥 `prefix_except_default` 的语言前缀，否则 `/en/login` 整批漏掉。
  */
 
-import { stripLocaleShellPrefix } from './noindex-shell'
+import { matchesPathRoot, stripLocalePathPrefix } from '../../lib/rosetta-themes'
 
 /** 需要服务端补标题的 SPA 壳路径前缀（裸路径 + 子路径都算命中）。 */
 export const SPA_SHELL_PREFIXES: readonly string[] = [
@@ -25,10 +25,8 @@ export const SPA_SHELL_PREFIXES: readonly string[] = [
 ]
 
 export function isSpaShellPath(pathname: string): boolean {
-  const stripped = stripLocaleShellPrefix((pathname || '').split('?')[0] ?? '')
-  return SPA_SHELL_PREFIXES.some(
-    prefix => stripped === prefix || stripped.startsWith(prefix + '/')
-  )
+  const stripped = stripLocalePathPrefix((pathname || '').split('?')[0] ?? '')
+  return SPA_SHELL_PREFIXES.some(prefix => matchesPathRoot(stripped, prefix))
 }
 
 /**

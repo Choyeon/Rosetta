@@ -53,6 +53,7 @@
  *   · 后续跳转时页面代码里的 ensureLoaded 冗余 fire-and-forget：0 开销。
  */
 import { registerFrontendThemeHead } from '~~/composables/useFrontendTheme'
+import { matchesNeutralRoot } from '~~/lib/rosetta-themes'
 
 export default defineNuxtPlugin(async () => {
   // 主题 head（htmlAttrs + style.css <link> + 颜色 token <style>）在整个 app
@@ -72,7 +73,7 @@ export default defineNuxtPlugin(async () => {
   // 后台与前台各自的数据加载不受影响；刷新后本插件按正常路径执行）。
   // prefix_except_default：/en/oobe 等语言前缀变体同属 OOBE 向导；剥前缀再判。
   const _ro = useRoute()
-  if (/^\/(?:en|ja|zh_Hant)?\/?oobe(?:\/|$)/.test(_ro?.path ?? '')) {
+  if (matchesNeutralRoot(_ro?.path ?? '', '/oobe')) {
     return
   }
 

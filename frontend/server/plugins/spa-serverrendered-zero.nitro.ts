@@ -20,6 +20,7 @@
  */
 import type { NitroApp } from 'nitropack'
 import type { H3Event } from 'h3'
+import { matchesPathRoot, stripLocalePathPrefix } from '../../lib/rosetta-themes'
 
 // 2026-01-11：/oobe 改为 SSR（ssr:true + swr:false）后从这里移除，避免 Nitro
 // 错误把 SSR 页面的 serverRendered 改成 0。剩下 login/register/search/admin 是
@@ -34,23 +35,11 @@ const SPA_PREFIXES: ReadonlyArray<string> = [
 // prefix_except_default 策略下 /en/admin /ja/admin /zh_Hant/admin 也是 SPA，
 // 但 routeRules 由 nuxt.config 的 expandLocaleRouteRules 自动镜像；这里必须同
 // 口径剥前缀，否则带前缀的 SPA 页会漏过本补丁，触发 NUXT_E1005。
-const NON_DEFAULT_LOCALES = ['/en', '/ja', '/zh_Hant'] as const
-
-function stripLocalePrefix(pathname: string): string {
-  for (const p of NON_DEFAULT_LOCALES) {
-    if (pathname === p) return '/'
-    if (pathname.startsWith(p + '/')) return pathname.slice(p.length)
-  }
-  return pathname
-}
-
+// 前缀清单唯一来源：lib/rosetta-themes。
 function isSpa(p: string): boolean {
-  const stripped = stripLocalePrefix(p)
-  for (const prefix of SPA_PREFIXES) {
-    if (stripped === prefix) return true
-    if (stripped.startsWith(prefix + '/')) return true
-  }
-  return false
+  // event.path 带查询串（/admin?redirect=%2F），与 noindex-shell 同口径先剥掉
+  const stripped = stripLocalePathPrefix((p || '').split('?')[0] ?? '')
+  return SPA_PREFIXES.some(prefix => matchesPathRoot(stripped, prefix))
 }
 
 /**
