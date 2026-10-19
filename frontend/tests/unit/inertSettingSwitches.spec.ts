@@ -159,11 +159,15 @@ describe('设置页字段清单必须覆盖后端每一把设置键', () => {
   const page = clean(readFileSync(resolve(process.cwd(), 'pages/admin/system/settings.vue'), 'utf8'))
 
   const groups: Record<string, string[]> = {}
-  const defStarts = [...backendSource.matchAll(/^def /gm)].map((m) => m.index)
+  const defStarts = [...backendSource.matchAll(/^def /gm)].map(m => m.index)
+  const pick = (matches: Iterable<RegExpExecArray>) =>
+    [...matches].flatMap(m => (m[1] ? [m[1]] : []))
   for (const m of backendSource.matchAll(/^def _default_(\w+)\(\) -> dict:/gm)) {
-    const end = defStarts.find((i) => i > m.index) ?? backendSource.indexOf('_GROUP_DEFAULTS')
+    const name = m[1]
+    if (!name) continue
+    const end = defStarts.find(i => i > m.index) ?? backendSource.indexOf('_GROUP_DEFAULTS')
     const body = backendSource.slice(m.index, end)
-    groups[m[1]] = [...body.matchAll(/^ {8}"([a-z_0-9]+)":/gm)].map((k) => k[1])
+    groups[name] = pick(body.matchAll(/^ {8}"([a-z_0-9]+)":/gm))
   }
   const backendKeys = new Set(Object.values(groups).flat())
 
@@ -176,28 +180,33 @@ describe('设置页字段清单必须覆盖后端每一把设置键', () => {
   })
 
   it('每把设置键都有中文标签，否则后台渲染成裸 snake_case 字段名', () => {
-    const labelBlock = page.match(/  const label = \{\n([\s\S]*?)\n  \}\[key\]/)
-    if (!labelBlock) throw new Error('settings.vue 字段名表结构已变，请同步本守卫的解析口径')
-    const labels = new Set([...labelBlock[1].matchAll(/\b([a-z_0-9]+): '/g)].map((m) => m[1]))
-    const missing = [...backendKeys].filter((k) => !labels.has(k) && !EDITOR_ONLY_KEYS.has(k))
+    const labelBlock = page.match(/ {2}const label = \{\n([\s\S]*?)\n {2}\}\[key\]/)
+    const labelTable = labelBlock?.[1]
+    if (!labelTable) throw new Error('settings.vue 字段名表结构已变，请同步本守卫的解析口径')
+    const labels = new Set(pick(labelTable.matchAll(/\b([a-z_0-9]+): '/g)))
+    const missing = [...backendKeys].filter(k => !labels.has(k) && !EDITOR_ONLY_KEYS.has(k))
     expect(missing, `这些键在设置页没有中文名：${missing.join(', ')}`).toEqual([])
-    const orphans = [...labels].filter((k) => !backendKeys.has(k))
+    const orphans = [...labels].filter(k => !backendKeys.has(k))
     expect(orphans, `后端已不存在这些键，标签是改名后留下的死条目：${orphans.join(', ')}`).toEqual([])
   })
 
   it('设置页本地默认表与后端逐分组键集合相等', () => {
     const fn = page.match(/function getDefaultsFor[\s\S]*?\n}/)
-    if (!fn) throw new Error('getDefaultsFor 结构已变，请同步本守卫的解析口径')
+    const fnSource = fn?.[0]
+    if (!fnSource) throw new Error('getDefaultsFor 结构已变，请同步本守卫的解析口径')
     const table: Record<string, Set<string>> = {}
-    for (const m of fn[0].matchAll(/^ {4}(\w+): \{(.*)\},?$/gm)) {
-      table[m[1]] = new Set([...m[2].matchAll(/\b([a-z_0-9]+):/g)].map((k) => k[1]))
+    for (const m of fnSource.matchAll(/^ {4}(\w+): \{(.*)\},?$/gm)) {
+      const group = m[1]
+      const inline = m[2]
+      if (!group || !inline) continue
+      table[group] = new Set(pick(inline.matchAll(/\b([a-z_0-9]+):/g)))
     }
     for (const [group, keys] of Object.entries(groups)) {
       const local = table[group]
       expect(local, `设置页默认表缺少 ${group} 分组`).toBeDefined()
       const holder = local as Set<string>
-      const missing = keys.filter((k) => !holder.has(k))
-      const extra = [...holder].filter((k) => !keys.includes(k))
+      const missing = keys.filter(k => !holder.has(k))
+      const extra = [...holder].filter(k => !keys.includes(k))
       expect(missing, `${group} 漏了 ${missing.join(' / ')}：未保存过分组时前端读不到值，开关显示与真值不符`).toEqual([])
       expect(extra, `${group} 有后端不存在的 ${extra.join(' / ')}`).toEqual([])
     }
