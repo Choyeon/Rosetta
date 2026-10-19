@@ -1,4 +1,4 @@
-"""站点设置分组「保存即生效」契约回归（后台 13 组 → 真实执行点）。
+"""站点设置分组「保存即生效」契约回归（后台 14 组 → 真实执行点）。
 
 起因：设置页写的是 site_configs 里 ``key=分组名`` 的整段 JSON，而历史上只有
 ``/api/config`` 与 ``/settings/public`` 两条读口会把其中一部分叠进返回值。于是两类
@@ -778,3 +778,62 @@ def test_group_json_writer_invalidates_settings_caches(rel_path: str):
             "前台 useSite 与执行点闸门会在各自 TTL 内继续用旧值"
         )
     assert "site_config" in text, f"{rel_path} 缺 site_config 失效（/api/config 读它）"
+
+
+# ==================== 分组行的键大小写：/api/config 投影必须能读到大写键 ====================
+
+
+@pytest.mark.asyncio
+async def test_uppercase_group_row_still_overlays_api_config(db_session, client):
+    """``site_configs`` 里 key 为 ``BASIC`` 的分组行也必须叠进 /api/config。
+
+    写入侧统一小写，但读侧一直在做大小写兼容（同文件的 ``_configs_ci`` 镜像、
+    OOBE 脚本历史混用键名），而 ``_apply_settings_groups`` 曾经写成
+    ``if "_configs_ci" in dir()``——无参 dir() 只列当前函数局部名，闭包变量永远不在里面，
+    所以那份兼容从未生效：大写分组行存了值，/api/config 与它的所有下游（RSS channel、
+    OG、主题侧栏）全都看不到。
+    """
+    import json
+
+    from sqlalchemy import delete, select
+
+    from backend.core.cache import invalidate_cache
+    from backend.models.core import SiteConfig
+
+    marker = "大写键站点名探针"
+    await db_session.execute(delete(SiteConfig).where(SiteConfig.key == "BASIC"))
+    db_session.add(
+        SiteConfig(key="BASIC", value=json.dumps({"site_name": marker}), description="回归夹具")
+    )
+    await db_session.commit()
+    await invalidate_cache("site_config")
+    try:
+        resp = await client.get("/api/config")
+        assert resp.status_code == 200, resp.text
+        assert resp.json()["site_name"] == marker, (
+            "大写分组键没被 /api/config 投影读到＝大小写兼容是死代码"
+        )
+    finally:
+        await db_session.execute(delete(SiteConfig).where(SiteConfig.key == "BASIC"))
+        await db_session.commit()
+        await invalidate_cache("site_config")
+
+
+# ==================== 文档口径：分组数量不得写死成与真源不同的数 ====================
+
+# "13 组"这类数字散落在三份文件里（含 OpenAPI 描述，管理员在 /admin/docs 直接看到）。
+# 加一个分组就必然漏一处，漏了等于给管理员一份对不上数的接口文档。
+GROUP_COUNT_PROSE_FILES = [
+    "backend/api/settings_groups.py",
+    "backend/api/core.py",
+    "backend/services/site_settings.py",
+]
+
+
+def test_group_count_prose_matches_setting_groups():
+    root = Path(__file__).resolve().parents[1]
+    for rel in GROUP_COUNT_PROSE_FILES:
+        for m in re.finditer(r"(\d+)\s*组", (root / rel).read_text(encoding="utf-8")):
+            assert int(m.group(1)) == len(SETTING_GROUPS), (
+                f"{rel} 写了「{m.group(0)}」，但 SETTING_GROUPS 实为 {len(SETTING_GROUPS)} 组"
+            )

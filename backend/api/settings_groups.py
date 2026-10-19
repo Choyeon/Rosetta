@@ -4,7 +4,7 @@
 14 groups: basic, reading, comments, media, seo, email, security, features,
            appearance, navigation, hero, notice, footer, donate
 
-- GET /api/settings → 返回 { group_key: {...} } 全部 13 组
+- GET /api/settings → 返回 { group_key: {...} } 全部 14 组
 - GET /api/settings/{group} → 返回单组 dict
 - PATCH /api/settings/{group} → 保存单组（写入 site_configs：每 group 存一条 key=group, value=JSON 字符串）
 
@@ -395,7 +395,7 @@ async def _save_group(db: DB, group: str, data: dict) -> dict:
 class SettingsGroupResponse(BaseModel):
     """``GET /api/settings/{group}`` 直接返回的裸对象（无 success 信封）。"""
 
-    group: str = Field(..., description="分组键（13 组之一）")
+    group: str = Field(..., description="分组键（14 组之一）")
     data: dict[str, Any] = Field(..., description="该分组的完整配置（默认值与 DB 存值的合并结果）")
 
 
@@ -416,7 +416,7 @@ class SettingsAllResponse(BaseModel):
 
     groups: dict[str, Any] = Field(
         ...,
-        description="全部 13 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值）",
+        description="全部 14 组配置，键为分组名、值为该组合并默认值后的完整 dict（含敏感明文值）",
     )
 
 
@@ -467,7 +467,7 @@ async def get_public_settings(db: DB):
     "",
     summary="获取所有设置分组",
     description=(
-        "需管理员（CurrentStaff）。返回全部 13 组分组的配置项（含敏感明文值，"
+        "需管理员（CurrentStaff）。返回全部 14 组分组的配置项（含敏感明文值，"
         "如 SMTP 密码）；前台/SSR 一律改用 GET /settings/public，不得调用本接口。只读、幂等。"
     ),
     responses={200: {"model": SettingsAllResponse}},
@@ -481,7 +481,7 @@ async def get_all_settings(db: DB, current_user: CurrentStaff):
     "/{group}",
     summary="获取单个设置分组",
     description=(
-        "需管理员（CurrentStaff）。返回指定分组（13 组之一）合并默认值后的完整配置；"
+        "需管理员（CurrentStaff）。返回指定分组（14 组之一）合并默认值后的完整配置；"
         "未知分组 404。直接返回 {group, data} 裸对象（无 success 信封）。只读、幂等。"
     ),
     responses={

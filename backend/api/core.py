@@ -936,7 +936,7 @@ async def get_site_config(db: DB):
         oobe_kwargs.update(_sidebar_dict_to_flat(default_sidebar))
         return SiteConfigResponse(**oobe_kwargs)
 
-    # 合并 13 组设置 JSON 进入 /api/config 返回值。分组不是独立的表：
+    # 合并 14 组设置 JSON 进入 /api/config 返回值。分组不是独立的表：
     # 它们是 site_configs 表里 key 为小写分组名（basic/seo/footer/...）的整段 JSON 行，
     # 由 PATCH /api/settings/{group} 写入（见 api/settings_groups.py::_save_group）。
     # 优先级：site_configs 扁平 UPPERCASE key → 分组 JSON（覆盖/补充） → 环境 fallback。
@@ -947,11 +947,13 @@ async def get_site_config(db: DB):
         import json as _json_
 
         def _cfg_raw(k: str) -> str | None:
-            """settings_groups 读键的大小写兼容（basic/seo/appearance 等可能是小写分组名）"""
-            v = configs.get(k)
-            if v is not None:
-                return v
-            return _configs_ci.get(k.upper()) if "_configs_ci" in dir() else None
+            """settings_groups 读键的大小写兼容（basic/seo/appearance 等可能是小写分组名）。
+
+            不能写成 `if "_configs_ci" in dir()`：无参 dir() 只列**当前函数自己的局部名**，
+            闭包外层变量永远不在里面，于是这个 fallback 从未生效过一次——
+            大写分组行（历史存量、OOBE 种子）会静默读不到，表现是"分组存了值，/api/config 还是旧的"。
+            """
+            return configs.get(k) or _configs_ci.get(k.upper())
 
         try:
             # basic
@@ -1189,7 +1191,7 @@ async def get_site_config(db: DB):
         enable_like_button=get_bool("ENABLE_LIKE_BUTTON", "true"),
         enable_share_buttons=get_bool("ENABLE_SHARE_BUTTONS", "true"),
         enable_toc=get_bool("ENABLE_TOC", "true"),
-        # OOBE 种子里额外写入的一组能力开关（与上面 13 组 settings_groups 里的独立域做兼容）
+        # OOBE 种子里额外写入的一组能力开关（与上面 14 组 settings_groups 里的独立域做兼容）
         enable_bing_wallpaper=get_bool("ENABLE_BING_WALLPAPER", "true"),
         enable_pagefind_search=get_bool("ENABLE_PAGEFIND_SEARCH", "true"),
         enable_encrypted_posts=get_bool("ENABLE_ENCRYPTED_POSTS", "false"),
@@ -1434,7 +1436,7 @@ async def get_site_config(db: DB):
         or "https://www.plantuml.com/plantuml",
     )
     response_dict.update(_sidebar_dict_to_flat(sidebar))
-    # 把后台 13 组 settings 合并进 /api/config 公开返回
+    # 把后台 14 组 settings 合并进 /api/config 公开返回
     response_dict = _apply_settings_groups(response_dict)
     response = SiteConfigResponse(**response_dict)
 

@@ -80,7 +80,8 @@ api → services → repositories → models
 
 ## 站点设置
 
-`/api/settings` 支持 13 个分组（`settings_groups.py` 的 `SETTING_GROUPS`；公开白名单为 `PUBLIC_SETTING_GROUPS`，10 组）。
+`/api/settings` 支持 14 个分组（`settings_groups.py` 的 `SETTING_GROUPS`；公开白名单为 `PUBLIC_SETTING_GROUPS`，11 组）。
+分组数量写死的散文（含 OpenAPI 描述）由 `tests/test_settings_group_consumers.py::test_group_count_prose_matches_setting_groups` 钉住。
 
 分组键集是唯一清单：**没有执行点的开关不得放进 `_default_*`**。历史上 `cdn` / `cache` / `friendlinks` /
 `sidebar` 四组，以及 `security` 的会话/CORS、`appearance` 的代码高亮主题与字体族等键属于"能存能回显、但没人读"，
@@ -91,7 +92,7 @@ api → services → repositories → models
 
 | 端点 | 鉴权 | 返回内容 |
 |------|------|---------|
-| `GET /api/settings` | 需管理员（`CurrentStaff`） | 全部 13 组，含敏感明文值 |
+| `GET /api/settings` | 需管理员（`CurrentStaff`） | 全部 14 组，含敏感明文值 |
 | `GET /api/settings/{group}` | 需管理员 | 单组原文 |
 | `PATCH /api/settings/{group}` | 需管理员 | 写日志 + 失效公开缓存 |
 | `GET /api/settings/public` | **无鉴权** | `PUBLIC_SETTING_GROUPS` 白名单，敏感值替换为 `******` |
