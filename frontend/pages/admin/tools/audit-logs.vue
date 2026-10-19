@@ -391,6 +391,7 @@ import {
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
+import { toYMD } from '~~/lib/datetime'
 import {
   FileSearch, Search, Filter, RotateCcw, Clock, Globe, Monitor, Info,
   ChevronRight, ChevronDown, X, CalendarDays, AlertTriangle
@@ -478,13 +479,7 @@ const filters = reactive({
   toDate: ''
 })
 
-const todayStr = computed(() => {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-})
+const todayStr = computed(() => toYMD())
 const startMax = computed(() => filters.toDate || todayStr.value)
 const endMin = computed(() => filters.fromDate || '')
 const endMax = todayStr

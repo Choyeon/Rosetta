@@ -16,6 +16,7 @@ import {
   KNOWN_ROSETTA_THEMES,
   resolveThemeAssetPath
 } from '~~/lib/rosetta-themes'
+import { formatAdminDate } from '~~/composables/useAdminManage'
 import {
   Search,
   RefreshCw,
@@ -607,13 +608,10 @@ function isBuiltinTheme(theme: Theme): boolean {
 }
 
 function formatDate(iso: string | null): string {
-  if (!iso) return '—'
-  try {
-    const d = new Date(iso)
-    return d.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' })
-  } catch {
-    return '—'
-  }
+  // 走后台统一的 YYYY-MM-DD：toLocaleDateString(undefined) 会按浏览器语言换分隔符与顺序，
+  // 同一张卡片在 en-US 下是 09/30/2026、在 zh 下是 2026/09/30；非法值还会直接渲染
+  // "Invalid Date"（toLocale* 对 Invalid Date 不抛，try/catch 挡不住）。
+  return formatAdminDate(iso, '—')
 }
 
 onMounted(() => {

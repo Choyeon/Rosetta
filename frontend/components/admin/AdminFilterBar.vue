@@ -32,6 +32,7 @@
  *   - 日期值统一格式 YYYY-MM-DD（字符串），传给后端 created_start / created_end
  */
 import { Search, X, Calendar, RotateCcw } from '@lucide/vue'
+import { toYMD } from '~~/lib/datetime'
 import { Input } from '~~/components/ui/input'
 import { Button } from '~~/components/ui/button'
 import {
@@ -88,13 +89,7 @@ const localEnd = defineModel<string | null>('createdEnd', { default: null })
 
 const endInputRef = ref<HTMLInputElement | null>(null)
 
-const todayStr = computed(() => {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-})
+const todayStr = computed(() => toYMD())
 
 // ---- 属性（给 <input type="date"> 的 min/max，实现日期互锁）----
 const startMax = computed(() => localEnd.value || todayStr.value)

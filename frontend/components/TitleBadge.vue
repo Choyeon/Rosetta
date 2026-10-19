@@ -29,12 +29,7 @@ const sizeCfg = {
 const cfg = computed(() => sizeCfg[props.size])
 const color = computed(() => props.title?.color || '#3b82f6')
 
-const getLocalizedStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  return v.zh || v.en || Object.values(v)[0] || ''
-}
-
+// getLocalizedStr 来自 composables/useAdminI18n.ts（Nuxt 自动导入），此处不再自带副本
 const displayName = computed(() => getLocalizedStr(props.title?.name))
 </script>
 

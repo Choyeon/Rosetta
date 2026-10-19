@@ -6,7 +6,30 @@
  * ② 把输入框原值当 UTC 提交（后端明确把朴素 datetime 按 UTC 解释）。
  */
 import { describe, expect, it } from 'vitest'
-import { fromDateTimeLocal, isPastDateTimeLocal, toDateTimeLocal } from '../../lib/datetime'
+import { fromDateTimeLocal, isPastDateTimeLocal, toDateTimeLocal, toHM, toYMD } from '../../lib/datetime'
+
+describe('toYMD / toHM', () => {
+  it('用本地时间分量，不是 UTC 分量', () => {
+    // 2026-09-30T23:30 本地 —— UTC 可能已经是 10-01，toISOString().slice(0,10) 会写成明天，
+    // <input type="date"> 的 max="今天" 随之把合法当天判成"未来"。
+    const localNoon = new Date(2026, 8, 30, 12, 30)
+    expect(toYMD(localNoon)).toBe('2026-09-30')
+    expect(toHM(localNoon)).toBe('12:30')
+    expect(toYMD(new Date(2026, 0, 5, 0, 0))).toBe('2026-01-05')
+    expect(toHM(new Date(2026, 0, 5, 0, 0))).toBe('00:00')
+  })
+
+  it('默认参数是今天', () => {
+    const d = new Date()
+    expect(toYMD()).toBe(
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+    )
+  })
+
+  it('toHM 对非法时间返回空串', () => {
+    expect(toHM(new Date('nope'))).toBe('')
+  })
+})
 
 describe('toDateTimeLocal', () => {
   it('空值与非法值都回落成空串，不抛', () => {

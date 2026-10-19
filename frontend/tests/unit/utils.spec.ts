@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { cn, extractApiErrorMessage, isOobeRequiredError, stableApiKey } from '@/lib/utils'
+import { cn, extractApiErrorMessage, formatBytes, isOobeRequiredError, stableApiKey } from '@/lib/utils'
 
 describe('lib/utils', () => {
   // ---------- cn (clsx + tailwind-merge) ----------
@@ -85,6 +85,25 @@ describe('lib/utils', () => {
       const k = stableApiKey(fn)
       expect(k).toMatch(/^api::__fn__/)
       expect(k).toContain('/posts/')
+    })
+  })
+
+  // ---------- formatBytes ----------
+  describe('formatBytes', () => {
+    it('零、负数与非有限值统一为 0 B', () => {
+      expect(formatBytes(0)).toBe('0 B')
+      expect(formatBytes(-1)).toBe('0 B')
+      expect(formatBytes(Number.NaN)).toBe('0 B')
+      expect(formatBytes(Number.POSITIVE_INFINITY)).toBe('0 B')
+    })
+
+    it('1024 进制分档，整数值不显示成 0.x KB', () => {
+      expect(formatBytes(512)).toBe('512 B')
+      expect(formatBytes(1024)).toBe('1.0 KB')
+      expect(formatBytes(1024 * 900)).toBe('900.0 KB')
+      expect(formatBytes(1024 * 1024)).toBe('1.0 MB')
+      expect(formatBytes(1024 * 1024 * 1024)).toBe('1.00 GB')
+      expect(formatBytes(1024 * 1024 * 1024 * 5)).toBe('5.00 GB')
     })
   })
 })

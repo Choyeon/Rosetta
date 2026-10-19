@@ -1,7 +1,9 @@
 /**
- * 后台表单里 `<input type="datetime-local">` 与 ISO 字符串之间的换算。
+ * 日期/时间字符串的唯一口径来源：
+ * ① `<input type="date">` / `<input type="datetime-local">` 与 ISO 字符串之间的换算；
+ * ② 展示用的本地 `YYYY-MM-DD` / `HH:mm`（后台列一律走这两个，不要再各写一份 padStart）。
  *
- * 这两条函数存在的唯一理由：**datetime-local 的 value 是本地墙钟，不是 UTC**。
+ * 这两条换算存在的唯一理由：**输入框的 value 是本地墙钟，不是 UTC**。
  * 后端把朴素 datetime 按 UTC 解释（见 `backend/api/blog.py` 里 scheduled_at 的
  * `replace(tzinfo=UTC)`），所以直接 `iso.slice(0, 16)` 回填、再把输入框原值提交，
  * 在非 UTC 时区下会整体偏移一个时区差（东八区就是 8 小时）——管理员看到的
@@ -10,6 +12,26 @@
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
+}
+
+/**
+ * 本地时区的 `YYYY-MM-DD`（默认"今天"）。
+ *
+ * 这是 `<input type="date">` 的 value 与 min/max 唯一认可的形态。`toISOString().slice(0,10)`
+ * 是 UTC 日界，东八区晚上 8 点后会把"今天"写成明天，日期互锁与"不允许选未来"随之失效。
+ */
+export function toYMD(date: Date = new Date()): string {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+}
+
+/**
+ * 本地时区的 `HH:mm`。
+ *
+ * 入参非法时返回空串——调用方都是"拼一条展示用时间戳"，不值得为它设计占位符策略。
+ */
+export function toHM(date: Date): string {
+  if (Number.isNaN(date.getTime())) return ''
+  return `${pad2(date.getHours())}:${pad2(date.getMinutes())}`
 }
 
 /**

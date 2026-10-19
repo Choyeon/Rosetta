@@ -931,6 +931,7 @@ import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { toYMD } from '~~/lib/datetime'
 import { watch, computed, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -1016,10 +1017,7 @@ function apFormatDate(input: string | Date | null | undefined): string {
   }
   const d = input instanceof Date ? input : new Date(String(input))
   if (Number.isNaN(d.getTime())) return ''
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return toYMD(d)
 }
 
 function apPostExcerpt(p: Post): string {

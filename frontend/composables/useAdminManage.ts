@@ -10,6 +10,7 @@
 import {
   apiFetch
 } from '~~/composables/useApi'
+import { toHM, toYMD } from '~~/lib/datetime'
 
 // ========= 轻量级内存缓存（短 TTL） =========
 // 用于用户编辑页、头衔选择等"同一轮交互内反复读取、数据基本不变"的场景。
@@ -66,15 +67,12 @@ export interface AdminPaged<T> {
   total_pages: number
 }
 
-/** ISO 时间格式化为 YYYY-MM-DD（空值返回占位符） */
+/** ISO 时间格式化为 YYYY-MM-DD（空值/非法值返回占位符） */
 export function formatAdminDate(iso: string | null | undefined, placeholder = '-'): string {
   if (!iso) return placeholder
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return placeholder
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
+  return toYMD(d)
 }
 
 /** ISO 时间格式化为 YYYY-MM-DD HH:mm */
@@ -82,9 +80,7 @@ export function formatAdminDateTime(iso: string | null | undefined, placeholder 
   if (!iso) return placeholder
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return placeholder
-  const hh = String(d.getHours()).padStart(2, '0')
-  const mm = String(d.getMinutes()).padStart(2, '0')
-  return `${formatAdminDate(iso, placeholder)} ${hh}:${mm}`
+  return `${toYMD(d)} ${toHM(d)}`
 }
 
 // ==================== 仪表盘 ====================

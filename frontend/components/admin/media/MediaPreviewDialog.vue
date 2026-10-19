@@ -200,6 +200,7 @@
 
 <script setup lang="ts">
 import type { MediaLibraryItem } from '~~/types/media-library'
+import { formatBytes as formatSize } from '~~/lib/utils'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
@@ -267,15 +268,6 @@ const createdLabel = computed(() => {
   const d = new Date(raw)
   return Number.isNaN(d.getTime()) ? raw : d.toLocaleString()
 })
-
-function formatSize(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 B'
-  const kb = bytes / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(1)} MB`
-  return `${(mb / 1024).toFixed(2)} GB`
-}
 
 function absoluteUrl(): string {
   const raw = props.media?.url || ''

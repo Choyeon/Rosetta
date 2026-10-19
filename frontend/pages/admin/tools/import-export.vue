@@ -948,7 +948,8 @@
 import { ref, reactive, computed, watch, nextTick } from 'vue'
 import { apiFetch } from '~~/composables/useApi'
 import { downloadBlob } from '~~/composables/useAdminManage'
-import { extractApiErrorMessage } from '~~/lib/utils'
+import { extractApiErrorMessage, formatBytes as formatSize } from '~~/lib/utils'
+import { toYMD } from '~~/lib/datetime'
 import { useToast } from '~~/composables/useToast'
 import {
   ArrowLeftRight, Upload, Download, FileJson, FileInput, Filter, Rocket,
@@ -1001,13 +1002,7 @@ const exportForm = reactive({
   toDate: ''
 })
 
-const todayStr = computed(() => {
-  const d = new Date()
-  const y = d.getFullYear()
-  const m = String(d.getMonth() + 1).padStart(2, '0')
-  const day = String(d.getDate()).padStart(2, '0')
-  return `${y}-${m}-${day}`
-})
+const todayStr = computed(() => toYMD())
 const startMax = computed(() => exportForm.toDate || todayStr.value)
 const endMin = computed(() => exportForm.fromDate || '')
 const endMax = todayStr
@@ -1072,13 +1067,6 @@ const formatLabel = computed(() =>
 const acceptForFormat = computed(() =>
   importForm.format === 'markdown' ? '.md,text/markdown' : '.zip,application/zip'
 )
-
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
 
 function handleFileSelect(e: Event) {
   const t = e.currentTarget as HTMLInputElement

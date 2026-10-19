@@ -489,10 +489,12 @@ import {
   deleteAdminMedia,
   deleteAdminMediaBatch,
   fetchAdminMediaStats,
+  formatAdminDate,
   type AdminMediaStats
 } from '~~/composables/useAdminManage'
 import { useUploadProgress, validateUploadFiles, resolveUploadLimitBytes, resolveAllowedExtensions } from '~~/composables/useUploadProgress'
 import type { MediaLibraryItem } from '~~/types/media-library'
+import { formatBytes as formatSize } from '~~/lib/utils'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -613,20 +615,9 @@ function typeLabel(m: MediaLibraryItem): string {
   return mime || '其他'
 }
 
+// 后台日期列统一 YYYY-MM-DD：toLocaleDateString() 会随浏览器语言换顺序与分隔符
 function shortDate(raw: string | null | undefined): string {
-  if (!raw) return '—'
-  const d = new Date(raw)
-  if (Number.isNaN(d.getTime())) return raw
-  return d.toLocaleDateString()
-}
-
-function formatSize(bytes: number): string {
-  if (!bytes || bytes <= 0) return '0 B'
-  const kb = bytes / 1024
-  if (kb < 1024) return `${kb.toFixed(1)} KB`
-  const mb = kb / 1024
-  if (mb < 1024) return `${mb.toFixed(1)} MB`
-  return `${(mb / 1024).toFixed(2)} GB`
+  return formatAdminDate(raw, '—')
 }
 
 function isImage(mime?: string | null): boolean {

@@ -25,6 +25,24 @@ export function cn(...inputs: ClassValue[]) {
  */
 export const SPA_SHELL_TITLE_PLACEHOLDER = 'Rosetta'
 
+// ====================== 展示用纯工具 ======================
+
+/**
+ * 字节数 → 人读尺寸（B / KB / MB / GB，1024 进制）。
+ *
+ * 收口前三处各有一份：两份完全相同但缺少 B 档（900 字节显示 "0.9 KB"），
+ * 另一份 MB 用两位小数，与媒体库的口径互不一致。
+ */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B'
+  if (bytes < 1024) return `${Math.round(bytes)} B`
+  const kb = bytes / 1024
+  if (kb < 1024) return `${kb.toFixed(1)} KB`
+  const mb = kb / 1024
+  if (mb < 1024) return `${mb.toFixed(1)} MB`
+  return `${(mb / 1024).toFixed(2)} GB`
+}
+
 // ====================== 颜色工具：全站共享（取代 PostCard / TagBadge 各自实现）======================
 
 /**
