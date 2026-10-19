@@ -38,9 +38,7 @@ async def test_partial_patch_keeps_other_keys_of_the_same_group(
     assert data["show_back_to_top"] is False
 
 
-async def test_partial_patch_still_ignores_unknown_keys(
-    client: AsyncClient, admin_headers: dict
-):
+async def test_partial_patch_still_ignores_unknown_keys(client: AsyncClient, admin_headers: dict):
     await _patch(client, admin_headers, "footer", {"slogan": "白名单外不生效"})
 
     saved = await _patch(client, admin_headers, "footer", {"not_a_setting_key": "x"})

@@ -79,8 +79,7 @@ async def list_polls(
     is_privileged = bool(
         current_user
         and (
-            getattr(current_user, "is_staff", False)
-            or getattr(current_user, "is_superuser", False)
+            getattr(current_user, "is_staff", False) or getattr(current_user, "is_superuser", False)
         )
     )
 
@@ -156,8 +155,7 @@ async def get_poll(poll_id: int, db: DB, current_user: CurrentUserOptional = Non
     is_privileged = bool(
         current_user
         and (
-            getattr(current_user, "is_staff", False)
-            or getattr(current_user, "is_superuser", False)
+            getattr(current_user, "is_staff", False) or getattr(current_user, "is_superuser", False)
         )
     )
     can_see_results = poll.show_results or is_privileged

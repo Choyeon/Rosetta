@@ -94,9 +94,7 @@ async def test_pagination_is_stable_when_timestamps_tie(
 
     seen: list[str] = []
     for page in (1, 2):
-        resp = await client.get(
-            f"{LIST}?status=all&page={page}&page_size=5", headers=staff_headers
-        )
+        resp = await client.get(f"{LIST}?status=all&page={page}&page_size=5", headers=staff_headers)
         assert resp.status_code == 200
         body = resp.json()
         assert len(body["items"]) == 5
@@ -112,9 +110,7 @@ async def test_sort_popular_orders_by_views(
 ) -> None:
     """sort=popular 按浏览量倒序；置顶位仍然优先。"""
     now = datetime.now(UTC)
-    await _make_post(
-        db_session, staff_user.id, slug="low-views", views=1, published_at=now
-    )
+    await _make_post(db_session, staff_user.id, slug="low-views", views=1, published_at=now)
     await _make_post(
         db_session,
         staff_user.id,
@@ -205,8 +201,10 @@ async def test_scheduled_at_naive_value_is_read_as_utc(
     assert resp.status_code == 201, resp.text
 
     row = (
-        await db_session.execute(select(Post).where(Post.slug == "scheduled-by-naive"))
-    ).scalars().one()
+        (await db_session.execute(select(Post).where(Post.slug == "scheduled-by-naive")))
+        .scalars()
+        .one()
+    )
     assert row.status == "scheduled"
     stored = row.scheduled_at
     assert stored is not None

@@ -149,7 +149,9 @@ NON_IMAGE_SPOOFED_CASES: list[tuple[str, bytes]] = [
 
 
 @pytest.mark.parametrize(
-    ("ext", "payload"), NON_IMAGE_VALID_CASES, ids=[f"{e}-{i}" for i, (e, _) in enumerate(NON_IMAGE_VALID_CASES)]
+    ("ext", "payload"),
+    NON_IMAGE_VALID_CASES,
+    ids=[f"{e}-{i}" for i, (e, _) in enumerate(NON_IMAGE_VALID_CASES)],
 )
 def test_non_image_magic_accepts_real_containers(ext: str, payload: bytes):
     _validate_non_image_magic(payload, ext, f"clip.{ext}")  # 不抛异常即通过
@@ -236,7 +238,8 @@ async def test_public_upload_requires_upload_media_capability(
 
     # staff 通过能力闸门；后续失败（入库/路径）与鉴权无关，因此只断言不是 401/403
     allowed = await client.post(
-        "/api/media/upload", files={"file": ("y.png", io.BytesIO(PNG_HEADER), "image/png")},
+        "/api/media/upload",
+        files={"file": ("y.png", io.BytesIO(PNG_HEADER), "image/png")},
         headers=staff_headers,
     )
     assert allowed.status_code not in (401, 403)
@@ -263,9 +266,7 @@ async def test_upload_stream_shares_the_same_capability_gate(
 
 
 @pytest.mark.asyncio
-async def test_avatar_and_cover_stay_open_to_plain_users(
-    client: AsyncClient, auth_headers: dict
-):
+async def test_avatar_and_cover_stay_open_to_plain_users(client: AsyncClient, auth_headers: dict):
     """头像/封面属于 EDIT_OWN_PROFILE：普通注册用户要能换，不能被 UPLOAD_MEDIA 误伤。
 
     这里只断言「没被能力闸门挡在门外」（非 403）。请求Body 是真实 PNG，

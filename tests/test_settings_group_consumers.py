@@ -82,9 +82,13 @@ def test_settings_page_submits_only_writable_keys():
     ``_save_group`` 的 ``if k in base`` 是静默丢弃，不是报错：这条断言是它唯一的暴露面。
     """
     ui = _ui_group_fields()
-    assert set(ui) == set(SETTING_GROUPS), f"设置页分组与后端 13 组不一致：{set(ui) ^ set(SETTING_GROUPS)}"
+    assert set(ui) == set(SETTING_GROUPS), (
+        f"设置页分组与后端 13 组不一致：{set(ui) ^ set(SETTING_GROUPS)}"
+    )
     unwritable = {
-        g: sorted(keys - set(_default_for(g))) for g, keys in ui.items() if keys - set(_default_for(g))
+        g: sorted(keys - set(_default_for(g)))
+        for g, keys in ui.items()
+        if keys - set(_default_for(g))
     }
     assert not unwritable, (
         "这些键设置页会提交但后端存不进去（不在分组默认值里，_save_group 静默丢弃）："
@@ -149,7 +153,9 @@ _INERT_GROUPS = {"cdn", "cache", "friendlinks", "sidebar"}
 def test_inert_setting_keys_stay_removed():
     """死配置不得回流：一旦被重新放进 _default_*，设置页就能提交一个没人执行的开关。"""
     live = {k for g in SETTING_GROUPS for k in _default_for(g)}
-    assert not (live & _INERT_KEYS), f"这些键没有任何执行点，却被放回分组默认值：{sorted(live & _INERT_KEYS)}"
+    assert not (live & _INERT_KEYS), (
+        f"这些键没有任何执行点，却被放回分组默认值：{sorted(live & _INERT_KEYS)}"
+    )
     assert set(SETTING_GROUPS).isdisjoint(_INERT_GROUPS)
 
 
@@ -197,7 +203,7 @@ async def test_comments_group_disabling_blocks_new_comments(client, staff_header
 
 @pytest.mark.asyncio
 async def test_comment_enable_is_the_only_comment_switch(client, staff_headers, db_session):
-    """"评论是否启用"只允许一个开关。
+    """ "评论是否启用"只允许一个开关。
 
     features 组曾另有 ``enable_comments``：后端写口闸门读 comments.enable，前台评论区读
     features 那份，于是两个开关各管一半——关掉 features 那格评论区消失但接口照写，
@@ -228,7 +234,9 @@ async def test_comment_enable_is_the_only_comment_switch(client, staff_headers, 
     try:
         cfg = await client.get("/api/config")
         assert cfg.status_code == 200, cfg.text
-        assert cfg.json()["enable_comments"] is False, "features 残键覆盖了 comments.enable＝两个开关又打架"
+        assert cfg.json()["enable_comments"] is False, (
+            "features 残键覆盖了 comments.enable＝两个开关又打架"
+        )
 
         pub = await client.get("/api/settings/public")
         groups = pub.json()["groups"]
@@ -414,11 +422,15 @@ async def test_comments_max_length_from_group(client, staff_headers, test_post):
 
 
 def test_upload_limit_respects_group_but_stays_clamped():
-    assert _effective_upload_limit({"max_upload_size": 1024 * 1024}, 20 * 1024 * 1024) == 1024 * 1024
+    assert (
+        _effective_upload_limit({"max_upload_size": 1024 * 1024}, 20 * 1024 * 1024) == 1024 * 1024
+    )
     # 未配置 = 既有上限，不被 _default_media 的 10MB 悄悄改写
     assert _effective_upload_limit({}, 20 * 1024 * 1024) == 20 * 1024 * 1024
     # 填错单位/填 0/填一个 GB：钳进安全区间，不放开也不关掉上传
-    assert _effective_upload_limit({"max_upload_size": 0}, 10 * 1024 * 1024) == UPLOAD_SIZE_FLOOR_BYTES
+    assert (
+        _effective_upload_limit({"max_upload_size": 0}, 10 * 1024 * 1024) == UPLOAD_SIZE_FLOOR_BYTES
+    )
     assert (
         _effective_upload_limit({"max_upload_size": 999 * 1024 * 1024}, 10 * 1024 * 1024)
         == UPLOAD_SIZE_CEILING_BYTES

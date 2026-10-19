@@ -33,6 +33,7 @@ class TestVotingShowResultsEnforcement:
 
         # Add a vote
         from backend.models.voting import Vote
+
         vote = Vote(poll_id=poll.id, choice_id=choice.id, user_id=None)
         db_session.add(vote)
         await db_session.commit()
@@ -43,7 +44,9 @@ class TestVotingShowResultsEnforcement:
         data = r.json()
 
         # votes_count should be null, total_votes should be 0
-        assert data["choices"][0]["votes_count"] is None, f"Expected null votes_count, got {data['choices'][0]['votes_count']}"
+        assert data["choices"][0]["votes_count"] is None, (
+            f"Expected null votes_count, got {data['choices'][0]['votes_count']}"
+        )
         assert data["total_votes"] == 0, f"Expected 0 total_votes, got {data['total_votes']}"
 
     @pytest.mark.asyncio
@@ -73,5 +76,9 @@ class TestVotingShowResultsEnforcement:
         data = r.json()
 
         # Staff should see real counts
-        assert data["choices"][0]["votes_count"] == 1, f"Expected 1 votes_count for staff, got {data['choices'][0]['votes_count']}"
-        assert data["total_votes"] == 1, f"Expected 1 total_votes for staff, got {data['total_votes']}"
+        assert data["choices"][0]["votes_count"] == 1, (
+            f"Expected 1 votes_count for staff, got {data['choices'][0]['votes_count']}"
+        )
+        assert data["total_votes"] == 1, (
+            f"Expected 1 total_votes for staff, got {data['total_votes']}"
+        )

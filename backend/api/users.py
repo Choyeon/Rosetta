@@ -1088,7 +1088,9 @@ async def update_cover(
 ):
     """更新用户封面图"""
     service = await get_user_service(db)
-    updated_user = await service.update_profile(current_user.id, {"cover_image": payload.cover_image})
+    updated_user = await service.update_profile(
+        current_user.id, {"cover_image": payload.cover_image}
+    )
     return build_user_response(updated_user)
 
 

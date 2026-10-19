@@ -2312,7 +2312,9 @@ class PollBase(BaseModel):
 class PollCreate(PollBase):
     """投票创建模型"""
 
-    choices: list[str] = Field(..., min_length=2, max_length=20, description="选项列表；每项 1-200 字符")
+    choices: list[str] = Field(
+        ..., min_length=2, max_length=20, description="选项列表；每项 1-200 字符"
+    )
 
     # Pydantic v2 无法直接对 list[str] 的元素加约束，用 field_validator 兜底
     from pydantic import field_validator
@@ -2322,7 +2324,7 @@ class PollCreate(PollBase):
     def _validate_choice_items(cls, v: list[str]) -> list[str]:
         for i, item in enumerate(v):
             if not item or len(item) > 200:
-                raise ValueError(f"选项 {i+1} 长度必须在 1-200 之间，当前 {len(item)}")
+                raise ValueError(f"选项 {i + 1} 长度必须在 1-200 之间，当前 {len(item)}")
         return v
 
 
@@ -2343,7 +2345,9 @@ class PollChoiceResponse(BaseModel):
     id: int
     text: str
     order: int
-    votes_count: int | None = Field(None, description="票数；show_results=False 且非 staff/superuser 时为 null")
+    votes_count: int | None = Field(
+        None, description="票数；show_results=False 且非 staff/superuser 时为 null"
+    )
 
     model_config = {"from_attributes": True}
 

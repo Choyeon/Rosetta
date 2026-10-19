@@ -128,14 +128,10 @@ class TestGalleryFrontendCachePurge:
         assert len(purge_sink) == 1
 
     @pytest.mark.asyncio
-    async def test_album_delete_purges(
-        self, client: AsyncClient, staff_headers: dict, purge_sink
-    ):
+    async def test_album_delete_purges(self, client: AsyncClient, staff_headers: dict, purge_sink):
         album_id = await _create_album(client, staff_headers)
         purge_sink.clear()
-        r = await client.delete(
-            f"/api/admin/gallery/albums/{album_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/admin/gallery/albums/{album_id}", headers=staff_headers)
         assert r.status_code == 200
         assert len(purge_sink) == 1
 
@@ -156,9 +152,7 @@ class TestGalleryFrontendCachePurge:
         assert len(purge_sink) == 1
 
         purge_sink.clear()
-        r = await client.delete(
-            f"/api/admin/gallery/photos/{photo_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/admin/gallery/photos/{photo_id}", headers=staff_headers)
         assert r.status_code == 200
         assert len(purge_sink) == 1
 
@@ -168,10 +162,7 @@ class TestGalleryFrontendCachePurge:
     ):
         """批量删除只清一次缓存：N 张照片不该变成 N 次全量失效。"""
         album_id = await _create_album(client, staff_headers)
-        ids = [
-            await _create_photo(client, staff_headers, album_id, f"/b{i}.jpg")
-            for i in range(3)
-        ]
+        ids = [await _create_photo(client, staff_headers, album_id, f"/b{i}.jpg") for i in range(3)]
         purge_sink.clear()
         r = await client.request(
             "DELETE",
@@ -200,9 +191,7 @@ class TestGalleryHooks:
         )
         assert r.status_code == 200
 
-        r = await client.delete(
-            f"/api/admin/gallery/albums/{album_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/admin/gallery/albums/{album_id}", headers=staff_headers)
         assert r.status_code == 200
 
         names = [name for name, _ in hook_sink]
@@ -226,9 +215,7 @@ class TestGalleryHooks:
         )
         assert r.status_code == 200
 
-        r = await client.delete(
-            f"/api/admin/gallery/photos/{photo_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/admin/gallery/photos/{photo_id}", headers=staff_headers)
         assert r.status_code == 200
 
         names = [name for name, _ in hook_sink]
@@ -244,10 +231,7 @@ class TestGalleryHooks:
     ):
         """批量入口必须与单条同构发钩子，事件名同样是 photo.deleted。"""
         album_id = await _create_album(client, staff_headers)
-        ids = [
-            await _create_photo(client, staff_headers, album_id, f"/d{i}.jpg")
-            for i in range(3)
-        ]
+        ids = [await _create_photo(client, staff_headers, album_id, f"/d{i}.jpg") for i in range(3)]
         hook_sink.clear()
 
         r = await client.request(
@@ -326,7 +310,9 @@ class TestPhotoMoveGuard:
         counts = {
             row[0]: row[1]
             for row in (
-                await db_session.execute(select(Photo.album_id, Photo.id).where(Photo.id == photo_id))
+                await db_session.execute(
+                    select(Photo.album_id, Photo.id).where(Photo.id == photo_id)
+                )
             ).all()
         }
         assert list(counts) == [dst]
@@ -383,9 +369,7 @@ class TestMediaDirAndHooks:
         await db_session.refresh(media)
         media_id = media.id
 
-        r = await client.delete(
-            f"/api/media/library/{media_id}", headers=staff_headers
-        )
+        r = await client.delete(f"/api/media/library/{media_id}", headers=staff_headers)
         assert r.status_code == 200
         assert [n for n, _ in hook_sink] == ["media.deleted"]
         payload = dict(hook_sink[0][1])

@@ -193,8 +193,12 @@ class OOBEInstallFailedException(AppException):
     """
 
     def __init__(self, message: str, error_code: str, hint: str | None = None):
-        super().__init__(status_code=500, message=message, error_code=error_code,
-                         details={"hint": hint} if hint else None)
+        super().__init__(
+            status_code=500,
+            message=message,
+            error_code=error_code,
+            details={"hint": hint} if hint else None,
+        )
         self.hint = hint
 
 
@@ -1228,7 +1232,9 @@ async def _run_combined_install(req: CombinedInstallRequest):
             # 只出现在 /api/config 的输出里、没人判断。勾掉却不落分组＝假开关。
             # 只存这一个键即可：读侧（_load_all_groups）会用 _default_comments 补齐其余。
             if not req.enable_comments:
-                ex = await session.execute(select(DbSiteConfig).where(DbSiteConfig.key == "comments"))
+                ex = await session.execute(
+                    select(DbSiteConfig).where(DbSiteConfig.key == "comments")
+                )
                 if ex.scalar_one_or_none() is None:
                     session.add(
                         DbSiteConfig(
@@ -1357,8 +1363,11 @@ async def _run_combined_install(req: CombinedInstallRequest):
         # 失败发生在哪一步：从已播报的进度缓冲里倒着找最后一条 progress。
         # 不用额外维护游标变量，避免和分散在各阶段的播报点走偏。
         last_evt = next(
-            (e for e in reversed(_INSTALL_STREAM_BUFFER)
-             if e.get("type") == "progress" and e.get("step_id")),
+            (
+                e
+                for e in reversed(_INSTALL_STREAM_BUFFER)
+                if e.get("type") == "progress" and e.get("step_id")
+            ),
             None,
         )
         failed_step = (last_evt or {}).get("step_id") or steps[0][0]
@@ -1390,7 +1399,10 @@ async def _run_combined_install(req: CombinedInstallRequest):
         "不要匹配 `message` 文案（文案会随 i18n 变）。"
     ),
     responses={
-        200: {"model": OobePreflightResponse, "description": "体检结果（HTTP 恒为 200，问题放在 issues 里）"},
+        200: {
+            "model": OobePreflightResponse,
+            "description": "体检结果（HTTP 恒为 200，问题放在 issues 里）",
+        },
     },
 )
 async def oobe_preflight(req: OobePreflightRequest):
@@ -1403,44 +1415,77 @@ async def oobe_preflight(req: OobePreflightRequest):
     issues: list[dict] = []
 
     def _add(field: str, level: str, code: str, message: str, hint: str | None = None):
-        issues.append({"field": field, "level": level, "code": code, "message": message, "hint": hint})
+        issues.append(
+            {"field": field, "level": level, "code": code, "message": message, "hint": hint}
+        )
 
     if req.admin_username is not None:
         if not re.match(USERNAME_PATTERN, req.admin_username):
-            _add("admin_username", "error", "USERNAME_INVALID",
-                 "用户名需为 3-20 位字母、数字、下划线或短横线",
-                 "去掉空格与中文，改用字母数字组合。")
+            _add(
+                "admin_username",
+                "error",
+                "USERNAME_INVALID",
+                "用户名需为 3-20 位字母、数字、下划线或短横线",
+                "去掉空格与中文，改用字母数字组合。",
+            )
     if req.admin_email is not None:
         if not re.match(EMAIL_PATTERN, req.admin_email):
-            _add("admin_email", "error", "EMAIL_INVALID", "邮箱格式不正确", "例如 admin@example.com")
+            _add(
+                "admin_email", "error", "EMAIL_INVALID", "邮箱格式不正确", "例如 admin@example.com"
+            )
     if req.admin_password is not None:
         if len(req.admin_password) < PASSWORD_MIN_LENGTH:
-            _add("admin_password", "error", "PASSWORD_TOO_SHORT",
-                 f"密码至少 {PASSWORD_MIN_LENGTH} 位")
+            _add(
+                "admin_password",
+                "error",
+                "PASSWORD_TOO_SHORT",
+                f"密码至少 {PASSWORD_MIN_LENGTH} 位",
+            )
         else:
             # 与注册/改密同口径（受 security_password_policy 开关控制）
             from backend.core.password_policy import validate_password
 
             for msg in validate_password(req.admin_password):
-                _add("admin_password", "error", "PASSWORD_WEAK", msg,
-                     "大小写字母 + 数字混合，且不要用常见弱口令。")
+                _add(
+                    "admin_password",
+                    "error",
+                    "PASSWORD_WEAK",
+                    msg,
+                    "大小写字母 + 数字混合，且不要用常见弱口令。",
+                )
 
     if req.site_url is not None:
         if not req.site_url.strip():
-            _add("site_url", "error", "SITE_URL_EMPTY", "站点地址不能为空",
-                 "它用于拼接 RSS / sitemap / 头像的绝对地址，例如 https://example.com")
+            _add(
+                "site_url",
+                "error",
+                "SITE_URL_EMPTY",
+                "站点地址不能为空",
+                "它用于拼接 RSS / sitemap / 头像的绝对地址，例如 https://example.com",
+            )
         elif not re.match(r"^https?://[^\s/$.?#].[^\s]*$", req.site_url.strip()):
             _add("site_url", "error", "SITE_URL_INVALID", "站点地址需以 http:// 或 https:// 开头")
         elif req.site_url.strip().startswith("http://"):
-            _add("site_url", "warn", "SITE_URL_INSECURE",
-                 "站点地址使用明文 HTTP，管理员密码与登录态将以明文传输",
-                 "生产环境请配置 HTTPS 后再安装。")
+            _add(
+                "site_url",
+                "warn",
+                "SITE_URL_INSECURE",
+                "站点地址使用明文 HTTP，管理员密码与登录态将以明文传输",
+                "生产环境请配置 HTTPS 后再安装。",
+            )
 
     if req.site_name is not None and not req.site_name.strip():
         _add("site_name", "error", "SITE_NAME_EMPTY", "站点名称不能为空")
 
     # ---- 数据库体检 ----
-    db_result = {"checked": False, "ok": True, "code": "DB_SKIPPED", "message": "未做连接探测", "hint": None, "version": None}
+    db_result = {
+        "checked": False,
+        "ok": True,
+        "code": "DB_SKIPPED",
+        "message": "未做连接探测",
+        "hint": None,
+        "version": None,
+    }
     if req.database_type == "sqlite":
         db_result = {
             "checked": False,
@@ -1454,8 +1499,13 @@ async def oobe_preflight(req: OobePreflightRequest):
             _add("database", "error", "DB_PATH_EMPTY", "SQLite 数据库文件名不能为空")
     elif req.check_database:
         if not req.db_user:
-            _add("database", "error", "DB_USER_EMPTY", "PostgreSQL 需要填写数据库用户名",
-                 "例如 postgres")
+            _add(
+                "database",
+                "error",
+                "DB_USER_EMPTY",
+                "PostgreSQL 需要填写数据库用户名",
+                "例如 postgres",
+            )
         if not req.db_name:
             _add("database", "error", "DB_NAME_EMPTY", "数据库名不能为空", "例如 rosetta")
 
@@ -1514,7 +1564,9 @@ class OobeDatabaseTestPostResponse(BaseModel):
     database_url: str | None = Field(
         default=None, description="仅 SQLite 分支返回：由表单构建出的连接串（不含凭据）"
     )
-    details: dict[str, Any] | None = Field(default=None, description="附加信息：version / exists 等")
+    details: dict[str, Any] | None = Field(
+        default=None, description="附加信息：version / exists 等"
+    )
 
 
 @router.post(

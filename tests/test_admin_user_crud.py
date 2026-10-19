@@ -521,9 +521,7 @@ class TestUserListProjection:
             assert needed in item, f"精简列表缺少 {needed}"
 
     @pytest.mark.asyncio
-    async def test_admin_list_has_management_fields(
-        self, client: AsyncClient, staff_headers: dict
-    ):
+    async def test_admin_list_has_management_fields(self, client: AsyncClient, staff_headers: dict):
         """`GET /api/admin/users` 必须带管理字段，否则后台列表页会显示错状态。"""
         r = await client.get("/api/admin/users", headers=staff_headers)
         assert r.status_code == 200, r.text
@@ -555,9 +553,7 @@ class TestUserListProjection:
         """
         await make_comments(test_post, 3, author=test_user)
 
-        r = await client.get(
-            "/api/admin/users", headers=staff_headers, params={"search": "test"}
-        )
+        r = await client.get("/api/admin/users", headers=staff_headers, params={"search": "test"})
         assert r.status_code == 200, r.text
         items = r.json()["items"]
         assert items, "搜索 test 应至少命中一个用户"

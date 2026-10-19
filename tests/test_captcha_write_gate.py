@@ -91,9 +91,7 @@ async def test_guestbook_anonymous_requires_captcha(client: AsyncClient, captcha
 
 
 @pytest.mark.asyncio
-async def test_guestbook_wrong_captcha_is_400_not_401(
-    client: AsyncClient, captcha_on
-) -> None:
+async def test_guestbook_wrong_captcha_is_400_not_401(client: AsyncClient, captcha_on) -> None:
     """401 会让前端把这次操作判成"登录过期"并清登录态——业务校验失败必须 400。"""
     await store_captcha_answer("gb-wrong", "QK7M")
     body = dict(_GB_BODY, captcha_key="gb-wrong", captcha_code="XXXX")
@@ -103,9 +101,7 @@ async def test_guestbook_wrong_captcha_is_400_not_401(
 
 
 @pytest.mark.asyncio
-async def test_guestbook_accepts_valid_captcha(
-    client: AsyncClient, captcha_on, db_session
-) -> None:
+async def test_guestbook_accepts_valid_captcha(client: AsyncClient, captcha_on, db_session) -> None:
     await store_captcha_answer("gb-cap", "QK7M")
     body = dict(_GB_BODY, captcha_key="gb-cap", captcha_code="qk7m")
     resp = await client.post("/api/guestbook", json=body)
@@ -130,9 +126,7 @@ async def test_captcha_flag_off_keeps_anonymous_guestbook_open(
     client: AsyncClient, staff_headers, db_session
 ) -> None:
     """默认值必须等于既有行为：没配过 / 配成 False 时匿名留言照常通过。"""
-    group = (
-        await client.get("/api/settings/features", headers=staff_headers)
-    ).json()["data"]
+    group = (await client.get("/api/settings/features", headers=staff_headers)).json()["data"]
     assert group["enable_captcha"] is False, "features 默认值被改动：闸门会打残存量站点的匿名留言"
 
     body = dict(_GB_BODY, captcha_key=None, captcha_code=None)
@@ -177,9 +171,9 @@ def test_login_fail_helpers_stay_removed() -> None:
     登录锁定由 `security.max_login_attempts` 那条路径负责，不要长出第二套。"""
     from pathlib import Path
 
-    source = (
-        Path(__file__).resolve().parent.parent / "backend" / "api" / "captcha.py"
-    ).read_text(encoding="utf-8")
+    source = (Path(__file__).resolve().parent.parent / "backend" / "api" / "captcha.py").read_text(
+        encoding="utf-8"
+    )
     for forbidden in ("check_captcha_required", "record_login_fail", "login_fail:"):
         assert forbidden not in source, f"已删除的无调用方实现又回流了：{forbidden}"
 

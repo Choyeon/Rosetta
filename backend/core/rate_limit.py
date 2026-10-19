@@ -574,9 +574,7 @@ def is_internal_request(request: Request) -> bool:
     peer = request.client.host if request.client else None
     if not peer or peer not in _trusted_proxies():
         return False
-    return not (
-        request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip")
-    )
+    return not (request.headers.get("x-forwarded-for") or request.headers.get("x-real-ip"))
 
 
 def generate_rate_limit_key(request: Request, identifier: str | None = None) -> str:

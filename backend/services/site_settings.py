@@ -61,9 +61,7 @@ async def read_group(name: str, db=None) -> dict:
             value = await db.scalar(select(SiteConfig.value).where(SiteConfig.key == name))
         else:
             async with async_session_maker() as session:
-                value = await session.scalar(
-                    select(SiteConfig.value).where(SiteConfig.key == name)
-                )
+                value = await session.scalar(select(SiteConfig.value).where(SiteConfig.key == name))
     except Exception:
         logger.warning("settings_group db read failed: %s", name, exc_info=True)
         return {}

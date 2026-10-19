@@ -62,7 +62,11 @@ def classify_db_error(exc: BaseException | str) -> tuple[str, str, str]:
             "服务端缺少 PostgreSQL 驱动 asyncpg",
             "在后端目录执行 uv sync（或 uv pip install asyncpg）后重启服务；也可以改用 SQLite 完成安装。",
         )
-    if "connection refused" in low or "connect call failed" in low or "nodename nor servname" in low:
+    if (
+        "connection refused" in low
+        or "connect call failed" in low
+        or "nodename nor servname" in low
+    ):
         return (
             DB_UNREACHABLE,
             "连不上数据库主机（连接被拒绝）",
@@ -199,8 +203,12 @@ class DatabaseService:
         并顺带检查该账号是否有 CREATEDB 权限——没有的话现在就该说，别等安装时报错。
         """
         base = await self.test_postgresql_connection(
-            host=host, port=port, user=user, password=password,
-            database=maintenance_db, timeout=timeout,
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            database=maintenance_db,
+            timeout=timeout,
         )
         if not base.success:
             return base
@@ -217,20 +225,25 @@ class DatabaseService:
 
         try:
             conn = await asyncpg.connect(
-                host=host, port=port, database=maintenance_db,
-                user=user, password=password, timeout=timeout,
+                host=host,
+                port=port,
+                database=maintenance_db,
+                user=user,
+                password=password,
+                timeout=timeout,
             )
         except Exception as e:
             code, message, hint = classify_db_error(e)
             return ConnectionResult(
-                success=False, message=message,
-                details={"error": scrub_database_url(str(e))}, code=code, hint=hint,
+                success=False,
+                message=message,
+                details={"error": scrub_database_url(str(e))},
+                code=code,
+                hint=hint,
             )
 
         try:
-            exists = await conn.fetchval(
-                "SELECT 1 FROM pg_database WHERE datname = $1", database
-            )
+            exists = await conn.fetchval("SELECT 1 FROM pg_database WHERE datname = $1", database)
             version = await conn.fetchval("SELECT version()")
             if exists:
                 return ConnectionResult(
@@ -250,7 +263,7 @@ class DatabaseService:
                     message=f"账号可用，数据库 {database} 将在安装时自动创建",
                     details={"version": version, "database": database, "exists": False},
                     code=DB_NOT_EXIST,
-                    hint=f"如需手动建库：CREATE DATABASE \"{database}\";",
+                    hint=f'如需手动建库：CREATE DATABASE "{database}";',
                 )
             return ConnectionResult(
                 success=False,
@@ -258,15 +271,18 @@ class DatabaseService:
                 details={"version": version, "database": database, "exists": False},
                 code=DB_PERMISSION_DENIED,
                 hint=(
-                    f"用超级用户执行：CREATE DATABASE \"{database}\" OWNER \"{user}\";"
-                    f" 或 ALTER ROLE \"{user}\" CREATEDB;"
+                    f'用超级用户执行：CREATE DATABASE "{database}" OWNER "{user}";'
+                    f' 或 ALTER ROLE "{user}" CREATEDB;'
                 ),
             )
         except Exception as e:
             code, message, hint = classify_db_error(e)
             return ConnectionResult(
-                success=False, message=message,
-                details={"error": scrub_database_url(str(e))}, code=code, hint=hint,
+                success=False,
+                message=message,
+                details={"error": scrub_database_url(str(e))},
+                code=code,
+                hint=hint,
             )
         finally:
             try:

@@ -604,7 +604,9 @@ async def test_preflight_postgresql_requires_credentials(oobe_client: AsyncClien
 
 @pytest.mark.asyncio
 async def test_test_database_post_sqlite_always_ok(oobe_client: AsyncClient):
-    r = await oobe_client.post("/api/oobe/test-database", json={"db_type": "sqlite", "db_path": "x.db"})
+    r = await oobe_client.post(
+        "/api/oobe/test-database", json={"db_type": "sqlite", "db_path": "x.db"}
+    )
     assert r.status_code == 200, r.text
     j = r.json()
     assert j["success"] is True

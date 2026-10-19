@@ -328,7 +328,6 @@ class TestPostCreate:
         )
         assert response.status_code in [401, 403]
 
-
     @pytest.mark.asyncio
     async def test_create_post_duplicate_slug_is_rejected_not_renamed(
         self, client: AsyncClient, admin_headers: dict, test_post: Post
@@ -394,7 +393,9 @@ class TestPostSeriesRoundTrip:
     """
 
     @pytest.mark.asyncio
-    async def test_edit_endpoint_exposes_series(self, client: AsyncClient, admin_headers: dict, test_post: Post, db_session):
+    async def test_edit_endpoint_exposes_series(
+        self, client: AsyncClient, admin_headers: dict, test_post: Post, db_session
+    ):
         from backend.models import PostSeries
 
         series = PostSeries(title={"zh": "测试系列"}, slug="round-trip-series")

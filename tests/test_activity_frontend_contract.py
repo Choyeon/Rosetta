@@ -32,8 +32,16 @@ FRONTEND_CONSUMED: list[tuple[str, str, str]] = [
     ("POST /api/activities/{activity_id}/like", "`/activities/${id}/like`", "page"),
     ("GET /api/admin/activities", "'/admin/activities', { query", "admin"),
     ("POST /api/admin/activities", "'/admin/activities', { method: 'POST'", "admin"),
-    ("PUT /api/admin/activities/{activity_id}", "`/admin/activities/${id}`, { method: 'PUT'", "admin"),
-    ("DELETE /api/admin/activities/{activity_id}", "`/admin/activities/${id}`, { method: 'DELETE'", "admin"),
+    (
+        "PUT /api/admin/activities/{activity_id}",
+        "`/admin/activities/${id}`, { method: 'PUT'",
+        "admin",
+    ),
+    (
+        "DELETE /api/admin/activities/{activity_id}",
+        "`/admin/activities/${id}`, { method: 'DELETE'",
+        "admin",
+    ),
 ]
 
 # 后端保留、前端刻意不用：切换发布状态与 PUT 详情是同一件事的第二个入口，
@@ -137,7 +145,9 @@ def test_frontend_char_bound_matches_backend_schema_constant():
 
     两处各写一份必然漂移：后端先改小就变成"用户写满才被 422"，改大则边界形同虚设。
     """
-    limit = re.search(r"^MAX_ACTIVITY_CONTENT_CHARS\s*=\s*(\d+)", SCHEMA.read_text(encoding="utf-8"), re.M)
+    limit = re.search(
+        r"^MAX_ACTIVITY_CONTENT_CHARS\s*=\s*(\d+)", SCHEMA.read_text(encoding="utf-8"), re.M
+    )
     assert limit, "backend/schemas/activity.py 里的 MAX_ACTIVITY_CONTENT_CHARS 不见了"
     page = _frontend_text("page")
     assert f"const MAX_CONTENT = {limit.group(1)}" in page, (

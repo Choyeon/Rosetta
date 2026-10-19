@@ -92,9 +92,7 @@ async def test_partial_update_detects_window_becoming_inverted(client, staff_hea
     assert resp.json()["error_code"] == "VALIDATION_ERROR"
 
     # 顺序正确的更新照常通过
-    ok = await client.put(
-        f"{BASE}/{ann_id}", json={"end_time": _future(5)}, headers=staff_headers
-    )
+    ok = await client.put(f"{BASE}/{ann_id}", json={"end_time": _future(5)}, headers=staff_headers)
     assert ok.status_code == 200, ok.text
 
 
@@ -103,7 +101,9 @@ async def test_partial_update_detects_window_becoming_inverted(client, staff_hea
 
 @pytest.mark.asyncio
 async def test_schedule_fields_persist_and_can_be_cleared(client, staff_headers, db_session):
-    ann_id = await _create(client, staff_headers, start_time=_future(1), end_time=_future(2), sort_order=7)
+    ann_id = await _create(
+        client, staff_headers, start_time=_future(1), end_time=_future(2), sort_order=7
+    )
 
     put = await client.put(f"{BASE}/{ann_id}", json={"sort_order": 3}, headers=staff_headers)
     assert put.status_code == 200, put.text
@@ -119,8 +119,10 @@ async def test_schedule_fields_persist_and_can_be_cleared(client, staff_headers,
     assert cleared.json()["end_time"] is None
 
     row = (
-        await db_session.execute(select(Announcement).where(Announcement.id == ann_id))
-    ).scalars().one()
+        (await db_session.execute(select(Announcement).where(Announcement.id == ann_id)))
+        .scalars()
+        .one()
+    )
     assert row.start_time is None and row.end_time is None
 
 
@@ -131,9 +133,7 @@ def test_schema_treats_naive_datetime_as_utc_not_local():
     机器时区恰好是 UTC 时"按本地时区折算"的错法也一样能过，属于假阴性。
     这里断言的是 tzinfo 与钟点本身，与测试机时区无关。
     """
-    parsed = AnnouncementCreate(
-        title="t", content="c", start_time="2026-09-29T10:00:00"
-    ).start_time
+    parsed = AnnouncementCreate(title="t", content="c", start_time="2026-09-29T10:00:00").start_time
     assert parsed is not None
     assert parsed.tzinfo is not None, "朴素入参必须补上 tzinfo"
     assert parsed.utcoffset() == timedelta(0), "补的必须是 UTC，不是本地偏移"
@@ -158,8 +158,10 @@ async def test_naive_datetime_is_treated_as_utc_not_local(client, staff_headers,
     """
     ann_id = await _create(client, staff_headers, start_time="2026-09-29T10:00:00")
     row = (
-        await db_session.execute(select(Announcement).where(Announcement.id == ann_id))
-    ).scalars().one()
+        (await db_session.execute(select(Announcement).where(Announcement.id == ann_id)))
+        .scalars()
+        .one()
+    )
     assert row.start_time is not None
     assert row.start_time.strftime("%Y-%m-%dT%H:%M") == "2026-09-29T10:00"
 
@@ -230,7 +232,9 @@ def recorded_purges(monkeypatch):
     import backend.api.announcement as ann_api
 
     calls: list[str] = []
-    monkeypatch.setattr(ann_api, "purge_frontend_page_cache", lambda reason="": calls.append(reason))
+    monkeypatch.setattr(
+        ann_api, "purge_frontend_page_cache", lambda reason="": calls.append(reason)
+    )
     return calls
 
 
@@ -287,7 +291,9 @@ async def test_write_paths_emit_bus_events(client, staff_headers, recorded_annou
 
 
 @pytest.mark.asyncio
-async def test_toggle_emits_updated_not_created(client, staff_headers, recorded_announcement_events):
+async def test_toggle_emits_updated_not_created(
+    client, staff_headers, recorded_announcement_events
+):
     ann_id = await _create(client, staff_headers, title="开关验证", start_time=_past(1))
     recorded_announcement_events.clear()
 

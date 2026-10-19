@@ -17,9 +17,7 @@ class TestLikeEndpointsCheckStatus:
     """Predict red when reverted: status check removed from like queries."""
 
     @pytest.mark.asyncio
-    async def test_guestbook_like_rejects_pending(
-        self, client: AsyncClient, db_session
-    ):
+    async def test_guestbook_like_rejects_pending(self, client: AsyncClient, db_session):
         """Pending guestbook entry should not be likable (404)."""
         from backend.models.guestbook import GuestbookEntry
 
@@ -32,12 +30,12 @@ class TestLikeEndpointsCheckStatus:
         await db_session.commit()
 
         r = await client.post(f"/api/guestbook/{entry.id}/like")
-        assert r.status_code == 404, f"Expected 404 for pending entry, got {r.status_code}: {r.text}"
+        assert r.status_code == 404, (
+            f"Expected 404 for pending entry, got {r.status_code}: {r.text}"
+        )
 
     @pytest.mark.asyncio
-    async def test_guestbook_like_rejects_spam(
-        self, client: AsyncClient, db_session
-    ):
+    async def test_guestbook_like_rejects_spam(self, client: AsyncClient, db_session):
         """Spam guestbook entry should not be likable (404)."""
         from backend.models.guestbook import GuestbookEntry
 
@@ -53,9 +51,7 @@ class TestLikeEndpointsCheckStatus:
         assert r.status_code == 404, f"Expected 404 for spam entry, got {r.status_code}: {r.text}"
 
     @pytest.mark.asyncio
-    async def test_comment_like_rejects_pending(
-        self, client: AsyncClient, db_session, test_post
-    ):
+    async def test_comment_like_rejects_pending(self, client: AsyncClient, db_session, test_post):
         """Pending comment should not be likable (404)."""
         from backend.models.blog import Comment
 
@@ -69,12 +65,12 @@ class TestLikeEndpointsCheckStatus:
         await db_session.commit()
 
         r = await client.post(f"/api/comments/{comment.id}/like")
-        assert r.status_code == 404, f"Expected 404 for pending comment, got {r.status_code}: {r.text}"
+        assert r.status_code == 404, (
+            f"Expected 404 for pending comment, got {r.status_code}: {r.text}"
+        )
 
     @pytest.mark.asyncio
-    async def test_comment_like_rejects_spam(
-        self, client: AsyncClient, db_session, test_post
-    ):
+    async def test_comment_like_rejects_spam(self, client: AsyncClient, db_session, test_post):
         """Spam comment should not be likable (404)."""
         from backend.models.blog import Comment
 
@@ -91,9 +87,7 @@ class TestLikeEndpointsCheckStatus:
         assert r.status_code == 404, f"Expected 404 for spam comment, got {r.status_code}: {r.text}"
 
     @pytest.mark.asyncio
-    async def test_guestbook_like_allows_approved(
-        self, client: AsyncClient, db_session
-    ):
+    async def test_guestbook_like_allows_approved(self, client: AsyncClient, db_session):
         """Approved guestbook entry should still be likable."""
         from backend.models.guestbook import GuestbookEntry
 
@@ -106,14 +100,14 @@ class TestLikeEndpointsCheckStatus:
         await db_session.commit()
 
         r = await client.post(f"/api/guestbook/{entry.id}/like")
-        assert r.status_code == 200, f"Expected 200 for approved entry, got {r.status_code}: {r.text}"
+        assert r.status_code == 200, (
+            f"Expected 200 for approved entry, got {r.status_code}: {r.text}"
+        )
         data = r.json()
         assert data["likes_count"] == 1
 
     @pytest.mark.asyncio
-    async def test_comment_like_allows_approved(
-        self, client: AsyncClient, db_session, test_post
-    ):
+    async def test_comment_like_allows_approved(self, client: AsyncClient, db_session, test_post):
         """Approved comment should still be likable."""
         from backend.models.blog import Comment
 
@@ -127,6 +121,8 @@ class TestLikeEndpointsCheckStatus:
         await db_session.commit()
 
         r = await client.post(f"/api/comments/{comment.id}/like")
-        assert r.status_code == 200, f"Expected 200 for approved comment, got {r.status_code}: {r.text}"
+        assert r.status_code == 200, (
+            f"Expected 200 for approved comment, got {r.status_code}: {r.text}"
+        )
         data = r.json()
         assert data["likes_count"] == 1

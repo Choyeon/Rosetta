@@ -1649,9 +1649,7 @@ async def update_post(
     # 「服务器内部错误」，作者不知道是 slug 的问题）
     new_slug = update_data.get("slug")
     if new_slug and new_slug != post.slug:
-        taken = await db.scalar(
-            select(Post.id).where(Post.slug == new_slug, Post.id != post.id)
-        )
+        taken = await db.scalar(select(Post.id).where(Post.slug == new_slug, Post.id != post.id))
         if taken is not None:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -2360,6 +2358,7 @@ async def get_site_stats(
     contents = posts_result.scalars().all()
     total_posts = len(contents)
     total_words = 0
+
     # 逐篇处理，避免内存和类型问题（Post.content 可能为 dict、str、None）。
     # 这段是纯 CPU 的正则活：几百篇文章 = 几千次 re.sub、数 MB 字符串搬运，
     # 直接在协程里跑会占住事件循环，冷缓存首请求期间同实例所有请求都被拖慢。
@@ -3345,9 +3344,7 @@ async def _ensure_seo_feed_enabled(db, key: str, env_key: str) -> None:
     from backend.core.config import settings
     from backend.services.site_settings import bool_of, read_group
 
-    if not bool_of(
-        await read_group("features", db), key, bool(getattr(settings, env_key, True))
-    ):
+    if not bool_of(await read_group("features", db), key, bool(getattr(settings, env_key, True))):
         is_rss = key == "enable_rss"
         raise HTTPException(
             status_code=404,
@@ -3472,6 +3469,7 @@ def _locale_path_variants(path: str) -> dict[str, str]:
         else:
             variants[code] = f"/{code}{path}"
     return variants
+
 
 # 固定公开路由：(路径, 更新频率, 优先级)。
 # /search（noindex）、/login、/register、/oobe、/admin/** 一律不收录。

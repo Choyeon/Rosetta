@@ -281,9 +281,7 @@ async def admin_create_album(
     await db.refresh(album)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
     _purge_frontend(f"创建相册 {album.id}")
-    await bus.do_action(
-        "album.created", album, webhook_payload=_album_payload(album)
-    )
+    await bus.do_action("album.created", album, webhook_payload=_album_payload(album))
     return AlbumResponse.model_validate(album)
 
 
@@ -311,9 +309,7 @@ async def admin_update_album(
     await db.refresh(album)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
     _purge_frontend(f"更新相册 {album_id}")
-    await bus.do_action(
-        "album.updated", album, webhook_payload=_album_payload(album)
-    )
+    await bus.do_action("album.updated", album, webhook_payload=_album_payload(album))
     return AlbumResponse.model_validate(album)
 
 
@@ -414,9 +410,7 @@ async def admin_create_photo(
     await _refresh_photo_count(db, data.album_id)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
     _purge_frontend(f"新增照片 {photo.id}")
-    await bus.do_action(
-        "photo.created", photo, webhook_payload=_photo_payload(photo)
-    )
+    await bus.do_action("photo.created", photo, webhook_payload=_photo_payload(photo))
     return PhotoResponse.model_validate(photo)
 
 
@@ -458,9 +452,7 @@ async def admin_update_photo(
         await _refresh_photo_count(db, photo.album_id)
     await cache.delete_pattern(make_cache_key("gallery", "*"))
     _purge_frontend(f"更新照片 {photo_id}")
-    await bus.do_action(
-        "photo.updated", photo, webhook_payload=_photo_payload(photo)
-    )
+    await bus.do_action("photo.updated", photo, webhook_payload=_photo_payload(photo))
     return PhotoResponse.model_validate(photo)
 
 
@@ -506,9 +498,7 @@ async def admin_delete_photos_batch(
     # 与单条删除一致（photo.deleted），否则监听方会因为管理员用了多选就收不到通知；
     # 代价是这条 hook 不提供位置参数，监听回调一律读 webhook_payload 里的 id。
     for photo_id, album_id in sorted(rows):
-        await bus.do_action(
-            "photo.deleted", webhook_payload={"id": photo_id, "album_id": album_id}
-        )
+        await bus.do_action("photo.deleted", webhook_payload={"id": photo_id, "album_id": album_id})
 
     missing = sorted(set(ids) - set(found_ids))
     message = f"已删除 {len(found_ids)} 张照片"

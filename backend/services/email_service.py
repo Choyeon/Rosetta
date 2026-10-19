@@ -249,7 +249,9 @@ class EmailService:
             "port": int_of(cfg, "smtp_port", int(self.smtp_port or 0)),
             "user": pick("smtp_user", self.smtp_user),
             "password": pick("smtp_password", self.smtp_password),
-            "tls": cfg.get("use_tls") if isinstance(cfg.get("use_tls"), bool) else self.smtp_use_tls,
+            "tls": cfg.get("use_tls")
+            if isinstance(cfg.get("use_tls"), bool)
+            else self.smtp_use_tls,
             "from_email": pick("from_address", self.from_email),
             "from_name": pick("from_name", self.from_name),
         }
@@ -330,7 +332,9 @@ class EmailService:
 
             def send() -> None:
                 if smtp_cfg["tls"]:
-                    smtp = smtplib.SMTP_SSL(smtp_cfg["host"], smtp_cfg["port"], timeout=_SMTP_TIMEOUT)
+                    smtp = smtplib.SMTP_SSL(
+                        smtp_cfg["host"], smtp_cfg["port"], timeout=_SMTP_TIMEOUT
+                    )
                 else:
                     smtp = smtplib.SMTP(smtp_cfg["host"], smtp_cfg["port"], timeout=_SMTP_TIMEOUT)
                     smtp.starttls()

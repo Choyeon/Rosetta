@@ -250,9 +250,7 @@ async def test_default_robots_txt_has_spaced_disallow_and_locale_admin(
     import backend.core.cache as _c
 
     # 清空自定义全文（上一例写过 SEO_ROBOTS；站点配置是共享表，不留空就会读到它）
-    await client.put(
-        "/api/seo/config", json={"SEO_ROBOTS": ""}, headers=staff_headers
-    )
+    await client.put("/api/seo/config", json={"SEO_ROBOTS": ""}, headers=staff_headers)
     await _c.cache.delete_pattern("seo:robots_txt")
     r = await client.get("/api/seo/robots.txt")
     assert r.status_code == 200

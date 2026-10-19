@@ -90,10 +90,7 @@ def validate_input(inp: AvatarInput) -> dict[str, str | None]:
         "avatar": inp.avatar
         if (
             inp.avatar
-            and (
-                WEBSITE_URL_RE.match(inp.avatar.strip())
-                or is_first_party_avatar(inp.avatar)
-            )
+            and (WEBSITE_URL_RE.match(inp.avatar.strip()) or is_first_party_avatar(inp.avatar))
         )
         else None,
     }

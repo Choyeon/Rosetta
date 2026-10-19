@@ -132,7 +132,9 @@ class TestSecurityMiddleware:
             "run-ad-auction",
         )
         tokens = {item.split("=")[0] for item in PERMISSIONS_POLICY.replace(" ", "").split(",")}
-        assert tokens.isdisjoint(removed), f"Permissions-Policy 含已下线令牌: {tokens & set(removed)}"
+        assert tokens.isdisjoint(removed), (
+            f"Permissions-Policy 含已下线令牌: {tokens & set(removed)}"
+        )
         # 反向保底：收紧的那 4 项必须还在，别把修复做成"整条头删掉"
         compact = PERMISSIONS_POLICY.replace(" ", "")
         for kept in ("camera", "microphone", "geolocation", "payment"):
