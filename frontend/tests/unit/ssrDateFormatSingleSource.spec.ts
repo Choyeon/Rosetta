@@ -79,11 +79,14 @@ describe('公开 SSR 页不得再出现 toLocaleDateString / toLocaleTimeString'
   it('pages/**（排除后台与 ssr:false 反选页）零命中', () => {
     const offenders: string[] = []
     for (const file of walk(`${ROOT}/pages`)) {
-      const posix = `/${file.replace(`${ROOT}/`, '')}`
-      if (posix.includes('/admin/')) continue
-      if (SPA_PATHS.some(p => posix.startsWith(`/${p}/`) || posix === `/${p}`)) continue
+      // rel 形如 pages/admin/tools/cache.vue → 路由形态 /admin/tools/cache
+      const route = `/${file
+        .replace(`${ROOT}/pages/`, '')
+        .replace(/\.vue$/u, '')}`
+      if (route.startsWith('/admin')) continue
+      if (SPA_PATHS.some(p => route === p || route.startsWith(`${p}/`))) continue
       const calls = realCalls(readFileSync(file, 'utf8'))
-      if (calls.length > 0) offenders.push(`${posix} :: ${calls.join(' | ')}`)
+      if (calls.length > 0) offenders.push(`${route} :: ${calls.join(' | ')}`)
     }
     expect(
       offenders,

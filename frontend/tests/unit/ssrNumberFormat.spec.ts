@@ -53,9 +53,13 @@ describe('SSR 面不得出现无 locale 的 Intl 数字格式化', () => {
     for (const sub of SCAN_DIRS) {
       for (const file of walk(`${ROOT}/${sub}`)) {
         const rel = file.replace(`${ROOT}/`, '')
-        const posix = `/${rel}`
-        if (posix.includes('/admin/')) continue
-        if (SPA_PATHS.some(p => posix.startsWith(`/${p}`))) continue
+        const relNoExt = rel.replace(/\.(vue|ts)$/u, '')
+        if (relNoExt.includes('/admin')) continue
+        // 反选页按**路由形态**比对：pages/account/index.vue → /account/index
+        const route = relNoExt.startsWith('pages/')
+          ? `/${relNoExt.slice('pages/'.length)}`
+          : `/${relNoExt}`
+        if (SPA_PATHS.some(p => route === p || route.startsWith(`${p}/`))) continue
         if (bare.test(readFileSync(file, 'utf8'))) offenders.push(rel)
       }
     }
