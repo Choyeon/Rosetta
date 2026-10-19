@@ -98,6 +98,53 @@ from backend.schemas.gallery import (
 T = TypeVar("T")
 
 
+# ==================== 校验口径单源 ====================
+# 下面三条规则原先各自内联在 4 份 password/new_password 与 5 份
+# website/github/author_website 的 field_validator 里，逐字相同。改一次口径要动 9 个地方，
+# 漏一处就出现"注册要求 8 位 + 大写、改密码只查长度"这类同字段不同 schema 互相判逆。
+# 装饰器仍按 schema 声明（Pydantic 需要它绑定具体字段名），但**规则只在这里改**。
+
+
+def _normalize_optional_url(v: str | None) -> str | None:
+    """缺 scheme 的 URL 补 https://；空值原样返回。"""
+    if v and not v.startswith(("http://", "https://")):
+        return f"https://{v}"
+    return v
+
+
+def _require_absolute_url(v: str | None) -> str | None:
+    """访客留言/评论的作者网站：**不补 scheme，直接拒**，并限长 200。
+
+    与 `_normalize_optional_url` 是两条不同策略，不是重复实现：用户填的
+    "example.com/a" 自动补成 https 会静默改写一个点不进任何地方的地址，而评论里的
+    链接是对外展示的，猜错 scheme 等于替访客伪造一条出站链接。注册资料走宽容档，
+    UGC 走严格档。
+
+    200 这条目前两个调用点的字段本身已是 `max_length=200`，所以判不到；留着是给
+    下一个不带长度约束的字段兜底，不要当成"已经校验过长度"。
+    """
+    if v is None or v == "":
+        return None
+    if not v.startswith(("http://", "https://")):
+        raise ValueError("网站必须以 http:// 或 https:// 开头")
+    if len(v) > 200:
+        raise ValueError("网站长度不能超过 200 字符")
+    return v
+
+
+def _check_password_strength(v: str) -> str:
+    """密码强度：至少 8 位，且含大写、小写与数字。"""
+    if len(v) < 8:
+        raise ValueError("密码长度必须至少 8 个字符")
+    if not any(c.isupper() for c in v):
+        raise ValueError("密码必须包含至少一个大写字母")
+    if not any(c.islower() for c in v):
+        raise ValueError("密码必须包含至少一个小写字母")
+    if not any(c.isdigit() for c in v):
+        raise ValueError("密码必须包含至少一个数字")
+    return v
+
+
 # ==================== 基础响应模型 ====================
 
 
@@ -209,10 +256,8 @@ class UserBase(BaseModel):
     @field_validator("website", "github")
     @classmethod
     def validate_url(cls, v: str | None) -> str | None:
-        """验证 URL 格式"""
-        if v and not v.startswith(("http://", "https://")):
-            return f"https://{v}"
-        return v
+        """验证 URL 格式（口径单源见 _normalize_optional_url）"""
+        return _normalize_optional_url(v)
 
 
 class UserCreate(UserBase):
@@ -232,16 +277,8 @@ class UserCreate(UserBase):
     @field_validator("password")
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        """验证密码强度"""
-        if len(v) < 8:
-            raise ValueError("密码长度必须至少 8 个字符")
-        if not any(c.isupper() for c in v):
-            raise ValueError("密码必须包含至少一个大写字母")
-        if not any(c.islower() for c in v):
-            raise ValueError("密码必须包含至少一个小写字母")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("密码必须包含至少一个数字")
-        return v
+        """验证密码强度（口径单源见 _check_password_strength）"""
+        return _check_password_strength(v)
 
 
 class UserUpdate(BaseModel):
@@ -402,16 +439,8 @@ class PasswordChange(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        """验证密码强度"""
-        if len(v) < 8:
-            raise ValueError("密码长度必须至少 8 个字符")
-        if not any(c.isupper() for c in v):
-            raise ValueError("密码必须包含至少一个大写字母")
-        if not any(c.islower() for c in v):
-            raise ValueError("密码必须包含至少一个小写字母")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("密码必须包含至少一个数字")
-        return v
+        """验证密码强度（口径单源见 _check_password_strength）"""
+        return _check_password_strength(v)
 
 
 class PasswordReset(BaseModel):
@@ -431,16 +460,8 @@ class PasswordReset(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        """验证密码强度"""
-        if len(v) < 8:
-            raise ValueError("密码长度必须至少 8 个字符")
-        if not any(c.isupper() for c in v):
-            raise ValueError("密码必须包含至少一个大写字母")
-        if not any(c.islower() for c in v):
-            raise ValueError("密码必须包含至少一个小写字母")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("密码必须包含至少一个数字")
-        return v
+        """验证密码强度（口径单源见 _check_password_strength）"""
+        return _check_password_strength(v)
 
 
 class AdminUserCreate(BaseModel):
@@ -478,24 +499,14 @@ class AdminUserCreate(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password_strength(cls, v: str) -> str:
-        """验证密码强度"""
-        if len(v) < 8:
-            raise ValueError("密码长度必须至少 8 个字符")
-        if not any(c.isupper() for c in v):
-            raise ValueError("密码必须包含至少一个大写字母")
-        if not any(c.islower() for c in v):
-            raise ValueError("密码必须包含至少一个小写字母")
-        if not any(c.isdigit() for c in v):
-            raise ValueError("密码必须包含至少一个数字")
-        return v
+        """验证密码强度（口径单源见 _check_password_strength）"""
+        return _check_password_strength(v)
 
     @field_validator("website", "github")
     @classmethod
     def validate_url(cls, v: str | None) -> str | None:
-        """验证 URL 格式"""
-        if v and not v.startswith(("http://", "https://")):
-            return f"https://{v}"
-        return v
+        """验证 URL 格式（口径单源见 _normalize_optional_url）"""
+        return _normalize_optional_url(v)
 
 
 class AdminUserUpdateFull(BaseModel):
@@ -535,10 +546,8 @@ class AdminUserUpdateFull(BaseModel):
     @field_validator("website", "github")
     @classmethod
     def validate_url(cls, v: str | None) -> str | None:
-        """验证 URL 格式"""
-        if v and not v.startswith(("http://", "https://")):
-            return f"https://{v}"
-        return v
+        """验证 URL 格式（口径单源见 _normalize_optional_url）"""
+        return _normalize_optional_url(v)
 
 
 class UserDetailResponse(UserResponse):
@@ -1202,13 +1211,8 @@ class CommentBase(BaseModel):
     @field_validator("author_website")
     @classmethod
     def _validate_website(cls, v: str | None) -> str | None:
-        if v is None or v == "":
-            return None
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("网站必须以 http:// 或 https:// 开头")
-        if len(v) > 200:
-            raise ValueError("网站长度不能超过 200 字符")
-        return v
+        """口径单源见 _require_absolute_url"""
+        return _require_absolute_url(v)
 
 
 class CommentCreate(CommentBase):
@@ -2338,13 +2342,8 @@ class GuestbookEntryBase(BaseModel):
     @field_validator("author_website")
     @classmethod
     def _validate_website(cls, v: str | None) -> str | None:
-        if v is None or v == "":
-            return None
-        if not v.startswith(("http://", "https://")):
-            raise ValueError("网站必须以 http:// 或 https:// 开头")
-        if len(v) > 200:
-            raise ValueError("网站长度不能超过 200 字符")
-        return v
+        """口径单源见 _require_absolute_url"""
+        return _require_absolute_url(v)
 
 
 class GuestbookEntryCreate(GuestbookEntryBase):

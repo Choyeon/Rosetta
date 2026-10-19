@@ -6,13 +6,33 @@
 一旦加固退化成空操作，这里先红。
 """
 
+import inspect
+
 import pytest
 from pydantic import BaseModel, ValidationError
 
-from backend.schemas import AdminUserUpdateFull, SiteSettingItem
+from backend.schemas import (
+    AdminUserCreate,
+    AdminUserUpdateFull,
+    CommentBase,
+    GuestbookEntryBase,
+    PasswordChange,
+    PasswordReset,
+    SiteSettingItem,
+    UserBase,
+    UserCreate,
+)
 from backend.schemas.activity import ActivityCreate
 from backend.schemas.gallery import PhotoUpdate
 from backend.schemas.strict_config import apply_strict_extra_forbid
+
+
+def _validator_of(schema, field):
+    """取该 schema 上绑定到 field 的那个 field_validator 原函数。"""
+    info = schema.__pydantic_decorators__.field_validators
+    matched = [d for d in info.values() if field in d.fields]
+    assert matched, f"{schema.__name__} 上没有 {field} 的 field_validator"
+    return matched[0].func
 
 
 @pytest.mark.parametrize(
@@ -69,3 +89,78 @@ def test_helper_rebuilds_and_forbids():
     assert _Probe.model_config["extra"] == "forbid"
     with pytest.raises(ValidationError):
         _Probe.model_validate({"a": 2, "junk": 3})
+
+
+@pytest.mark.parametrize(
+    "schema,field",
+    [
+        (UserCreate, "password"),
+        (PasswordChange, "new_password"),
+        (PasswordReset, "new_password"),
+        (AdminUserCreate, "password"),
+    ],
+)
+def test_password_strength_rule_is_single_sourced(schema, field):
+    """4 份密码校验必须只调用 `_check_password_strength`，不得再内联一份。
+
+    这条规则原先在 4 个 schema 里逐字复制，改一次口径要动 4 处；漏一处的表现是
+    "注册要求大写、改密码不要求"，同一账号两条路径互相判逆。
+    """
+    source = inspect.getsource(_validator_of(schema, field))
+    assert "_check_password_strength" in source
+    assert "密码必须包含至少一个大写字母" not in source
+
+
+@pytest.mark.parametrize(
+    "schema,field",
+    [(UserBase, "website"), (AdminUserCreate, "github"), (AdminUserUpdateFull, "github")],
+)
+def test_profile_url_rule_is_single_sourced(schema, field):
+    """资料类 URL 的唯一口径是 `_normalize_optional_url`（缺 scheme 补 https）。"""
+    source = inspect.getsource(_validator_of(schema, field))
+    assert "_normalize_optional_url" in source
+    assert 'f"https://' not in source
+
+
+@pytest.mark.parametrize(
+    "schema,field",
+    [(CommentBase, "author_website"), (GuestbookEntryBase, "author_website")],
+)
+def test_ugc_url_rule_is_single_sourced(schema, field):
+    """UGC 的 URL 走严格档 `_require_absolute_url`（拒缺 scheme，空值归 None）。
+
+    它和资料档是**两条策略**不是重复实现，所以各自收口、不合并成一个函数。
+    """
+    source = inspect.getsource(_validator_of(schema, field))
+    assert "_require_absolute_url" in source
+    assert "网站必须以 http:// 或 https:// 开头" not in source
+
+
+def test_password_rule_still_rejects_weak_values():
+    """收口不许改行为：三条强度规则逐条仍然生效，强密码仍然放行。"""
+    base = {"username": "tester1", "email": "t@example.com"}
+    for value, msg in [
+        ("abcd1234", "一个大写字母"),
+        ("ABCD1234", "一个小写字母"),
+        ("abcdefgh", "一个数字"),
+    ]:
+        with pytest.raises(ValidationError) as excinfo:
+            UserCreate.model_validate({**base, "password": value})
+        assert msg in str(excinfo.value)
+    assert UserCreate.model_validate({**base, "password": "Abcdefg1"}).password == "Abcdefg1"
+
+
+def test_profile_url_still_prepends_https():
+    base = {"username": "tester1", "email": "t@example.com"}
+    got = UserBase.model_validate({**base, "website": "example.com"})
+    assert got.website == "https://example.com"
+    assert UserBase.model_validate({**base, "website": None}).website is None
+
+
+def test_ugc_url_still_rejects_missing_scheme_and_maps_empty_to_none():
+    base = {"content": "hello", "author_name": "nick"}
+    with pytest.raises(ValidationError):
+        CommentBase.model_validate({**base, "author_website": "example.com"})
+    assert CommentBase.model_validate({**base, "author_website": ""}).author_website is None
+    got = CommentBase.model_validate({**base, "author_website": "https://e.com"})
+    assert got.author_website == "https://e.com"
