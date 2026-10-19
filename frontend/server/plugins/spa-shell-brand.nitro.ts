@@ -27,27 +27,30 @@ let cachedAt = 0
 let inflight: Promise<string> | null = null
 
 /** 读 basic.site_name + seo.default_title（留空回落 basic.subtitle），产出壳页标题。 */
+async function fetchShellTitle(): Promise<string> {
+  try {
+    const url = resolveBackendEndpoint(useRuntimeConfig(), '/settings/public')
+    const res = await $fetch<PublicGroupsResponse>(url, {
+      headers: { accept: 'application/json' },
+      timeout: BRAND_TIMEOUT_MS
+    })
+    const basic = res?.groups?.basic ?? {}
+    const seo = res?.groups?.seo ?? {}
+    return buildShellTitle(
+      String(basic.site_name ?? ''),
+      String(seo.default_title ?? '') || String(basic.subtitle ?? '')
+    )
+  } catch {
+    // 后端不可用 / 缺 SSR baseURL 配置：留空让调用方原样返回构建期壳
+    return ''
+  }
+}
+
 async function loadShellTitle(): Promise<string> {
   if (cachedAt > 0 && Date.now() - cachedAt < BRAND_TTL_MS) return cachedTitle
   if (inflight) return inflight
   inflight = (async () => {
-    let title = ''
-    try {
-      const url = resolveBackendEndpoint(useRuntimeConfig(), '/settings/public')
-      const res = await $fetch<PublicGroupsResponse>(url, {
-        headers: { accept: 'application/json' },
-        timeout: BRAND_TIMEOUT_MS
-      })
-      const basic = res?.groups?.basic ?? {}
-      const seo = res?.groups?.seo ?? {}
-      title = buildShellTitle(
-        String(basic.site_name ?? ''),
-        String(seo.default_title ?? '') || String(basic.subtitle ?? '')
-      )
-    } catch {
-      // 后端不可用 / 缺 SSR baseURL 配置：留空让调用方原样返回构建期壳
-      title = ''
-    }
+    const title = await fetchShellTitle()
     // 失败结果同样缓存，避免故障期每请求一次往返
     cachedTitle = title
     cachedAt = Date.now()

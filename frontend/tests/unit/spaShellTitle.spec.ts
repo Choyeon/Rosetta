@@ -111,15 +111,15 @@ describe('buildShellTitle / rewriteShellTitle', () => {
 
 describe('spa-shell-brand 插件接线', () => {
   it('render:html 与 beforeResponse 两道钩子都挂，且都过 isSpaShellPath 过滤', () => {
-    expect(shellPlugin).toContain("hook(\n      'render:html'")
-    expect(shellPlugin).toContain("hook(\n      'beforeResponse'")
+    expect(shellPlugin).toMatch(/hook\(\s*'render:html'/)
+    expect(shellPlugin).toMatch(/hook\(\s*'beforeResponse'/)
     expect(shellPlugin.match(/isSpaShellPath\(/g)?.length).toBeGreaterThanOrEqual(2)
   })
 
   it('品牌源是 /settings/public（分组真源），并带超时与失败留空', () => {
-    expect(shellPlugin).toContain("'/settings/public'")
+    expect(shellPlugin).toMatch(/\/settings\/public/)
     expect(shellPlugin).toMatch(/timeout: BRAND_TIMEOUT_MS/)
-    expect(shellPlugin).toMatch(/catch \{\s*\n\s*\/\/ [^\n]*\n\s*title = ''/)
+    expect(shellPlugin).toMatch(/catch \{\s*\n\s*\/\/[^\n]*\n\s*return ''/)
     expect(shellPlugin).toContain('seo.default_title')
   })
 
