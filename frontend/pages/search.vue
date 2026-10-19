@@ -162,6 +162,7 @@ import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
+import { pageWindow } from '~~/lib/pagination'
 import { useI18n } from 'vue-i18n'
 import { Search, SearchX, ChevronLeft, ChevronRight } from '@lucide/vue'
 import { ref, computed, watch } from 'vue'
@@ -193,17 +194,7 @@ const posts = computed<Post[]>(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
 const totalPages = computed(() => Math.ceil(total.value / pageSize.value) || 1)
 
-const visiblePages = computed(() => {
-  const pages: number[] = []
-  const max = 5
-  let start = Math.max(1, currentPage.value - Math.floor(max / 2))
-  const end = Math.min(totalPages.value, start + max - 1)
-  if (end - start + 1 < max) {
-    start = Math.max(1, end - max + 1)
-  }
-  for (let i = start; i <= end; i++) pages.push(i)
-  return pages
-})
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
 const runSearch = () => {
   const q = keyword.value.trim()

@@ -307,6 +307,7 @@ import { useAPI, apiFetch } from '~~/composables/useApi'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
+import { pageWindow } from '~~/lib/pagination'
 
 definePageMeta({ layout: 'default' })
 
@@ -406,19 +407,7 @@ watch([currentPage, locale], () => {
 
 const total = computed(() => gbResp.value?.total ?? 0)
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
-const visiblePages = computed(() => {
-  const pages: number[] = []
-  const max = 5
-  let start = Math.max(1, currentPage.value - Math.floor(max / 2))
-  const end = Math.min(totalPages.value, start + max - 1)
-  if (end - start + 1 < max) {
-    start = Math.max(1, end - max + 1)
-  }
-  for (let i = start; i <= end; i++) {
-    pages.push(i)
-  }
-  return pages
-})
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return

@@ -227,6 +227,7 @@ import { Button } from '~~/components/ui/button'
 import { ChevronLeft, ChevronRight, ExternalLink, Globe, MessageSquare, UserRound } from '@lucide/vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
 import { useAuthStore } from '~~/stores/auth'
+import { pageWindow } from '~~/lib/pagination'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default' })
@@ -332,15 +333,7 @@ useContentStatus(profileError, profileMissing)
 const notFound = computed(() => isContentMissing(profileError.value, profileMissing.value))
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const visiblePages = computed(() => {
-  const pages: number[] = []
-  const max = 5
-  let start = Math.max(1, currentPage.value - Math.floor(max / 2))
-  const end = Math.min(totalPages.value, start + max - 1)
-  if (end - start + 1 < max) start = Math.max(1, end - max + 1)
-  for (let i = start; i <= end; i++) pages.push(i)
-  return pages
-})
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
 useSeo({
   // 不存在的作者不能拿用户名拼标题（任务 85 的同一口径：404 页标题不得由 slug 伪造）

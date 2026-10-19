@@ -126,6 +126,7 @@ import PostCard from '~~/components/PostCard.vue'
 import TagBadge from '~~/components/TagBadge.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import { Button } from '~~/components/ui/button'
+import { pageWindow } from '~~/lib/pagination'
 import { ChevronLeft, ChevronRight, Tags } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 
@@ -209,15 +210,7 @@ const tagNotFound = computed(() => isContentMissing(tagErr.value, tagMissing.val
 useContentStatus(tagErr, tagMissing)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
-const visiblePages = computed(() => {
-  const pages: number[] = []
-  const max = 5
-  let start = Math.max(1, currentPage.value - Math.floor(max / 2))
-  const end = Math.min(totalPages.value, start + max - 1)
-  if (end - start + 1 < max) start = Math.max(1, end - max + 1)
-  for (let i = start; i <= end; i++) pages.push(i)
-  return pages
-})
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
 useHead(() => ({
   title: tagName.value ? `${tagName.value} · ${t('tags.title', '标签')}` : t('tags.title', '标签'),

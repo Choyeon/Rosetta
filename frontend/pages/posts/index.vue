@@ -253,6 +253,7 @@ import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight, List, X, RefreshCw, ChevronDown } from '~~/lib/lucide-svg-icons'
+import { pageWindow } from '~~/lib/pagination'
 import { watch, computed, onMounted, onBeforeUnmount, getCurrentInstance } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -362,19 +363,7 @@ const loading = computed(() => pending.value && posts.value.length === 0)
 // 翻页/换筛选时 data 仍是上一批：没有 busy 的话界面完全静止，用户会以为点击没生效
 const busy = computed(() => pending.value)
 
-const visiblePages = computed(() => {
-  const pages: number[] = []
-  const max = 5
-  let start = Math.max(1, currentPage.value - Math.floor(max / 2))
-  const end = Math.min(totalPages.value, start + max - 1)
-  if (end - start + 1 < max) {
-    start = Math.max(1, end - max + 1)
-  }
-  for (let i = start; i <= end; i++) {
-    pages.push(i)
-  }
-  return pages
-})
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
 // 分享链接上的页码可能已经越界（比如文章删了一大批）：拉回来再请求，
 // 否则用户拿到的是一个"第 7 页，共 3 页"的空列表且无从自救。
