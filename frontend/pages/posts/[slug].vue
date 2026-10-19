@@ -447,7 +447,7 @@
             </h3>
 
             <Card
-              v-if="authStore.isAuthenticated"
+              v-if="canCommentForm"
               class="mb-8"
             >
               <CardContent class="p-5">
@@ -470,18 +470,71 @@
                     <X data-icon="inline-start" />
                   </Button>
                 </div>
+                <!-- 匿名身份字段（与留言板同构）：后台「允许访客匿名评论」打开后才会走到这里，
+                     昵称在后端是硬要求（422 AUTHOR_NAME_REQUIRED），邮箱/网站可选。 -->
+                <div
+                  v-if="!authStore.isAuthenticated"
+                  class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3"
+                >
+                  <Input
+                    v-model="guestForm.author_name"
+                    :placeholder="t('post.yourName', '昵称')"
+                    :aria-label="t('post.yourName', '昵称')"
+                    :disabled="submittingComment"
+                    maxlength="30"
+                  />
+                  <Input
+                    v-model="guestForm.author_email"
+                    type="email"
+                    :placeholder="t('post.yourEmail', '邮箱（不会公开）')"
+                    :aria-label="t('post.yourEmail', '邮箱（不会公开）')"
+                    :disabled="submittingComment"
+                    maxlength="254"
+                  />
+                  <Input
+                    v-model="guestForm.author_website"
+                    :placeholder="t('post.yourWebsite', '网站（可选）')"
+                    :aria-label="t('post.yourWebsite', '网站（可选）')"
+                    :disabled="submittingComment"
+                    maxlength="200"
+                  />
+                </div>
                 <Textarea
                   ref="commentTextareaRef"
                   v-model="commentContent"
+                  :maxlength="commentMaxLength"
+                  :disabled="submittingComment"
                   :aria-label="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
                   :placeholder="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
                   rows="4"
                   class="resize-none"
                 />
-                <div class="flex justify-end mt-4">
+                <div class="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                  <span v-if="site.comments.value.require_approval">
+                    {{ t('post.pendingNotice', '评论提交后需管理员审核，通过才会公开显示。') }}
+                  </span>
+                  <span v-else aria-hidden="true" />
+                  <span :class="commentTooLong ? 'text-destructive' : ''">
+                    {{ commentContent.length }} / {{ commentMaxLength }}
+                  </span>
+                </div>
+                <CaptchaField
+                  v-if="needCommentCaptcha"
+                  ref="commentCaptchaRef"
+                  :enabled="needCommentCaptcha"
+                  class="mt-4"
+                />
+                <div class="mt-4 flex items-center justify-between gap-3">
+                  <p
+                    v-if="commentError"
+                    class="text-sm text-destructive"
+                  >
+                    {{ commentError }}
+                  </p>
                   <Button
                     variant="default"
-                    :disabled="!commentContent.trim() || submittingComment"
+                    class="ml-auto"
+                    :disabled="!canSubmitComment"
                     @click="handleSubmitComment"
                   >
                     <Send
@@ -527,6 +580,7 @@
                   v-for="comment in comments"
                   :key="comment.id"
                   :comment="comment"
+                  :can-reply="canReply"
                   @reply="handleReply"
                 />
               </template>
@@ -688,6 +742,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import TagBadge from '~~/components/TagBadge.vue'
 import CommentItem from '~~/components/CommentItem.vue'
+import CaptchaField from '~~/components/CaptchaField.vue'
 import PollCard from '~~/components/PollCard.vue'
 import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 import { useAuthStore } from '~~/stores/auth'
@@ -830,6 +885,22 @@ const commentsError = ref(false)
 const submittingComment = ref(false)
 const commentContent = ref('')
 const replyingTo = ref<number | string | null>(null)
+// 评论表单的三个后台开关在这里落地（settings 分组 comments）：
+// allow_guest 决定访客能不能看到输入框，max_length 决定字数上限与计数红字，
+// enable_nested 决定回复按钮。此前它们只进库不进界面，访客一律被挡在"请先登录"后面。
+const commentError = ref('')
+const commentCaptchaRef = ref<InstanceType<typeof CaptchaField> | null>(null)
+const guestForm = reactive({ author_name: '', author_email: '', author_website: '' })
+const commentMaxLength = computed(() => site.comments.value.max_length)
+const canCommentForm = computed(() => authStore.isAuthenticated || site.comments.value.allow_guest)
+const canReply = computed(() => site.comments.value.enable_nested)
+const needCommentCaptcha = computed(() => !authStore.isAuthenticated && site.features.value.enable_captcha)
+const commentTooLong = computed(() => commentContent.value.length > commentMaxLength.value)
+const canSubmitComment = computed(() =>
+  Boolean(commentContent.value.trim())
+  && !submittingComment.value
+  && !commentTooLong.value
+)
 const tocItems = ref<TocItem[]>([])
 const articleEl = ref<HTMLElement | null>(null)
 const { activeId, scrollTo } = useTOCScrollSpy(() => tocItems.value)
@@ -1682,22 +1753,55 @@ watch(
 )
 
 const handleSubmitComment = async () => {
-  if (!post.value?.id || !commentContent.value.trim()) return
+  const content = commentContent.value.trim()
+  if (!post.value?.id || !content) return
+  if (content.length > commentMaxLength.value) {
+    commentError.value = String(t('post.commentTooLong', '评论超出长度限制'))
+    return
+  }
+  if (!authStore.isAuthenticated && !guestForm.author_name.trim()) {
+    commentError.value = String(t('post.nicknameRequired', '请填写昵称'))
+    return
+  }
+  if (needCommentCaptcha.value && !commentCaptchaRef.value?.valid()) {
+    commentError.value = String(t('captcha.required', '请填写验证码'))
+    return
+  }
   submittingComment.value = true
+  commentError.value = ''
   try {
-    if (commentsAPI.createComment) {
-      const pid = (replyingTo.value == null) ? undefined : Number(replyingTo.value)
-      await commentsAPI.createComment(post.value.id, commentContent.value, pid)
-      commentContent.value = ''
-      replyingTo.value = null
-      if (commentsAPI.fetchComments) {
-        await commentsAPI.fetchComments(post.value.id)
-        comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
-      }
+    const pid = (replyingTo.value == null) ? undefined : Number(replyingTo.value)
+    await commentsAPI.createComment(post.value.id, {
+      content,
+      parent_id: pid,
+      author_name: guestForm.author_name.trim() || undefined,
+      author_email: guestForm.author_email.trim() || undefined,
+      author_website: guestForm.author_website.trim() || undefined,
+      ...(commentCaptchaRef.value?.payload() ?? {})
+    }, articleStoredPwd.value ? { 'X-Post-Password': articleStoredPwd.value } : undefined)
+    commentContent.value = ''
+    replyingTo.value = null
+    toast.success(String(t(site.comments.value.require_approval
+      ? 'post.commentPending'
+      : 'post.commentSubmitted')))
+    if (commentsAPI.fetchComments) {
+      await commentsAPI.fetchComments(post.value.id)
+      comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
     }
-  } catch (e) {
-    console.error('Submit comment error:', e)
+  } catch (err: unknown) {
+    const e = (err ?? {}) as Record<string, unknown>
+    const data = (e.data ?? {}) as Record<string, unknown>
+    const detail = (data.detail ?? {}) as Record<string, unknown>
+    const msg
+      = (typeof data.message === 'string' && data.message)
+        || (typeof detail.message === 'string' && detail.message)
+        || (typeof e.message === 'string' && e.message)
+        || String(t('post.commentFailed', '评论提交失败，请稍后再试'))
+    commentError.value = String(msg)
+    // apiFetch 抛错前已统一 toast，这里只补行内错误，不重复弹（AGENTS §7.2 双报红线）。
   } finally {
+    // 验证码答案一次性：无论成败都可能已被服务端 consume，必须换一张。
+    if (needCommentCaptcha.value) commentCaptchaRef.value?.refresh()
     submittingComment.value = false
   }
 }

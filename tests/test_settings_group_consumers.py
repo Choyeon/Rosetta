@@ -28,7 +28,7 @@ from backend.api.media import (
     _effective_library_exts,
     _effective_upload_limit,
 )
-from backend.api.settings_groups import SETTING_GROUPS, _default_for
+from backend.api.settings_groups import PUBLIC_SETTING_GROUPS, SETTING_GROUPS, _default_for
 from backend.services.site_settings import bool_of, int_of
 
 SETTINGS_PAGE = Path(__file__).resolve().parents[1] / "frontend/pages/admin/system/settings.vue"
@@ -589,3 +589,38 @@ def test_bool_of_and_int_of_tolerate_legacy_value_shapes():
     assert int_of(cfg, "c", 5) == 1000
     assert int_of(cfg, "d", 5) == 5
     assert int_of(cfg, "missing", 5) == 5
+
+
+# ==================== ⑥ comments 分组必须能下发到匿名前台 ====================
+
+
+def test_comments_group_is_publicly_readable():
+    """allow_guest / max_length / enable_nested 的执行点在**前台表单**：
+    访客要看到昵称邮箱框、字数上限、回复按钮，都得在未登录时读到这份分组。
+    把它留在非公开组 = 后台三个开关永远没有界面表现（历史上的状态）。"""
+    assert "comments" in PUBLIC_SETTING_GROUPS
+
+
+@pytest.mark.asyncio
+async def test_settings_public_exposes_comments_switch_values(client, staff_headers) -> None:
+    """改值后匿名读口必须回新值，而不是分组的出厂默认。"""
+    try:
+        await _patch(
+            client,
+            staff_headers,
+            "comments",
+            {"allow_guest": False, "max_length": 120, "enable_nested": False},
+        )
+        pub = await client.get("/api/settings/public")
+        assert pub.status_code == 200, pub.text
+        comments = pub.json()["groups"]["comments"]
+        assert comments["allow_guest"] is False
+        assert comments["max_length"] == 120
+        assert comments["enable_nested"] is False
+    finally:
+        await _patch(
+            client,
+            staff_headers,
+            "comments",
+            {"allow_guest": True, "max_length": 3000, "enable_nested": True},
+        )

@@ -80,7 +80,7 @@ api → services → repositories → models
 
 ## 站点设置
 
-`/api/settings` 支持 13 个分组（`settings_groups.py` 的 `SETTING_GROUPS`；公开白名单为 `PUBLIC_SETTING_GROUPS`，9 组）。
+`/api/settings` 支持 13 个分组（`settings_groups.py` 的 `SETTING_GROUPS`；公开白名单为 `PUBLIC_SETTING_GROUPS`，10 组）。
 
 分组键集是唯一清单：**没有执行点的开关不得放进 `_default_*`**。历史上 `cdn` / `cache` / `friendlinks` /
 `sidebar` 四组，以及 `security` 的会话/CORS、`appearance` 的代码高亮主题与字体族等键属于"能存能回显、但没人读"，

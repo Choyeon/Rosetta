@@ -301,6 +301,24 @@ export function useSite() {
   })
 
   /**
+   * 「评论」分组（后端 _default_comments 同构）。
+   * 兜底值取**后端 _default_comments 的同一组数**（未保存过分组时两边必须同一口径，
+   * 否则后台「允许访客匿名评论」勾着而前台仍要登录＝又一个看起来失效的开关）。
+   * enable 不在这里读：功能是否存在由 features.enable_comments 决定，两处都读会打架。
+   */
+  const comments = computed(() => {
+    const g = readGroup(state.value, 'comments', {} as Record<string, unknown>)
+    const flag = (k: string, d: boolean) => (typeof g[k] === 'boolean' ? g[k] : d)
+    const n = Number(g.max_length)
+    return {
+      allow_guest: flag('allow_guest', true),
+      enable_nested: flag('enable_nested', true),
+      require_approval: flag('require_approval', false),
+      max_length: Number.isFinite(n) && n > 0 ? n : 3000
+    }
+  })
+
+  /**
    * 「导航」分组。顶栏三个入口开关与吸顶样式由 AppHeader 消费；
    * 与 features 分组的同义项（enable_search / enable_dark_mode）是"与"关系：
    * features 决定这个功能在这个站点是否**存在**，navigation 决定顶栏是否**放入口**。
@@ -457,6 +475,7 @@ export function useSite() {
     notice,
     reading,
     features,
+    comments,
     navigation,
     donate,
     siteTitle,

@@ -56,6 +56,7 @@
           <span class="text-xs tabular-nums">{{ displayLikesCount }}</span>
         </Button>
         <Button
+          v-if="canReply"
           variant="ghost"
           size="sm"
           class="h-7 px-2"
@@ -155,10 +156,13 @@ interface Props {
   }
   /** 回复嵌套层级（0=根评论）。仅用于视觉缩进，最多 2 级。 */
   depth?: number
+  /** 后台「评论 → 允许嵌套回复」关闭时收起回复按钮（写口此时会回 422 COMMENT_NESTING_DISABLED）。 */
+  canReply?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  depth: 0
+  depth: 0,
+  canReply: true
 })
 
 defineEmits<{

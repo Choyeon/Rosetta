@@ -79,23 +79,40 @@ export function useComments() {
   }
 
   // ===== 提交/交互类（apiFetch，可在回调、onMounted、watch 里调用） =====
+  /**
+   * 发表评论。
+   *
+   * 走 `POST /api/posts/{id_or_slug}/comments`（api/comments.py::create_comment），**不是**
+   * `POST /api/blog/posts/{id}/comments`：后者挂了 `CurrentUser`，匿名请求直接 401，
+   * 于是后台「允许访客匿名评论」这个开关在前台永远没有执行点（表单只给登录用户渲染，
+   * 访客连输入框都看不到）。comments.py 那条口是 `CurrentUserOptional` + 同 IP 频控 +
+   * CSRF，评论服务里的 allow_guest / 验证码 / 审核闸门也都挂在它身上。
+   */
   const createComment = (
     post_id: number | string,
-    content: string,
-    parent_id?: number,
-    nickname?: string,
-    email?: string,
-    site?: string
+    payload: {
+      content: string
+      parent_id?: number | null
+      author_name?: string
+      author_email?: string
+      author_website?: string
+      captcha_key?: string
+      captcha_code?: string
+    },
+    headers?: Record<string, string>
   ) => {
-    return apiFetch<Comment>(`/blog/posts/${post_id}/comments`, {
+    return apiFetch<Comment>(`/posts/${post_id}/comments`, {
       method: 'POST',
       query: { lang: locale.value },
+      headers,
       body: {
-        content,
-        parent_id,
-        nickname,
-        email,
-        site
+        content: payload.content,
+        parent_id: payload.parent_id ?? undefined,
+        author_name: payload.author_name,
+        author_email: payload.author_email,
+        author_website: payload.author_website,
+        captcha_key: payload.captcha_key,
+        captcha_code: payload.captcha_code
       }
     })
   }

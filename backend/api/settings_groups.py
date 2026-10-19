@@ -74,6 +74,10 @@ PUBLIC_SETTING_GROUPS = [
     "reading",
     "features",
     "donate",
+    # comments 的 allow_guest / max_length / enable_nested / require_approval 需要下发给前台：
+    # 匿名评论表单（昵称邮箱、字数上限、回复按钮、待审核提示）都按这份值决定渲染，
+    # 缺它等于「后台改了开关，前台表单仍是写死的」。键集全是布尔与计数，无敏感项。
+    "comments",
 ]
 
 # 即便在公开分组内，这些键也一律脱敏（避免误配导致凭据外泄）
