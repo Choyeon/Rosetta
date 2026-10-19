@@ -281,7 +281,7 @@
 import { ref, computed, onMounted } from 'vue'
 import type { AdminCacheStatus, AdminCacheFlushMode } from '~~/composables/useAdminManage'
 import { apiFetch } from '~~/composables/useApi'
-import { extractApiErrorMessage } from '~~/lib/utils'
+import { extractApiErrorMessage, formatBytes as libFormatBytes } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
   HardDrive, Database, MemoryStick, Layers, PieChart, Target, TrendingDown,
@@ -379,13 +379,9 @@ const hitPctFixed = computed(() => `${hitPct.value.toFixed(1)}%`)
 
 const hitRateWarning = computed(() => cacheStatus.value.hit_rate != null && hitPct.value < 70)
 
-function formatBytes(b: number | null | undefined): string {
-  if (b == null) return '-'
-  if (b < 1024) return `${b} B`
-  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`
-  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(2)} MB`
-  return `${(b / (1024 * 1024 * 1024)).toFixed(2)} GB`
-}
+// 单位口径跟媒体库/导入页共用 lib/utils::formatBytes，这里只补"未上报"这一档
+const formatBytes = (b: number | null | undefined): string =>
+  (b == null ? '-' : libFormatBytes(b))
 
 async function loadStatus() {
   statusLoading.value = true

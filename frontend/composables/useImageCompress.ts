@@ -200,14 +200,3 @@ function renameExtension(name: string, mimeType: string): string {
   }
   return base + (extMap[mimeType] || (dot > 0 ? name.slice(dot) : ''))
 }
-
-/**
- * 格式化字节大小为人类可读字符串
- */
-export function formatBytes(bytes: number, decimals = 1): string {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(decimals))} ${sizes[i]}`
-}

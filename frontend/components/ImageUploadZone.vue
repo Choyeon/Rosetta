@@ -136,7 +136,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { UploadCloud, Check, X } from '@lucide/vue'
-import { compressImage, formatBytes, type CompressResult } from '~~/composables/useImageCompress'
+import { compressImage, type CompressResult } from '~~/composables/useImageCompress'
+import { formatBytes } from '~~/lib/utils'
 import { useMediaLibrary } from '~~/composables/useMedia'
 import { useSite } from '~~/composables/useSite'
 import { extensionOf, resolveAllowedExtensions, resolveUploadLimitBytes } from '~~/composables/useUploadProgress'

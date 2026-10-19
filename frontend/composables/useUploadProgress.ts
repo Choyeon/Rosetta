@@ -9,8 +9,7 @@
  * 且「用户主动中断」单列 aborted 计数，不能和 failed 混在一起。
  */
 
-import { extractApiErrorMessage } from '~~/lib/utils'
-import { formatBytes } from '~~/composables/useImageCompress'
+import { extractApiErrorMessage, formatBytes } from '~~/lib/utils'
 import { useAuthStore } from '~~/stores/auth'
 
 /** 后台没配（或配了个非正数）时的兜底单文件上限：20MB。 */
