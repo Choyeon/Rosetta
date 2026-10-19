@@ -101,7 +101,7 @@ describe('同一行为不得有两个开关', () => {
   it('评论区读取的是 comments.enable（后端写口闸门的同一项）', () => {
     expect(postPage).toContain('site.comments.value.enable')
     expect(postPage, 'features.enable_comments 是第二个开关，已删除').not.toContain('features.value.enable_comments')
-    expect(useSite).toContain("enable: flag('enable', true)")
+    expect(useSite).toMatch(/enable: flag\('enable', true\)/)
   })
 
   it('features 组与后台设置页都不再有 enable_comments', () => {
