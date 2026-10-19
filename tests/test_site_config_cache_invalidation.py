@@ -36,7 +36,7 @@ SITE_CONFIG_WRITERS: dict[str, tuple[str, ...]] = {
     "settings_groups.py": ("invalidate_site_config_caches",),
     "seo.py": ("invalidate_site_config_caches",),
     # 装机与整站恢复删的是一整串前缀，其中 "site_config" 这条已经覆盖两族。
-    "oobe.py": ('invalidate_cache(_prefix)', '"site_config",'),
+    "oobe.py": ("invalidate_cache(_prefix)", '"site_config",'),
     "import_export.py": ("_invalidate_content_caches", '"site_config"'),
     # 调色板键 theme_palette 的读侧在 themes.py 里直查 DB，不经这两族缓存。
     "themes.py": (),
