@@ -265,17 +265,6 @@ async def check_redis_connectivity() -> dict:
         )
 
 
-def _fmt_bytes(num_bytes: float) -> str:
-    """把字节数格式化为人类可读：保留 1 位小数"""
-    units = ["B", "KB", "MB", "GB", "TB", "PB"]
-    size = float(num_bytes)
-    for u in units:
-        if size < 1024.0 or u == units[-1]:
-            return f"{size:.1f} {u}"
-        size /= 1024.0
-    return f"{size:.1f} PB"
-
-
 def _os_summary() -> dict:
     """返回系统信息字典
 
@@ -374,12 +363,6 @@ def _get_os_cache() -> dict[str, object]:
     if _OS_CACHE is None:
         _OS_CACHE = _os_summary()
     return _OS_CACHE
-
-
-def reset_os_cache() -> None:
-    """重置系统信息缓存（用于测试）"""
-    global _OS_CACHE
-    _OS_CACHE = None
 
 
 def check_disk_free_gb() -> dict:

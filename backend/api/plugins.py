@@ -380,8 +380,6 @@ async def install_plugin(
     """
     import json as _json
 
-    from fastapi import UploadFile as _UploadFile  # noqa: F401  (保留以便未来扩展)
-
     pm = _get_plugin_manager()
 
     # ── upload：multipart/form-data，取 file ──────────────────────────

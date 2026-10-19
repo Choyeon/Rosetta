@@ -43,20 +43,6 @@ logger = logging.getLogger(__name__)
 # ==================== 回收站 API ====================
 
 
-class TrashItemResponse(BaseModel):
-    """回收站项目响应"""
-
-    id: int
-    resource_type: str
-    resource_id: int
-    resource_data: dict
-    deleted_by: dict | None = None
-    auto_delete_at: str | None = None
-    created_at: str
-
-    model_config = {"from_attributes": True}
-
-
 class OperatorOut(BaseModel):
     """回收站/日志里回显的操作者摘要。"""
 

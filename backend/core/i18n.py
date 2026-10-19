@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from starlette.requests import Request  # noqa: F401 (type alias)
+    from starlette.requests import Request  # type alias
 
 SUPPORTED_LANGUAGES: dict[str, str] = {
     "zh": "简体中文",
@@ -292,66 +292,6 @@ def get_i18n_value(data: dict[str, str] | None, lang: str, fallback: bool = True
                 return data[code]
 
     return ""
-
-
-def set_i18n_value(data: dict[str, str], lang: str, value: str) -> dict[str, str]:
-    """
-    设置多语言字典中指定语言的值
-
-    Args:
-        data: 多语言数据字典
-        lang: 目标语言代码
-        value: 内容值
-
-    Returns:
-        更新后的字典
-    """
-    normalized_lang = normalize_language(lang)
-    data[normalized_lang] = value
-    return data
-
-
-def create_i18n_dict(zh: str = "", en: str = "", ja: str = "", zh_Hant: str = "") -> dict[str, str]:
-    """
-    创建多语言字典
-
-    Args:
-        zh: 中文内容
-        en: 英文内容
-        ja: 日文内容
-        zh_Hant: 繁体中文内容
-
-    Returns:
-        多语言字典
-    """
-    result: dict[str, str] = {}
-    if zh:
-        result["zh"] = zh
-    if en:
-        result["en"] = en
-    if ja:
-        result["ja"] = ja
-    if zh_Hant:
-        result["zh_Hant"] = zh_Hant
-    return result
-
-
-def merge_i18n_dicts(base: dict[str, str], override: dict[str, str]) -> dict[str, str]:
-    """
-    合并两个多语言字典
-
-    Args:
-        base: 基础字典
-        override: 覆盖字典
-
-    Returns:
-        合并后的字典
-    """
-    result = base.copy()
-    for lang, value in override.items():
-        if value:
-            result[lang] = value
-    return result
 
 
 class I18nContext:

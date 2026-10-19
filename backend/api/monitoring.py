@@ -71,26 +71,6 @@ _metrics_timestamps: dict[str, list[float]] = {
 }
 
 
-class SystemStats(BaseModel):
-    """系统统计"""
-
-    database: dict[str, Any]
-    cache: dict[str, Any]
-    requests: dict[str, Any]
-    memory: dict[str, Any]
-
-
-class PerformanceMetrics(BaseModel):
-    """性能指标"""
-
-    avg_latency: float
-    p50_latency: float
-    p95_latency: float
-    p99_latency: float
-    requests_per_minute: float
-    error_rate: float
-
-
 class HealthComponentOut(BaseModel):
     """健康检查里单个组件的探测结果。"""
 
@@ -1051,17 +1031,3 @@ async def get_trends(
         "users": [{"date": d, "count": c} for d, c in users_by_day.items()],
         "visits": [{"date": d, "count": c} for d, c in visits_by_day.items()],
     }
-
-
-# 内部函数：记录请求延迟
-
-
-def record_request_latency(latency: float):
-    """记录请求延迟"""
-    _metrics["request_latency"].append(latency)
-    _metrics_timestamps["request_latency"].append(time.time())
-
-    # 保留最近 10000 条记录
-    if len(_metrics["request_latency"]) > 10000:
-        _metrics["request_latency"] = _metrics["request_latency"][-10000:]
-        _metrics_timestamps["request_latency"] = _metrics_timestamps["request_latency"][-10000:]

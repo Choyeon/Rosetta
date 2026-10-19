@@ -44,13 +44,6 @@ def get_alembic_config() -> Config:
     return config
 
 
-def get_async_engine():
-    """获取异步数据库引擎"""
-    from backend.core.database import engine
-
-    return engine
-
-
 def get_metadata():
     """获取模型元数据"""
     from backend.core.database import Base

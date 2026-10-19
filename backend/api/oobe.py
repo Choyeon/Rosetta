@@ -1754,10 +1754,6 @@ class AdminAccountRequest(BaseModel):
     password: str
 
 
-class EnvironmentRequest(BaseModel):
-    environment: str = "development"
-
-
 @router.post(
     "/database-config",
     summary="保存数据库配置（已废弃）",

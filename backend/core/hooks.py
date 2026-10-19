@@ -140,14 +140,6 @@ def remove_filter(hook_name: str, fn: Callable[..., Any]) -> bool:
     return False
 
 
-def list_hook_names() -> dict[str, list[str]]:
-    """返回当前已注册的 action/filter 名称（自检与文档生成用）。"""
-    return {
-        "actions": sorted(_actions.keys()),
-        "filters": sorted(_filters.keys()),
-    }
-
-
 # ── 装饰器（命令式 API 的薄包装） ─────────────────────────────────────────
 
 

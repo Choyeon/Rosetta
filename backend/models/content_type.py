@@ -21,7 +21,7 @@ from typing import Any
 
 from pydantic import BaseModel
 from pydantic import Field as PDField
-from sqlalchemy import JSON, Column, Integer, String, Text, UniqueConstraint
+from sqlalchemy import JSON, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.core.database import Base
@@ -93,14 +93,6 @@ class ContentTypeDefinition(Base, TenantMixin):
                     # 脏数据跳过，避免整体 schema 加载失败
                     continue
         return parsed
-
-    # 为列显式声明 SQLAlchemy 字段（mapped_column(JSON) + site_id TenantMixin）
-    # 保证 Column 级反射/迁移识别
-    _ = (
-        Column("site_id_fallback_placeholder", Integer, comment="占位，不影响建表")
-        if False
-        else None
-    )
 
     def __repr__(self) -> str:  # pragma: no cover - debug helper
         return f"<ContentTypeDefinition key={self.key!r} name={self.name!r}>"

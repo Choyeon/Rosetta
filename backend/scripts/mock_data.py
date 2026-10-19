@@ -559,23 +559,6 @@ async def generate_oobe_mock_data_minimal(db, admin_id: int) -> dict:
 # ==========================================================================
 
 
-async def create_mock_data(
-    num_posts: int = 20, num_users: int = 10, num_comments: int = 50
-) -> dict:
-    from backend.core.database import async_session_maker
-
-    async with async_session_maker() as session:
-        return await generate_all_mock_data(
-            session,
-            posts_count=num_posts,
-            categories_count=5,
-            tags_count=10,
-            users_count=num_users,
-            comments_count=num_comments,
-            reset=False,
-        )
-
-
 async def main() -> None:
     """CLI 入口：等价于旧脚本 `python -m backend.scripts.mock_data`。"""
     import argparse

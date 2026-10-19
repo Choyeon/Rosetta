@@ -768,47 +768,6 @@ def cached(
     return decorator
 
 
-def cached_simple(
-    key_prefix: str,
-    ttl: int = 300,
-):
-    """
-    简单缓存装饰器（无穿透/击穿保护）
-
-    适用于对穿透和击穿不敏感的场景。
-
-    Args:
-        key_prefix: 缓存键前缀
-        ttl: 缓存时间
-
-    Returns:
-        装饰器函数
-    """
-
-    def decorator(func: Callable[P, T]) -> Callable[P, T]:
-        @wraps(func)
-        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> T:
-            cache_key = CacheKeyBuilder().build_with_hash(key_prefix, *args, **kwargs)
-
-            cached_value = await two_level_cache.get(cache_key)
-            if cached_value is not None:
-                return cached_value
-
-            if asyncio.iscoroutinefunction(func):
-                result = await func(*args, **kwargs)
-            else:
-                result = func(*args, **kwargs)
-
-            if result is not None:
-                await two_level_cache.set(cache_key, result, ttl=ttl)
-
-            return result
-
-        return wrapper
-
-    return decorator
-
-
 two_level_cache = TwoLevelCache()
 
 cache_key_builder = CacheKeyBuilder()

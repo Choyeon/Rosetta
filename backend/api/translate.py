@@ -111,38 +111,6 @@ def simple_zh_to_zh_hant(text: str) -> str:
     return result
 
 
-async def translate_with_libretranslate(text: str, source: str, target: str) -> str:
-    """使用 LibreTranslate API 进行翻译"""
-    import aiohttp
-
-    lang_map = {
-        "zh": "zh",
-        "en": "en",
-        "ja": "ja",
-        "zh_Hant": "zh",
-    }
-
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                "https://libretranslate.de/translate",
-                json={
-                    "q": text,
-                    "source": lang_map.get(source, source),
-                    "target": lang_map.get(target, target),
-                    "format": "text",
-                },
-                timeout=aiohttp.ClientTimeout(total=30),
-            ) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return data.get("translatedText", text)
-    except Exception as e:
-        logger.warning(f"LibreTranslate failed: {e}")
-
-    return text
-
-
 async def translate_with_mymemory(text: str, source: str, target: str) -> str:
     """使用 MyMemory API 进行翻译"""
     import aiohttp

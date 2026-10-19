@@ -10,7 +10,6 @@
 
 import json
 import logging
-import random
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
@@ -537,15 +536,6 @@ CACHE_TTL = {
     "search_results": 60,
 }
 
-NULL_MARKER = "__NULL__"
-
-
-def get_cache_ttl(key: str) -> int:
-    """获取缓存 TTL，添加随机偏移防止雪崩"""
-    base_ttl = CACHE_TTL.get(key, 300)
-    jitter = int(base_ttl * 0.1)
-    return base_ttl + random.randint(-jitter, jitter)
-
 
 def make_cache_key(*parts: str) -> str:
     """生成缓存键"""
@@ -582,36 +572,3 @@ async def invalidate_post_detail_cache(*slugs: str | None) -> int:
             if await cache.delete(make_cache_key("post", slug, lang_code)):
                 deleted += 1
     return deleted
-
-
-async def get_or_set_with_null(
-    key: str,
-    fetch_func: Callable[[], Any],
-    ttl: int = 300,
-    null_ttl: int = 60,
-) -> Any | None:
-    """获取或设置缓存，支持空值缓存防止穿透
-
-    Args:
-        key: 缓存键
-        fetch_func: 获取数据的函数
-        ttl: 正常数据的缓存时间
-        null_ttl: 空值的缓存时间（防止穿透）
-
-    Returns:
-        缓存的数据或 None
-    """
-    cached = await cache.get(key)
-    if cached == NULL_MARKER:
-        return None
-    if cached is not None:
-        return cached
-
-    result = await fetch_func()
-
-    if result is None:
-        await cache.set(key, NULL_MARKER, null_ttl)
-        return None
-
-    await cache.set(key, result, ttl)
-    return result

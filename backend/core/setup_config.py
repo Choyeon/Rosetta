@@ -19,13 +19,6 @@ from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
-from backend.core.oobe_constants import (
-    EMAIL_PATTERN,
-    PASSWORD_MIN_LENGTH,
-    USERNAME_MAX_LENGTH,
-    USERNAME_MIN_LENGTH,
-    USERNAME_PATTERN,
-)
 from backend.core.paths import BASE_DIR
 
 logger = logging.getLogger(__name__)
@@ -36,17 +29,6 @@ class Environment(Enum):
 
     DEVELOPMENT = "development"
     PRODUCTION = "production"
-
-
-class ConfigStep(Enum):
-    """配置步骤"""
-
-    WELCOME = 1
-    ENVIRONMENT = 2
-    DATABASE = 3
-    SITE = 4
-    ADMIN = 5
-    COMPLETE = 6
 
 
 @dataclass
@@ -185,75 +167,6 @@ class ConfigTemplates:
     def get_template_names() -> list[str]:
         """获取模板名称列表"""
         return list(ConfigTemplates.get_templates().keys())
-
-
-class ConfigValidator:
-    """配置验证器"""
-
-    @staticmethod
-    def validate_site_config(config: dict) -> tuple[bool, str]:
-        """验证站点配置"""
-        if not config.get("site_name"):
-            return False, "站点名称不能为空"
-
-        if not config.get("site_email"):
-            return False, "联系邮箱不能为空"
-
-        email = config.get("site_email", "")
-        if "@" not in email or "." not in email:
-            return False, "邮箱格式不正确"
-
-        return True, ""
-
-    @staticmethod
-    def validate_admin_config(config: dict) -> tuple[bool, str]:
-        """验证管理员配置"""
-        import re
-
-        if not config.get("username"):
-            return False, "用户名不能为空"
-
-        username = config.get("username", "")
-        if len(username) < USERNAME_MIN_LENGTH:
-            return False, f"用户名至少{USERNAME_MIN_LENGTH}位"
-
-        if len(username) > USERNAME_MAX_LENGTH:
-            return False, f"用户名最多{USERNAME_MAX_LENGTH}位"
-
-        if not re.match(USERNAME_PATTERN, username):
-            return False, "用户名只能包含字母、数字、下划线和连字符"
-
-        if not config.get("email"):
-            return False, "邮箱不能为空"
-
-        email = config.get("email", "")
-        if not re.match(EMAIL_PATTERN, email):
-            return False, "邮箱格式不正确"
-
-        password = config.get("password", "")
-        if len(password) < PASSWORD_MIN_LENGTH:
-            return False, f"密码至少{PASSWORD_MIN_LENGTH}位"
-
-        return True, ""
-
-    @staticmethod
-    def validate_database_config(config: dict) -> tuple[bool, str]:
-        """验证数据库配置"""
-        if not config.get("db_user"):
-            return False, "数据库用户名不能为空"
-
-        if not config.get("db_name"):
-            return False, "数据库名称不能为空"
-
-        return True, ""
-
-    @staticmethod
-    def validate_environment(environment: str) -> tuple[bool, str]:
-        """验证环境配置"""
-        valid_envs = ["development", "production"]
-        if environment not in valid_envs:
-            return False, f"环境必须是以下之一: {', '.join(valid_envs)}"
-        return True, ""
 
 
 class ConfigService:

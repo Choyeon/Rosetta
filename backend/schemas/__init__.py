@@ -1089,29 +1089,6 @@ class PostLocalizedResponse(BaseModel):
         return max(1, word_count // 500)
 
 
-class PostListItem(BaseModel):
-    """文章列表项模型"""
-
-    id: int
-    title: dict[str, str]
-    subtitle: dict[str, str] | None = None
-    slug: str
-    excerpt: dict[str, str] | None = None
-    cover_image: str | None = None
-    author: PublicUserResponse
-    category: CategoryResponse | None = None
-    tags: list[TagResponse] = []
-    status: str
-    views: int
-    likes_count: int = 0
-    is_pinned: bool
-    created_at: datetime
-    published_at: datetime | None = None
-    reading_time: int = 1
-
-    model_config = {"from_attributes": True}
-
-
 class PostListItemLocalized(BaseModel):
     """文章列表项本地化模型"""
 
@@ -1193,14 +1170,6 @@ class ArchiveMonthGroup(BaseModel):
     month: int
     count: int
     posts: list[ArchivePostItem]
-
-
-class ArchiveYearGroup(BaseModel):
-    """归档年份分组模型"""
-
-    year: int
-    count: int
-    months: list[ArchiveMonthGroup]
 
 
 # ==================== 评论相关模型 ====================
@@ -1615,20 +1584,6 @@ class FriendLinkLocalizedResponse(BaseModel):
 
 
 # ==================== 通知相关模型 ====================
-
-
-class NotificationResponse(BaseModel):
-    """通知响应模型"""
-
-    id: int
-    title: dict[str, str]
-    message: dict[str, str]
-    level: str
-    link: str | None = None
-    is_read: bool
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
 
 
 class NotificationLocalizedResponse(BaseModel):

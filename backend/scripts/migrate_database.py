@@ -298,8 +298,6 @@ async def _copy_table(
 
     cols = [c for c in table.columns]
     stmt = select(*cols)
-    if is_postgres(str(dst_session.bind.engine.url)) if False else True:
-        pass
     # stream 分块
     inserted = 0
     insert_values_list: list[dict[str, Any]] = []
@@ -381,15 +379,6 @@ async def run_migration(
     stats = MigrationStats(source_url=source_url, target_url=target_url)
     src_engine: AsyncEngine | None = None
     dst_engine: AsyncEngine | None = None
-
-    def _emit(**extra):
-        yield (
-            stats.to_progress(stats.to_progress.__self__.__class__.__name__, **extra)
-            if False
-            else stats.to_progress(
-                stats.to_progress.__self__.__class__.__name__ if False else "noop", **extra
-            )
-        )
 
     try:
         yield stats.to_progress("init", message="解析源/目标连接")

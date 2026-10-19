@@ -7,10 +7,8 @@ DELETE /api/admin/logs/retention        清理 N 天前日志
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import datetime, timedelta
-from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
@@ -19,44 +17,11 @@ from sqlalchemy import func, select
 from backend.core.auth import DB, CurrentStaff
 from backend.core.logging_middleware import log_operation
 from backend.models.log import OperationLog
-from backend.models.user import User
 from backend.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="", tags=["操作日志"])
-
-
-def _row_to_dict(row: OperationLog, user_map: dict[int, User] | None = None) -> dict[str, Any]:
-    user_name = None
-    user_avatar = None
-    if row.user_id and user_map and row.user_id in user_map:
-        u = user_map[row.user_id]
-        user_name = getattr(u, "nickname", None) or getattr(u, "username", None)
-        user_avatar = getattr(u, "avatar", None)
-    details: Any = None
-    if row.detail:
-        try:
-            details = json.loads(row.detail)
-        except Exception:
-            details = row.detail
-    return {
-        "id": row.id,
-        "user_id": row.user_id,
-        "user_name": user_name,
-        "user_avatar": user_avatar,
-        "action": row.action,
-        "target_type": row.resource_type,  # alias target_type
-        "target_id": row.resource_id,  # alias target_id
-        "details": details,
-        "ip": row.ip_address,
-        "user_agent": row.user_agent,
-        "request_path": row.request_path,
-        "request_method": row.request_method,
-        "status": row.status,
-        "error_code": row.error_code,
-        "created_at": row.created_at.isoformat() if row.created_at else None,
-    }
 
 
 # 说明：GET /api/admin/logs 的统一实现位于 backend/api/advanced.py（其 APIRouter 内部

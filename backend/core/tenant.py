@@ -43,11 +43,6 @@ def set_current_site_id(site_id: int | None) -> Token:
     return _current_site_id.set(site_id)
 
 
-def reset_current_site_id(token: Token) -> None:
-    """重置 set_current_site_id 返回的 Token。"""
-    _current_site_id.reset(token)
-
-
 class TenantMixin:
     """ORM 混入：给模型增加 ``site_id`` 列。
 
