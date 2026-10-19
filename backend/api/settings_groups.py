@@ -113,7 +113,15 @@ def _default_basic() -> dict:
 
 def _default_reading() -> dict:
     return {
-        "posts_per_page": 12,
+        # 这个键唯一的消费点是前端 useSite.reading.posts_per_page（列表/分类/标签/作者/
+        # 搜索五页的每页条数），那里的兜底写的是 9（三列网格 × 3 行，也是接这个设置之前
+        # 各页写死的条数）。原先这里是 12，而 GET /api/settings/public 下发的是
+        # "默认值 + 存值"合并后的**整组**——于是从未保存过 reading 分组的站点每次都能拿到
+        # 12，前端那句"沿用 9 避免版式突变"的兜底只有在接口失败时才走得到：同一个设置
+        # 两套版式，且后台显示的 12 永远不等于兜底那条路径的 9。
+        # 统一成 9 的实际影响：未配置站点的每页从 12 篇变 9 篇（4 行 → 3 行，仍是整行），
+        # 已保存过分组的站点读自己的存值，版式不变。
+        "posts_per_page": 9,
         "show_reading_time": True,
         "show_word_count": True,
         "show_toc": True,

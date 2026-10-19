@@ -268,7 +268,9 @@ export function useSite() {
     }
     const flag = (k: string) => g[k] !== false
     return {
-      // 前台列表是 3 列网格，默认沿用 9（= 3 行）而不是分组默认 12，避免未配置站点版式突变
+      // 与后端 _default_reading.posts_per_page 同值（9 = 三列网格 × 3 行，也是接这个设置
+      // 之前各列表页写死的条数）。后端默认值曾写 12，而 /settings/public 下发的是
+      // "默认值 + 存值"合并后的整组，于是这个 9 只在接口失败时才生效——同一个设置两套版式。
       posts_per_page: pos('posts_per_page', 9),
       show_reading_time: flag('show_reading_time'),
       show_word_count: flag('show_word_count'),

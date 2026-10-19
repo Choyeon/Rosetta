@@ -747,7 +747,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   if (typeof value === 'boolean') return { label: resolvedLabel, type: 'boolean' }
   if (typeof value === 'number') {
     const meta: Record<string, { min?: number, max?: number, placeholder?: string, help?: string }> = {
-      posts_per_page: { min: 1, max: 50, placeholder: '1 - 50', help: '建议 10-20 之间' },
+      posts_per_page: { min: 1, max: 50, placeholder: '1 - 50', help: '前台列表是三列网格，建议 9 / 12 / 15（默认 9）' },
       toc_depth: { min: 1, max: 6, placeholder: '1 - 6' },
       line_height: { min: 1, max: 2.5, placeholder: '1.0 - 2.5' },
       font_size: { min: 12, max: 24, placeholder: '12 - 24' },
@@ -849,7 +849,10 @@ const currentGroupSchemas = computed(() => {
 function getDefaultsFor(group: string): Record<string, SettingsValue> {
   const m: Record<string, Record<string, SettingsValue>> = {
     basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_page_html: '' },
-    reading: { posts_per_page: 12, show_reading_time: true, show_word_count: true, show_toc: true, toc_depth: 3, line_height: 1.7, font_size: 16 },
+    // posts_per_page 取 9：与后端 _default_reading 的默认值、useSite.reading 的兜底同一个数。
+    // 三处原本是 12/12/9，后台显示的"每页 12"其实是后端默认值下发给前台的结果，
+    // 那个 9 只在 /settings/public 失败时才用得上（口径由 inertSettingSwitches.spec 钉住）。
+    reading: { posts_per_page: 9, show_reading_time: true, show_word_count: true, show_toc: true, toc_depth: 3, line_height: 1.7, font_size: 16 },
     comments: { enable: true, require_approval: false, allow_guest: true, max_length: 3000, enable_antispam: true, enable_nested: true },
     media: { max_upload_size: 10485760, allowed_image_types: 'jpg,jpeg,png,gif,webp,svg', allowed_file_types: 'mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx', use_cdn: false, cdn_prefix: '', watermark_text: '' },
     seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_verification: '', baidu_verification: '', robots_txt: '' },

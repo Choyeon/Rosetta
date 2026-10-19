@@ -126,4 +126,18 @@ describe('同一行为不得有两个开关', () => {
     expect(useSite, 'text 的兜底必须是空串，否则内置四语文案永远被副标题顶掉')
       .toMatch(/text: '',/)
   })
+
+  it('reading.posts_per_page 三处默认值同一口径（表单显示数 = 前台渲染数）', () => {
+    // /settings/public 下发的是「后端默认值 + DB 存值」合并后的整组，所以后端默认值
+    // 就是未保存过分组的站点实际渲染的每页条数；useSite 的兜底 9 只在接口失败时生效。
+    // 两边一个 12 一个 9 时，后台显示的数与实际版式对不上，而设置页本地默认表再给第三个数。
+    const backendDefaults = readFileSync(
+      resolve(process.cwd(), '../backend/api/settings_groups.py'),
+      'utf8'
+    )
+    const readingBlock = backendDefaults.split('def _default_reading')[1] ?? ''
+    expect(readingBlock).toMatch(/"posts_per_page": 9,/)
+    expect(useSite, 'useSite 的兜底必须与后端默认值一致').toMatch(/posts_per_page: pos\('posts_per_page', 9\)/)
+    expect(settingsPage, '设置页本地默认表也必须同一数').toMatch(/reading: \{ posts_per_page: 9,/)
+  })
 })
