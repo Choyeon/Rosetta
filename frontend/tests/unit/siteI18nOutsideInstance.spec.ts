@@ -19,11 +19,16 @@ const siteSrc = readFileSync(resolve(process.cwd(), 'composables/useSite.ts'), '
 
 describe('useSite 的 i18n 访问不得依赖组件实例', () => {
   it('全文件只允许 safeI18n 内部一次 useI18n()，且必须在 useSite 之前', () => {
-    const hits = [...siteSrc.matchAll(/useI18n\(\)/g)].map(m => m.index)
+    // 注释里也会写 useI18n()（这段坑的说明本身），计数必须只看代码行。
+    const code = siteSrc
+      .split('\n')
+      .filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l))
+      .join('\n')
+    const hits = [...code.matchAll(/useI18n\(\)/g)].map(m => m.index)
     expect(hits.length, `useI18n() 只应在 safeI18n 内出现一次，实际 ${hits.length} 次`).toBe(1)
     const only = hits[0]
-    expect(only).toBeGreaterThan(siteSrc.indexOf('function safeI18n('))
-    expect(only, 'safeI18n 之后的任何 i18n 访问都会重新引入实例依赖').toBeLessThan(siteSrc.indexOf('export function useSite'))
+    expect(only).toBeGreaterThan(code.indexOf('function safeI18n('))
+    expect(only, 'safeI18n 之后的任何 i18n 访问都会重新引入实例依赖').toBeLessThan(code.indexOf('export function useSite'))
   })
 
   it('safeI18n 三层回落：实例 composer → 全局 $i18n → 空串，且用 getCurrentInstance 预判', () => {
