@@ -7,7 +7,6 @@ Rosetta 留言板服务模块
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from typing import Any
@@ -16,6 +15,7 @@ from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from backend.core.concurrency import spawn_background
 from backend.core.config import settings
 from backend.core.moderation import moderate_text
 from backend.models.core import Notification
@@ -296,7 +296,7 @@ class GuestbookService:
         await db.refresh(obj)
 
         try:
-            asyncio.create_task(
+            spawn_background(
                 GuestbookService._fire_notifications(
                     entry_id=obj.id,
                     actor_user_id=current_user.id if current_user is not None else None,

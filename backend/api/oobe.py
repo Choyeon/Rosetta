@@ -841,9 +841,11 @@ async def check_dependencies():
     if npm_available:
         try:
             r = await asyncio.to_thread(
-                lambda: subprocess.run(
-                    ["npm", "--version"], capture_output=True, text=True, timeout=10
-                )
+                subprocess.run,
+                ["npm", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if r.returncode == 0:
                 npm_version = r.stdout.strip().lstrip("v")
@@ -856,9 +858,11 @@ async def check_dependencies():
                 npm_path = await asyncio.to_thread(shutil.which, npm_cmd)
                 if npm_path:
                     r = await asyncio.to_thread(
-                        lambda: subprocess.run(
-                            [npm_path, "--version"], capture_output=True, text=True, timeout=10
-                        )
+                        subprocess.run,
+                        [npm_path, "--version"],
+                        capture_output=True,
+                        text=True,
+                        timeout=10,
                     )
                     if r.returncode == 0 and r.stdout.strip():
                         npm_version = r.stdout.strip().lstrip("v")
@@ -884,12 +888,11 @@ async def check_dependencies():
     if pip_available:
         try:
             r = await asyncio.to_thread(
-                lambda: subprocess.run(
-                    [sys.executable, "-m", "pip", "--version"],
-                    capture_output=True,
-                    text=True,
-                    timeout=10,
-                )
+                subprocess.run,
+                [sys.executable, "-m", "pip", "--version"],
+                capture_output=True,
+                text=True,
+                timeout=10,
             )
             if r.returncode == 0:
                 parts = r.stdout.strip().split()

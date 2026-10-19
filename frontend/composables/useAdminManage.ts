@@ -396,8 +396,6 @@ export const RBAC_ROLES = [
   { value: 'subscriber', label: '订阅者' }
 ] as const
 
-export type RbacRoleValue = (typeof RBAC_ROLES)[number]['value']
-
 export function rbacRoleLabel(role?: string | null): string {
   return RBAC_ROLES.find(r => r.value === role)?.label ?? '订阅者'
 }

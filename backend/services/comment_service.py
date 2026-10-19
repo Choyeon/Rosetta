@@ -6,7 +6,6 @@ Rosetta 评论服务模块
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import re
 from typing import Any
@@ -16,6 +15,7 @@ from sqlalchemy.exc import OperationalError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload
 
+from backend.core.concurrency import spawn_background
 from backend.core.config import settings
 from backend.core.moderation import moderate_text
 from backend.core.xss_filter import sanitize_html
@@ -538,7 +538,7 @@ class CommentService:
 
         # 6. 异步触发通知（不等待，不抛出异常）
         try:
-            asyncio.create_task(
+            spawn_background(
                 CommentService._fire_notifications_and_email(
                     CommentService._db_session_get_bind_key(db),
                     comment_id=obj.id,

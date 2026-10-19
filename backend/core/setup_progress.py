@@ -16,6 +16,8 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from backend.core.concurrency import spawn_background
+
 logger = logging.getLogger(__name__)
 
 
@@ -142,7 +144,7 @@ class ProgressService:
         self.state.started_at = datetime.now().isoformat()
         self.state.current_step = 1
 
-        asyncio.create_task(
+        spawn_background(
             self._notify(
                 {
                     "type": "start",
@@ -161,7 +163,7 @@ class ProgressService:
             self.state.steps[step_index].status = StepStatus.RUNNING
             self.state.steps[step_index].started_at = datetime.now().isoformat()
 
-            asyncio.create_task(
+            spawn_background(
                 self._notify(
                     {
                         "type": "step",
@@ -185,7 +187,7 @@ class ProgressService:
             self.state.message = message
             self.state.steps[current_idx].message = message
 
-        asyncio.create_task(
+        spawn_background(
             self._notify(
                 {
                     "type": "progress",
@@ -219,7 +221,7 @@ class ProgressService:
             elif not step.message:
                 step.message = "完成" if success else "失败"
 
-            asyncio.create_task(
+            spawn_background(
                 self._notify(
                     {
                         "type": "step_complete",
@@ -244,7 +246,7 @@ class ProgressService:
         if message:
             self.state.message = message
 
-        asyncio.create_task(
+        spawn_background(
             self._notify(
                 {
                     "type": "complete",
@@ -267,7 +269,7 @@ class ProgressService:
 
         self.log_error(error, step=step)
 
-        asyncio.create_task(
+        spawn_background(
             self._notify(
                 {
                     "type": "error",
@@ -326,7 +328,7 @@ class ProgressService:
         if len(self._logs) > self._log_buffer_size:
             self._logs = self._logs[-self._log_buffer_size :]
 
-        asyncio.create_task(
+        spawn_background(
             self._notify(
                 {
                     "type": "log",
