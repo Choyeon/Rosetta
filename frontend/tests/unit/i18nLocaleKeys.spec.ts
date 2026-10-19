@@ -35,9 +35,11 @@ const SOURCE_DIRS = [
   'nuxt.config.ts',
   'i18n.config.ts'
 ]
-/** 动态 key 命名空间：`t(\`nav.${x}\`)` / \`account.tab${cap}\` / 页脚按 labelKey 取值，
- *  字面量不在源码里，不能按孤儿键处理。 */
-const PROTECT = ['nav.', 'account.', 'activity.type_', 'footer.', 'common.']
+/** 只有这三个命名空间存在 `t(反引号 + 前缀 + 变量)` 形态的动态拼装：AppFooter 的 nav.末段、
+ *  account 的 tab / empty / avatarSource 三族、activity 的 type_ 前缀。它们的字面量不在
+ *  源码里，不能按孤儿键处理。common. 与 footer. 曾一并豁免，实测这两个命名空间共 49 个键
+ *  没有任何消费点，已从豁免名单移出并删除——全仓动态拼装点只有上述三处，可用同一扫描复核。 */
+const PROTECT = ['nav.', 'account.', 'activity.type_']
 
 function walkSources(): string[] {
   const out: string[] = []
