@@ -50,7 +50,11 @@ function literalI18nKeys(file: string): string[] {
     .filter(line => !/^\s*(\/\/|#|\*)/.test(line))
     .join('\n')
   const re = /\b(?:t|te)\(\s*(['"])([A-Za-z0-9_]+(?:\.[A-Za-z0-9_]+)+)\1/g
-  return [...text.matchAll(re)].map(m => m[2])
+  const keys: string[] = []
+  for (const match of text.matchAll(re)) {
+    if (match[2]) keys.push(match[2])
+  }
+  return keys
 }
 
 const keysByLocale = new Map(LOCALES.map(code => [code, localeKeys(code)]))
