@@ -23,12 +23,12 @@ from backend.core.partial_update import apply_partial_update
 from backend.models.blog import Category, Post
 from backend.models.post_series import PostSeries
 from backend.schemas import BaseResponse
-from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.schemas.post_series import (
     PostSeriesCreate,
     PostSeriesResponse,
     PostSeriesUpdate,
 )
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 router = APIRouter(tags=["文章系列"])
 

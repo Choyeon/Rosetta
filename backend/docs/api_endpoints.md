@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **357 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **356 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -469,7 +469,7 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| avatar | string | 是 | 头像 URL（1–2048 字符；走 body 而非 Query，AGENTS §12） |
+| avatar | string | 是 | 头像 URL |
 
 ```json
 {
@@ -599,7 +599,7 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| cover_image | string | 是 | 封面图 URL（1–2048 字符；走 body 而非 Query，AGENTS §12） |
+| cover_image | string | 是 | 封面图 URL |
 
 ```json
 {
@@ -1344,7 +1344,7 @@ _无路径 / query 参数_
 
 ---
 
-## 博客（41）
+## 博客（40）
 
 文章、分类、标签、评论的公开与管理接口
 
@@ -2571,109 +2571,6 @@ _无路径 / query 参数_
     "user_ref": "string"
   }
 ]
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `POST /api/blog/posts/{post_id}/comments`
-
-- **摘要**：发表评论
-- **鉴权**：需鉴权：`HTTPBearer`
-
-在文章下，支持回复。文章不可见（草稿/定时未到/加密未解锁）时按 404 处理，不接受对看不见的文章写评论；文章禁止评论（allow_comments=false）返回 403。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `CommentCreate`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| author_avatar_source | enum(`auto`, `custom`, `github`, `qq`, `gravatar`) \| null | 否 | 【已废弃】请使用 avatar_source；旧调用方兼容位，若为非 None 会覆盖 avatar_source |
-| author_email | string \| null | 否 |  |
-| author_name | string \| null | 否 |  |
-| author_website | string \| null | 否 |  |
-| avatar_source | enum(`auto`, `custom`, `github`, `qq`, `gravatar`) | 否 | 头像来源 |
-| content | string | 是 |  |
-| github | string \| null | 否 | 评论者 GitHub 用户名（可选） |
-| hcaptcha_token | string \| null | 否 |  |
-| parent_id | integer \| null | 否 |  |
-| qq | string \| null | 否 | 评论者 QQ（可选） |
-
-```json
-{
-  "author_avatar_source": "string",
-  "author_email": "string",
-  "author_name": "string",
-  "author_website": "string",
-  "avatar_source": "auto",
-  "content": "string",
-  "github": "string",
-  "hcaptcha_token": "string",
-  "parent_id": "string",
-  "qq": "string"
-}
-```
-
-**出参**
-
-`201` · 模型 `CommentResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| author_avatar | string | 否 |  |
-| author_name | string | 是 |  |
-| author_website | string \| null | 否 |  |
-| avatar_source | string \| null | 否 |  |
-| content | string | 是 |  |
-| created_at | string | 是 |  |
-| github | string \| null | 否 |  |
-| id | integer | 是 |  |
-| is_pinned | boolean | 否 |  |
-| likes_count | integer | 否 |  |
-| parent_id | integer \| null | 否 |  |
-| parent_ref | object \| null | 否 |  |
-| post_id | integer | 是 |  |
-| post_ref | object \| null | 否 |  |
-| qq | string \| null | 否 |  |
-| replies | object[] | 否 |  |
-| reply_total | integer | 否 |  |
-| resolved_avatar_url | string \| null | 否 |  |
-| status | string | 否 |  |
-| user_id | integer \| null | 否 |  |
-| user_ref | object \| null | 否 |  |
-
-响应示例：
-
-```json
-{
-  "author_avatar": "",
-  "author_name": "string",
-  "author_website": "string",
-  "avatar_source": "string",
-  "content": "string",
-  "created_at": "string",
-  "github": "string",
-  "id": 0,
-  "is_pinned": false,
-  "likes_count": 0,
-  "parent_id": "string",
-  "parent_ref": "string",
-  "post_id": 0,
-  "post_ref": "string",
-  "qq": "string",
-  "replies": [],
-  "reply_total": 0,
-  "resolved_avatar_url": "string",
-  "status": "pending",
-  "user_id": "string",
-  "user_ref": "string"
-}
 ```
 
 **错误码**
@@ -6717,7 +6614,7 @@ _无路径 / query 参数_
 - **摘要**：发表留言（游客或登录用户均可）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-公开写入接口，携带可选 Bearer Token 时自动关联登录用户身份。服务端记录客户端 IP 与 User-Agent 用于审核追溯；留言进入审核流，管理员批准后才对公众可见。受敏感接口限流与同 IP 频控保护：过于频繁返回 429（业务码 TOO_FREQUENT_GUESTBOOK，响应头带 Retry-After: 30）。字段校验失败返回 422：AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / CONTENT_TOO_SHORT / CONTENT_TOO_LONG。非幂等，重复提交会产生多条留言。
+公开写入接口，携带可选 Bearer Token 时自动关联登录用户身份。服务端记录客户端 IP 与 User-Agent 用于审核追溯；命中敏感词按评论审核策略处理，是否需要管理员批准由「评论设置 → 新评论需审核 / 启用反垃圾」统一控制（关闭审核时自动通过并直接公开）。受敏感接口限流与同 IP 频控保护：过于频繁返回 429（业务码 TOO_FREQUENT_GUESTBOOK，响应头带 Retry-After: 30）。字段校验失败返回 422：AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / CONTENT_TOO_SHORT / CONTENT_TOO_LONG。非幂等，重复提交会产生多条留言。
 
 **入参**
 
@@ -6731,6 +6628,8 @@ _无路径 / query 参数_
 | author_email | string \| null | 否 |  |
 | author_name | string \| null | 否 |  |
 | author_website | string \| null | 否 |  |
+| captcha_code | string \| null | 否 | 验证码字符 |
+| captcha_key | string \| null | 否 | 验证码 key |
 | content | string | 是 |  |
 | github | string \| null | 否 | 评论者 GitHub 用户名（可选） |
 | qq | string \| null | 否 | 评论者 QQ（可选） |
@@ -6741,6 +6640,8 @@ _无路径 / query 参数_
   "author_email": "string",
   "author_name": "string",
   "author_website": "string",
+  "captcha_code": "string",
+  "captcha_key": "string",
   "content": "string",
   "github": "string",
   "qq": "string"
@@ -10004,7 +9905,8 @@ _无路径 / query 参数_
       "resource_id": "string",
       "resource_type": "string",
       "status": "string",
-      "user": "string"
+      "user": "string",
+      "user_agent": "string"
     }
   ],
   "page": 0,
@@ -10052,7 +9954,8 @@ _无路径 / query 参数_
     "resource_id": "string",
     "resource_type": "string",
     "status": "string",
-    "user": "string"
+    "user": "string",
+    "user_agent": "string"
   }
 ]
 ```
@@ -14589,7 +14492,7 @@ _无路径 / query 参数_
 - **摘要**：获取当前活跃 Hero 幻灯片
 - **鉴权**：公开接口（无需鉴权）
 
-获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。若尚未配置任何轮播且开启 Bing 壁纸，则自动用 Bing 最近几日壁纸作为虚拟轮播填充。
+公开接口、无需鉴权。获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。若尚未配置任何轮播，则用近 30 天高热度文章自动填充（标题 / 摘要 / 封面 / 文章链接），这些兜底项带负 ID、不落库、不可在后台编辑。lang 支持 zh|en|ja|zh_Hant，缺省按请求头与 rosetta_lang cookie 推断。
 
 **入参**
 
@@ -14634,7 +14537,9 @@ _无路径 / query 参数_
 
 **错误码**
 
-_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
 
 ---
 
@@ -19104,6 +19009,8 @@ _无路径 / query 参数_
 | author_name | string \| null | 否 |  |
 | author_website | string \| null | 否 |  |
 | avatar_source | enum(`auto`, `custom`, `github`, `qq`, `gravatar`) | 否 | 头像来源 |
+| captcha_code | string \| null | 否 | 验证码字符 |
+| captcha_key | string \| null | 否 | 验证码 key |
 | content | string | 是 |  |
 | github | string \| null | 否 | 评论者 GitHub 用户名（可选） |
 | hcaptcha_token | string \| null | 否 |  |
@@ -19117,6 +19024,8 @@ _无路径 / query 参数_
   "author_name": "string",
   "author_website": "string",
   "avatar_source": "auto",
+  "captcha_code": "string",
+  "captcha_key": "string",
   "content": "string",
   "github": "string",
   "hcaptcha_token": "string",

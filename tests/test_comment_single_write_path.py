@@ -26,7 +26,9 @@ def test_legacy_comment_post_is_retired_in_openapi() -> None:
     assert "post" in paths[CANONICAL_PATH]
 
 
-async def test_legacy_comment_post_is_not_writable(client: AsyncClient, staff_headers: dict) -> None:
+async def test_legacy_comment_post_is_not_writable(
+    client: AsyncClient, staff_headers: dict
+) -> None:
     """路径只剩读口：POST 落到 405，而不是另有一套宽松实现接住。"""
     resp = await client.post(
         "/api/blog/posts/1/comments",
