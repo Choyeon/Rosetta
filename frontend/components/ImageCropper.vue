@@ -28,8 +28,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="放大"
-          aria-label="放大"
+          :title="t('image.zoomIn')"
+          :aria-label="t('image.zoomIn')"
           @click="zoomIn"
         >
           <ZoomIn data-icon="inline-start" />
@@ -38,8 +38,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="缩小"
-          aria-label="缩小"
+          :title="t('image.zoomOut')"
+          :aria-label="t('image.zoomOut')"
           @click="zoomOut"
         >
           <ZoomOut data-icon="inline-start" />
@@ -48,8 +48,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="向左旋转"
-          aria-label="向左旋转"
+          :title="t('image.rotateLeft')"
+          :aria-label="t('image.rotateLeft')"
           @click="rotateLeft"
         >
           <RotateCcw data-icon="inline-start" />
@@ -58,8 +58,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="向右旋转"
-          aria-label="向右旋转"
+          :title="t('image.rotateRight')"
+          :aria-label="t('image.rotateRight')"
           @click="rotateRight"
         >
           <RotateCw data-icon="inline-start" />
@@ -68,8 +68,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="水平翻转"
-          aria-label="水平翻转"
+          :title="t('image.flipHorizontal')"
+          :aria-label="t('image.flipHorizontal')"
           @click="flipH"
         >
           <FlipHorizontal data-icon="inline-start" />
@@ -78,8 +78,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="垂直翻转"
-          aria-label="垂直翻转"
+          :title="t('image.flipVertical')"
+          :aria-label="t('image.flipVertical')"
           @click="flipV"
         >
           <FlipVertical data-icon="inline-start" />
@@ -88,8 +88,8 @@
           variant="outline"
           size="icon"
           class="h-8 w-8"
-          title="重置"
-          aria-label="重置裁剪框"
+          :title="t('image.resetCrop')"
+          :aria-label="t('image.resetCrop')"
           @click="reset"
         >
           <RefreshCw data-icon="inline-start" />
@@ -124,6 +124,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Cropper, CircleStencil, RectangleStencil } from 'vue-advanced-cropper'
 import 'vue-advanced-cropper/dist/style.css'
 import { Button } from '~~/components/ui/button'
@@ -154,6 +155,8 @@ interface Props {
   /** 是否显示裁剪尺寸 */
   showSize?: boolean
 }
+
+const { t } = useI18n()
 
 const props = withDefaults(defineProps<Props>(), {
   shape: 'rectangle',

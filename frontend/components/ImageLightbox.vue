@@ -13,13 +13,13 @@
         role="dialog"
         aria-modal="true"
         tabindex="-1"
-        :aria-label="currentTitle || '图片预览'"
+        :aria-label="currentTitle || t('image.previewFallback')"
         @click.self="close"
         @keydown.tab="onTabKey"
       >
         <button
           class="absolute top-4 right-4 z-10 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
-          aria-label="关闭预览"
+          :aria-label="t('image.closePreview')"
           @click="close"
         >
           <X class="size-5" />
@@ -28,7 +28,7 @@
         <button
           v-if="images.length > 1"
           class="absolute left-4 z-10 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
-          aria-label="上一张"
+          :aria-label="t('image.prevImage')"
           @click.stop="prev"
         >
           <ChevronLeft class="size-5" />
@@ -37,7 +37,7 @@
         <button
           v-if="images.length > 1"
           class="absolute right-4 z-10 size-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors"
-          aria-label="下一张"
+          :aria-label="t('image.nextImage')"
           @click.stop="next"
         >
           <ChevronRight class="size-5" />
@@ -54,7 +54,7 @@
             v-else
             class="text-white/70 text-sm py-16"
           >
-            该照片没有可用的图片地址
+            {{ t('image.noImageUrl') }}
           </p>
           <div
             v-if="currentTitle"
@@ -77,11 +77,14 @@
 <script setup lang="ts">
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { X, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { useI18n } from 'vue-i18n'
 
 interface LightboxImage {
   url: string
   title?: string
 }
+
+const { t } = useI18n()
 
 const props = defineProps<{
   open: boolean

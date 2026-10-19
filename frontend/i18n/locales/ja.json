@@ -64,6 +64,25 @@
     "nextPage": "次のページ",
     "pagination": "ページ送りのナビゲーション"
   },
+  "image": {
+    "zoomIn": "拡大",
+    "zoomOut": "縮小",
+    "rotateLeft": "左に回転",
+    "rotateRight": "右に回転",
+    "flipHorizontal": "水平反転",
+    "flipVertical": "垂直反転",
+    "resetCrop": "切り抜き枠をリセット",
+    "closePreview": "プレビューを閉じる",
+    "prevImage": "前の画像",
+    "nextImage": "次の画像",
+    "previewFallback": "画像プレビュー",
+    "noImageUrl": "この写真には利用可能な画像アドレスがありません",
+    "removeFailed": "失敗したこの画像を削除",
+    "dropHereMulti": "クリックまたは画像をここにドラッグしてアップロード",
+    "dropHere": "クリックまたは画像をここにドラッグ",
+    "formatHint": "JPG / PNG / WebP / GIF 対応、1枚最大 {max}",
+    "autoCompressHint": "アップロード前に自動圧縮します"
+  },
   "nav": {
     "home": "ホーム",
     "posts": "投稿",
@@ -921,7 +940,8 @@
     "noDesc": "説明なし",
     "loadFailed": "アルバムの読み込みに失敗しました",
     "noAlbums": "アルバムはまだありません",
-    "hint": "画像をクリックすると拡大表示できます。"
+    "hint": "画像をクリックすると拡大表示できます。",
+    "openAlbum": "アルバムを開く：{title}"
   },
   "friends": {
     "title": "相互リンク",

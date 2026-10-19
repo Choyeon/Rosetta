@@ -89,7 +89,7 @@
         <Button
           variant="outline"
           size="icon"
-          aria-label="上一页"
+          :aria-label="t('common.prevPage')"
           :disabled="currentPage <= 1"
           @click="currentPage -= 1"
         >
@@ -108,7 +108,7 @@
         <Button
           variant="outline"
           size="icon"
-          aria-label="下一页"
+          :aria-label="t('common.nextPage')"
           :disabled="currentPage >= totalPages"
           @click="currentPage += 1"
         >

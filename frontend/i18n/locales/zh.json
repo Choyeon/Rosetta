@@ -64,6 +64,25 @@
     "nextPage": "下一页",
     "pagination": "分页导航"
   },
+  "image": {
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转",
+    "flipHorizontal": "水平翻转",
+    "flipVertical": "垂直翻转",
+    "resetCrop": "重置裁剪框",
+    "closePreview": "关闭预览",
+    "prevImage": "上一张",
+    "nextImage": "下一张",
+    "previewFallback": "图片预览",
+    "noImageUrl": "该照片没有可用的图片地址",
+    "removeFailed": "移除这张失败的图片",
+    "dropHereMulti": "点击或拖拽图片到此处上传",
+    "dropHere": "点击或拖拽图片到此处",
+    "formatHint": "支持 JPG / PNG / WebP / GIF，单张最大 {max}",
+    "autoCompressHint": "上传前将自动压缩优化"
+  },
   "nav": {
     "home": "首页",
     "posts": "文章",
@@ -847,7 +866,8 @@
     "noDesc": "暂无描述",
     "loadFailed": "相册加载失败",
     "noAlbums": "还没有上传相册",
-    "hint": "点击任意图片可放大查看。"
+    "hint": "点击任意图片可放大查看。",
+    "openAlbum": "打开相册：{title}"
   },
   "friends": {
     "title": "友链",

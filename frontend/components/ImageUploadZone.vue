@@ -33,16 +33,16 @@
           <UploadCloud class="size-6 text-primary" />
         </div>
         <p class="text-sm font-medium">
-          {{ multiple ? '点击或拖拽图片到此处上传' : '点击或拖拽图片到此处' }}
+          {{ multiple ? t('image.dropHereMulti') : t('image.dropHere') }}
         </p>
         <p class="text-xs text-muted-foreground mt-1">
-          支持 JPG / PNG / WebP / GIF，单张最大 {{ limitLabel }}
+          {{ t('image.formatHint', { max: limitLabel }) }}
         </p>
         <p
           v-if="autoCompress"
           class="text-xs text-muted-foreground mt-0.5"
         >
-          上传前将自动压缩优化
+          {{ t('image.autoCompressHint') }}
         </p>
         <input
           ref="inputRef"
@@ -90,7 +90,7 @@
             v-else-if="item.status === 'error'"
             type="button"
             class="absolute top-1.5 right-1.5 size-5 rounded-full bg-destructive flex items-center justify-center cursor-pointer before:absolute before:-inset-1.5 before:content-['']"
-            aria-label="移除这张失败的图片"
+            :aria-label="t('image.removeFailed')"
             @click.stop="removeItem(item.id)"
           >
             <X class="size-3 text-white" />
@@ -140,6 +140,9 @@ import { compressImage, formatBytes, type CompressResult } from '~~/composables/
 import { useMediaLibrary } from '~~/composables/useMedia'
 import { useSite } from '~~/composables/useSite'
 import { extensionOf, resolveAllowedExtensions, resolveUploadLimitBytes } from '~~/composables/useUploadProgress'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 interface UploadItem {
   id: string

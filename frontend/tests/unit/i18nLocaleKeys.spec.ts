@@ -1,17 +1,18 @@
 /**
- * i18n 语言包三条守卫：键集一致、无孤儿键、无缺键。
+ * i18n 四条守卫：键集一致、无孤儿键、无缺键、公开面不得写死中文可访问性名称。
  *
  * 为什么用源码文本扫描而不是跑起来断言：语言包是**打进客户端 bundle** 的
  * （nuxt.config 里 i18n 没开 lazy，四语 JSON 全量加载）。本仓实测有 576 个键在任何
  * 源码里都找不到字面量 —— 也就是约 93 KB / 单语言约 22 KB 的死文案，每个访客都要
  * 下载并解析一次。这类"改了 .vue 忘了删 JSON"的残留不会报错，只会静默变大。
  *
- * 三条断言各对应一类真实缺陷：
+ * 四条断言各对应一类真实缺陷：
  *   ① 四语键集必须逐键相同 —— 少一个键时 vue-i18n 会按 fallbackLocale(en) 兜底，
  *      繁体/日文页面混进英文文案，且没有任何报警；
  *   ② 键必须有消费点 —— 除动态拼装的命名空间（见 PROTECT）外，孤儿键即死负载；
  *   ③ 源码里引用的字面量键必须存在 —— 缺键的表现是页面直接渲染裸 key
- *      （`footer.home` 这种），页脚为此专门写了四语兜底表。
+ *      （`footer.home` 这种），页脚为此专门写了四语兜底表；
+ *   ④ 前台的 aria-label / title 不得写死中文 —— 读屏软件只念这一个来源。
  */
 import { describe, it, expect } from 'vitest'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
@@ -123,5 +124,25 @@ describe('源码引用的键必须存在', () => {
       }
     }
     expect([...missing].sort(), '缺键会把裸 key 渲染到页面上').toEqual([])
+  })
+})
+
+/**
+ * 公开面（前台页 + 共享组件）的可访问性名称必须是翻译键。
+ * 写死中文的 `aria-label="关闭预览"` 在 en/ja/zh_Hant 下仍是简体字，而它是读屏软件
+ * 唯一的播报来源，肉眼检查很容易漏。`components/ui/**` 是 shadcn 原子件、按约定保持
+ * 无语言依赖（要本地化由调用方覆写 slot / aria-label），后台 `**/admin/**` 另有
+ * 独立的本地化范围，两处都不在这一条断言内。
+ */
+describe('公开面不得写死中文可访问性名称', () => {
+  it('非后台、非 ui 原子件的 aria-label / title 必须走 t()', () => {
+    const pattern = /(?:^|[^:\w])(?:aria-label|title)="[^"]*[\u4e00-\u9fff]/gmu
+    const offenders: string[] = []
+    for (const { file, text } of sources) {
+      const rel = file.replace(`${ROOT}/`, '').replace(/\\/g, '/')
+      if (rel.includes('/admin/') || rel.startsWith('components/ui/')) continue
+      for (const match of text.matchAll(pattern)) offenders.push(`${rel}: ${match[0].trim()}`)
+    }
+    expect(offenders.sort(), '前台 aria-label / title 写死中文，切语言不会跟着变').toEqual([])
   })
 })

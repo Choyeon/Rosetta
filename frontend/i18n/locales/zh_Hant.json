@@ -64,6 +64,25 @@
     "nextPage": "下一頁",
     "pagination": "分頁導航"
   },
+  "image": {
+    "zoomIn": "放大",
+    "zoomOut": "縮小",
+    "rotateLeft": "向左旋轉",
+    "rotateRight": "向右旋轉",
+    "flipHorizontal": "水平翻轉",
+    "flipVertical": "垂直翻轉",
+    "resetCrop": "重設裁剪框",
+    "closePreview": "關閉預覽",
+    "prevImage": "上一張",
+    "nextImage": "下一張",
+    "previewFallback": "圖片預覽",
+    "noImageUrl": "該照片沒有可用的圖片位址",
+    "removeFailed": "移除這張失敗的圖片",
+    "dropHereMulti": "點擊或拖曳圖片到此處上傳",
+    "dropHere": "點擊或拖曳圖片到此處",
+    "formatHint": "支援 JPG / PNG / WebP / GIF，單張最大 {max}",
+    "autoCompressHint": "上傳前將自動壓縮最佳化"
+  },
   "nav": {
     "home": "首頁",
     "posts": "文章",
@@ -921,7 +940,8 @@
     "noDesc": "暫無描述",
     "loadFailed": "相簿載入失敗",
     "noAlbums": "尚無相簿",
-    "hint": "點擊任意圖片可放大查看。"
+    "hint": "點擊任意圖片可放大查看。",
+    "openAlbum": "開啟相簿：{title}"
   },
   "friends": {
     "title": "友情連結",

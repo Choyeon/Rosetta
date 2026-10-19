@@ -64,6 +64,25 @@
     "nextPage": "Next page",
     "pagination": "Pagination"
   },
+  "image": {
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right",
+    "flipHorizontal": "Flip horizontal",
+    "flipVertical": "Flip vertical",
+    "resetCrop": "Reset crop box",
+    "closePreview": "Close preview",
+    "prevImage": "Previous image",
+    "nextImage": "Next image",
+    "previewFallback": "Image preview",
+    "noImageUrl": "This photo has no usable image URL",
+    "removeFailed": "Remove this failed image",
+    "dropHereMulti": "Click or drag images here to upload",
+    "dropHere": "Click or drag an image here",
+    "formatHint": "Supports JPG / PNG / WebP / GIF, up to {max} per image",
+    "autoCompressHint": "Images are compressed automatically before upload"
+  },
   "nav": {
     "home": "Home",
     "posts": "Posts",
@@ -847,7 +866,8 @@
     "noDesc": "No description",
     "loadFailed": "Failed to load albums",
     "noAlbums": "No albums yet",
-    "hint": "Click any photo to view it enlarged."
+    "hint": "Click any photo to view it enlarged.",
+    "openAlbum": "Open album: {title}"
   },
   "friends": {
     "title": "Friends",

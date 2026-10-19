@@ -51,7 +51,7 @@
           class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           role="button"
           tabindex="0"
-          :aria-label="`打开相册：${album.title}`"
+          :aria-label="t('gallery.openAlbum', { title: album.title })"
           @click="openAlbum(album.id)"
           @keydown.enter.prevent="openAlbum(album.id)"
           @keydown.space.prevent="openAlbum(album.id)"
