@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import base64
 import logging
-import re
 from typing import Literal
 
 import httpx
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
 
-from backend.core.net_guard import UnsafeTargetError, validated_get
+from backend.core.net_guard import IMAGE_MIME_RE, UnsafeTargetError, is_image_mime, validated_get
 from backend.schemas import raw_content_response
 
 logger = logging.getLogger(__name__)
@@ -73,19 +72,6 @@ _HEADERS_PASS_THOUGH = {
     ),
 }
 
-# 允许的图片 MIME（严格匹配，杜绝代理到 HTML/JSON 触发 ORB）
-_IMAGE_MIME_RE = re.compile(
-    r"^(image/(png|jpeg|jpg|gif|webp|avif|svg\+xml|bmp|x-icon|vnd\.microsoft\.icon|ico))(?:;.*)?$",
-    re.I,
-)
-
-
-def _is_image_mime(ct: str | None) -> bool:
-    if not ct:
-        return False
-    return bool(_IMAGE_MIME_RE.match(ct.strip()))
-
-
 def _b64url_decode(src: str) -> str:
     padding = "=" * (-len(src) % 4)
     raw = base64.urlsafe_b64decode(src + padding)
@@ -132,12 +118,12 @@ async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
             if r.status_code >= 400:
                 return RedirectResponse(_FINAL_FALLBACK, status_code=307)
             media_type = r.headers.get("content-type") or ""
-            if not _is_image_mime(media_type):
+            if not is_image_mime(media_type):
                 # 上游返回了 HTML / JSON / 其它文本（例如 example.com 的 404）
                 # → Chromium ORB 会拦截 cross-origin text/* 响应当作图片
                 return RedirectResponse(_FINAL_FALLBACK, status_code=307)
             # 清理 media_type 中的 charset / boundary，防止 image/png; charset=utf-8 出错
-            clean_media = _IMAGE_MIME_RE.match(media_type.strip())
+            clean_media = IMAGE_MIME_RE.match(media_type.strip())
             mt = clean_media.group(1) if clean_media else "image/png"
             cl = r.headers.get("content-length")
             headers = {

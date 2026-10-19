@@ -18,7 +18,7 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from backend.core.config import settings
+from backend.utils.ugc_fields import gravatar_base
 
 AvatarSource = Literal["auto", "custom", "github", "qq", "gravatar"]
 
@@ -34,11 +34,6 @@ FIRST_PARTY_AVATAR_RE = re.compile(r"^/(?:media|uploads|static)/[^\s<>\"']*$")
 def is_first_party_avatar(raw: str) -> bool:
     """是否本站自托管头像路径（不需要走外链代理，也不该被代理包装）。"""
     return bool(FIRST_PARTY_AVATAR_RE.match(raw.strip()))
-
-
-def _gravatar_base() -> str:
-    raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
-    return raw or "https://cravatar.cn/avatar"
 
 
 @dataclass(frozen=True)
@@ -78,7 +73,7 @@ def _gravatar_url(email: str | None, size: int = 160) -> str | None:
         return None
     digest = hashlib.md5(email.strip().lower().encode("utf-8")).hexdigest()
     # 默认使用国内镜像（sdn.geekzu.org / cravatar.cn 等），可通过 settings 覆盖
-    return f"{_gravatar_base()}/{digest}?s={size}&d=mp&r=g"
+    return f"{gravatar_base()}/{digest}?s={size}&d=mp&r=g"
 
 
 def validate_input(inp: AvatarInput) -> dict[str, str | None]:

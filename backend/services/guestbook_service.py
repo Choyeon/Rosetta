@@ -8,7 +8,6 @@ Rosetta 留言板服务模块
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
 from typing import Any
@@ -28,55 +27,19 @@ from backend.services.captcha_service import ensure_captcha_for_guest
 from backend.services.site_settings import bool_of, read_group
 from backend.utils.compat import utc_now_naive
 
+# mask_ip / gravatar_avatar / truncate_ua / 敏感词自动拒绝默认值的真源在
+# `backend/utils/ugc_fields.py`（评论与留言板同源，改一处必同时生效）。
+# 这里 re-export 是为了既有 `from ...guestbook_service import mask_ip` 的调用方与回归用例不变。
+from backend.utils.ugc_fields import (
+    AUTO_REJECT_ON_SENSITIVE_DEFAULT,
+    gravatar_avatar,
+    mask_ip,
+    truncate_ua,
+)
+
 logger = logging.getLogger(__name__)
 
 HTTP_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
-
-
-def _gravatar_base() -> str:
-    raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
-    return raw or "https://cravatar.cn/avatar"
-
-
-AUTO_REJECT_ON_SENSITIVE_DEFAULT = True
-
-
-def mask_ip(ip: str | None) -> str | None:
-    """对 IP 地址脱敏：IPv4 保留前两段；IPv6 保留前 4 段"""
-    if not ip:
-        return None
-    ip = ip.strip()
-    if not ip:
-        return None
-    if ":" in ip:
-        parts = ip.split(":")
-        head = parts[:4]
-        while len(head) < 4:
-            head.append("0")
-        return ":".join(head) + "::"
-    if "." in ip:
-        parts = ip.split(".")
-        if len(parts) == 4:
-            return f"{parts[0]}.{parts[1]}.x.x"
-        return ip
-    return ip
-
-
-def gravatar_avatar(email: str | None, author_name: str | None) -> str:
-    """生成 Gravatar 头像 URL（默认国内镜像），绝不暴露 email 明文"""
-    source = ""
-    if email:
-        source = email.strip().lower()
-    if not source:
-        source = (author_name or "guest").strip().lower()
-    h = hashlib.md5(source.encode("utf-8")).hexdigest()
-    return f"{_gravatar_base()}/{h}?d=mp&s=64"
-
-
-def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
-    if not ua:
-        return None
-    return ua[:max_len] if len(ua) > max_len else ua
 
 
 def _entry_to_response(e: GuestbookEntry) -> GuestbookEntryResponse:

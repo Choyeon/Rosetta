@@ -300,7 +300,8 @@ class TestCommentServiceHelpers:
         assert mask_ip("notanip") == "notanip"
 
     def test_gravatar_avatar_uses_email_or_name(self):
-        from backend.services.comment_service import GRAVATAR_BASE, gravatar_avatar
+        from backend.services.comment_service import gravatar_avatar
+        from backend.utils.ugc_fields import GRAVATAR_BASE
 
         # 有 email
         u1 = gravatar_avatar("user@example.com", None)

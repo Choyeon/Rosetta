@@ -7,10 +7,9 @@ Rosetta 评论服务模块
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from sqlalchemy import and_, desc, func, or_, select
 from sqlalchemy.exc import OperationalError, ProgrammingError
@@ -29,66 +28,16 @@ from backend.services.captcha_service import ensure_captcha_for_guest
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.site_settings import bool_of, int_of, read_group
 from backend.utils.compat import utc_now_naive
-
-if TYPE_CHECKING:
-    pass
+from backend.utils.ugc_fields import (
+    AUTO_REJECT_ON_SENSITIVE_DEFAULT,
+    gravatar_avatar,
+    mask_ip,
+    truncate_ua,
+)
 
 logger = logging.getLogger(__name__)
 
 HTTP_URL_RE = re.compile(r"^https?://", re.IGNORECASE)
-
-
-def _gravatar_base() -> str:
-    raw = (settings.gravatar_cdn_base or "https://cravatar.cn/avatar").rstrip("/ ")
-    return raw or "https://cravatar.cn/avatar"
-
-
-# 模块级常量，供外部测试/调用方直接 import
-GRAVATAR_BASE: str = _gravatar_base()
-
-
-AUTO_REJECT_ON_SENSITIVE_DEFAULT = True
-
-
-# ================= 静态辅助工具 =================
-
-
-def mask_ip(ip: str | None) -> str | None:
-    """对 IP 地址脱敏：IPv4 保留前两段；IPv6 保留前 4 段"""
-    if not ip:
-        return None
-    ip = ip.strip()
-    if not ip:
-        return None
-    if ":" in ip:
-        parts = ip.split(":")
-        head = parts[:4]
-        while len(head) < 4:
-            head.append("0")
-        return ":".join(head) + "::"
-    if "." in ip:
-        parts = ip.split(".")
-        if len(parts) == 4:
-            return f"{parts[0]}.{parts[1]}.x.x"
-        return ip
-    return ip
-
-
-def gravatar_avatar(email: str | None, author_name: str | None) -> str:
-    """生成 Gravatar 头像 URL（默认国内镜像），绝不暴露 email 明文"""
-    source = ""
-    if email:
-        source = email.strip().lower()
-    if not source:
-        source = (author_name or "guest").strip().lower()
-    h = hashlib.md5(source.encode("utf-8")).hexdigest()
-    return f"{_gravatar_base()}/{h}?d=mp&s=64"
-
-
-def truncate_ua(ua: str | None, max_len: int = 200) -> str | None:
-    if not ua:
-        return None
-    return ua[:max_len] if len(ua) > max_len else ua
 
 
 def _status_to_active(status: str) -> bool:

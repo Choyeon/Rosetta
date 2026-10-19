@@ -25,7 +25,7 @@ from pydantic import BaseModel
 from pydantic import Field as PDField
 
 from backend.core.config import settings
-from backend.core.net_guard import validated_get
+from backend.core.net_guard import is_image_mime, validated_get
 from backend.schemas import raw_content_response
 
 logger = logging.getLogger(__name__)
@@ -43,10 +43,6 @@ _BING_ALLOWED_HOST_SUFFIXES = (
     "microsoft.com",
 )
 
-_IMAGE_MIME_RE = re.compile(
-    r"^(image/(png|jpeg|jpg|gif|webp|avif|svg\+xml|bmp|x-icon|vnd\.microsoft\.icon|ico))(?:;.*)?$",
-    re.I,
-)
 _UPSTREAM_HEADERS = {
     "accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
     "accept-encoding": "gzip, deflate, br",
@@ -56,12 +52,6 @@ _UPSTREAM_HEADERS = {
     ),
 }
 _FINAL_FALLBACK = "/images/bing-fallback.svg"
-
-
-def _is_image_mime(ct: str | None) -> bool:
-    if not ct:
-        return False
-    return bool(_IMAGE_MIME_RE.match(ct.strip()))
 
 
 def _is_bing_host(url: str) -> bool:
@@ -106,9 +96,7 @@ def _cached_filepath(url: str) -> Path:
     ext = Path(parsed.path).suffix.lower()
     if not ext:
         # 从 query string 中提取（如 id=OHR.xxx_1920x1080.jpg）
-        import re as _re
-
-        m = _re.search(r"\.(jpg|jpeg|png|webp|gif|avif|svg|bmp|ico)(?:&|$)", parsed.query, _re.I)
+        m = re.search(r"\.(jpg|jpeg|png|webp|gif|avif|svg|bmp|ico)(?:&|$)", parsed.query, re.I)
         if m:
             ext = "." + m.group(1).lower()
     if ext not in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif", ".svg", ".bmp", ".ico"}:
@@ -137,7 +125,7 @@ async def _download_and_cache(url: str, target: Path) -> Path | None:
             if r.status_code >= 400:
                 return None
             media_type = r.headers.get("content-type") or ""
-            if not _is_image_mime(media_type):
+            if not is_image_mime(media_type):
                 return None
             # 原子写入：先写 .tmp 再 rename，避免半写文件被读到
             tmp = target.with_suffix(target.suffix + ".tmp")

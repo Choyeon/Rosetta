@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import ipaddress
 import logging
+import re
 import socket
 from urllib.parse import urlparse
 
@@ -23,6 +24,21 @@ logger = logging.getLogger(__name__)
 
 # 重定向跳数上限：正常头像 / 壁纸 CDN 链不会超过 3 跳
 MAX_SAFE_REDIRECTS = 4
+
+# 允许的图片 MIME（严格匹配，杜绝代理到 HTML/JSON 触发 Chromium ORB）。
+# 头像代理与 Bing 壁纸下载共用：两处原先各有一份逐字节相同的副本，
+# 改一处漏一处的表现是"同一个上游坏响应，一边 307 兜底、一边把 HTML 存进缓存"。
+IMAGE_MIME_RE = re.compile(
+    r"^(image/(png|jpeg|jpg|gif|webp|avif|svg\+xml|bmp|x-icon|vnd\.microsoft\.icon|ico))(?:;.*)?$",
+    re.I,
+)
+
+
+def is_image_mime(content_type: str | None) -> bool:
+    """上游 Content-Type 是否是真正可渲染的图片（可带 ``; charset`` 参数）。"""
+    if not content_type:
+        return False
+    return bool(IMAGE_MIME_RE.match(content_type.strip()))
 
 
 class UnsafeTargetError(Exception):
