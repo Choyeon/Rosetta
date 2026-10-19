@@ -969,9 +969,7 @@ async def get_site_config(db: DB):
             try:
                 loaded = _json_.loads(raw)
             except (ValueError, TypeError) as exc:
-                logger.warning(
-                    "settings group 行不是合法 JSON，已跳过该组 %r: %s", raw[:60], exc
-                )
+                logger.warning("settings group 行不是合法 JSON，已跳过该组 %r: %s", raw[:60], exc)
                 return {}
             if not isinstance(loaded, dict):
                 logger.warning(

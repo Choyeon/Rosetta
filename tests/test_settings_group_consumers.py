@@ -858,6 +858,8 @@ async def test_corrupt_group_row_only_skips_its_own_group(db_session, client):
     """
     import json
 
+    from sqlalchemy import delete
+
     from backend.core.cache import invalidate_cache
     from backend.models.core import SiteConfig
 
