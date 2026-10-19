@@ -3,7 +3,7 @@
   isEditorialTheme 在"无激活主题（slug=null）"时也成立，只有既非极简又非 editorial 的 slug 才走文字 Hero 杂志风。
   时序硬约束：先 await site.ensureLoaded() 再 await ft.ensureLoaded()（首帧两端同判），
   随后 6 个 useAPI 先并行发出、再统一 Promise.all await（省 5 个 RTT），缓存 key 必须带 locale 否则语言切换不刷新。
-  防御性去重：posts 按 slug/id、categories/tags 按本地化名称，兜的是后端/mock 重复行；formatStat 固定 en-US 千分位保 SSR 一致。
+  防御性去重：posts 按 slug/id、categories/tags 按本地化名称，兜的是后端/mock 重复行；千分位统一走 lib/utils::formatCount（固定 en-US 保 SSR 一致）。
 -->
 
 <template>
@@ -362,7 +362,7 @@
                 >
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_posts) }}
+                      {{ formatCount(siteStats.total_posts) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.postsCount') }}
@@ -370,7 +370,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_categories) }}
+                      {{ formatCount(siteStats.total_categories) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.categoriesCount') }}
@@ -378,7 +378,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_tags) }}
+                      {{ formatCount(siteStats.total_tags) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.tagsCount') }}
@@ -386,7 +386,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_words) }}
+                      {{ formatCount(siteStats.total_words) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('post.words') }}
@@ -665,7 +665,7 @@
                 >
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_posts) }}
+                      {{ formatCount(siteStats.total_posts) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.postsCount') }}
@@ -673,7 +673,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_categories) }}
+                      {{ formatCount(siteStats.total_categories) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.categoriesCount') }}
@@ -681,7 +681,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_tags) }}
+                      {{ formatCount(siteStats.total_tags) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('home.tagsCount') }}
@@ -689,7 +689,7 @@
                   </div>
                   <div class="rounded-xl bg-muted/50 p-4">
                     <div class="text-2xl font-bold font-display">
-                      {{ formatStat(siteStats.total_words) }}
+                      {{ formatCount(siteStats.total_words) }}
                     </div>
                     <div class="text-xs text-muted-foreground mt-1">
                       {{ t('post.words') }}
@@ -932,6 +932,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { toYMD } from '~~/lib/datetime'
+import { formatCount } from '~~/lib/utils'
 import { watch, computed, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -1324,13 +1325,6 @@ const tags = computed<BlogTag[]>(() => {
   }
   return out
 })
-
-// 大数字按本地化千分位格式化（如总字数 58100 → 58,100），SSR/客户端一致。
-const formatStat = (value: number | undefined | null): string => {
-  const n = Number(value ?? 0)
-  if (!Number.isFinite(n)) return '0'
-  return n.toLocaleString('en-US')
-}
 
 // ===== 补充 SEO：keywords（canonical / hreflang 由 useSeo 单源产出，不再另写一份）=====
 const siteKeywords = computed(() => site.siteKeywords.value)

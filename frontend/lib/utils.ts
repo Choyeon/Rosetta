@@ -28,6 +28,19 @@ export const SPA_SHELL_TITLE_PLACEHOLDER = 'Rosetta'
 // ====================== 展示用纯工具 ======================
 
 /**
+ * 计数 → 千分位文本，分组固定 en-US（`1,234`）。
+ *
+ * SSR 页里裸写 `n.toLocaleString()` 会按**各自运行环境**的默认 locale 分组：
+ * 服务端出 `1,234`、德语浏览器出 `1.234`，两端文本不一致 → hydration mismatch，
+ * 而且这个差异还会被该页的 swr 缓存固化成 TTL 内所有人看到的 HTML 字节。
+ */
+export function formatCount(value: number | null | undefined): string {
+  const n = Number(value ?? 0)
+  if (!Number.isFinite(n)) return '0'
+  return n.toLocaleString('en-US')
+}
+
+/**
  * 字节数 → 人读尺寸（B / KB / MB / GB，1024 进制）。
  *
  * 收口前三处各有一份：两份完全相同但缺少 B 档（900 字节显示 "0.9 KB"），

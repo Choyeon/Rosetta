@@ -107,12 +107,12 @@
               <span>·</span>
               <span class="inline-flex items-center gap-1.5">
                 <FileText class="size-3.5" />
-                {{ wordCount.toLocaleString() }} {{ t('post.words', '字') }}
+                {{ formatCount(wordCount) }} {{ t('post.words', '字') }}
               </span>
               <span>·</span>
               <span class="inline-flex items-center gap-1.5">
                 <Hash class="size-3.5" />
-                {{ charCount.toLocaleString() }} {{ t('post.chars', '字符') }}
+                {{ formatCount(charCount) }} {{ t('post.chars', '字符') }}
               </span>
             </template>
             <span v-if="updatedAt && new Date(updatedAt) > new Date(publishedAt)">·</span>
@@ -709,11 +709,11 @@
               <template v-if="showWordCount">
                 <div class="flex items-center justify-between">
                   <span class="text-muted-foreground inline-flex items-center gap-1.5"><FileText class="size-3.5" />{{ t('post.words', '字数') }}</span>
-                  <span class="font-medium">{{ wordCount.toLocaleString() }}</span>
+                  <span class="font-medium">{{ formatCount(wordCount) }}</span>
                 </div>
                 <div class="flex items-center justify-between">
                   <span class="text-muted-foreground inline-flex items-center gap-1.5"><Hash class="size-3.5" />{{ t('post.chars', '字符') }}</span>
-                  <span class="font-medium">{{ charCount.toLocaleString() }}</span>
+                  <span class="font-medium">{{ formatCount(charCount) }}</span>
                 </div>
               </template>
             </CardContent>
@@ -783,6 +783,7 @@ import { applyLocalePrefix } from '~~/composables/useSeo'
 import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
 import type { TocItem } from '~~/composables/useReadingUX'
+import { formatCount } from '~~/lib/utils'
 
 definePageMeta({ layout: 'default' })
 
