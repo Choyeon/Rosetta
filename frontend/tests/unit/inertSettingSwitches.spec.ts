@@ -237,7 +237,9 @@ describe('设置页字段清单必须覆盖后端每一把设置键', () => {
     }
     expect(Object.keys(remote).length, '_NUMERIC_BOUNDS 解析不出条目，守卫本身失效了').toBeGreaterThan(8)
 
-    const metaBlock = page.match(/const meta: Record<string, \{[^}]*\} = \{([\s\S]*?)\n {4}\}/)
+    // `}>` 而不是 `}`：注解是 Record<string, { min?: number, ... }>，漏掉泛型的闭合尖括号
+    // 会让这块永远匹配不上，守卫就变成"结构已变"的假红（实测踩过一次）。
+    const metaBlock = page.match(/const meta: Record<string, \{[^}]*\}> = \{([\s\S]*?)\n {4}\}/)
     const metaBody = metaBlock?.[1]
     if (!metaBody) throw new Error('settings.vue 数值区间表结构已变，请同步本守卫的解析口径')
     const local: Record<string, { min: number, max: number }> = {}
