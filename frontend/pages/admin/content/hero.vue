@@ -26,7 +26,7 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
+import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -61,9 +61,9 @@ const form = reactive<{
   sort_order: number
   is_active: boolean
 }>({
-  title: { zh: '', en: '', ja: '', zh_Hant: '' },
-  subtitle: { zh: '', en: '', ja: '', zh_Hant: '' },
-  cta_text: { zh: '', en: '', ja: '', zh_Hant: '' },
+  title: { ...EMPTY_I18N_DICT },
+  subtitle: { ...EMPTY_I18N_DICT },
+  cta_text: { ...EMPTY_I18N_DICT },
   media_url: '',
   cta_url: '',
   overlay_color: '#000000',
@@ -75,7 +75,7 @@ const form = reactive<{
 
 /** 后端存的是 JSON 字符串；非 JSON（历史脏数据/手填纯文本）原样当作当前语言文本回显 */
 function toDict(raw: string | null): I18nDict {
-  if (!raw) return { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (!raw) return { ...EMPTY_I18N_DICT }
   try {
     return normalizeI18nDict(JSON.parse(raw) as string | Record<string, string>)
   } catch {
@@ -112,9 +112,9 @@ async function loadData() {
 }
 
 function resetForm() {
-  form.title = { zh: '', en: '', ja: '', zh_Hant: '' }
-  form.subtitle = { zh: '', en: '', ja: '', zh_Hant: '' }
-  form.cta_text = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.title = { ...EMPTY_I18N_DICT }
+  form.subtitle = { ...EMPTY_I18N_DICT }
+  form.cta_text = { ...EMPTY_I18N_DICT }
   form.media_url = ''
   form.cta_url = ''
   form.overlay_color = '#000000'

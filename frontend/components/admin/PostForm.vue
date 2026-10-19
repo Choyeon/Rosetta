@@ -27,7 +27,7 @@ import {
 } from '~~/composables/useAdminManage'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
-import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
+import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
 import { toDateTimeLocal, fromDateTimeLocal } from '~~/lib/datetime'
 import { estimateContentStats, slugSourceTitle, scheduledAtError } from '~~/lib/postEditor'
 import { Button } from '~~/components/ui/button'
@@ -75,9 +75,9 @@ const draftLocalStorageKey = computed(() =>
 )
 
 const form = reactive({
-  title: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  title: { ...EMPTY_I18N_DICT } as Record<string, string>,
   slug: '',
-  content: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  content: { ...EMPTY_I18N_DICT } as Record<string, string>,
   // 后端 PostBase/PostUpdate 的 pattern 只接受 draft|published|scheduled，
   // 历史遗留的 archived 状态不可再作为可写值出现。
   status: 'draft' as 'draft' | 'published' | 'scheduled',
@@ -92,11 +92,11 @@ const form = reactive({
   // 否则「改一次标题保存」就把文章踢出系列（系列页章节目录清空）。
   series_id: null as number | null,
   series_order: 0,
-  excerpt: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  excerpt: { ...EMPTY_I18N_DICT } as Record<string, string>,
   cover_image: '',
-  meta_title: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
-  meta_description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
-  meta_keywords: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>
+  meta_title: { ...EMPTY_I18N_DICT } as Record<string, string>,
+  meta_description: { ...EMPTY_I18N_DICT } as Record<string, string>,
+  meta_keywords: { ...EMPTY_I18N_DICT } as Record<string, string>
 })
 
 const initialStateSnapshot = ref<string>('')

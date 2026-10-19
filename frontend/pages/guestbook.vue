@@ -491,20 +491,10 @@ const displayList = computed<GuestbookItem[]>(() => {
   return guestbookList.value
 })
 
-// Intl 本地化日期（与项目其余页面一致，跟随当前 locale）
-const formatDate = (dateStr: string) => {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return ''
-  const loc = String(locale.value || 'zh')
-  try {
-    const day = date.toLocaleDateString(loc, { month: 'short', day: 'numeric' })
-    const time = date.toLocaleTimeString(loc, { hour: '2-digit', minute: '2-digit' })
-    return `${day} ${time}`
-  } catch {
-    return ''
-  }
-}
+// 展示「月 日 时:分」：与动态流同一个单源（静态月表 + 24 小时制），
+// 本页是 SSR 页，toLocale* 在 Node 无 full-icu 时回退 en-US 会造成 hydration mismatch。
+const formatDate = (dateStr: string) =>
+  formatStampText(dateStr, String(locale.value || 'zh'))
 
 // 已登录用户：昵称/邮箱自动带出（与文章评论区对登录者的处理一致，
 // 后端 create_entry 也会按 current_user 兜底），登录态字段在模板中隐藏。

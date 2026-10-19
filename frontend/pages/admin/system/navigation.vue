@@ -337,6 +337,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
+import { EMPTY_I18N_DICT } from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -353,7 +354,7 @@ const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminNavItem | null>(null)
 
 const emptyForm = () => ({
-  label: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  label: { ...EMPTY_I18N_DICT } as Record<string, string>,
   url: '',
   icon: '',
   target: '_self' as '_self' | '_blank',
@@ -378,7 +379,7 @@ function extractZh(label: AdminNavItem['label']): string {
 }
 
 function normalizeLabel(label: AdminNavItem['label']): Record<string, string> {
-  const base = { zh: '', en: '', ja: '', zh_Hant: '' }
+  const base = { ...EMPTY_I18N_DICT }
   if (label == null) return base
   if (typeof label === 'string') {
     return { ...base, zh: label }

@@ -303,7 +303,7 @@ import {
   type AdminUserTitle
 } from '~~/composables/useAdminManage'
 import { TITLE_PRESET_ICONS } from '~~/composables/titlePresets'
-import { getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
+import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -332,10 +332,10 @@ const form = reactive<{
   icon: string
   description: I18nDict
 }>({
-  name: { zh: '', en: '', ja: '', zh_Hant: '' },
+  name: { ...EMPTY_I18N_DICT },
   color: '#3b82f6',
   icon: '',
-  description: { zh: '', en: '', ja: '', zh_Hant: '' }
+  description: { ...EMPTY_I18N_DICT }
 })
 
 const deleteDialogOpen = ref(false)
@@ -372,10 +372,10 @@ async function fetchData() {
 function openCreate() {
   editingId.value = null
   Object.assign(form, {
-    name: { zh: '', en: '', ja: '', zh_Hant: '' },
+    name: { ...EMPTY_I18N_DICT },
     color: '#3b82f6',
     icon: '',
-    description: { zh: '', en: '', ja: '', zh_Hant: '' }
+    description: { ...EMPTY_I18N_DICT }
   })
   formDialogOpen.value = true
 }

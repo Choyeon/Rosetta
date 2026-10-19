@@ -291,10 +291,10 @@ import {
   formatAdminDateTime
 } from '~~/composables/useAdminManage'
 import {
+  EMPTY_I18N_DICT,
   getLocalizedStr,
   normalizeI18nDict,
-  toI18nPayload,
-  type I18nDict
+  toI18nPayload
 } from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -336,7 +336,7 @@ const editingId = ref<number | null>(null)
 const formError = ref('')
 const form = reactive({
   type: 'say' as ActType,
-  content: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
+  content: { ...EMPTY_I18N_DICT },
   published: true
 })
 
@@ -414,7 +414,7 @@ function openCreate() {
   formError.value = ''
   Object.assign(form, {
     type: 'say' as ActType,
-    content: { zh: '', en: '', ja: '', zh_Hant: '' },
+    content: { ...EMPTY_I18N_DICT },
     published: true
   })
   formDialogOpen.value = true

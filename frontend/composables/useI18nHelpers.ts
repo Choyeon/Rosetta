@@ -12,6 +12,8 @@
  *     统一走 resolveLocalized() / pickLocalized() 规范化，不要在每个文件里手写 switch。
  */
 
+import { toHM } from '~~/lib/datetime'
+
 // 与 useI18n.ts 导出保持一致（避免 SSR 首屏 VueI18n 不可用时返回 undefined）
 const _fallbackLocale = 'zh'
 
@@ -102,6 +104,69 @@ export interface I18nLocalized {
   formatDate: (date: string | Date | number | null | undefined) => string
 }
 
+/** 三个展示形态共用入参归一：空值 / 非法日期一律回空串，让调用方不必各自判 NaN。 */
+function toDate(date: string | Date | number | null | undefined): Date | null {
+  if (date == null || date === '') return null
+  const d = new Date(date as string | number | Date)
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
+function monthNameOf(localeCode: string, d: Date): string {
+  const months = MONTH_TABLE[localeCode] || MONTH_TABLE.en || []
+  return months[d.getMonth()] ?? ''
+}
+
+/**
+ * 「月 日」形态：归档列表按日列只要月和日。
+ *
+ * 日补零、月名取自 MONTH_TABLE，两端都是静态拼接；原先这里用
+ * `toLocaleDateString(locale, {month:'2-digit',day:'2-digit'})`，Node 无 full-icu 时
+ * 回退 en-US 产出 `08/20`，浏览器产出 `8月20日` → hydration mismatch，而这一页带 swr。
+ */
+export function formatMonthDayText(
+  date: string | Date | number | null | undefined,
+  localeCode: string = _fallbackLocale
+): string {
+  const d = toDate(date)
+  if (!d) return ''
+  const m = monthNameOf(localeCode, d)
+  const day = String(d.getDate()).padStart(2, '0')
+  return localeCode === 'en' ? `${m} ${day}` : `${m}${day}日`
+}
+
+/**
+ * 「月 日 时:分」形态：一天之内年份是噪声的流（动态、留言板）。
+ *
+ * 时分固定 24 小时制（`toHM`）：`toLocaleTimeString('en-US', {hour:'2-digit'})` 默认给
+ * `02:15 PM`，中文给 `14:15`，两端同一条留言两种文本。
+ */
+export function formatStampText(
+  date: string | Date | number | null | undefined,
+  localeCode: string = _fallbackLocale
+): string {
+  const d = toDate(date)
+  if (!d) return ''
+  return `${monthNameOf(localeCode, d)} ${d.getDate()} ${toHM(d)}`
+}
+
+/** 完整日期形态：zh/zh_Hant/ja「2026年8月20日」，en「Aug 20, 2026」。 */
+export function formatDateText(
+  date: string | Date | number | null | undefined,
+  localeCode: string = _fallbackLocale
+): string {
+  const d = toDate(date)
+  if (!d) return ''
+  const m = monthNameOf(localeCode, d)
+  switch (localeCode) {
+    case 'zh':
+    case 'zh_Hant':
+    case 'ja':
+      return `${d.getFullYear()}年${m}${d.getDate()}日`
+    default:
+      return `${m} ${d.getDate()}, ${d.getFullYear()}`
+  }
+}
+
 export const useI18nHelpers = (): I18nLocalized => {
   // SSR-safe：在 composables 中同步使用 useI18n，避免 setup 顶层 undefined
   let _localeCode: string = _fallbackLocale
@@ -121,28 +186,8 @@ export const useI18nHelpers = (): I18nLocalized => {
 
   const pickLocalized = resolveLocalized
 
-  const formatDate = (date: string | Date | number | null | undefined): string => {
-    try {
-      if (date == null || date === '') return ''
-      const d = new Date(date as string | number | Date)
-      if (isNaN(d.getTime())) return ''
-      const months = (MONTH_TABLE[_localeCode] || MONTH_TABLE.en || []) as string[]
-      const y = d.getFullYear()
-      const m = months[d.getMonth()] ?? ''
-      const day = d.getDate()
-      switch (_localeCode) {
-        case 'zh':
-        case 'zh_Hant':
-        case 'ja':
-          return `${y}年${m}${day}日`
-        case 'en':
-        default:
-          return `${m} ${day}, ${y}`
-      }
-    } catch {
-      return ''
-    }
-  }
+  const formatDate = (date: string | Date | number | null | undefined): string =>
+    formatDateText(date, _localeCode)
 
   return {
     resolveLocalized,

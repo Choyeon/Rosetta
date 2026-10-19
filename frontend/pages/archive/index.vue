@@ -255,17 +255,6 @@ const groupedByYear = computed(() => {
     .map(([year, posts]) => ({ year, posts }))
 })
 
-const formatMonthDay = (date: string) => {
-  try {
-    if (!date) return ''
-    const d = new Date(date)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleDateString(locale.value as string, {
-      month: '2-digit',
-      day: '2-digit'
-    })
-  } catch {
-    return ''
-  }
-}
+const formatMonthDay = (date: string) =>
+  formatMonthDayText(date, String(locale.value || 'zh'))
 </script>

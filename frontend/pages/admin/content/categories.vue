@@ -22,7 +22,7 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
+import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -45,9 +45,9 @@ const form = reactive<{
   color: string
   icon: string
 }>({
-  name: { zh: '', en: '', ja: '', zh_Hant: '' },
+  name: { ...EMPTY_I18N_DICT },
   slug: '',
-  description: { zh: '', en: '', ja: '', zh_Hant: '' },
+  description: { ...EMPTY_I18N_DICT },
   color: '#94a3b8',
   icon: ''
 })
@@ -88,9 +88,9 @@ const loadData = async () => {
 }
 
 const resetForm = () => {
-  form.name = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.name = { ...EMPTY_I18N_DICT }
   form.slug = ''
-  form.description = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.description = { ...EMPTY_I18N_DICT }
   form.color = '#94a3b8'
   form.icon = ''
   editingId.value = null

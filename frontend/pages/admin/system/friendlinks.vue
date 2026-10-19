@@ -345,6 +345,7 @@ import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
 import AdminPageHeader from '~~/components/admin/AdminPageHeader.vue'
 import type { BadgeVariants } from '~~/components/ui/badge'
+import { EMPTY_I18N_DICT } from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -369,10 +370,10 @@ const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminFriendLink | null>(null)
 
 const emptyForm = () => ({
-  name: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  name: { ...EMPTY_I18N_DICT } as Record<string, string>,
   url: '',
   logo: '',
-  description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  description: { ...EMPTY_I18N_DICT } as Record<string, string>,
   status: 'pending' as 'pending' | 'approved' | 'rejected',
   sort_order: 0
 })
@@ -416,7 +417,7 @@ function getLocalizedStr(v: string | Record<string, string> | null | undefined):
 }
 
 function normalizeI18nDict(v: string | Record<string, string> | null | undefined): Record<string, string> {
-  const base = { zh: '', en: '', ja: '', zh_Hant: '' }
+  const base = { ...EMPTY_I18N_DICT }
   if (v == null) return base
   if (typeof v === 'string') {
     return { ...base, zh: v }

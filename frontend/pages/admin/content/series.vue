@@ -21,7 +21,7 @@ import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify, CONTENT_SLUG_PATTERN } from '~~/composables/useAdminI18n'
+import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify, CONTENT_SLUG_PATTERN } from '~~/composables/useAdminI18n'
 import { BookOpen, ChevronDown, Layers, Plus } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -41,9 +41,9 @@ const saving = ref(false)
 const coverUploading = ref(false)
 
 const form = reactive({
-  name: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  name: { ...EMPTY_I18N_DICT } as Record<string, string>,
   slug: '',
-  description: { zh: '', en: '', ja: '', zh_Hant: '' } as Record<string, string>,
+  description: { ...EMPTY_I18N_DICT } as Record<string, string>,
   cover_image: '',
   sort_order: 0
 })
@@ -80,9 +80,9 @@ const loadData = async () => {
 const openNew = () => {
   dialogMode.value = 'new'
   editingId.value = null
-  form.name = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.name = { ...EMPTY_I18N_DICT }
   form.slug = ''
-  form.description = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.description = { ...EMPTY_I18N_DICT }
   form.cover_image = ''
   form.sort_order = 0
   slugManualEdit = false

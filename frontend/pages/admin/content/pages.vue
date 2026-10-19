@@ -23,12 +23,12 @@ import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import {
+  EMPTY_I18N_DICT,
   getLocalizedStr,
   normalizeI18nDict,
   toI18nPayload,
   slugify,
-  CONTENT_SLUG_PATTERN,
-  type I18nDict
+  CONTENT_SLUG_PATTERN
 } from '~~/composables/useAdminI18n'
 import {
   Select,
@@ -57,9 +57,9 @@ const pendingDeleteId = ref<number | null>(null)
 
 const form = reactive({
   slug: '',
-  title: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict,
+  title: { ...EMPTY_I18N_DICT },
   status: 'draft' as 'draft' | 'published',
-  content: { zh: '', en: '', ja: '', zh_Hant: '' } as I18nDict
+  content: { ...EMPTY_I18N_DICT }
 })
 
 const editingId = ref<number | null>(null)
@@ -115,9 +115,9 @@ const openNew = () => {
   dialogMode.value = 'new'
   editingId.value = null
   form.slug = ''
-  form.title = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.title = { ...EMPTY_I18N_DICT }
   form.status = 'draft'
-  form.content = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.content = { ...EMPTY_I18N_DICT }
   slugManualEdit = false
   dialogOpen.value = true
 }

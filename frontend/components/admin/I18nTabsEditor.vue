@@ -34,6 +34,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Button } from '~~/components/ui/button'
 import MarkdownEditor from './MarkdownEditor.vue'
 import { translateAdminText } from '~~/composables/useAdminManage'
+import { EMPTY_I18N_DICT } from '~~/composables/useAdminI18n'
 import { Languages, Loader2 } from '@lucide/vue'
 
 type I18nValue = string | null | Record<string, string | null>
@@ -68,7 +69,7 @@ const LOCALES = [
 
 // 归一化：把 string | null | 已有 dict 统一为 dict 形式
 function normalize(v: I18nValue | undefined): Record<string, string> {
-  if (v == null) return { zh: '', en: '', ja: '', zh_Hant: '' }
+  if (v == null) return { ...EMPTY_I18N_DICT }
   if (typeof v === 'string') {
     return { zh: v, en: '', ja: '', zh_Hant: '' }
   }

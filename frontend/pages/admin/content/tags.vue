@@ -22,7 +22,7 @@ import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
-import { getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
+import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
 import { Search, Plus, Pencil, Trash2, Tag, Tags } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -48,7 +48,7 @@ const form = reactive<{
   icon: string
   is_active: boolean
 }>({
-  name: { zh: '', en: '', ja: '', zh_Hant: '' },
+  name: { ...EMPTY_I18N_DICT },
   slug: '',
   color: '#0EA5E9',
   icon: '',
@@ -96,7 +96,7 @@ const loadData = async () => {
 const openNew = () => {
   dialogMode.value = 'new'
   editingId.value = null
-  form.name = { zh: '', en: '', ja: '', zh_Hant: '' }
+  form.name = { ...EMPTY_I18N_DICT }
   form.slug = ''
   form.color = '#0EA5E9'
   form.icon = ''
