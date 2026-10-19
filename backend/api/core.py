@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
+from backend.core.site_config import invalidate_site_config_caches
 from backend.models.core import FriendLink, Navigation, Page, SearchPlaceholder, SiteConfig
 
 logger = logging.getLogger(__name__)
@@ -2512,8 +2513,8 @@ async def update_site_settings(
     await db.flush()
     await db.commit()
 
-    # 同步删除缓存，确保下次读取时使用新值（测试也能看到变更）
-    await cache.delete(make_cache_key("site_config"))
+    # 同步删除缓存，确保下次读侧（含 site_config_value 逐键口）用新值（测试也能看到变更）
+    await invalidate_site_config_caches()
     # Nitro 页面级 swr 缓存嵌着旧配置渲染的 HTML，fire-and-forget 通知清除
     purge_frontend_page_cache("后台站点设置保存")
 

@@ -8,7 +8,6 @@
 - 缓存统计
 """
 
-import logging
 from collections.abc import Callable
 from typing import Any
 
@@ -20,7 +19,6 @@ from backend.core.cache_v2 import (
 )
 from backend.core.cache_warmer import CacheWarmer, cache_warmer
 
-logger = logging.getLogger(__name__)
 
 
 class CacheService:
@@ -220,18 +218,6 @@ class CacheService:
         """
         return self._key_builder.build_with_hash(prefix, *args, **kwargs)
 
-    def build_pattern(self, *parts: str | int) -> str:
-        """
-        构建缓存键模式
-
-        Args:
-            *parts: 键的各个部分
-
-        Returns:
-            缓存键模式（用于批量删除）
-        """
-        return self._key_builder.build_pattern(*parts)
-
     async def invalidate_user_cache(self, user_id: int) -> int:
         """删除该用户在二级缓存里的全部键族，返回删除条数。
 
@@ -248,76 +234,6 @@ class CacheService:
             if await self.delete(self.build_key(prefix, user_id)):
                 deleted += 1
         return deleted
-
-    async def invalidate_post_cache(self, post_id: int | None = None) -> int:
-        """
-        使文章相关缓存失效
-
-        Args:
-            post_id: 文章 ID，None 则清除所有文章缓存
-
-        Returns:
-            删除的条目数
-        """
-        if post_id is not None:
-            pattern = self.build_pattern("post", post_id)
-        else:
-            pattern = self.build_pattern("post")
-        return await self.invalidate_pattern(pattern)
-
-    async def invalidate_category_cache(self) -> int:
-        """
-        使分类相关缓存失效
-
-        Returns:
-            删除的条目数
-        """
-        pattern = self.build_pattern("categories")
-        return await self.invalidate_pattern(pattern)
-
-    async def invalidate_tag_cache(self) -> int:
-        """
-        使标签相关缓存失效
-
-        Returns:
-            删除的条目数
-        """
-        pattern = self.build_pattern("tags")
-        return await self.invalidate_pattern(pattern)
-
-    async def invalidate_site_cache(self) -> int:
-        """
-        使站点配置缓存失效
-
-        Returns:
-            删除的条目数
-        """
-        pattern = self.build_pattern("site_config")
-        return await self.invalidate_pattern(pattern)
-
-    async def invalidate_navigation_cache(self) -> int:
-        """
-        使导航缓存失效
-
-        Returns:
-            删除的条目数
-        """
-        pattern = self.build_pattern("navigations")
-        return await self.invalidate_pattern(pattern)
-
-    async def clear_all(self) -> bool:
-        """
-        清空所有缓存
-
-        Returns:
-            是否清空成功
-        """
-        try:
-            await self.invalidate_pattern("rosetta:*")
-            return True
-        except Exception as e:
-            logger.error(f"清空缓存失败: {e}")
-            return False
 
     async def close(self) -> None:
         """关闭缓存连接"""

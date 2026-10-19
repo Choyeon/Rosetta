@@ -303,18 +303,6 @@ class CacheKeyBuilder:
         params_hash = hashlib.md5(params_str.encode()).hexdigest()[:8]
         return self.build(prefix, params_hash)
 
-    def build_pattern(self, *parts: str | int) -> str:
-        """
-        构建缓存键模式（用于批量删除）
-
-        Args:
-            *parts: 键的各个部分
-
-        Returns:
-            缓存键模式
-        """
-        return self.build(*parts) + "*"
-
     @staticmethod
     def sanitize(value: str) -> str:
         """

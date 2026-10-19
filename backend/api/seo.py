@@ -15,10 +15,10 @@ from sqlalchemy.orm import defer, selectinload
 
 from backend.core.auth import CurrentStaff
 from backend.core.cache import CACHE_TTL, cache, make_cache_key
+from backend.core.site_config import get_site_config_value, invalidate_site_config_caches
 from backend.core.config import settings
 from backend.core.database import async_session_maker
 from backend.core.deps import DB
-from backend.core.site_config import get_site_config_value
 from backend.models.blog import Category, Post, Tag
 from backend.models.core import SiteConfig
 from backend.schemas import raw_content_response
@@ -347,8 +347,7 @@ async def update_seo_config(
         await db.commit()
 
     await cache.delete_pattern(make_cache_key("seo", "*"))
-    await cache.delete_pattern(make_cache_key("site_config", "*"))
-    await cache.delete_pattern(make_cache_key("site_config_value", "*"))
+    await invalidate_site_config_caches()
 
     return {"success": True, "message": "SEO 配置已更新", "data": await _get_all_seo_config()}
 

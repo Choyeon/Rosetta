@@ -32,6 +32,7 @@ from sqlalchemy import select
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import cache, make_cache_key
 from backend.core.logging_middleware import log_operation
+from backend.core.site_config import invalidate_site_config_caches
 from backend.models.core import SiteConfig
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.utils.compat import utc_now_naive
@@ -629,12 +630,14 @@ async def patch_one_setting(
             await cache.delete(make_cache_key("seo", "robots_txt"))
         except Exception:
             logger.debug("cache delete for seo:robots_txt failed", exc_info=True)
-    # site_config 缓存（TTL 3600s）里叠了本分组的 JSON 覆写（见 core.py::_apply_settings_groups）：
-    # 分组保存后不删它，站点名/简介/侧栏最长 1 小时不生效，RSS channel（同源读缓存）一起陈旧。
+    # SiteConfig 的两族读缓存（聚合 site_config + 逐键 site_config_value:*，TTL 3600s）
+    # 里叠了本分组的 JSON 覆写（见 core.py::_apply_settings_groups）：分组保存后不删净，
+    # 站点名/简介/侧栏最长 1 小时不生效，RSS channel 与 robots/sitemap（各自读不同族键）
+    # 一起陈旧。口径单源见 invalidate_site_config_caches。
     try:
-        await cache.delete(make_cache_key("site_config"))
+        await invalidate_site_config_caches()
     except Exception:
-        logger.debug("cache delete for site_config failed", exc_info=True)
+        logger.debug("site config cache invalidation failed", exc_info=True)
     # Nitro 对公开页做 swr 缓存，缓存的 HTML 字节里嵌着站点名等配置渲染结果；
     # API 缓存删了页面仍是旧口径，fire-and-forget 通知前端清页面级缓存。
     purge_frontend_page_cache(f"设置分组保存: {group}")
