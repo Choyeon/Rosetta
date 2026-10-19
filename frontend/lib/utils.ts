@@ -13,6 +13,18 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
+/**
+ * `nuxt.config.ts` 里 `app.head.title` 的构建期占位值（两处必须同字面量，
+ * 由 tests/unit/spaShellTitle.spec.ts 双向钉住）。
+ *
+ * 为什么要单独认这个占位：`/login` `/register` `/search` `/account` `/admin` 是
+ * 精准反选的 ssr:false 壳页，没有页面级标题，客户端 unhead 拿到的 chunk 就是这串
+ * 编译期常量。标题拼接的两处权威（app.vue 的 titleTemplate、site-title.global.ts 的
+ * buildTitle）若不认它，就会产出 "Rosetta · 站点名"，而后台「SEO · 页面默认标题」
+ * 只活在"无标题"分支里 —— 管理员填了永远没反应（curl 实测 /login 标题恒为 Rosetta）。
+ */
+export const SPA_SHELL_TITLE_PLACEHOLDER = 'Rosetta'
+
 // ====================== 颜色工具：全站共享（取代 PostCard / TagBadge 各自实现）======================
 
 /**

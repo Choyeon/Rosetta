@@ -4,7 +4,7 @@
 //    useAuthStore 等 composable，避免在 Vite diagnostics 热链路上触发 NUXT_E1001。
 //    （lib/utils 是无 Nuxt 上下文依赖的纯函数库，import 它不破坏该解耦）
 //  - 仅客户端生效（SSR 时由各页面 useSeoMeta/useHead 生成标题，避免双链路冲突）。
-import { hexToHsl } from '~~/lib/utils'
+import { hexToHsl, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
 
 function applyAppearance(primary: string, accent: string) {
   if (!import.meta.client) return
@@ -110,15 +110,19 @@ export default defineNuxtPlugin(async () => {
   let siteSub = defaults.siteSub
 
   const buildTitle = (title?: string | undefined): string => {
+    const branded = siteSub ? `${siteName} · ${siteSub}` : siteName
     const t = String(title || '').trim()
     if (t) {
-      if (t === siteName) return siteSub ? `${siteName} · ${siteSub}` : siteName
+      // 空标题分支的三个入口：站点名本身、nuxt.config 的构建期占位（ssr:false 壳页
+      // 唯一拿得到的 chunk，见 lib/utils 的常量注释）。不把占位算进来的话，
+      // 「SEO · 页面默认标题」在这些页面上永远显示不出来。
+      if (t === siteName || t === SPA_SHELL_TITLE_PLACEHOLDER) return branded
       // 幂等守卫：与 app.vue titleTemplate 同口径——useSeo 的 title 已带
       // " · 站点名" 后缀，SPA 客户端再拼一次会出现双站点名。
       if (t.endsWith(`· ${siteName}`)) return t
       return `${t} · ${siteName}`
     }
-    return siteSub ? `${siteName} · ${siteSub}` : siteName
+    return branded
   }
 
   // OOBE 向导期后端对非白名单接口一律 503 OOBE_REQUIRED：

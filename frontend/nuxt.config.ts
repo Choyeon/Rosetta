@@ -135,6 +135,12 @@ export default defineNuxtConfig({
     // 布局切换时两侧 DOM 同时存在，长时间过渡会让页面出现滚动条跳动与双份高度。
     layoutTransition: { name: 'layout-fade' },
     head: {
+      // 构建期占位，不是最终标题：ssr:false 壳页（/login /register /search /account
+      // /admin）拿不到站点设置，标题走两条路补齐——服务端由
+      // server/plugins/spa-shell-brand.nitro.ts 在空壳 HTML 里按 basic.site_name +
+      // seo.default_title 改写 <title>，客户端由 app.vue / site-title.global.ts
+      // 认这个字面量（lib/utils::SPA_SHELL_TITLE_PLACEHOLDER）当作"本页无标题"。
+      // 改这里必须同改那个常量，守卫见 tests/unit/spaShellTitle.spec.ts。
       title: 'Rosetta',
       htmlAttrs: {
         // 允许动态 :lang 绑定（与 useI18n locale 同步）；default lang = zh

@@ -14,6 +14,7 @@ import { useAuthStore } from '~~/stores/auth'
 import { useToast } from '~~/composables/useToast'
 import ThemeRippleOverlay from '~~/components/ThemeRippleOverlay.vue'
 import { TooltipProvider } from '~~/components/ui/tooltip'
+import { SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
 
 const _route = useRoute()
 const { locale, t } = useI18n()
@@ -129,8 +130,12 @@ useHead(() => ({
   titleTemplate: (titleChunk?: string | null) => {
     const name = defaultTitles.value.name || 'Rosetta Blog'
     const sub = defaultTitles.value.sub || ''
-    if (titleChunk && String(titleChunk).trim()) {
-      const t = String(titleChunk).trim()
+    const t = String(titleChunk ?? '').trim()
+    // 构建期占位串＝"这一页没有自己的标题"。ssr:false 壳页（/login /register
+    // /search /account /admin）拿到的 chunk 恒为 nuxt.config 的 app.head.title，
+    // 不按占位识别的话它会被当成正常标题拼成 "Rosetta · 站点名"，
+    // 而「SEO · 页面默认标题」只活在无标题分支里 = 填了永远没反应。
+    if (t && t !== SPA_SHELL_TITLE_PLACEHOLDER) {
       if (t === name || t.endsWith(`· ${name}`)) return t
       return `${t} · ${name}`
     }

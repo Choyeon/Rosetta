@@ -113,6 +113,10 @@ describe('同一行为不得有两个开关', () => {
     expect(useSite).toMatch(/seo\.value\.default_title \|\| basic\.value\.subtitle/)
     expect(useSite, '反过来的顺序等于永久遮蔽（basic.subtitle 有写死兜底）')
       .not.toMatch(/basic\.value\.subtitle \|\| seo\.value\.default_title/)
+    // 光有优先级还不够：这一项只活在"本页无标题"分支里，那条分支曾被 nuxt.config 的
+    // 构建期占位永久占掉。占位识别与壳页服务端补写的契约见 spaShellTitle.spec.ts。
+    expect(readFileSync(resolve(process.cwd(), 'app.vue'), 'utf8'))
+      .toContain('SPA_SHELL_TITLE_PLACEHOLDER')
   })
 
   it('footer.text 有独立渲染位，不再与 slogan 抢同一行', () => {
