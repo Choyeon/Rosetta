@@ -4,8 +4,7 @@
  * 功能：
  * 1. useSeoMeta({ title, description, image, url, type }) — 统一设置
  *    <title>、<meta>、OpenGraph、Twitter Card，自动避免重复。
- * 2. useJsonLd(data) — 注入 <script type="application/ld+json"> 结构化数据。
- * 3. 预构建的 JSON-LD helper：
+ * 2. 预构建的 JSON-LD helper：
  *    - useArticleJsonLd(post)     — BlogPosting / Article（文章详情页）
  *    - useBreadcrumbJsonLd(items) — BreadcrumbList（分类/标签/归档页面包屑）
  *    - useWebsiteJsonLd()         — WebSite + SearchAction（首页）
@@ -496,30 +495,7 @@ export function useNoindexPage() {
 }
 
 // ---------------------------------------------------------------------------
-// 2. 通用 JSON-LD 注入（任何 schema.org 类型）
-// ---------------------------------------------------------------------------
-
-export function useJsonLd<T = unknown>(data: T | Ref<T>) {
-  useHead(() => {
-    const raw
-      = data && typeof (data as Ref).value !== 'undefined'
-        ? (data as Ref<T>).value
-        : (data as T)
-    return {
-      script: [
-        {
-          type: 'application/ld+json',
-          innerHTML: jsonLdStringify(raw),
-          // 阻止 SSR/客户端 hydration 冲突：同一页多次调用时通过 hid 去重
-          hid: `jsonld-${stableHash(jsonLdStringify(raw))}`
-        }
-      ]
-    }
-  })
-}
-
-// ---------------------------------------------------------------------------
-// 3. WebSite JSON-LD（首页）
+// 2. WebSite JSON-LD（首页）
 // ---------------------------------------------------------------------------
 
 export function useWebsiteJsonLd() {
@@ -560,7 +536,7 @@ export function useWebsiteJsonLd() {
 }
 
 // ---------------------------------------------------------------------------
-// 4. Article / BlogPosting JSON-LD（文章详情页）
+// 3. Article / BlogPosting JSON-LD（文章详情页）
 // ---------------------------------------------------------------------------
 
 /**
@@ -772,7 +748,7 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. BreadcrumbList JSON-LD（分类/标签/归档页的面包屑）
+// 4. BreadcrumbList JSON-LD（分类/标签/归档页的面包屑）
 // ---------------------------------------------------------------------------
 
 export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem[]>) {
@@ -815,17 +791,4 @@ export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem
       ]
     }
   })
-}
-
-// ---------------------------------------------------------------------------
-// 工具：稳定的短 hash（用于 JSON-LD hid 去重，避免每次渲染生成随机值引发 mismatch）
-// ---------------------------------------------------------------------------
-
-function stableHash(input: string): string {
-  let h = 2166136261 >>> 0
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i)
-    h = Math.imul(h, 16777619)
-  }
-  return `fnv-${(h >>> 0).toString(36)}`
 }
