@@ -1913,8 +1913,19 @@ async def backup_restore(
     )
     # 整站恢复触及文章之外的站点配置/导航/友情链接/相册，这些缓存同样要一起失效，
     # 否则"恢复完成"后前台仍会按备份前的配置渲染。
+    # site_config 那一行覆盖的是 /api/config；分组 JSON 的另外两个读面必须一起清：
+    # settings_public（前台 useSite，300s）与 settings_group:<name>（评论闸门、
+    # 上传上限、robots 等执行点，300s）。恢复流程直接改 site_configs 的分组行，
+    # 却走不到 PATCH /settings/{group} 里的那套失效逻辑，漏一个键就是
+    # "恢复完成了，前台站点名/评论开关还是备份前的"。
     await _invalidate_content_caches(
-        "site_config", "navigations", "friend_links", "gallery", "activities"
+        "site_config",
+        "navigations",
+        "friend_links",
+        "gallery",
+        "activities",
+        "settings_public",
+        "settings_group:",
     )
 
     return ImportResult(

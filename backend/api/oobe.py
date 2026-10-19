@@ -29,6 +29,7 @@ from pydantic import BaseModel, Field, field_validator
 from sqlalchemy import select
 
 from backend.core.auth import aget_password_hash
+from backend.core.cache import invalidate_cache
 from backend.core.config import settings
 from backend.core.database import async_session_maker, init_db, reset_engine
 from backend.core.deps import (
@@ -65,6 +66,7 @@ from backend.core.setup_system import SystemService
 from backend.models.core import Navigation, Page
 from backend.models.core import SiteConfig as DbSiteConfig
 from backend.models.user import User
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 logger = logging.getLogger(__name__)
 
@@ -1338,6 +1340,31 @@ async def _run_combined_install(req: CombinedInstallRequest):
                 logger.warning(
                     "[oobe] 安装完成但 state 文件删除失败，请手动清理 %s：%s", STATE_FILE, exc
                 )
+
+        # 安装完成必须把"装之前"读到的配置缓存全部清掉。这不是理论风险：
+        # 进程启动时 cache_warmer 已经把 site_config（TTL 3600s）写好，向导页面本身
+        # 又会请求 /settings/public 与 comments 分组的 settings_group:<name>（各 300s），
+        # 而本流程往 site_configs 里写的正是这些键（含"启用评论"落成 comments 分组）。
+        # 不清的后果正是管理员第一次进站那一个小时：站点名、导航、评论开关全都还是
+        # 装机前的默认值，表现成"向导里没勾评论却仍能评论""装完站点名还是 Rosetta Blog"。
+        # 与 PATCH /settings/{group} 同一口径：逐前缀失效，任何一个失败都不能让整个安装判失败。
+        for _prefix in (
+            "site_config",
+            "settings_public",
+            "settings_group:",
+            "navigations",
+            "friend_links",
+            "posts",
+            "post:",
+            "categories",
+            "tags",
+        ):
+            try:
+                await invalidate_cache(_prefix)
+            except Exception:  # noqa: BLE001
+                logger.warning("[oobe] 安装完成但缓存失效失败：%s", _prefix, exc_info=True)
+        # Nitro 对公开页做 swr 缓存，向导期间渲染的 HTML 里烘的就是装机前的站点名。
+        purge_frontend_page_cache("OOBE 安装完成")
 
         await _broadcast_progress(steps[7][0], "安装完成！", 100)
         done_evt = {

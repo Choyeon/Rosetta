@@ -727,3 +727,54 @@ async def test_settings_public_exposes_comments_switch_values(client, staff_head
             "comments",
             {"allow_guest": True, "max_length": 3000, "enable_nested": True},
         )
+
+
+# 分组 JSON 的每一个写口都必须配套失效"读侧真正用到的那几份缓存"。
+# PATCH /settings/{group} 一直是模范做法；出问题的是另外两条同样改 site_configs
+# 分组行、却走不到那段逻辑的路径：
+#   - 备份恢复（api/import_export.py）整段覆盖 site_configs 行，
+#     原先只清 site_config，没清 settings_public（前台 useSite，300s）与
+#     settings_group:<name>（评论闸门/上传上限/robots 等执行点，300s）——
+#     表现是"恢复完成了，前台站点名和评论开关还是备份前的"。
+#   - OOBE 安装（api/oobe.py）写扁平键与 comments 分组行，此前一条缓存都不清；
+#     而进程启动时 cache_warmer 已经写好 site_config（3600s）、向导页面本身又请求过
+#     /settings/public——于是管理员装完看到的第一小时内全是装机前的默认值。
+# 用源码级断言而不是行为断言：这两条路径一个需要整份备份 ZIP 夹具、一个需要真的把
+# 系统重装一遍，都不适合进 CI；要守的不变量是"写分组的人顺手清缓存"，静态可判。
+GROUP_JSON_WRITERS = {
+    "api/settings_groups.py",  # 分组真源（PATCH 口）
+    "api/import_export.py",  # 备份恢复：整段覆盖分组行
+    "api/oobe.py",  # 装机向导：写 comments 分组与扁平键
+}
+# 只写扁平/其它命名空间键、不写分组 JSON 的行构造者（列出来是为了让下面那条
+# "发现了新的 SiteConfig 写口"能真的报警，而不是默默放过）。
+FLAT_ROW_WRITERS = {
+    "api/core.py",  # POST /api/config/admin/settings：UPPERCASE 扁平键
+    "api/seo.py",  # SEO_CONFIG_KEYS 白名单行
+    "api/themes.py",  # 默认调色板 id KV
+}
+
+
+def _api_files_creating_site_config_rows() -> set[str]:
+    api_dir = Path(__file__).resolve().parents[1] / "backend/api"
+    return {
+        f"api/{p.name}"
+        for p in sorted(api_dir.glob("*.py"))
+        if re.search(r"(?:Db)?SiteConfig\(", p.read_text(encoding="utf-8"))
+    }
+
+
+def test_site_config_row_writers_are_all_reviewed():
+    """新增任何往 site_configs 造行的模块，都必须在这里登记并说明它清哪些缓存。"""
+    assert _api_files_creating_site_config_rows() == GROUP_JSON_WRITERS | FLAT_ROW_WRITERS
+
+
+@pytest.mark.parametrize("rel_path", sorted(GROUP_JSON_WRITERS))
+def test_group_json_writer_invalidates_settings_caches(rel_path: str):
+    text = (Path(__file__).resolve().parents[1] / "backend" / rel_path).read_text(encoding="utf-8")
+    for prefix in ("settings_public", "settings_group"):
+        assert prefix in text, (
+            f"{rel_path} 会写 site_configs 的分组 JSON，但没有失效 {prefix} 缓存："
+            "前台 useSite 与执行点闸门会在各自 TTL 内继续用旧值"
+        )
+    assert "site_config" in text, f"{rel_path} 缺 site_config 失效（/api/config 读它）"
