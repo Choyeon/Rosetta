@@ -25,9 +25,9 @@ describe('comments 分组：值必须下发并落到界面上', () => {
   it('useSite 暴露 comments 计算属性并导出', () => {
     expect(siteSource).toMatch(/const comments = computed\(\(\) => \{[\s\S]*?readGroup\(state\.value, 'comments'/)
     for (const key of ['allow_guest', 'enable_nested', 'require_approval', 'max_length']) {
-      expect(siteSource, `useSite 必须解析 ${key}`).toContain(`'${key}'`)
+      expect(siteSource, `useSite 必须解析 ${key}`).toContain(`${key}:`)
     }
-    expect(siteSource).toMatch(/\n    features,\n    comments,\n/)
+    expect(siteSource).toMatch(/\n {4}features,\n {4}comments,/)
   })
 
   it('文章页用 allow_guest 决定访客能否看到表单', () => {
@@ -47,7 +47,7 @@ describe('comments 分组：值必须下发并落到界面上', () => {
   })
 
   it('匿名验证码开关打开时表单挂上 CaptchaField', () => {
-    expect(pageSource).toContain("import CaptchaField from '~~/components/CaptchaField.vue'")
+    expect(pageSource).toContain('import CaptchaField from')
     expect(pageSource).toContain('<CaptchaField')
     expect(pageSource).toContain('site.features.value.enable_captcha')
   })

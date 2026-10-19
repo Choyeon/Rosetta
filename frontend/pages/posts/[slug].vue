@@ -509,11 +509,13 @@
                   rows="4"
                   class="resize-none"
                 />
-                <div class="mt-2 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                  <span v-if="site.comments.value.require_approval">
+                <div class="mt-2 flex items-end justify-end gap-3 text-xs text-muted-foreground">
+                  <span
+                    v-if="site.comments.value.require_approval"
+                    class="mr-auto"
+                  >
                     {{ t('post.pendingNotice', '评论提交后需管理员审核，通过才会公开显示。') }}
                   </span>
-                  <span v-else aria-hidden="true" />
                   <span :class="commentTooLong ? 'text-destructive' : ''">
                     {{ commentContent.length }} / {{ commentMaxLength }}
                   </span>

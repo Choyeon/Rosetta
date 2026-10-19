@@ -7,7 +7,7 @@
  *   - hero/footer/notice copy                —— hero/footer/notice groups
  *
  * Data source (matches backend 14 settings groups):
- *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/navigation/reading/features/donate)
+ *   GET /api/settings/public  (无鉴权；脱敏后的公开子集：basic/appearance/hero/footer/seo/notice/navigation/reading/features/donate/comments)
  *   GET /api/config           (公开兜底同步 fallback)
  */
 import { computed, getCurrentInstance } from 'vue'
