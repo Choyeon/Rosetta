@@ -797,9 +797,10 @@ const commentsAPI = useComments()
 const { progress } = useReadingProgress()
 
 /**
- * 后台设置的两组开关在这里落地（此前全是硬编码）：
+ * 后台设置的三组开关在这里落地（此前全是硬编码）：
  * - reading 分组：目录、字数/字符、阅读时间三处 UI
- * - features 分组：评论区、点赞、顶部阅读进度条
+ * - comments 分组：评论区整段（enable 与后端写口闸门读同一项，关掉后接口和入口一起消失）
+ * - features 分组：点赞、顶部阅读进度条
  * 值来自 useSite()（layouts/default.vue setup 期已 await ensureLoaded），
  * 因此 SSR 与客户端首帧拿到的是同一份，不产生 Hydrate 差异。
  */
@@ -808,7 +809,7 @@ const showToc = computed(() => site.reading.value.show_toc)
 const showReadingTime = computed(() => site.reading.value.show_reading_time)
 const showWordCount = computed(() => site.reading.value.show_word_count)
 const showAside = computed(() => showToc.value || showReadingTime.value || showWordCount.value)
-const showCommentsSection = computed(() => site.features.value.enable_comments)
+const showCommentsSection = computed(() => site.comments.value.enable)
 const showLikeButton = computed(() => site.features.value.enable_like_button)
 const showReadingProgress = computed(() => site.features.value.enable_reading_progress)
 // 正文行高/字号：后台 reading 分组的两个数值项此前没有任何消费点， prose 版式完全写死。

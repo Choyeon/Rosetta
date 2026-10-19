@@ -82,3 +82,44 @@ describe('站点设置开关必须有真实消费点', () => {
     expect(footerComp, '两套页脚骨架都要显示备案号').toMatch(/siteConfig\.police_icp_number/)
   })
 })
+
+/**
+ * 「一个行为只有一个开关」契约。
+ *
+ * 反例（都真实存在过，都不报错）：
+ * - features.enable_comments 只管前台评论区、comments.enable 只管后端写口，
+ *   于是关掉前者接口照写、关掉后者表单照渲染；
+ * - seo.default_title 排在 `basic.subtitle || …` 之后，而 basic.subtitle 有写死的
+ *   英文兜底、永远非空 → 后台那个"页面默认标题"输入框填了也永远不会被读到；
+ * - footer.text 写成 `f.slogan || f.text` 的第一个候选的备胎，而 useSite 用同一条
+ *   副标题同时播种 slogan 与 text → text 永远取不到值。
+ */
+describe('同一行为不得有两个开关', () => {
+  const useSite = readFileSync(resolve(process.cwd(), 'composables/useSite.ts'), 'utf8')
+  const settingsPage = readFileSync(resolve(process.cwd(), 'pages/admin/system/settings.vue'), 'utf8')
+
+  it('评论区读取的是 comments.enable（后端写口闸门的同一项）', () => {
+    expect(postPage).toContain('site.comments.value.enable')
+    expect(postPage, 'features.enable_comments 是第二个开关，已删除').not.toContain('features.value.enable_comments')
+    expect(useSite).toContain("enable: flag('enable', true)")
+  })
+
+  it('features 组与后台设置页都不再有 enable_comments', () => {
+    expect(useSite, 'useSite 的 features 投影不能再暴露 enable_comments').not.toContain('enable_comments:')
+    expect(settingsPage).not.toContain('enable_comments')
+  })
+
+  it('seo.default_title 排在兜底链最前，填了就能改浏览器标题', () => {
+    expect(useSite).toMatch(/seo\.value\.default_title \|\| basic\.value\.subtitle/)
+    expect(useSite, '反过来的顺序等于永久遮蔽（basic.subtitle 有写死兜底）')
+      .not.toMatch(/basic\.value\.subtitle \|\| seo\.value\.default_title/)
+  })
+
+  it('footer.text 有独立渲染位，不再与 slogan 抢同一行', () => {
+    expect(footerComp, '标语行只读 slogan').toMatch(/const footerSlogan = f\.slogan \|\| readStr/)
+    expect(footerComp).toMatch(/const poweredByText = f\.text/)
+    expect(footerComp, '两套页脚都要用上覆写文案').toMatch(/poweredByLine/)
+    expect(useSite, 'text 的兜底必须是空串，否则内置四语文案永远被副标题顶掉')
+      .toMatch(/text: '',/)
+  })
+})

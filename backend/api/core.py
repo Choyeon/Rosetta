@@ -1048,6 +1048,11 @@ async def get_site_config(db: DB):
                 parsed = _json_.loads(raw_features)
                 if isinstance(parsed, dict):
                     for k, v in parsed.items():
+                        # enable_comments 的唯一真源是 comments.enable（上面已投影）。
+                        # 库里可能还留着旧 features 行的这一项，让它赢就等于把评论
+                        # 开关重新拆成两个。
+                        if k == "enable_comments":
+                            continue
                         if isinstance(v, bool) and k in SiteConfigResponse.model_fields:
                             cfg_base[k] = v
             # media（上传大小与扩展名白名单：真正执行的是 api/media.py，这里下发给前端预检）

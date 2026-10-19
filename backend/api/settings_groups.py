@@ -129,6 +129,8 @@ def _default_comments() -> dict:
     # （旧版 allow_guest=False、max_length=1000），表现就是"我只是勾了个审核，
     # 访客评论全站被打死、长评论开始报 422"。
     return {
+        # 评论功能的唯一开关：写口闸门（CommentService）与前台评论区渲染读的都是它。
+        # features 组里曾有同义的 enable_comments，两个开关各管一半，已删除。
         "enable": True,
         "require_approval": False,
         "allow_guest": True,
@@ -199,8 +201,13 @@ def _default_security() -> dict:
 
 
 def _default_features() -> dict:
+    # enable_comments 曾在这里：评论是否启用由 comments.enable 决定（执行点是
+    # CommentService.create_comment 的 COMMENTS_DISABLED 闸门），这一项只有前台
+    # 渲染读它，于是两个开关各管一半——关掉 features 那格，评论区消失但接口照常
+    # 可写；关掉 comments 那格，接口拒绝但表单照样渲染，访客只拿到一条报错。
+    # 现在评论只有 comments.enable 一个开关，/api/config 的扁平 enable_comments
+    # 由它投影（core.py::_apply_settings_groups）。
     return {
-        "enable_comments": True,
         "enable_registration": True,
         "enable_rss": True,
         "enable_search": True,
@@ -212,8 +219,7 @@ def _default_features() -> dict:
         "enable_reading_progress": True,
         # 图形验证码闸门（评论 + 留言的匿名写口，见 services/captcha_service.py）。
         # 默认 False = 存量站点行为不变；打开后匿名提交必须带 captcha_key/captcha_code，
-        # 登录用户始终免验。放在 features 而不是 comments：前台表单要从
-        # /settings/public 读它决定是否渲染验证码输入框，而 comments 组不是公开组。
+        # 登录用户始终免验。它同时管评论和留言，所以留在跨模块的 features 组。
         "enable_captcha": False,
     }
 
@@ -284,7 +290,11 @@ def _default_donate() -> dict:
 
 def _default_footer() -> dict:
     return {
-        "text": "Powered by Rosetta",
+        # text 是页脚"Powered by"那一行的自定义文案。默认留空：这一行有内置四语
+        # 文案（i18n footer.poweredBy），写死英文默认值会让非英语站点在一次无关保存后
+        # 被英文覆盖。slogan 与它各有独立渲染位（标语行 / Powered by 行），
+        # 不再是同一位置的两个候选。
+        "text": "",
         "slogan": "Share knowledge, inspire creativity",
         "copyright": "© 2026 Rosetta",
         "icp_number": "",

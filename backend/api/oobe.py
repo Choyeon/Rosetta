@@ -1223,6 +1223,20 @@ async def _run_combined_install(req: CombinedInstallRequest):
                 if ex.scalar_one_or_none():
                     continue
                 session.add(DbSiteConfig(key=k, value=str(v), description=desc))
+            # 向导里"启用评论"的唯一执行点是 comments 分组的 enable：评论写口闸门
+            # （CommentService.create_comment）与前台评论区读的都是它，扁平 enable_comments
+            # 只出现在 /api/config 的输出里、没人判断。勾掉却不落分组＝假开关。
+            # 只存这一个键即可：读侧（_load_all_groups）会用 _default_comments 补齐其余。
+            if not req.enable_comments:
+                ex = await session.execute(select(DbSiteConfig).where(DbSiteConfig.key == "comments"))
+                if ex.scalar_one_or_none() is None:
+                    session.add(
+                        DbSiteConfig(
+                            key="comments",
+                            value=json.dumps({"enable": False}),
+                            description="评论设置",
+                        )
+                    )
             await session.commit()
         await _broadcast_progress(steps[3][0], "站点配置写入完成", _pct(3))
 

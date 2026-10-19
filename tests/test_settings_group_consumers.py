@@ -138,6 +138,9 @@ _INERT_KEYS = {
     "default_avatar",
     "google_analytics_id",
     "baidu_analytics_id",
+    # 第三轮收口：评论的唯一开关是 comments.enable（写口闸门 + 前台评论区读同一项）。
+    # features.enable_comments 只被前台读到，关掉它接口照写，两个开关各管一半。
+    "enable_comments",
 }
 
 _INERT_GROUPS = {"cdn", "cache", "friendlinks", "sidebar"}
@@ -190,6 +193,51 @@ async def test_comments_group_disabling_blocks_new_comments(client, staff_header
         assert resp.json()["error_code"] == "COMMENTS_DISABLED"
     finally:
         await _patch(client, staff_headers, "comments", {"enable": True})
+
+
+@pytest.mark.asyncio
+async def test_comment_enable_is_the_only_comment_switch(client, staff_headers, db_session):
+    """"评论是否启用"只允许一个开关。
+
+    features 组曾另有 ``enable_comments``：后端写口闸门读 comments.enable，前台评论区读
+    features 那份，于是两个开关各管一半——关掉 features 那格评论区消失但接口照写，
+    关掉 comments 那格接口拒绝但表单照样渲染，访客只拿到一条 COMMENTS_DISABLED 报错。
+    现在唯一真源是 comments.enable；/api/config 的扁平 enable_comments 由它投影，
+    连存量脏数据（features 行里残留的 enable_comments）也不得反过来覆盖它。
+    """
+    from sqlalchemy import select
+
+    from backend.api.settings_groups import _default_features
+    from backend.models.core import SiteConfig
+
+    assert "enable_comments" not in _default_features()
+
+    stale = (
+        await db_session.execute(select(SiteConfig).where(SiteConfig.key == "features"))
+    ).scalar_one_or_none()
+    previous = stale.value if stale is not None else None
+    if stale is None:
+        stale = SiteConfig(key="features", value="{}", description="系统设置 - features")
+        db_session.add(stale)
+    # 模拟升级前存过 features 分组的老库：这一键已从默认键集删除，读侧会过滤掉它，
+    # 但 core.py 的分组投影直接读原始 JSON 行，所以它必须被显式忽略。
+    stale.value = '{"enable_comments": true, "enable_registration": true}'
+    await db_session.commit()
+
+    await _patch(client, staff_headers, "comments", {"enable": False})
+    try:
+        cfg = await client.get("/api/config")
+        assert cfg.status_code == 200, cfg.text
+        assert cfg.json()["enable_comments"] is False, "features 残键覆盖了 comments.enable＝两个开关又打架"
+
+        pub = await client.get("/api/settings/public")
+        groups = pub.json()["groups"]
+        assert groups["comments"]["enable"] is False
+        assert "enable_comments" not in groups["features"]
+    finally:
+        await _patch(client, staff_headers, "comments", {"enable": True})
+        stale.value = previous if previous is not None else "{}"
+        await db_session.commit()
 
 
 @pytest.mark.asyncio

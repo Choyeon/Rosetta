@@ -161,6 +161,7 @@ interface SiteConfigLite {
   site_description: string
   site_logo: string
   footer_slogan: string
+  powered_by_text: string
   copyright_text: string | null
   footer_custom_html: string
   icp_number: string
@@ -204,7 +205,11 @@ const siteConfig = computed<SiteConfigLite>(() => {
 
   const siteName = b.site_name || readStr('site_name', 'Rosetta Blog')
   const siteDescription = b.description || readStr('site_description', 'Rosetta开源博客系统')
-  const footerSlogan = f.slogan || f.text || readStr('footer_slogan', siteDescription)
+  // slogan 与 text 各有独立渲染位：slogan 是标语行，text 是 Powered by 那一行的覆写。
+  // 此前写成 `f.slogan || f.text`，而两者都被 useSite 用副标题播种，
+  // 于是 footer.text 这个输入框永远读不到——填了也白填。
+  const footerSlogan = f.slogan || readStr('footer_slogan', siteDescription)
+  const poweredByText = f.text || ''
   const copyrightText = (publicCfg.copyright_text as string | null) ?? null
   const footerCustomHtml = (publicCfg.footer_custom_html as string) || ''
 
@@ -214,6 +219,7 @@ const siteConfig = computed<SiteConfigLite>(() => {
     site_description: siteDescription,
     site_logo: b.logo || readStr('site_logo', '') || '/logo/rosetta-monochrome-icon.png',
     footer_slogan: footerSlogan,
+    powered_by_text: poweredByText,
     copyright_text: copyrightText && String(copyrightText).trim() ? String(copyrightText) : null,
     footer_custom_html: footerCustomHtml,
     icp_number: b.icp_number || f.icp_number || readStr('icp_number', ''),
@@ -270,6 +276,10 @@ const showCopyright = computed(() => site.appearance.value.show_copyright !== fa
 // appearance.show_powered_by：后台"显示 Powered by 标识"。此前整页没有这一行，
 // 开关自然无人消费；现在是真渲染，关掉即消失（不留 visibility:hidden 的假开关）。
 const showPoweredBy = computed(() => site.appearance.value.show_powered_by !== false)
+// footer.text（后台"页脚 Powered by 文案"）非空时覆写内置四语文案。
+const poweredByLine = computed(
+  () => siteConfig.value.powered_by_text || t('footer.poweredBy', 'Powered by Rosetta')
+)
 
 const quickLocales = [
   { code: 'zh', label: '简体中文', flag: 'cn' },
@@ -479,7 +489,7 @@ const handleSetLocale = async (code: string) => {
             v-if="showPoweredBy"
             class="block"
           >
-            {{ t('footer.poweredBy', 'Powered by Rosetta') }}
+            {{ poweredByLine }}
           </span>
         </div>
         <!-- Quick locale switch (with flags) -->
@@ -560,7 +570,7 @@ const handleSetLocale = async (code: string) => {
           v-if="showPoweredBy"
           class="block"
         >
-          {{ t('footer.poweredBy', 'Powered by Rosetta') }}
+          {{ poweredByLine }}
         </span>
       </div>
     </div>

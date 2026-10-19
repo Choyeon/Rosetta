@@ -192,6 +192,15 @@ async def test_oobe_flow_clean_env(oobe_client: AsyncClient):
     assert OOBE_COMPLETE.exists()
     assert ROSETTA_JSON.exists()
 
+    # 向导里"启用评论"= false 必须落到 comments 分组：那是写口闸门（CommentService）
+    # 与前台评论区共同读的唯一一项。只写扁平 enable_comments 的话，安装回 200、
+    # /api/config 也显示 false，但评论照样发得出去——等于给管理员一个假复选框。
+    r = await oobe_client.get("/api/settings/public")
+    assert r.status_code == 200, r.text
+    assert r.json()["groups"]["comments"]["enable"] is False
+    r = await oobe_client.get("/api/config")
+    assert r.json()["enable_comments"] is False
+
     r = await oobe_client.get("/api/blog/posts")
     assert r.status_code == 200, r.text
     posts = r.json()

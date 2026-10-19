@@ -224,7 +224,9 @@ export function useSite() {
 
   const footer = computed(() => {
     const base = readGroup(state.value, 'footer', {
-      text: basic.value.subtitle,
+      // text 是页脚 Powered by 那一行的可选覆写，兜底必须留空：这一行有内置四语文案
+      // （i18n footer.poweredBy），用副标题播种会让它永远非空、覆写形同虚设。
+      text: '',
       slogan: basic.value.subtitle,
       copyright: `© ${new Date().getFullYear()} ${basic.value.site_name}`,
       icp_number: basic.value.icp_number,
@@ -280,12 +282,13 @@ export function useSite() {
   /**
    * 「功能开关」分组。后端把同一份值叠进 /api/config（core.py::_apply_settings_groups），
    * 评论写口与 RSS/sitemap 的服务端闸门在后端，这里只负责"后台关了前台就别再显示入口"。
+   * enable_comments 不在这里：评论的唯一开关是 comments.enable（后端写口闸门读的就是它），
+   * 这里再暴露一份等于给管理员两个各管一半的按钮。
    */
   const features = computed(() => {
     const g = readGroup(state.value, 'features', {} as Record<string, unknown>)
     const flag = (k: string, d = true) => (typeof g[k] === 'boolean' ? g[k] : d)
     return {
-      enable_comments: flag('enable_comments'),
       enable_registration: flag('enable_registration'),
       enable_rss: flag('enable_rss'),
       enable_search: flag('enable_search'),
@@ -304,13 +307,15 @@ export function useSite() {
    * 「评论」分组（后端 _default_comments 同构）。
    * 兜底值取**后端 _default_comments 的同一组数**（未保存过分组时两边必须同一口径，
    * 否则后台「允许访客匿名评论」勾着而前台仍要登录＝又一个看起来失效的开关）。
-   * enable 不在这里读：功能是否存在由 features.enable_comments 决定，两处都读会打架。
+   * enable 也在这里：它就是评论功能的唯一开关——后端写口（CommentService 的
+   * COMMENTS_DISABLED）与前台评论区/表单（pages/posts/[slug].vue）读的都是这一项。
    */
   const comments = computed(() => {
     const g = readGroup(state.value, 'comments', {} as Record<string, unknown>)
     const flag = (k: string, d: boolean) => (typeof g[k] === 'boolean' ? g[k] : d)
     const n = Number(g.max_length)
     return {
+      enable: flag('enable', true),
       allow_guest: flag('allow_guest', true),
       enable_nested: flag('enable_nested', true),
       require_approval: flag('require_approval', false),
@@ -333,7 +338,10 @@ export function useSite() {
   }))
 
   const siteTitle = computed(() => basic.value.site_name)
-  const siteSubtitle = computed(() => basic.value.subtitle || seo.value.default_title)
+  // seo.default_title（后台「SEO」里的"页面默认标题"）优先：basic.subtitle 永远非空
+  // （下面这条兜底链最后一个是写死的英文标语），把 default_title 放在后面等于
+  // 给管理员一个填了也永远不会被读到的输入框。留空时仍回落到站点副标题。
+  const siteSubtitle = computed(() => seo.value.default_title || basic.value.subtitle)
   const siteDescription = computed(() => seo.value.default_description || basic.value.description)
   const siteKeywords = computed(() => seo.value.default_keywords || basic.value.keywords)
 
