@@ -141,3 +141,65 @@ describe('同一行为不得有两个开关', () => {
     expect(settingsPage, '设置页本地默认表也必须同一数').toMatch(/reading: \{ posts_per_page: 9,/)
   })
 })
+
+/**
+ * 设置页的字段名表与本地默认表，必须覆盖后端 _default_* 的每一把键。
+ *
+ * 表现过的 bug：features.enable_captcha 加了后端默认值、加了前台消费点，唯独没加设置页
+ * 中文标签——`GROUP_LABELS[key] ?? key` 的兜底把"漏登记"变成一个静默的裸 snake_case
+ * 字段名，谁都不会报错。同一张表漏登记键还会让"未保存过该分组"的站点在前端拿到
+ * undefined，把确实是 false 的开关判成"没有值"，显示与真值不符。
+ * 两边各漏一次都只是几行 diff，靠肉眼看设置页永远看不出来，所以按后端真源清点。
+ */
+describe('设置页字段清单必须覆盖后端每一把设置键', () => {
+  const clean = (s: string) => s.replace(/\r\n/g, '\n')
+  const backendSource = clean(
+    readFileSync(resolve(process.cwd(), '../backend/api/settings_groups.py'), 'utf8')
+  )
+  const page = clean(readFileSync(resolve(process.cwd(), 'pages/admin/system/settings.vue'), 'utf8'))
+
+  const groups: Record<string, string[]> = {}
+  const defStarts = [...backendSource.matchAll(/^def /gm)].map((m) => m.index)
+  for (const m of backendSource.matchAll(/^def _default_(\w+)\(\) -> dict:/gm)) {
+    const end = defStarts.find((i) => i > m.index) ?? backendSource.indexOf('_GROUP_DEFAULTS')
+    const body = backendSource.slice(m.index, end)
+    groups[m[1]] = [...body.matchAll(/^ {8}"([a-z_0-9]+)":/gm)].map((k) => k[1])
+  }
+  const backendKeys = new Set(Object.values(groups).flat())
+
+  /** 有专用编辑器承载、不进通用 schema 的键（收款码图集）。 */
+  const EDITOR_ONLY_KEYS = new Set(['methods'])
+
+  it('后端设置键清单非空（解析失效必须报错，不能静默通过）', () => {
+    expect(Object.keys(groups).length, '_default_* 解析不到分组，守卫本身失效了').toBeGreaterThan(10)
+    expect(backendKeys.size).toBeGreaterThan(70)
+  })
+
+  it('每把设置键都有中文标签，否则后台渲染成裸 snake_case 字段名', () => {
+    const labelBlock = page.match(/  const label = \{\n([\s\S]*?)\n  \}\[key\]/)
+    if (!labelBlock) throw new Error('settings.vue 字段名表结构已变，请同步本守卫的解析口径')
+    const labels = new Set([...labelBlock[1].matchAll(/\b([a-z_0-9]+): '/g)].map((m) => m[1]))
+    const missing = [...backendKeys].filter((k) => !labels.has(k) && !EDITOR_ONLY_KEYS.has(k))
+    expect(missing, `这些键在设置页没有中文名：${missing.join(', ')}`).toEqual([])
+    const orphans = [...labels].filter((k) => !backendKeys.has(k))
+    expect(orphans, `后端已不存在这些键，标签是改名后留下的死条目：${orphans.join(', ')}`).toEqual([])
+  })
+
+  it('设置页本地默认表与后端逐分组键集合相等', () => {
+    const fn = page.match(/function getDefaultsFor[\s\S]*?\n}/)
+    if (!fn) throw new Error('getDefaultsFor 结构已变，请同步本守卫的解析口径')
+    const table: Record<string, Set<string>> = {}
+    for (const m of fn[0].matchAll(/^ {4}(\w+): \{(.*)\},?$/gm)) {
+      table[m[1]] = new Set([...m[2].matchAll(/\b([a-z_0-9]+):/g)].map((k) => k[1]))
+    }
+    for (const [group, keys] of Object.entries(groups)) {
+      const local = table[group]
+      expect(local, `设置页默认表缺少 ${group} 分组`).toBeDefined()
+      const holder = local as Set<string>
+      const missing = keys.filter((k) => !holder.has(k))
+      const extra = [...holder].filter((k) => !keys.includes(k))
+      expect(missing, `${group} 漏了 ${missing.join(' / ')}：未保存过分组时前端读不到值，开关显示与真值不符`).toEqual([])
+      expect(extra, `${group} 有后端不存在的 ${extra.join(' / ')}`).toEqual([])
+    }
+  })
+})

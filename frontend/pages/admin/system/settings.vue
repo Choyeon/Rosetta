@@ -716,6 +716,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     enable_sitemap: '站点地图', enable_guestbook: '留言板',
     enable_dark_mode: '深色模式切换', enable_like_button: '文章点赞按钮',
     enable_share_buttons: '社交分享按钮', enable_reading_progress: '阅读进度条',
+    enable_captcha: '评论与留言图形验证码',
     primary_color: '主色调 Primary',
     page_width_px: '内容区最大宽度（px）',
     accent_color: '强调色 Accent', show_copyright: '显示版权声明',
@@ -737,14 +738,22 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     ? 'Hero 副标题'
     : (GROUP_LABELS[activeGroup.value]?.[key] ?? label)
 
+  // 开关类设置只有一句话能说清的是"它到底管哪些写口、对谁生效"。
+  // enable_captcha 必须有这句：验证码只挡未登录访客，登录用户与后台不受影响，
+  // 关掉它不影响已经提交的留言；少了这句，管理员会以为它能挡注册机以外的一切。
+  const BOOL_HELP: Record<string, string> = {
+    enable_captcha: '只要求未登录访客在提交评论与留言前通过图形验证码；登录用户与后台不受影响，默认关闭'
+  }
+  const boolHelp = BOOL_HELP[key]
+
   if (value === null || value === undefined) {
     const d = defaults[key]
-    if (typeof d === 'boolean') return { label: resolvedLabel, type: 'boolean' }
+    if (typeof d === 'boolean') return { label: resolvedLabel, type: 'boolean', help: boolHelp }
     if (typeof d === 'number') return { label: resolvedLabel, type: 'number' }
     return { label: resolvedLabel, type: 'string' }
   }
 
-  if (typeof value === 'boolean') return { label: resolvedLabel, type: 'boolean' }
+  if (typeof value === 'boolean') return { label: resolvedLabel, type: 'boolean', help: boolHelp }
   if (typeof value === 'number') {
     const meta: Record<string, { min?: number, max?: number, placeholder?: string, help?: string }> = {
       posts_per_page: { min: 1, max: 50, placeholder: '1 - 50', help: '前台列表是三列网格，建议 9 / 12 / 15（默认 9）' },
@@ -867,7 +876,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_verification: '', baidu_verification: '', robots_txt: '' },
     email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false },
     security: { max_login_attempts: 5, lockout_duration_sec: 1800 },
-    features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true },
+    features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true, enable_captcha: false },
     appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
     navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true },
     hero: { enable: true, title: {}, subtitle: {}, caption: '', cta_text: {}, cta_url: '', bg_image: '', bg_gradient: '' },
