@@ -752,7 +752,16 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
       line_height: { min: 1, max: 2.5, placeholder: '1.0 - 2.5' },
       font_size: { min: 12, max: 24, placeholder: '12 - 24' },
       max_length: { min: 100, max: 5000, placeholder: '100 - 5000' },
-      max_upload_size: { min: 102400, placeholder: '单位：字节，如 10485760 = 10MB' },
+      // 区间必须等于服务端的钳位区间（api/media.py::UPLOAD_SIZE_FLOOR_BYTES /
+      // UPLOAD_SIZE_CEILING_BYTES）。原先只写 min:102400、没有 max：填 64KB 这类
+      // 合法值被输入框挡住，而填 500MB 会保存成功并被服务端静默钳成 100MB——
+      // 回显仍是 500MB，表现是"上限设了没用"。
+      max_upload_size: {
+        min: 65536,
+        max: 104857600,
+        placeholder: '单位：字节，如 10485760 = 10MB',
+        help: '服务端只接受 65536 - 104857600（64KB - 100MB），超出会按边界钳位生效'
+      },
       smtp_port: { min: 1, max: 65535, placeholder: '常用：465/587/25' },
       max_login_attempts: { min: 1, max: 20 },
       lockout_duration_sec: { min: 60, placeholder: '单位：秒' },

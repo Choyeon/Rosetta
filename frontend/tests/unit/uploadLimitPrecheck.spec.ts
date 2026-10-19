@@ -18,6 +18,8 @@ import { resolve } from 'node:path'
 import {
   ALLOWED_UPLOAD_EXTENSIONS,
   MAX_UPLOAD_BYTES,
+  UPLOAD_LIMIT_CEILING_BYTES,
+  UPLOAD_LIMIT_FLOOR_BYTES,
   resolveAllowedExtensions,
   resolveUploadLimitBytes,
   validateUploadFiles
@@ -39,6 +41,14 @@ describe('resolveUploadLimitBytes', () => {
     for (const bad of [undefined, null, '', 0, -1, Number.NaN, 'abc', {}]) {
       expect(resolveUploadLimitBytes(bad)).toBe(MAX_UPLOAD_BYTES)
     }
+  })
+
+  it('超出服务端安全区间的配置钳到边界（预检报的数必须等于上传口执行的数）', () => {
+    expect(resolveUploadLimitBytes(500 * MB)).toBe(UPLOAD_LIMIT_CEILING_BYTES)
+    expect(resolveUploadLimitBytes(1024)).toBe(UPLOAD_LIMIT_FLOOR_BYTES)
+    // 300MB 配置若不钳，预检会放行并传到一个大文件的一半再收 413
+    expect(validateUploadFiles([fakeFile('a.png', 150 * MB)], { maxBytes: 300 * MB }).accepted)
+      .toHaveLength(0)
   })
 })
 
@@ -126,5 +136,26 @@ describe('消费点接线', () => {
   it('图片上传区的扩展名判定也走同一份配置清单', () => {
     expect(zone).toMatch(/resolveAllowedExtensions\(\s*siteState\.value\.publicConfig\?\.allowed_image_types,\s*siteState\.value\.publicConfig\?\.allowed_file_types\s*\)/)
     expect(zone).toMatch(/allowedExtensions\.value\.includes\(ext\)/)
+  })
+})
+
+/**
+ * 后台「单文件大小上限」输入框的 min/max 是管理员看到的唯一契约，而服务端
+ * api/media.py::_effective_upload_limit 会把值钳进自己的区间、接口照样回 200。
+ * 两边不同数时的表现：写 500MB 保存成功、回显 500MB，实际生效 100MB——
+ * 又是一次"这个设置没生效"（与写死 20MB 预检同族）。
+ */
+describe('设置页输入区间 ↔ 服务端钳位区间', () => {
+  const media = readFileSync(resolve(process.cwd(), '../backend/api/media.py'), 'utf8')
+  const page = readFileSync(resolve(process.cwd(), 'pages/admin/system/settings.vue'), 'utf8')
+
+  it('服务端区间不变（改这里必须同步设置页）', () => {
+    expect(media).toMatch(/UPLOAD_SIZE_CEILING_BYTES = 100 \* 1024 \* 1024/)
+    expect(media).toMatch(/UPLOAD_SIZE_FLOOR_BYTES = 64 \* 1024/)
+  })
+
+  it('设置页 min/max 就是那两个边界，且 help 把区间写在脸上', () => {
+    expect(page).toMatch(/max_upload_size: \{\s*min: 65536,\s*max: 104857600,/)
+    expect(page).toMatch(/65536 - 104857600/)
   })
 })

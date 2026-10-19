@@ -17,13 +17,23 @@ import { useAuthStore } from '~~/stores/auth'
 export const MAX_UPLOAD_BYTES = 20 * 1024 * 1024
 
 /**
+ * 服务端把 `media.max_upload_size` 钳进的安全区间
+ * （api/media.py::UPLOAD_SIZE_FLOOR_BYTES / UPLOAD_SIZE_CEILING_BYTES）。
+ * `/api/config` 下发的是**库里原值**，钳位只发生在上传口，所以预检这边必须钳同一刀：
+ * 配置 500MB 时不钳的表现是预检放行 300MB 的文件、传到一半收 413，
+ * 与"写死 20MB"是同一族缺陷（客户端报的数和服务端执行的数不是同一个）。
+ */
+export const UPLOAD_LIMIT_FLOOR_BYTES = 64 * 1024
+export const UPLOAD_LIMIT_CEILING_BYTES = 100 * 1024 * 1024
+
+/**
  * 站点设置 `media.max_upload_size`（经公开口 `/api/config` 的 `max_upload_size` 下发）
- * → 字节数。非数字 / 0 / 负数一律回落兜底常量。
- * 服务端仍按自己的区间（[64KB, 100MB] 钳位）二次判定，这里只负责别把设置写死。
+ * → 字节数。非数字 / 0 / 负数一律回落兜底常量，其余钳进服务端区间。
  */
 export function resolveUploadLimitBytes(raw: unknown): number {
   const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : MAX_UPLOAD_BYTES
+  if (!Number.isFinite(n) || n <= 0) return MAX_UPLOAD_BYTES
+  return Math.min(UPLOAD_LIMIT_CEILING_BYTES, Math.max(UPLOAD_LIMIT_FLOOR_BYTES, n))
 }
 
 /** 允许上传的扩展名白名单（= 服务端内置安全清单 LIBRARY_ALLOWED_EXTENSIONS）。 */
