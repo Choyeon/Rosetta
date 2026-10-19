@@ -795,7 +795,7 @@ async def test_uppercase_group_row_still_overlays_api_config(db_session, client)
     """
     import json
 
-    from sqlalchemy import delete, select
+    from sqlalchemy import delete
 
     from backend.core.cache import invalidate_cache
     from backend.models.core import SiteConfig
