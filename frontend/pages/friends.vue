@@ -120,13 +120,7 @@ definePageMeta({ layout: 'default' })
 const { t, locale } = useI18n()
 const site = useSite()
 
-const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  const v = val as Record<string, string>
-  const key = locale.value as string
-  return v[key] ?? v.zh ?? Object.values(v)[0] ?? ''
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
 // ===== SEO：基于 i18n + 站点设置 =====
 useSeo({

@@ -144,18 +144,7 @@ useBreadcrumbJsonLd([
   { name: t('nav.categories') as string, url: '/categories' }
 ])
 
-const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const localeKey = locale.value as string
-    if (localeKey && val[localeKey]) return val[localeKey]
-    const keys = Object.keys(val)
-    const firstKey = keys.length > 0 ? keys[0]! : ''
-    return firstKey ? (val[firstKey] || '') : ''
-  }
-  return String(val)
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 const getCatName = (c: { name?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.name)
 const getCatDesc = (c: { description?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.description)
 const getPostsCount = (c: { post_count?: number, postsCount?: number } | null | undefined) => c?.post_count ?? c?.postsCount ?? 0

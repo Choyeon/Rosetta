@@ -1154,16 +1154,7 @@ const postMissing = computed(() => !post.value)
 const postNotFound = computed(() => isContentMissing(fetchError.value, postMissing.value))
 useContentStatus(fetchError, postMissing)
 
-const pickLocalized = (val: unknown): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const obj = val as Record<string, string>
-    const key = locale.value || Object.keys(obj)[0] || ''
-    return obj[key] ?? obj[Object.keys(obj)[0] || ''] ?? ''
-  }
-  return String(val)
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
 // SSR → Hydration 文本一致性锚点：
 // 同步写共享 useState（不是依赖 watchEffect），确保 Nuxt 在序列化 payload 时一定包含该值。

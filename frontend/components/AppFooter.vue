@@ -38,10 +38,7 @@ const { data: categories } = useAPI<Category[]>('/blog/categories', {
   default: () => []
 })
 
-const pickLocalized = (value: string | Record<string, string>): string => {
-  if (typeof value === 'string') return value
-  return value[locale.value] || value.zh || Object.values(value)[0] || ''
-}
+const pickLocalized = (value: unknown): string => pickLocalizedText(value, locale.value)
 
 const categoryLinks = computed<FooterLink[]>(() => {
   // 按本地化名称去重：mock/历史数据可能存在同名不同 slug 的重复分类，

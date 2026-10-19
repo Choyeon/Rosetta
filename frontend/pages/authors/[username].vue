@@ -243,16 +243,7 @@ const site = useSite()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
 const pageSize = computed(() => site.reading.value.posts_per_page)
 
-const pickLocalized = (val: unknown): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const obj = val as Record<string, string>
-    const key = (locale.value || Object.keys(obj)[0] || '') as string
-    return obj[key] ?? obj[Object.keys(obj)[0] || ''] ?? ''
-  }
-  return String(val)
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
 /** GET /users/username/{username} 的公开视图（后端已按隐私开关收窄字段） */
 interface AuthorProfile {

@@ -229,18 +229,7 @@ const allPosts = computed<PostItem[]>(() => {
   return result
 })
 
-const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const localeKey = locale.value as string
-    if (localeKey && val[localeKey]) return val[localeKey]
-    const keys = Object.keys(val)
-    const firstKey = keys.length > 0 ? keys[0]! : ''
-    return firstKey ? (val[firstKey] || '') : ''
-  }
-  return String(val)
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
 const getPublishedAt = (post: PostItem): string =>
   post?.published_at || post?.publishedAt || post?.created_at || ''

@@ -133,18 +133,7 @@ interface SeriesRow {
   created_at?: string
 }
 
-const pickStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  if (typeof v === 'object') {
-    const l = locale.value as string
-    if (l && v[l]) return v[l]
-    const keys = Object.keys(v)
-    const first = keys[0]
-    return first ? (v[first] || '') : ''
-  }
-  return String(v)
-}
+const pickStr = (v: unknown): string => pickLocalizedText(v, locale.value)
 
 // 真实接口：GET /api/series。失败或空时回退空数组，绝不显示示例系列。
 const { data: seriesData, pending, error: loadError } = useAPI<SeriesRow[]>('/series', {

@@ -22,6 +22,46 @@ const MONTH_TABLE: Record<string, string[]> = {
   ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 }
 
+/**
+ * 本地化取值唯一口径（纯函数，不依赖 setup 上下文，可被单测直接调用）。
+ *
+ * 顺序：当前 locale → zh/zh_Hant 互通 → 第一个非空值 → fallback。
+ * 「非空」很关键：`{zh:'标题', en:''}` 这类脏数据在 `??` 口径下会把当前语言渲染成
+ * 空白，而按真值判定才能回落到有内容的那份；本仓曾有 6 个页面用 `??`、8 个用真值，
+ * 同一个分类名在列表页有字、在详情页空白。
+ * 非 string/object 的标量返回 String(value)（多数页面原来也是这么做的），至少不留白。
+ */
+export function pickLocalizedText(
+  value: unknown,
+  localeCode?: string | null,
+  fallback = ''
+): string {
+  if (value == null) return fallback
+  if (typeof value === 'string') return value || fallback
+  if (typeof value !== 'object') return String(value)
+  const dict = value as Record<string, unknown>
+  const textOf = (key: string): string => {
+    const raw = dict[key]
+    return typeof raw === 'string' && raw !== '' ? raw : ''
+  }
+  const direct = textOf(localeCode || '')
+  if (direct) return direct
+  // 后端常只写 zh，前端切到繁体时仍应有字（反之亦然）
+  if (localeCode === 'zh_Hant') {
+    const t = textOf('zh')
+    if (t) return t
+  }
+  if (localeCode === 'zh') {
+    const t = textOf('zh_Hant')
+    if (t) return t
+  }
+  for (const key of Object.keys(dict)) {
+    const t = textOf(key)
+    if (t) return t
+  }
+  return fallback
+}
+
 export interface I18nLocalized {
   /**
    * 从后端返回的 i18n dict 中按当前 locale 选择字符串。
@@ -76,22 +116,7 @@ export const useI18nHelpers = (): I18nLocalized => {
   const resolveLocalized = (
     value: string | Record<string, string> | null | undefined,
     fallback = ''
-  ): string => {
-    if (value == null) return fallback
-    if (typeof value === 'string') return value || fallback
-    if (typeof value !== 'object') return fallback
-    const dict = value as Record<string, string>
-    const keys = Object.keys(dict)
-    if (keys.length === 0) return fallback
-    // 1) 当前 locale 精确命中
-    if (_localeCode && dict[_localeCode]) return dict[_localeCode] || fallback
-    // 2) zh → zh_Hant 互通（有些后端只存了 zh，但前端切到了繁体）
-    if (_localeCode === 'zh_Hant' && dict['zh']) return dict['zh'] || fallback
-    if (_localeCode === 'zh' && dict['zh_Hant']) return dict['zh_Hant'] || fallback
-    // 3) 第一个非空值
-    const firstKey = keys.find(k => dict[k])
-    return firstKey ? (dict[firstKey] || fallback) : fallback
-  }
+  ): string => pickLocalizedText(value, _localeCode, fallback)
 
   const pickLocalized = resolveLocalized
 

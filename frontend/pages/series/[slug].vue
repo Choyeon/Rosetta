@@ -204,18 +204,7 @@ interface SeriesDetail {
   posts?: SeriesPostRow[]
 }
 
-const pickStr = (v: string | Record<string, string> | null | undefined): string => {
-  if (v == null) return ''
-  if (typeof v === 'string') return v
-  if (typeof v === 'object') {
-    const l = locale.value as string
-    if (l && v[l]) return v[l]
-    const keys = Object.keys(v)
-    const first = keys[0]
-    return first ? (v[first] || '') : ''
-  }
-  return String(v)
-}
+const pickStr = (v: unknown): string => pickLocalizedText(v, locale.value)
 
 const pad = (n: number) => n.toString().padStart(2, '0')
 const formatDate = (v: string | null | undefined) => {

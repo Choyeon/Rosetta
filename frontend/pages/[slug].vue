@@ -136,16 +136,7 @@ interface PageDetail {
   updatedAt?: string
 }
 
-const pickLocalized = (val: unknown): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const obj = val as Record<string, string>
-    const key = (locale.value || Object.keys(obj)[0] || '') as string
-    return obj[key] ?? obj[Object.keys(obj)[0] || ''] ?? ''
-  }
-  return String(val)
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
 const runtimeConfig = useRuntimeConfig()
 const unwrapResp = (r: unknown): PageDetail | null => {

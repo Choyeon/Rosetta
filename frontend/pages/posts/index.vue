@@ -262,18 +262,7 @@ const site = useSite()
 const route = useRoute()
 const router = useRouter()
 
-const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const localeKey = locale.value as string
-    if (localeKey && val[localeKey]) return val[localeKey]
-    const keys = Object.keys(val)
-    const firstKey = keys.length > 0 ? keys[0]! : ''
-    return firstKey ? (val[firstKey] || '') : ''
-  }
-  return String(val)
-}
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
 // ===== SEO（useSeo composable）=====
 const listTitle = computed(() => t('nav.posts'))

@@ -99,7 +99,7 @@ import { computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const site = useSite()
 const { localeHref } = useLocaleLink()
 
@@ -122,19 +122,6 @@ useBreadcrumbJsonLd([
   { name: String(t('nav.posts') || '文章'), url: '/posts' },
   { name: String(hotTitle.value || '热门'), url: '/posts/hot' }
 ])
-
-const pickLocalized = (val: string | Record<string, string> | null | undefined): string => {
-  if (val == null) return ''
-  if (typeof val === 'string') return val
-  if (typeof val === 'object') {
-    const localeKey = locale.value as string
-    if (localeKey && val[localeKey]) return val[localeKey]
-    const keys = Object.keys(val)
-    const firstKey = keys.length > 0 ? keys[0]! : ''
-    return firstKey ? (val[firstKey] || '') : ''
-  }
-  return String(val)
-}
 
 // ===== SSR 友好同步解构 useAPI，无顶层 await（避免 async setup → Suspense
 // 水合 Symbol(v-cmt) vs 真实 DIV → Hydration node mismatch）=====
