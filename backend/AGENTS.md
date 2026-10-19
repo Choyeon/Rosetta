@@ -375,8 +375,10 @@ uv run python -m backend.migrations revision -m "描述" --autogenerate
 ## 测试
 
 pytest + pytest-asyncio + httpx.AsyncClient。测试文件在根 `tests/`，命名 `test_*.py`。
-当前规模：**657 个用例**（`uv run pytest --collect-only -q` 实测）；pyproject 覆盖率门禁
-`fail_under=45%`，全量运行实测约 **84.5%**。
+当前规模：**1485 个用例**（生产机 2026-10-20 全量实测：1476 passed + 2 failed（`test_coverage_main_and_middleware.py` 的 §8.4 顺序性假失败，见根 AGENTS.md）+ 3 skipped + 3 xfailed + 1 xpassed）；
+pyproject 覆盖率门禁 `fail_under=45%`，同场实测 **69.12%**（14606 stmts / 4510 missing）。
+覆盖率读数必须先 `rm -f .coverage`——`addopts` 带 `--cov-append`，跨运行按行号合并会虚高；
+历史文档里的 84%–88% 系列都是未清数据的合并产物，勿再引用。
 
 ```bash
 uv run pytest tests/ -v
