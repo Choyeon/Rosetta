@@ -241,6 +241,49 @@ async def test_comment_enable_is_the_only_comment_switch(client, staff_headers, 
 
 
 @pytest.mark.asyncio
+async def test_icp_number_has_one_authority(client, staff_headers):
+    """ICP 备案号只允许「基本设置」一处写口，footer 的同名键只能兜底、不能擦除。
+
+    反例（core.py 的 footer 投影，无条件覆写）：footer 的默认值就是空串，于是
+    "基本设置填了备案号 → 页脚不显示"，两处输入框互相抵消；而读侧真正渲染的是
+    /api/config 的扁平 icp_number，被后写入的 footer 投影覆盖掉。
+    收口口径：basic 优先；basic 留空时 footer 的历史存量值仍然可读（老站点不会因为
+    这次收口丢掉备案行）。设置页也把 footer 那个输入框屏蔽了（见下面那条静态断言）。
+    """
+    groups = (await client.get("/api/settings/public")).json()["groups"]
+    original = {
+        "basic": groups["basic"].get("icp_number") or "",
+        "footer": groups["footer"].get("icp_number") or "",
+    }
+    await _patch(client, staff_headers, "footer", {"icp_number": ""})
+    await _patch(client, staff_headers, "basic", {"icp_number": "京ICP备BASIC-001"})
+    try:
+        cfg = (await client.get("/api/config")).json()
+        assert cfg["icp_number"] == "京ICP备BASIC-001", cfg.get("icp_number")
+
+        await _patch(client, staff_headers, "footer", {"icp_number": ""})
+        cfg2 = (await client.get("/api/config")).json()
+        assert cfg2["icp_number"] == "京ICP备BASIC-001", "footer 留空把基本设置已填的备案号擦掉了"
+
+        await _patch(client, staff_headers, "footer", {"icp_number": "沪ICP备LEGACY-002"})
+        await _patch(client, staff_headers, "basic", {"icp_number": ""})
+        cfg3 = (await client.get("/api/config")).json()
+        assert cfg3["icp_number"] == "沪ICP备LEGACY-002", "历史存量备案号不得凭空消失"
+    finally:
+        for g, v in original.items():
+            await _patch(client, staff_headers, g, {"icp_number": v})
+
+
+def test_settings_page_blocks_the_second_icp_input():
+    """设置页 footer 组不得再渲染"ICP 备案号"输入框（与基本设置是同一行为）。"""
+    text = SETTINGS_PAGE.read_text(encoding="utf-8")
+    m = re.search(r"const FOOTER_BLOCK_KEYS = new Set<string>\(\[([^\]]*)\]\)", text)
+    assert m, "设置页里找不到 FOOTER_BLOCK_KEYS —— 屏蔽机制变了，请同步改这条断言"
+    assert "icp_number" in m.group(1), "备案号又有第二个输入框了"
+    assert "copyright" in m.group(1)
+
+
+@pytest.mark.asyncio
 async def test_comments_require_approval_group_overrides_env(client, staff_headers, test_post):
     """分组里勾了"新评论需审核" → 落库状态是 pending，不是环境变量算出来的 approved。"""
     pid = test_post.id

@@ -1012,8 +1012,12 @@ async def get_site_config(db: DB):
                         cfg_base["footer_slogan"] = str(parsed["slogan"])
                     if parsed.get("copyright") is not None:
                         cfg_base["copyright_text"] = str(parsed["copyright"])
-                    if parsed.get("icp_number") is not None:
-                        cfg_base["icp_number"] = str(parsed["icp_number"]) or None
+                    # 备案号单源在 basic（站点身份的一部分），footer 的同名键只是历史遗留
+                    # 的第二写口。原先这里无条件覆写：footer 留空（默认值就是空串）会把
+                    # basic 已填的备案号抹成 None，页脚备案行整条消失 —— 两个输入框互相
+                    # 抵消，表现是"改了基本设置没生效"。footer 现在只补位、不擦除。
+                    if parsed.get("icp_number") and not cfg_base.get("icp_number"):
+                        cfg_base["icp_number"] = str(parsed["icp_number"])
                     if parsed.get("police_icp_number") is not None:
                         cfg_base["police_icp_number"] = str(parsed["police_icp_number"]) or None
             # sidebar（已经由后续 _sidebar_dict_to_flat 读取默认，这里覆盖）

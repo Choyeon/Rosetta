@@ -798,11 +798,15 @@ const APPEARANCE_BLOCK_KEYS = new Set<string>([
 const HERO_BLOCK_KEYS = new Set<string>(['title', 'subtitle'])
 
 /**
- * footer 组里与主题 Customizer 重复的字段：
+ * footer 组里必须单源化的字段：
  *   - copyright → theme.footer_text 管理
- *   - 仍保留 slogan / icp / social / back_to_top 等站点级设置
+ *   - icp_number → 唯一入口在「基本设置 · ICP 备案号」（备案号属于站点身份，不是页脚装饰）。
+ *     footer 组里这个键是历史遗留的第二写口：两处都能填、页脚读到的是被后写的空值，
+ *     表现是"基本设置里填了备案号，页脚却不显示"。屏蔽后库里的存量值仍作为兜底被读
+ *     （backend/api/core.py 的 footer 投影只补位不擦除），老站点不会因为这次收口丢掉备案行。
+ *   - 仍保留 slogan / police_icp / social / back_to_top 等站点级设置
  */
-const FOOTER_BLOCK_KEYS = new Set<string>(['copyright'])
+const FOOTER_BLOCK_KEYS = new Set<string>(['copyright', 'icp_number'])
 
 /**
  * reading 组里与主题 Customizer 重复的字段：
