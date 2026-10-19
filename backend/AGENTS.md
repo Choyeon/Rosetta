@@ -103,6 +103,12 @@ api → services → repositories → models
 区间与设置页输入框的 `min/max` 必须同数，由
 `frontend/tests/unit/inertSettingSwitches.spec.ts` 从 `_NUMERIC_BOUNDS` 反向解析钉住。
 
+`/api/config` 的分组投影（`api/core.py::_apply_settings_groups`）按**单组**容错：每行走
+`_parse_group`、数值键走 `_int_of`，坏行或坏值只让那一组/那一个键回退到扁平默认并打 warning。
+不要把它们再收回同一个 `try` 里——一个 try 时，一行损坏的分组 JSON（或一个字符串数值）会让
+排在它后面的所有分组一起不再叠进 `/api/config`，表现是"我只坏了一个分组，整站设置都像没存过"。
+回归见 `tests/test_settings_group_consumers.py::test_corrupt_group_row_only_skips_its_own_group`。
+
 | 端点 | 鉴权 | 返回内容 |
 |------|------|---------|
 | `GET /api/settings` | 需管理员（`CurrentStaff`） | 全部 14 组，含敏感明文值 |

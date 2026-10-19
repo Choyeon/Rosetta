@@ -842,6 +842,66 @@ async def test_uppercase_group_row_still_overlays_api_config(db_session, client)
         await invalidate_cache("site_config")
 
 
+# ==================== 单行分组损坏不得牵连其它分组的投影 ====================
+
+
+@pytest.mark.asyncio
+async def test_corrupt_group_row_only_skips_its_own_group(db_session, client):
+    """一行分组 JSON 坏了只该坏那一组，不能把排在它后面的分组一起从 /api/config 摘掉。
+
+    ``_apply_settings_groups`` 曾把 10 个分组的解析全包在同一个 try 里，而
+    ``_json_.loads`` 抛的是 JSONDecodeError（ValueError 的子类），直接落到最外层
+    ``except Exception``——于是 reading 那一行坏掉时，它后面本来还要叠的 seo
+    （google_site_verification / robots_txt）整段没执行，且日志只有一行 warning。
+    同一条路径还有第二种坏法：分组里躺着字符串数值（历史库、手改库），
+    投影里的 ``int()`` 抛 ValueError，牵连面一模一样。
+    """
+    import json
+
+    from backend.core.cache import invalidate_cache
+    from backend.models.core import SiteConfig
+
+    marker_name = "坏行不牵连其它分组"
+    marker_seo = "https://example.com/after-corrupt-row.js"
+
+    async def _set_row(key: str, value: str) -> None:
+        await db_session.execute(delete(SiteConfig).where(SiteConfig.key == key))
+        db_session.add(SiteConfig(key=key, value=value, description="回归夹具"))
+        await db_session.commit()
+        await invalidate_cache("site_config")
+
+    async def _config() -> dict:
+        resp = await client.get("/api/config")
+        assert resp.status_code == 200, resp.text
+        return resp.json()
+
+    try:
+        await _set_row("basic", json.dumps({"site_name": marker_name}, ensure_ascii=False))
+        await _set_row("seo", json.dumps({"google_verification": marker_seo}))
+        baseline = await _config()
+        assert baseline["google_site_verification"] == marker_seo, "夹具前提：seo 分组能投影"
+
+        await _set_row("reading", "{这一行不是合法 JSON")
+        broken = await _config()
+        assert broken["site_name"] == marker_name
+        assert broken["google_site_verification"] == marker_seo, (
+            "reading 一行坏了就把后面的 seo 分组一起摘掉＝一个分组毁掉全站设置"
+        )
+        assert broken["pagination_page_size"] == baseline["pagination_page_size"], (
+            "坏行那一组应回退到默认值，而不是把异常抛给整段投影"
+        )
+
+        await _set_row("reading", json.dumps({"posts_per_page": "九"}))
+        typed = await _config()
+        assert typed["google_site_verification"] == marker_seo, "int() 抛错同样不该牵连后续分组"
+        assert typed["pagination_page_size"] == baseline["pagination_page_size"]
+    finally:
+        for key in ("basic", "reading", "seo"):
+            await db_session.execute(delete(SiteConfig).where(SiteConfig.key == key))
+        await db_session.commit()
+        await invalidate_cache("site_config")
+
+
 # ==================== 文档口径：分组数量不得写死成与真源不同的数 ====================
 
 # "13 组"这类数字散落在三份文件里（含 OpenAPI 描述，管理员在 /admin/docs 直接看到）。

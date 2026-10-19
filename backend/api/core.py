@@ -955,12 +955,47 @@ async def get_site_config(db: DB):
             """
             return configs.get(k) or _configs_ci.get(k.upper())
 
+        def _parse_group(raw: str | None) -> dict[str, Any]:
+            """单组 JSON 行的解析：坏行只让**这一组**回退到扁平面。
+
+            原先每组直接 `_json_.loads(raw)`，而整个投影只有一个 try：
+            库里有一行分组 JSON 坏掉（历史半写、导入恢复、手改库）就会抛在这里，
+            被最外层的 except 吞掉，于是排在它后面的所有分组（comments/features/media/
+            reading/seo）一起不再叠进 /api/config——表现是"我只坏了一个分组，
+            结果整站设置都像没存过"。
+            """
+            if not raw:
+                return {}
+            try:
+                loaded = _json_.loads(raw)
+            except (ValueError, TypeError) as exc:
+                logger.warning(
+                    "settings group 行不是合法 JSON，已跳过该组 %r: %s", raw[:60], exc
+                )
+                return {}
+            if not isinstance(loaded, dict):
+                logger.warning(
+                    "settings group 行不是对象（%s），已跳过该组 %r",
+                    type(loaded).__name__,
+                    raw[:60],
+                )
+                return {}
+            return loaded
+
+        def _int_of(value: Any, key: str) -> int | None:
+            """分组里的数值键可能躺着历史字符串；单个键坏掉不该牵连同组其余投影。"""
+            try:
+                return int(value)
+            except (ValueError, TypeError):
+                logger.warning("settings group 的 %s 不是整数（%r），已忽略该键", key, value)
+                return None
+
         try:
             # basic
             raw_basic = _cfg_raw("basic")
             if raw_basic:
-                parsed = _json_.loads(raw_basic)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_basic)
+                if parsed:
                     if parsed.get("site_name"):
                         cfg_base["site_name"] = str(parsed["site_name"])
                     if parsed.get("subtitle") is not None:
@@ -980,8 +1015,8 @@ async def get_site_config(db: DB):
             # seo
             raw_seo = _cfg_raw("seo")
             if raw_seo:
-                parsed = _json_.loads(raw_seo)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_seo)
+                if parsed:
                     if parsed.get("default_description"):
                         cfg_base["site_description"] = str(parsed["default_description"])
                     if parsed.get("default_keywords"):
@@ -991,8 +1026,8 @@ async def get_site_config(db: DB):
             # appearance
             raw_appearance = _cfg_raw("appearance")
             if raw_appearance:
-                parsed = _json_.loads(raw_appearance)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_appearance)
+                if parsed:
                     if parsed.get("primary_color"):
                         cfg_base["primary_color"] = str(parsed["primary_color"])
                         cfg_base["theme_primary"] = str(parsed["primary_color"])
@@ -1006,8 +1041,8 @@ async def get_site_config(db: DB):
             # footer
             raw_footer = _cfg_raw("footer")
             if raw_footer:
-                parsed = _json_.loads(raw_footer)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_footer)
+                if parsed:
                     if parsed.get("text") is not None:
                         cfg_base["footer_text"] = str(parsed["text"])
                     if parsed.get("slogan") is not None:
@@ -1025,8 +1060,8 @@ async def get_site_config(db: DB):
             # sidebar（已经由后续 _sidebar_dict_to_flat 读取默认，这里覆盖）
             raw_sb = _cfg_raw("sidebar")
             if raw_sb:
-                parsed_sb = _json_.loads(raw_sb)
-                if isinstance(parsed_sb, dict):
+                parsed_sb = _parse_group(raw_sb)
+                if parsed_sb:
                     for k, v in parsed_sb.items():
                         if k == "widget_order" and isinstance(v, list):
                             cfg_base["sidebar_widget_order"] = v
@@ -1035,8 +1070,8 @@ async def get_site_config(db: DB):
             # comments（执行点在 CommentService.create_comment 读同一份分组，这里只下发给 UI）
             raw_comments = _cfg_raw("comments")
             if raw_comments:
-                parsed = _json_.loads(raw_comments)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_comments)
+                if parsed:
                     if parsed.get("enable") is not None:
                         cfg_base["enable_comments"] = bool(parsed["enable"])
                     for gk, ck in (
@@ -1047,12 +1082,14 @@ async def get_site_config(db: DB):
                         if parsed.get(gk) is not None:
                             cfg_base[ck] = bool(parsed[gk])
                     if parsed.get("max_length"):
-                        cfg_base["comment_max_length"] = int(parsed["max_length"])
+                        n = _int_of(parsed["max_length"], "comments.max_length")
+                        if n is not None:
+                            cfg_base["comment_max_length"] = n
             # features（后台「功能开关」分组 —— 此前只读扁平 ENABLE_*，分组存了没人读）
             raw_features = _cfg_raw("features")
             if raw_features:
-                parsed = _json_.loads(raw_features)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_features)
+                if parsed:
                     for k, v in parsed.items():
                         # enable_comments 的唯一真源是 comments.enable（上面已投影）。
                         # 库里可能还留着旧 features 行的这一项，让它赢就等于把评论
@@ -1064,20 +1101,24 @@ async def get_site_config(db: DB):
             # media（上传大小与扩展名白名单：真正执行的是 api/media.py，这里下发给前端预检）
             raw_media = _cfg_raw("media")
             if raw_media:
-                parsed = _json_.loads(raw_media)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_media)
+                if parsed:
                     if parsed.get("max_upload_size"):
-                        cfg_base["max_upload_size"] = int(parsed["max_upload_size"])
+                        n = _int_of(parsed["max_upload_size"], "media.max_upload_size")
+                        if n is not None:
+                            cfg_base["max_upload_size"] = n
                     for k in ("allowed_image_types", "allowed_file_types"):
                         if parsed.get(k):
                             cfg_base[k] = str(parsed[k])
             # reading（文章列表每页条数 + 目录/阅读时间/字数三处 UI 开关）
             raw_reading = _cfg_raw("reading")
             if raw_reading:
-                parsed = _json_.loads(raw_reading)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_reading)
+                if parsed:
                     if parsed.get("posts_per_page"):
-                        cfg_base["pagination_page_size"] = int(parsed["posts_per_page"])
+                        n = _int_of(parsed["posts_per_page"], "reading.posts_per_page")
+                        if n is not None:
+                            cfg_base["pagination_page_size"] = n
                     for gk, ck in (
                         ("show_reading_time", "enable_reading_time"),
                         ("show_word_count", "enable_word_count"),
@@ -1088,8 +1129,8 @@ async def get_site_config(db: DB):
             # seo（验证码/统计码/robots 正文：分组是设置页唯一写口，扁平 key 只兜历史数据）
             raw_seo_full = _cfg_raw("seo")
             if raw_seo_full:
-                parsed = _json_.loads(raw_seo_full)
-                if isinstance(parsed, dict):
+                parsed = _parse_group(raw_seo_full)
+                if parsed:
                     for gk, ck in (
                         ("google_verification", "google_site_verification"),
                         ("baidu_verification", "baidu_site_verification"),
