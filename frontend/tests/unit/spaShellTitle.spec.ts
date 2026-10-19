@@ -122,4 +122,8 @@ describe('spa-shell-brand 插件接线', () => {
     expect(shellPlugin).toMatch(/catch \{\s*\n\s*\/\/ [^\n]*\n\s*title = ''/)
     expect(shellPlugin).toContain('seo.default_title')
   })
+
+  it('进程内缓存 TTL 不得长到让"保存后标题不跟"（后端 PATCH 已即时清自己的缓存）', () => {
+    expect(shellPlugin).toMatch(/BRAND_TTL_MS = 15_000/)
+  })
 })

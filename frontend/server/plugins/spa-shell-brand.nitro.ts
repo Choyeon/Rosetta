@@ -6,14 +6,16 @@
  * 数据库里，构建期拿不到。这里在响应写回前按 `/settings/public` 的实际值改写一次。
  *
  * 失败策略 = 不改写（保留构建期占位）：后端不可用时宁可标题旧，也不能没有标题。
- * 标题源数据按 60s 进程内缓存（含失败结果），避免后端挂死时每个壳请求都发一次往返。
+ * 标题源数据按 15s 进程内缓存（含失败结果）：TTL 刻意短于后端 /settings/public 的 300s
+ * 窗口，而 PATCH 会立即清掉后端那份 —— 管理员保存设置后标签页标题一轮内就跟上；
+ * 后端挂死时也不会每个壳请求都发一次往返。
  */
 import type { NitroApp } from 'nitropack'
 import type { H3Event } from 'h3'
 import { buildShellTitle, isSpaShellPath, rewriteShellTitle } from '../utils/spaShellBrand'
 import { resolveBackendEndpoint } from '../utils/ssr'
 
-const BRAND_TTL_MS = 60_000
+const BRAND_TTL_MS = 15_000
 const BRAND_TIMEOUT_MS = 3_000
 
 interface PublicGroupsResponse {
