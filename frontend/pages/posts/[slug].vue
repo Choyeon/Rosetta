@@ -1566,20 +1566,11 @@ const charCount = computed(() => readingStats.value.chars)
 // 这里曾经另起一个 useHead 用 requestURL.href 再写一遍 canonical：同一个 rel 两处来源
 // 的结果是 unhead 合并后只剩一条，留哪条取决于注入顺序，改不动也测不准。
 
-const formatDate = (date: string) => {
-  if (!date) return ''
-  try {
-    const d = new Date(date)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleDateString(locale.value as string, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  } catch {
-    return ''
-  }
-}
+// 文章详情的日期与列表卡片同一个口径：`useI18nHelpers().formatDate` 用静态月表拼接，
+// SSR 与浏览器两端字节级一致；原先这里用 `toLocaleDateString(locale)`，同一篇文章
+// 在列表上是 "Nov 5, 2026"、点进详情页变成 "November 5, 2026"，而且 Node 侧 Intl 数据
+// 版本与访客浏览器不一致时，这个差异会直接变成 Hydration node mismatch。
+const { formatDate } = useI18nHelpers()
 
 // ===== 评论：后端是扁平 snake_case（author_name / author_avatar / resolved_avatar_url /
 //      qq / github），CommentItem 期望 camelCase 的 author 对象。此前直接 `as unknown as`

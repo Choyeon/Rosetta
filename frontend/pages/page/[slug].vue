@@ -121,14 +121,11 @@ const metaDescription = computed(() =>
     .slice(0, 180)
 )
 
-const formatDate = (iso: string) => {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleDateString(locale.value as string, { year: 'numeric', month: 'long', day: 'numeric' })
-  } catch { return '' }
-}
+// 日期展示走 useI18nHelpers 的静态月表：本页是 SSR 页，`toLocaleDateString(locale)`
+// 在 Node 与浏览器两侧的 Intl 数据版本不一致时会产出不同字符串（"Nov 5, 2026" vs
+// "November 5, 2026" 这类差异已经是次要的，真正会炸的是文本整个不同 → Hydration mismatch）。
+// 同一篇文章在列表卡片上用的也是这个口径，详情页不该再是第二套格式。
+const { formatDate } = useI18nHelpers()
 
 useHead(() => ({
   title: title.value,

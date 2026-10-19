@@ -15,7 +15,8 @@
 // 与 useI18n.ts 导出保持一致（避免 SSR 首屏 VueI18n 不可用时返回 undefined）
 const _fallbackLocale = 'zh'
 
-const MONTH_TABLE: Record<string, string[]> = {
+/** 月份短名表：SSR 与浏览器字节级一致的唯一月份名来源，别再自带第二份。 */
+export const MONTH_TABLE: Record<string, string[]> = {
   zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
   zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
   en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],

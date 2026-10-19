@@ -234,14 +234,9 @@ const metaDescription = computed(() =>
     .slice(0, 180)
 )
 
-const formatDate = (iso: string) => {
-  if (!iso) return ''
-  try {
-    const d = new Date(iso)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleDateString(locale.value as string, { year: 'numeric', month: 'long', day: 'numeric' })
-  } catch { return '' }
-}
+// 日期展示走 useI18nHelpers 的静态月表（口径同 pages/page/[slug].vue：SSR 页不得依赖
+// Node/浏览器两侧 Intl 数据版本给出一致字符串，且详情页与列表卡片本就该是同一格式）。
+const { formatDate } = useI18nHelpers()
 
 // 标题与 description 由 useSeo 单源产出：这里再裸写一份 useHead 会在 <head> 里
 // 留下第二条 name=description（unhead 按入队顺序合并，两份裁切长度不同）。

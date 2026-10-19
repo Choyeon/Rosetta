@@ -207,14 +207,9 @@ interface SeriesDetail {
 const pickStr = (v: unknown): string => pickLocalizedText(v, locale.value)
 
 const pad = (n: number) => n.toString().padStart(2, '0')
-const formatDate = (v: string | null | undefined) => {
-  if (!v) return ''
-  try {
-    const d = new Date(v)
-    if (isNaN(d.getTime())) return ''
-    return d.toLocaleDateString(locale.value as string, { year: 'numeric', month: '2-digit', day: '2-digit' })
-  } catch { return '' }
-}
+// 系列页的日期与文章列表/详情同一个口径（静态月表，SSR 与浏览器字节级一致）；
+// 原先这里是 `toLocaleDateString` 的 2-digit 形态，整站只有这一处显示成 2026/11/05。
+const { formatDate } = useI18nHelpers()
 
 // 真实接口：GET /api/series/{slug}。失败时回退 null，并显示 404 提示，不伪造内容。
 // 【必须 SSR 取数】这里曾经写过 `server: false`，后果是：页面本身走 SSR（全局 ssr:true，

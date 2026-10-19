@@ -216,6 +216,7 @@ import { Button } from '~~/components/ui/button'
 import { Textarea } from '~~/components/ui/textarea'
 import { apiFetch } from '~~/composables/useApi'
 import { useAuthStore } from '~~/stores/auth'
+import { toHM } from '~~/lib/datetime'
 import { useI18n } from 'vue-i18n'
 
 /**
@@ -278,24 +279,14 @@ const backendToIconKey = (type: string): string => {
 }
 const activityIconKey = (type: string) => backendToIconKey(type)
 
-const MONTH_NAMES: Record<string, string[]> = {
-  zh: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-  en: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'],
-  ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
-  zh_Hant: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
-}
+// 动态流只要"月 日 时:分"（同一天里年份是噪声），所以不套 useI18nHelpers.formatDate；
+// 但月份名表与时间补零都用单源：MONTH_TABLE（SSR/浏览器字节级一致）+ lib/datetime::toHM。
 const formatDate = (dateStr: string) => {
   if (!dateStr) return ''
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return ''
-  const loc = String(locale.value || 'zh')
-  const months = (MONTH_NAMES[loc] || MONTH_NAMES.en || []) as string[]
-  const pad = (n: number) => n < 10 ? `0${n}` : String(n)
-  const month = months[date.getMonth()] ?? ''
-  const day = date.getDate()
-  const hh = pad(date.getHours())
-  const mm = pad(date.getMinutes())
-  return `${month} ${day} ${hh}:${mm}`
+  const months = MONTH_TABLE[String(locale.value || 'zh')] || MONTH_TABLE.en || []
+  return `${months[date.getMonth()] ?? ''} ${date.getDate()} ${toHM(date)}`
 }
 
 // 真实接口：GET /api/activities?page=1&page_size=50
