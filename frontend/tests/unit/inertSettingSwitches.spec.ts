@@ -211,4 +211,50 @@ describe('设置页字段清单必须覆盖后端每一把设置键', () => {
       expect(extra, `${group} 有后端不存在的 ${extra.join(' / ')}`).toEqual([])
     }
   })
+
+  /**
+   * 数值键的区间：输入框的 min/max 与后端 PATCH 闸门必须是同一组数。
+   *
+   * 表现过的口径：输入框写着 min:1 max:50，保存路径却把整组原样 PATCH 出去——浏览器不会
+   * 替一次 fetch 做校验，于是填 500 会"保存成功"，再让五个列表页全部 422（列表接口的
+   * page_size 上限是 200）。区间真源是 `backend/api/settings_groups.py::_NUMERIC_BOUNDS`，
+   * 这里反向解析它而不是抄第二份清单（抄的那份会跟着一起漂移）。
+   */
+  it('数值设置键的区间：后端闸门与输入框 min/max 逐键相等', () => {
+    const boundBlock = backendSource.match(/^_NUMERIC_BOUNDS: dict[^=]*= \{\n([\s\S]*?)\n\}/m)
+    const boundBody = boundBlock?.[1]
+    if (!boundBody) throw new Error('_NUMERIC_BOUNDS 结构已变，请同步本守卫的解析口径')
+    const remote: Record<string, { min: number, max: number }> = {}
+    for (const m of boundBody.matchAll(/"([a-z_]+\.[a-z_0-9]+)": \(([-0-9.]+), ([-0-9.]+)\)/g)) {
+      const dotted = m[1]
+      const lo = m[2]
+      const hi = m[3]
+      if (!dotted || !lo || !hi) continue
+      const [, key] = dotted.split('.')
+      if (!key) continue
+      if (remote[key]) throw new Error(`${key} 在后端出现在两个分组，本守卫按扁平键名对账会判错`)
+      remote[key] = { min: Number(lo), max: Number(hi) }
+    }
+    expect(Object.keys(remote).length, '_NUMERIC_BOUNDS 解析不出条目，守卫本身失效了').toBeGreaterThan(8)
+
+    const metaBlock = page.match(/const meta: Record<string, \{[^}]*\} = \{([\s\S]*?)\n {4}\}/)
+    const metaBody = metaBlock?.[1]
+    if (!metaBody) throw new Error('settings.vue 数值区间表结构已变，请同步本守卫的解析口径')
+    const local: Record<string, { min: number, max: number }> = {}
+    for (const m of metaBody.matchAll(/([a-z_0-9]+): \{([^}]*)\}/g)) {
+      const name = m[1]
+      const entry = m[2]
+      if (!name || !entry) continue
+      local[name] = {
+        min: Number(entry.match(/min: ([-0-9.]+)/)?.[1]),
+        max: Number(entry.match(/max: ([-0-9.]+)/)?.[1])
+      }
+    }
+
+    expect(Object.keys(local).sort(), '数值区间表必须等于后端数值键清单').toEqual(Object.keys(remote).sort())
+    for (const [key, bounds] of Object.entries(remote)) {
+      expect(local[key]?.min, `${key} 的 min 与后端闸门不一致`).toBe(bounds.min)
+      expect(local[key]?.max, `${key} 的 max 与后端闸门不一致`).toBe(bounds.max)
+    }
+  })
 })

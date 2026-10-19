@@ -340,6 +340,65 @@ def _only_known_keys(base: dict, data: dict) -> dict:
     return {k: v for k, v in data.items() if k in base}
 
 
+# 数值设置键的合法区间——写入侧的唯一闸门。
+#
+# 为什么必须有：PATCH 过去只按键集过滤，不判类型也不判区间，值原样进库再被执行点直接消费，
+# 每一条的表现都是"后台提示保存成功、前台整片坏掉"：
+#   comments.max_length 负数 → `len(content) > max_len` 恒真，评论写入全线禁用；
+#   reading.posts_per_page > 200 → 前端把它当 page_size 传给列表接口，撞上 api/blog.py 的
+#     Query(le=200)，五个列表页全部 422；
+#   security.max_login_attempts 巨大 → 锁定永不触发，暴破保护形同虚设；
+#   security.lockout_duration_sec 巨大 → 账号永久锁定，只能手改库；
+#   email.smtp_port 越界 → smtplib 抛错被 except 吞成 EmailResult(success=False)，
+#     管理员只看到"发信失败"而不知道是端口填错；
+#   reading.font_size / appearance.page_width_px 为 0 或巨大 → 正文不可读或首页塌成 0 宽。
+# NaN/Infinity 也由这一刀挡掉：json.loads 接受这两个字面量，它们既过不了区间比较，又能被
+# json.dumps 原样写回，前台 JSON.parse 会当场炸。
+#
+# 选拒绝而不是钳位：钳位等于"保存成功但存进去的不是我填的那个数"，正是上传上限那批缺陷
+# 的口径（见 AGENTS.md 的钳位跟服务端）。管理员需要一条明确报错。
+# 区间必须与设置页输入框的 min/max 同数——由
+# frontend/tests/unit/inertSettingSwitches.spec.ts 从本表反向解析钉住。
+_NUMERIC_BOUNDS: dict[str, tuple[float, float]] = {
+    "reading.posts_per_page": (1, 50),
+    "reading.toc_depth": (1, 6),
+    "reading.line_height": (1.0, 2.5),
+    "reading.font_size": (12, 24),
+    "comments.max_length": (100, 5000),
+    # 必须等于 api/media.py::UPLOAD_SIZE_FLOOR_BYTES / UPLOAD_SIZE_CEILING_BYTES 的钳位区间
+    "media.max_upload_size": (65536, 104857600),
+    "email.smtp_port": (1, 65535),
+    "security.max_login_attempts": (1, 20),
+    "security.lockout_duration_sec": (60, 86400),
+    "appearance.page_width_px": (800, 2000),
+}
+
+
+def _check_numeric_bounds(group: str, data: dict) -> None:
+    """数值键的类型 + 区间闸门；越界或类型不对一律 400，不静默丢弃也不改写。
+
+    整数键（默认值是 int）拒收小数：`posts_per_page=9.5` 会一路走到 SQLAlchemy 的
+    `.limit()` 才炸，而那时已经是前台 500，不是管理员的一次输入。
+    小数键（默认值是 float）两种都收，`line_height=2` 是完全合法的填法。
+    """
+    base = _default_for(group)
+    for key, value in _only_known_keys(base, data).items():
+        bounds = _NUMERIC_BOUNDS.get(f"{group}.{key}")
+        if bounds is None:
+            continue
+        lo, hi = bounds
+        want_float = isinstance(base[key], float)
+        accepted: tuple[type, ...] = (int, float) if want_float else (int,)
+        # bool 是 int 的子类，勾选项被当数值键提交时必须拒收而不是存成 1
+        ok_number = isinstance(value, accepted) and not isinstance(value, bool)
+        if not ok_number or not lo <= value <= hi:
+            kind = "小数" if want_float else "整数"
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                f"{group}.{key} 必须是 {lo}-{hi} 之间的{kind}，收到 {value!r}",
+            )
+
+
 async def _load_all_groups(db: DB) -> dict[str, dict]:
     rows = (await db.execute(select(SiteConfig))).scalars().all()
     db_map: dict[str, dict] = {}
@@ -367,6 +426,9 @@ async def _load_all_groups(db: DB) -> dict[str, dict]:
 
 async def _save_group(db: DB, group: str, data: dict) -> dict:
     base = _default_for(group)
+    # 挂在 _save_group 而不是 PATCH handler：这是本模块唯一的分组写入收敛点，
+    # 以后新增调用方（插件、脚本）不会绕开数值闸门。
+    _check_numeric_bounds(group, data)
     row = (await db.execute(select(SiteConfig).where(SiteConfig.key == group))).scalar_one_or_none()
     # PATCH 是"部分更新"语义：没出现在请求体里的键，必须保留库里已有的值。
     # 旧实现只拿默认值当底（{**base, **incoming}），于是"只发一个键"的 PATCH 会把
@@ -508,11 +570,14 @@ async def get_one_setting(
         "不在该组默认值键集内的键被静默丢弃。副作用：写入操作日志（含 before/after diff）、"
         "落库 site_configs 后立刻失效 /settings/public（300s）与 /api/config 的 site_config（3600s）缓存——"
         "分组 JSON 是 /api/config 的权威覆写来源，不失效则站点名等改动最长 1 小时不可见。"
-        "未知分组 404；payload 非对象 400。"
+        "未知分组 404；payload 非对象 400。数值键（posts_per_page / max_length / smtp_port 等）"
+        "受 _NUMERIC_BOUNDS 的区间与整数/小数类型闸门约束，越界或类型不符一律 400——"
+        "这些值会被执行点原样消费，存进去一个 0 或负数等于把评论、列表分页、登录锁定整片关掉，"
+        "所以这里拒绝而不是钳位，管理员需要一条明确报错。"
     ),
     responses={
         200: {"model": SettingsPatchResponse},
-        400: {"description": "payload 必须为 JSON 对象"},
+        400: {"description": "payload 必须为 JSON 对象，或数值设置键越界/类型不符"},
         404: {"description": "未知设置分组"},
     },
 )

@@ -90,11 +90,24 @@ api → services → repositories → models
 代码配色看 `assets/css/main.css` 的 `--hljs-*` 令牌，明/暗首帧看 `localStorage.theme`。
 读写两侧都按 `_default_<group>()` 的键集过滤（`_only_known_keys`），所以库里残留的旧键不会再被回显。
 
+数值键的区间是**写入侧闸门**，不是钳位：`_NUMERIC_BOUNDS`（键为 `<group>.<key>`）给每把数值键声明
+`lo-hi`，`_check_numeric_bounds` 挂在 `_save_group`（本模块唯一的分组写入口）上，类型不符或越界一律
+400。**新增数值默认键必须同时在 `_NUMERIC_BOUNDS` 登记**，否则 `tests/test_settings_numeric_bounds.py`
+直接判红（它还要求默认值自己落在区间内、且 `media.max_upload_size` 的区间等于 `api/media.py` 的钳位常量）。
+为什么选择拒绝而不是"存下来再用钳位兜底"：这些值会被执行点原样消费，实测后果是
+`comments.max_length` 负数→评论全线写不进去、`reading.posts_per_page>200`→五个列表页撞上
+`api/blog.py` 的 `Query(le=200)` 全部 422、`security.lockout_duration_sec` 巨大→账号永久锁定、
+`email.smtp_port` 越界→发信静默失败，全都是"后台提示保存成功、前台整片坏掉"。
+`NaN`/`Infinity` 也在这一刀内（`json.loads` 接受这两个字面量，存进库后前台 `JSON.parse` 会炸）。
+整站恢复走的是直接写分组行，因此在导入循环里重过一遍同一道闸门（越界记为一条导入失败并跳过）。
+区间与设置页输入框的 `min/max` 必须同数，由
+`frontend/tests/unit/inertSettingSwitches.spec.ts` 从 `_NUMERIC_BOUNDS` 反向解析钉住。
+
 | 端点 | 鉴权 | 返回内容 |
 |------|------|---------|
 | `GET /api/settings` | 需管理员（`CurrentStaff`） | 全部 14 组，含敏感明文值 |
 | `GET /api/settings/{group}` | 需管理员 | 单组原文 |
-| `PATCH /api/settings/{group}` | 需管理员 | 写日志 + 失效公开缓存 |
+| `PATCH /api/settings/{group}` | 需管理员 | 写日志 + 失效公开缓存；数值键越界/类型不符 400 |
 | `GET /api/settings/public` | **无鉴权** | `PUBLIC_SETTING_GROUPS` 白名单，敏感值替换为 `******` |
 
 > ⚠️ 前台/SSR 只能调 `GET /api/settings/public`。新增可公开字段先加进 `PUBLIC_SETTING_GROUPS`，不要放宽 `/api/settings` 鉴权。

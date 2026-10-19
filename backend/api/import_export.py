@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
+from backend.api.settings_groups import SETTING_GROUPS, _check_numeric_bounds
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache
 from backend.core.logging_middleware import log_operation
@@ -1312,6 +1313,11 @@ async def backup_restore(
     # === 1. site_config ===
     for item in site_config_data:
         try:
+            if item["key"] in SETTING_GROUPS:
+                # 分组行是整段 JSON，恢复路径绕开了 PATCH 的数值闸门，这里必须重过一遍：
+                # 一个旧备份里的 comments.max_length=-3000 会让评论全线写不进去，
+                # 而恢复流程本身永远"提示成功"。越界由外层 except 记成一条导入失败并跳过。
+                _check_numeric_bounds(item["key"], json.loads(item.get("value") or "{}"))
             existing = await db.execute(select(SiteConfig).where(SiteConfig.key == item["key"]))
             existing_obj = existing.scalar_one_or_none()
             if existing_obj:

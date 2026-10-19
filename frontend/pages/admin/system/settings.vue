@@ -773,7 +773,10 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
       },
       smtp_port: { min: 1, max: 65535, placeholder: '常用：465/587/25' },
       max_login_attempts: { min: 1, max: 20 },
-      lockout_duration_sec: { min: 60, placeholder: '单位：秒' },
+      // 上限必须有：没有 max 时填一个天文数字会让 locked_until 永远大于当前时间，
+      // 账号被永久锁定且后台再也解不开（只能手改库）。区间真源见
+      // backend/api/settings_groups.py::_NUMERIC_BOUNDS，PATCH 会拒收越界值。
+      lockout_duration_sec: { min: 60, max: 86400, placeholder: '单位：秒，60 - 86400' },
       page_width_px: { min: 800, max: 2000, placeholder: '如 1200' }
     }
     const m = meta[key] || {}
