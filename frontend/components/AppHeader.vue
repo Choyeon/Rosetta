@@ -401,7 +401,10 @@ const handleSearchClick = () => navigateTo('/search')
           <!-- 语言切换器与登录/注册按钮在 <sm 收进汉堡抽屉（Sheet 里已有同一批入口）：
                375px 下"品牌 + 搜索 + 明暗 + 语言 + 登录 + 注册 + 汉堡"的 shrink-0 总宽
                约 500px，一定溢出——溢出时最先被裁掉的是汉堡，等于移动端没有导航。 -->
-          <div v-if="showLanguageSwitch" class="hidden sm:flex items-center">
+          <div
+            v-if="showLanguageSwitch"
+            class="hidden sm:flex items-center"
+          >
             <LocaleSwitcher />
           </div>
 
@@ -699,11 +702,23 @@ const handleSearchClick = () => navigateTo('/search')
             class="flex items-center gap-1"
             aria-hidden="true"
           >
-            <span v-if="showSearch" class="size-10 shrink-0" />
-            <span v-if="showDarkModeToggle" class="size-10 shrink-0" />
-            <span v-if="showLanguageSwitch" class="hidden sm:flex h-9 w-16 shrink-0 rounded-md" />
+            <span
+              v-if="showSearch"
+              class="size-10 shrink-0"
+            />
+            <span
+              v-if="showDarkModeToggle"
+              class="size-10 shrink-0"
+            />
+            <span
+              v-if="showLanguageSwitch"
+              class="hidden sm:flex h-9 w-16 shrink-0 rounded-md"
+            />
             <span class="ml-1 hidden sm:flex h-9 w-16 shrink-0 rounded-md border border-transparent" />
-            <span v-if="showRegister" class="hidden sm:flex h-9 w-16 shrink-0 rounded-md" />
+            <span
+              v-if="showRegister"
+              class="hidden sm:flex h-9 w-16 shrink-0 rounded-md"
+            />
           </div>
         </template>
       </ClientOnly>

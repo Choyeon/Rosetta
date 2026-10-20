@@ -523,6 +523,17 @@ html.dark.palette-minimal {
    Base reset + 排版
    ========================================================= */
 @layer base {
+  /* iOS Safari 默认会在特定情形下自行放大正文，表现是同一篇文章在 iPhone 上
+     比安卓大一号；显式锁 100%，让四端排版读数是同一份。
+     scrollbar-gutter: stable 让"内容长到出滚动条 / 短到没有"这两种页面的
+     可视宽度一致——否则从列表页跳到很短的独立页时整页会横向抖一下。
+     移动端与 macOS 用叠加式滚动条，这里不会占掉任何像素。 */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    scrollbar-gutter: stable;
+  }
+
   /* Tailwind v4 preflight 将 button 默认 cursor 改为 default。
      恢复可用按钮的 pointer 光标，保证点击反馈一致（前台 + Admin 全局生效）。 */
   button:not(:disabled),

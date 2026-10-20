@@ -146,7 +146,13 @@ export function formatStampText(
 ): string {
   const d = toDate(date)
   if (!d) return ''
-  return `${monthNameOf(localeCode, d)} ${d.getDate()} ${toHM(d)}`
+  // 与 formatMonthDayText 同一套分隔口径：CJK 月名与日之间不加空格（「8月20」），
+  // 英文才要（「Aug 20」）。此前这里无条件拼空格，中文流就写成「8月 20 14:05」。
+  const m = monthNameOf(localeCode, d)
+  const day = String(d.getDate()).padStart(2, '0')
+  return localeCode === 'en'
+    ? `${m} ${day} ${toHM(d)}`
+    : `${m}${day} ${toHM(d)}`
 }
 
 /** 完整日期形态：zh/zh_Hant/ja「2026年8月20日」，en「Aug 20, 2026」。 */

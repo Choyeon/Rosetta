@@ -33,7 +33,7 @@
     <OOBENavbar class="sticky top-0 z-40 shrink-0" />
 
     <!-- ========== 主体：两栏 ========== -->
-    <div class="relative z-10 min-h-[calc(100svh-57px)] grid lg:grid-cols-[300px_1fr] gap-0">
+    <div class="relative z-10 min-h-[calc(100svh-4rem)] grid lg:grid-cols-[300px_1fr] gap-0">
       <!-- 侧边栏：高模糊毛玻璃 -->
       <aside class="hidden lg:flex flex flex-col border-r border-zinc-900/10 dark:border-white/10 bg-white/65 dark:bg-zinc-950/55 backdrop-blur-[28px] saturate-[200%] [@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-white/90 dark:[@supports_not_((backdrop-filter:_blur(2px))_or_(-webkit-backdrop-filter:_blur(2px)))]:bg-zinc-950/95">
         <div class="p-8 flex flex-col gap-8 flex-1">
