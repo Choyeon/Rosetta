@@ -820,6 +820,9 @@ html.dark.palette-minimal {
     color: hsl(var(--foreground));
     font-size: 1rem;
     line-height: 1.75;
+    /* 长 URL / 无空格串在 375px 下不会自己断开，会把整页撑出横向滚动。
+       break-word 只在单词确实放不下时切，正常中英文排版不受影响。 */
+    overflow-wrap: break-word;
   }
   .prose-shadcn p { margin: 1.25rem 0; }
   .prose-shadcn h1,

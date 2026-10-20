@@ -9,12 +9,12 @@
 <template>
   <div
     v-if="isMinimalAuth"
-    class="ap-auth min-h-screen w-full bg-background text-foreground antialiased"
+    class="ap-auth min-h-svh w-full bg-background text-foreground antialiased"
   >
     <!-- 极简主题纯纸面登录：结构类走 Tailwind 语义 token，装饰（衬线标题、
          hairline、方角按钮）由 themes/astro-paper-inspired/style.css 的
          public-auth 守卫段落消费 .ap-auth-* 类 -->
-    <div class="mx-auto flex min-h-screen w-full max-w-[420px] flex-col justify-center px-5 py-14">
+    <div class="mx-auto flex min-h-svh w-full max-w-[420px] flex-col justify-center px-5 py-14">
       <div class="mb-10 text-center">
         <NuxtLink
           to="/"
@@ -149,7 +149,7 @@
 
   <div
     v-else
-    class="min-h-screen relative overflow-hidden isolate font-sans antialiased"
+    class="min-h-svh relative overflow-hidden isolate font-sans antialiased"
   >
     <!-- 默认壁纸玻璃卡登录（非极简主题） -->
     <!-- 背景：整屏 Bing 每日壁纸（Bing/Unsplash 失败时后面的渐变兜底自动可见） -->
@@ -173,7 +173,7 @@
     </NuxtLink>
 
     <!-- 内容区：单栏居中（全尺寸都是居中，没有双栏） -->
-    <div class="relative z-10 min-h-screen w-full flex flex-col items-center justify-center px-5 pt-10 pb-28 gap-7">
+    <div class="relative z-10 min-h-svh w-full flex flex-col items-center justify-center px-5 pt-10 pb-28 gap-7">
       <!-- 彩色方形 Logo（仅图标，不带文字） + 标题 -->
       <NuxtLink
         to="/"

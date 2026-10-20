@@ -11,7 +11,7 @@
   （页尾 style 块内亮暗各一套）。守卫见 tests/unit/oobeThemeScope.spec.ts。
 -->
 <template>
-  <div class="oobe-root relative min-h-screen overflow-hidden text-foreground isolate">
+  <div class="oobe-root relative min-h-svh overflow-hidden text-foreground isolate">
     <!-- ========== 背景：Bing 每日壁纸 + 多层遮罩 ========== -->
     <div
       class="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat transition-opacity duration-700"

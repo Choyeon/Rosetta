@@ -128,7 +128,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
 </script>
 
 <template>
-  <div class="min-h-screen bg-background font-sans antialiased flex flex-col">
+  <div class="min-h-svh bg-background font-sans antialiased flex flex-col">
     <AppHeader />
 
     <!-- 公告条：仅后端返回真实公告时渲染。后端返回空数组 / 失败 → 整块不出现。 -->

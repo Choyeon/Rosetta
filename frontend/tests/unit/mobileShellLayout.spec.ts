@@ -30,6 +30,12 @@ describe('版心横向留白', () => {
 })
 
 describe('富文本表格不撑破文档', () => {
+  it('正文对长串（URL）折行，不撑出横向滚动', () => {
+    const root = mainCss.slice(mainCss.indexOf('  .prose-shadcn {'), mainCss.indexOf('}', mainCss.indexOf('  .prose-shadcn {')))
+    expect(root).toMatch(/overflow-wrap: break-word;/)
+  })
+
+
   it('main.css 的表格自己是横向滚动容器', () => {
     const rule = mainCss.slice(mainCss.indexOf('.prose-shadcn table {'), mainCss.indexOf('}', mainCss.indexOf('.prose-shadcn table {')))
     expect(rule).toMatch(/display: block;/)
@@ -62,6 +68,31 @@ describe('顶栏窄屏', () => {
     // 占位不得再写死 4 个 size-10（那是不管开关都排 250px 的旧写法）
     expect((fallback.match(/size-10/g) ?? []).length).toBe(2)
     expect(fallback).toMatch(/hidden sm:flex/)
+  })
+})
+
+describe('视口高度单位', () => {
+  // 100vh 算的是"地址栏收起后"的大视口：手机上比可见区域高 ~60px，
+  // 表现是短页面也能往下滚一点（幽灵滚动条）、居中表单整体偏下。
+  it('外壳与整屏页用 svh，不残留 min-h-screen', () => {
+    for (const rel of ['layouts/default.vue', 'pages/login.vue', 'pages/register.vue', 'pages/oobe.vue', 'pages/gallery.vue']) {
+      expect(read(rel), rel).not.toMatch(/min-h-screen/)
+    }
+    expect(read('layouts/default.vue')).toMatch(/min-h-svh/)
+  })
+})
+
+describe('窄屏表单控件', () => {
+  // iOS Safari 聚焦字号 <16px 的控件会自动放大整页，且不会在失焦后缩回去。
+  // 这三个 shadcn 控件是全站表单的基座，桌面仍走 text-sm 密度，只在 <sm 抬到 text-base。
+  it('Input / Textarea / SelectTrigger 在 <sm 用 16px 字号', () => {
+    for (const rel of [
+      'components/ui/input/Input.vue',
+      'components/ui/textarea/Textarea.vue',
+      'components/ui/select/SelectTrigger.vue'
+    ]) {
+      expect(read(rel), rel).toMatch(/text-base sm:text-sm/)
+    }
   })
 })
 

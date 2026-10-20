@@ -7,7 +7,7 @@
 -->
 
 <template>
-  <div class="min-h-screen bg-background">
+  <div class="min-h-svh bg-background">
     <!-- Header -->
     <header class="border-b border-border/60">
       <div class="container py-14 md:py-20 text-center">
