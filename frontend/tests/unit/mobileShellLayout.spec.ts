@@ -35,7 +35,6 @@ describe('富文本表格不撑破文档', () => {
     expect(root).toMatch(/overflow-wrap: break-word;/)
   })
 
-
   it('main.css 的表格自己是横向滚动容器', () => {
     const rule = mainCss.slice(mainCss.indexOf('.prose-shadcn table {'), mainCss.indexOf('}', mainCss.indexOf('.prose-shadcn table {')))
     expect(rule).toMatch(/display: block;/)
