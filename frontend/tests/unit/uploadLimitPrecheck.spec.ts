@@ -127,7 +127,9 @@ describe('消费点接线', () => {
 
   it('图片上传区的提示与判定共用同一份上限，且不再有写死的 maxSize prop', () => {
     expect(zone).toMatch(/resolveUploadLimitBytes\(siteState\.value\.publicConfig\?\.max_upload_size\)/)
-    expect(zone).toMatch(/单张最大 \{\{ limitLabel \}\}/)
+    // 提示语已 i18n 化：文案走 image.formatHint，占位符仍喂同一份 limitLabel
+    expect(zone).toMatch(/t\('image\.formatHint',\s*\{\s*max:\s*limitLabel\s*\}\)/)
+    expect(zone).toMatch(/const limitLabel = computed\(\(\) => formatBytes\(limitBytes\.value\)\)/)
     expect(zone).toMatch(/f\.size > limitBytes\.value/)
     expect(zone).not.toMatch(/props\.maxSize/)
     expect(zone).not.toMatch(/maxSize\?:\s*number/)

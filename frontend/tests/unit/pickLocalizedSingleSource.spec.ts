@@ -118,8 +118,8 @@ describe('月份名表单源', () => {
     for (const [code, names] of Object.entries(MONTH_TABLE)) {
       expect(names, code).toHaveLength(12)
     }
-    expect(MONTH_TABLE.en[0]).toBe('Jan')
-    expect(MONTH_TABLE.zh[11]).toBe('12月')
+    expect(MONTH_TABLE.en?.[0]).toBe('Jan')
+    expect(MONTH_TABLE.zh?.[11]).toBe('12月')
   })
 
   it('除 useI18nHelpers 外不得自带第二份月名表', () => {

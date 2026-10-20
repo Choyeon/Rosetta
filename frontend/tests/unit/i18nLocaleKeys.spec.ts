@@ -19,7 +19,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import process from 'node:process'
 
 const ROOT = process.cwd().replace(/[\\/]$/, '')
-const LOCALE_FILES = ['zh', 'en', 'ja', 'zh_Hant']
+const LOCALE_FILES = ['zh', 'en', 'ja', 'zh_Hant'] as const
 const SOURCE_DIRS = [
   'pages',
   'components',
@@ -75,12 +75,17 @@ function leafKeys(obj: Record<string, unknown>, prefix = ''): Set<string> {
   return out
 }
 
-const locales = Object.fromEntries(
-  LOCALE_FILES.map(code => [
-    code,
-    leafKeys(JSON.parse(readFileSync(`${ROOT}/i18n/locales/${code}.json`, 'utf8')) as Record<string, unknown>)
-  ])
-)
+function keysOf(code: (typeof LOCALE_FILES)[number]): Set<string> {
+  return leafKeys(JSON.parse(readFileSync(`${ROOT}/i18n/locales/${code}.json`, 'utf8')) as Record<string, unknown>)
+}
+// 显式列出四个键：用 Object.fromEntries 推出来的是索引签名，
+// noUncheckedIndexedAccess 下每个 locales.xx 都要写成可能 undefined，断言反而失真。
+const locales: Record<(typeof LOCALE_FILES)[number], Set<string>> = {
+  zh: keysOf('zh'),
+  en: keysOf('en'),
+  ja: keysOf('ja'),
+  zh_Hant: keysOf('zh_Hant')
+}
 const sources = walkSources().map(file => ({ file, text: readFileSync(file, 'utf8') }))
 const blob = sources.map(s => s.text).join('\n')
 
@@ -122,7 +127,8 @@ describe('源码引用的键必须存在', () => {
     for (const { file, text } of sources) {
       if (/i18n[\\/]locales/u.test(file)) continue
       for (const match of text.matchAll(pattern)) {
-        if (!locales.zh.has(match[1])) missing.add(`${match[1]} <- ${file.replace(`${ROOT}/`, '')}`)
+        const key = match[1]
+        if (key && !locales.zh.has(key)) missing.add(`${key} <- ${file.replace(`${ROOT}/`, '')}`)
       }
     }
     expect([...missing].sort(), '缺键会把裸 key 渲染到页面上').toEqual([])
@@ -133,8 +139,10 @@ describe('源码引用的键必须存在', () => {
  * 公开面（前台页 + 共享组件）的可访问性名称必须是翻译键。
  * 写死中文的 `aria-label="关闭预览"` 在 en/ja/zh_Hant 下仍是简体字，而它是读屏软件
  * 唯一的播报来源，肉眼检查很容易漏。`components/ui/**` 是 shadcn 原子件、按约定保持
- * 无语言依赖（要本地化由调用方覆写 slot / aria-label），后台 `**/admin/**` 另有
+ * 无语言依赖（要本地化由调用方覆写 slot / aria-label），后台 admin 目录另有
  * 独立的本地化范围，两处都不在这一条断言内。
+ *（注意：这段里不能写 glob 形式的 `x**／y`——`*` 紧跟 `/` 会提前闭合块注释，
+ * 后面的中文会被 TS 当代码解析，lint/typecheck 一起报出看不懂的错。）
  */
 describe('公开面不得写死中文可访问性名称', () => {
   it('非后台、非 ui 原子件的 aria-label / title 必须走 t()', () => {
@@ -143,7 +151,7 @@ describe('公开面不得写死中文可访问性名称', () => {
     for (const { file, text } of sources) {
       const rel = file.replace(`${ROOT}/`, '').replace(/\\/g, '/')
       if (rel.includes('/admin/') || rel.startsWith('components/ui/')) continue
-      for (const match of text.matchAll(pattern)) offenders.push(`${rel}: ${match[0].trim()}`)
+      for (const match of text.matchAll(pattern)) offenders.push(`${rel}: ${(match[0] ?? '').trim()}`)
     }
     expect(offenders.sort(), '前台 aria-label / title 写死中文，切语言不会跟着变').toEqual([])
   })
