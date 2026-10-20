@@ -24,6 +24,8 @@ import {
   resolveUploadLimitBytes,
   validateUploadFiles
 } from '~~/composables/useUploadProgress'
+// 拒绝文案里的数字必须与全站字节口径一致，断言直接复用同一个 formatter
+import { formatBytes } from '~~/lib/utils'
 
 const MB = 1024 * 1024
 
@@ -56,12 +58,13 @@ describe('validateUploadFiles 的单文件上限', () => {
   it('不传上限时用兜底常量，超过即拒', () => {
     const r = validateUploadFiles([fakeFile('a.png', MAX_UPLOAD_BYTES + 1)])
     expect(r.accepted).toHaveLength(0)
-    expect(r.rejected[0]?.reason).toContain(`${MAX_UPLOAD_BYTES / MB} MB`)
+    expect(r.rejected[0]?.reason).toContain(formatBytes(MAX_UPLOAD_BYTES))
   })
 
-  it('管理员调小上限后，拒绝文案报的是设置里的数而不是 20MB', () => {
+  it('管理员调小上限后，拒绝文案报的是设置里的数而不是兜底常量', () => {
     const r = validateUploadFiles([fakeFile('a.png', 6 * MB)], { maxBytes: 5 * MB })
-    expect(r.rejected[0]?.reason).toBe('文件过大（6 MB > 5 MB）')
+    expect(r.rejected[0]?.reason).toContain(formatBytes(5 * MB))
+    expect(r.rejected[0]?.reason).not.toContain(formatBytes(MAX_UPLOAD_BYTES))
   })
 
   it('管理员调大上限后，原本被误拒的文件放过去', () => {

@@ -1763,7 +1763,7 @@
       :href="getBwpOfficialLink(bwp)"
       target="_blank"
       rel="noopener noreferrer nofollow"
-      class="fixed bottom-5 left-5 lg:left-[348px] z-40 group flex items-center gap-3 max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-zinc-950/55 border border-white/20 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-zinc-950/70 hover:border-white/30 transition-colors"
+      class="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] left-5 lg:left-[348px] z-40 group flex items-center gap-3 max-w-[calc(100vw-9.5rem)] sm:max-w-sm rounded-full backdrop-blur-2xl saturate-[180%] bg-zinc-950/55 border border-white/20 pr-4 pl-1.5 py-1.5 shadow-lg shadow-black/40 hover:bg-zinc-950/70 hover:border-white/30 transition-colors"
     >
       <div class="relative size-9 shrink-0">
         <img
@@ -1790,7 +1790,7 @@
     </a>
 
     <!-- ========== 右下角：切换壁纸控件 ========== -->
-    <div class="fixed bottom-5 right-5 z-40 flex items-center gap-1 rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.07] border border-zinc-900/10 dark:border-white/10 p-1 shadow-lg shadow-black/40">
+    <div class="fixed bottom-[max(1.25rem,env(safe-area-inset-bottom))] right-5 z-40 flex items-center gap-1 rounded-full backdrop-blur-2xl saturate-[180%] bg-white/[0.07] border border-zinc-900/10 dark:border-white/10 p-1 shadow-lg shadow-black/40">
       <button
         type="button"
         class="h-9 w-9 inline-flex items-center justify-center rounded-full text-white/85 hover:bg-white/10 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"

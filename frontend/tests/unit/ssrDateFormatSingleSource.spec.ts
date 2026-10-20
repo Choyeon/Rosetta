@@ -67,7 +67,7 @@ describe('SSR 日期单源：三个形态的产出', () => {
   })
 
   it('未知 locale 回落英文月表；空值与非法日期回空串', () => {
-    expect(MONTH_TABLE.en.length).toBe(12)
+    expect(MONTH_TABLE.en?.length).toBe(12)
     expect(formatDateText('not-a-date', 'zh')).toBe('')
     expect(formatMonthDayText(null, 'zh')).toBe('')
     expect(formatStampText(undefined, 'en')).toBe('')

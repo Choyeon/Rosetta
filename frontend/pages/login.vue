@@ -173,7 +173,7 @@
     </NuxtLink>
 
     <!-- 内容区：单栏居中（全尺寸都是居中，没有双栏） -->
-    <div class="relative z-10 min-h-screen w-full flex flex-col items-center justify-center px-5 py-10 gap-7">
+    <div class="relative z-10 min-h-screen w-full flex flex-col items-center justify-center px-5 pt-10 pb-28 gap-7">
       <!-- 彩色方形 Logo（仅图标，不带文字） + 标题 -->
       <NuxtLink
         to="/"
@@ -376,7 +376,7 @@
     </div>
 
     <!-- 底部：版权胶囊 + 切壁纸控件（与注册页/OOBE 一致） -->
-    <div class="fixed bottom-0 inset-x-0 z-40 flex flex-wrap items-end justify-between gap-3 p-5 md:p-6 pointer-events-none">
+    <div class="fixed bottom-0 inset-x-0 z-40 flex flex-wrap items-end justify-between gap-3 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] md:p-6 md:pb-[max(1.5rem,env(safe-area-inset-bottom))] pointer-events-none">
       <!-- Bing 版权 + 缩略图小预览。点击整张 meta 胶囊跳 Bing 官方搜索页，不提供下载按钮。 -->
       <a
         v-if="currentImage?.copyright"

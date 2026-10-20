@@ -530,9 +530,16 @@ html.dark.palette-minimal {
     cursor: pointer;
   }
 
-  /* Tailwind v4 不再从 tailwind.config.ts 读取 container.center，这里显式居中 */
+  /* Tailwind v4 不再从 tailwind.config.ts 读取 container.center，这里显式居中。
+     v4 的 .container 也不带任何水平留白（v3 的 px-6 配置项同样没了），只写
+     margin-inline:auto 会让 375px 下的正文/按钮直接贴住屏幕左右缘——后台页面、
+     文章列表、留言板整站都是这个症状。留白走 clamp：小屏 1rem 起，大屏收到
+     1.5rem 就不再涨，避免宽屏两侧空得夸张。editorial 主题在首页用 !px-0 +
+     inline padding 自己接管（pages/index.vue::editorialClassPx），important
+     工具类会盖掉这条，两侧留白仍按它的版心口径。 */
   .container {
     margin-inline: auto;
+    padding-inline: clamp(1rem, 4vw, 1.5rem);
   }
   /* a11y 跳到主内容链接：视觉隐藏，仅键盘 Tab 聚焦时显示 */
   #skip-link {
@@ -623,6 +630,11 @@ html.dark.palette-minimal {
       animation-duration: 0.001ms !important;
       animation-iteration-count: 1 !important;
       transition-duration: 0.001ms !important;
+      /* 必须一起归零 delay：只压 duration 时，`.stagger-*` 这类"第 N 项延后 N×80ms
+         入场 + fill-mode: both"的元素仍会先在 from 帧（opacity:0）停在那段时间，
+         表现成"内容先空白、再一批批弹出来"——这本身就是动效，reduced-motion 下不该有。 */
+      animation-delay: 0ms !important;
+      transition-delay: 0ms !important;
     }
   }
 }
@@ -856,7 +868,15 @@ html.dark.palette-minimal {
   }
   .prose-shadcn img { @apply rounded-xl my-8; }
   .prose-shadcn hr { @apply my-12 border-border; }
-  .prose-shadcn table { @apply w-full text-sm my-8; }
+  /* 表格自己当滚动容器：列数多的 Markdown 表格 min-content 宽度会超过视口，
+     整份文档因此出现横向滚动条（手机上表现为整页可左右拖、标题被推出屏幕）。
+     display:block 把 <table> 变成块级滚动盒，行仍走匿名表格布局，滚动只发生在表格内。 */
+  .prose-shadcn table {
+    @apply w-full text-sm my-8;
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
   .prose-shadcn th,
   .prose-shadcn td { @apply border border-border px-4 py-2; }
   .prose-shadcn th { @apply bg-muted; }

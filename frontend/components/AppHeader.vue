@@ -398,11 +398,16 @@ const handleSearchClick = () => navigateTo('/search')
 
           <ThemeToggle v-if="showDarkModeToggle" />
 
-          <LocaleSwitcher v-if="showLanguageSwitch" />
+          <!-- 语言切换器与登录/注册按钮在 <sm 收进汉堡抽屉（Sheet 里已有同一批入口）：
+               375px 下"品牌 + 搜索 + 明暗 + 语言 + 登录 + 注册 + 汉堡"的 shrink-0 总宽
+               约 500px，一定溢出——溢出时最先被裁掉的是汉堡，等于移动端没有导航。 -->
+          <div v-if="showLanguageSwitch" class="hidden sm:flex items-center">
+            <LocaleSwitcher />
+          </div>
 
           <div
             v-if="!authStore.isAuthenticated"
-            class="ml-1 flex items-center gap-2"
+            class="ml-1 hidden sm:flex items-center gap-2"
           >
             <Button
               variant="outline"
@@ -686,17 +691,19 @@ const handleSearchClick = () => navigateTo('/search')
           </Sheet>
         </div>
         <template #fallback>
-          <!-- SSR 回退占位：宽高与实际控件区一致，避免首屏布局抖动（CLS） -->
+          <!-- SSR 回退占位：宽高与实际控件区一致，避免首屏布局抖动（CLS）。
+               三个图标位必须跟着同一批开关走——写死 4 个占位时，功能开关关掉的主题
+               在 375px 下会先渲染 ~250px 的 shrink-0 空位（品牌与导航一起被压），
+               hydration 换成真实控件后又突然变窄，等于把整条顶栏左右弹一次。 -->
           <div
             class="flex items-center gap-1"
             aria-hidden="true"
           >
-            <span class="size-10 shrink-0" />
-            <span class="size-10 shrink-0" />
-            <span class="size-10 shrink-0" />
-            <span class="size-10 shrink-0" />
-            <span class="ml-1 h-9 w-16 shrink-0 rounded-md border border-transparent" />
-            <span class="h-9 w-16 shrink-0 rounded-md" />
+            <span v-if="showSearch" class="size-10 shrink-0" />
+            <span v-if="showDarkModeToggle" class="size-10 shrink-0" />
+            <span v-if="showLanguageSwitch" class="hidden sm:flex h-9 w-16 shrink-0 rounded-md" />
+            <span class="ml-1 hidden sm:flex h-9 w-16 shrink-0 rounded-md border border-transparent" />
+            <span v-if="showRegister" class="hidden sm:flex h-9 w-16 shrink-0 rounded-md" />
           </div>
         </template>
       </ClientOnly>

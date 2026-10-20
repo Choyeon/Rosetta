@@ -473,6 +473,10 @@ v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)
     width: 100%;
     border-collapse: collapse;
     font-size: 0.92rem;
+    /* 与 main.css 同口径：宽表格在表格内部横向滚动，不撑出文档级滚动条 */
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
   }
   article[class*="prose-shadcn"] th {
     border-bottom: 1.5px solid var(--ap-ink) !important;

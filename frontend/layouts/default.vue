@@ -158,7 +158,7 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
         <button
           v-if="canDismissAnnouncement(ann)"
           type="button"
-          class="shrink-0 p-1 -m-1 rounded hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+          class="shrink-0 -m-1 grid size-9 place-items-center rounded-full text-current hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
           :aria-label="t('a11y.closeAnnouncement')"
           @click="dismissAnn(ann.id)"
         >
@@ -175,14 +175,32 @@ onBeforeUnmount(() => window.removeEventListener('scroll', onScroll))
     </main>
     <AppFooter />
 
-    <button
-      v-if="showBackToTop && scrolled"
-      type="button"
-      class="fixed bottom-6 right-6 z-40 grid size-11 place-items-center rounded-full border border-border bg-card/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground"
-      :aria-label="t('a11y.backToTop')"
-      @click="scrollToTop"
-    >
-      <ChevronUp class="size-5" />
-    </button>
+    <Transition name="btt">
+      <button
+        v-if="showBackToTop && scrolled"
+        type="button"
+        class="fixed z-40 grid size-11 place-items-center rounded-full border border-border bg-card/90 text-muted-foreground shadow-sm backdrop-blur transition-colors hover:text-foreground bottom-[max(1.5rem,env(safe-area-inset-bottom))] right-[max(1.5rem,env(safe-area-inset-right))]"
+        :aria-label="t('a11y.backToTop')"
+        @click="scrollToTop"
+      >
+        <ChevronUp class="size-5" />
+      </button>
+    </Transition>
   </div>
 </template>
+
+<style scoped>
+/* 回到顶部：滚动过阈值才出现，直接 v-if 是"啪"地弹出来；给一段落位过渡。
+   bottom/right 用 max(1.5rem, env(safe-area-inset-*))：iPhone 的 home indicator
+   与刘海侧边距会把固定 1.5rem 的按钮压到手势条上，点不到。 */
+.btt-enter-active,
+.btt-leave-active { transition: opacity 220ms ease, transform 220ms cubic-bezier(0.22, 1, 0.36, 1); }
+.btt-enter-from,
+.btt-leave-to { opacity: 0; transform: translateY(10px) scale(0.94); }
+@media (prefers-reduced-motion: reduce) {
+  .btt-enter-active,
+  .btt-leave-active { transition: none; }
+  .btt-enter-from,
+  .btt-leave-to { transform: none; }
+}
+</style>

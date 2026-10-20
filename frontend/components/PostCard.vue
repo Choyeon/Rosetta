@@ -71,7 +71,7 @@
         {{ postExcerpt || t('post.noExcerpt') }}
       </p>
 
-      <div class="mt-auto pt-3 flex items-center justify-between text-xs text-muted-foreground gap-3">
+      <div class="mt-auto pt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
         <div class="flex items-center gap-2 min-w-0">
           <UserAvatar
             :avatar="post.author?.avatar"
@@ -103,7 +103,7 @@
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
         </div>
-        <div class="flex items-center gap-3 shrink-0">
+        <div class="flex items-center gap-3 shrink-0 ml-auto">
           <span class="inline-flex items-center gap-1 tabular-nums">
             <Eye
               class="size-3.5 shrink-0"
@@ -286,7 +286,7 @@
     </div>
 
     <footer
-      class="flex items-center justify-between mt-2 text-xs text-muted-foreground gap-3 p-5 pt-0 border-t border-border/60"
+      class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground p-5 pt-0 border-t border-border/60"
     >
       <div class="flex items-center gap-2 min-w-0">
         <UserAvatar

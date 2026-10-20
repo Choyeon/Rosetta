@@ -96,7 +96,7 @@
       <section
         v-if="heroEnabled"
         :class="[
-          'relative overflow-hidden',
+          'relative isolate overflow-hidden flex flex-col',
           isEditorialTheme
             ? 'min-h-[72vh] md:min-h-[78vh]'
             : 'min-h-[80vh] md:min-h-[86vh]',
@@ -136,18 +136,19 @@
         />
 
         <!-- Hero copy：轮播项本身就是内容（热榜文章标题/摘要/链接），所以两套主题都要显示，
-             不再"只当壁纸"；没有幻灯片时退回站点设置里的 hero 文案。 -->
+             不再"只当壁纸"；没有幻灯片时退回站点设置里的 hero 文案。
+             布局口径：整个 section 是 flex 列，文案占 flex-1 并垂直居中，HUD 走正常文档流贴在底部。
+             原先 HUD 是 `absolute bottom-0` 浮在同一个 72vh 之上，而文案只有固定 pb-28：
+             窄屏 HUD 竖排成两块（缩略图 + 提示）后高度远超 112px，于是直接压在 CTA 按钮上——
+             这就是手机上「hero 错乱」的成因。流内布局让两块永远不会重叠，桌面观感不变。 -->
         <div
-          class="relative z-20 flex min-h-[inherit] items-center container pt-24 pb-28 md:pt-32"
+          class="relative z-20 flex flex-1 items-center container pt-24 pb-10 md:pt-32 md:pb-14"
           :style="containerMaxStyle"
         >
-          <Transition
-            name="hero-copy"
-            mode="out-in"
-          >
+          <Transition name="hero-copy">
             <div
               :key="heroSlide ? heroSlide.id : 'static'"
-              :class="['flex max-w-3xl flex-col', heroAlign]"
+              :class="['flex w-full max-w-3xl flex-col', heroAlign]"
             >
               <span
                 class="inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/70 backdrop-blur-xl"
@@ -157,13 +158,13 @@
               </span>
               <h1
                 data-hero-title
-                class="mt-5 font-display text-4xl md:text-6xl font-black leading-[1.05] tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)]"
+                class="mt-5 font-display text-[1.75rem] leading-[1.15] sm:text-4xl md:text-6xl font-black tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)] [overflow-wrap:anywhere]"
               >
                 {{ heroTitle }}
               </h1>
               <p
                 data-hero-subtitle
-                class="mt-5 max-w-2xl text-base md:text-xl text-white/85 leading-relaxed drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]"
+                class="mt-5 max-w-2xl text-[0.95rem] md:text-xl text-white/85 leading-relaxed drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]"
               >
                 {{ heroSubtitle }}
               </p>
@@ -173,17 +174,17 @@
               >
                 {{ _heroCaption }}
               </div>
-              <div class="mt-8 flex flex-wrap items-center gap-3">
+              <div class="mt-7 sm:mt-8 flex flex-wrap items-center gap-3">
                 <NuxtLink
                   :to="localeHref(heroCtaUrl)"
-                  class="inline-flex items-center gap-2 rounded-full bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-xl shadow-black/30 hover:bg-primary/90 transition-colors"
+                  class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-black/30 hover:bg-primary/90 active:scale-[0.98] transition-[background-color,transform] duration-200"
                 >
                   {{ heroCtaText || t('home.readArticle') }}
                   <ArrowRight class="size-4" />
                 </NuxtLink>
                 <NuxtLink
                   :to="localeHref('/posts')"
-                  class="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-3 text-sm font-semibold text-white backdrop-blur-xl hover:bg-white/20 transition-colors"
+                  class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-xl hover:bg-white/20 active:scale-[0.98] transition-[background-color,transform] duration-200"
                 >
                   {{ t('home.viewAll') || '浏览全部文章' }}
                 </NuxtLink>
@@ -193,11 +194,11 @@
         </div>
 
         <!-- Bottom HUD: 幻灯片缩略图切换（左）+ 内容来源说明（右） -->
-        <div class="absolute bottom-0 left-0 right-0 z-20">
+        <div class="relative z-20">
           <div
             :class="[
-              'container relative flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-4',
-              isEditorialTheme ? [editorialClassPx, 'pb-7 md:pb-9'] : 'pb-10 md:pb-12'
+              'container relative flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-3 sm:gap-4',
+              isEditorialTheme ? [editorialClassPx, 'pb-7 md:pb-9'] : 'pb-8 md:pb-12'
             ]"
             :style="containerMaxStyle"
           >
@@ -209,7 +210,7 @@
                 <span class="text-[10px] uppercase tracking-[0.14em] text-white/60">{{ t('home.hotPicks') }}</span>
                 <span class="text-xs font-medium text-white/90">{{ heroIdx + 1 }} / {{ heroCount }}</span>
               </div>
-              <div class="flex items-center gap-2">
+              <div class="flex flex-wrap items-center gap-2">
                 <button
                   v-for="(slide, i) in heroSlides"
                   :key="slide.id"
@@ -231,7 +232,7 @@
                   <img
                     :src="slide.media_url"
                     :alt="pickSlideText(slide.title)"
-                    class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-20"
+                    class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-0"
                     loading="lazy"
                   >
                 </button>
@@ -1344,7 +1345,10 @@ useHead({
 .hero-xfade-enter-from,
 .hero-xfade-leave-to { opacity: 0; }
 .hero-copy-enter-active { transition: opacity 420ms ease, transform 420ms cubic-bezier(0.22, 1, 0.36, 1); }
-.hero-copy-leave-active { transition: opacity 180ms ease; }
+/* 两份文案同时在场做交叉淡入（不写 mode="out-in"）：out-in 会先卸载旧文案再挂新的，
+   flex-1 的容器随之塌回 min-h，HUD 每 6 秒跳一次位置。
+   离场那份改成绝对定位叠在原位淡出，高度只由在场的真实内容决定。 */
+.hero-copy-leave-active { position: absolute; inset: 0; transition: opacity 180ms ease; }
 .hero-copy-enter-from { opacity: 0; transform: translateY(14px); }
 .hero-copy-leave-to { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
