@@ -247,7 +247,8 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    两者都必须 `setLocale` 后跳到前缀化的同页 URL，只 `setLocale` 等于内容与地址栏的语言互相判逆。
 
 契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
-`contentNotFoundStatus.spec.ts`。
+`contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·
+`heroMobileLayout.spec.ts`（口径见 `frontend/AGENTS.md`「窄屏外壳单源口径」）。
 
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
 
@@ -488,7 +489,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 65 个 spec；929 用例，生产机 2026-10-20 全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 72 个 spec；985 用例，生产机 2026-10-21 全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -546,8 +547,8 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```bash
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
-pnpm build         # Total ≤ 43.2 MB / gzip ≤ 9.76 MB
-pnpm test          # 全绿（65 个 spec 文件；929 用例）
+pnpm build         # Σ Total size 5.7 MB（gzip 1.33 MB），2026-10-21 生产机实测
+pnpm test          # 全绿（72 个 spec 文件；985 用例）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
