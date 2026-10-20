@@ -516,7 +516,7 @@ const handleSetLocale = async (code: string) => {
     v-else
     class="ap-footer-min border-t"
   >
-    <div class="container mx-auto px-5 py-10 text-center">
+    <div class="container mx-auto py-10 text-center">
       <!-- 管理员注入的自定义 HTML 片段（统计脚本、验证标签等）；已经过 lib/sanitize 白名单清洗 -->
       <!-- eslint-disable-next-line vue/no-v-html -->
       <div

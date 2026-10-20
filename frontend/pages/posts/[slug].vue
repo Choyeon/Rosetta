@@ -18,7 +18,9 @@
         :style="{ width: `${progress}%`, transition: 'width var(--motion-duration-fast) linear' }"
       />
     </div>
-    <div class="relative container mx-auto px-4 md:px-6 py-16 max-w-7xl">
+    <!-- 横向留白交给 .container 单源（main.css 的 padding-inline clamp），
+         这里不再叠一层 px-4/md:px-6 —— 叠了只会让文章页比其它公开页宽窄不一。 -->
+    <div class="relative container mx-auto py-16 max-w-7xl">
       <div
         class="grid grid-cols-1 gap-10 lg:gap-12"
         :class="showAside ? 'lg:grid-cols-[1fr_240px]' : ''"

@@ -48,7 +48,8 @@ describe('富文本表格不撑破文档', () => {
 
 describe('顶栏窄屏', () => {
   it('语言切换与登录/注册在 <sm 收进抽屉，给汉堡让出宽度', () => {
-    expect(header).toMatch(/class="hidden sm:flex items-center">\s*<LocaleSwitcher \/>/)
+    // lint 的 vue/max-attributes-per-line 会把 class 与 `>` 拆到不同行，这里按格式无关的方式匹配
+    expect(header).toMatch(/class="hidden sm:flex items-center"\s*>\s*<LocaleSwitcher \/>/)
     expect(header).toMatch(/class="ml-1 hidden sm:flex items-center gap-2"/)
   })
 
