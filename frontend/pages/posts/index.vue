@@ -66,7 +66,7 @@
                     type="button"
                     tabindex="-1"
                     aria-hidden="true"
-                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground text-start"
+                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-muted-foreground text-start"
                   >
                     <span class="truncate">{{ t('posts.selectCategory') }}</span>
                     <ChevronDown class="size-4 opacity-50 shrink-0" />
@@ -101,7 +101,7 @@
                     type="button"
                     tabindex="-1"
                     aria-hidden="true"
-                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm text-muted-foreground text-start"
+                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-muted-foreground text-start"
                   >
                     <span class="flex items-center gap-2 truncate">
                       <List class="size-4 opacity-50 shrink-0" />

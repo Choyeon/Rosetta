@@ -230,6 +230,29 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 
 **禁止 `bg-X-muted` + `text-X-foreground`**：会出现隐形文本。
 
+### 窄屏外壳单源口径（移动端）
+
+三条都只在 ≤375px 暴露、lint/typecheck/build 全都不会红，改回旧写法是静默回归；
+契约钉在 `tests/unit/mobileShellLayout.spec.ts`。
+
+1. **版心横向留白只有 `.container` 一个来源**（`assets/css/main.css` 的 `@layer base`：
+   `margin-inline: auto` + `padding-inline: clamp(1rem, 4vw, 1.5rem)`）。Tailwind v4 的
+   `.container` 不带任何水平 padding（v3 的 `container.padding` 配置项已不存在），而全站
+   公开页写的是 `class="container py-16"`，留白必须由基座兜住。
+   - 页面**不要**再叠 `px-4 / md:px-6`：utilities 层会盖掉基座规则，结果只是这一页比其它页宽窄不一。
+   - 例外要显式声明：editorial 首页 hero 用 `!px-0` + inline padding 自己接管（`pages/index.vue::editorialClassPx`），
+     主题 CSS（非 layer）里的 `header > .container` 覆写同样有效（`themes/astro-paper-inspired/style.css`）。
+2. **整屏高度用 `min-h-svh`，不用 `min-h-screen`**（外壳 `layouts/default.vue` 与
+   login / register / oobe / gallery）。`100vh` 量的是地址栏收起后的大视口，手机上比可见区域高
+   约一截，表现为短页面还能往下滚一点、居中表单整体偏下。
+3. **表单控件字号下限 16px**（`components/ui/{input/Input,textarea/Textarea,select/SelectTrigger}.vue`
+   写 `text-base sm:text-sm`）。iOS Safari 聚焦字号 <16px 的 input/textarea/select 会自动放大整页
+   且失焦不缩回；桌面密度仍是 `text-sm`。新增自定义输入组件时同写法。
+
+同族另两条：`.prose-shadcn` 带 `overflow-wrap: break-word`、表格自带
+`display:block; overflow-x:auto`（长 URL / 多列表格都不再把整份文档撑出横向滚动）；
+固定底部 HUD 一律 `env(safe-area-inset-bottom)`。
+
 ### 颜色真源在 main.css 的 @theme，不在 tailwind.config.ts
 
 项目用 Tailwind v4 + `@tailwindcss/vite`，CSS 里没有 `@config` 指令，因此 `tailwind.config.ts` **未被加载**。
