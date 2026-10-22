@@ -20,16 +20,17 @@ const read = (f: string) => readFileSync(resolve(process.cwd(), f), 'utf8')
 const dash = read('pages/admin/index.vue')
 const filterBar = read('components/admin/AdminFilterBar.vue')
 
-/** 环体左右两端都必须在 [0, w] 内；上下同理用 height 方向（圆心 y ± outer） */
+/** 环体四个方向都必须落在画布内（outer 由 Math.max 兜住下限，inner < outer 才有环） */
 function expectRingInsideCanvas(g: ReturnType<typeof donutGeometry>, w: number, h: number) {
   const [cx, cy] = g.center
   const outer = g.radius[1]
   const inner = g.radius[0]
-  expect(cx - outer).toBeGreaterThanOrEqual(0)
-  expect(cx + outer).toBeLessThanOrEqual(w)
   expect(inner).toBeGreaterThan(0)
   expect(inner).toBeLessThan(outer)
-  return { cy, outer }
+  expect(cx - outer).toBeGreaterThanOrEqual(0)
+  expect(cx + outer).toBeLessThanOrEqual(w)
+  expect(cy - outer).toBeGreaterThanOrEqual(0)
+  expect(cy + outer).toBeLessThanOrEqual(h)
 }
 
 describe('donutGeometry · 圆环不出画布', () => {
@@ -45,12 +46,8 @@ describe('donutGeometry · 圆环不出画布', () => {
 
   for (const [name, w, h] of cases) {
     it(`${name} ${w}x${h}：环体完整在画布内`, () => {
-      const g = donutGeometry(w, h)
-      const width = w > 0 ? w : 420
-      const height = h > 0 ? h : 340
-      const { cy, outer } = expectRingInsideCanvas(g, width, height)
-      expect(cy - outer).toBeGreaterThanOrEqual(0)
-      expect(cy + outer).toBeLessThanOrEqual(height)
+      // donutGeometry 内部对未测到尺寸按 420x340 兜底，断言用同一口径
+      expectRingInsideCanvas(donutGeometry(w, h), w > 0 ? w : 420, h > 0 ? h : 340)
     })
   }
 
@@ -109,7 +106,7 @@ describe('热门文章 TOP · 截断与刻度随容器宽', () => {
 describe('pages/admin/index.vue · 接线', () => {
   it('环形图 legend 显式给 data，假数据项不会进图例', () => {
     expect(dash).toContain('data: data.map(d => d.name)')
-    expect(dash).not.toContain("name: 'center'")
+    expect(dash).not.toMatch(/name:\s*'center'/)
   })
 
   it('两个图表容器都接了实测 ref', () => {
