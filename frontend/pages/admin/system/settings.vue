@@ -3,6 +3,9 @@
   契约：与主题 Customizer 重复的键（primary_color / hero.title / footer.copyright 等）不仅 UI 屏蔽，保存 payload 也必须强制剥离，防止站点设置回写覆盖主题色（双写冲突）；
   isDirty 只对比当前激活组与最近一次服务端回包。分组键集以后端 _default_<group>() 为唯一清单，
   没有执行点的开关不得出现在这里（回归见 tests/test_settings_group_consumers.py）。
+  布局：主区随字段数量自然增高、滚动交给页面（曾用"视口高度减去顶栏"的固定高度 + 内层
+  ScrollArea，长分组表单变成"页面里套一个滚动盒子"，键盘 Tab 会把字段滚出可视区且看不见滚动条）；
+  左侧分组栏用 md:sticky 保持可达。标签按分组覆写见 GROUP_LABELS（跨组撞名键的唯一正本）。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -41,9 +44,9 @@
 
     <div
       v-if="loading"
-      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
+      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 items-start"
     >
-      <ScrollArea class="card-surface p-3">
+      <div class="card-surface p-3">
         <div class="flex flex-col gap-2">
           <Skeleton
             v-for="i in 17"
@@ -51,7 +54,7 @@
             class="h-10 rounded-lg"
           />
         </div>
-      </ScrollArea>
+      </div>
       <AdminCard>
         <Skeleton class="h-8 w-48 rounded mb-6" />
         <div class="flex flex-col gap-4">
@@ -87,9 +90,9 @@
 
     <div
       v-else
-      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 h-auto md:h-[calc(100vh-220px)]"
+      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 items-start"
     >
-      <ScrollArea class="card-surface p-2">
+      <nav class="card-surface p-2 md:sticky md:top-4">
         <div class="flex flex-col gap-1 p-1">
           <button
             v-for="g in groups"
@@ -107,9 +110,9 @@
             <span class="truncate">{{ g.label }}</span>
           </button>
         </div>
-      </ScrollArea>
+      </nav>
 
-      <ScrollArea class="card-surface">
+      <div class="card-surface">
         <div
           class="flex flex-col gap-6 p-6"
         >
@@ -428,7 +431,7 @@
             </div>
           </div>
         </div>
-      </ScrollArea>
+      </div>
     </div>
 
     <Alert
@@ -465,7 +468,6 @@ import {
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import AdminCard from '~~/components/admin/AdminCard.vue'
-import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
@@ -672,14 +674,33 @@ async function uploadDonateImage(index: number, event: Event) {
 
 /**
  * 分组级标签覆写：通用标签表按 key 单源，跨分组撞名时必须按分组改正本。
- * donate 的 `title` / `description` 与 hero、notice、basic 的同名键语义不同；
+ *
+ * 分组键清单里撞名的有五个（`enable` / `title` / `description` / `subtitle` /
+ * `icp_number`），而通用表按"评论组"的语义命名，于是公告组的 `enable` 曾显示成
+ * "启用评论功能"、hero 组的 `title` 与公告组的 `title` 共用一句 "Hero 标题"——
+ * 管理员看到的就是"这个开关到底管什么"完全没有答案。
  * `methods` 走专用收款码编辑器，不进通用 schema。
  */
 const GROUP_LABELS: Record<string, Record<string, string>> = {
+  basic: {
+    icp_number: 'ICP 备案号（页脚展示；与页脚组同名键冲突时本组优先）'
+  },
+  hero: {
+    enable: '启用首页 Hero 区（关闭后首页整块 Hero/轮播与 CTA 都不渲染）',
+    title: 'Hero 标题（多语言 JSON）',
+    subtitle: 'Hero 副标题（多语言 JSON）'
+  },
+  notice: {
+    enable: '启用站点公告（关闭后前台公告条不出现，公告接口回空）',
+    title: '公告标题（纯文本，不是多语言 JSON）'
+  },
   donate: {
     enable: '启用捐助页',
     title: '捐助页标题（多语言 JSON）',
     description: '捐助页说明（多语言 JSON）'
+  },
+  footer: {
+    icp_number: 'ICP 备案号（页脚展示；与站点组同名键冲突时站点组优先）'
   }
 }
 
@@ -734,9 +755,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     show_social_links: '显示社交链接图标', show_back_to_top: '显示回到顶部按钮'
   }[key] ?? key
 
-  const resolvedLabel = (activeGroup.value === 'hero' && key === 'subtitle')
-    ? 'Hero 副标题'
-    : (GROUP_LABELS[activeGroup.value]?.[key] ?? label)
+  const resolvedLabel = GROUP_LABELS[activeGroup.value]?.[key] ?? label
 
   // 开关类设置只有一句话能说清的是"它到底管哪些写口、对谁生效"。
   // enable_captcha 必须有这句：验证码只挡未登录访客，登录用户与后台不受影响，
