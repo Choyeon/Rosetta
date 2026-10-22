@@ -3104,10 +3104,11 @@ const onInstallProgress = (evt: InstallProgressEvt) => {
       const pos = installStepList.findIndex(s => s.id === evt.step_id)
       if (pos >= 0) {
         if (installStepStarted.has(evt.step_id)) {
-          installStepList[pos].done = true
+          const cur = installStepList[pos]
+          if (cur) cur.done = true
         } else {
           installStepStarted.add(evt.step_id)
-          for (let i = 0; i < pos; i++) installStepList[i].done = true
+          for (const s of installStepList.slice(0, pos)) s.done = true
         }
         if (pos > idx) idx = pos
       }

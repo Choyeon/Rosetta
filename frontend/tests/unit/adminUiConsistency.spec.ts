@@ -111,8 +111,11 @@ describe('后台行操作按钮统一口径', () => {
       .split('\n')
       .map((line, i) => ({ n: i + 1, line }))
       .filter(x => /\bh-[67] w-[67]\b/.test(x.line))
-    expect(hits, `${file} 用尺寸覆写顶掉了 size token（可点区缩到 24~28px）：\n`
-      + hits.map(x => `  L${x.n}: ${x.line.trim().slice(0, 120)}`).join('\n')).toHaveLength(0)
+    expect(
+      hits,
+      `${file} 用尺寸覆写顶掉了 size token（可点区缩到 24~28px）：\n`
+      + hits.map(x => `  L${x.n}: ${x.line.trim().slice(0, 120)}`).join('\n')
+    ).toHaveLength(0)
   })
 
   it.each(ADMIN_FILES)('%s 的破坏性按钮只能用 destructive 令牌一套', (file) => {
@@ -121,8 +124,11 @@ describe('后台行操作按钮统一口径', () => {
       .split('\n')
       .map((line, i) => ({ n: i + 1, line }))
       .filter(x => /text-error hover:text-error/.test(x.line))
-    expect(hits, `${file} 混用了 --error 命名（少一套 hover 底色，同行观感不一致）：\n`
-      + hits.map(x => `  L${x.n}: ${x.line.trim().slice(0, 120)}`).join('\n')).toHaveLength(0)
+    expect(
+      hits,
+      `${file} 混用了 --error 命名（少一套 hover 底色，同行观感不一致）：\n`
+      + hits.map(x => `  L${x.n}: ${x.line.trim().slice(0, 120)}`).join('\n')
+    ).toHaveLength(0)
   })
 
   it.each(ADMIN_FILES)('%s 不得使用 "+ 新建" 这种文字当图标', (file) => {
@@ -142,8 +148,11 @@ describe('后台行操作按钮统一口径', () => {
       const hasTooltip = /<TooltipTrigger/.test(src.slice(Math.max(0, start - 220), start))
       if (!hasTitle && !hasTooltip) offenders.push(block.split('\n').slice(0, 4).join(' ').slice(0, 120))
     }
-    expect(offenders, `${file} 存在只有 aria-label、鼠标悬停读不到任何名称的图标按钮：\n`
-      + offenders.map(o => `  ${o}`).join('\n')).toHaveLength(0)
+    expect(
+      offenders,
+      `${file} 存在只有 aria-label、鼠标悬停读不到任何名称的图标按钮：\n`
+      + offenders.map(o => `  ${o}`).join('\n')
+    ).toHaveLength(0)
   })
 
   it.each(ADMIN_FILES.filter(f => /pages\/admin/.test(f)))('%s 按钮内的图标必须带 data-icon 归属', (file) => {
@@ -153,7 +162,10 @@ describe('后台行操作按钮统一口径', () => {
       const body = block.replace(/^<Button[\s\S]*?>/, '').replace(/<\/Button>$/, '')
       if (BARE_ICON.test(body)) offenders.push(body.trim().slice(0, 60))
     }
-    expect(offenders, `${file} 图标缺 data-icon="inline-start|end"：\n`
-      + offenders.map(o => `  ${o}`).join('\n')).toHaveLength(0)
+    expect(
+      offenders,
+      `${file} 图标缺 data-icon="inline-start|end"：\n`
+      + offenders.map(o => `  ${o}`).join('\n')
+    ).toHaveLength(0)
   })
 })

@@ -144,7 +144,7 @@ describe('OOBE 安装观察与错误回执', () => {
   it('安装中不得留不可达的重试按钮（真入口是底部「开始安装」）', () => {
     const src = read('pages/oobe.vue')
     expect(src).not.toContain('runInstallRetry')
-    expect(src).not.toMatch(/:disabled="installing[^\"]*"[^>]*@click="runInstall/)
+    expect(src).not.toMatch(/:disabled="installing[^"]*"[^>]*@click="runInstall/)
     expect(src).toContain('runInstallCancel')
     // 四语里也不留这颗死键（四语键集合一致性检查抓不到"四份都残留"）
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
@@ -158,8 +158,8 @@ describe('OOBE 安装观察与错误回执', () => {
     const fn = src.slice(src.indexOf('const onInstallProgress'), src.indexOf('// ===== R1-CEx-2'))
     expect(fn).toContain('installStepStarted.has(evt.step_id)')
     // 第一次播报＝该步刚开始：只能补勾它之前的步骤，把它自己标完成就是假进度
-    expect(fn).toMatch(/installStepStarted\.add\(evt\.step_id\)[\s\S]{0,120}for \(let i = 0; i < pos; i\+\+\)/)
-    expect(fn).toMatch(/installStepStarted\.has\(evt\.step_id\)[\s\S]{0,80}installStepList\[pos\]\.done = true/)
+    expect(fn).toMatch(/installStepStarted\.add\(evt\.step_id\)[\s\S]{0,120}installStepList\.slice\(0, pos\)/)
+    expect(fn).toMatch(/installStepStarted\.has\(evt\.step_id\)[\s\S]{0,80}cur\.done = true/)
   })
 
   it('复位必须走 resetInstallSteps（漏一处＝第二次安装从中间开始全绿）', () => {
