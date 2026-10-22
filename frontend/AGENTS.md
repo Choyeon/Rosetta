@@ -253,6 +253,22 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 `display:block; overflow-x:auto`（长 URL / 多列表格都不再把整份文档撑出横向滚动）；
 固定底部 HUD 一律 `env(safe-area-inset-bottom)`。
 
+### 画布图表不吃 CSS 断点（ECharts 几何）
+
+`<v-chart>` 渲染在 canvas 里，Tailwind 的 `md:` / `xl:` 前缀与媒体查询对它**完全无作用**，
+`radius: ['58%','82%']` 这类百分比又按 `min(容器宽, 容器高)` 折算——仪表盘卡片是"扁"的，
+实测 xl 宽卡（395×360）和手机卡（286×260）都会被切掉左半边。口径：
+
+1. 图表几何一律按**实测容器尺寸**算：`composables/useElementSize.ts` 观测 + `lib/adminChartLayout.ts`
+   纯算术产出 px 数值（ECharts 的 `center` / `radius` 接受 px）。不要试图用 `media` 查询option 或
+   视口宽度推算容器宽度——栅格列数由父级决定，视口断点推不出来。
+2. 环形图 `legend` **必须显式给 `data`**：缺省时 ECharts 从所有 series 名收集，中心装饰用的
+   gauge 会变成图例里一行假数据。
+3. 坐标轴标签在窄卡里挤成连号噪声（`0 10200300400500`）时加 `axisLabel.hideOverlap: true`，
+   水平柱状图的分类标签吃掉绘图宽度时用 `grid.containLabel` + 按容器宽截断标题。
+4. 数值契约钉在 `tests/unit/adminNarrowLayout.spec.ts`（六种容器尺寸 + 分栏阈值 + 接线源码断言）；
+   新增画布图表沿用同一手法，不要回到写死百分比。
+
 ### 颜色真源在 main.css 的 @theme，不在 tailwind.config.ts
 
 项目用 Tailwind v4 + `@tailwindcss/vite`，CSS 里没有 `@config` 指令，因此 `tailwind.config.ts` **未被加载**。
