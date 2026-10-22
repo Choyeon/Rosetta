@@ -119,8 +119,8 @@ describe('pages/admin/index.vue · 接线', () => {
   it('圆环几何来自 donutGeometry，不再写死百分比 radius/center', () => {
     expect(dash).toContain('radius: geo.radius')
     expect(dash).toContain('center: geo.center')
-    expect(dash).not.toContain("radius: ['58%', '82%']")
-    expect(dash).not.toContain("center: ['32%', '50%']")
+    expect(dash).not.toMatch(/radius:\s*\['58%', '82%'\]/)
+    expect(dash).not.toMatch(/center:\s*\['32%', '50%'\]/)
   })
 
   it('x 轴刻度重叠由 hideOverlap 兜住', () => {
