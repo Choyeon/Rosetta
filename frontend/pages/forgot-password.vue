@@ -206,7 +206,9 @@ function setCode(value: unknown) {
   code.value = String(value ?? '').replace(/\D+/g, '').slice(0, 6)
 }
 // 改任意一项就撤下上一次的失败清单，避免"已经改对了还挂着旧错误"
-watch([code, newPassword, confirm], () => { resetErrors.value = [] })
+watch([code, newPassword, confirm], () => {
+  resetErrors.value = []
+})
 
 async function requestCode() {
   if (requesting.value) return

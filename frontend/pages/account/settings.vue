@@ -607,7 +607,9 @@ const passwordErrors = reactive<Record<string, string>>({})
 const passwordFailures = ref<string[]>([])
 const savingPassword = ref(false)
 // 改任意一项就撤下上一次的失败清单，避免"已经改对了还挂着旧错误"
-watch(passwords, () => { passwordFailures.value = [] })
+watch(passwords, () => {
+  passwordFailures.value = []
+})
 
 async function savePassword() {
   passwordErrors.new = passwords.new !== passwords.confirm ? t('account.passwordMismatch') : ''
