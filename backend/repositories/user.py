@@ -357,6 +357,11 @@ class UserRepository(BaseRepository[User]):
         """
         激活用户
 
+        同时清除封禁标记：登录闸门是 `is_active and not is_banned` 两条，
+        只置 is_active 的话后台点"激活账号"后徽章变成「已激活」、toast 报成功，
+        而这个人仍然登不进来（前端乐观更新与库里状态不一致）。
+        解封单独走 unban_user，两条路径都收敛到"激活即可登录"这一语义。
+
         Args:
             user_id: 用户 ID
 
@@ -367,6 +372,7 @@ class UserRepository(BaseRepository[User]):
         if user is None:
             return False
         user.is_active = True
+        user.is_banned = False
         await self.session.flush()
         return True
 

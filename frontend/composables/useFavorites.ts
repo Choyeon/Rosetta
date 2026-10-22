@@ -13,9 +13,10 @@
  *    按 favorite_id 的 DELETE 只删一行，历史重复行会让"取消没生效"。列表上的取消走 by-post。
  * 3. `PATCH /favorites/post/{post_id}/*` 传 null 表示清空（移回默认收藏 / 清掉备注）。
  * 4. 收藏夹列表回 `{items,total}`；收藏列表回裸分页对象 `{items,total,page,page_size,total_pages}`。
- * 5. `PUT/DELETE /favorites/{favorite_id}`（按行改/删）**刻意不包装**：收藏行没有唯一约束，
- *    按行删只删一条重复行、按行改的 ID 又要在列表里额外透传，两者都比 by-post 弱。
- *    前端只用 by-post 那一组，口径与 §2 同源。
+ * 5. `PUT/DELETE /favorites/{favorite_id}`（按行改/删）比 by-post 弱：收藏行没有唯一约束，
+ *    按行删只删一条重复行，按行改的 ID 又要在列表里额外透传。正常操作一律走 by-post 那一组，
+ *    口径与 §2 同源。唯一例外是 `removeFavoriteById`——文章已删的孤儿收藏行没有 post_id，
+ *    by-post 根本无从调用，只能按行 ID 清掉。
  */
 import { apiFetch, useAPI, type ApiFetchOptions } from '~~/composables/useApi'
 
@@ -91,6 +92,13 @@ export function useFavorites() {
   const removeFavoriteByPost = (postId: number) =>
     apiFetch<FavoriteActionResponse>(`/favorites/post/${postId}`, { method: 'DELETE' })
 
+  /**
+   * 按收藏行 ID 取消——只给"文章已删/不可见"的孤儿行兜底用：那种行拿不到 post_id，
+   * by-post 的口根本没有入参，用户就永远清不掉它。正常收藏一律走 by-post（见 §2）。
+   */
+  const removeFavoriteById = (favoriteId: number) =>
+    apiFetch<FavoriteActionResponse>(`/favorites/${favoriteId}`, { method: 'DELETE' })
+
   const moveFavoriteByPost = (postId: number, folderId: number | null) =>
     apiFetch<FavoriteActionResponse>(`/favorites/post/${postId}/folder`, {
       method: 'PATCH',
@@ -123,6 +131,7 @@ export function useFavorites() {
     checkFavorites,
     addFavorite,
     removeFavoriteByPost,
+    removeFavoriteById,
     moveFavoriteByPost,
     setFavoriteNote,
     createFolder,

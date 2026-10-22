@@ -622,6 +622,26 @@ class UserService:
         if not await averify_password(old_password, user.password_hash):
             raise ValueError("旧密码错误")
 
+        return await self._apply_new_password(user, new_password)
+
+    async def force_set_password(self, user_id: int, new_password: str) -> bool:
+        """
+        管理员/找回流程写入新密码：**不要求旧密码**，但与会话本人改密同构。
+
+        和 change_password 共用 _apply_new_password，所以同样会 bump token_version
+        并吊销全部 refresh token。少做任何一件，表现都是"密码明明改了，旧登录态
+        照常可用"——管理员重置密码后拿不到下线保证，等于重置无效。
+
+        Raises:
+            ValueError: 新密码与当前密码相同
+        """
+        user = await self._user_repo.get_by_id(user_id)
+        if user is None:
+            return False
+        return await self._apply_new_password(user, new_password)
+
+    async def _apply_new_password(self, user: User, new_password: str) -> bool:
+        """写入新密码并下线该用户全部会话（改密三条路径的唯一落点）。"""
         if await averify_password(new_password, user.password_hash):
             raise ValueError("新密码不能与当前密码相同")
 
@@ -630,11 +650,11 @@ class UserService:
         user.token_version = current_v + 1
         await self._db.flush()
 
-        await self._token_repo.revoke_all_user_tokens(user_id)
+        await self._token_repo.revoke_all_user_tokens(user.id)
 
-        await self._cache.invalidate_user_cache(user_id)
+        await self._cache.invalidate_user_cache(user.id)
 
-        logger.info(f"用户密码修改成功: id={user_id}")
+        logger.info(f"用户密码已重置并下线全部会话: id={user.id}")
 
         return True
 

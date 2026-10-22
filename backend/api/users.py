@@ -30,7 +30,6 @@ from backend.core.auth import (
     CurrentStaff,
     CurrentUser,
     CurrentUserOptional,
-    aget_password_hash,
     averify_password,
 )
 from backend.core.cache import cache
@@ -595,10 +594,6 @@ async def password_reset(
             },
         )
 
-    # 设置新密码 + 踢所有会话下线
-    user.password_hash = await aget_password_hash(body.new_password)
-    user.token_version = (getattr(user, "token_version", 0) or 0) + 1
-
     # 清理验证码与尝试计数（成功后计数没意义，留着会让下一次申请带上历史）
     try:
         await cache.delete(key_code)
@@ -606,9 +601,18 @@ async def password_reset(
     except Exception:
         logger.warning("密码重置凭证清理失败 user_id=%s", user.id, exc_info=True)
 
-    # 撤销所有 refresh token（service 层）
+    # 写入新密码 + 下线全部会话：与"本人改密""管理员重置"共用同一个落点。
+    # 此前这里手写第三份 hash/token_version/吊销逻辑，少做了 invalidate_user_cache，
+    # 而绕过 service 直接摸私有属性 `_token_repo` 也让下一次口径漂移无从发现。
     service = await get_user_service(db)
-    await service._token_repo.revoke_all_user_tokens(user.id)
+    try:
+        await service.force_set_password(user.id, body.new_password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail={"message": str(exc), "error_code": "PASSWORD_UNCHANGED"},
+        ) from exc
+
     await db.commit()
 
     return BaseResponse(message="密码重置成功")

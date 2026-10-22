@@ -200,7 +200,7 @@ class CommentAdminListResponse(BaseModel):
     response_model=PaginatedResponse,
     summary="用户列表（管理员）",
     description=(
-        "获取所有用户列表，支持按 staff / 激活 / 封禁状态筛选与分页。"
+        "获取所有用户列表，支持按 staff / superuser / 激活 / 封禁状态筛选与分页。"
         "响应为裸分页 dict（items/total/page/page_size/total_pages，无 success/data 信封）；"
         "items 内每项是 **AdminUserListItem** 投影（含 email / 封禁态 / 文章与评论计数），"
         "**不含** bio / website / github / qq / cover_image —— 那些在 "
@@ -221,6 +221,7 @@ async def admin_list_users(
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     search: str | None = Query(None, description="搜索关键词"),
     is_staff: bool | None = Query(None, description="筛选管理员"),
+    is_superuser: bool | None = Query(None, description="筛选超级管理员"),
     is_active: bool | None = Query(None, description="筛选激活状态"),
     is_banned: bool | None = Query(None, description="筛选封禁状态"),
 ):
@@ -255,6 +256,9 @@ async def admin_list_users(
 
     if is_staff is not None:
         query = query.where(User.is_staff == is_staff)
+
+    if is_superuser is not None:
+        query = query.where(User.is_superuser == is_superuser)
 
     if is_active is not None:
         query = query.where(User.is_active == is_active)
@@ -595,7 +599,13 @@ async def admin_reset_password(
             detail="不能重置超级管理员的密码",
         )
 
-    await service.update_profile(user_id, {"password": data.new_password})
+    # 强度已在 PasswordReset 的 field_validator 拦下（422），这里只负责写入与会话下线。
+    # 曾经走 update_profile({"password": ...})——只换 hash，不 bump token_version、
+    # 不吊销 refresh token，于是"管理员重置了密码"而对方的旧登录态照常用到底。
+    try:
+        await service.force_set_password(user_id, data.new_password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return BaseResponse(message="密码已重置")
 
 

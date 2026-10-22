@@ -338,7 +338,7 @@
               <div class="mt-2 flex flex-wrap items-center gap-2">
                 <Select
                   :model-value="String(row.folder_id ?? 'none')"
-                  :disabled="busyFavoriteId !== null"
+                  :disabled="busyFavoriteId !== null || !row.post"
                   @update:model-value="(v: unknown) => moveToFolder(row, v)"
                 >
                   <SelectTrigger
@@ -363,16 +363,18 @@
                 <Button
                   variant="outline"
                   size="sm"
-                  :disabled="busyFavoriteId !== null"
+                  :disabled="busyFavoriteId !== null || !row.post"
                   @click="openNoteDialog(row)"
                 >
                   <Pencil data-icon="inline-start" />
                   {{ t('account.editNote') }}
                 </Button>
+                <!-- 文章已删/不可见的收藏行没有 post id，按文章取消的口拿不到它；
+                     这类行必须能按收藏行 ID 删掉，否则用户永远清不掉一条"已删除的文章"。 -->
                 <Button
                   variant="ghost"
                   size="sm"
-                  :disabled="busyFavoriteId !== null || !row.post"
+                  :disabled="busyFavoriteId !== null"
                   @click="unfavorite(row)"
                 >
                   <Trash2 data-icon="inline-start" />
@@ -824,13 +826,17 @@ function selectFolder(id: number | null) {
 }
 
 async function unfavorite(row: FavoriteRow) {
+  if (busyFavoriteId.value !== null) return
   const postId = Number(row.post?.id)
-  if (!postId || busyFavoriteId.value !== null) return
+  // 没有 post id 的孤儿行（文章已删/不可见）按收藏行 ID 删；by-post 对它无参可用。
+  const favoriteId = Number(row.id)
+  if (!postId && !favoriteId) return
   busyFavoriteId.value = row.id
   try {
     // 按文章取消（DELETE /favorites/post/{id}）而不是按收藏行 ID：后端语义是
     // "这篇不再收藏"，会清掉该 (user, post) 的全部行；按行 ID 删会让历史重复行留下。
-    await favoritesAPI.removeFavoriteByPost(postId)
+    if (postId) await favoritesAPI.removeFavoriteByPost(postId)
+    else await favoritesAPI.removeFavoriteById(favoriteId)
     toast.success(t('account.unfavorited'))
     await Promise.all([refresh(), refreshFolders()])
   } catch {
@@ -948,16 +954,20 @@ function statusLabel(status?: string): string {
   return status ?? ''
 }
 
-const formatter = new Intl.DateTimeFormat(locale.value, {
-  year: 'numeric',
-  month: 'short',
-  day: 'numeric',
-  timeZone: 'UTC'
-})
+// computed：本页是 SPA（ssr:false），切语言不会重跑 setup。写成一次性 const 会让
+// 日期永远停在"首次进入这一页时的语言"格式，而同一页的标题与状态文案都会跟着变。
+const formatter = computed(() =>
+  new Intl.DateTimeFormat(locale.value, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'UTC'
+  })
+)
 function formatDate(value?: string | null): string {
   if (!value) return ''
   const date = new Date(value)
-  return Number.isNaN(date.getTime()) ? '' : formatter.format(date)
+  return Number.isNaN(date.getTime()) ? '' : formatter.value.format(date)
 }
 
 /** tab / page 都写进 query：可分享、浏览器前进后退可用，刷新不丢档 */
@@ -1009,7 +1019,7 @@ async function clearHistory() {
   }
 }
 
-useHead(() => ({ title: `${t('account.title')} · ${locale.value}` }))
+useHead(() => ({ title: t('account.title') }))
 // 个人中心是逐登录用户内容，robots.txt 的 Disallow 不足以挡住收录（见 login.vue 同口径）。
 useNoindexPage()
 </script>

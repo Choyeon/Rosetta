@@ -419,8 +419,9 @@ export interface AdminUserQuery {
   page?: number
   page_size?: number
   search?: string
-  /** 后端 `GET /api/admin/users` 原生支持的三个筛选，走服务端而不是客户端切当前页 */
+  /** 后端 `GET /api/admin/users` 原生支持的筛选，走服务端而不是客户端切当前页 */
   is_staff?: boolean
+  is_superuser?: boolean
   is_active?: boolean
   is_banned?: boolean
 }
@@ -440,6 +441,7 @@ export function fetchAdminUsers(params: AdminUserQuery): Promise<AdminPaged<Admi
   if (params.search && params.search.trim()) query.search = params.search.trim()
   // 布尔筛选必须显式传 false：不传 = 不过滤，传 false = 只要未激活/未封禁的，语义完全不同
   if (typeof params.is_staff === 'boolean') query.is_staff = String(params.is_staff)
+  if (typeof params.is_superuser === 'boolean') query.is_superuser = String(params.is_superuser)
   if (typeof params.is_active === 'boolean') query.is_active = String(params.is_active)
   if (typeof params.is_banned === 'boolean') query.is_banned = String(params.is_banned)
   const qs = new URLSearchParams(query as Record<string, string>).toString()
@@ -512,11 +514,15 @@ export function resetAdminUserPassword(userId: number, newPassword: string): Pro
   })
 }
 
-/** DELETE /api/admin/users/{id} —— admin.router @router.delete("/users/{user_id}") */
+/**
+ * DELETE /api/admin/users/{id} —— admin.router @router.delete("/users/{user_id}")
+ * silentToast：唯一调用方是用户列表的 DangerConfirmDialog，失败由弹窗内联渲染，
+ * 这里不再弹全局 toast，避免同一错误双报。
+ */
 export function deleteAdminUser(userId: number): Promise<ApiMessage> {
   invalidateMemCache(`admin:users:detail:${userId}`)
   invalidateMemCache('admin:users:list:')
-  return apiFetch<ApiMessage>(`/admin/users/${userId}`, { method: 'DELETE' })
+  return apiFetch<ApiMessage>(`/admin/users/${userId}`, { method: 'DELETE', silentToast: true })
 }
 
 // ==================== 用户详情（编辑） ====================

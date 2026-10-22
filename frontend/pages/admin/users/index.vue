@@ -142,7 +142,7 @@
         </div>
 
         <div
-          v-else-if="!filteredUsers.length"
+          v-else-if="!allUsers.length"
           class="p-16 text-center"
         >
           <Alert
@@ -217,7 +217,7 @@
             </thead>
             <tbody>
               <tr
-                v-for="(u, i) in filteredUsers"
+                v-for="(u, i) in allUsers"
                 :key="u.id"
                 :class="i % 2 === 1 ? 'bg-muted/20' : ''"
               >
@@ -257,6 +257,7 @@
                     <Switch
                       v-if="isSuperUser && u.id !== currentUserId"
                       :model-value="u.is_banned"
+                      :disabled="busyUserIds.includes(u.id)"
                       title="封禁/解封"
                       aria-label="封禁或解封该用户"
                       @update:model-value="toggleBan(u, $event)"
@@ -585,24 +586,22 @@ const pageSize = ref(20)
 const total = ref(0)
 
 /**
- * 状态（激活 / 未激活 / 封禁）筛到服务端去了：`GET /api/admin/users` 原生支持
- * is_active / is_banned，只有交给后端才能拿到正确的 total 与分页。
- * 此前全部在客户端切「当前页的 20 行」，于是「已封禁」这一档永远筛不出东西
- * （列表接口当时压根不返回 is_banned），而且 total 显示的是未过滤的总数。
+ * 状态与角色筛选全部走服务端：`GET /api/admin/users` 原生支持
+ * is_active / is_banned / is_staff / is_superuser，只有交给后端才能拿到正确的
+ * total 与分页。
+ * 此前这些筛选在客户端切「当前页的 20 行」，于是「已封禁」这一档永远筛不出东西
+ * （列表接口当时压根不返回 is_banned），而且 total 显示的是未过滤的总数——
+ * 分页器说"共 200 条"而表格里只有 3 行。
  *
- * 角色筛选仍在客户端：后端只有 is_staff 一个布尔，没有「超级管理员 / 管理员 / 普通」
- * 三档参数，为它加一个枚举参数会让列表端点背上前端的展示语义，不划算。
- * 代价是角色筛选只作用于当前页，这是已知取舍，不是 bug。
+ * 角色三档用两个布尔组合表达，而不是给后端加一个前端展示语义的枚举参数：
+ * 超级管理员 = is_superuser，管理员 = is_staff 且非 superuser，普通用户 = 两者皆非。
  */
-const filteredUsers = computed<AdminUserRow[]>(() => {
-  if (roleFilter.value === 'all') return allUsers.value
-  return allUsers.value.filter((u) => {
-    if (roleFilter.value === 'superuser') return u.is_superuser
-    if (roleFilter.value === 'staff') return u.is_staff && !u.is_superuser
-    if (roleFilter.value === 'normal') return !u.is_staff && !u.is_superuser
-    return true
-  })
-})
+function roleQuery(): Pick<AdminUserQuery, 'is_staff' | 'is_superuser'> {
+  if (roleFilter.value === 'superuser') return { is_superuser: true }
+  if (roleFilter.value === 'staff') return { is_staff: true, is_superuser: false }
+  if (roleFilter.value === 'normal') return { is_staff: false }
+  return {}
+}
 
 /** 状态筛选 → 后端查询参数。三档互斥，未选时为 undefined（= 不过滤）。 */
 function statusQuery(): Pick<AdminUserQuery, 'is_active' | 'is_banned'> {
@@ -644,7 +643,8 @@ async function fetchData() {
       page: page.value,
       page_size: pageSize.value,
       search: searchQuery.value.trim() || undefined,
-      ...statusQuery()
+      ...statusQuery(),
+      ...roleQuery()
     })
     let items = res.items ?? []
     total.value = res.total ?? 0
@@ -672,8 +672,8 @@ function onSearch() {
 }
 
 function onFilterChange() {
-  // 角色/状态是客户端对"当前页"数据的过滤：切换筛选必须回到第 1 页并重新拉取，
-  // 否则会出现"停在第 N 页 + 客户端过滤后看起来没有数据"的错位。
+  // 角色/状态都是服务端筛选：切换后必须回到第 1 页重新拉取，
+  // 否则会出现"停在第 N 页 + 该页没有匹配行"的假空态。
   page.value = 1
   fetchData()
 }
@@ -688,18 +688,30 @@ function patchUser(id: number, patch: Partial<AdminUserRow>) {
   allUsers.value = allUsers.value.map((u) => (u.id === id ? { ...u, ...patch } : u))
 }
 
+/**
+ * 正在等后端返回的行 id。封禁/解封是"整行状态覆写"式的乐观更新（patchUser 按最后
+ * 一次返回落值），连点会把 ban 与 unban 并发打到后端，落库顺序和开关显示都可能相反。
+ */
+const busyUserIds = ref<number[]>([])
+
 async function toggleStaff(u: AdminUserRow, toStaff: boolean) {
+  if (busyUserIds.value.includes(u.id)) return
+  busyUserIds.value = [...busyUserIds.value, u.id]
   try {
     await updateAdminUserFlags(u.id, { is_staff: toStaff })
     patchUser(u.id, { is_staff: toStaff })
     toast.success(toStaff ? '已设为管理员' : '已撤销管理员')
   } catch {
     // apiFetch 已自动 toast，避免双报；失败时不改本地行
+  } finally {
+    busyUserIds.value = busyUserIds.value.filter((id) => id !== u.id)
   }
 }
 
 async function toggleBan(u: AdminUserRow, value: unknown) {
   const checked = value === true
+  if (busyUserIds.value.includes(u.id)) return
+  busyUserIds.value = [...busyUserIds.value, u.id]
   try {
     if (checked) {
       await banAdminUser(u.id)
@@ -712,6 +724,8 @@ async function toggleBan(u: AdminUserRow, value: unknown) {
     }
   } catch {
     // apiFetch 已自动 toast；开关保持原值（受控 model-value 未变）
+  } finally {
+    busyUserIds.value = busyUserIds.value.filter((id) => id !== u.id)
   }
 }
 
