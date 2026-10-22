@@ -79,27 +79,32 @@ describe('zh.json 必须是简体：繁简成对字形扫描', () => {
   const TRAD = '們這裡裏後語說時間為與從會開關發愛學數樣節義讓讀寫驗證碼網頁單標題類種動設個區圖書庫內聯統計轉輸縮導頭銘備處復註態許論財貨質點龍專術務員價優傳壓場壞聲醫報歸風險費盜斷實遺際較強見簡橫門詞懸據棧磚鏡凍給幫賞車師攝驅絡維週帶筆構順極鳴織緊撐漸組習淺終綁廢載暫無資儲刪換敗選頂華試閉預覽該沒鏈籤讚錄訊請鎖錯稱電郵審過顯長還來參應鈕條檢視謝擇項確認記號賬歡續嘗並隱兩紙當訪權創顏篩掛裝啟級掃機變異鍵現夾遠檔達屬訂觀倉紅欄總調體編礎線礙貼驟測進環靈階產議絕離聽雲經僅補齊牆規須戶隨遷紹準額綱範職業憶誌獨適薦徑護樂側邊緒約偵憑詢舊難響'
   const SIMP = '们这里里后语说时间为与从会开关发爱学数样节义让读写验证码网页单标题类种动设个区图书库内联统计转输缩导头铭备处复注态许论财货质点龙专术务员价优传压场坏声医报归风险费盗断实遗际较强见简横门词悬据栈砖镜冻给帮赏车师摄驱络维周带笔构顺极鸣织紧撑渐组习浅终绑废载暂无资储删换败选顶华试闭预览该没链签赞录讯请锁错称电邮审过显长还来参应钮条检视谢择项确认记号账欢续尝并隐两纸当访权创颜筛挂装启级扫机变异键现夹远档达属订观仓红栏总调体编础线碍贴骤测进环灵阶产议绝离听云经仅补齐墙规须户随迁绍准额纲范职业忆志独适荐径护乐侧边绪约侦凭询旧难响'
 
+  // 逐位配成 [繁, 简] 元组：直接按下标取字符在 noUncheckedIndexedAccess 下是 string | undefined
+  const PAIRS: [string, string][] = TRAD.split('').map((t, i) => [t, SIMP[i] ?? ''])
+
   it('繁简表逐位对齐', () => {
     expect(TRAD.length, 'TRAD 与 SIMP 长度不一致').toBe(SIMP.length)
-    for (let i = 0; i < TRAD.length; i++) {
-      expect(TRAD[i], `第 ${i} 位繁简同形，不该进表`).not.toBe(SIMP[i])
-    }
+    PAIRS.forEach(([t, s], i) => {
+      expect(t, `第 ${i} 位繁简同形，不该进表`).not.toBe(s)
+    })
   })
 
   it('zh.json 里没有任何本仓用到的繁体字形', () => {
     const zhRaw = read('i18n/locales/zh.json')
     const hantRaw = read('i18n/locales/zh_Hant.json')
     const leaks: string[] = []
-    for (let i = 0; i < TRAD.length; i++) {
-      const t = TRAD[i]
-      const s = SIMP[i]
+    for (const [t, s] of PAIRS) {
       if (hantRaw.includes(t) && zhRaw.includes(s) && zhRaw.includes(t)) leaks.push(`${t}(应为 ${s})`)
     }
     expect(leaks, `zh.json 混入繁体，简体页面会渲染出繁体文案：\n${leaks.join('\n')}`).toEqual([])
   })
 
   it('已修复的三处繁体文案保持简体', () => {
-    const zh = JSON.parse(read('i18n/locales/zh.json')) as Record<string, Record<string, string>>
+    const zh = JSON.parse(read('i18n/locales/zh.json')) as {
+      about: { mottoLabel: string }
+      forgotPassword: { resendWarn: string, whyNeedCode: string }
+      account: { passwordFieldsRequired: string }
+    }
     expect(zh.about.mottoLabel).toBe('座右铭')
     expect(zh.forgotPassword.resendWarn).toContain('验证码')
     expect(zh.forgotPassword.whyNeedCode).toContain('6 位')

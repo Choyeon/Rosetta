@@ -27,14 +27,19 @@ function backendGroups(): Record<string, string[]> {
   // 只认无参的数据默认函数：`_default_for(group)` 是分发器，抠它会多出一个假分组
   const re = /^def\s+_default_(\w+)\(\)\s*->\s*dict:/gm
   let m: RegExpExecArray | null
-  while ((m = re.exec(raw))) marks.push({ g: m[1], start: m.index })
+  while ((m = re.exec(raw))) {
+    if (m[1]) marks.push({ g: m[1], start: m.index })
+  }
   marks.push({ g: '__end__', start: raw.length })
   const out: Record<string, string[]> = {}
   for (let i = 0; i < marks.length - 1; i++) {
-    const seg = raw.slice(marks[i].start, marks[i + 1].start)
+    const cur = marks[i]
+    const next = marks[i + 1]
+    if (!cur || !next) continue
+    const seg = raw.slice(cur.start, next.start)
     // 只认 `return {` 里正好缩进 8 空格的键：GROUPS 注册表（4 空格、值是指针）不算设置项
-    const keys = [...seg.matchAll(/^ {8}(?:"|')([a-z0-9_]+)(?:"|')\s*:/gm)].map(x => x[1])
-    out[marks[i].g] = [...new Set(keys)]
+    const keys = [...seg.matchAll(/^ {8}(?:"|')([a-z0-9_]+)(?:"|')\s*:/gm)].map(x => x[1] ?? '').filter(Boolean)
+    out[cur.g] = [...new Set(keys)]
   }
   return out
 }
@@ -49,7 +54,7 @@ function labelTables() {
   const grab = (block: string) => {
     const map: Record<string, string> = {}
     for (const m of block.matchAll(/(?:^|[,{\s])"?([a-z0-9_]+)"?\s*:\s*'([^']*)'/gm)) {
-      map[m[1]] = m[2]
+      if (m[1]) map[m[1]] = m[2] ?? ''
     }
     return map
     // 说明：flat 表里 value 全用单引号，跨行对象用下面的 GROUP_LABELS 段单独抠
@@ -64,10 +69,15 @@ function labelTables() {
   const groupRe = /^ {2}([a-z_]+): \{$/gm
   let gm: RegExpExecArray | null
   const groupMarks: Array<{ g: string, start: number }> = []
-  while ((gm = groupRe.exec(block))) groupMarks.push({ g: gm[1], start: gm.index })
+  while ((gm = groupRe.exec(block))) {
+    if (gm[1]) groupMarks.push({ g: gm[1], start: gm.index })
+  }
   groupMarks.push({ g: '__end', start: block.length })
   for (let i = 0; i < groupMarks.length - 1; i++) {
-    perGroup[groupMarks[i].g] = grab(block.slice(groupMarks[i].start, groupMarks[i + 1].start))
+    const cur = groupMarks[i]
+    const next = groupMarks[i + 1]
+    if (!cur || !next) continue
+    perGroup[cur.g] = grab(block.slice(cur.start, next.start))
   }
   return { flat, perGroup }
 }
