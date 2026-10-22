@@ -489,7 +489,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 72 个 spec；985 用例，生产机 2026-10-21 全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 72 个 spec；1254 用例，生产机 2026-10-22 全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -548,7 +548,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Σ Total size 5.7 MB（gzip 1.33 MB），2026-10-21 生产机实测
-pnpm test          # 全绿（72 个 spec 文件；985 用例）
+pnpm test          # 全绿（72 个 spec 文件；1254 用例）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
