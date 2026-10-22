@@ -1448,9 +1448,11 @@
                       </div>
                     </div>
 
-                    <!-- SSE 快照兜底 banner：timeout / polling / retrying -->
+                    <!-- SSE 快照兜底 banner：timeout / polling。
+                         「安装状态无法确认」不走这里：它伴随 evt.type='error'，
+                         由下方失败横幅承载，且 error 分支会把快照状态清回 idle。 -->
                     <div
-                      v-if="installSnapshotState === 'timeout' || installSnapshotState === 'polling' || installSnapshotState === 'retrying'"
+                      v-if="installSnapshotState === 'timeout' || installSnapshotState === 'polling'"
                       class="flex items-start gap-3 p-3 rounded-xl border"
                       :class="installSnapshotState === 'timeout'
                         ? 'border-amber-400/35 bg-amber-500/[0.07]'
@@ -1473,27 +1475,20 @@
                       </div>
                     </div>
 
-                    <!-- 安装中：Cancel/Retry 行（解决 SSE 假死死穴） -->
+                    <!-- 安装中：取消等待（解决 SSE 假死死穴）。
+                         这里原本还挂着一颗「重试连接」按钮，但它同时满足
+                         `v-if="installing"`（在本块内 installing 恒为 true）与
+                         `:disabled="installing"`，等于一颗永远点不亮的死键；
+                         真正的重试入口是页面底部的「开始安装」（installed 仍为 false 时出现），
+                         所以删掉重复且不可达的控件，而不是把它挪出去再补一条状态机。 -->
                     <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
                       <Button
                         variant="outline"
                         size="sm"
-                        :disabled="!installing"
                         @click="runInstallCancel"
                       >
                         <XCircle data-icon="inline-start" />
                         {{ t('oobe.installSnapshotCancelBtn') }}
-                      </Button>
-                      <Button
-                        size="sm"
-                        :disabled="installing || installSnapshotState === 'timeout'"
-                        @click="runInstallRetry"
-                      >
-                        <RefreshCw
-                          data-icon="inline-start"
-                          :class="{ 'animate-spin': installing }"
-                        />
-                        {{ t('oobe.installSnapshotRetryBtn') }}
                       </Button>
                     </div>
                   </div>
@@ -1582,7 +1577,15 @@
                         </div>
                       </dl>
                       <p class="mt-3 text-[11px] text-foreground/60 leading-relaxed">
-                        {{ t('oobe.credNote', '密码不会再次显示，请妥善保存。系统已自动为你登录，可直接进入后台。') }}
+                        {{ t('oobe.credNote', '密码不会再次显示，请妥善保存。') }}
+                      </p>
+                      <!-- 自动登录结果必须二选一说清楚：6 次重试全失败时旧文案仍宣称"已自动登录"，
+                           用户点「进入后台」被弹回 /login，只能回头猜自己刚设的密码。 -->
+                      <p
+                        class="mt-1 text-[11px] leading-relaxed"
+                        :class="adminAutoLoggedIn ? 'text-foreground/60' : 'text-amber-700 dark:text-amber-300'"
+                      >
+                        {{ adminAutoLoggedIn ? t('oobe.credAutoLoginOk', '系统已自动为你登录，可直接进入后台。') : t('oobe.credAutoLoginFailed', '自动登录未成功，请使用上面的账号手动登录后台。') }}
                       </p>
                     </div>
                   </div>
@@ -1966,6 +1969,7 @@ const {
   finishOOBE, getOOBEStatus, installDependencies, subscribeDependencyStream,
   effectiveApiBase, setBackendApiBase, probeBackend, normalizeUserApiBase,
   clearOOBEApiBaseOverrideFromStorage, installSnapshotState, cancelInstallWatch,
+  adminAutoLoggedIn,
   preflight, testDatabase, checkUsername
 } = oobe
 
@@ -2374,6 +2378,21 @@ const installStepList = reactive([
   { id: 'write_nav', label: t('oobe.isNav', '写入导航菜单'), done: false },
   { id: 'finalize', label: t('oobe.isFinalize', '标记安装完成'), done: false }
 ])
+
+/**
+ * 后端对每个 step_id 会播**两条** progress：开始前一条（`正在…`，percent 比目标值低 6）
+ * 与结束后一条（`…完成`，percent 等于目标值）。旧实现把"收到该 step_id 的任意一条"
+ * 当成完成，于是清单在任务刚起步时就逐项打勾——用户盯着 8 个绿勾等真正耗时的建表。
+ * 这里用「同一条 step_id 的第二次播报」判完成；第一次播报顺手把**它之前**的步骤补成
+ * 完成（后端串行执行，能播到第 n 步说明前 n-1 步已经过去），丢事件时不留空洞。
+ */
+const installStepStarted = new Set<string>()
+const resetInstallSteps = () => {
+  installStepStarted.clear()
+  for (const s of installStepList) {
+    s.done = false
+  }
+}
 
 // 页面加载时先取一次状态（完成后重定向首页）
 onMounted(async () => {
@@ -3042,9 +3061,7 @@ const prevStep = () => {
   if (step.value <= 2) {
     installing.value = false
     installed.value = false
-    for (const s of installStepList) {
-      s.done = false
-    }
+    resetInstallSteps()
     installStepIndex.value = -1
     installPercent.value = step.value === 1 ? 0 : installPercent.value
     installStepMessage.value = ''
@@ -3082,13 +3099,17 @@ const onInstallProgress = (evt: InstallProgressEvt) => {
       const estimated = Math.min(installStepList.length - 1, Math.floor((percent / 100) * installStepList.length))
       if (estimated > idx) idx = estimated
     }
-    // step_id 匹配时标记完成
+    // step_id 的两条播报：第一次=开始（只补勾它之前的），第二次=完成（勾它自己）
     if (evt.step_id) {
-      const st = installStepList.find(s => s.id === evt.step_id)
-      if (st && !st.done) {
-        st.done = true
-        const pos = installStepList.findIndex(s => s.id === evt.step_id)
-        if (pos >= 0 && pos > idx) idx = pos
+      const pos = installStepList.findIndex(s => s.id === evt.step_id)
+      if (pos >= 0) {
+        if (installStepStarted.has(evt.step_id)) {
+          installStepList[pos].done = true
+        } else {
+          installStepStarted.add(evt.step_id)
+          for (let i = 0; i < pos; i++) installStepList[i].done = true
+        }
+        if (pos > idx) idx = pos
       }
     }
     if (idx > installStepIndex.value) installStepIndex.value = idx
@@ -3118,7 +3139,7 @@ const onInstallProgress = (evt: InstallProgressEvt) => {
   }
 }
 
-// ===== R1-CEx-2：取消等待 / 重试 =====
+// ===== R1-CEx-2：取消等待 =====
 const runInstallCancel = () => {
   try {
     cancelInstallWatch()
@@ -3131,16 +3152,6 @@ const runInstallCancel = () => {
   }
 }
 
-const runInstallRetry = async () => {
-  if (installing.value) return
-  // 当前仍在 snapshot retrying / idle — 重新触发安装（幂等后端会串行化或直接 409 提前完成）
-  // 同时强制切回 idle，避免 UI 卡禁用态
-  if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
-    installSnapshotState.value = 'idle'
-  }
-  await reallyRunInstall()
-}
-
 // ===== R1-U2 / R2-2.6 / R1-CEx-2：真安装流程 =====
 const reallyRunInstall = async () => {
   if (installing.value) return
@@ -3150,9 +3161,7 @@ const reallyRunInstall = async () => {
   installStepIndex.value = 0
   installPercent.value = 10
   installStepMessage.value = t('oobe.isStarting', '准备安装任务…')
-  installStepList.forEach((s) => {
-    s.done = false
-  })
+  resetInstallSteps()
   if (installSnapshotState && typeof installSnapshotState.value !== 'undefined') {
     installSnapshotState.value = 'idle'
   }

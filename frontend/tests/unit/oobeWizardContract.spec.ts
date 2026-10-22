@@ -118,6 +118,74 @@ describe('OOBE 向导页面接线', () => {
   })
 })
 
+/**
+ * 安装观察这一段全部是 2026-10-22 审计实证的死控件 / 假回执：
+ * 错误体被 request() 丢掉、重试键永远点不亮、清单在任务开始时就打勾、
+ * 自动登录失败后完成页仍宣称"已自动为你登录"。四条都类型检查不出来，只能钉文本。
+ */
+describe('OOBE 安装观察与错误回执', () => {
+  it('request() 必须保留后端错误体，并把它的 message 当首要文案', () => {
+    const src = read('composables/useOOBE.ts')
+    const start = src.indexOf('.catch((err: { status?: number')
+    expect(start, '未找到 request() 的 catch 分支').toBeGreaterThan(-1)
+    const catchBlock = src.slice(start, src.indexOf('.finally(() =>', start))
+    expect(catchBlock).toContain('data: err.data')
+    // 丢掉 data 后 err.message 只剩 ofetch 的 "Failed with status code 400"，
+    // 安装失败横幅就再也读不到后端给的 error_code / hint / message
+    expect(catchBlock).toMatch(/body\?\.message/)
+  })
+
+  it('失败横幅按 raw.data.* 取 error_code / hint（与上面同口径）', () => {
+    const src = read('pages/oobe.vue')
+    expect(src).toContain('raw.data?.error_code')
+    expect(src).toContain('raw.data?.details?.hint')
+  })
+
+  it('安装中不得留不可达的重试按钮（真入口是底部「开始安装」）', () => {
+    const src = read('pages/oobe.vue')
+    expect(src).not.toContain('runInstallRetry')
+    expect(src).not.toMatch(/:disabled="installing[^\"]*"[^>]*@click="runInstall/)
+    expect(src).toContain('runInstallCancel')
+    // 四语里也不留这颗死键（四语键集合一致性检查抓不到"四份都残留"）
+    for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const dict = JSON.parse(read(`i18n/locales/${loc}.json`)) as { oobe: Record<string, string> }
+      expect(dict.oobe, loc).not.toHaveProperty('installSnapshotRetryBtn')
+    }
+  })
+
+  it('步骤清单只在同一条 step_id 的第二次播报时打勾', () => {
+    const src = read('pages/oobe.vue')
+    const fn = src.slice(src.indexOf('const onInstallProgress'), src.indexOf('// ===== R1-CEx-2'))
+    expect(fn).toContain('installStepStarted.has(evt.step_id)')
+    // 第一次播报＝该步刚开始：只能补勾它之前的步骤，把它自己标完成就是假进度
+    expect(fn).toMatch(/installStepStarted\.add\(evt\.step_id\)[\s\S]{0,120}for \(let i = 0; i < pos; i\+\+\)/)
+    expect(fn).toMatch(/installStepStarted\.has\(evt\.step_id\)[\s\S]{0,80}installStepList\[pos\]\.done = true/)
+  })
+
+  it('复位必须走 resetInstallSteps（漏一处＝第二次安装从中间开始全绿）', () => {
+    const src = read('pages/oobe.vue')
+    expect(src.match(/resetInstallSteps\(\)/g)?.length ?? 0).toBeGreaterThanOrEqual(2)
+    // 全仓只允许一处清勾，且它必须长在 resetInstallSteps 里
+    expect((src.match(/s\.done = false/g) ?? []).length).toBe(1)
+  })
+
+  it('自动登录结果分岔文案，不得无条件宣称已登录', () => {
+    const src = read('pages/oobe.vue')
+    expect(src).toContain('adminAutoLoggedIn')
+    expect(src).toContain('credAutoLoginFailed')
+    const zh = JSON.parse(read('i18n/locales/zh.json')) as { oobe: Record<string, string> }
+    expect(zh.oobe.credNote).not.toMatch(/自动/)
+  })
+
+  it('自动登录失败不得把整次安装判成失败', () => {
+    const src = read('composables/useOOBE.ts')
+    const loop = src.slice(src.indexOf('const loginRetries = 6'), src.indexOf('return data.value'))
+    expect(loop).toContain('adminAutoLoggedIn.value = true')
+    // fetchUser 抛出会一路冒到外层 catch，把"已装好"报成"安装失败"
+    expect(loop).toMatch(/try \{\s*await authStore\.fetchUser\(\)/)
+  })
+})
+
 describe('OOBE 新增文案键四语齐全', () => {
   const KEYS = [
     'pwWeak', 'pwFair', 'pwGood', 'pwStrong',
@@ -127,7 +195,8 @@ describe('OOBE 新增文案键四语齐全', () => {
     'dbTestBtn', 'dbTesting', 'dbTestHint', 'dbTestStale', 'dbTestFailed', 'dbTestFailedHint',
     'preflightGoFix', 'preflightBlocked', 'preflightRunning',
     'installFailed', 'stepSaveFailed',
-    'credTitle', 'credUsername', 'credEmail', 'credAdminUrl', 'credSiteUrl', 'credNote'
+    'credTitle', 'credUsername', 'credEmail', 'credAdminUrl', 'credSiteUrl', 'credNote',
+    'credAutoLoginOk', 'credAutoLoginFailed'
   ]
 
   const LOCALES = ['zh', 'en', 'ja', 'zh_Hant']

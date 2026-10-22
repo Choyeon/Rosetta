@@ -40,6 +40,20 @@ export interface InstallProgressEvt {
   hint?: string | null
 }
 
+/**
+ * request() 的统一失败信封。
+ * `data` 必须原样保留：后端 4xx / 503 的真错误体（{success:false, error_code,
+ * message, details:{hint}}）只挂在 fetch 的 err.data 上，而 err.message 只是
+ * ofetch 的通用文案 "Failed with status code 400"。丢掉 data 等于把结构化错误
+ * 降级成一句对操作员无意的废话——安装失败横幅与 stepError 两处都读 raw.data.*。
+ */
+export interface OOBERequestError {
+  status?: number
+  statusText?: string
+  message?: string
+  data?: unknown
+}
+
 interface RawCheckResult {
   ok?: unknown
   error?: unknown
@@ -220,12 +234,12 @@ function request<T = unknown>(
     apiBase: string
     locale?: string
   }
-): Promise<{ data: Ref<T | null>, error: Ref<{ status?: number, statusText?: string, message?: string } | null> }> {
+): Promise<{ data: Ref<T | null>, error: Ref<OOBERequestError | null> }> {
   const { authStore, apiBase, method = 'GET', body, params, timeoutMs, locale } = opts
   // shallowRef 而非 ref：ref<T>() 会把值类型套上 UnwrapRef<T>，
   // 与声明的返回类型 Ref<T | null> 不兼容；接口响应对象也不需要深层响应式。
   const data = shallowRef<T | null>(null)
-  const error = shallowRef<{ status?: number, statusText?: string, message?: string } | null>(null)
+  const error = shallowRef<OOBERequestError | null>(null)
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -298,10 +312,15 @@ function request<T = unknown>(
       })
       .catch((err: { status?: number, statusText?: string, data?: unknown, message?: string }) => {
         if (cancelled) return
+        // 后端错误体优先：纯文本响应直接原样保留，JSON 响应取它的 message。
+        const body = (err.data && typeof err.data === 'object')
+          ? err.data as { message?: string, error?: string }
+          : null
         error.value = {
           status: err.status ?? 0,
           statusText: err.statusText ?? 'Network Error',
-          message: typeof err.data === 'string' ? err.data : err.message
+          message: (typeof err.data === 'string' ? err.data : body?.message) || err.message,
+          data: err.data
         }
       })
       .finally(() => {
@@ -410,8 +429,12 @@ export const useOOBE = () => {
   const error = ref<unknown>(null)
   const systemChecks = ref<SystemCheckRow[]>([])
   const systemSummary = ref<SystemSummary | null>(null)
-  // R1-CEx-2: SSE 兜底快照状态（对外暴露给 UI 以渲染 Cancel/Retry 按钮）
-  const installSnapshotState = ref<'idle' | 'timeout' | 'polling' | 'retrying'>('idle')
+  // R1-CEx-2: SSE 兜底快照状态（对外暴露给 UI 以渲染「取消等待」按钮）
+  const installSnapshotState = ref<'idle' | 'timeout' | 'polling'>('idle')
+  // 安装后的自动登录是否真的成功。完成页原先无条件宣称"系统已自动为你登录"，
+  // 而 6 次重试全失败时这句话是假的：用户点「进入后台」被 admin 中间件弹回 /login，
+  // 只能回头猜刚设的密码。UI 必须按这个位分岔文案。
+  const adminAutoLoggedIn = ref(false)
   // R1-CEx-2: UI 主动取消 SSE 订阅/安装观察的回调（由 finishOOBE 在订阅时注入）
   let _cancelInstallWatchFn: null | (() => void) = null
 
@@ -878,6 +901,7 @@ export const useOOBE = () => {
     loading.value = true
     error.value = null
     installSnapshotState.value = 'idle'
+    adminAutoLoggedIn.value = false
     let streamHandle: { close: () => void } | null = null
     let cancelled = false
     let pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -1035,9 +1059,9 @@ export const useOOBE = () => {
           } else if (pollAttempts < MAX_POLL_ATTEMPTS) {
             scheduleNextPoll()
           } else {
-            // 45s 总兜底仍未收敛 → 抛 error 交给 UI 显示 Retry 按钮（installing 必须解除）
-            installSnapshotState.value = 'retrying'
-            onProgress?.({ type: 'error', success: false, message: '安装状态无法确认，请点重试或手动检查后端。' })
+            // 45s 总兜底仍未收敛 → 抛 error 让 UI 解除 installing 并显示失败横幅（可重新提交安装）
+            // 快照状态保持 polling：error 分支会立刻把它清回 idle，这里再造一个终态只会多一个永不渲染的分支。
+            onProgress?.({ type: 'error', success: false, message: '安装状态无法确认。可取消等待后重新提交安装（后端幂等），或手动检查后端服务是否仍在运行。' })
           }
         }, POLL_INTERVAL_MS)
       }
@@ -1076,6 +1100,10 @@ export const useOOBE = () => {
       } as OOBEStatus & { initialized: boolean }
 
       // 自动登录新管理员
+      // 这里失败**不代表安装失败**，只代表"进后台需要手动登录一次"。
+      // 旧实现 6 次全失败后一声不响，完成页却无条件宣称"系统已自动为你登录"，
+      // 用户点「进入后台」被 admin 中间件弹回 /login，只能回头猜自己刚设的密码。
+      // UI 用 adminAutoLoggedIn 这个位分岔文案，所以它必须被如实记录。
       const loginRetries = 6
       for (let i = 1; i <= loginRetries; i++) {
         if (cancelled) break
@@ -1092,7 +1120,14 @@ export const useOOBE = () => {
           })
           if (!loginErr.value && loginData.value) {
             authStore.setTokens(loginData.value)
-            await authStore.fetchUser()
+            // 拉资料失败只影响昵称显示，不能让整次安装被判成失败：
+            // fetchUser 抛出会一路冒到外层 catch，把"已装好"报成"安装失败"。
+            try {
+              await authStore.fetchUser()
+            } catch {
+              /* token 已生效，忽略 */
+            }
+            adminAutoLoggedIn.value = true
             break
           }
           if (i === loginRetries) break
@@ -1136,6 +1171,8 @@ export const useOOBE = () => {
     // R1-CEx-2: SSE 超时 / 轮询状态 + UI 主动取消
     installSnapshotState,
     cancelInstallWatch,
+    // 安装后自动登录是否成功（完成页文案的唯一依据）
+    adminAutoLoggedIn,
     // backend connection (O series Step1)
     effectiveApiBase,
     setBackendApiBase,

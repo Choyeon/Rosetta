@@ -598,7 +598,6 @@
     "tlsHintRisk": "继续提交将导致管理员密码、登录令牌、Cookie 均以明文形式在公网传输，存在账户被盗的严重安全风险。",
     "installSnapshotTimeout": "安装进度推送超时",
     "installSnapshotPolling": "正在通过快照接口核对安装状态…",
-    "installSnapshotRetryBtn": "重试连接",
     "installSnapshotCancelBtn": "取消等待",
     "installSnapshotTimeoutDetail": "安装进度 30 秒内未收到任何事件（SSE 通道可能因网络或代理中断）。系统正在以快照方式核对真实安装结果，不会丢失进度。",
     "installSnapshotPollingDetail": "快照轮询中：每 5 秒查询一次后端安装状态，最多尝试 3 次。若后端实际已完成会自动进入完成页。",
@@ -638,7 +637,9 @@
     "credEmail": "管理员邮箱",
     "credAdminUrl": "后台入口",
     "credSiteUrl": "站点地址",
-    "credNote": "密码不会再次显示，请妥善保存。系统已自动为你登录，可直接进入后台。"
+    "credNote": "密码不会再次显示，请妥善保存。",
+    "credAutoLoginOk": "系统已自动为你登录，可直接进入后台。",
+    "credAutoLoginFailed": "自动登录未成功，请使用上面的账号手动登录后台。"
   },
   "archive": {
     "backToArchive": "返回完整归档",

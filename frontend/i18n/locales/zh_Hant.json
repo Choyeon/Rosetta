@@ -598,7 +598,6 @@
     "tlsHintRisk": "繼續提交將導致管理員密碼、登入權杖、Cookie 皆以明文形式在公網傳輸，存在帳號被盜的嚴重安全風險。",
     "installSnapshotTimeout": "安裝進度推送逾時",
     "installSnapshotPolling": "正在透過快照介面核對安裝狀態…",
-    "installSnapshotRetryBtn": "重試連線",
     "installSnapshotCancelBtn": "取消等待",
     "installSnapshotTimeoutDetail": "安裝進度 30 秒內未收到任何事件（SSE 通道可能因網路或代理中斷）。系統正在以快照方式核對真實安裝結果，不會遺失進度。",
     "installSnapshotPollingDetail": "快照輪詢中：每 5 秒查詢一次後端安裝狀態，最多嘗試 3 次。若後端實際已完成會自動進入完成頁。",
@@ -638,7 +637,9 @@
     "credEmail": "管理員電子郵件",
     "credAdminUrl": "後台入口",
     "credSiteUrl": "網站地址",
-    "credNote": "密碼不會再次顯示，請妥善保存。系統已自動為你登入，可直接進入後台。"
+    "credNote": "密碼不會再次顯示，請妥善保存。",
+    "credAutoLoginOk": "系統已自動為你登入，可直接進入後台。",
+    "credAutoLoginFailed": "自動登入未成功，請使用上面的帳號手動登入後台。"
   },
   "archive": {
     "backToArchive": "返回完整歸檔",

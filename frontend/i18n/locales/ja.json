@@ -598,7 +598,6 @@
     "tlsHintRisk": "続行すると管理者パスワード・ログイントークン・Cookie が公衆ネットワーク上を平文で流れ、アカウント乗っ取りの重大なリスクとなります。",
     "installSnapshotTimeout": "インストール進捗ストリームがタイムアウト",
     "installSnapshotPolling": "スナップショット API でインストール状態を確認中…",
-    "installSnapshotRetryBtn": "再接続",
     "installSnapshotCancelBtn": "待機をキャンセル",
     "installSnapshotTimeoutDetail": "30 秒間進捗イベントが受信されていません（ネットワークまたはプロキシにより SSE 経路が切断された可能性）。現在スナップショット方式で真のインストール結果を照合中です。進捗は失われません。",
     "installSnapshotPollingDetail": "スナップショットポーリング：5 秒ごとにバックエンドのインストール状態を確認し、最大 3 回試行します。バックエンド側で実際に完了していれば自動的に完了画面へ進みます。",
@@ -638,7 +637,9 @@
     "credEmail": "管理者メールアドレス",
     "credAdminUrl": "管理画面",
     "credSiteUrl": "サイト URL",
-    "credNote": "パスワードは再表示できません。大切に保管してください。自動ログイン済みです。"
+    "credNote": "パスワードは再表示できません。大切に保管してください。",
+    "credAutoLoginOk": "自動でログイン済みです。そのまま管理画面へ進めます。",
+    "credAutoLoginFailed": "自動ログインに失敗しました。上記のユーザー名とパスワードで手動ログインしてください。"
   },
   "archive": {
     "backToArchive": "全アーカイブに戻る",

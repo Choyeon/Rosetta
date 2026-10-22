@@ -598,7 +598,6 @@
     "tlsHintRisk": "Proceeding will send your admin password, login tokens and cookies in plaintext over the public internet — a critical account-theft risk.",
     "installSnapshotTimeout": "Installation progress stream timed out",
     "installSnapshotPolling": "Verifying installation state via snapshot API…",
-    "installSnapshotRetryBtn": "Reconnect",
     "installSnapshotCancelBtn": "Cancel wait",
     "installSnapshotTimeoutDetail": "No progress events were received for 30 seconds (the SSE channel may have been dropped by network or proxy). The system is now reconciling the true installation state via snapshot — your progress is not lost.",
     "installSnapshotPollingDetail": "Snapshot polling: querying backend install status every 5 seconds, up to 3 times. If the backend actually completed, we will automatically advance to the success screen.",
@@ -638,7 +637,9 @@
     "credEmail": "Admin email",
     "credAdminUrl": "Admin panel",
     "credSiteUrl": "Site URL",
-    "credNote": "Your password will not be shown again — store it safely. You are already signed in."
+    "credNote": "Your password will not be shown again — store it safely.",
+    "credAutoLoginOk": "You are already signed in and can go straight to the admin.",
+    "credAutoLoginFailed": "Auto sign-in did not succeed. Use the username and password above to log in manually."
   },
   "archive": {
     "backToArchive": "Back to full archive",
