@@ -10,6 +10,7 @@
 import { toast as sonnerToast } from 'vue-sonner'
 import type { UseFetchOptions } from '#app'
 import { useAuthStore } from '~~/stores/auth'
+import { DEFAULT_LOCALE_CODE, localeCodeFromPath } from '~~/lib/rosetta-themes'
 import {
   extractApiErrorMessage,
   isOobeRequiredError,
@@ -90,11 +91,11 @@ function safeToastError(message: string) {
  *     客户端 setup 同步阶段得到 en/ja/zh_Hant，两端 useFetch key 与 query 对不上，
  *     导致整页 Hydration mismatch + 首屏重复请求。
  *  2. 客户端「在 Nuxt 上下文里」调用（setup/plugin/middleware/useFetch 同步阶段）
- *     也必须走 $i18n.locale，因为 @nuxtjs/i18n 通过 cookie 保证 SSR 与客户端初始
- *     locale 完全一致。此时绝对不能读 localStorage，否则两边计算的 useFetch key
- *     对不上，Nuxt 会报 Cache key mismatch。
- *  3. 仅当「不在 Nuxt 上下文」（事件回调、独立工具函数）且是客户端时，才允许
- *     退化到 localStorage / navigator。
+ *     也必须走 $i18n.locale，它由 URL 前缀决定，SSR / 客户端两端一致。此时绝对不能
+ *     读 localStorage，否则两边计算的 useFetch key 对不上，Nuxt 会报 Cache key mismatch。
+ *  3. 「不在 Nuxt 上下文」（事件回调、独立工具函数）且是客户端时，按 **当前 URL 前缀**
+ *     推导（localeCodeFromPath）。语言真相只有 URL 前缀（AGENTS §2.3.3.6），
+ *     绝不允许再用 localStorage / navigator / rosetta_lang cookie 猜语言。
  */
 export function currentLocale(): string {
   // 1) 最优先：在 Nuxt 上下文内（setup / plugin / middleware / useFetch options 同步计算阶段）
@@ -108,24 +109,18 @@ export function currentLocale(): string {
     /* not inside Nuxt setup context; fall through */
   }
 
-  // 2) SSR 兜底：不可能走到 localStorage / navigator，直接返回 'zh'。
+  // 2) SSR 兜底：拿不到 Nuxt 上下文就没有当前 URL，只能按默认语言（两端一致的写法）。
   const serverSide = typeof import.meta !== 'undefined' && !!(import.meta as ImportMeta).server
-  if (serverSide) return 'zh'
+  if (serverSide) return DEFAULT_LOCALE_CODE
 
-  // 3) 不在 Nuxt 上下文且是客户端：事件回调 / 独立工具函数里才允许读本地。
+  // 3) 不在 Nuxt 上下文且是客户端（事件回调 / 独立工具函数）：真相仍然是当前 URL 前缀。
+  //    这里曾经读 localStorage('locale')（全仓没有任何写入方）与 navigator.language，
+  //    于是"浏览器是英文"就能让一个简体页面发英文请求；rosetta_lang cookie 记的是
+  //    "上次去的语言"，同理与当前这一页无关。三样一律不用。
   if (typeof window !== 'undefined') {
-    try {
-      const stored = localStorage.getItem('locale')
-      if (stored) return stored
-    } catch {
-      /* storage disabled */
-    }
-    const nav = navigator.language || (navigator as { userLanguage?: string }).userLanguage
-    if (nav?.startsWith('en')) return 'en'
-    if (nav?.startsWith('ja')) return 'ja'
-    if (nav?.startsWith('zh-Hant') || nav?.startsWith('zh-TW') || nav?.startsWith('zh-HK')) return 'zh_Hant'
+    return localeCodeFromPath(window.location.pathname)
   }
-  return 'zh'
+  return DEFAULT_LOCALE_CODE
 }
 
 /**

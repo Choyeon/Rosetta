@@ -290,8 +290,9 @@ const handleSetLocale = async (code: string) => {
   await setLocale(code as 'zh' | 'en' | 'ja' | 'zh_Hant')
   if (!import.meta.client) return
   try {
-    // 单一持久位：rosetta_lang 既给后端 i18n 中间件读，也给
-    // locale-prefix.global.client.ts 做跨页保序（@nuxtjs/i18n 的语言检测已整个关掉）。
+    // 单一持久位：rosetta_lang 只给 locale-prefix.global.client.ts 做跨页保序
+    // （接口语言一律由 URL 前缀决定：lang 参数 + Accept-Language，后端不再读这枚 cookie；
+    // @nuxtjs/i18n 的语言检测已整个关掉）。
     document.cookie = `rosetta_lang=${code}; path=/; max-age=31536000; SameSite=Lax`
   } catch {
     /* ignore */

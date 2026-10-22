@@ -775,7 +775,8 @@
     "fieldConfirmPassword": "新しいパスワード（確認）",
     "savePassword": "パスワードを変更",
     "passwordChanged": "パスワードを変更しました。再度ログインしてください",
-    "passwordMismatch": "新しいパスワードが一致しません"
+    "passwordMismatch": "新しいパスワードが一致しません",
+    "passwordFieldsRequired": "先に現在のパスワードと新しいパスワードを入力してください。"
   },
   "posts": {
     "allCategories": "すべてのカテゴリー",
@@ -1031,7 +1032,10 @@
     "passwordReset": "パスワードをリセットしました。再度ログインしてください。",
     "passwordMismatch": "パスワードが一致しません",
     "backToLogin": "ログインに戻る",
-    "devCodeHint": "開発環境のみのコード表示：{code}（本番では表示されません）"
+    "devCodeHint": "開発環境のみのコード表示：{code}（本番では表示されません）",
+    "resendWarn": "再送信すると前のメールの確認コードは無効になります。最新のメールだけをご利用ください。",
+    "whyNeedCode": "先に 6 桁の確認コード（数字のみ）を入力してください。",
+    "whyNeedPassword": "新しいパスワードを入力してください。"
   },
   "authors": {
     "eyebrow": "作者プロフィール",

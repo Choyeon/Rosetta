@@ -58,7 +58,7 @@ _FALLBACK_COVER_SIZE = "1600/900"
         "公开接口、无需鉴权。获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。"
         "若尚未配置任何轮播，则用近 30 天高热度文章自动填充（标题 / 摘要 / 封面 / 文章链接），"
         "这些兜底项带负 ID、不落库、不可在后台编辑。"
-        "lang 支持 zh|en|ja|zh_Hant，缺省按请求头与 rosetta_lang cookie 推断。"
+        "lang 支持 zh|en|ja|zh_Hant，缺省按 Accept-Language 请求头推断（语言真相只有 URL 前缀，不读 cookie）。"
     ),
 )
 async def list_active_hero_slides(

@@ -4,7 +4,7 @@
 //    useAuthStore 等 composable，避免在 Vite diagnostics 热链路上触发 NUXT_E1001。
 //    （lib/utils 是无 Nuxt 上下文依赖的纯函数库，import 它不破坏该解耦）
 //  - 仅客户端生效（SSR 时由各页面 useSeoMeta/useHead 生成标题，避免双链路冲突）。
-import { matchesNeutralRoot } from '~~/lib/rosetta-themes'
+import { localeCodeFromPath, matchesNeutralRoot } from '~~/lib/rosetta-themes'
 import { hexToHsl, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
 
 function applyAppearance(primary: string, accent: string) {
@@ -41,7 +41,10 @@ async function loadBrand(): Promise<BrandInfo> {
     const ctrl = new AbortController()
     const timer = setTimeout(() => ctrl.abort(), 10000)
     const cfg = await $fetch<Record<string, unknown>>('/api/config', {
-      headers: { 'Accept-Language': document.documentElement.lang || navigator.language || 'zh-CN' },
+      // 语言真相 = 当前 URL 前缀（AGENTS §2.3.3.6）。这里曾用
+      // `document.documentElement.lang || navigator.language`，浏览器偏好能把简体页面
+      // 的 /api/config 判成繁体，站点名/副标题跟着翻。
+      headers: { 'Accept-Language': localeCodeFromPath(window.location.pathname) },
       signal: ctrl.signal,
       timeout: 10000
     })

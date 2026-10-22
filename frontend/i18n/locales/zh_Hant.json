@@ -775,7 +775,8 @@
     "fieldConfirmPassword": "確認新密碼",
     "savePassword": "修改密碼",
     "passwordChanged": "密碼修改成功，請重新登入",
-    "passwordMismatch": "兩次輸入的新密碼不一致"
+    "passwordMismatch": "兩次輸入的新密碼不一致",
+    "passwordFieldsRequired": "請先填寫目前密碼與新密碼。"
   },
   "posts": {
     "allCategories": "所有分類",
@@ -1031,7 +1032,10 @@
     "passwordReset": "密碼已重設，請重新登入。",
     "passwordMismatch": "兩次輸入的密碼不一致",
     "backToLogin": "返回登入",
-    "devCodeHint": "開發環境回顯驗證碼：{code}（生產環境不會出現本提示）"
+    "devCodeHint": "開發環境回顯驗證碼：{code}（生產環境不會出現本提示）",
+    "resendWarn": "重新發送會作廢上一封郵件裡的驗證碼，請只使用最新一封。",
+    "whyNeedCode": "請先填寫 6 位驗證碼（只含數字）。",
+    "whyNeedPassword": "請填寫新密碼。"
   },
   "authors": {
     "eyebrow": "作者主頁",

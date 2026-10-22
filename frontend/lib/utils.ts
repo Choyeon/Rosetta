@@ -98,15 +98,51 @@ export function hexToHsl(hex: string): { h: number, s: number, l: number } | nul
 export interface ApiErrorBody {
   message?: string
   error_code?: string
-  errors?: Array<{ field?: string, message?: string }>
+  /**
+   * 两种形状都真实存在，调用方不可只认一种：
+   * - `{field,message,type}`：FastAPI 请求校验（RequestValidationError / main.py 包络）
+   * - 裸字符串：业务侧自己拼的强度规则清单（如 `core/password_policy.validate_password`）
+   */
+  errors?: Array<{ field?: string, message?: string } | string>
   detail?: unknown
   [k: string]: unknown
+}
+
+/** errors[] 单项 → 可读文案；认不出形状返回空串。 */
+function apiErrorItemText(item: unknown): string {
+  if (typeof item === 'string') return item
+  if (item && typeof item === 'object') {
+    const m = (item as { message?: unknown }).message
+    if (typeof m === 'string') return m
+  }
+  return ''
+}
+
+/**
+ * 失败信封里的**全部**可读原因：`message` 在前、`errors[]` 逐条在后（去空去重）。
+ *
+ * 存在理由是 toast 只有一句话：密码强度这类"多条原因"的失败，只回 `message`
+ * （"新密码不符合强度要求"）用户无从知道缺了大写还是缺了数字，
+ * 表现即"点了没反应"。需要逐条展示的表单页走这里，不用 extractApiErrorMessage。
+ */
+export function extractApiErrorList(body: unknown): string[] {
+  if (!body || typeof body !== 'object') return []
+  const b = body as ApiErrorBody
+  const out: string[] = []
+  if (typeof b.message === 'string' && b.message) out.push(b.message)
+  if (Array.isArray(b.errors)) {
+    for (const item of b.errors) {
+      const text = apiErrorItemText(item)
+      if (text && !out.includes(text)) out.push(text)
+    }
+  }
+  return out
 }
 
 /**
  * 从错误响应体提取用户可读信息，纯函数、零依赖组件上下文，直接可测。
  *
- * 优先级：message → detail → errors[0].message → fallback。
+ * 优先级：message → detail → errors[0] → fallback。
  */
 export function extractApiErrorMessage(body: unknown, fallback: string): string {
   if (body && typeof body === 'object') {
@@ -114,8 +150,8 @@ export function extractApiErrorMessage(body: unknown, fallback: string): string 
     if (typeof b.message === 'string' && b.message) return b.message
     if (typeof b.detail === 'string' && b.detail) return b.detail
     if (Array.isArray(b.errors) && b.errors.length) {
-      const first = b.errors[0]
-      if (first && typeof first.message === 'string' && first.message) return first.message
+      const first = apiErrorItemText(b.errors[0])
+      if (first) return first
     }
   }
   return fallback

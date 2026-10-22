@@ -775,7 +775,8 @@
     "fieldConfirmPassword": "Confirm new password",
     "savePassword": "Change password",
     "passwordChanged": "Password changed, please sign in again",
-    "passwordMismatch": "The two new passwords do not match"
+    "passwordMismatch": "The two new passwords do not match",
+    "passwordFieldsRequired": "Fill in the current password and the new password first."
   },
   "posts": {
     "allCategories": "All categories",
@@ -1031,7 +1032,10 @@
     "passwordReset": "Password reset. Please sign in again.",
     "passwordMismatch": "The two passwords do not match",
     "backToLogin": "Back to sign in",
-    "devCodeHint": "Dev-only code echo: {code} (never shown in production)"
+    "devCodeHint": "Dev-only code echo: {code} (never shown in production)",
+    "resendWarn": "Sending again invalidates the code from the previous email, so use only the latest one.",
+    "whyNeedCode": "Enter the 6-digit code (digits only) first.",
+    "whyNeedPassword": "Enter a new password."
   },
   "authors": {
     "eyebrow": "Author",

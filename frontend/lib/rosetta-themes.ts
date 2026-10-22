@@ -52,6 +52,26 @@ export const I18N_URL_PREFIXES: readonly string[] = NON_DEFAULT_LOCALE_CODES.map
 /** robots.txt 这类纯前缀拼接需要的全部形态：默认语言裸路径 + 三个前缀。 */
 export const LOCALE_PATH_PREFIX_VARIANTS: readonly string[] = ['', ...I18N_URL_PREFIXES]
 
+/** prefix_except_default 里走裸路径的那一方（nuxt.config 的 defaultLocale 同值）。 */
+export const DEFAULT_LOCALE_CODE = 'zh'
+
+/**
+ * URL 路径 → 语言码（prefix_except_default 的反向算术）。
+ *
+ * 「当前这一页是什么语言」的唯一真相就是 URL 前缀（AGENTS §2.3.3.6），所以任何
+ * 拿不到 Nuxt i18n 上下文的地方（事件回调、独立插件、非 setup 期的请求）都用这个，
+ * 不要再读 localStorage / navigator.language / rosetta_lang cookie —— 那三样记录的是
+ * "浏览器偏好"或"上次去的语言"，与当前这一页无关；按它们发请求的实测表现是
+ * 简体页面拿到繁体接口数据，SSR 先渲简体、客户端补拉后翻回繁体。
+ */
+export function localeCodeFromPath(path: string | undefined | null): string {
+  if (!path) return DEFAULT_LOCALE_CODE
+  const hit = NON_DEFAULT_LOCALE_CODES.find(
+    code => path === `/${code}` || path.startsWith(`/${code}/`)
+  )
+  return hit ?? DEFAULT_LOCALE_CODE
+}
+
 /**
  * 剥掉开头的语言前缀，得到"中性"路径。只认整段：/encyclopedia 不是 /en 前缀。
  * 空/undefined 返回 ''（调用方按"无路径"处理）。

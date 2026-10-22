@@ -238,29 +238,28 @@ def get_language_from_request(
 
     优先级:
     1. 显式传入的 lang 查询参数
-    2. rosetta_lang Cookie（前端切换语言后写入，持久化）
-    3. Accept-Language 请求头
-    4. 默认语言 DEFAULT_LANGUAGE
+    2. Accept-Language 请求头
+    3. 默认语言 DEFAULT_LANGUAGE
+
+    这里**不再**读 `rosetta_lang` cookie：语言真相只有 URL 前缀（AGENTS §2.3.3.6），
+    而 cookie 是"这个人上次去的语言"，与"这一页是什么语言"是两回事。cookie 排在
+    Accept-Language 之前时的实测表现是：访客点过一次繁体，之后访问简体中文裸路径
+    `/posts/xxx` 时，凡是没带 `lang` 参数的接口（导航、分类/标签名、公告、留言板）
+    都返回繁体，页面 SSR 先渲染简体、客户端补拉后又翻回繁体。
+    该 cookie 现在只服务前端 `locale-prefix.global.client.ts` 的跨页保序，
+    由它把回访者导到正确前缀的 URL，再由 URL 决定接口语言。
     """
     # 1. 显式参数
     if lang_param:
         return normalize_language(lang_param)
 
-    # 2. Cookie
-    if request is not None:
-        cookie_lang = request.cookies.get("rosetta_lang")
-        if cookie_lang:
-            normalized = normalize_language(cookie_lang)
-            if normalized in LANGUAGE_CODES:
-                return normalized
-
-    # 3. Accept-Language 头
+    # 2. Accept-Language 头（useAPI / apiFetch 一律按当前 URL 语言写入）
     if request is not None:
         accept_language = request.headers.get("Accept-Language")
         if accept_language:
             return parse_accept_language(accept_language)
 
-    # 4. 默认
+    # 3. 默认
     return DEFAULT_LANGUAGE
 
 

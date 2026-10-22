@@ -198,8 +198,10 @@ themes/
 - 四种语言：`zh` / `en` / `ja` / `zh_Hant`（不新增）
 - 模板：`{{ $t('posts.readingTime', { n: minutes }) }}`
 - 脚本：`const { t, locale, setLocale } = useI18n()`
-- 后端语言传递：`rosetta_lang` cookie
-- 语言切换事件：`rosetta-lang-change`
+- 后端语言传递：请求头 `Accept-Language`，值由 **URL 前缀**推导（`localeCodeFromPath`）；
+  后端不看 `rosetta_lang` cookie——它只给 `locale-prefix.global.client.ts` 做回访跨页保序
+- 语言切换：`setLocale(code)` 之后必须跳 `applyLocalePrefix(route.fullPath, code)` 的同页 URL；
+  本仓**没有** `rosetta-lang-change` 之类的自定义事件，动态内容重取靠"URL 变了 + `useAPI` 缓存 key 带 locale"
 
 ## 状态管理
 
@@ -306,6 +308,7 @@ pnpm build && pnpm preview
 - **Hydration mismatch**：`ref()` 默认值 SSR/客户端不同 → 用 `useState` 或 `onMounted` 赋值
 - **SSR 登录态缺失**：需要用户态的接口用 `apiFetch` 而非 setup 期 `useAPI`
 - **i18n 双目录陷阱**：只改 `i18n/locales/*.json`，根 `locales/` 是废弃影子目录
-- **语言切换后动态内容未刷新**：组件监听 `rosetta-lang-change`
+- **语言切换后动态内容未刷新**：只调 `setLocale` 不改 URL → 内容与地址栏语言互相判逆；
+  正确做法见上文「语言切换」，靠 `locale-prefix.global.client.ts` + `useAPI` 的 locale 缓存 key
 - **主题切换后 admin 错乱**：style.css blanket 规则没加守卫 → 立即修复
 - **`/api/api` 双前缀**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀

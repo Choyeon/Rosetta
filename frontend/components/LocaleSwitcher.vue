@@ -1,8 +1,9 @@
 <!--
   顶栏语言下拉（DropdownMenuRadioGroup 受控于当前 locale）。
-  语言持久位只有一枚：rosetta_lang —— 后端 i18n 中间件按它决定接口返回的语言，
-  前端 locale-prefix.global.client.ts 按它给裸路径补语言前缀。（@nuxtjs/i18n 自带的
-  浏览器语言检测已在 nuxt.config 关闭，所以不再写它约定的 i18n_redirected。）
+  语言持久位只有一枚：rosetta_lang —— 只给前端 locale-prefix.global.client.ts 按它
+  给裸路径补语言前缀；接口返回的语言一律由 URL 前缀决定（lang 参数 + Accept-Language），
+  后端不读这枚 cookie。（@nuxtjs/i18n 自带的浏览器语言检测已在 nuxt.config 关闭，
+  所以不再写它约定的 i18n_redirected。）
   策略：prefix_except_default —— 中文裸路径 /，其它三语 /en /ja /zh_Hant 前缀。
   切换必须"setLocale + 跳到同页的目标语言 URL"两步都做，只 setLocale 会让内容换了
   语言、地址栏仍是默认语言路径，与 canonical/hreflang 的判定互相矛盾。

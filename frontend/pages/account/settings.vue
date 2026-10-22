@@ -368,6 +368,21 @@
           </div>
         </div>
 
+        <!-- 与 /forgot-password 同口径：失败原因常驻列出（角标 toast 3.6 秒即消失，
+             只靠它的表现就是"点了保存没反应"），强度规则多条时一句话说不完 -->
+        <ul
+          v-if="passwordFailures.length"
+          class="flex flex-col gap-1 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          <li
+            v-for="line in passwordFailures"
+            :key="line"
+          >
+            {{ line }}
+          </li>
+        </ul>
+
         <div class="flex items-center gap-3">
           <Button
             type="submit"
@@ -406,6 +421,7 @@ import { apiFetch, useAPI } from '~~/composables/useApi'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
+import { extractApiErrorList } from '~~/lib/utils'
 import { useI18n } from 'vue-i18n'
 
 /* UserPreferenceResponse 里前端要用的字段（theme 是死字段，见文件头约束 1） */
@@ -588,12 +604,20 @@ async function savePreferences() {
 // ===== 修改密码 =====
 const passwords = reactive({ old: '', new: '', confirm: '' })
 const passwordErrors = reactive<Record<string, string>>({})
+const passwordFailures = ref<string[]>([])
 const savingPassword = ref(false)
+// 改任意一项就撤下上一次的失败清单，避免"已经改对了还挂着旧错误"
+watch(passwords, () => { passwordFailures.value = [] })
 
 async function savePassword() {
   passwordErrors.new = passwords.new !== passwords.confirm ? t('account.passwordMismatch') : ''
   passwordErrors.confirm = passwordErrors.new
   if (passwordErrors.new) return
+  // 空字段不发请求：否则后端只会回"旧密码错误"，用户看不出是自己没填
+  if (!passwords.old || !passwords.new) {
+    passwordFailures.value = [t('account.passwordFieldsRequired')]
+    return
+  }
 
   savingPassword.value = true
   try {
@@ -605,14 +629,18 @@ async function savePassword() {
     authStore.clearTokens()
     toast.success(res?.message || t('account.passwordChanged'))
     await navigateTo('/login')
-  } catch {
-    // 旧密码错误 / 强度不足：apiFetch 已 toast，用户留在本页改输入即可
+  } catch (err) {
+    // 旧密码错误 / 强度不足：toast 之外常驻列出，用户留在本页改输入即可
+    const lines = extractApiErrorList((err as { data?: unknown }).data)
+    passwordFailures.value = lines.length
+      ? lines
+      : [String((err as Error | null)?.message ?? '')].filter(Boolean)
   } finally {
     savingPassword.value = false
   }
 }
 
-useHead(() => ({ title: `${t('account.settingsTitle')} · ${locale.value}` }))
+useHead(() => ({ title: t('account.settingsTitle') }))
 // 见 account/index.vue 同口径：登录态页面自带 noindex。
 useNoindexPage()
 </script>
