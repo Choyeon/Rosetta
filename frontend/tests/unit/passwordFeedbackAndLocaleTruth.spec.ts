@@ -59,7 +59,7 @@ describe('接口语言不得由 navigator / localStorage 猜', () => {
       const bad = lines.filter(l =>
         /navigator\.language/.test(l)
         || /document\.documentElement\.lang/.test(l)
-        /localStorage\.getItem\(['"`]locale['"`]\)/.test(l)
+        || /localStorage\.getItem\(['"`]locale['"`]\)/.test(l)
       )
       expect(bad, `${p} 仍从浏览器猜语言：\n${bad.join('\n')}`).toEqual([])
     }

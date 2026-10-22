@@ -50,12 +50,17 @@ FRONTEND_CONSUMED: list[tuple[str, str, str]] = [
         "`/favorites/folders/${folderId}`",
         "composable",
     ),
+    # 按收藏行 ID 删除：只在 post 为 null 的孤儿行上使用（by-post 变体拿不到 post_id）。
+    (
+        "DELETE /api/favorites/{favorite_id}",
+        "`/favorites/${favoriteId}`",
+        "composable",
+    ),
 ]
 
-# 后端保留、前端刻意不用（按收藏行 ID 的两个变体）。
+# 后端保留、前端刻意不用（按收藏行 ID 的写变体）。
 INTENTIONALLY_UNUSED = [
     "PUT /api/favorites/{favorite_id}",
-    "DELETE /api/favorites/{favorite_id}",
 ]
 
 _VERBS = ("get", "post", "put", "patch", "delete")
@@ -85,13 +90,17 @@ def test_favorite_operation_exists_and_has_a_frontend_call_site(operation, liter
 
 @pytest.mark.parametrize("operation", INTENTIONALLY_UNUSED)
 def test_unused_by_row_variants_stay_documented(operation):
-    """按行 ID 的两个变体仍未被前端使用，但覆盖度文档必须写明这是决定而不是缺口。"""
+    """按行 ID 的写变体仍未被前端使用，但覆盖度文档必须写明这是决定而不是缺口。"""
     assert operation in _operations(), f"{operation} 已从后端消失，文档记录可以一并撤掉"
-    # 前端没有 /favorites/{行 ID} 形态的调用点；by-post 变体带 /post/ 段，不会命中这条
-    assert "`/favorites/${" not in _frontend_text("composable"), (
-        f"前端出现了按收藏行 ID 的调用点：要么把它补进 FRONTEND_CONSUMED，"
+    # 前端确有 /favorites/{行 ID} 形态的调用点（by-row DELETE，孤儿行唯一出口），
+    # 所以只能按动词判定：那一行的调用里不得出现 PUT。
+    by_row_lines = [
+        line for line in _frontend_text("composable").splitlines() if "`/favorites/${" in line
+    ]
+    verb, path = operation.split(" ", 1)
+    assert not any(verb in line for line in by_row_lines), (
+        f"前端出现了 {operation} 的调用点：要么把它补进 FRONTEND_CONSUMED，"
         f"要么撤销 {operation} 的『刻意不消费』记录"
     )
-    verb, path = operation.split(" ", 1)
     doc = COVERAGE_DOC.read_text(encoding="utf-8")
     assert path in doc, f"{verb} {path} 未在 frontend/docs/API_COVERAGE.md 记录为刻意不消费"

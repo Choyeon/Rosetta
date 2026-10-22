@@ -608,9 +608,10 @@ async def password_reset(
     try:
         await service.force_set_password(user.id, body.new_password)
     except ValueError as exc:
+        # 与管理员重置口同口径：detail 直接是 service 给的人话，不另造错误码
+        # （错误码清单由 gen_error_codes.py 反向扫描，无消费点的码只会多一行误导文档）。
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
-            detail={"message": str(exc), "error_code": "PASSWORD_UNCHANGED"},
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
         ) from exc
 
     await db.commit()
