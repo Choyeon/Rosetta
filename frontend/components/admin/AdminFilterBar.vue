@@ -155,9 +155,12 @@ function doReset() {
 
 <template>
   <div class="card-surface no-glow flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between p-3 md:p-4 rounded-[14px] border border-border/60 bg-card/60 backdrop-blur-sm shadow-[0_1px_2px_rgba(0,0,0,0.03)]">
-    <!-- 左：关键字 + 状态 + 日期范围 -->
-    <div class="flex flex-col sm:flex-row gap-3 flex-1 flex-wrap items-stretch sm:items-center">
-      <div class="relative sm:min-w-[240px] flex-1 max-w-md">
+    <!-- 左：关键字 + 状态 + 日期范围
+         窄屏（<sm）用两列栅格而不是竖排堆叠：状态/分类这类 140px 窄控件并排一行，
+         日期范围整行（两个 date input + 箭头压不进半列）。order-last 只是将日期条挪到
+         本组末尾，避免它把状态与 #extraFilters 之间劈出一个空洞。 -->
+    <div class="grid grid-cols-2 gap-3 flex-1 sm:flex sm:flex-row sm:flex-wrap sm:items-center">
+      <div class="relative col-span-2 sm:min-w-[240px] sm:flex-1 max-w-md">
         <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
         <Input
           :model-value="localKeyword"
@@ -173,7 +176,7 @@ function doReset() {
         :model-value="String(localStatus)"
         @update:model-value="updateStatus"
       >
-        <SelectTrigger class="w-[140px] h-9 rounded-[10px]">
+        <SelectTrigger class="w-full h-9 rounded-[10px] sm:w-[140px]">
           <SelectValue placeholder="状态" />
         </SelectTrigger>
         <SelectContent>
@@ -189,7 +192,7 @@ function doReset() {
 
       <div
         v-if="showDateRange"
-        class="flex flex-col sm:flex-row gap-2 sm:items-center rounded-[12px] border border-border/60 bg-background/60 px-3 py-2"
+        class="order-last col-span-2 flex flex-col sm:flex-row gap-2 sm:items-center rounded-[12px] border border-border/60 bg-background/60 px-3 py-2 sm:order-none"
       >
         <Tooltip>
           <TooltipTrigger as-child>

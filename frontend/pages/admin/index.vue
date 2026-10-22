@@ -1,7 +1,10 @@
 <!--
   后台仪表盘首页：ECharts 出访趋势/KPI 卡片/健康雷达/合并活动线，数据经 useAdminManage wrapper + Promise.allSettled 并行拉取。
   契约：statsRaw 缺失字段需规范化，且 health_score/metric_scores 的 null 必须保持 null——填 0 会把"未取到数据"渲染成红色"危急"假告警；
-  活动线由 posts/pending-comments/activities 三源合并，必须按真实时间戳 at 倒序而非按 id（id 排序会退化成按来源分组）。
+  活动线由 posts/pending-comments/activities 三源合并，必须按真实时间戳 at 倒序而非按 id（id 排序会退化成按来源分组）；
+  图表几何不吃 CSS 断点：圆环与热门榜一律按**实测容器宽**算（useElementSize + lib/adminChartLayout），
+  写死百分比 radius 会在扁容器里把圆环推出画布；环形图的 legend 必须显式给 data，
+  否则 ECharts 会从所有 series 名收集，中心装饰 gauge 变成一行假数据项。
 -->
 <script setup lang="ts">
 import {
@@ -42,6 +45,11 @@ import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import { useAuthStore } from '~~/stores/auth'
 import { useToast } from '~~/composables/useToast'
 import { useTheme } from '~~/composables/useTheme'
+import {
+  donutGeometry,
+  topArticleAxisTicks,
+  topArticleLabelLimit
+} from '~~/lib/adminChartLayout'
 import {
   fetchDashboardStats,
   fetchRecentPosts,
@@ -535,6 +543,15 @@ const kpiCards = computed<KpiCardDef[]>(() => {
 
 // ============== 各图表 computed options ==============
 
+/**
+ * 图表容器实测尺寸：卡片宽度由 CSS 栅格决定（xl 时 4/12 ≈ 395px，窄屏时是整屏宽 − 侧栏），
+ * 视口断点推不出容器宽度，所以圆环几何与标题截断一律按实测值算（口径见 lib/adminChartLayout）。
+ */
+const donutEl = ref<HTMLElement | null>(null)
+const topArticlesEl = ref<HTMLElement | null>(null)
+const { width: donutW, height: donutH } = useElementSize(donutEl)
+const { width: topArticlesW } = useElementSize(topArticlesEl)
+
 function shortDateLabels(raw: string[]): string[] {
   return raw.map((d) => {
     // YYYY-MM-DD -> M/D
@@ -601,7 +618,8 @@ const trafficOption = computed(() => {
         data: labels,
         boundaryGap: false,
         axisLine: { lineStyle: { color: P.border } },
-        axisLabel: { color: P.textSoft, fontSize: 11 },
+        // 30 天档在窄卡片里日期标签会挤成一片，重叠的直接不画
+        axisLabel: { color: P.textSoft, fontSize: 11, hideOverlap: true },
         axisTick: { show: false }
       },
       yAxis: {
@@ -695,7 +713,7 @@ const trafficOption = computed(() => {
       type: 'category',
       data: labels,
       axisLine: { lineStyle: { color: P.border } },
-      axisLabel: { color: P.textSoft, fontSize: 11 },
+      axisLabel: { color: P.textSoft, fontSize: 11, hideOverlap: true },
       axisTick: { show: false }
     },
     yAxis: {
@@ -771,6 +789,7 @@ const contentDonutOption = computed(() => {
     { value: s.pendingComments, name: '待审评论', color: P.rose },
     { value: s.usersCount, name: '注册用户', color: P.indigo }
   ].filter(d => d.value > 0)
+  const geo = donutGeometry(donutW.value, donutH.value, data.length || 5)
 
   return {
     animationDuration: 900,
@@ -789,20 +808,20 @@ const contentDonutOption = computed(() => {
         + `<span style="color:${P.textSoft};font-size:11px">${p.percent ?? 0}%</span></div>`
     },
     legend: {
-      orient: 'vertical',
-      right: 4,
-      top: 'center',
+      // 必须显式给 data：legend 缺省会从**所有** series 名收集，中心装饰那条 gauge
+      // 因此被当成一个数据项，图上凭空多出一行 "center"。
+      data: data.map(d => d.name),
+      ...geo.legend,
       itemWidth: 9,
       itemHeight: 9,
-      itemGap: 12,
       textStyle: { color: P.textSoft, fontSize: 11 }
     },
     series: [
       {
         name: '运营结构',
         type: 'pie',
-        radius: ['58%', '82%'],
-        center: ['32%', '50%'],
+        radius: geo.radius,
+        center: geo.center,
         avoidLabelOverlap: true,
         itemStyle: {
           borderRadius: 6,
@@ -822,12 +841,12 @@ const contentDonutOption = computed(() => {
           itemStyle: { color: d.color }
         }))
       },
-      // 装饰：中心空心文字
+      // 装饰：中心空心文字（与圆环同一套像素几何，否则数字会偏到环外）
       {
-        name: 'center',
+        name: '全站内容体量',
         type: 'gauge',
-        center: ['32%', '50%'],
-        radius: '40%',
+        center: geo.labelCenter,
+        radius: geo.labelRadius,
         startAngle: 0,
         endAngle: 360,
         pointer: { show: false },
@@ -844,7 +863,7 @@ const contentDonutOption = computed(() => {
         },
         detail: {
           offsetCenter: [0, '20%'],
-          fontSize: 20,
+          fontSize: geo.detailFontSize,
           fontWeight: 700,
           color: P.text,
           valueAnimation: true,
@@ -866,16 +885,17 @@ const hasTopArticles = computed(() => (statsRaw.value?.top_articles ?? []).lengt
 const topArticlesOption = computed(() => {
   const P = palette.value
   const arts = (statsRaw.value?.top_articles ?? []).slice(0, 6)
+  const titleLimit = topArticleLabelLimit(topArticlesW.value)
   const titles = arts.map((a) => {
     const t = String(a.title || 'Untitled')
-    return t.length > 22 ? `${t.slice(0, 21)}…` : t
+    return t.length > titleLimit ? `${t.slice(0, titleLimit - 1)}…` : t
   })
   const views = arts.map(a => a.views ?? 0)
   const comments = arts.map(a => a.comments_count ?? 0)
 
   return {
     animationDuration: 900,
-    grid: { left: 8, right: 36, top: 24, bottom: 8 },
+    grid: { left: 8, right: 36, top: 24, bottom: 8, containLabel: true },
     tooltip: {
       trigger: 'axis',
       axisPointer: { type: 'shadow' },
@@ -895,8 +915,9 @@ const topArticlesOption = computed(() => {
     },
     xAxis: {
       type: 'value',
+      splitNumber: topArticleAxisTicks(topArticlesW.value),
       splitLine: { lineStyle: { color: P.gridLine, type: 'dashed' } },
-      axisLabel: { color: P.textSoft, fontSize: 10 },
+      axisLabel: { color: P.textSoft, fontSize: 10, hideOverlap: true },
       axisLine: { show: false },
       axisTick: { show: false }
     },
@@ -1182,7 +1203,7 @@ const pillFor = (a: ActivityItem['accent']) =>
   <div class="flex flex-col gap-5 admin-dashboard-v2 animate-in">
     <!-- =============== HERO =============== -->
     <section
-      class="relative overflow-hidden rounded-2xl p-6 md:p-7 border"
+      class="relative overflow-hidden rounded-2xl p-4 sm:p-6 md:p-7 border"
       :class="heroShadowClass"
       :style="heroBgStyle"
     >
@@ -1390,7 +1411,7 @@ const pillFor = (a: ActivityItem['accent']) =>
     </section>
 
     <!-- =============== 6 KPI CARDS =============== -->
-    <section class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
+    <section class="grid grid-cols-1 min-[520px]:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6 gap-4">
       <div
         v-for="card in kpiCards"
         :key="card.key"
@@ -1650,8 +1671,8 @@ const pillFor = (a: ActivityItem['accent']) =>
       <!-- Content Donut (col 4/12) -->
       <Card class="xl:col-span-4 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
-          <div>
-            <CardTitle class="text-[15px]">
+          <div class="min-w-0">
+            <CardTitle class="text-[15px] truncate">
               内容构成
             </CardTitle>
             <CardDescription class="text-xs mt-0.5">
@@ -1660,14 +1681,17 @@ const pillFor = (a: ActivityItem['accent']) =>
           </div>
           <Badge
             variant="outline"
-            class="rounded-full h-5 px-2 text-[11px]"
+            class="rounded-full h-5 px-2 text-[11px] shrink-0"
           >
             <ActivityIcon class="size-3 mr-1 text-primary" />
             Live
           </Badge>
         </CardHeader>
         <CardContent class="pt-0 pb-3">
-          <div class="h-[260px] md:h-[300px] xl:h-[360px] -mx-2">
+          <div
+            ref="donutEl"
+            class="h-[300px] md:h-[300px] xl:h-[360px] -mx-2"
+          >
             <Skeleton
               v-if="loading"
               class="h-full w-full rounded-xl"
@@ -1688,8 +1712,8 @@ const pillFor = (a: ActivityItem['accent']) =>
       <!-- Top Articles (col 5/12) -->
       <Card class="xl:col-span-5 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
-          <div>
-            <CardTitle class="text-[15px]">
+          <div class="min-w-0">
+            <CardTitle class="text-[15px] truncate">
               热门文章 TOP
             </CardTitle>
             <CardDescription class="text-xs mt-0.5">
@@ -1701,7 +1725,7 @@ const pillFor = (a: ActivityItem['accent']) =>
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-8 rounded-lg text-muted-foreground"
+                class="h-8 rounded-lg text-muted-foreground shrink-0"
                 @click="navigateTo('/admin/content/posts')"
               >
                 更多
@@ -1719,7 +1743,10 @@ const pillFor = (a: ActivityItem['accent']) =>
           </Tooltip>
         </CardHeader>
         <CardContent class="pt-0 pb-3">
-          <div class="h-[240px] md:h-[280px] xl:h-[320px] -mx-2">
+          <div
+            ref="topArticlesEl"
+            class="h-[260px] md:h-[280px] xl:h-[320px] -mx-2"
+          >
             <Skeleton
               v-if="loading"
               class="h-full w-full rounded-xl"
@@ -1749,8 +1776,8 @@ const pillFor = (a: ActivityItem['accent']) =>
       <!-- System Health: Radar + Gauge (col 4/12) -->
       <Card class="xl:col-span-4 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
-          <div>
-            <CardTitle class="text-[15px]">
+          <div class="min-w-0">
+            <CardTitle class="text-[15px] truncate">
               系统健康
             </CardTitle>
             <CardDescription class="text-xs mt-0.5">
@@ -1759,7 +1786,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           </div>
           <Badge
             variant="outline"
-            class="rounded-full h-5 px-2 text-[11px]"
+            class="rounded-full h-5 px-2 text-[11px] shrink-0"
             :class="healthLevelClass"
           >
             <component
@@ -1814,8 +1841,8 @@ const pillFor = (a: ActivityItem['accent']) =>
       <!-- Active Commenters (col 3/12) -->
       <Card class="xl:col-span-3 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
-          <div>
-            <CardTitle class="text-[15px]">
+          <div class="min-w-0">
+            <CardTitle class="text-[15px] truncate">
               活跃评论者
             </CardTitle>
             <CardDescription class="text-xs mt-0.5">
@@ -1825,7 +1852,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           <Button
             variant="ghost"
             size="sm"
-            class="h-8 rounded-lg text-muted-foreground"
+            class="h-8 rounded-lg text-muted-foreground shrink-0"
             @click="navigateTo('/admin/users')"
           >
             社区
@@ -1935,8 +1962,8 @@ const pillFor = (a: ActivityItem['accent']) =>
     <section class="grid grid-cols-1 xl:grid-cols-12 gap-4">
       <Card class="xl:col-span-8 min-w-0 rounded-2xl overflow-hidden border-border/60 shadow-sm lift-hover glow-ring">
         <CardHeader class="flex-row items-center justify-between py-4">
-          <div>
-            <CardTitle class="text-[15px]">
+          <div class="min-w-0">
+            <CardTitle class="text-[15px] truncate">
               近期活动时间线
             </CardTitle>
             <CardDescription class="text-xs mt-0.5">
@@ -1946,7 +1973,7 @@ const pillFor = (a: ActivityItem['accent']) =>
           <Button
             variant="ghost"
             size="sm"
-            class="h-8 rounded-lg text-muted-foreground"
+            class="h-8 rounded-lg text-muted-foreground shrink-0"
             @click="navigateTo('/admin/tools/audit-logs')"
           >
             审计日志
