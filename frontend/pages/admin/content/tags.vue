@@ -197,11 +197,12 @@ onMounted(() => {
           />
         </div>
         <Button
-          class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
+          size="sm"
+          class="shadow-sm"
           @click="openNew"
         >
           <Plus data-icon="inline-start" />
-          <span>新建标签</span>
+          新建标签
         </Button>
       </div>
     </template>
@@ -248,24 +249,24 @@ onMounted(() => {
               class="absolute top-2 right-2 z-10 transition-opacity"
               :class="hoveredId === t.id ? 'opacity-100' : 'opacity-0 focus-within:opacity-100'"
             >
-              <div class="flex items-center gap-0.5 bg-white/95 backdrop-blur rounded-[8px] shadow-md border border-border p-0.5">
+              <div class="flex items-center gap-0.5 rounded-[8px] border border-border bg-background/95 p-0.5 shadow-md backdrop-blur">
                 <button
                   type="button"
-                  class="h-7 w-7 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                  class="h-9 w-9 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
                   title="编辑"
                   aria-label="编辑标签"
                   @click.stop="openEdit(t)"
                 >
-                  <Pencil class="size-3.5" />
+                  <Pencil class="size-4" />
                 </button>
                 <button
                   type="button"
-                  class="h-7 w-7 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-error-muted hover:text-destructive transition-colors"
+                  class="h-9 w-9 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-destructive-muted hover:text-destructive transition-colors"
                   title="删除"
                   aria-label="删除标签"
                   @click.stop="confirmDelete(t.id)"
                 >
-                  <Trash2 class="size-3.5" />
+                  <Trash2 class="size-4" />
                 </button>
               </div>
             </div>

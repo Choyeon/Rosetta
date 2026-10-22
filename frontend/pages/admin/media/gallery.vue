@@ -112,8 +112,7 @@
                     <div class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-0.5 shrink-0">
                       <Button
                         variant="ghost"
-                        size="icon"
-                        class="h-6 w-6"
+                        size="icon-sm"
                         title="编辑相册"
                         :aria-label="`编辑相册 ${plainText(a.title)}`"
                         @click.stop="openEditAlbum(a)"
@@ -122,8 +121,8 @@
                       </Button>
                       <Button
                         variant="ghost"
-                        size="icon"
-                        class="h-6 w-6 text-destructive hover:text-destructive"
+                        size="icon-sm"
+                        class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                         title="删除相册"
                         :aria-label="`删除相册 ${plainText(a.title)}`"
                         @click.stop="confirmDeleteAlbum(a.id)"
@@ -303,8 +302,8 @@
                 <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1">
                   <Button
                     variant="outline"
-                    size="icon"
-                    class="h-7 w-7 backdrop-blur-sm bg-background/70"
+                    size="icon-sm"
+                    class="backdrop-blur-sm bg-background/70"
                     title="设为封面"
                     :aria-label="`设为封面：${photoFilename(p)}`"
                     :disabled="!photoFullSrc(p) || coverSetting"
@@ -314,8 +313,8 @@
                   </Button>
                   <Button
                     variant="outline"
-                    size="icon"
-                    class="h-7 w-7 backdrop-blur-sm bg-background/70"
+                    size="icon-sm"
+                    class="backdrop-blur-sm bg-background/70"
                     title="编辑"
                     :aria-label="`编辑照片 ${photoFilename(p)}`"
                     @click.stop="openEditPhoto(p)"
@@ -324,8 +323,8 @@
                   </Button>
                   <Button
                     variant="destructive"
-                    size="icon"
-                    class="h-7 w-7 backdrop-blur-sm"
+                    size="icon-sm"
+                    class="backdrop-blur-sm"
                     title="删除"
                     :aria-label="`删除照片 ${photoFilename(p)}`"
                     @click.stop="confirmDeletePhoto(p.id)"
@@ -337,8 +336,8 @@
                 <div class="absolute bottom-2 left-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1">
                   <Button
                     variant="outline"
-                    size="icon"
-                    class="h-6 w-6 backdrop-blur-sm bg-background/70"
+                    size="icon-sm"
+                    class="backdrop-blur-sm bg-background/70"
                     :disabled="idx === 0 || sorting"
                     title="前移"
                     :aria-label="`前移照片 ${photoFilename(p)}`"
@@ -348,8 +347,8 @@
                   </Button>
                   <Button
                     variant="outline"
-                    size="icon"
-                    class="h-6 w-6 backdrop-blur-sm bg-background/70"
+                    size="icon-sm"
+                    class="backdrop-blur-sm bg-background/70"
                     :disabled="idx === photos.length - 1 || sorting"
                     title="后移"
                     :aria-label="`后移照片 ${photoFilename(p)}`"

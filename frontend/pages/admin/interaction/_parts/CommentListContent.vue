@@ -234,6 +234,7 @@
                     <Button
                       variant="ghost"
                       size="icon-sm"
+                      title="操作菜单"
                       :aria-label="`${noun}操作菜单`"
                     >
                       <MoreVertical data-icon="inline-start" />

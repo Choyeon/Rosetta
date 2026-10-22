@@ -29,7 +29,7 @@
         <Button
           variant="outline"
           size="sm"
-          class="rounded-xl text-error hover:text-error hover:bg-error-muted"
+          class="rounded-xl text-destructive hover:text-destructive hover:bg-destructive-muted"
           :disabled="items.length === 0"
           @click="emptyConfirmOpen = true"
         >
@@ -145,11 +145,11 @@
               <Button
                 variant="ghost"
                 size="icon-sm"
-                class="text-error hover:text-error hover:bg-error-muted"
+                class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                 aria-label="永久删除"
                 @click="deleteTarget = entry; confirmOpen = true"
               >
-                <Trash2 />
+                <Trash2 data-icon="inline-start" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>永久删除</TooltipContent>
@@ -170,20 +170,22 @@
             size="icon-sm"
             class="rounded-xl"
             :disabled="page <= 1"
+            title="上一页"
             aria-label="上一页"
             @click="gotoPage(page - 1)"
           >
-            <ChevronLeft />
+            <ChevronLeft data-icon="inline-start" />
           </Button>
           <Button
             variant="outline"
             size="icon-sm"
             class="rounded-xl"
             :disabled="page >= totalPages"
+            title="下一页"
             aria-label="下一页"
             @click="gotoPage(page + 1)"
           >
-            <ChevronRight />
+            <ChevronRight data-icon="inline-start" />
           </Button>
         </div>
       </div>

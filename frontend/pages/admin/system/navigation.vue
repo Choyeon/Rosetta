@@ -153,7 +153,7 @@
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  class="text-error hover:text-error hover:bg-error-muted"
+                  class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                   title="删除"
                   aria-label="删除菜单项"
                   @click="handleDelete(item)"

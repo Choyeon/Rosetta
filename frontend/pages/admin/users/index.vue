@@ -20,7 +20,7 @@
         <Button
           v-if="isSuperUser"
           size="sm"
-          class="rounded-xl shadow-sm"
+          class="shadow-sm"
           @click="openCreate"
         >
           <Plus data-icon="inline-start" />
@@ -305,6 +305,7 @@
                       <Button
                         variant="ghost"
                         size="icon-sm"
+                        title="操作菜单"
                         aria-label="用户操作菜单"
                       >
                         <MoreVertical data-icon="inline-start" />

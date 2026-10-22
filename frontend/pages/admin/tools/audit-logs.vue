@@ -316,6 +316,7 @@
                   variant="ghost"
                   size="icon-sm"
                   class="opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="展开 / 收起详情"
                   :aria-label="expandedId === log.id ? '收起详情' : '展开详情'"
                   @click.stop="toggleExpand(log.id)"
                 >

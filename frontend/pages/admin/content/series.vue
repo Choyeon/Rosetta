@@ -198,11 +198,12 @@ onMounted(() => {
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
+        size="sm"
+        class="shadow-sm"
         @click="openNew"
       >
         <Plus data-icon="inline-start" />
-        <span>新建系列</span>
+        新建系列
       </Button>
     </template>
 
@@ -283,7 +284,6 @@ onMounted(() => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="h-8 rounded-[10px] text-xs px-3"
                     @click="openEdit(s)"
                   >
                     编辑
@@ -291,7 +291,7 @@ onMounted(() => {
                   <Button
                     variant="ghost"
                     size="sm"
-                    class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+                    class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                     @click="confirmDelete(s.id)"
                   >
                     删除

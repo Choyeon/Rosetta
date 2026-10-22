@@ -133,7 +133,7 @@
             <Button
               variant="ghost"
               size="sm"
-              class="rounded-xl text-error hover:text-error hover:bg-error-muted"
+              class="rounded-xl text-destructive hover:text-destructive hover:bg-destructive-muted"
               @click="restoreTarget = rev; restoreOpen = true"
             >
               <RotateCcw data-icon="inline-start" /> 恢复此版本

@@ -168,10 +168,14 @@ const alignClass: Record<string, string> = {
           class="text-right"
           @click.stop
         >
-          <slot
-            name="actions"
-            :row="row"
-          />
+          <!-- 操作列自己负责间距：调用方过去各自写 gap-1 / 什么都不写，
+               结果是同一张表里按钮有的贴在一起有的分开。 -->
+          <div class="inline-flex items-center justify-end gap-1">
+            <slot
+              name="actions"
+              :row="row"
+            />
+          </div>
         </TableCell>
       </TableRow>
     </TableBody>

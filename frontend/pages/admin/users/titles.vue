@@ -11,7 +11,7 @@
       <template #actions>
         <Button
           size="sm"
-          class="rounded-xl shadow-sm"
+          class="shadow-sm"
           @click="openCreate"
         >
           <Plus data-icon="inline-start" />
@@ -105,6 +105,7 @@
               <Button
                 variant="ghost"
                 size="icon-sm"
+                title="编辑头衔"
                 aria-label="编辑头衔"
                 @click="openEdit(row as AdminUserTitle)"
               >
@@ -113,7 +114,8 @@
               <Button
                 variant="ghost"
                 size="icon-sm"
-                class="text-destructive hover:text-destructive"
+                class="text-destructive hover:text-destructive hover:bg-destructive-muted"
+                title="删除头衔"
                 aria-label="删除头衔"
                 @click="confirmDelete(row as AdminUserTitle)"
               >

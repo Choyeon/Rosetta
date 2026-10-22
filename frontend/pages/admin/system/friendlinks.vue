@@ -163,7 +163,7 @@
                     aria-label="编辑友链"
                     @click="openEdit(link)"
                   >
-                    <Pencil />
+                    <Pencil data-icon="inline-start" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>编辑</TooltipContent>
@@ -173,11 +173,11 @@
                   <Button
                     variant="ghost"
                     size="icon-sm"
-                    class="text-error hover:text-error hover:bg-error-muted"
+                    class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                     aria-label="删除友链"
                     @click="handleDelete(link)"
                   >
-                    <Trash2 />
+                    <Trash2 data-icon="inline-start" />
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>删除</TooltipContent>

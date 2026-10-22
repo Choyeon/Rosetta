@@ -130,7 +130,6 @@
           <Button
             :variant="viewMode === 'grid' ? 'secondary' : 'ghost'"
             size="icon-sm"
-            class="size-8"
             title="网格视图"
             aria-label="网格视图"
             @click="setViewMode('grid')"
@@ -140,7 +139,6 @@
           <Button
             :variant="viewMode === 'list' ? 'secondary' : 'ghost'"
             size="icon-sm"
-            class="size-8"
             title="列表视图"
             aria-label="列表视图"
             @click="setViewMode('list')"
@@ -305,8 +303,8 @@
           <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1">
             <Button
               variant="destructive"
-              size="icon"
-              class="h-7 w-7 backdrop-blur-sm"
+              size="icon-sm"
+              class="backdrop-blur-sm"
               title="删除文件"
               :aria-label="`删除文件 ${m.filename}`"
               @click.stop="confirmDelete(m.id)"
@@ -417,7 +415,7 @@
         <Button
           variant="destructive"
           size="icon-sm"
-          class="size-8 shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+          class="shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
           title="删除"
           :aria-label="`删除文件 ${m.filename}`"
           @click.stop="confirmDelete(m.id)"

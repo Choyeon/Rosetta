@@ -22,7 +22,7 @@
       <template #actions>
         <Button
           size="sm"
-          class="rounded-xl shadow-sm"
+          class="shadow-sm"
           @click="openCreate"
         >
           <Plus data-icon="inline-start" />
@@ -153,6 +153,7 @@
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  title="编辑公告"
                   :aria-label="`编辑公告：${(a as AdminAnnouncement).title}`"
                   @click="openEdit(a as AdminAnnouncement)"
                 >
@@ -161,7 +162,8 @@
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  class="text-destructive hover:text-destructive"
+                  class="text-destructive hover:text-destructive hover:bg-destructive-muted"
+                  title="删除公告"
                   :aria-label="`删除公告：${(a as AdminAnnouncement).title}`"
                   @click="confirmDelete(a as AdminAnnouncement)"
                 >
@@ -266,6 +268,7 @@
                   v-if="form.start_time"
                   variant="ghost"
                   size="icon-sm"
+                  title="清除开始时间"
                   aria-label="清除开始时间"
                   @click="form.start_time = ''"
                 >
@@ -288,6 +291,7 @@
                   v-if="form.end_time"
                   variant="ghost"
                   size="icon-sm"
+                  title="清除结束时间"
                   aria-label="清除结束时间"
                   @click="form.end_time = ''"
                 >

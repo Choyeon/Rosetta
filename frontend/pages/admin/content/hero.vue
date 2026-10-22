@@ -9,7 +9,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { MonitorPlay } from '@lucide/vue'
+import { MonitorPlay, Plus } from '@lucide/vue'
 import {
   fetchAdminHeroSlides,
   createAdminHeroSlide,
@@ -258,10 +258,12 @@ onMounted(loadData)
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-10 px-5 shadow-sm"
+        size="sm"
+        class="shadow-sm"
         @click="openNew"
       >
-        + 新建幻灯片
+        <Plus data-icon="inline-start" />
+        新建幻灯片
       </Button>
     </template>
 
@@ -318,7 +320,6 @@ onMounted(loadData)
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3"
           @click="openEdit(row as AdminHeroSlide)"
         >
           编辑
@@ -326,7 +327,7 @@ onMounted(loadData)
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
           @click="confirmDelete((row as AdminHeroSlide).id)"
         >
           删除

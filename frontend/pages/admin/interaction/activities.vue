@@ -13,7 +13,7 @@
       <template #actions>
         <Button
           size="sm"
-          class="rounded-xl shadow-sm"
+          class="shadow-sm"
           @click="openCreate"
         >
           <Plus data-icon="inline-start" />
@@ -128,6 +128,7 @@
                 <Button
                   variant="ghost"
                   size="icon-sm"
+                  title="编辑动态"
                   aria-label="编辑动态"
                   @click="openEdit(a)"
                 >
@@ -136,7 +137,8 @@
                 <Button
                   variant="ghost"
                   size="icon-sm"
-                  class="text-destructive hover:text-destructive"
+                  class="text-destructive hover:text-destructive hover:bg-destructive-muted"
+                  title="删除动态"
                   aria-label="删除动态"
                   @click="confirmDelete(a)"
                 >

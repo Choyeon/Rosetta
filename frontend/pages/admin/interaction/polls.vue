@@ -149,11 +149,12 @@ onMounted(loadData)
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-10 px-5 shadow-sm gap-2"
+        size="sm"
+        class="shadow-sm"
         @click="openNew"
       >
         <Plus data-icon="inline-start" />
-        <span>新建投票</span>
+        新建投票
       </Button>
     </template>
 
@@ -267,7 +268,7 @@ onMounted(loadData)
               <Button
                 variant="ghost"
                 size="sm"
-                class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+                class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                 @click="confirmDelete(poll.id)"
               >
                 <Trash2 data-icon="inline-start" />
@@ -329,7 +330,6 @@ onMounted(loadData)
               type="button"
               variant="outline"
               size="sm"
-              class="h-7 rounded-[10px] text-xs"
               @click="addChoice"
             >
               <Plus data-icon="inline-start" />
@@ -352,13 +352,14 @@ onMounted(loadData)
               <Button
                 type="button"
                 variant="ghost"
-                size="icon"
-                class="size-9 shrink-0 rounded-[10px] text-destructive hover:text-destructive"
+                size="icon-sm"
+                class="shrink-0 text-destructive hover:text-destructive hover:bg-destructive-muted"
                 :disabled="form.choices.length <= 2"
+                title="删除选项"
                 :aria-label="`删除选项 ${index + 1}`"
                 @click="removeChoice(index)"
               >
-                <Trash2 />
+                <Trash2 data-icon="inline-start" />
               </Button>
             </div>
           </div>

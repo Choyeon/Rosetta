@@ -268,11 +268,12 @@ onMounted(() => {
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-11 px-5 shadow-sm gap-2"
+        size="sm"
+        class="shadow-sm"
         @click="router.push('/admin/content/posts/new')"
       >
         <Plus data-icon="inline-start" />
-        <span>新建文章</span>
+        新建文章
       </Button>
     </template>
 
@@ -486,7 +487,6 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3"
           @click="router.push(`/admin/content/posts/${(row as Post).id}/edit`)"
         >
           编辑
@@ -494,7 +494,6 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3"
           @click="router.push(`/admin/content/posts/${(row as Post).id}/revisions`)"
         >
           版本
@@ -502,7 +501,7 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
           @click="confirmDelete((row as Post).id)"
         >
           删除

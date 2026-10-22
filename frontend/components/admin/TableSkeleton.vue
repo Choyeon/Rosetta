@@ -62,9 +62,9 @@ withDefaults(defineProps<Props>(), {
               c === 2 ? 'w-24' : ''
             ]"
           />
-          <div class="w-20 shrink-0 flex items-center justify-end gap-2">
-            <Skeleton class="h-7 w-7 rounded-md opacity-50" />
-            <Skeleton class="h-7 w-7 rounded-md opacity-50" />
+          <div class="w-20 shrink-0 flex items-center justify-end gap-1">
+            <Skeleton class="size-9 rounded-md opacity-50" />
+            <Skeleton class="size-9 rounded-md opacity-50" />
           </div>
         </div>
       </div>

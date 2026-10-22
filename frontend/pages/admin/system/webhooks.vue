@@ -171,7 +171,6 @@
                             variant="ghost"
                             size="icon-sm"
                             :disabled="triggeringId === w.id"
-                            title="测试触发"
                             aria-label="测试触发 Webhook"
                             @click="handleTrigger(w)"
                           >
@@ -211,7 +210,7 @@
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      class="text-error hover:text-error hover:bg-error-muted"
+                      class="text-destructive hover:text-destructive hover:bg-destructive-muted"
                       title="删除"
                       aria-label="删除 Webhook"
                       @click="handleDelete(w)"
@@ -322,7 +321,7 @@
               v-if="editingHasSecret"
               variant="ghost"
               size="sm"
-              class="self-start text-error hover:text-error hover:bg-error-muted"
+              class="self-start text-destructive hover:text-destructive hover:bg-destructive-muted"
               @click="clearSecret"
             >
               <KeyRound data-icon="inline-start" />

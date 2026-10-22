@@ -6,7 +6,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
-import { FolderTree } from '@lucide/vue'
+import { FolderTree, Plus } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   fetchAdminCategories,
@@ -188,10 +188,12 @@ onMounted(() => {
   >
     <template #actions>
       <Button
-        class="rounded-[12px] h-10 px-5 shadow-sm"
+        size="sm"
+        class="shadow-sm"
         @click="openNew"
       >
-        + 新建分类
+        <Plus data-icon="inline-start" />
+        新建分类
       </Button>
     </template>
 
@@ -235,7 +237,6 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3"
           @click="openEdit(row as AdminCategory)"
         >
           编辑
@@ -243,7 +244,7 @@ onMounted(() => {
         <Button
           variant="ghost"
           size="sm"
-          class="h-8 rounded-[10px] text-xs px-3 text-destructive hover:text-destructive"
+          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
           @click="confirmDelete((row as AdminCategory).id)"
         >
           删除
