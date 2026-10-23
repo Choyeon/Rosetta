@@ -361,7 +361,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1476 passed + 3 skipped + 3 xfailed + 1 xpassed，覆盖率 69.12%（须先删 .coverage，见 §8），fail_under=45%；另有 test_coverage_main_and_middleware 两条**顺序性**假失败，见 §8.4）
+├─ tests/                            Pytest（1509 passed + 3 skipped + 3 xfailed + 1 xpassed，覆盖率 69.72%（须先删 .coverage，见 §8），fail_under=45%；另有 test_coverage_main_and_middleware 两条**顺序性**假失败，见 §8.4）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -474,11 +474,13 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1476 passed + 3 skipped + 3 xfailed + 1 xpassed（另有 §8.4 两条顺序性假失败）；覆盖率 ≥45%（实测 69.12%）
+uv run pytest                                        # 1509 passed + 3 skipped + 3 xfailed + 1 xpassed（另有 §8.4 两条顺序性假失败）；覆盖率 ≥45%（实测 69.72%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 ```
 
-**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7；第三十八场 robots 缓存键 + noindex 闸门收口：**68.55%** / 1302 passed，本轮只采到总百分比，stmts 待复测；第三十九场收藏 / 评论反应 / 私信三族落地收口：14390 stmts / 4522 missing / **68.58%** / 1345 passed，同口径复算补上 stmts；第四十场站点设置数值区间闸门 + `/api/config` 单组容错收口：14606 stmts / 4510 missing / **69.12%** / 1476 passed）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
+**覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7；第三十八场 robots 缓存键 + noindex 闸门收口：**68.55%** / 1302 passed，本轮只采到总百分比，stmts 待复测；第三十九场收藏 / 评论反应 / 私信三族落地收口：14390 stmts / 4522 missing / **68.58%** / 1345 passed，同口径复算补上 stmts；第四十场站点设置数值区间闸门 + `/api/config` 单组容错收口：14606 stmts / 4510 missing / **69.12%** / 1476 passed；第四十一场密码重置反馈 + 站点设置页/用户中心收口（批次 #69–#72）：14492 stmts / 4388 missing / **69.72%** / 1509 passed，生产机 2026-10-23 同口径复测）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
+
+**CI 覆盖面 ≠ 全部门禁**：`.github/workflows/ci.yml` 后端只有 ruff check + ruff format --check + pytest，前端只有 `nuxi prepare` + typecheck + lint。**`pnpm test`（vitest）与 `pnpm build` 不在 CI 里**，只在生产机串行跑得到。表现是"CI 全绿的提交上 vitest 是红的"（产物字符串断言 `5000`→`5e3` 那类、以及只有 build 期才暴露的 SSR 问题）——推完 CI 绿不等于收口，这两步补跑才算。
 
 ### 8.2 frontend/ 目录
 
@@ -489,7 +491,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 73 个 spec；1276 用例，生产机 2026-10-23 全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 75 个 spec；1314 用例，生产机 2026-10-23 全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -547,8 +549,8 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```bash
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
-pnpm build         # Σ Total size 5.7 MB（gzip 1.33 MB），2026-10-21 生产机实测
-pnpm test          # 全绿（73 个 spec 文件；1276 用例）
+pnpm build         # Σ Total size 5.69 MB（gzip 1.33 MB），2026-10-23 生产机实测
+pnpm test          # 全绿（75 个 spec 文件；1314 用例）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
