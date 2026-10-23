@@ -12,6 +12,7 @@
  *    不能在页面里另造一套裸 $fetch；
  * 3. 取消收藏走 by-post（DELETE /favorites/post/{id}）而不是按行 ID——
  *    表上没有 (user_id, post_id) 唯一约束，按行删会让重复行留在列表里；
+ *    例外：post 为 null 的孤儿行没有 post_id，by-post 无从下手，只能按行 ID 删（唯一出口）；
  * 4. 收藏钮先 check 再决定 POST/DELETE：POST /favorites 对重复收藏回 400，不是 toggle；
  * 5. 详情/收藏状态是私有态，SSR 首字节不得出现（初值 false + 只在客户端发 check）；
  * 6. 收藏夹列表里的 post.title 是后端 Post.title 的 JSON 原值（这一族不按 lang 解析），
@@ -55,9 +56,14 @@ describe('composables/useFavorites.ts 是收藏族的唯一出口', () => {
     expect(favorites).toContain(literal)
   })
 
-  it('不裸用 $fetch，也不按行 ID 操作收藏（by-row 变体刻意不包装）', () => {
+  it('不裸用 $fetch；按行 ID 只允许 DELETE（PUT 变体刻意不包装）', () => {
     expect(favorites).not.toMatch(/\$fetch\(/)
-    expect(favorites).not.toMatch(/apiFetch<[^>]*>\(\s*[`'"]\/favorites\/\$\{/)
+    // 只认 /favorites/${ 这一形态：by-post 与 folders 变体中间还有一段路径，不会被误算
+    const byRow = favorites.split('\n').filter(line => /\/favorites\/\$\{/.test(line))
+    expect(byRow.length, '孤儿收藏行（post 为 null）没有按行 ID 的出口').toBeGreaterThan(0)
+    for (const line of byRow) {
+      expect(line, '按收藏行 ID 只允许 DELETE：PUT 只会改写一条重复行').toContain('method: \'DELETE\'')
+    }
   })
 
   it('导出的每个方法都在文件里真的定义（曾经 return 过未定义的 getFavorites）', () => {
@@ -85,8 +91,9 @@ describe('个人中心「我的收藏」档位', () => {
     expect(account).toContain('delete merged.page')
   })
 
-  it('取消收藏走 by-post，备注清空写 null（不是空串）', () => {
+  it('取消收藏走 by-post，孤儿行走 by-row，备注清空写 null（不是空串）', () => {
     expect(account).toContain('favoritesAPI.removeFavoriteByPost(postId)')
+    expect(account).toContain('favoritesAPI.removeFavoriteById(favoriteId)')
     expect(account).toContain('noteDraft.value.trim() || null')
   })
 

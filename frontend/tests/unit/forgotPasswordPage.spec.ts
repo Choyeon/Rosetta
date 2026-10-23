@@ -82,7 +82,8 @@ describe('i18n · forgotPassword 四语齐备', () => {
   const KEYS = [
     'title', 'desc', 'step1Title', 'step2Title', 'fieldAccount', 'fieldCode',
     'fieldNewPassword', 'fieldConfirmPassword', 'sendCode', 'codeSent',
-    'resetPassword', 'passwordReset', 'passwordMismatch', 'backToLogin', 'devCodeHint'
+    'resetPassword', 'passwordReset', 'passwordMismatch', 'backToLogin', 'devCodeHint',
+    'resendWarn', 'whyNeedCode', 'whyNeedPassword'
   ]
 
   it.each(KEYS)('每个语言都有 forgotPassword.%s 且非空', (key) => {

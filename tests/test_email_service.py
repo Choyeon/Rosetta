@@ -47,7 +47,7 @@ def _reset_fake():
 
 
 def _service() -> es.EmailService:
-    return es.EmailService(
+    svc = es.EmailService(
         smtp_host="smtp.example.test",
         smtp_port=587,
         smtp_user="bot@example.test",
@@ -56,6 +56,22 @@ def _service() -> es.EmailService:
         from_email="bot@example.test",
         template_dir=".__nonexistent_templates__",
     )
+    # resolved_smtp() 会用后台 `email` 分组覆写构造参数，而生产机上真的配了 QQ SMTP
+    # （465 + SSL）：不钉死配置的话，本用例会走进 SMTP_SSL 分支、把 5 个位置参数交给被替换
+    # 的 SMTP，于是"连接带 timeout"测的是这台机器的配置而不是代码。
+    async def _cfg() -> dict:
+        return {
+            "host": "smtp.example.test",
+            "port": 587,
+            "user": "bot@example.test",
+            "password": "secret",
+            "tls": False,
+            "from_email": "bot@example.test",
+            "from_name": "Bot",
+        }
+
+    svc.resolved_smtp = _cfg
+    return svc
 
 
 def _message() -> es.EmailMessage:
