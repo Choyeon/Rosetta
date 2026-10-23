@@ -319,7 +319,7 @@ const gotoConvPage = (next: number) => {
 //  2. `immediate: true`：让 key watcher 在「无 ?to= 进入后首次点击会话」时也放行
 //     （key watcher 的执行条件是 immediate || hadData || wasRunning，首轮三者皆假，
 //     只靠手写 watch 才能发请求——那正是本注释取代的东西）；
-//  3. 不写 watch(peerId)+refreshThread()：key watcher 已覆盖选中/切换/重选，
+//  3. 不写对 peerId 的手动监听 + refreshThread()：key watcher 已覆盖选中/切换/重选，
 //     手写 refresh 会与它双发，第一发还被 dedupe=cancel abort 掉。
 const {
   data: threadData,

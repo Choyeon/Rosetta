@@ -70,8 +70,16 @@ describe('/account/messages 页面', () => {
   })
 
   it('未选中对端时首轮不发正文请求', () => {
-    expect(page).toContain('immediate: peerId.value != null')
-    expect(page).toContain('watch: [peerId]')
+    // 三道机制合用，缺一道都会退化成旧的双发或 404：
+    //  1. enabled 计算属性——execute() 在 enabled=false 时提前 return，
+    //     「返回」把 peerId 置回 null 时不会发出 GET /messages/0（后端必 404）；
+    //  2. immediate: true——key watcher 的执行条件是 immediate || hadData || wasRunning，
+    //     首轮三者皆假，只靠它才能在「无 ?to= 进入后首次点击会话」时放行；
+    //  3. 不手写 watch(peerId)+refreshThread()——key watcher 已覆盖选中/切换/重选，
+    //     手写 refresh 会与它双发，第一发还被 dedupe=cancel abort 掉。
+    expect(page).toContain('immediate: true')
+    expect(page).toContain('enabled: computed(() => peerId.value != null)')
+    expect(page).not.toContain('watch(peerId')
   })
 
   it('读正文即置已读：正文到手后回刷列表与角标', () => {

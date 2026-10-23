@@ -1144,7 +1144,7 @@ const heroBgGradient = computed(() => {
 // 语言刷新的机制（AGENTS §i18n）：语言真相只有 URL 前缀，切换语言必然
 // setLocale + 跳同页目标语言 URL → NuxtPage 按 path 重挂载本页 → setup 重新执行，
 // 下面这些「字面量键 + 字面量查询」在重挂载时自然带上新 locale。
-// 因此这里用静态键/静态查询，**不写** watch(locale)+refresh()：
+// 因此这里用静态键/静态查询，**不写**对 locale 的手动监听 + refresh()：
 //   1. 手写 refresh 与 Nuxt useAsyncData 的 key watcher 会双发，且旧实例卸载时
 //      _off() 会 abort 掉第一发——白送后端一次注定被丢弃的查询；
 //   2. 静态查询若配响应式键，key watcher 那一发用的还是旧 locale 的查询参数。
@@ -1273,7 +1273,7 @@ const techRows: TechRowItem[] = [
 
 // 语言切换不在这页手写刷新：切换必然跳同页目标语言 URL → NuxtPage 重挂载 →
 // 上方请求以新 locale 的静态键/静态查询重新发起（键形如 home:posts:en）。
-// 曾经的 watch(locale)+refresh() 与 Nuxt 的 key watcher 双发且第一发必被
+// 曾经的对 locale 手动监听 + refresh() 与 Nuxt 的 key watcher 双发且第一发必被
 // abort，属于纯浪费的后端查询，已删除；契约见 tests/unit/homeRecommendedSection.spec.ts。
 
 // ===== 去重兜底：按 slug 唯一化（即使后端出现重复，也只保留第一条） =====

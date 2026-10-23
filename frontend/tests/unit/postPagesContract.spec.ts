@@ -224,7 +224,9 @@ describe('密码保护文章详情页闸门', () => {
     // 表现为整页 hydration 警告 + 空白。
     expect(bodyAt, '正文容器没用 v-show 隐藏').toBeGreaterThan(gateAt)
     expect(postDetail).not.toMatch(/<div v-if="!needPassword">/)
-    const pollsAt = postDetail.indexOf('if (!needPassword.value) {\n    activePolls.value')
+    // 拉投票必须先过闸门：needPassword 为真时给 null（并入 Promise.all 也不发请求），
+    // 防止 poll 内容出现在密码框上方；解锁后的补拉见 watch(needPassword)。
+    const pollsAt = postDetail.indexOf('needPassword.value ? null : pollsAPI.fetchActivePolls')
     expect(pollsAt, '拉投票前没有闸门判定').toBeGreaterThan(bodyAt)
   })
 
