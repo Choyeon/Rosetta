@@ -91,6 +91,29 @@ from backend.middleware.performance import performance_middleware
 logger = logging.getLogger(__name__)
 
 
+def _ensure_business_logging() -> None:
+    """给业务 logger 兜一个 INFO 级 handler。
+
+    没有这一段时，``backend.*`` 的 logger 全部 propagate 到没有 handler 的 root，
+    Python 的 lastResort 只输出 WARNING 以上——于是"邮件发送成功/失败"、
+    "提交后台任务"、dry-run 干跑记录这些 INFO 业务日志在生产里**一条都不落盘**，
+    邮件链路是否工作完全不可观测（联调 dry_run 时尤甚：功能生效了却没有任何证据）。
+
+    只补 root 缺失的场景：uvicorn 已给自己的 logger 装了 handler，
+    测试里若已 basicConfig/dictConfig 过则不覆盖（尊重调用方配置）。
+    """
+    root = logging.getLogger()
+    if root.handlers:
+        return
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
+_ensure_business_logging()
+
+
 def _resolve_app_version() -> str:
     """版本单一真源：读取根 pyproject.toml [project].version。
 
