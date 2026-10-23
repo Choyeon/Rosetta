@@ -32,9 +32,13 @@ interface FooterLink {
   external?: boolean
 }
 
+// 分类键与首页 / posts 列表页 / categories 页共用同一把 `blog:categories:<locale>`：
+// Nuxt 按 key 全局去重——同页页脚与正文只发一条 /blog/categories；
+// 页脚常驻布局，跨前台页面导航也直接复用条目，不必每页重拉。
+// 键与查询都是静态字面量：切语言靠 URL 变化 → 页面重挂载刷新，不手写 watch。
 const { data: categories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: `footer:categories:${locale.value}`,
+  key: `blog:categories:${locale.value}`,
   default: () => []
 })
 

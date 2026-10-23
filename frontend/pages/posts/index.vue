@@ -310,9 +310,11 @@ const canonicalQuery = computed(() => {
   return q
 })
 
+// 分类键与 AppFooter / 首页 / categories 页共用同一把 `blog:categories:<locale>`：
+// Nuxt 按 key 全局去重，同页只发一条 /blog/categories；页脚常驻布局，跨页也复用。
 const { data: categories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: computed(() => `posts:categories:${locale.value}`),
+  key: `blog:categories:${locale.value}`,
   default: () => []
 })
 
@@ -378,13 +380,10 @@ function syncUrl() {
   router.replace({ query: Object.keys(q).length > 0 ? q : {} })
 }
 
-// 手动监听搜索/分类/排序/语言/分页变化并刷新（仅客户端触发）。
-// 分类列表不跟着刷：分类不随这些条件变化，跟着刷只是每次多打一个请求。
-watch([currentPage, searchQuery, selectedCategory, sortBy, locale], () => {
-  if (import.meta.client) {
-    refresh()
-  }
-})
+// 不手写 watch([currentPage, searchQuery, selectedCategory, sortBy, locale])+refresh()：
+// 上方 query 是 computed，这些依赖变化时 Nuxt useAsyncData 的 params watcher 已自动重取
+// （dedupe=cancel 保证同一时刻只有一个在飞请求）。手写 refresh 等于同一 URL 双发，
+// 第一发还被 abort，纯浪费后端查询。分类列表不跟着刷：它有自己的键，互不影响。
 
 const handleSearch = () => {
   searchQuery.value = searchInput.value.trim()

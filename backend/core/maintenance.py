@@ -15,7 +15,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from backend.core.database import async_session_maker
 from backend.core.deps import is_oobe_complete
-from backend.models.core import SiteConfig
+from backend.core.site_config import get_site_config_value
+from backend.models.user import User
 
 logger = logging.getLogger(__name__)
 
@@ -65,21 +66,17 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
                 return await call_next(request)
 
         # 检查维护模式状态
-        async with async_session_maker() as db:
-            result = await db.execute(
-                select(SiteConfig).where(SiteConfig.key == "MAINTENANCE_MODE")
-            )
-            config = result.scalar_one_or_none()
+        # 走带缓存的配置助手而不是每次请求直查 SiteConfig：该键 1 小时 TTL，
+        # 后台切换维护模式时写侧已调 invalidate_site_config_caches() 删前缀，
+        # 因此"改完立刻生效"不变，而稳态下每个非豁免请求省掉 1~2 次数据库往返。
+        # 曾经这里每个请求都 async_session_maker() + 两条 SELECT，
+        # 匿名流量全打在 maintenance 探测查询上。
+        maintenance_flag = await get_site_config_value("MAINTENANCE_MODE")
+        if not maintenance_flag or maintenance_flag.lower() != "true":
+            return await call_next(request)
 
-            if not config or config.value.lower() != "true":
-                return await call_next(request)
-
-            # 获取维护消息
-            message_result = await db.execute(
-                select(SiteConfig).where(SiteConfig.key == "MAINTENANCE_MESSAGE")
-            )
-            message_config = message_result.scalar_one_or_none()
-            maintenance_message = message_config.value if message_config else None
+        # 获取维护消息
+        maintenance_message = await get_site_config_value("MAINTENANCE_MESSAGE")
 
         # 检查用户是否是管理员
         # 从请求头获取 token
@@ -95,10 +92,9 @@ class MaintenanceMiddleware(BaseHTTPMiddleware):
                 if payload:
                     user_id = payload.get("sub")
                     if user_id:
-                        # 检查用户是否是管理员
+                        # 检查用户是否是管理员（仅维护模式开启时才走到，
+                        # 每个带票请求查一次用户表；管理员巡检期可接受）
                         async with async_session_maker() as db:
-                            from backend.models.user import User
-
                             user_result = await db.execute(
                                 select(User).where(User.id == int(user_id))
                             )

@@ -398,12 +398,9 @@ const {
   key: 'guestbook:list'
 })
 
-// 翻页/语言切换仅客户端触发刷新（SSR 首屏由 useFetch 自动完成）
-watch([currentPage, locale], () => {
-  if (import.meta.client) {
-    refresh()
-  }
-})
+// 不手写 watch([currentPage, locale])+refresh()：query 是 computed，翻页/切语言时
+// Nuxt useAsyncData 的 params watcher 已自动重取；手写 refresh 等于同一 URL 双发，
+// 第一发还被 abort，纯浪费后端查询。
 
 const total = computed(() => gbResp.value?.total ?? 0)
 const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)

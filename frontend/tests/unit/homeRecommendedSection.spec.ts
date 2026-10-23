@@ -29,15 +29,19 @@ describe('首页推荐位接线', () => {
     const block = windowAfter('const recommendedPromise')
     expect(block).toContain('/blog/posts/recommended')
     expect(block).toContain('home:recommended:')
-    expect(block).toContain('+ locale.value')
+    expect(block).toContain('${locale.value}')
   })
 
   it('与其他首页请求并行 await，不做串行 waterfall', () => {
     expect(windowAfter('] = await Promise.all([')).toContain('recommendedPromise')
   })
 
-  it('语言切换时随其余请求一起刷新', () => {
-    expect(windowAfter('watch(locale', 260)).toContain('refreshRecommended()')
+  it('语言切换靠重挂载刷新，不手写 watch(locale)+refresh 双发', () => {
+    // 机制：切语言必然跳同页目标语言 URL → NuxtPage 重挂载 → 静态键/查询带新 locale 重新请求。
+    // 手写 watch(locale)+refresh() 会与 Nuxt key watcher 双发且第一发必被 abort，已禁。
+    const block = windowAfter('const recommendedPromise')
+    expect(block).toContain('lang: locale.value')
+    expect(homepageSource).not.toContain('watch(locale')
   })
 
   it('推荐条目按已展示列表去重，区块带「不足 2 条不渲染」守卫', () => {

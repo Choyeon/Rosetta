@@ -137,12 +137,13 @@ interface TagRow {
 
 // SSR 与客户端首渲染统一为空数组（空 = 无标签占位，避免显示假数据）。
 // 首屏渲染用 useSSR 友好的 useAPI，失败或空都保持空态，绝不回退到示例标签。
-const { data: tagsData, pending: _tagsLoading, error: tagsLoadError, refresh: refreshTags } = useAPI<TagRow[]>('/blog/tags', {
+// 静态键+静态查询：切语言走「跳同页 URL → 重挂载 → 新 locale 重新请求」，
+// 不手写 watch(locale)+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
+const { data: tagsData, pending: _tagsLoading, error: tagsLoadError } = useAPI<TagRow[]>('/blog/tags', {
   query: { lang: locale.value },
-  key: computed(() => 'tags:list:' + (locale.value || 'zh')),
+  key: `home:tags:${locale.value}`,
   default: () => []
 })
-watch(locale, () => void refreshTags())
 
 const tags = computed<TagRow[]>(() => {
   const raw = tagsData.value

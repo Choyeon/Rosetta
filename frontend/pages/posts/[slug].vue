@@ -117,9 +117,9 @@
                 {{ formatCount(charCount) }} {{ t('post.chars', '字符') }}
               </span>
             </template>
-            <span v-if="updatedAt && new Date(updatedAt) > new Date(publishedAt)">·</span>
+            <span v-if="showUpdatedAt">·</span>
             <span
-              v-if="updatedAt && new Date(updatedAt) > new Date(publishedAt)"
+              v-if="showUpdatedAt"
               class="inline-flex items-center gap-1.5"
             >
               <RefreshCw class="size-3.5" />
@@ -628,31 +628,32 @@
             </h3>
             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               <NuxtLink
-                v-for="sp in similarPosts"
+                v-for="sp in similarCards"
                 :key="sp.id"
-                :to="localeHref(`/posts/${sp.slug}`)"
+                v-memo="[sp.id, sp.title, sp.excerpt, sp.cover, sp.href]"
+                :to="sp.href"
                 class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
               >
                 <div
-                  v-if="similarCover(sp)"
+                  v-if="sp.cover"
                   class="aspect-[16/9] bg-muted overflow-hidden"
                 >
                   <img
-                    :src="similarCover(sp)"
-                    :alt="pickLocalized(sp.title)"
+                    :src="sp.cover"
+                    :alt="sp.title"
                     class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
                     loading="lazy"
                   >
                 </div>
                 <div class="p-4">
                   <h4 class="font-display font-semibold text-base tracking-tight line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
-                    {{ pickLocalized(sp.title) }}
+                    {{ sp.title }}
                   </h4>
                   <p
-                    v-if="pickLocalized(sp.excerpt)"
+                    v-if="sp.excerpt"
                     class="mt-2 text-xs text-muted-foreground line-clamp-2 leading-relaxed"
                   >
-                    {{ pickLocalized(sp.excerpt) }}
+                    {{ sp.excerpt }}
                   </p>
                 </div>
               </NuxtLink>
@@ -980,16 +981,8 @@ async function handleToggleFavorite() {
   }
 }
 
-async function loadSimilarAndLikeState(pid: number | string | null | undefined) {
-  if (!pid) {
-    similarPosts.value = []
-    adjacent.value = { previous: null, next: null }
-    likeCount.value = 0
-    likedByMe.value = false
-    favorited.value = false
-    return
-  }
-  // 1) similar posts（辅助推荐，失败静默降级为空）
+// 相似文章（辅助推荐，失败静默降级为空）——与上下篇、收藏状态互不依赖，三者并行发起。
+async function fetchSimilarPosts(pid: number | string): Promise<SimilarPostRow[]> {
   try {
     const raw = await silentApiFetch<{ success: boolean, data?: SimilarPostRow[] }>(
       `/blog/posts/${pid}/similar`,
@@ -1004,24 +997,44 @@ async function loadSimilarAndLikeState(pid: number | string | null | undefined) 
         list = raw as unknown as SimilarPostRow[]
       }
     }
-    similarPosts.value = list
-  } catch { similarPosts.value = [] }
-  // 2) 上一篇/下一篇（按当前 slug 查询，失败静默不渲染）
+    return list
+  } catch {
+    return []
+  }
+}
+
+// 上一篇/下一篇（按当前 slug 查询，失败静默不渲染）
+async function fetchAdjacent(): Promise<{ previous: AdjacentRef | null, next: AdjacentRef | null }> {
   try {
     const raw = await silentApiFetch<{ success: boolean, data?: { previous?: AdjacentRef | null, next?: AdjacentRef | null } }>(
       `/blog/posts/${encodeURIComponent(postSlug.value)}/adjacent`,
       { query: { lang: locale.value || 'zh' } }
     )
     const d = raw?.data
-    adjacent.value = {
-      previous: d?.previous ?? null,
-      next: d?.next ?? null
-    }
+    return { previous: d?.previous ?? null, next: d?.next ?? null }
   } catch {
-    adjacent.value = { previous: null, next: null }
+    return { previous: null, next: null }
   }
-  // 3) 收藏状态：只在客户端且已登录时才真的发请求（见 loadFavoriteState 的守卫）
-  await loadFavoriteState(pid)
+}
+
+async function loadSimilarAndLikeState(pid: number | string | null | undefined) {
+  if (!pid) {
+    similarPosts.value = []
+    adjacent.value = { previous: null, next: null }
+    likeCount.value = 0
+    likedByMe.value = false
+    favorited.value = false
+    return
+  }
+  // 三个请求互相独立：旧写法串行 await 白等 2 个 RTT。并行发起后统一收敛，
+  // 单个失败仍走各自的 catch 降级，不影响其余两个的渲染。
+  const [similar, adj] = await Promise.all([
+    fetchSimilarPosts(pid),
+    fetchAdjacent(),
+    loadFavoriteState(pid)
+  ])
+  similarPosts.value = similar
+  adjacent.value = adj
 }
 
 const slug = computed(() => route.params.slug as string)
@@ -1221,8 +1234,36 @@ const displayPostTitle = computed(() => {
 const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_DETAIL))
 /** 相似文章缩略图：同样按文章标识回落默认封面。 */
 const similarCover = (sp: SimilarPostRow): string => postCoverUrl(sp, POST_COVER_CARD)
+// 相关文章卡片派生数据：title/excerpt/cover/href 一次算清，模板只读字段。
+// 旧写法在 v-for 里每篇每次渲染调用 pickLocalized 4 次 + similarCover 2 次
+// （都要遍历 i18n dict / 解析封面 URL），评论输入等任意状态变化都会全量重算。
+interface SimilarCard {
+  id: number | string
+  title: string
+  excerpt: string
+  cover: string
+  href: string
+}
+const similarCards = computed<SimilarCard[]>(() =>
+  similarPosts.value.map(sp => ({
+    id: sp.id,
+    title: pickLocalized(sp.title),
+    excerpt: pickLocalized(sp.excerpt),
+    cover: similarCover(sp),
+    href: localeHref(`/posts/${sp.slug}`)
+  }))
+)
 const publishedAt = computed(() => post.value?.published_at || post.value?.publishedAt || post.value?.created_at || '')
 const updatedAt = computed(() => post.value?.updated_at || post.value?.updatedAt || '')
+// 「更新于」标记的判定提为 computed：模板里每次重渲染（评论输入、轮播推进等）
+// 都会重跑 v-if，旧写法每次新建 4 个 Date 对象；invalid 时间串按 NaN 比较为 false，
+// 与旧行为一致（不显示更新标记）。
+const showUpdatedAt = computed(() => {
+  if (!updatedAt.value || !publishedAt.value) return false
+  const updated = new Date(updatedAt.value).getTime()
+  const published = new Date(publishedAt.value).getTime()
+  return Number.isFinite(updated) && Number.isFinite(published) && updated > published
+})
 const views = computed(() => post.value?.views ?? post.value?.views_count ?? 0)
 const authorName = computed(() => {
   const a = post.value?.author
@@ -1652,15 +1693,17 @@ onMounted(async () => {
     void refreshPostWithStoredPassword()
   }
   // 全局投票：闸门未解锁时不拉，防止 poll 内容出现在密码框上方。
-  if (!needPassword.value) {
-    activePolls.value = await pollsAPI.fetchActivePolls(3)
-  }
+  // 与评论/相似/TOC 互不依赖，先拿到 promise 再并入下面的 Promise.all，
+  // 不单独 await 一个 RTT（旧写法让整页 hydration 后的收尾多等一轮往返）。
+  const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(3)
   // 三个独立任务并行执行：评论、相似文章、TOC 重建互不依赖
   await Promise.all([
     loadCommentsForCurrentPost(),
     loadSimilarAndLikeState(post.value?.id),
-    rebuildTOC()
+    rebuildTOC(),
+    pollsPromise
   ])
+  if (pollsPromise) activePolls.value = await pollsPromise
   if (import.meta.client && typeof window !== 'undefined') {
     // 字体 / 懒加载图片导致布局变化后的兜底刷新（3 秒内再补几次）。
     const retries = [400, 1200, 3000]

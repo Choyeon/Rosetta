@@ -168,11 +168,13 @@ const { localeHref } = useLocaleLink()
 // 走到这里参数一定已经是 4 位数字。
 const year = Number(route.params.year)
 
+// 静态键+静态查询：切语言走「跳同页 URL → 重挂载 → 新 locale 重新请求」，
+// 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
 const { data: groupsData, pending: _pending, error: groupsError } = useAPI<ArchiveMonthGroup[]>(
   `/blog/archive/${year}`,
   {
     query: { lang: locale.value },
-    key: computed(() => `archive:year:${year}:${locale.value}`)
+    key: `archive:year:${year}:${locale.value}`
   }
 )
 

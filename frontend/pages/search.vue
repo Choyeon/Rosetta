@@ -205,10 +205,11 @@ const runSearch = () => {
 
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
+  // 不调 refresh()：currentPage 进 query/key 的 computed，Nuxt params/key watcher
+  // 已自动重取；再手写 refresh 等于同一 URL 双发，第一发还被 abort。
   currentPage.value = page
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
-    refresh()
   }
 }
 

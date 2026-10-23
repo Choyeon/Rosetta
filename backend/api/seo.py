@@ -662,30 +662,26 @@ async def get_schema_data(
     """
     from sqlalchemy import select
 
-    from backend.models.blog import Category, Post
+    from backend.models.blog import Post
     from backend.models.user import User
 
     if resource_type in ("article", "post"):
         async with async_session_maker() as db:
-            result = await db.execute(select(Post).where(Post.id == resource_id))
+            # author/category 与主行一并加载：原来先查 post、再按 id 串行查
+            # User、Category 共 3 次往返，且三者共享会话无法并行；合并后 1 次。
+            result = await db.execute(
+                select(Post)
+                .options(selectinload(Post.author), selectinload(Post.category))
+                .where(Post.id == resource_id)
+            )
             post = result.scalar_one_or_none()
 
             if not post:
                 return {"error": "Article not found"}
 
-            # 获取作者信息
-            author = None
-            if post.author_id:
-                author_result = await db.execute(select(User).where(User.id == post.author_id))
-                author = author_result.scalar_one_or_none()
-
-            # 获取分类信息
-            category = None
-            if post.category_id:
-                cat_result = await db.execute(
-                    select(Category).where(Category.id == post.category_id)
-                )
-                category = cat_result.scalar_one_or_none()
+            # 关系已随 selectinload 载入，直接访问不再触发懒加载查询
+            author = post.author if post.author_id else None
+            category = post.category if post.category_id else None
 
             site_url = getattr(settings, "site_url", "http://localhost:4321")
 

@@ -2624,6 +2624,12 @@ type UsernameCheckState = 'idle' | 'checking' | 'ok' | 'invalid'
 const usernameCheckState = ref<UsernameCheckState>('idle')
 const usernameCheckMessage = ref('')
 let _usernameTimer: ReturnType<typeof setTimeout> | null = null
+// 卸载时清掉在飞的 debounce：否则回调会在组件销毁后写已失效的 ref（dev 下报
+// "write to unmounted component" 警告），极端情况下还会发出一次无谓的预检请求。
+onUnmounted(() => {
+  if (_usernameTimer) clearTimeout(_usernameTimer)
+  _usernameTimer = null
+})
 
 watch(() => adminForm.name, (val) => {
   const name = String(val || '').trim()

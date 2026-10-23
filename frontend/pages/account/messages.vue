@@ -312,10 +312,15 @@ const gotoConvPage = (next: number) => {
 }
 
 // ===== 会话正文：URL 随选中的对端变化；未选中时不发请求 =====
-// immediate 只在 setup 期求值一次：直接带 ?to= 进来时首轮就要发。
-// 不用 useFetch 的 watch: [peerId]：「返回」把 peerId 置回 null 时它也会触发，
-// 于是发出 GET /api/messages/0 ——后端必定 404，前端还会跟着弹一条无意义错误，
-// 而正文区本来就是 v-if="peerId"。改成显式 watch，只在真的选中某人时重取。
+// 三道机制合用，缺一道都会退化成旧的双发或 404：
+//  1. `enabled` 计算属性：Nuxt 的 execute() 在 enabled=false 时提前 return——
+//     peerId 置回 null（「返回」）时 key 虽变为 none，也不会发出 GET /messages/0
+//     （后端必 404，且正文区本来就是 v-if="peerId"，请求纯属浪费）；
+//  2. `immediate: true`：让 key watcher 在「无 ?to= 进入后首次点击会话」时也放行
+//     （key watcher 的执行条件是 immediate || hadData || wasRunning，首轮三者皆假，
+//     只靠手写 watch 才能发请求——那正是本注释取代的东西）；
+//  3. 不写 watch(peerId)+refreshThread()：key watcher 已覆盖选中/切换/重选，
+//     手写 refresh 会与它双发，第一发还被 dedupe=cancel abort 掉。
 const {
   data: threadData,
   pending: threadPending,
@@ -323,10 +328,8 @@ const {
   refresh: refreshThread
 } = useAPI<MessageThread>(() => `/messages/${peerId.value ?? 0}`, {
   key: computed(() => `messages:thread:${peerId.value ?? 'none'}`),
-  immediate: peerId.value != null
-})
-watch(peerId, (next) => {
-  if (next != null) void refreshThread()
+  immediate: true,
+  enabled: computed(() => peerId.value != null)
 })
 const threadItems = computed(() => threadData.value?.items ?? [])
 const threadPeer = computed<MessagePeer | null>(() => threadData.value?.other_user ?? null)

@@ -269,13 +269,17 @@ interface AuthorPostRow {
 }
 
 // 资料：用户名不存在、或作者关了「公开资料」时后端统一回 404（不存在口径，防枚举）。
+// 静态键：切语言/换作者都走「跳同页 URL → 重挂载 → 新参数重新请求」，
+// 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
 const { data: profile, error: profileError } = useAPI<AuthorProfile>(
   `/users/username/${username.value}`,
-  { key: computed(() => `author:profile:${username.value}:${locale.value}`), default: () => ({}) }
+  { key: `author:profile:${username.value}:${locale.value}`, default: () => ({}) }
 )
 
 // 列表：固定 URL + author query，与资料请求并发（无依赖链）。
-const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{
+// query/key 都是 computed：翻页是页内状态（不重挂载），靠 Nuxt params/key watcher
+// 自动重取；不再叠加手写 watch(refresh)（同一 URL 双发，第一发还被 abort）。
+const { data: postsRaw, pending, error: postsErr } = useAPI<{
   items?: AuthorPostRow[]
   total?: number
 }>('/blog/posts', {
@@ -286,10 +290,6 @@ const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{
     author: username.value || undefined
   })),
   key: computed(() => `author:posts:${username.value}:${locale.value}:${currentPage.value}`)
-})
-
-watch([currentPage, username, locale], () => {
-  if (import.meta.client) refresh()
 })
 
 const displayName = computed(

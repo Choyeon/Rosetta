@@ -247,8 +247,11 @@ export function listHeroiconNames(variant: HeroiconVariant = 'outline'): string[
   return names
 }
 
+// 提升到模块作用域：isEmojiIcon 在图标渲染路径上被高频调用（每个动态图标一次），
+// RegExp 字面量写在函数内意味着每次调用都新建一个正则对象。
+const EMOJI_ICON_RE = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2B50}]|[\u{2764}]/u
+
 export function isEmojiIcon(str: string): boolean {
   if (!str) return false
-  const emojiRe = /[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F900}-\u{1F9FF}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{2B50}]|[\u{2764}]/u
-  return emojiRe.test(str) && str.trim().length <= 4
+  return EMOJI_ICON_RE.test(str) && str.trim().length <= 4
 }

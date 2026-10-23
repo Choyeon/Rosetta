@@ -187,14 +187,18 @@ interface CategoryPostRow {
   is_pinned?: boolean
   [key: string]: unknown
 }
+// 静态键+静态查询：切语言/换分类 slug 都走「跳同页 URL → 重挂载 → 新参数重新请求」，
+// 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
 const { data: catRaw, error: catError } = useAPI<CategoryDetail>(`/blog/categories/slug/${slug.value}`, {
   query: { lang: locale.value },
-  key: computed(() => `category:detail:${slug.value}:${locale.value}`),
+  key: `category:detail:${slug.value}:${locale.value}`,
   default: () => ({} as CategoryDetail)
 })
 
 // 分类文章：复用 /blog/posts?category=slug。失败回空数组，绝不造示例列表。
-const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{ items?: CategoryPostRow[], total?: number }>('/blog/posts', {
+// query/key 都是 computed：翻页是页内状态（不同步 URL path，不重挂载），靠 Nuxt
+// params/key watcher 自动重取；不再叠加手写 watch(refresh)（同一 URL 双发）。
+const { data: postsRaw, pending, error: postsErr } = useAPI<{ items?: CategoryPostRow[], total?: number }>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
@@ -202,10 +206,6 @@ const { data: postsRaw, pending, error: postsErr, refresh } = useAPI<{ items?: C
     category: slug.value || undefined
   })),
   key: computed(() => `category:posts:${slug.value}:${locale.value}:${currentPage.value}`)
-})
-
-watch([currentPage, slug, locale], () => {
-  if (import.meta.client) refresh()
 })
 
 // 加载中留空（只显站点名）；确实取不到分类时用 404 口径标题，

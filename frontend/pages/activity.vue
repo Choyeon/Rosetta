@@ -291,12 +291,14 @@ interface Paginated<T> {
   total_pages?: number
 }
 
+// query 用 computed：lang 随 locale 变化时 Nuxt params watcher 自动重取，
+// 不手写 watch(locale)+refresh()（那会与自动重取双发，第一发还被 abort）。
 const { data: activityResp, pending, error: loadError, refresh } = useAPI<Paginated<ActivityItem>>('/activities', {
-  query: {
+  query: computed(() => ({
     page: 1,
     page_size: 50,
-    lang: locale
-  }
+    lang: locale.value
+  }))
 })
 
 const activityList = computed<ActivityItem[]>(() => {
@@ -328,10 +330,8 @@ const activityList = computed<ActivityItem[]>(() => {
   })
 })
 
-// 切换语言后重新拉取本地化动态
-watch(locale, () => {
-  refresh().catch(() => undefined)
-})
+// 不手写 watch(locale)+refresh()：query 是 computed，切语言时 Nuxt params watcher
+// 已自动重取；手写 refresh 等于同一 URL 双发，第一发还被 abort。点赞后的 refresh 见下方。
 
 // 点赞：POST /api/activities/{id}/like（只增不减、允许匿名，与已上线的评论点赞同语义）。
 // 端点不返回新计数，所以成功后 refresh 取服务端权威值，不在本地 +1——本页是 swr 600 的缓存页，

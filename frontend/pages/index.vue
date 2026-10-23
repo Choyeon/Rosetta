@@ -1139,18 +1139,30 @@ const heroBgGradient = computed(() => {
 })
 
 // 并行发起 6 个独立请求：useAPI 调用即启动请求，最后统一 await 等待全部完成
-// 比逐个 await 减少 5 个 RTT 的串行等待
+// 比逐个 await 减少 5 个 RTT 的串行等待。
+//
+// 语言刷新的机制（AGENTS §i18n）：语言真相只有 URL 前缀，切换语言必然
+// setLocale + 跳同页目标语言 URL → NuxtPage 按 path 重挂载本页 → setup 重新执行，
+// 下面这些「字面量键 + 字面量查询」在重挂载时自然带上新 locale。
+// 因此这里用静态键/静态查询，**不写** watch(locale)+refresh()：
+//   1. 手写 refresh 与 Nuxt useAsyncData 的 key watcher 会双发，且旧实例卸载时
+//      _off() 会 abort 掉第一发——白送后端一次注定被丢弃的查询；
+//   2. 静态查询若配响应式键，key watcher 那一发用的还是旧 locale 的查询参数。
 const postsPromise = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: { lang: locale.value, page: 1, page_size: 20 },
-  key: computed(() => 'home:posts:' + locale.value)
+  key: `home:posts:${locale.value}`
 })
+// 分类键与 AppFooter / posts 列表页 / categories 页共用同一把 `blog:categories:<locale>`：
+// Nuxt 按 key 全局去重，同页页脚与正文只发一条 /blog/categories（页脚在布局里常驻，
+// 跨前台页面导航也直接复用，不必每页重拉）。
 const categoriesPromise = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: computed(() => 'home:categories:' + locale.value)
+  key: `blog:categories:${locale.value}`,
+  default: () => []
 })
 const tagsPromise = useAPI<BlogTag[]>('/blog/tags', {
   query: { lang: locale.value },
-  key: computed(() => 'home:tags:' + locale.value)
+  key: `home:tags:${locale.value}`
 })
 const siteStatsPromise = useAPI<SiteStats>('/blog/site-stats', {
   key: 'home:site-stats'
@@ -1159,22 +1171,22 @@ const siteStatsPromise = useAPI<SiteStats>('/blog/site-stats', {
 // 首页只取一屏容量，页面缓存键必须带 locale，否则切语言不刷新。
 const recommendedPromise = useAPI<PaginatedResponse<Post>>('/blog/posts/recommended', {
   query: { lang: locale.value, page: 1, page_size: 8 },
-  key: computed(() => 'home:recommended:' + locale.value)
+  key: `home:recommended:${locale.value}`
 })
 // 首页横幅的内容源：后台配置的轮播优先，没有则后端用近 30 天高热度文章兜底（负 ID 虚拟项）。
 // 首页横幅的职责是推荐内容而不是装饰图片，所以这里不再请求任何站外壁纸。
 const heroSlidesPromise = useAPI<HeroSlideApi[]>('/hero/slides', {
   query: { lang: locale.value },
-  key: computed(() => 'home:hero:' + locale.value)
+  key: `home:hero:${locale.value}`
 })
 
 const [
-  { data: postsData, pending: postsPending, error: postsError, refresh: refreshPosts },
-  { data: categoriesData, pending: categoriesPending, error: categoriesError, refresh: refreshCategories },
-  { data: tagsData, pending: tagsPending, error: tagsError, refresh: refreshTags },
+  { data: postsData, pending: postsPending, error: postsError },
+  { data: categoriesData, pending: categoriesPending, error: categoriesError },
+  { data: tagsData, pending: tagsPending, error: tagsError },
   { data: siteStats, pending: siteStatsPending, error: siteStatsError },
-  { data: recommendedData, refresh: refreshRecommended },
-  { data: heroSlidesData, refresh: refreshHeroSlides }
+  { data: recommendedData },
+  { data: heroSlidesData }
 ] = await Promise.all([
   postsPromise, categoriesPromise, tagsPromise, siteStatsPromise, recommendedPromise, heroSlidesPromise
 ])
@@ -1259,17 +1271,10 @@ const techRows: TechRowItem[] = [
   { label: 'Rosetta', key: 'rosetta', color: 'bg-primary' }
 ]
 
-// 语言切换时：重新以新的 lang 参数与缓存键请求后端数据，
-// 避免显示旧语言缓存，以及分类/标签本地化 JSON key 解析不更新。
-watch(locale, async () => {
-  await Promise.all([
-    refreshPosts(),
-    refreshCategories(),
-    refreshTags(),
-    refreshRecommended(),
-    refreshHeroSlides()
-  ])
-})
+// 语言切换不在这页手写刷新：切换必然跳同页目标语言 URL → NuxtPage 重挂载 →
+// 上方请求以新 locale 的静态键/静态查询重新发起（键形如 home:posts:en）。
+// 曾经的 watch(locale)+refresh() 与 Nuxt 的 key watcher 双发且第一发必被
+// abort，属于纯浪费的后端查询，已删除；契约见 tests/unit/homeRecommendedSection.spec.ts。
 
 // ===== 去重兜底：按 slug 唯一化（即使后端出现重复，也只保留第一条） =====
 const posts = computed<Post[]>(() => {

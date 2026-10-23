@@ -43,6 +43,19 @@ class CacheBackend(ABC):
         """删除缓存"""
         pass
 
+    async def delete_many(self, keys: list[str]) -> int:
+        """批量删除，返回处理的键数。
+
+        默认逐条 ``delete``；Redis 后端覆盖为一次 ``DEL k1 k2 ...``，
+        把"按 slug × 语言逐条失效文章详情"的 N 次往返压成 1 次。
+        非抽象方法：后端没有覆盖时也有正确（只是不快）的行为。
+        """
+        deleted = 0
+        for key in keys:
+            if await self.delete(key):
+                deleted += 1
+        return deleted
+
     @abstractmethod
     async def delete_pattern(self, pattern: str) -> int:
         """删除匹配模式的所有缓存"""
@@ -284,6 +297,26 @@ class RedisCacheBackend(CacheBackend):
             self._degrade("delete", e)
             return await self._fallback.delete(key)
 
+    async def delete_many(self, keys: list[str]) -> int:
+        """一次 DEL 删多个键；键数超过单命令参数上限时自动分批。"""
+        keys = [k for k in keys if k]
+        if not keys:
+            return 0
+        # redis-py 对超长命令会自己切包，但分批能让单次 RTT 的负载可控
+        batch_size = 500
+        try:
+            client = await self._get_client()
+            # 与 delete 同口径：兜底里的同名键先清，避免"降级写脏、恢复删不掉"
+            await self._fallback.delete_many(keys)
+            if client is None:
+                return len(keys)
+            for start in range(0, len(keys), batch_size):
+                await client.delete(*keys[start : start + batch_size])
+            return len(keys)
+        except Exception as e:
+            self._degrade("delete_many", e)
+            return await self._fallback.delete_many(keys)
+
     async def delete_pattern(self, pattern: str) -> int:
         try:
             client = await self._get_client()
@@ -464,6 +497,9 @@ class CacheService:
     async def delete(self, key: str) -> bool:
         return await self.backend.delete(key)
 
+    async def delete_many(self, keys: list[str]) -> int:
+        return await self.backend.delete_many(keys)
+
     async def delete_pattern(self, pattern: str) -> int:
         return await self.backend.delete_pattern(pattern)
 
@@ -566,9 +602,11 @@ async def invalidate_post_detail_cache(*slugs: str | None) -> int:
     # 延迟导入：LANGUAGE_CODES 来自 i18n，避免核心缓存反向依赖请求语言层
     from backend.core.i18n import LANGUAGE_CODES
 
-    deleted = 0
-    for slug in {s for s in slugs if s}:
-        for lang_code in LANGUAGE_CODES:
-            if await cache.delete(make_cache_key("post", slug, lang_code)):
-                deleted += 1
-    return deleted
+    keys = [
+        make_cache_key("post", slug, lang_code)
+        for slug in {s for s in slugs if s}
+        for lang_code in LANGUAGE_CODES
+    ]
+    # 一次批量 DEL 代替逐条 delete：改标题/删文章这类写操作会连带失效详情缓存，
+    # 逐条发在 Redis 后端是 4~8 次往返；delete_many 在内存后端自动退化为逐条。
+    return await cache.delete_many(keys)

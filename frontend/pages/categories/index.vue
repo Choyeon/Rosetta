@@ -1,8 +1,11 @@
 <!--
   分类列表页：GET /blog/categories 卡片网格，name/description 按四语 dict 取值，
   post_count 兼容 postsCount 两种命名。
-  契约：query.lang 只在 setup 期取一次快照，换语言后列表能更新完全依赖 watch(locale) 里
-  那次显式 refresh —— 删掉它 key 虽然变了但请求参数不会变，页面继续显示旧语言分类名。
+  契约（2026-10 防双发改造后）：键与查询都是 setup 期静态字面量，切语言的刷新
+  靠「切换器必然跳同页目标语言 URL → NuxtPage 按 path 重挂载本页 → setup 以新
+  locale 重新请求」。不再写 watch(locale)+refresh()：旧写法里 key watcher 那一发
+  用的仍是旧 locale 的静态查询参数，手写 refresh 又与它双发、第一发必被 abort，
+  每切一次语言白送后端两次注定被丢弃的 /blog/categories 查询。
 -->
 <template>
   <div class="container py-16">
@@ -161,12 +164,14 @@ interface CategoryRow {
 }
 
 // 真实接口：GET /api/blog/categories。SSR + 客户端同源，失败时回退空数组，不显示示例分类。
-const { data: catsData, pending: _catsLoading, error: catsLoadError, refresh: refreshCats } = useAPI<CategoryRow[]>('/blog/categories', {
+// 键与 AppFooter 等共用 `blog:categories:<locale>`（Nuxt 按 key 去重，同页只发一条）；
+// 静态键+静态查询：切语言走「跳同页 URL → 重挂载 → 新 locale 重新请求」，
+// 不手写 watch(locale)+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
+const { data: catsData, pending: _catsLoading, error: catsLoadError } = useAPI<CategoryRow[]>('/blog/categories', {
   query: { lang: locale.value },
-  key: computed(() => 'categories:list:' + (locale.value || 'zh')),
+  key: `blog:categories:${locale.value}`,
   default: () => []
 })
-watch(locale, () => void refreshCats())
 
 const categories = computed<CategoryRow[]>(() => {
   const raw = catsData.value
