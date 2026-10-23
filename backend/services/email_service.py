@@ -235,8 +235,14 @@ class EmailService:
 
         分组里 smtp_password / smtp_user 留空**不覆写**：``_save_group`` 是整段 JSON 落库，
         而设置页出于安全从不回显已存密码——管理员改一次 SMTP 主机就顺带把凭据提交成空串。
+
+        ``dry_run``：干跑开关。开启时邮件只写日志、不连接 SMTP——
+        评论邮件等功能联调时不必往真实/虚假地址投递（投递失败的退信会全部回到
+        from_address，正是"测试评论功能却收到一堆回退消息"的成因）。
+        它与 ``enable_notifications``（通知类邮件总开关）正交：
+        前者管"发不发"，后者管"发的时候是否真的投递"。
         """
-        from backend.services.site_settings import int_of, read_group
+        from backend.services.site_settings import bool_of, int_of, read_group
 
         cfg = await read_group("email")
 
@@ -254,6 +260,7 @@ class EmailService:
             else self.smtp_use_tls,
             "from_email": pick("from_address", self.from_email),
             "from_name": pick("from_name", self.from_name),
+            "dry_run": bool_of(cfg, "dry_run", False),
         }
 
     async def smtp_is_configured(self) -> bool:
@@ -261,8 +268,13 @@ class EmailService:
 
         ``is_configured`` 只看环境变量，所以只填了后台邮件设置时它会假报"未配置"，
         调用方据此跳过发信——表现正是"SMTP 在后台配好了，通知邮件一封都不发"。
+
+        dry_run 开启时直接返回 True：干跑不需要真实凭据，
+        否则"只想验证邮件链路不通 SMTP"的站点会被这里挡在发信之外。
         """
         cfg = await self.resolved_smtp()
+        if cfg["dry_run"]:
+            return True
         return bool(cfg["host"] and cfg["user"] and cfg["password"])
 
     def _create_message(self, email: EmailMessage, smtp: dict[str, Any]) -> MIMEMultipart:
@@ -312,6 +324,21 @@ class EmailService:
             EmailResult: 发送结果
         """
         smtp_cfg = await self.resolved_smtp()
+
+        # 干跑模式：不连接 SMTP，邮件完整内容落 INFO 日志。
+        # 为什么必须在"未配置"判定之前：干跑时 host/user/password 可以全空，
+        # 否则后台只填了 dry_run 的站点会走"邮件服务未配置"分支，日志里什么都不会留下，
+        # 联调的人得不到任何"邮件确实被构造出来了"的证据。
+        if smtp_cfg["dry_run"]:
+            logger.info(
+                "[dry-run] 邮件未真实投递 | to=%s | from=%s | subject=%s | body=%s",
+                email.to,
+                smtp_cfg["from_email"],
+                email.subject,
+                (email.body or email.html_body or "")[:200],
+            )
+            return EmailResult(success=True, error=None)
+
         if not (smtp_cfg["host"] and smtp_cfg["user"] and smtp_cfg["password"]):
             logger.warning("邮件服务未配置，跳过发送")
             return EmailResult(

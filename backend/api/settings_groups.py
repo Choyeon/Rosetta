@@ -195,6 +195,9 @@ def _default_email() -> dict:
         "from_address": "",
         "from_name": "Rosetta",
         "enable_notifications": False,
+        # 干跑：邮件只写日志不投递。联调评论/回复通知时打开它，
+        # 避免测试邮件真的发往虚假地址——退信会全部回到 from_address。
+        "dry_run": False,
     }
 
 

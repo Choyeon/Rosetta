@@ -730,6 +730,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     smtp_user: 'SMTP 用户名', smtp_password: 'SMTP 密码',
     use_tls: '启用 TLS 加密', from_address: '发件人邮箱地址',
     from_name: '发件人显示名称', enable_notifications: '启用邮件通知',
+    dry_run: '干跑模式（不真实投递，仅记录日志）',
     max_login_attempts: '登录失败最大尝试次数',
     lockout_duration_sec: '登录锁定时长（秒）',
     enable_registration: '开放用户注册',
@@ -761,7 +762,8 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   // enable_captcha 必须有这句：验证码只挡未登录访客，登录用户与后台不受影响，
   // 关掉它不影响已经提交的留言；少了这句，管理员会以为它能挡注册机以外的一切。
   const BOOL_HELP: Record<string, string> = {
-    enable_captcha: '只要求未登录访客在提交评论与留言前通过图形验证码；登录用户与后台不受影响，默认关闭'
+    enable_captcha: '只要求未登录访客在提交评论与留言前通过图形验证码；登录用户与后台不受影响，默认关闭',
+    dry_run: '开启后所有邮件只写后端日志、不连接 SMTP。联调评论/回复通知时打开它：测试邮件一旦真实发往不存在的地址，退信会全部回到「发件人邮箱」'
   }
   const boolHelp = BOOL_HELP[key]
 
@@ -896,7 +898,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     comments: { enable: true, require_approval: false, allow_guest: true, max_length: 3000, enable_antispam: true, enable_nested: true },
     media: { max_upload_size: 10485760, allowed_image_types: 'jpg,jpeg,png,gif,webp,svg', allowed_file_types: 'mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx', use_cdn: false, cdn_prefix: '', watermark_text: '' },
     seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', twitter_handle: '', google_verification: '', baidu_verification: '', robots_txt: '' },
-    email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false },
+    email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false, dry_run: false },
     security: { max_login_attempts: 5, lockout_duration_sec: 1800 },
     features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true, enable_captcha: false },
     appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },

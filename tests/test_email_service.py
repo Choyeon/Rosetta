@@ -1,8 +1,12 @@
 """
-邮件服务测试：投递必须有时间预算
+邮件服务测试：投递必须有时间预算 + 干跑模式零真实投递
 
 密码重置等接口会同步等待 send_email 结果来决定降级，因此 SMTP 卡死绝不能
 无限挂住请求。这里用假 smtplib 锁定两件事：连接带 timeout、超时收敛为失败结果。
+
+dry_run（后台「邮件通知 → 干跑模式」）是评论邮件等功能联调的安全阀：
+开启时邮件只写日志、不连接 SMTP——否则测试邮件真实发往不存在的地址，
+退信会全部回到 from_address（管理员自己的邮箱）。
 """
 
 import pytest
@@ -69,6 +73,7 @@ def _service() -> es.EmailService:
             "tls": False,
             "from_email": "bot@example.test",
             "from_name": "Bot",
+            "dry_run": False,
         }
 
     svc.resolved_smtp = _cfg
@@ -101,3 +106,60 @@ async def test_timeout_converts_to_failed_result(monkeypatch):
     assert result.success is False
     assert result.error and "timed out" in result.error
     assert _FakeSMTP.instances[0].quit_called is True, "失败路径也必须关闭连接，否则每次失败漏一条"
+
+
+@pytest.mark.asyncio
+async def test_dry_run_never_touches_smtp(monkeypatch):
+    """dry_run 开启：一封真实邮件都不许发出（连 SMTP 对象都不许构造）。"""
+    monkeypatch.setattr(es.smtplib, "SMTP", _FakeSMTP)
+    monkeypatch.setattr(es.smtplib, "SMTP_SSL", _FakeSMTP)
+
+    svc = _service()
+
+    async def _cfg() -> dict:
+        return {
+            "host": "smtp.example.test",
+            "port": 587,
+            "user": "bot@example.test",
+            "password": "secret",
+            "tls": False,
+            "from_email": "bot@example.test",
+            "from_name": "Bot",
+            "dry_run": True,
+        }
+
+    svc.resolved_smtp = _cfg
+
+    result = await svc._send_sync(_message())
+
+    assert result.success is True
+    assert _FakeSMTP.instances == [], "干跑模式不允许构造任何 SMTP 连接"
+
+
+@pytest.mark.asyncio
+async def test_dry_run_counts_as_configured():
+    """只开 dry_run、不填 SMTP 凭据时也必须算"可用"——否则评论通知会在
+    发信之前就被 smtp_is_configured() 挡掉，干跑形同虚设。"""
+    svc = es.EmailService(
+        smtp_host="",
+        smtp_port=465,
+        smtp_user="",
+        smtp_password="",
+        from_email="",
+        template_dir=".__nonexistent_templates__",
+    )
+
+    async def _cfg() -> dict:
+        return {
+            "host": "",
+            "port": 465,
+            "user": "",
+            "password": "",
+            "tls": True,
+            "from_email": "",
+            "from_name": "",
+            "dry_run": True,
+        }
+
+    svc.resolved_smtp = _cfg
+    assert await svc.smtp_is_configured() is True
