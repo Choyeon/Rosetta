@@ -937,9 +937,7 @@
 <script setup lang="ts">
 import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
-import { Badge } from '~~/components/ui/badge'
 import { badgeVariants } from '~~/components/ui/badge'
-import { cn } from '~~/lib/utils'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
@@ -951,8 +949,8 @@ import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { toYMD } from '~~/lib/datetime'
-import { formatCount } from '~~/lib/utils'
-import { watch, computed, onMounted, onBeforeUnmount } from 'vue'
+import { cn, formatCount } from '~~/lib/utils'
+import { computed, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ layout: 'default' })
 

@@ -837,12 +837,12 @@ onBeforeUnmount(() => {
                     class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
                   >
                     {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
-                      <button
-                        type="button"
-                        class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
-                        :aria-label="`移除标签 ${getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId}`"
-                        @click.stop="removeTag(tagId)"
-                      >
+                    <button
+                      type="button"
+                      class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
+                      :aria-label="`移除标签 ${getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId}`"
+                      @click.stop="removeTag(tagId)"
+                    >
                       <X class="size-3" />
                     </button>
                   </Badge>

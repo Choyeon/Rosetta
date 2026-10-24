@@ -174,7 +174,7 @@
                 class="rounded-xl pl-9"
                 placeholder="筛选本组设置项"
                 aria-label="筛选本组设置项"
-              >
+              />
             </div>
           </div>
           <Separator />

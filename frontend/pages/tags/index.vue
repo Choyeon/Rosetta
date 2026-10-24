@@ -106,7 +106,7 @@
 <script setup lang="ts">
 import { Tags } from '@lucide/vue'
 import TagBadge from '~~/components/TagBadge.vue'
-import { watch, computed } from 'vue'
+import { computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
 

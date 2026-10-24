@@ -127,7 +127,7 @@ import {
 import { Badge } from '~~/components/ui/badge'
 import { useI18n } from 'vue-i18n'
 import { FolderOpen, ArrowRight } from '@lucide/vue'
-import { watch, computed } from 'vue'
+import { computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
 

@@ -139,6 +139,7 @@ function resolveIcon(item: { icon?: unknown }) {
 
 <template>
   <aside
+    v-show="!mobile || open"
     id="admin-sidebar"
     class="admin-sidebar shrink-0 transition-all duration-300 ease-out border-r border-sidebar-border bg-sidebar flex flex-col"
     :class="[
@@ -147,7 +148,6 @@ function resolveIcon(item: { icon?: unknown }) {
         : 'sticky top-0 self-start h-svh',
       mobile ? '' : (railCollapsed ? 'w-[72px]' : 'w-[256px]')
     ]"
-    v-show="!mobile || open"
   >
     <div
       class="h-16 shrink-0 px-3 md:px-4 flex items-center border-b border-sidebar-border"
