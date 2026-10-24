@@ -458,10 +458,13 @@ watch(
       aria-label="Breadcrumb"
       class="hidden sm:flex items-center gap-2 text-sm min-w-0"
     >
-      <span class="text-muted-foreground/60 shrink-0">
+      <span class="text-muted-foreground shrink-0">
         {{ currentGroup }}
       </span>
-      <span class="text-muted-foreground/40 shrink-0 font-light">/</span>
+      <span
+        class="text-muted-foreground/40 shrink-0 font-light"
+        aria-hidden="true"
+      >/</span>
       <span
         class="font-medium text-foreground truncate"
         :title="currentPage"
@@ -528,7 +531,9 @@ watch(
       </div>
     </div>
 
-    <div class="flex-1 sm:hidden lg:hidden" />
+    <!-- spacer：sm–lg 之间快速搜索尚未显示，面包屑右侧必须有弹性占位，
+         否则通知/主题/用户区紧贴面包屑而不是靠右（640–1023px 实测）。 -->
+    <div class="flex-1 lg:hidden" />
 
     <!-- 右区：通知 + 主题切换 + 用户菜单 -->
     <div class="flex items-center gap-1 md:gap-2">

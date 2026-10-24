@@ -12,7 +12,8 @@
     />
 
     <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <AdminCard class="overflow-hidden">
+      <!-- 统计卡：外层 p-0 + 内层 p-4，避免 AdminCard 默认 p-5 再叠一层形成双份留白 -->
+      <AdminCard class="overflow-hidden p-0">
         <div class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -29,7 +30,8 @@
           </div>
         </div>
       </AdminCard>
-      <AdminCard class="overflow-hidden">
+      <!-- 统计卡：外层 p-0 + 内层 p-4，避免 AdminCard 默认 p-5 再叠一层形成双份留白 -->
+      <AdminCard class="overflow-hidden p-0">
         <div class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -46,7 +48,8 @@
           </div>
         </div>
       </AdminCard>
-      <AdminCard class="overflow-hidden">
+      <!-- 统计卡：外层 p-0 + 内层 p-4，避免 AdminCard 默认 p-5 再叠一层形成双份留白 -->
+      <AdminCard class="overflow-hidden p-0">
         <div class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -63,7 +66,8 @@
           </div>
         </div>
       </AdminCard>
-      <AdminCard class="overflow-hidden">
+      <!-- 统计卡：外层 p-0 + 内层 p-4，避免 AdminCard 默认 p-5 再叠一层形成双份留白 -->
+      <AdminCard class="overflow-hidden p-0">
         <div class="p-4">
           <div class="flex items-center justify-between">
             <div>
@@ -300,7 +304,8 @@
             </div>
           </template>
 
-          <div class="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity flex items-center gap-1">
+          <!-- 触屏没有稳定 hover：<lg 直接常显，桌面保留"悬停才出现"的干净网格。 -->
+          <div class="absolute top-2 right-2 flex items-center gap-1 transition-opacity opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
             <Button
               variant="destructive"
               size="icon-sm"
@@ -322,7 +327,8 @@
                 'size-5 rounded flex items-center justify-center border transition-all',
                 selectedIds.includes(m.id)
                   ? 'bg-primary border-primary text-primary-foreground'
-                  : 'bg-background/80 backdrop-blur-sm opacity-0 group-hover:opacity-100 focus-within:opacity-100'
+                  // 触屏没有稳定 hover：<lg 直接常显，桌面保留"悬停才出现"的干净网格。
+                  : 'bg-background/80 backdrop-blur-sm opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100'
               ]"
             >
               <Checkbox
@@ -415,7 +421,7 @@
         <Button
           variant="destructive"
           size="icon-sm"
-          class="shrink-0 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity"
+          class="shrink-0 transition-opacity opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100"
           title="删除"
           :aria-label="`删除文件 ${m.filename}`"
           @click.stop="confirmDelete(m.id)"

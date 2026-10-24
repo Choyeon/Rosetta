@@ -62,7 +62,7 @@ const rangeLabel = computed(() => {
     <p class="text-sm text-muted-foreground">
       {{ rangeLabel }}
     </p>
-    <div class="flex items-center gap-4">
+    <div class="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
       <div class="flex shrink-0 items-center gap-2">
         <span class="text-sm text-muted-foreground whitespace-nowrap">每页</span>
         <Select
@@ -94,9 +94,9 @@ const rangeLabel = computed(() => {
       >
         <PaginationContent
           v-slot="{ items }"
-          class="flex items-center gap-1"
+          class="flex flex-wrap items-center justify-center gap-1"
         >
-          <PaginationFirst />
+          <PaginationFirst class="hidden sm:inline-flex" />
           <PaginationPrevious />
           <template
             v-for="(item, index) in items"
@@ -117,7 +117,7 @@ const rangeLabel = computed(() => {
             <PaginationEllipsis v-else />
           </template>
           <PaginationNext />
-          <PaginationLast />
+          <PaginationLast class="hidden sm:inline-flex" />
         </PaginationContent>
       </Pagination>
     </div>

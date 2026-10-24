@@ -108,6 +108,8 @@
         data-editorial-section="hero"
         @pointerenter="heroPaused = true"
         @pointerleave="heroPaused = false"
+        @focusin="heroFocusPaused = true"
+        @focusout="heroFocusPaused = false"
       >
         <!-- 背景层：新旧两层都绝对定位，切换时交叉淡入（reduced-motion 下由 CSS 关闭动画） -->
         <div class="absolute inset-0 z-0">
@@ -204,12 +206,24 @@
           >
             <div
               v-if="heroCount > 1"
-              class="rounded-2xl border border-white/15 bg-black/45 backdrop-blur-xl px-3 py-3 flex items-center gap-2 shadow-2xl shadow-black/40"
+              class="rounded-2xl border border-white/15 bg-black/45 backdrop-blur-xl px-3 py-3 flex flex-wrap items-center gap-2 shadow-2xl shadow-black/40"
             >
               <div class="hidden sm:flex flex-col pr-2 pl-1 border-r border-white/10 justify-center">
                 <span class="text-[10px] uppercase tracking-[0.14em] text-white/60">{{ t('home.hotPicks') }}</span>
                 <span class="text-xs font-medium text-white/90">{{ heroIdx + 1 }} / {{ heroCount }}</span>
               </div>
+              <!-- 键盘/触屏用户没有 hover 可用：必须给一个真实的暂停开关，
+                   否则焦点停在 CTA 上标题仍会每 6 秒被换走。 -->
+              <button
+                type="button"
+                class="inline-flex min-h-8 items-center rounded-full border border-white/20 bg-white/10 px-3 text-xs font-medium text-white/90 backdrop-blur-xl transition-colors hover:bg-white/20"
+                :aria-pressed="heroUserPaused"
+                :aria-label="heroUserPaused ? '继续轮播' : '暂停轮播'"
+                :title="heroUserPaused ? '继续轮播' : '暂停轮播'"
+                @click="heroUserPaused = !heroUserPaused"
+              >
+                {{ heroUserPaused ? '继续轮播' : '暂停轮播' }}
+              </button>
               <div class="flex flex-wrap items-center gap-2">
                 <button
                   v-for="(slide, i) in heroSlides"
@@ -524,15 +538,16 @@
                   v-else-if="tags.length"
                   class="flex flex-wrap gap-1.5"
                 >
-                  <Badge
+                  <!-- 标签云是导航项而不是装饰徽章：用 NuxtLink 承载 Badge 的同一套
+                       variant 类（根元素是 div 的 Badge 不可聚焦、也没有 Enter 激活）。 -->
+                  <NuxtLink
                     v-for="tag in tags"
                     :key="tag.id"
-                    variant="outline"
-                    class="cursor-pointer hover:bg-accent transition-colors"
-                    @click="navigateTo(`/posts?tag=${tag.slug}`)"
+                    :to="localeHref(`/posts?tag=${tag.slug}`)"
+                    :class="cn(badgeVariants({ variant: 'outline' }), 'hover:bg-accent transition-colors')"
                   >
                     #{{ pickLocalized(tag.name) }}
-                  </Badge>
+                  </NuxtLink>
                 </div>
                 <div
                   v-else
@@ -827,15 +842,16 @@
                   v-else-if="tags.length"
                   class="flex flex-wrap gap-1.5"
                 >
-                  <Badge
+                  <!-- 标签云是导航项而不是装饰徽章：用 NuxtLink 承载 Badge 的同一套
+                       variant 类（根元素是 div 的 Badge 不可聚焦、也没有 Enter 激活）。 -->
+                  <NuxtLink
                     v-for="tag in tags"
                     :key="tag.id"
-                    variant="outline"
-                    class="cursor-pointer hover:bg-accent transition-colors"
-                    @click="navigateTo(`/posts?tag=${tag.slug}`)"
+                    :to="localeHref(`/posts?tag=${tag.slug}`)"
+                    :class="cn(badgeVariants({ variant: 'outline' }), 'hover:bg-accent transition-colors')"
                   >
                     #{{ pickLocalized(tag.name) }}
-                  </Badge>
+                  </NuxtLink>
                 </div>
                 <div
                   v-else
@@ -922,6 +938,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
+import { badgeVariants } from '~~/components/ui/badge'
+import { cn } from '~~/lib/utils'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
@@ -1216,6 +1234,10 @@ const heroCount = computed(() => heroSlides.value.length)
 // 首帧两端都必须是 0：autoplay 只在客户端 onMounted 之后推进，SSR 与 hydration 才字节一致。
 const heroIdx = ref(0)
 const heroPaused = ref(false)
+// 键盘焦点进入横幅（CTA / 缩略图）也要暂停；用户手动暂停后不能被 pointerleave 自动恢复。
+const heroFocusPaused = ref(false)
+const heroUserPaused = ref(false)
+const heroAutoplayPaused = computed(() => heroPaused.value || heroFocusPaused.value || heroUserPaused.value)
 const heroSlide = computed(() => {
   const n = heroCount.value
   if (!n) return null
@@ -1251,7 +1273,7 @@ onMounted(() => {
   if (heroCount.value < 2 || !heroEnabled.value) return
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
   heroTimer = setInterval(() => {
-    if (!heroPaused.value) heroIdx.value = (heroIdx.value + 1) % heroCount.value
+    if (!heroAutoplayPaused.value) heroIdx.value = (heroIdx.value + 1) % heroCount.value
   }, 6000)
 })
 onBeforeUnmount(() => {

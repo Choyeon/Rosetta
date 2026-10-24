@@ -39,8 +39,38 @@
           />
           保存当前组
         </Button>
+        <!-- 跨组改动此前是"静默留在内存里"：改了 A 组切到 B 组，A 的编辑既不显示也没处保存，
+             只剩一个按当前组计算的 isDirty。这里把脏分组显式列出来并允许一次性保存。 -->
+        <Button
+          v-if="dirtyGroups.length > 1"
+          size="sm"
+          variant="outline"
+          class="rounded-xl"
+          :disabled="saving"
+          @click="saveAllDirtyGroups"
+        >
+          <CheckCheck data-icon="inline-start" />
+          保存全部改动（{{ dirtyGroups.length }}）
+        </Button>
       </template>
     </AdminPageHeader>
+
+    <div
+      v-if="dirtyGroups.length > 0"
+      class="flex flex-wrap items-center gap-2 rounded-xl border border-warning/30 bg-warning/5 px-3 py-2 text-xs text-warning-foreground"
+    >
+      <span class="font-medium">未保存分组：</span>
+      <button
+        v-for="g in dirtyGroups"
+        :key="g.key"
+        type="button"
+        class="rounded-lg border border-warning/30 bg-background/60 px-2 py-1 font-medium transition-colors hover:bg-warning/10"
+        @click="jumpToGroup(g.key)"
+      >
+        {{ g.label }}
+      </button>
+      <span class="text-muted-foreground">切换分组不会丢弃改动，但只有保存后才会生效。</span>
+    </div>
 
     <div
       v-if="loading"
@@ -90,24 +120,33 @@
 
     <div
       v-else
-      class="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 items-start"
+      class="grid grid-cols-1 md:grid-cols-[236px_minmax(0,1fr)] gap-6 items-start"
     >
-      <nav class="card-surface p-2 md:sticky md:top-4">
-        <div class="flex flex-col gap-1 p-1">
+      <!-- 分组导航：<md 改成横向可滚动条（14 个分组竖排会把表单推到首屏之外）；
+           sticky 顶距用 top-20 与 64px 的后台顶栏对齐，top-4 会整条压在顶栏下面。 -->
+      <nav class="card-surface p-2 md:sticky md:top-20">
+        <div class="flex gap-1 overflow-x-auto p-1 md:flex-col md:overflow-visible">
           <button
             v-for="g in groups"
             :key="g.key"
-            class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left"
+            class="group flex shrink-0 items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all text-left md:w-full"
             :class="activeGroup === g.key
               ? 'bg-primary text-primary-foreground shadow-md'
               : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
-            @click="activeGroup = g.key"
+            :aria-current="activeGroup === g.key ? 'true' : undefined"
+            @click="jumpToGroup(g.key)"
           >
             <component
               :is="g.icon"
               class="size-4 shrink-0"
             />
             <span class="truncate">{{ g.label }}</span>
+            <span
+              v-if="isGroupDirty(g.key)"
+              class="ml-auto size-1.5 shrink-0 rounded-full"
+              :class="activeGroup === g.key ? 'bg-primary-foreground' : 'bg-warning'"
+              :title="`${g.label} 有未保存改动`"
+            />
           </button>
         </div>
       </nav>
@@ -116,18 +155,38 @@
         <div
           class="flex flex-col gap-6 p-6"
         >
-          <div class="flex flex-col gap-1">
-            <h2 class="text-lg font-bold">
-              {{ currentGroupMeta?.label }}
-            </h2>
-            <p class="text-sm text-muted-foreground">
-              {{ currentGroupMeta?.desc }}
-            </p>
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div class="flex flex-col gap-1 min-w-0">
+              <h2 class="text-lg font-bold">
+                {{ currentGroupMeta?.label }}
+              </h2>
+              <p class="text-sm text-muted-foreground">
+                {{ currentGroupMeta?.desc }}
+              </p>
+            </div>
+            <!-- 单组最多十余项，但"基础信息/SEO"这种长组滚动找项很慢；
+                 这里只做本组字段的即时筛选，不改变任何值。 -->
+            <div class="relative w-full sm:w-64 shrink-0">
+              <Search class="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                v-model="fieldQuery"
+                type="search"
+                class="rounded-xl pl-9"
+                placeholder="筛选本组设置项"
+                aria-label="筛选本组设置项"
+              >
+            </div>
           </div>
           <Separator />
+          <p
+            v-if="Object.keys(visibleGroupSchemas).length === 0"
+            class="text-sm text-muted-foreground"
+          >
+            「{{ fieldQuery }}」没有匹配到本组设置项。
+          </p>
           <div class="flex flex-col gap-5 max-w-3xl">
             <template
-              v-for="(schema, key) in currentGroupSchemas"
+              v-for="(schema, key) in visibleGroupSchemas"
               :key="key"
             >
               <template v-if="schema.type === 'string' && !schema.long && !schema.sensitive">
@@ -463,7 +522,7 @@ import {
   Settings, Save, Loader2, Eye, EyeOff, AlertTriangle, RotateCcw,
   Globe, BookOpen, MessageSquare, Image, Search, Mail,
   Shield, ToggleLeft, Palette, Menu, Sparkles, Bell,
-  LayoutTemplate, Heart
+  LayoutTemplate, Heart, CheckCheck
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
@@ -517,6 +576,8 @@ const groups = [
 ]
 
 const activeGroup = ref('basic')
+/** 本组字段筛选词（只影响显示，不参与提交） */
+const fieldQuery = ref('')
 const loading = ref(true)
 const loadError = ref('')
 const saving = ref(false)
@@ -526,12 +587,34 @@ const showSensitive = reactive<Record<string, boolean>>({})
 
 const currentGroupMeta = computed(() => groups.find(g => g.key === activeGroup.value))
 
-const isDirty = computed(() => {
-  const o = originalState.value[activeGroup.value]
-  const c = formState[activeGroup.value]
+/**
+ * 单个分组的脏检查：按组独立比较，而不是只算当前激活组。
+ * 站点设置是"按组保存"，切换分组时其它组的改动仍然停留在 formState 里；
+ * 以前没有任何 UI 说出来，管理员会以为已经保存或已经被丢弃。
+ */
+function isGroupDirty(groupKey: string): boolean {
+  const o = originalState.value[groupKey]
+  const c = formState[groupKey]
   if (!o || !c) return false
   return JSON.stringify(o) !== JSON.stringify(c)
-})
+}
+
+const isDirty = computed(() => isGroupDirty(activeGroup.value))
+
+const dirtyGroups = computed(() => groups.filter(g => isGroupDirty(g.key)))
+
+function groupLabel(groupKey: string): string {
+  return groups.find(g => g.key === groupKey)?.label ?? groupKey
+}
+
+/** 从"未保存分组"chip 跳过去：切组 + 回到表单顶部（长组否则会停在中间）。 */
+function jumpToGroup(groupKey: string) {
+  activeGroup.value = groupKey
+  fieldQuery.value = ''
+  if (import.meta.client) {
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
 
 function toggleSensitive(key: string) {
   showSensitive[key] = !showSensitive[key]
@@ -888,6 +971,18 @@ const currentGroupSchemas = computed(() => {
   return out
 })
 
+/** 字段筛选只按标签/键匹配，值本身不动（避免把筛选词误当成配置改掉）。 */
+const visibleGroupSchemas = computed(() => {
+  const q = fieldQuery.value.trim().toLowerCase()
+  const all = currentGroupSchemas.value
+  if (!q) return all
+  const out: Record<string, FieldSchema> = {}
+  for (const [k, schema] of Object.entries(all)) {
+    if (schema.label.toLowerCase().includes(q) || k.toLowerCase().includes(q)) out[k] = schema
+  }
+  return out
+})
+
 function getDefaultsFor(group: string): Record<string, SettingsValue> {
   const m: Record<string, Record<string, SettingsValue>> = {
     basic: { site_name: '', subtitle: '', logo: '', description: '', keywords: '', site_url: '', icp_number: '', about_page_html: '' },
@@ -932,11 +1027,13 @@ async function loadAll() {
   }
 }
 
-async function handleSaveCurrentGroup() {
-  const groupKey = activeGroup.value
+/**
+ * 保存单个分组（当前组按钮与"保存全部"共用同一条清洗链路）。
+ * 返回 false 表示一个分组失败：批量保存必须中断，否则会把"部分成功"伪装成全部成功。
+ */
+async function saveGroup(groupKey: string): Promise<boolean> {
   const raw = formState[groupKey]
-  if (!raw) return
-  saving.value = true
+  if (!raw) return false
   try {
     // 清洗 payload，避免无意义或被禁止的字段被后端接收
     const payload: SettingsGroupData = { ...raw }
@@ -960,11 +1057,42 @@ async function handleSaveCurrentGroup() {
       donateMethods.value = (r.data.methods as DonateMethod[] | undefined) ?? []
       if (formState.donate) formState.donate.methods = donateMethods.value
     }
-    toast.success(`已保存：${currentGroupMeta.value?.label ?? groupKey}`)
+    return true
   } catch (e) {
     // saveSettingsGroup 的 apiFetch 失败时已 toast 展示后端错误；
     // 此处不再二次 toast，仅保留控制台日志便于排查
-    console.error('[settings] handleSaveCurrentGroup failed:', e)
+    console.error('[settings] saveGroup failed:', groupKey, e)
+    return false
+  }
+}
+
+async function handleSaveCurrentGroup() {
+  const groupKey = activeGroup.value
+  saving.value = true
+  try {
+    const ok = await saveGroup(groupKey)
+    if (ok) toast.success(`已保存：${groupLabel(groupKey)}`)
+  } finally {
+    saving.value = false
+  }
+}
+
+/**
+ * 保存全部脏分组：按脏分组快照逐个 PATCH。
+ * 快照要在循环前取，否则第一个分组保存成功后 dirtyGroups 会实时变短，循环漏掉最后几组。
+ */
+async function saveAllDirtyGroups() {
+  const targets = dirtyGroups.value.map(g => g.key)
+  if (targets.length === 0) return
+  saving.value = true
+  const saved: string[] = []
+  try {
+    for (const key of targets) {
+      const ok = await saveGroup(key)
+      if (!ok) break
+      saved.push(groupLabel(key))
+    }
+    if (saved.length > 0) toast.success(`已保存 ${saved.length} 个分组：${saved.join('、')}`)
   } finally {
     saving.value = false
   }

@@ -207,7 +207,7 @@
             <article
               v-show="!!post"
               ref="articleEl"
-              class="prose-shadcn prose-shadcn-dark mt-12 mx-auto max-w-none"
+              class="prose-shadcn prose-shadcn-dark mt-12 mx-auto"
               :style="proseStyle"
               v-html="post ? renderedContent : ''"
             />

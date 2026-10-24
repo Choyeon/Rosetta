@@ -9,6 +9,7 @@
 /* eslint-disable */
 import AdminSidebar from '~~/components/admin/AdminSidebar.vue'
 import AdminHeader from '~~/components/admin/AdminHeader.vue'
+import { useMediaQuery } from '@vueuse/core'
 import { useTheme } from '~~/composables/useTheme'
 import { useAuthStore } from '~~/stores/auth'
 import { useFrontendTheme } from '~~/composables/useFrontendTheme'
@@ -48,14 +49,32 @@ watch(() => route.path, () => sanitizeAdminShell(), { flush: 'post' })
 //   1. 唯一 Provider 保证首渲染层级字节级一致
 //   2. AdminHeader / AdminSidebar 中的 Tooltip 仍能正确注入
 const sidebarCollapsed = ref(false)
+const mobileNavOpen = ref(false)
 
-if (import.meta.client) {
-  onMounted(() => {
-    if (window.innerWidth < 1280) {
-      sidebarCollapsed.value = true
-    }
-  })
+/**
+ * 断点用 matchMedia 订阅，不再只 onMounted 读一次 innerWidth：
+ * 转屏 / 拖窗口后侧栏形态必须跟着变，否则 768–1280px 会停在"自动收起且没有合适开关"的状态。
+ */
+const isDesktopNav = useMediaQuery('(min-width: 768px)')
+const isWideNav = useMediaQuery('(min-width: 1280px)')
+
+// xl 以下默认收成图标栏（老口径保留），xl 及以上展开完整菜单。
+watch(isWideNav, (wide) => { sidebarCollapsed.value = !wide }, { immediate: true })
+// 回到桌面宽度时抽屉必须关掉：否则遮罩会留在宽屏上挡住主内容。
+watch(isDesktopNav, (desktop) => { if (desktop) mobileNavOpen.value = false })
+// 抽屉里点任意菜单后自动收起（移动端导航完还要手动点遮罩关闭是常见的漏做项）。
+watch(() => route.path, () => { mobileNavOpen.value = false })
+
+/** 顶栏那颗开关：桌面切折叠，<md 切抽屉开合（开关仍然唯一，位置不跳）。 */
+function onToggleSidebar() {
+  if (isDesktopNav.value) sidebarCollapsed.value = !sidebarCollapsed.value
+  else mobileNavOpen.value = !mobileNavOpen.value
 }
+
+/** 给 AdminHeader 的图标语义：抽屉打开时等同于"展开"，关闭时等同于"收起"。 */
+const sidebarNavCollapsed = computed(() =>
+  isDesktopNav.value ? sidebarCollapsed.value : !mobileNavOpen.value
+)
 </script>
 
 <template>
@@ -65,11 +84,20 @@ if (import.meta.client) {
   >
     <AdminSidebar
       v-model:collapsed="sidebarCollapsed"
+      :mobile="!isDesktopNav"
+      :open="mobileNavOpen"
+    />
+    <!-- 抽屉遮罩：只在 <md 且抽屉打开时存在，点击即关（不用额外的关闭按钮，避免顶栏出现第二个开关） -->
+    <div
+      v-if="!isDesktopNav && mobileNavOpen"
+      class="fixed inset-0 z-40 bg-black/45 backdrop-blur-sm md:hidden"
+      aria-hidden="true"
+      @click="mobileNavOpen = false"
     />
     <div class="admin-main flex-1 flex flex-col min-w-0">
       <AdminHeader
-        :sidebar-collapsed="sidebarCollapsed"
-        @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed"
+        :sidebar-collapsed="sidebarNavCollapsed"
+        @toggle-sidebar="onToggleSidebar"
       />
       <main
         id="main"

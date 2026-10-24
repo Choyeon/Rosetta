@@ -168,7 +168,12 @@ describe('站点设置：主区自然增高（不再固定高度内滚）', () =
     expect(src).not.toMatch(/from '~~\/components\/ui\/scroll-area'/)
   })
 
-  it('左侧分组栏改为 sticky，长页面切组仍可达', () => {
-    expect(src).toMatch(/md:sticky md:top-4/)
+  /**
+   * sticky 顶距必须让开 64px 的后台顶栏（h-16 sticky top-0）：
+   * 曾经的 `md:top-4` 会把分组栏整条停在顶栏背后，看起来像"分组栏消失了"。
+   */
+  it('左侧分组栏 sticky 且顶距对齐后台顶栏（top-20）', () => {
+    expect(src).toMatch(/md:sticky md:top-20/)
+    expect(src).not.toMatch(/md:sticky md:top-4/)
   })
 })

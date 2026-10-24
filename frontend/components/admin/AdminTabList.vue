@@ -14,7 +14,7 @@ const props = defineProps<TabsListProps & { class?: HTMLAttributes['class'] }>()
 <template>
   <TabsList
     v-bind="props"
-    :class="cn('h-11 justify-start gap-1 rounded-xl bg-muted/50 p-1.5', props.class)"
+    :class="cn('h-11 w-full justify-start gap-1 overflow-x-auto rounded-xl bg-muted/50 p-1.5', props.class)"
   >
     <slot />
   </TabsList>

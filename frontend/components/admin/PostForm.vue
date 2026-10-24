@@ -638,7 +638,10 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="w-full lg:w-2/5">
-        <div class="lg:sticky lg:top-4 lg:self-start flex flex-col gap-4 max-h-[calc(100vh-120px)] overflow-y-auto pr-1 scrollbar-thin">
+        <!-- 右侧设置栏：只有桌面才 sticky + 内层滚动。
+             原先 max-h/overflow-y-auto 没有限定断点，手机正文区里又套了一个滚动盒；
+             top 也从 4 提到 20，避开 64px 的 sticky 顶栏。 -->
+        <div class="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4 lg:max-h-[calc(100svh-140px)] lg:overflow-y-auto lg:pr-1 scrollbar-thin">
           <AdminCard class="p-5 flex flex-col gap-4">
             <div>
               <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
@@ -834,11 +837,12 @@ onBeforeUnmount(() => {
                     class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
                   >
                     {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
-                    <button
-                      type="button"
-                      class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
-                      @click.stop="removeTag(tagId)"
-                    >
+                      <button
+                        type="button"
+                        class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
+                        :aria-label="`移除标签 ${getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId}`"
+                        @click.stop="removeTag(tagId)"
+                      >
                       <X class="size-3" />
                     </button>
                   </Badge>
@@ -847,6 +851,10 @@ onBeforeUnmount(() => {
                     v-model="tagSearchQuery"
                     type="text"
                     class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
+                    role="combobox"
+                    aria-controls="post-form-tag-listbox"
+                    :aria-expanded="tagComboboxOpen"
+                    aria-autocomplete="list"
                     :aria-label="$_t('common.search')"
                     placeholder="搜索标签..."
                     @blur="onTagComboboxBlur"
@@ -854,14 +862,20 @@ onBeforeUnmount(() => {
                 </div>
                 <div
                   v-if="tagComboboxOpen"
+                  id="post-form-tag-listbox"
+                  role="listbox"
+                  aria-label="标签候选"
                   :class="[
                     'absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1' // panel-exempt: 标签下拉浮层；card-surface 的 isolation:isolate + backdrop-filter 会打断它与输入框的层叠关系，浮层必须保持素面
                   ]"
                 >
-                  <div
+                  <button
                     v-for="t in filteredTags"
                     :key="t.id"
-                    class="flex items-center justify-between px-2.5 py-2 rounded-md text-sm cursor-pointer transition-colors hover:bg-accent"
+                    type="button"
+                    role="option"
+                    :aria-selected="isTagSelected(t.id)"
+                    class="w-full flex items-center justify-between px-2.5 py-2 rounded-md text-sm text-left cursor-pointer transition-colors hover:bg-accent"
                     :class="{ 'bg-accent/50': isTagSelected(t.id) }"
                     @mousedown.prevent="toggleTag(t.id)"
                   >
@@ -878,7 +892,7 @@ onBeforeUnmount(() => {
                       v-if="isTagSelected(t.id)"
                       class="size-3.5 text-primary"
                     />
-                  </div>
+                  </button>
                   <div
                     v-if="filteredTags.length === 0"
                     class="px-2.5 py-3 text-sm text-muted-foreground text-center"
@@ -1026,8 +1040,11 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <div class="flex items-center justify-between pt-2 border-t border-border">
-      <div class="flex items-center gap-3">
+    <!-- 底部操作条：窄屏改为竖排并允许换行。
+         之前是单行 justify-between，而布局的 <main> 带 overflow-x-clip，
+         窄屏溢出的"发布文章"会被整块裁掉、点不到。 -->
+    <div class="flex flex-col gap-3 pt-2 border-t border-border sm:flex-row sm:items-center sm:justify-between">
+      <div class="flex flex-wrap items-center gap-3">
         <Button
           type="button"
           variant="outline"
@@ -1052,7 +1069,7 @@ onBeforeUnmount(() => {
           class="text-xs text-muted-foreground"
         >已同步</span>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
         <Button
           type="button"
           variant="ghost"

@@ -326,7 +326,7 @@ onMounted(() => {
 
     <div
       v-if="selectedIds.length > 0"
-      class="flex items-center justify-between rounded-[12px] border border-primary/30 bg-primary/5 px-5 py-3"
+      class="flex flex-col gap-3 rounded-[12px] border border-primary/30 bg-primary/5 px-5 py-3 sm:flex-row sm:items-center sm:justify-between"
     >
       <span class="text-sm text-primary/90">
         已选择 <strong>{{ selectedIds.length }}</strong> 条记录

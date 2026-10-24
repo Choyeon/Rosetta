@@ -15,6 +15,10 @@ import { stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
 const props = defineProps<{
   collapsed?: boolean
+  /** <md：侧栏改为抽屉（不占文档流）；由布局按视口判定后传入 */
+  mobile?: boolean
+  /** mobile=true 时的抽屉开合状态 */
+  open?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -25,6 +29,12 @@ const collapsed = computed({
   get: () => props.collapsed ?? false,
   set: (v: boolean) => emit('update:collapsed', v)
 })
+
+/**
+ * 抽屉模式下永远按"展开"渲染：手机屏宽只有一列，再收成 72px 图标条
+ * 反而让每个入口都要靠 tooltip 猜；折叠态只在桌面断点生效。
+ */
+const railCollapsed = computed(() => (props.mobile ? false : collapsed.value))
 
 const route = useRoute()
 
@@ -131,11 +141,17 @@ function resolveIcon(item: { icon?: unknown }) {
   <aside
     id="admin-sidebar"
     class="admin-sidebar shrink-0 transition-all duration-300 ease-out border-r border-sidebar-border bg-sidebar flex flex-col"
-    :class="collapsed ? 'w-[72px]' : 'w-[256px]'"
+    :class="[
+      mobile
+        ? 'fixed inset-y-0 left-0 z-50 h-svh w-[272px] shadow-2xl'
+        : 'sticky top-0 self-start h-svh',
+      mobile ? '' : (railCollapsed ? 'w-[72px]' : 'w-[256px]')
+    ]"
+    v-show="!mobile || open"
   >
     <div
       class="h-16 shrink-0 px-3 md:px-4 flex items-center border-b border-sidebar-border"
-      :class="collapsed ? 'justify-center px-2' : 'justify-between'"
+      :class="railCollapsed ? 'justify-center px-2' : 'justify-between'"
     >
       <NuxtLink
         to="/admin"
@@ -151,11 +167,11 @@ function resolveIcon(item: { icon?: unknown }) {
           mode="out-in"
         >
           <div
-            v-if="!collapsed"
+            v-if="!railCollapsed"
             class="flex flex-col leading-tight min-w-0"
           >
             <span class="font-display font-bold text-sidebar-foreground truncate">Rosetta Admin</span>
-            <span class="text-[11px] text-muted-foreground/80 truncate">博客管理控制台</span>
+            <span class="text-[11px] text-muted-foreground truncate">博客管理控制台</span>
           </div>
         </Transition>
       </NuxtLink>
@@ -173,8 +189,8 @@ function resolveIcon(item: { icon?: unknown }) {
           :key="group.key"
         >
           <div
-            v-if="!collapsed"
-            class="px-3 pt-4 pb-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground/70 font-semibold"
+            v-if="!railCollapsed"
+            class="px-3 pt-4 pb-1.5 text-[11px] uppercase tracking-[0.12em] text-muted-foreground font-semibold"
             :class="{ 'pt-2': gi === 0 }"
           >
             {{ group.label }}
@@ -189,7 +205,7 @@ function resolveIcon(item: { icon?: unknown }) {
               v-for="item in group.items"
               :key="item.path"
             >
-              <Tooltip :disabled="!collapsed">
+              <Tooltip :disabled="!railCollapsed">
                 <TooltipTrigger as-child>
                   <NuxtLink
                     :to="item.path"
@@ -201,7 +217,7 @@ function resolveIcon(item: { icon?: unknown }) {
                     ]"
                     :aria-current="item.active ? 'page' : undefined"
                     :aria-label="item.label"
-                    :title="collapsed ? item.label : undefined"
+                    :title="railCollapsed ? item.label : undefined"
                   >
                     <span
                       class="absolute inset-0 rounded-[11px] -z-10 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
@@ -218,18 +234,18 @@ function resolveIcon(item: { icon?: unknown }) {
                       :class="item.active ? 'sb-icon-active' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
                     />
                     <span
-                      v-if="!collapsed"
+                      v-if="!railCollapsed"
                       class="flex-1 min-w-0 text-[13.5px] truncate text-left tracking-[0.01em]"
                     >
                       {{ item.label }}
                     </span>
                     <ChevronRight
-                      v-if="item.active && !collapsed"
+                      v-if="item.active && !railCollapsed"
                       class="shrink-0 size-3.5 opacity-70 sb-chevron"
                       aria-hidden="true"
                     />
                     <Badge
-                      v-if="!collapsed && item.badge"
+                      v-if="!railCollapsed && item.badge"
                       variant="outline"
                       class="shrink-0 text-[10px] h-4 px-1.5"
                     >
@@ -238,7 +254,7 @@ function resolveIcon(item: { icon?: unknown }) {
                   </NuxtLink>
                 </TooltipTrigger>
                 <TooltipContent
-                  v-if="collapsed"
+                  v-if="railCollapsed"
                   side="right"
                   class="text-xs"
                 >
@@ -256,12 +272,12 @@ function resolveIcon(item: { icon?: unknown }) {
         to="/"
         target="_blank"
         class="flex-1 min-w-0 flex items-center gap-2 h-9 px-2 rounded-[10px] text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors"
-        :class="collapsed ? 'justify-center px-0' : ''"
-        :title="collapsed ? '返回前台' : undefined"
+        :class="railCollapsed ? 'justify-center px-0' : ''"
+        :title="railCollapsed ? '返回前台' : undefined"
       >
         <Globe class="shrink-0 size-[18px] text-muted-foreground" />
         <span
-          v-if="!collapsed"
+          v-if="!railCollapsed"
           class="text-sm truncate"
         >返回前台</span>
       </NuxtLink>
@@ -290,17 +306,20 @@ function resolveIcon(item: { icon?: unknown }) {
   box-shadow:
     inset 0 0 0 1px hsl(var(--foreground) / 0.05);
 }
-@media (prefers-color-scheme: dark) {
-  .sb-bg-active {
-    background: hsl(var(--primary) / 0.18);
-    box-shadow:
-      inset 0 0 0 1px hsl(var(--primary) / 0.30);
-  }
-  .sb-bg-hover {
-    background: hsl(var(--sidebar-accent) / 0.85);
-    box-shadow:
-      inset 0 0 0 1px hsl(var(--foreground) / 0.06);
-  }
+/*
+ * 暗色判断必须走 html.dark（全站主题真源），不能用 prefers-color-scheme：
+ * 用户手动切暗色而系统是亮色时，后者仍会渲染亮态激活底色。
+ * :global(html.dark) 让选择器保持非 scoped 前缀，当前 scoped 类仍然被正确编译。
+ */
+:global(html.dark) .sb-bg-active {
+  background: hsl(var(--primary) / 0.18);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--primary) / 0.30);
+}
+:global(html.dark) .sb-bg-hover {
+  background: hsl(var(--sidebar-accent) / 0.85);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--foreground) / 0.06);
 }
 .sb-item-idle:hover,
 .sb-item-active {

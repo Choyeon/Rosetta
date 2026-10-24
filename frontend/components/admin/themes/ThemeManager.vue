@@ -845,7 +845,9 @@ onMounted(() => {
               </div>
 
               <!-- Hover overlay: quick preview + customize -->
-              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 flex flex-col justify-end p-3 gap-2">
+              <!-- 触屏/键盘没有 hover：<lg 与 focus-within 时同样展开操作层，
+                   否则手机上主题卡的「预览 / 自定义 / 激活」永远摸不出来。 -->
+              <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent opacity-100 transition-all duration-300 flex flex-col justify-end p-3 gap-2 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100">
                 <div class="flex items-center gap-1.5">
                   <Button
                     variant="default"
