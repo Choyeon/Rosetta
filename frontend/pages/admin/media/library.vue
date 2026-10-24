@@ -318,6 +318,7 @@
             </Button>
           </div>
 
+          <!-- 选择/删除控件：<lg 常显（触屏没有稳定 hover），桌面保留悬停才出现的干净网格 -->
           <div
             class="absolute bottom-2 right-2"
             @click.stop
@@ -327,7 +328,6 @@
                 'size-5 rounded flex items-center justify-center border transition-all',
                 selectedIds.includes(m.id)
                   ? 'bg-primary border-primary text-primary-foreground'
-                  // 触屏没有稳定 hover：<lg 直接常显，桌面保留"悬停才出现"的干净网格。
                   : 'bg-background/80 backdrop-blur-sm opacity-100 lg:opacity-0 lg:group-hover:opacity-100 lg:focus-within:opacity-100'
               ]"
             >
