@@ -666,6 +666,12 @@ async def get_schema_data(
     from backend.models.user import User
 
     if resource_type in ("article", "post"):
+        from backend.services.site_settings import default_og_image_url
+
+        # 先解析默认 OG 图再开自己的会话：read_group 内部会另开一条 session，
+        # SQLite StaticPool 下两条会话并存会把已加载的 ORM 对象顶成过期态
+        # （见 services/site_settings.read_group 文档）。
+        fallback_image = await default_og_image_url()
         async with async_session_maker() as db:
             # author/category 与主行一并加载：原来先查 post、再按 id 串行查
             # User、Category 共 3 次往返，且三者共享会话无法并行；合并后 1 次。
@@ -685,27 +691,30 @@ async def get_schema_data(
 
             site_url = getattr(settings, "site_url", "http://localhost:4321")
 
-            # 构建 Article 结构化数据
+            # 构建 Article 结构化数据。URL 必须与前端真实路由一致：
+            # 文章详情页是 /posts/{slug}（多语言前缀下 zh 裸路径），作者页是
+            # /authors/{username}——写旧形态 /post/ 或 /users/{id} 等于让爬虫
+            # 按 JSON-LD 声明的地址去抓一个 404/catchall 兜底的 URL。
             schema = {
                 "@context": "https://schema.org",
                 "@type": "Article",
                 "headline": _pick(post.title),
                 "description": _strip_for_meta(post.excerpt),
-                "image": post.cover_image,
+                "image": post.cover_image or fallback_image,
                 "datePublished": post.published_at.isoformat() if post.published_at else None,
                 "dateModified": post.updated_at.isoformat() if post.updated_at else None,
                 "author": {
                     "@type": "Person",
                     "name": author.nickname or author.username if author else "Anonymous",
-                    "url": f"{site_url}/users/{author.id}" if author else None,
+                    "url": f"{site_url}/authors/{author.username}" if author else None,
                 },
                 "publisher": {
                     "@type": "Organization",
                     "name": "Rosetta Blog",
                     "logo": {"@type": "ImageObject", "url": f"{site_url}/logo.png"},
                 },
-                "mainEntityOfPage": {"@type": "WebPage", "@id": f"{site_url}/post/{post.slug}"},
-                "url": f"{site_url}/post/{post.slug}",
+                "mainEntityOfPage": {"@type": "WebPage", "@id": f"{site_url}/posts/{post.slug}"},
+                "url": f"{site_url}/posts/{post.slug}",
             }
 
             if category:
@@ -729,7 +738,7 @@ async def get_schema_data(
                 "name": user.nickname or user.username,
                 "image": user.avatar,
                 "description": user.bio,
-                "url": f"{site_url}/users/{user.id}",
+                "url": f"{site_url}/authors/{user.username}",
                 "sameAs": [
                     link
                     for link in [
@@ -809,8 +818,16 @@ async def get_open_graph_data(
     site_name = await get_site_config_value("SITE_NAME") or "Rosetta Blog"
 
     if resource_type in ("article", "post"):
+        from backend.services.site_settings import default_og_image_url
+
+        # 同 schema 分支：默认图先解析，read_group 的独立会话不与文章会话并存。
+        fallback_image = await default_og_image_url()
         async with async_session_maker() as db:
-            result = await db.execute(select(Post).where(Post.id == resource_id))
+            # author 与主行一并加载：article:author 要输出 /authors/{username}，
+            # AsyncSession 下事后懒加载会在 greenlet 外抛 MissingGreenlet。
+            result = await db.execute(
+                select(Post).options(selectinload(Post.author)).where(Post.id == resource_id)
+            )
             post = result.scalar_one_or_none()
 
             if not post:
@@ -819,23 +836,29 @@ async def get_open_graph_data(
             title = _pick(post.title)
             description = _strip_for_meta(post.excerpt)
 
+            # 无真实封面时回落站内默认 OG 图：社交卡片不依赖外部占位图服务。
+            og_image = post.cover_image or fallback_image
+
             return {
                 "og:type": "article",
                 "og:title": title,
                 "og:description": description[:200] if description else "",
-                "og:image": post.cover_image,
-                "og:url": f"{site_url}/post/{post.slug}",
+                "og:image": og_image,
+                "og:image:alt": title,
+                "og:url": f"{site_url}/posts/{post.slug}",
                 "og:site_name": site_name,
                 "og:locale": "zh_CN",
                 "article:published_time": post.published_at.isoformat()
                 if post.published_at
                 else None,
                 "article:modified_time": post.updated_at.isoformat() if post.updated_at else None,
-                "article:author": f"{site_url}/users/{post.author_id}" if post.author_id else None,
+                "article:author": f"{site_url}/authors/{post.author.username}"
+                if post.author
+                else None,
                 "twitter:card": "summary_large_image",
                 "twitter:title": title,
                 "twitter:description": description[:200] if description else "",
-                "twitter:image": post.cover_image,
+                "twitter:image": og_image,
             }
 
     return {"error": "Unsupported resource type"}

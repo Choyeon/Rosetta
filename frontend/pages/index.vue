@@ -246,8 +246,9 @@
                   <img
                     :src="slide.media_url"
                     :alt="pickSlideText(slide.title)"
+                    width="56"
+                    height="56"
                     class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-0"
-                    loading="lazy"
                   >
                 </button>
               </div>

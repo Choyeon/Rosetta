@@ -42,3 +42,26 @@ export function normalizeHtmlCacheControl(raw: string | null | undefined): strin
     .replace(/^public,\s*/, '')
   return `public, max-age=0, ${restored}`
 }
+
+/**
+ * 错误响应（≥400）的 HTML 不得进共享缓存。
+ *
+ * 实测：404 页面带着 routeRules 给的 `s-maxage=600, stale-while-revalidate=86400` 上线，
+ * 等于把"这条 URL 不存在"连同它的 noindex 信号一起固化给 CDN 与后续访客一整天；
+ * 文章改名/重发布的自愈窗口内爬虫反复拿到缓存 404，SEO 信号抖动。
+ * 归一函数对 404 之前的行为是"补齐 public, max-age=0"——补齐得越完整，错得越持久，
+ * 所以错误分支要在归一之前拦截。no-store 同时禁私有/共享缓存，浏览器仍会回源拿真状态码。
+ */
+export const ERROR_CACHE_CONTROL = 'no-store'
+
+export function errorHtmlCacheControl(
+  status: number | null | undefined,
+  cacheControl: string | null | undefined,
+  contentType: string | null | undefined
+): string | null {
+  if (status == null || status < 400) return null
+  if (!contentType?.includes('text/html')) return null
+  if (cacheControl === ERROR_CACHE_CONTROL) return null
+  return ERROR_CACHE_CONTROL
+}
+

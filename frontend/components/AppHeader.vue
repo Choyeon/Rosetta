@@ -283,6 +283,8 @@ const handleSearchClick = () => navigateTo('/search')
           :src="brandLogo"
           :alt="brandName"
           data-navbar="brand-logo"
+          width="112"
+          height="28"
           class="h-7 w-auto object-contain shrink-0"
         >
         <span
@@ -543,6 +545,8 @@ const handleSearchClick = () => navigateTo('/search')
                   <img
                     :src="brandLogo"
                     :alt="brandName"
+                    width="112"
+                    height="28"
                     class="h-7 w-auto object-contain"
                   >
                   <span>{{ brandName }}</span>

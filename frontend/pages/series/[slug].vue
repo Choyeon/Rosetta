@@ -64,6 +64,8 @@
             <img
               :src="pickStr(series?.cover_image)"
               :alt="pickStr(series?.title) || pickStr(series?.name || '')"
+              width="1200"
+              height="800"
               class="size-full object-cover"
             >
           </div>

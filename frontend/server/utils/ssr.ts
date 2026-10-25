@@ -62,6 +62,27 @@ export function resolveBackendEndpoint(
   })
 }
 
+/**
+ * 解析**对外站点根 URL**（末尾不带斜杠）：只信任 runtime 配置，绝不从
+ * x-forwarded-host / Host 请求头推导——伪造 Host 可把攻击者域名写进 robots 的
+ * `Sitemap:` 行或 llms.txt 的文章链接，并被这些路由自己的 s-maxage 缓存投毒
+ * （SEO / 缓存双层污染，同 composables/useSeo.ts 的 LOOPBACK_HOST_RE 口径）。
+ *
+ * 先读私有 `siteUrl`（NUXT_SITE_URL），再读公开 `public.siteUrl`（NUXT_PUBLIC_SITE_URL）：
+ * 换域名要动四个源（AGENTS.md §14），少读一个就是"部分面还指向旧域名"。
+ * 两者都没配返回 ''，调用方必须据此降级（跳过绝对链接、只输出相对路径）。
+ */
+export function resolvePublicSiteOrigin(
+  runtime: ReturnType<typeof useRuntimeConfig> | (RosettaRuntimePrivate & {
+    siteUrl?: string
+    public?: { siteUrl?: string }
+  })
+): string {
+  const priv = runtime as RosettaRuntimePrivate & { siteUrl?: string, public?: { siteUrl?: string } }
+  const configured = priv.siteUrl || priv.public?.siteUrl
+  return configured ? String(configured).replace(/\/$/, '') : ''
+}
+
 // ── 上游文本（XML / TXT）通用代理 ──────────────────────────────────────
 
 /** 从上游响应体安全导出字符串（兼容 stream / Uint8Array / string / Blob）。 */

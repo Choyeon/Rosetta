@@ -160,8 +160,9 @@ def _default_media() -> dict:
         "max_upload_size": 10485760,
         "allowed_image_types": "jpg,jpeg,png,gif,webp,svg",
         "allowed_file_types": "mp4,webm,mov,mp3,wav,ogg,pdf,doc,docx,xls,xlsx",
-        # default_post_cover / default_avatar 已删除：封面回落 lib/post-cover.ts 的 picsum
-        # 确定性 seed，头像回落 core/avatar_resolver 的 DiceBear，两者都没有这两个值的读取点。
+        # default_post_cover / default_avatar 已删除：封面回落 lib/post-cover.ts 的站内
+        # 占位图（/placeholder-covers/<slot>.svg，按文章标识确定性选位），头像回落
+        # core/avatar_resolver 的 DiceBear，两者都没有这两个值的读取点。
         "use_cdn": False,
         "cdn_prefix": "",
         # 水印：api/media.py::_read_watermark_text 已在读这个键，缺这里等于永远写不进去。
@@ -175,6 +176,9 @@ def _default_seo() -> dict:
         "default_description": "",
         "default_keywords": "",
         "og_image": "",
+        # 无真实封面时 RSS / Open Graph / JSON-LD / hero 兜底共用的站内默认分享图
+        # （执行点：services/site_settings.default_og_image_url）。
+        "default_og_image": "/og-default.png",
         "twitter_handle": "",
         # google_analytics_id / baidu_analytics_id 已删除：全仓没有任何统计脚本注入口，
         # 而补上它要往 CSP script-src 里加第三方域名（AGENTS §12.6 禁止放松 CSP）。
@@ -182,6 +186,10 @@ def _default_seo() -> dict:
         "google_verification": "",
         "baidu_verification": "",
         "robots_txt": "User-agent: *\nAllow: /",
+        # IndexNow 即时推送（执行点：services/indexnow.py 监听 post.published/updated）。
+        # key 是推送凭据：/settings/public 经 _redact 掩码，绝不进日志。
+        "indexnow_enabled": False,
+        "indexnow_key": "",
     }
 
 

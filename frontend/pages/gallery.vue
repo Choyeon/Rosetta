@@ -61,6 +61,8 @@
               v-if="album.cover"
               :src="album.cover"
               :alt="album.title"
+              width="800"
+              height="600"
               class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
               loading="lazy"
             >
@@ -184,6 +186,8 @@
                   :src="photo"
                   :data-original="photo"
                   :alt="`${currentAlbum?.title || ''} ${idx + 1}`"
+                  width="800"
+                  height="800"
                   class="aspect-square w-full object-cover rounded-lg cursor-zoom-in hover:opacity-90 transition-opacity shadow-sm"
                   loading="lazy"
                 >

@@ -9,11 +9,11 @@ describe('postCover', () => {
       .toBe('https://cdn.example.com/b.png')
   })
 
-  it('无封面时回落到按 id 派生的 picsum seed 图', () => {
+  it('无封面时回落到按 id 派生的站内占位封面（不再走 picsum 外链）', () => {
     expect(postCoverUrl({ id: 7, slug: 'x' }, POST_COVER_CARD))
-      .toBe('https://picsum.photos/seed/rosetta-post-7/640/427')
+      .toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
     expect(defaultPostCover({ id: 42 }, POST_COVER_DETAIL))
-      .toBe('https://picsum.photos/seed/rosetta-post-42/1200/800')
+      .toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
   })
 
   it('同一篇文章每次调用完全一致（SSR 与 hydrate 不会换图）', () => {
@@ -29,15 +29,29 @@ describe('postCover', () => {
     expect(urls.size).toBe(50)
   })
 
+  it('槽位只在 1..6 内循环，文件必须真实存在（public/placeholder-covers）', () => {
+    const urls = new Set(
+      Array.from({ length: 60 }, (_, i) => postCoverUrl({ id: i + 1, slug: `p${i}` }))
+    )
+    for (const u of urls) expect(u).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
+    const fs = require('node:fs')
+    const path = require('node:path')
+    for (let slot = 1; slot <= 6; slot++) {
+      expect(
+        fs.existsSync(path.resolve(__dirname, '../../public/placeholder-covers', `${slot}.svg`))
+      ).toBe(true)
+    }
+  })
+
   it('缺 id 时用 slug 兜底，且百分号编码与原文同一 seed', () => {
     const raw = postCoverUrl({ slug: '中文标题' })
     const encoded = postCoverUrl({ slug: encodeURIComponent('中文标题') })
     expect(raw).toBe(encoded)
-    expect(raw).toMatch(/^https:\/\/picsum\.photos\/seed\/rosetta-slug-[0-9a-z]+\/640\/427$/)
+    expect(raw).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
   })
 
   it('空对象不抛错（组件在数据未到时也能渲染）', () => {
     expect(postCoverUrl(null)).toBe('')
-    expect(postCoverUrl({})).toMatch(/^https:\/\/picsum\.photos\/seed\/rosetta-anon-/)
+    expect(postCoverUrl({})).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
   })
 })

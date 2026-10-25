@@ -17,11 +17,16 @@
  * 与发送前的最后一步。
  */
 import type { NitroApp } from 'nitropack'
-import { normalizeHtmlCacheControl } from '../utils/ssrHtmlCacheControl'
+import {
+  ERROR_CACHE_CONTROL,
+  errorHtmlCacheControl,
+  normalizeHtmlCacheControl
+} from '../utils/ssrHtmlCacheControl'
 
 type Accessor = {
   get: (name: string) => string | null
   set: (name: string, value: string) => void
+  getStatus?: () => number | null
 }
 
 type NitroHookShape = {
@@ -61,7 +66,7 @@ function fetchHeadersAccessor(headers: unknown): Accessor | null {
 
 /** Node ServerResponse 形态（swr 覆写后真正上线的那一份）。 */
 function resAccessor(res: unknown): Accessor | null {
-  const r = res as { getHeader?: (n: string) => unknown, setHeader?: (n: string, v: string) => unknown }
+  const r = res as { getHeader?: (n: string) => unknown, setHeader?: (n: string, v: string) => unknown, getStatusCode?: () => number }
   if (!r || typeof r.getHeader !== 'function' || typeof r.setHeader !== 'function') return null
   return {
     get: name => asString(r.getHeader?.(name)),
@@ -69,14 +74,40 @@ function resAccessor(res: unknown): Accessor | null {
       try {
         r.setHeader?.(name, value)
       } catch { /* 头部已发出，改不动就算了 */ }
-    }
+    },
+    getStatus: typeof r.getStatusCode === 'function' ? () => r.getStatusCode?.() ?? null : undefined
   }
 }
 
+/**
+ * 错误状态（≥400）的兜底探测：render:response 的 payload 带 status，
+ * beforeResponse 时 h3 的 event.res.statusCode 已定案（useContentStatus 闸门
+ * 在 app:rendered 里 setResponseStatus 之后才轮到这里）。
+ */
+function statusFrom(event: unknown, response?: unknown): number | null {
+  const r = (response as { status?: number } | undefined)?.status
+  if (typeof r === 'number') return r
+  const evt = event as {
+    res?: { statusCode?: number }
+    node?: { res?: { statusCode?: number } }
+    context?: { res?: { statusCode?: number } }
+  } | undefined
+  return evt?.res?.statusCode ?? evt?.node?.res?.statusCode ?? evt?.context?.res?.statusCode ?? null
+}
+
 /** 只动 text/html；其余（JSON / 静态资源 / no-store 页）一律不碰。 */
-function normalizeVia(accessor: Accessor): void {
+function normalizeVia(accessor: Accessor, status: number | null = null): void {
   const ct = accessor.get('content-type') ?? ''
   if (!ct.includes('text/html')) return
+  const errored = errorHtmlCacheControl(
+    status ?? accessor.getStatus?.() ?? null,
+    accessor.get('cache-control'),
+    ct
+  )
+  if (errored) {
+    accessor.set('cache-control', errored)
+    return
+  }
   const fixed = normalizeHtmlCacheControl(accessor.get('cache-control'))
   if (fixed) accessor.set('cache-control', fixed)
 }
@@ -112,14 +143,16 @@ export default defineNitroPlugin((nitroApp: NitroApp) => {
   // render:response —— Nuxt SSR 真实渲染完成时（缓存复用不触发这一道）。
   try {
     hooks.hook('render:response', (response: unknown, event?: unknown) => {
-      for (const accessor of accessorsFor(event, response)) normalizeVia(accessor)
+      const status = statusFrom(event, response)
+      for (const accessor of accessorsFor(event, response)) normalizeVia(accessor, status)
     })
   } catch { /* 老版本 Nitro 缺该钩子：beforeResponse 仍然生效 */ }
 
   // beforeResponse —— 每个响应写回 client 前的最后一步，覆盖 swr 缓存复用。
   try {
     hooks.hook('beforeResponse', (event: unknown, response?: unknown) => {
-      for (const accessor of accessorsFor(event, response)) normalizeVia(accessor)
+      const status = statusFrom(event, response)
+      for (const accessor of accessorsFor(event, response)) normalizeVia(accessor, status)
     })
   } catch { /* ignore hook unavailability */ }
 })

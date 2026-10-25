@@ -190,7 +190,9 @@ async def generate_rss_feed(
     - 每篇包含 ``description``（摘要）与 ``content:encoded``（完整正文）
     - HTML 内容一律 CDATA 包裹，避免转义问题
     - ``dc:creator`` 作者、``category`` 分类、``enclosure`` + ``media:content`` 封面
-    - ``lastBuildDate`` 取最新文章时间，而非服务器当前时间
+    - ``lastBuildDate`` 取本次构建时刻（feed 刚被重新生成），而非最新文章时间：
+      两者混用会让阅读器按"最新内容时间"判断是否重拉——缓存里 TTL 到点重建的 feed
+      若 lastBuildDate 纹丝不动，聚合器就永远不会取到新条目
 
     正文/摘要走统一渲染管线（短代码 + ``the_content`` / ``the_excerpt`` filter），
     与文章详情口径一致，插件的正文过滤器在订阅源里同样生效。刻意不触发
@@ -200,13 +202,6 @@ async def generate_rss_feed(
     site_url = site_url.rstrip("/")
     rss_lang = _rss_language(language)
     now_rfc = _rfc822(datetime.now(_tz.utc))
-
-    # 最新一篇的发布时间作为 lastBuildDate
-    newest: datetime | None = None
-    for p in posts:
-        candidate = p.published_at or p.created_at
-        if candidate is not None and (newest is None or candidate > newest):
-            newest = candidate
 
     lines: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>']
     lines.append(
@@ -226,10 +221,9 @@ async def generate_rss_feed(
         f'    <atom:link href="{_xml_escape(site_url)}/rss.xml" '
         'rel="self" type="application/rss+xml" />'
     )
-    if newest is not None:
-        lines.append(f"    <lastBuildDate>{_rfc822(newest)}</lastBuildDate>")
-    if now_rfc:
-        lines.append(f"    <pubDate>{now_rfc}</pubDate>")
+    # 构建时刻：与 channel 级 pubDate 同源，恒 >= 任何条目的 pubDate
+    lines.append(f"    <lastBuildDate>{now_rfc}</lastBuildDate>")
+    lines.append(f"    <pubDate>{now_rfc}</pubDate>")
     lines.append("    <generator>Rosetta Blog</generator>")
     lines.append("    <docs>https://www.rssboard.org/rss-specification</docs>")
     lines.append("    <ttl>60</ttl>")
@@ -3790,11 +3784,14 @@ def generate_pages_sitemap(
     return _wrap_urlset("\n".join(entries), with_image=False)
 
 
-def generate_sitemap_index(entries: list[tuple[str, str]], site_url: str | None = None) -> str:
+def generate_sitemap_index(
+    entries: list[tuple[str, str | None]], site_url: str | None = None
+) -> str:
     """生成 sitemap 索引 XML。
 
     Args:
-        entries: ``[(loc_url, lastmod_str), ...]``
+        entries: ``[(loc_url, lastmod_str_or_None), ...]``；lastmod 为该子表所有节点里
+            最大的更新日期，``None``（子表为空）时省略 ``<lastmod>`` 节点。
         site_url: 仅为向后兼容保留；loc 已要求是绝对 URL。
     """
     parts = [
@@ -3814,11 +3811,68 @@ def generate_sitemap_index(entries: list[tuple[str, str]], site_url: str | None 
 _XML_CACHE = "public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400"
 
 
+async def _sitemap_posts_page_lastmod(db, page: int) -> str | None:
+    """文章子表（某一页）的最大更新日期：与节点级 lastmod 同口径
+    （``coalesce(updated_at, published_at)``），页内为空时返回 None。"""
+    lm_col = func.coalesce(Post.updated_at, Post.published_at).label("lm")
+    sub = (
+        select(lm_col)
+        .where(Post.status == "published")
+        .order_by(Post.published_at.desc())
+        .offset((page - 1) * SITEMAP_PAGE_SIZE)
+        .limit(SITEMAP_PAGE_SIZE)
+        .subquery()
+    )
+    return _iso8601(await db.scalar(select(func.max(sub.c.lm))))
+
+
+async def _sitemap_pages_lastmod(db) -> str | None:
+    """pages 子表的最大更新日期：静态路由与年份归档没有 lastmod，
+    只有已发布独立页面的 ``updated_at`` 参与取最大值。"""
+    from backend.models.core import Page
+
+    return _iso8601(
+        await db.scalar(select(func.max(Page.updated_at)).where(Page.status == "published"))
+    )
+
+
+async def _sitemap_taxonomy_lastmod(db) -> str | None:
+    """taxonomies 子表的最大更新日期：分类/标签/系列的 ``updated_at`` 与
+    作者归档的最近发布时间（口径同 ``get_sitemap_taxonomies`` 的隐藏作者过滤）
+    里取最大。"""
+    from backend.models.post_series import PostSeries
+
+    candidates: list[datetime] = []
+    for col in (Category.updated_at, Tag.updated_at, PostSeries.updated_at):
+        value = await db.scalar(select(func.max(col)))
+        if value is not None:
+            candidates.append(value)
+    hidden_authors = select(UserPreference.user_id).where(
+        or_(UserPreference.show_posts.is_(False), UserPreference.public_profile.is_(False))
+    )
+    newest_author_post = await db.scalar(
+        select(func.max(Post.published_at))
+        .join(User, Post.author_id == User.id)
+        .where(
+            Post.status == "published",
+            Post.post_type == "post",
+            User.id.not_in(hidden_authors),
+        )
+    )
+    if newest_author_post is not None:
+        candidates.append(newest_author_post)
+    if not candidates:
+        return None
+    # SQLite 存的是 naive UTC，PG 可能带时区：归一后再比，避免 aware/naive 混比 TypeError
+    return _iso8601(max(_ensure_aware(c) for c in candidates))
+
+
 @router.get(
     "/sitemap.xml",
     summary="Sitemap 索引",
     description="站点地图索引：列出 pages 静态表、posts 分页表、taxonomies 分类表。"
-    "所有子表均指向对外站点域名（由 Nitro BFF 代理）。",
+    "所有子表均指向对外站点域名（由 Nitro BFF 代理）。每个子表的 <lastmod> 取该表"
+    "节点里最大的更新日期（posts 页取 max(updated_at, published_at)），空表省略。",
     responses=raw_content_response("application/xml", "Sitemap index XML 文档。"),
     response_class=Response,
 )
@@ -3829,17 +3883,23 @@ async def get_sitemap_index(
     """获取 Sitemap 索引 XML。"""
     await _ensure_seo_feed_enabled(db, "enable_sitemap", "enable_sitemap")
     site_url = _public_site_url()
-    today = datetime.now(_tz.utc).strftime("%Y-%m-%d")
 
     total_posts = (
         await db.execute(select(func.count()).select_from(Post).where(Post.status == "published"))
     ).scalar() or 0
     total_pages = max(1, (total_posts + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE)
 
-    entries: list[tuple[str, str]] = [(f"{site_url}/sitemap-pages.xml", today)]
+    entries: list[tuple[str, str | None]] = [
+        (f"{site_url}/sitemap-pages.xml", await _sitemap_pages_lastmod(db))
+    ]
     for page in range(1, total_pages + 1):
-        entries.append((f"{site_url}/sitemap-posts.xml?page={page}", today))
-    entries.append((f"{site_url}/sitemap-taxonomies.xml", today))
+        entries.append(
+            (
+                f"{site_url}/sitemap-posts.xml?page={page}",
+                await _sitemap_posts_page_lastmod(db, page),
+            )
+        )
+    entries.append((f"{site_url}/sitemap-taxonomies.xml", await _sitemap_taxonomy_lastmod(db)))
 
     content = generate_sitemap_index(entries, site_url)
     return Response(

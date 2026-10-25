@@ -11,7 +11,11 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { normalizeHtmlCacheControl } from '../../server/utils/ssrHtmlCacheControl'
+import {
+  ERROR_CACHE_CONTROL,
+  errorHtmlCacheControl,
+  normalizeHtmlCacheControl
+} from '../../server/utils/ssrHtmlCacheControl'
 
 const ROOT = resolve(__dirname, '..', '..')
 const pluginSrc = readFileSync(
@@ -49,11 +53,46 @@ describe('normalizeHtmlCacheControl', () => {
   })
 })
 
+describe('errorHtmlCacheControl（≥400 的 HTML 不得进任何缓存）', () => {
+  it('404/500 + text/html → no-store（错误页连同 noindex 信号被 swr 固化是实测踩过的坑）', () => {
+    expect(errorHtmlCacheControl(
+      404,
+      'public, max-age=0, s-maxage=600, stale-while-revalidate=86400',
+      'text/html; charset=utf-8'
+    )).toBe(ERROR_CACHE_CONTROL)
+    expect(errorHtmlCacheControl(500, null, 'text/html')).toBe(ERROR_CACHE_CONTROL)
+  })
+
+  it('status < 400 不干预（正常页仍走归一函数）', () => {
+    expect(errorHtmlCacheControl(200, 's-maxage=600, stale-while-revalidate', 'text/html')).toBeNull()
+    expect(errorHtmlCacheControl(301, 's-maxage=600', 'text/html')).toBeNull()
+    expect(errorHtmlCacheControl(null, 's-maxage=600', 'text/html')).toBeNull()
+  })
+
+  it('非 HTML 响应不干预（JSON/静态资源不归本页口径管）', () => {
+    expect(errorHtmlCacheControl(404, 'no-cache', 'application/json')).toBeNull()
+    expect(errorHtmlCacheControl(500, undefined, null)).toBeNull()
+  })
+
+  it('已是 no-store 回 null（幂等，双钩子可重跑）', () => {
+    expect(errorHtmlCacheControl(404, ERROR_CACHE_CONTROL, 'text/html')).toBeNull()
+  })
+})
+
 describe('ssr-html-revalidate 插件接线', () => {
   it('复用同一个归一函数，且只处理 text/html', () => {
     expect(pluginSrc).toContain('normalizeHtmlCacheControl')
     expect(pluginSrc).toContain('ssrHtmlCacheControl')
     expect(pluginSrc).toContain('text/html')
+  })
+
+  it('normalizeVia 里错误分支拦在归一之前（404 补齐得越完整错得越持久）', () => {
+    const normalizeVia = pluginSrc.match(/function normalizeVia[\s\S]*?\n}/)?.[0] ?? ''
+    expect(normalizeVia, 'normalizeVia 必须调用 errorHtmlCacheControl').toContain('errorHtmlCacheControl')
+    // 错误判定必须先于 normalizeHtmlCacheControl，否则 404 会被补成"合规"的长 TTL
+    expect(normalizeVia.indexOf('errorHtmlCacheControl'))
+      .toBeLessThan(normalizeVia.indexOf('normalizeHtmlCacheControl'))
+    expect(normalizeVia).toContain('text/html')
   })
 
   it('必须覆盖 Node ServerResponse 上的头（swr 覆写实际落在那里）', () => {

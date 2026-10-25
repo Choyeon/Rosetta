@@ -26,6 +26,8 @@
         <img
           :src="coverImage"
           alt=""
+          width="1200"
+          height="800"
           class="h-32 w-full object-cover md:h-44"
         >
       </div>

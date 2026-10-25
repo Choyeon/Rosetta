@@ -208,35 +208,63 @@
         role="navigation"
         aria-label="pagination"
       >
-        <Button
-          variant="outline"
-          size="icon"
-          :disabled="currentPage <= 1 || busy"
+        <!-- 分页必须是真实 <a href>：SSR HTML 里的 href 是爬虫能读到的唯一链接图，
+             纯 button + click 等于第 2 页起的所有文章零入链（实测 /posts 的 page= 锚点数为 0）。
+             click 仍走 handlePageChange 保留 SPA 行为，href 只在 middle-click/爬取时生效。 -->
+        <template v-if="currentPage <= 1">
+          <Button
+            variant="outline"
+            size="icon"
+            disabled
+            :aria-label="t('common.prevPage', '上一页')"
+          >
+            <ChevronLeft data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage - 1)"
           :aria-label="t('common.prevPage', '上一页')"
-          @click="handlePageChange(currentPage - 1)"
+          :class="pageLinkClass('outline')"
+          @click.prevent="handlePageChange(currentPage - 1)"
         >
           <ChevronLeft data-icon="inline-start" />
-        </Button>
-        <Button
+        </a>
+        <template
           v-for="page in visiblePages"
           :key="page"
-          :variant="page === currentPage ? 'default' : 'ghost'"
-          size="icon"
-          class="size-9 min-w-[2.25rem]"
-          :disabled="busy"
-          @click="handlePageChange(page)"
         >
-          {{ page }}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          :disabled="currentPage >= totalPages || busy"
+          <span
+            v-if="page === currentPage"
+            aria-current="page"
+            :class="pageLinkClass('default')"
+          >{{ page }}</span>
+          <a
+            v-else
+            :href="pageHref(page)"
+            :class="pageLinkClass('ghost')"
+            @click.prevent="handlePageChange(page)"
+          >{{ page }}</a>
+        </template>
+        <template v-if="currentPage >= totalPages">
+          <Button
+            variant="outline"
+            size="icon"
+            disabled
+            :aria-label="t('common.nextPage', '下一页')"
+          >
+            <ChevronRight data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage + 1)"
           :aria-label="t('common.nextPage', '下一页')"
-          @click="handlePageChange(currentPage + 1)"
+          :class="pageLinkClass('outline')"
+          @click.prevent="handlePageChange(currentPage + 1)"
         >
           <ChevronRight data-icon="inline-start" />
-        </Button>
+        </a>
       </nav>
     </div>
   </div>
@@ -244,7 +272,7 @@
 
 <script setup lang="ts">
 import { Card, CardContent } from '~~/components/ui/card'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import PostCard from '~~/components/PostCard.vue'
@@ -367,12 +395,38 @@ const busy = computed(() => pending.value)
 
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
+// 分页锚点（爬虫可达的链接图；口径见模板注释）。当前页渲染成不可点 span，
+// 首/末页的 prev/next 渲染成 disabled Button，其余形态都是 <a href>。
+const pageHref = (page: number) =>
+  `${applyLocalePrefix('/posts', locale.value)}?page=${page}`
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'icon' })
+
 // 分享链接上的页码可能已经越界（比如文章删了一大批）：拉回来再请求，
 // 否则用户拿到的是一个"第 7 页，共 3 页"的空列表且无从自救。
 watch([total, currentPage], () => {
   if (total.value === 0) return
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
+
+// 越界页码（?page=9999）对爬虫必须 301 回裸列表页：留 200 会被判 soft 404，
+// 且 canonical 自指越界参数等于承认每个垃圾页码都是独立页面。
+// 时点与 useContentStatus 同轨（app:rendered：数据已落值、状态码还改得动）；
+// 响应头必须 no-store，否则 301 会被本页 swr 缓存进旧目标。
+if (import.meta.server) {
+  const ssrEvent = useRequestEvent()
+  useNuxtApp().hooks.hookOnce('app:rendered', () => {
+    if (
+      ssrEvent
+      && total.value > 0
+      && Math.max(1, Number(route.query.page) || 1) > totalPages.value
+    ) {
+      ssrEvent.node.res.statusCode = 301
+      ssrEvent.node.res.setHeader('location', applyLocalePrefix('/posts', locale.value))
+      ssrEvent.node.res.setHeader('cache-control', 'no-store')
+    }
+  })
+}
 
 function syncUrl() {
   if (!import.meta.client) return

@@ -406,6 +406,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     except Exception as exc:
         logger.exception(f"[webhook] 事件监听注册失败: {exc}")
 
+    # IndexNow 即时推送：post.published / post.updated 后通知搜索引擎。
+    # 开关与 key 在站点设置 seo 分组里，未配置时监听器本身零开销跳过。
+    try:
+        from backend.services.indexnow import register_indexnow_listeners
+
+        register_indexnow_listeners()
+    except Exception as exc:
+        logger.exception(f"[indexnow] 事件监听注册失败: {exc}")
+
     # 加载插件（在数据库就绪后注册路由钩子/事件订阅）
     try:
         loaded = await load_plugins(app)

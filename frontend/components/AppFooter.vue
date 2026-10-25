@@ -324,6 +324,8 @@ const handleSetLocale = async (code: string) => {
             <img
               :src="siteConfig.site_logo"
               :alt="siteConfig.site_name"
+              width="24"
+              height="24"
               class="size-6 dark:contrast-0 dark:brightness-200 object-contain"
               loading="lazy"
               decoding="async"

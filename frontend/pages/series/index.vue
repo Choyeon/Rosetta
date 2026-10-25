@@ -67,6 +67,8 @@
               v-if="pickStr(s.cover_image)"
               :src="pickStr(s.cover_image)"
               :alt="pickStr(s.title) || pickStr(s.name || '')"
+              width="1200"
+              height="800"
               class="size-full object-cover transition-transform duration-500 group-hover:scale-[1.03]"
               loading="lazy"
             >

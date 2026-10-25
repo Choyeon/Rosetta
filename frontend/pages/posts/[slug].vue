@@ -641,6 +641,8 @@
                   <img
                     :src="sp.cover"
                     :alt="sp.title"
+                    width="640"
+                    height="427"
                     class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
                     loading="lazy"
                   >
@@ -1406,11 +1408,23 @@ useArticleJsonLd({
   updatedAt,
   // 始终传入 author 对象，内部字段均为 ComputedRef（响应式）。
   // 当 author 未加载时 name/avatar 回退为空，useArticleJsonLd 会自动跳过 name 为空的 author。
+  // url 有值时 JSON-LD 的 @graph 会产出独立 Person 节点（BlogPosting.author 变 @id 引用），
+  // 无值时退化为内联对象——与旧单对象输出的防御口径一致。
   author: {
     name: authorName,
+    url: authorUrl,
     avatar: seoAuthorAvatar
   },
   category: seoCategoryName,
+  // 面包屑的分类一跳落在真实路由 pages/categories/[slug].vue（按 slug 解析）；
+  // seoCategoryName 是本地化名称，与 slug 不保证相等，必须显式给路径。
+  categoryPath: computed(() => {
+    const c = extractPostField(post.value, 'category')
+    const s = typeof c === 'object' && c
+      ? (c as Record<string, unknown>).slug
+      : undefined
+    return typeof s === 'string' && s ? `/categories/${s}` : undefined
+  }),
   keywords: seoKeywords
 })
 

@@ -104,3 +104,31 @@ def int_of(cfg: dict, key: str, default: int) -> int:
         return int(val)
     except (TypeError, ValueError):
         return default
+
+
+# 站内默认 OG 分享图（品牌 PNG，落在 frontend/public/ 根下，由 Nitro 直出）。
+# 仓库根 static/ 目录只挂在 /favicon 下，写 /static/xxx 会是一条 404 分享图。
+# 文章没有真实封面时，
+# RSS / Open Graph / JSON-LD / hero 兜底一律回落到它，而不是外链占位图
+# （picsum 限流或被墙即无图，且随机图与内容无关，图片搜索零收益）。
+DEFAULT_OG_IMAGE_PATH = "/og-default.png"
+
+
+async def default_og_image_url(db=None) -> str:
+    """默认分享图的绝对 URL：seo.default_og_image（可后台改），空则内置品牌图。
+
+    ``db``：在请求处理链里调用时**必须**传入请求会话（口径同 ``read_group``，
+    SQLite StaticPool 下双会话并存会把请求侧 ORM 对象顶成过期态）。
+    站点根取 ``settings.site_url``；未配置时返回相对路径（同源部署下前端可解析，
+    绝不虚构绝对域名）。
+    """
+    cfg = await read_group("seo", db)
+    path = str(cfg.get("default_og_image") or "").strip() or DEFAULT_OG_IMAGE_PATH
+    if path.startswith(("http://", "https://")):
+        return path
+    from backend.core.config import settings
+
+    site_url = (getattr(settings, "site_url", "") or "").rstrip("/")
+    if not site_url:
+        return path
+    return f"{site_url}/{path.lstrip('/')}"

@@ -146,6 +146,15 @@ export interface ArticleJsonLdOptions {
   'author'?: ArticleJsonLdAuthor
   /** 分类名或分类 URL */
   'category'?: string | { readonly value?: string | undefined }
+  /**
+   * 分类页的中性路径（如 `/categories/<slug>`，prefix_except_default 口径下内部挂语言前缀）。
+   *
+   * 面包屑里的分类一跳必须落在**真实路由** `pages/categories/[slug].vue` 上——
+   * 而后端列表口的 `category` 是本地化名称（与 slug 不保证相等，seed 里
+   * slug=technology 而 name=「技术」），单靠 name 拼 `/categories/<name>` 会产出 404 面包屑。
+   * 详情页调用点传 slug 形态的这条；缺省时才退化为 `/categories/<category>` 拼接。
+   */
+  'categoryPath'?: string | { readonly value?: string | undefined }
   /** 关键词数组 */
   'keywords'?: string[] | { readonly value?: string[] | undefined }
   /** BlogPosting / Article / NewsArticle（默认 BlogPosting） */
@@ -180,7 +189,7 @@ export function usePublicSiteUrl(): Ref<string> {
   // 也能拿到绝对 canonical；生产环境不接受 Host 推导——公开页带 s-maxage 缓存，
   // 而 Nitro 的缓存键不含 Host，伪造一次 Host 就能把攻击者域名写成整站的
   // canonical / og:url / hreflang 并在 TTL 内投毒（同一口径见
-  // server/routes/robots.txt.get.ts 的 resolveConfiguredOrigin）。
+  // server/routes/robots.txt.get.ts 与 server/utils/ssr.ts 的 resolvePublicSiteOrigin）。
   const ssrOrigin = (() => {
     if (!import.meta.server) return ''
     const headers = useRequestHeaders(['host'])
@@ -455,11 +464,15 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       }
     }
 
+    // html lang 必须是 BCP-47（zh_Hant 的下划线形态会被解析器降级，且与本页
+    // hreflang 输出的 zh-Hant 口径打架）——直接复用 HREFLANG_MAP 的值，不另建清单。
+    const htmlLang = HREFLANG_MAP[locale.value] ?? locale.value
+
     // Nuxt useHead（@zhead/schema）对 meta 联合类型约束过严，使用 unknown 断
     // 言绕过；运行时实际结构与声明的字段（name/property + content）100% 匹配。
     const head = {
       title: fullTitle,
-      htmlAttrs: { lang: locale.value },
+      htmlAttrs: { lang: htmlLang },
       meta,
       link
     }
@@ -533,7 +546,7 @@ export function useWebsiteJsonLd() {
 }
 
 // ---------------------------------------------------------------------------
-// 3. Article / BlogPosting JSON-LD（文章详情页）
+// 3. Article / BlogPosting JSON-LD（文章详情页，@graph 五实体）
 // ---------------------------------------------------------------------------
 
 /**
@@ -630,9 +643,223 @@ function jsonLdStringify(value: unknown): string {
   return JSON.stringify(value, replacer)
 }
 
+/** BlogPosting 封面 ImageObject 的声明尺寸。
+ *  对齐 lib/post-cover.ts 的 `POST_COVER_DETAIL`（详情页头图 1200×800）——
+ *  此处刻意不 import 那个 lib（本文件跑在 useHead 求值路径上，保持零额外依赖），
+ *  那边改数值时这里必须同步。 */
+const PRIMARY_IMAGE_WIDTH = 1200
+const PRIMARY_IMAGE_HEIGHT = 800
+
+/** Organization logo 的兜底图标：public/ 根下真实存在的 512×512 PNG
+ *  （public/favicon/ 目录里只有 rosetta-256.png，不能用 /favicon/favicon-512x512.png）。 */
+const ORG_LOGO_FALLBACK_PATH = '/favicon-512x512.png'
+const ORG_LOGO_FALLBACK_SIZE = 512
+
+/** 脏 URL（裸 `%`）会让 decodeURIComponent 抛 URIError，而这段跑在 useHead 求值
+ *  路径上 = 整页 500（同一防御口径见 asAbsolute 的注释）。抛错即原样返回。 */
+function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
+/**
+ * buildArticleJsonLdGraph 的入参——全部是调用方已经解包好的纯值。
+ * URL 一律传"中性形态"（未挂语言前缀），前缀与站点根由本函数内部按
+ * applyLocalePrefix + asAbsolute 单源口径拼装（根 AGENTS.md §2.3.3）。
+ */
+export interface ArticleGraphInput {
+  /** 站点根（绝对、无尾斜杠）；空串时所有 URL 退化为相对形态 */
+  base: string
+  /** 当前语言码（zh/en/ja/zh_Hant） */
+  locale: string
+  /** BlogPosting / Article / NewsArticle */
+  type: string
+  /** 文章/页面的中性路径，如 /posts/hello */
+  articlePath: string
+  headline: string
+  title: string
+  description?: string | undefined
+  keywords?: string | undefined
+  articleSection?: string | undefined
+  /** ISO 时间串（已过 safeIsoDate） */
+  published?: string | undefined
+  updated?: string | undefined
+  /** 封面原始 URL（绝对或站内相对） */
+  cover?: string | undefined
+  /** author.url 为中性路径（如 /authors/lyn）或绝对 URL */
+  author?: { name: string, url?: string | undefined, avatar?: string | undefined } | undefined
+  /** 分类名或分类 URL */
+  category?: string | undefined
+  /** 分类页中性路径（/categories/<slug>），优先于按名称拼接 */
+  categoryPath?: string | undefined
+  siteName: string
+  /** 站点 logo（site_logo 配置值，绝对或站内相对） */
+  logo?: string | undefined
+  /** 面包屑首项（首页）的本地化名称；调用方有 i18n 时必须传，缺省才回落 'Home' */
+  homeLabel?: string | undefined
+}
+
+/**
+ * 产出 @graph 五实体结构：BlogPosting（必留）+ Person / Organization /
+ * ImageObject / BreadcrumbList（各自按数据存在与否整块省略）。
+ *
+ * 三条硬口径：
+ * 1. 每个被引用的 @id 必须在 @graph 内有对应节点——"cover 缺失"这类分支
+ *    必须让引用与节点**同时**消失，悬空 @id 比少一块实体更糟。
+ * 2. 无法建 @id 时退化为内联对象（无 author.url → 内联 Person；
+ *    无站点根 base → 内联 Organization publisher），保持旧行为不输出坏引用。
+ * 3. dateModified 缺省回落后等于 datePublished（updated ?? published），不产生
+ *    "修改早于发布"的负数时间差。
+ *
+ * 导出为纯函数（无 Nuxt 依赖）也是为了让 tests/unit/articleJsonLdGraph.spec.ts
+ * 能脱离 Nuxt 上下文直接断言结构。
+ */
+export function buildArticleJsonLdGraph(input: ArticleGraphInput): Record<string, unknown> {
+  const base = input.base || ''
+  const locale = input.locale || DEFAULT_LOCALE_CODE
+
+  // prefix_except_default：详情页 JSON-LD 的 url/mainEntityOfPage 必须落到
+  // 当前语言的实际 URL（中文裸路径 /en/ja/zh_Hant 挂前缀），否则中英日
+  // 三语页面在 schema.org 里会共享同一个 zh canonical，Google 富媒体测试报
+  // "URL does not match page"。
+  const articleUrl = asAbsolute(applyLocalePrefix(input.articlePath, locale), base)
+  const primaryImageId = articleUrl ? `${articleUrl}#primaryimage` : ''
+  const orgId = base ? `${base}#organization` : ''
+
+  const blogPosting: Record<string, unknown> = {
+    '@type': input.type,
+    'headline': input.headline || input.title,
+    'datePublished': input.published,
+    // updated ?? published：保留旧口径，缺"最后修改"时两者相等而不是更早
+    'dateModified': input.updated ?? input.published
+  }
+  if (articleUrl) {
+    blogPosting['@id'] = `${articleUrl}#article`
+    blogPosting.url = articleUrl
+    blogPosting.mainEntityOfPage = { '@type': 'WebPage', '@id': articleUrl }
+  }
+  if (input.description) blogPosting.description = input.description
+  if (input.keywords) blogPosting.keywords = input.keywords
+  if (input.articleSection) blogPosting.articleSection = input.articleSection
+
+  const nodes: Record<string, unknown>[] = [blogPosting]
+
+  // ── ImageObject：仅当 cover 存在；引用与节点同进退 ──
+  const coverUrl = input.cover ? asAbsolute(input.cover, base) : ''
+  if (coverUrl && primaryImageId) {
+    blogPosting.image = { '@id': primaryImageId }
+    nodes.push({
+      '@type': 'ImageObject',
+      '@id': primaryImageId,
+      url: coverUrl,
+      // 与 lib/post-cover.ts 的 POST_COVER_DETAIL（详情页头图声明尺寸）同一对数值
+      width: PRIMARY_IMAGE_WIDTH,
+      height: PRIMARY_IMAGE_HEIGHT,
+      caption: input.description || input.title
+    })
+  }
+
+  // ── Person：仅当 author 存在；有资料页 URL 才建可引用的独立节点 ──
+  const author = input.author
+  if (author?.name) {
+    const authorUrlAbs = author.url ? asAbsolute(applyLocalePrefix(author.url, locale), base) : ''
+    const personId = authorUrlAbs ? `${authorUrlAbs}#person` : ''
+    const avatarUrl = author.avatar ? asAbsolute(author.avatar, base) : ''
+    if (personId) {
+      blogPosting.author = { '@id': personId }
+      const person: Record<string, unknown> = {
+        '@type': 'Person',
+        '@id': personId,
+        'name': author.name,
+        'url': authorUrlAbs
+      }
+      if (avatarUrl) person.image = { '@type': 'ImageObject', 'url': avatarUrl }
+      nodes.push(person)
+    } else {
+      // 无 url：退化为内联对象（旧行为），不产出无法解析的 @id
+      const inline: Record<string, unknown> = { '@type': 'Person', 'name': author.name }
+      if (avatarUrl) inline.image = { '@type': 'ImageObject', 'url': avatarUrl }
+      blogPosting.author = inline
+    }
+  }
+
+  // ── Organization：publisher 引用 ↔ 节点 ──
+  // name 必须与站点名一致（Google 会把 Article 的 publisher 与站点品牌对齐）；
+  // 写死 'Rosetta' 会让实际站名不同的部署产出错的组织名。
+  if (orgId) {
+    blogPosting.publisher = { '@id': orgId }
+    const configuredLogo = input.logo ? asAbsolute(input.logo, base) : ''
+    const org: Record<string, unknown> = {
+      '@type': 'Organization',
+      '@id': orgId,
+      'name': input.siteName || 'Rosetta',
+      'url': base
+    }
+    if (configuredLogo) {
+      // 后台上传的 logo 尺寸不定，不猜 width/height
+      org.logo = { '@type': 'ImageObject', 'url': configuredLogo }
+    } else {
+      org.logo = {
+        '@type': 'ImageObject',
+        'url': `${base}${ORG_LOGO_FALLBACK_PATH}`,
+        'width': ORG_LOGO_FALLBACK_SIZE,
+        'height': ORG_LOGO_FALLBACK_SIZE
+      }
+    }
+    nodes.push(org)
+  } else {
+    // 无站点根：@id 立不住，保留旧的内联 publisher（url 缺失即省略）
+    blogPosting.publisher = { '@type': 'Organization', 'name': input.siteName || 'Rosetta' }
+  }
+
+  // ── BreadcrumbList：Home →（可选分类）→ 本篇；position 由 map 下标保证连续 ──
+  const crumbs: Array<{ name: string, url: string }> = []
+  const homeUrl = asAbsolute(applyLocalePrefix('/', locale), base)
+  if (homeUrl) crumbs.push({ name: input.homeLabel || 'Home', url: homeUrl })
+  const category = input.category
+  if (category) {
+    const isUrl = /^https?:\/\//i.test(category) || category.startsWith('/')
+    // 面包屑的分类一跳必须落在真实路由 pages/categories/[slug].vue（按 slug 解析）。
+    // 调用点传 categoryPath（slug 形态）时优先用它；纯名称才退化拼 /categories/<name>。
+    const neutralPath = input.categoryPath
+      ? input.categoryPath
+      : isUrl
+        ? category
+        : `/categories/${encodeURIComponent(category)}`
+    const catUrl = asAbsolute(applyLocalePrefix(neutralPath, locale), base)
+    const catName = isUrl && !input.categoryPath
+      ? safeDecodeURIComponent(
+          category.split(/[?#]/)[0]!.replace(/\/+$/, '').split('/').pop() || category
+        )
+      : category
+    if (catUrl) crumbs.push({ name: catName, url: catUrl })
+  }
+  if (articleUrl) crumbs.push({ name: input.headline || input.title, url: articleUrl })
+  if (articleUrl && crumbs.length > 0) {
+    nodes.push({
+      '@type': 'BreadcrumbList',
+      '@id': `${articleUrl}#breadcrumb`,
+      'itemListElement': crumbs.map((crumb, idx) => ({
+        '@type': 'ListItem',
+        'position': idx + 1,
+        'name': crumb.name,
+        'item': crumb.url
+      }))
+    })
+  }
+
+  return {
+    '@context': 'https://schema.org',
+    '@graph': nodes
+  }
+}
+
 export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   const siteUrl = usePublicSiteUrl()
-  const { locale } = useI18n()
+  const { locale, t } = useI18n()
   const site = useSite()
   const siteNameForJsonLd = computed(() => site.siteTitle.value || 'Rosetta')
 
@@ -645,6 +872,7 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
   const _publishedAt = computed(() => unrefVal(opts.publishedAt))
   const _updatedAt = computed(() => unrefVal(opts.updatedAt))
   const _category = computed(() => unrefVal(opts.category))
+  const _categoryPath = computed(() => unrefVal(opts.categoryPath))
   const _keywords = computed(() => unrefVal(opts.keywords))
   const _type = opts['@type'] ?? 'BlogPosting'
   const _author = computed(() => {
@@ -671,12 +899,6 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
     }
 
     const articlePath = pathOverride ?? `/posts/${slug}`
-    // prefix_except_default：详情页 JSON-LD 的 url/mainEntityOfPage 必须落到
-    // 当前语言的实际 URL（中文裸路径 /en/ja/zh_Hant 挂前缀），否则中英日
-    // 三语页面在 schema.org 里会共享同一个 zh canonical，Google 富媒体测试报
-    // "URL does not match page"。
-    const articleUrl = asAbsolute(applyLocalePrefix(articlePath, locale.value), base)
-    const cover = _cover.value ? asAbsolute(_cover.value, base) : undefined
     const published = safeIsoDate(_publishedAt.value)
     const updated = safeIsoDate(_updatedAt.value) ?? published
     const keywordsRaw = _keywords.value
@@ -692,45 +914,29 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
             ? undefined
             : String(keywordsRaw)
 
-    const payload: Record<string, unknown> = {
-      '@context': 'https://schema.org',
-      '@type': _type,
-      'headline': _headline.value || _title.value,
-      'mainEntityOfPage': {
-        '@type': 'WebPage',
-        '@id': articleUrl
-      },
-      'url': articleUrl,
-      'datePublished': published,
-      'dateModified': updated,
+    const payload = buildArticleJsonLdGraph({
+      base,
+      locale: locale.value,
+      type: _type,
+      articlePath,
+      headline: _headline.value || _title.value,
+      title: _title.value,
+      description: _description.value,
       keywords,
-      'articleSection': _category.value
-    }
-
-    if (_description.value) {
-      payload.description = _description.value
-    }
-    if (cover) {
-      payload.image = { '@type': 'ImageObject', 'url': cover }
-    }
-    const author = _author.value
-    if (author) {
-      payload.author = {
-        '@type': 'Person',
-        'name': author.name,
-        ...(author.url ? { url: author.url } : {}),
-        ...(author.avatar
-          ? { image: { '@type': 'ImageObject', 'url': asAbsolute(author.avatar, base) } }
-          : {})
-      }
-    }
-    payload.publisher = {
-      '@type': 'Organization',
-      // publisher.name 必须与站点名一致（Google 会把 Article 的 publisher 与
-      // 站点品牌对齐）；写死 'Rosetta' 会让实际站名不同的部署产出错的组织名。
-      'name': siteNameForJsonLd.value,
-      'url': base
-    }
+      articleSection: _category.value,
+      published,
+      updated,
+      cover: _cover.value,
+      author: _author.value,
+      category: _category.value,
+      categoryPath: _categoryPath.value,
+      siteName: siteNameForJsonLd.value,
+      // 面包屑首项跟着页面语言走：中文页给爬虫一个 "Home" 英文名等于让
+      // BreadcrumbList 与访客在地址栏/搜索结果里看到的层级对不上。
+      homeLabel: t('nav.home'),
+      // Organization logo 的站点设置来源：basic.logo（/api/config 的 site_logo 键）
+      logo: site.basic.value.logo || undefined
+    })
 
     return {
       script: [

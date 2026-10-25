@@ -7,21 +7,12 @@
 
 import { LOCALE_PATH_PREFIX_VARIANTS } from '../../lib/rosetta-themes'
 
-/**
- * 解析对外站点根 URL：**只**信任 runtime(.public).siteUrl 配置，绝不从
- * x-forwarded-host / Host 请求头推导——伪造 Host 可把攻击者域名写进 Sitemap 行，
- * 并被下面的 s-maxage=3600 缓存投毒（SEO/缓存双层污染）。缺配置返回 ''（跳过 Sitemap 行）。
- */
-function resolveConfiguredOrigin(runtime: ReturnType<typeof useRuntimeConfig>): string {
-  const configured = (runtime as unknown as { siteUrl?: string }).siteUrl
-    || (runtime.public as unknown as { siteUrl?: string })?.siteUrl
-  return configured ? String(configured).replace(/\/$/, '') : ''
-}
+/** 站点根解析单源在 server/utils/ssr#resolvePublicSiteOrigin（拒绝 Host 推导）。 */
 
 export default defineEventHandler((event) => {
   const runtime = useRuntimeConfig(event)
   const target = resolveBackendEndpoint(runtime, '/seo/robots.txt')
-  const origin = resolveConfiguredOrigin(runtime)
+  const origin = resolvePublicSiteOrigin(runtime)
 
   // 与 backend/api/seo.py::get_robots_txt 的默认段同口径（改一处要改两处，
   // 因为上游不可达时这里才是访客实际拿到的文件）。

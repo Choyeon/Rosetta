@@ -2,7 +2,8 @@
 
 契约（2026-10 改动）：
 1. `backend/api/hero.py` 不得出现任何站外抓取（Bing 壁纸只服务登录/注册页）。
-2. DB 无生效轮播时，公开口用近 30 天热榜文章填充：负 ID、封面回落 picsum 确定性 seed、
+2. DB 无生效轮播时，公开口用近 30 天热榜文章填充：负 ID、无封面回落站内默认 OG 图
+   （services/site_settings.default_og_image_url，不再抓 picsum 外链）、
    CTA 指向文章详情的中性路径（语言前缀由前端负责）。
 3. 存在生效轮播时，绝不查询热榜兜底——DB 记录优先。
 """
@@ -69,8 +70,9 @@ async def test_hero_slides_fall_back_to_hot_posts(
     assert all(row["id"] < 0 for row in rows), "兜底项必须用负 ID，不与 DB 主键撞"
     assert rows[0]["title"] == "热门文章 11"
     assert rows[0]["subtitle"] == "摘要正文"
-    # 没封面时回落 picsum 确定性 seed（与前端卡片占位图同一口径），有封面用封面
-    assert rows[0]["media_url"].endswith("rosetta-post-11/1600/900")
+    # 没封面时回落站内默认 OG 图（不再依赖 picsum 外链），有封面用封面
+    assert rows[0]["media_url"].endswith("/og-default.png")
+    assert "picsum" not in rows[0]["media_url"]
     assert rows[1]["media_url"] == "/media/12.jpg"
     assert rows[0]["cta_url"] == "/posts/hot-eleven"
     assert [row["sort_order"] for row in rows] == [0, 1]

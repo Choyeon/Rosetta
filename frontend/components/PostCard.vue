@@ -19,6 +19,8 @@
       <img
         :src="coverImage"
         :alt="postTitle"
+        width="640"
+        height="427"
         class="h-full w-full object-cover transition-transform transition-duration-[520ms] ease-out group-hover:scale-[1.035]"
         loading="lazy"
         decoding="async"
@@ -135,6 +137,8 @@
       <img
         :src="coverImage"
         :alt="postTitle"
+        width="1200"
+        height="800"
         class="h-full w-full object-cover transition-transform transition-duration-[600ms] ease-out group-hover:scale-[1.03]"
         loading="lazy"
         decoding="async"
@@ -231,6 +235,8 @@
       <img
         :src="coverImage"
         :alt="postTitle"
+        width="640"
+        height="427"
         class="h-full w-full object-cover transition-transform transition-duration-[600ms] ease-out group-hover:scale-[1.03]"
         loading="lazy"
         decoding="async"
