@@ -8,21 +8,20 @@
 
 | 项 | 状态 | 落点 |
 | --- | --- | --- |
-| 项 | 状态 | 落点 |
-| --- | --- | --- |
 | P0-1 404 禁缓存 | 已实现 | `server/utils/ssrHtmlCacheControl.ts`（`errorHtmlCacheControl`）+ `server/plugins/ssr-html-revalidate.nitro.ts`（两道钩子读状态码） |
 | P0-2 分页锚点 | 已实现 | `pages/posts/index.vue`（`pageHref` + `<a>`，当前页 `aria-current` span） |
 | P0-3 hero LCP + img 宽高 | 已实现 | 各公开页/组件 `<img>` 显式宽高、hero 缩略图去 `loading=lazy`；守卫 `tests/unit/heroLcpAttributes.spec.ts` |
 | P1-1 `?page` 越界 301 | 已实现 | `pages/posts/index.vue`（`app:rendered` 闸门 + `no-store`） |
-| P1-2 `<html lang>` BCP-47 | 已实现 | `composables/useSeo.ts` 复用 `HREFLANG_MAP` |
+| P1-2 `<html lang>` BCP-47 | 已实现 | `HREFLANG_MAP` 是 BCP-47 单源，三处写点全部走它：`composables/useSeo.ts`（SSR 页覆盖）、`app.vue`（全局 `htmlAttrs.lang`，此前直接吐 `locale.value` = `zh_Hant`）、`nuxt.config.ts`（`app.head.htmlAttrs.lang` 默认值）；守卫 `tests/unit/seoLocaleUrl.spec.ts` |
 | P1-3 og:image 去外链 | 已实现 | `lib/post-cover.ts` 回落改站内 `/placeholder-covers/1..6.svg`；`public/og-default.png` + `seo.default_og_image` 设置键 |
 | P1-4 JSON-LD @graph | 已实现 | `composables/useSeo.ts::buildArticleJsonLdGraph`（BlogPosting + Person/Organization/ImageObject/BreadcrumbList，`@id` 互指；面包屑首项走 `nav.home`）；守卫 `tests/unit/articleJsonLdGraph.spec.ts` |
 | P1-5 `/seo/schema` URL | 已实现 | `backend/api/seo.py`（`/posts/{slug}`、`/authors/{username}`）；守卫 `tests/test_api_seo.py` |
 | P1-6 canonical 单源 | 复测更正 | 页面侧本无重复；只加守卫 spec |
 | P2-1 sitemap lastmod | 已实现 | `backend/api/blog.py`（子表索引 `<lastmod>` 取该表最大更新日期，空表省略节点） |
 | P2-2 RSS lastBuildDate | 已实现 | `backend/api/blog.py`（取本次构建时刻，恒 >= 任何条目 pubDate） |
-| P2-3 llms.txt + security.txt | 已实现 | `server/routes/llms.txt.get.ts` + `server/routes/.well-known/security.txt.get.ts`（nitropack `scanDir` 的 globby 带 `dot:true`，点目录会被收录）；守卫 `tests/unit/geoDeliveryRoutes.spec.ts` |
+| P2-3 llms.txt + security.txt | 已实现（humans.txt / FAQPage 复测后刻意不做） | `server/routes/llms.txt.get.ts` + `server/routes/.well-known/security.txt.get.ts`（nitropack `scanDir` 的 globby 带 `dot:true`，点目录会被收录）；守卫 `tests/unit/geoDeliveryRoutes.spec.ts` |
 | P2-4 IndexNow | 已实现 | `backend/services/indexnow.py`（`post.published` / `post.updated` 钩子，四语 URL 一次推送）；守卫 `tests/test_indexnow.py` |
+| P2-5 移动端 / CWV | 结构性动作已实现，lab 读数受阻 | 宽高与 `fetchpriority` 已实测（首页 53/53 图带宽高、CLS 累积 0）；PSI API 从生产机返回 403、面板 WebView `visibility=hidden` 无 paint 记录，LCP/INP 毫秒数**未采集**，详见 §P2-5 |
 
 ***
 
@@ -215,7 +214,7 @@ LCP/CLS 数值验收用 PageSpeed Insights（https://pagespeed.web.dev/analysis?
 
 **验证**：`curl -sk /rss.xml | xargs -I{} sh -c 'grep -o "<pubDate>[^<]*" {} | sort | tail -1'` 对比 lastBuildDate。
 
-**回归测试**：`tests/test_api_rss.py`（如无则并入 `test_api_seo.py`）。
+**回归测试**：`tests/test_api_seo.py::test_rss_lastbuild_date_is_build_time`。
 
 ### P2-3 GEO（AI 引用）零覆盖：llms.txt / security.txt / humans.txt
 
@@ -230,7 +229,11 @@ LCP/CLS 数值验收用 PageSpeed Insights（https://pagespeed.web.dev/analysis?
 
 **验证**：`curl -sk https://choyeon.cc/llms.txt | head` → 200 text/plain。
 
-**回归测试**：`frontend/tests/unit/llmsTxtRoute.spec.ts`（新建）；`tests/test_api_seo.py` 若走后端则同文件。
+**回归测试**：`frontend/tests/unit/geoDeliveryRoutes.spec.ts`（llms.txt 与 security.txt 同文件，含"全仓只有一条 security.txt 生成器"反向断言）。
+
+**复测更正（两处刻意不做）**：
+1. `/humans.txt` 未落地——本项的 AI 投递面已由 `llms.txt`（纯文本 + 真实文章绝对链接 + 四语入口）覆盖，`humans.txt` 无任何抓取器消费口径，写一条没人读的纯文本路由属于死代码（AGENTS.md 无消费点红线，同批次 #23/#35/#45 的收口方向）。
+2. FAQPage schema 未落地——全仓（排除 `pnpm-lock.yaml` 与本文档）grep `faq` 只命中图标名清单 `frontend/lib/lucide-svg-icons-all.ts`：站里既没有 FAQ 问答结构，也没有承载它的短代码或内容类型，"≥2 问才挂"的前置条件恒假。将来真加 FAQ 组件时，随组件一起补 schema 与守卫，不要先埋一段永不触发的分支。
 
 ### P2-4 IndexNow 即时推送（可选）
 
@@ -240,10 +243,16 @@ LCP/CLS 数值验收用 PageSpeed Insights（https://pagespeed.web.dev/analysis?
 
 | 维度 | 当前 | 目标 | 动作 |
 | --- | --- | --- | --- |
-| LCP | 首页 hero 外链 lazy（P0-3） | < 2.5 s | P0-3 修完后用 PSI 实测移动端 field 数据 |
-| CLS | 首页 img 尺寸覆盖 27/58（P0-3） | < 0.1 | 全量补宽高；Google Fonts preload-only 已避免阻塞，无需再动 |
-| INP | 未实测 | < 200 ms | PSI lab + 后台 `/api/monitoring/performance/summary` 窗口读数；重点关注列表页 `busy` 禁用态的交互反馈 |
-| 移动可用性 | 窄屏外壳已有契约测试 | — | 保持 `mobileShellLayout.spec.ts` 绿即可 |
+| LCP | 站内 hero（非外链）、首屏不 lazy、详情头图 `fetchpriority="high"`、列表卡片 `fetchpriority="low"` | < 2.5 s | 结构性动作已完成并由 `heroLcpAttributes.spec.ts` + 线上 curl 钉住；**PSI 读数本环境取不到**（见下） |
+| CLS | 首页 `<img>` 宽高覆盖 **53/53**（实测 `document.images` 全带 `width`/`height`），`layout-shift` 累积值 **0** | < 0.1 | 已达成：全量补宽高；Google Fonts preload-only 已避免阻塞，无需再动 |
+| INP | 后台 `/api/monitoring/performance/summary` 需 staff（匿名 401），未取窗口读数 | < 200 ms | 需要管理员 token 或在后台页面读数；列表页 `busy` 禁用态的交互反馈保持现状 |
+| 移动可用性 | 窄屏外壳与首页 hero 均有契约测试 | — | 保持 `mobileShellLayout.spec.ts` · `heroMobileLayout.spec.ts` 绿即可 |
+
+**PSI 实测受阻（2026-10-26 复测，两条路都堵）**：
+1. PageSpeed Insights API 从生产机调用返回 **HTTP 403**（`www.googleapis.com/pagespeedonline/v5/...`，无 API key 的配额路径被 Google 侧拒），本机直连超时；
+2. 面板内浏览器读 paint timing 拿到 `visibilityState="hidden"` + `viewport 0x0`，`largest-contentful-paint` 条目为空——后台化的 WebView 不产生绘制记录，任何 LCP/INP 读数在这里都是假的。
+
+因此 LCP/INP 的**毫秒级 lab 读数不在本批次证据链里**，不要凭"门禁全绿"当作已达标。可用的替代实测（均为服务端与真实 DOM 口径）：首页 TTFB 1.07 s / 完整响应 1.08 s（HTML 289 KB）、`/posts` TTFB 0.61 s、CLS 累积 0、首页图片宽高覆盖 53/53。要拿到真实 CWV 需在有桌面网络的浏览器里手动跑一次 PSI 并回填本表。
 
 ***
 
