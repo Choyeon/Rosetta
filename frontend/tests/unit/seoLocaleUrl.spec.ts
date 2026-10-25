@@ -219,7 +219,9 @@ describe('<html lang> 只有一个 BCP-47 口径（SEO 报告 P1-2）', () => {
   it('映射值全部是 BCP-47：不带下划线，也不退回裸 locale code', () => {
     for (const [code, lang] of Object.entries(HREFLANG_MAP)) {
       expect(lang, `HREFLANG_MAP.${code} 不能带下划线`).not.toContain('_')
-      expect(lang, `HREFLANG_MAP.${code} 形态`).toMatch(/^[a-z]{2,3}(-[A-Za-z]{2,3}(-[A-Z]{2})?)?$/)
+      // BCP-47：语言子 tag 2–3 位小写，其后接地区（2 位大写）或文字（4 位首字母大写），
+      // 可连续挂多个（zh-Hant / zh-Hant-TW 形态都算合法）。
+      expect(lang, `HREFLANG_MAP.${code} 形态`).toMatch(/^[a-z]{2,3}(-[A-Z]{2}|-[A-Z][a-z]{3})*$/)
     }
     expect(HREFLANG_MAP[DEFAULT_LOCALE_CODE]).toBe('zh-CN')
     expect(HREFLANG_MAP.zh_Hant).toBe('zh-Hant')
