@@ -15,6 +15,7 @@ import { useToast } from '~~/composables/useToast'
 import ThemeRippleOverlay from '~~/components/ThemeRippleOverlay.vue'
 import { TooltipProvider } from '~~/components/ui/tooltip'
 import { SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
+import { DEFAULT_LOCALE_CODE, HREFLANG_MAP } from '~~/composables/useSeo'
 
 const _route = useRoute()
 const { locale, t } = useI18n()
@@ -151,7 +152,10 @@ useHead(() => ({
     { rel: 'apple-touch-icon', href: '/logo/rosetta-primary-icon.png' }
   ],
   htmlAttrs: {
-    lang: () => locale.value || 'zh'
+    // 必须与 useSeo 的 hreflang 同一个 BCP-47 映射：这里曾直接吐 locale.value，
+    // 于是未调用 useSeo 的口（error.vue / oobe / SPA 空壳）输出 lang="zh_Hant"，
+    // 下划线形态被解析器降级，且与同页 hreflang="zh-Hant" 口径打架。
+    lang: () => HREFLANG_MAP[locale.value] ?? HREFLANG_MAP[DEFAULT_LOCALE_CODE]
   }
 }))
 </script>

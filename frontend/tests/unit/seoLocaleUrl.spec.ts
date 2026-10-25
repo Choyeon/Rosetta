@@ -214,3 +214,27 @@ describe('URL 派生的单源约束（静态）', () => {
     expect(offenders, `这些文件自己拼了语言前缀清单：${offenders.join(', ')}`).toEqual([])
   })
 })
+
+describe('<html lang> 只有一个 BCP-47 口径（SEO 报告 P1-2）', () => {
+  it('映射值全部是 BCP-47：不带下划线，也不退回裸 locale code', () => {
+    for (const [code, lang] of Object.entries(HREFLANG_MAP)) {
+      expect(lang, `HREFLANG_MAP.${code} 不能带下划线`).not.toContain('_')
+      expect(lang, `HREFLANG_MAP.${code} 形态`).toMatch(/^[a-z]{2,3}(-[A-Za-z]{2,3}(-[A-Z]{2})?)?$/)
+    }
+    expect(HREFLANG_MAP[DEFAULT_LOCALE_CODE]).toBe('zh-CN')
+    expect(HREFLANG_MAP.zh_Hant).toBe('zh-Hant')
+  })
+
+  it('三处写 html lang 的地方全部查同一张表（app.vue 全局头 / useSeo 页级头 / nuxt.config 兜底）', () => {
+    const app = readFileSync(resolve(ROOT, 'app.vue'), 'utf-8')
+    const seo = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
+    const config = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
+    // app.vue 曾直接吐 locale.value，于是没调 useSeo 的口（error.vue / oobe / SPA 空壳）
+    // 输出 lang="zh_Hant"：下划线形态被解析器降级，还和同页 hreflang="zh-Hant" 自相矛盾。
+    expect(app).toMatch(/lang: \(\) => HREFLANG_MAP\[locale\.value\]/)
+    expect(app).not.toMatch(/lang: \(\) => locale\.value/)
+    expect(seo).toMatch(/const htmlLang = HREFLANG_MAP\[locale\.value\]/)
+    expect(seo).toMatch(/htmlAttrs: \{ lang: htmlLang \}/)
+    expect(config).toContain(`'lang': '${HREFLANG_MAP[DEFAULT_LOCALE_CODE]}'`)
+  })
+})
