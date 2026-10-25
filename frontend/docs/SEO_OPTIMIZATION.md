@@ -123,11 +123,18 @@ LCP/CLS 数值验收用 PageSpeed Insights（https://pagespeed.web.dev/analysis?
 
 **影响**：`lang` 属性必须是 BCP-47（`zh-Hant`）。下划线形态被部分解析器降级处理，语言识别信号减弱；而 hreflang 侧输出已是正确的 `zh-Hant`——同一页两套语言代码口径不一致。
 
-**改法**：[useSeo.ts:462](file:///D:/WebProjects/Rosetta/frontend/composables/useSeo.ts#L462) `htmlAttrs.lang` 处加一张映射 `zh→zh-CN / zh_Hant→zh-Hant / en→en / ja→ja`（复用 `HREFLANG_MAP` 的值，不新建清单）。
+**改法**：[useSeo.ts:462](file:///D:/WebProjects/Rosetta/frontend/composables/useSeo.ts#L462) `htmlAttrs.lang` 处加一张映射 `zh→zh-CN / zh_Hant→zh-Hant / en→en / ja→ja`（复用 `HREFLANG_MAP` 的值，不新建清单）。实现时补了两处同样直接吐 `locale.code` 的写点（`app.vue` 全局 `htmlAttrs.lang`、`nuxt.config.ts` 的 `app.head.htmlAttrs.lang` 默认值）——只改 `useSeo` 挡不住没调用它的口（404 错误页、`/oobe`、SPA 壳）。
 
-**验证**：`curl -sk https://choyeon.cc/zh_Hant | grep -o '<html[^>]*lang="[^"]*"'` → `lang="zh-Hant"`。
+**验证**（复测更正）：`<html>` 上除了 `lang` 还挂着 `data-default-lang="zh-CN"`，用 `grep -o '<html[^>]*lang="[^"]*"'` 会被贪婪匹配吃到后面那个属性，`/en` 读出 `zh-CN`（本轮 6 条假 FAIL 的来源）。正确探针是先切标签再只认"前面是空白"的属性：
 
-**回归测试**：`frontend/tests/unit/seoLocaleUrl.spec.ts` 补 lang 断言。
+```bash
+curl -s https://choyeon.cc/en | tr '\n' ' ' | grep -o '<html[^>]*>' | head -1 \
+  | grep -oE '(^|[[:space:]])lang="[^"]*"' | head -1
+```
+
+**线上覆盖口径**：`/oobe` 在安装完成后由 `middleware/oobe.global.ts` 回 302 → `/`（且 OOBE 路径按 `composables/useLocaleLink.ts` 的约定不参与语言前缀），所以它在生产机上取不到 HTML，不是 lang 写点的靶面；真实靶面是 **404 错误页**（`app.vue` 那条写点），已实测 `/no-such-page → zh-CN`、`/en/no-such-page → en`、`/ja/no-such-page → ja`。
+
+**回归测试**：`frontend/tests/unit/seoLocaleUrl.spec.ts`（`HREFLANG_MAP` 每个值必须匹配 `^[a-z]{2,3}(-[A-Z]{2}|-[A-Z][a-z]{3})*$`，即 `zh-Hant`/`zh-Hant-TW` 形态合法）。
 
 ### P1-3 og:image / 封面图为 picsum 占位
 **真源定位（实现阶段更正）**：picsum 回退不在后端序列化，而在前端封面单源 [frontend/lib/post-cover.ts:13](file:///D:/WebProjects/Rosetta/frontend/lib/post-cover.ts#L13) 的 `defaultPostCover()`——`postCoverUrl()` 被 PostCard/详情页/首页 hero 幻灯片与 og:image 取值共用，一处回落全站中招。
