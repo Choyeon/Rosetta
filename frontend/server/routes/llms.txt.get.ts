@@ -110,7 +110,7 @@ export default defineEventHandler(async (event) => {
 
     lines.push('', '## Homepage (four languages)')
     // LOCALE_PATH_PREFIX_VARIANTS：默认语言裸路径，其余三语各自挂 /en、/ja、/zh_Hant 前缀
-    //（清单唯一真源 lib/rosetta-themes，这里只消费不再写死一份）
+    // （清单唯一真源 lib/rosetta-themes，这里只消费不再写死一份）
     for (const variant of LOCALE_PATH_PREFIX_VARIANTS) {
       const code = variant ? variant.slice(1) : DEFAULT_LOCALE_CODE
       lines.push(`- ${code}: ${origin}${variant}/`)

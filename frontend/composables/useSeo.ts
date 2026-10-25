@@ -754,11 +754,11 @@ export function buildArticleJsonLdGraph(input: ArticleGraphInput): Record<string
     nodes.push({
       '@type': 'ImageObject',
       '@id': primaryImageId,
-      url: coverUrl,
+      'url': coverUrl,
       // 与 lib/post-cover.ts 的 POST_COVER_DETAIL（详情页头图声明尺寸）同一对数值
-      width: PRIMARY_IMAGE_WIDTH,
-      height: PRIMARY_IMAGE_HEIGHT,
-      caption: input.description || input.title
+      'width': PRIMARY_IMAGE_WIDTH,
+      'height': PRIMARY_IMAGE_HEIGHT,
+      'caption': input.description || input.title
     })
   }
 

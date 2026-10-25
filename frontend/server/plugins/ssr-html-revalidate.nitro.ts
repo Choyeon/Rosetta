@@ -18,7 +18,6 @@
  */
 import type { NitroApp } from 'nitropack'
 import {
-  ERROR_CACHE_CONTROL,
   errorHtmlCacheControl,
   normalizeHtmlCacheControl
 } from '../utils/ssrHtmlCacheControl'

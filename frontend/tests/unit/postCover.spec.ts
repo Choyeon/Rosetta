@@ -1,3 +1,5 @@
+import { existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import { defaultPostCover, postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '@/lib/post-cover'
 
@@ -34,11 +36,9 @@ describe('postCover', () => {
       Array.from({ length: 60 }, (_, i) => postCoverUrl({ id: i + 1, slug: `p${i}` }))
     )
     for (const u of urls) expect(u).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
-    const fs = require('node:fs')
-    const path = require('node:path')
     for (let slot = 1; slot <= 6; slot++) {
       expect(
-        fs.existsSync(path.resolve(__dirname, '../../public/placeholder-covers', `${slot}.svg`))
+        existsSync(resolve(__dirname, '../../public/placeholder-covers', `${slot}.svg`))
       ).toBe(true)
     }
   })

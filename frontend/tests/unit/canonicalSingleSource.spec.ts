@@ -17,8 +17,7 @@ function collectPages(dir = 'pages', acc: string[] = []): string[] {
     const rel = `${dir}/${entry}`
     if (statSync(resolve(ROOT, rel)).isDirectory()) {
       collectPages(rel, acc)
-    }
-    else if (entry.endsWith('.vue')) {
+    } else if (entry.endsWith('.vue')) {
       acc.push(rel)
     }
   }
@@ -39,6 +38,6 @@ describe('canonical 单源（useSeo 唯一产出点）', () => {
 
   it('单源真实现仍在 composables/useSeo.ts（防止整条链路被静默删掉）', () => {
     const useSeo = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
-    expect(useSeo).toContain("rel: 'canonical'")
+    expect(useSeo).toMatch(/rel: ['"]canonical['"]/)
   })
 })

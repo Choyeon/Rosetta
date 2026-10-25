@@ -152,10 +152,7 @@ useArticleJsonLd({
   'updatedAt': computed(() => (page.value?.updated_at || page.value?.updatedAt || '') as string),
   '@type': 'Article'
 })
-useBreadcrumbJsonLd([
-  { name: t('nav.home', '首页') as string, url: '/' },
-  { name: title.value || slug.value, url: `/page/${slug.value}` }
-])
+// 同 pages/[slug].vue：面包屑由 useArticleJsonLd 的 @graph 内嵌，不再单独声明。
 </script>
 
 <template>

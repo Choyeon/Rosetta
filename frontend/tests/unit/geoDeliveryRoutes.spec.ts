@@ -36,19 +36,19 @@ describe('llms.txt 路由', () => {
   })
 
   it('以 text/plain + 公开缓存头出口（AI 抓取器不解析 HTML 壳）', () => {
-    expect(llmsRoute).toContain("content-type', 'text/plain; charset=utf-8")
+    expect(llmsRoute).toMatch(/content-type', 'text\/plain; charset=utf-8/)
     expect(llmsRoute).toMatch(/s-maxage=3600/)
   })
 
   it('文章清单来自 /blog/posts 的默认语言列表，与 /posts 同一份数据源', () => {
-    expect(llmsRoute).toContain("'/blog/posts'")
-    expect(llmsRoute).toContain("lang: 'zh'")
+    expect(llmsRoute).toContain('/blog/posts')
+    expect(llmsRoute).toMatch(/lang: 'zh'/)
     expect(llmsRoute).toContain('page_size: POSTS_LIMIT')
     expect(llmsRoute).toMatch(/const POSTS_LIMIT = 10\b/)
   })
 
   it('站点名与描述取 /settings/public 的 basic 组', () => {
-    expect(llmsRoute).toContain("'/settings/public'")
+    expect(llmsRoute).toContain('/settings/public')
   })
 
   it('两个上游各自独立 try/catch 降级，不抛 createError（后端不可达也要 200 文本）', () => {

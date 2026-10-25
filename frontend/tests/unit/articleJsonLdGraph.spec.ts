@@ -141,7 +141,7 @@ describe('buildArticleJsonLdGraph：@graph 五实体结构', () => {
     const en = graphOf(buildArticleJsonLdGraph(input({ locale: 'en' })))
     const enBlog = nodeOf(en, 'BlogPosting')!
     expect(enBlog.url).toBe(`${BASE}/en/posts/hello-world`)
-    const items = (nodeOf(en, 'BreadcrumbList')!.itemListElement as Node[])
+    const items = nodeOf(en, 'BreadcrumbList')!.itemListElement as Node[]
     expect(items[0]!.item).toBe(`${BASE}/en`)
     expect(items[1]!.item).toBe(`${BASE}/en/categories/technology`)
     expect(items[2]!.item).toBe(`${BASE}/en/posts/hello-world`)
@@ -163,7 +163,7 @@ describe('buildArticleJsonLdGraph：空值防御（引用与节点同进退）',
     const payload = buildArticleJsonLdGraph(input({ author: { name: 'Lyn', avatar: '/uploads/a.png' } }))
     const graph = graphOf(payload)
     const blog = nodeOf(graph, 'BlogPosting')!
-    expect(blog.author).toMatchObject({ '@type': 'Person', name: 'Lyn' })
+    expect(blog.author).toMatchObject({ '@type': 'Person', 'name': 'Lyn' })
     expect((blog.author as Node)['@id']).toBeUndefined()
     expect(nodeOf(graph, 'Person')).toBeUndefined()
   })
@@ -185,13 +185,13 @@ describe('buildArticleJsonLdGraph：空值防御（引用与节点同进退）',
 
   it('无分类：面包屑只剩 Home → 本篇，position 仍从 1 连续', () => {
     const payload = buildArticleJsonLdGraph(input({ category: undefined, categoryPath: undefined }))
-    const items = (nodeOf(graphOf(payload), 'BreadcrumbList')!.itemListElement as Node[])
+    const items = nodeOf(graphOf(payload), 'BreadcrumbList')!.itemListElement as Node[]
     expect(items.map(i => i.position)).toEqual([1, 2])
   })
 
   it('分类只有名称（无 categoryPath）：退化为 /categories/<name> 拼接并做 URL 编码', () => {
     const payload = buildArticleJsonLdGraph(input({ categoryPath: undefined, category: '技术' }))
-    const items = (nodeOf(graphOf(payload), 'BreadcrumbList')!.itemListElement as Node[])
+    const items = nodeOf(graphOf(payload), 'BreadcrumbList')!.itemListElement as Node[]
     expect(items[1]!.item).toBe(`${BASE}/categories/${encodeURIComponent('技术')}`)
   })
 
@@ -244,6 +244,6 @@ describe('BreadcrumbList 首项本地化', () => {
 
   it('useArticleJsonLd 把当前语言的 nav.home 交给 homeLabel', () => {
     const seo = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
-    expect(seo).toContain("homeLabel: t('nav.home')")
+    expect(seo).toMatch(/homeLabel: t\(['"]nav\.home['"]\)/)
   })
 })

@@ -64,4 +64,3 @@ export function errorHtmlCacheControl(
   if (cacheControl === ERROR_CACHE_CONTROL) return null
   return ERROR_CACHE_CONTROL
 }
-

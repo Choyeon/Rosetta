@@ -258,8 +258,7 @@ useArticleJsonLd({
   'updatedAt': computed(() => (page.value?.updated_at || page.value?.updatedAt || '') as string),
   '@type': 'Article'
 })
-useBreadcrumbJsonLd([
-  { name: t('nav.home', '首页') as string, url: '/' },
-  { name: title.value, url: `/${slug.value}` }
-])
+// 面包屑不再单独声明：useArticleJsonLd 的 @graph 里已内嵌同一条
+// Home → 本篇 BreadcrumbList（独立页无分类），再调 useBreadcrumbJsonLd
+// 等于给爬虫两套面包屑。
 </script>

@@ -57,7 +57,7 @@ function extractImgBlocks(src: string): string[] {
       const ch = src[i]
       if (quote) {
         if (ch === quote) quote = null
-      } else if (ch === '"' || ch === "'" || ch === '`') {
+      } else if (ch === '"' || ch === '\'' || ch === '`') {
         quote = ch
       } else if (ch === '>') {
         break
