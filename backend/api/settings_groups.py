@@ -81,8 +81,12 @@ PUBLIC_SETTING_GROUPS = [
     "comments",
 ]
 
-# 即便在公开分组内，这些键也一律脱敏（避免误配导致凭据外泄）
-_SENSITIVE_KEY_RE = re.compile(r"(password|secret|token|api_?key|private_key|authorization)", re.I)
+# 即便在公开分组内，这些键也一律脱敏（避免误配导致凭据外泄）。
+# `_key$` 收尾的形态是凭据命名族（indexnow_key…），而 `keywords` / `default_keywords`
+# 是 SEO 可见文案且必须以裸词结尾，所以只锚 `_key` 结尾，不用裸 `key`。
+_SENSITIVE_KEY_RE = re.compile(
+    r"(password|secret|token|api_?key|private_key|authorization|_key$)", re.I
+)
 
 
 def _redact(data: dict) -> dict:

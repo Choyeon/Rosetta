@@ -64,7 +64,7 @@
 2. **插件系统**（FastAPI 侧 Hook Engine，Bus 模式）：`backend/core/plugin_loader.py`（load/unload、运行时 settings 快照）+ `backend/core/plugin_bus.py`（钩子总线）+ `backend/core/hooks.py`（do_action / add_action 原语）；启动经 `backend/core/extensions.py::bootstrap_extensions` 扫描对齐，运行时插件路由经 `core/routing_registry.py` 统一挂载，三内建插件 `hello-rosetta` · `guestbook-rss` · `seo-toolkit`。短代码子系统集成点在 `core/shortcodes.py`（引擎 + `_MAX_NESTING_DEPTH` 深度闸门 + `_ALLOWED_TAGS` 输出白名单）与 `core/extensions.py`（API 方式注册的模板短代码落 KV `shortcode_templates`，启动/列表两处重放）；Admin 面板 `frontend/pages/admin/system/shortcodes.vue` 已消费其中 4 条（列表 / 管理员预览 / 注册模板 / 注销），公开口 `POST /api/shortcodes/render` 刻意不给编辑器用——预览需要上下文时走管理员口（见 `frontend/docs/API_COVERAGE.md`）。
 3. **头像代理 / 解析器**：`/api/media/avatar?src=<base64>`，白名单 302 直跳 → 非白名单流式代理 → DiceBear SVG 兜底；前端 `useResolvedAvatar`。
 4. **OOBE 安装向导**：锁文件 `backend/.oobe_complete`，缺则非白名单接口返回 `503 OOBE_REQUIRED`。
-5. **SEO 服务端生成**：RSS 2.0 / Sitemap / Robots 三条 Nitro Server-Route。
+5. **SEO 服务端生成**：RSS 2.0 / Sitemap（索引 + pages/posts/taxonomies 子图）/ Robots / llms.txt / `.well-known/security.txt` 五条 Nitro Server-Route，口径见 §2.3.4。
 6. **Bing 每日壁纸 BFF**：`frontend/server/api/bing-wallpaper.get.ts`，30m SWR cache。
 7. **Webhook 外发**：`backend/api/webhook.py` 把 hooks 总线事件投递到外部端点。事件名唯一清单是 `GET /api/webhooks/events`（= `WEBHOOK_EVENTS` = 总线 `do_action` 名），前端订阅 UI 必须消费该接口、不得自有一套命名；`main.py` startup 调 `register_webhook_listeners()` 挂接。投递请求头固定 `X-Rosetta-Event: <event.type>` + `X-Rosetta-Signature: sha256=<hmac_sha256(secret, 实际发出的 JSON 字节)>`；URL 每次发送前重过 SSRF 护栏（`core/net_guard.py` + `settings.webhook_allow_private_targets`）。`provider` 只是分类标签，签名/载荷格式对所有类型一致。**任何写路径（含批量入口 `POST /blog/posts/batch-status`、`POST /admin/posts/batch`）都必须与单篇路径同构地 `do_action`**——批量分支漏发钩子的表现是「用户改用多选后 Webhook 与插件监听静默失聪」，回归见 `tests/test_post_batch_hooks.py`。密钥明文仅在 `POST /{id}/regenerate-secret` 一次性返回，`WebhookOut` 只给 `has_secret`。回归测试：`tests/test_webhook_dispatch.py`。
 
@@ -249,6 +249,45 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
 契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
 `contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·
 `heroMobileLayout.spec.ts`（口径见 `frontend/AGENTS.md`「窄屏外壳单源口径」）。
+
+### 2.3.4 SEO/GEO 投递面单源（纯文本口 · 兜底图 · @graph）
+
+1. **纯文本口与 rss/sitemap/robots 同轨**：`server/routes/{llms.txt,robots.txt,rss.xml,sitemap*.xml}.get.ts`
+   与 `server/routes/.well-known/security.txt.get.ts` 的站点根只认 `resolvePublicSiteOrigin`（配置单源），
+   **绝不**从请求 Host 推导——这些路由带 `s-maxage`，一次 Host 伪造会被缓存固化给所有访客。
+   连后端一律走 `resolveBackendEndpoint`，且**上游全挂时必须降级成 200 的最小文本**（500/503 对抓取器
+   不可接受），不得 `createError`。
+2. **security.txt 只有一条生成路径**：`server/routes/.well-known/security.txt.get.ts`。nitropack
+   `scanDir` 的 globby 带 `dot:true`，点目录会被收录，所以**不要**再补 `server/routes/security.txt.get.ts`
+   或 `/.well-known` 别名中间件（两条口会让正文分叉，`geoDeliveryRoutes.spec.ts` 反向断言它们不存在）。
+   带语言前缀的 `/en/.well-known/security.txt` 不是路由。正文不公开任何邮箱：`Contact` 指向 `/about`
+   与 `/guestbook`，`Expires` 由 `Date.now()` 生成（写死的历史日期等于长期失效）。
+3. **文章兜底封面单源** `lib/post-cover.ts`：无 `cover_image` 时用站内 6 槽渐变 SVG
+   （seed→FNV-1a→取模，SSR 与 hydrate 同图），尺寸对是 `POST_COVER_CARD`(640×427) 与
+   `POST_COVER_DETAIL`(1200×800)；站点级兜底图是 `public/og-default.png`。**`og:image` /
+   `twitter:image` 不得再回落 picsum 之类外链**（外部服务限流即无图，且站内资源走 nginx 一年强缓存）。
+   槽位数改动必须同步 `public/placeholder-covers/` 的文件数，`postCover.spec.ts` 会逐个 `existsSync`。
+4. **一篇文章只有一个 `@graph`**：`useArticleJsonLd`（`composables/useSeo.ts`）一次产出
+   BlogPosting / Person / Organization / BreadcrumbList / ImageObject，靠稳定 `@id` 互链；
+   `WebSite + SearchAction` 是首页专用的 `useWebsiteJsonLd`，不要塞进文章页。
+   页面里**不得**再单独调 `useBreadcrumbJsonLd`（两份 BreadcrumbList 等于让爬虫自己挑一份，
+   独立页 `pages/[slug].vue` 与 `pages/page/[slug].vue` 已删掉那一条）。面包屑首项名走 `t('nav.home')`，
+   写死 `Home` 会让中文页的面包屑是英文。后端侧同口径的公开口是
+   `/api/seo/schema/{resource_type}/{resource_id}` 与 `/api/seo/open-graph/{resource_type}/{resource_id}`
+   （文章分支产 `og:image` 时用 `post.cover_image or 站点默认分享图`，绝不产出 picsum 之类外链）。
+5. **sitemap 索引的 `<lastmod>` 取分组真实 `max(updated_at)`**（`backend/api/blog.py::_sitemap_*_lastmod`），
+   空表省略该标签；全站同一个"生成时间"会被搜索引擎判成站点长期未更新。
+   **RSS 的 `<lastBuildDate>` 用构建时间**且不得早于任何一条 `pubDate`。
+6. **IndexNow 是可选投递面**：`seo.indexnow_enabled` 默认 `false`，密钥由运营者提供，
+   **不得**写死、打印或提交。seo 是 `PUBLIC_SETTING_GROUPS` 成员（匿名可读 + 300s 缓存），
+   所以组内任何凭据形态都必须被 `_SENSITIVE_KEY_RE` 命中（该正则含 `_key$`，
+   而 `keywords` 这类 SEO 可见文案不结尾于 `_key` 才不会被误掩码）；
+   回归 `tests/test_indexnow.py::test_public_projection_masks_indexnow_key`。
+   开关关闭 / key 为空 / site_url 无主机名 → 不发请求且不报错。
+
+契约钉在 `geoDeliveryRoutes.spec.ts` · `articleJsonLdGraph.spec.ts` · `postCover.spec.ts` ·
+`canonicalSingleSource.spec.ts` · `heroLcpAttributes.spec.ts` · `postsPaginationLinks.spec.ts`，
+后端侧见 `tests/test_api_seo.py` · `tests/test_indexnow.py`。
 
 ### 2.4 SSR 安全守则（违反必出 Hydrate 错）
 

@@ -156,3 +156,23 @@ async def test_listener_registers_and_pushes_without_blocking(monkeypatch):
     assert indexnow._push_tasks, "监听器必须排后台任务，而不是同步 await 投递"
     await asyncio.gather(*indexnow._push_tasks)
     assert pushed == ["listener-post", "listener-post"]
+
+
+def test_public_projection_masks_indexnow_key():
+    """seo 是公开分组，indexnow_key 必须以掩码出口。
+
+    `_SENSITIVE_KEY_RE` 原先只列了 password/secret/token/api_key 这类形态，
+    `indexnow_key` 一个都不命中：运营者一旦填了 key，匿名 `GET /api/settings/public`
+    （还带 300s 缓存）就把推送凭据原文发出去，而代码注释声称它被掩码。
+    同组的 `keywords` 是 SEO 可见文案，必须保持原样，所以只锚 `_key` 结尾。
+    """
+    from backend.api import settings_groups as sg
+
+    assert "seo" in sg.PUBLIC_SETTING_GROUPS
+    red = sg._redact(sg._default_seo() | {"indexnow_enabled": True, "indexnow_key": "s3cr3t-push-key"})
+    assert red["indexnow_key"] == "******"
+    assert red["indexnow_enabled"] is True
+    assert red["default_keywords"] == ""
+    seo = sg._default_seo()
+    assert seo["indexnow_key"] == ""  # 默认值仍为空串：_redact 不把空值写成掩码
+    assert sg._redact(seo)["indexnow_key"] == ""
