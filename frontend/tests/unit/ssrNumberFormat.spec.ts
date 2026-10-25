@@ -72,8 +72,10 @@ describe('SSR 面不得出现无 locale 的 Intl 数字格式化', () => {
   it('首页与文章详情确实走 formatCount 单源', () => {
     const home = readFileSync(`${ROOT}/pages/index.vue`, 'utf8')
     const post = readFileSync(`${ROOT}/pages/posts/[slug].vue`, 'utf8')
-    expect(home).toMatch(/import \{ formatCount \} from '~~\/lib\/utils'/u)
-    expect(post).toMatch(/import \{ formatCount \} from '~~\/lib\/utils'/u)
+    // 首页与文章详情的 utils 导入还带着 cn 等同族符号，所以整组花括号都要放过
+    const importsFormatCount = /import \{[^}]*\bformatCount\b[^}]*\} from '~~\/lib\/utils'/u
+    expect(home).toMatch(importsFormatCount)
+    expect(post).toMatch(importsFormatCount)
     expect(home).toContain('formatCount(siteStats.total_words)')
     expect(post).toContain('formatCount(wordCount)')
     expect(post).toContain('formatCount(charCount)')

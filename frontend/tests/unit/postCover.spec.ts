@@ -1,7 +1,13 @@
 import { existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
-import { defaultPostCover, postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '@/lib/post-cover'
+import {
+  defaultPostCover,
+  postCoverUrl,
+  PLACEHOLDER_COVER_SLOTS,
+  POST_COVER_CARD,
+  POST_COVER_DETAIL
+} from '@/lib/post-cover'
 
 describe('postCover', () => {
   it('有封面时原样返回，不改写文章自己的图', () => {
@@ -24,11 +30,11 @@ describe('postCover', () => {
     expect(postCoverUrl(post)).toBe(postCoverUrl(again))
   })
 
-  it('不同文章得到不同 seed', () => {
+  it('不同文章得到不同 seed（槽位由 seed 取模，50 篇铺满 6 档）', () => {
     const urls = new Set(
       Array.from({ length: 50 }, (_, i) => postCoverUrl({ id: i + 1, slug: `p${i}` }))
     )
-    expect(urls.size).toBe(50)
+    expect(urls.size).toBe(PLACEHOLDER_COVER_SLOTS)
   })
 
   it('槽位只在 1..6 内循环，文件必须真实存在（public/placeholder-covers）', () => {
