@@ -169,7 +169,9 @@ def test_public_projection_masks_indexnow_key():
     from backend.api import settings_groups as sg
 
     assert "seo" in sg.PUBLIC_SETTING_GROUPS
-    red = sg._redact(sg._default_seo() | {"indexnow_enabled": True, "indexnow_key": "s3cr3t-push-key"})
+    red = sg._redact(
+        sg._default_seo() | {"indexnow_enabled": True, "indexnow_key": "s3cr3t-push-key"}
+    )
     assert red["indexnow_key"] == "******"
     assert red["indexnow_enabled"] is True
     assert red["default_keywords"] == ""
