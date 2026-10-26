@@ -94,6 +94,17 @@ async def decrypt_post(
             detail="文章不存在",
         )
 
+    # 与详情口/评论口同源的可见性闸门：草稿 / 待审 / 未来定时文章对外"不存在"。
+    # 少了这一道，本端点就是一个按 id 探测文章存在性的匿名口（400 表示存在、
+    # 404 表示不存在），而且草稿的密文会被任何知道密码的人直接解出来。
+    from backend.services.post_access import post_is_publicly_visible
+
+    if not post_is_publicly_visible(post, None):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
+
     if not post.encryption_enabled:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

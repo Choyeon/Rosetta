@@ -36,8 +36,9 @@ class ScheduleRequest(BaseModel):
     scheduled_at: datetime = Field(..., description="计划发布时间（UTC）")
     status: str | None = Field(
         None,
-        pattern="^(draft|published)$",
-        description="文章状态，默认为 published（定时发布）",
+        pattern="^(draft|published|scheduled)$",
+        description="目标状态，缺省 scheduled（等待发布）；传 published 表示立即发布；"
+        "draft 不支持定时发布（400）。计划时间已过去时一律立即发布。",
     )
 
 
@@ -156,7 +157,11 @@ async def list_scheduled_posts(
     "/admin/posts/{post_id}/schedule",
     response_model=BaseResponse,
     summary="设置定时发布",
-    description="为文章设置定时发布时间。若计划时间已过去则立即发布。",
+    description=(
+        "为文章设置定时发布时间。status 缺省为 scheduled（进入发布扫描器的等待状态），"
+        "传 published 表示立即可见；draft 会被 400 拒绝（草稿不参与定时发布）。"
+        "计划时间已过去时一律立即发布并清空 scheduled_at。"
+    ),
 )
 async def schedule_post(
     post_id: int,
@@ -179,19 +184,31 @@ async def schedule_post(
     if scheduled_at.tzinfo is None:
         scheduled_at = scheduled_at.replace(tzinfo=UTC)
 
-    if data.status:
-        post.status = data.status
+    # 状态缺省值必须是 "scheduled"（唯一被发布扫描器认的"等待中"状态）。
+    # 原先缺省是 None → 草稿仍是草稿，而 publish_due_posts / main.py 的定时循环
+    # 只捞 scheduled / published，于是接口回"定时发布已设置"、文章永远不会发布，
+    # 还会一直留在 GET /admin/posts/scheduled 列表里（scheduled_at 已过期）。
+    target_status = data.status or "scheduled"
+    if target_status == "draft":
+        # 草稿不参与定时发布：要么现在就让它等待发布（scheduled），要么就别排期。
+        # 静默接受 draft 只会再造一个"说了会发、其实不发"的死状态。
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="草稿不支持定时发布：请改用 scheduled（等待发布）或 published（立即发布）",
+        )
 
     now = datetime.now(UTC)
 
-    if post.status == "published" and scheduled_at <= now:
-        # 计划时间已到，立即发布
+    if scheduled_at <= now:
+        # 计划时间已到（或已过去）：立即发布，别让作者等到下一个扫描周期
+        post.status = "published"
         if post.published_at is None:
             post.published_at = scheduled_at
         post.scheduled_at = None
         message = "文章已立即发布"
         just_published = True
     else:
+        post.status = target_status
         post.scheduled_at = scheduled_at
         message = "定时发布已设置"
         just_published = False

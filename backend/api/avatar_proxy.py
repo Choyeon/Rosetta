@@ -22,6 +22,7 @@ import httpx
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse, StreamingResponse
 
+from backend.core.http_client import create_async_client
 from backend.core.net_guard import IMAGE_MIME_RE, UnsafeTargetError, is_image_mime, validated_get
 from backend.schemas import raw_content_response
 
@@ -114,7 +115,7 @@ async def _proxy_and_validate(url: str) -> StreamingResponse | RedirectResponse:
         # follow_redirects 必须为 False：重定向由 validated_get 逐跳校验后手动跟随
         # 不开 http2：依赖清单用的是 `httpx>=0.27.0`（无 [http2] extra），
         # http2=True 会在构造客户端时抛 ImportError，整个头像代理直接 500。
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        async with create_async_client(timeout=timeout, follow_redirects=False) as client:
             r = await validated_get(client, url, headers=_HEADERS_PASS_THOUGH)
             if r.status_code >= 400:
                 return RedirectResponse(_FINAL_FALLBACK, status_code=307)

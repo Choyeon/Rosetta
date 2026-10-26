@@ -12,6 +12,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from backend.core.cache import cache, make_cache_key
+from backend.core.http_client import create_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -73,7 +74,7 @@ async def _fetch_bing_wallpaper(market: str = "zh-CN", n: int = 1) -> dict[str, 
 
     try:
         timeout_cfg = httpx.Timeout(10.0, connect=5.0)
-        async with httpx.AsyncClient(
+        async with create_async_client(
             timeout=timeout_cfg, follow_redirects=True, trust_env=True
         ) as client:
             response = await client.get(BING_API_URL, params=params)

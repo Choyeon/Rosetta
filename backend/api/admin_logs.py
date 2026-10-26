@@ -59,8 +59,10 @@ async def cleanup_old_logs(
     cutoff = datetime.now(UTC) - timedelta(days=days)
     from sqlalchemy import delete
 
-    sub = select(OperationLog.id).where(OperationLog.created_at < cutoff)
-    count_q = select(func.count()).select_from(sub)
+    # 计数直接落在实体上：``select_from(<Select>)`` 不是合法用法（SQLAlchemy 2.0 抛
+    # ArgumentError "FROM expression ... expected"），会让本端点每次都 500。
+    # 需要子查询时先 ``.subquery()``，这里根本不需要。
+    count_q = select(func.count()).select_from(OperationLog).where(OperationLog.created_at < cutoff)
     to_delete = await db.scalar(count_q) or 0
 
     if to_delete:

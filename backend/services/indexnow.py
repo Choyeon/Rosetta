@@ -19,10 +19,9 @@ import logging
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
-
 from backend.core import hooks as _hooks
 from backend.core.config import settings
+from backend.core.http_client import create_async_client
 from backend.services.site_settings import bool_of, read_group
 
 logger = logging.getLogger(__name__)
@@ -46,7 +45,7 @@ def build_post_url_list(slug: str, site_url: str) -> list[str]:
 
 async def _send(payload: dict) -> int:
     """向 IndexNow POST 一次，返回状态码。异常向上传播，由调用方吞掉。"""
-    async with httpx.AsyncClient(timeout=INDEXNOW_TIMEOUT) as client:
+    async with create_async_client(timeout=INDEXNOW_TIMEOUT) as client:
         resp = await client.post(INDEXNOW_ENDPOINT, json=payload)
     return resp.status_code
 

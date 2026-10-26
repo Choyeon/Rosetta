@@ -194,17 +194,24 @@ _ROLE_CAPS: dict[str, Iterable[Cap]] = {
         Cap.MODERATE_COMMENTS,
         Cap.VIEW_DASHBOARD,
     ),
+    # 必须显式枚举，不能用 ``*Cap``：那会让"新增一个 superuser 专属能力"自动落给
+    # admin，而调用方（require_capability）没有任何提示。当前只消费 UPLOAD_MEDIA，
+    # 但这份表是新增管理端点的默认闸门，默认值是"多给" 就等于默认不设防。
     "admin": (
-        *Cap,  # 管理员拥有除 superuser 专属外的全部能力
+        Cap.EDIT_OWN_PROFILE,
+        Cap.EDIT_OWN_POSTS,
+        Cap.EDIT_OTHERS_POSTS,
+        Cap.DELETE_OWN_POSTS,
+        Cap.DELETE_OTHERS_POSTS,
+        Cap.PUBLISH_POSTS,
+        Cap.MANAGE_TERMS,
+        Cap.MODERATE_COMMENTS,
+        Cap.UPLOAD_MEDIA,
+        Cap.MANAGE_MEDIA,
+        Cap.VIEW_DASHBOARD,
         Cap.VIEW_SITE_HEALTH,
     ),
-    "super_admin": (
-        *Cap,
-        Cap.MANAGE_SETTINGS,
-        Cap.MANAGE_PLUGINS,
-        Cap.VIEW_SITE_HEALTH,
-        Cap.MANAGE_USERS,
-    ),
+    "super_admin": tuple(Cap),
 }
 
 

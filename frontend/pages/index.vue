@@ -544,7 +544,7 @@
                   <NuxtLink
                     v-for="tag in tags"
                     :key="tag.id"
-                    :to="localeHref(`/posts?tag=${tag.slug}`)"
+                    :to="localeHref(`/tags/${tag.slug}`)"
                     :class="cn(badgeVariants({ variant: 'outline' }), 'hover:bg-accent transition-colors')"
                   >
                     #{{ pickLocalized(tag.name) }}
@@ -848,7 +848,7 @@
                   <NuxtLink
                     v-for="tag in tags"
                     :key="tag.id"
-                    :to="localeHref(`/posts?tag=${tag.slug}`)"
+                    :to="localeHref(`/tags/${tag.slug}`)"
                     :class="cn(badgeVariants({ variant: 'outline' }), 'hover:bg-accent transition-colors')"
                   >
                     #{{ pickLocalized(tag.name) }}

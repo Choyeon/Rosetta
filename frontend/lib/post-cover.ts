@@ -81,3 +81,22 @@ export function postCoverUrl(
   if (explicit.trim()) return explicit.trim()
   return defaultPostCover(post, size)
 }
+
+/**
+ * 社交分享兜底图。必须是**位图**：X / Facebook / LinkedIn / Slack / Discord
+ * 的卡片解析器不渲染 SVG，把 `/placeholder-covers/<n>.svg` 塞进 og:image
+ * 的结果是一张空白预览图，而 `public/og-default.png` 才是为此准备的资源
+ * （AGENTS.md §2.3.4：站点级兜底图是 PNG，且不得回落到站外服务）。
+ */
+export const OG_FALLBACK_IMAGE = '/og-default.png'
+
+/**
+ * 分享图取值（og:image / twitter:image 专用，与页面 hero 的 coverImage 分开）。
+ *
+ * 只认真实上传的封面；占位封面是 SVG，对社交爬虫等于无图，因此回落到
+ * 站点级 PNG，而不是把占位 SVG 原样交给 og:image。
+ */
+export function postShareImage(post: CoverSource | null | undefined): string {
+  const explicit = (post?.cover_image || post?.coverImage || '').trim()
+  return explicit || OG_FALLBACK_IMAGE
+}

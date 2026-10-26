@@ -436,3 +436,80 @@ async def test_t8_no_auth_should_not_return_not_implemented(client: AsyncClient)
         json={"source": "remote", "slug": "x", "remote": {"url": "https://x/y.zip"}},
     )
     assert resp4.status_code != 501
+
+
+# ============================================================
+# 解压体积闸门 + 重定向 SSRF 护栏
+# ============================================================
+
+
+def test_extract_enforces_uncompressed_budget(tmp_path, monkeypatch):
+    """压缩包很小、解压后很大（zip 炸弹）时必须 400，且不留半装目录。
+
+    旧的唯一闸门是 `len(data) > max_upload_size`——那量的是**压缩后**体积。
+    5MB 的 DEFLATE 包可以展开成几十 GB：磁盘写满，且解压在事件循环上跑，
+    整个 API 跟着停摆。
+    """
+    from backend.core import extensions as ext
+    from backend.core.exceptions import AppException
+
+    monkeypatch.setattr(ext, "MAX_PACKAGE_UNCOMPRESSED_BYTES", 64 * 1024)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("pkg/big.bin", b"\0" * (512 * 1024))
+        zf.writestr("pkg/rosetta-plugin.json", b"{}")
+    payload = buffer.getvalue()
+    assert len(payload) < 64 * 1024, "夹具本身必须远小于解压上限，才是在测解压侧"
+
+    target = tmp_path / "pkg"
+    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+        with pytest.raises(AppException) as excinfo:
+            ext._extract_zip_entries(zf, zf.namelist(), target)
+
+    assert excinfo.value.error_code == "PACKAGE_TOO_LARGE"
+    assert not target.exists(), "解压失败后必须清理半装目录，否则会留下残缺插件"
+
+
+@pytest.mark.asyncio
+async def test_remote_install_disables_httpx_auto_redirect(client, admin_headers, monkeypatch):
+    """远程安装必须 follow_redirects=False，否则 302 能绕开 SSRF 护栏。
+
+    ``assert_public_http_url`` 只校验第一个 URL；httpx 自己跟跳时后续每一跳都
+    不再过校验，"公网地址 → 302 内网地址"即可打内网。
+    """
+    import httpx as _httpx_mod
+
+    import backend.core.net_guard as _ng
+
+    data = _make_fake_plugin_zip("redirect-plugin", "1.0.0")
+    digest = hashlib.sha256(data).hexdigest()
+    url = "https://market.rosetta.dev/plugins/redirect-plugin-1.0.0.zip"
+    seen_kwargs: dict = {}
+
+    class _MockClient(_FakeHttpxClient):
+        def __init__(self, *a, **k):
+            seen_kwargs.update(k)
+            super().__init__({url: data})
+
+    async def _allow_any(_url: str) -> None:
+        return None
+
+    monkeypatch.setattr(_httpx_mod, "AsyncClient", _MockClient)
+    monkeypatch.setattr(_ng, "assert_public_http_url", _allow_any)
+
+    resp = await client.post(
+        "/api/admin/plugins",
+        params={"source": "remote"},
+        json={
+            "source": "remote",
+            "slug": "redirect-plugin",
+            "remote": {"url": url, "checksum_sha256": digest},
+        },
+        headers=admin_headers,
+    )
+
+    assert seen_kwargs.get("follow_redirects") is False, (
+        f"远程安装仍让 httpx 自动跟跳，SSRF 护栏会被 302 绕过: {seen_kwargs}"
+    )
+    assert resp.status_code != 501

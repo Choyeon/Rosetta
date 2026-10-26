@@ -646,7 +646,10 @@ Sitemap: {site_url}/sitemap.xml
         "返回的 @type 相应为 Article / Person / WebSite / BreadcrumbList，"
         "其中 Article 会带上作者、发布方与所属分类；标题与摘要为服务端纯文本"
         "（已剥离短代码字面量与 HTML 标签）。"
-        "资源不存在或类型不受支持时返回 200 且响应体只有 error 字段（不是 404），调用方需自行判空。"
+        "可见性口径与正文一致：草稿 / 待审 / 未来定时文章、以及关闭了"
+        "「公开资料」的作者（public_profile=false），一律按不存在处理。"
+        "资源不存在、不可见或类型不受支持时返回 200 且响应体只有 error 字段"
+        "（不是 404），调用方需自行判空。"
         "breadcrumb 分支不查库，固定返回首页一项。"
     ),
     responses={200: {"model": JsonLdSchemaResponse}},
@@ -683,6 +686,15 @@ async def get_schema_data(
             post = result.scalar_one_or_none()
 
             if not post:
+                return {"error": "Article not found"}
+
+            # 可见性闸门：本端点匿名可访问且按 id 取值，不加闸门就等于把草稿 /
+            # 待审 / 未来定时文章的标题、摘要、slug、作者做成可枚举的公开字典。
+            # 与详情口/评论口同源（services/post_access），不存在与不可见共用
+            # error 形态，避免"id 存在"这个信息本身被读出来。
+            from backend.services.post_access import post_is_publicly_visible
+
+            if not post_is_publicly_visible(post, None):
                 return {"error": "Article not found"}
 
             # 关系已随 selectinload 载入，直接访问不再触发懒加载查询
@@ -723,11 +735,23 @@ async def get_schema_data(
             return schema
 
     elif resource_type == "person":
+        from backend.api.users import _profile_is_hidden
+        from backend.models.user import UserPreference
+
         async with async_session_maker() as db:
             result = await db.execute(select(User).where(User.id == resource_id))
             user = result.scalar_one_or_none()
 
             if not user:
+                return {"error": "Person not found"}
+
+            # 与 GET /users/{id} 同一道闸门：public_profile=False 表示"这个人对外
+            # 不存在"，其全部子资源都必须是 404 口径。本端点匿名可读，漏掉它就成了
+            # 一个按 id 枚举隐藏账号 bio / github / website 的旁路。
+            preference = (
+                await db.execute(select(UserPreference).where(UserPreference.user_id == user.id))
+            ).scalar_one_or_none()
+            if _profile_is_hidden(preference, user.id, None):
                 return {"error": "Person not found"}
 
             site_url = getattr(settings, "site_url", "http://localhost:4321")
@@ -796,7 +820,9 @@ async def get_schema_data(
         "返回 og:* / article:* / twitter:* 三组键（键名含冒号，需按字面取值），"
         "返回 og:* / article:* / twitter:* 三组键（键名含冒号，需按字面取值），"
         "摘要在服务端剥离短代码与 HTML 标签后截断到前 200 字符。"
-        "资源不存在或类型不受支持时返回 200 且响应体只有 error 字段（不是 404）。"
+        "可见性与正文一致：草稿 / 待审 / 未来定时文章按不存在处理，"
+        "避免匿名调用方按 id 枚举未发布文章的标题与摘要。"
+        "资源不存在、不可见或类型不受支持时返回 200 且响应体只有 error 字段（不是 404）。"
     ),
     responses={200: {"model": OpenGraphResponse}},
 )
@@ -831,6 +857,13 @@ async def get_open_graph_data(
             post = result.scalar_one_or_none()
 
             if not post:
+                return {"error": "Article not found"}
+
+            # 同 schema 分支：匿名 + 按 id 取值，必须过同一道可见性闸门，
+            # 否则 og:title / og:description / og:url 就是草稿元数据的泄漏面。
+            from backend.services.post_access import post_is_publicly_visible
+
+            if not post_is_publicly_visible(post, None):
                 return {"error": "Article not found"}
 
             title = _pick(post.title)

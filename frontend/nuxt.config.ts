@@ -256,9 +256,16 @@ export default defineNuxtConfig({
   // ============================================================
   routeRules: expandLocaleRouteRules({
     // === Vite 内部虚拟文件：禁止 swr/ssr 缓存与 spa-fallback 拦截
-    '/@vite/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
-    '/@id/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
-    '/@fs/**': { ssr: false, swr: false, headers: { 'Cache-Control': 'no-store' } },
+    '/@vite/**': { ssr: false, swr: false, cache: false as const, headers: { 'Cache-Control': 'no-store' } },
+    '/@id/**': { ssr: false, swr: false, cache: false as const, headers: { 'Cache-Control': 'no-store' } },
+    '/@fs/**': { ssr: false, swr: false, cache: false as const, headers: { 'Cache-Control': 'no-store' } },
+
+    // ⚠️ 下面所有 SPA / no-store 页都必须显式 `cache: false`：
+    // Nitro 的页面缓存是按**渲染器路由**（`/**`）套的，不是按请求路径。所以一旦给
+    // `/**` 开了 swr，这些页也会被包进 cachedEventHandler —— 它们自己的
+    // `Cache-Control: no-store` 会被缓存处理器覆写成 `s-maxage=600`（实测 /login 就是这样）。
+    // `swr: false` 不足以退出：routeRules 用 defu 合并，通配层的 cache 会被合并回来，
+    // 只有 `cache: false` 在规范化时会把 cache 整体置空（见 nitropack core 的 normalize）。
 
     // === 后台、登录、注册、docs（文档内嵌工具）、search（实时查询）、account（登录态个人中心）—— 纯 SPA + 禁止代理/CDN 缓存
     //     · '/admin' 由 pages/admin/index.vue（Dashboard）承载，无需 redirect 到 /admin/dashboard（不存在会触发 Vue Router R0004 警告与空 dashboard）。
@@ -270,26 +277,26 @@ export default defineNuxtConfig({
     // clearError 并发，Router
     // pending nav 锁死 in-flight，Playwright evaluate 永远 pending 表现为 oobe
     // 访问白屏挂死。oobe 本身是单页无状态，SSR 渲染无副作用。
-    '/oobe': { swr: false, headers: { 'Cache-Control': 'no-store, private' } },
-    '/login': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
-    '/register': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
+    '/oobe': { swr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    '/login': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    '/register': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
     // 找回密码：与 /login 同档（敏感输入 + 提交后跳登录页，SSR 无内容价值）。
-    '/forgot-password': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
-    '/admin/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
-    '/admin': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
-    '/admin/docs/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
+    '/forgot-password': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    '/admin/**': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    '/admin': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    '/admin/docs/**': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
     // ⚠️ '/search' 必须与 '/search/**' 并列写：Nuxt 的 routeRules `path/**` 只匹配
     // **子路径**，不匹配 path 本身。此前只写了 '/search/**'，而实际路由就是 pages/search.vue
     // → '/search'：结果该页走 SSR 渲染出真内容，却被 Nitro 的
     // spa-serverrendered-zero 插件（白名单含 '/search'）把 payload 的 serverRendered
     // 改成 false，客户端判定"服务端没渲染"→ 丢弃 SSR DOM 重新 CSR → 导航过去先白屏一帧。
     // 两处口径打架就是白闪的根因，补齐裸路径让 SSR/SPA 判定一致。
-    '/search': { ssr: false, headers: { 'Cache-Control': 'no-store' } },
-    '/search/**': { ssr: false, headers: { 'Cache-Control': 'no-store' } },
+    '/search': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store' } },
+    '/search/**': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store' } },
     // 个人中心 /account：内容逐登录用户不同（/users/me/*），而 auth store 是 skipHydrate +
     // localStorage，SSR 期无 token 可用 —— 走 SSR 只会渲染未登录骨架。缓存必须 private。
-    '/account': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
-    '/account/**': { ssr: false, headers: { 'Cache-Control': 'no-store, private' } },
+    '/account': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    '/account/**': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
 
     // === 公开内容页（SSR + SWR cache 写死，全局 ssr:true 时直接启用）
     '/': { swr: 300, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400' } },
@@ -328,6 +335,23 @@ export default defineNuxtConfig({
     // 注意：详情页真实前缀是 /posts/（pages/posts/[slug].vue），不是 /post/。
     // 曾经这里挂着一整条 '/post/**' 规则永远不会命中，纯噪声 —— 已删。
     '/page/**': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
+    // === 顶级 catchall（pages/[slug].vue）兜底：/privacy /contact 这类独立页的真实落地
+    // 路由是"单段任意 slug"，没有可枚举前缀，'/page/**' 只是旧链接的兼容重定向口。
+    // 只写 swr、**不写 headers**：routeRules.headers 由 createRouteRulesHandler 按路径匹配后
+    // 无条件 setHeaders，挂一条 'Cache-Control: public' 在 '/**' 上会把公开缓存头一并盖到
+    // /api 代理响应和其它未显式登记的资源上。缓存头由 Nitro 的 swr 处理器 +
+    // server/plugins/ssr-html-revalidate 两处补齐（与其余公开页同一条链路）。
+    //
+    // ⚠️ 命中 '/**' 的不只是页面：Nitro 会给**每条路由处理器**套 cachedEventHandler，
+    // 所以下面两条内部路径必须显式 `cache: false` 退出（'swr: false' 不够——defu 会把
+    // 通配规则的 cache 合并回来）：
+    //   · /_rosetta/** 是后端调用的清缓存入口（POST）。被缓存后第二次调用直接回放
+    //     上一次的 {purged:n}、真正的清缓存不再执行，实测表现就是"改了内容前台不更新"。
+    //   · /api/** 在 Nitro 侧只有 Bing 壁纸（自带 30m defineCachedEventHandler），
+    //     再套一层等于双份缓存 + 覆盖它自己的 Cache-Control。
+    '/_rosetta/**': { swr: false, cache: false as const, headers: { 'Cache-Control': 'no-store' } },
+    '/api/**': { swr: false, cache: false as const },
+    '/**': { swr: 600 },
 
     // === 静态构建产物：强缓存 + immutable contenthash
     '/_nuxt/**': { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } },

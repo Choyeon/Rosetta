@@ -212,11 +212,9 @@ useContentStatus(tagErr, tagMissing)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
-useHead(() => ({
-  title: tagName.value ? `${tagName.value} · ${t('tags.title', '标签')}` : t('tags.title', '标签'),
-  meta: tagDesc.value ? [{ name: 'description', content: tagDesc.value }] : []
-}))
-
+// 标题与 description 只由 useSeo 产出：再加一条裸 useHead 会让 <head> 出现第二条
+// name="description"（unhead 按入队顺序合并，两份裁切长度不同），爬虫/分享卡片
+// 只能碰运气挑一条。口径与 pages/[slug].vue 一致。
 useSeo({
   title: computed(() => tagName.value ? `${tagName.value} · ${t('tags.title', '标签')}` : t('tags.title', '标签')),
   description: computed(() => tagDesc.value),

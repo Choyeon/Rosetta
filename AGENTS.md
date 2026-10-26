@@ -250,6 +250,49 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
 `contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·
 `heroMobileLayout.spec.ts`（口径见 `frontend/AGENTS.md`「窄屏外壳单源口径」）。
 
+### 2.2.2 顶级 catchall 的 `/**` 通配缓存（三条硬约束）
+
+独立页 `/privacy` 这类单段 URL 由 `pages/[slug].vue` 接住，靠 `'/**': { swr: 600 }` 获得与其它
+公开页一致的 SWR（此前这条真实落地路由没有任何规则，每访客每页都重渲染 + 打后端）。
+**Nitro 的页面缓存是按「渲染器路由」套的，不是按请求路径**——这条通配规则会给整条渲染器 handler
+套上 `cachedEventHandler`，于是三条约束必须同时满足（每条都实测踩过）：
+
+1. **所有 `ssr:false` / `no-store` 路由必须显式写 `cache: false`**（`/admin/**` · `/login` ·
+   `/register` · `/forgot-password` · `/search/**` · `/account/**` · `/oobe` · Vite 虚拟文件）。
+   否则它们自己的 `Cache-Control: no-store` 会被缓存处理器覆写成 `s-maxage=600`——实测 `/login`
+   一度变成"可公开缓存 10 分钟"。`swr: false` **不足以退出**：routeRules 用 defu 合并，通配层的
+   `cache` 会被合并回来；只有 `cache: false` 在规范化阶段把 cache 整条置空。
+2. **内部端点同样 `cache: false`**：`/_rosetta/**`（后端调用的清缓存入口是 POST，被缓存后第二次
+   调用直接回放上次响应、真正的清缓存不再执行——表现就是"改了内容前台不更新"）与 `/api/**`
+   （Nitro 侧只有 Bing 壁纸，它自带 30m `defineCachedEventHandler`，再套一层＝双份缓存）。
+3. **`/**` 只写 `swr`、不写 `headers`**：`routeRules.headers` 由 `createRouteRulesHandler` 按路径
+   匹配后无条件 `setHeaders`，在 `/**` 上挂 `Cache-Control: public` 会把代理响应与静态资源一起
+   盖成可缓存。缓存头由 Nitro swr 处理器 + `ssr-html-revalidate` 补齐（见 §2.3）。
+
+404 不会被这套缓存固化：渲染器抛错时 `cachedFunction` 拿到 rejected promise、不写缓存，`error.vue`
+仍按 `no-store` 输出——实测同一垃圾 URL 连请两次都是 ~60ms + `no-store`，而命中缓存的正常页 4–5ms。
+
+守卫：`frontend/tests/unit/routeRulesSsr.spec.ts`（SPA 路由必须 `cache: false`、内部端点必须
+`cache: false`、`/**` 只能是裸 swr）。
+
+### 2.2.3 页面缓存清除（`POST /_rosetta/purge-cache`）的两条实现约束
+
+后端 `purge_frontend_page_cache()` 是 fire-and-forget、失败只记日志，所以这条链路的两处实现细节
+都属于"错了也看不出来"的那一类：
+
+1. **请求头必须跨 event 形态读取**：Nitro 2.13 的路由处理器拿到 web 形态 event，随包打入的
+   `getRequestHeader` 走 `event.node.req.headers`——实测该对象是**空对象**，于是即使前后端密钥一致
+   也恒被 403，主题切换/独立页改动在整个 SWR 窗口内都不生效。`server/utils/purgeSecret.ts` 依次尝试
+   h3 API → web `Headers` → `node.req.headers` → **`node.req.rawHeaders`**（实测唯一有值的地方）。
+2. **键名匹配不能写死前缀**：同一份产物里边页面缓存键出现过 `cache:nitro:routes:_:…`（默认 storage）
+   与 `nitro:routes:_:…`（`cache` 挂载点）两种形态。写死 `useStorage('cache').getKeys('nitro:routes')`
+   的结果是"只清掉 server-routes 那几条、页面 HTML 一条不清"。现在按 `/nitro[/:]routes/` 扫两个
+   storage 的全部键。
+
+实测闭环（本机 build + 真实 DB）：`GET /独立页` 83ms → 5ms（SWR 命中）；后台改正文 → 后端
+fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_cache_purge.py`（写路径三次各清
+一次、读路径一次不清）与 `frontend/tests/unit/purgeSecretHeader.spec.ts`（四种 event 形态）。
+
 ### 2.3.4 SEO/GEO 投递面单源（纯文本口 · 兜底图 · @graph）
 
 1. **纯文本口与 rss/sitemap/robots 同轨**：`server/routes/{llms.txt,robots.txt,rss.xml,sitemap*.xml}.get.ts`
@@ -530,7 +573,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 81 个 spec；1366 用例，生产机 2026-10-26 全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 82 个 spec；1384 用例，2026-10-27 本机全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -594,8 +637,8 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 ```bash
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
-pnpm build         # Σ Total size 5.70 MB（gzip 1.33 MB），2026-10-24 生产机实测
-pnpm test          # 全绿（81 个 spec 文件；1366 用例）
+pnpm build         # Σ Total size 3.96 MB（gzip 992 kB），2026-10-27 本机实测（图标/高亮瘦身后）
+pnpm test          # 全绿（82 个 spec 文件；1384 用例）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

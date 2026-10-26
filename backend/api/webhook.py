@@ -24,6 +24,7 @@ from backend.core import hooks as _hooks
 from backend.core.auth import DB, CurrentStaff
 from backend.core.config import settings
 from backend.core.database import Base, async_session_maker
+from backend.core.http_client import create_async_client
 from backend.core.net_guard import UnsafeTargetError, assert_public_http_url
 from backend.utils.compat import UTC
 
@@ -565,7 +566,7 @@ async def trigger_webhook(event_type: str, payload: dict, db) -> int:
     # flush 让 delivery.id 可用；HTTP 在落库之后再跑，保证失败也有记录可查
     await db.flush()
 
-    async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+    async with create_async_client(timeout=WEBHOOK_TIMEOUT) as client:
         outcomes = await asyncio.gather(
             *(
                 _send_once(client, webhook.url, body, webhook.secret, event_type)
@@ -767,7 +768,7 @@ async def test_webhook(
     }
     body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
 
-    async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+    async with create_async_client(timeout=WEBHOOK_TIMEOUT) as client:
         code, text, error = await _send_once(client, webhook.url, body, webhook.secret, "test")
 
     db.add(
@@ -861,7 +862,7 @@ async def retry_webhook_delivery(
             detail="Webhook 不存在",
         )
 
-    async with httpx.AsyncClient(timeout=WEBHOOK_TIMEOUT) as client:
+    async with create_async_client(timeout=WEBHOOK_TIMEOUT) as client:
         code, text, error = await _send_once(
             client,
             webhook.url,

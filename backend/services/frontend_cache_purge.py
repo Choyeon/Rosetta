@@ -21,9 +21,8 @@ frontend_cache_purge — 主题变更后通知 Nuxt/Nitro 清除页面级 SWR �
 import asyncio
 import logging
 
-import httpx
-
 from backend.core.config import settings
+from backend.core.http_client import create_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +46,26 @@ async def _post_purge(url: str) -> None:
     if secret:
         headers[PURGE_SECRET_HEADER] = secret
     try:
-        async with httpx.AsyncClient(timeout=5) as client:
+        async with create_async_client(timeout=5) as client:
             resp = await client.post(url, headers=headers)
             if resp.status_code >= 400:
-                logger.debug("前端缓存清除返回 %s（%s）", resp.status_code, url)
+                # 403 = 密钥不一致，404 = 端点未启用；这两种以前只在 debug 里，
+                # 现场表现为"改了主题/正文，前台一直不更新"，没有任何信号可查。
+                logger.warning("前端缓存清除被拒绝：HTTP %s（%s）", resp.status_code, url)
+                return
+            try:
+                body = resp.json()
+            except Exception:  # noqa: BLE001 - 端点返回非 JSON 时不影响主流程
+                body = {}
+            purged = body.get("purged") if isinstance(body, dict) else None
+            if purged == 0:
+                # 命中 0 个键有两种可能：本来就没缓存（正常），或键名约定漂移（病态）。
+                # 后者只能靠这行日志发现。
+                logger.info("前端缓存清除命中 0 个键（%s）", url)
+            elif purged is not None:
+                logger.debug("前端缓存清除完成：%s 个键（%s）", purged, url)
     except Exception as err:  # noqa: BLE001 - 清除失败不影响业务响应
-        logger.debug("前端缓存清除请求失败（%s）：%s", url, err)
+        logger.warning("前端缓存清除请求失败（%s）：%s", url, err)
 
 
 def purge_frontend_page_cache(reason: str = "") -> None:

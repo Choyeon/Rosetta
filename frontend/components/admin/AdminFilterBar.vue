@@ -92,8 +92,11 @@ const endInputRef = ref<HTMLInputElement | null>(null)
 const todayStr = computed(() => toYMD())
 
 // ---- 属性（给 <input type="date"> 的 min/max，实现日期互锁）----
+// 注意：`min`/`max` 的类型是 `Numberish | undefined`，**不接受 null**。
+// 这里统一把"没有下界"表达成 undefined（属性直接不渲染），
+// 而不是把 null 绑上去——后者在 vue-tsc 下是 TS2322，`pnpm typecheck` 直接红。
 const startMax = computed(() => localEnd.value || todayStr.value)
-const endMin = computed(() => localStart.value)
+const endMin = computed(() => localStart.value || undefined)
 const endMax = todayStr
 
 watch(localStart, (val) => {

@@ -127,11 +127,6 @@ const metaDescription = computed(() =>
 // 同一篇文章在列表卡片上用的也是这个口径，详情页不该再是第二套格式。
 const { formatDate } = useI18nHelpers()
 
-useHead(() => ({
-  title: title.value,
-  meta: [{ name: 'description', content: metaDescription.value }]
-}))
-
 useSeo({
   title,
   description: metaDescription,

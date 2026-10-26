@@ -21,6 +21,8 @@ interface RouteRule {
   ssr?: boolean
   swr?: number | boolean
   cache?: string
+  /** `cache: false` —— 显式退出 Nitro 页面缓存（不是 Cache-Control 字符串） */
+  cacheDisabled?: boolean
 }
 
 function parseRouteRules(source: string): Map<string, RouteRule> {
@@ -39,6 +41,7 @@ function parseRouteRules(source: string): Map<string, RouteRule> {
     if (swr) rule.swr = swr[1] === 'false' ? false : swr[1] === 'true' ? true : Number(swr[1])
     const cache = /'Cache-Control':\s*'([^']+)'/.exec(body!)
     if (cache) rule.cache = cache[1]
+    if (/cache:\s*false/.test(body!)) rule.cacheDisabled = true
     rules.set(path!, rule)
   }
   return rules
@@ -127,6 +130,43 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
       expect(rule, `公开页 ${path} 必须有 routeRules`).toBeDefined()
       expect(rule!.ssr, `公开页 ${path} 不得反选 SSR`).not.toBe(false)
       expect(rule!.cache, `公开页 ${path} 必须共享缓存`).toMatch(/s-maxage=\d+/)
+    }
+  })
+
+  it('顶级 catchall 只写 swr、不写 headers（headers 会被无条件盖到别的路径上）', () => {
+    const catchall = rules.get('/**')
+    expect(catchall, '独立页走 pages/[slug].vue，必须有 /** 兜底').toBeDefined()
+    expect(catchall!.swr).toBe(600)
+    // 刻意不写 headers：routeRules.headers 由 createRouteRulesHandler 按路径匹配后
+    // 无条件 setHeaders，挂一条 public 缓存头到 /** 上会把 /api 等路径一起盖成可缓存。
+    // 缓存头由 Nitro swr 处理器 + ssr-html-revalidate 补齐。
+    expect(catchall!.cache).toBeUndefined()
+  })
+
+  /**
+   * `/**` 的 swr 是按**渲染器路由**套缓存，不是按请求路径：
+   * 一旦给顶级 catchall 开缓存，SPA / no-store 页也会被包进 cachedEventHandler，
+   * 它们自己的 `Cache-Control: no-store` 会被缓存处理器覆写成 `s-maxage=600`
+   * （实测 /login 就是这样），个人中心与后台外壳跟着变成可被 CDN 缓存的页面。
+   *
+   * 只有 `cache: false` 能在规范化阶段把 cache 整体置空；`swr: false` 不够
+   * （defu 会把通配层的 cache 合并回来）。这条断言把"每个 no-store 路由都必须
+   * 显式退出缓存"钉死。
+   */
+  it('SPA / no-store 路由必须显式 cache: false（否则被 /** 的 swr 包进页面缓存）', () => {
+    const missing = [...rules.entries()]
+      .filter(([path, rule]) => rule.ssr === false || path === '/oobe')
+      .filter(([, rule]) => !rule.cacheDisabled)
+      .map(([path]) => path)
+      .sort()
+    expect(missing, `以下路由没写 cache: false：${missing.join(', ')}`).toEqual([])
+  })
+
+  it('内部端点（清缓存 / Nitro API）不得进入页面缓存', () => {
+    for (const path of ['/_rosetta/**', '/api/**']) {
+      const rule = rules.get(path)
+      expect(rule, `${path} 必须有显式规则`).toBeDefined()
+      expect(rule!.cacheDisabled, `${path} 必须 cache: false`).toBe(true)
     }
   })
 

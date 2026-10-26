@@ -159,3 +159,69 @@ def test_first_sweep_is_delayed():
     assert log_retention.retention_loop_interval_seconds() == (
         log_retention.settings.log_retention_interval_hours * 3600
     )
+
+
+# ======================================================================
+# 手动清理端点 DELETE /api/admin/logs/retention
+#
+# 服务层（prune_expired_logs）一直有测试，但"手动端点"从未被任何用例打过。
+# 端点里曾把 ``select(...)`` 直接塞进 ``select_from(...)``（SQLAlchemy 2.0 不接
+# 受，抛 ArgumentError），于是这个后台按钮 100% 返回 500——清理功能等于不存在。
+# 下面三条把"能删、只删过期、鉴权与参数边界"分别钉住。
+# ======================================================================
+
+
+@pytest.mark.asyncio
+async def test_retention_endpoint_deletes_only_expired_operation_logs(
+    client, db_session, admin_headers
+):
+    """端点必须真的删除过期行，且保留期内的行一条都不能少。
+
+    时间戳必须相对**真实当前时间**构造（不能用本文件顶部的 ``_NOW`` 固定锚点）：
+    端点内部的 cutoff 取 ``datetime.now(UTC) - days``，用 2026-09-27 当"现在"
+    会把每一条夹具行都算成过期，测试就变成"全删光也算通过"。
+    """
+    now = datetime.now(UTC)
+    db_session.add_all(
+        [
+            _oplog(now - timedelta(days=9)),
+            _oplog(now - timedelta(days=8)),
+            _oplog(now - timedelta(days=2)),
+        ]
+    )
+    await db_session.commit()
+
+    response = await client.delete(
+        "/api/admin/logs/retention", params={"days": 7}, headers=admin_headers
+    )
+
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["deleted_count"] == 2
+    assert payload["before"], "响应必须回显 cutoff，否则后台无法核对删到哪一刻"
+
+    remaining = list((await db_session.execute(select(OperationLog))).scalars().all())
+    cutoff_naive = (now - timedelta(days=7)).replace(tzinfo=None)
+    assert [r for r in remaining if r.created_at < cutoff_naive] == [], "过期行没删干净"
+    # 1 条保留期内的旧记录 + 端点自己写的 1 条"清理日志"操作日志
+    assert len(remaining) == 2
+
+
+@pytest.mark.asyncio
+async def test_retention_endpoint_is_staff_only(client, auth_headers):
+    """普通登录用户不能清日志（403），未登录 401。"""
+    forbidden = await client.delete("/api/admin/logs/retention", headers=auth_headers)
+    assert forbidden.status_code == 403, forbidden.text
+
+    anonymous = await client.delete("/api/admin/logs/retention")
+    assert anonymous.status_code == 401, anonymous.text
+
+
+@pytest.mark.asyncio
+async def test_retention_endpoint_rejects_out_of_range_days(client, admin_headers):
+    """days 的边界由 Query(ge=1, le=3650) 兜住，越界必须是 422 而不是删错窗口。"""
+    for days in (0, -7, 3651):
+        response = await client.delete(
+            "/api/admin/logs/retention", params={"days": days}, headers=admin_headers
+        )
+        assert response.status_code == 422, f"days={days} 未被拦下: {response.text}"

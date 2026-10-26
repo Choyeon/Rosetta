@@ -10,7 +10,79 @@
 import { type Component, markRaw } from 'vue'
 import * as HeroiconsOutline from '@heroicons/vue/24/outline'
 import * as HeroiconsSolid from '@heroicons/vue/24/solid'
-import * as Lucide from '@lucide/vue'
+import {
+  Archive,
+  Bell,
+  BookOpen,
+  Calendar,
+  Camera,
+  FileText,
+  Globe,
+  Heart,
+  House,
+  Image,
+  Images,
+  Info,
+  LayoutDashboard,
+  LayoutGrid,
+  Link2,
+  Lock,
+  Mail,
+  MessageSquare,
+  Newspaper,
+  Puzzle,
+  Rss,
+  Settings,
+  Sparkles,
+  Star,
+  Tag,
+  User,
+  Users
+} from '@lucide/vue'
+
+/**
+ * 精选 Lucide 兜底表（键 = `toPascalCase(候选名)` 的结果）。
+ *
+ * 为什么不是 `import * as Lucide from '@lucide/vue'`：命名空间导入会把整包
+ * 图标数据（约 900 kB，实测客户端 chunk 989 kB＝整个产物 1/4）拖进首屏包，
+ * 而本项目真正需要 Lucide 兜底的只有 seed 数据里那二十来个 `material-symbols:*`
+ * （Heroicons 缺同名导出时才落到这里，例如 settings / archive / dashboard）。
+ * 未收录的名字由 DynamicIcon 回落成中性字形，不会漏出原文字符串——
+ * 也就是说"识别不出"的体验没有变化，只是不再为它预载上千个图标。
+ */
+const LUCIDE_FALLBACKS: Record<string, Component> = {
+  // ── seed / 历史数据里真实出现过的 material-symbols 名字（左侧是 Lucide 导出名，
+  //    右侧保持语义最接近的那个；键名必须与调用侧的 pascal 形态一致）
+  Archive,
+  Article: FileText,
+  Chat: MessageSquare,
+  Dashboard: LayoutDashboard,
+  Extension: Puzzle,
+  Favorite: Heart,
+  Forum: MessageSquare,
+  Group: Users,
+  Home: House,
+  Info: Info,
+  Link2: Link2,
+  Person: User,
+  PhotoLibrary: Images,
+  RssFeed: Rss,
+  Settings: Settings,
+  Widgets: LayoutGrid,
+  // ── 运营手写 icon 字符串时最常见的几个（不额外增加体积，均已是单文件导入）
+  Bell,
+  BookOpen,
+  Calendar,
+  Camera,
+  Globe,
+  Image,
+  Lock,
+  Mail,
+  Newspaper,
+  Sparkles,
+  Star,
+  Tag
+}
 
 /**
  * Icon resolution for Rosetta.
@@ -158,8 +230,8 @@ function lookupHeroicon(name: string, variant: HeroiconVariant): Component | nul
 
 /**
  * Last-resort fallback for icon sets we do not ship (`material-symbols:*` in the
- * seeded navigation data, for instance). Lucide is already a project dependency,
- * so this costs nothing extra and keeps those icons from falling back to text.
+ * seeded navigation data, for instance). 只查精选表，不 import 整包：见
+ * LUCIDE_FALLBACKS 的注释（整包命名空间导入会让首屏多背 ~900 kB）。
  */
 function lookupLucide(name: string): Component | null {
   if (!name) return null
@@ -167,13 +239,12 @@ function lookupLucide(name: string): Component | null {
   const cacheKey = `lucide:${name.toLowerCase()}`
   if (COMPONENT_CACHE.has(cacheKey)) return COMPONENT_CACHE.get(cacheKey) ?? null
 
-  const bag = Lucide as unknown as Record<string, unknown>
   let found: Component | null = null
 
   for (const candidate of nameCandidates(name)) {
     const pascal = toPascalCase(candidate)
     for (const exportName of [pascal, `${pascal}Icon`]) {
-      const raw = bag[exportName]
+      const raw = LUCIDE_FALLBACKS[exportName]
       if (isRenderable(raw)) {
         found = markRaw(raw)
         break

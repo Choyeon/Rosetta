@@ -250,7 +250,7 @@
               :key="tag.id"
               :color="tag.color"
               :label="tag.name"
-              :to="localeHref(`/posts?tag=${tag.slug}`)"
+              :to="localeHref(`/tags/${tag.slug}`)"
               show-icon
             />
           </div>
@@ -751,14 +751,18 @@ import TagBadge from '~~/components/TagBadge.vue'
 import CommentItem from '~~/components/CommentItem.vue'
 import CaptchaField from '~~/components/CaptchaField.vue'
 import PollCard from '~~/components/PollCard.vue'
-import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
+import { postCoverUrl, postShareImage, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
 import { usePolls, type Poll } from '~~/composables/usePolls'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
-import hljs from 'highlight.js'
+// 只带 common 语言包（约 40 种：js/ts/python/go/rust/java/bash/sql/json/yaml/markdown…），
+// 而不是整包 190+ 语言（实测 921 kB chunk，占整个前端产物 1/5）。
+// 语言不在 common 里时 hljs.getLanguage() 返回 undefined，下面的 fallback 会走
+// highlightAuto —— 仍按 common 子集自动识别，只是精度略降，不会退化成纯文本。
+import hljs from 'highlight.js/lib/common'
 import DOMPurify from 'isomorphic-dompurify'
 import { useI18n } from 'vue-i18n'
 import {
@@ -1234,6 +1238,14 @@ const displayPostTitle = computed(() => {
   }
 })
 const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_DETAIL))
+/**
+ * 分享图（og:image / twitter:image）单独取值：社交爬虫不渲染 SVG，
+ * 而无封面文章的站内占位封面是 `/placeholder-covers/<n>.svg`。
+ * 直接把占位图塞给 og:image，X / Facebook / LinkedIn / Slack 的卡片就是空白。
+ * 取值口径收在 lib/post-cover.ts::postShareImage（有单测钉住），
+ * 页面本身 hero 仍用 coverImage（SVG 渐变在浏览器里正常渲染）。
+ */
+const seoShareImage = computed(() => postShareImage(post.value))
 /** 相似文章缩略图：同样按文章标识回落默认封面。 */
 const similarCover = (sp: SimilarPostRow): string => postCoverUrl(sp, POST_COVER_CARD)
 // 相关文章卡片派生数据：title/excerpt/cover/href 一次算清，模板只读字段。
@@ -1386,7 +1398,7 @@ const seoPostPath = computed(() => `/posts/${seoPostSlug.value}`)
 useSeo({
   title: seoTitle,
   description: seoDescription,
-  image: coverImage,
+  image: seoShareImage,
   imageAlt: seoTitle,
   type: 'article',
   url: seoPostPath,

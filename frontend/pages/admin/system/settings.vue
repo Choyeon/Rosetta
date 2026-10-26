@@ -539,6 +539,12 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
+// 保存站点设置后必须强制重取公开站点 payload（站名 / hero / 页脚版权 / 主题色都来自它）。
+// default 布局在 SPA 导航时不会重挂载，`ensureLoaded()` 见 loaded=true 就直接返回，
+// 于是后台点开前台仍是保存前的站名与配色，只有 F5 才恢复。捕获 composable 实例
+// 必须在 setup 同步期完成（await 之后再 useSite() 拿不到 Nuxt 上下文）。
+const site = useSite()
+
 interface FieldSchema {
   label: string
   type: 'string' | 'number' | 'boolean' | 'color' | 'json'
@@ -1055,6 +1061,14 @@ async function saveGroup(groupKey: string): Promise<boolean> {
     }
     const r = await saveSettingsGroup(groupKey, payload)
     originalState.value[groupKey] = JSON.parse(JSON.stringify(r.data))
+    // 前端页面缓存后端已 purge，但"当前这个标签页"里的 useSite state 还是旧的：
+    // 强制重取一次，让前台立刻显示新站名 / 新配色。
+    try {
+      await site.ensureLoaded({ force: true })
+    } catch (e) {
+      // 刷新失败不该把"保存成功"改写成失败：保存本身已经落库。
+      console.warn('[settings] 站点公开配置刷新失败:', e)
+    }
     if (groupKey === 'donate') {
       // 以后端回读为准重建编辑器数组（空行已被剥离），同时保持与 formState 同一个引用
       donateMethods.value = (r.data.methods as DonateMethod[] | undefined) ?? []

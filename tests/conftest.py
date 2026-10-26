@@ -104,7 +104,7 @@ async def isolate_caches():
 
 @pytest.fixture(autouse=True)
 def neutralize_visit_telemetry(monkeypatch):
-    """测试禁用访问日志后台落库（visit_logs flush 单例任务）。
+    """测试禁用访问日志 / 性能采样的后台落库。
 
     `record_visit` 会懒启动**模块级** flush 后台任务，且跨测试存活：后台批量
     写入与测试自身的事务在 StaticPool 共享的同一条 aiosqlite 连接上交叉执行，
@@ -115,19 +115,32 @@ def neutralize_visit_telemetry(monkeypatch):
     不能用关 `is_oobe_complete()` 的方式解决——client 夹具靠它返回 True 来
     绕过 OOBE 503——所以直接把中间件调用的 `record_visit` 桩成 no-op，
     并在每个用例结束后取消残留的 flush 任务、重置单例。
+
+    同一族还有 `performance_middleware` 的采样落库：它现在是 fire-and-forget，
+    后台任务会与用例共用同一条 StaticPool 连接，实锤表现是
+    `Could not refresh instance`（refresh 期间另一条协程在同一连接上跑了 INSERT）。
+    这里把**落库函数**（不是 dispatch）桩掉：dispatch 仍然按真实逻辑创建/限流任务，
+    只是任务体什么都不做——既不影响 `test_performance_sampling.py` 对 dispatch 的
+    行为断言，也不会让测试库被采样写入污染。
     """
     import backend.api.monitoring as _mon
+    import backend.middleware.performance as _perf
 
     async def _noop_record(*_args, **_kwargs):
         return None
 
+    async def _noop_persist(_payload):
+        return None
+
     monkeypatch.setattr(_mon, "record_visit", _noop_record)
+    monkeypatch.setattr(_perf, "_persist", _noop_persist)
     yield
     task = _mon._visit_flusher
     _mon._visit_queue = None
     _mon._visit_flusher = None
     if task is not None and not task.done():
         task.cancel()
+    _perf._inflight.clear()
 
 
 @pytest_asyncio.fixture(scope="function")

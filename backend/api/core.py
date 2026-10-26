@@ -165,6 +165,11 @@ async def create_page(data: PageCreate, current_user: CurrentStaff, db: DB):
     await db.flush()
     await db.refresh(page)
 
+    # 独立页的 HTML 由前端 Nitro 的页面缓存消费（compat 口 '/page/**' 600s swr），
+    # 正文/标题改了却不清缓存 → 访客最长 10 分钟仍看到旧内容、新页也可能先拿到 404。
+    # 同族写路径（文章/分类/标签/公告）全都调它，独立页此前是唯一漏网的一条。
+    purge_frontend_page_cache(f"独立页创建: {page.slug}")
+
     return PageResponse.model_validate(page)
 
 
@@ -191,6 +196,10 @@ async def update_page(page_id: int, data: PageUpdate, current_user: CurrentStaff
 
     await db.flush()
     await db.refresh(page)
+
+    # 改名会同时留下"旧 slug 的缓存页"和"新 slug 的缺失页"，整表清一次最省心。
+    purge_frontend_page_cache(f"独立页更新: {page.slug}")
+
     return PageResponse.model_validate(page)
 
 
@@ -212,6 +221,8 @@ async def delete_page(page_id: int, current_user: CurrentStaff, db: DB):
         )
 
     await db.delete(page)
+    # 删除后该 slug 应当立刻变 404；不清缓存会先把"已删除的页面"再端给访客 600s。
+    purge_frontend_page_cache(f"独立页删除: {page.slug}")
     return BaseResponse(message="页面已删除")
 
 

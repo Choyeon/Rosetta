@@ -423,7 +423,9 @@ async def delete_favorite_folder(
     "",
     summary="我的收藏列表",
     description="获取当前用户的收藏列表（需登录）。可按收藏夹筛选并分页；"
-    "``total`` / ``total_pages`` 与该筛选同口径。",
+    "``total`` / ``total_pages`` 与该筛选同口径。"
+    "普通用户只会看到自己可见的文章（草稿/未来定时/已删除不出现，本人文章除外），"
+    "staff 不过滤。",
     response_model=None,
     responses={200: {"model": FavoriteListOut, "description": "收藏分页列表"}},
 )
@@ -440,6 +442,24 @@ async def list_favorites(
     conditions = [Favorite.user_id == current_user.id]
     if folder_id:
         conditions.append(Favorite.folder_id == folder_id)
+
+    # 可见性：收藏是用户自建的"引用行"，但列表会把文章标题/slug/封面回显出来，
+    # 所以它同时是一条按 post_id 定位的读口。曾有人收藏任意 id 再读回来枚举
+    # 草稿标题（100 req/min 足够遍历几万个 id）。过滤必须发生在 SQL 层且与
+    # 计数共用同一套 WHERE，否则 total 与 items 会各说各话。
+    if not (current_user.is_staff or current_user.is_superuser):
+        from backend.utils.compat import utc_now_naive
+
+        now_naive = utc_now_naive()
+        conditions.append(
+            Favorite.post.has(
+                (Post.author_id == current_user.id)
+                | (
+                    (Post.status == "published")
+                    & ((Post.published_at.is_(None)) | (Post.published_at <= now_naive))
+                )
+            )
+        )
 
     query = (
         select(Favorite)
@@ -503,7 +523,8 @@ async def list_favorites(
     "",
     summary="收藏文章",
     description="收藏一篇文章（需登录）。文章不存在时 404；重复收藏时 400；"
-    "指定 folder_id 时收藏夹必须属于当前用户，否则 404。",
+    "指定 folder_id 时收藏夹必须属于当前用户，否则 404。"
+    "草稿 / 待审 / 未来定时文章与不存在同口径（404），避免用收藏 id 枚举未发布标题。",
     response_model=None,
     responses={200: {"model": FavoriteActionResultOut, "description": "操作结果"}},
 )
@@ -516,10 +537,12 @@ async def add_favorite(
 ):
     """收藏文章"""
     from backend.models.blog import Post
+    from backend.services.post_access import post_is_publicly_visible
 
-    # 检查文章是否存在
+    # 检查文章是否存在**且对外可见**：只看存在性等于允许任何人收藏一个草稿 id，
+    # 再通过 GET /favorites 把它的标题、slug、封面读回来。
     post = await db.get(Post, post_id)
-    if not post:
+    if not post or not post_is_publicly_visible(post, current_user):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文章不存在",

@@ -389,13 +389,10 @@ const site = useSite()
 // isomorphic-dompurify SSR/CSR 同实现，sanitize 后为空串时自动落回退分支。
 const aboutPageHtml = computed(() => sanitizeTrustedAdminHtml(site.basic.value.about_page_html))
 
-// useHead：页面标题/描述统一走 useSite.withSuffix / basic.* 真实数据
+// 标题与 description 已由下方 useSeo 统一产出；这里只补 useSeo 不支持的 keywords。
+// 保留整块裸 useHead（含 title/description）会让 <head> 出现两条 description。
 useHead(() => ({
-  title: site.withSuffix(t('about.title') as string || '关于'),
-  meta: [
-    { name: 'description', content: site.basic.value.description || t('about.desc') as string },
-    { name: 'keywords', content: site.basic.value.keywords }
-  ]
+  meta: [{ name: 'keywords', content: site.basic.value.keywords }]
 }))
 
 interface SiteConfigLite {

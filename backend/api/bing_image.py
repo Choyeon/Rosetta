@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from pydantic import Field as PDField
 
 from backend.core.config import settings
+from backend.core.http_client import create_async_client
 from backend.core.net_guard import is_image_mime, validated_get
 from backend.schemas import raw_content_response
 
@@ -116,7 +117,7 @@ async def _download_and_cache(url: str, target: Path) -> Path | None:
         timeout = httpx.Timeout(8.0, connect=3.0, pool=5.0, read=30.0)
         # follow_redirects 必须为 False：重定向由 validated_get 逐跳校验后手动跟随
         # http2 不强制开启：h2 包未安装时会直接抛异常导致下载失败
-        async with httpx.AsyncClient(
+        async with create_async_client(
             timeout=timeout,
             follow_redirects=False,
             trust_env=True,
@@ -272,10 +273,9 @@ class BingArchiveResponse(BaseModel):
 )
 async def bing_today_image():
     """从 Bing HP 图像元数据 JSON 接口抓取今日信息，失败则回退到占位图。"""
-    import httpx
 
     try:
-        async with httpx.AsyncClient(timeout=8) as client:
+        async with create_async_client(timeout=8) as client:
             r = await client.get(
                 "https://cn.bing.com/HPImageArchive.aspx",
                 params={"format": "js", "idx": 0, "n": 1, "mkt": "zh-CN"},
@@ -324,12 +324,11 @@ async def bing_today_image():
 )
 async def bing_archive(days: int = Query(7, ge=1, le=14, description="查询的天数 1..14")):
     """返回最近 days 天的图片元数据列表。实现方式：串行请求 idx=0..days-1 的归档。"""
-    import httpx
 
     out: list[dict] = []
     today = date.today()
     try:
-        async with httpx.AsyncClient(timeout=10) as client:
+        async with create_async_client(timeout=10) as client:
             for idx in range(days):
                 r = await client.get(
                     "https://cn.bing.com/HPImageArchive.aspx",

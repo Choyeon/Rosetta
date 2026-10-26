@@ -609,3 +609,113 @@ async def test_schema_urls_match_frontend_routes(client: AsyncClient, db_session
     assert r3.status_code == 200
     person = r3.json()
     assert person["url"] == f"{base}/authors/seo_route_author"
+
+
+# ======================================================================
+# 匿名 SEO 口的可见性闸门
+#
+# 这两条端点无需鉴权、按 id 取值，且没有任何地方核对"这篇文章对外是否存在"。
+# 结果是：草稿 / 待审 / 未来定时文章的标题、摘要、slug、作者可以从 id=1 开始
+# 逐个枚举出来，而 GET /posts/{slug} 对同一篇是 404——同一份内容两套可见性。
+# 作者侧同理：public_profile=false 的主页对外是"不存在"，但 person schema 照样
+# 吐 bio / github / website。
+# ======================================================================
+
+
+@pytest.mark.asyncio
+async def test_seo_article_endpoints_hide_unpublished_posts(client: AsyncClient, db_session):
+    """草稿与未来定时文章在 schema / open-graph 两个口都必须按"不存在"返回。"""
+    from datetime import datetime, timedelta
+
+    from backend.utils.compat import UTC
+
+    author = User(
+        username="seo_gate_author",
+        email="seo_gate_author@example.com",
+        password_hash=get_password_hash("Pass@1234"),
+        is_active=True,
+        is_staff=False,
+    )
+    db_session.add(author)
+    await db_session.flush()
+
+    draft = Post(
+        title={"zh": "未发布草稿标题"},
+        slug="seo-gate-draft",
+        status="draft",
+        content="草稿正文",
+        excerpt={"zh": "未发布草稿摘要"},
+        author_id=author.id,
+    )
+    scheduled = Post(
+        title={"zh": "未来定时文章标题"},
+        slug="seo-gate-scheduled",
+        status="published",
+        content="定时正文",
+        excerpt={"zh": "未来定时摘要"},
+        author_id=author.id,
+        published_at=datetime.now(UTC) + timedelta(days=3),
+    )
+    live = Post(
+        title={"zh": "已发布文章标题"},
+        slug="seo-gate-live",
+        status="published",
+        content="正文",
+        excerpt={"zh": "已发布摘要"},
+        author_id=author.id,
+        published_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db_session.add_all([draft, scheduled, live])
+    await db_session.commit()
+
+    for hidden in (draft, scheduled):
+        schema = await client.get(f"/api/seo/schema/article/{hidden.id}")
+        assert schema.status_code == 200
+        assert set(schema.json()) == {"error"}, f"草稿/定时文章泄漏了 JSON-LD: {schema.json()}"
+
+        og = await client.get(f"/api/seo/open-graph/article/{hidden.id}")
+        assert og.status_code == 200
+        assert set(og.json()) == {"error"}, f"草稿/定时文章泄漏了 Open Graph: {og.json()}"
+
+    # 闸门不能把正常文章一起关掉：已发布且发布时间已过必须照常输出
+    ok_schema = await client.get(f"/api/seo/schema/article/{live.id}")
+    assert ok_schema.json()["headline"] == "已发布文章标题"
+    ok_og = await client.get(f"/api/seo/open-graph/article/{live.id}")
+    assert ok_og.json()["og:title"] == "已发布文章标题"
+
+
+@pytest.mark.asyncio
+async def test_seo_person_schema_respects_hidden_profile(client: AsyncClient, db_session):
+    """public_profile=false 的账号在 person schema 里必须与"查无此人"同形。"""
+    from backend.models.user import UserPreference
+
+    hidden = User(
+        username="seo_hidden_person",
+        email="seo_hidden_person@example.com",
+        password_hash=get_password_hash("Pass@1234"),
+        is_active=True,
+        is_staff=False,
+        bio="不应外泄的简介",
+        github="https://github.com/hidden-person",
+    )
+    visible = User(
+        username="seo_visible_person",
+        email="seo_visible_person@example.com",
+        password_hash=get_password_hash("Pass@1234"),
+        is_active=True,
+        is_staff=False,
+        bio="公开简介",
+    )
+    db_session.add_all([hidden, visible])
+    await db_session.flush()
+    db_session.add(UserPreference(user_id=hidden.id, public_profile=False))
+    await db_session.commit()
+
+    response = await client.get(f"/api/seo/schema/person/{hidden.id}")
+    assert response.status_code == 200
+    assert set(response.json()) == {"error"}, f"隐藏主页被绕过: {response.json()}"
+
+    ok = await client.get(f"/api/seo/schema/person/{visible.id}")
+    assert ok.status_code == 200
+    assert ok.json()["@type"] == "Person"
+    assert ok.json()["description"] == "公开简介"

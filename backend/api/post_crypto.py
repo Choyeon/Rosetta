@@ -125,6 +125,13 @@ async def verify_access(data: VerifyAccessRequest, db: DB) -> VerifyAccessRespon
     if not post:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文章不存在")
 
+    # 可见性闸门（与详情口同源）：否则本端点会成为按 id 判断"文章是否存在"的
+    # 匿名探针（不存在 404 / 存在但未加密 ok=true），草稿 id 可被逐个枚举。
+    from backend.services.post_access import post_is_publicly_visible
+
+    if not post_is_publicly_visible(post, None):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="文章不存在")
+
     if not post.encryption_enabled:
         return VerifyAccessResponse(ok=True, message="该文章未启用加密，无需验证")
 

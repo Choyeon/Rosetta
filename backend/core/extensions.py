@@ -20,6 +20,7 @@ Rosetta 插件与主题管理器（WP 风格扩展平台运行时）。
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import io
 import json
@@ -33,6 +34,7 @@ from sqlalchemy import and_, delete, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.hooks import do_action, hooks_registered_for_plugin, remove_hooks_for_plugin
+from backend.core.http_client import create_async_client
 from backend.core.tenant import DEFAULT_SITE_ID
 
 if TYPE_CHECKING:  # pragma: no cover - no runtime cost
@@ -81,6 +83,68 @@ def _safe_zip_extract_path(target_dir: Path, rel: str) -> Path:
     if out != root and root not in out.parents:
         raise _reject("解析后逃逸目标目录")
     return out
+
+
+# 解压后体积上限（防 zip 炸弹）。压缩包体积由 settings.max_upload_size 管，
+# 但 5MB 的 DEFLATE 包可以展开成几十 GB：只管压缩比的另一半不设上限，
+# 结果就是磁盘写满 + 事件循环被同步解压卡死。
+MAX_PACKAGE_UNCOMPRESSED_BYTES = 200 * 1024 * 1024
+_ZIP_COPY_CHUNK = 64 * 1024
+
+
+def _extract_zip_entries(zf, names: list[str], target_dir: Path) -> int:
+    """把 ZIP 条目解到 ``target_dir``，返回累计解压字节数。
+
+    **同步阻塞函数**：调用方必须用 ``await asyncio.to_thread(...)`` 调用，
+    否则解压在事件循环上跑，全站请求跟着卡住。
+
+    两道体积闸门：先看中央目录声明的 ``file_size`` 总和（读一个头就能拒绝，
+    不用真的解压），再在流式拷贝时按实际字节累计兜底——声明值本身不可信。
+    失败时清掉半装目录，避免留下一个"看起来已安装"的残缺插件。
+    """
+    from backend.core.exceptions import AppException
+
+    limit_mb = MAX_PACKAGE_UNCOMPRESSED_BYTES // (1024 * 1024)
+    declared = sum(max(getattr(info, "file_size", 0) or 0, 0) for info in zf.infolist())
+    if declared > MAX_PACKAGE_UNCOMPRESSED_BYTES:
+        raise AppException(
+            status_code=400,
+            error_code="PACKAGE_TOO_LARGE",
+            message=f"包解压后体积约 {declared // (1024 * 1024)}MB，超过上限 {limit_mb}MB",
+        )
+
+    total = 0
+    try:
+        for name in names:
+            if name.endswith("/"):
+                continue
+            parts = name.split("/", 1)
+            if len(parts) != 2:
+                continue  # 顶层文件忽略
+            rel = parts[1]
+            out_path = _safe_zip_extract_path(target_dir, rel)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            with zf.open(name) as src, open(out_path, "wb") as dst:
+                while True:
+                    chunk = src.read(_ZIP_COPY_CHUNK)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > MAX_PACKAGE_UNCOMPRESSED_BYTES:
+                        raise AppException(
+                            status_code=400,
+                            error_code="PACKAGE_TOO_LARGE",
+                            message=(
+                                f"包解压后体积超过上限 {limit_mb}MB"
+                                "（压缩包声明的体积不可信，已按实际写入量中止）"
+                            ),
+                        )
+                    dst.write(chunk)
+    except BaseException:
+        # 半装目录比不装更危险：DB 里可能已有记录、运行时也能扫到残缺文件。
+        shutil.rmtree(target_dir, ignore_errors=True)
+        raise
+    return total
 
 
 # ── SiteConfig KV 命名空间 (F3: 防止与 settings_groups 分组键冲突) ────────
@@ -811,17 +875,9 @@ class PluginManager:
                     # 强制清理
                     shutil.rmtree(target_dir, ignore_errors=True)
             target_dir.mkdir(parents=True, exist_ok=True)
-            for n in names:
-                if n.endswith("/"):
-                    continue
-                parts = n.split("/", 1)
-                if len(parts) != 2:
-                    continue  # 顶层文件忽略
-                _, rel = parts
-                out_path = _safe_zip_extract_path(target_dir, rel)
-                out_path.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(n) as src, open(out_path, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
+            # 解压是同步阻塞 + 磁盘密集操作，必须离开事件循环：否则一个恶意
+            # 压缩包能让整个 API 在解压期间停止响应。
+            await asyncio.to_thread(_extract_zip_entries, zf, names, target_dir)
             # 标记文件：delete() 时才会真正从磁盘移除（用户本地目录安全）
             (target_dir / ".installed_via_rosetta").write_text(
                 f"installed_at={datetime.now(UTC).isoformat()} source={filename or 'bytes'}\n",
@@ -892,8 +948,6 @@ class PluginManager:
         """从市场 URL 下载 zip 后安装。"""
         import hashlib
 
-        import httpx
-
         from backend.core.exceptions import AppException
 
         if not getattr(payload, "remote", None):
@@ -905,11 +959,15 @@ class PluginManager:
         url_str = str(payload.remote.url)
         timeout_seconds = 60
         try:
-            from backend.core.net_guard import UnsafeTargetError, assert_public_http_url
+            from backend.core.net_guard import (
+                UnsafeTargetError,
+                assert_public_http_url,
+                validated_get,
+            )
 
             # SSRF 防护：下载目标必须是公网 http(s) 地址
             # （内网市场场景请改用 zip 上传安装，不放宽此校验）
-            await assert_public_http_url(url_str)
+            await assert_public_http_url(str(payload.remote.url))
         except UnsafeTargetError as e:
             raise AppException(
                 status_code=400,
@@ -917,10 +975,21 @@ class PluginManager:
                 message=f"远程包地址不合法: {e}",
             ) from e
         try:
-            async with httpx.AsyncClient(timeout=timeout_seconds, follow_redirects=True) as client:
-                resp = await client.get(url_str)
+            # follow_redirects 必须为 False：httpx 自动跟跳发生在我们的校验之外，
+            # 一个公网 URL 只要回 302 → http://169.254.169.254/… 就能把护栏绕开。
+            # validated_get 对每一跳重新过 assert_public_http_url。
+            async with create_async_client(
+                timeout=timeout_seconds, follow_redirects=False
+            ) as client:
+                resp = await validated_get(client, url_str)
                 resp.raise_for_status()
                 content = resp.content
+        except UnsafeTargetError as e:
+            raise AppException(
+                status_code=400,
+                error_code="REMOTE_URL_NOT_ALLOWED",
+                message=f"远程包地址不合法（重定向后）: {e}",
+            ) from e
         except Exception as e:  # noqa: BLE001
             raise AppException(
                 status_code=502,
@@ -1493,17 +1562,8 @@ class ThemeManager:
                     logger.warning("旧主题目录备份失败 %s → %s: %s", target_dir, backup, e)
                     shutil.rmtree(target_dir, ignore_errors=True)
             target_dir.mkdir(parents=True, exist_ok=True)
-            for n in names:
-                if n.endswith("/"):
-                    continue
-                parts = n.split("/", 1)
-                if len(parts) != 2:
-                    continue
-                _, rel = parts
-                out = _safe_zip_extract_path(target_dir, rel)
-                out.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(n) as src, open(out, "wb") as dst:
-                    shutil.copyfileobj(src, dst)
+            # 同插件路径：同步解压一律走线程池 + 解压体积上限。
+            await asyncio.to_thread(_extract_zip_entries, zf, names, target_dir)
             (target_dir / ".installed_via_rosetta").write_text(
                 f"installed_at={datetime.now(UTC).isoformat()} source={filename or 'bytes'}\n",
                 encoding="utf-8",
@@ -1576,8 +1636,6 @@ class ThemeManager:
         """主题版：从 URL 下载后走 install_from_uploaded_bytes。"""
         import hashlib
 
-        import httpx
-
         from backend.core.exceptions import AppException
 
         if not getattr(payload, "remote", None):
@@ -1599,7 +1657,7 @@ class ThemeManager:
                 message=f"远程主题包地址不合法: {e}",
             ) from e
         try:
-            async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+            async with create_async_client(timeout=60, follow_redirects=True) as client:
                 resp = await client.get(str(payload.remote.url))
                 resp.raise_for_status()
                 content = resp.content

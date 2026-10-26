@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   resolveIconComponent,
@@ -99,6 +101,55 @@ describe('heroIcons', () => {
       const b = resolveIconComponent('heroicons:star')
       expect(a).toBe(b)
       expect(a).toBeTruthy()
+    })
+  })
+
+  // 这条守的是"体积回退"：`import * as Lucide from '@lucide/vue'` 会把整包图标数据
+  // （实测 989 kB）拖进首屏 chunk。改成精选表后体积降下来，但很容易被后来者
+  // 顺手改回命名空间导入——构建不会报错，只有产物变大。
+  describe('Lucide 兜底不得整包导入', () => {
+    const source = readFileSync(
+      resolve(__dirname, '../../composables/heroIcons.ts'),
+      'utf8'
+    )
+
+    it('源码里没有 `import * as … from \'@lucide/vue\'`', () => {
+      // 只匹配"行首 import"的形态：注释里出现这句话是允许的（正是它在解释禁令）。
+      expect(source).not.toMatch(
+        /^[ \t]*import\s+\*\s+as\s+\w+\s+from\s+'@lucide\/vue'/m
+      )
+      expect(source).toContain('LUCIDE_FALLBACKS')
+    })
+
+    // seed 数据（导航/分类图标）里真实出现过的 material-symbols 名字。
+    // 精选表一旦漏项，界面就从"真图标"静默退化成中性方块——这里逐个钉住。
+    const SEEDED_MATERIAL_SYMBOLS = [
+      'archive',
+      'article',
+      'chat',
+      'dashboard',
+      'extension',
+      'favorite',
+      'folder-open-rounded',
+      'forum-rounded',
+      'group',
+      'home',
+      'info',
+      'language',
+      'link-2-rounded',
+      'person',
+      'photo-library',
+      'rss-feed-rounded',
+      'settings',
+      'tag-rounded',
+      'widgets'
+    ]
+
+    it('精选表覆盖 seed 数据里的每一个 material-symbols 名字', () => {
+      const broken = SEEDED_MATERIAL_SYMBOLS.filter(
+        name => !resolveIconComponent(`material-symbols:${name}`)
+      )
+      expect(broken, `以下图标字符串解析不出组件: ${broken.join(', ')}`).toEqual([])
     })
   })
 

@@ -60,7 +60,7 @@
           :key="tag.id"
           :color="tag.color"
           :label="tag.name"
-          :to="localeHref(`/posts?tag=${tag.slug}`)"
+          :to="localeHref(`/tags/${tag.slug}`)"
           size="sm"
         />
       </div>
@@ -176,7 +176,7 @@
           :key="tag.id"
           :color="tag.color"
           :label="tag.name"
-          :to="localeHref(`/posts?tag=${tag.slug}`)"
+          :to="localeHref(`/tags/${tag.slug}`)"
         />
       </div>
 
@@ -277,7 +277,7 @@
           :key="tag.id"
           :color="tag.color"
           :label="tag.name"
-          :to="localeHref(`/posts?tag=${tag.slug}`)"
+          :to="localeHref(`/tags/${tag.slug}`)"
         />
       </div>
       <h2 class="mt-2 font-display leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border text-xl">
@@ -437,7 +437,7 @@ const authorName = computed(() => {
 const categoryName = computed(() => resolveLocalized(props.post.category?.name))
 const categoryColor = computed(() => props.post.category?.color ?? null)
 
-/** 分类 chip 跳转目标：与标签的 /posts?tag= 相呼应，分类走独立详情页。 */
+/** 分类 chip 跳转目标：与标签 chip 同构，都走各自独立详情页（/categories/x 与 /tags/x）。 */
 const categoryLink = computed(() => {
   const slug = props.post.category?.slug
   return slug ? localeHref(`/categories/${slug}`) : undefined

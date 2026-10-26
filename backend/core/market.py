@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.core.config import settings
+from backend.core.http_client import create_async_client
 
 logger = logging.getLogger("rosetta.market")
 
@@ -103,7 +104,7 @@ async def _fetch_remote(kind: str) -> dict[str, Any]:
     fp = _cache_path_for(kind)
     timeout = httpx.Timeout(30.0, connect=10.0)
     try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+        async with create_async_client(timeout=timeout, follow_redirects=True) as client:
             resp = await client.get(url)
             resp.raise_for_status()
             data = resp.json()

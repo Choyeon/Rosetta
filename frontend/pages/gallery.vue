@@ -307,7 +307,7 @@ const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
 const { data: albumsResp, pending, error: albumsError, refresh: refreshAlbums } = useAPI<{ items: AlbumResp[], total?: number }>(
   '/gallery/albums',
   {
-    query: { page: 1, page_size: 50, lang: locale }
+    query: { page: 1, page_size: 50, lang: locale.value }
   }
 )
 

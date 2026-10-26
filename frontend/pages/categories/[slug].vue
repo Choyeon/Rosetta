@@ -232,11 +232,7 @@ useContentStatus(catError, catMissing)
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
-useHead(() => ({
-  title: categoryName.value ? `${categoryName.value} · ${t('categories.title', '分类')}` : t('categories.title', '分类'),
-  meta: categoryDesc.value ? [{ name: 'description', content: categoryDesc.value }] : []
-}))
-
+// 同 tags/[slug].vue：裸 useHead 会在 <head> 里制造第二条 description。
 useSeo({
   title: computed(() => categoryName.value ? `${categoryName.value} · ${t('categories.title', '分类')}` : t('categories.title', '分类')),
   description: computed(() => categoryDesc.value),
