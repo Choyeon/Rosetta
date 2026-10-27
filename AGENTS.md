@@ -645,10 +645,31 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Σ Total size 3.96 MB（gzip 992 kB），2026-10-27 本机实测（图标/高亮瘦身后）
-pnpm test          # 全绿（82 个 spec 文件；1384 用例）
+pnpm test          # 全绿（88 个 spec 文件；1490 用例，2026-10-27 本机实测）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
+
+- **后台 UI 的每一项声明都必须有后端写手或执行者**（回收站批次踩全的三类）：筛选枚举/标签/承诺只是文案时，
+  接口永远不会满足它。口径是「UI `typeFilters` 的键集合 ⇔ 后端 `resource_type="…"` 的写入点」**集合相等**，
+  由 `frontend/tests/unit/trashRecoverableTypes.spec.ts` 双向对账；新增一个可恢复类型要同时改写手、恢复分支、
+  UI 筛选。恢复前置条件不满足回 **400**（`Page.slug` 唯一、`comments.post_id` NOT NULL+CASCADE），不要赌 500。
+  「保留 30 天」这类倒计时必须有执行者（`TRASH_RETENTION_DAYS` 挂在 `main.py::_log_retention_loop`），
+  只在 `TrashItem.auto_delete_at` 写时间戳等于永远不删。改了删除语义还要拖着 UI 文案走，
+  留言板和文章不能共用一句"可恢复"（判据在 `isGuestbook` 分支，或直接采用服务端 `message`）。
+- **只读指标端点也要有消费方**：`/api/monitoring/*` 曾八条全部零消费者——后端一直在算，后台一个都看不到。
+  接线口径由 `frontend/tests/unit/monitoringEndpointsWired.spec.ts` 按「后端 `@router.get` 声明集 ⇔ 页面
+  `section()` 请求集」集合相等钉住。三条该接口族特有的读数诚信（写进 `pages/admin/tools/monitoring.vue` 头注释）：
+  ① `/performance` 是**进程内环形缓冲**（重启即空、无样本时不回 `sample_count` 键，必须按键存在性区分"没样本"
+  与"0ms"），与 `/performance/summary` 的**访问日志窗口**（跨重启）不能混算也不能同一个标题混排；
+  ② `visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days < 窗口天数` 时读数只是**下界**，
+  必须同时用 `retention_days` 与 `data_since` 标注；③ `/database` 的 `database_url` 是掩码连接串，
+  **掩码不等于可公开**，不得上屏（守卫只查 `<template>` 区，文件头注释可以提它）。
+- **取数失败按段隔离**：多端点页面用 `Promise.all` + 每段自己的 `silentToast: true` 错误串，
+  一段挂掉不清空整页读数（`apiFetch` 不静默就会与页内 banner 双报）。取数函数带泛型实参
+  （`section<LatencyShape>(…)`）：不传时 `T` 推断成 `unknown`，赋给 typed ref 就是整排 TS2322。
+- **`@stylistic/member-delimiter-style` 在本仓的实际口径**：多行 type/interface 字面量的成员**不写任何分隔符**
+  （`delimiter: "none"`，`;` 和 `,` 都会红），单行内联对象才用 `,`。`eslint --fix` 修不了这一条，只能手写。
 
 ### 9.3 产品验收
 
