@@ -1,8 +1,12 @@
 <!--
-  操作审计日志页：按操作类型/用户 ID/日期范围做服务端筛选 + 分页列表 + 行展开 details JSON。
+  操作审计日志页：按操作类型/用户 ID/IP 关键词/资源类型/日期范围做服务端筛选 + 分页列表 + 行展开 details JSON。
   契约：筛选条件须点「应用筛选」才生效且必须把页码重置回 1（否则停留越界空页）；结果缩小时钳制回最后一页并只重试一次防循环；
   日期区间保证"结束不早于开始"，自动弹出结束选择器需等 DOM 同步（nextTick + showPicker）。
-  导出（CSV/JSON）复用同一组筛选条件打 /admin/logs/export，后端上限 1000 条，提示语须如实写明"按当前筛选"。
+  导出（CSV/JSON）复用「类型/用户/日期」三项筛选打 /admin/logs/export（包装层只转发这四个条件，
+  IP 关键词与资源类型不参与导出，触发时提示语必须如实说明），后端上限 1000 条。
+  列表接口（advanced.py::list_operation_logs）另支持 resource_type 与 q（匹配 detail/error_code/ip），
+  页内已接线为「IP/关键词」与「资源类型」两个输入；action 是自由字符串、后端无 distinct 枚举口，
+  下拉只是常用值快捷方式——不在名单里的动作按原值渲染（actionLabel 回退原始 label、actionClass 回退中性灰）。
   清理旧日志走 DELETE /admin/logs/retention?days=N（days 限 1-3650）：它只删操作留痕，访问日志/性能指标由服务端
   LOG_RETENTION_DAYS 保留循环处理，文案不得写成"清理全部日志"；清理后必须重读列表，否则界面仍显示已删的行。
 -->
@@ -107,6 +111,40 @@
                 type="number"
                 placeholder="留空=全部用户"
                 class="rounded-xl pl-9"
+              />
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label
+              for="audit-keyword-input"
+              class="text-sm font-medium"
+            >IP / 关键词</Label>
+            <div class="relative">
+              <Globe class="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="audit-keyword-input"
+                v-model="filters.keyword"
+                type="text"
+                placeholder="匹配 IP / 详情 / 错误码"
+                class="rounded-xl pl-9"
+                @keyup.enter="applyFilters"
+              />
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label
+              for="audit-resource-input"
+              class="text-sm font-medium"
+            >资源类型</Label>
+            <div class="relative">
+              <FileText class="size-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                id="audit-resource-input"
+                v-model="filters.resourceType"
+                type="text"
+                placeholder="如 post / comment / user"
+                class="rounded-xl pl-9"
+                @keyup.enter="applyFilters"
               />
             </div>
           </div>
@@ -394,7 +432,7 @@ import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import { toYMD } from '~~/lib/datetime'
 import {
-  FileSearch, Search, Filter, RotateCcw, Clock, Globe, Monitor, Info,
+  FileSearch, FileText, Search, Filter, RotateCcw, Clock, Globe, Monitor, Info,
   ChevronRight, ChevronDown, X, CalendarDays, AlertTriangle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
@@ -417,15 +455,28 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
+/**
+ * 操作类型下拉是「常用值快捷方式」，不是枚举白名单：后端 action 是自由字符串
+ * （advanced.py::OperationLogEntryOut，另有插件/webhook 自注册的动作），无 distinct 接口可查。
+ * 不在名单里的动作照常渲染：actionLabel 未命中时回退原始字符串、actionClass 回退中性灰底，
+ * 所以新动作不会出现空标签或碎样式；这里只列已在后端/插件里稳定出现的值。
+ */
 const actionOptions = [
   { label: '登录 login', value: 'login' },
+  { label: '注册 register', value: 'register' },
   { label: '创建 create', value: 'create' },
   { label: '更新 update', value: 'update' },
   { label: '删除 delete', value: 'delete' },
+  { label: '恢复 restore', value: 'restore' },
+  { label: '彻底删除 permanent_delete', value: 'permanent_delete' },
+  { label: '批量发布 batch_publish', value: 'batch_publish' },
   { label: '导出 export', value: 'export' },
   { label: '导入 import', value: 'import' },
   { label: '封禁 ban', value: 'ban' },
-  { label: '设置 settings', value: 'settings' }
+  { label: '解封 unban', value: 'unban' },
+  { label: '设置 settings', value: 'settings' },
+  { label: '迁移 migrate', value: 'migrate' },
+  { label: '触发 trigger', value: 'trigger' }
 ]
 
 function actionLabel(a: string): string {
@@ -442,9 +493,9 @@ function actionLabel(a: string): string {
 function actionClass(a: string): string {
   const low = a.toLowerCase()
   if (['login', 'register'].includes(low)) return 'bg-info-muted text-info-muted-foreground border-transparent'
-  if (['create', 'import'].includes(low)) return 'bg-success-muted text-success-muted-foreground border-transparent'
-  if (['update', 'settings', 'export', 'trigger', 'migrate'].includes(low)) return 'bg-warning-muted text-warning-muted-foreground border-transparent'
-  if (['delete', 'ban'].includes(low)) return 'bg-error-muted text-error-muted-foreground border-transparent'
+  if (['create', 'import', 'batch_publish'].includes(low)) return 'bg-success-muted text-success-muted-foreground border-transparent'
+  if (['update', 'settings', 'export', 'trigger', 'migrate', 'restore'].includes(low)) return 'bg-warning-muted text-warning-muted-foreground border-transparent'
+  if (['delete', 'ban', 'permanent_delete'].includes(low)) return 'bg-error-muted text-error-muted-foreground border-transparent'
   return 'bg-muted text-muted-foreground'
 }
 
@@ -476,6 +527,8 @@ const toDateInputRef = ref<HTMLInputElement | null>(null)
 const filters = reactive({
   action: '',
   userId: undefined as number | undefined,
+  keyword: '',
+  resourceType: '',
   fromDate: '',
   toDate: ''
 })
@@ -499,6 +552,8 @@ const appliedSummary = computed(() => {
     parts.push(`类型：${o?.label ?? filters.action}`)
   }
   if (filters.userId) parts.push(`用户 ID：${filters.userId}`)
+  if (filters.keyword.trim()) parts.push(`IP/关键词：${filters.keyword.trim()}`)
+  if (filters.resourceType.trim()) parts.push(`资源类型：${filters.resourceType.trim()}`)
   if (filters.fromDate || filters.toDate) {
     const s = filters.fromDate || '不限'
     const e = filters.toDate || '不限'
@@ -537,8 +592,10 @@ function toggleExpand(id: number) {
 }
 
 /**
- * 导出走 /admin/logs/export：把**当前屏幕上的筛选条件**原样带上，
- * 导出的就是用户看到的那一份（后端另有 1000 条上限，故提示语如实写明）。
+ * 导出走 /admin/logs/export：把包装层支持的筛选（类型/用户/日期）原样带上（后端上限 1000 条）。
+ * exportAdminAuditLogs 的 filters 形参不收录 q / resource_type（包装层不在本次改动范围，
+ * 且它在内部逐键拼 query，页侧传了也到不了请求），因此这两个条件生效时提示语必须如实声明
+ * "导出不含该条件"，否则用户会拿到一份与屏幕不一致的文件还以为同源。
  */
 async function handleExport(format: 'csv' | 'json') {
   exporting.value = format
@@ -550,7 +607,10 @@ async function handleExport(format: 'csv' | 'json') {
       toDate: filters.toDate
     })
     downloadBlob(blob, `operation-logs-${todayStr.value}.${format}`)
-    toast.success(`已导出 ${format.toUpperCase()}（按当前筛选，最多 1000 条）`)
+    const narrow = filters.keyword.trim() || filters.resourceType.trim()
+      ? '（注意：IP/关键词与资源类型条件不参与导出）'
+      : ''
+    toast.success(`已导出 ${format.toUpperCase()}（按当前可导出筛选，最多 1000 条）${narrow}`)
   } catch {
     // apiFetch 已把失败原因 toast 出来，这里只需解除按钮禁用
   } finally {
@@ -578,6 +638,8 @@ async function runCleanup() {
 function resetFilters() {
   filters.action = ''
   filters.userId = undefined
+  filters.keyword = ''
+  filters.resourceType = ''
   filters.fromDate = ''
   filters.toDate = ''
   page.value = 1
@@ -594,12 +656,17 @@ async function loadLogs(retryOnClamp = true) {
   loading.value = true
   loadError.value = ''
   try {
-    const params: Parameters<typeof fetchAdminAuditLogs>[0] = {
+    // q / resource_type 是后端 list_operation_logs 已支持的查询参数；
+    // fetchAdminAuditLogs 会把 params 原样 spread 进 query，但包装层签名尚未收录这两个键
+    // （useAdminManage 不在本次改动范围），这里用交集类型在页侧补齐，运行期即按后端口径转发。
+    const params: Parameters<typeof fetchAdminAuditLogs>[0] & { q?: string, resource_type?: string } = {
       page: page.value,
       page_size: pageSize.value
     }
     if (filters.action) params.action = filters.action
     if (filters.userId) params.user_id = filters.userId
+    if (filters.keyword.trim()) params.q = filters.keyword.trim()
+    if (filters.resourceType.trim()) params.resource_type = filters.resourceType.trim()
     if (filters.fromDate) params.from = filters.fromDate
     if (filters.toDate) params.to = filters.toDate
     const r = await fetchAdminAuditLogs(params)

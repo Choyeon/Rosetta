@@ -141,3 +141,28 @@ export function bustThemeAssetCache(url: string, version?: string | null): strin
   const v = encodeURIComponent(version || '0')
   return `${url}${url.includes('?') ? '&' : '?'}v=${v}`
 }
+
+/**
+ * 主题窄栏宽度（mods.layout_width）的唯一规范区间——单一权威来源。
+ *
+ * 历史三处漂移（审计修复）：astro mods_schema 640–1200 / 兜底 880，
+ * pages/index.vue 只认 640–1100 否则回 760，useFrontendTheme 却放行 640–1600。
+ * 现以 640–1200（默认 880）为准：
+ *   1. min/max/default 对齐 astro-paper-inspired rosetta-theme.json 的
+ *      layout_width 声明与 style.css 里 --ap-layout 的 880px 兜底；
+ *   2. composables/useFrontendTheme.ts（mergeMods 校验）与
+ *      pages/index.vue（minimal 分支版心）两处消费必须走同一个 clampThemeWidth，
+ *      新增消费方禁止再写区间字面量。
+ * 语义是"钳位"而非"拒绝"：越界值贴边收敛（editorial schema 800–1600 的高值
+ * 会被钳到 1200），非数值 / 空值返回规范默认 880——调用方若需保留自己的
+ * 主题默认（如 MODS_DEFAULTS 的 1200），应在传值前先判"键是否存在"。
+ */
+export const THEME_WIDTH_MIN = 640
+export const THEME_WIDTH_MAX = 1200
+export const THEME_WIDTH_DEFAULT = 880
+
+export function clampThemeWidth(v: unknown): number {
+  const n = Number(v)
+  if (!Number.isFinite(n)) return THEME_WIDTH_DEFAULT
+  return Math.min(THEME_WIDTH_MAX, Math.max(THEME_WIDTH_MIN, Math.round(n)))
+}

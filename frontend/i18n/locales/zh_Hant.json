@@ -232,6 +232,7 @@
       "fColor": "顏色"
     },
     "actions": {
+      "retry": "重試",
       "refresh": "重新整理",
       "cancel": "取消",
       "save": "儲存",
@@ -241,6 +242,10 @@
       "processing": "處理中..."
     },
     "plugins": {
+      "loadFailed": "外掛清單載入失敗",
+      "loadFailedTitle": "無法載入外掛清單",
+      "marketLoadFailed": "外掛市集載入失敗",
+      "marketLoadFailedTitle": "無法載入外掛市集",
       "title": "外掛管理",
       "desc": "安裝、啟用、設定並升級你的 Rosetta 外掛",
       "searchPlaceholder": "搜尋外掛名稱 / 描述...",

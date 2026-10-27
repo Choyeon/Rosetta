@@ -1,7 +1,9 @@
 <!--
   Webhook 配置页：端点 CRUD + 事件订阅（清单取自服务端 GET /webhooks/events 不硬编码）+ 测试投递/投递记录复发 + 密钥轮换。
   契约：secret 三态——非空=设置新值、显式清除传 ''、否则省略该字段由服务端保持原值，密钥保存后不再回显；
-  轮换是即时后端动作（不等表单提交），明文仅在该次响应出现一次；测试/复发即使目标端点失败也返回 200，必须检查 result.success 字段。
+  轮换是即时后端动作（不等表单提交），明文仅在该次响应出现一次；测试/复发即使目标端点失败也返回 200，必须检查 result.success 字段；
+  投递记录弹窗按后端 page/page_size 翻页并直读信封取 total（wrapper fetchAdminWebhookDeliveries 定死无 query 且丢 total），
+  加载失败显示内联错误 + 重试，不得渲染成「尚无投递记录」。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -223,6 +225,14 @@
             </tbody>
           </table>
         </div>
+
+        <p
+          v-if="!loading && !loadError && items.length >= WEBHOOK_LIST_LIMIT"
+          class="px-5 pb-4 text-xs text-muted-foreground"
+        >
+          仅显示最近 {{ WEBHOOK_LIST_LIMIT }} 条：列表 wrapper（fetchAdminWebhooks）不透传分页参数且丢弃了
+          total，拿不满一页时才可能是全量。要翻完整列表需先扩展 useAdminManage.ts。
+        </p>
       </div>
     </AdminCard>
 
@@ -476,7 +486,7 @@
         <DialogHeader>
           <DialogTitle>投递记录 · {{ deliveriesTarget?.name }}</DialogTitle>
           <DialogDescription>
-            最近 {{ DELIVERIES_LIMIT }} 条投递。失败记录可直接复发原始报文。
+            共 {{ deliveriesTotal }} 条投递 · 第 {{ deliveriesPage }}/{{ deliveriesTotalPages }} 页。失败记录可直接复发原始报文。
           </DialogDescription>
         </DialogHeader>
         <div
@@ -489,6 +499,26 @@
             class="h-10 rounded-xl"
           />
         </div>
+        <Alert
+          v-else-if="deliveriesError"
+          variant="destructive"
+          class="rounded-xl"
+        >
+          <AlertTriangle class="size-4" />
+          <AlertTitle>投递记录加载失败</AlertTitle>
+          <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+            <span>{{ deliveriesError }}</span>
+            <Button
+              variant="outline"
+              size="sm"
+              class="rounded-lg shrink-0"
+              @click="loadDeliveries"
+            >
+              <RotateCcw data-icon="inline-start" />
+              重试
+            </Button>
+          </AlertDescription>
+        </Alert>
         <div
           v-else-if="deliveries.length === 0"
           class="py-8 text-sm text-muted-foreground text-center"
@@ -567,6 +597,34 @@
           </table>
         </div>
         <DialogFooter>
+          <div
+            v-if="deliveriesTotalPages > 1"
+            class="mr-auto flex items-center gap-2"
+          >
+            <Button
+              variant="outline"
+              size="sm"
+              class="rounded-lg"
+              :disabled="deliveriesLoading || deliveriesPage <= 1"
+              @click="gotoDeliveriesPage(deliveriesPage - 1)"
+            >
+              <ChevronLeft data-icon="inline-start" />
+              上一页
+            </Button>
+            <span class="text-xs text-muted-foreground tabular-nums">
+              {{ deliveriesPage }} / {{ deliveriesTotalPages }}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              class="rounded-lg"
+              :disabled="deliveriesLoading || deliveriesPage >= deliveriesTotalPages"
+              @click="gotoDeliveriesPage(deliveriesPage + 1)"
+            >
+              下一页
+              <ChevronRight data-icon="inline-end" />
+            </Button>
+          </div>
           <Button
             variant="outline"
             class="rounded-xl"
@@ -589,11 +647,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   fetchAdminWebhooks,
   fetchAdminWebhookEvents,
-  fetchAdminWebhookDeliveries,
   retryAdminWebhookDelivery,
   createAdminWebhook,
   updateAdminWebhook,
@@ -606,12 +663,13 @@ import {
   type AdminWebhookDelivery,
   type AdminWebhookPayload
 } from '~~/composables/useAdminManage'
+import { apiFetch } from '~~/composables/useApi'
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   Webhook, Plus, Zap, Pencil, Trash2, Save, Loader2, Info, History, KeyRound,
   Eye, EyeOff, Mail, GitBranch, BellRing, Globe, AlertTriangle, RotateCcw,
-  RefreshCw, Copy
+  RefreshCw, Copy, ChevronLeft, ChevronRight
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
@@ -639,6 +697,22 @@ definePageMeta({ ssr: false, layout: 'admin' })
 const toast = useToast()
 
 const DELIVERIES_LIMIT = 20
+
+/**
+ * 后端 GET /webhooks 按 page/page_size 分页（默认 20），但 fetchAdminWebhooks
+ * （useAdminManage.ts，本轮不在可改文件范围）把签名定死为无参、且只回传 items、
+ * 丢弃了 WebhookListOut.total——主列表因此拿不到真实总数，也翻不了页。
+ * 客户端处理：按「恰好拿满一页」提示这可能只是最近 N 条，避免把截断当全量。
+ */
+const WEBHOOK_LIST_LIMIT = 20
+
+/** GET /webhooks/{id}/deliveries 的裸信封（页面直连读取分页 total；wrapper 不透传 query） */
+interface AdminWebhookDeliveriesPage {
+  items: AdminWebhookDelivery[]
+  total: number
+  page: number
+  page_size: number
+}
 
 /** Provider 只是分类标签，投递格式对所有类型一致 */
 const PROVIDERS = [
@@ -671,7 +745,14 @@ const deliveriesOpen = ref(false)
 const deliveriesLoading = ref(false)
 const deliveriesTarget = ref<AdminWebhook | null>(null)
 const deliveries = ref<AdminWebhookDelivery[]>([])
+const deliveriesError = ref('')
+const deliveriesPage = ref(1)
+const deliveriesTotal = ref(0)
 const retryingId = ref<number | null>(null)
+
+const deliveriesTotalPages = computed(() =>
+  Math.max(1, Math.ceil(deliveriesTotal.value / DELIVERIES_LIMIT))
+)
 
 const emptyForm = () => ({
   name: '',
@@ -874,18 +955,63 @@ async function handleTrigger(w: AdminWebhook) {
   }
 }
 
-async function openDeliveries(w: AdminWebhook) {
+function openDeliveries(w: AdminWebhook) {
   deliveriesTarget.value = w
   deliveries.value = []
+  deliveriesTotal.value = 0
+  deliveriesError.value = ''
+  deliveriesPage.value = 1
   deliveriesOpen.value = true
+  void loadDeliveries()
+}
+
+/**
+ * 投递记录分页加载。刻意绕开 fetchAdminWebhookDeliveries wrapper：它的签名定死为
+ * (id)、不透传 query、还把 WebhookDeliveryListOut.total 丢弃成 items（wrapper 所在
+ * 的 useAdminManage.ts 不在本轮可改范围），翻页只能在这里直读信封。参数名与后端
+ * list_webhook_deliveries 一致：page / page_size。失败走内联 banner + 重试，
+ * 不得把后端故障显示成「尚无投递记录」。
+ */
+async function loadDeliveries() {
+  const target = deliveriesTarget.value
+  if (!target) return
   deliveriesLoading.value = true
+  deliveriesError.value = ''
   try {
-    deliveries.value = await fetchAdminWebhookDeliveries(w.id)
+    const res = await apiFetch<AdminWebhookDeliveriesPage>(
+      `/webhooks/${target.id}/deliveries`,
+      {
+        query: { page: deliveriesPage.value, page_size: DELIVERIES_LIMIT },
+        silentToast: true
+      }
+    )
+    deliveries.value = res?.items ?? []
+    deliveriesTotal.value = res?.total ?? deliveries.value.length
+    // 翻页竞态（其他管理员刚删了记录）导致当前页越界为空时，钳回最后一页再取一次
+    const maxPage = Math.max(1, Math.ceil(deliveriesTotal.value / DELIVERIES_LIMIT))
+    if (deliveries.value.length === 0 && deliveriesPage.value > maxPage) {
+      deliveriesPage.value = maxPage
+      await loadDeliveries()
+      return
+    }
   } catch (e) {
-    console.error('[webhooks] load deliveries failed:', e)
+    deliveries.value = []
+    deliveriesTotal.value = 0
+    const err = e as { data?: unknown, message?: string }
+    deliveriesError.value = extractApiErrorMessage(
+      err?.data,
+      err?.message || '投递记录加载失败'
+    )
   } finally {
     deliveriesLoading.value = false
   }
+}
+
+function gotoDeliveriesPage(next: number) {
+  const clamped = Math.min(Math.max(1, next), deliveriesTotalPages.value)
+  if (clamped === deliveriesPage.value) return
+  deliveriesPage.value = clamped
+  void loadDeliveries()
 }
 
 async function handleRetry(d: AdminWebhookDelivery) {
@@ -894,9 +1020,8 @@ async function handleRetry(d: AdminWebhookDelivery) {
     const result = await retryAdminWebhookDelivery(d.id)
     if (result.success) toast.success('已复发')
     else toast.error(result.message || '复发失败')
-    if (deliveriesTarget.value) {
-      deliveries.value = await fetchAdminWebhookDeliveries(deliveriesTarget.value.id)
-    }
+    // 复发就地更新该记录的状态码/响应体：重取当前页即可看到新结果
+    await loadDeliveries()
   } catch (e) {
     console.error('[webhooks] retry failed:', e)
   } finally {

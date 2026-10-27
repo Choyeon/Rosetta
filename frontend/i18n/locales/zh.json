@@ -232,6 +232,7 @@
       "fColor": "颜色"
     },
     "actions": {
+      "retry": "重试",
       "refresh": "刷新",
       "cancel": "取消",
       "save": "保存",
@@ -241,6 +242,10 @@
       "processing": "处理中..."
     },
     "plugins": {
+      "loadFailed": "插件列表加载失败",
+      "loadFailedTitle": "无法加载插件列表",
+      "marketLoadFailed": "插件市场加载失败",
+      "marketLoadFailedTitle": "无法加载插件市场",
       "title": "插件管理",
       "desc": "安装、启用、配置并升级你的 Rosetta 插件",
       "searchPlaceholder": "搜索插件名 / 描述...",

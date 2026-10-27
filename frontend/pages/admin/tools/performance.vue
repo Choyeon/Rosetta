@@ -1,6 +1,7 @@
 <!-- 性能监控页：24h 接口摘要、慢路径排行、近 7 天慢请求明细与性能表清理。
      契约：GET /admin/performance/slow 返回「裸数组」（无 success 信封）且字段为 endpoint/response_time_ms、
-     仅支持 limit(≤100) 无分页，故本页绕过 useAdminManage 直接 apiFetch 并在页面侧归一化字段；
+     仅支持 limit(≤100) 无分页、时间窗口写死 7 天（无 hours/days 参数），故本页绕过 useAdminManage 直接 apiFetch 并在页面侧归一化字段；
+     /performance/summary 同样无窗口参数（返回 last_24h / last_7d 两段固定窗口），因此不做时间范围选择器；
      清理保留天数校验失败以 throw 交给 DangerConfirmDialog 内联展示，而非 toast。 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -204,7 +205,9 @@
                 最近 7 天最慢请求
               </h3>
               <p class="text-sm text-muted-foreground">
-                后端按耗时倒序返回 Top N 原始记录（非分页接口），调整数量即时重新拉取
+                后端按耗时倒序返回 Top N 原始记录（非分页接口），调整数量即时重新拉取；
+                时间窗口由后端写死为最近 7 天（<code class="font-mono">/performance/slow</code> 仅接受
+                <code class="font-mono">limit</code>，无 hours/days 参数），故此处不提供时间范围选择。
               </p>
             </div>
             <div class="flex items-center gap-2">

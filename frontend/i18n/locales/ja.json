@@ -232,6 +232,7 @@
       "fColor": "色"
     },
     "actions": {
+      "retry": "再試行",
       "refresh": "更新",
       "cancel": "キャンセル",
       "save": "保存",
@@ -241,6 +242,10 @@
       "processing": "処理中..."
     },
     "plugins": {
+      "loadFailed": "プラグイン一覧の読み込みに失敗しました",
+      "loadFailedTitle": "プラグイン一覧を読み込めません",
+      "marketLoadFailed": "プラグインマーケットの読み込みに失敗しました",
+      "marketLoadFailedTitle": "プラグインマーケットを読み込めません",
       "title": "プラグイン管理",
       "desc": "Rosetta プラグインのインストール・有効化・設定・アップグレード",
       "searchPlaceholder": "プラグイン名 / 説明で検索…",

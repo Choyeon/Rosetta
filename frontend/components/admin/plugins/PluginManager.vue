@@ -3,13 +3,15 @@
   硬契约：任何改变 menu-registry 输出的写操作（扫描/安装/启停/升级/删除）都必须调用
   refreshPluginMenu() 强制刷新共享插件菜单缓存，否则侧栏「插件」分组要到整页刷新才跟上；
   列表为客户端分页（一次拉 per_page=100），批量接口走 {success,data} 信封需手工解包，
-  设置弹窗控件由后端 settings_schema（JSON Schema）动态生成——schema 是控件唯一清单。
+  设置弹窗控件由后端 settings_schema（JSON Schema）动态生成——schema 是控件唯一清单；
+  列表与市场索引加载失败必须走内联错误条 + 重试（silentToast 抑制双报），禁止降级成空列表/空市场假象。
 -->
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import type { Component } from 'vue'
 import { toast } from 'vue-sonner'
 import { apiFetch } from '~~/composables/useApi'
+import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   Search,
   RefreshCw,
@@ -26,7 +28,8 @@ import {
   Loader2,
   Sparkles,
   Download,
-  BookOpen
+  BookOpen,
+  RotateCcw
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
@@ -35,6 +38,7 @@ import { Checkbox } from '~~/components/ui/checkbox'
 import { Switch } from '~~/components/ui/switch'
 import { Label } from '~~/components/ui/label'
 import { Textarea } from '~~/components/ui/textarea'
+import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import Table from '~~/components/ui/table/Table.vue'
 import TableHeader from '~~/components/ui/table/TableHeader.vue'
 import TableBody from '~~/components/ui/table/TableBody.vue'
@@ -135,6 +139,8 @@ function $delete<T>(url: string, opts?: Record<string, unknown>) {
 
 const plugins = ref<Plugin[]>([])
 const loading = ref(true)
+/** 列表加载失败的内联错误（后端故障绝不得降级成"暂无插件"空态，见模板 Alert 分支 + 重试） */
+const loadError = ref('')
 const search = ref('')
 const statusFilter = ref<'all' | 'active' | 'inactive' | 'error'>('all')
 const selected = ref<Set<string>>(new Set())
@@ -224,11 +230,20 @@ function toggleSel(slug: string, checked: boolean) {
 
 async function load() {
   try {
-    const data = await $get<unknown>('/admin/plugins', { query: { per_page: 100 } })
+    // silentToast：失败由页内 banner + 重试呈现，避免 toast 与 banner 双报同一条消息
+    const data = await $get<unknown>('/admin/plugins', { query: { per_page: 100 }, silentToast: true })
     const obj = data as { data?: Plugin[] } | Plugin[]
     plugins.value = (obj && typeof obj === 'object' && 'data' in obj ? (obj.data as Plugin[]) : Array.isArray(obj) ? obj : null) ?? []
-  } catch {
+    loadError.value = ''
+  } catch (err) {
+    // 旧实现在这里 plugins = [] 就完事——"后端宕机"被显示成"没有插件"，
+    // 空态分支还会诱导读不懂。错误态必须保留，由模板里的 Alert + 重试消费。
     plugins.value = []
+    const e = err as { data?: unknown, message?: string }
+    loadError.value = extractApiErrorMessage(
+      e?.data,
+      e?.message || t('admin.plugins.loadFailed', '插件列表加载失败')
+    )
   } finally {
     loading.value = false
   }
@@ -531,18 +546,28 @@ interface MarketItem {
 const marketItems = ref<MarketItem[]>([])
 const marketLoading = ref(false)
 const marketLoaded = ref(false)
+/** 市场索引加载失败的内联错误：不得把失败渲染成「市场暂无可安装条目」的正常空态 */
+const marketError = ref('')
 const marketBusySlug = ref('')
 const installedSlugs = computed(() => new Set(plugins.value.map(x => String(x.slug))))
 
 async function loadMarket(force = false) {
   marketLoading.value = true
+  marketError.value = ''
   try {
     const res = await apiFetch<{ data?: { items?: MarketItem[] } }>(
-      `/admin/plugins/market${force ? '?force=true' : ''}`
+      `/admin/plugins/market${force ? '?force=true' : ''}`,
+      { silentToast: true }
     )
     marketItems.value = res?.data?.items ?? []
     marketLoaded.value = true
-  } catch { /* apiFetch 统一 toast；空列表由占位文案兜底 */ } finally {
+  } catch (err) {
+    const e = err as { data?: unknown, message?: string }
+    marketError.value = extractApiErrorMessage(
+      e?.data,
+      e?.message || t('admin.plugins.marketLoadFailed', '市场索引加载失败')
+    )
+  } finally {
     marketLoading.value = false
   }
 }
@@ -741,6 +766,28 @@ onMounted(() => {
         :cols="4"
         class="border-0 rounded-none"
       />
+
+      <!-- Backend failure：先于空态分支，否则「后端宕机」会渲染成「暂无插件」 -->
+      <Alert
+        v-else-if="loadError"
+        variant="destructive"
+        class="rounded-xl m-4"
+      >
+        <AlertTriangle class="size-4" />
+        <AlertTitle>{{ t('admin.plugins.loadFailedTitle', '插件列表加载失败') }}</AlertTitle>
+        <AlertDescription class="flex flex-wrap items-center justify-between gap-3">
+          <span>{{ loadError }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            class="rounded-lg shrink-0"
+            @click="reload"
+          >
+            <RotateCcw data-icon="inline-start" />
+            {{ t('admin.actions.retry', '重试') }}
+          </Button>
+        </AlertDescription>
+      </Alert>
 
       <!-- Empty state -->
       <div
@@ -1297,8 +1344,35 @@ onMounted(() => {
                 {{ t('admin.plugins.marketRefresh', '刷新') }}
               </Button>
             </div>
+            <div
+              v-if="marketError"
+              role="alert"
+              class="rounded-xl border border-destructive/30 bg-destructive/5 p-3 text-sm"
+            >
+              <div class="flex items-start gap-2">
+                <AlertTriangle class="size-4 mt-0.5 shrink-0 text-destructive" />
+                <div class="flex-1 min-w-0">
+                  <p class="font-medium text-destructive">
+                    {{ t('admin.plugins.marketLoadFailedTitle', '市场索引加载失败') }}
+                  </p>
+                  <p class="mt-0.5 text-xs text-muted-foreground break-all">
+                    {{ marketError }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-2 rounded-lg"
+                    :disabled="marketLoading"
+                    @click="loadMarket(true)"
+                  >
+                    <RotateCcw data-icon="inline-start" />
+                    {{ t('admin.actions.retry', '重试') }}
+                  </Button>
+                </div>
+              </div>
+            </div>
             <p
-              v-if="marketLoading && marketItems.length === 0"
+              v-else-if="marketLoading && marketItems.length === 0"
               class="py-6 text-center text-sm text-muted-foreground"
             >
               {{ t('admin.plugins.marketLoading', '加载市场索引…') }}

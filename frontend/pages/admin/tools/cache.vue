@@ -2,6 +2,8 @@
   缓存管理页：展示服务端缓存后端/键数/内存/命中率，按粒度模式（all/post_list/post_detail/settings/fragments）执行清退。
   契约：GET /admin/cache/status 返回裸对象（无 success 信封）；hit_rate 可能是 0-1 小数或 0-100 百分数，须按 <=1 归一化否则命中率显示错量级；
   接口走 silentToast + 页内联错误态避免双重提示，「全部清退」在 DangerConfirmDialog 中要求输入短语二次确认。
+  状态刷新有两条路径：页头「刷新状态」手动重拉，另有 30s 静默轮询（不闪骨架、失败保留旧读数，弹窗/清退进行中跳过），
+  计时器必须在 onUnmounted 清理；轮询失败同样落到顶部 banner + 重试，不得静默吞掉。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -9,7 +11,23 @@
       title="缓存管理"
       description="查看缓存状态并执行按粒度的清退操作"
       :icon="HardDrive"
-    />
+    >
+      <template #actions>
+        <Button
+          variant="outline"
+          size="sm"
+          class="rounded-xl"
+          :disabled="statusLoading"
+          @click="loadStatus()"
+        >
+          <RefreshCw
+            data-icon="inline-start"
+            :class="statusLoading ? 'animate-spin' : ''"
+          />
+          刷新状态
+        </Button>
+      </template>
+    </AdminPageHeader>
 
     <Alert
       v-if="statusError"
@@ -25,7 +43,7 @@
           size="sm"
           class="rounded-lg shrink-0"
           :disabled="statusLoading"
-          @click="loadStatus"
+          @click="loadStatus()"
         >
           <RotateCcw data-icon="inline-start" />
           重试
@@ -278,14 +296,14 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import type { AdminCacheStatus, AdminCacheFlushMode } from '~~/composables/useAdminManage'
 import { apiFetch } from '~~/composables/useApi'
 import { extractApiErrorMessage, formatBytes as libFormatBytes } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import {
   HardDrive, Database, MemoryStick, Layers, PieChart, Target, TrendingDown,
-  Shovel, AlertTriangle, Trash2, Loader2, Info, RotateCcw,
+  Shovel, AlertTriangle, Trash2, Loader2, Info, RotateCcw, RefreshCw,
   Boxes, BookOpen, FileText, Settings as SettingsIcon, Puzzle
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
@@ -299,6 +317,11 @@ definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
 
+/**
+ * 清退模式清单：必须与 backend/api/admin_tools.py::AdminCacheFlushMode
+ * （Literal["all","post_list","post_detail","settings","fragments"]，且 MODE_PREFIXES 同键集）逐一对应，
+ * 后端加/删档位时这里同步改，否则新模式在 UI 不可选、旧模式会 400。
+ */
 const modes = [
   {
     key: 'all' as const,
@@ -325,7 +348,7 @@ const modes = [
     key: 'settings' as const,
     label: '站点配置',
     icon: SettingsIcon,
-    desc: '清退站点设置（17 组 settings）读取缓存，让修改立即生效。',
+    desc: '清退站点设置（14 组 settings）读取缓存，让修改立即生效。',
     scope: 'GET /api/settings 各组的内存/Redis 读缓存'
   },
   {
@@ -383,8 +406,10 @@ const hitRateWarning = computed(() => cacheStatus.value.hit_rate != null && hitP
 const formatBytes = (b: number | null | undefined): string =>
   (b == null ? '-' : libFormatBytes(b))
 
-async function loadStatus() {
-  statusLoading.value = true
+async function loadStatus(options: { silent?: boolean } = {}) {
+  // silent：30s 轮询专用——不闪骨架屏（每半分钟整卡片抖动），失败也保留上一次读数，
+  // 只把错误挂到顶部 banner；用户手点「刷新状态/重试」仍走非静默路径。
+  if (!options.silent) statusLoading.value = true
   statusError.value = ''
   try {
     // 状态接口失败时必须可见：silentToast 避免与页面内联错误重复提示
@@ -396,13 +421,17 @@ async function loadStatus() {
       hit_rate: r?.hit_rate ?? null
     }
   } catch (err) {
-    cacheStatus.value = emptyStatus()
+    if (!options.silent) cacheStatus.value = emptyStatus()
     const e = err as { data?: unknown, message?: string }
     statusError.value = extractApiErrorMessage(e?.data, e?.message || '无法连接缓存状态接口')
   } finally {
-    statusLoading.value = false
+    if (!options.silent) statusLoading.value = false
   }
 }
+
+/** 30s 自动刷新（页面打开期间）；本类页面 SPA 直接起计时器即可，卸载必须清干净 */
+const STATUS_POLL_MS = 30_000
+let statusTimer: ReturnType<typeof setInterval> | null = null
 
 /** 供 DangerConfirmDialog 调用：throw 则弹窗保持打开并内联展示错误 */
 async function runFlush() {
@@ -421,5 +450,19 @@ async function runFlush() {
   }
 }
 
-onMounted(loadStatus)
+onMounted(() => {
+  loadStatus()
+  statusTimer = setInterval(() => {
+    // 清退确认弹窗打开或正在清退时跳过本轮，避免轮询把用户眼前的数字改掉
+    if (confirmFlushOpen.value || flushing.value) return
+    loadStatus({ silent: true })
+  }, STATUS_POLL_MS)
+})
+
+onUnmounted(() => {
+  if (statusTimer) {
+    clearInterval(statusTimer)
+    statusTimer = null
+  }
+})
 </script>

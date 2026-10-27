@@ -1,7 +1,9 @@
-<!-- 翻译工具页：调后端同步翻译接口逐篇生成标题译文，供人工逐条复制。
-     契约：结果仅展示不回写文章（翻译端点为只读）；title 可能是 i18n dict 或旧纯文本，
-     须经 titleText 归一否则译文源变 [object Object]；批量用 allSettled 单篇失败不阻断，
-     且 apiFetch 已自动 toast 错误，页内 catch 不得二次提示。 -->
+<!-- 翻译工具页：调后端同步翻译接口逐篇生成标题译文，供人工逐条复制，或经「写回标题」单条落库。
+     契约：翻译端点本身只读；写回是显式逐行动作——先 GET /blog/posts/{id}/edit 拿完整多语言 title dict
+     （公开口只回单语言字符串，直接 PUT 会抹掉其余语言），把新译文 merge 进 dict 后 PUT /blog/posts/{id}
+     仅提交 { title }（PostUpdate exclude_unset，其余字段不动）；成败逐行内联展示。
+     title 可能是 i18n dict 或旧纯文本，须经 titleText 归一否则译文源变 [object Object]；
+     批量用 allSettled 单篇失败不阻断，且 apiFetch 已自动 toast 错误，页内 catch 不得二次提示（写回走 silentToast + 内联）。 -->
 <template>
   <div class="flex flex-col gap-5">
     <AdminPageHeader
@@ -225,7 +227,7 @@
           翻译结果（{{ results.length }}）
         </h3>
         <p class="text-sm text-muted-foreground">
-          后端返回的各语言译文，可逐条复制；仅生成结果，不会自动写回文章。
+          后端返回的各语言译文，可逐条复制；不会自动写回文章——需要落库请点行内「写回标题」（仅合并该语言标题，其余语言不动）。
         </p>
       </div>
       <div
@@ -264,20 +266,51 @@
             <div class="flex-1 min-w-0 text-sm break-words">
               {{ row.text }}
             </div>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              class="shrink-0 text-muted-foreground hover:text-foreground"
-              title="复制译文"
-              aria-label="复制译文"
-              @click="copyTranslation(row)"
-            >
-              <Check
-                v-if="copiedKey === row.key"
-                class="text-success"
-              />
-              <Copy v-else />
-            </Button>
+            <div class="shrink-0 flex flex-col items-end gap-1">
+              <div class="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  class="text-muted-foreground hover:text-foreground"
+                  title="复制译文"
+                  aria-label="复制译文"
+                  @click="copyTranslation(row)"
+                >
+                  <Check
+                    v-if="copiedKey === row.key"
+                    class="text-success"
+                  />
+                  <Copy v-else />
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="rounded-lg"
+                  :disabled="writebacks[row.key]?.state === 'saving'"
+                  title="把该译文合并写回文章的对应语言标题"
+                  @click="writeBackTitle(row)"
+                >
+                  <Loader2
+                    v-if="writebacks[row.key]?.state === 'saving'"
+                    data-icon="inline-start"
+                    class="animate-spin"
+                  />
+                  <Save
+                    v-else
+                    data-icon="inline-start"
+                  />
+                  写回标题
+                </Button>
+              </div>
+              <p
+                v-if="writebacks[row.key]"
+                class="max-w-48 text-right text-xs break-words"
+                :class="writebacks[row.key]?.state === 'ok' ? 'text-success' : writebacks[row.key]?.state === 'error' ? 'text-destructive' : 'text-muted-foreground'"
+                :role="writebacks[row.key]?.state === 'error' ? 'alert' : undefined"
+              >
+                {{ writebacks[row.key]?.message }}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -289,7 +322,7 @@
           variant="outline"
           size="sm"
           class="rounded-xl"
-          @click="results = []"
+          @click="clearResults"
         >
           <Eraser
             data-icon="inline-start"
@@ -304,8 +337,9 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { fetchRecentPosts, translateAdminText, type AdminPostListItem } from '~~/composables/useAdminManage'
+import { apiFetch } from '~~/composables/useApi'
 import { useToast } from '~~/composables/useToast'
-import { ClipboardList, Copy, Check, Eraser, Languages, Loader2, Search, Send, Zap, AlertTriangle, RotateCcw } from '@lucide/vue'
+import { ClipboardList, Copy, Check, Eraser, Languages, Loader2, Search, Send, Zap, AlertTriangle, RotateCcw, Save } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
 import { Badge } from '~~/components/ui/badge'
@@ -321,6 +355,11 @@ import { extractApiErrorMessage } from '~~/lib/utils'
 definePageMeta({ ssr: false, layout: 'admin' })
 
 const toast = useToast()
+/**
+ * 语言选项单源镜像：frontend/i18n.config.ts 的 availableLocales（zh / zh_Hant / en / ja，
+ * 站点固定四语、后端 backend/core/i18n.py 为语言唯一真源，不新增第五语）。
+ * 展示名同时参考 backend/api/translate.py::LANG_NAMES，两处任一变更语言集合时这里必须同步。
+ */
 const langOptions = [
   { label: '简体中文 (zh)', value: 'zh' },
   { label: 'English (en)', value: 'en' },
@@ -348,6 +387,9 @@ interface TranslateResultRow {
 }
 const results = ref<TranslateResultRow[]>([])
 const copiedKey = ref<string | null>(null)
+/** 逐行「写回标题」状态（键为 row.key）：saving/ok/error + 内联提示文案 */
+type WritebackState = 'saving' | 'ok' | 'error'
+const writebacks = ref<Record<string, { state: WritebackState, message: string }>>({})
 let rowSeq = 0
 /** 多语言文章的 title 可能是 {zh,en,ja,zh_Hant} 对象，直接 String() 会得到 [object Object] */
 function titleText(title: unknown): string {
@@ -436,6 +478,44 @@ async function copyTranslation(row: TranslateResultRow) {
     }, 1500)
   } catch {
     toast.error('复制失败，请手动选择译文复制')
+  }
+}
+function clearResults() {
+  results.value = []
+  writebacks.value = {}
+}
+/**
+ * 「写回标题」：把这一行译文合并进该文章的 title i18n dict 并 PUT。
+ * 必须先 GET /blog/posts/{id}/edit（staff 编辑口，返回完整 dict）——公开详情口回显的是
+ * 按语言裁剪后的单值，直接 PUT 字符串会让后端把它当整份 title 覆写、其余语言整列蒸发。
+ * PUT body 只带 { title }：PostUpdate 走 exclude_unset，status/content 等一概不动。
+ * 失败不外抛（apiFetch 配 silentToast），状态与原因落在该行右侧内联展示，可再次点击重试。
+ */
+async function writeBackTitle(row: TranslateResultRow) {
+  if (!row.text.trim()) return toast.warning('译文为空，无可写回内容')
+  writebacks.value = { ...writebacks.value, [row.key]: { state: 'saving', message: '写回中…' } }
+  try {
+    const edit = await apiFetch<{ title?: Record<string, string> | string | null }>(
+      `/blog/posts/${row.postId}/edit`,
+      { silentToast: true }
+    )
+    // 旧行可能是纯文本 title：按 zh 归档，避免覆写时丢键
+    const current = typeof edit?.title === 'string'
+      ? { zh: edit.title }
+      : { ...(edit?.title ?? {}) }
+    const merged = { ...current, [row.lang]: row.text }
+    await apiFetch(`/blog/posts/${row.postId}`, {
+      method: 'PUT',
+      body: { title: merged },
+      silentToast: true
+    })
+    writebacks.value = { ...writebacks.value, [row.key]: { state: 'ok', message: `已写回 ${row.langLabel} 标题` } }
+  } catch (e) {
+    const err = e as { data?: unknown, message?: string }
+    writebacks.value = {
+      ...writebacks.value,
+      [row.key]: { state: 'error', message: extractApiErrorMessage(err?.data, err?.message || '写回失败，可重试') }
+    }
   }
 }
 /** 抽取成具名函数是为了让上面那个「重试」按钮能复用同一段加载逻辑 */

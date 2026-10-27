@@ -1,5 +1,6 @@
-<!-- SEO 工具页：sitemap 校验/缓存清除、文章 SEO 评分分页、整库检索字段体检与补全。
+<!-- SEO 工具页：sitemap 校验/缓存清除、文章 SEO 评分分页（page_size 10/20/50，后端 le=100）、整库检索字段体检与补全。
      契约： sitemap-check 走 {success,data} 信封而 search-stats 是裸对象响应（两套口径勿混）；
+     「内容体检」与「站点地图」共用同一次 sitemap-check 的结果（单源 ref，切标签不发第二份请求）；
      「清除 sitemap 缓存」仅失效缓存键由下次访问惰性重建，补全接口 HTTP 200 仍可能 success:false 须自行判断；
      全部请求用 silentToast，错误走页内 loadError + 重试分支而非自动 toast。 -->
 <template>
@@ -198,16 +199,44 @@
                 后端按标题长度、摘要、封面、正文长度、标签五个维度打分（满分 100），仅覆盖已发布文章
               </p>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              class="rounded-lg shrink-0"
-              :disabled="scoresLoading"
-              @click="loadScores"
-            >
-              <RefreshCw data-icon="inline-start" />
-              重新加载
-            </Button>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <Label
+                for="scores-page-size"
+                class="text-sm whitespace-nowrap"
+              >
+                每页
+              </Label>
+              <Select
+                v-model="scoresPageSize"
+                @update:model-value="handlePageSizeChange"
+              >
+                <SelectTrigger
+                  id="scores-page-size"
+                  class="w-20 rounded-xl"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="n in scoresPageSizeOptions"
+                    :key="n"
+                    :value="n"
+                  >
+                    {{ n }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg"
+                :disabled="scoresLoading"
+                @click="loadScores"
+              >
+                <RefreshCw data-icon="inline-start" />
+                重新加载
+              </Button>
+            </div>
           </div>
           <div class="p-0">
             <div
@@ -359,7 +388,7 @@
                   站点内容体检（后端唯一提供的检查通道）
                 </h3>
                 <p class="text-sm text-muted-foreground">
-                  GET /seo/sitemap-check 校验已发布文章是否具备标题 / 摘要 / 封面，返回问题清单；后端目前没有「外部死链探测」接口，故此处不再谎称扫描 4xx/5xx
+                  GET /seo/sitemap-check 校验已发布文章是否具备标题 / 摘要 / 封面，返回问题清单；后端目前没有「外部死链探测」接口，故此处不再谎称扫描 4xx/5xx。结果与「站点地图」标签共用同一份数据（同一端点只请求一次），下方按钮是强制重新校验。
                 </p>
               </div>
               <Button
@@ -376,7 +405,7 @@
                   v-else
                   data-icon="inline-start"
                 />
-                {{ checking ? '检查中...' : '运行内容体检' }}
+                {{ checking ? '检查中...' : '重新运行内容体检' }}
               </Button>
             </div>
           </div>
@@ -393,8 +422,8 @@
                 class="rounded-xl max-w-xl mx-auto"
               >
                 <Info class="size-4" />
-                <AlertTitle>尚未运行体检</AlertTitle>
-                <AlertDescription>点击上方「运行内容体检」按钮，校验已发布文章的标题 / 摘要 / 封面完整性。</AlertDescription>
+                <AlertTitle>尚无体检结果</AlertTitle>
+                <AlertDescription>「站点地图」标签的那次校验未成功，点击上方「重新运行内容体检」重试；成功后这里会显示已发布文章的标题 / 摘要 / 封面完整性清单。</AlertDescription>
               </Alert>
             </div>
             <div
@@ -483,6 +512,9 @@
                   </div>
                 </div>
               </div>
+              <p class="text-xs text-muted-foreground">
+                上次校验时间：{{ sitemapCheckedAt || '尚未校验' }}（与「站点地图」标签共用同一次请求的结果）
+              </p>
               <div
                 v-if="checkResult.errors.length > 0"
                 class="flex flex-col gap-2"
@@ -695,6 +727,8 @@ import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import type { AdminColumn as Column } from '~~/types/admin'
 import { Tabs, TabsContent } from '~~/components/ui/tabs'
 import { Badge } from '~~/components/ui/badge'
+import { Label } from '~~/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Separator } from '~~/components/ui/separator'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
@@ -730,11 +764,17 @@ const scoresError = ref('')
 const scoresPage = ref(1)
 const scoresTotal = ref(0)
 const scoresTotalPages = ref(1)
+// 后端 GET /seo/scores 的 page_size 是 Query(20, ge=1, le=100)，10/20/50 都在合法区间。
+// reka-ui Select 的 value 是字符串（与 performance.vue 的慢请求数量选择器一致），发请求时再转数字。
+const scoresPageSize = ref('10')
+const scoresPageSizeOptions = ['10', '20', '50']
 
-const checking = ref(false)
-const checkError = ref('')
-/** null = 尚未运行体检（此前初始化为对象，导致"尚未运行"分支永远不可达） */
-const checkResult = ref<SitemapCheckResult | null>(null)
+/** 「站点地图」与「内容体检」读的是同一个 GET /seo/sitemap-check ——
+ *  下面三个状态是从 sitemap* 单源派生的计算值，切标签不会发第二份请求，
+ *  体检按钮走 refreshSitemap() 强制重取一次（两端点无缓存旁路参数，重取即重校验）。 */
+const checking = computed(() => sitemapLoading.value)
+const checkError = computed(() => sitemapError.value)
+const checkResult = computed(() => sitemapCheck.value)
 
 /** 检索字段体检（GET/POST /admin/tools/*-search*）：与 sitemap-check 是两套口径，
  *  前者看"整库缺字段"，后者只看"已发布文章的 SEO 三件套"。 */
@@ -827,7 +867,7 @@ async function loadScores() {
   scoresError.value = ''
   try {
     const r = await fetchAdminSeoScores(
-      { page: scoresPage.value, page_size: 10 },
+      { page: scoresPage.value, page_size: Number(scoresPageSize.value) },
       { silentToast: true }
     )
     scores.value = r.items
@@ -846,22 +886,21 @@ async function loadScores() {
   }
 }
 
+/** 改每页条数时回到第 1 页：留在第 3 页换 50/页会让页码直接越过新的 total_pages */
+async function handlePageSizeChange() {
+  scoresPage.value = 1
+  await loadScores()
+}
+
+/** 与「站点地图」标签共用 sitemapCheck 单源（同一端点），这里只是强制重取一次 */
 async function handleCheck() {
-  checking.value = true
-  checkError.value = ''
-  try {
-    const r = await fetchAdminSeoSitemapCheck({ silentToast: true })
-    checkResult.value = r
-    if (r.errors.length > 0) {
-      toast.warning(`发现 ${r.errors.length} 项缺失 SEO 字段`)
-    } else {
-      toast.success('体检完成，已发布文章字段完整')
-    }
-  } catch (e) {
-    checkResult.value = null
-    checkError.value = errText(e, '内容体检失败')
-  } finally {
-    checking.value = false
+  await refreshSitemap()
+  const r = sitemapCheck.value
+  if (!r) return
+  if (r.errors.length > 0) {
+    toast.warning(`发现 ${r.errors.length} 项缺失 SEO 字段`)
+  } else {
+    toast.success('体检完成，已发布文章字段完整')
   }
 }
 

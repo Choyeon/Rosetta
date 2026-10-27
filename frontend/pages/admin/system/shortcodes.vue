@@ -2,12 +2,14 @@
   短代码管理页：列出注册表（含归属来源）、注册/删除「字符串模板」式短代码、预览渲染结果。
   契约（后端 906e117a 收口后的口径，改任一字段前先读）：
   - GET  /admin/shortcodes      → {success, data: {count, items[], persisted}}；items 的
-    `plugin` 非空即插件归属（只读），`template` 真即本页 API 注册的模板（可删）。
+    `plugin` 非空即插件归属（只读），`template` 真即本页 API 注册的模板（可删），
+    模板条目额外带 `replacement` 模板原文（插件/内建为 null，KV 里没有它们的实现）。
     列表本身就是「多 worker 重放点」：另一个进程写的模板在这里必然看得见。
   - POST /admin/shortcodes/register / DELETE /admin/shortcodes/{tag}
     对插件归属 tag 一律 409 SHORTCODE_PLUGIN_OWNED —— UI 必须把它翻成人话，
     否则管理员只会看到一个像 bug 的"删除失败"。
-  - POST /admin/shortcodes（预览）是唯一能带 context 的入口；访客侧的
+  - POST /admin/shortcodes（预览）是唯一能带 context 的入口；本页的「文章 ID（可选）」
+    填了就以 `context.post_id` 传过去，供依赖文章上下文的插件短代码取数。访客侧的
     /shortcodes/render 故意不收 context，别在这里把 ctx 当成"渲染任意 HTML 的工具"。
   - apiFetch 不解信封：读数一律 res.data.xxx；错误经拦截器 toast 后重抛，
     页内再留一条内联错误态供重试（静默失败是 bug，双报同一条消息也是）。
@@ -143,6 +145,38 @@
             <span class="block max-w-[28rem] truncate">
               {{ (item as ShortcodeDefinition).description || '—' }}
             </span>
+          </template>
+          <template #cell-template_body="{ row: item }">
+            <div
+              v-if="(item as ShortcodeDefinition).template && typeof (item as ShortcodeDefinition).replacement === 'string'"
+              class="flex flex-col gap-1"
+            >
+              <Button
+                variant="ghost"
+                size="sm"
+                class="w-fit rounded-lg"
+                @click="toggleTemplate((item as ShortcodeDefinition).tag)"
+              >
+                <ChevronUp
+                  v-if="expandedTemplate === (item as ShortcodeDefinition).tag"
+                  data-icon="inline-start"
+                />
+                <ChevronDown
+                  v-else
+                  data-icon="inline-start"
+                />
+                {{ expandedTemplate === (item as ShortcodeDefinition).tag ? '收起模板' : '查看模板' }}
+              </Button>
+              <!-- 模板原文按纯文本展示（与预览结果同口径，不 v-html）；空串也是合法模板 -->
+              <pre
+                v-if="expandedTemplate === (item as ShortcodeDefinition).tag"
+                class="max-h-40 max-w-[26rem] overflow-auto rounded-xl border bg-muted/40 p-2 font-mono text-xs whitespace-pre-wrap break-all"
+              >{{ (item as ShortcodeDefinition).replacement }}</pre>
+            </div>
+            <span
+              v-else
+              class="text-muted-foreground"
+            >—</span>
           </template>
           <template #actions="{ row: item }">
             <span
@@ -297,6 +331,27 @@
               placeholder="[cta url=&quot;/docs&quot;]查看文档[/cta]"
             />
           </div>
+          <div class="flex flex-col gap-2">
+            <Label
+              for="shortcode-preview-post-id"
+              class="text-xs text-muted-foreground"
+            >
+              文章 ID（可选）
+            </Label>
+            <Input
+              id="shortcode-preview-post-id"
+              v-model="previewPostId"
+              type="number"
+              min="1"
+              step="1"
+              placeholder="例如 42"
+              class="max-w-40"
+            />
+            <p class="text-xs text-muted-foreground">
+              填写后预览以 <code class="font-mono">context.post_id</code> 传给 handler，
+              供依赖文章上下文的插件短代码取数；留空则不带上下文。
+            </p>
+          </div>
           <Button
             variant="outline"
             class="rounded-lg w-fit"
@@ -333,7 +388,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { apiFetch } from '~~/composables/useApi'
 import { extractApiErrorMessage } from '~~/lib/utils'
-import { AlertTriangle, Code2, Plus, RefreshCw, Trash2 } from '@lucide/vue'
+import { AlertTriangle, ChevronDown, ChevronUp, Code2, Plus, RefreshCw, Trash2 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import { Input } from '~~/components/ui/input'
@@ -351,7 +406,8 @@ const shortcodeColumns: Column[] = [
   { key: 'tag', title: '标签', class: 'w-32' },
   { key: 'source', title: '来源', class: 'w-32' },
   { key: 'has_paired', title: '配对', class: 'w-24 text-muted-foreground' },
-  { key: 'description', title: '描述', class: 'text-muted-foreground' }
+  { key: 'description', title: '描述', class: 'text-muted-foreground' },
+  { key: 'template_body', title: '模板', class: 'w-36' }
 ]
 
 interface ShortcodeDefinition {
@@ -360,6 +416,8 @@ interface ShortcodeDefinition {
   description: string | null
   plugin: string | null
   template: boolean
+  /** 模板原文：仅 KV 里的模板条目回显，插件/内建为 null */
+  replacement?: string | null
 }
 interface ShortcodeListData {
   count: number
@@ -390,9 +448,17 @@ const deleting = ref(false)
 const pendingDelete = ref<string | null>(null)
 
 const previewContent = ref('')
+const previewPostId = ref('')
 const previewing = ref(false)
 const previewResult = ref<ShortcodePreviewData | null>(null)
 const previewError = ref<string | null>(null)
+
+/** 注册表「查看模板」折叠体：同一时刻只展开一行，切行走局部状态即可 */
+const expandedTemplate = ref<string | null>(null)
+
+function toggleTemplate(tag: string) {
+  expandedTemplate.value = expandedTemplate.value === tag ? null : tag
+}
 
 const sortedItems = computed(() =>
   [...(list.value?.items ?? [])].sort((a, b) => a.tag.localeCompare(b.tag))
@@ -482,13 +548,25 @@ async function runPreview() {
     previewError.value = '请先填写要渲染的文本'
     return
   }
+  // 可选的文章上下文：填了就以 context.post_id 传给管理员预览口（唯一能带 ctx 的入口）
+  const rawId = previewPostId.value.trim()
+  let context: Record<string, number> | undefined
+  if (rawId) {
+    const postId = Number(rawId)
+    if (!Number.isInteger(postId) || postId <= 0) {
+      previewResult.value = null
+      previewError.value = '文章 ID 必须是正整数'
+      return
+    }
+    context = { post_id: postId }
+  }
   previewing.value = true
   previewError.value = null
   try {
-    const res = await apiFetch<Envelope<ShortcodePreviewData>>(
-      LIST_URL,
-      { method: 'POST', silentToast: true, body: { content: previewContent.value } }
-    )
+    const res = await apiFetch<Envelope<ShortcodePreviewData>>(LIST_URL, { method: 'POST',
+      silentToast: true,
+      body: { content: previewContent.value, ...(context ? { context } : {}) }
+    })
     previewResult.value = res.data
   } catch (err) {
     previewResult.value = null

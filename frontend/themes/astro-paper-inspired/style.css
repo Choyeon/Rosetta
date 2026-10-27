@@ -4,7 +4,7 @@ Theme URI: https://rosetta.dev/themes/astro-paper-inspired
 Author: Rosetta Themes
 Author URI: https://rosetta.dev
 Description: 880px 窄栏、衬线标题、1px 细线、直角、墨色实底按钮 — Astro Paper 式极简印刷风。覆盖全部前台页面（含登录/注册/错误页/toast），与默认主题及 Admin 零耦合。
-Version: 2.2.4
+Version: 2.2.5
 Requires Rosetta: >=1.0.0
 Tags: color:mono, layout:single-column, customizer, minimal-paper
 Text Domain: astro-paper-inspired
@@ -21,6 +21,10 @@ v2.2.3 版心 760 → 880（mods 上限 960 → 1200），长文单行不再局�
 不是合法 ARIA role，已在模板侧一并纠正）。
 v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)，
 皮肤层去最后一处绕过令牌的色值。
+v2.2.5 接入 Customizer 颜色 mods（primary_color / accent_color）：--primary/--ring/
+--accent 去 !important，让 useFrontendTheme 的 token 写入（inline style）获胜；
+--ap-font-body 移除未加载的 Inter（Google Fonts 只 preload Geist/JetBrains/Fraunces），
+改系统栈领衔；首页 posts_per_row=2 两列网格的 hairline 适配；补搜索页皮肤段。
 设计语言：单栏窄排印——衬线标题、hairline 细线、直角、
 无阴影无渐变、墨色实底主按钮。明暗模式全部消费 shadcn
 语义令牌（--foreground/--border/--card/--muted/--background），
@@ -53,7 +57,9 @@ v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)
   --ap-hairline: hsl(var(--border));
   --ap-font-serif: "Iowan Old Style", "Palatino Linotype", Georgia, "Songti SC",
     "Source Han Serif SC", "Noto Serif SC", "Times New Roman", serif;
-  --ap-font-body: "Inter", system-ui, -apple-system, "Segoe UI", "PingFang SC",
+  /* 正文栈不引用未加载的 webfont（nuxt.config 只 preload Geist/JetBrains/Fraunces，
+     均非本主题所需）——Inter 已移除，系统栈领衔，本地族名兜底，避免静默字体漂移。 */
+  --ap-font-body: system-ui, -apple-system, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
 
   /* 覆盖全局 display 字体令牌：.font-display / 标题统一转衬线 */
@@ -77,13 +83,16 @@ v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)
   --muted-foreground: 24 5% 44% !important;       /* #6d6a66，L=44% 为 AA 下限（纸底 4.66:1） */
   --secondary: 30 9% 94% !important;
   --secondary-foreground: 24 10% 10% !important;
-  --accent: 30 9% 93% !important;                 /* hover 底（导航激活态本文件已改透明） */
+  --accent: 30 9% 93%;                 /* hover 底（导航激活态本文件已改透明）；无 !important：mods 可覆写 */
   --accent-foreground: 24 10% 10% !important;
   --border: 30 9% 90% !important;                 /* #e7e5e4 hairline */
   --input: 30 9% 83% !important;                  /* #d6d3d1 */
-  --primary: 24 10% 10% !important;               /* 墨色实底主按钮 */
+  /* --primary/--ring 不带 !important：Customizer 的 primary_color 经
+     useFrontendTheme 以 inline style 写 --primary/--ring，inline 天然获胜；
+     未设置 mods 时本条仍压过 main.css 的 :root 基色（守卫选择器特异性更高）。 */
+  --primary: 24 10% 10%;               /* 墨色实底主按钮（theme mods 优先） */
   --primary-foreground: 30 10% 98% !important;
-  --ring: 24 9% 25% !important;
+  --ring: 24 9% 25%;
 }
 
 /* 暗色：暖墨反转（stone-950 底 / 纸白字），仍零硬编码组件色 */
@@ -99,13 +108,14 @@ v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)
   --muted-foreground: 24 5% 64% !important;       /* #a8a29e */
   --secondary: 24 8% 12% !important;
   --secondary-foreground: 30 10% 95% !important;
-  --accent: 24 8% 14% !important;
+  --accent: 24 8% 14%;                 /* 同亮色：可被 mods 覆写 */
   --accent-foreground: 30 10% 95% !important;
   --border: 20 6% 15% !important;                 /* #292524 */
   --input: 20 6% 20% !important;
-  --primary: 30 10% 95% !important;               /* 反相：纸白按钮 */
+  /* 反相：纸白按钮；与亮色块同口径，primary_color mod 优先（inline 获胜） */
+  --primary: 30 10% 95%;
   --primary-foreground: 24 10% 10% !important;
-  --ring: 24 5% 70% !important;
+  --ring: 24 5% 70%;
 }
 
 /* ---------------------------------------------------------
@@ -339,6 +349,20 @@ v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)
   .ap-post-item + .ap-post-item {
     border-top: 1px solid var(--ap-hairline);
     padding-top: 1.9rem;
+  }
+  /* posts_per_row=2 两列形态（index.vue minimal 分支给 ol 挂 Tailwind grid 工具类）：
+     "相邻项顶部分割线"按 DOM 邻接画，会把网格首行第二格拦腰切线——改为每项底部 hairline。 */
+  .ap-post-list.grid .ap-post-item + .ap-post-item {
+    border-top: 0;
+    padding-top: 0;
+  }
+  .ap-post-list.grid .ap-post-item {
+    border-bottom: 1px solid var(--ap-hairline);
+    padding-bottom: 1.9rem;
+  }
+  .ap-post-list.grid .ap-post-item:last-child {
+    border-bottom: 0;
+    padding-bottom: 0;
   }
 
   /* ===== 1.8 文章列表 PostCard → 竖排条目（单列 + hairline 分隔） ===== */
@@ -616,6 +640,34 @@ v2.2.4 Portal 阴影硬编码 hsl(222 47% 11%) 改为 hsl(var(--foreground)/.08)
   .ap-error-link {
     color: var(--ap-ink);
     font-weight: 600;
+  }
+
+  /* ===== 1.17 搜索页（pages/search.vue：header + 搜索框 Card + 结果竖排 + 分页） =====
+     结果列表与骨架（article.card-surface 的 .grid）已被 1.8 摊成单列 hairline 列表，
+     空态的 size-16 rounded-2xl 图标磁贴已被 1.2 隐藏；这里只补三处未覆盖的纸面细节。 */
+  /* 搜索框所在 Card：透明纸面 + hairline（圆角/阴影由 1.3/1.4 统一兜住）；
+     :has(input) 把它限定在搜索页这一张卡，不波及其它页头里的 Card */
+  main header > .card-surface:has(input) {
+    background: transparent;
+    box-shadow: none;
+  }
+  /* 结果计数行：小号灰字，与列表日期行同呼吸 */
+  main p[class*="text-muted-foreground"][class*="mb-6"] {
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+  }
+  /* 分页按钮组：紧凑间距、方角细线盒；激活页是 bg-primary 实底（0.1 已是墨色）。
+     该规则同样命中其它公开列表的分页导航——同一主题语言，属预期收益。 */
+  main nav[aria-label="pagination"] {
+    gap: 0.35rem;
+  }
+  main nav[aria-label="pagination"] button {
+    border-radius: 0;
+    box-shadow: none;
+    border: 1px solid var(--ap-hairline);
+  }
+  main nav[aria-label="pagination"] button:hover:not(:disabled) {
+    border-color: var(--ap-ink);
   }
 }
 

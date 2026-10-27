@@ -2,7 +2,7 @@
   导入导出页：文章数据的双向搬运——导出 ZIP（json/markdown 两通道）与上传导入（覆盖/跳过同 slug），
   外加整站备份/恢复（/admin/backup/info|full|restore，此前三条端点已实现但无任何 UI，
   而本页导入 Tab 的确认文案一直在建议管理员"先做一次全站备份"——建议一件没有入口的事）。
-  契约：草稿仅 /export/posts 在 scope≠published 且 include_drafts=true 时输出，markdown 导出固定只含已发布并忽略范围选择；
+  契约：草稿仅 /export/posts 在 scope≠published 且 include_drafts=true 时输出，markdown 导出固定只含已发布并忽略范围选择，其 lang 参数（zh/en/ja/zh_Hant）只影响取哪一语言变体、缺变体时后端回退 zh；
   skip_existing 查询参数只有 /import/posts 支持（markdown 通道不接收）；导入接口 HTTP 200 仍可能 success:false（业务失败），必须抛出走内联错误而非提示"导入完成"。
   全站恢复另有一条：上限 20MB（413）、非 .zip 一律 400，备份包只含数据库行，磁盘媒体文件本体不在包内。
 -->
@@ -77,6 +77,41 @@
             <p class="text-xs text-muted-foreground mt-2">
               后端当前仅提供以上两种导出通道；WordPress / Halo / Typecho 等第三方格式暂无导入导出实现，故不再列出，避免生成错误命名的文件。
             </p>
+            <div
+              v-if="exportForm.format === 'markdown'"
+              class="flex flex-col gap-2 mt-4"
+            >
+              <Label
+                for="export-lang"
+                class="text-sm"
+              >
+                Markdown 正文语言
+              </Label>
+              <Select
+                v-model="exportForm.lang"
+                class="max-w-md"
+              >
+                <SelectTrigger
+                  id="export-lang"
+                  class="rounded-xl"
+                >
+                  <SelectValue placeholder="选择导出语言" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="l in exportLangs"
+                    :key="l.key"
+                    :value="l.key"
+                  >
+                    {{ l.label }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                对应后端 <code class="font-mono">lang</code> 参数（<code class="font-mono">/admin/export/markdown?lang=…</code>）：
+                frontmatter 与正文取该语言变体，文章没有这个语言的变体时后端回退 zh。
+              </p>
+            </div>
           </div>
         </AdminCard>
 
@@ -999,8 +1034,18 @@ const exportForm = reactive({
   format: 'json' as 'json' | 'markdown',
   scope: 'published' as 'all' | 'published',
   fromDate: '',
-  toDate: ''
+  toDate: '',
+  // /admin/export/markdown 的 lang 参数（默认 zh）：决定 frontmatter 与正文取哪一语言变体
+  lang: 'zh' as 'zh' | 'en' | 'ja' | 'zh_Hant'
 })
+
+/** 与 backend/core/i18n.py 的 SUPPORTED_LANGUAGES 同集合（zh / en / ja / zh_Hant），不得增删 */
+const exportLangs = [
+  { key: 'zh', label: '简体中文（zh）' },
+  { key: 'en', label: 'English（en）' },
+  { key: 'ja', label: '日本語（ja）' },
+  { key: 'zh_Hant', label: '繁體中文（zh_Hant）' }
+] as const
 
 const todayStr = computed(() => toYMD())
 const startMax = computed(() => exportForm.toDate || todayStr.value)
@@ -1109,7 +1154,9 @@ async function handleExport() {
     if (exportForm.fromDate) query.from = exportForm.fromDate
     if (exportForm.toDate) query.to = exportForm.toDate
     if (isMd) {
-      query.lang = 'zh'
+      // 后端 export_markdown(lang: str = "zh") 真实消费该参数：
+      // title/content/category/tag 名称都按 lang 变体取值，缺失时回退 zh。
+      query.lang = exportForm.lang
     } else {
       query.scope = exportForm.scope
       query.include_drafts = exportForm.scope === 'all'

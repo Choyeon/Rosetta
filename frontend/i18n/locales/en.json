@@ -232,6 +232,7 @@
       "fColor": "Color"
     },
     "actions": {
+      "retry": "Retry",
       "refresh": "Refresh",
       "cancel": "Cancel",
       "save": "Save",
@@ -241,6 +242,10 @@
       "processing": "Processing..."
     },
     "plugins": {
+      "loadFailed": "Failed to load plugins",
+      "loadFailedTitle": "Unable to load plugins",
+      "marketLoadFailed": "Failed to load the plugin market",
+      "marketLoadFailedTitle": "Unable to load the plugin market",
       "title": "Plugins",
       "desc": "Install, activate, configure and upgrade your Rosetta plugins",
       "searchPlaceholder": "Search plugins by name / description…",

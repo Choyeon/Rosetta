@@ -5,7 +5,7 @@
   mergedMenu 合并插件组时不得修改 adminMenu 原对象（展示期派生，非注册期突变）。
 -->
 <script setup lang="ts">
-import { ChevronRight, Globe, Puzzle } from '@lucide/vue'
+import { Globe, Puzzle } from '@lucide/vue'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/tooltip'
 import { Badge } from '~~/components/ui/badge'
@@ -209,41 +209,27 @@ function resolveIcon(item: { icon?: unknown }) {
                 <TooltipTrigger as-child>
                   <NuxtLink
                     :to="item.path"
-                    class="sb-item w-full group flex items-center gap-2.5 px-2.5 h-[38px] rounded-[11px] relative isolate transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform"
+                    class="sb-item w-full group flex items-center gap-2.5 px-2.5 h-[38px] rounded-lg text-sm font-medium transition-all"
                     :class="[
                       item.active
-                        ? 'sb-item-active text-[hsl(var(--sidebar-active-foreground,var(--primary)))] font-semibold'
-                        : 'sb-item-idle text-sidebar-foreground/75 hover:text-sidebar-foreground'
+                        ? 'bg-primary text-primary-foreground shadow-md'
+                        : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                      railCollapsed ? 'justify-center px-0' : ''
                     ]"
                     :aria-current="item.active ? 'page' : undefined"
                     :aria-label="item.label"
                     :title="railCollapsed ? item.label : undefined"
                   >
-                    <span
-                      class="absolute inset-0 rounded-[11px] -z-10 transition-all duration-300 ease-[cubic-bezier(0.22,1,0.36,1)]"
-                      :class="[
-                        item.active
-                          ? 'sb-bg-active'
-                          : 'opacity-0 group-hover:opacity-100 sb-bg-hover'
-                      ]"
-                      aria-hidden="true"
-                    />
                     <component
                       :is="resolveIcon(item)"
-                      class="shrink-0 size-[18px] transition-colors duration-300"
-                      :class="item.active ? 'sb-icon-active' : 'text-muted-foreground group-hover:text-sidebar-foreground'"
+                      class="shrink-0 size-[18px]"
                     />
                     <span
                       v-if="!railCollapsed"
-                      class="flex-1 min-w-0 text-[13.5px] truncate text-left tracking-[0.01em]"
+                      class="flex-1 min-w-0 truncate text-left tracking-[0.01em]"
                     >
                       {{ item.label }}
                     </span>
-                    <ChevronRight
-                      v-if="item.active && !railCollapsed"
-                      class="shrink-0 size-3.5 opacity-70 sb-chevron"
-                      aria-hidden="true"
-                    />
                     <Badge
                       v-if="!railCollapsed && item.badge"
                       variant="outline"
@@ -294,42 +280,5 @@ function resolveIcon(item: { icon?: unknown }) {
 .fade-collapsed-leave-to {
   opacity: 0;
   transform: translateX(-6px);
-}
-
-.sb-bg-active {
-  background: hsl(var(--primary) / 0.12);
-  box-shadow:
-    inset 0 0 0 1px hsl(var(--primary) / 0.22);
-}
-.sb-bg-hover {
-  background: hsl(var(--sidebar-accent, var(--accent)) / 0.9);
-  box-shadow:
-    inset 0 0 0 1px hsl(var(--foreground) / 0.05);
-}
-/*
- * 暗色判断必须走 html.dark（全站主题真源），不能用 prefers-color-scheme：
- * 用户手动切暗色而系统是亮色时，后者仍会渲染亮态激活底色。
- * :global(html.dark) 让选择器保持非 scoped 前缀，当前 scoped 类仍然被正确编译。
- */
-:global(html.dark) .sb-bg-active {
-  background: hsl(var(--primary) / 0.18);
-  box-shadow:
-    inset 0 0 0 1px hsl(var(--primary) / 0.30);
-}
-:global(html.dark) .sb-bg-hover {
-  background: hsl(var(--sidebar-accent) / 0.85);
-  box-shadow:
-    inset 0 0 0 1px hsl(var(--foreground) / 0.06);
-}
-.sb-item-idle:hover,
-.sb-item-active {
-  transform: none;
-}
-.sb-icon-active {
-  color: hsl(var(--primary));
-}
-.sb-chevron {
-  color: hsl(var(--primary) / 0.7);
-  opacity: 0.7;
 }
 </style>

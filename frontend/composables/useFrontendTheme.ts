@@ -17,7 +17,7 @@
  */
 import { apiFetch } from '~~/composables/useApi'
 import { hexToHsl } from '~~/lib/utils'
-import { bustThemeAssetCache, isThemeVisualExcluded, KNOWN_ROSETTA_THEMES, resolveThemeAssetPath } from '~~/lib/rosetta-themes'
+import { bustThemeAssetCache, clampThemeWidth, isThemeVisualExcluded, KNOWN_ROSETTA_THEMES, resolveThemeAssetPath } from '~~/lib/rosetta-themes'
 
 type JsonObject = Record<string, unknown>
 
@@ -100,8 +100,11 @@ function mergeMods(mods: unknown): ThemeModsRuntime {
     const v = raw[k]
     switch (k) {
       case 'layout_width': {
-        const n = Number(v)
-        if (!Number.isNaN(n) && n >= 640 && n <= 1600) out.layout_width = Math.round(n)
+        // 区间与默认值单源在 lib/rosetta-themes::clampThemeWidth（640–1200，兜底 880）。
+        // 键缺失 / 空值时保留 MODS_DEFAULTS（editorial 语义的 1200），不被动钳到 880；
+        // 越界值由 clamp 贴边收敛，不再整条退回默认。
+        if (v !== null && v !== undefined && v !== '' && Number.isFinite(Number(v)))
+          out.layout_width = clampThemeWidth(v)
         break
       }
       case 'posts_per_row': {

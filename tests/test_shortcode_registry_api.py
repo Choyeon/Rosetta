@@ -86,6 +86,27 @@ class TestTemplateHandlerEngineConvention:
         assert resp.json()["data"]["rendered"] == '<a href="/docs"></a>'
 
     @pytest.mark.asyncio
+    async def test_admin_list_echoes_template_replacement_body(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        """管理列表必须把模板原文带回（数据源是 KV，注册表内存对象不持有 replacement）；
+        后台「查看模板」折叠体的唯一字段就是列表响应里的 replacement。"""
+        tpl = '<a class="cta" href="{url}">{content}</a>'
+        await client.post(REGISTER_PATH, headers=staff_headers, json={"tag": "echo", "replacement": tpl})
+
+        resp = await client.get(LIST_PATH, headers=staff_headers)
+        item = next(i for i in resp.json()["data"]["items"] if i["tag"] == "echo")
+        assert item["template"] is True
+        assert item["replacement"] == tpl
+
+        # 注册接口的同步响应（同一列表模型）也自带该字段，前端无需二次 GET
+        reg = await client.post(
+            REGISTER_PATH, headers=staff_headers, json={"tag": "echo2", "replacement": "B"}
+        )
+        echo2 = next(i for i in reg.json()["data"]["items"] if i["tag"] == "echo2")
+        assert echo2["replacement"] == "B"
+
+    @pytest.mark.asyncio
     async def test_engine_reserved_kwargs_are_not_interpolated(
         self, client: AsyncClient, staff_headers: dict
     ):
@@ -178,6 +199,8 @@ class TestPersistenceAcrossWorkers:
         item = next(i for i in body["items"] if i["tag"] == "kept")
         assert item["template"] is True
         assert item["plugin"] is None
+        # 列表必须回显模板原文：后台「查看模板」靠它，注册表内存对象不持有 replacement
+        assert item["replacement"] == "K"
 
         # 重放后渲染照常
         rendered = await client.post(RENDER_PATH, json={"content": "[kept /]"})
@@ -300,6 +323,8 @@ class TestPluginOwnedShortcodes:
         owned = next(i for i in items if i["tag"] == "owned")
         assert owned["plugin"] == "probe-plugin"
         assert owned["template"] is False
+        # 插件/内建条目没有 KV 模板可回显，replacement 必须为 null 而不是猜测值
+        assert owned["replacement"] is None
 
     @pytest.mark.asyncio
     async def test_replay_does_not_override_plugin_shortcode(

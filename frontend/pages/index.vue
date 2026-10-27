@@ -49,7 +49,10 @@
         </ul>
         <ol
           v-else
-          class="ap-post-list space-y-8 md:space-y-9"
+          class="ap-post-list"
+          :class="apPostsPerRow === 2
+            ? 'grid grid-cols-1 gap-8 md:grid-cols-2 md:gap-9'
+            : 'space-y-8 md:space-y-9'"
         >
           <li
             v-for="post in allDisplayPosts"
@@ -921,7 +924,7 @@ import { useAPI } from '~~/composables/useApi'
 import { useSiteVersions } from '~~/composables/useSiteVersions'
 import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
-import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { clampThemeWidth, MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { toYMD } from '~~/lib/datetime'
 import { handlePostCoverError } from '~~/lib/post-cover'
 import { cn, formatCount } from '~~/lib/utils'
@@ -968,14 +971,10 @@ const isEditorialTheme = computed<boolean>(() => {
 })
 
 // ===== Minimal Theme (AstroPaper-like): 计算属性 + 辅助函数 =====
-// 宽度：minimal 用更窄的 720~780px 窄栏；其他主题走 appearance.page_width_px
-const minimalNarrowWidth = 760
+// 宽度：minimal 走 lib/rosetta-themes::clampThemeWidth 单源（640–1200，非法值兜底 880，
+// 与 astro 主题 mods_schema 与 style.css --ap-layout 同一口径）；其他主题走 appearance.page_width_px
 const layoutWidthPx = computed(() => {
-  if (isMinimalTheme.value) {
-    const modW = Number(ft.mods.value.layout_width)
-    if (!Number.isNaN(modW) && modW >= 640 && modW <= 1100) return Math.round(modW)
-    return minimalNarrowWidth
-  }
+  if (isMinimalTheme.value) return clampThemeWidth(ft.mods.value.layout_width)
   return site.appearance.value.page_width_px ?? 1200
 })
 // 横向留白口径：`.container` 的基座 padding 由 main.css 兜底；Editorial 只通过 inline
@@ -999,6 +998,11 @@ const containerMaxStyle = computed(() => {
 const sectionTightY = computed(() => isEditorialTheme.value)
 
 const apFeaturedLabel = computed(() => (t?.('home.latestPosts')?.toString?.() || 'Posts'))
+
+// astro 的 posts_per_row 枚举是 [1,2]：仅 2 走两列网格（md+ 断点），其余值（含
+// MODS_DEFAULTS 的 3）一律回落到竖排单列。mods 来自已 await 的 ensureLoaded，
+// SSR 与 hydrate 两端同值，不引入水合分支。
+const apPostsPerRow = computed(() => (Number(ft.mods.value.posts_per_row) === 2 ? 2 : 1))
 
 function apFormatDate(input: string | Date | null | undefined): string {
   if (!input) return ''

@@ -108,6 +108,13 @@ class ShortcodeDefinition(BaseModel):
         False,
         description="是否为 API 注册的字符串模板（True 才可经本接口注销）",
     )
+    replacement: str | None = Field(
+        None,
+        description=(
+            "模板原文（含 {content} / {属性名} 插值占位）。仅对 SiteConfig KV 里的模板条目回显，"
+            "插件/内建短代码为 null——它们的实现在插件代码里，KV 中不存在。"
+        ),
+    )
 
 
 class ShortcodeListData(BaseModel):
@@ -207,7 +214,15 @@ async def _reconcile_and_list(db: DB) -> tuple[list[ShortcodeDefinition], int]:
 
     await reconcile_shortcode_templates(db)
     templates = await get_shortcode_templates(db)
-    return [_info_to_def(i) for i in list_shortcodes()], len(templates)
+    items = [_info_to_def(i) for i in list_shortcodes()]
+    # 模板正文只存在 SiteConfig KV 里（注册表内存对象刻意不持有 replacement），
+    # 所以列表回显时按 tag 从 KV 补齐；插件/内建条目保持 None。
+    for item in items:
+        if item.template:
+            spec = templates.get(item.tag)
+            if spec is not None:
+                item.replacement = spec.get("replacement")
+    return items, len(templates)
 
 
 # ==================== 公开接口 ====================
@@ -244,6 +259,8 @@ async def render_shortcodes(
     description=(
         "需 CurrentStaff。返回本进程注册表内的所有短代码及元数据"
         "（``plugin`` = 归属插件 slug，``template`` = 可经本接口管理的模板）。"
+        "模板条目额外回显 ``replacement`` 模板原文（来自 SiteConfig KV），"
+        "插件/内建条目该字段为 null。"
         "列表前会先把 SiteConfig KV 里的模板重放进本进程注册表，"
         "因此多 worker 下也能看到其他进程刚注册的那条。"
     ),
