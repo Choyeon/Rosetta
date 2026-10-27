@@ -2465,15 +2465,11 @@ async def get_archive_by_year(
         if month not in month_map:
             month_map[month] = []
 
-        title = post.title.get(language, post.title.get("zh", "")) if post.title else ""
+        title = get_i18n_value(post.title, language)
 
         category_data = None
         if post.category:
-            category_name = (
-                post.category.name.get(language, post.category.name.get("zh", ""))
-                if post.category.name
-                else ""
-            )
+            category_name = get_i18n_value(post.category.name, language)
             category_data = {
                 "id": post.category.id,
                 "name": category_name,
@@ -2573,15 +2569,11 @@ async def get_archive_by_month(
     # 转换数据
     posts_data = []
     for post in posts:
-        title = post.title.get(language, post.title.get("zh", "")) if post.title else ""
+        title = get_i18n_value(post.title, language)
 
         category_data = None
         if post.category:
-            category_name = (
-                post.category.name.get(language, post.category.name.get("zh", ""))
-                if post.category.name
-                else ""
-            )
+            category_name = get_i18n_value(post.category.name, language)
             category_data = {
                 "id": post.category.id,
                 "name": category_name,

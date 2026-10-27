@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import String, and_, cast, func, or_, select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.i18n import get_i18n_value
 from backend.core.partial_update import apply_partial_update
 from backend.models.blog import Category, Post
 from backend.models.post_series import PostSeries
@@ -409,7 +410,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         for r in rows:
             if r.id in seen:
                 continue
-            title = r.title.get("zh") or r.title.get("en") or next(iter(r.title.values()), "")
+            title = get_i18n_value(r.title, "zh")
             results.append(SeriesCompleteItem(id=r.id, title=title, slug=r.slug))
             seen.add(r.id)
             if len(results) >= 8:

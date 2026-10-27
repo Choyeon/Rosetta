@@ -15,6 +15,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+from backend.core.i18n import get_i18n_value
 
 if TYPE_CHECKING:
     from backend.models.blog import Post
@@ -69,5 +70,5 @@ class PostSeries(Base):
     )
 
     def __repr__(self) -> str:
-        title = self.title.get("zh", "Untitled") if self.title else "Untitled"
+        title = get_i18n_value(self.title, "zh") or "Untitled"
         return f"<PostSeries(id={self.id}, title='{title}')>"

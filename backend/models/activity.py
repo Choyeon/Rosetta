@@ -12,6 +12,7 @@ from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String, fun
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+from backend.core.i18n import get_i18n_value
 
 if TYPE_CHECKING:
     from backend.models.user import User
@@ -51,5 +52,5 @@ class Activity(Base):
     )
 
     def __repr__(self) -> str:
-        content = self.content.get("zh", "Untitled") if self.content else "Untitled"
+        content = get_i18n_value(self.content, "zh") or "Untitled"
         return f"<Activity(id={self.id}, type='{self.type}', content='{content[:30]}...')>"

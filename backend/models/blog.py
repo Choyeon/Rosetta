@@ -30,6 +30,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+from backend.core.i18n import get_i18n_value
 from backend.core.tenant import TenantMixin
 
 # 按连接方言在 DDL 编译期决定 JSON/JSONB：OOBE 期进程以 SQLite 配置启动、安装时切到
@@ -110,7 +111,7 @@ class Category(Base, TenantMixin):
     )
 
     def __repr__(self) -> str:
-        name = self.name.get("zh", "Unnamed") if self.name else "Unnamed"
+        name = get_i18n_value(self.name, "zh") or "Unnamed"
         return f"<Category(id={self.id}, name='{name}')>"
 
 
@@ -143,7 +144,7 @@ class Tag(Base, TenantMixin):
     posts: Mapped[list["Post"]] = relationship("Post", secondary=post_tags, back_populates="tags")
 
     def __repr__(self) -> str:
-        name = self.name.get("zh", "Unnamed") if self.name else "Unnamed"
+        name = get_i18n_value(self.name, "zh") or "Unnamed"
         return f"<Tag(id={self.id}, name='{name}')>"
 
 
@@ -257,10 +258,9 @@ class Post(Base, TenantMixin):
     )
 
     def __repr__(self) -> str:
-        # title 是 JSON 列，历史/导入数据里可能是裸字符串（口径见 core/i18n.py::get_i18n_value）。
+        # JSON 列历史行可能是裸字符串（口径见 core/i18n.py::get_i18n_value）；
         # repr 会出现在日志与断言输出里，这里踩一次等于把"记录一条日志"变成 500。
-        raw = self.title
-        title = raw if isinstance(raw, str) else (raw or {}).get("zh", "Untitled")
+        title = get_i18n_value(self.title, "zh") or "Untitled"
         return f"<Post(id={self.id}, title='{title}')>"
 
 

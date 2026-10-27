@@ -644,8 +644,18 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
   汇聚点是 `core/i18n.py::get_i18n_value`（60+ 个读取口共用），收口前只会 `data.get(...)`，
   于是**一条脏数据就让文章详情、相邻文章、公开列表整口 500**（`Post.__repr__` 同型：它出现在日志与
   断言输出里，踩一次等于把"记一条日志"变成 500）。口径：`isinstance(data, str)` 原样返回＝"整段当默认语言"，
-  而不是把接口打挂。回归 `tests/test_i18n_value_shapes.py`（纯函数三形 + 详情/相邻/列表三口；反证过：
-  去掉 isinstance 分支会红 4 条）。
+  而不是把接口打挂。
+  **但光修汇聚点不够**——第一轮收口后复查，仍有七处绕过 helper 自己 `col.get(lang, col.get("zh"))`：
+  归档年/月两条公开口（`api/blog.py`，前台 SSR 页直接打）、`PostRepository` 的归档映射、
+  Markdown 导出（title/content/category/tags 四列一次摊进 frontmatter）、系列 autocomplete、
+  `seo.py` 的 `articleSection`、以及七个模型 `__repr__`。口径是**新增读取面一律走 `get_i18n_value`，
+  不要在调用点再写一遍 isinstance**；`seo.py::_pick` 是本文件同语义的等价 helper，可继续用。
+  回归 `tests/test_i18n_value_shapes.py`（纯函数三形 + 详情/相邻/列表/归档年/归档月/SEO schema/
+  系列 autocomplete/Markdown 导出八口 + repr 两例；反证过：去掉 isinstance 分支红 4 条、
+  回退这七处红 6 条）。造已发布的历史行时 `published_at` 必须用 **naive** datetime——归档口按
+  `extract("year", published_at)` 过滤，SQLite 把 aware 值存成带 `+00:00` 后缀的字符串，
+  `strftime('%Y')` 取不出年份，这条会被 WHERE 静默滤掉、用例假绿；同理 `post.tags = [...]` 只能在构造时传，
+  commit 之后赋值会先懒加载旧集合而异步会话属性懒加载就是 `MissingGreenlet`。
 - **SQLite 上"发布时间已到今天"的谓词会静默筛空列表**：匿名列表口用 `Post.published_at <= func.now()`，
   而 SQLite 把 aware datetime 存成带 `+00:00` 后缀的字符串、与 `CURRENT_TIMESTAMP` 做**字符串**比较，
   刚写入的行一律判成"在未来"。测试造已发布行时把 `published_at` 留 `NULL`（谓词是 `IS NULL OR <= now()`），

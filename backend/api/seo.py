@@ -730,7 +730,7 @@ async def get_schema_data(
             }
 
             if category:
-                schema["articleSection"] = category.name.get("zh", "") if category.name else ""
+                schema["articleSection"] = _pick(category.name)
 
             return schema
 

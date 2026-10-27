@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
 from backend.core.concurrency import concurrent_query
+from backend.core.i18n import get_i18n_value
 from backend.models.blog import Category, Comment, Post, Tag, post_likes
 from backend.repositories.base import BaseRepository, PaginationResult
 
@@ -765,16 +766,12 @@ class PostRepository(BaseRepository[Post]):
 
             if len(archive_map[key]) < limit_per_month:
                 # 获取标题
-                title = post_title.get(lang, post_title.get("zh", "")) if post_title else ""
+                title = get_i18n_value(post_title, lang)
 
                 # 获取分类信息
                 category_data = None
                 if category_id is not None:
-                    category_name = (
-                        category_name_i18n.get(lang, category_name_i18n.get("zh", ""))
-                        if category_name_i18n
-                        else ""
-                    )
+                    category_name = get_i18n_value(category_name_i18n, lang)
                     category_data = {
                         "id": category_id,
                         "name": category_name,

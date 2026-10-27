@@ -22,6 +22,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.core.database import Base
+from backend.core.i18n import get_i18n_value
 from backend.core.tenant import TenantMixin
 
 if TYPE_CHECKING:
@@ -56,7 +57,7 @@ class Page(Base):
     )
 
     def __repr__(self) -> str:
-        title = self.title.get("zh", "Untitled") if self.title else "Untitled"
+        title = get_i18n_value(self.title, "zh") or "Untitled"
         return f"<Page(id={self.id}, title='{title}')>"
 
 
@@ -92,7 +93,7 @@ class Navigation(Base):
     )
 
     def __repr__(self) -> str:
-        title = self.title.get("zh", "Untitled") if self.title else "Untitled"
+        title = get_i18n_value(self.title, "zh") or "Untitled"
         return f"<Navigation(id={self.id}, title='{title}')>"
 
 
@@ -125,7 +126,7 @@ class FriendLink(Base):
     )
 
     def __repr__(self) -> str:
-        name = self.name.get("zh", "Unnamed") if self.name else "Unnamed"
+        name = get_i18n_value(self.name, "zh") or "Unnamed"
         return f"<FriendLink(id={self.id}, name='{name}', status='{self.status}')>"
 
 
@@ -149,7 +150,7 @@ class SearchPlaceholder(Base):
     )
 
     def __repr__(self) -> str:
-        text = self.text.get("zh", "Untitled") if self.text else "Untitled"
+        text = get_i18n_value(self.text, "zh") or "Untitled"
         return f"<SearchPlaceholder(id={self.id}, text='{text}')>"
 
 
@@ -260,7 +261,7 @@ class Notification(Base):
     )
 
     def __repr__(self) -> str:
-        title = self.title.get("zh", "Untitled") if self.title else "Untitled"
+        title = get_i18n_value(self.title, "zh") or "Untitled"
         return f"<Notification(id={self.id}, title='{title}')>"
 
 

@@ -19,6 +19,7 @@ from sqlalchemy.orm import selectinload
 from backend.api.settings_groups import SETTING_GROUPS, _check_numeric_bounds
 from backend.core.auth import DB, CurrentStaff
 from backend.core.cache import invalidate_cache
+from backend.core.i18n import get_i18n_value
 from backend.core.logging_middleware import log_operation
 from backend.models.blog import Category, Post, Tag
 from backend.schemas import raw_content_response
@@ -329,8 +330,8 @@ async def export_markdown(
     md_entries: list[tuple[str, object]] = []
     for post in posts:
         # 获取标题和内容
-        title = post.title.get(lang, post.title.get("zh", "")) if post.title else ""
-        content = post.content.get(lang, post.content.get("zh", "")) if post.content else ""
+        title = get_i18n_value(post.title, lang)
+        content = get_i18n_value(post.content, lang)
 
         # 构建 frontmatter
         frontmatter = "---\n"
@@ -338,16 +339,10 @@ async def export_markdown(
         frontmatter += f"slug: {post.slug}\n"
         frontmatter += f"date: {post.published_at.isoformat() if post.published_at else ''}\n"
         if post.category:
-            cat_name = (
-                post.category.name.get(lang, post.category.name.get("zh", ""))
-                if post.category.name
-                else ""
-            )
+            cat_name = get_i18n_value(post.category.name, lang)
             frontmatter += f"category: {cat_name}\n"
         if post.tags:
-            tag_names = [
-                t.name.get(lang, t.name.get("zh", "")) if t.name else "" for t in post.tags
-            ]
+            tag_names = [get_i18n_value(t.name, lang) for t in post.tags]
             frontmatter += f"tags: [{', '.join(tag_names)}]\n"
         if post.cover_image:
             frontmatter += f"cover: {post.cover_image}\n"
