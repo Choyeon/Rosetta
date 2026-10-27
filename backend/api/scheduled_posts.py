@@ -10,8 +10,12 @@
     DELETE /api/admin/posts/{post_id}/schedule  取消定时发布
 
 定时发布模型：
-- Post.status == "published" 且 Post.scheduled_at 为未来时间表示处于"定时等待"状态
-- publish_due_posts(db) 将 scheduled_at <= now 的文章真正发布（写入 published_at 并清空 scheduled_at）
+- ``status`` 为 ``scheduled``（本模块 PUT 口写的等待态）或 ``published``（历史数据），
+  且 ``scheduled_at`` 为未来时间，表示"定时等待"。
+  对匿名方是否可见由 ``services/post_access.py::post_is_publicly_visible`` 单独判定
+  （看的是 published_at 未到 + 状态不是 published），所以这里的状态字段只决定"谁来推进它"。
+- publish_due_posts(db) 把 scheduled_at <= now 的文章真正发布：status=published、
+  写入 published_at 并清空 scheduled_at。main.py 的 60s 扫描循环复用同一个函数。
 """
 
 from datetime import datetime
@@ -46,8 +50,14 @@ async def publish_due_posts(db) -> int:
     """
     发布到期的定时文章
 
-    查询 status=published 且 scheduled_at <= now 的文章，
-    将其 published_at 设置为计划时间（真正生效），并清空 scheduled_at。
+    查询 ``status`` 为 ``scheduled``（本接口写入的等待状态）或 ``published``（历史数据），
+    且 ``scheduled_at <= now`` 的文章，把状态定为 published、写入 published_at 并清空
+    scheduled_at。
+
+    两条状态都要捞：只捞 published 的话，本文件 PUT 口写进去的 scheduled 行永远不会被这个
+    函数推进——`GET /admin/posts/scheduled` 却对外承诺"查询前会先触发到期文章的发布，
+    列表里不会再包含已到点的文章"，于是待发布队列会一直挂着早就到点的文章，
+    直到 main.py 的 60s 扫描循环（或该循环没起来时，永远）。
 
     Args:
         db: 数据库会话
@@ -57,7 +67,7 @@ async def publish_due_posts(db) -> int:
     """
     now = datetime.now(UTC)
     query = select(Post).where(
-        Post.status == "published",
+        Post.status.in_(("scheduled", "published")),
         Post.scheduled_at.is_not(None),
         Post.scheduled_at <= now,
     )
@@ -69,6 +79,7 @@ async def publish_due_posts(db) -> int:
         # 仅在尚未设置 published_at 时写入，避免覆盖已发布文章的时间
         if post.published_at is None:
             post.published_at = post.scheduled_at
+        post.status = "published"
         post.scheduled_at = None
         count += 1
 
@@ -229,7 +240,11 @@ async def schedule_post(
     "/admin/posts/{post_id}/schedule",
     response_model=BaseResponse,
     summary="取消定时发布",
-    description="取消文章的定时发布计划（清空 scheduled_at），不影响文章当前状态。",
+    description=(
+        "清空文章的 scheduled_at。状态为 scheduled 的行会同时回到 draft——"
+        "只清时间不改状态会造出「定时等待但没有计划时间」的死状态：扫描循环只捞 "
+        "scheduled_at 非空的行，这种文章既不会被发布，也不再出现在待发布队列里。"
+    ),
 )
 async def cancel_schedule(
     post_id: int,
@@ -246,7 +261,21 @@ async def cancel_schedule(
             detail="文章不存在",
         )
 
+    was_scheduled = post.status == "scheduled"
     post.scheduled_at = None
+    if was_scheduled:
+        # 回到草稿：既不会被扫描器发布，也不会以"等待中"的形态卡在列表/编辑页里。
+        post.status = "draft"
     await db.flush()
 
-    return BaseResponse(message="定时发布已取消")
+    if not was_scheduled:
+        # 原本就是 published（历史数据 / 立即发布后残留的计划时间）：取消计划时间等于
+        # 这篇对匿名方从"未到点"变成"可见"，读侧三份缓存必须一起清，否则 TTL 内
+        # 首页/列表/详情页仍按不可见返回（与 PUT 口立即发布的分支同口径）。
+        await invalidate_cache("posts")
+        await invalidate_post_detail_cache(post.slug)
+        await invalidate_post_aggregate_caches()
+
+    return BaseResponse(
+        message="定时发布已取消，文章已回到草稿" if was_scheduled else "定时发布已取消"
+    )

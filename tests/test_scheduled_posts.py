@@ -118,7 +118,11 @@ async def test_past_time_publishes_immediately(client, db_session, admin_user, a
 
 @pytest.mark.asyncio
 async def test_publish_due_posts_handles_scheduled_rows(db_session, admin_user):
-    """到期扫描必须把 scheduled 行推进成 published，并清空 scheduled_at。"""
+    """到期扫描必须把 scheduled 行推进成 published，并清空 scheduled_at。
+
+    原先这条写成 `if published: assert …`——publish_due_posts 只捞 status=="published" 时
+    返回 0，断言整块被跳过，用例永远绿却什么都没测。判据必须是无条件断言。
+    """
     due = await _make_draft(db_session, admin_user)
     due.slug = "schedule-due-post"
     due.status = "scheduled"
@@ -128,8 +132,94 @@ async def test_publish_due_posts_handles_scheduled_rows(db_session, admin_user):
     published = await publish_due_posts(db_session)
     await db_session.commit()
 
+    assert published == 1, "到期的 scheduled 行没被推进——GET 口承诺的'先到点先发布'是空话"
     refreshed = (await db_session.execute(select(Post).where(Post.id == due.id))).scalar_one()
-    if published:
-        assert refreshed.status == "published"
-        assert refreshed.scheduled_at is None
-        assert refreshed.published_at is not None
+    assert refreshed.status == "published"
+    assert refreshed.scheduled_at is None
+    assert refreshed.published_at is not None
+
+
+@pytest.mark.asyncio
+async def test_due_scheduled_post_leaves_the_queue(client, db_session, admin_user, admin_headers):
+    """到点的文章不得继续躺在待发布队列里（列表口的承诺与扫描器必须同轨）。"""
+    post = await _make_draft(db_session, admin_user)
+    post.slug = "schedule-due-list"
+    post.status = "scheduled"
+    post.scheduled_at = datetime.now(UTC) - timedelta(minutes=1)
+    await db_session.commit()
+
+    listed = await client.get("/api/admin/posts/scheduled", headers=admin_headers)
+    assert listed.status_code == 200
+    assert not any(row["id"] == post.id for row in listed.json()), "已到点的定时文章仍在队列里"
+
+    await db_session.refresh(post)
+    assert post.status == "published"
+
+
+@pytest.mark.asyncio
+async def test_cancel_schedule_of_scheduled_post_does_not_create_limbo(
+    client, db_session, admin_user, admin_headers
+):
+    """取消 scheduled 行的计划时间必须同时回到 draft。
+
+    只清 scheduled_at 会留下"scheduled 状态 + 无计划时间"：扫描循环只捞 scheduled_at
+    非空的行，于是这篇文章既不会被发布，也不再出现在待发布队列里——后台显示"等待发布"，
+    前台永远等不到。
+    """
+    post = await _make_draft(db_session, admin_user)
+    fire_at = datetime.now(UTC) + timedelta(days=3)
+    await client.put(
+        f"/api/admin/posts/{post.id}/schedule",
+        json={"scheduled_at": fire_at.isoformat()},
+        headers=admin_headers,
+    )
+
+    cancelled = await client.delete(f"/api/admin/posts/{post.id}/schedule", headers=admin_headers)
+    assert cancelled.status_code == 200, cancelled.text
+    assert "草稿" in cancelled.json()["message"], "提示语必须说清文章回到了草稿，否则作者以为还会发"
+
+    await db_session.refresh(post)
+    assert post.scheduled_at is None
+    assert post.status == "draft", "scheduled 且无计划时间 = 谁也不会推进它的死状态"
+
+    # 也不会继续占着待发布队列
+    listed = await client.get("/api/admin/posts/scheduled", headers=admin_headers)
+    assert not any(row["id"] == post.id for row in listed.json())
+
+
+@pytest.mark.asyncio
+async def test_cancel_schedule_of_published_post_clears_read_caches(
+    client, db_session, admin_user, admin_headers, monkeypatch
+):
+    """published 行取消计划时间＝首次对匿名方可见，必须清读侧缓存（与立即发布同口径）。"""
+    from backend.api import scheduled_posts as sp
+
+    post = await _make_draft(db_session, admin_user)
+    post.slug = "schedule-cancel-published"
+    post.status = "published"
+    post.scheduled_at = datetime.now(UTC) + timedelta(days=1)
+    await db_session.commit()
+
+    calls: list[str] = []
+    monkeypatch.setattr(sp, "invalidate_cache", _spy(calls, "invalidate_cache"))
+    monkeypatch.setattr(
+        sp, "invalidate_post_detail_cache", _spy(calls, "invalidate_post_detail_cache")
+    )
+    monkeypatch.setattr(
+        sp, "invalidate_post_aggregate_caches", _spy(calls, "invalidate_post_aggregate_caches")
+    )
+
+    cancelled = await client.delete(f"/api/admin/posts/{post.id}/schedule", headers=admin_headers)
+    assert cancelled.status_code == 200, cancelled.text
+
+    assert "invalidate_post_detail_cache" in calls, "详情缓存不清 = TTL 内匿名方仍拿不到正文"
+    assert "invalidate_post_aggregate_caches" in calls, "聚合+前端页面缓存不清 = 首页迟迟不出现这篇"
+
+
+def _spy(sink: list[str], name: str):
+    """把三个失效函数换成记录调用的异步桩（不真去动缓存）。"""
+
+    async def _inner(*_args, **_kwargs):
+        sink.append(name)
+
+    return _inner

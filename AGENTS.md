@@ -597,6 +597,11 @@ pnpm test                     # Vitest 单测（tests/unit/ 82 个 spec；1384 �
 连接/事件循环弄脏了"。看到新的挂点先按这条流程判（单点跑），别去改被测代码。
 修它要重排相关文件的 fixture 作用域，是独立工程，勿与功能改动混做。
 
+**本机（Windows）全量基线会漂移，登记噪声要实测两轮**：2026-10-27 连跑两轮，第一轮挂
+`tests/test_core_rate_limit_contract.py` 两条（该文件单点跑 10 passed、`-k` 子集跑 20 passed），
+第二轮 **1581 passed / 0 failed**。所以"稳定挂 2 条"是生产机口径，不是本机的：本机门禁判据只能是
+"挂的集合是否落在已单点验证过的噪声名单里"，出现新挂点先单点跑绿再登记，未验证前按回归对待。
+
 **这两条噪声会让全量 pytest 的退出码变成 1**，所以门禁脚本不能把 `pytest EXIT=1` 直接当回归：判据是
 `short test summary info` 里挂的集合是否**恰好**这两条（生产机 2026-10-26 全量实测 `2 failed, 1523 passed`，
 `FAILED` 行只有 `test_coverage_main_and_middleware.py` 的两个用例）。另：生产机上 `uv run pytest` 会
@@ -645,7 +650,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Σ Total size 3.96 MB（gzip 992 kB），2026-10-27 本机实测（图标/高亮瘦身后）
-pnpm test          # 全绿（88 个 spec 文件；1490 用例，2026-10-27 本机实测）
+pnpm test          # 全绿（89 个 spec 文件；1511 用例，2026-10-28 本机实测）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
@@ -670,6 +675,19 @@ pnpm test          # 全绿（88 个 spec 文件；1490 用例，2026-10-27 本�
   （`section<LatencyShape>(…)`）：不传时 `T` 推断成 `unknown`，赋给 typed ref 就是整排 TS2322。
 - **`@stylistic/member-delimiter-style` 在本仓的实际口径**：多行 type/interface 字面量的成员**不写任何分隔符**
   （`delimiter: "none"`，`;` 和 `,` 都会红），单行内联对象才用 `,`。`eslint --fix` 修不了这一条，只能手写。
+- **"同路径多 verb" 的路由族不能只按路径集合对账**：定时发布的 `PUT` 与 `DELETE` 共用
+  `/admin/posts/{post_id}/schedule`，所以「后端声明路径集 ⇔ 页面请求路径集」相等**看不出漏掉的 verb**——
+  守卫必须额外断言路由条数并逐个 `method:` 实参（`tests/unit/scheduledQueueWired.spec.ts`）。
+  该接口族另外四条口径（写进 `pages/admin/content/scheduled.vue` 头注释）：① `GET /admin/posts/scheduled`
+  **读之前先把到期文章推进成 published**（有写副作用），页面不得静默轮询，多开一个标签页就是替管理员
+  多触发一次发布时机；② `scheduled_at` ↔ `<input type="datetime-local">` 只能过 `lib/datetime` 换算
+  （输入框是本地墙钟、库里是 UTC，手裁 ISO 会让东八区的"10:00 发布"在 18:00 生效）；③ 后端对
+  "不晚于现在"的时间是**就地发布而不是 400**，改期表单必须先过 `scheduledAtError` 并把错误显示在字段上；
+  ④ 取消一条 `scheduled` 会连带回到 `draft`（否则留下"等待发布但没有计划时间"的死状态），
+  提示语必须直接用服务端的 `message`，页面自己写死"定时发布已取消"就是在撒谎。
+  服务端侧的配套约束：等待态有两种（`status="scheduled"` 与历史的 `published` + 未来 `scheduled_at`），
+  `publish_due_posts` 与 `main.py::_scheduled_publish_loop` **必须共用同一个谓词与同一份失效动作**——
+  循环里内联一份只改状态不清缓存的查询，表现就是"后台队列空了、前台仍看不到"。
 
 ### 9.3 产品验收
 

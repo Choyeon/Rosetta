@@ -20,7 +20,6 @@ import re
 import time
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from datetime import datetime
 
 from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
@@ -250,43 +249,20 @@ def _build_openapi(app: FastAPI) -> dict:
 async def _scheduled_publish_loop(db_session_factory):
     """定时发布扫描器，每分钟扫描一次。
 
-    将到达 scheduled_at 的文章状态切换为 published，并清空 scheduled_at。
-    兼容历史数据：status 已为 published 但 scheduled_at 仍在的也一并清理。
+    谓词与副作用全部复用 ``api/scheduled_posts.py::publish_due_posts``，不再自己抄一份：
+    原先这里内联着同一段查询和改写，但**不清任何缓存**——到点自动发布的文章在
+    ``posts:*``（300s）与 Nitro 首页/列表/归档的 swr HTML（300–3600s）里仍然不存在，
+    表现就是"定时时间过了、后台队列也空了，前台却迟迟看不到这篇新文章"。
+    publish_due_posts 里已经带上了这三类失效（含通知前端清页面缓存），走同一条口才不会再分叉。
     """
     import asyncio as _asyncio
 
-    from sqlalchemy import select
-
-    from backend.models.blog import Post
-    from backend.utils.compat import UTC as _UTC
-
-    def _now():
-        return datetime.now(_UTC)
+    from backend.api.scheduled_posts import publish_due_posts
 
     while True:
         try:
             async with db_session_factory() as session:
-                query = select(Post).where(
-                    (
-                        (Post.status == "scheduled")
-                        & (Post.scheduled_at.is_not(None))
-                        & (Post.scheduled_at <= _now())
-                    )
-                    | (
-                        (Post.status == "published")
-                        & (Post.scheduled_at.is_not(None))
-                        & (Post.scheduled_at <= _now())
-                    )
-                )
-                result = await session.execute(query)
-                posts = result.scalars().all()
-                published_count = 0
-                for p in posts:
-                    if p.published_at is None:
-                        p.published_at = p.scheduled_at
-                    p.status = "published"
-                    p.scheduled_at = None
-                    published_count += 1
+                published_count = await publish_due_posts(session)
                 if published_count:
                     await session.commit()
                     logger.info(f"[scheduler] 定时发布 {published_count} 篇文章")
