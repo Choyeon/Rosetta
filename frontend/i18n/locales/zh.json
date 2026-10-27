@@ -222,7 +222,8 @@
       "empty": "暂无文章，点击下方按钮开始创作。"
     },
     "editor": {
-      "postPassword": "访问密码"
+      "postPassword": "访问密码",
+      "postPasswordHint": "密码提示（可选）"
     },
     "users": {
       "searchPlaceholder": "搜索用户名 / 昵称 / 邮箱",

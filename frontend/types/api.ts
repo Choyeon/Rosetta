@@ -93,6 +93,8 @@ export interface Post {
   is_pinned: boolean
   allow_comments: boolean
   is_password_protected?: boolean
+  /** 密码提示：仅当文章真有访问密码时后端才输出，闸门页在锁屏上展示。 */
+  encryption_hint?: string | null
   visibility?: 'public' | 'password' | 'private'
   meta_title?: string | Record<string, string>
   meta_description?: string | Record<string, string>
@@ -121,6 +123,8 @@ export interface PostCreate {
   visibility?: 'public' | 'password' | 'private'
   scheduled_at?: string
   password?: string
+  /** 密码提示（可选，最长 200）；明文出现在锁屏上，不要写成密码本身。 */
+  encryption_hint?: string
   is_pinned?: boolean
   allow_comments?: boolean
   meta_title?: string | Record<string, string>

@@ -1949,6 +1949,7 @@ _无路径 / query 参数_
 | content | string | 是 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
+| encryption_hint | string \| null | 否 |  |
 | excerpt | string \| null | 否 |  |
 | id | integer | 是 |  |
 | is_password_protected | boolean | 否 |  |
@@ -1968,8 +1969,7 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 4 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -1996,6 +1996,7 @@ _无路径 / query 参数_
   "content": "string",
   "cover_image": "string",
   "created_at": "string",
+  "encryption_hint": "string",
   "excerpt": "string",
   "id": 0,
   "is_password_protected": false,
@@ -2183,6 +2184,7 @@ _无路径 / query 参数_
 | content | string | 是 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
+| encryption_hint | string \| null | 否 |  |
 | excerpt | string \| null | 否 |  |
 | id | integer | 是 |  |
 | is_password_protected | boolean | 否 |  |
@@ -2202,8 +2204,7 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 4 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2230,6 +2231,7 @@ _无路径 / query 参数_
   "content": "string",
   "cover_image": "string",
   "created_at": "string",
+  "encryption_hint": "string",
   "excerpt": "string",
   "id": 0,
   "is_password_protected": false,
@@ -2410,6 +2412,7 @@ _无路径 / query 参数_
 | content | string | 是 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
+| encryption_hint | string \| null | 否 |  |
 | excerpt | string \| null | 否 |  |
 | id | integer | 是 |  |
 | is_password_protected | boolean | 否 |  |
@@ -2429,8 +2432,7 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 4 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2457,6 +2459,7 @@ _无路径 / query 参数_
   "content": "string",
   "cover_image": "string",
   "created_at": "string",
+  "encryption_hint": "string",
   "excerpt": "string",
   "id": 0,
   "is_password_protected": false,
@@ -2602,6 +2605,7 @@ _无路径 / query 参数_
 | content | object<string, string> | 是 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
+| encryption_hint | string \| null | 否 |  |
 | excerpt | object<string, string> \| null | 否 |  |
 | has_password | boolean | 否 |  |
 | id | integer | 是 |  |
@@ -2635,6 +2639,7 @@ _无路径 / query 参数_
   "content": {},
   "cover_image": "string",
   "created_at": "string",
+  "encryption_hint": "string",
   "excerpt": "string",
   "has_password": false,
   "id": 0,
@@ -2803,6 +2808,7 @@ _无路径 / query 参数_
 | content | string | 是 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
+| encryption_hint | string \| null | 否 |  |
 | excerpt | string \| null | 否 |  |
 | id | integer | 是 |  |
 | is_password_protected | boolean | 否 |  |
@@ -2822,8 +2828,7 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 4 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2850,6 +2855,7 @@ _无路径 / query 参数_
   "content": "string",
   "cover_image": "string",
   "created_at": "string",
+  "encryption_hint": "string",
   "excerpt": "string",
   "id": 0,
   "is_password_protected": false,

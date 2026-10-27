@@ -91,6 +91,8 @@ const form = reactive({
   allow_comments: true,
   visibility: 'public' as 'public' | 'password' | 'private',
   password: '',
+  // 锁屏上给访客看的明文提示；后端只在真有密码哈希时回读它
+  encryption_hint: '',
   category_id: null as number | null,
   tag_ids: [] as number[],
   // 系列章节：后端 PostEditResponse 已回填这两列，PUT 也必须始终带上，
@@ -226,6 +228,8 @@ const applyInitialData = (data: Post) => {
     ? vis
     : (data.is_password_protected ? 'password' : 'public')
   initiallyPasswordProtected.value = form.visibility === 'password'
+  // 提示必须回填：不回填则每次 PUT 把 encryption_hint 提交成空串，改一次标题就清掉提示
+  form.encryption_hint = data.encryption_hint ?? ''
   form.category_id = data.category?.id ?? null
   form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
   form.series_id = data.series_id ?? null
@@ -386,6 +390,9 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
   if (form.visibility === 'password' && form.password.trim()) {
     payload.password = form.password
   }
+  // 提示与密码散列不同：空串是合法值（"我不要提示"），所以始终发送。
+  // 离开密码态时发送空串把旧提示清掉——库里留一条永远不会展示的明文没有意义。
+  payload.encryption_hint = form.visibility === 'password' ? form.encryption_hint.trim() : ''
   payload.meta_title = toI18nPayload(form.meta_title)
   payload.meta_description = toI18nPayload(form.meta_description)
   payload.meta_keywords = toI18nPayload(form.meta_keywords)
@@ -414,6 +421,15 @@ const validateBase = (): boolean => {
   }
   if (form.visibility === 'password' && !form.password.trim() && !initiallyPasswordProtected.value) {
     toast.error('请输入访问密码')
+    return false
+  }
+  // 提示是锁屏上的明文，写成密码等于把门禁口令公开贴在门上
+  if (
+    form.visibility === 'password'
+    && form.encryption_hint.trim()
+    && form.encryption_hint.trim() === form.password.trim()
+  ) {
+    toast.error('密码提示不能写成密码本身')
     return false
   }
   return true
@@ -917,6 +933,15 @@ onBeforeUnmount(() => {
               type="password"
               :aria-label="$_t('admin.editor.postPassword')"
               placeholder="访问密码"
+              class="mt-2 h-10 rounded-[10px] text-sm"
+            />
+            <Input
+              v-if="form.visibility === 'password'"
+              v-model="form.encryption_hint"
+              type="text"
+              maxlength="200"
+              :aria-label="$_t('admin.editor.postPasswordHint')"
+              :placeholder="$_t('admin.editor.postPasswordHint')"
               class="mt-2 h-10 rounded-[10px] text-sm"
             />
           </div>

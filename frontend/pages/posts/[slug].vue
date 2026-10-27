@@ -1229,7 +1229,9 @@ const showAvatar = computed(() => ft.showAvatar.value)
 // computed 保证模板渲染时读到 post 的当前值，闸门/隐藏判定与正文渲染同源。
 const postEncryptionHint = computed<string | null>(() => {
   const detail = (post.value ?? {}) as unknown as Record<string, unknown>
-  const rawHint = detail.encryption_hint ?? detail.hint
+  // 单源是后端的 encryption_hint：这里曾写过 `?? detail.hint`，而 `hint` 这个键
+  // 没有任何端点产出过（OOBE 的 hint 是另一族诊断字段），属于幽灵别名。
+  const rawHint = detail.encryption_hint
   return typeof rawHint === 'string' && rawHint ? rawHint : null
 })
 const needPassword = computed(() => {

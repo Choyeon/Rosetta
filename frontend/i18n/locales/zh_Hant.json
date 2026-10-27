@@ -222,7 +222,8 @@
       "empty": "尚無文章，點擊下方按鈕開始創作。"
     },
     "editor": {
-      "postPassword": "存取密碼"
+      "postPassword": "存取密碼",
+      "postPasswordHint": "密碼提示（選填）"
     },
     "users": {
       "searchPlaceholder": "搜尋使用者名稱 / 暱稱 / 信箱",

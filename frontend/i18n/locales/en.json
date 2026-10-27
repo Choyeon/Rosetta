@@ -222,7 +222,8 @@
       "empty": "No posts yet. Start writing with the button below."
     },
     "editor": {
-      "postPassword": "Access Password"
+      "postPassword": "Access Password",
+      "postPasswordHint": "Password Hint (optional)"
     },
     "users": {
       "searchPlaceholder": "Search username / nickname / email",

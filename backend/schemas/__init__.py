@@ -946,6 +946,8 @@ class PostEditResponse(BaseModel):
     status: str
     visibility: str
     has_password: bool = False
+    # 编辑器要能还原已存的提示：不回填的话每次 PUT 都会把提示提交成空串清掉。
+    encryption_hint: str | None = None
     published_at: datetime | None = None
     scheduled_at: datetime | None = None
     category: dict[str, Any] | None = None
@@ -989,6 +991,7 @@ class PostEditResponse(BaseModel):
             status=post.status or "draft",
             visibility=post.visibility or "public",
             has_password=bool(post.password),
+            encryption_hint=post.encryption_hint if post.password else None,
             published_at=post.published_at,
             scheduled_at=post.scheduled_at,
             category=category,
@@ -1036,6 +1039,10 @@ class PostLocalizedResponse(BaseModel):
     allow_comments: bool
     comments_count: int = 0
     is_password_protected: bool = False
+    # 密码提示只在真有密码哈希时输出：公开文章带一个提示字段等于让爬虫以为
+    # 有东西可解，而前台闸门页（pages/posts/[slug].vue 的 postEncryptionHint）
+    # 读的正是这一条——写口 PostForm 早就存了 encryption_hint，此前只是没人回读。
+    encryption_hint: str | None = None
     meta_title: str | None = None
     meta_description: str | None = None
     meta_keywords: str | None = None
@@ -1078,6 +1085,7 @@ class PostLocalizedResponse(BaseModel):
             is_pinned=post.is_pinned,
             allow_comments=post.allow_comments,
             comments_count=comments_count,
+            encryption_hint=post.encryption_hint if post.password else None,
             meta_title=get_i18n_value(post.meta_title, lang) if post.meta_title else None,
             meta_description=get_i18n_value(post.meta_description, lang)
             if post.meta_description

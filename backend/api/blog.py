@@ -1294,6 +1294,7 @@ async def get_post(
     _published_at = post.published_at
     _updated_at = post.updated_at
     _password = post.password
+    _encryption_hint = post.encryption_hint
     _author = post.author
     _category = post.category
     _tags = list(post.tags)
@@ -1363,6 +1364,7 @@ async def get_post(
         allow_comments=_allow_comments,
         comments_count=comments_count,
         is_password_protected=is_password_protected,
+        encryption_hint=_encryption_hint if is_password_protected else None,
         meta_title=get_i18n_value(_meta_title_i18n, language) if _meta_title_i18n else None,
         meta_description=get_i18n_value(_meta_description_i18n, language)
         if _meta_description_i18n
@@ -2920,6 +2922,7 @@ async def get_post_by_id(
         allow_comments=post.allow_comments,
         comments_count=comments_count,
         is_password_protected=is_password_protected,
+        encryption_hint=post.encryption_hint if is_password_protected else None,
         meta_title=get_i18n_value(post.meta_title, language) if post.meta_title else None,
         meta_description=get_i18n_value(post.meta_description, language)
         if post.meta_description

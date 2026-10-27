@@ -222,7 +222,8 @@
       "empty": "投稿がまだありません。下のボタンから作成しましょう。"
     },
     "editor": {
-      "postPassword": "閲覧パスワード"
+      "postPassword": "閲覧パスワード",
+      "postPasswordHint": "パスワードヒント（任意）"
     },
     "users": {
       "searchPlaceholder": "ユーザー名 / ニックネーム / メールを検索",
