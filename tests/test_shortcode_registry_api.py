@@ -92,7 +92,9 @@ class TestTemplateHandlerEngineConvention:
         """管理列表必须把模板原文带回（数据源是 KV，注册表内存对象不持有 replacement）；
         后台「查看模板」折叠体的唯一字段就是列表响应里的 replacement。"""
         tpl = '<a class="cta" href="{url}">{content}</a>'
-        await client.post(REGISTER_PATH, headers=staff_headers, json={"tag": "echo", "replacement": tpl})
+        await client.post(
+            REGISTER_PATH, headers=staff_headers, json={"tag": "echo", "replacement": tpl}
+        )
 
         resp = await client.get(LIST_PATH, headers=staff_headers)
         item = next(i for i in resp.json()["data"]["items"] if i["tag"] == "echo")
