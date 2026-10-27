@@ -211,10 +211,14 @@ async def test_delete_removes_delivery_history(
     assert resp.status_code == 200, resp.text
 
     leftover = (
-        await db_session.execute(
-            select(wh.WebhookDelivery).where(wh.WebhookDelivery.endpoint_id == created["id"])
+        (
+            await db_session.execute(
+                select(wh.WebhookDelivery).where(wh.WebhookDelivery.endpoint_id == created["id"])
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     assert leftover == [], f"删除端点后仍残留 {len(leftover)} 条投递记录"
 
 

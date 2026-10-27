@@ -1,8 +1,11 @@
 <!--
   回收站管理页：后端 /admin/trash 分页接口（裸分页对象），按资源类型筛选 + 恢复 / 永久删除 / 清空。
-  契约：list 一次拉一页（page/page_size 由本组件驱动）；快照 title 可能是 i18n dict（文章）或纯文本（评论），
+  契约：list 一次拉一页（page/page_size 由本组件驱动）；快照 title 可能是 i18n dict（文章/页面）或纯文本（评论），
   展示前统一走 getLocalizedStr；永久删除与清空走 DangerConfirmDialog + silentToast（失败内联展示），
-  恢复失败（如 slug 冲突 400）由 apiFetch 全局 toast 提示。
+  恢复失败（如 slug 冲突、原文章已删 400）由 apiFetch 全局 toast 提示。
+  筛选项必须以**后端会写入回收站的类型**为准（services/trash.py 的写手清单）：
+  多挂一个没有写手的筛选，等于给管理员一个永远为空的标签页——此前「评论」就是这个状态。
+  「保留 30 天」由 backend/services/trash.py::prune_expired_trash 兑现（挂在日志保留循环上）。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -238,6 +241,7 @@ const toast = useToast()
 const typeFilters = [
   { key: 'all', label: '全部' },
   { key: 'post', label: '文章' },
+  { key: 'page', label: '页面' },
   { key: 'comment', label: '评论' }
 ] as const
 

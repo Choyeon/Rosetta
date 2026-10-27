@@ -48,6 +48,7 @@ from backend.schemas.admin_reads import (
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_cache import invalidate_post_caches_by_ids
+from backend.services.trash import comment_trash_payload, snapshot_to_trash
 from backend.services.user_service import get_user_service
 
 logger = logging.getLogger(__name__)
@@ -1193,8 +1194,9 @@ async def admin_update_comment(
     response_model=BaseResponse,
     summary="删除评论（管理员）",
     description=(
-        "永久删除指定评论及其子回复。删除会改变文章的 comments_count，"
-        "因此顺带失效该文章的详情/列表缓存。"
+        "需 CurrentStaff。软删除：先把评论快照写入回收站（保留 30 天，可在「回收站」页恢复，"
+        "原文章已删除时不可恢复），再删除原行及其子回复。删除会改变文章的 comments_count，"
+        "因此顺带失效该文章的详情/列表缓存。评论不存在返回 404。"
     ),
 )
 async def admin_delete_comment(
@@ -1202,7 +1204,7 @@ async def admin_delete_comment(
     current_user: CurrentStaff,
     db: DB,
 ):
-    """管理员删除评论"""
+    """管理员删除评论（先落回收站快照）"""
     result = await db.execute(select(Comment).where(Comment.id == comment_id))
     comment = result.scalar_one_or_none()
 
@@ -1215,11 +1217,22 @@ async def admin_delete_comment(
     # post_id 必须在 delete 之前取：对象一旦被删，属性访问会走已失效的行。
     affected_post_id = comment.post_id
 
+    # 回收站 UI 一直挂着「评论」这一类筛选，但此前没有任何写手——删掉的评论是物理删除，
+    # 那个筛选永远为空。快照字段表见 services/trash.py（与恢复分支同一组键）。
+    await snapshot_to_trash(
+        db,
+        resource_type="comment",
+        resource_id=comment.id,
+        data=comment_trash_payload(comment),
+        deleted_by_id=current_user.id,
+    )
     await db.delete(comment)
     await db.flush()
     await bus.do_action("comment.deleted", comment, current_user=current_user, db=db)
     await invalidate_post_caches_by_ids(db, [affected_post_id])
-    return BaseResponse(message="评论已删除")
+    # 评论正文烘在文章页 HTML 里：只清后端响应缓存，前台 SWR 窗口内仍带着这条评论。
+    purge_frontend_page_cache("评论删除")
+    return BaseResponse(message="评论已移入回收站")
 
 
 # ==================== 系统工具 API ====================

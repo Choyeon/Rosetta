@@ -182,8 +182,9 @@ function confirmDelete(id: number) {
 async function doDelete() {
   const id = pendingDeleteId.value
   if (id == null) return
-  await deleteAdminPage(id)
-  toast.success('删除成功')
+  const resp = await deleteAdminPage(id)
+  // 用后端提示语：删除现在是"移入回收站"而不是物理删除，写死「删除成功」会藏掉可恢复这件事
+  toast.success(resp?.message || '删除成功')
   pendingDeleteId.value = null
   // 删掉当前页最后一条时回退一页（watch 会自动触发重新加载）
   if (pages.value.length <= 1 && page.value > 1) {
@@ -334,7 +335,7 @@ onMounted(() => {
     <AdminConfirmDialog
       v-model:open="deleteDialogOpen"
       title="确认删除页面"
-      description="此操作不可撤销，确定要删除这个页面吗？"
+      description="删除后页面会移入回收站，30 天内可在「回收站」页恢复；到期后自动清除。"
       confirm-text="确认删除"
       :on-confirm="doDelete"
     />

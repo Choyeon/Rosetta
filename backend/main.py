@@ -300,12 +300,15 @@ async def _scheduled_publish_loop(db_session_factory):
 
 
 async def _log_retention_loop(db_session_factory):
-    """按保留期收敛只增日志表（visit_logs / performance_metrics / operation_logs）。
+    """按保留期收敛只增日志表（visit_logs / performance_metrics / operation_logs）与到期回收站记录。
 
     刻意**先睡后删**：进程启动的那一轮不做删除，既不给冷启动加锁开销，
     也让短生命周期进程（含测试）不会误删数据。多 worker 各跑各的没问题——
     删除以 id 集合为条件、幂等，不额外引分布式锁（该锁要求启用 Redis，
     单机 / 内存缓存部署直接抛错）。
+
+    回收站跟着这个循环走而不是另起一个：它的 `auto_delete_at` 就是同一类"到期即清"的口径，
+    而快照里存着整篇正文，清不干净等于把"保留 30 天"的承诺变成永久保留。
     """
     import asyncio as _asyncio
 
@@ -313,6 +316,7 @@ async def _log_retention_loop(db_session_factory):
         prune_expired_logs,
         retention_loop_interval_seconds,
     )
+    from backend.services.trash import prune_expired_trash
 
     while True:
         try:
@@ -324,6 +328,7 @@ async def _log_retention_loop(db_session_factory):
         try:
             async with db_session_factory() as session:
                 await prune_expired_logs(session)
+                await prune_expired_trash(session)
         except Exception as exc:
             logger.exception(f"[retention] 日志清理失败: {exc}")
 

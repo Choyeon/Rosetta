@@ -57,6 +57,7 @@ from backend.schemas import (
     CommentResponse,
 )
 from backend.services.comment_service import CommentService
+from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_cache import invalidate_post_caches_by_ids
 
 logger = logging.getLogger(__name__)
@@ -394,15 +395,18 @@ async def admin_spam(_staff: CurrentStaff, comment_id: int, db: DB):
     description=(
         "需 CurrentStaff。请求体 {ids: [评论ID...], action: approve|reject|spam|delete}，"
         "逐条执行并返回处理计数；action 不在枚举内返回 422（业务码 INVALID_ACTION）。"
-        "四种动作都会改变文章的可见评论集合，处理完顺带失效受影响文章的详情/列表缓存。"
+        "四种动作都会改变文章的可见评论集合，处理完顺带失效受影响文章的详情/列表缓存与前台页面缓存。"
+        "delete 与单删同构：先进回收站（30 天可恢复），不是物理删除。"
     ),
 )
-async def admin_batch(_staff: CurrentStaff, body: CommentBatchAction, db: DB):
+async def admin_batch(staff: CurrentStaff, body: CommentBatchAction, db: DB):
     try:
-        result = await CommentService.admin_batch(db, body.ids, body.action)
+        result = await CommentService.admin_batch(db, body.ids, body.action, deleted_by_id=staff.id)
         await db.commit()
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
     await invalidate_post_caches_by_ids(db, result.get("post_ids") or [])
+    # 评论正文烘在文章页 HTML 里，四个动作都会改变访客看到的内容集合。
+    purge_frontend_page_cache("评论批量操作")
     return BaseResponse(success=True, message=f"已处理 {result.get('processed', 0)} 条")

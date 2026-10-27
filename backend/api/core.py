@@ -54,6 +54,7 @@ from backend.schemas import (
 )
 from backend.services.content_renderer import render_content
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.trash import page_trash_payload, snapshot_to_trash
 
 router = APIRouter(tags=["核心"])
 
@@ -207,10 +208,13 @@ async def update_page(page_id: int, data: PageUpdate, current_user: CurrentStaff
     "/pages/{page_id}",
     response_model=BaseResponse,
     summary="删除页面",
-    description="删除页面，需要管理员权限。",
+    description=(
+        "需 CurrentStaff。软删除：先把页面快照写入回收站（保留 30 天，可在「回收站」页恢复），"
+        "再删除原行，与单删/批删文章的口径同构。页面不存在返回 404。"
+    ),
 )
 async def delete_page(page_id: int, current_user: CurrentStaff, db: DB):
-    """删除页面"""
+    """删除页面（先落回收站快照）"""
     result = await db.execute(select(Page).where(Page.id == page_id))
     page = result.scalar_one_or_none()
 
@@ -220,10 +224,21 @@ async def delete_page(page_id: int, current_user: CurrentStaff, db: DB):
             detail="页面不存在",
         )
 
+    # slug 要在删除前取：db.delete 之后实例过期，再读属性会对已删行发 SELECT。
+    deleted_slug = page.slug
+    # 回收站页早就有「页面」这一类筛选与标签，但此前只有文章会入站——独立页删除是物理删除，
+    # 筛选永远空、UI 上「保留 30 天可随时恢复」对页面是假承诺。
+    await snapshot_to_trash(
+        db,
+        resource_type="page",
+        resource_id=page.id,
+        data=page_trash_payload(page),
+        deleted_by_id=current_user.id,
+    )
     await db.delete(page)
     # 删除后该 slug 应当立刻变 404；不清缓存会先把"已删除的页面"再端给访客 600s。
-    purge_frontend_page_cache(f"独立页删除: {page.slug}")
-    return BaseResponse(message="页面已删除")
+    purge_frontend_page_cache(f"独立页删除: {deleted_slug}")
+    return BaseResponse(message="页面已移入回收站")
 
 
 # ==================== 导航接口 ====================

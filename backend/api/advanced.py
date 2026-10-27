@@ -22,6 +22,7 @@ from backend.core.concurrency import concurrent_query
 from backend.core.logging_middleware import log_operation
 from backend.core.plugin_bus import bus
 from backend.models.blog import Category, Comment, Post, Tag
+from backend.models.core import Page
 from backend.models.log import OperationLog, TrashItem
 from backend.models.revision import PostRevision
 from backend.services._avatar_helpers import resolved_for_user
@@ -32,6 +33,7 @@ from backend.services.post_cache import (
     invalidate_post_caches_by_slugs,
 )
 from backend.services.post_revision import snapshot_post_revision
+from backend.services.trash import TRASH_RETENTION_DAYS
 from backend.utils.compat import UTC, parse_utc_date, timedelta
 from backend.utils.reading_time import compute_reading_time_from_content
 
@@ -67,7 +69,9 @@ class TrashEntryOut(BaseModel):
         description=(
             "删除时快照的字段集合（JSON 反序列化结果）。"
             "文章为 title/slug/content/excerpt/cover_image/author_id/category_id/status/views；"
-            "评论为 post_id/user_id/parent_id/content"
+            "页面为 title/slug/content/status；"
+            "评论为 post_id/user_id/parent_id/content/author_name/author_email/author_website/"
+            "avatar_source/status/active/likes_count/is_pinned"
         ),
     )
     deleted_by: OperatorOut | None = Field(
@@ -173,12 +177,13 @@ async def list_trash(
     "/trash/{trash_id}/restore",
     summary="恢复项目",
     description=(
-        "需 CurrentStaff。按回收站记录重建原始资源（仅支持 post / comment）并删除该条记录，"
-        "同时写入 restore 操作日志。非幂等：文章 slug 已被占用时返回 400，记录不存在返回 404。"
+        "需 CurrentStaff。按回收站记录重建原始资源（支持 post / page / comment，"
+        "即当前会写入回收站的三类）并删除该条记录，同时写入 restore 操作日志。"
+        "非幂等：文章或页面 slug 已被占用、评论的原文章已不存在时返回 400，记录不存在返回 404。"
     ),
     responses={
         200: {"model": SimpleActionResultResponse, "description": "恢复完成"},
-        400: {"description": "文章 slug 已被使用，无法恢复"},
+        400: {"description": "slug 已被占用，或评论的原文章已不存在，无法恢复"},
         404: {"description": "回收站项目不存在"},
     },
 )
@@ -227,13 +232,62 @@ async def restore_trash_item(
         )
         db.add(post)
 
+    elif trash_item.resource_type == "page":
+        # pages.slug 是 UNIQUE：原页面删除后同一 slug 又被新建（或被改名成这个 slug）时，
+        # 直接 INSERT 会撞唯一约束 → IntegrityError 500。与文章同轨：先查重，撞了回 400。
+        existing = await db.execute(select(Page).where(Page.slug == resource_data.get("slug")))
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="页面 slug 已被使用，无法恢复",
+            )
+
+        page = Page(
+            title=resource_data.get("title", {}),
+            slug=resource_data.get("slug", ""),
+            content=resource_data.get("content", {}),
+            status=resource_data.get("status", "published"),
+        )
+        db.add(page)
+
     elif trash_item.resource_type == "comment":
+        # comments.post_id 是 NOT NULL + ondelete=CASCADE，所以原文章一旦已被删除，
+        # 这条评论就没有可回去的位置——INSERT 会撞外键变成 500，这里明确回 400。
+        post_exists = await db.execute(
+            select(Post.id).where(Post.id == resource_data.get("post_id"))
+        )
+        if post_exists.scalar_one_or_none() is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="原文章已不存在，无法恢复该评论",
+            )
+
+        # 父评论也在回收站里（或已被永久删除）时不恢复 parent_id：
+        # 与被删父评论同构的处理是提升为根评论（模型里 ondelete=SET NULL 就是这个语义）。
+        parent_id = resource_data.get("parent_id")
+        if parent_id:
+            parent_exists = await db.execute(select(Comment.id).where(Comment.id == parent_id))
+            if parent_exists.scalar_one_or_none() is None:
+                parent_id = None
+
+        # author_name / status / avatar_source 都是 NOT NULL：旧实现只重建了
+        # post_id/user_id/parent_id/content，恢复一条评论会当场撞非空约束（500），
+        # 且已通过的评论会退回 pending 悄悄消失。快照里存了什么就按什么还原。
         comment = Comment(
             post_id=resource_data.get("post_id"),
             user_id=resource_data.get("user_id"),
-            parent_id=resource_data.get("parent_id"),
+            parent_id=parent_id,
             content=resource_data.get("content", ""),
-            active=True,
+            author_name=resource_data.get("author_name") or "读者",
+            author_email=resource_data.get("author_email"),
+            author_website=resource_data.get("author_website"),
+            qq=resource_data.get("qq"),
+            github=resource_data.get("github"),
+            avatar_source=resource_data.get("avatar_source") or "auto",
+            status=resource_data.get("status") or "pending",
+            active=bool(resource_data.get("active", True)),
+            likes_count=int(resource_data.get("likes_count") or 0),
+            is_pinned=bool(resource_data.get("is_pinned")),
         )
         db.add(comment)
 
@@ -263,8 +317,14 @@ async def restore_trash_item(
         if slug:
             await invalidate_post_caches_by_slugs([slug])
         await invalidate_post_aggregate_caches()
+    elif restored_type == "page":
+        # 独立页没有后端响应缓存，但它的 HTML 在 Nitro swr 里（`/**` 通配 600s）：
+        # 不清的话恢复后 TTL 内访客与爬虫仍拿到 404。
+        purge_frontend_page_cache(f"回收站恢复独立页: {resource_data.get('slug')}")
     elif restored_type == "comment":
         await invalidate_post_caches_by_ids(db, [resource_data.get("post_id")])
+        # 评论正文烘在文章页 HTML 里，只清后端响应缓存会让前台继续看不到这条恢复的评论。
+        purge_frontend_page_cache("回收站恢复评论")
 
     return {"success": True, "message": "项目已恢复"}
 
@@ -464,7 +524,7 @@ async def batch_action_posts(
                     }
                 ),
                 deleted_by_id=current_user.id,
-                auto_delete_at=datetime.now(UTC) + timedelta(days=30),
+                auto_delete_at=datetime.now(UTC) + timedelta(days=TRASH_RETENTION_DAYS),
             )
             db.add(trash_item)
             await db.delete(post)

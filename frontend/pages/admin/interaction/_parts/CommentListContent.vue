@@ -398,7 +398,12 @@
     >
       <template #description>
         将删除 <span class="font-medium text-destructive">{{ deleteTarget?.author_name || '该用户' }}</span>
-        的{{ noun }}内容：{{ (deleteTarget?.content || '').slice(0, 60) }}…删除后无法恢复。
+        的{{ noun }}内容：{{ (deleteTarget?.content || '').slice(0, 60) }}…<span
+          v-if="isGuestbook"
+        >删除后无法恢复。</span>
+        <!-- 评论走回收站、留言板是物理删除：同一个组件两种语义，文案必须跟着分叉，
+             否则管理员会以为删掉的留言也能找回来（或不敢删评论，以为不可恢复）。 -->
+        <span v-else>删除后进入回收站，30 天内可恢复。</span>
       </template>
     </DangerConfirmDialog>
 
@@ -412,7 +417,7 @@
       :on-confirm="doBatchAction"
     >
       <template #description>
-        将对已选中的 <span class="font-medium">{{ selectedIds.length }}</span> 条{{ noun }}执行「{{ actionText(batchActionType) }}」，批量删除后无法恢复。
+        将对已选中的 <span class="font-medium">{{ selectedIds.length }}</span> 条{{ noun }}执行「{{ actionText(batchActionType) }}」，{{ batchDeleteHint }}
       </template>
     </DangerConfirmDialog>
   </div>
@@ -632,9 +637,12 @@ async function doDelete() {
   const target = deleteTarget.value
   if (!target?.id) throw new Error(`未选择要删除的${noun.value}`)
   // 抛错时 DangerConfirmDialog 保持打开并内联显示错误；toast 由 apiFetch 统一处理
-  if (props.isGuestbook) await deleteAdminGuestbook(target.id)
-  else await deleteAdminComment(target.id)
-  toast.success('删除成功')
+  // 提示语取后端返回值：评论删除现在是"移入回收站（30 天内可恢复）"，留言板是物理删除，
+  // 写死「删除成功」会让管理员以为评论还能找回来。
+  const resp = props.isGuestbook
+    ? await deleteAdminGuestbook(target.id)
+    : await deleteAdminComment(target.id)
+  toast.success(resp?.message || '删除成功')
   deleteTarget.value = null
   await fetchData()
 }
@@ -663,6 +671,15 @@ function actionText(a: CommentBatchActionType): string {
     case 'delete': return '删除'
   }
 }
+
+// 删除的后果在两条路径上并不相同（评论进回收站、留言板物理删除），
+// 而 approve/reject/spam 根本不该被写成"无法恢复"。
+const batchDeleteHint = computed(() => {
+  if (batchActionType.value !== 'delete') return '该操作会改变这些条目在文章页的可见性。'
+  return props.isGuestbook
+    ? '删除后无法恢复。'
+    : '将进入回收站，30 天内可在后台「回收站」页恢复。'
+})
 
 function toggleReply(id: number) {
   if (replyOpenId.value === id) {

@@ -27,6 +27,7 @@ from backend.services._avatar_helpers import _user_relationship_safe, resolved_f
 from backend.services.captcha_service import ensure_captcha_for_guest
 from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
 from backend.services.site_settings import bool_of, int_of, read_group
+from backend.services.trash import comment_trash_payload, snapshot_to_trash
 from backend.utils.compat import utc_now_naive
 from backend.utils.ugc_fields import (
     AUTO_REJECT_ON_SENSITIVE_DEFAULT,
@@ -797,7 +798,9 @@ class CommentService:
         await db.flush()
 
     @staticmethod
-    async def admin_batch(db: AsyncSession, ids: list[int], action: str) -> dict[str, Any]:
+    async def admin_batch(
+        db: AsyncSession, ids: list[int], action: str, *, deleted_by_id: int | None = None
+    ) -> dict[str, Any]:
         if not ids:
             return {"processed": 0, "post_ids": []}
         stmt = select(Comment).where(Comment.id.in_([int(i) for i in ids]))
@@ -819,6 +822,15 @@ class CommentService:
                 c.status = "spam"
                 c.active = False
             elif action == "delete":
+                # 与单删（admin.py DELETE /admin/comments/{id}）同构：先落回收站快照再删原行。
+                # 漏这一句的表现就是"多选批量删掉的评论直接人间蒸发，单删却能恢复"。
+                await snapshot_to_trash(
+                    db,
+                    resource_type="comment",
+                    resource_id=c.id,
+                    data=comment_trash_payload(c),
+                    deleted_by_id=deleted_by_id,
+                )
                 await db.delete(c)
             else:
                 raise ValueError("INVALID_ACTION")

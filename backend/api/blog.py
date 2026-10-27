@@ -58,6 +58,7 @@ from backend.services.post_revision import (
     has_content_change,
     snapshot_post_revision,
 )
+from backend.services.trash import TRASH_RETENTION_DAYS
 
 # 20 curated tag colors — modern palette with balanced saturation for light/dark modes.
 _TAG_PALETTE = [
@@ -1759,7 +1760,7 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
             }
         ),
         deleted_by_id=current_user.id,
-        auto_delete_at=datetime.now(UTC) + timedelta(days=30),
+        auto_delete_at=datetime.now(UTC) + timedelta(days=TRASH_RETENTION_DAYS),
     )
     db.add(trash_item)
     await db.delete(post)
