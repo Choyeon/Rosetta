@@ -323,6 +323,14 @@ fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_c
    写死 `Home` 会让中文页的面包屑是英文。后端侧同口径的公开口是
    `/api/seo/schema/{resource_type}/{resource_id}` 与 `/api/seo/open-graph/{resource_type}/{resource_id}`
    （文章分支产 `og:image` 时用 `post.cover_image or 站点默认分享图`，绝不产出 picsum 之类外链）。
+   这两条口在后台的消费方是 `pages/admin/tools/seo.vue` 的「爬虫预览」标签，三条契约不得改：
+   **无 `{success,data}` 信封**（裸对象）、**不可见资源回 HTTP 200 且只剩 `error` 键**（不是 404，
+   承认存在即可按 id 枚举草稿/定时/隐藏主页，所以 `200 ≠ 有内容`，页面必须判 `error` 走警告分支）、
+   **不读调用方身份**（内部固定按 `post_is_publicly_visible(post, None)` 判定，管理员登录态不会让预览
+   "解锁"出爬虫看不到的东西——后台看到的警告就是爬虫的真相）。守卫 `seoCrawlerPreviewWired.spec.ts`
+   按"后端 `@router.get` 声明集 ⇔ helper 请求集"与"后端 `og:*/article:*/twitter:*` 键集 ⇔
+   `AdminSeoOpenGraph` + `OG_ROW_KEYS`"双向对账：后端加一个 og 键而前端清单没登记＝抓取器读得到、
+   后台永远看不到。
 5. **sitemap 索引的 `<lastmod>` 取分组真实 `max(updated_at)`**（`backend/api/blog.py::_sitemap_*_lastmod`），
    空表省略该标签；全站同一个"生成时间"会被搜索引擎判成站点长期未更新。
    **RSS 的 `<lastBuildDate>` 用构建时间**且不得早于任何一条 `pubDate`。
@@ -578,7 +586,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 82 个 spec；1384 用例，2026-10-27 本机全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 90 个 spec；1527 用例，2026-10-28 本机全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -670,7 +678,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Σ Total size 3.96 MB（gzip 992 kB），2026-10-27 本机实测（图标/高亮瘦身后）
-pnpm test          # 全绿（89 个 spec 文件；1511 用例，2026-10-28 本机实测）
+pnpm test          # 全绿（90 个 spec 文件；1527 用例，2026-10-28 本机实测）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`

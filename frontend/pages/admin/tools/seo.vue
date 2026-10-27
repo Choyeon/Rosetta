@@ -1,7 +1,9 @@
-<!-- SEO 工具页：sitemap 校验/缓存清除、文章 SEO 评分分页（page_size 10/20/50，后端 le=100）、整库检索字段体检与补全。
+<!-- SEO 工具页：sitemap 校验/缓存清除、文章 SEO 评分分页（page_size 10/20/50，后端 le=100）、整库检索字段体检与补全、爬虫预览。
      契约： sitemap-check 走 {success,data} 信封而 search-stats 是裸对象响应（两套口径勿混）；
      「内容体检」与「站点地图」共用同一次 sitemap-check 的结果（单源 ref，切标签不发第二份请求）；
      「清除 sitemap 缓存」仅失效缓存键由下次访问惰性重建，补全接口 HTTP 200 仍可能 success:false 须自行判断；
+     「爬虫预览」逐字取 GET /seo/open-graph + /seo/schema 的原始响应（两条公开口无 {success,data} 信封、
+     不读调用方身份：HTTP 200 且只剩 error 键＝这篇对爬虫不存在，不能当有内容渲染）；
      全部请求用 silentToast，错误走页内 loadError + 重试分支而非自动 toast。 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -24,6 +26,9 @@
         </AdminTabTrigger>
         <AdminTabTrigger value="links">
           <Link2 class="size-4" /> 内容体检
+        </AdminTabTrigger>
+        <AdminTabTrigger value="preview">
+          <Bot class="size-4" /> 爬虫预览
         </AdminTabTrigger>
       </AdminTabList>
 
@@ -697,20 +702,284 @@
           </div>
         </AdminCard>
       </TabsContent>
+
+      <TabsContent
+        value="preview"
+        class="flex flex-col gap-5 mt-6"
+      >
+        <AdminCard>
+          <div class="flex flex-wrap items-start justify-between gap-3 mb-4">
+            <div class="flex flex-col gap-1.5">
+              <h3 class="text-base font-semibold">
+                爬虫与社交平台看到的这一篇
+              </h3>
+              <p class="text-sm text-muted-foreground">
+                逐字取公开口 /seo/open-graph 与 /seo/schema 的原始响应：两条口不读调用方身份，
+                草稿、定时未发布与作者隐藏主页的文章在这里就是「不存在」
+              </p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2 shrink-0">
+              <Label
+                for="seo-preview-article"
+                class="text-sm whitespace-nowrap"
+              >
+                文章
+              </Label>
+              <Select
+                v-model="previewArticleKey"
+                @update:model-value="loadPreview"
+              >
+                <SelectTrigger
+                  id="seo-preview-article"
+                  class="w-60 rounded-xl"
+                >
+                  <SelectValue placeholder="选择一篇已发布文章" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="p in previewCandidates"
+                    :key="p.id"
+                    :value="String(p.id)"
+                  >
+                    {{ p.title }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg"
+                :disabled="previewLoading || !previewArticleId"
+                @click="loadPreview"
+              >
+                <RefreshCw data-icon="inline-start" />
+                重新取数
+              </Button>
+            </div>
+          </div>
+
+          <div
+            v-if="previewCandidatesLoading"
+            class="flex flex-col gap-3 p-5"
+          >
+            <Skeleton
+              v-for="i in 3"
+              :key="i"
+              class="h-16 rounded-xl"
+            />
+          </div>
+          <div
+            v-else-if="previewCandidates.length === 0"
+            class="p-12"
+          >
+            <Alert
+              variant="info"
+              class="rounded-xl max-w-lg mx-auto"
+            >
+              <Info class="size-4" />
+              <AlertTitle>没有可选文章</AlertTitle>
+              <AlertDescription>
+                候选清单来自「SEO 评分」用的同一个 GET /seo/scores（只覆盖已发布文章）；
+                发布一篇文章后回到本页即可预览。
+                <span
+                  v-if="previewError"
+                  class="block text-destructive"
+                  role="alert"
+                >
+                  {{ previewError }}
+                </span>
+              </AlertDescription>
+              <Button
+                v-if="previewError"
+                variant="outline"
+                size="sm"
+                class="rounded-lg mt-3"
+                @click="ensurePreviewCandidates(true)"
+              >
+                <RotateCcw data-icon="inline-start" />
+                重试
+              </Button>
+            </Alert>
+          </div>
+          <template v-else>
+            <p
+              v-if="previewCandidateTotal > previewCandidates.length"
+              class="text-xs text-muted-foreground px-5 pb-3"
+            >
+              选择器只列前 {{ previewCandidates.length }} 篇（共 {{ previewCandidateTotal }} 篇已发布），
+              后端 page_size 上限是 100
+            </p>
+
+            <div
+              v-if="previewError"
+              class="flex flex-wrap items-center justify-between gap-3 p-5"
+            >
+              <p
+                class="text-sm text-destructive"
+                role="alert"
+              >
+                取数失败：{{ previewError }}
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                class="rounded-lg shrink-0"
+                @click="loadPreview"
+              >
+                <RotateCcw data-icon="inline-start" />
+                重试
+              </Button>
+            </div>
+
+            <Alert
+              v-else-if="previewHidden"
+              variant="warning"
+              class="rounded-xl mx-5 mb-5"
+            >
+              <AlertTriangle class="size-4" />
+              <AlertTitle>这篇对爬虫不存在</AlertTitle>
+              <AlertDescription>
+                接口回的是 200 + 只有 error 键（不是 404，避免按 id 枚举未发布内容）：{{ previewHiddenReason }}。
+                若这篇其实已发布，请检查定时时间是否还在未来、作者是否关闭了「公开资料」。
+              </AlertDescription>
+            </Alert>
+
+            <div
+              v-else-if="previewLoading"
+              class="flex flex-col gap-3 p-5"
+            >
+              <Skeleton
+                v-for="i in 3"
+                :key="i"
+                class="h-16 rounded-xl"
+              />
+            </div>
+
+            <div
+              v-else-if="!previewArticleId"
+              class="p-12"
+            >
+              <Alert
+                variant="info"
+                class="rounded-xl max-w-lg mx-auto"
+              >
+                <Info class="size-4" />
+                <AlertTitle>还没有取数</AlertTitle>
+                <AlertDescription>
+                  两条公开口按文章 id 取值，只在选定文章时各请求一次，不做静默轮询。
+                </AlertDescription>
+              </Alert>
+            </div>
+
+            <div
+              v-else
+              class="flex flex-col gap-5 p-5 pt-0"
+            >
+              <div class="grid gap-5 lg:grid-cols-2">
+                <section class="flex flex-col gap-3">
+                  <h4 class="text-sm font-semibold">
+                    分享卡片（og:* / twitter:*）
+                  </h4>
+                  <div class="rounded-xl border overflow-hidden">
+                    <img
+                      v-if="openGraph && openGraph['og:image']"
+                      :src="openGraph['og:image']"
+                      :alt="openGraph['og:image:alt'] || openGraph['og:title'] || ''"
+                      class="w-full h-40 object-cover"
+                      loading="lazy"
+                    >
+                    <div
+                      v-else
+                      class="w-full h-40 bg-muted flex items-center justify-center text-xs text-muted-foreground"
+                    >
+                      无 og:image
+                    </div>
+                    <div class="flex flex-col gap-1 p-3">
+                      <p class="text-xs uppercase tracking-wide text-muted-foreground">
+                        {{ openGraph?.['og:site_name'] || '—' }}
+                      </p>
+                      <p class="text-sm font-semibold">
+                        {{ openGraph?.['og:title'] || '（og:title 为空）' }}
+                      </p>
+                      <p class="text-xs text-muted-foreground">
+                        {{ openGraph?.['og:description'] || '（og:description 为空）' }}
+                      </p>
+                      <p
+                        class="text-xs text-muted-foreground font-mono break-all"
+                        data-testid="seo-preview-og-url"
+                      >
+                        {{ openGraph?.['og:url'] }}
+                      </p>
+                    </div>
+                  </div>
+                  <ul
+                    v-if="previewWarnings.length > 0"
+                    class="flex flex-col gap-1"
+                  >
+                    <li
+                      v-for="w in previewWarnings"
+                      :key="w"
+                      class="flex items-start gap-1.5 text-xs text-warning"
+                    >
+                      <AlertTriangle class="size-3.5 mt-0.5 shrink-0" />
+                      <span>{{ w }}</span>
+                    </li>
+                  </ul>
+                </section>
+
+                <section class="flex flex-col gap-3">
+                  <h4 class="text-sm font-semibold">
+                    结构化数据（JSON-LD 原文）
+                  </h4>
+                  <pre
+                    class="max-h-80 overflow-auto rounded-xl bg-muted/40 p-3 text-xs font-mono whitespace-pre-wrap break-all"
+                    data-testid="seo-preview-jsonld"
+                  >{{ jsonLdText }}</pre>
+                </section>
+              </div>
+
+              <Separator />
+
+              <div class="flex flex-col gap-1.5">
+                <h4 class="text-sm font-semibold">
+                  逐键取值（社交抓取器按字面键名读取）
+                </h4>
+                <div
+                  v-for="row in ogRows"
+                  :key="row.key"
+                  class="grid grid-cols-[minmax(0,11rem)_1fr] gap-3 text-xs py-1.5 border-b border-border/40 last:border-0"
+                >
+                  <span class="font-mono text-muted-foreground">{{ row.key }}</span>
+                  <span class="break-all">{{ row.value || '（空）' }}</span>
+                </div>
+              </div>
+
+              <p class="text-xs text-muted-foreground">
+                og:description 由服务端剥掉短代码与 HTML 标签后截断到前 200 字符，
+                与爬虫实际读到的 meta 同口径；本卡片展示的是接口原值，不是前台 <code>&lt;head&gt;</code> 的二次拼装。
+              </p>
+            </div>
+          </template>
+        </AdminCard>
+      </TabsContent>
     </Tabs>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, shallowRef, watch } from 'vue'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import {
   fetchAdminSearchStats,
+  fetchAdminSeoJsonLd,
+  fetchAdminSeoOpenGraph,
   fetchAdminSeoSitemapCheck,
   fetchAdminSeoScores,
   regenerateAdminSitemap,
   runAdminSearchOptimize,
   type AdminSearchStats,
+  type AdminSeoJsonLd,
+  type AdminSeoOpenGraph,
   type SitemapCheckResult,
   type AdminSeoScore
 } from '~~/composables/useAdminManage'
@@ -903,6 +1172,103 @@ async function handleCheck() {
     toast.success('体检完成，已发布文章字段完整')
   }
 }
+
+/** 「爬虫预览」：逐字展示两条公开口的原始响应，而不是前台 <head> 的二次拼装。
+ *  选择器数据源复用 GET /seo/scores（只覆盖已发布文章），单独取满 page_size=100 上限——
+ *  评分表当前页只有 10 行，直接当候选清单会让选择器缺项。 */
+const previewCandidates = shallowRef<AdminSeoScore[]>([])
+const previewCandidateTotal = ref(0)
+const previewCandidatesLoading = ref(false)
+const previewArticleKey = ref('')
+const previewArticleId = computed(() => Number(previewArticleKey.value) || 0)
+const previewLoading = ref(false)
+const previewError = ref('')
+const openGraph = shallowRef<AdminSeoOpenGraph | null>(null)
+const jsonLd = shallowRef<AdminSeoJsonLd | null>(null)
+
+/** 200 + 只剩 error 键＝这篇对爬虫不存在（不是 404，避免按 id 枚举未发布内容） */
+const previewHidden = computed(() => !!openGraph.value?.error || !!jsonLd.value?.error)
+const previewHiddenReason = computed(() => openGraph.value?.error || jsonLd.value?.error || '')
+const jsonLdText = computed(() => JSON.stringify(jsonLd.value ?? {}, null, 2))
+
+/** 抓取器按字面键名读取，顺序与后端 seo.py 组装 open-graph 的顺序一致 */
+const OG_ROW_KEYS = [
+  'og:type', 'og:title', 'og:description', 'og:image', 'og:image:alt', 'og:url',
+  'og:site_name', 'og:locale', 'article:published_time', 'article:modified_time',
+  'article:author', 'twitter:card', 'twitter:title', 'twitter:description', 'twitter:image'
+] as const
+
+/** og:description 的服务端截断长度（seo.py 里 `[:200]`）；达到上限就是被截过的信号 */
+const OG_DESCRIPTION_LIMIT = 200
+
+function ogValue(key: keyof AdminSeoOpenGraph): string {
+  const value = openGraph.value?.[key]
+  if (value === null || value === undefined) return ''
+  return String(value)
+}
+
+const ogRows = computed(() => OG_ROW_KEYS.map(key => ({ key, value: ogValue(key) })))
+
+const previewWarnings = computed(() => {
+  const og = openGraph.value
+  if (!og || og.error) return []
+  const out: string[] = []
+  if (!og['og:title']) out.push('og:title 为空：社交卡片与搜索结果都没有主标题')
+  if (!og['og:description']) out.push('og:description 为空：抓取器会自己截取正文，摘要不受控')
+  if (!og['og:image']) out.push('og:image 为空：分享出去没有配图（站内默认图依赖站点 URL 可用）')
+  if (og['og:description'] && og['og:description'].length >= OG_DESCRIPTION_LIMIT) {
+    out.push(`og:description 已达 ${OG_DESCRIPTION_LIMIT} 字符上限，末尾由服务端截断`)
+  }
+  if (!og['article:author']) out.push('article:author 为空：抓取器拿不到作者主页地址')
+  return out
+})
+
+async function loadPreview() {
+  const id = previewArticleId.value
+  if (!id) return
+  previewLoading.value = true
+  previewError.value = ''
+  openGraph.value = null
+  jsonLd.value = null
+  try {
+    const [og, ld] = await Promise.all([
+      fetchAdminSeoOpenGraph(id, { silentToast: true }),
+      fetchAdminSeoJsonLd(id, { silentToast: true })
+    ])
+    openGraph.value = og
+    jsonLd.value = ld
+  } catch (e) {
+    previewError.value = errText(e, '爬虫视图取数失败')
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+/** 候选清单只在首次进入该标签时取一次；失败时 force 重试，成功则复用（不轮询）。 */
+async function ensurePreviewCandidates(force = false) {
+  if (previewCandidatesLoading.value) return
+  if (!force && previewCandidates.value.length > 0) return
+  previewCandidatesLoading.value = true
+  previewError.value = ''
+  try {
+    const r = await fetchAdminSeoScores({ page: 1, page_size: 100 }, { silentToast: true })
+    previewCandidates.value = r.items
+    previewCandidateTotal.value = r.total
+    const first = r.items[0]
+    if (!previewArticleKey.value && first) {
+      previewArticleKey.value = String(first.id)
+      await loadPreview()
+    }
+  } catch (e) {
+    previewError.value = errText(e, '候选文章加载失败')
+  } finally {
+    previewCandidatesLoading.value = false
+  }
+}
+
+watch(activeTab, (tab) => {
+  if (tab === 'preview') void ensurePreviewCandidates()
+})
 
 onMounted(async () => {
   await Promise.all([refreshSitemap(), loadScores(), refreshSearchStats()])

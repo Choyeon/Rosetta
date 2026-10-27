@@ -1682,6 +1682,65 @@ export function regenerateAdminSitemap(
 }
 
 /**
+ * 爬虫视角（分享卡片 + 结构化数据）—— GET /api/seo/open-graph/{type}/{id}
+ * 与 GET /api/seo/schema/{type}/{id}。
+ *
+ * 两条都是**无鉴权公开口**且 handler 直接把字面量 dict  return 出去（裸对象，无
+ * { success, data } 包壳），键名含冒号必须按字面取值。后端对"资源不存在 / 草稿 /
+ * 待审 / 未来定时 / 作者关了公开资料"一律回 **200 + 只有 error 键**（不是 404，
+ * 避免按 id 枚举未发布内容），所以消费方必须判 `error`，不能把 200 当成有内容。
+ * 另：接口不读调用方身份，管理员登录态不会让预览"解锁"出爬虫看不到的东西。
+ */
+export interface AdminSeoOpenGraph {
+  'og:type'?: string
+  'og:title'?: string
+  'og:description'?: string
+  'og:image'?: string
+  'og:image:alt'?: string
+  'og:url'?: string
+  'og:site_name'?: string
+  'og:locale'?: string
+  'article:published_time'?: string | null
+  'article:modified_time'?: string | null
+  'article:author'?: string | null
+  'twitter:card'?: string
+  'twitter:title'?: string
+  'twitter:description'?: string
+  'twitter:image'?: string
+  'error'?: string
+}
+
+/** Article 分支的 JSON-LD（`@context` 之外的键；不同 resource_type 形态不同，留索引签名）。 */
+export interface AdminSeoJsonLd {
+  '@context'?: string
+  '@type'?: string
+  'headline'?: string
+  'description'?: string
+  'image'?: string
+  'datePublished'?: string | null
+  'dateModified'?: string | null
+  [key: string]: unknown
+}
+
+export function fetchAdminSeoOpenGraph(
+  resourceId: number,
+  options: AdminToolRequestOptions = {}
+): Promise<AdminSeoOpenGraph> {
+  return apiFetch<AdminSeoOpenGraph>(`/seo/open-graph/article/${resourceId}`, {
+    silentToast: options.silentToast ?? true
+  })
+}
+
+export function fetchAdminSeoJsonLd(
+  resourceId: number,
+  options: AdminToolRequestOptions = {}
+): Promise<AdminSeoJsonLd> {
+  return apiFetch<AdminSeoJsonLd>(`/seo/schema/article/${resourceId}`, {
+    silentToast: options.silentToast ?? true
+  })
+}
+
+/**
  * 检索字段体检 —— GET /api/admin/tools/search-stats
  * 后端 response_model=SearchStatsResponse，裸对象无 { success, data } 包壳。
  * 口径是"内容完整度"（SQLite/PG 都走 LIKE 检索，没有全文索引可查）：
