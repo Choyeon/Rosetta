@@ -335,7 +335,6 @@ def test_webhook_timestamp_columns_are_naive_end_to_end():
     aware datetime，生产 PG(asyncpg) 在 bind 阶段直接 DataError——表现是创建 Webhook
     恒 500、投递记录 flush 失败，而 SQLite 测试全绿。这里静态钉住两侧一致。"""
     from datetime import datetime
-    from inspect import signature
 
     from sqlalchemy import DateTime
     from sqlalchemy.schema import ColumnDefault
@@ -347,8 +346,11 @@ def test_webhook_timestamp_columns_are_naive_end_to_end():
             assert not col.type.timezone, f"{model.__name__}.{col.name} 列必须 naive"
             for d in (col.default, col.onupdate):
                 if isinstance(d, ColumnDefault) and d.is_callable:
-                    # SQLAlchemy 按可调用签名的参数个数决定是否传列上下文，测试同轨调用
-                    value = d.arg({}) if signature(d.arg).parameters else d.arg()
+                    # SQLAlchemy 可能按内部约定包一层带列上下文的签名，两种调用形态都试
+                    try:
+                        value = d.arg({})
+                    except TypeError:
+                        value = d.arg()
                     assert isinstance(value, datetime) and value.tzinfo is None, (
                         f"{model.__name__}.{col.name} 的默认值必须返回 naive UTC"
                     )
