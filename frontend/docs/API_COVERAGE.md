@@ -12,7 +12,11 @@
 - **路径规则**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀，故代码中 `'/admin/guestbook'` == `GET /api/admin/guestbook`
 - 覆盖率 =（✅ + 🟡）/ 后端端点总数
 
-**总计：46 个路由模块文件、351 个端点；✅ 206 + 🟡 8 = 已覆盖 214 个，未消费 137 个，覆盖率 61.0%。**
+**总计（与下表「合计」行同源，2026-10-28 按表重算）：46 个路由模块文件、355 个端点；✅ 214 + 🟡 8 = 已覆盖 222 个，未消费 133 个，覆盖率 62.5%。**
+
+> 下面三条「局部更新」是 2026-10-16 那一轮按旧快照（206 ✅）逐族累加的历史记录，其增量**已经并进上表的模块行**，不要在此基础上再加一遍。
+
+> **两条求和不是一条线（2026-10-28 核对）**：上表的「合计」行沿用的是最近一次全量扫描的分母（355 端点）并按各轮接线增量累加 ✅/❌，而 45 条模块行的字面求和是 **351 / ✅257 / 🟡8 / ❌86**——两者从 2026-09-26 起就没对齐过（模块行里 `messages` 仍写 0 ✅，而下面明细写的是「已接入 5 条」）。所以**汇总数只作量级参考**，判断某一条端点有没有真实调用方，以下面「分模块明细」与接线契约测试（`tests/unit/*Wired.spec.ts`、`tests/test_*_frontend_contract.py`）为准；下一次全量刷新时以扫描器重算并消掉这个差。
 
 > **2026-10-16 局部更新（favorite 一族，+10 条已覆盖）**：本行以上的汇总仍是 2026-09-26 全量扫描的快照，未按本轮手改（末行「勿手改数字」的口径）；按 favorite 的增量，等价数字为 ✅ 216 + 🟡 8 = 224 / 351 ≈ 63.8%。同日另跑了一次独立扫描（读生成后的 `app.openapi()["paths"]`，357 个 operation，前端字面量按 `${x}` 通配匹配并排除 `.output*` 构建产物与 Nitro 代理中间件的 `/api` catch-all）：**已覆盖 295 / 357 ≈ 82.6%**。两个口径差在分母与"仅 URL 拼接/仅 Nitro 侧消费"的计入方式，不要混用；下一次全量刷新时以扫描器为准并回填本节。
 
@@ -42,11 +46,11 @@
 | gallery | `/api/gallery` · `/api/admin/gallery` | 10 | 10 | 0 | 0 | 100% |
 | activity | `/api` | 8 | 7 | 0 | 1 | 88% |
 | comments | `/api` | 8 | 6 | 0 | 2 | 75% |
-| monitoring | `/api/monitoring` | 8 | 0 | 0 | 8 | 0% |
+| monitoring | `/api/monitoring` | 8 | 8 | 0 | 0 | 100% |
 | post_series | `/api` | 8 | 6 | 0 | 2 | 75% |
 | webhook | `/api/webhooks` | 9 | 9 | 0 | 0 | 100% |
 | title | `/api/admin`（titles） | 9 | 6 | 0 | 3 | 67% |
-| seo | `/api/seo` | 9 | 3 | 2 | 4 | 56% |
+| seo | `/api/seo` | 9 | 5 | 2 | 2 | 78% |
 | notification | `/api/notifications` | 7 | 7 | 0 | 0 | 100% |
 | import_export | `/api/admin` | 7 | 4 | 0 | 3 | 57% |
 | announcement | `/api` | 6 | 5 | 0 | 1 | 83% |
@@ -63,7 +67,7 @@
 | bing_image | `/api/bing/image` | 3 | 1 | 0 | 2 | 33% |
 | captcha | `/api/captcha` | 2 | 1 | 0 | 1 | 50% |
 | post_crypto | `/api/post_crypto` | 3 | 0 | 0 | 3 | 0% |
-| scheduled_posts | `/api` | 3 | 0 | 0 | 3 | 0% |
+| scheduled_posts | `/api` | 3 | 3 | 0 | 0 | 100% |
 | comment_reactions | `/api` | 3 | 3 | 0 | 0 | 100% |
 | toc | `/api/toc` | 3 | 0 | 0 | 3 | 0% |
 | bing | `/api/bing` | 2 | 1 | 0 | 1 | 50% |
@@ -73,7 +77,7 @@
 | stats | `/api/admin/stats` | 1 | 1 | 0 | 0 | 100% |
 | translate | `/api/translate` | 1 | 1 | 0 | 0 | 100% |
 | docs | `/api/docs` | 2 | 2 | 0 | 0 | 100% |
-| **合计** | — | **355** | **201** | **8** | **146** | **58.9%** |
+| **合计** | — | **355** | **214** | **8** | **133** | **62.5%** |
 
 ***
 
@@ -243,10 +247,10 @@
 ✅：`GET /export/posts|markdown`、`POST /import/posts|markdown`（uam:1465,1493；pages/admin/tools/import-export.vue:760,818）
 ❌（3，**运维保留**）：`GET /backup/info`、`GET /backup/full`、`POST /backup/restore`——整库备份 UI 未建（有意留给部署脚本，防止误操作）。三端已由 `tests/test_import_export_api.py` 覆盖（含"备份包不含密码哈希"断言）；`POST /import/posts` 与 `/backup/restore` 的标签关联语义同见该测试：标签只能在 `Post(...)` 构造器一次性传入，flush 后 `post.tags.append()` 在 async 会话里必抛 `MissingGreenlet`（旧实现即如此，导入带标签的文章从未成功过）。
 
-### seo（/api/seo）— 5/9
+### seo（/api/seo）— 7/9
 
-✅：`POST /sitemap/generate`（uam:1534、tools/seo.vue:627）、`GET /sitemap-check`（uam:1515、:610）、`GET /scores`（uam:1522、:663）。❌：`GET /schema/{type}/{id}`、`GET /open-graph/{type}/{id}`（原先仅被已删除的 `useSeoPublic` 名义消费，无真实调用方——SEO 结构化数据当前由 Nitro 侧与 useSeo 生成）。
-🟡：`GET /sitemap.xml`（NSR/sitemap.xml.get.ts）、`GET /robots.txt`（NSR/robots.txt.get.ts:21）
+✅：`POST /sitemap/generate`（uam、tools/seo.vue）、`GET /sitemap-check`（uam、tools/seo.vue）、`GET /scores`（uam、tools/seo.vue——同一份响应既喂评分表也喂「爬虫预览」的文章选择器）。**2026-10-28 补 2 条**：`GET /open-graph/{type}/{id}` 与 `GET /schema/{type}/{id}` 由 `pages/admin/tools/seo.vue` 的「爬虫预览」标签消费（出口 `useAdminManage.fetchAdminSeoOpenGraph/fetchAdminSeoJsonLd`，契约见 `tests/unit/seoCrawlerPreviewWired.spec.ts` + 根 `AGENTS.md` §2.3.4 第 4 条：两条口**无 `{success,data}` 信封**、不可见资源回 **200 + 只剩 `error` 键**（不是 404，避免按 id 枚举草稿）、**不读调用方身份**，所以管理员预览与爬虫看到的完全一致）。原先这两条仅被已删除的 `useSeoPublic` 名义消费，无真实调用方。
+🟡：`GET /sitemap.xml`（NSR/sitemap.xml.get.ts）、`GET /robots.txt`（NSR/robots.txt.get.ts）
 ❌（2）：`GET/PUT /config`——SEO 配置读写已被 `/api/settings/{seo 组}` 通道替代（**重复入口，建议统一**）
 
 ### themes / themes_ext / plugins
@@ -269,11 +273,11 @@
 |---|---:|---|
 | favorite（/api/favorites） | 12 | **2026-10-16 已接入 11 条**：文章详情页收藏钮（`POST /favorites/check` 先取状态 → 收藏/取消）+ 个人中心 `/account` 的「我的收藏」档位（`GET /favorites` 带 `folder_id` 翻页、`DELETE /favorites/post/{id}` 取消、`PATCH /favorites/post/{id}/{folder,note}` 移夹与备注、`GET/POST /favorites/folders` 与 `PUT/DELETE /favorites/folders/{id}` 管理）。前端唯一出口是 `composables/useFavorites.ts`，路径契约由 `frontend/tests/unit/favoritesLanding.spec.ts` + `tests/test_favorites_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**2026-10-23 补**：`DELETE /api/favorites/{favorite_id}`（按收藏行 ID）已接入，但**只用于孤儿行**（`post: null`，历史脏数据没有 post_id，by-post 变体无从下手）；正常行仍走 by-post（删该 (user, post) 的全部行，避免「取消没生效」）。**仍未消费的 1 条是决定不是缺口**：`PUT /api/favorites/{favorite_id}` 按收藏行 ID 整体改写，而 `favorites` 表**至今没有** `(user_id, post_id)` 唯一约束（历史脏数据 + 先 SELECT 再 INSERT 的查重挡不住并发），按行改只改一条重复行、界面表现为「改了但没全改」；by-post 变体改/删全部行，故前端只用 by-post。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，可直接用 `total_pages` 翻页；两个 by-post PATCH 显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段；重复收藏不再让三个「按文章 ID」端点抛 `MultipleResultsFound` → 500。**已知缺口**：根治要加 `(user_id, post_id)` 唯一索引 + 先去重历史行。另：`FolderCreate/FolderUpdate.name` 现声明 `min_length=1, max_length=100`（列宽 `String(100)`），超长名此前直穿到 SQL 在 PostgreSQL 上报 StringDataRightTruncation ⇒ 500，空名则建出标签为空、界面无法定位的收藏夹 |
 | messages（/api/messages） | 6 | **2026-10-16 已接入 5 条**：`/account/messages`（登录态私有页，`ssr:false` 走 `/account/**` routeRules 反选）= 会话列表 `GET /messages/conversations`（每对端一行、`?page=` 翻页）+ 会话正文 `GET /messages/{user_id}` + 发送 `POST /messages` + 整段标已读 `PUT /messages/read-all/{user_id}` + 未读角标 `GET /messages/unread/count`；两个入口：顶栏登录菜单（桌面下拉与移动抽屉各一条）与作者主页 `pages/authors/[username].vue` 的「发私信」（`?to=<用户 id>`，包在 `ClientOnly` 里——SSR 期 auth store 是 skipHydrate 拿不到 token，不包就是节点级 hydration mismatch）。前端唯一出口是 `composables/useMessages.ts`，契约由 `frontend/tests/unit/messagesLanding.spec.ts` + `tests/test_messages_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**仍未消费的 1 条是决定不是缺口**：`PUT /api/messages/{message_id}/read` 按单条标已读，而读正文那条已经带副作用把整个会话置为已读，界面不存在「同一会话里只有某几条未读」可展示的状态，包了就是一个无人调的 wrapper 冒充覆盖。契约（2026-09-28 修，2026-10-16 核对路径）：发送的参数走 JSON 请求体（`{recipient_id, content}`，正文 1–5000；文档旧写法 `POST /send` 实为 `POST /api/messages`），不接受 query string——正文进 URL 会被 nginx access log 明文落盘；会话列表保证「每个对端一行」且只含本人的消息；按 id 标记已读对他人消息一律 404（不再用 403 承认私信 id 存在） |
-| monitoring（/api/monitoring） | 8 | health/stats/visits/performance/db/cache/trends。刻意保留：Admin 监控面板当前由 `/admin/stats` + `/admin/performance/*` + `/admin/cache/status` 覆盖，此模块为深度诊断接口（运维经 docs/工具页直访） |
+| monitoring（/api/monitoring） | 8 | **2026-10-28 全部接入**：`pages/admin/tools/monitoring.vue` 消费八条只读口（health / stats / visits/summary / performance / performance/summary / database / cache / trends?days=），集合相等由 `tests/unit/monitoringEndpointsWired.spec.ts` 双向对账钉住。原判定「刻意保留（运维经工具页直访）」已作废——后端一直在算指标，后台一个都看不到才是问题。三条读数口径同记在该 spec：`database` 的 `database_url` 是掩码串但**不得上屏**；`performance` 环形缓冲无样本时不回 `sample_count` 键（按键存在性区分「没样本」与 0ms）；`visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days <` 窗口天数时读数只能标成下界并给 `data_since` |
 | captcha（/api/captcha） | 2 | ✅ `GET /captcha` 由 `components/CaptchaField.vue` 消费（留言板写入口，开关 `features.enable_captcha`）。❌ `POST /captcha/verify` 刻意不接：写入侧闸门 `services/captcha_service.ensure_captcha_for_guest` 已经在同一次请求里校验，前端再预校验一次是第二个真相源，且"预校验通过→提交"之间有竞态（答案一次性消费）。 |
 | shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
 | toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |
-| scheduled_posts（/api） | 3 | 定时发布列表/改期/取消。前端以 `status=scheduled` + PUT 文章实现——**重复入口，建议统一** |
+| scheduled_posts（/api） | 3 | **2026-10-28 全部接入**：`pages/admin/content/scheduled.vue`（待发布队列）是唯一消费方——`GET /admin/posts/scheduled` 列表、`PUT /admin/posts/{id}/schedule` 改期/重新排队、`DELETE /admin/posts/{id}/schedule` 取消（取消即回 `draft`，不是停在 `scheduled`）。原判定「前端以 `status=scheduled` + PUT 文章实现，重复入口」**已作废**：状态机口径（`scheduled` 必须带未来 `published_at`、`draft` 不接受定时、到点由调度器发布）由该页与 `tests/unit/scheduledQueueWired.spec.ts` + `tests/test_post_batch_hooks.py` 钉住，生产机探针 2026-10-28 逐条验过（排队→改期→取消回草稿→草稿被 400 拒）。注意 `GET /admin/posts/scheduled` **有写副作用**（顺带发布到期文章），运维脚本不要把它当纯读口轮询 |
 | post_encryption（/api） | 4 | 文章加密设置 CRUD + 解密。**缺口**：OOBE 已有 `enable_encrypted_posts` 开关，但编辑器无加密设置 UI |
 | post_crypto（/api/post_crypto） | 3 | 派生密钥/验证访问/加密预览（配套上一篇的读者侧流程）。同上，随加密 UI 一起接入 |
 | admin_logs（/api/admin/logs/retention） | 1 | 日志保留清理。运维保留（可接定时任务，不需要 UI） |
@@ -289,10 +293,11 @@
 
 ## 结论
 
-**总体：351 端点 / 46 模块，前端已覆盖 208（59.3%），其中 8 个仅 Nitro/直链消费。** 未覆盖的 143 个可分三类：
+**总体：355 端点 / 46 模块，前端已覆盖 222（62.5%；= 上表 ✅214 + 🟡8，🟡 是仅 Nitro/直链消费），未覆盖 133。**（本行与上表同源；上一版写的 351/208 是漏了后来新增的端点，已按表重算。）未覆盖的 133 个可分三类：
 
 1. **刻意保留的后端能力（约六成，不算债）**：
-   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、`scheduled_posts` ×3（前端用 status 字段替代）、`themes/palettes` 旧调色板 ×3、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）。
+   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、`themes/palettes` 旧调色板 ×3、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/{id}/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）。
+   - `…/{id}/toggle` 一族前端刻意不用：那是**服务端翻转**语义，而列表里的开关是"写成我看到的目标值"——翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
