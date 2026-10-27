@@ -774,7 +774,8 @@ GROUP_JSON_WRITERS = {
 FLAT_ROW_WRITERS = {
     "api/core.py",  # POST /api/config/admin/settings：UPPERCASE 扁平键
     "api/seo.py",  # SEO_CONFIG_KEYS 白名单行
-    "api/themes.py",  # 默认调色板 id KV
+    # api/themes.py 曾在册（写"默认调色板 id"KV）：2026-10-28 调色板一族退役后它只剩
+    # 一条只读口，不再是 SiteConfig 写口；守卫见 tests/test_retired_palette_family_is_gone.py
 }
 
 
