@@ -34,6 +34,14 @@ logger = logging.getLogger(__name__)
 WEBHOOK_TIMEOUT = 10.0
 
 
+def _utc_now_naive() -> datetime:
+    """Webhook 两张表的时间列都是 TIMESTAMP WITHOUT TIME ZONE（早期 create_all 口径，
+    SQLite 落库时同样丢 tz，存的就是 naive UTC）。默认值/onupdate/赋值点若给 aware
+    datetime，生产 PG + asyncpg 会直接 DataError——表现是「创建 Webhook」恒 500、
+    投递记录 flush 失败。统一走这个函数取 naive UTC。"""
+    return datetime.now(UTC).replace(tzinfo=None)
+
+
 class WebhookEndpoint(Base):
     """Webhook 端点"""
 
@@ -49,9 +57,9 @@ class WebhookEndpoint(Base):
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+        DateTime, default=_utc_now_naive, onupdate=_utc_now_naive
     )
 
 
@@ -70,7 +78,7 @@ class WebhookDelivery(Base):
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now_naive)
 
     # webhook_deliveries 是只增表，此前整表零索引：
     # - 列表页 `WHERE endpoint_id = ?` 分页（:485）
@@ -579,7 +587,7 @@ async def trigger_webhook(event_type: str, payload: dict, db) -> int:
         if isinstance(outcome, BaseException):
             # _send_once 自带 except，这里只兜底 gather 的异常路径
             delivery.error = str(outcome)[:500]
-            delivery.delivered_at = datetime.now(UTC)
+            delivery.delivered_at = _utc_now_naive()
             logger.warning(
                 "Webhook 投递异常 endpoint=%s event=%s: %s", webhook.id, event_type, outcome
             )
@@ -588,7 +596,7 @@ async def trigger_webhook(event_type: str, payload: dict, db) -> int:
         delivery.status_code = status_code
         delivery.response_body = response_text[:2000] if response_text else None
         delivery.error = error
-        delivery.delivered_at = datetime.now(UTC)
+        delivery.delivered_at = _utc_now_naive()
 
     await db.flush()
     return len(deliveries)
@@ -874,7 +882,7 @@ async def retry_webhook_delivery(
     delivery.status_code = code
     delivery.response_body = text[:2000] if text else None
     delivery.error = error
-    delivery.delivered_at = datetime.now(UTC)
+    delivery.delivered_at = _utc_now_naive()
     await db.flush()
 
     if error:
