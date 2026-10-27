@@ -25,13 +25,39 @@
  *        - 真实用户偏好的应用时机：由 plugins/theme.client.ts 在 Hydrate 完成后调用
  *          initFromStorageAndApply() 同步更新 state + DOM classList（走 Vue patch，不触发 mismatch）。
  *
- * 存储：localStorage.theme 只存 'light' | 'dark'；旧值 'system' / 'rosetta-theme' 迁移。
+ * 存储：
+ *   - `localStorage.theme`     = 当前**已解析**的 'light' | 'dark'（<head> 里的 FOUC
+ *                                防护脚本只认这两个值，所以这一层不能存第三态）。
+ *   - `localStorage['theme-pref']` = 用户显式选择的 'system' | 'light' | 'dark'。
+ *     'system' 只有在下面那个 matchMedia change 监听器存在时才名副其实：监听器在
+ *     偏好为 system 期间把系统方案的变化实时补到 state + DOM + storage，
+ *     所以「跟随系统」是一个能持续生效的偏好，而不是只在那一次点击里生效的标签。
  */
 
 import type { ComponentPublicInstance } from 'vue'
 
 const STORAGE_KEY = 'theme'
+const PREF_KEY = 'theme-pref'
 type ThemeMode = 'light' | 'dark'
+export type ThemePref = 'system' | 'light' | 'dark'
+
+/** 偏好真相：读不到合法值时按「跟随系统」——与老行为（无显式偏好就跟随 OS）同口径。 */
+export function readThemePref(): ThemePref {
+  if (!import.meta.client || typeof localStorage === 'undefined') return 'system'
+  try {
+    const raw = localStorage.getItem(PREF_KEY)
+    if (raw === 'system' || raw === 'light' || raw === 'dark') return raw
+    // 没有新键（老访客）时按已解析的 theme 当显式偏好；rosetta-theme 是更早的键名
+    const stored = localStorage.getItem(STORAGE_KEY) || localStorage.getItem('rosetta-theme')
+    if (stored === 'dark' || stored === 'light') return stored
+  } catch {
+    /* 隐私模式 / 配额异常：按未设置偏好处理 */
+  }
+  return 'system'
+}
+
+/** 模块级单次闸门：useTheme() 可在任意多个组件里调用，监听器只能绑一条。 */
+let __systemSchemeListenerBound = false
 
 export interface RippleOrigin {
   clientX: number
@@ -212,6 +238,8 @@ export function useTheme() {
   // SSR & 客户端首渲染 统一用 false / 'light'，保证字节级一致
   const isDark = useState<boolean>('theme-dark', () => false)
   const themeMode = useState<ThemeMode>('theme-mode', () => 'light')
+  // 首帧固定 'light'（与 SSR 输出一致）；真实偏好由 initFromStorageAndApply 在 Hydrate 后纠偏
+  const themePref = useState<ThemePref>('theme-pref', () => 'light')
   const ripple = useThemeRipple()
 
   const _getSystemDark = () => {
@@ -252,6 +280,7 @@ export function useTheme() {
   const persist = () => {
     if (import.meta.client && typeof localStorage !== 'undefined') {
       localStorage.setItem(STORAGE_KEY, themeMode.value)
+      localStorage.setItem(PREF_KEY, themePref.value)
       try {
         localStorage.removeItem('rosetta-theme')
       } catch {
@@ -260,28 +289,46 @@ export function useTheme() {
     }
   }
 
+  /**
+   * 系统方案变化时把新方案补到当前界面——只在偏好为 'system' 期间生效。
+   * 监听器绑一次（模块级闸门）：`useTheme()` 每个组件都会调，重复绑定会让
+   * 一次 OS 切换触发 N 次 applyTheme。
+   */
+  const bindSystemSchemeListener = () => {
+    if (!import.meta.client || __systemSchemeListenerBound) return
+    const mq = window.matchMedia?.('(prefers-color-scheme: dark)')
+    if (!mq?.addEventListener) return
+    __systemSchemeListenerBound = true
+    mq.addEventListener('change', (event) => {
+      if (themePref.value !== 'system') return
+      applyTheme(event.matches)
+      persist()
+    })
+  }
+
   const setLight = () => {
     ripple.stop()
+    themePref.value = 'light'
     applyTheme(false)
     persist()
   }
   const setDark = () => {
     ripple.stop()
+    themePref.value = 'dark'
     applyTheme(true)
     persist()
   }
   /**
-   * 跟随系统：立即按 prefers-color-scheme 应用，并把**解析后的** light/dark 写入偏好。
-   * 【存储铁律】localStorage.theme 只允许 'light' | 'dark'（AGENTS.md §主题切换）——
-   * 禁止写 'system' 第三态：本文件没有 matchMedia change 监听器，'system' 并不会
-   * 动态跟随，只会在下次加载走 initFromStorageAndApply 的旧值迁移分支被改写成
-   * 具体值；期间任何读 storage 的代码拿到的都是过期偏好，属于语义漂移的缺陷值。
+   * 跟随系统：立即按 prefers-color-scheme 应用，并把偏好记成 'system'——
+   * `theme-pref` 存第三态、`theme` 仍存**解析后的** light/dark（FOUC 脚本只认后者），
+   * 同时绑上 matchMedia 监听器，OS 方案之后变了界面才真的跟着变。
    */
   const setSystem = () => {
     ripple.stop()
-    const dark = _getSystemDark()
-    applyTheme(dark)
+    themePref.value = 'system'
+    applyTheme(_getSystemDark())
     persist()
+    bindSystemSchemeListener()
   }
 
   /**
@@ -296,18 +343,10 @@ export function useTheme() {
     } catch {
       prefersDark = prefersDark || false
     }
-    let stored: string | null
-    try {
-      const legacy = localStorage.getItem('rosetta-theme')
-      stored = localStorage.getItem(STORAGE_KEY)
-      if (!stored && legacy) stored = legacy
-    } catch {
-      stored = null
-    }
-    if (stored === undefined) stored = null
-
-    const nextDark = stored === 'dark' || (stored !== 'light' && prefersDark)
-    applyTheme(nextDark)
+    const pref = readThemePref()
+    themePref.value = pref
+    applyTheme(pref === 'system' ? prefersDark : pref === 'dark')
+    if (pref === 'system') bindSystemSchemeListener()
     persist()
   }
 
@@ -336,6 +375,9 @@ export function useTheme() {
       const wasDark = isDark.value
       const nextDark = !wasDark
       const nextMode: ThemeMode = nextDark ? 'dark' : 'light'
+      // 手动日月切换 = 显式选边，偏好从 'system' 落成具体值；否则 OS 下一次变更
+      // 仍会被监听器覆盖，用户会觉得"我选了亮色但它自己跳回去"。
+      themePref.value = nextMode
       const { cx, cy } = resolveRippleOrigin(origin, fallbackEl)
       const vw = window.innerWidth || 1440
       const vh = window.innerHeight || 900
@@ -359,6 +401,7 @@ export function useTheme() {
 
     // 1:1 复制博客写法
     const willBeDark = !isDark.value
+    themePref.value = willBeDark ? 'dark' : 'light'
     const root = document.documentElement as HTMLElement
     const { cx, cy } = resolveRippleOrigin(origin, fallbackEl)
 
@@ -382,5 +425,5 @@ export function useTheme() {
     }).catch(() => { /* noop */ })
   }
 
-  return { isDark, themeMode, toggle, setLight, setDark, setSystem, initFromStorageAndApply }
+  return { isDark, themeMode, themePref, toggle, setLight, setDark, setSystem, initFromStorageAndApply }
 }

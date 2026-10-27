@@ -644,7 +644,9 @@
     "credSiteUrl": "Site URL",
     "credNote": "Your password will not be shown again — store it safely.",
     "credAutoLoginOk": "You are already signed in and can go straight to the admin.",
-    "credAutoLoginFailed": "Auto sign-in did not succeed. Use the username and password above to log in manually."
+    "credAutoLoginFailed": "Auto sign-in did not succeed. Use the username and password above to log in manually.",
+    "connCustomPortPh": "Port (1-65535)",
+    "connCustomPortApply": "Apply"
   },
   "archive": {
     "backToArchive": "Back to full archive",
@@ -801,7 +803,13 @@
     "sortLabel": "Sort",
     "sortLatest": "Newest first",
     "sortPopular": "Most viewed",
-    "resultCount": "{n} posts"
+    "resultCount": "{n} posts",
+    "rankHot": "Combined",
+    "rankDay": "Today",
+    "rankWeek": "This week",
+    "rankMonth": "This month",
+    "rankAll": "All time",
+    "rankAria": "Ranking period"
   },
   "categories": {
     "title": "Categories",
@@ -859,7 +867,8 @@
     "scan": "Scan to support",
     "imageAlt": "payment QR code",
     "empty": "Donations are not open yet",
-    "emptyHint": "Add payment QR codes in Admin → Site Settings → Donate to show them here."
+    "emptyHint": "Add payment QR codes in Admin → Site Settings → Donate to show them here.",
+    "donorTitle": "Thanks to these readers"
   },
   "captcha": {
     "label": "Captcha",

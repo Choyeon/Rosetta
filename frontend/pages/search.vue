@@ -2,7 +2,7 @@
   搜索页：以 route.query.q 为检索词唯一真值（结果可收藏/可分享）。
   本路由被 routeRules '/search/**' 精准反选为 ssr:false：虽然代码写得像 SSR 页
   （computed query + 跟随 q 的 key），首屏数据实际只在客户端拉取，改任何"可直出"假设前
-  先查反选表。分页页码只存在本地 ref、不写回 URL，刷新或分享都会落回第一页。
+  先查反选表。分页页码与检索词一起进 URL（?q=&page=），刷新/分享/后退都能还原当前页。
 -->
 <template>
   <div class="container py-16">
@@ -174,7 +174,8 @@ const route = useRoute()
 const router = useRouter()
 
 const keyword = ref<string>((route.query.q as string) || '')
-const currentPage = ref(1)
+// 页码与检索词同样是 URL 状态：刷新/分享/后退必须还原当前页，而不是落回第一页。
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const site = useSite()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
 const pageSize = computed(() => site.reading.value.posts_per_page)
@@ -208,10 +209,27 @@ const handlePageChange = (page: number) => {
   // 不调 refresh()：currentPage 进 query/key 的 computed，Nuxt params/key watcher
   // 已自动重取；再手写 refresh 等于同一 URL 双发，第一发还被 abort。
   currentPage.value = page
+  // 用 replace 而非 push：翻页不该在历史里堆出一串同关键词的条目，
+  // 但地址栏必须带上 page，否则分享出去的链接永远停在第一页。
+  void router.replace({ query: { ...route.query, page: page > 1 ? String(page) : undefined } })
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
+
+// 越界页码（?page=99）拉回最后一页，避免停在"第 99 页，共 3 页"的空结果。
+watch([total, currentPage], () => {
+  if (total.value > 0 && currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+// 浏览器前进/后退改的是地址栏，页内状态要跟着回读
+watch(
+  () => route.query.page,
+  (raw) => {
+    const next = Math.max(1, Number(raw) || 1)
+    if (next !== currentPage.value) currentPage.value = next
+  }
+)
 
 // 路由 q 变化时（含浏览器前进/后退）同步输入框
 watch(

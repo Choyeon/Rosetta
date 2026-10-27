@@ -644,7 +644,9 @@
     "credSiteUrl": "サイト URL",
     "credNote": "パスワードは再表示できません。大切に保管してください。",
     "credAutoLoginOk": "自動でログイン済みです。そのまま管理画面へ進めます。",
-    "credAutoLoginFailed": "自動ログインに失敗しました。上記のユーザー名とパスワードで手動ログインしてください。"
+    "credAutoLoginFailed": "自動ログインに失敗しました。上記のユーザー名とパスワードで手動ログインしてください。",
+    "connCustomPortPh": "ポート番号（1-65535）",
+    "connCustomPortApply": "適用"
   },
   "archive": {
     "backToArchive": "全アーカイブに戻る",
@@ -801,7 +803,13 @@
     "sortLabel": "並び替え",
     "sortLatest": "新着順",
     "sortPopular": "閲覧数順",
-    "resultCount": "全 {n} 記事"
+    "resultCount": "全 {n} 記事",
+    "rankHot": "総合",
+    "rankDay": "今日",
+    "rankWeek": "今週",
+    "rankMonth": "今月",
+    "rankAll": "全期間",
+    "rankAria": "ランキング期間"
   },
   "home": {
     "recommendedTitle": "おすすめの記事",
@@ -917,7 +925,8 @@
     "scan": "スキャンして応援",
     "imageAlt": "決済用QRコード",
     "empty": "現在サポートは受け付けていません",
-    "emptyHint": "管理画面「サイト設定 → サポート」でQRコードを登録すると、ここに表示されます。"
+    "emptyHint": "管理画面「サイト設定 → サポート」でQRコードを登録すると、ここに表示されます。",
+    "donorTitle": "サポーター一覧"
   },
   "captcha": {
     "label": "認証コード",

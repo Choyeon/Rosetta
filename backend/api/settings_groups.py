@@ -302,13 +302,21 @@ def _default_donate() -> dict:
     # {name, image, note}：name 是收款方式名（支付宝/微信…），image 是收款码图片
     # （后台「媒体上传」产出的相对路径，前台按 <img :src> 渲染，不做 v-html），
     # note 是该通道的一句话说明（可选）。
-    # 历史上这里还挂过 `/api/sponsors`（捐赠者名单）与 /api/config 的 sponsor_* 七个键，
-    # 两边都没有写入方也没有读取方——本组是捐助功能的新唯一真源。
+    # 历史上这里还挂过 /api/config 的 sponsor_* 七个键的环境变量形态，
+    # 设置页与前台都不读它们——本组是捐助功能的新唯一真源。
+    # `sponsors` 是捐赠者名单（打赏墙）：每项 {name, avatar, amount, date}，
+    # 由后台「捐助打赏」编辑器维护、前台 /sponsor 直接渲染；
+    # GET /api/sponsors 读同一份值（见 core.py::list_sponsors），不再另存一份
+    # key='SPONSORS' 的孤立 KV——那条键历史上没有任何写入方。
+    # `show_sponsors_list` 是这份名单的唯一显示开关：前台隐藏、公开接口同样回空，
+    # 关掉的名单不该只挡渲染、接口继续对外吐。
     return {
         "enable": True,
         "title": {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         "description": {"zh": "", "en": "", "ja": "", "zh_Hant": ""},
         "methods": [],
+        "sponsors": [],
+        "show_sponsors_list": True,
     }
 
 
@@ -645,6 +653,13 @@ async def patch_one_setting(
             await cache.delete(make_cache_key("seo", "robots_txt"))
         except Exception:
             logger.debug("cache delete for seo:robots_txt failed", exc_info=True)
+    # GET /api/sponsors 读的就是 donate 分组，但自己另有一族 30 分钟响应缓存
+    # （见 core.py::list_sponsors）：不删它等于"后台改了打赏名单、公开接口最长 30 分钟仍是旧名单"。
+    if group == "donate":
+        try:
+            await cache.delete(make_cache_key("sponsors"))
+        except Exception:
+            logger.debug("cache delete for sponsors failed", exc_info=True)
     # SiteConfig 的两族读缓存（聚合 site_config + 逐键 site_config_value:*，TTL 3600s）
     # 里叠了本分组的 JSON 覆写（见 core.py::_apply_settings_groups）：分组保存后不删净，
     # 站点名/简介/侧栏最长 1 小时不生效，RSS channel 与 robots/sitemap（各自读不同族键）

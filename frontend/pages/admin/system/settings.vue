@@ -488,6 +488,135 @@
                 </div>
               </div>
             </div>
+
+            <Separator />
+            <div class="flex flex-col gap-3">
+              <div class="flex items-center justify-between gap-3">
+                <div class="flex flex-col gap-0.5">
+                  <Label class="text-sm font-medium">打赏名单</Label>
+                  <p class="text-xs text-muted-foreground">
+                    按顺序展示在 /sponsor 页的打赏墙（同一份值也供 GET /api/sponsors 读取）；
+                    名称为空的行不会保存，上方「展示打赏名单」开关关闭时前台与接口都不输出。
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  class="rounded-xl h-9 shrink-0"
+                  @click="addDonateSponsor"
+                >
+                  添加捐赠者
+                </Button>
+              </div>
+
+              <p
+                v-if="donateSponsors.length === 0"
+                class="text-sm text-muted-foreground"
+              >
+                还没有名单，前台不会渲染打赏墙。
+              </p>
+
+              <div
+                v-for="(donor, index) in donateSponsors"
+                :key="index"
+                class="flex flex-col gap-3 rounded-xl border border-border p-4"
+              >
+                <div class="flex items-start gap-3">
+                  <div class="size-14 shrink-0 overflow-hidden rounded-full border border-border bg-muted/30 flex items-center justify-center">
+                    <img
+                      v-if="donor.avatar"
+                      :src="donor.avatar"
+                      :alt="donor.name || `捐赠者 ${index + 1}`"
+                      class="size-full object-cover"
+                    >
+                    <span
+                      v-else
+                      class="px-1 text-center text-xs text-muted-foreground"
+                    >无头像</span>
+                  </div>
+                  <div class="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div class="flex flex-col gap-1">
+                      <Label
+                        :for="`donor-name-${index}`"
+                        class="text-xs"
+                      >昵称</Label>
+                      <Input
+                        :id="`donor-name-${index}`"
+                        v-model="donor.name"
+                        maxlength="30"
+                        placeholder="张三"
+                        class="rounded-xl"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <Label
+                        :for="`donor-amount-${index}`"
+                        class="text-xs"
+                      >金额（可选）</Label>
+                      <Input
+                        :id="`donor-amount-${index}`"
+                        v-model="donor.amount"
+                        maxlength="20"
+                        placeholder="¥50"
+                        class="rounded-xl"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-1">
+                      <Label
+                        :for="`donor-date-${index}`"
+                        class="text-xs"
+                      >日期（可选）</Label>
+                      <Input
+                        :id="`donor-date-${index}`"
+                        v-model="donor.date"
+                        maxlength="20"
+                        placeholder="2026-10-01"
+                        class="rounded-xl"
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    class="rounded-xl h-9"
+                    :disabled="donorBusy === index"
+                    @click="pickDonateAvatar(index)"
+                  >
+                    {{ donorBusy === index ? '上传中...' : (donor.avatar ? '更换头像' : '上传头像') }}
+                  </Button>
+                  <Button
+                    v-if="donor.avatar"
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="rounded-xl h-9 text-destructive hover:text-destructive"
+                    @click="donor.avatar = ''"
+                  >
+                    清除
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    class="rounded-xl h-9 text-muted-foreground"
+                    @click="removeDonateSponsor(index)"
+                  >
+                    删除
+                  </Button>
+                  <input
+                    :id="`donor-file-${index}`"
+                    type="file"
+                    accept="image/*"
+                    class="hidden"
+                    @change="uploadDonateAvatar(index, $event)"
+                  >
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -761,6 +890,65 @@ async function uploadDonateImage(index: number, event: Event) {
   }
 }
 
+/** donate.sponsors 单项：name=昵称，avatar=头像 URL，amount/date=展示用的可选文本。 */
+interface DonateSponsor {
+  name: string
+  avatar: string
+  amount: string
+  date: string
+}
+
+/** 存量 JSON 可能是手写或半截数组，读入时归一成四个字符串字段（同 normalizeDonateMethods）。 */
+function normalizeDonateSponsors(raw: unknown): DonateSponsor[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map(item => ({
+    name: typeof item?.name === 'string' ? item.name : '',
+    avatar: typeof item?.avatar === 'string' ? item.avatar : '',
+    amount: typeof item?.amount === 'string' ? item.amount : '',
+    date: typeof item?.date === 'string' ? item.date : ''
+  }))
+}
+
+/** 与 donateMethods 同一口径：编辑器持有 formState.donate.sponsors 这一个数组引用。 */
+const donateSponsors = ref<DonateSponsor[]>([])
+
+const donorBusy = ref<number | null>(null)
+
+function addDonateSponsor() {
+  donateSponsors.value.push({ name: '', avatar: '', amount: '', date: '' })
+}
+
+function removeDonateSponsor(index: number) {
+  donateSponsors.value.splice(index, 1)
+}
+
+function pickDonateAvatar(index: number) {
+  document.getElementById(`donor-file-${index}`)?.click()
+}
+
+async function uploadDonateAvatar(index: number, event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  donorBusy.value = index
+  try {
+    const result = await useMediaUploadCover(file)
+    const item = donateSponsors.value[index]
+    if (item && result?.url) {
+      item.avatar = result.url
+      toast.success('头像上传成功')
+    } else {
+      toast.error('头像上传失败')
+    }
+  } catch (e) {
+    // 上传失败提示由 apiFetch 统一 toast，此处不重复弹错
+    console.error('[donate] uploadDonateAvatar failed:', e)
+  } finally {
+    donorBusy.value = null
+    input.value = ''
+  }
+}
+
 /**
  * 分组级标签覆写：通用标签表按 key 单源，跨分组撞名时必须按分组改正本。
  *
@@ -768,7 +956,7 @@ async function uploadDonateImage(index: number, event: Event) {
  * `icp_number`），而通用表按"评论组"的语义命名，于是公告组的 `enable` 曾显示成
  * "启用评论功能"、hero 组的 `title` 与公告组的 `title` 共用一句 "Hero 标题"——
  * 管理员看到的就是"这个开关到底管什么"完全没有答案。
- * `methods` 走专用收款码编辑器，不进通用 schema。
+ * `methods` / `sponsors` 走专用编辑器，不进通用 schema。
  */
 const GROUP_LABELS: Record<string, Record<string, string>> = {
   basic: {
@@ -845,6 +1033,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     sticky: '滚动时仍然显示',
     text: 'Powered by 行文案（留空用内置多语言文案）', slogan: '站点口号标语',
     copyright: '版权声明文字', police_icp_number: '公安备案号',
+    show_sponsors_list: '展示打赏名单',
     show_social_links: '显示社交链接图标', show_back_to_top: '显示回到顶部按钮'
   }[key] ?? key
 
@@ -855,7 +1044,8 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   // 关掉它不影响已经提交的留言；少了这句，管理员会以为它能挡注册机以外的一切。
   const BOOL_HELP: Record<string, string> = {
     enable_captcha: '只要求未登录访客在提交评论与留言前通过图形验证码；登录用户与后台不受影响，默认关闭',
-    dry_run: '开启后所有邮件只写后端日志、不连接 SMTP。联调评论/回复通知时打开它：测试邮件一旦真实发往不存在的地址，退信会全部回到「发件人邮箱」'
+    dry_run: '开启后所有邮件只写后端日志、不连接 SMTP。联调评论/回复通知时打开它：测试邮件一旦真实发往不存在的地址，退信会全部回到「发件人邮箱」',
+    show_sponsors_list: '同时管两侧：关闭后前台 /sponsor 的打赏墙不渲染，公开接口 GET /api/sponsors 也返回空列表——名单属于展示内容，关掉就不该继续对外输出'
   }
   const boolHelp = BOOL_HELP[key]
 
@@ -956,7 +1146,7 @@ const READING_BLOCK_KEYS = new Set<string>([])
  * editor-owned 键仍然要提交，否则收款码编辑器改了等于没改。
  */
 const GROUP_EDITOR_KEYS: Record<string, Set<string>> = {
-  donate: new Set<string>(['methods'])
+  donate: new Set<string>(['methods', 'sponsors'])
 }
 
 const GROUP_BLOCK_KEYS: Record<string, Set<string>> = {
@@ -1010,7 +1200,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     hero: { enable: true, title: {}, subtitle: {}, caption: '', cta_text: {}, cta_url: '', bg_image: '', bg_gradient: '' },
     notice: { enable: false, type: 'info', title: '', content_md: '', dismissible: true, sticky: true },
     footer: { text: '', slogan: '', copyright: '', icp_number: '', police_icp_number: '', show_social_links: true, show_back_to_top: true },
-    donate: { enable: true, title: {}, description: {}, methods: [] }
+    donate: { enable: true, title: {}, description: {}, methods: [], sponsors: [], show_sponsors_list: true }
   }
   return m[group] || {}
 }
@@ -1022,11 +1212,14 @@ async function loadAll() {
     const data = await fetchAllSettings()
     const storedMethods = normalizeDonateMethods(data.donate?.methods)
     if (data.donate) data.donate.methods = storedMethods
+    const storedSponsors = normalizeDonateSponsors(data.donate?.sponsors)
+    if (data.donate) data.donate.sponsors = storedSponsors
     originalState.value = JSON.parse(JSON.stringify(data))
     for (const [k, v] of Object.entries(data)) {
       formState[k] = v as SettingsGroupData
     }
     donateMethods.value = (formState.donate?.methods as DonateMethod[] | undefined) ?? []
+    donateSponsors.value = (formState.donate?.sponsors as DonateSponsor[] | undefined) ?? []
   } catch (e) {
     // fetchAllSettings 内部的 apiFetch 已 toast，这里只补充可见的内联错误态（含重试）
     const err = e as { data?: unknown, message?: string }
@@ -1049,6 +1242,7 @@ async function saveGroup(groupKey: string): Promise<boolean> {
     if (groupKey === 'donate') {
       // 空行只属于编辑器状态（用户点了"添加"没填），不该推给前台渲染
       payload.methods = donateMethods.value.filter(item => item.name.trim() || item.image.trim())
+      payload.sponsors = donateSponsors.value.filter(item => item.name.trim())
     }
     // 去重：主题 Customizer 中已接管的字段在"站点设置"保存时强制剥离，
     // 防止"先在 Customizer 调过颜色 → 再保存站点设置 → 把主题色覆盖"的双写冲突。
@@ -1073,6 +1267,8 @@ async function saveGroup(groupKey: string): Promise<boolean> {
       // 以后端回读为准重建编辑器数组（空行已被剥离），同时保持与 formState 同一个引用
       donateMethods.value = (r.data.methods as DonateMethod[] | undefined) ?? []
       if (formState.donate) formState.donate.methods = donateMethods.value
+      donateSponsors.value = normalizeDonateSponsors(r.data.sponsors)
+      if (formState.donate) formState.donate.sponsors = donateSponsors.value
     }
     return true
   } catch (e) {

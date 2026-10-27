@@ -377,13 +377,17 @@ export function useSite() {
    * 「捐助」分组：/sponsor 页的唯一内容源。
    * methods 每项 {name,image,note}；名称与图片都为空的行不渲染（后台保存时已剥离，
    * 这里再挡一次存量脏数据）。
+   * sponsors 是打赏墙名单，每项 {name,avatar,amount,date}；show_sponsors_list 关掉
+   * 或名单为空时整块不渲染（后端 GET /api/sponsors 读同一份值、同一口径回空）。
    */
   const donate = computed(() => {
     const g = readGroup(state.value, 'donate', {
       enable: true,
       title: {} as Record<string, string>,
       description: {} as Record<string, string>,
-      methods: [] as unknown[]
+      methods: [] as unknown[],
+      sponsors: [] as unknown[],
+      show_sponsors_list: true
     })
     const methods = (Array.isArray(g.methods) ? g.methods : [])
       .map((raw): { name: string, image: string, note: string } => {
@@ -395,11 +399,25 @@ export function useSite() {
         }
       })
       .filter(m => m.name.trim() || m.image.trim())
+    const sponsors = (Array.isArray(g.sponsors) ? g.sponsors : [])
+      .map((raw): { name: string, avatar: string, amount: string, date: string } => {
+        const item = (raw ?? {}) as Record<string, unknown>
+        const text = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+        return {
+          name: text(item.name),
+          avatar: text(item.avatar),
+          amount: text(item.amount),
+          date: text(item.date)
+        }
+      })
+      .filter(s => s.name)
     return {
       enable: g.enable !== false,
       title: pickI18n(g.title),
       description: pickI18n(g.description),
-      methods
+      methods,
+      sponsors,
+      show_sponsors_list: g.show_sponsors_list !== false
     }
   })
 

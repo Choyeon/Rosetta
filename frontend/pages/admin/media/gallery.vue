@@ -785,9 +785,23 @@ async function fetchAlbums() {
   albumsLoading.value = true
   albumsError.value = false
   try {
-    const res = await fetchAdminAlbums({ page: 1, page_size: 100 })
-    if (seq !== albumsSeq) return
-    albums.value = res.items ?? []
+    // /gallery/albums 是分页口（page_size 上限 100）：只取第一页等于第 101 个相册起
+    // 永远进不了选择器，而且界面没有任何"还有更多"的提示。逐页拉全（上限 20 页
+    // = 2000 个，防御异常数据死循环），与 fetchAdminPhotos 的口径一致。
+    const pageSize = 100
+    const collected: AdminAlbum[] = []
+    let page = 1
+    let total = 0
+    while (page <= 20) {
+      const res = await fetchAdminAlbums({ page, page_size: pageSize })
+      if (seq !== albumsSeq) return
+      const batch = res.items ?? []
+      collected.push(...batch)
+      total = Number(res.total ?? collected.length)
+      if (batch.length === 0 || collected.length >= total) break
+      page++
+    }
+    albums.value = collected
   } catch {
     // 失败提示由 apiFetch 统一 toast，此处只做错误态兜底（与「暂无相册」区分）
     if (seq !== albumsSeq) return

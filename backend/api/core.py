@@ -684,43 +684,56 @@ async def update_friend_link(
     "/sponsors",
     response_model=list[dict],
     summary="打赏者列表",
-    description="获取公开的打赏者列表。优先从站点配置 SPONSORS 读取，未配置时返回空列表。",
+    description=(
+        "获取公开的打赏者名单。数据源是「捐助打赏」设置分组（donate.sponsors），"
+        "存量站点若只写过旧的 site_configs key='SPONSORS' 则回退读它；两边都没有时返回空列表。"
+        "donate.show_sponsors_list 关闭时同样返回空列表（开关管的是这份名单对外可见）。"
+    ),
 )
 async def list_sponsors(db: DB):
     """
     获取打赏者列表（带缓存）
 
-    数据来源：site_configs 表中 key='SPONSORS' 的 JSON 字符串，
     格式为 `[{"name": "用户名", "avatar": "...", "amount": "¥50", "date": "2025-10-01"}, ...]`。
-    未配置时返回空列表，前端应回退到本地 sponsorConfig。
+    名单的唯一真源是 donate 分组（后台「捐助打赏」编辑器写入、前台 /sponsor 直接渲染同一份值），
+    本接口是给主题/插件用的公开读口；未配置时返回空列表。
     """
     cache_key = make_cache_key("sponsors")
     cached = await cache.get(cache_key)
     if cached is not None:
         return cached
 
-    result = await db.execute(select(SiteConfig).where(SiteConfig.key == "SPONSORS"))
-    config = result.scalar_one_or_none()
+    import json as _json
+
+    from backend.services.site_settings import bool_of, read_group
+
+    group = await read_group("donate", db)
+    raw = group.get("sponsors")
+    rows: Any = raw if isinstance(raw, list) else []
+    if not rows:
+        # 回退只在这一条历史路径上读 KV；新站点保存 donate.sponsors 后不会再走到这里。
+        result = await db.execute(select(SiteConfig).where(SiteConfig.key == "SPONSORS"))
+        config = result.scalar_one_or_none()
+        if config and config.value:
+            try:
+                parsed = _json.loads(config.value)
+                if isinstance(parsed, list):
+                    rows = parsed
+            except (ValueError, TypeError):
+                rows = []
 
     sponsors: list[dict] = []
-    if config and config.value:
-        import json as _json
-
-        try:
-            parsed = _json.loads(config.value)
-            if isinstance(parsed, list):
-                sponsors = [
-                    {
-                        "name": str(item.get("name", "")),
-                        "avatar": item.get("avatar") or "",
-                        "amount": item.get("amount") or "",
-                        "date": item.get("date") or "",
-                    }
-                    for item in parsed
-                    if isinstance(item, dict) and item.get("name")
-                ]
-        except (ValueError, TypeError):
-            pass
+    if bool_of(group, "show_sponsors_list", True):
+        sponsors = [
+            {
+                "name": str(item.get("name", "")),
+                "avatar": item.get("avatar") or "",
+                "amount": item.get("amount") or "",
+                "date": item.get("date") or "",
+            }
+            for item in rows
+            if isinstance(item, dict) and item.get("name")
+        ]
 
     await cache.set(cache_key, sponsors, CACHE_TTL["friend_links"])
     return sponsors

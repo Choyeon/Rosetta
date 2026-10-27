@@ -25,6 +25,26 @@
       </div>
     </header>
 
+    <!-- 榜单口径切换：radiogroup 而非 Tab（内容随选择整块替换，键盘语义是单选）。
+         当前项渲染成 aria-checked 的实心按钮，其余是描边按钮。 -->
+    <div
+      role="radiogroup"
+      :aria-label="t('posts.rankAria')"
+      class="flex flex-wrap gap-2 mb-8 -mt-2"
+    >
+      <Button
+        v-for="opt in rankOptions"
+        :key="opt.value"
+        :variant="period === opt.value ? 'default' : 'outline'"
+        size="sm"
+        role="radio"
+        :aria-checked="period === opt.value"
+        @click="setPeriod(opt.value)"
+      >
+        {{ opt.label }}
+      </Button>
+    </div>
+
     <template v-if="loading && posts.length === 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <PostSkeleton
@@ -111,6 +131,8 @@ definePageMeta({ layout: 'default' })
 
 const { t } = useI18n()
 const site = useSite()
+const route = useRoute()
+const router = useRouter()
 const { localeHref } = useLocaleLink()
 
 // ===== SEO（useSeo composable）=====
@@ -136,22 +158,92 @@ useBreadcrumbJsonLd([
 // ===== SSR 友好同步解构 useAPI，无顶层 await（避免 async setup → Suspense
 // 水合 Symbol(v-cmt) vs 真实 DIV → Hydration node mismatch）=====
 const defaultLimit = 18
+
+// ===== 榜单口径切换 =====
+// hot 走 /blog/posts/hot（Hacker News 风格综合评分，新鲜度加权）；
+// day/week/month/all 走 /ranking/posts（周期榜：近期浏览 + 点赞*5 + 评论*3，全站累计榜按总浏览）。
+// 两个端点此前只有 hot 有前端消费者，/ranking/posts 是零调用死口。
+const RANK_PERIODS = ['hot', 'day', 'week', 'month', 'all'] as const
+type RankPeriod = (typeof RANK_PERIODS)[number]
+const isRankPeriod = (v: unknown): v is RankPeriod =>
+  (RANK_PERIODS as readonly string[]).includes(String(v))
+// 周期是页内视图变体（canonical 白名单只有 page，见 §2.3.3 第 3 条），
+// 但仍要进 URL：分享出去的"本周热榜"不能落回综合榜。
+const period = ref<RankPeriod>(isRankPeriod(route.query.rank) ? route.query.rank : 'hot')
+
+// 标签键写成字面量映射而不是 `posts.rank${Pascal}` 拼串：i18n 孤儿键守卫
+// （tests/unit/i18nLocaleKeys.spec.ts）按"键名是否以字面量出现在源码里"判定消费点，
+// 拼串会让这五个键看起来没人用，进而被当成垃圾删掉。
+const RANK_LABEL_KEYS: Record<RankPeriod, string> = {
+  hot: 'posts.rankHot',
+  day: 'posts.rankDay',
+  week: 'posts.rankWeek',
+  month: 'posts.rankMonth',
+  all: 'posts.rankAll'
+}
+
+const rankOptions = computed(() =>
+  RANK_PERIODS.map(p => ({ value: p, label: String(t(RANK_LABEL_KEYS[p])) }))
+)
+
+const setPeriod = (next: RankPeriod) => {
+  if (period.value === next) return
+  period.value = next
+  void router.replace({ query: next === 'hot' ? {} : { rank: next } })
+}
+
+interface RankingRow {
+  id: number | string
+  title: string | Record<string, string>
+  slug: string
+  cover_image?: string | null
+  views?: number
+  likes_count?: number
+  comments_count?: number
+  published_at?: string | null
+  created_at?: string | null
+}
+
 const {
   data,
   pending: loading,
   error: loadError,
   refresh
-} = useAPI<Post[] | { items?: Post[] }>('/blog/posts/hot', {
-  key: 'posts-hot-index',
-  query: { limit: defaultLimit },
-  default: () => []
-})
+} = useAPI<Post[] | { items?: Post[] } | { items?: RankingRow[] }>(
+  () => (period.value === 'hot' ? '/blog/posts/hot' : '/ranking/posts'),
+  {
+    key: 'posts-hot-index',
+    query: computed(() =>
+      period.value === 'hot'
+        ? { limit: defaultLimit }
+        : { period: period.value, limit: defaultLimit }
+    ),
+    default: () => []
+  }
+)
 
-// 后端 /blog/posts/hot 返回裸数组；同时兼容 { items } 信封结构
+// 后端 /blog/posts/hot 返回裸数组；同时兼容 { items } 信封结构。
+// /ranking/posts 恒是 { period, items }，条目字段是榜单口径（无 excerpt/author），
+// 补齐成 PostCard 认得的形状再交给同一套卡片渲染。
 const posts = computed<Post[]>(() => {
   const d = data.value
-  if (Array.isArray(d)) return d
-  if (d && Array.isArray(d.items)) return d.items
-  return []
+  if (period.value === 'hot') {
+    if (Array.isArray(d)) return d
+    if (d && Array.isArray((d as { items?: Post[] }).items)) return (d as { items: Post[] }).items
+    return []
+  }
+  const rows = (d as { items?: RankingRow[] } | null)?.items
+  if (!Array.isArray(rows)) return []
+  return rows.map(row => ({
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    cover_image: row.cover_image ?? null,
+    views: row.views ?? 0,
+    likes_count: row.likes_count ?? 0,
+    comments_count: row.comments_count ?? 0,
+    published_at: row.published_at ?? row.created_at ?? null,
+    created_at: row.created_at ?? null
+  }) as unknown as Post)
 })
 </script>

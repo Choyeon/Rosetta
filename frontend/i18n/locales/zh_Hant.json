@@ -644,7 +644,9 @@
     "credSiteUrl": "網站地址",
     "credNote": "密碼不會再次顯示，請妥善保存。",
     "credAutoLoginOk": "系統已自動為你登入，可直接進入後台。",
-    "credAutoLoginFailed": "自動登入未成功，請使用上面的帳號手動登入後台。"
+    "credAutoLoginFailed": "自動登入未成功，請使用上面的帳號手動登入後台。",
+    "connCustomPortPh": "端口號（1-65535）",
+    "connCustomPortApply": "套用"
   },
   "archive": {
     "backToArchive": "返回完整歸檔",
@@ -801,7 +803,13 @@
     "sortLabel": "排序",
     "sortLatest": "最新優先",
     "sortPopular": "最多瀏覽",
-    "resultCount": "共 {n} 篇"
+    "resultCount": "共 {n} 篇",
+    "rankHot": "綜合",
+    "rankDay": "今日",
+    "rankWeek": "本週",
+    "rankMonth": "本月",
+    "rankAll": "全部",
+    "rankAria": "榜單口徑"
   },
   "home": {
     "recommendedTitle": "推荐閱讀",
@@ -917,7 +925,8 @@
     "scan": "掃碼支持",
     "imageAlt": "收款碼",
     "empty": "暫未開啟捐助",
-    "emptyHint": "後台「站點設置 → 捐助打賞」上傳收款碼後，這裡就會展示。"
+    "emptyHint": "後台「站點設置 → 捐助打賞」上傳收款碼後，這裡就會展示。",
+    "donorTitle": "感謝以下讀者的支持"
   },
   "captcha": {
     "label": "驗證碼",

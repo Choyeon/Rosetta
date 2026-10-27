@@ -1,9 +1,8 @@
 <!--
   显示偏好页（跟随系统 / 亮 / 暗三选一），definePageMeta 显式 ssr:false，
   因此 onMounted 直读 localStorage 是安全的。
-  存储铁律：useTheme 只允许持久化 'light'|'dark'，setSystem() 落库的是解析后的具体值，
-  所以选「跟随系统」后重进本页高亮会回落到 light/dark —— 要真支持 system 态得先给
-  useTheme 补 matchMedia change 监听，别只改这页。
+  偏好真值是 localStorage['theme-pref']（三态），由 useTheme 读写并带 matchMedia
+  监听器；`theme` 里存的是解析后的 light|dark，FOUC 防护脚本只认那两个值。
 -->
 <template>
   <div class="container py-16 max-w-2xl">
@@ -62,17 +61,15 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/co
 import { Button } from '~~/components/ui/button'
 import { MonitorDot, Sun, Moon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
-import { useTheme } from '~~/composables/useTheme'
+import { useTheme, readThemePref, type ThemePref } from '~~/composables/useTheme'
 import { useSeo } from '~~/composables/useSeo'
 
 definePageMeta({ layout: 'default', ssr: false })
 
-type ThemePref = 'system' | 'light' | 'dark'
-
 const { t } = useI18n()
 const { setLight, setDark, setSystem } = useTheme()
 
-// 偏好真值在 localStorage（'theme'）；SSR 关闭（ssr:false），onMounted 读取安全。
+// 偏好真值在 localStorage（'theme-pref'）；SSR 关闭（ssr:false），onMounted 读取安全。
 const pref = ref<ThemePref>('light')
 
 const modeOptions = computed(() => [
@@ -89,12 +86,7 @@ const applyOption = (mode: ThemePref) => {
 }
 
 onMounted(() => {
-  try {
-    const stored = localStorage.getItem('theme')
-    pref.value = stored === 'dark' || stored === 'system' ? stored : 'light'
-  } catch {
-    pref.value = 'light'
-  }
+  pref.value = readThemePref()
 })
 
 useSeo({

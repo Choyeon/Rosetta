@@ -304,12 +304,36 @@
                             <Button
                               variant="outline"
                               size="sm"
-                              disabled
-                              class="!border-dashed !border-zinc-900/15 dark:!border-white/15 text-foreground/65 hover:bg-zinc-900/10 dark:hover:bg-white/10 opacity-80"
-                              @click="customPortNoop"
+                              :aria-pressed="showCustomPort"
+                              class="!border-dashed !border-zinc-900/15 dark:!border-white/15 text-foreground/65 hover:bg-zinc-900/10 dark:hover:bg-white/10"
+                              @click="showCustomPort = !showCustomPort"
                             >
                               {{ t('oobe.connCustomPort') }}
                             </Button>
+                            <!-- 自定义端口：快选三个之外的端口（uvicorn --port 8001 之类）
+                                 在这里直接改写 API 根地址，与 applyQuickPort 同一条口径。 -->
+                            <div
+                              v-if="showCustomPort"
+                              class="flex items-center gap-2"
+                            >
+                              <Input
+                                v-model="customPort"
+                                type="text"
+                                inputmode="numeric"
+                                maxlength="5"
+                                class="w-28"
+                                :placeholder="t('oobe.connCustomPortPh')"
+                                :aria-label="t('oobe.connCustomPort')"
+                                @keyup.enter="applyCustomPort"
+                              />
+                              <Button
+                                size="sm"
+                                :disabled="!customPortValid"
+                                @click="applyCustomPort"
+                              >
+                                {{ t('oobe.connCustomPortApply') }}
+                              </Button>
+                            </div>
                           </div>
                         </FieldSet>
 
@@ -2265,8 +2289,18 @@ const connActivePort = computed<string>(() => {
     return ''
   }
 })
-// 自定义端口按钮：保留视觉占位，当前暂不实现弹出输入
-const customPortNoop = () => { /* keep noop */ }
+// 自定义端口：按钮展开数字输入框，回车/点「应用」走与快选同一条改写路径
+const showCustomPort = ref(false)
+const customPort = ref('')
+const customPortValid = computed(() => {
+  const raw = customPort.value.trim()
+  return /^\d{1,5}$/.test(raw) && Number(raw) >= 1 && Number(raw) <= 65535
+})
+const applyCustomPort = () => {
+  if (!customPortValid.value) return
+  applyQuickPort(customPort.value.trim())
+  showCustomPort.value = false
+}
 
 // ---- QW-D：URL 输入即时合法性（专业 CMS：不等到点「探测」才报错） ----
 const connApiUrlNormalizedPreview = computed<string>(() => normalizeUserApiBase(connApiUrl.value) || '')

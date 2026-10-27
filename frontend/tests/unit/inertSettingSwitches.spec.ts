@@ -171,8 +171,8 @@ describe('设置页字段清单必须覆盖后端每一把设置键', () => {
   }
   const backendKeys = new Set(Object.values(groups).flat())
 
-  /** 有专用编辑器承载、不进通用 schema 的键（收款码图集）。 */
-  const EDITOR_ONLY_KEYS = new Set(['methods'])
+  /** 有专用编辑器承载、不进通用 schema 的键（收款码图集、打赏名单）。 */
+  const EDITOR_ONLY_KEYS = new Set(['methods', 'sponsors'])
 
   it('后端设置键清单非空（解析失效必须报错，不能静默通过）', () => {
     expect(Object.keys(groups).length, '_default_* 解析不到分组，守卫本身失效了').toBeGreaterThan(10)

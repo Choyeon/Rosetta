@@ -379,7 +379,10 @@ const submitting = ref(false)
 const submitError = ref<string | null>(null)
 
 // ===== 分页状态（与 pages/posts/index.vue 同款数字分页）=====
-const currentPage = ref(1)
+// 页码进 URL：留言板常有"第 N 页那条留言"被单独分享，落回第一页等于链接指向错内容。
+const route = useRoute()
+const router = useRouter()
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const pageSize = 10
 
 // 真实接口：GET /api/guestbook?page=N&page_size=10&status=approved
@@ -409,10 +412,26 @@ const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.val
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
+  // replace：翻页不该在历史里堆一串同页变体，但地址栏要带上 page
+  void router.replace({ query: page > 1 ? { page: String(page) } : {} })
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
+
+// 越界页码（?page=99）拉回最后一页，别停在"第 99 页，共 3 页"的空列表。
+watch([total, currentPage], () => {
+  if (total.value > 0 && currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+// 浏览器前进/后退改的是地址栏，页内状态要跟着回读
+watch(
+  () => route.query.page,
+  (raw) => {
+    const next = Math.max(1, Number(raw) || 1)
+    if (next !== currentPage.value) currentPage.value = next
+  }
+)
 
 // ===== 错误态：列表接口失败 → 卡片 + 重试按钮 + toast（禁止静默失败）=====
 const loadFailed = computed(() => !!gbError.value)

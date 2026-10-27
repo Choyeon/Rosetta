@@ -644,7 +644,9 @@
     "credSiteUrl": "站点地址",
     "credNote": "密码不会再次显示，请妥善保存。",
     "credAutoLoginOk": "系统已自动为你登录，可直接进入后台。",
-    "credAutoLoginFailed": "自动登录未成功，请使用上面的账号手动登录后台。"
+    "credAutoLoginFailed": "自动登录未成功，请使用上面的账号手动登录后台。",
+    "connCustomPortPh": "端口号（1-65535）",
+    "connCustomPortApply": "应用"
   },
   "archive": {
     "backToArchive": "返回完整归档",
@@ -801,7 +803,13 @@
     "sortLabel": "排序",
     "sortLatest": "最新优先",
     "sortPopular": "最多浏览",
-    "resultCount": "共 {n} 篇"
+    "resultCount": "共 {n} 篇",
+    "rankHot": "综合",
+    "rankDay": "今日",
+    "rankWeek": "本周",
+    "rankMonth": "本月",
+    "rankAll": "全部",
+    "rankAria": "榜单口径"
   },
   "categories": {
     "title": "文章分类",
@@ -859,7 +867,8 @@
     "scan": "扫码支持",
     "imageAlt": "收款码",
     "empty": "暂未开启捐助",
-    "emptyHint": "后台「站点设置 → 捐助打赏」上传收款码后，这里就会展示。"
+    "emptyHint": "后台「站点设置 → 捐助打赏」上传收款码后，这里就会展示。",
+    "donorTitle": "感谢以下读者的支持"
   },
   "captcha": {
     "label": "验证码",

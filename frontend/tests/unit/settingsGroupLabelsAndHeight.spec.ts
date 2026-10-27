@@ -88,7 +88,7 @@ function resolveLabel(key: string, group: string, flat: Record<string, string>, 
 }
 
 // donate.methods 走专用收款码编辑器，不进通用 schema（有意不带标签）
-const EDITOR_ONLY: Record<string, string[]> = { donate: ['methods'] }
+const EDITOR_ONLY: Record<string, string[]> = { donate: ['methods', 'sponsors'] }
 
 describe('站点设置：分组键 ↔ 标签', () => {
   const groups = backendGroups()

@@ -2,6 +2,8 @@
   捐助页：后台「站点设置 → 捐助打赏」（settings 分组 donate）的唯一前台落点。
   数据源是 useSite().donate（来自 GET /api/settings/public，SSR 期由站点引导插件预载），
   所以这里不发任何请求：分组为空时页面必须仍然渲染出标题与占位，而不是白屏。
+  打赏墙（donate.sponsors + donate.show_sponsors_list）读同一份分组值，
+  与 GET /api/sponsors（主题/插件用的公开读口）同源的同一份数，不是第二个数据源。
   未配置任何收款码时本页输出 noindex（内容页占位没有收录价值），配置后自动恢复索引。
 -->
 <template>
@@ -73,6 +75,48 @@
         {{ t('sponsor.emptyHint') }}
       </p>
     </div>
+
+    <!-- 打赏墙：名单与开关同属 donate 分组（后台「捐助打赏」维护），
+         关开关或名单为空时整块不出现，不留空标题。 -->
+    <section
+      v-if="showDonors"
+      class="mt-14 max-w-3xl mx-auto"
+    >
+      <h2 class="font-display text-lg font-semibold text-center mb-6">
+        {{ t('sponsor.donorTitle') }}
+      </h2>
+      <ul class="flex flex-wrap justify-center gap-3">
+        <li
+          v-for="(donor, index) in sponsors"
+          :key="donor.name + index"
+          class="flex items-center gap-2.5 rounded-full border border-border bg-card py-1.5 pe-4 ps-1.5"
+        >
+          <img
+            v-if="donor.avatar"
+            :src="donor.avatar"
+            :alt="donor.name"
+            class="size-8 rounded-full object-cover"
+            loading="lazy"
+            width="32"
+            height="32"
+          >
+          <span
+            v-else
+            class="inline-flex size-8 items-center justify-center rounded-full bg-primary/10 text-sm font-semibold text-primary"
+            aria-hidden="true"
+          >{{ donor.name.slice(0, 1) }}</span>
+          <span class="text-sm font-medium">{{ donor.name }}</span>
+          <span
+            v-if="donor.amount"
+            class="text-xs text-muted-foreground"
+          >{{ donor.amount }}</span>
+          <span
+            v-if="donor.date"
+            class="text-xs text-muted-foreground"
+          >{{ donor.date }}</span>
+        </li>
+      </ul>
+    </section>
   </div>
 </template>
 
@@ -93,6 +137,10 @@ const { t } = useI18n()
 const site = useSite()
 
 const donate = computed(() => site.donate.value)
+const sponsors = computed(() => site.donate.value.sponsors)
+const showDonors = computed(
+  () => site.donate.value.show_sponsors_list && sponsors.value.length > 0
+)
 
 // noindex 只在"这一页其实没有内容"时成立；用 computed 而不是常量 true，
 // 配置好收款码后必须自动回到可索引状态。

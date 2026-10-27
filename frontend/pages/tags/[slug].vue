@@ -81,39 +81,67 @@
       v-if="totalPages > 1"
       class="flex justify-center mt-12"
     >
+      <!-- 与 /posts 同口径：分页必须是真实 <a href> 且当前页进 URL。纯 button + click
+           等于第 2 页起的所有文章零入链，分享/刷新/后退也还原不出页码。 -->
       <nav
         class="flex items-center gap-2"
         role="navigation"
         aria-label="pagination"
       >
-        <Button
-          variant="outline"
-          size="icon"
+        <template v-if="currentPage <= 1">
+          <Button
+            variant="outline"
+            size="icon"
+            :aria-label="t('common.prevPage')"
+            disabled
+          >
+            <ChevronLeft data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage - 1)"
           :aria-label="t('common.prevPage')"
-          :disabled="currentPage <= 1"
-          @click="currentPage -= 1"
+          :class="pageLinkClass('outline')"
+          @click.prevent="goToPage(currentPage - 1)"
         >
           <ChevronLeft data-icon="inline-start" />
-        </Button>
-        <Button
+        </a>
+        <template
           v-for="p in visiblePages"
           :key="p"
-          :variant="p === currentPage ? 'default' : 'ghost'"
-          size="icon"
-          class="size-9 min-w-[2.25rem]"
-          @click="currentPage = p"
         >
-          {{ p }}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
+          <span
+            v-if="p === currentPage"
+            aria-current="page"
+            :class="pageLinkClass('default')"
+          >{{ p }}</span>
+          <a
+            v-else
+            :href="pageHref(p)"
+            :class="pageLinkClass('ghost')"
+            @click.prevent="goToPage(p)"
+          >{{ p }}</a>
+        </template>
+        <template v-if="currentPage >= totalPages">
+          <Button
+            variant="outline"
+            size="icon"
+            :aria-label="t('common.nextPage')"
+            disabled
+          >
+            <ChevronRight data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage + 1)"
           :aria-label="t('common.nextPage')"
-          :disabled="currentPage >= totalPages"
-          @click="currentPage += 1"
+          :class="pageLinkClass('outline')"
+          @click.prevent="goToPage(currentPage + 1)"
         >
           <ChevronRight data-icon="inline-start" />
-        </Button>
+        </a>
       </nav>
     </div>
   </div>
@@ -125,7 +153,7 @@ import { isContentMissing, useContentStatus } from '~~/composables/useContentSta
 import PostCard from '~~/components/PostCard.vue'
 import TagBadge from '~~/components/TagBadge.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { pageWindow } from '~~/lib/pagination'
 import { ChevronLeft, ChevronRight, Tags } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
@@ -137,7 +165,7 @@ const route = useRoute()
 const { localeHref } = useLocaleLink()
 
 const slug = computed(() => typeof route.params.slug === 'string' ? route.params.slug : '')
-const currentPage = ref(1)
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const site = useSite()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
 const pageSize = computed(() => site.reading.value.posts_per_page)
@@ -211,6 +239,33 @@ useContentStatus(tagErr, tagMissing)
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
+
+// 页码越界（?page=99 而标签只剩 3 页）拉回最后一页，别留一条点不动的空页码条。
+watch([total, currentPage], () => {
+  if (total.value > 0 && currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+const pageHref = (page: number) =>
+  `${applyLocalePrefix(`/tags/${slug.value}`, locale.value)}?page=${page}`
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'icon' })
+
+const router = useRouter()
+function goToPage(page: number) {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  void router.replace({ query: page > 1 ? { page: String(page) } : {} })
+  if (import.meta.client) window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+// 浏览器前进/后退改的是地址栏，页内状态要跟着回读
+watch(
+  () => route.query.page,
+  (raw) => {
+    const next = Math.max(1, Number(raw) || 1)
+    if (next !== currentPage.value) currentPage.value = next
+  }
+)
 
 // 标题与 description 只由 useSeo 产出：再加一条裸 useHead 会让 <head> 出现第二条
 // name="description"（unhead 按入队顺序合并，两份裁切长度不同），爬虫/分享卡片
