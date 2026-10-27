@@ -184,6 +184,41 @@ async def test_delete_removes_row(client, staff_headers, allow_private_targets):
 
 
 @pytest.mark.asyncio
+async def test_delete_removes_delivery_history(
+    client, staff_headers, allow_private_targets, db_session
+):
+    """有投递历史的端点也必须删得掉。
+
+    `webhook_deliveries.endpoint_id` 的外键没有 ON DELETE CASCADE——它是生产 schema
+    里唯一一条不带删除规则的外键。删父行前不清子行，在 PG 上是 ForeignKeyViolation →
+    500（这个 Webhook 永远删不掉），在 SQLite 上则留下一批再也关联不到端点的孤儿
+    投递记录。两种方言的口径都必须是"删完即空"。
+    """
+    from sqlalchemy import select
+
+    created = await _create(client, staff_headers)
+    db_session.add(
+        wh.WebhookDelivery(
+            endpoint_id=created["id"],
+            event_type="post.published",
+            payload="{}",
+            status_code=200,
+        )
+    )
+    await db_session.commit()
+
+    resp = await client.delete(f"/api/webhooks/{created['id']}", headers=staff_headers)
+    assert resp.status_code == 200, resp.text
+
+    leftover = (
+        await db_session.execute(
+            select(wh.WebhookDelivery).where(wh.WebhookDelivery.endpoint_id == created["id"])
+        )
+    ).scalars().all()
+    assert leftover == [], f"删除端点后仍残留 {len(leftover)} 条投递记录"
+
+
+@pytest.mark.asyncio
 async def test_events_catalog_matches_bus_names(client, staff_headers):
     """GET /events 是事件名唯一来源，必须与投递侧用的常量一致。"""
     resp = await client.get("/api/webhooks/events")

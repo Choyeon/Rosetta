@@ -17,7 +17,18 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, String, Text, func, select
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    delete,
+    func,
+    select,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.core import hooks as _hooks
@@ -485,6 +496,11 @@ async def delete_webhook(
             detail="Webhook 不存在",
         )
 
+    # 投递记录的外键没有 ON DELETE CASCADE（表由早期 create_all 建出，改 FK 需要一次
+    # 真实迁移），所以子行必须在代码侧先删净。漏掉这一步的表现：SQLite 默认不强制
+    # 外键，本地与 CI 全绿；生产 PG 上"删除一个已经触发过的 Webhook"直接
+    # ForeignKeyViolation → 500，端点从此删不掉，而它的投递记录也永远留在库里。
+    await db.execute(delete(WebhookDelivery).where(WebhookDelivery.endpoint_id == webhook_id))
     await db.delete(webhook)
     await db.flush()
 

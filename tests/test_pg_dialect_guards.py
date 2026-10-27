@@ -31,7 +31,6 @@ BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 def _all_mapped_classes() -> list[type]:
     """把所有 ORM 类收集出来（含定义在 api/*.py 里的表）。"""
     import backend.main  # noqa: F401  导入即注册全部路由与其内联模型
-
     from backend.core.database import Base
 
     return [m.class_ for m in Base.registry.mappers]
