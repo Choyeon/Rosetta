@@ -1216,22 +1216,22 @@ const heroSlide = computed(() => {
   if (!n) return null
   return heroSlides.value[((heroIdx.value % n) + n) % n] ?? null
 })
-const heroSlideMedia = computed(() => heroSlide.value?.media_url || '')
+const heroMediaRaw = computed(() => heroSlide.value?.media_url || '')
 // 热榜虚拟轮播的无封面回落是 picsum 外链（backend/api/hero.py::_display_cover 同口径）。
 // CSS background-image 挂不上 @error，外链不可达时在客户端探一次、把它摘出 hero 背景，
 // 让底层渐变接管——首页首屏不会因站外图被墙裸底。
+// 过滤必须收在 heroSlideMedia 里：inertSettingSwitches.spec 钉的是
+// `heroBgImage.value || heroSlideMedia.value` 这个优先级形态（自配背景压过轮播图）。
 const heroFailedMedia = ref('')
 function markHeroMediaFailed(url: string) {
   if (url) heroFailedMedia.value = url
 }
-const heroBgUrl = computed(() => {
-  const media = heroSlideMedia.value && heroSlideMedia.value !== heroFailedMedia.value
-    ? heroSlideMedia.value
-    : ''
-  return heroBgImage.value || media
-})
+const heroSlideMedia = computed(() =>
+  heroMediaRaw.value && heroMediaRaw.value !== heroFailedMedia.value ? heroMediaRaw.value : ''
+)
+const heroBgUrl = computed(() => heroBgImage.value || heroSlideMedia.value)
 if (import.meta.client) {
-  watch(heroSlideMedia, (url) => {
+  watch(heroMediaRaw, (url) => {
     if (!url || url.startsWith('/') || url === heroFailedMedia.value) return
     const probe = new Image()
     probe.onerror = () => markHeroMediaFailed(url)
