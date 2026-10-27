@@ -72,6 +72,10 @@ async def test_page_delete_lands_in_trash_and_restores(client: AsyncClient, admi
     mine = [e for e in entries if e["resource_id"] == page_id]
     assert len(mine) == 1, f"独立页删除未写入回收站: {entries}"
     assert mine[0]["resource_data"]["slug"] == PAGE_SLUG
+    # 快照本身存的是**渲染前**的原值，所以这里可以做逐字断言；
+    # 恢复后的读口会再过一遍插件的内容过滤器（hello-rosetta / seo-toolkit 会往正文尾部追加），
+    # 全量跑里插件已被其他用例注册进同一进程——那条只能断言"原文在里面"。
+    assert mine[0]["resource_data"]["content"]["zh"] == "第一版正文"
     assert mine[0]["auto_delete_at"], "回收站记录没有到期时间，'保留 30 天'无从兑现"
 
     restored = await client.post(f"/api/admin/trash/{mine[0]['id']}/restore", headers=admin_headers)
@@ -80,7 +84,7 @@ async def test_page_delete_lands_in_trash_and_restores(client: AsyncClient, admi
     read = await client.get(f"/api/pages/{PAGE_SLUG}")
     assert read.status_code == 200, read.text
     body = _unwrap(read.json())
-    assert body["content"]["zh"] == "第一版正文"
+    assert body["content"]["zh"].startswith("第一版正文")
 
     # 恢复即消费：记录不该同时留在回收站里（否则第二次恢复会产出重复页）
     assert [
