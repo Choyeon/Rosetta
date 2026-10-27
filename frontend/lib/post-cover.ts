@@ -88,12 +88,13 @@ export function placeholderPostCover(post: CoverSource): string {
 /**
  * `<img @error>` 兜底：外链随机图加载失败时切成站内占位封面，只切一次。
  * post 必须与产出当前 src 的是同一标识（槽位同 seed 同图），否则等于换图闪烁。
+ * 数据未到时（null/undefined）按 anon seed 回落，与 postCoverUrl 的空态同轨。
  */
-export function handlePostCoverError(event: Event, post: CoverSource): void {
+export function handlePostCoverError(event: Event, post: CoverSource | null | undefined): void {
   const img = event.target as HTMLImageElement | null
   if (!img || img.dataset.coverFallback === 'true') return
   img.dataset.coverFallback = 'true'
-  img.src = placeholderPostCover(post)
+  img.src = placeholderPostCover(post ?? {})
 }
 
 /** 有封面用封面，没封面用展示面默认随机图。 */
