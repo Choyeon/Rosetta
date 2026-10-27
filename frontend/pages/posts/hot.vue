@@ -34,8 +34,18 @@
       </div>
     </template>
     <template v-else-if="loadError">
-      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center">
-        {{ t('admin.posts.loadFailed') || '加载失败' }}
+      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
+        <div class="flex flex-col items-center gap-3 text-center">
+          <span>{{ t('admin.posts.loadFailed') }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="refresh()"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {{ t('common.retry', '重试') }}
+          </Button>
+        </div>
       </div>
     </template>
     <template v-else-if="posts.length > 0">
@@ -50,7 +60,7 @@
               class="absolute -left-2 -top-3 z-10 size-8 rounded-full bg-card border border-border shadow flex items-center justify-center font-display text-sm font-bold"
               :class="{
                 'text-amber-600 dark:text-amber-400': idx === 0,
-                'text-slate-500': idx === 1,
+                'text-muted-foreground': idx === 1,
                 'text-orange-700 dark:text-orange-400': idx === 2
               }"
             >
@@ -75,13 +85,12 @@
         <p class="text-muted-foreground mt-1">
           {{ t('posts.noPostsDesc') || '尚无热度数据，欢迎回到文章列表浏览最新内容。' }}
         </p>
-        <Button
-          as="child"
-          variant="outline"
-          class="mt-6"
-        >
-          <NuxtLink :to="localeHref('/posts')">{{ t('nav.posts') || '全部文章' }}</NuxtLink>
-        </Button>
+        <!-- 链接按钮走 buttonVariants + NuxtLink（Button 包 NuxtLink 会渲染出
+             button 套 a 的嵌套可交互元素，键盘与点击行为都会错） -->
+        <NuxtLink
+          :to="localeHref('/posts')"
+          :class="cn(buttonVariants({ variant: 'outline' }), 'mt-6')"
+        >{{ t('nav.posts') || '全部文章' }}</NuxtLink>
       </div>
     </template>
   </div>
@@ -90,11 +99,12 @@
 <script setup lang="ts">
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
+import { cn } from '~~/lib/utils'
 import type { Post } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
-import { Flame, TrendingUp } from '@lucide/vue'
+import { Flame, RefreshCw, TrendingUp } from '@lucide/vue'
 import { computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -129,7 +139,8 @@ const defaultLimit = 18
 const {
   data,
   pending: loading,
-  error: loadError
+  error: loadError,
+  refresh
 } = useAPI<Post[] | { items?: Post[] }>('/blog/posts/hot', {
   key: 'posts-hot-index',
   query: { limit: defaultLimit },

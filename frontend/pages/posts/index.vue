@@ -126,6 +126,24 @@
           </div>
         </CardContent>
       </Card>
+
+      <!-- 结果概览：筛选生效时给一条明确的"当前在看什么 / 怎么回去"，
+           否则用户只能靠下拉框里的小字猜自己有没有筛过。 -->
+      <div
+        v-if="!loading"
+        class="mt-4 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground"
+      >
+        <span aria-live="polite">{{ t('posts.resultCount', { n: total }) }}</span>
+        <button
+          v-if="hasActiveFilter"
+          type="button"
+          class="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-primary transition-colors hover:bg-primary/10"
+          @click="clearFilters"
+        >
+          <X class="size-3.5" />
+          {{ t('posts.clearFilters') }}
+        </button>
+      </div>
     </header>
 
     <template v-if="loading && posts.length === 0">
@@ -190,10 +208,7 @@
           class="mt-4"
           @click="clearFilters"
         >
-          <X
-            data-icon="inline-start"
-            class="size-4"
-          />
+          <X data-icon="inline-start" />
           {{ t('posts.clearFilters') }}
         </Button>
       </div>

@@ -3,10 +3,11 @@ import { resolve } from 'node:path'
 import { describe, it, expect } from 'vitest'
 import {
   defaultPostCover,
+  placeholderPostCover,
+  handlePostCoverError,
   postCoverUrl,
   postShareImage,
   OG_FALLBACK_IMAGE,
-  PLACEHOLDER_COVER_SLOTS,
   POST_COVER_CARD,
   POST_COVER_DETAIL
 } from '@/lib/post-cover'
@@ -19,11 +20,11 @@ describe('postCover', () => {
       .toBe('https://cdn.example.com/b.png')
   })
 
-  it('无封面时回落到按 id 派生的站内占位封面（不再走 picsum 外链）', () => {
+  it('展示面无封面时回落到按文章标识派生的 picsum seed 随机图（含请求尺寸）', () => {
     expect(postCoverUrl({ id: 7, slug: 'x' }, POST_COVER_CARD))
-      .toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
+      .toBe('https://picsum.photos/seed/rosetta-post-7/640/427')
     expect(defaultPostCover({ id: 42 }, POST_COVER_DETAIL))
-      .toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
+      .toBe('https://picsum.photos/seed/rosetta-post-42/1200/800')
   })
 
   it('同一篇文章每次调用完全一致（SSR 与 hydrate 不会换图）', () => {
@@ -32,16 +33,16 @@ describe('postCover', () => {
     expect(postCoverUrl(post)).toBe(postCoverUrl(again))
   })
 
-  it('不同文章得到不同 seed（槽位由 seed 取模，50 篇铺满 6 档）', () => {
+  it('不同文章得到不同 seed 图（50 篇不重样）', () => {
     const urls = new Set(
       Array.from({ length: 50 }, (_, i) => postCoverUrl({ id: i + 1, slug: `p${i}` }))
     )
-    expect(urls.size).toBe(PLACEHOLDER_COVER_SLOTS)
+    expect(urls.size).toBe(50)
   })
 
-  it('槽位只在 1..6 内循环，文件必须真实存在（public/placeholder-covers）', () => {
+  it('站内兜底封面槽位在 1..6 内循环，文件必须真实存在（public/placeholder-covers）', () => {
     const urls = new Set(
-      Array.from({ length: 60 }, (_, i) => postCoverUrl({ id: i + 1, slug: `p${i}` }))
+      Array.from({ length: 60 }, (_, i) => placeholderPostCover({ id: i + 1, slug: `p${i}` }))
     )
     for (const u of urls) expect(u).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
     for (let slot = 1; slot <= 6; slot++) {
@@ -55,27 +56,41 @@ describe('postCover', () => {
     const raw = postCoverUrl({ slug: '中文标题' })
     const encoded = postCoverUrl({ slug: encodeURIComponent('中文标题') })
     expect(raw).toBe(encoded)
-    expect(raw).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
+    expect(raw).toMatch(/^https:\/\/picsum\.photos\/seed\/rosetta-slug-[0-9a-z]+\//)
   })
 
   it('空对象不抛错（组件在数据未到时也能渲染）', () => {
     expect(postCoverUrl(null)).toBe('')
-    expect(postCoverUrl({})).toMatch(/^\/placeholder-covers\/[1-6]\.svg$/)
+    expect(postCoverUrl({})).toMatch(/^https:\/\/picsum\.photos\/seed\/rosetta-anon-/)
   })
 
-  // 分享图与页面 hero 分开取值：og:image / twitter:image 必须是位图。
-  // 社交爬虫不渲染 SVG，把占位封面交给 og:image 的实测表现是空白预览卡片。
+  it('@error 兜底：picsum 不可达时切成同标识派生的站内占位封面，且只切一次', () => {
+    const img = {
+      src: 'https://picsum.photos/seed/rosetta-post-7/640/427',
+      dataset: {} as Record<string, string>
+    } as unknown as HTMLImageElement
+    const event = { target: img } as unknown as Event
+    handlePostCoverError(event, { id: 7, slug: 'x' })
+    expect(img.src).toBe(placeholderPostCover({ id: 7, slug: 'x' }))
+    const switched = img.src
+    handlePostCoverError(event, { id: 7, slug: 'x' })
+    expect(img.src).toBe(switched)
+  })
+
+  // 分享图与页面展示分开取值：og:image / twitter:image / JSON-LD 不得依赖
+  // picsum 外链（被墙/限流即无图），也不得给爬虫 SVG（社交卡片是空白）。
   it('分享图：有真实封面时原样使用', () => {
     expect(postShareImage({ id: 1, cover_image: '/uploads/a.webp' })).toBe('/uploads/a.webp')
     expect(postShareImage({ id: 1, coverImage: 'https://cdn.example.com/b.png' }))
       .toBe('https://cdn.example.com/b.png')
   })
 
-  it('分享图：无封面时回落到站点级 PNG，绝不返回占位 SVG', () => {
+  it('分享图：无封面时回落到站点级 PNG，绝不返回外链或占位 SVG', () => {
     const share = postShareImage({ id: 1, slug: 'p1' })
     expect(share).toBe(OG_FALLBACK_IMAGE)
     expect(share).toMatch(/\.png$/)
     expect(share).not.toMatch(/placeholder-covers/)
+    expect(share).not.toMatch(/picsum/)
     // 兜底图必须真实存在，否则分享卡片就是 404
     expect(existsSync(resolve(__dirname, '../../public/og-default.png'))).toBe(true)
   })

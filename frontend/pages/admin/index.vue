@@ -1191,7 +1191,7 @@ const iconFor = (t: ActivityItem['icon']) =>
   })[t]
 const pillFor = (a: ActivityItem['accent']) =>
   ({
-    primary: 'bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary-foreground',
+    primary: 'bg-primary-muted text-primary-muted-foreground',
     success: 'bg-success-muted text-success-muted-foreground',
     warning: 'bg-warning-muted text-warning-muted-foreground',
     info: 'bg-info-muted text-info-muted-foreground',

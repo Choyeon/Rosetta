@@ -663,6 +663,12 @@ async def list_posts(
         .subquery()
     )
 
+    # 列表接口不展示正文，defer 大字段减少 DB I/O 与网络传输。
+    # 但带 search 时 BM25 重排要读正文（search_rerank），此时不能 defer —— 否则
+    # 在事件循环里触发懒加载 → MissingGreenlet → 搜索接口稳定 500。
+    # SQLAlchemy 2.0 不允许 undefer 覆盖已声明的 defer，只能在建查询时就不加。
+    content_defer = [] if search else [defer(Post.content)]
+
     query = (
         select(
             Post,
@@ -673,8 +679,7 @@ async def list_posts(
             selectinload(Post.author).selectinload(User.title),
             selectinload(Post.category),
             selectinload(Post.tags),
-            # 列表接口不展示正文，defer 大字段减少 DB I/O 与网络传输
-            defer(Post.content),
+            *content_defer,
             defer(Post.encrypted_content),
             defer(Post.meta_fields),
             defer(Post.meta_title),
@@ -747,6 +752,8 @@ async def list_posts(
         if search_candidates_cap > 200:
             search_candidates_cap = 200
 
+        # 候选查询已在上面按 search 分支保留正文列（不 defer），
+        # search_rerank 才能安全读取 p.content 而不触发异步懒加载。
         coarse_q = query.order_by(*_list_order_by(sort_mode)).limit(search_candidates_cap)
         coarse_result = await db.execute(coarse_q)
         coarse_rows = coarse_result.unique().all()

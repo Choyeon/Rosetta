@@ -69,6 +69,6 @@ describe('后台菜单与投票入口', () => {
     expect(dashboardGates.length, '桌面 + 移动两处 Dashboard 入口都要按 isAdmin 收口')
       .toBeGreaterThanOrEqual(2)
     expect(header, '移动端抽屉必须能进 /settings（此前只有桌面下拉有）')
-      .toMatch(/navigateTo\('\/settings'\)/)
+      .toMatch(/go\('\/settings'\)/)
   })
 })

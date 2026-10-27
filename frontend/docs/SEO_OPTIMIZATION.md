@@ -13,7 +13,7 @@
 | P0-3 hero LCP + img 宽高 | 已实现 | 各公开页/组件 `<img>` 显式宽高、hero 缩略图去 `loading=lazy`；守卫 `tests/unit/heroLcpAttributes.spec.ts` |
 | P1-1 `?page` 越界 301 | 已实现 | `pages/posts/index.vue`（`app:rendered` 闸门 + `no-store`） |
 | P1-2 `<html lang>` BCP-47 | 已实现 | `HREFLANG_MAP` 是 BCP-47 单源，三处写点全部走它：`composables/useSeo.ts`（SSR 页覆盖）、`app.vue`（全局 `htmlAttrs.lang`，此前直接吐 `locale.value` = `zh_Hant`）、`nuxt.config.ts`（`app.head.htmlAttrs.lang` 默认值）；守卫 `tests/unit/seoLocaleUrl.spec.ts` |
-| P1-3 og:image 去外链 | 已实现 | `lib/post-cover.ts` 回落改站内 `/placeholder-covers/1..6.svg`；`public/og-default.png` + `seo.default_og_image` 设置键 |
+| P1-3 og:image 去外链 | 已实现（2026-10-27 口径调整） | 分享面（og:image / twitter:image / JSON-LD）站内 `public/og-default.png` + `seo.default_og_image` 设置键不变；展示面（卡片/头图/兜底轮播）无封面回落 picsum seed 随机图，`@error`/客户端探测切站内 `/placeholder-covers/1..6.svg` |
 | P1-4 JSON-LD @graph | 已实现 | `composables/useSeo.ts::buildArticleJsonLdGraph`（BlogPosting + Person/Organization/ImageObject/BreadcrumbList，`@id` 互指；面包屑首项走 `nav.home`）；守卫 `tests/unit/articleJsonLdGraph.spec.ts` |
 | P1-5 `/seo/schema` URL | 已实现 | `backend/api/seo.py`（`/posts/{slug}`、`/authors/{username}`）；守卫 `tests/test_api_seo.py` |
 | P1-6 canonical 单源 | 复测更正 | 页面侧本无重复；只加守卫 spec |

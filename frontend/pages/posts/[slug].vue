@@ -69,62 +69,77 @@
             {{ displayPostTitle }}
           </h1>
 
-          <div class="flex flex-wrap items-center gap-3 mt-6 text-sm text-muted-foreground">
-            <UserAvatar
-              :avatar="post?.author?.avatar"
-              :resolved-avatar-url="post?.author?.resolved_avatar_url"
-              :seed="post?.author?.username || authorName"
-              :name="authorName"
-              :title="post?.author?.title || null"
-              :size="32"
-              :show-title="true"
-            />
-            <span class="font-medium text-foreground">{{ authorName }}</span>
-            <TitleBadge
-              v-if="post?.author?.title"
-              :title="post?.author?.title"
-              size="sm"
-            />
-            <span v-if="publishedAt">·</span>
-            <span
-              v-if="publishedAt"
-              class="inline-flex items-center gap-1.5"
-            >
-              <CalendarDays class="size-3.5" />
-              {{ formatDate(publishedAt) }}
-            </span>
-            <template v-if="showReadingTime">
-              <span>·</span>
-              <span class="inline-flex items-center gap-1.5">
+          <!-- 作者 / 日期 / 阅读时长 / 阅读量是主信息，字数与更新时间为次要信息。
+               上一版八项挤在同一行、用「·」硬分隔，窄屏换行后每行都以「·」开头；
+               这里分两层：主行不出现分隔符，次行降一级字号与对比度。 -->
+          <div class="mt-6 space-y-2">
+            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+              <div class="flex min-w-0 items-center gap-2">
+                <UserAvatar
+                  :avatar="post?.author?.avatar"
+                  :resolved-avatar-url="post?.author?.resolved_avatar_url"
+                  :seed="post?.author?.username || authorName"
+                  :name="authorName"
+                  :title="post?.author?.title || null"
+                  :size="32"
+                  :show-title="true"
+                />
+                <span class="font-medium text-foreground">{{ authorName }}</span>
+                <TitleBadge
+                  v-if="post?.author?.title"
+                  :title="post?.author?.title"
+                  size="sm"
+                />
+              </div>
+              <span
+                class="hidden h-4 w-px bg-border sm:block"
+                aria-hidden="true"
+              />
+              <span
+                v-if="publishedAt"
+                class="inline-flex items-center gap-1.5"
+              >
+                <CalendarDays class="size-3.5" />
+                {{ formatDate(publishedAt) }}
+              </span>
+              <span
+                v-if="showReadingTime"
+                class="inline-flex items-center gap-1.5"
+              >
                 <Clock3 class="size-3.5" />
                 {{ readingTime }} {{ t('post.minRead') }}
               </span>
-            </template>
-            <span>·</span>
-            <span class="inline-flex items-center gap-1.5">
-              <Eye class="size-3.5" />
-              {{ views }} {{ t('post.views') }}
-            </span>
-            <template v-if="showWordCount">
-              <span>·</span>
               <span class="inline-flex items-center gap-1.5">
+                <Eye class="size-3.5" />
+                {{ views }} {{ t('post.views') }}
+              </span>
+            </div>
+            <div
+              v-if="showWordCount || showUpdatedAt"
+              class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/80"
+            >
+              <span
+                v-if="showWordCount"
+                class="inline-flex items-center gap-1.5"
+              >
                 <FileText class="size-3.5" />
                 {{ formatCount(wordCount) }} {{ t('post.words', '字') }}
               </span>
-              <span>·</span>
-              <span class="inline-flex items-center gap-1.5">
+              <span
+                v-if="showWordCount"
+                class="inline-flex items-center gap-1.5"
+              >
                 <Hash class="size-3.5" />
                 {{ formatCount(charCount) }} {{ t('post.chars', '字符') }}
               </span>
-            </template>
-            <span v-if="showUpdatedAt">·</span>
-            <span
-              v-if="showUpdatedAt"
-              class="inline-flex items-center gap-1.5"
-            >
-              <RefreshCw class="size-3.5" />
-              {{ t('post.updatedAt', '更新于') }} {{ formatDate(updatedAt) }}
-            </span>
+              <span
+                v-if="showUpdatedAt"
+                class="inline-flex items-center gap-1.5"
+              >
+                <RefreshCw class="size-3.5" />
+                {{ t('post.updatedAt', '更新于') }} {{ formatDate(updatedAt) }}
+              </span>
+            </div>
           </div>
 
           <div
@@ -139,6 +154,7 @@
               decoding="async"
               width="1200"
               height="514"
+              @error="handlePostCoverError($event, post)"
             >
           </div>
 
@@ -180,7 +196,7 @@
                   >
                     <Check
                       v-if="!submittingArticlePassword"
-                      class="size-4 mr-2"
+                      data-icon="inline-start"
                     />
                     {{ submittingArticlePassword ? t('common.submitting', '提交中…') : t('post.unlock', '解锁') }}
                   </Button>
@@ -207,7 +223,7 @@
             <article
               v-show="!!post"
               ref="articleEl"
-              class="prose-shadcn prose-shadcn-dark mt-12 mx-auto"
+              class="prose-shadcn prose-shadcn-dark mt-12"
               :style="proseStyle"
               v-html="post ? renderedContent : ''"
             />
@@ -645,6 +661,7 @@
                     height="427"
                     class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
                     loading="lazy"
+                    @error="handlePostCoverError($event, sp.raw)"
                   >
                 </div>
                 <div class="p-4">
@@ -751,7 +768,7 @@ import TagBadge from '~~/components/TagBadge.vue'
 import CommentItem from '~~/components/CommentItem.vue'
 import CaptchaField from '~~/components/CaptchaField.vue'
 import PollCard from '~~/components/PollCard.vue'
-import { postCoverUrl, postShareImage, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
+import { handlePostCoverError, postCoverUrl, postShareImage, POST_COVER_BANNER, POST_COVER_CARD } from '~~/lib/post-cover'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
 import { usePolls, type Poll } from '~~/composables/usePolls'
@@ -1237,13 +1254,13 @@ const displayPostTitle = computed(() => {
     return t('post.untitled', '未命名文章')
   }
 })
-const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_DETAIL))
+const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_BANNER))
 /**
- * 分享图（og:image / twitter:image）单独取值：社交爬虫不渲染 SVG，
- * 而无封面文章的站内占位封面是 `/placeholder-covers/<n>.svg`。
- * 直接把占位图塞给 og:image，X / Facebook / LinkedIn / Slack 的卡片就是空白。
+ * 分享图（og:image / twitter:image / JSON-LD）单独取值：无封面文章的展示面回落
+ * 是 picsum 外链（被墙/限流即无图）与 SVG 占位（社交爬虫不渲染），两者都不能进
+ * 分享卡片，一律回落站内 PNG。
  * 取值口径收在 lib/post-cover.ts::postShareImage（有单测钉住），
- * 页面本身 hero 仍用 coverImage（SVG 渐变在浏览器里正常渲染）。
+ * 页面本身 hero 仍用 coverImage（picsum seed 图，@error 切站内占位封面）。
  */
 const seoShareImage = computed(() => postShareImage(post.value))
 /** 相似文章缩略图：同样按文章标识回落默认封面。 */
@@ -1257,6 +1274,8 @@ interface SimilarCard {
   excerpt: string
   cover: string
   href: string
+  /** 原始行：@error 兜底要按同一标识（id/slug）派生占位槽位，不能只有卡面字段 */
+  raw: SimilarPostRow
 }
 const similarCards = computed<SimilarCard[]>(() =>
   similarPosts.value.map(sp => ({
@@ -1264,7 +1283,8 @@ const similarCards = computed<SimilarCard[]>(() =>
     title: pickLocalized(sp.title),
     excerpt: pickLocalized(sp.excerpt),
     cover: similarCover(sp),
-    href: localeHref(`/posts/${sp.slug}`)
+    href: localeHref(`/posts/${sp.slug}`),
+    raw: sp
   }))
 )
 const publishedAt = computed(() => post.value?.published_at || post.value?.publishedAt || post.value?.created_at || '')
@@ -1415,7 +1435,8 @@ useArticleJsonLd({
   title: seoTitle,
   headline: seoTitle,
   description: seoDescription,
-  cover: coverImage,
+  // JSON-LD ImageObject 走分享图口径：无封面时是站内 PNG，不给爬虫外链/SVG。
+  cover: seoShareImage,
   publishedAt,
   updatedAt,
   // 始终传入 author 对象，内部字段均为 ComputedRef（响应式）。
@@ -1602,6 +1623,10 @@ const mdRenderer = new Marked(
 const renderedContent = computed(() => {
   if (!post.value?.content) return ''
   let raw = normalizeMarkdownFences(pickLocalized(post.value.content))
+  // 插件会在正文里追加 HTML 注释（seo-toolkit 的 JSON-LD 占位符就是一条）。
+  // 注释在 HTML 里本来不可见，但 renderer.html 走的是转义分支，注释会被当作普通文本
+  // 原样显示成 `<!-- ... -->`。解析前直接剥掉，行为与浏览器一致。
+  raw = raw.replace(/<!--[\s\S]*?-->/g, '')
   // 剥离正文开头与页面 H1 重复的标题：部分文章 Markdown 首行即 `# 标题`，
   // 而模板已单独渲染 H1，直接转换会导致标题出现两次。
   // 仅当首行 H1 文本与文章标题匹配时才移除，避免误删正文中真正的一级标题。

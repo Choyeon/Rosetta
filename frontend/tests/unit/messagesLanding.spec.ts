@@ -107,7 +107,7 @@ describe('/account/messages 页面', () => {
 
 describe('入口', () => {
   it('顶栏桌面下拉与移动抽屉各有一个私信入口', () => {
-    expect(header.split('navigateTo(\'/account/messages\')').length - 1).toBe(2)
+    expect(header.split('go(\'/account/messages\')').length - 1).toBe(2)
   })
 
   it('作者主页入口只对「已登录 + 非本人」出现，且包在 ClientOnly 里', () => {

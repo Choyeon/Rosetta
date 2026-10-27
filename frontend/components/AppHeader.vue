@@ -112,7 +112,9 @@ interface NavApiRow {
 // 内置兜底（非极简主题 fallback）—— 当后端 /api/navigations 为空或请求失败时使用。
 // 保留核心必要页面：首页 / 文章 / 分类 / 标签 / 归档 + 两个高权重静态页（关于 / 留言板）。
 // 这样即便用户 DB 中 navigation_menu 表未 seed，顶部导航也永远不会缺链接。
-const FALLBACK_NAV: { label: string, to: string, target?: string }[] = [
+// 必须是函数而不是常量数组：常量在 setup 期就把当前语言烘死，语言切换后 navItems
+// 会重算，但标签仍是第一次渲染时的那一版（英文页显示中文导航）。
+const buildFallbackNav = (): { label: string, to: string, target?: string }[] => [
   { label: t('nav.home') || '首页', to: '/' },
   { label: t('nav.posts') || '文章', to: '/posts' },
   { label: t('nav.categories') || '分类', to: '/categories' },
@@ -201,7 +203,7 @@ const dedupeByTo = <T extends { to: string }>(arr: ReadonlyArray<T>): T[] => {
 const navItems = computed(() => {
   const _ = locale.value // 显式建立响应式依赖：语言切换 → 标签重新 pickNavStr
   const raw = navRowsRef.value
-  if (!Array.isArray(raw) || raw.length === 0) return dedupeByTo(FALLBACK_NAV)
+  if (!Array.isArray(raw) || raw.length === 0) return dedupeByTo(buildFallbackNav())
   const out: { label: string, to: string, target?: string }[] = []
   for (const row of raw) {
     const labelRaw = row.label ?? row.title ?? row.name ?? ''
@@ -219,7 +221,7 @@ const navItems = computed(() => {
     const target = row.target_blank === true || row.target === '_blank' ? '_blank' : undefined
     out.push(target ? { label, to: path, target } : { label, to: path })
   }
-  const base = out.length > 0 ? out : FALLBACK_NAV
+  const base = out.length > 0 ? out : buildFallbackNav()
   // Merge ensure: 若后端未配置友情/相册等关键路径，按 ENSURE_PRESENT 顺序补齐在末尾
   for (const req of ENSURE_PRESENT) {
     if (base.some(x => x.to === req.to)) continue
@@ -254,15 +256,22 @@ const primaryNavItems = computed(() => navItems.value.slice(0, NAV_PRIMARY_MAX.v
 const overflowNavItems = computed(() => navItems.value.slice(NAV_PRIMARY_MAX.value))
 const moreActive = computed(() => overflowNavItems.value.some(item => isActive(item.to)))
 
+/**
+ * 站内跳转统一入口：登录 / 注册 / 搜索 / 个人中心都属于 i18n 页面，必须带上当前语言
+ * 前缀；否则在 /en /ja /zh_Hant 下点「登录」会跳到中文裸路径，回访又被客户端中间件
+ * 改写一次，语言与地址栏来回判逆。后台 /admin 不参与语言前缀，保留裸路径。
+ */
+const go = (path: string) => navigateTo(localeHref(path))
+
 const handleLogout = async () => {
   await authStore.logout()
-  navigateTo('/')
+  navigateTo(localeHref('/'))
 }
 
-const handleLogin = () => navigateTo('/login')
-const handleRegister = () => navigateTo('/register')
+const handleLogin = () => go('/login')
+const handleRegister = () => go('/register')
 const handleAdmin = () => navigateTo('/admin')
-const handleSearchClick = () => navigateTo('/search')
+const handleSearchClick = () => go('/search')
 </script>
 
 <template>
@@ -307,6 +316,7 @@ const handleSearchClick = () => navigateTo('/search')
           :target="item.target"
           :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
           data-navbar="link"
+          :aria-current="isActive(item.to) ? 'page' : undefined"
           :class="[
             'shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
             isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
@@ -324,6 +334,7 @@ const handleSearchClick = () => navigateTo('/search')
             :target="item.target"
             :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
             data-navbar="link"
+            :aria-current="isActive(item.to) ? 'page' : undefined"
             :class="[
               'hidden shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground 2xl:inline-flex',
               isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
@@ -488,22 +499,22 @@ const handleSearchClick = () => navigateTo('/search')
                 </DropdownMenuItem>
                 <!-- 个人中心：/account 是 ssr:false 私有页（routeRules），入口只在这里，
                      不进主导航——未登录访客点它会得到一次跳转，没有意义。 -->
-                <DropdownMenuItem @click="navigateTo('/account')">
+                <DropdownMenuItem @click="go('/account')">
                   <UserCircle2 data-icon="inline-start" />
                   <span>{{ t('account.title') }}</span>
                 </DropdownMenuItem>
                 <!-- 私信：与 /account 同档 ssr:false 私有页，入口同样只放在登录态菜单里。 -->
-                <DropdownMenuItem @click="navigateTo('/account/messages')">
+                <DropdownMenuItem @click="go('/account/messages')">
                   <MessageSquare data-icon="inline-start" />
                   <span>{{ t('messages.title') }}</span>
                 </DropdownMenuItem>
                 <!-- 站内通知：/api/notifications 只要求登录，普通成员也会收到"评论已通过"
                      这类回执。入口与 /account 同档（ssr:false 私有页），不进主导航。 -->
-                <DropdownMenuItem @click="navigateTo('/account/notifications')">
+                <DropdownMenuItem @click="go('/account/notifications')">
                   <Bell data-icon="inline-start" />
                   <span>{{ t('notifications.title') }}</span>
                 </DropdownMenuItem>
-                <DropdownMenuItem @click="navigateTo('/settings')">
+                <DropdownMenuItem @click="go('/settings')">
                   <Settings data-icon="inline-start" />
                   <span>{{ t('common.settings') || '设置' }}</span>
                 </DropdownMenuItem>
@@ -532,7 +543,7 @@ const handleSearchClick = () => navigateTo('/search')
             </SheetTrigger>
             <SheetContent
               side="left"
-              class="w-[85%] max-w-sm flex flex-col"
+              class="w-[85%] max-w-sm flex flex-col overflow-y-auto overscroll-contain"
             >
               <SheetHeader class="text-left mb-4">
                 <SheetTitle class="sr-only">
@@ -553,7 +564,10 @@ const handleSearchClick = () => navigateTo('/search')
                 </NuxtLink>
               </SheetHeader>
               <Separator class="mb-4" />
-              <nav class="flex flex-col gap-1 mb-6">
+              <nav
+                class="flex flex-col gap-1 mb-6"
+                :aria-label="t('common.titleMenu') || 'Menu'"
+              >
                 <SheetClose
                   v-for="item in navItems"
                   :key="item.to"
@@ -561,6 +575,7 @@ const handleSearchClick = () => navigateTo('/search')
                 >
                   <NuxtLink
                     :to="localeHref(item.to)"
+                    :aria-current="isActive(item.to) ? 'page' : undefined"
                     :class="[
                       'px-3 py-2.5 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
                       isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
@@ -617,7 +632,7 @@ const handleSearchClick = () => navigateTo('/search')
                         variant="ghost"
                         size="sm"
                         class="justify-start"
-                        @click="navigateTo('/account')"
+                        @click="go('/account')"
                       >
                         <UserCircle2 data-icon="inline-start" />
                         {{ t('account.title') }}
@@ -628,7 +643,7 @@ const handleSearchClick = () => navigateTo('/search')
                         variant="ghost"
                         size="sm"
                         class="justify-start"
-                        @click="navigateTo('/account/messages')"
+                        @click="go('/account/messages')"
                       >
                         <MessageSquare data-icon="inline-start" />
                         {{ t('messages.title') }}
@@ -639,7 +654,7 @@ const handleSearchClick = () => navigateTo('/search')
                         variant="ghost"
                         size="sm"
                         class="justify-start"
-                        @click="navigateTo('/account/notifications')"
+                        @click="go('/account/notifications')"
                       >
                         <Bell data-icon="inline-start" />
                         {{ t('notifications.title') }}
@@ -650,7 +665,7 @@ const handleSearchClick = () => navigateTo('/search')
                         variant="ghost"
                         size="sm"
                         class="justify-start"
-                        @click="navigateTo('/settings')"
+                        @click="go('/settings')"
                       >
                         <Settings data-icon="inline-start" />
                         {{ t('common.settings') || '设置' }}

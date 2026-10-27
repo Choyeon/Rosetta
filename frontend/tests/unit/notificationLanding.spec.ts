@@ -54,7 +54,7 @@ describe('站内通知 · 前台落地契约', () => {
   })
 
   it('顶栏两处入口（桌面下拉 + 移动抽屉）都指向通知页', () => {
-    const hits = [...header.matchAll(/navigateTo\('\/account\/notifications'\)/g)]
+    const hits = [...header.matchAll(/go\('\/account\/notifications'\)/g)]
     expect(hits.length, '桌面与移动各一处').toBeGreaterThanOrEqual(2)
   })
 

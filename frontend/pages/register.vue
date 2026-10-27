@@ -606,6 +606,7 @@ definePageMeta({ layout: false, ssr: false })
 useNoindexPage()
 
 const { t } = useI18n()
+const { localeHref } = useLocaleLink()
 const authStore = useAuthStore()
 const toast = useToast()
 const site = useSite()
@@ -695,7 +696,7 @@ onMounted(async () => {
   await site.ensureLoaded()
   if (!site.features.value.enable_registration) {
     toast.warning(t('auth.registerClosed', '站点已关闭注册，请使用已有账号登录。'))
-    navigateTo('/login')
+    navigateTo(localeHref('/login'))
   }
 })
 
@@ -786,7 +787,7 @@ const handleRegister = async () => {
     // authStore.register(username, email, password, nickname)
     await authStore.register(username, form.email.trim(), form.password, form.name.trim())
     toast.success(t('auth.registerSuccess', '账户创建成功，请使用新账户登录'))
-    navigateTo('/login')
+    navigateTo(localeHref('/login'))
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : t('auth.registerFailed', '注册失败，请稍后重试')
   } finally {

@@ -41,54 +41,58 @@
       </div>
 
       <!-- Albums -->
-      <div
-        v-else-if="albums.length > 0"
-        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
-      >
-        <article
-          v-for="album in albums"
-          :key="album.id"
-          class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          role="button"
-          tabindex="0"
-          :aria-label="t('gallery.openAlbum', { title: album.title })"
-          @click="openAlbum(album.id)"
-          @keydown.enter.prevent="openAlbum(album.id)"
-          @keydown.space.prevent="openAlbum(album.id)"
-        >
-          <div class="relative aspect-[4/3] overflow-hidden bg-muted">
-            <img
-              v-if="album.cover"
-              :src="album.cover"
-              :alt="album.title"
-              width="800"
-              height="600"
-              class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-              loading="lazy"
-            >
-            <div
-              v-else
-              class="size-full flex items-center justify-center bg-muted"
-            >
-              <Images class="size-12 text-muted-foreground/40" />
+      <template v-else-if="albums.length > 0">
+        <!-- 「点击图片可放大」只在真的有图可点时出现：上一版把它写在空态里，
+             屏幕上于是同时存在「还没有上传相册」和「点击任意图片可放大查看」两句互相矛盾的话。 -->
+        <p class="mb-4 text-center text-xs text-muted-foreground">
+          {{ t('gallery.hint') }}
+        </p>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <article
+            v-for="album in albums"
+            :key="album.id"
+            class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            role="button"
+            tabindex="0"
+            :aria-label="t('gallery.openAlbum', { title: album.title })"
+            @click="openAlbum(album.id)"
+            @keydown.enter.prevent="openAlbum(album.id)"
+            @keydown.space.prevent="openAlbum(album.id)"
+          >
+            <div class="relative aspect-[4/3] overflow-hidden bg-muted">
+              <img
+                v-if="album.cover"
+                :src="album.cover"
+                :alt="album.title"
+                width="800"
+                height="600"
+                class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                loading="lazy"
+              >
+              <div
+                v-else
+                class="size-full flex items-center justify-center bg-muted"
+              >
+                <Images class="size-12 text-muted-foreground/40" />
+              </div>
+              <div class="absolute top-3 left-3">
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
+                  <ImageIcon class="size-3.5" />
+                  {{ album.photosCount }}
+                </span>
+              </div>
             </div>
-            <div class="absolute top-3 left-3">
-              <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
-                <ImageIcon class="size-3.5" />
-                {{ album.photosCount }}
-              </span>
+            <div class="p-5">
+              <h3 class="font-display text-lg font-semibold tracking-tight truncate group-hover:text-primary transition-colors">
+                {{ album.title }}
+              </h3>
+              <p class="text-sm text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+                {{ album.description || t('gallery.noDesc') }}
+              </p>
             </div>
-          </div>
-          <div class="p-5">
-            <h3 class="font-display text-lg font-semibold tracking-tight truncate group-hover:text-primary transition-colors">
-              {{ album.title }}
-            </h3>
-            <p class="text-sm text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
-              {{ album.description || t('gallery.noDesc') }}
-            </p>
-          </div>
-        </article>
-      </div>
+          </article>
+        </div>
+      </template>
 
       <!-- Load failed：与"没有相册"分开 -->
       <div
@@ -122,9 +126,6 @@
         <h3 class="font-display text-xl font-semibold">
           {{ t('gallery.noAlbums') }}
         </h3>
-        <p class="text-muted-foreground mt-2 text-sm">
-          {{ t('gallery.hint') }}
-        </p>
       </div>
     </section>
 

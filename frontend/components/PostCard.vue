@@ -2,8 +2,9 @@
   文章卡片（default 网格版 / compact 横条版 / feature 通栏特写版三副骨架，由 variant 选择）。
   字段读取一律 snake_case + camelCase 双写兜底：后端不同接口混用两种命名，只留一种会静默丢值。
   title/excerpt/category.name 假定后端返回完整四语 dict（缺 key 即无兜底，见 §7.3）；
-  封面只允许走 lib/post-cover 的 postCoverUrl —— picsum seed 两端派生，改成随机或本地时态
-  会直接造成水合 mismatch。feature 取 DETAIL 尺寸（通栏宽度下 CARD 尺寸会糊）。
+  封面只允许走 lib/post-cover 的 postCoverUrl —— 无封面回落 picsum seed 图（外链），
+  seed 两端派生，改成随机器或本地时态会直接造成水合 mismatch；picsum 不可达时
+  @error 切站内占位封面（handlePostCoverError）。feature 取 DETAIL 尺寸（通栏宽度下 CARD 尺寸会糊）。
   compact 变体 Tag 封顶 4 个属有意的排版契约。
 -->
 <template>
@@ -26,16 +27,9 @@
         decoding="async"
         fetchpriority="low"
         sizes="(max-width: 640px) 120px, (max-width: 768px) 168px, 180px"
+        @error="handlePostCoverError($event, post)"
       >
     </NuxtLink>
-    <!-- 无封面：占位渐变砖块，保证列表高度稳定（compact） -->
-    <div
-      v-else
-      aria-hidden="true"
-      class="shrink-0 w-[120px] sm:w-[168px] md:w-[180px] aspect-[4/3] sm:aspect-auto sm:min-h-full flex items-center justify-center bg-gradient-to-br from-muted via-muted to-primary/10"
-    >
-      <FileImage class="size-6 text-muted-foreground/40" />
-    </div>
 
     <div class="flex-1 min-w-0 p-4 sm:p-5 flex flex-col">
       <div class="flex items-center gap-2 flex-wrap mb-2">
@@ -143,17 +137,10 @@
         loading="lazy"
         decoding="async"
         sizes="(max-width: 768px) 100vw, 58vw"
+        @error="handlePostCoverError($event, post)"
       >
       <span class="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/15 to-transparent opacity-70" />
     </NuxtLink>
-    <!-- 无封面：占位渐变砖块撑住通栏左半，别让特写塌成一坨文字（feature） -->
-    <div
-      v-else
-      aria-hidden="true"
-      class="aspect-[16/9] md:aspect-auto md:min-h-[300px] flex items-center justify-center bg-gradient-to-br from-muted via-muted to-primary/10"
-    >
-      <FileImage class="size-10 text-muted-foreground/40" />
-    </div>
 
     <div class="flex flex-col justify-center gap-3 p-6 md:p-8">
       <div class="flex items-center gap-2 flex-wrap">
@@ -225,12 +212,12 @@
 
   <article
     v-else
-    class="card-surface lift-hover group overflow-hidden text-card-foreground"
+    class="card-surface lift-hover group overflow-hidden text-card-foreground flex h-full flex-col"
   >
     <NuxtLink
       v-if="coverImage"
       :to="localeHref(`/posts/${postSlug}`)"
-      class="block aspect-[16/9] overflow-hidden bg-muted relative"
+      class="block shrink-0 aspect-[16/9] overflow-hidden bg-muted relative"
     >
       <img
         :src="coverImage"
@@ -242,20 +229,15 @@
         decoding="async"
         fetchpriority="low"
         sizes="(max-width: 768px) 100vw, (max-width: 1024px) 50vw, 33vw"
+        @error="handlePostCoverError($event, post)"
       >
       <!-- subtle bottom vignette so text/tags still work when no content overlay -->
       <span class="pointer-events-none absolute inset-x-0 bottom-0 h-20 bg-gradient-to-t from-black/10 to-transparent opacity-70" />
     </NuxtLink>
-    <!-- 无封面：占位渐变砖块，保证网格高度一致（default） -->
-    <div
-      v-else
-      aria-hidden="true"
-      class="aspect-[16/9] flex items-center justify-center bg-gradient-to-br from-muted via-muted to-primary/10"
-    >
-      <FileImage class="size-8 text-muted-foreground/40" />
-    </div>
 
     <header class="p-5 pb-0">
+      <!-- 分类 / 置顶：标题之前只放这两个强身份标记，保证每张卡片的标题起始位置一致；
+           标签一律下移到摘要之后（见下方 tag 行），否则标签换行数不同会把标题逐张推低。 -->
       <div class="flex items-center gap-2 flex-wrap">
         <CategoryBadge
           v-if="categoryName"
@@ -271,28 +253,34 @@
         >
           {{ t('posts.pinned') }}
         </Badge>
-        <!-- 默认卡片：分类、置顶之后显示 Tag，完整渲染 -->
-        <TagBadge
-          v-for="tag in normalizedTags"
-          :key="tag.id"
-          :color="tag.color"
-          :label="tag.name"
-          :to="localeHref(`/tags/${tag.slug}`)"
-        />
       </div>
-      <h2 class="mt-2 font-display leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border text-xl">
+      <h2 class="mt-3 font-display leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border text-xl">
         <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
       </h2>
     </header>
 
-    <div class="p-5 pt-3">
+    <div class="p-5 pt-3 flex-1">
       <p class="text-muted-foreground leading-relaxed line-clamp-3">
         {{ postExcerpt || t('post.noExcerpt') }}
       </p>
     </div>
 
+    <!-- 标签：摘要之后、元信息之前，完整渲染（不截断），靠 footer 的 mt-auto 吸底 -->
+    <div
+      v-if="normalizedTags.length"
+      class="px-5 pb-4 flex flex-wrap items-center gap-2"
+    >
+      <TagBadge
+        v-for="tag in normalizedTags"
+        :key="tag.id"
+        :color="tag.color"
+        :label="tag.name"
+        :to="localeHref(`/tags/${tag.slug}`)"
+      />
+    </div>
+
     <footer
-      class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mt-2 text-xs text-muted-foreground p-5 pt-0 border-t border-border/60"
+      class="mt-auto flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground px-5 py-3 border-t border-border/60"
     >
       <div class="flex items-center gap-2 min-w-0">
         <UserAvatar
@@ -346,7 +334,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Calendar, Eye, FileImage, MessageCircle, ArrowRight } from '@lucide/vue'
+import { Calendar, Eye, MessageCircle, ArrowRight } from '@lucide/vue'
 import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
@@ -354,7 +342,7 @@ import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
-import { postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
+import { handlePostCoverError, postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 
 type PostCardVariant = 'default' | 'compact' | 'feature'
 
@@ -419,7 +407,8 @@ const { t } = useI18n()
 const { resolveLocalized, formatDate } = useI18nHelpers()
 const { localeHref } = useLocaleLink()
 
-// 无封面文章不再留白：回落到按文章标识派生的 picsum seed 图（篇篇不同、同篇恒定）
+// 无封面文章不再留白：回落到按文章标识派生的 picsum seed 图（篇篇不同、同篇恒定）；
+// 外链加载失败由 @error 兜底切站内占位封面。
 // 通栏特写占满整行宽，回落图仍取卡片尺寸会糊，故按变体选尺寸
 const coverImage = computed(() => postCoverUrl(
   props.post,

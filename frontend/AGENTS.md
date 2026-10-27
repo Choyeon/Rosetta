@@ -214,10 +214,12 @@ Pinia 只用于跨页面共享状态（auth / permissions）。页面级搜索�
 - 标签：淡色胶囊底 + 原色文字 + 无边框
 - 响应式：默认桌面设计，`md:` 断点以下保证可用
 - 深色模式：用对比度背景层次，不用显式边框
-- 文章封面取值只有 `lib/post-cover.ts` 一个来源：`postCoverUrl(post, size)` 有封面用封面，
+- 文章封面取值只有 `lib/post-cover.ts` 一个来源：展示面 `postCoverUrl(post, size)` 有封面用封面，
   没封面回落到 `https://picsum.photos/seed/rosetta-post-<id>/<w>/<h>`（seed 由文章标识派生，
-  同篇恒定、篇篇不同，SSR/hydrate 字节一致）。只在公开读取链路使用，禁止把默认值写回
-  `cover_image`（管理端表单/PUT 必须保持"未设置封面 = 空"）
+  同篇恒定、篇篇不同，SSR/hydrate 字节一致），`@error` 走 `handlePostCoverError` 切站内
+  `/placeholder-covers/<1..6>.svg` 兜底（同 seed 同槽位）；分享面 `postShareImage` 无封面仍是
+  站内 `og-default.png`，og:image / twitter:image / JSON-LD **绝不**拿 picsum 外链。
+  只在公开读取链路使用，禁止把默认值写回 `cover_image`（管理端表单/PUT 必须保持"未设置封面 = 空"）
 
 ### 语义状态色配对铁律
 

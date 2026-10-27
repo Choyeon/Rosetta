@@ -20,9 +20,11 @@ import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Switch } from '~~/components/ui/switch'
-import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import AdminFormField from '~~/components/admin/AdminFormField.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
+import type { AdminColumn as Column } from '~~/types/admin'
 import { Search, Plus, Pencil, Trash2, Tag, Tags } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -33,7 +35,6 @@ const toast = useToast()
 const tags = shallowRef<AdminTag[]>([])
 const loading = ref(false)
 const searchQuery = ref('')
-const hoveredId = ref<number | null>(null)
 const dialogOpen = ref(false)
 const dialogMode = ref<'new' | 'edit'>('new')
 const saving = ref(false)
@@ -79,6 +80,16 @@ const filteredTags = computed(() => {
     || t.slug.toLowerCase().includes(q)
   )
 })
+
+/** 标签没配颜色时回落到主题主色，避免写死十六进制在换调色板后不跟随 */
+const tagColor = (t: AdminTag) => t.color || 'hsl(var(--primary))'
+
+const columns: Column[] = [
+  { key: 'name', title: '名称' },
+  { key: 'slug', title: 'Slug', class: 'w-56 text-muted-foreground font-mono text-xs' },
+  { key: 'post_count', title: '文章数', align: 'center', class: 'w-24' },
+  { key: 'is_active', title: '状态', align: 'center', class: 'w-24' }
+]
 
 const loadData = async () => {
   loading.value = true
@@ -185,176 +196,145 @@ onMounted(() => {
     description="标签可用于文章的快速分类与搜索聚合。"
     :count="tags.length"
   >
+    <template #actions>
+      <Button
+        size="sm"
+        class="shadow-sm"
+        @click="openNew"
+      >
+        <Plus data-icon="inline-start" />
+        新建标签
+      </Button>
+    </template>
+
     <template #toolbar>
-      <div class="flex items-center gap-3">
-        <div class="relative">
-          <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-          <Input
-            v-model="searchQuery"
-            :aria-label="$_t('common.search')"
-            placeholder="搜索标签..."
-            class="h-10 w-64 rounded-[12px] pl-9"
-          />
-        </div>
-        <Button
-          size="sm"
-          class="shadow-sm"
-          @click="openNew"
-        >
-          <Plus data-icon="inline-start" />
-          新建标签
-        </Button>
+      <div class="relative max-w-sm">
+        <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
+        <Input
+          v-model="searchQuery"
+          :aria-label="$_t('common.search')"
+          placeholder="搜索标签名称或 slug..."
+          class="h-10 rounded-[12px] pl-9"
+        />
       </div>
     </template>
 
-    <div class="p-5">
-      <template v-if="loading">
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          <Skeleton
-            v-for="i in 24"
-            :key="`sk-${i}`"
-            class="h-14 rounded-[14px]"
+    <AdminDataTable
+      :columns="columns"
+      :data="filteredTags"
+      :loading="loading"
+      row-key="id"
+    >
+      <template #cell-name="{ row }">
+        <div class="flex min-w-0 items-center gap-2">
+          <span
+            class="size-2.5 shrink-0 rounded-full"
+            :style="{ background: tagColor(row as AdminTag) }"
           />
+          <span class="truncate font-medium">{{ getLocalizedStr((row as AdminTag).name) }}</span>
+          <span
+            v-if="(row as AdminTag).icon"
+            class="shrink-0 text-xs"
+          >{{ (row as AdminTag).icon }}</span>
         </div>
       </template>
-
-      <template v-else-if="filteredTags.length === 0">
-        <div class="py-20 text-center text-muted-foreground">
-          <div class="text-5xl mb-3 opacity-30 size-12 mx-auto text-foreground">
-            <Tag class="size-12" />
-          </div>
-          <div class="text-sm">
-            {{ searchQuery ? '无匹配的标签' : '暂无标签，点击右上角「新建标签」创建吧' }}
-          </div>
+      <template #cell-slug="{ row }">
+        <code class="text-xs text-muted-foreground">/{{ (row as AdminTag).slug }}</code>
+      </template>
+      <template #cell-post_count="{ row }">
+        <Badge variant="secondary">
+          {{ (row as AdminTag).post_count }}
+        </Badge>
+      </template>
+      <template #cell-is_active="{ row }">
+        <Badge
+          class="rounded-[10px] font-normal whitespace-nowrap"
+          :class="(row as AdminTag).is_active
+            ? 'bg-success-muted text-success-muted-foreground'
+            : 'bg-muted text-muted-foreground'"
+        >
+          {{ (row as AdminTag).is_active ? '启用' : '停用' }}
+        </Badge>
+      </template>
+      <template #actions="{ row }">
+        <AdminRowActions
+          :actions="[
+            { key: 'edit', label: '编辑标签', icon: Pencil, onClick: () => openEdit(row as AdminTag) },
+            { key: 'delete', label: '删除标签', icon: Trash2, destructive: true, onClick: () => confirmDelete((row as AdminTag).id) }
+          ]"
+        />
+      </template>
+      <template #empty>
+        <div class="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+          <Tag class="size-8" />
+          <span class="text-sm">{{ searchQuery ? '无匹配的标签' : '暂无标签，点击右上角「新建标签」创建吧' }}</span>
         </div>
       </template>
-
-      <template v-else>
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
-          <div
-            v-for="t in filteredTags"
-            :key="t.id"
-            class="relative rounded-[14px] border px-3 py-3 cursor-pointer transition-all select-none group"
-            :style="{
-              background: `color-mix(in oklab, ${t.color || '#0EA5E9'} 14%, hsl(var(--card)))`,
-              borderColor: `${t.color || '#0EA5E9'}40`,
-              opacity: t.is_active ? 1 : 0.5
-            }"
-            :class="{ 'ring-2 ring-offset-1': hoveredId === t.id }"
-            @mouseenter="hoveredId = t.id"
-            @mouseleave="hoveredId = null"
-            @dblclick="openEdit(t)"
-          >
-            <div
-              class="absolute top-2 right-2 z-10 transition-opacity"
-              :class="hoveredId === t.id ? 'opacity-100' : 'opacity-0 focus-within:opacity-100'"
-            >
-              <div class="flex items-center gap-0.5 rounded-[8px] border border-border bg-background/95 p-0.5 shadow-md backdrop-blur">
-                <button
-                  type="button"
-                  class="h-9 w-9 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                  title="编辑"
-                  aria-label="编辑标签"
-                  @click.stop="openEdit(t)"
-                >
-                  <Pencil class="size-4" />
-                </button>
-                <button
-                  type="button"
-                  class="h-9 w-9 rounded-[6px] grid place-items-center text-muted-foreground hover:bg-destructive-muted hover:text-destructive transition-colors"
-                  title="删除"
-                  aria-label="删除标签"
-                  @click.stop="confirmDelete(t.id)"
-                >
-                  <Trash2 class="size-4" />
-                </button>
-              </div>
-            </div>
-
-            <div class="flex flex-col items-start gap-1 min-h-[44px] pr-12">
-              <div
-                class="font-semibold text-sm leading-tight"
-                :style="{ color: t.color || '#6b7280' }"
-              >
-                <span
-                  v-if="t.icon"
-                  class="mr-1"
-                >{{ t.icon }}</span>
-                {{ getLocalizedStr(t.name) }}
-              </div>
-              <div
-                class="text-xs font-medium opacity-70"
-                :style="{ color: t.color || '#6b7280' }"
-              >
-                {{ t.post_count }} 篇
-              </div>
-            </div>
-          </div>
-        </div>
-      </template>
-    </div>
+    </AdminDataTable>
 
     <AdminCrudDialog
       v-model:open="dialogOpen"
       :title="dialogMode === 'edit' ? '编辑标签' : '新建标签'"
+      description="标签用于跨分类聚合，颜色会显示在文章卡片的标签胶囊上。"
+      :icon="Tags"
       :loading="saving"
       :submit-text="dialogMode === 'edit' ? '更新' : '保存'"
       @submit="save"
     >
-      <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-5">
         <I18nTabsEditor
           v-model="form.name"
           kind="text"
           label="名称"
           required
+          flat
         />
-        <div>
-          <Label
-            for="tag-form-slug"
-            class="mb-1 block text-xs text-muted-foreground"
-          >Slug</Label>
+        <AdminFormField
+          label="Slug"
+          for="tag-form-slug"
+          hint="用于标签页地址 /tags/<slug>；留空时按名称自动生成。"
+        >
           <Input
             id="tag-form-slug"
             v-model="form.slug"
-            placeholder="自动生成，可修改"
-            class="h-9 rounded-[10px]"
+            placeholder="auto-generated-slug"
+            class="h-10 rounded-[10px] font-mono text-sm"
             @input="slugManualEdit = true"
           />
-        </div>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <Label
-              for="tag-form-color"
-              class="mb-1 block text-xs text-muted-foreground"
-            >颜色</Label>
+        </AdminFormField>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <AdminFormField
+            label="颜色"
+            for="tag-form-color"
+          >
             <div class="flex gap-2">
               <input
                 id="tag-form-color"
                 v-model="form.color"
                 type="color"
-                class="h-9 w-11 rounded-[10px] border border-input bg-background cursor-pointer"
+                class="h-10 w-12 shrink-0 rounded-[10px] border border-input bg-background cursor-pointer"
               >
               <Input
                 v-model="form.color"
                 :aria-label="$_t('admin.categories.fColor')"
-                class="h-9 rounded-[10px] flex-1 font-mono text-xs"
+                class="h-10 flex-1 rounded-[10px] font-mono text-xs"
               />
             </div>
-          </div>
-          <div>
-            <Label
-              for="tag-form-icon"
-              class="mb-1 block text-xs text-muted-foreground"
-            >图标</Label>
+          </AdminFormField>
+          <AdminFormField
+            label="图标"
+            for="tag-form-icon"
+            hint="支持 emoji 或图标名。"
+          >
             <Input
               id="tag-form-icon"
               v-model="form.icon"
               placeholder="emoji 或 icon"
-              class="h-9 rounded-[10px]"
+              class="h-10 rounded-[10px]"
             />
-          </div>
+          </AdminFormField>
         </div>
-        <div class="flex items-center justify-between rounded-[10px] border border-border bg-muted/20 px-4 py-3">
+        <div class="flex items-center justify-between gap-4 rounded-[12px] border border-border bg-muted/20 px-4 py-3">
           <div>
             <Label
               for="tag-form-active"

@@ -195,28 +195,27 @@
           <DialogDescription>填写基本信息与卡片展示样式。</DialogDescription>
         </DialogHeader>
         <div class="flex flex-col gap-4 py-2">
-          <div class="grid grid-cols-2 gap-4">
-            <I18nTabsEditor
-              v-model="form.name"
-              kind="text"
-              label="名称"
-              placeholder="如：Rosetta Blog"
-              :required="true"
-            />
+          <I18nTabsEditor
+            v-model="form.name"
+            kind="text"
+            label="名称"
+            placeholder="如：Rosetta Blog"
+            :required="true"
+            flat
+          />
+          <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div class="flex flex-col gap-2">
               <Label
                 for="fl-url"
                 class="text-sm font-medium"
-              >URL <span class="text-error">*</span></Label>
+              >URL <span class="text-destructive">*</span></Label>
               <Input
                 id="fl-url"
                 v-model="form.url"
                 placeholder="https://example.com"
-                class="rounded-xl"
+                class="h-10 rounded-[10px]"
               />
             </div>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
               <Label
                 for="fl-logo"
@@ -226,7 +225,7 @@
                 id="fl-logo"
                 v-model="form.logo"
                 placeholder="https://.../logo.png"
-                class="rounded-xl"
+                class="h-10 rounded-[10px]"
               />
             </div>
           </div>
@@ -236,6 +235,7 @@
             label="描述"
             placeholder="一句话介绍你的站点..."
             :rows="3"
+            flat
           />
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">

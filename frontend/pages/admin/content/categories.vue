@@ -6,7 +6,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
-import { FolderTree, Plus } from '@lucide/vue'
+import { FolderTree, Plus, Pencil, Trash2 } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   fetchAdminCategories,
@@ -19,9 +19,10 @@ import {
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Label } from '~~/components/ui/label'
+import AdminFormField from '~~/components/admin/AdminFormField.vue'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
@@ -234,21 +235,12 @@ onMounted(() => {
         </Badge>
       </template>
       <template #actions="{ row }">
-        <Button
-          variant="ghost"
-          size="sm"
-          @click="openEdit(row as AdminCategory)"
-        >
-          编辑
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
-          @click="confirmDelete((row as AdminCategory).id)"
-        >
-          删除
-        </Button>
+        <AdminRowActions
+          :actions="[
+            { key: 'edit', label: '编辑分类', icon: Pencil, onClick: () => openEdit(row as AdminCategory) },
+            { key: 'delete', label: '删除分类', icon: Trash2, destructive: true, onClick: () => confirmDelete((row as AdminCategory).id) }
+          ]"
+        />
       </template>
     </AdminDataTable>
 
@@ -256,63 +248,66 @@ onMounted(() => {
     <AdminCrudDialog
       v-model:open="dialogOpen"
       :title="dialogMode === 'edit' ? '编辑分类' : '新建分类'"
+      description="分类会出现在前台导航与文章卡片上，名称与描述支持四语。"
+      :icon="FolderTree"
       :loading="saving"
       :submit-text="editingId ? '更新' : '保存'"
       @submit="save"
     >
-      <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-5">
         <I18nTabsEditor
           v-model="form.name"
           kind="text"
           label="名称"
           required
+          flat
         />
-        <div>
-          <Label
-            for="category-form-slug"
-            class="mb-1 block text-xs text-muted-foreground"
-          >Slug</Label>
+        <AdminFormField
+          label="Slug"
+          for="category-form-slug"
+          hint="用于分类页地址 /categories/<slug>；留空时按名称自动生成。"
+        >
           <Input
             id="category-form-slug"
             v-model="form.slug"
-            placeholder="自动生成，可修改"
-            class="h-9 rounded-[10px]"
+            placeholder="auto-generated-slug"
+            class="h-10 rounded-[10px] font-mono text-sm"
             @input="slugManualEdit = true"
           />
-        </div>
+        </AdminFormField>
         <I18nTabsEditor
           v-model="form.description"
           kind="textarea"
           label="描述"
           :rows="3"
+          flat
         />
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <Label
-              for="category-form-color"
-              class="mb-1 block text-xs text-muted-foreground"
-            >颜色</Label>
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <AdminFormField
+            label="颜色"
+            for="category-form-color"
+          >
             <div class="flex gap-2">
               <input
                 id="category-form-color"
                 v-model="form.color"
                 type="color"
-                class="h-9 w-11 rounded-[10px] border border-input bg-background cursor-pointer"
+                class="h-10 w-12 shrink-0 rounded-[10px] border border-input bg-background cursor-pointer"
               >
               <Input
                 v-model="form.color"
                 :aria-label="t('admin.categories.fColor')"
-                class="h-9 rounded-[10px] flex-1 font-mono text-xs"
+                class="h-10 flex-1 rounded-[10px] font-mono text-xs"
               />
             </div>
-          </div>
-          <div>
-            <Label
-              for="category-form-icon"
-              class="mb-1 block text-xs text-muted-foreground"
-            >图标</Label>
+          </AdminFormField>
+          <AdminFormField
+            label="图标"
+            for="category-form-icon"
+            hint="heroicons:code-bracket 或 emoji"
+          >
             <div class="flex gap-2">
-              <div class="size-9 shrink-0 rounded-[10px] border border-border flex items-center justify-center bg-muted/30">
+              <div class="size-10 shrink-0 rounded-[10px] border border-border flex items-center justify-center bg-muted/30">
                 <DynamicIcon
                   v-if="form.icon"
                   :icon="form.icon"
@@ -327,10 +322,10 @@ onMounted(() => {
                 id="category-form-icon"
                 v-model="form.icon"
                 placeholder="heroicons:code-bracket 或 emoji"
-                class="h-9 rounded-[10px] flex-1 font-mono text-xs"
+                class="h-10 flex-1 rounded-[10px] font-mono text-xs"
               />
             </div>
-          </div>
+          </AdminFormField>
         </div>
       </div>
     </AdminCrudDialog>

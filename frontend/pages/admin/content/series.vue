@@ -17,12 +17,13 @@ import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Label } from '~~/components/ui/label'
+import AdminFormField from '~~/components/admin/AdminFormField.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify, CONTENT_SLUG_PATTERN } from '~~/composables/useAdminI18n'
-import { BookOpen, ChevronDown, Layers, Plus } from '@lucide/vue'
+import { BookOpen, ChevronDown, Layers, Plus, Pencil, Trash2, Image as ImageIcon } from '@lucide/vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -281,21 +282,12 @@ onMounted(() => {
               <div class="flex items-center justify-between">
                 <span class="text-xs text-muted-foreground">排序：{{ s.sort_order ?? 0 }}</span>
                 <div class="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    @click="openEdit(s)"
-                  >
-                    编辑
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    class="text-destructive hover:text-destructive hover:bg-destructive-muted"
-                    @click="confirmDelete(s.id)"
-                  >
-                    删除
-                  </Button>
+                  <AdminRowActions
+                    :actions="[
+                      { key: 'edit', label: '编辑系列', icon: Pencil, onClick: () => openEdit(s) },
+                      { key: 'delete', label: '删除系列', icon: Trash2, destructive: true, onClick: () => confirmDelete(s.id) }
+                    ]"
+                  />
                 </div>
               </div>
             </div>
@@ -322,76 +314,92 @@ onMounted(() => {
     <AdminCrudDialog
       v-model:open="dialogOpen"
       :title="dialogMode === 'edit' ? '编辑系列' : '新建系列'"
+      description="系列把同一主题的多篇文章按顺序组织成专题。"
+      :icon="Layers"
       :loading="saving"
       :submit-text="dialogMode === 'edit' ? '更新' : '保存'"
       @submit="save"
     >
-      <div class="flex flex-col gap-4">
+      <div class="flex flex-col gap-5">
         <I18nTabsEditor
           v-model="form.name"
           kind="text"
           label="标题"
           placeholder="系列标题"
           :required="true"
+          flat
         />
-        <div>
-          <Label
-            for="series-form-slug"
-            class="mb-1 block text-xs text-muted-foreground"
-          >
-            Slug <span class="text-destructive">*</span>
-          </Label>
+        <AdminFormField
+          label="Slug"
+          for="series-form-slug"
+          required
+          hint="用于系列页地址 /series/<slug>；留空时按标题自动生成。"
+        >
           <Input
             id="series-form-slug"
             v-model="form.slug"
-            placeholder="必填，仅限小写字母/数字/-，可由标题自动生成"
-            class="h-9 rounded-[10px]"
+            placeholder="series-slug"
+            class="h-10 rounded-[10px] font-mono text-sm"
             @input="slugManualEdit = true"
           />
-        </div>
+        </AdminFormField>
         <I18nTabsEditor
           v-model="form.description"
           kind="textarea"
           label="描述"
           placeholder="系列描述（可选）"
           :rows="3"
+          flat
         />
-        <div>
-          <Label class="mb-1.5 block text-xs text-muted-foreground">封面图</Label>
-          <div class="flex items-start gap-3">
-            <div
-              v-if="form.cover_image"
-              class="w-[180px] h-[100px] rounded-[10px] overflow-hidden border border-border bg-muted"
+        <AdminFormField
+          label="封面图"
+          hint="展示在系列列表与详情页顶部；不设则使用主题底色。"
+        >
+          <div class="flex flex-col gap-3">
+            <button
+              type="button"
+              class="relative w-full aspect-[16/9] max-w-[320px] overflow-hidden rounded-[12px] border border-dashed border-border bg-muted/30 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group"
+              :aria-label="form.cover_image ? '更换封面图' : '上传封面图'"
+              :disabled="coverUploading"
+              @click="coverInputRef?.click()"
             >
               <img
+                v-if="form.cover_image"
                 :src="form.cover_image"
-                alt="cover"
+                alt="封面预览"
                 class="size-full object-cover"
               >
-            </div>
-            <div
-              v-else
-              class="w-[180px] h-[100px] rounded-[10px] border border-dashed border-border bg-muted flex items-center justify-center text-xs text-muted-foreground"
-            >
-              无封面
-            </div>
-            <div class="flex flex-col gap-2">
+              <span
+                v-else
+                class="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground"
+              >
+                <ImageIcon class="size-5 opacity-60" />
+                点击上传封面
+              </span>
+              <span
+                v-if="form.cover_image"
+                class="absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                更换封面
+              </span>
+            </button>
+            <div class="flex gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                class="rounded-[10px] h-9"
+                class="h-9 rounded-[10px]"
                 :disabled="coverUploading"
                 @click="coverInputRef?.click()"
               >
-                {{ coverUploading ? '上传中...' : '上传封面' }}
+                {{ coverUploading ? '上传中...' : (form.cover_image ? '更换封面' : '上传封面') }}
               </Button>
               <Button
                 v-if="form.cover_image"
                 type="button"
                 variant="ghost"
                 size="sm"
-                class="rounded-[10px] h-9 text-destructive hover:text-destructive"
+                class="h-9 rounded-[10px] text-destructive hover:text-destructive"
                 @click="clearCover"
               >
                 清除
@@ -405,19 +413,19 @@ onMounted(() => {
               @change="handleCoverUpload"
             >
           </div>
-        </div>
-        <div>
-          <Label
-            for="series-form-sort-order"
-            class="mb-1 block text-xs text-muted-foreground"
-          >排序号</Label>
+        </AdminFormField>
+        <AdminFormField
+          label="排序号"
+          for="series-form-sort-order"
+          hint="数字越小越靠前。"
+        >
           <Input
             id="series-form-sort-order"
             v-model.number="form.sort_order"
             type="number"
-            class="h-9 rounded-[10px]"
+            class="h-10 w-32 rounded-[10px]"
           />
-        </div>
+        </AdminFormField>
       </div>
     </AdminCrudDialog>
 

@@ -1,7 +1,8 @@
 <!--
-  标签页：GET /blog/tags 的标签云 + 网格双视图。
-  字号走 countToScale 阶梯映射而非连续计算，SSR 与客户端才能对同一数量产出逐字节一致的
-  style；排序是纯函数（数量降序 → slug 字典序），掺入随机或时间相关因子就会让两端顺序不同。
+  标签页：GET /blog/tags 的单一卡片网格（按文章数倒序）。
+  上一版同时渲染「标签云 + 卡片网格」两份同一批链接，同屏重复且标题说法互相矛盾；
+  现在只保留一份，用热度条表达相对收录量，字号阶梯（countToScale）随之删除。
+  排序是纯函数（数量降序 → slug 字典序），掺入随机或时间相关因子会让 SSR 与客户端顺序不同。
   name 缺失兜底 slug，post_count 兼容 postsCount 两种命名。
 -->
 <template>
@@ -18,88 +19,79 @@
       </p>
     </header>
 
-    <!-- 标签云：按文章数倒序，数量越多字号越大 -->
+    <!-- 加载态：与结果同形状的骨架，避免"先出标签云再换成网格"的二次跳版 -->
     <div
       v-if="_tagsLoading && sortedTags.length === 0"
-      class="card-surface no-glow rounded-2xl p-8 mb-10"
+      class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
     >
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <!-- 用共享 Skeleton 而非手写 animate-pulse：宽度错落的假 pill 要暗示"标签"形状，
-             但动效、底色、reduced-motion 行为都交给 Skeleton 统一（不再各自 bg-muted）。 -->
-        <Skeleton
-          v-for="i in 12"
-          :key="i"
-          class="h-8 rounded-full"
-          :style="{ width: `${40 + (i % 5) * 24}px` }"
-        />
-      </div>
+      <Skeleton
+        v-for="i in 10"
+        :key="i"
+        class="h-[104px] rounded-xl"
+      />
     </div>
 
     <div
       v-else-if="tagsLoadError"
-      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center mb-10"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center"
     >
       {{ t('admin.posts.loadFailed') }}
     </div>
 
-    <template v-else>
-      <div class="card-surface no-glow rounded-2xl p-8 mb-10">
-        <div class="flex flex-wrap items-center justify-center gap-3">
-          <NuxtLink
-            v-for="tag in sortedTags"
-            :key="tag.id"
-            v-memo="[tag.id, tag.slug, tag.color]"
-            :to="localeHref(`/tags/${tag.slug}`)"
-            class="no-underline"
-            :style="cloudStyle(tag)"
-          >
+    <!-- 单一视图：上一版把同一批标签渲染了两遍（顶部标签云 + 下方卡片网格），
+         同一屏里每个标签出现两次、链接也重复一次。这里只保留卡片网格，
+         用数量条表达热度，信息量不减而重复消失。 -->
+    <div
+      v-else-if="sortedTags.length"
+      class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4"
+    >
+      <NuxtLink
+        v-for="tag in sortedTags"
+        :key="tag.id"
+        v-memo="[tag.id, tag.slug, tag.color]"
+        :to="localeHref(`/tags/${tag.slug}`)"
+        class="no-underline group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+      >
+        <div class="card-surface lift-hover h-full rounded-xl p-4 flex flex-col gap-3">
+          <div class="flex items-center justify-between gap-2">
             <TagBadge
               :color="tag.color"
               :label="tagName(tag)"
               size="md"
               show-icon
             />
-            <span class="ml-1 text-[11px] text-muted-foreground tabular-nums">
+            <span class="text-xs text-muted-foreground tabular-nums shrink-0">
               {{ tagPostsCount(tag) }}
             </span>
-          </NuxtLink>
-          <div
-            v-if="sortedTags.length === 0"
-            class="text-center py-10 w-full text-muted-foreground"
-          >
-            {{ t('tags.noTags') }}
+          </div>
+          <div class="mt-auto">
+            <div
+              class="h-1 w-full overflow-hidden rounded-full bg-muted"
+              role="presentation"
+            >
+              <div
+                class="h-full rounded-full transition-[width] duration-[var(--motion-duration-slow)] ease-out"
+                :class="tag.color ? '' : 'bg-primary/70'"
+                :style="{ width: `${tagBarWidth(tag)}%`, backgroundColor: tag.color || undefined }"
+              />
+            </div>
+            <span class="sr-only">{{ tagPostsCount(tag) }} {{ t('tags.posts') }}</span>
           </div>
         </div>
-      </div>
+      </NuxtLink>
+    </div>
 
-      <!-- 网格视图（带颜色预览） -->
-      <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        <NuxtLink
-          v-for="tag in sortedTags"
-          :key="tag.id"
-          v-memo="[tag.id, tag.slug, tag.color]"
-          :to="localeHref(`/tags/${tag.slug}`)"
-          class="no-underline group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-        >
-          <div class="card-surface glow-ring h-full rounded-xl p-4 transition-all duration-300 hover:shadow-soft hover:-translate-y-0.5">
-            <div class="flex items-center justify-between mb-3">
-              <TagBadge
-                :color="tag.color"
-                :label="tagName(tag)"
-                size="md"
-                show-icon
-              />
-              <span class="text-[11px] text-muted-foreground tabular-nums">
-                {{ tagPostsCount(tag) }}
-              </span>
-            </div>
-            <h3 class="font-medium text-sm leading-snug line-clamp-1 group-hover:underline underline-offset-4 text-foreground">
-              {{ tagName(tag) }}
-            </h3>
-          </div>
-        </NuxtLink>
+    <div
+      v-else
+      class="text-center py-20"
+    >
+      <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
+        <Tags class="size-8 text-muted-foreground" />
       </div>
-    </template>
+      <h3 class="font-display text-xl font-semibold">
+        {{ t('tags.noTags') }}
+      </h3>
+    </div>
   </div>
 </template>
 
@@ -174,18 +166,20 @@ const sortedTags = computed<TagRow[]>(() => {
   })
 })
 
-/** 按文章数量给出标签云的不同字号（阶梯式，避免 Hydration 不一致）。 */
-const countToScale = (n: number) => {
-  if (n >= 40) return { size: '1.1rem', weight: '600' }
-  if (n >= 25) return { size: '1rem', weight: '600' }
-  if (n >= 15) return { size: '0.92rem', weight: '500' }
-  if (n >= 7) return { size: '0.84rem', weight: '500' }
-  return { size: '0.78rem', weight: '500' }
-}
+/** 最热标签的文章数，作为热度条的 100% 分母（0 保护：没有文章时全部为 0）。 */
+const maxPostsCount = computed<number>(() =>
+  sortedTags.value.reduce((max, tag) => Math.max(max, tagPostsCount(tag)), 0)
+)
 
-const cloudStyle = (tag: TagRow): Record<string, string> => {
-  const scale = countToScale(tagPostsCount(tag))
-  return { fontSize: scale.size, fontWeight: scale.weight }
+/**
+ * 热度条宽度：按最大计数等比缩放，最小保留 6%，
+ * 让只有 1 篇文章的标签也有可见长度（0 宽会看起来像坏掉的进度条）。
+ * 纯算术，SSR 与客户端对同一数据得到同一像素值。
+ */
+const tagBarWidth = (tag: TagRow): number => {
+  const max = maxPostsCount.value
+  if (max <= 0) return 0
+  return Math.max(6, Math.round((tagPostsCount(tag) / max) * 100))
 }
 
 // useAPI 已在顶层 await 进行 SSR 安全拉取；失败时自动回退空数组 default() => []，无示例标签残留。

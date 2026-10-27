@@ -795,7 +795,8 @@
     "selectCategory": "カテゴリーを選択",
     "sortLabel": "並び替え",
     "sortLatest": "新着順",
-    "sortPopular": "閲覧数順"
+    "sortPopular": "閲覧数順",
+    "resultCount": "全 {n} 記事"
   },
   "home": {
     "recommendedTitle": "おすすめの記事",
@@ -804,6 +805,8 @@
     "startReading": "記事を読む",
     "hotPicks": "人気記事",
     "readArticle": "記事を読む",
+    "heroPause": "カルーセルを一時停止",
+    "heroResume": "カルーセルを再開",
     "heroHint": "過去 30 日で人気だった記事 · ホバーで一時停止",
     "latest": "最新の投稿",
     "latestPosts": "最新の投稿",
@@ -863,7 +866,7 @@
   },
   "tags": {
     "title": "すべてのタグ",
-    "desc": "タグから関連コンテンツを探せます。タイルが大きいほど記事数が多いです。",
+    "desc": "タグから関連コンテンツを探せます。記事数の多い順に並んでいます。",
     "posts": "記事",
     "noTags": "タグはまだありません"
   },
@@ -900,6 +903,7 @@
     "visit": "アクセス",
     "noDesc": "説明なし",
     "noLinks": "相互リンクはまだありません",
+    "emptyHint": "まだリンクはありません。挨拶しに行きませんか？掲示板はいつでも開いています。",
     "loadFailed": "読み込みに失敗しました"
   },
   "sponsor": {

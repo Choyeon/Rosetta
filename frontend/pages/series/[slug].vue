@@ -47,7 +47,7 @@
             <Button
               size="sm"
               variant="default"
-              @click="navigateTo('/series')"
+              @click="navigateTo(localeHref('/series'))"
             >
               {{ t('series.backToList', '返回系列列表') }}
             </Button>

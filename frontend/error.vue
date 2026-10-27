@@ -9,10 +9,10 @@
 <template>
   <div
     v-if="isMinimalError"
-    class="ap-error min-h-screen w-full bg-background text-foreground antialiased"
+    class="ap-error min-h-svh w-full bg-background text-foreground antialiased"
   >
     <!-- 极简主题纯纸面错误页：.ap-error-* 由 style.css frontend 守卫段落装饰 -->
-    <div class="mx-auto flex min-h-screen w-full max-w-[480px] flex-col items-center justify-center px-5 py-14 text-center">
+    <div class="mx-auto flex min-h-svh w-full max-w-[480px] flex-col items-center justify-center px-5 py-14 text-center">
       <div class="ap-error-code tabular-nums">
         {{ statusCode }}
       </div>
@@ -200,15 +200,19 @@ useHead({
 </script>
 
 <style scoped>
+/* 颜色全部走 main.css 的语义令牌。注意令牌是**裸 HSL 三元组**（`0 0% 100%`），
+   直接写 `var(--background)` 会得到非法颜色、整页退回写死的浅色——
+   暗色模式下错误页因此一直是白底黑字。必须显式包 hsl()。 */
 .error-page {
-  min-height: 100vh;
-  min-height: 100dvh;
+  min-height: 100svh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  background: var(--background, #f8fafc);
-  color: var(--foreground, #0f172a);
+  background:
+    radial-gradient(900px 420px at 50% -10%, hsl(var(--primary) / 0.08), transparent 65%),
+    hsl(var(--background));
+  color: hsl(var(--foreground));
 }
 
 .error-card {
@@ -223,8 +227,9 @@ useHead({
   font-weight: 800;
   line-height: 1;
   letter-spacing: -0.04em;
-  color: var(--primary, #0ea5e9);
+  color: hsl(var(--primary));
   opacity: 0.9;
+  font-variant-numeric: tabular-nums;
 }
 
 .error-title {
@@ -236,7 +241,7 @@ useHead({
 
 .error-desc {
   margin-top: 0.75rem;
-  color: var(--muted-foreground, #64748b);
+  color: hsl(var(--muted-foreground));
   font-size: 0.95rem;
   line-height: 1.6;
   word-break: break-word;
@@ -255,7 +260,7 @@ useHead({
   align-items: center;
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
-  border-radius: 0.75rem;
+  border-radius: var(--radius, 0.75rem);
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
@@ -264,8 +269,8 @@ useHead({
 }
 
 .error-btn.primary {
-  background: var(--primary, #0ea5e9);
-  color: #fff;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 .error-btn.primary:hover {
@@ -273,11 +278,11 @@ useHead({
 }
 
 .error-btn.ghost {
-  background: var(--muted, #f1f5f9);
-  color: var(--foreground, #0f172a);
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
 }
 
 .error-btn.ghost:hover {
-  background: var(--muted-foreground, #e2e8f0);
+  background: hsl(var(--accent));
 }
 </style>

@@ -795,7 +795,8 @@
     "selectCategory": "選擇分類",
     "sortLabel": "排序",
     "sortLatest": "最新優先",
-    "sortPopular": "最多瀏覽"
+    "sortPopular": "最多瀏覽",
+    "resultCount": "共 {n} 篇"
   },
   "home": {
     "recommendedTitle": "推荐閱讀",
@@ -804,6 +805,8 @@
     "startReading": "開始閱讀",
     "hotPicks": "熱門推薦",
     "readArticle": "閱讀全文",
+    "heroPause": "暫停輪播",
+    "heroResume": "繼續輪播",
     "heroHint": "近 30 天高熱度文章 · 游標懸停暫停輪播",
     "latest": "最新發布",
     "latestPosts": "最新發布",
@@ -863,7 +866,7 @@
   },
   "tags": {
     "title": "所有標籤",
-    "desc": "透過標籤探索相關內容，磁磚越大代表文章越多。",
+    "desc": "透過標籤探索相關內容，依收錄文章數排序。",
     "posts": "篇",
     "noTags": "尚無標籤"
   },
@@ -900,6 +903,7 @@
     "visit": "前往",
     "noDesc": "暫無描述",
     "noLinks": "尚無友情連結",
+    "emptyHint": "這裡還沒有友鏈。想去打聲招呼？留言板一直開著。",
     "loadFailed": "加載失敗"
   },
   "sponsor": {

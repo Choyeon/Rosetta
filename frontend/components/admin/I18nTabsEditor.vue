@@ -47,13 +47,16 @@ const props = withDefaults(defineProps<{
   rows?: number
   required?: boolean
   translatable?: boolean
+  /** 嵌入到 AdminFormSection 等已有卡片时传 true：去掉自身 card-surface 与内边距，避免卡片套卡片 */
+  flat?: boolean
 }>(), {
   kind: 'text',
   label: '',
   placeholder: '',
   rows: 3,
   required: false,
-  translatable: true
+  translatable: true,
+  flat: false
 })
 
 const emit = defineEmits<{
@@ -143,7 +146,10 @@ async function translateLocale(lang: string) {
 </script>
 
 <template>
-  <div class="card-surface no-glow flex flex-col gap-2 p-3 md:p-4">
+  <div
+    class="flex flex-col gap-2"
+    :class="flat ? '' : 'card-surface no-glow p-3 md:p-4'"
+  >
     <div class="flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 min-w-0">
         <Label

@@ -177,6 +177,7 @@ interface ResetRequestResult {
 definePageMeta({ layout: 'default' })
 
 const { t } = useI18n()
+const { localeHref } = useLocaleLink()
 const toast = useToast()
 
 const account = ref('')
@@ -251,7 +252,7 @@ async function resetPassword() {
     newPassword.value = ''
     confirm.value = ''
     devCode.value = ''
-    await navigateTo('/login')
+    await navigateTo(localeHref('/login'))
   } catch (err) {
     // 保留角标 toast 之外再常驻列出信封里的每一条原因（强度规则是多条的，一句话说不完）
     const lines = extractApiErrorList((err as { data?: unknown }).data)

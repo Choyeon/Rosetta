@@ -33,7 +33,8 @@ import { estimateContentStats, slugSourceTitle, scheduledAtError } from '~~/lib/
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
-import AdminCard from './AdminCard.vue'
+import AdminFormSection from './AdminFormSection.vue'
+import AdminFormField from './AdminFormField.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Switch } from '~~/components/ui/switch'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
@@ -51,9 +52,13 @@ import {
   Check,
   X,
   Image as ImageIcon,
-  Save,
   Send,
-  Eye
+  Eye,
+  Type,
+  FileText,
+  Search,
+  Shield,
+  FolderTree
 } from '@lucide/vue'
 
 const props = defineProps<{
@@ -141,6 +146,22 @@ const seriesOptions = computed(() =>
 const slugSource = computed(() => slugSourceTitle(form.title))
 
 const contentStats = computed(() => estimateContentStats(form.content.zh || ''))
+
+/**
+ * 主按钮文案跟随状态下发：状态是 draft 时 publishPost 实际保存的是草稿，
+ * 按钮还写「发布文章」会让人以为点一下就直接上线。定时态同理。
+ */
+const primaryActionLabel = computed(() => {
+  if (form.status === 'published') return '发布文章'
+  if (form.status === 'scheduled') return '保存并定时'
+  return '保存草稿'
+})
+
+const statusLabel = computed(() => {
+  if (form.status === 'published') return '已发布'
+  if (form.status === 'scheduled') return '定时发布'
+  return '草稿'
+})
 
 const scheduledError = computed(() => scheduledAtError(form.status, fromDateTimeLocal(form.scheduled_at)))
 
@@ -568,7 +589,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="flex flex-col gap-4">
+  <div class="flex flex-col gap-5">
     <Alert
       v-if="draftExists"
       variant="warning"
@@ -606,192 +627,318 @@ onBeforeUnmount(() => {
       </AlertDescription>
     </Alert>
 
-    <div class="flex flex-col gap-2">
-      <I18nTabsEditor
-        v-model="form.title"
-        kind="text"
-        label="标题"
-        placeholder="输入文章标题"
-        required
-      />
-      <Input
-        v-model="form.slug"
-        placeholder="slug（自动生成，可手动修改）"
-        class="h-9 rounded-[10px] text-sm"
-        @input="handleSlugInput"
-      />
+    <!-- 常驻操作条：正文可能很长，保存/发布不能只沉在页面底部。
+         top-16 让开 64px 的后台顶栏（AdminHeader 是 sticky top-0 z-40）。 -->
+    <div class="sticky top-16 z-30 -mx-4 flex flex-wrap items-center justify-between gap-3 border-b border-border bg-background/90 px-4 py-2.5 backdrop-blur md:-mx-6 md:px-6">
+      <div class="flex min-w-0 items-center gap-2.5">
+        <span class="truncate text-sm font-medium">{{ form.title.zh || '未命名文章' }}</span>
+        <Badge
+          variant="secondary"
+          class="shrink-0 rounded-[10px]"
+        >
+          {{ statusLabel }}
+        </Badge>
+        <span
+          v-if="isDirty"
+          class="inline-flex shrink-0 items-center gap-1.5 text-xs text-warning-muted-foreground"
+        >
+          <span class="size-1.5 rounded-full bg-warning" />
+          有未保存的更改
+        </span>
+        <span
+          v-else
+          class="inline-flex shrink-0 items-center gap-1.5 text-xs text-muted-foreground"
+        >
+          <span class="size-1.5 rounded-full bg-success" />
+          已同步
+        </span>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          class="h-9 rounded-[10px]"
+          @click="openPreview"
+        >
+          <Eye
+            data-icon="inline-start"
+            class="size-4"
+          />
+          预览
+        </Button>
+        <Button
+          v-if="form.status !== 'draft'"
+          type="button"
+          variant="outline"
+          size="sm"
+          class="h-9 rounded-[10px]"
+          :disabled="savingDraft || submitting"
+          @click="saveDraft"
+        >
+          {{ savingDraft ? '保存中...' : '存为草稿' }}
+        </Button>
+        <Button
+          type="button"
+          size="sm"
+          class="h-9 rounded-[10px]"
+          :disabled="submitting || savingDraft"
+          @click="publishPost"
+        >
+          {{ submitting ? '处理中...' : primaryActionLabel }}
+        </Button>
+      </div>
     </div>
 
-    <div class="flex flex-col lg:flex-row gap-4">
-      <div class="flex-1 lg:w-3/5 min-w-0 flex flex-col gap-1.5">
-        <I18nTabsEditor
-          v-model="form.content"
-          kind="markdown"
-          label="正文"
-          placeholder="开始撰写文章内容"
-          required
-        />
-        <p class="text-xs text-muted-foreground px-1">
-          约 {{ contentStats.words }} 字 · 预计阅读 {{ contentStats.minutes }} 分钟
-          <span class="opacity-60">（按当前语言标签统计，仅作参考）</span>
-        </p>
+    <div class="grid grid-cols-1 items-start gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+      <!-- ============================ 主编辑区 ============================ -->
+      <div class="flex min-w-0 flex-col gap-4">
+        <AdminFormSection
+          title="标题与链接"
+          description="简体中文为主语言，其余三种语言可切换填写。"
+          :icon="Type"
+        >
+          <div class="flex flex-col gap-4">
+            <I18nTabsEditor
+              v-model="form.title"
+              kind="text"
+              label="标题"
+              placeholder="输入文章标题"
+              required
+              flat
+            />
+            <AdminFormField
+              label="Slug"
+              for="post-form-slug"
+              hint="文章地址为 /posts/<slug>；留空时会按标题自动生成。"
+            >
+              <div class="flex items-stretch gap-2">
+                <span class="hidden sm:inline-flex items-center rounded-[10px] border border-border bg-muted/40 px-3 font-mono text-xs text-muted-foreground">
+                  /posts/
+                </span>
+                <Input
+                  id="post-form-slug"
+                  v-model="form.slug"
+                  placeholder="auto-generated-slug"
+                  class="h-10 flex-1 rounded-[10px] font-mono text-sm"
+                  @input="handleSlugInput"
+                />
+              </div>
+            </AdminFormField>
+          </div>
+        </AdminFormSection>
+
+        <AdminFormSection
+          title="正文"
+          description="支持 Markdown；可直接粘贴或拖拽图片上传。"
+          :icon="FileText"
+        >
+          <template #actions>
+            <span class="inline-flex items-center gap-1 rounded-full bg-muted/60 px-2.5 py-1 text-[11px] tabular-nums text-muted-foreground">
+              {{ contentStats.words }} 字 · 约 {{ contentStats.minutes }} 分钟
+            </span>
+          </template>
+          <I18nTabsEditor
+            v-model="form.content"
+            kind="markdown"
+            label="正文"
+            placeholder="开始撰写文章内容"
+            required
+            flat
+          />
+        </AdminFormSection>
+
+        <AdminFormSection
+          title="摘要与 SEO"
+          description="摘要用于列表卡片与搜索结果；SEO 字段留空时回落到标题与摘要。"
+          :icon="Search"
+        >
+          <div class="flex flex-col gap-5">
+            <I18nTabsEditor
+              v-model="form.excerpt"
+              kind="textarea"
+              label="摘要"
+              :rows="3"
+              placeholder="输入文章摘要，不填则自动截取前 180 字"
+              flat
+            />
+            <div class="h-px bg-border" />
+            <div class="flex flex-col gap-4">
+              <I18nTabsEditor
+                v-model="form.meta_title"
+                kind="text"
+                label="SEO 标题"
+                placeholder="留空则使用文章标题"
+                flat
+              />
+              <I18nTabsEditor
+                v-model="form.meta_description"
+                kind="text"
+                label="SEO 描述"
+                placeholder="留空则使用文章摘要"
+                flat
+              />
+              <I18nTabsEditor
+                v-model="form.meta_keywords"
+                kind="text"
+                label="SEO 关键词"
+                placeholder="逗号分隔，例如：FastAPI, Python, 教程"
+                flat
+              />
+            </div>
+          </div>
+        </AdminFormSection>
       </div>
 
-      <div class="w-full lg:w-2/5">
-        <!-- 右侧设置栏：只有桌面才 sticky + 内层滚动。
-             原先 max-h/overflow-y-auto 没有限定断点，手机正文区里又套了一个滚动盒；
-             top 也从 4 提到 20，避开 64px 的 sticky 顶栏。 -->
-        <div class="lg:sticky lg:top-20 lg:self-start flex flex-col gap-4 lg:max-h-[calc(100svh-140px)] lg:overflow-y-auto lg:pr-1 scrollbar-thin">
-          <AdminCard class="p-5 flex flex-col gap-4">
-            <div>
-              <Label class="mb-1.5 block text-sm font-medium">发布设置</Label>
-              <div class="flex flex-col gap-3">
-                <div>
-                  <Label
-                    for="post-form-status"
-                    class="text-xs text-muted-foreground mb-1 block"
-                  >状态 *</Label>
-                  <Select v-model="form.status">
-                    <SelectTrigger
-                      id="post-form-status"
-                      class="h-9 rounded-[10px]"
-                    >
-                      <SelectValue placeholder="选择状态" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="draft">
-                        草稿
-                      </SelectItem>
-                      <SelectItem value="published">
-                        已发布
-                      </SelectItem>
-                      <SelectItem value="scheduled">
-                        定时发布
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div v-if="form.status === 'scheduled'">
-                  <Label
-                    for="post-form-scheduled-at"
-                    class="text-xs text-muted-foreground mb-1 block"
-                  >定时时间 *</Label>
-                  <Input
-                    id="post-form-scheduled-at"
-                    v-model="form.scheduled_at"
-                    type="datetime-local"
-                    class="h-9 rounded-[10px] text-sm"
-                  />
-                  <p
-                    v-if="scheduledError"
-                    class="text-xs text-destructive mt-1"
-                  >
-                    {{ scheduledError }}
-                  </p>
-                  <p
-                    v-else
-                    class="text-xs text-muted-foreground mt-1"
-                  >
-                    按你所在时区填写，提交时会自动换算为 UTC
-                  </p>
-                </div>
-                <div class="flex items-center justify-between">
-                  <Label
-                    for="post-form-is-pinned"
-                    class="text-sm"
-                  >置顶</Label>
-                  <Switch
-                    id="post-form-is-pinned"
-                    v-model="form.is_pinned"
-                  />
-                </div>
-                <div class="flex items-center justify-between">
-                  <Label
-                    for="post-form-allow-comments"
-                    class="text-sm"
-                  >允许评论</Label>
-                  <Switch
-                    id="post-form-allow-comments"
-                    v-model="form.allow_comments"
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div class="h-px bg-border" />
-
-            <div>
-              <Label class="mb-2 block text-sm font-medium">可见性</Label>
-              <div class="flex flex-col gap-1.5">
-                <label
-                  v-for="opt in visibilityOptions"
-                  :key="opt.value"
-                  class="flex items-start gap-3 rounded-[10px] border px-3 py-2.5 cursor-pointer transition-colors"
-                  :class="form.visibility === opt.value
-                    ? 'border-primary bg-primary/5'
-                    : 'border-transparent hover:bg-muted/50'"
+      <!-- ============================ 右侧设置区 ============================ -->
+      <aside class="flex flex-col gap-4">
+        <AdminFormSection
+          title="发布"
+          description="决定文章的可见状态与发布时机。"
+          :icon="Send"
+        >
+          <div class="flex flex-col gap-4">
+            <AdminFormField
+              label="状态"
+              for="post-form-status"
+              required
+            >
+              <Select v-model="form.status">
+                <SelectTrigger
+                  id="post-form-status"
+                  class="h-10 rounded-[10px]"
                 >
-                  <div class="mt-0.5">
-                    <div
-                      class="size-4 rounded-full border-2 flex items-center justify-center transition-colors"
-                      :class="form.visibility === opt.value
-                        ? 'border-primary'
-                        : 'border-muted-foreground/40'"
-                    >
-                      <div
-                        v-if="form.visibility === opt.value"
-                        class="size-2 rounded-full bg-primary"
-                      />
-                    </div>
-                    <input
-                      v-model="form.visibility"
-                      type="radio"
-                      :value="opt.value"
-                      class="sr-only"
-                    >
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="flex items-center gap-1.5">
-                      <component
-                        :is="opt.icon"
-                        class="size-3.5 text-muted-foreground"
-                      />
-                      <span class="text-sm font-medium">{{ opt.label }}</span>
-                    </div>
-                    <div class="text-xs text-muted-foreground mt-0.5">
-                      {{ opt.description }}
-                    </div>
-                  </div>
-                </label>
+                  <SelectValue placeholder="选择状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="draft">
+                    草稿
+                  </SelectItem>
+                  <SelectItem value="published">
+                    已发布
+                  </SelectItem>
+                  <SelectItem value="scheduled">
+                    定时发布
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminFormField>
+
+            <AdminFormField
+              v-if="form.status === 'scheduled'"
+              label="定时时间"
+              for="post-form-scheduled-at"
+              required
+              :error="scheduledError || undefined"
+              hint="按你所在时区填写，提交时会自动换算为 UTC。"
+            >
+              <Input
+                id="post-form-scheduled-at"
+                v-model="form.scheduled_at"
+                type="datetime-local"
+                class="h-10 rounded-[10px] text-sm"
+              />
+            </AdminFormField>
+
+            <div class="flex flex-col gap-2.5 rounded-[10px] border border-border/70 bg-muted/20 p-3">
+              <div class="flex items-center justify-between gap-3">
+                <Label
+                  for="post-form-is-pinned"
+                  class="text-sm"
+                >置顶</Label>
+                <Switch
+                  id="post-form-is-pinned"
+                  v-model="form.is_pinned"
+                />
               </div>
-              <div
-                v-if="form.visibility === 'password'"
-                class="mt-2"
-              >
-                <Input
-                  v-model="form.password"
-                  type="password"
-                  :aria-label="$_t('admin.editor.postPassword')"
-                  placeholder="访问密码"
-                  class="h-9 rounded-[10px] text-sm"
+              <div class="flex items-center justify-between gap-3">
+                <Label
+                  for="post-form-allow-comments"
+                  class="text-sm"
+                >允许评论</Label>
+                <Switch
+                  id="post-form-allow-comments"
+                  v-model="form.allow_comments"
                 />
               </div>
             </div>
+          </div>
+        </AdminFormSection>
 
-            <div class="h-px bg-border" />
+        <AdminFormSection
+          title="可见性"
+          description="控制谁可以阅读这篇文章。"
+          :icon="Shield"
+        >
+          <div class="flex flex-col gap-1.5">
+            <label
+              v-for="opt in visibilityOptions"
+              :key="opt.value"
+              class="flex items-start gap-3 rounded-[10px] border px-3 py-2.5 cursor-pointer transition-colors"
+              :class="form.visibility === opt.value
+                ? 'border-primary bg-primary/5'
+                : 'border-transparent hover:bg-muted/50'"
+            >
+              <div class="mt-0.5">
+                <div
+                  class="size-4 rounded-full border-2 flex items-center justify-center transition-colors"
+                  :class="form.visibility === opt.value
+                    ? 'border-primary'
+                    : 'border-muted-foreground/40'"
+                >
+                  <div
+                    v-if="form.visibility === opt.value"
+                    class="size-2 rounded-full bg-primary"
+                  />
+                </div>
+                <input
+                  v-model="form.visibility"
+                  type="radio"
+                  :value="opt.value"
+                  class="sr-only"
+                >
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <component
+                    :is="opt.icon"
+                    class="size-3.5 text-muted-foreground"
+                  />
+                  <span class="text-sm font-medium">{{ opt.label }}</span>
+                </div>
+                <div class="text-xs text-muted-foreground mt-0.5">
+                  {{ opt.description }}
+                </div>
+              </div>
+            </label>
+            <Input
+              v-if="form.visibility === 'password'"
+              v-model="form.password"
+              type="password"
+              :aria-label="$_t('admin.editor.postPassword')"
+              placeholder="访问密码"
+              class="mt-2 h-10 rounded-[10px] text-sm"
+            />
+          </div>
+        </AdminFormSection>
 
-            <div>
-              <Label
-                for="post-form-category"
-                class="text-xs text-muted-foreground mb-1 block"
-              >分类</Label>
+        <AdminFormSection
+          title="组织"
+          description="分类、标签与系列决定文章的归档位置。"
+          :icon="FolderTree"
+        >
+          <div class="flex flex-col gap-4">
+            <AdminFormField
+              label="分类"
+              for="post-form-category"
+            >
               <Select
                 :model-value="form.category_id?.toString() ?? '0'"
                 @update:model-value="(v: string | undefined) => form.category_id = Number(v) || null"
               >
                 <SelectTrigger
                   id="post-form-category"
-                  class="h-9 rounded-[10px]"
+                  class="h-10 rounded-[10px]"
                 >
                   <SelectValue :placeholder="categoriesLoading ? '加载中...' : '选择分类'" />
                 </SelectTrigger>
@@ -815,286 +962,213 @@ onBeforeUnmount(() => {
                   </SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </AdminFormField>
 
             <div ref="tagComboboxRef">
-              <Label class="text-xs text-muted-foreground mb-1 block">标签</Label>
-              <div class="relative">
-                <div
-                  class="min-h-9 px-2.5 py-1.5 rounded-[10px] border border-input bg-background flex flex-wrap gap-1.5 items-center cursor-text transition-colors"
-                  :class="tagComboboxOpen ? 'ring-2 ring-ring ring-offset-0' : ''"
-                  @click="tagComboboxOpen = true"
-                >
-                  <template v-if="form.tag_ids.length === 0 && !tagSearchQuery">
-                    <span class="text-sm text-muted-foreground px-1">
-                      {{ tagsLoading ? '加载中...' : '点击添加标签...' }}
-                    </span>
-                  </template>
-                  <Badge
-                    v-for="tagId in form.tag_ids"
-                    :key="tagId"
-                    variant="secondary"
-                    class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
-                  >
-                    {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
-                    <button
-                      type="button"
-                      class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
-                      :aria-label="`移除标签 ${getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId}`"
-                      @click.stop="removeTag(tagId)"
-                    >
-                      <X class="size-3" />
-                    </button>
-                  </Badge>
-                  <input
-                    v-if="tagComboboxOpen"
-                    v-model="tagSearchQuery"
-                    type="text"
-                    class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
-                    role="combobox"
-                    aria-controls="post-form-tag-listbox"
-                    :aria-expanded="tagComboboxOpen"
-                    aria-autocomplete="list"
-                    :aria-label="$_t('common.search')"
-                    placeholder="搜索标签..."
-                    @blur="onTagComboboxBlur"
-                  >
-                </div>
-                <div
-                  v-if="tagComboboxOpen"
-                  id="post-form-tag-listbox"
-                  role="listbox"
-                  aria-label="标签候选"
-                  :class="[
-                    'absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1' // panel-exempt: 标签下拉浮层；card-surface 的 isolation:isolate + backdrop-filter 会打断它与输入框的层叠关系，浮层必须保持素面
-                  ]"
-                >
-                  <button
-                    v-for="t in filteredTags"
-                    :key="t.id"
-                    type="button"
-                    role="option"
-                    :aria-selected="isTagSelected(t.id)"
-                    class="w-full flex items-center justify-between px-2.5 py-2 rounded-md text-sm text-left cursor-pointer transition-colors hover:bg-accent"
-                    :class="{ 'bg-accent/50': isTagSelected(t.id) }"
-                    @mousedown.prevent="toggleTag(t.id)"
-                  >
-                    <div class="flex items-center gap-2">
-                      <span
-                        class="size-2 rounded-full inline-block"
-                        :class="t.color ? '' : 'bg-muted-foreground/40'"
-                        :style="t.color ? { background: t.color } : undefined"
-                      />
-                      {{ getLocalizedStr(t.name) }}
-                      <span class="text-xs text-muted-foreground">({{ t.post_count }})</span>
-                    </div>
-                    <Check
-                      v-if="isTagSelected(t.id)"
-                      class="size-3.5 text-primary"
-                    />
-                  </button>
+              <AdminFormField label="标签">
+                <div class="relative">
                   <div
-                    v-if="filteredTags.length === 0"
-                    class="px-2.5 py-3 text-sm text-muted-foreground text-center"
+                    class="min-h-10 px-2.5 py-1.5 rounded-[10px] border border-input bg-background flex flex-wrap gap-1.5 items-center cursor-text transition-colors"
+                    :class="tagComboboxOpen ? 'ring-2 ring-ring ring-offset-0' : ''"
+                    @click="tagComboboxOpen = true"
                   >
-                    无匹配标签
+                    <template v-if="form.tag_ids.length === 0 && !tagSearchQuery">
+                      <span class="text-sm text-muted-foreground px-1">
+                        {{ tagsLoading ? '加载中...' : '点击添加标签...' }}
+                      </span>
+                    </template>
+                    <Badge
+                      v-for="tagId in form.tag_ids"
+                      :key="tagId"
+                      variant="secondary"
+                      class="rounded-[10px] px-2 py-0.5 flex items-center gap-1"
+                    >
+                      {{ getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId }}
+                      <button
+                        type="button"
+                        class="ml-0.5 rounded-full hover:bg-muted-foreground/20 p-0.5 transition-colors"
+                        :aria-label="`移除标签 ${getTagById(tagId) ? getLocalizedStr(getTagById(tagId)!.name) : tagId}`"
+                        @click.stop="removeTag(tagId)"
+                      >
+                        <X class="size-3" />
+                      </button>
+                    </Badge>
+                    <input
+                      v-if="tagComboboxOpen"
+                      v-model="tagSearchQuery"
+                      type="text"
+                      class="flex-1 min-w-20 bg-transparent outline-none text-sm px-1"
+                      role="combobox"
+                      aria-controls="post-form-tag-listbox"
+                      :aria-expanded="tagComboboxOpen"
+                      aria-autocomplete="list"
+                      :aria-label="$_t('common.search')"
+                      placeholder="搜索标签..."
+                      @blur="onTagComboboxBlur"
+                    >
+                  </div>
+                  <div
+                    v-if="tagComboboxOpen"
+                    id="post-form-tag-listbox"
+                    role="listbox"
+                    aria-label="标签候选"
+                    :class="[
+                      'absolute z-20 top-full mt-1 w-full max-h-56 overflow-y-auto rounded-[10px] border border-border bg-card shadow-lg p-1' // panel-exempt: 标签下拉浮层；card-surface 的 isolation:isolate + backdrop-filter 会打断它与输入框的层叠关系，浮层必须保持素面
+                    ]"
+                  >
+                    <button
+                      v-for="t in filteredTags"
+                      :key="t.id"
+                      type="button"
+                      role="option"
+                      :aria-selected="isTagSelected(t.id)"
+                      class="w-full flex items-center justify-between px-2.5 py-2 rounded-md text-sm text-left cursor-pointer transition-colors hover:bg-accent"
+                      :class="{ 'bg-accent/50': isTagSelected(t.id) }"
+                      @mousedown.prevent="toggleTag(t.id)"
+                    >
+                      <div class="flex items-center gap-2">
+                        <span
+                          class="size-2 rounded-full inline-block"
+                          :class="t.color ? '' : 'bg-muted-foreground/40'"
+                          :style="t.color ? { background: t.color } : undefined"
+                        />
+                        {{ getLocalizedStr(t.name) }}
+                        <span class="text-xs text-muted-foreground">({{ t.post_count }})</span>
+                      </div>
+                      <Check
+                        v-if="isTagSelected(t.id)"
+                        class="size-3.5 text-primary"
+                      />
+                    </button>
+                    <div
+                      v-if="filteredTags.length === 0"
+                      class="px-2.5 py-3 text-sm text-muted-foreground text-center"
+                    >
+                      无匹配标签
+                    </div>
                   </div>
                 </div>
-              </div>
+              </AdminFormField>
             </div>
 
             <div class="flex items-end gap-2">
               <div class="flex-1 min-w-0">
-                <Label
+                <AdminFormField
+                  label="系列"
                   for="post-form-series"
-                  class="text-xs text-muted-foreground mb-1 block"
-                >系列</Label>
-                <Select
-                  :model-value="form.series_id?.toString() ?? '0'"
-                  @update:model-value="(v: string | undefined) => form.series_id = Number(v) || null"
                 >
-                  <SelectTrigger
-                    id="post-form-series"
-                    class="h-9 rounded-[10px]"
+                  <Select
+                    :model-value="form.series_id?.toString() ?? '0'"
+                    @update:model-value="(v: string | undefined) => form.series_id = Number(v) || null"
                   >
-                    <SelectValue placeholder="无系列" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="0">
-                      无系列
-                    </SelectItem>
-                    <SelectItem
-                      v-for="s in seriesOptions"
-                      :key="s.id"
-                      :value="s.id.toString()"
+                    <SelectTrigger
+                      id="post-form-series"
+                      class="h-10 rounded-[10px]"
                     >
-                      {{ s.label }}
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                      <SelectValue placeholder="无系列" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="0">
+                        无系列
+                      </SelectItem>
+                      <SelectItem
+                        v-for="s in seriesOptions"
+                        :key="s.id"
+                        :value="s.id.toString()"
+                      >
+                        {{ s.label }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                </AdminFormField>
               </div>
               <div
                 v-if="form.series_id"
                 class="w-24"
               >
-                <Label
+                <AdminFormField
+                  label="序号"
                   for="post-form-series-order"
-                  class="text-xs text-muted-foreground mb-1 block"
-                >序号</Label>
-                <Input
-                  id="post-form-series-order"
-                  v-model.number="form.series_order"
-                  type="number"
-                  min="0"
-                  class="h-9 rounded-[10px] text-sm"
-                />
+                >
+                  <Input
+                    id="post-form-series-order"
+                    v-model.number="form.series_order"
+                    type="number"
+                    min="0"
+                    class="h-10 rounded-[10px] text-sm"
+                  />
+                </AdminFormField>
               </div>
             </div>
+          </div>
+        </AdminFormSection>
 
-            <div>
-              <Label class="text-xs text-muted-foreground mb-1 block">摘要</Label>
-              <I18nTabsEditor
-                v-model="form.excerpt"
-                kind="textarea"
-                :rows="3"
-                placeholder="输入文章摘要，不填则自动截取前 180 字"
-              />
+        <AdminFormSection
+          title="封面图"
+          description="列表卡片与分享卡使用该图片；不设则回落到站内占位封面。"
+          :icon="ImageIcon"
+        >
+          <div class="flex flex-col gap-3">
+            <button
+              type="button"
+              class="relative w-full aspect-[16/9] overflow-hidden rounded-[12px] border border-dashed border-border bg-muted/30 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring group"
+              :aria-label="form.cover_image ? '更换封面图' : '上传封面图'"
+              :disabled="coverUploading"
+              @click="coverInputRef?.click()"
+            >
+              <img
+                v-if="form.cover_image"
+                :src="form.cover_image"
+                alt="封面预览"
+                class="size-full object-cover"
+              >
+              <span
+                v-else
+                class="absolute inset-0 flex flex-col items-center justify-center gap-1.5 text-muted-foreground"
+              >
+                <ImageIcon class="size-6 opacity-60" />
+                <span class="text-xs font-medium">{{ coverUploading ? '上传中...' : '点击上传封面' }}</span>
+                <span class="text-[11px] opacity-70">建议 1200 × 800</span>
+              </span>
+              <span
+                v-if="form.cover_image"
+                class="absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                更换封面
+              </span>
+            </button>
+            <div class="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                class="h-9 flex-1 rounded-[10px]"
+                :disabled="coverUploading"
+                @click="coverInputRef?.click()"
+              >
+                {{ coverUploading ? '上传中...' : (form.cover_image ? '更换封面' : '上传封面') }}
+              </Button>
+              <Button
+                v-if="form.cover_image"
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="h-9 rounded-[10px] text-destructive hover:text-destructive"
+                @click="clearCover"
+              >
+                移除
+              </Button>
             </div>
-          </AdminCard>
-
-          <AdminCard class="p-5 flex flex-col gap-4">
-            <div>
-              <Label class="mb-2 block text-sm font-medium">封面图</Label>
-              <div class="flex items-start gap-3">
-                <div
-                  v-if="form.cover_image"
-                  class="w-[160px] h-[90px] rounded-[10px] overflow-hidden border border-border bg-muted"
-                >
-                  <img
-                    :src="form.cover_image"
-                    alt="cover"
-                    class="size-full object-cover"
-                  >
-                </div>
-                <div
-                  v-else
-                  class="w-[160px] h-[90px] rounded-[10px] border border-dashed border-border bg-muted/30 flex items-center justify-center"
-                >
-                  <ImageIcon class="size-5 text-muted-foreground/50" />
-                </div>
-                <div class="flex flex-col gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    class="rounded-[10px] h-9"
-                    :disabled="coverUploading"
-                    @click="coverInputRef?.click()"
-                  >
-                    {{ coverUploading ? '上传中...' : '上传封面' }}
-                  </Button>
-                  <Button
-                    v-if="form.cover_image"
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    class="rounded-[10px] h-9 text-destructive hover:text-destructive"
-                    @click="clearCover"
-                  >
-                    清除
-                  </Button>
-                </div>
-                <input
-                  ref="coverInputRef"
-                  type="file"
-                  accept="image/*"
-                  class="hidden"
-                  @change="handleCoverUpload"
-                >
-              </div>
-            </div>
-          </AdminCard>
-
-          <AdminCard class="p-5 flex flex-col gap-3">
-            <Label class="text-sm font-medium">SEO 设置</Label>
-            <I18nTabsEditor
-              v-model="form.meta_title"
-              kind="text"
-              label="Meta Title"
-              placeholder="SEO 标题"
-            />
-            <I18nTabsEditor
-              v-model="form.meta_description"
-              kind="text"
-              label="Meta Description"
-              placeholder="SEO 描述"
-            />
-            <I18nTabsEditor
-              v-model="form.meta_keywords"
-              kind="text"
-              label="Meta Keywords"
-              placeholder="SEO 关键词，逗号分隔"
-            />
-          </AdminCard>
-        </div>
-      </div>
-    </div>
-
-    <!-- 底部操作条：窄屏改为竖排并允许换行。
-         之前是单行 justify-between，而布局的 <main> 带 overflow-x-clip，
-         窄屏溢出的"发布文章"会被整块裁掉、点不到。 -->
-    <div class="flex flex-col gap-3 pt-2 border-t border-border sm:flex-row sm:items-center sm:justify-between">
-      <div class="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant="outline"
-          class="rounded-[12px] h-11 px-6 gap-2"
-          :disabled="savingDraft || submitting"
-          @click="saveDraft"
-        >
-          <Save
-            data-icon="inline-start"
-            class="size-4"
-          />
-          {{ savingDraft ? '保存中...' : '保存草稿' }}
-        </Button>
-        <!-- 未保存状态必须可见：离开确认只在"真要离开"那一刻才出现，
-             而作者更需要的是随时知道自己还有东西没存 -->
-        <span
-          v-if="isDirty"
-          class="text-xs text-warning-muted-foreground"
-        >有未保存的更改</span>
-        <span
-          v-else
-          class="text-xs text-muted-foreground"
-        >已同步</span>
-      </div>
-      <div class="flex flex-col gap-2 sm:flex-row sm:items-center">
-        <Button
-          type="button"
-          variant="ghost"
-          class="rounded-[12px] h-11 px-5 gap-2"
-          @click="openPreview"
-        >
-          <Eye
-            data-icon="inline-start"
-            class="size-4"
-          />
-          预览
-        </Button>
-        <Button
-          type="button"
-          class="rounded-[12px] h-11 px-7 gap-2"
-          :disabled="submitting || savingDraft"
-          @click="publishPost"
-        >
-          <Send
-            data-icon="inline-start"
-            class="size-4"
-          />
-          {{ submitting ? '发布中...' : '发布文章' }}
-        </Button>
-      </div>
+            <input
+              ref="coverInputRef"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="handleCoverUpload"
+            >
+          </div>
+        </AdminFormSection>
+      </aside>
     </div>
   </div>
 </template>

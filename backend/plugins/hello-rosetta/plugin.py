@@ -44,17 +44,18 @@ def _setting(key: str, default: Any) -> Any:
 TITLE_SUFFIX = "  · hello"
 
 # 署名块的唯一锚点，用于判重。
-SIGNATURE_ANCHOR = "Hello from <b>hello-rosetta</b>"
+SIGNATURE_ANCHOR = "Hello from **hello-rosetta**"
 
 
-def _signature_html() -> str:
-    """构造正文末尾的插件署名 HTML（仅使用设计变量，不注入自定义样式体系）。"""
-    return (
-        '<hr class="my-4" style="border-color:hsl(var(--border)/0.6)"/>'
-        '<p class="text-sm text-muted-foreground">'
-        "— Hello from <b>hello-rosetta</b> 示例插件 —"
-        "</p>"
-    )
+def _signature_markdown() -> str:
+    """构造正文末尾的插件署名（Markdown）。
+
+    这里必须是 Markdown 而不是 HTML：the_content 的输出会交给前端 marked 解析，
+    而正文渲染器对原始 HTML 块走转义分支（安全策略），直接拼 `<hr>`/`<p>` 会以
+    源码形式出现在读者眼前。用 Markdown 的 `---` 与加粗，渲染结果一致且不依赖
+    任何 HTML 白名单。
+    """
+    return "\n\n---\n\n*— Hello from **hello-rosetta** 示例插件 —*\n"
 
 
 # ── Filter / Action 处理器（模块级单例函数，便于按引用幂等注册） ───────────
@@ -77,7 +78,7 @@ def hello_content_filter(content: Any, post: Any = None, context: Any = None, **
         return content
     if SIGNATURE_ANCHOR in content:
         return content
-    return content + _signature_html()
+    return content + _signature_markdown()
 
 
 def hello_rendered_action(

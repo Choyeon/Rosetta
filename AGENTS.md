@@ -305,11 +305,16 @@ fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_c
    或 `/.well-known` 别名中间件（两条口会让正文分叉，`geoDeliveryRoutes.spec.ts` 反向断言它们不存在）。
    带语言前缀的 `/en/.well-known/security.txt` 不是路由。正文不公开任何邮箱：`Contact` 指向 `/about`
    与 `/guestbook`，`Expires` 由 `Date.now()` 生成（写死的历史日期等于长期失效）。
-3. **文章兜底封面单源** `lib/post-cover.ts`：无 `cover_image` 时用站内 6 槽渐变 SVG
-   （seed→FNV-1a→取模，SSR 与 hydrate 同图），尺寸对是 `POST_COVER_CARD`(640×427) 与
-   `POST_COVER_DETAIL`(1200×800)；站点级兜底图是 `public/og-default.png`。**`og:image` /
-   `twitter:image` 不得再回落 picsum 之类外链**（外部服务限流即无图，且站内资源走 nginx 一年强缓存）。
-   槽位数改动必须同步 `public/placeholder-covers/` 的文件数，`postCover.spec.ts` 会逐个 `existsSync`。
+3. **文章兜底封面单源** `lib/post-cover.ts`，展示面与分享面分开取值：
+   **展示面**（列表卡片 / 详情页头图 / 首页兜底轮播）无 `cover_image` 时回落
+   `https://picsum.photos/seed/<seed>/<w>/<h>` 随机图（seed→FNV-1a 派生，SSR 与 hydrate 同图，
+   后端 `api/hero.py::_display_cover` 同口径），`<img @error>` 经 `handlePostCoverError`
+   切站内 6 槽渐变 SVG `/placeholder-covers/<n>.svg`（同 seed 同槽位）兜底，外链被墙也不碎图；
+   尺寸对是 `POST_COVER_CARD`(640×427) 与 `POST_COVER_DETAIL`(1200×800)。
+   **分享面**（og:image / twitter:image / JSON-LD ImageObject）走 `postShareImage`，
+   无封面是站内 `public/og-default.png`，**绝不**拿 picsum 外链或占位 SVG
+   （外部服务限流即无图、社交爬虫不渲染 SVG）。槽位数改动必须同步 `public/placeholder-covers/`
+   的文件数，`postCover.spec.ts` 会逐个 `existsSync`。
 4. **一篇文章只有一个 `@graph`**：`useArticleJsonLd`（`composables/useSeo.ts`）一次产出
    BlogPosting / Person / Organization / BreadcrumbList / ImageObject，靠稳定 `@id` 互链；
    `WebSite + SearchAction` 是首页专用的 `useWebsiteJsonLd`，不要塞进文章页。

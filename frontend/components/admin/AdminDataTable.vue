@@ -22,6 +22,8 @@ interface Props {
   skeletonRows?: number
   headerClass?: string
   rowClass?: (row: T, index: number) => string | undefined
+  /** 透传到 <table> 的类；列表列宽固定时传 `table-fixed`，否则 auto 布局会把长标题撑爆表格 */
+  tableClass?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -30,7 +32,8 @@ const props = withDefaults(defineProps<Props>(), {
   selectedIds: () => [],
   skeletonRows: 5,
   headerClass: undefined,
-  rowClass: undefined
+  rowClass: undefined,
+  tableClass: ''
 })
 
 const emit = defineEmits<{
@@ -70,9 +73,9 @@ const alignClass: Record<string, string> = {
 </script>
 
 <template>
-  <Table>
+  <Table :class="tableClass">
     <TableHeader>
-      <TableRow :class="cn('hover:bg-transparent', headerClass)">
+      <TableRow :class="cn('hover:bg-transparent bg-muted/30', headerClass)">
         <TableHead
           v-if="selectable"
           class="w-10"
@@ -85,13 +88,13 @@ const alignClass: Record<string, string> = {
         <TableHead
           v-for="col in columns"
           :key="col.key"
-          :class="cn(col.align && alignClass[col.align], col.class)"
+          :class="cn('text-[11px] uppercase tracking-wider', col.align && alignClass[col.align], col.class)"
         >
           {{ col.title }}
         </TableHead>
         <TableHead
           v-if="$slots.actions"
-          class="w-24 text-right"
+          class="w-36 text-right text-[11px] uppercase tracking-wider"
         >
           操作
         </TableHead>
@@ -127,10 +130,12 @@ const alignClass: Record<string, string> = {
           :colspan="columns.length + (selectable ? 1 : 0) + ($slots.actions ? 1 : 0)"
           class="h-40 text-center"
         >
-          <div class="flex flex-col items-center justify-center gap-2 text-muted-foreground">
-            <Inbox class="size-8" />
-            <span class="text-sm">暂无数据</span>
-          </div>
+          <slot name="empty">
+            <div class="flex flex-col items-center justify-center gap-2 text-muted-foreground">
+              <Inbox class="size-8" />
+              <span class="text-sm">暂无数据</span>
+            </div>
+          </slot>
         </TableCell>
       </TableRow>
 

@@ -103,6 +103,16 @@
       <h3 class="font-display text-xl font-semibold">
         {{ t('friends.noLinks') }}
       </h3>
+      <p class="text-muted-foreground mt-2 text-sm max-w-md mx-auto leading-relaxed">
+        {{ t('friends.emptyHint') }}
+      </p>
+      <NuxtLink
+        :to="localeHref('/guestbook')"
+        :class="cn(buttonVariants({ variant: 'outline', size: 'sm' }), 'mt-6')"
+      >
+        <MessageSquare class="size-4" />
+        {{ t('common.guestbook') }}
+      </NuxtLink>
     </div>
   </div>
 </template>
@@ -110,14 +120,17 @@
 <script setup lang="ts">
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Skeleton } from '~~/components/ui/skeleton'
+import { buttonVariants } from '~~/components/ui/button'
 import { useFriendLinks } from '~~/composables/useFriendLinks'
+import { cn } from '~~/lib/utils'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { Link2, ExternalLink } from '@lucide/vue'
+import { Link2, ExternalLink, MessageSquare } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const { localeHref } = useLocaleLink()
 const site = useSite()
 
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)

@@ -28,7 +28,7 @@ import type { Post } from '~~/types/api'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
-import { RefreshCw, Plus, Pin, X } from '@lucide/vue'
+import { RefreshCw, Plus, Pin, X, Pencil, History, Trash2 } from '@lucide/vue'
 import {
   Select,
   SelectContent,
@@ -38,6 +38,7 @@ import {
 } from '~~/components/ui/select'
 import type { AdminColumn as Column } from '~~/types/admin'
 import AdminFilterBar from '~~/components/admin/AdminFilterBar.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { getLocalizedStr } from '~~/composables/useAdminI18n'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -75,16 +76,17 @@ const statusOptions = [
 ]
 
 const columns: Column[] = [
-  { key: 'id', title: 'ID', class: 'w-16 text-muted-foreground text-xs' },
+  // ID 与点赞从独立列下移：ID 并入标题行（#21 · /slug），点赞在列表里没有操作入口，
+  // 两者占掉的 120px 正好是「操作」列被挤出视口的原因。列宽改为固定值 + table-fixed，
+  // 日期与状态才不会被 auto 布局压成三行。
   { key: 'title', title: '标题' },
-  { key: 'category', title: '分类', class: 'w-28' },
-  { key: 'status', title: '状态', class: 'w-24' },
-  { key: 'views', title: '浏览', align: 'center', class: 'w-20' },
-  { key: 'likes_count', title: '点赞', align: 'center', class: 'w-20' },
-  { key: 'comments_count', title: '评论', align: 'center', class: 'w-20' },
-  { key: 'is_pinned', title: '置顶', align: 'center', class: 'w-16' },
-  { key: 'published_at', title: '发布时间', class: 'w-44 text-xs text-muted-foreground' },
-  { key: 'updated_at', title: '最后更新', class: 'w-44 text-xs text-muted-foreground' }
+  { key: 'category', title: '分类', class: 'w-20' },
+  { key: 'status', title: '状态', class: 'w-20' },
+  { key: 'views', title: '浏览', align: 'center', class: 'w-16' },
+  { key: 'comments_count', title: '评论', align: 'center', class: 'w-16' },
+  { key: 'is_pinned', title: '置顶', align: 'center', class: 'w-12' },
+  { key: 'published_at', title: '发布时间', class: 'w-32 text-xs text-muted-foreground' },
+  { key: 'updated_at', title: '最后更新', class: 'w-32 text-xs text-muted-foreground' }
 ]
 
 // 同一轮里可能有多个来源同时要求重载（筛选按钮 + page watch + 多个筛选 watch），
@@ -420,12 +422,10 @@ onMounted(() => {
       :loading="loading"
       row-key="id"
       selectable
+      table-class="table-fixed"
       :selected-ids="selectedIds"
       @update:selected-ids="(ids) => selectedIds = ids as number[]"
     >
-      <template #cell-id="{ row }">
-        #{{ (row as Post).id }}
-      </template>
       <template #cell-title="{ row }">
         <div class="min-w-0">
           <div
@@ -435,7 +435,9 @@ onMounted(() => {
             {{ getLocalizedStr((row as Post).title) || '(无标题)' }}
           </div>
           <div class="text-xs text-muted-foreground truncate mt-0.5">
-            /{{ (row as Post).slug }}
+            <span class="tabular-nums text-muted-foreground/70">#{{ (row as Post).id }}</span>
+            <span class="mx-1 text-muted-foreground/40">·</span>
+            <span>/{{ (row as Post).slug }}</span>
           </div>
         </div>
       </template>
@@ -443,7 +445,7 @@ onMounted(() => {
         <template v-if="(row as Post).category">
           <Badge
             variant="secondary"
-            class="rounded-[10px] font-normal"
+            class="rounded-[10px] font-normal whitespace-nowrap"
             :style="{
               background: ((row as Post).category?.color ? `${(row as Post).category!.color}20` : 'hsl(var(--muted))'),
               color: (row as Post).category?.color || 'hsl(var(--muted-foreground))',
@@ -460,7 +462,7 @@ onMounted(() => {
       </template>
       <template #cell-status="{ row }">
         <Badge
-          class="rounded-[10px] font-normal"
+          class="rounded-[10px] font-normal whitespace-nowrap"
           :class="{
             'bg-success-muted text-success-muted-foreground': (row as Post).status === 'published',
             'bg-warning-muted text-warning-muted-foreground': (row as Post).status === 'draft',
@@ -475,37 +477,34 @@ onMounted(() => {
         <Pin
           v-if="(row as Post).is_pinned"
           class="size-3.5 text-warning"
+          aria-label="已置顶"
         />
+        <span
+          v-else
+          class="text-muted-foreground/40"
+          aria-hidden="true"
+        >—</span>
       </template>
       <template #cell-published_at="{ row }">
-        {{ formatAdminDateTime((row as Post).published_at ?? (row as Post).created_at) }}
+        <span
+          class="whitespace-nowrap tabular-nums"
+          :title="formatAdminDateTime((row as Post).published_at ?? (row as Post).created_at)"
+        >{{ formatAdminDateTime((row as Post).published_at ?? (row as Post).created_at) }}</span>
       </template>
       <template #cell-updated_at="{ row }">
-        {{ formatAdminDateTime((row as AdminPostListItem).updated_at) }}
+        <span
+          class="whitespace-nowrap tabular-nums"
+          :title="formatAdminDateTime((row as AdminPostListItem).updated_at)"
+        >{{ formatAdminDateTime((row as AdminPostListItem).updated_at) }}</span>
       </template>
       <template #actions="{ row }">
-        <Button
-          variant="ghost"
-          size="sm"
-          @click="router.push(`/admin/content/posts/${(row as Post).id}/edit`)"
-        >
-          编辑
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          @click="router.push(`/admin/content/posts/${(row as Post).id}/revisions`)"
-        >
-          版本
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
-          @click="confirmDelete((row as Post).id)"
-        >
-          删除
-        </Button>
+        <AdminRowActions
+          :actions="[
+            { key: 'edit', label: '编辑文章', icon: Pencil, onClick: () => router.push(`/admin/content/posts/${(row as Post).id}/edit`) },
+            { key: 'revisions', label: '版本历史', icon: History, onClick: () => router.push(`/admin/content/posts/${(row as Post).id}/revisions`) },
+            { key: 'delete', label: '删除文章', icon: Trash2, destructive: true, onClick: () => confirmDelete((row as Post).id) }
+          ]"
+        />
       </template>
     </AdminDataTable>
 

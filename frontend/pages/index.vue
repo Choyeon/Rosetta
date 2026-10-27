@@ -128,14 +128,16 @@
           class="absolute inset-0 pointer-events-none transition-opacity duration-500"
           :style="heroOverlayStyle"
         />
+        <!-- 非编辑部主题的横/纵两条渐变必须分两个叠放层：同一条 class 上
+             写两个 bg-gradient-to-* 是覆写同一个 background-image，后者静默失效 -->
         <div
-          :class="[
-            'absolute inset-0 pointer-events-none',
-            isEditorialTheme
-              ? 'bg-gradient-to-b from-black/18 via-black/6 to-transparent'
-              : 'bg-gradient-to-r from-black/50 via-black/10 to-black/20 bg-gradient-to-b from-black/25 via-transparent to-transparent'
-          ]"
+          v-if="isEditorialTheme"
+          class="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/18 via-black/6 to-transparent"
         />
+        <template v-else>
+          <div class="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/50 via-black/10 to-black/20" />
+          <div class="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/25 via-transparent to-transparent" />
+        </template>
 
         <!-- Hero copy：轮播项本身就是内容（热榜文章标题/摘要/链接），所以两套主题都要显示，
              不再"只当壁纸"；没有幻灯片时退回站点设置里的 hero 文案。
@@ -200,7 +202,7 @@
           <div
             :class="[
               'container relative flex flex-col sm:flex-row items-stretch sm:items-end justify-between gap-3 sm:gap-4',
-              isEditorialTheme ? [editorialClassPx, 'pb-7 md:pb-9'] : 'pb-8 md:pb-12'
+              isEditorialTheme ? 'pb-7 md:pb-9' : 'pb-8 md:pb-12'
             ]"
             :style="containerMaxStyle"
           >
@@ -218,11 +220,11 @@
                 type="button"
                 class="inline-flex min-h-8 items-center rounded-full border border-white/20 bg-white/10 px-3 text-xs font-medium text-white/90 backdrop-blur-xl transition-colors hover:bg-white/20"
                 :aria-pressed="heroUserPaused"
-                :aria-label="heroUserPaused ? '继续轮播' : '暂停轮播'"
-                :title="heroUserPaused ? '继续轮播' : '暂停轮播'"
+                :aria-label="heroUserPaused ? t('home.heroResume') : t('home.heroPause')"
+                :title="heroUserPaused ? t('home.heroResume') : t('home.heroPause')"
                 @click="heroUserPaused = !heroUserPaused"
               >
-                {{ heroUserPaused ? '继续轮播' : '暂停轮播' }}
+                {{ heroUserPaused ? t('home.heroResume') : t('home.heroPause') }}
               </button>
               <div class="flex flex-wrap items-center gap-2">
                 <button
@@ -249,6 +251,7 @@
                     width="56"
                     height="56"
                     class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-0"
+                    @error="handlePostCoverError($event, { id: slide.id })"
                   >
                 </button>
               </div>
@@ -266,22 +269,28 @@
       <section
         :class="[
           'container',
-          sectionTightY ? 'py-8 md:py-11' : 'py-14 md:py-20',
-          isEditorialTheme ? editorialClassPx : ''
+          sectionTightY ? 'py-8 md:py-11' : 'py-14 md:py-20'
         ]"
         data-editorial-section="pinned"
         :style="containerMaxStyle"
       >
         <div class="flex items-end justify-between mb-8 gap-6 flex-wrap">
-          <div>
-            <div class="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-              <span class="size-1.5 rounded-full bg-warning" />
-              {{ t('posts.pinned') }}
-            </div>
-            <h2 class="mt-2 font-display text-2xl md:text-3xl font-bold tracking-tight">
-              {{ t('posts.pinned') }}
-            </h2>
-          </div>
+          <!-- 节标题只出现一次：上一版把 t('posts.pinned') 同时写在 eyebrow 与 h2 上，
+               屏幕上就是「置顶 / 置顶」两行重复；这里改成左侧色条 + 单一 h2。 -->
+          <h2 class="flex items-center gap-3 font-display text-2xl md:text-3xl font-bold tracking-tight">
+            <span
+              class="inline-block h-6 w-1.5 shrink-0 rounded-full bg-warning"
+              aria-hidden="true"
+            />
+            {{ t('posts.pinned') }}
+          </h2>
+          <NuxtLink
+            :to="localeHref('/posts')"
+            class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
+          >
+            {{ t('home.viewAll') }}
+            <ArrowRight class="size-3.5" />
+          </NuxtLink>
         </div>
 
         <div
@@ -326,8 +335,7 @@
       <section
         :class="[
           'container',
-          sectionTightY ? 'pb-10 md:pb-12' : 'pb-16',
-          isEditorialTheme ? editorialClassPx : ''
+          sectionTightY ? 'pb-10 md:pb-12' : 'pb-16'
         ]"
         data-editorial-section="latest"
         :style="containerMaxStyle"
@@ -346,13 +354,9 @@
             <!-- Site stats -->
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-primary" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('home.siteStats') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-primary" />
+                  {{ t('home.siteStats') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -421,13 +425,9 @@
             <!-- Tech stack versions -->
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-success" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('home.techStack') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-success" />
+                  {{ t('home.techStack') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -459,13 +459,9 @@
 
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-warning" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('nav.categories') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-warning" />
+                  {{ t('nav.categories') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -509,13 +505,9 @@
 
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-primary" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('home.tagCloud') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-primary" />
+                  {{ t('home.tagCloud') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -562,15 +554,13 @@
 
           <div :class="['order-1 lg:order-2', mainColSpanClass]">
             <div class="flex items-end justify-between mb-6 gap-4 flex-wrap">
-              <div>
-                <div class="flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground">
-                  <span class="size-1.5 rounded-full bg-primary" />
-                  {{ t('home.latestPosts') }}
-                </div>
-                <h2 class="mt-2 font-display text-2xl font-bold tracking-tight">
-                  {{ t('home.latestPosts') }}
-                </h2>
-              </div>
+              <h2 class="flex items-center gap-3 font-display text-2xl font-bold tracking-tight">
+                <span
+                  class="inline-block h-5 w-1.5 shrink-0 rounded-full bg-primary"
+                  aria-hidden="true"
+                />
+                {{ t('home.latestPosts') }}
+              </h2>
               <NuxtLink
                 :to="localeHref('/posts')"
                 class="text-sm text-muted-foreground hover:text-foreground inline-flex items-center gap-1 transition-colors"
@@ -650,13 +640,9 @@
             <!-- Site stats -->
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-primary" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('home.siteStats') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-primary" />
+                  {{ t('home.siteStats') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -725,13 +711,9 @@
             <!-- Tech stack versions -->
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-success" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('home.techStack') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-success" />
+                  {{ t('home.techStack') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -763,13 +745,9 @@
 
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-warning" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('nav.categories') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-warning" />
+                  {{ t('nav.categories') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -813,13 +791,9 @@
 
             <Card>
               <CardHeader>
-                <CardTitle class="text-lg">
-                  <span class="inline-flex items-center gap-2">
-                    <span class="size-1.5 rounded-full bg-primary" />
-                    <span class="uppercase tracking-[0.16em] text-xs text-muted-foreground">
-                      {{ t('home.tagCloud') }}
-                    </span>
-                  </span>
+                <CardTitle class="flex items-center gap-2 text-sm font-semibold">
+                  <span class="size-1.5 rounded-full bg-primary" />
+                  {{ t('home.tagCloud') }}
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -871,8 +845,7 @@
         v-if="recommendedPosts.length >= 2"
         :class="[
           'container',
-          sectionTightY ? 'pb-8 md:pb-10' : 'pb-14 md:pb-20',
-          isEditorialTheme ? editorialClassPx : ''
+          sectionTightY ? 'pb-8 md:pb-10' : 'pb-14 md:pb-20'
         ]"
         aria-labelledby="home-recommended-title"
         data-editorial-section="recommended"
@@ -895,16 +868,15 @@
 
       <!-- ===== Newsletter / Guestbook CTA ===== -->
       <section
-        :class="[
-          'container pb-20 md:pb-24',
-          isEditorialTheme ? editorialClassPx : ''
-        ]"
+        class="container pb-20 md:pb-24"
         data-editorial-section="cta"
         :style="containerMaxStyle"
       >
-        <Card class="rounded-2xl border-0 bg-gradient-to-br from-slate-50 via-white to-indigo-50 dark:from-slate-900 dark:via-background dark:to-indigo-950/20 shadow-soft overflow-hidden">
+        <!-- 配色只走主题令牌：上一版写死 slate/indigo 渐变，换 palette（rose / amber / minimal）
+             时这块仍是紫色，是全站唯一"不跟主题走"的大色块。 -->
+        <Card class="rounded-2xl border-0 bg-gradient-to-br from-primary/10 via-background to-accent/70 dark:from-primary/15 dark:via-background dark:to-primary/5 shadow-soft overflow-hidden">
           <CardContent class="p-10 md:p-14 text-center max-w-2xl mx-auto relative">
-            <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.08),transparent_70%)] pointer-events-none" />
+            <div class="absolute inset-0 bg-[radial-gradient(ellipse_at_center,hsl(var(--primary)/0.10),transparent_70%)] pointer-events-none" />
             <div class="relative">
               <h2 class="font-display text-2xl md:text-3xl font-bold tracking-tight">
                 {{ t('home.ctaTitle') }}
@@ -913,19 +885,20 @@
                 {{ t('home.ctaSubtitle') }}
               </p>
               <div class="mt-8 flex flex-col sm:flex-row gap-3 justify-center">
-                <Button
-                  size="lg"
-                  @click="navigateTo('/guestbook')"
+                <!-- 用真实 <a> 而不是 button+click：CTA 是页面上最显眼的站内入口，
+                     中键新开 / 地址栏可复制 / 爬虫能读到，都依赖 href。 -->
+                <NuxtLink
+                  :to="localeHref('/guestbook')"
+                  :class="buttonVariants({ size: 'lg' })"
                 >
                   {{ t('home.goGuestbook') }}
-                </Button>
-                <Button
-                  size="lg"
-                  variant="outline"
-                  @click="navigateTo('/about')"
+                </NuxtLink>
+                <NuxtLink
+                  :to="localeHref('/about')"
+                  :class="buttonVariants({ size: 'lg', variant: 'outline' })"
                 >
                   {{ t('home.goAbout') }}
-                </Button>
+                </NuxtLink>
               </div>
             </div>
           </CardContent>
@@ -937,7 +910,7 @@
 
 <script setup lang="ts">
 import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
-import { Button } from '~~/components/ui/button'
+import { buttonVariants } from '~~/components/ui/button'
 import { badgeVariants } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import PostCard from '~~/components/PostCard.vue'
@@ -950,6 +923,7 @@ import { useI18n } from 'vue-i18n'
 import { ArrowRight } from '~~/lib/lucide-svg-icons'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { toYMD } from '~~/lib/datetime'
+import { handlePostCoverError } from '~~/lib/post-cover'
 import { cn, formatCount } from '~~/lib/utils'
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 
@@ -1004,14 +978,14 @@ const layoutWidthPx = computed(() => {
   }
   return site.appearance.value.page_width_px ?? 1200
 })
-// Tailwind `.container` 默认 padding 1.5rem/侧；Editorial 默认主题通过
-// `!px-0` + 更窄的 inline padding 把横向留白收紧，避免居中后两侧空得夸张，
-// 让杂志风内容区更接近"纸本印刷版心"的观感。
-const editorialClassPx = '!px-0'
+// 横向留白口径：`.container` 的基座 padding 由 main.css 兜底；Editorial 只通过 inline
+// maxWidth + padding 收紧版心。历史上这里写的是 `!px-0`（`padding-inline: 0 !important`）
+// 想"让 inline padding 接管"，但 !important 工具类会连 inline style 一起压掉 ——
+// 首页因此在手机上完全没有左右留白，卡片和标题直接贴屏幕边缘。不要再用 !px-0。
 const containerMaxStyle = computed(() => {
   const max = `${layoutWidthPx.value}px`
   if (isEditorialTheme.value) {
-    const pad = 'min(0.9rem, 2.6vw)'
+    const pad = 'clamp(1rem, 2.6vw, 1.25rem)'
     return {
       maxWidth: max,
       paddingLeft: pad,
@@ -1243,7 +1217,27 @@ const heroSlide = computed(() => {
   return heroSlides.value[((heroIdx.value % n) + n) % n] ?? null
 })
 const heroSlideMedia = computed(() => heroSlide.value?.media_url || '')
-const heroBgUrl = computed(() => heroBgImage.value || heroSlideMedia.value)
+// 热榜虚拟轮播的无封面回落是 picsum 外链（backend/api/hero.py::_display_cover 同口径）。
+// CSS background-image 挂不上 @error，外链不可达时在客户端探一次、把它摘出 hero 背景，
+// 让底层渐变接管——首页首屏不会因站外图被墙裸底。
+const heroFailedMedia = ref('')
+function markHeroMediaFailed(url: string) {
+  if (url) heroFailedMedia.value = url
+}
+const heroBgUrl = computed(() => {
+  const media = heroSlideMedia.value && heroSlideMedia.value !== heroFailedMedia.value
+    ? heroSlideMedia.value
+    : ''
+  return heroBgImage.value || media
+})
+if (import.meta.client) {
+  watch(heroSlideMedia, (url) => {
+    if (!url || url.startsWith('/') || url === heroFailedMedia.value) return
+    const probe = new Image()
+    probe.onerror = () => markHeroMediaFailed(url)
+    probe.src = url
+  }, { immediate: true })
+}
 const heroHasBg = computed(() => Boolean(heroBgUrl.value || heroBgGradient.value))
 const heroLayerStyle = computed(() => {
   if (heroBgUrl.value) return { backgroundImage: `url("${heroBgUrl.value}")` }

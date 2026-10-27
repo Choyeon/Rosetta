@@ -74,8 +74,10 @@ describe('个人中心 /account', () => {
     expect(existsSync(resolve(ROOT, 'middleware/auth-required.global.ts'))).toBe(false)
   })
 
-  it('顶栏用户菜单给出入口（桌面下拉 + 移动抽屉各一处）', () => {
-    expect(header.match(/navigateTo\('\/account'\)/g)?.length).toBe(2)
+  it('顶栏用户菜单给出入口（桌面下拉 + 移动抽屉各一处，且带语言前缀）', () => {
+    // 入口改成走 go() → localeHref()：/en /ja /zh_Hant 下点「个人中心」不能掉回中文裸路径。
+    expect(header.match(/go\('\/account'\)/g)?.length).toBe(2)
+    expect(header).toContain('const go = (path: string) => navigateTo(localeHref(path))')
   })
 
   it('日期格式化钉死时区，避免两端分歧', () => {

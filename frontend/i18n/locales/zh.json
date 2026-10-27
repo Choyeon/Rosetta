@@ -795,7 +795,8 @@
     "selectCategory": "选择分类",
     "sortLabel": "排序",
     "sortLatest": "最新优先",
-    "sortPopular": "最多浏览"
+    "sortPopular": "最多浏览",
+    "resultCount": "共 {n} 篇"
   },
   "categories": {
     "title": "文章分类",
@@ -807,7 +808,7 @@
   },
   "tags": {
     "title": "全部标签",
-    "desc": "通过标签发现主题相近的内容。字号越大，收录文章越多。",
+    "desc": "通过标签发现主题相近的内容，按收录文章数排序。",
     "posts": "篇文章",
     "noTags": "还没有创建标签"
   },
@@ -844,6 +845,7 @@
     "visit": "访问",
     "noDesc": "暂无描述",
     "noLinks": "还没有友链",
+    "emptyHint": "这里还没有友链。想去打个招呼？留言板一直开着。",
     "loadFailed": "加载失败"
   },
   "sponsor": {
@@ -935,6 +937,8 @@
     "recentActivity": "最新动态",
     "hotPicks": "热门推荐",
     "readArticle": "阅读全文",
+    "heroPause": "暂停轮播",
+    "heroResume": "继续轮播",
     "heroHint": "近 30 天高热度文章 · 悬停暂停轮播",
     "ctaTitle": "向作者打个招呼",
     "ctaSubtitle": "有问题、想法，或者只是想聊聊天？欢迎在留言板留言，或通过关于页认识我。",

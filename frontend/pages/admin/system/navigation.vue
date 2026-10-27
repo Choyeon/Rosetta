@@ -78,10 +78,10 @@
             :key="item.id"
             class="flex items-center gap-3 px-5 py-4 hover:bg-muted/40 transition-colors group"
           >
-            <div class="flex flex-col items-center gap-0.5">
+            <div class="flex flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-background/50 p-0.5">
               <button
                 type="button"
-                class="size-7 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                class="size-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 :disabled="isFirst(item) || swapping"
                 title="上移"
                 aria-label="上移菜单项"
@@ -91,7 +91,7 @@
               </button>
               <button
                 type="button"
-                class="size-7 rounded-lg inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                class="size-8 rounded-md inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                 :disabled="isLast(item) || swapping"
                 title="下移"
                 aria-label="下移菜单项"
@@ -99,13 +99,6 @@
               >
                 <ChevronDown class="size-4" />
               </button>
-            </div>
-
-            <div
-              class="size-9 rounded-lg bg-muted/60 inline-flex items-center justify-center text-muted-foreground shrink-0"
-              title="拖拽排序（此处使用上下按钮）"
-            >
-              <GripVertical class="size-4" />
             </div>
 
             <div class="flex-1 min-w-0">
@@ -140,27 +133,13 @@
                 <span class="text-xs text-muted-foreground">排序</span>
                 <span class="font-semibold tabular-nums text-sm">{{ item.order }}</span>
               </div>
-              <div class="opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  title="编辑"
-                  aria-label="编辑菜单项"
-                  @click="openEdit(item)"
-                >
-                  <Pencil data-icon="inline-start" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  class="text-destructive hover:text-destructive hover:bg-destructive-muted"
-                  title="删除"
-                  aria-label="删除菜单项"
-                  @click="handleDelete(item)"
-                >
-                  <Trash2 data-icon="inline-start" />
-                </Button>
-              </div>
+              <!-- 常驻操作：旧版 hover 才出现，触屏/键盘用户看不到编辑与删除 -->
+              <AdminRowActions
+                :actions="[
+                  { key: 'edit', label: '编辑菜单项', icon: Pencil, onClick: () => openEdit(item) },
+                  { key: 'delete', label: '删除菜单项', icon: Trash2, destructive: true, onClick: () => handleDelete(item) }
+                ]"
+              />
             </div>
           </div>
         </div>
@@ -320,11 +299,12 @@ import {
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
 import {
-  Menu, Plus, ChevronUp, ChevronDown, GripVertical, ExternalLink,
+  Menu, Plus, ChevronUp, ChevronDown, ExternalLink,
   Pencil, Trash2, Save, Loader2, Info, AlertTriangle, RotateCcw
 } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Badge } from '~~/components/ui/badge'
 import {

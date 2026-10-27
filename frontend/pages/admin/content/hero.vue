@@ -9,7 +9,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { MonitorPlay, Plus } from '@lucide/vue'
+import { MonitorPlay, Plus, Pencil, Trash2 } from '@lucide/vue'
 import {
   fetchAdminHeroSlides,
   createAdminHeroSlide,
@@ -26,6 +26,7 @@ import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
 import type { AdminColumn as Column } from '~~/types/admin'
 
@@ -317,21 +318,12 @@ onMounted(loadData)
         </button>
       </template>
       <template #actions="{ row }">
-        <Button
-          variant="ghost"
-          size="sm"
-          @click="openEdit(row as AdminHeroSlide)"
-        >
-          编辑
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
-          @click="confirmDelete((row as AdminHeroSlide).id)"
-        >
-          删除
-        </Button>
+        <AdminRowActions
+          :actions="[
+            { key: 'edit', label: '编辑幻灯片', icon: Pencil, onClick: () => openEdit(row as AdminHeroSlide) },
+            { key: 'delete', label: '删除幻灯片', icon: Trash2, destructive: true, onClick: () => confirmDelete((row as AdminHeroSlide).id) }
+          ]"
+        />
       </template>
     </AdminDataTable>
 

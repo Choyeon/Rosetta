@@ -19,7 +19,17 @@ import {
   Undo2,
   Redo2,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Bold,
+  Italic,
+  Heading2,
+  Heading3,
+  Quote,
+  Code,
+  Braces,
+  List,
+  ListOrdered,
+  Minus
 } from '@lucide/vue'
 
 const props = defineProps<{
@@ -39,7 +49,9 @@ const content = useVModel(props, 'modelValue', emits, {
 const toast = useToast()
 const textareaRef = ref<HTMLTextAreaElement | null>(null)
 const previewRef = ref<HTMLDivElement | null>(null)
-const mode = ref<'edit' | 'split' | 'preview'>('split')
+// 默认进入纯编辑：分屏在 700px 级的主栏里会把编辑/预览各压到 350px，
+// 长代码行与表格都看不清。切到「分屏 / 预览」只需一次点击。
+const mode = ref<'edit' | 'split' | 'preview'>('edit')
 const isFullscreen = ref(false)
 const fileInputRef = ref<HTMLInputElement | null>(null)
 const historyStack = ref<string[]>([])
@@ -341,21 +353,34 @@ type ToolbarBtn = {
 }
 
 const toolbarButtons: ToolbarBtn[] = [
-  { key: 'bold', label: 'B', title: '粗体 (Ctrl+B)', cls: 'font-bold' },
-  { key: 'italic', label: 'I', title: '斜体 (Ctrl+I)', cls: 'italic' },
-  { key: 'h2', label: 'H2', title: '二级标题', cls: 'text-xs font-bold' },
-  { key: 'h3', label: 'H3', title: '三级标题', cls: 'text-xs font-bold' },
-  { key: 'quote', label: '"', title: '引用', cls: '' },
-  { key: 'code', label: '`', title: '行内代码', cls: 'font-mono' },
-  { key: 'codeblock', label: '```', title: '代码块', cls: 'font-mono text-xs' },
-  { key: 'ul', label: 'UL', title: '无序列表', cls: 'text-xs' },
-  { key: 'ol', label: 'OL', title: '有序列表', cls: 'text-xs' },
-  { key: 'hr', label: '---', title: '分割线', cls: 'text-xs' },
+  { key: 'bold', icon: Bold, title: '粗体 (Ctrl+B)' },
+  { key: 'italic', icon: Italic, title: '斜体 (Ctrl+I)' },
+  { key: 'h2', icon: Heading2, title: '二级标题' },
+  { key: 'h3', icon: Heading3, title: '三级标题' },
+  { key: 'quote', icon: Quote, title: '引用' },
+  { key: 'code', icon: Code, title: '行内代码' },
+  { key: 'codeblock', icon: Braces, title: '代码块' },
+  { key: 'ul', icon: List, title: '无序列表' },
+  { key: 'ol', icon: ListOrdered, title: '有序列表' },
+  { key: 'hr', icon: Minus, title: '分割线' },
   { key: 'image', icon: ImageIcon, title: '插入图片' },
   { key: 'link', icon: LinkIcon, title: '插入链接 (Ctrl+K)' },
   { key: 'undo', icon: Undo2, title: '撤销 (Ctrl+Z)' },
   { key: 'redo', icon: Redo2, title: '重做 (Ctrl+Y)' }
 ]
+
+/** 工具栏分组：组间画细分割线，避免 13 个图标挤成一片 */
+const toolbarGroups = computed(() => {
+  const groups: ToolbarBtn[][] = []
+  const boundaries = [2, 4, 7, 10, 12]
+  let start = 0
+  for (const end of boundaries) {
+    groups.push(toolbarButtons.slice(start, end))
+    start = end
+  }
+  groups.push(toolbarButtons.slice(start))
+  return groups
+})
 </script>
 
 <template>
@@ -363,19 +388,25 @@ const toolbarButtons: ToolbarBtn[] = [
     class="card-surface no-glow flex flex-col text-card-foreground overflow-hidden"
     :class="{ 'fixed inset-4 z-50 shadow-2xl': isFullscreen }"
   >
-    <div class="flex items-center justify-between border-b border-border px-3 py-2 bg-muted/30">
-      <div class="flex flex-wrap items-center gap-1">
+    <div class="flex flex-wrap items-center justify-between gap-y-2 border-b border-border px-3 py-2 bg-muted/30">
+      <div class="flex min-w-0 flex-wrap items-center gap-0.5">
         <template
-          v-for="(btn, idx) in toolbarButtons"
-          :key="btn.key"
+          v-for="(group, gi) in toolbarGroups"
+          :key="gi"
         >
+          <div
+            v-if="gi > 0"
+            class="mx-1 h-5 w-px bg-border"
+          />
           <Button
-            v-if="idx !== toolbarButtons.length - 2"
+            v-for="btn in group"
+            :key="btn.key"
             type="button"
             variant="ghost"
             size="icon-sm"
             :title="btn.title"
-            class="rounded-[12px]"
+            :aria-label="btn.title"
+            class="rounded-[10px] text-muted-foreground hover:text-foreground"
             @click="handleToolbarAction(btn.key)"
           >
             <component
@@ -388,33 +419,9 @@ const toolbarButtons: ToolbarBtn[] = [
               :class="btn.cls"
             >{{ btn.label }}</span>
           </Button>
-          <div
-            v-else
-            class="flex items-center gap-1"
-          >
-            <div class="w-px h-5 bg-border mx-1" />
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              :title="btn.title"
-              class="rounded-[12px]"
-              @click="handleToolbarAction(btn.key)"
-            >
-              <component
-                :is="btn.icon"
-                v-if="btn.icon"
-                data-icon="inline-start"
-              />
-              <span
-                v-else
-                :class="btn.cls"
-              >{{ btn.label }}</span>
-            </Button>
-          </div>
         </template>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="ml-auto flex items-center gap-2">
         <Tabs
           :model-value="mode"
           class="w-auto"
@@ -462,13 +469,13 @@ const toolbarButtons: ToolbarBtn[] = [
     </div>
 
     <div
-      class="flex-1 flex overflow-hidden"
+      class="flex-1 flex flex-col xl:flex-row overflow-hidden"
       :class="{ 'min-h-[500px]': !isFullscreen, 'h-full': isFullscreen }"
     >
       <div
         v-show="mode !== 'preview'"
-        class="flex-1 flex flex-col"
-        :class="{ 'border-r border-border': mode === 'split' }"
+        class="flex-1 min-h-[260px] flex flex-col"
+        :class="{ 'border-b xl:border-b-0 xl:border-r border-border': mode === 'split' }"
         @drop="onDrop"
         @dragover="onDragOver"
       >
@@ -486,11 +493,11 @@ const toolbarButtons: ToolbarBtn[] = [
 
       <div
         v-show="mode !== 'edit'"
-        class="flex-1 overflow-auto p-5 bg-card"
+        class="flex-1 min-h-[260px] overflow-auto p-5 bg-card"
       >
         <div
           ref="previewRef"
-          class="prose prose-sm max-w-none text-foreground"
+          class="prose-shadcn admin-md-preview max-w-none text-foreground"
           v-html="previewHtml"
         />
       </div>
@@ -515,3 +522,53 @@ const toolbarButtons: ToolbarBtn[] = [
     >
   </div>
 </template>
+
+<style scoped>
+/* 预览区使用与前台一致的 .prose-shadcn 排版；但后台分屏很窄，
+   前台的 h1 clamp(2.25rem…) 会把标题撑得比编辑器还大，所以这里按
+   「文档预览」而不是「文章首屏」的尺度重排一遍。 */
+.admin-md-preview {
+  max-width: none;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+.admin-md-preview :deep(h1) {
+  font-size: 1.5rem;
+  margin: 1.25rem 0 0.75rem;
+  line-height: 1.25;
+}
+.admin-md-preview :deep(h2) {
+  font-size: 1.2rem;
+  margin: 1.25rem 0 0.6rem;
+  line-height: 1.3;
+}
+.admin-md-preview :deep(h3) {
+  font-size: 1.05rem;
+  margin: 1rem 0 0.5rem;
+}
+.admin-md-preview :deep(h4) {
+  font-size: 0.95rem;
+  margin: 0.9rem 0 0.4rem;
+}
+.admin-md-preview :deep(p) {
+  margin: 0.75rem 0;
+}
+.admin-md-preview :deep(ul),
+.admin-md-preview :deep(ol) {
+  margin: 0.75rem 0;
+}
+.admin-md-preview :deep(pre) {
+  margin: 1rem 0;
+  padding: 0.9rem 1rem;
+}
+.admin-md-preview :deep(blockquote) {
+  margin: 1rem 0;
+}
+.admin-md-preview :deep(img) {
+  margin: 0.75rem 0;
+  border-radius: 0.6rem;
+}
+.admin-md-preview :deep(table) {
+  margin: 1rem 0;
+}
+</style>

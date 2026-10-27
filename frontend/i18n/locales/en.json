@@ -795,7 +795,8 @@
     "selectCategory": "Select category",
     "sortLabel": "Sort",
     "sortLatest": "Newest first",
-    "sortPopular": "Most viewed"
+    "sortPopular": "Most viewed",
+    "resultCount": "{n} posts"
   },
   "categories": {
     "title": "Categories",
@@ -807,7 +808,7 @@
   },
   "tags": {
     "title": "All Tags",
-    "desc": "Explore tags to find related content. Larger tiles mean more posts.",
+    "desc": "Explore tags to find related content, ordered by post count.",
     "posts": "posts",
     "noTags": "No tags yet"
   },
@@ -844,6 +845,7 @@
     "visit": "Visit",
     "noDesc": "No description",
     "noLinks": "No friend links yet",
+    "emptyHint": "No links here yet. Want to say hello? The guestbook is always open.",
     "loadFailed": "Failed to load"
   },
   "sponsor": {
@@ -926,6 +928,8 @@
     "startReading": "Start Reading",
     "hotPicks": "Hot picks",
     "readArticle": "Read article",
+    "heroPause": "Pause carousel",
+    "heroResume": "Resume carousel",
     "heroHint": "Most-read posts of the last 30 days · hover to pause",
     "latest": "Latest",
     "latestPosts": "Latest",

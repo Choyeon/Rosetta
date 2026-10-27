@@ -7,7 +7,7 @@
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
-import { FileStack, Plus } from '@lucide/vue'
+import { FileStack, Plus, Pencil, Trash2 } from '@lucide/vue'
 import {
   fetchAdminPages,
   createAdminPage,
@@ -19,9 +19,10 @@ import {
 import { useToast } from '~~/composables/useToast'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
-import { Label } from '~~/components/ui/label'
 import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
+import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
+import AdminFormField from '~~/components/admin/AdminFormField.vue'
 import {
   EMPTY_I18N_DICT,
   getLocalizedStr,
@@ -248,21 +249,12 @@ onMounted(() => {
         {{ formatAdminDateTime((row as AdminPage).updated_at ?? (row as AdminPage).created_at) }}
       </template>
       <template #actions="{ row }">
-        <Button
-          variant="ghost"
-          size="sm"
-          @click="openEdit(row as AdminPage)"
-        >
-          编辑
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          class="text-destructive hover:text-destructive hover:bg-destructive-muted"
-          @click="confirmDelete((row as AdminPage).id)"
-        >
-          删除
-        </Button>
+        <AdminRowActions
+          :actions="[
+            { key: 'edit', label: '编辑页面', icon: Pencil, onClick: () => openEdit(row as AdminPage) },
+            { key: 'delete', label: '删除页面', icon: Trash2, destructive: true, onClick: () => confirmDelete((row as AdminPage).id) }
+          ]"
+        />
       </template>
     </AdminDataTable>
 
@@ -277,36 +269,44 @@ onMounted(() => {
     <AdminCrudDialog
       v-model:open="dialogOpen"
       :title="dialogMode === 'edit' ? '编辑页面' : '新建页面'"
+      description="独立页面用于关于、隐私政策等静态内容，拥有独立 URL。"
+      :icon="FileStack"
       :loading="saving"
       :submit-text="dialogMode === 'edit' ? '更新' : '保存'"
       @submit="save"
     >
-      <div class="flex flex-col gap-4 max-h-[70vh] overflow-y-auto pr-1">
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <Label
-              for="page-form-slug"
-              class="mb-1 block text-xs text-muted-foreground"
-            >
-              Slug <span class="text-destructive">*</span>
-            </Label>
+      <div class="flex flex-col gap-5">
+        <I18nTabsEditor
+          v-model="form.title"
+          kind="text"
+          label="标题"
+          required
+          placeholder="页面标题"
+          flat
+        />
+        <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <AdminFormField
+            label="Slug"
+            for="page-form-slug"
+            required
+            hint="页面地址为 /<slug>，例如 /about。"
+          >
             <Input
               id="page-form-slug"
               v-model="form.slug"
-              placeholder="如 about, contact（仅限小写字母/数字/-）"
-              class="h-9 rounded-[10px]"
+              placeholder="about"
+              class="h-10 rounded-[10px] font-mono text-sm"
               @input="slugManualEdit = true"
             />
-          </div>
-          <div>
-            <Label
-              for="page-form-status"
-              class="mb-1 block text-xs text-muted-foreground"
-            >状态</Label>
+          </AdminFormField>
+          <AdminFormField
+            label="状态"
+            for="page-form-status"
+          >
             <Select v-model="form.status">
               <SelectTrigger
                 id="page-form-status"
-                class="h-9 rounded-[10px]"
+                class="h-10 rounded-[10px]"
               >
                 <SelectValue />
               </SelectTrigger>
@@ -319,20 +319,14 @@ onMounted(() => {
                 </SelectItem>
               </SelectContent>
             </Select>
-          </div>
+          </AdminFormField>
         </div>
-        <I18nTabsEditor
-          v-model="form.title"
-          kind="text"
-          label="标题"
-          required
-          placeholder="页面标题"
-        />
         <I18nTabsEditor
           v-model="form.content"
           kind="markdown"
           label="内容"
           placeholder="页面内容..."
+          flat
         />
       </div>
     </AdminCrudDialog>

@@ -36,16 +36,30 @@ from backend.schemas.hero import (
 from backend.services.content_renderer import render_title
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.recommendation import RecommendationService
-from backend.services.site_settings import default_og_image_url
 from backend.utils.compat import UTC
 
 logger = logging.getLogger("rosetta.api.hero")
 
 router = APIRouter(tags=["Hero轮播"])
 
-# 兜底轮播封面缺省图：文章没有真实封面时回落站内默认 OG 分享图
-# （services/site_settings.default_og_image_url，seo.default_og_image 可后台覆盖）。
-# 此前用 picsum 外链 seed：外部服务限流/被墙即无图，且随机图与内容无关。
+# 兜底轮播封面：文章没有真实封面时回落到按文章标识派生的 picsum seed 随机图
+# （与 frontend/lib/post-cover.ts::defaultPostCover 同口径，仅服务展示面；
+# og:image / JSON-LD 的分享图仍是站内默认 OG 图，不碰这里）。
+PICSUM_HERO_SIZE = (1200, 800)
+
+
+def _display_cover(post) -> str:
+    """展示面封面：真实 cover_image 优先，缺省回落 picsum seed 随机图。
+
+    seed 规则与前端 lib/post-cover.ts 完全一致（``rosetta-post-<id>``），
+    同一篇文章在列表卡片与首页轮播拿到同一张图；只读派生，绝不写回 DB。
+    """
+    cover = (post.cover_image or "").strip()
+    if cover:
+        return cover
+    seed = f"rosetta-post-{str(post.id).strip()}"
+    width, height = PICSUM_HERO_SIZE
+    return f"https://picsum.photos/seed/{seed}/{width}/{height}"
 
 
 # ==================== 公开接口 ====================
@@ -87,7 +101,6 @@ async def list_active_hero_slides(
     # ========== DB 无轮播时：高热度文章作为虚拟轮播 fallback ==========
     language = get_language_from_request(request, lang)
     hot_posts = await RecommendationService(db).get_hot_posts(limit=5, days=30)
-    fallback_cover = await default_og_image_url(db)
     now_ts = datetime.now(UTC)
     virtual: list[HeroSlideResponse] = []
     for i, post in enumerate(hot_posts):
@@ -105,7 +118,7 @@ async def list_active_hero_slides(
                 title=title or post.slug,
                 subtitle=(excerpt.strip()[:140] or None),
                 media_type="image",
-                media_url=post.cover_image or fallback_cover,
+                media_url=_display_cover(post),
                 overlay_opacity=45,
                 overlay_color="#000000",
                 cta_url=f"/posts/{post.slug}",

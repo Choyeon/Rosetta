@@ -21,19 +21,41 @@
       </div>
     </template>
     <template v-else-if="loadError || !page">
-      <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive mb-8">
-        {{ t('pages.notFound', '无法加载该页面，可能已被删除或尚未发布。') }}
+      <!-- 顶级 catchall 接住每一条 /任意单段 URL，所以"打错网址"的第一印象就是这一屏。
+           旧版是一条红色 alert + 一个按钮，既不像 404 也没有第二条出路；
+           这里用统一的 404 版式（大号 404 / 标题 / 说明 / 双出口）。 -->
+      <div class="flex flex-col items-center justify-center py-16 md:py-24 text-center">
+        <div
+          class="font-display text-6xl md:text-7xl font-black tracking-tighter text-muted-foreground/25 select-none"
+          aria-hidden="true"
+        >
+          404
+        </div>
+        <h1 class="mt-3 font-display text-2xl md:text-3xl font-bold tracking-tight">
+          {{ t('error.notFoundTitle') }}
+        </h1>
+        <p class="mt-3 max-w-md text-muted-foreground leading-relaxed">
+          {{ t('pages.notFound') }}
+        </p>
+        <div class="mt-8 flex flex-wrap items-center justify-center gap-3">
+          <NuxtLink
+            :to="localeHref('/')"
+            :class="buttonVariants()"
+          >
+            <ArrowLeft
+              data-icon="inline-start"
+              class="mr-2"
+            />
+            {{ t('pages.backHome') }}
+          </NuxtLink>
+          <NuxtLink
+            :to="localeHref('/posts')"
+            :class="buttonVariants({ variant: 'outline' })"
+          >
+            {{ t('posts.allPosts') }}
+          </NuxtLink>
+        </div>
       </div>
-      <Button
-        variant="outline"
-        @click="navigateTo('/')"
-      >
-        <ArrowLeft
-          data-icon="inline-start"
-          class="mr-2"
-        />
-        {{ t('pages.backHome', '返回首页') }}
-      </Button>
     </template>
     <template v-else>
       <header class="mb-10">
@@ -73,7 +95,7 @@
 
 <script setup lang="ts">
 import { Skeleton } from '~~/components/ui/skeleton'
-import { Button } from '~~/components/ui/button'
+import { buttonVariants } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
@@ -83,6 +105,7 @@ import { useI18n } from 'vue-i18n'
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const { localeHref } = useLocaleLink()
 const route = useRoute()
 
 // 历史污染 URL（%25E6 式叠加编码）在客户端导航时不经过 Nitro 301 规范化中间件。
