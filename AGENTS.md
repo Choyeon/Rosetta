@@ -640,6 +640,16 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 - **运行期可变的注册表必须持久化，公开渲染口不得接受调用方自备的上下文。** 短代码注册表是模块级内存 dict，而生产用 `--workers 4` 跑：只写进"处理这次请求的那个 worker"的注册表，下一次列表请求就可能看不到它、进程重启即全丢。口径：写入侧同时落 SiteConfig KV（`shortcode_templates`），启动侧（`bootstrap_extensions`）与读取侧（admin 列表）各重放一次，且重放必须让**插件自带的同名 tag 优先**——运营期数据覆盖代码，等于让"插件升级换了 `[tag]` 实现却不生效"无从排查。同族另三条红线：handler 必须遵循引擎调用约定 `fn(**attrs, content=, _content=, ctx=)`，签名不匹配的表现为正文里冒出 `<!-- shortcode-error -->` 注释而不是接口报错；`POST /api/shortcodes/render` 是**无鉴权公开口**，绝不能收 `context`（插件 handler 靠 ctx 读文章/用户，访客自备 ctx 就是越权渲染），唯一能带 ctx 的入口是管理员预览；纯 CPU + 无鉴权的公开口必须有专属限流规则，且**必须排在 `"/api"` catch-all 之前**（`_get_rule_for_path` 按插入顺序 `startswith` 首命中即返回，写在 catch-all 后面就是一条永远不会命中的死规则）。对不可信文本做递归展开必须有深度闸门；改注册表后必须走 `_invalidate_rendered_content`（`post:` / `posts` / `archive` + 前端页面缓存），漏清的表现是"已删除的短代码仍在旧正文里渲染"。回归 `tests/test_shortcode_registry_api.py`。
 - **函数体里的 `import` 只能是已声明的依赖。** `import numpy as np` 曾藏在监控聚合函数里，`pyproject.toml` 从未声明 numpy：窗口内一旦有访问日志就 `ModuleNotFoundError` → 后台性能页 500（空窗口提前 return，所以既有套件从未暴露）。同类面还有一条口径：**分位数/统计的分母必须是"窗口内全部请求数"**，只按慢请求子集算 `error_rate` 会把快速失败的 4xx 放大成虚高错误率；扫描原始日志也必须带 `order_by(desc) + limit` 上限，不能全表进内存。
 - JSON 多语言列（`title` / `content` / `excerpt` / `meta_*`）写入 Python `None` 时落库是 **JSON null 而不是 SQL NULL**（SQLAlchemy JSON 默认 `none_as_null=False`），所以 `col.is_(None)` 在 SQL 里筛不出"没有内容"的行；判定口径见 `backend/api/admin.py::_missing_i18n_json`。
+- **同一批列的另一面：值可能根本不是 dict 而是裸字符串**（导入工具、早期写入路径、直接写库都会留下 `content="正文"`）。
+  汇聚点是 `core/i18n.py::get_i18n_value`（60+ 个读取口共用），收口前只会 `data.get(...)`，
+  于是**一条脏数据就让文章详情、相邻文章、公开列表整口 500**（`Post.__repr__` 同型：它出现在日志与
+  断言输出里，踩一次等于把"记一条日志"变成 500）。口径：`isinstance(data, str)` 原样返回＝"整段当默认语言"，
+  而不是把接口打挂。回归 `tests/test_i18n_value_shapes.py`（纯函数三形 + 详情/相邻/列表三口；反证过：
+  去掉 isinstance 分支会红 4 条）。
+- **SQLite 上"发布时间已到今天"的谓词会静默筛空列表**：匿名列表口用 `Post.published_at <= func.now()`，
+  而 SQLite 把 aware datetime 存成带 `+00:00` 后缀的字符串、与 `CURRENT_TIMESTAMP` 做**字符串**比较，
+  刚写入的行一律判成"在未来"。测试造已发布行时把 `published_at` 留 `NULL`（谓词是 `IS NULL OR <= now()`），
+  别指望 PG 的语义；这个坑与 §11 的方言守卫同源，读到空页先怀疑这里而不是查询写错。
 - **回收站的「可恢复类型」以写手清单为准，不是以 UI 标签为准。** 删除侧唯一入口是 `backend/services/trash.py::snapshot_to_trash` + 一个 `<type>_trash_payload()`；当前三个写手是文章（`blog.py` 单删、`advanced.py` 批删）、独立页（`core.py::delete_page`）、评论（`admin.py` 单删、`comment_service.py::admin_batch` 批删）。两条红线：① **新增可恢复资源时同时改三处**——写手、`advanced.py::restore_trash_item` 的分支、`pages/admin/content/trash.vue` 的 `typeFilters`，漏一处的表现是"筛选永远为空"或"恢复时撞 NOT NULL/外键 500"（评论的旧恢复分支只重建 4 列，而 `author_name`/`status` 是 NOT NULL，那段代码从未成立过）；② 恢复的前置条件必须回 400 而不是让约束报错——slug 唯一（文章/页面）、`comments.post_id` 是 NOT NULL+CASCADE 所以原文章已删时评论无处可回。保留期由 `prune_expired_trash` 兑现（挂在 `main.py::_log_retention_loop`，与日志同批、同样先睡后删）：快照里存着**整篇正文**，不清等于把"保留 30 天"做成永久保留。契约测试 `tests/test_trash_recover_surfaces.py` + `frontend/tests/unit/trashRecoverableTypes.spec.ts`（后者断言筛选器集合与后端写手集合精确相等）。
 - **删除语义变了，前台文案必须跟着改。** 独立页与评论现在删除后回显「已移入回收站」，而留言板仍是物理删除；`CommentListContent.vue` 是两种语义共用的组件，确认文案必须按 `isGuestbook` 分叉，写死「删除后无法恢复」等于对管理员撒谎（反过来提示"可恢复"给真删不掉的留言板也一样）。提示语优先用后端返回的 `message`，不要在组件里另写一套。
 - 新 API 路径必须用 `useAPI` 或 `apiFetch` 包装，不得裸写 `$fetch`

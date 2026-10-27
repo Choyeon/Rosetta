@@ -263,12 +263,12 @@ def get_language_from_request(
     return DEFAULT_LANGUAGE
 
 
-def get_i18n_value(data: dict[str, str] | None, lang: str, fallback: bool = True) -> str:
+def get_i18n_value(data: dict[str, str] | str | None, lang: str, fallback: bool = True) -> str:
     """
     从多语言字典中获取指定语言的值
 
     Args:
-        data: 多语言数据字典
+        data: 多语言数据字典；单语言列里躺**裸字符串**时原样返回
         lang: 目标语言代码
         fallback: 是否回退到默认语言
 
@@ -277,6 +277,13 @@ def get_i18n_value(data: dict[str, str] | None, lang: str, fallback: bool = True
     """
     if not data:
         return ""
+
+    # JSON 多语言列并不保证是 dict：导入工具、早期写入路径、直接写库都会留下
+    # `content="正文"` 这种单语行。`title` 在 blog.py 的列表口已经按
+    # `isinstance(..., dict)` 分支处理过同一形态，而这里是 60+ 个读取面共同的汇聚点——
+    # 不认这一支，一条脏数据就能让文章详情、RSS、SEO schema 整口 500。
+    if isinstance(data, str):
+        return data
 
     normalized_lang = normalize_language(lang)
 

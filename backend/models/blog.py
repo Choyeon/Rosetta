@@ -257,7 +257,10 @@ class Post(Base, TenantMixin):
     )
 
     def __repr__(self) -> str:
-        title = self.title.get("zh", "Untitled") if self.title else "Untitled"
+        # title 是 JSON 列，历史/导入数据里可能是裸字符串（口径见 core/i18n.py::get_i18n_value）。
+        # repr 会出现在日志与断言输出里，这里踩一次等于把"记录一条日志"变成 500。
+        raw = self.title
+        title = raw if isinstance(raw, str) else (raw or {}).get("zh", "Untitled")
         return f"<Post(id={self.id}, title='{title}')>"
 
 
