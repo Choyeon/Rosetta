@@ -1247,8 +1247,15 @@ def _missing_i18n_json(column):
     `column.is_(None)` 永远匹配不到——旧代码只用它判"缺摘要"，结果是
     search-stats 的 posts_without_excerpt 恒为 0，optimize-search 也永远扫不到
     需要补摘要的文章。这里把 SQL NULL / 空串 / JSON null 三种形态一起兜住。
+
+    谓词必须整体走 `CAST(col AS VARCHAR)` 再比文本，**不能**留一条
+    `column == ""`：PG 下 JSON 列是 jsonb，`jsonb = character varying` 没有对应
+    操作符，SQLAlchemy 也不会替它加显式 cast，整条查询在服务端解析阶段就抛
+    `UndefinedFunctionError`。SQLite 把 JSON 当文本存所以照单全收——表现是
+    本地与 CI 全绿，生产「检索字段体检」与「补全检索字段」两个工具页恒 500。
     """
-    return or_(column.is_(None), column == "", cast(column, String) == "null")
+    as_text = cast(column, String)
+    return or_(column.is_(None), as_text.in_(("null", '""', "")))
 
 
 def _pick_localized_text(value: dict | str | None) -> str:

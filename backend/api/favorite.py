@@ -29,7 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 from backend.core.auth import DB, CurrentUser
 from backend.core.concurrency import concurrent_query
 from backend.core.database import AsyncSession, Base
-from backend.utils.compat import UTC
+from backend.utils.compat import utc_now_naive
 
 if TYPE_CHECKING:
     from backend.models.blog import Post
@@ -49,9 +49,9 @@ class FavoriteFolder(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     order: Mapped[int] = mapped_column(Integer, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), onupdate=lambda: datetime.now(UTC)
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive
     )
 
     user: Mapped[User] = relationship("User", backref="favorite_folders")
@@ -76,9 +76,7 @@ class Favorite(Base):
         index=True,
     )
     note: Mapped[str | None] = mapped_column(Text, nullable=True)  # 收藏备注
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime, default=lambda: datetime.now(UTC), index=True
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive, index=True)
 
     user: Mapped[User] = relationship("User")
     post: Mapped[Post] = relationship("Post")

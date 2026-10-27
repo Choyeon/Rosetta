@@ -327,30 +327,6 @@ def _deliveries_for(endpoint_id):
     return select(wh.WebhookDelivery).where(wh.WebhookDelivery.endpoint_id == endpoint_id)
 
 
-# ── 时间列 naive 口径（生产 PG + asyncpg 的 DataError 回归） ────────────────
-
-
-def test_webhook_timestamp_columns_are_naive_end_to_end():
-    """webhook 两张表的时间列是 TIMESTAMP WITHOUT TIME ZONE；默认值/onupdate 若产出
-    aware datetime，生产 PG(asyncpg) 在 bind 阶段直接 DataError——表现是创建 Webhook
-    恒 500、投递记录 flush 失败，而 SQLite 测试全绿。这里静态钉住两侧一致。"""
-    from datetime import datetime
-
-    from sqlalchemy import DateTime
-    from sqlalchemy.schema import ColumnDefault
-
-    for model in (wh.WebhookEndpoint, wh.WebhookDelivery):
-        for col in model.__table__.columns:
-            if not isinstance(col.type, DateTime):
-                continue
-            assert not col.type.timezone, f"{model.__name__}.{col.name} 列必须 naive"
-            for d in (col.default, col.onupdate):
-                if isinstance(d, ColumnDefault) and d.is_callable:
-                    # SQLAlchemy 可能按内部约定包一层带列上下文的签名，两种调用形态都试
-                    try:
-                        value = d.arg({})
-                    except TypeError:
-                        value = d.arg()
-                    assert isinstance(value, datetime) and value.tzinfo is None, (
-                        f"{model.__name__}.{col.name} 的默认值必须返回 naive UTC"
-                    )
+# ── 时间列 naive 口径 ──────────────────────────────────────────────────────
+# 由 tests/test_pg_dialect_guards.py 统一守卫（覆盖全部 naive 时间列，
+# 含 webhook / favorites / captcha_records），此处不再逐表重复断言。

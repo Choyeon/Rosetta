@@ -26,20 +26,17 @@ from backend.core.config import settings
 from backend.core.database import Base, async_session_maker
 from backend.core.http_client import create_async_client
 from backend.core.net_guard import UnsafeTargetError, assert_public_http_url
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, utc_now_naive
 
 logger = logging.getLogger(__name__)
 
 # webhook 投递超时（秒）
 WEBHOOK_TIMEOUT = 10.0
 
-
-def _utc_now_naive() -> datetime:
-    """Webhook 两张表的时间列都是 TIMESTAMP WITHOUT TIME ZONE（早期 create_all 口径，
-    SQLite 落库时同样丢 tz，存的就是 naive UTC）。默认值/onupdate/赋值点若给 aware
-    datetime，生产 PG + asyncpg 会直接 DataError——表现是「创建 Webhook」恒 500、
-    投递记录 flush 失败。统一走这个函数取 naive UTC。"""
-    return datetime.now(UTC).replace(tzinfo=None)
+# WebhookEndpoint / WebhookDelivery 的时间列都是 TIMESTAMP WITHOUT TIME ZONE（早期
+# create_all 口径，SQLite 落库时同样丢 tz，存的就是 naive UTC）。默认值、onupdate
+# 与所有赋值点必须走 utc_now_naive：给 aware datetime，生产 PG + asyncpg 在 bind
+# 阶段直接 DataError，SQLite 却照收——本地与 CI 全绿、线上恒 500。
 
 
 class WebhookEndpoint(Base):
@@ -57,9 +54,9 @@ class WebhookEndpoint(Base):
     created_by_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime, default=_utc_now_naive, onupdate=_utc_now_naive
+        DateTime, default=utc_now_naive, onupdate=utc_now_naive
     )
 
 
@@ -78,7 +75,7 @@ class WebhookDelivery(Base):
     response_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     error: Mapped[str | None] = mapped_column(Text, nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=_utc_now_naive)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
 
     # webhook_deliveries 是只增表，此前整表零索引：
     # - 列表页 `WHERE endpoint_id = ?` 分页（:485）
@@ -587,7 +584,7 @@ async def trigger_webhook(event_type: str, payload: dict, db) -> int:
         if isinstance(outcome, BaseException):
             # _send_once 自带 except，这里只兜底 gather 的异常路径
             delivery.error = str(outcome)[:500]
-            delivery.delivered_at = _utc_now_naive()
+            delivery.delivered_at = utc_now_naive()
             logger.warning(
                 "Webhook 投递异常 endpoint=%s event=%s: %s", webhook.id, event_type, outcome
             )
@@ -596,7 +593,7 @@ async def trigger_webhook(event_type: str, payload: dict, db) -> int:
         delivery.status_code = status_code
         delivery.response_body = response_text[:2000] if response_text else None
         delivery.error = error
-        delivery.delivered_at = _utc_now_naive()
+        delivery.delivered_at = utc_now_naive()
 
     await db.flush()
     return len(deliveries)
@@ -787,7 +784,7 @@ async def test_webhook(
             status_code=code,
             response_body=text[:2000] if text else None,
             error=error,
-            delivered_at=datetime.now(UTC),
+            delivered_at=utc_now_naive(),
         )
     )
     await db.flush()
@@ -882,7 +879,7 @@ async def retry_webhook_delivery(
     delivery.status_code = code
     delivery.response_body = text[:2000] if text else None
     delivery.error = error
-    delivery.delivered_at = _utc_now_naive()
+    delivery.delivered_at = utc_now_naive()
     await db.flush()
 
     if error:

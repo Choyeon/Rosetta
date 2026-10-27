@@ -16,7 +16,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.core.database import Base
 from backend.services.captcha_service import consume_captcha, store_captcha_answer
-from backend.utils.compat import UTC
+from backend.utils.compat import utc_now_naive
 
 
 class CaptchaRecord(Base):
@@ -29,7 +29,7 @@ class CaptchaRecord(Base):
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
     ip_address: Mapped[str | None] = mapped_column(String(45), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now_naive)
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
 
