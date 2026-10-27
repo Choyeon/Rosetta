@@ -111,7 +111,12 @@ def test_messages_page_is_client_only_and_noindex():
 def test_private_message_entry_points_exist():
     """两个入口：顶栏登录菜单（桌面 + 移动抽屉）与作者主页的「发私信」。"""
     header = _frontend_text("header")
-    assert header.count("navigateTo('/account/messages')") == 2, (
+    # 入口走 go() helper（= navigateTo(localeHref(path))，站内链接必须挂语言前缀，
+    # 口径见 AGENTS.md §2.3.3 第 2 条）；断言 helper 调用点数量，而不是裸 navigateTo。
+    assert "const go = (path: string) => navigateTo(localeHref(path))" in header, (
+        "AppHeader 的站内跳转必须走 localeHref 单源 helper"
+    )
+    assert header.count("go('/account/messages')") == 2, (
         "AppHeader 的桌面下拉与移动抽屉各需要一个私信入口，少一个就是那端进不去"
     )
     author = _frontend_text("author")

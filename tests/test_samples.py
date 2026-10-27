@@ -323,13 +323,14 @@ def test_hello_plugin_filter_and_action():
         return await apply_filters("the_content", "<p>orig</p>")
 
     rendered_content = asyncio.run(_run_content_filter())
-    # 签名中 "hello-rosetta" 与 "示例插件" 之间夹着 HTML 标签，用子串分别判断
+    # 署名是 Markdown（见 plugin.py::_signature_markdown），分别判断关键片段
     assert "hello-rosetta" in rendered_content, (
         f"the_content filter 未注入署名: {rendered_content!r}"
     )
     assert "示例插件" in rendered_content, "未出现 示例插件 署名"
-    # 幂等：署名只注入一次
-    marker = "Hello from <b>hello-rosetta</b>"
+    # 幂等：署名只注入一次。锚点与 plugin.py 的 SIGNATURE_ANCHOR 同值——署名是
+    # Markdown 形态（the_content 输出交给前端 marked 解析，原始 HTML 会被转义成源码）。
+    marker = "Hello from **hello-rosetta**"
     assert rendered_content.count(marker) == 1, (
         f"the_content filter 非幂等，marker 出现 {rendered_content.count(marker)} 次"
     )
