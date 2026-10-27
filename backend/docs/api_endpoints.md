@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **356 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **353 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -3041,7 +3041,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：Sitemap 索引
 - **鉴权**：公开接口（无需鉴权）
 
-站点地图索引：列出 pages 静态表、posts 分页表、taxonomies 分类表。所有子表均指向对外站点域名（由 Nitro BFF 代理）。
+站点地图索引：列出 pages 静态表、posts 分页表、taxonomies 分类表。所有子表均指向对外站点域名（由 Nitro BFF 代理）。每个子表的 <lastmod> 取该表节点里最大的更新日期（posts 页取 max(updated_at, published_at)），空表省略。
 
 **入参**
 
@@ -4867,7 +4867,7 @@ _无路径 / query 参数_
 - **摘要**：删除页面
 - **鉴权**：需鉴权：`HTTPBearer`
 
-，需要管理员权限。
+需 CurrentStaff。软删除：先把页面快照写入回收站（保留 30 天，可在「回收站」页恢复），再删除原行，与单删/批删文章的口径同构。页面不存在返回 404。
 
 **入参**
 
@@ -4978,7 +4978,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：打赏者列表
 - **鉴权**：公开接口（无需鉴权）
 
-获取公开的。优先从站点配置 SPONSORS 读取，未配置时返回空列表。
+获取公开的打赏者名单。数据源是「捐助打赏」设置分组（donate.sponsors），存量站点若只写过旧的 site_configs key='SPONSORS' 则回退读它；两边都没有时返回空列表。donate.show_sponsors_list 关闭时同样返回空列表（开关管的是这份名单对外可见）。
 
 **入参**
 
@@ -7280,7 +7280,7 @@ _无路径 / query 参数_
 - **摘要**：我的收藏列表
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取当前用户的收藏列表（需登录）。可按收藏夹筛选并分页；``total`` / ``total_pages`` 与该筛选同口径。
+获取当前用户的收藏列表（需登录）。可按收藏夹筛选并分页；``total`` / ``total_pages`` 与该筛选同口径。普通用户只会看到自己可见的文章（草稿/未来定时/已删除不出现，本人文章除外），staff 不过滤。
 
 **入参**
 
@@ -7329,7 +7329,7 @@ _无路径 / query 参数_
 - **摘要**：收藏文章
 - **鉴权**：需鉴权：`HTTPBearer`
 
-收藏一篇文章（需登录）。文章不存在时 404；重复收藏时 400；指定 folder_id 时收藏夹必须属于当前用户，否则 404。
+收藏一篇文章（需登录）。文章不存在时 404；重复收藏时 400；指定 folder_id 时收藏夹必须属于当前用户，否则 404。草稿 / 待审 / 未来定时文章与不存在同口径（404），避免用收藏 id 枚举未发布标题。
 
 **入参**
 
@@ -8021,7 +8021,7 @@ _无路径 / query 参数_
 - **摘要**：删除评论（管理员）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-永久删除指定评论及其子回复。删除会改变文章的 comments_count，因此顺带失效该文章的详情/列表缓存。
+需 CurrentStaff。软删除：先把评论快照写入回收站（保留 30 天，可在「回收站」页恢复，原文章已删除时不可恢复），再删除原行及其子回复。删除会改变文章的 comments_count，因此顺带失效该文章的详情/列表缓存。评论不存在返回 404。
 
 **入参**
 
@@ -8146,7 +8146,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：用户列表（管理员）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取所有用户列表，支持按 staff / 激活 / 封禁状态筛选与分页。响应为裸分页 dict（items/total/page/page_size/total_pages，无 success/data 信封）；items 内每项是 **AdminUserListItem** 投影（含 email / 封禁态 / 文章与评论计数），**不含** bio / website / github / qq / cover_image —— 那些在 `GET /admin/users/{id}`（UserDetailResponse）里。
+获取所有用户列表，支持按 staff / superuser / 激活 / 封禁状态筛选与分页。响应为裸分页 dict（items/total/page/page_size/total_pages，无 success/data 信封）；items 内每项是 **AdminUserListItem** 投影（含 email / 封禁态 / 文章与评论计数），**不含** bio / website / github / qq / cover_image —— 那些在 `GET /admin/users/{id}`（UserDetailResponse）里。
 
 **入参**
 
@@ -9573,7 +9573,7 @@ _无路径 / query 参数_
 - **摘要**：Open Graph 数据
 - **鉴权**：公开接口（无需鉴权）
 
-获取资源的 Open Graph 元数据，公开访问、无需鉴权，用于社交媒体分享时显示预览。目前只对文章内容资源有实现，返回 og:* / article:* / twitter:* 三组键（键名含冒号，需按字面取值），返回 og:* / article:* / twitter:* 三组键（键名含冒号，需按字面取值），摘要在服务端剥离短代码与 HTML 标签后截断到前 200 字符。资源不存在或类型不受支持时返回 200 且响应体只有 error 字段（不是 404）。
+获取资源的 Open Graph 元数据，公开访问、无需鉴权，用于社交媒体分享时显示预览。目前只对文章内容资源有实现，返回 og:* / article:* / twitter:* 三组键（键名含冒号，需按字面取值），返回 og:* / article:* / twitter:* 三组键（键名含冒号，需按字面取值），摘要在服务端剥离短代码与 HTML 标签后截断到前 200 字符。可见性与正文一致：草稿 / 待审 / 未来定时文章按不存在处理，避免匿名调用方按 id 枚举未发布文章的标题与摘要。资源不存在、不可见或类型不受支持时返回 200 且响应体只有 error 字段（不是 404）。
 
 **入参**
 
@@ -9653,7 +9653,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：结构化数据
 - **鉴权**：公开接口（无需鉴权）
 
-获取资源的 JSON-LD ，公开访问、无需鉴权。resource_type 支持 article/post、person、website、breadcrumb，返回的 @type 相应为 Article / Person / WebSite / BreadcrumbList，其中 Article 会带上作者、发布方与所属分类；标题与摘要为服务端纯文本（已剥离短代码字面量与 HTML 标签）。资源不存在或类型不受支持时返回 200 且响应体只有 error 字段（不是 404），调用方需自行判空。breadcrumb 分支不查库，固定返回首页一项。
+获取资源的 JSON-LD ，公开访问、无需鉴权。resource_type 支持 article/post、person、website、breadcrumb，返回的 @type 相应为 Article / Person / WebSite / BreadcrumbList，其中 Article 会带上作者、发布方与所属分类；标题与摘要为服务端纯文本（已剥离短代码字面量与 HTML 标签）。可见性口径与正文一致：草稿 / 待审 / 未来定时文章、以及关闭了「公开资料」的作者（public_profile=false），一律按不存在处理。资源不存在、不可见或类型不受支持时返回 200 且响应体只有 error 字段（不是 404），调用方需自行判空。breadcrumb 分支不查库，固定返回首页一项。
 
 **入参**
 
@@ -10339,7 +10339,7 @@ _无路径 / query 参数_
 - **摘要**：恢复项目
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需 CurrentStaff。按回收站记录重建原始资源（仅支持 post / comment）并删除该条记录，同时写入 restore 操作日志。非幂等：文章 slug 已被占用时返回 400，记录不存在返回 404。
+需 CurrentStaff。按回收站记录重建原始资源（支持 post / page / comment，即当前会写入回收站的三类）并删除该条记录，同时写入 restore 操作日志。非幂等：文章或页面 slug 已被占用、评论的原文章已不存在时返回 400，记录不存在返回 404。
 
 **入参**
 
@@ -10367,7 +10367,7 @@ _无路径 / query 参数_
 
 | 状态码 | 说明 |
 | --- | --- |
-| `400` | 文章 slug 已被使用，无法恢复 |
+| `400` | slug 已被占用，或评论的原文章已不存在，无法恢复 |
 | `404` | 回收站项目不存在 |
 | `422` | Validation Error |
 
@@ -10976,7 +10976,7 @@ _无路径 / query 参数_
 - **摘要**：列出所有已注册短代码（管理员）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需 CurrentStaff。返回本进程注册表内的所有短代码及元数据（``plugin`` = 归属插件 slug，``template`` = 可经本接口管理的模板）。列表前会先把 SiteConfig KV 里的模板重放进本进程注册表，因此多 worker 下也能看到其他进程刚注册的那条。
+需 CurrentStaff。返回本进程注册表内的所有短代码及元数据（``plugin`` = 归属插件 slug，``template`` = 可经本接口管理的模板）。模板条目额外回显 ``replacement`` 模板原文（来自 SiteConfig KV），插件/内建条目该字段为 null。列表前会先把 SiteConfig KV 里的模板重放进本进程注册表，因此多 worker 下也能看到其他进程刚注册的那条。
 
 **入参**
 
@@ -11006,6 +11006,7 @@ _无路径 / query 参数_
         "description": "…",
         "has_paired": "…",
         "plugin": "…",
+        "replacement": "…",
         "tag": "…",
         "template": "…"
       }
@@ -11130,6 +11131,7 @@ _无路径 / query 参数_
         "description": "…",
         "has_paired": "…",
         "plugin": "…",
+        "replacement": "…",
         "tag": "…",
         "template": "…"
       }
@@ -14492,7 +14494,7 @@ _无路径 / query 参数_
 - **摘要**：获取当前活跃 Hero 幻灯片
 - **鉴权**：公开接口（无需鉴权）
 
-公开接口、无需鉴权。获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。若尚未配置任何轮播，则用近 30 天高热度文章自动填充（标题 / 摘要 / 封面 / 文章链接），这些兜底项带负 ID、不落库、不可在后台编辑。lang 支持 zh|en|ja|zh_Hant，缺省按 `Accept-Language` 请求头推断（语言真相只有 URL 前缀；`rosetta_lang` cookie 只用于前端跨页保序，后端不再读取）。
+公开接口、无需鉴权。获取当前时间范围内处于激活状态的 Hero 幻灯片列表，按 sort_order 升序排列。若尚未配置任何轮播，则用近 30 天高热度文章自动填充（标题 / 摘要 / 封面 / 文章链接），这些兜底项带负 ID、不落库、不可在后台编辑。lang 支持 zh|en|ja|zh_Hant，缺省按 Accept-Language 请求头推断（语言真相只有 URL 前缀，不读 cookie）。
 
 **入参**
 
@@ -15369,7 +15371,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：设置定时发布
 - **鉴权**：需鉴权：`HTTPBearer`
 
-为文章时间。若计划时间已过去则立即发布。
+为文章时间。status 缺省为 scheduled（进入发布扫描器的等待状态），传 published 表示立即可见；draft 会被 400 拒绝（草稿不参与定时发布）。计划时间已过去时一律立即发布并清空 scheduled_at。
 
 **入参**
 
@@ -15380,7 +15382,7 @@ _无路径 / query 参数_
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | scheduled_at | string | 是 | 计划发布时间（UTC） |
-| status | string \| null | 否 | 文章状态，默认为 published（定时发布） |
+| status | string \| null | 否 | 目标状态，缺省 scheduled（等待发布）；传 published 表示立即发布；draft 不支持定时发布（400）。计划时间已过去时一律立即发布。 |
 
 ```json
 {
@@ -15418,7 +15420,7 @@ _无路径 / query 参数_
 - **摘要**：取消定时发布
 - **鉴权**：需鉴权：`HTTPBearer`
 
-取消文章的定时发布计划（清空 scheduled_at），不影响文章当前状态。
+清空文章的 scheduled_at。状态为 scheduled 的行会同时回到 draft——只清时间不改状态会造出「定时等待但没有计划时间」的死状态：扫描循环只捞 scheduled_at 非空的行，这种文章既不会被发布，也不再出现在待发布队列里。
 
 **入参**
 
@@ -16284,7 +16286,7 @@ _无路径 / query 参数_
 - **摘要**：更新单个设置分组
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需管理员（CurrentStaff）。payload 为该分组的部分键值对象；不在该组默认值键集内的键被静默丢弃。副作用：写入操作日志（含 before/after diff）、落库 site_configs 后立刻失效 /settings/public（300s）与 /api/config 的 site_config（3600s）缓存——分组 JSON 是 /api/config 的权威覆写来源，不失效则站点名等改动最长 1 小时不可见。未知分组 404；payload 非对象 400。
+需管理员（CurrentStaff）。payload 为该分组的部分键值对象；不在该组默认值键集内的键被静默丢弃。副作用：写入操作日志（含 before/after diff）、落库 site_configs 后立刻失效 /settings/public（300s）与 /api/config 的 site_config（3600s）缓存——分组 JSON 是 /api/config 的权威覆写来源，不失效则站点名等改动最长 1 小时不可见。未知分组 404；payload 非对象 400。数值键（posts_per_page / max_length / smtp_port 等）受 _NUMERIC_BOUNDS 的区间与整数/小数类型闸门约束，越界或类型不符一律 400——这些值会被执行点原样消费，存进去一个 0 或负数等于把评论、列表分页、登录锁定整片关掉，所以这里拒绝而不是钳位，管理员需要一条明确报错。
 
 **入参**
 
@@ -16325,60 +16327,15 @@ _无路径 / query 参数_
 
 | 状态码 | 说明 |
 | --- | --- |
-| `400` | payload 必须为 JSON 对象 |
+| `400` | payload 必须为 JSON 对象，或数值设置键越界/类型不符 |
 | `404` | 未知设置分组 |
 | `422` | Validation Error |
 
 ---
 
-## 主题（4）
+## 主题（1）
 
 前台主题切换与配置
-
-### `PUT /api/admin/themes/current`
-
-- **摘要**：管理员设置默认调色板
-- **鉴权**：需鉴权：`HTTPBearer`
-
-需 CurrentStaff。请求体 {palette_id}（或兼容 {id}），取值必须在 AVAILABLE_PALETTES 内，否则 422 并列出可选值。写入 SiteConfig KV 键 theme_palette，幂等（重复设置同值无副作用）；生效后经 GET /api/themes/current.css 编译为 HSL CSS 变量注入前台。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`）
-
-
-```json
-{}
-```
-
-**出参**
-
-`200` · 模型 `PaletteSetResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| data | object | 是 | 默认调色板写入成功后回显的载荷。 |
-| data.palette_id | string | 是 | 已生效的调色板 id（即请求体提交值，必在清单内） |
-| success | boolean | 否 | 固定为 true（校验失败走 422 错误信封） |
-
-响应示例：
-
-```json
-{
-  "data": {
-    "palette_id": "string"
-  },
-  "success": true
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
 
 ### `GET /api/themes/active`
 
@@ -16416,51 +16373,6 @@ _无路径 / query 参数_
 | 状态码 | 说明 |
 | --- | --- |
 | `422` | Validation Error |
-
-### `GET /api/themes/current.css`
-
-- **摘要**：获取当前启用调色板的 CSS
-- **鉴权**：公开接口（无需鉴权）
-
-返回当前启用调色板编译出的 CSS 自定义属性样式表（text/css; charset=utf-8），公开访问、无需鉴权，可直接作为 <link rel=stylesheet> 链接使用。未显式指定 palette 参数时取站点配置里保存的默认调色板，缺省回退内置调色板；参数取值不在清单内时 400。编译结果按调色板 id 走进程内缓存，响应本身不带 HTTP 缓存头。
-
-**入参**
-
-_无路径 / query 参数_
-
-**出参**
-
-`200` · 无响应体（或响应类型未在 OpenAPI 中声明）
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `GET /api/themes/palettes`
-
-- **摘要**：获取所有可用调色板
-- **鉴权**：需鉴权：`HTTPBearer`
-
-公开接口。返回后端 AVAILABLE_PALETTES 全量清单（id / name / label / 明暗主色 swatch）与 DEFAULT_PALETTE_ID，清单与前端 useThemePalette.ts 的 PALETTES 一一对应，供主题管理页渲染调色板选择器。
-
-**入参**
-
-_无路径 / query 参数_
-
-**出参**
-
-`200`
-
-
-```json
-{}
-```
-
-**错误码**
-
-_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
 
 ---
 
@@ -18559,7 +18471,7 @@ _无路径 / query 参数_
 - **摘要**：【管理员】批量操作评论（approve/reject/spam/delete）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需 CurrentStaff。请求体 {ids: [评论ID...], action: approve|reject|spam|delete}，逐条执行并返回处理计数；action 不在枚举内返回 422（业务码 INVALID_ACTION）。四种动作都会改变文章的可见评论集合，处理完顺带失效受影响文章的详情/列表缓存。
+需 CurrentStaff。请求体 {ids: [评论ID...], action: approve|reject|spam|delete}，逐条执行并返回处理计数；action 不在枚举内返回 422（业务码 INVALID_ACTION）。四种动作都会改变文章的可见评论集合，处理完顺带失效受影响文章的详情/列表缓存与前台页面缓存。delete 与单删同构：先进回收站（30 天可恢复），不是物理删除。
 
 **入参**
 

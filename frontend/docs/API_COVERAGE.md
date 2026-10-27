@@ -12,11 +12,11 @@
 - **路径规则**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀，故代码中 `'/admin/guestbook'` == `GET /api/admin/guestbook`
 - 覆盖率 =（✅ + 🟡）/ 后端端点总数
 
-**总计（与下表「合计」行同源，2026-10-28 按表重算）：46 个路由模块文件、355 个端点；✅ 214 + 🟡 8 = 已覆盖 222 个，未消费 133 个，覆盖率 62.5%。**
+**总计（与下表「合计」行同源，2026-10-28 按表重算）：46 个路由模块文件、352 个端点；✅ 214 + 🟡 8 = 已覆盖 222 个，未消费 130 个，覆盖率 63.1%。**（较上一版 355 少 3 条：调色板一族在 2026-10-28 退役删除，见 `themes` 一节。）
 
 > 下面三条「局部更新」是 2026-10-16 那一轮按旧快照（206 ✅）逐族累加的历史记录，其增量**已经并进上表的模块行**，不要在此基础上再加一遍。
 
-> **两条求和不是一条线（2026-10-28 核对）**：上表的「合计」行沿用的是最近一次全量扫描的分母（355 端点）并按各轮接线增量累加 ✅/❌，而 45 条模块行的字面求和是 **351 / ✅257 / 🟡8 / ❌86**——两者从 2026-09-26 起就没对齐过（模块行里 `messages` 仍写 0 ✅，而下面明细写的是「已接入 5 条」）。所以**汇总数只作量级参考**，判断某一条端点有没有真实调用方，以下面「分模块明细」与接线契约测试（`tests/unit/*Wired.spec.ts`、`tests/test_*_frontend_contract.py`）为准；下一次全量刷新时以扫描器重算并消掉这个差。
+> **两条求和不是一条线（2026-10-28 核对）**：上表的「合计」行沿用的是最近一次全量扫描的分母并按各轮接线增量累加 ✅/❌，而 45 条模块行的字面求和是 **348 / ✅257 / 🟡8 / ❌83**——两者从 2026-09-26 起就没对齐过（模块行里 `messages` 仍写 0 ✅，而下面明细写的是「已接入 5 条」）。所以**汇总数只作量级参考**，判断某一条端点有没有真实调用方，以下面「分模块明细」与接线契约测试（`tests/unit/*Wired.spec.ts`、`tests/test_*_frontend_contract.py`）为准；下一次全量刷新时以扫描器重算并消掉这个差。
 
 > **2026-10-16 局部更新（favorite 一族，+10 条已覆盖）**：本行以上的汇总仍是 2026-09-26 全量扫描的快照，未按本轮手改（末行「勿手改数字」的口径）；按 favorite 的增量，等价数字为 ✅ 216 + 🟡 8 = 224 / 351 ≈ 63.8%。同日另跑了一次独立扫描（读生成后的 `app.openapi()["paths"]`，357 个 operation，前端字面量按 `${x}` 通配匹配并排除 `.output*` 构建产物与 Nitro 代理中间件的 `/api` catch-all）：**已覆盖 295 / 357 ≈ 82.6%**。两个口径差在分母与"仅 URL 拼接/仅 Nitro 侧消费"的计入方式，不要混用；下一次全量刷新时以扫描器为准并回填本节。
 
@@ -63,7 +63,7 @@
 | performance | `/api/admin` | 4 | 4 | 0 | 0 | 100% |
 | post_encryption | `/api` | 4 | 0 | 0 | 4 | 0% |
 | settings_groups | `/api/settings` | 4 | 3 | 0 | 1 | 75% |
-| themes | `/api` | 4 | 1 | 0 | 3 | 25% |
+| themes | `/api` | 1 | 1 | 0 | 0 | 100% |
 | bing_image | `/api/bing/image` | 3 | 1 | 0 | 2 | 33% |
 | captcha | `/api/captcha` | 2 | 1 | 0 | 1 | 50% |
 | post_crypto | `/api/post_crypto` | 3 | 0 | 0 | 3 | 0% |
@@ -77,7 +77,7 @@
 | stats | `/api/admin/stats` | 1 | 1 | 0 | 0 | 100% |
 | translate | `/api/translate` | 1 | 1 | 0 | 0 | 100% |
 | docs | `/api/docs` | 2 | 2 | 0 | 0 | 100% |
-| **合计** | — | **355** | **214** | **8** | **133** | **62.5%** |
+| **合计** | — | **352** | **214** | **8** | **130** | **63.1%** |
 
 ***
 
@@ -255,7 +255,7 @@
 
 ### themes / themes_ext / plugins
 
-- themes（/api）1/4：✅ `GET /themes/active`（uft:661）；❌ `GET /themes/palettes`、`GET /themes/current.css`、`PUT /admin/themes/current`——旧调色板体系，被主题 Customizer（mods）取代，**遗留待清理**。
+- themes（/api）1/1 ✅（**2026-10-28 退役清理**）：`GET /themes/active`（uft:661）是仅存的一条。旧调色板一族的三条端点（清单 / 编译 CSS / 管理员设默认值）**已从后端删除**：它们写的 SiteConfig KV 没有任何读取方，配套的 `html.palette-*` CSS 块也从未生效——挂那个 class 的 `composables/useThemePalette.ts` 在主题解耦那轮（f0c195c1）就删了，剩下的是"后台改了但什么都不发生"的假开关。站点主色的活路径：主题 mods 的 `primary_color` > `settings.appearance.primary_color`，两者都由 `useFrontendTheme.ts` 写进 `:root --primary`。守卫 `tests/test_retired_palette_family_is_gone.py`。
 - themes_ext（/api/admin/themes）9/12：✅ 列表 GET（TM:200 及 ?source=local/remote/upload 查询）、`POST /scan`（TM:220）、`PUT /{slug}/activate`（TM:251）、`PATCH /{slug}/mods`（TM:359）、`DELETE /{slug}`（TM:387）、`POST ""?source=…` 安装（TM:455–473）、`POST /{slug}/upgrade`（TM `upgradeTheme()`，卡片「可升级」Badge + 升级按钮）、`GET /market`＋`POST /market/{slug}/install`（2026-09-27 接入安装弹窗第四来源「市场索引」：TM `loadMarket()/installFromMarket()`，条目列表 + 已安装置灰 + force 刷新）。❌3：`GET /{slug}` 详情、`GET|PUT /{slug}/mods`（列表内联返回 + PATCH 替代）。两侧列表/详情的 `update_available` 均由磁盘清单版本计算（2026-09-27 前恒 false＝升级入口在 UI 上永久锁死），口径由 `tests/test_extension_update_available.py` 钉住。
 - plugins（/api/admin/plugins）14/16：✅ 列表（PM:207）、`POST /scan`（:224）、`PATCH /{slug}/status`（:235）、`GET /menu-registry`（upm:67）、`GET|PUT /{slug}/settings`（plugins/guestbook-rss/settings.vue:75,90）、`PATCH /{slug}/settings`（PM:267）、`POST /bulk`（:295,314）、`GET /{slug}` 详情（settings.vue:61）、`DELETE /{slug}`（:292）、`POST /{slug}/upgrade`（:341）、`POST ""?source=local|remote|upload` 安装（PM:412–430，与主题侧同构，zip 校验走 PACKAGE_*/PLUGIN_ZIP_BAD_MANIFEST）、`GET /market`＋`POST /market/{slug}/install`（2026-09-27 接入安装弹窗「市场索引」来源，与主题侧同构）。`update_available` 由后端按磁盘清单版本 vs DB 版本计算（2026-09-27 前恒 false，等于「可升级」Badge 与升级按钮永久锁死，upgrade 端点虽已实现却无入口），现由 `tests/test_extension_update_available.py` 钉住列表/详情/升级后归位三段口径。❌2：`POST /{slug}/activate|deactivate`（被 status PATCH 替代——**重复入口，建议统一**）。
 
@@ -293,10 +293,10 @@
 
 ## 结论
 
-**总体：355 端点 / 46 模块，前端已覆盖 222（62.5%；= 上表 ✅214 + 🟡8，🟡 是仅 Nitro/直链消费），未覆盖 133。**（本行与上表同源；上一版写的 351/208 是漏了后来新增的端点，已按表重算。）未覆盖的 133 个可分三类：
+**总体：352 端点 / 46 模块，前端已覆盖 222（63.1%；= 上表 ✅214 + 🟡8，🟡 是仅 Nitro/直链消费），未覆盖 130。**（本行与上表同源；未覆盖数从 133 降到 130 是删掉了 3 条僵尸端点，不是新接了 3 条。上一版写的 351/208 是漏了后来新增的端点，已按表重算。）未覆盖的 130 个可分三类：
 
 1. **刻意保留的后端能力（约六成，不算债）**：
-   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、`themes/palettes` 旧调色板 ×3、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/{id}/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）。
+   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/{id}/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
    - `…/{id}/toggle` 一族前端刻意不用：那是**服务端翻转**语义，而列表里的开关是"写成我看到的目标值"——翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）

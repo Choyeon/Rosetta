@@ -38,8 +38,9 @@ SITE_CONFIG_WRITERS: dict[str, tuple[str, ...]] = {
     # 装机与整站恢复删的是一整串前缀，其中 "site_config" 这条已经覆盖两族。
     "oobe.py": ("invalidate_cache(_prefix)", '"site_config",'),
     "import_export.py": ("_invalidate_content_caches", '"site_config"'),
-    # 调色板键 theme_palette 的读侧在 themes.py 里直查 DB，不经这两族缓存。
-    "themes.py": (),
+    # themes.py 曾经写调色板键 theme_palette（读侧直查 DB、不经这两族缓存，所以登记为空），
+    # 2026-10-28 调色板一族退役后它只剩一条只读口，不再是 SiteConfig 写口：
+    # 见 tests/test_retired_palette_family_is_gone.py。
 }
 
 

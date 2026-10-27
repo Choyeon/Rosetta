@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **356 个操作 / 285 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **353 个操作 / 282 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -2132,14 +2132,11 @@ API 实现了请求限流保护：
 | `GET` | `/api/settings/{group}` | 获取单个设置分组 |
 | `PATCH` | `/api/settings/{group}` | 更新单个设置分组 |
 
-### 主题（4）
+### 主题（1）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
-| `PUT` | `/api/admin/themes/current` | 管理员设置默认调色板 |
 | `GET` | `/api/themes/active` | 获取当前激活主题（公开，支持 Customizer 前台渲染） |
-| `GET` | `/api/themes/current.css` | 获取当前启用调色板的 CSS |
-| `GET` | `/api/themes/palettes` | 获取所有可用调色板 |
 
 ### 主题平台（12）
 

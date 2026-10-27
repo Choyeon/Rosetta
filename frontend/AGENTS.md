@@ -99,7 +99,7 @@ Hydration / setRef 崩溃的**真实修复点**（都在构建/服务端层，�
 
 | 位置 | 内容 | 允许写 |
 |------|------|--------|
-| `assets/css/main.css` | 主题中性基础设施 | Tailwind 入口、@theme 令牌、`:root`/`.dark` 语义色板、palette-*、prose-shadcn、toast、动效工具、`.card-surface` **中性基座版**（素色+细边框）；**禁止**新增任何"皮肤"装饰 |
+| `assets/css/main.css` | 主题中性基础设施 | Tailwind 入口、@theme 令牌、`:root`/`.dark` 语义色板、prose-shadcn、toast、动效工具、`.card-surface` **中性基座版**（素色+细边框）；**禁止**新增任何"皮肤"装饰（旧的 `palette-*` 调色板块已在 2026-10-28 退役删除——没有任何代码给 `<html>` 挂过那个 class，主色走 `useFrontendTheme` 的 `primary_color` 单源） |
 | `assets/css/admin-ui.css` | Admin 冻结设计系统 | 装饰版玻璃卡 / 彗星发光描边 / lift-hover，每条选择器必须以 `html[data-layout-scope="admin"]` 开头；与主题包零依赖 |
 | `themes/{slug}/style.css` | 主题完整皮肤 | 通用规则必须加 `[data-layout-scope="frontend"]` 守卫；认证页定制必须显式用 `[data-layout-scope="public-auth"]` 守卫，禁止 blanket 规则。默认主题 editorial-wp-style 自带全套装饰层（Admin 观感不受其影响） |
 
