@@ -1,9 +1,10 @@
 /**
- * 全站投票 MVP：后端 API 挂在 /api/voting 前缀（backend/main.py::include_router）。
+ * 全站投票：后端 API 挂在 /api/voting 前缀（backend/main.py::include_router）。
  * 前端 baseURL 已含 /api，所以调用路径写成 `/voting/polls` 而不是 `/api/voting/polls`。
  *
  * 说明：
- * - Poll 目前没有与 Post 的关联列，MVP 阶段全局展示 is_active=true 的投票（同一份 poll 挂在每篇文章下方）。
+ * - `Poll.post_id` 是绑定文章：null = 全站投票（挂在每篇文章下方），非 null = 只出现在这一篇。
+ *   前台按文章取投票时必须带 `post_id`，否则别文章的专属投票会串到本页来。
  * - 匿名请求在 backend/api/voting.py::cast_vote 里没有 IP/user 唯一约束，重复提交会静默累加。
  *   为挡常见误操作，前端在 localStorage 记 `rosetta:voted-polls` 集合，命中即隐藏投票控件、
  *   直接显示结果（show_results 关掉时则显示"感谢参与"）。这不构成防刷，只避免用户手滑多点。
@@ -22,6 +23,8 @@ export interface Poll {
   id: number
   title: string
   description: string | null
+  /** 绑定文章；null = 全站投票 */
+  post_id: number | null
   is_active: boolean
   allow_multiple: boolean
   show_results: boolean
@@ -66,12 +69,23 @@ function markVoted(pollId: number) {
 }
 
 export function usePolls() {
-  /** 拉取活动中的投票（首屏 MVP 只取前 5 条，够用）。 */
-  const fetchActivePolls = async (limit = 5): Promise<Poll[]> => {
+  /**
+   * 拉取活动中的投票（首屏 MVP 只取前 5 条，够用）。
+   * 传 `postId` 时只要「这一篇的专属投票 + 全站投票」；不传则维持全站口径。
+   */
+  const fetchActivePolls = async (limit = 5, postId?: number | null): Promise<Poll[]> => {
     try {
       const res = await apiFetch<PollsListResponse>(
         '/voting/polls',
-        { query: { is_active: 'true', page: '1', page_size: String(limit) }, silentToast: true }
+        {
+          query: {
+            is_active: 'true',
+            page: '1',
+            page_size: String(limit),
+            ...(postId && postId > 0 ? { post_id: String(postId) } : {})
+          },
+          silentToast: true
+        }
       )
       // 后端 response_model 是 PaginatedResponse，字段直接在顶层。
       const items = (res as unknown as PollsListResponse)?.items
@@ -95,16 +109,34 @@ export function usePolls() {
     return Array.isArray(items) ? items : []
   }
 
-  /** POST /voting/polls（PollCreate：title + choices: string[]，另带三个开关）。 */
+  /** POST /voting/polls（PollCreate：title + choices: string[]，另带绑定文章与三个开关）。 */
   const createPoll = async (payload: {
     title: string
     description?: string | null
+    post_id?: number | null
     is_active: boolean
     allow_multiple: boolean
     show_results: boolean
     choices: string[]
   }): Promise<Poll> =>
     apiFetch<Poll>('/voting/polls', { method: 'POST', body: payload })
+
+  /**
+   * PUT /voting/polls/{id}（PollUpdate：只提交要改的键，缺省键保持原值）。
+   * 选项不在这里改——每个选项 id 上挂着票数，后端也不接受 choices。
+   */
+  const updatePoll = async (
+    pollId: number,
+    payload: {
+      title?: string
+      description?: string | null
+      post_id?: number | null
+      is_active?: boolean
+      allow_multiple?: boolean
+      show_results?: boolean
+    }
+  ): Promise<Poll> =>
+    apiFetch<Poll>(`/voting/polls/${pollId}`, { method: 'PUT', body: payload })
 
   const deletePoll = async (pollId: number): Promise<unknown> =>
     apiFetch<unknown>(`/voting/polls/${pollId}`, { method: 'DELETE' })
@@ -132,5 +164,13 @@ export function usePolls() {
     }
   }
 
-  return { fetchActivePolls, fetchAllPolls, createPoll, deletePoll, vote, readVotedPollIds }
+  return {
+    fetchActivePolls,
+    fetchAllPolls,
+    createPoll,
+    updatePoll,
+    deletePoll,
+    vote,
+    readVotedPollIds
+  }
 }

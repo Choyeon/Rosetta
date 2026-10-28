@@ -1745,10 +1745,11 @@ onMounted(async () => {
   if (articleStoredPwd.value && needPassword.value) {
     void refreshPostWithStoredPassword()
   }
-  // 全局投票：闸门未解锁时不拉，防止 poll 内容出现在密码框上方。
+  // 投票：闸门未解锁时不拉，防止 poll 内容出现在密码框上方。
+  // 带 post_id 是必需的——不传就退化成"全站投票"，别的文章的专属投票会串到本页来。
   // 与评论/相似/TOC 互不依赖，先拿到 promise 再并入下面的 Promise.all，
   // 不单独 await 一个 RTT（旧写法让整页 hydration 后的收尾多等一轮往返）。
-  const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(3)
+  const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
   // 三个独立任务并行执行：评论、相似文章、TOC 重建互不依赖
   await Promise.all([
     loadCommentsForCurrentPost(),
@@ -1763,10 +1764,10 @@ onMounted(async () => {
     retries.forEach(delay => setTimeout(() => void rebuildTOC(), delay))
   }
 })
-// 密码解锁后 needPassword 由 true→false，此时才允许拉全局投票卡片。
+// 密码解锁后 needPassword 由 true→false，此时才允许拉本页的投票卡片。
 watch(needPassword, async (locked, prev) => {
   if (prev && !locked && !activePolls.value.length) {
-    activePolls.value = await pollsAPI.fetchActivePolls(3)
+    activePolls.value = await pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
   }
 })
 onActivated(async () => {
@@ -1775,10 +1776,25 @@ onActivated(async () => {
     loadSimilarAndLikeState(post.value?.id)
   ])
 })
+/**
+ * 换文章时重取本页投票。
+ * 投票按 post_id 绑定后，"上一篇的专属投票"留在卡片位上就是新的串台缺陷——
+ * 这个页面在 keep-alive 下跨文章复用组件实例，而 watch 不带 immediate，
+ * 首屏仍由 onMounted 那条 promise 链负责。
+ */
+const reloadActivePolls = async () => {
+  if (needPassword.value) {
+    activePolls.value = []
+    return
+  }
+  activePolls.value = await pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
+}
+
 watch([slug, locale, () => post.value?.id], async () => {
   await Promise.all([
     loadCommentsForCurrentPost(),
-    loadSimilarAndLikeState(post.value?.id)
+    loadSimilarAndLikeState(post.value?.id),
+    reloadActivePolls()
   ])
 })
 

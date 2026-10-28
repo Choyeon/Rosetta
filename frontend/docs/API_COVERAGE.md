@@ -32,9 +32,9 @@
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
-> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 352 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 353 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：352 个端点操作；✅ 288 + 🟡 6 = 已消费 294 个，未消费 58 个，覆盖率 83.5%。**
+**总计：353 个端点操作；✅ 289 + 🟡 6 = 已消费 295 个，未消费 58 个，覆盖率 83.6%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -64,8 +64,8 @@
 | hero | 6 | 6 | 0 | 0 | 100% |
 | messages | 6 | 6 | 0 | 0 | 100% |
 | notification | 6 | 6 | 0 | 0 | 100% |
+| voting | 6 | 5 | 0 | 1 | 83% |
 | shortcodes | 5 | 3 | 0 | 2 | 60% |
-| voting | 5 | 4 | 0 | 1 | 80% |
 | admin_tools | 4 | 4 | 0 | 0 | 100% |
 | migration | 4 | 4 | 0 | 0 | 100% |
 | performance | 4 | 4 | 0 | 0 | 100% |
@@ -338,14 +338,14 @@
 **总体：352 端点 / 46 模块，前端已覆盖 222（63.1%；= 上表 ✅214 + 🟡8，🟡 是仅 Nitro/直链消费），未覆盖 130。**（本行与上表同源；未覆盖数从 133 降到 130 是删掉了 3 条僵尸端点，不是新接了 3 条。上一版写的 351/208 是漏了后来新增的端点，已按表重算。）未覆盖的 130 个可分三类：
 
 1. **刻意保留的后端能力（约六成，不算债）**：
-   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/{id}/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
+   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/{id}/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）、`GET /voting/polls/{poll_id}`（列表口 `GET /voting/polls` 已内嵌 choices 与票数，前台卡片直接从列表取票，详情口没有第二个消费方）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
    - `…/{id}/toggle` 一族前端刻意不用：那是**服务端翻转**语义，而列表里的开关是"写成我看到的目标值"——翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
    - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；users 一族剩下的 8 条见上表 ❌ 行的逐条判定——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
 
-   - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：~~hero 轮播管理（×5）~~（2026-10-18 已落地 `pages/admin/content/hero.vue`，本项不再是缺口）；
+   - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入（2026-10-28 补齐另两半：`Poll.post_id` 绑定文章，前台按当前文章取票，投票不再无条件挂在每篇文章下方；`PUT /voting/polls/{id}` 让管理员结束/重新开启与改标题，不再只能连票数一起删）。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：~~hero 轮播管理（×5）~~（2026-10-18 已落地 `pages/admin/content/hero.vue`，本项不再是缺口）；
    - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、~~captcha 接入（×2）~~（2026-10-18 留言板写入口已接，见上 captcha 行；评论侧只有服务端闸门）。
      **2026-10-16 判定：加密这两族不接 UI。** 真实在用的加密链路是 `Post.password` 列 +
      `GET /blog/posts/{slug}` 的 `X-Post-Password` 头（`backend/api/blog.py:1238-1252`，

@@ -2287,9 +2287,29 @@ class PollBase(BaseModel):
 
     title: str = Field(..., max_length=200, min_length=1)
     description: str | None = Field(None, max_length=500)
+    post_id: int | None = Field(
+        None,
+        description="绑定的文章 ID；None = 全站投票（挂在每篇文章下方），非 None = 只在该文章展示",
+    )
     is_active: bool = True
     allow_multiple: bool = False
     show_results: bool = True
+
+
+class PollUpdate(BaseModel):
+    """投票更新模型（PUT /voting/polls/{id}）。
+
+    全部可选：端点按 `model_fields_set` 只写调用方真正提交的键，缺省键保持原值。
+    选项（choices）不在这里改——每个选项 id 都挂着 votes 行，替换选项等于删掉票数，
+    所以编辑弹窗只暴露标题/说明/绑定文章/三个开关。
+    """
+
+    title: str | None = Field(None, max_length=200, min_length=1)
+    description: str | None = Field(None, max_length=500)
+    post_id: int | None = Field(None, description="None = 改回全站投票")
+    is_active: bool | None = None
+    allow_multiple: bool | None = None
+    show_results: bool | None = None
 
 
 class PollCreate(PollBase):
@@ -2315,6 +2335,9 @@ class PollResponse(PollBase):
     """投票响应模型"""
 
     id: int
+    # 重声明为必填：PollBase 里它有默认值 None（创建时可以不绑定文章），但响应漏传
+    # 一次就会把"绑定了文章"静默报成"全站投票"，前端据此渲染出的绑定关系是错的。
+    post_id: int | None
     choices: list["PollChoiceResponse"]
     total_votes: int = 0
     created_at: datetime

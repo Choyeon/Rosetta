@@ -4,6 +4,8 @@
  * 表现过的两类 bug：
  * 1. 后端 /api/voting/polls 的 POST/DELETE 早已存在，前端**一个调用方都没有**，
  *    结果是「投票」功能对站主等于不存在——前台文章页能投票，却没有任何地方能创建投票。
+ *    （2026-10-28 同族补齐：PUT 更新口 + post_id 绑定文章。此前 is_active 只能在创建时定，
+ *    想停一个投票只能连票数一起删；且没有绑定列时进行中的投票会挂在每篇文章下方。）
  * 2. 后台仪表盘快捷入口指向 /admin/roles，而该路由从未有过页面文件：点了被
  *    admin.global 中间件弹回 /，看起来像"按钮坏了"。菜单与页面文件不同步是静默失效，
  *    不会有任何报错，所以这里把「菜单里每条 path 都必须有对应页面文件」钉成门禁。
@@ -43,18 +45,49 @@ describe('后台菜单与投票入口', () => {
     expect(menuPaths).toContain('/admin/interaction/polls')
   })
 
-  it('投票页真正消费创建/删除接口，不是只读壳', () => {
-    for (const fn of ['fetchAllPolls', 'createPoll', 'deletePoll']) {
+  it('投票页真正消费创建/更新/删除接口，不是只读壳', () => {
+    for (const fn of ['fetchAllPolls', 'createPoll', 'updatePoll', 'deletePoll']) {
       expect(pollsPage, `投票页必须调用 ${fn}()`).toContain(`pollsAPI.${fn}(`)
     }
     // 只断言到"方法 + 路径"这一层：引号形态（单引号 / 反引号模板）不是契约，
     // 写死引号会让一次无害的字符串改写变成假红灯。
     const RE_CREATE = /apiFetch<Poll>\(\s*['"`]\/voting\/polls['"`],\s*\{ method: 'POST'/
+    const RE_UPDATE = /apiFetch<Poll>\(\s*`\/voting\/polls\/\$\{pollId\}`,\s*\{ method: 'PUT'/
     const RE_DELETE = /apiFetch<unknown>\(\s*['"`]\/voting\/polls\/\$\{pollId\}['"`],\s*\{ method: 'DELETE'/
     expect(pollsComposable, '创建必须打 POST /voting/polls').toMatch(RE_CREATE)
+    expect(pollsComposable, '更新必须打 PUT /voting/polls/{id}').toMatch(RE_UPDATE)
     expect(pollsComposable, '删除必须打 DELETE /voting/polls/{id}').toMatch(RE_DELETE)
-    // 后端只有 POST/DELETE，没有 PUT：页面不得伪装出"编辑"入口
-    expect(pollsPage, '后端无更新接口，页面不得出现假编辑按钮').not.toContain('openEdit')
+  })
+
+  it('结束/重新开启只写 is_active，编辑弹窗不伪装可改选项', () => {
+    // 后端 PUT 是"只写提交的键"的局部更新，所以开关按钮只发 is_active 这一项；
+    // 若这里改成整份提交，结束一个投票就会顺带把说明清空（旧缺陷的形状）。
+    expect(pollsPage).toMatch(/updatePoll\(poll\.id,\s*\{\s*is_active:\s*!poll\.is_active\s*\}\)/)
+    // 选项创建后不可改（票数挂在选项 id 上）：编辑态必须收掉整块选项输入。
+    const choicesGateAt = pollsPage.indexOf('<div v-if="editingId === null">')
+    const choiceInputAt = pollsPage.indexOf('v-model="form.choices[index]"')
+    expect(choicesGateAt, '选项输入框所在的块必须带 editingId 判据').toBeGreaterThan(-1)
+    expect(choiceInputAt, '选项输入框被改名了，本条断言要看住它').toBeGreaterThan(-1)
+    expect(choiceInputAt, '选项输入框必须在 editingId 判据之后（否则编辑态也能改选项）')
+      .toBeGreaterThan(choicesGateAt)
+  })
+
+  it('投票可绑定文章，且前台按当前文章取票（不传 post_id 就是串台）', () => {
+    expect(pollsComposable, 'Poll 类型必须带 post_id').toMatch(/post_id: number \| null/)
+    expect(pollsComposable, '列表口必须把 post_id 拼进查询').toMatch(/post_id: String\(postId\)/)
+    expect(pollsPage, '后台必须有展示位置选择器').toMatch(/v-model="form\.post_id"/)
+    expect(pollsPage, '哨兵值必须是全站而不是空串（reka-ui 的 SelectItem 不收空串）')
+      .toMatch(/const SITE_WIDE = 'site'/)
+    // 文章页两处取票都必须带 post.id：漏一处就是"上一篇的专属投票留在这一篇"
+    const postDetail = readFileSync(
+      resolve(process.cwd(), 'pages/posts/[slug].vue'),
+      'utf8'
+    )
+    const calls = [...postDetail.matchAll(/fetchActivePolls\(([^)]*)\)/g)].map(m => m[1] ?? '')
+    expect(calls.length, '文章页取票调用点数量变化时，每个点都必须带文章 id').toBeGreaterThanOrEqual(3)
+    for (const args of calls) {
+      expect(args, `取票调用没有传 post.id：fetchActivePolls(${args})`).toContain('post.value?.id')
+    }
   })
 
   it('投票选项按后端 PollCreate 口径校验（2–200 个、非空）', () => {

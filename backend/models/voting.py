@@ -42,6 +42,16 @@ class Poll(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 绑定的文章。NULL = 全站投票（挂在每篇文章下方），非 NULL = 只出现在这一篇。
+    # ondelete=CASCADE 而不是 SET NULL：文章删掉后若把 post_id 置空，这条投票会立刻
+    # 从"只属于那一篇"升级成"全站可见"——为已删文章写的投票反而扩散给所有访客。
+    # 这条 CASCADE 只在表由 create_all 建出时成立：已存在的 polls 表补列走
+    # core/database.py::_repair_columns，而 CreateColumn 不编译 FK 子句（实测两边方言都
+    # 只产出 `post_id INTEGER`），所以老库删文章会留下一条指向已删文章的行。它不会在前台
+    # 任何页面出现（列表按 post_id 精确匹配，NULL 才算全站），后台能改绑或删除，故不补应用级级联。
+    post_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("posts.id", ondelete="CASCADE"), nullable=True, index=True
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False, index=True)
     allow_multiple: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     show_results: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
