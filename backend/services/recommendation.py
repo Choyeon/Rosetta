@@ -40,7 +40,7 @@ from backend.core.database import get_db
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes, post_tags
 from backend.models.user import User
 from backend.services.cache_service import CacheService, get_cache_service
-from backend.services.post_access import private_posts_excluded
+from backend.services.post_access import publicly_listable_posts
 from backend.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -349,6 +349,13 @@ class RecommendationService:
           调用方访问 `post.author` 时行为不可预期。
           请以 id 序列为准，每次回源重建，顺便把 LIST 需要的 author/title/category/tags
           一次性 selectinload 出来，避免调用方逐个懒加载。
+
+        **回源必须重过一遍匿名可见性判据**：id 名单是"上一次算的时候"的产物，而这一族
+        缓存跨进程（Redis + 各 worker 的 L1）且 `invalidate_pattern` 不广播，所以名单
+        比文章的实时状态旧是设计内的常态。生产实测症状：把一篇文章从 public 翻成 private
+        后，命中缓存的那个键位仍然返回它，换一个没被占过的 `days` 键位立刻缺席——
+        漏了这一条，"改成私密"要等 TTL（热榜 600s / 推荐 300s）加 L1 陈旧窗口才生效，
+        期间正文已经 404、推荐位却还挂着标题和摘要。
         """
         if not post_ids:
             return []
@@ -359,7 +366,7 @@ class RecommendationService:
                 selectinload(Post.category),
                 selectinload(Post.tags),
             )
-            .where(Post.id.in_(post_ids))
+            .where(Post.id.in_(post_ids), publicly_listable_posts())
         )
         by_id = {p.id: p for p in res.scalars().all()}
         # 严格按传入顺序返回（IN 查询不保证顺序）；期间被删的文章自然被丢掉
@@ -381,7 +388,7 @@ class RecommendationService:
         base_q = (
             select(Post)
             .options(selectinload(Post.tags), selectinload(Post.category))
-            .where(Post.id == post_id, Post.status == "published", private_posts_excluded())
+            .where(Post.id == post_id, publicly_listable_posts())
         )
         res = await self._db.execute(base_q)
         anchor = res.scalar_one_or_none()
@@ -405,8 +412,7 @@ class RecommendationService:
             .outerjoin(post_tags, Post.id == post_tags.c.post_id)
             .where(
                 Post.id != post_id,
-                Post.status == "published",
-                private_posts_excluded(),
+                publicly_listable_posts(),
                 or_(
                     (post_tags.c.tag_id.in_(list(anchor_tag_ids))) if anchor_tag_ids else False,
                     (Post.category_id == anchor_cat) if anchor_cat else False,
@@ -424,8 +430,7 @@ class RecommendationService:
                 select(Post.id)
                 .where(
                     Post.id != post_id,
-                    Post.status == "published",
-                    private_posts_excluded(),
+                    publicly_listable_posts(),
                 )
                 .order_by(func.coalesce(Post.published_at, Post.created_at).desc())
                 .limit(max(0, limit * 6 - len(candidate_ids)))
@@ -439,18 +444,8 @@ class RecommendationService:
             await self._cache.set(cache_key, [], ttl=SIMILAR_POSTS_TTL)
             return []
 
-        # ── 一次性拉取所有候选全文 / tags ──
-        full_q = (
-            select(Post)
-            .options(
-                selectinload(Post.tags),
-                selectinload(Post.category),
-                selectinload(Post.author).selectinload(User.title),
-            )
-            .where(Post.id.in_(candidate_ids))
-        )
-        full_res = await self._db.execute(full_q)
-        candidates = full_res.scalars().all()
+        # ── 一次性拉取所有候选全文 / tags（回源口径与缓存命中路径同一条）──
+        candidates = await self._rebuild_posts_by_ids(candidate_ids)
         candidates_by_id = {p.id: p for p in candidates}
 
         # ── 打分输入拍平：worker 线程只吃纯数据，不触碰 ORM ──
@@ -511,8 +506,7 @@ class RecommendationService:
                 )
                 .where(
                     Post.id.notin_(list(existing)),
-                    Post.status == "published",
-                    private_posts_excluded(),
+                    publicly_listable_posts(),
                 )
                 .order_by(Post.views.desc())
                 .limit(limit - len(selected_ids))
@@ -572,7 +566,7 @@ class RecommendationService:
             )
             .outerjoin(post_likes, Post.id == post_likes.c.post_id)
             .outerjoin(Comment, (Post.id == Comment.post_id) & (Comment.active.is_(True)))
-            .where(Post.status == "published", private_posts_excluded())
+            .where(publicly_listable_posts())
             .group_by(Post.id)
         )
         stats_rows = await self._db.execute(stats_q)
@@ -636,20 +630,7 @@ class RecommendationService:
         end = start + page_size
         page_ids = [pid for pid, _ in scored[start:end]]
 
-        items: list[Post] = []
-        if page_ids:
-            detail_q = (
-                select(Post)
-                .options(
-                    selectinload(Post.author).selectinload(User.title),
-                    selectinload(Post.category),
-                    selectinload(Post.tags),
-                )
-                .where(Post.id.in_(page_ids))
-            )
-            detail_res = await self._db.execute(detail_q)
-            m = {p.id: p for p in detail_res.scalars().all()}
-            items = [m[i] for i in page_ids if i in m]
+        items = await self._rebuild_posts_by_ids(page_ids)
 
         out = {
             "items": [p.id for p in items],
@@ -685,8 +666,7 @@ class RecommendationService:
             .outerjoin(post_likes, Post.id == post_likes.c.post_id)
             .outerjoin(Comment, (Post.id == Comment.post_id) & (Comment.active.is_(True)))
             .where(
-                Post.status == "published",
-                private_posts_excluded(),
+                publicly_listable_posts(),
                 func.coalesce(Post.published_at, Post.created_at) >= cutoff,
             )
             .group_by(Post.id)
@@ -713,20 +693,7 @@ class RecommendationService:
         scored.sort(key=lambda x: x[1], reverse=True)
         top_ids = [i for i, _ in scored[:limit]]
 
-        items: list[Post] = []
-        if top_ids:
-            dq = (
-                select(Post)
-                .options(
-                    selectinload(Post.author).selectinload(User.title),
-                    selectinload(Post.category),
-                    selectinload(Post.tags),
-                )
-                .where(Post.id.in_(top_ids))
-            )
-            dr = await self._db.execute(dq)
-            m = {p.id: p for p in dr.scalars().all()}
-            items = [m[i] for i in top_ids if i in m]
+        items = await self._rebuild_posts_by_ids(top_ids)
         await self._cache.set(cache_key, [p.id for p in items], ttl=HOT_RANKING_TTL)
         return items
 

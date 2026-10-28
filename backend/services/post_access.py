@@ -24,7 +24,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ColumnElement, func
+from sqlalchemy import ColumnElement, and_, func
 
 from backend.models.blog import Post
 
@@ -58,6 +58,26 @@ def private_posts_excluded() -> ColumnElement[bool]:
     按最保守的匿名视角排除，登录的作者要找回自己的私密稿走后台列表（staff 分支）。
     """
     return func.coalesce(Post.visibility, "public") != PRIVATE_VISIBILITY
+
+
+def publicly_listable_posts() -> ColumnElement[bool]:
+    """
+    集合口（列表 / 归档 / RSS / sitemap / 热榜 / 推荐 / 相似）的完整匿名谓词。
+
+    三条判据里最容易被漏的是**定时未到**那一条：`status == "published"` 是定时发布
+    落库时的写法（`api/scheduled_posts.py`），所以"published 但 `published_at` 还在未来"
+    是常态而不是脏数据。详情端点（``post_is_publicly_visible``）把它判成 404，
+    前台主列表也带 `published_at <= now()`（`api/blog.py`）——只有派生集合口漏掉时，
+    表现是"推荐位/热榜里点进去是 404"，而不是报错。
+
+    只圈 status 的写法等于把另外两条判据交给调用方各自回忆，漏一处即成泄漏面，
+    所以新增集合查询请直接用本函数，不要再手写 `Post.status == "published"`。
+    """
+    return and_(
+        Post.status == "published",
+        private_posts_excluded(),
+        Post.published_at.is_(None) | (Post.published_at <= func.now()),
+    )
 
 
 def _is_privileged(post: Post, current_user: User | None) -> bool:
