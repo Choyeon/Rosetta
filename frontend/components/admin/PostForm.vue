@@ -408,7 +408,10 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
     source: form.source.trim() || '原创',
     // 空串归 null：与分类/封面同一套"显式清空"口径，省略键则清不掉旧出处
     source_url: form.source_url.trim() || null,
-    excerpt: toI18nPayload(form.excerpt),
+    // 摘要与三个 SEO meta 同副标题一条口径：始终发送、全空兜回 null。
+    // `toI18nPayload()` 空 dict 返回 undefined，键就不在 PUT 体里，exclude_unset 语义下
+    // 等于"不改它"——作者删掉摘要保存成功、再打开还是旧的，RSS 与 og:description 也继续用旧摘要。
+    excerpt: toI18nPayload(form.excerpt) ?? null,
     cover_image: form.cover_image ?? ''
   }
   if (form.status === 'scheduled' && form.scheduled_at) {
@@ -423,9 +426,9 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
   // 提示与密码散列不同：空串是合法值（"我不要提示"），所以始终发送。
   // 离开密码态时发送空串把旧提示清掉——库里留一条永远不会展示的明文没有意义。
   payload.encryption_hint = form.visibility === 'password' ? form.encryption_hint.trim() : ''
-  payload.meta_title = toI18nPayload(form.meta_title)
-  payload.meta_description = toI18nPayload(form.meta_description)
-  payload.meta_keywords = toI18nPayload(form.meta_keywords)
+  payload.meta_title = toI18nPayload(form.meta_title) ?? null
+  payload.meta_description = toI18nPayload(form.meta_description) ?? null
+  payload.meta_keywords = toI18nPayload(form.meta_keywords) ?? null
   return payload
 }
 

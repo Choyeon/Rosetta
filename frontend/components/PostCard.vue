@@ -358,7 +358,8 @@ interface Props {
     id: number | string
     slug: string
     title: string | Record<string, string>
-    excerpt?: string | Record<string, string>
+    /** null 是合法值：后台把摘要清空后落库就是 null，卡片按"无摘要"渲染。 */
+    excerpt?: string | Record<string, string> | null
     cover_image?: string
     coverImage?: string
     category?: {

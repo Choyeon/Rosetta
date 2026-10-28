@@ -80,7 +80,8 @@ export interface Post {
   /** 原文出处；后端严格档只收 http(s)，渲染侧仍要再判一次 scheme。 */
   source_url?: string | null
   content: string | Record<string, string>
-  excerpt?: string | Record<string, string>
+  /** null = 库里没有摘要（清空后的行就是 JSON null），回落口径在读侧处理。 */
+  excerpt?: string | Record<string, string> | null
   cover_image?: string
   /** 公开作者卡片；后台需要完整账号资料时用 useAuthStore().user。 */
   author?: PublicUser
@@ -101,9 +102,9 @@ export interface Post {
   /** 密码提示：仅当文章真有访问密码时后端才输出，闸门页在锁屏上展示。 */
   encryption_hint?: string | null
   visibility?: 'public' | 'password' | 'private'
-  meta_title?: string | Record<string, string>
-  meta_description?: string | Record<string, string>
-  meta_keywords?: string | Record<string, string>
+  meta_title?: string | Record<string, string> | null
+  meta_description?: string | Record<string, string> | null
+  meta_keywords?: string | Record<string, string> | null
   created_at: string
   published_at?: string
   updated_at?: string
@@ -119,7 +120,8 @@ export interface PostCreate {
   /** 显式 null = 清掉原文链接（后端 PUT 是 exclude_unset 增量语义）。 */
   source_url?: string | null
   content: string | Record<string, string>
-  excerpt?: string | Record<string, string>
+  /** null = 清掉摘要；省略等于"不动它"（后端 PUT 是 exclude_unset 增量语义）。 */
+  excerpt?: string | Record<string, string> | null
   cover_image?: string
   // 后端 PostBase/PostUpdate 的 category_id 是 `int | None`：显式 null 表示"取消分类"，
   // 而省略该键在 exclude_unset 语义下等于"不动它"。类型必须允许 null，否则"无分类"
@@ -136,9 +138,9 @@ export interface PostCreate {
   encryption_hint?: string
   is_pinned?: boolean
   allow_comments?: boolean
-  meta_title?: string | Record<string, string>
-  meta_description?: string | Record<string, string>
-  meta_keywords?: string | Record<string, string>
+  meta_title?: string | Record<string, string> | null
+  meta_description?: string | Record<string, string> | null
+  meta_keywords?: string | Record<string, string> | null
 }
 
 // Category Types
