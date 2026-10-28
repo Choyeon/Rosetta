@@ -571,7 +571,16 @@ uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
 uv run pytest                                        # 1523 passed + 3 skipped + 3 xfailed + 1 xpassed（另有 §8.4 两条顺序性假失败，全量退出码因此为 1）；覆盖率 ≥45%（实测 69.85%）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
+PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write   # 重算 frontend/docs/API_COVERAGE.md 的覆盖度汇总表
 ```
+
+**缺口清单只认扫描器**：`frontend/docs/API_COVERAGE.md` 的汇总表由
+`backend/scripts/gen_api_coverage.py` 生成在 `<!-- COVERAGE-AUTO -->` 区块里，漂移由
+`tests/test_api_coverage_scanner.py` 挡（改了接口或接线没重算即 CI 红，修复动作是跑 `--write`）。
+2026-09-26 那版手工快照之后按族手累过三轮增量，模块行与合计行长期对不上（`messages` 行写 0 ✅
+而明细写「已接入 5 条」），照着它排下一轮接线会去接一条早就接完的口子。扫描器的两处盲区写在
+该文档开头：①看不见"封装存在但没人点"；②看不见变量拼出来的 URL
+（`` `${apiBase}/media/avatar` `` 会落进 ❌，`avatar_proxy` 即是）。
 
 **覆盖率读数的口径（必读）**：`addopts` 里带 `--cov-append`，所以 `.coverage` 会跨多次运行**按行号合并**。一旦中间改过代码（加测试、反证实验回退、ruff format 移行），陈旧行号的数据就会把现在没跑到的行标成"已覆盖"，读数是**虚高且不可复现**的。要一个可比数字必须先删：`rm -f .coverage && uv run pytest`。按此口径实测两轮独立全量得到**完全相同**的 14039 stmts / 4450 missing / **68.30%**（第二轮直接追加在第一轮数据上、missing 一条没少，证明单轮已跑满），该值才是 CI 看到的数（第三十三场同口径复测：14044 stmts / 4448 missing / 68.33%；第三十四场收藏 PATCH 序列化收口后：14045 stmts / 4447 missing / 68.34%；第三十五场收藏重复行 500 收口后：14046 stmts / 4440 missing / 68.39%；第三十六场投票查重收口：同 14046 / 4440 / 68.39%，用例 +2；第三十七场评论可读性闸门收口：14081 stmts / 4446 missing / 68.43%，用例 +7；第三十八场 robots 缓存键 + noindex 闸门收口：**68.55%** / 1302 passed，本轮只采到总百分比，stmts 待复测；第三十九场收藏 / 评论反应 / 私信三族落地收口：14390 stmts / 4522 missing / **68.58%** / 1345 passed，同口径复算补上 stmts；第四十场站点设置数值区间闸门 + `/api/config` 单组容错收口：14606 stmts / 4510 missing / **69.12%** / 1476 passed；第四十一场密码重置反馈 + 站点设置页/用户中心收口（批次 #69–#72）：14492 stmts / 4388 missing / **69.72%** / 1509 passed，生产机 2026-10-23 同口径复测；第四十二场 SEO/GEO 批次（P0-1…P2-4 + `indexnow_key` 掩码）收口后：14593 stmts / 4400 missing / **69.85%** / 1523 passed（生产机 2026-10-26，`rm -f .coverage` 起算，40 分钟全量，含 §8.4 两条顺序性假失败）。历史文档里出现过的 87%–88% 系列是未清 `.coverage` 的合并产物，勿再引用。
 

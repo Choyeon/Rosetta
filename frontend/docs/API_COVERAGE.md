@@ -1,85 +1,122 @@
 # Rosetta API 覆盖度报告
 
-> **生成时间：2026-09-26**
-> **数据源**：对 `backend/api/*.py` 全部路由装饰器（`@router.get/post/put/patch/delete`，按 `backend/main.py` 的 `include_router` 前缀还原为完整路径）与 `frontend/` 调用点（`useAPI` / `apiFetch` / `silentApiFetch` / `stores` / `server/` Nitro 路由 / 页面组件）的**静态扫描**。
+> **汇总表自 2026-10-28 起由扫描器生成**：`backend/scripts/gen_api_coverage.py`。
+> 数据源是生成后的 `app.openapi()["paths"]`（352 条 operation，按 `backend/main.py` 的
+> `include_router` 前缀归到 `backend/api/*.py` 模块）× `frontend/**` 源码里的 URL 字面量
+> （`useAPI` / `apiFetch` / `silentApiFetch` / 项目自己的请求封装 / `<img src>` 与 `href` 拼接 /
+> `frontend/server/` Nitro 路由）。改接口或接线后执行
+> `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算，**不要手改表中的数字**。
 > 本报告**整体替换 2026-08-14 的旧快照**。旧报告中 media、admin、guestbook、gallery、series、webhooks、notifications 等模块标为 0% 均已过时失真（实际已全量或接近全量消费），其数字不再保留。
 
 ## 图例与统计口径
 
-- ✅ 已实现：前端有直接调用点（列出 file:line；路径参数用 `${id}` 表示模板字符串）
-- 🟡 仅 Nitro 侧 / 仅 URL 拼接消费：只在 `frontend/server/`（SSR BFF）或 `<img src>` 等 URL 拼接中被消费，浏览器不直接调
-- ❌ 前端未消费：后端能力保留或前端缺口，逐条注明
+- ✅ 已消费：前端源码里有这条路径字面量且处在**请求参数位**（真发请求）
+- 🟡 仅 URL 拼接 / 仅 Nitro 侧消费：只出现在 `<img src>`、`href` 或 `frontend/server/`（SSR BFF）里，浏览器不直接调
+- ❌ 未消费：后端能力保留或前端缺口，汇总表下方「未消费清单」逐条列出
 - **路径规则**：`useAPI/apiFetch` 的 URL 参数不带 `/api` 前缀，故代码中 `'/admin/guestbook'` == `GET /api/admin/guestbook`
 - 覆盖率 =（✅ + 🟡）/ 后端端点总数
 
-**总计（与下表「合计」行同源，2026-10-28 按表重算）：46 个路由模块文件、352 个端点；✅ 214 + 🟡 8 = 已覆盖 222 个，未消费 130 个，覆盖率 63.1%。**（较上一版 355 少 3 条：调色板一族在 2026-10-28 退役删除，见 `themes` 一节。）
+### 扫描器的两处已知盲区（读表前先记住）
 
-> 下面三条「局部更新」是 2026-10-16 那一轮按旧快照（206 ✅）逐族累加的历史记录，其增量**已经并进上表的模块行**，不要在此基础上再加一遍。
+1. **看不见"封装存在但没人点"**：判定只看代码里有没有这条 URL 字面量，不看这个封装有没有 UI 消费点。实例：`comment_reactions` 三条口与 `useFavorites` 删除前的 `getFavorites`（导出一个未定义的名字）都曾被计成 ✅，而界面上从未发过这些请求。已确认并落地的例子见下面 `comment_reactions` 一节（2026-10-16 真正接进 `CommentItem.vue`）。
+2. **看不见变量拼出来的 URL**：字面量必须以 `/` 开头才算路径，所以 `` `${apiBase}/media/avatar?src=…` `` 这类拼接形态会落进 ❌（`avatar_proxy` 即是，真实消费点在 `composables/useResolvedAvatar.ts`）。宁少计不多计——把没有请求点的端点算成已覆盖，比留一条假缺口危害大得多。
 
-> **两条求和不是一条线（2026-10-28 核对）**：上表的「合计」行沿用的是最近一次全量扫描的分母并按各轮接线增量累加 ✅/❌，而 45 条模块行的字面求和是 **348 / ✅257 / 🟡8 / ❌83**——两者从 2026-09-26 起就没对齐过（模块行里 `messages` 仍写 0 ✅，而下面明细写的是「已接入 5 条」）。所以**汇总数只作量级参考**，判断某一条端点有没有真实调用方，以下面「分模块明细」与接线契约测试（`tests/unit/*Wired.spec.ts`、`tests/test_*_frontend_contract.py`）为准；下一次全量刷新时以扫描器重算并消掉这个差。
+因此**某一条端点到底有没有真实调用方，以下面「分模块明细」与接线契约测试（`tests/unit/*Wired.spec.ts`、`tests/test_*_frontend_contract.py`）为准**；汇总表用于排优先级，不用于下结论。反过来，明细小节标题里手写的 `— N/M 覆盖` 是写就当时的快照，**计数以汇总表为准**（历史上门口数字漂移过：`messages` 行写 0 ✅，明细写「已接入 5 条」）。
 
-> **2026-10-16 局部更新（favorite 一族，+10 条已覆盖）**：本行以上的汇总仍是 2026-09-26 全量扫描的快照，未按本轮手改（末行「勿手改数字」的口径）；按 favorite 的增量，等价数字为 ✅ 216 + 🟡 8 = 224 / 351 ≈ 63.8%。同日另跑了一次独立扫描（读生成后的 `app.openapi()["paths"]`，357 个 operation，前端字面量按 `${x}` 通配匹配并排除 `.output*` 构建产物与 Nitro 代理中间件的 `/api` catch-all）：**已覆盖 295 / 357 ≈ 82.6%**。两个口径差在分母与"仅 URL 拼接/仅 Nitro 侧消费"的计入方式，不要混用；下一次全量刷新时以扫描器为准并回填本节。
+漂移由 `tests/test_api_coverage_scanner.py` 挡住：改了接口或接线却没跑 `--write`，汇总表与源码就不一致，CI 直接红。
 
-> **2026-10-16 局部更新（messages 一族，+5 条已覆盖）**：同上口径手记一条增量——私信 6 条已接 5 条进 `/account/messages`（余 1 条 `PUT /api/messages/{message_id}/read` 属「刻意不消费」，理由见下表 messages 行）。按 favorite + messages 两轮增量合并的等价数字：✅ 221 + 🟡 8 = 229 / 351 ≈ 65.2%。
+> 历史口径备忘：2026-09-26 那一版是手工快照，之后 2026-10-16 又按 favorite / messages / activity 三轮增量手累过 ✅（各自记了一个"等价数字"），模块行与合计行从此长期对不上（模块行里 `messages` 仍写 0 ✅，而明细写的是「已接入 5 条」）。这些增量**已被本轮扫描器重算取代**，不要再在任何手工数字上加一遍。同期另有一次独立扫描得 295/357 ≈ 82.6%，与 214/352 的差在分母与"仅 URL 拼接消费"的计入方式，同样作废。
 
-> **2026-10-16 局部更新（activity 一族，+2 条已覆盖）**：`POST /activities/{id}/like` 与 `POST /activities`（登录用户发布说说）接进 `pages/activity.vue`，同族 8 条只剩 `…/toggle` 一条刻意不消费。等价数字：✅ 223 + 🟡 8 = 231 / 351 ≈ 65.8%。
-
-> **扫描器看不见的一类假阳性（2026-10-16 记录）**：本表的 ✅ 判定只看"代码里有没有这条 URL 字面量"，看不见**这个封装有没有 UI 消费点**。实例：`comment_reactions` 三条口与 `useFavorites` 删除前的 `getFavorites`（导出一个未定义的名字）都曾被计成 ✅，而界面上从未发过这些请求。同族里"封装存在但没人点"的条目在下一次全量扫描时应单列一档；已确认并落地的例子见下面 `comment_reactions` 一节（2026-10-16 真正接进 `CommentItem.vue`）。
-
-> 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点，见下文的「扫描手法」）；这正是不要手改本表的原因——下一次扫描会重算。
+> 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点）；这正是不要手改本表的原因——下一次扫描会重算。
 
 ## 全模块汇总表
+<!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 352 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-| 模块（backend/api） | 完整路径前缀 | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
-|---|---|---:|---:|---:|---:|---:|
-| blog | `/api/blog` | 41 | 35 | 5 | 1 | 98% |
-| users | `/api/users` | 22 | 7 | 0 | 15 | 32% |
-| core | `/api` | 19 | 16 | 0 | 3 | 84% |
-| admin | `/api/admin` | 15 | 15 | 0 | 0 | 100% |
-| oobe | `/api/oobe` | 16 | 8 | 0 | 8 | 50% |
-| media | `/api/media` | 15 | 11 | 1 | 3 | 80% |
-| favorite | `/api/favorites` | 12 | 11 | 0 | 1 | 92% |
-| plugins | `/api/admin/plugins` | 16 | 11 | 0 | 5 | 69% |
-| advanced | `/api/admin` | 11 | 11 | 0 | 0 | 100% |
-| themes_ext | `/api/admin/themes` | 12 | 6 | 0 | 6 | 50% |
-| guestbook | `/api` | 11 | 11 | 0 | 0 | 100% |
-| gallery | `/api/gallery` · `/api/admin/gallery` | 10 | 10 | 0 | 0 | 100% |
-| activity | `/api` | 8 | 7 | 0 | 1 | 88% |
-| comments | `/api` | 8 | 6 | 0 | 2 | 75% |
-| monitoring | `/api/monitoring` | 8 | 8 | 0 | 0 | 100% |
-| post_series | `/api` | 8 | 6 | 0 | 2 | 75% |
-| webhook | `/api/webhooks` | 9 | 9 | 0 | 0 | 100% |
-| title | `/api/admin`（titles） | 9 | 6 | 0 | 3 | 67% |
-| seo | `/api/seo` | 9 | 5 | 2 | 2 | 78% |
-| notification | `/api/notifications` | 6 | 6 | 0 | 0 | 100% |
-| import_export | `/api/admin` | 7 | 4 | 0 | 3 | 57% |
-| announcement | `/api` | 6 | 5 | 0 | 1 | 83% |
-| messages | `/api/messages` | 6 | 0 | 0 | 6 | 0% |
-| voting | `/api/voting` | 5 | 2 | 0 | 3 | 40% |
-| shortcodes | `/api` | 5 | 4 | 0 | 1 | 80% |
-| hero | `/api` | 6 | 6 | 0 | 0 | 100% |
-| admin_tools | `/api/admin`（alembic/cache） | 4 | 4 | 0 | 0 | 100% |
-| migration | `/api/admin/migration` | 4 | 4 | 0 | 0 | 100% |
-| performance | `/api/admin` | 4 | 4 | 0 | 0 | 100% |
-| post_encryption | `/api` | 4 | 0 | 0 | 4 | 0% |
-| settings_groups | `/api/settings` | 4 | 3 | 0 | 1 | 75% |
-| themes | `/api` | 1 | 1 | 0 | 0 | 100% |
-| bing_image | `/api/bing/image` | 3 | 1 | 0 | 2 | 33% |
-| captcha | `/api/captcha` | 2 | 1 | 0 | 1 | 50% |
-| post_crypto | `/api/post_crypto` | 3 | 0 | 0 | 3 | 0% |
-| scheduled_posts | `/api` | 3 | 3 | 0 | 0 | 100% |
-| comment_reactions | `/api` | 3 | 3 | 0 | 0 | 100% |
-| toc | `/api/toc` | 3 | 0 | 0 | 3 | 0% |
-| bing | `/api/bing` | 2 | 1 | 0 | 1 | 50% |
-| blog.py 外零散：avatar_proxy | `/api/media/avatar` | 1 | 1 | 0 | 0 | 100% |
-| admin_logs | `/api/admin/logs/retention` | 1 | 0 | 0 | 1 | 0% |
-| ranking | `/api/ranking/posts` | 1 | 0 | 0 | 1 | 0% |
-| stats | `/api/admin/stats` | 1 | 1 | 0 | 0 | 100% |
-| translate | `/api/translate` | 1 | 1 | 0 | 0 | 100% |
-| docs | `/api/docs` | 2 | 2 | 0 | 0 | 100% |
-| **合计** | — | **352** | **214** | **8** | **130** | **63.1%** |
+**总计：352 个端点操作；✅ 269 + 🟡 4 = 已消费 273 个，未消费 79 个，覆盖率 77.6%。**
 
-***
+> 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
+
+| 模块（backend/api） | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
+|---|---:|---:|---:|---:|---:|
+| blog | 40 | 31 | 3 | 6 | 85% |
+| users | 22 | 17 | 0 | 5 | 77% |
+| core | 19 | 16 | 0 | 3 | 84% |
+| oobe | 18 | 8 | 0 | 10 | 44% |
+| plugins | 16 | 8 | 0 | 8 | 50% |
+| admin | 15 | 15 | 0 | 0 | 100% |
+| media | 15 | 12 | 0 | 3 | 80% |
+| favorite | 12 | 10 | 0 | 2 | 83% |
+| themes_ext | 12 | 7 | 0 | 5 | 58% |
+| advanced | 11 | 11 | 0 | 0 | 100% |
+| gallery | 11 | 11 | 0 | 0 | 100% |
+| guestbook | 11 | 11 | 0 | 0 | 100% |
+| seo | 9 | 5 | 1 | 3 | 67% |
+| title | 9 | 6 | 0 | 3 | 67% |
+| webhook | 9 | 9 | 0 | 0 | 100% |
+| activity | 8 | 7 | 0 | 1 | 88% |
+| comments | 8 | 7 | 0 | 1 | 88% |
+| monitoring | 8 | 8 | 0 | 0 | 100% |
+| post_series | 8 | 6 | 0 | 2 | 75% |
+| import_export | 7 | 3 | 0 | 4 | 43% |
+| announcement | 6 | 5 | 0 | 1 | 83% |
+| hero | 6 | 6 | 0 | 0 | 100% |
+| messages | 6 | 6 | 0 | 0 | 100% |
+| notification | 6 | 6 | 0 | 0 | 100% |
+| shortcodes | 5 | 3 | 0 | 2 | 60% |
+| voting | 5 | 4 | 0 | 1 | 80% |
+| admin_tools | 4 | 4 | 0 | 0 | 100% |
+| migration | 4 | 4 | 0 | 0 | 100% |
+| performance | 4 | 4 | 0 | 0 | 100% |
+| post_encryption | 4 | 0 | 0 | 4 | 0% |
+| settings_groups | 4 | 4 | 0 | 0 | 100% |
+| app | 3 | 1 | 0 | 2 | 33% |
+| bing_image | 3 | 0 | 0 | 3 | 0% |
+| comment_reactions | 3 | 3 | 0 | 0 | 100% |
+| post_crypto | 3 | 0 | 0 | 3 | 0% |
+| scheduled_posts | 3 | 3 | 0 | 0 | 100% |
+| toc | 3 | 0 | 0 | 3 | 0% |
+| bing | 2 | 1 | 0 | 1 | 50% |
+| captcha | 2 | 1 | 0 | 1 | 50% |
+| docs | 2 | 2 | 0 | 0 | 100% |
+| admin_logs | 1 | 1 | 0 | 0 | 100% |
+| avatar_proxy | 1 | 0 | 0 | 1 | 0% |
+| ranking | 1 | 0 | 0 | 1 | 0% |
+| stats | 1 | 1 | 0 | 0 | 100% |
+| themes | 1 | 1 | 0 | 0 | 100% |
+| translate | 1 | 1 | 0 | 0 | 100% |
+
+## 未消费清单（自动生成，共 79 条）
+
+> 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
+> 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
+- **activity**（1）：`PUT /api/admin/activities/{activity_id}/toggle`
+- **announcement**（1）：`PUT /api/admin/announcements/{announcement_id}/toggle`
+- **app**（2）：`GET /`、`GET /health`
+- **avatar_proxy**（1）：`GET /api/media/avatar`
+- **bing**（1）：`GET /api/bing/wallpaper`
+- **bing_image**（3）：`GET /api/bing/image`、`GET /api/bing/image/archive`、`GET /api/bing/image/today`
+- **blog**（6）：`GET /api/blog/rss`、`GET /api/blog/sitemap-posts.xml`、`GET /api/blog/users/me/comments`、`GET /api/blog/users/me/history`、`GET /api/blog/users/me/likes`、`GET /api/blog/users/me/posts`
+- **captcha**（1）：`POST /api/captcha/verify`
+- **comments**（1）：`GET /api/posts/{post_id_or_slug}/comments`
+- **core**（3）：`POST /api/admin/settings`、`GET /api/config/full`、`GET /api/sponsors`
+- **favorite**（2）：`GET /api/favorites`、`PUT /api/favorites/{favorite_id}`
+- **import_export**（4）：`GET /api/admin/export/markdown`、`GET /api/admin/export/posts`、`POST /api/admin/import/markdown`、`POST /api/admin/import/posts`
+- **media**（3）：`GET /api/media/bing-wallpaper`、`POST /api/media/library/upload`、`POST /api/media/upload/stream`
+- **oobe**（10）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/preflight`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
+- **plugins**（8）：`POST /api/admin/plugins/bulk`、`POST /api/admin/plugins/scan`、`DELETE /api/admin/plugins/{slug}`、`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`、`PATCH /api/admin/plugins/{slug}/settings`、`PATCH /api/admin/plugins/{slug}/status`、`POST /api/admin/plugins/{slug}/upgrade`
+- **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
+- **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`
+- **post_series**（2）：`PUT /api/admin/series/{series_id}/toggle`、`POST /api/post_series/complete`
+- **ranking**（1）：`GET /api/ranking/posts`
+- **seo**（3）：`GET /api/seo/config`、`PUT /api/seo/config`、`GET /api/seo/sitemap.xml`
+- **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
+- **themes_ext**（5）：`POST /api/admin/themes/scan`、`DELETE /api/admin/themes/{slug}`、`PATCH /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`、`POST /api/admin/themes/{slug}/upgrade`
+- **title**（3）：`GET /api/admin/titles/{title_id}`、`PATCH /api/admin/titles/{title_id}`、`GET /api/admin/users/{user_id}/title`
+- **toc**（3）：`POST /api/toc/add-ids`、`POST /api/toc/extract`、`POST /api/toc/generate`
+- **users**（5）：`DELETE /api/users/me`、`PUT /api/users/me/avatar`、`POST /api/users/me/change-password`、`PUT /api/users/me/cover`、`GET /api/users/username/{username}/preferences`
+- **voting**（1）：`GET /api/voting/polls/{poll_id}`
+<!-- COVERAGE-AUTO:END -->
 
 ## 分模块明细
 
