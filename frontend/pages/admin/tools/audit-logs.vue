@@ -1,12 +1,15 @@
 <!--
-  操作审计日志页：按操作类型/用户 ID/IP 关键词/资源类型/日期范围做服务端筛选 + 分页列表 + 行展开 details JSON。
+  操作审计日志页：按操作类型/结果状态/用户 ID/IP 关键词/资源类型/日期范围做服务端筛选 + 分页列表 + 行展开 details JSON。
   契约：筛选条件须点「应用筛选」才生效且必须把页码重置回 1（否则停留越界空页）；结果缩小时钳制回最后一页并只重试一次防循环；
   日期区间保证"结束不早于开始"，自动弹出结束选择器需等 DOM 同步（nextTick + showPicker）。
-  导出（CSV/JSON）复用「类型/用户/日期」三项筛选打 /admin/logs/export（包装层只转发这四个条件，
-  IP 关键词与资源类型不参与导出，触发时提示语必须如实说明），后端上限 1000 条。
+  导出（CSV/JSON）把页面上的**全部**筛选原样转发给 /admin/logs/export：后端列表口与导出口共用同一套
+  过滤条件（advanced.py::_log_filters），所以"筛完再导出"必须同源，触发时也不得再写"某条件不参与导出"；
+  后端上限 1000 条。
   列表接口（advanced.py::list_operation_logs）另支持 resource_type 与 q（匹配 detail/error_code/ip），
   页内已接线为「IP/关键词」与「资源类型」两个输入；action 是自由字符串、后端无 distinct 枚举口，
   下拉只是常用值快捷方式——不在名单里的动作按原值渲染（actionLabel 回退原始 label、actionClass 回退中性灰）。
+  status/error_code/request_method/request_path 是失败操作面的四列：登录失败与账号锁定只在 error_code
+  里区分，行上给失败徽标、展开区给请求方法+路径，缺这四列时"筛失败"根本没有可读结果（写口有、读口无＝死字段）。
   清理旧日志走 DELETE /admin/logs/retention?days=N（days 限 1-3650）：它只删操作留痕，访问日志/性能指标由服务端
   LOG_RETENTION_DAYS 保留循环处理，文案不得写成"清理全部日志"；清理后必须重读列表，否则界面仍显示已删的行。
 -->
@@ -90,6 +93,32 @@
               <SelectContent>
                 <SelectItem
                   v-for="o in actionOptions"
+                  :key="o.value"
+                  :value="o.value"
+                >
+                  {{ o.label }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label
+              for="audit-status-select"
+              class="text-sm font-medium"
+            >结果状态</Label>
+            <Select
+              v-model="filters.status"
+              class="rounded-xl"
+            >
+              <SelectTrigger
+                id="audit-status-select"
+                class="rounded-xl"
+              >
+                <SelectValue placeholder="全部状态" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem
+                  v-for="o in statusOptions"
                   :key="o.value"
                   :value="o.value"
                 >
@@ -320,6 +349,17 @@
                   >
                     {{ actionLabel(log.action) }}
                   </Badge>
+                  <Badge
+                    v-if="log.status === 'failed'"
+                    class="rounded-full text-[11px] border-transparent bg-error-muted text-error-muted-foreground"
+                  >
+                    失败
+                  </Badge>
+                  <span
+                    v-if="log.error_code"
+                    class="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground"
+                    :title="log.status === 'failed' ? '本次操作失败的错误码' : '该操作登记的错误码'"
+                  >{{ log.error_code }}</span>
                   <span class="text-xs text-muted-foreground tabular-nums">
                     ·
                     <span v-if="log.target_type">{{ log.target_type }}</span>
@@ -370,6 +410,21 @@
               v-if="expandedId === log.id"
               class="mt-4 rounded-xl border border-border bg-muted/30 p-4 overflow-x-auto"
             >
+              <div
+                v-if="log.request_method || log.request_path"
+                class="mb-3 flex flex-wrap items-center gap-2 text-xs"
+              >
+                <span class="font-semibold text-muted-foreground uppercase tracking-wide">请求</span>
+                <span class="rounded-md bg-muted px-1.5 py-0.5 font-mono">{{ log.request_method ?? '-' }}</span>
+                <span
+                  class="font-mono break-all"
+                  :title="log.request_path ?? ''"
+                >{{ log.request_path ?? '-' }}</span>
+                <span
+                  class="ml-auto rounded-md px-1.5 py-0.5 font-mono"
+                  :class="log.status === 'failed' ? 'bg-error-muted text-error-muted-foreground' : 'bg-success-muted text-success-muted-foreground'"
+                >{{ log.status === 'failed' ? 'failed' : (log.status ?? 'unknown') }}</span>
+              </div>
               <div class="flex items-center justify-between mb-2">
                 <span class="text-xs font-semibold text-muted-foreground uppercase tracking-wide">详细详情 details（JSON）</span>
               </div>
@@ -479,6 +534,15 @@ const actionOptions = [
   { label: '触发 trigger', value: 'trigger' }
 ]
 
+/**
+ * 结果状态下拉的候选与后端 `LOG_STATUSES` 一一对应（advanced.py 用同一组值做 pattern 校验，
+ * 传别的值直接 422）。留空 = 不加该条件，走「重置」清空。
+ */
+const statusOptions = [
+  { label: '成功 success', value: 'success' },
+  { label: '失败 failed', value: 'failed' }
+]
+
 function actionLabel(a: string): string {
   const find = actionOptions.find(o => o.value === a)
   if (find) return find.label.split(' ')[0] ?? a
@@ -526,6 +590,7 @@ const toDateInputRef = ref<HTMLInputElement | null>(null)
 
 const filters = reactive({
   action: '',
+  status: '',
   userId: undefined as number | undefined,
   keyword: '',
   resourceType: '',
@@ -550,6 +615,10 @@ const appliedSummary = computed(() => {
   if (filters.action) {
     const o = actionOptions.find(x => x.value === filters.action)
     parts.push(`类型：${o?.label ?? filters.action}`)
+  }
+  if (filters.status) {
+    const o = statusOptions.find(x => x.value === filters.status)
+    parts.push(`状态：${o?.label ?? filters.status}`)
   }
   if (filters.userId) parts.push(`用户 ID：${filters.userId}`)
   if (filters.keyword.trim()) parts.push(`IP/关键词：${filters.keyword.trim()}`)
@@ -592,25 +661,24 @@ function toggleExpand(id: number) {
 }
 
 /**
- * 导出走 /admin/logs/export：把包装层支持的筛选（类型/用户/日期）原样带上（后端上限 1000 条）。
- * exportAdminAuditLogs 的 filters 形参不收录 q / resource_type（包装层不在本次改动范围，
- * 且它在内部逐键拼 query，页侧传了也到不了请求），因此这两个条件生效时提示语必须如实声明
- * "导出不含该条件"，否则用户会拿到一份与屏幕不一致的文件还以为同源。
+ * 导出走 /admin/logs/export：把页面上的每一个筛选都转发过去（后端上限 1000 条）。
+ * 后端列表口与导出口共用 _log_filters，所以这里漏传任何一个条件，文件就会比屏幕上的结果宽——
+ * 提示语也不得再声明"某条件不参与导出"，那句已经不成立。
  */
 async function handleExport(format: 'csv' | 'json') {
   exporting.value = format
   try {
     const blob = await exportAdminAuditLogs(format, {
       action: filters.action,
+      status: filters.status,
       userId: filters.userId,
+      resourceType: filters.resourceType.trim(),
+      q: filters.keyword.trim(),
       fromDate: filters.fromDate,
       toDate: filters.toDate
     })
     downloadBlob(blob, `operation-logs-${todayStr.value}.${format}`)
-    const narrow = filters.keyword.trim() || filters.resourceType.trim()
-      ? '（注意：IP/关键词与资源类型条件不参与导出）'
-      : ''
-    toast.success(`已导出 ${format.toUpperCase()}（按当前可导出筛选，最多 1000 条）${narrow}`)
+    toast.success(`已导出 ${format.toUpperCase()}（与当前筛选同源，最多 1000 条）`)
   } catch {
     // apiFetch 已把失败原因 toast 出来，这里只需解除按钮禁用
   } finally {
@@ -637,6 +705,7 @@ async function runCleanup() {
 
 function resetFilters() {
   filters.action = ''
+  filters.status = ''
   filters.userId = undefined
   filters.keyword = ''
   filters.resourceType = ''
@@ -656,14 +725,14 @@ async function loadLogs(retryOnClamp = true) {
   loading.value = true
   loadError.value = ''
   try {
-    // q / resource_type 是后端 list_operation_logs 已支持的查询参数；
-    // fetchAdminAuditLogs 会把 params 原样 spread 进 query，但包装层签名尚未收录这两个键
-    // （useAdminManage 不在本次改动范围），这里用交集类型在页侧补齐，运行期即按后端口径转发。
-    const params: Parameters<typeof fetchAdminAuditLogs>[0] & { q?: string, resource_type?: string } = {
+    // 包装层已收录后端 list_operation_logs 的全部查询参数（status / q / resource_type），
+    // 页侧不再需要交集类型补齐——漏传任何一个都等于"屏幕上筛过了、请求里没筛"。
+    const params: Parameters<typeof fetchAdminAuditLogs>[0] = {
       page: page.value,
       page_size: pageSize.value
     }
     if (filters.action) params.action = filters.action
+    if (filters.status) params.status = filters.status
     if (filters.userId) params.user_id = filters.userId
     if (filters.keyword.trim()) params.q = filters.keyword.trim()
     if (filters.resourceType.trim()) params.resource_type = filters.resourceType.trim()

@@ -9879,7 +9879,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：操作日志列表
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需 CurrentStaff。分页读取操作日志，支持按用户、动作、资源类型、时间区间（from/to，仅给日期时 to 扩展到当天末尾）与关键词（匹配 detail / error_code / ip）过滤。只读、幂等。
+需 CurrentStaff。分页读取操作日志，支持按用户、动作、资源类型、结果状态（success/failed）、时间区间（from/to，仅给日期时 to 扩展到当天末尾）与关键词（匹配 detail / error_code / ip）过滤。失败与账号锁定只有 status/error_code 两列能区分，所以这两列既作过滤条件、也在响应体里回吐。只读、幂等。
 
 **入参**
 
@@ -9906,8 +9906,11 @@ _无路径 / query 参数_
       "action": "string",
       "created_at": "string",
       "detail": "string",
+      "error_code": "string",
       "id": 0,
       "ip_address": "string",
+      "request_method": "string",
+      "request_path": "string",
       "resource_id": "string",
       "resource_type": "string",
       "status": "string",
@@ -9933,7 +9936,7 @@ _无路径 / query 参数_
 - **摘要**：导出操作日志
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需 CurrentStaff。按与列表接口相同的过滤条件导出**最多 1000 条**日志为文件下载（带 Content-Disposition: attachment）：``format=csv`` 回 text/csv（单元格已做公式注入防护），``format=json``（默认）回 application/json 数组。只读、无副作用。
+需 CurrentStaff。按与列表接口**同一套**过滤条件（user_id/action/resource_type/status/q/from/to，两条口共用同一个 _log_filters）导出**最多 1000 条**日志为文件下载（带 Content-Disposition: attachment）：``format=csv`` 回 text/csv（单元格已做公式注入防护），``format=json``（默认）回 application/json 数组（每行与列表口的 _log_row 完全同构）。只读、无副作用。
 
 **入参**
 
@@ -9955,8 +9958,11 @@ _无路径 / query 参数_
     "action": "string",
     "created_at": "string",
     "detail": "string",
+    "error_code": "string",
     "id": 0,
     "ip_address": "string",
+    "request_method": "string",
+    "request_path": "string",
     "resource_id": "string",
     "resource_type": "string",
     "status": "string",

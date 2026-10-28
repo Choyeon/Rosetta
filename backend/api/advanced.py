@@ -13,7 +13,8 @@ from typing import Any
 from fastapi import APIRouter, Body, HTTPException, Query, Request, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import String as SAString
+from sqlalchemy import cast, func, or_, select
 from sqlalchemy.orm import selectinload
 
 from backend.core.auth import DB, CurrentStaff
@@ -1003,6 +1004,20 @@ class OperationLogEntryOut(BaseModel):
         description="操作者浏览器 UA（OperationLog.user_agent 原值）；老数据或取不到时为 null",
     )
     status: str | None = Field(default=None, description="操作结果状态（成功/失败标记）")
+    error_code: str | None = Field(
+        default=None,
+        description=(
+            "失败原因码（登录失败=AUTH_INVALID_CREDENTIALS、账号锁定=ACCOUNT_LOCKED 等）；"
+            "成功操作为 null。log_operation 一直在写这一列，此前只当 q 的搜索谓词、从不回吐"
+        ),
+    )
+    request_path: str | None = Field(
+        default=None,
+        description="触发该操作的请求路径（中间件写入）；不经中间件的写入点或历史数据为 null",
+    )
+    request_method: str | None = Field(
+        default=None, description="触发该操作的 HTTP 方法（POST/PUT/DELETE…）；历史数据为 null"
+    )
     created_at: str | None = Field(
         default=None, description="日志时间（ISO 8601）；异常数据下可能为 null"
     )
@@ -1020,41 +1035,34 @@ class OperationLogListResponse(BaseModel):
     total_pages: int = Field(..., description="总页数；total 为 0 时是 0")
 
 
-@router.get(
-    "/logs",
-    summary="操作日志列表",
-    description=(
-        "需 CurrentStaff。分页读取操作日志，支持按用户、动作、资源类型、时间区间"
-        "（from/to，仅给日期时 to 扩展到当天末尾）与关键词（匹配 detail / error_code / ip）过滤。"
-        "只读、幂等。"
-    ),
-    operation_id="list_advanced_operation_logs",
-    responses={200: {"model": OperationLogListResponse, "description": "分页日志列表"}},
-)
-async def list_operation_logs(
-    db: DB,
-    current_user: CurrentStaff,
-    page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(50, ge=1, le=200, description="每页数量"),
-    user_id: int | None = Query(None, description="用户 ID"),
-    action: str | None = Query(None, description="操作类型"),
-    resource_type: str | None = Query(None, description="资源类型"),
-    from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
-    to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
-    q: str | None = Query(None, description="关键词搜索(details/error_code/ip)"),
+LOG_STATUSES = ("success", "failed")
+
+
+def _log_filters(
+    query,
+    *,
+    user_id: int | None = None,
+    action: str | None = None,
+    resource_type: str | None = None,
+    status_filter: str | None = None,
+    q: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
 ):
-    """获取操作日志列表"""
-    from sqlalchemy import String as SAString
-    from sqlalchemy import cast, or_
+    """列表口与导出口共用的一套过滤条件。
 
-    query = select(OperationLog).options(selectinload(OperationLog.user))
-
+    两条口此前各写一遍，导出口少了 ``q``——而它自己的 docstring 写着"按与列表接口相同的
+    过滤条件导出"，于是"页面筛了关键词再导出"拿到的是没筛过的 1000 条。同理，``status``
+    只在加完这一层之后才可能两边同时生效。
+    """
     if user_id:
         query = query.where(OperationLog.user_id == user_id)
     if action:
         query = query.where(OperationLog.action == action)
     if resource_type:
         query = query.where(OperationLog.resource_type == resource_type)
+    if status_filter:
+        query = query.where(OperationLog.status == status_filter)
 
     from_dt = parse_utc_date(from_date)
     to_dt = parse_utc_date(to_date)
@@ -1071,12 +1079,83 @@ async def list_operation_logs(
         query = query.where(
             or_(
                 cast(OperationLog.detail, SAString).ilike(like),
-                OperationLog.error_code.ilike(like)
-                if hasattr(OperationLog, "error_code")
-                else False,
+                OperationLog.error_code.ilike(like),
                 OperationLog.ip_address.ilike(like),
             )
         )
+    return query
+
+
+def _log_row(log: OperationLog) -> dict[str, Any]:
+    """列表口与导出 JSON 共用的一行形态：两处不得各写一套字段。"""
+    return {
+        "id": log.id,
+        "user": {
+            "id": log.user.id,
+            "username": log.user.username,
+            "nickname": log.user.nickname,
+            "avatar": log.user.avatar,
+            "resolved_avatar_url": resolved_for_user(log.user),
+        }
+        if log.user
+        else None,
+        "action": log.action,
+        "resource_type": log.resource_type,
+        "resource_id": log.resource_id,
+        "detail": json.loads(log.detail)
+        if log.detail and isinstance(log.detail, str)
+        else log.detail,
+        "ip_address": log.ip_address,
+        "user_agent": log.user_agent,
+        "request_path": log.request_path,
+        "request_method": log.request_method,
+        "status": log.status,
+        "error_code": log.error_code,
+        "created_at": log.created_at.isoformat() if log.created_at else None,
+    }
+
+
+@router.get(
+    "/logs",
+    summary="操作日志列表",
+    description=(
+        "需 CurrentStaff。分页读取操作日志，支持按用户、动作、资源类型、结果状态"
+        "（success/failed）、时间区间（from/to，仅给日期时 to 扩展到当天末尾）"
+        "与关键词（匹配 detail / error_code / ip）过滤。失败与账号锁定只有 status/error_code "
+        "两列能区分，所以这两列既作过滤条件、也在响应体里回吐。只读、幂等。"
+    ),
+    operation_id="list_advanced_operation_logs",
+    responses={200: {"model": OperationLogListResponse, "description": "分页日志列表"}},
+)
+async def list_operation_logs(
+    db: DB,
+    current_user: CurrentStaff,
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(50, ge=1, le=200, description="每页数量"),
+    user_id: int | None = Query(None, description="用户 ID"),
+    action: str | None = Query(None, description="操作类型"),
+    resource_type: str | None = Query(None, description="资源类型"),
+    status_filter: str | None = Query(
+        None,
+        alias="status",
+        pattern=f"^({'|'.join(LOG_STATUSES)})$",
+        description="结果状态：success 或 failed；登录失败与账号锁定只有这一列能区分",
+    ),
+    from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
+    to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
+    q: str | None = Query(None, description="关键词搜索(detail/error_code/ip)"),
+):
+    """获取操作日志列表"""
+    query = _log_filters(
+        select(OperationLog).options(selectinload(OperationLog.user)),
+        user_id=user_id,
+        action=action,
+        resource_type=resource_type,
+        status_filter=status_filter,
+        q=q,
+        from_date=from_date,
+        to_date=to_date,
+    )
 
     query = query.order_by(OperationLog.created_at.desc())
 
@@ -1091,35 +1170,8 @@ async def list_operation_logs(
     logs = result.scalars().all()
     total = total or 0
 
-    items = []
-    for log in logs:
-        items.append(
-            {
-                "id": log.id,
-                "user": {
-                    "id": log.user.id,
-                    "username": log.user.username,
-                    "nickname": log.user.nickname,
-                    "avatar": log.user.avatar,
-                    "resolved_avatar_url": resolved_for_user(log.user),
-                }
-                if log.user
-                else None,
-                "action": log.action,
-                "resource_type": log.resource_type,
-                "resource_id": log.resource_id,
-                "detail": json.loads(log.detail)
-                if log.detail and isinstance(log.detail, str)
-                else log.detail,
-                "ip_address": log.ip_address,
-                "user_agent": log.user_agent,
-                "status": log.status,
-                "created_at": log.created_at.isoformat() if log.created_at else None,
-            }
-        )
-
     return {
-        "items": items,
+        "items": [_log_row(log) for log in logs],
         "total": total,
         "page": page,
         "page_size": page_size,
@@ -1131,10 +1183,11 @@ async def list_operation_logs(
     "/logs/export",
     summary="导出操作日志",
     description=(
-        "需 CurrentStaff。按与列表接口相同的过滤条件导出**最多 1000 条**日志为文件下载"
+        "需 CurrentStaff。按与列表接口**同一套**过滤条件（user_id/action/resource_type/"
+        "status/q/from/to，两条口共用同一个 _log_filters）导出**最多 1000 条**日志为文件下载"
         "（带 Content-Disposition: attachment）：``format=csv`` 回 text/csv"
-        "（单元格已做公式注入防护），``format=json``（默认）回 application/json 数组。"
-        "只读、无副作用。"
+        "（单元格已做公式注入防护），``format=json``（默认）回 application/json 数组"
+        "（每行与列表口的 _log_row 完全同构）。只读、无副作用。"
     ),
     responses={
         200: {
@@ -1158,27 +1211,27 @@ async def export_operation_logs(
     user_id: int | None = Query(None, description="用户 ID"),
     action: str | None = Query(None, description="操作类型"),
     resource_type: str | None = Query(None, description="资源类型"),
+    status_filter: str | None = Query(
+        None,
+        alias="status",
+        pattern=f"^({'|'.join(LOG_STATUSES)})$",
+        description="结果状态：success 或 failed（与列表口同口径，导出「当前筛选」才成立）",
+    ),
+    q: str | None = Query(None, description="关键词搜索(detail/error_code/ip)，与列表口同一套谓词"),
     from_date: str | None = Query(None, alias="from", description="开始日期 ISO（含边界）"),
     to_date: str | None = Query(None, alias="to", description="结束日期 ISO（含边界）"),
 ) -> Response:
     """导出操作日志"""
-    query = select(OperationLog).options(selectinload(OperationLog.user))
-
-    if user_id:
-        query = query.where(OperationLog.user_id == user_id)
-    if action:
-        query = query.where(OperationLog.action == action)
-    if resource_type:
-        query = query.where(OperationLog.resource_type == resource_type)
-
-    from_dt = parse_utc_date(from_date)
-    to_dt = parse_utc_date(to_date)
-    if from_dt:
-        query = query.where(OperationLog.created_at >= from_dt)
-    if to_dt:
-        if to_dt.hour == 0 and to_dt.minute == 0 and to_dt.second == 0:
-            to_dt = to_dt + timedelta(days=1) - timedelta(microseconds=1)
-        query = query.where(OperationLog.created_at <= to_dt)
+    query = _log_filters(
+        select(OperationLog).options(selectinload(OperationLog.user)),
+        user_id=user_id,
+        action=action,
+        resource_type=resource_type,
+        status_filter=status_filter,
+        q=q,
+        from_date=from_date,
+        to_date=to_date,
+    )
 
     query = query.order_by(OperationLog.created_at.desc()).limit(1000)
 
@@ -1200,7 +1253,19 @@ async def export_operation_logs(
         output = io.StringIO()
         writer = csv.writer(output)
         writer.writerow(
-            ["ID", "用户", "操作", "资源类型", "资源ID", "详情", "IP地址", "状态", "创建时间"]
+            [
+                "ID",
+                "用户",
+                "操作",
+                "资源类型",
+                "资源ID",
+                "详情",
+                "IP地址",
+                "状态",
+                "错误码",
+                "请求",
+                "创建时间",
+            ]
         )
 
         for log in logs:
@@ -1214,6 +1279,8 @@ async def export_operation_logs(
                     _csv_safe(log.detail or ""),
                     _csv_safe(log.ip_address or ""),
                     _csv_safe(log.status or ""),
+                    _csv_safe(log.error_code or ""),
+                    _csv_safe(f"{log.request_method or ''} {log.request_path or ''}".strip()),
                     _csv_safe(log.created_at.isoformat() if log.created_at else ""),
                 ]
             )
@@ -1225,29 +1292,9 @@ async def export_operation_logs(
         )
 
     else:
-        items = []
-        for log in logs:
-            items.append(
-                {
-                    "id": log.id,
-                    "user": {
-                        "id": log.user.id,
-                        "username": log.user.username,
-                        "nickname": log.user.nickname,
-                    }
-                    if log.user
-                    else None,
-                    "action": log.action,
-                    "resource_type": log.resource_type,
-                    "resource_id": log.resource_id,
-                    "detail": json.loads(log.detail)
-                    if log.detail and isinstance(log.detail, str)
-                    else log.detail,
-                    "ip_address": log.ip_address,
-                    "status": log.status,
-                    "created_at": log.created_at.isoformat() if log.created_at else None,
-                }
-            )
+        # 与列表口共用 _log_row：两条口此前各写一套，导出口连 user_agent 都没带，
+        # 而它自己的 docstring 承诺的是"与列表接口相同"。
+        items = [_log_row(log) for log in logs]
 
         return Response(
             content=json.dumps(items, ensure_ascii=False, indent=2),

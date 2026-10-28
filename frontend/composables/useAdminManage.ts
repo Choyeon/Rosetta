@@ -1880,6 +1880,13 @@ export interface AdminAuditLog {
   ip?: string | null
   user_agent?: string | null
   details?: Record<string, unknown> | null
+  /** success / failed：登录失败、账号锁定与"接口 200 但库里没改"这类事故只有这一列能区分 */
+  status?: string | null
+  /** 失败原因码（INVALID_CREDENTIALS / ACCOUNT_LOCKED …），成功记录为 null */
+  error_code?: string | null
+  /** 触发这条留痕的请求方法与路径 */
+  request_method?: string | null
+  request_path?: string | null
   created_at: string | null
 }
 
@@ -1888,8 +1895,22 @@ export interface AdminAuditLog {
  * 注意：后端 advanced.py（prefix=/admin）与 admin_logs.py 都挂载了同名端点，实际命中 advanced.py，
  * 其返回结构是嵌套 user: {id, username, nickname}，并使用 resource_type / resource_id / ip_address / detail。
  * 这里做一次"字段归一化"，把两种可能的结构统一映射成 AdminAuditLog 的扁平字段，防止前端取值错位。
+ * status / error_code / request_* 必须原样保留：登录失败与账号锁定只在这几列里能区分，
+ * 归一化时丢掉它们等于把后端新加的失败操作面又变回"存了不读"。
  */
-export function fetchAdminAuditLogs(params: { page?: number, page_size?: number, action?: string, user_id?: number, from?: string, to?: string } = {}): Promise<AdminPaged<AdminAuditLog>> {
+export function fetchAdminAuditLogs(
+  params: {
+    page?: number
+    page_size?: number
+    action?: string
+    user_id?: number
+    resource_type?: string
+    status?: string
+    q?: string
+    from?: string
+    to?: string
+  } = {}
+): Promise<AdminPaged<AdminAuditLog>> {
   return apiFetch<AdminPaged<Record<string, unknown>>>('/admin/logs', { query: { page: 1, page_size: 20, ...params } })
     .then((resp) => {
       const normalized = (resp?.items ?? []).map((raw: Record<string, unknown>) => {
@@ -1911,6 +1932,10 @@ export function fetchAdminAuditLogs(params: { page?: number, page_size?: number,
           ip: (raw.ip ?? raw.ip_address ?? null) as string | null,
           user_agent: (raw.user_agent ?? null) as string | null,
           details: (raw.details ?? raw.detail ?? null) as Record<string, unknown> | null,
+          status: (raw.status ?? null) as string | null,
+          error_code: (raw.error_code ?? null) as string | null,
+          request_method: (raw.request_method ?? null) as string | null,
+          request_path: (raw.request_path ?? null) as string | null,
           created_at: (raw.created_at ?? null) as string | null
         } satisfies AdminAuditLog
       })
@@ -1958,21 +1983,32 @@ export function emptyAdminTrash(options: { silentToast?: boolean } = {}) {
 }
 
 /**
- * 导出操作日志（GET /admin/logs/export）。后端按与列表接口相同的过滤条件出文件
- * （上限 1000 条，CSV 单元格已做公式注入防护），所以调用时必须把页面当前筛选一并带上，
- * 否则「筛完再导出」会得到与屏幕上不一致的全量文件。
+ * 导出操作日志（GET /admin/logs/export）。后端按与列表接口**同一套**过滤条件出文件
+ * （两条口共用 advanced.py::_log_filters，上限 1000 条，CSV 单元格已做公式注入防护），
+ * 所以调用时必须把页面当前筛选**全部**带上——漏一个条件就会得到一份与屏幕不一致的文件。
  * responseType: 'blob' 经 ApiFetchOptions 的索引签名透传给 $fetch，
  * 从而复用同一套 Authorization / 401 刷新 / 错误 toast 链路，页面里不裸写 fetch。
  */
 export function exportAdminAuditLogs(
   format: 'csv' | 'json',
-  filters: { action?: string, userId?: number, fromDate?: string, toDate?: string } = {}
+  filters: {
+    action?: string
+    userId?: number
+    resourceType?: string
+    status?: string
+    q?: string
+    fromDate?: string
+    toDate?: string
+  } = {}
 ) {
   return apiFetch<Blob>('/admin/logs/export', {
     query: {
       format,
       ...(filters.action ? { action: filters.action } : {}),
       ...(filters.userId ? { user_id: filters.userId } : {}),
+      ...(filters.resourceType ? { resource_type: filters.resourceType } : {}),
+      ...(filters.status ? { status: filters.status } : {}),
+      ...(filters.q ? { q: filters.q } : {}),
       ...(filters.fromDate ? { from: filters.fromDate } : {}),
       ...(filters.toDate ? { to: filters.toDate } : {})
     },
