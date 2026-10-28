@@ -4,13 +4,14 @@
   所以"删光这里的行"不等于首页空白，而是回到热榜自动填充。
   硬契约：后端 HeroSlide* 为 extra=forbid 且 title/subtitle/cta_text 声明成 str，
   多语言字典必须 JSON.stringify 后提交（回显时解析），漏一步即 422。
-  media_type 固定 image：首页只有背景图层，选 video/youtube 会存得进去却永远不渲染（静默失效）。
+  media_type 固定 image：首页只有背景图层，非 image 的行会被首页的读取过滤跳过（见 pages/index.vue 的 heroSlides）。
   主次两个按钮都是"幻灯片自带优先、缺省回落到站点设置/查看全部"，所以两张框都留空也顶不掉现有观感。
-  start_time/end_time 不开放：生效时间窗由后端过滤，界面暂不排期，缺省 null＝长期生效。
+  start_time/end_time 是生效时间窗：公开口 GET /hero/slides 按 `start <= now <= end` 过滤，
+  两端留空＝长期生效；窗口倒挂（结束不晚于开始）由后端 422 拦住，因为那种行存得下去却永远不下发。
 -->
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue'
-import { MonitorPlay, Plus, Pencil, Trash2 } from '@lucide/vue'
+import { MonitorPlay, Plus, Pencil, Trash2, X } from '@lucide/vue'
 import {
   fetchAdminHeroSlides,
   createAdminHeroSlide,
@@ -29,6 +30,16 @@ import { Badge } from '~~/components/ui/badge'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, type I18nDict } from '~~/composables/useAdminI18n'
+// 排期换算与"这条现在处于哪个阶段"的判据是跨域口径（公告、文章定时、这里的轮播同形），
+// 实现在 lib/announcement + lib/datetime：后端两侧的过滤条件都是 `start <= now <= end`，
+// 再抄一遍边界判断等于给自己制造"后台显示生效中、前台却不出现"的漂移空间。
+import {
+  announcementScheduleError,
+  announcementStatus,
+  fromDateTimeLocal,
+  toDateTimeLocal,
+  type AnnouncementStatus
+} from '~~/lib/announcement'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -72,6 +83,8 @@ const form = reactive<{
   text_align: 'left' | 'center' | 'right'
   text_color: 'light' | 'dark'
   sort_order: number
+  start_time: string
+  end_time: string
   is_active: boolean
 }>({
   title: { ...EMPTY_I18N_DICT },
@@ -86,8 +99,19 @@ const form = reactive<{
   text_align: 'left',
   text_color: 'light',
   sort_order: 0,
+  start_time: '',
+  end_time: '',
   is_active: true
 })
+
+// 后台列表的"为什么这条没在首页出现"：判据与公开口的过滤同形（见顶部注释）。
+// 只服务于这一列的说明文字，前台显不显示由后端决定，前端不得拿它去过滤。
+const SCHEDULE_LABEL: Record<AnnouncementStatus, string> = {
+  active: '生效中',
+  scheduled: '未到点',
+  expired: '已结束',
+  disabled: '已停用'
+}
 
 /** 后端存的是 JSON 字符串；非 JSON（历史脏数据/手填纯文本）原样当作当前语言文本回显 */
 function toDict(raw: string | null): I18nDict {
@@ -111,6 +135,7 @@ const columns: Column[] = [
   { key: 'title', title: '标题' },
   { key: 'cta_url', title: '链接', class: 'max-w-[220px] text-muted-foreground' },
   { key: 'sort_order', title: '排序', align: 'center', class: 'w-20' },
+  { key: 'schedule', title: '生效窗口', align: 'center', class: 'w-24' },
   { key: 'is_active', title: '状态', align: 'center', class: 'w-24' }
 ]
 
@@ -140,6 +165,8 @@ function resetForm() {
   form.text_align = 'left'
   form.text_color = 'light'
   form.sort_order = slides.value.length
+  form.start_time = ''
+  form.end_time = ''
   form.is_active = true
   editingId.value = null
 }
@@ -166,6 +193,9 @@ function openEdit(slide: AdminHeroSlide) {
   // 而首页今天的观感就是白字——判成别的值等于替所有既有幻灯片换一次皮肤。
   form.text_color = slide.text_color ?? 'light'
   form.sort_order = slide.sort_order ?? 0
+  // 后端给的是带偏移的 ISO，datetime-local 输入框要本地墙钟字符串
+  form.start_time = toDateTimeLocal(slide.start_time)
+  form.end_time = toDateTimeLocal(slide.end_time)
   form.is_active = slide.is_active
   editingId.value = slide.id
   dialogOpen.value = true
@@ -208,6 +238,12 @@ async function save() {
     toast.error('遮罩透明度需在 0–100 之间')
     return
   }
+  // 倒挂窗口存得进库、公开口却永远不下发（后端同判据再拦一次，这里是让原因在提交前就看见）。
+  const scheduleError = announcementScheduleError(form.start_time, form.end_time)
+  if (scheduleError) {
+    toast.error(scheduleError)
+    return
+  }
   const payload: AdminHeroSlidePayload = {
     title: fromDict(form.title),
     subtitle: fromDict(form.subtitle),
@@ -222,6 +258,10 @@ async function save() {
     text_align: form.text_align,
     text_color: form.text_color,
     sort_order: Number(form.sort_order) || 0,
+    // 空串必须转成 null：后端只接受 datetime 或 null，传 '' 会被 Pydantic 判成非法 datetime 撞 422；
+    // 而显式 null 在 exclude_unset 下会保留，正好表达"清除排期＝长期生效"。
+    start_time: fromDateTimeLocal(form.start_time),
+    end_time: fromDateTimeLocal(form.end_time),
     is_active: form.is_active
   }
   saving.value = true
@@ -329,6 +369,11 @@ onMounted(loadData)
       <template #cell-sort_order="{ row }">
         <Badge variant="secondary">
           {{ (row as AdminHeroSlide).sort_order }}
+        </Badge>
+      </template>
+      <template #cell-schedule="{ row }">
+        <Badge :variant="announcementStatus(row as AdminHeroSlide) === 'active' ? 'secondary' : 'outline'">
+          {{ SCHEDULE_LABEL[announcementStatus(row as AdminHeroSlide)] }}
         </Badge>
       </template>
       <template #cell-is_active="{ row }">
@@ -450,6 +495,59 @@ onMounted(loadData)
             placeholder="/series/your-series"
             class="h-9 rounded-[10px]"
           />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div class="flex flex-col gap-2">
+            <Label
+              for="hero-form-start"
+              class="text-xs text-muted-foreground"
+            >
+              生效开始（留空＝立即）
+            </Label>
+            <div class="flex gap-1">
+              <Input
+                id="hero-form-start"
+                v-model="form.start_time"
+                type="datetime-local"
+              />
+              <Button
+                v-if="form.start_time"
+                variant="ghost"
+                size="icon-sm"
+                title="清除开始时间"
+                aria-label="清除开始时间"
+                @click="form.start_time = ''"
+              >
+                <X data-icon="inline-start" />
+              </Button>
+            </div>
+          </div>
+          <div class="flex flex-col gap-2">
+            <Label
+              for="hero-form-end"
+              class="text-xs text-muted-foreground"
+            >
+              生效结束（留空＝长期）
+            </Label>
+            <div class="flex gap-1">
+              <Input
+                id="hero-form-end"
+                v-model="form.end_time"
+                type="datetime-local"
+              />
+              <Button
+                v-if="form.end_time"
+                variant="ghost"
+                size="icon-sm"
+                title="清除结束时间"
+                aria-label="清除结束时间"
+                @click="form.end_time = ''"
+              >
+                <X data-icon="inline-start" />
+              </Button>
+            </div>
+          </div>
         </div>
 
         <div class="grid grid-cols-2 gap-3">

@@ -947,7 +947,7 @@ interface HeroSlideApi {
   id: number
   title: string | Record<string, string> | null
   subtitle: string | Record<string, string> | null
-  media_type: 'image' | 'video' | 'youtube'
+  media_type?: 'image' | 'video' | 'youtube'
   media_url: string
   overlay_opacity: number
   overlay_color: string
@@ -1219,7 +1219,10 @@ const pickSlideText = (raw: HeroSlideApi['title'] | undefined): string => {
   return site.pickI18n(raw)
 }
 
-const heroSlides = computed(() => (heroSlidesData.value ?? []).filter(s => s.media_url))
+// 首页横幅只有一层背景图：media_type 非 image 的行（直连 API 或插件写进来的 video/youtube）
+// 拿 media_url 当图片地址会渲染成碎图，缩略图和主背景两处一起碎。
+// 缺省按 image 处理：字段缺失时整条轮播都不显示等于把首页首屏交出去赌一个字段。
+const heroSlides = computed(() => (heroSlidesData.value ?? []).filter(s => s.media_url && (s.media_type ?? 'image') === 'image'))
 const heroCount = computed(() => heroSlides.value.length)
 // 首帧两端都必须是 0：autoplay 只在客户端 onMounted 之后推进，SSR 与 hydration 才字节一致。
 const heroIdx = ref(0)

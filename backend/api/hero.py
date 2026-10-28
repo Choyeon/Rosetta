@@ -24,6 +24,7 @@ from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import select
 
 from backend.core.auth import DB, CurrentStaff
+from backend.core.exceptions import ValidationException
 from backend.core.i18n import get_i18n_value, get_language_from_request
 from backend.core.partial_update import apply_partial_update
 from backend.models.hero import HeroSlide
@@ -36,7 +37,7 @@ from backend.schemas.hero import (
 from backend.services.content_renderer import render_title
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.recommendation import RecommendationService
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, ensure_aware
 
 logger = logging.getLogger("rosetta.api.hero")
 
@@ -134,6 +135,29 @@ async def list_active_hero_slides(
 # ==================== 管理接口 ====================
 
 
+def _validate_window(start_time: datetime | None, end_time: datetime | None) -> None:
+    """生效时间窗倒挂必须在写入前挡住。
+
+    公开口 `GET /hero/slides` 按 `start_time <= now AND end_time >= now` 过滤，
+    `end <= start` 的行因此**永远不下发**——接口回 201/200、后台列表看着像"已启用"，
+    首页却一条都不出现（静默失效）。判据与公告侧同形（`api/announcement.py::_validate_window`），
+    边界也一样：端点值本身属于生效中。
+
+    PUT 走的是 `exclude_unset` 的部分更新：只提交 `end_time` 时 schema 看不到库里的
+    `start_time`，所以必须**合并现值再判**，否则"改一个字段就把整条幻灯片改成永不自见"。
+
+    两端先过 `ensure_aware`：`DateTime(timezone=True)` 在 SQLite 下回读是 naive、在 PG 下是
+    aware，而入参已被 schema 补成 aware——直接比会抛 `TypeError` → 500。
+    """
+    start = ensure_aware(start_time)
+    end = ensure_aware(end_time)
+    if start and end and end <= start:
+        raise ValidationException(
+            message="结束时间必须晚于开始时间",
+            details={"fields": ["start_time", "end_time"]},
+        )
+
+
 @router.get(
     "/admin/hero/slides",
     response_model=list[HeroSlideResponse],
@@ -168,6 +192,7 @@ async def create_hero_slide(
     current_user: CurrentStaff,
 ):
     """创建 Hero 幻灯片"""
+    _validate_window(data.start_time, data.end_time)
     slide = HeroSlide(
         title=data.title,
         subtitle=data.subtitle,
@@ -218,6 +243,11 @@ async def update_hero_slide(
         )
 
     update_data = data.model_dump(exclude_unset=True)
+    # 只传一侧时另一侧取库里的现值：不合并就等于把倒挂窗口放行落库。
+    _validate_window(
+        update_data.get("start_time", slide.start_time),
+        update_data.get("end_time", slide.end_time),
+    )
     apply_partial_update(slide, update_data)
 
     await db.flush()
