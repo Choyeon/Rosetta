@@ -23,7 +23,10 @@ from backend.models.blog import Post
 from backend.models.user import User
 
 # 用测试独有的年份/语言组合，避开与其它归档测试的缓存键相互污染。
-TEST_YEAR = 2031
+# 年份必须是**过去**的：归档口现在走 publicly_listable_posts()，里面带「定时未到」判据
+# （status=published 但 published_at 在未来 = 定时稿的落库写法），所以未来的年/月组合
+# 在匿名视角会被合法过滤掉——它不再是可用的隔离手段，只会让本文件的断言拿到空列表。
+TEST_YEAR = 2017
 TEST_MONTH = 5
 TEST_LANG = "ja"
 MARK = "<<T>>"

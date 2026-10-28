@@ -41,8 +41,6 @@ from backend.models.post_series import PostSeries
 from backend.models.user import User
 from backend.utils.compat import UTC
 
-pytestmark = pytest.mark.asyncio
-
 BACKEND_DIR = Path(__file__).resolve().parent.parent / "backend"
 
 # 允许继续手写这一对的地方（唯一清单）：
@@ -183,7 +181,9 @@ class TestCollectionSurfaces:
         surfaces = {
             "post-list": "/api/blog/posts?page=1&page_size=200&lang=zh",
             "ranking": "/api/ranking/posts?period=all&limit=50",
-            "author-archive": f"/api/users/{test_user.id}/posts?page=1&page_size=100",
+            # /api/users/{id}/posts 的 page_size 上限是 le=50，写 100 会先撞上 422
+            # 而不是断言——那条断言就永远轮不到执行。取上限也是为了让 due 落在窗口内。
+            "author-archive": f"/api/users/{test_user.id}/posts?page=1&page_size=50",
             "series-chapters": f"/api/series/{series.slug}",
             "archive": "/api/blog/archive?lang=zh",
             "archive-year": f"/api/blog/archive/{year}?lang=zh",
