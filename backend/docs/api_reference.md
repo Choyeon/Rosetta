@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **352 个操作 / 281 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **353 个操作 / 281 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1799,13 +1799,14 @@ API 实现了请求限流保护：
 | `POST` | `/api/guestbook` | 发表留言（游客或登录用户均可） |
 | `POST` | `/api/guestbook/{entry_id}/like` | 给留言点赞（简单计数，允许匿名） |
 
-### 投票（5）
+### 投票（6）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
 | `GET` | `/api/voting/polls` | 投票列表 |
 | `POST` | `/api/voting/polls` | 创建投票 |
 | `GET` | `/api/voting/polls/{poll_id}` | 投票详情 |
+| `PUT` | `/api/voting/polls/{poll_id}` | 更新投票 |
 | `DELETE` | `/api/voting/polls/{poll_id}` | 删除投票 |
 | `POST` | `/api/voting/polls/{poll_id}/vote` | 参与投票 |
 
