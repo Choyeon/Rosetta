@@ -5,6 +5,11 @@
   只能带 name/slug/description/cover_image/sort_order，i18n dict 要先经 toI18nPayload 滤掉空语言。
   is_active 是公开列表 GET /series、系列详情（停用即 404）与 sitemap 投递面的真实强制点，
   卡片底部的状态徽标直接打 PUT /admin/series/{id}/toggle（后端翻值并清前台页面缓存）。
+  展开卡片读到的是 GET /api/series/{slug} —— 前台系列详情页的同一个口，所以章节顺序
+  就是读者看到的顺序（后端 ORDER BY series_order ASC, published_at DESC，前端不得再排）。
+  卡片的 posts_count 来自 GET /admin/series，它数的是**全部**文章（含草稿、定时未到、私密），
+  而章节口只回匿名可读的那些，两个数可以不相等 —— 面板必须把这个差值说清楚，
+  否则"系列里明明有 5 篇，前台只有 3 篇"在后台看起来像 bug。
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
@@ -14,7 +19,9 @@ import {
   updateAdminSeries,
   deleteAdminSeries,
   toggleAdminSeries,
-  type AdminSeries
+  fetchSeriesChapters,
+  type AdminSeries,
+  type SeriesChapterRow
 } from '~~/composables/useAdminManage'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
@@ -161,6 +168,7 @@ const save = async () => {
     }
     dialogOpen.value = false
     await loadData()
+    await reloadExpandedChapters()
   } catch (e) {
     // 失败提示由 apiFetch 统一 toast，此处不重复弹错
     console.error('[series] save failed:', e)
@@ -169,8 +177,53 @@ const save = async () => {
   }
 }
 
-const toggleExpand = (id: number) => {
-  expandedId.value = expandedId.value === id ? null : id
+const chapters = ref<SeriesChapterRow[]>([])
+const chaptersState = ref<'idle' | 'loading' | 'error' | 'ready' | 'inactive'>('idle')
+// 连点两张卡片时先发的请求会后回；用序号丢弃过期响应，否则过期那一篇会盖住当前展开的列表。
+let chaptersSeq = 0
+
+/**
+ * 读前台系列详情口（GET /api/series/{slug}）——运营在这儿看到的顺序就是读者看到的顺序，
+ * 由后端 ORDER BY series_order ASC, published_at DESC 决定，前端不排也不"修正"。
+ * 停用/不存在的系列这个口回 404，所以 !is_active 时根本不请求，直接说明前台不展示。
+ */
+async function loadChapters(s: AdminSeries) {
+  const seq = ++chaptersSeq
+  chapters.value = []
+  if (!s.is_active || !s.slug) {
+    chaptersState.value = 'inactive'
+    return
+  }
+  chaptersState.value = 'loading'
+  const rows = await fetchSeriesChapters(s.slug)
+  if (seq !== chaptersSeq) return
+  if (rows === null) {
+    chaptersState.value = 'error'
+    return
+  }
+  chapters.value = rows
+  chaptersState.value = 'ready'
+}
+
+async function toggleExpand(s: AdminSeries) {
+  if (expandedId.value === s.id) {
+    chaptersSeq++
+    expandedId.value = null
+    chapters.value = []
+    chaptersState.value = 'idle'
+    return
+  }
+  expandedId.value = s.id
+  await loadChapters(s)
+}
+
+/**
+ * 列表回读后重取展开中的章节：slug 可能刚被改掉，is_active 可能刚被翻，
+ * 两种情况下旧的那一份读数都属于另一个系列，继续显示等于骗人。
+ */
+async function reloadExpandedChapters() {
+  const cur = seriesList.value.find(x => x.id === expandedId.value)
+  if (cur) await loadChapters(cur)
 }
 
 const togglingId = ref<number | null>(null)
@@ -187,6 +240,7 @@ async function toggleActive(s: AdminSeries) {
     await toggleAdminSeries(s.id)
     toast.success(s.is_active ? '已停用，前台系列页与列表不再展示' : '已启用')
     await loadData()
+    await reloadExpandedChapters()
   } catch (e) {
     // 失败提示由 apiFetch 统一 toast，此处不重复弹错
     console.error('[series] toggleActive failed:', e)
@@ -206,7 +260,12 @@ async function doDelete() {
   await deleteAdminSeries(id)
   toast.success('删除成功')
   pendingDeleteId.value = null
-  if (expandedId.value === id) expandedId.value = null
+  if (expandedId.value === id) {
+    chaptersSeq++
+    expandedId.value = null
+    chapters.value = []
+    chaptersState.value = 'idle'
+  }
   await loadData()
 }
 
@@ -335,15 +394,81 @@ onMounted(() => {
               v-if="expandedId === s.id"
               class="border-t border-border bg-muted/40 p-4"
             >
-              <div class="flex items-center justify-between mb-3">
+              <div class="mb-3 flex items-center justify-between gap-2">
                 <h4 class="text-sm font-medium">
                   系列内文章排序
                 </h4>
-                <span class="text-xs text-muted-foreground">（待后端 /series/{id}/posts 接口上线后启用）</span>
+                <span class="text-xs text-muted-foreground">前台系列页同一份读数</span>
               </div>
-              <div class="py-8 text-center text-xs text-muted-foreground">
-                {{ s.posts_count > 0 ? `该系列共 ${s.posts_count} 篇文章，排序接口待提供` : '暂无关联文章' }}
+
+              <div
+                v-if="chaptersState === 'inactive'"
+                class="py-6 text-center text-xs text-muted-foreground"
+              >
+                系列已停用（或 slug 缺失）：前台列表不展示它，详情页返回 404，所以没有读者可见的章节顺序
               </div>
+              <div
+                v-else-if="chaptersState === 'loading'"
+                class="py-6 text-center text-xs text-muted-foreground"
+              >
+                正在读取前台章节顺序…
+              </div>
+              <div
+                v-else-if="chaptersState === 'error'"
+                class="py-6 text-center text-xs text-muted-foreground"
+              >
+                章节读取失败，请重新展开该卡片
+              </div>
+              <div
+                v-else-if="chapters.length === 0"
+                class="py-6 text-center text-xs text-muted-foreground"
+              >
+                {{ s.posts_count > 0
+                  ? `后台挂了 ${s.posts_count} 篇文章，但没有一篇能对读者展示（草稿 / 定时未到 / 已设为私密）`
+                  : '该系列还没有文章' }}
+              </div>
+              <template v-else>
+                <p class="mb-2 text-xs text-muted-foreground">
+                  读者看到的共 {{ chapters.length }} 篇<template v-if="s.posts_count > chapters.length">
+                    ，另有 {{ s.posts_count - chapters.length }} 篇未对外展示
+                  </template>
+                  ；按序号升序，序号相同的按发布时间从新到旧
+                </p>
+                <ol class="grid gap-1.5">
+                  <li
+                    v-for="(c, idx) in chapters"
+                    :key="c.id"
+                    class="flex items-center gap-2 rounded-md border border-border bg-background px-2.5 py-2"
+                  >
+                    <span class="w-6 shrink-0 text-xs font-semibold text-muted-foreground tabular-nums">
+                      {{ idx + 1 }}
+                    </span>
+                    <span class="shrink-0 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground tabular-nums">
+                      序号 {{ c.series_order ?? 0 }}
+                    </span>
+                    <span
+                      class="min-w-0 flex-1 truncate text-sm"
+                      :title="getLocalizedStr(c.title)"
+                    >
+                      {{ getLocalizedStr(c.title) || c.slug }}
+                    </span>
+                    <NuxtLink
+                      :to="`/posts/${c.slug}`"
+                      target="_blank"
+                      rel="noopener"
+                      class="shrink-0 text-xs text-primary hover:underline"
+                    >
+                      前台查看
+                    </NuxtLink>
+                    <NuxtLink
+                      :to="`/admin/content/posts/${c.id}/edit`"
+                      class="shrink-0 text-xs text-muted-foreground hover:text-foreground hover:underline"
+                    >
+                      改序号
+                    </NuxtLink>
+                  </li>
+                </ol>
+              </template>
             </div>
           </div>
         </div>

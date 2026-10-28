@@ -8,7 +8,8 @@
  * - 前端 apiFetch 的相对路径（不带 /api 前缀）将自动拼接 useRuntimeConfig().public.apiBase
  */
 import {
-  apiFetch
+  apiFetch,
+  silentApiFetch
 } from '~~/composables/useApi'
 import { toHM, toYMD } from '~~/lib/datetime'
 
@@ -842,6 +843,34 @@ export async function toggleAdminSeries(id: number): Promise<AdminSeries> {
     method: 'PUT'
   })
   return _toAdminSeries(raw)
+}
+
+/** 系列详情页的一行章节（后端只投影这些列，正文/摘要不在其中）。 */
+export interface SeriesChapterRow {
+  id: number
+  title: string | Record<string, string>
+  slug: string
+  series_order: number
+  cover_image?: string | null
+  views?: number
+  published_at?: string | null
+}
+
+/**
+ * GET /api/series/{slug} —— 前台系列详情页的数据源，也是后台唯一能读到"真实章节顺序"的口。
+ *
+ * 两点形状约束都不是巧合：
+ * - 裸 dict、无 ``{success, data}`` 信封，章节在 ``posts`` 里，``post_count`` 恒等于其长度；
+ * - 顺序由后端 ``ORDER BY series_order ASC, published_at DESC`` 决定，**前端不得再排**
+ *   （再排一次就等于两处口径，改一处即分叉）。
+ *
+ * 用 silent 版而不是 apiFetch：停用/不存在的系列这个口回 404，
+ * 而"这一条没在前台展示"不是错误，不该给运营弹一条红色 toast。
+ */
+export async function fetchSeriesChapters(slug: string): Promise<SeriesChapterRow[] | null> {
+  const raw = await silentApiFetch<{ posts?: SeriesChapterRow[] }>(`/series/${encodeURIComponent(slug)}`)
+  if (!raw) return null
+  return Array.isArray(raw.posts) ? raw.posts : []
 }
 
 // ==================== 独立页面 Page 管理 ====================
