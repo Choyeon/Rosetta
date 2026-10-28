@@ -118,6 +118,8 @@ _URL_COMPUTED_DECL_RE = re.compile(
     r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*(?:URL|Url|ENDPOINT|Endpoint)|url|apiUrl|apiPath|endpoint)"
     r"\s*=\s*computed(\s*<[^<>]*>)?\s*\("
 )
+# 任意名字的常量声明（配合"用法判据"用，见 `_declared_request_const`）
+_CONST_DECL_RE = re.compile(r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=")
 
 _NITRO_PREFIX = "server/"
 
@@ -256,7 +258,9 @@ def _context_of(text: str, start: int) -> tuple[str, str | None, str | None]:
     判"发请求"用**它是某个调用的参数**，而不是"附近 140 字符里有 apiFetch"：
     后者两头都错——`request('/oobe/status')`（OOBE 自己的封装）漏判成未消费，
     而 AppHeader 里导航用的 `'/guestbook'` 会因为上文有 apiFetch 被误判成已消费。
-    参数位 = 引号前（跳过 `<泛型>`）是 `(` 或 `, `；调用名在拉黑名单里的（跳转/路由类）不算。
+    参数位 = 引号前（跳过 `<泛型>`）是 `(`、`,`、`:` 或 `?`；调用名在拉黑名单里的（跳转/路由类）不算。
+    字面量不在实参位时，还有三条"隔了一层"的写法：URL 命名的直接赋值、URL 命名的
+    `computed(() => …)`，以及任意名但**确曾被请求封装当实参用过**的常量（`_declared_request_const`）。
     """
     prefix = text[max(0, start - 40) : start]
     if _URL_ATTR_NEAR_RE.search(prefix):
@@ -275,7 +279,62 @@ def _context_of(text: str, start: int) -> tuple[str, str | None, str | None]:
     declared = _computed_url_const(text, start)
     if declared is not None:
         return "fetch", declared, None
+    by_use = _declared_request_const(text, start)
+    if by_use is not None:
+        return "fetch", by_use, None
     return "none", None, None
+
+
+def _declared_request_const(text: str, start: int) -> str | None:
+    """字面量躺在 `const path = isMd ? '/admin/export/markdown' : '/admin/export/posts'` 里。
+
+    这类"先声明、再把变量交给请求封装"的写法不看名字（`path` 这种通用名恰恰最常用），
+    而是看**这个变量后来有没有真的被请求封装当实参用**：名字判据会漏，用法判据不会。
+    声明与字面量之间不得跨过语句边界（`;` 或空行），否则认到的是上一条语句的变量。
+    """
+    if not text[:start].rstrip().endswith(("?", ":")):
+        return None
+    window_start = max(0, start - 240)
+    for m in reversed(list(_CONST_DECL_RE.finditer(text[window_start:start]))):
+        # m 的偏移是相对窗口的，换算回全文再用
+        decl_end = window_start + m.end()
+        gap = text[decl_end:start]
+        if ";" in gap or "\n\n" in gap:
+            continue
+        if _uses_name_for_request(text, m.group(1), start):
+            return m.group(1)
+    return None
+
+
+def _uses_name_for_request(text: str, name: str, anchor: int) -> bool:
+    """声明之后 1500 字符内，这个名字是否出现在请求封装的实参位上。"""
+    for m in re.finditer(rf"\b{re.escape(name)}\b", text):
+        if m.start() <= anchor:
+            continue
+        if m.start() > anchor + 1500:
+            break
+        if _request_callee_before(text, m.start()) in _REQUEST_CALLEES:
+            return True
+    return False
+
+
+def _request_callee_before(text: str, pos: int) -> str | None:
+    """位置上的名字是谁的实参；两种真实形态都认。
+
+    ① 直接实参：`apiFetch<Blob>(path, { method: 'GET' })`；
+    ② 惰性 getter 实参：`useAPI<AccountList>(() => listUrl.value, { … })`——
+    箭头函数整体才是第一个实参，所以要先剥掉 `=>` 和它的参数表 `()` 才够到封装名。
+    """
+    before = text[:pos].rstrip()
+    callee = _callee_of(before)
+    if callee is not None:
+        return callee
+    if not before.endswith("=>"):
+        return None
+    arrow_at = _match_open_paren(before[:-2])
+    if arrow_at is None:
+        return None
+    return _callee_of(before[:arrow_at].rstrip())
 
 
 def _computed_url_const(text: str, start: int) -> str | None:

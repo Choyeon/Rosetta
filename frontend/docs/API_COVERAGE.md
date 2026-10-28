@@ -20,6 +20,7 @@
 
 1. **看不见"封装存在但没人点"**：判定只看代码里有没有这条 URL 字面量，不看这个封装有没有 UI 消费点。实例：`comment_reactions` 三条口与 `useFavorites` 删除前的 `getFavorites`（导出一个未定义的名字）都曾被计成 ✅，而界面上从未发过这些请求。已确认并落地的例子见下面 `comment_reactions` 一节（2026-10-16 真正接进 `CommentItem.vue`）。
 2. **看不见变量拼出来的 URL**：字面量必须以 `/` 开头才算路径，所以 `` `${apiBase}/media/avatar?src=…` `` 这类拼接形态会落进 ❌（`avatar_proxy` 即是，真实消费点在 `composables/useResolvedAvatar.ts`）。宁少计不多计——把没有请求点的端点算成已覆盖，比留一条假缺口危害大得多。
+   > 2026-10-28 补：「先赋给变量再传给封装」这一族已经认了——`const path = isMd ? '/admin/export/markdown' : …`、`const listUrl = computed(() => …)`、以及三元/对象属性位，前提是后文能找到这个名字确实出现在 `apiFetch/useAPI/…` 的实参位上（动词仍从使用点读回，所以 `PUT /api/favorites/{id}` 不会因为同文件有个 GET 收藏口就变绿）。纯字符串拼接仍然不算。
 
 因此**某一条端点到底有没有真实调用方，以下面「分模块明细」与接线契约测试（`tests/unit/*Wired.spec.ts`、`tests/test_*_frontend_contract.py`）为准**；汇总表用于排优先级，不用于下结论。反过来，明细小节标题里手写的 `— N/M 覆盖` 是写就当时的快照，**计数以汇总表为准**（历史上门口数字漂移过：`messages` 行写 0 ✅，明细写「已接入 5 条」）。
 
@@ -33,7 +34,7 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 352 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：352 个端点操作；✅ 285 + 🟡 5 = 已消费 290 个，未消费 62 个，覆盖率 82.4%。**
+**总计：352 个端点操作；✅ 287 + 🟡 5 = 已消费 292 个，未消费 60 个，覆盖率 83.0%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -58,7 +59,7 @@
 | comments | 8 | 7 | 0 | 1 | 88% |
 | monitoring | 8 | 8 | 0 | 0 | 100% |
 | post_series | 8 | 6 | 0 | 2 | 75% |
-| import_export | 7 | 5 | 0 | 2 | 71% |
+| import_export | 7 | 7 | 0 | 0 | 100% |
 | announcement | 6 | 5 | 0 | 1 | 83% |
 | hero | 6 | 6 | 0 | 0 | 100% |
 | messages | 6 | 6 | 0 | 0 | 100% |
@@ -86,7 +87,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 62 条）
+## 未消费清单（自动生成，共 60 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -101,7 +102,6 @@
 - **comments**（1）：`GET /api/posts/{post_id_or_slug}/comments`
 - **core**（3）：`POST /api/admin/settings`、`GET /api/config/full`、`GET /api/sponsors`
 - **favorite**（1）：`PUT /api/favorites/{favorite_id}`
-- **import_export**（2）：`GET /api/admin/export/markdown`、`GET /api/admin/export/posts`
 - **media**（3）：`GET /api/media/bing-wallpaper`、`POST /api/media/library/upload`、`POST /api/media/upload/stream`
 - **oobe**（10）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/preflight`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
 - **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
