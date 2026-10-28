@@ -52,6 +52,7 @@ from backend.schemas import (
     SiteSettingGroup,
     SiteSettingItem,
 )
+from backend.schemas._i18n_dict import as_i18n_dict
 from backend.services.content_renderer import render_content
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.trash import page_trash_payload, snapshot_to_trash
@@ -131,7 +132,9 @@ async def get_page(slug: str, db: DB, current_user: CurrentUserOptional = None):
     # 钩子的插件在独立页静默失效。刻意只渲染本详情端点：后台编辑器的原始文
     # 取自 list_pages（不渲染），保存路径回写的是用户原文，不会被二次渲染污染。
     response = PageResponse.model_validate(page)
-    raw_content = page.content or {}
+    # 单源归一：库里躺 `content="正文"` 时 `.items()` 会 AttributeError → 整口 500，
+    # 而这条是匿名可读的独立页口（前台 catchall 页直接打）。
+    raw_content = as_i18n_dict(page.content) or {}
     response.content = {
         lang: await render_content(text, post=page, language=lang)
         for lang, text in raw_content.items()

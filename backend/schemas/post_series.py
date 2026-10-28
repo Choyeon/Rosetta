@@ -6,14 +6,18 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
+from backend.schemas._i18n_dict import I18nDict
 from backend.schemas._slug import CONTENT_SLUG_PATTERN
 
 
 class PostSeriesBase(BaseModel):
     """文章系列基础模型"""
 
-    title: dict[str, str] = Field(..., description="多语言系列标题，如 {'zh': '...', 'en': '...'}")
-    description: dict[str, str] | None = Field(None, description="多语言系列描述")
+    # `PostSeriesResponse` 直接继承这两个字段，所以归一类型写在 Base 上：匿名列表口
+    # `GET /api/series` 用 `model_validate`/构造时，库里躺裸字符串的旧行会让整口 500。
+    # 副作用是创建口也接受裸串并折成 `{zh: 原文}` 落库——比 422 更不像 bug。
+    title: I18nDict = Field(..., description="多语言系列标题，如 {'zh': '...', 'en': '...'}")
+    description: I18nDict | None = Field(None, description="多语言系列描述")
     slug: str = Field(
         ...,
         min_length=1,

@@ -109,6 +109,10 @@ T = TypeVar("T")
 # 这里 re-export，URL 策略仍然只有一份清单。
 from backend.schemas._url_policy import reject_pseudo_url_scheme as _reject_pseudo_url_scheme
 
+# 同族叶子模块：i18n JSON 列的形态闸门。字段注解要在定义期拿到 `I18nDict`，
+# 所以它同样不能住在正在执行的包 __init__ 里（口径与禁令见 `_i18n_dict.py` 的模块文档）。
+from backend.schemas._i18n_dict import I18nDict
+
 
 def _normalize_optional_url(v: str | None) -> str | None:
     """缺 scheme 的 URL 补 https://；空值原样返回。"""
@@ -365,10 +369,10 @@ class UserTitleResponse(BaseModel):
     """
 
     id: int
-    name: dict[str, str]
+    name: I18nDict
     color: str
     icon: str | None = None
-    description: dict[str, str] | None = None
+    description: I18nDict | None = None
 
     model_config = {"from_attributes": True}
 
@@ -725,9 +729,9 @@ class CategoryResponse(BaseModel):
     """分类响应模型"""
 
     id: int
-    name: dict[str, str]
+    name: I18nDict
     slug: str
-    description: dict[str, str] | None = None
+    description: I18nDict | None = None
     icon: str | None = None
     color: str
     cover_image: str | None = None
@@ -806,7 +810,7 @@ class TagResponse(BaseModel):
     """标签响应模型"""
 
     id: int
-    name: dict[str, str]
+    name: I18nDict
     slug: str
     color: str | None = None
     icon: str | None = None
@@ -954,16 +958,16 @@ class PostResponse(BaseModel):
     """文章响应模型"""
 
     id: int
-    title: dict[str, str]
-    subtitle: dict[str, str] | None = None
+    title: I18nDict
+    subtitle: I18nDict | None = None
     slug: str
     source: str
     source_url: str | None = None
     audio: str | None = None
     video: str | None = None
     video_url: str | None = None
-    content: dict[str, str]
-    excerpt: dict[str, str] | None = None
+    content: I18nDict
+    excerpt: I18nDict | None = None
     cover_image: str | None = None
     author: PublicUserResponse
     category: CategoryResponse | None = None
@@ -975,9 +979,9 @@ class PostResponse(BaseModel):
     is_pinned: bool
     allow_comments: bool
     comments_count: int = 0
-    meta_title: dict[str, str] | None = None
-    meta_description: dict[str, str] | None = None
-    meta_keywords: dict[str, str] | None = None
+    meta_title: I18nDict | None = None
+    meta_description: I18nDict | None = None
+    meta_keywords: I18nDict | None = None
     created_at: datetime
     published_at: datetime | None = None
     updated_at: datetime
@@ -994,16 +998,16 @@ class PostEditResponse(BaseModel):
     """
 
     id: int
-    title: dict[str, str]
-    subtitle: dict[str, str] | None = None
+    title: I18nDict
+    subtitle: I18nDict | None = None
     slug: str
     source: str
     source_url: str | None = None
     audio: str | None = None
     video: str | None = None
     video_url: str | None = None
-    content: dict[str, str]
-    excerpt: dict[str, str] | None = None
+    content: I18nDict
+    excerpt: I18nDict | None = None
     cover_image: str | None = None
     status: str
     visibility: str
@@ -1020,9 +1024,9 @@ class PostEditResponse(BaseModel):
     series_order: int | None = None
     is_pinned: bool
     allow_comments: bool
-    meta_description: dict[str, str] | None = None
-    meta_title: dict[str, str] | None = None
-    meta_keywords: dict[str, str] | None = None
+    meta_description: I18nDict | None = None
+    meta_title: I18nDict | None = None
+    meta_keywords: I18nDict | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1390,9 +1394,9 @@ class PageResponse(BaseModel):
     """页面响应模型"""
 
     id: int
-    title: dict[str, str]
+    title: I18nDict
     slug: str
-    content: dict[str, str]
+    content: I18nDict
     status: str
     created_at: datetime
     updated_at: datetime
@@ -1464,7 +1468,7 @@ class NavigationResponse(BaseModel):
     """导航响应模型"""
 
     id: int
-    title: dict[str, str]
+    title: I18nDict
     url: str
     icon: str | None = None
     parent_id: int | None = None
@@ -1597,9 +1601,9 @@ class FriendLinkResponse(BaseModel):
     """友情链接响应模型"""
 
     id: int
-    name: dict[str, str]
+    name: I18nDict
     url: str
-    description: dict[str, str] | None = None
+    description: I18nDict | None = None
     logo: str | None = None
     order: int
     status: str

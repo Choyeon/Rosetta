@@ -9,6 +9,8 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from backend.schemas._i18n_dict import I18nDict
+
 if TYPE_CHECKING:
     from backend.schemas import PublicUserResponse
 
@@ -74,7 +76,7 @@ class ActivityResponse(BaseModel):
     """活动响应模型"""
 
     id: int
-    content: dict[str, str]
+    content: I18nDict
     type: ActivityType
     author: "PublicUserResponse"
     is_published: bool

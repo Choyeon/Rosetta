@@ -16,6 +16,7 @@ from sqlalchemy.orm import selectinload
 from backend.core.auth import DB, CurrentStaff, CurrentUser
 from backend.models.blog import Post
 from backend.models.user import User, UserTitle
+from backend.schemas._i18n_dict import I18nDict
 from backend.schemas.admin_reads import UserTitleBadgeDoc
 from backend.services.cache_service import CacheService
 from backend.services.post_cache import invalidate_post_caches_by_slugs
@@ -77,10 +78,10 @@ class UserTitleResponse(BaseModel):
     """用户称号响应模型"""
 
     id: int
-    name: dict[str, str]
+    name: I18nDict
     color: str
     icon: str | None = None
-    description: dict[str, str] | None = None
+    description: I18nDict | None = None
     created_at: datetime
     users_count: int = 0
 
