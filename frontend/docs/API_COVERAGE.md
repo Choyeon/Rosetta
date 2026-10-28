@@ -34,7 +34,7 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 353 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：353 个端点操作；✅ 289 + 🟡 6 = 已消费 295 个，未消费 58 个，覆盖率 83.6%。**
+**总计：353 个端点操作；✅ 290 + 🟡 6 = 已消费 296 个，未消费 57 个，覆盖率 83.9%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -58,7 +58,7 @@
 | activity | 8 | 7 | 0 | 1 | 88% |
 | comments | 8 | 7 | 0 | 1 | 88% |
 | monitoring | 8 | 8 | 0 | 0 | 100% |
-| post_series | 8 | 6 | 0 | 2 | 75% |
+| post_series | 8 | 7 | 0 | 1 | 88% |
 | import_export | 7 | 7 | 0 | 0 | 100% |
 | announcement | 6 | 5 | 0 | 1 | 83% |
 | hero | 6 | 6 | 0 | 0 | 100% |
@@ -87,7 +87,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 58 条）
+## 未消费清单（自动生成，共 57 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -106,7 +106,7 @@
 - **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
 - **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
 - **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`
-- **post_series**（2）：`PUT /api/admin/series/{series_id}/toggle`、`POST /api/post_series/complete`
+- **post_series**（1）：`POST /api/post_series/complete`
 - **ranking**（1）：`GET /api/ranking/posts`
 - **seo**（3）：`GET /api/seo/config`、`PUT /api/seo/config`、`GET /api/seo/sitemap.xml`
 - **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
