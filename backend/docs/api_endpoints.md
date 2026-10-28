@@ -719,7 +719,7 @@ _无路径 / query 参数_
 - **摘要**：获取个人偏好
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取当前用户的偏好设置。
+获取当前用户的偏好设置。`notify_by_email` 落在 User 表（评论通知邮件扇出读它），响应里由本接口从 User 行补齐；这一项只在本人接口出现，匿名的 `GET /users/username/{username}/preferences` 不含它。
 
 **入参**
 
@@ -731,6 +731,7 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
+| notify_by_email | boolean | 否 | 是否接收评论交互的邮件通知（站点未开启通知邮件或未配 SMTP 时本来就不发） |
 | public_profile | boolean | 是 |  |
 | show_comments | boolean | 是 |  |
 | show_email | boolean | 是 |  |
@@ -742,6 +743,7 @@ _无路径 / query 参数_
 
 ```json
 {
+  "notify_by_email": true,
   "public_profile": false,
   "show_comments": false,
   "show_email": false,
@@ -760,7 +762,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：更新个人偏好
 - **鉴权**：需鉴权：`HTTPBearer`
 
-更新当前用户的偏好设置。
+更新当前用户的偏好设置。`notify_by_email` 写的是 User 行（收件人筛选在 `comment_service` 里读它），其余开关写 `user_preferences` 行；未发送的键不动。
 
 **入参**
 
@@ -770,6 +772,7 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
+| notify_by_email | boolean \| null | 否 |  |
 | public_profile | boolean \| null | 否 |  |
 | show_comments | boolean \| null | 否 |  |
 | show_email | boolean \| null | 否 |  |
@@ -779,6 +782,7 @@ _无路径 / query 参数_
 
 ```json
 {
+  "notify_by_email": "string",
   "public_profile": "string",
   "show_comments": "string",
   "show_email": "string",
@@ -794,6 +798,7 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
+| notify_by_email | boolean | 否 | 是否接收评论交互的邮件通知（站点未开启通知邮件或未配 SMTP 时本来就不发） |
 | public_profile | boolean | 是 |  |
 | show_comments | boolean | 是 |  |
 | show_email | boolean | 是 |  |
@@ -805,6 +810,7 @@ _无路径 / query 参数_
 
 ```json
 {
+  "notify_by_email": true,
   "public_profile": false,
   "show_comments": false,
   "show_email": false,

@@ -396,6 +396,10 @@ class PublicUserResponse(BaseModel):
 class UserPreferenceResponse(BaseModel):
     """
     用户偏好设置响应模型
+
+    只有本人接口（``GET/PUT /users/me/preferences``）用这一模型；
+    匿名可读的 ``GET /users/username/{username}/preferences`` 走
+    ``UserPreferencesPublicDoc`` 的裸 dict，不含 ``notify_by_email``。
     """
 
     public_profile: bool
@@ -404,6 +408,12 @@ class UserPreferenceResponse(BaseModel):
     show_comments: bool
     show_stats: bool
     theme: str
+    # 邮件通知开关落在 User 表（评论邮件扇出读 User.notify_by_email），不在 UserPreference 列里，
+    # 所以只能由端点从 User 行显式补进响应；默认值与列的 server_default 同为 true。
+    notify_by_email: bool = Field(
+        True,
+        description="是否接收评论交互的邮件通知（站点未开启通知邮件或未配 SMTP 时本来就不发）",
+    )
 
     model_config = {"from_attributes": True}
 
@@ -419,6 +429,7 @@ class UserPreferenceUpdate(BaseModel):
     show_comments: bool | None = None
     show_stats: bool | None = None
     theme: str | None = None
+    notify_by_email: bool | None = None
 
 
 class PasswordChange(BaseModel):

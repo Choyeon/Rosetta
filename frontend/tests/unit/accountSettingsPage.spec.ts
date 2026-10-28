@@ -70,9 +70,11 @@ describe('账户设置 /account/settings', () => {
     expect(page).toContain('await authStore.fetchUser()')
   })
 
-  it('隐私开关精确等于后端有强制点的 5 个字段，不含死字段 theme', () => {
+  it('偏好开关精确等于后端有强制点的 6 个字段，不含死字段 theme', () => {
+    // 前五条存 user_preferences，notify_by_email 存 User 行（评论通知邮件按它筛收件人）；
+    // 判定口径不变：后端没有真实强制点的键不得进这张清单（theme 就是那条死字段）。
     expect(preferenceKeys(page)).toEqual([
-      'public_profile', 'show_email', 'show_posts', 'show_comments', 'show_stats'
+      'public_profile', 'show_email', 'show_posts', 'show_comments', 'show_stats', 'notify_by_email'
     ])
   })
 

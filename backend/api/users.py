@@ -20,6 +20,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, sta
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
 logger = logging.getLogger(__name__)
@@ -749,31 +750,60 @@ async def change_password_legacy(
     return BaseResponse(message="密码修改成功")
 
 
+async def _notify_by_email_flag(db: AsyncSession, user_id: int) -> bool:
+    """从 User 行读邮件通知开关（列级 SELECT，不依赖会话里可能已过期的实例状态）。"""
+    row = await db.execute(select(User.notify_by_email).where(User.id == user_id))
+    return row.scalar_one_or_none() is True
+
+
+def _preferences_response(
+    preference: UserPreference, notify_by_email: bool
+) -> UserPreferenceResponse:
+    """
+    个人偏好响应的唯一拼装口。
+
+    `notify_by_email` 是 User 列，`UserPreference` 对象上根本没有这个属性，
+    模型默认值会把它静默渲染成 true —— 表现是"用户关了邮件通知、刷新页面开关又亮回去"，
+    而库里其实已经改了。所以两条口都必须把 User 行的真实值补进来。
+    """
+    payload = UserPreferenceResponse.model_validate(preference).model_dump()
+    payload["notify_by_email"] = notify_by_email
+    return UserPreferenceResponse.model_validate(payload)
+
+
 @router.get(
     "/me/preferences",
     response_model=UserPreferenceResponse,
     summary="获取个人偏好",
-    description="获取当前用户的偏好设置。",
+    description=(
+        "获取当前用户的偏好设置。`notify_by_email` 落在 User 表（评论通知邮件扇出读它），"
+        "响应里由本接口从 User 行补齐；这一项只在本人接口出现，匿名的 "
+        "`GET /users/username/{username}/preferences` 不含它。"
+    ),
 )
 async def get_my_preferences(current_user: CurrentUser, db: DB):
     """获取用户偏好设置"""
     service = await get_user_service(db)
+    notify = await _notify_by_email_flag(db, current_user.id)
     profile = await service.get_user_profile(current_user.id, current_user.id)
     if profile and profile.get("preferences"):
-        return UserPreferenceResponse.model_validate(profile["preferences"])
+        return _preferences_response(profile["preferences"], notify)
 
     preference = UserPreference(user_id=current_user.id)
     db.add(preference)
     await db.flush()
     await db.refresh(preference)
-    return UserPreferenceResponse.model_validate(preference)
+    return _preferences_response(preference, notify)
 
 
 @router.put(
     "/me/preferences",
     response_model=UserPreferenceResponse,
     summary="更新个人偏好",
-    description="更新当前用户的偏好设置。",
+    description=(
+        "更新当前用户的偏好设置。`notify_by_email` 写的是 User 行（收件人筛选在 "
+        "`comment_service` 里读它），其余开关写 `user_preferences` 行；未发送的键不动。"
+    ),
 )
 async def update_my_preferences(
     data: UserPreferenceUpdate,
@@ -784,7 +814,8 @@ async def update_my_preferences(
     service = await get_user_service(db)
     update_dict = data.model_dump(exclude_unset=True)
     preference = await service.update_preferences(current_user.id, update_dict)
-    return UserPreferenceResponse.model_validate(preference)
+    notify = await _notify_by_email_flag(db, current_user.id)
+    return _preferences_response(preference, notify)
 
 
 def _profile_is_hidden(

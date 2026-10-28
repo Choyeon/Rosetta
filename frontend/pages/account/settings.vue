@@ -2,14 +2,16 @@
   账户设置 /account/settings（SPA + no-store，继承 routeRules 的 /account/** 反选）：
   接上后端自上线起"就绪、前端零消费"的三组写端点 ——
     PUT  /users/me            资料（昵称/简介/网站/GitHub/QQ/头像来源/封面图）
-    GET/PUT /users/me/preferences  隐私偏好（5 个真实生效的开关）
+    GET/PUT /users/me/preferences  偏好（5 个隐私开关 + 1 个邮件通知开关）
     POST /users/me/password   改密（成功即全端下线）
   三条硬约束：
   1. 偏好里的 ``theme`` 字段**故意不做 UI**：models/user.py 里它没有任何消费点
      （前台主题由 useFrontendTheme + 主题系统决定），放个开关等于骗用户"设置了但没用"。
-     五个隐私开关都有真实强制点：public_profile→资料主文档与其子资源（posts/comments/stats/preferences）统一
+     六个开关都有真实强制点：public_profile→资料主文档与其子资源（posts/comments/stats/preferences）统一
      404、show_email→响应 helper、show_posts/show_comments→作者归档与评论列表「隐藏即空」、
-     show_stats→资料读数全零。
+     show_stats→资料读数全零、notify_by_email→评论通知邮件的收件人筛选（comment_service）。
+     后五者存 ``user_preferences`` 行，notify_by_email 存 User 行——同一个接口、同一个保存按钮，
+     但响应必须由后端从 User 行补值（列不在偏好表上），前端默认值 true 与列的 server_default 同数。
   2. 改密成功必须清登录态并跳 /login：后端会 bump token_version 使全部会话失效，
      前端若留在原页，下一个请求就是 401 自动刷新失败 → 被 useAPI 打回登录页，
      用户看到的是"我刚保存就掉线"，而不是"请用小密码重新登录"。
@@ -238,7 +240,7 @@
         class="mt-6 flex flex-col gap-4"
       >
         <Skeleton
-          v-for="s in 5"
+          v-for="s in 6"
           :key="s"
           class="h-12 w-full rounded-xl"
         />
@@ -431,6 +433,8 @@ interface UserPreferences {
   show_posts: boolean
   show_comments: boolean
   show_stats: boolean
+  /** 落在 User 表而非 user_preferences（评论通知邮件扇出按它筛选收件人），同一个偏好口读写 */
+  notify_by_email: boolean
 }
 interface ProfileForm {
   nickname: string
@@ -548,7 +552,7 @@ async function handleCoverUpload(event: Event) {
   }
 }
 
-// ===== 隐私偏好：GET 走 useAPI（自动带 Authorization），PUT 走 apiFetch =====
+// ===== 偏好（隐私开关 + 邮件通知）：GET 走 useAPI（自动带 Authorization），PUT 走 apiFetch =====
 const {
   data: preferenceData,
   pending: preferencesPending,
@@ -564,7 +568,9 @@ const preferences = reactive<UserPreferences>({
   show_email: false,
   show_posts: true,
   show_comments: true,
-  show_stats: true
+  show_stats: true,
+  // 与 User.notify_by_email 的 server_default 同数：这一项从未被用户动过时库里就是 true
+  notify_by_email: true
 })
 const savingPreferences = ref(false)
 
@@ -576,6 +582,7 @@ watch(preferenceData, (data) => {
   preferences.show_posts = data.show_posts ?? true
   preferences.show_comments = data.show_comments ?? true
   preferences.show_stats = data.show_stats ?? true
+  preferences.notify_by_email = data.notify_by_email ?? true
 })
 
 const preferenceItems = computed(() => [
@@ -583,7 +590,8 @@ const preferenceItems = computed(() => [
   { key: 'show_email' as const, label: t('account.prefShowEmail'), hint: t('account.prefShowEmailHint') },
   { key: 'show_posts' as const, label: t('account.prefShowPosts'), hint: t('account.prefShowPostsHint') },
   { key: 'show_comments' as const, label: t('account.prefShowComments'), hint: t('account.prefShowCommentsHint') },
-  { key: 'show_stats' as const, label: t('account.prefShowStats'), hint: t('account.prefShowStatsHint') }
+  { key: 'show_stats' as const, label: t('account.prefShowStats'), hint: t('account.prefShowStatsHint') },
+  { key: 'notify_by_email' as const, label: t('account.prefNotifyEmail'), hint: t('account.prefNotifyEmailHint') }
 ])
 
 async function savePreferences() {

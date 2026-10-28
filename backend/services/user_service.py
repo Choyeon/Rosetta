@@ -55,6 +55,10 @@ PREFERENCE_WRITABLE_FIELDS: frozenset[str] = frozenset(
     str(attr.key) for attr in inspect(UserPreference).mapper.column_attrs
 ) - {"id", "user_id", "created_at", "updated_at"}
 
+# 偏好接口里"存在 User 表"的那几项：派生白名单看不到它们，必须由服务层显式分流写入。
+# 新增同类字段（把 User 列当偏好暴露）只要在这里登记一条，写入路径就不会静默丢值。
+_USER_SIDE_PREFERENCE_FIELDS: frozenset[str] = frozenset({"notify_by_email"})
+
 # 会被嵌进文章详情缓存 author 段的展示字段（见 blog._build_author_data）。
 # 只有这些字段变更才需要顺带失效文章缓存；email/qq/password 等隐私字段不进 author 段。
 _AUTHOR_VISIBLE_FIELDS: frozenset[str] = frozenset(
@@ -563,19 +567,34 @@ class UserService:
         if preference is None:
             preference = await self._preference_repo.get_or_create_for_user(user_id)
 
+        # notify_by_email 是 User 列（评论邮件扇出 comment_service 读它），而
+        # PREFERENCE_WRITABLE_FIELDS 从 UserPreference 模型派生 —— 这一项永远进不了白名单。
+        # 不显式分流就是「接口 200、前端提示已保存、库里一个字节没改」：
+        # 用户以为自己不再收评论邮件，实际照发。
+        notify_by_email = data.get("notify_by_email")
+        pref_source = {k: v for k, v in data.items() if k not in _USER_SIDE_PREFERENCE_FIELDS}
         allowed_fields = PREFERENCE_WRITABLE_FIELDS
-        update_data = {k: v for k, v in data.items() if k in allowed_fields}
-        if len(update_data) != len(data):
+        update_data = {k: v for k, v in pref_source.items() if k in allowed_fields}
+        if len(update_data) != len(pref_source):
             # 只可能发生在"模型加了列、Schema 没加"或反之：静默丢弃就是这次修复要消灭的 bug 类，
             # 至少留一条日志，别让"接口 200 但什么都没保存"再次无声发生。
             logger.warning(
                 "更新偏好丢弃未知字段: %s",
-                sorted(set(data) - set(update_data)),
+                sorted(set(pref_source) - set(update_data)),
             )
 
         # 偏好六个列全是 NOT NULL（客户端显式传 null 会撞 flush → 500），
         # 走统一守卫而不是裸 setattr。
         apply_partial_update(preference, update_data)
+
+        if notify_by_email is not None:
+            user_row = await self._user_repo.get_by_id(user_id)
+            if user_row is None:
+                logger.warning(
+                    "偏好更新时用户行不存在，notify_by_email 未落库: user_id=%s", user_id
+                )
+            else:
+                user_row.notify_by_email = bool(notify_by_email)
 
         await self._db.flush()
         await self._db.refresh(preference)

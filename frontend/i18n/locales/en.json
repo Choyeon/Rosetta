@@ -776,6 +776,8 @@
     "prefShowCommentsHint": "Controls the comments section on your profile.",
     "prefShowStats": "Show stats",
     "prefShowStatsHint": "Controls post / comment counters on your profile.",
+    "prefNotifyEmail": "Email me about comments",
+    "prefNotifyEmailHint": "Sends mail when someone comments on your post or replies to your comment; nothing is sent while the site has no mail service configured.",
     "savePreferences": "Save privacy settings",
     "preferencesSaved": "Privacy settings updated",
     "fieldOldPassword": "Current password",
