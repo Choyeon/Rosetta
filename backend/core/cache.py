@@ -584,6 +584,12 @@ def make_cache_key(*parts: str) -> str:
 # 后台"预热 N 项"是假数字，首访延迟也没有改善。
 CACHE_KEY_CATEGORIES = make_cache_key("categories", "raw-i18n")
 CACHE_KEY_TAGS = make_cache_key("tags", "raw-i18n")
+# ``?all=true``（后台列表要看到已停用的行，否则"停用"是单向按钮）走另一条 SQL 过滤，
+# 因此必须另占一个键位：判别位进了 WHERE 却没进键，后台一次 all=true 就能把全量
+# （含停用行）写进前台列表的键位，在 TTL 内对全站公开停用分类/标签。
+# 两个键都在 ``categories`` / ``tags`` 前缀下，写侧的 invalidate_cache("<前缀>") 一并清掉。
+CACHE_KEY_CATEGORIES_ALL = make_cache_key("categories", "raw-i18n-all")
+CACHE_KEY_TAGS_ALL = make_cache_key("tags", "raw-i18n-all")
 
 
 async def invalidate_cache(pattern: str) -> int:

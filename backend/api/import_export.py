@@ -223,6 +223,7 @@ async def export_posts(
             "icon": c.icon,
             "color": c.color,
             "cover_image": c.cover_image,
+            "is_active": c.is_active,
         }
         for c in categories
     ]
@@ -234,6 +235,7 @@ async def export_posts(
             "slug": t.slug,
             "color": t.color,
             "icon": t.icon,
+            "is_active": t.is_active,
         }
         for t in tags
     ]
@@ -521,6 +523,8 @@ async def import_posts(
                 icon=cat_data.get("icon"),
                 color=cat_data.get("color", "primary"),
                 cover_image=cat_data.get("cover_image"),
+                # 缺键按启用处理：旧导出文件里没有这一项，导入不得把启用行判成停用
+                is_active=cat_data.get("is_active", True),
             )
             db.add(category)
             await db.flush()
@@ -541,6 +545,7 @@ async def import_posts(
                 slug=tag_data["slug"],
                 color=tag_data.get("color", "#64748B"),
                 icon=tag_data.get("icon"),
+                is_active=tag_data.get("is_active", True),
             )
             db.add(tag)
             await db.flush()
@@ -1391,6 +1396,9 @@ async def backup_restore(
                     existing_obj.icon = item.get("icon", existing_obj.icon)
                     existing_obj.color = item.get("color", existing_obj.color)
                     existing_obj.cover_image = item.get("cover_image", existing_obj.cover_image)
+                    # 与同一段的 tags 分支同构：启停状态必须跟着站点搬迁走，
+                    # 否则导出的停用分类在目标站集体复活。缺键按现状保留。
+                    existing_obj.is_active = item.get("is_active", existing_obj.is_active)
                     _created()
                 else:
                     _skipped()
@@ -1402,6 +1410,7 @@ async def backup_restore(
                 icon=item.get("icon"),
                 color=item.get("color", "primary"),
                 cover_image=item.get("cover_image"),
+                is_active=item.get("is_active", True),
             )
             db.add(cat)
             await db.flush()

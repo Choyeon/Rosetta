@@ -539,7 +539,9 @@ async def seo_sitemap(db: DB) -> Response:
         .scalars()
         .all()
     )
-    categories = (await db.execute(select(Category))).scalars().all()
+    categories = (
+        (await db.execute(select(Category).where(Category.is_active.is_(True)))).scalars().all()
+    )
     tags = (await db.execute(select(Tag).where(Tag.is_active.is_(True)))).scalars().all()
 
     site_url = settings.site_url

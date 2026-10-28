@@ -1549,7 +1549,7 @@ _无路径 / query 参数_
 - **摘要**：分类列表
 - **鉴权**：公开接口（无需鉴权）
 
-获取所有分类及其文章数量（返回多语言原始dict，前端自行本地化显示）。
+获取分类及其文章数量（返回多语言原始dict，前端自行本地化显示）。默认只返回启用中的分类；``?all=true`` 连已停用的一并返回，供后台管理页使用（否则「停用」是单向按钮：一关就从后台消失，再无法打开）。
 
 **入参**
 
@@ -1574,6 +1574,7 @@ _无路径 / query 参数_
     "description": "string",
     "icon": "string",
     "id": 0,
+    "is_active": false,
     "name": {},
     "post_count": 0,
     "slug": "string"
@@ -1605,6 +1606,7 @@ _无路径 / query 参数_
 | color | string | 否 |  |
 | description | object<string, string> \| null | 否 | 多语言分类描述 |
 | icon | string \| null | 否 |  |
+| is_active | boolean | 否 |  |
 | name | object<string, string> | 是 | 多语言分类名称，如 {'zh': '技术', 'en': 'Technology', 'ja': '技術', 'zh_Hant': '技術'} |
 | slug | string \| null | 否 |  |
 
@@ -1613,6 +1615,7 @@ _无路径 / query 参数_
   "color": "#3B82F6",
   "description": "string",
   "icon": "string",
+  "is_active": true,
   "name": {},
   "slug": "string"
 }
@@ -1630,6 +1633,7 @@ _无路径 / query 参数_
 | description | object<string, string> \| null | 否 |  |
 | icon | string \| null | 否 |  |
 | id | integer | 是 |  |
+| is_active | boolean | 是 |  |
 | name | object<string, string> | 是 |  |
 | post_count | integer | 否 |  |
 | slug | string | 是 |  |
@@ -1644,6 +1648,7 @@ _无路径 / query 参数_
   "description": "string",
   "icon": "string",
   "id": 0,
+  "is_active": false,
   "name": {},
   "post_count": 0,
   "slug": "string"
@@ -1661,7 +1666,7 @@ _无路径 / query 参数_
 - **摘要**：获取分类详情
 - **鉴权**：公开接口（无需鉴权）
 
-根据 slug （返回完整 i18n dict）。
+根据 slug （返回完整 i18n dict）。已停用分类的直接 URL 仍可访问（与标签同口径）：停用只是把它从公开列表与 sitemap 里摘掉，已发布文章上的分类链接不能因此变成 404。
 
 **入参**
 
@@ -1679,6 +1684,7 @@ _无路径 / query 参数_
 | description | object<string, string> \| null | 否 |  |
 | icon | string \| null | 否 |  |
 | id | integer | 是 |  |
+| is_active | boolean | 是 |  |
 | name | object<string, string> | 是 |  |
 | post_count | integer | 否 |  |
 | slug | string | 是 |  |
@@ -1693,6 +1699,7 @@ _无路径 / query 参数_
   "description": "string",
   "icon": "string",
   "id": 0,
+  "is_active": false,
   "name": {},
   "post_count": 0,
   "slug": "string"
@@ -1710,7 +1717,7 @@ _无路径 / query 参数_
 - **摘要**：更新分类
 - **鉴权**：需鉴权：`HTTPBearer`
 
-信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。改名/改色会同步失效该分类下所有文章的详情缓存（`post:{slug}:{lang}`）与列表/RSS 缓存，避免前台文章页在 TTL 内继续显示旧分类名/颜色。
+信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。改名/改色会同步失效该分类下所有文章的详情缓存（`post:{slug}:{lang}`）与列表/RSS 缓存，避免前台文章页在 TTL 内继续显示旧分类名/颜色。`is_active=false` 即停用：分类从公开列表、导航与 sitemap 投递面里摘掉，但直接 URL 与文章上的分类链接保持可用；两种形态的列表各有缓存键位，写侧一次 `invalidate_cache("categories")` 全部清掉。
 
 **入参**
 
@@ -1724,6 +1731,7 @@ _无路径 / query 参数_
 | cover_image | string \| null | 否 |  |
 | description | object<string, string> \| null | 否 |  |
 | icon | string \| null | 否 |  |
+| is_active | boolean \| null | 否 |  |
 | name | object<string, string> \| null | 否 |  |
 | slug | string \| null | 否 |  |
 
@@ -1733,6 +1741,7 @@ _无路径 / query 参数_
   "cover_image": "string",
   "description": "string",
   "icon": "string",
+  "is_active": "string",
   "name": "string",
   "slug": "string"
 }
@@ -1750,6 +1759,7 @@ _无路径 / query 参数_
 | description | object<string, string> \| null | 否 |  |
 | icon | string \| null | 否 |  |
 | id | integer | 是 |  |
+| is_active | boolean | 是 |  |
 | name | object<string, string> | 是 |  |
 | post_count | integer | 否 |  |
 | slug | string | 是 |  |
@@ -1764,6 +1774,7 @@ _无路径 / query 参数_
   "description": "string",
   "icon": "string",
   "id": 0,
+  "is_active": false,
   "name": {},
   "post_count": 0,
   "slug": "string"
@@ -3034,7 +3045,7 @@ _无路径 / query 参数_
 - **摘要**：分类 / 标签 / 系列 / 作者归档 Sitemap
 - **鉴权**：公开接口（无需鉴权）
 
-返回分类、标签、系列的索引页与详情页，外加作者归档落地页 `/authors/<username>`（合并文件）。作者清单只含「有已发布文章，且未关闭 `show_posts` / `public_profile`」的作者——空归档页与 404 页都不该出现在爬虫视野里。
+返回分类、标签、系列的索引页与详情页，外加作者归档落地页 `/authors/<username>`（合并文件）。三类分类学都只收启用中的行——停用的分类/标签/系列不进爬虫投递面。作者清单只含「有已发布文章，且未关闭 `show_posts` / `public_profile`」的作者——空归档页与 404 页都不该出现在爬虫视野里。
 
 **入参**
 
@@ -3072,7 +3083,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：标签列表
 - **鉴权**：公开接口（无需鉴权）
 
-获取所有激活的标签及其文章数量（返回多语言原始dict）。
+获取标签及其文章数量（返回多语言原始dict）。默认只返回启用中的标签；``?all=true`` 连已停用的一并返回，供后台管理页使用（否则「停用」是单向按钮）。
 
 **入参**
 

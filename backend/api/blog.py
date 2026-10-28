@@ -27,7 +27,9 @@ from sqlalchemy.orm import defer, selectinload
 from backend.core.auth import DB, CurrentStaff, CurrentUser, CurrentUserOptional
 from backend.core.cache import (
     CACHE_KEY_CATEGORIES,
+    CACHE_KEY_CATEGORIES_ALL,
     CACHE_KEY_TAGS,
+    CACHE_KEY_TAGS_ALL,
     CACHE_TTL,
     cache,
     invalidate_cache,
@@ -1811,7 +1813,11 @@ async def toggle_like(post_id: int, current_user: CurrentUser, db: DB):
     "/categories",
     response_model=list[CategoryResponse],
     summary="分类列表",
-    description="获取所有分类及其文章数量（返回多语言原始dict，前端自行本地化显示）。",
+    description=(
+        "获取分类及其文章数量（返回多语言原始dict，前端自行本地化显示）。"
+        "默认只返回启用中的分类；``?all=true`` 连已停用的一并返回，供后台管理页使用"
+        "（否则「停用」是单向按钮：一关就从后台消失，再无法打开）。"
+    ),
 )
 async def list_categories(
     request: Request,
@@ -1819,18 +1825,19 @@ async def list_categories(
     lang: str | None = Query(
         None, description="语言代码（zh/en/ja/zh_Hant），保留参数，返回时不裁剪语言"
     ),
+    all: bool = Query(False, description="是否包含已停用分类（后台列表用）"),
 ):
     """获取分类列表，返回 i18n 原始 dict 供后台编辑 / 前端 getLocalized 统一处理"""
     if not is_oobe_complete():
         return []
 
     # 统一返回完整 i18n dict（不再按 lang 裁剪），前后端都能正确渲染
-    cache_key = CACHE_KEY_CATEGORIES
+    cache_key = CACHE_KEY_CATEGORIES_ALL if all else CACHE_KEY_CATEGORIES
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
-    result = await db.execute(
+    query = (
         select(
             Category,
             func.count(Post.id).filter(Post.status == "published").label("post_count"),
@@ -1839,7 +1846,9 @@ async def list_categories(
         .group_by(Category.id)
         .order_by(Category.created_at)
     )
-    rows = result.all()
+    if not all:
+        query = query.where(Category.is_active.is_(True))
+    rows = (await db.execute(query)).all()
 
     items = [
         CategoryResponse(
@@ -1850,6 +1859,7 @@ async def list_categories(
             icon=row.Category.icon,
             color=row.Category.color,
             cover_image=row.Category.cover_image,
+            is_active=row.Category.is_active,
             created_at=row.Category.created_at,
             post_count=row.post_count or 0,
         )
@@ -1867,7 +1877,11 @@ async def list_categories(
     "/categories/slug/{slug}",
     response_model=CategoryResponse,
     summary="获取分类详情",
-    description="根据 slug 获取分类详情（返回完整 i18n dict）。",
+    description=(
+        "根据 slug 获取分类详情（返回完整 i18n dict）。"
+        "已停用分类的直接 URL 仍可访问（与标签同口径）：停用只是把它从公开列表与 sitemap 里"
+        "摘掉，已发布文章上的分类链接不能因此变成 404。"
+    ),
 )
 async def get_category_by_slug(
     slug: str,
@@ -1901,6 +1915,7 @@ async def get_category_by_slug(
         icon=category.icon,
         color=category.color,
         cover_image=category.cover_image,
+        is_active=category.is_active,
         created_at=category.created_at,
         post_count=post_count,
     )
@@ -1951,6 +1966,7 @@ async def create_category(
         description=data.description,
         icon=data.icon,
         color=data.color,
+        is_active=data.is_active,
     )
     db.add(category)
     await db.flush()
@@ -1967,6 +1983,7 @@ async def create_category(
         icon=category.icon,
         color=category.color,
         cover_image=category.cover_image,
+        is_active=category.is_active,
         created_at=category.created_at,
         post_count=0,
     )
@@ -1979,12 +1996,16 @@ async def create_category(
     "/tags",
     response_model=list[TagResponse],
     summary="标签列表",
-    description="获取所有激活的标签及其文章数量（返回多语言原始dict）。",
+    description=(
+        "获取标签及其文章数量（返回多语言原始dict）。默认只返回启用中的标签；"
+        "``?all=true`` 连已停用的一并返回，供后台管理页使用（否则「停用」是单向按钮）。"
+    ),
 )
 async def list_tags(
     request: Request,
     db: DB,
     lang: str | None = Query(None, description="保留参数，返回时不裁剪语言"),
+    all: bool = Query(False, description="是否包含已停用标签（后台列表用）"),
 ):
     """获取标签列表，统一返回原始 i18n dict
 
@@ -1993,22 +2014,23 @@ async def list_tags(
     if not is_oobe_complete():
         return []
 
-    cache_key = CACHE_KEY_TAGS
+    cache_key = CACHE_KEY_TAGS_ALL if all else CACHE_KEY_TAGS
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
-    result = await db.execute(
+    query = (
         select(
             Tag,
             func.count(post_tags.c.post_id).label("post_count"),
         )
         .outerjoin(post_tags, Tag.id == post_tags.c.tag_id)
-        .where(Tag.is_active.is_(True))
         .group_by(Tag.id)
         .order_by(Tag.created_at)
     )
-    rows = result.all()
+    if not all:
+        query = query.where(Tag.is_active.is_(True))
+    rows = (await db.execute(query)).all()
 
     items = [
         TagResponse(
@@ -2344,7 +2366,7 @@ async def get_site_stats(
     返回：
     - total_words: 已发布文章总字数（中文字符 + 英文字符，已剔除代码块）
     - total_posts: 已发布文章数
-    - total_categories: 至少包含一篇已发布文章的分类数
+    - total_categories: 至少包含一篇已发布文章、且启用中的分类数
     - total_tags: 已发布文章使用过的不同标签数
     """
     cache_key = make_cache_key("site_stats")
@@ -2382,12 +2404,13 @@ async def get_site_stats(
 
     total_words = await asyncio.to_thread(_sum_words, contents)
 
-    # 至少有一篇已发布文章的分类数
+    # 至少有一篇已发布文章的分类数。只数启用中的：停用的分类在公开列表与 sitemap 里
+    # 都不存在，把它的数量报给访客等于公示一个点不到的归档页（标签同口径）。
     total_categories = (
         await db.scalar(
-            select(func.count(func.distinct(Post.category_id))).where(
-                *published_filter, Post.category_id.is_not(None)
-            )
+            select(func.count(func.distinct(Post.category_id)))
+            .join(Category, Category.id == Post.category_id)
+            .where(*published_filter, Category.is_active.is_(True))
         )
         or 0
     )
@@ -2398,7 +2421,8 @@ async def get_site_stats(
             select(func.count(func.distinct(post_tags.c.tag_id)))
             .select_from(post_tags)
             .join(Post, Post.id == post_tags.c.post_id)
-            .where(*published_filter)
+            .join(Tag, Tag.id == post_tags.c.tag_id)
+            .where(*published_filter, Tag.is_active.is_(True))
         )
         or 0
     )
@@ -2621,6 +2645,9 @@ async def get_archive_by_month(
         "更新分类信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。"
         "改名/改色会同步失效该分类下所有文章的详情缓存（`post:{slug}:{lang}`）与列表/RSS 缓存，"
         "避免前台文章页在 TTL 内继续显示旧分类名/颜色。"
+        "`is_active=false` 即停用：分类从公开列表、导航与 sitemap 投递面里摘掉，"
+        "但直接 URL 与文章上的分类链接保持可用；两种形态的列表各有缓存键位，写侧一次 "
+        '`invalidate_cache("categories")` 全部清掉。'
     ),
 )
 async def update_category(
@@ -2661,6 +2688,7 @@ async def update_category(
         icon=category.icon,
         color=category.color,
         cover_image=category.cover_image,
+        is_active=category.is_active,
         created_at=category.created_at,
         post_count=post_count,
     )
@@ -3840,14 +3868,19 @@ async def _sitemap_pages_lastmod(db) -> str | None:
 
 
 async def _sitemap_taxonomy_lastmod(db) -> str | None:
-    """taxonomies 子表的最大更新日期：分类/标签/系列的 ``updated_at`` 与
-    作者归档的最近发布时间（口径同 ``get_sitemap_taxonomies`` 的隐藏作者过滤）
-    里取最大。"""
+    """taxonomies 子表的最大更新日期：分类/标签/系列里**启用中**那些行的 ``updated_at``
+    与作者归档的最近发布时间（口径同 ``get_sitemap_taxonomies`` 的过滤：子表已经不收
+    停用行了，lastmod 也不能被一条不会出现的 URL 顶到最新）。"""
     from backend.models.post_series import PostSeries
 
     candidates: list[datetime] = []
-    for col in (Category.updated_at, Tag.updated_at, PostSeries.updated_at):
-        value = await db.scalar(select(func.max(col)))
+    active_maxes = (
+        select(func.max(Category.updated_at)).where(Category.is_active.is_(True)),
+        select(func.max(Tag.updated_at)).where(Tag.is_active.is_(True)),
+        select(func.max(PostSeries.updated_at)).where(PostSeries.is_active.is_(True)),
+    )
+    for stmt in active_maxes:
+        value = await db.scalar(stmt)
         if value is not None:
             candidates.append(value)
     hidden_authors = select(UserPreference.user_id).where(
@@ -3948,7 +3981,8 @@ async def get_sitemap_posts(
     summary="分类 / 标签 / 系列 / 作者归档 Sitemap",
     description=(
         "返回分类、标签、系列的索引页与详情页，外加作者归档落地页 "
-        "`/authors/<username>`（合并文件）。作者清单只含「有已发布文章，且未关闭 "
+        "`/authors/<username>`（合并文件）。三类分类学都只收启用中的行——停用的分类/标签/"
+        "系列不进爬虫投递面。作者清单只含「有已发布文章，且未关闭 "
         "`show_posts` / `public_profile`」的作者——空归档页与 404 页都不该出现在爬虫视野里。"
     ),
     responses=raw_content_response("application/xml", "urlset XML 文档。"),
@@ -3962,7 +3996,9 @@ async def get_sitemap_taxonomies(
     from backend.models.post_series import PostSeries
 
     site_url = _public_site_url()
-    categories = (await db.execute(select(Category))).scalars().all()
+    categories = (
+        (await db.execute(select(Category).where(Category.is_active.is_(True)))).scalars().all()
+    )
     tags = (await db.execute(select(Tag).where(Tag.is_active.is_(True)))).scalars().all()
     series = (
         (await db.execute(select(PostSeries).where(PostSeries.is_active.is_(True)))).scalars().all()

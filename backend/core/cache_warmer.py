@@ -287,6 +287,7 @@ class CacheWarmer:
                     func.count(Post.id).filter(Post.status == "published").label("post_count"),
                 )
                 .outerjoin(Post, Category.id == Post.category_id)
+                .where(Category.is_active.is_(True))
                 .group_by(Category.id)
                 .order_by(Category.created_at)
             )
@@ -301,6 +302,7 @@ class CacheWarmer:
                     icon=row.Category.icon,
                     color=row.Category.color,
                     cover_image=row.Category.cover_image,
+                    is_active=row.Category.is_active,
                     created_at=row.Category.created_at,
                     post_count=row.post_count or 0,
                 )

@@ -652,6 +652,9 @@ class CategoryBase(BaseModel):
     description: dict[str, str] | None = Field(None, description="多语言分类描述")
     icon: str | None = Field(None, max_length=50)
     color: str = Field(default="#3B82F6", max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
+    # 与 TagBase.is_active 同族：停用 = 公开列表与 sitemap 不再出现（直接 URL 仍可访问，
+    # 已发布文章的分类链接不能断）。缺字段等于"创建即默认启用且无法在建分类时停用"。
+    is_active: bool = True
 
     @field_validator("slug", mode="before")
     @classmethod
@@ -681,6 +684,7 @@ class CategoryUpdate(BaseModel):
     icon: str | None = Field(None, max_length=50)
     color: str | None = Field(None, max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
     cover_image: str | None = None
+    is_active: bool | None = None
 
 
 class CategoryResponse(BaseModel):
@@ -693,6 +697,7 @@ class CategoryResponse(BaseModel):
     icon: str | None = None
     color: str
     cover_image: str | None = None
+    is_active: bool
     created_at: datetime
     post_count: int = 0
 

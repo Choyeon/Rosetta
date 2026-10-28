@@ -2,6 +2,8 @@
   后台分类管理页（SPA / layout=admin）：分类 CRUD，请求全部走 useAdminManage wrapper 单源。
   硬契约：name/description 以完整四语 dict {zh,en,ja,zh_Hant} 提交（后端 JSON 列依赖该形状）；
   slug 自动派生与手填校验共用 CONTENT_SLUG_PATTERN（镜像后端，允许 CJK）；留空时由后端按名称生成；
+  is_active 是后端 GET /categories、sitemap 投递面与站点统计的真实强制点（关闭即从公开列表消失，
+  但直接 URL 与文章上的分类链接保持可用），列表数据源因此必须带 ?all=true，否则停用是单向按钮；
   失败提示由 apiFetch 统一 toast，页面 catch 内禁止二次弹错（双 toast 是回归）。
 -->
 <script setup lang="ts">
@@ -21,6 +23,8 @@ import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import AdminFormField from '~~/components/admin/AdminFormField.vue'
 import { Badge } from '~~/components/ui/badge'
+import { Label } from '~~/components/ui/label'
+import { Switch } from '~~/components/ui/switch'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, slugify, CONTENT_SLUG_PATTERN, type I18nDict } from '~~/composables/useAdminI18n'
@@ -45,12 +49,14 @@ const form = reactive<{
   description: I18nDict
   color: string
   icon: string
+  is_active: boolean
 }>({
   name: { ...EMPTY_I18N_DICT },
   slug: '',
   description: { ...EMPTY_I18N_DICT },
   color: '#94a3b8',
-  icon: ''
+  icon: '',
+  is_active: true
 })
 
 /** slugify 结果与用户手填 slug 统一用 CONTENT_SLUG_PATTERN 校验（与后端同口径，允许中文） */
@@ -72,7 +78,8 @@ const columns: Column[] = [
   { key: 'name', title: '名称' },
   { key: 'slug', title: 'Slug', class: 'text-muted-foreground' },
   { key: 'description', title: '描述', class: 'max-w-[260px]' },
-  { key: 'post_count', title: '文章数', align: 'center', class: 'w-20' }
+  { key: 'post_count', title: '文章数', align: 'center', class: 'w-20' },
+  { key: 'is_active', title: '状态', align: 'center', class: 'w-24' }
 ]
 
 const loadData = async () => {
@@ -94,6 +101,7 @@ const resetForm = () => {
   form.description = { ...EMPTY_I18N_DICT }
   form.color = '#94a3b8'
   form.icon = ''
+  form.is_active = true
   editingId.value = null
   slugManualEdit = false
 }
@@ -111,6 +119,9 @@ const openEdit = (cat: AdminCategory) => {
   form.description = normalizeI18nDict(cat.description)
   form.color = cat.color || '#94a3b8'
   form.icon = cat.icon || ''
+  // 响应缓存可能还留着上线前写入的旧形状（没有这一项）；缺键按启用处理，
+  // 否则编辑一次就把没动的分类判成停用。
+  form.is_active = cat.is_active ?? true
   editingId.value = cat.id
   slugManualEdit = true
   dialogOpen.value = true
@@ -136,7 +147,8 @@ const save = async () => {
       slug: form.slug || undefined,
       description: form.description,
       color: form.color || undefined,
-      icon: form.icon || undefined
+      icon: form.icon || undefined,
+      is_active: form.is_active
     }
     if (editingId.value) {
       await updateAdminCategory(editingId.value, payload)
@@ -234,6 +246,16 @@ onMounted(() => {
           {{ (row as AdminCategory).post_count }}
         </Badge>
       </template>
+      <template #cell-is_active="{ row }">
+        <Badge
+          class="rounded-[10px] font-normal whitespace-nowrap"
+          :class="(row as AdminCategory).is_active
+            ? 'bg-success-muted text-success-muted-foreground'
+            : 'bg-muted text-muted-foreground'"
+        >
+          {{ (row as AdminCategory).is_active ? '启用' : '停用' }}
+        </Badge>
+      </template>
       <template #actions="{ row }">
         <AdminRowActions
           :actions="[
@@ -326,6 +348,21 @@ onMounted(() => {
               />
             </div>
           </AdminFormField>
+        </div>
+        <div class="flex items-center justify-between gap-4 rounded-[12px] border border-border bg-muted/20 px-4 py-3">
+          <div>
+            <Label
+              for="category-form-active"
+              class="text-sm font-medium"
+            >启用状态</Label>
+            <div class="text-xs text-muted-foreground mt-0.5">
+              关闭后分类不再出现在前台分类列表、导航与站点统计里；已发布文章上的分类链接仍然可用。
+            </div>
+          </div>
+          <Switch
+            id="category-form-active"
+            v-model="form.is_active"
+          />
         </div>
       </div>
     </AdminCrudDialog>

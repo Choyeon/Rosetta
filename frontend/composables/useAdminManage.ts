@@ -567,6 +567,8 @@ export interface AdminCategory {
   description: string | Record<string, string> | null
   icon: string | null
   color: string | null
+  /** 停用＝前台分类列表/导航/sitemap 不再出现，但直接 URL 与文章上的分类链接保持可用 */
+  is_active: boolean
   created_at: string | null
   post_count: number
 }
@@ -626,9 +628,11 @@ function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
   return body
 }
 
-/** GET /api/blog/categories —— blog.router 挂在 /api/blog */
+/** GET /api/blog/categories?all=true —— blog.router 挂在 /api/blog。
+ * 后台必须带 all=true：公开口默认只回启用中的行，用它当后台列表数据源
+ * 会让「停用」变成单向按钮——一关就从后台消失，再也点不回来。 */
 export function fetchAdminCategories(): Promise<AdminCategory[]> {
-  return apiFetch<AdminCategory[]>('/blog/categories')
+  return apiFetch<AdminCategory[]>('/blog/categories', { query: { all: true } })
 }
 
 /** POST /api/blog/categories —— 创建分类 */
@@ -655,9 +659,10 @@ export function deleteAdminCategory(categoryId: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/blog/categories/${categoryId}`, { method: 'DELETE' })
 }
 
-/** GET /api/blog/tags */
+/** GET /api/blog/tags?all=true —— 同分类：后台列表必须看得见已停用的行（标签族的开关此前
+ * 复用只回启用行的公开口，停用的标签从此在后台消失、无法再启用）。 */
 export function fetchAdminTags(): Promise<AdminTag[]> {
-  return apiFetch<AdminTag[]>('/blog/tags')
+  return apiFetch<AdminTag[]>('/blog/tags', { query: { all: true } })
 }
 
 /** POST /api/blog/tags */
