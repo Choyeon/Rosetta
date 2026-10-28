@@ -143,6 +143,34 @@ def neutralize_visit_telemetry(monkeypatch):
     _perf._inflight.clear()
 
 
+@pytest.fixture(autouse=True)
+def neutralize_fanout_task_sessions(monkeypatch):
+    """测试里不得有第二条会话在共享连接上 commit/rollback。
+
+    评论与留言的写口在响应返回后用 ``spawn_background`` 排一个通知/邮件扇出任务，
+    任务体自己 `async with async_session_maker()` 开**第二条会话**并 commit（失败还
+    rollback）。测试引擎是 ``StaticPool``（``:memory:`` 只有一条连接），于是这条会话
+    与"正在进行中的另一个请求"共用同一根 DBAPI 连接：另一个请求的
+    ``flush() → commit()`` 之间被这里插进一次 rollback，**它尚未落盘的 UPDATE 会一起被
+    回滚掉**。实锤表现（只在生产机跑，本地时序撞不到）：
+    ``PATCH /api/settings/comments {"require_approval": false}`` 接口回 200、响应体里就是
+    false，而新开的会话再读库仍是 true——"后台改了设置没生效"的假象，守卫
+    ``test_comments_require_approval_group_overrides_env`` 因此在负载下随机红。
+
+    口径与 ``neutralize_visit_telemetry`` 一致：只桩**任务体**，``spawn_background`` 的
+    派发照旧发生，所以既不改变写口返回值，也不掩盖真实业务分支；被桩掉的这一段本来就
+    只往 notifications / 邮件队列里写，没有任何用例断言它。
+    """
+    from backend.services.comment_service import CommentService
+    from backend.services.guestbook_service import GuestbookService
+
+    async def _noop(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(CommentService, "_fire_notifications_and_email", staticmethod(_noop))
+    monkeypatch.setattr(GuestbookService, "_fire_notifications", staticmethod(_noop))
+
+
 @pytest_asyncio.fixture(scope="function")
 async def test_engine():
     """创建测试数据库引擎
