@@ -6,6 +6,20 @@
 -->
 <template>
   <div class="container py-16">
+    <!-- 分类封面：只在后台真给了图时出现，图坏了也整块撤掉。
+         留一个空框（或 src=""）比没图更糟——它把首屏最贵的位置换成一处破图。 -->
+    <div
+      v-if="catCover && !coverBroken"
+      class="mb-8 overflow-hidden rounded-[16px] border border-border/60"
+      data-testid="category-cover"
+    >
+      <img
+        :src="catCover"
+        :alt="categoryName"
+        class="block h-auto w-full aspect-[21/9] object-cover"
+        @error="coverBroken = true"
+      >
+    </div>
     <header class="mb-12">
       <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
         <span class="size-1.5 rounded-full bg-warning" />
@@ -188,6 +202,8 @@ interface CategoryDetail {
   description?: unknown
   icon?: string
   color?: string
+  /** 后台「分类 → 封面图」写入的站内 URL；null/空串都按"没有封面"处理 */
+  cover_image?: string | null
   post_count?: number
   postsCount?: number
   posts?: unknown[]
@@ -241,6 +257,13 @@ const { data: postsRaw, pending, error: postsErr } = useAPI<{ items?: CategoryPo
 // 不再把 slug 人性化成假装存在的分类名（响应侧由 useContentStatus 回写 404）。
 const categoryName = computed(() => pickLocalized(catRaw.value?.name) || (pending.value ? '' : t('error.notFoundTitle')))
 const categoryDesc = computed(() => pickLocalized(catRaw.value?.description))
+// 封面口径：只有非空字符串才算"有封面"。后端 PUT 已把空串归成 null，这里再挡一层
+// 是因为库里可能躺着归一之前写入的 `""`——它会变成一次 src="" 的图片请求（404 + 破图框）。
+const catCover = computed(() => {
+  const raw = (catRaw.value as CategoryDetail | null | undefined)?.cover_image
+  return typeof raw === 'string' ? raw.trim() : ''
+})
+const coverBroken = ref(false)
 const postCount = computed<number>(() => {
   const c = catRaw.value as CategoryDetail | null | undefined
   if (c && typeof c.post_count === 'number') return c.post_count

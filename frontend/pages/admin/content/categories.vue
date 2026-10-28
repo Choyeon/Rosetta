@@ -4,11 +4,13 @@
   slug 自动派生与手填校验共用 CONTENT_SLUG_PATTERN（镜像后端，允许 CJK）；留空时由后端按名称生成；
   is_active 是后端 GET /categories、sitemap 投递面与站点统计的真实强制点（关闭即从公开列表消失，
   但直接 URL 与文章上的分类链接保持可用），列表数据源因此必须带 ?all=true，否则停用是单向按钮；
+  封面图（Category.cover_image）走"上传→站内 URL"，提交时始终带这个键：空串归 null 才是
+  "清掉封面"，省略键在 PUT 的 exclude_unset 语义下等于"不改它"（清除按钮会点了没反应）；
   失败提示由 apiFetch 统一 toast，页面 catch 内禁止二次弹错（双 toast 是回归）。
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
-import { FolderTree, Plus, Pencil, Trash2 } from '@lucide/vue'
+import { FolderTree, Plus, Pencil, Trash2, Image as ImageIcon } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   fetchAdminCategories,
@@ -19,6 +21,7 @@ import {
   type AdminTaxonomyPayload
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { useMediaUploadCover } from '~~/composables/useMedia'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import AdminFormField from '~~/components/admin/AdminFormField.vue'
@@ -49,6 +52,7 @@ const form = reactive<{
   description: I18nDict
   color: string
   icon: string
+  cover_image: string
   is_active: boolean
 }>({
   name: { ...EMPTY_I18N_DICT },
@@ -56,8 +60,12 @@ const form = reactive<{
   description: { ...EMPTY_I18N_DICT },
   color: '#94a3b8',
   icon: '',
+  cover_image: '',
   is_active: true
 })
+
+const coverInputRef = ref<HTMLInputElement | null>(null)
+const coverUploading = ref(false)
 
 /** slugify 结果与用户手填 slug 统一用 CONTENT_SLUG_PATTERN 校验（与后端同口径，允许中文） */
 let slugManualEdit = false as boolean
@@ -95,12 +103,43 @@ const loadData = async () => {
   }
 }
 
+/**
+ * 封面只走"上传→拿回站内 URL"，不提供手填地址的输入框：
+ * 这个值最终会成为访客页面上 `<img src>` 的一部分，让自由文本进来就多一个注入面。
+ */
+const handleCoverUpload = async (e: Event) => {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  coverUploading.value = true
+  try {
+    const result = await useMediaUploadCover(file)
+    if (result?.url) {
+      form.cover_image = result.url
+      toast.success('封面上传成功')
+    } else {
+      toast.error('封面上传失败')
+    }
+  } catch (err) {
+    // 失败提示由 apiFetch 统一 toast，此处不重复弹错
+    console.error('[categories] handleCoverUpload failed:', err)
+  } finally {
+    coverUploading.value = false
+    input.value = ''
+  }
+}
+
+const clearCover = () => {
+  form.cover_image = ''
+}
+
 const resetForm = () => {
   form.name = { ...EMPTY_I18N_DICT }
   form.slug = ''
   form.description = { ...EMPTY_I18N_DICT }
   form.color = '#94a3b8'
   form.icon = ''
+  form.cover_image = ''
   form.is_active = true
   editingId.value = null
   slugManualEdit = false
@@ -119,6 +158,8 @@ const openEdit = (cat: AdminCategory) => {
   form.description = normalizeI18nDict(cat.description)
   form.color = cat.color || '#94a3b8'
   form.icon = cat.icon || ''
+  // 必须回填：不回填则每次 PUT 把封面提交成空 → 已有封面被"改一次名字"抹掉
+  form.cover_image = cat.cover_image || ''
   // 响应缓存可能还留着上线前写入的旧形状（没有这一项）；缺键按启用处理，
   // 否则编辑一次就把没动的分类判成停用。
   form.is_active = cat.is_active ?? true
@@ -148,6 +189,8 @@ const save = async () => {
       description: form.description,
       color: form.color || undefined,
       icon: form.icon || undefined,
+      // 始终带上：空串会被 wrapper 归成 null（= 清掉封面），省略键则清不掉
+      cover_image: form.cover_image,
       is_active: form.is_active
     }
     if (editingId.value) {
@@ -221,6 +264,13 @@ onMounted(() => {
       </template>
       <template #cell-name="{ row }">
         <div class="flex items-center gap-2">
+          <img
+            v-if="(row as AdminCategory).cover_image"
+            :src="(row as AdminCategory).cover_image!"
+            alt=""
+            class="size-8 shrink-0 rounded-[6px] object-cover"
+            data-testid="category-row-cover"
+          >
           <span
             class="size-3 rounded-full inline-block border border-white shadow-sm"
             :style="{ background: (row as AdminCategory).color || '#94a3b8' }"
@@ -349,6 +399,69 @@ onMounted(() => {
             </div>
           </AdminFormField>
         </div>
+        <AdminFormField
+          label="封面图"
+          hint="展示在分类页顶部横幅；不设则该区域整块不出现。"
+        >
+          <div class="flex flex-col gap-3">
+            <button
+              type="button"
+              class="group relative w-full max-w-[320px] aspect-[16/9] overflow-hidden rounded-[12px] border border-dashed border-border bg-muted/30 transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              :aria-label="form.cover_image ? '更换封面图' : '上传封面图'"
+              :disabled="coverUploading"
+              @click="coverInputRef?.click()"
+            >
+              <img
+                v-if="form.cover_image"
+                :src="form.cover_image"
+                alt="封面预览"
+                class="size-full object-cover"
+              >
+              <span
+                v-else
+                class="absolute inset-0 flex flex-col items-center justify-center gap-1 text-xs text-muted-foreground"
+              >
+                <ImageIcon class="size-5 opacity-60" />
+                点击上传封面
+              </span>
+              <span
+                v-if="form.cover_image"
+                class="absolute inset-0 flex items-center justify-center bg-black/45 text-xs font-medium text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+              >
+                更换封面
+              </span>
+            </button>
+            <div class="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                class="h-9 rounded-[10px]"
+                :disabled="coverUploading"
+                @click="coverInputRef?.click()"
+              >
+                {{ coverUploading ? '上传中...' : (form.cover_image ? '更换封面' : '上传封面') }}
+              </Button>
+              <Button
+                v-if="form.cover_image"
+                type="button"
+                variant="ghost"
+                size="sm"
+                class="h-9 rounded-[10px] text-destructive hover:text-destructive"
+                @click="clearCover"
+              >
+                清除
+              </Button>
+            </div>
+            <input
+              ref="coverInputRef"
+              type="file"
+              accept="image/*"
+              class="hidden"
+              @change="handleCoverUpload"
+            >
+          </div>
+        </AdminFormField>
         <div class="flex items-center justify-between gap-4 rounded-[12px] border border-border bg-muted/20 px-4 py-3">
           <div>
             <Label

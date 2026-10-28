@@ -567,6 +567,8 @@ export interface AdminCategory {
   description: string | Record<string, string> | null
   icon: string | null
   color: string | null
+  /** 分类页顶部横幅图；null/空 = 没有封面（前台整块不渲染，不能留 `src=""`） */
+  cover_image: string | null
   /** 停用＝前台分类列表/导航/sitemap 不再出现，但直接 URL 与文章上的分类链接保持可用 */
   is_active: boolean
   created_at: string | null
@@ -595,6 +597,9 @@ export interface AdminTaxonomyPayload {
   description?: I18nValue
   icon?: string
   color?: string
+  /** 分类封面。`undefined` = 不发这个键（后端 exclude_unset = 不改它）；
+   *  空串或 null = 清掉封面（后端把空串归成 None）。标签没有这一列，不要传。 */
+  cover_image?: string | null
   is_active?: boolean
 }
 
@@ -624,6 +629,9 @@ function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
   if (descDict) body.description = descDict
   if (payload.icon && payload.icon.trim()) body.icon = payload.icon.trim()
   if (payload.color && payload.color.trim()) body.color = payload.color.trim()
+  // 封面必须区分"没提这个键"和"要清掉它"：沿用上面的 `&&` 写法会让清除操作失效
+  // （提交空串被丢掉 → 后端按未提处理 → 旧封面还在，界面上"点了清除但没变化"）。
+  if (payload.cover_image !== undefined) body.cover_image = payload.cover_image || null
   if (payload.is_active !== undefined) body.is_active = payload.is_active
   return body
 }

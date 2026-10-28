@@ -1966,6 +1966,7 @@ async def create_category(
         description=data.description,
         icon=data.icon,
         color=data.color,
+        cover_image=data.cover_image,
         is_active=data.is_active,
     )
     db.add(category)

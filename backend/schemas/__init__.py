@@ -657,6 +657,20 @@ class CategoryBase(BaseModel):
     description: dict[str, str] | None = Field(None, description="多语言分类描述")
     icon: str | None = Field(None, max_length=50)
     color: str = Field(default="#3B82F6", max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
+    # 创建口也必须能定封面：CategoryUpdate 早有这一项，CategoryBase 却漏了它，
+    # 于是"新建分类"永远拿不到封面、只能建完再 PUT 补一次。这与 is_active 当年的
+    # 「只能创建时定」是同一族陷阱的反向版本（这里是「创建时定不了」）。
+    cover_image: str | None = Field(None, max_length=500)
+
+    @field_validator("cover_image", mode="before")
+    @classmethod
+    def _blank_cover_image_to_none(cls, v: str | None) -> str | None:
+        """空串归 None：库里留着 `""` 时前台拿到的是 `src=""`（一次 404 + 一个破图框），
+        而不是"这个分类没有封面"。"""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
+
     # 与 TagBase.is_active 同族：停用 = 公开列表与 sitemap 不再出现（直接 URL 仍可访问，
     # 已发布文章的分类链接不能断）。缺字段等于"创建即默认启用且无法在建分类时停用"。
     is_active: bool = True
@@ -688,8 +702,18 @@ class CategoryUpdate(BaseModel):
     description: dict[str, str] | None = None
     icon: str | None = Field(None, max_length=50)
     color: str | None = Field(None, max_length=20, pattern=r"^#[0-9A-Fa-f]{6}$")
-    cover_image: str | None = None
+    # 长度约束必须与 CategoryBase 同数：列是 String(500)，SQLite 不拦（静默存下超长串），
+    # PG 则在 flush 时抛 value too long → HTTP 500。
+    cover_image: str | None = Field(None, max_length=500)
     is_active: bool | None = None
+
+    @field_validator("cover_image", mode="before")
+    @classmethod
+    def _blank_cover_image_to_none(cls, v: str | None) -> str | None:
+        """与 CategoryBase 同口径：空串归 None（= 清掉封面）。"""
+        if isinstance(v, str) and not v.strip():
+            return None
+        return v
 
 
 class CategoryResponse(BaseModel):
