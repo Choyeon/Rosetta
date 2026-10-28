@@ -69,7 +69,7 @@
             {{ displayPostTitle }}
           </h1>
 
-          <!-- 作者 / 日期 / 阅读时长 / 阅读量是主信息，字数与更新时间为次要信息。
+          <!-- 作者 / 日期 / 阅读时长 / 阅读量 / 来源是主信息，字数与更新时间为次要信息。
                上一版八项挤在同一行、用「·」硬分隔，窄屏换行后每行都以「·」开头；
                这里分两层：主行不出现分隔符，次行降一级字号与对比度。 -->
           <div class="mt-6 space-y-2">
@@ -112,6 +112,24 @@
               <span class="inline-flex items-center gap-1.5">
                 <Eye class="size-3.5" />
                 {{ views }} {{ t('post.views') }}
+              </span>
+              <span
+                v-if="sourceView.visible"
+                class="inline-flex min-w-0 items-center gap-1.5"
+                data-testid="post-source"
+              >
+                <Link2 class="size-3.5 shrink-0" />
+                {{ t('post.source') }}
+                <a
+                  v-if="sourceView.href"
+                  :href="sourceView.href"
+                  target="_blank"
+                  rel="noopener noreferrer nofollow"
+                  class="truncate underline underline-offset-2 transition-colors hover:text-primary"
+                >{{ sourceView.text }}</a>
+                <template v-else>
+                  {{ sourceView.text }}
+                </template>
               </span>
             </div>
             <div
@@ -810,6 +828,7 @@ import { watch, nextTick } from 'vue'
 import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats } from '~~/composables/useReadingUX'
 import type { TocItem } from '~~/composables/useReadingUX'
 import { formatCount } from '~~/lib/utils'
+import { resolvePostSource } from '~~/lib/post-source'
 
 definePageMeta({ layout: 'default' })
 
@@ -864,6 +883,10 @@ interface PostDetail {
   updated_at?: string
   updatedAt?: string
   excerpt?: unknown
+  /** 来源（列 NOT NULL，默认「原创」）与原文出处；出处可能由导入工具直接落库，
+   *  未必过 schema 的严格档，所以渲染前必须自己判 scheme。 */
+  source?: string | null
+  source_url?: string | null
   views?: number
   views_count?: number
   author?: {
@@ -1290,6 +1313,8 @@ const similarCards = computed<SimilarCard[]>(() =>
   }))
 )
 const publishedAt = computed(() => post.value?.published_at || post.value?.publishedAt || post.value?.created_at || '')
+// 来源一项的口径（默认值不展示 + 非 http(s) 不当链接）单源在 lib/post-source.ts
+const sourceView = computed(() => resolvePostSource(post.value?.source, post.value?.source_url))
 const updatedAt = computed(() => post.value?.updated_at || post.value?.updatedAt || '')
 // 「更新于」标记的判定提为 computed：模板里每次重渲染（评论输入、轮播推进等）
 // 都会重跑 v-if，旧写法每次新建 4 个 Date 对象；invalid 时间串按 NaN 比较为 false，

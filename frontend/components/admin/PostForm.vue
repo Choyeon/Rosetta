@@ -99,6 +99,10 @@ const form = reactive({
   // 否则「改一次标题保存」就把文章踢出系列（系列页章节目录清空）。
   series_id: null as number | null,
   series_order: 0,
+  // 来源：后端列 NOT NULL、默认「原创」，所以永远要发送（空值会让 PUT 把列写空，
+  // 而列是 NOT NULL → 422）。原文链接反过来：空串在后端归成 None，正好是「清掉」。
+  source: '原创',
+  source_url: '',
   excerpt: { ...EMPTY_I18N_DICT } as Record<string, string>,
   cover_image: '',
   meta_title: { ...EMPTY_I18N_DICT } as Record<string, string>,
@@ -167,6 +171,18 @@ const statusLabel = computed(() => {
 
 const scheduledError = computed(() => scheduledAtError(form.status, fromDateTimeLocal(form.scheduled_at)))
 
+/**
+ * 原文链接只允许 http(s)：这个值会渲染成访客页面上的 `<a href>`，
+ * `javascript:` / `data:` 伪协议写进去就等于在每篇文章下方埋一条可执行链接。
+ * 后端 PostBase/PostUpdate 的严格档会拒（422），这里提前拦是为了让作者当场看到
+ * 是哪一个字段错了，而不是一条整页保存失败的 toast。
+ */
+const sourceUrlError = computed(() => {
+  const url = form.source_url.trim()
+  if (!url || /^https?:\/\//i.test(url)) return ''
+  return '原文链接必须以 http:// 或 https:// 开头'
+})
+
 let slugManualEdit = false
 // 只盯 form.title.zh 时，作者先写英文（或繁体）标题就永远拿不到 slug，然后被
 // "请输入 slug" 卡住。取"约定顺序里第一个非空的语言"，zh 仍是首选。
@@ -234,6 +250,9 @@ const applyInitialData = (data: Post) => {
   form.tag_ids = data.tags ? data.tags.map(t => t.id) : []
   form.series_id = data.series_id ?? null
   form.series_order = data.series_order ?? 0
+  // 必须回填：不回填则每次 PUT 把来源提交成「原创」，转载文章改一次标题就丢了出处
+  form.source = data.source?.trim() || '原创'
+  form.source_url = data.source_url ?? ''
   form.excerpt = normalizeI18nDict(data.excerpt)
   form.cover_image = data.cover_image || ''
   form.meta_title = normalizeI18nDict(data.meta_title)
@@ -378,6 +397,11 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
     tag_ids: form.tag_ids,
     series_id: form.series_id ?? null,
     series_order: form.series_order || 0,
+    // 来源始终发送且兜回默认值：列是 NOT NULL，空串会让后端 422，
+    // 而"整个字段不出现"在 exclude_unset 语义下等于"不改它"，两者都不是作者想要的。
+    source: form.source.trim() || '原创',
+    // 空串归 null：与分类/封面同一套"显式清空"口径，省略键则清不掉旧出处
+    source_url: form.source_url.trim() || null,
     excerpt: toI18nPayload(form.excerpt),
     cover_image: form.cover_image ?? ''
   }
@@ -417,6 +441,11 @@ const validateBase = (): boolean => {
   const schedErr = scheduledError.value
   if (schedErr) {
     toast.error(schedErr)
+    return false
+  }
+  const srcErr = sourceUrlError.value
+  if (srcErr) {
+    toast.error(srcErr)
     return false
   }
   if (form.visibility === 'password' && !form.password.trim() && !initiallyPasswordProtected.value) {
@@ -949,7 +978,7 @@ onBeforeUnmount(() => {
 
         <AdminFormSection
           title="组织"
-          description="分类、标签与系列决定文章的归档位置。"
+          description="分类、标签与系列决定文章的归档位置；来源标记这篇文章的出处。"
           :icon="FolderTree"
         >
           <div class="flex flex-col gap-4">
@@ -1120,6 +1149,40 @@ onBeforeUnmount(() => {
                     v-model.number="form.series_order"
                     type="number"
                     min="0"
+                    class="h-10 rounded-[10px] text-sm"
+                  />
+                </AdminFormField>
+              </div>
+            </div>
+
+            <div class="flex items-start gap-2">
+              <div class="w-40 shrink-0">
+                <AdminFormField
+                  label="来源"
+                  for="post-form-source"
+                  hint="默认「原创」；转载/翻译改成实际出处。"
+                >
+                  <Input
+                    id="post-form-source"
+                    v-model="form.source"
+                    maxlength="50"
+                    placeholder="原创"
+                    class="h-10 rounded-[10px] text-sm"
+                  />
+                </AdminFormField>
+              </div>
+              <div class="flex-1 min-w-0">
+                <AdminFormField
+                  label="原文链接"
+                  for="post-form-source-url"
+                  :error="sourceUrlError || undefined"
+                  hint="留空则文章页不显示出处链接；非原创内容建议填写，文章页会渲染成可点击的出站链接。"
+                >
+                  <Input
+                    id="post-form-source-url"
+                    v-model="form.source_url"
+                    maxlength="500"
+                    placeholder="https://example.com/original-post"
                     class="h-10 rounded-[10px] text-sm"
                   />
                 </AdminFormField>

@@ -74,6 +74,7 @@
     "publishedAt": "Published",
     "updatedAt": "Updated",
     "views": "Views",
+    "source": "Source",
     "likes": "Likes",
     "comments": "Comments",
     "readingTime": "Reading time",

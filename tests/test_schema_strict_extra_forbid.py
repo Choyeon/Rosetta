@@ -137,7 +137,7 @@ def test_ugc_url_rule_is_single_sourced(schema, field):
     """
     source = inspect.getsource(_validator_of(schema, field))
     assert "_require_absolute_url" in source
-    assert "网站必须以 http:// 或 https:// 开头" not in source
+    assert "raise ValueError" not in source
 
 
 def test_password_rule_still_rejects_weak_values():

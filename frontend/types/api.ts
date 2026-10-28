@@ -74,6 +74,10 @@ export interface Post {
   title: string | Record<string, string>
   subtitle?: string | Record<string, string>
   slug: string
+  /** 来源（默认「原创」）；文章页只在非默认值或有原文链接时展示。 */
+  source?: string
+  /** 原文出处；后端严格档只收 http(s)，渲染侧仍要再判一次 scheme。 */
+  source_url?: string | null
   content: string | Record<string, string>
   excerpt?: string | Record<string, string>
   cover_image?: string
@@ -109,6 +113,9 @@ export interface PostCreate {
   title: string | Record<string, string>
   subtitle?: string | Record<string, string>
   slug?: string
+  source?: string
+  /** 显式 null = 清掉原文链接（后端 PUT 是 exclude_unset 增量语义）。 */
+  source_url?: string | null
   content: string | Record<string, string>
   excerpt?: string | Record<string, string>
   cover_image?: string

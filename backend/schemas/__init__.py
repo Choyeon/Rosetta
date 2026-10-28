@@ -112,23 +112,28 @@ def _normalize_optional_url(v: str | None) -> str | None:
     return v
 
 
-def _require_absolute_url(v: str | None) -> str | None:
-    """访客留言/评论的作者网站：**不补 scheme，直接拒**，并限长 200。
+def _require_absolute_url(v: str | None, *, max_len: int = 200) -> str | None:
+    """**不补 scheme，直接拒**，并限长。
 
     与 `_normalize_optional_url` 是两条不同策略，不是重复实现：用户填的
-    "example.com/a" 自动补成 https 会静默改写一个点不进任何地方的地址，而评论里的
-    链接是对外展示的，猜错 scheme 等于替访客伪造一条出站链接。注册资料走宽容档，
-    UGC 走严格档。
+    "example.com/a" 自动补成 https 会静默改写一个点不进任何地方的地址，而这里存下的
+    链接是要渲染到访客页面上的，猜错 scheme 等于替作者伪造一条出站链接。注册资料走宽容档，
+    公开展示的链接走严格档。
 
-    200 这条目前两个调用点的字段本身已是 `max_length=200`，所以判不到；留着是给
-    下一个不带长度约束的字段兜底，不要当成"已经校验过长度"。
+    `javascript:` / `data:` 这类伪协议只有在这一档才被挡住——它们不以 http 开头，
+    宽容档会把它补成 `https://javascript:...`（无害但坏链），而严格档直接拒。
+    凡是最终会进 `<a href>` 的列都要走这条口，写口的拒绝只是第一道，渲染侧还得再判一次
+    （库里可能躺着绕过本 schema 写入的历史行，例如导入工具直接落 ORM）。
+
+    默认 200 对应留言/评论的作者网站字段（字段本身也是 `max_length=200`，所以判不到；
+    留着是给下一个不带长度约束的字段兜底，不要当成"已经校验过长度"）。
     """
     if v is None or v == "":
         return None
     if not v.startswith(("http://", "https://")):
-        raise ValueError("网站必须以 http:// 或 https:// 开头")
-    if len(v) > 200:
-        raise ValueError("网站长度不能超过 200 字符")
+        raise ValueError("链接必须以 http:// 或 https:// 开头")
+    if len(v) > max_len:
+        raise ValueError(f"链接长度不能超过 {max_len} 字符")
     return v
 
 
@@ -853,6 +858,12 @@ class PostBase(BaseModel):
     meta_description: dict[str, str] | None = Field(None, description="多语言 SEO 描述")
     meta_keywords: dict[str, str] | None = Field(None, description="多语言 SEO 关键词")
 
+    @field_validator("source_url")
+    @classmethod
+    def _validate_source_url(cls, v: str | None) -> str | None:
+        """原文链接会渲染成访客页面上的 `<a href>`，所以走严格档（口径单源见 _require_absolute_url）。"""
+        return _require_absolute_url(v, max_len=500)
+
 
 class PostCreate(PostBase):
     """文章创建模型"""
@@ -893,6 +904,12 @@ class PostUpdate(BaseModel):
     meta_title: dict[str, str] | None = None
     meta_description: dict[str, str] | None = None
     meta_keywords: dict[str, str] | None = None
+
+    @field_validator("source_url")
+    @classmethod
+    def _validate_source_url(cls, v: str | None) -> str | None:
+        """与 PostBase 同档：空串归 None（= 清掉），非空必须是 http(s)（口径单源见 _require_absolute_url）。"""
+        return _require_absolute_url(v, max_len=500)
 
 
 class BatchPostStatusUpdate(BaseModel):
