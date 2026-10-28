@@ -108,6 +108,7 @@
         ]"
         aria-label="hero"
         aria-roledescription="carousel"
+        :data-hero-tone="heroTone"
         data-editorial-section="hero"
         @pointerenter="heroPaused = true"
         @pointerleave="heroPaused = false"
@@ -125,21 +126,28 @@
           </Transition>
         </div>
 
-        <!-- Subtle depth overlays (keep cinematics) + 幻灯片自带的可读性遮罩 -->
-        <div class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-black/22 pointer-events-none" />
+        <!-- Subtle depth overlays (keep cinematics) + 幻灯片自带的可读性遮罩。
+             这三条黑渐变是"给白字垫底"的纯装饰压暗层，深字色调下整组撤掉——深字压在黑纱上
+             等于两边都看不清。上一行的可读性遮罩不撤：那是运营者逐张调的配置，与色调正交。 -->
+        <div
+          v-if="!isDarkTone"
+          class="absolute inset-0 bg-gradient-to-t from-black/75 via-black/18 to-black/22 pointer-events-none"
+        />
         <div
           class="absolute inset-0 pointer-events-none transition-opacity duration-500"
           :style="heroOverlayStyle"
         />
         <!-- 非编辑部主题的横/纵两条渐变必须分两个叠放层：同一条 class 上
              写两个 bg-gradient-to-* 是覆写同一个 background-image，后者静默失效 -->
-        <div
-          v-if="isEditorialTheme"
-          class="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/18 via-black/6 to-transparent"
-        />
-        <template v-else>
-          <div class="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/50 via-black/10 to-black/20" />
-          <div class="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/25 via-transparent to-transparent" />
+        <template v-if="!isDarkTone">
+          <div
+            v-if="isEditorialTheme"
+            class="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/18 via-black/6 to-transparent"
+          />
+          <template v-else>
+            <div class="absolute inset-0 pointer-events-none bg-gradient-to-r from-black/50 via-black/10 to-black/20" />
+            <div class="absolute inset-0 pointer-events-none bg-gradient-to-b from-black/25 via-transparent to-transparent" />
+          </template>
         </template>
 
         <!-- Hero copy：轮播项本身就是内容（热榜文章标题/摘要/链接），所以两套主题都要显示，
@@ -158,26 +166,26 @@
               :class="['flex w-full max-w-3xl flex-col', heroAlign]"
             >
               <span
-                class="inline-flex w-fit items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-white/70 backdrop-blur-xl"
+                :class="['inline-flex w-fit items-center gap-2 rounded-full border px-3 py-1 text-[11px] uppercase tracking-[0.22em] backdrop-blur-xl', heroToneClasses.kicker]"
               >
                 <span class="size-1.5 rounded-full bg-primary" />
                 {{ site.siteTitle.value }}
               </span>
               <h1
                 data-hero-title
-                class="mt-5 font-display text-[1.75rem] leading-[1.15] sm:text-4xl md:text-6xl font-black tracking-tight text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)] [overflow-wrap:anywhere]"
+                :class="['mt-5 font-display text-[1.75rem] leading-[1.15] sm:text-4xl md:text-6xl font-black tracking-tight [overflow-wrap:anywhere]', heroToneClasses.title]"
               >
                 {{ heroTitle }}
               </h1>
               <p
                 data-hero-subtitle
-                class="mt-5 max-w-2xl text-[0.95rem] md:text-xl text-white/85 leading-relaxed drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]"
+                :class="['mt-5 max-w-2xl text-[0.95rem] md:text-xl leading-relaxed', heroToneClasses.subtitle]"
               >
                 {{ heroSubtitle }}
               </p>
               <div
                 v-if="_heroCaption"
-                class="mt-3 text-sm text-white/70"
+                :class="['mt-3 text-sm', heroToneClasses.caption]"
               >
                 {{ _heroCaption }}
               </div>
@@ -192,7 +200,7 @@
                 <NuxtLink
                   :to="localeHref(heroSecondaryCtaUrl)"
                   data-testid="hero-secondary-cta"
-                  class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-xl hover:bg-white/20 active:scale-[0.98] transition-[background-color,transform] duration-200"
+                  :class="['inline-flex min-h-11 items-center justify-center gap-2 rounded-full border px-5 py-2.5 text-sm font-semibold backdrop-blur-xl active:scale-[0.98] transition-[background-color,transform] duration-200', heroToneClasses.secondaryCta]"
                 >
                   {{ heroSecondaryCtaText }}
                 </NuxtLink>
@@ -948,6 +956,7 @@ interface HeroSlideApi {
   cta_secondary_text?: string | Record<string, string> | null
   cta_secondary_url?: string | null
   text_align?: 'left' | 'center' | 'right'
+  text_color?: 'light' | 'dark' | null
 }
 
 const { t, locale } = useI18n()
@@ -1272,6 +1281,34 @@ const heroOverlayStyle = computed(() => ({
 const heroAlign = computed(() => {
   const a = heroSlide.value?.text_align
   return a === 'center' ? 'mx-auto items-center text-center' : a === 'right' ? 'ml-auto items-end text-right' : ''
+})
+
+/* ===== 文字色调（HeroSlide.text_color）=====
+   后台这个开关管的是"这张底图是深底还是亮底"：light（缺省）＝白字＋黑色电影感压暗层，
+   也就是这个首页一直以来的样子；dark＝雪景/白墙/浅灰渐变这类亮底图用的深字。
+   只搬"着色"的原子类进 computed，布局类（min-h-11 / 断点字号 / overflow-wrap）留在模板里——
+   它们由 heroMobileLayout.spec.ts 逐条钉住，挪进 computed 会让那份契约静默失效。 */
+const heroTone = computed<'light' | 'dark'>(() =>
+  heroSlide.value?.text_color === 'dark' ? 'dark' : 'light'
+)
+const isDarkTone = computed(() => heroTone.value === 'dark')
+const heroToneClasses = computed(() => {
+  const dark = isDarkTone.value
+  return {
+    kicker: dark
+      ? 'border-black/10 bg-white/60 text-black/70'
+      : 'border-white/15 bg-black/35 text-white/70',
+    title: dark
+      ? 'text-slate-900 drop-shadow-[0_2px_14px_rgba(255,255,255,0.55)]'
+      : 'text-white drop-shadow-[0_2px_14px_rgba(0,0,0,0.55)]',
+    subtitle: dark
+      ? 'text-slate-900/80 drop-shadow-[0_1px_6px_rgba(255,255,255,0.5)]'
+      : 'text-white/85 drop-shadow-[0_1px_6px_rgba(0,0,0,0.5)]',
+    caption: dark ? 'text-slate-900/70' : 'text-white/70',
+    secondaryCta: dark
+      ? 'border-black/15 bg-white/55 text-slate-900 hover:bg-white/75'
+      : 'border-white/20 bg-white/10 text-white hover:bg-white/20'
+  }
 })
 
 let heroTimer: ReturnType<typeof setInterval> | null = null

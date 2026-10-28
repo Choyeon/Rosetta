@@ -76,6 +76,9 @@ async def test_hero_slides_fall_back_to_hot_posts(
     assert rows[1]["media_url"] == "/media/12.jpg"
     assert rows[0]["cta_url"] == "/posts/hot-eleven"
     assert [row["sort_order"] for row in rows] == [0, 1]
+    # 兜底行的底图是文章封面（深底亮底都有），色调必须显式给 light：前端拿到 undefined
+    # 只能自己猜一个缺省，等于把这条路径的观感交给两处代码各写一遍。
+    assert all(row["text_color"] == "light" for row in rows), "兜底项的文字色调缺声明"
 
 
 @pytest.mark.asyncio

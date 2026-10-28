@@ -51,6 +51,14 @@ const ALIGN_OPTIONS = [
   { value: 'right', label: '右对齐' }
 ] as const
 
+// 文字色调管的是"这张底图是深底还是亮底"：浅色＝今天的白字＋黑色电影感压暗层；
+// 深色＝亮底图（雪景/白墙/浅灰渐变）用的深字，同时撤掉那三层纯装饰黑渐变，
+// 否则深字压在黑纱上等于两边都看不清。遮罩颜色/强度是另一回事，任何色调下都由运营者自己调。
+const TONE_OPTIONS = [
+  { value: 'light', label: '浅色文字' },
+  { value: 'dark', label: '深色文字' }
+] as const
+
 const form = reactive<{
   title: I18nDict
   subtitle: I18nDict
@@ -62,6 +70,7 @@ const form = reactive<{
   overlay_color: string
   overlay_opacity: number
   text_align: 'left' | 'center' | 'right'
+  text_color: 'light' | 'dark'
   sort_order: number
   is_active: boolean
 }>({
@@ -75,6 +84,7 @@ const form = reactive<{
   overlay_color: '#000000',
   overlay_opacity: 45,
   text_align: 'left',
+  text_color: 'light',
   sort_order: 0,
   is_active: true
 })
@@ -128,6 +138,7 @@ function resetForm() {
   form.overlay_color = '#000000'
   form.overlay_opacity = 45
   form.text_align = 'left'
+  form.text_color = 'light'
   form.sort_order = slides.value.length
   form.is_active = true
   editingId.value = null
@@ -151,6 +162,9 @@ function openEdit(slide: AdminHeroSlide) {
   form.overlay_color = HEX_RE.test(slide.overlay_color ?? '') ? slide.overlay_color : '#000000'
   form.overlay_opacity = slide.overlay_opacity ?? 45
   form.text_align = slide.text_align ?? 'left'
+  // 缺省必须是 light：库里历史行的 text_color 全是 'light'（列默认值），
+  // 而首页今天的观感就是白字——判成别的值等于替所有既有幻灯片换一次皮肤。
+  form.text_color = slide.text_color ?? 'light'
   form.sort_order = slide.sort_order ?? 0
   form.is_active = slide.is_active
   editingId.value = slide.id
@@ -206,6 +220,7 @@ async function save() {
     overlay_color: form.overlay_color,
     overlay_opacity: Math.round(opacity),
     text_align: form.text_align,
+    text_color: form.text_color,
     sort_order: Number(form.sort_order) || 0,
     is_active: form.is_active
   }
@@ -478,6 +493,23 @@ onMounted(loadData)
               class="h-9 rounded-[10px]"
               :variant="form.text_align === opt.value ? 'default' : 'outline'"
               @click="form.text_align = opt.value"
+            >
+              {{ opt.label }}
+            </Button>
+          </div>
+        </div>
+
+        <div>
+          <Label class="mb-1 block text-xs text-muted-foreground">文字色调</Label>
+          <div class="flex gap-2">
+            <Button
+              v-for="opt in TONE_OPTIONS"
+              :key="opt.value"
+              type="button"
+              size="sm"
+              class="h-9 rounded-[10px]"
+              :variant="form.text_color === opt.value ? 'default' : 'outline'"
+              @click="form.text_color = opt.value"
             >
               {{ opt.label }}
             </Button>
