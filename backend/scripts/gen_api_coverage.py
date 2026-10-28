@@ -179,22 +179,7 @@ def _front_calls() -> list[Call]:
             if context == "none":
                 continue
             raw = m.group(m.lastindex or 1)
-            forms = {raw}
-            # `${...}` 粘在**最后一段尾部**通常是查询串或形态后缀
-            # （`/admin/themes/market${force ? "?force=true" : ""}`），这条字面量同时也请求了
-            # 去掉尾巴的父路径；单独占一段的 `${id}` 是路径参数，不能算成父路径。
-            glued = _GLUED_VAR_RE.search(raw)
-            if glued:
-                forms.add(raw[: raw.rindex("${")])
-            candidates: set[str] = set()
-            for form in forms:
-                normed = _TEMPLATE_VAR_RE.sub("*", form)
-                normed = normed.split("?")[0].split("#")[0]
-                if normed.endswith("/"):
-                    normed = normed[:-1]
-                candidates.add(f"/api{normed}")
-                if normed.startswith("/api/"):
-                    candidates.add(normed)
+            candidates = _candidate_paths(raw)
             if const_name is not None:
                 verbs = _verbs_for_const(text, const_name, m.start())
             elif context == "fetch":
@@ -204,6 +189,33 @@ def _front_calls() -> list[Call]:
             for cand in candidates:
                 hits.append(Call(cand, rel, verbs, context))
     return hits
+
+
+def _candidate_paths(raw: str) -> set[str]:
+    """一条字面量能请求到哪些路径（已带 `/api` 前缀的候选集合）。"""
+    forms = {raw}
+    # `${...}` 粘在**最后一段尾部**通常是查询串或形态后缀
+    # （`/admin/themes/market${force ? "?force=true" : ""}`），这条字面量同时也请求了
+    # 去掉尾巴的父路径；单独占一段的 `${id}` 是路径参数，不能算成父路径。
+    glued = _GLUED_VAR_RE.search(raw)
+    if glued:
+        forms.add(raw[: raw.rindex("${")])
+    # 变量前不是 `/` 同样说明 `${…}` 开的是查询串；这条还兜住嵌套模板串——
+    # `/blog/rss${qs ? `?${qs}` : ''}` 的反引号会让模板正则只能取到第一个 `${` 为止，
+    # 而 rss.xml 就是 GET /api/blog/rss 的真实消费点。
+    var_at = raw.find("${")
+    if var_at > 0 and raw[var_at - 1] != "/":
+        forms.add(raw[:var_at])
+    candidates: set[str] = set()
+    for form in forms:
+        normed = _TEMPLATE_VAR_RE.sub("*", form)
+        normed = normed.split("?")[0].split("#")[0]
+        if normed.endswith("/"):
+            normed = normed[:-1]
+        candidates.add(f"/api{normed}")
+        if normed.startswith("/api/"):
+            candidates.add(normed)
+    return candidates
 
 
 def _verb_from_callee(callee: str | None) -> str | None:
@@ -414,13 +426,23 @@ def _match_open_angle(text: str) -> int | None:
     泛型实参里可以带对象类型（`request<OOBEStatus & { success?: boolean }>`），
     所以 `{}`/`()`/`[]` 要各自记账，只在它们都归零时才认 `<`/`>`；
     不这样做就会在 `}` 上误判"这不是泛型"，把 OOBE 整族报成未消费。
+    泛型体里同样能出现字符串字面量类型（`issues: Array<{ level: 'error' | 'warn' }>`），
+    所以引号不是"到此为止"，而是整段跳过——`POST /oobe/preflight` 就因为这条被漏了一轮。
+    找不到配对的开引号就仍按"不是泛型"处理（少计比多计安全）。
     """
     angle = 0
     braces = 0
     brackets = 0
     parens = 0
-    for i in range(len(text) - 1, -1, -1):
+    i = len(text) - 1
+    while i >= 0:
         ch = text[i]
+        if ch in "\"'`":
+            open_at = _find_open_quote(text, i, ch)
+            if open_at is None:
+                return None
+            i = open_at - 1
+            continue
         if ch == "}":
             braces += 1
         elif ch == "{":
@@ -433,8 +455,6 @@ def _match_open_angle(text: str) -> int | None:
             parens += 1
         elif ch == "(":
             parens -= 1
-        elif ch in "\"'`":
-            return None
         elif braces == 0 and brackets == 0 and parens == 0:
             if ch == ">":
                 angle += 1
@@ -444,6 +464,20 @@ def _match_open_angle(text: str) -> int | None:
                     return i
         if braces < 0 or brackets < 0 or parens < 0:
             return None
+        i -= 1
+    return None
+
+
+def _find_open_quote(text: str, close_pos: int, quote: str) -> int | None:
+    """回扫到这段字符串/模板的开引号；跳过 `\\'` 这类转义引号。"""
+    i = close_pos - 1
+    while i >= 0:
+        if text[i] == "\\":
+            i -= 2
+            continue
+        if text[i] == quote:
+            return i
+        i -= 1
     return None
 
 

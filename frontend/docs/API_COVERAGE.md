@@ -34,16 +34,16 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 352 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：352 个端点操作；✅ 287 + 🟡 5 = 已消费 292 个，未消费 60 个，覆盖率 83.0%。**
+**总计：352 个端点操作；✅ 288 + 🟡 6 = 已消费 294 个，未消费 58 个，覆盖率 83.5%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
 | 模块（backend/api） | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
 |---|---:|---:|---:|---:|---:|
-| blog | 40 | 35 | 4 | 1 | 98% |
+| blog | 40 | 35 | 5 | 0 | 100% |
 | users | 22 | 17 | 0 | 5 | 77% |
 | core | 19 | 16 | 0 | 3 | 84% |
-| oobe | 18 | 8 | 0 | 10 | 44% |
+| oobe | 18 | 9 | 0 | 9 | 50% |
 | plugins | 16 | 14 | 0 | 2 | 88% |
 | admin | 15 | 15 | 0 | 0 | 100% |
 | media | 15 | 12 | 0 | 3 | 80% |
@@ -87,7 +87,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 60 条）
+## 未消费清单（自动生成，共 58 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -97,13 +97,12 @@
 - **avatar_proxy**（1）：`GET /api/media/avatar`
 - **bing**（1）：`GET /api/bing/wallpaper`
 - **bing_image**（3）：`GET /api/bing/image`、`GET /api/bing/image/archive`、`GET /api/bing/image/today`
-- **blog**（1）：`GET /api/blog/rss`
 - **captcha**（1）：`POST /api/captcha/verify`
 - **comments**（1）：`GET /api/posts/{post_id_or_slug}/comments`
 - **core**（3）：`POST /api/admin/settings`、`GET /api/config/full`、`GET /api/sponsors`
 - **favorite**（1）：`PUT /api/favorites/{favorite_id}`
 - **media**（3）：`GET /api/media/bing-wallpaper`、`POST /api/media/library/upload`、`POST /api/media/upload/stream`
-- **oobe**（10）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/preflight`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
+- **oobe**（9）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
 - **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
 - **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
 - **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`

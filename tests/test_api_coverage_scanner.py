@@ -21,7 +21,9 @@ from backend.scripts.gen_api_coverage import (
     BEGIN_MARK,
     DOC_PATH,
     END_MARK,
+    _candidate_paths,
     _context_of,
+    _verbs_at,
     _verbs_for_const,
     build_block,
 )
@@ -115,3 +117,27 @@ def test_declared_const_nobody_fetches_is_not_coverage():
         "function label() {\n  return target.value\n}"
     )
     assert _ctx(text, "'/admin/unused'")[0] == "none"
+
+
+def test_nested_template_query_keeps_the_parent_path():
+    """Nitro 侧 `` `/blog/rss${qs ? `?${qs}` : ''}` ``：反引号嵌套不能把父路径丢掉。"""
+    assert "/api/blog/rss" in _candidate_paths("/blog/rss${qs ? `?${qs}` : ''}")
+    # 路径参数形态不许截出"上一级集合口"（`/admin/themes/${slug}/mods` ≠ /api/admin/themes）
+    assert _candidate_paths("/admin/themes/${slug}/mods") == {"/api/admin/themes/*/mods"}
+
+
+def test_generic_body_with_string_literal_types_still_reveals_the_callee():
+    """`request<{ issues: Array<{ level: 'error' | 'warn' }> }>('/oobe/preflight', …)`。
+
+    泛型体里带引号曾被当成"这不是泛型"，POST /oobe/preflight 因此漏判一轮。
+    """
+    text = (
+        "  return request<{\n"
+        "      issues?: Array<{ level: 'error' | 'warn' }>\n"
+        "    }>('/oobe/preflight', {\n"
+        "      method: 'POST', body\n"
+        "    })"
+    )
+    assert _ctx(text, "'/oobe/preflight'")[:1] == ("fetch",)
+    anchor = text.index("'/oobe/preflight'")
+    assert _verbs_at(text, anchor, anchor + len("'/oobe/preflight'"), "request") == {"post"}
