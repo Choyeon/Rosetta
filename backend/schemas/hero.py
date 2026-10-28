@@ -5,7 +5,9 @@ Hero 轮播相关 Pydantic Schema
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+from backend.schemas._url_policy import reject_pseudo_url_scheme as _reject_pseudo_url_scheme
 
 MediaType = Literal["image", "video", "youtube"]
 TextAlign = Literal["left", "center", "right"]
@@ -37,7 +39,13 @@ class HeroSlideBase(BaseModel):
 class HeroSlideCreate(HeroSlideBase):
     """创建 Hero 幻灯片"""
 
-    pass
+    # 只挂在写口，不挂 HeroSlideBase：HeroSlideResponse 继承 Base，挂在 Base 会让
+    # `model_validate(ORM 行)` 也跑一遍——库里躺着历史脏值时公开口就从"渲染一条坏链接"
+    # 变成整站 500。读侧的防线是前端 safeHeroHref 回落缺省，不是拒绝响应。
+    @field_validator("cta_url", "cta_secondary_url")
+    @classmethod
+    def _reject_pseudo_scheme(cls, v: str | None) -> str | None:
+        return _reject_pseudo_url_scheme(v)
 
 
 class HeroSlideUpdate(BaseModel):
@@ -60,6 +68,12 @@ class HeroSlideUpdate(BaseModel):
     sort_order: int | None = Field(None, ge=0)
     start_time: datetime | None = None
     end_time: datetime | None = None
+
+    # 与 HeroSlideCreate 同口径：PUT 也必须挡伪协议，否则"创建时拦住、改一下就有"。
+    @field_validator("cta_url", "cta_secondary_url")
+    @classmethod
+    def _reject_pseudo_scheme(cls, v: str | None) -> str | None:
+        return _reject_pseudo_url_scheme(v)
 
 
 class HeroSlideResponse(HeroSlideBase):

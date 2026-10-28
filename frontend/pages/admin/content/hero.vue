@@ -5,6 +5,7 @@
   硬契约：后端 HeroSlide* 为 extra=forbid 且 title/subtitle/cta_text 声明成 str，
   多语言字典必须 JSON.stringify 后提交（回显时解析），漏一步即 422。
   media_type 固定 image：首页只有背景图层，选 video/youtube 会存得进去却永远不渲染（静默失效）。
+  主次两个按钮都是"幻灯片自带优先、缺省回落到站点设置/浏览全部文章"，所以两张框都留空也顶不掉现有观感。
   start_time/end_time 不开放：生效时间窗由后端过滤，界面暂不排期，缺省 null＝长期生效。
 -->
 <script setup lang="ts">
@@ -54,8 +55,10 @@ const form = reactive<{
   title: I18nDict
   subtitle: I18nDict
   cta_text: I18nDict
-  media_url: string
   cta_url: string
+  cta_secondary_text: I18nDict
+  cta_secondary_url: string
+  media_url: string
   overlay_color: string
   overlay_opacity: number
   text_align: 'left' | 'center' | 'right'
@@ -65,8 +68,10 @@ const form = reactive<{
   title: { ...EMPTY_I18N_DICT },
   subtitle: { ...EMPTY_I18N_DICT },
   cta_text: { ...EMPTY_I18N_DICT },
-  media_url: '',
   cta_url: '',
+  cta_secondary_text: { ...EMPTY_I18N_DICT },
+  cta_secondary_url: '',
+  media_url: '',
   overlay_color: '#000000',
   overlay_opacity: 45,
   text_align: 'left',
@@ -116,8 +121,10 @@ function resetForm() {
   form.title = { ...EMPTY_I18N_DICT }
   form.subtitle = { ...EMPTY_I18N_DICT }
   form.cta_text = { ...EMPTY_I18N_DICT }
-  form.media_url = ''
   form.cta_url = ''
+  form.cta_secondary_text = { ...EMPTY_I18N_DICT }
+  form.cta_secondary_url = ''
+  form.media_url = ''
   form.overlay_color = '#000000'
   form.overlay_opacity = 45
   form.text_align = 'left'
@@ -137,8 +144,10 @@ function openEdit(slide: AdminHeroSlide) {
   form.title = toDict(slide.title)
   form.subtitle = toDict(slide.subtitle)
   form.cta_text = toDict(slide.cta_text)
-  form.media_url = slide.media_url
   form.cta_url = slide.cta_url ?? ''
+  form.cta_secondary_text = toDict(slide.cta_secondary_text)
+  form.cta_secondary_url = slide.cta_secondary_url ?? ''
+  form.media_url = slide.media_url
   form.overlay_color = HEX_RE.test(slide.overlay_color ?? '') ? slide.overlay_color : '#000000'
   form.overlay_opacity = slide.overlay_opacity ?? 45
   form.text_align = slide.text_align ?? 'left'
@@ -189,8 +198,10 @@ async function save() {
     title: fromDict(form.title),
     subtitle: fromDict(form.subtitle),
     cta_text: fromDict(form.cta_text),
-    media_url: form.media_url.trim(),
     cta_url: form.cta_url.trim() || null,
+    cta_secondary_text: fromDict(form.cta_secondary_text),
+    cta_secondary_url: form.cta_secondary_url.trim() || null,
+    media_url: form.media_url.trim(),
     media_type: 'image',
     overlay_color: form.overlay_color,
     overlay_opacity: Math.round(opacity),
@@ -403,6 +414,25 @@ onMounted(loadData)
             id="hero-form-cta"
             v-model="form.cta_url"
             placeholder="/posts/your-slug"
+            class="h-9 rounded-[10px]"
+          />
+        </div>
+
+        <I18nTabsEditor
+          v-model="form.cta_secondary_text"
+          kind="text"
+          label="次按钮文案（留空则显示「浏览全部文章」）"
+        />
+
+        <div>
+          <Label
+            for="hero-form-secondary-cta"
+            class="mb-1 block text-xs text-muted-foreground"
+          >次按钮链接（留空则跳 /posts）</Label>
+          <Input
+            id="hero-form-secondary-cta"
+            v-model="form.cta_secondary_url"
+            placeholder="/series/your-series"
             class="h-9 rounded-[10px]"
           />
         </div>

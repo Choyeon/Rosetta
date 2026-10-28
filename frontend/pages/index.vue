@@ -190,10 +190,11 @@
                   <ArrowRight class="size-4" />
                 </NuxtLink>
                 <NuxtLink
-                  :to="localeHref('/posts')"
+                  :to="localeHref(heroSecondaryCtaUrl)"
+                  data-testid="hero-secondary-cta"
                   class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-5 py-2.5 text-sm font-semibold text-white backdrop-blur-xl hover:bg-white/20 active:scale-[0.98] transition-[background-color,transform] duration-200"
                 >
-                  {{ t('home.viewAll') || '浏览全部文章' }}
+                  {{ heroSecondaryCtaText }}
                 </NuxtLink>
               </div>
             </div>
@@ -928,6 +929,7 @@ import { clampThemeWidth, MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { toYMD } from '~~/lib/datetime'
 import { handlePostCoverError } from '~~/lib/post-cover'
 import { cn, formatCount } from '~~/lib/utils'
+import { safeHeroHref } from '~~/lib/hero-cta'
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -943,6 +945,8 @@ interface HeroSlideApi {
   overlay_color: string
   cta_text?: string | Record<string, string> | null
   cta_url?: string | null
+  cta_secondary_text?: string | Record<string, string> | null
+  cta_secondary_url?: string | null
   text_align?: 'left' | 'center' | 'right'
 }
 
@@ -1250,7 +1254,16 @@ const heroLayerStyle = computed(() => {
 const heroTitle = computed(() => pickSlideText(heroSlide.value?.title) || _heroTitle.value)
 const heroSubtitle = computed(() => pickSlideText(heroSlide.value?.subtitle) || _heroSubtitle.value)
 const heroCtaText = computed(() => pickSlideText(heroSlide.value?.cta_text) || _heroCtaText.value)
-const heroCtaUrl = computed(() => heroSlide.value?.cta_url || _heroCtaUrl.value)
+// 主/次两个 href 共用同一个闸门：缺省时保持原有回落（主＝站点设置、次＝/posts），
+// 伪协议则一律回落到那个缺省，而不是原样交给 <a href>。
+const heroCtaUrl = computed(() => safeHeroHref(heroSlide.value?.cta_url, _heroCtaUrl.value))
+// 次按钮与主按钮同构：幻灯片自带的值优先，缺省保持历史观感（「浏览全部文章」→ /posts）。
+// href 必须过 safeHeroHref：这一项写入口不止后台表单（导入 ZIP 直接写 ORM、直接打接口），
+// 库里躺着 `javascript:` 时它就是这个站最显眼位置上一条可执行链接。
+const heroSecondaryCtaText = computed(
+  () => pickSlideText(heroSlide.value?.cta_secondary_text) || t('home.viewAll')
+)
+const heroSecondaryCtaUrl = computed(() => safeHeroHref(heroSlide.value?.cta_secondary_url, '/posts'))
 // 幻灯片自带的遮罩强度/颜色优先（后台可读性配置）；兜底项由后端给固定 45%。
 const heroOverlayStyle = computed(() => ({
   backgroundColor: heroSlide.value?.overlay_color || '#000000',

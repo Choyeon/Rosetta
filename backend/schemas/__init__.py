@@ -104,6 +104,11 @@ T = TypeVar("T")
 # 漏一处就出现"注册要求 8 位 + 大写、改密码只查长度"这类同字段不同 schema 互相判逆。
 # 装饰器仍按 schema 声明（Pydantic 需要它绑定具体字段名），但**规则只在这里改**。
 
+# 第三档（只挡可执行协议）住在叶子模块 `backend/schemas/_url_policy.py`：子模块要在**定义期**
+# import 它（field_validator 的装饰器就要拿到函数），从正在执行的包 __init__ 取名会撞循环导入。
+# 这里 re-export，URL 策略仍然只有一份清单。
+from backend.schemas._url_policy import reject_pseudo_url_scheme as _reject_pseudo_url_scheme
+
 
 def _normalize_optional_url(v: str | None) -> str | None:
     """缺 scheme 的 URL 补 https://；空值原样返回。"""
