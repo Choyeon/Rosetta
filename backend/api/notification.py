@@ -73,12 +73,6 @@ class NotificationListOut(BaseModel):
     total_pages: int = Field(..., description="总页数；total 为 0 时是 0")
 
 
-class NotificationUnreadCountOut(BaseModel):
-    """未读通知数"""
-
-    unread_count: int = Field(..., description="当前用户的未读通知数量")
-
-
 class NotificationStatsOut(BaseModel):
     """通知统计"""
 
@@ -215,33 +209,6 @@ async def list_notifications(
         "page_size": page_size,
         "total_pages": math.ceil(total / page_size) if total > 0 else 0,
     }
-
-
-@router.get(
-    "/unread-count",
-    summary="未读通知数",
-    description="获取当前用户的未读通知数量（需登录，用于角标轮询）。",
-    response_model=None,
-    responses={200: {"model": NotificationUnreadCountOut, "description": "未读通知数"}},
-)
-async def get_unread_count(
-    db: DB,
-    current_user: CurrentUser,
-):
-    """获取未读通知数"""
-    count = (
-        await db.scalar(
-            select(func.count())
-            .select_from(Notification)
-            .where(
-                Notification.recipient_id == current_user.id,
-                Notification.is_read.is_(False),
-            )
-        )
-        or 0
-    )
-
-    return {"unread_count": count}
 
 
 @router.get(

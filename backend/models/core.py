@@ -251,7 +251,7 @@ class Notification(Base):
     )
 
     __table_args__ = (
-        # 轮询热点：`GET /notifications/unread-count` 与列表页的 unread_count 都是
+        # 轮询热点：通知列表的 ``unread_count`` 与 ``GET /notifications/stats`` 都是
         # `WHERE recipient_id = ? AND is_read = false` 的 COUNT —— 只有 recipient_id
         # 单列索引时还要把该用户全部通知读出来过滤。
         Index("ix_notifications_recipient_read", "recipient_id", "is_read"),

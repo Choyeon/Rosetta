@@ -51,7 +51,7 @@
 | webhook | `/api/webhooks` | 9 | 9 | 0 | 0 | 100% |
 | title | `/api/admin`（titles） | 9 | 6 | 0 | 3 | 67% |
 | seo | `/api/seo` | 9 | 5 | 2 | 2 | 78% |
-| notification | `/api/notifications` | 7 | 7 | 0 | 0 | 100% |
+| notification | `/api/notifications` | 6 | 6 | 0 | 0 | 100% |
 | import_export | `/api/admin` | 7 | 4 | 0 | 3 | 57% |
 | announcement | `/api` | 6 | 5 | 0 | 1 | 83% |
 | messages | `/api/messages` | 6 | 0 | 0 | 6 | 0% |
@@ -220,9 +220,15 @@
 
 > 2026-09-26 契约收口：三张读接口补上 `response_model`（列表此前会把 `is_active`、明文 `secret` 等未声明字段直接吐给前端，页面靠 mapper 兜），`provider` 落库（新增迁移 `20260926_000001`），启停开关的 body key 与模型列对齐（此前 PUT 读 `is_active`、前端发 `active`，开关永远存不上），事件名清单由 `GET /events` 单源提供。投递链路（hooks 总线 → `trigger_webhook`）此前无调用方，现由 `tests/test_webhook_dispatch.py` 钉住。
 
-### notification（/api/notifications）— 7/7 全覆盖 ✅
+### notification（/api/notifications）— 6/6 全覆盖 ✅
 
-列表/未读数/统计/已读/全部已读/删除/清空（uam:1851–1901；顶栏铃铛消费）
+列表/统计/已读/全部已读/删除/清空（uam:1851–1901；顶栏铃铛消费）
+
+> 2026-10-28 退役：`GET /api/notifications/unread-count` 已删除。它与此前的 6/6 一起被记成「7/7 全覆盖」，
+> 但前端从未调用过它——角标走 `GET /stats`（经 `fetchNotificationStats` 把 `{unread}` 归一成 `unread_count`），
+> 下拉列表走列表口自带的 `unread_count`，WS 推送则做增量。三条口都覆盖同一件事时，
+> 多一条"专用轮询口"只是文档上的覆盖率和代码里的第二份 SQL 实现。
+> 守卫见 `tests/test_retired_notification_unread_count.py`（不在 OpenAPI、旧 URL 不再回 200、`/stats` 活路径仍在）。
 
 ### oobe（/api/oobe）— 8/16
 

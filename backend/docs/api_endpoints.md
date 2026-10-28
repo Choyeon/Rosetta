@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **353 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **352 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -7027,7 +7027,7 @@ _无路径 / query 参数_
 
 ---
 
-## 通知（7）
+## 通知（6）
 
 站内通知的读取与标记
 
@@ -7184,37 +7184,6 @@ _无路径 / query 参数_
   "total": 0,
   "type_distribution": {},
   "unread": 0
-}
-```
-
-**错误码**
-
-_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
-
-### `GET /api/notifications/unread-count`
-
-- **摘要**：未读通知数
-- **鉴权**：需鉴权：`HTTPBearer`
-
-获取当前用户的量（需登录，用于角标轮询）。
-
-**入参**
-
-_无路径 / query 参数_
-
-**出参**
-
-`200` · 模型 `NotificationUnreadCountOut`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| unread_count | integer | 是 | 当前用户的未读通知数量 |
-
-响应示例：
-
-```json
-{
-  "unread_count": 0
 }
 ```
 
