@@ -3,6 +3,8 @@
   硬契约：与分类/标签不同，PostSeriesCreate/Update 的 slug 为必填且后端不自动生成——
   前端用 CONTENT_SLUG_PATTERN 先拦（与后端同口径，允许中文）；请求体 extra=forbid，
   只能带 name/slug/description/cover_image/sort_order，i18n dict 要先经 toI18nPayload 滤掉空语言。
+  is_active 是公开列表 GET /series、系列详情（停用即 404）与 sitemap 投递面的真实强制点，
+  卡片底部的状态徽标直接打 PUT /admin/series/{id}/toggle（后端翻值并清前台页面缓存）。
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
@@ -11,6 +13,7 @@ import {
   createAdminSeries,
   updateAdminSeries,
   deleteAdminSeries,
+  toggleAdminSeries,
   type AdminSeries
 } from '~~/composables/useAdminManage'
 import { useMediaUploadCover } from '~~/composables/useMedia'
@@ -170,6 +173,28 @@ const toggleExpand = (id: number) => {
   expandedId.value = expandedId.value === id ? null : id
 }
 
+const togglingId = ref<number | null>(null)
+
+/**
+ * toggle 口翻的是后端那一行的当前值，不是"设成 X"——连点两次等于没点，
+ * 所以在请求期间锁住这张卡片的入口，并用后端回读后的列表刷新状态（seriesList 是 shallowRef，
+ * 就地改 s.is_active 不会重渲染）。
+ */
+async function toggleActive(s: AdminSeries) {
+  if (togglingId.value !== null) return
+  togglingId.value = s.id
+  try {
+    await toggleAdminSeries(s.id)
+    toast.success(s.is_active ? '已停用，前台系列页与列表不再展示' : '已启用')
+    await loadData()
+  } catch (e) {
+    // 失败提示由 apiFetch 统一 toast，此处不重复弹错
+    console.error('[series] toggleActive failed:', e)
+  } finally {
+    togglingId.value = null
+  }
+}
+
 function confirmDelete(id: number) {
   pendingDeleteId.value = id
   deleteDialogOpen.value = true
@@ -279,8 +304,22 @@ onMounted(() => {
               <p class="text-sm text-muted-foreground line-clamp-2 min-h-[2.5rem] mb-3">
                 {{ getLocalizedStr(s.description) || '暂无描述' }}
               </p>
-              <div class="flex items-center justify-between">
-                <span class="text-xs text-muted-foreground">排序：{{ s.sort_order ?? 0 }}</span>
+              <div class="flex items-center justify-between gap-2">
+                <div class="flex min-w-0 items-center gap-2">
+                  <button
+                    type="button"
+                    class="inline-flex shrink-0 disabled:opacity-60"
+                    :aria-label="s.is_active ? '点击停用该系列' : '点击启用该系列'"
+                    :title="s.is_active ? '点击停用：前台系列列表与详情页不再展示' : '点击启用：恢复前台展示与爬虫投递'"
+                    :disabled="togglingId !== null"
+                    @click="toggleActive(s)"
+                  >
+                    <Badge :variant="s.is_active ? 'default' : 'outline'">
+                      {{ s.is_active ? '启用中' : '已停用' }}
+                    </Badge>
+                  </button>
+                  <span class="truncate text-xs text-muted-foreground">排序：{{ s.sort_order ?? 0 }}</span>
+                </div>
                 <div class="flex items-center gap-1">
                   <AdminRowActions
                     :actions="[

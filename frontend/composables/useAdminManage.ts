@@ -832,6 +832,18 @@ export function deleteAdminSeries(id: number): Promise<ApiMessage> {
   return apiFetch<ApiMessage>(`/admin/series/${id}`, { method: 'DELETE' })
 }
 
+/**
+ * PUT /api/admin/series/{id}/toggle —— 后端翻转 is_active，无需请求体。
+ * 停用即从公开列表 /series、系列详情（404）与 sitemap 投递面消失，
+ * 后端同时清前台页面缓存，所以这里不能只改本地列表就当成功。
+ */
+export async function toggleAdminSeries(id: number): Promise<AdminSeries> {
+  const raw = await apiFetch<Record<string, unknown>>(`/admin/series/${id}/toggle`, {
+    method: 'PUT'
+  })
+  return _toAdminSeries(raw)
+}
+
 // ==================== 独立页面 Page 管理 ====================
 
 export interface AdminPage {
