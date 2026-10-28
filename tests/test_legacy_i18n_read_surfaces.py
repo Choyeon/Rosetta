@@ -195,9 +195,7 @@ class TestLegacyRowsDoNotFiveHundred:
         rows = _rows_of(await _get_ok(client, "/api/series"))
         assert _row_by(rows, "slug", slug)["title"] == folded(LEGACY_SERIES)
 
-    async def test_title_list(
-        self, client: AsyncClient, db_session: AsyncSession, admin_headers
-    ):
+    async def test_title_list(self, client: AsyncClient, db_session: AsyncSession, admin_headers):
         db_session.add(UserTitle(name=LEGACY_TITLE, color="#123456"))
         await db_session.commit()
 
@@ -236,9 +234,7 @@ class TestSingleSourceGuard:
                 if not isinstance(node, ast.ClassDef) or not node.name.endswith("Response"):
                     continue
                 for stmt in node.body:
-                    if not isinstance(stmt, ast.AnnAssign) or not isinstance(
-                        stmt.target, ast.Name
-                    ):
+                    if not isinstance(stmt, ast.AnnAssign) or not isinstance(stmt.target, ast.Name):
                         continue
                     field = stmt.target.id
                     if field not in self.I18N_FIELDS:

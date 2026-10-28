@@ -18,12 +18,12 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-from backend.utils.ugc_fields import gravatar_base
+from backend.utils.ugc_fields import GITHUB_USERNAME_RE, QQ_RE, gravatar_base
 
 AvatarSource = Literal["auto", "custom", "github", "qq", "gravatar"]
 
-GITHUB_USERNAME_RE = re.compile(r"^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$")
-QQ_RE = re.compile(r"^\d{5,11}$")
+# 访客身份形态的正则在 `utils.ugc_fields` 单源定义：写入侧（`CommentCreate` /
+# `GuestbookEntryCreate`）与这里必须是同一份，否则"能写进库的值"与"能解析出头像的值"分叉。
 WEBSITE_URL_RE = re.compile(r"^https?://[^\s]+$", re.IGNORECASE)
 EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
 # 本站自托管头像：POST /api/media/avatar 上传后落库的就是 `/media/avatars/<file>` 这种相对路径。

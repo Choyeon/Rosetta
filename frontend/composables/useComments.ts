@@ -97,6 +97,8 @@ export function useComments() {
       author_name?: string
       author_email?: string
       author_website?: string
+      qq?: string
+      github?: string
       captcha_key?: string
       captcha_code?: string
     },
@@ -112,6 +114,10 @@ export function useComments() {
         author_name: payload.author_name,
         author_email: payload.author_email,
         author_website: payload.author_website,
+        // 访客身份两项不发就等于"这条口永远只能靠邮箱 gravatar"：解析器认 github / qq，
+        // 但字段没人发，头像解析在生产库里对访客一律落到 gravatar 或空。
+        qq: payload.qq,
+        github: payload.github,
         captcha_key: payload.captcha_key,
         captcha_code: payload.captcha_code
       }

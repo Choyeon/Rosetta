@@ -70,6 +70,23 @@
             :aria-label="t('guestbook.website')"
             :disabled="submitting"
           />
+          <!-- 登录用户的头像走账号资料，这两项只对访客分支有意义：不发就等于
+               留言板访客永远只能靠 gravatar，解析器认的 github / qq 两支在库里恒空。 -->
+          <Input
+            v-model="form.qq"
+            inputmode="numeric"
+            :placeholder="t('guestbook.qq')"
+            :aria-label="t('guestbook.qq')"
+            :disabled="submitting"
+            maxlength="11"
+          />
+          <Input
+            v-model="form.github"
+            :placeholder="t('guestbook.github')"
+            :aria-label="t('guestbook.github')"
+            :disabled="submitting"
+            maxlength="39"
+          />
         </div>
         <Textarea
           v-model="form.content"
@@ -372,6 +389,8 @@ const form = reactive({
   author_name: '',
   author_email: '',
   author_website: '',
+  qq: '',
+  github: '',
   content: ''
 })
 
@@ -553,6 +572,8 @@ const submitGuestbook = async () => {
     if (form.author_name.trim()) payload.author_name = form.author_name.trim()
     if (form.author_email.trim()) payload.author_email = form.author_email.trim()
     if (form.author_website.trim()) payload.author_website = form.author_website.trim()
+    if (form.qq.trim()) payload.qq = form.qq.trim()
+    if (form.github.trim()) payload.github = form.github.trim()
 
     await apiFetch('/guestbook', {
       method: 'POST',
@@ -564,6 +585,8 @@ const submitGuestbook = async () => {
     form.author_name = ''
     form.author_email = ''
     form.author_website = ''
+    form.qq = ''
+    form.github = ''
     form.content = ''
     // 留言会先进入审核队列，不必立即插入前端列表，刷新拉取已审核列表
     await refresh()

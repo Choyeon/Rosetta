@@ -543,6 +543,24 @@
                     :disabled="submittingComment"
                     maxlength="200"
                   />
+                  <!-- 访客身份两项决定头像解析器能不能拿到图：只发邮箱时访客一律 gravatar。
+                       长度上限跟服务端 pattern（qq 5–11 位数字、GitHub 用户名 ≤39），
+                       超限在这里挡比让服务端回 422 好——422 的提示是整表单级的。 -->
+                  <Input
+                    v-model="guestForm.qq"
+                    inputmode="numeric"
+                    :placeholder="t('post.yourQq', 'QQ 号（可选，用于头像）')"
+                    :aria-label="t('post.yourQq', 'QQ 号（可选，用于头像）')"
+                    :disabled="submittingComment"
+                    maxlength="11"
+                  />
+                  <Input
+                    v-model="guestForm.github"
+                    :placeholder="t('post.yourGithub', 'GitHub 用户名（可选）')"
+                    :aria-label="t('post.yourGithub', 'GitHub 用户名（可选）')"
+                    :disabled="submittingComment"
+                    maxlength="39"
+                  />
                 </div>
                 <Textarea
                   ref="commentTextareaRef"
@@ -953,7 +971,13 @@ const replyingTo = ref<number | string | null>(null)
 // enable_nested 决定回复按钮。此前它们只进库不进界面，访客一律被挡在"请先登录"后面。
 const commentError = ref('')
 const commentCaptchaRef = ref<InstanceType<typeof CaptchaField> | null>(null)
-const guestForm = reactive({ author_name: '', author_email: '', author_website: '' })
+const guestForm = reactive({
+  author_name: '',
+  author_email: '',
+  author_website: '',
+  qq: '',
+  github: ''
+})
 const commentMaxLength = computed(() => site.comments.value.max_length)
 const canCommentForm = computed(() => authStore.isAuthenticated || site.comments.value.allow_guest)
 const canReply = computed(() => site.comments.value.enable_nested)
@@ -1918,6 +1942,8 @@ const handleSubmitComment = async () => {
       author_name: guestForm.author_name.trim() || undefined,
       author_email: guestForm.author_email.trim() || undefined,
       author_website: guestForm.author_website.trim() || undefined,
+      qq: guestForm.qq.trim() || undefined,
+      github: guestForm.github.trim() || undefined,
       ...(commentCaptchaRef.value?.payload() ?? {})
     }, articleStoredPwd.value ? { 'X-Post-Password': articleStoredPwd.value } : undefined)
     commentContent.value = ''

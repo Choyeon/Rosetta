@@ -104,14 +104,17 @@ T = TypeVar("T")
 # 漏一处就出现"注册要求 8 位 + 大写、改密码只查长度"这类同字段不同 schema 互相判逆。
 # 装饰器仍按 schema 声明（Pydantic 需要它绑定具体字段名），但**规则只在这里改**。
 
-# 第三档（只挡可执行协议）住在叶子模块 `backend/schemas/_url_policy.py`：子模块要在**定义期**
-# import 它（field_validator 的装饰器就要拿到函数），从正在执行的包 __init__ 取名会撞循环导入。
-# 这里 re-export，URL 策略仍然只有一份清单。
+# 这两条叶子模块导入都要在**定义期**取值（field_validator 的装饰器要函数、字段注解要 `I18nDict`），
+# 所以它们不能住在正在执行的包 __init__ 里：
+# - `_url_policy` 是第三档（只挡可执行协议）规则的唯一清单，这里只做 re-export；
+# - `_i18n_dict` 的口径与禁令见它自己的模块文档。
+from backend.schemas._i18n_dict import I18nDict
 from backend.schemas._url_policy import reject_pseudo_url_scheme as _reject_pseudo_url_scheme
 
-# 同族叶子模块：i18n JSON 列的形态闸门。字段注解要在定义期拿到 `I18nDict`，
-# 所以它同样不能住在正在执行的包 __init__ 里（口径与禁令见 `_i18n_dict.py` 的模块文档）。
-from backend.schemas._i18n_dict import I18nDict
+# 访客身份字段（评论 / 留言板的 `qq` / `github`）的形态与头像解析器共用一份定义，
+# 真源在 `backend/utils/ugc_fields.py`（理由见那里的注释）。
+from backend.utils.ugc_fields import GITHUB_USERNAME_PATTERN as _GITHUB_USERNAME_PATTERN
+from backend.utils.ugc_fields import QQ_PATTERN as _QQ_PATTERN
 
 
 def _normalize_optional_url(v: str | None) -> str | None:
@@ -1297,8 +1300,20 @@ class CommentBase(BaseModel):
 class CommentCreate(CommentBase):
     """评论创建模型（游客或登录用户均可使用）"""
 
-    qq: str | None = Field(None, max_length=20, description="评论者 QQ（可选）")
-    github: str | None = Field(None, max_length=64, description="评论者 GitHub 用户名（可选）")
+    # 访客身份字段：形态与头像解析器同源（`utils.ugc_fields`），公开写入口必须先拒掉标记语言，
+    # 否则"能写进库"与"能解析出头像"分叉，脏值还会被评论口当显示名原样发出去（§12.8）。
+    qq: str | None = Field(
+        None,
+        max_length=11,
+        pattern=_QQ_PATTERN,
+        description="访客 QQ 号（可选，5–11 位数字）",
+    )
+    github: str | None = Field(
+        None,
+        max_length=39,
+        pattern=_GITHUB_USERNAME_PATTERN,
+        description="访客 GitHub 用户名（可选，只允许用户名形态，不接受 URL 与标记语言）",
+    )
     # 与 ORM Comment.avatar_source 字段和对外 API 请求体保持一致；
     # 同时保留 author_avatar_source 作为向后兼容别名（deprecated）
     avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] = Field(
@@ -2451,8 +2466,20 @@ class GuestbookEntryBase(BaseModel):
 class GuestbookEntryCreate(GuestbookEntryBase):
     """留言创建模型（游客或登录用户均可使用）"""
 
-    qq: str | None = Field(None, max_length=20, description="评论者 QQ（可选）")
-    github: str | None = Field(None, max_length=64, description="评论者 GitHub 用户名（可选）")
+    # 访客身份字段：形态与头像解析器同源（`utils.ugc_fields`），公开写入口必须先拒掉标记语言，
+    # 否则"能写进库"与"能解析出头像"分叉，脏值还会被评论口当显示名原样发出去（§12.8）。
+    qq: str | None = Field(
+        None,
+        max_length=11,
+        pattern=_QQ_PATTERN,
+        description="访客 QQ 号（可选，5–11 位数字）",
+    )
+    github: str | None = Field(
+        None,
+        max_length=39,
+        pattern=_GITHUB_USERNAME_PATTERN,
+        description="访客 GitHub 用户名（可选，只允许用户名形态，不接受 URL 与标记语言）",
+    )
     author_avatar_source: Literal["auto", "custom", "github", "qq", "gravatar"] = Field(
         "auto", description="头像来源"
     )

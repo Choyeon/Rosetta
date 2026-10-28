@@ -34,7 +34,7 @@ describe('comments 分组：值必须下发并落到界面上', () => {
     expect(pageSource).toContain('site.comments.value.allow_guest')
     expect(pageSource).not.toMatch(/<Card\s*\n\s*v-if="authStore\.isAuthenticated"/)
     // 访客必须填得出让后端认下来的身份字段（422 AUTHOR_NAME_REQUIRED）
-    for (const field of ['author_name', 'author_email', 'author_website']) {
+    for (const field of ['author_name', 'author_email', 'author_website', 'qq', 'github']) {
       expect(pageSource, `访客表单缺 ${field}`).toContain(`guestForm.${field}`)
     }
   })
@@ -55,7 +55,7 @@ describe('comments 分组：值必须下发并落到界面上', () => {
   it('提交走游客可写的 /posts/{id}/comments，不带 /blog 前缀', () => {
     expect(commentsSource).toContain('`/posts/${post_id}/comments`')
     expect(commentsSource).not.toMatch(/method: 'POST'[\s\S]{0,80}`\/blog\/posts\//)
-    for (const field of ['author_name', 'author_email', 'captcha_key', 'captcha_code']) {
+    for (const field of ['author_name', 'author_email', 'captcha_key', 'captcha_code', 'qq', 'github']) {
       expect(commentsSource, `createComment 载荷缺 ${field}`).toContain(field)
     }
   })
@@ -78,6 +78,8 @@ describe('新增文案的 i18n 键四语齐全', () => {
     'yourName',
     'yourEmail',
     'yourWebsite',
+    'yourQq',
+    'yourGithub',
     'pendingNotice',
     'commentTooLong',
     'nicknameRequired',
@@ -85,6 +87,8 @@ describe('新增文案的 i18n 键四语齐全', () => {
     'commentPending',
     'commentFailed'
   ]
+  // 留言板那几个输入框调 t() 时没写 fallback，缺键直接把键名渲染给访客。
+  const guestbookKeys = ['qq', 'github']
 
   for (const loc of locales) {
     it(loc, () => {
@@ -92,6 +96,9 @@ describe('新增文案的 i18n 键四语齐全', () => {
       for (const key of keys) {
         expect(bundle.post, `${loc} 缺 post.${key}`).toBeDefined()
         expect(bundle.post?.[key], `${loc} 缺 post.${key}`).toBeTruthy()
+      }
+      for (const key of guestbookKeys) {
+        expect(bundle.guestbook?.[key], `${loc} 缺 guestbook.${key}`).toBeTruthy()
       }
     })
   }

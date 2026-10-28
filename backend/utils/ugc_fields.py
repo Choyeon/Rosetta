@@ -8,8 +8,19 @@
 from __future__ import annotations
 
 import hashlib
+import re
 
 from backend.core.config import settings
+
+# 访客身份字段的**唯一**形态定义。写入口（`CommentCreate` / `GuestbookEntryCreate`）与头像
+# 解析器必须吃同一份：解析器过去自带正则、写入侧不设限，于是 `github="<img src=x>"` 这种值
+# 能进库——它不会 XSS（渲染侧是文本插值），但会被公开评论口当显示名原样发出去，而解析器只是
+# 静默把它判成"没有头像"。口径见 AGENTS.md §12.8（会渲染到访客页面上的短字符串字段，写入侧
+# 必须用 pattern 拒掉标记语言）。
+GITHUB_USERNAME_PATTERN = r"^[a-zA-Z0-9](?:-?[a-zA-Z0-9]){0,38}$"
+QQ_PATTERN = r"^\d{5,11}$"
+GITHUB_USERNAME_RE = re.compile(GITHUB_USERNAME_PATTERN)
+QQ_RE = re.compile(QQ_PATTERN)
 
 
 def gravatar_base() -> str:
