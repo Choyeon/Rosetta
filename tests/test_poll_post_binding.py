@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.models.blog import Post
-from backend.models.voting import Poll
+from backend.models.voting import Choice, Poll, Vote
 
 
 async def _mk_post(db: AsyncSession, author_id: int, category_id: int, slug: str) -> Post:
@@ -233,3 +234,38 @@ def test_poll_post_fk_is_cascade_not_set_null() -> None:
     assert fk.target_fullname == "posts.id"
     assert fk.ondelete == "CASCADE"
     assert Poll.__table__.columns["post_id"].nullable is True
+
+
+@pytest.mark.asyncio
+async def test_delete_poll_removes_its_votes_under_async(
+    client: AsyncClient, admin_headers: dict, db_session: AsyncSession
+):
+    """`DELETE /voting/polls/{id}` 是探针与管理员的收尾动作，必须能在异步下走通。
+
+    `db.delete(poll)` 会沿 `cascade="all, delete-orphan"` 遍历 choices/votes，而这三张表
+    的关系默认是惰性加载：对象没预载过关系就删，SQLAlchemy 在 async 会话里会撞上
+    MissingGreenlet（表现为 500，探针行留在库里删不掉）。此前这条端点一条用例都没有。
+    """
+    poll = await _mk_poll(client, admin_headers, "删得掉的投票")
+    cid = poll["choices"][0]["id"]
+    voted = await client.post(f"/api/voting/polls/{poll['id']}/vote", json={"choice_ids": [cid]})
+    assert voted.status_code == 200, voted.text
+
+    deleted = await client.delete(f"/api/voting/polls/{poll['id']}", headers=admin_headers)
+    assert deleted.status_code == 200, deleted.text
+
+    gone = await client.get(f"/api/voting/polls/{poll['id']}")
+    assert gone.status_code == 404, gone.text
+    # 级联真的落库：选项与票数不能变成孤儿行
+    remaining_votes = (
+        await db_session.execute(
+            select(func.count()).select_from(Vote).where(Vote.poll_id == poll["id"])
+        )
+    ).scalar_one()
+    remaining_choices = (
+        await db_session.execute(
+            select(func.count()).select_from(Choice).where(Choice.poll_id == poll["id"])
+        )
+    ).scalar_one()
+    assert remaining_votes == 0
+    assert remaining_choices == 0
