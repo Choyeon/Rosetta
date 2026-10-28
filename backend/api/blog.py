@@ -1097,7 +1097,10 @@ async def get_post_adjacent(
 
     post_id, anchor = row[0], (row[1] or row[2])
     # "已到达发布时间"的判定只取一次 now：两侧各取一次会让上下篇边界在同一请求内漂移。
-    now = datetime.now()
+    # 必须是 UTC：本机时区（如 UTC+8）的朴素 `datetime.now()` 比库里所有 UTC 值都晚 8 小时，
+    # 这道闸门等于不存在——定时未到的文章会出现在上一篇文章的"下一篇"链接里，
+    # 点进去由详情端点判 404（ SQLite 下还是字符串比字符串，永远判成"已过"）。
+    now = datetime.now(UTC)
 
     async def _neighbor(older: bool) -> dict | None:
         if older:

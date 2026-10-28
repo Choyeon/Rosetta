@@ -72,11 +72,18 @@ def publicly_listable_posts() -> ColumnElement[bool]:
 
     只圈 status 的写法等于把另外两条判据交给调用方各自回忆，漏一处即成泄漏面，
     所以新增集合查询请直接用本函数，不要再手写 `Post.status == "published"`。
+
+    "到点没有"必须拿 Python 侧的时刻判，不能用 SQL 的 `now()`：
+    - SQLite 的 `CURRENT_TIMESTAMP` 只到**秒**，而 `published_at` 落库是带微秒的
+      TEXT，同一秒内发布的文章按字符串比就大于这个"现在"——表现为刚点完发布，
+      RSS/列表/热榜里这篇不存在，而这一份"少一篇"的快照还要缓存 300s。
+    - PG 的 `now()` 是**事务开始**时刻，同一事务里刚写入的行同样判成"未到"。
+      两侧都用 `datetime.now(UTC)`（带 tzinfo，渲染形态与写入侧一致）才是同一个时钟。
     """
     return and_(
         Post.status == "published",
         private_posts_excluded(),
-        Post.published_at.is_(None) | (Post.published_at <= func.now()),
+        Post.published_at.is_(None) | (Post.published_at <= datetime.now(timezone.utc)),
     )
 
 
