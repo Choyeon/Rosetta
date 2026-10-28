@@ -1,6 +1,9 @@
 <!--
   友情链接管理页：卡片网格 + 状态筛选 + Dialog CRUD；列表一次全量拉取，筛选与排序全在客户端完成。
   契约：name/description 必须以 {zh,en,ja,zh_Hant} 完整 i18n dict 提交，描述各语言全空时提交 null 而非空 dict；删除走 silentToast，失败由 DangerConfirmDialog 内联展示避免双重提示。
+  target_blank 是布尔（后端 FriendLinkResponse/FriendLinkCreate 都是 bool），前台 pages/friends.vue 用它决定
+  target=_blank + rel=noopener；本页与包装层只允许 `=== true` 判布尔——导航一族曾用 String(x)==='_blank' 比对布尔，
+  恒 false，等于"后台勾了新窗口、前台永远当前页打开"。卡片预览链接必须跟着布尔走，否则管理员看不到访客行为。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -131,8 +134,8 @@
               </h3>
               <a
                 :href="link.url"
-                target="_blank"
-                rel="noopener noreferrer nofollow"
+                :target="link.target_blank ? '_blank' : undefined"
+                :rel="link.target_blank ? 'noopener noreferrer nofollow' : 'nofollow'"
                 class="text-xs text-primary hover:underline font-mono truncate block mt-0.5"
                 :title="link.url"
               >
@@ -151,8 +154,16 @@
 
         <div class="px-5 pb-4">
           <div class="flex items-center justify-between pt-3 border-t border-border/60">
-            <div class="text-xs text-muted-foreground tabular-nums">
-              排序 #{{ link.sort_order }}
+            <div class="flex items-center gap-2 text-xs text-muted-foreground tabular-nums">
+              <span>排序 #{{ link.sort_order }}</span>
+              <Badge
+                v-if="link.target_blank"
+                variant="outline"
+                class="text-[10px] !py-0 rounded-full"
+                title="前台点击会在新窗口打开"
+              >
+                新窗口
+              </Badge>
             </div>
             <div class="flex items-center gap-1">
               <Tooltip>
@@ -276,6 +287,21 @@
               />
             </div>
           </div>
+          <div class="flex items-center justify-between gap-4 rounded-[12px] border border-border bg-muted/20 px-4 py-3">
+            <div>
+              <Label
+                for="fl-target-blank"
+                class="text-sm font-medium"
+              >新窗口打开</Label>
+              <div class="text-xs text-muted-foreground mt-0.5">
+                开启后前台友链卡片带 target=_blank 与 rel="noopener noreferrer"；站内友链建议保持关闭
+              </div>
+            </div>
+            <Switch
+              id="fl-target-blank"
+              v-model="form.target_blank"
+            />
+          </div>
         </div>
         <DialogFooter>
           <Button
@@ -340,6 +366,7 @@ import {
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
+import { Switch } from '~~/components/ui/switch'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
@@ -375,7 +402,8 @@ const emptyForm = () => ({
   logo: '',
   description: { ...EMPTY_I18N_DICT } as Record<string, string>,
   status: 'pending' as 'pending' | 'approved' | 'rejected',
-  sort_order: 0
+  sort_order: 0,
+  target_blank: false
 })
 const form = ref(emptyForm())
 
@@ -461,7 +489,9 @@ function openEdit(link: AdminFriendLink) {
     logo: link.logo ?? '',
     description: normalizeI18nDict(link.description),
     status: link.status,
-    sort_order: link.sort_order
+    sort_order: link.sort_order,
+    // 必须回填：不回填等于每次编辑把访客行为改回"当前页打开"
+    target_blank: link.target_blank
   }
   dialogOpen.value = true
 }
@@ -480,7 +510,8 @@ async function handleSubmit() {
     logo: form.value.logo.trim() || null,
     description: descHasValue ? form.value.description : null,
     status: form.value.status,
-    sort_order: Number(form.value.sort_order) || 0
+    sort_order: Number(form.value.sort_order) || 0,
+    target_blank: form.value.target_blank === true
   }
   try {
     if (editingId.value) {

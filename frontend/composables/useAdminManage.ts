@@ -1395,6 +1395,8 @@ export interface AdminFriendLink {
   description?: string | Record<string, string> | null
   sort_order: number
   status: 'pending' | 'approved' | 'rejected'
+  /** 前台 pages/friends.vue 按这一布尔决定 target=_blank + rel=noopener；后台必须能设它 */
+  target_blank: boolean
   created_at: string | null
 }
 
@@ -1501,6 +1503,9 @@ function mapFriendLink(raw: Record<string, unknown>): AdminFriendLink {
     description,
     sort_order: Number(r.order ?? r.sort_order ?? 0),
     status,
+    // 布尔口径：后端 FriendLinkResponse.target_blank 是 bool，只能用 === true 判。
+    // 导航一族曾用 String(x.target_blank) === '_blank' 比对布尔，恒 false → 新窗口设置永远失效。
+    target_blank: r.target_blank === true,
     created_at: (r.created_at as string | null) ?? null
   }
 }
