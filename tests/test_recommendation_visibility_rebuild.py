@@ -122,16 +122,19 @@ async def test_recommendation_rebuild_applies_both_visibility_axes(
     control = await _mk(db_session, test_user.id, views=400)
 
     first = await svc.get_recommended_posts(page=1, page_size=10)
-    warm = list(first["items"])
+    # 缓存里存的是 id 名单，返回值里的 items 是回源后的 ORM 实例（line 636 vs 644）
+    warm = [p.id for p in first["items"]]
     assert target.id in warm
     key = cache.build_key_with_hash("recsv2", user="anon", p=1, ps=10, excl="")
-    assert await cache.get(key) is not None, "名单没写进缓存 ⇒ 第二次走的是冷路径"
+    cached_list = await cache.get(key)
+    assert cached_list is not None, "名单没写进缓存 ⇒ 第二次走的是冷路径"
+    assert target.id in cached_list["items"], "缓存名单里就该留着它，否则回源过滤无从发生"
 
     await _flip(db_session, target.id, **values)
 
     second = await svc.get_recommended_posts(page=1, page_size=10)
-    assert target.id not in list(second["items"])
-    assert control.id in list(second["items"])
+    assert target.id not in [p.id for p in second["items"]]
+    assert control.id in [p.id for p in second["items"]]
 
 
 async def test_similar_rebuild_drops_row_turned_private_behind_the_cache(
@@ -186,7 +189,7 @@ async def test_scheduled_future_post_stays_out_of_derived_surfaces(
     hot_ids = [p.id for p in await svc.get_hot_posts(limit=10, days=30)]
     assert future.id not in hot_ids and due.id in hot_ids
 
-    rec_ids = list((await svc.get_recommended_posts(page=1, page_size=10))["items"])
+    rec_ids = [p.id for p in (await svc.get_recommended_posts(page=1, page_size=10))["items"]]
     assert future.id not in rec_ids and due.id in rec_ids
 
     assert [p.id for p in await svc.get_similar_posts(future.id, limit=6)] == []
@@ -224,8 +227,8 @@ async def test_hot_endpoint_never_links_to_a_404_detail(
         resp = await client.get(path)
         assert resp.status_code == 200, f"{path} → {resp.status_code}"
         body = resp.json()
-        data = body.get("data", body)
-        items = data["items"] if isinstance(data, dict) else data
+        # 热榜是裸 list，推荐是 PaginatedResponse（两者都不带 success/data 信封）
+        items = body["items"] if isinstance(body, dict) else body
         assert items, f"{path} 没有任何候选，回访 200 就成了空断言"
         for item in items:
             detail = await client.get(f"{LIST}/{item['slug']}")
