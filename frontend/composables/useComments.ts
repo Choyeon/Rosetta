@@ -147,6 +147,20 @@ export function useComments() {
     })
   }
 
+  /**
+   * 作者本人删除自己的评论：DELETE /api/comments/{id}（api/comments.py::delete_own_comment）。
+   *
+   * 归属判据在服务端 SELECT 的 WHERE 里（id + user_id 同一条谓词），所以"不是你的评论"
+   * 与"评论不存在"回同一个 404；游客评论 user_id 为 NULL，任何登录账号都删不掉，
+   * 入口必须按 author.id 是否等于自己来判，不要给游客行挂按钮。
+   * 后端是软删除（先落回收站快照再删原行），所以删除成功后不必担心评论管理页失去这条。
+   */
+  const deleteComment = (id: number | string) => {
+    return apiFetch<unknown>(`/comments/${id}`, {
+      method: 'DELETE'
+    })
+  }
+
   const approveComment = (id: number | string) => {
     return apiFetch<unknown>(`/admin/comments/${id}/approve`, {
       method: 'POST'
@@ -256,6 +270,7 @@ export function useComments() {
     likeComment,
     addCommentReaction,
     removeCommentReaction,
+    deleteComment,
     approveComment,
     rejectComment,
     spamComment,

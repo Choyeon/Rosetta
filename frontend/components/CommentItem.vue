@@ -1,5 +1,7 @@
 <!--
-  单条评论行（含点赞、表情反应与回复入口）。
+  单条评论行（含点赞、表情反应、回复入口与"本人可删"入口）。
+  删除走 DELETE /api/comments/{id}（作者本人，服务端软删除进回收站）：入口由页面按
+  canDelete 传入，本组件不碰认证态——游客行必须拿不到按钮，判据见 posts/[slug].vue 的 isOwn。
   后端 POST /comments/{id}/like 是纯计数 +1、无取消语义，故 isLiked 一旦置真就永久锁按钮；
   响应里 likes_count 位置不固定（信封层 / data 层都要探测）。点赞状态只存在本组件、不回写
   父列表，父页面 refresh 后本地点赞会丢；depth 仅是视觉缩进且封顶 2 级，不代表真实树深度。
@@ -69,6 +71,25 @@
           <span class="text-xs">{{ t('comment.reply') }}</span>
         </Button>
 
+        <!-- 删除入口只在"这一行是我的"时出现（isOwn 由页面用 raw.user_id 对当前登录 id 算，
+             不看 author.id —— normalizeComment 的 author.id 有 `?? 评论 id` 兜底，
+             游客行会撞上同号用户而被挂上按钮）。服务端仍会按归属判 404。 -->
+        <Button
+          v-if="canDelete"
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2 text-muted-foreground"
+          :disabled="deleting"
+          :aria-label="t('comment.delete')"
+          @click="$emit('delete', comment.id)"
+        >
+          <Trash2
+            data-icon="inline-start"
+            class="mr-1 size-3.5"
+          />
+          <span class="text-xs">{{ deleting ? t('comment.deleting') : t('comment.delete') }}</span>
+        </Button>
+
         <!-- 表情反应：已存在的计数先摊出来，面板点了才展开 -->
         <Button
           v-for="item in reactions"
@@ -126,7 +147,7 @@
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
-import { Heart, MessageSquare, Smile } from '~~/lib/lucide-svg-icons'
+import { Heart, MessageSquare, Smile, Trash2 } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
 import { useComments, type CommentReactionSummary } from '~~/composables/useComments'
 
@@ -158,15 +179,22 @@ interface Props {
   depth?: number
   /** 后台「评论 → 允许嵌套回复」关闭时收起回复按钮（写口此时会回 422 COMMENT_NESTING_DISABLED）。 */
   canReply?: boolean
+  /** 仅这一行的作者本人可见的删除入口（页面用 raw.user_id 对登录 id 算，见上方注释）。 */
+  canDelete?: boolean
+  /** 删除请求进行中：锁住本行入口，避免重复提交（服务端删除非幂等，第二次会 404）。 */
+  deleting?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   depth: 0,
-  canReply: true
+  canReply: true,
+  canDelete: false,
+  deleting: false
 })
 
 defineEmits<{
   reply: [commentId: number | string]
+  delete: [commentId: number | string]
 }>()
 
 const { t, locale } = useI18n()

@@ -646,7 +646,10 @@
                   :key="comment.id"
                   :comment="comment"
                   :can-reply="canReply"
+                  :can-delete="isOwnComment(comment)"
+                  :deleting="deletingCommentId === comment.id"
                   @reply="handleReply"
+                  @delete="handleDeleteComment"
                 />
               </template>
               <div
@@ -944,6 +947,8 @@ interface PostDetail {
 // 页面渲染以 CommentItem 的 props 结构为准
 type PostComment = {
   id: number | string
+  /** 后端 comments.user_id：登录用户行是账号 id，游客行是 null（决定删除入口是否出现） */
+  ownerId?: number | string | null
   author?: {
     id: number | string
     name: string
@@ -1759,6 +1764,12 @@ const normalizeComment = (raw: CommentRaw): PostComment => {
   const id = rawId(raw.id)
   return {
     id: id ?? 0,
+    // 删除入口的归属只认后端那一列 user_id（游客行为 null，任何登录账号都配不上）。
+    // 刻意不复用下面的 author.id：它有 `?? 评论 id` 的展示兜底，游客行的 author.id 其实是
+    // 评论主键，某个用户 id 恰好同号时就会给别人的评论挂上删除按钮（服务端会 404，但界面骗人）。
+    // 也刻意不在这里比 authStore.user.id：auth store 是 skipHydrate、/users/me 可能晚于
+    // 评论列表返回，写进静态布尔位就等于"谁先到谁定"；把 id 摊出去由模板实时判。
+    ownerId: rawId(raw.user_id) ?? rawId(raw.userId) ?? null,
     author: {
       id: rawId(raw.user_id) ?? rawId(raw.userId) ?? id ?? 0,
       name,
@@ -1981,6 +1992,35 @@ const handleReply = (commentId: number | string) => {
   const el = inst?.$el ?? null
   el?.focus()
   el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+}
+
+/** 删除入口的归属判定（实时读 auth store，见 normalizeComment 里 ownerId 的说明）。 */
+const isOwnComment = (comment: PostComment) =>
+  comment.ownerId != null && String(comment.ownerId) === String(authStore.user?.id ?? '')
+
+const deletingCommentId = ref<number | string | null>(null)
+
+/**
+ * 作者删除自己的评论：DELETE /api/comments/{id}（服务端软删除进回收站，30 天可恢复）。
+ *
+ * 成功后从本地列表摘掉这一行，并清掉指向它的回复状态——replyingTo 还留着的话
+ * 输入框会带着"回复 @某人"的横幅指向一条已经不存在的评论。
+ * 确认走原生 confirm：与后台未保存离开提示同一形态，不为一次删除引入对话框组件。
+ */
+const handleDeleteComment = async (commentId: number | string) => {
+  if (deletingCommentId.value !== null) return
+  if (!window.confirm(t('comment.deleteConfirm'))) return
+  deletingCommentId.value = commentId
+  try {
+    await commentsAPI.deleteComment(commentId)
+    comments.value = comments.value.filter(item => String(item.id) !== String(commentId))
+    if (String(replyingTo.value ?? '') === String(commentId)) replyingTo.value = null
+    toast.success(t('comment.deleted'))
+  } catch {
+    // 失败态由 apiFetch 统一 toast（401 会走刷新，404＝不是你的评论），此处不重复弹错
+  } finally {
+    deletingCommentId.value = null
+  }
 }
 
 // 回复横幅：显示被回复评论者昵称；X / 提交成功后清除 replyingTo

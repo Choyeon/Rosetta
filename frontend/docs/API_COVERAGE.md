@@ -32,9 +32,9 @@
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
-> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 353 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 354 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：353 个端点操作；✅ 290 + 🟡 6 = 已消费 296 个，未消费 57 个，覆盖率 83.9%。**
+**总计：354 个端点操作；✅ 291 + 🟡 6 = 已消费 297 个，未消费 57 个，覆盖率 83.9%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -52,11 +52,11 @@
 | advanced | 11 | 11 | 0 | 0 | 100% |
 | gallery | 11 | 11 | 0 | 0 | 100% |
 | guestbook | 11 | 11 | 0 | 0 | 100% |
+| comments | 9 | 8 | 0 | 1 | 89% |
 | seo | 9 | 5 | 1 | 3 | 67% |
 | title | 9 | 6 | 0 | 3 | 67% |
 | webhook | 9 | 9 | 0 | 0 | 100% |
 | activity | 8 | 7 | 0 | 1 | 88% |
-| comments | 8 | 7 | 0 | 1 | 88% |
 | monitoring | 8 | 8 | 0 | 0 | 100% |
 | post_series | 8 | 7 | 0 | 1 | 88% |
 | import_export | 7 | 7 | 0 | 0 | 100% |
@@ -184,10 +184,10 @@
 
 `GET /api/media/avatar?src=`：`composables/useResolvedAvatar.ts:130,150`（URL 拼接 + fallback 回退）
 
-### comments（/api）— 6/8
+### comments（/api）— 8/9
 
-✅：`GET /comments/{id}/replies`（ucm:39,172）、`POST /comments/{id}/like`（ucm:74）、`POST /admin/comments/{id}/approve|reject|spam`（ucm:94,100,106）、`POST /admin/comments/batch`（ucm:112）
-❌（1）：`GET /posts/{post_id_or_slug}/comments`——前端统一走 `GET /blog/posts/{id}/comments`（blog.py 版），此处为同源旧实现。`DELETE /comments/{id}` 亦无用户侧调用（用户删评论缺口，管理端删除走 `/admin/comments/{id}`）。**`POST /posts/{post_id_or_slug}/comments` 这条重复写口已删除 blog.py 版实现**（它不读 comments 分组的长度/嵌套开关，也不过 CSRF 与 IP 频控），现在评论写入只有 comments.py 一条口，前台表单与后台审核回复都走它。两套读口的可读性判据统一在 `backend/services/post_access.py`：草稿/待审/定时未到/加密未解锁文章的评论树对无权观看者一律不可见（列表口回空、写口与 slug 版读口 404）。
+✅：`GET /comments/{id}/replies`（ucm:39,172）、`POST /comments/{id}/like`（ucm:74）、`DELETE /comments/{id}`（ucm:158 → `components/CommentItem.vue` 的删除按钮 + `pages/posts/[slug].vue` 的归属判定）、`POST /admin/comments/{id}/approve|reject|spam`（ucm:94,100,106）、`POST /admin/comments/batch`（ucm:112）
+❌（1）：`GET /posts/{post_id_or_slug}/comments`——前端统一走 `GET /blog/posts/{id}/comments`（blog.py 版），此处为同源旧实现。**`POST /posts/{post_id_or_slug}/comments` 这条重复写口已删除 blog.py 版实现**（它不读 comments 分组的长度/嵌套开关，也不过 CSRF 与 IP 频控），现在评论写入只有 comments.py 一条口，前台表单与后台审核回复都走它。两套读口的可读性判据统一在 `backend/services/post_access.py`：草稿/待审/定时未到/加密未解锁文章的评论树对无权观看者一律不可见（列表口回空、写口与 slug 版读口 404）。用户侧删除走 `DELETE /comments/{id}`：归属判据进 SELECT 的 WHERE，「不存在」与「是别人的」回同一个 404（403 在替攻击者数评论 id），删前落回收站快照、删后照发 `comment.deleted` 钩子并清文章缓存 + 前台页面缓存；管理员删别人的评论仍走 `/admin/comments/{id}`。
 
 ### comment_reactions（/api）— 3/3 ✅
 

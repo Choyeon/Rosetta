@@ -141,6 +141,10 @@
     "hoursAgo": " h ago",
     "daysAgo": " d ago",
     "reply": "Reply",
+    "delete": "Delete",
+    "deleting": "Deleting…",
+    "deleteConfirm": "Delete this comment? An administrator can restore it within 30 days.",
+    "deleted": "Comment deleted",
     "like": "Like",
     "react": "Reaction"
   },

@@ -6,13 +6,16 @@ Rosetta 评论 API 路由（独立 comments 模块）
 - GET  /api/comments/{comment_id}/replies             取某根评论的回复分页
 - POST /api/posts/{post_id_or_slug}/comments          发表评论（游客或 OptionalCurrentUser）
 - POST /api/comments/{comment_id}/like                点赞
+- DELETE /api/comments/{comment_id}                   作者本人删除自己的评论（进回收站）
 
 管理员端点：
 - GET    /api/admin/comments                          列表（status/pagination/keyword）
 - POST   /api/admin/comments/{id}/approve|reject|spam 单条审核
 - POST   /api/admin/comments/batch                    批量 approve/reject/spam/delete
 
-单条 PATCH / DELETE 由 admin.py 统一提供（本模块只留 legacy 子动作）。
+单条 PATCH / 管理员单条 DELETE 由 admin.py 统一提供（本模块只留 legacy 子动作）；
+作者本人删自己那条评论走本模块的 DELETE /api/comments/{comment_id}（归属判据进 WHERE，
+与管理员单删同构：回收站快照 + comment.deleted 钩子 + 文章缓存失效）。
 
 文章可读性闸门：本模块所有口（含 `/api/comments/{id}/replies`）的可见性判据都走
 :mod:`backend.services.post_access`，与文章详情端点同源——草稿、定时未到、加密未解锁
@@ -32,10 +35,12 @@ import logging
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
+from sqlalchemy import select
 
 from backend.core.deps import (
     DB,
     CurrentStaff,
+    CurrentUser,
     CurrentUserOptional,
     PaginationParams,
     get_pagination,
@@ -48,7 +53,9 @@ from backend.core.rate_limit import (
     build_depends_rate_limit,
     get_client_ip,
     rate_limit_sensitive,
+    rate_limit_write,
 )
+from backend.models.blog import Comment
 from backend.schemas import (
     BaseResponse,
     CommentBatchAction,
@@ -59,6 +66,7 @@ from backend.schemas import (
 from backend.services.comment_service import CommentService
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_cache import invalidate_post_caches_by_ids
+from backend.services.trash import comment_trash_payload, snapshot_to_trash
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +320,68 @@ async def like_comment(comment_id: int, db: DB):
     return {"success": True, "likes_count": likes}
 
 
+@router.delete(
+    "/comments/{comment_id}",
+    response_model=BaseResponse,
+    summary="删除自己的评论（作者本人，软删除进回收站）",
+    description=(
+        "需登录 + CSRF。只允许删自己那条：归属判据直接进 SELECT 的 WHERE"
+        "（id 与 user_id 同一条谓词），所以「评论不存在」与「是别人的评论」回同一个 404"
+        "（COMMENT_NOT_FOUND）——回 403 等于用连续自增的主键替旁人数「这条存在」，"
+        "即可枚举全站评论 id。游客评论的 user_id 为 NULL，任何登录账号都匹配不上，"
+        "因此游客内容只有管理员能删。与管理员单删（DELETE /api/admin/comments/{id}）同构："
+        "先写回收站快照（30 天内可在「回收站」恢复，原文章已删除时不可恢复）再删原行，"
+        "子回复由外键 ON DELETE SET NULL 提升为根评论、正文不丢。"
+        "删除改变文章的可见评论集合，因此失效该文章的详情/列表缓存并通知前台清页面缓存"
+        "（评论树由客户端拉取，但首页与列表页 SSR 的 HTML 里烘着评论计数，"
+        "只清后端响应缓存在 Nitro 的 swr 窗口内访客仍看到旧数字）。"
+        "成功后触发插件钩子 comment.deleted。"
+    ),
+    dependencies=[Depends(rate_limit_write("comment_delete")), Depends(require_csrf)],
+)
+async def delete_own_comment(
+    comment_id: int,
+    current_user: CurrentUser,
+    db: DB,
+):
+    """作者本人删除自己的评论（先落回收站快照，与管理员单删同构）。"""
+    comment = (
+        await db.execute(
+            select(Comment).where(
+                Comment.id == comment_id,
+                Comment.user_id == current_user.id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if comment is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "success": False,
+                "message": "评论不存在",
+                "error_code": "COMMENT_NOT_FOUND",
+            },
+        )
+
+    # post_id 必须在 delete 之前取：对象一旦被删，属性访问会走已失效的行。
+    affected_post_id = comment.post_id
+
+    await snapshot_to_trash(
+        db,
+        resource_type="comment",
+        resource_id=comment.id,
+        data=comment_trash_payload(comment),
+        deleted_by_id=current_user.id,
+    )
+    await db.delete(comment)
+    await db.flush()
+    await bus.do_action("comment.deleted", comment, current_user=current_user, db=db)
+    await invalidate_post_caches_by_ids(db, [affected_post_id])
+    purge_frontend_page_cache("作者删除评论")
+    return BaseResponse(message="评论已移入回收站")
+
+
 # ================= 管理员端点 =================
 # 注意：评论列表(GET)、单条更新(PATCH)、单条删除(DELETE) 已统一由 admin.py 提供，
 # 此处仅保留 Phase 3 已上线且仍被 React Admin 前端调用的 legacy 子动作：
@@ -407,6 +477,6 @@ async def admin_batch(staff: CurrentStaff, body: CommentBatchAction, db: DB):
         await db.rollback()
         raise _service_err_to_http(e) from e
     await invalidate_post_caches_by_ids(db, result.get("post_ids") or [])
-    # 评论正文烘在文章页 HTML 里，四个动作都会改变访客看到的内容集合。
+    # 首页/列表页 SSR 的 HTML 里烘着评论计数，四个动作都会改变访客看到的可见评论集合。
     purge_frontend_page_cache("评论批量操作")
     return BaseResponse(success=True, message=f"已处理 {result.get('processed', 0)} 条")

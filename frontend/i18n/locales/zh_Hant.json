@@ -137,6 +137,10 @@
   "comment": {
     "title": "留言",
     "reply": "回覆",
+    "delete": "刪除",
+    "deleting": "刪除中…",
+    "deleteConfirm": "確定刪除這條留言嗎？刪除後管理員可在 30 天內復原。",
+    "deleted": "留言已刪除",
     "justNow": "剛剛",
     "minutesAgo": " 分鐘前",
     "hoursAgo": " 小時前",

@@ -137,6 +137,10 @@
   "comment": {
     "title": "コメント",
     "reply": "返信",
+    "delete": "削除",
+    "deleting": "削除中…",
+    "deleteConfirm": "このコメントを削除しますか？削除後は管理者が30日以内に復元できます。",
+    "deleted": "コメントを削除しました",
     "justNow": "たった今",
     "minutesAgo": " 分前",
     "hoursAgo": " 時間前",

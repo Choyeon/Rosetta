@@ -141,6 +141,10 @@
     "hoursAgo": "小时前",
     "daysAgo": "天前",
     "reply": "回复",
+    "delete": "删除",
+    "deleting": "删除中…",
+    "deleteConfirm": "确定删除这条评论吗？删除后 30 天内可由管理员恢复。",
+    "deleted": "评论已删除",
     "like": "点赞",
     "react": "表情反应"
   },
