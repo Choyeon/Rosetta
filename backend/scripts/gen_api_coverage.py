@@ -86,8 +86,38 @@ _ROUTE_NAV_CALLEES = frozenset(
     }
 )
 _URL_ATTR_NEAR_RE = re.compile(r"""(?:src|href|action)\s*=\s*['"`]{0,2}\s*$""")
-# `const LIST_URL = '/admin/shortcodes'` 这一族：字面量不在实参位，但名字说明它就是请求路径
-_URL_NAMED_ASSIGN_RE = re.compile(r"\b([A-Za-z_$][\w$]*(?:URL|Url|ENDPOINT|Endpoint))\s*=\s*$")
+# 白名单：出现在三元分支/对象属性位时，只有这些调用名算"真的发请求"
+_REQUEST_CALLEES = frozenset(
+    {
+        "apiFetch",
+        "silentApiFetch",
+        "useAPI",
+        "useApi",
+        "useAsyncData",
+        "request",
+        "resolveBackendEndpoint",
+        "$fetch",
+        "$get",
+        "$post",
+        "$put",
+        "$patch",
+        "$delete",
+    }
+)
+# `const LIST_URL = '/admin/shortcodes'` 这一族：字面量不在实参位，但名字说明它就是请求路径。
+# 光认大写后缀会漏掉 `const url = tab === 'favorites' ? '/favorites' : ...`（个人中心就是这么写的），
+# 所以额外允许这几个小写名；`path` 不收（它 overwhelmingly 是站内路由，不是 API 路径）。
+_URL_NAMED_ASSIGN_RE = re.compile(
+    r"\b([A-Za-z_$][\w$]*(?:URL|Url|ENDPOINT|Endpoint)|url|apiUrl|apiPath|endpoint)\s*=\s*$"
+)
+# 同一族的另一种写法：`const listUrl = computed(() => a ? '/favorites' : \`/blog/users/me/${x}\`)`。
+# 字面量躺在 computed 体里，`=` 后面隔着一整棵表达式树，实参位判定与上一条都对不上；
+# 真正的请求发生在 `useAPI(() => listUrl.value, …)` 那个**使用点**上，所以这里只交名字，
+# 动词仍由 `_verbs_for_const` 从使用点读回来（个人中心四个档位曾被整族误报成未消费）。
+_URL_COMPUTED_DECL_RE = re.compile(
+    r"\b(?:const|let|var)\s+([A-Za-z_$][\w$]*(?:URL|Url|ENDPOINT|Endpoint)|url|apiUrl|apiPath|endpoint)"
+    r"\s*=\s*computed(\s*<[^<>]*>)?\s*\("
+)
 
 _NITRO_PREFIX = "server/"
 
@@ -164,7 +194,7 @@ def _front_calls() -> list[Call]:
                 if normed.startswith("/api/"):
                     candidates.add(normed)
             if const_name is not None:
-                verbs = _verbs_for_const(text, const_name)
+                verbs = _verbs_for_const(text, const_name, m.start())
             elif context == "fetch":
                 verbs = _verbs_at(text, m.start(), m.end(), callee)
             else:
@@ -197,16 +227,22 @@ def _verbs_at(text: str, lit_start: int, lit_end: int, callee: str | None) -> se
     return None if saw_var else {"get"}
 
 
-def _verbs_for_const(text: str, name: str) -> set[str] | None:
+def _verbs_for_const(text: str, name: str, anchor: int) -> set[str] | None:
     """`const LIST_URL = '/x'` 这一族：动词写在**使用点**上，不在声明点。
 
     不往回看使用点就会把 `POST /admin/shortcodes`（预览口，复用 LIST_URL）判成未消费。
+    只看声明之后 1500 字符内的使用点：`const url = …` 这种通用名在一个文件里会出现多次，
+    不收口就会把别的函数里 `method: 'PUT'` 记到这条路径头上（那是"发明覆盖率"，比漏判更坏）。
     """
     verbs: set[str] = set()
+    # 大写常量名（LIST_URL）是文件作用域，使用点散在整份文件里；小写名（url）是函数内的
+    # 临时变量，只认声明后 1500 字符内的使用点。
+    limit = len(text) if name[:1].isupper() or name[:1] == "$" else 1500
     for m in re.finditer(rf"\b{re.escape(name)}\b", text):
-        after = text[m.end() :].lstrip()
-        if after.startswith("="):
-            continue  # 声明本身（const LIST_URL = ...），动词不在这里
+        if m.start() <= anchor:
+            continue  # 声明自身，以及声明之前属于别的函数的同名变量
+        if m.start() > anchor + limit:
+            break
         found = _verbs_at(text, m.start(), m.end(), _callee_of(text[: m.start()].rstrip()))
         if found is None:
             return None
@@ -230,11 +266,42 @@ def _context_of(text: str, start: int) -> tuple[str, str | None, str | None]:
         # const LIST_URL = '/admin/shortcodes' 再传给 apiFetch：字面量本身不是实参位
         return "fetch", named.group(1), None
     callee = _callee_of(text[:start].rstrip())
-    if callee is None:
-        return "none", None, None
-    if callee in _ROUTE_NAV_CALLEES:
-        return "none", None, None
-    return "fetch", None, callee
+    if callee is not None and callee not in _ROUTE_NAV_CALLEES:
+        # 三元分支 / 对象属性位（`? '/favorites' : \`/blog/users/me/${tab}\``、`url: '/x'`）：
+        # 只有包住它的调用名确属"发请求"那一族才算消费点，否则后台菜单表里的导航项会被误判成已接线
+        blocked = prefix.rstrip()[-1:] in (":", "?") and callee not in _REQUEST_CALLEES
+        if not blocked:
+            return "fetch", None, callee
+    declared = _computed_url_const(text, start)
+    if declared is not None:
+        return "fetch", declared, None
+    return "none", None, None
+
+
+def _computed_url_const(text: str, start: int) -> str | None:
+    """字面量是否躺在一个 URL 命名的 `computed(` 体里；是则返回那个变量名。
+
+    必须确认那个 `(` 到字面量为止还没闭合，且声明在 240 字符以内：不看配对就往前找声明，
+    会把"上一个 computed 早就关了"的导航字符串也认成请求路径（那是发明覆盖率，比漏判更坏）。
+    """
+    window_start = max(0, start - 240)
+    for m in reversed(list(_URL_COMPUTED_DECL_RE.finditer(text[window_start:start]))):
+        open_pos = window_start + m.end() - 1
+        if _paren_still_open(text, start, open_pos):
+            return m.group(1)
+    return None
+
+
+def _paren_still_open(text: str, start: int, open_pos: int) -> bool:
+    """`open_pos` 处那个 `(` 在 `start` 之前还没闭合。"""
+    depth = 0
+    for i in range(start - 1, open_pos - 1, -1):
+        ch = text[i]
+        if ch == ")":
+            depth += 1
+        elif ch == "(":
+            depth -= 1
+    return depth < 0
 
 
 def _callee_of(before: str) -> str | None:
@@ -246,8 +313,10 @@ def _callee_of(before: str) -> str | None:
     """
     if before.endswith("("):
         before = before[:-1].rstrip()
-    elif before.endswith(","):
+    elif before.endswith((",", ":", "?")):
         # 后续实参：resolveBackendEndpoint(runtime, '/blog/rss')
+        # 冒号/问号位：三元两个分支与对象属性
+        # （`apiFetch(isMd ? '/admin/import/markdown' : '/admin/import/posts', …)`、`{ url: '/x' }`）
         open_at = _match_open_paren(before[:-1])
         if open_at is None:
             return None

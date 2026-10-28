@@ -33,20 +33,20 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 352 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：352 个端点操作；✅ 278 + 🟡 5 = 已消费 283 个，未消费 69 个，覆盖率 80.4%。**
+**总计：352 个端点操作；✅ 285 + 🟡 5 = 已消费 290 个，未消费 62 个，覆盖率 82.4%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
 | 模块（backend/api） | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
 |---|---:|---:|---:|---:|---:|
-| blog | 40 | 31 | 4 | 5 | 88% |
+| blog | 40 | 35 | 4 | 1 | 98% |
 | users | 22 | 17 | 0 | 5 | 77% |
 | core | 19 | 16 | 0 | 3 | 84% |
 | oobe | 18 | 8 | 0 | 10 | 44% |
 | plugins | 16 | 14 | 0 | 2 | 88% |
 | admin | 15 | 15 | 0 | 0 | 100% |
 | media | 15 | 12 | 0 | 3 | 80% |
-| favorite | 12 | 10 | 0 | 2 | 83% |
+| favorite | 12 | 11 | 0 | 1 | 92% |
 | themes_ext | 12 | 10 | 0 | 2 | 83% |
 | advanced | 11 | 11 | 0 | 0 | 100% |
 | gallery | 11 | 11 | 0 | 0 | 100% |
@@ -58,7 +58,7 @@
 | comments | 8 | 7 | 0 | 1 | 88% |
 | monitoring | 8 | 8 | 0 | 0 | 100% |
 | post_series | 8 | 6 | 0 | 2 | 75% |
-| import_export | 7 | 3 | 0 | 4 | 43% |
+| import_export | 7 | 5 | 0 | 2 | 71% |
 | announcement | 6 | 5 | 0 | 1 | 83% |
 | hero | 6 | 6 | 0 | 0 | 100% |
 | messages | 6 | 6 | 0 | 0 | 100% |
@@ -86,7 +86,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 69 条）
+## 未消费清单（自动生成，共 62 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -96,12 +96,12 @@
 - **avatar_proxy**（1）：`GET /api/media/avatar`
 - **bing**（1）：`GET /api/bing/wallpaper`
 - **bing_image**（3）：`GET /api/bing/image`、`GET /api/bing/image/archive`、`GET /api/bing/image/today`
-- **blog**（5）：`GET /api/blog/rss`、`GET /api/blog/users/me/comments`、`GET /api/blog/users/me/history`、`GET /api/blog/users/me/likes`、`GET /api/blog/users/me/posts`
+- **blog**（1）：`GET /api/blog/rss`
 - **captcha**（1）：`POST /api/captcha/verify`
 - **comments**（1）：`GET /api/posts/{post_id_or_slug}/comments`
 - **core**（3）：`POST /api/admin/settings`、`GET /api/config/full`、`GET /api/sponsors`
-- **favorite**（2）：`GET /api/favorites`、`PUT /api/favorites/{favorite_id}`
-- **import_export**（4）：`GET /api/admin/export/markdown`、`GET /api/admin/export/posts`、`POST /api/admin/import/markdown`、`POST /api/admin/import/posts`
+- **favorite**（1）：`PUT /api/favorites/{favorite_id}`
+- **import_export**（2）：`GET /api/admin/export/markdown`、`GET /api/admin/export/posts`
 - **media**（3）：`GET /api/media/bing-wallpaper`、`POST /api/media/library/upload`、`POST /api/media/upload/stream`
 - **oobe**（10）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/preflight`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
 - **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
