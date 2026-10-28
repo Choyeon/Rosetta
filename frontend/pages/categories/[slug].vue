@@ -17,6 +17,8 @@
         :src="catCover"
         :alt="categoryName"
         class="block h-auto w-full aspect-[21/9] object-cover"
+        width="1200"
+        height="514"
         @error="coverBroken = true"
       >
     </div>
