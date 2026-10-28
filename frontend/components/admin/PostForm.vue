@@ -81,6 +81,7 @@ const draftLocalStorageKey = computed(() =>
 
 const form = reactive({
   title: { ...EMPTY_I18N_DICT } as Record<string, string>,
+  subtitle: { ...EMPTY_I18N_DICT } as Record<string, string>,
   slug: '',
   content: { ...EMPTY_I18N_DICT } as Record<string, string>,
   // 后端 PostBase/PostUpdate 的 pattern 只接受 draft|published|scheduled，
@@ -228,6 +229,7 @@ const loadSeries = async () => {
 
 const applyInitialData = (data: Post) => {
   form.title = normalizeI18nDict(data.title)
+  form.subtitle = normalizeI18nDict(data.subtitle)
   form.slug = data.slug
   form.content = normalizeI18nDict(data.content)
   form.status = data.status === 'archived' ? 'draft' : data.status
@@ -312,6 +314,7 @@ const restoreDraft = () => {
       if (parsed?.form) {
         Object.assign(form, parsed.form)
         form.title = normalizeI18nDict(form.title)
+        form.subtitle = normalizeI18nDict(form.subtitle)
         form.content = normalizeI18nDict(form.content)
         form.excerpt = normalizeI18nDict(form.excerpt)
         form.meta_title = normalizeI18nDict(form.meta_title)
@@ -383,6 +386,9 @@ const clearCover = () => {
 const buildPayload = (overrideStatus?: string): PostCreate => {
   const payload: PostCreate = {
     title: (toI18nPayload(form.title) ?? { zh: form.title.zh }) as Record<string, string>,
+    // 副标题始终发送，全空时发 null：省略键在 exclude_unset 语义下等于"不改它"，
+    // 作者删掉副标题再保存就会回到旧值。
+    subtitle: toI18nPayload(form.subtitle) ?? null,
     slug: form.slug,
     content: (toI18nPayload(form.content) ?? { zh: form.content.zh }) as Record<string, string>,
     status: (overrideStatus as PostCreate['status']) || form.status,
@@ -750,6 +756,13 @@ onBeforeUnmount(() => {
               label="标题"
               placeholder="输入文章标题"
               required
+              flat
+            />
+            <I18nTabsEditor
+              v-model="form.subtitle"
+              kind="text"
+              label="副标题"
+              placeholder="可选；显示在文章页主标题下方的一句话导语"
               flat
             />
             <AdminFormField

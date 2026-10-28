@@ -69,6 +69,15 @@
             {{ displayPostTitle }}
           </h1>
 
+          <!-- 副标题（导语）：后台可填，随文章详情按当前语言下发。值为 SSR payload 派生，
+               两端首渲染一致，所以条件渲染不会造成 hydration mismatch。 -->
+          <p
+            v-if="postSubtitle"
+            class="mt-3 text-base md:text-lg leading-relaxed text-muted-foreground"
+          >
+            {{ postSubtitle }}
+          </p>
+
           <!-- 作者 / 日期 / 阅读时长 / 阅读量 / 来源是主信息，字数与更新时间为次要信息。
                上一版八项挤在同一行、用「·」硬分隔，窄屏换行后每行都以「·」开头；
                这里分两层：主行不出现分隔符，次行降一级字号与对比度。 -->
@@ -874,6 +883,7 @@ interface PostDetailTag {
 interface PostDetail {
   id: number
   title: unknown
+  subtitle?: unknown
   content: unknown
   cover_image?: string
   coverImage?: string
@@ -1278,6 +1288,12 @@ const displayPostTitle = computed(() => {
   } catch {
     return t('post.untitled', '未命名文章')
   }
+})
+const postSubtitle = computed(() => {
+  const sub = pickLocalized(post.value?.subtitle).trim()
+  // 与主标题相同不渲染：导入工具会把 subtitle 复制成标题，文章页不该出现两行一样的字
+  if (!sub || sub === postTitle.value) return ''
+  return sub
 })
 const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_BANNER))
 /**

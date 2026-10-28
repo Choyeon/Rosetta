@@ -72,7 +72,8 @@ export interface TokenResponse {
 export interface Post {
   id: number
   title: string | Record<string, string>
-  subtitle?: string | Record<string, string>
+  /** 多语言副标题；后台编辑表单可写，文章页在主标题下作为导语展示。 */
+  subtitle?: string | Record<string, string> | null
   slug: string
   /** 来源（默认「原创」）；文章页只在非默认值或有原文链接时展示。 */
   source?: string
@@ -111,7 +112,8 @@ export interface Post {
 
 export interface PostCreate {
   title: string | Record<string, string>
-  subtitle?: string | Record<string, string>
+  /** null = 清掉副标题；省略等于"不动它"（后端 PUT 是 exclude_unset 增量语义）。 */
+  subtitle?: string | Record<string, string> | null
   slug?: string
   source?: string
   /** 显式 null = 清掉原文链接（后端 PUT 是 exclude_unset 增量语义）。 */
