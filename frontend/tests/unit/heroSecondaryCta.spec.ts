@@ -2,7 +2,7 @@
  * 切片 #27：首页轮播「次按钮」两端接通（`cta_secondary_text` / `cta_secondary_url`）。
  *
  * 这两列早在 `hero_slides` 里、`HeroSlide*` schema 三处都声明、匿名口 `GET /api/hero/slides`
- * 也把它们投给每个访客，但后台没有输入口、首页把第二个按钮硬编码成「浏览全部文章 → /posts」。
+ * 也把它们投给每个访客，但后台没有输入口、首页把第二个按钮硬编码成「查看全部 → /posts」。
  * 本文件钉的是"接通"这件事的四个必要条件，缺一即回到"配了不生效"：
  *   ① `safeHeroHref` 把伪协议挡在 href 之前（写入口不止后台表单一个：导入 ZIP 直接写 ORM）；
  *   ② `pages/index.vue` 的类型里有这两项，且第二个按钮真的读它们；

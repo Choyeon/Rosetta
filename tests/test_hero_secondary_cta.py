@@ -4,7 +4,7 @@
 匿名口 `GET /api/hero/slides` 把它们投给每个访客，但：
 
 - 后台 `pages/admin/content/hero.vue` 没有这两个输入口 —— 只能靠直接打接口或导 ZIP 才写进去；
-- 首页把第二个按钮硬编码成「浏览全部文章 → /posts」，所以写进去的值永远不渲染。
+- 首页把第二个按钮硬编码成「查看全部 → /posts」，所以写进去的值永远不渲染。
 
 于是"配了没生效"和"能配但看不见"两头都占。本文件钉住这条真链路：
 schema 三处声明 → 创建口能写 → 匿名口能读 → PUT 能改能清 → 省略键不动 → 超长拒 422。
@@ -82,7 +82,7 @@ async def test_create_accepts_the_pair(client: AsyncClient, admin_headers: dict)
 
 @pytest.mark.asyncio
 async def test_create_without_them_stays_empty(client: AsyncClient, admin_headers: dict):
-    """不传就是 NULL —— 首页据此回落到「浏览全部文章」，不能凭空造出一个空按钮。"""
+    """不传就是 NULL —— 首页据此回落到缺省按钮，不能凭空造出一个空按钮。"""
     slide_id = await _create(client, admin_headers)
     resp = await client.get(PUBLIC)
     row = next(item for item in _unwrap(resp.json()) if item["id"] == slide_id)

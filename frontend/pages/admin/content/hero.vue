@@ -5,7 +5,7 @@
   硬契约：后端 HeroSlide* 为 extra=forbid 且 title/subtitle/cta_text 声明成 str，
   多语言字典必须 JSON.stringify 后提交（回显时解析），漏一步即 422。
   media_type 固定 image：首页只有背景图层，选 video/youtube 会存得进去却永远不渲染（静默失效）。
-  主次两个按钮都是"幻灯片自带优先、缺省回落到站点设置/浏览全部文章"，所以两张框都留空也顶不掉现有观感。
+  主次两个按钮都是"幻灯片自带优先、缺省回落到站点设置/查看全部"，所以两张框都留空也顶不掉现有观感。
   start_time/end_time 不开放：生效时间窗由后端过滤，界面暂不排期，缺省 null＝长期生效。
 -->
 <script setup lang="ts">
@@ -421,7 +421,7 @@ onMounted(loadData)
         <I18nTabsEditor
           v-model="form.cta_secondary_text"
           kind="text"
-          label="次按钮文案（留空则显示「浏览全部文章」）"
+          label="次按钮文案（留空则显示「查看全部」）"
         />
 
         <div>

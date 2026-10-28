@@ -1257,7 +1257,7 @@ const heroCtaText = computed(() => pickSlideText(heroSlide.value?.cta_text) || _
 // 主/次两个 href 共用同一个闸门：缺省时保持原有回落（主＝站点设置、次＝/posts），
 // 伪协议则一律回落到那个缺省，而不是原样交给 <a href>。
 const heroCtaUrl = computed(() => safeHeroHref(heroSlide.value?.cta_url, _heroCtaUrl.value))
-// 次按钮与主按钮同构：幻灯片自带的值优先，缺省保持历史观感（「浏览全部文章」→ /posts）。
+// 次按钮与主按钮同构：幻灯片自带的值优先，缺省保持历史观感（「查看全部」→ /posts）。
 // href 必须过 safeHeroHref：这一项写入口不止后台表单（导入 ZIP 直接写 ORM、直接打接口），
 // 库里躺着 `javascript:` 时它就是这个站最显眼位置上一条可执行链接。
 const heroSecondaryCtaText = computed(
