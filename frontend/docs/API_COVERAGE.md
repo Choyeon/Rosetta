@@ -33,21 +33,21 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 352 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：352 个端点操作；✅ 269 + 🟡 4 = 已消费 273 个，未消费 79 个，覆盖率 77.6%。**
+**总计：352 个端点操作；✅ 278 + 🟡 5 = 已消费 283 个，未消费 69 个，覆盖率 80.4%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
 | 模块（backend/api） | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
 |---|---:|---:|---:|---:|---:|
-| blog | 40 | 31 | 3 | 6 | 85% |
+| blog | 40 | 31 | 4 | 5 | 88% |
 | users | 22 | 17 | 0 | 5 | 77% |
 | core | 19 | 16 | 0 | 3 | 84% |
 | oobe | 18 | 8 | 0 | 10 | 44% |
-| plugins | 16 | 8 | 0 | 8 | 50% |
+| plugins | 16 | 14 | 0 | 2 | 88% |
 | admin | 15 | 15 | 0 | 0 | 100% |
 | media | 15 | 12 | 0 | 3 | 80% |
 | favorite | 12 | 10 | 0 | 2 | 83% |
-| themes_ext | 12 | 7 | 0 | 5 | 58% |
+| themes_ext | 12 | 10 | 0 | 2 | 83% |
 | advanced | 11 | 11 | 0 | 0 | 100% |
 | gallery | 11 | 11 | 0 | 0 | 100% |
 | guestbook | 11 | 11 | 0 | 0 | 100% |
@@ -86,7 +86,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 79 条）
+## 未消费清单（自动生成，共 69 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -96,7 +96,7 @@
 - **avatar_proxy**（1）：`GET /api/media/avatar`
 - **bing**（1）：`GET /api/bing/wallpaper`
 - **bing_image**（3）：`GET /api/bing/image`、`GET /api/bing/image/archive`、`GET /api/bing/image/today`
-- **blog**（6）：`GET /api/blog/rss`、`GET /api/blog/sitemap-posts.xml`、`GET /api/blog/users/me/comments`、`GET /api/blog/users/me/history`、`GET /api/blog/users/me/likes`、`GET /api/blog/users/me/posts`
+- **blog**（5）：`GET /api/blog/rss`、`GET /api/blog/users/me/comments`、`GET /api/blog/users/me/history`、`GET /api/blog/users/me/likes`、`GET /api/blog/users/me/posts`
 - **captcha**（1）：`POST /api/captcha/verify`
 - **comments**（1）：`GET /api/posts/{post_id_or_slug}/comments`
 - **core**（3）：`POST /api/admin/settings`、`GET /api/config/full`、`GET /api/sponsors`
@@ -104,14 +104,14 @@
 - **import_export**（4）：`GET /api/admin/export/markdown`、`GET /api/admin/export/posts`、`POST /api/admin/import/markdown`、`POST /api/admin/import/posts`
 - **media**（3）：`GET /api/media/bing-wallpaper`、`POST /api/media/library/upload`、`POST /api/media/upload/stream`
 - **oobe**（10）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/preflight`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
-- **plugins**（8）：`POST /api/admin/plugins/bulk`、`POST /api/admin/plugins/scan`、`DELETE /api/admin/plugins/{slug}`、`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`、`PATCH /api/admin/plugins/{slug}/settings`、`PATCH /api/admin/plugins/{slug}/status`、`POST /api/admin/plugins/{slug}/upgrade`
+- **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
 - **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
 - **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`
 - **post_series**（2）：`PUT /api/admin/series/{series_id}/toggle`、`POST /api/post_series/complete`
 - **ranking**（1）：`GET /api/ranking/posts`
 - **seo**（3）：`GET /api/seo/config`、`PUT /api/seo/config`、`GET /api/seo/sitemap.xml`
 - **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
-- **themes_ext**（5）：`POST /api/admin/themes/scan`、`DELETE /api/admin/themes/{slug}`、`PATCH /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`、`POST /api/admin/themes/{slug}/upgrade`
+- **themes_ext**（2）：`GET /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`
 - **title**（3）：`GET /api/admin/titles/{title_id}`、`PATCH /api/admin/titles/{title_id}`、`GET /api/admin/users/{user_id}/title`
 - **toc**（3）：`POST /api/toc/add-ids`、`POST /api/toc/extract`、`POST /api/toc/generate`
 - **users**（5）：`DELETE /api/users/me`、`PUT /api/users/me/avatar`、`POST /api/users/me/change-password`、`PUT /api/users/me/cover`、`GET /api/users/username/{username}/preferences`

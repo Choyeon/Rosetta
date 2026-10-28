@@ -49,9 +49,14 @@ _INCLUDE_RE = re.compile(r"""app\.include_router\(\s*([\w.]+)\s*,\s*prefix=["'](
 _IMPORT_ALIAS_RE = re.compile(
     r"""from\s+backend\.api\.([\w]+)\s+import\s+([\w]+)(?:\s+as\s+([\w]+))?"""
 )
-# 以 / 开头的字符串字面量：单引号、双引号、反引号
-_LITERAL_RE = re.compile(r"""(['"`])(/[^'"`\n]*?)\1""")
+# 以 / 开头的字符串字面量：单/双引号
+_LITERAL_RE = re.compile(r"""(['"])(/[^'"\n]*?)\1""")
+# 反引号模板串：内容里可以带引号（`` `/market${force ? '?force=true' : ''}` ``），
+# 所以不能和上一条共用"内容不含引号"的字符类
+_TEMPLATE_LITERAL_RE = re.compile(r"""`(/[^`\n]*)`""")
 _TEMPLATE_VAR_RE = re.compile(r"\$\{[^{}]*\}")
+# 粘在最后一段尾部的模板表达式（查询串/形态后缀），不是路径参数
+_GLUED_VAR_RE = re.compile(r"[^\}/]+\$\{[^{}]*\}$")
 _METHOD_AFTER_RE = re.compile(
     r"""method\s*[:=]\s*(['"`])([A-Za-z]+)\1""",
 )
@@ -136,25 +141,60 @@ def _front_calls() -> list[Call]:
     hits: list[Call] = []
     for rel, path in _iter_source_files():
         text = path.read_text(encoding="utf-8")
-        for m in _LITERAL_RE.finditer(text):
-            context, const_name = _context_of(text, m.start())
+        literals = list(_LITERAL_RE.finditer(text)) + list(_TEMPLATE_LITERAL_RE.finditer(text))
+        for m in literals:
+            context, const_name, callee = _context_of(text, m.start())
             if context == "none":
                 continue
-            raw = m.group(2)
-            normed = _TEMPLATE_VAR_RE.sub("*", raw)
-            normed = normed.split("?")[0].split("#")[0]
-            if normed.endswith("/"):
-                normed = normed[:-1]
-            candidates = {f"/api{normed}"}
-            if normed.startswith("/api/"):
-                candidates.add(normed)
+            raw = m.group(m.lastindex or 1)
+            forms = {raw}
+            # `${...}` 粘在**最后一段尾部**通常是查询串或形态后缀
+            # （`/admin/themes/market${force ? "?force=true" : ""}`），这条字面量同时也请求了
+            # 去掉尾巴的父路径；单独占一段的 `${id}` 是路径参数，不能算成父路径。
+            glued = _GLUED_VAR_RE.search(raw)
+            if glued:
+                forms.add(raw[: raw.rindex("${")])
+            candidates: set[str] = set()
+            for form in forms:
+                normed = _TEMPLATE_VAR_RE.sub("*", form)
+                normed = normed.split("?")[0].split("#")[0]
+                if normed.endswith("/"):
+                    normed = normed[:-1]
+                candidates.add(f"/api{normed}")
+                if normed.startswith("/api/"):
+                    candidates.add(normed)
             if const_name is not None:
                 verbs = _verbs_for_const(text, const_name)
+            elif context == "fetch":
+                verbs = _verbs_at(text, m.start(), m.end(), callee)
             else:
-                verbs = _verbs_near(text, m.end()) if context == "fetch" else {"get"}
+                verbs = {"get"}
             for cand in candidates:
                 hits.append(Call(cand, rel, verbs, context))
     return hits
+
+
+def _verb_from_callee(callee: str | None) -> str | None:
+    """动词写在封装名里的形态：`$get/$post/$patch/$delete`（主题与插件管理器就是这么包的）。
+
+    不认这一族，`DELETE /admin/themes/{slug}`、`PATCH /admin/themes/{slug}/mods` 会被判成
+    "这条路径只消费了 GET"——封装内部已经把 method 固定住了，调用点上没有 `method:` 字面量。
+    """
+    if not callee:
+        return None
+    name = callee.lstrip("$").lower()
+    return name if name in _HTTP_METHODS else None
+
+
+def _verbs_at(text: str, lit_start: int, lit_end: int, callee: str | None) -> set[str] | None:
+    """一次调用点的动词集合；None = 变量传入，该路径的所有动词都算。"""
+    explicit, saw_var = _methods_in_window(_window_after(text, lit_end))
+    if explicit:
+        return explicit
+    verb = _verb_from_callee(callee)
+    if verb is not None:
+        return {verb}
+    return None if saw_var else {"get"}
 
 
 def _verbs_for_const(text: str, name: str) -> set[str] | None:
@@ -167,15 +207,15 @@ def _verbs_for_const(text: str, name: str) -> set[str] | None:
         after = text[m.end() :].lstrip()
         if after.startswith("="):
             continue  # 声明本身（const LIST_URL = ...），动词不在这里
-        found = _verbs_near(text, m.end())
+        found = _verbs_at(text, m.start(), m.end(), _callee_of(text[: m.start()].rstrip()))
         if found is None:
             return None
         verbs |= found
     return verbs or {"get"}
 
 
-def _context_of(text: str, start: int) -> tuple[str, str | None]:
-    """字面量在干什么：(真的发请求 fetch / 拼进 src-href url / 只是字符串 none, URL 常量名)。
+def _context_of(text: str, start: int) -> tuple[str, str | None, str | None]:
+    """字面量在干什么：(fetch/url/none, URL 常量名, 调用名)。
 
     判"发请求"用**它是某个调用的参数**，而不是"附近 140 字符里有 apiFetch"：
     后者两头都错——`request('/oobe/status')`（OOBE 自己的封装）漏判成未消费，
@@ -184,15 +224,17 @@ def _context_of(text: str, start: int) -> tuple[str, str | None]:
     """
     prefix = text[max(0, start - 40) : start]
     if _URL_ATTR_NEAR_RE.search(prefix):
-        return "url", None
+        return "url", None, None
     named = _URL_NAMED_ASSIGN_RE.search(prefix)
     if named:
         # const LIST_URL = '/admin/shortcodes' 再传给 apiFetch：字面量本身不是实参位
-        return "fetch", named.group(1)
+        return "fetch", named.group(1), None
     callee = _callee_of(text[:start].rstrip())
     if callee is None:
-        return "none", None
-    return ("none", None) if callee in _ROUTE_NAV_CALLEES else ("fetch", None)
+        return "none", None, None
+    if callee in _ROUTE_NAV_CALLEES:
+        return "none", None, None
+    return "fetch", None, callee
 
 
 def _callee_of(before: str) -> str | None:
@@ -277,22 +319,23 @@ def _match_open_angle(text: str) -> int | None:
     return None
 
 
-def _verbs_near(text: str, end_pos: int) -> set[str] | None:
-    """字面量所在调用的 method 声明；变量传入 → None（该路径的所有动词都算）。
+def _window_after(text: str, end_pos: int) -> str:
+    """字面量之后的调用上下文窗口，在**第一个空行**截断。
 
-    窗口在**第一个空行**截断：`apiFetch('/x', { query })` 与下一条
-    `apiFetch('/y/${id}', { method: 'POST' })` 之间必然空行隔开，
-    不截断就会把后一条的 POST 记到前一条头上（实测把 GET /admin/guestbook 判成未消费）。
+    `apiFetch('/x', { query })` 与下一条 `apiFetch('/y/${id}', { method: 'POST' })`
+    之间必然空行隔开，不截断就会把后一条的 POST 记到前一条头上
+    （实测把 GET /admin/guestbook 判成未消费）。
     """
     window = text[end_pos : end_pos + 400]
     blank = window.find("\n\n")
-    if blank != -1:
-        window = window[:blank]
+    return window[:blank] if blank != -1 else window
+
+
+def _methods_in_window(window: str) -> tuple[set[str], bool]:
+    """窗口里写明的 method 集合，以及"method 是变量传入"的标记。"""
     found = {mm.group(2).lower() for mm in _METHOD_AFTER_RE.finditer(window)}
     found = {v for v in found if v in _HTTP_METHODS}
-    if _METHOD_VAR_RE.search(window) and not found:
-        return None
-    return found or {"get"}
+    return found, bool(_METHOD_VAR_RE.search(window))
 
 
 def _segments_match(pattern: str, candidate: str) -> bool:
