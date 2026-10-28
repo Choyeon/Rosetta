@@ -461,17 +461,38 @@ onMounted(() => {
         >未分类</span>
       </template>
       <template #cell-status="{ row }">
-        <Badge
-          class="rounded-[10px] font-normal whitespace-nowrap"
-          :class="{
-            'bg-success-muted text-success-muted-foreground': (row as Post).status === 'published',
-            'bg-warning-muted text-warning-muted-foreground': (row as Post).status === 'draft',
-            'bg-info-muted text-info-muted-foreground': (row as Post).status === 'scheduled',
-            'bg-muted text-muted-foreground': (row as Post).status === 'archived'
-          }"
-        >
-          {{ { published: '已发布', draft: '草稿', scheduled: '定时', archived: '已归档' }[(row as Post).status] ?? (row as Post).status }}
-        </Badge>
+        <div class="flex flex-col items-start gap-1">
+          <Badge
+            class="rounded-[10px] font-normal whitespace-nowrap"
+            :class="{
+              'bg-success-muted text-success-muted-foreground': (row as Post).status === 'published',
+              'bg-warning-muted text-warning-muted-foreground': (row as Post).status === 'draft',
+              'bg-info-muted text-info-muted-foreground': (row as Post).status === 'scheduled',
+              'bg-muted text-muted-foreground': (row as Post).status === 'archived'
+            }"
+          >
+            {{ { published: '已发布', draft: '草稿', scheduled: '定时', archived: '已归档' }[(row as Post).status] ?? (row as Post).status }}
+          </Badge>
+          <!-- 状态与可见性是两条正交的轴：「已发布 + 私密」是合法组合（作者自己留着看的成文），
+               合成一个徽标就看不出这层。公开读口已把私密文章整条滤掉，后台必须有标记位，
+               否则管理员只有逐篇打开编辑器才知道哪篇没对外发布。 -->
+          <Badge
+            v-if="(row as Post).visibility === 'private'"
+            variant="secondary"
+            class="rounded-[10px] font-normal whitespace-nowrap bg-warning-muted text-warning-muted-foreground"
+            title="私密：不进列表、RSS、sitemap、搜索与热榜，只有作者与管理员能打开"
+          >
+            私密
+          </Badge>
+          <Badge
+            v-else-if="(row as Post).visibility === 'password'"
+            variant="secondary"
+            class="rounded-[10px] font-normal whitespace-nowrap bg-info-muted text-info-muted-foreground"
+            title="密码保护：列表与订阅源能看到摘要，正文需要访问密码"
+          >
+            密码
+          </Badge>
+        </div>
       </template>
       <template #cell-is_pinned="{ row }">
         <Pin

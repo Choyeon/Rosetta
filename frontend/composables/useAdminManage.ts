@@ -154,6 +154,8 @@ export interface AdminPostListItem {
   title: string
   slug: string
   status: string
+  /** 私密档在公开读口被整条滤掉，后台列表靠这一位标记"这条对访客不存在"。 */
+  visibility?: 'public' | 'password' | 'private'
   views: number
   likes_count: number
   comments_count: number

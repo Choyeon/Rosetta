@@ -1142,6 +1142,7 @@ class PostLocalizedResponse(BaseModel):
             category=category,
             tags=tags,
             status=post.status,
+            visibility=post.visibility or "public",
             views=post.views,
             likes_count=likes_count,
             is_pinned=post.is_pinned,
@@ -1181,6 +1182,9 @@ class PostListItemLocalized(BaseModel):
     category: CategoryLocalizedResponse | None = None
     tags: list[TagLocalizedResponse] = []
     status: str
+    # 后台列表要能一眼看出"这条对访客不存在"：私密档文章在公开口已被整条滤掉，
+    # 只有列表带出 visibility 才谈得上审计。默认 public 与 Post 列默认一致。
+    visibility: str = "public"
     views: int
     likes_count: int = 0
     comments_count: int = 0
@@ -1215,6 +1219,7 @@ class PostListItemLocalized(BaseModel):
             category=category,
             tags=tags,
             status=post.status,
+            visibility=post.visibility or "public",
             views=post.views,
             likes_count=len(post.likes) if post.likes else 0,
             comments_count=comments_count,

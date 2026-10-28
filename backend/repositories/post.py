@@ -19,6 +19,7 @@ from backend.core.concurrency import concurrent_query
 from backend.core.i18n import get_i18n_value
 from backend.models.blog import Category, Comment, Post, Tag, post_likes
 from backend.repositories.base import BaseRepository, PaginationResult
+from backend.services.post_access import private_posts_excluded
 
 
 class PostRepository(BaseRepository[Post]):
@@ -732,7 +733,7 @@ class PostRepository(BaseRepository[Post]):
                 Category.color,
             )
             .outerjoin(Category, Post.category_id == Category.id)
-            .where(Post.status == "published")
+            .where(Post.status == "published", private_posts_excluded())
             .order_by(Post.published_at.desc())
         )
 
@@ -823,7 +824,9 @@ class PostRepository(BaseRepository[Post]):
 
         # 统计总数
         total_result = await self.session.execute(
-            select(func.count()).select_from(Post).where(Post.status == "published")
+            select(func.count())
+            .select_from(Post)
+            .where(Post.status == "published", private_posts_excluded())
         )
         total_posts = total_result.scalar_one()
 
@@ -831,7 +834,9 @@ class PostRepository(BaseRepository[Post]):
         # COUNT，跨年归档统计的查询数随年份数线性增长（归档页每次命中都要跑一遍）。
         # GROUP BY 用与 SELECT 完全相同的表达式，PG 才不会判"裸列分组"。
         stats_result = await self.session.execute(
-            select(year_expr, func.count()).where(Post.status == "published").group_by(year_expr)
+            select(year_expr, func.count())
+            .where(Post.status == "published", private_posts_excluded())
+            .group_by(year_expr)
         )
         year_stats = {int(y): cnt for y, cnt in stats_result.fetchall() if y is not None}
         years = sorted(year_stats, reverse=True)

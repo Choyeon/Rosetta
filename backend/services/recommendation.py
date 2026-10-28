@@ -40,6 +40,7 @@ from backend.core.database import get_db
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes, post_tags
 from backend.models.user import User
 from backend.services.cache_service import CacheService, get_cache_service
+from backend.services.post_access import private_posts_excluded
 from backend.utils.compat import UTC
 
 logger = logging.getLogger(__name__)
@@ -380,7 +381,7 @@ class RecommendationService:
         base_q = (
             select(Post)
             .options(selectinload(Post.tags), selectinload(Post.category))
-            .where(Post.id == post_id, Post.status == "published")
+            .where(Post.id == post_id, Post.status == "published", private_posts_excluded())
         )
         res = await self._db.execute(base_q)
         anchor = res.scalar_one_or_none()
@@ -405,6 +406,7 @@ class RecommendationService:
             .where(
                 Post.id != post_id,
                 Post.status == "published",
+                private_posts_excluded(),
                 or_(
                     (post_tags.c.tag_id.in_(list(anchor_tag_ids))) if anchor_tag_ids else False,
                     (Post.category_id == anchor_cat) if anchor_cat else False,
@@ -420,7 +422,11 @@ class RecommendationService:
         if len(candidate_ids) < limit * 6:
             supplement_q = (
                 select(Post.id)
-                .where(Post.id != post_id, Post.status == "published")
+                .where(
+                    Post.id != post_id,
+                    Post.status == "published",
+                    private_posts_excluded(),
+                )
                 .order_by(func.coalesce(Post.published_at, Post.created_at).desc())
                 .limit(max(0, limit * 6 - len(candidate_ids)))
             )
@@ -503,7 +509,11 @@ class RecommendationService:
                     selectinload(Post.category),
                     selectinload(Post.tags),
                 )
-                .where(Post.id.notin_(list(existing)), Post.status == "published")
+                .where(
+                    Post.id.notin_(list(existing)),
+                    Post.status == "published",
+                    private_posts_excluded(),
+                )
                 .order_by(Post.views.desc())
                 .limit(limit - len(selected_ids))
             )
@@ -562,7 +572,7 @@ class RecommendationService:
             )
             .outerjoin(post_likes, Post.id == post_likes.c.post_id)
             .outerjoin(Comment, (Post.id == Comment.post_id) & (Comment.active.is_(True)))
-            .where(Post.status == "published")
+            .where(Post.status == "published", private_posts_excluded())
             .group_by(Post.id)
         )
         stats_rows = await self._db.execute(stats_q)
@@ -676,6 +686,7 @@ class RecommendationService:
             .outerjoin(Comment, (Post.id == Comment.post_id) & (Comment.active.is_(True)))
             .where(
                 Post.status == "published",
+                private_posts_excluded(),
                 func.coalesce(Post.published_at, Post.created_at) >= cutoff,
             )
             .group_by(Post.id)

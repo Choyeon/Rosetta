@@ -22,6 +22,7 @@ from backend.core.site_config import get_site_config_value, invalidate_site_conf
 from backend.models.blog import Category, Post, Tag
 from backend.models.core import SiteConfig
 from backend.schemas import raw_content_response
+from backend.services.post_access import private_posts_excluded
 
 router = APIRouter(tags=["SEO"])
 
@@ -532,7 +533,7 @@ async def seo_sitemap(db: DB) -> Response:
             await db.execute(
                 select(Post)
                 .options(defer(Post.content))
-                .where(Post.status == "published")
+                .where(Post.status == "published", private_posts_excluded())
                 .order_by(Post.published_at.desc())
             )
         )

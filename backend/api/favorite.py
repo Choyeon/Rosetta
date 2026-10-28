@@ -29,6 +29,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 from backend.core.auth import DB, CurrentUser
 from backend.core.concurrency import concurrent_query
 from backend.core.database import AsyncSession, Base
+from backend.services.post_access import private_posts_excluded
 from backend.utils.compat import utc_now_naive
 
 if TYPE_CHECKING:
@@ -454,6 +455,7 @@ async def list_favorites(
                 (Post.author_id == current_user.id)
                 | (
                     (Post.status == "published")
+                    & private_posts_excluded()
                     & ((Post.published_at.is_(None)) | (Post.published_at <= now_naive))
                 )
             )

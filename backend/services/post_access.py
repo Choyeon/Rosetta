@@ -9,6 +9,10 @@
    staff/超管可读；对其他人**按不存在处理**（404，不是 403——承认存在即可枚举草稿 id）。
 2. ``post_content_unlocked``：设了密码的文章，未带正确密码时对任何人都不放行
    （作者/staff 短路）。
+3. ``is_private_post`` / ``private_posts_excluded``：``visibility="private"`` 的文章对外
+   不存在。前两条判据管的是"这篇还没公开"，第三条管"作者主动把它收起来"——二者在
+   status/密码都合规时才会分叉，所以私密档必须单独有一条判据，而集合口（列表 / RSS /
+   sitemap / 归档 / 热榜 / 系列 / 推荐）要有能进 SQL 的谓词形态。
 
 与文章详情端点的差异是刻意的：详情口对加密文章返回 200 并置
 ``is_password_protected=true``、正文留空，由客户端出解锁界面；派生资源没有"部分可见"
@@ -20,9 +24,14 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from sqlalchemy import ColumnElement, func
+
+from backend.models.blog import Post
+
 if TYPE_CHECKING:
-    from backend.models.blog import Post
     from backend.models.user import User
+
+PRIVATE_VISIBILITY = "private"
 
 
 def _ensure_aware(value: datetime | None) -> datetime | None:
@@ -32,6 +41,23 @@ def _ensure_aware(value: datetime | None) -> datetime | None:
     if value.tzinfo is None:
         return value.replace(tzinfo=timezone.utc)
     return value
+
+
+def is_private_post(post: Post) -> bool:
+    """对象级私密判定；NULL/空串按 public 处理（迁移 0482c6771d47 之前留下的行）。"""
+    return (getattr(post, "visibility", None) or "public") == PRIVATE_VISIBILITY
+
+
+def private_posts_excluded() -> ColumnElement[bool]:
+    """
+    集合级 SQL 谓词单源：匿名可见的文章集合必须排除 private。
+
+    每条以 `Post.status == "published"` 圈定"对外存在"的文章的查询都必须叠上它，
+    否则私密文章照常进列表、进 RSS、进 sitemap、进热榜。SQL 侧带不动"作者本人可见"
+    这层身份语义——那是详情端点（``post_is_publicly_visible``）的职责；集合口一律
+    按最保守的匿名视角排除，登录的作者要找回自己的私密稿走后台列表（staff 分支）。
+    """
+    return func.coalesce(Post.visibility, "public") != PRIVATE_VISIBILITY
 
 
 def _is_privileged(post: Post, current_user: User | None) -> bool:
@@ -45,10 +71,12 @@ def _is_privileged(post: Post, current_user: User | None) -> bool:
 
 
 def post_is_publicly_visible(post: Post, current_user: User | None) -> bool:
-    """这篇文章对当前观看者是否"存在"。草稿/待审/未来定时 → 仅作者与 staff。"""
+    """这篇文章对当前观看者是否"存在"。草稿/待审/未来定时/私密 → 仅作者与 staff。"""
     if _is_privileged(post, current_user):
         return True
     if post.status != "published":
+        return False
+    if is_private_post(post):
         return False
     published_at = _ensure_aware(getattr(post, "published_at", None))
     if published_at and published_at > datetime.now(timezone.utc):

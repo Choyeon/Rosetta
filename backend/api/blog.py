@@ -51,7 +51,11 @@ from backend.services.content_renderer import (
     render_title,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
-from backend.services.post_access import post_content_unlocked, post_is_publicly_visible
+from backend.services.post_access import (
+    post_content_unlocked,
+    post_is_publicly_visible,
+    private_posts_excluded,
+)
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
     invalidate_post_caches_by_slugs,
@@ -464,6 +468,7 @@ async def _build_post_list_item_from_row(
         else None,
         tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
         status=post.status,
+        visibility=post.visibility or "public",
         views=post.views,
         likes_count=likes_count,
         comments_count=comments_count,
@@ -700,6 +705,7 @@ async def list_posts(
     else:
         query = query.where(
             Post.status == "published",
+            private_posts_excluded(),
             (Post.published_at.is_(None) | (Post.published_at <= func.now())),
         )
 
@@ -1079,7 +1085,7 @@ async def get_post_adjacent(
     def _anchor_stmt(by_id: bool):
         cond = Post.id == int(slug) if by_id else Post.slug == slug
         return select(Post.id, Post.published_at, Post.created_at).where(
-            cond, Post.status == "published"
+            cond, Post.status == "published", private_posts_excluded()
         )
 
     row = (await db.execute(_anchor_stmt(False))).first()
@@ -1107,6 +1113,7 @@ async def get_post_adjacent(
                 select(Post.slug, Post.title)
                 .where(
                     Post.status == "published",
+                    private_posts_excluded(),
                     published_key <= now,
                     cond,
                 )
@@ -1218,35 +1225,16 @@ async def get_post(
             detail="文章不存在",
         )
 
-    if post.status != "published":
-        if not current_user or (
-            current_user.id != post.author_id
-            and not current_user.is_staff
-            and not current_user.is_superuser
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="文章不存在",
-            )
+    # 存在性判定整体走单源判据：草稿/待审、未到点的定时发布、visibility=private 三类
+    # 对非作者非管理员一律 404（403 等于承认存在）。此前这里是两段手抄规则，
+    # 第三段（私密档）无处可加——派生资源口已经全量走 post_is_publicly_visible，
+    # 详情口再各写一套就会出现"正文挡了、评论没挡"的分裂。
+    if not post_is_publicly_visible(post, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="文章不存在",
+        )
 
-    # 检查定时发布时间（aware/naive 双兼容：_ensure_aware 统一口径，
-    # 直接和 datetime.now() 比较在带时区的 published_at 上会 TypeError）
-    if post.status == "published" and post.published_at:
-        if not (
-            current_user
-            and (
-                current_user.id == post.author_id
-                or current_user.is_staff
-                or current_user.is_superuser
-            )
-        ):
-            if _ensure_aware(post.published_at) > datetime.now(_tz.utc):
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="文章不存在",
-                )
-
-    # 检查文章是否加密
     is_password_protected = bool(post.password)
     can_access_content = True
 
@@ -1289,6 +1277,7 @@ async def get_post(
     _video_url = post.video_url
     _cover_image = post.cover_image
     _status = post.status
+    _visibility = post.visibility
     _views = post.views
     _is_pinned = post.is_pinned
     _allow_comments = post.allow_comments
@@ -1360,6 +1349,7 @@ async def get_post(
         else None,
         tags=[TagLocalizedResponse.from_tag(t, language) for t in _tags],
         status=_status,
+        visibility=_visibility or "public",
         views=_views,
         likes_count=likes_count,
         is_pinned=_is_pinned,
@@ -1449,6 +1439,7 @@ async def create_post(
         author_id=current_user.id,
         category_id=post_data.category_id,
         status=status_value,
+        visibility=post_data.visibility,
         scheduled_at=scheduled_at_value if status_value != "published" else None,
         password=password,
         is_pinned=post_data.is_pinned,
@@ -1840,7 +1831,10 @@ async def list_categories(
     query = (
         select(
             Category,
-            func.count(Post.id).filter(Post.status == "published").label("post_count"),
+            func.count(Post.id)
+            .filter(Post.status == "published")
+            .filter(private_posts_excluded())
+            .label("post_count"),
         )
         .outerjoin(Post, Category.id == Post.category_id)
         .group_by(Category.id)
@@ -1902,7 +1896,11 @@ async def get_category_by_slug(
     # 对匿名访客等于把"还有几篇没写完"这件事公示出去。
     post_count = (
         await db.scalar(
-            select(func.count()).where(Post.category_id == category.id, Post.status == "published")
+            select(func.count()).where(
+                Post.category_id == category.id,
+                Post.status == "published",
+                private_posts_excluded(),
+            )
         )
         or 0
     )
@@ -2377,6 +2375,7 @@ async def get_site_stats(
 
     published_filter = (
         Post.status == "published",
+        private_posts_excluded(),
         (Post.published_at.is_(None) | (Post.published_at <= func.now())),
     )
 
@@ -2473,6 +2472,7 @@ async def get_archive_by_year(
     query = (
         select(Post)
         .where(
+            private_posts_excluded(),
             Post.status == "published",
             extract("year", Post.published_at) == year,
         )
@@ -2577,6 +2577,7 @@ async def get_archive_by_month(
     query = (
         select(Post)
         .where(
+            private_posts_excluded(),
             Post.status == "published",
             extract("year", Post.published_at) == year,
             extract("month", Post.published_at) == month,
@@ -2862,7 +2863,7 @@ async def get_post_by_id(
             detail="文章不存在",
         )
 
-    # 可见性门禁必须与 GET /posts/{slug} 同口径。本端点匿名可访，
+    # 可见性门禁必须与 GET /posts/{slug} 同口径，走同一个判据函数。本端点匿名可访，
     # 旧实现一条检查都没有：草稿可按 ID 直读，加密文章明文连带密码散列一起外泄。
     is_owner_or_staff = bool(
         current_user
@@ -2870,17 +2871,7 @@ async def get_post_by_id(
             current_user.id == post.author_id or current_user.is_staff or current_user.is_superuser
         )
     )
-    if post.status != "published" and not is_owner_or_staff:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="文章不存在",
-        )
-    if (
-        post.status == "published"
-        and _ensure_aware(post.published_at)
-        and _ensure_aware(post.published_at) > datetime.now(_tz.utc)
-        and not is_owner_or_staff
-    ):
+    if not post_is_publicly_visible(post, current_user):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="文章不存在",
@@ -3419,7 +3410,7 @@ async def get_rss_feed(
     query = (
         select(Post)
         .options(selectinload(Post.author), selectinload(Post.category))
-        .where(Post.status == "published")
+        .where(Post.status == "published", private_posts_excluded())
         .order_by(Post.is_pinned.desc(), Post.published_at.desc())
         .limit(limit)
     )
@@ -3849,7 +3840,7 @@ async def _sitemap_posts_page_lastmod(db, page: int) -> str | None:
     lm_col = func.coalesce(Post.updated_at, Post.published_at).label("lm")
     sub = (
         select(lm_col)
-        .where(Post.status == "published")
+        .where(Post.status == "published", private_posts_excluded())
         .order_by(Post.published_at.desc())
         .offset((page - 1) * SITEMAP_PAGE_SIZE)
         .limit(SITEMAP_PAGE_SIZE)
@@ -3891,6 +3882,7 @@ async def _sitemap_taxonomy_lastmod(db) -> str | None:
         select(func.max(Post.published_at))
         .join(User, Post.author_id == User.id)
         .where(
+            private_posts_excluded(),
             Post.status == "published",
             Post.post_type == "post",
             User.id.not_in(hidden_authors),
@@ -3922,7 +3914,11 @@ async def get_sitemap_index(
     site_url = _public_site_url()
 
     total_posts = (
-        await db.execute(select(func.count()).select_from(Post).where(Post.status == "published"))
+        await db.execute(
+            select(func.count())
+            .select_from(Post)
+            .where(Post.status == "published", private_posts_excluded())
+        )
     ).scalar() or 0
     total_pages = max(1, (total_posts + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE)
 
@@ -3963,7 +3959,7 @@ async def get_sitemap_posts(
     offset = (page - 1) * SITEMAP_PAGE_SIZE
     posts_result = await db.execute(
         select(Post)
-        .where(Post.status == "published")
+        .where(Post.status == "published", private_posts_excluded())
         .order_by(Post.published_at.desc())
         .offset(offset)
         .limit(SITEMAP_PAGE_SIZE)
@@ -4017,6 +4013,7 @@ async def get_sitemap_taxonomies(
             select(User.username, func.max(Post.published_at))
             .join(Post, Post.author_id == User.id)
             .where(
+                private_posts_excluded(),
                 Post.status == "published",
                 Post.post_type == "post",
                 User.id.not_in(hidden_authors),
@@ -4056,7 +4053,11 @@ async def get_sitemap_pages(db: DB):
         (
             await db.execute(
                 select(extract("year", Post.published_at))
-                .where(Post.status == "published", Post.published_at.is_not(None))
+                .where(
+                    Post.status == "published",
+                    Post.published_at.is_not(None),
+                    private_posts_excluded(),
+                )
                 .distinct()
             )
         )

@@ -30,6 +30,7 @@ from backend.schemas.post_series import (
     PostSeriesUpdate,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.post_access import private_posts_excluded
 
 router = APIRouter(tags=["文章系列"])
 
@@ -120,7 +121,11 @@ async def list_series(db: DB):
         select(PostSeries, func.count(Post.id).label("post_count"))
         .outerjoin(
             Post,
-            and_(Post.series_id == PostSeries.id, Post.status == "published"),
+            and_(
+                Post.series_id == PostSeries.id,
+                Post.status == "published",
+                private_posts_excluded(),
+            ),
         )
         .where(PostSeries.is_active.is_(True))
         .group_by(PostSeries.id)
@@ -167,7 +172,11 @@ async def get_series(slug: str, db: DB):
             Post.views,
             Post.published_at,
         )
-        .where(Post.series_id == series.id, Post.status == "published")
+        .where(
+            Post.series_id == series.id,
+            Post.status == "published",
+            private_posts_excluded(),
+        )
         .order_by(Post.series_order.asc(), Post.published_at.desc())
     )
     rows = posts_result.all()
@@ -423,7 +432,11 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         rows = (
             await db.execute(
                 select(*light_fields)
-                .where(Post.series_id.in_(series_ids), Post.status == "published")
+                .where(
+                    Post.series_id.in_(series_ids),
+                    Post.status == "published",
+                    private_posts_excluded(),
+                )
                 .order_by(Post.published_at.desc())
                 .limit(8)
             )
@@ -457,7 +470,11 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         rows = (
             await db.execute(
                 select(*light_fields)
-                .where(Post.category_id.in_(cat_ids), Post.status == "published")
+                .where(
+                    Post.category_id.in_(cat_ids),
+                    Post.status == "published",
+                    private_posts_excluded(),
+                )
                 .order_by(Post.published_at.desc())
                 .limit(8)
             )
@@ -470,6 +487,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
             select(*light_fields)
             .where(
                 Post.status == "published",
+                private_posts_excluded(),
                 or_(
                     cast(Post.title["zh"], String).ilike(like),
                     cast(Post.title["en"], String).ilike(like),
