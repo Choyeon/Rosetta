@@ -57,7 +57,7 @@ from backend.schemas import (
 )
 from backend.services.content_renderer import render_excerpt
 from backend.services.email_service import get_email_service
-from backend.services.post_access import private_posts_excluded
+from backend.services.post_access import publicly_listable_posts
 from backend.services.user_service import get_user_service
 from backend.utils.compat import UTC, ensure_aware
 
@@ -1189,7 +1189,7 @@ async def get_user_posts(
 
     query = (
         select(Post)
-        .where(Post.author_id == user_id, Post.status == "published", private_posts_excluded())
+        .where(Post.author_id == user_id, publicly_listable_posts())
         .options(
             selectinload(Post.category),
             selectinload(Post.tags),
@@ -1205,9 +1205,7 @@ async def get_user_posts(
 
     # 计数 + 列表（顺序两条查询）
     count_query = select(func.count()).select_from(
-        select(Post)
-        .where(Post.author_id == user_id, Post.status == "published", private_posts_excluded())
-        .subquery()
+        select(Post).where(Post.author_id == user_id, publicly_listable_posts()).subquery()
     )
 
     total, result = await concurrent_query(
@@ -1423,7 +1421,7 @@ async def get_user_stats(
         db.scalar(
             select(func.count())
             .select_from(Post)
-            .where(Post.author_id == user_id, Post.status == "published", private_posts_excluded())
+            .where(Post.author_id == user_id, publicly_listable_posts())
         ),
         # 评论数
         db.scalar(
@@ -1435,7 +1433,7 @@ async def get_user_stats(
         db.scalar(
             select(func.sum(Post.views))
             .select_from(Post)
-            .where(Post.author_id == user_id, Post.status == "published", private_posts_excluded())
+            .where(Post.author_id == user_id, publicly_listable_posts())
         ),
         # 总点赞数
         db.scalar(

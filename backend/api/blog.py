@@ -55,6 +55,7 @@ from backend.services.post_access import (
     post_content_unlocked,
     post_is_publicly_visible,
     private_posts_excluded,
+    publicly_listable_posts,
 )
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
@@ -704,9 +705,7 @@ async def list_posts(
         # admin_all_statuses=True → 不加 status 过滤，返回全部状态
     else:
         query = query.where(
-            Post.status == "published",
-            private_posts_excluded(),
-            (Post.published_at.is_(None) | (Post.published_at <= func.now())),
+            publicly_listable_posts(),
         )
 
     if category:
@@ -1085,7 +1084,7 @@ async def get_post_adjacent(
     def _anchor_stmt(by_id: bool):
         cond = Post.id == int(slug) if by_id else Post.slug == slug
         return select(Post.id, Post.published_at, Post.created_at).where(
-            cond, Post.status == "published", private_posts_excluded()
+            cond, publicly_listable_posts()
         )
 
     row = (await db.execute(_anchor_stmt(False))).first()
@@ -1831,10 +1830,7 @@ async def list_categories(
     query = (
         select(
             Category,
-            func.count(Post.id)
-            .filter(Post.status == "published")
-            .filter(private_posts_excluded())
-            .label("post_count"),
+            func.count(Post.id).filter(publicly_listable_posts()).label("post_count"),
         )
         .outerjoin(Post, Category.id == Post.category_id)
         .group_by(Category.id)
@@ -1898,8 +1894,7 @@ async def get_category_by_slug(
         await db.scalar(
             select(func.count()).where(
                 Post.category_id == category.id,
-                Post.status == "published",
-                private_posts_excluded(),
+                publicly_listable_posts(),
             )
         )
         or 0
@@ -2373,11 +2368,7 @@ async def get_site_stats(
     if cached:
         return cached
 
-    published_filter = (
-        Post.status == "published",
-        private_posts_excluded(),
-        (Post.published_at.is_(None) | (Post.published_at <= func.now())),
-    )
+    published_filter = (publicly_listable_posts(),)
 
     # 总字数 + 总文章数：一次查询拿到所有已发布文章的内容
     posts_result = await db.execute(select(Post.content).where(*published_filter))
@@ -2472,8 +2463,7 @@ async def get_archive_by_year(
     query = (
         select(Post)
         .where(
-            private_posts_excluded(),
-            Post.status == "published",
+            publicly_listable_posts(),
             extract("year", Post.published_at) == year,
         )
         .options(selectinload(Post.category))
@@ -2577,8 +2567,7 @@ async def get_archive_by_month(
     query = (
         select(Post)
         .where(
-            private_posts_excluded(),
-            Post.status == "published",
+            publicly_listable_posts(),
             extract("year", Post.published_at) == year,
             extract("month", Post.published_at) == month,
         )
@@ -3410,7 +3399,7 @@ async def get_rss_feed(
     query = (
         select(Post)
         .options(selectinload(Post.author), selectinload(Post.category))
-        .where(Post.status == "published", private_posts_excluded())
+        .where(publicly_listable_posts())
         .order_by(Post.is_pinned.desc(), Post.published_at.desc())
         .limit(limit)
     )
@@ -3840,7 +3829,7 @@ async def _sitemap_posts_page_lastmod(db, page: int) -> str | None:
     lm_col = func.coalesce(Post.updated_at, Post.published_at).label("lm")
     sub = (
         select(lm_col)
-        .where(Post.status == "published", private_posts_excluded())
+        .where(publicly_listable_posts())
         .order_by(Post.published_at.desc())
         .offset((page - 1) * SITEMAP_PAGE_SIZE)
         .limit(SITEMAP_PAGE_SIZE)
@@ -3882,8 +3871,7 @@ async def _sitemap_taxonomy_lastmod(db) -> str | None:
         select(func.max(Post.published_at))
         .join(User, Post.author_id == User.id)
         .where(
-            private_posts_excluded(),
-            Post.status == "published",
+            publicly_listable_posts(),
             Post.post_type == "post",
             User.id.not_in(hidden_authors),
         )
@@ -3914,11 +3902,7 @@ async def get_sitemap_index(
     site_url = _public_site_url()
 
     total_posts = (
-        await db.execute(
-            select(func.count())
-            .select_from(Post)
-            .where(Post.status == "published", private_posts_excluded())
-        )
+        await db.execute(select(func.count()).select_from(Post).where(publicly_listable_posts()))
     ).scalar() or 0
     total_pages = max(1, (total_posts + SITEMAP_PAGE_SIZE - 1) // SITEMAP_PAGE_SIZE)
 
@@ -3959,7 +3943,7 @@ async def get_sitemap_posts(
     offset = (page - 1) * SITEMAP_PAGE_SIZE
     posts_result = await db.execute(
         select(Post)
-        .where(Post.status == "published", private_posts_excluded())
+        .where(publicly_listable_posts())
         .order_by(Post.published_at.desc())
         .offset(offset)
         .limit(SITEMAP_PAGE_SIZE)
@@ -4013,8 +3997,7 @@ async def get_sitemap_taxonomies(
             select(User.username, func.max(Post.published_at))
             .join(Post, Post.author_id == User.id)
             .where(
-                private_posts_excluded(),
-                Post.status == "published",
+                publicly_listable_posts(),
                 Post.post_type == "post",
                 User.id.not_in(hidden_authors),
             )
@@ -4054,9 +4037,8 @@ async def get_sitemap_pages(db: DB):
             await db.execute(
                 select(extract("year", Post.published_at))
                 .where(
-                    Post.status == "published",
                     Post.published_at.is_not(None),
-                    private_posts_excluded(),
+                    publicly_listable_posts(),
                 )
                 .distinct()
             )

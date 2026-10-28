@@ -30,7 +30,7 @@ from backend.schemas.post_series import (
     PostSeriesUpdate,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
-from backend.services.post_access import private_posts_excluded
+from backend.services.post_access import publicly_listable_posts
 
 router = APIRouter(tags=["文章系列"])
 
@@ -123,8 +123,7 @@ async def list_series(db: DB):
             Post,
             and_(
                 Post.series_id == PostSeries.id,
-                Post.status == "published",
-                private_posts_excluded(),
+                publicly_listable_posts(),
             ),
         )
         .where(PostSeries.is_active.is_(True))
@@ -174,8 +173,7 @@ async def get_series(slug: str, db: DB):
         )
         .where(
             Post.series_id == series.id,
-            Post.status == "published",
-            private_posts_excluded(),
+            publicly_listable_posts(),
         )
         .order_by(Post.series_order.asc(), Post.published_at.desc())
     )
@@ -434,8 +432,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
                 select(*light_fields)
                 .where(
                     Post.series_id.in_(series_ids),
-                    Post.status == "published",
-                    private_posts_excluded(),
+                    publicly_listable_posts(),
                 )
                 .order_by(Post.published_at.desc())
                 .limit(8)
@@ -472,8 +469,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
                 select(*light_fields)
                 .where(
                     Post.category_id.in_(cat_ids),
-                    Post.status == "published",
-                    private_posts_excluded(),
+                    publicly_listable_posts(),
                 )
                 .order_by(Post.published_at.desc())
                 .limit(8)
@@ -486,8 +482,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         await db.execute(
             select(*light_fields)
             .where(
-                Post.status == "published",
-                private_posts_excluded(),
+                publicly_listable_posts(),
                 or_(
                     cast(Post.title["zh"], String).ilike(like),
                     cast(Post.title["en"], String).ilike(like),

@@ -19,7 +19,7 @@ from sqlalchemy.orm import defer
 from backend.core.auth import DB
 from backend.core.cache import cache, make_cache_key
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes
-from backend.services.post_access import private_posts_excluded
+from backend.services.post_access import publicly_listable_posts
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["热门排行"])
@@ -119,7 +119,7 @@ async def get_hot_posts(
         query = (
             select(Post)
             .options(*list_defer)
-            .where(Post.status == "published", private_posts_excluded())
+            .where(publicly_listable_posts())
             .order_by(Post.views.desc(), Post.created_at.desc())
             .limit(limit)
         )
@@ -155,7 +155,7 @@ async def get_hot_posts(
             )
             .outerjoin(view_counts_subq, view_counts_subq.c.pid == Post.id)
             .options(*list_defer)
-            .where(Post.status == "published", private_posts_excluded())
+            .where(publicly_listable_posts())
             .order_by(
                 func.coalesce(view_counts_subq.c.recent_views, 0).desc(),
                 Post.views.desc(),

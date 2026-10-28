@@ -46,7 +46,7 @@ from backend.schemas import (
     NavigationResponse,
     TagResponse,
 )
-from backend.services.post_access import private_posts_excluded
+from backend.services.post_access import publicly_listable_posts
 
 logger = logging.getLogger(__name__)
 
@@ -285,9 +285,7 @@ class CacheWarmer:
             result = await db.execute(
                 select(
                     Category,
-                    func.count(Post.id)
-                    .filter(Post.status == "published", private_posts_excluded())
-                    .label("post_count"),
+                    func.count(Post.id).filter(publicly_listable_posts()).label("post_count"),
                 )
                 .outerjoin(Post, Category.id == Post.category_id)
                 .where(Category.is_active.is_(True))
