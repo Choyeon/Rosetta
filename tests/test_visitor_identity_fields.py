@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import base64
 from pathlib import Path
 
 import pytest
@@ -55,6 +56,18 @@ async def _counts(db: AsyncSession) -> tuple[int, int]:
     comments = (await db.execute(select(func.count()).select_from(Comment))).scalar() or 0
     entries = (await db.execute(select(func.count()).select_from(GuestbookEntry))).scalar() or 0
     return comments, entries
+
+
+def _upstream(resolved: str | None) -> str:
+    """`resolved_avatar_url` 是代理包装形态 `/api/media/avatar?src=<urlsafe-b64>`。
+
+    直接对这个字符串断"含 github.com/xxx.png"永远为假——断的是**解码后**的上游 URL，
+    那才是解析器真正选出来的分支。
+    """
+    if not resolved or "?src=" not in resolved:
+        return resolved or ""
+    token = resolved.split("?src=", 1)[1]
+    return base64.urlsafe_b64decode(token + "=" * (-len(token) % 4)).decode("utf-8", "replace")
 
 
 class TestShapeIsDefinedOnce:
@@ -128,7 +141,7 @@ class TestValidValuesReachTheAvatar:
         assert response.status_code == 201, response.text
         body = response.json()
         assert body["github"] == "octocat"
-        assert "github.com/octocat.png" in (body["resolved_avatar_url"] or ""), body
+        assert "github.com/octocat.png" in _upstream(body["resolved_avatar_url"]), body
 
     async def test_comment_guest_qq_resolves_to_qlogo(self, client: AsyncClient, test_post):
         response = await client.post(
@@ -142,7 +155,7 @@ class TestValidValuesReachTheAvatar:
         assert response.status_code == 201, response.text
         body = response.json()
         assert body["qq"] == "1234567"
-        assert "q1.qlogo.cn" in (body["resolved_avatar_url"] or ""), body
+        assert "q1.qlogo.cn" in _upstream(body["resolved_avatar_url"]), body
 
     async def test_guestbook_qq_resolves_to_qlogo(self, client: AsyncClient):
         response = await client.post(
@@ -156,7 +169,7 @@ class TestValidValuesReachTheAvatar:
         assert response.status_code == 201, response.text
         body = response.json()
         assert body["qq"] == "7777777"
-        assert "q1.qlogo.cn" in (body["resolved_avatar_url"] or ""), body
+        assert "q1.qlogo.cn" in _upstream(body["resolved_avatar_url"]), body
 
     async def test_hyphenated_github_username_is_legal(self, client: AsyncClient, test_post):
         """GitHub 用户名可以带连字符：闸门太紧会把真实账号挡在门外（表现是头像永远解析不出来）。"""
@@ -169,7 +182,7 @@ class TestValidValuesReachTheAvatar:
             },
         )
         assert response.status_code == 201, response.text
-        assert "github.com/octocat-dev.png" in (response.json()["resolved_avatar_url"] or "")
+        assert "github.com/octocat-dev.png" in _upstream(response.json()["resolved_avatar_url"])
 
 
 @pytest.mark.parametrize(
