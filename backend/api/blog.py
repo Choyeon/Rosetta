@@ -20,7 +20,7 @@ from datetime import datetime
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Header, HTTPException, Query, Request, Response, status
-from sqlalchemy import String, cast, func, or_, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
 
@@ -124,6 +124,7 @@ from backend.schemas.blog_reads import (
 )
 from backend.services.comment_service import _comment_to_response
 from backend.utils.compat import UTC, parse_utc_date, timedelta
+from backend.utils.i18n_query import i18n_contains
 from backend.utils.reading_time import compute_reading_time_from_content
 
 router = APIRouter(tags=["博客"])
@@ -738,14 +739,12 @@ async def list_posts(
 
     if search:
         search_term = f"%{search}%"
+        # 谓词单源见 `utils/i18n_query`：四语都要能召回，裸字符串的历史行也要搜得到。
         query = query.where(
             or_(
-                cast(Post.title["zh"], String).ilike(search_term),
-                cast(Post.title["en"], String).ilike(search_term),
-                cast(Post.content["zh"], String).ilike(search_term),
-                cast(Post.content["en"], String).ilike(search_term),
-                cast(Post.excerpt["zh"], String).ilike(search_term),
-                cast(Post.excerpt["en"], String).ilike(search_term),
+                i18n_contains(Post.title, search_term),
+                i18n_contains(Post.content, search_term),
+                i18n_contains(Post.excerpt, search_term),
             )
         )
 

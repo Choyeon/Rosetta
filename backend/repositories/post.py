@@ -476,6 +476,8 @@ class PostRepository(BaseRepository[Post]):
         """
         from sqlalchemy import or_
 
+        from backend.utils.i18n_query import i18n_contains
+
         search_pattern = f"%{keyword}%"
 
         query = (
@@ -483,12 +485,9 @@ class PostRepository(BaseRepository[Post]):
             .where(
                 Post.status == status,
                 or_(
-                    Post.title["zh"].astext.ilike(search_pattern),
-                    Post.title["en"].astext.ilike(search_pattern),
-                    Post.content["zh"].astext.ilike(search_pattern),
-                    Post.content["en"].astext.ilike(search_pattern),
-                    Post.excerpt["zh"].astext.ilike(search_pattern),
-                    Post.excerpt["en"].astext.ilike(search_pattern),
+                    i18n_contains(Post.title, search_pattern),
+                    i18n_contains(Post.content, search_pattern),
+                    i18n_contains(Post.excerpt, search_pattern),
                 ),
             )
             .order_by(Post.published_at.desc())

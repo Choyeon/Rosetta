@@ -16,7 +16,7 @@ from datetime import datetime
 
 from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import String, and_, cast, func, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from backend.core.auth import DB, CurrentStaff
 from backend.core.i18n import get_i18n_value
@@ -31,6 +31,7 @@ from backend.schemas.post_series import (
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import publicly_listable_posts
+from backend.utils.i18n_query import i18n_contains
 
 router = APIRouter(tags=["文章系列"])
 
@@ -399,7 +400,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         select(PostSeries.id)
         .where(
             or_(
-                PostSeries.title.ilike(like),
+                i18n_contains(PostSeries.title, like),
                 PostSeries.slug.ilike(like),
             )
         )
@@ -441,28 +442,16 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
         if _collect(rows):
             return results
 
-    try:
-        cat_subq = (
-            select(Category.id)
-            .where(
-                or_(
-                    Category.name["zh"].astext.ilike(like),
-                    Category.name["en"].astext.ilike(like),
-                    Category.slug.ilike(like),
-                )
-            )
-            .limit(4)
-        )
-        cat_r = await db.execute(cat_subq)
-        cat_ids = [row[0] for row in cat_r.all()]
-    except Exception:
-        cat_subq = (
-            select(Category.id)
-            .where(or_(cast(Category.name, String).ilike(like), Category.slug.ilike(like)))
-            .limit(4)
-        )
-        cat_r = await db.execute(cat_subq)
-        cat_ids = [row[0] for row in cat_r.all()]
+    # 谓词单源见 `utils/i18n_query`。这里原先是 `name["zh"].astext` 包一整块 try/except、
+    # 失败再退到 `cast(name, String)`：`astext` 是 PG 方言专有扩展，两份写法各管一种语言，
+    # 而 except 会把真正的查询错误也吞成"这一档没命中"。统一走一条编译得过、四语都召回的谓词。
+    cat_subq = (
+        select(Category.id)
+        .where(or_(i18n_contains(Category.name, like), Category.slug.ilike(like)))
+        .limit(4)
+    )
+    cat_r = await db.execute(cat_subq)
+    cat_ids = [row[0] for row in cat_r.all()]
     if cat_ids:
         rows = (
             await db.execute(
@@ -483,10 +472,7 @@ async def series_complete(data: SeriesCompleteRequest, db: DB) -> list[SeriesCom
             select(*light_fields)
             .where(
                 publicly_listable_posts(),
-                or_(
-                    cast(Post.title["zh"], String).ilike(like),
-                    cast(Post.title["en"], String).ilike(like),
-                ),
+                i18n_contains(Post.title, like),
             )
             .order_by(Post.published_at.desc())
             .limit(8)
