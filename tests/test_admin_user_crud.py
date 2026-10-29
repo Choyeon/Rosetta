@@ -484,16 +484,127 @@ class TestUserAdminPermission:
         assert r.status_code in (401, 403), f"订阅者能访问 admin/users={r.status_code}!"
 
     @pytest.mark.asyncio
-    async def test_admin_cannot_edit_self(
+    async def test_admin_can_edit_self(
         self, client: AsyncClient, admin_user: User, admin_headers: dict
     ):
-        """Phase 4 success_criteria ①：不能修改自己（admin_update_user_full 防逻辑）"""
+        """资料字段自助可改：管理员改自己的昵称/简介不该被赶回前台。
+
+        这条闸门曾是「禁止修改自己」一刀切（Phase 4 success_criteria ①），
+        代价是后台编辑自己的昵称、头像、QQ 全部 400；现在只保留越权面
+        （角色 / 激活 / 封禁）的拦截，见 TestSuperAdminSelfEdit。
+        """
         r = await client.put(
             f"/api/admin/users/{admin_user.id}",
             headers=admin_headers,
             json={"nickname": "尝试修改自己"},
         )
-        assert r.status_code in (400, 403), f"管理员应被禁止修改自己，实际 {r.status_code}"
+        assert r.status_code == 200, r.text
+        assert r.json()["nickname"] == "尝试修改自己"
+
+
+class TestSuperAdminSelfEdit:
+    """超级管理员编辑自己：资料字段放行，角色与账号状态拦 400。
+
+    自带超级管理员是单管理员博客的常态，自助降权/自杀式封禁在后台没有撤销入口，
+    一次提交就会把自己锁在门外；而"编辑页原样回传当前角色与开关"不算变更，
+    否则每次保存昵称都会被自己的权限闸门拒掉。
+    """
+
+    @pytest.mark.asyncio
+    async def test_resubmitting_current_role_and_flags_is_ok(
+        self, client: AsyncClient, admin_user: User, admin_headers: dict
+    ):
+        """编辑页会带上当前 role / is_active / is_banned，这些原值回传必须放行。"""
+        r = await client.put(
+            f"/api/admin/users/{admin_user.id}",
+            headers=admin_headers,
+            json={
+                "nickname": "改昵称",
+                "role": "super_admin",
+                "is_active": True,
+                "is_banned": False,
+                "is_staff": True,
+            },
+        )
+        assert r.status_code == 200, r.text
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "payload, rejected_label",
+        [
+            ({"role": "admin"}, "角色"),
+            ({"is_active": False}, "激活状态"),
+            ({"is_banned": True}, "封禁状态"),
+        ],
+    )
+    async def test_cannot_change_own_capability_fields(
+        self,
+        client: AsyncClient,
+        admin_user: User,
+        admin_headers: dict,
+        payload: dict,
+        rejected_label: str,
+    ):
+        """自己的角色 / 激活 / 封禁必须 400（不是 403：不是权限不足，是禁止自助）。"""
+        r = await client.put(
+            f"/api/admin/users/{admin_user.id}",
+            headers=admin_headers,
+            json=payload,
+        )
+        assert r.status_code == 400, r.text
+        assert rejected_label in r.json()["message"]
+
+    @pytest.mark.asyncio
+    async def test_edit_invalidates_user_caches(
+        self, client: AsyncClient, admin_user: User, admin_headers: dict
+    ):
+        """后台改资料必须失效用户缓存 + 作者文章缓存。
+
+        这条口直接改 ORM 列、不走 `update_profile`，漏掉失效的表现是
+        「后台提示保存成功，前台作者主页与文章作者卡片仍是旧昵称」直到 TTL 到期。
+        """
+        from unittest.mock import AsyncMock, patch
+
+        from backend.services.user_service import UserService
+
+        with patch.object(
+            UserService, "invalidate_user_surfaces", new_callable=AsyncMock
+        ) as invalidate:
+            r = await client.put(
+                f"/api/admin/users/{admin_user.id}",
+                headers=admin_headers,
+                json={"nickname": "缓存失效探针"},
+            )
+        assert r.status_code == 200, r.text
+        invalidate.assert_awaited_once_with(admin_user.id)
+
+    @pytest.mark.asyncio
+    async def test_super_admin_can_edit_other_super_admin(
+        self, client: AsyncClient, admin_user: User, admin_headers: dict, db_session
+    ):
+        """另一个超级管理员的资料也允许改（单管理员场景要能维护自己的第二个号）。"""
+        from backend.core.auth import get_password_hash
+
+        peer = User(
+            username="admin_peer",
+            email="admin_peer@example.com",
+            password_hash=get_password_hash("PeerPass123"),
+            nickname="同伴管理员",
+            is_active=True,
+            is_staff=True,
+            is_superuser=True,
+        )
+        db_session.add(peer)
+        await db_session.commit()
+        await db_session.refresh(peer)
+
+        r = await client.put(
+            f"/api/admin/users/{peer.id}",
+            headers=admin_headers,
+            json={"nickname": "同伴改名"},
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["nickname"] == "同伴改名"
 
 
 # ============================= 列表投影收敛 =============================

@@ -1,6 +1,7 @@
 <!--
   用户管理列表（ssr:false + layout:'admin'）：权限两层隐藏——写端点全是 CurrentSuperUser（staff 只给看列表 +
-  只读 banner），后端又禁止管理员操作自己，所以当前登录者那一行既不渲染封禁开关也不给操作菜单。
+  只读 banner），且角色/封禁/重置密码/删除对自己不可用（后端 400），所以当前登录者那一行只保留
+  「编辑资料」入口（资料字段自助可改），其余操作一律隐藏。
   角色/状态是"当前这一页"的客户端过滤：改筛选必须重置 page=1 重新拉取，否则停在越界页看似空列表；
   allUsers 用 shallowRef，任何状态变更一律走 patchUser 整行替换（改元素属性不触发重渲染）。
   删除是软删除（封禁 + 停用：评论转匿名、文章仍归属该作者），可用"激活账号"恢复；
@@ -296,9 +297,10 @@
                   </div>
                 </td>
                 <td class="p-4 text-right">
-                  <!-- 用户管理写端点全部为 CurrentSuperUser；后端亦禁止操作自己，故两者都隐藏入口 -->
+                  <!-- 写端点全部为 CurrentSuperUser。自己的行保留「编辑资料」（后端放行自助改资料），
+                       改角色/封禁/重置密码/删除仍然只能由其他管理员操作（后端 400） -->
                   <span
-                    v-if="!isSuperUser || u.id === currentUserId"
+                    v-if="!isSuperUser"
                     class="text-muted-foreground"
                   >—</span>
                   <DropdownMenu v-else>
@@ -320,51 +322,53 @@
                         <Pencil data-icon="inline-start" />
                         编辑资料
                       </DropdownMenuItem>
-                      <DropdownMenuSeparator />
-                      <template v-if="!u.is_superuser">
-                        <DropdownMenuItem
-                          v-if="u.is_staff"
-                          @click="toggleStaff(u, false)"
-                        >
-                          <UserX data-icon="inline-start" />
-                          撤销管理员
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          v-else
-                          @click="toggleStaff(u, true)"
-                        >
-                          <UserCheck data-icon="inline-start" />
-                          设为管理员
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          v-if="!u.is_active || u.is_banned"
-                          @click="doActivate(u)"
-                        >
-                          <CheckCircle data-icon="inline-start" />
-                          激活账号
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          v-else
-                          @click="doBan(u)"
-                        >
-                          <Ban
-                            data-icon="inline-start"
-                            class="text-destructive"
-                          />
-                          <span class="text-destructive">封禁账号</span>
-                        </DropdownMenuItem>
+                      <template v-if="u.id !== currentUserId">
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem @click="openResetPwd(u)">
-                          <KeyRound data-icon="inline-start" />
-                          重置密码
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          class="text-destructive focus:text-destructive"
-                          @click="openDelete(u)"
-                        >
-                          <Trash2 data-icon="inline-start" />
-                          删除用户
-                        </DropdownMenuItem>
+                        <template v-if="!u.is_superuser">
+                          <DropdownMenuItem
+                            v-if="u.is_staff"
+                            @click="toggleStaff(u, false)"
+                          >
+                            <UserX data-icon="inline-start" />
+                            撤销管理员
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            v-else
+                            @click="toggleStaff(u, true)"
+                          >
+                            <UserCheck data-icon="inline-start" />
+                            设为管理员
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            v-if="!u.is_active || u.is_banned"
+                            @click="doActivate(u)"
+                          >
+                            <CheckCircle data-icon="inline-start" />
+                            激活账号
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            v-else
+                            @click="doBan(u)"
+                          >
+                            <Ban
+                              data-icon="inline-start"
+                              class="text-destructive"
+                            />
+                            <span class="text-destructive">封禁账号</span>
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem @click="openResetPwd(u)">
+                            <KeyRound data-icon="inline-start" />
+                            重置密码
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            class="text-destructive focus:text-destructive"
+                            @click="openDelete(u)"
+                          >
+                            <Trash2 data-icon="inline-start" />
+                            删除用户
+                          </DropdownMenuItem>
+                        </template>
                       </template>
                     </DropdownMenuContent>
                   </DropdownMenu>
@@ -571,7 +575,7 @@ const auth = useAuthStore()
 // 后端 /api/admin/users* 全部写端点为 CurrentSuperUser（users.py 列表仅 CurrentStaff）：
 // staff 只给看列表，所有操作入口隐藏，避免点击只吃 403。
 const isSuperUser = computed(() => auth.user?.is_superuser === true)
-// 后端禁止管理员对自己执行改状态/封禁/重置/删除（400），自己的行不提供入口。
+// 后端禁止管理员对自己执行改状态/封禁/重置/删除（400）；自己的行只留「编辑资料」。
 const currentUserId = computed(() => auth.user?.id ?? null)
 
 const loading = ref(false)

@@ -452,7 +452,10 @@ async def admin_get_user(
     "/users/{user_id}",
     response_model=UserDetailResponse,
     summary="更新用户（管理员）",
-    description="管理员更新用户信息。",
+    description=(
+        "管理员更新用户信息。超级管理员可编辑任意用户（含自己）的资料字段；"
+        "但自己的角色、激活/封禁状态只能由其他管理员修改（自助降权无撤销入口）。"
+    ),
 )
 async def admin_update_user_full(
     user_id: int,
@@ -460,14 +463,8 @@ async def admin_update_user_full(
     current_user: CurrentSuperUser,
     db: DB,
 ):
-    """管理员完整更新用户信息"""
-    from backend.core.rbac import get_role_level
-
-    if current_user.id == user_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="不能修改自己的信息，请使用个人设置",
-        )
+    """管理员完整更新用户信息（可编辑自己，但角色与账号状态除外）"""
+    from backend.core.rbac import effective_role, get_role_level
 
     result = await db.execute(
         select(User)
@@ -485,12 +482,11 @@ async def admin_update_user_full(
             detail="用户不存在",
         )
 
-    # 仅禁止修改「自己」；允许超级管理员修改其他用户（含其他超级管理员），
-    # 以支撑单管理员/个人博客场景下正常的账号资料维护。
+    # 允许超级管理员修改其他用户（含其他超级管理员），以支撑单管理员/个人博客场景。
     if (
         user.is_superuser
         and current_user.id != user_id
-        and get_role_level(current_user.role) < get_role_level("super_admin")
+        and get_role_level(effective_role(current_user)) < get_role_level("super_admin")
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -519,6 +515,33 @@ async def admin_update_user_full(
 
     update_data = data.model_dump(exclude_unset=True)
 
+    # 自己的资料可以改（管理员不该被赶回前台），但角色与账号状态只能由别的管理员动：
+    # 自助降权/自杀式封禁在后台没有任何撤销入口，一次提交就把自己锁在门外。
+    # 只拦"真的改了值"的提交：编辑页会原样回传当前角色与开关，那些不算变更。
+    # 比较一律走 effective_role：历史账号的 role 列可能还是默认值 subscriber，
+    # 而 is_superuser=True，直接读 role 会把"原样回传"误判成降权。
+    if current_user.id == user_id:
+        from backend.core.rbac import normalize_role
+
+        changed = [
+            label
+            for field_name, label in (
+                ("is_staff", "管理员标记"),
+                ("is_active", "激活状态"),
+                ("is_banned", "封禁状态"),
+            )
+            if field_name in update_data and update_data[field_name] != getattr(user, field_name)
+        ]
+        if "role" in update_data and normalize_role(str(update_data["role"])) != effective_role(
+            user
+        ):
+            changed.append("角色")
+        if changed:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"不能修改自己的{'/'.join(changed)}，请由其他管理员操作",
+            )
+
     # RBAC：角色变更需单独校验（actor 层级 >= target 层级），并同步旧布尔字段
     role_value = update_data.pop("role", None)
     if role_value is not None:
@@ -534,7 +557,7 @@ async def admin_update_user_full(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"非法角色：{role_value}",
             )
-        if get_role_level(current_user.role) < get_role_level(new_role):
+        if get_role_level(effective_role(current_user)) < get_role_level(new_role):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="无权分配高于自身层级的角色",
@@ -550,6 +573,11 @@ async def admin_update_user_full(
 
     await db.flush()
     await db.commit()
+
+    # 资料字段（昵称/头像/简介等）会进作者主页与文章详情的 author 段缓存，
+    # 这条口直接改 ORM 列、绕过了 update_profile 的失效逻辑，这里必须补一次。
+    service = await get_user_service(db)
+    await service.invalidate_user_surfaces(user_id)
 
     # 重新加载用户对象（使用 populate_existing），避免 flush 后属性 expire 导致的 MissingGreenlet
     result = await db.execute(

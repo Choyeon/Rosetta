@@ -32,14 +32,6 @@
       </AlertDescription>
     </Alert>
 
-    <!-- 后端拒绝自助修改（400），此处直接挡在 UI 层 -->
-    <Alert v-else-if="isSelf">
-      <AlertTitle>不能在此页面修改自己的账号</AlertTitle>
-      <AlertDescription>
-        管理员接口禁止修改当前登录账号自身的信息，请通过「个人设置」页面维护自己的资料。
-      </AlertDescription>
-    </Alert>
-
     <div
       v-else-if="loading"
       class="grid grid-cols-1 lg:grid-cols-2 gap-6"
@@ -95,6 +87,16 @@
     </AdminCard>
 
     <template v-else>
+      <Alert
+        v-if="isSelf"
+        variant="info"
+      >
+        <AlertTitle>正在编辑你自己的账号</AlertTitle>
+        <AlertDescription>
+          资料字段（昵称、邮箱、头像、简介等）可以直接在这里改。角色、激活与封禁状态不开放自助修改，
+          需要由其他管理员操作；自己的密码请走「账户设置 → 安全」。
+        </AlertDescription>
+      </Alert>
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AdminCard>
           <div class="flex items-center gap-2 mb-4">
@@ -147,6 +149,25 @@
             <Separator />
 
             <div class="flex flex-col gap-4">
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div class="flex flex-col gap-2">
+                  <Label for="edit-username">用户名</Label>
+                  <Input
+                    id="edit-username"
+                    v-model="form.username"
+                    placeholder="登录名，不可与其他用户重复"
+                    maxlength="150"
+                  />
+                </div>
+                <div class="flex flex-col gap-2">
+                  <Label for="edit-cover">封面图</Label>
+                  <Input
+                    id="edit-cover"
+                    v-model="form.cover_image"
+                    placeholder="个人主页横幅图片 URL，留空则移除"
+                  />
+                </div>
+              </div>
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div class="flex flex-col gap-2">
                   <Label for="edit-nickname">昵称</Label>
@@ -244,7 +265,10 @@
               <!-- AdminUserUpdateFull 不支持 is_superuser，且 role 会反向同步 is_staff/is_superuser -->
               <div class="flex flex-col gap-2">
                 <Label for="edit-role">RBAC 角色</Label>
-                <Select v-model="form.role">
+                <Select
+                  v-model="form.role"
+                  :disabled="isSelf"
+                >
                   <SelectTrigger id="edit-role">
                     <SelectValue placeholder="选择角色" />
                   </SelectTrigger>
@@ -282,6 +306,7 @@
                   </div>
                   <Switch
                     v-model="form.is_active"
+                    :disabled="isSelf"
                     aria-label="已激活"
                   />
                 </div>
@@ -296,10 +321,17 @@
                   </div>
                   <Switch
                     v-model="form.is_banned"
+                    :disabled="isSelf"
                     aria-label="已封禁"
                   />
                 </div>
               </div>
+              <p
+                v-if="isSelf"
+                class="text-xs text-muted-foreground"
+              >
+                自己的角色与账号状态不开放自助修改，请由其他管理员操作。
+              </p>
             </div>
 
             <Separator />
@@ -475,6 +507,8 @@ let originalTitleId = 0
 let originalAvatar = ''
 
 const form = reactive({
+  username: '',
+  cover_image: '',
   nickname: '',
   email: '',
   website: '',
@@ -544,6 +578,8 @@ async function loadUser() {
     const initialAvatar = data.resolved_avatar_url ?? data.avatar ?? ''
     originalAvatar = initialAvatar
     Object.assign(form, {
+      username: data.username ?? '',
+      cover_image: data.cover_image ?? '',
       nickname: data.nickname ?? '',
       email: data.email ?? '',
       website: (data as unknown as { website?: string | null }).website ?? '',
@@ -626,16 +662,21 @@ async function saveAll() {
     // is_staff/is_active/is_banned/role。title_id 与 is_superuser 不接受（头衔走专用端点，
     // 超管标记由 role 反推），多传即 422。
     const payload: Record<string, unknown> = {
+      username: form.username.trim(),
+      cover_image: form.cover_image || null,
       nickname: form.nickname || null,
       email: form.email,
       website: form.website || null,
       github: form.github || null,
       bio: form.bio || null,
       qq: form.qq.trim() || null,
-      avatar_source: form.avatar_source,
-      role: form.role,
-      is_active: form.is_active,
-      is_banned: form.is_banned
+      avatar_source: form.avatar_source
+    }
+    // 自己的角色与账号状态后端会拒（400），干脆不发；控件也已是禁用态
+    if (!isSelf.value) {
+      payload.role = form.role
+      payload.is_active = form.is_active
+      payload.is_banned = form.is_banned
     }
     // 载入时 form.avatar 是「解析后」的 URL（可能是 GitHub/QQ/Gravatar 直链）。
     // 未重新上传就回写，会把派生 URL 固化进自定义头像列，此后 auto 解析永远命中它。
@@ -666,7 +707,7 @@ async function saveAll() {
 }
 
 onMounted(async () => {
-  if (!isSuperuser.value || isSelf.value) return
+  if (!isSuperuser.value) return
   await Promise.all([loadUser(), loadTitles()])
 })
 </script>

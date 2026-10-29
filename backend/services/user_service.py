@@ -543,6 +543,16 @@ class UserService:
 
         return updated_user
 
+    async def invalidate_user_surfaces(self, user_id: int) -> None:
+        """后台写路径改完用户资料后，失效该用户相关的一切缓存。
+
+        `PUT /admin/users/{id}` 直接改 ORM 列、不走 `update_profile`，所以用户缓存与
+        作者可见字段（昵称/头像/个人主页写进文章详情 author 段）都不会自己过期：
+        表现是后台改完、前台作者主页与文章作者卡仍旧是旧资料，直到 TTL 到期。
+        """
+        await self._cache.invalidate_user_cache(user_id)
+        await self._invalidate_author_post_caches(user_id)
+
     async def _invalidate_author_post_caches(self, user_id: int) -> None:
         """失效某作者全部文章的详情缓存与列表/RSS 缓存（作者资料变更后调用）。"""
         rows = await self._db.execute(select(Post.slug).where(Post.author_id == user_id))
