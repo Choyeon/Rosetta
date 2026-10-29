@@ -1534,6 +1534,74 @@ export function deleteAdminFriendLink(
   })
 }
 
+// ==================== 搜索占位符 ====================
+
+export interface AdminSearchPlaceholder {
+  id: number
+  /** 后台口回完整四语 dict（后台编辑必须拿 dict，语言解析只发生在公开口） */
+  text: Record<string, string>
+  is_active: boolean
+  sort_order: number
+  created_at: string | null
+}
+
+function mapSearchPlaceholder(raw: Record<string, unknown>): AdminSearchPlaceholder {
+  const t = raw.text
+  let text: Record<string, string> = {}
+  if (typeof t === 'string') text = t.trim() ? { zh: t } : {}
+  else if (t && typeof t === 'object') text = { ...(t as Record<string, string>) }
+  return {
+    id: Number(raw.id) || 0,
+    text,
+    is_active: raw.is_active === true,
+    sort_order: Number(raw.order ?? 0),
+    created_at: (raw.created_at as string | null) ?? null
+  }
+}
+
+function searchPlaceholderBody(payload: Record<string, unknown>): Record<string, unknown> {
+  const body: Record<string, unknown> = { ...payload }
+  if ('sort_order' in body) {
+    body.order = body.sort_order
+    delete body.sort_order
+  }
+  return body
+}
+
+export function fetchAdminSearchPlaceholders(): Promise<AdminSearchPlaceholder[]> {
+  return apiFetch<Record<string, unknown>[]>('/search-placeholders/all')
+    .then(list => (list ?? []).map(mapSearchPlaceholder))
+}
+
+export function createAdminSearchPlaceholder(
+  payload: Record<string, unknown>
+): Promise<AdminSearchPlaceholder> {
+  return apiFetch<Record<string, unknown>>('/search-placeholders', {
+    method: 'POST',
+    body: searchPlaceholderBody(payload)
+  }).then(mapSearchPlaceholder)
+}
+
+export function updateAdminSearchPlaceholder(
+  id: number,
+  payload: Record<string, unknown>
+): Promise<AdminSearchPlaceholder> {
+  return apiFetch<Record<string, unknown>>(`/search-placeholders/${id}`, {
+    method: 'PUT',
+    body: searchPlaceholderBody(payload)
+  }).then(mapSearchPlaceholder)
+}
+
+export function deleteAdminSearchPlaceholder(
+  id: number,
+  options: AdminToolRequestOptions = {}
+): Promise<ApiMessage> {
+  return apiFetch<ApiMessage>(`/search-placeholders/${id}`, {
+    method: 'DELETE',
+    silentToast: options.silentToast ?? false
+  })
+}
+
 // ==================== 响应形状适配（后端 → 前端约定） ====================
 // 后端部分接口返回裸对象 / 裸列表 / {success, job} 等非标准信封，
 // 这里统一映射为前端页面期望的形状，避免页面拿到 undefined / 字段错位。

@@ -1681,6 +1681,55 @@ class FriendLinkLocalizedResponse(BaseModel):
         )
 
 
+# ==================== 搜索占位符模型 ====================
+
+
+def _require_placeholder_text(value: dict[str, str]) -> dict[str, str]:
+    """占位文本至少有一种语言非空；四语全空的行在前台等价于不存在，写入侧直接拒掉。"""
+    cleaned = {k: str(v).strip() for k, v in value.items() if str(v).strip()}
+    if not cleaned:
+        raise ValueError("至少填写一种语言的占位文本")
+    return cleaned
+
+
+class SearchPlaceholderCreate(BaseModel):
+    """搜索占位符创建模型"""
+
+    text: I18nDict
+    is_active: bool = True
+    order: int = Field(default=0, ge=0)
+
+    @field_validator("text")
+    @classmethod
+    def clean_text(cls, value):
+        return _require_placeholder_text(value)
+
+
+class SearchPlaceholderUpdate(BaseModel):
+    """搜索占位符更新模型"""
+
+    text: I18nDict | None = None
+    is_active: bool | None = None
+    order: int | None = Field(None, ge=0)
+
+    @field_validator("text")
+    @classmethod
+    def clean_optional_text(cls, value):
+        return None if value is None else _require_placeholder_text(value)
+
+
+class SearchPlaceholderResponse(BaseModel):
+    """搜索占位符响应模型（后台口回完整四语 dict）"""
+
+    id: int
+    text: I18nDict
+    is_active: bool
+    order: int
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 # ==================== 通知相关模型 ====================
 
 

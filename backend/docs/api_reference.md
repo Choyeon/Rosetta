@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **356 个操作 / 284 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **361 个操作 / 287 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1684,7 +1684,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/users/{user_id}/posts` | 用户文章列表 |
 | `GET` | `/api/users/{user_id}/stats` | 用户统计信息 |
 
-### 博客（40）
+### 博客（41）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
@@ -1709,6 +1709,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/blog/posts/{post_id}/edit` | 获取文章用于编辑 |
 | `POST` | `/api/blog/posts/{post_id}/like` | 点赞/取消点赞 |
 | `GET` | `/api/blog/posts/{post_id}/similar` | 相似文章推荐 |
+| `POST` | `/api/blog/posts/{post_id}/view` | 记录阅读历史 |
 | `GET` | `/api/blog/posts/{slug}` | 文章详情 |
 | `GET` | `/api/blog/posts/{slug}/adjacent` | 上一篇/下一篇 |
 | `GET` | `/api/blog/rss` | RSS 订阅 |
@@ -1729,7 +1730,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/blog/users/me/posts` | 获取我的文章 |
 | `GET` | `/api/blog/users/me/stats` | 获取我的统计 |
 
-### 核心（19）
+### 核心（23）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
@@ -1751,6 +1752,10 @@ API 实现了请求限流保护：
 | `DELETE` | `/api/pages/{page_id}` | 删除页面 |
 | `GET` | `/api/pages/{slug}` | 页面详情 |
 | `GET` | `/api/search-placeholders` | 搜索占位符 |
+| `POST` | `/api/search-placeholders` | 创建搜索占位符 |
+| `GET` | `/api/search-placeholders/all` | 搜索占位符列表（后台） |
+| `PUT` | `/api/search-placeholders/{placeholder_id}` | 更新搜索占位符 |
+| `DELETE` | `/api/search-placeholders/{placeholder_id}` | 删除搜索占位符 |
 | `GET` | `/api/sponsors` | 打赏者列表 |
 
 ### 媒体（16）

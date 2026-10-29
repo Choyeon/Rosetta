@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **356 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **361 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -1351,7 +1351,7 @@ _无路径 / query 参数_
 
 ---
 
-## 博客（40）
+## 博客（41）
 
 文章、分类、标签、评论的公开与管理接口
 
@@ -2793,6 +2793,41 @@ _无路径 / query 参数_
 | --- | --- |
 | `422` | Validation Error |
 
+### `POST /api/blog/posts/{post_id}/view`
+
+- **摘要**：记录阅读历史
+- **鉴权**：需鉴权：`HTTPBearer`
+
+登录用户打开文章后回调一次，写入或刷新该用户在 `post_view_histories` 里的阅读记录。周期榜（day/week/month）的 `recent_views` 与个人中心「阅读历史」都以这张表为数据源。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `BaseResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| message | string | 否 |  |
+| success | boolean | 否 |  |
+
+响应示例：
+
+```json
+{
+  "message": "操作成功",
+  "success": true
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
 ### `GET /api/blog/posts/{slug}`
 
 - **摘要**：文章详情
@@ -3575,7 +3610,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 
 ---
 
-## 核心（19）
+## 核心（23）
 
 站点公开配置、导航、友情链接等前台核心数据
 
@@ -4975,7 +5010,7 @@ _无路径 / query 参数_
 - **摘要**：搜索占位符
 - **鉴权**：公开接口（无需鉴权）
 
-获取搜索框的随机占位符文本列表。
+获取搜索框的随机占位符文本列表。按请求语言解析多语言文本（该语言为空时回退默认语言），解析后仍为空的行不返回；只含启用项，按 order、id 升序。
 
 **入参**
 
@@ -4999,7 +5034,195 @@ _无路径 / query 参数_
 
 **错误码**
 
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `POST /api/search-placeholders`
+
+- **摘要**：创建搜索占位符
+- **鉴权**：需鉴权：`HTTPBearer`
+
+新增一条搜索框占位文本，需要管理员权限。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `SearchPlaceholderCreate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| is_active | boolean | 否 |  |
+| order | integer | 否 |  |
+| text | object<string, string> | 是 |  |
+
+```json
+{
+  "is_active": true,
+  "order": 0,
+  "text": {}
+}
+```
+
+**出参**
+
+`201` · 模型 `SearchPlaceholderResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| created_at | string | 是 |  |
+| id | integer | 是 |  |
+| is_active | boolean | 是 |  |
+| order | integer | 是 |  |
+| text | object<string, string> | 是 |  |
+
+响应示例：
+
+```json
+{
+  "created_at": "string",
+  "id": 0,
+  "is_active": false,
+  "order": 0,
+  "text": {}
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `GET /api/search-placeholders/all`
+
+- **摘要**：搜索占位符列表（后台）
+- **鉴权**：需鉴权：`HTTPBearer`
+
+管理员获取全部占位符（含停用项），text 为完整四语 dict。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| (根) | object[] | — |  |
+
+响应示例：
+
+```json
+[
+  {
+    "created_at": "string",
+    "id": 0,
+    "is_active": false,
+    "order": 0,
+    "text": {}
+  }
+]
+```
+
+**错误码**
+
 _除下方“全局通用错误码”外，本接口未声明自定义错误响应_
+
+### `PUT /api/search-placeholders/{placeholder_id}`
+
+- **摘要**：更新搜索占位符
+- **鉴权**：需鉴权：`HTTPBearer`
+
+更新占位文本 / 启停 / 排序，需要管理员权限。省略的键保持原值。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `SearchPlaceholderUpdate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| is_active | boolean \| null | 否 |  |
+| order | integer \| null | 否 |  |
+| text | object<string, string> \| null | 否 |  |
+
+```json
+{
+  "is_active": "string",
+  "order": "string",
+  "text": "string"
+}
+```
+
+**出参**
+
+`200` · 模型 `SearchPlaceholderResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| created_at | string | 是 |  |
+| id | integer | 是 |  |
+| is_active | boolean | 是 |  |
+| order | integer | 是 |  |
+| text | object<string, string> | 是 |  |
+
+响应示例：
+
+```json
+{
+  "created_at": "string",
+  "id": 0,
+  "is_active": false,
+  "order": 0,
+  "text": {}
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `DELETE /api/search-placeholders/{placeholder_id}`
+
+- **摘要**：删除搜索占位符
+- **鉴权**：需鉴权：`HTTPBearer`
+
+删除一条搜索框占位文本，需要管理员权限。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `BaseResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| message | string | 否 |  |
+| success | boolean | 否 |  |
+
+响应示例：
+
+```json
+{
+  "message": "操作成功",
+  "success": true
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
 
 ### `GET /api/sponsors`
 
@@ -8446,7 +8669,7 @@ _无路径 / query 参数_
 - **摘要**：更新用户（管理员）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-管理员更新用户信息。
+管理员更新用户信息。超级管理员可编辑任意用户（含自己）的资料字段；但自己的角色、激活/封禁状态只能由其他管理员修改（自助降权无撤销入口）。
 
 **入参**
 

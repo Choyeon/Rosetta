@@ -42,7 +42,8 @@ import {
   ArchiveRestore,
   CalendarClock,
   Footprints,
-  Info
+  Info,
+  TextCursorInput
 } from '@lucide/vue'
 
 import type { Component } from 'vue'
@@ -125,6 +126,7 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/docs', label: '开发文档', icon: BookOpen },
       { path: '/admin/system/navigation', label: '导航菜单', icon: MenuIcon },
       { path: '/admin/system/friendlinks', label: '友情链接', icon: Link2 },
+      { path: '/admin/system/search-placeholders', label: '搜索占位符', icon: TextCursorInput },
       { path: '/admin/system/webhooks', label: 'Webhook', icon: Webhook }
     ]
   },

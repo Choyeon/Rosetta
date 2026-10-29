@@ -19,11 +19,12 @@ import math
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
 from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
+from backend.core.i18n import get_i18n_value, get_language_from_request
 from backend.core.site_config import invalidate_site_config_caches
 from backend.models.core import FriendLink, Navigation, Page, SearchPlaceholder, SiteConfig
 
@@ -46,6 +47,9 @@ from backend.schemas import (
     PageResponse,
     PageUpdate,
     PaginatedResponse,
+    SearchPlaceholderCreate,
+    SearchPlaceholderResponse,
+    SearchPlaceholderUpdate,
     SiteConfigFullResponse,
     SiteConfigResponse,
     SiteConfigUpdate,
@@ -761,16 +765,107 @@ async def list_sponsors(db: DB):
     "/search-placeholders",
     response_model=list[str],
     summary="搜索占位符",
-    description="获取搜索框的随机占位符文本列表。",
+    description=(
+        "获取搜索框的随机占位符文本列表。按请求语言解析多语言文本（该语言为空时回退默认语言），"
+        "解析后仍为空的行不返回；只含启用项，按 order、id 升序。"
+    ),
 )
-async def list_search_placeholders(db: DB):
-    """获取搜索占位符"""
+async def list_search_placeholders(
+    request: Request,
+    db: DB,
+    lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+):
+    """获取搜索占位符
+
+    `text` 列是四语 dict，直接当 `list[str]` 序列化会在**有任何一行时** 500
+    （Pydantic 不接受 dict→str），所以这里逐行按请求语言解析；顺带把"该语言没填"
+    但默认语言有值的行保成回退文本，与前台其余多语言读取面同口径。
+    """
+    language = get_language_from_request(request, lang)
     result = await db.execute(
         select(SearchPlaceholder.text)
         .where(SearchPlaceholder.is_active.is_(True))
-        .order_by(SearchPlaceholder.order)
+        .order_by(SearchPlaceholder.order, SearchPlaceholder.id)
     )
-    return [r[0] for r in result.all()]
+    return [text for row in result.all() if (text := get_i18n_value(row[0], language))]
+
+
+@router.get(
+    "/search-placeholders/all",
+    response_model=list[SearchPlaceholderResponse],
+    summary="搜索占位符列表（后台）",
+    description="管理员获取全部占位符（含停用项），text 为完整四语 dict。",
+)
+async def list_all_search_placeholders(current_user: CurrentStaff, db: DB):
+    """管理员获取所有搜索占位符"""
+    result = await db.execute(
+        select(SearchPlaceholder).order_by(SearchPlaceholder.order, SearchPlaceholder.id)
+    )
+    return [SearchPlaceholderResponse.model_validate(row) for row in result.scalars().all()]
+
+
+@router.post(
+    "/search-placeholders",
+    response_model=SearchPlaceholderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="创建搜索占位符",
+    description="新增一条搜索框占位文本，需要管理员权限。",
+)
+async def create_search_placeholder(
+    data: SearchPlaceholderCreate, current_user: CurrentStaff, db: DB
+):
+    """创建搜索占位符"""
+    row = SearchPlaceholder(text=data.text, is_active=data.is_active, order=data.order)
+    db.add(row)
+    await db.flush()
+    await db.refresh(row)
+    purge_frontend_page_cache("搜索占位符变更")
+    return SearchPlaceholderResponse.model_validate(row)
+
+
+@router.put(
+    "/search-placeholders/{placeholder_id}",
+    response_model=SearchPlaceholderResponse,
+    summary="更新搜索占位符",
+    description="更新占位文本 / 启停 / 排序，需要管理员权限。省略的键保持原值。",
+)
+async def update_search_placeholder(
+    placeholder_id: int,
+    data: SearchPlaceholderUpdate,
+    current_user: CurrentStaff,
+    db: DB,
+):
+    """更新搜索占位符"""
+    row = (
+        await db.execute(select(SearchPlaceholder).where(SearchPlaceholder.id == placeholder_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="搜索占位符不存在")
+
+    apply_partial_update(row, data.model_dump(exclude_unset=True))
+    await db.flush()
+    await db.refresh(row)
+    purge_frontend_page_cache("搜索占位符变更")
+    return SearchPlaceholderResponse.model_validate(row)
+
+
+@router.delete(
+    "/search-placeholders/{placeholder_id}",
+    response_model=BaseResponse,
+    summary="删除搜索占位符",
+    description="删除一条搜索框占位文本，需要管理员权限。",
+)
+async def delete_search_placeholder(placeholder_id: int, current_user: CurrentStaff, db: DB):
+    """删除搜索占位符"""
+    row = (
+        await db.execute(select(SearchPlaceholder).where(SearchPlaceholder.id == placeholder_id))
+    ).scalar_one_or_none()
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="搜索占位符不存在")
+
+    await db.delete(row)
+    purge_frontend_page_cache("搜索占位符变更")
+    return BaseResponse(message="搜索占位符已删除")
 
 
 @router.get(
