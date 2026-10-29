@@ -123,7 +123,8 @@ from backend.schemas.blog_reads import (
     UserBlogStatsResponse,
 )
 from backend.services.comment_service import _comment_to_response
-from backend.utils.compat import UTC, parse_utc_date, timedelta
+from backend.utils.compat import UTC, parse_utc_date, timedelta, to_utc_instant
+from backend.utils.compat import ensure_aware as _ensure_aware
 from backend.utils.i18n_query import i18n_contains
 from backend.utils.reading_time import compute_reading_time_from_content
 
@@ -149,15 +150,6 @@ _MEDIA_NS = "http://search.yahoo.com/mrss/"
 def _public_site_url() -> str:
     """对外站点根 URL（去尾斜杠）。RSS/Sitemap 中的绝对 URL 一律基于它。"""
     return (getattr(settings, "site_url", None) or "http://localhost:3000").rstrip("/")
-
-
-def _ensure_aware(dt: datetime | None) -> datetime | None:
-    """无时区的 datetime 一律假定为 UTC。"""
-    if dt is None:
-        return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=_tz.utc)
-    return dt
 
 
 def _rfc822(dt: datetime | None) -> str | None:
@@ -1423,8 +1415,7 @@ async def create_post(
     status_value = post_data.status
     scheduled_at_value = post_data.scheduled_at
     if status_value == "scheduled" and scheduled_at_value is not None:
-        if scheduled_at_value.tzinfo is None:
-            scheduled_at_value = scheduled_at_value.replace(tzinfo=UTC)
+        scheduled_at_value = to_utc_instant(scheduled_at_value)
         if scheduled_at_value <= datetime.now(UTC):
             status_value = "published"
 
@@ -1605,8 +1596,8 @@ async def update_post(
     new_status = update_data.get("status")
     scheduled_at = update_data.pop("scheduled_at", None)
     if new_status == "scheduled" and scheduled_at is not None:
-        if isinstance(scheduled_at, datetime) and scheduled_at.tzinfo is None:
-            scheduled_at = scheduled_at.replace(tzinfo=UTC)
+        if isinstance(scheduled_at, datetime):
+            scheduled_at = to_utc_instant(scheduled_at)
         now = datetime.now(UTC)
         if scheduled_at <= now:
             new_status = "published"

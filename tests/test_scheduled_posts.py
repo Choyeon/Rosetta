@@ -11,7 +11,7 @@
 下面按"缺省、显式、过去时间、非法值"四侧钉住。
 """
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from sqlalchemy import select
@@ -268,3 +268,39 @@ async def test_put_status_only_compares_the_stored_schedule(
     assert post.status == want_status
     if want_status == "scheduled":
         assert post.scheduled_at is not None, "未到点的那一支不得把计划时间清空"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("route", ["schedule", "editor"])
+async def test_offset_scheduled_at_is_stored_as_the_same_instant(
+    client, db_session, admin_user, admin_headers, route
+):
+    """带非 UTC 偏移的计划时间必须落成**同一个瞬时**，而不是那个时区的墙钟。
+
+    两个写口都要打：`PUT /admin/posts/{id}/schedule` 与编辑器保存走的
+    `PUT /api/blog/posts/{id}`。SQLite 的 DATETIME 绑定串不带偏移，
+    `...T07:43:26+08:00` 原样入库就是朴素的 07:43:26，而"到点没到"判的是
+    `<= datetime.now(UTC)`——等于把八小时之后才该发的那一刻说成现在就该发：
+    正偏移会提前发布，负偏移会永远不发。PG 下 aware 值的绑定无歧义，所以这条
+    只在 SQLite 侧看得见；用例写死 +08:00，判定与测试机时区无关。
+    """
+    post = await _make_draft(db_session, admin_user)
+    fire_at = datetime.now(timezone(timedelta(hours=8))) + timedelta(days=2)
+    body = {"scheduled_at": fire_at.isoformat()}
+    if route == "schedule":
+        url = f"/api/admin/posts/{post.id}/schedule"
+    else:
+        url = f"/api/blog/posts/{post.id}"
+        body["status"] = "scheduled"
+
+    response = await client.put(url, json=body, headers=admin_headers)
+    assert response.status_code == 200, response.text
+
+    await db_session.refresh(post)
+    assert post.status == "scheduled", "两天后的计划时间不该被判成已到期"
+    stored = post.scheduled_at
+    assert stored is not None
+    if stored.tzinfo is None:  # SQLite 回读朴素值，按"朴素即 UTC"的约定补齐
+        stored = stored.replace(tzinfo=UTC)
+    drift = abs((stored - fire_at).total_seconds())
+    assert drift < 2, f"落库的瞬时偏了 {drift / 3600:.1f} 小时（入参的偏移被吃掉了）"

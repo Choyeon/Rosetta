@@ -29,7 +29,7 @@ from backend.core.cache import invalidate_cache, invalidate_post_detail_cache
 from backend.models.blog import Post
 from backend.schemas import BaseResponse
 from backend.services.post_cache import invalidate_post_aggregate_caches
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, to_utc_instant
 
 router = APIRouter(tags=["定时发布"])
 
@@ -190,10 +190,8 @@ async def schedule_post(
             detail="文章不存在",
         )
 
-    # 规范化时区：无时区信息时按 UTC 处理
-    scheduled_at = data.scheduled_at
-    if scheduled_at.tzinfo is None:
-        scheduled_at = scheduled_at.replace(tzinfo=UTC)
+    # 落库前折算成 UTC 瞬时（朴素按 UTC 解释、带偏移的换算），口径见 compat.to_utc_instant
+    scheduled_at = to_utc_instant(data.scheduled_at)
 
     # 状态缺省值必须是 "scheduled"（唯一被发布扫描器认的"等待中"状态）。
     # 原先缺省是 None → 草稿仍是草稿，而 publish_due_posts / main.py 的定时循环
