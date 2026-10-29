@@ -1,8 +1,9 @@
 <!--
   系列详情页：GET /series/<slug>，把响应内嵌的 posts 按后端顺序渲染成章节目录（前端不再排序）。
-  数据请求显式带 server:false（pages/ 下唯一一处）—— 首屏无 SSR 直出、爬虫拿到空壳，属现状取舍；
-  想恢复直出要先确认该端点的鉴权与响应形状。title→name→slug 的取值优先级在标题、面包屑、
-  JSON-LD 三处重复出现，后端改字段要三处一起验。
+  数据必须 SSR 取数（曾写 server:false，服务端恒为 null ⇒ 吐出骨架、useSeo 拿不到系列名）。
+  title→name→slug 的取值优先级在标题、面包屑、JSON-LD 三处重复出现，后端改字段要三处一起验。
+  三条分支互斥且有序：pending 骨架 → 不存在（真 404，URL 不存在）→ 请求失败（临时故障，可重试）
+  → 正文。网络故障不得显示成「系列不存在」，那会让访客以为系列被删了。
 -->
 <template>
   <div class="container py-16 max-w-5xl mx-auto">
@@ -36,24 +37,55 @@
         <Skeleton class="h-4 w-3/4" />
       </div>
 
-      <template v-else-if="notFound || !series">
+      <template v-else-if="seriesNotFound">
         <Alert variant="default">
           <AlertTitle class="flex items-center gap-2">
             <AlertCircle class="size-4" />
             {{ t('series.notFoundTitle', '系列不存在') }}
           </AlertTitle>
-          <AlertDescription class="mt-3 flex items-center justify-between gap-4">
+          <AlertDescription class="mt-3 flex flex-wrap items-center justify-between gap-4">
             <span>{{ t('series.notFoundDesc', '该系列可能尚未发布或已被移除。') }}</span>
-            <Button
-              size="sm"
-              variant="default"
-              @click="navigateTo(localeHref('/series'))"
-            >
-              {{ t('series.backToList', '返回系列列表') }}
-            </Button>
+            <div class="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="default"
+                as-child
+              >
+                <NuxtLink :to="localeHref('/series')">
+                  {{ t('series.backToList', '返回系列列表') }}
+                </NuxtLink>
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                as-child
+              >
+                <NuxtLink :to="localeHref('/')">
+                  {{ t('error.backHome') }}
+                </NuxtLink>
+              </Button>
+            </div>
           </AlertDescription>
         </Alert>
       </template>
+
+      <!-- 请求失败：网络故障 / 5xx 不是「系列不存在」，给一块可重试的错误面板 -->
+      <div
+        v-else-if="error"
+        class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
+      >
+        <div class="flex flex-col items-center gap-3 text-center">
+          <span>{{ t('error.serverErrorDesc') }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="refresh()"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {{ t('error.retry') }}
+          </Button>
+        </div>
+      </div>
 
       <template v-else>
         <header class="mb-10">
@@ -172,7 +204,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
 import { Button } from '~~/components/ui/button'
-import { AlertCircle, ArrowUpRight, CalendarDays, Eye, ListOrdered } from '@lucide/vue'
+import { AlertCircle, ArrowUpRight, CalendarDays, Eye, ListOrdered, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 
@@ -218,14 +250,13 @@ const { formatDate } = useI18nHelpers()
 // 且本页未反选），但数据在服务端永远是 null —— SSR 吐出来的 HTML 是骨架，正文字数=0，
 // useSeo 的 title/description 也拿不到系列名。对爬虫等于空页，对用户等于先闪一下
 // 骨架再补正文（即 SSR 完全白做）。移除后 SSR 输出真实标题/摘要/文章列表。
-const { data: detail, pending, error } = useAPI<SeriesDetail | null>(`/series/${params.slug ?? ''}`, {
+const { data: detail, pending, error, refresh } = useAPI<SeriesDetail | null>(`/series/${params.slug ?? ''}`, {
   key: 'series:detail:' + (params.slug ?? ''),
   default: () => null
 })
 
 const series = computed<SeriesDetail | null>(() => detail.value ?? null)
 const seriesMissing = computed(() => series.value == null && !pending.value)
-const notFound = computed(() => !!error.value || seriesMissing.value)
 // 系列不存在时让 SSR 响应带上真 404：本页 routeRules 是 swr 3600，200 的「系列不存在」
 // 空壳会被缓存成可复用页面，爬虫据此收录一个实际无内容的 URL。口径见 useContentStatus.ts。
 useContentStatus(error, seriesMissing)
