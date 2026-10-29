@@ -28,13 +28,13 @@
 
 > 历史口径备忘：2026-09-26 那一版是手工快照，之后 2026-10-16 又按 favorite / messages / activity 三轮增量手累过 ✅（各自记了一个"等价数字"），模块行与合计行从此长期对不上（模块行里 `messages` 仍写 0 ✅，而明细写的是「已接入 5 条」）。这些增量**已被本轮扫描器重算取代**，不要再在任何手工数字上加一遍。同期另有一次独立扫描得 295/357 ≈ 82.6%，与 214/352 的差在分母与"仅 URL 拼接消费"的计入方式，同样作废。
 
-> 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点）；这正是不要手改本表的原因——下一次扫描会重算。
+> 2026-09-26 复核修订：`composables/useCore.ts` 已删除（15 个导出全项目零调用方，且其 mutation 侧基于 `useAPI` 包装、`await` 拿不到业务数据）。它曾经"名义上"消费过的端点——`/archive/{year}`、`/archive/{year}/{month}`、`/archive/stats`、`/sponsors`、`/config/full`、`POST /admin/settings`、`/hero/slides`、`/ranking/posts`、`/seo/schema/{type}/{id}`、`/seo/open-graph/{type}/{id}`——随之转为未消费；`/friend-links` 的调用点迁至 `composables/useFriendLinks.ts`。**注**：其中 `/archive/{year}` 的这条判定在 2026-10 已失真（`pages/archive/[year].vue` + `middleware/archive-year.ts` 就是它的消费点）；这正是不要手改本表的原因——下一次扫描会重算。`/ranking/posts` 是同一条注的第二个实例（2026-10-29 起失真：热榜页早已接上它，只是扫描器判不出"带泛型的 getter + 括号三元"这种实参形态，见 §ranking 小节）。
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 354 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：354 个端点操作；✅ 292 + 🟡 6 = 已消费 298 个，未消费 56 个，覆盖率 84.2%。**
+**总计：354 个端点操作；✅ 293 + 🟡 6 = 已消费 299 个，未消费 55 个，覆盖率 84.5%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -82,12 +82,12 @@
 | docs | 2 | 2 | 0 | 0 | 100% |
 | admin_logs | 1 | 1 | 0 | 0 | 100% |
 | avatar_proxy | 1 | 0 | 0 | 1 | 0% |
-| ranking | 1 | 0 | 0 | 1 | 0% |
+| ranking | 1 | 1 | 0 | 0 | 100% |
 | stats | 1 | 1 | 0 | 0 | 100% |
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 56 条）
+## 未消费清单（自动生成，共 55 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -107,7 +107,6 @@
 - **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
 - **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`
 - **post_series**（1）：`POST /api/post_series/complete`
-- **ranking**（1）：`GET /api/ranking/posts`
 - **seo**（3）：`GET /api/seo/config`、`PUT /api/seo/config`、`GET /api/seo/sitemap.xml`
 - **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
 - **themes_ext**（2）：`GET /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`
@@ -253,7 +252,14 @@
 
 ### ranking / stats / translate / docs / settings_groups
 
-✅：`GET /api/admin/stats`（uam:147，仪表盘）；`POST /api/translate`（uam:1548，pages/admin/tools/translate.vue）；`GET /api/docs/list` · `/docs/{slug}`（udc:63,101，后台文档中心）；settings：`GET /api/settings`（uam:662）、`GET /api/settings/public`（us:298）、`PATCH /api/settings/{group}`（uam:670）。❌：`GET /api/settings/{group}`（有 GET 全量后不再需要——重复入口）、`GET /api/ranking/posts`（热门榜实际走 `GET /blog/posts/hot`，`useRanking` 随 useCore 一并删除，无调用方）。
+✅：`GET /api/admin/stats`（uam:147，仪表盘）；`POST /api/translate`（uam:1548，pages/admin/tools/translate.vue）；`GET /api/docs/list` · `/docs/{slug}`（udc:63,101，后台文档中心）；settings：`GET /api/settings`（uam:662）、`GET /api/settings/public`（us:298）、`PATCH /api/settings/{group}`（uam:670）；`GET /api/ranking/posts`（pages/posts/hot.vue:213，热榜页切到日/周/月/总榜时走它，`hot` 档才走 `/blog/posts/hot`）。❌：`GET /api/settings/{group}`（有 GET 全量后不再需要——重复入口）。
+
+> `GET /api/ranking/posts` 曾被本表判成"无调用方"（`useRanking` 随 useCore 删除后没人接），
+> 而 2026-10 热榜页接上它之后本表仍报 ❌——那是扫描器的盲区，不是没接：URL 写成
+> `useAPI<联合类型>(() => (cond ? '/a' : '/b'), {…})`，字面量的最近一层括号是三元自己的 `(`，
+> 而回退时"找最近未闭合括号"会一路越过带泛型的 `useAPI<…>(`。口径修在
+> `_request_callee_before`（形态③），回归 `tests/test_api_coverage_scanner.py::test_generic_getter_with_parenthesized_ternary_is_consumed`。
+> **这条修的是"少计"，不是"多计"**：同一次重扫全站只动了这一行（✅ 292→293）。
 
 ### webhook（/api/webhooks）— 9/9 全覆盖 ✅
 

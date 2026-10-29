@@ -281,7 +281,7 @@ def _context_of(text: str, start: int) -> tuple[str, str | None, str | None]:
     if named:
         # const LIST_URL = '/admin/shortcodes' 再传给 apiFetch：字面量本身不是实参位
         return "fetch", named.group(1), None
-    callee = _callee_of(text[:start].rstrip())
+    callee = _request_callee_before(text, start)
     if callee is not None and callee not in _ROUTE_NAV_CALLEES:
         # 三元分支 / 对象属性位（`? '/favorites' : \`/blog/users/me/${tab}\``、`url: '/x'`）：
         # 只有包住它的调用名确属"发请求"那一族才算消费点，否则后台菜单表里的导航项会被误判成已接线
@@ -330,23 +330,64 @@ def _uses_name_for_request(text: str, name: str, anchor: int) -> bool:
     return False
 
 
+def _strip_trailing_paren_group(text: str) -> str | None:
+    """剥掉尾部那一组配好的 `(...)`，返回它**前面**的内容（含调用自己的 `(`）。
+
+    箭头函数的参数表 `()` 是闭合的，用"找最近未闭合括号"那套回扫会一路越过封装名的 `(`，
+    把泛型 `useAPI<T>` 晾在末尾——`_callee_of` 只认 `(`/`,` 结尾，于是② ③ 两种带泛型的
+    getter 写法全部判不出调用名。
+    """
+    if not text.endswith(")"):
+        return None
+    depth = 0
+    for i in range(len(text) - 1, -1, -1):
+        ch = text[i]
+        if ch == ")":
+            depth += 1
+        elif ch == "(":
+            depth -= 1
+            if depth == 0:
+                return text[:i]
+    return None
+
+
 def _request_callee_before(text: str, pos: int) -> str | None:
-    """位置上的名字是谁的实参；两种真实形态都认。
+    """位置上的名字是谁的实参；三种真实形态都认。
 
     ① 直接实参：`apiFetch<Blob>(path, { method: 'GET' })`；
     ② 惰性 getter 实参：`useAPI<AccountList>(() => listUrl.value, { … })`——
     箭头函数整体才是第一个实参，所以要先剥掉 `=>` 和它的参数表 `()` 才够到封装名。
+    ③ getter 的体被括号整体包起来的三元：
+    `useAPI<T>(() => (period === 'hot' ? '/blog/posts/hot' : '/ranking/posts'), { … })`——
+    字面量的最近一层括号是三元自己的 `(`，② 那一步剥不到它。漏判的表现是**已经接上的口
+    躺在未消费清单里**（`GET /api/ranking/posts` 就是这样），而拿这张表排下一轮接线工作，
+    就会去接一条早就接完的口子。
+
+    只允许在 `… => (` 处继续往外剥：再往外就是任意嵌套括号，无约束回退等于发明覆盖率。
     """
     before = text[:pos].rstrip()
-    callee = _callee_of(before)
-    if callee is not None:
-        return callee
-    if not before.endswith("=>"):
-        return None
-    arrow_at = _match_open_paren(before[:-2])
-    if arrow_at is None:
-        return None
-    return _callee_of(before[:arrow_at].rstrip())
+    for _ in range(4):
+        callee = _callee_of(before)
+        if callee is not None:
+            return callee
+        if before.endswith("=>"):
+            params_at = _strip_trailing_paren_group(before[:-2].rstrip())
+            if params_at is None:
+                # 无括号单参箭头（`r => '/x'`）：退回"最近未闭合括号"，那正是封装名的 `(`
+                open_at = _match_open_paren(before[:-2])
+                if open_at is None:
+                    return None
+                params_at = before[:open_at]
+            before = params_at.rstrip()
+            continue
+        open_at = _match_open_paren(before)
+        if open_at is None:
+            return None
+        outer = before[:open_at].rstrip()
+        if not outer.endswith("=>"):
+            return None
+        before = outer
+    return None
 
 
 def _computed_url_const(text: str, start: int) -> str | None:

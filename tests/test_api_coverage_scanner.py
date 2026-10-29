@@ -100,6 +100,36 @@ def test_computed_url_const_is_consumed_via_its_use_site():
     assert _verbs_for_const(text, "listUrl", text.index("'/favorites'")) == {"get"}
 
 
+def test_generic_getter_with_parenthesized_ternary_is_consumed():
+    """热门榜页：`useAPI<联合>(() => (period === 'hot' ? '/blog/posts/hot' : '/ranking/posts'), {…})`。
+
+    两个坑叠在一起，实测漏掉的是**已经接完的口**：
+    ① 字面量的最近一层括号是三元自己的 `(`，② 那步"剥箭头"剥不到它；
+    ② 封装名带泛型时，用"最近未闭合括号"回扫会一路越过 `useAPI<…>(`，
+    把 `useAPI<…>` 晾在末尾——`_callee_of` 只认 `(`/`,` 结尾，于是判不出调用名。
+    后果是 `GET /api/ranking/posts` 长期躺在未消费清单里，而拿这张表排下一轮接线
+    就会去接一条早就接完的口子。
+    """
+    text = (
+        "} = useAPI<Post[] | { items?: RankingRow[] }>(\n"
+        "  () => (period.value === 'hot' ? '/blog/posts/hot' : '/ranking/posts'),\n"
+        "  { key: 'posts-hot-index', query: computed(() => ({ limit: 20 })) }\n"
+        ")"
+    )
+    assert _ctx(text, "'/ranking/posts'") == ("fetch", None, "useAPI")
+    assert _ctx(text, "'/blog/posts/hot'") == ("fetch", None, "useAPI")
+
+
+def test_ternary_inside_a_non_request_arrow_stays_unconsumed():
+    """③ 那层回退只认 `… => (`，不许无约束往外爬：`map((x) => (…))` 里的链接不是请求点。"""
+    text = (
+        "const links = featured.map((x) => (x.external ? '/outbound' : '/internal-page'))\n"
+        "const label = () => (flag ? 'a' : 'b')"
+    )
+    assert _ctx(text, "'/outbound'")[0] == "none"
+    assert _ctx(text, "'/internal-page'")[0] == "none"
+
+
 def test_navigation_table_is_still_not_coverage():
     """后台菜单表里的 `path: '/admin/posts'` 长得和 API 路径一模一样，但不是请求点。"""
     text = (
