@@ -719,6 +719,13 @@ export function fetchAllSettings(): Promise<AllSettingsGroups> {
   return apiFetch<AllSettingsResponse>('/settings').then(res => res.groups)
 }
 
+/** GET /api/settings/{group} —— 单个分组（裸 {group, data}，无 success 信封） */
+export function fetchSettingsGroup(
+  group: string
+): Promise<SettingsGroupData> {
+  return apiFetch<{ group: string, data: SettingsGroupData }>(`/settings/${group}`).then(res => res.data)
+}
+
 /** PATCH /api/settings/{group} —— settings_groups.router @router.patch("/{group}") */
 export function saveSettingsGroup(
   group: string,

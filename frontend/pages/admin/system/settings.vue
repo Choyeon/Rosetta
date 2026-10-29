@@ -1149,7 +1149,16 @@ const GROUP_EDITOR_KEYS: Record<string, Set<string>> = {
   donate: new Set<string>(['methods', 'sponsors'])
 }
 
+/**
+ * basic 组里由专用编辑器承载的字段：
+ *   - about_page_html → 「内容 → 关于页」(/admin/content/about)。
+ *     关于页正文是一个长 HTML 文本域，混在站点基础配置里既难编辑也容易误清空；
+ *     剥离后它只有一个写入口，本组保存时也不会把新编辑器刚写的正文覆盖回旧值。
+ */
+const BASIC_BLOCK_KEYS = new Set<string>(['about_page_html'])
+
 const GROUP_BLOCK_KEYS: Record<string, Set<string>> = {
+  basic: BASIC_BLOCK_KEYS,
   appearance: APPEARANCE_BLOCK_KEYS,
   hero: HERO_BLOCK_KEYS,
   footer: FOOTER_BLOCK_KEYS,

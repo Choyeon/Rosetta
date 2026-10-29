@@ -41,7 +41,8 @@ import {
   MonitorPlay,
   ArchiveRestore,
   CalendarClock,
-  Footprints
+  Footprints,
+  Info
 } from '@lucide/vue'
 
 import type { Component } from 'vue'
@@ -80,6 +81,7 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/content/tags', label: '标签', icon: Tags },
       { path: '/admin/content/series', label: '系列', icon: Layers },
       { path: '/admin/content/pages', label: '页面', icon: FileStack },
+      { path: '/admin/content/about', label: '关于页', icon: Info },
       { path: '/admin/content/hero', label: '首页轮播', icon: MonitorPlay },
       { path: '/admin/content/scheduled', label: '待发布队列', icon: CalendarClock },
       { path: '/admin/content/trash', label: '回收站', icon: ArchiveRestore }

@@ -1,7 +1,8 @@
 <!--
   独立页面（Page）管理列表：服务端分页 + CRUD 弹窗，请求走 useAdminManage wrapper 单源。
-  硬契约：exclude_slugs=[about,guestbook] 不可移除——关于页内容真源在站点设置 basic.about_page_html、
-  留言板是固定路由页，混进列表会造成双编辑入口；后端 PageCreate/PageUpdate 是 extra=forbid，
+  硬契约：exclude_slugs=[about,guestbook] 不可移除——关于页正文的真源是站点设置
+  basic.about_page_html（专用编辑入口 /admin/content/about）、留言板是固定路由页，
+  混进列表会造成双编辑入口；后端 PageCreate/PageUpdate 是 extra=forbid，
   请求体只能带 slug/title/status/content 四键，多一个字段即 422；title/content 提交完整 i18n dict；
   slug 必填，校验用 CONTENT_SLUG_PATTERN（与后端同口径，允许中文）。
 -->
@@ -91,7 +92,7 @@ const loadData = async () => {
     const res = await fetchAdminPages({
       page: page.value,
       page_size: pageSize.value,
-      // 关于页内容走站点设置 basic.about_page_html（直接 HTML 编辑）
+      // 关于页内容走 basic.about_page_html（专用编辑器 /admin/content/about）
       // 留言板是 pages/guestbook.vue 固定页面
       // 两者都不在"独立页面"管理列表中显示，避免混淆
       exclude_slugs: ['about', 'guestbook']
