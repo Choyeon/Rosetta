@@ -126,14 +126,51 @@ class TestDesignIsNotAMissingWire:
         assert resp.status_code != 403 or "CSRF_CHECK_FAILED" not in resp.text, resp.text
 
 
+# 文档里**允许**出现 `GET /api/csrf`——前提是同一句把它否定了（"也没有 GET /api/csrf 这类
+# 取 token 的接口"）。守的是"教读者去调它 / 把它写成必需头"，不是"提到过它"。
+# 上一版用整篇 `not in` 判，于是这句诚实的否定把测试自己判红了；而本仓后端 pytest 曾长期
+# 被判成"开发机上跑不了"，那条就是这么写瞎、直到链上门禁才暴露。现在按句子切来判。
+CSRF_ENDPOINT_MENTION = "GET /api/csrf"
+CSRF_HEADER_EXAMPLE_MARK = "X-CSRF-Token:"
+CSRF_NEGATIONS = ("没有", "不存在", "并非", "不是", "不含", "无消费方", "零消费方")
+_SENTENCE_SPLIT = re.compile(r"[\n。；;！!，,]")
+
+
+def _csrf_lies(text: str) -> list[str]:
+    """返回把 CSRF 当成"有取 token 的接口 / 有必需头"来教的句子。"""
+    offenders: list[str] = []
+    for sentence in _SENTENCE_SPLIT.split(text):
+        if CSRF_ENDPOINT_MENTION not in sentence and CSRF_HEADER_EXAMPLE_MARK not in sentence:
+            continue
+        if any(mark in sentence for mark in CSRF_NEGATIONS):
+            continue
+        offenders.append(sentence.strip()[:160])
+    return offenders
+
+
 class TestDocsTellTheTruth:
+    def test_the_lie_detector_itself_has_teeth(self, tmp_path):
+        """守卫得能证明"红了是真的谎报"，而不是只会跟着文档措辞一起改口。"""
+        honest = tmp_path / "honest.md"
+        honest.write_text(
+            "CSRF 不是全局中间件，也没有 `GET /api/csrf` 这类取 token 的接口。"
+            "所以 `X-CSRF-Token` 当前没有消费方。",
+            encoding="utf-8",
+        )
+        liar = tmp_path / "liar.md"
+        liar.write_text(
+            "写接口前请先调用 `GET /api/csrf` 拿到 token，"
+            "并在请求头里带上 `X-CSRF-Token: <csrf_token>`。",
+            encoding="utf-8",
+        )
+        assert _csrf_lies(honest.read_text(encoding="utf-8")) == []
+        lies = _csrf_lies(liar.read_text(encoding="utf-8"))
+        assert len(lies) == 2, lies
+
     def test_generated_doc_no_longer_claims_a_csrf_token_endpoint(self):
         for path in (DOCS_PATH, GEN_PATH):
-            text = path.read_text(encoding="utf-8")
-            assert "GET /api/csrf" not in text, f"{path.name} 仍在教读者调一个不存在的接口"
-            assert "X-CSRF-Token: <csrf_token>" not in text, (
-                f"{path.name} 仍把无消费方的头写成写接口必需"
-            )
+            lies = _csrf_lies(path.read_text(encoding="utf-8"))
+            assert lies == [], f"{path.name} 仍在教读者调一个不存在的接口/头：{lies}"
 
     def test_generated_doc_states_the_real_shape(self):
         text = DOCS_PATH.read_text(encoding="utf-8")
