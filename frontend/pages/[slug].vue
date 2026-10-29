@@ -118,6 +118,7 @@ import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
 import DOMPurify from 'isomorphic-dompurify'
+import { stripDuplicateTitleHeading } from '~~/lib/markdown'
 import { useI18n } from 'vue-i18n'
 
 definePageMeta({ layout: 'default' })
@@ -273,8 +274,10 @@ const SANITIZE_CONFIG = {
 const renderedContent = computed(() => {
   const rawContent = pickLocalized(page.value?.content)
   if (!rawContent) return ''
+  // 模板已渲染页面标题的 h1；正文首行若是同名 `# 标题`，不剥就会在同一文档里出现两个 h1。
+  const body = stripDuplicateTitleHeading(rawContent, pickLocalized(page.value?.title))
   try {
-    const html = md.parse(rawContent) as string
+    const html = md.parse(body) as string
     return DOMPurify.sanitize(html, SANITIZE_CONFIG as unknown as Parameters<typeof DOMPurify.sanitize>[1])
   } catch (e) {
     console.warn('[pages/slug] markdown render failed', e)

@@ -870,6 +870,7 @@ import CommentItem from '~~/components/CommentItem.vue'
 import CaptchaField from '~~/components/CaptchaField.vue'
 import PollCard from '~~/components/PollCard.vue'
 import { handlePostCoverError, postCoverUrl, postShareImage, POST_COVER_BANNER, POST_COVER_CARD } from '~~/lib/post-cover'
+import { stripDuplicateTitleHeading } from '~~/lib/markdown'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
 import { usePolls, type Poll } from '~~/composables/usePolls'
@@ -1770,17 +1771,9 @@ const renderedContent = computed(() => {
   // 注释在 HTML 里本来不可见，但 renderer.html 走的是转义分支，注释会被当作普通文本
   // 原样显示成 `<!-- ... -->`。解析前直接剥掉，行为与浏览器一致。
   raw = raw.replace(/<!--[\s\S]*?-->/g, '')
-  // 剥离正文开头与页面 H1 重复的标题：部分文章 Markdown 首行即 `# 标题`，
-  // 而模板已单独渲染 H1，直接转换会导致标题出现两次。
-  // 仅当首行 H1 文本与文章标题匹配时才移除，避免误删正文中真正的一级标题。
-  const leading = /^\s{0,3}#\s+(.+?)\s*#*\s*(?:\r?\n|$)/.exec(raw)
-  if (leading) {
-    const headingText = (leading[1] ?? '').trim()
-    const want = postTitle.value.trim()
-    if (want && (headingText === want || headingText.includes(want) || want.includes(headingText))) {
-      raw = raw.slice((leading[0] ?? '').length).replace(/^\s+/, '')
-    }
-  }
+  // 剥离正文开头与 H1 重复的标题：部分文章 Markdown 首行即 `# 标题`，
+  // 而模板已单独渲染 H1，直接转换会导致标题出现两次。规则与独立页共用一份（lib/markdown）。
+  raw = stripDuplicateTitleHeading(raw, postTitle.value)
   try {
     const html = mdRenderer.parse(raw) as string
     return DOMPurify.sanitize(html, hljsSanitizeConfig)
