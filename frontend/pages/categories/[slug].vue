@@ -57,7 +57,10 @@
             </p>
           </div>
         </div>
-        <div class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <div
+          v-if="!catNotFound"
+          class="inline-flex items-center gap-2 text-sm text-muted-foreground"
+        >
           <span class="inline-flex items-center justify-center px-3 py-1 rounded-full bg-muted">
             {{ postCount }} {{ t('categories.posts', '篇文章') }}
           </span>
@@ -71,6 +74,35 @@
           v-for="i in 6"
           :key="i"
         />
+      </div>
+    </template>
+    <!-- 分类不存在时只给一块面板：此前它会落进 loadError 分支（列表请求对不存在的分类
+         照样成功、只是空，缺的是详情），访客看到的是「文章列表加载失败」——把一个
+         不存在的 URL 说成临时故障，刷新一百次也不会好。判据复用 catNotFound（网络故障
+         不算缺失，仍走下面的 loadError，见 composables/useContentStatus.ts）。 -->
+    <template v-else-if="catNotFound">
+      <div class="rounded-2xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center">
+        <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
+          <FolderOpen class="size-8 text-muted-foreground" />
+        </div>
+        <p class="text-sm text-muted-foreground">
+          {{ t('error.notFoundDesc') }}
+        </p>
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <Button as-child>
+            <NuxtLink :to="localeHref('/categories')">
+              {{ t('nav.categories') }}
+            </NuxtLink>
+          </Button>
+          <Button
+            variant="outline"
+            as-child
+          >
+            <NuxtLink :to="localeHref('/')">
+              {{ t('error.backHome') }}
+            </NuxtLink>
+          </Button>
+        </div>
       </div>
     </template>
     <template v-else-if="loadError">
@@ -236,7 +268,7 @@ interface CategoryPostRow {
 }
 // 静态键+静态查询：切语言/换分类 slug 都走「跳同页 URL → 重挂载 → 新参数重新请求」，
 // 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
-const { data: catRaw, error: catError } = useAPI<CategoryDetail>(`/blog/categories/slug/${slug.value}`, {
+const { data: catRaw, error: catError, status: catStatus } = useAPI<CategoryDetail>(`/blog/categories/slug/${slug.value}`, {
   query: { lang: locale.value },
   key: `category:detail:${slug.value}:${locale.value}`,
   default: () => ({} as CategoryDetail)
@@ -255,9 +287,11 @@ const { data: postsRaw, pending, error: postsErr } = useAPI<{ items?: CategoryPo
   key: computed(() => `category:posts:${slug.value}:${locale.value}:${currentPage.value}`)
 })
 
+// 详情请求还没落值时不判缺失：默认的空对象会让每个真实分类在加载期先闪一次"不存在"。
+const catDetailSettled = computed(() => catStatus.value === 'success' || catStatus.value === 'error')
 // 加载中留空（只显站点名）；确实取不到分类时用 404 口径标题，
 // 不再把 slug 人性化成假装存在的分类名（响应侧由 useContentStatus 回写 404）。
-const categoryName = computed(() => pickLocalized(catRaw.value?.name) || (pending.value ? '' : t('error.notFoundTitle')))
+const categoryName = computed(() => pickLocalized(catRaw.value?.name) || (catDetailSettled.value ? t('error.notFoundTitle') : ''))
 const categoryDesc = computed(() => pickLocalized(catRaw.value?.description))
 // 封面口径：只有非空字符串才算"有封面"。后端 PUT 已把空串归成 null，这里再挡一层
 // 是因为库里可能躺着归一之前写入的 `""`——它会变成一次 src="" 的图片请求（404 + 破图框）。
@@ -277,7 +311,9 @@ const posts = computed<CategoryPostRow[]>(() => Array.isArray(postsRaw.value?.it
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(catError.value || postsErr.value))
 // 分类不存在时让 SSR 响应带 404（兜底 UI 不变）；判定口径见 composables/useContentStatus.ts。
-const catMissing = computed(() => !pickLocalized(catRaw.value?.name))
+const catMissing = computed(
+  () => catDetailSettled.value && !pickLocalized(catRaw.value?.name)
+)
 // 404 与 robots/canonical 必须同源判定：状态码回了 404 却写着 `index, follow` +
 // 自指 canonical，等于给搜索引擎两份互相矛盾的答复。
 const catNotFound = computed(() => isContentMissing(catError.value, catMissing.value))

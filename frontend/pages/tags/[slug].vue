@@ -19,6 +19,7 @@
         <div>
           <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight inline-flex items-center gap-3">
             <TagBadge
+              v-if="!tagNotFound"
               :color="tagColor"
               :label="tagName"
               size="md"
@@ -33,7 +34,10 @@
             {{ tagDesc }}
           </p>
         </div>
-        <div class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <div
+          v-if="!tagNotFound"
+          class="inline-flex items-center gap-2 text-sm text-muted-foreground"
+        >
           <span class="inline-flex items-center justify-center px-3 py-1 rounded-full bg-muted tabular-nums">
             {{ postCount }} {{ t('tags.posts', '篇文章') }}
           </span>
@@ -47,6 +51,35 @@
           v-for="i in 6"
           :key="i"
         />
+      </div>
+    </template>
+    <!-- 标签不存在时只给一块面板：此前它会落进 loadError 分支（列表请求对不存在的标签
+         照样成功、只是空，缺的是详情），访客看到的是「文章列表加载失败」——把一个
+         不存在的 URL 说成临时故障。判据复用 tagNotFound（网络故障不算缺失，仍走下面的
+         loadError，见 composables/useContentStatus.ts）。 -->
+    <template v-else-if="tagNotFound">
+      <div class="rounded-2xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center">
+        <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
+          <Tags class="size-8 text-muted-foreground" />
+        </div>
+        <p class="text-sm text-muted-foreground">
+          {{ t('error.notFoundDesc') }}
+        </p>
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <Button as-child>
+            <NuxtLink :to="localeHref('/tags')">
+              {{ t('nav.tags') }}
+            </NuxtLink>
+          </Button>
+          <Button
+            variant="outline"
+            as-child
+          >
+            <NuxtLink :to="localeHref('/')">
+              {{ t('error.backHome') }}
+            </NuxtLink>
+          </Button>
+        </div>
       </div>
     </template>
     <template v-else-if="loadError">
@@ -199,7 +232,7 @@ interface TagPostRow {
 }
 // 静态键+静态查询：切语言/换标签 slug 都走「跳同页 URL → 重挂载 → 新参数重新请求」，
 // 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
-const { data: tagRaw, error: tagErr } = useAPI<TagDetail>(`/blog/tags/slug/${slug.value}`, {
+const { data: tagRaw, error: tagErr, status: tagStatus } = useAPI<TagDetail>(`/blog/tags/slug/${slug.value}`, {
   query: { lang: locale.value },
   key: `tag:detail:${slug.value}:${locale.value}`,
   default: () => ({} as TagDetail)
@@ -218,7 +251,9 @@ const { data: postsRaw, pending, error: postsErr } = useAPI<{ items?: TagPostRow
 })
 
 // 同 categories：加载中留空，取不到标签时用 404 口径标题而不是人性化 slug。
-const tagName = computed(() => pickLocalized(tagRaw.value?.name) || (pending.value ? '' : t('error.notFoundTitle')))
+// 详情请求还没落值时不判缺失，否则每个真实标签都会在加载期先闪一次"不存在"。
+const tagDetailSettled = computed(() => tagStatus.value === 'success' || tagStatus.value === 'error')
+const tagName = computed(() => pickLocalized(tagRaw.value?.name) || (tagDetailSettled.value ? t('error.notFoundTitle') : ''))
 const tagColor = computed<string | null>(() => (tagRaw.value?.color ?? null) as string | null)
 const tagDesc = computed(() => pickLocalized(tagRaw.value?.description))
 const postCount = computed<number>(() => {
@@ -232,7 +267,9 @@ const posts = computed<TagPostRow[]>(() => Array.isArray(postsRaw.value?.items) 
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(tagErr.value || postsErr.value))
 // 标签不存在时让 SSR 响应带 404（兜底 UI 不变）；判定口径见 composables/useContentStatus.ts。
-const tagMissing = computed(() => !pickLocalized(tagRaw.value?.name))
+const tagMissing = computed(
+  () => tagDetailSettled.value && !pickLocalized(tagRaw.value?.name)
+)
 // 404 / robots / canonical 同源判定，理由同分类页。
 const tagNotFound = computed(() => isContentMissing(tagErr.value, tagMissing.value))
 useContentStatus(tagErr, tagMissing)
