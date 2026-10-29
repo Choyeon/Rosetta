@@ -372,66 +372,53 @@ export default defineNuxtConfig({
     // === RSS / Sitemap / Robots / llms.txt / security.txt：Server-routes
     //
     // 每一条都必须**显式登记**，不能靠 '/**' 的 swr 600 兜：routeRules 是按「路由处理器」
-    // 套缓存的，通配规则同样会包住 server/routes 下的静态路由 —— 实测子 sitemap 因此在
-    // 线上回了 600s 的旧正文（后端已含新增 URL，Nitro 还在发 10 分钟前的副本），
-    // 且正文自带的 `public, max-age=3600, s-maxage=3600…` 被 swr 处理器改写成裸 s-maxage。
-    // 这里的 Cache-Control 必须与各自 handler 里的 cacheControl 字面量一致，
-    // 由 tests/unit/feedRouteCacheRules.spec.ts 双向对账（加一条 feed 路由不登记 = 红）。
+    // 套缓存的，通配规则同样会包住 server/routes 下的静态路由 —— 2026-10-30 线上实测：
+    // 后端 sitemap 已含新增 /authors，Nitro 仍在发 600s 前的旧正文。
+    //
+    // 为什么这里不写 'Cache-Control'：swr 缓存处理器写回响应时会用
+    // `s-maxage=<maxAge>[, stale-while-revalidate=<staleMaxAge>]` **整条覆写** handler 自己设的头
+    // （nitropack/dist/runtime/internal/cache.mjs；与 AGENTS §2.3 那条 HTML 被覆写同源）。
+    // 真正生效的口径就是 swr 与 cache.staleMaxAge 这两个数，handler 里的 `public, max-age=…`
+    // 在 Nitro 面不落地。两端必须同口径：swr = handler 的 s-maxage、cache.staleMaxAge =
+    // handler 的 stale-while-revalidate 秒值，由 tests/unit/feedRouteCacheRules.spec.ts 双向对账
+    // （加一条 feed 路由不登记 = 红）。
     '/rss.xml': {
       swr: 1800,
-      headers: {
-        'Content-Type': 'application/rss+xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=86400'
-      }
+      cache: { staleMaxAge: 86400 },
+      headers: { 'Content-Type': 'application/rss+xml; charset=utf-8' }
     },
     '/sitemap.xml': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
-      }
+      cache: { staleMaxAge: 86400 },
+      headers: { 'Content-Type': 'application/xml; charset=utf-8' }
     },
     '/sitemap-pages.xml': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
-      }
+      cache: { staleMaxAge: 86400 },
+      headers: { 'Content-Type': 'application/xml; charset=utf-8' }
     },
     '/sitemap-posts.xml': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
-      }
+      cache: { staleMaxAge: 86400 },
+      headers: { 'Content-Type': 'application/xml; charset=utf-8' }
     },
     '/sitemap-taxonomies.xml': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
-      }
+      cache: { staleMaxAge: 86400 },
+      headers: { 'Content-Type': 'application/xml; charset=utf-8' }
     },
     '/robots.txt': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600'
-      }
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     },
     '/llms.txt': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600'
-      }
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     },
     '/.well-known/security.txt': {
       swr: 3600,
-      headers: {
-        'Content-Type': 'text/plain; charset=utf-8',
-        'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400'
-      }
+      cache: { staleMaxAge: 86400 },
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     }
   }),
 
