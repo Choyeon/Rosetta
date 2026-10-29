@@ -117,6 +117,14 @@ const siteLinks: SiteLink[] = [
   {
     labelKey: 'footer.friends', to: '/friends',
     fallbacks: { zh: '友链', en: 'Friends', ja: 'フレンド', zh_Hant: '友站連結' }
+  },
+  {
+    labelKey: 'footer.hot', to: '/posts/hot',
+    fallbacks: { zh: '热门榜单', en: 'Hot Ranking', ja: 'ホットランキング', zh_Hant: '熱門榜單' }
+  },
+  {
+    labelKey: 'footer.sponsor', to: '/sponsor',
+    fallbacks: { zh: '捐助支持', en: 'Sponsor', ja: 'サポート', zh_Hant: '贊助支持' }
   }
 ]
 /** 对每个 siteLink 先查 i18n，查不到走多语言兜底。 */
@@ -179,6 +187,13 @@ interface SiteConfigLite {
 
 // useSite 由 layouts/default.vue 提前 ensureLoaded()，这里 state 已填充完毕
 const site = useSite()
+/**
+ * 捐助页在「未配置任何收款方式」时是 noindex 占位，页脚无条件挂入口等于把访客引向一张空白页。
+ * 只在有真实收款方式时出现；判断用站点配置里同一份 donate 分组，不额外发请求。
+ */
+const visibleSiteLinks = computed(() =>
+  siteLinks.filter(link => link.to !== '/sponsor' || site.donate.value.methods.length > 0)
+)
 // features 分组关掉 RSS / Sitemap 后，页脚文字链与订阅图标必须一起消失：
 // 留着就是指向 404 的入口，还会让爬虫以为站点有订阅源。
 const visibleResourceLinks = computed(() => resourceLinks.filter((link) => {
@@ -394,7 +409,7 @@ const handleSetLocale = async (code: string) => {
           </h4>
           <ul class="flex flex-col gap-3">
             <li
-              v-for="link in siteLinks"
+              v-for="link in visibleSiteLinks"
               :key="link.to"
             >
               <NuxtLink
@@ -535,7 +550,7 @@ const handleSetLocale = async (code: string) => {
       <!-- 导航链接行 -->
       <nav class="mb-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
         <NuxtLink
-          v-for="link in siteLinks"
+          v-for="link in visibleSiteLinks"
           :key="link.to"
           :to="localeHref(link.to!)"
           class="text-xs text-muted-foreground hover:text-foreground transition-colors"
