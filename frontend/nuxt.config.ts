@@ -409,10 +409,12 @@ export default defineNuxtConfig({
     },
     '/robots.txt': {
       swr: 3600,
+      cache: { staleMaxAge: 86400 },
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     },
     '/llms.txt': {
       swr: 3600,
+      cache: { staleMaxAge: 86400 },
       headers: { 'Content-Type': 'text/plain; charset=utf-8' }
     },
     '/.well-known/security.txt': {

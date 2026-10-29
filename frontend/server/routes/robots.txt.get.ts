@@ -43,6 +43,6 @@ ${origin ? `\nSitemap: ${origin}/sitemap.xml\n` : ''}`
   return proxyUpstreamText(event, target, fallback, {
     accept: 'text/plain',
     contentType: 'text/plain; charset=utf-8',
-    cacheControl: 'public, max-age=3600, s-maxage=3600'
+    cacheControl: 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
   })
 })
