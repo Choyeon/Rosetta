@@ -118,6 +118,8 @@
     "posts": "文章",
     "noComments": "還沒有評論，來寫下第一句吧。",
     "commentsLockedHint": "解鎖正文後可查看評論。",
+    "commentsClosedTitle": "該文章已關閉評論",
+    "commentsClosedDesc": "作者關閉了這篇文章的評論，已有評論仍可正常瀏覽。",
     "loginRequired": "登入後參與",
     "loginToComment": "發表評論前請先登入。",
     "goLogin": "前往登入",

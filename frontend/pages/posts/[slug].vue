@@ -642,6 +642,19 @@
                 </CardContent>
               </Card>
               <Alert
+                v-else-if="postCommentsClosed"
+                variant="default"
+                class="mb-8"
+              >
+                <AlertTitle class="flex items-center gap-2">
+                  <MessageSquare class="size-4" />
+                  {{ t('post.commentsClosedTitle', '该文章已关闭评论') }}
+                </AlertTitle>
+                <AlertDescription class="mt-3">
+                  {{ t('post.commentsClosedDesc', '作者关闭了这篇文章的评论，已有评论仍可正常浏览。') }}
+                </AlertDescription>
+              </Alert>
+              <Alert
                 v-else
                 variant="default"
                 class="mb-8"
@@ -981,6 +994,9 @@ interface PostDetail {
     } | null
   }
   tags: PostDetailTag[]
+  /** 文章级「允许评论」：后台编辑器开关，后端写口按它拦 403 COMMENT_POST_CLOSED。
+   *  缺省（加载中/老响应）按允许处理，避免一次未落值就让整个评论区消失。 */
+  allow_comments?: boolean
   /** 后台单篇 SEO 三件套：后端按当前 lang 解析成字符串（schemas.PostLocalizedResponse 的 i18n 出口）。
    *  刻意不用 `as unknown as Record<string, unknown>` 绕开声明——那样 meta_keywords
    *  拼错了 TS 也不会响，页面只会安静地输出空 keywords。 */
@@ -1030,8 +1046,12 @@ const guestForm = reactive({
   github: ''
 })
 const commentMaxLength = computed(() => site.comments.value.max_length)
-const canCommentForm = computed(() => authStore.isAuthenticated || site.comments.value.allow_guest)
-const canReply = computed(() => site.comments.value.enable_nested)
+/** 文章级开关：后端 create_comment 按同一字段拦 403，这里只负责不给一张注定失败的输入框。 */
+const postCommentsClosed = computed(() => post.value?.allow_comments === false)
+const canCommentForm = computed(
+  () => !postCommentsClosed.value && (authStore.isAuthenticated || site.comments.value.allow_guest)
+)
+const canReply = computed(() => site.comments.value.enable_nested && !postCommentsClosed.value)
 const needCommentCaptcha = computed(() => !authStore.isAuthenticated && site.features.value.enable_captcha)
 const commentTooLong = computed(() => commentContent.value.length > commentMaxLength.value)
 const canSubmitComment = computed(() =>

@@ -118,6 +118,8 @@
     "posts": "文章",
     "noComments": "暂无评论，来抢沙发吧。",
     "commentsLockedHint": "解锁正文后可查看评论。",
+    "commentsClosedTitle": "该文章已关闭评论",
+    "commentsClosedDesc": "作者关闭了这篇文章的评论，已有评论仍可正常浏览。",
     "loginRequired": "登录后互动",
     "loginToComment": "评论前请先登录你的账号。",
     "goLogin": "前往登录",

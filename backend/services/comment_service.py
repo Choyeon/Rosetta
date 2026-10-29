@@ -437,6 +437,11 @@ class CommentService:
         cst = await read_group("comments", db)
         if not bool_of(cst, "enable", True):
             raise ValueError("COMMENTS_DISABLED")
+        # 文章级「允许评论」（编辑器里的 allow_comments）。它的值此前只进详情响应、也进
+        # 前台……却没有任何一处读过它：运营者把开关关掉后，访客照样能发表，后台回复口也照样能写。
+        # 判定放在站点级 enable 之后、其余策略之前——站点整站关评论时那句话才是真相。
+        if not post.allow_comments:
+            raise ValueError("COMMENT_POST_CLOSED")
         # 兜底值取**既有行为**而不是 _default_comments：未保存过分组的站点不能被这次改动
         # 静默改写（访客评论本来就开放；正文上限历史上由 CommentCreate 的 3000 兜着）。
         if current_user is None and not bool_of(cst, "allow_guest", True):

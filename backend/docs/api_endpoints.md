@@ -19388,7 +19388,7 @@ _无路径 / query 参数_
 - **摘要**：发表评论（游客或登录用户均可）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-公开写入接口，支持对根评论的一层回复（parent_id 指向的评论必须属于同一篇文章）。携带 Bearer Token（登录用户发帖）时走 `core/csrf.py::require_csrf`（per-route 依赖，不是全局中间件）：带 `Origin` 头时必须命中白名单，否则 403（CSRF_CHECK_FAILED）；不带 Origin（curl / 服务端调用）不拦。另有一条 Cookie csrf_token 与 X-CSRF-Token 的比对分支，**只在两个值同时存在时**才执行——本站从不发 cookie（登录态只在请求头里），所以现在没有浏览器会带上它们，这条分支不触发；`X-CSRF-Token` 因此**不是本接口的必需请求头**。匿名请求不带 Authorization 时整个校验跳过。文章不存在返回 404（POST_NOT_FOUND）。与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，不给草稿或加密文章写评论。常见失败：422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST / NESTED_REPLY_TOO_DEEP；404 COMMENT_PARENT_NOT_FOUND；429 TOO_FREQUENT_COMMENT（Retry-After: 30，同文章同 IP 频控）。成功后触发插件钩子 comment.created。非幂等。
+公开写入接口，支持对根评论的一层回复（parent_id 指向的评论必须属于同一篇文章）。携带 Bearer Token（登录用户发帖）时走 `core/csrf.py::require_csrf`（per-route 依赖，不是全局中间件）：带 `Origin` 头时必须命中白名单，否则 403（CSRF_CHECK_FAILED）；不带 Origin（curl / 服务端调用）不拦。另有一条 Cookie csrf_token 与 X-CSRF-Token 的比对分支，**只在两个值同时存在时**才执行——本站从不发 cookie（登录态只在请求头里），所以现在没有浏览器会带上它们，这条分支不触发；`X-CSRF-Token` 因此**不是本接口的必需请求头**。匿名请求不带 Authorization 时整个校验跳过。文章不存在返回 404（POST_NOT_FOUND）。与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，不给草稿或加密文章写评论。文章级「允许评论」（编辑器 allow_comments）关闭时返回 403（COMMENT_POST_CLOSED），对游客与登录用户一致生效；站点级评论开关关闭时 403（COMMENTS_DISABLED）优先。常见失败：403 COMMENTS_DISABLED / COMMENT_POST_CLOSED / COMMENT_GUEST_NOT_ALLOWED；422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST / NESTED_REPLY_TOO_DEEP / COMMENT_TOO_LONG；404 COMMENT_PARENT_NOT_FOUND；429 TOO_FREQUENT_COMMENT（Retry-After: 30，同文章同 IP 频控）。成功后触发插件钩子 comment.created。非幂等。
 
 **入参**
 

@@ -118,6 +118,8 @@
     "posts": "記事",
     "noComments": "まだコメントがありません。最初の一言をどうぞ。",
     "commentsLockedHint": "本文を解錠するとコメントをご覧いただけます。",
+    "commentsClosedTitle": "この記事のコメントは締め切られました",
+    "commentsClosedDesc": "著者がこの記事のコメントを締め切っています。既存のコメントは引き続き閲覧できます。",
     "loginRequired": "ログインして参加",
     "loginToComment": "コメントを投稿するには先にログインしてください。",
     "goLogin": "ログインへ",

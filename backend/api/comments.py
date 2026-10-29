@@ -119,6 +119,7 @@ def _service_err_to_http(exc: ValueError) -> HTTPException:
         # 403 是站点策略（关评论 / 关访客评论），不是凭证失效——用 401 会让前端
         # apiFetch 把这次操作判成"登录过期"并清登录态（AGENTS §7.2 红线）。
         "COMMENTS_DISABLED": (403, "站点已关闭评论功能"),
+        "COMMENT_POST_CLOSED": (403, "该文章已关闭评论"),
         "COMMENT_GUEST_NOT_ALLOWED": (403, "本站评论需要登录，请先登录"),
         "COMMENT_NESTING_DISABLED": (422, "本站已关闭嵌套回复，请直接发表评论"),
         "COMMENT_TOO_LONG": (422, "评论内容超出本站允许的最大长度"),
@@ -245,8 +246,11 @@ async def list_replies(
         "文章不存在返回 404（POST_NOT_FOUND）。"
         "与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，"
         "不给草稿或加密文章写评论。"
-        "常见失败：422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST /"
-        " NESTED_REPLY_TOO_DEEP；404 COMMENT_PARENT_NOT_FOUND；"
+        "文章级「允许评论」（编辑器 allow_comments）关闭时返回 403（COMMENT_POST_CLOSED），"
+        "对游客与登录用户一致生效；站点级评论开关关闭时 403（COMMENTS_DISABLED）优先。"
+        "常见失败：403 COMMENTS_DISABLED / COMMENT_POST_CLOSED / COMMENT_GUEST_NOT_ALLOWED；"
+        "422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST /"
+        " NESTED_REPLY_TOO_DEEP / COMMENT_TOO_LONG；404 COMMENT_PARENT_NOT_FOUND；"
         "429 TOO_FREQUENT_COMMENT（Retry-After: 30，同文章同 IP 频控）。"
         "成功后触发插件钩子 comment.created。非幂等。"
     ),
