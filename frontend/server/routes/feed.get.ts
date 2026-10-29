@@ -5,8 +5,9 @@
  * 同一个阅读器把一次更新算成两条，且 `features.enable_rss` 的开关只在 `/rss.xml`
  * 这一条链上生效——第二份正文迟早与它分叉。
  *
- * 缓存由 `'/**'` 的 swr 规则统一套（对静态跳转目标无害）；handler 自己不再写
- * Cache-Control —— swr 处理器会整条覆写它，写了也只是"文档承诺、运行时不算数"。
+ * 缓存头不在这里写：3xx 的 HTML 由 `server/utils/ssrHtmlCacheControl.ts`
+ * 的 `redirectHtmlCacheControl` 统一改写成 `no-store`（线上实测本路由即回
+ * `301 + no-store`），handler 里再写一份只会是"文档承诺、运行时不算数"。
  */
 import { sendRedirect } from 'h3'
 
