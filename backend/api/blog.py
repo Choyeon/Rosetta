@@ -3552,6 +3552,38 @@ _STATIC_SITEMAP_ROUTES: list[tuple[str, str, str]] = [
     ("/friends", "monthly", "0.3"),
 ]
 
+# 顶级真实路由（与 frontend/pages 顶层文件/目录同名的 slug）。独立页记录与这些 slug 撞名时，
+# `/<slug>` 由那个内建页面承担，数据库里的正文只剩 `/page/<slug>` 这一个壳，而那个壳的
+# canonical 指回 `/<slug>`（`frontend/pages/page/[slug].vue` 写明 `/page/<slug>` 只是旧
+# WordPress 链接的兼容口）——于是它既不是规范地址、也不该被提交进 sitemap。
+# 同步口径：前十三条与 `pages/page/[slug].vue::KNOWN_TOP_LEVEL` 一致（那批 slug 在浏览器里
+# 还会客户端 301 到顶级页），其余是本仓顶层的其它内建路由。
+_TOP_LEVEL_ROUTE_SLUGS = frozenset(
+    {
+        "about",
+        "account",
+        "activity",
+        "admin",
+        "archive",
+        "authors",
+        "categories",
+        "forgot-password",
+        "friends",
+        "gallery",
+        "guestbook",
+        "login",
+        "oobe",
+        "page",
+        "posts",
+        "register",
+        "search",
+        "series",
+        "settings",
+        "sponsor",
+        "tags",
+    }
+)
+
 
 def _iso8601(dt: datetime | None) -> str | None:
     """W3C Datetime（ISO 8601）；无时区则假定 UTC。"""
@@ -3810,11 +3842,16 @@ def generate_taxonomy_sitemap(
 def generate_pages_sitemap(
     pages: list, site_url: str, archive_years: list[int] | None = None
 ) -> str:
-    """生成固定公开路由 + 年份归档落地页 + 独立页面（``/page/<slug>``）sitemap。
+    """生成固定公开路由 + 年份归档落地页 + 独立页面（``/<slug>``）sitemap。
 
     ``/archive/<year>`` 是 SSR、可分享且会被索引的年份落地页（页面注释即为此口径），
     只把 ``/archive`` 总览提交给爬虫会让这一级落地页失去唯一的外链发现入口——
     年份由调用方按已发布文章的 ``published_at`` 去重给出，不存在的年份不会凭空生成 URL。
+
+    独立页的规范地址是顶级 catchall 的 ``/<slug>``，**不是** ``/page/<slug>``：
+    后者只是旧 WordPress 链接的兼容口，页面自己把 canonical 指回 ``/<slug>``
+    （见 ``frontend/pages/page/[slug].vue``）。把兼容口提交进 sitemap 会让同一条
+    内容收到"规范版是 A"与"规范版在 B"两份矛盾信号。
     """
     site_url = site_url.rstrip("/")
     entries: list[str] = []
@@ -3841,13 +3878,20 @@ def generate_pages_sitemap(
     for page in pages:
         if getattr(page, "status", "published") != "published":
             continue
+        slug = (getattr(page, "slug", "") or "").strip("/").lower()
+        # 只提交规范落地地址 `/<slug>`（顶级 catchall 渲染的就是这一份正文）：
+        # `/page/<slug>` 那张壳的 canonical 已经指回 `/<slug>`，把别名也提交进 sitemap
+        # 等于让爬虫同时收到"这条是规范版"与"规范版在别处"两份信号；
+        # 与内建顶级路由撞名的 slug 没有可提交的规范地址，直接跳过（见 _TOP_LEVEL_ROUTE_SLUGS）。
+        if not slug or slug in _TOP_LEVEL_ROUTE_SLUGS:
+            continue
         entries.append(
             _sitemap_url(
-                f"{site_url}/page/{page.slug}",
+                f"{site_url}/{slug}",
                 lastmod=_iso8601(getattr(page, "updated_at", None)),
                 changefreq="monthly",
                 priority="0.5",
-                rel_path=f"/page/{page.slug}",
+                rel_path=f"/{slug}",
                 site_url=site_url,
             )
         )

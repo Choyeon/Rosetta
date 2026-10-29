@@ -439,6 +439,74 @@ async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
 
 
 @pytest.mark.asyncio
+async def test_pages_sitemap_submits_canonical_slug_not_legacy_alias(
+    client: AsyncClient, db_session
+):
+    """独立页只提交规范地址 `/<slug>`，不再提交旧兼容口 `/page/<slug>`。
+
+    历史缺陷：`generate_pages_sitemap` 一直输出 `/page/<slug>`，而那张壳页自己把
+    canonical 指回顶级 catchall 的 `/<slug>`（`frontend/pages/page/[slug].vue` 写明
+    `/page/<slug>` 只是旧 WordPress 链接的兼容口）。于是爬虫从 sitemap 拿到的"规范版"
+    与页面 `<link rel=canonical>` 声明的"规范版"是两个不同地址——同一份内容被要求
+    按两份互相矛盾的信号处理，Search Console 侧表现为"已提交但被规范到别的 URL"。
+
+    撞名 slug（about / guestbook / gallery …）在顶级由内建页面承担，独立页记录只剩
+    一个 canonical 指向别处的壳，没有可提交的规范地址，必须整条跳过——顺带保证
+    `/about` 不会因为库里多一条同名 Page 而被提交两次。
+    """
+    import re
+    from urllib.parse import urlsplit
+
+    import backend.core.cache as _c
+    import backend.core.cache_v2 as _cv2
+    from backend.models.core import Page
+
+    await _c.cache.clear()
+    try:
+        await _cv2.cache.clear()
+    except Exception:
+        pass
+
+    db_session.add_all(
+        [
+            Page(
+                title={"zh": "隐私政策"},
+                slug="privacy-policy-probe",
+                content={"zh": "<p>正文</p>"},
+                status="published",
+            ),
+            Page(
+                title={"zh": "关于壳"},
+                slug="about",
+                content={"zh": "<p>壳</p>"},
+                status="published",
+            ),
+        ]
+    )
+    await db_session.commit()
+
+    r = await client.get("/api/blog/sitemap-pages.xml")
+    assert r.status_code == 200
+    paths = [urlsplit(u).path for u in re.findall(r"<loc>(.*?)</loc>", r.text)]
+    assert paths, "sitemap 为空，断言会变成假通过"
+
+    aliases = [p for p in paths if p.startswith("/page/")]
+    assert not aliases, f"兼容口不该进 sitemap（canonical 指向别处）：{aliases}"
+
+    for expected in (
+        "/privacy-policy-probe",
+        "/en/privacy-policy-probe",
+        "/ja/privacy-policy-probe",
+        "/zh_Hant/privacy-policy-probe",
+    ):
+        assert paths.count(expected) == 1, f"独立页规范地址缺失或重复：{expected}"
+
+    # 撞名 slug 的独立页记录被跳过 → /about 仍只由固定路由表提交，每种语言一次
+    assert paths.count("/about") == 1
+    assert paths.count("/en/about") == 1
+
+
+@pytest.mark.asyncio
 async def test_sitemap_index_child_lastmod_is_max_updated(client: AsyncClient, db_session):
     """索引里每个子表的 <lastmod> = 该表节点的最大更新日期，不再恒等于今天。
 
