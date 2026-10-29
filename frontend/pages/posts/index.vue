@@ -157,7 +157,7 @@
     <template v-else-if="loadError">
       <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
         <div class="flex flex-col items-center gap-3 text-center">
-          <span>{{ t('admin.posts.loadFailed') }}</span>
+          <span>{{ t('error.loadFailed') }}</span>
           <Button
             variant="outline"
             size="sm"

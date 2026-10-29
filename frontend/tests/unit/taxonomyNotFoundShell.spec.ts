@@ -49,7 +49,7 @@ describe.each(cases)('$file 的 404 口径', ({ file, flag, listPath, countKey }
     expect(panel).toContain('error.notFoundDesc')
     expect(panel).toContain(`localeHref('${listPath}')`)
     expect(panel).toContain('error.backHome')
-    expect(panel).not.toContain('admin.posts.loadFailed')
+    expect(panel).not.toContain('error.loadFailed')
   })
 
   it('头部计数在不存在时不渲染', () => {

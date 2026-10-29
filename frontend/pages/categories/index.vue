@@ -47,9 +47,19 @@
 
     <div
       v-else-if="catsLoadError"
-      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
     >
-      {{ t('admin.posts.loadFailed') }}
+      <div class="flex flex-col items-center gap-3 text-center">
+        <span>{{ t('error.loadFailed') }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="refresh()"
+        >
+          <RefreshCw data-icon="inline-start" />
+          {{ t('error.retry') }}
+        </Button>
+      </div>
     </div>
 
     <TransitionGroup
@@ -125,8 +135,9 @@ import {
   CardTitle
 } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
+import { Button } from '~~/components/ui/button'
 import { useI18n } from 'vue-i18n'
-import { FolderOpen, ArrowRight } from '@lucide/vue'
+import { FolderOpen, ArrowRight, RefreshCw } from '@lucide/vue'
 import { computed } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -167,7 +178,7 @@ interface CategoryRow {
 // 键与 AppFooter 等共用 `blog:categories:<locale>`（Nuxt 按 key 去重，同页只发一条）；
 // 静态键+静态查询：切语言走「跳同页 URL → 重挂载 → 新 locale 重新请求」，
 // 不手写 watch(locale)+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
-const { data: catsData, pending: _catsLoading, error: catsLoadError } = useAPI<CategoryRow[]>('/blog/categories', {
+const { data: catsData, pending: _catsLoading, error: catsLoadError, refresh } = useAPI<CategoryRow[]>('/blog/categories', {
   query: { lang: locale.value },
   key: `blog:categories:${locale.value}`,
   default: () => []

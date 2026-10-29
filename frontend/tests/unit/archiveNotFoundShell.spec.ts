@@ -56,7 +56,7 @@ describe.each(cases)('$file 的 404 口径', ({ file, flag, backPathSnip }) => {
     expect(panel).toContain('error.notFoundDesc')
     expect(panel).toContain(backPathSnip)
     expect(panel).toContain('error.backHome')
-    expect(panel).not.toContain('admin.posts.loadFailed')
+    expect(panel).not.toContain('error.loadFailed')
   })
 
   it('页头（h1 + 文章总数）只在存在分支里渲染', () => {

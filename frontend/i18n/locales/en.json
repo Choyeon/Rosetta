@@ -220,6 +220,7 @@
     "notFoundDesc": "The page you are looking for may have been moved, deleted, or never existed.",
     "serverErrorTitle": "Server Error",
     "serverErrorDesc": "The service is temporarily unavailable. Please try again later.",
+    "loadFailed": "Failed to load. Please try again later.",
     "permissionTitle": "Permission Denied",
     "permissionDesc": "You need to sign in to access this page, or your account does not have sufficient permissions.",
     "backHome": "Back to Home",
@@ -227,10 +228,6 @@
     "goLogin": "Go to Login"
   },
   "admin": {
-    "posts": {
-      "loadFailed": "Failed to load posts",
-      "empty": "No posts yet. Start writing with the button below."
-    },
     "editor": {
       "postPassword": "Access Password",
       "postPasswordHint": "Password Hint (optional)"

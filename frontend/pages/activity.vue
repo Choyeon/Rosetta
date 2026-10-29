@@ -92,7 +92,7 @@
         v-else-if="loadError"
         class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive text-center"
       >
-        {{ t('admin.posts.loadFailed') }}
+        {{ t('error.loadFailed') }}
       </div>
 
       <div

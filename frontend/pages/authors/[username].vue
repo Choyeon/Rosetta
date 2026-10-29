@@ -150,7 +150,17 @@
     </template>
     <template v-else-if="loadError">
       <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
-        {{ t('admin.posts.loadFailed', '加载失败，请稍后重试。') }}
+        <div class="flex flex-col items-center gap-3 text-center">
+          <span>{{ t('error.serverErrorDesc') }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="retryLoad()"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {{ t('error.retry') }}
+          </Button>
+        </div>
       </div>
     </template>
     <template v-else-if="posts.length > 0">
@@ -226,7 +236,7 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
-import { ChevronLeft, ChevronRight, ExternalLink, Globe, MessageSquare, UserRound } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, ExternalLink, Globe, MessageSquare, RefreshCw, UserRound } from '@lucide/vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
 import { useAuthStore } from '~~/stores/auth'
 import { pageWindow } from '~~/lib/pagination'
@@ -273,7 +283,7 @@ interface AuthorPostRow {
 // 资料：用户名不存在、或作者关了「公开资料」时后端统一回 404（不存在口径，防枚举）。
 // 静态键：切语言/换作者都走「跳同页 URL → 重挂载 → 新参数重新请求」，
 // 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
-const { data: profile, error: profileError } = useAPI<AuthorProfile>(
+const { data: profile, error: profileError, refresh: refreshProfile } = useAPI<AuthorProfile>(
   `/users/username/${username.value}`,
   { key: `author:profile:${username.value}:${locale.value}`, default: () => ({}) }
 )
@@ -281,7 +291,7 @@ const { data: profile, error: profileError } = useAPI<AuthorProfile>(
 // 列表：固定 URL + author query，与资料请求并发（无依赖链）。
 // query/key 都是 computed：翻页是页内状态（不重挂载），靠 Nuxt params/key watcher
 // 自动重取；不再叠加手写 watch(refresh)（同一 URL 双发，第一发还被 abort）。
-const { data: postsRaw, pending, error: postsErr } = useAPI<{
+const { data: postsRaw, pending, error: postsErr, refresh: refreshPosts } = useAPI<{
   items?: AuthorPostRow[]
   total?: number
 }>('/blog/posts', {
@@ -315,6 +325,9 @@ const posts = computed<AuthorPostRow[]>(
 )
 const total = computed(() => postsRaw.value?.total ?? 0)
 const loadError = computed(() => !!(profileError.value || postsErr.value))
+// 失败态的重试必须同时重取两个端点：资料挂掉时列表往往是好的，
+// 只刷一个会让另一半永远停在失败态。
+const retryLoad = () => Promise.all([refreshProfile(), refreshPosts()])
 // 资料缺失才是"这个作者不存在"；判定时点与口径见 composables/useContentStatus.ts。
 const profileMissing = computed(() => !profile.value?.username)
 

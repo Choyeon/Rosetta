@@ -220,6 +220,7 @@
     "notFoundDesc": "你造訪的頁面可能已被移動、刪除，或從未存在。",
     "serverErrorTitle": "伺服器發生錯誤",
     "serverErrorDesc": "服務暫時不可用，請稍後重試。",
+    "loadFailed": "載入失敗，請稍後再試。",
     "permissionTitle": "無存取權限",
     "permissionDesc": "您需要登入後才能造訪此頁面，或您的帳號沒有對應權限。",
     "backHome": "返回首頁",
@@ -227,10 +228,6 @@
     "goLogin": "前往登入"
   },
   "admin": {
-    "posts": {
-      "loadFailed": "文章列表載入失敗",
-      "empty": "尚無文章，點擊下方按鈕開始創作。"
-    },
     "editor": {
       "postPassword": "存取密碼",
       "postPasswordHint": "密碼提示（選填）"

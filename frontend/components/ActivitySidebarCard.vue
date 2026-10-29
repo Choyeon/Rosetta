@@ -88,7 +88,7 @@ const isoDate = (value: string) => (typeof value === 'string' ? value.slice(0, 1
         v-if="error"
         class="text-sm text-destructive"
       >
-        {{ t('admin.posts.loadFailed') }}
+        {{ t('error.loadFailed') }}
       </div>
       <div
         v-else-if="pending"

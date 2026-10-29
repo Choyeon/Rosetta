@@ -220,6 +220,7 @@
     "notFoundDesc": "你访问的页面可能已被移动、删除，或从未存在。",
     "serverErrorTitle": "服务器开小差了",
     "serverErrorDesc": "服务暂时不可用，请稍后重试。",
+    "loadFailed": "加载失败，请稍后重试。",
     "permissionTitle": "无访问权限",
     "permissionDesc": "您需要登录后才能访问此页面，或当前账号不具备相应权限。",
     "backHome": "返回首页",
@@ -227,10 +228,6 @@
     "goLogin": "去登录"
   },
   "admin": {
-    "posts": {
-      "loadFailed": "文章列表加载失败",
-      "empty": "暂无文章，点击下方按钮开始创作。"
-    },
     "editor": {
       "postPassword": "访问密码",
       "postPasswordHint": "密码提示（可选）"

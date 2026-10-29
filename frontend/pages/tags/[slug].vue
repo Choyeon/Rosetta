@@ -86,7 +86,7 @@
     </template>
     <template v-else-if="loadError">
       <div class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive">
-        {{ t('admin.posts.loadFailed', '加载失败，请稍后重试。') }}
+        {{ t('error.loadFailed') }}
       </div>
     </template>
     <template v-else-if="posts.length > 0">

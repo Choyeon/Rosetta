@@ -29,7 +29,7 @@
           v-if="postsError"
           class="text-sm text-destructive border-l-2 border-destructive pl-3"
         >
-          {{ t('admin.posts.loadFailed') }}
+          {{ t('error.loadFailed') }}
         </div>
         <div
           v-else-if="postsPending && latestPosts.length === 0"
@@ -45,7 +45,7 @@
           v-else-if="allDisplayPosts.length === 0"
           class="text-sm text-muted-foreground"
         >
-          <li>{{ t('admin.posts.empty') }}</li>
+          <li>{{ t('common.noData') }}</li>
         </ul>
         <ol
           v-else
@@ -309,7 +309,7 @@
           v-if="postsError"
           class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
         >
-          {{ t('admin.posts.loadFailed') }}
+          {{ t('error.loadFailed') }}
         </div>
         <div
           v-else-if="postsPending && pinnedPosts.length === 0"
@@ -324,7 +324,7 @@
           v-else-if="pinnedPosts.length === 0"
           class="rounded-xl border bg-muted/30 p-6 text-sm text-muted-foreground"
         >
-          {{ t('admin.posts.empty') }}
+          {{ t('common.noData') }}
         </div>
         <PostCard
           v-else-if="singlePinnedPost"
@@ -376,7 +376,7 @@
                   v-if="siteStatsError"
                   class="text-sm text-destructive"
                 >
-                  {{ t('admin.posts.loadFailed') }}
+                  {{ t('error.loadFailed') }}
                 </div>
                 <div
                   v-else-if="siteStatsPending"
@@ -481,7 +481,7 @@
                   v-if="categoriesError"
                   class="text-sm text-destructive"
                 >
-                  {{ t('admin.posts.loadFailed') }}
+                  {{ t('error.loadFailed') }}
                 </div>
                 <div
                   v-else-if="categoriesPending"
@@ -527,7 +527,7 @@
                   v-if="tagsError"
                   class="text-sm text-destructive"
                 >
-                  {{ t('admin.posts.loadFailed') }}
+                  {{ t('error.loadFailed') }}
                 </div>
                 <div
                   v-else-if="tagsPending"
@@ -586,7 +586,7 @@
               v-if="postsError"
               class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
             >
-              {{ t('admin.posts.loadFailed') }}
+              {{ t('error.loadFailed') }}
             </div>
             <template v-else-if="postsPending && latestPosts.length === 0">
               <div
@@ -638,7 +638,7 @@
               v-else
               class="rounded-xl border bg-muted/30 p-6 text-sm text-muted-foreground"
             >
-              {{ t('admin.posts.empty') }}
+              {{ t('common.noData') }}
             </div>
           </div>
 
@@ -662,7 +662,7 @@
                   v-if="siteStatsError"
                   class="text-sm text-destructive"
                 >
-                  {{ t('admin.posts.loadFailed') }}
+                  {{ t('error.loadFailed') }}
                 </div>
                 <div
                   v-else-if="siteStatsPending"
@@ -767,7 +767,7 @@
                   v-if="categoriesError"
                   class="text-sm text-destructive"
                 >
-                  {{ t('admin.posts.loadFailed') }}
+                  {{ t('error.loadFailed') }}
                 </div>
                 <div
                   v-else-if="categoriesPending"
@@ -813,7 +813,7 @@
                   v-if="tagsError"
                   class="text-sm text-destructive"
                 >
-                  {{ t('admin.posts.loadFailed') }}
+                  {{ t('error.loadFailed') }}
                 </div>
                 <div
                   v-else-if="tagsPending"
