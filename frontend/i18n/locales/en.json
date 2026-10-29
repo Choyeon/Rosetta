@@ -794,7 +794,18 @@
     "savePassword": "Change password",
     "passwordChanged": "Password changed, please sign in again",
     "passwordMismatch": "The two new passwords do not match",
-    "passwordFieldsRequired": "Fill in the current password and the new password first."
+    "passwordFieldsRequired": "Fill in the current password and the new password first.",
+    "sectionDeleteAccount": "Delete account",
+    "sectionDeleteAccountHint": "Deactivate the signed-in account. Read the three consequences below first — you cannot undo this yourself.",
+    "deleteAccountNoticeUnavailable": "The account is disabled immediately: no more sign-in, and password recovery stops working too.",
+    "deleteAccountNoticeContent": "Your posts, comments and guestbook entries are not removed. Contact the site admin if you want them taken down as well.",
+    "deleteAccountNoticeSessions": "Every session for this account, including this device, is signed out at once.",
+    "deleteAccountPasswordField": "Account password",
+    "deleteAccountConfirmCheckbox": "I understand the above and want to delete this account.",
+    "deleteAccountButton": "Delete account",
+    "deleteAccountNeedFields": "Enter your password and tick the confirmation box before submitting.",
+    "deleteAccountSuperAdmin": "Administrator accounts cannot delete themselves. Please contact the site owner.",
+    "deleteAccountDone": "Account deleted"
   },
   "posts": {
     "allCategories": "All categories",

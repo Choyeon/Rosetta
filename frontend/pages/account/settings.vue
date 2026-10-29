@@ -1,9 +1,10 @@
 <!--
   账户设置 /account/settings（SPA + no-store，继承 routeRules 的 /account/** 反选）：
-  接上后端自上线起"就绪、前端零消费"的三组写端点 ——
+  接上后端自上线起"就绪、前端零消费"的几组写端点 ——
     PUT  /users/me            资料（昵称/简介/网站/GitHub/QQ/头像来源/封面图）
     GET/PUT /users/me/preferences  偏好（5 个隐私开关 + 1 个邮件通知开关）
     POST /users/me/password   改密（成功即全端下线）
+    DELETE /users/me          注销（软删除：停用 + 撤销全部令牌，需验密码，超管被后端 403）
   三条硬约束：
   1. 偏好里的 ``theme`` 字段**故意不做 UI**：models/user.py 里它没有任何消费点
      （前台主题由 useFrontendTheme + 主题系统决定），放个开关等于骗用户"设置了但没用"。
@@ -401,12 +402,103 @@
         </div>
       </form>
     </section>
+
+    <!-- ===== 注销账户（危险区）===== -->
+    <section
+      class="card-surface mt-8 rounded-xl border border-destructive/30 p-6"
+      aria-labelledby="settings-delete-heading"
+    >
+      <h2
+        id="settings-delete-heading"
+        class="font-display text-lg font-semibold text-destructive"
+      >
+        {{ t('account.sectionDeleteAccount') }}
+      </h2>
+      <p class="mt-1 text-sm text-muted-foreground">
+        {{ t('account.sectionDeleteAccountHint') }}
+      </p>
+
+      <!-- 三条后果逐条写出来，而不是只放一句"此操作不可撤销"：
+           后端做的是停用 + 撤销令牌，内容一条都不删。用户在界面上以为
+           "注销＝我的文章也没了"，管理员就要在事后接澄清工单。 -->
+      <ul class="mt-4 flex flex-col gap-1.5 text-sm text-muted-foreground">
+        <li>{{ t('account.deleteAccountNoticeUnavailable') }}</li>
+        <li>{{ t('account.deleteAccountNoticeContent') }}</li>
+        <li>{{ t('account.deleteAccountNoticeSessions') }}</li>
+      </ul>
+
+      <!-- 后端对 is_superuser 直接 403；这里提前说明，而不是让人填完密码才吃到一个错 -->
+      <p
+        v-if="isSuperAdmin"
+        class="mt-5 rounded-lg bg-muted px-3 py-2 text-sm"
+      >
+        {{ t('account.deleteAccountSuperAdmin') }}
+      </p>
+
+      <form
+        v-else
+        class="mt-6 flex flex-col gap-4"
+        @submit.prevent="deleteAccount"
+      >
+        <div class="flex flex-col gap-2">
+          <Label for="del-password">{{ t('account.deleteAccountPasswordField') }}</Label>
+          <Input
+            id="del-password"
+            v-model="deleteForm.password"
+            type="password"
+            autocomplete="current-password"
+            :disabled="deleting"
+          />
+        </div>
+        <label
+          class="flex cursor-pointer items-start gap-2 text-sm select-none"
+          for="del-confirm"
+        >
+          <Checkbox
+            id="del-confirm"
+            v-model="deleteForm.confirmed"
+            :disabled="deleting"
+            class="mt-0.5"
+          />
+          <span>{{ t('account.deleteAccountConfirmCheckbox') }}</span>
+        </label>
+
+        <ul
+          v-if="deleteFailures.length"
+          class="flex flex-col gap-1 rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          <li
+            v-for="line in deleteFailures"
+            :key="line"
+          >
+            {{ line }}
+          </li>
+        </ul>
+
+        <div class="flex items-center gap-3">
+          <Button
+            type="submit"
+            variant="destructive"
+            :disabled="deleting"
+          >
+            <LoaderCircle
+              v-if="deleting"
+              data-icon="inline-start"
+              class="animate-spin"
+            />
+            {{ t('account.deleteAccountButton') }}
+          </Button>
+        </div>
+      </form>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
 import { ArrowLeft, ImagePlus, LoaderCircle } from '@lucide/vue'
 import { Button } from '~~/components/ui/button'
+import { Checkbox } from '~~/components/ui/checkbox'
 import { Input } from '~~/components/ui/input'
 import { Label } from '~~/components/ui/label'
 import {
@@ -647,6 +739,48 @@ async function savePassword() {
       : [String((err as Error | null)?.message ?? '')].filter(Boolean)
   } finally {
     savingPassword.value = false
+  }
+}
+
+// ===== 注销账户（DELETE /users/me，软删除）=====
+const isSuperAdmin = computed(() => authUser.value?.is_superuser === true)
+const deleteForm = reactive({ password: '', confirmed: false })
+const deleteFailures = ref<string[]>([])
+const deleting = ref(false)
+watch(deleteForm, () => {
+  deleteFailures.value = []
+})
+
+async function deleteAccount() {
+  // 空密码 / 没勾选都先在前端拦住：前者只会换来一句"密码错误"，
+  // 用户看不出是自己没填；后者本不该发出去（这是不可自助撤销的操作）。
+  if (!deleteForm.password || !deleteForm.confirmed) {
+    deleteFailures.value = [t('account.deleteAccountNeedFields')]
+    return
+  }
+  deleting.value = true
+  try {
+    await apiFetch('/users/me', {
+      method: 'DELETE',
+      // 密码走请求体：AGENTS §12 —— 凭据不进 query string（nginx 访问日志会明文落盘）
+      body: { password: deleteForm.password }
+    })
+    // 后端已 is_active=False 并撤销全部令牌：本机必须同步清态。
+    // 不清的话下一个请求就是 401 → 刷新失败 → 被 useAPI 打回登录页，
+    // 用户看到的是"点了注销却闪一下报错"，而不是"账号已注销"。
+    authStore.clearTokens()
+    // 用本地文案而不是响应的 message：那条是后端写死的中文，
+    // 四语站点里英文用户会在"最后一屏"上看到中文。
+    toast.success(t('account.deleteAccountDone'))
+    await navigateTo('/')
+  } catch (err) {
+    // 密码错误是 400（不是 401，否则 apiFetch 会当成登录过期把人已登出）
+    const lines = extractApiErrorList((err as { data?: unknown }).data)
+    deleteFailures.value = lines.length
+      ? lines
+      : [String((err as Error | null)?.message ?? '')].filter(Boolean)
+  } finally {
+    deleting.value = false
   }
 }
 

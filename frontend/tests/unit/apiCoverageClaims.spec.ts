@@ -169,3 +169,24 @@ describe('…/{id}/toggle 一族：4 条口分两半，不得整族判成"刻意
     expect(doc).not.toContain('toggle 一族前端刻意不用')
   })
 })
+
+describe('users 段：注销接入后手写清单与自动表必须同时改口', () => {
+  it('自动表 users 行确实从 17✅/5❌ 变成 18✅/4❌', () => {
+    expect(doc).toMatch(/\| users \| 22 \| 18 \| 0 \| 4 \|/)
+  })
+
+  it('手写的 ❌ 清单不再把 DELETE /me 列为缺口', () => {
+    const line = doc.split('\n').find(l => l.startsWith('❌（') && l.includes('/me/change-password'))
+    expect(line, 'users 段的手写 ❌ 行没了').toBeTruthy()
+    expect(line).toContain('❌（7）')
+    expect(line).not.toContain('`DELETE /me`')
+  })
+
+  it('文档写的是软删除口径，不是"内容将被删除"', () => {
+    const at = doc.search(/DELETE \/api\/users\/me/)
+    expect(at).toBeGreaterThan(-1)
+    const window = doc.slice(at, at + 400)
+    expect(window).toContain('软删除')
+    expect(window).toContain('is_active=False')
+  })
+})

@@ -34,14 +34,14 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 354 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：354 个端点操作；✅ 291 + 🟡 6 = 已消费 297 个，未消费 57 个，覆盖率 83.9%。**
+**总计：354 个端点操作；✅ 292 + 🟡 6 = 已消费 298 个，未消费 56 个，覆盖率 84.2%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
 | 模块（backend/api） | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
 |---|---:|---:|---:|---:|---:|
 | blog | 40 | 35 | 5 | 0 | 100% |
-| users | 22 | 17 | 0 | 5 | 77% |
+| users | 22 | 18 | 0 | 4 | 82% |
 | core | 19 | 16 | 0 | 3 | 84% |
 | oobe | 18 | 9 | 0 | 9 | 50% |
 | plugins | 16 | 14 | 0 | 2 | 88% |
@@ -87,7 +87,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 57 条）
+## 未消费清单（自动生成，共 56 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -113,7 +113,7 @@
 - **themes_ext**（2）：`GET /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`
 - **title**（3）：`GET /api/admin/titles/{title_id}`、`PATCH /api/admin/titles/{title_id}`、`GET /api/admin/users/{user_id}/title`
 - **toc**（3）：`POST /api/toc/add-ids`、`POST /api/toc/extract`、`POST /api/toc/generate`
-- **users**（5）：`DELETE /api/users/me`、`PUT /api/users/me/avatar`、`POST /api/users/me/change-password`、`PUT /api/users/me/cover`、`GET /api/users/username/{username}/preferences`
+- **users**（4）：`PUT /api/users/me/avatar`、`POST /api/users/me/change-password`、`PUT /api/users/me/cover`、`GET /api/users/username/{username}/preferences`
 - **voting**（1）：`GET /api/voting/polls/{poll_id}`
 <!-- COVERAGE-AUTO:END -->
 
@@ -140,8 +140,9 @@
 
 ### users（/api/users）— 14/22 覆盖
 
-✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`POST /password-reset-request`（fp:141）、`POST /password-reset`（fp:163）、`GET /users/`（用户列表，uam:405）、`GET /username/{username}`（作者主页，aup:214）
-❌（8）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`DELETE /me`、`PUT /me/cover`（与 `PUT /me` 的 `cover_image` 字段是同一次写入的两种入口，账户设置页只保留一个写入口）、`GET /{user_id}`（ID 形态，公开页统一走用户名）、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`（作者主页改用 `GET /blog/posts?author=<username>` 取列表，保留 id 形态给后台/其他消费方）。
+✅：`POST /login`（sa:95、uoo:1011）、`POST /register`（sa:124）、`POST /refresh`（sa:194）、`POST /logout`（sa:139）、`GET /me`（sa:75）、`PUT /me/avatar`（sa:164）、`PUT /me`（accs:38）、`POST /me/password`（accs:66）、`GET /me/preferences`（accs:43）、`PUT /me/preferences`（accs:57）、`DELETE /me`（accs:763，注销危险区）、`POST /password-reset-request`（fp:141）、`POST /password-reset`（fp:163）、`GET /users/`（用户列表，uam:405）、`GET /username/{username}`（作者主页，aup:214）
+❌（7）：`POST /me/change-password`（旧路径，已被 /me/password 取代，刻意不接）、`PUT /me/cover`（与 `PUT /me` 的 `cover_image` 字段是同一次写入的两种入口，账户设置页只保留一个写入口）、`GET /{user_id}`（ID 形态，公开页统一走用户名）、`GET /username/{username}/preferences`、`GET /{user_id}/posts · /comments · /stats`（作者主页改用 `GET /blog/posts?author=<username>` 取列表，保留 id 形态给后台/其他消费方）。
+> `DELETE /api/users/me`（2026-10-29 接入 `pages/account/settings.vue` 危险区）的口径三条，界面必须照实说：① **软删除**——只把账号停用（`is_active=False`）并撤销全部令牌，文章/评论正文一律不动，所以提示写「账号停用后无法再登录」而不是「内容将被删除」；② **必须验密码 + 勾选确认**，缺任一项不发请求（后端对空密码回 400「密码错误」，用户看不出是自己没填）；③ **超管不能注销自己**（后端在任何写库之前直接 403），界面按 `is_superuser` 换成说明文案而不是给一张注定失败的表单。密码走请求体不走查询串（AGENTS §12）。回归：`tests/unit/accountSettingsPage.spec.ts` 钉请求体与「成功即清登录态并离开本页」，`tests/test_api_user_management.py::TestUserAccountDeletion` 钉 400/403 与 403 之后账号仍可用。
 判定：**剩余是真缺口但已不再是"成体系空白"** —— 个人中心 `/account` 接了读自己内容的 6 个端点，账户设置 `/account/settings` 接了改资料/偏好/改密 4 个写端点（accs = `pages/account/settings.vue`），`/forgot-password` 接了自助找回 2 个端点并替换掉 /login 上"忘记密码功能暂未开放"的禁用占位（fp = `pages/forgot-password.vue`）；作者主页 `/authors/[username]`（aup = `pages/authors/[username].vue`）接上了 `GET /username/{username}`，列表侧不再另开 id 依赖链而是给 `GET /blog/posts` 加了 `author=<username>` 过滤（缓存键含作者段，隐私闸门与 `/users/{id}/posts` 同口径）；注销账户刻意不做入口（软删除但无恢复路径，WordPress 后台同样不开放给用户）。
 
 ### core（/api）— 16/19 覆盖
@@ -347,7 +348,7 @@
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。（原列在此处的 `admin_logs retention` 已于 2026-10-29 移出：`pages/admin/tools/audit-logs.vue` 接了手动清理入口。）
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
-   - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；users 一族剩下的 8 条见上表 ❌ 行的逐条判定——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
+   - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；2026-10-29 又接上 `DELETE /api/users/me`（同一页的注销危险区，口径见上表 users 段）；users 一族剩下的 7 条见上表 ❌ 行的逐条判定，全部是**重复入口、旧别名或形态变体**而不是缺功能——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
 
    - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入（2026-10-28 补齐另两半：`Poll.post_id` 绑定文章，前台按当前文章取票，投票不再无条件挂在每篇文章下方；`PUT /voting/polls/{id}` 让管理员结束/重新开启与改标题，不再只能连票数一起删）。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：~~hero 轮播管理（×5）~~（2026-10-18 已落地 `pages/admin/content/hero.vue`，本项不再是缺口）；
    - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、~~captcha 接入（×2）~~（2026-10-18 留言板写入口已接，见上 captcha 行；评论侧只有服务端闸门）。

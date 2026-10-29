@@ -163,6 +163,29 @@ class TestUserAccountDeletion:
         )
         assert response.status_code == 400
 
+    @pytest.mark.asyncio
+    async def test_delete_account_superuser_is_blocked_and_stays_usable(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        admin_user: User,
+        db_session: AsyncSession,
+    ):
+        """超管带**正确密码**来注销自己也是 403——前端据此把这张表单换成说明文案。
+
+        这条断言同时钉住"403 之后账号还能用"：处理器里守卫必须排在任何写库之前，
+        否则站点会失去唯一的管理员，而接口回的是 403，看起来一切正常。
+        """
+        response = await client.request(
+            "DELETE",
+            "/api/users/me",
+            headers=admin_headers,
+            json={"password": "Admin123"},
+        )
+        assert response.status_code == 403, response.text
+        await db_session.refresh(admin_user)
+        assert admin_user.is_active is True
+
 
 class TestAdminUserManagement:
     """测试管理员用户管理功能"""

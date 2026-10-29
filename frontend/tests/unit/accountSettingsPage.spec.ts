@@ -1,8 +1,8 @@
 /**
  * 账户设置 /account/settings 契约（静态源码断言）。
  *
- * 这一页把 users 模块里最后三个"后端就绪、前端零消费"的自服务写端点接上：
- * PUT /users/me、PUT /users/me/preferences、POST /users/me/password
+ * 这一页把 users 模块里"后端就绪、前端零消费"的自服务写端点接上：
+ * PUT /users/me、PUT /users/me/preferences、POST /users/me/password、DELETE /users/me
  * （GET /users/me/preferences 由 useAPI 消费）。钉住的口径：
  *   1. 写请求全部走 apiFetch（统一失败信封 + toast），取数据走 useAPI；
  *   2. 隐私开关只暴露**后端真有强制点**的 5 个字段。UserPreference.theme 是死字段
@@ -11,7 +11,9 @@
  *      留在原页只会让下一个请求撞 401 自动刷新失败，表现为"保存即掉线"；
  *   4. 每个 Label 都有对应控件 id（键盘/读屏可达）；
  *   5. 页面不重复声明 ssr:false —— /account/** 的 SPA 反选由 routeRules 单源负责；
- *   6. 四语 account.* 文案齐备。
+ *   6. 四语 account.* 文案齐备；
+ *   7. 注销（DELETE /users/me）：密码走请求体，成功必须 clearTokens 并离页，
+ *      超管档不给表单（后端对 is_superuser 直接 403，让人填完密码才吃错不算守）。
  */
 
 import { readFileSync } from 'node:fs'
@@ -39,7 +41,11 @@ const NEW_KEYS = [
   'prefShowStats', 'prefShowStatsHint',
   'savePreferences', 'preferencesSaved',
   'fieldOldPassword', 'fieldNewPassword', 'fieldConfirmPassword',
-  'savePassword', 'passwordChanged', 'passwordMismatch'
+  'savePassword', 'passwordChanged', 'passwordMismatch',
+  'sectionDeleteAccount', 'sectionDeleteAccountHint', 'deleteAccountSuperAdmin',
+  'deleteAccountNoticeUnavailable', 'deleteAccountNoticeContent', 'deleteAccountNoticeSessions',
+  'deleteAccountPasswordField', 'deleteAccountConfirmCheckbox', 'deleteAccountButton',
+  'deleteAccountNeedFields', 'deleteAccountDone'
 ]
 
 /** 抽出 `const preferences = reactive<UserPreferences>({ ... })` 里的键名 */
@@ -52,11 +58,12 @@ function preferenceKeys(source: string): string[] {
 }
 
 describe('账户设置 /account/settings', () => {
-  it('三个写端点都有真实调用，且都走 apiFetch', () => {
+  it('四个写端点都有真实调用，且都走 apiFetch', () => {
     for (const [path, method] of [
       ['/users/me', 'PUT'],
       ['/users/me/preferences', 'PUT'],
-      ['/users/me/password', 'POST']
+      ['/users/me/password', 'POST'],
+      ['/users/me', 'DELETE']
     ]) {
       const re = new RegExp(`\\(\\s*'?${path}'?\\s*,\\s*\\{[^}]*method: '${method}'`, 's')
       expect(page, `缺少 apiFetch ${method} ${path}`).toMatch(re)
@@ -83,6 +90,35 @@ describe('账户设置 /account/settings', () => {
     const tail = page.slice(at, at + 600)
     expect(tail).toContain('authStore.clearTokens()')
     expect(tail).toMatch(/navigateTo\('\/login'\)/)
+  })
+
+  it('注销成功即清登录态并离开本页，提示走本地文案', () => {
+    const at = page.search(/method: 'DELETE'/)
+    expect(at, '注销请求没发出去').toBeGreaterThan(-1)
+    const tail = page.slice(at, at + 900)
+    expect(tail).toContain('authStore.clearTokens()')
+    expect(tail).toMatch(/navigateTo\('\/'\)/)
+    // 后端那条 message 是写死的中文，四语站点不能直接抬上来
+    expect(tail).toMatch(/toast\.success\(t\('account\.deleteAccountDone'\)\)/)
+    expect(tail).not.toMatch(/res\?\.message/)
+  })
+
+  it('注销密码走请求体、不走查询串', () => {
+    const at = page.search(/method: 'DELETE'/)
+    const tail = page.slice(at, at + 400)
+    expect(tail).toMatch(/body: \{ password: deleteForm\.password \}/)
+    expect(tail).not.toMatch(/password=.*\$fetch|\?password/)
+  })
+
+  it('没勾确认或空密码不发请求，超管档不给表单（后端对 is_superuser 直接 403）', () => {
+    const at = page.search(/async function deleteAccount/)
+    expect(at, 'deleteAccount 处理函数不存在').toBeGreaterThan(-1)
+    const head = page.slice(at, at + 400)
+    expect(head).toMatch(/if \(!deleteForm\.password \|\| !deleteForm\.confirmed\)/)
+    expect(head).toMatch(/return/)
+    expect(page).toMatch(/v-if="isSuperAdmin"/)
+    expect(page).toMatch(/v-else\s+class="mt-6 flex flex-col gap-4"/)
+    expect(page).toMatch(/authUser\.value\?\.is_superuser === true/)
   })
 
   it('每个 Label 都有对应控件 id', () => {

@@ -794,7 +794,18 @@
     "savePassword": "修改密碼",
     "passwordChanged": "密碼修改成功，請重新登入",
     "passwordMismatch": "兩次輸入的新密碼不一致",
-    "passwordFieldsRequired": "請先填寫目前密碼與新密碼。"
+    "passwordFieldsRequired": "請先填寫目前密碼與新密碼。",
+    "sectionDeleteAccount": "注销帳號",
+    "sectionDeleteAccountHint": "停用目前登入的帳號。請先讀完下面三項後果，這一動作無法自行還原。",
+    "deleteAccountNoticeUnavailable": "帳號會立即停用，無法再用它登入，找回密碼等入口也隨之失效。",
+    "deleteAccountNoticeContent": "已發佈的文章、評論與留言板內容不會因此刪除。需要一併清除，請另外聯絡網站管理員。",
+    "deleteAccountNoticeSessions": "包含本機在內的所有登入狀態會同時失效。",
+    "deleteAccountPasswordField": "帳號密碼",
+    "deleteAccountConfirmCheckbox": "我已瞭解上述後果，確認注销這個帳號。",
+    "deleteAccountButton": "注销帳號",
+    "deleteAccountNeedFields": "請輸入帳號密碼並勾選確認後，才能提交。",
+    "deleteAccountSuperAdmin": "管理員帳號無法自助注销，請聯絡網站擁有者處理。",
+    "deleteAccountDone": "帳號已注销"
   },
   "posts": {
     "allCategories": "所有分類",

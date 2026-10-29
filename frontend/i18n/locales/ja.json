@@ -794,7 +794,18 @@
     "savePassword": "パスワードを変更",
     "passwordChanged": "パスワードを変更しました。再度ログインしてください",
     "passwordMismatch": "新しいパスワードが一致しません",
-    "passwordFieldsRequired": "先に現在のパスワードと新しいパスワードを入力してください。"
+    "passwordFieldsRequired": "先に現在のパスワードと新しいパスワードを入力してください。",
+    "sectionDeleteAccount": "アカウント削除",
+    "sectionDeleteAccountHint": "ログイン中のアカウントを無効化します。以下の3つの結果を先に読んでください。ご自身では元に戻せません。",
+    "deleteAccountNoticeUnavailable": "アカウントは直ちに無効となり、ログインもパスワード再設定もできなくなります。",
+    "deleteAccountNoticeContent": "投稿・コメント・留言板の内容は削除されません。合わせて削除したい場合は管理者にご連絡ください。",
+    "deleteAccountNoticeSessions": "この端末を含むすべてのログイン状態が同時に失効します。",
+    "deleteAccountPasswordField": "アカウントのパスワード",
+    "deleteAccountConfirmCheckbox": "上記を理解したうえで、このアカウントを削除します。",
+    "deleteAccountButton": "アカウントを削除",
+    "deleteAccountNeedFields": "パスワードを入力し、確認項目にチェックしてから送信してください。",
+    "deleteAccountSuperAdmin": "管理者アカウントは自己削除できません。運営者にご相談ください。",
+    "deleteAccountDone": "アカウントを削除しました"
   },
   "posts": {
     "allCategories": "すべてのカテゴリー",

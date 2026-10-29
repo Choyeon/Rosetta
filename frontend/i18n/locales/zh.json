@@ -794,7 +794,18 @@
     "savePassword": "修改密码",
     "passwordChanged": "密码修改成功，请重新登录",
     "passwordMismatch": "两次输入的新密码不一致",
-    "passwordFieldsRequired": "请先填写当前密码与新密码。"
+    "passwordFieldsRequired": "请先填写当前密码与新密码。",
+    "sectionDeleteAccount": "注销账户",
+    "sectionDeleteAccountHint": "停用当前账号。请先读完下面三条后果，这一步无法自行撤销。",
+    "deleteAccountNoticeUnavailable": "账号会立即停用，无法再用它登录，找回密码等入口也随之失效。",
+    "deleteAccountNoticeContent": "已发布的文章、评论与留言板内容不会因此删除。需要一并清除，请另外联系站点管理员。",
+    "deleteAccountNoticeSessions": "包含本机在内的所有登录状态会同时失效。",
+    "deleteAccountPasswordField": "账户密码",
+    "deleteAccountConfirmCheckbox": "我已了解上述后果，确认注销这个账号。",
+    "deleteAccountButton": "注销账户",
+    "deleteAccountNeedFields": "请输入账户密码并勾选确认后，才能提交。",
+    "deleteAccountSuperAdmin": "管理员账号不能自助注销，请联系站点所有者处理。",
+    "deleteAccountDone": "账号已注销"
   },
   "posts": {
     "allCategories": "全部分类",
