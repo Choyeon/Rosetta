@@ -74,6 +74,26 @@ describe('llms.txt 路由', () => {
   })
 })
 
+describe('/feed 兼容路由', () => {
+  const feedRoute = readFileSync(join(FRONTEND_ROOT, 'server/routes/feed.get.ts'), 'utf8')
+  const pageviewMiddleware = readFileSync(
+    join(FRONTEND_ROOT, 'server/middleware/09-pageview-report.ts'),
+    'utf8'
+  )
+
+  it('301 到唯一的真源 /rss.xml，而不是第二个 feed 生成器', () => {
+    expect(feedRoute).toMatch(/sendRedirect\(\s*event,\s*'\/rss\.xml'\s*,\s*301\s*\)/)
+    // 第二份正文迟早与 /rss.xml 分叉（features.enable_rss 只在那条链上生效）
+    expect(feedRoute).not.toContain('proxyUpstreamText')
+    expect(feedRoute).not.toContain('<rss')
+    expect(feedRoute).not.toMatch(/127\.0\.0\.1:8000/)
+  })
+
+  it('与页面浏览上报的机器面清单同口径（清单认为 /feed 不是文档请求）', () => {
+    expect(pageviewMiddleware).toMatch(/^\s*'\/feed',$/m)
+  })
+})
+
 describe('security.txt 路由', () => {
   it('正文含 RFC 9116 必需的 Contact / Expires / Preferred-Languages / Canonical，且不公开任何邮箱地址', () => {
     expect(securityRoute).toContain('Contact:')
