@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect } from 'vitest'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { resolve } from 'node:path'
 
 // happy-dom 下 import.meta.url 是 http URL，fileURLToPath 会直接抛错；
@@ -53,6 +53,57 @@ const nitroSource = readFileSync(
   resolve(process.cwd(), 'server/plugins/spa-serverrendered-zero.nitro.ts'),
   'utf8'
 )
+
+/**
+ * pages/ 下某个 .vue 的**真实 URL 前缀**：动态段之前的静态部分。
+ * `pages/admin/users/[id]/edit.vue` → `/admin/users`；
+ * `pages/admin/content/posts/index.vue` → `/admin/content/posts`；
+ * `pages/index.vue` → `/`。
+ * 截断到第一段动态参数是因为：routeRules 的键是按前缀写的（`/admin/**`），
+ * 而带 `[param]` 的完整路径永远不可能与键字面相等。
+ */
+function pagePathPrefix(file: string): string {
+  const rel = file.replace(/^pages[\\/]/, '').replace(/\.vue$/, '')
+  const segs = rel.split(/[\\/]/)
+  const staticSegs: string[] = []
+  for (const s of segs) {
+    if (s.startsWith('[')) break
+    staticSegs.push(s)
+  }
+  // index.vue 不贡献路径段；其余情况最后一段若是 index 也剔掉
+  if (staticSegs.length && staticSegs[staticSegs.length - 1] === 'index') staticSegs.pop()
+  return staticSegs.length ? `/${staticSegs.join('/')}` : '/'
+}
+
+/** 这条 routeRules 键是否管得到这个 URL 前缀（Nuxt 的 `p/**` 不匹配 `p` 自身，这里额外放行是因为动态段/catchall 一定会带上一段）。 */
+function ruleCoversPath(key: string, prefix: string): boolean {
+  if (key === prefix) return true
+  if (key.endsWith('/**')) {
+    const base = key.slice(0, -3)
+    return prefix === base || prefix.startsWith(`${base}/`)
+  }
+  // 键带动态段时（本仓没这么写，留作兜底）：按段比对
+  const keySegs = key.split('/')
+  const pathSegs = prefix.split('/')
+  return keySegs.every((s, i) => s.startsWith('[') || s === pathSegs[i])
+}
+
+/** 递归列出 pages/ 下的 .vue（不爬 node_modules）。 */
+function listPageFiles(dir = 'pages'): string[] {
+  const out: string[] = []
+  let entries: string[]
+  try {
+    entries = readdirSync(resolve(process.cwd(), dir))
+  } catch {
+    return out
+  }
+  for (const name of entries) {
+    const full = `${dir}/${name}`
+    if (statSync(resolve(process.cwd(), full)).isDirectory()) out.push(...listPageFiles(full))
+    else if (name.endsWith('.vue')) out.push(full)
+  }
+  return out
+}
 
 describe('nuxt.config routeRules · SSR 反选契约', () => {
   /**
@@ -160,6 +211,53 @@ describe('nuxt.config routeRules · SSR 反选契约', () => {
       .map(([path]) => path)
       .sort()
     expect(missing, `以下路由没写 cache: false：${missing.join(', ')}`).toEqual([])
+  })
+
+  /**
+   * 页面级 `definePageMeta({ ssr: false })` 与 routeRules 是**两套开关**：
+   * 前者只关这页的 SSR，后者才决定 HTTP 缓存口径。只在页面里写了 ssr:false、
+   * routeRules 却没有这条的页，会静默落进 '/**' 的 swr 通配 —— 线上实测
+   * `/settings` 与 `/en/settings` 的响应头是 `public, max-age=0, s-maxage=600,
+   * stale-while-revalidate=86400`，一份 noindex 空壳被 CDN 缓存一整天。
+   *
+   * 上面那条「ssr:false 集合不增不减」的断言看不见这一类：它只清点 routeRules 的
+   * 键。这条从 pages/ 反向扫，把"页面自己声明了 SPA"的每个路径前缀都要求有一条
+   * cache:false + no-store 的规则（语言前缀由 expandLocaleRouteRules 自动镜像，不重复清点）。
+   */
+  it('页面级 ssr:false 的每个路径都必须有一条退出页面缓存的 routeRules', () => {
+    const offenders: string[] = []
+    const checked: string[] = []
+    for (const file of listPageFiles()) {
+      const text = readFileSync(resolve(process.cwd(), file), 'utf8')
+      // definePageMeta 可能是多行，按"调用块里出现 ssr: false"判定
+      const meta = /definePageMeta\s*\(\s*\{([\s\S]*?)\}\s*\)/.exec(text)
+      if (!meta || !/ssr:\s*false/.test(meta[1]!)) continue
+      const prefix = pagePathPrefix(file)
+      checked.push(prefix)
+      const covered = [...rules.entries()].some(
+        ([key, rule]) =>
+          rule.cacheDisabled && (rule.cache ?? '').includes('no-store') && ruleCoversPath(key, prefix)
+      )
+      if (!covered) offenders.push(`${file} → ${prefix}`)
+    }
+    // 清点本身不能是空转：admin 全子页 + 登录/注册/偏好页都在这条里
+    expect(checked.length).toBeGreaterThan(40)
+    expect(offenders, `以下 SPA 页没有对应的 cache:false / no-store 规则：${offenders.join(', ')}`).toEqual([])
+  })
+
+  it('路径前缀推导与覆盖判定的口径（守卫自身要有牙）', () => {
+    expect(pagePathPrefix('pages/settings.vue')).toBe('/settings')
+    expect(pagePathPrefix('pages/index.vue')).toBe('/')
+    expect(pagePathPrefix('pages/admin/content/posts/index.vue')).toBe('/admin/content/posts')
+    expect(pagePathPrefix('pages/admin/users/[id]/edit.vue')).toBe('/admin/users')
+    expect(pagePathPrefix('pages/admin/plugins/[slug]/[...catchall].vue')).toBe('/admin/plugins')
+    expect(pagePathPrefix('pages/posts/[slug].vue')).toBe('/posts')
+    // Nuxt 的 'p/**' 不匹配裸 'p'，但带动态段的页至少多一段；这里把两种形态都验一遍
+    expect(ruleCoversPath('/admin/**', '/admin/users')).toBe(true)
+    expect(ruleCoversPath('/admin/**', '/admin')).toBe(true)
+    expect(ruleCoversPath('/settings', '/settings')).toBe(true)
+    expect(ruleCoversPath('/posts/**', '/settings')).toBe(false)
+    expect(ruleCoversPath('/search', '/settings')).toBe(false)
   })
 
   it('内部端点（清缓存 / Nitro API）不得进入页面缓存', () => {

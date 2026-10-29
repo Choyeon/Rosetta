@@ -297,6 +297,15 @@ export default defineNuxtConfig({
     // localStorage，SSR 期无 token 可用 —— 走 SSR 只会渲染未登录骨架。缓存必须 private。
     '/account': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
     '/account/**': { ssr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
+    // 显示偏好页 /settings：SPA 开关写在**页面里**（`definePageMeta({ ssr: false })`，
+    // 因为它要在 onMounted 直读 localStorage['theme-pref']），routeRules 只负责 HTTP 口径。
+    // 这里刻意不重复写 ssr:false —— 该页的服务端 head 仍要产出 page-specific 的
+    // `<title>`/description/noindex（实测裸 routeRules ssr:false 的 /search 拿到的是通用壳），
+    // 渲染开关单源在页面，缓存单源在这条。
+    // 漏掉这条不会报错：它会被 '/**' 的 swr 按渲染器路由包进页面缓存，线上实测
+    // curl -I /settings 回 `public, max-age=0, s-maxage=600, stale-while-revalidate=86400`
+    // —— 一份 noindex 空壳被 CDN 缓存一整天。守卫见 routeRulesSsr.spec 的页面级 ssr:false 递归清点。
+    '/settings': { swr: false, cache: false as const, headers: { 'Cache-Control': 'no-store, private' } },
 
     // === 公开内容页（SSR + SWR cache 写死，全局 ssr:true 时直接启用）
     '/': { swr: 300, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400' } },

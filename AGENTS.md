@@ -86,9 +86,18 @@
 | `/admin/docs/**`                              | ❌ false | `no-store, private` | 内嵌 Markdown 编辑器与执行工具             |
 | `/search/**`                                  | ❌ false | `no-store`          | 实时查询 + 高频率                      |
 | `/account` · `/account/**`                        | ❌ false | `no-store, private` | 逐登录用户内容 + SSR 期无 token（auth store 是 skipHydrate） |
+| `/settings`                                    | ❌ 页面级（routeRules 不重复写 ssr） | `no-store, private` | 主题偏好在 localStorage，onMounted 才读；routeRules 这条只补 HTTP 口径 |
 | Vite 虚拟文件：`/@vite/**` · `/@id/**` · `/@fs/**` | ❌ false | `no-store`          | 防 HMR 404 被 spa-fallback 拦截      |
 
-上表 7 行覆盖 13 条 routeRules 键，镜像关系由 `frontend/tests/unit/routeRulesSsr.spec.ts` 断言（`ssr:false` 集合精确相等 + `/oobe` 必须保留 SSR + 反选页必须 `no-store`）——改配置不改测试会直接红。
+上表 8 行覆盖 14 条 routeRules 键，镜像关系由 `frontend/tests/unit/routeRulesSsr.spec.ts` 断言（`ssr:false` 集合精确相等 + `/oobe` 必须保留 SSR + 反选页必须 `no-store`）——改配置不改测试会直接红。
+
+**`/settings` 是这套口径里唯一的"两套开关"页，也是它曾经漏配的原因**：SPA 反选写在页面里
+（`definePageMeta({ ssr: false })`），routeRules 里没有这条，于是它静默落进 `'/**': { swr: 600 }`
+的通配 —— 线上实测 `curl -I /settings` 与 `/en/settings` 都回
+`public, max-age=0, s-maxage=600, stale-while-revalidate=86400`，一份 noindex 空壳被 CDN 缓存一整天。
+"ssr:false 集合精确相等"那条断言看不见这类页（它只清点 routeRules 的键），所以同文件另有一条
+**从 `pages/` 反向扫**的守卫：凡 `definePageMeta` 里出现 `ssr: false` 的页，其路径前缀必须有
+一条 `cache: false` + `no-store` 的规则。新增页面级 SPA 页不需要再动 routeRules 的 ssr，但必须补这条缓存规则。
 
 ### 2.2.1 i18n URL 前缀（`prefix_except_default`）
 
@@ -258,7 +267,7 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
 套上 `cachedEventHandler`，于是三条约束必须同时满足（每条都实测踩过）：
 
 1. **所有 `ssr:false` / `no-store` 路由必须显式写 `cache: false`**（`/admin/**` · `/login` ·
-   `/register` · `/forgot-password` · `/search/**` · `/account/**` · `/oobe` · Vite 虚拟文件）。
+   `/register` · `/forgot-password` · `/search/**` · `/account/**` · `/settings` · `/oobe` · Vite 虚拟文件）。
    否则它们自己的 `Cache-Control: no-store` 会被缓存处理器覆写成 `s-maxage=600`——实测 `/login`
    一度变成"可公开缓存 10 分钟"。`swr: false` **不足以退出**：routeRules 用 defu 合并，通配层的
    `cache` 会被合并回来；只有 `cache: false` 在规范化阶段把 cache 整条置空。
