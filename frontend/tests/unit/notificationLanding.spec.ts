@@ -28,9 +28,18 @@ const dicts = Object.fromEntries(
 describe('站内通知 · 前台落地契约', () => {
   it('通知页存在且真的消费四条读/写接口', () => {
     expect(existsSync(pagePath), `缺少 ${PAGE_REL}`).toBe(true)
-    for (const fn of ['fetchNotifications', 'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification']) {
+    for (const fn of ['fetchNotifications', 'markNotificationRead', 'markAllNotificationsRead', 'deleteNotification', 'clearAllNotifications']) {
       expect(page, `通知页必须调用 ${fn}`).toContain(`${fn}(`)
     }
+  })
+
+  it('清空只针对已读，且必须过二次确认', () => {
+    // 未读是"还没看过的回执"：一键抹掉等于替用户做决定，所以写死 read_only: true
+    expect(page).toContain('clearAllNotifications({ read_only: true }')
+    expect(page).toContain('confirmClearOpen = true')
+    expect(page).toContain('AlertDialogAction')
+    // 已读数只能由未筛选的全量读数算出（筛选态下 total 是子集）
+    expect(page).toMatch(/if \(!unreadOnly\.value\) hasRead\.value = \(res\.total - res\.unread_count\) > 0/)
   })
 
   it('通知页是登录态私有页（ssr 档位由 /account/** routeRules 反选）', () => {

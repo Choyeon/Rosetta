@@ -93,6 +93,13 @@ describe('个人中心 /account', () => {
     expect(page).toMatch(/v-if="unreadNotifications > 0"/)
   })
 
+  it('四个页签的文章链都带语言前缀（/en /ja /zh_Hant 下不掉回中文裸路径）', () => {
+    // posts / comments / likes / history 各一处，写死裸 `/posts/...` 会让英文页把人送回中文站
+    const prefixed = page.match(/:to="localeHref\(`\/posts\//g) ?? []
+    expect(prefixed.length).toBe(4)
+    expect(page).not.toMatch(/:to="`\/posts\//)
+  })
+
   it('日期格式化钉死时区，避免两端分歧', () => {
     expect(page).toContain('Intl.DateTimeFormat')
     expect(page).toContain('timeZone:')

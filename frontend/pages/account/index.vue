@@ -212,7 +212,7 @@
               class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
             >
               <NuxtLink
-                :to="`/posts/${post.slug}`"
+                :to="localeHref(`/posts/${post.slug}`)"
                 class="text-base transition-colors hover:text-primary"
               >
                 {{ post.title }}
@@ -263,7 +263,7 @@
               <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <NuxtLink
                   v-if="comment.post_slug"
-                  :to="`/posts/${comment.post_slug}`"
+                  :to="localeHref(`/posts/${comment.post_slug}`)"
                   class="text-sm font-medium transition-colors hover:text-primary"
                 >
                   {{ comment.post_title || t('account.deletedPost') }}
@@ -333,7 +333,7 @@
               <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
                 <NuxtLink
                   v-if="row.post"
-                  :to="`/posts/${row.post.slug}`"
+                  :to="localeHref(`/posts/${row.post.slug}`)"
                   class="text-base transition-colors hover:text-primary"
                 >
                   {{ resolveLocalized(row.post.title) }}
@@ -421,7 +421,7 @@
               class="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 py-2"
             >
               <NuxtLink
-                :to="`/posts/${history.post?.slug}`"
+                :to="localeHref(`/posts/${history.post?.slug}`)"
                 class="text-base transition-colors hover:text-primary"
               >
                 {{ history.post?.title }}

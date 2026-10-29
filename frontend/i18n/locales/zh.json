@@ -1098,6 +1098,10 @@
     "notFoundDesc": "该主页可能从未存在，或作者已关闭了公开资料。"
   },
   "notifications": {
+    "clearRead": "清空已读",
+    "clearReadTitle": "清空已读通知",
+    "clearReadBody": "只会删除已经读过的通知，未读的那几条会保留。",
+    "clearReadDone": "已清除已读通知",
     "title": "通知中心",
     "all": "全部",
     "unreadOnly": "只看未读",

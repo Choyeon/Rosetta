@@ -1098,6 +1098,10 @@
     "notFoundDesc": "This profile may never have existed, or the author turned off public profiles."
   },
   "notifications": {
+    "clearRead": "Clear read",
+    "clearReadTitle": "Clear read notifications",
+    "clearReadBody": "Only notifications you have already read are removed; unread ones stay.",
+    "clearReadDone": "Read notifications cleared",
     "title": "Notifications",
     "all": "All",
     "unreadOnly": "Unread only",

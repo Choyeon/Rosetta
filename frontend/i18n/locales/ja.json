@@ -1098,6 +1098,10 @@
     "notFoundDesc": "プロフィールが存在しないか、作者が公開設定をオフにしています。"
   },
   "notifications": {
+    "clearRead": "既読を削除",
+    "clearReadTitle": "既読通知を削除",
+    "clearReadBody": "既読の通知だけを削除します。未読の通知は残ります。",
+    "clearReadDone": "既読通知を削除しました",
     "title": "通知",
     "all": "すべて",
     "unreadOnly": "未読のみ",

@@ -70,6 +70,18 @@
         <CheckCheck data-icon="inline-start" />
         {{ t('notifications.markAllRead') }}
       </Button>
+      <!-- 清空只删「已读」：未读是还没看过的回执，一键抹掉等于替用户做了决定。
+           该动作用的是 DELETE /notifications?read_only=true（AdminHeader 早就在用，前台缺入口）。 -->
+      <Button
+        variant="ghost"
+        size="sm"
+        class="rounded-[10px] text-xs"
+        :disabled="busy || clearing || !hasRead"
+        @click="confirmClearOpen = true"
+      >
+        <Eraser data-icon="inline-start" />
+        {{ t('notifications.clearRead') }}
+      </Button>
       <Button
         variant="ghost"
         size="sm"
@@ -238,13 +250,47 @@
         {{ t('account.nextPage') }}
       </Button>
     </div>
+
+    <AlertDialog
+      :open="confirmClearOpen"
+      @update:open="(v: boolean) => { confirmClearOpen = v }"
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t('notifications.clearReadTitle') }}</AlertDialogTitle>
+          <AlertDialogDescription>{{ t('notifications.clearReadBody') }}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel :disabled="clearing">
+            {{ t('common.cancel') }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            variant="destructive"
+            :disabled="clearing"
+            @click="clearRead"
+          >
+            {{ t('notifications.clearRead') }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { AlertCircle, Bell, CheckCheck, ExternalLink, Inbox, RefreshCw, Trash2 } from '@lucide/vue'
+import { AlertCircle, Bell, CheckCheck, Eraser, ExternalLink, Inbox, RefreshCw, Trash2 } from '@lucide/vue'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '~~/components/ui/alert-dialog'
 import { Badge } from '~~/components/ui/badge'
 import { Button } from '~~/components/ui/button'
 import { Card, CardContent } from '~~/components/ui/card'
@@ -254,6 +300,7 @@ import { useToast } from '~~/composables/useToast'
 import { applyLocalePrefix } from '~~/composables/useSeo'
 import { useLocaleLink } from '~~/composables/useLocaleLink'
 import {
+  clearAllNotifications,
   deleteNotification,
   fetchNotifications,
   markAllNotificationsRead,
@@ -276,6 +323,11 @@ const unreadOnly = ref(false)
 const busy = ref(false)
 const busyId = ref<number | null>(null)
 const loadError = ref(false)
+// 只清「已读」时要先知道有没有已读行：total - unread_count 只在未筛选那一次读数里成立，
+// 切到「只看未读」后 total 变成筛选后的总数，所以保留上一次全量口径的结果。
+const hasRead = ref(false)
+const clearing = ref(false)
+const confirmClearOpen = ref(false)
 
 const accountHref = computed(() => applyLocalePrefix('/account', locale.value))
 
@@ -304,6 +356,8 @@ async function load() {
     items.value = res.items
     unreadCount.value = res.unread_count
     totalPages.value = res.total_pages
+    // 只有未筛选的全量读数才能算出「已读数」；筛选态下沿用上次的结论
+    if (!unreadOnly.value) hasRead.value = (res.total - res.unread_count) > 0
   } catch {
     // fetchNotifications 走 silentToast：错误由上面的错误态承载，不再叠一条 toast。
     items.value = []
@@ -354,6 +408,27 @@ async function handleMarkAllRead() {
     // markAllNotificationsRead 默认弹错，这里只保留列表现状
   } finally {
     busyId.value = null
+  }
+}
+
+/**
+ * DELETE /notifications?read_only=true —— 只清已读。
+ * 后端真源是「当前用户的通知」，不存在 `scope` 之外的东西要照顾；
+ * 清完必须整页重读：本页的 total / totalPages / hasRead 三个读数都由它算。
+ */
+async function clearRead() {
+  if (clearing.value) return
+  clearing.value = true
+  try {
+    await clearAllNotifications({ read_only: true }, { silentToast: false })
+    confirmClearOpen.value = false
+    toast.success(t('notifications.clearReadDone'))
+    page.value = 1
+    await load()
+  } catch {
+    // clearAllNotifications 默认弹错，这里只保留列表现状
+  } finally {
+    clearing.value = false
   }
 }
 
