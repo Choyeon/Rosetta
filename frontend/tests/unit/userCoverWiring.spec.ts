@@ -23,7 +23,8 @@ const locales = ['zh', 'en', 'ja', 'zh_Hant'].map(loc => JSON.parse(
 
 describe('pages/account/settings.vue 封面写入', () => {
   it('上传走 useMediaUploadCover，且经由 apiFetch 封装（不裸用 $fetch）', () => {
-    expect(settings).toMatch(/import \{ useMediaUploadCover \} from '~~\/composables\/useMedia'/)
+    // 头像与封面同源于 composables/useMedia，同一行具名导入两个也合法。
+    expect(settings).toMatch(/import \{[^}]*\buseMediaUploadCover\b[^}]*\} from '~~\/composables\/useMedia'/)
     expect(settings).toContain('await useMediaUploadCover(file)')
     expect(settings).not.toContain('$fetch(')
   })

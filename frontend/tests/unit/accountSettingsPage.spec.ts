@@ -149,7 +149,8 @@ describe('账户设置 /account/settings', () => {
   it('SPA 口径单源：页面不再写第二份 ssr:false，列表页给出入口', () => {
     expect(page).not.toContain('ssr: false')
     expect(page).toMatch(/middleware: 'auth-required'/)
-    expect(listPage).toMatch(/navigateTo\('\/account\/settings'\)/)
+    // 入口跳转必须过 localeHref：写死裸路径会让 /en /ja /zh_Hant 下的「账户设置」掉回中文地址。
+    expect(listPage).toMatch(/navigateTo\(localeHref\('\/account\/settings'\)\)/)
   })
 
   it.each(['zh', 'en', 'ja', 'zh_Hant'] as const)('%s 具备账户设置文案键', (locale) => {
