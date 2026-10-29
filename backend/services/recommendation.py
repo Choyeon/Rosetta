@@ -644,16 +644,16 @@ class RecommendationService:
         return {**out, "items": items}
 
     # ─────────────── 3. 热榜（Hacker News 风格热度）───────────────
-    async def get_hot_posts(self, limit: int = 10, days: int = 30) -> list[Post]:
-        cache_key = f"hotv2:{limit}:{days}"
-        cached = await self._cache.get(cache_key)
-        if cached is not None:
-            cached_ids = list(cached)  # type: ignore[arg-type]
-            if not cached_ids:
-                return []
-            return await self._rebuild_posts_by_ids(cached_ids)
+    async def _hot_scored_ids(
+        self,
+        limit: int,
+        cutoff: datetime | None,
+        exclude: set[int] | None = None,
+    ) -> list[int]:
+        """按 HN 公式给候选文章打分，返回分数最高的前 limit 个 id。
 
-        cutoff = datetime.now(UTC) - timedelta(days=days)
+        cutoff=None 表示不限时间窗，只用于「窗口内不够一页」时的补位（见 get_hot_posts）。
+        """
         q = (
             select(
                 Post.id,
@@ -665,12 +665,13 @@ class RecommendationService:
             )
             .outerjoin(post_likes, Post.id == post_likes.c.post_id)
             .outerjoin(Comment, (Post.id == Comment.post_id) & (Comment.active.is_(True)))
-            .where(
-                publicly_listable_posts(),
-                func.coalesce(Post.published_at, Post.created_at) >= cutoff,
-            )
+            .where(publicly_listable_posts())
             .group_by(Post.id)
         )
+        if cutoff is not None:
+            q = q.where(func.coalesce(Post.published_at, Post.created_at) >= cutoff)
+        if exclude:
+            q = q.where(Post.id.notin_(exclude))
         rows = await self._db.execute(q)
 
         scored: list[tuple[int, float]] = []
@@ -691,7 +692,29 @@ class RecommendationService:
             score = (views + 10 * lc + 20 * cc) / ((age_hours + 2.0) ** 1.8)
             scored.append((r.id, score))
         scored.sort(key=lambda x: x[1], reverse=True)
-        top_ids = [i for i, _ in scored[:limit]]
+        return [i for i, _ in scored[:limit]]
+
+    async def get_hot_posts(self, limit: int = 10, days: int = 30) -> list[Post]:
+        cache_key = f"hotv2:{limit}:{days}"
+        cached = await self._cache.get(cache_key)
+        if cached is not None:
+            cached_ids = list(cached)  # type: ignore[arg-type]
+            if not cached_ids:
+                return []
+            return await self._rebuild_posts_by_ids(cached_ids)
+
+        cutoff = datetime.now(UTC) - timedelta(days=days)
+        top_ids = await self._hot_scored_ids(limit=limit, cutoff=cutoff)
+        # 窗口内不足一页时用更早的文章补齐：`days` 窗口只回答「最近谁最热」，
+        # 但两个消费方（/blog/posts/hot 的「综合」页签、首页兜底轮播 hero）都把
+        # 返回值当成**整页内容**。一个每月发一篇的站点在 30 天窗口里只剩 1 条，
+        # 前台看起来是「热榜只有一篇文章」而不是「最近 30 天只有一篇」。
+        # 补位仍走同一套可见性谓词与同一公式，老文章按分数自然排在后面。
+        if len(top_ids) < limit:
+            older = await self._hot_scored_ids(
+                limit=limit - len(top_ids), cutoff=None, exclude=set(top_ids)
+            )
+            top_ids.extend(older)
 
         items = await self._rebuild_posts_by_ids(top_ids)
         await self._cache.set(cache_key, [p.id for p in items], ttl=HOT_RANKING_TTL)
