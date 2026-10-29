@@ -56,7 +56,9 @@ const NON_LOCALIZED_PREFIXES = [
   '/api',
   '/favicon',
   '/rss.xml',
-  '/sitemap.xml',
+  '/sitemap',
+  '/llms.txt',
+  '/.well-known',
   '/robots.txt',
   '/site.webmanifest',
   '/manifest',
@@ -367,19 +369,47 @@ export default defineNuxtConfig({
     '/themes/**': { headers: { 'Cache-Control': 'public, max-age=31536000, immutable' } },
     '/favicon.ico': { headers: { 'Cache-Control': 'public, max-age=604800' } },
 
-    // === RSS / Sitemap / Robots：Server-routes，给明确 Content-Type + SWR cache
+    // === RSS / Sitemap / Robots / llms.txt / security.txt：Server-routes
+    //
+    // 每一条都必须**显式登记**，不能靠 '/**' 的 swr 600 兜：routeRules 是按「路由处理器」
+    // 套缓存的，通配规则同样会包住 server/routes 下的静态路由 —— 实测子 sitemap 因此在
+    // 线上回了 600s 的旧正文（后端已含新增 URL，Nitro 还在发 10 分钟前的副本），
+    // 且正文自带的 `public, max-age=3600, s-maxage=3600…` 被 swr 处理器改写成裸 s-maxage。
+    // 这里的 Cache-Control 必须与各自 handler 里的 cacheControl 字面量一致，
+    // 由 tests/unit/feedRouteCacheRules.spec.ts 双向对账（加一条 feed 路由不登记 = 红）。
     '/rss.xml': {
       swr: 1800,
       headers: {
         'Content-Type': 'application/rss+xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=1800, s-maxage=1800'
+        'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=86400'
       }
     },
     '/sitemap.xml': {
       swr: 3600,
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
-        'Cache-Control': 'public, max-age=3600, s-maxage=3600'
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
+      }
+    },
+    '/sitemap-pages.xml': {
+      swr: 3600,
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
+      }
+    },
+    '/sitemap-posts.xml': {
+      swr: 3600,
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
+      }
+    },
+    '/sitemap-taxonomies.xml': {
+      swr: 3600,
+      headers: {
+        'Content-Type': 'application/xml; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400'
       }
     },
     '/robots.txt': {
@@ -387,6 +417,20 @@ export default defineNuxtConfig({
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'public, max-age=3600, s-maxage=3600'
+      }
+    },
+    '/llms.txt': {
+      swr: 3600,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'public, max-age=3600, s-maxage=3600'
+      }
+    },
+    '/.well-known/security.txt': {
+      swr: 3600,
+      headers: {
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400'
       }
     }
   }),

@@ -317,6 +317,13 @@ fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_c
    **绝不**从请求 Host 推导——这些路由带 `s-maxage`，一次 Host 伪造会被缓存固化给所有访客。
    连后端一律走 `resolveBackendEndpoint`，且**上游全挂时必须降级成 200 的最小文本**（500/503 对抓取器
    不可接受），不得 `createError`。
+   **每条 feed 路由都必须在 `nuxt.config.ts::routeRules` 里显式登记**（swr + `Content-Type` +
+   与 handler 逐字相等的 `Cache-Control`），不能靠 `'/**': { swr: 600 }` 兜：routeRules 是按
+   「路由处理器」套缓存的，通配规则同样包住 `server/routes` 下的静态路由——2026-10-30 线上实测
+   子 sitemap 回了 600s 前的旧正文（后端已含新增 `/authors`，Nitro 仍在发旧副本），handler 自己写的
+   `public, max-age=3600, s-maxage=3600, stale-while-revalidate=86400` 也被改写成裸 `s-maxage=600`。
+   守卫 `frontend/tests/unit/feedRouteCacheRules.spec.ts` 按目录反扫（handler 集合 ⇔ routeRules 键集合）+
+   逐条对账两个头与 swr 窗口。
 2. **security.txt 只有一条生成路径**：`server/routes/.well-known/security.txt.get.ts`。nitropack
    `scanDir` 的 globby 带 `dot:true`，点目录会被收录，所以**不要**再补 `server/routes/security.txt.get.ts`
    或 `/.well-known` 别名中间件（两条口会让正文分叉，`geoDeliveryRoutes.spec.ts` 反向断言它们不存在）。
