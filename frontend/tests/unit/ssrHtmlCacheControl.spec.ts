@@ -14,7 +14,8 @@ import { describe, expect, it } from 'vitest'
 import {
   ERROR_CACHE_CONTROL,
   errorHtmlCacheControl,
-  normalizeHtmlCacheControl
+  normalizeHtmlCacheControl,
+  redirectHtmlCacheControl
 } from '../../server/utils/ssrHtmlCacheControl'
 
 const ROOT = resolve(__dirname, '..', '..')
@@ -79,6 +80,36 @@ describe('errorHtmlCacheControl（≥400 的 HTML 不得进任何缓存）', () 
   })
 })
 
+describe('redirectHtmlCacheControl（3xx 的 HTML 一律 no-store）', () => {
+  it('301/302/303/307/308 + text/html → no-store', () => {
+    for (const status of [301, 302, 303, 307, 308]) {
+      expect(redirectHtmlCacheControl(
+        status,
+        'public, max-age=0, s-maxage=600, stale-while-revalidate=86400',
+        'text/html; charset=utf-8'
+      ), `${status} 必须 no-store`).toBe(ERROR_CACHE_CONTROL)
+    }
+  })
+
+  it('304 刻意不碰：协商缓存的结果不是跳转，覆写会让浏览器丢掉刚验证过的副本', () => {
+    expect(redirectHtmlCacheControl(304, 'public, max-age=0, s-maxage=600', 'text/html')).toBeNull()
+  })
+
+  it('只认 3xx：200 / 404 / 空状态不归这一支', () => {
+    expect(redirectHtmlCacheControl(200, 's-maxage=600', 'text/html')).toBeNull()
+    expect(redirectHtmlCacheControl(404, 's-maxage=600', 'text/html')).toBeNull()
+    expect(redirectHtmlCacheControl(null, 's-maxage=600', 'text/html')).toBeNull()
+  })
+
+  it('非 HTML 的 3xx 不干预（接口重定向不归本页口径管）', () => {
+    expect(redirectHtmlCacheControl(301, null, 'application/json')).toBeNull()
+  })
+
+  it('幂等：已是 no-store 回 null', () => {
+    expect(redirectHtmlCacheControl(301, ERROR_CACHE_CONTROL, 'text/html')).toBeNull()
+  })
+})
+
 describe('ssr-html-revalidate 插件接线', () => {
   it('复用同一个归一函数，且只处理 text/html', () => {
     expect(pluginSrc).toContain('normalizeHtmlCacheControl')
@@ -93,6 +124,13 @@ describe('ssr-html-revalidate 插件接线', () => {
     expect(normalizeVia.indexOf('errorHtmlCacheControl'))
       .toBeLessThan(normalizeVia.indexOf('normalizeHtmlCacheControl'))
     expect(normalizeVia).toContain('text/html')
+  })
+
+  it('3xx 分支同样拦在归一之前（routeRules 处理器已把页面的 no-store 覆写掉）', () => {
+    const normalizeVia = pluginSrc.match(/function normalizeVia[\s\S]*?\n}/)?.[0] ?? ''
+    expect(normalizeVia).toContain('redirectHtmlCacheControl')
+    expect(normalizeVia.indexOf('redirectHtmlCacheControl'))
+      .toBeLessThan(normalizeVia.indexOf('normalizeHtmlCacheControl'))
   })
 
   it('必须覆盖 Node ServerResponse 上的头（swr 覆写实际落在那里）', () => {

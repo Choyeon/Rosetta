@@ -64,3 +64,30 @@ export function errorHtmlCacheControl(
   if (cacheControl === ERROR_CACHE_CONTROL) return null
   return ERROR_CACHE_CONTROL
 }
+
+// 304 刻意不在内：它不是"跳转"，而是协商缓存的结果，响应里的 Cache-Control 描述缓存条目本身，
+// 覆写成 no-store 等于让浏览器丢掉刚验证过的副本。
+const REDIRECT_STATUSES = new Set([301, 302, 303, 307, 308])
+
+/**
+ * 3xx 的 HTML 一律 `no-store`。
+ *
+ * 起因（2026-10-30 线上实测）：越界页码闸门在 `app:rendered` 里写下的 `cache-control: no-store`
+ * 会被**响应阶段的 routeRules 处理器整条覆写**，`/authors?page=9999` 与 `/posts?page=9999`
+ * 实际回的是 `public, max-age=0, s-maxage=600, stale-while-revalidate=86400`——AGENTS §2.2.2
+ * 承诺的"301 必须 no-store"在头这一层从未成立。页面侧改不动（它先跑），所以在最后一道
+ * `beforeResponse` 归一里按状态码兜住。
+ *
+ * 3xx 的正文不值得复用：共享缓存存下一条 301，等于把这个目标在小缓存窗口内钉死，
+ * 而这类跳转的产生条件（页码越界、slug 自愈）本来就是数据一变就该立刻改道的。
+ */
+export function redirectHtmlCacheControl(
+  status: number | null | undefined,
+  cacheControl: string | null | undefined,
+  contentType: string | null | undefined
+): string | null {
+  if (status == null || !REDIRECT_STATUSES.has(status)) return null
+  if (!contentType?.includes('text/html')) return null
+  if (cacheControl === ERROR_CACHE_CONTROL) return null
+  return ERROR_CACHE_CONTROL
+}

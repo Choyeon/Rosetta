@@ -19,7 +19,8 @@
 import type { NitroApp } from 'nitropack'
 import {
   errorHtmlCacheControl,
-  normalizeHtmlCacheControl
+  normalizeHtmlCacheControl,
+  redirectHtmlCacheControl
 } from '../utils/ssrHtmlCacheControl'
 
 type Accessor = {
@@ -98,13 +99,17 @@ function statusFrom(event: unknown, response?: unknown): number | null {
 function normalizeVia(accessor: Accessor, status: number | null = null): void {
   const ct = accessor.get('content-type') ?? ''
   if (!ct.includes('text/html')) return
-  const errored = errorHtmlCacheControl(
-    status ?? accessor.getStatus?.() ?? null,
-    accessor.get('cache-control'),
-    ct
-  )
+  const resolved = status ?? accessor.getStatus?.() ?? null
+  const errored = errorHtmlCacheControl(resolved, accessor.get('cache-control'), ct)
   if (errored) {
     accessor.set('cache-control', errored)
+    return
+  }
+  // 3xx 必须在归一之前拦住：归一看到 routeRules 留下的 `s-maxage` 就会补成可缓存口径，
+  // 而页面在 app:rendered 里写的 no-store 早被响应阶段的 routeRules 处理器覆写掉了。
+  const redirected = redirectHtmlCacheControl(resolved, accessor.get('cache-control'), ct)
+  if (redirected) {
+    accessor.set('cache-control', redirected)
     return
   }
   const fixed = normalizeHtmlCacheControl(accessor.get('cache-control'))
