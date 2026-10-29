@@ -164,7 +164,7 @@
 
     <AdminCard class="overflow-hidden">
       <div class="flex flex-wrap items-end gap-3 px-5 pt-5 pb-4">
-        <div class="flex flex-col gap-1.5 flex-1 min-w-0">
+        <div class="flex flex-col gap-1.5 flex-1 min-w-56">
           <h3 class="text-base font-semibold">
             访问明细
           </h3>
