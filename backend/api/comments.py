@@ -37,6 +37,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 
+from backend.core.csrf import require_csrf
 from backend.core.deps import (
     DB,
     CurrentStaff,
@@ -44,7 +45,6 @@ from backend.core.deps import (
     CurrentUserOptional,
     PaginationParams,
     get_pagination,
-    require_csrf,
 )
 from backend.core.plugin_bus import bus
 from backend.core.rate_limit import (
