@@ -3,7 +3,7 @@
  *
  * 断言对象是 useSeo.ts 导出的纯函数 buildArticleJsonLdGraph（不依赖 Nuxt 上下文，
  * 与 seoLocaleUrl.spec.ts 同法直接 import 模块），外加两条接线静态断言：
- * hid 保持 jsonld-article-<slug>、详情页不得再另挂一份独立 BreadcrumbList
+ * 三个 JSON-LD 全部用 unhead 的 `key` 认领 SSR 标签、详情页不得再另挂一份独立 BreadcrumbList
  * （@graph 里已内嵌，重复声明会让爬虫拿到两套面包屑）。
  *
  * 核心红线是"空值防御"：
@@ -217,8 +217,9 @@ describe('buildArticleJsonLdGraph：空值防御（引用与节点同进退）',
 describe('useHead 接线与详情页调用点（静态）', () => {
   const seo = readFileSync(resolve(ROOT, 'composables/useSeo.ts'), 'utf-8')
 
-  it('hid 保持 jsonld-article-${slug}，useHead 走 buildArticleJsonLdGraph', () => {
-    expect(seo).toContain('hid: `jsonld-article-${slug}`')
+  it('JSON-LD 用 unhead 的 key 认领 SSR 标签（hid 是 Vue Meta 遗产，会导致 hydration 后再插一份）', () => {
+    expect(seo).toContain('key: `jsonld-article-${slug}`')
+    expect(seo).not.toMatch(/\bhid:/)
     expect(seo).toContain('buildArticleJsonLdGraph({')
   })
 

@@ -537,7 +537,7 @@ export function useWebsiteJsonLd() {
       script: [
         {
           type: 'application/ld+json',
-          hid: 'jsonld-website',
+          key: 'jsonld-website',
           innerHTML: jsonLdStringify(payload)
         }
       ]
@@ -942,7 +942,7 @@ export function useArticleJsonLd(opts: ArticleJsonLdOptions) {
       script: [
         {
           type: 'application/ld+json',
-          hid: `jsonld-article-${slug}`,
+          key: `jsonld-article-${slug}`,
           innerHTML: jsonLdStringify(payload)
         }
       ]
@@ -988,7 +988,7 @@ export function useBreadcrumbJsonLd(items: BreadcrumbItem[] | Ref<BreadcrumbItem
       script: [
         {
           type: 'application/ld+json',
-          hid: 'jsonld-breadcrumb',
+          key: 'jsonld-breadcrumb',
           innerHTML: jsonLdStringify(payload)
         }
       ]
