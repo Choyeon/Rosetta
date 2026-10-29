@@ -25,6 +25,7 @@ const CORE_PAGES = [
   ['Archive', '/archive'],
   ['Categories', '/categories'],
   ['Tags', '/tags'],
+  ['Authors', '/authors'],
   ['Guestbook', '/guestbook'],
   ['About', '/about'],
   ['RSS', '/rss.xml'],

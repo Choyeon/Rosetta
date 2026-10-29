@@ -8,8 +8,14 @@
  *
  * 范围：仅 GET/HEAD 的页面请求；`/api*`（走后端/upstream）、`/_nuxt`、`/@vite`
  * 等内部资源一律放过。
+ *
+ * `no-store` 必须在这里就地写：本中间件用 `sendRedirect` 直接结束响应，不走渲染器，
+ * 于是 `ssr-html-revalidate` 的 `render:response` / `beforeResponse` 两道钩子都轮不到它，
+ * routeRules 给该路径的 `public, max-age=0, s-maxage=…` 会原样留在 301 上。
+ * 实测 `/en/` 回了 `s-maxage=300` 的 301（CDN 缓存 5 分钟），与本仓「3xx 的 HTML 一律
+ * no-store」的口径冲突（见 AGENTS §2.3）。
  */
-import { defineEventHandler, sendRedirect } from 'h3'
+import { defineEventHandler, sendRedirect, setHeader } from 'h3'
 
 const MAX_DECODE_PASSES = 4
 
@@ -43,6 +49,7 @@ export default defineEventHandler((event) => {
   }
 
   if (target !== original) {
+    setHeader(event, 'cache-control', 'no-store')
     return sendRedirect(event, target + search, 301)
   }
 })
