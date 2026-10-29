@@ -4,6 +4,8 @@
 
 1. **采集**（`record_visit` → 队列草稿）：真实来源 IP 必须在受信反代之后才采信
    转发头；Cookie 只准记名字；bot 判定、Accept-Language、Bearer 用户 id 在此刻落进草稿。
+   配好 `TRUSTED_PROXY_IPS` 后，「受信对端 + 不带任何转发头」的本机服务直连（Nitro SSR
+   渲染时打 127.0.0.1:8000）一律**不进表**——生产实测这类调用占 8.4 万条里的 8.3 万条。
 2. **落库**（`_flush_visit_queue`）：草稿具名字段 → 模型列。加列时最容易漏的就是这一步
    （采集写了、模型有、flush 没映射 → 接口永远回 null，且一个错都不报）。
 3. **明细口**（`GET /api/monitoring/visits`）：UA 标签读取时现算、bot 档位可按 SQL 筛、
@@ -39,11 +41,17 @@ GOOGLEBOT_UA = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/b
 def _request(
     headers: dict[str, str] | None = None,
     *,
-    client_addr: tuple[str, int] | None = ("127.0.0.1", 51234),
+    client_addr: tuple[str, int] | None = ("203.0.113.20", 51234),
     path: str = "/blog/posts/hello",
     method: str = "GET",
 ) -> Request:
-    """构造一个最小 http scope 的 Request（不必起整台 app 就能测采集逻辑）。"""
+    """构造一个最小 http scope 的 Request（不必起整台 app 就能测采集逻辑）。
+
+    直连对端默认是公网地址而不是 127.0.0.1：`tests/conftest.py` 会把
+    `trusted_proxy_ips` 设成 `["testclient", "127.0.0.1"]`，于是"回环对端 + 不带转发头"
+    在本套件里就是"本机服务直连"，采集口会按设计跳过它。IP/内部流量那几组用例各自显式
+    传对端，其余用例（cookie、UA、截断、身份）不该被这层判定影响。
+    """
     scope = {
         "type": "http",
         "asgi": {"version": "3.0", "spec_version": "2.3"},
@@ -93,7 +101,10 @@ async def test_trusted_proxy_forwards_real_ip(queue, monkeypatch):
     monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
     draft = await _capture(
         queue,
-        _request({"x-forwarded-for": "198.51.100.23, 127.0.0.1", "user-agent": CHROME_UA}),
+        _request(
+            {"x-forwarded-for": "198.51.100.23, 127.0.0.1", "user-agent": CHROME_UA},
+            client_addr=("127.0.0.1", 51234),
+        ),
     )
     assert draft.ip == "198.51.100.23"
 
@@ -114,12 +125,15 @@ async def test_spoofed_forwarded_for_from_untrusted_peer_is_ignored(queue, monke
 
 @pytest.mark.asyncio
 async def test_without_trusted_proxies_the_peer_ip_is_recorded(queue, monkeypatch):
-    """默认不设 TRUSTED_PROXY_IPS 时记的就是直连对端 —— 线上全是 127.0.0.1 的成因。
+    """默认不设 TRUSTED_PROXY_IPS 时记的就是直连对端 —— 经本机 nginx 的请求因此读成回环。
 
     钉住这层行为，部署侧要配什么就成了可证明的结论而不是猜测。
     """
     monkeypatch.setattr(settings, "trusted_proxy_ips", [])
-    draft = await _capture(queue, _request({"x-forwarded-for": "203.0.113.77"}))
+    draft = await _capture(
+        queue,
+        _request({"x-forwarded-for": "203.0.113.77"}, client_addr=("127.0.0.1", 51234)),
+    )
     assert draft.ip == "127.0.0.1"
 
 
@@ -132,6 +146,55 @@ async def test_missing_peer_is_recorded_as_null_ip(queue, monkeypatch):
     monkeypatch.setattr(settings, "trusted_proxy_ips", [])
     draft = await _capture(queue, _request(client_addr=None))
     assert draft.ip is None
+
+
+# ── 1b. 本机服务直连不是访客 ───────────────────────────────────────────────
+@pytest.mark.asyncio
+async def test_internal_service_call_is_not_recorded(queue, monkeypatch):
+    """Nitro SSR 渲染时打 127.0.0.1:8000 取设置/列表，不是"一个访客在看站点"。
+
+    生产实测 8.4 万条访问日志里 8.3 万条 IP 是 127.0.0.1，后台的"独立 IP"、UV
+    与按 IP 筛人因此全部读成"整站只有本机这一个访客"。判定要求"受信对端 + 不带
+    任何转发头"，真实访客经 nginx 时必然带 XFF，所以不会被一起挡掉。
+    """
+    monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
+    await _record_visit(
+        _request({"user-agent": "Rosetta-SSR"}, client_addr=("127.0.0.1", 40001)),
+        200,
+        3.0,
+    )
+    assert queue.qsize() == 0, "本机内部调用不得进访问日志"
+
+
+@pytest.mark.asyncio
+async def test_proxy_forwarded_request_is_still_recorded(queue, monkeypatch):
+    """带转发头的受信对端请求＝经反代进来的真实访客，必须照常记一条。
+
+    上一条件如果写宽成"对端是回环就不记"，nginx 本机反代下的所有访客会一起消失。
+    """
+    monkeypatch.setattr(settings, "trusted_proxy_ips", ["127.0.0.1"])
+    draft = await _capture(
+        queue,
+        _request(
+            {"x-forwarded-for": "203.0.113.9", "user-agent": CHROME_UA},
+            client_addr=("127.0.0.1", 51234),
+        ),
+    )
+    assert draft.ip == "203.0.113.9"
+
+
+@pytest.mark.asyncio
+async def test_without_trusted_proxies_nothing_is_treated_as_internal(queue, monkeypatch):
+    """未配置 TRUSTED_PROXY_IPS 时一条都不跳（保持旧行为，别把访客误当内部流量）。
+
+    没有信任边界就无从区分"本机服务"与"本机伪造的请求"，宁可多记也不能漏记真人。
+    """
+    monkeypatch.setattr(settings, "trusted_proxy_ips", [])
+    draft = await _capture(
+        queue,
+        _request({"user-agent": "Rosetta-SSR"}, client_addr=("127.0.0.1", 51234)),
+    )
+    assert draft.ip == "127.0.0.1"
 
 
 # ── 2. Cookie / 语言 / bot / 身份 ──────────────────────────────────────────

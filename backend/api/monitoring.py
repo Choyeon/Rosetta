@@ -20,7 +20,7 @@ from backend.core.auth import DB, CurrentStaff, decode_token
 from backend.core.cache import cache, make_cache_key
 from backend.core.config import settings
 from backend.core.database import engine
-from backend.core.rate_limit import get_client_ip
+from backend.core.rate_limit import get_client_ip, is_internal_request
 from backend.core.setup_system import psutil_errors
 from backend.utils.compat import UTC, timedelta
 from backend.utils.user_agent import parse_user_agent
@@ -485,13 +485,22 @@ async def record_visit(request: Request, status_code: int, response_time_ms: flo
     """记录访问日志（入队，非阻塞；由后台任务批量落库）。"""
     global _visit_queue, _visit_flusher
 
+    # 本机服务直连（Nitro SSR 渲染时打 127.0.0.1:8000 取设置/列表、健康探针）不是访客。
+    # 它们和真实访客共用这张表时，生产实测 8.4 万条里 8.3 万条的 IP 是 127.0.0.1——
+    # 后台"独立 IP"、UV、按 IP 筛人全部读成"整站只有一个本机访客"。
+    # 判定要求直连对端在 TRUSTED_PROXY_IPS 内且请求不带转发头，所以未配置该列表时
+    # 这里恒为 False（保持旧行为），配置后才真正生效。
+    if is_internal_request(request):
+        return
+
     if _visit_queue is None:
         _visit_queue = asyncio.Queue(maxsize=_VISIT_QUEUE_MAX)
 
-    # 真实来源 IP：直连对端在生产是 nginx（127.0.0.1），不采信转发头就会把整张表
-    # 记成本机回环 —— 去重 IP、UV、按 IP 筛访客全部退化成 1。
-    # get_client_ip 只在直连对端属于 TRUSTED_PROXY_IPS 时才读 X-Forwarded-For，
-    # 所以客户端伪造 XFF 不会污染这张表。
+    # 真实来源 IP：经 nginx 进来的请求，对端要么是 nginx 递来的 X-Forwarded-For 跳，
+    # 要么已被 uvicorn 的 --proxy-headers 改写回访客地址；两种形态都取到同一个 IP。
+    # 不采信转发头（且 uvicorn 关闭代理头）时整张表会记成本机回环——去重 IP、UV、
+    # 按 IP 筛访客全部退化成 1。get_client_ip 只在直连对端属于 TRUSTED_PROXY_IPS 时
+    # 才读 X-Forwarded-For，所以客户端自己伪造 XFF 不会污染这张表。
     peer_ip = get_client_ip(request)
     ua = (request.headers.get("user-agent") or "")[:500] or None
     try:

@@ -4,9 +4,11 @@
 
   契约（缺任何一条都会让这页给出误导性的读数）：
   * `/monitoring/visits` 与 `/monitoring/visits/summary` 都**不套 {success,data} 信封**，直接取裸对象。
-  * IP 只有在后端 `TRUSTED_PROXY_IPS` 含 nginx 那台时才是访客真实地址；否则整表都是 127.0.0.1
-    （去重 IP / UV 一起退化成 1）。所以页内按"当前这批记录是否全是回环"给显式告警，
-    而不是让运营者以为站点只有一个访客。
+  * 一行记录是不是"真人"取决于两件事：`TRUSTED_PROXY_IPS` 有没有把 nginx 那台列为受信
+    （决定 X-Forwarded-For 能不能采信，uvicorn 的 --proxy-headers 关掉时全靠它），以及
+    采集口是否跳过了"受信对端 + 不带任何转发头"的本机服务直连。生产实测未跳时
+    8.4 万条里 8.3 万条是 Nitro SSR 自己打 127.0.0.1:8000 取设置/主题/导航，
+    这页看到的"访客"就是自家 SSR。所以页内按"当前这批记录是否全是回环"给显式告警。
   * os/browser/device/bot_name 是**读取时按当前规则现算**的标签（原始 UA 也随行返回供人工复核）；
     `is_bot` 是唯一落库的判定，历史行为 null 表示"未判定"，两档筛选都不含它 —— 显示要单独分一档。
   * `cookie_names` 只有名字，永远没有值（值是会话凭证，不落遥测、不上屏）。
@@ -142,10 +144,13 @@
       <Info class="size-4" />
       <AlertTitle>这批记录的来源 IP 全是回环地址</AlertTitle>
       <AlertDescription>
-        后端只在直连对端属于 <code class="font-mono">TRUSTED_PROXY_IPS</code> 时才采信
-        <code class="font-mono">X-Forwarded-For</code>。站点跑在 nginx 之后时，
-        没配这项就会把所有访客记成 <code class="font-mono">127.0.0.1</code>（独立访客数随之退化成 1）。
-        在生产 <code class="font-mono">.env</code> 里把反代所在地址加入
+        整页读成 <code class="font-mono">127.0.0.1</code> 通常有两种成因：
+        <strong>①本机服务直连被当成了访客</strong>——Nitro SSR 渲染时打
+        <code class="font-mono">127.0.0.1:8000</code> 取设置/主题/导航，这类请求不带转发头，
+        配好 <code class="font-mono">TRUSTED_PROXY_IPS</code> 后采集口会把它们整体跳过；
+        <strong>②反代递来的 <code class="font-mono">X-Forwarded-For</code> 没被采信</strong>——后端只在直连对端属于
+        <code class="font-mono">TRUSTED_PROXY_IPS</code> 时才读它。
+        两种都由同一步解决：在生产 <code class="font-mono">.env</code> 里把反代所在地址加入
         <code class="font-mono">TRUSTED_PROXY_IPS</code>（例如 <code class="font-mono">127.0.0.1</code>）并重启后端；
         已有的历史行不会回填。
       </AlertDescription>
