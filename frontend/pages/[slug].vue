@@ -20,7 +20,7 @@
         />
       </div>
     </template>
-    <template v-else-if="loadError || !page">
+    <template v-else-if="pageNotFound">
       <!-- 顶级 catchall 接住每一条 /任意单段 URL，所以"打错网址"的第一印象就是这一屏。
            旧版是一条红色 alert + 一个按钮，既不像 404 也没有第二条出路；
            这里用统一的 404 版式（大号 404 / 标题 / 说明 / 双出口）。 -->
@@ -57,7 +57,25 @@
         </div>
       </div>
     </template>
-    <template v-else>
+
+    <!-- 请求失败：后端抖一下不能变成「页面不存在」，给一块可重试的错误面板 -->
+    <div
+      v-else-if="loadFailure"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
+    >
+      <div class="flex flex-col items-center gap-3 text-center">
+        <span>{{ t('error.serverErrorDesc') }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="retryLoad()"
+        >
+          <RefreshCw data-icon="inline-start" />
+          {{ t('error.retry') }}
+        </Button>
+      </div>
+    </div>
+    <template v-else-if="page">
       <header class="mb-10">
         <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
           <span class="size-1.5 rounded-full bg-primary" />
@@ -95,7 +113,7 @@
 
 <script setup lang="ts">
 import { Skeleton } from '~~/components/ui/skeleton'
-import { buttonVariants } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { Marked } from 'marked'
@@ -173,14 +191,23 @@ const nuxtApp = useNuxtApp()
 // 自愈 301 与 404 是互斥的两个出口：跳走的那条已经写好了重定向状态码，
 // 不能再被下面的状态码闸门覆盖成 404（301 变 404 会把可恢复的死链做成永久删除）。
 const redirectedAway = ref(false)
-const { data: raw, pending, error } = useAsyncData<PageDetail | null>(
+// 请求失败状态：0 = 没有失败。这里是**数据源**的失败，不是页面抛错——
+// 页面里 throw createError 会被 contentNotFoundStatus.spec.ts 判成"又在页面里写状态码"，
+// 而且渲染出的 error.vue 与响应码会脱节（见 AGENTS §2.3.2）。
+const loadFailure = ref(0)
+const { data: raw, pending, error, refresh } = useAsyncData<PageDetail | null>(
   computed(() => `page:slug:${slug.value}:${locale.value}`),
   async () => {
     const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
+    let primaryStatus = 0
     try {
       const resp = await $fetch(`/pages/${slug.value}`, { baseURL, query: { lang: locale.value } })
       return unwrapResp(resp)
-    } catch {
+    } catch (e) {
+      // 记下主请求的失败形态：404 是"这条 URL 不存在"，其余（5xx / 断网）是"暂时读不到"。
+      // 两者混为一谈的话，后端抖一下就把一个真实页面渲染成 404 并回 404 状态码。
+      const err = e as { statusCode?: number, status?: number } | null
+      primaryStatus = err?.statusCode ?? err?.status ?? 0
       // 404 自愈：顶级路径的 slug 可能其实是文章（如 /post-1-xxx 少了 /posts 前缀），
       // 命中文章则 301（SSR）/ replace（客户端）到真实详情页，避免误报"页面不存在"。
       // 污染 URL 可能叠加多层编码，逐级解码依次尝试。
@@ -196,10 +223,15 @@ const { data: raw, pending, error } = useAsyncData<PageDetail | null>(
           }
         } catch { /* 该候选不是文章，试下一个 */ }
       }
+      if (primaryStatus !== 404) loadFailure.value = primaryStatus || 503
       return null
     }
   }
 )
+const retryLoad = () => {
+  loadFailure.value = 0
+  return refresh()
+}
 
 const page = computed<PageDetail | null>(() => {
   const r = raw.value as Record<string, unknown> | PageDetail | null
@@ -208,21 +240,24 @@ const page = computed<PageDetail | null>(() => {
   }
   return (r as PageDetail | null) ?? null
 })
-const loadError = computed(() => !!error.value || !page.value)
 // 顶级 catchall 会接住每一条形如 /任意单段 的 URL：此前"独立页不存在"只渲染兜底 UI、
 // 响应仍是 200（并且会被 swr 缓存固化），爬虫会把垃圾 URL 收进索引。
 // 闸门口径与其余内容详情页一致（见 composables/useContentStatus.ts），
 // 但跳走的那一条除外——它已经带着 301，不能再被改成 404。
-const pageMissing = computed(() => !page.value && !redirectedAway.value)
+const pageMissing = computed(() => !page.value && !redirectedAway.value && !loadFailure.value)
 // 状态码 / robots / canonical 同源判定（404 却写 index,follow + 自指 canonical 是两份矛盾信号）
 const pageNotFound = computed(() => isContentMissing(error.value, pageMissing.value))
 useContentStatus(error, pageMissing)
 
 // 加载中留空（只显站点名，不闪"页面不存在"）；确实取不到内容时用 404 口径标题，
 // 不再把 slug 人性化成一个假装存在的页面名（响应侧已由 useContentStatus 回写 404）。
-const title = computed(() =>
-  pickLocalized(page.value?.title) || (pending.value ? '' : t('error.notFoundTitle'))
-)
+// 请求失败另外给「服务器开小差了」——标题与面板文案必须同口径，不能一个说不存在一个说稍后重试。
+const title = computed(() => {
+  const name = pickLocalized(page.value?.title)
+  if (name) return name
+  if (pending.value) return ''
+  return loadFailure.value ? t('error.serverErrorTitle') : t('error.notFoundTitle')
+})
 
 const md = new Marked()
 // isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch

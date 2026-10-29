@@ -9,7 +9,7 @@
 
 <script setup lang="ts">
 import { Skeleton } from '~~/components/ui/skeleton'
-import { buttonVariants } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { ArrowLeft, CalendarDays, RefreshCw } from '@lucide/vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
@@ -66,7 +66,7 @@ interface PageDetail {
 
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
-const { data: raw, pending, error } = useAPI<PageDetail>(`/pages/${slug.value}`, {
+const { data: raw, pending, error, refresh } = useAPI<PageDetail>(`/pages/${slug.value}`, {
   query: { lang: locale.value },
   key: computed(() => `compat:page:slug:${slug.value}:${locale.value}`)
 })
@@ -78,7 +78,6 @@ const page = computed<PageDetail | null>(() => {
   }
   return (r as PageDetail | null) ?? null
 })
-const loadError = computed(() => !!error.value || !page.value)
 // 独立页不存在/未发布时让 SSR 响应带 404（兜底 UI 不变）；见 composables/useContentStatus.ts。
 const compatPageMissing = computed(() => !page.value)
 // 状态码 / robots / canonical 同源判定
@@ -87,7 +86,13 @@ useContentStatus(error, compatPageMissing)
 
 // 加载中留空（只显站点名，不闪"页面不存在"）；确实取不到内容时用 404 口径标题，
 // 不再把 slug 人性化成一个假装存在的页面名（响应侧已由 useContentStatus 回写 404）。
-const title = computed(() => pickLocalized(page.value?.title) || (pending.value ? '' : t('error.notFoundTitle')))
+// 请求失败另外给「服务器开小差了」——与失败面板同口径。
+const title = computed(() => {
+  const name = pickLocalized(page.value?.title)
+  if (name) return name
+  if (pending.value) return ''
+  return error.value ? t('error.serverErrorTitle') : t('error.notFoundTitle')
+})
 
 const md = new Marked()
 // isomorphic-dompurify 在 SSR 与客户端两端行为一致，避免 hydration mismatch
@@ -165,7 +170,7 @@ useArticleJsonLd({
         />
       </div>
     </template>
-    <template v-else-if="loadError || !page">
+    <template v-else-if="compatPageNotFound">
       <div class="flex flex-col items-center justify-center py-16 md:py-24 text-center">
         <div
           class="font-display text-6xl md:text-7xl font-black tracking-tighter text-muted-foreground/25 select-none"
@@ -199,7 +204,25 @@ useArticleJsonLd({
         </div>
       </div>
     </template>
-    <template v-else>
+
+    <!-- 请求失败：后端抖一下不能变成「页面不存在」，给一块可重试的错误面板 -->
+    <div
+      v-else-if="error"
+      class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
+    >
+      <div class="flex flex-col items-center gap-3 text-center">
+        <span>{{ t('error.serverErrorDesc') }}</span>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="refresh()"
+        >
+          <RefreshCw data-icon="inline-start" />
+          {{ t('error.retry') }}
+        </Button>
+      </div>
+    </div>
+    <template v-else-if="page">
       <header class="mb-10">
         <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
           <span class="size-1.5 rounded-full bg-primary" />
