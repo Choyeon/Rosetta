@@ -97,6 +97,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { NOINDEX_ROBOTS } from '~~/composables/useSeo'
 
 /**
  * 注意：error.vue 位于项目根目录、不在 pages/ 下，因此 Nuxt 编译器【不会】把
@@ -194,8 +195,35 @@ const reload = () => {
 // 注：曾在此处放"SPA 路径 refs-null 级联自愈诊断"（依赖 00-escape-hatch 吞错链）。
 // 该插件已拆除；真实错误现在会照常进入本兜底页并展示（含重试按钮），不做静默诊断。
 
+/**
+ * 标题后缀只能用站点名。这里曾写死 `… · Rosetta`：生产实测未命中路由的 404 页
+ * <title> 是「404 · 页面不存在 · Rosetta」，而站内每一页都是「… · Choyeon Blog」
+ * ——运营者改了站名，唯独兜底页还顶着内部项目名。
+ * 与其他页同一口径读 useSite().siteTitle；取不到时只输出「状态码 · 文案」，客户端
+ * titleTemplate 会补站点名——宁可少一段，也不要再冒出一个别的品牌名。
+ */
+let site: ReturnType<typeof useSite> | null = null
+try {
+  site = useSite()
+} catch { /* Nuxt 上下文极端异常：不带站点名 */ }
+
+const titleWithSuffix = (title: string): string => {
+  const name = site?.siteTitle.value
+  return name ? `${title} · ${name}` : title
+}
+
+/**
+ * robots + description 也必须由本页给：兜底页不经过 useSeo，不写就继承 nuxt.config 的
+ * 通用 head——实测未命中路由的 404 原始 HTML 里既没有 robots 行，description 也还是
+ * nuxt.config 那条产品介绍（"Modern personal blog system with Nuxt 4 + FastAPI"），
+ * 与「页面不存在」互相矛盾。robots 统一走 NOINDEX_ROBOTS 单源（AGENTS §2.3.3.4）。
+ */
 useHead({
-  title: computed(() => `${statusCode.value} · ${pageTitle.value} · Rosetta`)
+  title: computed(() => `${statusCode.value} · ${titleWithSuffix(pageTitle.value)}`),
+  meta: [
+    { name: 'robots', content: NOINDEX_ROBOTS },
+    { name: 'description', content: computed(() => pageDesc.value) }
+  ]
 })
 </script>
 
