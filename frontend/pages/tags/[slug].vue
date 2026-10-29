@@ -18,6 +18,8 @@
       <div class="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight inline-flex items-center gap-3">
+            <!-- 标题只出一份：徽章本身就是标题（胶囊里已经写着标签名）。
+                 此前徽章与一个同名 span 并排，线上 h1 读出来是「Python Python」。 -->
             <TagBadge
               v-if="!tagNotFound"
               :color="tagColor"
@@ -25,7 +27,7 @@
               size="md"
               show-icon
             />
-            <span>{{ tagName }}</span>
+            <span v-else>{{ tagName }}</span>
           </h1>
           <p
             v-if="tagDesc"

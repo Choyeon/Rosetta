@@ -61,11 +61,13 @@ describe.each(cases)('$file 的 404 口径', ({ file, flag, listPath, countKey }
 describe('tags/[slug].vue 标题去重', () => {
   const src = readFileSync(resolve(__dirname, '..', '..', 'pages/tags/[slug].vue'), 'utf-8')
 
-  it('标签徽章在不存在时撤掉，h1 只留一处标题文本', () => {
+  it('徽章与纯文本标题互斥：同一时刻只有一份标签名（线上曾是「Python Python」）', () => {
     const h1Start = src.indexOf('<h1')
     const h1End = src.indexOf('</h1>', h1Start)
     const h1 = src.slice(h1Start, h1End)
     expect(h1).toContain('v-if="!tagNotFound"')
+    // 文本兜底必须是 v-else：写成并列的两个节点，真实标签页的 h1 会把标签名念两遍。
+    expect(h1).toMatch(/<span\s+v-else>\{\{ tagName \}\}<\/span>/)
     expect(h1.match(/\{\{ tagName \}\}/g)?.length, 'h1 里标题文本只应出现一次').toBe(1)
   })
 })
