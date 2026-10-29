@@ -159,7 +159,11 @@ export function useSite() {
     default_title: basic.value.subtitle,
     default_description: basic.value.description,
     default_keywords: basic.value.keywords,
-    og_image: (state.value.publicConfig?.default_og_image as string) || '',
+    og_image: '',
+    // 站内默认分享图：文章无封面与所有列表页的 og:image 都回落到它
+    // （消费点 composables/useSeo.ts::resolveShareImage）。分组取不到时用 /api/config
+    // 的同名值，再不行交给 resolveShareImage 的站内品牌图兜底。
+    default_og_image: (state.value.publicConfig?.default_og_image as string) || '/og-default.png',
     twitter_handle: '',
     google_verification: '',
     baidu_verification: '',

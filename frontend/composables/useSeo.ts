@@ -14,7 +14,20 @@
  */
 
 import { computed } from 'vue'
+import { OG_FALLBACK_IMAGE } from '~~/lib/post-cover'
 import { DEFAULT_LOCALE_CODE, NON_DEFAULT_LOCALE_CODES, stripLocalePathPrefix } from '~~/lib/rosetta-themes'
+
+/**
+ * 分享图取值的单源：调用方显式给了就用它 → 否则用后台 `seo.default_og_image`
+ * → 两者都空（OOBE / 分组未下发）才回落站内品牌图。
+ *
+ * 少这一步时，首页与所有列表页只有 `twitter:card=summary_large_image` 却没有
+ * `og:image` / `twitter:image`：社交平台按大字卡渲染却发现无图，退化成纯文字预览，
+ * 后台配置的「站内默认分享图」对这些页面完全无效（实测 2026-10-29 全站只有文章页有图）。
+ */
+export function resolveShareImage(explicit: string, siteDefault: string): string {
+  return (explicit || '').trim() || (siteDefault || '').trim() || OG_FALLBACK_IMAGE
+}
 
 /**
  * 不可索引页的唯一 robots 口径。
@@ -310,9 +323,12 @@ export function useSeo(opts: SeoMetaOptions = {}) {
   })
   const _image = computed(() =>
     asAbsolute(
-      typeof opts.image === 'string'
-        ? opts.image
-        : (opts.image?.value ?? ''),
+      resolveShareImage(
+        typeof opts.image === 'string'
+          ? opts.image
+          : (opts.image?.value ?? ''),
+        String((site.seo.value as Record<string, unknown>).default_og_image || '')
+      ),
       siteUrl.value
     )
   )
@@ -418,11 +434,11 @@ export function useSeo(opts: SeoMetaOptions = {}) {
       }
       // 尺寸提示只在图片 URL 自身声明了尺寸时可推导（本仓封面来自用户上传，无单源），
       // 所以宁缺毋滥：写一个猜出来的 1200×630 会让爬虫按错比例预留预览框。
-      if (_imageAlt.value) {
-        meta.push({ property: 'og:image:alt', content: _imageAlt.value })
-        // Twitter Card 的 alt 是独立字段，缺了读屏软件在 X 的预览里拿不到描述。
-        meta.push({ name: 'twitter:image:alt', content: _imageAlt.value })
-      }
+      // alt 缺省回落站点名：分享卡上的图若无替代文本，读屏软件只会念出图片 URL。
+      const imageAlt = _imageAlt.value || siteName.value
+      meta.push({ property: 'og:image:alt', content: imageAlt })
+      // Twitter Card 的 alt 是独立字段，缺了读屏软件在 X 的预览里拿不到描述。
+      meta.push({ name: 'twitter:image:alt', content: imageAlt })
     }
     if (_url.value) {
       meta.push({ property: 'og:url', content: canonicalUrl.value || _url.value })
