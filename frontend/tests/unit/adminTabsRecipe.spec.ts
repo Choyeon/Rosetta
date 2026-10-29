@@ -30,6 +30,17 @@ const CANONICAL_RECIPE = 'data-[state=active]:bg-primary data-[state=active]:tex
 const tokens = (s: string) => s.split(/\s+/).filter(Boolean)
 const has = (s: string, t: string) => tokens(s).includes(t)
 
+/** 递归收集 .vue（两条静态守卫共用） */
+function walkDir(dir: string): string[] {
+  const out: string[] = []
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, entry.name)
+    if (entry.isDirectory()) out.push(...walkDir(p))
+    else if (entry.name.endsWith('.vue')) out.push(p)
+  }
+  return out
+}
+
 describe('tailwind-merge 对激活态覆盖的裁决', () => {
   it('旧配方：基线白底存活（bg-primary 修饰符不同，挤不掉它）→ 这就是生产缺陷的一半', () => {
     const merged = twMerge(BASE_TRIGGER, BROKEN_RECIPE)
@@ -61,20 +72,58 @@ describe('AdminTabTrigger / AdminTabList 是唯一配方来源', () => {
   })
 })
 
+describe('AdminTabList 的高度由内容撑开（竖直滚动条回归）', () => {
+  // 缺陷（2026-10-29 线上实测，仪表盘「流量总览 / 互动 & 内容」那一排）：
+  // `overflow-x-auto` 按 CSS 规范会把 `overflow-y` 的 visible 当成 auto 计算，
+  // 于是容器一旦比 `padding + 页签高度` 矮就多出一条竖直滚动条。
+  // 当时是 h-8（32px）容器 + p-1.5（12px）+ h-7（28px）页签 = 40px 内容装进 32px。
+  // 默认那档同样矮了 4px（h-11=44 对 12+36），只是首页那排才刚好被看见。
+  const LIST_BASE = 'h-auto w-full justify-start gap-1 overflow-x-auto overflow-y-hidden rounded-xl bg-muted/50 p-1.5'
+  const listSource = readFileSync(resolve(process.cwd(), 'components/admin/AdminTabList.vue'), 'utf8')
+
+  it('写死的高度一定会赢过 h-auto，所以基线不能指望自己撑开', () => {
+    const merged = twMerge(LIST_BASE, 'h-8')
+    expect(has(merged, 'h-8')).toBe(true)
+    expect(has(merged, 'h-auto')).toBe(false)
+    // 矮一档的正确做法是改 padding：它与基线同组，能被 cn() 正常替换掉。
+    const viaPadding = twMerge(LIST_BASE, 'p-0.5')
+    expect(has(viaPadding, 'p-0.5')).toBe(true)
+    expect(has(viaPadding, 'p-1.5')).toBe(false)
+  })
+
+  it('基线是 h-auto + overflow-y-hidden，且不含任何固定高度', () => {
+    expect(listSource).toContain('h-auto')
+    expect(listSource).toContain('overflow-y-hidden')
+    expect(listSource).not.toMatch(/cn\(\s*'[^']*?h-\d/)
+  })
+
+  it('没有任何使用方给 AdminTabList 传固定高度（只能传 padding 调档位）', () => {
+    const roots = [resolve(process.cwd(), 'pages/admin'), resolve(process.cwd(), 'components')]
+    const offenders: string[] = []
+    const seen: string[] = []
+
+    for (const root of roots) {
+      for (const f of walkDir(root)) {
+        const src = readFileSync(f, 'utf8')
+        // 每个用法写在同一行；跨行拆属性的写法本守卫看不见，所以另有一条"必须含
+        // <AdminTabList"的正向计数，防止正则整体失配后这条用例变成恒真。
+        for (const line of src.split('\n')) {
+          if (!/<AdminTabList\b/.test(line)) continue
+          seen.push(f)
+          const cls = /class="([^"]*)"/.exec(line)?.[1] ?? ''
+          if (/(?:^|\s)h-\d/.test(cls)) offenders.push(`${f}: ${cls}`)
+        }
+      }
+    }
+
+    expect(seen.length, '一处 AdminTabList 都没扫到 = 扫描器失配，不是通过').toBeGreaterThan(6)
+    expect(offenders, `页签容器写死了高度：${offenders.join(' | ')}`).toEqual([])
+  })
+})
+
 describe('后台页面不得再内联页签激活配方', () => {
   const adminRoot = resolve(process.cwd(), 'pages/admin')
-
-  function walk(dir: string): string[] {
-    const out: string[] = []
-    for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      const p = join(dir, entry.name)
-      if (entry.isDirectory()) out.push(...walk(p))
-      else if (entry.name.endsWith('.vue')) out.push(p)
-    }
-    return out
-  }
-
-  const files = walk(adminRoot)
+  const files = walkDir(adminRoot)
 
   it('没有任何页面再直接 import shadcn 的 TabsTrigger（必须经 AdminTabTrigger）', () => {
     const offenders: string[] = []

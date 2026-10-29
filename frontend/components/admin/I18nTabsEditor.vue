@@ -216,7 +216,7 @@ defineExpose({ insertIntoActiveMarkdown, getActiveLocale: () => activeLocale.val
       :model-value="activeLocale"
       @update:model-value="(v: string | number) => activeLocale = String(v)"
     >
-      <AdminTabList class="grid grid-cols-4 w-full h-9 rounded-[10px]">
+      <AdminTabList class="grid grid-cols-4 w-full rounded-[10px] p-0.5">
         <AdminTabTrigger
           v-for="l in LOCALES"
           :key="l.key"
