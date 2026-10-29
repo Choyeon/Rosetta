@@ -155,13 +155,29 @@
             class="cursor-pointer select-none text-sm leading-normal text-muted-foreground"
           >
             {{ t('auth.agreeTermsPrefix', '我已阅读并同意') }}
-            <span class="ap-auth-link mx-1 font-semibold">
+            <NuxtLink
+              v-if="hasConsentDoc('terms')"
+              :to="localeHref('/terms')"
+              class="ap-auth-link mx-1 font-semibold underline underline-offset-2"
+            >
               {{ t('auth.terms', '服务条款') }}
-            </span>
+            </NuxtLink>
+            <span
+              v-else
+              class="ap-auth-link mx-1 font-semibold"
+            >{{ t('auth.terms', '服务条款') }}</span>
             {{ t('auth.agreeTermsAnd', '与') }}
-            <span class="ap-auth-link mx-1 font-semibold">
+            <NuxtLink
+              v-if="hasConsentDoc('privacy')"
+              :to="localeHref('/privacy')"
+              class="ap-auth-link mx-1 font-semibold underline underline-offset-2"
+            >
               {{ t('auth.privacy', '隐私政策') }}
-            </span>
+            </NuxtLink>
+            <span
+              v-else
+              class="ap-auth-link mx-1 font-semibold"
+            >{{ t('auth.privacy', '隐私政策') }}</span>
           </label>
         </div>
 
@@ -445,13 +461,29 @@
                   class="text-sm leading-normal cursor-pointer text-white/75 select-none"
                 >
                   {{ t('auth.agreeTermsPrefix', '我已阅读并同意') }}
-                  <span class="mx-1 font-semibold text-sky-200 hover:text-white hover:underline underline-offset-2 cursor-pointer transition-colors">
+                  <NuxtLink
+                    v-if="hasConsentDoc('terms')"
+                    :to="localeHref('/terms')"
+                    class="mx-1 font-semibold text-sky-200 hover:text-white hover:underline underline-offset-2 cursor-pointer transition-colors"
+                  >
                     {{ t('auth.terms', '服务条款') }}
-                  </span>
+                  </NuxtLink>
+                  <span
+                    v-else
+                    class="mx-1 font-semibold text-sky-200 hover:text-white hover:underline underline-offset-2 cursor-pointer transition-colors"
+                  >{{ t('auth.terms', '服务条款') }}</span>
                   {{ t('auth.agreeTermsAnd', '与') }}
-                  <span class="mx-1 font-semibold text-sky-200 hover:text-white hover:underline underline-offset-2 cursor-pointer transition-colors">
+                  <NuxtLink
+                    v-if="hasConsentDoc('privacy')"
+                    :to="localeHref('/privacy')"
+                    class="mx-1 font-semibold text-sky-200 hover:text-white hover:underline underline-offset-2 cursor-pointer transition-colors"
+                  >
                     {{ t('auth.privacy', '隐私政策') }}
-                  </span>
+                  </NuxtLink>
+                  <span
+                    v-else
+                    class="mx-1 font-semibold text-sky-200 hover:text-white hover:underline underline-offset-2 cursor-pointer transition-colors"
+                  >{{ t('auth.privacy', '隐私政策') }}</span>
                 </label>
               </div>
 
@@ -632,6 +664,18 @@ const errorMessage = ref('')
 const showPassword = ref(false)
 const showConfirmPassword = ref(false)
 
+// 「服务条款 / 隐私政策」不是内建页：正文由站长在后台创建的独立页提供（slug 为 terms / privacy，
+// 走顶级 catchall 渲染）。只有该页已发布才渲染成链接——指向一个 404 比不可点更糟；
+// 列表取不到（后端不可达 / 两页都没建）时保持纯文本，「同意」这一步照常可用。
+const consentDocSlugs = ref<Set<string>>(new Set())
+const hasConsentDoc = (slug: string) => consentDocSlugs.value.has(slug)
+
+async function loadConsentDocs() {
+  const res = await silentApiFetch<{ items?: { slug?: string }[] }>('/pages', { query: { page_size: 100 } })
+  const items = res?.items ?? []
+  consentDocSlugs.value = new Set(items.map(it => it.slug).filter((s): s is string => !!s))
+}
+
 const isFormValid = computed(() => {
   const username = deriveUsername(form.email, form.name)
   return (
@@ -675,6 +719,8 @@ const thumbError = ref(false)
 
 // 首次进入拉取（ssr:false，客户端拉即可）
 onMounted(async () => {
+  // 同意条款的落地页是否存在：独立请求，不阻塞下面的站点配置/壁纸/登录态链路
+  void loadConsentDocs()
   // 先取站点配置（含主题归属与 Bing 壁纸开关）：极简分支或站长关闭壁纸时都跳过拉取
   await site.ensureLoaded()
   if (!isMinimalAuth.value && bingWallpaperEnabled.value) {
