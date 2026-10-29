@@ -190,7 +190,8 @@ export function useComments() {
   const fetchComments = async (
     post_id: number | string,
     page = 1,
-    pageSize_ = 20
+    pageSize_ = 20,
+    postPassword?: string | null
   ) => {
     loading.value = true
     error.value = null
@@ -202,10 +203,14 @@ export function useComments() {
           lang: locale.value
         }
       }
+      // 评论树与正文同闸门（blog.py 的 post_content_unlocked）：不带这张钥匙，后端就按
+      // "还没解锁"回空列表——正文出来了、线程却永远空着，读者看到的是"评论坏了"。
+      // 走 header 不走查询串：密码进 URL 会被 nginx access log 明文落盘。
+      if (postPassword) opts.headers = { 'X-Post-Password': postPassword }
       const res = await apiFetch<PaginatedResponse<Comment> | Comment[]>(`/blog/posts/${post_id}/comments`, opts)
       if (res) {
-        // 裸数组是历史契约（后端未分页时代返回 List[Comment]）；现在只有降级路径会命中，
-        // 保留分支是为了响应形态变化时不白屏，而不是把 total 悄悄写成 0。
+        // 裸数组是当前真实契约（本端点 response_model=list[CommentResponse]，无信封），
+        // 分页对象形态留给响应结构变化时不至于白屏，而不是把 total 悄悄写成 0。
         if (Array.isArray(res)) {
           comments.value = res as Comment[]
           total.value = res.length

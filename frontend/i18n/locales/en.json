@@ -115,6 +115,7 @@
     "home": "Home",
     "posts": "Posts",
     "noComments": "No comments yet. Leave the first word.",
+    "commentsLockedHint": "Unlock the article to read the comments.",
     "loginRequired": "Sign in to engage",
     "loginToComment": "Please sign in before posting a comment.",
     "goLogin": "Go to login",

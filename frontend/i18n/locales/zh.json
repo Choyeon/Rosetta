@@ -115,6 +115,7 @@
     "home": "首页",
     "posts": "文章",
     "noComments": "暂无评论，来抢沙发吧。",
+    "commentsLockedHint": "解锁正文后可查看评论。",
     "loginRequired": "登录后互动",
     "loginToComment": "评论前请先登录你的账号。",
     "goLogin": "前往登录",

@@ -115,6 +115,7 @@
     "home": "ホーム",
     "posts": "記事",
     "noComments": "まだコメントがありません。最初の一言をどうぞ。",
+    "commentsLockedHint": "本文を解錠するとコメントをご覧いただけます。",
     "loginRequired": "ログインして参加",
     "loginToComment": "コメントを投稿するには先にログインしてください。",
     "goLogin": "ログインへ",

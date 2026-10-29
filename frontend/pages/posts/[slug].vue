@@ -673,6 +673,15 @@
                   {{ t('post.retry', '重试') }}
                 </Button>
               </div>
+              <div
+                v-else-if="needPassword"
+                class="text-center py-12 rounded-xl border border-dashed"
+              >
+                <Lock class="size-10 mx-auto text-muted-foreground/50 mb-3" />
+                <p class="text-muted-foreground">
+                  {{ t('post.commentsLockedHint') }}
+                </p>
+              </div>
               <template v-else>
                 <div class="text-center py-12 rounded-xl border border-dashed">
                   <MessageSquare class="size-10 mx-auto text-muted-foreground/50 mb-3" />
@@ -1180,6 +1189,9 @@ async function submitArticlePassword() {
       }
       return
     }
+    // 正文出来了不等于线程出来了：评论读口与正文走同一道闸门，解锁这一刻必须带着
+    // 刚验过的密码重拉一次，否则读者看到的是"解锁完仍然暂无评论"。
+    await loadCommentsForCurrentPost()
     articlePwdInput.value = ''
   } catch {
     articlePwdError.value = true
@@ -1197,6 +1209,8 @@ function clearSavedPassword() {
   articlePwdInput.value = ''
   articlePwdError.value = false
   refreshPost()
+  // 状态往回走也要重拉：已经显示出来的那一串评论属于"带钥匙"的那一档
+  void loadCommentsForCurrentPost()
 }
 
 // useFetch 的 URL/query 通过 computed 函数 / Ref 自动响应式，不再显式 watch。
@@ -1795,7 +1809,7 @@ const loadCommentsForCurrentPost = async () => {
   commentsError.value = false
   try {
     if (post.value?.id && commentsAPI.fetchComments) {
-      await commentsAPI.fetchComments(post.value.id)
+      await commentsAPI.fetchComments(post.value.id, 1, 20, articleStoredPwd.value)
       comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
     } else {
       comments.value = []
@@ -1963,7 +1977,7 @@ const handleSubmitComment = async () => {
       ? 'post.commentPending'
       : 'post.commentSubmitted')))
     if (commentsAPI.fetchComments) {
-      await commentsAPI.fetchComments(post.value.id)
+      await commentsAPI.fetchComments(post.value.id, 1, 20, articleStoredPwd.value)
       comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
     }
   } catch (err: unknown) {
