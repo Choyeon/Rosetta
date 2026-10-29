@@ -277,6 +277,30 @@ async def test_import_markdown_creates_post(client, staff_headers, db_session):
     assert resp.json()["created_count"] == 1
 
 
+@pytest.mark.asyncio
+async def test_import_markdown_rejects_non_utf8_without_500(client, staff_headers, db_session):
+    """GBK / UTF-16 存的 .md 以前在 `.decode("utf-8")` 上抛 UnicodeDecodeError → 500。
+
+    Windows 记事本与老编辑器导出的中文 Markdown 默认就不是 UTF-8，这条路径一定会被真实作者踩到；
+    判据两半：状态码是 400（并告诉作者怎么补救），且残缺的这次导入不能留下半篇文章。
+    """
+    from backend.models.blog import Post
+
+    markdown = "---\ntitle: 编码测试\nslug: gbk-encoded\n---\n\n正文内容\n"
+    resp = await client.post(
+        f"{ADMIN}/import/markdown",
+        files={"file": ("gbk-encoded.md", markdown.encode("gbk"), "text/markdown")},
+        headers=staff_headers,
+    )
+    assert resp.status_code == 400, resp.text
+    assert "UTF-8" in resp.json()["message"]
+
+    row = (
+        (await db_session.execute(select(Post).where(Post.slug == "gbk-encoded"))).scalars().first()
+    )
+    assert row is None, "非 UTF-8 的导入必须整个拒绝，不能落下半篇文章"
+
+
 # ==================== 备份 ====================
 
 

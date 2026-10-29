@@ -681,7 +681,8 @@ async def import_posts(
         "上传内容按 UTF-8 文本解析：必须是以 --- 包裹的 frontmatter，"
         "取其中的 title 与 slug（缺 slug 时由标题小写转写生成），正文落为 zh 变体；"
         "default_category 参数当前实现未参与写库。导入的文章一律是草稿状态，不会直接上线。"
-        "未提供文件名时 400；slug 已存在或解析不到 frontmatter 时返回 200 且 success=false（不抛 4xx），"
+        "未提供文件名时 400；文件不是 UTF-8 文本时 400（GBK / UTF-16 的 .md 请另存为 UTF-8）；"
+        "slug 已存在或解析不到 frontmatter 时返回 200 且 success=false（不抛 4xx），"
         "调用方须读 success 判定结果。"
     ),
     responses={200: {"model": ImportResult}},
@@ -703,7 +704,17 @@ async def import_markdown(
             detail="请上传文件",
         )
 
-    content = (await file.read()).decode("utf-8")
+    raw = await file.read()
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        # Windows 记事本 / 老编辑器导出的 .md 常是 GBK 或带 BOM 的 UTF-16，
+        # 直接 .decode("utf-8") 会抛 UnicodeDecodeError，接口表现为 500 + 「服务器内部错误」，
+        # 作者完全不知道该把文件另存成什么。与 /import/posts 同轨：解析失败是 400。
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"文件不是 UTF-8 文本（{exc.reason}），请在编辑器里另存为 UTF-8 后重试",
+        )
 
     # 解析 frontmatter
     if content.startswith("---"):
