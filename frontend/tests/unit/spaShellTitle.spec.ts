@@ -22,10 +22,11 @@ import {
   rewriteShellTitle,
   SPA_SHELL_PREFIXES
 } from '../../server/utils/spaShellBrand'
-import { SPA_SHELL_TITLE_PLACEHOLDER } from '../../lib/utils'
+import { brandFloorTitle, pickBrandSubtitle, SPA_SHELL_TITLE_PLACEHOLDER } from '../../lib/utils'
 
 const appVue = readFileSync(resolve(process.cwd(), 'app.vue'), 'utf8')
 const titlePlugin = readFileSync(resolve(process.cwd(), 'plugins/site-title.global.ts'), 'utf8')
+const useSite = readFileSync(resolve(process.cwd(), 'composables/useSite.ts'), 'utf8')
 const nuxtConfig = readFileSync(resolve(process.cwd(), 'nuxt.config.ts'), 'utf8')
 const shellPlugin = readFileSync(
   resolve(process.cwd(), 'server/plugins/spa-shell-brand.nitro.ts'),
@@ -72,6 +73,50 @@ describe('isSpaShellPath', () => {
       '/account',
       '/admin'
     ])
+  })
+})
+
+describe('brandFloorTitle：副标题与站名同值不得拼成「X · X」', () => {
+  it('同值只留站名（含空白差异）', () => {
+    expect(brandFloorTitle('Choyeon Blog', 'Choyeon Blog')).toBe('Choyeon Blog')
+    expect(brandFloorTitle('Choyeon Blog', '  Choyeon Blog  ')).toBe('Choyeon Blog')
+    expect(buildShellTitle('Choyeon Blog', 'Choyeon Blog')).toBe('Choyeon Blog')
+  })
+
+  it('不同值仍按「站名 · 副标题」拼接，空副标题只留站名，站名缺失回落 Rosetta', () => {
+    expect(brandFloorTitle('Choyeon Blog', '穿越语言的边界')).toBe('Choyeon Blog · 穿越语言的边界')
+    expect(brandFloorTitle('Choyeon Blog', '   ')).toBe('Choyeon Blog')
+    expect(brandFloorTitle('', '副标题')).toBe('Rosetta · 副标题')
+  })
+
+  it('候选挑选：跳过与站名同值的项，不会把真正的副标题整条丢掉', () => {
+    expect(pickBrandSubtitle('Choyeon Blog', 'Choyeon Blog', '分享知识与灵感'))
+      .toBe('分享知识与灵感')
+    expect(pickBrandSubtitle('Choyeon Blog', 'Choyeon Blog', '')).toBe('Choyeon Blog')
+    expect(pickBrandSubtitle('Choyeon Blog', '', undefined, '  ')).toBe('')
+  })
+
+  it('两处取「站名 + 候选副标题」的口子都过 pickBrandSubtitle', () => {
+    expect(useSite).toContain('pickBrandSubtitle')
+    expect(
+      readFileSync(resolve(process.cwd(), 'server/plugins/spa-shell-brand.nitro.ts'), 'utf8')
+    ).toContain('pickBrandSubtitle')
+  })
+
+  it('四处拼接全部走同一个 helper（线上 /login 曾出现「Choyeon Blog · Choyeon Blog」）', () => {
+    for (const [label, source] of [
+      ['app.vue', appVue],
+      ['plugins/site-title.global.ts', titlePlugin],
+      ['composables/useSite.ts', useSite],
+      ['server/utils/spaShellBrand.ts', readFileSync(
+        resolve(process.cwd(), 'server/utils/spaShellBrand.ts'),
+        'utf8'
+      )]
+    ] as const) {
+      expect(source, label).toContain('brandFloorTitle')
+      // 旧写法：`${name} · ${sub}` / `${siteName} · ${siteSub}` 直接拼副标题
+      expect(source, label).not.toMatch(/\$\{\s*(?:site)?[nN]ame\s*\} · \$\{\s*(?:site)?[sS]ub(?:title)?\s*\}/)
+    }
   })
 })
 

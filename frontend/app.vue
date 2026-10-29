@@ -14,7 +14,7 @@ import { useAuthStore } from '~~/stores/auth'
 import { useToast } from '~~/composables/useToast'
 import ThemeRippleOverlay from '~~/components/ThemeRippleOverlay.vue'
 import { TooltipProvider } from '~~/components/ui/tooltip'
-import { SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
+import { brandFloorTitle, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
 import { DEFAULT_LOCALE_CODE, HREFLANG_MAP } from '~~/composables/useSeo'
 
 const _route = useRoute()
@@ -140,8 +140,7 @@ useHead(() => ({
       if (t === name || t.endsWith(`· ${name}`)) return t
       return `${t} · ${name}`
     }
-    if (sub) return `${name} · ${sub}`
-    return name
+    return brandFloorTitle(name, sub)
   },
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' },

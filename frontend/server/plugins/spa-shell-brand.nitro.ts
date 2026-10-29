@@ -13,6 +13,7 @@
 import type { NitroApp } from 'nitropack'
 import type { H3Event } from 'h3'
 import { buildShellTitle, isSpaShellPath, rewriteShellTitle } from '../utils/spaShellBrand'
+import { pickBrandSubtitle } from '../../lib/utils'
 import { resolveBackendEndpoint } from '../utils/ssr'
 
 const BRAND_TTL_MS = 15_000
@@ -36,9 +37,10 @@ async function fetchShellTitle(): Promise<string> {
     })
     const basic = res?.groups?.basic ?? {}
     const seo = res?.groups?.seo ?? {}
+    const name = String(basic.site_name ?? '')
     return buildShellTitle(
-      String(basic.site_name ?? ''),
-      String(seo.default_title ?? '') || String(basic.subtitle ?? '')
+      name,
+      pickBrandSubtitle(name, String(seo.default_title ?? ''), String(basic.subtitle ?? ''))
     )
   } catch {
     // 后端不可用 / 缺 SSR baseURL 配置：留空让调用方原样返回构建期壳

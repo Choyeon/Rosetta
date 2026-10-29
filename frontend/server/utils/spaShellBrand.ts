@@ -13,6 +13,7 @@
  */
 
 import { matchesPathRoot, stripLocalePathPrefix } from '../../lib/rosetta-themes'
+import { brandFloorTitle } from '../../lib/utils'
 
 /** 需要服务端补标题的 SPA 壳路径前缀（裸路径 + 子路径都算命中）。 */
 export const SPA_SHELL_PREFIXES: readonly string[] = [
@@ -31,12 +32,10 @@ export function isSpaShellPath(pathname: string): boolean {
 
 /**
  * 标题单源拼接：与 app.vue 的 titleTemplate 无标题分支、
- * site-title.global.ts 的 buildTitle 空标题分支同口径。
+ * site-title.global.ts 的 buildTitle 空标题分支同口径（共用 lib/utils::brandFloorTitle）。
  */
 export function buildShellTitle(siteName: string, subtitle: string): string {
-  const name = String(siteName || '').trim() || 'Rosetta'
-  const sub = String(subtitle || '').trim()
-  return sub ? `${name} · ${sub}` : name
+  return brandFloorTitle(siteName, subtitle)
 }
 
 /** `<title>` 是文本节点：只有 & < > 三个字符需要转义（引号在标签内无意义）。 */

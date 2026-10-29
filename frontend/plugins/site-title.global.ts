@@ -5,7 +5,7 @@
 //    （lib/utils 是无 Nuxt 上下文依赖的纯函数库，import 它不破坏该解耦）
 //  - 仅客户端生效（SSR 时由各页面 useSeoMeta/useHead 生成标题，避免双链路冲突）。
 import { localeCodeFromPath, matchesNeutralRoot } from '~~/lib/rosetta-themes'
-import { hexToHsl, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
+import { brandFloorTitle, hexToHsl, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/utils'
 
 function applyAppearance(primary: string, accent: string) {
   if (!import.meta.client) return
@@ -114,7 +114,7 @@ export default defineNuxtPlugin(async () => {
   let siteSub = defaults.siteSub
 
   const buildTitle = (title?: string | undefined): string => {
-    const branded = siteSub ? `${siteName} · ${siteSub}` : siteName
+    const branded = brandFloorTitle(siteName, siteSub)
     const t = String(title || '').trim()
     if (t) {
       // 空标题分支的三个入口：站点名本身、nuxt.config 的构建期占位（ssr:false 壳页

@@ -25,6 +25,37 @@ export function cn(...inputs: ClassValue[]) {
  */
 export const SPA_SHELL_TITLE_PLACEHOLDER = 'Rosetta'
 
+/**
+ * 「站名 · 副标题」的**唯一**拼接口径（页面自身没有标题时的兜底标题）。
+ *
+ * 四个消费点必须同一条规则：`app.vue` 的 titleTemplate、`plugins/site-title.global.ts`、
+ * `composables/useSite.ts::withSuffix`、`server/utils/spaShellBrand.ts::buildShellTitle`
+ * （服务端补写 SPA 壳的 `<title>`）。各自拼一份的表现已经踩过：站点设置里
+ * `site_subtitle` 与 `site_name` 填成同一个值时，`/login` `/register` `/search` 的
+ * 标签页标题是「Choyeon Blog · Choyeon Blog」——线上 curl 实测。
+ * 副标题与站名相同（去空白后）就只输出站名，那一个词已经说完了。
+ */
+export function brandFloorTitle(siteName: string, subtitle: string): string {
+  const name = String(siteName || '').trim() || 'Rosetta'
+  const sub = String(subtitle || '').trim()
+  return sub && sub !== name ? `${name} · ${sub}` : name
+}
+
+/**
+ * 兜底副标题的候选挑选：按给定优先级返回第一个**有信息量**的值（非空且不等于站名）。
+ * 全都与站名同值（线上 `site_subtitle` 就填成了站点名）时返回那一个，交给
+ * {@link brandFloorTitle} 压回站名——两段合起来才不会出现「X · X」，
+ * 也不会因为首选候选是站名就把真正的副标题整条丢掉。
+ */
+export function pickBrandSubtitle(
+  siteName: string,
+  ...candidates: Array<string | null | undefined>
+): string {
+  const name = String(siteName || '').trim()
+  const list = candidates.map(c => String(c ?? '').trim()).filter(Boolean)
+  return list.find(v => v !== name) || list[0] || ''
+}
+
 // ====================== 展示用纯工具 ======================
 
 /**

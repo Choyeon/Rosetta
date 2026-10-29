@@ -13,7 +13,7 @@
 import { computed, getCurrentInstance } from 'vue'
 import type { AllSettingsGroups } from '~~/composables/useAdminManage'
 import { apiFetch } from '~~/composables/useApi'
-import { hexToHsl } from '~~/lib/utils'
+import { brandFloorTitle, hexToHsl, pickBrandSubtitle } from '~~/lib/utils'
 
 /**
  * 组件实例之外求值的 computed 里不能直接 useI18n()：unhead 在 SSR 收尾期解析
@@ -357,18 +357,21 @@ export function useSite() {
   // seo.default_title（后台「SEO」里的"页面默认标题"）优先：basic.subtitle 永远非空
   // （下面这条兜底链最后一个是写死的英文标语），把 default_title 放在后面等于
   // 给管理员一个填了也永远不会被读到的输入框。留空时仍回落到站点副标题。
-  const siteSubtitle = computed(() => seo.value.default_title || basic.value.subtitle)
+  // 与站名同值的候选跳过：线上 `site_subtitle` 就填成了站点名本身，先取到它
+  // 会让兜底标题变成「Choyeon Blog · Choyeon Blog」（fetchTitle 的 dedupe 只能
+  // 把整段压回站名）；这里先挑一个有信息量的，才轮得到 brandFloorTitle 兜底。
+  const siteSubtitle = computed(() =>
+    pickBrandSubtitle(basic.value.site_name, seo.value.default_title, basic.value.subtitle)
+  )
   const siteDescription = computed(() => seo.value.default_description || basic.value.description)
   const siteKeywords = computed(() => seo.value.default_keywords || basic.value.keywords)
 
   const withSuffix = (pageTitle?: string | null): string => {
     const name = siteTitle.value || 'Rosetta'
-    const sub = siteSubtitle.value || ''
     if (pageTitle && String(pageTitle).trim()) {
       return `${String(pageTitle).trim()} · ${name}`
     }
-    if (sub) return `${name} · ${sub}`
-    return name
+    return brandFloorTitle(name, siteSubtitle.value || '')
   }
 
   const pickI18n = (
