@@ -87,10 +87,7 @@
             v-if="postNotFound"
             class="mt-12 rounded-2xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center"
           >
-            <h2 class="font-display text-xl font-semibold tracking-tight">
-              {{ t('error.notFoundTitle') }}
-            </h2>
-            <p class="mt-2 text-sm text-muted-foreground">
+            <p class="text-sm text-muted-foreground">
               {{ t('error.notFoundDesc') }}
             </p>
             <div class="mt-6 flex flex-wrap items-center justify-center gap-3">

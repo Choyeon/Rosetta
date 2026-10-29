@@ -40,8 +40,10 @@ describe('文章详情页 404', () => {
     const panel = src.slice(src.search(/<div\s+v-if="postNotFound"/), src.search(/<template\s+v-else\s*>/))
     expect(panel.length, '必须存在以 postNotFound 为条件的 404 面板').toBeGreaterThan(0)
     expect(panel, '404 面板不得关进 ClientOnly：SSR 产物里要读得到这段话').not.toContain('ClientOnly')
-    expect(panel).toContain('error.notFoundTitle')
     expect(panel).toContain('error.notFoundDesc')
+    // 标题只出现一次：面包屑与 h1 已经写着「页面不存在」，面板里再放一个同样的标题
+    // 就是同一句话第三次出现（线上实测三连重复）。
+    expect(panel).not.toContain('error.notFoundTitle')
     expect(panel).toContain('post.backToList')
     expect(panel).toContain('error.backHome')
   })
