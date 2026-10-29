@@ -230,7 +230,7 @@ def test_route_declared_before_dynamic_user_id():
 def test_count_predicate_is_single_sourced():
     """计数与列表必须同一条可见性谓词（AGENTS §9.1：集合口只准走 publicly_listable_posts）。"""
     src = USERS_API.read_text(encoding="utf-8")
-    body = src[src.index("async def list_authors"):]
+    body = src[src.index("async def list_authors") :]
     body = body[: body.index("@router.get(", 1)] if "@router.get(" in body[1:] else body
     assert "publicly_listable_posts()" in body
     assert 'Post.status == "published"' not in body
