@@ -34,7 +34,25 @@ describe('AppHeader 顶栏导航折叠', () => {
   it('溢出项收进「更多」，不允许回退成默认主题全量平铺', () => {
     expect(src).toMatch(/const primaryNavItems = computed\(\(\) => navItems\.value\.slice\(0, NAV_PRIMARY_MAX\.value\)\)/)
     expect(src).toMatch(/const overflowNavItems = computed\(\(\) => navItems\.value\.slice\(NAV_PRIMARY_MAX\.value\)\)/)
-    expect(src).toMatch(/<DropdownMenu v-if="overflowNavItems\.length > 0">/)
+    expect(src).toMatch(/<ClientOnly v-if="overflowNavItems\.length > 0">\s*<DropdownMenu>/)
+  })
+
+  it('reka-ui 交互控件一律关在 ClientOnly 里，SSR 只吐占位注释', () => {
+    // 踩过的坑：导航里的「更多」DropdownMenu 原先是裸写的，服务端渲染出 `<!---->`、
+    // 客户端却要渲染触发器 button，于是整站每一页都报
+    // 「Hydration node mismatch: rendered on server: #comment」。
+    // 判定方式：把每个 ClientOnly 区间之外的 reka 根组件找出来，必须一个都不剩。
+    const spans: Array<[number, number]> = []
+    for (const m of src.matchAll(/<ClientOnly\b[^>]*>/g)) {
+      const end = src.indexOf('</ClientOnly>', m.index!)
+      spans.push([m.index!, end === -1 ? src.length : end])
+    }
+    const outside: string[] = []
+    for (const m of src.matchAll(/<(DropdownMenu|Tooltip|Sheet|Popover)\b[^>]*>/g)) {
+      const at = m.index!
+      if (!spans.some(([s, e]) => at > s && at < e)) outside.push(m[0].slice(0, 50))
+    }
+    expect(outside, `这些 reka 根组件在 ClientOnly 外，会重新引入 hydration mismatch：${outside.join(' | ')}`).toEqual([])
   })
 
   it('桌面导航项一律禁止换行与压缩', () => {

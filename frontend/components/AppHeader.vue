@@ -345,44 +345,51 @@ const handleSearchClick = () => go('/search')
         </template>
 
         <!-- 溢出导航收纳口：第 6 项（极简主题第 5 项）起进下拉，保证顶栏永远是单行；
-             平铺档生效时它只在 2xl 以下出现（上面已平铺） -->
-        <DropdownMenu v-if="overflowNavItems.length > 0">
-          <DropdownMenuTrigger as-child>
-            <button
-              type="button"
-              data-navbar="link"
-              data-navbar-more
-              :data-active="moreActive || undefined"
-              :class="[
-                'inline-flex shrink-0 whitespace-nowrap items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
-                flatOverflowAtWide ? '2xl:hidden' : '',
-                moreActive ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
-              ]"
-            >
-              {{ t('nav.more') }}
-              <ChevronDown class="size-3.5 opacity-70" />
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="start"
-            class="w-44"
-          >
-            <DropdownMenuItem
-              v-for="item in overflowNavItems"
-              :key="item.to"
-              as-child
-            >
-              <NuxtLink
-                :to="localeHref(item.to)"
-                :target="item.target"
-                :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
-                :class="isActive(item.to) ? 'font-semibold' : ''"
+             平铺档生效时它只在 2xl 以下出现（上面已平铺）。
+             与下方控件区同理必须 ClientOnly：reka-ui 的 DropdownMenu 服务端只渲染一个
+             空注释占位，客户端却要渲染触发器 button，裸写进 SSR 会让整站每一页都报
+             hydration node mismatch（server 是注释节点、client 是 Fragment）。
+             SEO 不受影响——溢出项在平铺档里本来就是真实 `<a>`（上面那段），
+             爬虫读得到完整内链图。 -->
+        <ClientOnly v-if="overflowNavItems.length > 0">
+          <DropdownMenu>
+            <DropdownMenuTrigger as-child>
+              <button
+                type="button"
+                data-navbar="link"
+                data-navbar-more
+                :data-active="moreActive || undefined"
+                :class="[
+                  'inline-flex shrink-0 whitespace-nowrap items-center gap-1 px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground cursor-pointer',
+                  flatOverflowAtWide ? '2xl:hidden' : '',
+                  moreActive ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
+                ]"
               >
-                {{ item.label }}
-              </NuxtLink>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+                {{ t('nav.more') }}
+                <ChevronDown class="size-3.5 opacity-70" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="start"
+              class="w-44"
+            >
+              <DropdownMenuItem
+                v-for="item in overflowNavItems"
+                :key="item.to"
+                as-child
+              >
+                <NuxtLink
+                  :to="localeHref(item.to)"
+                  :target="item.target"
+                  :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
+                  :class="isActive(item.to) ? 'font-semibold' : ''"
+                >
+                  {{ item.label }}
+                </NuxtLink>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </ClientOnly>
       </nav>
 
       <!-- 交互控件区：Tooltip/DropdownMenu/Sheet 基于 reka-ui，SSR 渲染 PrimitiveSlot 不稳定；
