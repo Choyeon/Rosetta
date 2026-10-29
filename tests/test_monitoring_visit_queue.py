@@ -18,16 +18,16 @@ import backend.api.monitoring as mon
 from backend.models.monitoring import VisitLog
 
 
-def _item(path: str) -> tuple:
-    return (
-        path,
-        "GET",
-        "127.0.0.1",
-        "pytest-agent",
-        None,
-        200,
-        1.5,
-        datetime.now(timezone.utc),
+def _item(path: str) -> mon._VisitDraft:
+    return mon._VisitDraft(
+        path=path,
+        method="GET",
+        ip="127.0.0.1",
+        user_agent="pytest-agent",
+        referer=None,
+        status_code=200,
+        response_time_ms=1,
+        created_at=datetime.now(timezone.utc),
     )
 
 
@@ -113,4 +113,5 @@ async def test_flush_drops_only_when_requeue_overflow(monkeypatch):
 
     assert written == 0
     assert queue.qsize() == 4, "满载时本批无法回队，只保留并发入队的 4 条"
-    assert all(item[0].startswith("/busy-") for item in queue._queue), "回队失败的本批不应混写进库"
+    drained = [queue.get_nowait() for _ in range(queue.qsize())]
+    assert all(item.path.startswith("/busy-") for item in drained), "回队失败的本批不应混写进库"

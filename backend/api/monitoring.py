@@ -8,6 +8,7 @@ import asyncio
 import logging
 import math
 import time
+from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
@@ -15,12 +16,14 @@ from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel, Field
 from sqlalchemy import desc, func, select
 
-from backend.core.auth import DB, CurrentStaff
+from backend.core.auth import DB, CurrentStaff, decode_token
 from backend.core.cache import cache, make_cache_key
 from backend.core.config import settings
 from backend.core.database import engine
+from backend.core.rate_limit import get_client_ip
 from backend.core.setup_system import psutil_errors
 from backend.utils.compat import UTC, timedelta
+from backend.utils.user_agent import parse_user_agent
 
 logger = logging.getLogger(__name__)
 
@@ -188,6 +191,60 @@ class VisitsSummaryResponse(BaseModel):
     )
 
 
+class VisitRecordOut(BaseModel):
+    """一条完整访客记录：原始字段 + UA 现算出来的系统/浏览器/设备标签。"""
+
+    id: int = Field(..., description="visit_logs 主键")
+    path: str = Field(..., description="请求路径")
+    method: str = Field(..., description="HTTP 方法")
+    ip: str | None = Field(
+        None, description="真实来源 IP（仅在直连对端属于 TRUSTED_PROXY_IPS 时采信 X-Forwarded-For）"
+    )
+    user_agent: str | None = Field(None, description="原始 UA 字符串（派生标签的判断依据）")
+    referer: str | None = Field(None, description="来源页")
+    status_code: int = Field(..., description="响应状态码")
+    response_time_ms: int = Field(..., description="响应耗时（毫秒）")
+    created_at: str = Field(..., description="访问时间（ISO 8601，UTC）")
+    user_id: int | None = Field(
+        None, description="带 access token 访问时的用户 id；匿名访问为 null"
+    )
+    username: str | None = Field(
+        None, description="对应用户名。令牌有效但用户已删时也是 null，故不等同于「有人登录」"
+    )
+    cookie_names: str | None = Field(
+        None, description="请求携带的 Cookie **名称**列表（分号分隔）。值一律不落库——那是会话凭证"
+    )
+    accept_language: str | None = Field(None, description="Accept-Language 原文")
+    is_bot: bool | None = Field(
+        None, description="机器人判定；本列上线前的历史行是 null（未判定），不硬猜"
+    )
+    os: str = Field(..., description="操作系统（现算）")
+    os_version: str = Field(..., description="操作系统版本片段（现算）")
+    browser: str = Field(..., description="浏览器（现算）")
+    browser_version: str = Field(..., description="浏览器版本（现算）")
+    device: str = Field(..., description="设备档位：desktop / mobile / tablet / bot / unknown")
+    bot_name: str = Field(..., description="具名抓取引擎；非机器人时为空串")
+
+
+class VisitRecordsResponse(BaseModel):
+    """GET /visits 的响应体（裸对象，无 success 信封，与同族只读口一致）。"""
+
+    items: list[VisitRecordOut] = Field(..., description="当前页记录，按访问时间倒序")
+    total: int = Field(..., description="命中筛选条件的总条数（用于分页）")
+    page: int = Field(..., description="当前页码，从 1 开始")
+    page_size: int = Field(..., description="每页条数")
+    days: int = Field(..., description="查询窗口天数")
+    unique_ips: int = Field(..., description="同窗口同条件（不含 kind）下的去重来源 IP 数")
+    bot_total: int = Field(..., description="同窗口同条件（不含 kind）下判定为机器人的条数")
+    retention_days: int = Field(
+        ..., description="LOG_RETENTION_DAYS。>0 且小于 days 时本次读数只是下界"
+    )
+    data_since: str | None = Field(None, description="visit_logs 现存最早一条的 UTC 时间")
+    window_truncated: bool = Field(
+        ..., description="保留窗口是否已经把请求天数截短（前端据此标注口径，不得当全量读数）"
+    )
+
+
 class PerformanceWindowStatsOut(BaseModel):
     """某个时间窗口的响应耗时统计（/performance/summary 的两段结构）。"""
 
@@ -300,7 +357,7 @@ async def _flush_visit_queue() -> int:
     if _visit_queue is None or _visit_queue.empty():
         return 0
 
-    items: list[tuple] = []
+    items: list[_VisitDraft] = []
     while len(items) < _VISIT_BATCH_SIZE:
         try:
             items.append(_visit_queue.get_nowait())
@@ -313,14 +370,18 @@ async def _flush_visit_queue() -> int:
         async with async_session_maker() as db:
             db.add_all(
                 VisitLog(
-                    path=it[0],
-                    method=it[1],
-                    ip=it[2],
-                    user_agent=it[3],
-                    referer=it[4],
-                    status_code=it[5],
-                    response_time_ms=it[6],
-                    created_at=it[7],
+                    path=it.path,
+                    method=it.method,
+                    ip=it.ip,
+                    user_agent=it.user_agent,
+                    referer=it.referer,
+                    status_code=it.status_code,
+                    response_time_ms=it.response_time_ms,
+                    created_at=it.created_at,
+                    cookie_names=it.cookie_names,
+                    accept_language=it.accept_language,
+                    user_id=it.user_id,
+                    is_bot=it.is_bot,
                 )
                 for it in items
             )
@@ -361,23 +422,93 @@ async def _visit_flush_loop() -> None:
             logger.exception("[monitoring] 访问日志 flush 循环异常")
 
 
+@dataclass
+class _VisitDraft:
+    """入队的一条访问日志草稿。
+
+    刻意用具名字段而不是位置元组：这张表已经在加列（cookie 名 / Accept-Language /
+    is_bot / user_id），按 `it[7]` 这样的下标对齐写库，加一个字段就要重数一遍下标，
+    错位的表现是"耗时写进了状态码列"这种安静又难看的脏数据。
+    """
+
+    path: str
+    method: str
+    ip: str | None
+    user_agent: str | None
+    referer: str | None
+    status_code: int
+    response_time_ms: int
+    created_at: datetime
+    cookie_names: str | None = None
+    accept_language: str | None = None
+    user_id: int | None = None
+    is_bot: bool | None = None
+
+
+def _cookie_names_of(request: Request) -> str | None:
+    """Cookie 头里的**名字**列表，绝不包含值。
+
+    值是会话凭证，落进只增、会被后台整页列出、还可能被日志备份带走的遥测表里，
+    等于把 token 抄送一份给任何能读 visit_logs 的人（含未来的日志导出）。
+    名字已经够回答"这个访客带了哪些第三方 cookie"（Cloudflare / GA / 本站语言偏好）。
+    """
+    raw = request.headers.get("cookie")
+    if not raw:
+        return None
+    names: list[str] = []
+    for part in raw.split(";"):
+        name = part.split("=", 1)[0].strip()
+        if name and name not in names:
+            names.append(name)
+    return ("; ".join(names))[:255] or None
+
+
+def _bearer_user_id(request: Request) -> int | None:
+    """从 Authorization 头的 access token 里取用户 id（只解 JWT，不打数据库）。
+
+    遥测路径上不做存在性/封禁校验：这一列只是给后台标注"这条是谁看的"，
+    令牌失效或用户已删时最坏是一个查不到昵称的空行，不该为它多一次查询。
+    """
+    auth = request.headers.get("authorization") or ""
+    if not auth[:7].lower() == "bearer ":
+        return None
+    payload = decode_token(auth[7:].strip())
+    if not payload or payload.get("type") != "access":
+        return None
+    try:
+        return int(payload.get("sub") or 0) or None
+    except (TypeError, ValueError):
+        return None
+
+
 async def record_visit(request: Request, status_code: int, response_time_ms: float):
     """记录访问日志（入队，非阻塞；由后台任务批量落库）。"""
     global _visit_queue, _visit_flusher
 
     if _visit_queue is None:
         _visit_queue = asyncio.Queue(maxsize=_VISIT_QUEUE_MAX)
+
+    # 真实来源 IP：直连对端在生产是 nginx（127.0.0.1），不采信转发头就会把整张表
+    # 记成本机回环 —— 去重 IP、UV、按 IP 筛访客全部退化成 1。
+    # get_client_ip 只在直连对端属于 TRUSTED_PROXY_IPS 时才读 X-Forwarded-For，
+    # 所以客户端伪造 XFF 不会污染这张表。
+    peer_ip = get_client_ip(request)
+    ua = (request.headers.get("user-agent") or "")[:500] or None
     try:
         _visit_queue.put_nowait(
-            (
-                request.url.path[:500],
-                request.method,
-                request.client.host if request.client else None,
-                (request.headers.get("user-agent") or "")[:500] or None,
-                (request.headers.get("referer") or "")[:500] or None,
-                status_code,
-                int(response_time_ms),
-                datetime.now(UTC),
+            _VisitDraft(
+                path=request.url.path[:500],
+                method=request.method,
+                ip=None if peer_ip == "unknown" else peer_ip[:50],
+                user_agent=ua,
+                referer=(request.headers.get("referer") or "")[:500] or None,
+                status_code=status_code,
+                response_time_ms=int(response_time_ms),
+                created_at=datetime.now(UTC),
+                cookie_names=_cookie_names_of(request),
+                accept_language=(request.headers.get("accept-language") or "")[:100] or None,
+                user_id=_bearer_user_id(request),
+                is_bot=parse_user_agent(ua).is_bot,
             )
         )
     except asyncio.QueueFull:
@@ -664,6 +795,159 @@ async def get_visits_summary(
         "growth": ((today - yesterday) / max(yesterday, 1)) * 100 if yesterday > 0 else 0,
         "retention_days": settings.log_retention_days,
         "data_since": earliest.isoformat() if earliest is not None else None,
+    }
+
+
+def _contains(col, value: str):
+    """LIKE 包含匹配，通配符按字面量处理。
+
+    不转义的话，在 IP 输入框里打一个 `%` 就变成"匹配全部"，路径框里的 `_` 会匹配任意
+    单字符——筛选条件悄悄失效比筛不出东西更难查（两者都回 200 + 一堆行）。
+    """
+    escaped = value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return col.like(f"%{escaped}%", escape="\\")
+
+
+@router.get(
+    "/visits",
+    summary="访客记录明细",
+    description=(
+        "需 CurrentStaff。分页返回 visit_logs 的完整记录：真实来源 IP、原始 UA、按 UA 现算的"
+        "系统/浏览器/设备/机器人标签、来源页、Cookie 名称列表（绝不含 Cookie 值）、"
+        "Accept-Language、状态码与耗时，并带上访问用户的 id/用户名（按 access token 的 claims 标注，"
+        "不查库）。可按窗口、机器人档位、IP、路径、状态码筛选。只读、幂等。"
+        "响应带 retention_days / data_since / window_truncated：LOG_RETENTION_DAYS 比请求窗口短时，"
+        "本次读数只是下界。"
+    ),
+    responses={200: {"model": VisitRecordsResponse, "description": "访客记录分页与窗口口径"}},
+)
+async def get_visit_records(
+    db: DB,
+    current_user: CurrentStaff,
+    days: int = Query(7, ge=1, le=365, description="回看窗口天数"),
+    page: int = Query(1, ge=1, description="页码，从 1 开始"),
+    page_size: int = Query(50, ge=10, le=200, description="每页条数"),
+    kind: str = Query("all", pattern="^(all|human|bot)$", description="机器人档位筛选"),
+    ip: str | None = Query(None, max_length=64, description="来源 IP 片段（字面量包含匹配）"),
+    path: str | None = Query(None, max_length=200, description="路径片段（字面量包含匹配）"),
+    status: int | None = Query(None, ge=100, le=599, description="状态码精确匹配"),
+):
+    """访客记录明细（UA 派生标签在读取口现算，见 backend/utils/user_agent.py）。"""
+    from backend.models.monitoring import VisitLog
+    from backend.models.user import User
+
+    now = datetime.now(UTC)
+    window_start = now - timedelta(days=days)
+
+    base_filters = [VisitLog.created_at >= window_start]
+    if ip:
+        base_filters.append(_contains(VisitLog.ip, ip))
+    if path:
+        base_filters.append(_contains(VisitLog.path, path))
+    if status is not None:
+        base_filters.append(VisitLog.status_code == status)
+
+    row_filters = list(base_filters)
+    if kind == "bot":
+        # 用 `.is_()` 而不是 Python 的 `is True`（后者在 SQLAlchemy 列上是恒假的普通比较，
+        # 条件静默消失＝"机器人档位筛出全量"），也而不是 `== True`（ruff E712 之外，
+        # PG/SQLite 对 `= true` 的布尔字面量支持不一致）。
+        # 历史行的 NULL 两档都不该命中，所以两个分支都显式带值比较，不写 `isnot(None)`。
+        row_filters.append(VisitLog.is_bot.is_(True))
+    elif kind == "human":
+        row_filters.append(VisitLog.is_bot.is_(False))
+
+    total = await db.scalar(select(func.count()).select_from(VisitLog).where(*row_filters)) or 0
+
+    rows = (
+        (
+            await db.execute(
+                select(VisitLog)
+                .where(*row_filters)
+                .order_by(desc(VisitLog.created_at), desc(VisitLog.id))
+                .offset((page - 1) * page_size)
+                .limit(page_size)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # 昵称一次批量取（逐行查会在 200 行的页面上打 200 次 SELECT）
+    user_ids = {row.user_id for row in rows if row.user_id}
+    names: dict[int, str] = {}
+    if user_ids:
+        for uid, uname in (
+            await db.execute(select(User.id, User.username).where(User.id.in_(user_ids)))
+        ).all():
+            names[uid] = uname
+
+    unique_ips = (
+        await db.scalar(
+            select(func.count(func.distinct(VisitLog.ip)))
+            .select_from(VisitLog)
+            .where(*base_filters, VisitLog.ip.isnot(None))
+        )
+        or 0
+    )
+    bot_total = (
+        await db.scalar(
+            select(func.count())
+            .select_from(VisitLog)
+            .where(*base_filters, VisitLog.is_bot.is_(True))
+        )
+        or 0
+    )
+    earliest = await db.scalar(select(func.min(VisitLog.created_at)))
+    if earliest is not None and earliest.tzinfo is None:
+        earliest = earliest.replace(tzinfo=UTC)
+
+    retention = settings.log_retention_days
+    # 保留窗口比请求窗口短 = 老数据已经被删了，读数只是下界（与 /visits/summary 同口径）。
+    window_truncated = bool(retention and retention > 0 and retention < days)
+
+    items = []
+    for row in rows:
+        created = row.created_at
+        if created is not None and created.tzinfo is None:
+            created = created.replace(tzinfo=UTC)
+        info = parse_user_agent(row.user_agent)
+        items.append(
+            {
+                "id": row.id,
+                "path": row.path,
+                "method": row.method,
+                "ip": row.ip,
+                "user_agent": row.user_agent,
+                "referer": row.referer,
+                "status_code": row.status_code,
+                "response_time_ms": int(row.response_time_ms or 0),
+                "created_at": created.isoformat() if created else "",
+                "user_id": row.user_id,
+                "username": names.get(row.user_id) if row.user_id else None,
+                "cookie_names": row.cookie_names,
+                "accept_language": row.accept_language,
+                "is_bot": row.is_bot,
+                "os": info.os,
+                "os_version": info.os_version,
+                "browser": info.browser,
+                "browser_version": info.browser_version,
+                "device": info.device,
+                "bot_name": info.bot_name,
+            }
+        )
+
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+        "days": days,
+        "unique_ips": unique_ips,
+        "bot_total": bot_total,
+        "retention_days": retention,
+        "data_since": earliest.isoformat() if earliest is not None else None,
+        "window_truncated": window_truncated,
     }
 
 

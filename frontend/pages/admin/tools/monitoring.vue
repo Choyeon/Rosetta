@@ -129,10 +129,19 @@
     <AdminCard class="rounded-2xl">
       <div class="flex flex-col gap-4 p-5">
         <div class="flex items-center justify-between gap-3 flex-wrap">
-          <h3 class="font-semibold tracking-tight flex items-center gap-2">
-            <BarChart3 class="size-4" />
-            访问量
-          </h3>
+          <div class="flex items-center gap-3 flex-wrap">
+            <h3 class="font-semibold tracking-tight flex items-center gap-2">
+              <BarChart3 class="size-4" />
+              访问量
+            </h3>
+            <!-- 明细与 UA 解析在访客记录页（同一族接口，两个页面各取一段） -->
+            <NuxtLink
+              to="/admin/tools/visits"
+              class="text-xs text-primary hover:underline"
+            >
+              完整访客记录 →
+            </NuxtLink>
+          </div>
           <p class="text-xs text-muted-foreground">
             今日 {{ fmtNumber(visits?.today) }} · 昨日 {{ fmtNumber(visits?.yesterday) }} ·
             独立 IP（今日）{{ fmtNumber(visits?.unique_ips_today) }} ·

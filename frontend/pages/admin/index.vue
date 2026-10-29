@@ -476,7 +476,8 @@ const kpiCards = computed<KpiCardDef[]>(() => {
       value: () => s.views24h.toLocaleString(),
       sub: () => `${statsRange.value === '30d' ? '30' : '7'} 日合计 ${s.views7d.toLocaleString()}`,
       spark: 'pv',
-      trend: { v: pvPct, dir: pvDir, hint: 'vs 日均' }
+      trend: { v: pvPct, dir: pvDir, hint: 'vs 日均' },
+      action: { label: '访客记录', to: '/admin/tools/visits' }
     },
     {
       key: 'uv',
@@ -493,7 +494,8 @@ const kpiCards = computed<KpiCardDef[]>(() => {
         return `区间累计 ${uv.reduce<number>((a, b) => a + (Number(b) || 0), 0).toLocaleString()}`
       },
       spark: 'uv',
-      trend: rb.uv ? { v: rb.uv.pct, dir: rb.uv.dir, hint: '环比上期' } : undefined
+      trend: rb.uv ? { v: rb.uv.pct, dir: rb.uv.dir, hint: '环比上期' } : undefined,
+      action: { label: '访客记录', to: '/admin/tools/visits' }
     },
     {
       key: 'comments',
@@ -1607,7 +1609,7 @@ const pillFor = (a: ActivityItem['accent']) =>
               class="w-auto"
               @update:model-value="(v: any) => trafficMode = String(v) as 'overview' | 'content'"
             >
-              <AdminTabList class="h-8">
+              <AdminTabList class="p-0.5">
                 <AdminTabTrigger
                   value="overview"
                   class="h-7 px-3 text-xs"

@@ -40,7 +40,8 @@ import {
   Code2,
   MonitorPlay,
   ArchiveRestore,
-  CalendarClock
+  CalendarClock,
+  Footprints
 } from '@lucide/vue'
 
 import type { Component } from 'vue'
@@ -134,6 +135,7 @@ export const adminMenu: AdminMenuGroup[] = [
       { path: '/admin/tools/translate', label: '翻译', icon: Languages },
       { path: '/admin/tools/performance', label: '性能', icon: Gauge },
       { path: '/admin/tools/monitoring', label: '系统监控', icon: MonitorCheck },
+      { path: '/admin/tools/visits', label: '访客记录', icon: Footprints },
       { path: '/admin/tools/audit-logs', label: '审计日志', icon: ScrollText },
       { path: '/admin/tools/migrations', label: '数据库迁移', icon: Database },
       { path: '/admin/tools/cache', label: '缓存管理', icon: Trash2 }

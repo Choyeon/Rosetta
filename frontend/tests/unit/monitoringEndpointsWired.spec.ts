@@ -1,7 +1,10 @@
 /**
- * `/api/monitoring/*` 八个只读端点必须有前端消费方（批次 #94 之前是八条全部零消费者：
+ * `/api/monitoring/*` 九个只读端点必须有前端消费方（批次 #94 之前是八条全部零消费者：
  * 后端一直在算指标，后台一个都看不到）。守卫按"后端声明的清单 ⇔ 页面实际请求的清单"**集合相等**
  * 做双向对账，所以新增一条端点不接线会红、页面调用一条不存在的端点也会红。
+ *
+ * 消费方现在是两页：`tools/monitoring.vue`（健康/资源/性能/缓存/趋势 + 访问量汇总）
+ * 与 `tools/visits.vue`（访客记录明细），所以请求集取两页的并集。
  *
  * 另三条口径是这个接口族特有的坑，页面改坏任意一条都会静默出假读数：
  * * `/database` 的 `database_url` 是掩码连接串，但掩码不等于可公开，不得上屏；
@@ -15,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 
 const ROOT = resolve(__dirname, '../..')
 const page = readFileSync(resolve(ROOT, 'pages/admin/tools/monitoring.vue'), 'utf8')
+const visitsPage = readFileSync(resolve(ROOT, 'pages/admin/tools/visits.vue'), 'utf8')
 const backend = readFileSync(resolve(ROOT, '../backend/api/monitoring.py'), 'utf8')
 const menu = readFileSync(resolve(ROOT, 'config/admin-menu.ts'), 'utf8')
 
@@ -27,22 +31,26 @@ function declaredPaths(): string[] {
   return out
 }
 
-/** 页面 `section('/monitoring/xxx?query')` 实际请求的路径（查询串不参与对账）。 */
+/**
+ * 页面实际请求的路径（查询串不参与对账）。
+ * 两个消费方一起算：monitoring.vue 走 `section()`，visits.vue 走 `apiFetch()`，
+ * 所以这里按"任何 `/monitoring/...` 字面量"扫描——否则换一种调用封装就会被误报成"端点没消费"。
+ */
 function requestedPaths(): string[] {
   const out: string[] = []
-  // 实参类型不能漏：`section<LatencyShape>(...)` 也要被算成一次接线，
-  // 否则页面只要加上泛型（typecheck 要求的）就会误报"端点没消费"。
-  const re = /section(?:<[^>]+>)?\(\s*[`'"]([^`'"]+)[`'"]/g
-  let m: RegExpExecArray | null
-  while ((m = re.exec(page)) !== null) {
-    out.push(m[1]!.split('?')[0]!.replace('/monitoring/', ''))
+  // 不要求闭合引号：`/monitoring/performance?period=${period.value}` 是模板字符串，
+  // 里面带 `${}`，按"引号—内容—引号"扫描会把这一条整条漏掉。
+  const re = /['"`]\/monitoring\/([^'"`?\s]+)/g
+  for (const source of [page, visitsPage]) {
+    let m: RegExpExecArray | null
+    while ((m = re.exec(source)) !== null) out.push(m[1]!)
   }
   return [...new Set(out)]
 }
 
 describe('monitoring 端点必须全部接线', () => {
-  it('后端声明的清单非空且含八条', () => {
-    expect(declaredPaths()).toHaveLength(8)
+  it('后端声明的清单非空且含九条', () => {
+    expect(declaredPaths()).toHaveLength(9)
   })
 
   it('页面请求集与后端声明集精确相等', () => {

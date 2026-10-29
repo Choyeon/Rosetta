@@ -32,9 +32,9 @@
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
-> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 354 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 355 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：354 个端点操作；✅ 294 + 🟡 6 = 已消费 300 个，未消费 54 个，覆盖率 84.7%。**
+**总计：355 个端点操作；✅ 295 + 🟡 6 = 已消费 301 个，未消费 54 个，覆盖率 84.8%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -53,11 +53,11 @@
 | gallery | 11 | 11 | 0 | 0 | 100% |
 | guestbook | 11 | 11 | 0 | 0 | 100% |
 | comments | 9 | 8 | 0 | 1 | 89% |
+| monitoring | 9 | 9 | 0 | 0 | 100% |
 | seo | 9 | 5 | 1 | 3 | 67% |
 | title | 9 | 6 | 0 | 3 | 67% |
 | webhook | 9 | 9 | 0 | 0 | 100% |
 | activity | 8 | 7 | 0 | 1 | 88% |
-| monitoring | 8 | 8 | 0 | 0 | 100% |
 | post_series | 8 | 8 | 0 | 0 | 100% |
 | import_export | 7 | 7 | 0 | 0 | 100% |
 | announcement | 6 | 5 | 0 | 1 | 83% |
@@ -331,7 +331,7 @@
 |---|---:|---|
 | favorite（/api/favorites） | 12 | **2026-10-16 已接入 11 条**：文章详情页收藏钮（`POST /favorites/check` 先取状态 → 收藏/取消）+ 个人中心 `/account` 的「我的收藏」档位（`GET /favorites` 带 `folder_id` 翻页、`DELETE /favorites/post/{id}` 取消、`PATCH /favorites/post/{id}/{folder,note}` 移夹与备注、`GET/POST /favorites/folders` 与 `PUT/DELETE /favorites/folders/{id}` 管理）。前端唯一出口是 `composables/useFavorites.ts`，路径契约由 `frontend/tests/unit/favoritesLanding.spec.ts` + `tests/test_favorites_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**2026-10-23 补**：`DELETE /api/favorites/{favorite_id}`（按收藏行 ID）已接入，但**只用于孤儿行**（`post: null`，历史脏数据没有 post_id，by-post 变体无从下手）；正常行仍走 by-post（删该 (user, post) 的全部行，避免「取消没生效」）。**仍未消费的 1 条是决定不是缺口**：`PUT /api/favorites/{favorite_id}` 按收藏行 ID 整体改写，而 `favorites` 表**至今没有** `(user_id, post_id)` 唯一约束（历史脏数据 + 先 SELECT 再 INSERT 的查重挡不住并发），按行改只改一条重复行、界面表现为「改了但没全改」；by-post 变体改/删全部行，故前端只用 by-post。契约（2026-09-28 修）：`GET /favorites` 的 `total` / `total_pages` 与 `folder_id` 筛选同口径，可直接用 `total_pages` 翻页；两个 by-post PATCH 显式构造响应字典，键集恒为 `FavoriteRecordOut` 的 6 个字段；重复收藏不再让三个「按文章 ID」端点抛 `MultipleResultsFound` → 500。**已知缺口**：根治要加 `(user_id, post_id)` 唯一索引 + 先去重历史行。另：`FolderCreate/FolderUpdate.name` 现声明 `min_length=1, max_length=100`（列宽 `String(100)`），超长名此前直穿到 SQL 在 PostgreSQL 上报 StringDataRightTruncation ⇒ 500，空名则建出标签为空、界面无法定位的收藏夹 |
 | messages（/api/messages） | 6 | **2026-10-16 已接入 5 条**：`/account/messages`（登录态私有页，`ssr:false` 走 `/account/**` routeRules 反选）= 会话列表 `GET /messages/conversations`（每对端一行、`?page=` 翻页）+ 会话正文 `GET /messages/{user_id}` + 发送 `POST /messages` + 整段标已读 `PUT /messages/read-all/{user_id}` + 未读角标 `GET /messages/unread/count`；两个入口：顶栏登录菜单（桌面下拉与移动抽屉各一条）与作者主页 `pages/authors/[username].vue` 的「发私信」（`?to=<用户 id>`，包在 `ClientOnly` 里——SSR 期 auth store 是 skipHydrate 拿不到 token，不包就是节点级 hydration mismatch）。前端唯一出口是 `composables/useMessages.ts`，契约由 `frontend/tests/unit/messagesLanding.spec.ts` + `tests/test_messages_frontend_contract.py`（对表生成后的 OpenAPI）钉住。**仍未消费的 1 条是决定不是缺口**：`PUT /api/messages/{message_id}/read` 按单条标已读，而读正文那条已经带副作用把整个会话置为已读，界面不存在「同一会话里只有某几条未读」可展示的状态，包了就是一个无人调的 wrapper 冒充覆盖。契约（2026-09-28 修，2026-10-16 核对路径）：发送的参数走 JSON 请求体（`{recipient_id, content}`，正文 1–5000；文档旧写法 `POST /send` 实为 `POST /api/messages`），不接受 query string——正文进 URL 会被 nginx access log 明文落盘；会话列表保证「每个对端一行」且只含本人的消息；按 id 标记已读对他人消息一律 404（不再用 403 承认私信 id 存在） |
-| monitoring（/api/monitoring） | 8 | **2026-10-28 全部接入**：`pages/admin/tools/monitoring.vue` 消费八条只读口（health / stats / visits/summary / performance / performance/summary / database / cache / trends?days=），集合相等由 `tests/unit/monitoringEndpointsWired.spec.ts` 双向对账钉住。原判定「刻意保留（运维经工具页直访）」已作废——后端一直在算指标，后台一个都看不到才是问题。三条读数口径同记在该 spec：`database` 的 `database_url` 是掩码串但**不得上屏**；`performance` 环形缓冲无样本时不回 `sample_count` 键（按键存在性区分「没样本」与 0ms）；`visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days <` 窗口天数时读数只能标成下界并给 `data_since` |
+| monitoring（/api/monitoring） | 9 | **2026-10-28 全部接入，2026-10-29 补第 9 条**：`pages/admin/tools/monitoring.vue` 消费八条指标口（health / stats / visits/summary / performance / performance/summary / database / cache / trends?days=），`pages/admin/tools/visits.vue`（访客记录）消费明细口 `GET /visits`——同一族接口两个页面各取一段，集合相等由 `tests/unit/monitoringEndpointsWired.spec.ts` 按「后端 `@router.get` 声明集 ⇔ 两个页面 `section()` 请求集」双向对账钉住。原判定「刻意保留（运维经工具页直访）」已作废——后端一直在算指标，后台一个都看不到才是问题。四条读数口径记在页面头注释与 spec：`database` 的 `database_url` 是掩码串但**不得上屏**；`performance` 环形缓冲无样本时不回 `sample_count` 键（按键存在性区分「没样本」与 0ms）；`visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days <` 窗口天数时读数只能标成下界并给 `data_since`；`/visits` 的 IP 只有配了 `TRUSTED_PROXY_IPS` 才是真实访客 IP（否则 nginx 反代下全是回环，页面会显式警告），UA 解析在服务端读取时算，cookie 只落**名称**不落值（值是会话凭证） |
 | captcha（/api/captcha） | 2 | ✅ `GET /captcha` 由 `components/CaptchaField.vue` 消费（留言板写入口，开关 `features.enable_captcha`）。❌ `POST /captcha/verify` 刻意不接：写入侧闸门 `services/captcha_service.ensure_captcha_for_guest` 已经在同一次请求里校验，前端再预校验一次是第二个真相源，且"预校验通过→提交"之间有竞态（答案一次性消费）。 |
 | shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
 | toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |

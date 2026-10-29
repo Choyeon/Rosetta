@@ -116,7 +116,7 @@ describe('post_series/complete 是编辑器 autocomplete，不是"标记系列�
   })
 
   it('编辑器已真正消费它（2026-10-29 批次 #50；旧判定「前端零消费」已作废）', () => {
-    expect(manage).toContain("'/post_series/complete'")
+    expect(manage).toMatch(/'\/post_series\/complete'/)
     expect(postForm).toContain('completeSeriesPosts')
     expect(doc).toMatch(/`POST \/post_series\/complete`/)
   })
