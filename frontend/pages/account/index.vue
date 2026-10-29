@@ -671,6 +671,7 @@ import { useFavorites, type FavoriteRow } from '~~/composables/useFavorites'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
 import { useLocaleLink } from '~~/composables/useLocaleLink'
 import { useMessages } from '~~/composables/useMessages'
+import { toBcp47Locale } from '~~/composables/useSeo'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
@@ -1007,8 +1008,9 @@ function statusLabel(status?: string): string {
 
 // computed：本页是 SPA（ssr:false），切语言不会重跑 setup。写成一次性 const 会让
 // 日期永远停在"首次进入这一页时的语言"格式，而同一页的标题与状态文案都会跟着变。
+// locale 码必须先转 BCP-47：`zh_Hant` 喂 Intl 会抛 RangeError（下划线不是合法标签）。
 const formatter = computed(() =>
-  new Intl.DateTimeFormat(locale.value, {
+  new Intl.DateTimeFormat(toBcp47Locale(locale.value), {
     year: 'numeric',
     month: 'short',
     day: 'numeric',

@@ -150,6 +150,7 @@ import { Button } from '~~/components/ui/button'
 import { Heart, MessageSquare, Smile, Trash2 } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
 import { useComments, type CommentReactionSummary } from '~~/composables/useComments'
+import { toBcp47Locale } from '~~/composables/useSeo'
 
 interface Props {
   comment: {
@@ -285,7 +286,7 @@ const formatRelativeTime = (date: string) => {
     if (diffHours < 24) return `${diffHours}${t('comment.hoursAgo')}`
     if (diffDays < 30) return `${diffDays}${t('comment.daysAgo')}`
 
-    return then.toLocaleDateString(locale.value as string, {
+    return then.toLocaleDateString(toBcp47Locale(locale.value as string), {
       year: 'numeric',
       month: 'short',
       day: 'numeric'

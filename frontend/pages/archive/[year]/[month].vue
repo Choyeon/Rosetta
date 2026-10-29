@@ -162,6 +162,7 @@ import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
+import { toBcp47Locale } from '~~/composables/useSeo'
 import { useI18n } from 'vue-i18n'
 
 /** GET /blog/archive/{year}/{month} 的响应（与后端 ArchiveMonthPage 同构） */
@@ -224,7 +225,9 @@ function pageLink(target: number): string {
   return `/archive/${year}/${padMonth(month)}${target > 1 ? `?page=${target}` : ''}`
 }
 
-const formatter = new Intl.DateTimeFormat(locale.value, {
+// 必须先转 BCP-47：i18n 的 `zh_Hant` 不是合法标签，直接喂 Intl 会抛 RangeError，
+// 而这段跑在 setup 里 → 整个 /zh_Hant/archive/<年>/<月> 渲染成 200 空壳。
+const formatter = new Intl.DateTimeFormat(toBcp47Locale(locale.value), {
   year: 'numeric',
   month: 'short',
   day: 'numeric',

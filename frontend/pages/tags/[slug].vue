@@ -6,7 +6,12 @@
 -->
 <template>
   <div class="container py-16">
-    <header class="mb-12">
+    <!-- 头部整块只在标签存在时渲染：不存在态下 tagName 回落成「页面不存在」，
+         留着它就会与下面面板的 h1 并排成两个同名标题（线上 h1 数 = 2）。 -->
+    <header
+      v-if="!tagNotFound"
+      class="mb-12"
+    >
       <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
         <span class="size-1.5 rounded-full bg-cyan-500" />
         <NuxtLink

@@ -262,6 +262,7 @@ import { Card, CardContent } from '~~/components/ui/card'
 import { Textarea } from '~~/components/ui/textarea'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import { useAPI } from '~~/composables/useApi'
+import { toBcp47Locale } from '~~/composables/useSeo'
 import {
   useMessages,
   type MessageConversationList,
@@ -389,7 +390,8 @@ function peerLabel(user: MessagePeer) {
 
 function fmtTime(iso: string) {
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(locale.value)
+  // 先转 BCP-47：`zh_Hant` 直接进 toLocaleString 会抛 RangeError。
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(toBcp47Locale(locale.value))
 }
 
 useNoindexPage()

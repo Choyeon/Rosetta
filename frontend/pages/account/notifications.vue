@@ -298,7 +298,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import { resolveNotificationText } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
-import { applyLocalePrefix } from '~~/composables/useSeo'
+import { applyLocalePrefix, toBcp47Locale } from '~~/composables/useSeo'
 import { useLocaleLink } from '~~/composables/useLocaleLink'
 import {
   clearAllNotifications,
@@ -342,7 +342,8 @@ function actorLabel(row: AdminNotification): string {
 function fmtTime(iso: string | null): string {
   if (!iso) return ''
   const d = new Date(iso)
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(locale.value)
+  // 先转 BCP-47：`zh_Hant` 直接进 toLocaleString 会抛 RangeError。
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleString(toBcp47Locale(locale.value))
 }
 
 async function load() {

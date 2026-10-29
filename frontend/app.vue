@@ -86,7 +86,24 @@ const isHydrationCascade = (err: unknown): boolean => {
   return false
 }
 
-onErrorCaptured((err) => {
+/**
+ * SSR 期必须自己报告渲染失败。
+ *
+ * Vue 3 生产构建对「组件渲染/ setup 异常」只记日志、把出错子树渲染成空，不向 Nitro 抛；
+ * Nuxt 于是照常回 200 —— 实测 /zh_Hant/archive/<年>/<月> 在 setup 抛 RangeError 时
+ * 整页是 200 空壳（<title> 只剩站点名、h1=0），而该路由带 swr 3600，空壳会被缓存一小时。
+ * 这里把它降级成 500 + no-store：Nitro 的缓存校验对 code>=400 的条目一律判失效
+ * （nitropack cache.mjs 的 validate），所以坏渲染既不会被缓存，也不会被当成正常页发给爬虫。
+ * 客户端分支维持原样：hydration 级联走有界软重挂，其余交给 toast。
+ */
+const ssrEvent = import.meta.server ? useRequestEvent() : undefined
+
+onErrorCaptured((err, _instance, info) => {
+  if (import.meta.server && ssrEvent) {
+    setResponseStatus(ssrEvent, 500)
+    ssrEvent.node?.res?.setHeader('cache-control', 'no-store')
+    console.error('[ssr] page render failed:', info, err)
+  }
   if (isHydrationCascade(err)) {
     if (import.meta.client && __safetyRootKey.value < MAX_SOFT_REMOUNTS) {
       // WHY：先上报再重挂 —— 恢复动作必须留痕，不得静默。

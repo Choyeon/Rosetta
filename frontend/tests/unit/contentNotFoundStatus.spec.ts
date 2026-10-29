@@ -273,4 +273,24 @@ describe('不存在态的面板必须有 h1 标题', () => {
       `${rel} 的 404 面板没有 h1（只有说明段），标题层级从 h2/h5 起跳`
     ).toBe(true)
   })
+
+  /**
+   * 这两页的正常态 h1 住在页头里，所以页头必须跟着「不存在」一起撤掉。
+   * 实测（生产构建）：不存在态下 tagName / categoryName 回落成 `error.notFoundTitle`，
+   * 页头 h1 照常渲染，于是页面同时有「页面不存在」（页头）与「页面不存在」（面板）两个 h1。
+   */
+  const HEADERED: [string, string][] = [
+    ['pages/tags/[slug].vue', 'tagNotFound'],
+    ['pages/categories/[slug].vue', 'catNotFound']
+  ]
+
+  it.each(HEADERED)('%s 的页头在不存在态被撤掉', (rel, marker) => {
+    const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+    const markerAt = src.search(new RegExp(`v-(?:else-)?if="${marker}"`))
+    expect(markerAt, `${rel} 找不到 v-if="${marker}" 分支`).toBeGreaterThan(-1)
+    const headerAt = src.lastIndexOf('<header', markerAt)
+    expect(headerAt, `${rel} 的 404 分支之前没有页头`).toBeGreaterThan(-1)
+    const headerOpen = src.slice(headerAt, src.indexOf('>', headerAt) + 1)
+    expect(headerOpen, `${rel} 的页头没有 v-if="!${marker}"，不存在态会同时出现两个 h1`).toContain(`v-if="!${marker}"`)
+  })
 })

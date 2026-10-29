@@ -22,7 +22,12 @@
         @error="coverBroken = true"
       >
     </div>
-    <header class="mb-12">
+    <!-- 头部整块只在分类存在时渲染：不存在态下 categoryName 回落成「页面不存在」，
+         留着它就会与下面面板的 h1 并排成两个同名标题（线上 h1 数 = 2）。 -->
+    <header
+      v-if="!catNotFound"
+      class="mb-12"
+    >
       <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
         <span class="size-1.5 rounded-full bg-warning" />
         <NuxtLink

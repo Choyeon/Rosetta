@@ -93,6 +93,19 @@ export const HREFLANG_MAP: Record<string, string> = {
   zh_Hant: 'zh-Hant'
 }
 
+/**
+ * i18n 语言码 → BCP-47 标签，喂给 `Intl.*` / `toLocaleDateString` 这类原生 API。
+ *
+ * i18n 的 `zh_Hant` 不是合法 BCP-47：`new Intl.DateTimeFormat('zh_Hant')` 直接抛
+ * `RangeError: Incorrect locale information provided`。实测表现是 /zh_Hant/archive/<年>/<月>
+ * 整页渲染成 200 空壳（setup 抛错），en/ja 正常——四个语言码里只有这一个带下划线。
+ * 与 hreflang 共用一张表：同一套语言码在整站只允许一种 BCP-47 形态。
+ */
+export function toBcp47Locale(code: string | undefined | null): string {
+  if (!code) return HREFLANG_MAP[DEFAULT_LOCALE_CODE] as string
+  return HREFLANG_MAP[code] ?? code.replace(/_/g, '-')
+}
+
 /** 非默认语言在 URL 上挂的前缀；默认语言 zh 裸路径。清单唯一来源 lib/rosetta-themes。 */
 export { NON_DEFAULT_LOCALE_CODES, DEFAULT_LOCALE_CODE }
 
