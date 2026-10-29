@@ -51,7 +51,7 @@ import {
   type NotificationLevel
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
-import { extractApiErrorMessage } from '~~/lib/utils'
+import { extractApiErrorMessage, resolveNotificationText } from '~~/lib/utils'
 import { filterAdminMenuItems, findMenuItem, findMenuGroup } from '~~/config/admin-menu'
 import { stripLocalePathPrefix } from '~~/lib/rosetta-themes'
 
@@ -172,34 +172,10 @@ const levelLabel: Record<NotificationLevel, string> = {
 // ==================== 通知 title/message 文本兼容层 ====================
 // 历史数据/系统通知：title/message 是 i18n dict（{zh,en,ja,zh_Hant}）
 // 新UGC通知（留言/评论）：title/message 直接是纯字符串（用户要求不对UGC自动翻译）
-// 本函数按优先级解析两种格式，避免 JSON 被直接 toString 裸露。
+// 解析规则单源在 lib/utils::resolveNotificationText（前台通知页共用同一份）。
 const i18n = typeof useI18n !== 'undefined' ? useI18n() : null
-const I18N_FALLBACK_ORDER: Array<'zh' | 'en' | 'ja' | 'zh_Hant'> = ['zh', 'en', 'ja', 'zh_Hant']
-function resolveNotifText(raw: unknown): string {
-  if (raw == null) return ''
-  if (typeof raw === 'string') return raw
-  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
-  if (typeof raw === 'object') {
-    const obj = raw as Record<string, unknown>
-    // 1) 优先当前 locale（如果 i18n 可用且存在对应 key）
-    if (i18n) {
-      const cur = String(i18n.locale.value || 'zh')
-      const v = obj[cur] ?? obj[cur.replace('-', '_')]
-      if (typeof v === 'string' && v.length) return v
-    }
-    // 2) 固定 fallback 顺序
-    for (const k of I18N_FALLBACK_ORDER) {
-      const v = obj[k]
-      if (typeof v === 'string' && v.length) return v
-    }
-    // 3) 取第一个字符串值兜底
-    for (const v of Object.values(obj)) {
-      if (typeof v === 'string' && v.length) return v
-    }
-    return ''
-  }
-  return ''
-}
+const resolveNotifText = (raw: unknown) =>
+  resolveNotificationText(raw, String(i18n?.locale.value || 'zh'))
 
 /** 拉取 badge 数字（后台 header 初始化后立刻拉一次；后台操作成功后可再刷新） */
 async function loadBadge(silent = false) {

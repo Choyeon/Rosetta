@@ -157,6 +157,37 @@ export function extractApiErrorMessage(body: unknown, fallback: string): string 
   return fallback
 }
 
+const NOTIF_TEXT_FALLBACK_ORDER = ['zh', 'en', 'ja', 'zh_Hant'] as const
+
+/**
+ * 站内通知 title/message 的文本兼容层（两种历史形态）：
+ *  - 系统通知 / 历史数据：i18n dict `{zh,en,ja,zh_Hant}`
+ *  - UGC 通知（评论、留言）：明文字符串，刻意不自动翻译
+ * 后端 `NotificationItemOut` 两种都收，直接插值会把 dict 原样 toString 成 JSON 裸露在页面上。
+ * 优先级：当前语言 → zh/en/ja/zh_Hant → 第一个非空字符串。
+ */
+export function resolveNotificationText(raw: unknown, locale: string): string {
+  if (raw == null) return ''
+  if (typeof raw === 'string') return raw
+  if (typeof raw === 'number' || typeof raw === 'boolean') return String(raw)
+  if (typeof raw !== 'object') return ''
+  const obj = raw as Record<string, unknown>
+  const pick = (key: string): string => {
+    const v = obj[key]
+    return typeof v === 'string' && v.length ? v : ''
+  }
+  const current = pick(locale) || pick(locale.replace('-', '_'))
+  if (current) return current
+  for (const key of NOTIF_TEXT_FALLBACK_ORDER) {
+    const v = pick(key)
+    if (v) return v
+  }
+  for (const v of Object.values(obj)) {
+    if (typeof v === 'string' && v.length) return v
+  }
+  return ''
+}
+
 /** 后端 OOBE 未完成：HTTP 503 + error_code === 'OOBE_REQUIRED'。 */
 export function isOobeRequiredError(status: number, body: unknown): boolean {
   return status === 503

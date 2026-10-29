@@ -178,14 +178,14 @@
               class="truncate text-sm font-medium"
               :class="{ 'text-muted-foreground': row.is_read }"
             >
-              {{ row.title }}
+              {{ resolveNotificationText(row.title, locale) }}
             </h2>
           </div>
           <p
-            v-if="row.message"
+            v-if="resolveNotificationText(row.message, locale)"
             class="mt-1 line-clamp-3 text-sm text-muted-foreground"
           >
-            {{ row.message }}
+            {{ resolveNotificationText(row.message, locale) }}
           </p>
           <div class="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
             <span>{{ fmtTime(row.created_at) }}</span>
@@ -296,6 +296,7 @@ import { Button } from '~~/components/ui/button'
 import { Card, CardContent } from '~~/components/ui/card'
 import { Skeleton } from '~~/components/ui/skeleton'
 import UserAvatar from '~~/components/UserAvatar.vue'
+import { resolveNotificationText } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import { applyLocalePrefix } from '~~/composables/useSeo'
 import { useLocaleLink } from '~~/composables/useLocaleLink'

@@ -13,14 +13,17 @@
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { resolveNotificationText } from '../../lib/utils'
 
 const LOCALES = ['zh', 'en', 'ja', 'zh_Hant']
 const PAGE_REL = 'pages/account/notifications.vue'
 const HEADER_REL = 'components/AppHeader.vue'
+const ADMIN_HEADER_REL = 'components/admin/AdminHeader.vue'
 
 const pagePath = resolve(process.cwd(), PAGE_REL)
 const page = existsSync(pagePath) ? readFileSync(pagePath, 'utf8') : ''
 const header = readFileSync(resolve(process.cwd(), HEADER_REL), 'utf8')
+const adminHeader = readFileSync(resolve(process.cwd(), ADMIN_HEADER_REL), 'utf8')
 const dicts = Object.fromEntries(
   LOCALES.map(loc => [loc, JSON.parse(readFileSync(resolve(process.cwd(), `i18n/locales/${loc}.json`), 'utf8')) as Record<string, unknown>])
 )
@@ -58,8 +61,26 @@ describe('站内通知 · 前台落地契约', () => {
   it('通知标题/正文来自 UGC，只能文本插值', () => {
     // 只查真实指令绑定：文件头注释里写"绝不 v-html"不算违规
     expect(page, 'v-html 会把留言摘要当标记渲染').not.toMatch(/v-html\s*=/)
-    expect(page).toMatch(/\{\{ row\.title \}\}/)
-    expect(page).toMatch(/\{\{ row\.message \}\}/)
+    expect(page).toMatch(/\{\{ resolveNotificationText\(row\.title, locale\) \}\}/)
+    expect(page).toMatch(/\{\{ resolveNotificationText\(row\.message, locale\) \}\}/)
+  })
+
+  it('标题/正文两种历史形态都过解析层，不把 dict toString 成 JSON 上屏', () => {
+    // 后端 NotificationItemOut.title/message 是 `dict | str`：系统通知是四语 dict，
+    // UGC 通知是明文字符串。直接插值会把 dict 原样渲染成 {"zh":…}（线上实测可见）。
+    expect(page, '原始插值等于把 dict 当字符串输出').not.toMatch(/\{\{ row\.(title|message) \}\}/)
+    expect(page).toContain('resolveNotificationText')
+    expect(adminHeader).toContain('resolveNotificationText')
+
+    const dict = { zh: '评论通知', en: 'Comment', ja: 'コメント', zh_Hant: '評論' }
+    expect(resolveNotificationText(dict, 'en')).toBe('Comment')
+    expect(resolveNotificationText(dict, 'zh_Hant')).toBe('評論')
+    // 语言缺失时按 zh → en → ja → zh_Hant 兜底，绝不返回 JSON 文本
+    expect(resolveNotificationText({ zh: '仅中文' }, 'ja')).toBe('仅中文')
+    // UGC 明文字符串原样透传（刻意不自动翻译）
+    expect(resolveNotificationText('你的文章收到新评论', 'en')).toBe('你的文章收到新评论')
+    expect(resolveNotificationText(null, 'zh')).toBe('')
+    expect(resolveNotificationText({}, 'zh')).toBe('')
   })
 
   it('顶栏两处入口（桌面下拉 + 移动抽屉）都指向通知页', () => {
