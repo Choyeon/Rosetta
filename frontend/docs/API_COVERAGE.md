@@ -238,13 +238,17 @@
 > "兜底项用负 ID 且本地化随 lang 变化"）。
 > 2026-10-18 补充（覆盖谁的问题已在管理页文档头写死）：DB 有生效行时优先用之，一行都没有才落回热榜兜底；
 > 后台只有 `media_type: image`（首页仅背景图层，选 video 会存进去却永不渲染＝静默失效），
-> `start_time/end_time` 排期窗与 `cta_secondary_*` 次按钮暂未开放界面（后端仍接受）。
+> `start_time/end_time` 排期窗与 `cta_secondary_*` 次按钮**都已在管理页开放**（2026-10-28 收口）：
+> 排期窗含"两端留空＝长期生效"、提交前的倒挂提示，以及"显式 `null` 清除排期"——
+> 因为 `exclude_unset` 下只有显式 null 才表达"清空"；时间串按「朴素即 UTC」入库（生产机曾实测偏 8 小时）。
+> 判据与消费点由 `tests/unit/apiCoverageClaims.spec.ts` 钉回代码，不再靠表格记忆。
 
 
 ### post_series（/api）— 6/8
 
 ✅：`GET /series`（pages/series/index.vue:144）、`GET /series/{slug}`（pages/series/[slug].vue:223）、`GET/POST /admin/series`（uam:742,753）、`PUT/DELETE /admin/series/{id}`（uam:767,776）
-❌（2）：`PUT /admin/series/{id}/toggle`（后台用 PUT 代替——重复入口）、`POST /post_series/complete`（"标记系列完成"无 UI——小缺口）
+❌（1）：`POST /post_series/complete` —— 它是**编辑器"同系列文章" autocomplete**（按关键词返回最多 8 条同系列文章，`post_series.py::series_complete`），不是"标记系列完成"；旧判定把名字读成了状态机动作，属误标。真实现状：编辑器没有"插入同系列文章建议"这一面，所以这条确实零消费方。
+✅（补记 2026-10-29）：`PUT /admin/series/{id}/toggle` 已由 `pages/admin/content/series.vue` 的启用徽标消费（`toggleAdminSeries`）——旧判定「后台用 PUT 代替——重复入口」已作废；toggle 口翻的是库里当前值而不是"设成 X"，所以后台只在拿到 200 后回读，不用本地取反。
 
 ### ranking / stats / translate / docs / settings_groups
 
@@ -279,7 +283,7 @@
 
 ### admin_logs / admin_tools / migration / performance（均 /api/admin）
 
-- admin_logs ❌1：`DELETE /logs/retention`（保留策略清理无 UI——小缺口）
+- admin_logs ✅（补记 2026-10-29）：`DELETE /logs/retention` 已接——`pages/admin/tools/audit-logs.vue` 的「清理旧日志」走 `composables/useAdminManage.ts` 的 wrapper（`days` 限 1-3650）。旧判定「保留策略清理无 UI——小缺口」已作废。口径：它只删**操作留痕**（`operation_logs`），访问日志/性能指标由服务端按 `LOG_RETENTION_DAYS` 的保留循环清理，不是这条口的职责。
 - admin_tools ✅4：`GET/POST /alembic/status|upgrade`、`GET/POST /cache/status|flush`（uam:1666–1804；pages/admin/tools/migrations.vue:580,761、cache.vue:390,410）。`/alembic/status` 读取失败一律 500，**不返回** `is_latest=true` 的空壳 200；前端 `loadStatus()` 的 catch 写 `statusError` 并展示『取不到状态 ≠ 已是最新』的错误态（`tests/test_api_admin_tools.py` 两侧都钉住）
 - migration ✅4：`POST /start`、`GET /status`、`POST /cancel`、`GET /presets`（uam:1741–1768）
 - performance ✅4：`GET /performance/summary`（uam:1569）、`GET /slow · /storage`、`DELETE /cleanup`（pages/admin/tools/performance.vue:672,794,812）
@@ -320,9 +324,9 @@
 | shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
 | toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |
 | scheduled_posts（/api） | 3 | **2026-10-28 全部接入**：`pages/admin/content/scheduled.vue`（待发布队列）是唯一消费方——`GET /admin/posts/scheduled` 列表、`PUT /admin/posts/{id}/schedule` 改期/重新排队、`DELETE /admin/posts/{id}/schedule` 取消（取消即回 `draft`，不是停在 `scheduled`）。原判定「前端以 `status=scheduled` + PUT 文章实现，重复入口」**已作废**：状态机口径（`scheduled` 必须带未来 `published_at`、`draft` 不接受定时、到点由调度器发布）由该页与 `tests/unit/scheduledQueueWired.spec.ts` + `tests/test_post_batch_hooks.py` 钉住，生产机探针 2026-10-28 逐条验过（排队→改期→取消回草稿→草稿被 400 拒）。注意 `GET /admin/posts/scheduled` **有写副作用**（顺带发布到期文章），运维脚本不要把它当纯读口轮询 |
-| post_encryption（/api） | 4 | 文章加密设置 CRUD + 解密。**缺口**：OOBE 已有 `enable_encrypted_posts` 开关，但编辑器无加密设置 UI |
-| post_crypto（/api/post_crypto） | 3 | 派生密钥/验证访问/加密预览（配套上一篇的读者侧流程）。同上，随加密 UI 一起接入 |
-| admin_logs（/api/admin/logs/retention） | 1 | 日志保留清理。运维保留（可接定时任务，不需要 UI） |
+| post_encryption（/api） | 4 | 另一套并行设计（独立表 + 独立 CRUD）。**不是"待接 UI 的缺口"**：真正在用的密码门是 `Post.password` 列 + `visibility=password`，编辑器（`components/admin/PostForm.vue`）与读者侧（`X-Post-Password`，正文与评论树同闸门）都已上线并有回归；下面 352 行那条「这两族不接 UI」才是当前口径，本行旧判定「编辑器无加密设置 UI」已作废。这 4 条属**退役候选**（同 2026-10-28 的旧调色板族），删不删由运营决策，不再当作待办 |
+| post_crypto（/api/post_crypto） | 3 | 配套上一行的读者侧流程（派生密钥 / 验证访问 / 加密预览）。同上：并行设计、零消费方、退役候选，不是待接入的缺口 |
+| admin_logs（/api/admin/logs/retention） | 1 | 手动清理早于 N 天的**操作留痕**（`operation_logs`）。已接：`pages/admin/tools/audit-logs.vue`。`visit_logs` / `performance_metrics` 不在这条口的职责里——它们由服务端按 `LOG_RETENTION_DAYS` 的保留循环清理（先睡后删，短生命周期进程不会误删） |
 
 ### bing / bing_image（壁纸代理体系）
 
@@ -338,9 +342,9 @@
 **总体：352 端点 / 46 模块，前端已覆盖 222（63.1%；= 上表 ✅214 + 🟡8，🟡 是仅 Nitro/直链消费），未覆盖 130。**（本行与上表同源；未覆盖数从 133 降到 130 是删掉了 3 条僵尸端点，不是新接了 3 条。上一版写的 351/208 是漏了后来新增的端点，已按表重算。）未覆盖的 130 个可分三类：
 
 1. **刻意保留的后端能力（约六成，不算债）**：
-   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、各 `…/{id}/toggle` ×4、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）、`GET /voting/polls/{poll_id}`（列表口 `GET /voting/polls` 已内嵌 choices 与票数，前台卡片直接从列表取票，详情口没有第二个消费方）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
-   - `…/{id}/toggle` 一族前端刻意不用：那是**服务端翻转**语义，而列表里的开关是"写成我看到的目标值"——翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
-   - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`admin_logs retention`、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。
+   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、`…/{id}/toggle` 里未被消费的 `announcements` 与 `activities` 两条、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）、`GET /voting/polls/{poll_id}`（列表口 `GET /voting/polls` 已内嵌 choices 与票数，前台卡片直接从列表取票，详情口没有第二个消费方）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
+   - `…/{id}/toggle` 一族要分两半看，不能整族判成"刻意不用"。后端共 4 条 `PUT …/{id}/toggle`：`hero/slides` 与 `series` 已接（`toggleAdminHeroSlide` / `toggleAdminSeries`，卡片状态徽标点一下就翻值并清前台页面缓存，拿到 200 后回读、不用本地取反）；`announcements` 与 `activities` 那两条刻意不接——列表里的开关是"写成我看到的目标值"，而翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以未接的两条不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
+   - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。（原列在此处的 `admin_logs retention` 已于 2026-10-29 移出：`pages/admin/tools/audit-logs.vue` 接了手动清理入口。）
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
    - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；users 一族剩下的 8 条见上表 ❌ 行的逐条判定——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
