@@ -136,11 +136,6 @@ Credentials = Annotated[HTTPAuthorizationCredentials, Depends(security)]
 CredentialsOptional = Annotated[HTTPAuthorizationCredentials | None, Depends(security_optional)]
 
 
-from backend.core.csrf import require_csrf  # noqa: E402
-
-RequireCSRF = Annotated[None, Depends(require_csrf)]
-
-
 async def require_oobe_incomplete():
     """依赖：确保 OOBE 未完成，否则抛出 409 + OOBE_ALREADY_COMPLETED"""
     if is_oobe_complete():

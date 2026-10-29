@@ -447,8 +447,13 @@ def render_detail(spec: dict[str, Any]) -> str:
         "",
         "```",
         "Authorization: Bearer <access_token>",
-        "X-CSRF-Token: <csrf_token>   # 写接口需要，从 GET /api/csrf 获取",
         "```",
+        "",
+        "CSRF 不是全局中间件，也没有 `GET /api/csrf` 这类取 token 的接口："
+        "`core/csrf.py::require_csrf` 是 per-route 依赖，目前只挂在**评论的创建与删除**两条写口上，"
+        "规则是「带 Bearer 且 `Origin` 不在白名单里 → 403 `CSRF_CHECK_FAILED`」。"
+        "本站登录态只在请求头里、从不写 cookie（没有环境凭证），所以 `X-CSRF-Token` 当前**没有消费方**，"
+        "其余写接口按站外 Origin 请求也会照常通过——那是设计如此，不是漏挂。",
         "",
         "`access_token` 有效期 1 小时，过期用 `POST /api/users/refresh` 换新。",
         "",
