@@ -17,6 +17,7 @@ Example:
 import asyncio
 import logging
 import smtplib
+import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -35,6 +36,21 @@ logger = logging.getLogger(__name__)
 # SMTP 单次操作预算（秒）。没有它，SMTP 服务器不可达会让发信请求挂到 TCP 默认超时，
 # 进而拖死调用方（如密码重置这类需要即时反馈投递结果的接口）。
 _SMTP_TIMEOUT = 15
+
+
+def _process_is_test_runner() -> bool:
+    """本进程是不是 pytest 在跑（测试进程闸门）。
+
+    为什么在服务层而不是逐个用例 monkeypatch：SMTP 凭据与收件人都不在测试库里。
+    `resolved_smtp()` 读 `.env` + 后台 `email` 分组，所以在任何配好发信的机器
+    （生产机尤其）上跑全量 pytest，只要有用例走到密码重置或评论通知，
+    就会往真实邮箱投递 —— 表现是"跑一次单元测试，管理员邮箱收到几封密码重置邮件"，
+    而接口一个错都不报，日志里也看不出是测试发的。
+
+    需要证明真实发送路径的用例（超时族）显式把本函数 monkeypatch 成回 False：
+    闸门默认生效、放行必须写明意图，这样新增用例不可能无意间投递。
+    """
+    return "pytest" in sys.modules
 
 
 @dataclass
@@ -329,9 +345,15 @@ class EmailService:
         # 为什么必须在"未配置"判定之前：干跑时 host/user/password 可以全空，
         # 否则后台只填了 dry_run 的站点会走"邮件服务未配置"分支，日志里什么都不会留下，
         # 联调的人得不到任何"邮件确实被构造出来了"的证据。
+        dry_run_reason = None
         if smtp_cfg["dry_run"]:
+            dry_run_reason = "后台干跑开关"
+        elif _process_is_test_runner():
+            dry_run_reason = "测试进程闸门"
+        if dry_run_reason is not None:
             logger.info(
-                "[dry-run] 邮件未真实投递 | to=%s | from=%s | subject=%s | body=%s",
+                "[dry-run] 邮件未真实投递 | 原因=%s | to=%s | from=%s | subject=%s | body=%s",
+                dry_run_reason,
                 email.to,
                 smtp_cfg["from_email"],
                 email.subject,

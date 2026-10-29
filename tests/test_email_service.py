@@ -7,6 +7,10 @@
 dry_run（后台「邮件通知 → 干跑模式」）是评论邮件等功能联调的安全阀：
 开启时邮件只写日志、不连接 SMTP——否则测试邮件真实发往不存在的地址，
 退信会全部回到 from_address（管理员自己的邮箱）。
+
+测试进程闸门是同一件事的另一半：凭据与收件人来自 `.env` + `email` 分组而不是测试库，
+所以在配好发信的机器上跑本套用例，历史上会真的往管理员邮箱投递密码重置邮件。
+闸门默认生效，因此下面"证明真实发送路径"的用例必须显式放行。
 """
 
 import pytest
@@ -84,9 +88,19 @@ def _message() -> es.EmailMessage:
     return es.EmailMessage(to="user@example.test", subject="t", body="b")
 
 
+def _allow_real_send(monkeypatch) -> None:
+    """放行测试进程闸门——本文件里只有"证明投递路径本身"的用例可以调用它。
+
+    不放行的话这些用例拿不到 SMTP 对象，也就证明不了 timeout / 失败收敛 /
+    dry_run 各自的语义（闸门会把它们一起挡成干跑，断言就变成恒真）。
+    """
+    monkeypatch.setattr(es, "_process_is_test_runner", lambda: False)
+
+
 @pytest.mark.asyncio
 async def test_smtp_connection_carries_timeout(monkeypatch):
     monkeypatch.setattr(es.smtplib, "SMTP", _FakeSMTP)
+    _allow_real_send(monkeypatch)
 
     result = await _service()._send_sync(_message())
 
@@ -99,6 +113,7 @@ async def test_smtp_connection_carries_timeout(monkeypatch):
 @pytest.mark.asyncio
 async def test_timeout_converts_to_failed_result(monkeypatch):
     monkeypatch.setattr(es.smtplib, "SMTP", _FakeSMTP)
+    _allow_real_send(monkeypatch)
     _FakeSMTP.exc = TimeoutError("timed out")
 
     result = await _service()._send_sync(_message())
@@ -113,6 +128,8 @@ async def test_dry_run_never_touches_smtp(monkeypatch):
     """dry_run 开启：一封真实邮件都不许发出（连 SMTP 对象都不许构造）。"""
     monkeypatch.setattr(es.smtplib, "SMTP", _FakeSMTP)
     monkeypatch.setattr(es.smtplib, "SMTP_SSL", _FakeSMTP)
+    # 闸门必须开着真发送：否则"没构造连接"是闸门挡的，dry_run 分支坏了也测不出来。
+    _allow_real_send(monkeypatch)
 
     svc = _service()
 
@@ -163,3 +180,28 @@ async def test_dry_run_counts_as_configured():
 
     svc.resolved_smtp = _cfg
     assert await svc.smtp_is_configured() is True
+
+
+@pytest.mark.asyncio
+async def test_test_runner_detects_itself():
+    """闸门必须真的在本进程里是关着的——否则下面那条"零投递"用例是恒真的空断言。"""
+    assert es._process_is_test_runner() is True
+
+
+@pytest.mark.asyncio
+async def test_test_runner_guard_blocks_delivery_even_with_full_credentials(monkeypatch):
+    """回归用户报的缺陷：跑一次单元测试，管理员邮箱就收到密码重置邮件。
+
+    成因不在测试库里：凭据与收件人来自 `.env` + `email` 分组，所以在配好 SMTP 的机器上，
+    任何走到发信的用例都会真投递。这里给足全套可用凭据（dry_run 关、host/user/password
+    齐、TLS 开），闸门仍必须一封都不发。
+    """
+    monkeypatch.setattr(es.smtplib, "SMTP", _FakeSMTP)
+    monkeypatch.setattr(es.smtplib, "SMTP_SSL", _FakeSMTP)
+
+    result = await _service()._send_sync(
+        es.EmailMessage(to="ops@example.test", subject="s", body="b")
+    )
+
+    assert result.success is True, "闸门按干跑处理，调用方不该看到失败"
+    assert _FakeSMTP.instances == [], "测试进程内不允许构造任何 SMTP 连接"
