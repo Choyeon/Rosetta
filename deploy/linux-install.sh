@@ -124,6 +124,7 @@ if [[ ! -f .env ]]; then
         sed -i.bak \
             -e 's|^DATABASE_URL=sqlite.*|DATABASE_URL=postgresql+asyncpg://rosetta:rosetta_secret@127.0.0.1:5432/rosetta|' \
             -e 's|^REDIS_ENABLED=false|REDIS_ENABLED=true|' \
+            -e 's|^# TRUSTED_PROXY_IPS=.*|TRUSTED_PROXY_IPS=["127.0.0.1"]|' \
             -e 's|^DEBUG=true|DEBUG=false|' \
             -e 's|^APP_ENV=development|APP_ENV=production|' \
             -e "s|^SECRET_KEY=.*|SECRET_KEY=$(openssl rand -hex 32 2>/dev/null || echo change-me-change-me-change-me)|" \

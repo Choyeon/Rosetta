@@ -14,11 +14,12 @@ Example:
     'Rosetta API'
 """
 
+import json
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import Field, model_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field, field_validator, model_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Settings(BaseSettings):
@@ -144,7 +145,7 @@ class Settings(BaseSettings):
     )
 
     # CORS 配置
-    cors_origins: list[str] = Field(
+    cors_origins: Annotated[list[str], NoDecode] = Field(
         default=[
             "http://localhost:4321",
             "http://127.0.0.1:4321",
@@ -177,16 +178,16 @@ class Settings(BaseSettings):
         default=True,
         description="是否允许携带凭据",
     )
-    cors_allow_methods: list[str] = Field(
+    cors_allow_methods: Annotated[list[str], NoDecode] = Field(
         default=["*"],
         description="允许的 HTTP 方法",
     )
-    cors_allow_headers: list[str] = Field(
+    cors_allow_headers: Annotated[list[str], NoDecode] = Field(
         default=["*"],
         description="允许的 HTTP 头",
     )
 
-    trusted_proxy_ips: list[str] = Field(
+    trusted_proxy_ips: Annotated[list[str], NoDecode] = Field(
         default=[],
         description=(
             "受信反向代理 IP 列表（逗号分隔或 JSON 数组）。"
@@ -225,7 +226,7 @@ class Settings(BaseSettings):
         le=100 * 1024 * 1024,
         description="最大上传文件大小（字节）",
     )
-    allowed_extensions: list[str] = Field(
+    allowed_extensions: Annotated[list[str], NoDecode] = Field(
         default=["jpg", "jpeg", "png", "gif", "webp", "svg", "pdf", "doc", "docx"],
         description="允许上传的文件扩展名",
     )
@@ -378,7 +379,7 @@ class Settings(BaseSettings):
         default="zh",
         description="默认语言代码",
     )
-    supported_languages: list[str] = Field(
+    supported_languages: Annotated[list[str], NoDecode] = Field(
         default=["zh", "en", "ja", "zh_Hant"],
         description="支持的语言列表",
     )
@@ -439,6 +440,34 @@ class Settings(BaseSettings):
         le=168,
         description="日志保留扫描间隔（小时）。先睡后删：进程刚启动的那轮不做删除",
     )
+
+    @field_validator(
+        "cors_origins",
+        "cors_allow_methods",
+        "cors_allow_headers",
+        "trusted_proxy_ips",
+        "allowed_extensions",
+        "supported_languages",
+        mode="before",
+    )
+    @classmethod
+    def _decode_env_lists(cls, value: Any) -> Any:
+        """列表型环境变量三种写法都接：JSON 数组、逗号分隔、单值。
+
+        pydantic-settings 对 `list[str]` 的默认解码是**严格 JSON**，而 `NoDecode` 把这些字段
+        交回这里手动解。不加这一层时，`TRUSTED_PROXY_IPS=127.0.0.1`（字段描述与后台
+        访客记录页的告警文案都这么教人写）会在 `Settings()` 构造期抛 SettingsError ——
+        也就是**进程直接起不来**，2026-10-29 实测。JSON 形态继续原样支持，
+        坏 JSON 仍然报错而不是被当成一个元素静默收下。
+        """
+        if not isinstance(value, str):
+            return value
+        raw = value.strip()
+        if not raw:
+            return []
+        if raw[0] in "[{":
+            return json.loads(raw)
+        return [item.strip() for item in raw.split(",") if item.strip()]
 
     @model_validator(mode="after")
     def validate_secret_key(self) -> "Settings":

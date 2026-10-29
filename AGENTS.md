@@ -500,8 +500,11 @@ Rosetta/
 | `CACHE_REFRESH_INTERVAL` | `3600`（下限 60） | 上述定时刷新的间隔（秒） |
 | `LOG_RETENTION_DAYS` | `7`（1–3650） | 只增日志表（`visit_logs` / `performance_metrics` / `operation_logs`）的保留天数，后台循环按此批量删除更早的行 |
 | `LOG_RETENTION_INTERVAL_HOURS` | `6`（1–168） | 上述保留扫描的间隔（小时）。**先睡后删**：进程启动首轮不删，短生命周期进程（含测试）不会误删数据 |
+| `TRUSTED_PROXY_IPS` | `[]`（空＝不采信任何转发头） | 受信反代地址列表。只有直连对端在里面时 `get_client_ip` 才读 `X-Forwarded-For` / `X-Real-IP`，且 `is_internal_request`（限流绕行 + 访客记录跳过）只会对"受信对端且不带转发头"成立。**nginx 同机反代必须配 `["127.0.0.1"]`**，否则访客记录整站 IP 是回环（独立访客读成 1），Nitro SSR 打 `127.0.0.1:8000` 的内部调用还会和真实访客共用同一个限流桶 |
 
-日志保留刻意不用分布式锁——该锁要求启用 Redis，单机/内存缓存部署会直接抛错；删除以 id 集合为条件、幂等，多 worker 各跑各的安全。口径副作用：默认 7 天窗口会把 `GET /api/monitoring/visits/summary` 的 `month`（30 天窗口）截短成保留窗口本身，所以该端点响应自带 `retention_days` + `data_since`（现存最早一条日志的时间），消费方必须据此把被截短的窗口标成下界、不得当全量读数；要真实覆盖 30 天就把 `LOG_RETENTION_DAYS` 设 ≥31。该端点目前无前端消费者（后台只接了 `/performance/summary`）。
+**列表型设置项（`cors_origins` / `cors_allow_methods` / `cors_allow_headers` / `trusted_proxy_ips` / `allowed_extensions` / `supported_languages`）三种写法都接受**：JSON 数组、逗号分隔、单值。这不是糖——pydantic-settings 对 `list[str]` 的默认解码是**严格 JSON**，`TRUSTED_PROXY_IPS=127.0.0.1` 这种最自然的写法会在 `Settings()` 构造期抛 `SettingsError`，即**进程直接起不来**（2026-10-29 实测，而字段描述与后台告警文案都教运营者这么写）。收口点是 `core/config.py::_decode_env_lists`（配 `Annotated[list[str], NoDecode]`），新增列表设置项必须同批进它的字段清单，由 `tests/test_config_env_list_parsing.py::test_every_list_setting_is_covered` 双向钉住；坏 JSON 仍然报错，不会被当成一个元素静默收下。
+
+日志保留刻意不用分布式锁——该锁要求启用 Redis，单机/内存缓存部署会直接抛错；删除以 id 集合为条件、幂等，多 worker 各跑各的安全。口径副作用：默认 7 天窗口会把 `GET /api/monitoring/visits/summary` 的 `month`（30 天窗口）截短成保留窗口本身，所以该端点响应自带 `retention_days` + `data_since`（现存最早一条日志的时间），消费方必须据此把被截短的窗口标成下界、不得当全量读数；要真实覆盖 30 天就把 `LOG_RETENTION_DAYS` 设 ≥31。`/visits/summary` 由仪表盘页消费，明细口 `GET /api/monitoring/visits` 由 `pages/admin/tools/visits.vue` 消费（同一族两个页面各取一段，集合相等由 `frontend/tests/unit/monitoringEndpointsWired.spec.ts` 对账）。
 
 这两个开关与 `REDIS_ENABLED` **无关**：Memory 后端同样是有效的响应缓存，而单机部署进程重启即冷启动，预热收益反而更大。
 
