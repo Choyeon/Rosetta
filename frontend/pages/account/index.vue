@@ -50,16 +50,42 @@
       <p class="text-xs uppercase tracking-wider text-muted-foreground">
         {{ t('account.desc') }}
       </p>
-      <!-- 账户设置（资料/隐私/改密）入口放在本页而非顶栏下拉：/account 本身就只有登录态可达，
-           再往用户菜单里塞第三项只是把同一批链接摊成两处维护。 -->
-      <Button
-        variant="outline"
-        size="sm"
-        @click="navigateTo('/account/settings')"
-      >
-        <Settings data-icon="inline-start" />
-        {{ t('account.settingsTitle') }}
-      </Button>
+      <!-- 个人中心的三条子页入口都放在这里：私信/通知此前只有顶栏下拉可达，
+           用户在本页找不到它们；角标数字来自各自的真实未读读数（见 script 里的 allSettled）。 -->
+      <div class="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          @click="navigateTo(localeHref('/account/messages'))"
+        >
+          <Mail data-icon="inline-start" />
+          {{ t('messages.title') }}
+          <span
+            v-if="unreadMessages > 0"
+            class="ml-1.5 rounded-full bg-primary px-1.5 text-[11px] font-medium tabular-nums text-primary-foreground"
+          >{{ unreadMessages }}</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="navigateTo(localeHref('/account/notifications'))"
+        >
+          <Bell data-icon="inline-start" />
+          {{ t('notifications.title') }}
+          <span
+            v-if="unreadNotifications > 0"
+            class="ml-1.5 rounded-full bg-primary px-1.5 text-[11px] font-medium tabular-nums text-primary-foreground"
+          >{{ unreadNotifications }}</span>
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          @click="navigateTo(localeHref('/account/settings'))"
+        >
+          <Settings data-icon="inline-start" />
+          {{ t('account.settingsTitle') }}
+        </Button>
+      </div>
     </header>
 
     <!-- ===== 读数卡：GET /users/me/stats（后端信封 {success,data,message}，与列表端点不同构） ===== -->
@@ -585,6 +611,7 @@
 
 <script setup lang="ts">
 import {
+  Bell,
   Bookmark,
   CalendarClock,
   ChevronLeft,
@@ -593,6 +620,7 @@ import {
   FileText,
   FolderOpen,
   Heart,
+  Mail,
   MessageSquare,
   Pencil,
   RotateCcw,
@@ -637,9 +665,12 @@ import {
   TabsTrigger
 } from '~~/components/ui/tabs'
 import UserAvatar from '~~/components/UserAvatar.vue'
+import { fetchNotificationStats } from '~~/composables/useAdminManage'
 import { apiFetch, useAPI } from '~~/composables/useApi'
 import { useFavorites, type FavoriteRow } from '~~/composables/useFavorites'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
+import { useLocaleLink } from '~~/composables/useLocaleLink'
+import { useMessages } from '~~/composables/useMessages'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
@@ -715,6 +746,26 @@ const accountSeed = computed(() => {
 const coverImage = computed(() => {
   const u = authStore.user as Record<string, unknown> | null
   return String(u?.cover_image ?? '')
+})
+
+/** 子页入口：裸路径会掉回默认语言，localeHref 与 SEO 侧同一个前缀算法。 */
+const { localeHref } = useLocaleLink()
+// 私信/通知角标：两个读数都是 silent 口，任一端失败只是不显示角标，
+// 不能让它把本页的三条主请求（统计/列表/收藏夹）连带拖成错误态。
+const unreadMessages = ref(0)
+const unreadNotifications = ref(0)
+const { getUnreadMessageCount } = useMessages()
+onMounted(async () => {
+  const [messageRes, notificationRes] = await Promise.allSettled([
+    getUnreadMessageCount(),
+    fetchNotificationStats({ silentToast: true })
+  ])
+  if (messageRes.status === 'fulfilled') {
+    unreadMessages.value = Number(messageRes.value?.count ?? 0) || 0
+  }
+  if (notificationRes.status === 'fulfilled') {
+    unreadNotifications.value = Number(notificationRes.value?.unread_count ?? 0) || 0
+  }
 })
 
 const tab = computed<AccountTab>(() => {

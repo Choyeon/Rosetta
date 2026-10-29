@@ -80,6 +80,19 @@ describe('个人中心 /account', () => {
     expect(header).toContain('const go = (path: string) => navigateTo(localeHref(path))')
   })
 
+  it('私信 / 通知子页入口带真实未读角标，读数失败只隐藏角标', () => {
+    // 此前只有顶栏下拉能到这两页，个人中心里一个入口都没有（设置按钮是唯一的一个）
+    expect(page).toMatch(/localeHref\('\/account\/messages'\)/)
+    expect(page).toMatch(/localeHref\('\/account\/notifications'\)/)
+    expect(page).toMatch(/localeHref\('\/account\/settings'\)/)
+    expect(page).toContain('getUnreadMessageCount()')
+    expect(page).toContain('fetchNotificationStats({ silentToast: true })')
+    // 两条读数都是静默口：一段挂掉不能把整页拖成错误态
+    expect(page).toContain('Promise.allSettled')
+    expect(page).toMatch(/v-if="unreadMessages > 0"/)
+    expect(page).toMatch(/v-if="unreadNotifications > 0"/)
+  })
+
   it('日期格式化钉死时区，避免两端分歧', () => {
     expect(page).toContain('Intl.DateTimeFormat')
     expect(page).toContain('timeZone:')
