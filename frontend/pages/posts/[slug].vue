@@ -1840,6 +1840,30 @@ const normalizeComment = (raw: CommentRaw): PostComment => {
 // 首屏由 SSR + payload 注入文章详情；这里只刷新评论。
 // 注意：不要在 onMounted 里 refresh() 文章本身——客户端接管时会取消 SSR 发起的、仍在传输中的请求，
 // 浏览器 Network 面板里就会看到 net::ERR_ABORTED（尤其是正文较大的中/长文）。
+/**
+ * 阅读历史写口：详情接口在 SSR 首屏是匿名请求（token 只在 localStorage，
+ * 服务端看不到身份），因此历史只能由此处在登录态下补记一次。
+ * 后端 POST /blog/posts/{id}/view 对 (user_id, post_id) 唯一索引做 upsert，
+ * 同一篇重复打开只刷新 viewed_at——这是周期榜 recent_views 与
+ * 个人中心「阅读历史」唯一的数据源。
+ */
+const recordedViewKey = ref('')
+async function recordReadHistory() {
+  if (!import.meta.client) return
+  const id = post.value?.id
+  if (!id || !authStore.isAuthenticated) return
+  const key = `${postSlug.value}:${id}`
+  if (recordedViewKey.value === key) return
+  recordedViewKey.value = key
+  try {
+    // silentToast：后台补记失败不该打断阅读，也不与页面其它错误提示抢屏
+    await apiFetch(`/blog/posts/${id}/view`, { method: 'POST', silentToast: true })
+  } catch {
+    // 失败不占去重位：登录态恢复（initialize 挂 app:mounted 之后）时那条 watch 还能补上
+    recordedViewKey.value = ''
+  }
+}
+
 const loadCommentsForCurrentPost = async () => {
   if (!import.meta.client) return
   loadingComments.value = true
@@ -1877,11 +1901,12 @@ onMounted(async () => {
   // 与评论/相似/TOC 互不依赖，先拿到 promise 再并入下面的 Promise.all，
   // 不单独 await 一个 RTT（旧写法让整页 hydration 后的收尾多等一轮往返）。
   const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
-  // 三个独立任务并行执行：评论、相似文章、TOC 重建互不依赖
+  // 独立任务并行执行：评论、相似文章、TOC 重建、阅读历史互不依赖
   await Promise.all([
     loadCommentsForCurrentPost(),
     loadSimilarAndLikeState(post.value?.id),
     rebuildTOC(),
+    recordReadHistory(),
     pollsPromise
   ])
   if (pollsPromise) activePolls.value = await pollsPromise
@@ -1900,9 +1925,13 @@ watch(needPassword, async (locked, prev) => {
 onActivated(async () => {
   await Promise.all([
     loadCommentsForCurrentPost(),
-    loadSimilarAndLikeState(post.value?.id)
+    loadSimilarAndLikeState(post.value?.id),
+    recordReadHistory()
   ])
 })
+// 登录态恢复（auth.initialize 挂在 app:mounted 之后）晚于本页 onMounted，
+// 首屏那次通常还看不到 token；恢复后由这里补记一次。
+watch(() => authStore.isAuthenticated, recordReadHistory)
 /**
  * 换文章时重取本页投票。
  * 投票按 post_id 绑定后，"上一篇的专属投票"留在卡片位上就是新的串台缺陷——
@@ -1921,7 +1950,8 @@ watch([slug, locale, () => post.value?.id], async () => {
   await Promise.all([
     loadCommentsForCurrentPost(),
     loadSimilarAndLikeState(post.value?.id),
-    reloadActivePolls()
+    reloadActivePolls(),
+    recordReadHistory()
   ])
 })
 

@@ -1793,6 +1793,60 @@ async def toggle_like(post_id: int, current_user: CurrentUser, db: DB):
         return BaseResponse(message="点赞成功")
 
 
+@router.post(
+    "/posts/{post_id}/view",
+    response_model=BaseResponse,
+    summary="记录阅读历史",
+    description=(
+        "登录用户打开文章后回调一次，写入或刷新该用户在 `post_view_histories` 里的阅读记录。"
+        "周期榜（day/week/month）的 `recent_views` 与个人中心「阅读历史」都以这张表为数据源。"
+    ),
+)
+async def record_post_view(post_id: int, current_user: CurrentUser, db: DB):
+    """记录一次已登录用户的阅读。
+
+    写口此前整族缺失：`PostViewHistory` 被周期榜（api/ranking.py 的 day/week/month 窗口）
+    与 GET /users/me/history 读取，却没有任何插入点——线上 `recent_views` 恒为 0、
+    个人中心「阅读历史」永远空。详情端点不能兼任写手：SSR 首屏是无 token 的服务端请求，
+    匿名读还走缓存分支，绝大多数阅读在那边根本没有身份。
+
+    可见性按匿名视角判（`post_is_publicly_visible(post, None)`）：草稿 / 未到点的定时稿 /
+    private 文章不记历史，否则作者预览会在自己的阅读历史里留下对外不存在的行。
+
+    去重靠唯一索引 (user_id, post_id)：同一用户重复阅读只刷新 `viewed_at`，
+    所以周期榜的 `recent_views` 读数是「窗口内读过这篇的登录用户数」，不是秒级 PV。
+    """
+    from sqlalchemy.exc import IntegrityError
+
+    from backend.models.blog import PostViewHistory
+
+    post = (await db.execute(select(Post).where(Post.id == post_id))).scalar_one_or_none()
+    if post is None or not post_is_publicly_visible(post, None):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="文章不存在")
+
+    now = datetime.now(UTC)
+    scope = (
+        PostViewHistory.user_id == current_user.id,
+        PostViewHistory.post_id == post_id,
+    )
+    existing_id = await db.scalar(select(PostViewHistory.id).where(*scope))
+    if existing_id is None:
+        # 唯一索引挡住并发重复插入，但不能让它冒成 500：同一用户两个标签页同时打开
+        # 同一篇时，后到的那条在 savepoint 里回滚后改走 UPDATE。
+        try:
+            async with db.begin_nested():
+                await db.execute(
+                    PostViewHistory.__table__.insert().values(
+                        user_id=current_user.id, post_id=post_id, viewed_at=now
+                    )
+                )
+            return BaseResponse(message="已记录")
+        except IntegrityError:
+            pass
+    await db.execute(update(PostViewHistory).where(*scope).values(viewed_at=now))
+    return BaseResponse(message="已记录")
+
+
 # ==================== 分类接口 ====================
 
 
