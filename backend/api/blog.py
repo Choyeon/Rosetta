@@ -3541,6 +3541,9 @@ _STATIC_SITEMAP_ROUTES: list[tuple[str, str, str]] = [
     ("/", "daily", "1.0"),
     ("/posts", "daily", "0.9"),
     ("/posts/hot", "weekly", "0.6"),
+    # 作者目录：作者主页（/authors/<username>）由分类学 sitemap 出，这里只补目录本身。
+    # 它不随内容更新（作者集合变化才变），weekly 足够。
+    ("/authors", "weekly", "0.5"),
     ("/archive", "monthly", "0.4"),
     ("/guestbook", "daily", "0.5"),
     ("/activity", "daily", "0.4"),

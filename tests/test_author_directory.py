@@ -28,6 +28,7 @@ from backend.models.blog import Post
 from backend.models.user import User, UserPreference
 
 USERS_API = Path(__file__).resolve().parents[1] / "backend" / "api" / "users.py"
+BLOG_API = Path(__file__).resolve().parents[1] / "backend" / "api" / "blog.py"
 
 
 async def _add_post(
@@ -234,3 +235,16 @@ def test_count_predicate_is_single_sourced():
     body = body[: body.index("@router.get(", 1)] if "@router.get(" in body[1:] else body
     assert "publicly_listable_posts()" in body
     assert 'Post.status == "published"' not in body
+
+
+def test_directory_route_is_in_static_sitemap():
+    """目录页本身要进 sitemap：作者主页由分类学 sitemap 出，裸 `/authors` 只有固定路由表能提交。
+
+    漏了不会 404，只是这个 URL 的发现入口只剩页脚那一条内链——新页面上线时最容易漏的一步。
+    """
+    src = BLOG_API.read_text(encoding="utf-8")
+    body = src[src.index("_STATIC_SITEMAP_ROUTES: list") :]
+    body = body[: body.index("\n]")]
+    assert '"/authors"' in body
+    # 分类学根路径不能重复进固定表（Search Console 会报重复网址）
+    assert '"/categories"' not in body and '"/tags"' not in body
