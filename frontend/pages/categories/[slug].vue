@@ -91,7 +91,7 @@
         <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
           <Button as-child>
             <NuxtLink :to="localeHref('/categories')">
-              {{ t('nav.categories') }}
+              {{ t('categories.title') }}
             </NuxtLink>
           </Button>
           <Button

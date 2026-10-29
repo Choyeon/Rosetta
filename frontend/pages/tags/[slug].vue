@@ -68,7 +68,7 @@
         <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
           <Button as-child>
             <NuxtLink :to="localeHref('/tags')">
-              {{ t('nav.tags') }}
+              {{ t('tags.title') }}
             </NuxtLink>
           </Button>
           <Button
