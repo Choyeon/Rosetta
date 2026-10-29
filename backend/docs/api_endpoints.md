@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **354 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **356 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -10462,7 +10462,7 @@ _无路径 / query 参数_
 
 ---
 
-## 监控（8）
+## 监控（10）
 
 运行状态、访问日志、性能指标
 
@@ -10581,6 +10581,67 @@ _无路径 / query 参数_
 **错误码**
 
 _除下方“全局通用错误码”外，本接口未声明自定义错误响应_
+
+### `POST /api/monitoring/pageviews`
+
+- **摘要**：边缘上报页面浏览
+- **鉴权**：公开接口（无需鉴权）
+
+由 Nitro 服务端在每次 HTML 文档响应后 fire-and-forget 调用（本机直连，不经 nginx）。鉴权用与页面缓存清除同一条共享密钥（`x-rosetta-purge-secret`），未配置或不匹配一律 403。写入的是访问日志队列（批量落库、队列满即丢），不触碰业务内容，也不发 webhook。IP 取边缘看到的 XFF 第一跳：nginx 之外没有人能伪造它。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `PageviewReport`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| accept_language | string \| null | 否 | Accept-Language 原文 |
+| cookie_names | string \| null | 否 | Cookie **名称**（分号分隔），不含值 |
+| ip | string \| null | 否 | 边缘看到的访客真实 IP（XFF 第一跳） |
+| method | string | 否 | HTTP 方法 |
+| path | string | 是 | 文档请求的路径（不含域名） |
+| referer | string \| null | 否 | 来源页 |
+| response_time_ms | integer | 是 | 本次文档响应耗时（毫秒，边缘侧量） |
+| status_code | integer | 是 | 本次文档响应的状态码 |
+| user_agent | string \| null | 否 | 原始 User-Agent |
+
+```json
+{
+  "accept_language": "string",
+  "cookie_names": "string",
+  "ip": "string",
+  "method": "GET",
+  "path": "string",
+  "referer": "string",
+  "response_time_ms": 0,
+  "status_code": 0,
+  "user_agent": "string"
+}
+```
+
+**出参**
+
+`202` · 模型 `PageviewReportAck`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| recorded | boolean | 是 | 是否已进入访问日志队列（队列满时被丢弃仍回 false） |
+
+响应示例：
+
+```json
+{
+  "recorded": false
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
 
 ### `GET /api/monitoring/performance`
 
@@ -10829,6 +10890,80 @@ _无路径 / query 参数_
       "date": "string"
     }
   ]
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `GET /api/monitoring/visits`
+
+- **摘要**：访客记录明细
+- **鉴权**：需鉴权：`HTTPBearer`
+
+需 CurrentStaff。分页返回 visit_logs 的完整记录：真实来源 IP、原始 UA、按 UA 现算的系统/浏览器/设备/机器人标签、来源页、Cookie 名称列表（绝不含 Cookie 值）、Accept-Language、状态码与耗时，并带上访问用户的 id/用户名（按 access token 的 claims 标注，不查库）。可按窗口、机器人档位、IP、路径、状态码筛选。只读、幂等。响应带 retention_days / data_since / window_truncated：LOG_RETENTION_DAYS 比请求窗口短时，本次读数只是下界。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `VisitRecordsResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| bot_total | integer | 是 | 同窗口同条件（不含 kind）下判定为机器人的条数 |
+| data_since | string \| null | 否 | visit_logs 现存最早一条的 UTC 时间 |
+| days | integer | 是 | 查询窗口天数 |
+| items | object[] | 是 | 当前页记录，按访问时间倒序 |
+| page | integer | 是 | 当前页码，从 1 开始 |
+| page_size | integer | 是 | 每页条数 |
+| retention_days | integer | 是 | LOG_RETENTION_DAYS。>0 且小于 days 时本次读数只是下界 |
+| total | integer | 是 | 命中筛选条件的总条数（用于分页） |
+| unique_ips | integer | 是 | 同窗口同条件（不含 kind）下的去重来源 IP 数 |
+| window_truncated | boolean | 是 | 保留窗口是否已经把请求天数截短（前端据此标注口径，不得当全量读数） |
+
+响应示例：
+
+```json
+{
+  "bot_total": 0,
+  "data_since": "string",
+  "days": 0,
+  "items": [
+    {
+      "accept_language": "string",
+      "bot_name": "string",
+      "browser": "string",
+      "browser_version": "string",
+      "cookie_names": "string",
+      "created_at": "string",
+      "device": "string",
+      "id": 0,
+      "ip": "string",
+      "is_bot": "string",
+      "method": "string",
+      "os": "string",
+      "os_version": "string",
+      "path": "string",
+      "referer": "string",
+      "response_time_ms": 0,
+      "status_code": 0,
+      "user_agent": "string",
+      "user_id": "string",
+      "username": "string"
+    }
+  ],
+  "page": 0,
+  "page_size": 0,
+  "retention_days": 0,
+  "total": 0,
+  "unique_ips": 0,
+  "window_truncated": false
 }
 ```
 

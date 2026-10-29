@@ -5,6 +5,7 @@
 """
 
 import asyncio
+import hmac
 import logging
 import math
 import time
@@ -12,8 +13,8 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
-from fastapi import APIRouter, Query, Request
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Header, HTTPException, Query, Request
+from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import desc, func, select
 
 from backend.core.auth import DB, CurrentStaff, decode_token
@@ -445,14 +446,18 @@ class _VisitDraft:
     is_bot: bool | None = None
 
 
-def _cookie_names_of(request: Request) -> str | None:
-    """Cookie 头里的**名字**列表，绝不包含值。
+def _cookie_names_from_raw(raw: str | None) -> str | None:
+    """从任意"分号分隔的 cookie 形态字符串"里只取**名字**。
+
+    两个调用方共用它，所以"值不落库"这条红线只有一份实现：
+    * `_cookie_names_of`：真实请求的 Cookie 头（`name=value; name2=value2`）；
+    * 边缘上报的 `cookie_names`：Nitro 已经只发名字，这里再过一遍是**防御性重导**——
+      即使某个客户端把值一起送过来，切出来的第一段也只剩名字，值不可能落库。
 
     值是会话凭证，落进只增、会被后台整页列出、还可能被日志备份带走的遥测表里，
     等于把 token 抄送一份给任何能读 visit_logs 的人（含未来的日志导出）。
     名字已经够回答"这个访客带了哪些第三方 cookie"（Cloudflare / GA / 本站语言偏好）。
     """
-    raw = request.headers.get("cookie")
     if not raw:
         return None
     names: list[str] = []
@@ -461,6 +466,11 @@ def _cookie_names_of(request: Request) -> str | None:
         if name and name not in names:
             names.append(name)
     return ("; ".join(names))[:255] or None
+
+
+def _cookie_names_of(request: Request) -> str | None:
+    """真实请求 Cookie 头里的名字列表（见 `_cookie_names_from_raw`）。"""
+    return _cookie_names_from_raw(request.headers.get("cookie"))
 
 
 def _bearer_user_id(request: Request) -> int | None:
@@ -481,10 +491,33 @@ def _bearer_user_id(request: Request) -> int | None:
         return None
 
 
-async def record_visit(request: Request, status_code: int, response_time_ms: float):
-    """记录访问日志（入队，非阻塞；由后台任务批量落库）。"""
+async def _enqueue_visit_draft(draft: _VisitDraft) -> bool:
+    """入队一条访问草稿并保证 flush 循环活着；队列满时丢弃并回 False。
+
+    单列出来是因为现在有两个采集源（后端中间件 + Nitro 边缘上报页面浏览），
+    队列懒初始化与 flusher 懒启动这对动作必须在两边同构——漏一半的表现是
+    "草稿进了一个没有消费者的队列"，遥测安静地全丢。
+    """
     global _visit_queue, _visit_flusher
 
+    if _visit_queue is None:
+        _visit_queue = asyncio.Queue(maxsize=_VISIT_QUEUE_MAX)
+    try:
+        _visit_queue.put_nowait(draft)
+    except asyncio.QueueFull:
+        return False  # 高峰期丢弃访问日志，保护业务吞吐
+
+    # 懒启动 flush 循环（进程内单例；意外退出后自动重启）
+    if _visit_flusher is None or _visit_flusher.done():
+        try:
+            _visit_flusher = asyncio.create_task(_visit_flush_loop())
+        except RuntimeError:
+            pass  # 无运行中的事件循环——下次请求再启
+    return True
+
+
+async def record_visit(request: Request, status_code: int, response_time_ms: float):
+    """记录访问日志（入队，非阻塞；由后台任务批量落库）。"""
     # 本机服务直连（Nitro SSR 渲染时打 127.0.0.1:8000 取设置/列表、健康探针）不是访客。
     # 它们和真实访客共用这张表时，生产实测 8.4 万条里 8.3 万条的 IP 是 127.0.0.1——
     # 后台"独立 IP"、UV、按 IP 筛人全部读成"整站只有一个本机访客"。
@@ -493,9 +526,6 @@ async def record_visit(request: Request, status_code: int, response_time_ms: flo
     if is_internal_request(request):
         return
 
-    if _visit_queue is None:
-        _visit_queue = asyncio.Queue(maxsize=_VISIT_QUEUE_MAX)
-
     # 真实来源 IP：经 nginx 进来的请求，对端要么是 nginx 递来的 X-Forwarded-For 跳，
     # 要么已被 uvicorn 的 --proxy-headers 改写回访客地址；两种形态都取到同一个 IP。
     # 不采信转发头（且 uvicorn 关闭代理头）时整张表会记成本机回环——去重 IP、UV、
@@ -503,32 +533,116 @@ async def record_visit(request: Request, status_code: int, response_time_ms: flo
     # 才读 X-Forwarded-For，所以客户端自己伪造 XFF 不会污染这张表。
     peer_ip = get_client_ip(request)
     ua = (request.headers.get("user-agent") or "")[:500] or None
-    try:
-        _visit_queue.put_nowait(
-            _VisitDraft(
-                path=request.url.path[:500],
-                method=request.method,
-                ip=None if peer_ip == "unknown" else peer_ip[:50],
-                user_agent=ua,
-                referer=(request.headers.get("referer") or "")[:500] or None,
-                status_code=status_code,
-                response_time_ms=int(response_time_ms),
-                created_at=datetime.now(UTC),
-                cookie_names=_cookie_names_of(request),
-                accept_language=(request.headers.get("accept-language") or "")[:100] or None,
-                user_id=_bearer_user_id(request),
-                is_bot=parse_user_agent(ua).is_bot,
-            )
+    await _enqueue_visit_draft(
+        _VisitDraft(
+            path=request.url.path[:500],
+            method=request.method,
+            ip=None if peer_ip == "unknown" else peer_ip[:50],
+            user_agent=ua,
+            referer=(request.headers.get("referer") or "")[:500] or None,
+            status_code=status_code,
+            response_time_ms=int(response_time_ms),
+            created_at=datetime.now(UTC),
+            cookie_names=_cookie_names_of(request),
+            accept_language=(request.headers.get("accept-language") or "")[:100] or None,
+            user_id=_bearer_user_id(request),
+            is_bot=parse_user_agent(ua).is_bot,
         )
-    except asyncio.QueueFull:
-        return  # 高峰期丢弃访问日志，保护业务吞吐
+    )
 
-    # 懒启动 flush 循环（进程内单例；意外退出后自动重启）
-    if _visit_flusher is None or _visit_flusher.done():
-        try:
-            _visit_flusher = asyncio.create_task(_visit_flush_loop())
-        except RuntimeError:
-            pass  # 无运行中的事件循环——下次请求再启
+
+class PageviewReport(BaseModel):
+    """Nitro 边缘节点上报的一次页面浏览（HTML 文档请求）。
+
+    为什么必须让边缘上报而不是后端自己记：nginx 只把 `/api` 与 `/media` 转给 FastAPI，
+    HTML 页面全部由 Nitro 渲染并直接回给浏览器——后端**从来没见过**这次请求。
+    于是 `visit_logs` 实际只是"API 请求明细"：真实访客读一篇文章、爬虫抓一个页面，
+    一条都不进表，后台的"独立访客/UV/机器人档位"数出来的只有后台自己与浏览器发出的
+    那部分 XHR。批次 #53 的访客记录页要做的是"谁在浏览这个站点"，所以补这一条上报链。
+
+    `cookie_names` 送名字而不是 Cookie 头原文：会话凭证不该为遥测多走一跳。
+    后端仍会在落库前重导一次（见 `_cookie_names_from_raw`），万一有客户端把值带上，
+    切第一段后也只剩名字——这条红线不依赖调用方的自觉。
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    path: str = Field(..., min_length=1, max_length=500, description="文档请求的路径（不含域名）")
+    method: str = Field("GET", min_length=3, max_length=10, description="HTTP 方法")
+    ip: str | None = Field(None, max_length=50, description="边缘看到的访客真实 IP（XFF 第一跳）")
+    user_agent: str | None = Field(None, max_length=500, description="原始 User-Agent")
+    referer: str | None = Field(None, max_length=500, description="来源页")
+    cookie_names: str | None = Field(
+        None, max_length=255, description="Cookie **名称**（分号分隔），不含值"
+    )
+    accept_language: str | None = Field(None, max_length=100, description="Accept-Language 原文")
+    status_code: int = Field(..., ge=100, le=599, description="本次文档响应的状态码")
+    response_time_ms: int = Field(
+        ..., ge=0, le=3_600_000, description="本次文档响应耗时（毫秒，边缘侧量）"
+    )
+
+
+class PageviewReportAck(BaseModel):
+    """POST /pageviews 的响应体。"""
+
+    recorded: bool = Field(..., description="是否已进入访问日志队列（队列满时被丢弃仍回 false）")
+
+
+def _internal_report_secret_ok(presented: str | None) -> bool:
+    """边缘上报的共享密钥校验：没配密钥就等于禁用这条链，一律 403。
+
+    复用 `FRONTEND_PURGE_SECRET`（后端）↔ `NUXT_PURGE_SECRET`（Nitro）这一对已经配好的密钥：
+    它本来就是"本机前后端互认"的单源，再加一个变量只会多一个"两边不一样就静默失效"的面。
+    刻意不给开发环境放宽——本地没配密钥时上报侧本来就会跳过（拿到空串就不发），
+    放宽只会让"线上没生效"和"本地在生效"看起来一样。
+    """
+    expected = (settings.frontend_purge_secret or "").strip()
+    if not expected or not presented:
+        return False
+    return hmac.compare_digest(expected, presented.strip())
+
+
+@router.post(
+    "/pageviews",
+    summary="边缘上报页面浏览",
+    description=(
+        "由 Nitro 服务端在每次 HTML 文档响应后 fire-and-forget 调用（本机直连，不经 nginx）。"
+        "鉴权用与页面缓存清除同一条共享密钥（`x-rosetta-purge-secret`），未配置或不匹配一律 403。"
+        "写入的是访问日志队列（批量落库、队列满即丢），不触碰业务内容，也不发 webhook。"
+        "IP 取边缘看到的 XFF 第一跳：nginx 之外没有人能伪造它。"
+    ),
+    status_code=202,
+    responses={202: {"model": PageviewReportAck, "description": "入队结果"}},
+)
+async def report_pageview(
+    payload: PageviewReport,
+    x_rosetta_purge_secret: str | None = Header(default=None, alias="x-rosetta-purge-secret"),
+):
+    """记录一次页面浏览（visit_logs 的边缘来源写入口）。"""
+    if not _internal_report_secret_ok(x_rosetta_purge_secret):
+        raise HTTPException(status_code=403, detail="上报密钥无效")
+
+    ip = (payload.ip or "").strip()
+    ua = (payload.user_agent or "").strip() or None
+    recorded = await _enqueue_visit_draft(
+        _VisitDraft(
+            path=payload.path[:500],
+            method=payload.method.upper()[:10],
+            ip=ip[:50] if ip and ip.lower() != "unknown" else None,
+            user_agent=ua,
+            referer=(payload.referer or "")[:500] or None,
+            status_code=payload.status_code,
+            response_time_ms=payload.response_time_ms,
+            created_at=datetime.now(UTC),
+            # 名称在这里重导一次：值进不来这张表，与中间件那条采集路径同一条规则。
+            cookie_names=_cookie_names_from_raw(payload.cookie_names),
+            accept_language=(payload.accept_language or "")[:100] or None,
+            # 页面浏览的归属：这一跳只有文档请求，没有 token，留空由 API 采集那侧标注。
+            user_id=None,
+            is_bot=parse_user_agent(ua).is_bot,
+        )
+    )
+    return PageviewReportAck(recorded=recorded)
 
 
 @router.get(

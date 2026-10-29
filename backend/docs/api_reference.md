@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **354 个操作 / 282 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **356 个操作 / 284 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1914,17 +1914,19 @@ API 实现了请求限流保护：
 | `DELETE` | `/api/admin/trash/{trash_id}` | 永久删除 |
 | `POST` | `/api/admin/trash/{trash_id}/restore` | 恢复项目 |
 
-### 监控（8）
+### 监控（10）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
 | `GET` | `/api/monitoring/cache` | 缓存监控 |
 | `GET` | `/api/monitoring/database` | 数据库监控 |
 | `GET` | `/api/monitoring/health` | 健康检查 |
+| `POST` | `/api/monitoring/pageviews` | 边缘上报页面浏览 |
 | `GET` | `/api/monitoring/performance` | 性能指标 |
 | `GET` | `/api/monitoring/performance/summary` | 性能概览 |
 | `GET` | `/api/monitoring/stats` | 系统统计 |
 | `GET` | `/api/monitoring/trends` | 趋势数据 |
+| `GET` | `/api/monitoring/visits` | 访客记录明细 |
 | `GET` | `/api/monitoring/visits/summary` | 访问量汇总 |
 
 ### TOC（3）

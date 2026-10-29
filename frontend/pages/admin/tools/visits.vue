@@ -9,6 +9,12 @@
     采集口是否跳过了"受信对端 + 不带任何转发头"的本机服务直连。生产实测未跳时
     8.4 万条里 8.3 万条是 Nitro SSR 自己打 127.0.0.1:8000 取设置/主题/导航，
     这页看到的"访客"就是自家 SSR。所以页内按"当前这批记录是否全是回环"给显式告警。
+  * 页面浏览量来自 **Nitro 边缘上报**（`server/middleware/09-pageview-report.ts` → `POST /api/monitoring/pageviews`），
+    不是后端自己看到的：nginx 只把 `/api`、`/media` 转给 FastAPI，HTML 由 Nitro 直接回浏览器，
+    后端从来没见过那次页面请求。所以一次"读文章"= 1 条页面行（`path` 是文档路径）+ N 条 API 行
+    （浏览器自己的 XHR），行数为 1 不代表只请求了一次；两者共用同一张表、同一批标签口径。
+    这条链是 fire-and-forget 且失败静默：整页没有页面行时先查 `NUXT_PURGE_SECRET` 与
+    `FRONTEND_PURGE_SECRET` 是否配对（缺失即整条链静默关闭，不报错）。
   * os/browser/device/bot_name 是**读取时按当前规则现算**的标签（原始 UA 也随行返回供人工复核）；
     `is_bot` 是唯一落库的判定，历史行为 null 表示"未判定"，两档筛选都不含它 —— 显示要单独分一档。
   * `cookie_names` 只有名字，永远没有值（值是会话凭证，不落遥测、不上屏）。
@@ -731,7 +737,7 @@ const detailFields = computed(() => {
     { label: '来源页', value: d.referer || '（直接访问）' },
     { label: 'Cookie 名', value: d.cookie_names || '（无）' },
     { label: 'Accept-Language', value: d.accept_language || '（未发送）' },
-    { label: '登录身份', value: d.username || (d.user_id ? `id=${d.user_id}` : '匿名') },
+    { label: '登录身份', value: d.username || (d.user_id ? `id=${d.user_id}` : '匿名/未识别') },
     { label: '记录 ID', value: String(d.id) }
   ]
 })

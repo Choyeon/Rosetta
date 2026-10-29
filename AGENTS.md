@@ -67,6 +67,7 @@
 5. **SEO 服务端生成**：RSS 2.0 / Sitemap（索引 + pages/posts/taxonomies 子图）/ Robots / llms.txt / `.well-known/security.txt` 五条 Nitro Server-Route，口径见 §2.3.4。
 6. **Bing 每日壁纸 BFF**：`frontend/server/api/bing-wallpaper.get.ts`，30m SWR cache。
 7. **Webhook 外发**：`backend/api/webhook.py` 把 hooks 总线事件投递到外部端点。事件名唯一清单是 `GET /api/webhooks/events`（= `WEBHOOK_EVENTS` = 总线 `do_action` 名），前端订阅 UI 必须消费该接口、不得自有一套命名；`main.py` startup 调 `register_webhook_listeners()` 挂接。投递请求头固定 `X-Rosetta-Event: <event.type>` + `X-Rosetta-Signature: sha256=<hmac_sha256(secret, 实际发出的 JSON 字节)>`；URL 每次发送前重过 SSRF 护栏（`core/net_guard.py` + `settings.webhook_allow_private_targets`）。`provider` 只是分类标签，签名/载荷格式对所有类型一致。**任何写路径（含批量入口 `POST /blog/posts/batch-status`、`POST /admin/posts/batch`）都必须与单篇路径同构地 `do_action`**——批量分支漏发钩子的表现是「用户改用多选后 Webhook 与插件监听静默失聪」，回归见 `tests/test_post_batch_hooks.py`。密钥明文仅在 `POST /{id}/regenerate-secret` 一次性返回，`WebhookOut` 只给 `has_secret`。回归测试：`tests/test_webhook_dispatch.py`。
+8. **页面浏览边缘上报**：nginx 只把 `/api`、`/media` 转给 FastAPI，HTML 全部由 Nitro 自己渲染直接回浏览器——后端**从来没见过**那次页面请求，所以 `visit_logs` 本身只是"API 请求明细"（批次 #53 上线实测：经 nginx 打页面路径的两次访问在后端零记录，只有打 `/api/**` 的留下了行）。"谁在浏览这个站点"由 `frontend/server/middleware/09-pageview-report.ts` 在 `res` 的 `finish` 事件后 `POST /api/monitoring/pageviews` 补齐。四条口径：①只认 `Accept` 含 `text/html`/`application/xhtml+xml` 的 GET 文档请求，跳过 `/api`、`/media`、`/themes`、`/_nuxt`、`/_rosetta`、`/@*`、`/.well-known`、`/robots.txt`、`/rss.xml`、`/feed`、`/sitemap*`、`/placeholder-covers` 与一切带扩展名的路径——把机器面当"页面浏览量"会让读数失去意义；②IP 取 `x-forwarded-for` 第一跳（nginx `$proxy_add_x_forwarded_for` 写进去的那一跳），没有转发头才退回 socket 对端，绝不从 Host/x-forwarded-host 推导；③**Cookie 只发名字、不发值**（值是会话凭证，不该为遥测多走一跳），后端 `_cookie_names_from_raw` 落库前还会重导一次名称，这条红线不依赖调用方的自觉；④鉴权复用已有共享密钥对 `NUXT_PURGE_SECRET`（`frontend/.panel.env`）↔ `FRONTEND_PURGE_SECRET`（根 `.env`）、头名 `x-rosetta-purge-secret`，**不新增配置项**——任一侧为空即整条链静默关闭（前端拿到空串连请求都不发，后端 `hmac.compare_digest` 恒 403），表现是访客记录页只剩 API 行而**一个错都不报**，排查从这里开始。上报 fire-and-forget、刻意不 `await`、失败静默丢弃：后端不可达不能变成访客看到的 500。后端 `PageviewReport` 带 `extra="forbid"`，两侧字段一旦漂移＝每一条上报 422 且静默，由 `frontend/tests/unit/pageviewReport.spec.ts` 按「载荷键集合 ⇔ 后端字段集合」相等钉住，`tests/test_pageview_reporting.py` 钉住 403/202、队列满回 202 `recorded:false`（不 500）与 cookie 值不入库。消费侧口径：一次"读文章"= 1 条页面行 + N 条 API 行；页面行 `user_id` 恒为 null（JWT 在 localStorage，文档请求不带身份），所以详情标签是「匿名/未识别」而非「未登录」。
 
 ***
 
@@ -465,7 +466,7 @@ Rosetta/
 │  ├─ nuxt.config.ts                 SSR · runtimeConfig · routeRules · i18n · vite 补丁插件
 │  └─ package.json                   pnpm 11.20 packageManager 锁
 │
-├─ tests/                            Pytest（1523 passed + 3 skipped + 3 xfailed + 1 xpassed，覆盖率 69.85%（须先删 .coverage，见 §8），fail_under=45%；另有 test_coverage_main_and_middleware 两条**顺序性**假失败，见 §8.4）
+├─ tests/                            Pytest（本机 2026-10-29 全量：2363 passed + 23 skipped + 2 xfailed + 2 xpassed + 0 failed，覆盖率 72.83%（须先删 .coverage，见 §8），fail_under=45%；另有 test_coverage_main_and_middleware 两条**顺序性**假失败，见 §8.4）
 ├─ deploy/                           生产部署脚本（linux-install.sh / windows-start.ps1 / nginx-site.conf）
 ├─ docker/                           backend-entrypoint.sh · nginx.conf
 ├─ .github/workflows/ci.yml          根级 CI
@@ -581,7 +582,7 @@ uv run uvicorn backend.main:app --reload --host 127.0.0.1 --port 8000
 uv run python -m backend.migrations status|upgrade|revision -m "msg" --autogenerate
 uv run python -m backend.scripts.mock_data           # 示例数据
 uv run python -m backend.scripts.auto_oobe           # 静默 OOBE（需 ADMIN_PASSWORD）
-uv run pytest                                        # 1523 passed + 3 skipped + 3 xfailed + 1 xpassed（另有 §8.4 两条顺序性假失败，全量退出码因此为 1）；覆盖率 ≥45%（实测 69.85%）
+uv run pytest                                        # 本机 2026-10-29 全量：2363 passed + 23 skipped + 2 xfailed + 2 xpassed、0 failed，覆盖率 72.83%（生产机同口径见 §8 的第四十三场；§8.4 那两条顺序性假失败只在生产机全量里挂，本机 0 failed）
 uv run ruff check backend tests ; uv run ruff format --check backend tests
 PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write   # 重算 frontend/docs/API_COVERAGE.md 的覆盖度汇总表
 ```
@@ -607,7 +608,7 @@ pnpm dev                      # Nuxt 3000
 pnpm build ; pnpm preview --host --port 3000
 pnpm lint                     # 0 error；warnings == 7（vue/no-v-html 固定基线；2026-09 移除称号图标 v-html 分支后由 8 降为 7）
 pnpm typecheck                # 0 TS error
-pnpm test                     # Vitest 单测（tests/unit/ 90 个 spec；1527 用例，2026-10-28 本机全绿）
+pnpm test                     # Vitest 单测（tests/unit/ 108 个 spec；1762 用例，2026-10-29 本机全绿）
                               # 生产机 lint/typecheck/test/build **必须串行**：3.9 GB 内存下并行会让 eslint
                               # 被 OOM 杀掉（exit 137），而 `pnpm lint; echo $?` 仍回 0——只信 "✖ N problems" 那行
 ```
@@ -704,7 +705,7 @@ curl http://127.0.0.1:8000/health                  # {"status":"healthy"}
 pnpm lint          # 0 error，warnings == 7
 pnpm typecheck     # 0 TS error
 pnpm build         # Σ Total size 3.96 MB（gzip 992 kB），2026-10-27 本机实测（图标/高亮瘦身后）
-pnpm test          # 全绿（90 个 spec 文件；1527 用例，2026-10-28 本机实测）
+pnpm test          # 全绿（108 个 spec 文件；1762 用例，2026-10-29 本机实测）
 ```
 
 构建日志零命中：`Hydration node mismatch` · `Failed to fetch` · `/api/api` · `CORS`
