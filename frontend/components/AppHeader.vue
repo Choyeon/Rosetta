@@ -35,7 +35,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/toolti
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
-import { MINIMAL_THEME_SLUGS, stripLocalePathPrefix } from '~~/lib/rosetta-themes'
+import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { isNavActive } from '~~/lib/navigation'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
@@ -235,9 +236,8 @@ const navItems = computed(() => {
 const isActive = (to: string) => {
   // 导航项的 to 是中性路径（/posts），而 route.path 在带前缀的语言下是 /en/posts。
   // 不先剥前缀，英文/日文/繁体页面上整条导航的高亮全都不亮（首页那条还会误亮）。
-  const current = stripLocalePathPrefix(route.path)
-  if (to === '/') return current === '/'
-  return current === to || current.startsWith(to + '/')
+  // 判定本身与侧边栏导航共用 lib/navigation.ts，两处不得各写一遍。
+  return isNavActive(route.path, to)
 }
 
 // ===== 导航分组 =====
@@ -393,6 +393,12 @@ const handleSearchClick = () => go('/search')
           data-navbar="actions"
           class="flex shrink-0 items-center gap-1"
         >
+          <!-- 侧边栏导航只在 lg 起出现：窄屏已有汉堡抽屉（同一批导航入口），
+               两个抽屉并排会让 actions 区再次超宽，挤压品牌与导航。 -->
+          <div class="hidden lg:flex items-center">
+            <SiteNavSidebar :items="navItems" />
+          </div>
+
           <Tooltip v-if="showSearch">
             <TooltipTrigger as-child>
               <Button

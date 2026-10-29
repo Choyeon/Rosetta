@@ -64,7 +64,9 @@
     "activity": "動態",
     "search": "搜尋",
     "series": "系列",
-    "more": "更多"
+    "more": "更多",
+    "sidebarNav": "側邊欄導覽",
+    "navigation": "導覽"
   },
   "post": {
     "title": "標題",

@@ -64,7 +64,9 @@
     "activity": "アクティビティ",
     "search": "検索",
     "series": "シリーズ",
-    "more": "その他"
+    "more": "その他",
+    "sidebarNav": "サイドバーナビゲーション",
+    "navigation": "ナビゲーション"
   },
   "post": {
     "title": "タイトル",

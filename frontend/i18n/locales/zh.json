@@ -64,7 +64,9 @@
     "admin": "后台管理",
     "search": "搜索",
     "series": "系列",
-    "more": "更多"
+    "more": "更多",
+    "sidebarNav": "侧边栏导航",
+    "navigation": "导航"
   },
   "post": {
     "title": "标题",

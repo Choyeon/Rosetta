@@ -64,7 +64,9 @@
     "admin": "Admin",
     "search": "Search",
     "series": "Series",
-    "more": "More"
+    "more": "More",
+    "sidebarNav": "Sidebar",
+    "navigation": "Navigation"
   },
   "post": {
     "title": "Title",
