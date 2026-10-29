@@ -13,127 +13,164 @@
 -->
 <template>
   <div class="container py-16 max-w-3xl mx-auto">
-    <header class="mb-10">
-      <NuxtLink
-        :to="localeHref('/archive')"
-        class="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
-      >
-        <ArrowLeft class="size-4" />
-        {{ t('archive.backToArchive') }}
-      </NuxtLink>
-      <h1 class="mt-4 font-display text-3xl md:text-4xl font-bold tracking-tight tabular-nums">
-        {{ t('archive.yearTitle', { year }) }}
-      </h1>
-      <p class="mt-1 text-sm text-muted-foreground tabular-nums">
-        {{ t('archive.statsTotal', { count: totalInYear }) }}
-      </p>
-    </header>
-
-    <!-- ===== 加载骨架屏：与 /archive 同构，避免首屏空白跳动 ===== -->
-    <div
-      v-if="_pending"
-      class="flex flex-col gap-10"
-    >
-      <section
-        v-for="s in 2"
-        :key="s"
-      >
-        <Skeleton class="mb-4 h-7 w-28 rounded-lg" />
-        <Separator />
-        <ul class="mt-2 flex flex-col gap-3">
-          <li
-            v-for="r in 4"
-            :key="r"
-            class="py-2"
-          >
-            <Skeleton class="h-5 w-4/5 rounded-md" />
-          </li>
-        </ul>
-      </section>
-    </div>
-
-    <!-- ===== 该年无文章（含后端返回空分组） ===== -->
-    <div
-      v-else-if="months.length === 0"
-      class="py-20 text-center"
-    >
-      <div class="mb-4 inline-flex size-16 items-center justify-center rounded-2xl bg-muted">
-        <CalendarDays class="size-8 text-muted-foreground" />
-      </div>
-      <h2 class="font-display text-xl font-semibold">
-        {{ t('archive.noYearPosts') }}
-      </h2>
-    </div>
-
-    <div
-      v-else
-      class="flex flex-col gap-10"
-    >
-      <section
-        v-for="group in months"
-        :id="`month-${group.month}`"
-        :key="group.month"
-      >
-        <div class="mb-4 flex items-end justify-between gap-3">
-          <h2 class="font-display text-2xl font-bold tracking-tight tabular-nums">
-            <NuxtLink
-              :to="localeHref(`/archive/${year}/${padMonth(group.month)}`)"
-              class="transition-colors hover:text-primary"
-            >
-              {{ year }}-{{ padMonth(group.month) }}
-            </NuxtLink>
-            <Badge
-              variant="secondary"
-              class="ml-2 text-xs font-medium"
-            >
-              {{ group.count }} {{ t('archive.posts') }}
-            </Badge>
-          </h2>
+    <!-- 这一年没有任何已发布文章时只给一块面板：此前面包屑下的 h1「1999 年归档」与
+         「共 0 篇文章」照常渲染，404 响应里读到的是一份"确实存在的空年份页"。
+         判定沿用 yearNotFound（网络故障不算缺失，仍走下面的加载失败分支）。 -->
+    <template v-if="yearNotFound">
+      <div class="rounded-2xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center">
+        <div class="mb-4 inline-flex size-16 items-center justify-center rounded-2xl bg-muted">
+          <CalendarDays class="size-8 text-muted-foreground" />
         </div>
-        <Separator />
-        <ul>
-          <li
-            v-for="post in group.posts"
-            :key="post.id"
-            class="group/item flex items-center justify-between border-b py-3 last:border-b-0"
+        <p class="text-sm text-muted-foreground">
+          {{ t('error.notFoundDesc') }}
+        </p>
+        <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+          <Button as-child>
+            <NuxtLink :to="localeHref('/archive')">
+              {{ t('archive.backToArchive') }}
+            </NuxtLink>
+          </Button>
+          <Button
+            variant="outline"
+            as-child
           >
-            <div class="flex min-w-0 flex-1 items-center gap-3">
-              <Badge
-                variant="outline"
-                class="shrink-0 font-mono text-xs tabular-nums"
-              >
-                {{ formatDate(post.published_at || post.created_at) }}
-              </Badge>
+            <NuxtLink :to="localeHref('/')">
+              {{ t('error.backHome') }}
+            </NuxtLink>
+          </Button>
+        </div>
+      </div>
+    </template>
+
+    <template v-else>
+      <header class="mb-10">
+        <NuxtLink
+          :to="localeHref('/archive')"
+          class="inline-flex items-center gap-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
+        >
+          <ArrowLeft class="size-4" />
+          {{ t('archive.backToArchive') }}
+        </NuxtLink>
+        <h1 class="mt-4 font-display text-3xl md:text-4xl font-bold tracking-tight tabular-nums">
+          {{ t('archive.yearTitle', { year }) }}
+        </h1>
+        <p class="mt-1 text-sm text-muted-foreground tabular-nums">
+          {{ t('archive.statsTotal', { count: totalInYear }) }}
+        </p>
+      </header>
+
+      <!-- ===== 加载骨架屏：与 /archive 同构，避免首屏空白跳动 ===== -->
+      <div
+        v-if="_pending"
+        class="flex flex-col gap-10"
+      >
+        <section
+          v-for="s in 2"
+          :key="s"
+        >
+          <Skeleton class="mb-4 h-7 w-28 rounded-lg" />
+          <Separator />
+          <ul class="mt-2 flex flex-col gap-3">
+            <li
+              v-for="r in 4"
+              :key="r"
+              class="py-2"
+            >
+              <Skeleton class="h-5 w-4/5 rounded-md" />
+            </li>
+          </ul>
+        </section>
+      </div>
+
+      <!-- ===== 请求失败：网络故障 / 5xx 不能说成"该年没有文章"（判据见 useContentStatus） ===== -->
+      <div
+        v-else-if="groupsError"
+        class="rounded-xl border border-destructive/30 bg-destructive/5 p-6 text-sm text-destructive"
+      >
+        <div class="flex flex-col items-center gap-3 text-center">
+          <span>{{ t('error.serverErrorDesc') }}</span>
+          <Button
+            variant="outline"
+            size="sm"
+            @click="refresh()"
+          >
+            <RefreshCw data-icon="inline-start" />
+            {{ t('error.retry') }}
+          </Button>
+        </div>
+      </div>
+
+      <div
+        v-else
+        class="flex flex-col gap-10"
+      >
+        <section
+          v-for="group in months"
+          :id="`month-${group.month}`"
+          :key="group.month"
+        >
+          <div class="mb-4 flex items-end justify-between gap-3">
+            <h2 class="font-display text-2xl font-bold tracking-tight tabular-nums">
               <NuxtLink
-                :to="localeHref(`/posts/${post.slug}`)"
-                class="truncate font-medium transition-colors group-hover/item:text-primary"
+                :to="localeHref(`/archive/${year}/${padMonth(group.month)}`)"
+                class="transition-colors hover:text-primary"
               >
-                {{ titleOf(post) }}
+                {{ year }}-{{ padMonth(group.month) }}
               </NuxtLink>
-            </div>
-            <div class="ml-3 flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
-              <span
-                v-if="categoryOf(post)"
-                class="hidden items-center gap-1 sm:inline-flex"
+              <Badge
+                variant="secondary"
+                class="ml-2 text-xs font-medium"
               >
-                <FolderOpen class="size-3" />
-                {{ categoryOf(post) }}
-              </span>
-              <span class="inline-flex items-center gap-1 tabular-nums">
-                <Eye class="size-3" />
-                {{ post.views ?? 0 }}
-              </span>
-            </div>
-          </li>
-        </ul>
-      </section>
-    </div>
+                {{ group.count }} {{ t('archive.posts') }}
+              </Badge>
+            </h2>
+          </div>
+          <Separator />
+          <ul>
+            <li
+              v-for="post in group.posts"
+              :key="post.id"
+              class="group/item flex items-center justify-between border-b py-3 last:border-b-0"
+            >
+              <div class="flex min-w-0 flex-1 items-center gap-3">
+                <Badge
+                  variant="outline"
+                  class="shrink-0 font-mono text-xs tabular-nums"
+                >
+                  {{ formatDate(post.published_at || post.created_at) }}
+                </Badge>
+                <NuxtLink
+                  :to="localeHref(`/posts/${post.slug}`)"
+                  class="truncate font-medium transition-colors group-hover/item:text-primary"
+                >
+                  {{ titleOf(post) }}
+                </NuxtLink>
+              </div>
+              <div class="ml-3 flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                <span
+                  v-if="categoryOf(post)"
+                  class="hidden items-center gap-1 sm:inline-flex"
+                >
+                  <FolderOpen class="size-3" />
+                  {{ categoryOf(post) }}
+                </span>
+                <span class="inline-flex items-center gap-1 tabular-nums">
+                  <Eye class="size-3" />
+                  {{ post.views ?? 0 }}
+                </span>
+              </div>
+            </li>
+          </ul>
+        </section>
+      </div>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ArrowLeft, CalendarDays, Eye, FolderOpen } from '@lucide/vue'
+import { ArrowLeft, CalendarDays, Eye, FolderOpen, RefreshCw } from '@lucide/vue'
 import { Badge } from '~~/components/ui/badge'
+import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
@@ -170,7 +207,7 @@ const year = Number(route.params.year)
 
 // 静态键+静态查询：切语言走「跳同页 URL → 重挂载 → 新 locale 重新请求」，
 // 不手写 watch+refresh()（与 Nuxt key watcher 双发，第一发必被 abort）。
-const { data: groupsData, pending: _pending, error: groupsError } = useAPI<ArchiveMonthGroup[]>(
+const { data: groupsData, pending: _pending, error: groupsError, refresh } = useAPI<ArchiveMonthGroup[]>(
   `/blog/archive/${year}`,
   {
     query: { lang: locale.value },
@@ -185,7 +222,10 @@ const months = computed<ArchiveMonthGroup[]>(() =>
 // 而不是给每个空年份发一份"可索引的空页"（/archive/** 带 swr 3600，200 会被缓存复用）。
 // 闸门只认"后端明确 404"与"请求成功但分组为空"，临时故障/5xx 不动状态码。
 const yearMissing = computed(() => months.value.length === 0)
-const yearNotFound = computed(() => isContentMissing(groupsError.value, yearMissing.value))
+// 加载中不算缺失：pending 时 months 还是空的，直接判会把每个真实年份先渲染成 404 面板。
+const yearNotFound = computed(
+  () => !_pending.value && isContentMissing(groupsError.value, yearMissing.value)
+)
 useContentStatus(groupsError, yearMissing)
 const totalInYear = computed(() =>
   months.value.reduce((sum, group) => sum + (group.posts?.length ?? 0), 0)

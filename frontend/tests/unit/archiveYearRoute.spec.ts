@@ -7,7 +7,8 @@
  *   2. 年页只接受 4 位数字，非法参数由命名路由中间件 abort（页面 setup 里 throw 仍是 HTTP 200）；
  *   3. 日期渲染必须钉死时区（两端时区不一致会让 swr 缓存固化错版分组）；
  *   4. 新路由必须与 /archive 同档缓存，否则静默落回无缓存 SSR；
- *   5. 四语补齐文案键。
+ *   5. 四语补齐文案键（空年份/空月份走 404 面板，用全局的 error.notFoundDesc，
+ *      原先的 archive.noYearPosts 已随「该年份暂无已发布文章」空态一起删除）。
  */
 
 import { existsSync, readFileSync } from 'node:fs'
@@ -21,7 +22,7 @@ const monthPagePath = resolve(ROOT, 'pages/archive/[year]/[month].vue')
 const monthPage = readFileSync(monthPagePath, 'utf-8')
 const archivePage = readFileSync(resolve(ROOT, 'pages/archive/index.vue'), 'utf-8')
 const routeRules = readFileSync(resolve(ROOT, 'nuxt.config.ts'), 'utf-8')
-const NEW_KEYS = ['backToArchive', 'yearTitle', 'noYearPosts', 'statsTotal', 'statsYears', 'prevPage', 'nextPage']
+const NEW_KEYS = ['backToArchive', 'yearTitle', 'year', 'statsTotal', 'statsYears', 'prevPage', 'nextPage']
 
 describe('单年归档 /archive/[year]', () => {
   it('文件存在且请求按年归档端点', () => {

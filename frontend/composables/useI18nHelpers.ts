@@ -111,9 +111,9 @@ function toDate(date: string | Date | number | null | undefined): Date | null {
   return Number.isNaN(d.getTime()) ? null : d
 }
 
-function monthNameOf(localeCode: string, d: Date): string {
+function monthNameOf(localeCode: string, d: Date, utc = false): string {
   const months = MONTH_TABLE[localeCode] || MONTH_TABLE.en || []
-  return months[d.getMonth()] ?? ''
+  return months[utc ? d.getUTCMonth() : d.getMonth()] ?? ''
 }
 
 /**
@@ -129,8 +129,11 @@ export function formatMonthDayText(
 ): string {
   const d = toDate(date)
   if (!d) return ''
-  const m = monthNameOf(localeCode, d)
-  const day = String(d.getDate()).padStart(2, '0')
+  // 取 UTC 分量：后端归档按 UTC 分组（repositories/post.py 的 utc_* 口径），
+  // 这里若用 getDate()/getMonth() 就会跟分组错开——服务端时区 Asia/Shanghai 下
+  // 一篇 23:30Z 的文章会显示成次日，访客在 UTC 下 hydrate 又变回当日（文本不一致）。
+  const m = monthNameOf(localeCode, d, true)
+  const day = String(d.getUTCDate()).padStart(2, '0')
   return localeCode === 'en' ? `${m} ${day}` : `${m}${day}日`
 }
 

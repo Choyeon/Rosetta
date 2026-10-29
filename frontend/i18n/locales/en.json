@@ -662,7 +662,6 @@
   "archive": {
     "backToArchive": "Back to full archive",
     "yearTitle": "{year} archive",
-    "noYearPosts": "No published posts in this year",
     "statsTotal": "{count} posts in total",
     "statsYears": "Across {count} years",
     "title": "Archive",

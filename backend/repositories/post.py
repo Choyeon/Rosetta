@@ -8,7 +8,7 @@
 - 点赞和评论统计
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -20,6 +20,44 @@ from backend.core.i18n import get_i18n_value
 from backend.models.blog import Category, Comment, Post, Tag, post_likes
 from backend.repositories.base import BaseRepository, PaginationResult
 from backend.services.post_access import publicly_listable_posts
+
+# ==================== 归档的 UTC 边界 ====================
+# `extract("year"/"month", Post.published_at)` 不能用：它按**数据库会话时区**求值，
+# 生产 PG 会话是 Asia/Shanghai，而本仓其它分组（/archive、年度页、归档统计）都在
+# Python 里读 UTC 值。线上实测两篇 2026-08-31T23:09Z / 18:09Z 的文章：月份页把它们
+# 算进「2026-09」，年度页却分组到「2026-08」——同一篇文章在两级归档里月份不一致，
+# 月计数也对不上（21 vs 23）。边界改用 UTC 区间谓词：PG 的 timestamptz 按绝对时刻
+# 比较，SQLite 落盘时已丢掉 tz、保存的就是 UTC 墙钟值，两种方言口径一致。
+
+
+def utc_year_range(year: int) -> tuple[datetime, datetime]:
+    """该年在 UTC 下的 [start, end)。"""
+    start = datetime(year, 1, 1, tzinfo=timezone.utc)
+    end = (
+        datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+        if year < 9999
+        else datetime.max.replace(tzinfo=timezone.utc)
+    )
+    return start, end
+
+
+def utc_month_range(year: int, month: int) -> tuple[datetime, datetime]:
+    """该月在 UTC 下的 [start, end)。"""
+    start = datetime(year, month, 1, tzinfo=timezone.utc)
+    end = (
+        utc_year_range(year)[1]
+        if month == 12
+        else datetime(year, month + 1, 1, tzinfo=timezone.utc)
+    )
+    return start, end
+
+
+def utc_year_month(value: datetime) -> tuple[int, int]:
+    """把库里取出的时间归一到 UTC 年月（naive 视为 UTC——写入侧一律存 UTC）。"""
+    if value.tzinfo is None:
+        return value.year, value.month
+    utc = value.astimezone(timezone.utc)
+    return utc.year, utc.month
 
 
 class PostRepository(BaseRepository[Post]):
@@ -815,11 +853,7 @@ class PostRepository(BaseRepository[Post]):
         Returns:
             包含总文章数、总年份数等统计信息
         """
-        from sqlalchemy import extract
-
         # 使用coalesce处理published_at为null的情况，fallback到created_at
-        date_expr = func.coalesce(Post.published_at, Post.created_at)
-        year_expr = extract("year", date_expr)
 
         # 统计总数
         total_result = await self.session.execute(
@@ -827,13 +861,22 @@ class PostRepository(BaseRepository[Post]):
         )
         total_posts = total_result.scalar_one()
 
-        # 一次 GROUP BY 拿到"每年文章数"：原先先 DISTINCT 年份、再对每个年份单发一条
-        # COUNT，跨年归档统计的查询数随年份数线性增长（归档页每次命中都要跑一遍）。
-        # GROUP BY 用与 SELECT 完全相同的表达式，PG 才不会判"裸列分组"。
-        stats_result = await self.session.execute(
-            select(year_expr, func.count()).where(publicly_listable_posts()).group_by(year_expr)
-        )
-        year_stats = {int(y): cnt for y, cnt in stats_result.fetchall() if y is not None}
+        # 每年文章数：年份必须按 UTC 归一后再分桶。`extract("year", ...)` 走的是
+        # 会话时区（生产是 Asia/Shanghai），跨年那几个小时的文章会统计到相邻年份，
+        # 与 /archive/{year} 页实际列出的年份对不上（口径见文件顶部 utc_* 说明）。
+        rows = (
+            await self.session.execute(
+                select(Post.published_at, Post.created_at).where(publicly_listable_posts())
+            )
+        ).all()
+        year_stats: dict[int, int] = {}
+        for published_at, created_at in rows:
+            date_field = published_at or created_at
+            if date_field is None:
+                continue
+            year, _ = utc_year_month(date_field)
+            year_stats[year] = year_stats.get(year, 0) + 1
+
         years = sorted(year_stats, reverse=True)
 
         return {

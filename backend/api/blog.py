@@ -43,6 +43,7 @@ from backend.core.i18n import (
     get_language_from_request,
 )
 from backend.core.plugin_bus import bus
+from backend.repositories.post import utc_month_range, utc_year_month, utc_year_range
 from backend.services._avatar_helpers import resolved_for_user
 from backend.services.content_renderer import (
     render_content,
@@ -2454,13 +2455,15 @@ async def get_archive_by_year(
     if cached:
         return cached
 
-    from sqlalchemy import extract
-
+    # 年份边界按 UTC 取区间，不用 extract("year", …)：后者按数据库会话时区求值
+    # （生产会话是 Asia/Shanghai），与下面按 UTC 归一的月份分组互相矛盾。
+    start, end = utc_year_range(year)
     query = (
         select(Post)
         .where(
             publicly_listable_posts(),
-            extract("year", Post.published_at) == year,
+            Post.published_at >= start,
+            Post.published_at < end,
         )
         .options(selectinload(Post.category))
         .order_by(Post.published_at.desc())
@@ -2474,7 +2477,8 @@ async def get_archive_by_year(
     for post in posts:
         if not post.published_at:
             continue
-        month = post.published_at.month
+        # 分组与筛选用同一个 UTC 口径（月份页的边界也来自 utc_month_range）
+        month = utc_year_month(post.published_at)[1]
         if month not in month_map:
             month_map[month] = []
 
@@ -2558,14 +2562,15 @@ async def get_archive_by_month(
 
     language = get_language_from_request(request, lang)
 
-    from sqlalchemy import extract
-
+    # 月边界同样按 UTC 取区间：extract("month", …) 走会话时区，会让月初/月末
+    # 8 小时内的文章与年度页的分组结果分裂（口径见 repositories/post.py 的 utc_* 说明）。
+    start, end = utc_month_range(year, month)
     query = (
         select(Post)
         .where(
             publicly_listable_posts(),
-            extract("year", Post.published_at) == year,
-            extract("month", Post.published_at) == month,
+            Post.published_at >= start,
+            Post.published_at < end,
         )
         .options(selectinload(Post.category))
     )
@@ -4021,28 +4026,29 @@ async def get_sitemap_taxonomies(
 async def get_sitemap_pages(db: DB):
     """获取静态路由 / 独立页面 Sitemap XML。"""
     await _ensure_seo_feed_enabled(db, "enable_sitemap", "enable_sitemap")
-    from sqlalchemy import extract
 
     from backend.models import Post
     from backend.models.core import Page
 
     site_url = _public_site_url()
     pages = (await db.execute(select(Page).where(Page.status == "published"))).scalars().all()
-    year_rows = (
+    # 年份同样按 UTC 归一：sitemap 里列出的年份必须真的是 /archive/{year} 能 200 的那些，
+    # extract("year", …) 走会话时区会把跨年那几小时的文章算到相邻年份（口径见 utc_* 说明）。
+    published_values = (
         (
             await db.execute(
-                select(extract("year", Post.published_at))
-                .where(
+                select(Post.published_at).where(
                     Post.published_at.is_not(None),
                     publicly_listable_posts(),
                 )
-                .distinct()
             )
         )
         .scalars()
         .all()
     )
-    archive_years = sorted({int(row) for row in year_rows if row}, reverse=True)
+    archive_years = sorted(
+        {utc_year_month(value)[0] for value in published_values if value}, reverse=True
+    )
     content = generate_pages_sitemap(pages, site_url, archive_years=archive_years)
     return Response(
         content=content,

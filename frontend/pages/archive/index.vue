@@ -1,8 +1,9 @@
 <!--
   归档页（父路由已改为目录式：/archive 命中本文件，/archive/{year} 命中 [year].vue）：GET /blog/archive 返回按年月预分组的数据，本组件摊平后按年重新分组排序。
   坑点：allPosts 会就地改写 useAPI 缓存对象（把 created_at 回填进 post.published_at），
-  下游别把它当只读数据源；年份分组用本地时区 getFullYear()，服务器与访客时区不一致时
-  跨年文章的分组结果两端可能不同（本路由 swr 3600 还会把它固化进缓存）。
+  下游别把它当只读数据源。年份分组与「月日」展示都必须按 **UTC**：后端分组边界是 UTC
+  （repositories/post.py 的 utc_* 口径），用本地时区时服务器（Asia/Shanghai）与访客会
+  在跨年/跨日那几小时分到不同组，而本路由 swr 3600 会把服务端那份固化进缓存。
 -->
 <template>
   <div class="container py-16 max-w-3xl mx-auto">
@@ -246,7 +247,10 @@ const groupedByYear = computed(() => {
   })
   for (const post of sorted) {
     const t = new Date(getPublishedAt(post))
-    const year = isNaN(t.getTime()) ? new Date().getFullYear() : t.getFullYear()
+    // 按 UTC 归年：后端分组与 /archive/<year> 的边界都是 UTC（repositories/post.py 的
+    // utc_* 口径）。用 getFullYear() 时，服务端（Asia/Shanghai）与访客的时区差会把
+    // 跨年那几小时的文章分到不同年份，而这一页带 swr，服务端那份会被固化并复用。
+    const year = isNaN(t.getTime()) ? new Date().getUTCFullYear() : t.getUTCFullYear()
     if (!map.has(year)) map.set(year, [])
     map.get(year)!.push(post)
   }
