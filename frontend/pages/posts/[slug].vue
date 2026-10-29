@@ -78,663 +78,697 @@
             {{ postSubtitle }}
           </p>
 
-          <!-- 作者 / 日期 / 阅读时长 / 阅读量 / 来源是主信息，字数与更新时间为次要信息。
+          <!-- 文章不存在时只给一块面板：上一版把整页文章壳（Anonymous 作者行、0 阅读、
+               点赞/收藏/分享、投票卡、评论框、相关文章、目录）一起渲染，等于给一个不存在的
+               文章配了整套可交互界面。判据复用 postNotFound（网络故障不算 404，仍走下方的
+               重试提示，见 composables/useContentStatus.ts）。面板刻意不进 ClientOnly：
+               404 状态在 SSR 期就已确定，要让不执行 JS 的抓取器也读到这段文案。 -->
+          <div
+            v-if="postNotFound"
+            class="mt-12 rounded-2xl border border-dashed border-border/70 bg-card/40 px-6 py-12 text-center"
+          >
+            <h2 class="font-display text-xl font-semibold tracking-tight">
+              {{ t('error.notFoundTitle') }}
+            </h2>
+            <p class="mt-2 text-sm text-muted-foreground">
+              {{ t('error.notFoundDesc') }}
+            </p>
+            <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <Button as-child>
+                <NuxtLink :to="localeHref('/posts')">
+                  {{ t('post.backToList') }}
+                </NuxtLink>
+              </Button>
+              <Button
+                variant="outline"
+                as-child
+              >
+                <NuxtLink :to="localeHref('/')">
+                  {{ t('error.backHome') }}
+                </NuxtLink>
+              </Button>
+            </div>
+          </div>
+
+          <template v-else>
+            <!-- 作者 / 日期 / 阅读时长 / 阅读量 / 来源是主信息，字数与更新时间为次要信息。
                上一版八项挤在同一行、用「·」硬分隔，窄屏换行后每行都以「·」开头；
                这里分两层：主行不出现分隔符，次行降一级字号与对比度。 -->
-          <div class="mt-6 space-y-2">
-            <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
-              <div class="flex min-w-0 items-center gap-2">
+            <div class="mt-6 space-y-2">
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-muted-foreground">
+                <div class="flex min-w-0 items-center gap-2">
+                  <UserAvatar
+                    :avatar="post?.author?.avatar"
+                    :resolved-avatar-url="post?.author?.resolved_avatar_url"
+                    :seed="post?.author?.username || authorName"
+                    :name="authorName"
+                    :title="post?.author?.title || null"
+                    :size="32"
+                    :show-title="true"
+                  />
+                  <span class="font-medium text-foreground">{{ authorName }}</span>
+                  <TitleBadge
+                    v-if="post?.author?.title"
+                    :title="post?.author?.title"
+                    size="sm"
+                  />
+                </div>
+                <span
+                  class="hidden h-4 w-px bg-border sm:block"
+                  aria-hidden="true"
+                />
+                <span
+                  v-if="publishedAt"
+                  class="inline-flex items-center gap-1.5"
+                >
+                  <CalendarDays class="size-3.5" />
+                  {{ formatDate(publishedAt) }}
+                </span>
+                <span
+                  v-if="showReadingTime"
+                  class="inline-flex items-center gap-1.5"
+                >
+                  <Clock3 class="size-3.5" />
+                  {{ readingTime }} {{ t('post.minRead') }}
+                </span>
+                <span class="inline-flex items-center gap-1.5">
+                  <Eye class="size-3.5" />
+                  {{ views }} {{ t('post.views') }}
+                </span>
+                <span
+                  v-if="sourceView.visible"
+                  class="inline-flex min-w-0 items-center gap-1.5"
+                  data-testid="post-source"
+                >
+                  <Link2 class="size-3.5 shrink-0" />
+                  {{ t('post.source') }}
+                  <a
+                    v-if="sourceView.href"
+                    :href="sourceView.href"
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    class="truncate underline underline-offset-2 transition-colors hover:text-primary"
+                  >{{ sourceView.text }}</a>
+                  <template v-else>
+                    {{ sourceView.text }}
+                  </template>
+                </span>
+              </div>
+              <div
+                v-if="showWordCount || showUpdatedAt"
+                class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/80"
+              >
+                <span
+                  v-if="showWordCount"
+                  class="inline-flex items-center gap-1.5"
+                >
+                  <FileText class="size-3.5" />
+                  {{ formatCount(wordCount) }} {{ t('post.words', '字') }}
+                </span>
+                <span
+                  v-if="showWordCount"
+                  class="inline-flex items-center gap-1.5"
+                >
+                  <Hash class="size-3.5" />
+                  {{ formatCount(charCount) }} {{ t('post.chars', '字符') }}
+                </span>
+                <span
+                  v-if="showUpdatedAt"
+                  class="inline-flex items-center gap-1.5"
+                >
+                  <RefreshCw class="size-3.5" />
+                  {{ t('post.updatedAt', '更新于') }} {{ formatDate(updatedAt) }}
+                </span>
+              </div>
+            </div>
+
+            <div
+              v-if="coverImage"
+              class="mt-10"
+            >
+              <img
+                :src="coverImage"
+                :alt="postTitle"
+                class="w-full aspect-[21/9] object-cover rounded-2xl shadow-soft"
+                fetchpriority="high"
+                decoding="async"
+                width="1200"
+                height="514"
+                @error="handlePostCoverError($event, post)"
+              >
+            </div>
+
+            <!-- ========= 密码保护闸门：后端返回 is_password_protected=true + 空正文 → 要求输入密码 ========= -->
+            <div v-if="needPassword">
+              <Card class="max-w-xl mx-auto mt-10">
+                <CardContent class="p-6 flex flex-col items-center gap-4 text-center">
+                  <Lock class="size-8 text-muted-foreground" />
+                  <h3 class="text-lg font-semibold">
+                    {{ t('post.requiresPassword', '这篇文章需要访问密码') }}
+                  </h3>
+                  <p
+                    v-if="postEncryptionHint"
+                    class="text-sm text-muted-foreground"
+                  >
+                    {{ t('post.encryptionHint', '提示：{hint}').replace('{hint}', postEncryptionHint) }}
+                  </p>
+                  <div
+                    v-else
+                    class="text-sm text-muted-foreground"
+                  >
+                    {{ t('post.enterPassword', '请输入密码以阅读完整内容') }}
+                  </div>
+                  <form
+                    class="flex w-full max-w-sm gap-2"
+                    @submit.prevent="submitArticlePassword"
+                  >
+                    <Input
+                      v-model="articlePwdInput"
+                      type="password"
+                      :placeholder="t('common.password', '密码')"
+                      autocomplete="off"
+                      autofocus
+                      class="flex-1"
+                    />
+                    <Button
+                      type="submit"
+                      :disabled="submittingArticlePassword"
+                    >
+                      <Check
+                        v-if="!submittingArticlePassword"
+                        data-icon="inline-start"
+                      />
+                      {{ submittingArticlePassword ? t('common.submitting', '提交中…') : t('post.unlock', '解锁') }}
+                    </Button>
+                  </form>
+                  <p
+                    v-if="articlePwdError"
+                    class="text-xs text-destructive"
+                  >
+                    {{ t('post.wrongPassword', '密码错误，请重试') }}
+                  </p>
+                  <button
+                    v-if="articleStoredPwd"
+                    type="button"
+                    class="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+                    @click="clearSavedPassword"
+                  >
+                    {{ t('post.clearSavedPassword', '清除本地已保存的密码') }}
+                  </button>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div v-show="!needPassword">
+              <article
+                v-show="!!post"
+                ref="articleEl"
+                class="prose-shadcn prose-shadcn-dark mt-12"
+                :style="proseStyle"
+                v-html="post ? renderedContent : ''"
+              />
+              <ClientOnly>
+                <template #fallback>
+                  <span class="hidden" />
+                </template>
+                <Skeleton
+                  v-if="loadingPost && !post"
+                  class="mt-12 h-[400px] w-full rounded-2xl"
+                />
+                <Alert
+                  v-else-if="loadError && !post"
+                  variant="destructive"
+                  class="mt-12"
+                >
+                  <AlertTitle class="flex items-center gap-2">
+                    <ShieldCheck class="size-4" />
+                    {{ t('post.loadFailed', '文章加载失败') }}
+                  </AlertTitle>
+                  <AlertDescription>
+                    {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
+                    <NuxtLink
+                      :to="localeHref('/posts')"
+                      class="text-primary underline underline-offset-2 ml-1"
+                    >
+                      {{ t('post.backToList', '返回文章列表') }}
+                    </NuxtLink>
+                  </AlertDescription>
+                </Alert>
+              </ClientOnly>
+            </div>
+
+            <div
+              v-if="normalizedTags.length"
+              class="mt-12 flex flex-wrap gap-2"
+            >
+              <TagBadge
+                v-for="tag in normalizedTags"
+                :key="tag.id"
+                :color="tag.color"
+                :label="tag.name"
+                :to="localeHref(`/tags/${tag.slug}`)"
+                show-icon
+              />
+            </div>
+
+            <!-- 互动行：点赞（真实接口）；后端未返回数据时完全隐藏，绝不显示 0 作为占位假计数 -->
+            <div class="mt-8 flex items-center gap-3 flex-wrap">
+              <Button
+                v-if="showLikeButton"
+                variant="outline"
+                size="sm"
+                class="group transition-colors hover:border-primary/50 hover:text-primary"
+                :disabled="submittingLike"
+                @click="handleLikePost"
+              >
+                <ThumbsUp
+                  data-icon="inline-start"
+                  class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5 group-active:scale-110"
+                  :class="likedByMe ? 'text-primary fill-primary/30' : ''"
+                />
+                <span>{{ t('post.like', '点赞') }}</span>
+                <span
+                  v-if="likeCount > 0"
+                  class="ml-2 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary tabular-nums"
+                >
+                  {{ likeCount }}
+                </span>
+              </Button>
+
+              <!-- 收藏：私有计数，后端不给未登录用户读，故不显示数字，只标"已收藏"态。
+                 SSR 首帧两端都渲染未选中态（favorited 初值 false），登录用户的选中态在
+                 onMounted 的 check 之后才出现 —— 不在首字节里泄漏私有状态。 -->
+              <Button
+                variant="outline"
+                size="sm"
+                class="group transition-colors hover:border-primary/50 hover:text-primary"
+                :disabled="submittingFavorite"
+                :aria-pressed="favorited"
+                @click="handleToggleFavorite"
+              >
+                <Bookmark
+                  data-icon="inline-start"
+                  class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
+                  :class="favorited ? 'text-primary fill-primary/30' : ''"
+                />
+                <span>{{ favorited ? t('favorites.favorited') : t('favorites.add') }}</span>
+              </Button>
+
+              <!-- 分享：features.enable_share_buttons 的唯一消费点（关掉即整组不渲染）。
+                 地址与 canonical 同算法（站点根 + applyLocalePrefix），不用 window.location：
+                 那会把 ?query 与地址栏形态一起交给第三方站点。品牌名不翻译。 -->
+              <template v-if="showShareBar">
+                <Separator
+                  decorative
+                  orientation="vertical"
+                  class="h-6"
+                />
+                <Button
+                  v-if="canNativeShare"
+                  variant="outline"
+                  size="sm"
+                  class="group transition-colors hover:border-primary/50 hover:text-primary"
+                  @click="shareNative"
+                >
+                  <Share2
+                    data-icon="inline-start"
+                    class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
+                  />
+                  <span>{{ t('post.share') }}</span>
+                </Button>
+                <a
+                  v-for="net in shareNetworks"
+                  :key="net.label"
+                  :href="net.href"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="inline-flex h-8 items-center rounded-md border border-border/60 px-3 text-sm transition-colors hover:border-primary/50 hover:text-primary"
+                >{{ net.label }}</a>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  class="group transition-colors hover:border-primary/50 hover:text-primary"
+                  @click="copyShareLink"
+                >
+                  <Link2
+                    data-icon="inline-start"
+                    class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
+                  />
+                  <span>{{ t('post.copyLink') }}</span>
+                </Button>
+              </template>
+            </div>
+
+            <!-- ========= 作者信息卡：主题 mods show_author_box 控制（作者数据缺失时不渲染空卡） ========= -->
+            <section
+              v-if="showAuthorBox && post?.author"
+              class="mt-10 rounded-2xl border border-border/60 bg-card/60 p-5 sm:p-6"
+              :aria-label="t('post.authorBox', '作者信息')"
+            >
+              <p class="text-xs text-muted-foreground">
+                {{ t('post.authorBoxLabel', '本文作者') }}
+              </p>
+              <div class="mt-3 flex flex-wrap items-center gap-3">
                 <UserAvatar
+                  v-if="showAvatar"
                   :avatar="post?.author?.avatar"
                   :resolved-avatar-url="post?.author?.resolved_avatar_url"
                   :seed="post?.author?.username || authorName"
                   :name="authorName"
                   :title="post?.author?.title || null"
-                  :size="32"
-                  :show-title="true"
+                  :size="48"
+                  :show-title="false"
                 />
-                <span class="font-medium text-foreground">{{ authorName }}</span>
-                <TitleBadge
-                  v-if="post?.author?.title"
-                  :title="post?.author?.title"
-                  size="sm"
-                />
-              </div>
-              <span
-                class="hidden h-4 w-px bg-border sm:block"
-                aria-hidden="true"
-              />
-              <span
-                v-if="publishedAt"
-                class="inline-flex items-center gap-1.5"
-              >
-                <CalendarDays class="size-3.5" />
-                {{ formatDate(publishedAt) }}
-              </span>
-              <span
-                v-if="showReadingTime"
-                class="inline-flex items-center gap-1.5"
-              >
-                <Clock3 class="size-3.5" />
-                {{ readingTime }} {{ t('post.minRead') }}
-              </span>
-              <span class="inline-flex items-center gap-1.5">
-                <Eye class="size-3.5" />
-                {{ views }} {{ t('post.views') }}
-              </span>
-              <span
-                v-if="sourceView.visible"
-                class="inline-flex min-w-0 items-center gap-1.5"
-                data-testid="post-source"
-              >
-                <Link2 class="size-3.5 shrink-0" />
-                {{ t('post.source') }}
-                <a
-                  v-if="sourceView.href"
-                  :href="sourceView.href"
-                  target="_blank"
-                  rel="noopener noreferrer nofollow"
-                  class="truncate underline underline-offset-2 transition-colors hover:text-primary"
-                >{{ sourceView.text }}</a>
-                <template v-else>
-                  {{ sourceView.text }}
-                </template>
-              </span>
-            </div>
-            <div
-              v-if="showWordCount || showUpdatedAt"
-              class="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground/80"
-            >
-              <span
-                v-if="showWordCount"
-                class="inline-flex items-center gap-1.5"
-              >
-                <FileText class="size-3.5" />
-                {{ formatCount(wordCount) }} {{ t('post.words', '字') }}
-              </span>
-              <span
-                v-if="showWordCount"
-                class="inline-flex items-center gap-1.5"
-              >
-                <Hash class="size-3.5" />
-                {{ formatCount(charCount) }} {{ t('post.chars', '字符') }}
-              </span>
-              <span
-                v-if="showUpdatedAt"
-                class="inline-flex items-center gap-1.5"
-              >
-                <RefreshCw class="size-3.5" />
-                {{ t('post.updatedAt', '更新于') }} {{ formatDate(updatedAt) }}
-              </span>
-            </div>
-          </div>
-
-          <div
-            v-if="coverImage"
-            class="mt-10"
-          >
-            <img
-              :src="coverImage"
-              :alt="postTitle"
-              class="w-full aspect-[21/9] object-cover rounded-2xl shadow-soft"
-              fetchpriority="high"
-              decoding="async"
-              width="1200"
-              height="514"
-              @error="handlePostCoverError($event, post)"
-            >
-          </div>
-
-          <!-- ========= 密码保护闸门：后端返回 is_password_protected=true + 空正文 → 要求输入密码 ========= -->
-          <div v-if="needPassword">
-            <Card class="max-w-xl mx-auto mt-10">
-              <CardContent class="p-6 flex flex-col items-center gap-4 text-center">
-                <Lock class="size-8 text-muted-foreground" />
-                <h3 class="text-lg font-semibold">
-                  {{ t('post.requiresPassword', '这篇文章需要访问密码') }}
-                </h3>
-                <p
-                  v-if="postEncryptionHint"
-                  class="text-sm text-muted-foreground"
-                >
-                  {{ t('post.encryptionHint', '提示：{hint}').replace('{hint}', postEncryptionHint) }}
-                </p>
-                <div
-                  v-else
-                  class="text-sm text-muted-foreground"
-                >
-                  {{ t('post.enterPassword', '请输入密码以阅读完整内容') }}
-                </div>
-                <form
-                  class="flex w-full max-w-sm gap-2"
-                  @submit.prevent="submitArticlePassword"
-                >
-                  <Input
-                    v-model="articlePwdInput"
-                    type="password"
-                    :placeholder="t('common.password', '密码')"
-                    autocomplete="off"
-                    autofocus
-                    class="flex-1"
-                  />
-                  <Button
-                    type="submit"
-                    :disabled="submittingArticlePassword"
+                <div class="min-w-0">
+                  <NuxtLink
+                    v-if="authorUrl"
+                    :to="localeHref(authorUrl)"
+                    class="font-display text-lg font-semibold tracking-tight transition-colors duration-[var(--motion-duration-base)] hover:text-primary"
+                    :aria-label="t('post.viewAuthorProfile', '查看作者主页')"
                   >
-                    <Check
-                      v-if="!submittingArticlePassword"
-                      data-icon="inline-start"
+                    {{ authorName }}
+                  </NuxtLink>
+                  <p
+                    v-else
+                    class="font-display text-lg font-semibold tracking-tight"
+                  >
+                    {{ authorName }}
+                  </p>
+                  <div
+                    v-if="post?.author?.title"
+                    class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                  >
+                    <TitleBadge
+                      :title="post.author.title"
+                      size="sm"
                     />
-                    {{ submittingArticlePassword ? t('common.submitting', '提交中…') : t('post.unlock', '解锁') }}
-                  </Button>
-                </form>
-                <p
-                  v-if="articlePwdError"
-                  class="text-xs text-destructive"
-                >
-                  {{ t('post.wrongPassword', '密码错误，请重试') }}
-                </p>
-                <button
-                  v-if="articleStoredPwd"
-                  type="button"
-                  class="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                  @click="clearSavedPassword"
-                >
-                  {{ t('post.clearSavedPassword', '清除本地已保存的密码') }}
-                </button>
-              </CardContent>
-            </Card>
-          </div>
+                  </div>
+                </div>
+              </div>
+            </section>
 
-          <div v-show="!needPassword">
-            <article
-              v-show="!!post"
-              ref="articleEl"
-              class="prose-shadcn prose-shadcn-dark mt-12"
-              :style="proseStyle"
-              v-html="post ? renderedContent : ''"
-            />
-            <ClientOnly>
-              <template #fallback>
-                <span class="hidden" />
-              </template>
-              <Skeleton
-                v-if="loadingPost && !post"
-                class="mt-12 h-[400px] w-full rounded-2xl"
+            <!-- ========= 上一篇 / 下一篇：GET /blog/posts/{slug}/adjacent，缺失即不渲染 ========= -->
+            <nav
+              v-if="adjacent.previous || adjacent.next"
+              class="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-3"
+              :aria-label="t('post.adjacentNav', '文章翻页导航')"
+            >
+              <NuxtLink
+                v-if="adjacent.previous"
+                :to="localeHref(`/posts/${adjacent.previous.slug}`)"
+                class="group flex flex-col rounded-xl border border-border/60 bg-card/60 p-4 transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
+              >
+                <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <ChevronLeft class="size-3.5 transition-transform duration-[var(--motion-duration-base)] group-hover:-translate-x-0.5" />
+                  {{ t('post.previousPost', '上一篇') }}
+                </span>
+                <span class="mt-1.5 text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
+                  {{ adjacent.previous.title }}
+                </span>
+              </NuxtLink>
+              <span
+                v-else
+                aria-hidden="true"
+                class="hidden sm:block"
               />
+              <NuxtLink
+                v-if="adjacent.next"
+                :to="localeHref(`/posts/${adjacent.next.slug}`)"
+                class="group flex flex-col items-end rounded-xl border border-border/60 bg-card/60 p-4 text-right transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
+              >
+                <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+                  {{ t('post.nextPost', '下一篇') }}
+                  <ChevronRight class="size-3.5 transition-transform duration-[var(--motion-duration-base)] group-hover:translate-x-0.5" />
+                </span>
+                <span class="mt-1.5 text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
+                  {{ adjacent.next.title }}
+                </span>
+              </NuxtLink>
+            </nav>
+
+            <!-- ========= 全局投票 MVP：Poll 与 Post 尚未建关联，此处展示全站激活中的投票 ========= -->
+            <PollCard
+              v-for="poll in activePolls"
+              :key="poll.id"
+              :poll="poll"
+            />
+
+            <Separator
+              v-if="showCommentsSection"
+              class="my-12"
+            />
+
+            <section v-if="showCommentsSection">
+              <h3 class="font-display text-2xl font-bold tracking-tight mt-12 mb-6 flex items-center gap-2">
+                <MessageSquare class="size-5 text-primary" />
+                {{ t('post.comments') }} ({{ comments.length }})
+              </h3>
+
+              <Card
+                v-if="canCommentForm"
+                class="mb-8"
+              >
+                <CardContent class="p-5">
+                  <!-- 回复上下文横幅：replyingTo 有值时显示，X 清除回复态 -->
+                  <div
+                    v-if="replyingTo !== null"
+                    class="mb-3 flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-2 text-sm"
+                  >
+                    <span class="min-w-0 truncate text-muted-foreground">
+                      {{ t('post.replyingTo', '正在回复') }}
+                      <span class="font-medium text-foreground">@{{ replyTargetName || t('post.someone', '某人') }}</span>
+                    </span>
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      class="shrink-0"
+                      :aria-label="t('post.cancelReply', '取消回复')"
+                      @click="cancelReply"
+                    >
+                      <X data-icon="inline-start" />
+                    </Button>
+                  </div>
+                  <!-- 匿名身份字段（与留言板同构）：后台「允许访客匿名评论」打开后才会走到这里，
+                     昵称在后端是硬要求（422 AUTHOR_NAME_REQUIRED），邮箱/网站可选。 -->
+                  <div
+                    v-if="!authStore.isAuthenticated"
+                    class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3"
+                  >
+                    <Input
+                      v-model="guestForm.author_name"
+                      :placeholder="t('post.yourName', '昵称')"
+                      :aria-label="t('post.yourName', '昵称')"
+                      :disabled="submittingComment"
+                      maxlength="30"
+                    />
+                    <Input
+                      v-model="guestForm.author_email"
+                      type="email"
+                      :placeholder="t('post.yourEmail', '邮箱（不会公开）')"
+                      :aria-label="t('post.yourEmail', '邮箱（不会公开）')"
+                      :disabled="submittingComment"
+                      maxlength="254"
+                    />
+                    <Input
+                      v-model="guestForm.author_website"
+                      :placeholder="t('post.yourWebsite', '网站（可选）')"
+                      :aria-label="t('post.yourWebsite', '网站（可选）')"
+                      :disabled="submittingComment"
+                      maxlength="200"
+                    />
+                    <!-- 访客身份两项决定头像解析器能不能拿到图：只发邮箱时访客一律 gravatar。
+                       长度上限跟服务端 pattern（qq 5–11 位数字、GitHub 用户名 ≤39），
+                       超限在这里挡比让服务端回 422 好——422 的提示是整表单级的。 -->
+                    <Input
+                      v-model="guestForm.qq"
+                      inputmode="numeric"
+                      :placeholder="t('post.yourQq', 'QQ 号（可选，用于头像）')"
+                      :aria-label="t('post.yourQq', 'QQ 号（可选，用于头像）')"
+                      :disabled="submittingComment"
+                      maxlength="11"
+                    />
+                    <Input
+                      v-model="guestForm.github"
+                      :placeholder="t('post.yourGithub', 'GitHub 用户名（可选）')"
+                      :aria-label="t('post.yourGithub', 'GitHub 用户名（可选）')"
+                      :disabled="submittingComment"
+                      maxlength="39"
+                    />
+                  </div>
+                  <Textarea
+                    ref="commentTextareaRef"
+                    v-model="commentContent"
+                    :maxlength="commentMaxLength"
+                    :disabled="submittingComment"
+                    :aria-label="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
+                    :placeholder="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
+                    rows="4"
+                    class="resize-none"
+                  />
+                  <div class="mt-2 flex items-end justify-end gap-3 text-xs text-muted-foreground">
+                    <span
+                      v-if="site.comments.value.require_approval"
+                      class="mr-auto"
+                    >
+                      {{ t('post.pendingNotice', '评论提交后需管理员审核，通过才会公开显示。') }}
+                    </span>
+                    <span :class="commentTooLong ? 'text-destructive' : ''">
+                      {{ commentContent.length }} / {{ commentMaxLength }}
+                    </span>
+                  </div>
+                  <CaptchaField
+                    v-if="needCommentCaptcha"
+                    ref="commentCaptchaRef"
+                    :enabled="needCommentCaptcha"
+                    class="mt-4"
+                  />
+                  <div class="mt-4 flex items-center justify-between gap-3">
+                    <p
+                      v-if="commentError"
+                      class="text-sm text-destructive"
+                    >
+                      {{ commentError }}
+                    </p>
+                    <Button
+                      variant="default"
+                      class="ml-auto"
+                      :disabled="!canSubmitComment"
+                      @click="handleSubmitComment"
+                    >
+                      <Send
+                        data-icon="inline-start"
+                        class="mr-2"
+                      />
+                      {{ submittingComment ? t('post.submitting') : t('post.submitComment') }}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
               <Alert
-                v-else-if="loadError && !post"
-                variant="destructive"
-                class="mt-12"
+                v-else
+                variant="default"
+                class="mb-8"
               >
                 <AlertTitle class="flex items-center gap-2">
                   <ShieldCheck class="size-4" />
-                  {{ t('post.loadFailed', '文章加载失败') }}
+                  {{ t('post.loginRequired') }}
                 </AlertTitle>
-                <AlertDescription>
-                  {{ t('post.loadFailedDesc', '无法从服务器获取这篇文章，请稍后重试。') }}
-                  <NuxtLink
-                    :to="localeHref('/posts')"
-                    class="text-primary underline underline-offset-2 ml-1"
-                  >
-                    {{ t('post.backToList', '返回文章列表') }}
-                  </NuxtLink>
-                </AlertDescription>
-              </Alert>
-            </ClientOnly>
-          </div>
-
-          <div
-            v-if="normalizedTags.length"
-            class="mt-12 flex flex-wrap gap-2"
-          >
-            <TagBadge
-              v-for="tag in normalizedTags"
-              :key="tag.id"
-              :color="tag.color"
-              :label="tag.name"
-              :to="localeHref(`/tags/${tag.slug}`)"
-              show-icon
-            />
-          </div>
-
-          <!-- 互动行：点赞（真实接口）；后端未返回数据时完全隐藏，绝不显示 0 作为占位假计数 -->
-          <div class="mt-8 flex items-center gap-3 flex-wrap">
-            <Button
-              v-if="showLikeButton"
-              variant="outline"
-              size="sm"
-              class="group transition-colors hover:border-primary/50 hover:text-primary"
-              :disabled="submittingLike"
-              @click="handleLikePost"
-            >
-              <ThumbsUp
-                data-icon="inline-start"
-                class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5 group-active:scale-110"
-                :class="likedByMe ? 'text-primary fill-primary/30' : ''"
-              />
-              <span>{{ t('post.like', '点赞') }}</span>
-              <span
-                v-if="likeCount > 0"
-                class="ml-2 text-xs px-2 py-0.5 rounded-full bg-primary/10 text-primary tabular-nums"
-              >
-                {{ likeCount }}
-              </span>
-            </Button>
-
-            <!-- 收藏：私有计数，后端不给未登录用户读，故不显示数字，只标"已收藏"态。
-                 SSR 首帧两端都渲染未选中态（favorited 初值 false），登录用户的选中态在
-                 onMounted 的 check 之后才出现 —— 不在首字节里泄漏私有状态。 -->
-            <Button
-              variant="outline"
-              size="sm"
-              class="group transition-colors hover:border-primary/50 hover:text-primary"
-              :disabled="submittingFavorite"
-              :aria-pressed="favorited"
-              @click="handleToggleFavorite"
-            >
-              <Bookmark
-                data-icon="inline-start"
-                class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
-                :class="favorited ? 'text-primary fill-primary/30' : ''"
-              />
-              <span>{{ favorited ? t('favorites.favorited') : t('favorites.add') }}</span>
-            </Button>
-
-            <!-- 分享：features.enable_share_buttons 的唯一消费点（关掉即整组不渲染）。
-                 地址与 canonical 同算法（站点根 + applyLocalePrefix），不用 window.location：
-                 那会把 ?query 与地址栏形态一起交给第三方站点。品牌名不翻译。 -->
-            <template v-if="showShareBar">
-              <Separator
-                decorative
-                orientation="vertical"
-                class="h-6"
-              />
-              <Button
-                v-if="canNativeShare"
-                variant="outline"
-                size="sm"
-                class="group transition-colors hover:border-primary/50 hover:text-primary"
-                @click="shareNative"
-              >
-                <Share2
-                  data-icon="inline-start"
-                  class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
-                />
-                <span>{{ t('post.share') }}</span>
-              </Button>
-              <a
-                v-for="net in shareNetworks"
-                :key="net.label"
-                :href="net.href"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="inline-flex h-8 items-center rounded-md border border-border/60 px-3 text-sm transition-colors hover:border-primary/50 hover:text-primary"
-              >{{ net.label }}</a>
-              <Button
-                variant="outline"
-                size="sm"
-                class="group transition-colors hover:border-primary/50 hover:text-primary"
-                @click="copyShareLink"
-              >
-                <Link2
-                  data-icon="inline-start"
-                  class="mr-2 transition-transform duration-[var(--motion-duration-fast)] group-hover:-translate-y-0.5"
-                />
-                <span>{{ t('post.copyLink') }}</span>
-              </Button>
-            </template>
-          </div>
-
-          <!-- ========= 作者信息卡：主题 mods show_author_box 控制（作者数据缺失时不渲染空卡） ========= -->
-          <section
-            v-if="showAuthorBox && post?.author"
-            class="mt-10 rounded-2xl border border-border/60 bg-card/60 p-5 sm:p-6"
-            :aria-label="t('post.authorBox', '作者信息')"
-          >
-            <p class="text-xs text-muted-foreground">
-              {{ t('post.authorBoxLabel', '本文作者') }}
-            </p>
-            <div class="mt-3 flex flex-wrap items-center gap-3">
-              <UserAvatar
-                v-if="showAvatar"
-                :avatar="post?.author?.avatar"
-                :resolved-avatar-url="post?.author?.resolved_avatar_url"
-                :seed="post?.author?.username || authorName"
-                :name="authorName"
-                :title="post?.author?.title || null"
-                :size="48"
-                :show-title="false"
-              />
-              <div class="min-w-0">
-                <NuxtLink
-                  v-if="authorUrl"
-                  :to="localeHref(authorUrl)"
-                  class="font-display text-lg font-semibold tracking-tight transition-colors duration-[var(--motion-duration-base)] hover:text-primary"
-                  :aria-label="t('post.viewAuthorProfile', '查看作者主页')"
-                >
-                  {{ authorName }}
-                </NuxtLink>
-                <p
-                  v-else
-                  class="font-display text-lg font-semibold tracking-tight"
-                >
-                  {{ authorName }}
-                </p>
-                <div
-                  v-if="post?.author?.title"
-                  class="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"
-                >
-                  <TitleBadge
-                    :title="post.author.title"
-                    size="sm"
-                  />
-                </div>
-              </div>
-            </div>
-          </section>
-
-          <!-- ========= 上一篇 / 下一篇：GET /blog/posts/{slug}/adjacent，缺失即不渲染 ========= -->
-          <nav
-            v-if="adjacent.previous || adjacent.next"
-            class="mt-12 grid grid-cols-1 sm:grid-cols-2 gap-3"
-            :aria-label="t('post.adjacentNav', '文章翻页导航')"
-          >
-            <NuxtLink
-              v-if="adjacent.previous"
-              :to="localeHref(`/posts/${adjacent.previous.slug}`)"
-              class="group flex flex-col rounded-xl border border-border/60 bg-card/60 p-4 transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
-            >
-              <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                <ChevronLeft class="size-3.5 transition-transform duration-[var(--motion-duration-base)] group-hover:-translate-x-0.5" />
-                {{ t('post.previousPost', '上一篇') }}
-              </span>
-              <span class="mt-1.5 text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
-                {{ adjacent.previous.title }}
-              </span>
-            </NuxtLink>
-            <span
-              v-else
-              aria-hidden="true"
-              class="hidden sm:block"
-            />
-            <NuxtLink
-              v-if="adjacent.next"
-              :to="localeHref(`/posts/${adjacent.next.slug}`)"
-              class="group flex flex-col items-end rounded-xl border border-border/60 bg-card/60 p-4 text-right transition-colors duration-[var(--motion-duration-base)] hover:border-primary/40 hover:bg-accent/30"
-            >
-              <span class="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-                {{ t('post.nextPost', '下一篇') }}
-                <ChevronRight class="size-3.5 transition-transform duration-[var(--motion-duration-base)] group-hover:translate-x-0.5" />
-              </span>
-              <span class="mt-1.5 text-sm font-medium line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
-                {{ adjacent.next.title }}
-              </span>
-            </NuxtLink>
-          </nav>
-
-          <!-- ========= 全局投票 MVP：Poll 与 Post 尚未建关联，此处展示全站激活中的投票 ========= -->
-          <PollCard
-            v-for="poll in activePolls"
-            :key="poll.id"
-            :poll="poll"
-          />
-
-          <Separator
-            v-if="showCommentsSection"
-            class="my-12"
-          />
-
-          <section v-if="showCommentsSection">
-            <h3 class="font-display text-2xl font-bold tracking-tight mt-12 mb-6 flex items-center gap-2">
-              <MessageSquare class="size-5 text-primary" />
-              {{ t('post.comments') }} ({{ comments.length }})
-            </h3>
-
-            <Card
-              v-if="canCommentForm"
-              class="mb-8"
-            >
-              <CardContent class="p-5">
-                <!-- 回复上下文横幅：replyingTo 有值时显示，X 清除回复态 -->
-                <div
-                  v-if="replyingTo !== null"
-                  class="mb-3 flex items-center justify-between gap-2 rounded-lg bg-muted px-3 py-2 text-sm"
-                >
-                  <span class="min-w-0 truncate text-muted-foreground">
-                    {{ t('post.replyingTo', '正在回复') }}
-                    <span class="font-medium text-foreground">@{{ replyTargetName || t('post.someone', '某人') }}</span>
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    class="shrink-0"
-                    :aria-label="t('post.cancelReply', '取消回复')"
-                    @click="cancelReply"
-                  >
-                    <X data-icon="inline-start" />
-                  </Button>
-                </div>
-                <!-- 匿名身份字段（与留言板同构）：后台「允许访客匿名评论」打开后才会走到这里，
-                     昵称在后端是硬要求（422 AUTHOR_NAME_REQUIRED），邮箱/网站可选。 -->
-                <div
-                  v-if="!authStore.isAuthenticated"
-                  class="mb-4 grid grid-cols-1 gap-4 md:grid-cols-3"
-                >
-                  <Input
-                    v-model="guestForm.author_name"
-                    :placeholder="t('post.yourName', '昵称')"
-                    :aria-label="t('post.yourName', '昵称')"
-                    :disabled="submittingComment"
-                    maxlength="30"
-                  />
-                  <Input
-                    v-model="guestForm.author_email"
-                    type="email"
-                    :placeholder="t('post.yourEmail', '邮箱（不会公开）')"
-                    :aria-label="t('post.yourEmail', '邮箱（不会公开）')"
-                    :disabled="submittingComment"
-                    maxlength="254"
-                  />
-                  <Input
-                    v-model="guestForm.author_website"
-                    :placeholder="t('post.yourWebsite', '网站（可选）')"
-                    :aria-label="t('post.yourWebsite', '网站（可选）')"
-                    :disabled="submittingComment"
-                    maxlength="200"
-                  />
-                  <!-- 访客身份两项决定头像解析器能不能拿到图：只发邮箱时访客一律 gravatar。
-                       长度上限跟服务端 pattern（qq 5–11 位数字、GitHub 用户名 ≤39），
-                       超限在这里挡比让服务端回 422 好——422 的提示是整表单级的。 -->
-                  <Input
-                    v-model="guestForm.qq"
-                    inputmode="numeric"
-                    :placeholder="t('post.yourQq', 'QQ 号（可选，用于头像）')"
-                    :aria-label="t('post.yourQq', 'QQ 号（可选，用于头像）')"
-                    :disabled="submittingComment"
-                    maxlength="11"
-                  />
-                  <Input
-                    v-model="guestForm.github"
-                    :placeholder="t('post.yourGithub', 'GitHub 用户名（可选）')"
-                    :aria-label="t('post.yourGithub', 'GitHub 用户名（可选）')"
-                    :disabled="submittingComment"
-                    maxlength="39"
-                  />
-                </div>
-                <Textarea
-                  ref="commentTextareaRef"
-                  v-model="commentContent"
-                  :maxlength="commentMaxLength"
-                  :disabled="submittingComment"
-                  :aria-label="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
-                  :placeholder="replyingTo !== null ? t('post.replyPlaceholder', '回复这条评论…') : t('post.commentPlaceholder')"
-                  rows="4"
-                  class="resize-none"
-                />
-                <div class="mt-2 flex items-end justify-end gap-3 text-xs text-muted-foreground">
-                  <span
-                    v-if="site.comments.value.require_approval"
-                    class="mr-auto"
-                  >
-                    {{ t('post.pendingNotice', '评论提交后需管理员审核，通过才会公开显示。') }}
-                  </span>
-                  <span :class="commentTooLong ? 'text-destructive' : ''">
-                    {{ commentContent.length }} / {{ commentMaxLength }}
-                  </span>
-                </div>
-                <CaptchaField
-                  v-if="needCommentCaptcha"
-                  ref="commentCaptchaRef"
-                  :enabled="needCommentCaptcha"
-                  class="mt-4"
-                />
-                <div class="mt-4 flex items-center justify-between gap-3">
-                  <p
-                    v-if="commentError"
-                    class="text-sm text-destructive"
-                  >
-                    {{ commentError }}
-                  </p>
+                <AlertDescription class="flex items-center justify-between mt-3">
+                  <span>{{ t('post.loginToComment') }}</span>
                   <Button
                     variant="default"
-                    class="ml-auto"
-                    :disabled="!canSubmitComment"
-                    @click="handleSubmitComment"
+                    size="sm"
+                    @click="navigateTo(`/login?redirect=/posts/${route.params.slug}`)"
                   >
-                    <Send
+                    {{ t('post.goLogin') }}
+                  </Button>
+                </AlertDescription>
+              </Alert>
+
+              <div class="flex flex-col gap-4">
+                <template v-if="loadingComments && comments.length === 0">
+                  <Skeleton
+                    v-for="i in 3"
+                    :key="i"
+                    class="h-[120px] rounded-xl"
+                  />
+                </template>
+                <template v-else-if="comments.length > 0">
+                  <CommentItem
+                    v-for="comment in comments"
+                    :key="comment.id"
+                    :comment="comment"
+                    :can-reply="canReply"
+                    :can-delete="isOwnComment(comment)"
+                    :deleting="deletingCommentId === comment.id"
+                    @reply="handleReply"
+                    @delete="handleDeleteComment"
+                  />
+                </template>
+                <div
+                  v-else-if="commentsError"
+                  class="text-center py-10 rounded-xl border border-dashed border-destructive/40"
+                >
+                  <MessageSquare class="size-9 mx-auto text-destructive/50 mb-3" />
+                  <p class="text-sm text-muted-foreground">
+                    {{ t('post.commentsLoadFailed', '评论加载失败') }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    class="mt-4"
+                    @click="loadCommentsForCurrentPost"
+                  >
+                    <RefreshCw
                       data-icon="inline-start"
                       class="mr-2"
                     />
-                    {{ submittingComment ? t('post.submitting') : t('post.submitComment') }}
+                    {{ t('post.retry', '重试') }}
                   </Button>
                 </div>
-              </CardContent>
-            </Card>
-            <Alert
-              v-else
-              variant="default"
-              class="mb-8"
-            >
-              <AlertTitle class="flex items-center gap-2">
-                <ShieldCheck class="size-4" />
-                {{ t('post.loginRequired') }}
-              </AlertTitle>
-              <AlertDescription class="flex items-center justify-between mt-3">
-                <span>{{ t('post.loginToComment') }}</span>
-                <Button
-                  variant="default"
-                  size="sm"
-                  @click="navigateTo(`/login?redirect=/posts/${route.params.slug}`)"
-                >
-                  {{ t('post.goLogin') }}
-                </Button>
-              </AlertDescription>
-            </Alert>
-
-            <div class="flex flex-col gap-4">
-              <template v-if="loadingComments && comments.length === 0">
-                <Skeleton
-                  v-for="i in 3"
-                  :key="i"
-                  class="h-[120px] rounded-xl"
-                />
-              </template>
-              <template v-else-if="comments.length > 0">
-                <CommentItem
-                  v-for="comment in comments"
-                  :key="comment.id"
-                  :comment="comment"
-                  :can-reply="canReply"
-                  :can-delete="isOwnComment(comment)"
-                  :deleting="deletingCommentId === comment.id"
-                  @reply="handleReply"
-                  @delete="handleDeleteComment"
-                />
-              </template>
-              <div
-                v-else-if="commentsError"
-                class="text-center py-10 rounded-xl border border-dashed border-destructive/40"
-              >
-                <MessageSquare class="size-9 mx-auto text-destructive/50 mb-3" />
-                <p class="text-sm text-muted-foreground">
-                  {{ t('post.commentsLoadFailed', '评论加载失败') }}
-                </p>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  class="mt-4"
-                  @click="loadCommentsForCurrentPost"
-                >
-                  <RefreshCw
-                    data-icon="inline-start"
-                    class="mr-2"
-                  />
-                  {{ t('post.retry', '重试') }}
-                </Button>
-              </div>
-              <div
-                v-else-if="needPassword"
-                class="text-center py-12 rounded-xl border border-dashed"
-              >
-                <Lock class="size-10 mx-auto text-muted-foreground/50 mb-3" />
-                <p class="text-muted-foreground">
-                  {{ t('post.commentsLockedHint') }}
-                </p>
-              </div>
-              <template v-else>
-                <div class="text-center py-12 rounded-xl border border-dashed">
-                  <MessageSquare class="size-10 mx-auto text-muted-foreground/50 mb-3" />
-                  <p class="text-muted-foreground">
-                    {{ t('post.noComments') }}
-                  </p>
-                </div>
-              </template>
-            </div>
-          </section>
-
-          <!-- ========= 相关文章：GET /api/blog/posts/{post_id}/similar 真实接口，失败则为空不显示假数据 ========= -->
-          <section v-if="showRelatedPosts && similarPosts.length">
-            <h3 class="font-display text-2xl font-bold tracking-tight mt-16 mb-6 flex items-center gap-2">
-              <Sparkles class="size-5 text-primary" />
-              {{ t('post.relatedPosts', '相关文章') }}
-            </h3>
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              <NuxtLink
-                v-for="sp in similarCards"
-                :key="sp.id"
-                v-memo="[sp.id, sp.title, sp.excerpt, sp.cover, sp.href]"
-                :to="sp.href"
-                class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
-              >
                 <div
-                  v-if="sp.cover"
-                  class="aspect-[16/9] bg-muted overflow-hidden"
+                  v-else-if="needPassword"
+                  class="text-center py-12 rounded-xl border border-dashed"
                 >
-                  <img
-                    :src="sp.cover"
-                    :alt="sp.title"
-                    width="640"
-                    height="427"
-                    class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
-                    loading="lazy"
-                    @error="handlePostCoverError($event, sp.raw)"
-                  >
-                </div>
-                <div class="p-4">
-                  <h4 class="font-display font-semibold text-base tracking-tight line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
-                    {{ sp.title }}
-                  </h4>
-                  <p
-                    v-if="sp.excerpt"
-                    class="mt-2 text-xs text-muted-foreground line-clamp-2 leading-relaxed"
-                  >
-                    {{ sp.excerpt }}
+                  <Lock class="size-10 mx-auto text-muted-foreground/50 mb-3" />
+                  <p class="text-muted-foreground">
+                    {{ t('post.commentsLockedHint') }}
                   </p>
                 </div>
-              </NuxtLink>
-            </div>
-          </section>
+                <template v-else>
+                  <div class="text-center py-12 rounded-xl border border-dashed">
+                    <MessageSquare class="size-10 mx-auto text-muted-foreground/50 mb-3" />
+                    <p class="text-muted-foreground">
+                      {{ t('post.noComments') }}
+                    </p>
+                  </div>
+                </template>
+              </div>
+            </section>
+
+            <!-- ========= 相关文章：GET /api/blog/posts/{post_id}/similar 真实接口，失败则为空不显示假数据 ========= -->
+            <section v-if="showRelatedPosts && similarPosts.length">
+              <h3 class="font-display text-2xl font-bold tracking-tight mt-16 mb-6 flex items-center gap-2">
+                <Sparkles class="size-5 text-primary" />
+                {{ t('post.relatedPosts', '相关文章') }}
+              </h3>
+              <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                <NuxtLink
+                  v-for="sp in similarCards"
+                  :key="sp.id"
+                  v-memo="[sp.id, sp.title, sp.excerpt, sp.cover, sp.href]"
+                  :to="sp.href"
+                  class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
+                >
+                  <div
+                    v-if="sp.cover"
+                    class="aspect-[16/9] bg-muted overflow-hidden"
+                  >
+                    <img
+                      :src="sp.cover"
+                      :alt="sp.title"
+                      width="640"
+                      height="427"
+                      class="size-full object-cover group-hover:scale-105 transition-transform duration-[var(--motion-duration-slow)]"
+                      loading="lazy"
+                      @error="handlePostCoverError($event, sp.raw)"
+                    >
+                  </div>
+                  <div class="p-4">
+                    <h4 class="font-display font-semibold text-base tracking-tight line-clamp-2 group-hover:text-primary transition-colors duration-[var(--motion-duration-base)]">
+                      {{ sp.title }}
+                    </h4>
+                    <p
+                      v-if="sp.excerpt"
+                      class="mt-2 text-xs text-muted-foreground line-clamp-2 leading-relaxed"
+                    >
+                      {{ sp.excerpt }}
+                    </p>
+                  </div>
+                </NuxtLink>
+              </div>
+            </section>
+          </template>
         </div>
         <aside
           v-if="showAside"
@@ -893,10 +927,16 @@ const site = useSite()
 const showToc = computed(() => site.reading.value.show_toc)
 const showReadingTime = computed(() => site.reading.value.show_reading_time)
 const showWordCount = computed(() => site.reading.value.show_word_count)
-const showAside = computed(() => showToc.value || showReadingTime.value || showWordCount.value)
+// 404 时不渲染目录/阅读时长侧栏与顶部阅读进度条：它们是"在读这篇文章"的信号，
+// 页面上根本没有正文时留着只会让人以为自己打开了一篇空文章。
+const showAside = computed(
+  () => !postNotFound.value && (showToc.value || showReadingTime.value || showWordCount.value)
+)
 const showCommentsSection = computed(() => site.comments.value.enable)
 const showLikeButton = computed(() => site.features.value.enable_like_button)
-const showReadingProgress = computed(() => site.features.value.enable_reading_progress)
+const showReadingProgress = computed(
+  () => !postNotFound.value && site.features.value.enable_reading_progress
+)
 // 正文行高/字号：后台 reading 分组的两个数值项此前没有任何消费点， prose 版式完全写死。
 const proseStyle = computed(() => {
   const r = site.reading.value
