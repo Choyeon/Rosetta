@@ -9,6 +9,9 @@
      「清除封面」「无分类」点了没反应。空字符串 / null 才是"清空"的语义。
   3. **scheduled_at 是本地墙钟，后端按 UTC 解释朴素时间**。回填必须用 toDateTimeLocal、
      提交必须用 fromDateTimeLocal，直接 slice(0,16) 会让东八区的作者排期偏 8 小时。
+  4. 「同系列文章」快选的候选只来自 `POST /post_series/complete`（公开召回口，草稿/定时未到
+     不在内），插入必须走 I18nTabsEditor 暴露的光标入口——覆写整串会把"句中插链接"变成
+     "永远追加到文末"，而且父组件拿不到 textarea 的光标位置。
 -->
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
@@ -21,10 +24,13 @@ import {
   fetchAdminCategories,
   fetchAdminTags,
   fetchAdminSeries,
+  completeSeriesPosts,
+  type SeriesPostSuggestion,
   type AdminCategory,
   type AdminTag,
   type AdminSeries
 } from '~~/composables/useAdminManage'
+import { applyLocalePrefix } from '~~/composables/useSeo'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
@@ -149,6 +155,87 @@ const visibilityOptions = [
 const seriesOptions = computed(() =>
   seriesList.value.map(s => ({ id: s.id, label: getLocalizedStr(s.name) || s.slug }))
 )
+
+// ===== 「同系列文章」内链快选（POST /api/post_series/complete）=====
+/** 正文那个四语编辑器。程序化插入只走它暴露的光标入口，见 I18nTabsEditor 的 defineExpose。 */
+const contentEditorRef = ref<InstanceType<typeof I18nTabsEditor> | null>(null)
+const seriesLinkQuery = ref('')
+const seriesLinkResults = ref<SeriesPostSuggestion[]>([])
+const seriesLinkLoading = ref(false)
+const seriesLinkFailed = ref(false)
+let seriesLinkTimer: ReturnType<typeof setTimeout> | null = null
+let seriesLinkSeq = 0
+
+const selectedSeriesLabel = computed(() =>
+  seriesOptions.value.find(s => s.id === form.series_id)?.label ?? ''
+)
+
+async function runSeriesLinkSearch(raw: string) {
+  const q = raw.trim()
+  if (!q) {
+    seriesLinkResults.value = []
+    seriesLinkLoading.value = false
+    seriesLinkFailed.value = false
+    return
+  }
+  const seq = ++seriesLinkSeq
+  seriesLinkLoading.value = true
+  seriesLinkFailed.value = false
+  try {
+    const rows = await completeSeriesPosts(q)
+    // 迟到的响应不得覆盖新关键词的结果：这一段没有 seq 判据时，
+    // "慢的那次检索"会把列表换回旧关键词的候选，点进去插的是不相干的文章。
+    if (seq !== seriesLinkSeq) return
+    // 正在编辑的这篇自己不进候选：指向本页的内链是自我引用。
+    seriesLinkResults.value = rows.filter(r => r.id !== props.postId)
+  } catch {
+    if (seq !== seriesLinkSeq) return
+    seriesLinkResults.value = []
+    seriesLinkFailed.value = true
+  } finally {
+    if (seq === seriesLinkSeq) seriesLinkLoading.value = false
+  }
+}
+
+/** 这一口是无鉴权 POST + 最多三段 LIKE 查询，所以按 350ms 防抖：不防抖的表现是打完十个字发出十个请求。 */
+watch(seriesLinkQuery, (q) => {
+  if (seriesLinkTimer) clearTimeout(seriesLinkTimer)
+  seriesLinkTimer = setTimeout(() => void runSeriesLinkSearch(q), 350)
+})
+
+/**
+ * 选中系列就把系列名当作初始关键词填进去——这一族的默认读数本该是"同系列已发布文章"，
+ * 不该让作者再手打一次系列名。只在当前输入为空时填，避免盖掉作者正在改的关键词；
+ * 编辑态下系列名要等系列列表加载完才拿得到，所以连 selectedSeriesLabel 一起 watch。
+ */
+watch([() => form.series_id, selectedSeriesLabel], ([id, label]) => {
+  if (!id) {
+    seriesLinkQuery.value = ''
+    return
+  }
+  if (seriesLinkQuery.value.trim() === '') seriesLinkQuery.value = label
+})
+
+/**
+ * 把一条候选写成 Markdown 内链，插进当前语言 tab 正文的光标处。
+ * 地址跟着 tab 挂语言前缀（AGENTS §2.3.3 第 2 条：正文是 SSR 里爬虫能读到的站内链接图，
+ * 英文正文里的内链不该把权重全推给默认语言版本）；slug 与模板侧同样原样拼（本仓 slug
+ * 由 slugify 产出，不含空格与 `?#`）。锚文本取后端返回的那一条中文标题——该口只投影
+ * zh 值，插进英文/日文 tab 时作者自己改写，前端不伪造机器译文。
+ */
+function insertSeriesLink(item: SeriesPostSuggestion) {
+  const active = contentEditorRef.value?.getActiveLocale?.() ?? 'zh'
+  const href = applyLocalePrefix(`/posts/${item.slug}`, active)
+  const label = item.title || item.slug
+  // 方括号要转义，否则 `[标题]` 里的 `]` 会提前闭合 Markdown 链接语法
+  const safeLabel = label.replace(/[[\]]/g, '\\$&')
+  const ok = contentEditorRef.value?.insertIntoActiveMarkdown(`[${safeLabel}](${href})`) ?? false
+  if (!ok) {
+    toast.error('正文编辑器还没挂上来，稍后再点一次')
+    return
+  }
+  toast.success(`已插入《${label}》的内链`)
+}
 
 const slugSource = computed(() => slugSourceTitle(form.title))
 
@@ -637,6 +724,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('beforeunload', onBeforeUnload as EventListener)
   document.removeEventListener('click', onClickOutsideTagCombobox)
   if (draftDebounceTimer) clearTimeout(draftDebounceTimer)
+  if (seriesLinkTimer) clearTimeout(seriesLinkTimer)
   // 已提交成功后卸载不应再把草稿写回 localStorage
   if (!submitted.value) saveDraftToLocalStorage()
 })
@@ -800,6 +888,7 @@ onBeforeUnmount(() => {
             </span>
           </template>
           <I18nTabsEditor
+            ref="contentEditorRef"
             v-model="form.content"
             kind="markdown"
             label="正文"
@@ -1170,6 +1259,61 @@ onBeforeUnmount(() => {
                 </AdminFormField>
               </div>
             </div>
+
+            <!--
+              同系列文章内链快选：候选来自 POST /api/post_series/complete（优先同系列、
+              其次同分类、再按标题模糊）。只列已发布文章，草稿不在召回里，
+              所以这里插不出指向未发布内容的内链。
+            -->
+            <AdminFormField
+              v-if="form.series_id"
+              label="同系列文章"
+              for="post-form-series-link"
+              hint="点一条即把 Markdown 内链插进正文当前语言页签的光标处"
+            >
+              <div class="flex flex-col gap-2">
+                <Input
+                  id="post-form-series-link"
+                  v-model="seriesLinkQuery"
+                  maxlength="100"
+                  class="h-9 rounded-[10px] text-sm"
+                  placeholder="按标题搜索已发布文章"
+                />
+                <p
+                  v-if="seriesLinkLoading"
+                  class="text-xs text-muted-foreground"
+                >
+                  正在检索…
+                </p>
+                <p
+                  v-else-if="seriesLinkFailed"
+                  class="text-xs text-destructive"
+                >
+                  检索失败，改一下关键词再试
+                </p>
+                <div
+                  v-else-if="seriesLinkResults.length"
+                  class="max-h-44 overflow-y-auto rounded-[10px] border border-border p-1"
+                >
+                  <button
+                    v-for="item in seriesLinkResults"
+                    :key="item.id"
+                    type="button"
+                    class="w-full rounded-md px-2.5 py-2 text-left text-sm transition-colors hover:bg-accent"
+                    :aria-label="`插入内链：${item.title || item.slug}`"
+                    @click="insertSeriesLink(item)"
+                  >
+                    {{ item.title || item.slug }}
+                  </button>
+                </div>
+                <p
+                  v-else-if="seriesLinkQuery.trim()"
+                  class="text-xs text-muted-foreground"
+                >
+                  没有匹配的已发布文章
+                </p>
+              </div>
+            </AdminFormField>
 
             <div class="flex items-start gap-2">
               <div class="w-40 shrink-0">

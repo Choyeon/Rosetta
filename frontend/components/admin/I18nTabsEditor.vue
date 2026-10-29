@@ -22,6 +22,12 @@
  *   - markdown: Markdown 编辑器（带工具栏，复用 MarkdownEditor）
  *
  * translatable: 开启后每个非 zh tab 提供「一键翻译」按钮（基于 zh 值调用 /api/translate 填充）
+ *
+ * defineExpose 两条（只服务 kind="markdown" 的正文宿主——文章表单的「同系列文章」内链快选）：
+ *   insertIntoActiveMarkdown(text) 把文本插进**当前激活语言**那个编辑器的光标处，未挂载返回 false；
+ *   getActiveLocale() 给出当前 tab 的语言码，宿主据此决定内链挂不挂语言前缀。
+ * Tab 因此改成受控（activeLocale，默认 zh）：观感与原先 `default-value="zh"` 完全一致，
+ * 只是为了让插入知道自己该写进四个独立正文里的哪一个。
  */
 import { computed, ref, watch } from 'vue'
 import { Tabs, TabsContent } from '~~/components/ui/tabs'
@@ -143,6 +149,39 @@ async function translateLocale(lang: string) {
     translatingLang.value = null
   }
 }
+
+// ===== 供宿主页面程序化插入正文（kind="markdown"）=====
+/**
+ * 当前激活的语言 tab。默认 zh 与原先 `default-value="zh"` 行为一致，
+ * 改成受控只为了下面这条插入能知道自己该写进哪一个编辑器。
+ */
+const activeLocale = ref<string>('zh')
+
+/**
+ * 每个语言 tab 各挂一个 MarkdownEditor 实例（reka 的 TabsContent 会把非激活的那几个
+ * 卸载掉，所以这里按 key 收集、卸载时置空，不能假设四个都在）。
+ */
+const markdownRefs: Record<string, { insertAtCursor: (text: string, moveCursor?: number) => void } | null> = {}
+
+function setMarkdownRef(localeKey: string, el: unknown) {
+  markdownRefs[localeKey] = (el as { insertAtCursor: (text: string, moveCursor?: number) => void } | null) ?? null
+}
+
+/**
+ * 把文本插进**当前激活语言**那个正文编辑器的光标处。
+ * 为什么必须按 tab 定位：正文是四个互相独立的字符串，插错 tab 等于把链接写进
+ * 另一份语言的正文里，作者在当前 tab 看不见，表现就是"点了没反应"。
+ * 返回 false 表示当前 tab 的编辑器还没挂上来（非 markdown 形态、或 tab 刚切换未挂载），
+ * 调用方据此提示，不要静默成功。
+ */
+function insertIntoActiveMarkdown(text: string): boolean {
+  const editor = markdownRefs[activeLocale.value]
+  if (!editor) return false
+  editor.insertAtCursor(text)
+  return true
+}
+
+defineExpose({ insertIntoActiveMarkdown, getActiveLocale: () => activeLocale.value })
 </script>
 
 <template>
@@ -173,7 +212,10 @@ async function translateLocale(lang: string) {
       </Badge>
     </div>
 
-    <Tabs default-value="zh">
+    <Tabs
+      :model-value="activeLocale"
+      @update:model-value="(v: string | number) => activeLocale = String(v)"
+    >
       <AdminTabList class="grid grid-cols-4 w-full h-9 rounded-[10px]">
         <AdminTabTrigger
           v-for="l in LOCALES"
@@ -230,6 +272,7 @@ async function translateLocale(lang: string) {
           />
           <MarkdownEditor
             v-else
+            :ref="(el: unknown) => setMarkdownRef(l.key, el)"
             v-model="state[l.key]"
             :placeholder="placeholder ? `${placeholder}（${l.label}）` : `${l.label}`"
           />

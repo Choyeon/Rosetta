@@ -159,6 +159,14 @@ const insertAtCursor = (text: string, moveCursor = text.length) => {
   setSelection(start + moveCursor, start + moveCursor)
 }
 
+/**
+ * 宿主页面（四语 Tab 编辑器 → 文章表单）唯一的程序化插入入口。
+ * 页面侧不要自己算 `selectionStart` 再覆写 v-model：光标位置、选区替换与
+ * 插入后的落位都只有本组件看得见（父组件拿不到 textarea 引用），
+ * 覆写整串还会把"在两句中间插一条链接"变成"永远追加到文末"。
+ */
+defineExpose({ insertAtCursor })
+
 const handleToolbarAction = (action: string) => {
   switch (action) {
     case 'bold':

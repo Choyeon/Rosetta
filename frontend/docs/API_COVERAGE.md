@@ -34,7 +34,7 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 354 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：354 个端点操作；✅ 293 + 🟡 6 = 已消费 299 个，未消费 55 个，覆盖率 84.5%。**
+**总计：354 个端点操作；✅ 294 + 🟡 6 = 已消费 300 个，未消费 54 个，覆盖率 84.7%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -58,7 +58,7 @@
 | webhook | 9 | 9 | 0 | 0 | 100% |
 | activity | 8 | 7 | 0 | 1 | 88% |
 | monitoring | 8 | 8 | 0 | 0 | 100% |
-| post_series | 8 | 7 | 0 | 1 | 88% |
+| post_series | 8 | 8 | 0 | 0 | 100% |
 | import_export | 7 | 7 | 0 | 0 | 100% |
 | announcement | 6 | 5 | 0 | 1 | 83% |
 | hero | 6 | 6 | 0 | 0 | 100% |
@@ -87,7 +87,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 55 条）
+## 未消费清单（自动生成，共 54 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -106,7 +106,6 @@
 - **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
 - **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
 - **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`
-- **post_series**（1）：`POST /api/post_series/complete`
 - **seo**（3）：`GET /api/seo/config`、`PUT /api/seo/config`、`GET /api/seo/sitemap.xml`
 - **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
 - **themes_ext**（2）：`GET /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`
@@ -250,10 +249,10 @@
 > 判据与消费点由 `tests/unit/apiCoverageClaims.spec.ts` 钉回代码，不再靠表格记忆。
 
 
-### post_series（/api）— 6/8
+### post_series（/api）— 8/8
 
 ✅：`GET /series`（pages/series/index.vue:144）、`GET /series/{slug}`（pages/series/[slug].vue:223）、`GET/POST /admin/series`（uam:742,753）、`PUT/DELETE /admin/series/{id}`（uam:767,776）
-❌（1）：`POST /post_series/complete` —— 它是**编辑器"同系列文章" autocomplete**（按关键词返回最多 8 条同系列文章，`post_series.py::series_complete`），不是"标记系列完成"；旧判定把名字读成了状态机动作，属误标。真实现状：编辑器没有"插入同系列文章建议"这一面，所以这条确实零消费方。
+✅（补记 2026-10-29，批次 #50）：`POST /post_series/complete` —— 它是**编辑器"同系列文章" autocomplete**（按关键词返回最多 8 条同系列文章，`post_series.py::series_complete`），不是"标记系列完成"；旧判定把名字读成了状态机动作，属误标，而"编辑器没有这一面"的零消费现状已经补上：`components/admin/PostForm.vue` 在选中系列后显示「同系列文章」候选框（默认关键词＝系列名，350ms 防抖），点一条把 `[标题](/语言前缀/posts/slug)` 经 `I18nTabsEditor.insertIntoActiveMarkdown` 插进**当前语言页签**正文的光标处。四条口径：① 候选只含公开可见文章（每个分支都过 `publicly_listable_posts()`），所以插不出指向草稿/定时未到的内链；② `title` 是后端 `get_i18n_value(..., "zh")` 取出的单条中文字符串，插进英文/日文页签时锚文本仍是中文，由作者改写，前端不伪造机器译文；③ 地址按当前 tab 走 `applyLocalePrefix`（AGENTS §2.3.3 第 2 条：正文是 SSR 里爬虫读得到的站内链接图），本仓文章正由 slugify 产出、不含空格与 `?#`，故 slug 原样拼；④ 失败只就地显示一行、走 `silentToast`，不再叠全局 toast。守卫：`tests/unit/apiCoverageClaims.spec.ts`（消费面）+ `tests/test_series_complete_visibility_guard.py`（草稿不入选 / 空白与超长关键词的返回形态）。
 ✅（补记 2026-10-29）：`PUT /admin/series/{id}/toggle` 已由 `pages/admin/content/series.vue` 的启用徽标消费（`toggleAdminSeries`）——旧判定「后台用 PUT 代替——重复入口」已作废；toggle 口翻的是库里当前值而不是"设成 X"，所以后台只在拿到 200 后回读，不用本地取反。
 
 ### ranking / stats / translate / docs / settings_groups

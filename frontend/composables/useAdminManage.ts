@@ -845,6 +845,40 @@ export async function toggleAdminSeries(id: number): Promise<AdminSeries> {
   return _toAdminSeries(raw)
 }
 
+/** 编辑器「插入同系列文章」候选的一行（后端只投影这三列，正文不在其中）。 */
+export interface SeriesPostSuggestion {
+  id: number
+  title: string
+  slug: string
+}
+
+/**
+ * POST /api/post_series/complete —— 编辑器按关键词召回同系列（其次同分类、再同标题）的文章。
+ * 三条口径决定调用方怎么用：
+ * 1. `title` 是后端 `get_i18n_value(title, "zh")` 取出的**单条中文字符串**，不是四语 dict。
+ *    插进非中文 tab 时锚文本仍是中文，由作者改写——不伪造机器译文。
+ * 2. 每个分支都过 `publicly_listable_posts()`，草稿/定时未到/私密不在候选里：
+ *    往公开正文插一条指向未发布内容的内链，等于替它做出站链接。
+ * 3. 这是**无鉴权 POST**（公开召回口），命中即三段 LIKE 查询，所以调用方必须防抖，
+ *    不得每键一次请求；`query` 后端限 1–100 字符，空串在这里直接本地返回空。
+ * 4. 失败走 `silentToast`：检索失败是输入框旁边一句话就能说完的事，由调用方就地显示；
+ *    再叠一条全局 toast 就是同一错误弹两次（AGENTS §10.5）。
+ */
+export async function completeSeriesPosts(query: string): Promise<SeriesPostSuggestion[]> {
+  const q = query.trim()
+  if (!q) return []
+  const raw = await apiFetch<unknown>('/post_series/complete', {
+    method: 'POST',
+    body: { query: q.slice(0, 100) },
+    silentToast: true
+  })
+  const rows = Array.isArray(raw) ? raw : []
+  return rows
+    .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null)
+    .map(r => ({ id: Number(r.id), title: String(r.title ?? ''), slug: String(r.slug ?? '') }))
+    .filter(r => Number.isFinite(r.id) && r.slug !== '')
+}
+
 /** 系列详情页的一行章节（后端只投影这些列，正文/摘要不在其中）。 */
 export interface SeriesChapterRow {
   id: number
