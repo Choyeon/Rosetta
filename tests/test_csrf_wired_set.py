@@ -126,21 +126,91 @@ class TestDesignIsNotAMissingWire:
         assert resp.status_code != 403 or "CSRF_CHECK_FAILED" not in resp.text, resp.text
 
 
+class TestDoubleSubmitIsConditional:
+    """Cookie↔Header 那条分支的真实语义是"**两个值同时存在**才比对"，不是"必须双提交"。
+
+    这一族断言存在的理由：本站从不发 `csrf_token` cookie，所以这条分支在生产上
+    永不触发；一条"永不触发"的代码既可能是钩子也可能是死代码，光读源码判不出来。
+    下面两条把它钉成"确实能用、但确实是条件式的"：将来谁把会话改成 cookie 形态，
+    这两条就是那条分支的行为契约；谁把文档写成"必须带 X-CSRF-Token"，第二条会直接判红。
+    """
+
+    async def test_mismatched_pair_rejects_on_wired_route(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """Bearer + cookie 与 header 都在且不等 → 403（依赖先于处理函数，不存在的 id 也一样）。"""
+        resp = await client.delete(
+            "/api/comments/999999",
+            headers={
+                **admin_headers,
+                "Cookie": "csrf_token=" + "a" * 40,
+                "X-CSRF-Token": "b" * 40,
+            },
+        )
+        assert resp.status_code == 403, resp.text
+        assert "CSRF_CHECK_FAILED" in resp.text
+
+    async def test_matching_pair_passes_the_gate(self, client: AsyncClient, admin_headers: dict):
+        """同值双提交就放行到处理函数（404）——这条口不是"带了 token 就一律拒"。"""
+        token = "c" * 40
+        resp = await client.delete(
+            "/api/comments/999999",
+            headers={**admin_headers, "Cookie": f"csrf_token={token}", "X-CSRF-Token": token},
+        )
+        assert resp.status_code == 404, (
+            f"期望过闸后走到处理函数 404，实测 {resp.status_code} {resp.text[:200]}"
+        )
+
+    async def test_cookie_alone_does_not_demand_a_header(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """只有 cookie、没带 header → 条件不成立，整条比对跳过。
+        这就是"X-CSRF-Token 不是必需请求头"的实证：文档要把它写成必需头，这条会反对。
+        """
+        resp = await client.delete(
+            "/api/comments/999999",
+            headers={**admin_headers, "Cookie": "csrf_token=" + "d" * 40},
+        )
+        assert resp.status_code == 404, (
+            f"只给 cookie 不该被 CSRF 拦：{resp.status_code} {resp.text[:200]}"
+        )
+
+    async def test_header_alone_does_not_demand_a_cookie(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """只给 header、没有 cookie → 同样跳过（另一半条件）。"""
+        resp = await client.delete(
+            "/api/comments/999999",
+            headers={**admin_headers, "X-CSRF-Token": "e" * 40},
+        )
+        assert resp.status_code == 404, (
+            f"只给 header 不该被 CSRF 拦：{resp.status_code} {resp.text[:200]}"
+        )
+
+
 # 文档里**允许**出现 `GET /api/csrf`——前提是同一句把它否定了（"也没有 GET /api/csrf 这类
 # 取 token 的接口"）。守的是"教读者去调它 / 把它写成必需头"，不是"提到过它"。
 # 上一版用整篇 `not in` 判，于是这句诚实的否定把测试自己判红了；而本仓后端 pytest 曾长期
 # 被判成"开发机上跑不了"，那条就是这么写瞎、直到链上门禁才暴露。现在按句子切来判。
 CSRF_ENDPOINT_MENTION = "GET /api/csrf"
 CSRF_HEADER_EXAMPLE_MARK = "X-CSRF-Token:"
+# "双提交一致"这种写法把一条**条件分支**讲成了硬性要求：`require_csrf` 只在
+# cookie 与 header 同时存在时才比对，且本站从不发 cookie。读者照这句话去带一个
+# 假造的 X-CSRF-Token，反而会被那条分支比对失败挡成 403。
+CSRF_DOUBLE_SUBMIT_MARK = "双提交一致"
 CSRF_NEGATIONS = ("没有", "不存在", "并非", "不是", "不含", "无消费方", "零消费方")
 _SENTENCE_SPLIT = re.compile(r"[\n。；;！!，,]")
 
 
 def _csrf_lies(text: str) -> list[str]:
-    """返回把 CSRF 当成"有取 token 的接口 / 有必需头"来教的句子。"""
+    """返回把 CSRF 当成"有取 token 的接口 / 有必需头 / 无条件双提交"来教的句子。"""
     offenders: list[str] = []
     for sentence in _SENTENCE_SPLIT.split(text):
-        if CSRF_ENDPOINT_MENTION not in sentence and CSRF_HEADER_EXAMPLE_MARK not in sentence:
+        if (
+            CSRF_ENDPOINT_MENTION not in sentence
+            and CSRF_HEADER_EXAMPLE_MARK not in sentence
+            and CSRF_DOUBLE_SUBMIT_MARK not in sentence
+        ):
             continue
         if any(mark in sentence for mark in CSRF_NEGATIONS):
             continue
@@ -154,18 +224,20 @@ class TestDocsTellTheTruth:
         honest = tmp_path / "honest.md"
         honest.write_text(
             "CSRF 不是全局中间件，也没有 `GET /api/csrf` 这类取 token 的接口。"
-            "所以 `X-CSRF-Token` 当前没有消费方。",
+            "所以 `X-CSRF-Token` 当前没有消费方。"
+            "Cookie 与 header 的比对只在两个值同时存在时才执行，本站从不发 cookie。",
             encoding="utf-8",
         )
         liar = tmp_path / "liar.md"
         liar.write_text(
             "写接口前请先调用 `GET /api/csrf` 拿到 token，"
-            "并在请求头里带上 `X-CSRF-Token: <csrf_token>`。",
+            "并在请求头里带上 `X-CSRF-Token: <csrf_token>`。"
+            "Origin 须在白名单且 Cookie csrf_token 与 X-CSRF-Token 双提交一致，否则 403。",
             encoding="utf-8",
         )
         assert _csrf_lies(honest.read_text(encoding="utf-8")) == []
         lies = _csrf_lies(liar.read_text(encoding="utf-8"))
-        assert len(lies) == 2, lies
+        assert len(lies) == 3, lies
 
     def test_generated_doc_no_longer_claims_a_csrf_token_endpoint(self):
         for path in (DOCS_PATH, GEN_PATH):

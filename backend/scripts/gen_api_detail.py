@@ -451,9 +451,13 @@ def render_detail(spec: dict[str, Any]) -> str:
         "",
         "CSRF 不是全局中间件，也没有 `GET /api/csrf` 这类取 token 的接口："
         "`core/csrf.py::require_csrf` 是 per-route 依赖，目前只挂在**评论的创建与删除**两条写口上，"
-        "规则是「带 Bearer 且 `Origin` 不在白名单里 → 403 `CSRF_CHECK_FAILED`」。"
-        "本站登录态只在请求头里、从不写 cookie（没有环境凭证），所以 `X-CSRF-Token` 当前**没有消费方**，"
-        "其余写接口按站外 Origin 请求也会照常通过——那是设计如此，不是漏挂。",
+        "规则是「带 Bearer 且 `Origin` 不在白名单里 → 403 `CSRF_CHECK_FAILED`；不带 Origin 不拦」。"
+        "另有一条 Cookie↔Header 的比对分支，**只在 `csrf_token` cookie 与 `X-CSRF-Token` 同时存在时**才执行："
+        "本站从不 `set_cookie`（登录态只在请求头里，`tests/test_csrf_wired_set.py` 钉着这条前提），"
+        "所以客户端取不到那个 cookie、header 也就不会带上（前端唯一读它的地方是 "
+        "`useUploadProgress.ts::getCsrfTokenFromCookie`，条件成立才 setRequestHeader），"
+        "这条分支今天**永不触发**——它是给「将来改成 cookie 会话」预留的钩子。"
+        "其余写接口按站外 Origin 请求也会照常通过，那是设计如此，不是漏挂。",
         "",
         "`access_token` 有效期 1 小时，过期用 `POST /api/users/refresh` 换新。",
         "",

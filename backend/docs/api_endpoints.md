@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **352 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **354 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -16,7 +16,7 @@
 Authorization: Bearer <access_token>
 ```
 
-CSRF 不是全局中间件，也没有 `GET /api/csrf` 这类取 token 的接口：`core/csrf.py::require_csrf` 是 per-route 依赖，目前只挂在**评论的创建与删除**两条写口上，规则是「带 Bearer 且 `Origin` 不在白名单里 → 403 `CSRF_CHECK_FAILED`」。本站登录态只在请求头里、从不写 cookie（没有环境凭证），所以 `X-CSRF-Token` 当前**没有消费方**，其余写接口按站外 Origin 请求也会照常通过——那是设计如此，不是漏挂。
+CSRF 不是全局中间件，也没有 `GET /api/csrf` 这类取 token 的接口：`core/csrf.py::require_csrf` 是 per-route 依赖，目前只挂在**评论的创建与删除**两条写口上，规则是「带 Bearer 且 `Origin` 不在白名单里 → 403 `CSRF_CHECK_FAILED`；不带 Origin 不拦」。另有一条 Cookie↔Header 的比对分支，**只在 `csrf_token` cookie 与 `X-CSRF-Token` 同时存在时**才执行：本站从不 `set_cookie`（登录态只在请求头里，`tests/test_csrf_wired_set.py` 钉着这条前提），所以客户端取不到那个 cookie、header 也就不会带上（前端唯一读它的地方是 `useUploadProgress.ts::getCsrfTokenFromCookie`，条件成立才 setRequestHeader），这条分支今天**永不触发**——它是给「将来改成 cookie 会话」预留的钩子。其余写接口按站外 Origin 请求也会照常通过，那是设计如此，不是漏挂。
 
 `access_token` 有效期 1 小时，过期用 `POST /api/users/refresh` 换新。
 
@@ -1605,6 +1605,7 @@ _无路径 / query 参数_
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | color | string | 否 |  |
+| cover_image | string \| null | 否 |  |
 | description | object<string, string> \| null | 否 | 多语言分类描述 |
 | icon | string \| null | 否 |  |
 | is_active | boolean | 否 |  |
@@ -1614,6 +1615,7 @@ _无路径 / query 参数_
 ```json
 {
   "color": "#3B82F6",
+  "cover_image": "string",
   "description": "string",
   "icon": "string",
   "is_active": true,
@@ -2154,7 +2156,8 @@ _无路径 / query 参数_
     "tags": [],
     "title": "string",
     "updated_at": "string",
-    "views": 0
+    "views": 0,
+    "visibility": "public"
   }
 ]
 ```
@@ -2778,7 +2781,8 @@ _无路径 / query 参数_
     "tags": [],
     "title": "string",
     "updated_at": "string",
-    "views": 0
+    "views": 0,
+    "visibility": "public"
   }
 ]
 ```
@@ -6655,8 +6659,8 @@ _无路径 / query 参数_
 | captcha_code | string \| null | 否 | 验证码字符 |
 | captcha_key | string \| null | 否 | 验证码 key |
 | content | string | 是 |  |
-| github | string \| null | 否 | 评论者 GitHub 用户名（可选） |
-| qq | string \| null | 否 | 评论者 QQ（可选） |
+| github | string \| null | 否 | 访客 GitHub 用户名（可选，只允许用户名形态，不接受 URL 与标记语言） |
+| qq | string \| null | 否 | 访客 QQ 号（可选，5–11 位数字） |
 
 ```json
 {
@@ -6761,7 +6765,7 @@ _无路径 / query 参数_
 
 ---
 
-## 投票（5）
+## 投票（6）
 
 文章投票与统计
 
@@ -6770,7 +6774,7 @@ _无路径 / query 参数_
 - **摘要**：投票列表
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取，可按状态筛选。
+获取，可按状态筛选。`post_id` 按文章筛选：只返回**这篇文章的专属投票 + 全站投票**（`post_id IS NULL`）， 其它文章的专属投票不会出现。
 
 **入参**
 
@@ -6825,6 +6829,7 @@ _无路径 / query 参数_
 | choices | string[] | 是 | 选项列表；每项 1-200 字符 |
 | description | string \| null | 否 |  |
 | is_active | boolean | 否 |  |
+| post_id | integer \| null | 否 | 绑定的文章 ID；None = 全站投票（挂在每篇文章下方），非 None = 只在该文章展示 |
 | show_results | boolean | 否 |  |
 | title | string | 是 |  |
 
@@ -6836,6 +6841,7 @@ _无路径 / query 参数_
   ],
   "description": "string",
   "is_active": true,
+  "post_id": "string",
   "show_results": true,
   "title": "string"
 }
@@ -6853,6 +6859,7 @@ _无路径 / query 参数_
 | description | string \| null | 否 |  |
 | id | integer | 是 |  |
 | is_active | boolean | 否 |  |
+| post_id | integer \| null | 是 |  |
 | show_results | boolean | 否 |  |
 | title | string | 是 |  |
 | total_votes | integer | 否 |  |
@@ -6874,6 +6881,7 @@ _无路径 / query 参数_
   "description": "string",
   "id": 0,
   "is_active": true,
+  "post_id": "string",
   "show_results": true,
   "title": "string",
   "total_votes": 0
@@ -6909,6 +6917,7 @@ _无路径 / query 参数_
 | description | string \| null | 否 |  |
 | id | integer | 是 |  |
 | is_active | boolean | 否 |  |
+| post_id | integer \| null | 是 |  |
 | show_results | boolean | 否 |  |
 | title | string | 是 |  |
 | total_votes | integer | 否 |  |
@@ -6930,6 +6939,87 @@ _无路径 / query 参数_
   "description": "string",
   "id": 0,
   "is_active": true,
+  "post_id": "string",
+  "show_results": true,
+  "title": "string",
+  "total_votes": 0
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `PUT /api/voting/polls/{poll_id}`
+
+- **摘要**：更新投票
+- **鉴权**：需鉴权：`HTTPBearer`
+
+的标题/说明/绑定文章与三个开关，需要管理员权限。只写入请求体里**实际出现**的键（缺省键保持原值），所以「结束投票」提交 `{"is_active": false}` 即可，不会顺带清掉说明。选项不可改：每个选项 id 上挂着 votes 行，替换选项等于删票数。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `PollUpdate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| allow_multiple | boolean \| null | 否 |  |
+| description | string \| null | 否 |  |
+| is_active | boolean \| null | 否 |  |
+| post_id | integer \| null | 否 | None = 改回全站投票 |
+| show_results | boolean \| null | 否 |  |
+| title | string \| null | 否 |  |
+
+```json
+{
+  "allow_multiple": "string",
+  "description": "string",
+  "is_active": "string",
+  "post_id": "string",
+  "show_results": "string",
+  "title": "string"
+}
+```
+
+**出参**
+
+`200` · 模型 `PollResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| allow_multiple | boolean | 否 |  |
+| choices | object[] | 是 |  |
+| created_at | string | 是 |  |
+| description | string \| null | 否 |  |
+| id | integer | 是 |  |
+| is_active | boolean | 否 |  |
+| post_id | integer \| null | 是 |  |
+| show_results | boolean | 否 |  |
+| title | string | 是 |  |
+| total_votes | integer | 否 |  |
+
+响应示例：
+
+```json
+{
+  "allow_multiple": false,
+  "choices": [
+    {
+      "id": 0,
+      "order": 0,
+      "text": "string",
+      "votes_count": "string"
+    }
+  ],
+  "created_at": "string",
+  "description": "string",
+  "id": 0,
+  "is_active": true,
+  "post_id": "string",
   "show_results": true,
   "title": "string",
   "total_votes": 0
@@ -9332,7 +9422,7 @@ _无路径 / query 参数_
 - **摘要**：导入 Markdown
 - **鉴权**：需鉴权：`HTTPBearer`
 
-导入单个 Markdown 文件为文章。需 staff 及以上权限（未登录 401，非管理员 403）。上传内容按 UTF-8 文本解析：必须是以 --- 包裹的 frontmatter，取其中的 title 与 slug（缺 slug 时由标题小写转写生成），正文落为 zh 变体；default_category 参数当前实现未参与写库。导入的文章一律是草稿状态，不会直接上线。未提供文件名时 400；slug 已存在或解析不到 frontmatter 时返回 200 且 success=false（不抛 4xx），调用方须读 success 判定结果。
+导入单个 Markdown 文件为文章。需 staff 及以上权限（未登录 401，非管理员 403）。上传内容按 UTF-8 文本解析：必须是以 --- 包裹的 frontmatter，取其中的 title 与 slug（缺 slug 时由标题小写转写生成），正文落为 zh 变体；default_category 参数当前实现未参与写库。导入的文章一律是草稿状态，不会直接上线。未提供文件名时 400；文件不是 UTF-8 文本时 400（GBK / UTF-16 的 .md 请另存为 UTF-8）；slug 已存在或解析不到 frontmatter 时返回 200 且 success=false（不抛 4xx），调用方须读 success 判定结果。
 
 **入参**
 
@@ -18461,7 +18551,7 @@ _无路径 / query 参数_
 
 ---
 
-## 评论（8）
+## 评论（9）
 
 文章评论的提交与管理
 
@@ -18735,6 +18825,41 @@ _无路径 / query 参数_
 | --- | --- |
 | `422` | Validation Error |
 
+### `DELETE /api/comments/{comment_id}`
+
+- **摘要**：删除自己的评论（作者本人，软删除进回收站）
+- **鉴权**：需鉴权：`HTTPBearer`
+
+需登录 + CSRF。只允许删自己那条：归属判据直接进 SELECT 的 WHERE（id 与 user_id 同一条谓词），所以「评论不存在」与「是别人的评论」回同一个 404（COMMENT_NOT_FOUND）——回 403 等于用连续自增的主键替旁人数「这条存在」，即可枚举全站评论 id。游客评论的 user_id 为 NULL，任何登录账号都匹配不上，因此游客内容只有管理员能删。与管理员单删（DELETE /api/admin/comments/{id}）同构：先写回收站快照（30 天内可在「回收站」恢复，原文章已删除时不可恢复）再删原行，子回复由外键 ON DELETE SET NULL 提升为根评论、正文不丢。删除改变文章的可见评论集合，因此失效该文章的详情/列表缓存并通知前台清页面缓存（评论树由客户端拉取，但首页与列表页 SSR 的 HTML 里烘着评论计数，只清后端响应缓存在 Nitro 的 swr 窗口内访客仍看到旧数字）。成功后触发插件钩子 comment.deleted。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `BaseResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| message | string | 否 |  |
+| success | boolean | 否 |  |
+
+响应示例：
+
+```json
+{
+  "message": "操作成功",
+  "success": true
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
 ### `POST /api/comments/{comment_id}/like`
 
 - **摘要**：给评论点赞（简单计数，允许匿名）
@@ -18905,7 +19030,7 @@ _无路径 / query 参数_
 - **摘要**：发表评论（游客或登录用户均可）
 - **鉴权**：需鉴权：`HTTPBearer`
 
-公开写入接口，支持对根评论的一层回复（parent_id 指向的评论必须属于同一篇文章）。携带 Bearer Token（登录用户发帖）时强制执行 CSRF 校验：Origin 须在白名单且 Cookie csrf_token 与 X-CSRF-Token 双提交一致，否则 403（CSRF_CHECK_FAILED）；匿名请求不带 Authorization 时跳过该校验。文章不存在返回 404（POST_NOT_FOUND）。与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，不给草稿或加密文章写评论。常见失败：422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST / NESTED_REPLY_TOO_DEEP；404 COMMENT_PARENT_NOT_FOUND；429 TOO_FREQUENT_COMMENT（Retry-After: 30，同文章同 IP 频控）。成功后触发插件钩子 comment.created。非幂等。
+公开写入接口，支持对根评论的一层回复（parent_id 指向的评论必须属于同一篇文章）。携带 Bearer Token（登录用户发帖）时走 `core/csrf.py::require_csrf`（per-route 依赖，不是全局中间件）：带 `Origin` 头时必须命中白名单，否则 403（CSRF_CHECK_FAILED）；不带 Origin（curl / 服务端调用）不拦。另有一条 Cookie csrf_token 与 X-CSRF-Token 的比对分支，**只在两个值同时存在时**才执行——本站从不发 cookie（登录态只在请求头里），所以现在没有浏览器会带上它们，这条分支不触发；`X-CSRF-Token` 因此**不是本接口的必需请求头**。匿名请求不带 Authorization 时整个校验跳过。文章不存在返回 404（POST_NOT_FOUND）。与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，不给草稿或加密文章写评论。常见失败：422 AUTHOR_NAME_REQUIRED / AUTHOR_NAME_TOO_SHORT / COMMENT_PARENT_WRONG_POST / NESTED_REPLY_TOO_DEEP；404 COMMENT_PARENT_NOT_FOUND；429 TOO_FREQUENT_COMMENT（Retry-After: 30，同文章同 IP 频控）。成功后触发插件钩子 comment.created。非幂等。
 
 **入参**
 
@@ -18923,10 +19048,10 @@ _无路径 / query 参数_
 | captcha_code | string \| null | 否 | 验证码字符 |
 | captcha_key | string \| null | 否 | 验证码 key |
 | content | string | 是 |  |
-| github | string \| null | 否 | 评论者 GitHub 用户名（可选） |
+| github | string \| null | 否 | 访客 GitHub 用户名（可选，只允许用户名形态，不接受 URL 与标记语言） |
 | hcaptcha_token | string \| null | 否 |  |
 | parent_id | integer \| null | 否 |  |
-| qq | string \| null | 否 | 评论者 QQ（可选） |
+| qq | string \| null | 否 | 访客 QQ 号（可选，5–11 位数字） |
 
 ```json
 {

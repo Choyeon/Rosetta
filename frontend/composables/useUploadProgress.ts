@@ -1,7 +1,9 @@
 /**
  * useUploadProgress —— 媒体库「带进度」上传队列（POST 到 <baseURL>/media/library）。
  * 刻意不用 apiFetch：ofetch 在浏览器端取不到 upload 进度，这里用 XMLHttpRequest 自己拼
- * Authorization + X-CSRF-Token（cookie `csrf_token`，后端双提交），401 刷新后只重试一次。
+ * Authorization（`X-CSRF-Token` 只在读得到 `csrf_token` cookie 时才带，见下面
+ * getCsrfTokenFromCookie 的口径——本站从不发这个 cookie，所以那条分支今天不触发），
+ * 401 刷新后只重试一次。
  * 上限与扩展名白名单只是客户端预筛（不承担安全职责）；上限跟站点设置
  * media.max_upload_size 走同一份值（见 resolveUploadLimitBytes），MAX_UPLOAD_BYTES 仅是缺省兜底；
  * 白名单跟 media.allowed_image_types / allowed_file_types 走同一份交集（见 resolveAllowedExtensions）。
@@ -135,6 +137,10 @@ export function validateUploadFiles(
 
 /** 从 cookie 中读取 csrf_token（与后端双提交校验配合；不存在则返回 null）。 */
 function getCsrfTokenFromCookie(): string | null {
+  // 这条读取今天恒返回 null：后端从不 `set_cookie`（登录态只在 Authorization 头里），
+  // 所以 `csrf_token` 这个 cookie 不存在，`require_csrf` 的 Cookie↔Header 比对分支
+  // 也就不触发。留着是因为一旦会话改成 cookie 形态，这里就是那个接线点——
+  // 判据由 `tests/test_csrf_wired_set.py` 钉（出现 set_cookie 就会红，逼着复评）。
   if (!import.meta.client) return null
   try {
     const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
@@ -161,7 +167,7 @@ function safeParseXhrError(xhr: XMLHttpRequest): string {
  * 媒体库带进度的上传 composable。
  *
  * apiFetch（ofetch）在浏览器端拿不到上传进度，因此这里改用 XMLHttpRequest：
- * - 手动携带 Authorization / X-CSRF-Token（双提交）
+ * - 手动携带 Authorization（`X-CSRF-Token` 见 getCsrfTokenFromCookie：条件成立才带）
  * - xhr.upload.onprogress 驱动队列项的 progress
  * - 401 时通过 auth store 刷新 token 并重试一次
  */

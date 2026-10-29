@@ -236,9 +236,12 @@ async def list_replies(
     summary="发表评论（游客或登录用户均可）",
     description=(
         "公开写入接口，支持对根评论的一层回复（parent_id 指向的评论必须属于同一篇文章）。"
-        "携带 Bearer Token（登录用户发帖）时强制执行 CSRF 校验：Origin 须在白名单且 "
-        "Cookie csrf_token 与 X-CSRF-Token 双提交一致，否则 403（CSRF_CHECK_FAILED）；"
-        "匿名请求不带 Authorization 时跳过该校验。"
+        "携带 Bearer Token（登录用户发帖）时走 `core/csrf.py::require_csrf`（per-route 依赖，"
+        "不是全局中间件）：带 `Origin` 头时必须命中白名单，否则 403（CSRF_CHECK_FAILED）；"
+        "不带 Origin（curl / 服务端调用）不拦。另有一条 Cookie csrf_token 与 X-CSRF-Token "
+        "的比对分支，**只在两个值同时存在时**才执行——本站从不发 cookie（登录态只在请求头里），"
+        "所以现在没有浏览器会带上它们，这条分支不触发；`X-CSRF-Token` 因此**不是本接口的必需请求头**。"
+        "匿名请求不带 Authorization 时整个校验跳过。"
         "文章不存在返回 404（POST_NOT_FOUND）。"
         "与读取口同口径：草稿/待审/定时未到的文章与未解锁的加密文章一律按 404 处理，"
         "不给草稿或加密文章写评论。"

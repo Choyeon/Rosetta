@@ -583,39 +583,43 @@ async def test_admin_comments_tabs_and_keyword_filters(client, admin_headers):
 
 
 @pytest.mark.asyncio
-async def test_csrf_bad_origin_with_bearer(client, admin_headers, monkeypatch):
-    """带 Bearer token：允许跨 origin，不走 CSRF origin 校验分支"""
-    headers = dict(admin_headers)
-    headers["Origin"] = "https://evil.com"
+async def test_get_with_hostile_origin_is_not_csrf_checked(client, admin_headers):
+    """GET 在 `_BYPASS_METHODS` 里：带恶意 Origin 的读口照常 200，不是被 CSRF 挡。
+
+    旧用例的 docstring 写的是"允许跨 origin，不走 CSRF origin 校验分支"，听着像一条
+    安全口径，但断言收 (200, 401, 403, 422) 四种 —— 403 恰好是"走了 CSRF 分支"的结果，
+    所以它无论行为怎么变都绿。这里把判据收窄成 200：读口不受 CSRF 层影响。
+    """
     r = await client.get(
-        "/api/admin/users?page=1&page_size=5", headers=headers, follow_redirects=True
+        "/api/admin/users?page=1&page_size=5",
+        headers={**admin_headers, "Origin": "https://evil.example"},
+        follow_redirects=True,
     )
-    assert r.status_code in (200, 401, 403, 422)
+    assert r.status_code == 200, f"GET 不该进 CSRF 校验：{r.status_code} {r.text[:200]}"
 
 
 @pytest.mark.asyncio
-async def test_csrf_token_mismatch(client, monkeypatch):
-    """无 Bearer，cookie 中有 session 但 X-CSRF-Token 错误 / 缺失 → 403"""
-    from backend.core.config import settings
+async def test_csrf_token_mismatch_without_bearer_is_not_rejected(client, test_post):
+    """匿名（无 Bearer）即便带着一对**互不相等**的 csrf_token cookie 与 X-CSRF-Token，也不会被 CSRF 拦。
 
-    # csrf_enabled 属性可能不存在，使用 getattr + hasattr 安全访问
-    if hasattr(settings, "csrf_enabled"):
-        monkeypatch.setattr(settings, "csrf_enabled", True)
-    cookies = {"csrftoken": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
-    # Cookie 走 header 而非 httpx 的 per-request ``cookies=``（该用法已废弃，
-    # 且会污染 client 的 cookie jar，影响后续用例）。
-    headers = {
-        "X-CSRF-Token": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-        "Cookie": "; ".join(f"{k}={v}" for k, v in cookies.items()),
-    }
-    # 使用 PATCH /api/users/me（写接口，避免 405）；405=路由未注册对应方法
-    r = await client.patch(
-        "/api/users/me",
-        json={"nickname": "x"},
-        headers=headers,
-        follow_redirects=True,
+    这条替旧用例说话：旧的那条打 `PATCH /api/users/me`（该口根本没有 PATCH，实测 405）、
+    cookie 名写成 `csrftoken`（`require_csrf` 读的是 `csrf_token`）、断言又收
+    200/401/403/405/422 五种，等于没断言；docstring 还教读者"token 不符 → 403"。
+    真实口径是 `require_csrf` **先看 Bearer**：没有登录态就没有 CSRF 环境，
+    整条依赖直接 return。带 Bearer 时的双提交语义在
+    `tests/test_csrf_wired_set.py::TestDoubleSubmitIsConditional`。
+    """
+    r = await client.post(
+        f"/api/posts/{test_post.id}/comments",
+        json={
+            "author_name": "CsrfProbe",
+            "content": "anonymous mismatched pair should not be csrf-blocked",
+        },
+        headers={"Cookie": "csrf_token=" + "a" * 40, "X-CSRF-Token": "b" * 40},
     )
-    assert r.status_code in (200, 401, 403, 405, 422)
+    assert "CSRF_CHECK_FAILED" not in r.text, (
+        f"匿名请求不该被 CSRF 挡（游客评论会被打死）：{r.status_code} {r.text[:200]}"
+    )
 
 
 @pytest.mark.asyncio
