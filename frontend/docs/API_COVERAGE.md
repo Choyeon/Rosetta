@@ -208,6 +208,12 @@
 
 ✅：`GET /activities`（pages/activity.vue 的 `useAPI('/activities')` + components/ActivitySidebarCard.vue 首页侧栏）、`POST /activities`（同页发布框 `publishActivity`）、`POST /activities/{id}/like`（同页 `likeActivity`）、`GET/POST /admin/activities`、`PUT/DELETE /admin/activities/{id}`（composables/useAdminManage.ts:1029–1048）
 ❌（1，**重复入口**）：`PUT /api/admin/activities/{activity_id}/toggle`（后台用 PUT 详情提交 `is_published`——再造一个按钮就是第二个真相来源）
+> 2026-10-29 补记：后台列表原本**没有**行内上下线开关，翻状态要"打开编辑弹窗 → 翻开关 → 保存"，
+> 而弹窗那次 PUT 必须把四语 `content` 原样带上（`ActivityBase.content` 必填）。批次 #49 给每一行补了
+> `Switch`，载荷是 partial update（只带 `is_published`，`ActivityUpdate` 三字段全可空 + `exclude_unset`，
+> 未提交的正文/类型保持原值）。这条口**仍然**不接：翻转在重试、双击、两个管理员并发时不收敛，
+> 显式写值幂等——幂等性与"只翻状态不写没正文"由 `tests/test_admin_activity_crud.py` 两条行为断言钉住，
+> 接线形状由 `tests/test_activity_frontend_contract.py::test_admin_row_switch_writes_the_explicit_value_not_the_flip` 钉住。
 > 2026-10-16 口径：点赞后端**只增不减、允许匿名**，与评论点赞同语义，所以按钮不做取消态、
 > 计数以 `refresh()` 拉服务端权威值（本页 swr 600 共享缓存，本地 +1 会与其它访客读数长期不一致）。
 > 发布框整块包 `<ClientOnly>`：`/activity` 是公开 SSR 缓存页，auth store 是 skipHydrate，

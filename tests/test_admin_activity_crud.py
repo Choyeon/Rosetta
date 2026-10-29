@@ -287,6 +287,79 @@ class TestActivityAdminCrud:
         assert r2.json()["is_published"] is True
 
     @pytest.mark.asyncio
+    async def test_flag_only_put_flips_publish_state_without_touching_content(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """后台行内开关的载荷形状：只发 `is_published` 必须是合法的 partial update。
+
+        这条是那个开关能不能存在的前提。`ActivityUpdate` 三个字段全可空 +
+        handler 用 `exclude_unset`，所以没提交的正文/类型保持原值；哪天给
+        `ActivityUpdate` 加了必填项，开关就会 422，而列表页的表现是"点了没反应"
+        ——接口红着，运营者只看到开关自己弹回去。
+        """
+        aid = (
+            await client.post(
+                "/api/admin/activities", headers=admin_headers, json=_payload("开关正文")
+            )
+        ).json()["id"]
+
+        off = await client.put(
+            f"/api/admin/activities/{aid}", headers=admin_headers, json={"is_published": False}
+        )
+        assert off.status_code == 200, off.text
+        assert off.json()["is_published"] is False
+        assert off.json()["content"]["zh"] == "开关正文", "只翻状态却把正文写没了"
+        assert off.json()["type"] == "say", "只翻状态却把类型写没了"
+
+        # 显式写值幂等：同一个值重放两次仍是那个值。这正是后台选它、
+        # 而不是选 PUT …/toggle 翻转口的理由（翻转载荷一次重放就得到相反状态）。
+        again = await client.put(
+            f"/api/admin/activities/{aid}", headers=admin_headers, json={"is_published": False}
+        )
+        assert again.status_code == 200, again.text
+        assert again.json()["is_published"] is False
+
+        # 强制点：下线即从公开时间线消失，上线即回来——开关的效果必须看得见
+        hidden = await client.get("/api/activities", params={"page_size": 50})
+        assert aid not in {i["id"] for i in hidden.json()["items"]}, "下线项仍在公开列表里"
+        await client.put(
+            f"/api/admin/activities/{aid}", headers=admin_headers, json={"is_published": True}
+        )
+        shown = await client.get("/api/activities", params={"page_size": 50})
+        assert aid in {i["id"] for i in shown.json()["items"]}, "上线项没有回到公开列表"
+
+    @pytest.mark.asyncio
+    async def test_flag_only_put_purges_frontend_page_cache(
+        self, client: AsyncClient, admin_headers: dict, monkeypatch
+    ):
+        """动态同时挂在首页侧栏卡片与 /activities 的 swr HTML 里。
+
+        purge 是 fire-and-forget：漏调用不会让接口变红，只会让已下线的动态
+        在 SWR 窗口内继续以旧 HTML 面向访客——开关"生效了"却又"没生效"。
+        """
+        from backend.api import activity as activity_api
+
+        calls: list[str] = []
+        monkeypatch.setattr(
+            activity_api,
+            "purge_frontend_page_cache",
+            lambda reason=None: calls.append(str(reason)),
+        )
+
+        aid = (
+            await client.post(
+                "/api/admin/activities", headers=admin_headers, json=_payload("清缓存")
+            )
+        ).json()["id"]
+        calls.clear()  # create 已经清过一次，这里只看开关那一次写入
+
+        r = await client.put(
+            f"/api/admin/activities/{aid}", headers=admin_headers, json={"is_published": False}
+        )
+        assert r.status_code == 200, r.text
+        assert len(calls) == 1, f"翻状态后没有清前台页面缓存：{calls}"
+
+    @pytest.mark.asyncio
     async def test_like_increments_count(self, client: AsyncClient, admin_headers: dict):
         aid = (
             await client.post("/api/admin/activities", headers=admin_headers, json=_payload())

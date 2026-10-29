@@ -22,6 +22,7 @@ REPO = Path(__file__).resolve().parents[1]
 PAGE = REPO / "frontend" / "pages" / "activity.vue"
 SIDEBAR = REPO / "frontend" / "components" / "ActivitySidebarCard.vue"
 ADMIN = REPO / "frontend" / "composables" / "useAdminManage.ts"
+ADMIN_PAGE = REPO / "frontend" / "pages" / "admin" / "interaction" / "activities.vue"
 SCHEMA = REPO / "backend" / "schemas" / "activity.py"
 COVERAGE_DOC = REPO / "frontend" / "docs" / "API_COVERAGE.md"
 
@@ -65,6 +66,32 @@ def _operations() -> set[str]:
 
 def _frontend_text(which: str) -> str:
     return {"page": PAGE, "admin": ADMIN, "sidebar": SIDEBAR}[which].read_text(encoding="utf-8")
+
+
+def _admin_page_text() -> str:
+    # 仓库混用 CRLF 与 LF：跨行 needle 必须先归一，否则永远匹配不到
+    return ADMIN_PAGE.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+def test_admin_row_switch_writes_the_explicit_value_not_the_flip():
+    """后台列表的行内上下线开关（批次 #49）。
+
+    此前这一族只有"打开编辑弹窗 → 翻开关 → 保存"一条路径，而正文是必填 i18n dict，
+    PUT 要把四个语言键原样带上；同族的公告页早就有行内开关。两个同类页面的操作成本
+    对不齐时，运营者会以为动态页的开关"坏了"（因为它藏在弹窗里）。
+    接线选 PUT 详情显式写值、而不是 `PUT …/toggle` 翻转口——理由见上面
+    ``INTENTIONALLY_UNUSED`` 的注释，幂等性由 test_admin_activity_crud 的行为断言钉。
+    """
+    text = _admin_page_text()
+    # 控件真的绑在行数据上，而不是弹窗里的 form.published
+    assert ':model-value="a.is_published"' in text
+    assert "togglePublished(a, $event)" in text
+    assert "updateAdminActivity(a.id, { is_published: checked })" in text
+    # 开关不做乐观更新：成功前不动本地状态，失败自动弹回原值
+    assert "const checked = ev === true" in text
+    # 翻转口仍然只有后端这一条，前端没有第二个真相来源
+    assert "/admin/activities/${id}/toggle" not in text
+    assert "/admin/activities/${id}/toggle" not in ADMIN.read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(("operation", "literal", "where"), FRONTEND_CONSUMED)

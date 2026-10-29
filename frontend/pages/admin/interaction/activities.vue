@@ -1,7 +1,9 @@
 <!--
-  动态/说说管理页：时间线样式列表 + Dialog 创建/编辑 + DangerConfirmDialog 删除。
+  动态/说说管理页：时间线样式列表 + 行内上下线开关 + Dialog 创建/编辑 + DangerConfirmDialog 删除。
   契约：后端 Activity 创建/更新为 extra=forbid，只能发 content（必填 i18n dict）/type/is_published（title/link 字段已不存在）；type 枚举须与 backend/schemas/activity.py 严格同步；
   行内 content 可能是 dict 或旧纯文本，展示/回填/提交必须经 getLocalizedStr/normalizeI18nDict/toI18nPayload 兼容处理。
+  行内开关发的是 PUT 详情的 partial update（只带 is_published，ActivityUpdate 三字段全可空 + exclude_unset），
+  不用 `PUT /admin/activities/{id}/toggle` 翻转口：翻转在重试/双击/两个管理员并发时不收敛，显式写值幂等。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -125,6 +127,11 @@
                 </Badge>
               </div>
               <div class="flex items-center gap-1 shrink-0">
+                <Switch
+                  :model-value="a.is_published"
+                  :aria-label="`发布到时间线：${displayField(a.content).slice(0, 12)}`"
+                  @update:model-value="togglePublished(a, $event)"
+                />
                 <Button
                   variant="ghost"
                   size="icon-sm"
@@ -466,12 +473,30 @@ async function submitForm() {
   }
 }
 
+/**
+ * 行内一键上下线。刻意走 PUT 详情显式写值，而不是 `PUT /admin/activities/{id}/toggle`
+ * 那条翻转口：翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），
+ * 显式写值幂等；两条口的缓存失效是同一个 `_invalidate_activity_caches`
+ * （后端 `activities:*` + Nitro 页面缓存），所以少清缓存也不是选它的理由。
+ * 开关绑 `:model-value` 而不是 v-model：请求成功前不动本地状态，
+ * 失败时开关自动停在原值（口径与公告页一致）。
+ */
+async function togglePublished(a: ActivityRow, ev: unknown) {
+  const checked = ev === true
+  try {
+    await updateAdminActivity(a.id, { is_published: checked })
+    toast.success(checked ? '已发布到时间线' : '已下线，前台时间线不再展示')
+    // activities 是 shallowRef，就地改元素属性不会触发渲染：整体替换该行的引用
+    activities.value = activities.value.map(x => (x.id === a.id ? { ...x, is_published: checked } : x))
+  } catch {
+    // 失败提示由 apiFetch 统一 toast；未做本地变更，开关自动保持原状态
+  }
+}
+
 function confirmDelete(a: ActivityRow) {
   deleteTarget.value = a
   deleteDialogOpen.value = true
-}
-
-async function doDelete() {
+}async function doDelete() {
   const target = deleteTarget.value
   if (!target?.id) throw new Error('未选择要删除的动态')
   // 抛错时 DangerConfirmDialog 保持打开并内联显示错误；toast 由 apiFetch 统一处理
