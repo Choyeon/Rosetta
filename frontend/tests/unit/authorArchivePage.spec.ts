@@ -48,6 +48,14 @@ describe('作者主页取数契约', () => {
     expect(page).toMatch(/getUTCFullYear\(\)/)
     expect(page).not.toMatch(/Intl\.DateTimeFormat/)
   })
+
+  it('canonical 钉到库里的用户名：后端查人不区分大小写，自指会放出无数重复页', () => {
+    // 线上实测 /authors/choyeon、/authors/CHOYEON 与 /authors/Choyeon 同内容同 200，
+    // 若 canonical 按请求路径自指，每个拼写都是可索引的重复页面。
+    expect(page).toMatch(
+      /url: computed\(\(\) => \(profile\.value\?\.username \? `\/authors\/\$\{profile\.value\.username\}` : ''\)\)/
+    )
+  })
 })
 
 /** noUncheckedIndexedAccess 下顶层段落索引结果可能 undefined，统一收口一次。 */
