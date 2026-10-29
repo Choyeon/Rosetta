@@ -1,10 +1,10 @@
-"""写入口的 500 闸门：每个 JSON 写端点都必须把"输入不对"判成 4xx，而不是把自己弄崩。
+"""写入口的 500 闸门：每个写端点（JSON 与 multipart）都必须把"输入不对"判成 4xx，而不是把自己弄崩。
 
-两轮判据（都由 OpenAPI 的 paths/requestBody 生成用例，新增端点自动进入巡检）：
+JSON 面先跑两轮（都由 OpenAPI 的 paths/requestBody 生成用例，新增端点自动进入巡检）：
 
-1. `TestEmptyBody` —— 空 body `{}` 打过去。合法期望 422/400/404/403，**500 是服务端自己的崩溃**。
+1. `test_empty_body_is_not_a_server_error` —— 空 body `{}` 打过去。合法期望 422/400/404/403，**500 是服务端自己的崩溃**。
    这一轮覆盖的是"路由接线 + 依赖解析 + 权限判定"这段公共代码。
-2. `TestSchemaBody` —— 按 requestBody 的 JSON Schema 现场合成一份"类型正确"的载荷再打。
+2. `test_synthesized_payload_is_not_a_server_error` —— 按 requestBody 的 JSON Schema 现场合成一份"类型正确"的载荷再打。
    空 body 会被 Pydantic 在校验层直接挡掉（压根进不到 handler），所以这一轮才真正走业务代码：
    崩点通常在"字段齐了以后继续往下"的那一行——关系取 None 后 `.id`、JSON 列按 dict 迭代、
    `int(None)`、枚举值落进 else 分支之前的裸访问。
@@ -13,8 +13,15 @@
 迁移/备份还原/OOBE 安装会改进程与库结构，插件与主题的安装扫描会读写磁盘与市场缓存，
 `cache/flush` 会清掉同批次其它用例正在依赖的缓存。它们各自有专门套件覆盖。
 
-最后一轮的"牙齿"断言（`TestSchemaBody.test_payload_generator_has_teeth`）是防这条守卫变成空壳：
+`TestMultipartSurfaceNever500` 补的是前两轮够不到的那条面（JSON 合成发不出文件，multipart
+端点只能整条排除）：上传口按四种"递错东西"的形态各打一次——按 JSON 打、真 multipart 但漏掉
+文件字段、扩展名/类型不对、名字与 MIME 合规但内容只有魔数的残缺图片。判据仍是"别 500"：
+最后那条是扩展名白名单先放行、解析器随后接住截断流的地方，也是本仓安全红线里
+"图片必须 Pillow verify"唯一能被接口面证明的形态。体积上限与 zip 解压炸弹另有套件，不在这里重复。
+
+最后一轮的"牙齿"断言（`TestWriteSurfaceNever500.test_payload_generator_has_teeth`）是防这条守卫变成空壳：
 如果合成的载荷全部被 422 挡在校验门外，前面那条 <500 就永远绿得毫无意义。
+multipart 四轮有同族的 `test_multipart_rounds_reach_handlers`。
 """
 
 import re
@@ -301,3 +308,167 @@ class TestWriteSurfaceNever500:
     def test_candidate_list_is_populated(self):
         """清单本身不能塌成空集——路由整体掉线时上面的参数化会静默变成 0 条。"""
         assert len(_EMPTY_CASES) > 120, f"写端点清单只有 {len(_EMPTY_CASES)} 条，疑似路由未挂载"
+
+
+# ---------------------------------------------------------------------------
+# multipart 写入口：上一批把这条面"声明性排除"了，而它恰恰是用户最容易递错东西的口子
+# ---------------------------------------------------------------------------
+
+
+def _is_file_field(schema: dict) -> bool:
+    """FastAPI 把 UploadFile 铺成 {type: string, contentMediaType: application/octet-stream}。"""
+    return _deref(schema).get("contentMediaType") == "application/octet-stream"
+
+
+def _multipart_operations() -> list[tuple[str, str, str, tuple[str, ...]]]:
+    """[(method, 已解析 URL, 文件字段名, 文本字段名)] —— OpenAPI 声明为 multipart 的写端点。
+
+    判据来自"文档里真的声明了 multipart"，不是猜文件名：哪天某个上传口改成手动 `Request.form()`
+    而不再声明，这条清单会缩水，由 `test_multipart_list_is_populated` 的下限把它喊回来。
+    """
+    rows: set[tuple[str, str, str, tuple[str, ...]]] = set()
+    for raw_path, operations in app.openapi()["paths"].items():
+        if any(fragment in raw_path for fragment in _SKIP_FRAGMENTS):
+            continue
+        for method, operation in operations.items():
+            if method not in WRITE_METHODS:
+                continue
+            media = operation.get("requestBody", {}).get("content", {})
+            schema = _deref(media.get("multipart/form-data", {}).get("schema", {}))
+            props = schema.get("properties") or {}
+            file_fields = [key for key, val in props.items() if _is_file_field(val)]
+            if not file_fields:
+                continue
+            text_fields = tuple(sorted(key for key in props if key not in file_fields))
+            rows.add((method.upper(), _resolve(raw_path), file_fields[0], text_fields))
+    return sorted(rows)
+
+
+_MULTIPART_CASES = _multipart_operations()
+# 一帧合法 PNG 的头 + 明显残缺的后续：扩展名与 MIME 都合规，只有内容检查（Pillow verify）挡得住。
+# 这一条是整轮里最可能把自己弄崩的输入——`ALLOWED_EXTENSIONS` 先放行，随后解析器拿到截断流。
+_CORRUPT_PNG = b"\x89PNG\r\n\x1a\n" + b"truncated-by-probe"
+_MULTIPART_STATUS_LOG: list[tuple[str, str, int]] = []
+
+
+class TestMultipartSurfaceNever500:
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method,url,file_field,text_fields",
+        _MULTIPART_CASES,
+        ids=[f"{m.lower()} {u}" for m, u, _f, _t in _MULTIPART_CASES],
+    )
+    async def test_json_body_on_a_multipart_endpoint_is_not_a_server_error(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        method: str,
+        url: str,
+        file_field: str,
+        text_fields: tuple[str, ...],
+    ):
+        """按 JSON 打一个声明为 multipart 的口子：形态不匹配是客户端的错，必须是 4xx。"""
+        response = await client.request(method, url, headers=admin_headers, json={})
+        _MULTIPART_STATUS_LOG.append((method, url, response.status_code))
+        assert response.status_code < 500, (
+            f"{method} {url} JSON body 返回 {response.status_code}：{response.text[:300]}"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method,url,file_field,text_fields",
+        _MULTIPART_CASES,
+        ids=[f"{m.lower()} {u} no-file" for m, u, _f, _t in _MULTIPART_CASES],
+    )
+    async def test_missing_file_is_not_a_server_error(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        method: str,
+        url: str,
+        file_field: str,
+        text_fields: tuple[str, ...],
+    ):
+        """真 multipart 表单、但漏掉必填文件字段：文本字段照常送，看 handler 有没有先读 file。"""
+        files = {"_probe_stray": ("stray.txt", b"", "text/plain")}
+        data = {name: "probe" for name in text_fields}
+        response = await client.request(method, url, headers=admin_headers, files=files, data=data)
+        _MULTIPART_STATUS_LOG.append((method, url, response.status_code))
+        assert response.status_code < 500, (
+            f"{method} {url} 缺 {file_field} 返回 {response.status_code}：{response.text[:300]}"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method,url,file_field,text_fields",
+        _MULTIPART_CASES,
+        ids=[f"{m.lower()} {u} wrong-type" for m, u, _f, _t in _MULTIPART_CASES],
+    )
+    async def test_wrong_type_file_is_not_a_server_error(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        method: str,
+        url: str,
+        file_field: str,
+        text_fields: tuple[str, ...],
+    ):
+        """递一个纯文本 .txt：白名单/解析器必须把它判成"不收"，而不是抛异常。"""
+        files = {
+            file_field: (
+                "probe.txt",
+                b"probe: not a media file, not a structured export",
+                "text/plain",
+            )
+        }
+        data = {name: "probe" for name in text_fields}
+        response = await client.request(method, url, headers=admin_headers, files=files, data=data)
+        _MULTIPART_STATUS_LOG.append((method, url, response.status_code))
+        assert response.status_code < 500, (
+            f"{method} {url} .txt 文件返回 {response.status_code}：{response.text[:300]}"
+        )
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method,url,file_field,text_fields",
+        _MULTIPART_CASES,
+        ids=[f"{m.lower()} {u} corrupt-image" for m, u, _f, _t in _MULTIPART_CASES],
+    )
+    async def test_corrupt_image_file_is_not_a_server_error(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        method: str,
+        url: str,
+        file_field: str,
+        text_fields: tuple[str, ...],
+    ):
+        """名字与 MIME 都合规、内容只有 PNG 魔数的残缺图片：扩展名放行后必须有内容级校验兜住。"""
+        files = {file_field: ("probe.png", _CORRUPT_PNG, "image/png")}
+        data = {name: "probe" for name in text_fields}
+        response = await client.request(method, url, headers=admin_headers, files=files, data=data)
+        _MULTIPART_STATUS_LOG.append((method, url, response.status_code))
+        assert response.status_code < 500, (
+            f"{method} {url} 残缺 PNG 返回 {response.status_code}：{response.text[:300]}"
+        )
+
+    def test_multipart_list_is_populated(self):
+        """清单不能塌成空集：本仓真实存在的上传/导入口远超下限。"""
+        assert len(_MULTIPART_CASES) >= 6, (
+            f"multipart 写端点只有 {len(_MULTIPART_CASES)} 条，疑似声明形态变化"
+        )
+
+    def test_multipart_rounds_reach_handlers(self):
+        """四轮的牙齿：至少要有一部分穿过形态校验进到业务代码，否则 <500 绿得没有意义。
+
+        下限取 8：每个端点四轮里只要有一轮真正被 handler 处理（解析图片 / 读 zip / 逐行导入），
+        这条守卫就在检业务崩溃点；全被 422 挡住意味着文件压根没送出去。
+        """
+        non_validation = [row for row in _MULTIPART_STATUS_LOG if row[2] != 422]
+        assert len(_MULTIPART_STATUS_LOG) >= len(_MULTIPART_CASES) * 4, (
+            f"只记录了 {len(_MULTIPART_STATUS_LOG)} 次响应，四轮没有跑满"
+        )
+        assert len(non_validation) >= 8, (
+            f"multipart 四轮里只有 {len(non_validation)}/{len(_MULTIPART_STATUS_LOG)} 条"
+            "穿过校验进到业务代码，这条守卫已失去检出能力"
+        )
