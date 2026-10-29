@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator
 
 from backend.schemas._url_policy import reject_pseudo_url_scheme as _reject_pseudo_url_scheme
+from backend.utils.compat import to_utc_instant
 
 MediaType = Literal["image", "video", "youtube"]
 TextAlign = Literal["left", "center", "right"]
@@ -47,6 +48,15 @@ class HeroSlideCreate(HeroSlideBase):
     def _reject_pseudo_scheme(cls, v: str | None) -> str | None:
         return _reject_pseudo_url_scheme(v)
 
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _fold_to_utc_instant(cls, v: datetime | None) -> datetime | None:
+        """朴素值直接进 `DateTime(timezone=True)` 会被 PG 按会话时区解释（实测偏 8 小时）。
+
+        口径与理由见 `backend/utils/compat.py::to_utc_instant`。
+        """
+        return to_utc_instant(v)
+
 
 class HeroSlideUpdate(BaseModel):
     """更新 Hero 幻灯片"""
@@ -74,6 +84,13 @@ class HeroSlideUpdate(BaseModel):
     @classmethod
     def _reject_pseudo_scheme(cls, v: str | None) -> str | None:
         return _reject_pseudo_url_scheme(v)
+
+    # PUT 是这条守卫唯一会漏的第二个写口：只改一侧时另一侧走 exclude_unset 不进模型，
+    # 但提交的那一侧仍必须是折算过的瞬时。
+    @field_validator("start_time", "end_time")
+    @classmethod
+    def _fold_to_utc_instant(cls, v: datetime | None) -> datetime | None:
+        return to_utc_instant(v)
 
 
 class HeroSlideResponse(HeroSlideBase):

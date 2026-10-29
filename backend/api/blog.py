@@ -1615,7 +1615,10 @@ async def update_post(
         else:
             post.scheduled_at = scheduled_at
     elif new_status == "scheduled" and scheduled_at is None and post.scheduled_at:
-        if post.scheduled_at <= datetime.now(UTC):
+        # 库里回读的旧值必须先补 tz：SQLite 把 `DateTime(timezone=True)` 读回成朴素 datetime，
+        # 朴素值直接和 `datetime.now(UTC)` 比会抛 TypeError → 500（作者看到"保存失败"，
+        # 而 PG 下读回是 aware，这条只在 SQLite 部署里炸）。
+        if _ensure_aware(post.scheduled_at) <= datetime.now(UTC):
             new_status = "published"
             update_data["status"] = "published"
     elif new_status == "published":

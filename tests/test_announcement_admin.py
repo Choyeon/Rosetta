@@ -139,13 +139,15 @@ def test_schema_treats_naive_datetime_as_utc_not_local():
     assert parsed.utcoffset() == timedelta(0), "补的必须是 UTC，不是本地偏移"
     assert parsed.hour == 10, "钟点不得被时区搬动"
 
-    # 带偏移的入参保持原瞬时，不被二次折算
+    # 带偏移的入参折算成 UTC：保住的是瞬时，不是那份表示
     aware = AnnouncementCreate(
         title="t", content="c", end_time="2026-09-29T10:00:00+08:00"
     ).end_time
     assert aware is not None
-    assert aware.utcoffset() == timedelta(hours=8)
-    assert aware.hour == 10
+    assert aware.utcoffset() == timedelta(0), "写入侧必须是 UTC 表示"
+    assert (aware.hour, aware.minute) == (2, 0), "10:00+08 与 02:00Z 是同一个瞬时"
+    # 这条不是洁癖：SQLite 的 DATETIME 绑定串不带偏移（实测 `2026-09-29 10:00:00+08:00`
+    # 落库就是 `10:00:00`），原样保留 +08 表示等于把瞬时往后挪 8 小时。
 
 
 @pytest.mark.asyncio

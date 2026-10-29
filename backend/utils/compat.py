@@ -5,7 +5,7 @@ UTC = timezone.utc
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["UTC", "ensure_aware", "parse_utc_date", "timedelta", "utc_now_naive"]
+__all__ = ["UTC", "ensure_aware", "parse_utc_date", "timedelta", "to_utc_instant", "utc_now_naive"]
 
 
 def ensure_aware(value: datetime | None) -> datetime | None:
@@ -15,10 +15,34 @@ def ensure_aware(value: datetime | None) -> datetime | None:
     丢弃读回 naive。拿 naive 去和 ``datetime.now(UTC)`` 比较直接抛 ``TypeError``——
     实测表现是登录锁定一旦落库，SQLite 部署下之后每次登录都 500，而"锁定到期
     自动解锁"那支同样走不到，账号等于永久锁死。
+
+    这是**读取/比对侧**的口径（不改动已经带 tz 的值）。要往库里写客户端给的时间，
+    用 :func:`to_utc_instant`。
     """
     if value is None or value.tzinfo is not None:
         return value
     return value.replace(tzinfo=UTC)
+
+
+def to_utc_instant(value: datetime | None) -> datetime | None:
+    """**写入侧**的单源口径：落库前折算成"带 UTC tzinfo 的瞬时"。
+
+    ``DateTime(timezone=True)`` 这一列在两种库里的失败方式不一样，而且都静默：
+
+    - PG 的 ``TIMESTAMPTZ`` 把**朴素值**按数据库会话时区解释，"2026-10-28T23:43:26"
+      在东八区会话下落成 15:43Z。线上探针实测偏 8 小时——偏移量取决于部署机器的
+      时区设置，换台机器就换一个数，谁都看不出来；
+    - SQLite 的驱动按**不含偏移**的格式串写入，**带非 UTC 偏移**的值会被吃掉偏移，
+      存进去的是那个时区的墙钟而不是同一个瞬时。
+
+    朴素补 UTC + 已 aware 的折算到 UTC，两边落下的才是同一个瞬时。前台
+    `frontend/lib/datetime.ts` 那句"后端把朴素 datetime 按 UTC 解释"说的就是这条契约。
+    """
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
 
 
 def utc_now_naive() -> datetime:

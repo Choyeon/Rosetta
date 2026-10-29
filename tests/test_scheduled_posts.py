@@ -223,3 +223,48 @@ def _spy(sink: list[str], name: str):
         sink.append(name)
 
     return _inner
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("fire_at_offset", "want_status"),
+    [
+        (timedelta(days=2), "scheduled"),
+        (timedelta(minutes=-30), "published"),
+    ],
+    ids=["not-yet-due", "already-due"],
+)
+async def test_put_status_only_compares_the_stored_schedule(
+    client, db_session, admin_user, admin_headers, fire_at_offset, want_status
+):
+    """只改 status（不带 scheduled_at）时，判"到点没到"只能拿库里的旧值比。
+
+    编辑器保存草稿时经常整份 PUT 却不带计划时间，这一支以前没人打：SQLite 把
+    `DateTime(timezone=True)` 读回成**朴素** datetime（列的 timezone 对它无效），
+    朴素值直接和 `datetime.now(UTC)` 比会抛
+    `can't compare offset-naive and offset-aware datetimes` → 500，作者看到的是
+    "保存失败"而不是任何一条有意义的提示。PG 下读回是 aware，所以这条只在
+    SQLite 部署（含 CI）里炸——正是 monkeypatch 判不了的那一类。
+    """
+    post = await _make_draft(db_session, admin_user)
+    post.slug = f"schedule-status-only-{want_status}"
+    post.status = "scheduled"
+    post.scheduled_at = datetime.now(UTC) + fire_at_offset
+    await db_session.commit()
+    # 必须真的回读一次：测试会话与端点共用同一条 SQLite 连接，不回读的话端点拿到的是
+    # 身份映射里那个"我刚才亲手写进去的 aware 对象"，朴素/带 tz 这条差异根本不会出现，
+    # 用例就成了假阴性（线上每个请求都是新会话，读到的就是库里的朴素串）。
+    await db_session.refresh(post)
+    assert post.scheduled_at.tzinfo is None, "SQLite 下这一列回读就是朴素值，前提变了要改用例"
+
+    response = await client.put(
+        f"/api/blog/posts/{post.id}",
+        json={"status": "scheduled"},
+        headers=admin_headers,
+    )
+    assert response.status_code == 200, response.text
+
+    await db_session.refresh(post)
+    assert post.status == want_status
+    if want_status == "scheduled":
+        assert post.scheduled_at is not None, "未到点的那一支不得把计划时间清空"

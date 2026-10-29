@@ -36,10 +36,9 @@ from backend.schemas.announcement import (
     AnnouncementCreate,
     AnnouncementResponse,
     AnnouncementUpdate,
-    ensure_utc,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
-from backend.utils.compat import UTC
+from backend.utils.compat import UTC, ensure_aware
 
 router = APIRouter(tags=["公告"])
 
@@ -72,12 +71,12 @@ def _validate_window(start_time: datetime | None, end_time: datetime | None) -> 
     只提交 end_time 时，`end <= start` 在 schema 层根本无从判断，而结果同样是
     "公告被存下来却永远不会下发"。合并库里的现值再判一次。
 
-    两端都必须先 `ensure_utc`：**SQLite 回读的是朴素 datetime**（列的
+    两端都必须先 `ensure_aware`：**SQLite 回读的是朴素 datetime**（列的
     `timezone=True` 对它无效），而入参已被 schema 补成带 tz 的 UTC，直接比会抛
     `can't compare offset-naive and offset-aware datetimes` → 500。
     """
-    start = ensure_utc(start_time)
-    end = ensure_utc(end_time)
+    start = ensure_aware(start_time)
+    end = ensure_aware(end_time)
     if start and end and end <= start:
         raise ValidationException(
             message="结束时间必须晚于开始时间",

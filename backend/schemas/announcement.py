@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from backend.utils.compat import UTC
+from backend.utils.compat import to_utc_instant
 
 AnnouncementType = Literal["info", "warning", "success", "error"]
 
@@ -16,19 +16,6 @@ AnnouncementType = Literal["info", "warning", "success", "error"]
 # 不加上限时管理员可以把整篇文章粘进来，SSR 首屏与公开接口响应体一起膨胀，
 # 而访客实际看到的只有前几个字。
 ANNOUNCEMENT_CONTENT_MAX_LENGTH = 2000
-
-
-def ensure_utc(value: datetime | None) -> datetime | None:
-    """朴素时间一律按 UTC 补齐 tzinfo（与 utils/compat.parse_utc_date 同口径）。
-
-    start_time / end_time 列是 `DateTime(timezone=True)`。若让朴素值直接入库，
-    SQLite 存成朴素串、PG 存成瞬时，而过滤时用的是 `datetime.now(UTC)`（带 tz），
-    跨库比对结果不一致；更糟的是"一端朴素一端带 tz"直接撞 TypeError → 500。
-    这里统一补 UTC，让比较永远有定义。
-    """
-    if value is None or value.tzinfo is not None:
-        return value
-    return value.replace(tzinfo=UTC)
 
 
 class AnnouncementBase(BaseModel):
@@ -51,7 +38,7 @@ class AnnouncementBase(BaseModel):
     @field_validator("start_time", "end_time", mode="after")
     @classmethod
     def _normalize_timezone(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
+        return to_utc_instant(value)
 
     @model_validator(mode="after")
     def _check_time_window(self):
@@ -87,7 +74,7 @@ class AnnouncementUpdate(BaseModel):
     @field_validator("start_time", "end_time", mode="after")
     @classmethod
     def _normalize_timezone(cls, value: datetime | None) -> datetime | None:
-        return ensure_utc(value)
+        return to_utc_instant(value)
 
     @model_validator(mode="after")
     def _check_time_window(self):

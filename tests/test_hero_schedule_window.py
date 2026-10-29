@@ -75,6 +75,57 @@ class TestSchemaDeclaresTheWindow:
             assert field in model.model_fields, f"{model.__name__} 缺 {field}"
 
 
+class TestWindowInstantIsDialectIndependent:
+    """写入口拿到的一律是 UTC 瞬时——这一条在 SQLite 上看不出来，只在 PG 上炸。
+
+    `start_time` / `end_time` 是 `DateTime(timezone=True)`：PG 的 TIMESTAMPTZ 会把**朴素值**
+    按数据库会话时区解释，于是同一句 "2026-10-28T23:43:26" 在东八区会话下落成 15:43Z
+    （线上探针实测偏 8 小时）；而 SQLite 原样存朴素串，读回再和 `datetime.now(UTC)` 比又是
+    另一回事。带非 UTC 偏移的入参在 SQLite 下更糟：驱动按无偏移格式串写入，偏移直接被吃掉，
+    存进去的是"当地墙钟"而不是那个瞬时。
+    所以口径必须是"进 ORM 的值永远 tz-aware 且已折算成 UTC"（`frontend/lib/datetime.ts` 里
+    写的"后端把朴素 datetime 按 UTC 解释"就是这条契约的前台侧）。口径的实现在
+    `utils/compat.py::to_utc_instant`（公告那一族先接上，hero 是漏的那一个）。
+    """
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("field", ["start_time", "end_time"])
+    @pytest.mark.parametrize("model_cls", [HeroSlideCreate, HeroSlideUpdate])
+    async def test_naive_input_becomes_utc_aware(self, model_cls, field):
+        naive = "2026-10-28T23:43:26"
+        value = getattr(model_cls(media_url="/media/x.jpg", **{field: naive}), field)
+        assert value is not None
+        assert value.tzinfo is not None, f"{model_cls.__name__}.{field} 把朴素值原样交给 ORM 了"
+        assert value.utcoffset() == timedelta(0)
+        assert (value.year, value.month, value.day, value.hour, value.minute) == (
+            2026,
+            10,
+            28,
+            23,
+            43,
+        ), "按 UTC 解释不等于把时间挪走"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("field", ["start_time", "end_time"])
+    @pytest.mark.parametrize("model_cls", [HeroSlideCreate, HeroSlideUpdate])
+    async def test_offset_input_is_folded_to_utc(self, model_cls, field):
+        """东八区的 07:43 与 UTC 的 23:43 是同一个瞬时，落库必须用后者那一份表示。"""
+        value = getattr(
+            model_cls(media_url="/media/x.jpg", **{field: "2026-10-28T23:43:26+00:00"}), field
+        )
+        shifted = getattr(
+            model_cls(media_url="/media/x.jpg", **{field: "2026-10-29T07:43:26+08:00"}), field
+        )
+        assert value is not None and shifted is not None
+        assert shifted == value, "带偏移的入参没有折算，SQLite 会把偏移吃掉存成当地墙钟"
+        assert shifted.utcoffset() == timedelta(0)
+
+    @pytest.mark.asyncio
+    async def test_clearing_still_works(self):
+        """显式 null 是"取消排期"的唯一入口，归一化不能把 None 变成 1970。"""
+        assert HeroSlideUpdate(start_time=None, end_time=None).start_time is None
+
+
 class TestInvertedWindowRejected:
     @pytest.mark.asyncio
     async def test_create_with_end_before_start_is_422(
