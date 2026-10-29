@@ -152,6 +152,13 @@
 ②无条件补 86400 会把 60s 热榜的软过期窗口撑成一整天。`no-store` 的后台/登录/搜索页与强缓存静态资源
 必须原样不动。
 
+**3xx 的 HTML 由同一个钩子强制 `no-store`**（`redirectHtmlCacheControl`，301/302/303/307/308；
+304 刻意排除）。这条是 2026-10-30 线上实测补上的：越界页码闸门在 `app:rendered` 里写的 `no-store`
+会被响应阶段的 routeRules 处理器整条覆写，`/posts?page=9999` 与 `/authors?page=9999` 实际回的是
+`public, max-age=0, s-maxage=…`——§2.2.2 承诺的"301 必须 no-store"此前在头这一层从未成立。
+页面侧改不动（它先跑），所以只能在最后一道 `beforeResponse` 归一里按状态码兜住；
+新增任何依赖"跳转不得被缓存"的页面时，不要再指望页面里的 `setHeader`。
+
 ### 2.3.1 动态子路由必须用目录式父页
 
 `pages/x.vue` 与 `pages/x/[id].vue` **不能并存**：前者会变成没有 `<NuxtPage>` outlet 的父路由，
