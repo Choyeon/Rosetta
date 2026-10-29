@@ -113,9 +113,13 @@ class TestDesignIsNotAMissingWire:
         self, client: AsyncClient, test_post
     ):
         """无 Bearer 直接放行是设计（跨站表单本来就能发无凭证请求）；这一层挡不住游客评论刷量，
-        挡它的是频控与敏感词过滤。把它改成 403 会连带打死所有游客评论。"""
+        挡它的是频控与敏感词过滤。把它改成 403 会连带打死所有游客评论。
+
+        打的是**挂着 CSRF 的那条创建口**（`POST /api/posts/{id}/comments`，comments.py:233），
+        不是 `/api/blog/posts/{id}/comments`——那条现在只剩读口，POST 会 405，什么都证明不了。
+        """
         resp = await client.post(
-            f"/api/blog/posts/{test_post.id}/comments",
+            f"/api/posts/{test_post.id}/comments",
             json={"author_name": "Visitor", "content": "csrf probe wording check"},
             headers={"Origin": "http://evil-csrf.example"},
         )
