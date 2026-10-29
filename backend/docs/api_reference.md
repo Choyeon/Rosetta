@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **353 个操作 / 281 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **354 个操作 / 282 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -2193,7 +2193,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/bing/wallpaper` | 获取每日 Bing 壁纸 |
 | `GET` | `/api/bing/wallpapers` | 获取最近多天的 Bing 壁纸列表 |
 
-### 评论（8）
+### 评论（9）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
@@ -2201,6 +2201,7 @@ API 实现了请求限流保护：
 | `POST` | `/api/admin/comments/{comment_id}/approve` | 【管理员】批准评论（legacy 子动作，建议统一使用 PATCH /api/admin/comments/{id} status=approved） |
 | `POST` | `/api/admin/comments/{comment_id}/reject` | 【管理员】拒绝评论（legacy 子动作） |
 | `POST` | `/api/admin/comments/{comment_id}/spam` | 【管理员】标记为垃圾评论（legacy 子动作） |
+| `DELETE` | `/api/comments/{comment_id}` | 删除自己的评论（作者本人，软删除进回收站） |
 | `POST` | `/api/comments/{comment_id}/like` | 给评论点赞（简单计数，允许匿名） |
 | `GET` | `/api/comments/{comment_id}/replies` | 获取某根评论的全部回复分页 |
 | `GET` | `/api/posts/{post_id_or_slug}/comments` | 获取某文章根评论分页（含前 3 条最新回复与 reply_total） |
