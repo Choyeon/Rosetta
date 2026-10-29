@@ -5,12 +5,9 @@
  * 同一个阅读器把一次更新算成两条，且 `features.enable_rss` 的开关只在 `/rss.xml`
  * 这一条链上生效——第二份正文迟早与它分叉。
  *
- * 301 本身可缓存，所以这里只发一个短静态缓存头，不让反代把它固定成一整天的软过期窗口
- * （切主题/改站点名与它无关，真正的内容在 `/rss.xml`）。
+ * 缓存由 `'/**'` 的 swr 规则统一套（对静态跳转目标无害）；handler 自己不再写
+ * Cache-Control —— swr 处理器会整条覆写它，写了也只是"文档承诺、运行时不算数"。
  */
-import { sendRedirect, setHeader } from 'h3'
+import { sendRedirect } from 'h3'
 
-export default defineEventHandler((event) => {
-  setHeader(event, 'cache-control', 'public, max-age=3600, s-maxage=3600')
-  return sendRedirect(event, '/rss.xml', 301)
-})
+export default defineEventHandler(event => sendRedirect(event, '/rss.xml', 301))

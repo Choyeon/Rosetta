@@ -59,6 +59,10 @@ function handlerHeader(source: string, name: string): string | null {
 }
 
 const routes = feedRoutes()
+/** 纯跳转别名不承载正文：swr / staleMaxAge / Content-Type 三条契约对它都不适用。 */
+const isRedirectAlias = (file: string) => /sendRedirect\(/.test(readFileSync(file, 'utf8'))
+const feedBodies = routes.filter(r => !isRedirectAlias(r.file))
+const redirectAliases = routes.filter(r => isRedirectAlias(r.file))
 const EXPECTED_STALE = '86400'
 
 describe('feed server-routes ⇔ routeRules 显式登记', () => {
@@ -78,7 +82,11 @@ describe('feed server-routes ⇔ routeRules 显式登记', () => {
     }
   })
 
-  for (const route of routes) {
+  it('跳转别名清单固定为 /feed（301 → /rss.xml，不产出正文）', () => {
+    expect(redirectAliases.map(r => r.path)).toEqual(['/feed'])
+  })
+
+  for (const route of feedBodies) {
     it(`${route.path} 的 swr 与 handler 的 s-maxage 同口径`, () => {
       const handler = readFileSync(route.file, 'utf8')
       const expected = handlerHeader(handler, 'cache-control')
