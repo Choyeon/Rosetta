@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import defer, selectinload
@@ -43,6 +43,7 @@ from backend.core.rate_limit import rate_limit_sensitive, rate_limit_write
 from backend.models.blog import Comment, Post, post_likes
 from backend.models.user import User, UserPreference
 from backend.schemas import (
+    AuthorDirectoryItem,
     BaseResponse,
     LoginRequest,
     PaginatedResponse,
@@ -839,6 +840,107 @@ def _profile_is_hidden(
     if current_user is not None and (current_user.id == user_id or current_user.is_staff):
         return False
     return True
+
+
+@router.get(
+    "/authors",
+    response_model=PaginatedResponse[AuthorDirectoryItem],
+    summary="作者目录（公开）",
+    description=(
+        "按公开文章数倒序返回站内作者，供前台 `/authors` 目录页消费，无需鉴权。"
+        "只统计**匿名可见**的已发布文章（`publicly_listable_posts`：published、非私密、"
+        "已到发布时间），所以计数与卡片点进去能看到的列表严格一致。"
+        "关闭「公开资料」或「显示文章列表」的用户不进目录：他们的主页对外按不存在处理"
+        "（见 `GET /users/username/{username}`），列进目录等于把「这个人存在、只是藏起来了」"
+        "念出来；停用账号同理。响应为裸分页 dict（items/total/page/page_size/total_pages）。"
+    ),
+)
+async def list_authors(
+    db: DB,
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(12, ge=1, le=100, description="每页数量"),
+):
+    """站内作者目录（公开只读）。
+
+    - **必须声明在 `/{user_id}` 之前**：FastAPI 按声明顺序匹配，"authors" 会先被
+      `/{user_id}` 的整数解析吃掉并回 422。
+    - 计数在 SQL 里 group by，只回 id + 计数 + 最近发布时间，正文级列一行都不拉；
+      第二段用 `selectinload(User.title)` 回源整行，避免逐行懒加载。
+    - `publicly_listable_posts()` 里含 Python 侧的"到点没有"判定，别改成 SQL `now()`（见
+      `services/post_access.py`）。
+    """
+    visible_posts = (
+        select(
+            Post.author_id.label("author_id"),
+            func.count(Post.id).label("post_count"),
+            func.max(Post.published_at).label("last_published_at"),
+        )
+        .where(publicly_listable_posts())
+        .group_by(Post.author_id)
+        .subquery()
+    )
+
+    base = (
+        select(
+            User.id,
+            visible_posts.c.post_count,
+            visible_posts.c.last_published_at,
+        )
+        .join(visible_posts, visible_posts.c.author_id == User.id)
+        .outerjoin(UserPreference, UserPreference.user_id == User.id)
+        .where(User.is_active.is_(True))
+        .where(
+            or_(
+                # 无偏好行按可见处理（与 UserPreference 建表默认一致）
+                UserPreference.id.is_(None),
+                and_(
+                    UserPreference.public_profile.is_(True),
+                    UserPreference.show_posts.is_(True),
+                ),
+            )
+        )
+    )
+
+    total = await db.scalar(select(func.count()).select_from(base.subquery())) or 0
+    rows = (
+        await db.execute(
+            base.order_by(visible_posts.c.post_count.desc(), User.username.asc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).all()
+
+    owners: dict[int, User] = {}
+    ids = [row.id for row in rows]
+    if ids:
+        result = await db.execute(
+            select(User)
+            .options(selectinload(User.title), defer(User.password_hash))
+            .where(User.id.in_(ids))
+        )
+        owners = {u.id: u for u in result.scalars().all()}
+
+    # resolved_avatar_url 不是 ORM 列，是头像代理链算出来的，必须手工回填（同 list_users）
+    from backend.services._avatar_helpers import resolved_for_user
+
+    items: list[AuthorDirectoryItem] = []
+    for row in rows:
+        owner = owners.get(row.id)
+        if owner is None:  # 两段查询之间被删：宁可少一个，也不回 500
+            continue
+        item = AuthorDirectoryItem.model_validate(owner)
+        item.resolved_avatar_url = resolved_for_user(owner)
+        item.post_count = int(row.post_count or 0)
+        item.last_published_at = row.last_published_at
+        items.append(item)
+
+    return PaginatedResponse[AuthorDirectoryItem](
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=math.ceil(total / page_size) if total > 0 else 0,
+    )
 
 
 @router.get(

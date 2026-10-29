@@ -625,6 +625,28 @@ class UserListItem(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AuthorDirectoryItem(BaseModel):
+    """作者目录投影（``GET /api/users/authors``，前台 `/authors` 页）。
+
+    与 ``UserListItem`` 的取舍同源（头像 / 昵称 / 头衔照搬），再加三项目录页真正要读的：
+    ``bio``（卡片摘要，Text 列）、``post_count``（**只算匿名可见的已发布文章**）与
+    ``last_published_at``（「最近更新」）。刻意不含 email / website / github / qq ——
+    目录不是名片墙，联系方式只留在作者主页（那里的字段集另有隐私开关兜底）。
+    """
+
+    id: int
+    username: str
+    nickname: str | None = None
+    avatar: str | None = None
+    resolved_avatar_url: str | None = None
+    title: "UserTitleResponse | None" = None
+    bio: str | None = None
+    post_count: int = 0
+    last_published_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class AdminUserListItem(UserListItem):
     """后台用户管理列表投影（``GET /api/admin/users``）。
 

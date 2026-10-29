@@ -119,10 +119,18 @@
           </div>
         </div>
 
-        <div class="inline-flex items-center gap-2 text-sm text-muted-foreground">
+        <div class="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
           <span class="inline-flex items-center justify-center rounded-full bg-muted px-3 py-1">
             {{ total }} {{ t('authors.posts', '篇文章') }}
           </span>
+          <!-- 目录页入口挂在这里而不是主导航：作者主页是"从一篇文章认识一个人"的终点，
+               往下逛的自然去处是"还有哪些人在写"；主导航再加一条会挤掉内容页的位置。 -->
+          <NuxtLink
+            :to="localeHref('/authors')"
+            class="inline-flex items-center justify-center rounded-full border border-border/60 px-3 py-1 transition-colors hover:text-primary hover:border-primary/40"
+          >
+            {{ t('authors.browseAll', '浏览全部作者') }}
+          </NuxtLink>
         </div>
       </div>
     </header>
@@ -253,6 +261,7 @@ const username = computed(() =>
 )
 const currentPage = ref(1)
 const site = useSite()
+const { localeHref } = useLocaleLink()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
 const pageSize = computed(() => site.reading.value.posts_per_page)
 

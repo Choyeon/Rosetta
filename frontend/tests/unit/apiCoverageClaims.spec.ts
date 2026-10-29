@@ -172,8 +172,10 @@ describe('…/{id}/toggle 一族：4 条口分两半，不得整族判成"刻意
 })
 
 describe('users 段：注销接入后手写清单与自动表必须同时改口', () => {
-  it('自动表 users 行确实从 17✅/5❌ 变成 18✅/4❌', () => {
-    expect(doc).toMatch(/\| users \| 22 \| 18 \| 0 \| 4 \|/)
+  // 18✅ 是注销（DELETE /me）那一轮；作者目录（GET /users/authors）接入后 +1 → 19✅ / 23 条。
+  // 这一行只许跟着生成器走：改接口或改接线后跑 gen_api_coverage.py --write，再同步这里。
+  it('自动表 users 行是 23 条 / 19✅ / 4❌', () => {
+    expect(doc).toMatch(/\| users \| 23 \| 19 \| 0 \| 4 \|/)
   })
 
   it('手写的 ❌ 清单不再把 DELETE /me 列为缺口', () => {

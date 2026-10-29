@@ -74,8 +74,9 @@ describe('作者主页可达性与文案', () => {
 
   it('四语 authors.* 键集合一致，且分页导航有 aria-label 文案', () => {
     const expected = [
+      'browseAll', 'directoryDesc', 'directoryEmpty', 'directoryTitle',
       'emptyTitle', 'eyebrow', 'github', 'joined',
-      'notFoundDesc', 'notFoundTitle', 'posts', 'website'
+      'notFoundDesc', 'notFoundTitle', 'posts', 'recent', 'website'
     ]
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
       const data = JSON.parse(

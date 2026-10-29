@@ -119,6 +119,10 @@ const siteLinks: SiteLink[] = [
     fallbacks: { zh: '友链', en: 'Friends', ja: 'フレンド', zh_Hant: '友站連結' }
   },
   {
+    labelKey: 'footer.authors', to: '/authors',
+    fallbacks: { zh: '作者', en: 'Authors', ja: '著者', zh_Hant: '作者' }
+  },
+  {
     labelKey: 'footer.hot', to: '/posts/hot',
     fallbacks: { zh: '热门榜单', en: 'Hot Ranking', ja: 'ホットランキング', zh_Hant: '熱門榜單' }
   },

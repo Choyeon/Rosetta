@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **361 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **362 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -113,7 +113,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 
 ---
 
-## 用户（22）
+## 用户（23）
 
 注册、登录、令牌刷新、个人资料与密码管理
 
@@ -145,6 +145,59 @@ _无路径 / query 参数_
 ```json
 {
   "items": [],
+  "page": 0,
+  "page_size": 0,
+  "total": 0,
+  "total_pages": 0
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `GET /api/users/authors`
+
+- **摘要**：作者目录（公开）
+- **鉴权**：公开接口（无需鉴权）
+
+按公开文章数倒序返回站内作者，供前台 `/authors` 目录页消费，无需鉴权。只统计**匿名可见**的已发布文章（`publicly_listable_posts`：published、非私密、已到发布时间），所以计数与卡片点进去能看到的列表严格一致。关闭「公开资料」或「显示文章列表」的用户不进目录：他们的主页对外按不存在处理（见 `GET /users/username/{username}`），列进目录等于把「这个人存在、只是藏起来了」念出来；停用账号同理。响应为裸分页 dict（items/total/page/page_size/total_pages）。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `PaginatedResponse_AuthorDirectoryItem_`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| items | object[] | 是 |  |
+| page | integer | 是 | 当前页码 |
+| page_size | integer | 是 | 每页大小 |
+| total | integer | 是 | 总记录数 |
+| total_pages | integer | 是 | 总页数 |
+
+响应示例：
+
+```json
+{
+  "items": [
+    {
+      "avatar": "string",
+      "bio": "string",
+      "id": 0,
+      "last_published_at": "string",
+      "nickname": "string",
+      "post_count": 0,
+      "resolved_avatar_url": "string",
+      "title": "string",
+      "username": "string"
+    }
+  ],
   "page": 0,
   "page_size": 0,
   "total": 0,
