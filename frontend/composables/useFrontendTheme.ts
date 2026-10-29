@@ -502,14 +502,20 @@ function clearThemeVisual() {
 }
 
 /**
- * ensureLoaded 的 in-flight 去重表：同一 Nuxt 实例（以 useState 返回的 ref 对象为键）
- * 内多个组件并发调用时共享同一请求。用 WeakMap 而非模块级单值，
- * 避免 SSR 跨请求串用彼此的 state。
+ * ensureLoaded 的 in-flight 去重表：**以 NuxtApp 实例为键**，全 app 共享一个请求。
+ *
+ * 键必须是 NuxtApp 而不是 useState 返回的 ref：Nuxt 的 useState 实现是
+ * `toRef(nuxtApp.payload.state, key)`，每次调用都新建一个 ObjectRefImpl 包装，
+ * 所以每个 useFrontendTheme() 调用方拿到的是**不同的对象**。以 ref 为键时去重表
+ * 只在同一个 composable 实例内命中——全站 10+ 个调用方等于 10+ 个独立键，首屏
+ * 每个调用方各发一条。实测首页（plugin + layouts/default + pages/index 三处
+ * 在 app:mounted 各排一次纠偏）稳定发出 3 条 GET /api/themes/active。
+ * 用 WeakMap 而非模块级单值，避免 SSR 跨请求串用彼此的 state。
  */
 const _ensureInflight = new WeakMap<object, Promise<FrontendThemeInfo>>()
 
 /**
- * 记录"本客户端会话内真正发过请求并验证过"的 state 引用。
+ * 记录"本客户端会话内真正发过请求并验证过"的 NuxtApp（同样不能用 ref 做键，见上）。
  * SSR payload hydrate 出来的 loaded=true 不算——公开页 HTML 可能来自 Nitro
  * SWR 缓存（'/' 300s，/archive 等最长 3600s），缓存窗口内后台可能已切换主题，
  * 若客户端无条件信任 hydrated 闩锁，页面会一直停留在旧主题直到缓存过期。
@@ -518,8 +524,8 @@ const _ensureInflight = new WeakMap<object, Promise<FrontendThemeInfo>>()
  */
 const _clientFetched = new WeakSet<object>()
 
-/** 客户端 app 是否已完成首帧挂载（仅纠偏调度用；SSR 恒为 false 不参与）。 */
-let _appMounted = false
+/** 已完成首帧挂载的客户端 app（仅纠偏调度用；SSR 恒不登记）。 */
+const _appMounted = new WeakSet<object>()
 
 /**
  * 【app 级唯一注册点】主题四件套（htmlAttrs / <link> / 颜色 token <style>）的响应式 head 入口。
@@ -643,7 +649,7 @@ export function useFrontendTheme() {
 
   /** 真实请求体：拉 /themes/active、写 state、应用颜色 token 与视觉层；并发调用共享 in-flight。 */
   function _startFetch(): Promise<FrontendThemeInfo> {
-    const running = _ensureInflight.get(state)
+    const running = _ensureInflight.get(nuxtApp)
     if (running) return running
     const task = (async (): Promise<FrontendThemeInfo> => {
       let data: JsonObject | null = null
@@ -729,21 +735,21 @@ export function useFrontendTheme() {
       }
 
       state.value.loaded = true
-      // 本实例已完成一次真实验证请求：同一客户端会话内后续 ensureLoaded 直接命中闩锁。
-      _clientFetched.add(state)
+      // 本 app 已完成一次真实验证请求：同一客户端会话内后续 ensureLoaded 直接命中闩锁。
+      _clientFetched.add(nuxtApp)
       applyThemeColorTokens(state.value.mods)
       applyThemeVisual(state.value.slug, state.value.version)
       return state.value
     })().finally(() => {
-      if (_ensureInflight.get(state) === task) _ensureInflight.delete(state)
+      if (_ensureInflight.get(nuxtApp) === task) _ensureInflight.delete(nuxtApp)
     })
-    _ensureInflight.set(state, task)
+    _ensureInflight.set(nuxtApp, task)
     return task
   }
 
   async function ensureLoaded(opts?: { force?: boolean }): Promise<FrontendThemeInfo> {
     if (state.value.loaded && !opts?.force) {
-      if (import.meta.client && !_clientFetched.has(state)) {
+      if (import.meta.client && !_clientFetched.has(nuxtApp)) {
         // Hydrate 自 SWR 缓存页面的 loaded=true 不可信（缓存窗口内后台可能已换主题）。
         // 纠偏请求必须推迟到首帧挂载完成后（app:mounted）再发：本函数会被
         // 01-site-bootstrap 插件在 mount 之前 await，若 setup 期直接发请求，响应可能
@@ -753,11 +759,11 @@ export function useFrontendTheme() {
         const fire = () => {
           _startFetch().catch(() => { /* 请求体内部已兜底 */ })
         }
-        if (_appMounted) {
+        if (_appMounted.has(nuxtApp)) {
           fire()
         } else {
           nuxtApp.hook('app:mounted', () => {
-            _appMounted = true
+            _appMounted.add(nuxtApp)
             fire()
           })
         }

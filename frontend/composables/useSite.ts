@@ -98,8 +98,18 @@ function readGroup<T extends Record<string, unknown>>(
   return fallback
 }
 
+/**
+ * ensureLoaded 的 in-flight 去重表（与 useFrontendTheme 同口径、同一个坑）：
+ * 键必须是 NuxtApp，不能是 useState 返回的 ref——Nuxt 的 useState 内部是
+ * `toRef(payload.state, key)`，每次调用都新建一个 ObjectRefImpl，跨调用方永不相等。
+ * 用 ref 做键时 plugin 01-site-bootstrap 与页面 setup 各发一次，实测 /login 上
+ * GET /api/config 出现过两条。WeakMap 而非模块级单值，保证 SSR 跨请求隔离。
+ */
+const _siteInflight = new WeakMap<object, Promise<UseSiteState>>()
+
 export function useSite() {
   const state = useStateRef()
+  const nuxtApp = useNuxtApp()
   const theme = useFrontendTheme()
   const themeOverrides = theme.override
 
@@ -444,53 +454,63 @@ export function useSite() {
   const ensureLoaded = async (opts?: { force?: boolean }): Promise<UseSiteState> => {
     if (state.value.loaded && !opts?.force) return state.value
 
-    await Promise.all([
-      (async () => {
-        try {
-          // 注意：这里必须用 apiFetch（Promise<T>），不能用 useAPI / useFetch 返回的
-          // AsyncData 对象——后者包含 .refresh / execute 等函数，塞到 payload state
-          // 里会让 devalue 抛出 "Cannot stringify a function"，导致 / 路由 500。
-          const cfg = await apiFetch<Record<string, unknown>>('/config', { method: 'GET' })
-          state.value.publicConfig = cfg && typeof cfg === 'object' && !Array.isArray(cfg)
-            ? (cfg as Record<string, unknown>)
-            : null
-        } catch { /* OOBE / backend unreachable → use defaults */ }
-      })(),
-      (async () => {
-        // ====== 走公开端点 GET /api/settings/public ======
-        // 旧的 GET /api/settings 是 admin-only：访客（含 SSR 匿名请求）必然 401，
-        // 结果是 hero / footer / notice 等管理员配置在前台永远读不到，
-        // 控制台还会刷一条 "Failed to load resource: 401"。
-        // 后端已提供脱敏后的公开子集，这里改用该端点，彻底消除 401。
-        try {
-          const raw = await apiFetch<{ groups?: AllSettingsGroups }>('/settings/public', {
-            method: 'GET'
-          })
-          if (raw && typeof raw === 'object' && raw.groups && typeof raw.groups === 'object') {
-            state.value.groups = raw.groups as UseSiteState['groups']
-          }
-        } catch (e) {
-          const status = (e as { status?: number })?.status ?? 0
-          console.debug('[useSite] /settings/public fetch skipped:', status || 'network')
-          /* OOBE / 后端不可达 → groups 保持空对象，computed 自动走 publicConfig 兜底 */
-        }
-      })(),
-      (async () => {
-        // ====== 主题 Customizer 预载 ======
-        // 与站点 settings 并行加载，保证 computed 派生时 override.*.value 已就绪；
-        // 失败则 theme 保持默认值，settings 继续兜底，用户永远不会看到空样式。
-        try {
-          await theme.ensureLoaded({ force: opts?.force })
-        } catch { /* ignore */ }
-      })()
-    ])
+    // 并发调用共享同一次拉取；force 也走这里——in-flight 那次本身就是刚发出的新请求。
+    const running = _siteInflight.get(nuxtApp)
+    if (running) return running
 
-    state.value.loaded = true
-    // 先应用 settings 默认 token；theme 显式覆盖的颜色在 theme.ensureLoaded 中会再 apply 一遍
-    // （比这里更晚），保证优先级顺序：theme > settings > CSS 定义。
-    applyAppearanceTokens()
-    theme.applyThemeColorTokens()
-    return state.value
+    const task = (async (): Promise<UseSiteState> => {
+      await Promise.all([
+        (async () => {
+          try {
+            // 注意：这里必须用 apiFetch（Promise<T>），不能用 useAPI / useFetch 返回的
+            // AsyncData 对象——后者包含 .refresh / execute 等函数，塞到 payload state
+            // 里会让 devalue 抛出 "Cannot stringify a function"，导致 / 路由 500。
+            const cfg = await apiFetch<Record<string, unknown>>('/config', { method: 'GET' })
+            state.value.publicConfig = cfg && typeof cfg === 'object' && !Array.isArray(cfg)
+              ? (cfg as Record<string, unknown>)
+              : null
+          } catch { /* OOBE / backend unreachable → use defaults */ }
+        })(),
+        (async () => {
+          // ====== 走公开端点 GET /api/settings/public ======
+          // 旧的 GET /api/settings 是 admin-only：访客（含 SSR 匿名请求）必然 401，
+          // 结果是 hero / footer / notice 等管理员配置在前台永远读不到，
+          // 控制台还会刷一条 "Failed to load resource: 401"。
+          // 后端已提供脱敏后的公开子集，这里改用该端点，彻底消除 401。
+          try {
+            const raw = await apiFetch<{ groups?: AllSettingsGroups }>('/settings/public', {
+              method: 'GET'
+            })
+            if (raw && typeof raw === 'object' && raw.groups && typeof raw.groups === 'object') {
+              state.value.groups = raw.groups as UseSiteState['groups']
+            }
+          } catch (e) {
+            const status = (e as { status?: number })?.status ?? 0
+            console.debug('[useSite] /settings/public fetch skipped:', status || 'network')
+            /* OOBE / 后端不可达 → groups 保持空对象，computed 自动走 publicConfig 兜底 */
+          }
+        })(),
+        (async () => {
+          // ====== 主题 Customizer 预载 ======
+          // 与站点 settings 并行加载，保证 computed 派生时 override.*.value 已就绪；
+          // 失败则 theme 保持默认值，settings 继续兜底，用户永远不会看到空样式。
+          try {
+            await theme.ensureLoaded({ force: opts?.force })
+          } catch { /* ignore */ }
+        })()
+      ])
+
+      state.value.loaded = true
+      // 先应用 settings 默认 token；theme 显式覆盖的颜色在 theme.ensureLoaded 中会再 apply 一遍
+      // （比这里更晚），保证优先级顺序：theme > settings > CSS 定义。
+      applyAppearanceTokens()
+      theme.applyThemeColorTokens()
+      return state.value
+    })().finally(() => {
+      if (_siteInflight.get(nuxtApp) === task) _siteInflight.delete(nuxtApp)
+    })
+    _siteInflight.set(nuxtApp, task)
+    return task
   }
 
   return {
