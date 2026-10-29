@@ -58,6 +58,69 @@
         class="mt-6 flex flex-col gap-5"
         @submit.prevent="saveProfile"
       >
+        <!-- 头像：与封面同一套「上传 → 暂存 → 随保存写入」口径。
+             「头像来源」里本来就有「自定义图片」这一档，但此前全站没有任何控件能给
+             User.avatar 赋值——选它就是一块首字母色块，等于给用户一个假开关。 -->
+        <div class="flex flex-col gap-2">
+          <Label for="profile-avatar">{{ t('account.fieldAvatar') }}</Label>
+          <div class="flex flex-wrap items-center gap-4">
+            <img
+              v-if="profile.avatar"
+              :src="profile.avatar"
+              :alt="t('account.fieldAvatar')"
+              class="size-16 shrink-0 rounded-full border object-cover"
+            >
+            <span
+              v-else
+              class="grid size-16 shrink-0 place-items-center rounded-full border text-center text-[11px] leading-tight text-muted-foreground"
+            >
+              {{ t('account.avatarNone') }}
+            </span>
+            <div class="flex flex-wrap items-center gap-3">
+              <input
+                id="profile-avatar"
+                ref="avatarInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                :disabled="savingProfile || avatarUploading"
+                @change="handleAvatarUpload"
+              >
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                :disabled="savingProfile || avatarUploading"
+                @click="avatarInput?.click()"
+              >
+                <LoaderCircle
+                  v-if="avatarUploading"
+                  data-icon="inline-start"
+                  class="animate-spin"
+                />
+                <ImagePlus
+                  v-else
+                  data-icon="inline-start"
+                />
+                {{ profile.avatar ? t('account.avatarReplace') : t('account.avatarUpload') }}
+              </Button>
+              <Button
+                v-if="profile.avatar"
+                type="button"
+                variant="ghost"
+                size="sm"
+                :disabled="savingProfile || avatarUploading"
+                @click="removeAvatar"
+              >
+                {{ t('account.avatarRemove') }}
+              </Button>
+            </div>
+          </div>
+          <p class="text-xs text-muted-foreground">
+            {{ t('account.fieldAvatarHint') }}
+          </p>
+        </div>
+
         <div class="flex flex-col gap-2">
           <Label for="profile-cover">{{ t('account.fieldCover') }}</Label>
           <div
@@ -512,7 +575,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { Switch } from '~~/components/ui/switch'
 import { Textarea } from '~~/components/ui/textarea'
 import { apiFetch, useAPI } from '~~/composables/useApi'
-import { useMediaUploadCover } from '~~/composables/useMedia'
+import { useMediaUploadAvatar, useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
 import { extractApiErrorList } from '~~/lib/utils'
@@ -536,6 +599,8 @@ interface ProfileForm {
   qq: string
   avatar_source: string
   cover_image: string
+  /** User.avatar 的原始值（自定义头像 URL）；回填时必须用 raw 列，不能拿 resolved_avatar_url */
+  avatar: string
 }
 
 // 上限与后端 UserUpdate 的 Field(max_length=...) 同口径，超了先在前端拦住，省一次 422 往返
@@ -558,12 +623,15 @@ const profile = reactive<ProfileForm>({
   github: '',
   qq: '',
   avatar_source: 'auto',
-  cover_image: ''
+  cover_image: '',
+  avatar: ''
 })
 const profileErrors = reactive<Record<string, string>>({})
 const savingProfile = ref(false)
 const coverInput = ref<HTMLInputElement | null>(null)
 const coverUploading = ref(false)
+const avatarInput = ref<HTMLInputElement | null>(null)
+const avatarUploading = ref(false)
 
 /** 首帧用 store 里已有的 /users/me 结果回填，避免表单先空一次再跳值 */
 function seedProfile() {
@@ -576,6 +644,9 @@ function seedProfile() {
   profile.qq = String(u.qq ?? '')
   profile.avatar_source = String(u.avatar_source ?? 'auto')
   profile.cover_image = String(u.cover_image ?? '')
+  // raw 列而非 resolved：resolved 是解析链算出来的直链（可能是 GitHub/QQ/Gravatar 地址），
+  // 回填它再保存就会把派生 URL 固化进自定义头像列。
+  profile.avatar = String(u.avatar ?? '')
 }
 seedProfile()
 watch(authUser, seedProfile)
@@ -611,6 +682,9 @@ async function saveProfile() {
         github: profile.github,
         qq: profile.qq,
         avatar_source: profile.avatar_source,
+        // 自定义头像与封面同口径：清空写 null（exclude_unset 下省略键 = 不动它，
+        // 写 '' 会留下一个读取侧按真值判定的空串）。
+        avatar: profile.avatar || null,
         // 清空必须写 null 而不是 ''：后端 model_dump(exclude_unset=True) 会把显式 null
         // 落成 SQL NULL，而 '' 会留下一个空字符串封面——读取侧按真值判断，
         // '' 是假值、null 也是假值，但只有 null 才是"没有封面"的真实存储形态。
@@ -625,6 +699,36 @@ async function saveProfile() {
   } finally {
     savingProfile.value = false
   }
+}
+
+/**
+ * 头像走 POST /media/avatar 拿 URL，同样随「保存资料」写入（不立刻写库）。
+ * 上传动作本身就代表「我要用这张图当头像」，所以顺手把来源切到 custom——
+ * 否则选了 QQ/GitHub 来源的用户上传后仍看不到自己的图，会以为上传失败。
+ */
+async function handleAvatarUpload(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  avatarUploading.value = true
+  try {
+    const res = await useMediaUploadAvatar(file)
+    if (res?.url) {
+      profile.avatar = res.url
+      profile.avatar_source = 'custom'
+    }
+  } catch {
+    // 上传失败提示由 apiFetch 统一 toast
+  } finally {
+    avatarUploading.value = false
+    input.value = ''
+  }
+}
+
+function removeAvatar() {
+  profile.avatar = ''
+  // 来源停在 custom 会得到一块首字母色块；回到 auto 才会继续按 QQ/GitHub 解析
+  if (profile.avatar_source === 'custom') profile.avatar_source = 'auto'
 }
 
 /** 封面走 POST /media/cover 拿 URL，再随「保存资料」一起写入：本卡片只有一个写入口。 */

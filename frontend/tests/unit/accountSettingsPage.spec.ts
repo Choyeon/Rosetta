@@ -14,6 +14,7 @@
  *   6. 四语 account.* 文案齐备；
  *   7. 注销（DELETE /users/me）：密码走请求体，成功必须 clearTokens 并离页，
  *      超管档不给表单（后端对 is_superuser 直接 403，让人填完密码才吃错不算守）。
+ *   8. 自定义头像：上传（POST /media/avatar）→ avatar 字段 → 来源切 custom → 同一写口保存。
  */
 
 import { readFileSync } from 'node:fs'
@@ -31,6 +32,7 @@ const NEW_KEYS = [
   'sectionPrivacy', 'sectionPrivacyHint',
   'sectionPassword', 'sectionPasswordHint',
   'fieldNickname', 'fieldBio', 'fieldWebsite', 'fieldGithub', 'fieldQq',
+  'fieldAvatar', 'fieldAvatarHint', 'avatarUpload', 'avatarReplace', 'avatarRemove', 'avatarNone',
   'fieldAvatarSource', 'fieldAvatarSourceHint',
   'avatarSourceAuto', 'avatarSourceCustom', 'avatarSourceGithub', 'avatarSourceQq', 'avatarSourceGravatar',
   'saveProfile', 'profileSaved', 'tooLong',
@@ -127,6 +129,21 @@ describe('账户设置 /account/settings', () => {
     for (const id of labelFor) {
       expect(page, `控件 id=${id} 缺失`).toContain(`id="${id}"`)
     }
+  })
+
+  it('自定义头像四段齐全：上传口 → avatar 字段 → 来源切 custom → raw 列回填', () => {
+    // 「头像来源」里本来就有 custom 一档，缺了这四段时它只是一块首字母色块
+    expect(page).toContain('useMediaUploadAvatar')
+    expect(page).toMatch(/const res = await useMediaUploadAvatar\(file\)/)
+    // 上传即代表想用这张图：不把来源切到 custom，选着 QQ 来源的用户会以为上传失败
+    expect(page).toMatch(/profile\.avatar = res\.url[\s\S]{0,120}profile\.avatar_source = 'custom'/)
+    // 移除后来源停在 custom 等于给用户一块空色块，回到 auto 才能继续按 QQ/GitHub 解析
+    expect(page).toMatch(/profile\.avatar = ''[\s\S]{0,160}profile\.avatar_source = 'auto'/)
+    // 写入走同一个资料写口（PUT /users/me），清空写 null
+    expect(page).toMatch(/avatar: profile\.avatar \|\| null/)
+    // 回填必须是 raw 列：拿 resolved_avatar_url 回填会把派生直链固化进自定义头像列
+    expect(page).toMatch(/profile\.avatar = String\(u\.avatar \?\? ''\)/)
+    expect(page).not.toMatch(/profile\.avatar = String\(u\.resolved_avatar_url/)
   })
 
   it('SPA 口径单源：页面不再写第二份 ssr:false，列表页给出入口', () => {
