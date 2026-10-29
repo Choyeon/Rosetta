@@ -219,3 +219,58 @@ describe('作者主页的 404 分支', () => {
     }
   })
 })
+
+/**
+ * 不存在态的面板必须有 h1。
+ *
+ * 实测（生产构建）：`/posts/<不存在>` 的 404 有 `<h1>页面不存在</h1>`（文章页的 h1 无条件
+ * 渲染，缺内容时文本换成 404 文案），而 `/series/<不存在>`、`/archive/1999/01`、`/tags/<不存在>`、
+ * `/categories/<不存在>` 的面板里一个 h1 都没有——面板只写了 `error.notFoundDesc` 一段说明，
+ * 标题层级从 h2/h5 起跳，读屏按标题跳转时拿不到"这一页是什么"。
+ * 系列页那处更隐蔽：用的是 `AlertTitle`，而它渲染的是 **h5**。
+ *
+ * 判据：在 not-found 分支的静态窗口内出现 `<h1`。窗口取"到下一个兄弟分支开头"，避免靠
+ * 猜字符数——每个面板的说明段长度都可能变。唯一例外是文章详情页：它的 h1 无条件渲染在
+ * 面板之前（保证 SSR → Hydrate 结构一致），缺内容时文本自己换成 404 文案，所以它要求
+ * "h1 在分支之前"而不是"在分支之内"。
+ */
+describe('不存在态的面板必须有 h1 标题', () => {
+  /** [页面, 分支判据, 'before' = h1 无条件渲染在分支之前] */
+  const PANELS: [string, string, 'before'?][] = [
+    ['pages/posts/[slug].vue', 'postNotFound', 'before'],
+    ['pages/categories/[slug].vue', 'catNotFound'],
+    ['pages/tags/[slug].vue', 'tagNotFound'],
+    ['pages/[slug].vue', 'pageNotFound'],
+    ['pages/page/[slug].vue', 'compatPageNotFound'],
+    ['pages/series/[slug].vue', 'seriesNotFound'],
+    ['pages/authors/[username].vue', 'notFound'],
+    ['pages/archive/[year]/[month].vue', 'monthNotFound'],
+    ['pages/archive/[year]/index.vue', 'yearNotFound']
+  ]
+
+  it('清单与 404 闸门页清单一一对应（新增一页必须同时登记）', () => {
+    expect(PANELS.map(([rel]) => rel).sort()).toEqual([...PAGES].sort())
+  })
+
+  it.each(PANELS)('%s 的 %s 面板里有 h1', (rel, marker, before) => {
+    const src = readFileSync(resolve(ROOT, rel), 'utf-8')
+    const markerAt = src.search(new RegExp(`v-(?:else-)?if="${marker}"`))
+    expect(markerAt, `${rel} 找不到 v-if="${marker}" 分支`).toBeGreaterThan(-1)
+    if (before) {
+      const h1Abs = src.indexOf('<h1')
+      expect(h1Abs, `${rel} 声明 h1 在分支之前无条件渲染，但文件里没有 h1`).toBeGreaterThan(-1)
+      expect(h1Abs, `${rel} 的 h1 落在分支之后，不再是"无条件渲染"`).toBeLessThan(markerAt)
+      return
+    }
+    // 只看分支之后的部分：页面正常态自己也有一个 h1，拿全文 indexOf 会取到它。
+    const branch = src.slice(markerAt)
+    const h1Rel = branch.indexOf('<h1')
+    // 下一个兄弟分支（<template v-else / v-if / v-else-if>）之前的范围就是本面板
+    const nextBranchAt = branch.slice(1).search(/<template\s+v-(?:else|if|else-if)=/)
+    const window = nextBranchAt > 0 ? nextBranchAt : 1200
+    expect(
+      h1Rel > 0 && h1Rel < window,
+      `${rel} 的 404 面板没有 h1（只有说明段），标题层级从 h2/h5 起跳`
+    ).toBe(true)
+  })
+})

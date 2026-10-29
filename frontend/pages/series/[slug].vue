@@ -39,10 +39,12 @@
 
       <template v-else-if="seriesNotFound">
         <Alert variant="default">
-          <AlertTitle class="flex items-center gap-2">
+          <!-- 用 h1 而不是 AlertTitle：这是 404 页面的唯一标题，而 AlertTitle 渲染的是 h5，
+               标题层级从 h5 起跳（读屏按标题跳转时拿不到页面主旨）。类名与 AlertTitle 一致。 -->
+          <h1 class="mb-1 flex items-center gap-2 font-medium leading-none tracking-tight">
             <AlertCircle class="size-4" />
             {{ t('series.notFoundTitle', '系列不存在') }}
-          </AlertTitle>
+          </h1>
           <AlertDescription class="mt-3 flex flex-wrap items-center justify-between gap-4">
             <span>{{ t('series.notFoundDesc', '该系列可能尚未发布或已被移除。') }}</span>
             <div class="flex items-center gap-2">
@@ -202,7 +204,7 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
 import { Skeleton } from '~~/components/ui/skeleton'
-import { Alert, AlertDescription, AlertTitle } from '~~/components/ui/alert'
+import { Alert, AlertDescription } from '~~/components/ui/alert'
 import { Button } from '~~/components/ui/button'
 import { AlertCircle, ArrowUpRight, CalendarDays, Eye, ListOrdered, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'

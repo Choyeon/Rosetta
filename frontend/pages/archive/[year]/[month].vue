@@ -20,7 +20,10 @@
         <div class="mb-4 inline-flex size-16 items-center justify-center rounded-2xl bg-muted">
           <CalendarDays class="size-8 text-muted-foreground" />
         </div>
-        <p class="text-sm text-muted-foreground">
+        <h1 class="font-display text-xl font-semibold">
+          {{ t('error.notFoundTitle') }}
+        </h1>
+        <p class="mt-2 text-sm text-muted-foreground">
           {{ t('error.notFoundDesc') }}
         </p>
         <div class="mt-6 flex flex-wrap items-center justify-center gap-3">

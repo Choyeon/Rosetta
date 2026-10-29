@@ -85,7 +85,10 @@
         <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
           <FolderOpen class="size-8 text-muted-foreground" />
         </div>
-        <p class="text-sm text-muted-foreground">
+        <h1 class="font-display text-xl font-semibold">
+          {{ t('error.notFoundTitle') }}
+        </h1>
+        <p class="mt-2 text-sm text-muted-foreground">
           {{ t('error.notFoundDesc') }}
         </p>
         <div class="mt-6 flex flex-wrap items-center justify-center gap-3">
