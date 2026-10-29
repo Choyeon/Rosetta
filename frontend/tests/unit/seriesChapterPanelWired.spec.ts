@@ -11,6 +11,8 @@
  *
  * 五条口径钉在这里：
  * 1. 面板必须真去读那个口，并且**按返回顺序渲染**——前端再排一次等于两处口径，改一处即分叉。
+ * 1b. 展开入口必须把**整行对象**传给处理函数：入参从 id 换成对象后漏改调用点，面板会对每个系列
+ *     都显示「已停用」（`s.is_active` 是 undefined），而接口一次都没被请求。
  * 2. 停用系列不能发请求：`GET /api/series/{slug}` 对 `is_active=false` 回 404，
  *    拿 apiFetch 打它会弹一条红色 toast，把"这条没在前台展示"报成故障。
  * 3. 后台卡片的 `posts_count` 来自 `GET /admin/series`，它数的是全部文章（含草稿、
@@ -55,6 +57,24 @@ describe('系列章节顺序面板 · 后台读到的是前台那一份顺序', 
     expect(panelCode).toContain('fetchSeriesChapters(s.slug)')
     expect(panelCode).toMatch(/fetchSeriesChapters,[\s\S]{0,60}type SeriesChapterRow[\s\S]{0,40}from '~~\/composables\/useAdminManage'/)
     expect(composable).toContain('export async function fetchSeriesChapters')
+  })
+
+  it('模板传给 AdminSeries 处理函数的是整行对象，不是 id', () => {
+    // #41 把 toggleExpand 的入参从 id 改成整行对象（要读 is_active 与 slug），模板两处调用点没跟着改。
+    // 类型上是 TS2345（生产门禁 06-typecheck 抓到）；运行时表现更难看：`s.is_active` 恒为 undefined，
+    // loadChapters 直接走 inactive 分支——运营点开**任何**系列都看到「系列已停用」，章节一次都不请求。
+    const declared = [
+      ...[...panelCode.matchAll(/function (\w+)[^\n]*?\(s: AdminSeries\)/g)].map(m => m[1]),
+      ...[...panelCode.matchAll(/const (\w+) = \(s: AdminSeries\)/g)].map(m => m[1])
+    ]
+    const handlers = [...new Set(declared)]
+    // 下限 4：签名整体改名/换成 id 时这条守卫会空转，必须先证明它真的收到了保护对象
+    expect(handlers.length).toBeGreaterThanOrEqual(4)
+    for (const fn of handlers) {
+      expect(panelCode, `${fn} 被传了 s.id`).not.toMatch(new RegExp(`${fn}\\(s\\.id\\)`))
+    }
+    // 两个展开入口（封面块与标题）都必须接上
+    expect(panelCode.match(/@click="toggleExpand\(s\)"/g)?.length).toBe(2)
   })
 
   it('按接口返回顺序渲染，前端不再排序（两处排序=两处口径）', () => {

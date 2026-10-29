@@ -326,7 +326,7 @@ onMounted(() => {
           >
             <div
               class="relative h-36 w-full overflow-hidden"
-              @click="toggleExpand(s.id)"
+              @click="toggleExpand(s)"
             >
               <img
                 v-if="s.cover_image"
@@ -354,7 +354,7 @@ onMounted(() => {
               <div class="flex items-start justify-between gap-2 mb-1.5">
                 <h3
                   class="font-semibold text-base leading-snug line-clamp-1 cursor-pointer hover:text-primary transition-colors"
-                  @click="toggleExpand(s.id)"
+                  @click="toggleExpand(s)"
                 >
                   {{ getLocalizedStr(s.name) }}
                 </h3>
