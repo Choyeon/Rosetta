@@ -279,9 +279,17 @@ const clearFilter = () => {
 
 /**
  * 可见标签 = 关键词过滤（本地化名称或 slug，忽略大小写）+ 排序。
- * 排序是纯函数（数量降序 → slug 字典序；按名称时先比名称），
- * 掺入随机或时间相关因子会让 SSR 与客户端顺序不同。
+ * 排序是纯函数（数量降序 → slug 字典序；按名称时先比名称）。
+ * 名称比较刻意不用 localeCompare：它按运行时的 ICU 排序规则走，Node（SSR）与浏览器
+ * 对「AI vs 安全」给出相反的顺序 —— 同一个 ?sort=name 链接在 SSR 里是 AI 在前、
+ * 交互一次后变成中文在前，列表会静默换序。码位比较两端逐字节一致。
  */
+const cmpText = (a: string, b: string): number => {
+  const x = a.toLowerCase()
+  const y = b.toLowerCase()
+  return x < y ? -1 : x > y ? 1 : 0
+}
+
 const visibleTags = computed<TagRow[]>(() => {
   const kw = filterQuery.value.trim().toLowerCase()
   const list = kw
@@ -290,12 +298,12 @@ const visibleTags = computed<TagRow[]>(() => {
     : [...tags.value]
   return list.sort((a, b) => {
     if (sortMode.value === 'name') {
-      const byName = tagName(a).localeCompare(tagName(b))
+      const byName = cmpText(tagName(a), tagName(b))
       if (byName !== 0) return byName
     }
     const d = tagPostsCount(b) - tagPostsCount(a)
     if (d !== 0) return d
-    return String(a.slug).localeCompare(String(b.slug))
+    return cmpText(String(a.slug), String(b.slug))
   })
 })
 
