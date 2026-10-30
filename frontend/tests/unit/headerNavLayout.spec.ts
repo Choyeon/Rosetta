@@ -33,7 +33,11 @@ describe('AppHeader 顶栏导航折叠', () => {
 
   it('溢出项收进「更多」，不允许回退成默认主题全量平铺', () => {
     expect(src).toMatch(/const primaryNavItems = computed\(\(\) => navItems\.value\.slice\(0, NAV_PRIMARY_MAX\.value\)\)/)
-    expect(src).toMatch(/const overflowNavItems = computed\(\(\) => navItems\.value\.slice\(NAV_PRIMARY_MAX\.value\)\)/)
+    // 溢出清单取自**展开后的全集**（flatNavItems）：折叠后的一级切片只到 NAV_PRIMARY_MAX 为止，
+    // 挂在一级项下面的二级项就会在 lg–2xl 之间没有任何入口（下拉是它们唯一的收纳口）。
+    const overflowBlock = src.match(/const overflowNavItems = computed\(\(\) => \{[\s\S]*?\n\}\)/)?.[0] ?? ''
+    expect(overflowBlock, '溢出清单没从展开表取，二级项会被顶栏切片吞掉').toContain('flatNavItems.value.filter')
+    expect(overflowBlock, '常驻段的闸门还得跟着 NAV_PRIMARY_MAX').toContain('primaryNavItems.value.map(item => item.to)')
     expect(src).toMatch(/<ClientOnly v-if="overflowNavItems\.length > 0">\s*<DropdownMenu>/)
   })
 

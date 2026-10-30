@@ -36,7 +36,7 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
-import { isNavActive, normalizeNavRowUrl, dedupeByTo, type NavApiRow } from '~~/lib/navigation'
+import { flattenNavLinks, isNavActive, navRowsToLinks, dedupeByTo, type NavApiRow, type NavLink } from '~~/lib/navigation'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
@@ -145,36 +145,32 @@ const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: s
 // URL 归一化与按 to 去重都在 lib/navigation.ts：页脚与侧边栏抽屉消费的是同一批
 // 历史形态（/page/<slug>、带尾斜杠、外链），两处各写一遍必然漂移。
 
-const navItems = computed(() => {
+const navItems = computed<NavLink[]>(() => {
   const _ = locale.value // 显式建立响应式依赖：语言切换 → 标签重新 pickNavStr
   const raw = navRowsRef.value
   if (!Array.isArray(raw) || raw.length === 0) return dedupeByTo(buildFallbackNav())
-  const out: { label: string, to: string, target?: string }[] = []
-  for (const row of raw) {
-    const labelRaw = row.label ?? row.title ?? row.name ?? ''
-    const label = pickNavStr(labelRaw as string | Record<string, string> | null | undefined, '')
-    if (!label) continue
-    const path = normalizeNavRowUrl(row)
-    if (!path) continue
-    // 外链判定只看 URL/类型：target_blank（NavigationResponse 的布尔字段）不再把内部页
-    // 踢出导航，而是按 WordPress 口径让该链接在新窗口打开。
-    const external = Boolean(row.is_external || row.link_type === 'external' || /^https?:\/\//i.test(path))
-    if (external) {
-      // 外链不进入 navItems（避免内部路由解析出错），前台 header 暂不渲染外链
-      continue
-    }
-    const target = row.target_blank === true || row.target === '_blank' ? '_blank' : undefined
-    out.push(target ? { label, to: path, target } : { label, to: path })
-  }
-  const base = out.length > 0 ? out : buildFallbackNav()
-  // Merge ensure: 若后端未配置友情/相册等关键路径，按 ENSURE_PRESENT 顺序补齐在末尾
+  // 行 → 链接（含 parent_id 两层折叠）的唯一构造点在 lib/navigation.ts。
+  // includeExternal: false —— 顶栏把链接交给 <NuxtLink :to>，外链会走内部路由解析；
+  // target_blank 按 WordPress 口径翻成 target="_blank"，不再把内部页踢出导航。
+  const nested = navRowsToLinks(
+    raw,
+    row => pickNavStr(row.label ?? row.title ?? row.name ?? '', ''),
+    { includeExternal: false }
+  )
+  const base = nested.length > 0 ? nested : dedupeByTo(buildFallbackNav())
+  // 补齐关键路由。「已存在」必须按展开后的全集判：子项同样在渲染面上
+  // （移动抽屉 / 侧边栏抽屉 / 页脚），只比一级会把菜单里已有的「关于」
+  // 再补一条到末尾 = 同一屏两条同链接。
+  const present = new Set(flattenNavLinks(base).map(item => item.to))
+  const merged = [...base]
   for (const req of ENSURE_PRESENT) {
-    if (base.some(x => x.to === req.to)) continue
+    if (present.has(req.to)) continue
+    present.add(req.to)
     const label = req.label()
     if (!label) continue
-    base.push({ label, to: req.to })
+    merged.push({ label, to: req.to })
   }
-  return dedupeByTo(base)
+  return merged
 })
 
 const isActive = (to: string) => {
@@ -193,11 +189,21 @@ const NAV_PRIMARY_MAX = computed(() => (isMinimalTheme.value ? 4 : 5))
 // 溢出项在 SSR HTML 里始终是真实 `<a>`（下拉里的只在展开时存在），平铺让桌面爬虫读到完整内链图。
 // 上限 12：按实测英文标签（最宽的一档）12 项约 944px，仍小于 2xl 下扣掉品牌与控件后的 ~1053px。
 const NAV_FLAT_MAX = 12
+// 展开后的全集（一级 + 子项，带 depth）。子项必须是真实 `<a>` 进 SSR：
+// 「更多」下拉是 ClientOnly，爬虫读不到——后台一挂 parent_id 就让那条内链从
+// 链接图里消失，等于把层级支持做成了 SEO 回退。
+const flatNavItems = computed(() => flattenNavLinks(navItems.value))
 const flatOverflowAtWide = computed(() =>
-  !isMinimalTheme.value && navItems.value.length <= NAV_FLAT_MAX
+  !isMinimalTheme.value && flatNavItems.value.length <= NAV_FLAT_MAX
 )
 const primaryNavItems = computed(() => navItems.value.slice(0, NAV_PRIMARY_MAX.value))
-const overflowNavItems = computed(() => navItems.value.slice(NAV_PRIMARY_MAX.value))
+// 顶栏永远是单行：超出闸门的一级项、以及所有子项一起算作溢出——
+// 宽屏按 flatNavItems 的顺序平铺，窄处整批收进「更多」下拉。
+// 两处都是同一批链接换位置，没有一项因为"没地方放"而消失。
+const overflowNavItems = computed(() => {
+  const visible = new Set(primaryNavItems.value.map(item => item.to))
+  return flatNavItems.value.filter(item => !visible.has(item.to))
+})
 const moreActive = computed(() => overflowNavItems.value.some(item => isActive(item.to)))
 
 /**
@@ -269,7 +275,10 @@ const handleSearchClick = () => go('/search')
           {{ item.label }}
         </NuxtLink>
 
-        <!-- 溢出导航（默认主题、条数在平铺闸门内）：2xl 起继续平铺，窄处交给下面的「更多」下拉 -->
+        <!-- 溢出导航（默认主题、总条数在平铺闸门内）：2xl 起继续平铺，窄处交给下面的「更多」下拉。
+             这一段遍历的是展开后的全集（含二级项），所以后台挂上 parent_id 之后，
+             爬虫在 SSR HTML 里仍读得到那条内链——下拉是 ClientOnly，不进 HTML，
+             把子项只放进下拉等于用「支持层级」换掉一整条内链。 -->
         <template v-if="flatOverflowAtWide">
           <NuxtLink
             v-for="item in overflowNavItems"
@@ -278,9 +287,11 @@ const handleSearchClick = () => go('/search')
             :target="item.target"
             :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
             data-navbar="link"
+            :data-depth="item.depth > 0 ? 1 : undefined"
             :aria-current="isActive(item.to) ? 'page' : undefined"
             :class="[
               'hidden shrink-0 whitespace-nowrap px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground 2xl:inline-flex',
+              item.depth > 0 ? 'pl-2 border-l border-border/60 rounded-l-none' : '',
               isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
             ]"
           >
@@ -293,7 +304,7 @@ const handleSearchClick = () => go('/search')
              与下方控件区同理必须 ClientOnly：reka-ui 的 DropdownMenu 服务端只渲染一个
              空注释占位，客户端却要渲染触发器 button，裸写进 SSR 会让整站每一页都报
              hydration node mismatch（server 是注释节点、client 是 Fragment）。
-             SEO 不受影响——溢出项在平铺档里本来就是真实 `<a>`（上面那段），
+             SEO 不受影响——溢出项与二级项在平铺档里本来就是真实 `<a>`（上面那段），
              爬虫读得到完整内链图。 -->
         <ClientOnly v-if="overflowNavItems.length > 0">
           <DropdownMenu>
@@ -326,7 +337,10 @@ const handleSearchClick = () => go('/search')
                   :to="localeHref(item.to)"
                   :target="item.target"
                   :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
-                  :class="isActive(item.to) ? 'font-semibold' : ''"
+                  :class="[
+                    item.depth > 0 ? 'pl-7' : '',
+                    isActive(item.to) ? 'font-semibold' : ''
+                  ]"
                 >
                   {{ item.label }}
                 </NuxtLink>
@@ -526,15 +540,18 @@ const handleSearchClick = () => go('/search')
                 :aria-label="t('common.titleMenu') || 'Menu'"
               >
                 <SheetClose
-                  v-for="item in navItems"
+                  v-for="item in flattenNavLinks(navItems)"
                   :key="item.to"
                   as-child
                 >
                   <NuxtLink
                     :to="localeHref(item.to)"
+                    :target="item.target"
+                    :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
                     :aria-current="isActive(item.to) ? 'page' : undefined"
                     :class="[
                       'px-3 py-2.5 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+                      item.depth > 0 ? 'pl-7' : '',
                       isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
                     ]"
                   >

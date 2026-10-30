@@ -11,6 +11,11 @@ export interface NavLink {
   label: string
   to: string
   target?: string
+  /**
+   * 二级菜单。后台 `parent_id` 指向本项的那些行；没有子项时这个键不存在
+   * （渲染面用 `v-if="item.children?.length"`，不要写成 `children.length`）。
+   */
+  children?: NavLink[]
 }
 
 /**
@@ -31,6 +36,8 @@ export interface NavApiRow {
   is_external?: boolean
   target?: string
   target_blank?: boolean
+  /** 父导航行 id（`NavigationResponse.parent_id`）。同一批返回里没有这个 id 时按顶层渲染。 */
+  parent_id?: number | string | null
 }
 
 export function isNavActive(currentPath: string, to: string): boolean {
@@ -85,21 +92,165 @@ export function dedupeByTo<T extends { to: string }>(arr: ReadonlyArray<T>): T[]
 }
 
 /**
- * 导航行 → 可渲染链接：标签取不到当前语言文案的行直接丢（空链接比缺链接更糟），
- * URL 走 normalizeNavRowUrl，外链保留原样。target_blank 不再参与判定（口径见 AppHeader）。
+ * 导航行 → 可渲染链接（顶栏 / 页脚 / 侧边栏抽屉同一个构造函数）。
+ * — 标签取不到当前语言文案的行直接丢（空链接比缺链接更糟）；URL 走 normalizeNavRowUrl。
+ * — `target_blank` 按 WordPress 口径翻译成 `target="_blank"`，不再参与"是否进导航"的判定。
+ * — `includeExternal: false`（顶栏用）把外链整行丢掉：顶栏把链接交给 `<NuxtLink :to>`，
+ *   外链会走内部路由解析；页脚/侧边栏保留原样透传。
+ * — `parent_id` 折叠成两层（见 nestNavRows）。
  */
 export function navRowsToLinks(
   rows: unknown,
-  labelOf: (row: NavApiRow) => string
+  labelOf: (row: NavApiRow) => string,
+  options: { includeExternal?: boolean } = {}
 ): NavLink[] {
   if (!Array.isArray(rows)) return []
-  const out: NavLink[] = []
+  const includeExternal = options.includeExternal ?? true
+  const flat: FlatNavRow[] = []
   for (const raw of rows as NavApiRow[]) {
     const label = labelOf(raw)
     if (!label) continue
     const to = normalizeNavRowUrl(raw)
     if (!to) continue
-    out.push({ label, to })
+    const external = /^https?:\/\//i.test(to) || raw.is_external === true || raw.link_type === 'external'
+    if (external && !includeExternal) continue
+    flat.push({
+      id: positiveId(raw.id),
+      parentId: positiveId(raw.parent_id),
+      link: isBlankTarget(raw) ? { label, to, target: '_blank' } : { label, to }
+    })
   }
-  return dedupeByTo(out)
+  return nestNavRows(flat)
+}
+
+interface FlatNavRow {
+  id: number | null
+  parentId: number | null
+  link: NavLink
+}
+
+/** `_blank` 的两种写法（布尔位 target_blank 与字符串 target）都要认。 */
+function isBlankTarget(row: NavApiRow): boolean {
+  return row.target_blank === true || row.target === '_blank'
+}
+
+/** 只有正整数 id 能参与父子匹配：0 / null / NaN / 字符串脏值一律当"没有 id"。 */
+function positiveId(value: unknown): number | null {
+  const n = Number(value)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+
+/** 上溯预算只用于防病态数据（渲染只给一档缩进，层级深浅另说）。 */
+const NAV_MAX_ANCESTRY_WALK = 20
+
+/**
+ * 上溯 parent_id 找本批里的根节点。
+ * 返回 null 的三种情况都必须把该项留在顶层，而不是丢掉它：
+ * 父行不在同一批（跨位置 / 已停用 / 已删除）、父行指向自己或成环、链太深。
+ */
+function findRoot(
+  row: FlatNavRow,
+  byId: Map<number, FlatNavRow>
+): FlatNavRow | null {
+  if (row.parentId == null) return null
+  let current = row
+  let depth = 0
+  const visited = new Set<number>()
+  for (;;) {
+    const parent = current.parentId == null ? undefined : byId.get(current.parentId)
+    if (!parent) break
+    if (parent.id != null && (visited.has(parent.id) || depth >= NAV_MAX_ANCESTRY_WALK)) return null
+    if (parent.id != null) visited.add(parent.id)
+    current = parent
+    depth += 1
+  }
+  return depth === 0 ? null : current
+}
+
+/**
+ * 把带 parent_id 的扁平行折叠成"父 + 子"两层。
+ *
+ * 后台能写 parent_id、列表也打「二级菜单」徽标，但四个渲染面此前一律平铺——
+ * 菜单层级只存在于后台表格里，属于「有声明、无执行者」。三条不丢链接的规则：
+ *   ① 先按 URL 去重再折叠：父行若因为重复被丢，它的子项会退回顶层（不会跟着一起消失）；
+ *   ② 父行不在同一批 / 自指 / 成环 / 超深 → 该项留在顶层；
+ *   ③ 第 2 层及更深的后代并进根的 children：渲染只给一档缩进，
+ *      宁可少一层视觉层级，也不让菜单项因为"没地方缩进"而消失。
+ */
+export function nestNavRows(rows: ReadonlyArray<FlatNavRow>): NavLink[] {
+  const unique: FlatNavRow[] = []
+  const seenTo = new Set<string>()
+  for (const row of rows) {
+    if (seenTo.has(row.link.to)) continue
+    seenTo.add(row.link.to)
+    unique.push(row)
+  }
+
+  const byId = new Map<number, FlatNavRow>()
+  for (const row of unique) {
+    if (row.id != null && !byId.has(row.id)) byId.set(row.id, row)
+  }
+
+  const roots: FlatNavRow[] = []
+  const childrenByRoot = new Map<FlatNavRow, NavLink[]>()
+  for (const row of unique) {
+    const root = findRoot(row, byId)
+    if (root) {
+      const bucket = childrenByRoot.get(root) ?? []
+      bucket.push(row.link)
+      childrenByRoot.set(root, bucket)
+      continue
+    }
+    roots.push(row)
+  }
+
+  return roots.map((rootRow) => {
+    const children = childrenByRoot.get(rootRow)
+    return children && children.length > 0 ? { ...rootRow.link, children } : rootRow.link
+  })
+}
+
+/**
+ * 去掉与另一份清单重复的链接。父项因为重复被摘掉时，子项上提一层而不是跟着消失——
+ * 侧边栏抽屉把 header 档和 sidebar 档分两节显示，同一 URL 只该出现一次，
+ * 但"父项正好也在上一节里"不该让整支子菜单一起不见了（缺入口比缺层级更糟）。
+ */
+export function withoutDuplicateTos(
+  links: ReadonlyArray<NavLink>,
+  taken: ReadonlySet<string>
+): NavLink[] {
+  const out: NavLink[] = []
+  for (const link of links) {
+    const children = link.children?.length ? withoutDuplicateTos(link.children, taken) : []
+    if (taken.has(link.to)) {
+      out.push(...children)
+      continue
+    }
+    const self: NavLink = { label: link.label, to: link.to }
+    if (link.target) self.target = link.target
+    out.push(children.length > 0 ? { ...self, children } : self)
+  }
+  return out
+}
+
+/** 带层级的平铺行：`depth` 0 = 顶层，1 = 二级（渲染面用它做一档缩进）。 */
+export interface NavListRow extends NavLink {
+  depth: number
+}
+
+/**
+ * 父在前、子紧随的平铺表（深度优先）。
+ * 抽屉 / 页脚 / 移动菜单用它而不是嵌套 `<ul>`：一档缩进就能表达两层，
+ * 且每个子项在 SSR HTML 里都是真实 `<a>`——爬虫读到的是完整内链图。
+ */
+export function flattenNavLinks(
+  links: ReadonlyArray<NavLink>,
+  depth = 0
+): NavListRow[] {
+  const out: NavListRow[] = []
+  for (const link of links) {
+    out.push({ ...link, depth })
+    if (link.children?.length) out.push(...flattenNavLinks(link.children, depth + 1))
+  }
+  return out
 }

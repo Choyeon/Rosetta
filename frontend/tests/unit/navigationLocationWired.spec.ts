@@ -87,10 +87,12 @@ describe('导航菜单位置（location）', () => {
   })
 
   it('页脚与侧边栏在两套骨架里都渲染（少一副就是换主题后菜单项消失）', () => {
+    // 遍历的是 flattenNavLinks(...)：二级项必须和父项一起进同一批循环，
+    // 否则"只渲染一级"会让挂在 parent_id 下的那一条在这两面彻底消失。
     const footer = read(resolve(ROOT, 'components/AppFooter.vue'))
-    expect([...footer.matchAll(/v-for="link in footerNavLinks"/g)].length).toBeGreaterThanOrEqual(2)
+    expect([...footer.matchAll(/v-for="link in flattenNavLinks\(footerNavLinks\)"/g)].length).toBeGreaterThanOrEqual(2)
     const sidebar = read(resolve(ROOT, 'components/SiteNavSidebar.vue'))
-    expect(sidebar).toContain('v-for="link in sidebarNavLinks"')
+    expect(sidebar).toContain('v-for="link in flattenNavLinks(sidebarNavLinks)"')
   })
 
   it('URL 归一化与去重只有一个来源，消费方不得各写一份', () => {

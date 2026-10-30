@@ -24,7 +24,7 @@ import {
   SheetClose
 } from '~~/components/ui/sheet'
 import { Separator } from '~~/components/ui/separator'
-import { isNavActive, navRowsToLinks, type NavApiRow, type NavLink } from '~~/lib/navigation'
+import { flattenNavLinks, isNavActive, navRowsToLinks, withoutDuplicateTos, type NavApiRow, type NavLink } from '~~/lib/navigation'
 import { pickLocalizedText } from '~~/composables/useI18nHelpers'
 
 const props = defineProps<{ items: NavLink[] }>()
@@ -54,9 +54,12 @@ const { data: sidebarNavRows } = useAPI<NavApiRow[]>('/navigations', {
 const sidebarNavLinks = computed<NavLink[]>(() => {
   // 抽屉上半段渲染的是注入的 header 档；同一 URL 在两档都配置时只显示一次，
   // 否则抽屉里会出现两条一模一样的入口（两个位置各渲染一份，去重只能在这一层做）。
-  const taken = new Set(props.items.map(item => item.to))
-  return navRowsToLinks(sidebarNavRows.value, row => pickLocalizedText(row.label ?? row.title ?? row.name, locale.value as string))
-    .filter(link => !taken.has(link.to))
+  // taken 要含 header 档的子项，且 sidebar 档里被摘掉的父项要把子项上提，不能整支消失。
+  const taken = new Set(flattenNavLinks(props.items).map(item => item.to))
+  return withoutDuplicateTos(
+    navRowsToLinks(sidebarNavRows.value, row => pickLocalizedText(row.label ?? row.title ?? row.name, locale.value as string)),
+    taken
+  )
 })
 
 const { data: catsData } = useAPI<CategoryRow[]>('/blog/categories', {
@@ -101,16 +104,18 @@ const catCount = (c: CategoryRow) => c.post_count ?? c.postsCount ?? 0
         :aria-label="t('nav.navigation') || 'Navigation'"
       >
         <SheetClose
-          v-for="item in items"
+          v-for="item in flattenNavLinks(items)"
           :key="item.to"
           as-child
         >
           <NuxtLink
             :to="localeHref(item.to)"
             :target="item.target"
+            :rel="item.target === '_blank' ? 'noopener noreferrer' : undefined"
             :aria-current="isNavActive(route.path, item.to) ? 'page' : undefined"
             :class="[
               'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+              item.depth > 0 ? 'pl-7' : '',
               isNavActive(route.path, item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
             ]"
           >
@@ -129,16 +134,18 @@ const catCount = (c: CategoryRow) => c.post_count ?? c.postsCount ?? 0
           :aria-label="t('nav.sidebarNav') || 'Sidebar'"
         >
           <SheetClose
-            v-for="link in sidebarNavLinks"
+            v-for="link in flattenNavLinks(sidebarNavLinks)"
             :key="`sidebar-${link.to}`"
             as-child
           >
             <NuxtLink
               :to="localeHref(link.to)"
               :target="link.target"
+              :rel="link.target === '_blank' ? 'noopener noreferrer' : undefined"
               :aria-current="isNavActive(route.path, link.to) ? 'page' : undefined"
               :class="[
                 'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+                link.depth > 0 ? 'pl-7' : '',
                 isNavActive(route.path, link.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
               ]"
             >

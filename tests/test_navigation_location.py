@@ -195,3 +195,103 @@ class TestNavigationLocationWrite:
             json={"title": {"zh": "Bad"}, "url": "/bad", "location": "navbar"},
         )
         assert r.status_code == 422, f"非法位置应当被 schema 拒掉：{r.status_code} {r.text[:200]}"
+
+
+@pytest.mark.asyncio
+class TestNavigationHierarchyPayload:
+    """二级菜单（parent_id）在公开口的可读前提。
+
+    后台能写 parent_id、`test_admin_nav_crud.py` 也测过三级链与删除提升，但那些都在管理面。
+    前台把两层折叠出来吃的是**公开口**的 payload，于是这三条是折叠规则的地基，
+    缺任何一条的表现都是"层级静默不生效"而不是报错：
+
+    ① 公开口必须回吐 `parent_id`——换成 schemas 里那个没有该字段的
+       `NavigationLocalizedResponse`、或加一层投影，写口照收、读口不回吐，
+       前端 `findRoot` 永远拿不到父级，二级项一律退化成平铺（同 AGENTS §9.1 的缺陷类）。
+    ② 父项停用时子项仍要在场：公开口的判据是**这一行自己** is_active，
+       前端把找不到父级的项留在顶层（缺层级可接受，缺入口是事故）。
+    ③ 父项在别的位置时同理——每一档的查询里没有父行，子项属于自己这一档。
+    """
+
+    async def _create(
+        self, client: AsyncClient, staff_headers: dict, title: str, url: str, **extra
+    ) -> dict:
+        r = await client.post(
+            "/api/navigations",
+            headers=staff_headers,
+            json={"title": {"zh": title}, "url": url, **extra},
+        )
+        assert r.status_code in (200, 201), r.text
+        return r.json()
+
+    async def test_public_rows_carry_parent_id_and_blank(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        parent = await self._create(
+            client, staff_headers, "HieRoot", "/hie-root", location="footer"
+        )
+        child = await self._create(
+            client,
+            staff_headers,
+            "HieChild",
+            "https://example.com/hie-child",
+            location="footer",
+            parent_id=parent["id"],
+            target_blank=True,
+        )
+        rows = (await client.get("/api/navigations", params={"location": "footer"})).json()
+        by_title = {str((r.get("title") or {}).get("zh")): r for r in rows}
+        assert {"HieRoot", "HieChild"} <= set(by_title), _titles_zh(rows)
+        # 折叠的输入：父级指向 + 新窗口位，两个键都必须在这一档的响应里
+        assert "parent_id" in by_title["HieChild"], "公开口没回吐 parent_id，前端无从折叠"
+        assert by_title["HieChild"]["parent_id"] == child["parent_id"] == parent["id"]
+        assert by_title["HieRoot"]["parent_id"] is None
+        assert by_title["HieChild"]["target_blank"] is True, "外链新窗口位在公开口丢了"
+
+    async def test_child_of_inactive_parent_stays_public(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        dead = await self._create(
+            client, staff_headers, "DeadRoot", "/dead-root", location="sidebar", is_active=False
+        )
+        kid = await self._create(
+            client, staff_headers, "LiveKid", "/live-kid", location="sidebar", parent_id=dead["id"]
+        )
+        rows = (await client.get("/api/navigations", params={"location": "sidebar"})).json()
+        titles = _titles_zh(rows)
+        assert "LiveKid" in titles, f"父项停用把子项一起带走了：{titles}"
+        assert "DeadRoot" not in titles, "停用项泄漏到公开口"
+        got = {str((r.get("title") or {}).get("zh")): r for r in rows}["LiveKid"]
+        # 子项仍然带着那个"本批里没有的父 id"：前端据此判定上溯取不到根 → 留在顶层
+        assert got["parent_id"] == dead["id"] == kid["parent_id"]
+
+    async def test_child_follows_its_own_location_not_the_parent(
+        self, client: AsyncClient, staff_headers: dict
+    ):
+        """父在 header、子在 footer：两档各自拿到自己那一行，谁也不被"父不在本批"带走。
+
+        这是后台父级候选只允许同位置的原因（`pages/admin/system/navigation.vue` 的
+        parentOptions 筛 `i.location === form.value.location`）——跨位置的关系展不开，
+        但按位置分档的读口必须仍然把子项回给它自己那一档。
+        """
+        parent = await self._create(
+            client, staff_headers, "XFaceRoot", "/xface-root", location="header"
+        )
+        kid = await self._create(
+            client,
+            staff_headers,
+            "XFaceKid",
+            "/xface-kid",
+            location="footer",
+            parent_id=parent["id"],
+        )
+        header_rows = _titles_zh(
+            (await client.get("/api/navigations", params={"location": "header"})).json()
+        )
+        footer_rows = (await client.get("/api/navigations", params={"location": "footer"})).json()
+        assert "XFaceRoot" in header_rows and "XFaceKid" not in header_rows
+        assert "XFaceKid" in _titles_zh(footer_rows), (
+            f"子项没回到自己那一档：{_titles_zh(footer_rows)}"
+        )
+        footer_by_title = {str((r.get("title") or {}).get("zh")): r for r in footer_rows}
+        assert footer_by_title["XFaceKid"]["parent_id"] == kid["parent_id"] == parent["id"]
