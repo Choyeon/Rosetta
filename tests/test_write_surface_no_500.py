@@ -74,6 +74,7 @@ _PARAM_SAMPLES = {
     "notification_id": "1",
     "page_id": "1",
     "photo_id": "1",
+    "placeholder_id": "1",
     "poll_id": "1",
     "post_id": "1",
     "post_id_or_slug": "1",
