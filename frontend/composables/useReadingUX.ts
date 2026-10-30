@@ -15,6 +15,8 @@
  * 需要幻灯片式的元素切换（有 outgoing + incoming）时，请在具体组件里显式声明 mode。
  */
 
+import { slugifyHeading } from '~~/lib/toc'
+
 /**
  * useScrollReveal：给带 .scroll-reveal 的元素加 IntersectionObserver
  * 用法：在 layout 或页面 onMounted 里调一次 useScrollReveal() 即可
@@ -124,20 +126,6 @@ export interface TocItem {
   _el?: Element | null
 }
 
-const slugify = (text: string, existing: Set<string>): string => {
-  let base = text
-    .toLowerCase()
-    .trim()
-    .replace(/[\s]+/g, '-')
-    .replace(/[^\p{Letter}\p{Number}-]/gu, '')
-  if (!base) base = 'section'
-  let id = base
-  let i = 1
-  while (existing.has(id)) id = `${base}-${++i}`
-  existing.add(id)
-  return id
-}
-
 export const extractTOC = (container: HTMLElement | null, maxLevel = 4): TocItem[] => {
   if (!container) return []
   const headings = container.querySelectorAll<HTMLHeadingElement>('h1, h2, h3, h4')
@@ -146,7 +134,7 @@ export const extractTOC = (container: HTMLElement | null, maxLevel = 4): TocItem
   headings.forEach((h) => {
     const level = Number(h.tagName[1]) as TocItem['level']
     // 超过「目录最大层级深度」的标题不进目录，但仍然拿到 id（锚点与滚动高亮要用）
-    if (!h.id) h.id = slugify(h.textContent || '', used)
+    if (!h.id) h.id = slugifyHeading(h.textContent || '', used)
     if (level > maxLevel) return
     items.push({
       id: h.id,

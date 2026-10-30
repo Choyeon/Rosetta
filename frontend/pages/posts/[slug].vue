@@ -277,6 +277,30 @@
             </div>
 
             <div v-show="!needPassword">
+              <!-- 窄屏目录：上一版只有 `hidden lg:block` 的右侧栏，手机读者拿不到任何章节入口。
+                   这里用原生 <details>（无 JS 也能展开），链接是真实 `#id` 锚点（id 由 SSR 写入），
+                   点按时再走 scroll-spy 的平滑滚动。 -->
+              <details
+                v-if="showToc && tocList.length"
+                class="lg:hidden mt-10 rounded-xl border border-border/60 bg-muted/30 px-4 py-3"
+              >
+                <summary class="flex cursor-pointer list-none items-center gap-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                  <List class="size-4" />
+                  {{ t('post.toc', '目录') }}
+                </summary>
+                <nav class="mt-3 flex flex-col gap-1">
+                  <a
+                    v-for="item in tocList"
+                    :key="item.id"
+                    :href="`#${item.id}`"
+                    class="block rounded-md px-2 py-1 text-sm leading-relaxed text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+                    :class="item.level >= 3 ? 'pl-6' : ''"
+                    @click.prevent="scrollTo(item.id)"
+                  >
+                    {{ item.text }}
+                  </a>
+                </nav>
+              </details>
               <article
                 v-show="!!post"
                 ref="articleEl"
@@ -860,12 +884,13 @@
               <List class="size-4" /> {{ t('post.toc', '目录') }}
             </h4>
             <nav
-              v-if="tocItems.length"
+              v-if="tocList.length"
               class="flex flex-col gap-1.5"
             >
-              <button
-                v-for="item in tocItems"
+              <a
+                v-for="item in tocList"
                 :key="item.id"
+                :href="`#${item.id}`"
                 class="block w-full text-left text-sm leading-relaxed transition-colors duration-[var(--motion-duration-fast)] rounded-md px-2.5 py-1.5 -mx-2.5"
                 :class="[
                   activeId === item.id
@@ -873,10 +898,10 @@
                     : 'text-muted-foreground hover:text-foreground hover:bg-accent/60',
                   item.level === 2 ? 'pl-2' : item.level === 3 ? 'pl-5' : item.level === 4 ? 'pl-8' : ''
                 ]"
-                @click="scrollTo(item.id)"
+                @click.prevent="scrollTo(item.id)"
               >
                 {{ item.text }}
-              </button>
+              </a>
             </nav>
             <p
               v-else
@@ -939,6 +964,7 @@ import CaptchaField from '~~/components/CaptchaField.vue'
 import PollCard from '~~/components/PollCard.vue'
 import { handlePostCoverError, postCoverUrl, postShareImage, POST_COVER_BANNER, POST_COVER_CARD } from '~~/lib/post-cover'
 import { stripDuplicateTitleHeading } from '~~/lib/markdown'
+import { annotateHeadings, type TocHeading } from '~~/lib/toc'
 import { useAuthStore } from '~~/stores/auth'
 import { useComments } from '~~/composables/useComments'
 import { usePolls, type Poll } from '~~/composables/usePolls'
@@ -1850,8 +1876,8 @@ const mdRenderer = new Marked(
   })
 )
 
-const renderedContent = computed(() => {
-  if (!post.value?.content) return ''
+const annotatedContent = computed(() => {
+  if (!post.value?.content) return { html: '', items: [] as TocHeading[] }
   let raw = normalizeMarkdownFences(pickLocalized(post.value.content))
   // 插件会在正文里追加 HTML 注释（seo-toolkit 的 JSON-LD 占位符就是一条）。
   // 注释在 HTML 里本来不可见，但 renderer.html 走的是转义分支，注释会被当作普通文本
@@ -1862,13 +1888,30 @@ const renderedContent = computed(() => {
   raw = stripDuplicateTitleHeading(raw, postTitle.value)
   try {
     const html = mdRenderer.parse(raw) as string
-    return DOMPurify.sanitize(html, hljsSanitizeConfig)
+    // 标题 id 在净化之后写入：净化的对象是渲染器产出的 HTML（原始 HTML 已被 renderer.html
+    // 转义），而 id 由 lib/toc 从纯文本严格推导，这里的插入面不引入新的可注入内容。
+    return annotateHeadings(
+      DOMPurify.sanitize(html, hljsSanitizeConfig),
+      site.reading.value.toc_depth
+    )
   } catch (e) {
     console.error('Markdown parse error:', e)
     const fallback = escapeHtml(raw)
-    return DOMPurify.sanitize(fallback, hljsSanitizeConfig)
+    return annotateHeadings(
+      DOMPurify.sanitize(fallback, hljsSanitizeConfig),
+      site.reading.value.toc_depth
+    )
   }
 })
+
+const renderedContent = computed(() => annotatedContent.value.html)
+const ssrTocItems = computed(() => annotatedContent.value.items)
+// 目录项有两个时点：SSR/hydrate 首帧只有 `ssrTocItems`（纯字符串推导），挂载后 `tocItems`
+// 由 scroll-spy 从真实 DOM 重取（多带 offsetTop）。两者内容必须一致，所以优先用后者、
+// 后者为空时回落到前者 —— 这样服务端吐出的目录与客户端接管后的目录是同一份清单。
+const tocList = computed<Array<TocItem | TocHeading>>(() =>
+  tocItems.value.length ? tocItems.value : ssrTocItems.value
+)
 
 const readingStats = computed(() => {
   const content = pickLocalized(post.value?.content)
