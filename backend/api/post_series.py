@@ -31,6 +31,7 @@ from backend.schemas.post_series import (
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import publicly_listable_posts
+from backend.services.post_cache import invalidate_series_chapter_caches
 from backend.utils.i18n_query import i18n_contains
 
 router = APIRouter(tags=["文章系列"])
@@ -316,6 +317,8 @@ async def update_series(
         or 0
     )
 
+    # 改名 / 改 slug 会改掉每篇章节详情缓存里的系列名与卡片链接，章节间还要按新序位重排
+    await invalidate_series_chapter_caches(db, [series.id])
     purge_frontend_page_cache("series update")
     return _to_response(series, post_count)
 
@@ -341,6 +344,9 @@ async def delete_series(
             detail="系列不存在",
         )
 
+    # 必须在删行之前清：删除后章节的 series_id 被置空，这个 SELECT 就找不回要失效的 slug。
+    # 漏清的后果是停用/删除后的 600s 内，每篇章节的卡片还在链一个已经 404 的系列页。
+    await invalidate_series_chapter_caches(db, [series.id])
     await db.delete(series)
     purge_frontend_page_cache("series delete")
     return BaseResponse(message="系列已删除")
@@ -376,6 +382,8 @@ async def toggle_series(
         or 0
     )
 
+    # 停用后详情里的 series 简报要整体消失（系列页转 404），启用则要重新出现
+    await invalidate_series_chapter_caches(db, [series.id])
     purge_frontend_page_cache("series toggle")
     return _to_response(series, post_count)
 

@@ -54,6 +54,28 @@ async def invalidate_post_caches_by_slugs(slugs: Iterable[str]) -> None:
     purge_frontend_page_cache("post detail caches by slugs")
 
 
+async def invalidate_series_chapter_caches(db: AsyncSession, series_ids: Iterable[int]) -> int:
+    """失效这些系列下**全部章节**的详情缓存，返回删除的键数。
+
+    详情响应里嵌着 series 简报（系列 title/slug/post_count + 本篇 position 与 prev/next），
+    它属于整个系列而不是某一篇：系列改名 / 停用 / 删除，或者增删、重排章节，都会让
+    **其它章节**缓存里的「第 N 章」和上下章链接失真（``CACHE_TTL["post_detail"]`` 是 600s）。
+    停用与删除系列更糟——卡片仍链到 ``/series/<slug>``，而那张页面已经 404，
+    正是批次 #74 卡片口径要挡的形态。
+
+    删除系列时必须在 ``db.delete(series)`` **之前**调用：删完后章节的 series_id 已被
+    置空（或行已消失），再查就找不到要清的 slug。
+    """
+    ids = {sid for sid in series_ids if sid}
+    if not ids:
+        return 0
+    rows = await db.execute(select(Post.slug).where(Post.series_id.in_(ids)))
+    slugs = list(rows.scalars().all())
+    if not slugs:
+        return 0
+    return await invalidate_post_detail_cache(*slugs)
+
+
 async def invalidate_post_caches_by_ids(db: AsyncSession, post_ids: Iterable[int]) -> None:
     """按文章 ID 反查 slug 后失效展示缓存。
 

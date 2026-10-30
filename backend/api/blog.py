@@ -61,6 +61,7 @@ from backend.services.post_access import (
 from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
     invalidate_post_caches_by_slugs,
+    invalidate_series_chapter_caches,
 )
 from backend.services.post_revision import (
     has_content_change,
@@ -1523,6 +1524,11 @@ async def create_post(
         await db.flush()
         await db.refresh(post)
 
+    # 新章节直接进公开目录：同系列其它篇缓存里的 post_count 与 prev/next 当场失真。
+    # 草稿 / 定时稿不算进目录，多清一次只是多一次 SELECT；漏清则是 600s 内卡片章数少一篇。
+    if post.series_id:
+        await invalidate_series_chapter_caches(db, {post.series_id})
+
     await invalidate_cache("posts")
     await invalidate_post_aggregate_caches()
 
@@ -1578,6 +1584,8 @@ async def batch_update_post_status(
 
     for post in posts:
         await invalidate_post_detail_cache(post.slug)
+    # 批量发布/转草稿会把章节整批送进或带出公开目录，同系列其余章节的序号与上下章跟着变
+    await invalidate_series_chapter_caches(db, {post.series_id for post in posts})
     await invalidate_cache("posts")
     await invalidate_post_aggregate_caches()
     # 与单篇 update_post 同构发钩子：批量路径原先静默，导致 Webhook/插件监听只在
@@ -1633,6 +1641,8 @@ async def update_post(
     previous_status = post.status
     # 详情缓存键含 slug：改名后旧 slug 的键必须还能清掉，所以先把改名前的 slug 存下来
     previous_slug = post.slug
+    # 换系列 / 改序位都会让对方系列的章节简报失真，改之前的归属也要留着一起清
+    previous_series_id = post.series_id
 
     update_data = post_data.model_dump(
         exclude_unset=True, exclude={"tag_ids", "password", "view_password"}
@@ -1722,6 +1732,9 @@ async def update_post(
     # 详情缓存按 post:{slug}:{language} 分语言写入（见 get_post），只删当前请求语言会让
     # 其余语言最长 600s 返回旧内容；改名时旧 slug 的键同样要清，故一并传入。
     await invalidate_post_detail_cache(previous_slug, post.slug)
+    # 这篇的序号/状态/发布时刻一变，同系列其它章节缓存里的「第 N 章」与 prev/next 就过期了；
+    # 换系列时新老两个系列的章节都要清。详情缓存的 TTL 是 600s，不主动清就是十分钟的错位。
+    await invalidate_series_chapter_caches(db, {previous_series_id, post.series_id})
     await invalidate_cache("posts")
     await invalidate_post_aggregate_caches()
 
@@ -1784,6 +1797,7 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
 
     # slug 要在删除前取：db.delete 后实例已过期，再读属性会对已删行发出 SELECT
     deleted_slug = post.slug
+    deleted_series_id = post.series_id
     # 与批删（advanced.py batch action=delete）同构：先落回收站快照再删原行，
     # 否则单删是物理删除、批删可恢复——同一入口两种语义，用户数据会真丢。
     trash_item = TrashItem(
@@ -1806,6 +1820,9 @@ async def delete_post(post_id: int, current_user: CurrentStaff, db: DB):
         auto_delete_at=datetime.now(UTC) + timedelta(days=TRASH_RETENTION_DAYS),
     )
     db.add(trash_item)
+    # 删章节等于从系列目录里摘掉一行：同系列其它章节的序号与 prev/next 要重算，
+    # 所以先按系列清（此时本篇还在，一并清掉也无妨），再删行。
+    await invalidate_series_chapter_caches(db, {deleted_series_id})
     await db.delete(post)
     # 详情缓存独立于 posts 前缀：不清的话删除后 600s 内匿名 GET /posts/{slug} 仍返回旧正文
     await invalidate_post_detail_cache(deleted_slug)

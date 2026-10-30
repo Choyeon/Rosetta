@@ -32,6 +32,7 @@ from backend.services.post_cache import (
     invalidate_post_aggregate_caches,
     invalidate_post_caches_by_ids,
     invalidate_post_caches_by_slugs,
+    invalidate_series_chapter_caches,
 )
 from backend.services.post_revision import snapshot_post_revision
 from backend.services.trash import TRASH_RETENTION_DAYS
@@ -489,6 +490,8 @@ async def batch_action_posts(
     changed_posts: list[Post] = []
     # slug 要在任何删除动作之前采集：db.delete + flush 之后再读属性会对已删行发 SELECT
     affected_slugs = [post.slug for post in posts]
+    # 批量发布/转草稿/删除会改动这些文章的系列归属状态，同系列其它章节的序号与上下章跟着变
+    affected_series_ids = {post.series_id for post in posts}
 
     if request.action == "publish":
         for post in posts:
@@ -606,6 +609,8 @@ async def batch_action_posts(
     # 逐 slug/语言的 post:{slug}:{lang}，两层都要清，否则转草稿/删除的文章会继续对外可见。
     await invalidate_cache("posts")
     await invalidate_post_detail_cache(*affected_slugs)
+    # 章节集合变了（发布/转草稿/删除都算），同系列其它章节详情里的 position 与 prev/next 要重算
+    await invalidate_series_chapter_caches(db, affected_series_ids)
     # 聚合缓存（归档/分类计数/首页统计）同属读侧：单篇路径在 blog.py 里都会清，
     # 批量路径漏一次就会让「批量删除后归档页仍列出该篇」这类陈旧读继续存在。
     await invalidate_post_aggregate_caches()
