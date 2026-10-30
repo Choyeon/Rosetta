@@ -2,9 +2,9 @@
   侧边栏导航（lg 起，顶栏按钮 + 左侧抽屉）。
 
   与顶栏、移动端汉堡共用同一份导航数据：items 由 AppHeader 注入（顶栏已有
-  /navigations + 兜底 + ENSURE_PRESENT 合并管线），这里不再自拉一份，避免两套
-  菜单口径漂移。抽屉额外补一节「分类」——分类在顶栏只占一条入口，深链只能先
-  进 /categories 再点，侧边栏把它摊平。
+  /navigations + 兜底 + ENSURE_PRESENT 合并管线），这里不再自拉 header 档，避免两套
+  菜单口径漂移。抽屉另外自拉 location=sidebar 一档，并补一节「分类」——分类在顶栏只占
+  一条入口，深链只能先进 /categories 再点，侧边栏把它摊平。
 
   分类的 useAPI 键与 AppFooter / 分类页共用 `blog:categories:<locale>`（Nuxt 按 key
   去重，同页只发一条）。抽屉里的链接只在展开时进 DOM，爬虫的链接图仍由顶栏
@@ -24,10 +24,10 @@ import {
   SheetClose
 } from '~~/components/ui/sheet'
 import { Separator } from '~~/components/ui/separator'
-import { isNavActive, type NavLink } from '~~/lib/navigation'
+import { isNavActive, navRowsToLinks, type NavApiRow, type NavLink } from '~~/lib/navigation'
 import { pickLocalizedText } from '~~/composables/useI18nHelpers'
 
-defineProps<{ items: NavLink[] }>()
+const props = defineProps<{ items: NavLink[] }>()
 
 const { t, locale } = useI18n()
 const route = useRoute()
@@ -40,6 +40,24 @@ interface CategoryRow {
   post_count?: number
   postsCount?: number
 }
+
+/**
+ * 后台导航管理把 location 分成 header / footer / sidebar 三档，每一档都必须有消费方，
+ * 否则运营者存进 sidebar 的项会静默消失（顶栏只读 header，页脚只读 footer）。
+ * 这里读 sidebar 档，与注入的 items（header 档）分节显示，两者 URL 归一化共用 lib/navigation.ts。
+ */
+const { data: sidebarNavRows } = useAPI<NavApiRow[]>('/navigations', {
+  query: { location: 'sidebar' },
+  key: `public:navigations:sidebar:${locale.value}`,
+  default: () => []
+})
+const sidebarNavLinks = computed<NavLink[]>(() => {
+  // 抽屉上半段渲染的是注入的 header 档；同一 URL 在两档都配置时只显示一次，
+  // 否则抽屉里会出现两条一模一样的入口（两个位置各渲染一份，去重只能在这一层做）。
+  const taken = new Set(props.items.map(item => item.to))
+  return navRowsToLinks(sidebarNavRows.value, row => pickLocalizedText(row.label ?? row.title ?? row.name, locale.value as string))
+    .filter(link => !taken.has(link.to))
+})
 
 const { data: catsData } = useAPI<CategoryRow[]>('/blog/categories', {
   query: { lang: locale.value },
@@ -100,6 +118,35 @@ const catCount = (c: CategoryRow) => c.post_count ?? c.postsCount ?? 0
           </NuxtLink>
         </SheetClose>
       </nav>
+
+      <template v-if="sidebarNavLinks.length > 0">
+        <Separator class="my-4" />
+        <div class="px-3 mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          {{ t('nav.sidebarNav') || 'Sidebar' }}
+        </div>
+        <nav
+          class="flex flex-col gap-1"
+          :aria-label="t('nav.sidebarNav') || 'Sidebar'"
+        >
+          <SheetClose
+            v-for="link in sidebarNavLinks"
+            :key="`sidebar-${link.to}`"
+            as-child
+          >
+            <NuxtLink
+              :to="localeHref(link.to)"
+              :target="link.target"
+              :aria-current="isNavActive(route.path, link.to) ? 'page' : undefined"
+              :class="[
+                'px-3 py-2 text-sm font-medium rounded-md transition-colors hover:bg-accent hover:text-accent-foreground',
+                isNavActive(route.path, link.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
+              ]"
+            >
+              {{ link.label }}
+            </NuxtLink>
+          </SheetClose>
+        </nav>
+      </template>
 
       <template v-if="categories.length > 0">
         <Separator class="my-4" />

@@ -1,7 +1,7 @@
 <!--
-  前台顶栏：品牌 + 主导航（GET /navigations）+ 右侧交互控件区。
-  契约一：normalizeNavPath 负责把历史 /page/<slug> 数据折回真实路由并去尾斜杠，删它会
-  让旧菜单直接 404；外链行被有意排除在 navItems 之外。
+  前台顶栏：品牌 + 主导航（GET /navigations?location=header）+ 右侧交互控件区。
+  契约一：lib/navigation.ts 的 normalizeNavRowUrl 负责把历史 /page/<slug> 数据折回真实路由并去尾斜杠，
+  删它会让旧菜单直接 404；外链行被有意排除在 navItems 之外。
   契约二：控件区整体 <ClientOnly>（reka-ui 弹层 SSR 输出不稳 + 登录态强耦合），fallback
   占位尺寸与实际控件对齐以防 CLS；用户名字段须等 userInfoReady 延后一帧再显示。
 -->
@@ -36,7 +36,7 @@ import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
-import { isNavActive } from '~~/lib/navigation'
+import { isNavActive, normalizeNavRowUrl, dedupeByTo, type NavApiRow } from '~~/lib/navigation'
 
 const { t, locale } = useI18n()
 const authStore = useAuthStore()
@@ -93,23 +93,6 @@ const headerClass = computed(() =>
     : 'relative w-full border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60'
 )
 
-interface NavApiRow {
-  id?: number | string
-  label?: string | Record<string, string>
-  title?: string | Record<string, string>
-  name?: string | Record<string, string>
-  to?: string
-  url?: string
-  href?: string
-  path?: string
-  slug?: string
-  link_type?: string
-  is_external?: boolean
-  target?: string
-  target_blank?: boolean
-  sort_order?: number
-}
-
 // 内置兜底（非极简主题 fallback）—— 当后端 /api/navigations 为空或请求失败时使用。
 // 保留核心必要页面：首页 / 文章 / 分类 / 标签 / 归档 + 两个高权重静态页（关于 / 留言板）。
 // 这样即便用户 DB 中 navigation_menu 表未 seed，顶部导航也永远不会缺链接。
@@ -147,7 +130,10 @@ const ENSURE_PRESENT: { label: () => string, to: string }[] = [
 ]
 
 const { data: navRowsRef, refresh: refreshNav } = useAPI<NavApiRow[]>('/navigations', {
-  key: 'public:navigations:' + locale.value,
+  // 只要顶栏这一档：库里 location 是 header/footer/sidebar 三档，不带筛选时
+  // 页脚与侧边栏的菜单项会整批混进顶栏（同一份 URL 在三个位置各出现一次）。
+  query: { location: 'header' },
+  key: 'public:navigations:header:' + locale.value,
   default: () => []
 })
 // 语言切换时，用新的 Accept-Language 头重新拉导航（否则导航仍缓存旧语言的 label/i18n）
@@ -156,50 +142,8 @@ watch(locale, () => void refreshNav())
 const pickNavStr = (v: string | Record<string, string> | null | undefined, fb: string): string =>
   pickLocalizedText(v, locale.value as string, fb)
 
-/**
- * 规范化后端导航菜单返回的内部 URL 路径。
- * — 历史兼容：旧 Astro 站点和老数据会保存 "/page/about"、"/page/guestbook"
- *   等带 "/page/" 前缀的路径。Nuxt 前端静态页位于 pages/about.vue、
- *   pages/guestbook.vue 等（不含前缀）。需要移除前缀才能命中真实路由。
- * — 独立页 slug：当 link_type==="page" 且字段含 slug 时，按 "/<slug>" 归一化。
- * — 末尾 "/"：除首页 "/" 外统一去重，避免 "/posts/" 和 "/posts" 被视为不同激活。
- */
-const normalizeNavPath = (row: NavApiRow): string => {
-  let raw: string = ''
-  if (row.link_type === 'page' && row.slug) {
-    raw = `/${String(row.slug).replace(/^\/+/, '')}`
-  } else {
-    raw = String(row.to ?? row.url ?? row.href ?? row.path ?? row.slug ?? '').trim()
-  }
-  if (!raw) return ''
-  if (/^https?:\/\//i.test(raw)) return raw
-
-  // 规范化：相对路径按内部路由处理，统一前缀 "/"
-  if (!raw.startsWith('/') && !raw.startsWith('#')) {
-    raw = `/${raw}`
-  }
-  // 兼容 "/page/<slug>" 旧前缀 → 折去 "/page"
-  if (raw.startsWith('/page/')) raw = raw.slice('/page'.length) || '/'
-  else if (raw === '/page') raw = '/'
-
-  // 去重末尾斜杠（首页保留）
-  if (raw.length > 1 && raw.endsWith('/')) raw = raw.slice(0, -1)
-  return raw
-}
-
-/**
- * 去重：按 to 字段保留第一次出现（解决用户截图里"关于 × 2 连续出现"的问题）。
- */
-const dedupeByTo = <T extends { to: string }>(arr: ReadonlyArray<T>): T[] => {
-  const seen = new Set<string>()
-  const out: T[] = []
-  for (const it of arr) {
-    if (seen.has(it.to)) continue
-    seen.add(it.to)
-    out.push(it)
-  }
-  return out
-}
+// URL 归一化与按 to 去重都在 lib/navigation.ts：页脚与侧边栏抽屉消费的是同一批
+// 历史形态（/page/<slug>、带尾斜杠、外链），两处各写一遍必然漂移。
 
 const navItems = computed(() => {
   const _ = locale.value // 显式建立响应式依赖：语言切换 → 标签重新 pickNavStr
@@ -210,7 +154,7 @@ const navItems = computed(() => {
     const labelRaw = row.label ?? row.title ?? row.name ?? ''
     const label = pickNavStr(labelRaw as string | Record<string, string> | null | undefined, '')
     if (!label) continue
-    const path = normalizeNavPath(row)
+    const path = normalizeNavRowUrl(row)
     if (!path) continue
     // 外链判定只看 URL/类型：target_blank（NavigationResponse 的布尔字段）不再把内部页
     // 踢出导航，而是按 WordPress 口径让该链接在新窗口打开。

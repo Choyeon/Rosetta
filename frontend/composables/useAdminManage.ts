@@ -1415,6 +1415,25 @@ export function deleteAdminPhotosBatch(ids: number[]): Promise<AdminPhotoBatchDe
 
 // ==================== 导航菜单 ====================
 
+/**
+ * 导航位置的唯一清单，与后端 `schemas.NavigationBase.location` 的
+ * `pattern="^(header|footer|sidebar)$"` 逐值相等（守卫见
+ * `tests/unit/navigationLocationWired.spec.ts`）。
+ * 每加一个值就必须同时有前台消费方：顶栏 / 页脚 / 侧边栏抽屉各认一个，
+ * 否则运营把项存进一个没人渲染的位置 = 菜单项静默消失。
+ */
+export const ADMIN_NAV_LOCATIONS = ['header', 'footer', 'sidebar'] as const
+export type AdminNavLocation = (typeof ADMIN_NAV_LOCATIONS)[number]
+
+export const NAV_LOCATION_LABELS: Record<AdminNavLocation, string> = {
+  header: '顶栏',
+  footer: '页脚',
+  sidebar: '侧边栏'
+}
+
+export const isAdminNavLocation = (value: unknown): value is AdminNavLocation =>
+  (ADMIN_NAV_LOCATIONS as readonly string[]).includes(String(value))
+
 export interface AdminNavItem {
   id: number
   label: string | Record<string, string>
@@ -1423,14 +1442,21 @@ export interface AdminNavItem {
   order: number
   target: '_self' | '_blank'
   parent_id: number | null
+  /** 菜单位置：公开口按它分面渲染，后台按它筛选 */
+  location: AdminNavLocation
+  /** 停用项在后台仍列出（/admin/navigations 回全量），公开口只回激活项 */
+  is_active: boolean
 }
 
 /**
  * GET /api/admin/navigations —— core.router 挂在 /api，管理接口 @router.get("/admin/navigations")
  * 公开 GET /navigations 只返回激活项；管理端需要全量（包括非激活）走 /admin/navigations
  */
-export async function fetchAdminNavigations(): Promise<AdminNavItem[]> {
-  const list = await apiFetch<Array<Record<string, unknown>>>('/admin/navigations')
+export async function fetchAdminNavigations(location?: AdminNavLocation): Promise<AdminNavItem[]> {
+  const list = await apiFetch<Array<Record<string, unknown>>>(
+    '/admin/navigations',
+    location ? { query: { location } } : undefined
+  )
   if (!Array.isArray(list)) return []
   // 字段标准化：后端返回的是 NavigationResponse 结构（title/url/icon/parent_id/order/target_blank/is_active）
   return list.map((x: Record<string, unknown>, i: number) => {
@@ -1449,7 +1475,11 @@ export async function fetchAdminNavigations(): Promise<AdminNavItem[]> {
       order: Number(x.order ?? x.sort_order ?? i) || i,
       // NavigationResponse.target_blank 是布尔；与写入侧 navigationBody() 对称。
       target: (x.target_blank === true || x.target === '_blank' ? '_blank' : '_self'),
-      parent_id: Number(x.parent_id ?? null) || null
+      parent_id: Number(x.parent_id ?? null) || null,
+      // 库里 location 非空，但读口一旦被旧数据/导入工具喂进别的值，
+      // 判不了就落回 header——宁可显示在顶栏这一档，也不要一个没人渲染的位置。
+      location: isAdminNavLocation(x.location) ? x.location : 'header',
+      is_active: x.is_active !== false
     }
   })
 }

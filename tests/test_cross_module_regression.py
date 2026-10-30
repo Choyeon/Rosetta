@@ -335,7 +335,7 @@ class TestBanUserLoginBlock:
 
 class TestPhase4SuccessCriteria:
     """§7 Phase 4 成功标准签核：
-    ① 管理员不能改自己
+    ① 管理员自助改权限状态被拦（PATCH 状态口）
     ② U-R2 用户详情直达
     ③ C-S1 XSS 注入安全
     ④ N-H4 删父节点子节点上提（或确认级联删）
@@ -343,16 +343,25 @@ class TestPhase4SuccessCriteria:
     """
 
     @pytest.mark.asyncio
-    async def test_p4_1_admin_cannot_edit_self(
+    async def test_p4_1_admin_cannot_self_change_status(
         self, client: AsyncClient, admin_user: User, admin_headers: dict
     ):
-        """P4-①：PUT /admin/users/{me} → 400/403"""
-        r = await client.put(
-            f"/api/admin/users/{admin_user.id}",
-            headers=admin_headers,
-            json={"nickname": "尝试改自己"},
-        )
-        assert r.status_code in (400, 403), f"管理员被允许改自己: {r.status_code}"
+        """P4-①：PATCH /admin/users/{me} 的状态位自助变更 → 400
+
+        「管理员不能改自己」曾是 PUT 全量口的一刀切闸门，代价是后台连自己的昵称、
+        头像都改不了；现在资料字段放行（见 test_admin_user_crud.test_admin_can_edit_self），
+        只保留越权面：角色 / 激活 / 封禁不能自助修改——一次提交就把自己锁在门外，
+        而后台没有撤销入口。本条钉住 PATCH 状态口这一侧（PUT 侧由同族用例覆盖）。
+        """
+        for payload in ({"is_active": False}, {"is_banned": True}, {"is_staff": False}):
+            r = await client.patch(
+                f"/api/admin/users/{admin_user.id}",
+                headers=admin_headers,
+                json=payload,
+            )
+            assert r.status_code == 400, (
+                f"自助改状态被放行 {payload}: {r.status_code} {r.text[:150]}"
+            )
 
     @pytest.mark.asyncio
     async def test_p4_2_user_detail_reachable(

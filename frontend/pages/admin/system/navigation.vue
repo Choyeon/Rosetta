@@ -1,7 +1,9 @@
 <!--
-  导航菜单管理页：全量列表 + 上下移排序 + 父子级选择 + Dialog CRUD。
+  导航菜单管理页：全量列表 + 位置筛选 + 上下移排序 + 父子级选择 + Dialog CRUD。
   契约：交换 order 必须串行 PUT——并发两个局部更新若其一失败会留下重复 order，失败后不信任乐观状态而是 loadAll() 重同步；
-  label 以完整 {zh,en,ja,zh_Hant} dict 提交（管理员名称必填校验只看 zh）；删除走 silentToast 由 DangerConfirmDialog 内联展示错误。
+  label 以完整 {zh,en,ja,zh_Hant} dict 提交（管理员名称必填校验只看 zh）；删除走 silentToast 由 DangerConfirmDialog 内联展示错误；
+  location 与前台三个渲染面（顶栏 / 页脚 / 侧边栏抽屉）逐值对应，父级只能选同一位置的项——
+  跨位置的父子关系在任何一个渲染面都无法展开（每个面只读自己那一档）。
 -->
 <template>
   <div class="flex flex-col gap-5">
@@ -11,6 +13,28 @@
       :icon="Menu"
     >
       <template #actions>
+        <!-- 位置筛选走后端 location 参数（与公开口同一道 WHERE），不在前端滤：
+             全量列表会随菜单增长变长，前端筛选等于每次都把所有行拉进来 -->
+        <Select v-model="locationFilter">
+          <SelectTrigger
+            id="nav-location-filter"
+            class="w-32 rounded-xl"
+          >
+            <SelectValue placeholder="位置" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">
+              全部位置
+            </SelectItem>
+            <SelectItem
+              v-for="loc in ADMIN_NAV_LOCATIONS"
+              :key="loc"
+              :value="loc"
+            >
+              {{ NAV_LOCATION_LABELS[loc] }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
         <Button
           size="sm"
           class="shadow-sm"
@@ -64,8 +88,15 @@
             class="rounded-xl max-w-lg mx-auto"
           >
             <Info class="size-4" />
-            <AlertTitle>暂无菜单项</AlertTitle>
-            <AlertDescription>点击右上角「新建菜单项」开始添加第一个导航。</AlertDescription>
+            <AlertTitle>{{ locationFilterLabel ? `${locationFilterLabel}暂无菜单项` : '暂无菜单项' }}</AlertTitle>
+            <AlertDescription>
+              <template v-if="locationFilter === 'all'">
+                点击右上角「新建菜单项」开始添加第一个导航。
+              </template>
+              <template v-else>
+                {{ locationFilterLabel }}位置还没有菜单项，前台对应的是{{ locationConsumerHint }}点「新建菜单项」添加，或把已有项的位置改到这里。
+              </template>
+            </AlertDescription>
           </Alert>
         </div>
 
@@ -77,6 +108,7 @@
             v-for="item in sortedItems"
             :key="item.id"
             class="flex items-center gap-3 px-5 py-4 hover:bg-muted/40 transition-colors group"
+            :class="item.is_active ? '' : 'opacity-60'"
           >
             <div class="flex flex-col items-center gap-0.5 rounded-lg border border-border/50 bg-background/50 p-0.5">
               <button
@@ -104,6 +136,20 @@
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="font-semibold">{{ extractZh(item.label ?? '') || '（未命名）' }}</span>
+                <Badge
+                  v-if="locationFilter === 'all'"
+                  variant="outline"
+                  class="text-xs"
+                >
+                  {{ NAV_LOCATION_LABELS[item.location] }}
+                </Badge>
+                <Badge
+                  v-if="!item.is_active"
+                  variant="secondary"
+                  class="text-xs"
+                >
+                  已停用
+                </Badge>
                 <Badge
                   v-if="item.parent_id"
                   variant="outline"
@@ -176,6 +222,47 @@
           <div class="grid grid-cols-2 gap-4">
             <div class="flex flex-col gap-2">
               <Label
+                for="nav-location"
+                class="text-sm font-medium"
+              >菜单位置</Label>
+              <Select v-model="form.location">
+                <SelectTrigger
+                  id="nav-location"
+                  class="rounded-xl"
+                >
+                  <SelectValue placeholder="选择位置" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem
+                    v-for="loc in ADMIN_NAV_LOCATIONS"
+                    :key="loc"
+                    :value="loc"
+                  >
+                    {{ NAV_LOCATION_LABELS[loc] }}
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p class="text-xs text-muted-foreground">
+                {{ locationConsumerHintOf(form.location) }}
+              </p>
+            </div>
+            <div class="flex flex-col gap-2">
+              <Label
+                for="nav-active"
+                class="text-sm font-medium"
+              >前台显示</Label>
+              <div class="flex items-center gap-2 pt-1.5">
+                <Switch
+                  id="nav-active"
+                  v-model="form.is_active"
+                />
+                <span class="text-sm">{{ form.is_active ? '显示' : '隐藏（仅后台可见）' }}</span>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="flex flex-col gap-2">
+              <Label
                 for="nav-icon"
                 class="text-sm font-medium"
               >图标（可选）</Label>
@@ -226,7 +313,7 @@
             <Label
               for="nav-parent"
               class="text-sm font-medium"
-            >父级菜单（可选，做二级菜单）</Label>
+            >父级菜单（可选，仅同位置可选）</Label>
             <Select v-model="form.parent_id">
               <SelectTrigger
                 id="nav-parent"
@@ -288,13 +375,16 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import {
   fetchAdminNavigations,
   createAdminNavigation,
   updateAdminNavigation,
   deleteAdminNavigation,
-  type AdminNavItem
+  ADMIN_NAV_LOCATIONS,
+  NAV_LOCATION_LABELS,
+  type AdminNavItem,
+  type AdminNavLocation
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { extractApiErrorMessage } from '~~/lib/utils'
@@ -314,6 +404,7 @@ import {
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
+import { Switch } from '~~/components/ui/switch'
 import { Alert, AlertTitle, AlertDescription } from '~~/components/ui/alert'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import DangerConfirmDialog from '~~/components/admin/tools/DangerConfirmDialog.vue'
@@ -333,13 +424,36 @@ const swapping = ref(false)
 const editingId = ref<number | null>(null)
 const deleteTarget = ref<AdminNavItem | null>(null)
 
+/** 'all' = 不带 location 参数（后端回全量）；其余值直接进 GET /admin/navigations?location= */
+const locationFilter = ref<AdminNavLocation | 'all'>('all')
+
+/**
+ * 每个位置对应的前台渲染面（唯一清单，与 components 侧一一对应）：
+ * 顶栏/移动抽屉读 header，页脚「网站导航」读 footer，侧边栏抽屉读 sidebar。
+ * 后台只列档位不说清"谁在渲染"，运营者就会把项存进没人读的位置。
+ */
+const LOCATION_CONSUMER_HINTS: Record<AdminNavLocation, string> = {
+  header: '前台顶栏与移动端菜单抽屉读取这一档。',
+  footer: '页脚「网站导航」一节读取这一档。',
+  sidebar: '桌面侧边栏抽屉的「侧边栏」一节读取这一档。'
+}
+const locationConsumerHintOf = (loc: AdminNavLocation): string => LOCATION_CONSUMER_HINTS[loc]
+const locationFilterLabel = computed(() =>
+  locationFilter.value === 'all' ? '' : NAV_LOCATION_LABELS[locationFilter.value]
+)
+const locationConsumerHint = computed(() =>
+  locationFilter.value === 'all' ? '' : locationConsumerHintOf(locationFilter.value)
+)
+
 const emptyForm = () => ({
   label: { ...EMPTY_I18N_DICT } as Record<string, string>,
   url: '',
   icon: '',
   target: '_self' as '_self' | '_blank',
   order: 0,
-  parent_id: null as number | null
+  parent_id: null as number | null,
+  location: 'header' as AdminNavLocation,
+  is_active: true
 })
 const form = ref(emptyForm())
 
@@ -347,9 +461,19 @@ const sortedItems = computed(() => [...items.value].sort((a, b) => a.order - b.o
 
 const parentOptions = computed(() =>
   sortedItems.value
+    // 父级只能同位置且不能是自己：公开口每个渲染面只读一档，跨位置的父子关系
+    // 在那一面的查询里根本取不到父行；把自己选成父级则是直接成环。
     .filter(i => editingId.value == null || i.id !== editingId.value)
+    .filter(i => i.location === form.value.location)
     .map(i => ({ label: extractZh(i.label) || `#${i.id}`, value: i.id }))
 )
+
+// 换位置后原来的父级已不在候选里，不清掉会把一条"父级在别的位置"的关系留在库里
+watch(() => form.value.location, () => {
+  if (!parentOptions.value.some(opt => opt.value === form.value.parent_id)) {
+    form.value.parent_id = null
+  }
+})
 
 function extractZh(label: AdminNavItem['label']): string {
   if (typeof label === 'string') return label
@@ -421,7 +545,9 @@ async function loadAll() {
   loading.value = true
   loadError.value = ''
   try {
-    items.value = await fetchAdminNavigations()
+    items.value = await fetchAdminNavigations(
+      locationFilter.value === 'all' ? undefined : locationFilter.value
+    )
   } catch (e) {
     // fetchAdminNavigations 内部 apiFetch 已 toast；这里补充内联错误态 + 重试
     items.value = []
@@ -432,9 +558,13 @@ async function loadAll() {
   }
 }
 
+watch(locationFilter, loadAll)
+
 function openCreate() {
   editingId.value = null
   form.value = emptyForm()
+  // 带位置筛选时新建，默认落进当前筛选的那一档，省一次「建完再改位置」
+  if (locationFilter.value !== 'all') form.value.location = locationFilter.value
   const max = items.value.reduce((m, i) => Math.max(m, i.order), -1)
   form.value.order = max + 1
   dialogOpen.value = true
@@ -448,7 +578,9 @@ function openEdit(item: AdminNavItem) {
     icon: item.icon ?? '',
     target: item.target || '_self',
     order: item.order,
-    parent_id: item.parent_id
+    parent_id: item.parent_id,
+    location: item.location,
+    is_active: item.is_active
   }
   dialogOpen.value = true
 }
@@ -465,18 +597,21 @@ async function handleSubmit() {
     icon: form.value.icon.trim() || null,
     target: form.value.target,
     order: Number(form.value.order) || 0,
-    parent_id: form.value.parent_id
+    parent_id: form.value.parent_id,
+    location: form.value.location,
+    is_active: form.value.is_active
   }
   try {
     if (editingId.value) {
       await updateAdminNavigation(editingId.value, payload)
       toast.success('菜单项已更新')
     } else {
-      const r = await createAdminNavigation(payload)
-      items.value.push(r)
+      await createAdminNavigation(payload)
       toast.success('菜单项已创建')
     }
     dialogOpen.value = false
+    // 新建响应回的是后端原始行（title/target_blank 形态），且改过位置或显隐后
+    // 未必还落在当前筛选里——统一 loadAll 拿标准化后的全量，不在本地拼。
     await loadAll()
   } catch (e) {
     // create/update 的 apiFetch 失败时已 toast 展示后端错误，不再二次提示

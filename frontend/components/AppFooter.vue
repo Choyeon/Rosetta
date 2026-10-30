@@ -11,6 +11,7 @@ import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
+import { navRowsToLinks, type NavLink, type NavApiRow } from '~~/lib/navigation'
 import { applyLocalePrefix } from '~~/composables/useSeo'
 import { sanitizeTrustedAdminHtml } from '~~/lib/sanitize'
 
@@ -198,6 +199,28 @@ const site = useSite()
 const visibleSiteLinks = computed(() =>
   siteLinks.filter(link => link.to !== '/sponsor' || site.donate.value.methods.length > 0)
 )
+
+// 管理员在「导航菜单」把项存到 location=footer 时，页脚是它唯一的渲染面。
+// 后台给了三个位置而前台只认一个，等于另外两档是死档位（项存进去静默消失），
+// 所以 header / footer / sidebar 三档各有一个消费方，URL 归一化共用 lib/navigation.ts。
+// 与顶栏不同 key：两档数据集不同，共 key 会让其中一档拿到另一档的行。
+const { data: footerNavRows } = useAPI<NavApiRow[]>('/navigations', {
+  query: { location: 'footer' },
+  key: `public:navigations:footer:${locale.value}`,
+  default: () => []
+})
+
+/**
+ * 页脚固定链接先占位：后台把「关于」又配成页脚菜单项时，同一列出现两条相同链接，
+ * 比少一条更像 bug。
+ */
+const footerNavLinks = computed<NavLink[]>(() => {
+  const taken = new Set(visibleSiteLinks.value.map(l => l.to).filter(Boolean))
+  return navRowsToLinks(
+    footerNavRows.value,
+    row => pickLocalized(row.label ?? row.title ?? row.name)
+  ).filter(link => !taken.has(link.to))
+})
 // features 分组关掉 RSS / Sitemap 后，页脚文字链与订阅图标必须一起消失：
 // 留着就是指向 404 的入口，还会让爬虫以为站点有订阅源。
 const visibleResourceLinks = computed(() => resourceLinks.filter((link) => {
@@ -423,6 +446,18 @@ const handleSetLocale = async (code: string) => {
                 {{ siteLabel(link) }}
               </NuxtLink>
             </li>
+            <!-- 后台配的位置=页脚的菜单项（location=footer） -->
+            <li
+              v-for="link in footerNavLinks"
+              :key="`nav-${link.to}`"
+            >
+              <NuxtLink
+                :to="localeHref(link.to)"
+                class="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {{ link.label }}
+              </NuxtLink>
+            </li>
           </ul>
         </div>
 
@@ -560,6 +595,15 @@ const handleSetLocale = async (code: string) => {
           class="text-xs text-muted-foreground hover:text-foreground transition-colors"
         >
           {{ siteLabel(link) }}
+        </NuxtLink>
+        <!-- 极简骨架同样要渲染 location=footer：两副骨架少一副就是「换个主题菜单项消失」 -->
+        <NuxtLink
+          v-for="link in footerNavLinks"
+          :key="`nav-${link.to}`"
+          :to="localeHref(link.to)"
+          class="text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {{ link.label }}
         </NuxtLink>
       </nav>
 
