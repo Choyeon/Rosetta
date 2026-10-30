@@ -105,14 +105,17 @@ describe('公开页与共享组件的 <img> 尺寸覆盖', () => {
 })
 
 describe('首页 hero 缩略图是 LCP 候选', () => {
+  // 三档媒体（图片 / 站内视频 / YouTube，批次 #233）之后缩略图源不再恒等于 media_url：
+  // video 用封面、youtube 用 ytimg 缩略图，统一走 heroThumbSrc(slide)。找这个绑定，
+  // 而不是某个具体字段名，否则加一档媒体就会把这条守卫变成"找不到即消失"。
   const heroBlock = (() => {
     const src = readFileSync(resolve(ROOT, 'pages/index.vue'), 'utf-8')
-    const block = extractImgBlocks(src).find(b => b.includes('slide.media_url'))
+    const block = extractImgBlocks(src).find(b => b.includes('heroThumbSrc(slide)'))
     return block ?? null
   })()
 
   it('hero 缩略图 img 段存在', () => {
-    expect(heroBlock, 'pages/index.vue 里找不到 slide.media_url 的 <img>（扫描器或轮播结构变了）')
+    expect(heroBlock, 'pages/index.vue 里找不到 heroThumbSrc(slide) 的 <img>（扫描器或轮播结构变了）')
       .not.toBeNull()
   })
 
