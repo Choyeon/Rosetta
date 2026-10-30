@@ -1050,7 +1050,9 @@
     "viewAll": "すべて見る",
     "inSeries": "この記事はシリーズの一部です",
     "chapterPosition": "第 {n} 章 / 全 {total} 章",
-    "viewSeries": "シリーズを見る"
+    "viewSeries": "シリーズを見る",
+    "prevChapter": "前の章",
+    "nextChapter": "次の章"
   },
   "a11y": {
     "skipToMain": "メインコンテンツへ移動",

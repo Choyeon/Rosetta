@@ -12,7 +12,9 @@
 2. title 走 `get_i18n_value`，英文页不能还显示中文系列名；
 3. 系列停用时必须回 null——系列页对停用系列是 404，卡片不能把访客引向 404；
 4. 草稿章节不占位也不计数（与 `publicly_listable_posts` 一致）；
-5. 作者预览自己的草稿时，本篇不在公开目录里 → position 为 null，而不是编一个 0 或 1。
+5. 作者预览自己的草稿时，本篇不在公开目录里 → position 为 null，而不是编一个 0 或 1；
+6. `prev` / `next` 同样按系列页的顺序算，且跳过公开目录里不存在的章节——邻居指向一篇 404
+   与「上一章」这个承诺正好相反。
 """
 
 from datetime import timedelta
@@ -185,3 +187,80 @@ class TestSeriesBriefVisibility:
         assert body["series"] is not None
         assert body["series"]["post_count"] == 1
         assert body["series"]["position"] is None
+
+
+class TestSeriesAdjacentChapters:
+    """卡片上的「上一章 / 下一章」：按系列页同一份顺序算，而不是按发布时间或插入顺序。"""
+
+    @pytest.mark.asyncio
+    async def test_head_middle_tail(self, client: AsyncClient, db_session, test_post: Post):
+        """首章只有下一章、中间章两头都有、末章只有上一章——头尾不许编出不存在的邻居。"""
+        series = await _mk_series(db_session, "adjacent-chain")
+        # 故意让发布时间与序号相反：邻居必须跟 series_order 走
+        await _mk_post(
+            db_session, test_post.author_id, "adj-1", series=series, order=1, age_days=30
+        )
+        await _mk_post(
+            db_session, test_post.author_id, "adj-2", series=series, order=2, age_days=20
+        )
+        await _mk_post(
+            db_session, test_post.author_id, "adj-3", series=series, order=3, age_days=10
+        )
+
+        head = (await _detail(client, "adj-1"))["series"]
+        assert head["prev"] is None
+        assert head["next"] == {"slug": "adj-2", "title": "《adj-2》"}
+
+        middle = (await _detail(client, "adj-2"))["series"]
+        assert middle["prev"] == {"slug": "adj-1", "title": "《adj-1》"}
+        assert middle["next"] == {"slug": "adj-3", "title": "《adj-3》"}
+
+        tail = (await _detail(client, "adj-3"))["series"]
+        assert tail["prev"] == {"slug": "adj-2", "title": "《adj-2》"}
+        assert tail["next"] is None
+
+    @pytest.mark.asyncio
+    async def test_neighbour_titles_follow_language(
+        self, client: AsyncClient, db_session, test_post: Post
+    ):
+        series = await _mk_series(db_session, "adjacent-i18n")
+        await _mk_post(db_session, test_post.author_id, "adj-i1", series=series, order=1)
+        await _mk_post(db_session, test_post.author_id, "adj-i2", series=series, order=2)
+
+        en = (await _detail(client, "adj-i1", lang="en"))["series"]
+        assert en["next"] == {"slug": "adj-i2", "title": "adj-i2"}
+
+    @pytest.mark.asyncio
+    async def test_hidden_chapter_is_skipped_in_the_chain(
+        self, client: AsyncClient, db_session, test_post: Post
+    ):
+        """序号 2 是草稿：1 的下一章必须直接是 3，不能把访客带到一篇 404 上。"""
+        series = await _mk_series(db_session, "adjacent-gap")
+        await _mk_post(db_session, test_post.author_id, "gap-1", series=series, order=1, age_days=3)
+        await _mk_post(
+            db_session, test_post.author_id, "gap-2", series=series, order=2, status="draft"
+        )
+        await _mk_post(db_session, test_post.author_id, "gap-3", series=series, order=3, age_days=1)
+
+        first = (await _detail(client, "gap-1"))["series"]
+        assert first["post_count"] == 2
+        assert first["next"]["slug"] == "gap-3"
+
+        last = (await _detail(client, "gap-3"))["series"]
+        assert last["prev"]["slug"] == "gap-1"
+
+    @pytest.mark.asyncio
+    async def test_preview_of_draft_has_no_neighbours(
+        self, client: AsyncClient, db_session, test_post: Post, auth_headers: dict
+    ):
+        """本篇不在公开目录里时，「下一篇」没有答案：两个邻居都必须是 null，而不是指向首章。"""
+        series = await _mk_series(db_session, "adjacent-preview")
+        await _mk_post(db_session, test_post.author_id, "adjp-1", series=series, order=1)
+        await _mk_post(
+            db_session, test_post.author_id, "adjp-draft", series=series, order=5, status="draft"
+        )
+
+        body = (await _detail(client, "adjp-draft", headers=auth_headers))["series"]
+        assert body["position"] is None
+        assert body["prev"] is None
+        assert body["next"] is None

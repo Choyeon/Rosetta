@@ -1050,7 +1050,9 @@
     "viewAll": "View all posts",
     "inSeries": "Part of the series",
     "chapterPosition": "Chapter {n} of {total}",
-    "viewSeries": "View series"
+    "viewSeries": "View series",
+    "prevChapter": "Previous chapter",
+    "nextChapter": "Next chapter"
   },
   "a11y": {
     "skipToMain": "Skip to main content",

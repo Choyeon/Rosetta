@@ -109,6 +109,7 @@ from backend.schemas import (
     PostListItemLocalized,
     PostLocalizedResponse,
     PostSeriesBrief,
+    PostSeriesChapterRef,
     PostUpdate,
     TagCreate,
     TagLocalizedResponse,
@@ -1320,23 +1321,35 @@ async def get_post(
         if series_row and series_row.is_active:
             # 章节目录与 GET /series/{slug} 同一份排序口径（series_order → 发布时间倒序），
             # 否则卡片上的「第 N 章」和系列页里实际的位置会对不上。
-            chapter_ids = list(
-                (
-                    await db.execute(
-                        select(Post.id)
-                        .where(Post.series_id == post.series_id, publicly_listable_posts())
-                        .order_by(Post.series_order.asc(), Post.published_at.desc())
-                    )
+            chapters = (
+                await db.execute(
+                    select(Post.id, Post.slug, Post.title)
+                    .where(Post.series_id == post.series_id, publicly_listable_posts())
+                    .order_by(Post.series_order.asc(), Post.published_at.desc())
                 )
-                .scalars()
-                .all()
-            )
+            ).all()
+            chapter_ids = [row.id for row in chapters]
+            position = chapter_ids.index(_id) + 1 if _id in chapter_ids else None
+
+            def _chapter_ref(row) -> PostSeriesChapterRef:
+                return PostSeriesChapterRef(
+                    slug=row.slug, title=get_i18n_value(row.title, language)
+                )
+
             series_brief = PostSeriesBrief(
                 id=series_row.id,
                 slug=series_row.slug,
                 title=get_i18n_value(series_row.title, language),
                 post_count=len(chapter_ids),
-                position=chapter_ids.index(_id) + 1 if _id in chapter_ids else None,
+                position=position,
+                # 相邻章节只对「本篇就在公开目录里」成立：作者预览草稿时 position 为 None，
+                # 这时也不该把他引到某一章去（下一篇到底指哪儿没有答案）。
+                prev=_chapter_ref(chapters[position - 2]) if position and position > 1 else None,
+                next=(
+                    _chapter_ref(chapters[position])
+                    if position and position < len(chapters)
+                    else None
+                ),
             )
 
     # 根据权限决定返回的内容

@@ -1099,13 +1099,21 @@ class PostEditResponse(BaseModel):
         )
 
 
+class PostSeriesChapterRef(BaseModel):
+    """系列内相邻章节的引用：只够渲染一条「上一章 / 下一章」链接。"""
+
+    slug: str
+    title: str
+
+
 class PostSeriesBrief(BaseModel):
     """文章详情里的「所属系列」简报。
 
-    只给详情页渲染一张卡片所需的四样东西：去哪儿（slug）、叫什么（本地化 title）、
+    只给详情页渲染一张卡片所需的几样东西：去哪儿（slug）、叫什么（本地化 title）、
     共几章（post_count）、本篇第几章（position，1 起；本篇不在公开章节列表里时为 None，
-    例如作者预览草稿）。刻意不复用 `PostSeriesResponse`：那个口带 created_at / sort_order /
-    is_active，详情页一个都不用，而详情是全站 QPS 最高的读口之一。
+    例如作者预览草稿），以及按同一份章节顺序算出的相邻章节（prev / next，头尾各缺一条）。
+    刻意不复用 `PostSeriesResponse`：那个口带 created_at / sort_order / is_active，
+    详情页一个都不用，而详情是全站 QPS 最高的读口之一。
     """
 
     id: int
@@ -1115,6 +1123,8 @@ class PostSeriesBrief(BaseModel):
     position: int | None = Field(
         None, description="本篇在系列中的序位（1 起），不在公开列表中为 None"
     )
+    prev: PostSeriesChapterRef | None = Field(None, description="系列内上一章（按章节顺序）")
+    next: PostSeriesChapterRef | None = Field(None, description="系列内下一章（按章节顺序）")
 
 
 class PostLocalizedResponse(BaseModel):

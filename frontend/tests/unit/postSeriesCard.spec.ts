@@ -33,8 +33,17 @@ const blogApi = readSource('../backend/api/blog.py')
 
 describe('文章详情页 · 所属系列卡片', () => {
   it('卡片只在后端给了 series 时渲染（停用系列后端回 null，正好对上系列页 404）', () => {
-    expect(page).toMatch(/<NuxtLink\s+v-if="seriesInfo"/)
+    expect(page).toMatch(/<div\s+v-if="seriesInfo"/)
     expect(page).toMatch(/const seriesInfo = computed\(\(\) => \{[\s\S]{0,160}s && s\.slug && s\.title/)
+  })
+
+  it('卡片外层不是 <NuxtLink>：里面还有「上一章/下一章」，锚点不能套锚点', () => {
+    // <a> 嵌套 <a> 是非法 HTML，浏览器会把内层锚点拆到外层之外 —— SSR 与 hydrate 后的 DOM 不一致。
+    expect(page).not.toMatch(/<NuxtLink\s+v-if="seriesInfo"/)
+    const start = page.indexOf('<div\n              v-if="seriesInfo"')
+    expect(start, '找不到系列卡片的根节点').toBeGreaterThan(-1)
+    const block = page.slice(start, page.indexOf('<!-- 系列内相邻章节', start))
+    expect(block).not.toContain('<NuxtLink\n              v-if="seriesInfo"')
   })
 
   it('链接走 localeHref 且指向 /series/<slug>（SSR href 是爬虫唯一的链接图）', () => {
@@ -73,12 +82,48 @@ describe('文章详情页 · 所属系列卡片', () => {
         string,
         Record<string, unknown>
       >
-      for (const key of ['inSeries', 'chapterPosition', 'viewSeries'] as const) {
+      for (const key of [
+        'inSeries',
+        'chapterPosition',
+        'viewSeries',
+        'prevChapter',
+        'nextChapter'
+      ] as const) {
         expect(dict.series?.[key], `${code}.series.${key} 缺失`).toBeTruthy()
       }
       // 两个占位符都要在：少一个会让 t() 把 {total} 原样打到页面上
       expect(String(dict.series?.chapterPosition)).toContain('{n}')
       expect(String(dict.series?.chapterPosition)).toContain('{total}')
     }
+  })
+})
+
+describe('系列内相邻章节（上一章 / 下一章）', () => {
+  it('两个链接都走 localeHref，指向文章详情而不是系列目录', () => {
+    expect(page).toContain(':to="localeHref(`/posts/${seriesInfo.prev.slug}`)"')
+    expect(page).toContain(':to="localeHref(`/posts/${seriesInfo.next.slug}`)"')
+    expect(page).toMatch(/v-if="seriesInfo\.prev \|\| seriesInfo\.next"/)
+    // 缺邻居的那一侧不该渲染一个空壳链接
+    expect(page).toMatch(/<NuxtLink\s+v-if="seriesInfo\.prev"/)
+    expect(page).toMatch(/<NuxtLink\s+v-if="seriesInfo\.next"/)
+  })
+
+  it('后端算邻居：与章节列表同序、跳过公开目录里不存在的章节、预览草稿不给邻居', () => {
+    expect(schemas).toMatch(/class PostSeriesChapterRef\(BaseModel\)/)
+    expect(schemas).toMatch(/prev: PostSeriesChapterRef \| None = Field/)
+    expect(schemas).toMatch(/next: PostSeriesChapterRef \| None = Field/)
+    const start = blogApi.indexOf('chapter_ids = [row.id for row in chapters]')
+    expect(start).toBeGreaterThan(-1)
+    const block = blogApi.slice(start, start + 1400)
+    expect(block).toContain('position - 2')
+    expect(block).toContain('chapters[position]')
+    // position 为 None（预览草稿）时两条邻居都必须为 None，而不是从首章开始数
+    expect(block).toMatch(/if position and position > 1 else None/)
+    expect(block).toMatch(/if position and position < len\(chapters\)/)
+  })
+
+  it('卡片类型声明带 prev/next（缺了模板里的 seriesInfo.prev 就是 TS 报错的假功能）', () => {
+    expect(page).toMatch(/prev\?: \{ slug: string, title: string \} \| null/)
+    expect(page).toMatch(/next\?: \{ slug: string, title: string \} \| null/)
   })
 })

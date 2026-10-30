@@ -316,31 +316,71 @@
 
             <!-- 所属系列：数据来自 GET /blog/posts/{slug} 的 series 简报（系列停用或无系列即整块隐藏）。
                  这是公开页 /series 在站内唯一的入口：此前全站没有任何指向 /series/** 的 href，
-                 系列页只能从 sitemap 被发现，访客根本走不到。 -->
-            <NuxtLink
+                 系列页只能从 sitemap 被发现，访客根本走不到。
+                 外层刻意不是 <NuxtLink>：卡片里还要放「上一章 / 下一章」两个链接，锚点套锚点是非法
+                 HTML（浏览器会把内层 <a> 拆到外层之外，SSR 与 hydrate 后的 DOM 因此不一致）。 -->
+            <div
               v-if="seriesInfo"
-              :to="localeHref(`/series/${seriesInfo.slug}`)"
-              class="mt-12 flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 p-4 transition-colors hover:border-primary/40 hover:bg-muted/50"
+              class="mt-12 rounded-xl border border-border/60 bg-muted/30 p-4"
             >
-              <BookOpen class="size-5 shrink-0 text-primary mt-0.5" />
-              <div class="min-w-0">
-                <p class="text-xs text-muted-foreground">
-                  {{ t('series.inSeries', '本文属于系列') }}
-                </p>
-                <p class="font-medium truncate">
-                  {{ seriesInfo.title }}
-                </p>
-                <p class="text-xs text-muted-foreground mt-0.5">
-                  <span v-if="seriesInfo.position">
-                    {{ t('series.chapterPosition', { n: seriesInfo.position, total: seriesInfo.post_count }) }}
-                  </span>
-                  <span v-else>
-                    {{ t('series.postsCount', { n: seriesInfo.post_count }) }}
-                  </span>
-                  <span class="ml-2 text-primary">{{ t('series.viewSeries', '查看系列') }} →</span>
-                </p>
+              <div class="flex items-start gap-3">
+                <BookOpen class="size-5 shrink-0 text-primary mt-0.5" />
+                <div class="min-w-0 flex-1">
+                  <p class="text-xs text-muted-foreground">
+                    {{ t('series.inSeries', '本文属于系列') }}
+                  </p>
+                  <NuxtLink
+                    :to="localeHref(`/series/${seriesInfo.slug}`)"
+                    class="font-medium hover:underline underline-offset-2"
+                  >
+                    {{ seriesInfo.title }}
+                  </NuxtLink>
+                  <p class="text-xs text-muted-foreground mt-0.5">
+                    <span v-if="seriesInfo.position">
+                      {{ t('series.chapterPosition', { n: seriesInfo.position, total: seriesInfo.post_count }) }}
+                    </span>
+                    <span v-else>
+                      {{ t('series.postsCount', { n: seriesInfo.post_count }) }}
+                    </span>
+                    <NuxtLink
+                      :to="localeHref(`/series/${seriesInfo.slug}`)"
+                      class="ml-2 text-primary hover:underline underline-offset-2"
+                    >
+                      {{ t('series.viewSeries', '查看系列') }} →
+                    </NuxtLink>
+                  </p>
+                </div>
               </div>
-            </NuxtLink>
+              <!-- 系列内相邻章节：系列页的意义就是按顺序读，读完一章直接接下一章，
+                   不必回系列页再点一次。头尾各缺一条，缺的那侧不占位。 -->
+              <div
+                v-if="seriesInfo.prev || seriesInfo.next"
+                class="mt-3 grid gap-2 sm:grid-cols-2"
+              >
+                <NuxtLink
+                  v-if="seriesInfo.prev"
+                  :to="localeHref(`/posts/${seriesInfo.prev.slug}`)"
+                  class="flex min-w-0 items-center gap-2 rounded-lg border border-border/50 bg-background/60 px-3 py-2 text-xs transition-colors hover:border-primary/40"
+                >
+                  <ChevronLeft class="size-4 shrink-0 text-muted-foreground" />
+                  <span class="min-w-0">
+                    <span class="block text-[11px] text-muted-foreground">{{ t('series.prevChapter', '上一章') }}</span>
+                    <span class="block truncate">{{ seriesInfo.prev.title }}</span>
+                  </span>
+                </NuxtLink>
+                <NuxtLink
+                  v-if="seriesInfo.next"
+                  :to="localeHref(`/posts/${seriesInfo.next.slug}`)"
+                  class="flex min-w-0 items-center justify-end gap-2 rounded-lg border border-border/50 bg-background/60 px-3 py-2 text-right text-xs transition-colors hover:border-primary/40 sm:col-start-2"
+                >
+                  <span class="min-w-0">
+                    <span class="block text-[11px] text-muted-foreground">{{ t('series.nextChapter', '下一章') }}</span>
+                    <span class="block truncate">{{ seriesInfo.next.title }}</span>
+                  </span>
+                  <ChevronRight class="size-4 shrink-0 text-muted-foreground" />
+                </NuxtLink>
+              </div>
+            </div>
 
             <div
               v-if="normalizedTags.length"
@@ -1025,13 +1065,16 @@ interface PostDetail {
   }
   tags: PostDetailTag[]
   /** 所属系列简报：后端只在系列仍启用时输出（停用系列的页面是 404，卡片不把访客引过去）。
-   *  position 是本篇在公开章节目录里的序位（1 起）；本篇不在目录里（如作者预览草稿）时为 null。 */
+   *  position 是本篇在公开章节目录里的序位（1 起）；本篇不在目录里（如作者预览草稿）时为 null。
+   *  prev/next 是按同一份章节顺序算出的相邻章节，头尾各缺一条（null）。 */
   series?: {
     id: number
     slug: string
     title: string
     post_count: number
     position?: number | null
+    prev?: { slug: string, title: string } | null
+    next?: { slug: string, title: string } | null
   } | null
   /** 文章级「允许评论」：后台编辑器开关，后端写口按它拦 403 COMMENT_POST_CLOSED。
    *  缺省（加载中/老响应）按允许处理，避免一次未落值就让整个评论区消失。 */
