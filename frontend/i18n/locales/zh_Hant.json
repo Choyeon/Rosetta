@@ -978,6 +978,8 @@
     "allTags": "全部標籤",
     "selectTag": "選擇標籤",
     "removeFilter": "移除篩選：{name}",
+    "recentTitle": "最近搜尋",
+    "clearRecent": "清除紀錄",
     "startPrompt": "開始搜尋",
     "startDesc": "在上方輸入關鍵詞，支援標題、正文、標籤和分類全文檢索。",
     "resultCount": "找到 {count} 條與「{keyword}」相關的結果",

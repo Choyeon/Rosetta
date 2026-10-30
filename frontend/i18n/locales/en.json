@@ -917,6 +917,8 @@
     "allTags": "All tags",
     "selectTag": "Select tag",
     "removeFilter": "Remove filter: {name}",
+    "recentTitle": "Recent searches",
+    "clearRecent": "Clear",
     "startPrompt": "Start searching",
     "startDesc": "Enter keywords above to search across titles, bodies, tags and categories.",
     "resultCount": "Found {count} result(s) related to \"{keyword}\"",

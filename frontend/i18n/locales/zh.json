@@ -917,6 +917,8 @@
     "allTags": "全部标签",
     "selectTag": "选择标签",
     "removeFilter": "移除筛选：{name}",
+    "recentTitle": "最近搜索",
+    "clearRecent": "清除记录",
     "startPrompt": "开始搜索",
     "startDesc": "在上方输入关键词，支持标题、正文、标签和分类全文检索。",
     "resultCount": "找到 {count} 条与「{keyword}」相关的结果",

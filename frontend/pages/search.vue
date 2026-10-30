@@ -150,6 +150,30 @@
         <p class="text-muted-foreground mt-1">
           {{ t('search.startDesc') }}
         </p>
+
+        <!-- 最近搜索：本机 localStorage，只在客户端挂载后读取（首帧两端都是空列表）。 -->
+        <div
+          v-if="recentSearches.length > 0"
+          class="mt-6 flex flex-wrap items-center justify-center gap-2"
+        >
+          <span class="text-xs text-muted-foreground">{{ t('search.recentTitle') }}</span>
+          <button
+            v-for="kw in recentSearches"
+            :key="kw"
+            type="button"
+            class="rounded-full border border-border px-3 py-1 text-xs transition-colors hover:bg-muted"
+            @click="applyRecent(kw)"
+          >
+            {{ kw }}
+          </button>
+          <button
+            type="button"
+            class="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground"
+            @click="clearRecent"
+          >
+            {{ t('search.clearRecent') }}
+          </button>
+        </div>
       </div>
     </template>
 
@@ -316,7 +340,7 @@ import { useAPI } from '~~/composables/useApi'
 import { pageWindow } from '~~/lib/pagination'
 import { useI18n } from 'vue-i18n'
 import { Search, SearchX, ChevronLeft, ChevronRight, X } from '@lucide/vue'
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
@@ -447,7 +471,56 @@ const runSearch = () => {
   keyword.value = keyword.value.trim()
   currentPage.value = 1
   syncUrl('push', keyword.value)
+  rememberSearch(keyword.value)
 }
+
+// ===== 最近搜索：只存在本机 localStorage，不上报、不同步 =====
+// 首帧渲染必须是空列表（SSR 与 hydrate 两端一致），读取放在 onMounted。
+const RECENT_SEARCH_KEY = 'rosetta:recent-searches'
+const RECENT_SEARCH_LIMIT = 5
+const recentSearches = ref<string[]>([])
+
+const readRecentSearches = (): string[] => {
+  try {
+    const raw = localStorage.getItem(RECENT_SEARCH_KEY)
+    const parsed: unknown = raw ? JSON.parse(raw) : []
+    return Array.isArray(parsed)
+      ? parsed.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).slice(0, RECENT_SEARCH_LIMIT)
+      : []
+  } catch {
+    return []
+  }
+}
+
+const writeRecentSearches = (list: string[]) => {
+  recentSearches.value = list
+  try {
+    localStorage.setItem(RECENT_SEARCH_KEY, JSON.stringify(list))
+  } catch {
+    // 隐私模式下 localStorage 可能直接抛错：记忆功能失效不该影响检索本身
+  }
+}
+
+const rememberSearch = (raw: string) => {
+  if (!import.meta.client) return
+  const kw = raw.trim()
+  if (!kw) return
+  const rest = (recentSearches.value.length ? recentSearches.value : readRecentSearches())
+    .filter(item => item !== kw)
+  writeRecentSearches([kw, ...rest].slice(0, RECENT_SEARCH_LIMIT))
+}
+
+const applyRecent = (kw: string) => {
+  keyword.value = kw
+  runSearch()
+}
+
+const clearRecent = () => writeRecentSearches([])
+
+onMounted(() => {
+  if (!import.meta.client) return
+  recentSearches.value = readRecentSearches()
+})
 
 const handleFilter = () => {
   // 改筛选时把输入框里的草稿一并提交：用户已经打了字再选分类，期望的是两者一起生效。

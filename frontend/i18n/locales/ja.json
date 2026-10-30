@@ -978,6 +978,8 @@
     "allTags": "すべてのタグ",
     "selectTag": "タグを選択",
     "removeFilter": "フィルターを解除：{name}",
+    "recentTitle": "最近の検索",
+    "clearRecent": "クリア",
     "startPrompt": "検索を始める",
     "startDesc": "上でキーワードを入力すると、タイトル・本文・タグ・カテゴリーを検索できます。",
     "resultCount": "「{keyword}」関連の結果 {count} 件",
