@@ -507,6 +507,59 @@ async def test_pages_sitemap_submits_canonical_slug_not_legacy_alias(
 
 
 @pytest.mark.asyncio
+async def test_pages_sitemap_submits_sponsor_only_when_donate_is_live(
+    client: AsyncClient, staff_headers
+):
+    """``/sponsor`` 只在捐助页真的可索引时才进 sitemap。
+
+    前端 ``pages/sponsor.vue`` 的 ``sponsorEmpty``（``enable`` 关掉或 ``methods`` 为空）
+    会给这一页输出 ``noindex, follow``。两处必须同口径：默认（donate 分组未保存）时
+    不提交，配置齐全后补一条四语条目——否则"可索引的捐助页永远没有发现入口"，
+    反过来把自我声明 noindex 的地址提交给爬虫等于两份互相矛盾的信号。
+    """
+    import re
+    from urllib.parse import urlsplit
+
+    import backend.core.cache as _c
+
+    await _c.cache.clear()
+
+    def _paths(text: str) -> list[str]:
+        return [urlsplit(u).path for u in re.findall(r"<loc>(.*?)</loc>", text)]
+
+    # ① 未配置 donate（read_group 回 {}）⇒ 与前端默认 methods: [] 一致，不提交
+    r = await client.get("/api/blog/sitemap-pages.xml")
+    assert r.status_code == 200
+    assert "/sponsor" not in _paths(r.text), "空壳捐助页是 noindex，不该提交"
+
+    # ② 有收款方式 ⇒ 四语各一条，且带 hreflang 集群
+    resp = await client.patch(
+        "/api/settings/donate",
+        json={
+            "enable": True,
+            "methods": [{"name": "支付宝", "image": "/media/qr.png", "note": ""}],
+        },
+        headers=staff_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    r2 = await client.get("/api/blog/sitemap-pages.xml")
+    paths = _paths(r2.text)
+    for expected in ("/sponsor", "/en/sponsor", "/ja/sponsor", "/zh_Hant/sponsor"):
+        assert paths.count(expected) == 1, f"捐助页变体缺失或重复：{expected}"
+    assert 'hreflang="en"' in r2.text
+
+    # ③ 关掉开关（methods 仍在）⇒ 再次不提交：可索引性看 enable ∧ methods
+    resp = await client.patch(
+        "/api/settings/donate",
+        json={"enable": False},
+        headers=staff_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    r3 = await client.get("/api/blog/sitemap-pages.xml")
+    assert "/sponsor" not in _paths(r3.text)
+
+
+@pytest.mark.asyncio
 async def test_sitemap_index_child_lastmod_is_max_updated(client: AsyncClient, db_session):
     """索引里每个子表的 <lastmod> = 该表节点的最大更新日期，不再恒等于今天。
 

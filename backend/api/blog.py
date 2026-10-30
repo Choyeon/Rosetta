@@ -3908,8 +3908,26 @@ def generate_taxonomy_sitemap(
     return _wrap_urlset("\n".join(entries), with_image=False)
 
 
+async def _sponsor_page_indexable(db) -> bool:
+    """``/sponsor`` 是否应当提交进 sitemap。
+
+    与 ``frontend/pages/sponsor.vue::sponsorEmpty`` 同口径：关掉开关或没有收款方式时，
+    这一页输出 ``noindex, follow``（空壳捐助页没有可索引内容），此时提交进 sitemap
+    等于向爬虫要一个自己声明"别收录"的地址。未保存过 donate 分组时 ``read_group``
+    只回 ``{}``，必须判成不可索引——前端默认 ``methods: []``，两边不能分叉。
+    """
+    from backend.services.site_settings import bool_of, read_group
+
+    donate = await read_group("donate", db)
+    methods = donate.get("methods")
+    return bool_of(donate, "enable", True) and isinstance(methods, list) and bool(methods)
+
+
 def generate_pages_sitemap(
-    pages: list, site_url: str, archive_years: list[int] | None = None
+    pages: list,
+    site_url: str,
+    archive_years: list[int] | None = None,
+    include_sponsor: bool = False,
 ) -> str:
     """生成固定公开路由 + 年份归档落地页 + 独立页面（``/<slug>``）sitemap。
 
@@ -3941,6 +3959,19 @@ def generate_pages_sitemap(
                 changefreq="monthly",
                 priority="0.4",
                 rel_path=f"/archive/{year}",
+                site_url=site_url,
+            )
+        )
+    if include_sponsor:
+        # 条件性收录：donate 配置齐全时 /sponsor 是正常可索引页（sponsorEmpty=false），
+        # 但它不在 _STATIC_SITEMAP_ROUTES 里——那张表是"恒存在且恒可索引"的固定路由，
+        # 捐助页的可索引性由分组配置决定，只能在这里按运行时状态决定是否补一条。
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/sponsor",
+                changefreq="monthly",
+                priority="0.3",
+                rel_path="/sponsor",
                 site_url=site_url,
             )
         )
@@ -4219,7 +4250,12 @@ async def get_sitemap_pages(db: DB):
     archive_years = sorted(
         {utc_year_month(value)[0] for value in published_values if value}, reverse=True
     )
-    content = generate_pages_sitemap(pages, site_url, archive_years=archive_years)
+    content = generate_pages_sitemap(
+        pages,
+        site_url,
+        archive_years=archive_years,
+        include_sponsor=await _sponsor_page_indexable(db),
+    )
     return Response(
         content=content,
         media_type="application/xml",
