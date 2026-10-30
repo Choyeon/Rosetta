@@ -51,6 +51,12 @@
       >
         <CommentListContent status="spam" />
       </TabsContent>
+      <TabsContent
+        value="reports"
+        class="mt-6"
+      >
+        <CommentReportsPanel />
+      </TabsContent>
     </Tabs>
   </div>
 </template>
@@ -61,6 +67,7 @@ import AdminTabList from '~~/components/admin/AdminTabList.vue'
 import AdminTabTrigger from '~~/components/admin/AdminTabTrigger.vue'
 import { MessageSquare } from '@lucide/vue'
 import CommentListContent from './_parts/CommentListContent.vue'
+import CommentReportsPanel from './_parts/CommentReportsPanel.vue'
 
 definePageMeta({ ssr: false, layout: 'admin' })
 
@@ -71,7 +78,8 @@ const COMMENT_TABS = [
   { value: 'pending', label: '待审' },
   { value: 'approved', label: '已通过' },
   { value: 'rejected', label: '已拒绝' },
-  { value: 'spam', label: '垃圾' }
+  { value: 'spam', label: '垃圾' },
+  { value: 'reports', label: '举报' }
 ] as const
 
 const activeTab = ref<string>('all')

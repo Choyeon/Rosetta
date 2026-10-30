@@ -43,6 +43,7 @@ from backend.api import (
     blog,
     captcha,
     comment_reactions,
+    comment_report,
     comments,
     core,
     docs,
@@ -918,6 +919,7 @@ def create_application() -> FastAPI:
     app.include_router(post_crypto.router, prefix="/api")
     app.include_router(scheduled_posts.router, prefix="/api")
     app.include_router(comment_reactions.router, prefix="/api")
+    app.include_router(comment_report.router, prefix="/api")
     app.include_router(ranking.router, prefix="/api")
     app.include_router(performance.router, prefix="/api/admin")
     app.include_router(stats.router, prefix="/api/admin")

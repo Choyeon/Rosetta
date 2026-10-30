@@ -33,6 +33,18 @@ export interface CommentReactionSummaryList {
   total: number
 }
 
+/** 举报原因：与 backend/schemas/comment_report.py::ReportReason 逐个对齐，改动须两边同批。 */
+export type CommentReportReason = 'spam' | 'abuse' | 'offtopic' | 'other'
+
+export interface CommentReportReceipt {
+  id: number
+  comment_id: number
+  status: string
+  /** true = 撞上已存在的待处理举报，后端没有新建行（回 200 而不是 201，但不是错误）。 */
+  duplicate: boolean
+  message: string
+}
+
 export function useComments() {
   const { locale } = useI18n()
 
@@ -144,6 +156,24 @@ export function useComments() {
     // emoji 永远解不掉——界面点亮了就再也取消不了。
     return apiFetch<unknown>(`/comments/${id}/reactions/${encodeURIComponent(emoji)}`, {
       method: 'DELETE'
+    })
+  }
+
+  /**
+   * 举报一条评论：POST /api/comments/{id}/report（api/comment_report.py）。
+   *
+   * 匿名与登录用户同一条口，后端的可读性闸门与表情反应同源（草稿/加密文章的评论回 404），
+   * 登录用户举报自己的评论回 400 SELF_REPORT——所以界面上"举报"入口不给自己的行渲染。
+   * 重复举报回 200 + duplicate=true，不是错误，不要把 duplicate 当失败处理。
+   */
+  const reportComment = (
+    id: number | string,
+    reason: CommentReportReason,
+    detail?: string
+  ) => {
+    return apiFetch<CommentReportReceipt>(`/comments/${id}/report`, {
+      method: 'POST',
+      body: { reason, detail: detail?.trim() || undefined }
     })
   }
 
@@ -275,6 +305,7 @@ export function useComments() {
     likeComment,
     addCommentReaction,
     removeCommentReaction,
+    reportComment,
     deleteComment,
     approveComment,
     rejectComment,

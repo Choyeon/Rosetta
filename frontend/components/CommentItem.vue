@@ -120,6 +120,77 @@
             class="size-3.5"
           />
         </Button>
+
+        <!-- 举报入口：自己的评论不渲染（后端对 self-report 回 400 SELF_REPORT），
+             成功一次后锁成「已举报」，重复点击不会得到新结果（后端按用户/IP 去重）。 -->
+        <Button
+          v-if="canReport"
+          variant="ghost"
+          size="sm"
+          class="h-7 px-2 text-muted-foreground"
+          :disabled="reported || reportBusy"
+          :aria-expanded="reportPanel"
+          :aria-label="reported ? t('comment.reported') : t('comment.report')"
+          @click="reportPanel = !reportPanel"
+        >
+          <AlertTriangle
+            data-icon="inline-start"
+            class="mr-1 size-3.5"
+          />
+          <span class="text-xs">{{ reported ? t('comment.reported') : t('comment.report') }}</span>
+        </Button>
+      </div>
+
+      <div
+        v-if="reportPanel"
+        class="mt-2 flex flex-col gap-2 rounded-lg border border-border/60 p-3"
+      >
+        <p class="text-xs text-muted-foreground">
+          {{ t('comment.reportHint') }}
+        </p>
+        <div class="flex flex-wrap gap-1">
+          <Button
+            v-for="item in REPORT_REASONS"
+            :key="`reason-${item.value}`"
+            :variant="reportReason === item.value ? 'default' : 'outline'"
+            size="sm"
+            class="h-7 px-2"
+            :disabled="reportBusy"
+            :aria-pressed="reportReason === item.value"
+            @click="reportReason = item.value"
+          >
+            {{ t(item.labelKey) }}
+          </Button>
+        </div>
+        <Textarea
+          v-model="reportDetail"
+          rows="2"
+          maxlength="500"
+          class="resize-none text-sm"
+          :placeholder="t('comment.reportDetailPlaceholder')"
+        />
+        <div class="flex justify-end gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            :disabled="reportBusy"
+            @click="reportPanel = false"
+          >
+            {{ t('common.cancel') }}
+          </Button>
+          <Button
+            size="sm"
+            :disabled="reportBusy"
+            @click="submitReport"
+          >
+            <Loader2
+              v-if="reportBusy"
+              data-icon="inline-start"
+              class="mr-1 size-3.5 animate-spin"
+            />
+            {{ t('comment.reportSubmit') }}
+          </Button>
+        </div>
       </div>
 
       <div
@@ -147,9 +218,14 @@
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
-import { Heart, MessageSquare, Smile, Trash2 } from '~~/lib/lucide-svg-icons'
+import { Textarea } from '~~/components/ui/textarea'
+import { AlertTriangle, Heart, Loader2, MessageSquare, Smile, Trash2 } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
-import { useComments, type CommentReactionSummary } from '~~/composables/useComments'
+import {
+  useComments,
+  type CommentReactionSummary,
+  type CommentReportReason
+} from '~~/composables/useComments'
 import { toBcp47Locale } from '~~/composables/useSeo'
 
 interface Props {
@@ -182,6 +258,8 @@ interface Props {
   canReply?: boolean
   /** 仅这一行的作者本人可见的删除入口（页面用 raw.user_id 对登录 id 算，见上方注释）。 */
   canDelete?: boolean
+  /** 举报入口：页面按"这条不是我的"传入（后端对 self-report 回 400 SELF_REPORT）。 */
+  canReport?: boolean
   /** 删除请求进行中：锁住本行入口，避免重复提交（服务端删除非幂等，第二次会 404）。 */
   deleting?: boolean
 }
@@ -190,6 +268,7 @@ const props = withDefaults(defineProps<Props>(), {
   depth: 0,
   canReply: true,
   canDelete: false,
+  canReport: false,
   deleting: false
 })
 
@@ -199,7 +278,14 @@ defineEmits<{
 }>()
 
 const { t, locale } = useI18n()
-const { likeComment, loadCommentReactions, addCommentReaction, removeCommentReaction } = useComments()
+const {
+  likeComment,
+  loadCommentReactions,
+  addCommentReaction,
+  removeCommentReaction,
+  reportComment
+} = useComments()
+const toast = useToast()
 
 // 点赞：真实调用 POST /api/comments/{id}/like（后端为纯计数 +1，无取消语义），
 // 成功后以响应 likes_count 为准更新计数并锁定按钮，防止重复计数。
@@ -266,6 +352,37 @@ async function toggleReaction(emoji: string) {
     // 同上：失败态由 apiFetch 统一 toast，计数不本地猜
   } finally {
     reactionBusy.value = false
+  }
+}
+
+// 举报：原因枚举与后端 Literal 逐个对齐（见 useComments::CommentReportReason）。
+// 重复举报后端回 200 + duplicate=true 并带自己的 message，所以提示语优先用服务端那句，
+// 不在组件里另写一套"你已经举报过了"的判断。
+const REPORT_REASONS: { value: CommentReportReason, labelKey: string }[] = [
+  { value: 'spam', labelKey: 'comment.reportSpam' },
+  { value: 'abuse', labelKey: 'comment.reportAbuse' },
+  { value: 'offtopic', labelKey: 'comment.reportOfftopic' },
+  { value: 'other', labelKey: 'comment.reportOther' }
+]
+const reportPanel = ref(false)
+const reportReason = ref<CommentReportReason>('spam')
+const reportDetail = ref('')
+const reportBusy = ref(false)
+const reported = ref(false)
+
+async function submitReport() {
+  if (reportBusy.value) return
+  reportBusy.value = true
+  try {
+    const res = await reportComment(props.comment.id, reportReason.value, reportDetail.value)
+    reportPanel.value = false
+    reportDetail.value = ''
+    reported.value = true
+    toast.success(res?.message || t('comment.reportThanks'))
+  } catch {
+    // apiFetch 已统一 toast；面板留着让用户改选原因后重试
+  } finally {
+    reportBusy.value = false
   }
 }
 

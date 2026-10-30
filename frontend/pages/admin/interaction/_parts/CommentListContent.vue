@@ -20,6 +20,16 @@
         />
       </div>
       <div class="flex items-center gap-2">
+        <!-- 举报筛选只对评论有意义（留言板没有举报通道），谓词是后端的 reported_at 标记 -->
+        <Button
+          v-if="!isGuestbook && !isTrashedView"
+          size="sm"
+          :variant="reportedOnly ? 'default' : 'outline'"
+          @click="toggleReportedOnly"
+        >
+          <AlertTriangle data-icon="inline-start" />
+          仅看被举报
+        </Button>
         <Button
           variant="ghost"
           size="sm"
@@ -225,6 +235,14 @@
                   class="gap-1"
                 >
                   <Sparkles class="size-3" />精华
+                </Badge>
+                <!-- reported_at 是「仍挂着待处理举报」的后端标记，不是历史；裁决完自动清空 -->
+                <Badge
+                  v-if="!isGuestbook && comment.reported_at"
+                  variant="destructive"
+                  class="gap-1"
+                >
+                  <AlertTriangle class="size-3" />待处理举报
                 </Badge>
                 <Badge :class="statusBadgeClass(comment.status)">
                   {{ statusText(comment.status) }}
@@ -441,7 +459,7 @@ import { Separator } from '~~/components/ui/separator'
 import { Label } from '~~/components/ui/label'
 import {
   Search, Check, X, Trash2, MoreVertical, Flag, ThumbsUp, Loader2, RotateCcw,
-  MessageCircle, Reply, Send, Info, Pin, Sparkles
+  MessageCircle, Reply, Send, Info, Pin, Sparkles, AlertTriangle
 } from '@lucide/vue'
 import {
   fetchAdminComments,
@@ -483,6 +501,7 @@ const page = ref(1)
 const pageSize = ref(10)
 const total = ref(0)
 const selectedIds = ref<number[]>([])
+const reportedOnly = ref(false)
 const replyOpenId = ref<number | null>(null)
 const replyContent = ref('')
 const replySubmitting = ref(false)
@@ -526,7 +545,8 @@ async function fetchData() {
         page: page.value,
         page_size: pageSize.value,
         status: props.status,
-        keyword: keyword.value.trim() || undefined
+        keyword: keyword.value.trim() || undefined,
+        reported_only: !props.isGuestbook && reportedOnly.value ? true : undefined
       }
       // 两条通道的行形状各自精确，共同基 AdminCommentRow 才是本组件的状态类型
       const res = props.isGuestbook
@@ -553,6 +573,13 @@ async function fetchData() {
 }
 
 function onSearch() {
+  page.value = 1
+  selectedIds.value = []
+  fetchData()
+}
+
+function toggleReportedOnly() {
+  reportedOnly.value = !reportedOnly.value
   page.value = 1
   selectedIds.value = []
   fetchData()

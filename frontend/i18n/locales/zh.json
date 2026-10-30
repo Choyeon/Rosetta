@@ -151,7 +151,17 @@
     "deleteConfirm": "确定删除这条评论吗？删除后 30 天内可由管理员恢复。",
     "deleted": "评论已删除",
     "like": "点赞",
-    "react": "表情反应"
+    "react": "表情反应",
+    "report": "举报",
+    "reported": "已举报",
+    "reportHint": "选择举报原因，管理员会尽快处理",
+    "reportSpam": "垃圾广告",
+    "reportAbuse": "辱骂攻击",
+    "reportOfftopic": "与内容无关",
+    "reportOther": "其他原因",
+    "reportDetailPlaceholder": "补充说明（可选，最多 500 字）",
+    "reportSubmit": "提交举报",
+    "reportThanks": "举报已提交，感谢反馈"
   },
   "poll": {
     "title": "投票",

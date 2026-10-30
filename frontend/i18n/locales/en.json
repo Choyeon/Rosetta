@@ -151,7 +151,17 @@
     "deleteConfirm": "Delete this comment? An administrator can restore it within 30 days.",
     "deleted": "Comment deleted",
     "like": "Like",
-    "react": "Reaction"
+    "react": "Reaction",
+    "report": "Report",
+    "reported": "Reported",
+    "reportHint": "Pick a reason; moderators will review it soon",
+    "reportSpam": "Spam",
+    "reportAbuse": "Abuse",
+    "reportOfftopic": "Off-topic",
+    "reportOther": "Other",
+    "reportDetailPlaceholder": "Add details (optional, up to 500 characters)",
+    "reportSubmit": "Submit report",
+    "reportThanks": "Report submitted. Thanks for the feedback"
   },
   "poll": {
     "title": "Poll",

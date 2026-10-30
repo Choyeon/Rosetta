@@ -151,7 +151,17 @@
     "hoursAgo": " 小時前",
     "daysAgo": " 天前",
     "like": "點讚",
-    "react": "表情反應"
+    "react": "表情反應",
+    "report": "檢舉",
+    "reported": "已檢舉",
+    "reportHint": "選擇檢舉原因，管理員會盡快處理",
+    "reportSpam": "垃圾廣告",
+    "reportAbuse": "辱罵攻擊",
+    "reportOfftopic": "與內容無關",
+    "reportOther": "其他原因",
+    "reportDetailPlaceholder": "補充說明（選填，最多 500 字）",
+    "reportSubmit": "提交檢舉",
+    "reportThanks": "檢舉已提交，感謝回饋"
   },
   "poll": {
     "title": "投票",

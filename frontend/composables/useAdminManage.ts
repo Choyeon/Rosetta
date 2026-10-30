@@ -274,6 +274,8 @@ export interface AdminCommentRow {
   /** 留言专属：评论模型无对应列，故为可选。 */
   is_pinned?: boolean
   is_featured?: boolean
+  /** 评论专属：仍挂着待处理举报时的时间戳（后端 Comment.reported_at），无举报为 null。 */
+  reported_at?: string | null
 }
 
 export interface AdminComment extends AdminCommentRow {
@@ -289,6 +291,8 @@ export interface AdminCommentQuery {
   page_size?: number
   status?: AdminCommentStatusFilter
   keyword?: string
+  /** 只看仍挂着待处理举报的评论（后端 reported_only=true）。 */
+  reported_only?: boolean
 }
 
 /** GET /api/admin/comments —— admin.router 挂在 /api/admin，@router.get("/comments") */
@@ -299,6 +303,7 @@ export function fetchAdminComments(params: AdminCommentQuery): Promise<AdminPage
   }
   if (params.status && params.status !== 'all') query.status = params.status
   if (params.keyword && params.keyword.trim()) query.keyword = params.keyword.trim()
+  if (params.reported_only) query.reported_only = true
   return apiFetch<AdminPaged<AdminComment>>('/admin/comments', { query })
 }
 
@@ -354,6 +359,82 @@ export function replyToComment(
     method: 'POST',
     body: { content, parent_id: rootCommentId }
   })
+}
+
+// ==================== 评论举报 ====================
+
+export type AdminCommentReportStatus = 'open' | 'handled' | 'dismissed'
+export type AdminCommentReportFilter = AdminCommentReportStatus | 'all'
+export type AdminCommentReportReason = 'spam' | 'abuse' | 'offtopic' | 'other'
+
+/** GET /api/admin/comments/reports 的单条（字段与 backend/schemas/comment_report.py 对齐）。 */
+export interface AdminCommentReportRow {
+  id: number
+  comment_id: number
+  post_id: number
+  reason: AdminCommentReportReason | string
+  detail: string | null
+  status: AdminCommentReportStatus | string
+  reporter_user_id: number | null
+  reporter_name: string | null
+  reporter_ip: string | null
+  comment_excerpt: string
+  comment_author: string
+  comment_status: string
+  post_slug: string | null
+  post_title: string | null
+  created_at: string | null
+  handled_at: string | null
+  handled_by: string | null
+}
+
+export interface AdminCommentReportCounts {
+  open: number
+  handled: number
+  dismissed: number
+  total: number
+}
+
+export interface AdminCommentReportPaged {
+  items: AdminCommentReportRow[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+  counts: AdminCommentReportCounts
+}
+
+export interface AdminCommentReportQuery {
+  status?: AdminCommentReportFilter
+  page?: number
+  page_size?: number
+}
+
+/** GET /api/admin/comments/reports —— api/comment_report.py */
+export function fetchAdminCommentReports(
+  params: AdminCommentReportQuery
+): Promise<AdminCommentReportPaged> {
+  // 后端 status 接受 open/handled/dismissed/all，'all' 就是它的真值，不要在这里折成 open
+  const query: Record<string, unknown> = {
+    page: params.page ?? 1,
+    page_size: params.page_size ?? 20,
+    status: params.status ?? 'open'
+  }
+  return apiFetch<AdminCommentReportPaged>('/admin/comments/reports', { query })
+}
+
+/**
+ * PATCH /api/admin/comments/reports/{id} —— 裁决只落在终态 handled / dismissed。
+ * 本端点**不下架评论**：确认违规后仍需在评论列表里把 status 置为 rejected/spam。
+ */
+export function resolveAdminCommentReport(
+  reportId: number,
+  status: 'handled' | 'dismissed'
+): Promise<AdminCommentReportRow & { comment_reported: boolean }> {
+  return apiFetch<AdminCommentReportRow & { comment_reported: boolean }>(
+    `/admin/comments/reports/${reportId}`,
+    { method: 'PATCH', body: { status } }
+  )
 }
 
 // ==================== 用户管理 ====================

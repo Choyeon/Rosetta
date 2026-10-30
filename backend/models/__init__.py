@@ -6,6 +6,7 @@ from backend.models.activity import Activity
 from backend.models.announcement import Announcement
 from backend.models.blog import Category, Comment, Post, PostViewHistory, Tag, post_likes, post_tags
 from backend.models.comment_reaction import CommentReaction
+from backend.models.comment_report import CommentReport
 from backend.models.content_type import ContentField, ContentTypeDefinition
 from backend.models.core import (
     FriendLink,
@@ -57,6 +58,7 @@ __all__ = [
     "Announcement",
     "HeroSlide",
     "CommentReaction",
+    "CommentReport",
     "PerformanceMetric",
     "PostSeries",
     "ContentTypeDefinition",

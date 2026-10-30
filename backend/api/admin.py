@@ -160,6 +160,10 @@ class CommentAdminItemDoc(BaseModel):
     )
     created_at: str | None = Field(None, description="创建时间 ISO 8601 字符串，缺失为 null")
     updated_at: str | None = Field(None, description="更新时间 ISO 8601 字符串，缺失为 null")
+    reported_at: str | None = Field(
+        None,
+        description="仍挂着待处理举报时的时间戳（ISO 8601）；无待处理举报为 null",
+    )
     replies: list = Field(
         default_factory=list,
         description="嵌套回复列表：管理员列表端点恒为空数组（回复走 reply_total）",
@@ -899,6 +903,13 @@ async def admin_list_comments(
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = Query(None, description="pending/approved/rejected/spam"),
     keyword: str | None = Query(None, description="关键词：内容/昵称/邮箱/IP"),
+    reported_only: bool = Query(
+        False,
+        description=(
+            "只看仍挂着待处理举报的评论（Comment.reported_at 非空）。"
+            "待处理标记的立起/清空由评论举报口维护，见 api/comment_report.py"
+        ),
+    ),
 ):
     """
     管理员获取所有评论
@@ -950,6 +961,9 @@ async def admin_list_comments(
                 (Comment.github or "").ilike(kw),
             )
         )
+
+    if reported_only:
+        conditions.append(Comment.reported_at.is_not(None))
 
     base_q = select(Comment).options(
         # defer 必须写在 selectinload 之前：selectinload 会把生成链的路径推进到
@@ -1057,6 +1071,9 @@ async def admin_list_comments(
                 "reply_total": int(reply_count_map.get(c.id, 0)),
                 "created_at": c.created_at.isoformat() if c.created_at else None,
                 "updated_at": c.updated_at.isoformat() if getattr(c, "updated_at", None) else None,
+                "reported_at": (
+                    c.reported_at.isoformat() if getattr(c, "reported_at", None) else None
+                ),
                 "replies": [],
                 # 11-Bug#2：确保 parent_ref / post_ref / user_ref 都是可序列化的 dict
                 "post_ref": post_ref,

@@ -151,7 +151,17 @@
     "hoursAgo": " 時間前",
     "daysAgo": " 天前",
     "like": "いいね",
-    "react": "リアクション"
+    "react": "リアクション",
+    "report": "報告",
+    "reported": "報告済み",
+    "reportHint": "理由を選択してください。管理者が確認します",
+    "reportSpam": "スパム",
+    "reportAbuse": "侮辱・攻撃",
+    "reportOfftopic": "内容と無関係",
+    "reportOther": "その他",
+    "reportDetailPlaceholder": "補足（任意、500文字まで）",
+    "reportSubmit": "報告を送信",
+    "reportThanks": "報告を受け付けました。ありがとうございます"
   },
   "poll": {
     "title": "投票",

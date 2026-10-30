@@ -782,6 +782,7 @@
                     :comment="comment"
                     :can-reply="canReply"
                     :can-delete="isOwnComment(comment)"
+                    :can-report="!isOwnComment(comment)"
                     :deleting="deletingCommentId === comment.id"
                     @reply="handleReply"
                     @delete="handleDeleteComment"
