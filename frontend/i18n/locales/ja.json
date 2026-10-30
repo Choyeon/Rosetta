@@ -977,6 +977,7 @@
     "submit": "検索",
     "allTags": "すべてのタグ",
     "selectTag": "タグを選択",
+    "removeFilter": "フィルターを解除：{name}",
     "startPrompt": "検索を始める",
     "startDesc": "上でキーワードを入力すると、タイトル・本文・タグ・カテゴリーを検索できます。",
     "resultCount": "「{keyword}」関連の結果 {count} 件",

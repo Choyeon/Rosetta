@@ -117,3 +117,44 @@ describe('search 标签筛选的四语文案', () => {
     expect(json.search?.selectTag, `${loc}.json 缺 search.selectTag`).toBeTruthy()
   })
 })
+
+describe('search 筛选 chip（批次 #215）', () => {
+  const chipsBody = src.match(/const activeFilterChips = computed<[\s\S]+?>\(\(\) => \{[\s\S]*?\n\}\)/)?.[0] ?? ''
+  const removeBody = src.match(/const removeFilter = \(key: FilterKey\) => \{[\s\S]*?\n\}/)?.[0] ?? ''
+
+  it('三个筛选位各自成 chip，名称走字典解析（字典未到时兜底 slug）', () => {
+    expect(chipsBody).not.toBe('')
+    expect(chipsBody).toContain('key: \'category\'')
+    expect(chipsBody).toContain('key: \'tag\'')
+    expect(chipsBody).toContain('key: \'sort\'')
+    expect(chipsBody).toContain('pickLocalized(hit.name)')
+    expect(chipsBody).toContain('selectedCategory.value')
+    expect(chipsBody).toContain('selectedTag.value')
+    expect(chipsBody).toContain('sortBy.value !== \'latest\'')
+  })
+
+  it('只移除被点的那一位，不动关键词，也不 push 历史', () => {
+    expect(removeBody).not.toBe('')
+    expect(removeBody).toContain('if (key === \'category\') selectedCategory.value = \'\'')
+    expect(removeBody).toContain('else if (key === \'tag\') selectedTag.value = \'\'')
+    expect(removeBody).toContain('else sortBy.value = \'latest\'')
+    expect(removeBody).toContain('currentPage.value = 1')
+    expect(removeBody).toContain('syncUrl(\'replace\', keyword.value)')
+    expect(removeBody).not.toContain('keyword.value =')
+    expect(removeBody).not.toContain('router.push')
+  })
+
+  it('模板渲染 chip 列表并挂可访问名称', () => {
+    expect(src).toContain('v-for="chip in activeFilterChips"')
+    expect(src).toContain('@click="removeFilter(chip.key)"')
+    expect(src).toContain(':aria-label="t(\'search.removeFilter\', { name: chip.label })"')
+    expect(src).toContain('v-if="hasFilter"')
+  })
+
+  it.each(locales)('%s.json 有 removeFilter 文案', (loc) => {
+    const json = JSON.parse(readFileSync(resolve(ROOT, `i18n/locales/${loc}.json`), 'utf-8')) as {
+      search?: Record<string, string>
+    }
+    expect(json.search?.removeFilter, `${loc}.json 缺 search.removeFilter`).toContain('{name}')
+  })
+})

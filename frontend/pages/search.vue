@@ -117,6 +117,26 @@
           </div>
         </CardContent>
       </Card>
+
+      <!-- 生效中的筛选做成可单独移除的 chip：三个下拉框里"当前选了什么"只有点开才看得见，
+           用户想只去掉标签而保留分类时，此前只能把两个都清掉再重选。 -->
+      <div
+        v-if="hasFilter"
+        class="mt-3 flex flex-wrap items-center gap-2"
+      >
+        <button
+          v-for="chip in activeFilterChips"
+          :key="chip.key"
+          type="button"
+          class="inline-flex items-center gap-1.5 rounded-full border border-border bg-muted/50 ps-3 pe-2 py-1 text-xs transition-colors hover:bg-muted"
+          :aria-label="t('search.removeFilter', { name: chip.label })"
+          @click="removeFilter(chip.key)"
+        >
+          <span class="text-muted-foreground">{{ chip.prefix }}</span>
+          <span class="font-medium">{{ chip.label }}</span>
+          <X class="size-3" />
+        </button>
+      </div>
     </header>
 
     <template v-if="!hasKeyword && !hasFilter">
@@ -331,6 +351,37 @@ const hasKeyword = computed(() => !!(route.query.q as string | undefined)?.trim(
 const hasFilter = computed(() => !!selectedCategory.value || !!selectedTag.value || sortBy.value !== 'latest')
 const keywordLabel = computed(() => String(route.query.q || '').trim())
 
+type FilterKey = 'category' | 'tag' | 'sort'
+
+/** 生效中的筛选 chip：显示解析后的名称（slug 只在字典还没到时兜底），移除按钮逐个生效。 */
+const activeFilterChips = computed<Array<{ key: FilterKey, prefix: string, label: string }>>(() => {
+  const chips: Array<{ key: FilterKey, prefix: string, label: string }> = []
+  if (selectedCategory.value) {
+    const hit = (categories.value ?? []).find(c => c.slug === selectedCategory.value)
+    chips.push({
+      key: 'category',
+      prefix: String(t('nav.categories')),
+      label: hit ? pickLocalized(hit.name) : selectedCategory.value
+    })
+  }
+  if (selectedTag.value) {
+    const hit = tags.value.find(tg => tg.slug === selectedTag.value)
+    chips.push({
+      key: 'tag',
+      prefix: String(t('nav.tags')),
+      label: hit ? pickLocalized(hit.name) : selectedTag.value
+    })
+  }
+  if (sortBy.value !== 'latest') {
+    chips.push({
+      key: 'sort',
+      prefix: String(t('posts.sortLabel')),
+      label: String(t('posts.sortPopular'))
+    })
+  }
+  return chips
+})
+
 // 分类与首页/页脚/文章列表共用同一把缓存键，跨页不重复请求。
 const { data: categories } = useAPI<Category[]>('/blog/categories', {
   query: { lang: locale.value },
@@ -423,6 +474,15 @@ const clearFilters = () => {
   sortBy.value = 'latest'
   currentPage.value = 1
   syncUrl('replace')
+}
+
+/** 只移除一个筛选位；关键词是输入框的内容，不属于筛选，一律不动。 */
+const removeFilter = (key: FilterKey) => {
+  if (key === 'category') selectedCategory.value = ''
+  else if (key === 'tag') selectedTag.value = ''
+  else sortBy.value = 'latest'
+  currentPage.value = 1
+  syncUrl('replace', keyword.value)
 }
 
 const pageHref = (page: number) => {
