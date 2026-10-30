@@ -914,6 +914,8 @@
     "desc": "从标题、内容、标签、分类中快速找到你想看的文章。",
     "placeholder": "输入关键词，按回车或点击搜索…",
     "submit": "搜索",
+    "allTags": "全部标签",
+    "selectTag": "选择标签",
     "startPrompt": "开始搜索",
     "startDesc": "在上方输入关键词，支持标题、正文、标签和分类全文检索。",
     "resultCount": "找到 {count} 条与「{keyword}」相关的结果",

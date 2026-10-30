@@ -975,6 +975,8 @@
     "desc": "從標題、內容、標籤、分類中快速找到你想看的文章。",
     "placeholder": "輸入關鍵詞，按回車或點擊搜尋…",
     "submit": "搜尋",
+    "allTags": "全部標籤",
+    "selectTag": "選擇標籤",
     "startPrompt": "開始搜尋",
     "startDesc": "在上方輸入關鍵詞，支援標題、正文、標籤和分類全文檢索。",
     "resultCount": "找到 {count} 條與「{keyword}」相關的結果",

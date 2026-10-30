@@ -1,8 +1,14 @@
 <!--
-  搜索页：以 route.query.q 为检索词唯一真值（结果可收藏/可分享）。
-  本路由被 routeRules '/search/**' 精准反选为 ssr:false：虽然代码写得像 SSR 页
-  （computed query + 跟随 q 的 key），首屏数据实际只在客户端拉取，改任何"可直出"假设前
-  先查反选表。分页页码与检索词一起进 URL（?q=&page=），刷新/分享/后退都能还原当前页。
+  搜索页：以 route.query 为唯一真值（q / category / tag / sort / page 全部进 URL），
+  结果可收藏/可分享，刷新/后退都能还原。
+  本路由被 routeRules '/search/**' 精准反选为 ssr:false：首屏数据只在客户端拉取，
+  改任何"可直出"假设前先查反选表。
+  硬契约：
+  1. 语言前缀必须走 applyLocalePrefix('/search', locale)：本页曾把裸路径写进 router.push，
+     在 /en/search 上点搜索会把英文用户整站切回中文页（AGENTS §2.3.3 第 2 条）。
+  2. sort 只回发白名单值（后端对未知值回退 latest），category/tag 原样透传。
+  3. 检索词与筛选都为空时展示开始提示；仅筛选不为空时按该筛选浏览列表
+     （此时计数改用「共 N 篇」，搜索口径的「与「」相关」在空关键词下会读成病句）。
 -->
 <template>
   <div class="container py-16">
@@ -18,7 +24,7 @@
         <CardContent class="p-4">
           <div class="flex flex-col md:flex-row gap-3">
             <div class="flex-1 relative">
-              <Search class="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Search class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
               <Input
                 v-model="keyword"
                 :aria-label="t('common.search')"
@@ -29,6 +35,7 @@
             </div>
             <Button
               variant="default"
+              class="shrink-0"
               @click="runSearch"
             >
               <Search
@@ -38,11 +45,81 @@
               {{ t('search.submit') }}
             </Button>
           </div>
+
+          <div class="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <Select
+              v-model="selectedCategory"
+              @update:model-value="handleFilter"
+            >
+              <SelectTrigger
+                class="h-10"
+                :aria-label="t('posts.selectCategory')"
+              >
+                <SelectValue :placeholder="t('posts.selectCategory')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">
+                  {{ t('posts.allCategories') }}
+                </SelectItem>
+                <SelectItem
+                  v-for="cat in categories"
+                  :key="cat.id"
+                  :value="cat.slug"
+                >
+                  {{ pickLocalized(cat.name) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="selectedTag"
+              @update:model-value="handleFilter"
+            >
+              <SelectTrigger
+                class="h-10"
+                :aria-label="t('search.selectTag', '选择标签')"
+              >
+                <SelectValue :placeholder="t('search.selectTag', '选择标签')" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__all">
+                  {{ t('search.allTags', '全部标签') }}
+                </SelectItem>
+                <SelectItem
+                  v-for="tag in tags"
+                  :key="tag.id"
+                  :value="tag.slug"
+                >
+                  {{ pickLocalized(tag.name) }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select
+              v-model="sortBy"
+              @update:model-value="handleFilter"
+            >
+              <SelectTrigger
+                class="h-10"
+                :aria-label="t('posts.sortLabel')"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="latest">
+                  {{ t('posts.sortLatest') }}
+                </SelectItem>
+                <SelectItem value="popular">
+                  {{ t('posts.sortPopular') }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardContent>
       </Card>
     </header>
 
-    <template v-if="!route.query.q">
+    <template v-if="!hasKeyword && !hasFilter">
       <div class="text-center py-20">
         <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
           <Search class="size-8 text-muted-foreground" />
@@ -66,9 +143,22 @@
     </template>
 
     <template v-else-if="posts.length > 0">
-      <p class="text-muted-foreground mb-6">
-        {{ t('search.resultCount', { count: total, keyword: String(route.query.q) }) }}
-      </p>
+      <div class="mb-6 flex flex-wrap items-center justify-between gap-2 text-muted-foreground">
+        <p aria-live="polite">
+          {{ hasKeyword
+            ? t('search.resultCount', { count: total, keyword: keywordLabel })
+            : t('posts.resultCount', { n: total }) }}
+        </p>
+        <button
+          v-if="hasFilter"
+          type="button"
+          class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-primary/10"
+          @click="clearFilters"
+        >
+          <X class="size-3.5" />
+          {{ t('posts.clearFilters') }}
+        </button>
+      </div>
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <PostCard
           v-for="post in posts"
@@ -86,34 +176,61 @@
           role="navigation"
           aria-label="pagination"
         >
-          <Button
-            variant="outline"
-            size="icon"
-            :disabled="currentPage <= 1"
+          <!-- 分页用真实 <a href>：中键/新标签页能落到对应页码，点击仍走 SPA 翻页 -->
+          <template v-if="currentPage <= 1">
+            <Button
+              variant="outline"
+              size="icon"
+              disabled
+              :aria-label="t('common.prevPage', '上一页')"
+            >
+              <ChevronLeft data-icon="inline-start" />
+            </Button>
+          </template>
+          <a
+            v-else
+            :href="pageHref(currentPage - 1)"
             :aria-label="t('common.prevPage', '上一页')"
-            @click="handlePageChange(currentPage - 1)"
+            :class="pageLinkClass('outline')"
+            @click.prevent="handlePageChange(currentPage - 1)"
           >
             <ChevronLeft data-icon="inline-start" />
-          </Button>
-          <Button
+          </a>
+          <template
             v-for="page in visiblePages"
             :key="page"
-            :variant="page === currentPage ? 'default' : 'ghost'"
-            size="icon"
-            class="size-9 min-w-[2.25rem]"
-            @click="handlePageChange(page)"
           >
-            {{ page }}
-          </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            :disabled="currentPage >= totalPages"
+            <span
+              v-if="page === currentPage"
+              aria-current="page"
+              :class="pageLinkClass('default')"
+            >{{ page }}</span>
+            <a
+              v-else
+              :href="pageHref(page)"
+              :class="pageLinkClass('ghost')"
+              @click.prevent="handlePageChange(page)"
+            >{{ page }}</a>
+          </template>
+          <template v-if="currentPage >= totalPages">
+            <Button
+              variant="outline"
+              size="icon"
+              disabled
+              :aria-label="t('common.nextPage', '下一页')"
+            >
+              <ChevronRight data-icon="inline-start" />
+            </Button>
+          </template>
+          <a
+            v-else
+            :href="pageHref(currentPage + 1)"
             :aria-label="t('common.nextPage', '下一页')"
-            @click="handlePageChange(currentPage + 1)"
+            :class="pageLinkClass('outline')"
+            @click.prevent="handlePageChange(currentPage + 1)"
           >
             <ChevronRight data-icon="inline-start" />
-          </Button>
+          </a>
         </nav>
       </div>
     </template>
@@ -147,8 +264,20 @@
           {{ t('search.noResults') }}
         </h3>
         <p class="text-muted-foreground mt-1">
-          {{ t('search.noResultsDesc', { keyword: String(route.query.q) }) }}
+          {{ hasKeyword
+            ? t('search.noResultsDesc', { keyword: keywordLabel })
+            : t('posts.noMatchDesc') }}
         </p>
+        <Button
+          v-if="hasFilter"
+          variant="outline"
+          size="sm"
+          class="mt-4"
+          @click="clearFilters"
+        >
+          <X data-icon="inline-start" />
+          {{ t('posts.clearFilters') }}
+        </Button>
       </div>
     </template>
   </div>
@@ -156,15 +285,16 @@
 
 <script setup lang="ts">
 import { Card, CardContent } from '~~/components/ui/card'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
-import type { Post, PaginatedResponse } from '~~/types/api'
+import type { Category, PaginatedResponse, Post, Tag } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { pageWindow } from '~~/lib/pagination'
 import { useI18n } from 'vue-i18n'
-import { Search, SearchX, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Search, SearchX, ChevronLeft, ChevronRight, X } from '@lucide/vue'
 import { ref, computed, watch } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -173,22 +303,61 @@ const { t, locale } = useI18n()
 const route = useRoute()
 const router = useRouter()
 
+const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
+
+const ALL = '__all'
+const SORT_VALUES = ['latest', 'popular'] as const
+type SortValue = (typeof SORT_VALUES)[number]
+
+const sortFromUrl = (raw: unknown): SortValue =>
+  SORT_VALUES.includes(raw as SortValue) ? (raw as SortValue) : 'latest'
+const slugFromUrl = (raw: unknown): string => {
+  const v = typeof raw === 'string' ? raw.trim() : ''
+  return v === ALL ? '' : v
+}
+
 const keyword = ref<string>((route.query.q as string) || '')
-// 页码与检索词同样是 URL 状态：刷新/分享/后退必须还原当前页，而不是落回第一页。
+const selectedCategory = ref(slugFromUrl(route.query.category))
+const selectedTag = ref(slugFromUrl(route.query.tag))
+const sortBy = ref<SortValue>(sortFromUrl(route.query.sort))
+// 页码与检索词/筛选同样是 URL 状态：刷新/分享/后退必须还原当前页，而不是落回第一页。
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const site = useSite()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
 const pageSize = computed(() => site.reading.value.posts_per_page)
 
-// 以路由 query.q 作为检索词的唯一真值来源：SSR 可渲染、结果可分享。
+const hasKeyword = computed(() => !!(route.query.q as string | undefined)?.trim())
+const hasFilter = computed(() => !!selectedCategory.value || !!selectedTag.value || sortBy.value !== 'latest')
+const keywordLabel = computed(() => String(route.query.q || '').trim())
+
+// 分类与首页/页脚/文章列表共用同一把缓存键，跨页不重复请求。
+const { data: categories } = useAPI<Category[]>('/blog/categories', {
+  query: { lang: locale.value },
+  key: `blog:categories:${locale.value}`,
+  default: () => []
+})
+const { data: tagsRaw } = useAPI<Tag[]>('/blog/tags', {
+  query: { lang: locale.value },
+  key: `home:tags:${locale.value}`,
+  default: () => []
+})
+const tags = computed<Tag[]>(() => (Array.isArray(tagsRaw.value) ? tagsRaw.value.filter(t => t.is_active) : []))
+
+// 以路由 query 作为检索与筛选的唯一真值来源：结果可分享、可后退。
 const { data, pending, error: searchError, refresh } = useAPI<PaginatedResponse<Post>>('/blog/posts', {
   query: computed(() => ({
     lang: locale.value,
     page: currentPage.value,
     page_size: pageSize.value,
-    search: (route.query.q as string) || undefined
+    search: keywordLabel.value || undefined,
+    category: selectedCategory.value || undefined,
+    tag: selectedTag.value || undefined,
+    // 后端对未知取值回退 latest，这里同样只发白名单值
+    sort: sortBy.value === 'popular' ? 'popular' : undefined
   })),
-  key: computed(() => `search:${route.query.q || ''}:${currentPage.value}`)
+  key: computed(() =>
+    `search:${keywordLabel.value}:${selectedCategory.value}:${selectedTag.value}:${sortBy.value}:${currentPage.value}`
+  )
 })
 
 const posts = computed<Post[]>(() => data.value?.items || [])
@@ -197,25 +366,64 @@ const totalPages = computed(() => Math.ceil(total.value / pageSize.value) || 1)
 
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
+const urlQuery = computed<Record<string, string>>(() => {
+  const q: Record<string, string> = {}
+  if (keywordLabel.value) q.q = keywordLabel.value
+  if (selectedCategory.value) q.category = selectedCategory.value
+  if (selectedTag.value) q.tag = selectedTag.value
+  if (sortBy.value !== 'latest') q.sort = sortBy.value
+  if (currentPage.value > 1) q.page = String(currentPage.value)
+  return q
+})
+
+const searchPath = computed(() => applyLocalePrefix('/search', locale.value))
+
+const syncUrl = (mode: 'push' | 'replace') => {
+  const query = Object.keys(urlQuery.value).length > 0 ? urlQuery.value : {}
+  const target = { path: searchPath.value, query }
+  if (mode === 'push') void router.push(target)
+  else void router.replace(target)
+}
+
 const runSearch = () => {
-  const q = keyword.value.trim()
+  // 输入框是草稿态：只有点搜索/回车才写进 URL；筛选保留，页码归 1。
+  keyword.value = keyword.value.trim()
   currentPage.value = 1
-  // 通过路由跳转触发新的 SSR 友好检索（可被收藏/分享）
-  router.push({ path: '/search', query: q ? { q } : {} })
+  syncUrl('push')
+}
+
+const handleFilter = () => {
+  currentPage.value = 1
+  syncUrl('replace')
 }
 
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
-  // 不调 refresh()：currentPage 进 query/key 的 computed，Nuxt params/key watcher
+  // 不调 refresh()：currentPage 进 query/key 的 computed，Nuxt 的 key watcher
   // 已自动重取；再手写 refresh 等于同一 URL 双发，第一发还被 abort。
   currentPage.value = page
   // 用 replace 而非 push：翻页不该在历史里堆出一串同关键词的条目，
   // 但地址栏必须带上 page，否则分享出去的链接永远停在第一页。
-  void router.replace({ query: { ...route.query, page: page > 1 ? String(page) : undefined } })
+  syncUrl('replace')
   if (import.meta.client) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
+
+const clearFilters = () => {
+  selectedCategory.value = ''
+  selectedTag.value = ''
+  sortBy.value = 'latest'
+  currentPage.value = 1
+  syncUrl('replace')
+}
+
+const pageHref = (page: number) => {
+  const params = new URLSearchParams({ ...urlQuery.value, page: String(page) })
+  return `${searchPath.value}?${params.toString()}`
+}
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'icon' })
 
 // 越界页码（?page=99）拉回最后一页，避免停在"第 99 页，共 3 页"的空结果。
 watch([total, currentPage], () => {
@@ -224,25 +432,19 @@ watch([total, currentPage], () => {
 
 // 浏览器前进/后退改的是地址栏，页内状态要跟着回读
 watch(
-  () => route.query.page,
-  (raw) => {
-    const next = Math.max(1, Number(raw) || 1)
-    if (next !== currentPage.value) currentPage.value = next
-  }
-)
-
-// 路由 q 变化时（含浏览器前进/后退）同步输入框
-watch(
-  () => route.query.q,
+  () => route.query,
   (q) => {
-    keyword.value = (q as string) || ''
-    currentPage.value = 1
+    keyword.value = (q.q as string) || ''
+    selectedCategory.value = slugFromUrl(q.category)
+    selectedTag.value = slugFromUrl(q.tag)
+    sortBy.value = sortFromUrl(q.sort)
+    currentPage.value = Math.max(1, Number(q.page) || 1)
   }
 )
 
 useSeo({
   title: computed(() => {
-    const q = (route.query.q as string) || ''
+    const q = keywordLabel.value
     return q
       ? (t('search.resultCount', { count: total.value, keyword: q }) as string)
       : (t('search.title') as string || '搜索')
