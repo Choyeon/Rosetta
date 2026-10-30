@@ -71,6 +71,42 @@ async def test_sponsors_cache_purged_on_donate_save(client, staff_headers):
     assert [item["name"] for item in second.json()] == ["王五"]
 
 
+async def test_disable_flag_closes_every_donation_surface(client, staff_headers):
+    """``enable=false`` 是"本站不再接受捐助"：公开设置与打赏名单必须同时收起。
+
+    关闭前 ``enable`` 只影响前端 noindex 与页脚入口：``GET /api/settings/public`` 照样下发
+    收款方式、``GET /api/sponsors`` 照样吐名单——直接访问 /sponsor 仍看得见收款码。
+    三个公开面必须同一条判据，重新打开也要能完整恢复。
+    """
+    methods = [{"name": "支付宝", "image": "/media/qr.png", "note": ""}]
+    await _patch_donate(
+        client,
+        staff_headers,
+        {"enable": True, "methods": methods, "sponsors": [{"name": "钱八"}]},
+    )
+
+    public = (await client.get("/api/settings/public")).json()["groups"]["donate"]
+    assert public["methods"] == methods
+    assert [item["name"] for item in public["sponsors"]] == ["钱八"]
+    assert [item["name"] for item in (await client.get("/api/sponsors")).json()] == ["钱八"]
+
+    await _patch_donate(client, staff_headers, {"enable": False})
+
+    public = (await client.get("/api/settings/public")).json()["groups"]["donate"]
+    assert public["enable"] is False
+    assert public["methods"] == [], "关掉捐助后公开设置不该继续下发收款码"
+    assert public["sponsors"] == []
+    assert public["show_sponsors_list"] is False
+    assert (await client.get("/api/sponsors")).json() == []
+
+    # 重新打开必须完整恢复：把"关闭"做成单向清空等于丢掉运营者配置
+    await _patch_donate(client, staff_headers, {"enable": True})
+    public = (await client.get("/api/settings/public")).json()["groups"]["donate"]
+    assert public["methods"] == methods
+    assert [item["name"] for item in public["sponsors"]] == ["钱八"]
+    assert [item["name"] for item in (await client.get("/api/sponsors")).json()] == ["钱八"]
+
+
 async def test_sponsors_flag_gates_the_public_read_surface(client, staff_headers):
     await _patch_donate(
         client,

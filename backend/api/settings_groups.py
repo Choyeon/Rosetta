@@ -517,6 +517,22 @@ class SettingsPatchResponse(BaseModel):
     changed: list[str] = Field(default_factory=list, description="与更新前相比发生变化的键名列表")
 
 
+def _public_donate(group: dict) -> dict:
+    """donate 分组的公开投影：``enable`` 关掉时整组收敛成"没有捐助面"。
+
+    ``enable`` 是后台「启用捐助页」开关，语义是"本站不再接受捐助"。此前它只影响
+    前端 noindex 与页脚入口：收款方式仍随公开设置下发、``GET /api/sponsors`` 仍照常
+    吐出打赏名单——直接访问 /sponsor 依旧看得见收款码，第三方主题读公开设置也能拿到。
+    这里把 ``methods`` / ``sponsors`` 一并清空，是"关掉即消失"的单源实现；
+    ``show_sponsors_list`` 同时置 False，避免消费方按旧值渲染空名单标题。
+    """
+    from backend.services.site_settings import bool_of
+
+    if bool_of(group, "enable", True):
+        return group
+    return {**group, "methods": [], "sponsors": [], "show_sponsors_list": False}
+
+
 @router.get(
     "/public",
     summary="公开站设置（无需登录）",
@@ -542,6 +558,8 @@ async def get_public_settings(db: DB):
 
     all_groups = await _load_all_groups(db)
     public = {g: _redact(all_groups[g]) for g in PUBLIC_SETTING_GROUPS if g in all_groups}
+    if "donate" in public:
+        public["donate"] = _public_donate(public["donate"])
     try:
         await cache.set(cache_key, public, 300)
     except Exception:  # 缓存不可用不影响正常响应

@@ -4,7 +4,10 @@
   所以这里不发任何请求：分组为空时页面必须仍然渲染出标题与占位，而不是白屏。
   打赏墙（donate.sponsors + donate.show_sponsors_list）读同一份分组值，
   与 GET /api/sponsors（主题/插件用的公开读口）同源的同一份数，不是第二个数据源。
-  未配置任何收款码时本页输出 noindex（内容页占位没有收录价值），配置后自动恢复索引。
+  未配置任何收款码、或后台关掉「启用捐助页」时本页输出 noindex 并只渲染占位：
+  `enable` 是"本站不再接受捐助"的总开关，后端公开设置会把 methods/sponsors 一并清空
+  （见 backend/api/settings_groups.py::_public_donate），这里再加一道判断是为了
+  让页面在公开设置陈旧时也不把已下线的收款码渲染出去。
 -->
 <template>
   <div class="container py-16">
@@ -24,7 +27,7 @@
     </header>
 
     <div
-      v-if="donate.methods.length"
+      v-if="donate.enable && donate.methods.length"
       class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-4xl mx-auto"
     >
       <Card
@@ -139,7 +142,7 @@ const site = useSite()
 const donate = computed(() => site.donate.value)
 const sponsors = computed(() => site.donate.value.sponsors)
 const showDonors = computed(
-  () => site.donate.value.show_sponsors_list && sponsors.value.length > 0
+  () => donate.value.enable && donate.value.show_sponsors_list && sponsors.value.length > 0
 )
 
 // noindex 只在"这一页其实没有内容"时成立；用 computed 而不是常量 true，

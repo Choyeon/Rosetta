@@ -745,7 +745,9 @@ async def list_sponsors(db: DB):
                 rows = []
 
     sponsors: list[dict] = []
-    if bool_of(group, "show_sponsors_list", True):
+    # 与公开设置同一条闸门：`enable` 关掉＝本站不再接受捐助，名单也不该继续对外输出
+    # （公开投影里 methods/sponsors 同时清空，见 settings_groups.py::_public_donate）。
+    if bool_of(group, "enable", True) and bool_of(group, "show_sponsors_list", True):
         sponsors = [
             {
                 "name": str(item.get("name", "")),
