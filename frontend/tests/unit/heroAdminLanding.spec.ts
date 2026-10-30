@@ -6,7 +6,8 @@
  *    光看 useAdminManage 有没有导出判不出来，必须看页面有没有调。
  * 2. 多语言字段提交前必须过 JSON.stringify：后端 HeroSlide* 是 extra=forbid + `title: str | None`，
  *    直接发字典会 422，而 422 的报错文案对用户只有一句"参数错误"，很难反查到这一层。
- * 3. media_type 只允许 image：首页只有背景图层，video/youtube 存得进去却永不渲染。
+ * 3. media_type 三档都要能发出（image / video / youtube），且提交前过与后端同源的搭配校验；
+ *    图片档显式清空 `poster_url`，否则切回图片时历史封面会顶掉背景图。
  */
 import { describe, it, expect } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
@@ -49,9 +50,26 @@ describe('后台首页轮播管理页', () => {
       .toMatch(/return hasText \? JSON\.stringify\(values\) : null/)
   })
 
-  it('只提供 image 媒体类型（首页无视频渲染面）', () => {
-    expect(page).toMatch(/media_type: 'image'/)
-    expect(page, '不得给出 video/youtube 选项').not.toMatch(/value:\s*'(video|youtube)'/)
+  it('三档媒体类型都能选、都真的提交', () => {
+    for (const value of ['image', 'video', 'youtube']) {
+      expect(page, `缺 ${value} 选项`).toMatch(new RegExp(`value: '${value}'`))
+    }
+    // 表单默认值允许是 image（新建时的合理起点），但提交载荷里必须是当前值
+    const payloadBlock = page.slice(
+      page.indexOf('const payload: AdminHeroSlidePayload'),
+      page.indexOf('saving.value = true')
+    )
+    expect(payloadBlock).toContain('media_type: form.media_type')
+    expect(payloadBlock, '载荷里不得再写死 image').not.toMatch(/media_type: 'image'/)
+  })
+
+  it('媒体地址提交前过与后端同源的搭配校验', () => {
+    expect(page).toContain('heroMediaError(form.media_type, form.media_url)')
+  })
+
+  it('封面只在非图片档提交，图片档显式写 null（避免历史值顶掉背景图）', () => {
+    expect(page).toMatch(/poster_url: form\.media_type === 'image' \? null/)
+    expect(page).toContain('form.poster_url')
   })
 
   it('失败提示单源：页面 catch 内不得二次弹错（双 toast 是回归）', () => {

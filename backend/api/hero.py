@@ -33,6 +33,7 @@ from backend.schemas.hero import (
     HeroSlideCreate,
     HeroSlideResponse,
     HeroSlideUpdate,
+    validate_media_pair,
 )
 from backend.services.content_renderer import render_title
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
@@ -248,6 +249,18 @@ async def update_hero_slide(
         update_data.get("start_time", slide.start_time),
         update_data.get("end_time", slide.end_time),
     )
+    # 媒体类型与地址是跨字段判据，schema 只看得到本次提交的那半边：
+    # 把库里现值合并进来再判，否则"media_type 存的是 youtube、这次只换了地址"这种
+    # 增量更新会绕过写口校验，落库后首页是一块空白 iframe。
+    media_error = validate_media_pair(
+        update_data.get("media_type", slide.media_type),
+        update_data.get("media_url", slide.media_url),
+    )
+    if media_error:
+        raise ValidationException(
+            message=media_error,
+            details={"fields": ["media_url", "media_type"]},
+        )
     apply_partial_update(slide, update_data)
 
     await db.flush()

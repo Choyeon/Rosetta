@@ -115,9 +115,37 @@
         @focusin="heroFocusPaused = true"
         @focusout="heroFocusPaused = false"
       >
-        <!-- 背景层：新旧两层都绝对定位，切换时交叉淡入（reduced-motion 下由 CSS 关闭动画） -->
+        <!-- 背景层：三种媒体各自一条分支。视频/iframe 不做交叉淡入——两段同时播放
+             等于双份解码与双份声音，切换时由遮罩层吃掉跳变；静图层仍走 hero-xfade。 -->
         <div class="absolute inset-0 z-0">
-          <Transition name="hero-xfade">
+          <iframe
+            v-if="heroYoutubeEmbedUrl"
+            :key="heroYoutubeEmbedUrl"
+            :src="heroYoutubeEmbedUrl"
+            title=""
+            tabindex="-1"
+            aria-hidden="true"
+            allow="autoplay; encrypted-media; picture-in-picture"
+            referrerpolicy="strict-origin-when-cross-origin"
+            class="absolute inset-0 w-full h-full border-0 pointer-events-none"
+          />
+          <video
+            v-else-if="heroVideoUrl"
+            :key="heroVideoUrl"
+            :src="heroVideoUrl"
+            :poster="heroPosterUrl"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            aria-hidden="true"
+            class="absolute inset-0 w-full h-full object-cover pointer-events-none"
+          />
+          <Transition
+            v-else
+            name="hero-xfade"
+          >
             <div
               :key="heroBgUrl || 'fallback'"
               class="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -258,13 +286,18 @@
                     </span>
                   </div>
                   <img
-                    :src="slide.media_url"
+                    v-if="heroThumbSrc(slide)"
+                    :src="heroThumbSrc(slide)"
                     :alt="pickSlideText(slide.title)"
                     width="56"
                     height="56"
                     class="absolute inset-0 w-full h-full object-cover transition-opacity duration-300 ease-out z-0"
                     @error="handlePostCoverError($event, { id: slide.id })"
                   >
+                  <span
+                    v-else
+                    class="absolute inset-0 z-0 bg-gradient-to-br from-white/25 to-white/5"
+                  />
                 </button>
               </div>
             </div>
@@ -938,6 +971,13 @@ import { toYMD } from '~~/lib/datetime'
 import { handlePostCoverError } from '~~/lib/post-cover'
 import { cn, formatCount } from '~~/lib/utils'
 import { safeHeroHref } from '~~/lib/hero-cta'
+import {
+  extractYoutubeId,
+  heroThumbUrl,
+  isSiteRelativeMediaUrl,
+  normalizeHeroMediaType,
+  youtubeEmbedUrl
+} from '~~/lib/hero-media'
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 
 definePageMeta({ layout: 'default' })
@@ -949,6 +989,7 @@ interface HeroSlideApi {
   subtitle: string | Record<string, string> | null
   media_type?: 'image' | 'video' | 'youtube'
   media_url: string
+  poster_url?: string | null
   overlay_opacity: number
   overlay_color: string
   cta_text?: string | Record<string, string> | null
@@ -1219,10 +1260,10 @@ const pickSlideText = (raw: HeroSlideApi['title'] | undefined): string => {
   return site.pickI18n(raw)
 }
 
-// 首页横幅只有一层背景图：media_type 非 image 的行（直连 API 或插件写进来的 video/youtube）
-// 拿 media_url 当图片地址会渲染成碎图，缩略图和主背景两处一起碎。
-// 缺省按 image 处理：字段缺失时整条轮播都不显示等于把首页首屏交出去赌一个字段。
-const heroSlides = computed(() => (heroSlidesData.value ?? []).filter(s => s.media_url && (s.media_type ?? 'image') === 'image'))
+// 三档媒体都参与轮播（image 背景图 / video 站内视频 / youtube 嵌入），分档判定单源是
+// `lib/hero-media.ts`：媒体地址的解码、外链拒绝、静图回落全在那里，模板只按结果分支。
+// 只丢"media_url 为空"的行——字段缺失按 image 处理，整条不显示等于把首页首屏交出去赌一个字段。
+const heroSlides = computed(() => (heroSlidesData.value ?? []).filter(s => Boolean(s.media_url)))
 const heroCount = computed(() => heroSlides.value.length)
 // 首帧两端都必须是 0：autoplay 只在客户端 onMounted 之后推进，SSR 与 hydration 才字节一致。
 const heroIdx = ref(0)
@@ -1236,7 +1277,22 @@ const heroSlide = computed(() => {
   if (!n) return null
   return heroSlides.value[((heroIdx.value % n) + n) % n] ?? null
 })
-const heroMediaRaw = computed(() => heroSlide.value?.media_url || '')
+const heroMediaType = computed(() => normalizeHeroMediaType(heroSlide.value?.media_type))
+// 站外视频地址不渲染 <video src>：CSP 的 media-src 只有 'self'，浏览器会拦成一片黑。
+// 库里躺着历史外链时退回落封面静图（见 heroSlideMedia），不回退成"整屏空白"。
+const heroVideoUrl = computed(() => {
+  if (heroBgImage.value || heroMediaType.value !== 'video') return ''
+  const raw = (heroSlide.value?.media_url ?? '').trim()
+  return isSiteRelativeMediaUrl(raw) ? raw : ''
+})
+// YouTube 只信解析出来的 ID：iframe 的 src 会原样进 DOM，解析失败就不渲染。
+// 地址交给 `lib/hero-media` 拼（nocookie 域），这里不再二次拼串。
+const heroYoutubeEmbedUrl = computed(() => {
+  if (heroBgImage.value || heroMediaType.value !== 'youtube') return ''
+  return youtubeEmbedUrl(extractYoutubeId(heroSlide.value?.media_url)) ?? ''
+})
+// 没有可播媒体时铺的静图：image 的 media_url / video 与 youtube 的封面（无封面则无静图）。
+const heroStillUrl = computed(() => (heroSlide.value ? heroThumbUrl(heroSlide.value) ?? '' : ''))
 // 热榜虚拟轮播的无封面回落是 picsum 外链（backend/api/hero.py::_display_cover 同口径）。
 // CSS background-image 挂不上 @error，外链不可达时在客户端探一次、把它摘出 hero 背景，
 // 让底层渐变接管——首页首屏不会因站外图被墙裸底。
@@ -1246,19 +1302,29 @@ const heroFailedMedia = ref('')
 function markHeroMediaFailed(url: string) {
   if (url) heroFailedMedia.value = url
 }
-const heroSlideMedia = computed(() =>
-  heroMediaRaw.value && heroMediaRaw.value !== heroFailedMedia.value ? heroMediaRaw.value : ''
+const heroSlideMedia = computed(() => {
+  if (heroVideoUrl.value || heroYoutubeEmbedUrl.value) return ''
+  const url = heroStillUrl.value
+  return url && url !== heroFailedMedia.value ? url : ''
+})
+// 视频元素自己的 poster：首帧播放前与解码失败时显示，不参与背景层的交叉淡入。
+const heroPosterUrl = computed(() =>
+  heroStillUrl.value && heroStillUrl.value !== heroFailedMedia.value ? heroStillUrl.value : undefined
 )
 const heroBgUrl = computed(() => heroBgImage.value || heroSlideMedia.value)
 if (import.meta.client) {
-  watch(heroMediaRaw, (url) => {
+  watch(heroStillUrl, (url) => {
     if (!url || url.startsWith('/') || url === heroFailedMedia.value) return
     const probe = new Image()
     probe.onerror = () => markHeroMediaFailed(url)
     probe.src = url
   }, { immediate: true })
 }
-const heroHasBg = computed(() => Boolean(heroBgUrl.value || heroBgGradient.value))
+const heroHasBg = computed(() =>
+  Boolean(heroBgUrl.value || heroVideoUrl.value || heroYoutubeEmbedUrl.value || heroBgGradient.value)
+)
+// 缩略图静帧：视频/youtube 用封面，解析不出的行只剩序号层（不塞碎图）。
+const heroThumbSrc = (slide: HeroSlideApi): string => heroThumbUrl(slide) ?? ''
 const heroLayerStyle = computed(() => {
   if (heroBgUrl.value) return { backgroundImage: `url("${heroBgUrl.value}")` }
   return heroBgGradient.value ? { background: heroBgGradient.value } : {}

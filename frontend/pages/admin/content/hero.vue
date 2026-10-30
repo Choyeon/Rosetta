@@ -4,7 +4,11 @@
   所以"删光这里的行"不等于首页空白，而是回到热榜自动填充。
   硬契约：后端 HeroSlide* 为 extra=forbid 且 title/subtitle/cta_text 声明成 str，
   多语言字典必须 JSON.stringify 后提交（回显时解析），漏一步即 422。
-  media_type 固定 image：首页只有背景图层，非 image 的行会被首页的读取过滤跳过（见 pages/index.vue 的 heroSlides）。
+  media_type 三档（image / video / youtube）都参与首页渲染，分档判定单源在 lib/hero-media.ts：
+  image 铺背景图、video 播站内视频（CSP media-src 只有 'self'，外链写口即拒）、youtube 走
+  privacy-enhanced 的 youtube-nocookie.com iframe（CSP frame-src 只放这一个域，后端
+  security_middleware 与 deploy/nginx-site.conf 两处同改）。poster_url 是视频/嵌入的封面，
+  也是缩略图与"iframe 被拦"时的静图回落。提交前的搭配校验在 heroMediaError（与后端同文案）。
   主次两个按钮都是"幻灯片自带优先、缺省回落到站点设置/查看全部"，所以两张框都留空也顶不掉现有观感。
   start_time/end_time 是生效时间窗：公开口 GET /hero/slides 按 `start <= now <= end` 过滤，
   两端留空＝长期生效；窗口倒挂（结束不晚于开始）由后端 422 拦住，因为那种行存得下去却永远不下发。
@@ -40,6 +44,11 @@ import {
   toDateTimeLocal,
   type AnnouncementStatus
 } from '~~/lib/announcement'
+import {
+  heroMediaError,
+  heroThumbUrl,
+  type HeroMediaType
+} from '~~/lib/hero-media'
 import type { AdminColumn as Column } from '~~/types/admin'
 
 definePageMeta({ ssr: false, layout: 'admin' })
@@ -70,6 +79,13 @@ const TONE_OPTIONS = [
   { value: 'dark', label: '深色文字' }
 ] as const
 
+// 标签写死中文与同文件其它控件一致（本页未接 i18n）。
+const MEDIA_TYPE_OPTIONS = [
+  { value: 'image', label: '图片' },
+  { value: 'video', label: '站内视频' },
+  { value: 'youtube', label: 'YouTube' }
+] as const
+
 const form = reactive<{
   title: I18nDict
   subtitle: I18nDict
@@ -77,7 +93,9 @@ const form = reactive<{
   cta_url: string
   cta_secondary_text: I18nDict
   cta_secondary_url: string
+  media_type: HeroMediaType
   media_url: string
+  poster_url: string
   overlay_color: string
   overlay_opacity: number
   text_align: 'left' | 'center' | 'right'
@@ -93,7 +111,9 @@ const form = reactive<{
   cta_url: '',
   cta_secondary_text: { ...EMPTY_I18N_DICT },
   cta_secondary_url: '',
+  media_type: 'image',
   media_url: '',
+  poster_url: '',
   overlay_color: '#000000',
   overlay_opacity: 45,
   text_align: 'left',
@@ -159,7 +179,9 @@ function resetForm() {
   form.cta_url = ''
   form.cta_secondary_text = { ...EMPTY_I18N_DICT }
   form.cta_secondary_url = ''
+  form.media_type = 'image'
   form.media_url = ''
+  form.poster_url = ''
   form.overlay_color = '#000000'
   form.overlay_opacity = 45
   form.text_align = 'left'
@@ -185,7 +207,9 @@ function openEdit(slide: AdminHeroSlide) {
   form.cta_url = slide.cta_url ?? ''
   form.cta_secondary_text = toDict(slide.cta_secondary_text)
   form.cta_secondary_url = slide.cta_secondary_url ?? ''
+  form.media_type = slide.media_type ?? 'image'
   form.media_url = slide.media_url
+  form.poster_url = slide.poster_url ?? ''
   form.overlay_color = HEX_RE.test(slide.overlay_color ?? '') ? slide.overlay_color : '#000000'
   form.overlay_opacity = slide.overlay_opacity ?? 45
   form.text_align = slide.text_align ?? 'left'
@@ -201,10 +225,15 @@ function openEdit(slide: AdminHeroSlide) {
   dialogOpen.value = true
 }
 
-const fileInput = ref<HTMLInputElement | null>(null)
+const mediaFileInput = ref<HTMLInputElement | null>(null)
+const posterFileInput = ref<HTMLInputElement | null>(null)
+// 两个上传框共用一个隐藏 input 的处理函数，靠这里区分落点。
+const uploadTarget = ref<'media' | 'poster'>('media')
 
-function pickImage() {
-  fileInput.value?.click()
+function pickImage(target: 'media' | 'poster') {
+  uploadTarget.value = target
+  if (target === 'poster') posterFileInput.value?.click()
+  else mediaFileInput.value?.click()
 }
 
 async function onImageChosen(event: Event) {
@@ -215,7 +244,10 @@ async function onImageChosen(event: Event) {
   uploading.value = true
   try {
     const result = await useMediaUploadCover(file)
-    if (result?.url) form.media_url = result.url
+    if (result?.url) {
+      if (uploadTarget.value === 'poster') form.poster_url = result.url
+      else form.media_url = result.url
+    }
   } catch (err) {
     // 失败提示由 apiFetch 统一 toast
     console.error('upload hero image error', err)
@@ -224,9 +256,27 @@ async function onImageChosen(event: Event) {
   }
 }
 
+// 预览与缩略图同源：图片用 media_url，视频/YouTube 用封面（YouTube 无封面时回落官方缩略图）。
+const heroPreviewSrc = computed(() =>
+  heroThumbUrl({ media_type: form.media_type, media_url: form.media_url, poster_url: form.poster_url })
+)
+const mediaUrlLabel = computed(() => {
+  if (form.media_type === 'video') return '视频地址（站内路径，如 /media/xxx.mp4）'
+  if (form.media_type === 'youtube') return 'YouTube 链接或视频 ID'
+  return '背景图片'
+})
+const mediaUrlPlaceholder = computed(() => {
+  if (form.media_type === 'video') return '/media/2026/01/hero.mp4'
+  if (form.media_type === 'youtube') return 'https://www.youtube.com/watch?v=xxxxxxxxxxx'
+  return '也可直接粘贴图片 URL'
+})
+
 async function save() {
-  if (!form.media_url.trim()) {
-    toast.error('请上传或填写背景图片地址')
+  // 与后端 validate_media_pair 同文案：外链视频会被 CSP 拦成一片黑，
+  // 解析不出 ID 的 YouTube 地址存进去就是一块空白 iframe——都在提交前说清楚。
+  const mediaError = heroMediaError(form.media_type, form.media_url)
+  if (mediaError) {
+    toast.error(mediaError)
     return
   }
   if (!HEX_RE.test(form.overlay_color)) {
@@ -252,7 +302,9 @@ async function save() {
     cta_secondary_text: fromDict(form.cta_secondary_text),
     cta_secondary_url: form.cta_secondary_url.trim() || null,
     media_url: form.media_url.trim(),
-    media_type: 'image',
+    media_type: form.media_type,
+    // 图片档不带封面：切回 image 时显式清掉旧值，否则历史 poster 会顶掉背景图。
+    poster_url: form.media_type === 'image' ? null : (form.poster_url.trim() || null),
     overlay_color: form.overlay_color,
     overlay_opacity: Math.round(opacity),
     text_align: form.text_align,
@@ -343,8 +395,8 @@ onMounted(loadData)
       <template #cell-preview="{ row }">
         <div class="size-16 rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center">
           <img
-            v-if="(row as AdminHeroSlide).media_url"
-            :src="(row as AdminHeroSlide).media_url"
+            v-if="heroThumbUrl(row as AdminHeroSlide)"
+            :src="heroThumbUrl(row as AdminHeroSlide) ?? ''"
             :alt="getLocalizedStr(toDict((row as AdminHeroSlide).title)) || '幻灯片背景'"
             class="size-full object-cover"
             loading="lazy"
@@ -352,7 +404,7 @@ onMounted(loadData)
           <span
             v-else
             class="text-xs text-muted-foreground"
-          >无图</span>
+          >{{ (row as AdminHeroSlide).media_type === 'video' ? '无封面' : '无图' }}</span>
         </div>
       </template>
       <template #cell-title="{ row }">
@@ -407,19 +459,79 @@ onMounted(loadData)
     >
       <div class="flex flex-col gap-4">
         <div>
-          <Label class="mb-1 block text-xs text-muted-foreground">背景图片</Label>
+          <Label class="mb-1 block text-xs text-muted-foreground">媒体类型</Label>
+          <div class="flex gap-2">
+            <Button
+              v-for="opt in MEDIA_TYPE_OPTIONS"
+              :key="opt.value"
+              type="button"
+              size="sm"
+              class="h-9 rounded-[10px]"
+              :variant="form.media_type === opt.value ? 'default' : 'outline'"
+              @click="form.media_type = opt.value"
+            >
+              {{ opt.label }}
+            </Button>
+          </div>
+        </div>
+
+        <div>
+          <Label class="mb-1 block text-xs text-muted-foreground">{{ mediaUrlLabel }}</Label>
           <div class="flex items-start gap-3">
             <div class="size-24 shrink-0 rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center">
               <img
-                v-if="form.media_url"
-                :src="form.media_url"
-                alt="幻灯片背景预览"
+                v-if="heroPreviewSrc"
+                :src="heroPreviewSrc"
+                alt="幻灯片媒体预览"
                 class="size-full object-cover"
               >
               <span
                 v-else
                 class="px-2 text-center text-xs text-muted-foreground"
-              >未选择</span>
+              >{{ form.media_type === 'video' ? '无封面' : '未选择' }}</span>
+            </div>
+            <div class="flex flex-1 flex-col gap-2">
+              <Button
+                v-if="form.media_type === 'image'"
+                type="button"
+                variant="outline"
+                size="sm"
+                class="rounded-[10px] h-9 w-fit"
+                :disabled="uploading"
+                @click="pickImage('media')"
+              >
+                {{ uploading ? '上传中...' : (form.media_url ? '更换图片' : '上传图片') }}
+              </Button>
+              <Input
+                v-model="form.media_url"
+                :placeholder="mediaUrlPlaceholder"
+                class="h-9 rounded-[10px] font-mono text-xs"
+              />
+              <input
+                ref="mediaFileInput"
+                type="file"
+                accept="image/*"
+                class="hidden"
+                @change="onImageChosen"
+              >
+            </div>
+          </div>
+        </div>
+
+        <div v-if="form.media_type !== 'image'">
+          <Label class="mb-1 block text-xs text-muted-foreground">封面图（可选）</Label>
+          <div class="flex items-start gap-3">
+            <div class="size-16 shrink-0 rounded-lg overflow-hidden border border-border bg-muted/30 flex items-center justify-center">
+              <img
+                v-if="form.poster_url"
+                :src="form.poster_url"
+                alt="封面预览"
+                class="size-full object-cover"
+              >
+              <span
+                v-else
+                class="px-1 text-center text-xs text-muted-foreground"
+              >无封面</span>
             </div>
             <div class="flex flex-1 flex-col gap-2">
               <Button
@@ -428,17 +540,25 @@ onMounted(loadData)
                 size="sm"
                 class="rounded-[10px] h-9 w-fit"
                 :disabled="uploading"
-                @click="pickImage"
+                @click="pickImage('poster')"
               >
-                {{ uploading ? '上传中...' : (form.media_url ? '更换图片' : '上传图片') }}
+                {{ uploading ? '上传中...' : (form.poster_url ? '更换封面' : '上传封面') }}
               </Button>
               <Input
-                v-model="form.media_url"
+                v-model="form.poster_url"
                 placeholder="也可直接粘贴图片 URL"
                 class="h-9 rounded-[10px] font-mono text-xs"
               />
+              <p class="text-xs text-muted-foreground">
+                <template v-if="form.media_type === 'video'">
+                  视频播放前与后台缩略图用这张；不填则缩略图只有序号。
+                </template>
+                <template v-else>
+                  不填则自动使用 YouTube 官方缩略图。
+                </template>
+              </p>
               <input
-                ref="fileInput"
+                ref="posterFileInput"
                 type="file"
                 accept="image/*"
                 class="hidden"

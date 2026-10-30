@@ -6,7 +6,8 @@
  *   ① 判据本身（边界含端点、留空＝长期、倒挂报错）——与后端 `api/hero.py` 的
  *      `start <= now AND end >= now` 同形，两侧共用 `lib/announcement` 这一份实现；
  *   ② 后台真的能填、能回填、能把两个键提交上去（漏回填＝每次 PUT 把已配置的排期抹成长期生效）；
- *   ③ 首页只把 image 档当背景图渲染（非 image 的行拿 media_url 当 `<img src>` 会两处一起碎）。
+ *   ③ 首页三档媒体各自有渲染分支（image 背景 / video 站内视频 / youtube 嵌入），
+ *      分档与地址解析在 `lib/hero-media`（批次 #233）。
  *
  * 断言读源文本而不是跑组件：这些是"接线"口径，组件级 mock 测不出硬编码留在原地。
  */
@@ -122,11 +123,20 @@ describe('后台表单：两个框、回填、提交键', () => {
 })
 
 describe('首页读取侧', () => {
-  it('只有 image 档参与背景渲染', () => {
-    expect(page).toMatch(/filter\(s => s\.media_url && \(s\.media_type \?\? 'image'\) === 'image'\)/)
+  it('三档媒体都参与轮播：不再按 media_type 过滤（只丢空地址的行）', () => {
+    expect(page).toMatch(/filter\(s => Boolean\(s\.media_url\)\)/)
+    expect(page).not.toMatch(/\(s\.media_type \?\? 'image'\) === 'image'/)
   })
 
-  it('HeroSlideApi 类型里带 media_type（否则上面那条过滤在 TS 层就是无根据的猜测）', () => {
+  it('video 与 youtube 各有渲染分支，地址经 lib/hero-media 解码', () => {
+    expect(page).toContain('v-if="heroYoutubeEmbedUrl"')
+    expect(page).toContain('v-else-if="heroVideoUrl"')
+    expect(page).toContain('youtubeEmbedUrl(extractYoutubeId(')
+    expect(page).toContain('isSiteRelativeMediaUrl(')
+  })
+
+  it('HeroSlideApi 类型里带 media_type / poster_url', () => {
     expect(page).toMatch(/media_type\?: 'image' \| 'video' \| 'youtube'/)
+    expect(page).toMatch(/poster_url\?: string \| null/)
   })
 })
