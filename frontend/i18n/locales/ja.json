@@ -912,7 +912,14 @@
     "title": "すべてのタグ",
     "desc": "タグから関連コンテンツを探せます。記事数の多い順に並んでいます。",
     "posts": "記事",
-    "noTags": "タグはまだありません"
+    "noTags": "タグはまだありません",
+    "filterPlaceholder": "タグを絞り込む…",
+    "sortCount": "記事数順",
+    "sortName": "名前順",
+    "noMatch": "一致するタグがありません",
+    "noMatchHint": "別のキーワードを試すか、フィルターを解除してください。",
+    "clearFilter": "フィルターを解除",
+    "showingCount": "全 {n} 件"
   },
   "guestbook": {
     "title": "掲示板",

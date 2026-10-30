@@ -912,7 +912,14 @@
     "title": "所有標籤",
     "desc": "透過標籤探索相關內容，依收錄文章數排序。",
     "posts": "篇",
-    "noTags": "尚無標籤"
+    "noTags": "尚無標籤",
+    "filterPlaceholder": "篩選標籤…",
+    "sortCount": "依文章數",
+    "sortName": "依名稱",
+    "noMatch": "沒有符合的標籤",
+    "noMatchHint": "換個關鍵字，或清除篩選。",
+    "clearFilter": "清除篩選",
+    "showingCount": "共 {n} 個標籤"
   },
   "guestbook": {
     "title": "留言板",

@@ -851,7 +851,14 @@
     "title": "全部标签",
     "desc": "通过标签发现主题相近的内容，按收录文章数排序。",
     "posts": "篇文章",
-    "noTags": "还没有创建标签"
+    "noTags": "还没有创建标签",
+    "filterPlaceholder": "筛选标签…",
+    "sortCount": "按文章数",
+    "sortName": "按名称",
+    "noMatch": "没有匹配的标签",
+    "noMatchHint": "换个关键词，或清除筛选。",
+    "clearFilter": "清除筛选",
+    "showingCount": "共 {n} 个标签"
   },
   "guestbook": {
     "title": "留言板",

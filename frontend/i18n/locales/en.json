@@ -851,7 +851,14 @@
     "title": "All Tags",
     "desc": "Explore tags to find related content, ordered by post count.",
     "posts": "posts",
-    "noTags": "No tags yet"
+    "noTags": "No tags yet",
+    "filterPlaceholder": "Filter tags…",
+    "sortCount": "Most posts",
+    "sortName": "Name",
+    "noMatch": "No matching tags",
+    "noMatchHint": "Try another keyword, or clear the filter.",
+    "clearFilter": "Clear filter",
+    "showingCount": "{n} tags"
   },
   "guestbook": {
     "title": "Guestbook",
