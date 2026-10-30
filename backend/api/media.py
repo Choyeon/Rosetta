@@ -55,7 +55,12 @@ from backend.models.hero import HeroSlide
 from backend.models.post_series import PostSeries
 from backend.models.user import User
 from backend.schemas import raw_content_response
-from backend.services.media_service import apply_watermark, build_media_url, generate_thumbnails
+from backend.services.media_service import (
+    apply_watermark,
+    build_media_url,
+    generate_thumbnails,
+    thumbnail_from_sizes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1468,18 +1473,8 @@ async def _save_media_to_library(
             sizes = await generate_thumbnails(
                 pil_image, upload_dir, f"{timestamp}_{unique_id}", f".{ext}", cdn_prefix
             )
-            # 取 thumbnail / medium / large 第一个可用 URL 做缩略图
-            for key in ("thumbnail", "medium", "large"):
-                if (
-                    sizes
-                    and isinstance(sizes, dict)
-                    and sizes.get(key)
-                    and isinstance(sizes[key], dict)
-                ):
-                    maybe_url = sizes[key].get("url")
-                    if maybe_url:
-                        thumbnail_url = str(maybe_url)
-                        break
+            # 取 thumbnail / medium / large 第一个可用 URL 做缩略图（链与照片读取口单源）
+            thumbnail_url = thumbnail_from_sizes(sizes)
         except Exception as e:
             logger.warning(f"图片后处理失败（压缩/缩略图/水印），仅保存原图: {e}")
 

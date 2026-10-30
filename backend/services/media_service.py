@@ -28,6 +28,29 @@ _THUMBNAIL_PRESETS: dict[str, tuple[int, int]] = {
     "large": (1024, 1024),
 }
 
+# 取「一张图最省的可用缩略档」时的回落顺序：小档缺失就退到下一档。
+# 上传口与照片读取口共用这一条链，避免两处各写一套优先级。
+_THUMBNAIL_LOOKUP_ORDER: tuple[str, ...] = ("thumbnail", "medium", "large")
+
+
+def thumbnail_from_sizes(sizes: object) -> str | None:
+    """从 ``Media.sizes`` 里按 thumbnail → medium → large 取第一个可用档位的 URL。
+
+    ``sizes`` 是 JSON 列，形态由上传侧决定，但导入工具、直接写库、后处理失败都可能
+    留下别的样子（None、裸字符串、档位缺 url）。这里一律返回 None 让调用方回落原图，
+    不抛错——展示路径上的一个脏值不该把整个相册接口打成 500。
+    """
+    if not isinstance(sizes, dict):
+        return None
+    for key in _THUMBNAIL_LOOKUP_ORDER:
+        entry = sizes.get(key)
+        if isinstance(entry, dict):
+            url = entry.get("url")
+            if isinstance(url, str) and url:
+                return url
+    return None
+
+
 # 缩略图输出目录对应的 URL 前缀：统一映射到 /media/uploads/
 # 这样 Nginx 或 StaticFiles 挂载 /media → <project>/media/uploads 都能一致访问。
 _UPLOADS_URL_PREFIX = "/media/uploads/"

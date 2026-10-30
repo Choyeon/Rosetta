@@ -135,8 +135,11 @@ class PhotoResponse(PhotoBase):
     created_at: datetime
     # 前端 AdminPhoto 使用 original_url 作为主字段名，这里提供双向别名
     original_url: str | None = None
-    # 透传占位，保证前端 AdminPhoto 稳定不报错
-    thumbnail_url: str | None = None
+    # 读取时按 Media.file == url 从媒体库 sizes 派生，photos 表没有这一列、也不落库；
+    # 外链或后处理失败的照片回 null，消费方用 `thumbnail_url or url` 回落原图。
+    thumbnail_url: str | None = Field(
+        None, max_length=500, description="缩略图档 URL（读取时从媒体库 sizes 派生，不落库）"
+    )
 
     model_config = {"from_attributes": True}
 

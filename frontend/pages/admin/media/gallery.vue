@@ -1,6 +1,7 @@
 <!--
   相册管理页：左侧相册列表 + 右侧照片网格，含相册/照片 CRUD、封面裁剪、上传、排序与批量删除。
-  契约：相册封面的字段名是 cover 且传 null 即清空封面；thumbnail_url 是不落库的透传字段，封面必须用 original_url/url。
+  契约：相册封面的字段名是 cover 且传 null 即清空封面；thumbnail_url 是读取时从媒体库 sizes 派生的
+  缩略档（不落库、可能是 null），只准用在网格，封面/文件名/灯箱一律取 original_url/url 的原图。
   快速切换相册时须用序号守卫丢弃迟到响应防照片串台；并发上传逐张建 AdminPhoto，sort_order 需单调游标 + Media.id 幂等键，避免撞权重/重复行。
 -->
 <template>
@@ -554,7 +555,7 @@
           <div class="rounded-lg overflow-hidden bg-muted">
             <img
               v-if="editingPhoto"
-              :src="photoSrc(editingPhoto)"
+              :src="photoFullSrc(editingPhoto)"
               :alt="editingPhoto.title || '照片预览'"
               class="w-full max-h-60 object-contain"
             >
@@ -753,18 +754,19 @@ function plainText(v: string | null | undefined): string {
   return v ?? ''
 }
 
-/** original_url 在后端响应模型里可空（thumbnail_url 甚至不落库），不能直接当字符串用 */
+/** original_url 在后端响应模型里可空；thumbnail_url 是读取时从媒体库 sizes 派生的，不落库 */
 function photoSrc(p: AdminPhoto): string {
   return p.thumbnail_url || photoFullSrc(p) || ''
 }
 
-/** 封面必须用原图地址：thumbnail_url 只是透传字段，不会写库，拿它当封面会丢图 */
+/** 封面必须用原图地址：thumbnail_url 是 150px 档，拿它当封面会被放大成马赛克 */
 function photoFullSrc(p: AdminPhoto): string {
   return p.original_url || p.url || ''
 }
 
+/** 文件名标签取原图那一段：缩略档 URL 带 `-thumbnail` 后缀，展示出来是让运营认错文件 */
 function photoFilename(p: AdminPhoto): string {
-  const src = photoSrc(p)
+  const src = photoFullSrc(p)
   if (!src) return '未命名'
   return src.split('/').pop() || '未命名'
 }

@@ -3,7 +3,9 @@
   （每页 12，后端 page_size 上限 100），第 2 页起有真实 <a href> 入口；越界页码 SSR 期 301
   回裸相册页（200 空页会被判 soft 404，且自指 canonical 等于承认垃圾页码是独立页面）。
   点开才用 apiFetch('/gallery/albums/{id}') 取照片，靠 Album.loaded + albumLoading 双守卫防重复请求。
-  详情响应可能是 {data} 信封（手工解包），photos 只取字符串 url 项、其余过滤掉，故"有照片数却空网格"是脏数据表现。
+  每张照片带 url（原图）+ thumb（后端从 Media.sizes 派生的缩略档，可能为空）：网格下 thumb、灯箱放大 url，
+  所以 Viewer 必须显式 url: 'data-original'（viewerjs 默认读 src，不指就会把 150px 小图放到全屏）。
+  详情响应可能是 {data} 信封（手工解包），没有原图地址的项直接丢掉，故"有照片数却空网格"是脏数据表现。
   viewerjs 只在点开相册时动态 import（ViewerCtor / viewerCssInjected 缓存，import 失败即静默降级为
   纯图片网格、无灯箱）；实例必须在 initViewer 重入、Dialog 关闭、组件卸载三处 destroy，否则灯箱浮层残留。
 -->
@@ -250,9 +252,9 @@
               >
                 <img
                   v-for="(photo, idx) in currentPhotos"
-                  :key="idx"
-                  :src="photo"
-                  :data-original="photo"
+                  :key="photo.url"
+                  :src="photo.thumb || photo.url"
+                  :data-original="photo.url"
                   :alt="`${currentAlbum?.title || ''} ${idx + 1}`"
                   width="800"
                   height="800"
@@ -337,14 +339,30 @@ async function ensureViewer(): Promise<ViewerModule['default'] | null> {
 }
 
 // --- Types ---
+/**
+ * 一张照片的两个地址：`url` 是媒体库原图（灯箱与下载的唯一真值），
+ * `thumb` 是后端按 Media.sizes 派生的缩略档，可能为 null（外链、SVG、后处理失败）。
+ */
+interface AlbumPhoto {
+  url: string
+  thumb: string
+}
+
 interface Album {
   id: number
   title: string
   description: string
   cover: string
   photosCount: number
-  photos: string[]
+  photos: AlbumPhoto[]
   loaded: boolean
+}
+
+/** 详情接口里单张照片的原始形状（thumbnail_url 读取时派生，没有可用档位时后端回 null） */
+interface AlbumDetail {
+  url?: string | null
+  original_url?: string | null
+  thumbnail_url?: string | null
 }
 
 interface AlbumResp {
@@ -473,10 +491,15 @@ async function loadAlbumDetail(id: number) {
     const photosArr = Array.isArray(data.photos) ? data.photos : []
     album.photos = photosArr
       .map((p) => {
-        const obj = (p ?? {}) as Record<string, unknown>
-        return typeof obj.url === 'string' ? obj.url : ''
+        const obj = (p ?? {}) as AlbumDetail
+        // 没有原图地址就整条丢掉：网格可以只放缩略图，灯箱却没有可放大的源
+        const url = obj.url || obj.original_url || ''
+        if (!url) return null
+        // 后端把缩略档置成 null 表示"没有可用档位"（外链 / SVG / 上传时后处理失败），
+        // 由模板的 `thumb || url` 回落原图；等于原图的档位也已在服务端滤掉，不会白下一遍。
+        return { url, thumb: obj.thumbnail_url ?? '' }
       })
-      .filter(Boolean) as string[]
+      .filter((p): p is AlbumPhoto => p !== null)
     album.loaded = true
     const photoCount = data.photo_count
     if (typeof photoCount === 'number') album.photosCount = photoCount
@@ -539,6 +562,10 @@ async function initViewer() {
 
   try {
     viewerInstance = new Ctor(el, {
+      // viewerjs 默认 url: 'src'（DEFAULTS.url = 'src'，getImageURL() 就是
+      // getAttribute(options.url)）。网格现在显示的是缩略档，不显式指到
+      // data-original 的话灯箱放大的就是那张 150px 小图。
+      url: 'data-original',
       toolbar: {
         zoomIn: 1,
         zoomOut: 1,

@@ -29,6 +29,7 @@ from backend.core.cache import cache, make_cache_key
 from backend.core.deps import DB, PaginationParams, get_pagination
 from backend.core.partial_update import apply_partial_update
 from backend.core.plugin_bus import bus
+from backend.models.core import Media
 from backend.models.gallery import Album, Photo
 from backend.schemas import BaseResponse, PaginatedResponse
 from backend.schemas.gallery import (
@@ -41,6 +42,7 @@ from backend.schemas.gallery import (
     PhotoUpdate,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
+from backend.services.media_service import thumbnail_from_sizes
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +150,53 @@ def _album_response(album: Album, fallback_cover: str | None = None) -> AlbumRes
     return response
 
 
+async def _photo_thumb_map(db: DB, urls: list[str]) -> dict[str, str]:
+    """``照片 URL → 媒体库缩略图档``（一次查询拿整页，同 ``_fallback_cover_map`` 的口径）。
+
+    photos 表只存 ``url`` 一列，没有 ``media_id`` 外键（``PhotoCreate.thumbnail_url`` /
+    ``media_id`` 是透传占位，从不落库），所以对齐只能按 URL 等值——``media.file`` 与
+    ``photos.url`` 存的是同一份从媒体库复制出去的字符串。
+
+    只在"缩略档确实存在且不等于原图"时给出映射：外链照片、SVG、上传时后处理失败
+    （``sizes`` 为 null）的照片一律缺席，让消费方按 ``thumbnail_url or url`` 回落原图。
+
+    ``media.file`` 没有唯一约束（同一张图可能被重复登记），所以按 id 升序取第一条并
+    ``setdefault``——不这么写的话，页面显示哪一档取决于数据库返回顺序。
+    """
+    wanted = {u for u in urls if u}
+    if not wanted:
+        return {}
+
+    rows = await db.execute(
+        select(Media.file, Media.sizes)
+        .where(Media.file.in_(sorted(wanted)))
+        .order_by(Media.id.asc())
+    )
+    thumbs: dict[str, str] = {}
+    for file_url, sizes in rows.all():
+        thumb = thumbnail_from_sizes(sizes)
+        if thumb and thumb != file_url:
+            thumbs.setdefault(file_url, thumb)
+    return thumbs
+
+
+def _photo_responses(photos: list[Photo], thumbs: dict[str, str]) -> list[PhotoResponse]:
+    """照片序列化；缩略图只覆写响应对象，绝不 setattr 到 ORM 实例上。
+
+    ``thumbnail_url`` 不是 photos 表的列：写进实例会留下一个非映射属性，被
+    ``apply_partial_update`` 的护栏判成"假成功"来源（见 ``test_partial_update_guard``），
+    更会被下一次 commit 之外的读取误当成库里的值。
+    """
+    responses = []
+    for photo in photos:
+        response = PhotoResponse.model_validate(photo)
+        thumb = thumbs.get(photo.url)
+        if thumb:
+            response = response.model_copy(update={"thumbnail_url": thumb})
+        responses.append(response)
+    return responses
+
+
 # ==================== 公开接口 ====================
 
 
@@ -194,7 +243,11 @@ async def list_albums(
     summary="获取相册详情及照片",
 )
 async def get_album(album_id: int, db: DB):
-    """获取指定相册详情（包含照片列表，仅公开相册）"""
+    """获取指定相册详情（包含照片列表，仅公开相册）
+
+    照片的 thumbnail_url 是按 ``Media.file == Photo.url`` 从媒体库 sizes 现算的派生值，
+    因此会随这份 600s 响应缓存一起变旧——属于展示字段滞后，不影响原图 ``url``。
+    """
     cache_key = make_cache_key("gallery", "album_detail", str(album_id))
     cached = await cache.get(cache_key)
     if cached:
@@ -209,11 +262,12 @@ async def get_album(album_id: int, db: DB):
     if not album:
         raise HTTPException(status_code=404, detail="相册不存在或未公开")
 
+    thumbs = await _photo_thumb_map(db, [p.url for p in album.photos])
     resp = AlbumDetailResponse(
         # 封面兜底：未设封面则用首张照片。写响应对象而非 album.cover——后者会把
         # 兜底值 flush 进数据库，覆盖掉用户真实的"空封面"状态。
         **_album_response(album, album.photos[0].url if album.photos else None).model_dump(),
-        photos=[PhotoResponse.model_validate(p) for p in album.photos],
+        photos=_photo_responses(list(album.photos), thumbs),
     )
     await cache.set(cache_key, resp, ttl=600)
     return resp
@@ -349,6 +403,7 @@ async def admin_delete_album(
     summary="【管理员】获取相册照片列表",
     description=(
         "需 CurrentStaff。按 sort_order 升序 + 创建时间正序分页返回该相册全部照片（含未发布语义）。"
+        "每张照片的 thumbnail_url 读取时从媒体库 sizes 派生（不落库），无缩略档时回 null。"
         "相册不存在返回 404。"
     ),
 )
@@ -369,8 +424,9 @@ async def admin_list_photos(
     total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
     query = query.offset(pagination.offset).limit(pagination.limit)
     items = (await db.execute(query)).scalars().all()
+    thumbs = await _photo_thumb_map(db, [p.url for p in items])
     return PaginatedResponse(
-        items=[PhotoResponse.model_validate(p) for p in items],
+        items=_photo_responses(list(items), thumbs),
         total=total,
         page=pagination.page,
         page_size=pagination.page_size,
