@@ -207,6 +207,65 @@ export interface ArticleJsonLdOptions {
  */
 const LOOPBACK_HOST_RE = /^(?:localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/
 
+/** SSR 事件里三处可能藏着 Host 的容器（web 形态 / node 形态 / 原始对）。 */
+export interface RequestHostShapes {
+  webHeaders?: Headers | Record<string, unknown> | null
+  nodeHeaders?: Record<string, unknown> | null
+  rawHeaders?: string[] | null
+}
+
+/**
+ * 从 SSR 事件的三种形态里取请求 Host。
+ *
+ * 为什么不直接用 Nuxt 的 useRequestHeaders：本仓的 Nitro 版本把路由器拿到的 event 包成
+ * web 形态，`event.node.req.headers` 实测是**空对象**（同 `server/utils/purgeSecret.ts` 的坑），
+ * `useRequestHeaders` 读的正是那个袋子，于是"仅回环地址才按 Host 兜底"的分支永远拿到空串。
+ * 症状：本地开发（未配 NUXT_PUBLIC_SITE_URL）的 canonical / og:url / 分享链接渲染成相对路径，
+ * 而客户端用 `window.location.origin` 算出绝对地址 —— 文章页每次加载都报 hydration mismatch，
+ * 预渲染出来的分享链接把 `/posts/xxx` 这种相对地址递给第三方平台。
+ */
+export function pickRequestHost(shapes: RequestHostShapes): string {
+  const web = shapes.webHeaders
+  if (web) {
+    if (typeof (web as Headers).get === 'function') {
+      const v = (web as Headers).get('host')
+      if (v) return v
+    } else {
+      const v = (web as Record<string, unknown>).host
+      if (typeof v === 'string' && v) return v
+    }
+  }
+  const nodeHost = shapes.nodeHeaders?.host
+  if (typeof nodeHost === 'string' && nodeHost) return nodeHost
+  const raw = shapes.rawHeaders
+  if (Array.isArray(raw)) {
+    for (let i = 0; i + 1 < raw.length; i += 2) {
+      if (String(raw[i]).toLowerCase() === 'host') return String(raw[i + 1])
+    }
+  }
+  return ''
+}
+
+function readSsrRequestHost(): string {
+  const event = useRequestEvent() as
+    | {
+      req?: { headers?: Headers | Record<string, unknown> }
+      node?: { req?: { headers?: Record<string, unknown>, rawHeaders?: string[] } }
+    }
+    | undefined
+  if (!event) return ''
+  return pickRequestHost({
+    webHeaders: event.req?.headers ?? null,
+    nodeHeaders: event.node?.req?.headers ?? null,
+    rawHeaders: event.node?.req?.rawHeaders ?? null
+  })
+}
+
+/** 只有回环 Host 才允许推导成站点根；其余（含 `localhost.evil.com` 这类前缀骗术）一律返回空串。 */
+export function loopbackOriginFromHost(host: string): string {
+  return LOOPBACK_HOST_RE.test(host) ? `http://${host}` : ''
+}
+
 export function usePublicSiteUrl(): Ref<string> {
   const cfg = useRuntimeConfig()
   // 客户端无 SITE_URL 时回退到当前 origin（避免空串导致 broken absolute URL）
@@ -218,10 +277,7 @@ export function usePublicSiteUrl(): Ref<string> {
   // server/routes/robots.txt.get.ts 与 server/utils/ssr.ts 的 resolvePublicSiteOrigin）。
   const ssrOrigin = (() => {
     if (!import.meta.server) return ''
-    const headers = useRequestHeaders(['host'])
-    const host = headers.host || ''
-    if (!LOOPBACK_HOST_RE.test(host)) return ''
-    return `http://${host}`
+    return loopbackOriginFromHost(readSsrRequestHost())
   })()
   return computed(() => {
     if (site && site.trim() !== '') return site.replace(/\/$/, '')
