@@ -1,5 +1,7 @@
 <!--
-  相册页（SSR 列表 + 客户端懒取详情）：列表 useAPI('/gallery/albums', page_size:50) 一次拉满，
+  相册页（SSR 列表 + 客户端懒取详情）：列表 useAPI('/gallery/albums') 按 ?page=N 分页
+  （每页 12，后端 page_size 上限 100），第 2 页起有真实 <a href> 入口；越界页码 SSR 期 301
+  回裸相册页（200 空页会被判 soft 404，且自指 canonical 等于承认垃圾页码是独立页面）。
   点开才用 apiFetch('/gallery/albums/{id}') 取照片，靠 Album.loaded + albumLoading 双守卫防重复请求。
   详情响应可能是 {data} 信封（手工解包），photos 只取字符串 url 项、其余过滤掉，故"有照片数却空网格"是脏数据表现。
   viewerjs 只在点开相册时动态 import（ViewerCtor / viewerCssInjected 缓存，import 失败即静默降级为
@@ -129,6 +131,71 @@
       </div>
     </section>
 
+    <!-- 分页：此前列表固定 page_size=50 且没有翻页入口，第 51 张之后的相册
+         在站内没有任何可达路径。链接必须是真实 <a href>——SSR HTML 里的 href
+         是无 JS 访客与爬虫唯一的翻页入口；click 仍走 handlePageChange 保留 SPA 行为。 -->
+    <nav
+      v-if="totalPages > 1"
+      class="container pb-14 flex items-center justify-center gap-2"
+      role="navigation"
+      aria-label="pagination"
+    >
+      <template v-if="currentPage <= 1">
+        <Button
+          variant="outline"
+          size="icon"
+          disabled
+          :aria-label="t('common.prevPage', '上一页')"
+        >
+          <ChevronLeft data-icon="inline-start" />
+        </Button>
+      </template>
+      <a
+        v-else
+        :href="pageHref(currentPage - 1)"
+        :aria-label="t('common.prevPage', '上一页')"
+        :class="pageLinkClass('outline')"
+        @click.prevent="handlePageChange(currentPage - 1)"
+      >
+        <ChevronLeft data-icon="inline-start" />
+      </a>
+      <template
+        v-for="page in visiblePages"
+        :key="page"
+      >
+        <span
+          v-if="page === currentPage"
+          aria-current="page"
+          :class="pageLinkClass('default')"
+        >{{ page }}</span>
+        <a
+          v-else
+          :href="pageHref(page)"
+          :class="pageLinkClass('ghost')"
+          @click.prevent="handlePageChange(page)"
+        >{{ page }}</a>
+      </template>
+      <template v-if="currentPage >= totalPages">
+        <Button
+          variant="outline"
+          size="icon"
+          disabled
+          :aria-label="t('common.nextPage', '下一页')"
+        >
+          <ChevronRight data-icon="inline-start" />
+        </Button>
+      </template>
+      <a
+        v-else
+        :href="pageHref(currentPage + 1)"
+        :aria-label="t('common.nextPage', '下一页')"
+        :class="pageLinkClass('outline')"
+        @click.prevent="handlePageChange(currentPage + 1)"
+      >
+        <ChevronRight data-icon="inline-start" />
+      </a>
+    </nav>
+
     <!-- Album Detail Dialog -->
     <!-- ClientOnly：reka DialogRoot 在 SSR 产物里因双 vue 实例渲染成空注释节点
          （见 nuxt.config nitro 段注释），而客户端 DialogRoot 渲染 fragment，
@@ -234,9 +301,10 @@ import { Badge } from '~~/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~~/components/ui/dialog'
 import { ScrollArea } from '~~/components/ui/scroll-area'
 import { useI18n } from 'vue-i18n'
-import { Images as ImageIcon, Image as Images, AlertCircle, RefreshCw } from '@lucide/vue'
-import { Button } from '~~/components/ui/button'
+import { Images as ImageIcon, Image as Images, AlertCircle, RefreshCw, ChevronLeft, ChevronRight } from '@lucide/vue'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { useAPI, apiFetch as apiFetchDirect } from '~~/composables/useApi'
+import { pageWindow } from '~~/lib/pagination'
 
 definePageMeta({ layout: 'default' })
 
@@ -302,15 +370,64 @@ const currentAlbum = computed(() =>
 )
 const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
 
+// 每页 12 = 3 列网格 × 4 行；后端 page_size 只认 1–100，越界即 422。
+const PAGE_SIZE = 12
+const route = useRoute()
+const router = useRouter()
+// 初始页码从 URL 读：分享 / 刷新 / 后退都要能还原；只接受正整数，垃圾值回第 1 页。
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+const requestedPage = Math.max(1, Number(route.query.page) || 1)
+
 // 拉取相册列表
 // error 必须单独渲染：后端故障时 albums 是空数组，走 v-else 会显示
 // "还没有相册"——访客据此判定站主没上传照片，而真实情况只是这次请求挂了。
-const { data: albumsResp, pending, error: albumsError, refresh: refreshAlbums } = useAPI<{ items: AlbumResp[], total?: number }>(
+const { data: albumsResp, pending, error: albumsError, refresh: refreshAlbums } = useAPI<{ items: AlbumResp[], total?: number, total_pages?: number }>(
   '/gallery/albums',
   {
-    query: { page: 1, page_size: 50, lang: locale.value }
+    // query 用 computed：currentPage / locale 变化时 Nuxt 的 params watcher 自动重取，
+    // 不手写 watch + refresh（那会与自动重取双发，第一发还被 abort）。
+    query: computed(() => ({ page: currentPage.value, page_size: PAGE_SIZE, lang: locale.value }))
   }
 )
+
+const totalAlbums = computed(() => albumsResp.value?.total ?? 0)
+const totalPages = computed(
+  () => albumsResp.value?.total_pages ?? (Math.ceil(totalAlbums.value / PAGE_SIZE) || 1)
+)
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
+const pageHref = (page: number) => `${applyLocalePrefix('/gallery', locale.value)}?page=${page}`
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'icon' })
+
+const handlePageChange = (page: number) => {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  if (import.meta.client) {
+    router.replace({ query: page > 1 ? { page: String(page) } : {} })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// 分享链接上的页码可能已越界（比如相册被删掉一批）：拉回来再请求，
+// 否则访客拿到"第 9 页，共 3 页"的空网格且无从自救。
+watch([totalAlbums, currentPage], () => {
+  if (totalAlbums.value === 0) return
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+// 越界页码对爬虫必须 301 回裸相册页：留 200 会被判 soft 404，且自指 canonical
+// 等于承认每个垃圾页码都是独立页面。时点与 useContentStatus 同轨（app:rendered：
+// 数据已落值、状态码还改得动）；响应头必须 no-store，否则 301 会被本页 swr 缓存。
+if (import.meta.server) {
+  const ssrEvent = useRequestEvent()
+  useNuxtApp().hooks.hookOnce('app:rendered', () => {
+    if (ssrEvent && totalAlbums.value > 0 && requestedPage > totalPages.value) {
+      ssrEvent.node.res.statusCode = 301
+      ssrEvent.node.res.setHeader('location', applyLocalePrefix('/gallery', locale.value))
+      ssrEvent.node.res.setHeader('cache-control', 'no-store')
+    }
+  })
+}
 
 watch(
   [albumsResp],

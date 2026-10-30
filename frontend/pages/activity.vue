@@ -1,5 +1,6 @@
 <!--
-  动态时间线页：GET /activities 一次拉 50 条（不分页），未知 type 一律回落 'say'。
+  动态时间线页：GET /activities 按 ?page=N 分页（每页 20，真实 <a href> 翻页；越界页码
+  SSR 期 301 回裸动态页），未知 type 一律回落 'say'。
   图标必须是本文件内联 ICONS 常量而非 lucide 组件：SSR 与客户端首字节要逐字节一致，
   组件形态的首子差异会直接造成水合错位。后端新增活动类型时，ICONS + backendToIconKey
   白名单 + i18n 的 activity.type_* 三处必须同步补，漏一处就静默显示成"说说"。
@@ -185,6 +186,63 @@
       </div>
     </div>
 
+    <!-- 分页：此前固定只取前 50 条且没有翻页入口，第 51 条起的动态在站内无法到达。
+         链接必须是真实 <a href>——SSR HTML 里的 href 是无 JS 访客与爬虫唯一的翻页入口；
+         click 仍走 handlePageChange 保留 SPA 行为。 -->
+    <nav
+      v-if="totalPages > 1"
+      class="max-w-2xl mx-auto mt-10 flex items-center justify-center gap-2"
+      role="navigation"
+      aria-label="pagination"
+    >
+      <template v-if="currentPage <= 1">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+        >
+          {{ t('common.prevPage', '上一页') }}
+        </Button>
+      </template>
+      <a
+        v-else
+        :href="pageHref(currentPage - 1)"
+        :class="pageLinkClass('outline')"
+        @click.prevent="handlePageChange(currentPage - 1)"
+      >{{ t('common.prevPage', '上一页') }}</a>
+      <template
+        v-for="page in visiblePages"
+        :key="page"
+      >
+        <span
+          v-if="page === currentPage"
+          aria-current="page"
+          :class="pageLinkClass('default')"
+        >{{ page }}</span>
+        <a
+          v-else
+          :href="pageHref(page)"
+          :class="pageLinkClass('ghost')"
+          @click.prevent="handlePageChange(page)"
+        >{{ page }}</a>
+      </template>
+      <template v-if="currentPage >= totalPages">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled
+        >
+          {{ t('common.nextPage', '下一页') }}
+        </Button>
+      </template>
+      <a
+        v-else
+        :href="pageHref(currentPage + 1)"
+        :class="pageLinkClass('outline')"
+        @click.prevent="handlePageChange(currentPage + 1)"
+      >{{ t('common.nextPage', '下一页') }}</a>
+    </nav>
+
     <div
       v-if="!pending && activityList.length === 0"
       class="text-center py-20"
@@ -212,9 +270,10 @@
 <script setup lang="ts">
 import { Card, CardContent } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { Textarea } from '~~/components/ui/textarea'
 import { apiFetch } from '~~/composables/useApi'
+import { pageWindow } from '~~/lib/pagination'
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 
@@ -282,7 +341,7 @@ const activityIconKey = (type: string) => backendToIconKey(type)
 // —— 月份名表与 24 小时制都固定，SSR 与浏览器字节级一致。
 const formatDate = (dateStr: string) => formatStampText(dateStr, String(locale.value || 'zh'))
 
-// 真实接口：GET /api/activities?page=1&page_size=50
+// 真实接口：GET /api/activities?page=N&page_size=20（后端 page_size 只认 1–100）
 interface Paginated<T> {
   items: T[]
   total?: number
@@ -291,15 +350,61 @@ interface Paginated<T> {
   total_pages?: number
 }
 
-// query 用 computed：lang 随 locale 变化时 Nuxt params watcher 自动重取，
-// 不手写 watch(locale)+refresh()（那会与自动重取双发，第一发还被 abort）。
+// 每页 20 条：时间线一屏约 3–4 条，20 条够滚且不必让首屏背着 50 条的 DOM。
+const PAGE_SIZE = 20
+const route = useRoute()
+const router = useRouter()
+// 初始页码从 URL 读：分享 / 刷新 / 后退都要能还原；非正整数一律回第 1 页。
+const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+const requestedPage = Math.max(1, Number(route.query.page) || 1)
+
+// query 用 computed：currentPage / lang 变化时 Nuxt params watcher 自动重取，
+// 不手写 watch + refresh()（那会与自动重取双发，第一发还被 abort）。
 const { data: activityResp, pending, error: loadError, refresh } = useAPI<Paginated<ActivityItem>>('/activities', {
   query: computed(() => ({
-    page: 1,
-    page_size: 50,
+    page: currentPage.value,
+    page_size: PAGE_SIZE,
     lang: locale.value
   }))
 })
+
+const totalActivities = computed(() => activityResp.value?.total ?? 0)
+const totalPages = computed(
+  () => activityResp.value?.total_pages ?? (Math.ceil(totalActivities.value / PAGE_SIZE) || 1)
+)
+const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
+const pageHref = (page: number) => `${applyLocalePrefix('/activity', locale.value)}?page=${page}`
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'sm' })
+
+const handlePageChange = (page: number) => {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  if (import.meta.client) {
+    router.replace({ query: page > 1 ? { page: String(page) } : {} })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// 越界页码（动态被删一批后的旧分享链接）拉回末页，否则访客拿到空列表且无从自救。
+watch([totalActivities, currentPage], () => {
+  if (totalActivities.value === 0) return
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+// 越界页码对爬虫必须 301 回裸动态页：200 空列表会被判 soft 404，
+// 且自指 canonical 等于承认每个垃圾页码都是独立页面。时点与 useContentStatus
+// 同轨（app:rendered：数据已落值、状态码还改得动）；响应头 no-store 防 301 被 swr 缓存。
+if (import.meta.server) {
+  const ssrEvent = useRequestEvent()
+  useNuxtApp().hooks.hookOnce('app:rendered', () => {
+    if (ssrEvent && totalActivities.value > 0 && requestedPage > totalPages.value) {
+      ssrEvent.node.res.statusCode = 301
+      ssrEvent.node.res.setHeader('location', applyLocalePrefix('/activity', locale.value))
+      ssrEvent.node.res.setHeader('cache-control', 'no-store')
+    }
+  })
+}
 
 const activityList = computed<ActivityItem[]>(() => {
   const items = activityResp.value?.items ?? []
@@ -365,6 +470,11 @@ async function publishActivity() {
       body: { content: { [locale.value]: text }, type: 'say' }
     })
     draft.value = ''
+    // 新动态落在第 1 页顶部：在第 2 页之后发完却停在原页，用户看不到自己刚发的那条。
+    if (currentPage.value !== 1) {
+      currentPage.value = 1
+      if (import.meta.client) router.replace({ query: {} })
+    }
     await refresh()
   } catch {
     // 401（会话失效）与 422（超长）由 apiFetch 统一 toast，正文留在输入框
