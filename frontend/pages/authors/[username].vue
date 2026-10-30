@@ -448,7 +448,13 @@ useSeo({
   // 线上 curl 实测三个变体全部 200）。canonical 若按请求路径自指，任意拼写都会变成一条
   // 自指且可索引的重复页面；钉到库里那一份用户名，所有大小写变体才收敛成一个 URL。
   // 资料没到手（含 404/失败）时传空串 = 沿用按路由派生的口径，noindex 已抑制 canonical。
-  url: computed(() => (profile.value?.username ? `/authors/${profile.value.username}` : '')),
+  // 分页页码也要进来：第 2 页起若自指裸路径，等于向搜索引擎声明每一页都是第 1 页的
+  // 重复内容（与 /posts?page=N 同口径，page=1 不保留）。
+  url: computed(() => {
+    const base = profile.value?.username ? `/authors/${profile.value.username}` : ''
+    if (!base || currentPage.value <= 1) return base
+    return `${base}?page=${currentPage.value}`
+  }),
   type: 'website'
 })
 useWebsiteJsonLd()

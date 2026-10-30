@@ -52,9 +52,14 @@ describe('作者主页取数契约', () => {
   it('canonical 钉到库里的用户名：后端查人不区分大小写，自指会放出无数重复页', () => {
     // 线上实测 /authors/choyeon、/authors/CHOYEON 与 /authors/Choyeon 同内容同 200，
     // 若 canonical 按请求路径自指，每个拼写都是可索引的重复页面。
-    expect(page).toMatch(
-      /url: computed\(\(\) => \(profile\.value\?\.username \? `\/authors\/\$\{profile\.value\.username\}` : ''\)\)/
-    )
+    expect(page).toContain('const base = profile.value?.username ? `/authors/${profile.value.username}` : \'\'')
+  })
+
+  it('分页页码进 canonical：第 2 页起自指裸路径等于把每页都声明成第 1 页的重复内容', () => {
+    // 线上实测修复前 /authors/Choyeon?page=2 的 canonical 是 /authors/Choyeon，
+    // 与 /posts?page=2、/activity?page=2 等页面的口径相反。
+    expect(page).toContain('currentPage.value <= 1')
+    expect(page).toContain('`${base}?page=${currentPage.value}`')
   })
 })
 

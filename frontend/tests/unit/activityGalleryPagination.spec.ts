@@ -150,4 +150,10 @@ describe('pages/authors/[username].vue 分页', () => {
     expect(block).toContain('cache-control')
     expect(block).toContain('no-store')
   })
+
+  it('canonical 带页码：第 2 页自指裸路径等于把每页都声明成第 1 页的重复内容', () => {
+    // 线上实测修复前 /authors/Choyeon?page=2 的 canonical 是 /authors/Choyeon，
+    // 而 /posts?page=2、/activity?page=2 等都保留 page 参数。
+    expect(src).toContain('`${base}?page=${currentPage.value}`')
+  })
 })
