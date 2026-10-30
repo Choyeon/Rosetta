@@ -48,6 +48,7 @@ from backend.models.blog import Comment, Post, post_likes
 from backend.models.user import User, UserPreference
 from backend.schemas import (
     AuthorDirectoryItem,
+    AuthorProfileResponse,
     BaseResponse,
     LoginRequest,
     PaginatedResponse,
@@ -952,11 +953,13 @@ async def list_authors(
 
 @router.get(
     "/{user_id}",
-    response_model=UserResponse,
+    response_model=AuthorProfileResponse,
     summary="获取用户信息",
     description=(
         "根据 ID 获取用户公开信息。用户关闭「公开资料」（`public_profile=False`）时"
         "对外统一返回 404（与「查无此人」同口径，避免账号枚举），仅本人可读。"
+        "响应是第三人投影（`AuthorProfileResponse`），不含 QQ、激活/Staff/超管标志、"
+        "角色与最后登录时间。"
     ),
 )
 async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = None):
@@ -975,14 +978,15 @@ async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = Non
     # 1) 403 等于承认该账号真实存在（枚举面）；前台作者主页的 404 闸门只认 404/空对象，
     #    403 会渲染兜底 UI 却返回 HTTP 200，再被该路由的 swr 缓存成一个可索引的错误页。
     # 2) 服务层对"非本人 + 关了公开"返回的是精简 dict（不含 email），
-    #    放行任何一类访客都会让它走到 build_user_response → UserResponse 必填 email 缺失 → 500。
+    #    放行任何一类访客都会让它走到 build_user_response → AuthorProfileResponse 必填 email
+    #    缺失 → 500（这一条是刻意的失败口径，见 AuthorProfileResponse 文档）。
     if not profile.get("is_public"):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="用户不存在",
         )
 
-    response = build_user_response(profile["user"])
+    response = build_user_response(profile["user"], response_cls=AuthorProfileResponse)
     apply_email_privacy(response, profile, current_user)
     apply_social_privacy(response, profile, current_user)
     return response
@@ -990,11 +994,12 @@ async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = Non
 
 @router.get(
     "/username/{username}",
-    response_model=UserResponse,
+    response_model=AuthorProfileResponse,
     summary="通过用户名获取用户",
     description=(
         "根据用户名获取用户公开信息。这是前台作者主页 `/authors/<username>` 的资料来源，"
         "关闭「公开资料」的作者在此对外返回 404（口径同 `GET /users/{user_id}`）。"
+        "响应同样是第三人投影，账号元数据（QQ / 权限位 / last_login）不外发。"
     ),
 )
 async def get_user_by_username(username: str, db: DB, current_user: CurrentUserOptional = None):
@@ -1025,7 +1030,7 @@ async def get_user_by_username(username: str, db: DB, current_user: CurrentUserO
             detail="用户不存在",
         )
 
-    response = build_user_response(user)
+    response = build_user_response(user, response_cls=AuthorProfileResponse)
     apply_email_privacy(response, profile, current_user)
     apply_social_privacy(response, profile, current_user)
     return response

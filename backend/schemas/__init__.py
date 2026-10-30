@@ -415,6 +415,35 @@ class PublicUserResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class AuthorProfileResponse(PublicUserResponse):
+    """第三人作者资料口（``GET /api/users/{user_id}``、``GET /api/users/username/{username}``）的投影。
+
+    继承 :class:`PublicUserResponse` 而不是 :class:`UserResponse`，为的是**结构性地**拿掉
+    ``qq`` / ``is_active`` / ``is_staff`` / ``is_superuser`` / ``role`` / ``last_login``：
+    那六个字段属账号隐私与权限信息（``PublicUserResponse`` 的文档早已判明），但这两条口
+    一直直接回 ``UserResponse``，于是"文章卡片不发的字段，换个路由照样摊给匿名爬虫"。
+    线上实测（2026-10-30）匿名 ``GET /users/username/<作者>`` 原样回显真实 QQ 号、
+    ``is_superuser: true`` 与 ``role: "super_admin"`` —— 前者是可直接联系的个人信息，
+    后者等于替撞库与定向钓鱼标出管理员账号，``last_login`` 还会告诉外界这个账号何时活动过。
+
+    只补三个**由隐私开关治理**的字段：``email``（``show_email``，默认拒绝，非本人非 staff 遮蔽）、
+    ``website`` / ``github``（``show_social_links``，默认允许，关掉即 null 让整段不渲染）。
+    ``email`` 保持必填是刻意的：服务层对"非本人 + 关了公开"返回的精简 dict 不含 email，
+    一旦 ``_profile_is_hidden`` 闸门被放宽，缺失的必填字段会立刻 500 而不是静默回 null，
+    把"隐私闸门没了"变成响亮的失败（口径同原 ``GET /users/{user_id}`` 的注释）。
+
+    本模型的消费方只有前台 ``/authors/<username>``（``pages/authors/[username].vue``
+    的 ``AuthorProfile`` 接口）；本人看自己要什么字段走 ``/users/me``，后台走
+    ``/admin/users/{id}``（``UserDetailResponse``，仍带 qq 与角色）。
+    """
+
+    email: str
+    website: str | None = None
+    github: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
 class UserPreferenceResponse(BaseModel):
     """
     用户偏好设置响应模型

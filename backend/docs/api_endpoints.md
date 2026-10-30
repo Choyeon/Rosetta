@@ -1109,7 +1109,7 @@ _无路径 / query 参数_
 - **摘要**：通过用户名获取用户
 - **鉴权**：需鉴权：`HTTPBearer`
 
-根据用户名获取用户公开信息。这是前台作者主页 `/authors/<username>` 的资料来源，关闭「公开资料」的作者在此对外返回 404（口径同 `GET /users/{user_id}`）。
+根据用户名获取用户公开信息。这是前台作者主页 `/authors/<username>` 的资料来源，关闭「公开资料」的作者在此对外返回 404（口径同 `GET /users/{user_id}`）。响应同样是第三人投影，账号元数据（QQ / 权限位 / last_login）不外发。
 
 **入参**
 
@@ -1117,28 +1117,22 @@ _无路径 / query 参数_
 
 **出参**
 
-`200` · 模型 `UserResponse`
+`200` · 模型 `AuthorProfileResponse`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | avatar | string \| null | 否 |  |
 | avatar_source | string \| null | 否 |  |
-| bio | string \| null | 否 | 个人简介 |
+| bio | string \| null | 否 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
-| email | string | 是 | 邮箱地址 |
+| email | string | 是 |  |
 | github | string \| null | 否 |  |
 | id | integer | 是 |  |
-| is_active | boolean | 是 |  |
-| is_staff | boolean | 是 |  |
-| is_superuser | boolean | 是 |  |
-| last_login | string \| null | 否 |  |
-| nickname | string \| null | 否 | 昵称 |
-| qq | string \| null | 否 |  |
+| nickname | string \| null | 否 |  |
 | resolved_avatar_url | string \| null | 否 |  |
-| role | string \| null | 否 |  |
 | title | object \| null | 否 |  |
-| username | string | 是 | 用户名 |
+| username | string | 是 |  |
 | website | string \| null | 否 |  |
 
 响应示例：
@@ -1153,14 +1147,8 @@ _无路径 / query 参数_
   "email": "string",
   "github": "string",
   "id": 0,
-  "is_active": false,
-  "is_staff": false,
-  "is_superuser": false,
-  "last_login": "string",
   "nickname": "string",
-  "qq": "string",
   "resolved_avatar_url": "string",
-  "role": "string",
   "title": "string",
   "username": "string",
   "website": "string"
@@ -1221,7 +1209,7 @@ _无路径 / query 参数_
 - **摘要**：获取用户信息
 - **鉴权**：需鉴权：`HTTPBearer`
 
-根据 ID 获取用户公开信息。用户关闭「公开资料」（`public_profile=False`）时对外统一返回 404（与「查无此人」同口径，避免账号枚举），仅本人可读。
+根据 ID 获取用户公开信息。用户关闭「公开资料」（`public_profile=False`）时对外统一返回 404（与「查无此人」同口径，避免账号枚举），仅本人可读。响应是第三人投影（`AuthorProfileResponse`），不含 QQ、激活/Staff/超管标志、角色与最后登录时间。
 
 **入参**
 
@@ -1229,28 +1217,22 @@ _无路径 / query 参数_
 
 **出参**
 
-`200` · 模型 `UserResponse`
+`200` · 模型 `AuthorProfileResponse`
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | avatar | string \| null | 否 |  |
 | avatar_source | string \| null | 否 |  |
-| bio | string \| null | 否 | 个人简介 |
+| bio | string \| null | 否 |  |
 | cover_image | string \| null | 否 |  |
 | created_at | string | 是 |  |
-| email | string | 是 | 邮箱地址 |
+| email | string | 是 |  |
 | github | string \| null | 否 |  |
 | id | integer | 是 |  |
-| is_active | boolean | 是 |  |
-| is_staff | boolean | 是 |  |
-| is_superuser | boolean | 是 |  |
-| last_login | string \| null | 否 |  |
-| nickname | string \| null | 否 | 昵称 |
-| qq | string \| null | 否 |  |
+| nickname | string \| null | 否 |  |
 | resolved_avatar_url | string \| null | 否 |  |
-| role | string \| null | 否 |  |
 | title | object \| null | 否 |  |
-| username | string | 是 | 用户名 |
+| username | string | 是 |  |
 | website | string \| null | 否 |  |
 
 响应示例：
@@ -1265,14 +1247,8 @@ _无路径 / query 参数_
   "email": "string",
   "github": "string",
   "id": 0,
-  "is_active": false,
-  "is_staff": false,
-  "is_superuser": false,
-  "last_login": "string",
   "nickname": "string",
-  "qq": "string",
   "resolved_avatar_url": "string",
-  "role": "string",
   "title": "string",
   "username": "string",
   "website": "string"
