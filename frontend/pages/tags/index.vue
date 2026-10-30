@@ -117,18 +117,6 @@ const { t, locale } = useI18n()
 const site = useSite()
 const { localeHref } = useLocaleLink()
 
-// ===== SEO：基于 i18n + 站点设置 =====
-useSeo({
-  title: computed(() => String(t('nav.tags') || t('tags.title') || '标签')),
-  description: computed(() => String(t('tags.desc') || '') || site.siteDescription.value),
-  type: 'website'
-})
-useWebsiteJsonLd()
-useBreadcrumbJsonLd([
-  { name: t('nav.home') as string, url: '/' },
-  { name: t('nav.tags') as string, url: '/tags' }
-])
-
 interface TagRow {
   id: number | string
   slug: string
@@ -153,6 +141,26 @@ const tags = computed<TagRow[]>(() => {
   if (!Array.isArray(raw)) return []
   return raw
 })
+
+// 空目录页 = 没有可索引内容（与 /sponsor 的 sponsorEmpty 同口径），后端 sitemap 同步跳过。
+// 只在「确实取到空列表」时 noindex：加载中或请求失败仍保持可索引——一次网络故障不该把
+// 有内容的目录页从索引里摘掉，而本页 3600s swr 会把判错的结果缓存一小时。
+const tagsEmpty = computed(
+  () => !_tagsLoading.value && !tagsLoadError.value && tags.value.length === 0
+)
+
+// ===== SEO：基于 i18n + 站点设置 =====
+useSeo({
+  title: computed(() => String(t('nav.tags') || t('tags.title') || '标签')),
+  description: computed(() => String(t('tags.desc') || '') || site.siteDescription.value),
+  type: 'website',
+  noindex: tagsEmpty
+})
+useWebsiteJsonLd()
+useBreadcrumbJsonLd([
+  { name: t('nav.home') as string, url: '/' },
+  { name: t('nav.tags') as string, url: '/tags' }
+])
 
 const tagName = (tag: TagRow): string => {
   const v = tag.name

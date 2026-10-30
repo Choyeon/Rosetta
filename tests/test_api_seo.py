@@ -355,7 +355,7 @@ async def test_meta_descriptions_strip_shortcodes_and_html(client: AsyncClient, 
 
 
 @pytest.mark.asyncio
-async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
+async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient, db_session):
     """三份子 sitemap 合并后不得出现重复 `<loc>`，且语言变体必须各自成条。
 
     历史缺陷一：`/categories` `/tags` `/series` 同时写在固定路由表和分类学表里，
@@ -379,6 +379,20 @@ async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
         await _cv2.cache.clear()
     except Exception:
         pass
+
+    # 三个目录根只在集合非空时提交（空目录页是 noindex，见
+    # test_empty_directories_leave_sitemaps_and_fill_them_when_live），所以这里先各放一条记录。
+    from backend.models.blog import Category, Tag
+    from backend.models.post_series import PostSeries
+
+    db_session.add_all(
+        [
+            Category(name={"zh": "技术", "en": "Tech"}, slug="dup-loc-cat"),
+            Tag(name={"zh": "Python", "en": "Python"}, slug="dup-loc-tag"),
+            PostSeries(title={"zh": "系列", "en": "Series"}, slug="dup-loc-series", is_active=True),
+        ]
+    )
+    await db_session.commit()
 
     children = [
         "/api/blog/sitemap-pages.xml",
@@ -406,7 +420,7 @@ async def test_sitemap_children_have_no_duplicate_loc(client: AsyncClient):
                 return path[len(f"/{code}") :]
         return path
 
-    # 三个根路径必须每种语言各提交一次（由分类学表负责，哪怕站点还没有任何分类）
+    # 三个根路径在有内容时每种语言各提交一次（由分类学表负责；空集合整条跳过）
     for root in ("/categories", "/tags", "/series"):
         hits = [u for u in locs if urlsplit(u).path.endswith(root)]
         paths = {urlsplit(u).path for u in hits}
@@ -557,6 +571,73 @@ async def test_pages_sitemap_submits_sponsor_only_when_donate_is_live(
     assert resp.status_code == 200, resp.text
     r3 = await client.get("/api/blog/sitemap-pages.xml")
     assert "/sponsor" not in _paths(r3.text)
+
+
+@pytest.mark.asyncio
+async def test_empty_directories_leave_sitemaps_and_fill_them_when_live(
+    client: AsyncClient, db_session
+):
+    """空目录页（/categories · /tags · /series · /gallery）不进 sitemap，有内容才收录。
+
+    四个集合落地页在集合为空时输出 ``noindex, follow``（前端 ``categoriesEmpty`` /
+    ``tagsEmpty`` / ``seriesEmpty`` / ``galleryEmpty``），sitemap 必须同口径：
+    提交一条自我声明"别收录"的地址是两份矛盾信号。反向分支（集合非空 ⇒ 四语条目）
+    也要断言——只测"空就不提交"的话，任何把目录页永久摘掉的做法都能通过。
+    相册另测未上架形态：后台建了但没发布的相册，访客看到的目录仍是空的。
+    """
+    import re
+    from urllib.parse import urlsplit
+
+    import backend.core.cache as _c
+    from backend.models.blog import Category, Tag
+    from backend.models.gallery import Album
+    from backend.models.post_series import PostSeries
+
+    await _c.cache.clear()
+
+    def _paths(text: str) -> list[str]:
+        return [urlsplit(u).path for u in re.findall(r"<loc>(.*?)</loc>", text)]
+
+    async def _tax_paths() -> list[str]:
+        r = await client.get("/api/blog/sitemap-taxonomies.xml")
+        assert r.status_code == 200, r.text
+        return _paths(r.text)
+
+    async def _page_paths() -> list[str]:
+        r = await client.get("/api/blog/sitemap-pages.xml")
+        assert r.status_code == 200, r.text
+        return _paths(r.text)
+
+    # ① 空库：三个分类学目录根 + 相册目录都不提交
+    assert await _tax_paths() == []
+    assert "/gallery" not in await _page_paths()
+
+    # ② 只有未上架相册：访客看到的是空目录，依然不提交
+    draft_album = Album(title="草稿相册", description="", is_published=False, photo_count=0)
+    db_session.add(draft_album)
+    await db_session.commit()
+    assert "/gallery" not in await _page_paths()
+
+    # ③ 上架一个相册 ⇒ /gallery 四语各一条
+    draft_album.is_published = True
+    await db_session.commit()
+    page_paths = await _page_paths()
+    for variant in ("/gallery", "/en/gallery", "/ja/gallery", "/zh_Hant/gallery"):
+        assert page_paths.count(variant) == 1, f"相册目录变体缺失或重复：{variant}"
+
+    # ④ 分类 / 标签 / 系列各有一条启用记录 ⇒ 三个目录根四语各一条
+    db_session.add_all(
+        [
+            Category(name={"zh": "技术", "en": "Tech"}, slug="sitemap-tech"),
+            Tag(name={"zh": "Python", "en": "Python"}, slug="sitemap-python"),
+            PostSeries(title={"zh": "系列", "en": "Series"}, slug="sitemap-series", is_active=True),
+        ]
+    )
+    await db_session.commit()
+    tax_paths = await _tax_paths()
+    for root in ("/categories", "/tags", "/series"):
+        for variant in (root, f"/en{root}", f"/ja{root}", f"/zh_Hant{root}"):
+            assert tax_paths.count(variant) == 1, f"目录根变体缺失或重复：{variant}"
 
 
 @pytest.mark.asyncio

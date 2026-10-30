@@ -149,10 +149,18 @@ const seriesList = computed<SeriesRow[]>(() => {
   return raw
 })
 
+// 空目录页 = 没有可索引内容（与 /sponsor 的 sponsorEmpty 同口径），后端 sitemap 同步跳过。
+// 只在「确实取到空列表」时 noindex：加载中或请求失败仍保持可索引——一次网络故障不该把
+// 有内容的目录页从索引里摘掉，而本页 3600s swr 会把判错的结果缓存一小时。
+const seriesEmpty = computed(
+  () => !pending.value && !loadError.value && seriesList.value.length === 0
+)
+
 useSeo({
   title: computed(() => t('series.title', '系列文章') as string),
   description: computed(() => t('series.desc', '按主题深度组织的系列专题，循序渐进地学习某一技术方向。') as string),
-  type: 'website'
+  type: 'website',
+  noindex: seriesEmpty
 })
 useWebsiteJsonLd()
 useBreadcrumbJsonLd([

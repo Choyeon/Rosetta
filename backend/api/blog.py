@@ -3604,8 +3604,10 @@ def _locale_path_variants(path: str) -> dict[str, str]:
 # 固定公开路由：(路径, 更新频率, 优先级)。
 # /search（noindex）、/login、/register、/oobe、/admin/** 一律不收录。
 # 注意：`/categories` `/tags` `/series` 三个分类学根路径**不在**这里——它们由
-# `generate_taxonomy_sitemap` 无条件输出（哪怕一个分类都没有）。在此重复会让
+# `generate_taxonomy_sitemap` 输出（集合为空时整条跳过，见该函数），在此重复会让
 # sitemap 索引对同一 URL 提交两次，Search Console 直接报"重复网址"。
+# `/gallery` 同理：相册是用户内容，一个相册都没有时那一页输出 noindex、也不该进 sitemap
+# （见 `_gallery_directory_indexable` 与 `include_gallery`）。
 _STATIC_SITEMAP_ROUTES: list[tuple[str, str, str]] = [
     ("/", "daily", "1.0"),
     ("/posts", "daily", "0.9"),
@@ -3616,7 +3618,6 @@ _STATIC_SITEMAP_ROUTES: list[tuple[str, str, str]] = [
     ("/archive", "monthly", "0.4"),
     ("/guestbook", "daily", "0.5"),
     ("/activity", "daily", "0.4"),
-    ("/gallery", "weekly", "0.4"),
     ("/about", "monthly", "0.3"),
     ("/friends", "monthly", "0.3"),
 ]
@@ -3832,17 +3833,23 @@ def generate_taxonomy_sitemap(
     SSR、可索引的落地页，只靠文章详情页的作者卡发现 URL 太弱——与年份归档同理，
     声明可索引的页面就该进 sitemap。清单由调用方按隐私开关（`show_posts`）与
     「确有已发布文章」过滤，本函数只负责拼 URL。
+
+    三个目录根（``/categories`` ``/tags`` ``/series``）只在对应集合非空时提交：
+    空目录页输出 ``noindex, follow``（同 `frontend/pages/{categories,tags,series}/index.vue`），
+    提交一条自己声明"别收录"的地址是矛盾信号；分类/标签/系列各自有子页时目录根才有意义。
     """
     site_url = site_url.rstrip("/")
-    entries: list[str] = [
-        _sitemap_url(
-            f"{site_url}/categories",
-            changefreq="weekly",
-            priority="0.5",
-            rel_path="/categories",
-            site_url=site_url,
+    entries: list[str] = []
+    if categories:
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/categories",
+                changefreq="weekly",
+                priority="0.5",
+                rel_path="/categories",
+                site_url=site_url,
+            )
         )
-    ]
     for category in categories:
         entries.append(
             _sitemap_url(
@@ -3854,15 +3861,16 @@ def generate_taxonomy_sitemap(
                 site_url=site_url,
             )
         )
-    entries.append(
-        _sitemap_url(
-            f"{site_url}/tags",
-            changefreq="weekly",
-            priority="0.4",
-            rel_path="/tags",
-            site_url=site_url,
+    if tags:
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/tags",
+                changefreq="weekly",
+                priority="0.4",
+                rel_path="/tags",
+                site_url=site_url,
+            )
         )
-    )
     for tag in tags:
         entries.append(
             _sitemap_url(
@@ -3874,15 +3882,16 @@ def generate_taxonomy_sitemap(
                 site_url=site_url,
             )
         )
-    entries.append(
-        _sitemap_url(
-            f"{site_url}/series",
-            changefreq="weekly",
-            priority="0.5",
-            rel_path="/series",
-            site_url=site_url,
+    if series:
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/series",
+                changefreq="weekly",
+                priority="0.5",
+                rel_path="/series",
+                site_url=site_url,
+            )
         )
-    )
     for s in series or []:
         entries.append(
             _sitemap_url(
@@ -3923,11 +3932,28 @@ async def _sponsor_page_indexable(db) -> bool:
     return bool_of(donate, "enable", True) and isinstance(methods, list) and bool(methods)
 
 
+async def _gallery_directory_indexable(db) -> bool:
+    """``/gallery`` 是否应当提交进 sitemap。
+
+    与 ``frontend/pages/gallery.vue::galleryEmpty`` 同口径：一个已发布相册都没有时，
+    这一页输出 ``noindex, follow``（空相册目录没有可索引内容），提交进 sitemap 等于
+    向爬虫要一个自己声明"别收录"的地址。判据与公开列表口 ``GET /gallery/albums`` 一致
+    （只数 ``is_published=True``）：后台建了相册但没上架时，访客看到的仍是空目录。
+    """
+    from backend.models.gallery import Album
+
+    total = await db.scalar(
+        select(func.count()).select_from(Album).where(Album.is_published.is_(True))
+    )
+    return bool(total)
+
+
 def generate_pages_sitemap(
     pages: list,
     site_url: str,
     archive_years: list[int] | None = None,
     include_sponsor: bool = False,
+    include_gallery: bool = False,
 ) -> str:
     """生成固定公开路由 + 年份归档落地页 + 独立页面（``/<slug>``）sitemap。
 
@@ -3972,6 +3998,17 @@ def generate_pages_sitemap(
                 changefreq="monthly",
                 priority="0.3",
                 rel_path="/sponsor",
+                site_url=site_url,
+            )
+        )
+    if include_gallery:
+        # 条件性收录：有已发布相册时 /gallery 才可索引（galleryEmpty=false）。
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/gallery",
+                changefreq="weekly",
+                priority="0.4",
+                rel_path="/gallery",
                 site_url=site_url,
             )
         )
@@ -4255,6 +4292,7 @@ async def get_sitemap_pages(db: DB):
         site_url,
         archive_years=archive_years,
         include_sponsor=await _sponsor_page_indexable(db),
+        include_gallery=await _gallery_directory_indexable(db),
     )
     return Response(
         content=content,

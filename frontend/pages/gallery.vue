@@ -602,11 +602,20 @@ onBeforeUnmount(() => {
   }
 })
 
+// 空目录页 = 没有可索引内容（与 /sponsor 的 sponsorEmpty 同口径），后端 sitemap 同步跳过。
+// 判据用接口给的 total（= 已发布相册数），不用本地拼接的 albums：翻到空页不等于目录为空。
+// 只在「确实取到 0 个相册」时 noindex：加载中或请求失败仍保持可索引——一次网络故障不该把
+// 有内容的目录页从索引里摘掉，而本页 600s swr 会把判错的结果缓存十分钟。
+const galleryEmpty = computed(
+  () => !pending.value && !albumsError.value && totalAlbums.value === 0
+)
+
 // SEO
 useSeo({
   title: computed(() => (t('gallery.title') as string) || '相册'),
   description: computed(() => t('gallery.desc') as string),
-  type: 'website'
+  type: 'website',
+  noindex: galleryEmpty
 })
 useWebsiteJsonLd()
 useBreadcrumbJsonLd([
