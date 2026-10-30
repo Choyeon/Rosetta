@@ -25,9 +25,17 @@ definePageMeta({ layout: 'default' })
 
 const route = useRoute()
 
+// 顶级真实路由的 slug：旧 WordPress 风格链接 /page/<slug> 命中这些名字时说明这条 URL
+// 想访问的是内建页面，302/301 过去。清单必须与后端 `_TOP_LEVEL_ROUTE_SLUGS`
+// （backend/api/blog.py，sitemap 用它决定哪些独立页记录没有可提交的规范地址）
+// 逐条一致，只允许少 `page` 一项——那是本兼容口的根，跳过去等于原地打转。
+// 少登记一个 slug 的后果：/page/<slug> 会渲染库里的另一份正文，而它的 canonical
+// 指向内建页 —— 一份 200 的重复内容，爬虫按 canonical 丢弃、用户却看到不一样的东西。
+// 契约见 tests/unit/pageAliasTopLevelRoutes.spec.ts。
 const KNOWN_TOP_LEVEL: string[] = [
   'about', 'guestbook', 'gallery', 'archive', 'friends', 'activity',
-  'login', 'register', 'oobe', 'posts', 'categories', 'tags', 'series'
+  'login', 'register', 'forgot-password', 'oobe', 'posts', 'categories',
+  'tags', 'series', 'authors', 'sponsor', 'search', 'settings', 'account', 'admin'
 ]
 
 const slug = computed(() =>
