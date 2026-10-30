@@ -3,6 +3,7 @@
   并自行在客户端触发 useFrontendTheme().ensureLoaded()；后端不可达时 slug 为空即落默认分支。
   回首页/去登录一律 clearError({ redirect: localePath(...) })（同时清错误态并跳转），不是 navigateTo；
   「去登录」只在 401/403 出现、「重试」只在 >=500 出现，500 的副标题直接透出 error.message。
+  404 另给文章/分类/标签/归档四个原生 <a> 快捷入口（href 走 localePath，整页刷新即清错误态）。
   t() 与 useLocalePath() 都包了 try/catch + 内置中文兜底：i18n 未就绪的窗口期本页也必须能渲染。
 -->
 
@@ -47,6 +48,19 @@
           {{ t('error.retry') }}
         </button>
       </div>
+      <nav
+        v-if="quickLinks.length"
+        class="mt-7 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-sm font-semibold"
+      >
+        <a
+          v-for="link in quickLinks"
+          :key="link.to"
+          :href="link.to"
+          class="ap-error-link"
+        >
+          {{ link.label }}
+        </a>
+      </nav>
     </div>
   </div>
 
@@ -90,6 +104,19 @@
           {{ t('error.retry') }}
         </button>
       </div>
+      <nav
+        v-if="quickLinks.length"
+        class="error-quick"
+      >
+        <a
+          v-for="link in quickLinks"
+          :key="link.to"
+          :href="link.to"
+          class="error-btn ghost"
+        >
+          {{ link.label }}
+        </a>
+      </nav>
     </div>
   </div>
 </template>
@@ -136,7 +163,11 @@ const ERROR_FALLBACK_TEXT: Record<string, string> = {
   'error.serverErrorDesc': '服务器处理请求时发生错误，请稍后重试。',
   'error.backHome': '返回首页',
   'error.goLogin': '去登录',
-  'error.retry': '重试'
+  'error.retry': '重试',
+  'nav.posts': '文章',
+  'nav.categories': '分类',
+  'nav.tags': '标签',
+  'nav.archive': '归档'
 }
 const t = (key: string): string => {
   if (i18nT) {
@@ -191,6 +222,22 @@ const goLogin = () => {
 const reload = () => {
   if (import.meta.client) window.location.reload()
 }
+
+/**
+ * 404 的唯一出路不该只有「返回首页」：给站内四条主要入口。
+ * 用原生 <a> 而非 <NuxtLink>——兜底页跳转必须连带清掉错误态与失败的 SSR payload，
+ * 客户端路由跳转在这里不保证重置（且整页刷新对错误页是可接受的代价）。
+ * 链接走 localePath()，极简主题与默认分支共用同一份，语言前缀因此天然正确。
+ */
+const quickLinks = computed(() => {
+  if (statusCode.value !== 404) return []
+  return [
+    { to: localePath('/posts'), label: t('nav.posts') },
+    { to: localePath('/categories'), label: t('nav.categories') },
+    { to: localePath('/tags'), label: t('nav.tags') },
+    { to: localePath('/archive'), label: t('nav.archive') }
+  ]
+})
 
 // 注：曾在此处放"SPA 路径 refs-null 级联自愈诊断"（依赖 00-escape-hatch 吞错链）。
 // 该插件已拆除；真实错误现在会照常进入本兜底页并展示（含重试按钮），不做静默诊断。
@@ -283,6 +330,15 @@ useHead({
   flex-wrap: wrap;
 }
 
+/* 404 站内快捷入口：同一排按钮容器下方一行次级按钮 */
+.error-quick {
+  margin-top: 0.75rem;
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
 .error-btn {
   display: inline-flex;
   align-items: center;
@@ -292,6 +348,7 @@ useHead({
   font-size: 0.9rem;
   font-weight: 600;
   cursor: pointer;
+  text-decoration: none;
   transition: filter 0.15s ease, background-color 0.15s ease;
   border: none;
 }
