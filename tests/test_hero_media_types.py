@@ -14,14 +14,20 @@ nginx 的 HTML CSP，少一处就前后台策略分叉）。
 前端渲染与后台表单由 `frontend/tests/unit/heroMedia.spec.ts` 等钉。
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
+from pydantic import ValidationError
+from sqlalchemy import delete
 
+from backend.core.database import async_session_maker
 from backend.core.security_middleware import CSP_FRAME_SRCS, _build_csp
+from backend.models.hero import HeroSlide
 from backend.schemas.hero import (
     HeroSlideCreate,
+    HeroSlideResponse,
     HeroSlideUpdate,
     extract_youtube_id,
     validate_media_pair,
@@ -106,7 +112,9 @@ class TestValidateMediaPair:
     def test_video_rejects_external_or_empty(self, url):
         assert validate_media_pair("video", url) is not None
 
-    @pytest.mark.parametrize("url", ["https://img.example.com/a.jpg", "/media/a.jpg", "data:image/gif;base64,AA"])
+    @pytest.mark.parametrize(
+        "url", ["https://img.example.com/a.jpg", "/media/a.jpg", "data:image/gif;base64,AA"]
+    )
     def test_image_only_requires_non_empty(self, url):
         assert validate_media_pair("image", url) is None
 
@@ -116,7 +124,9 @@ class TestValidateMediaPair:
 
 
 class TestCreateWritePath:
-    async def test_youtube_slide_persists_media_type_and_poster(self, client: AsyncClient, admin_headers):
+    async def test_youtube_slide_persists_media_type_and_poster(
+        self, client: AsyncClient, admin_headers
+    ):
         resp = await client.post(
             ADMIN,
             headers=admin_headers,
@@ -141,7 +151,9 @@ class TestCreateWritePath:
             {"media_type": "video", "media_url": "//cdn.example.com/hero.mp4"},
         ],
     )
-    async def test_create_rejects_mismatched_pair(self, client: AsyncClient, admin_headers, payload):
+    async def test_create_rejects_mismatched_pair(
+        self, client: AsyncClient, admin_headers, payload
+    ):
         resp = await client.post(ADMIN, headers=admin_headers, json=payload)
         assert resp.status_code == 422, resp.text
 
@@ -264,6 +276,96 @@ class TestPublicSurface:
 
         video = rows[created[1]]
         assert video["poster_url"] == "/media/poster.jpg"
+
+
+class TestPublicReadPathToleratesStoredValues:
+    """公开读口不得因为库里一条历史脏值整条 500（批次 #233 线上探针踩到）。
+
+    `HeroSlideResponse` 会把 `hero_slides` 已有的行原样序列化出去，而这张表可以被直连 SQL、
+    早期版本或导 ZIP 写入。取值约束（`ge=` / `Literal` / `max_length`）因此只挂在写口，
+    读侧只声明类型——线上实测：`sort_order=-1000` 的行让 `GET /api/hero/slides` 回 500，
+    首页横幅与轮播整个消失，而库里那一行本身并没有任何非法之处。
+    """
+
+    NOW = datetime(2026, 10, 30, 12, 0, tzinfo=timezone.utc)
+
+    def _row(self, **overrides) -> dict:
+        return {
+            "id": 1,
+            "media_type": "image",
+            "media_url": "/media/x.jpg",
+            "created_at": self.NOW,
+            "updated_at": self.NOW,
+            **overrides,
+        }
+
+    @pytest.mark.parametrize(
+        "field,value",
+        [
+            ("sort_order", -1000),
+            ("overlay_opacity", 140),
+            ("overlay_opacity", -5),
+            ("media_type", "vimeo"),
+            ("text_align", "justify"),
+            ("text_color", "sepia"),
+            ("media_url", ""),
+            ("media_url", "https://cdn.example.com/" + "a" * 600),
+            ("poster_url", "https://cdn.example.com/" + "b" * 600),
+        ],
+    )
+    def test_response_model_accepts_stored_values(self, field, value):
+        model = HeroSlideResponse.model_validate(self._row(**{field: value}))
+        assert getattr(model, field) == value
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"media_url": "/media/x.jpg", "sort_order": -1},
+            {"media_url": "/media/x.jpg", "overlay_opacity": 101},
+            {"media_url": "/media/x.jpg", "overlay_opacity": -1},
+            {"media_url": "/media/x.jpg", "media_type": "vimeo"},
+            {"media_url": "/media/x.jpg", "text_align": "justify"},
+            {"media_url": "/media/x.jpg", "text_color": "sepia"},
+            {"media_url": ""},
+            {"media_url": "/media/x.jpg", "poster_url": "https://cdn.example.com/" + "b" * 600},
+        ],
+    )
+    def test_write_schemas_still_reject_them(self, payload):
+        """放宽的只有读侧：写口的 422 一条都不能少，否则脏值又会从接口进来。"""
+        with pytest.raises(ValidationError):
+            HeroSlideCreate(**payload)
+
+    async def test_public_endpoint_survives_a_dirty_stored_row(self, client: AsyncClient):
+        async with async_session_maker() as db:
+            row = HeroSlide(
+                title="dirty-slide",
+                media_type="vimeo",
+                media_url="",
+                overlay_opacity=140,
+                text_align="justify",
+                text_color="sepia",
+                is_active=True,
+                sort_order=-7,
+            )
+            db.add(row)
+            await db.commit()
+            await db.refresh(row)
+            slide_id = row.id
+        try:
+            resp = await client.get(PUBLIC)
+            assert resp.status_code == 200, resp.text
+            assert slide_id in {item["id"] for item in _unwrap(resp.json())}
+        finally:
+            async with async_session_maker() as db:
+                await db.execute(delete(HeroSlide).where(HeroSlide.id == slide_id))
+                await db.commit()
+
+    def test_response_redeclares_every_constrained_field(self):
+        """将来给 Base 新增 `ge=` / `Literal` 字段时，读侧要同批放宽（否则 500 面又长回来）。"""
+        constrained = {
+            name for name, field in HeroSlideResponse.model_fields.items() if field.metadata
+        }
+        assert constrained == set(), f"响应模型仍带取值约束：{sorted(constrained)}"
 
 
 class TestContentSecurityPolicy:

@@ -81,7 +81,6 @@ def validate_media_pair(media_type: str, media_url: str | None) -> str | None:
     return None
 
 
-
 class HeroSlideBase(BaseModel):
     """Hero 幻灯片基础模型"""
 
@@ -168,7 +167,26 @@ class HeroSlideUpdate(BaseModel):
 
 
 class HeroSlideResponse(HeroSlideBase):
-    """Hero 幻灯片响应模型"""
+    """Hero 幻灯片响应模型。
+
+    下面这组字段刻意把写口的取值约束（`ge=` / `le=` / `Literal` / `max_length`）放宽成裸类型：
+    响应模型会把 `hero_slides` 里**已有的行**直接序列化出去，而这张表可以被直连 SQL、
+    早期版本或导 ZIP 写入。约束留在读侧，等于一条历史脏值把 `GET /api/hero/slides` 打成 500
+    （2026-10-30 线上探针实测：`sort_order=-1000` 的行让整条公开口 500，首页横幅一起消失）。
+    读侧的正确降级是"原值下发、前端按 `safeHeroHref` / 兜底图收口"，不是拒绝整份响应。
+    与 `HeroSlideCreate` 上只挂写口的伪协议校验同一条口径。
+    """
+
+    media_type: str = Field(default="image", description="媒体类型")
+    media_url: str = Field(..., description="媒体地址")
+    poster_url: str | None = Field(None, description="视频封面图")
+    overlay_opacity: int = Field(default=40, description="遮罩透明度 0-100")
+    overlay_color: str = Field(default="#000000", description="遮罩颜色")
+    cta_url: str | None = Field(None, description="主按钮链接")
+    cta_secondary_url: str | None = Field(None, description="次按钮链接")
+    text_align: str = Field(default="center", description="文字对齐")
+    text_color: str = Field(default="light", description="文字颜色主题")
+    sort_order: int = Field(default=0, description="排序权重")
 
     id: int
     created_at: datetime
