@@ -60,11 +60,17 @@
       </div>
 
       <h2 class="font-display text-base sm:text-lg leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
-        <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
+        <NuxtLink :to="localeHref(`/posts/${postSlug}`)"><HighlightText
+          :text="postTitle"
+          :keyword="highlight"
+        /></NuxtLink>
       </h2>
 
       <p class="line-clamp-2 text-muted-foreground leading-relaxed mt-2 text-sm">
-        {{ postExcerpt || t('post.noExcerpt') }}
+        <HighlightText
+          :text="excerptText"
+          :keyword="highlight"
+        />
       </p>
 
       <div class="mt-auto pt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs text-muted-foreground">
@@ -168,11 +174,17 @@
       </div>
 
       <h2 class="font-display text-2xl md:text-3xl font-bold leading-tight tracking-tight line-clamp-2 group-hover:underline underline-offset-4 decoration-border">
-        <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
+        <NuxtLink :to="localeHref(`/posts/${postSlug}`)"><HighlightText
+          :text="postTitle"
+          :keyword="highlight"
+        /></NuxtLink>
       </h2>
 
       <p class="text-muted-foreground leading-relaxed line-clamp-3 md:text-[15px]">
-        {{ postExcerpt || t('post.noExcerpt') }}
+        <HighlightText
+          :text="excerptText"
+          :keyword="highlight"
+        />
       </p>
 
       <div class="mt-1 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-muted-foreground">
@@ -255,13 +267,19 @@
         </Badge>
       </div>
       <h2 class="mt-3 font-display leading-snug line-clamp-2 group-hover:underline underline-offset-4 decoration-border text-xl">
-        <NuxtLink :to="localeHref(`/posts/${postSlug}`)">{{ postTitle }}</NuxtLink>
+        <NuxtLink :to="localeHref(`/posts/${postSlug}`)"><HighlightText
+          :text="postTitle"
+          :keyword="highlight"
+        /></NuxtLink>
       </h2>
     </header>
 
     <div class="p-5 pt-3 flex-1">
       <p class="text-muted-foreground leading-relaxed line-clamp-3">
-        {{ postExcerpt || t('post.noExcerpt') }}
+        <HighlightText
+          :text="excerptText"
+          :keyword="highlight"
+        />
       </p>
     </div>
 
@@ -341,6 +359,7 @@ import TitleBadge from '~~/components/TitleBadge.vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
+import HighlightText from '~~/components/HighlightText.vue'
 import { useI18nHelpers } from '~~/composables/useI18nHelpers'
 import { handlePostCoverError, postCoverUrl, POST_COVER_CARD, POST_COVER_DETAIL } from '~~/lib/post-cover'
 
@@ -398,10 +417,13 @@ interface Props {
     is_pinned?: boolean
   }
   variant?: PostCardVariant
+  /** 命中关键词（搜索结果页传入）：标题与摘要里的命中片段包成 <mark>；空串＝不高亮。 */
+  highlight?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  variant: 'default'
+  variant: 'default',
+  highlight: ''
 })
 
 const { t } = useI18n()
@@ -435,6 +457,8 @@ const categoryLink = computed(() => {
 
 const postTitle = computed(() => resolveLocalized(props.post.title))
 const postExcerpt = computed(() => resolveLocalized(props.post.excerpt))
+/** 摘要缺失时回落占位文案；高亮组件只收纯文本，两处都必须先落成字符串。 */
+const excerptText = computed(() => postExcerpt.value || t('post.noExcerpt'))
 const postSlug = computed(() => props.post.slug)
 
 /** 把 tags 解析为"i18n aware + 已解析 color"的扁平数组。 */
