@@ -128,6 +128,44 @@
             </SelectItem>
           </SelectContent>
         </Select>
+        <!-- 排序：后端 /media/library 一直支持 sort_by / sort_order，此前没有任何入口，
+             管理员只能按上传时间倒序翻页找文件（大文件排查、按名核对都只能靠搜索）。 -->
+        <Select
+          :model-value="sortBy"
+          @update:model-value="onSortChange"
+        >
+          <SelectTrigger
+            class="w-[130px]"
+            aria-label="排序字段"
+          >
+            <SelectValue placeholder="排序" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem
+              v-for="field in MEDIA_SORT_FIELDS"
+              :key="field"
+              :value="field"
+            >
+              {{ SORT_LABELS[field] }}
+            </SelectItem>
+          </SelectContent>
+        </Select>
+        <Button
+          variant="outline"
+          size="icon-sm"
+          :title="sortOrder === 'asc' ? `按${SORT_LABELS[sortBy]}升序（点击切换降序）` : `按${SORT_LABELS[sortBy]}降序（点击切换升序）`"
+          :aria-label="sortOrder === 'asc' ? '切换为降序' : '切换为升序'"
+          @click="toggleSortOrder"
+        >
+          <ArrowUpNarrowWide
+            v-if="sortOrder === 'asc'"
+            data-icon="inline-start"
+          />
+          <ArrowDownWideNarrow
+            v-else
+            data-icon="inline-start"
+          />
+        </Button>
       </div>
       <div class="flex items-center gap-2">
         <div class="flex items-center rounded-lg border p-0.5">
@@ -486,7 +524,8 @@ import MediaPreviewDialog from '~~/components/admin/media/MediaPreviewDialog.vue
 import {
   Search, Upload, Trash2, Info, Loader2, Files, HardDrive,
   Image as ImageIcon, FileText, FileVideo, FileIcon as FileDoc, FileArchive,
-  LayoutGrid, List, RefreshCw, AlertCircle, Check
+  LayoutGrid, List, RefreshCw, AlertCircle, Check,
+  ArrowDownWideNarrow, ArrowUpNarrowWide
 } from '@lucide/vue'
 import {
   fetchAdminMediaLibrary,
@@ -517,6 +556,23 @@ const stats = ref<AdminMediaStats>({
 })
 const searchQuery = ref('')
 const mimeFilter = ref('all')
+/**
+ * 排序字段清单必须与后端 `api/media.py::_SORTABLE` 的键集合**相等**：
+ * 多出一个＝选了它静默回落 created_at（看起来没生效的 bug），少一个＝后端能力没接。
+ * 集合相等由 tests/unit/mediaLibrarySort.spec.ts 双向对账。
+ */
+const MEDIA_SORT_FIELDS = ['created_at', 'filename', 'file_size', 'updated_at'] as const
+type MediaSortField = (typeof MEDIA_SORT_FIELDS)[number]
+const SORT_LABELS: Record<MediaSortField, string> = {
+  created_at: '上传时间',
+  filename: '文件名',
+  file_size: '文件大小',
+  updated_at: '更新时间'
+}
+const isMediaSortField = (value: unknown): value is MediaSortField =>
+  (MEDIA_SORT_FIELDS as readonly string[]).includes(String(value))
+const sortBy = ref<MediaSortField>('created_at')
+const sortOrder = ref<'asc' | 'desc'>('desc')
 const page = ref(1)
 // 必须与 AdminPagination 的 page-size-options 之一对应，否则「每页」下拉无匹配项
 const pageSize = ref(20)
@@ -667,7 +723,9 @@ async function fetchData() {
         page: page.value,
         page_size: pageSize.value,
         search: searchQuery.value.trim() || undefined,
-        mime_prefix: fileTypeFilter()
+        mime_prefix: fileTypeFilter(),
+        sort_by: sortBy.value,
+        sort_order: sortOrder.value
       }),
       fetchAdminMediaStats()
     ])
@@ -714,6 +772,18 @@ function applyFilter() {
 
 function onMimeFilterChange(value: unknown) {
   mimeFilter.value = typeof value === 'string' ? value : 'all'
+  applyFilter()
+}
+
+/** 换排序字段与换筛选同构：结果集重排后当前页内容整批换掉，回第 1 页并清选中。 */
+function onSortChange(value: unknown) {
+  if (!isMediaSortField(value)) return
+  sortBy.value = value
+  applyFilter()
+}
+
+function toggleSortOrder() {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
   applyFilter()
 }
 

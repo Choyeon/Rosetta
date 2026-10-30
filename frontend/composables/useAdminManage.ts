@@ -1227,6 +1227,10 @@ interface AdminMediaQuery {
   category?: string
   mime_prefix?: string
   file_type?: string
+  // 排序：与后端 `api/media.py::_SORTABLE` 的白名单同形。类型写成联合而不是 string，
+  // 是为了让「UI 多出一个后端不认的字段」在 typecheck 阶段就红，而不是静默回落 created_at。
+  sort_by?: 'created_at' | 'file_size' | 'filename' | 'updated_at'
+  sort_order?: 'asc' | 'desc'
 }
 
 /**

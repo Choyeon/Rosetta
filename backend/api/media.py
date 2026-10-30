@@ -1198,7 +1198,9 @@ async def list_media_library(
     file_type: str | None = Query(None, description="文件类型：image/video/audio/other"),
     category: str | None = Query(None, description="业务分类：image/video/audio/document/other"),
     search: str | None = Query(None, description="搜索关键词"),
-    sort_by: str = Query("created_at", description="排序字段：created_at/file_size/filename"),
+    sort_by: str = Query(
+        "created_at", description="排序字段：created_at/file_size/filename/updated_at"
+    ),
     sort_order: str = Query("desc", description="排序方向：asc/desc"),
 ):
     """
