@@ -291,6 +291,23 @@
                 </div>
               </template>
 
+              <template v-else-if="schema.type === 'i18n'">
+                <div class="flex flex-col gap-2">
+                  <I18nTabsEditor
+                    flat
+                    :model-value="i18nValueOf(key)"
+                    :label="schema.label"
+                    @update:model-value="(v: Record<string, string | null>) => setI18nValue(key, v)"
+                  />
+                  <p
+                    v-if="schema.help"
+                    class="text-xs text-muted-foreground"
+                  >
+                    {{ schema.help }}
+                  </p>
+                </div>
+              </template>
+
               <template v-else-if="schema.type === 'number'">
                 <div class="flex flex-col gap-2">
                   <Label
@@ -656,6 +673,7 @@ import {
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
 import AdminCard from '~~/components/admin/AdminCard.vue'
+import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import { Skeleton } from '~~/components/ui/skeleton'
 import { Label } from '~~/components/ui/label'
 import { Input } from '~~/components/ui/input'
@@ -676,7 +694,7 @@ const site = useSite()
 
 interface FieldSchema {
   label: string
-  type: 'string' | 'number' | 'boolean' | 'color' | 'json'
+  type: 'string' | 'number' | 'boolean' | 'color' | 'json' | 'i18n'
   long?: boolean
   sensitive?: boolean
   min?: number
@@ -763,6 +781,17 @@ function stringifyJson(v: SettingsValue): string {
   } catch {
     return String(v)
   }
+}
+
+/** i18n 字段的当前值：缺失/脏数据给一份空四语 dict，绝不把裸字符串塞进 Tab 编辑器。 */
+function i18nValueOf(key: string): Record<string, string | null> {
+  const v = formState[activeGroup.value]?.[key]
+  return isI18nDict(v) ? v : { ...EMPTY_I18N_DICT }
+}
+
+function setI18nValue(key: string, v: Record<string, string | null>) {
+  const g = formState[activeGroup.value]
+  if (g) g[key] = v
 }
 
 function parseJsonInput(key: string, raw: string) {
@@ -981,6 +1010,13 @@ const GROUP_LABELS: Record<string, Record<string, string>> = {
   }
 }
 
+/**
+ * 多语言 dict 字段（hero.cta_text / donate.title / donate.description）的编辑提示。
+ * 这类字段以前落进通用对象分支，变成「JSON 数组格式」的裸文本域：
+ * 提示与实际形状矛盾，且只有库里已存在的语言键能改——只存了 zh/en 就永远补不进 ja/zh_Hant。
+ */
+const I18N_FIELD_HELP = '按语言逐项填写；未填写的语言前台会回落到其它已填语言'
+
 function inferSchema(key: string, value: SettingsValue, defaults: Record<string, SettingsValue>): FieldSchema {
   const label = {
     site_name: '站点名称', subtitle: '站点副标题', logo: 'Logo 图片 URL',
@@ -1051,6 +1087,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
 
   if (value === null || value === undefined) {
     const d = defaults[key]
+    if (isI18nDict(d)) return { label: resolvedLabel, type: 'i18n', help: I18N_FIELD_HELP }
     if (typeof d === 'boolean') return { label: resolvedLabel, type: 'boolean', help: boolHelp }
     if (typeof d === 'number') return { label: resolvedLabel, type: 'number' }
     return { label: resolvedLabel, type: 'string' }
@@ -1085,6 +1122,7 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     const m = meta[key] || {}
     return { label: resolvedLabel, type: 'number', ...m }
   }
+  if (isI18nDict(value)) return { label: resolvedLabel, type: 'i18n', help: I18N_FIELD_HELP }
   if (typeof value === 'object') {
     return { label: resolvedLabel, type: 'json', help: '数组每项应为对象，修改后需保证语法正确' }
   }
@@ -1206,10 +1244,12 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true, enable_captcha: false },
     appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
     navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true },
-    hero: { enable: true, title: {}, subtitle: {}, caption: '', cta_text: {}, cta_url: '', bg_image: '', bg_gradient: '' },
+    // 多语言字段的本地兜底必须是完整四语 dict：inferSchema 靠它识别 i18n 类型，
+    // 写成 {} 会让「库里还没有这条值」的字段退回裸 JSON 文本域。
+    hero: { enable: true, title: { ...EMPTY_I18N_DICT }, subtitle: { ...EMPTY_I18N_DICT }, caption: '', cta_text: { ...EMPTY_I18N_DICT }, cta_url: '', bg_image: '', bg_gradient: '' },
     notice: { enable: false, type: 'info', title: '', content_md: '', dismissible: true, sticky: true },
     footer: { text: '', slogan: '', copyright: '', icp_number: '', police_icp_number: '', show_social_links: true, show_back_to_top: true },
-    donate: { enable: true, title: {}, description: {}, methods: [], sponsors: [], show_sponsors_list: true }
+    donate: { enable: true, title: { ...EMPTY_I18N_DICT }, description: { ...EMPTY_I18N_DICT }, methods: [], sponsors: [], show_sponsors_list: true }
   }
   return m[group] || {}
 }
