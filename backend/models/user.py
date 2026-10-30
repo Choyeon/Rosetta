@@ -348,6 +348,7 @@ class User(Base, TenantMixin):
         "UserPreference",
         back_populates="user",
         uselist=False,
+        passive_deletes=True,
         doc="用户偏好设置",
     )
 

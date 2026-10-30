@@ -83,10 +83,9 @@ def _detach_for_cache(*instances: object | None) -> None:
 
     缓存载荷跨请求复用，但实例的所有权属于「第一次那次请求」的会话：请求结束时该会话
     commit / close，`expire_on_commit=True` 会把实例的全部属性标成过期。下一次命中缓存
-    的请求再读任何一个属性（隐私闸门要读 ``preferences.public_profile``、邮箱遮蔽要读
-    ``show_email``、组装响应要读用户列）都会走延迟刷新，而它已经没有会话可刷了 ——
-    ``DetachedInstanceError`` → HTTP 500。表现为「同一个作者主页，第一次 404/200 正常，
-    TTL 内的第二次请求起报服务器错误」。
+    的请求再读任何一个属性（组装响应要读用户列、作者卡片要读 title）都会走延迟刷新，
+    而它已经没有会话可刷了 —— ``DetachedInstanceError`` → HTTP 500。
+    表现为「同一个作者主页，第一次 404/200 正常，TTL 内的第二次请求起报服务器错误」。
 
     ``make_transient`` 把实例从 identity map 里摘掉：属性保持已加载的值，后续 commit
     也不再碰它。代价是这份载荷只读（改字段再 flush 不会落库），所以只对展示路径使用。
@@ -426,11 +425,10 @@ class UserService:
             payload = {
                 "user": profile["user"],
                 "title": profile["title"],
-                "preferences": profile["preferences"],
                 "post_count": profile["post_count"],
                 "comment_count": profile["comment_count"],
             }
-            _detach_for_cache(payload["user"], payload["title"], payload["preferences"])
+            _detach_for_cache(payload["user"], payload["title"])
             return payload
 
         raw = (
@@ -441,7 +439,17 @@ class UserService:
         if raw is None:
             return None
 
-        return self._decorate_profile_for_viewer(raw, user_id, current_user_id)
+        # 隐私开关**不进缓存载荷**（每读必查偏好行）。这条载荷含 ORM 实例，Redis 层会把
+        # 它拒收（见 `cache_v2.set` 的"不支持的值类型"告警），所以它只活在第一个服务过
+        # 它的 worker 的本地层里；而失效动作只能清"写它的那个进程"的本地层。生产跑
+        # `--workers N`：用户在 A worker 关了开关，B/C 仍按旧开关服务整个 TTL——
+        # `public_profile`（整页对外是否存在）、`show_email`、`show_social_links` 三个闸门
+        # 都由这份快照决定，实测表现是"改了开关、SSR 页面已经隐藏了链接，
+        # 但 `GET /users/username/{u}` 在下一个 TTL 窗口里仍回原始值"。
+        # 载荷本身不可变（`{**raw}`）：往缓存里的字典就地写一个会话绑定的偏好实例，
+        # 等于重新引入 `DetachedInstanceError` 那一类 500。
+        fresh = {**raw, "preferences": await self._preference_repo.get_by_user_id(user_id)}
+        return self._decorate_profile_for_viewer(fresh, user_id, current_user_id)
 
     @staticmethod
     def _decorate_profile_for_viewer(

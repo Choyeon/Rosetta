@@ -349,7 +349,7 @@ class TestCachedProfilePayloadIsReusable:
         重复读用例只锁状态码）。这里直接查缓存载荷的归属——只要还挂着 session 绑定
         实例，下一次请求读到任何属性都可能抛 ``DetachedInstanceError``。
         """
-        # 必须有偏好行：故障正是发生在闸门读 preferences.public_profile 的那一刻
+        # 必须有偏好行：这条读取路径当年正是从缓存载荷里读隐私开关
         db_session.add(UserPreference(user_id=test_user.id, public_profile=True))
         await db_session.commit()
 
@@ -363,13 +363,18 @@ class TestCachedProfilePayloadIsReusable:
 
         raw = await cache_service.get(key)
         assert raw is not None, "首次读取应已写入 user_profile 缓存"
-        for obj in (raw["user"], raw["title"], raw["preferences"]):
+        for obj in (raw["user"], raw["title"]):
             if obj is not None:
                 assert object_session(obj) is None, "缓存载荷里不得放会话绑定实例"
 
         # 脱离会话后属性仍可读（已加载值），否则展示路径会拿到空对象
         assert raw["user"].username == test_user.username
-        assert raw["preferences"].public_profile is True
+        # 隐私判据不进缓存载荷（批次 #227 线上实测：含 ORM 实例的载荷进不了 Redis，
+        # 只活在写它那个 worker 的进程内，失效通知跨不到别的进程 → 开关最长 300s 不生效）。
+        assert "preferences" not in raw, "隐私开关不得进缓存载荷"
+        # 而服务层返回给消费方的那份视图仍带着实时偏好行，闸门照常可判
+        assert profile["preferences"] is not None
+        assert profile["preferences"].public_profile is True
 
 
 class TestHiddenProfileSubResources:

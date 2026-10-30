@@ -13,12 +13,12 @@
 
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 
 from backend.core.auth import get_password_hash
 from backend.models.blog import Comment, Post
 from backend.models.guestbook import GuestbookEntry
-from backend.models.user import User
+from backend.models.user import User, UserPreference
 
 
 async def _make_target_user(db_session) -> User:
@@ -109,3 +109,46 @@ async def test_delete_user_fails_loudly_when_cleanup_errors(
     # 生产链路上同一异常由异常中间件转成 5xx，用户看到失败而不是假成功。
     with pytest.raises(RuntimeError, match="cleanup exploded"):
         await client.delete(f"/api/admin/users/{target.id}", headers=admin_headers)
+
+
+@pytest.mark.asyncio
+async def test_hard_delete_user_lets_the_database_cascade_the_preference_row(db_session):
+    """真硬删除用户时，偏好行必须由数据库的 ON DELETE CASCADE 收走，而不是 500。
+
+    `user_preferences.user_id` 是 NOT NULL + ON DELETE CASCADE，而 `User.preferences`
+    关系当初没声明 `passive_deletes`，SQLAlchemy 于是按"父删子留"的默认口径先发
+    `UPDATE user_preferences SET user_id=NULL` —— NULL 撞 NOT NULL，IntegrityError。
+    `DELETE /api/admin/users/{id}` 只做软删除（ban + deactivate，用户行仍在），所以生产
+    请求路径从未暴露它；挂的是任何真实硬删除：批次 #227 / #230 的线上数据清理探针就是这么
+    `IntegrityError` 崩的，只能先手动删偏好行再删用户行。
+    """
+    # 测试引擎默认不开 SQLite 的 FK 开关（`tests/conftest.py::test_engine` 没装 PRAGMA
+    # 监听器），于是 PG 上自动发生的 ON DELETE CASCADE 在这里什么都不会发生。
+    # 本用例要在 SQLite 上验的是"级联真的落到数据库"，所以就地打开——引擎是 function 作用域，
+    # 不影响其它用例。
+    await db_session.execute(text("PRAGMA foreign_keys=ON"))
+    await db_session.commit()
+    user = User(
+        username="harddelete_target",
+        email="harddelete_target@t.com",
+        password_hash=get_password_hash("Str@Pass1!"),
+        is_active=True,
+    )
+    db_session.add(user)
+    await db_session.commit()
+    await db_session.refresh(user)
+
+    db_session.add(UserPreference(user_id=user.id, public_profile=True))
+    await db_session.commit()
+
+    # 两个对象都必须在会话里：故障恰恰只在这时发生（子行已加载，ORM 才会去动它的 FK）
+    loaded = (await db_session.execute(select(User).where(User.id == user.id))).scalar_one()
+    await db_session.execute(select(UserPreference).where(UserPreference.user_id == user.id))
+
+    await db_session.delete(loaded)
+    await db_session.commit()
+
+    remaining = await db_session.scalar(
+        select(func.count(UserPreference.id)).where(UserPreference.user_id == user.id)
+    )
+    assert remaining == 0, "偏好行没被数据库级联收走，成了指向不存在用户的孤儿行"
