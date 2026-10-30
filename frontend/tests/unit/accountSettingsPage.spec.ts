@@ -5,7 +5,7 @@
  * PUT /users/me、PUT /users/me/preferences、POST /users/me/password、DELETE /users/me
  * （GET /users/me/preferences 由 useAPI 消费）。钉住的口径：
  *   1. 写请求全部走 apiFetch（统一失败信封 + toast），取数据走 useAPI；
- *   2. 隐私开关只暴露**后端真有强制点**的 5 个字段。UserPreference.theme 是死字段
+ *   2. 隐私开关只暴露**后端真有强制点**的 7 个字段。UserPreference.theme 是死字段
  *      （models/user.py 里唯一引用是 __repr__），放开关等于给用户一个不生效的设置；
  *   3. 改密成功必须 clearTokens + 跳 /login：后端 bump token_version 让全部会话失效，
  *      留在原页只会让下一个请求撞 401 自动刷新失败，表现为"保存即掉线"；
@@ -41,6 +41,7 @@ const NEW_KEYS = [
   'prefShowPosts', 'prefShowPostsHint',
   'prefShowComments', 'prefShowCommentsHint',
   'prefShowStats', 'prefShowStatsHint',
+  'prefShowSocialLinks', 'prefShowSocialLinksHint',
   'savePreferences', 'preferencesSaved',
   'fieldOldPassword', 'fieldNewPassword', 'fieldConfirmPassword',
   'savePassword', 'passwordChanged', 'passwordMismatch',
@@ -79,11 +80,12 @@ describe('账户设置 /account/settings', () => {
     expect(page).toContain('await authStore.fetchUser()')
   })
 
-  it('偏好开关精确等于后端有强制点的 6 个字段，不含死字段 theme', () => {
-    // 前五条存 user_preferences，notify_by_email 存 User 行（评论通知邮件按它筛收件人）；
+  it('偏好开关精确等于后端有强制点的 7 个字段，不含死字段 theme', () => {
+    // 前六条存 user_preferences，notify_by_email 存 User 行（评论通知邮件按它筛收件人）；
     // 判定口径不变：后端没有真实强制点的键不得进这张清单（theme 就是那条死字段）。
     expect(preferenceKeys(page)).toEqual([
-      'public_profile', 'show_email', 'show_posts', 'show_comments', 'show_stats', 'notify_by_email'
+      'public_profile', 'show_email', 'show_posts', 'show_comments', 'show_stats',
+      'show_social_links', 'notify_by_email'
     ])
   })
 

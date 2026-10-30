@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **362 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **363 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -790,6 +790,7 @@ _无路径 / query 参数_
 | show_comments | boolean | 是 |  |
 | show_email | boolean | 是 |  |
 | show_posts | boolean | 是 |  |
+| show_social_links | boolean | 是 |  |
 | show_stats | boolean | 是 |  |
 | theme | string | 是 |  |
 
@@ -802,6 +803,7 @@ _无路径 / query 参数_
   "show_comments": false,
   "show_email": false,
   "show_posts": false,
+  "show_social_links": false,
   "show_stats": false,
   "theme": "string"
 }
@@ -831,6 +833,7 @@ _无路径 / query 参数_
 | show_comments | boolean \| null | 否 |  |
 | show_email | boolean \| null | 否 |  |
 | show_posts | boolean \| null | 否 |  |
+| show_social_links | boolean \| null | 否 |  |
 | show_stats | boolean \| null | 否 |  |
 | theme | string \| null | 否 |  |
 
@@ -841,6 +844,7 @@ _无路径 / query 参数_
   "show_comments": "string",
   "show_email": "string",
   "show_posts": "string",
+  "show_social_links": "string",
   "show_stats": "string",
   "theme": "string"
 }
@@ -857,6 +861,7 @@ _无路径 / query 参数_
 | show_comments | boolean | 是 |  |
 | show_email | boolean | 是 |  |
 | show_posts | boolean | 是 |  |
+| show_social_links | boolean | 是 |  |
 | show_stats | boolean | 是 |  |
 | theme | string | 是 |  |
 
@@ -869,6 +874,7 @@ _无路径 / query 参数_
   "show_comments": false,
   "show_email": false,
   "show_posts": false,
+  "show_social_links": false,
   "show_stats": false,
   "theme": "string"
 }
@@ -1172,7 +1178,7 @@ _无路径 / query 参数_
 - **摘要**：获取用户隐私设置
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取用户的隐私设置（公开部分）。公开接口、无需鉴权。响应为裸 dict（5 个布尔开关，无 data 信封）；用户从未动过设置（无偏好行）时返回与建表默认一致的默认开关组（show_email 默认拒绝）。用户不存在返回 404。**资料已关闭公开（`public_profile=False`）时同样返回 404**——把整组开关摊给匿名调用方等于宣布「这个账号存在，只是藏起来了」，会打穿资料接口刻意选定的统一 404 防枚举口径。仅本人可读到自己的真实开关组。
+获取用户的隐私设置（公开部分）。公开接口、无需鉴权。响应为裸 dict（6 个布尔开关，无 data 信封）；用户从未动过设置（无偏好行）时返回与建表默认一致的默认开关组（show_email 默认拒绝）。用户不存在返回 404。**资料已关闭公开（`public_profile=False`）时同样返回 404**——把整组开关摊给匿名调用方等于宣布「这个账号存在，只是藏起来了」，会打穿资料接口刻意选定的统一 404 防枚举口径。仅本人可读到自己的真实开关组。
 
 **入参**
 
@@ -1188,6 +1194,7 @@ _无路径 / query 参数_
 | show_comments | boolean | 否 | 是否公开评论列表 |
 | show_email | boolean | 否 | 是否对外展示邮箱（默认拒绝） |
 | show_posts | boolean | 否 | 是否公开文章列表 |
+| show_social_links | boolean | 否 | 是否在作者主页展示网站 / GitHub 链接（关掉即两个链接都不出现） |
 | show_stats | boolean | 否 | 是否公开统计数据 |
 
 响应示例：
@@ -1198,6 +1205,7 @@ _无路径 / query 参数_
   "show_comments": true,
   "show_email": false,
   "show_posts": true,
+  "show_social_links": true,
   "show_stats": true
 }
 ```
@@ -2010,13 +2018,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | category | object \| null | 否 |  |
 | comments_count | integer | 否 |  |
 | content | string | 是 |  |
@@ -2034,6 +2040,7 @@ _无路径 / query 参数_
 | password | string \| null | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
+| series | object \| null | 否 |  |
 | slug | string | 是 |  |
 | source | string | 是 |  |
 | source_url | string \| null | 否 |  |
@@ -2042,7 +2049,8 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| … 其余 4 个字段 | | | 见 `/docs` |
+| video | string \| null | 否 |  |
+| … 其余 3 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2056,13 +2064,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "category": "string",
   "comments_count": 0,
@@ -2081,6 +2087,7 @@ _无路径 / query 参数_
   "password": "string",
   "published_at": "string",
   "reading_time": 1,
+  "series": "string",
   "slug": "string",
   "source": "string",
   "source_url": "string",
@@ -2185,13 +2192,11 @@ _无路径 / query 参数_
       "bio": "string",
       "cover_image": "string",
       "created_at": "string",
-      "github": "string",
       "id": 0,
       "nickname": "string",
       "resolved_avatar_url": "string",
       "title": "string",
-      "username": "string",
-      "website": "string"
+      "username": "string"
     },
     "category": "string",
     "comments_count": 0,
@@ -2246,13 +2251,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | category | object \| null | 否 |  |
 | comments_count | integer | 否 |  |
 | content | string | 是 |  |
@@ -2270,6 +2273,7 @@ _无路径 / query 参数_
 | password | string \| null | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
+| series | object \| null | 否 |  |
 | slug | string | 是 |  |
 | source | string | 是 |  |
 | source_url | string \| null | 否 |  |
@@ -2278,7 +2282,8 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| … 其余 4 个字段 | | | 见 `/docs` |
+| video | string \| null | 否 |  |
+| … 其余 3 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2292,13 +2297,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "category": "string",
   "comments_count": 0,
@@ -2317,6 +2320,7 @@ _无路径 / query 参数_
   "password": "string",
   "published_at": "string",
   "reading_time": 1,
+  "series": "string",
   "slug": "string",
   "source": "string",
   "source_url": "string",
@@ -2474,13 +2478,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | category | object \| null | 否 |  |
 | comments_count | integer | 否 |  |
 | content | string | 是 |  |
@@ -2498,6 +2500,7 @@ _无路径 / query 参数_
 | password | string \| null | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
+| series | object \| null | 否 |  |
 | slug | string | 是 |  |
 | source | string | 是 |  |
 | source_url | string \| null | 否 |  |
@@ -2506,7 +2509,8 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| … 其余 4 个字段 | | | 见 `/docs` |
+| video | string \| null | 否 |  |
+| … 其余 3 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2520,13 +2524,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "category": "string",
   "comments_count": 0,
@@ -2545,6 +2547,7 @@ _无路径 / query 参数_
   "password": "string",
   "published_at": "string",
   "reading_time": 1,
+  "series": "string",
   "slug": "string",
   "source": "string",
   "source_url": "string",
@@ -2810,13 +2813,11 @@ _无路径 / query 参数_
       "bio": "string",
       "cover_image": "string",
       "created_at": "string",
-      "github": "string",
       "id": 0,
       "nickname": "string",
       "resolved_avatar_url": "string",
       "title": "string",
-      "username": "string",
-      "website": "string"
+      "username": "string"
     },
     "category": "string",
     "comments_count": 0,
@@ -2906,13 +2907,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | category | object \| null | 否 |  |
 | comments_count | integer | 否 |  |
 | content | string | 是 |  |
@@ -2930,6 +2929,7 @@ _无路径 / query 参数_
 | password | string \| null | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
+| series | object \| null | 否 |  |
 | slug | string | 是 |  |
 | source | string | 是 |  |
 | source_url | string \| null | 否 |  |
@@ -2938,7 +2938,8 @@ _无路径 / query 参数_
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
 | updated_at | string | 是 |  |
-| … 其余 4 个字段 | | | 见 `/docs` |
+| video | string \| null | 否 |  |
+| … 其余 3 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2952,13 +2953,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "category": "string",
   "comments_count": 0,
@@ -2977,6 +2976,7 @@ _无路径 / query 参数_
   "password": "string",
   "published_at": "string",
   "reading_time": 1,
+  "series": "string",
   "slug": "string",
   "source": "string",
   "source_url": "string",
@@ -3663,9 +3663,51 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 
 ---
 
-## 核心（23）
+## 核心（24）
 
 站点公开配置、导航、友情链接等前台核心数据
+
+### `GET /api/admin/friend-links`
+
+- **摘要**：管理员获取所有友链
+- **鉴权**：需鉴权：`HTTPBearer`
+
+管理员获取全部友情链接（含待审核/已拒绝），需要管理员权限。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| (根) | object[] | — |  |
+
+响应示例：
+
+```json
+[
+  {
+    "created_at": "string",
+    "description": "string",
+    "id": 0,
+    "is_active": false,
+    "logo": "string",
+    "name": {},
+    "order": 0,
+    "status": "string",
+    "target_blank": false,
+    "url": "string"
+  }
+]
+```
+
+**错误码**
+
+_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
 
 ### `GET /api/admin/navigations`
 
@@ -4345,7 +4387,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：友链列表
 - **鉴权**：公开接口（无需鉴权）
 
-获取友情链接列表。
+获取对外公示的友情链接列表（审核通过）。未审核/已拒绝的行不在此列，管理员请走 /admin/friend-links。
 
 **入参**
 
@@ -4380,9 +4422,7 @@ _无路径 / query 参数_
 
 **错误码**
 
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
+_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
 
 ### `POST /api/friend-links`
 
@@ -14062,7 +14102,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 - **摘要**：获取已发布动态列表
 - **鉴权**：公开接口（无需鉴权）
 
-获取已发布的网站动态列表，支持分页。
+获取已发布的网站动态列表，支持分页与按类型（type）筛选。
 
 **入参**
 
@@ -14092,13 +14132,11 @@ _无路径 / query 参数_
         "bio": "…",
         "cover_image": "…",
         "created_at": "…",
-        "github": "…",
         "id": "…",
         "nickname": "…",
         "resolved_avatar_url": "…",
         "title": "…",
-        "username": "…",
-        "website": "…"
+        "username": "…"
       },
       "content": "string",
       "created_at": "string",
@@ -14161,13 +14199,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | content | object<string, string> | 是 |  |
 | created_at | string | 是 |  |
 | id | integer | 是 |  |
@@ -14186,13 +14222,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "content": {},
   "created_at": "string",
@@ -14280,13 +14314,11 @@ _无路径 / query 参数_
         "bio": "…",
         "cover_image": "…",
         "created_at": "…",
-        "github": "…",
         "id": "…",
         "nickname": "…",
         "resolved_avatar_url": "…",
         "title": "…",
-        "username": "…",
-        "website": "…"
+        "username": "…"
       },
       "content": {},
       "created_at": "string",
@@ -14349,13 +14381,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | content | object<string, string> | 是 |  |
 | created_at | string | 是 |  |
 | id | integer | 是 |  |
@@ -14374,13 +14404,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "content": {},
   "created_at": "string",
@@ -14437,13 +14465,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | content | object<string, string> | 是 |  |
 | created_at | string | 是 |  |
 | id | integer | 是 |  |
@@ -14462,13 +14488,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "content": {},
   "created_at": "string",
@@ -14544,13 +14568,11 @@ _无路径 / query 参数_
 | author.bio | string \| null | 否 |  |
 | author.cover_image | string \| null | 否 |  |
 | author.created_at | string | 是 |  |
-| author.github | string \| null | 否 |  |
 | author.id | integer | 是 |  |
 | author.nickname | string \| null | 否 |  |
 | author.resolved_avatar_url | string \| null | 否 |  |
 | author.title | object \| null | 否 |  |
 | author.username | string | 是 |  |
-| author.website | string \| null | 否 |  |
 | content | object<string, string> | 是 |  |
 | created_at | string | 是 |  |
 | id | integer | 是 |  |
@@ -14569,13 +14591,11 @@ _无路径 / query 参数_
     "bio": "string",
     "cover_image": "string",
     "created_at": "string",
-    "github": "string",
     "id": 0,
     "nickname": "string",
     "resolved_avatar_url": "string",
     "title": "string",
-    "username": "string",
-    "website": "string"
+    "username": "string"
   },
   "content": {},
   "created_at": "string",

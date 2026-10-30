@@ -616,9 +616,14 @@ class UserService:
         # 作者资料（`user_profile:*`，上面已清）、以及 Nitro 的 swr 页面缓存
         # （`/authors/<u>` 最长 600s + stale 窗口）。只清第二处会留下
         # "用户关了公开资料、访客仍能翻出他的文章和整页主页"的 TTL 窗口。
+        # show_social_links 只牵动作者主页那份 HTML：website / GitHub 是 SSR 烘进
+        # `/authors/<u>` 的，文章缓存里的作者卡片已不带这两个字段。响应层的遮蔽
+        # 管不到已经落进 swr 缓存的那份页面，所以写口必须自己通知清一次页面缓存。
         if update_data.keys() & {"show_posts", "public_profile"}:
             await self._invalidate_author_post_caches(user_id)
             purge_frontend_page_cache("author archive visibility changed")
+        elif "show_social_links" in update_data:
+            purge_frontend_page_cache("author social links visibility changed")
 
         logger.info(f"用户偏好设置更新成功: user_id={user_id}")
 

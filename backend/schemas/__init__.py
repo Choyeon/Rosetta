@@ -392,6 +392,12 @@ class PublicUserResponse(BaseModel):
     ``show_email`` 开关，说明邮箱本就按私密处理。后台与"我"的接口继续用
     :class:`UserResponse` / :class:`UserDetailResponse`，只有**挂在资源上的第三人作者信息**走这里。
 
+    ``website`` / ``github`` 同样不在本模型里，理由与邮箱同族而更直接：偏好里有
+    ``show_social_links``，而每一篇文章/动态/相册都内嵌这张卡片，读取口是匿名且带响应缓存的。
+    把它留在这里等于给那个开关留一条"换个路由就绕过"的旁路（``apply_social_privacy`` 只管
+    作者资料口），而全站没有任何消费方渲染 ``author.website`` / ``author.github``——
+    社交链接的唯一展示面是作者主页 ``/authors/<username>``。
+
     新增字段前请先确认它对匿名访客无害。
     """
 
@@ -401,8 +407,6 @@ class PublicUserResponse(BaseModel):
     avatar: str | None = None
     cover_image: str | None = None
     bio: str | None = None
-    website: str | None = None
-    github: str | None = None
     avatar_source: str | None = None
     resolved_avatar_url: str | None = None
     title: UserTitleResponse | None = None
@@ -425,6 +429,7 @@ class UserPreferenceResponse(BaseModel):
     show_posts: bool
     show_comments: bool
     show_stats: bool
+    show_social_links: bool
     theme: str
     # 邮件通知开关落在 User 表（评论邮件扇出读 User.notify_by_email），不在 UserPreference 列里，
     # 所以只能由端点从 User 行显式补进响应；默认值与列的 server_default 同为 true。
@@ -446,6 +451,7 @@ class UserPreferenceUpdate(BaseModel):
     show_posts: bool | None = None
     show_comments: bool | None = None
     show_stats: bool | None = None
+    show_social_links: bool | None = None
     theme: str | None = None
     notify_by_email: bool | None = None
 

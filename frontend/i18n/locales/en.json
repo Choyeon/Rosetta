@@ -790,6 +790,8 @@
     "prefShowCommentsHint": "Controls the comments section on your profile.",
     "prefShowStats": "Show stats",
     "prefShowStatsHint": "Controls post / comment counters on your profile.",
+    "prefShowSocialLinks": "Show social links",
+    "prefShowSocialLinksHint": "Turns off the Website and GitHub links on your profile page.",
     "prefNotifyEmail": "Email me about comments",
     "prefNotifyEmailHint": "Sends mail when someone comments on your post or replies to your comment; nothing is sent while the site has no mail service configured.",
     "savePreferences": "Save privacy settings",

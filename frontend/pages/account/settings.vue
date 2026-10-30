@@ -2,7 +2,7 @@
   账户设置 /account/settings（SPA + no-store，继承 routeRules 的 /account/** 反选）：
   接上后端自上线起"就绪、前端零消费"的几组写端点 ——
     PUT  /users/me            资料（昵称/简介/网站/GitHub/QQ/头像来源/封面图）
-    GET/PUT /users/me/preferences  偏好（5 个隐私开关 + 1 个邮件通知开关）
+    GET/PUT /users/me/preferences  偏好（6 个隐私开关 + 1 个邮件通知开关）
     POST /users/me/password   改密（成功即全端下线）
     DELETE /users/me          注销（软删除：停用 + 撤销全部令牌，需验密码，超管被后端 403）
   三条硬约束：
@@ -10,7 +10,9 @@
      （前台主题由 useFrontendTheme + 主题系统决定），放个开关等于骗用户"设置了但没用"。
      六个开关都有真实强制点：public_profile→资料主文档与其子资源（posts/comments/stats/preferences）统一
      404、show_email→响应 helper、show_posts/show_comments→作者归档与评论列表「隐藏即空」、
-     show_stats→资料读数全零、notify_by_email→评论通知邮件的收件人筛选（comment_service）。
+     show_stats→资料读数全零、show_social_links→作者主页的网站/GitHub 链接整段不出现
+     （资料口把两字段置 null，文章/动态卡片则根本不带这两个字段，不留"换个路由就绕过"的旁路）、
+     notify_by_email→评论通知邮件的收件人筛选（comment_service）。
      后五者存 ``user_preferences`` 行，notify_by_email 存 User 行——同一个接口、同一个保存按钮，
      但响应必须由后端从 User 行补值（列不在偏好表上），前端默认值 true 与列的 server_default 同数。
   2. 改密成功必须清登录态并跳 /login：后端会 bump token_version 使全部会话失效，
@@ -224,9 +226,11 @@
           </div>
           <div class="flex flex-col gap-2">
             <Label for="profile-github">{{ t('account.fieldGithub') }}</Label>
+            <!-- 与后台用户编辑口同口径：这一列存 GitHub 主页 URL，作者主页直接把值当 href 用 -->
             <Input
               id="profile-github"
               v-model="profile.github"
+              placeholder="github.com/username"
               :maxlength="LIMITS.github"
               :disabled="savingProfile"
             />
@@ -588,6 +592,8 @@ interface UserPreferences {
   show_posts: boolean
   show_comments: boolean
   show_stats: boolean
+  /** 作者主页的「网站 / GitHub」两个链接；关掉 = 资料响应里直接给 null，整段不渲染 */
+  show_social_links: boolean
   /** 落在 User 表而非 user_preferences（评论通知邮件扇出按它筛选收件人），同一个偏好口读写 */
   notify_by_email: boolean
 }
@@ -765,6 +771,7 @@ const preferences = reactive<UserPreferences>({
   show_posts: true,
   show_comments: true,
   show_stats: true,
+  show_social_links: true,
   // 与 User.notify_by_email 的 server_default 同数：这一项从未被用户动过时库里就是 true
   notify_by_email: true
 })
@@ -778,6 +785,7 @@ watch(preferenceData, (data) => {
   preferences.show_posts = data.show_posts ?? true
   preferences.show_comments = data.show_comments ?? true
   preferences.show_stats = data.show_stats ?? true
+  preferences.show_social_links = data.show_social_links ?? true
   preferences.notify_by_email = data.notify_by_email ?? true
 })
 
@@ -787,6 +795,7 @@ const preferenceItems = computed(() => [
   { key: 'show_posts' as const, label: t('account.prefShowPosts'), hint: t('account.prefShowPostsHint') },
   { key: 'show_comments' as const, label: t('account.prefShowComments'), hint: t('account.prefShowCommentsHint') },
   { key: 'show_stats' as const, label: t('account.prefShowStats'), hint: t('account.prefShowStatsHint') },
+  { key: 'show_social_links' as const, label: t('account.prefShowSocialLinks'), hint: t('account.prefShowSocialLinksHint') },
   { key: 'notify_by_email' as const, label: t('account.prefNotifyEmail'), hint: t('account.prefNotifyEmailHint') }
 ])
 

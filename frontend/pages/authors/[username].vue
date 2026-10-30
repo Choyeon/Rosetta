@@ -67,6 +67,12 @@
             >
               {{ bio }}
             </p>
+            <!-- 社交链接行：整段收在 `show_social_links` 之下——后端资料口在该开关关掉时把
+                 website / github 置 null，这里的外层 v-if 因此整行消失（不是只剩一个空链接）。
+                 github 直接当 href 用：这一列存的是 GitHub 主页 URL（模型注释「GitHub 主页」、
+                 后台表单 placeholder `github.com/username`、写入侧 _normalize_optional_url 补
+                 https:// 三点同口径），不要再拼 `https://github.com/${…}`——线上实测那样产出
+                 `https://github.com/https://github.com/Choyeon`，每个作者的 GitHub 链接都是死链。 -->
             <div
               v-if="profile?.website || profile?.github"
               class="mt-3 flex flex-wrap items-center gap-4 text-sm"
@@ -83,7 +89,7 @@
               </a>
               <a
                 v-if="profile?.github"
-                :href="`https://github.com/${profile.github}`"
+                :href="profile.github"
                 target="_blank"
                 rel="noopener noreferrer"
                 class="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary"

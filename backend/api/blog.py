@@ -417,6 +417,10 @@ def _build_author_data(author: User | None) -> dict | None:
         # 字段清单必须与 schemas.PublicUserResponse 对齐：
         # email / qq / is_active / is_staff / is_superuser / role / last_login
         # 属于账号隐私与权限信息，文章列表与详情是匿名可访的公开端点，一律不外发。
+        # website / github 同样不在这里：它们是 `show_social_links` 管的社交链接，
+        # 而这张卡片挂在每一篇公开文章/动态/相册上、还会进响应缓存。留在这里等于给
+        # 那个开关留一条"换个路由就绕过"的旁路（`apply_social_privacy` 只覆资料口），
+        # 且全站无人渲染 `author.website` / `author.github`——社交链接的唯一展示面是作者主页。
         "id": author.id,
         "username": author.username,
         "nickname": author.nickname,
@@ -427,8 +431,6 @@ def _build_author_data(author: User | None) -> dict | None:
         # 而同一个人在导航栏（/users/me 链路）显示真头像——全站头像两套样子。
         "resolved_avatar_url": resolved_for_user(author),
         "bio": author.bio,
-        "website": author.website,
-        "github": author.github,
         "cover_image": author.cover_image,
         "created_at": author.created_at,
         "title": title_data,

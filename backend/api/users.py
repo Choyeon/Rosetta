@@ -25,7 +25,11 @@ from sqlalchemy.orm import defer, selectinload
 
 logger = logging.getLogger(__name__)
 
-from backend.api._user_response_helper import apply_email_privacy, build_user_response
+from backend.api._user_response_helper import (
+    apply_email_privacy,
+    apply_social_privacy,
+    build_user_response,
+)
 from backend.core.auth import (
     DB,
     CurrentStaff,
@@ -134,7 +138,7 @@ class PasswordResetRequestResponseDoc(BaseModel):
 
 
 class UserPreferencesPublicDoc(BaseModel):
-    """``GET /api/users/username/{username}/preferences`` 的响应体（裸 dict，5 个隐私开关）。
+    """``GET /api/users/username/{username}/preferences`` 的响应体（裸 dict，6 个隐私开关）。
 
     无偏好行时返回下述模型默认值（public_profile=True、show_email=False、其余 True），
     口径与 UserPreference 的建表默认一致。
@@ -145,6 +149,9 @@ class UserPreferencesPublicDoc(BaseModel):
     show_posts: bool = Field(True, description="是否公开文章列表")
     show_comments: bool = Field(True, description="是否公开评论列表")
     show_stats: bool = Field(True, description="是否公开统计数据")
+    show_social_links: bool = Field(
+        True, description="是否在作者主页展示网站 / GitHub 链接（关掉即两个链接都不出现）"
+    )
 
 
 class UserStatsDoc(BaseModel):
@@ -977,6 +984,7 @@ async def get_user(user_id: int, db: DB, current_user: CurrentUserOptional = Non
 
     response = build_user_response(profile["user"])
     apply_email_privacy(response, profile, current_user)
+    apply_social_privacy(response, profile, current_user)
     return response
 
 
@@ -1019,6 +1027,7 @@ async def get_user_by_username(username: str, db: DB, current_user: CurrentUserO
 
     response = build_user_response(user)
     apply_email_privacy(response, profile, current_user)
+    apply_social_privacy(response, profile, current_user)
     return response
 
 
@@ -1027,7 +1036,7 @@ async def get_user_by_username(username: str, db: DB, current_user: CurrentUserO
     summary="获取用户隐私设置",
     description=(
         "获取用户的隐私设置（公开部分）。公开接口、无需鉴权。"
-        "响应为裸 dict（5 个布尔开关，无 data 信封）；用户从未动过设置（无偏好行）时"
+        "响应为裸 dict（6 个布尔开关，无 data 信封）；用户从未动过设置（无偏好行）时"
         "返回与建表默认一致的默认开关组（show_email 默认拒绝）。用户不存在返回 404。"
         "**资料已关闭公开（`public_profile=False`）时同样返回 404**——把整组开关摊给"
         "匿名调用方等于宣布「这个账号存在，只是藏起来了」，会打穿资料接口刻意选定的"
@@ -1059,6 +1068,7 @@ async def get_user_preferences_by_username(
             "show_posts": True,
             "show_comments": True,
             "show_stats": True,
+            "show_social_links": True,
         }
 
     # 关了公开资料的人，其开关组本身也是"这个主页不存在"的一部分（见 _profile_is_hidden）。
@@ -1074,6 +1084,7 @@ async def get_user_preferences_by_username(
         "show_posts": preference.show_posts,
         "show_comments": preference.show_comments,
         "show_stats": preference.show_stats,
+        "show_social_links": preference.show_social_links,
     }
 
 

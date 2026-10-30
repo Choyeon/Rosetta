@@ -790,6 +790,8 @@
     "prefShowCommentsHint": "プロフィールのコメントセクションの可否を制御します。",
     "prefShowStats": "統計数値を表示",
     "prefShowStatsHint": "記事数 / コメント数などの数値の可否を制御します。",
+    "prefShowSocialLinks": "ソーシャルリンクを表示",
+    "prefShowSocialLinksHint": "オフにするとプロフィールページの「ウェブサイト」と「GitHub」リンクは表示されません。",
     "prefNotifyEmail": "コメント通知メールを受け取る",
     "prefNotifyEmailHint": "記事へのコメントやコメントへの返信があったときにメールを送ります。サイトの送信サービスが未設定ではそもそも送信されません。",
     "savePreferences": "プライバシー設定を保存",

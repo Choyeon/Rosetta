@@ -790,6 +790,8 @@
     "prefShowCommentsHint": "控制主頁上的「留言」區塊是否可見。",
     "prefShowStats": "顯示統計讀數",
     "prefShowStatsHint": "控制主頁上的文章數 / 留言數等讀數。",
+    "prefShowSocialLinks": "顯示社交連結",
+    "prefShowSocialLinksHint": "關閉後作者主頁不再出現「網站」和「GitHub」兩個連結。",
     "prefNotifyEmail": "接收留言通知郵件",
     "prefNotifyEmailHint": "有人留言你的文章或回覆你的留言時發郵件；站點未設定發信服務時本來就不會發。",
     "savePreferences": "儲存隱私設定",

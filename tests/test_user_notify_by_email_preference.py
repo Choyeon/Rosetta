@@ -115,20 +115,19 @@ class TestWriteReadRoundTrip:
 
 
 class TestPublicProjectionDoesNotLeakIt:
-    async def test_username_preferences_has_only_the_five_privacy_switches(
+    async def test_username_preferences_has_only_the_six_privacy_switches(
         self, client: AsyncClient, test_user: User
     ):
-        """匿名可读口只摊 5 个"别人看得到"的开关；邮件通知是本人凭据相关的偏好。"""
+        """匿名可读口只摊 6 个"别人看得到"的开关；邮件通知是本人凭据相关的偏好。
+
+        清单单源见 `tests/test_user_social_links_preference.py::PUBLIC_SWITCH_KEYS`。
+        """
+        from tests.test_user_social_links_preference import PUBLIC_SWITCH_KEYS
+
         resp = await client.get(f"/api/users/username/{test_user.username}/preferences")
         assert resp.status_code == 200, resp.text
         body = resp.json()
-        assert set(body) == {
-            "public_profile",
-            "show_email",
-            "show_posts",
-            "show_comments",
-            "show_stats",
-        }
+        assert set(body) == PUBLIC_SWITCH_KEYS
         assert "notify_by_email" not in body
 
     def test_consumer_still_filters_recipients_by_the_column(self):

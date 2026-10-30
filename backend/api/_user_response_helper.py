@@ -60,3 +60,26 @@ def apply_email_privacy(response, profile, current_user) -> None:
     show_email = bool(getattr(preference, "show_email", False))
     if not show_email:
         response.email = "***"
+
+
+def apply_social_privacy(response, profile, current_user) -> None:
+    """按用户隐私偏好在对外响应里收起社交链接（``website`` / ``github``）。
+
+    与邮箱同一条口径：同一份数据只要还有一条路由能读出来，开关就等于没做。
+    作者主页 `/authors/<username>` 的资料口是这两个字段唯一的真实展示面，
+    所以遮蔽落在这里（页面按 null 整段不渲染 = 「隐藏即无」，与
+    ``show_stats`` 的全零口径同族，不是 403）。
+
+    与邮箱相反，这一位**默认允许**：``UserPreference.show_social_links`` 的建表默认是
+    True，无偏好行也按可见处理（口径同 show_posts / show_comments / show_stats）。
+    豁免同样只有本人和 staff（后台需要看到作者的原始资料）。
+    """
+    if profile and profile.get("is_self"):
+        return
+    if current_user is not None and current_user.is_staff:
+        return
+    preference = profile.get("preferences") if profile else None
+    if bool(getattr(preference, "show_social_links", True)):
+        return
+    response.website = None
+    response.github = None

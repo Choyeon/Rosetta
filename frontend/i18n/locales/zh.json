@@ -790,6 +790,8 @@
     "prefShowCommentsHint": "控制主页上的「评论」区块是否可见。",
     "prefShowStats": "展示统计读数",
     "prefShowStatsHint": "控制主页上的文章数 / 评论数等读数。",
+    "prefShowSocialLinks": "展示社交链接",
+    "prefShowSocialLinksHint": "关掉后作者主页不再出现「网站」和「GitHub」两个链接。",
     "prefNotifyEmail": "接收评论通知邮件",
     "prefNotifyEmailHint": "有人评论你的文章或回复你的评论时发邮件；站点未配置发信服务时本来就不会发。",
     "savePreferences": "保存隐私设置",

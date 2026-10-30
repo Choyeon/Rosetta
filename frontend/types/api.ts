@@ -36,7 +36,10 @@ export interface User {
 /**
  * 公开作者卡片 —— 对应后端 `PublicUserResponse`。
  * 文章 / 相册 / 动态等公开资源的 author 字段用这个类型，**不含** email、qq、
- * is_active / is_staff / is_superuser、role、last_login 等私密与提权字段。
+ * is_active / is_staff / is_superuser、role、last_login 等私密与提权字段，
+ * 也**不含** website / github：这两个社交链接受 `UserPreference.show_social_links`
+ * 管，而这张卡片挂在每一篇匿名可读的文章上、还进响应缓存，留着就是给那个开关留旁路。
+ * 社交链接只在作者主页资料（`User`）上出现。
  * 需要完整账号资料（后台、个人中心）时用 `User`。
  */
 export interface PublicUser {
@@ -45,8 +48,6 @@ export interface PublicUser {
   nickname?: string
   avatar?: string
   bio?: string
-  website?: string
-  github?: string
   cover_image?: string
   avatar_source?: string
   resolved_avatar_url?: string

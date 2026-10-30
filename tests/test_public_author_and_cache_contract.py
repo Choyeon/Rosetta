@@ -3,7 +3,11 @@
 覆盖三类曾经真实存在、修完后必须有守卫的缺陷：
 
 1. 文章 / 动态的 ``author`` 字段直接复用 ``UserResponse``，把 email、qq、
-   is_staff / is_superuser / role / last_login 一并发给匿名访客（提权情报泄露）。
+   is_staff / is_superuser / role / last_login 一并发给匿名访客（提权情报泄露），
+   并且带着 ``website`` / ``github``——那两个键受 ``show_social_links`` 管，
+   卡片口却没有任何读取方渲染它们：留着等于给隐私开关多留一条能绕过的读口。
+   现在 ``PublicUserResponse`` 不含这两列，社交链接的唯一出口是作者资料口
+   （``apply_social_privacy`` 按开关置 null）。
 2. ``GET /users/{user_id}`` 不做 ``show_email`` 遮蔽：同一份数据换个路由就绕过隐私开关；
    且"没有偏好行"必须按默认值 False 处理，否则注册后没动过设置的用户一律泄露邮箱。
 3. 文章详情缓存此前只写不读，改为可读后必须钉住读写口径一致：
@@ -39,6 +43,12 @@ PRIVATE_USER_FIELDS = {
     "last_login",
 }
 
+# 社交链接不出现在**任何**第三人作者卡片里（含后台可见的 is_staff 用户）。
+# 与邮箱的差别只在默认方向：这一位默认允许展示，所以资料口（`apply_social_privacy`）
+# 按开关置 null，而卡片口干脆不带这两个键——少一条能绕过隐私开关的读口，
+# 就少一个"改了开关、换个路由照样读出来"的旁路（邮箱踩过同型缺陷）。
+SOCIAL_USER_FIELDS = {"website", "github"}
+
 
 def _payload(body: dict) -> dict:
     """兼容统一响应封装：取出真正的业务负载。"""
@@ -48,7 +58,7 @@ def _payload(body: dict) -> dict:
 
 
 class TestPublicAuthorContract:
-    """公开资源的 author 字段不得携带私密/提权字段"""
+    """公开资源的 author 字段不得携带私密/提权字段，也不得携带社交链接"""
 
     @pytest.mark.asyncio
     async def test_post_detail_author_excludes_private_fields(
@@ -58,6 +68,7 @@ class TestPublicAuthorContract:
         assert response.status_code == 200
         author = _payload(response.json())["author"]
         assert set(author) & PRIVATE_USER_FIELDS == set()
+        assert set(author) & SOCIAL_USER_FIELDS == set()
         # 公开卡片仍要能渲染作者身份，别把必要字段一起砍掉
         assert author["username"] == "testuser"
         assert "avatar" in author and "created_at" in author
@@ -72,6 +83,7 @@ class TestPublicAuthorContract:
         assert items, "列表应有数据，否则本用例形同空断言"
         for item in items:
             assert set(item["author"]) & PRIVATE_USER_FIELDS == set()
+            assert set(item["author"]) & SOCIAL_USER_FIELDS == set()
 
     @pytest.mark.asyncio
     async def test_activity_author_excludes_private_fields(
@@ -93,6 +105,7 @@ class TestPublicAuthorContract:
         assert items
         for item in items:
             assert set(item["author"]) & PRIVATE_USER_FIELDS == set()
+            assert set(item["author"]) & SOCIAL_USER_FIELDS == set()
 
     @pytest.mark.asyncio
     async def test_openapi_author_schema_is_public_model(self, client: AsyncClient):
