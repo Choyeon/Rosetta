@@ -14,10 +14,15 @@ import { describe, expect, it } from 'vitest'
 const ROOT = resolve(__dirname, '..', '..')
 const read = (rel: string) => readFileSync(resolve(ROOT, rel), 'utf-8')
 
-/** 页码 ↔ URL 双向：初始值从 query 读、变更写回 query、越界拉回、前进后退回读。 */
+/**
+ * 页码 ↔ URL 双向：初始值从 query 读、变更写回 query、越界拉回、前进后退回读。
+ * 写回的具体形态允许两式：直接 `router.replace({ query: … })`，或经页面自己的
+ * `syncUrl('replace')` 收敛（/search 把 q/category/tag/sort/page 五个位一起同步，
+ * 逐处手写 replace 必然漏位）——两式都必须落到 router.replace。
+ */
 const URL_STATE_CONTRACT = [
   'const currentPage = ref(Math.max(1, Number(route.query.page) || 1))',
-  'router.replace({ query:',
+  'router.replace(',
   'String(page)',
   'route.query.page'
 ]
@@ -75,3 +80,17 @@ describe.each(['pages/categories/[slug].vue', 'pages/tags/[slug].vue'])(
     })
   }
 )
+
+/**
+ * /search 的地址栏是五元组（q / category / tag / sort / page），逐个手写 replace
+ * 必然漏位，收口在 syncUrl 一处；翻页只能用 replace（push 会把每页堆进历史）。
+ */
+describe('pages/search.vue 页码写回口', () => {
+  const src = read('pages/search.vue')
+
+  it('翻页走 syncUrl(replace)，写回口只有一处 router.replace', () => {
+    expect(src).toContain('syncUrl(\'replace\')')
+    expect(src).toContain('void router.replace(target)')
+    expect(src.match(/router\.replace\(/g) ?? []).toHaveLength(1)
+  })
+})
