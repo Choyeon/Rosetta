@@ -25,12 +25,16 @@ const PAGES = [
 ] as const
 
 /**
- * 分页 nav 区域（aria-label="pagination" 的 <nav> 到其 </nav>）。
+ * 分页 nav 区域（分页 <nav> 到其 </nav>）。两种可访问名写法都认：
+ * 静态 `aria-label="pagination"` 与 i18n 的 `:aria-label="t('common.pagination', …)"`
+ * （作者主页必须用后者，authorArchivePage.spec.ts 钉着四语文案）。
  * 属性区里会出现 `v-if="totalPages > 1"` 这种带 `>` 的值，所以不能用 `[^>]*`
  * （它会在 `1"` 的 `>` 处截断），改用受限长度的 `[\s\S]`。
  */
 const navRegionOf = (src: string): string | null =>
-  src.match(/<nav\b[\s\S]{0,400}?aria-label="pagination"[\s\S]*?<\/nav>/)?.[0] ?? null
+  src.match(
+    /<nav\b[\s\S]{0,400}?(?:aria-label="pagination"|:aria-label="t\('common\.pagination')[\s\S]*?<\/nav>/
+  )?.[0] ?? null
 
 describe.each(PAGES)('$file 分页', ({ file, route }) => {
   const src = readFileSync(resolve(ROOT, file), 'utf-8')

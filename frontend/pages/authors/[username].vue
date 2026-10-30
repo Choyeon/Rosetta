@@ -201,7 +201,7 @@
       <nav
         class="flex items-center gap-2"
         role="navigation"
-        aria-label="pagination"
+        :aria-label="t('common.pagination', '分页导航')"
       >
         <!-- 与 /posts、/activity、/authors 目录同款：翻页是真实 <a href>（SSR HTML 里的
              href 是无 JS 访客与爬虫唯一的链接图），click 仍走 handlePageChange 保留 SPA 行为。 -->
