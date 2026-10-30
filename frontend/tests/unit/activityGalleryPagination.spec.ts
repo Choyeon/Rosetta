@@ -77,6 +77,36 @@ describe.each(PAGES)('$file 分页', ({ file, route }) => {
 })
 
 /**
+ * 分类页 / 标签页：URL 驱动与真锚点早已在，唯独缺「越界页码 301」——`?page=99` 会
+ * 渲染 200 空列表（soft 404）并带自指 canonical。与其余公开列表页同一道闸门。
+ */
+describe.each([
+  { file: 'pages/categories/[slug].vue', route: '/categories/${slug.value}' },
+  { file: 'pages/tags/[slug].vue', route: '/tags/${slug.value}' }
+])('$file 越界页码', ({ file, route }) => {
+  const src = readFileSync(resolve(ROOT, file), 'utf-8')
+
+  it('请求页页码有快照（钳位 watch 之后仍认得出越界）', () => {
+    expect(src).toContain('const requestedPage = Math.max(1, Number(route.query.page) || 1)')
+  })
+
+  it('越界页码 SSR 期 301 + no-store', () => {
+    const block = src.match(/if \(import\.meta\.server\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(block).toContain('app:rendered')
+    expect(block).toContain('statusCode = 301')
+    expect(block).toContain(`applyLocalePrefix(\`${route}\``)
+    expect(block).toContain('cache-control')
+    expect(block).toContain('no-store')
+  })
+
+  it('pageHref 带语言前缀 + ?page=', () => {
+    const fn = src.match(/const pageHref[\s\S]{0,200}?(?=\nconst |\n\n)/)?.[0] ?? ''
+    expect(fn).toContain(`applyLocalePrefix(\`${route}\``)
+    expect(fn).toContain('?page=')
+  })
+})
+
+/**
  * 作者主页（/authors/{username}）是同一族的最后一条：翻页原先只是页内 `ref(1)`，
  * 连地址栏都不带页码——刷新/后退回第 1 页、分享「第 2 页」办不到、SSR HTML 里
  * 也没有任何 href 指向后续页。它的每页条数来自站点设置（不是常量），所以放在

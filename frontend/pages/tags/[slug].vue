@@ -209,6 +209,9 @@ const { localeHref } = useLocaleLink()
 
 const slug = computed(() => typeof route.params.slug === 'string' ? route.params.slug : '')
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
+// 快照 setup 期的页码：越界判定要认"访客请求的那一页"，而 currentPage 会被钳位 watch
+// 拉回末页，事后就分不清 `?page=99` 与正常访问了。
+const requestedPage = Math.max(1, Number(route.query.page) || 1)
 const site = useSite()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
 const pageSize = computed(() => site.reading.value.posts_per_page)
@@ -291,6 +294,20 @@ const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.val
 watch([total, currentPage], () => {
   if (total.value > 0 && currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
+
+// 越界页码对爬虫必须 301 回裸标签页：200 空列表会被判 soft 404，自指 canonical 还等于
+// 承认每个垃圾页码都是独立页面。时点与 useContentStatus 同轨（app:rendered：数据已落值、
+// 状态码还改得动）；`no-store` 防 301 被本页 swr 缓存固化。
+if (import.meta.server) {
+  const ssrEvent = useRequestEvent()
+  useNuxtApp().hooks.hookOnce('app:rendered', () => {
+    if (ssrEvent && total.value > 0 && requestedPage > totalPages.value) {
+      ssrEvent.node.res.statusCode = 301
+      ssrEvent.node.res.setHeader('location', applyLocalePrefix(`/tags/${slug.value}`, locale.value))
+      ssrEvent.node.res.setHeader('cache-control', 'no-store')
+    }
+  })
+}
 
 const pageHref = (page: number) =>
   `${applyLocalePrefix(`/tags/${slug.value}`, locale.value)}?page=${page}`
