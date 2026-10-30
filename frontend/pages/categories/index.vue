@@ -6,6 +6,8 @@
   locale 重新请求」。不再写 watch(locale)+refresh()：旧写法里 key watcher 那一发
   用的仍是旧 locale 的静态查询参数，手写 refresh 又与它双发、第一发必被 abort，
   每切一次语言白送后端两次注定被丢弃的 /blog/categories 查询。
+  排序（?sort=name，缺省按文章数倒序）是纯函数，条件落在地址栏：SSR 首屏与分享链接
+  同一视图，改条件走 replace 不堆历史；名称比较走 lib/sortText（码位序，SSR/浏览器一致）。
 -->
 <template>
   <div class="container py-16">
@@ -62,14 +64,40 @@
       </div>
     </div>
 
+    <div
+      v-if="categories.length"
+      class="mb-6 flex flex-wrap items-center justify-end gap-3"
+    >
+      <span class="text-xs text-muted-foreground tabular-nums">
+        {{ t('categories.showingCount', { n: categories.length }) }}
+      </span>
+      <div
+        role="radiogroup"
+        :aria-label="t('posts.sortLabel')"
+        class="flex gap-2"
+      >
+        <Button
+          v-for="opt in sortOptions"
+          :key="opt.value"
+          :variant="sortMode === opt.value ? 'default' : 'outline'"
+          size="sm"
+          role="radio"
+          :aria-checked="sortMode === opt.value"
+          @click="setSort(opt.value)"
+        >
+          {{ opt.label }}
+        </Button>
+      </div>
+    </div>
+
     <TransitionGroup
-      v-else
+      v-if="categories.length"
       tag="div"
       class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
       name="list-item"
     >
       <NuxtLink
-        v-for="cat in categories"
+        v-for="cat in sortedCategories"
         :key="cat.id"
         v-memo="[cat.id, cat.slug, cat.post_count ?? cat.postsCount]"
         :to="localeHref(`/categories/${cat.slug}`)"
@@ -113,7 +141,7 @@
     </TransitionGroup>
 
     <div
-      v-if="categories.length === 0"
+      v-if="categoriesEmpty"
       class="text-center py-20"
     >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
@@ -138,13 +166,16 @@ import { Badge } from '~~/components/ui/badge'
 import { Button } from '~~/components/ui/button'
 import { useI18n } from 'vue-i18n'
 import { FolderOpen, ArrowRight, RefreshCw } from '@lucide/vue'
-import { computed } from 'vue'
+import { compareText } from '~~/lib/sortText'
+import { computed, ref, watch } from 'vue'
 
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
 const { localeHref } = useLocaleLink()
+const route = useRoute()
+const router = useRouter()
 
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 const getCatName = (c: { name?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.name)
@@ -176,6 +207,38 @@ const categories = computed<CategoryRow[]>(() => {
   const raw = catsData.value
   if (!Array.isArray(raw)) return []
   return raw
+})
+
+// ===== 排序：状态落在地址栏（?sort=name），SSR 首屏与分享链接同口径 =====
+// 默认按文章数倒序（接口返回的是 id 序，对读者没有意义）；改条件走 replace 不堆历史。
+// 名称比较走 lib/sortText 的码位比较，不用 localeCompare（ICU 排序在 SSR/浏览器不一致）。
+const sortMode = ref<'count' | 'name'>(route.query.sort === 'name' ? 'name' : 'count')
+
+const setSort = (next: 'count' | 'name') => {
+  if (sortMode.value === next) return
+  sortMode.value = next
+}
+
+const sortOptions = computed(() => [
+  { value: 'count' as const, label: String(t('categories.sortCount')) },
+  { value: 'name' as const, label: String(t('categories.sortName')) }
+])
+
+watch(sortMode, (next) => {
+  const query = next === 'count' ? {} : { sort: next }
+  void router.replace({ query })
+})
+
+const sortedCategories = computed<CategoryRow[]>(() => {
+  return [...categories.value].sort((a, b) => {
+    if (sortMode.value === 'name') {
+      const byName = compareText(getCatName(a), getCatName(b))
+      if (byName !== 0) return byName
+    }
+    const d = getPostsCount(b) - getPostsCount(a)
+    if (d !== 0) return d
+    return compareText(String(a.slug), String(b.slug))
+  })
 })
 
 // 空目录页 = 没有可索引内容（与 /sponsor 的 sponsorEmpty 同口径），后端 sitemap 同步跳过。

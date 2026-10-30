@@ -906,7 +906,10 @@
     "posts": "記事",
     "noDesc": "説明なし",
     "browsePosts": "記事を一覧",
-    "noCategories": "カテゴリーはまだありません"
+    "noCategories": "カテゴリーはまだありません",
+    "sortCount": "記事数順",
+    "sortName": "名前順",
+    "showingCount": "全 {n} 件"
   },
   "tags": {
     "title": "すべてのタグ",

@@ -845,7 +845,10 @@
     "posts": "posts",
     "noDesc": "No description",
     "browsePosts": "Browse posts",
-    "noCategories": "No categories yet"
+    "noCategories": "No categories yet",
+    "sortCount": "Most posts",
+    "sortName": "Name",
+    "showingCount": "{n} categories"
   },
   "tags": {
     "title": "All Tags",

@@ -906,7 +906,10 @@
     "posts": "篇",
     "noDesc": "暫無描述",
     "browsePosts": "瀏覽文章",
-    "noCategories": "尚無分類"
+    "noCategories": "尚無分類",
+    "sortCount": "依文章數",
+    "sortName": "依名稱",
+    "showingCount": "共 {n} 個分類"
   },
   "tags": {
     "title": "所有標籤",

@@ -53,10 +53,12 @@ describe('标签页过滤状态', () => {
   it('排序不用 localeCompare：Node 与浏览器 ICU 排序规则不同，同一 URL 会换序', () => {
     const fn = block('visibleTags')
     expect(fn).not.toContain('localeCompare')
-    expect(fn).toContain('cmpText(')
-    const cmp = block('cmpText')
+    expect(fn).toContain('compareText(')
+    expect(src).toContain('import { compareText } from \'~~/lib/sortText\'')
+    const cmp = readFileSync(resolve(ROOT, 'lib/sortText.ts'), 'utf-8')
     expect(cmp).toContain('toLowerCase()')
     expect(cmp).toContain('x < y ? -1')
+    expect(cmp).not.toMatch(/\.localeCompare\(/)
   })
 })
 

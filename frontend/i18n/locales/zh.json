@@ -845,7 +845,10 @@
     "posts": "篇文章",
     "noDesc": "暂无分类描述",
     "browsePosts": "浏览文章",
-    "noCategories": "还没有创建分类"
+    "noCategories": "还没有创建分类",
+    "sortCount": "按文章数",
+    "sortName": "按名称",
+    "showingCount": "共 {n} 个分类"
   },
   "tags": {
     "title": "全部标签",
