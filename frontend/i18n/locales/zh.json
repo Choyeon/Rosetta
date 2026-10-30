@@ -1047,7 +1047,10 @@
     "noSeriesHint": "作者尚未组织专题系列，敬请期待。",
     "posts": "篇",
     "noDesc": "暂无描述",
-    "viewAll": "查看全部"
+    "viewAll": "查看全部",
+    "inSeries": "本文属于系列",
+    "chapterPosition": "第 {n} 章 · 共 {total} 章",
+    "viewSeries": "查看系列"
   },
   "a11y": {
     "skipToMain": "跳到主内容",

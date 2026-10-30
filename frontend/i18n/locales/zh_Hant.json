@@ -1047,7 +1047,10 @@
     "noSeriesHint": "作者尚未組織專題系列，敬請期待。",
     "posts": "篇",
     "noDesc": "暫無描述",
-    "viewAll": "查看全部"
+    "viewAll": "查看全部",
+    "inSeries": "本文屬於系列",
+    "chapterPosition": "第 {n} 章 · 共 {total} 章",
+    "viewSeries": "查看系列"
   },
   "a11y": {
     "skipToMain": "跳到主內容",

@@ -1099,6 +1099,24 @@ class PostEditResponse(BaseModel):
         )
 
 
+class PostSeriesBrief(BaseModel):
+    """文章详情里的「所属系列」简报。
+
+    只给详情页渲染一张卡片所需的四样东西：去哪儿（slug）、叫什么（本地化 title）、
+    共几章（post_count）、本篇第几章（position，1 起；本篇不在公开章节列表里时为 None，
+    例如作者预览草稿）。刻意不复用 `PostSeriesResponse`：那个口带 created_at / sort_order /
+    is_active，详情页一个都不用，而详情是全站 QPS 最高的读口之一。
+    """
+
+    id: int
+    slug: str
+    title: str
+    post_count: int = Field(0, description="系列内公开可见的章节数")
+    position: int | None = Field(
+        None, description="本篇在系列中的序位（1 起），不在公开列表中为 None"
+    )
+
+
 class PostLocalizedResponse(BaseModel):
     """
     文章本地化响应模型
@@ -1121,6 +1139,9 @@ class PostLocalizedResponse(BaseModel):
     author: PublicUserResponse
     category: CategoryLocalizedResponse | None = None
     tags: list[TagLocalizedResponse] = []
+    # 所属系列：详情页的系列卡片是公开页 /series 在站内唯一的入口（此前全站零 href）。
+    # 系列未激活 / 文章不属于任何系列时为 None，页面据此整块不渲染。
+    series: PostSeriesBrief | None = None
     status: str
     visibility: str = "public"
     password: str | None = None

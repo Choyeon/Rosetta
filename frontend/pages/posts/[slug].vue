@@ -314,6 +314,34 @@
               </ClientOnly>
             </div>
 
+            <!-- 所属系列：数据来自 GET /blog/posts/{slug} 的 series 简报（系列停用或无系列即整块隐藏）。
+                 这是公开页 /series 在站内唯一的入口：此前全站没有任何指向 /series/** 的 href，
+                 系列页只能从 sitemap 被发现，访客根本走不到。 -->
+            <NuxtLink
+              v-if="seriesInfo"
+              :to="localeHref(`/series/${seriesInfo.slug}`)"
+              class="mt-12 flex items-start gap-3 rounded-xl border border-border/60 bg-muted/30 p-4 transition-colors hover:border-primary/40 hover:bg-muted/50"
+            >
+              <BookOpen class="size-5 shrink-0 text-primary mt-0.5" />
+              <div class="min-w-0">
+                <p class="text-xs text-muted-foreground">
+                  {{ t('series.inSeries', '本文属于系列') }}
+                </p>
+                <p class="font-medium truncate">
+                  {{ seriesInfo.title }}
+                </p>
+                <p class="text-xs text-muted-foreground mt-0.5">
+                  <span v-if="seriesInfo.position">
+                    {{ t('series.chapterPosition', { n: seriesInfo.position, total: seriesInfo.post_count }) }}
+                  </span>
+                  <span v-else>
+                    {{ t('series.postsCount', { n: seriesInfo.post_count }) }}
+                  </span>
+                  <span class="ml-2 text-primary">{{ t('series.viewSeries', '查看系列') }} →</span>
+                </p>
+              </div>
+            </NuxtLink>
+
             <div
               v-if="normalizedTags.length"
               class="mt-12 flex flex-wrap gap-2"
@@ -904,6 +932,7 @@ import {
   Lock,
   Check,
   Bookmark,
+  BookOpen,
   Share2,
   Link2
 } from '~~/lib/lucide-svg-icons'
@@ -995,6 +1024,15 @@ interface PostDetail {
     } | null
   }
   tags: PostDetailTag[]
+  /** 所属系列简报：后端只在系列仍启用时输出（停用系列的页面是 404，卡片不把访客引过去）。
+   *  position 是本篇在公开章节目录里的序位（1 起）；本篇不在目录里（如作者预览草稿）时为 null。 */
+  series?: {
+    id: number
+    slug: string
+    title: string
+    post_count: number
+    position?: number | null
+  } | null
   /** 文章级「允许评论」：后台编辑器开关，后端写口按它拦 403 COMMENT_POST_CLOSED。
    *  缺省（加载中/老响应）按允许处理，避免一次未落值就让整个评论区消失。 */
   allow_comments?: boolean
@@ -1318,6 +1356,11 @@ const { data: postData, pending: loadingPost, error: fetchError, refresh: refres
 const _postFetchKey = computed(() => `post:detail:${postSlug.value}:${postFetchLocaleStr}`)
 void refreshPost
 const post = computed(() => postData.value ?? null)
+/** 系列卡片的数据门：后端只在系列启用且本篇可见时才给 series，缺省即整块不渲染。 */
+const seriesInfo = computed(() => {
+  const s = post.value?.series
+  return s && s.slug && s.title ? s : null
+})
 const loadError = computed(() => !!fetchError.value)
 // 后端明确 404（不存在/草稿/密码保护未授权）时，本页兜底 UI 之外还要让 SSR 响应带 404，
 // 否则不存在的文章是"可索引的 200 空壳"。判定与理由见 composables/useContentStatus.ts。

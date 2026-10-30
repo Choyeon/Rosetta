@@ -108,6 +108,7 @@ from backend.schemas import (
     PostEditResponse,
     PostListItemLocalized,
     PostLocalizedResponse,
+    PostSeriesBrief,
     PostUpdate,
     TagCreate,
     TagLocalizedResponse,
@@ -1301,6 +1302,43 @@ async def get_post(
     likes_count = likes_count or 0
     comments_count = comments_count or 0
 
+    # 所属系列简报：详情页的系列卡片读这一段，而那张卡是公开页 /series 在站内唯一的入口
+    # （此前全站没有任何指向 /series/** 的 href，页面只能从 sitemap 被发现）。
+    # 只有缓存未命中的慢路径会跑；系列停用时不输出——系列页对停用系列回 404，
+    # 卡片刻意不把访客引向一张 404。
+    series_brief = None
+    if post.series_id:
+        from backend.models.post_series import PostSeries
+
+        series_row = (
+            await db.execute(
+                select(
+                    PostSeries.id, PostSeries.slug, PostSeries.title, PostSeries.is_active
+                ).where(PostSeries.id == post.series_id)
+            )
+        ).first()
+        if series_row and series_row.is_active:
+            # 章节目录与 GET /series/{slug} 同一份排序口径（series_order → 发布时间倒序），
+            # 否则卡片上的「第 N 章」和系列页里实际的位置会对不上。
+            chapter_ids = list(
+                (
+                    await db.execute(
+                        select(Post.id)
+                        .where(Post.series_id == post.series_id, publicly_listable_posts())
+                        .order_by(Post.series_order.asc(), Post.published_at.desc())
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            series_brief = PostSeriesBrief(
+                id=series_row.id,
+                slug=series_row.slug,
+                title=get_i18n_value(series_row.title, language),
+                post_count=len(chapter_ids),
+                position=chapter_ids.index(_id) + 1 if _id in chapter_ids else None,
+            )
+
     # 根据权限决定返回的内容
     raw_title = get_i18n_value(_title_i18n, language)
     if is_password_protected and not can_access_content:
@@ -1342,6 +1380,7 @@ async def get_post(
         if _category
         else None,
         tags=[TagLocalizedResponse.from_tag(t, language) for t in _tags],
+        series=series_brief,
         status=_status,
         visibility=_visibility or "public",
         views=_views,

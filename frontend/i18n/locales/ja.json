@@ -1047,7 +1047,10 @@
     "noSeriesHint": "作者よりシリーズ特集はまだ作成されていません。今後にご期待ください。",
     "posts": "記事",
     "noDesc": "説明はありません",
-    "viewAll": "すべて見る"
+    "viewAll": "すべて見る",
+    "inSeries": "この記事はシリーズの一部です",
+    "chapterPosition": "第 {n} 章 / 全 {total} 章",
+    "viewSeries": "シリーズを見る"
   },
   "a11y": {
     "skipToMain": "メインコンテンツへ移動",

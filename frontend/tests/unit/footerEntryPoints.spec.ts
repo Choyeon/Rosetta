@@ -82,6 +82,12 @@ describe('公开页面的入口可达性', () => {
     expect(stale, `allowlist 指向了不存在的页面：${stale.join(', ')}`).toEqual([])
   })
 
+  it('allowlist 里「入口在文章详情页的系列卡片」必须真的存在（注释不能替页面作证）', () => {
+    // 这条 allowlist 曾经描述一张不存在的卡片：/series 全站零 href，页面只能从 sitemap 被发现。
+    const article = readFileSync(resolve(ROOT, 'pages/posts/[slug].vue'), 'utf-8')
+    expect(article).toContain('`/series/${seriesInfo.slug}`')
+  })
+
   it('热点榜恒定挂在页脚（它不依赖任何内容或开关）', () => {
     expect(footer).toContain('to: \'/posts/hot\'')
   })

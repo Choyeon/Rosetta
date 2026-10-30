@@ -1047,7 +1047,10 @@
     "noSeriesHint": "The author has not organized any topic series yet. Stay tuned.",
     "posts": "posts",
     "noDesc": "No description",
-    "viewAll": "View all posts"
+    "viewAll": "View all posts",
+    "inSeries": "Part of the series",
+    "chapterPosition": "Chapter {n} of {total}",
+    "viewSeries": "View series"
   },
   "a11y": {
     "skipToMain": "Skip to main content",
