@@ -9,6 +9,7 @@
 """
 
 import math
+from typing import get_args
 
 from fastapi import APIRouter, HTTPException, Query, Request, status
 from sqlalchemy import func, select
@@ -29,11 +30,17 @@ from backend.schemas.activity import (
     ActivityCreate,
     ActivityLocalizedResponse,
     ActivityResponse,
+    ActivityType,
     ActivityUpdate,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 
 router = APIRouter(tags=["网站动态"])
+
+# 公开口可筛选的类型：直接取 schemas.activity.ActivityType 这个 Literal，不再抄一份清单。
+# 前端 pages/activity.vue 的 ACTIVITY_TYPES / ICONS / activity.type_* 必须与这里同集合，
+# 新增类型漏补的表现是筛出来的动态全部落回「说说」图标。
+ACTIVITY_TYPE_FILTERS = frozenset(get_args(ActivityType))
 
 
 async def _invalidate_activity_caches(reason: str) -> None:
@@ -51,13 +58,19 @@ async def _get_activities_cache_key(
     language: str,
     page: int,
     page_size: int,
+    activity_type: str | None = None,
 ) -> str:
-    """生成动态列表缓存键"""
+    """生成动态列表缓存键
+
+    `activity_type` 必须进键：它是 WHERE 里真正的判别位，不进键就等于让
+    `?type=say` 的响应写进「全部」那一条，TTL 内所有访客的列表被单一类型污染。
+    """
     parts = [
         "activities",
         language,
         f"p{page}",
         f"ps{page_size}",
+        f"t{activity_type or 'all'}",
     ]
     return make_cache_key(*parts)
 
@@ -88,7 +101,7 @@ async def _reload_activity(db: AsyncSession, activity_id: int) -> Activity:
     "/activities",
     response_model=PaginatedResponse[ActivityLocalizedResponse],
     summary="获取已发布动态列表",
-    description="获取已发布的网站动态列表，支持分页。",
+    description="获取已发布的网站动态列表，支持分页与按类型（type）筛选。",
 )
 async def list_activities(
     request: Request,
@@ -96,20 +109,37 @@ async def list_activities(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(10, ge=1, le=100, description="每页数量"),
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+    type: str | None = Query(  # noqa: A002 - 与 admin 口与前端 query 同名
+        None,
+        description=f"按动态类型筛选（{'/'.join(sorted(ACTIVITY_TYPE_FILTERS))}）；其它值按「不筛选」处理",
+    ),
 ):
-    """获取已发布动态列表（公开接口，支持分页）"""
+    """获取已发布动态列表（公开接口，支持分页与类型筛选）"""
     language = get_language_from_request(request, lang)
 
-    cache_key = await _get_activities_cache_key(language, page, page_size)
+    # 白名单归一：未知类型按「不筛选」处理，而不是 422 也不是空列表。
+    # ①缓存键取归一后的值，垃圾参数不会各自占一条键位；②与前端图标白名单同轨
+    # （pages/activity.vue 的 backendToIconKey 对未知类型同样回落），分享出去的
+    # 旧链接 / 手打的错参数看到的是完整列表，而不是一个错误态。
+    activity_type = type.strip() if type else None
+    if activity_type not in ACTIVITY_TYPE_FILTERS:
+        activity_type = None
+
+    cache_key = await _get_activities_cache_key(language, page, page_size, activity_type)
     cached = await cache.get(cache_key)
     if cached:
         return cached
 
+    conditions = [Activity.is_published.is_(True)]
+    if activity_type is not None:
+        conditions.append(Activity.type == activity_type)
+
     # 计数用裸 count(*)：此前是 `select_from(list_query.subquery())`，
     # 等于把整页列表当成派生表再扫一遍，还带上了没意义的 ORDER BY。
+    # 计数与列表必须过同一组 conditions，否则筛选后的 total_pages 会宣称还有下一页。
     total = (
         await db.scalar(
-            select(func.count(Activity.id)).where(Activity.is_published.is_(True)),
+            select(func.count(Activity.id)).where(*conditions),
         )
         or 0
     )
@@ -118,7 +148,7 @@ async def list_activities(
     query = (
         select(Activity)
         .options(selectinload(Activity.author).selectinload(User.title))
-        .where(Activity.is_published.is_(True))
+        .where(*conditions)
         .order_by(Activity.created_at.desc())
         .offset((page - 1) * page_size)
         .limit(page_size)

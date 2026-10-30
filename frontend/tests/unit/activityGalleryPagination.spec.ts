@@ -8,8 +8,11 @@
  * 修好之后这三条东西不能再丢：
  *   ① 请求必须跟着 `currentPage` 走（写死 page:1 等于翻页无效）；
  *   ② 翻页必须是真实 `<a :href>`（AGENTS §2.3.3：SSR HTML 里的 href 是爬虫与无 JS
- *      访客唯一的链接图），href 里带 `?page=` 且语言前缀走 applyLocalePrefix；
- *   ③ 越界页码 SSR 期 301 回裸列表页，且 `no-store`（否则 301 被本页 swr 缓存固化）。
+ *      访客唯一的链接图），href 里带页码且语言前缀走 applyLocalePrefix；
+ *   ③ 越界页码 SSR 期 301 回列表页，且 `no-store`（否则 301 被本页 swr 缓存固化）。
+ *
+ * /activity 自批次 #222 起 href 多带一个 `?type=`（筛选态），所以 ② ③ 两条按"页码进了
+ * href 链 + 跳转目标语言前缀化"判定；筛选态本身的契约在 activityTypeFilter.spec.ts。
  */
 
 import { readFileSync } from 'node:fs'
@@ -64,17 +67,23 @@ describe.each(PAGES)('$file 分页', ({ file, route }) => {
     expect(nav!).toContain('@click.prevent="handlePageChange(')
   })
 
-  it(`pageHref 产出语言前缀 + ?page=（${route}）`, () => {
-    const fn = src.match(/const pageHref[\s\S]{0,200}?(?=\nconst |\n\n)/)?.[0] ?? ''
-    expect(fn).toContain(`applyLocalePrefix('${route}'`)
-    expect(fn).toContain('?page=')
+  it(`pageHref 产出语言前缀 + 页码（${route}）`, () => {
+    const fn = src.match(/const pageHref[\s\S]{0,300}?(?=\nconst |\n\n)/)?.[0] ?? ''
+    expect(fn, `${file} 里找不到 pageHref`).not.toBe('')
+    // 站点根必须经 applyLocalePrefix：可能在 pageHref 里直接拼，也可能在它调用的
+    // base helper 里（activity 有 ?type= 筛选，href 由单源 query 构造器产出）。
+    expect(src).toContain(`applyLocalePrefix('${route}'`)
+    // 页码真的进了 href：pageHref 自己拼 `?page=`，或写进它调用的 query 构造器
+    const hrefChain = `${fn}\n${src.match(/const queryWith =[\s\S]*?\n\}/)?.[0] ?? ''}`
+    expect(hrefChain).toMatch(/\?page=|q\.page = String\(page\)/)
   })
 
   it('越界页码 SSR 期 301 + no-store', () => {
     const block = src.match(/if \(import\.meta\.server\) \{[\s\S]*?\n\}/)?.[0] ?? ''
     expect(block).toContain('app:rendered')
     expect(block).toContain('statusCode = 301')
-    expect(block).toContain(`applyLocalePrefix('${route}'`)
+    // 跳转目标是语言前缀化的列表页：applyLocalePrefix 直接拼，或经由本页的 href helper
+    expect(block).toMatch(/setHeader\(\s*'location',\s*(?:applyLocalePrefix|hrefWith|pageHref)/)
     expect(block).toContain('cache-control')
     expect(block).toContain('no-store')
   })

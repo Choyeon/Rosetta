@@ -1012,7 +1012,9 @@
     "like": "按讚",
     "publish": "發布",
     "composerPlaceholder": "說點什麼…",
-    "noActivity": "暫無動態"
+    "noActivity": "暫無動態",
+    "filterAll": "全部",
+    "filterLabel": "依類型篩選"
   },
   "about": {
     "title": "關於",

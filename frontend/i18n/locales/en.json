@@ -951,7 +951,9 @@
     "like": "Like",
     "publish": "Post",
     "composerPlaceholder": "Say something…",
-    "noActivity": "No activity yet"
+    "noActivity": "No activity yet",
+    "filterAll": "All",
+    "filterLabel": "Filter by type"
   },
   "about": {
     "title": "About",

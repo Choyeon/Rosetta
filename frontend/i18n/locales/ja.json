@@ -1012,7 +1012,9 @@
     "like": "いいねする",
     "publish": "投稿",
     "composerPlaceholder": "いま思うことは…",
-    "noActivity": "まだ動きがありません"
+    "noActivity": "まだ動きがありません",
+    "filterAll": "すべて",
+    "filterLabel": "タイプ別に絞り込み"
   },
   "about": {
     "title": "このサイトについて",

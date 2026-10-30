@@ -1,9 +1,10 @@
 <!--
   动态时间线页：GET /activities 按 ?page=N 分页（每页 20，真实 <a href> 翻页；越界页码
-  SSR 期 301 回裸动态页），未知 type 一律回落 'say'。
+  SSR 期 301 回带当前筛选的第一页），?type=say|article|update|notice|link 按类型筛选
+  （chip 组，状态在地址栏；未知值一律按「全部」处理，与服务端归一口径一致）。
   图标必须是本文件内联 ICONS 常量而非 lucide 组件：SSR 与客户端首字节要逐字节一致，
   组件形态的首子差异会直接造成水合错位。后端新增活动类型时，ICONS + backendToIconKey
-  白名单 + i18n 的 activity.type_* 三处必须同步补，漏一处就静默显示成"说说"。
+  白名单 + ACTIVITY_TYPES + i18n 的 activity.type_* 四处必须同步补，漏一处就静默显示成"说说"。
 -->
 <template>
   <div class="container py-16">
@@ -61,6 +62,26 @@
           </CardContent>
         </Card>
       </ClientOnly>
+
+      <!-- 类型筛选：状态进地址栏（?type=），刷新/分享/后退可还原；切换回第 1 页，
+           因为每种类型的条数不同，停在第 3 页换筛选会落进对方不存在的页码。 -->
+      <div
+        role="radiogroup"
+        :aria-label="t('activity.filterLabel')"
+        class="mb-8 flex flex-wrap items-center gap-2"
+      >
+        <Button
+          v-for="opt in typeOptions"
+          :key="opt.value ?? 'all'"
+          :variant="currentType === opt.value ? 'default' : 'outline'"
+          size="sm"
+          role="radio"
+          :aria-checked="currentType === opt.value"
+          @click="setType(opt.value)"
+        >
+          {{ opt.label }}
+        </Button>
+      </div>
 
       <div
         v-if="pending && activityList.length === 0"
@@ -304,6 +325,12 @@ const ICONS = {
   heart: {
     viewBox: '0 0 24 24',
     d: 'M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6.5 5.5 5.5 0 0 1 21.5 12c-2.5 4.5-9.5 9-9.5 9Z'
+  },
+  // lucide「link-2」官方两段路径合并进一个 d（同一段里的子路径 stroke 行为与两个
+  // <path> 元素一致），保持 ICONS 的单 d 形态；路径字节抄自 @lucide/vue，不手搓。
+  link: {
+    viewBox: '0 0 24 24',
+    d: 'M9 17H7A5 5 0 0 1 7 7h2 M15 7h2a5 5 0 1 1 0 10h-2'
   }
 } as const
 
@@ -321,9 +348,19 @@ const authStore = useAuthStore()
 // 这里只是让用户在提交前就看到边界，不是安全边界（后端 422 才是）。
 const MAX_CONTENT = 1000
 
+/**
+ * 动态类型唯一清单（与后端 schemas/activity.py::ActivityType 同集合，由
+ * tests/unit/activityTypeFilter.spec.ts 双向对账）。它同时是筛选 chip 的枚举、
+ * 图标白名单与 `?type=` 的取值白名单——漏一个即「筛得出来但图标/文案掉回说说」。
+ */
+const ACTIVITY_TYPES = ['say', 'article', 'update', 'notice', 'link'] as const
+type ActivityType = (typeof ACTIVITY_TYPES)[number]
+const isActivityType = (value: unknown): value is ActivityType =>
+  (ACTIVITY_TYPES as readonly string[]).includes(String(value))
+
 interface ActivityItem {
   id: number
-  type: 'say' | 'article' | 'update' | 'notice'
+  type: ActivityType
   content: string
   author_name?: string
   author_avatar?: string
@@ -331,10 +368,7 @@ interface ActivityItem {
   created_at: string
 }
 
-const backendToIconKey = (type: string): string => {
-  if (type === 'say' || type === 'article' || type === 'update' || type === 'notice') return type
-  return 'say'
-}
+const backendToIconKey = (type: string): string => (isActivityType(type) ? type : 'say')
 const activityIconKey = (type: string) => backendToIconKey(type)
 
 // 动态流只要"月 日 时:分"（同一天里年份是噪声），单源在 useI18nHelpers::formatStampText
@@ -357,23 +391,49 @@ const router = useRouter()
 // 初始页码从 URL 读：分享 / 刷新 / 后退都要能还原；非正整数一律回第 1 页。
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const requestedPage = Math.max(1, Number(route.query.page) || 1)
+// 类型筛选同样只认地址栏：非白名单值按「全部」处理，与后端归一口径一致
+// （服务端也回全部，所以 SSR 首屏与客户端 hydrate 不会判成两个列表）。
+const currentType = ref<ActivityType | null>(isActivityType(route.query.type) ? route.query.type : null)
 
-// query 用 computed：currentPage / lang 变化时 Nuxt params watcher 自动重取，
+/** 地址栏 query 的单源：省略 `page=1` 与空 type，避免 `?type=&page=1` 这种半空地址。 */
+const queryWith = (page: number, type: ActivityType | null): Record<string, string> => {
+  const q: Record<string, string> = {}
+  if (type) q.type = type
+  if (page > 1) q.page = String(page)
+  return q
+}
+
+// query 用 computed：currentPage / currentType / lang 变化时 Nuxt params watcher 自动重取，
 // 不手写 watch + refresh()（那会与自动重取双发，第一发还被 abort）。
 const { data: activityResp, pending, error: loadError, refresh } = useAPI<Paginated<ActivityItem>>('/activities', {
   query: computed(() => ({
     page: currentPage.value,
     page_size: PAGE_SIZE,
+    // 不筛选时整个键都不发（空串 `?type=` 会被算成另一条请求）；取值口径与地址栏同一条 ref。
+    ...(currentType.value ? { type: currentType.value } : {}),
     lang: locale.value
   }))
 })
+
+const typeOptions = computed(() => [
+  { value: null as ActivityType | null, label: String(t('activity.filterAll')) },
+  ...ACTIVITY_TYPES.map(value => ({
+    value: value as ActivityType | null,
+    label: String(t(`activity.type_${value}`))
+  }))
+])
 
 const totalActivities = computed(() => activityResp.value?.total ?? 0)
 const totalPages = computed(
   () => activityResp.value?.total_pages ?? (Math.ceil(totalActivities.value / PAGE_SIZE) || 1)
 )
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
-const pageHref = (page: number) => `${applyLocalePrefix('/activity', locale.value)}?page=${page}`
+const activityBaseHref = () => applyLocalePrefix('/activity', locale.value)
+const hrefWith = (query: Record<string, string>) => {
+  const search = new URLSearchParams(query).toString()
+  return search ? `${activityBaseHref()}?${search}` : activityBaseHref()
+}
+const pageHref = (page: number) => hrefWith(queryWith(page, currentType.value))
 const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
   buttonVariants({ variant, size: 'sm' })
 
@@ -381,9 +441,17 @@ const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
   if (import.meta.client) {
-    router.replace({ query: page > 1 ? { page: String(page) } : {} })
+    router.replace({ query: queryWith(page, currentType.value) })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
+}
+
+// 换筛选条件回到第 1 页：各类型的条数不同，停在第 3 页换筛选会落进对方不存在的页码。
+const setType = (next: ActivityType | null) => {
+  if (currentType.value === next) return
+  currentType.value = next
+  currentPage.value = 1
+  if (import.meta.client) void router.replace({ query: queryWith(1, next) })
 }
 
 // 越界页码（动态被删一批后的旧分享链接）拉回末页，否则访客拿到空列表且无从自救。
@@ -400,7 +468,7 @@ if (import.meta.server) {
   useNuxtApp().hooks.hookOnce('app:rendered', () => {
     if (ssrEvent && totalActivities.value > 0 && requestedPage > totalPages.value) {
       ssrEvent.node.res.statusCode = 301
-      ssrEvent.node.res.setHeader('location', applyLocalePrefix('/activity', locale.value))
+      ssrEvent.node.res.setHeader('location', hrefWith(queryWith(1, currentType.value)))
       ssrEvent.node.res.setHeader('cache-control', 'no-store')
     }
   })
@@ -417,10 +485,7 @@ const activityList = computed<ActivityItem[]>(() => {
         || (typeof author.name === 'string' && author.name)
         || ''
     const rawType = (typeof r.type === 'string' && r.type) || 'say'
-    const safeType: ActivityItem['type']
-      = (rawType === 'article' || rawType === 'notice' || rawType === 'say' || rawType === 'update')
-        ? rawType
-        : 'say'
+    const safeType: ActivityItem['type'] = isActivityType(rawType) ? rawType : 'say'
     return {
       id: typeof r.id === 'number' ? r.id : Number(r.id ?? 0),
       type: safeType,
@@ -473,7 +538,7 @@ async function publishActivity() {
     // 新动态落在第 1 页顶部：在第 2 页之后发完却停在原页，用户看不到自己刚发的那条。
     if (currentPage.value !== 1) {
       currentPage.value = 1
-      if (import.meta.client) router.replace({ query: {} })
+      if (import.meta.client) router.replace({ query: queryWith(1, currentType.value) })
     }
     await refresh()
   } catch {
