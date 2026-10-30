@@ -81,6 +81,8 @@
     "comments": "Comments",
     "readingTime": "Reading time",
     "minRead": "min read",
+    "contentMetaYes": "Yes",
+    "contentMetaNo": "No",
     "commentPlaceholder": "Write a comment…",
     "submitting": "Submitting…",
     "submitComment": "Post Comment",

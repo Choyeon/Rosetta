@@ -30,6 +30,12 @@ import {
   type AdminTag,
   type AdminSeries
 } from '~~/composables/useAdminManage'
+import {
+  fetchContentTypes,
+  findContentType,
+  type ContentFieldDef,
+  type ContentTypePublic
+} from '~~/composables/useContentTypes'
 import { applyLocalePrefix } from '~~/composables/useSeo'
 import { useMediaUploadCover } from '~~/composables/useMedia'
 import { useToast } from '~~/composables/useToast'
@@ -38,6 +44,7 @@ import { toDateTimeLocal, fromDateTimeLocal } from '~~/lib/datetime'
 import { estimateContentStats, slugSourceTitle, scheduledAtError } from '~~/lib/postEditor'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
+import { Textarea } from '~~/components/ui/textarea'
 import { Label } from '~~/components/ui/label'
 import AdminFormSection from './AdminFormSection.vue'
 import AdminFormField from './AdminFormField.vue'
@@ -64,7 +71,8 @@ import {
   FileText,
   Search,
   Shield,
-  FolderTree
+  FolderTree,
+  Boxes
 } from '@lucide/vue'
 
 const props = defineProps<{
@@ -114,7 +122,14 @@ const form = reactive({
   cover_image: '',
   meta_title: { ...EMPTY_I18N_DICT } as Record<string, string>,
   meta_description: { ...EMPTY_I18N_DICT } as Record<string, string>,
-  meta_keywords: { ...EMPTY_I18N_DICT } as Record<string, string>
+  meta_keywords: { ...EMPTY_I18N_DICT } as Record<string, string>,
+  // 内容类型：'post' 是后端内建类型，切到其它 key 时才按定义填写 meta_fields。
+  // 两者**始终一起发送**（见 buildPayload）：只改类型不提交 meta 会让后端按新定义
+  // 校验收到的还是旧值，类型切换 + 必填字段缺失的表现是保存静默失败。
+  post_type: 'post',
+  // 编辑态保持"输入框原值"而不是后端最终类型（数字/布尔/datetime 在提交时统一转换），
+  // 否则输入过程中每一键半成品（"-"、半截日期）都会被强转成非法值。
+  meta_fields: {} as Record<string, unknown>
 })
 
 const initialStateSnapshot = ref<string>('')
@@ -144,6 +159,139 @@ const filteredTags = computed(() => {
     getLocalizedStr(t.name).toLowerCase().includes(q)
   )
 })
+
+// ===== 内容类型（自定义字段）=====
+const contentTypes = ref<ContentTypePublic[]>([])
+const activeContentType = computed(() => findContentType(contentTypes.value, form.post_type))
+/** 文章保存的是已被删除的定义 key：必须显式提示并阻止保存（后端会 422「未定义的内容类型」）。 */
+const orphanPostType = computed(() => form.post_type !== 'post' && !activeContentType.value)
+const isLongTextField = (f: ContentFieldDef) => f.field_type === 'textarea' || f.field_type === 'markdown'
+
+const loadContentTypes = async () => {
+  // 公开口自带 300s 缓存且失败回空数组：类型只是装饰数据，取不到时编辑器照常可用
+  contentTypes.value = await fetchContentTypes()
+}
+
+/** 后端值 → 输入框原值（datetime 的 ISO 要换成本地墙钟，否则编辑态显示成 UTC）。 */
+function metaValueToInput(field: ContentFieldDef, value: unknown): unknown {
+  if (field.field_type === 'boolean') return value === true
+  if (value === undefined || value === null) return ''
+  if (field.field_type === 'datetime') return toDateTimeLocal(String(value))
+  return typeof value === 'string' ? value : String(value)
+}
+
+/** 按定义把后端回来的 meta_fields 摊成输入框原值；定义之外的旧键直接丢弃（提交时会 422）。 */
+function initialMetaToForm(
+  type: ContentTypePublic | null,
+  meta: Record<string, unknown> | null | undefined
+): Record<string, unknown> {
+  const source = meta && typeof meta === 'object' ? meta : {}
+  if (!type) return { ...source }
+  const out: Record<string, unknown> = {}
+  for (const field of type.fields) {
+    const value = source[field.key]
+    if (value === undefined || value === null) {
+      if (field.field_type === 'boolean') out[field.key] = false
+      continue
+    }
+    out[field.key] = metaValueToInput(field, value)
+  }
+  return out
+}
+
+/** 切换类型：上一套字段值整体作废（键名/类型都可能不同，保留只会拼出后端不认的组合）。 */
+function onContentTypeChange(next: unknown) {
+  // Select 的 emit 形参是 `string | undefined`，Input 系是 `string | number`：
+  // 这里统一收 unknown 再归一，模板里每个控件的处理器才不用各写一份签名。
+  const key = String(next ?? '').trim()
+  if (!key || key === form.post_type) return
+  form.post_type = key
+  form.meta_fields = {}
+  const type = findContentType(contentTypes.value, key)
+  if (!type) return
+  for (const field of type.fields) {
+    if (field.field_type === 'boolean') {
+      form.meta_fields[field.key] = field.default === true
+    } else if (field.default !== undefined && field.default !== null) {
+      form.meta_fields[field.key] = metaValueToInput(field, field.default)
+    }
+  }
+}
+
+function metaText(key: string): string {
+  const v = form.meta_fields[key]
+  return typeof v === 'string' ? v : v === undefined || v === null ? '' : String(v)
+}
+
+function setMetaText(key: string, value: string) {
+  form.meta_fields[key] = value
+}
+
+function metaBool(key: string): boolean {
+  return form.meta_fields[key] === true
+}
+
+function setMetaBool(key: string, value: boolean) {
+  form.meta_fields[key] = value
+}
+
+/**
+ * 输入框原值 → 后端 meta_fields。空值不下发（后端把空串/None 当"没填"），
+ * 布尔始终下发（false 是合法值，省略会被必填校验判成缺失）。
+ */
+function buildMetaFields(): Record<string, unknown> | null {
+  if (form.post_type === 'post') return null
+  const type = activeContentType.value
+  if (!type) return null
+  const out: Record<string, unknown> = {}
+  for (const field of type.fields) {
+    if (field.field_type === 'boolean') {
+      out[field.key] = form.meta_fields[field.key] === true
+      continue
+    }
+    const text = metaText(field.key).trim()
+    if (!text) continue
+    if (field.field_type === 'number') {
+      const n = Number(text)
+      if (Number.isFinite(n)) out[field.key] = n
+      continue
+    }
+    if (field.field_type === 'datetime') {
+      const iso = fromDateTimeLocal(text)
+      if (iso) out[field.key] = iso
+      continue
+    }
+    out[field.key] = text
+  }
+  return out
+}
+
+/** 提交前按定义校验必填与类型；口径与 backend/services/content_type_service.py 对齐。 */
+function validateContentMeta(): string | null {
+  if (form.post_type === 'post') return null
+  const type = activeContentType.value
+  if (!type) return `内容类型「${form.post_type}」的定义已不存在，请切换为「文章」或其它类型`
+  for (const field of type.fields) {
+    const text = metaText(field.key).trim()
+    if (field.required && field.field_type !== 'boolean' && !text) {
+      return `请填写「${field.label}」（该内容类型的必填字段）`
+    }
+    if (!text) continue
+    if (field.field_type === 'number' && !Number.isFinite(Number(text))) {
+      return `「${field.label}」需要填数字`
+    }
+    if (field.field_type === 'datetime' && !fromDateTimeLocal(text)) {
+      return `「${field.label}」的时间无法解析`
+    }
+    if (field.field_type === 'select' && !(field.options ?? []).includes(text)) {
+      return `「${field.label}」的取值不在候选项里`
+    }
+    if ((field.field_type === 'image' || field.field_type === 'url') && !/^(https?:\/\/|\/)/.test(text)) {
+      return `「${field.label}」需要以 http(s):// 或 / 开头`
+    }
+  }
+  return null
+}
 
 const visibilityOptions = [
   { value: 'public' as const, label: '公开', description: '所有人可见', icon: Globe },
@@ -347,6 +495,9 @@ const applyInitialData = (data: Post) => {
   form.meta_title = normalizeI18nDict(data.meta_title)
   form.meta_description = normalizeI18nDict(data.meta_description)
   form.meta_keywords = normalizeI18nDict(data.meta_keywords)
+  // 内容类型：不回填就每保存一次把文章退回内置「文章」类型，自定义字段随之清空
+  form.post_type = data.post_type || 'post'
+  form.meta_fields = initialMetaToForm(findContentType(contentTypes.value, form.post_type), data.meta_fields)
   slugManualEdit = !!data.slug
   nextTick(() => {
     initialStateSnapshot.value = JSON.stringify(form)
@@ -407,6 +558,11 @@ const restoreDraft = () => {
         form.meta_title = normalizeI18nDict(form.meta_title)
         form.meta_description = normalizeI18nDict(form.meta_description)
         form.meta_keywords = normalizeI18nDict(form.meta_keywords)
+        // 本地草稿里存的是输入框原值；只做形状兜底，类型转换留到提交时
+        form.post_type = typeof form.post_type === 'string' && form.post_type ? form.post_type : 'post'
+        form.meta_fields = form.meta_fields && typeof form.meta_fields === 'object' && !Array.isArray(form.meta_fields)
+          ? form.meta_fields
+          : {}
         slugManualEdit = !!form.slug
         toast.success('草稿已恢复')
       }
@@ -516,6 +672,10 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
   payload.meta_title = toI18nPayload(form.meta_title) ?? null
   payload.meta_description = toI18nPayload(form.meta_description) ?? null
   payload.meta_keywords = toI18nPayload(form.meta_keywords) ?? null
+  // 类型与 meta 始终成对发送：只发类型会被后端按新定义拒绝（必填缺失 / 未知字段），
+  // 只发 meta 又会留在旧类型上。post 类型显式发 null 是"清空自定义字段"的语义。
+  payload.post_type = form.post_type || 'post'
+  payload.meta_fields = buildMetaFields()
   return payload
 }
 
@@ -555,6 +715,12 @@ const validateBase = (): boolean => {
     && form.encryption_hint.trim() === form.password.trim()
   ) {
     toast.error('密码提示不能写成密码本身')
+    return false
+  }
+  // 自定义字段必填/类型：本地先拦，避免走到后端 422 后只看到一句通用错误
+  const metaErr = validateContentMeta()
+  if (metaErr) {
+    toast.error(metaErr)
     return false
   }
   return true
@@ -709,7 +875,7 @@ onMounted(async () => {
   document.addEventListener('click', onClickOutsideTagCombobox)
 
   checkExistingDraft()
-  await Promise.all([loadCategories(), loadTags(), loadSeries()])
+  await Promise.all([loadCategories(), loadTags(), loadSeries(), loadContentTypes()])
 
   if (props.initialData) {
     applyInitialData(props.initialData)
@@ -896,6 +1062,152 @@ onBeforeUnmount(() => {
             required
             flat
           />
+        </AdminFormSection>
+
+        <AdminFormSection
+          title="内容类型与自定义字段"
+          description="切到非「文章」类型后，按该类型的字段清单填写；切换类型会清空当前已填的自定义字段。"
+          :icon="Boxes"
+        >
+          <div class="flex flex-col gap-4">
+            <AdminFormField
+              label="内容类型"
+              for="post-form-content-type"
+              hint="类型定义在「后台 → 内容 → 内容类型」里维护。"
+            >
+              <Select
+                :model-value="form.post_type"
+                @update:model-value="(v: unknown) => onContentTypeChange(v)"
+              >
+                <SelectTrigger
+                  id="post-form-content-type"
+                  class="h-10 w-full rounded-[10px] sm:w-72"
+                >
+                  <SelectValue placeholder="选择内容类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="post">
+                    文章（内置）
+                  </SelectItem>
+                  <SelectItem
+                    v-for="ct in contentTypes"
+                    :key="ct.key"
+                    :value="ct.key"
+                  >
+                    {{ ct.name }}
+                  </SelectItem>
+                  <SelectItem
+                    v-if="orphanPostType"
+                    :value="form.post_type"
+                  >
+                    {{ form.post_type }}（定义已删除）
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </AdminFormField>
+
+            <Alert
+              v-if="orphanPostType"
+              variant="warning"
+              class="rounded-[12px]"
+            >
+              <AlertTitle>该内容类型的定义已不存在</AlertTitle>
+              <AlertDescription>
+                文章仍标记为「{{ form.post_type }}」，但后台找不到对应的字段清单，保存会被后端拒绝。
+                请切换到「文章」或其它已定义的类型。
+              </AlertDescription>
+            </Alert>
+
+            <div
+              v-if="activeContentType && activeContentType.fields.length > 0"
+              class="grid gap-4 sm:grid-cols-2"
+            >
+              <div
+                v-for="fieldDef in activeContentType.fields"
+                :key="fieldDef.key"
+                :class="isLongTextField(fieldDef) ? 'sm:col-span-2' : ''"
+              >
+                <AdminFormField
+                  :label="fieldDef.label"
+                  :required="fieldDef.required"
+                  :hint="fieldDef.description || undefined"
+                >
+                  <Switch
+                    v-if="fieldDef.field_type === 'boolean'"
+                    :model-value="metaBool(fieldDef.key)"
+                    @update:model-value="(v: boolean) => setMetaBool(fieldDef.key, v)"
+                  />
+                  <Select
+                    v-else-if="fieldDef.field_type === 'select'"
+                    :model-value="metaText(fieldDef.key)"
+                    @update:model-value="(v: unknown) => setMetaText(fieldDef.key, String(v ?? ''))"
+                  >
+                    <SelectTrigger class="h-10 w-full rounded-[10px]">
+                      <SelectValue placeholder="请选择" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem
+                        v-for="opt in fieldDef.options ?? []"
+                        :key="opt"
+                        :value="opt"
+                      >
+                        {{ opt }}
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Textarea
+                    v-else-if="isLongTextField(fieldDef)"
+                    :model-value="metaText(fieldDef.key)"
+                    :rows="4"
+                    :placeholder="fieldDef.field_type === 'markdown' ? '支持 Markdown（前台按纯文本多行展示）' : undefined"
+                    class="rounded-[10px] text-sm"
+                    @update:model-value="(v: unknown) => setMetaText(fieldDef.key, String(v ?? ''))"
+                  />
+                  <Input
+                    v-else-if="fieldDef.field_type === 'number'"
+                    :model-value="metaText(fieldDef.key)"
+                    type="number"
+                    class="h-10 rounded-[10px]"
+                    @update:model-value="(v: unknown) => setMetaText(fieldDef.key, String(v ?? ''))"
+                  />
+                  <Input
+                    v-else-if="fieldDef.field_type === 'date'"
+                    :model-value="metaText(fieldDef.key)"
+                    type="date"
+                    class="h-10 rounded-[10px]"
+                    @update:model-value="(v: unknown) => setMetaText(fieldDef.key, String(v ?? ''))"
+                  />
+                  <Input
+                    v-else-if="fieldDef.field_type === 'datetime'"
+                    :model-value="metaText(fieldDef.key)"
+                    type="datetime-local"
+                    class="h-10 rounded-[10px]"
+                    @update:model-value="(v: unknown) => setMetaText(fieldDef.key, String(v ?? ''))"
+                  />
+                  <Input
+                    v-else
+                    :model-value="metaText(fieldDef.key)"
+                    :placeholder="fieldDef.field_type === 'image' ? 'https://… 或 /media/…' : fieldDef.field_type === 'url' ? 'https://…' : undefined"
+                    class="h-10 rounded-[10px]"
+                    @update:model-value="(v: unknown) => setMetaText(fieldDef.key, String(v ?? ''))"
+                  />
+                </AdminFormField>
+              </div>
+            </div>
+
+            <p
+              v-else-if="form.post_type === 'post'"
+              class="text-xs text-muted-foreground"
+            >
+              内置「文章」类型不附带自定义字段。需要在文章页展示额外信息时，先在「内容类型」里定义一个类型。
+            </p>
+            <p
+              v-else-if="activeContentType"
+              class="text-xs text-muted-foreground"
+            >
+              该类型没有配置字段，仅作为文章分类标记使用。
+            </p>
+          </div>
         </AdminFormSection>
 
         <AdminFormSection

@@ -45,6 +45,7 @@ from backend.api import (
     comment_reactions,
     comment_report,
     comments,
+    content_type,
     core,
     docs,
     favorite,
@@ -914,6 +915,7 @@ def create_application() -> FastAPI:
     app.include_router(announcement.router, prefix="/api")
     app.include_router(activity.router, prefix="/api")
     app.include_router(hero.router, prefix="/api")
+    app.include_router(content_type.router, prefix="/api")
     app.include_router(post_series.router, prefix="/api")
     app.include_router(post_encryption.router, prefix="/api")
     app.include_router(post_crypto.router, prefix="/api")

@@ -406,6 +406,66 @@
               </div>
             </div>
 
+            <!-- 自定义字段（内容类型）：值来自详情口的 meta_fields，标签来自公开定义口
+                 GET /api/content-types。只渲染「定义里存在且值非空」的键——历史文章里留着
+                 今日定义之外的键是正常状态，读侧报错等于把一次定义调整放大成一批详情页故障。
+                 值一律走文本插值，绝不 v-html：markdown/textarea 在这里只是原样文本，
+                 正文那条 DOMPurify 渲染链不适用于这些字段（写口只约束长度，不约束标记）。 -->
+            <div
+              v-if="contentMetaRows.length"
+              class="mt-8 rounded-xl border border-border/60 bg-muted/20 p-4"
+            >
+              <p class="flex items-center gap-2 text-sm font-medium">
+                <List class="size-4 shrink-0 text-primary" />
+                <span class="min-w-0 truncate">{{ postContentTypeName }}</span>
+              </p>
+              <dl class="mt-3 flex flex-col gap-3">
+                <div
+                  v-for="row in contentMetaRows"
+                  :key="row.field.key"
+                  class="grid gap-1 sm:grid-cols-[10rem_1fr] sm:gap-3"
+                >
+                  <dt class="text-xs text-muted-foreground sm:pt-0.5">
+                    {{ row.field.label }}
+                  </dt>
+                  <dd class="min-w-0 text-sm">
+                    <img
+                      v-if="row.kind === 'image'"
+                      :src="row.href"
+                      :alt="row.field.label"
+                      width="640"
+                      height="360"
+                      loading="lazy"
+                      class="w-full max-w-[420px] aspect-video rounded-lg border border-border/60 bg-muted/40 object-contain"
+                    >
+                    <a
+                      v-else-if="row.kind === 'link'"
+                      :href="row.href"
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      class="text-primary underline underline-offset-2 break-all"
+                    >
+                      {{ row.text }}
+                    </a>
+                    <span
+                      v-else-if="row.kind === 'multiline'"
+                      class="break-words whitespace-pre-line"
+                    >{{ row.text }}</span>
+                    <span
+                      v-else
+                      class="break-words"
+                    >{{ row.text }}</span>
+                    <p
+                      v-if="row.field.description"
+                      class="mt-1 text-[11px] text-muted-foreground"
+                    >
+                      {{ row.field.description }}
+                    </p>
+                  </dd>
+                </div>
+              </dl>
+            </div>
+
             <div
               v-if="normalizedTags.length"
               class="mt-12 flex flex-wrap gap-2"
@@ -1009,6 +1069,13 @@ import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats }
 import type { TocItem } from '~~/composables/useReadingUX'
 import { formatCount } from '~~/lib/utils'
 import { resolvePostSource } from '~~/lib/post-source'
+import {
+  findContentType,
+  parseContentTypes,
+  visibleMetaFields,
+  type ContentFieldDef,
+  type ContentTypePublic
+} from '~~/composables/useContentTypes'
 
 definePageMeta({ layout: 'default' })
 
@@ -1112,6 +1179,10 @@ interface PostDetail {
   meta_title?: string | null
   meta_description?: string | null
   meta_keywords?: string | null
+  /** 内容类型 key（后端schemas.PostLocalizedResponse 恒给值，缺省 'post'）。 */
+  post_type?: string
+  /** 自定义字段值：后端只保证"是 dict 或 null"，键与定义的一致性由展示侧按定义挑。 */
+  meta_fields?: Record<string, unknown> | null
 }
 
 // 后端 Comment（snake_case）与 CommentItem 期望的展示结构（camelCase）存在差异，
@@ -1431,6 +1502,85 @@ const seriesInfo = computed(() => {
   const s = post.value?.series
   return s && s.slug && s.title ? s : null
 })
+
+// 自定义内容类型的字段定义：公开口 GET /api/content-types（匿名 + 后端 300s 缓存）。
+// 取数写法与本文件详情口同一口径——useAsyncData + 确定性纯字符串 key + handler 内按端选
+// baseURL，不走 useAPI（那层封装的 key 会带进 baseURL/headers，SSR 与 hydrate 命中不到同一条）。
+// 失败回落空数组：内容类型是装饰数据，定义接口抖一下不能让文章详情变成错误态或 500。
+const { data: contentTypeData } = useAsyncData<ContentTypePublic[]>(
+  'content-types:public',
+  () => {
+    const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
+    return $fetch<unknown>('/content-types', { baseURL })
+      .then(raw => parseContentTypes(raw))
+      .catch(() => [] as ContentTypePublic[])
+  }
+)
+
+/**
+ * 本篇要展示的自定义字段：只有 `post_type` 不是内建 `post`、且定义还在时才有内容。
+ * 「定义里存在 + 值非空」这条筛选单源在 `visibleMetaFields`，页面不要再写一遍——
+ * 历史文章留着今日定义之外的键是正常状态（读侧宽容，见 composables/useContentTypes.ts）。
+ */
+const postContentMeta = computed(() => {
+  const p = post.value
+  if (!p?.post_type || p.post_type === 'post') return [] as ReturnType<typeof visibleMetaFields>
+  return visibleMetaFields(findContentType(contentTypeData.value ?? [], p.post_type), p.meta_fields)
+})
+
+/** 卡片标题用定义里的类型名（后台写的单字符串，不是四语 dict——不要套 getLocalizedStr）。 */
+const postContentTypeName = computed(() => {
+  const p = post.value
+  if (!p?.post_type || p.post_type === 'post') return ''
+  return findContentType(contentTypeData.value ?? [], p.post_type)?.name ?? ''
+})
+
+/**
+ * 字段值的展示文案。只用纯字符串/布尔判定，不碰 `Date`、不碰 locale：这张卡片是 SSR
+ * 直出的，两端字节必须一致（与上面 `formatDate` 用静态月表而非 toLocaleDateString 同一理由）。
+ * `datetime` 存的是后端归一化后的 UTC ISO，且后端刻意把它当"纯数据"不按本地时区展示
+ * （见 backend/services/content_type_service.py），这里裁到分钟原样呈现。
+ */
+function metaFieldText(field: ContentFieldDef, value: unknown): string {
+  if (field.field_type === 'boolean') {
+    return value === true ? t('post.contentMetaYes') : t('post.contentMetaNo')
+  }
+  if (Array.isArray(value)) return value.map(item => String(item)).join(' · ')
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (field.field_type === 'datetime') return text.slice(0, 16).replace('T', ' ')
+    if (field.field_type === 'date') return text.slice(0, 10)
+    return text
+  }
+  return String(value ?? '')
+}
+
+/**
+ * image / url 字段只有"站内路径或 http(s)"才当链接/图片渲染。写口有 pattern 拦，
+ * 但读侧宽容（导入工具、直连 SQL 都能留下任意字符串），所以这里重判一次：
+ * `javascript:` 或协议相对 `//host` 落进 href / src 就是存储型 XSS 与外链劫持面。
+ */
+function metaFieldHref(value: unknown): string | null {
+  const text = typeof value === 'string' ? value.trim() : ''
+  if (!text) return null
+  if (/^https?:\/\//i.test(text)) return text
+  if (text.startsWith('/') && !text.startsWith('//')) return text
+  return null
+}
+
+/**
+ * 卡片的一次成型行视图模型：`kind` 在脚本里判完（图片 / 链接 / 多行文本 / 纯文本），
+ * 模板里不再判字段类型，也不留非空断言——被判成 image/link 的行，`href` 必然是
+ * 过了 scheme 校验的字符串；其余行 `href` 是空串，渲染不出去。
+ */
+const contentMetaRows = computed(() => postContentMeta.value.map(({ field, value }) => {
+  const href = metaFieldHref(value)
+  let kind = 'text'
+  if (href && field.field_type === 'image') kind = 'image'
+  else if (href && (field.field_type === 'url' || field.field_type === 'image')) kind = 'link'
+  else if (field.field_type === 'textarea' || field.field_type === 'markdown') kind = 'multiline'
+  return { field, text: metaFieldText(field, value), href: href ?? '', kind }
+}))
 const loadError = computed(() => !!fetchError.value)
 // 后端明确 404（不存在/草稿/密码保护未授权）时，本页兜底 UI 之外还要让 SSR 响应带 404，
 // 否则不存在的文章是"可索引的 200 空壳"。判定与理由见 composables/useContentStatus.ts。

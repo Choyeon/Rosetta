@@ -81,6 +81,8 @@
     "comments": "评论",
     "readingTime": "阅读时间",
     "minRead": "分钟阅读",
+    "contentMetaYes": "是",
+    "contentMetaNo": "否",
     "relatedPosts": "相关文章",
     "commentPlaceholder": "写下你的评论…",
     "submitting": "提交中…",

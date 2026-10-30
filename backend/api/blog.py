@@ -51,6 +51,7 @@ from backend.services.content_renderer import (
     render_post_fields,
     render_title,
 )
+from backend.services.content_type_service import resolve_post_type_and_meta
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import (
     post_content_unlocked,
@@ -1295,6 +1296,9 @@ async def get_post(
     _meta_title_i18n = post.meta_title
     _meta_description_i18n = post.meta_description
     _meta_keywords_i18n = post.meta_keywords
+    _post_type = post.post_type or "post"
+    # 读侧宽容：非 dict 的脏 meta_fields 按"没有扩展字段"下发，不让详情整页 500
+    _meta_fields = post.meta_fields if isinstance(post.meta_fields, dict) else None
     _reading_time = post.reading_time
 
     # 补查点赞数和评论数（两条 count 顺序执行）
@@ -1413,6 +1417,8 @@ async def get_post(
         meta_keywords=get_i18n_value(_meta_keywords_i18n, language)
         if _meta_keywords_i18n
         else None,
+        post_type=_post_type,
+        meta_fields=_meta_fields,
         created_at=_created_at,
         published_at=_published_at,
         updated_at=_updated_at,
@@ -1468,6 +1474,12 @@ async def create_post(
 
         password = await hash_post_password(post_data.password)
 
+    # 自定义内容类型：未知类型 / 缺必填 / 类型不符 / 未知字段都在这里 422，
+    # 落库的是"已归一化"的 meta_fields（空值不写键、datetime 统一 UTC 表示）。
+    post_type, meta_fields = await resolve_post_type_and_meta(
+        db, post_data.post_type, post_data.meta_fields
+    )
+
     status_value = post_data.status
     scheduled_at_value = post_data.scheduled_at
     if status_value == "scheduled" and scheduled_at_value is not None:
@@ -1502,6 +1514,8 @@ async def create_post(
         meta_title=post_data.meta_title,
         meta_description=post_data.meta_description,
         meta_keywords=post_data.meta_keywords,
+        post_type=post_type,
+        meta_fields=meta_fields,
         reading_time=compute_reading_time_from_content(post_data.content),
     )
 
@@ -1712,6 +1726,31 @@ async def update_post(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="该 slug 已被其它文章占用，请改用其它别名",
             )
+
+    # 自定义内容类型：只改正文时不得重校验库存 meta_fields（定义改过就会误报 422），
+    # 只有在"改了字段值"或"换了类型"时才走定义校验。
+    if "post_type" in update_data or "meta_fields" in update_data:
+        current_type = post.post_type or "post"
+        if update_data.get("post_type") is None:
+            # 显式 null 按"不改类型"处理：post_type 列 NOT NULL，落 None 会 500
+            update_data.pop("post_type", None)
+        requested_type = update_data.get("post_type") or current_type
+        changed_type = requested_type != current_type
+        if "meta_fields" in update_data:
+            resolved_type, resolved_meta = await resolve_post_type_and_meta(
+                db, requested_type, update_data["meta_fields"]
+            )
+            update_data["post_type"] = resolved_type
+            update_data["meta_fields"] = resolved_meta
+        elif changed_type:
+            # 换类型但没带字段值：旧类型的值不属于新类型，按空表校验（新类型必填会被拒）
+            resolved_type, resolved_meta = await resolve_post_type_and_meta(
+                db, requested_type, None
+            )
+            update_data["post_type"] = resolved_type
+            update_data["meta_fields"] = resolved_meta
+        else:
+            update_data.pop("post_type", None)
 
     apply_partial_update(post, update_data)
 
@@ -3063,6 +3102,8 @@ async def get_post_by_id(
         if post.meta_description
         else None,
         meta_keywords=get_i18n_value(post.meta_keywords, language) if post.meta_keywords else None,
+        post_type=post.post_type or "post",
+        meta_fields=post.meta_fields if isinstance(post.meta_fields, dict) else None,
         created_at=post.created_at,
         published_at=post.published_at,
         updated_at=post.updated_at,

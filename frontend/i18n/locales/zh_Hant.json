@@ -96,6 +96,8 @@
     "requiresPassword": "這篇文章需要存取密碼",
     "clearSavedPassword": "清除本地已儲存的密碼",
     "minRead": " 分鐘阅读",
+    "contentMetaYes": "是",
+    "contentMetaNo": "否",
     "commentPlaceholder": "撰寫評論…",
     "submitting": "提交中…",
     "submitComment": "發表評論",

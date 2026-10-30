@@ -96,6 +96,8 @@
     "requiresPassword": "この記事は閲覧パスワードが必要です",
     "clearSavedPassword": "ローカル保存のパスワードをクリア",
     "minRead": " 分で読了",
+    "contentMetaYes": "はい",
+    "contentMetaNo": "いいえ",
     "commentPlaceholder": "コメントを書く…",
     "submitting": "送信中…",
     "submitComment": "コメントを投稿",

@@ -106,6 +106,10 @@ export interface Post {
   meta_title?: string | Record<string, string> | null
   meta_description?: string | Record<string, string> | null
   meta_keywords?: string | Record<string, string> | null
+  /** 内容类型 key（默认 post）；公开详情与 /edit 都会回显，前台据此查 /api/content-types 定义。 */
+  post_type?: string
+  /** 自定义内容类型的字段值；定义之外的历史键读侧不做校验，渲染侧只展示定义内且非空的值。 */
+  meta_fields?: Record<string, unknown> | null
   created_at: string
   published_at?: string
   updated_at?: string
@@ -142,6 +146,10 @@ export interface PostCreate {
   meta_title?: string | Record<string, string> | null
   meta_description?: string | Record<string, string> | null
   meta_keywords?: string | Record<string, string> | null
+  /** 内容类型 key；编辑器始终发送（默认 post），换类型时要连同 meta_fields 一起提交。 */
+  post_type?: string
+  /** null = 清空自定义字段；省略等于"不动它"（后端 PUT 是 exclude_unset 增量语义）。 */
+  meta_fields?: Record<string, unknown> | null
 }
 
 // Category Types

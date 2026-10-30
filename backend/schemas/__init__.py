@@ -951,6 +951,16 @@ class PostBase(BaseModel):
     meta_title: dict[str, str] | None = Field(None, description="多语言 SEO 标题")
     meta_description: dict[str, str] | None = Field(None, description="多语言 SEO 描述")
     meta_keywords: dict[str, str] | None = Field(None, description="多语言 SEO 关键词")
+    post_type: str = Field(
+        default="post",
+        max_length=50,
+        pattern=r"^[a-z][a-z0-9_-]{0,49}$",
+        description="内容类型 key（默认 post；其它值必须有对应的 content_types 定义）",
+    )
+    meta_fields: dict[str, Any] | None = Field(
+        None,
+        description="自定义内容类型字段值，落库前按 content_types.fields 定义校验（见 content_type_service）",
+    )
 
     @field_validator("source_url")
     @classmethod
@@ -998,6 +1008,10 @@ class PostUpdate(BaseModel):
     meta_title: dict[str, str] | None = None
     meta_description: dict[str, str] | None = None
     meta_keywords: dict[str, str] | None = None
+    # post_type 允许出现在更新体里是为了支持"把这篇改成另一种内容类型"；
+    # 校验与合并（只改 meta_fields 时按库存值补 post_type）在 api/blog.py 里做。
+    post_type: str | None = Field(None, max_length=50, pattern=r"^[a-z][a-z0-9_-]{0,49}$")
+    meta_fields: dict[str, Any] | None = None
 
     @field_validator("source_url")
     @classmethod
@@ -1088,6 +1102,8 @@ class PostEditResponse(BaseModel):
     meta_description: I18nDict | None = None
     meta_title: I18nDict | None = None
     meta_keywords: I18nDict | None = None
+    post_type: str = "post"
+    meta_fields: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -1130,6 +1146,10 @@ class PostEditResponse(BaseModel):
             meta_description=post.meta_description,
             meta_title=post.meta_title,
             meta_keywords=post.meta_keywords,
+            post_type=post.post_type or "post",
+            # 读侧比写侧宽：历史行里的 meta_fields 可能是裸字符串等脏形态，
+            # 非 dict 一律按"没有扩展字段"处理，不让编辑页整页 500。
+            meta_fields=post.meta_fields if isinstance(post.meta_fields, dict) else None,
             created_at=post.created_at,
             updated_at=post.updated_at,
         )
@@ -1201,6 +1221,10 @@ class PostLocalizedResponse(BaseModel):
     # 有东西可解，而前台闸门页（pages/posts/[slug].vue 的 postEncryptionHint）
     # 读的正是这一条——写口 PostForm 早就存了 encryption_hint，此前只是没人回读。
     encryption_hint: str | None = None
+    # 自定义内容类型：前台按 post_type 去 GET /api/content-types 查定义，
+    # 只渲染"定义里存在且值非空"的键。读侧不按定义重校验（见 models/content_type.py）。
+    post_type: str = "post"
+    meta_fields: dict[str, Any] | None = None
     meta_title: str | None = None
     meta_description: str | None = None
     meta_keywords: str | None = None
@@ -1245,6 +1269,8 @@ class PostLocalizedResponse(BaseModel):
             allow_comments=post.allow_comments,
             comments_count=comments_count,
             encryption_hint=post.encryption_hint if post.password else None,
+            post_type=post.post_type or "post",
+            meta_fields=post.meta_fields if isinstance(post.meta_fields, dict) else None,
             meta_title=get_i18n_value(post.meta_title, lang) if post.meta_title else None,
             meta_description=get_i18n_value(post.meta_description, lang)
             if post.meta_description
