@@ -201,36 +201,66 @@
       <nav
         class="flex items-center gap-2"
         role="navigation"
-        :aria-label="t('common.pagination', '分页导航')"
+        aria-label="pagination"
       >
-        <Button
-          variant="outline"
-          size="icon"
-          :disabled="currentPage <= 1"
+        <!-- 与 /posts、/activity、/authors 目录同款：翻页是真实 <a href>（SSR HTML 里的
+             href 是无 JS 访客与爬虫唯一的链接图），click 仍走 handlePageChange 保留 SPA 行为。 -->
+        <template v-if="currentPage <= 1">
+          <Button
+            variant="outline"
+            size="icon"
+            class="size-9 min-w-[2.25rem]"
+            disabled
+            :aria-label="t('common.prevPage', '上一页')"
+          >
+            <ChevronLeft data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage - 1)"
           :aria-label="t('common.prevPage', '上一页')"
-          @click="currentPage -= 1"
+          :class="pageLinkClass('outline')"
+          @click.prevent="handlePageChange(currentPage - 1)"
         >
           <ChevronLeft data-icon="inline-start" />
-        </Button>
-        <Button
+        </a>
+        <template
           v-for="p in visiblePages"
           :key="p"
-          :variant="p === currentPage ? 'default' : 'ghost'"
-          size="icon"
-          class="size-9 min-w-[2.25rem]"
-          @click="currentPage = p"
         >
-          {{ p }}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          :disabled="currentPage >= totalPages"
+          <span
+            v-if="p === currentPage"
+            aria-current="page"
+            :class="pageLinkClass('default')"
+          >{{ p }}</span>
+          <a
+            v-else
+            :href="pageHref(p)"
+            :class="pageLinkClass('ghost')"
+            @click.prevent="handlePageChange(p)"
+          >{{ p }}</a>
+        </template>
+        <template v-if="currentPage >= totalPages">
+          <Button
+            variant="outline"
+            size="icon"
+            class="size-9 min-w-[2.25rem]"
+            disabled
+            :aria-label="t('common.nextPage', '下一页')"
+          >
+            <ChevronRight data-icon="inline-end" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage + 1)"
           :aria-label="t('common.nextPage', '下一页')"
-          @click="currentPage += 1"
+          :class="pageLinkClass('outline')"
+          @click.prevent="handlePageChange(currentPage + 1)"
         >
           <ChevronRight data-icon="inline-end" />
-        </Button>
+        </a>
       </nav>
     </div>
   </div>
@@ -243,7 +273,7 @@ import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { ChevronLeft, ChevronRight, ExternalLink, Globe, MessageSquare, RefreshCw, UserRound } from '@lucide/vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
 import { useAuthStore } from '~~/stores/auth'
@@ -259,7 +289,11 @@ const authStore = useAuthStore()
 const username = computed(() =>
   typeof route.params.username === 'string' ? route.params.username : ''
 )
-const currentPage = ref(1)
+const router = useRouter()
+// 页码从 URL 读：作者主页的「第 N 页」是可分享的，站内一度只有页内状态——
+// 刷新/后退回到第 1 页、爬虫也只拿得到第一页的链接。
+const requestedPage = Math.max(1, Number(route.query.page) || 1)
+const currentPage = ref(requestedPage)
 const site = useSite()
 const { localeHref } = useLocaleLink()
 // 每页条数取后台「阅读体验」分组；未配置时沿用 9
@@ -358,6 +392,46 @@ const notFound = computed(() => isContentMissing(profileError.value, profileMiss
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize.value)))
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
+// 用户名按路由参数原样拼：作者主页的 canonical 另由 useSeo 收敛到库里的大小写。
+const pageHref = (page: number) =>
+  `${applyLocalePrefix(`/authors/${username.value}`, locale.value)}?page=${page}`
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  buttonVariants({ variant, size: 'icon' })
+
+const handlePageChange = (page: number) => {
+  if (page < 1 || page > totalPages.value) return
+  currentPage.value = page
+  if (import.meta.client) {
+    router.replace({ query: page > 1 ? { page: String(page) } : {} })
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+}
+
+// 越界页码拉回末页（分享链接里的文章被删光后的旧页码），别停在空列表。
+watch([total, currentPage], () => {
+  if (total.value === 0) return
+  if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
+})
+
+// 浏览器前进/后退改的是地址栏，页内状态要跟着回读。
+watch(() => route.query.page, (raw) => {
+  const next = Math.max(1, Number(raw) || 1)
+  if (next !== currentPage.value) currentPage.value = next
+})
+
+// 越界页码对爬虫必须 301 回裸作者页：200 空列表会被判 soft 404，自指 canonical 还等于
+// 承认每个垃圾页码都是独立页面。时点与 useContentStatus 同轨（app:rendered：数据已落值、
+// 状态码还改得动）；`no-store` 防 301 被本页 swr 缓存固化。
+if (import.meta.server) {
+  const ssrEvent = useRequestEvent()
+  useNuxtApp().hooks.hookOnce('app:rendered', () => {
+    if (ssrEvent && total.value > 0 && requestedPage > totalPages.value) {
+      ssrEvent.node.res.statusCode = 301
+      ssrEvent.node.res.setHeader('location', applyLocalePrefix(`/authors/${username.value}`, locale.value))
+      ssrEvent.node.res.setHeader('cache-control', 'no-store')
+    }
+  })
+}
 
 useSeo({
   // 不存在的作者不能拿用户名拼标题（任务 85 的同一口径：404 页标题不得由 slug 伪造）

@@ -75,3 +75,45 @@ describe.each(PAGES)('$file 分页', ({ file, route }) => {
     expect(block).toContain('no-store')
   })
 })
+
+/**
+ * 作者主页（/authors/{username}）是同一族的最后一条：翻页原先只是页内 `ref(1)`，
+ * 连地址栏都不带页码——刷新/后退回第 1 页、分享「第 2 页」办不到、SSR HTML 里
+ * 也没有任何 href 指向后续页。它的每页条数来自站点设置（不是常量），所以放在
+ * 单独一组里，只钉「URL 驱动 + 真锚点 + 301」这三件与页大小无关的事。
+ */
+describe('pages/authors/[username].vue 分页', () => {
+  const src = readFileSync(resolve(ROOT, 'pages/authors/[username].vue'), 'utf-8')
+  const AUTHOR_PAGE_HREF = 'applyLocalePrefix(`/authors/${username.value}`'
+
+  it('页码从 URL 读、翻页写回 URL（可分享、可后退）', () => {
+    expect(src).toContain('Number(route.query.page)')
+    expect(src).toContain('router.replace({ query:')
+    // 旧形态：纯页内状态，按钮直接 currentPage += 1
+    expect(src).not.toContain('@click="currentPage')
+  })
+
+  it('分页 nav 是真实 <a :href="pageHref(...)"> 锚点', () => {
+    const nav = navRegionOf(src)
+    expect(nav, '作者主页里找不到 aria-label="pagination" 的 <nav>').not.toBeNull()
+    expect(nav!).toContain(':href="pageHref(currentPage - 1)"')
+    expect(nav!).toContain(':href="pageHref(p)"')
+    expect(nav!).toContain(':href="pageHref(currentPage + 1)"')
+    expect(nav!).toContain('@click.prevent="handlePageChange(')
+  })
+
+  it('pageHref 带作者路径 + 语言前缀 + ?page=', () => {
+    const fn = src.match(/const pageHref[\s\S]{0,200}?(?=\nconst |\n\n)/)?.[0] ?? ''
+    expect(fn).toContain(AUTHOR_PAGE_HREF)
+    expect(fn).toContain('?page=')
+  })
+
+  it('越界页码 SSR 期 301 回裸作者页 + no-store', () => {
+    const block = src.match(/if \(import\.meta\.server\) \{[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(block).toContain('app:rendered')
+    expect(block).toContain('statusCode = 301')
+    expect(block).toContain(AUTHOR_PAGE_HREF)
+    expect(block).toContain('cache-control')
+    expect(block).toContain('no-store')
+  })
+})
