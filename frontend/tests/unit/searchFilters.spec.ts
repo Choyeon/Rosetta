@@ -47,12 +47,21 @@ describe('search 筛选栏接线', () => {
   })
 
   it('地址栏同步包含全部筛选位与页码', () => {
-    const urlQuery = src.match(/const urlQuery = computed<Record<string, string>>[\s\S]*?\n\}\)/)?.[0] ?? ''
-    expect(urlQuery).toContain('q.q = keywordLabel.value')
-    expect(urlQuery).toContain('q.category = selectedCategory.value')
-    expect(urlQuery).toContain('q.tag = selectedTag.value')
-    expect(urlQuery).toContain('q.sort = sortBy.value')
-    expect(urlQuery).toContain('q.page = String(currentPage.value)')
+    const builder = src.match(/const buildUrlQuery = \(rawKeyword: string\)[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(builder).not.toBe('')
+    expect(builder).toContain('if (kw) q.q = kw')
+    expect(builder).toContain('q.category = selectedCategory.value')
+    expect(builder).toContain('q.tag = selectedTag.value')
+    expect(builder).toContain('q.sort = sortBy.value')
+    expect(builder).toContain('q.page = String(currentPage.value)')
+  })
+
+  // 输入框是草稿态：地址栏构造只读 route.query.q 时，「打字 → 点搜索」第一次提交
+  // 会推出一个 q 为空的地址（线上实测 URL 纹丝不动、结果区一直停在开始提示）。
+  it('提交搜索/改筛选时把输入框草稿一并写进地址栏', () => {
+    expect(src).toContain('syncUrl(\'push\', keyword.value)')
+    expect(src).toContain('syncUrl(\'replace\', keyword.value)')
+    expect(src).toContain('buildUrlQuery(keywordDraft ?? keywordLabel.value)')
   })
 
   it('搜索跳转保留语言前缀，不再写死裸 /search 路径', () => {

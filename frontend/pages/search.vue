@@ -366,21 +366,26 @@ const totalPages = computed(() => Math.ceil(total.value / pageSize.value) || 1)
 
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
 
-const urlQuery = computed<Record<string, string>>(() => {
+// 地址栏查询串的唯一构造函数：关键词以「本次要提交的值」为准，不能只读 route.query.q ——
+// 输入框是草稿态，只读 URL 会让「输入关键词 → 点搜索」第一次提交丢掉关键词（URL 纹丝不动）。
+const buildUrlQuery = (rawKeyword: string): Record<string, string> => {
   const q: Record<string, string> = {}
-  if (keywordLabel.value) q.q = keywordLabel.value
+  const kw = rawKeyword.trim()
+  if (kw) q.q = kw
   if (selectedCategory.value) q.category = selectedCategory.value
   if (selectedTag.value) q.tag = selectedTag.value
   if (sortBy.value !== 'latest') q.sort = sortBy.value
   if (currentPage.value > 1) q.page = String(currentPage.value)
   return q
-})
+}
+
+const urlQuery = computed<Record<string, string>>(() => buildUrlQuery(keywordLabel.value))
 
 const searchPath = computed(() => applyLocalePrefix('/search', locale.value))
 
-const syncUrl = (mode: 'push' | 'replace') => {
-  const query = Object.keys(urlQuery.value).length > 0 ? urlQuery.value : {}
-  const target = { path: searchPath.value, query }
+const syncUrl = (mode: 'push' | 'replace', keywordDraft?: string) => {
+  const built = buildUrlQuery(keywordDraft ?? keywordLabel.value)
+  const target = { path: searchPath.value, query: Object.keys(built).length > 0 ? built : {} }
   if (mode === 'push') void router.push(target)
   else void router.replace(target)
 }
@@ -389,12 +394,13 @@ const runSearch = () => {
   // 输入框是草稿态：只有点搜索/回车才写进 URL；筛选保留，页码归 1。
   keyword.value = keyword.value.trim()
   currentPage.value = 1
-  syncUrl('push')
+  syncUrl('push', keyword.value)
 }
 
 const handleFilter = () => {
+  // 改筛选时把输入框里的草稿一并提交：用户已经打了字再选分类，期望的是两者一起生效。
   currentPage.value = 1
-  syncUrl('replace')
+  syncUrl('replace', keyword.value)
 }
 
 const handlePageChange = (page: number) => {
