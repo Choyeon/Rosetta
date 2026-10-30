@@ -57,6 +57,7 @@ RelaxedEmailStr = Annotated[
 ]
 
 from backend.core.i18n import LANGUAGE_CODES, get_i18n_value, normalize_language
+from backend.models.core import FriendLink
 from backend.schemas.activity import (
     ActivityBase,
     ActivityCreate,
@@ -1580,18 +1581,17 @@ class NavigationLocalizedResponse(BaseModel):
 # ==================== 友情链接相关模型 ====================
 
 
-_VALID_FRIEND_STATUSES = {"pending", "approved", "rejected"}
+_FRIEND_STATUS_PATTERN = f"^({'|'.join(FriendLink.VALID_STATUSES)})$"
 
 
 def _status_to_active(status: str | None, is_active: bool | None) -> tuple[str, bool]:
-    """status 和 is_active 双向归一化：以 status 为主，is_active 作为兼容镜像"""
-    if status is not None:
-        s = status if status in _VALID_FRIEND_STATUSES else ("approved" if is_active else "pending")
-        return s, s == "approved"
-    if is_active is not None:
-        s = "approved" if is_active else "pending"
-        return s, is_active
-    return "pending", False
+    """status 和 is_active 双向归一化：以 status 为主，is_active 作为兼容镜像。
+
+    档位清单与归一规则的单源在 `FriendLink`（模型列自己描述自己的域），
+    这里只做转发——写口 pattern、公开谓词、导入工具三处必须同档，
+    各写一份字面量的结局是"后台多一档、公开面永远查不出行"。
+    """
+    return FriendLink.normalize_status_active(status, is_active)
 
 
 class FriendLinkBase(BaseModel):
@@ -1605,8 +1605,8 @@ class FriendLinkBase(BaseModel):
     logo: str | None = Field(None, max_length=500)
     order: int = Field(default=0, ge=0)
     status: str = Field(
-        default="pending",
-        pattern=r"^(pending|approved|rejected)$",
+        default=FriendLink.STATUS_PENDING,
+        pattern=_FRIEND_STATUS_PATTERN,
         description="审核状态：pending待审核 / approved已通过 / rejected已拒绝",
     )
     is_active: bool = True
@@ -1643,7 +1643,7 @@ class FriendLinkUpdate(BaseModel):
     description: dict[str, str] | str | None = None
     logo: str | None = Field(None, max_length=500)
     order: int | None = Field(None, ge=0)
-    status: str | None = Field(None, pattern=r"^(pending|approved|rejected)$")
+    status: str | None = Field(None, pattern=_FRIEND_STATUS_PATTERN)
     is_active: bool | None = None
     target_blank: bool | None = None
 
@@ -1684,19 +1684,21 @@ class FriendLinkResponse(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def sync_status_active(cls, data):
+        """投影前把 status/is_active 重过一遍唯一归一函数。
+
+        注意它只对齐两个字段，**不会把不合规的行从列表里摘掉**——所以公开口必须自己在
+        SQL 上带 `FriendLink.publicly_visible()`，不能指望这一层当闸门。
+        """
         if isinstance(data, dict):
-            st = data.get("status")
-            act = data.get("is_active")
-            if not st or st not in _VALID_FRIEND_STATUSES:
-                st = "approved" if act else "pending"
-                data["status"] = st
-            data["is_active"] = st == "approved"
+            st, act = FriendLink.normalize_status_active(data.get("status"), data.get("is_active"))
+            data["status"] = st
+            data["is_active"] = act
         elif hasattr(data, "status"):
-            st = getattr(data, "status", None)
-            act = getattr(data, "is_active", False)
-            if not st or st not in _VALID_FRIEND_STATUSES:
-                setattr(data, "status", "approved" if act else "pending")
-            setattr(data, "is_active", getattr(data, "status") == "approved")
+            st, act = FriendLink.normalize_status_active(
+                getattr(data, "status", None), getattr(data, "is_active", False)
+            )
+            setattr(data, "status", st)
+            setattr(data, "is_active", act)
         return data
 
 
@@ -1716,10 +1718,10 @@ class FriendLinkLocalizedResponse(BaseModel):
 
     @classmethod
     def from_friend_link(cls, link, lang: str = "zh") -> "FriendLinkLocalizedResponse":
-        st = getattr(link, "status", None)
-        if st not in _VALID_FRIEND_STATUSES:
-            st = "approved" if getattr(link, "is_active", False) else "pending"
         """从友链模型创建本地化响应"""
+        st, act = FriendLink.normalize_status_active(
+            getattr(link, "status", None), getattr(link, "is_active", False)
+        )
         return cls(
             id=link.id,
             name=get_i18n_value(link.name, lang),
@@ -1728,7 +1730,7 @@ class FriendLinkLocalizedResponse(BaseModel):
             logo=link.logo,
             order=link.order,
             status=st,
-            is_active=st == "approved",
+            is_active=act,
             target_blank=link.target_blank,
             created_at=link.created_at,
         )

@@ -1547,7 +1547,10 @@ function friendLinkBody(payload: Record<string, unknown>): Record<string, unknow
 }
 
 export function fetchAdminFriendLinks(): Promise<AdminFriendLink[]> {
-  return apiFetch<Record<string, unknown>[]>('/friend-links?all=true').then(list => (list ?? []).map(mapFriendLink))
+  // 走 staff 口：公开口 /friend-links 现在只回公示档（审核通过），
+  // 后台要能把 pending/rejected 的行列出来并重新放行。旧写法是给无鉴权公开口
+  // 加一个"返回全部"的开关，等于把未审核行的名称/URL/logo/提交时间公示给抓取器。
+  return apiFetch<Record<string, unknown>[]>('/admin/friend-links').then(list => (list ?? []).map(mapFriendLink))
 }
 
 export function createAdminFriendLink(payload: Record<string, unknown>): Promise<AdminFriendLink> {

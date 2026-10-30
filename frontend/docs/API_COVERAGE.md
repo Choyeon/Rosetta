@@ -32,16 +32,16 @@
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
-> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 362 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 363 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：362 个端点操作；✅ 301 + 🟡 6 = 已消费 307 个，未消费 55 个，覆盖率 84.8%。**
+**总计：363 个端点操作；✅ 302 + 🟡 6 = 已消费 308 个，未消费 55 个，覆盖率 84.8%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
 | 模块（backend/api） | 端点数 | ✅ | 🟡 | ❌ | 覆盖率 |
 |---|---:|---:|---:|---:|---:|
 | blog | 41 | 36 | 5 | 0 | 100% |
-| core | 23 | 20 | 0 | 3 | 87% |
+| core | 24 | 21 | 0 | 3 | 88% |
 | users | 23 | 19 | 0 | 4 | 83% |
 | oobe | 18 | 9 | 0 | 9 | 50% |
 | plugins | 16 | 14 | 0 | 2 | 88% |

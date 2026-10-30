@@ -519,7 +519,13 @@ class TestCacheWarmerMatchesReader:
     async def test_warmed_friend_links_match_reader_shape(
         self, client: AsyncClient, db_session: AsyncSession
     ):
-        """预热友链载荷必须与 GET /friend-links 冷读逐字段一致（含必填 status）。"""
+        """预热友链载荷必须与 GET /friend-links 冷读逐字段一致（含必填 status）。
+
+        「审核状态」与「镜像启用列」是两列，公开口与预热必须同判据：一条
+        status=pending 而 is_active 仍为 True 的行（导入工具与旧写口都造得出）
+        既不能进缓存键位，也不能被匿名读到 —— 预热多写一个键同样是在整个 TTL
+        内替匿名访客固化一条不该公开的行。
+        """
         from backend.core.cache_warmer import cache_warmer
         from backend.models.core import FriendLink
 
@@ -534,12 +540,26 @@ class TestCacheWarmerMatchesReader:
                 is_active=True,
             )
         )
+        db_session.add(
+            FriendLink(
+                name={"zh": "待审", "en": "Pending", "ja": "保留", "zh_Hant": "待審"},
+                url="https://pending.example.com",
+                description=None,
+                logo="",
+                order=2,
+                status="pending",
+                is_active=True,
+            )
+        )
         await db_session.commit()
         await cache.clear()
 
-        assert await cache_warmer._warmup_friend_links() == 2
+        assert await cache_warmer._warmup_friend_links() == 1
         warmed = await cache.get(make_cache_key("friend_links", "active"))
         assert warmed and "status" in warmed[0], "预热载荷丢字段"
+        assert [r["url"] for r in warmed] == ["https://friend.example.com"], (
+            "预热把未通过审核的行写进了缓存"
+        )
 
         hot = _payload((await client.get("/api/friend-links")).json())
         assert hot == warmed
@@ -547,6 +567,7 @@ class TestCacheWarmerMatchesReader:
         await cache.clear()
         cold = _payload((await client.get("/api/friend-links")).json())
         assert cold == warmed
+        assert {r["url"] for r in cold} == {"https://friend.example.com"}, "匿名读口漏出未审核的行"
 
 
 class TestUserProfileViewerIsolation:

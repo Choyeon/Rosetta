@@ -582,24 +582,25 @@ async def admin_list_navigations(
     "/friend-links",
     response_model=list[FriendLinkResponse],
     summary="友链列表",
-    description="获取友情链接列表。",
+    description="获取对外公示的友情链接列表（审核通过）。未审核/已拒绝的行不在此列，管理员请走 /admin/friend-links。",
 )
-async def list_friend_links(
-    db: DB, all: bool = Query(False, description="是否获取所有友链（包括未激活）")
-):
-    """获取友链列表（带缓存）"""
+async def list_friend_links(db: DB):
+    """获取公示友链列表（带缓存）。
+
+    这条口原先带一个 `all: bool` 开关，管理页拿它当管理视图用——于是**无鉴权**的公开口
+    把 pending/rejected/停用 的友链（名称、URL、logo、提交时间）整批摊给任何访客。
+    现在公示判据只剩一条 SQL 谓词 `FriendLink.publicly_visible()`，管理口独立（含鉴权）。
+    """
     if not is_oobe_complete():
         return []
 
-    cache_key = make_cache_key("friend_links", "all" if all else "active")
+    cache_key = make_cache_key("friend_links", "active")
     cached = await cache.get(cache_key)
     if cached:
         # 直接返回缓存的列表，不需要再验证
         return cached
 
-    query = select(FriendLink).order_by(FriendLink.order)
-    if not all:
-        query = query.where(FriendLink.is_active.is_(True))
+    query = select(FriendLink).where(FriendLink.publicly_visible()).order_by(FriendLink.order)
     result = await db.execute(query)
     links = result.scalars().all()
     response = [FriendLinkResponse.model_validate(f) for f in links]
@@ -611,6 +612,23 @@ async def list_friend_links(
         CACHE_TTL["friend_links"],
     )
     return response
+
+
+@router.get(
+    "/admin/friend-links",
+    response_model=list[FriendLinkResponse],
+    summary="管理员获取所有友链",
+    description="管理员获取全部友情链接（含待审核/已拒绝），需要管理员权限。",
+)
+async def admin_list_friend_links(db: DB, current_user: CurrentStaff):
+    """管理员获取全部友链：审核工作台的读口，不进响应缓存。
+
+    不带档位筛选参数——审核页的每个页签都要显示各档计数，服务端一旦按档过滤，
+    页签上的数字就变成"当前档永远是 N、其余档显示 0"的假读数。友链是全站小表，
+    整表取回后由页面筛（后台没有分页需求，也没有对应执行者）。
+    """
+    result = await db.execute(select(FriendLink).order_by(FriendLink.order))
+    return [FriendLinkResponse.model_validate(f) for f in result.scalars().all()]
 
 
 @router.post(

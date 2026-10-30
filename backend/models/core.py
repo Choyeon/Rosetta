@@ -17,7 +17,9 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    and_,
     func,
+    or_,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -107,6 +109,13 @@ class FriendLink(Base):
 
     __tablename__ = "friend_links"
 
+    # 审核档位单源：写口 pattern、公开读口谓词、导入工具都从这里取值。
+    # 散落三份字面量是这一族的历史病灶——UI 多一档不会报错，只会静默查不出行。
+    STATUS_PENDING = "pending"
+    STATUS_APPROVED = "approved"
+    STATUS_REJECTED = "rejected"
+    VALID_STATUSES: tuple[str, ...] = (STATUS_PENDING, STATUS_APPROVED, STATUS_REJECTED)
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[dict] = mapped_column(JSON, nullable=False)  # 多语言网站名称
     url: Mapped[str] = mapped_column(String(500), nullable=False)  # 网站地址
@@ -124,6 +133,39 @@ class FriendLink(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    @classmethod
+    def normalize_status_active(
+        cls, status: str | None, is_active: bool | None
+    ) -> tuple[str, bool]:
+        """status 与 is_active 的唯一归一函数：以 status 为主，is_active 作兼容镜像。
+
+        三个写口（Create/Update schema、导入工具）都必须走它。各自再写一遍分支的结局是
+        「导入的友链 is_active=True 而 status 停在 pending」——两个判别位谁也不传导给谁，
+        审核页显示待审核、前台却公示出去。
+        """
+        if status is not None:
+            s = (
+                status
+                if status in cls.VALID_STATUSES
+                else (cls.STATUS_APPROVED if is_active else cls.STATUS_PENDING)
+            )
+            return s, s == cls.STATUS_APPROVED
+        if is_active is not None:
+            return (cls.STATUS_APPROVED if is_active else cls.STATUS_PENDING), is_active
+        return cls.STATUS_PENDING, False
+
+    @classmethod
+    def publicly_visible(cls):
+        """公示闸门的 SQL 形态（公开读口与缓存预热共用这一条判据）。
+
+        合法档位一律按 status 判；status 缺失/非法的历史行回落镜像列，
+        免得把"库里早就公示着的行"因为档位没写而凭空收掉。
+        """
+        return or_(
+            cls.status == cls.STATUS_APPROVED,
+            and_(cls.status.notin_(cls.VALID_STATUSES), cls.is_active.is_(True)),
+        )
 
     def __repr__(self) -> str:
         name = get_i18n_value(self.name, "zh") or "Unnamed"

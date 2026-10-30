@@ -8,7 +8,8 @@
 后端这一侧必须钉住四件事：
 * 四个模型（Create/Update/Response/Localized）都声明 `target_blank`，字段名与前端一致。
 * 创建缺省为 False（老数据与"没勾"同义），显式 True 能落库并回读。
-* 公开列表口（`?all=true` 与默认只读激活项）都回吐这一位——前台读的就是这份。
+* 两口都回吐这一位：公示口（前台 `pages/friends.vue`）与管理口（后台编辑/审核页，
+  含未通过审核的行）——缺任一口就是"改了看不见"或"前台读不到"。
 * PUT 的 `exclude_unset` 语义：只改别的字段不得顺手把这一位清掉。
 """
 
@@ -92,20 +93,39 @@ class TestWriteReadRoundTrip:
         assert created["target_blank"] is False
 
     @pytest.mark.asyncio
-    async def test_public_list_exposes_the_flag(
-        self, client: AsyncClient, db_session: AsyncSession
+    async def test_both_list_surfaces_expose_the_flag(
+        self, client: AsyncClient, db_session: AsyncSession, admin_headers: dict
     ):
-        """前台 pages/friends.vue 读的是公开列表口；这一位不在这里回吐就等于没接通。"""
+        """前台读公开口、后台编辑读管理口；任一口不回吐这一位就等于没接通。
+
+        管理口必须带出未通过审核的行 —— 审核页看不到就没有"改回通过"的入口
+        （`?all=true` 那套匿名管理视图已退役，见 test_friendlink_status_gate.py）。
+        """
         db_session.add(_link(url="https://blank.example.com", target_blank=True))
         db_session.add(_link(url="https://self.example.com", target_blank=False))
+        db_session.add(
+            _link(url="https://pending-blank.example.com", status="pending", target_blank=True)
+        )
         await db_session.commit()
 
-        for query in ("/api/friend-links", "/api/friend-links?all=true"):
-            body = _payload((await client.get(query)).json())
-            assert isinstance(body, list), body
-            by_url = {row["url"]: row for row in body}
+        public = _payload((await client.get("/api/friend-links")).json())
+        assert {row["url"] for row in public} == {
+            "https://blank.example.com",
+            "https://self.example.com",
+        }
+
+        admin = _payload(
+            (await client.get("/api/admin/friend-links", headers=admin_headers)).json()
+        )
+        assert len(admin) == 3, "管理口漏掉未审核行"
+
+        for rows in (public, admin):
+            by_url = {row["url"]: row for row in rows}
             assert by_url["https://blank.example.com"]["target_blank"] is True
             assert by_url["https://self.example.com"]["target_blank"] is False
+
+        pending_row = next(r for r in admin if r["url"] == "https://pending-blank.example.com")
+        assert pending_row["target_blank"] is True
 
     @pytest.mark.asyncio
     async def test_update_toggles_both_directions(

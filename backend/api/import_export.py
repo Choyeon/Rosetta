@@ -1045,6 +1045,8 @@ async def backup_full(
             "description": f.description,
             "logo": f.logo,
             "order": f.order,
+            # status 必须导出：只带镜像列 is_active 的备份，回灌时分不出"待审核"与"已拒绝"
+            "status": f.status,
             "is_active": f.is_active,
             "target_blank": f.target_blank,
         }
@@ -1507,12 +1509,21 @@ async def backup_restore(
                     existing_obj.description = item.get("description", existing_obj.description)
                     existing_obj.logo = item.get("logo", existing_obj.logo)
                     existing_obj.order = item.get("order", existing_obj.order)
-                    existing_obj.is_active = item.get("is_active", existing_obj.is_active)
+                    # 两个判别位一起归一：只写 is_active 会造出
+                    # "审核页显示已拒绝、前台却公示出去"（或反过来）的行
+                    st, act = FriendLink.normalize_status_active(
+                        item.get("status"), item.get("is_active", existing_obj.is_active)
+                    )
+                    existing_obj.status = st
+                    existing_obj.is_active = act
                     existing_obj.target_blank = item.get("target_blank", existing_obj.target_blank)
                     _created()
                 else:
                     _skipped()
                 continue
+            st, act = FriendLink.normalize_status_active(
+                item.get("status"), item.get("is_active", True)
+            )
             db.add(
                 FriendLink(
                     name=item.get("name", {}),
@@ -1520,7 +1531,8 @@ async def backup_restore(
                     description=item.get("description"),
                     logo=item.get("logo"),
                     order=item.get("order", 0),
-                    is_active=item.get("is_active", True),
+                    status=st,
+                    is_active=act,
                     target_blank=item.get("target_blank", False),
                 )
             )

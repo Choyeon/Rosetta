@@ -354,30 +354,32 @@ class CacheWarmer:
             return 1
 
     async def _warmup_friend_links(self) -> int:
-        """预热友链列表"""
+        """预热友链公示列表。
+
+        判据必须是读口那一条 `FriendLink.publicly_visible()`，预热自己写一份 WHERE 的话，
+        匿名请求在整个 TTL 内拿到的是预热那份口径的载荷（读侧收口了、预热没收口 = 没收口）。
+        管理视图走 /admin/friend-links，直读数据库、不进这层缓存，所以不再预热 "all" 键。
+        """
         async with async_session_maker() as db:
-            total_cached = 0
+            query = (
+                select(FriendLink).where(FriendLink.publicly_visible()).order_by(FriendLink.order)
+            )
 
-            for include_inactive in [False, True]:
-                cache_key = make_cache_key("friend_links", "all" if include_inactive else "active")
+            result = await db.execute(query)
+            links = result.scalars().all()
 
-                query = select(FriendLink).order_by(FriendLink.order)
-                if not include_inactive:
-                    query = query.where(FriendLink.is_active.is_(True))
+            # 同上：读侧透传缓存，载荷形态必须与 FriendLinkResponse 一致
+            # （此前手写 dict 漏了必填的 status，友链审核状态在预热载荷里丢失）
+            links_data = [
+                FriendLinkResponse.model_validate(f).model_dump(mode="json") for f in links
+            ]
 
-                result = await db.execute(query)
-                links = result.scalars().all()
-
-                # 同上：读侧透传缓存，载荷形态必须与 FriendLinkResponse 一致
-                # （此前手写 dict 漏了必填的 status，友链审核状态在预热载荷里丢失）
-                links_data = [
-                    FriendLinkResponse.model_validate(f).model_dump(mode="json") for f in links
-                ]
-
-                await cache.set(cache_key, links_data, CACHE_TTL["friend_links"])
-                total_cached += 1
-
-            return total_cached
+            await cache.set(
+                make_cache_key("friend_links", "active"),
+                links_data,
+                CACHE_TTL["friend_links"],
+            )
+            return 1
 
     async def warmup_task(self, task_name: str) -> WarmupTaskResult:
         """

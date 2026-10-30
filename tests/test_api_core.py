@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.core.cache import cache
 from backend.models.core import FriendLink, Navigation, SiteConfig
 
 
@@ -64,17 +65,22 @@ class TestFriendLink:
 
     @pytest.mark.asyncio
     async def test_list_friend_links(self, client: AsyncClient, db_session: AsyncSession):
-        """测试获取友链列表"""
+        """测试获取友链列表（公示口只给审核通过的行）"""
         link = FriendLink(
             name={"zh": "GitHub", "en": "GitHub"},
             url="https://github.com",
+            status="approved",
             is_active=True,
         )
         db_session.add(link)
         await db_session.commit()
+        await cache.clear()  # 公示口带 TTL 缓存，跨用例的键位会串
 
         response = await client.get("/api/friend-links")
         assert response.status_code == 200
+        body = response.json()
+        data = body.get("data") if isinstance(body, dict) else body
+        assert [row["url"] for row in data] == ["https://github.com"]
 
     @pytest.mark.asyncio
     async def test_create_friend_link(self, client: AsyncClient, admin_headers: dict):
