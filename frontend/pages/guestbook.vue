@@ -1,5 +1,7 @@
 <!--
   留言板：GET/POST /guestbook + 点赞 POST /guestbook/{id}/like（本路由 swr 60s）。
+  分页：?page=N&page_size=10，翻页是真实 <a href>（此前是纯 <Button>，第 2 页起的留言在
+  SSR HTML 里零入链、无 JS 访客也翻不了），越界页码 SSR 期 301 回裸留言板 + no-store。
   guestbookList 必须是可写 ref 而不是 computed：点赞是就地 mutate item，computed 会在
   依赖重算时把 liked/likesCount 冲回接口初值。后端 like 为纯计数 +1（无取消语义），
   liked 置真后不再发请求；提交固定只拉 status=approved，新留言先进审核队列、刷新看不到自己
@@ -275,34 +277,64 @@
         role="navigation"
         aria-label="pagination"
       >
-        <Button
-          variant="outline"
-          size="icon"
-          :disabled="currentPage <= 1"
+        <!-- 与 /posts、/activity、/gallery 同款：翻页必须是真实 <a href>（SSR HTML 里的
+             href 是无 JS 访客与爬虫唯一的链接图），click 仍走 handlePageChange 保留 SPA 行为。 -->
+        <template v-if="currentPage <= 1">
+          <Button
+            variant="outline"
+            size="icon"
+            class="size-9 min-w-[2.25rem]"
+            disabled
+            :aria-label="t('common.prevPage', '上一页')"
+          >
+            <ChevronLeft data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage - 1)"
           :aria-label="t('common.prevPage', '上一页')"
-          @click="handlePageChange(currentPage - 1)"
+          :class="pageLinkClass('outline')"
+          @click.prevent="handlePageChange(currentPage - 1)"
         >
           <ChevronLeft data-icon="inline-start" />
-        </Button>
-        <Button
+        </a>
+        <template
           v-for="page in visiblePages"
           :key="page"
-          :variant="page === currentPage ? 'default' : 'ghost'"
-          size="icon"
-          class="size-9 min-w-[2.25rem]"
-          @click="handlePageChange(page)"
         >
-          {{ page }}
-        </Button>
-        <Button
-          variant="outline"
-          size="icon"
-          :disabled="currentPage >= totalPages"
+          <span
+            v-if="page === currentPage"
+            aria-current="page"
+            :class="pageLinkClass('default')"
+          >{{ page }}</span>
+          <a
+            v-else
+            :href="pageHref(page)"
+            :class="pageLinkClass('ghost')"
+            @click.prevent="handlePageChange(page)"
+          >{{ page }}</a>
+        </template>
+        <template v-if="currentPage >= totalPages">
+          <Button
+            variant="outline"
+            size="icon"
+            class="size-9 min-w-[2.25rem]"
+            disabled
+            :aria-label="t('common.nextPage', '下一页')"
+          >
+            <ChevronRight data-icon="inline-start" />
+          </Button>
+        </template>
+        <a
+          v-else
+          :href="pageHref(currentPage + 1)"
           :aria-label="t('common.nextPage', '下一页')"
-          @click="handlePageChange(currentPage + 1)"
+          :class="pageLinkClass('outline')"
+          @click.prevent="handlePageChange(currentPage + 1)"
         >
           <ChevronRight data-icon="inline-start" />
-        </Button>
+        </a>
       </nav>
     </div>
   </div>
@@ -310,7 +342,7 @@
 
 <script setup lang="ts">
 import { Card, CardContent } from '~~/components/ui/card'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
 import { Badge } from '~~/components/ui/badge'
@@ -402,7 +434,10 @@ const submitError = ref<string | null>(null)
 const route = useRoute()
 const router = useRouter()
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
-const pageSize = 10
+// 快照 setup 期的页码：越界判定要用"访客请求的那一页"，而 currentPage 会被下面的
+// 钳位 watch 拉回末页，事后就不再能区分 `?page=99` 与正常访问。
+const requestedPage = Math.max(1, Number(route.query.page) || 1)
+const PAGE_SIZE = 10
 
 // 真实接口：GET /api/guestbook?page=N&page_size=10&status=approved
 const {
@@ -413,7 +448,7 @@ const {
 } = useAPI<Paginated<unknown>>('/guestbook', {
   query: computed(() => ({
     page: currentPage.value,
-    page_size: pageSize,
+    page_size: PAGE_SIZE,
     status: 'approved',
     lang: locale.value
   })),
@@ -425,8 +460,11 @@ const {
 // 第一发还被 abort，纯浪费后端查询。
 
 const total = computed(() => gbResp.value?.total ?? 0)
-const totalPages = computed(() => Math.ceil(total.value / pageSize) || 1)
+const totalPages = computed(() => Math.ceil(total.value / PAGE_SIZE) || 1)
 const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.value))
+const pageHref = (page: number) => `${applyLocalePrefix('/guestbook', locale.value)}?page=${page}`
+const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
+  `${buttonVariants({ variant, size: 'icon' })} size-9 min-w-[2.25rem]`
 
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
@@ -442,6 +480,20 @@ const handlePageChange = (page: number) => {
 watch([total, currentPage], () => {
   if (total.value > 0 && currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
+
+// 越界页码对爬虫必须 301 回裸留言板：200 空列表会被判 soft 404，自指 canonical 还等于
+// 承认每个垃圾页码都是独立页面。时点与 useContentStatus 同轨（app:rendered：数据已落值、
+// 状态码还改得动）；`no-store` 防这条 301 被本页 swr 60s 缓存固化。
+if (import.meta.server) {
+  const ssrEvent = useRequestEvent()
+  useNuxtApp().hooks.hookOnce('app:rendered', () => {
+    if (ssrEvent && total.value > 0 && requestedPage > totalPages.value) {
+      ssrEvent.node.res.statusCode = 301
+      ssrEvent.node.res.setHeader('location', applyLocalePrefix('/guestbook', locale.value))
+      ssrEvent.node.res.setHeader('cache-control', 'no-store')
+    }
+  })
+}
 
 // 浏览器前进/后退改的是地址栏，页内状态要跟着回读
 watch(

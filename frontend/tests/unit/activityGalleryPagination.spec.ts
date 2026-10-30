@@ -1,9 +1,11 @@
 /**
- * /activity 与 /gallery 的分页契约（批次 #204）。
+ * /activity、/gallery、/guestbook 的分页契约（批次 #204 / #205）。
  *
- * 两页原先都是一次性拉 50 条（`page: 1, page_size: 50`）且没有任何翻页入口：第 51 条
- * 之后的动态/相册在站内**完全没有可达路径**（/posts 早就分页了，这两页被漏掉）。
- * 修好之后有三条东西不能再丢：
+ * activity 与 gallery 原先都是一次性拉 50 条（`page: 1, page_size: 50`）且没有任何翻页
+ * 入口：第 51 条之后的动态/相册在站内**完全没有可达路径**（/posts 早就分页了，这两页被漏掉）。
+ * guestbook 有翻页逻辑但整条 nav 是 `<Button @click>`：SSR HTML 里零个 href，无 JS 访客
+ * 与爬虫只能看到第 1 页，且越界页码回 200 空列表。
+ * 修好之后这三条东西不能再丢：
  *   ① 请求必须跟着 `currentPage` 走（写死 page:1 等于翻页无效）；
  *   ② 翻页必须是真实 `<a :href>`（AGENTS §2.3.3：SSR HTML 里的 href 是爬虫与无 JS
  *      访客唯一的链接图），href 里带 `?page=` 且语言前缀走 applyLocalePrefix；
@@ -18,7 +20,8 @@ const ROOT = resolve(__dirname, '..', '..')
 
 const PAGES = [
   { file: 'pages/activity.vue', route: '/activity' },
-  { file: 'pages/gallery.vue', route: '/gallery' }
+  { file: 'pages/gallery.vue', route: '/gallery' },
+  { file: 'pages/guestbook.vue', route: '/guestbook' }
 ] as const
 
 /**
