@@ -392,10 +392,11 @@ async def _get_post_list_cache_key(
         f"so{sort}",
         # 作者归档必须自成一条键：少了这一段，A 作者的列表会被当作全站/其他作者的结果命中。
         f"a{author or 'all'}",
-        # 内容类型同理：查询侧按 post_type 过滤（不传默认 post），键里少了这一段时，
+        # 内容类型同理：查询侧按 post_type 过滤（不传 = 全部类型），键里少了这一段时，
         # 匿名访客可以用 ?post_type=任意值 把"空列表"写进首页/列表页共用的键位，
-        # 在 TTL 内对全站投毒。缺省值必须与查询侧的 `else: post_type == "post"` 同口径。
-        f"pt{post_type or 'post'}",
+        # 在 TTL 内对全站投毒。缺省段必须与查询侧同口径，所以是 'all' 而不是某个类型 key
+        # ——写成 'post' 会让"全部类型"与"只有博客"两个不同的结果集共用同一个键位。
+        f"pt{post_type or 'all'}",
     ]
     return make_cache_key(*parts)
 
@@ -470,6 +471,7 @@ async def _build_post_list_item_from_row(
         tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
         status=post.status,
         visibility=post.visibility or "public",
+        post_type=post.post_type or "post",
         views=post.views,
         likes_count=likes_count,
         comments_count=comments_count,
@@ -563,7 +565,13 @@ async def list_posts(
     author: str | None = Query(None, max_length=150, description="作者用户名（作者归档）"),
     search: str | None = Query(None, description="搜索关键词"),
     status_filter: str | None = Query(None, alias="status", description="文章状态（需管理员权限）"),
-    post_type: str | None = Query(None, description="内容类型（自定义文章类型 key，默认 post）"),
+    post_type: str | None = Query(
+        None,
+        description=(
+            "内容类型（自定义文章类型 key）。不传 = 返回全部类型；传值 = 只看该类型。"
+            "取值会进列表缓存键，所以垃圾值只会让这一次查询回到空列表，不会污染其它视图。"
+        ),
+    ),
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
     created_start: str | None = Query(
         None, alias="created_start", description="创建开始日期 ISO（含边界）"
@@ -718,11 +726,13 @@ async def list_posts(
     if author_id is not None:
         query = query.where(Post.author_id == author_id)
 
-    # 内容类型过滤：不传时默认只列博客文章（post），保持向后兼容
+    # 内容类型过滤：不传 = 列全部类型，`?post_type=<key>` 只做显式收窄。
+    # 曾经缺省是 `post_type == "post"`，而全站没有任何列表消费方传过这个参数——表现是
+    # 编辑器一旦把文章存成自定义类型，它就同时从前台列表、首页、作者页和后台文章列表
+    # 消失，且没有任何入口能找回来（详情口、RSS、sitemap、归档统计却都不看类型，
+    # 于是同一篇文章"能被订阅、点得进去，却在任何列表里不存在"）。
     if post_type:
         query = query.where(Post.post_type == post_type)
-    else:
-        query = query.where(Post.post_type == "post")
 
     # 创建日期范围过滤
     from_dt = parse_utc_date(created_start)
@@ -893,6 +903,7 @@ async def get_recommended_posts(
                 else None,
                 tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
                 status=post.status,
+                post_type=post.post_type or "post",
                 views=post.views,
                 likes_count=likes_map.get(post.id, 0),
                 comments_count=comments_map.get(post.id, 0),
@@ -973,6 +984,7 @@ async def get_similar_posts(
                 else None,
                 tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
                 status=post.status,
+                post_type=post.post_type or "post",
                 views=post.views,
                 likes_count=likes_map.get(post.id, 0),
                 comments_count=comments_map.get(post.id, 0),
@@ -1045,6 +1057,7 @@ async def list_hot_posts(
                 else None,
                 tags=[TagLocalizedResponse.from_tag(t, language) for t in post.tags],
                 status=post.status,
+                post_type=post.post_type or "post",
                 views=post.views,
                 likes_count=int(likes_map.get(post.id, 0) or 0),
                 comments_count=int(comments_map.get(post.id, 0) or 0),
@@ -4154,7 +4167,6 @@ async def _sitemap_taxonomy_lastmod(db) -> str | None:
         .join(User, Post.author_id == User.id)
         .where(
             publicly_listable_posts(),
-            Post.post_type == "post",
             User.id.not_in(hidden_authors),
         )
     )
@@ -4270,7 +4282,8 @@ async def get_sitemap_taxonomies(
     # 并在同一条语句里排除「关了 show_posts」与「关了 public_profile」的作者——
     # 前者的归档页对访客是空页，后者在 GET /users/username/{u} 上直接回 404，
     # 提交给爬虫等于承认一个没有内容（甚至不存在）的 URL。
-    # post_type 口径与作者页读的那份列表一致。
+    # 作者页读的那份列表按全部内容类型（不传 ?post_type= 即不过滤），这里也不能只看
+    # 内置 post——否则"作者只发过自定义类型"会被整条漏出 sitemap，而其作者页有真实内容。
     hidden_authors = select(UserPreference.user_id).where(
         or_(UserPreference.show_posts.is_(False), UserPreference.public_profile.is_(False))
     )
@@ -4280,7 +4293,6 @@ async def get_sitemap_taxonomies(
             .join(Post, Post.author_id == User.id)
             .where(
                 publicly_listable_posts(),
-                Post.post_type == "post",
                 User.id.not_in(hidden_authors),
             )
             .group_by(User.username)

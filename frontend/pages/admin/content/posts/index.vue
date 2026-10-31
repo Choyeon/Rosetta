@@ -24,6 +24,7 @@ import {
   type AdminPostListItem
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
+import { fetchAdminContentTypes, type AdminContentType } from '~~/composables/useContentTypes'
 import type { Post } from '~~/types/api'
 import { Button } from '~~/components/ui/button'
 import { Badge } from '~~/components/ui/badge'
@@ -57,10 +58,12 @@ const pageSize = ref(10)
 const searchQuery = ref('')
 const statusFilter = ref<'all' | 'published' | 'draft' | 'scheduled'>('all')
 const categoryFilter = ref<string>('all')
+const typeFilter = ref<string>('all')
 const createdStart = ref<string | null>(null)
 const createdEnd = ref<string | null>(null)
 
 const categories = shallowRef<AdminCategory[]>([])
+const contentTypes = shallowRef<AdminContentType[]>([])
 const selectedIds = ref<number[]>([])
 const deleteDialogOpen = ref(false)
 const pendingDeleteId = ref<number | null>(null)
@@ -127,6 +130,7 @@ const loadPosts = async () => {
       search: searchQuery.value.trim() || undefined,
       status: statusFilter.value !== 'all' ? statusFilter.value : undefined,
       category: categoryFilter.value !== 'all' ? categoryFilter.value : undefined,
+      post_type: typeFilter.value !== 'all' ? typeFilter.value : undefined,
       created_start: createdStart.value,
       created_end: createdEnd.value
     })
@@ -157,17 +161,34 @@ const loadCategories = async () => {
   }
 }
 
+// 内容类型定义同时喂两处：筛选下拉的选项，和行上那个"这条是什么类型"的徽标名。
+// 取不到就当没有自定义类型（下拉整块不显示），标准文章的徽标本来也不显示。
+const loadContentTypes = async () => {
+  try {
+    contentTypes.value = await fetchAdminContentTypes()
+  } catch {
+    contentTypes.value = []
+  }
+}
+
+/** 行内类型徽标的文案：自定义类型用定义里的显示名，内置 post 不显示徽标。 */
+const typeName = (key?: string | null): string => {
+  if (!key || key === 'post') return ''
+  return contentTypes.value.find(t => t.key === key)?.name ?? key
+}
+
 const onSearch = () => {
   reload()
 }
 
-// 分类下拉在 FilterBar 插槽内，无法复用其搜索按钮语义：选中后立即刷新
-watch(categoryFilter, () => {
+// 分类/类型下拉在 FilterBar 插槽内，无法复用其搜索按钮语义：选中后立即刷新
+watch([categoryFilter, typeFilter], () => {
   reload()
 })
 
 const onReset = () => {
   categoryFilter.value = 'all'
+  typeFilter.value = 'all'
   reload()
 }
 
@@ -258,6 +279,7 @@ const batchPin = async (action: 'pin' | 'unpin') => {
 
 onMounted(() => {
   loadCategories()
+  loadContentTypes()
   loadPosts()
 })
 </script>
@@ -293,6 +315,31 @@ onMounted(() => {
           @reset="onReset"
         >
           <template #extraFilters>
+            <!-- 列表默认口径是「不传 post_type = 全部类型」，自定义类型因此会和标准文章混在一起；
+                 这一列下拉给的就是"只看某一种"。没有定义时整块不显示（选项永远只有两项＝白占位置）。 -->
+            <Select
+              v-if="contentTypes.length > 0"
+              v-model="typeFilter"
+            >
+              <SelectTrigger class="h-9 w-[160px] rounded-[10px]">
+                <SelectValue placeholder="内容类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">
+                  全部类型
+                </SelectItem>
+                <SelectItem value="post">
+                  标准文章
+                </SelectItem>
+                <SelectItem
+                  v-for="ct in contentTypes"
+                  :key="ct.key"
+                  :value="ct.key"
+                >
+                  {{ ct.name }}
+                </SelectItem>
+              </SelectContent>
+            </Select>
             <Select v-model="categoryFilter">
               <SelectTrigger class="h-9 w-[160px] rounded-[10px]">
                 <SelectValue placeholder="分类" />
@@ -438,6 +485,12 @@ onMounted(() => {
             <span class="tabular-nums text-muted-foreground/70">#{{ (row as Post).id }}</span>
             <span class="mx-1 text-muted-foreground/40">·</span>
             <span>/{{ (row as Post).slug }}</span>
+            <!-- 自定义类型才挂徽标（内置 post 是多数，逐个显示等于噪音）：
+                 列表已按"全部类型"混排，没有这一位就看不出某行为什么带着扩展字段。 -->
+            <span
+              v-if="typeName((row as Post).post_type)"
+              class="ml-2 rounded-[8px] bg-info-muted px-1.5 py-0.5 text-info-muted-foreground"
+            >{{ typeName((row as Post).post_type) }}</span>
           </div>
         </div>
       </template>

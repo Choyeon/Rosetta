@@ -157,6 +157,8 @@ export interface AdminPostListItem {
   status: string
   /** 私密档在公开读口被整条滤掉，后台列表靠这一位标记"这条对访客不存在"。 */
   visibility?: 'public' | 'password' | 'private'
+  /** 后台列表靠这一位区分"标准文章"和自定义内容类型——列表默认口径已是不传 = 全部类型。 */
+  post_type?: string
   views: number
   likes_count: number
   comments_count: number
@@ -199,6 +201,8 @@ export interface FetchAdminPostsParams {
    *  archived 在后端不存在，列出只会得到一个永远为空的筛选 */
   status?: 'all' | 'published' | 'draft' | 'scheduled'
   category?: string
+  /** 内容类型 key（'post' 或自定义类型）。'all'/不传 = 不过滤，与后端默认口径一致。 */
+  post_type?: string
   created_start?: string | null
   created_end?: string | null
 }
@@ -220,6 +224,9 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
   const pageSize = Math.max(1, params.page_size ?? 10)
   const qSearch = params.search?.trim() || ''
   const qCategory = params.category && params.category !== 'all' ? params.category : undefined
+  // 后端默认口径是"不带参数 = 全部类型"，所以 'all' 必须发成"不带这个键"，
+  // 不能发成 ?post_type=all —— 那会被当成一个不存在的类型，得到一个恒空列表。
+  const qPostType = params.post_type && params.post_type !== 'all' ? params.post_type : undefined
   const qCreatedStart = params.created_start || undefined
   const qCreatedEnd = params.created_end || undefined
 
@@ -233,6 +240,7 @@ export async function fetchAdminPostsPaged<T extends AdminPostListItem>(
       status,
       search: qSearch || undefined,
       category: qCategory,
+      post_type: qPostType,
       created_start: qCreatedStart,
       created_end: qCreatedEnd
     }

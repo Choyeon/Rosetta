@@ -1307,6 +1307,11 @@ class PostListItemLocalized(BaseModel):
     # 后台列表要能一眼看出"这条对访客不存在"：私密档文章在公开口已被整条滤掉，
     # 只有列表带出 visibility 才谈得上审计。默认 public 与 Post 列默认一致。
     visibility: str = "public"
+    # 列表项也要能回答"这篇是什么内容类型"：`?post_type=` 的默认口径已改成"不传 = 全部类型"，
+    # 自定义类型的文章从此会出现在前台列表与后台文章列表里。缺了这一位，管理员看到的是一堆
+    # 混在一起、既无法区分也无法解释的行（详情页按类型渲染扩展字段，列表却看不出类型）。
+    # 刻意**不给默认值**：带默认值时漏传的那一处不会报错，只会一直显示"标准文章"。
+    post_type: str
     views: int
     likes_count: int = 0
     comments_count: int = 0
@@ -1342,6 +1347,7 @@ class PostListItemLocalized(BaseModel):
             tags=tags,
             status=post.status,
             visibility=post.visibility or "public",
+            post_type=post.post_type or "post",
             views=post.views,
             likes_count=len(post.likes) if post.likes else 0,
             comments_count=comments_count,

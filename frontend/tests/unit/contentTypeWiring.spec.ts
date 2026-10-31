@@ -13,6 +13,9 @@
  * ⑤ 公开详情页消费定义（`visibleMetaFields` / `parseContentTypes`），值只走文本插值，
  *    链接带 `rel` 且 href 过 scheme 校验，**不得** v-html；
  * ⑥ 后台菜单里有入口，页面文件真实存在（否则路由 404 而菜单照样亮）。
+ * ⑦ 列表可见性：`GET /blog/posts` 的缺省是"全部类型"（自定义类型稿不能只在详情页存在），
+ *    `?post_type=` 只做显式收窄且判别位进缓存键（缺省段是 all 而不是某个类型 key），
+ *    列表项的 `post_type` 是**必填**，前台列表页与后台文章列表都是这个参数的真实消费方。
  */
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -26,6 +29,15 @@ import {
 const ROOT = resolve(process.cwd())
 const BACKEND = resolve(ROOT, '..')
 const read = (...parts: string[]) => readFileSync(resolve(BACKEND, ...parts), 'utf-8')
+
+/** 截一个 Python 类自己的类体（到下一个顶格 `class` 为止），供逐字段断言使用。 */
+function classBody(source: string, name: string): string {
+  const start = source.match(new RegExp(`^class ${name}\\b`, 'm'))
+  if (!start || start.index === undefined) throw new Error(`找不到 class ${name}`)
+  const rest = source.slice(start.index + start[0].length)
+  const next = rest.search(/^class /m)
+  return next === -1 ? rest : rest.slice(0, next)
+}
 
 const modelPy = read('backend', 'models', 'content_type.py')
 const servicePy = read('backend', 'services', 'content_type_service.py')
@@ -170,6 +182,72 @@ describe('内容类型：公开详情页消费', () => {
   it('是/否文案四语齐全', () => {
     for (const keys of Object.values(localeKeys())) {
       expect(keys).toEqual(expect.arrayContaining(['contentMetaYes', 'contentMetaNo']))
+    }
+  })
+})
+
+describe('内容类型：列表可见性（默认全部类型 + ?post_type= 显式收窄）', () => {
+  const listPage = read('frontend', 'pages', 'posts', 'index.vue')
+  const adminListPage = read('frontend', 'pages', 'admin', 'content', 'posts', 'index.vue')
+  const adminManage = read('frontend', 'composables', 'useAdminManage.ts')
+  const seoComposable = read('frontend', 'composables', 'useSeo.ts')
+
+  it('后端列表口不再把缺省写成「只列内置 post」', () => {
+    // 全站没有任何列表消费方传过这个参数，缺省收窄等于自定义类型文章在所有列表里查无此文。
+    // 清点写成"整份 blog.py 里 `Post.post_type ==` 只许出现一次，且必须在 if post_type: 之下"：
+    // 只判字面量 `== "post"` 挡不住 `== (post_type or "post")` 这类换个写法的回归。
+    expect(blogPy.match(/Post\.post_type == /g) ?? []).toHaveLength(1)
+    expect(blogPy).toMatch(/if post_type:\r?\n\s*query = query\.where\(Post\.post_type == post_type\)/)
+  })
+
+  it('后台列表行内带出类型名（混排时管理员得能分辨哪篇是什么类型）', () => {
+    expect(adminListPage).toContain('typeName((row as Post).post_type)')
+    // 内置 post 不显示徽标：一列全是"标准文章"等于没有信息
+    expect(adminListPage).toMatch(/if \(!key \|\| key === 'post'\) return ''/)
+    // 'all' 在两条取数路径上都归一成"不带这个键"，发成 ?post_type=all 会当成一个不存在的类型
+    expect(adminListPage).toContain('post_type: typeFilter.value !== \'all\' ? typeFilter.value : undefined')
+    expect(adminManage).toMatch(/params\.post_type !== 'all' \? params\.post_type : undefined/)
+  })
+
+  it('缓存键的缺省段是 all（全部类型），不是某个类型 key', () => {
+    // 写成 pt{post_type or 'post'} 时"不传参数"与"?post_type=post"共用一个键位，
+    // 而后者是显式收窄的结果集，先落进缓存就在整个 TTL 内少掉全部自定义类型文章
+    expect(blogPy).toContain('f"pt{post_type or \'all\'}",')
+  })
+
+  it('列表项响应模型带出 post_type，且刻意不给默认值', () => {
+    // 只截这个类自己的类体：`post_type: str = "post"` 在同文件里是合法形态（详情响应模型），
+    // 全文正则会把别的类一起读进来，判成"给了默认值"或反过来被后来新增的类糊过去
+    const body = classBody(schemasPy, 'PostListItemLocalized')
+    expect(body).toMatch(/\n {4}post_type: str\n/)
+    // 带默认值时漏传的那一处不会报错，只会一直显示"标准文章"
+    expect(body).not.toMatch(/post_type: str = /)
+    const projections = blogPy.match(/post_type=post\.post_type or "post",/g) ?? []
+    expect(projections.length).toBeGreaterThanOrEqual(4)
+  })
+
+  it('前台列表页是 ?post_type= 的真实消费方（下拉 + URL + 请求三处都接）', () => {
+    expect(listPage).toContain('route.query.post_type as string')
+    expect(listPage).toMatch(/q\.post_type = selectedType\.value/)
+    expect(listPage).toMatch(/post_type: \(selectedType\.value[^\n]*ALL_TYPES[^\n]*selectedType\.value : undefined/)
+    // 控件只在"确实定义过自定义类型"的站点出现：永远只有两项的下拉等于摆了个不改变结果的控件
+    expect(listPage).toContain('v-if="hasTypeFilter"')
+    expect(listPage).toContain('parseContentTypes')
+  })
+
+  it('post_type 不进 canonical 查询白名单（视图变体不是独立页面）', () => {
+    expect(seoComposable).toMatch(/const CANONICAL_QUERY_KEYS = \['page'\]/)
+  })
+
+  it('后台文章列表接了类型筛选，且 all 发成「不带这个键」', () => {
+    expect(adminListPage).toContain('typeFilter')
+    expect(adminManage).toMatch(/params\.post_type !== 'all' \? params\.post_type : undefined/)
+  })
+
+  it('类型筛选文案四语齐全', () => {
+    for (const lang of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const keys = Object.keys(JSON.parse(read('frontend', 'i18n', 'locales', `${lang}.json`)).posts)
+      expect(keys).toEqual(expect.arrayContaining(['selectType', 'allTypes', 'typePost']))
     }
   })
 })

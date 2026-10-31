@@ -11,18 +11,27 @@
    ``GET /posts/{slug}``、``GET /posts/{id}``、``GET /posts/{id}/edit`` 都回 ``post_type`` + ``meta_fields``。
 4. **读侧比写侧宽**：定义改了（新增必填字段）之后，只改标题的 PUT 不得重校验库存 meta_fields；
    库里脏成裸字符串的 meta_fields 不得把详情/编辑页打成 500。
+5. **列表可见性**：`GET /blog/posts` 的缺省是"全部类型"（自定义类型文章因此在前台列表、
+   首页、作者页、后台文章列表都存在），`?post_type=<key>` 只做显式收窄；判别位必须进响应
+   缓存键且缺省段是 `all`；列表项带出**必填**的 `post_type`；sitemap 的作者清单与子表
+   lastmod 按同一口径（不再只看内置类型）。
 """
 
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timedelta
 
 import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.blog import _get_post_list_cache_key, _iso8601, _sitemap_taxonomy_lastmod
 from backend.core.cache import cache
 from backend.models.blog import Post
+
+# 项目用 backend.utils.compat.UTC：运行时是 Python 3.10，datetime.UTC 要 3.11+ 才有
+from backend.utils.compat import UTC
 
 BOOK_FIELDS = [
     {"key": "author", "label": "作者", "field_type": "text", "required": True},
@@ -461,3 +470,213 @@ class TestRoundtrip:
         edit = await client.get(f"/api/blog/posts/{created['id']}/edit", headers=admin_headers)
         assert edit.status_code == 200, edit.text
         assert _payload(edit.json())["meta_fields"] is None
+
+
+async def _seed_post(
+    db_session: AsyncSession,
+    author_id: int,
+    *,
+    slug: str,
+    post_type: str = "post",
+    published_at: datetime | None = None,
+) -> Post:
+    """直接落一条"已发布且已到期"的行，绕开写口的 i18n/校验噪声。
+
+    `published_at` 默认用 Python 侧的 aware now（而不是 `func.now()`）：集合谓词
+    `publicly_listable_posts()` 比较的是同一个时钟，SQLite 里两边都带 `+00:00`
+    后缀、字符串比较才成立。留 NULL 同样可见，但那样就测不到"到点"这一半。
+    """
+    post = Post(
+        title={"zh": slug, "en": slug},
+        content={"zh": "正文", "en": "content"},
+        slug=slug,
+        author_id=author_id,
+        status="published",
+        post_type=post_type,
+        published_at=published_at if published_at is not None else datetime.now(UTC),
+    )
+    db_session.add(post)
+    await db_session.commit()
+    await db_session.refresh(post)
+    return post
+
+
+async def _list_slugs(client: AsyncClient, **params: object) -> dict[str, str]:
+    """匿名列表口 → {slug: post_type}，顺带钉住"列表项必须带出类型"这一段。"""
+    response = await client.get("/api/blog/posts", params={"lang": "zh", **params})
+    assert response.status_code == 200, response.text
+    items = _payload(response.json())["items"]
+    return {item["slug"]: item["post_type"] for item in items}
+
+
+class TestListVisibility:
+    """自定义类型文章的**列表可见性**：默认列全部类型，`?post_type=` 只做显式收窄。
+
+    接完四段之后剩下的缺陷形态是"详情页漂亮、列表里查无此文"：列表口曾把缺省写成
+    `post_type == "post"`，而全站没有任何列表消费方传过这个参数——编辑器一旦把文章
+    存成自定义类型，它就同时从前台列表、首页、作者页和后台文章列表消失，且没有任何
+    入口能找回来（详情口、RSS、sitemap 却都不看类型，于是同一篇文章"订阅得到、点得进，
+    却在任何列表里不存在"）。
+    """
+
+    @pytest.mark.asyncio
+    async def test_default_list_includes_every_type(
+        self, client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        key = _key()
+        builtin = _slug()
+        custom = _slug()
+        await _seed_post(db_session, test_user.id, slug=builtin)
+        await _seed_post(db_session, test_user.id, slug=custom, post_type=key)
+
+        rows = await _list_slugs(client)
+        assert rows[builtin] == "post"
+        # 缺省不再只列内置类型：自定义类型文章必须出现在同一份列表里，
+        # 且列表项要带出真实 post_type（管理员看到混排时得能分辨）。
+        assert rows[custom] == key
+
+    @pytest.mark.asyncio
+    async def test_explicit_type_narrows_the_list(
+        self, client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        key = _key()
+        builtin = _slug()
+        custom = _slug()
+        await _seed_post(db_session, test_user.id, slug=builtin)
+        await _seed_post(db_session, test_user.id, slug=custom, post_type=key)
+
+        only_post = await _list_slugs(client, post_type="post")
+        assert builtin in only_post
+        assert custom not in only_post
+
+        only_custom = await _list_slugs(client, post_type=key)
+        assert list(only_custom) == [custom]
+
+    @pytest.mark.asyncio
+    async def test_admin_list_includes_every_type(
+        self, client: AsyncClient, db_session: AsyncSession, admin_headers, test_user
+    ):
+        """后台文章列表走同一条口（`?status=all`）：管理员也必须看得到自定义类型稿，
+        否则"改完类型稿子就找不到"在后台同样无解。"""
+        key = _key()
+        custom = _slug()
+        await _seed_post(db_session, test_user.id, slug=custom, post_type=key)
+
+        response = await client.get(
+            "/api/blog/posts",
+            params={"lang": "zh", "status": "all"},
+            headers=admin_headers,
+        )
+        assert response.status_code == 200, response.text
+        items = _payload(response.json())["items"]
+        row = next(item for item in items if item["slug"] == custom)
+        assert row["post_type"] == key
+
+    @pytest.mark.asyncio
+    async def test_cache_key_isolates_every_type_view(self):
+        """默认列表必须占**自己的**键位：`?post_type=` 的每一种取值（含查不到东西的垃圾值）
+        都自成一条键，否则匿名访客能用一发垃圾值把空列表写进全站首页/列表页共用的键位，
+        在整个 TTL 内对访客投毒（旧缺陷是 post_type 进 SQL 却不进键）。
+
+        缺省段还要是"全部类型"而不是某个类型 key：写成 `pt{post_type or 'post'}` 时
+        "不传参数"与"`?post_type=post`"命中同一个键，而后者是显式收窄的结果集——
+        它先落进缓存，前者就在整个 TTL 内少掉全部自定义类型文章。
+        """
+        base = {
+            "language": "zh",
+            "page": 1,
+            "page_size": 12,
+            "category": None,
+            "tag": None,
+            "search": None,
+            "status_filter": None,
+            "author": None,
+        }
+        default_key = await _get_post_list_cache_key(**base)
+        builtin_key = await _get_post_list_cache_key(**base, post_type="post")
+        custom_key = await _get_post_list_cache_key(**base, post_type="book_x")
+        ghost_key = await _get_post_list_cache_key(**base, post_type="__ghost__")
+        keys = {default_key, builtin_key, custom_key, ghost_key}
+        assert len(keys) == 4, "四种视图必须占四条键位"
+        assert default_key.endswith("ptall")
+
+    @pytest.mark.asyncio
+    async def test_author_archive_includes_every_type(
+        self, client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        """作者归档页读的就是这条口（`?author=`），它也不能只认内置类型。"""
+        key = _key()
+        custom = _slug()
+        await _seed_post(db_session, test_user.id, slug=custom, post_type=key)
+
+        rows = await _list_slugs(client, author=test_user.username)
+        assert rows.get(custom) == key
+
+    @pytest.mark.asyncio
+    async def test_author_with_only_custom_type_stays_in_sitemap(
+        self, client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        """作者归档清单与子表 lastmod 用的那条分组查询也不能只看内置类型。
+
+        `test_user` 在这个用例里**只**发过一篇自定义类型文章：他的 /authors/<u>
+        有真实内容（列表口现在按全部类型供数据），却被旧的硬过滤整条漏出 sitemap，
+        等于让爬虫永远找不到这个归档页；同一条查询还喂 taxonomies 子表的
+        `<lastmod>`，漏掉时索引里那一行要么没有 lastmod、要么停在更早的文章上。
+        """
+        key = _key()
+        await _seed_post(db_session, test_user.id, slug=_slug(), post_type=key)
+
+        response = await client.get("/api/blog/sitemap-taxonomies.xml")
+        assert response.status_code == 200, response.text
+        assert f"/authors/{test_user.username}" in response.text
+
+        lastmod = await _sitemap_taxonomy_lastmod(db_session)
+        assert lastmod is not None, "站点只有自定义类型文章时 taxonomies 子表不该没有 lastmod"
+
+    @pytest.mark.asyncio
+    async def test_ghost_type_cannot_empty_the_default_list(
+        self, client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        """先打一发不存在的类型（结果为空页，且这条空页被写进缓存），再打默认列表。
+
+        默认列表必须照常有条目——判别位进了键位才是这样。
+        """
+        custom = _slug()
+        await _seed_post(db_session, test_user.id, slug=custom, post_type=_key())
+
+        poison = await client.get(
+            "/api/blog/posts", params={"lang": "zh", "post_type": "__ghost__"}
+        )
+        assert poison.status_code == 200, poison.text
+        assert _payload(poison.json())["items"] == [], "前置条件：不存在的类型确实查出空页"
+
+        assert custom in await _list_slugs(client)
+
+    @pytest.mark.asyncio
+    async def test_author_added_after_custom_type_published_is_listed(
+        self, client: AsyncClient, db_session: AsyncSession, test_user
+    ):
+        """反面证据：sitemap 的那条分组查询一旦被改回只看内置类型，这条必须红。
+
+        上面那条用例让作者只发过自定义稿，只测到"作者条目在不在清单里"；这里让作者
+        **先**有一篇内置旧稿（分组查询照旧命中他，清单断言恒真），随后才发出新稿——
+        子表 `<lastmod>` 取的是这条分组查询的 `max(published_at)`，带旧过滤时它停在
+        两天前的内置稿上，而不是新稿。时间差刻意拉到 2 天：`_iso8601` 只到秒，
+        同一秒内发的两篇会给出相同的 lastmod（假通过 / 假失败都可能）。
+        """
+        key = _key()
+        await _seed_post(
+            db_session,
+            test_user.id,
+            slug=_slug(),
+            published_at=datetime.now(UTC) - timedelta(days=2),
+        )
+        custom = await _seed_post(db_session, test_user.id, slug=_slug(), post_type=key)
+
+        response = await client.get("/api/blog/sitemap-taxonomies.xml")
+        assert f"/authors/{test_user.username}" in response.text
+
+        lastmod = await _sitemap_taxonomy_lastmod(db_session)
+        assert lastmod == _iso8601(custom.published_at), (
+            "taxonomies 子表 lastmod 没跟上自定义类型稿的发布时间——那条分组查询又在只看内置类型"
+        )

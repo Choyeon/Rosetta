@@ -9,7 +9,7 @@
      生成的 key 不一定能写进 payload，客户端 hydration 会拿到 undefined 且不会自动重试。
      重新请求由那个 import.meta.client 守卫的 watch 集中触发 —— SSR 首屏由 useFetch 自动完成。
   3. syncUrl 的查询串就是地址栏的真实状态：分页写成 /posts?page=N 必须由 canonical 体现，
-     而 search / category / sort 是同一份列表的视图变体，规范地址统一收敛到裸路径
+     而 search / category / sort / post_type 是同一份列表的视图变体，规范地址统一收敛到裸路径
      （见 useSeo 的 CANONICAL_QUERY_KEYS），否则每个筛选组合都是一个可收录的重复页。
 -->
 <template>
@@ -69,6 +69,52 @@
                     class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-muted-foreground text-start"
                   >
                     <span class="truncate">{{ t('posts.selectCategory') }}</span>
+                    <ChevronDown class="size-4 opacity-50 shrink-0" />
+                  </button>
+                </template>
+              </ClientOnly>
+            </div>
+            <div
+              v-if="hasTypeFilter"
+              class="md:w-44"
+            >
+              <!-- 内容类型筛选：后端不传 post_type = 全部类型（自定义类型的文章也在内），
+                   所以这里改的是"只看某一种"，缺省项必须真的是"全部"而不是内置 post。 -->
+              <ClientOnly>
+                <Select
+                  v-model="selectedType"
+                  @update:model-value="handleFilter"
+                >
+                  <SelectTrigger
+                    class="h-10"
+                    :aria-label="t('posts.selectType')"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem :value="ALL_TYPES">
+                      {{ t('posts.allTypes') }}
+                    </SelectItem>
+                    <SelectItem value="post">
+                      {{ t('posts.typePost') }}
+                    </SelectItem>
+                    <SelectItem
+                      v-for="ct in contentTypes"
+                      :key="ct.key"
+                      :value="ct.key"
+                    >
+                      {{ ct.name }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <template #fallback>
+                  <button
+                    type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-muted-foreground text-start"
+                  >
+                    <span class="truncate">{{ t('posts.selectType') }}</span>
                     <ChevronDown class="size-4 opacity-50 shrink-0" />
                   </button>
                 </template>
@@ -294,6 +340,7 @@ import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import type { Category, Post, PaginatedResponse } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
+import { parseContentTypes } from '~~/composables/useContentTypes'
 import { useI18n } from 'vue-i18n'
 import { Search, Filter, ChevronLeft, ChevronRight, List, X, RefreshCw, ChevronDown } from '~~/lib/lucide-svg-icons'
 import { pageWindow } from '~~/lib/pagination'
@@ -326,6 +373,7 @@ useBreadcrumbJsonLd([
 ])
 
 const ALL_CATEGORIES = '__all'
+const ALL_TYPES = '__all'
 // 每页条数来自后台「阅读体验」分组；未保存过该分组时沿用 9（3 列网格 × 3 行）
 const pageSize = computed(() => site.reading.value.posts_per_page)
 
@@ -334,11 +382,15 @@ const pageSize = computed(() => site.reading.value.posts_per_page)
 const searchInput = ref((route.query.search as string) || '')
 const searchQuery = ref((route.query.search as string) || '')
 const selectedCategory = ref((route.query.category as string) || '')
+const selectedType = ref((route.query.post_type as string) || ALL_TYPES)
 const sortBy = ref<'latest' | 'popular'>(route.query.sort === 'popular' ? 'popular' : 'latest')
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 
 const hasActiveFilter = computed(
-  () => searchQuery.value !== '' || (selectedCategory.value !== '' && selectedCategory.value !== ALL_CATEGORIES)
+  () =>
+    searchQuery.value !== ''
+    || (selectedCategory.value !== '' && selectedCategory.value !== ALL_CATEGORIES)
+    || selectedType.value !== ALL_TYPES
 )
 
 // ===== 地址栏同步用的查询串（canonical 由 useSeo 单源产出，见文件头契约 1/3）=====
@@ -348,10 +400,23 @@ const canonicalQuery = computed(() => {
   if (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) {
     q.category = selectedCategory.value
   }
+  if (selectedType.value && selectedType.value !== ALL_TYPES) {
+    q.post_type = selectedType.value
+  }
   if (searchQuery.value) q.search = searchQuery.value
   if (sortBy.value !== 'latest') q.sort = sortBy.value
   return q
 })
+
+// 内容类型筛选入口只在"确实定义过自定义类型"的站点出现：一个永远只有「全部 / 标准文章」
+// 两项的下拉框，等于在筛选行里摆一个不改变任何结果的控件。
+// 定义口是匿名公开 + 后端 300s 缓存，与文章详情页读的是同一份；取不到就当没有类型可筛。
+const { data: contentTypesRaw } = useAPI<unknown>('/content-types', {
+  key: 'content-types:public',
+  default: () => []
+})
+const contentTypes = computed(() => parseContentTypes(contentTypesRaw.value))
+const hasTypeFilter = computed(() => contentTypes.value.length > 0)
 
 // 分类键与 AppFooter / 首页 / categories 页共用同一把 `blog:categories:<locale>`：
 // Nuxt 按 key 全局去重，同页只发一条 /blog/categories；页脚常驻布局，跨页也复用。
@@ -394,6 +459,7 @@ const { data, pending, error: loadError, refresh } = useAPI<PaginatedResponse<Po
     page: currentPage.value,
     page_size: pageSize.value,
     category: (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) ? selectedCategory.value : undefined,
+    post_type: (selectedType.value && selectedType.value !== ALL_TYPES) ? selectedType.value : undefined,
     search: searchQuery.value || undefined,
     // 后端对未知取值回退 latest，这里同样只发白名单值
     sort: sortBy.value === 'popular' ? 'popular' : undefined
@@ -478,6 +544,7 @@ const clearFilters = () => {
   searchInput.value = ''
   searchQuery.value = ''
   selectedCategory.value = ''
+  selectedType.value = ALL_TYPES
   currentPage.value = 1
   syncUrl()
 }
