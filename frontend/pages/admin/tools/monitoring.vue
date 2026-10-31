@@ -147,6 +147,13 @@
             独立 IP（今日）{{ fmtNumber(visits?.unique_ips_today) }} ·
             环比 <span :class="growthTone">{{ fmtGrowth(visits?.growth) }}</span>
           </p>
+          <!-- /stats 的 requests 段：同一时刻的进程快照，与上面的访问日志窗口是两个源。
+               延迟取环形缓冲（最近一万条），冷启动是 0 而不是"没有请求"。 -->
+          <p class="text-xs text-muted-foreground">
+            进程快照：累计 {{ fmtNumber(stats?.requests?.total_requests) }} 条 ·
+            今日 {{ fmtNumber(stats?.requests?.today_requests) }} 条 ·
+            缓冲平均延迟 {{ round2(stats?.requests?.avg_latency_ms) }} ms（仅最近一万条，重启即空）
+          </p>
         </div>
 
         <div
@@ -234,10 +241,11 @@
             <div
               v-for="row in historyRows"
               :key="row.label"
-              class="grid grid-cols-5 gap-2 text-sm tabular-nums items-center"
+              class="grid grid-cols-6 gap-2 text-sm tabular-nums items-center"
             >
               <span class="text-muted-foreground text-xs">{{ row.label }}</span>
               <span>均值 {{ round2(row.avg) }} ms</span>
+              <span>P50 {{ round2(row.p50) }} ms</span>
               <span>P95 {{ round2(row.p95) }} ms</span>
               <span>错误 {{ fmtNumber(row.errors) }}</span>
               <span :class="Number(row.error_rate) > 1 ? 'text-destructive' : ''">
@@ -327,6 +335,15 @@
             label="命中率"
             :value="cacheStats?.metrics?.hit_rate"
             unit="%"
+          />
+          <MetricCell
+            label="未命中率"
+            :value="cacheStats?.metrics?.miss_rate"
+            unit="%"
+          />
+          <MetricCell
+            label="累计命令数"
+            :value="cacheStats?.metrics?.total_commands_processed"
           />
           <MetricCell
             label="内存占用"
@@ -427,6 +444,7 @@ type StatsShape = {
   timestamp?: string
   cache?: { type?: string, connected?: boolean }
   database?: { users_count?: number, posts_count?: number, published_posts_count?: number, comments_count?: number, active_comments_count?: number }
+  requests?: { total_requests?: number, today_requests?: number, avg_latency_ms?: number }
 }
 type VisitsShape = {
   total?: number
@@ -453,6 +471,7 @@ type LatencyShape = {
 }
 type PerfSummaryShape = Partial<Record<'last_24h' | 'last_7d', {
   avg_response_time_ms?: number
+  p50_response_time_ms?: number
   p95_response_time_ms?: number
   error_count?: number
   error_rate?: number
@@ -462,7 +481,7 @@ type CacheShape = {
   type?: string
   connected?: boolean
   error?: string
-  metrics?: { total_keys?: number, hit_rate?: number, used_memory_human?: string, connected_clients?: number }
+  metrics?: { total_keys?: number, hit_rate?: number, miss_rate?: number, used_memory_human?: string, connected_clients?: number, total_commands_processed?: number }
 }
 type TrendsShape = { posts?: DayCount[], comments?: DayCount[], users?: DayCount[], visits?: DayCount[] }
 
@@ -552,8 +571,8 @@ const historyRows = computed(() => {
   const h = perfSummary.value?.last_24h
   const d = perfSummary.value?.last_7d
   return [
-    { label: '24 小时', avg: h?.avg_response_time_ms, p95: h?.p95_response_time_ms, errors: h?.error_count, error_rate: h?.error_rate },
-    { label: '7 天', avg: d?.avg_response_time_ms, p95: d?.p95_response_time_ms, errors: d?.error_count, error_rate: d?.error_rate }
+    { label: '24 小时', avg: h?.avg_response_time_ms, p50: h?.p50_response_time_ms, p95: h?.p95_response_time_ms, errors: h?.error_count, error_rate: h?.error_rate },
+    { label: '7 天', avg: d?.avg_response_time_ms, p50: d?.p50_response_time_ms, p95: d?.p95_response_time_ms, errors: d?.error_count, error_rate: d?.error_rate }
   ]
 })
 

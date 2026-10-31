@@ -854,7 +854,7 @@ pnpm test          # 全绿（108 个 spec 文件；1762 用例，2026-10-29 本
   留言板和文章不能共用一句"可恢复"（判据在 `isGuestbook` 分支，或直接采用服务端 `message`）。
 - **只读指标端点也要有消费方**：`/api/monitoring/*` 曾八条全部零消费者——后端一直在算，后台一个都看不到。
   接线口径由 `frontend/tests/unit/monitoringEndpointsWired.spec.ts` 按「后端 `@router.get` 声明集 ⇔ 页面
-  `section()` 请求集」集合相等钉住。三条该接口族特有的读数诚信（写进 `pages/admin/tools/monitoring.vue` 头注释）：
+  `section()` 请求集」集合相等钉住。**路由对账看不见"同一条口里的某几个键没人读"**：`/stats` 的 `requests` 三键、`/performance/summary` 的 `p50_response_time_ms`、`/cache` 的 `miss_rate` 与 `total_commands_processed` 曾整段是死投影，由 `frontend/tests/unit/monitoringUndisplayedMetrics.spec.ts` 按「后端声明 ⇔ 页面 `type ...Shape` ⇔ 模板真实消费点」三处同时钉住（批次 #149）。三条该接口族特有的读数诚信（写进 `pages/admin/tools/monitoring.vue` 头注释）：
   ① `/performance` 是**进程内环形缓冲**（重启即空、无样本时不回 `sample_count` 键，必须按键存在性区分"没样本"
   与"0ms"），与 `/performance/summary` 的**访问日志窗口**（跨重启）不能混算也不能同一个标题混排；
   ② `visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days < 窗口天数` 时读数只是**下界**，
