@@ -860,6 +860,15 @@ pnpm test          # 全绿（108 个 spec 文件；1762 用例，2026-10-29 本
   ② `visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days < 窗口天数` 时读数只是**下界**，
   必须同时用 `retention_days` 与 `data_since` 标注；③ `/database` 的 `database_url` 是掩码连接串，
   **掩码不等于可公开**，不得上屏（守卫只查 `<template>` 区，文件头注释可以提它）。
+- **前端读一个后端从未声明的字段，与"没接通"同罪**：`frontend/lib/navigation.ts` 曾按
+  `row.link_type === 'page'` 决定"独立页按 slug 挂链接"、按 `raw.is_external === true` 判外链，
+  而 `/navigations` 的 `NavigationBase` / `NavigationResponse` 只有
+  `title / url / icon / parent_id / location / order / is_active / target_blank`（后端全仓 grep 这两个字段名零命中）。
+  恒假读的危害不是报错，是**代码在撒谎**：那条 page 分支看着支持一种配置方式、运营者怎么填都不生效；
+  外链判定看着允许"内部路径也当外链"、实际只认 scheme。批次 #150 拆掉两个读取点与类型声明，由
+  `frontend/tests/unit/navigationDeadDiscriminators.spec.ts` 三处钉住（lib 不再属性访问、`NavApiRow` 不再声明、
+  后端导航 schema 反向钉住不得新增），并断言拆除前后 `/page/<slug>`、纯 slug、`target_blank` 三类真实行为一致。
+  新写一个"响应里可能有的字段"前先 grep 后端 schema，不要在前端补一条永远走不到的分支。
 - **取数失败按段隔离**：多端点页面用 `Promise.all` + 每段自己的 `silentToast: true` 错误串，
   一段挂掉不清空整页读数（`apiFetch` 不静默就会与页内 banner 双报）。取数函数带泛型实参
   （`section<LatencyShape>(…)`）：不传时 `T` 推断成 `unknown`，赋给 typed ref 就是整排 TS2322。

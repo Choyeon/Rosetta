@@ -38,8 +38,6 @@ export interface NavApiRow {
   href?: string
   path?: string
   slug?: string
-  link_type?: string
-  is_external?: boolean
   target?: string
   target_blank?: boolean
   /** 菜单图标（heroicons 名 / emoji / 纯文本），解析与降级在 DynamicIcon。 */
@@ -60,13 +58,13 @@ export function isNavActive(currentPath: string, to: string): boolean {
  * — 历史兼容：旧 Astro 站点和老数据会保存 "/page/about"、"/page/guestbook"
  *   等带 "/page/" 前缀的路径。Nuxt 前端静态页位于 pages/about.vue、
  *   pages/guestbook.vue 等（不含前缀）。需要移除前缀才能命中真实路由。
- * — 独立页 slug：当 link_type==="page" 且字段含 slug 时，按 "/<slug>" 归一化。
+ * — 独立页没有第二个判别位：`/navigations` 的响应里既没有 `link_type` 也没有 `is_external`
+ *   （后端 `NavigationBase` / `NavigationResponse` 从未声明它们，批次 #150 拆掉的是这两个恒假读），
+ *   所以 "/page/<slug>" 与直接存 "/<slug>" 两种写法都只靠上面折前缀那一条归一。
  * — 末尾 "/"：除首页 "/" 外统一去重，避免 "/posts/" 和 "/posts" 被视为不同激活。
  */
 export function normalizeNavRowUrl(row: NavApiRow): string {
-  const picked = row.link_type === 'page' && row.slug
-    ? `/${String(row.slug).replace(/^\/+/, '')}`
-    : String(row.to ?? row.url ?? row.href ?? row.path ?? row.slug ?? '').trim()
+  const picked = String(row.to ?? row.url ?? row.href ?? row.path ?? row.slug ?? '').trim()
   if (!picked) return ''
   if (/^https?:\/\//i.test(picked)) return picked
 
@@ -122,7 +120,7 @@ export function navRowsToLinks(
     if (!label) continue
     const to = normalizeNavRowUrl(raw)
     if (!to) continue
-    const external = /^https?:\/\//i.test(to) || raw.is_external === true || raw.link_type === 'external'
+    const external = /^https?:\/\//i.test(to)
     if (external && !includeExternal) continue
     const link: NavLink = { label, to }
     if (isBlankTarget(raw)) link.target = '_blank'
