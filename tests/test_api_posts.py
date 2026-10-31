@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from backend.models.blog import Category, Post, Tag
 from backend.models.user import User
@@ -302,6 +303,58 @@ class TestPostCreate:
             },
         )
         assert response.status_code in [200, 201]
+
+    @pytest.mark.asyncio
+    async def test_create_post_with_tags_roundtrip(
+        self,
+        client: AsyncClient,
+        admin_headers: dict,
+        test_tag: Tag,
+        db_session: AsyncSession,
+    ):
+        """带标签新建文章必须 201，并且标签真的落库、响应里带得回来。
+
+        create_post 曾在 flush + refresh **之后**才碰 post.tags：`refresh` 把集合标成过期，
+        于是 `clear()` 与 `= []`（多对多赋值要先取旧集合算差量）都会在事件循环里发隐式 IO，
+        异步会话直接 `MissingGreenlet` → 编辑器「勾选标签再保存」每次 500。
+        PUT 路径同一段代码却没事——它的 SELECT 带 `selectinload(Post.tags)`，集合一开始就是
+        已加载态，所以这条缺陷只在"新建"这一侧存在，而既有套件从未 POST 过带 tag_ids 的载荷。
+        """
+        tagged = Tag(
+            name={"zh": "带图标", "en": "With icon"},
+            slug="tagged-create-tag",
+            color="#0ea5e9",
+            icon="🐍",
+            is_active=True,
+        )
+        db_session.add(tagged)
+        await db_session.commit()
+        await db_session.refresh(tagged)
+
+        response = await client.post(
+            "/api/blog/posts",
+            headers=admin_headers,
+            json={
+                "title": {"zh": "带标签新文章"},
+                "slug": "tagged-create",
+                "content": {"zh": "内容"},
+                "tag_ids": [test_tag.id, tagged.id],
+                "status": "published",
+            },
+        )
+        assert response.status_code == 201, response.text
+        body = response.json()
+        assert sorted(t["slug"] for t in body["tags"]) == ["python", "tagged-create-tag"]
+        # 标签图标随响应回来（后台表单与公开渲染面读的就是这一份）
+        icons = {t["slug"]: t.get("icon") for t in body["tags"]}
+        assert icons["tagged-create-tag"] == "🐍"
+
+        stored = (
+            await db_session.execute(
+                select(Post).options(selectinload(Post.tags)).where(Post.slug == "tagged-create")
+            )
+        ).scalar_one()
+        assert sorted(t.slug for t in stored.tags) == ["python", "tagged-create-tag"]
 
     @pytest.mark.asyncio
     async def test_create_post_unauthorized(self, client: AsyncClient):

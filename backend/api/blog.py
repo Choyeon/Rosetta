@@ -1500,6 +1500,15 @@ async def create_post(
         if scheduled_at_value <= datetime.now(UTC):
             status_value = "published"
 
+    # 标签必须在 add/flush 之前挂上新对象：`db.refresh()` 之后 `post.tags` 是过期集合，
+    # 再读它（`clear()`）或再写它（`= []`，多对多的赋值要先取旧集合算差量）都会在事件循环里
+    # 触发隐式 IO → `MissingGreenlet` → 带标签的新文章直接 500（线上实测：编辑器保存即报错，
+    # 而 PUT 路径没事——它的 SELECT 带 selectinload(Post.tags)，集合一开始就是加载态）。
+    tag_list = []
+    if post_data.tag_ids:
+        tags = await db.execute(select(Tag).where(Tag.id.in_(post_data.tag_ids)))
+        tag_list = list(tags.scalars().all())
+
     post = Post(
         title=post_data.title,
         subtitle=post_data.subtitle,
@@ -1526,6 +1535,7 @@ async def create_post(
         post_type=post_type,
         meta_fields=meta_fields,
         reading_time=compute_reading_time_from_content(post_data.content),
+        tags=tag_list,
     )
 
     if status_value == "published":
@@ -1537,17 +1547,6 @@ async def create_post(
     db.add(post)
     await db.flush()
     await db.refresh(post)
-
-    if post_data.tag_ids:
-        tags = await db.execute(select(Tag).where(Tag.id.in_(post_data.tag_ids)))
-        tag_list = list(tags.scalars().all())
-        try:
-            post.tags.clear()
-        except Exception:
-            post.tags = []
-        post.tags.extend(tag_list)
-        await db.flush()
-        await db.refresh(post)
 
     # 新章节直接进公开目录：同系列其它篇缓存里的 post_count 与 prev/next 当场失真。
     # 草稿 / 定时稿不算进目录，多清一次只是多一次 SELECT；漏清则是 600s 内卡片章数少一篇。
