@@ -9,8 +9,11 @@
      生成的 key 不一定能写进 payload，客户端 hydration 会拿到 undefined 且不会自动重试。
      重新请求由那个 import.meta.client 守卫的 watch 集中触发 —— SSR 首屏由 useFetch 自动完成。
   3. syncUrl 的查询串就是地址栏的真实状态：分页写成 /posts?page=N 必须由 canonical 体现，
-     而 search / category / sort / post_type 是同一份列表的视图变体，规范地址统一收敛到裸路径
+     而 search / category / sort / post_type / media 是同一份列表的视图变体，规范地址统一收敛到裸路径
      （见 useSeo 的 CANONICAL_QUERY_KEYS），否则每个筛选组合都是一个可收录的重复页。
+  4. 分页锚点的 href 与地址栏共用同一个不带页码的 filterQuery（模板注释解释了 href 为什么必须是真实
+     <a>）。两串分开写的表现是「SPA 里点分页筛选还在，右键新标签 / 复制链接 / 爬虫读到的 href 却把
+     筛选整批丢掉」，越界 301 也一并落回「同一筛选的第 1 页」而不是全量列表。
 -->
 <template>
   <div class="container py-16">
@@ -440,10 +443,12 @@ const hasActiveFilter = computed(
     || selectedMedia.value !== ALL_MEDIA
 )
 
-// ===== 地址栏同步用的查询串（canonical 由 useSeo 单源产出，见文件头契约 1/3）=====
-const canonicalQuery = computed(() => {
+// ===== 地址栏同步用的查询串（canonical 由 useSeo 单源产出，见文件头契约 1/3/4）=====
+// 不带页码的筛选串是**唯一**一份：syncUrl、分页锚点 pageHref、越界页码 301 的目标三处都从它派生。
+// 分成三份写的下场就是每加一个筛选要记得改三处，漏掉的那处表现为「地址栏看着筛了、
+// 右键新标签打开却是全部文章」。
+const filterQuery = computed(() => {
   const q: Record<string, string> = {}
-  if (currentPage.value > 1) q.page = String(currentPage.value)
   if (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) {
     q.category = selectedCategory.value
   }
@@ -453,6 +458,12 @@ const canonicalQuery = computed(() => {
   if (searchQuery.value) q.search = searchQuery.value
   if (sortBy.value !== 'latest') q.sort = sortBy.value
   if (selectedMedia.value !== ALL_MEDIA) q.media = selectedMedia.value
+  return q
+})
+
+const canonicalQuery = computed(() => {
+  const q = { ...filterQuery.value }
+  if (currentPage.value > 1) q.page = String(currentPage.value)
   return q
 })
 
@@ -527,8 +538,16 @@ const visiblePages = computed(() => pageWindow(currentPage.value, totalPages.val
 
 // 分页锚点（爬虫可达的链接图；口径见模板注释）。当前页渲染成不可点 span，
 // 首/末页的 prev/next 渲染成 disabled Button，其余形态都是 <a href>。
-const pageHref = (page: number) =>
-  `${applyLocalePrefix('/posts', locale.value)}?page=${page}`
+// href 必须带齐当前筛选：SPA 点击走 handlePageChange 不受影响，右键新标签、
+// 复制链接与爬虫读的却是这个 href——只写 ?page=N 的话，「只看含音频」的第 2 页
+// 在新标签里会变成全量文章的第 2 页，筛选整批静默丢失。
+const listHref = (query: Record<string, string>) => {
+  const base = applyLocalePrefix('/posts', locale.value)
+  const params = new URLSearchParams(query)
+  const qs = params.toString()
+  return qs ? `${base}?${qs}` : base
+}
+const pageHref = (page: number) => listHref({ ...filterQuery.value, page: String(page) })
 const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
   buttonVariants({ variant, size: 'icon' })
 
@@ -539,8 +558,10 @@ watch([total, currentPage], () => {
   if (currentPage.value > totalPages.value) currentPage.value = totalPages.value
 })
 
-// 越界页码（?page=9999）对爬虫必须 301 回裸列表页：留 200 会被判 soft 404，
+// 越界页码（?page=9999）对爬虫必须 301 回列表页：留 200 会被判 soft 404，
 // 且 canonical 自指越界参数等于承认每个垃圾页码都是独立页面。
+// 跳转目标带齐当前筛选：用户筛到第 9999 页时把他扔回**全量**列表，等于顺手清了筛选，
+// 正确的落点是「同一个筛选的第 1 页」。
 // 时点与 useContentStatus 同轨（app:rendered：数据已落值、状态码还改得动）；
 // 响应头必须 no-store，否则 301 会被本页 swr 缓存进旧目标。
 if (import.meta.server) {
@@ -552,7 +573,7 @@ if (import.meta.server) {
       && Math.max(1, Number(route.query.page) || 1) > totalPages.value
     ) {
       ssrEvent.node.res.statusCode = 301
-      ssrEvent.node.res.setHeader('location', applyLocalePrefix('/posts', locale.value))
+      ssrEvent.node.res.setHeader('location', listHref(filterQuery.value))
       ssrEvent.node.res.setHeader('cache-control', 'no-store')
     }
   })

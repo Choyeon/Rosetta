@@ -262,6 +262,18 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    回访保序靠 `rosetta_lang` cookie + `middleware/locale-prefix.global.client.ts`，且该中间件
    **不改写裸 `/`**（它是默认语言首页、也是 `x-default` 指的位置）；语言入口是顶栏与页脚切换器，
    两者都必须 `setLocale` 后跳到前缀化的同页 URL，只 `setLocale` 等于内容与地址栏的语言互相判逆。
+7. **带筛选的列表页，分页锚点必须与地址栏共用同一份筛选串**（批次 #124）。`/posts` 的筛选有五个
+   （`category` / `post_type` / `search` / `sort` / `media`），而分页锚点是真实 `<a href>`（第 2 条：
+   SSR 里的 href 是爬虫能读到的唯一链接图）。口径是 `pages/posts/index.vue` 抽一份**不带页码**的
+   `filterQuery`，`pageHref`（锚点）、`canonicalQuery`（地址栏 syncUrl，只在此之上叠 `page`）、越界
+   301 的跳转目标三处都从它派生——与 `pages/activity.vue` 的 `queryWith`/`hrefWith`、`pages/search.vue`
+   的 `{ ...urlQuery.value, page }` 同构。**两个消费点各写一遍筛选串就是缺陷**：锚点漏筛选时，用户
+   "把筛过的第 2 页发给同事"实际发出去的是全量第 2 页，爬虫从筛选页能发现的也只有全量页码；而点击
+   走 `@click.prevent`，SPA 用户看不出任何异常。301 必须落到**同一筛选的第 1 页**而不是裸路径，
+   否则跳转本身就在丢状态。**这条与 canonical 无关**：筛选是视图变体，按第 3 条永不进 canonical，
+   "进 href 是链接图、进 canonical 是重复页"是两件事。守卫 `frontend/tests/unit/postsPaginationLinks.spec.ts`
+   （`pageHref` 由 `filterQuery` 派生 + 五个筛选键逐个在场 + 基址走 `applyLocalePrefix` 单源 +
+   负向断言"锚点只写 `?page=`"的旧形态）。
 
 契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
 `contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·
