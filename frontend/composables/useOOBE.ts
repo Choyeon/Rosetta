@@ -870,8 +870,6 @@ export const useOOBE = () => {
     enableRegistration?: boolean
     enableRss?: boolean
     enableBingWallpaper?: boolean
-    enablePagefindSearch?: boolean
-    enableMusicPlayer?: boolean
   }) => {
     loading.value = true
     error.value = null
@@ -971,8 +969,6 @@ export const useOOBE = () => {
         enableRegistration?: boolean
         enableRss?: boolean
         enableBingWallpaper?: boolean
-        enablePagefindSearch?: boolean
-        enableMusicPlayer?: boolean
       }
       interface OOBEAdminUser {
         username?: string
@@ -1031,8 +1027,6 @@ export const useOOBE = () => {
         enable_registration: siteSettings.enableRegistration ?? false,
         enable_rss: siteSettings.enableRss ?? true,
         enable_bing_wallpaper: siteSettings.enableBingWallpaper ?? true,
-        enable_pagefind_search: siteSettings.enablePagefindSearch ?? true,
-        enable_music_player: siteSettings.enableMusicPlayer ?? true,
         environment: (siteSettings.environment as 'development' | 'production') || 'development'
       }
 

@@ -264,7 +264,6 @@ export interface OOBEInstallRequest {
   enable_registration?: boolean
   enable_rss?: boolean
   enable_bing_wallpaper?: boolean
-  enable_music_player?: boolean
   environment?: 'development' | 'production'
 }
 

@@ -122,8 +122,6 @@ class CombinedInstallRequest(BaseModel):
     enable_registration: bool = True
     enable_rss: bool = True
     enable_bing_wallpaper: bool = True
-    enable_pagefind_search: bool = True
-    enable_music_player: bool = True
 
     environment: Literal["development", "production"] = "production"
 
@@ -1127,8 +1125,6 @@ async def _run_combined_install(req: CombinedInstallRequest):
         full_config.update(
             {
                 "enable_bing_wallpaper": req.enable_bing_wallpaper,
-                "enable_pagefind_search": req.enable_pagefind_search,
-                "enable_music_player": req.enable_music_player,
                 "footer_text": "",
                 "default_cover_image": "",
             }
@@ -1200,8 +1196,6 @@ async def _run_combined_install(req: CombinedInstallRequest):
                 "启用RSS",
             ),
             ("enable_bing_wallpaper", str(req.enable_bing_wallpaper).lower(), "启用Bing壁纸"),
-            ("enable_pagefind_search", str(req.enable_pagefind_search).lower(), "启用Pagefind搜索"),
-            ("enable_music_player", str(req.enable_music_player).lower(), "启用音乐播放器"),
             ("default_cover_image", full_config["default_cover_image"], "默认封面图"),
             # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐，避免前端 fallback 为 ROSETTA 示例文案
             (
@@ -1220,7 +1214,6 @@ async def _run_combined_install(req: CombinedInstallRequest):
                 full_config.get("author_links_json", "[]") or "[]",
                 "作者社交链接",
             ),
-            ("enable_pio", "false", "启用看板娘(Pio)"),
         ]
         await _broadcast_progress(steps[3][0], f"正在{steps[3][1]}...", max(0, _pct(3) - 6))
         async with async_session_maker() as session:

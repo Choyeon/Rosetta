@@ -1303,20 +1303,6 @@
                           </div>
                           <Switch v-model="siteForm.enableBingWallpaper" />
                         </label>
-                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors sm:col-span-2 text-foreground">
-                          <div>
-                            <div class="text-sm font-medium">{{ t('oobe.fPagefind', '站内搜索') }}</div>
-                            <div class="text-xs text-foreground/70">{{ t('oobe.fPagefindDesc', '启用 Pagefind 客户端全文搜索') }}</div>
-                          </div>
-                          <Switch v-model="siteForm.enablePagefindSearch" />
-                        </label>
-                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors sm:col-span-2 text-foreground">
-                          <div>
-                            <div class="text-sm font-medium">{{ t('oobe.fMusic', '背景音乐播放器') }}</div>
-                            <div class="text-xs text-foreground/70">{{ t('oobe.fMusicDesc', '侧边栏显示音乐播放组件（需在后台配置播放源）') }}</div>
-                          </div>
-                          <Switch v-model="siteForm.enableMusicPlayer" />
-                        </label>
                       </div>
                     </div>
 
@@ -2522,8 +2508,6 @@ interface SiteForm {
   enableRegistration: boolean
   enableRss: boolean
   enableBingWallpaper: boolean
-  enablePagefindSearch: boolean
-  enableMusicPlayer: boolean
 }
 const siteForm = reactive<SiteForm>({
   name: 'Rosetta',
@@ -2546,9 +2530,7 @@ const siteForm = reactive<SiteForm>({
   enableComments: true,
   enableRegistration: false,
   enableRss: true,
-  enableBingWallpaper: true,
-  enablePagefindSearch: true,
-  enableMusicPlayer: true
+  enableBingWallpaper: true
 })
 
 const isProductionEnv = computed({
@@ -3060,9 +3042,7 @@ const nextStep = async () => {
         enableComments: siteForm.enableComments,
         enableRegistration: siteForm.enableRegistration,
         enableRss: siteForm.enableRss,
-        enableBingWallpaper: siteForm.enableBingWallpaper,
-        enablePagefindSearch: siteForm.enablePagefindSearch,
-        enableMusicPlayer: siteForm.enableMusicPlayer
+        enableBingWallpaper: siteForm.enableBingWallpaper
       })
       // 离开 Step3 前跑一次服务端预检：把「提交后被 422 弹回」提前成「当场指出哪一格有问题」。
       // 预检是只读干跑，失败（后端未就绪）时 runPreflight 返回 true 放行，不阻断。

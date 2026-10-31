@@ -373,6 +373,24 @@
      以及 ZIP 导出/导入对密文的原样往返都保留（历史备份里可能有密文，删表是另一项独立工程）。
      退役前置探针实测 `encryption_enabled=true` 与 `encrypted_content` 非空的行数都是 0。
      守卫 `tests/test_retired_post_crypto_family_is_gone.py`（含"活路径不得被一起删掉"的两侧断言）。
+   - **OOBE 幽灵开关**（**2026-10-31 已退役**，不是待接缺口）：`enable_pagefind_search`（站内搜索）、
+     `enable_music_player`（背景音乐播放器）、`enable_pio`（看板娘）三把开关在向导/接口层各存在过
+     一段时间——`CombinedInstallRequest` 收键、`.env` 与 SiteConfig 落值、`/api/config` 投影，
+     但全仓没有任何一处判断它们：既没有 Pagefind 索引构建与搜索面（站内搜索走的是
+     `/blog/search` 那条已接通的 SQL 口），也没有播放器组件与看板娘脚本载体。用户关掉它们，
+     站点表现完全不变，这属于「写口收键、读口不回吐」的另一种形态：**值有、判据无**。
+     同批删掉 `backend/core/oobe_constants.py` 的 `FEATURE_FLAGS` / `FEATURE_FLAG_DEFAULTS`
+     十三个键的死清单（追番、动漫、侧边栏组件、公告栏、友链、相册都在里面，零引用）——
+     它不挡任何漂移，只会让下一个人以为这些能力"有清单待接线"，去接一条后端根本不存在的口子。
+     能力开关的真源是 `settings_groups._default_features()`（逐键由
+     `tests/test_settings_group_consumers.py` 钉住消费点）。向导里剩下四把**有实现**的开关
+     （评论 / 注册 / RSS / Bing 壁纸）保持原样，`FEATURE_FLAG_DB_KEY_MAP` 因 RSS 那条改名映射
+     仍在用而保留。守卫 `tests/test_retired_oobe_ghost_flags_are_gone.py`。
+     顺带写清一件容易误判的事：那张旧清单里的「启用友链页面」「启用相册」「启用公告栏」
+     从来没有过写入方，也没有过读取方——友链页、相册页、公告条本身是**活的**（各自有独立的
+     管理模块与公开口），被删的只是那三个凭空存在的开关名。若要把它们做成真正可关的能力，
+     做法是给 features 组加键 + 给公开面加强制点（捐助页批次 #83/#210 是同型先例），
+     而不是照着旧清单去接一条根本不存在的口。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 

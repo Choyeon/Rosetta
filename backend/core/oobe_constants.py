@@ -16,43 +16,13 @@ PASSWORD_DESCRIPTION = f"密码至少 {PASSWORD_MIN_LENGTH} 位"
 EMAIL_PATTERN = r"^[^\s@]+@[^\s@]+\.[^\s@]+$"
 
 # ============ 功能开关字段名 ============
-# 单源真理：所有 feature flag 的 key 在此定义，前后端共用
-FEATURE_FLAGS = {
-    "enable_comments": "启用评论系统",
-    "enable_registration": "启用用户注册",
-    "enable_rss": "启用 RSS 订阅",
-    "enable_bing_wallpaper": "启用 Bing 每日壁纸",
-    "enable_pagefind_search": "启用 Pagefind 站内搜索",
-    "enable_music_player": "启用音乐播放器",
-    "enable_pio": "启用看板娘 (Live2D)",
-    "enable_hero": "启用首页 Hero 区",
-    "enable_announcement": "启用公告栏",
-    "enable_friend_links": "启用友链页面",
-    "enable_sidebar_widgets": "启用侧边栏组件",
-    "enable_gallery": "启用相册",
-    "enable_bangumi": "启用追番页面",
-    "enable_anime": "启用动漫页面",
-}
-
-# 功能开关的默认值
-FEATURE_FLAG_DEFAULTS: dict[str, bool] = {
-    "enable_comments": True,
-    "enable_registration": True,
-    "enable_rss": True,
-    "enable_bing_wallpaper": True,
-    "enable_pagefind_search": True,
-    "enable_music_player": False,
-    "enable_pio": False,
-    "enable_hero": False,
-    "enable_announcement": False,
-    "enable_friend_links": False,
-    "enable_sidebar_widgets": False,
-    "enable_gallery": False,
-    "enable_bangumi": False,
-    "enable_anime": False,
-}
-
-# 功能开关 → 数据库 key 映射（部分 key 在 DB 中名称不同）
+# 这里只留「OOBE 真正写进数据库的 key 名映射」。
+# 曾经还有一份 FEATURE_FLAGS / FEATURE_FLAG_DEFAULTS（十三个开关，含看板娘、追番、动漫、
+# 侧边栏组件、公告栏……），全仓零引用，只有这张表在"声称这些能力存在"。它挡不住任何漂移，
+# 反而让下一个照着清单接线的人去接一条后端根本没有的口子，所以随那几把无实现的假开关
+# 一起退役（前因与边界写在 frontend/docs/API_COVERAGE.md 的「OOBE 幽灵开关」段，
+# 守卫 tests/test_retired_oobe_ghost_flags_are_gone.py）。真正的能力开关清单是
+# settings_groups._default_features()——每一把都有消费点。
 FEATURE_FLAG_DB_KEY_MAP: dict[str, str] = {
     "enable_rss": "enable_rss_feed",
 }

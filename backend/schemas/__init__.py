@@ -1925,8 +1925,6 @@ class SiteConfigResponse(BaseModel):
     enable_toc: bool = True
     # OOBE 种子写的独立能力开关（与 settings_groups 字段并存，保证前端直接可用）
     enable_bing_wallpaper: bool = True
-    enable_pagefind_search: bool = True
-    enable_music_player: bool = True
     # 兼容别名：前端有些地方读 enable_rss（与 enable_rss_feed 等价）
     enable_rss: bool = True
     # 默认封面图（OOBE 种子里写 default_cover_image）

@@ -4076,7 +4076,7 @@ _无路径 / query 参数_
 | comment_giscus_mapping | string | 否 |  |
 | comment_giscus_reactions_enabled | string | 否 |  |
 | comment_giscus_repo | string | 否 |  |
-| … 其余 181 个字段 | | | 见 `/docs` |
+| … 其余 179 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -4168,8 +4168,6 @@ _无路径 / query 参数_
   "enable_dark_mode": true,
   "enable_guestbook": true,
   "enable_like_button": true,
-  "enable_music_player": true,
-  "enable_pagefind_search": true,
   "enable_reading_time": true,
   "enable_registration": true,
   "enable_rss": true,
@@ -13103,8 +13101,6 @@ _无路径 / query 参数_
 | db_user | string | 否 |  |
 | enable_bing_wallpaper | boolean | 否 |  |
 | enable_comments | boolean | 否 |  |
-| enable_music_player | boolean | 否 |  |
-| enable_pagefind_search | boolean | 否 |  |
 | enable_registration | boolean | 否 |  |
 | enable_rss | boolean | 否 |  |
 | environment | enum(`development`, `production`) | 否 |  |
@@ -13139,8 +13135,6 @@ _无路径 / query 参数_
   "db_user": "",
   "enable_bing_wallpaper": true,
   "enable_comments": true,
-  "enable_music_player": true,
-  "enable_pagefind_search": true,
   "enable_registration": true,
   "enable_rss": true,
   "environment": "production",

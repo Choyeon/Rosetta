@@ -153,8 +153,6 @@ async def _main() -> int:
         "enable_registration": _env_bool("ENABLE_REGISTRATION", True),
         "enable_rss": _env_bool("ENABLE_RSS_FEED", True),
         "enable_bing_wallpaper": _env_bool("ENABLE_BING_WALLPAPER", True),
-        "enable_pagefind_search": _env_bool("ENABLE_PAGEFIND_SEARCH", False),
-        "enable_music_player": _env_bool("ENABLE_MUSIC_PLAYER", False),
     }
     req = CombinedInstallRequest(**payload)
 
