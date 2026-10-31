@@ -927,6 +927,13 @@
     "emptyHint": "Add payment QR codes in Admin → Site Settings → Donate to show them here.",
     "donorTitle": "Thanks to these readers"
   },
+  "wallpapers": {
+    "title": "Daily Wallpaper",
+    "desc": "The recent Bing daily wallpaper archive. Images are proxied and cached by this site, and 4K originals can be downloaded directly.",
+    "download": "Download original",
+    "empty": "No wallpaper archive yet",
+    "emptyHint": "The Bing daily wallpaper switch is turned off in Admin site settings, or the upstream returned no images for the last few days."
+  },
   "captcha": {
     "label": "Captcha",
     "placeholder": "Click the image for a new one",
@@ -1041,6 +1048,7 @@
     "authors": "Authors",
     "hot": "Hot Ranking",
     "sponsor": "Sponsor",
+    "wallpapers": "Daily Wallpaper",
     "noCategories": "No categories yet",
     "socialGithub": "GitHub",
     "socialX": "X / Twitter",

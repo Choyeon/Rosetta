@@ -132,3 +132,52 @@ async def default_og_image_url(db=None) -> str:
     if not site_url:
         return path
     return f"{site_url}/{path.lstrip('/')}"
+
+
+BING_WALLPAPER_FLAT_KEY = "ENABLE_BING_WALLPAPER"
+
+
+async def bing_wallpaper_enabled(db=None) -> bool:
+    """Bing 壁纸开关的**合并口径单源**（与 ``/api/config`` 的 ``enable_bing_wallpaper`` 同值）。
+
+    两层，顺序与 ``api/core.py::get_site_config`` 一致：
+
+    1. SiteConfig 扁平键 ``ENABLE_BING_WALLPAPER``——OOBE 向导 / ``auto_oobe`` 写的那份，
+       大小写不敏感、缺省按开、值必须整串等于 ``true`` 才算开（与 ``get_bool`` 同判据）；
+    2. ``features`` 分组里的同名 bool——后台「功能开关」保存后的覆盖，仅在它是真 bool 时生效。
+
+    只读一层必然分叉，两半边都在线上发生过：只读分组 → 从没进过设置页的站点只有 OOBE
+    扁平行，``/api/config`` 按它回 ``false`` 而 sitemap 仍提交 ``/wallpapers``；只读扁平键 →
+    后台关掉开关后页面自己 noindex 了、页脚入口也收了，sitemap 却还在递地址。
+
+    ``db``：口径同 ``read_group``（请求链里必须传请求会话）。读取失败按"开"处理——
+    配置表坏了不该让 sitemap 少一整条 URL，且默认值本来就是开。
+    """
+    from sqlalchemy import func, select
+
+    from backend.core.database import async_session_maker
+    from backend.models.core import SiteConfig
+
+    values: list = []
+    try:
+        stmt = select(SiteConfig.value).where(func.upper(SiteConfig.key) == BING_WALLPAPER_FLAT_KEY)
+        if db is not None:
+            values = list((await db.execute(stmt)).scalars().all())
+        else:
+            async with async_session_maker() as session:
+                values = list((await session.execute(stmt)).scalars().all())
+    except Exception:
+        logger.warning(
+            "[site_settings] %s 读取失败，按开启处理", BING_WALLPAPER_FLAT_KEY, exc_info=True
+        )
+
+    # `select(SiteConfig)` 无 ORDER BY，core.py 的大小写镜像字典是"后出现的行覆盖前面的"，
+    # 这里取同名行的最后一条以保持同一判据。
+    raw = values[-1] if values else "true"
+    enabled = str(raw).strip().lower() == "true"
+
+    features = await read_group("features", db)
+    override = features.get("enable_bing_wallpaper")
+    if isinstance(override, bool):
+        return override
+    return enabled

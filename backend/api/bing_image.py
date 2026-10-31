@@ -1,10 +1,12 @@
 """
-Bing 每日一图代理 + 历史归档（骨架路由）+ 图片流式代理。
+Bing 每日一图代理 + 最近 N 天归档 + 图片流式代理。
 
 说明：
 - ``backend/api/bing.py`` 已有一条主路由（Bing 今日图重定向）；
 - 这里的 ``bing_image`` 是另一条功能增强路由（JSON 详情 + 分辨率选择 + 最近 N 天归档 + 图片代理缓存）。
 二者并存，互不冲突。
+- 归档口的日期只认上游 ``startdate``，外发请求按上游保留窗口（``UPSTREAM_RETENTION_DAYS``）
+  一次批量取回并进服务端缓存，不再逐日串行打上游。
 """
 
 from __future__ import annotations
@@ -14,7 +16,7 @@ import base64
 import hashlib
 import logging
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -24,6 +26,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 from pydantic import BaseModel
 from pydantic import Field as PDField
 
+from backend.core.cache import cache, make_cache_key
 from backend.core.config import settings
 from backend.core.http_client import create_async_client
 from backend.core.net_guard import is_image_mime, validated_get
@@ -34,6 +37,49 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["Bing壁纸"])
 
 BING_WP_BASE = "https://cn.bing.com"
+
+# 上游自己的保留窗口：一次请求最多回这么多条（2026-10-31 线上实测 n=14 也只回 8 条），
+# 而 idx 越过窗口后重复返回最旧那一张（idx=9 与窗口末条同 urlbase）。
+UPSTREAM_RETENTION_DAYS = 8
+# 归档是"每天变一次"的外部数据，无缓存时每个访客每次 SSR 都会串行打 Bing。
+ARCHIVE_CACHE_TTL = 3600
+
+
+def _utc_today_iso() -> str:
+    return datetime.now(timezone.utc).date().isoformat()
+
+
+def _normalize_startdate(raw: object) -> str:
+    """上游 ``startdate``（``YYYYMMDD``）归一成 ``YYYY-MM-DD``；不可解析就回空串。
+
+    日期只认上游给的那一份：服务器本地时区与 Bing 的市场日界并不相同，
+    按 ``date.today() - timedelta(idx)`` 反推会把同一张图标成另一天。
+    """
+    text = str(raw or "").strip()
+    if len(text) != 8 or not text.isdigit():
+        return ""
+    year, month, day = int(text[:4]), int(text[4:6]), int(text[6:])
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return ""
+
+
+def _entry_from_image(image: dict) -> dict | None:
+    """上游一条 image → BingImageOut dict；缺 startdate 或缺 urlbase 的条目返回 None。"""
+    day = _normalize_startdate(image.get("startdate"))
+    base = str(image.get("urlbase") or "")
+    if not day or not base:
+        return None
+    return BingImageOut(
+        date=day,
+        title=image.get("title") or image.get("copyright") or "",
+        url=f"{BING_WP_BASE}{base}_1920x1080.jpg",
+        url_uhd=f"{BING_WP_BASE}{base}_UHD.jpg",
+        copyright=image.get("copyright"),
+        copyright_url=image.get("copyrightlink"),
+    ).model_dump()
+
 
 # ========== Bing 图片代理（与前端 proxiedBingUrl 对应）==========
 # Bing 官方域名白名单：CORS 正确、返回 image/*，可以 307 直跳省出口带宽
@@ -228,7 +274,10 @@ async def bing_image_proxy(src: str = Query(..., description="base64(原始图�
 class BingImageOut(BaseModel):
     """Bing 每日一图的元数据条目（对上游 URL 拼装后的结果，不含图片本体）。"""
 
-    date: str = PDField(description="YYYY-MM-DD，服务端按服务器当天日期填入")
+    date: str = PDField(
+        description="YYYY-MM-DD，取上游 ``startdate``（Bing 自己认定这张图属于哪一天）；"
+        "归档口对没有 startdate 的条目直接丢弃，不拿服务器时钟猜"
+    )
     title: str = PDField(description="标题；上游无标题时回退版权文字，再回退兜底文案")
     url: str = PDField(
         description="1920x1080 JPEG 直链；上游未给 urlbase 时是空字符串，"
@@ -236,6 +285,9 @@ class BingImageOut(BaseModel):
     )
     url_uhd: str | None = PDField(None, description="4K UHD 原图直链；无 urlbase 时为 null")
     copyright: str | None = PDField(None, description="上游版权署名文字；上游未提供时为 null")
+    copyright_url: str | None = PDField(
+        None, description="上游版权详情页链接（copyrightlink）；展示署名时可作为出处链接"
+    )
 
 
 class BingTodayResponse(BaseModel):
@@ -268,6 +320,8 @@ class BingArchiveResponse(BaseModel):
         "上游请求超时上限 8 秒；任何上游异常都不返回错误码，"
         "而是带 fallback 标记返回一条 data: URI 占位图，保证前端不崩。"
         "结果不做服务端缓存，每次请求都会打上游。"
+        "``data.date`` 用上游 ``startdate``（Bing 认定的那一天），不是服务器时钟；"
+        "只有兜底分支（上游根本没回）才按 UTC 日期填一条占位。"
     ),
     responses={200: {"model": BingTodayResponse}},
 )
@@ -289,11 +343,12 @@ async def bing_today_image():
         return {
             "success": True,
             "data": BingImageOut(
-                date=str(date.today()),
+                date=_normalize_startdate(image.get("startdate")) or _utc_today_iso(),
                 title=image.get("title") or image.get("copyright") or "Bing",
                 url=url_1920,
                 url_uhd=url_uhd,
                 copyright=image.get("copyright"),
+                copyright_url=image.get("copyrightlink"),
             ).model_dump(),
         }
     except Exception as exc:
@@ -303,7 +358,7 @@ async def bing_today_image():
             "success": True,
             "fallback": True,
             "data": BingImageOut(
-                date=str(date.today()),
+                date=_utc_today_iso(),
                 title="Bing 图片暂不可用",
                 url="data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg'/%3E",
             ).model_dump(),
@@ -312,45 +367,64 @@ async def bing_today_image():
 
 @router.get(
     "/bing/image/archive",
-    summary="获取 Bing 最近 N 天图片归档（骨架）",
+    summary="获取 Bing 最近 N 天图片归档",
     description=(
         "返回最近 days 天的图片元数据列表，公开访问、无需鉴权。"
-        "实现是串行请求上游归档接口（每天一次请求、每请求间隔 50ms，单次超时 10 秒），"
-        "days 取值 1..14，越界由框架返回 422；因此大天数会显著拉长响应时间。"
-        "上游不可用或某天缺数据时跳过该天，count 可能小于 days；"
-        "整体异常同样返回 200，只带已抓到的部分（可能是空数组）。无服务端缓存。"
+        "上游一次批量请求即可拿到整段窗口（``n`` 直接传给 Bing），不再按天串行外发；"
+        "但 Bing 自己只保留最近 "
+        f"{UPSTREAM_RETENTION_DAYS} 天，越过窗口的 ``idx`` 会重复返回最旧那张图，"
+        f"所以 ``count`` 最多 ``min(days, {UPSTREAM_RETENTION_DAYS})``，且按 ``urlbase`` 再去一次重。"
+        "days 取值 1..14，越界由框架返回 422（保留原入参范围，多要的那几天上游确实没有）。"
+        "每条的 ``date`` 取上游 ``startdate``；没有 ``startdate`` 或没有 ``urlbase`` 的条目丢弃，"
+        "不按服务器时钟猜日期。"
+        "上游不可用或某天缺数据时跳过该天，整体异常同样返回 200，只带已抓到的部分（可能为空数组）。"
+        f"非空结果按 days 进服务端缓存 {ARCHIVE_CACHE_TTL} 秒；空结果不写缓存，"
+        "一次上游故障不会把空归档钉住一小时。"
     ),
     responses={200: {"model": BingArchiveResponse}},
 )
 async def bing_archive(days: int = Query(7, ge=1, le=14, description="查询的天数 1..14")):
-    """返回最近 days 天的图片元数据列表。实现方式：串行请求 idx=0..days-1 的归档。"""
+    """返回最近 days 天的图片元数据列表（上游批量一次请求 + 结果缓存）。"""
+
+    cache_key = make_cache_key("bing", "archive", str(days))
+    try:
+        cached = await cache.get(cache_key)
+    except Exception as exc:  # noqa: BLE001 - 缓存不可用只影响性能，不能让公开口 500
+        logger.warning("[bing_image] 归档缓存读取失败: %s", exc)
+        cached = None
+    if isinstance(cached, list):
+        return {"success": True, "data": cached, "count": len(cached)}
 
     out: list[dict] = []
-    today = date.today()
+    seen: set[str] = set()
     try:
         async with create_async_client(timeout=10) as client:
-            for idx in range(days):
-                r = await client.get(
-                    "https://cn.bing.com/HPImageArchive.aspx",
-                    params={"format": "js", "idx": idx, "n": 1, "mkt": "zh-CN"},
-                )
-                if r.status_code != 200:
-                    continue
-                image = (r.json().get("images") or [])[0] if r.json().get("images") else None
-                if not image:
-                    continue
-                base = image.get("urlbase", "")
-                d = today - timedelta(days=idx)
-                out.append(
-                    BingImageOut(
-                        date=str(d),
-                        title=image.get("title") or image.get("copyright") or "",
-                        url=f"{BING_WP_BASE}{base}_1920x1080.jpg" if base else "",
-                        url_uhd=f"{BING_WP_BASE}{base}_UHD.jpg" if base else None,
-                        copyright=image.get("copyright"),
-                    ).model_dump()
-                )
-                await asyncio.sleep(0.05)
+            r = await client.get(
+                "https://cn.bing.com/HPImageArchive.aspx",
+                params={
+                    "format": "js",
+                    "idx": 0,
+                    # 上游最多回这么多条，多要的几天它并没有
+                    "n": min(days, UPSTREAM_RETENTION_DAYS),
+                    "mkt": "zh-CN",
+                },
+            )
+            if r.status_code == 200:
+                for image in r.json().get("images") or []:
+                    if not isinstance(image, dict):
+                        continue
+                    base = str(image.get("urlbase") or "")
+                    entry = _entry_from_image(image)
+                    if entry is None or base in seen:
+                        continue
+                    seen.add(base)
+                    out.append(entry)
     except Exception as exc:
         logger.warning(f"[bing_image] 归档查询失败: {exc}")
+
+    if out:
+        try:
+            await cache.set(cache_key, out, ttl=ARCHIVE_CACHE_TTL)
+        except Exception as exc:  # noqa: BLE001 - 缓存写失败不该影响本次响应
+            logger.warning("[bing_image] 归档缓存写入失败: %s", exc)
     return {"success": True, "data": out, "count": len(out)}

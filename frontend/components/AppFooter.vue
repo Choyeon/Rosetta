@@ -130,6 +130,10 @@ const siteLinks: SiteLink[] = [
   {
     labelKey: 'footer.sponsor', to: '/sponsor',
     fallbacks: { zh: '捐助支持', en: 'Sponsor', ja: 'サポート', zh_Hant: '贊助支持' }
+  },
+  {
+    labelKey: 'footer.wallpapers', to: '/wallpapers',
+    fallbacks: { zh: '每日一图', en: 'Daily Wallpaper', ja: '今日の画像', zh_Hant: '每日一圖' }
   }
 ]
 /** 对每个 siteLink 先查 i18n，查不到走多语言兜底。 */
@@ -195,9 +199,18 @@ const site = useSite()
 /**
  * 捐助页在「未配置任何收款方式」时是 noindex 占位，页脚无条件挂入口等于把访客引向一张空白页。
  * 只在有真实收款方式时出现；判断用站点配置里同一份 donate 分组，不额外发请求。
+ * 壁纸归档同理：后台关掉「启用 Bing 每日壁纸」后那一页收起成 noindex 空态，入口跟着收起，
+ * 判据与 pages/wallpapers.vue 及后端 sitemap 收录用的是同一个 publicConfig 开关。
  */
+const bingWallpaperEnabled = computed(
+  () => site.state.value.publicConfig?.enable_bing_wallpaper !== false
+)
 const visibleSiteLinks = computed(() =>
-  siteLinks.filter(link => link.to !== '/sponsor' || site.donate.value.methods.length > 0)
+  siteLinks.filter((link) => {
+    if (link.to === '/sponsor') return site.donate.value.methods.length > 0
+    if (link.to === '/wallpapers') return bingWallpaperEnabled.value
+    return true
+  })
 )
 
 // 管理员在「导航菜单」把项存到 location=footer 时，页脚是它唯一的渲染面。

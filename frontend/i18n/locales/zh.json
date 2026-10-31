@@ -927,6 +927,13 @@
     "emptyHint": "后台「站点设置 → 捐助打赏」上传收款码后，这里就会展示。",
     "donorTitle": "感谢以下读者的支持"
   },
+  "wallpapers": {
+    "title": "每日一图",
+    "desc": "Bing 每日一图的近期归档。图片由本站代理并缓存，可直接下载 4K 原图。",
+    "download": "下载原图",
+    "empty": "暂时没有壁纸归档",
+    "emptyHint": "后台「站点设置 → 功能开关」关闭了「启用 Bing 每日壁纸」，或上游最近几天没有返回图片。"
+  },
   "captcha": {
     "label": "验证码",
     "placeholder": "点击图片可换一张",
@@ -1041,6 +1048,7 @@
     "authors": "作者目录",
     "hot": "热门榜单",
     "sponsor": "捐助支持",
+    "wallpapers": "每日一图",
     "noCategories": "暂无分类",
     "socialGithub": "GitHub",
     "socialX": "X / Twitter",

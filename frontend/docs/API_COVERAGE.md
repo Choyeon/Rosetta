@@ -34,7 +34,7 @@
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
 > 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 371 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：371 个端点操作；✅ 310 + 🟡 6 = 已消费 316 个，未消费 55 个，覆盖率 85.2%。**
+**总计：371 个端点操作；✅ 311 + 🟡 6 = 已消费 317 个，未消费 54 个，覆盖率 85.4%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -73,7 +73,7 @@
 | post_encryption | 4 | 0 | 0 | 4 | 0% |
 | settings_groups | 4 | 4 | 0 | 0 | 100% |
 | app | 3 | 1 | 0 | 2 | 33% |
-| bing_image | 3 | 0 | 0 | 3 | 0% |
+| bing_image | 3 | 1 | 0 | 2 | 33% |
 | comment_reactions | 3 | 3 | 0 | 0 | 100% |
 | comment_report | 3 | 3 | 0 | 0 | 100% |
 | post_crypto | 3 | 0 | 0 | 3 | 0% |
@@ -89,7 +89,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 55 条）
+## 未消费清单（自动生成，共 54 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -98,7 +98,7 @@
 - **app**（2）：`GET /`、`GET /health`
 - **avatar_proxy**（1）：`GET /api/media/avatar`
 - **bing**（1）：`GET /api/bing/wallpaper`
-- **bing_image**（3）：`GET /api/bing/image`、`GET /api/bing/image/archive`、`GET /api/bing/image/today`
+- **bing_image**（2）：`GET /api/bing/image`、`GET /api/bing/image/today`
 - **captcha**（1）：`POST /api/captcha/verify`
 - **comments**（1）：`GET /api/posts/{post_id_or_slug}/comments`
 - **core**（3）：`POST /api/admin/settings`、`GET /api/config/full`、`GET /api/sponsors`

@@ -30,6 +30,7 @@ export const TOP_LEVEL_ROUTE_SLUGS: readonly string[] = [
   'series',
   'authors',
   'sponsor',
+  'wallpapers',
   'search',
   'settings',
   'account',

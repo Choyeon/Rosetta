@@ -320,6 +320,9 @@ export default defineNuxtConfig({
     // 捐助页内容来自 donate 设置分组（后台改完会 purge 页面缓存），与 about/friends 同档。
     '/sponsor': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
     '/gallery': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
+    // Bing 壁纸归档每天只变一次（后端另有 1 小时上游缓存），与 about/friends 同档；
+    // 不登记就静默落回 '/**' 的 swr 600，等于每个访客每次 SSR 都要重渲染整页。
+    '/wallpapers': { swr: 3600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=3600, stale-while-revalidate=86400' } },
     '/activity': { swr: 600, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=600, stale-while-revalidate=86400' } },
 
     '/posts': { swr: 300, headers: { 'Cache-Control': 'public, max-age=0, s-maxage=300, stale-while-revalidate=86400' } },

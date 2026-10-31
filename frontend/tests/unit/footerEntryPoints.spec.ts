@@ -93,7 +93,9 @@ describe('公开页面的入口可达性', () => {
   })
 
   it('捐助入口跟 donate 配置走：未配置收款方式时页面是 noindex 占位，不该有入口', () => {
-    expect(footer).toContain('link.to !== \'/sponsor\' || site.donate.value.methods.length > 0')
+    expect(footer).toContain('if (link.to === \'/sponsor\') return site.donate.value.methods.length > 0')
+    // 同一形态的第二条：关掉「启用 Bing 每日壁纸」后 /wallpapers 收起成 noindex 空态，入口跟着收起
+    expect(footer).toContain('if (link.to === \'/wallpapers\') return bingWallpaperEnabled.value')
     // 两处渲染（桌面 / 移动）都必须走过滤后的列表，否则过滤只在一处生效
     const rendered = footer.match(/v-for="link in visibleSiteLinks"/g) ?? []
     expect(rendered.length).toBe(2)

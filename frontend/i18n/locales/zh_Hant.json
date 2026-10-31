@@ -898,6 +898,7 @@
     "authors": "作者目錄",
     "hot": "熱門榜單",
     "sponsor": "贊助支持",
+    "wallpapers": "每日一圖",
     "noCategories": "暫無分類",
     "socialGithub": "GitHub",
     "socialX": "X / Twitter",
@@ -987,6 +988,13 @@
     "empty": "暫未開啟捐助",
     "emptyHint": "後台「站點設置 → 捐助打賞」上傳收款碼後，這裡就會展示。",
     "donorTitle": "感謝以下讀者的支持"
+  },
+  "wallpapers": {
+    "title": "每日一圖",
+    "desc": "Bing 每日一圖的近期歸檔。圖片由本站代理並快取，可直接下載 4K 原圖。",
+    "download": "下載原圖",
+    "empty": "暫時沒有壁紙歸檔",
+    "emptyHint": "後台「站點設置 → 功能開關」關閉了「啟用 Bing 每日壁紙」，或上游最近幾天沒有返回圖片。"
   },
   "captcha": {
     "label": "驗證碼",

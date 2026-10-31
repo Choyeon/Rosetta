@@ -3707,6 +3707,7 @@ _TOP_LEVEL_ROUTE_SLUGS = frozenset(
         "settings",
         "sponsor",
         "tags",
+        "wallpapers",
     }
 )
 
@@ -4010,6 +4011,7 @@ def generate_pages_sitemap(
     archive_years: list[int] | None = None,
     include_sponsor: bool = False,
     include_gallery: bool = False,
+    include_wallpapers: bool = False,
 ) -> str:
     """生成固定公开路由 + 年份归档落地页 + 独立页面（``/<slug>``）sitemap。
 
@@ -4065,6 +4067,19 @@ def generate_pages_sitemap(
                 changefreq="weekly",
                 priority="0.4",
                 rel_path="/gallery",
+                site_url=site_url,
+            )
+        )
+    if include_wallpapers:
+        # 条件性收录：/wallpapers 的内容完全来自 Bing 上游，站点关掉壁纸开关时这一页
+        # 自己输出 noindex、页脚入口也收起（pages/wallpapers.vue::wallpapersEmpty），
+        # 此时提交进 sitemap 等于向爬虫要一个自己声明"别收录"的地址。
+        entries.append(
+            _sitemap_url(
+                f"{site_url}/wallpapers",
+                changefreq="daily",
+                priority="0.3",
+                rel_path="/wallpapers",
                 site_url=site_url,
             )
         )
@@ -4322,6 +4337,7 @@ async def get_sitemap_pages(db: DB):
 
     from backend.models import Post
     from backend.models.core import Page
+    from backend.services.site_settings import bing_wallpaper_enabled
 
     site_url = _public_site_url()
     pages = (await db.execute(select(Page).where(Page.status == "published"))).scalars().all()
@@ -4348,6 +4364,7 @@ async def get_sitemap_pages(db: DB):
         archive_years=archive_years,
         include_sponsor=await _sponsor_page_indexable(db),
         include_gallery=await _gallery_directory_indexable(db),
+        include_wallpapers=await bing_wallpaper_enabled(db),
     )
     return Response(
         content=content,

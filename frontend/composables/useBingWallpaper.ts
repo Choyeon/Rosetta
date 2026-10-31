@@ -9,6 +9,7 @@
  *  2. localStorage / fetch 直连 Bing 仅客户端可用，使用 import.meta.client 守卫。
  */
 import { MONTH_TABLE } from '~~/composables/useI18nHelpers'
+import { bingProxyUrl } from '~~/lib/bing-image'
 
 export interface BingImage {
   url: string
@@ -138,16 +139,10 @@ export const useBingWallpaper = () => {
 
   // 把 Bing 图片 URL 改写为后端本地缓存代理（首次下载并持久化到 media/bing/，
   // 之后直接返回本地静态文件，刷新不再重复请求 bing.com）。
-  const proxiedBingUrl = (rawUrl: string): string => {
-    if (!rawUrl) return ''
-    const abs = rawUrl.startsWith('http') ? rawUrl : `https://cn.bing.com${rawUrl}`
-    try {
-      const encoded = btoa(unescape(encodeURIComponent(abs)))
-      return `${apiBase.value || '/api'}/bing/image?src=${encoded}`
-    } catch {
-      return abs
-    }
-  }
+  // 拼装单源在 lib/bing-image.ts——壁纸归档页 /wallpapers 是 SSR 的，首帧 <img src> 必须由
+  // 同一个纯函数产出，否则服务端与 hydration 两份地址串不一致。
+  const proxiedBingUrl = (rawUrl: string): string =>
+    bingProxyUrl(rawUrl, apiBase.value || '/api')
 
   const _parseImages = (rawImages: BingRawImage[]): BingImage[] => {
     return (rawImages || []).map((img: BingRawImage, i: number) => {
