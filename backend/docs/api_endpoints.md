@@ -3773,25 +3773,25 @@ _无路径 / query 参数_
 | code_theme_dark | string \| null | 否 |  |
 | comment_allow_guest | boolean \| null | 否 |  |
 | comment_antispam | boolean \| null | 否 |  |
-| comment_artalk_locale | string \| null | 否 |  |
-| comment_artalk_server | string \| null | 否 |  |
-| comment_artalk_visitor_count | boolean \| null | 否 |  |
-| comment_disqus_shortname | string \| null | 否 |  |
-| comment_giscus_category | string \| null | 否 |  |
-| comment_giscus_category_id | string \| null | 否 |  |
-| comment_giscus_emit_metadata | string \| null | 否 |  |
-| comment_giscus_input_position | string \| null | 否 |  |
-| comment_giscus_lang | string \| null | 否 |  |
-| comment_giscus_loading | string \| null | 否 |  |
-| comment_giscus_mapping | string \| null | 否 |  |
-| comment_giscus_reactions_enabled | string \| null | 否 |  |
-| comment_giscus_repo | string \| null | 否 |  |
-| comment_giscus_repo_id | string \| null | 否 |  |
-| comment_giscus_strict | string \| null | 否 |  |
 | comment_max_length | integer \| null | 否 |  |
 | comment_require_approval | boolean \| null | 否 |  |
-| comment_system_type | string \| null | 否 |  |
-| … 其余 157 个字段 | | | 见 `/docs` |
+| contact_email | string \| null | 否 |  |
+| contact_qq | string \| null | 否 |  |
+| contact_wechat | string \| null | 否 |  |
+| copyright_text | string \| null | 否 |  |
+| cover_enable_in_post | boolean \| null | 否 |  |
+| cover_enable_overlay | boolean \| null | 否 |  |
+| cover_random_apis_json | string \| null | 否 |  |
+| cover_random_enable | boolean \| null | 否 |  |
+| cover_show_loading | boolean \| null | 否 |  |
+| custom_css | string \| null | 否 |  |
+| custom_footer_code | string \| null | 否 |  |
+| custom_header_code | string \| null | 否 |  |
+| custom_js | string \| null | 否 |  |
+| default_avatar | string \| null | 否 |  |
+| default_category_cover | string \| null | 否 |  |
+| default_og_image | string \| null | 否 |  |
+| … 其余 131 个字段 | | | 见 `/docs` |
 
 ```json
 {
@@ -3817,34 +3817,8 @@ _无路径 / query 参数_
   "code_theme_dark": "string",
   "comment_allow_guest": "string",
   "comment_antispam": "string",
-  "comment_artalk_locale": "string",
-  "comment_artalk_server": "string",
-  "comment_artalk_visitor_count": "string",
-  "comment_disqus_shortname": "string",
-  "comment_giscus_category": "string",
-  "comment_giscus_category_id": "string",
-  "comment_giscus_emit_metadata": "string",
-  "comment_giscus_input_position": "string",
-  "comment_giscus_lang": "string",
-  "comment_giscus_loading": "string",
-  "comment_giscus_mapping": "string",
-  "comment_giscus_reactions_enabled": "string",
-  "comment_giscus_repo": "string",
-  "comment_giscus_repo_id": "string",
-  "comment_giscus_strict": "string",
   "comment_max_length": "string",
   "comment_require_approval": "string",
-  "comment_system_type": "string",
-  "comment_twikoo_css_url": "string",
-  "comment_twikoo_env_id": "string",
-  "comment_twikoo_js_url": "string",
-  "comment_twikoo_lang": "string",
-  "comment_twikoo_visitor_count": "string",
-  "comment_waline_emoji_json": "string",
-  "comment_waline_lang": "string",
-  "comment_waline_login_mode": "string",
-  "comment_waline_server_url": "string",
-  "comment_waline_visitor_count": "string",
   "contact_email": "string",
   "contact_qq": "string",
   "contact_wechat": "string",
@@ -4063,20 +4037,20 @@ _无路径 / query 参数_
 | code_theme_dark | string | 否 |  |
 | comment_allow_guest | boolean | 否 |  |
 | comment_antispam | boolean | 否 |  |
-| comment_artalk_locale | string | 否 |  |
-| comment_artalk_server | string | 否 |  |
-| comment_artalk_visitor_count | boolean | 否 |  |
-| comment_disqus_shortname | string | 否 |  |
-| comment_giscus_category | string | 否 |  |
-| comment_giscus_category_id | string | 否 |  |
-| comment_giscus_emit_metadata | string | 否 |  |
-| comment_giscus_input_position | string | 否 |  |
-| comment_giscus_lang | string | 否 |  |
-| comment_giscus_loading | string | 否 |  |
-| comment_giscus_mapping | string | 否 |  |
-| comment_giscus_reactions_enabled | string | 否 |  |
-| comment_giscus_repo | string | 否 |  |
-| … 其余 179 个字段 | | | 见 `/docs` |
+| comment_max_length | integer | 否 |  |
+| comment_require_approval | boolean | 否 |  |
+| contact_email | string \| null | 否 |  |
+| contact_qq | string \| null | 否 |  |
+| contact_wechat | string \| null | 否 |  |
+| copyright_text | string \| null | 否 |  |
+| cover_enable_in_post | boolean | 否 |  |
+| cover_enable_overlay | boolean | 否 |  |
+| cover_random_apis_json | string | 否 |  |
+| cover_random_enable | boolean | 否 |  |
+| cover_show_loading | boolean | 否 |  |
+| custom_css | string \| null | 否 |  |
+| custom_footer_code | string \| null | 否 |  |
+| … 其余 153 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -4109,34 +4083,8 @@ _无路径 / query 参数_
   "code_theme_dark": "github-dark",
   "comment_allow_guest": false,
   "comment_antispam": true,
-  "comment_artalk_locale": "zh-CN",
-  "comment_artalk_server": "",
-  "comment_artalk_visitor_count": true,
-  "comment_disqus_shortname": "",
-  "comment_giscus_category": "General",
-  "comment_giscus_category_id": "",
-  "comment_giscus_emit_metadata": "1",
-  "comment_giscus_input_position": "top",
-  "comment_giscus_lang": "zh-CN",
-  "comment_giscus_loading": "lazy",
-  "comment_giscus_mapping": "title",
-  "comment_giscus_reactions_enabled": "1",
-  "comment_giscus_repo": "",
-  "comment_giscus_repo_id": "",
-  "comment_giscus_strict": "0",
   "comment_max_length": 1000,
   "comment_require_approval": false,
-  "comment_system_type": "none",
-  "comment_twikoo_css_url": "",
-  "comment_twikoo_env_id": "",
-  "comment_twikoo_js_url": "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js",
-  "comment_twikoo_lang": "zh-CN",
-  "comment_twikoo_visitor_count": true,
-  "comment_waline_emoji_json": "[\"https://unpkg.com/@waline/emojis@1.4.0/weibo\",\"https://unpkg.com/@waline/emojis@1.4.0/bilibili\"]",
-  "comment_waline_lang": "zh-CN",
-  "comment_waline_login_mode": "enable",
-  "comment_waline_server_url": "",
-  "comment_waline_visitor_count": true,
   "contact_email": "string",
   "contact_qq": "string",
   "contact_wechat": "string",

@@ -2123,32 +2123,9 @@ class SiteConfigResponse(BaseModel):
     license_icon: str = ""
 
     # ========== 评论系统配置 ==========
-    comment_system_type: str = "none"
-    comment_twikoo_env_id: str = ""
-    comment_twikoo_lang: str = "zh-CN"
-    comment_twikoo_visitor_count: bool = True
-    comment_twikoo_js_url: str = "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js"
-    comment_twikoo_css_url: str = ""
-    comment_waline_server_url: str = ""
-    comment_waline_lang: str = "zh-CN"
-    comment_waline_emoji_json: str = '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]'
-    comment_waline_login_mode: str = "enable"
-    comment_waline_visitor_count: bool = True
-    comment_artalk_server: str = ""
-    comment_artalk_locale: str = "zh-CN"
-    comment_artalk_visitor_count: bool = True
-    comment_giscus_repo: str = ""
-    comment_giscus_repo_id: str = ""
-    comment_giscus_category: str = "General"
-    comment_giscus_category_id: str = ""
-    comment_giscus_mapping: str = "title"
-    comment_giscus_strict: str = "0"
-    comment_giscus_reactions_enabled: str = "1"
-    comment_giscus_emit_metadata: str = "1"
-    comment_giscus_input_position: str = "top"
-    comment_giscus_lang: str = "zh-CN"
-    comment_giscus_loading: str = "lazy"
-    comment_disqus_shortname: str = ""
+    # 第三方评论 provider 的 26 个键已退役（前端无渲染器、PUT /api/config 的 config_map
+    # 也不收它们）。本站评论的唯一开关是 comments 分组的 enable，扁平 enable_comments
+    # 由它投影。守卫 tests/test_retired_third_party_comment_config_is_gone.py。
 
     # ========== Bangumi配置 ==========
     bangumi_user_id: str = ""
@@ -2402,32 +2379,8 @@ class SiteConfigUpdate(BaseModel):
     license_icon: str | None = Field(None, max_length=500)
 
     # ========== 评论系统配置 ==========
-    comment_system_type: str | None = Field(None, max_length=50)
-    comment_twikoo_env_id: str | None = Field(None, max_length=200)
-    comment_twikoo_lang: str | None = Field(None, max_length=50)
-    comment_twikoo_visitor_count: bool | None = None
-    comment_twikoo_js_url: str | None = Field(None, max_length=500)
-    comment_twikoo_css_url: str | None = Field(None, max_length=500)
-    comment_waline_server_url: str | None = Field(None, max_length=500)
-    comment_waline_lang: str | None = Field(None, max_length=50)
-    comment_waline_emoji_json: str | None = Field(None, max_length=50000)
-    comment_waline_login_mode: str | None = Field(None, max_length=50)
-    comment_waline_visitor_count: bool | None = None
-    comment_artalk_server: str | None = Field(None, max_length=500)
-    comment_artalk_locale: str | None = Field(None, max_length=50)
-    comment_artalk_visitor_count: bool | None = None
-    comment_giscus_repo: str | None = Field(None, max_length=200)
-    comment_giscus_repo_id: str | None = Field(None, max_length=200)
-    comment_giscus_category: str | None = Field(None, max_length=100)
-    comment_giscus_category_id: str | None = Field(None, max_length=200)
-    comment_giscus_mapping: str | None = Field(None, max_length=50)
-    comment_giscus_strict: str | None = Field(None, max_length=10)
-    comment_giscus_reactions_enabled: str | None = Field(None, max_length=10)
-    comment_giscus_emit_metadata: str | None = Field(None, max_length=10)
-    comment_giscus_input_position: str | None = Field(None, max_length=50)
-    comment_giscus_lang: str | None = Field(None, max_length=50)
-    comment_giscus_loading: str | None = Field(None, max_length=50)
-    comment_disqus_shortname: str | None = Field(None, max_length=200)
+    # 第三方评论 provider 一族已退役（见 SiteConfigResponse 同段注释）。
+    # 这里刻意留空：写口曾声明这些键，但 config_map 从不落库，属于"收键不落地"。
 
     # ========== Bangumi配置 ==========
     bangumi_user_id: str | None = Field(None, max_length=200)

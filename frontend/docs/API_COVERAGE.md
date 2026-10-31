@@ -391,6 +391,20 @@
      管理模块与公开口），被删的只是那三个凭空存在的开关名。若要把它们做成真正可关的能力，
      做法是给 features 组加键 + 给公开面加强制点（捐助页批次 #83/#210 是同型先例），
      而不是照着旧清单去接一条根本不存在的口。
+   - **第三方评论假配置族**（**2026-10-31 已退役**，不是待接缺口）：`comment_system_type` 加上
+     twikoo / waline / artalk / giscus / disqus 五家各自的 25 个参数键（env_id、server_url、repo、
+     shortname、js_url、emoji_json、lang、各类开关），共 26 个键同时满足「三段全断」：
+     ①`frontend/` 里没有任何 provider 渲染器，翻 `comment_system_type` 评论区渲染的还是同一套站内
+     组件；②`PUT /api/config` 的 `config_map` 从不转译这些键，处理器的 `if not key: continue` 把它们
+     直接丢弃——`SiteConfigUpdate` 声明了它们，接口回 200 而库里一行不增，这是「假装保存」，比
+     「写进去没人读」更坏一档；③`/api/config` 是匿名可读 + 缓存的公开口，却仍把默认值投影出去，
+     等于对访客宣称本站可切换外部评论系统。站内评论的真实口径是 `settings_groups._default_comments()`
+     （唯一开关 `enable`，执行点 `CommentService.create_comment` 的 COMMENTS_DISABLED 闸门）+
+     `/api/blog/posts/{post_id}/comments` 读口 + `/api/posts/{post_id_or_slug}/comments` 写口 + `/api/comments/{id}` 删除/回复/举报口 + `SiteConfigResponse.enable_comments` 这条由分组投影来的镜像（**不是**幽灵，
+     保留）。要真接第三方评论是一个独立功能工程（渲染器 + CSP `frame-src`/`script-src` 两处同改 +
+     与站内审核/举报/表情反应体系的取舍），不属于本表里的「差一个入口」。守卫
+     `tests/test_retired_third_party_comment_config_is_gone.py`（含「活评论系统不得被一起删掉」的两侧断言，
+     以及「config_map 里那四条真落库的旧评论键必须原样可用」）。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 

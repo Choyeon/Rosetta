@@ -1054,32 +1054,11 @@ async def get_site_config(db: DB):
             license_url="https://creativecommons.org/licenses/by-nc-sa/4.0/",
             license_icon="",
             # ========== 评论系统配置 ==========
-            comment_system_type="none",
-            comment_twikoo_env_id="",
-            comment_twikoo_lang="zh-CN",
-            comment_twikoo_visitor_count=True,
-            comment_twikoo_js_url="https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js",
-            comment_twikoo_css_url="",
-            comment_waline_server_url="",
-            comment_waline_lang="zh-CN",
-            comment_waline_emoji_json='["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]',
-            comment_waline_login_mode="enable",
-            comment_waline_visitor_count=True,
-            comment_artalk_server="",
-            comment_artalk_locale="zh-CN",
-            comment_artalk_visitor_count=True,
-            comment_giscus_repo="",
-            comment_giscus_repo_id="",
-            comment_giscus_category="General",
-            comment_giscus_category_id="",
-            comment_giscus_mapping="title",
-            comment_giscus_strict="0",
-            comment_giscus_reactions_enabled="1",
-            comment_giscus_emit_metadata="1",
-            comment_giscus_input_position="top",
-            comment_giscus_lang="zh-CN",
-            comment_giscus_loading="lazy",
-            comment_disqus_shortname="",
+            # 第三方评论 provider 的整族配置（26 个键）已于 2026-10-31 退役：
+            # 前端没有任何 provider 渲染器，PUT /api/config 的 config_map 也不收这些键
+            # （写了不落库），而本站评论由 comments 分组 + CommentService 单源接管。
+            # 清单、判定与守卫见 frontend/docs/API_COVERAGE.md 的「第三方评论假配置族」段
+            # 和 tests/test_retired_third_party_comment_config_is_gone.py。
             # ========== Bangumi配置 ==========
             bangumi_user_id="",
             bangumi_mode="dynamic",
@@ -1571,39 +1550,7 @@ async def get_site_config(db: DB):
         or "https://creativecommons.org/licenses/by-nc-sa/4.0/",
         license_icon=get_str("LICENSE_ICON", "") or "",
         # ========== 评论系统配置 ==========
-        comment_system_type=get_str("COMMENT_SYSTEM_TYPE", "none") or "none",
-        comment_twikoo_env_id=get_str("COMMENT_TWIKOO_ENV_ID", "") or "",
-        comment_twikoo_lang=get_str("COMMENT_TWIKOO_LANG", "zh-CN") or "zh-CN",
-        comment_twikoo_visitor_count=get_bool("COMMENT_TWIKOO_VISITOR_COUNT", "true"),
-        comment_twikoo_js_url=get_str(
-            "COMMENT_TWIKOO_JS_URL", "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js"
-        )
-        or "https://cdn.jsdelivr.net/npm/twikoo@1.7.14/dist/twikoo.min.js",
-        comment_twikoo_css_url=get_str("COMMENT_TWIKOO_CSS_URL", "") or "",
-        comment_waline_server_url=get_str("COMMENT_WALINE_SERVER_URL", "") or "",
-        comment_waline_lang=get_str("COMMENT_WALINE_LANG", "zh-CN") or "zh-CN",
-        comment_waline_emoji_json=get_str(
-            "COMMENT_WALINE_EMOJI_JSON",
-            '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]',
-        )
-        or '["https://unpkg.com/@waline/emojis@1.4.0/weibo","https://unpkg.com/@waline/emojis@1.4.0/bilibili"]',
-        comment_waline_login_mode=get_str("COMMENT_WALINE_LOGIN_MODE", "enable") or "enable",
-        comment_waline_visitor_count=get_bool("COMMENT_WALINE_VISITOR_COUNT", "true"),
-        comment_artalk_server=get_str("COMMENT_ARTALK_SERVER", "") or "",
-        comment_artalk_locale=get_str("COMMENT_ARTALK_LOCALE", "zh-CN") or "zh-CN",
-        comment_artalk_visitor_count=get_bool("COMMENT_ARTALK_VISITOR_COUNT", "true"),
-        comment_giscus_repo=get_str("COMMENT_GISCUS_REPO", "") or "",
-        comment_giscus_repo_id=get_str("COMMENT_GISCUS_REPO_ID", "") or "",
-        comment_giscus_category=get_str("COMMENT_GISCUS_CATEGORY", "General") or "General",
-        comment_giscus_category_id=get_str("COMMENT_GISCUS_CATEGORY_ID", "") or "",
-        comment_giscus_mapping=get_str("COMMENT_GISCUS_MAPPING", "title") or "title",
-        comment_giscus_strict=get_str("COMMENT_GISCUS_STRICT", "0") or "0",
-        comment_giscus_reactions_enabled=get_str("COMMENT_GISCUS_REACTIONS_ENABLED", "1") or "1",
-        comment_giscus_emit_metadata=get_str("COMMENT_GISCUS_EMIT_METADATA", "1") or "1",
-        comment_giscus_input_position=get_str("COMMENT_GISCUS_INPUT_POSITION", "top") or "top",
-        comment_giscus_lang=get_str("COMMENT_GISCUS_LANG", "zh-CN") or "zh-CN",
-        comment_giscus_loading=get_str("COMMENT_GISCUS_LOADING", "lazy") or "lazy",
-        comment_disqus_shortname=get_str("COMMENT_DISQUS_SHORTNAME", "") or "",
+        # 第三方评论 provider 一族（含 provider 选择键）已退役，理由见上方默认值处的注释。
         # ========== Bangumi配置 ==========
         bangumi_user_id=get_str("BANGUMI_USER_ID", "") or "",
         bangumi_mode=get_str("BANGUMI_MODE", "dynamic") or "dynamic",
