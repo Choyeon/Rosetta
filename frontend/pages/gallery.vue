@@ -1,5 +1,5 @@
 <!--
-  相册页（SSR 列表 + 客户端懒取详情）：列表 useAPI('/gallery/albums') 按 ?page=N 分页
+  相册页（SSR 列表 + 深链详情服务端取数 + 客户端懒取详情）：列表 useAPI('/gallery/albums') 按 ?page=N 分页
   （每页 12，后端 page_size 上限 100），第 2 页起有真实 <a href> 入口；越界页码 SSR 期 301
   回裸相册页（200 空页会被判 soft 404，且自指 canonical 等于承认垃圾页码是独立页面）。
   点开才用 apiFetch('/gallery/albums/{id}') 取照片，靠 Album.loaded + albumLoading 双守卫防重复请求。
@@ -8,7 +8,8 @@
   在渲染前 flush，那种写法爬虫只会读到「还没有上传相册」（批次 #128 线上实测：接口回 2 条、HTML 里零链接）。
   「打开哪个相册」的唯一真值是 ?album=<id>（批次 #128）：卡片是真实 <a href>，openAlbum 只改地址栏，
   watch(route.query.album) 才驱动对话框——刷新、后退、中键新标签都还原同一个相册；深链到不在当页的
-  相册由详情响应自建成兜底对象（列表里没有也能开）；id 不存在/未公开走 404 分支显式给文案并清参数，
+  相册时详情由 useAsyncData 在服务端取一次并排进网格（首屏与爬虫都读到那张相册，而不是「地址栏有
+  相册、HTML 里只有第 1 页」），id 不存在/未公开走 404 分支显式给文案并清参数，
   而不是转圈后一片空白。canonical 只带 page，?album= 进链接图但不承认独立页面（口径见 AGENTS §2.3.3）。
   每张照片带 url（原图）+ thumb（后端从 Media.sizes 派生的缩略档，可能为空）：网格下 thumb、灯箱放大 url，
   所以 Viewer 必须显式 url: 'data-original'（viewerjs 默认读 src，不指就会把 150px 小图放到全屏）。
@@ -481,6 +482,72 @@ const albumHref = (id: number) =>
     album: String(id)
   })
 
+/**
+ * 详情响应 → 网格/对话框可用的相册对象（列表项当兜底，缺字段不塌成空标题）。
+ * 深链的服务端取数与客户端点开的取数必须是同一份映射，否则两个入口的照片口径会分叉。
+ */
+function albumFromDetail(id: number, data: Record<string, unknown>, fallback: Album | null): Album {
+  const photosArr = Array.isArray(data.photos) ? data.photos : []
+  const photos = photosArr
+    .map((p) => {
+      const obj = (p ?? {}) as AlbumDetail
+      // 没有原图地址就整条丢掉：网格可以只放缩略图，灯箱却没有可放大的源
+      const url = obj.url || obj.original_url || ''
+      if (!url) return null
+      // 后端把缩略档置成 null 表示"没有可用档位"（外链 / SVG / 上传时后处理失败），
+      // 由模板的 `thumb || url` 回落原图；等于原图的档位也已在服务端滤掉，不会白下一遍。
+      return { url, thumb: obj.thumbnail_url ?? '' }
+    })
+    .filter((p): p is AlbumPhoto => p !== null)
+  return {
+    id,
+    title: typeof data.title === 'string' ? data.title : (fallback?.title ?? ''),
+    description: typeof data.description === 'string' ? data.description : (fallback?.description ?? ''),
+    cover: typeof data.cover === 'string' ? data.cover : (fallback?.cover ?? ''),
+    photosCount: typeof data.photo_count === 'number' ? data.photo_count : (fallback?.photosCount ?? 0),
+    photos,
+    loaded: true
+  }
+}
+
+/**
+ * 地址栏带 ?album= 时，相册详情也在服务端取一次（批次 #128 收尾）。
+ * 此前详情只在 onMounted 之后取：深链到「不在当页列表里」的那张相册（第 2 页的相册被直接分享）时，
+ * SSR HTML 里连一个该相册的链接都没有——首屏是空网格，爬虫读到的只有列表第 1 页。
+ * 无 album 参数时处理器直接 resolve(null)，不给普通访问多加一次请求；
+ * 垃圾 id（不存在 / 未公开）404 后静默降级成 null，提示权仍归页内文案。
+ */
+const { data: deepAlbumRaw } = useAsyncData<Record<string, unknown> | null>(
+  () => `gallery:album:${activeAlbumId.value ?? 'none'}:${locale.value}`,
+  async () => {
+    const id = activeAlbumId.value
+    if (id === null) return null
+    try {
+      const raw = await apiFetchDirect<unknown>(`/gallery/albums/${id}`, {
+        query: { lang: locale.value },
+        silentToast: true
+      })
+      const unwrapped
+        = raw && typeof raw === 'object' && 'data' in raw
+          ? (raw as { data?: unknown }).data
+          : raw
+      return (unwrapped ?? null) as Record<string, unknown> | null
+    } catch {
+      return null
+    }
+  },
+  // 客户端换相册走下面的 watch + loadAlbumDetail；这里只求首屏那一份，别让键变化再双发一次
+  { watch: [] }
+)
+
+/** 深链相册的兜底对象：只在详情响应确实属于当前地址栏那个 id 时才采用。 */
+const deepAlbum = computed<Album | null>(() => {
+  const id = activeAlbumId.value
+  const raw = deepAlbumRaw.value
+  if (id === null || !raw || Number(raw.id) !== id) return null
+  return albumFromDetail(id, raw, null)
+})
+
 // 分享链接上的页码可能已越界（比如相册被删掉一批）：拉回来再请求，
 // 否则访客拿到"第 9 页，共 3 页"的空网格且无从自救。
 watch([totalAlbums, currentPage], () => {
@@ -508,7 +575,7 @@ if (import.meta.server) {
  */
 const displayAlbums = computed<Album[]>(() => {
   const items = (albumsResp.value?.items || []) as AlbumResp[]
-  return items.map((raw) => {
+  const rows = items.map((raw) => {
     const cached = loadedAlbums.value.get(raw.id)
     if (cached) return cached
     return {
@@ -521,13 +588,18 @@ const displayAlbums = computed<Album[]>(() => {
       loaded: false
     }
   })
+  // 深链进来的相册不在当页（分享的是第 2 页那张）：把它排在最前，让首屏与爬虫都读到它，
+  // 而不是「地址栏写着相册 44、HTML 里只有第 1 页的 12 个」。已在当页则不重复插入。
+  const deep = deepAlbum.value
+  if (deep && !rows.some(album => album.id === deep.id)) return [deep, ...rows]
+  return rows
 })
 
 const currentAlbum = computed<Album | null>(() => {
   const id = activeAlbumId.value
   if (id === null) return null
-  // 详情优先（带照片），其次列表项（只有封面/计数）：
-  // 深链到不在当页的相册时，详情响应就是那个兜底对象，不必它在列表里。
+  // 详情优先（带照片），其次列表项/深链兜底对象（只有封面与计数）：
+  // 深链到不在当页的相册时，服务端取到的详情就是那个兜底对象，不必它在列表里。
   return loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null
 })
 const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
@@ -549,31 +621,10 @@ async function loadAlbumDetail(id: number) {
         ? (raw as { data?: unknown }).data
         : raw
     const data = (unwrapped ?? {}) as Record<string, unknown>
-    const photosArr = Array.isArray(data.photos) ? data.photos : []
-    const photos = photosArr
-      .map((p) => {
-        const obj = (p ?? {}) as AlbumDetail
-        // 没有原图地址就整条丢掉：网格可以只放缩略图，灯箱却没有可放大的源
-        const url = obj.url || obj.original_url || ''
-        if (!url) return null
-        // 后端把缩略档置成 null 表示"没有可用档位"（外链 / SVG / 上传时后处理失败），
-        // 由模板的 `thumb || url` 回落原图；等于原图的档位也已在服务端滤掉，不会白下一遍。
-        return { url, thumb: obj.thumbnail_url ?? '' }
-      })
-      .filter((p): p is AlbumPhoto => p !== null)
-    const next: Album = {
-      id,
-      title: typeof data.title === 'string' ? data.title : (target?.title ?? ''),
-      description: typeof data.description === 'string' ? data.description : (target?.description ?? ''),
-      cover: typeof data.cover === 'string' ? data.cover : (target?.cover ?? ''),
-      photosCount: typeof data.photo_count === 'number' ? data.photo_count : (target?.photosCount ?? 0),
-      photos,
-      loaded: true
-    }
     // 详情按 id 覆盖进 loadedAlbums：网格（displayAlbums）与对话框（currentAlbum）都读这一份，
     // 所以深链到「不在当页列表里」的相册也能开——上一版找不到列表项就 return，
     // 表现是「链接没错、点开是一片空网格」。
-    loadedAlbums.value.set(id, next)
+    loadedAlbums.value.set(id, albumFromDetail(id, data, target))
   } catch (err) {
     // 不能静默：失败的表现是「点了相册，对话框里一直转圈然后空空如也」，
     // 详情页没有任何别的提示渠道，必须显式给一个错误态。

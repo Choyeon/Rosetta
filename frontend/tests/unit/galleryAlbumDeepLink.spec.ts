@@ -48,8 +48,34 @@ describe('相册页 ?album= 深链', () => {
 
   it('深链到不在当页的相册：详情响应就是那一条，不依赖列表里有没有它', () => {
     expect(src).toContain('const target = loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null')
-    expect(src).toContain('loadedAlbums.value.set(id, next)')
+    expect(src).toContain('loadedAlbums.value.set(id, albumFromDetail(id, data, target))')
     expect(src).toContain('return loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null')
+  })
+
+  it('详情 → 相册对象的映射只有一份（SSR 取数与客户端点开必须同口径）', () => {
+    expect(src).toMatch(/function albumFromDetail\(id: number, data: Record<string, unknown>, fallback: Album \| null\): Album/)
+    // 反向清点：不得再有第二份 photos 映射
+    expect(src.match(/Array\.isArray\(data\.photos\)/g)?.length).toBe(1)
+    expect(src.match(/loadedAlbums\.value\.set\(/g)?.length).toBe(1)
+  })
+
+  it('地址栏带 album 时详情也在服务端取一次（首屏与爬虫都读到那张相册，而不是只有第 1 页）', () => {
+    expect(src).toMatch(/const \{ data: deepAlbumRaw \} = useAsyncData<Record<string, unknown> \| null>\(/)
+    // 无 album 参数直接 resolve(null)：不给普通访问多加一次请求
+    expect(src).toContain('if (id === null) return null')
+    // 键带 id + locale：深链换相册/换语言各自取各自的那一份
+    expect(src).toContain('`gallery:album:${activeAlbumId.value ?? \'none\'}:${locale.value}`')
+    // 客户端换相册仍走 watch + loadAlbumDetail，不让键变化把同一请求双发
+    expect(src).toMatch(/\{ watch: \[\] \}/)
+    // 坏 id（404）静默降级成 null：提示权归页内 404 分支，不弹 toast
+    expect(src).toMatch(/catch \{\s*return null\s*\}/)
+    // 兜底对象只认真正属于当前地址栏那个 id 的响应
+    expect(src).toContain('if (id === null || !raw || Number(raw.id) !== id) return null')
+  })
+
+  it('深链相册不在当页时排进网格最前，已在当页则不重复插入', () => {
+    expect(src).toContain('const deep = deepAlbum.value')
+    expect(src).toContain('if (deep && !rows.some(album => album.id === deep.id)) return [deep, ...rows]')
   })
 
   it('网格是 albumsResp 的纯投影：SSR 期 watch 回调不会在渲染前 flush，搬数组等于让爬虫读到空态', () => {
