@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **363 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **371 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -1930,9 +1930,11 @@ _无路径 / query 参数_
 | excerpt | object<string, string> \| null | 否 | 多语言摘要 |
 | is_pinned | boolean | 否 |  |
 | meta_description | object<string, string> \| null | 否 | 多语言 SEO 描述 |
+| meta_fields | object \| null | 否 | 自定义内容类型字段值，落库前按 content_types.fields 定义校验（见 content_type_service） |
 | meta_keywords | object<string, string> \| null | 否 | 多语言 SEO 关键词 |
 | meta_title | object<string, string> \| null | 否 | 多语言 SEO 标题 |
 | password | string \| null | 否 |  |
+| post_type | string | 否 | 内容类型 key（默认 post；其它值必须有对应的 content_types 定义） |
 | scheduled_at | string \| null | 否 | 定时发布时间，status=scheduled 时生效 |
 | series_id | integer \| null | 否 | 所属系列 ID |
 | series_order | integer | 否 | 系列内排序 |
@@ -1960,9 +1962,11 @@ _无路径 / query 参数_
   "excerpt": "string",
   "is_pinned": false,
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
   "password": "string",
+  "post_type": "post",
   "scheduled_at": "string",
   "series_id": "string",
   "series_order": 0,
@@ -2011,9 +2015,11 @@ _无路径 / query 参数_
 | is_pinned | boolean | 是 |  |
 | likes_count | integer | 否 |  |
 | meta_description | string \| null | 否 |  |
+| meta_fields | object \| null | 否 |  |
 | meta_keywords | string \| null | 否 |  |
 | meta_title | string \| null | 否 |  |
 | password | string \| null | 否 |  |
+| post_type | string | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
 | series | object \| null | 否 |  |
@@ -2024,9 +2030,7 @@ _无路径 / query 参数_
 | subtitle | string \| null | 否 |  |
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
-| updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 5 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2058,9 +2062,11 @@ _无路径 / query 参数_
   "is_pinned": false,
   "likes_count": 0,
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
   "password": "string",
+  "post_type": "post",
   "published_at": "string",
   "reading_time": 1,
   "series": "string",
@@ -2182,6 +2188,7 @@ _无路径 / query 参数_
     "id": 0,
     "is_pinned": false,
     "likes_count": 0,
+    "post_type": "string",
     "published_at": "string",
     "reading_time": 1,
     "slug": "string",
@@ -2244,9 +2251,11 @@ _无路径 / query 参数_
 | is_pinned | boolean | 是 |  |
 | likes_count | integer | 否 |  |
 | meta_description | string \| null | 否 |  |
+| meta_fields | object \| null | 否 |  |
 | meta_keywords | string \| null | 否 |  |
 | meta_title | string \| null | 否 |  |
 | password | string \| null | 否 |  |
+| post_type | string | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
 | series | object \| null | 否 |  |
@@ -2257,9 +2266,7 @@ _无路径 / query 参数_
 | subtitle | string \| null | 否 |  |
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
-| updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 5 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2291,9 +2298,11 @@ _无路径 / query 参数_
   "is_pinned": false,
   "likes_count": 0,
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
   "password": "string",
+  "post_type": "post",
   "published_at": "string",
   "reading_time": 1,
   "series": "string",
@@ -2387,9 +2396,11 @@ _无路径 / query 参数_
 | excerpt | object<string, string> \| null | 否 |  |
 | is_pinned | boolean \| null | 否 |  |
 | meta_description | object<string, string> \| null | 否 |  |
+| meta_fields | object \| null | 否 |  |
 | meta_keywords | object<string, string> \| null | 否 |  |
 | meta_title | object<string, string> \| null | 否 |  |
 | password | string \| null | 否 |  |
+| post_type | string \| null | 否 |  |
 | scheduled_at | string \| null | 否 |  |
 | series_id | integer \| null | 否 |  |
 | series_order | integer \| null | 否 |  |
@@ -2420,9 +2431,11 @@ _无路径 / query 参数_
   "excerpt": "string",
   "is_pinned": "string",
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
   "password": "string",
+  "post_type": "string",
   "scheduled_at": "string",
   "series_id": "string",
   "series_order": "string",
@@ -2471,9 +2484,11 @@ _无路径 / query 参数_
 | is_pinned | boolean | 是 |  |
 | likes_count | integer | 否 |  |
 | meta_description | string \| null | 否 |  |
+| meta_fields | object \| null | 否 |  |
 | meta_keywords | string \| null | 否 |  |
 | meta_title | string \| null | 否 |  |
 | password | string \| null | 否 |  |
+| post_type | string | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
 | series | object \| null | 否 |  |
@@ -2484,9 +2499,7 @@ _无路径 / query 参数_
 | subtitle | string \| null | 否 |  |
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
-| updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 5 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2518,9 +2531,11 @@ _无路径 / query 参数_
   "is_pinned": false,
   "likes_count": 0,
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
   "password": "string",
+  "post_type": "post",
   "published_at": "string",
   "reading_time": 1,
   "series": "string",
@@ -2664,8 +2679,10 @@ _无路径 / query 参数_
 | id | integer | 是 |  |
 | is_pinned | boolean | 是 |  |
 | meta_description | object<string, string> \| null | 否 |  |
+| meta_fields | object \| null | 否 |  |
 | meta_keywords | object<string, string> \| null | 否 |  |
 | meta_title | object<string, string> \| null | 否 |  |
+| post_type | string | 否 |  |
 | published_at | string \| null | 否 |  |
 | scheduled_at | string \| null | 否 |  |
 | series_id | integer \| null | 否 |  |
@@ -2698,8 +2715,10 @@ _无路径 / query 参数_
   "id": 0,
   "is_pinned": false,
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
+  "post_type": "post",
   "published_at": "string",
   "scheduled_at": "string",
   "series_id": "string",
@@ -2803,6 +2822,7 @@ _无路径 / query 参数_
     "id": 0,
     "is_pinned": false,
     "likes_count": 0,
+    "post_type": "string",
     "published_at": "string",
     "reading_time": 1,
     "slug": "string",
@@ -2900,9 +2920,11 @@ _无路径 / query 参数_
 | is_pinned | boolean | 是 |  |
 | likes_count | integer | 否 |  |
 | meta_description | string \| null | 否 |  |
+| meta_fields | object \| null | 否 |  |
 | meta_keywords | string \| null | 否 |  |
 | meta_title | string \| null | 否 |  |
 | password | string \| null | 否 |  |
+| post_type | string | 否 |  |
 | published_at | string \| null | 否 |  |
 | reading_time | integer | 否 |  |
 | series | object \| null | 否 |  |
@@ -2913,9 +2935,7 @@ _无路径 / query 参数_
 | subtitle | string \| null | 否 |  |
 | tags | object[] | 否 |  |
 | title | string | 是 |  |
-| updated_at | string | 是 |  |
-| video | string \| null | 否 |  |
-| … 其余 3 个字段 | | | 见 `/docs` |
+| … 其余 5 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -2947,9 +2967,11 @@ _无路径 / query 参数_
   "is_pinned": false,
   "likes_count": 0,
   "meta_description": "string",
+  "meta_fields": "string",
   "meta_keywords": "string",
   "meta_title": "string",
   "password": "string",
+  "post_type": "post",
   "published_at": "string",
   "reading_time": 1,
   "series": "string",
@@ -8271,6 +8293,7 @@ _无路径 / query 参数_
       "qq": "string",
       "replies": [],
       "reply_total": 0,
+      "reported_at": "string",
       "resolved_avatar_url": "string",
       "status": "string",
       "title": "string",
@@ -8345,6 +8368,7 @@ _无路径 / query 参数_
 | qq | string \| null | 否 | QQ 号（头像识别用），未提供为 null |
 | replies | any[] | 否 | 嵌套回复列表：管理员列表端点恒为空数组（回复走 reply_total） |
 | reply_total | integer | 是 | 直接回复数（按 parent_id 一条 GROUP BY 聚合，非模型列） |
+| reported_at | string \| null | 否 | 仍挂着待处理举报时的时间戳（ISO 8601）；无待处理举报为 null |
 | resolved_avatar_url | string \| null | 否 | 经 avatar_resolver 统一解析后的最终头像 URL |
 | status | string | 是 | 审核状态：status 列真实值；为空时按 active 兜底推导 approved/rejected |
 | title | null | 否 | 该端点不输出头衔（与列表端点的唯一字段差异），恒为 null |
@@ -8376,6 +8400,7 @@ _无路径 / query 参数_
   "qq": "string",
   "replies": [],
   "reply_total": 0,
+  "reported_at": "string",
   "resolved_avatar_url": "string",
   "status": "string",
   "title": "string",
@@ -14718,7 +14743,7 @@ _无路径 / query 参数_
 | end_time | string \| null | 否 | 生效结束时间 |
 | id | integer | 是 |  |
 | is_active | boolean | 否 | 是否启用 |
-| media_type | enum(`image`, `video`, `youtube`) | 否 | 媒体类型 |
+| media_type | string | 否 | 媒体类型 |
 | media_url | string | 是 | 媒体地址 |
 | overlay_color | string | 否 | 遮罩颜色 |
 | overlay_opacity | integer | 否 | 遮罩透明度 0-100 |
@@ -14726,8 +14751,8 @@ _无路径 / query 参数_
 | sort_order | integer | 否 | 排序权重 |
 | start_time | string \| null | 否 | 生效开始时间 |
 | subtitle | string \| null | 否 | 副标题（多语言 JSON） |
-| text_align | enum(`left`, `center`, `right`) | 否 | 文字对齐 |
-| text_color | enum(`light`, `dark`) | 否 | 文字颜色主题 |
+| text_align | string | 否 | 文字对齐 |
+| text_color | string | 否 | 文字颜色主题 |
 | title | string \| null | 否 | 主标题（多语言 JSON） |
 | updated_at | string | 是 |  |
 
@@ -14833,7 +14858,7 @@ _无路径 / query 参数_
 | end_time | string \| null | 否 | 生效结束时间 |
 | id | integer | 是 |  |
 | is_active | boolean | 否 | 是否启用 |
-| media_type | enum(`image`, `video`, `youtube`) | 否 | 媒体类型 |
+| media_type | string | 否 | 媒体类型 |
 | media_url | string | 是 | 媒体地址 |
 | overlay_color | string | 否 | 遮罩颜色 |
 | overlay_opacity | integer | 否 | 遮罩透明度 0-100 |
@@ -14841,8 +14866,8 @@ _无路径 / query 参数_
 | sort_order | integer | 否 | 排序权重 |
 | start_time | string \| null | 否 | 生效开始时间 |
 | subtitle | string \| null | 否 | 副标题（多语言 JSON） |
-| text_align | enum(`left`, `center`, `right`) | 否 | 文字对齐 |
-| text_color | enum(`light`, `dark`) | 否 | 文字颜色主题 |
+| text_align | string | 否 | 文字对齐 |
+| text_color | string | 否 | 文字颜色主题 |
 | title | string \| null | 否 | 主标题（多语言 JSON） |
 | updated_at | string | 是 |  |
 
@@ -14939,7 +14964,7 @@ _无路径 / query 参数_
 | end_time | string \| null | 否 | 生效结束时间 |
 | id | integer | 是 |  |
 | is_active | boolean | 否 | 是否启用 |
-| media_type | enum(`image`, `video`, `youtube`) | 否 | 媒体类型 |
+| media_type | string | 否 | 媒体类型 |
 | media_url | string | 是 | 媒体地址 |
 | overlay_color | string | 否 | 遮罩颜色 |
 | overlay_opacity | integer | 否 | 遮罩透明度 0-100 |
@@ -14947,8 +14972,8 @@ _无路径 / query 参数_
 | sort_order | integer | 否 | 排序权重 |
 | start_time | string \| null | 否 | 生效开始时间 |
 | subtitle | string \| null | 否 | 副标题（多语言 JSON） |
-| text_align | enum(`left`, `center`, `right`) | 否 | 文字对齐 |
-| text_color | enum(`light`, `dark`) | 否 | 文字颜色主题 |
+| text_align | string | 否 | 文字对齐 |
+| text_color | string | 否 | 文字颜色主题 |
 | title | string \| null | 否 | 主标题（多语言 JSON） |
 | updated_at | string | 是 |  |
 
@@ -16082,6 +16107,513 @@ _无路径 / query 参数_
 | 状态码 | 说明 |
 | --- | --- |
 | `422` | Validation Error |
+
+---
+
+## 评论举报（3）
+
+评论举报的提交与后台裁决
+
+### `GET /api/admin/comments/reports`
+
+- **摘要**：评论举报列表（管理员）
+- **鉴权**：需鉴权：`HTTPBearer`
+
+按状态筛选 + 分页返回举报明细，附带每个状态的总数（不受筛选影响，用于页签角标）。响应为裸分页 dict（items/total/page/page_size/total_pages/counts），无 success/data 信封。单条含被举报评论正文前 120 字、评论审核状态、文章 slug/标题与举报人摘要；`reporter_ip` 属 PII，与评论列表同口径只对 staff 开放，不要再放宽闸门。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `AdminCommentReportListResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| counts | object | 是 | 各状态举报数（不受当前筛选影响，用于页签角标）。 |
+| counts.dismissed | integer | 是 |  |
+| counts.handled | integer | 是 |  |
+| counts.open | integer | 是 |  |
+| counts.total | integer | 是 |  |
+| items | object[] | 是 |  |
+| page | integer | 是 |  |
+| page_size | integer | 是 |  |
+| total | integer | 是 | 当前筛选条件下的总数 |
+| total_pages | integer | 是 |  |
+
+响应示例：
+
+```json
+{
+  "counts": {
+    "dismissed": 0,
+    "handled": 0,
+    "open": 0,
+    "total": 0
+  },
+  "items": [
+    {
+      "comment_author": "string",
+      "comment_excerpt": "string",
+      "comment_id": 0,
+      "comment_status": "string",
+      "created_at": "string",
+      "detail": "string",
+      "handled_at": "string",
+      "handled_by": "string",
+      "id": 0,
+      "post_id": 0,
+      "post_slug": "string",
+      "post_title": "string",
+      "reason": "string",
+      "reporter_ip": "string",
+      "reporter_name": "string",
+      "reporter_user_id": "string",
+      "status": "string"
+    }
+  ],
+  "page": 0,
+  "page_size": 0,
+  "total": 0,
+  "total_pages": 0
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `PATCH /api/admin/comments/reports/{report_id}`
+
+- **摘要**：裁决评论举报（管理员）
+- **鉴权**：需鉴权：`HTTPBearer`
+
+把一条举报置为 handled（确认违规并已处置）或 dismissed（误报驳回），并记录裁决人与时间。重复裁决按最后一次为准（不做状态机拦截）。裁决后若该评论已无其它待处理举报，清空 `comments.reported_at`；响应额外带 `comment_reported` 标识评论是否仍挂着待处理举报。注意：本端点只改举报状态，**不会**下架评论——下架仍走 PATCH /api/admin/comments/{comment_id} 的 status 字段。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `AdminCommentReportUpdate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| status | enum(`handled`, `dismissed`) | 是 | handled（确认违规并已处置）或 dismissed（误报，驳回） |
+
+```json
+{
+  "status": "handled"
+}
+```
+
+**出参**
+
+`200` · 模型 `AdminCommentReportUpdated`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| comment_author | string | 是 | 被举报评论作者显示名 |
+| comment_excerpt | string | 是 | 被举报评论正文前 120 字 |
+| comment_id | integer | 是 | 被举报评论 ID |
+| comment_reported | boolean | 是 | 裁决后该评论是否仍挂着其它待处理举报（决定列表「待处理」标记） |
+| comment_status | string | 是 | 被举报评论的审核状态 |
+| created_at | string \| null | 否 | 举报时间 ISO 8601 |
+| detail | string \| null | 否 | 举报人填写的补充说明 |
+| handled_at | string \| null | 否 | 裁决时间 ISO 8601，未处理为 null |
+| handled_by | string \| null | 否 | 裁决人显示名，未处理为 null |
+| id | integer | 是 | 举报 ID |
+| post_id | integer | 是 | 评论所属文章 ID |
+| post_slug | string \| null | 否 | 文章 slug，文章缺失为 null |
+| post_title | string \| null | 否 | 文章标题（默认语言），文章缺失为 null |
+| reason | string | 是 | 举报原因枚举值 |
+| reporter_ip | string \| null | 否 | 举报来源 IP（与评论列表同口径，仅 staff 可见） |
+| reporter_name | string \| null | 否 | 举报人显示名，匿名为 null |
+| reporter_user_id | integer \| null | 否 | 举报人用户 ID，匿名举报为 null |
+| status | string | 是 | open / handled / dismissed |
+
+响应示例：
+
+```json
+{
+  "comment_author": "string",
+  "comment_excerpt": "string",
+  "comment_id": 0,
+  "comment_reported": false,
+  "comment_status": "string",
+  "created_at": "string",
+  "detail": "string",
+  "handled_at": "string",
+  "handled_by": "string",
+  "id": 0,
+  "post_id": 0,
+  "post_slug": "string",
+  "post_title": "string",
+  "reason": "string",
+  "reporter_ip": "string",
+  "reporter_name": "string",
+  "reporter_user_id": "string",
+  "status": "string"
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `POST /api/comments/{comment_id}/report`
+
+- **摘要**：举报评论（匿名或登录用户）
+- **鉴权**：需鉴权：`HTTPBearer`
+
+公开写口，匿名可用；按 IP 限流 10 次/分钟（滑动窗口）。评论不存在、所属文章不可见或加密未解锁一律 404（COMMENT_NOT_FOUND），与读口同源闸门（services.comment_access）。登录用户举报自己的评论返回 400（SELF_REPORT）；游客评论的 user_id 为空，任何账号都可举报。同一登录用户对同一条评论只保留一条待处理举报，匿名按 IP + 24 小时去重——重复时**不新建行**，返回 200 且 `duplicate=true`（不是错误）。携带 Bearer Token 时走 per-route CSRF 依赖（带 Origin 必须命中白名单）；匿名请求跳过。成功后置起 `comments.reported_at` 供后台「待处理」筛选使用。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `CommentReportCreate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| detail | string \| null | 否 | 补充说明（可选，≤500 字），不要在这里贴原文 |
+| reason | enum(`spam`, `abuse`, `offtopic`, `other`) | 是 | 举报原因：spam（垃圾广告）/ abuse（辱骂攻击）/ offtopic（无关内容）/ other（其它） |
+
+```json
+{
+  "detail": "string",
+  "reason": "spam"
+}
+```
+
+**出参**
+
+`201` · 模型 `CommentReportReceipt`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| comment_id | integer | 是 | 被举报评论 ID |
+| duplicate | boolean | 是 | true 表示未新建行、复用了已存在的待处理举报 |
+| id | integer | 是 | 举报记录 ID（新建的，或命中的已存在记录） |
+| message | string | 是 | 给访客看的提示文案 |
+| status | enum(`open`, `handled`, `dismissed`) | 是 | 该举报当前状态，通常为 open |
+
+响应示例：
+
+```json
+{
+  "comment_id": 0,
+  "duplicate": false,
+  "id": 0,
+  "message": "string",
+  "status": "open"
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+---
+
+## 自定义内容类型（5）
+
+文章扩展字段定义与写入口校验
+
+### `GET /api/admin/content-types`
+
+- **摘要**：管理员获取内容类型定义
+- **鉴权**：需鉴权：`HTTPBearer`
+
+管理员获取全部内容类型定义，并带上每种类型当前被多少篇文章引用（删除前置提示用）。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| (根) | object[] | — |  |
+
+响应示例：
+
+```json
+[
+  {
+    "description": "string",
+    "fields": [
+      {
+        "default": "…",
+        "description": "…",
+        "field_type": "…",
+        "key": "…",
+        "label": "…",
+        "options": "…",
+        "required": "…"
+      }
+    ],
+    "icon": "string",
+    "id": 0,
+    "key": "string",
+    "name": "string",
+    "posts_count": 0
+  }
+]
+```
+
+**错误码**
+
+_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
+
+### `POST /api/admin/content-types`
+
+- **摘要**：创建内容类型
+- **鉴权**：需鉴权：`HTTPBearer`
+
+管理员创建自定义内容类型。key 重复返回 409。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `ContentTypeCreate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| description | string \| null | 否 | 用途说明 |
+| fields | object[] | 否 | 自定义字段定义 |
+| icon | string \| null | 否 | 图标名（lucide 名称） |
+| key | string | 是 | 类型唯一键（小写字母开头，仅小写字母/数字/下划线/连字符），落库后不可修改 |
+| name | string | 是 | 显示名 |
+
+```json
+{
+  "description": "string",
+  "fields": [
+    {
+      "default": "string",
+      "description": "string",
+      "field_type": "text",
+      "key": "string",
+      "label": "string",
+      "options": "string",
+      "required": false
+    }
+  ],
+  "icon": "string",
+  "key": "string",
+  "name": "string"
+}
+```
+
+**出参**
+
+`201` · 模型 `ContentTypeResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| description | string \| null | 否 |  |
+| fields | object[] | 是 |  |
+| icon | string \| null | 否 |  |
+| id | integer | 是 |  |
+| key | string | 是 |  |
+| name | string | 是 |  |
+| posts_count | integer | 否 |  |
+
+响应示例：
+
+```json
+{
+  "description": "string",
+  "fields": [
+    {
+      "default": "string",
+      "description": "string",
+      "field_type": "text",
+      "key": "string",
+      "label": "string",
+      "options": "string",
+      "required": false
+    }
+  ],
+  "icon": "string",
+  "id": 0,
+  "key": "string",
+  "name": "string",
+  "posts_count": 0
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `PUT /api/admin/content-types/{key}`
+
+- **摘要**：更新内容类型
+- **鉴权**：需鉴权：`HTTPBearer`
+
+管理员的显示名/图标/描述/字段定义。key 不可修改（请求体带 key 会被 extra=forbid 拒绝）；删字段不会清理历史文章里的对应值。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `ContentTypeUpdate`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| description | string \| null | 否 |  |
+| fields | object[] \| null | 否 |  |
+| icon | string \| null | 否 |  |
+| name | string \| null | 否 |  |
+
+```json
+{
+  "description": "string",
+  "fields": "string",
+  "icon": "string",
+  "name": "string"
+}
+```
+
+**出参**
+
+`200` · 模型 `ContentTypeResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| description | string \| null | 否 |  |
+| fields | object[] | 是 |  |
+| icon | string \| null | 否 |  |
+| id | integer | 是 |  |
+| key | string | 是 |  |
+| name | string | 是 |  |
+| posts_count | integer | 否 |  |
+
+响应示例：
+
+```json
+{
+  "description": "string",
+  "fields": [
+    {
+      "default": "string",
+      "description": "string",
+      "field_type": "text",
+      "key": "string",
+      "label": "string",
+      "options": "string",
+      "required": false
+    }
+  ],
+  "icon": "string",
+  "id": 0,
+  "key": "string",
+  "name": "string",
+  "posts_count": 0
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `DELETE /api/admin/content-types/{key}`
+
+- **摘要**：删除内容类型
+- **鉴权**：需鉴权：`HTTPBearer`
+
+管理员。仍被文章引用时返回 409（post_type 是普通字符串列，没有外键兜底）。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `BaseResponse`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| message | string | 否 |  |
+| success | boolean | 否 |  |
+
+响应示例：
+
+```json
+{
+  "message": "操作成功",
+  "success": true
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `GET /api/content-types`
+
+- **摘要**：获取自定义内容类型定义
+- **鉴权**：公开接口（无需鉴权）
+
+公开列出全部内容类型定义（不含 id），供前台文章页按 post_type 渲染自定义字段标签。结果缓存 300 秒，后台定义写操作会立即失效缓存。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| (根) | object[] | — |  |
+
+响应示例：
+
+```json
+[
+  {
+    "description": "string",
+    "fields": [
+      {
+        "default": "…",
+        "description": "…",
+        "field_type": "…",
+        "key": "…",
+        "label": "…",
+        "options": "…",
+        "required": "…"
+      }
+    ],
+    "icon": "string",
+    "key": "string",
+    "name": "string"
+  }
+]
+```
+
+**错误码**
+
+_除下方“全局通用错误码”外，本接口未声明自定义错误响应_
 
 ---
 
@@ -18777,10 +19309,10 @@ _无路径 / query 参数_
 
 ### `GET /api/bing/image/archive`
 
-- **摘要**：获取 Bing 最近 N 天图片归档（骨架）
+- **摘要**：获取 Bing 最近 N 天图片归档
 - **鉴权**：公开接口（无需鉴权）
 
-返回最近 days 天的图片元数据列表，公开访问、无需鉴权。实现是串行请求上游归档接口（每天一次请求、每请求间隔 50ms，单次超时 10 秒），days 取值 1..14，越界由框架返回 422；因此大天数会显著拉长响应时间。上游不可用或某天缺数据时跳过该天，count 可能小于 days；整体异常同样返回 200，只带已抓到的部分（可能是空数组）。无服务端缓存。
+返回最近 days 天的图片元数据列表，公开访问、无需鉴权。上游一次批量请求即可拿到整段窗口（``n`` 直接传给 Bing），不再按天串行外发；但 Bing 自己只保留最近 8 天，越过窗口的 ``idx`` 会重复返回最旧那张图，所以 ``count`` 最多 ``min(days, 8)``，且按 ``urlbase`` 再去一次重。days 取值 1..14，越界由框架返回 422（保留原入参范围，多要的那几天上游确实没有）。每条的 ``date`` 取上游 ``startdate``；没有 ``startdate`` 或没有 ``urlbase`` 的条目丢弃，不按服务器时钟猜日期。上游不可用或某天缺数据时跳过该天，整体异常同样返回 200，只带已抓到的部分（可能为空数组）。非空结果按 days 进服务端缓存 3600 秒；空结果不写缓存，一次上游故障不会把空归档钉住一小时。
 
 **入参**
 
@@ -18804,6 +19336,7 @@ _无路径 / query 参数_
   "data": [
     {
       "copyright": "string",
+      "copyright_url": "string",
       "date": "string",
       "title": "string",
       "url": "string",
@@ -18825,7 +19358,7 @@ _无路径 / query 参数_
 - **摘要**：获取 Bing 今日图元数据
 - **鉴权**：公开接口（无需鉴权）
 
-从 Bing 首页图像元数据接口抓取今日信息，公开访问、无需鉴权。上游请求超时上限 8 秒；任何上游异常都不返回错误码，而是带 fallback 标记返回一条 data: URI 占位图，保证前端不崩。结果不做服务端缓存，每次请求都会打上游。
+从 Bing 首页图像元数据接口抓取今日信息，公开访问、无需鉴权。上游请求超时上限 8 秒；任何上游异常都不返回错误码，而是带 fallback 标记返回一条 data: URI 占位图，保证前端不崩。结果不做服务端缓存，每次请求都会打上游。``data.date`` 用上游 ``startdate``（Bing 认定的那一天），不是服务器时钟；只有兜底分支（上游根本没回）才按 UTC 日期填一条占位。
 
 **入参**
 
@@ -18839,7 +19372,8 @@ _无路径 / query 参数_
 | --- | --- | --- | --- |
 | data | object | 是 | Bing 每日一图的元数据条目（对上游 URL 拼装后的结果，不含图片本体）。 |
 | data.copyright | string \| null | 否 | 上游版权署名文字；上游未提供时为 null |
-| data.date | string | 是 | YYYY-MM-DD，服务端按服务器当天日期填入 |
+| data.copyright_url | string \| null | 否 | 上游版权详情页链接（copyrightlink）；展示署名时可作为出处链接 |
+| data.date | string | 是 | YYYY-MM-DD，取上游 ``startdate``（Bing 自己认定这张图属于哪一天）；归档口对没有 startdate 的条目直接丢弃，不拿服务器时钟猜 |
 | data.title | string | 是 | 标题；上游无标题时回退版权文字，再回退兜底文案 |
 | data.url | string | 是 | 1920x1080 JPEG 直链；上游未给 urlbase 时是空字符串，今日图接口兜底分支则是一条 data: URI 占位图 |
 | data.url_uhd | string \| null | 否 | 4K UHD 原图直链；无 urlbase 时为 null |
@@ -18852,6 +19386,7 @@ _无路径 / query 参数_
 {
   "data": {
     "copyright": "string",
+    "copyright_url": "string",
     "date": "string",
     "title": "string",
     "url": "string",
@@ -19603,7 +20138,7 @@ _无路径 / query 参数_
 - **摘要**：获取相册详情及照片
 - **鉴权**：公开接口（无需鉴权）
 
-获取指定相册详情（包含照片列表，仅公开相册）
+获取指定相册详情（包含照片列表，仅公开相册） 照片的 thumbnail_url 是按 ``Media.file == Photo.url`` 从媒体库 sizes 现算的派生值， 因此会随这份 600s 响应缓存一起变旧——属于展示字段滞后，不影响原图 ``url``。
 
 **入参**
 
@@ -19886,7 +20421,7 @@ _无路径 / query 参数_
 - **摘要**：【管理员】获取相册照片列表
 - **鉴权**：需鉴权：`HTTPBearer`
 
-需 CurrentStaff。按 sort_order 升序 + 创建时间正序分页返回该相册全部照片（含未发布语义）。相册不存在返回 404。
+需 CurrentStaff。按 sort_order 升序 + 创建时间正序分页返回该相册全部照片（含未发布语义）。每张照片的 thumbnail_url 读取时从媒体库 sizes 派生（不落库），无缩略档时回 null。相册不存在返回 404。
 
 **入参**
 
@@ -19983,7 +20518,7 @@ _无路径 / query 参数_
 | id | integer | 是 |  |
 | original_url | string \| null | 否 |  |
 | sort_order | integer | 否 | 排序权重 |
-| thumbnail_url | string \| null | 否 |  |
+| thumbnail_url | string \| null | 否 | 缩略图档 URL（读取时从媒体库 sizes 派生，不落库） |
 | title | string \| null | 否 | 照片标题 |
 | url | string | 是 | 照片 URL |
 
@@ -20113,7 +20648,7 @@ _无路径 / query 参数_
 | id | integer | 是 |  |
 | original_url | string \| null | 否 |  |
 | sort_order | integer | 否 | 排序权重 |
-| thumbnail_url | string \| null | 否 |  |
+| thumbnail_url | string \| null | 否 | 缩略图档 URL（读取时从媒体库 sizes 派生，不落库） |
 | title | string \| null | 否 | 照片标题 |
 | url | string | 是 | 照片 URL |
 

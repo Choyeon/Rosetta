@@ -3,8 +3,8 @@
 起因是一次线上门禁的假 FAIL：chain121 的探针拿 `PUT /api/admin/series/{id}/toggle` 断言
 "带站外 Origin 必须 403"，实测 200 就判红。看代码才把这件事说清楚——
 
-1. `require_csrf` 是 **per-route 依赖**，本仓只挂在评论的创建与删除两条写口上；
-   其余约 200 条写接口按站外 Origin 请求照样通过。
+1. `require_csrf` 是 **per-route 依赖**，本仓只挂在评论的创建、删除自己的评论、
+   以及评论举报三条写口上；其余约 200 条写接口按站外 Origin 请求照样通过。
 2. 这**不是漏洞**：本站登录态只在 `Authorization` 头里、`set_cookie` 全仓零命中，
    没有环境凭证就没有经典 CSRF——跨站页面既读不到 localStorage 里的 token，
    浏览器也不会替它带上这个头。
@@ -31,6 +31,8 @@ GEN_PATH = BACKEND_DIR / "scripts" / "gen_api_detail.py"
 WIRED_ROUTES = {
     ("backend/api/comments.py", "create_comment"),
     ("backend/api/comments.py", "delete_own_comment"),
+    # 批次 #102 的举报口：唯一"匿名可打 + 会改库"的公开写口，登录态带着 Bearer 时同轨过闸
+    ("backend/api/comment_report.py", "report_comment"),
 }
 
 
@@ -85,6 +87,22 @@ class TestDesignIsNotAMissingWire:
         """挂着的那条：依赖先于处理函数执行，所以连不存在的 id 都是 403 而不是 404。"""
         resp = await client.delete(
             "/api/comments/999999",
+            headers={**admin_headers, "Origin": "http://evil-csrf.example"},
+        )
+        assert resp.status_code == 403, resp.text
+        assert "CSRF_CHECK_FAILED" in resp.text
+
+    async def test_report_endpoint_rejects_hostile_bearer_origin(
+        self, client: AsyncClient, admin_headers: dict
+    ):
+        """批次 #102 挂上的第三条口，同一种请求形态必须是同一个结果。
+
+        这条补的是"清单加了名字、行为却没跟上"：举报口同时挂着 IP 限流，
+        依赖顺序一挪（限流排到 CSRF 之后）就用 429 盖住了 403，从清单上看不出来。
+        """
+        resp = await client.post(
+            "/api/comments/999999/report",
+            json={"reason": "spam"},
             headers={**admin_headers, "Origin": "http://evil-csrf.example"},
         )
         assert resp.status_code == 403, resp.text

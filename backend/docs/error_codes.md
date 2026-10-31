@@ -57,13 +57,13 @@
 
 ## 错误码清单（自动生成）
 
-本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **76 个真实存在的错误码**。
+本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **78 个真实存在的错误码**。
 
 - 出处列只列到文件级：同一个码可能出现在多个端点，具体判定看源码。
 - HTTP 列为该码在当前源码里能推断出的状态码；`—` 表示该码由 AppException 子类外的路径抛出且附近没有 `status_code=`（以调用点为准）。
 - 新增/删除错误码后跑 `uv run python -m backend.scripts.gen_error_codes --write`，否则 `tests/test_docs_error_codes_sync.py` 会失败。
 
-### 通用与状态码回退（31）
+### 通用与状态码回退（33）
 
 | 错误码 | HTTP | 说明 | 出处 |
 | --- | --- | --- | --- |
@@ -90,9 +90,11 @@
 | `PAYLOAD_TOO_LARGE` | 413 | — | `backend/main.py` |
 | `PERMISSION_DENIED` | — | — | `backend/core/auth.py` |
 | `POST_NOT_FOUND` | 404 | 文章不存在 | `backend/api/comments.py` |
+| `REPORT_NOT_FOUND` | — | 举报记录不存在 | `backend/api/comment_report.py` |
 | `REQUEST_ENTITY_TOO_LARGE` | — | — | `backend/api/media.py` |
 | `RESOURCE_NOT_FOUND` | 404 | 资源不存在 | `backend/core/exceptions.py` |
 | `RSS_DISABLED` | 404 | 订阅源已关闭 | `backend/api/blog.py` |
+| `SELF_REPORT` | — | 不能举报自己的评论 | `backend/api/comment_report.py` |
 | `SERVICE_UNAVAILABLE` | 503 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `UNAUTHORIZED` | 401 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
 | `VALIDATION_ERROR` | 422 | — | `backend/core/exceptions.py`<br>`backend/main.py` |

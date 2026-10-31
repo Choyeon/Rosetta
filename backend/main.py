@@ -167,6 +167,8 @@ TAG_METADATA: list[dict[str, str]] = [
     {"name": "文章加密工具", "description": "文章加密的管理工具"},
     {"name": "定时发布", "description": "定时发布任务管理"},
     {"name": "评论表情反应", "description": "评论表情互动"},
+    {"name": "评论举报", "description": "评论举报的提交与后台裁决"},
+    {"name": "自定义内容类型", "description": "文章扩展字段定义与写入口校验"},
     {"name": "热门排行", "description": "热门文章排行榜"},
     {"name": "性能监控", "description": "接口性能数据查询"},
     {"name": "仪表盘", "description": "后台仪表盘统计数据"},
