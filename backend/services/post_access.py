@@ -14,7 +14,8 @@
    status/密码都合规时才会分叉，所以私密档必须单独有一条判据，而集合口（列表 / RSS /
    sitemap / 归档 / 热榜 / 系列 / 推荐）要有能进 SQL 的谓词形态。
 
-本模块还兼管**列表面的媒体三位**（``media_flags`` / ``post_media_flags``）的唯一产出点：
+本模块还兼管**列表面的媒体三位**（``media_flags`` / ``post_media_flags``）的唯一产出点，
+以及按这三位反向筛选列表的 SQL 谓词（``media_presence_filter``）：
 归档那一族走列投影（不实例化 Post）、热榜与推荐走 ORM 行，两边都要产出同一组键，
 所以这个 helper 放在两边都能导入的底层，而不是某个 api 模块里（repository 反向 import
 api 会成环）。
@@ -29,7 +30,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import ColumnElement, and_, func
+from sqlalchemy import ColumnElement, and_, func, or_
 
 from backend.models.blog import Post
 
@@ -79,6 +80,30 @@ def post_media_flags(post: Post) -> dict[str, bool]:
     是同类的第五个构造点，但当前无调用方，靠模型默认值拿 False。
     """
     return media_flags(audio=post.audio, video=post.video, video_url=post.video_url)
+
+
+MEDIA_FILTER_KINDS = ("audio", "video")
+
+
+def media_presence_filter(kind: str | None) -> ColumnElement[bool] | None:
+    """
+    列表口「只看含音频 / 只看含视频」的 SQL 谓词单源；非白名单取值回 ``None``（不过滤）。
+
+    判据必须和 ``media_flags`` 的 Python 侧一致——那边是 ``bool(col)``，``None`` 与空串都算
+    "没有"，所以这里用 ``COALESCE(col, '') != ''``（PG 与 SQLite 同形，也接住直连 SQL 写进
+    库的空串）。两边各写一套的表现是"卡片上有徽标的文章，被『只看含音频』筛掉"。
+
+    ``video`` 档与徽标同口径＝站内视频**或**第三方嵌入任一即可：前端把两者合成一个
+    "有画面"标记，筛选也必须筛出同一批文章。
+    """
+    if kind == "audio":
+        return func.coalesce(Post.audio, "") != ""
+    if kind == "video":
+        return or_(
+            func.coalesce(Post.video, "") != "",
+            func.coalesce(Post.video_url, "") != "",
+        )
+    return None
 
 
 def private_posts_excluded() -> ColumnElement[bool]:

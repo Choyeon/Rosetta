@@ -54,6 +54,7 @@ from backend.services.content_renderer import (
 from backend.services.content_type_service import resolve_post_type_and_meta
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import (
+    media_presence_filter,
     post_content_unlocked,
     post_is_publicly_visible,
     post_media_flags,
@@ -378,6 +379,7 @@ async def _get_post_list_cache_key(
     author: str | None = None,
     post_type: str | None = None,
     sort: str = LIST_SORT_LATEST,
+    media: str | None = None,
 ) -> str:
     """生成文章列表缓存键"""
     parts = [
@@ -398,6 +400,10 @@ async def _get_post_list_cache_key(
         # 在 TTL 内对全站投毒。缺省段必须与查询侧同口径，所以是 'all' 而不是某个类型 key
         # ——写成 'post' 会让"全部类型"与"只有博客"两个不同的结果集共用同一个键位。
         f"pt{post_type or 'all'}",
+        # 媒体筛选同样是查询侧的 WHERE，必须进键（AGENTS §9.1「判别位」那条）：少了这一段，
+        # `?media=audio` 的空结果会写进全站列表共用的键位。非白名单取值不改变结果集，
+        # 但仍自成一条键——垃圾值只污染自己那一份，与 post_type 的处置一致。
+        f"m{media or 'all'}",
     ]
     return make_cache_key(*parts)
 
@@ -575,6 +581,14 @@ async def list_posts(
         ),
     ),
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
+    media: str | None = Query(
+        None,
+        description=(
+            "只看带媒体内容的文章：`audio`（有音频）/ `video`（有站内视频**或**第三方嵌入，"
+            "与列表卡片的「有画面」徽标同一判据）。其它取值与不传一样返回全部文章。"
+            "取值会进列表缓存键，所以垃圾值只会让这一次查询落在自己的键位上。"
+        ),
+    ),
     created_start: str | None = Query(
         None, alias="created_start", description="创建开始日期 ISO（含边界）"
     ),
@@ -664,6 +678,7 @@ async def list_posts(
             author,
             post_type,
             sort_mode,
+            media,
         )
         cached = await cache.get(cache_key)
         if cached:
@@ -735,6 +750,12 @@ async def list_posts(
     # 于是同一篇文章"能被订阅、点得进去，却在任何列表里不存在"）。
     if post_type:
         query = query.where(Post.post_type == post_type)
+
+    # 媒体筛选：判据与列表卡片那三个徽标同源（services/post_access.py::media_presence_filter），
+    # 所以"筛出来的文章"与"卡片上亮着画面标记的文章"是同一批；非白名单取值不过滤。
+    media_filter = media_presence_filter(media)
+    if media_filter is not None:
+        query = query.where(media_filter)
 
     # 创建日期范围过滤
     from_dt = parse_utc_date(created_start)

@@ -121,6 +121,47 @@
               </ClientOnly>
             </div>
             <div class="md:w-44">
+              <!-- 媒体筛选：与卡片上的「含音频 / 有画面」徽标同一判据（后端单源
+                   services/post_access.py::media_presence_filter）。
+                   这一条不像内容类型那样按"站点有没有定义过"隐现：筛得出结果的行
+                   可能不在当前这一页，只看首页徽标会把入口藏起来。 -->
+              <ClientOnly>
+                <Select
+                  v-model="selectedMedia"
+                  @update:model-value="handleFilter"
+                >
+                  <SelectTrigger
+                    class="h-10"
+                    :aria-label="t('posts.selectMedia')"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem :value="ALL_MEDIA">
+                      {{ t('posts.allMedia') }}
+                    </SelectItem>
+                    <SelectItem value="audio">
+                      {{ t('posts.mediaAudio') }}
+                    </SelectItem>
+                    <SelectItem value="video">
+                      {{ t('posts.mediaVideo') }}
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <template #fallback>
+                  <button
+                    type="button"
+                    tabindex="-1"
+                    aria-hidden="true"
+                    class="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-base sm:text-sm text-muted-foreground text-start"
+                  >
+                    <span class="truncate">{{ t('posts.selectMedia') }}</span>
+                    <ChevronDown class="size-4 opacity-50 shrink-0" />
+                  </button>
+                </template>
+              </ClientOnly>
+            </div>
+            <div class="md:w-44">
               <ClientOnly>
                 <Select
                   v-model="sortBy"
@@ -374,6 +415,7 @@ useBreadcrumbJsonLd([
 
 const ALL_CATEGORIES = '__all'
 const ALL_TYPES = '__all'
+const ALL_MEDIA = '__all'
 // 每页条数来自后台「阅读体验」分组；未保存过该分组时沿用 9（3 列网格 × 3 行）
 const pageSize = computed(() => site.reading.value.posts_per_page)
 
@@ -384,6 +426,10 @@ const searchQuery = ref((route.query.search as string) || '')
 const selectedCategory = ref((route.query.category as string) || '')
 const selectedType = ref((route.query.post_type as string) || ALL_TYPES)
 const sortBy = ref<'latest' | 'popular'>(route.query.sort === 'popular' ? 'popular' : 'latest')
+// 后端只认 audio / video 两个取值（其余等同不传），这里同样按白名单收一次，
+// 不让 ?media=<任意串> 变成一个"看着筛了其实没筛"的地址。
+const rawMedia = String(route.query.media ?? '')
+const selectedMedia = ref(rawMedia === 'audio' || rawMedia === 'video' ? rawMedia : ALL_MEDIA)
 const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 
 const hasActiveFilter = computed(
@@ -391,6 +437,7 @@ const hasActiveFilter = computed(
     searchQuery.value !== ''
     || (selectedCategory.value !== '' && selectedCategory.value !== ALL_CATEGORIES)
     || selectedType.value !== ALL_TYPES
+    || selectedMedia.value !== ALL_MEDIA
 )
 
 // ===== 地址栏同步用的查询串（canonical 由 useSeo 单源产出，见文件头契约 1/3）=====
@@ -405,6 +452,7 @@ const canonicalQuery = computed(() => {
   }
   if (searchQuery.value) q.search = searchQuery.value
   if (sortBy.value !== 'latest') q.sort = sortBy.value
+  if (selectedMedia.value !== ALL_MEDIA) q.media = selectedMedia.value
   return q
 })
 
@@ -462,7 +510,8 @@ const { data, pending, error: loadError, refresh } = useAPI<PaginatedResponse<Po
     post_type: (selectedType.value && selectedType.value !== ALL_TYPES) ? selectedType.value : undefined,
     search: searchQuery.value || undefined,
     // 后端对未知取值回退 latest，这里同样只发白名单值
-    sort: sortBy.value === 'popular' ? 'popular' : undefined
+    sort: sortBy.value === 'popular' ? 'popular' : undefined,
+    media: selectedMedia.value !== ALL_MEDIA ? selectedMedia.value : undefined
   })),
   key: 'posts:list'
 })
@@ -545,6 +594,7 @@ const clearFilters = () => {
   searchQuery.value = ''
   selectedCategory.value = ''
   selectedType.value = ALL_TYPES
+  selectedMedia.value = ALL_MEDIA
   currentPage.value = 1
   syncUrl()
 }

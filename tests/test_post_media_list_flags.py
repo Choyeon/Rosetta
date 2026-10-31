@@ -8,12 +8,14 @@
 系列章节目录。它们各自是一条独立代码路径（列投影连 Post 实例都不建），少接一处的表现是
 "列表页有徽标、归档页没有"这种没人报的缺陷。
 
-三条口径：
+四条口径：
 
 1. **只带存在性，不带地址**：列表载荷被更多缓存与更多消费方复用，媒体路径仍只在详情口回。
 2. **三个键必须有默认值**：列表载荷进响应缓存，旧载荷没这三键时 ``model_validate``
    会因为缺必填而整口 500（与「新增必填字段是反向同一条路」同源）。
 3. **清空跟着变**：写口把音轨清掉后，下一次列表读数必须回到 False（否则徽标长期撒谎）。
+4. **反向也要成立**（批次 #123）：`GET /api/blog/posts?media=audio|video` 筛出的集合必须
+   与"这一批里徽标为真的集合"相等——判据分两处写就会分叉，且筛选取值必须进列表缓存键。
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ from datetime import datetime, timezone
 
 import pytest
 from httpx import AsyncClient
+from sqlalchemy.dialects import postgresql, sqlite
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.post_series import SeriesPostItemDoc
@@ -31,6 +34,7 @@ from backend.models.post_series import PostSeries
 from backend.models.user import User
 from backend.schemas import PostListItemLocalized
 from backend.schemas.blog_reads import ArchivePostItem
+from backend.services.post_access import MEDIA_FILTER_KINDS, media_presence_filter
 
 GOOD_AUDIO = "/media/2026/03/podcast.mp3"
 GOOD_VIDEO = "/media/2026/03/clip.mp4"
@@ -544,3 +548,171 @@ class TestNonModelDocPayloadsStillValidate:
         for key in MEDIA_KEYS:
             assert getattr(item, key) is False
             assert SeriesPostItemDoc.model_fields[key].is_required() is False
+
+
+class TestMediaFilterMatchesBadges:
+    """``?media=audio|video`` 筛出来的必须正是"卡片上亮着同一个徽标"的那批文章。
+
+    批次 #123 把徽标（存在性三位）反过来做成列表的筛选条件，于是判据第二次被需要：
+    SQL 侧写成 ``IS NOT NULL``、Python 侧是 ``bool(col)`` 时，库里一条 ``audio=''``
+    的文章会"筛得出来、却没有徽标"。所以这里的断言全部拿**同一份响应**里的三位
+    去比筛选结果集合，而不是各自写一套期望值。
+    """
+
+    @staticmethod
+    def _slugs(items: list[dict]) -> set[str]:
+        return {item["slug"] for item in items}
+
+    async def _seed(self, db_session, test_user, test_category):
+        await _make_post(
+            db_session,
+            test_user,
+            test_category,
+            slug="filter-audio",
+            audio=GOOD_AUDIO,
+            video=None,
+            video_url=None,
+        )
+        await _make_post(
+            db_session,
+            test_user,
+            test_category,
+            slug="filter-embed",
+            audio=None,
+            video=None,
+            video_url=GOOD_EMBED,
+        )
+        await _make_post(
+            db_session,
+            test_user,
+            test_category,
+            slug="filter-empty-string",
+            audio="",
+            video="",
+            video_url="",
+        )
+        await _make_post(
+            db_session,
+            test_user,
+            test_category,
+            slug="filter-plain",
+            audio=None,
+            video=None,
+            video_url=None,
+        )
+        await cache.clear()
+
+    @pytest.mark.asyncio
+    async def test_audio_filter_equals_the_badged_set(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        await self._seed(db_session, test_user, test_category)
+        everything = _items((await client.get("/api/blog/posts", params={"page_size": 50})).json())
+        # 空串行在两判据里都算"没有"——这条先钉住 Python 侧，否则下面的集合相等可以恒真。
+        assert _find(everything, "filter-empty-string")["has_audio"] is False
+        assert _find(everything, "filter-audio")["has_audio"] is True
+        badged = {item["slug"] for item in everything if item["has_audio"]}
+        filtered = self._slugs(
+            _items(
+                (
+                    await client.get("/api/blog/posts", params={"page_size": 50, "media": "audio"})
+                ).json()
+            )
+        )
+        assert filtered == badged
+        assert "filter-embed" not in filtered
+
+    @pytest.mark.asyncio
+    async def test_video_filter_merges_site_video_and_embed(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        """`video` 档＝站内视频或第三方嵌入任一即可，与前端合成后的"有画面"徽标同集合。"""
+        await self._seed(db_session, test_user, test_category)
+        await _make_post(
+            db_session,
+            test_user,
+            test_category,
+            slug="filter-local-video",
+            audio=None,
+            video=GOOD_VIDEO,
+            video_url=None,
+        )
+        await cache.clear()
+        everything = _items((await client.get("/api/blog/posts", params={"page_size": 50})).json())
+        badged = {item["slug"] for item in everything if item["has_video"] or item["has_embed"]}
+        filtered = self._slugs(
+            _items(
+                (
+                    await client.get("/api/blog/posts", params={"page_size": 50, "media": "video"})
+                ).json()
+            )
+        )
+        assert "filter-local-video" in badged
+        assert "filter-embed" in badged
+        assert filtered == badged
+
+    @pytest.mark.asyncio
+    async def test_unknown_media_value_behaves_like_no_filter(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        """未知取值不过滤，也不 422：这是展示偏好，老链接不该因为一个多余参数就失效。"""
+        await self._seed(db_session, test_user, test_category)
+        everything = self._slugs(
+            _items((await client.get("/api/blog/posts", params={"page_size": 50})).json())
+        )
+        for value in ("", "nonsense", "AUDIO", "audio; DROP TABLE posts"):
+            response = await client.get("/api/blog/posts", params={"page_size": 50, "media": value})
+            assert response.status_code == 200, response.text
+            assert self._slugs(_items(response.json())) == everything
+
+    @pytest.mark.asyncio
+    async def test_media_bit_is_part_of_the_list_cache_key(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        """判别位少了这一段＝筛选结果与全站列表共用一个键位（AGENTS §9.1 那条投毒面）。"""
+        await self._seed(db_session, test_user, test_category)
+        # 先暖"只看音频"这一档，再请求不带 media 的同参数列表：漏了判别位就会命中上一份。
+        filtered = await client.get("/api/blog/posts", params={"page_size": 50, "media": "audio"})
+        assert "filter-plain" not in self._slugs(_items(filtered.json()))
+        plain = await client.get("/api/blog/posts", params={"page_size": 50})
+        assert "filter-plain" in self._slugs(_items(plain.json()))
+        # 缓存命中路径也必须仍是筛过的那一批（不是每次都回源）。
+        again = await client.get("/api/blog/posts", params={"page_size": 50, "media": "audio"})
+        slugs = self._slugs(_items(again.json()))
+        assert "filter-plain" not in slugs
+        assert slugs == self._slugs(_items(filtered.json()))
+
+
+class TestMediaFilterPredicateIsDialectPortable:
+    """谓词单源本身：白名单之外不产出条件，且两方言都编译成 COALESCE。"""
+
+    def test_kind_whitelist(self):
+        assert set(MEDIA_FILTER_KINDS) == {"audio", "video"}
+
+    @pytest.mark.parametrize("kind", [None, "", "audio;", "images", "Video"])
+    def test_non_whitelist_returns_none(self, kind):
+        assert media_presence_filter(kind) is None
+
+    @pytest.mark.parametrize("kind", MEDIA_FILTER_KINDS)
+    def test_predicate_compiles_on_sqlite_and_postgres(self, kind):
+        for dialect in (postgresql.dialect(), sqlite.dialect()):
+            sql = str(media_presence_filter(kind).compile(dialect=dialect)).upper()
+            # IS NOT NULL 只挡得住 None，空串会筛出没有徽标的文章；两方言都得是 COALESCE。
+            assert "COALESCE" in sql
+            assert "IS NOT NULL" not in sql

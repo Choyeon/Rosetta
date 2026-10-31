@@ -33,6 +33,7 @@ const archiveIndex = readFileSync(resolve(root, 'frontend/pages/archive/index.vu
 const archiveYear = readFileSync(resolve(root, 'frontend/pages/archive/[year]/index.vue'), 'utf8')
 const archiveMonth = readFileSync(resolve(root, 'frontend/pages/archive/[year]/[month].vue'), 'utf8')
 const seriesPage = readFileSync(resolve(root, 'frontend/pages/series/[slug].vue'), 'utf8')
+const postsPage = readFileSync(resolve(root, 'frontend/pages/posts/index.vue'), 'utf8')
 
 describe('列表媒体徽标的消费面', () => {
   it('徽标只读存在性三位，不读媒体地址', () => {
@@ -178,6 +179,62 @@ describe('归档三面与系列目录的媒体三位（批次 #122）', () => {
   it('渲染徽标的页面不得读媒体地址', () => {
     for (const src of [archiveIndex, archiveYear, archiveMonth, seriesPage, hotPage]) {
       expect(src).not.toMatch(/\.(audio|video_url)\b/)
+    }
+  })
+})
+
+describe('列表按媒体档位筛选（批次 #123）', () => {
+  // 徽标是"这篇带不带"，筛选是同一判据的反向用法。两处各写一遍就会分叉：
+  // SQL 写成 IS NOT NULL、Python 侧是 bool(col) 时，库里一条 audio='' 的文章
+  // "筛得出来却没有徽标"。所以判据必须单源，而档位取值必须进缓存键。
+  it('筛选谓词单源在 services/post_access，列表口只引用它', () => {
+    expect(accessSvc).toContain('def media_presence_filter(kind: str | None)')
+    expect(blogApi).toContain('media_filter = media_presence_filter(media)')
+    expect(blogApi).toContain('query = query.where(media_filter)')
+    // 在 api 里另写一份 IS NOT NULL 形态的判据＝两判据分叉的开始
+    expect(blogApi).not.toMatch(/Post\.audio\.isnot|Post\.video\.isnot/)
+  })
+
+  it('媒体档位进列表缓存键（少了判别位＝筛选结果与全站列表共用一个键位）', () => {
+    expect(blogApi).toContain('f"m{media or \'all\'}"')
+    // 参数在签名与建键调用两处都得到场
+    expect(blogApi).toMatch(/media: str \| None = Query\(/)
+    expect(blogApi).toMatch(/sort_mode,\s+media,\s+\)/)
+  })
+
+  it('后端白名单 ⇔ 页面下拉档位，两个方向相等', () => {
+    const declared = accessSvc.match(/MEDIA_FILTER_KINDS = \(([^)]*)\)/)?.[1] ?? ''
+    const kinds = Array
+      .from(declared.matchAll(/"([^"]+)"/g), m => m[1])
+      .filter((v): v is string => typeof v === 'string')
+    expect([...kinds].sort()).toEqual(['audio', 'video'])
+    for (const kind of kinds) {
+      expect(postsPage, kind).toContain(`<SelectItem value="${kind}">`)
+      // 反向：页面不得摆出一个后端不认的档位
+      expect(declared, kind).toContain(`"${kind}"`)
+    }
+    expect(postsPage).not.toContain('<SelectItem value="embed">')
+  })
+
+  it('页面按白名单收 URL 值、只发选中的档位，并纳入清除与地址栏同步', () => {
+    expect(postsPage).toMatch(/rawMedia === 'audio' \|\| rawMedia === 'video' \? rawMedia : ALL_MEDIA/)
+    expect(postsPage).toContain(
+      'media: selectedMedia.value !== ALL_MEDIA ? selectedMedia.value : undefined'
+    )
+    expect(postsPage).toContain(
+      'if (selectedMedia.value !== ALL_MEDIA) q.media = selectedMedia.value'
+    )
+    // 「清除筛选」漏掉这一档＝点一次"清除"仍留在筛过的集合里，按钮在撒谎
+    expect(postsPage).toContain('selectedMedia.value = ALL_MEDIA')
+    expect(postsPage).toContain('|| selectedMedia.value !== ALL_MEDIA')
+  })
+
+  it('四语都有筛选文案', () => {
+    for (const locale of ['zh', 'en', 'ja', 'zh_Hant']) {
+      const text = readFileSync(resolve(root, `frontend/i18n/locales/${locale}.json`), 'utf8')
+      for (const key of ['selectMedia', 'allMedia', 'mediaAudio', 'mediaVideo']) {
+        expect(text, `${locale}.${key}`).toContain(`"${key}"`)
+      }
     }
   })
 })
