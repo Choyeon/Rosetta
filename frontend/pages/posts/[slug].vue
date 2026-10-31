@@ -2,7 +2,9 @@
   文章详情（SSR）：刻意不用 useAPI / useFetch 封装，直接 useAsyncData + 确定性纯字符串 cacheKey
   （post:detail:<slug>:<locale>），handler 内按 import.meta.server 选 baseURL 并手动补 Bearer/Accept-Language，
   让两端精确命中同一条 payload，不依赖 headers / 函数 toString 这类会漂移的输入。
-  Hydrate 锚点：h1 无条件渲染 + 标题同步写入 useState(`post-detail-title:<slug>`)；onMounted 只刷评论/相似/TOC，
+  载荷 = 正文 + 上一篇/下一篇 + 相关推荐：后两块全是 <NuxtLink>，只在 onMounted 补取就等于
+  「文章→文章」这条站内链接图从不进 HTML，而文章页是站内被链最多的页面类型。
+  Hydrate 锚点：h1 无条件渲染 + 标题同步写入 useState(`post-detail-title:<slug>`)；onMounted 只刷评论/TOC，
   禁止 refreshPost（客户端接管会 abort 仍在传输的 SSR 请求，表现为正文大的文章 ERR_ABORTED）。
 -->
 
@@ -1294,8 +1296,16 @@ interface SimilarPostRow {
   excerpt?: string | Record<string, string>
 }
 interface AdjacentRef { slug: string, title: string }
-const similarPosts = ref<SimilarPostRow[]>([])
-const adjacent = ref<{ previous: AdjacentRef | null, next: AdjacentRef | null }>({ previous: null, next: null })
+interface AdjacentPair { previous: AdjacentRef | null, next: AdjacentRef | null }
+/**
+ * 详情载荷 = 正文 + 上下篇 + 相关推荐。三者同进一条 useAsyncData，是因为
+ * 这两块全是 `<NuxtLink>`：只在 onMounted 里补取，SSR HTML 就一条链接都没有，
+ * 而文章详情页是站内被链最多的页面类型——「文章 → 文章」这条链接图此前只存在于
+ * 执行了 JS 的那一侧。放进同一次取数的载荷里，payload 会传给客户端，
+ * hydration 首渲染读到的是同一份值（写成 ref + 异步赋值会在 renderToString 之后才落值）。
+ */
+interface PostDetailPayload { detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow[] }
+const EMPTY_ADJACENT: AdjacentPair = { previous: null, next: null }
 // 全局投票 MVP：Poll 未与 Post 关联，仅客户端挂载后拉一次激活中的投票；
 // 密码闸门未解锁时不拉，避免把 poll 露在闸门上方。
 const activePolls = ref<Poll[]>([])
@@ -1386,24 +1396,16 @@ async function fetchAdjacent(): Promise<{ previous: AdjacentRef | null, next: Ad
   }
 }
 
-async function loadSimilarAndLikeState(pid: number | string | null | undefined) {
+async function loadLikeAndFavoriteState(pid: number | string | null | undefined) {
   if (!pid) {
-    similarPosts.value = []
-    adjacent.value = { previous: null, next: null }
     likeCount.value = 0
     likedByMe.value = false
     favorited.value = false
     return
   }
-  // 三个请求互相独立：旧写法串行 await 白等 2 个 RTT。并行发起后统一收敛，
-  // 单个失败仍走各自的 catch 降级，不影响其余两个的渲染。
-  const [similar, adj] = await Promise.all([
-    fetchSimilarPosts(pid),
-    fetchAdjacent(),
-    loadFavoriteState(pid)
-  ])
-  similarPosts.value = similar
-  adjacent.value = adj
+  // 上下篇与相关推荐现在随正文同批取（见 PostDetailPayload），这里只剩收藏态：
+  // 它读的是只有客户端才回填的 token，SSR 期取不到，不能并进那次取数。
+  await loadFavoriteState(pid)
 }
 
 const slug = computed(() => route.params.slug as string)
@@ -1418,29 +1420,6 @@ const articlePwdError = ref(false)
 const submittingArticlePassword = ref(false)
 // needPassword / postEncryptionHint 使用 computed，
 // 在下方 post 定义之后声明，避免 SSR 里 watch 不重触发导致的闸门失效。
-
-/** 用存储的密码重新拉取文章 */
-async function refreshPostWithStoredPassword() {
-  if (!articleStoredPwd.value) return
-  try {
-    const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
-    const headers: Record<string, string> = {
-      'Accept-Language': postFetchLocaleStr,
-      'X-Post-Password': articleStoredPwd.value
-    }
-    if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
-    const raw = await $fetch<{ success: boolean, data: PostDetail, message?: string }>(
-      `/blog/posts/${postSlug.value}`,
-      {
-        baseURL,
-        headers,
-        query: { lang: postFetchLocaleStr }
-      }
-    )
-    const unwrap = raw && typeof raw === 'object' && 'data' in raw ? raw.data : raw as unknown as PostDetail
-    postData.value = unwrap
-  } catch { /* ignored — 下次循环 re-check */ }
-}
 
 async function submitArticlePassword() {
   const pwd = articlePwdInput.value.trim()
@@ -1494,47 +1473,73 @@ function clearSavedPassword() {
 const postSlug = computed(() =>
   typeof route.params.slug === 'string' ? route.params.slug : ''
 )
-const postFetchLocaleStr = locale.value || 'zh'
+// 取语言的口径跟着 locale 走：客户端换语言时组件实例会被复用（本页在 keep-alive 下），
+// setup 不再重跑——写成 const 就把首帧的语言钉死在请求参数里，之后上下篇/相关推荐
+// 重取一次也是旧语言。正文本身是四语 dict、模板按 locale 取，不受这条影响。
+const postFetchLocaleStr = computed(() => locale.value || 'zh')
 
 // —— SSR / Hydrate 一致性的最终稳定解法：
 //    不用 useAPI/useFetch 封装，直接用 useAsyncData。
 //    key 是"只与路由参数有关的纯 ASCII + 中文"的确定性字符串，
 //    Nuxt 两端都能精确命中同一条 payload 缓存，不依赖 baseURL / headers /
 //    函数 toString 等会变化的输入。handler 内直接 $fetch 走正确的 baseURL。
-const cacheKey = `post:detail:${postSlug.value || ''}:${postFetchLocaleStr}`
+const cacheKey = `post:detail:${postSlug.value || ''}:${postFetchLocaleStr.value}`
 const runtimeConfig = useRuntimeConfig()
-const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
-  = useAsyncData<PostDetail>(
-    cacheKey,
-    () => {
-      const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
-      const headers: Record<string, string> = {
-        'Accept-Language': postFetchLocaleStr
-      }
-      if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
-      // 携带存储的密码（sessionStorage），避免每次首屏都触发密码闸门
-      if (articleStoredPwd.value && !import.meta.server) {
-        headers['X-Post-Password'] = articleStoredPwd.value
-      }
-      // 解包 useAPI 返回的 { success, data, message } 统一结构
-      return $fetch<{ success: boolean, data: PostDetail, message?: string }>(
-        `/blog/posts/${postSlug.value}`,
-        {
-          baseURL,
-          headers,
-          query: { lang: postFetchLocaleStr }
-        }
-      ).then(unwrap => (unwrap && typeof unwrap === 'object' && 'data' in unwrap) ? (unwrap.data as PostDetail) : unwrap as unknown as PostDetail)
-    },
+
+/**
+ * 正文 + 上下篇 + 相关推荐的一次取数。
+ * SSR 首帧（useAsyncData handler）与「本地存有旧密码」的客户端补取共用这一条：
+ * 后者刻意不调 refreshPost——历史上客户端接管会 abort 仍在传输的 SSR 请求
+ * （正文大的文章表现为 ERR_ABORTED），所以那边直接把返回值写进 data ref。
+ */
+async function fetchPostPayload(): Promise<PostDetailPayload> {
+  const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
+  const headers: Record<string, string> = {
+    'Accept-Language': postFetchLocaleStr.value
+  }
+  if (authStore.accessToken) headers.Authorization = `Bearer ${authStore.accessToken}`
+  // 携带存储的密码（sessionStorage），避免每次首屏都触发密码闸门
+  if (articleStoredPwd.value && !import.meta.server) {
+    headers['X-Post-Password'] = articleStoredPwd.value
+  }
+  // 解包 useAPI 返回的 { success, data, message } 统一结构
+  const raw = await $fetch<{ success: boolean, data: PostDetail, message?: string }>(
+    `/blog/posts/${postSlug.value}`,
     {
-      // 路由复用切换时，watch slug 自动重新拉
-      watch: [postSlug]
+      baseURL,
+      headers,
+      query: { lang: postFetchLocaleStr.value }
+    }
+  )
+  const detail = (raw && typeof raw === 'object' && 'data' in raw)
+    ? raw.data
+    : raw as unknown as PostDetail
+  // 上下篇与相关推荐跟着正文一起取（理由见 PostDetailPayload 的注释）。两个请求互不依赖，
+  // 并行发起；各自的 catch 已经把失败降级成空值——装饰性区块，不能把正文页拖成错误态。
+  const pid = (detail as unknown as { id?: number | string } | null)?.id
+  const [adjacent, similar] = await Promise.all([
+    fetchAdjacent(),
+    pid === undefined || pid === null ? Promise.resolve([] as SimilarPostRow[]) : fetchSimilarPosts(pid)
+  ])
+  return { detail, adjacent, similar }
+}
+
+const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
+  = useAsyncData<PostDetailPayload>(
+    cacheKey,
+    fetchPostPayload,
+    {
+      // 路由复用切换（换文章 / 换语言）时重取：载荷里含上下篇与相关推荐，
+      // 这两块的标题是后端按 lang 出的单串，不跟着 locale 重取就会整块停在旧语言。
+      watch: [postSlug, locale]
     }
   )
 // 同步暴露给其他页面/组件（如 related articles）使用
-const _postFetchKey = computed(() => `post:detail:${postSlug.value}:${postFetchLocaleStr}`)
-void refreshPost
-const post = computed(() => postData.value ?? null)
+const _postFetchKey = computed(() => `post:detail:${postSlug.value}:${postFetchLocaleStr.value}`)
+const post = computed(() => postData.value?.detail ?? null)
+/** 上下篇/相关推荐的真值来源就是上面那次取数的载荷，页面侧不再有「客户端补取后写 ref」的分支。 */
+const adjacent = computed(() => postData.value?.adjacent ?? EMPTY_ADJACENT)
+const similarPosts = computed(() => postData.value?.similar ?? [])
 /** 系列卡片的数据门：后端只在系列启用且本篇可见时才给 series，缺省即整块不渲染。 */
 const seriesInfo = computed(() => {
   const s = post.value?.series
@@ -1638,7 +1643,7 @@ const ssrPostTitle = useState<string>(
   `post-detail-title:${postSlug.value || (route.params.slug as string)}`,
   () => ''
 )
-const _hydrationTitleSeed = pickLocalized(postData.value?.title)
+const _hydrationTitleSeed = pickLocalized(postData.value?.detail?.title)
 if (_hydrationTitleSeed) ssrPostTitle.value = _hydrationTitleSeed
 // 路由复用时（客户端）：post 变化后同步更新共享标题，供自身或相关组件读取
 watch(post, (next) => {
@@ -2231,19 +2236,24 @@ onMounted(async () => {
     }
   }
   // 若 SSR 期没有 sessionStorage（服务端拿不到密码）而客户端本地存有旧密码，
-  // 则用带 X-Post-Password 的一次独立请求把解锁正文换回页面，避免重输。
+  // 则用带 X-Post-Password 的一次请求把解锁正文换回页面，避免重输。
+  // 刻意不走 refreshPost：那次会让客户端接管仍在传输的 SSR 请求（正文大的文章 ERR_ABORTED，
+  // 口径见文件头），所以这里直接取同一条 fetchPostPayload 并写回 data ref。
   if (articleStoredPwd.value && needPassword.value) {
-    void refreshPostWithStoredPassword()
+    void fetchPostPayload().then((payload) => {
+      postData.value = payload
+    })
   }
   // 投票：闸门未解锁时不拉，防止 poll 内容出现在密码框上方。
   // 带 post_id 是必需的——不传就退化成"全站投票"，别的文章的专属投票会串到本页来。
   // 与评论/相似/TOC 互不依赖，先拿到 promise 再并入下面的 Promise.all，
   // 不单独 await 一个 RTT（旧写法让整页 hydration 后的收尾多等一轮往返）。
   const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
-  // 独立任务并行执行：评论、相似文章、TOC 重建、阅读历史互不依赖
+  // 独立任务并行执行：评论、TOC 重建、阅读历史互不依赖
+  // （上下篇与相关推荐已在 SSR 载荷里，不再由这里补取）
   await Promise.all([
     loadCommentsForCurrentPost(),
-    loadSimilarAndLikeState(post.value?.id),
+    loadLikeAndFavoriteState(post.value?.id),
     rebuildTOC(),
     recordReadHistory(),
     pollsPromise
@@ -2264,7 +2274,7 @@ watch(needPassword, async (locked, prev) => {
 onActivated(async () => {
   await Promise.all([
     loadCommentsForCurrentPost(),
-    loadSimilarAndLikeState(post.value?.id),
+    loadLikeAndFavoriteState(post.value?.id),
     recordReadHistory()
   ])
 })
@@ -2288,7 +2298,7 @@ const reloadActivePolls = async () => {
 watch([slug, locale, () => post.value?.id], async () => {
   await Promise.all([
     loadCommentsForCurrentPost(),
-    loadSimilarAndLikeState(post.value?.id),
+    loadLikeAndFavoriteState(post.value?.id),
     reloadActivePolls(),
     recordReadHistory()
   ])

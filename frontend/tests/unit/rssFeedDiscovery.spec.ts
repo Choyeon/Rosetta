@@ -69,7 +69,7 @@ describe('分类页与标签页各自接线，并把 active 绑到本页的「�
       expect(call, `页面必须调用 useRssFeedLink（链接不是后端能裁就自动出现的）`).not.toBeNull()
       const body = call![0]
       expect(body).toContain(`kind: '${kind}'`)
-      expect(body).toMatch(/\bslug,/, 'slug 用页面自己的响应式值，不要传字面量')
+      expect(body, 'slug 用页面自己的响应式值，不要传字面量').toMatch(/\bslug,/)
       expect(body).toMatch(/label: computed\(\(\) => \w+\.value\)/)
       expect(body).toContain(`active: computed(() => !${notFound}.value)`)
     })
