@@ -598,7 +598,10 @@ class TestListVisibility:
         ghost_key = await _get_post_list_cache_key(**base, post_type="__ghost__")
         keys = {default_key, builtin_key, custom_key, ghost_key}
         assert len(keys) == 4, "四种视图必须占四条键位"
-        assert default_key.endswith("ptall")
+        # 按**段**判，不按位置判：批次 #123 之后 `pt` 段后面还有 `m<media>` 段，
+        # `endswith("ptall")` 会把"键里确实写了 all"这条正解判成失败。
+        # 段值仍是唯一要钉的东西——写成 `ptpost` 会让"全部类型"与"只有博客"共用一个键位。
+        assert "ptall" in default_key.split(":"), default_key
 
     @pytest.mark.asyncio
     async def test_author_archive_includes_every_type(
