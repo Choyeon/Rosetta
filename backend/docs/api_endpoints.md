@@ -8136,10 +8136,8 @@ _无路径 / query 参数_
   "items": [
     {
       "active": false,
-      "author_avatar": "string",
       "author_email": "string",
       "author_name": "string",
-      "author_url": "string",
       "author_website": "string",
       "avatar_source": "string",
       "content": "string",
@@ -8213,12 +8211,10 @@ _无路径 / query 参数_
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | active | boolean | 是 | 是否公开展示（旧布尔列，与 status 双向同步） |
-| author_avatar | string | 是 | 作者头像原始 URL（模型 avatar 列），无头像时为空串 |
 | author_email | string \| null | 否 | 匿名评论填写的邮箱，登录作者通常为 null |
 | author_name | string | 是 | 显示名：author_name → 关联用户 nickname → 兜底字符串「匿名用户」 |
-| author_url | string \| null | 否 | 匿名评论填写的个人站点 URL |
-| author_website | string \| null | 否 | 作者网站：评论 author_website → 关联用户 website → null |
-| avatar_source | string \| null | 否 | 头像来源标识（avatar_source 或 author_avatar_source），未设置为 null |
+| author_website | string \| null | 否 | 作者自填网站：评论 author_website → 关联用户 website → null（与前台评论线程同一个值；非 http(s) 的值在渲染侧被当作没有链接） |
+| avatar_source | string \| null | 否 | 头像来源标识（Comment.avatar_source 列），未设置为 null |
 | content | string | 是 | 评论正文 |
 | created_at | string \| null | 否 | 创建时间 ISO 8601 字符串，缺失为 null |
 | github | string \| null | 否 | GitHub 用户名/主页，未提供为 null |
@@ -8232,10 +8228,8 @@ _无路径 / query 参数_
 | qq | string \| null | 否 | QQ 号（头像识别用），未提供为 null |
 | replies | any[] | 否 | 嵌套回复列表：管理员列表端点恒为空数组（回复走 reply_total） |
 | reply_total | integer | 是 | 直接回复数（按 parent_id 一条 GROUP BY 聚合，非模型列） |
-| reported_at | string \| null | 否 | 仍挂着待处理举报时的时间戳（ISO 8601）；无待处理举报为 null |
 | resolved_avatar_url | string \| null | 否 | 经 avatar_resolver 统一解析后的最终头像 URL |
 | status | string | 是 | 审核状态：status 列真实值；为空时按 active 兜底推导 approved/rejected |
-| title | null | 否 | 该端点不输出头衔（与列表端点的唯一字段差异），恒为 null |
 | updated_at | string \| null | 否 | 更新时间 ISO 8601 字符串，缺失为 null |
 | user_id | integer \| null | 否 | 登录作者的用户 ID，匿名评论为 null |
 | user_ref | object \| null | 否 | 登录作者完整用户投影（UserResponse.model_dump），匿名评论为 null |
@@ -8245,10 +8239,8 @@ _无路径 / query 参数_
 ```json
 {
   "active": false,
-  "author_avatar": "string",
   "author_email": "string",
   "author_name": "string",
-  "author_url": "string",
   "author_website": "string",
   "avatar_source": "string",
   "content": "string",
@@ -8264,10 +8256,8 @@ _无路径 / query 参数_
   "qq": "string",
   "replies": [],
   "reply_total": 0,
-  "reported_at": "string",
   "resolved_avatar_url": "string",
   "status": "string",
-  "title": "string",
   "updated_at": "string",
   "user_id": "string",
   "user_ref": "string"

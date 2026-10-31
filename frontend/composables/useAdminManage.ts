@@ -288,6 +288,11 @@ export interface AdminCommentRow {
   author_name: string
   resolved_avatar_url: string | null
   author_email?: string | null
+  /**
+   * 自填网站（两族都有列）：评论回落登录账号的 website，留言板取 entries 自己的列。
+   * 值是访客可编辑的外链，渲染侧必须过 `lib/ugc-link::safeUgcHref`，不得直接进 href。
+   */
+  author_website?: string | null
   content: string
   status: AdminCommentStatus | string
   likes_count: number
@@ -1126,7 +1131,6 @@ export function deleteAdminPage(id: number): Promise<ApiMessage> {
  */
 export interface AdminGuestbookEntry extends AdminCommentRow {
   user_id: number | null
-  author_website?: string | null
   qq?: string | null
   github?: string | null
   avatar_source?: string | null

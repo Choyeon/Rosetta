@@ -18,7 +18,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,9 +94,10 @@ class TestTypeStatsVolume:
         """别名是残缺投影：库里出现第五种 file_type 时只有 type_stats 看得见。"""
         data = await _stats(client, staff_headers)
         assert "other" in data["type_stats"]
-        assert data["images"] + data["videos"] + data["audios"] + data["documents"] < data[
-            "total_files"
-        ]
+        assert (
+            data["images"] + data["videos"] + data["audios"] + data["documents"]
+            < data["total_files"]
+        )
 
 
 class TestRetiredFormattedSize:

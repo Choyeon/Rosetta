@@ -117,11 +117,13 @@ class AdminUserStatusResponse(BaseModel):
     role: str | None = Field(None, description="RBAC 角色名，历史数据可能为 null")
 
 
-class CommentAdminItemDoc(BaseModel):
-    """管理员评论列表（GET /admin/comments）单条评论的完整投影。
+class CommentAdminBaseDoc(BaseModel):
+    """评论两条管理口（GET 列表 / PATCH 响应）**共用**的投影字段。
 
-    字段逐一对齐 handler 手工拼装的 dict。PATCH 端点复用本模型但**不输出**
-    ``title`` 头衔字段（见 :class:`CommentAdminUpdatedDoc`）。
+    字段逐一对齐 handler 手工拼装的 dict。两条口各自的差异字段（``title`` 头衔徽章、
+    ``reported_at`` 举报标记）不在这里，由各自模型带上 —— 这样
+    「响应体键集 == 文档模型字段集」在两端都成立，文档不会声明一个永远不出现的键
+    （守卫 tests/test_admin_comment_ghost_projections.py）。
     """
 
     id: int = Field(..., description="评论 ID")
@@ -132,26 +134,21 @@ class CommentAdminItemDoc(BaseModel):
         ...,
         description="显示名：author_name → 关联用户 nickname → 兜底字符串「匿名用户」",
     )
-    author_avatar: str = Field(
-        ..., description="作者头像原始 URL（模型 avatar 列），无头像时为空串"
-    )
     author_email: str | None = Field(None, description="匿名评论填写的邮箱，登录作者通常为 null")
-    author_url: str | None = Field(None, description="匿名评论填写的个人站点 URL")
     author_website: str | None = Field(
-        None, description="作者网站：评论 author_website → 关联用户 website → null"
+        None,
+        description="作者自填网站：评论 author_website → 关联用户 website → null"
+        "（与前台评论线程同一个值；非 http(s) 的值在渲染侧被当作没有链接）",
     )
     qq: str | None = Field(None, description="QQ 号（头像识别用），未提供为 null")
     github: str | None = Field(None, description="GitHub 用户名/主页，未提供为 null")
     avatar_source: str | None = Field(
-        None, description="头像来源标识（avatar_source 或 author_avatar_source），未设置为 null"
+        None, description="头像来源标识（Comment.avatar_source 列），未设置为 null"
     )
     resolved_avatar_url: str | None = Field(
         None, description="经 avatar_resolver 统一解析后的最终头像 URL"
     )
     content: str = Field(..., description="评论正文")
-    title: UserTitleBadgeDoc | None = Field(
-        None, description="登录作者的头衔徽章（id/name/icon/color 投影），无头衔时为 null"
-    )
     status: str = Field(
         ...,
         description="审核状态：status 列真实值；为空时按 active 兜底推导 approved/rejected",
@@ -164,10 +161,6 @@ class CommentAdminItemDoc(BaseModel):
     )
     created_at: str | None = Field(None, description="创建时间 ISO 8601 字符串，缺失为 null")
     updated_at: str | None = Field(None, description="更新时间 ISO 8601 字符串，缺失为 null")
-    reported_at: str | None = Field(
-        None,
-        description="仍挂着待处理举报时的时间戳（ISO 8601）；无待处理举报为 null",
-    )
     replies: list = Field(
         default_factory=list,
         description="嵌套回复列表：管理员列表端点恒为空数组（回复走 reply_total）",
@@ -179,14 +172,24 @@ class CommentAdminItemDoc(BaseModel):
     )
 
 
-class CommentAdminUpdatedDoc(CommentAdminItemDoc):
+class CommentAdminItemDoc(CommentAdminBaseDoc):
+    """管理员评论列表（GET /admin/comments）单条评论的完整投影。"""
+
+    title: UserTitleBadgeDoc | None = Field(
+        None, description="登录作者的头衔徽章（id/name/icon/color 投影），无头衔时为 null"
+    )
+    reported_at: str | None = Field(
+        None,
+        description="仍挂着待处理举报时的时间戳（ISO 8601）；无待处理举报为 null",
+    )
+
+
+class CommentAdminUpdatedDoc(CommentAdminBaseDoc):
     """PATCH /admin/comments/{comment_id} 的响应体。
 
-    与列表条目同一套手工投影，唯一差异是该端点**不输出** ``title`` 头衔字段，
-    故在此显式覆写为恒 null，保持文档与实际返回一致。
+    与列表条目同一套手工投影，差异是该端点**不输出** ``title`` 与 ``reported_at``
+    （处理动作只改状态；举报标记回到列表端点读），所以这两个键不在本模型里。
     """
-
-    title: None = Field(None, description="该端点不输出头衔（与列表端点的唯一字段差异），恒为 null")
 
 
 class CommentAdminListResponse(BaseModel):
@@ -1054,16 +1057,11 @@ async def admin_list_comments(
                 "user_id": c.user_id,
                 "parent_id": c.parent_id,
                 "author_name": c.author_name or (c.user.nickname if c.user else "匿名用户"),
-                "author_avatar": (
-                    getattr(c, "avatar", None) or (c.user.avatar if c.user else "") or ""
-                ),
                 "author_email": getattr(c, "author_email", None),
-                "author_url": getattr(c, "author_url", None),
                 "author_website": c.author_website or (c.user.website if c.user else None),
                 "qq": getattr(c, "qq", None),
                 "github": getattr(c, "github", None),
-                "avatar_source": getattr(c, "avatar_source", None)
-                or getattr(c, "author_avatar_source", None),
+                "avatar_source": getattr(c, "avatar_source", None),
                 "resolved_avatar_url": resolved,
                 "content": c.content,
                 "title": title_data,
@@ -1216,17 +1214,12 @@ async def admin_update_comment(
         "parent_id": comment.parent_id,
         "author_name": comment.author_name
         or (comment.user.nickname if comment.user else "匿名用户"),
-        "author_avatar": (
-            getattr(comment, "avatar", None) or (comment.user.avatar if comment.user else "") or ""
-        ),
         "author_email": getattr(comment, "author_email", None),
-        "author_url": getattr(comment, "author_url", None),
         "author_website": comment.author_website
         or (comment.user.website if comment.user else None),
         "qq": getattr(comment, "qq", None),
         "github": getattr(comment, "github", None),
-        "avatar_source": getattr(comment, "avatar_source", None)
-        or getattr(comment, "author_avatar_source", None),
+        "avatar_source": getattr(comment, "avatar_source", None),
         "resolved_avatar_url": resolved,
         "content": comment.content,
         "status": comment.status or ("approved" if comment.active else "rejected"),

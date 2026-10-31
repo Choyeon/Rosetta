@@ -1,6 +1,8 @@
 <!--
   评论/留言审核共用列表组件：isGuestbook prop 切换两套请求通道与文案；置顶/精华/回收站为留言专属，回复走文章评论接口故留言隐藏。
   评论专属的 parent_ref / user_ref 投影只在评论通道渲染（留言板两套模型都没有这两个键）。
+  author_website 两族都有，走 lib/ugc-link 的 http(s) 闸门（后端曾同时投影过一个恒 null 的
+  author_url 幽灵键——Comment 表没有这一列，getattr 兜底把它伪装成"字段活着"，批次 #153 退役）。
   契约：列表、分页、选择权全部由本组件持有（status prop 变化即重置页码并清空选择）；回收站移入/恢复没有单条 API，单条即长度为 1 的批量通道。
 -->
 <template>
@@ -202,6 +204,19 @@
                   >
                     {{ comment.author_email }}
                   </span>
+                  <!-- author_website：自填外站链接（游客填的或登录账号的 website）。
+                       审核时看不到它，就等于看不出这条内容会给访客挂一条外链。 -->
+                  <a
+                    v-if="authorSite(comment)"
+                    :href="authorSite(comment)?.href"
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                    class="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground hover:underline max-w-[200px]"
+                    :title="`自填网站：${authorSite(comment)?.href}`"
+                  >
+                    <Link2 class="size-3 shrink-0" />
+                    <span class="truncate">{{ authorSite(comment)?.label }}</span>
+                  </a>
                   <!-- user_ref：登录账号的唯一标识。author_name 是昵称（可空、可重复），
                        @username 才是能在用户管理里对上的那个人；这两档徽标让审核时一眼看出
                        这条来自已停用的账号或本站成员。批次 #151 之前后端一直投影、前端零消费。 -->
@@ -243,14 +258,6 @@
                     v-if="!isGuestbook && comment.parent_ref"
                     class="text-xs text-muted-foreground truncate max-w-[180px]"
                     :title="`回复 #${comment.parent_ref.id}`"
-                  >
-                    回复 @{{ comment.parent_ref.nickname || '匿名' }}
-                  </span>
-                  <!-- parent_ref：回复对象的昵称。列表只按 parent_id 缩进，被回复的那条常在
-                       另一页/已被筛掉，没有这行管理员看不出这条在回复谁。 -->
-                  <span
-                    v-if="!isGuestbook && comment.parent_ref"
-                    class="text-xs text-muted-foreground truncate max-w-[160px]"
                   >
                     回复 @{{ comment.parent_ref.nickname || '匿名' }}
                   </span>
@@ -505,8 +512,9 @@ import { Separator } from '~~/components/ui/separator'
 import { Label } from '~~/components/ui/label'
 import {
   Search, Check, X, Trash2, MoreVertical, Flag, ThumbsUp, Loader2, RotateCcw,
-  MessageCircle, Reply, Send, Info, Pin, Sparkles, AlertTriangle, UserRoundX, ShieldCheck
+  MessageCircle, Reply, Send, Info, Pin, Sparkles, AlertTriangle, UserRoundX, ShieldCheck, Link2
 } from '@lucide/vue'
+import { safeUgcHref, ugcLinkLabel } from '~~/lib/ugc-link'
 import {
   fetchAdminComments,
   fetchAdminGuestbook,
@@ -536,6 +544,16 @@ const props = defineProps<{
 const noun = computed(() => (props.isGuestbook ? '留言' : '评论'))
 /** 回收站视图（仅留言板有软删除）：可执行的动作集与常规视图互斥。 */
 const isTrashedView = computed(() => props.status === 'trashed')
+
+/**
+ * 评论者/留言者自填的网站：后台一直投影这个值（评论回落登录账号的 website），
+ * 此前只有前台评论线程渲染它，审核时看不出这条留言带了个外站链接。
+ * 与前台同一道协议闸门（lib/ugc-link）：非 http(s) 一律当"没有链接"，绝不进 href。
+ */
+function authorSite(comment: AdminCommentRow) {
+  const href = safeUgcHref(comment.author_website)
+  return href ? { href, label: ugcLinkLabel(href) } : null
+}
 
 const toast = useToast()
 
