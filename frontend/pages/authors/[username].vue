@@ -140,6 +140,29 @@
           <span class="inline-flex items-center justify-center rounded-full bg-muted px-3 py-1">
             {{ total }} {{ t('authors.posts', '篇文章') }}
           </span>
+          <!-- 三个统计 chip 只在读数 > 0 时出现：后端已把「隐藏」折成 0（隐藏即空），
+               页面把 0 也一起收起，空主页与藏了内容的主页才读起来一样。 -->
+          <span
+            v-if="totalViews"
+            class="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1"
+          >
+            <Eye class="size-3.5" />
+            {{ totalViews }} {{ t('authors.views', '次浏览') }}
+          </span>
+          <span
+            v-if="totalLikes"
+            class="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1"
+          >
+            <ThumbsUp class="size-3.5" />
+            {{ totalLikes }} {{ t('authors.likes', '次获赞') }}
+          </span>
+          <span
+            v-if="commentsCount"
+            class="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1"
+          >
+            <MessageSquare class="size-3.5" />
+            {{ commentsCount }} {{ t('authors.commentsCount', '条评论') }}
+          </span>
           <!-- 目录页入口挂在这里而不是主导航：作者主页是"从一篇文章认识一个人"的终点，
                往下逛的自然去处是"还有哪些人在写"；主导航再加一条会挤掉内容页的位置。 -->
           <NuxtLink
@@ -291,7 +314,7 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button, buttonVariants } from '~~/components/ui/button'
-import { ChevronLeft, ChevronRight, ExternalLink, Globe, Mail, MessageSquare, RefreshCw, UserRound } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, ExternalLink, Eye, Globe, Mail, MessageSquare, RefreshCw, ThumbsUp, UserRound } from '@lucide/vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
 import { useAuthStore } from '~~/stores/auth'
 import { pageWindow } from '~~/lib/pagination'
@@ -334,6 +357,14 @@ interface AuthorProfile {
   created_at?: string
 }
 
+/** GET /users/username/{username}/stats 的读数（后端已按隐私开关把各族归零） */
+interface AuthorStats {
+  posts_count?: number
+  comments_count?: number
+  total_views?: number
+  total_likes?: number
+}
+
 interface AuthorPostRow {
   id: number | string
   slug: string
@@ -364,6 +395,15 @@ const { data: postsRaw, pending, error: postsErr, refresh: refreshPosts } = useA
   })),
   key: computed(() => `author:posts:${username.value}:${locale.value}:${currentPage.value}`)
 })
+
+// 统计：第三条并发请求，和资料/列表互不依赖。
+// 后端本来只有 by-id 的统计口，而这一页按用户名寻址——接那条就得等资料回来才能拼 URL，
+// SSR 从并发三跳变成串行两跳。批次 #148 因此补了同口径的 by-username 口（聚合与隐私判定
+// 与 by-id 共用 `_user_stats_payload`），页面才能保持"三个请求同时发"。
+const { data: statsRaw, refresh: refreshStats } = useAPI<AuthorStats>(
+  `/users/username/${username.value}/stats`,
+  { key: `author:stats:${username.value}:${locale.value}`, default: () => ({}) }
+)
 
 const displayName = computed(
   () => profile.value?.nickname || profile.value?.username
@@ -404,10 +444,29 @@ const posts = computed<AuthorPostRow[]>(
   () => Array.isArray(postsRaw.value?.items) ? postsRaw.value!.items! : []
 )
 const total = computed(() => postsRaw.value?.total ?? 0)
+/**
+ * 主页读数行的三个统计（累计阅读 / 获赞 / 评论数）。
+ *
+ * 「隐藏即空」是后端口径：`show_stats` 把四个数一起归零，`show_posts` / `show_comments`
+ * 各把自己那一族归零（见 `users.py::_user_stats_payload`）——所以页面不需要、也不应该
+ * 再去读隐私开关来判断"这个人是真没内容还是藏起来了"。页面这一侧只剩一件事：0 不把
+ * 「0 次浏览」摆出来，空主页和藏了内容的主页读起来应当完全一样。
+ *
+ * 数字原样输出，不走 `toLocaleString` / `Intl`：格式化结果依赖运行端 ICU 数据，
+ * 服务端与浏览器不一致会在 hydration 那一刻打出文本差异（口径同 `joinedLabel`，§2.4）。
+ */
+const statCount = (raw: unknown) => {
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : 0
+}
+const totalViews = computed(() => statCount(statsRaw.value?.total_views))
+const totalLikes = computed(() => statCount(statsRaw.value?.total_likes))
+const commentsCount = computed(() => statCount(statsRaw.value?.comments_count))
 const loadError = computed(() => !!(profileError.value || postsErr.value))
-// 失败态的重试必须同时重取两个端点：资料挂掉时列表往往是好的，
-// 只刷一个会让另一半永远停在失败态。
-const retryLoad = () => Promise.all([refreshProfile(), refreshPosts()])
+// 失败态的重试必须同时重取三个端点：资料挂掉时列表往往是好的，
+// 只刷一个会让另一半永远停在失败态。统计刻意不进 loadError——它是读数装饰，
+// 拿不到就让三个 chip 收起，不该把整页判成"这个作者不存在/加载失败"。
+const retryLoad = () => Promise.all([refreshProfile(), refreshPosts(), refreshStats()])
 // 资料缺失才是"这个作者不存在"；判定时点与口径见 composables/useContentStatus.ts。
 const profileMissing = computed(() => !profile.value?.username)
 

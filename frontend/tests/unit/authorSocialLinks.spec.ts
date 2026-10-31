@@ -35,8 +35,9 @@ function interfaceBody(name: string): string {
 }
 
 describe('作者主页社交链接', () => {
-  it('整行收在两个字段的存在性之下（隐私开关置 null 即整段消失）', () => {
-    expect(authorsPage).toMatch(/v-if="profile\?\.website \|\| profile\?\.github"/)
+  it('整行收在三个字段的存在性之下（隐私开关置 null 即整段消失）', () => {
+    // 第三个字段是批次 #147 的公开邮箱：只有邮箱、没填网站/GitHub 的作者，这一行不得整段收起。
+    expect(authorsPage).toMatch(/v-if="profile\?\.website \|\| profile\?\.github \|\| publicEmail"/)
   })
 
   it('github 当作已存好的主页 URL 使用，不再拼 github.com 前缀', () => {

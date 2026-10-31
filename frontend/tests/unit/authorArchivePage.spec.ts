@@ -29,7 +29,9 @@ describe('作者主页取数契约', () => {
     // 依赖链的形态（先取资料、再拼 id、再发第三条请求）不应该出现在这一页。
     // 闸门按「取数请求的条数」来挡，而不是禁掉 profile.value?.id 这个表达式本身：
     // 私信入口合法地用 profile.value?.id 拼跳转地址（?to=<用户 id>），那是跳转不是取数依赖。
-    expect((page.match(/useAPI[<(]/g) ?? []).length).toBe(2)
+    // 批次 #148 的第三条是统计，走的同样是 by-username 口（`/users/username/<u>/stats`），
+    // 所以它和前两条一起并行发出，而不是等资料回来再拼 id。
+    expect((page.match(/useAPI[<(]/g) ?? []).length).toBe(3)
     expect(page).not.toMatch(/user_id/)
   })
 
@@ -79,9 +81,9 @@ describe('作者主页可达性与文案', () => {
 
   it('四语 authors.* 键集合一致，且分页导航有 aria-label 文案', () => {
     const expected = [
-      'browseAll', 'directoryDesc', 'directoryEmpty', 'directoryTitle',
-      'emptyTitle', 'eyebrow', 'github', 'joined',
-      'notFoundDesc', 'notFoundTitle', 'posts', 'recent', 'website'
+      'browseAll', 'commentsCount', 'directoryDesc', 'directoryEmpty', 'directoryTitle',
+      'email', 'emptyTitle', 'eyebrow', 'github', 'joined',
+      'likes', 'notFoundDesc', 'notFoundTitle', 'posts', 'recent', 'views', 'website'
     ]
     for (const loc of ['zh', 'en', 'ja', 'zh_Hant']) {
       const data = JSON.parse(

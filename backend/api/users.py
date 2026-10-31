@@ -156,16 +156,26 @@ class UserPreferencesPublicDoc(BaseModel):
 
 
 class UserStatsDoc(BaseModel):
-    """``GET /api/users/{user_id}/stats`` 的响应体（裸 dict，无信封）。"""
+    """``GET /api/users/{user_id}/stats`` 与 ``GET /api/users/username/{username}/stats`` 的响应体（裸 dict，无信封）。
 
-    user_id: int = Field(..., description="用户 ID（路径参数回显）")
-    posts_count: int = Field(..., description="已发布文章数（status=published，无数据为 0）")
-    comments_count: int = Field(..., description="已过审评论数（active=True，无数据为 0）")
+    四个计数各自受隐私开关治理（口径见 `_user_stats_payload`）：`show_stats` 关掉时全部归零，
+    `show_posts` / `show_comments` 关掉时把自己那一族归零——「隐藏即空」，不是 404。
+    """
+
+    user_id: int = Field(..., description="用户 ID（by-username 口回显解析到的账号）")
+    posts_count: int = Field(
+        ..., description="对外可见的文章数（匿名视角谓词，无数据或作者隐藏文章时为 0）"
+    )
+    comments_count: int = Field(
+        ..., description="已过审评论数（active=True；作者隐藏评论时为 0），无数据为 0"
+    )
     total_views: int = Field(
         ...,
-        description="本人已发布文章的 views 列求和（SUM 无行为 null，兜底成 0）",
+        description="本人对外可见文章的 views 列求和（SUM 无行为 null，兜底成 0）",
     )
-    total_likes: int = Field(..., description="本人全部文章（含草稿）收到的点赞总数，无数据为 0")
+    total_likes: int = Field(
+        ..., description="本人对外可见文章收到的点赞总数（草稿不计），无数据为 0"
+    )
     joined_at: str | None = Field(
         None, description="注册时间：handler 手工 isoformat() 的字符串，无创建时间时为 null"
     )
@@ -1485,9 +1495,8 @@ async def get_user_comments(
         "获取指定用户的统计数据。公开接口、无需鉴权。响应为裸 dict"
         "（user_id/posts_count/comments_count/total_views/total_likes/joined_at，无信封）；"
         "计数在无数据时兜底为 0，joined_at 为 ISO 8601 字符串或 null。用户不存在返回 404。"
-        "隐私口径：作者关闭「公开资料」（`public_profile=False`）时返回 404（同资料接口）；"
-        "只关闭「显示统计」（`show_stats=False`）时返回 200 + 全零计数，与"
-        "「还没有任何活动」不可区分正是隐藏语义，且此时不再执行任何聚合查询。"
+        "隐私口径见 `_user_stats_payload`：`public_profile=False` → 404（同资料接口）；"
+        "`show_stats=False` → 200 全零；`show_posts` / `show_comments` 各自把自己那族归零。"
     ),
     responses={200: {"model": UserStatsDoc}},
 )
@@ -1499,9 +1508,7 @@ async def get_user_stats(
     """
     获取用户统计信息
 
-    - 四条聚合（文章数/评论数/浏览量/点赞数）顺序执行，命中隐藏开关时整段跳过。
-    - 隐私两层：`public_profile=False` → 404（资料整体不存在口径）；
-      `show_stats=False` → 200 全零（列表/计数类开关的"隐藏即空"口径）。本人可越过两层。
+    - 聚合与隐私判定单源在 `_user_stats_payload`（与 by-username 口共用）。
     """
 
     # 检查用户是否存在
@@ -1519,53 +1526,118 @@ async def get_user_stats(
             detail="用户不存在",
         )
 
-    is_self = bool(current_user and current_user.id == user_id)
-    hide_stats = bool(preference and preference.show_stats is False) and not (
-        is_self or (current_user and current_user.is_staff)
-    )
-    if hide_stats:
-        return {
-            "user_id": user_id,
-            "posts_count": 0,
-            "comments_count": 0,
-            "total_views": 0,
-            "total_likes": 0,
-            "joined_at": user.created_at.isoformat() if user.created_at else None,
-        }
+    return await _user_stats_payload(db, user, preference, current_user)
 
-    # 顺序执行多条统计查询
-    posts_count, comments_count, total_views, total_likes = await concurrent_query(
-        # 文章数
-        db.scalar(
-            select(func.count())
-            .select_from(Post)
-            .where(Post.author_id == user_id, publicly_listable_posts())
-        ),
-        # 评论数
-        db.scalar(
-            select(func.count())
-            .select_from(Comment)
-            .where(Comment.user_id == user_id, Comment.active.is_(True))
-        ),
-        # 总浏览量
-        db.scalar(
-            select(func.sum(Post.views))
-            .select_from(Post)
-            .where(Post.author_id == user_id, publicly_listable_posts())
-        ),
-        # 总点赞数
-        db.scalar(
-            select(func.count())
-            .select_from(post_likes.join(Post, post_likes.c.post_id == Post.id))
-            .where(Post.author_id == user_id)
-        ),
+
+async def _user_stats_payload(
+    db: AsyncSession,
+    user: User,
+    preference: UserPreference | None,
+    current_user: User | None,
+) -> dict:
+    """作者统计的唯一计算口径（``/{user_id}/stats`` 与 ``/username/{u}/stats`` 共用）。
+
+    「隐藏即空」在这里有三层，且三层各自跳过自己那族查询：
+
+    - `show_stats=False` → 四个聚合全零，一条查询都不执行。
+    - `show_posts=False` → **文章族**（文章数 / 浏览量 / 点赞数）归零。这一层以前没有：
+      主页的文章列表已经回空页，而统计口仍按真实数据算出「累计阅读 1234」，
+      两个数摆在同一段落里等于替作者宣布「有内容，只是不给看」——正好是
+      「隐藏即空」要避免的可区分状态。
+    - `show_comments=False` → **评论数**归零，理由同上（评论子资源口此时也回空页）。
+
+    本人和管理员越过三层；无偏好行按可见处理（与 `UserPreference` 建表默认一致）。
+    点赞数与另外两族一样叠 `publicly_listable_posts()`：草稿的点赞不进匿名读数。
+    """
+    user_id = user.id
+    privileged = bool(
+        current_user is not None and (current_user.id == user_id or current_user.is_staff)
     )
 
+    def hidden(flag: bool | None) -> bool:
+        return flag is False and not privileged
+
+    hide_all = hidden(preference.show_stats if preference else None)
+    hide_posts = hide_all or hidden(preference.show_posts if preference else None)
+    hide_comments = hide_all or hidden(preference.show_comments if preference else None)
+
+    labels = []
+    queries = []
+    if not hide_posts:
+        labels += ["posts_count", "total_views", "total_likes"]
+        queries += [
+            # 文章数
+            db.scalar(
+                select(func.count())
+                .select_from(Post)
+                .where(Post.author_id == user_id, publicly_listable_posts())
+            ),
+            # 总浏览量
+            db.scalar(
+                select(func.sum(Post.views))
+                .select_from(Post)
+                .where(Post.author_id == user_id, publicly_listable_posts())
+            ),
+            # 总点赞数
+            db.scalar(
+                select(func.count())
+                .select_from(post_likes.join(Post, post_likes.c.post_id == Post.id))
+                .where(Post.author_id == user_id, publicly_listable_posts())
+            ),
+        ]
+    if not hide_comments:
+        labels.append("comments_count")
+        queries.append(
+            db.scalar(
+                select(func.count())
+                .select_from(Comment)
+                .where(Comment.user_id == user_id, Comment.active.is_(True))
+            )
+        )
+
+    values = await concurrent_query(*queries) if queries else []
+    stats = dict(zip(labels, [int(v or 0) for v in values], strict=True))
     return {
         "user_id": user_id,
-        "posts_count": posts_count or 0,
-        "comments_count": comments_count or 0,
-        "total_views": total_views or 0,
-        "total_likes": total_likes or 0,
+        "posts_count": stats.get("posts_count", 0),
+        "comments_count": stats.get("comments_count", 0),
+        "total_views": stats.get("total_views", 0),
+        "total_likes": stats.get("total_likes", 0),
         "joined_at": user.created_at.isoformat() if user.created_at else None,
     }
+
+
+@router.get(
+    "/username/{username}/stats",
+    summary="按用户名获取用户统计信息",
+    description=(
+        "按用户名读取统计，口径与 `GET /users/{user_id}/stats` 完全一致（同一个"
+        "`_user_stats_payload`），存在这一条的理由是**前台作者主页按用户名寻址**：统计口只认 "
+        "id 的话，页面必须等资料请求回来再发第二次请求（SSR 串行两跳）或在 URL 里带上内部主键。"
+        "用户名按资料口的同一规则不区分大小写解析；`user_id` 回显解析到的账号。"
+        "用户不存在、或作者关了「公开资料」→ 404（同资料接口，防枚举）。"
+    ),
+    responses={200: {"model": UserStatsDoc}},
+)
+async def get_user_stats_by_username(
+    username: str,
+    db: DB,
+    current_user: CurrentUserOptional = None,
+):
+    """按用户名获取统计（与 by-id 口共用聚合与隐私判定，见 `_user_stats_payload`）。"""
+    service = await get_user_service(db)
+    user = await service.get_user_by_username(username)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    preference = await db.scalar(select(UserPreference).where(UserPreference.user_id == user.id))
+    if _profile_is_hidden(preference, user.id, current_user):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="用户不存在",
+        )
+
+    return await _user_stats_payload(db, user, preference, current_user)

@@ -1161,6 +1161,10 @@
     "joined": "参加日",
     "website": "ウェブサイト",
     "github": "GitHub",
+    "email": "メール",
+    "views": "ビュー",
+    "likes": "いいね",
+    "commentsCount": "件のコメント",
     "emptyTitle": "公開記事はまだありません",
     "notFoundTitle": "この作者は存在しません",
     "notFoundDesc": "プロフィールが存在しないか、作者が公開設定をオフにしています。"

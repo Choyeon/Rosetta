@@ -1161,6 +1161,10 @@
     "joined": "加入於",
     "website": "網站",
     "github": "GitHub",
+    "email": "郵箱",
+    "views": "次瀏覽",
+    "likes": "次獲讚",
+    "commentsCount": "條留言",
     "emptyTitle": "這位作者還沒有公開文章",
     "notFoundTitle": "這位作者不存在",
     "notFoundDesc": "該主頁可能從未存在，或作者已關閉了公開資料。"

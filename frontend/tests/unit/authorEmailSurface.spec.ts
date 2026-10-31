@@ -69,7 +69,7 @@ describe('渲染面', () => {
 
   it('图标走 @lucide/vue 组件（不抄第四份字形数据）', () => {
     expect(tpl).toContain('<Mail class="size-3.5" />')
-    expect(page).toContain('import { ChevronLeft, ChevronRight, ExternalLink, Globe, Mail, MessageSquare, RefreshCw, UserRound } from \'@lucide/vue\'')
+    expect(page).toMatch(/import \{[^}]*\bGlobe[^}]*\bMail[^}]*\bMessageSquare[^}]*\} from '@lucide\/vue'/)
     expect(page).not.toMatch(/\bd:\s*'[MJ]/)
   })
 

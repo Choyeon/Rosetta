@@ -1161,6 +1161,10 @@
     "joined": "Joined",
     "website": "Website",
     "github": "GitHub",
+    "email": "Email",
+    "views": "views",
+    "likes": "likes",
+    "commentsCount": "comments",
     "emptyTitle": "No public posts yet",
     "notFoundTitle": "Author not found",
     "notFoundDesc": "This profile may never have existed, or the author turned off public profiles."
