@@ -64,6 +64,9 @@ class HotPostItemDoc(BaseModel):
     has_audio: bool = Field(False, description="是否带站内音频")
     has_video: bool = Field(False, description="是否带站内视频")
     has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
+    # 预计阅读分钟数（批次 #137）：持久化列，卡片与详情页共用同一个数。
+    # 这条口漏一个键就是"综合榜有分钟数、日/周/月/总四个页签整排没有"（同批 #121 媒体徽标）。
+    reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
 
 
 class HotPostsRankingResponseDoc(BaseModel):
@@ -221,6 +224,7 @@ async def get_hot_posts(
                 "published_at": p.published_at.isoformat() if p.published_at else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
                 **post_media_flags(p),
+                "reading_time": p.reading_time or 1,
             }
         )
 

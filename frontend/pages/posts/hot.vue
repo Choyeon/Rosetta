@@ -214,6 +214,7 @@ interface RankingRow {
   has_audio?: boolean
   has_video?: boolean
   has_embed?: boolean
+  reading_time?: number | null
 }
 
 const {
@@ -260,7 +261,9 @@ const posts = computed<Post[]>(() => {
     // 但不能因为"这一族自己搭 dict"就永远不带（表现是只有综合榜亮）。
     has_audio: row.has_audio ?? false,
     has_video: row.has_video ?? false,
-    has_embed: row.has_embed ?? false
+    has_embed: row.has_embed ?? false,
+    // 分钟数同批透传：后端按持久化列下发，缺键（60s 内的旧缓存载荷）时不显示 chip
+    reading_time: row.reading_time ?? null
   }) as unknown as Post)
 })
 </script>

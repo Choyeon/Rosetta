@@ -21,6 +21,8 @@ const chip = readFileSync(resolve(root, 'frontend/components/PostReadingTime.vue
 const detail = readFileSync(resolve(root, 'frontend/pages/posts/[slug].vue'), 'utf8')
 const schemas = readFileSync(resolve(root, 'backend/schemas/__init__.py'), 'utf8')
 const blogApi = readFileSync(resolve(root, 'backend/api/blog.py'), 'utf8')
+const rankingApi = readFileSync(resolve(root, 'backend/api/ranking.py'), 'utf8')
+const hotPage = readFileSync(resolve(root, 'frontend/pages/posts/hot.vue'), 'utf8')
 const util = readFileSync(resolve(root, 'backend/utils/reading_time.py'), 'utf8')
 
 describe('卡片侧（PostCard）', () => {
@@ -82,6 +84,24 @@ describe('后端侧（两套出口同一条公式）', () => {
   it('唯一公式的兜底：空正文不得算出 0 分钟', () => {
     expect(util).toContain('return max(1, math.ceil(minutes))')
     expect(util).toContain('return 1')
+  })
+})
+
+describe('周期榜族（/ranking/posts → 热榜页周期页签，批次 #137）', () => {
+  // 这条口不经过 PostListItemLocalized：它自己拼 dict，热榜页再把条目补齐成 PostCard
+  // 认得的形状。漏一处就是"综合页签有分钟数、日/周/月页签整排没有"（同批 #121 的媒体徽标）。
+  it('后端条目带出持久化列并在文档模型声明默认值', () => {
+    expect(rankingApi).toContain('"reading_time": p.reading_time or 1,')
+    const body = rankingApi.slice(
+      rankingApi.indexOf('class HotPostItemDoc('),
+      rankingApi.indexOf('class HotPostsRankingResponseDoc(')
+    )
+    expect(body).toContain('reading_time: int = Field(1')
+  })
+
+  it('热榜页把分钟数透传给同一套卡片渲染，缺键按不显示处理', () => {
+    expect(hotPage).toContain('reading_time?: number | null')
+    expect(hotPage).toContain('reading_time: row.reading_time ?? null')
   })
 })
 
