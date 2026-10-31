@@ -74,7 +74,7 @@
                  https:// 三点同口径），不要再拼 `https://github.com/${…}`——线上实测那样产出
                  `https://github.com/https://github.com/Choyeon`，每个作者的 GitHub 链接都是死链。 -->
             <div
-              v-if="profile?.website || profile?.github"
+              v-if="profile?.website || profile?.github || publicEmail"
               class="mt-3 flex flex-wrap items-center gap-4 text-sm"
             >
               <a
@@ -96,6 +96,17 @@
               >
                 <ExternalLink class="size-3.5" />
                 {{ t('authors.github', 'GitHub') }}
+              </a>
+              <!-- 邮箱由另一开关（show_email，默认拒绝）单独治理：后端关掉时把这一位投影成
+                   掩码 `***`，publicEmail 判成空串 → 这里整条不渲染，不会留下 mailto:*** 的死链。
+                   mailto 是唯一允许的 scheme，值本身已在 computed 里过字符闸门。 -->
+              <a
+                v-if="publicEmail"
+                :href="`mailto:${publicEmail}`"
+                class="inline-flex items-center gap-1.5 text-muted-foreground transition-colors hover:text-primary"
+              >
+                <Mail class="size-3.5" />
+                {{ t('authors.email', '邮箱') }}
               </a>
             </div>
             <!-- 发私信：入口放在作者主页而非主导航。/account/messages 是登录态私有页，
@@ -280,7 +291,7 @@ import PostSkeleton from '~~/components/PostSkeleton.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button, buttonVariants } from '~~/components/ui/button'
-import { ChevronLeft, ChevronRight, ExternalLink, Globe, MessageSquare, RefreshCw, UserRound } from '@lucide/vue'
+import { ChevronLeft, ChevronRight, ExternalLink, Globe, Mail, MessageSquare, RefreshCw, UserRound } from '@lucide/vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
 import { useAuthStore } from '~~/stores/auth'
 import { pageWindow } from '~~/lib/pagination'
@@ -318,6 +329,7 @@ interface AuthorProfile {
   resolved_avatar_url?: string | null
   website?: string | null
   github?: string | null
+  email?: string | null
   title?: AdminUserTitle | null
   created_at?: string
 }
@@ -359,6 +371,25 @@ const displayName = computed(
 )
 const bio = computed(() => pickLocalized(profile.value?.bio))
 const coverImage = computed(() => profile.value?.cover_image?.trim() || '')
+/**
+ * 作者公开邮箱（批次 #147）。
+ *
+ * `show_email` 的写口（个人中心 → PUT /users/{id}/preferences）与遮蔽闸门
+ * （`apply_email_privacy`，默认拒绝）早就齐了，缺的是第四段：资料口把 email 投影出来，
+ * 页面从不读它——于是作者主动打开"公开邮箱"也什么都不会出现，开关只能关不能开。
+ * 判据是"这一位真的是一枚邮箱"而不是"这一位非空"：闸门关时后端刻意回 `***` 而不是 null
+ * （`AuthorProfileResponse.email` 保持必填是有意的失败设计，见该模型文档），
+ * 所以掩码必须在这里判成隐藏。字符串再干净也不直接进 `href`——含冒号/尖括号/引号/空白
+ * 一律不渲染，避免把库里的脏值或未来的 scheme 拼成 `mailto:` 死链。
+ */
+const EMAIL_MASK = '***'
+const publicEmail = computed(() => {
+  const raw = (profile.value?.email ?? '').trim()
+  if (!raw || raw === EMAIL_MASK) return ''
+  if (!raw.includes('@')) return ''
+  if (/[<>"'\\:\s]/.test(raw)) return ''
+  return raw
+})
 const joinedLabel = computed(() => {
   const raw = profile.value?.created_at
   if (!raw) return ''

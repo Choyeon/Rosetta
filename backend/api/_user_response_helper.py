@@ -9,6 +9,10 @@ from backend.services._avatar_helpers import resolved_for_user
 
 _RT = TypeVar("_RT", bound=UserResponse)
 
+#: `show_email` 关掉时对外投影的邮箱值。消费方（作者主页）按"这不是邮箱"判隐藏，
+#: 判据单源写进 `apply_email_privacy` 的文档；改这个字面量要同时改前端那侧的对照守卫。
+EMAIL_MASK = "***"
+
 
 def build_user_response(user, response_cls: type[_RT] = UserResponse) -> _RT:
     r = response_cls.model_validate(user)
@@ -51,6 +55,12 @@ def apply_email_privacy(response, profile, current_user) -> None:
     此前只有 ``GET /users/username/{username}`` 做了遮蔽，``GET /users/{user_id}`` 直接返回
     明文邮箱——同一份数据换个路由就能绕过隐私开关，等于开关形同虚设。
     两个路由现在都走这里，不要再各自复制。
+
+    遮蔽值是 ``EMAIL_MASK`` 而不是 null，这一点与 ``show_social_links`` 的「隐藏即 null」
+    刻意不同：``AuthorProfileResponse.email`` 保持必填是有意的失败设计（服务层对
+    "非本人 + 关了公开"返回的精简 dict 不含 email，闸门一旦失守要 500 而不是静默 null），
+    所以消费方必须按"这一位不是邮箱"来判，``pages/authors/[username].vue`` 的
+    ``publicEmail`` 即判据单源（含 ``@`` 且不等于掩码才渲染 mailto 链接）。
     """
     if profile and profile.get("is_self"):
         return
@@ -59,7 +69,7 @@ def apply_email_privacy(response, profile, current_user) -> None:
     preference = profile.get("preferences") if profile else None
     show_email = bool(getattr(preference, "show_email", False))
     if not show_email:
-        response.email = "***"
+        response.email = EMAIL_MASK
 
 
 def apply_social_privacy(response, profile, current_user) -> None:
