@@ -1250,7 +1250,8 @@ type PostComment = {
     id: number | string
     name: string
     avatar?: string
-    email?: string
+    /** CommentResponse.author_website（后端已按 http(s) 过滤，渲染侧再兜一道） */
+    website?: string | null
     /** 后端解析链产出的代理 URL，优先级高于 avatar（见 UserAvatar 契约） */
     resolvedAvatarUrl?: string | null
     /** 稳定的头像配色种子（用户名），不要用昵称 */
@@ -2297,7 +2298,7 @@ const normalizeComment = (raw: CommentRaw): PostComment => {
       // 头像优先级与 UserAvatar 契约一致：解析后的代理 URL > 原始 avatar 列。
       resolvedAvatarUrl: rawText(raw.resolved_avatar_url) || rawText(raw.resolvedAvatarUrl) || null,
       avatar: rawText(raw.author_avatar) || rawText(raw.authorAvatar),
-      email: rawText(raw.author_email) || rawText(raw.authorEmail),
+      website: rawText(raw.author_website) || rawText(raw.authorWebsite),
       username: rawText(raw.username) || rawText(raw.github) || name
     },
     content: rawText(raw.content),

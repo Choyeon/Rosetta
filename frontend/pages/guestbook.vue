@@ -213,10 +213,10 @@
                     v-if="item.website"
                     :href="item.website"
                     target="_blank"
-                    rel="noopener noreferrer"
+                    rel="noopener noreferrer nofollow"
                     class="text-xs text-muted-foreground hover:text-foreground transition-colors truncate max-w-[200px]"
                   >
-                    {{ item.website.replace(/^https?:\/\//, '') }}
+                    {{ ugcLinkLabel(item.website) }}
                   </a>
                   <span class="text-xs text-muted-foreground">{{ formatDate(item.created_at) }}</span>
                   <Badge
@@ -357,6 +357,7 @@ import { extractApiErrorMessage } from '~~/lib/utils'
 import { useToast } from '~~/composables/useToast'
 import { useAuthStore } from '~~/stores/auth'
 import { pageWindow } from '~~/lib/pagination'
+import { safeUgcHref, ugcLinkLabel } from '~~/lib/ugc-link'
 
 definePageMeta({ layout: 'default' })
 
@@ -390,7 +391,7 @@ interface GuestbookItem {
   /** 登录留言者的用户 id；用作默认头像的**稳定**配色种子（昵称可改，改了会换色） */
   user_id?: number | null
   nickname: string
-  author_email?: string
+  /** 已在映射处过 safeUgcHref：模板可以直接当 href 用 */
   website?: string
   avatar?: string
   title?: {
@@ -537,8 +538,7 @@ const mapGuestbookRow = (raw: unknown): GuestbookItem => {
     id: pickNum('id', 0),
     user_id: typeof r.user_id === 'number' ? r.user_id : null,
     nickname: pickStr('author_name') || pickStr('nickname'),
-    author_email: pickStr('author_email') || undefined,
-    website: pickStr('author_website') || pickStr('website') || undefined,
+    website: safeUgcHref(pickStr('author_website') || pickStr('website')) || undefined,
     avatar: pickStr('resolved_avatar_url') || pickStr('author_avatar') || pickStr('avatar') || undefined,
     title: mappedTitle,
     content: pickStr('content'),

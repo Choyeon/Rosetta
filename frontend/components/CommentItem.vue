@@ -8,6 +8,8 @@
   表情反应走 /comments/{id}/reactions 三条口（GET 统计 / POST 添加 / DELETE /{emoji} 取消）：
   计数与 reacted 一律以 GET 结果为真源，本地不猜；这条 GET 公开可读但对草稿/加密文章的
   评论回 404（闸门见 backend/api/comment_reactions.py），所以拉取失败只 toast、不锁面板。
+  作者名后的网站链接是评论者自填的 author_website：只认 http(s)（safeUgcHref）并带 nofollow，
+  库里躺着 `javascript:` 之类的脏值时这一行按"没有链接"渲染，而不是挂一条可执行入口。
 -->
 <template>
   <div
@@ -33,6 +35,16 @@
             :title="comment.author?.title"
             size="sm"
           />
+          <!-- 评论者自填网站：写口收、响应模型投影，此前只差这一个渲染面 -->
+          <a
+            v-if="authorWebsite"
+            :href="authorWebsite"
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            class="max-w-[180px] shrink-0 truncate text-xs text-muted-foreground transition-colors hover:text-foreground"
+          >
+            {{ ugcLinkLabel(authorWebsite) }}
+          </a>
           <span class="text-xs text-muted-foreground shrink-0">{{ formatRelativeTime(comment.createdAt) }}</span>
         </div>
       </div>
@@ -227,6 +239,7 @@ import {
   type CommentReportReason
 } from '~~/composables/useComments'
 import { toBcp47Locale } from '~~/composables/useSeo'
+import { safeUgcHref, ugcLinkLabel } from '~~/lib/ugc-link'
 
 interface Props {
   comment: {
@@ -235,7 +248,8 @@ interface Props {
       id: number | string
       name: string
       avatar?: string
-      email?: string
+      /** 后端 CommentResponse.author_website：已过 http(s) 严格档，渲染侧再过一道 safeUgcHref */
+      website?: string | null
       /** 后端解析链产出的代理 URL，优先级高于 avatar */
       resolvedAvatarUrl?: string | null
       /** 稳定的头像配色种子（用户名） */
@@ -271,6 +285,8 @@ const props = withDefaults(defineProps<Props>(), {
   canReport: false,
   deleting: false
 })
+
+const authorWebsite = computed(() => safeUgcHref(props.comment.author?.website))
 
 defineEmits<{
   reply: [commentId: number | string]
