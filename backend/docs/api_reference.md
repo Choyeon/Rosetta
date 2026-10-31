@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **365 个操作 / 291 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **366 个操作 / 292 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1657,7 +1657,7 @@ API 实现了请求限流保护：
 | `GET` | `/api/health` | 健康检查 (/api 前缀别名) |
 | `GET` | `/health` | 健康检查 |
 
-### 用户（23）
+### 用户（24）
 
 | 方法 | 路径 | 摘要 |
 | --- | --- | --- |
@@ -1680,6 +1680,7 @@ API 实现了请求限流保护：
 | `POST` | `/api/users/register` | 用户注册 |
 | `GET` | `/api/users/username/{username}` | 通过用户名获取用户 |
 | `GET` | `/api/users/username/{username}/preferences` | 获取用户隐私设置 |
+| `GET` | `/api/users/username/{username}/stats` | 按用户名获取用户统计信息 |
 | `GET` | `/api/users/{user_id}` | 获取用户信息 |
 | `GET` | `/api/users/{user_id}/comments` | 用户评论列表 |
 | `GET` | `/api/users/{user_id}/posts` | 用户文章列表 |
