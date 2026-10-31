@@ -11,6 +11,8 @@
   相册时详情由 useAsyncData 在服务端取一次并排进网格（首屏与爬虫都读到那张相册，而不是「地址栏有
   相册、HTML 里只有第 1 页」），id 不存在/未公开走 404 分支显式给文案并清参数，
   而不是转圈后一片空白。canonical 只带 page，?album= 进链接图但不承认独立页面（口径见 AGENTS §2.3.3）。
+  灯箱里的「第几张」跟着进地址栏（批次 #135：?album=3&photo=7，photo 从 1 起、网格没有第 0 张）：
+  分享单张照片与后退键回网格都读这一对参数，灯箱内部状态不是真值；换相册/翻页/关对话框都会把它带走。
   每张照片带 url（原图）+ thumb（后端从 Media.sizes 派生的缩略档，可能为空）：网格下 thumb、灯箱放大 url，
   所以 Viewer 必须显式 url: 'data-original'（viewerjs 默认读 src，不指就会把 150px 小图放到全屏）。
   详情响应可能是 {data} 信封（手工解包），没有原图地址的项直接丢掉，故"有照片数却空网格"是脏数据表现。
@@ -416,7 +418,13 @@ const detailError = ref(false)
 /** 地址栏带的 id 不存在或未公开（详情 404）：给明确文案，别转圈后一片空白、也别报「操作失败」 */
 const albumNotFound = ref(false)
 const viewerContainerRef = ref<HTMLElement | null>(null)
-let viewerInstance: { destroy: () => void } | null = null
+let viewerInstance: { destroy: () => void, view: (index: number) => void, hide: () => void } | null = null
+/**
+ * 灯箱当前停在哪一张（0 基），与地址栏 ?photo= 同源。
+ * 留着它是为了挡住「viewed → 写 URL → watch → 再 view」这条自反回路：
+ * 值相等就直接返回，灯箱不会被自己反复重开。
+ */
+let viewerPhotoIndex: number | null = null
 
 // 每页 12 = 3 列网格 × 4 行；后端 page_size 只认 1–100，越界即 422。
 const PAGE_SIZE = 12
@@ -448,10 +456,15 @@ const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
   buttonVariants({ variant, size: 'icon' })
 
 /** 只保留本页真正认识的查询键：垃圾参数不该被复读到下一个链接上 */
-const albumQuery = (page: number | null, albumId: number | null = activeAlbumId.value) => {
+const albumQuery = (page: number | null, albumId: number | null = activeAlbumId.value, photo: number | null = null) => {
   const query: Record<string, string> = {}
   if (page !== null && page > 1) query.page = String(page)
-  if (albumId !== null) query.album = String(albumId)
+  if (albumId !== null) {
+    query.album = String(albumId)
+    // 序号只在「开着相册」时才有意义：关相册还挂着 ?photo= 等于留一个没人读的照片号，
+    // 下一次点开的却是另一个相册。
+    if (photo !== null && photo >= 0) query.photo = String(photo + 1)
+  }
   return query
 }
 
@@ -473,6 +486,15 @@ const handlePageChange = (page: number) => {
 const albumIdFromQuery = (raw: unknown): number | null => {
   const n = Number(raw)
   return Number.isInteger(n) && n > 0 ? n : null
+}
+/**
+ * 灯箱开在第几张：?photo=<1 起序号> → 0 基下标。
+ * 用序号而不是 url：照片对象只有 url/thumb（没有稳定 id），把带域名的地址塞进查询串
+ * 既难看又会在相册换图后失效；序号配合后端固定的相册顺序就是可分享的定位。
+ */
+const photoIndexFromQuery = (raw: unknown): number | null => {
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n - 1 : null
 }
 activeAlbumId.value = albumIdFromQuery(route.query.album)
 
@@ -655,6 +677,25 @@ function setAlbumQuery(id: number | null) {
   router.replace({ query: albumQuery(currentPage.value, id) })
 }
 
+/**
+ * 把灯箱里的那一张写进地址栏（photo 传 null 就是收掉 ?photo=）。
+ * 同值直接返回：灯箱每翻一张都会触发 viewed，无脑 replace 会把 history 灌满重复条目。
+ */
+function syncPhotoQuery(index: number | null) {
+  if (!import.meta.client) return
+  const want = index === null || index < 0 ? '' : String(index + 1)
+  const got = typeof route.query.photo === 'string' ? route.query.photo : ''
+  if (want === got) return
+  router.replace({ query: albumQuery(currentPage.value, activeAlbumId.value, index) })
+}
+
+/** viewerjs 的 viewed 事件带 `detail.index`（0 基）；拿不到就按「不知道」处理，不猜。 */
+function photoIndexFromViewerEvent(event: Event | undefined): number | null {
+  const detail = (event as CustomEvent<{ index?: unknown }> | undefined)?.detail
+  const n = detail?.index
+  return typeof n === 'number' && Number.isInteger(n) && n >= 0 ? n : null
+}
+
 // 打开相册
 function openAlbum(id: number) {
   setAlbumQuery(id)
@@ -679,23 +720,63 @@ async function applyAlbumFromQuery() {
   await loadAlbumDetail(id)
   await nextTick()
   await initViewer()
+  openSharedPhoto()
+}
+
+/**
+ * 分享链接里的 ?photo= 落到灯箱上：够得着就开那一张，越界只清参数不 clamp——
+ * 把坏链接静默换成另一张照片，等于让分享的人和看到的人读的是不同内容。
+ */
+function openSharedPhoto() {
+  const idx = photoIndexFromQuery(route.query.photo)
+  if (idx === null) {
+    viewerPhotoIndex = null
+    return
+  }
+  if (!viewerInstance || idx >= currentPhotos.value.length) {
+    syncPhotoQuery(null)
+    return
+  }
+  viewerPhotoIndex = idx
+  viewerInstance.view(idx)
 }
 
 watch(() => route.query.album, () => {
   void applyAlbumFromQuery()
 })
 
+// 后退/前进直接改 ?photo=（相册没换，只是灯箱换一张或收起来）。
+// 与 viewed 事件之间靠 viewerPhotoIndex 挡回路：值已经一致就什么都不做。
+watch(() => route.query.photo, (raw) => {
+  const idx = photoIndexFromQuery(raw)
+  if (idx === viewerPhotoIndex) return
+  if (!viewerInstance) {
+    // 灯箱还没实例化（相册没开 / viewerjs 没装上）时不去动 URL：
+    // URL 是真值，上面的相册流程会来读它，这里写反而会把参数吃掉。
+    return
+  }
+  if (idx === null) {
+    viewerPhotoIndex = null
+    viewerInstance.hide()
+    return
+  }
+  if (idx >= currentPhotos.value.length) {
+    syncPhotoQuery(null)
+    return
+  }
+  viewerPhotoIndex = idx
+  viewerInstance.view(idx)
+})
+
 onMounted(() => {
   void applyAlbumFromQuery()
 })
 
-// 初始化 viewerjs
-async function initViewer() {
-  if (!import.meta.client) return
-  const el = viewerContainerRef.value
-  if (!el) return
-
-  // 销毁旧实例
+/**
+ * 灯箱实例只在一处销毁（initViewer 重入 / 关对话框 / 组件卸载），顺带把 ?photo= 的对照值
+ * 清成 null——留着旧下标会让下一次 watch 误判「灯箱已经在这张」而什么都不做。
+ */
+function destroyViewer() {
   if (viewerInstance) {
     try {
       viewerInstance.destroy()
@@ -704,6 +785,17 @@ async function initViewer() {
     }
     viewerInstance = null
   }
+  viewerPhotoIndex = null
+}
+
+// 初始化 viewerjs
+async function initViewer() {
+  if (!import.meta.client) return
+  const el = viewerContainerRef.value
+  if (!el) return
+
+  // 销毁旧实例
+  destroyViewer()
 
   const Ctor = await ensureViewer()
   if (!Ctor) return
@@ -750,6 +842,16 @@ async function initViewer() {
       zoomOnTouch: true,
       slideOnTouch: true,
       toggleOnDblclick: true,
+      // 灯箱翻到的那一张同步进地址栏；收起时把 ?photo= 一起带走——留着它，下一次刷新会
+      // 「凭空」弹出一个访客已经关掉的灯箱（界面与 URL 分叉正是本批次要修的东西）。
+      viewed: (event) => {
+        viewerPhotoIndex = photoIndexFromViewerEvent(event)
+        syncPhotoQuery(viewerPhotoIndex)
+      },
+      hidden: () => {
+        viewerPhotoIndex = null
+        syncPhotoQuery(null)
+      },
       loading: true
     })
   } catch {
@@ -760,29 +862,16 @@ async function initViewer() {
 // Dialog 关闭时销毁 viewer
 watch(dialogOpen, (open) => {
   if (!open) {
-    if (viewerInstance) {
-      try {
-        viewerInstance.destroy()
-      } catch {
-        /* noop */
-      }
-      viewerInstance = null
-    }
+    destroyViewer()
     // 用 ESC / 关闭按钮收掉相册时，地址栏的 ?album= 必须跟着走：留着它，下一次刷新
     // 会「凭空」重开一个访客已经关掉的相册（界面与 URL 分叉正是本批次要修的东西）。
+    // ?photo= 跟着一起走——albumQuery 只在有相册时才写它。
     if (activeAlbumId.value !== null) setAlbumQuery(null)
   }
 })
 
 onBeforeUnmount(() => {
-  if (viewerInstance) {
-    try {
-      viewerInstance.destroy()
-    } catch {
-      /* noop */
-    }
-    viewerInstance = null
-  }
+  destroyViewer()
 })
 
 // 空目录页 = 没有可索引内容（与 /sponsor 的 sponsorEmpty 同口径），后端 sitemap 同步跳过。
