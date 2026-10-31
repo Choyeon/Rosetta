@@ -689,7 +689,8 @@ export interface AdminTaxonomyPayload {
   name: I18nValue
   slug?: string
   description?: I18nValue
-  icon?: string
+  /** 图标（heroicons 名 / emoji）。`undefined` = 不发这个键；null 或空串 = 清掉图标。 */
+  icon?: string | null
   color?: string
   /** 分类封面。`undefined` = 不发这个键（后端 exclude_unset = 不改它）；
    *  空串或 null = 清掉封面（后端把空串归成 None）。标签没有这一列，不要传。 */
@@ -724,7 +725,9 @@ function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
   if (payload.slug && payload.slug.trim()) body.slug = payload.slug.trim()
   const descDict = toI18nDict(payload.description)
   if (descDict) body.description = descDict
-  if (payload.icon && payload.icon.trim()) body.icon = payload.icon.trim()
+  // 图标与封面同一条口径：省略键 = 不动它，显式 null / 空串 = 清掉。
+  // 前台现在真的会渲染这个值，"后台删掉图标、前台还挂着" 从这里开始算缺陷。
+  if (payload.icon !== undefined) body.icon = payload.icon?.trim() || null
   if (payload.color && payload.color.trim()) body.color = payload.color.trim()
   // 封面必须区分"没提这个键"和"要清掉它"：沿用上面的 `&&` 写法会让清除操作失效
   // （提交空串被丢掉 → 后端按未提处理 → 旧封面还在，界面上"点了清除但没变化"）。

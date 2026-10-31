@@ -35,6 +35,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '~~/components/ui/toolti
 import { useAuthStore } from '~~/stores/auth'
 import { useI18n } from 'vue-i18n'
 import LocaleSwitcher from '~~/components/LocaleSwitcher.vue'
+import DynamicIcon from '~~/components/DynamicIcon.vue'
 import { MINIMAL_THEME_SLUGS } from '~~/lib/rosetta-themes'
 import { flattenNavLinks, isNavActive, navRowsToLinks, dedupeByTo, type NavApiRow, type NavLink } from '~~/lib/navigation'
 
@@ -272,7 +273,14 @@ const handleSearchClick = () => go('/search')
             isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
           ]"
         >
-          {{ item.label }}
+          <span class="inline-flex items-center gap-1.5">
+            <DynamicIcon
+              v-if="item.icon"
+              :icon="item.icon"
+              class="size-3.5 shrink-0 opacity-80"
+            />
+            {{ item.label }}
+          </span>
         </NuxtLink>
 
         <!-- 溢出导航（默认主题、总条数在平铺闸门内）：2xl 起继续平铺，窄处交给下面的「更多」下拉。
@@ -295,7 +303,14 @@ const handleSearchClick = () => go('/search')
               isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
             ]"
           >
-            {{ item.label }}
+            <span class="inline-flex items-center gap-1.5">
+              <DynamicIcon
+                v-if="item.icon"
+                :icon="item.icon"
+                class="size-3.5 shrink-0 opacity-80"
+              />
+              {{ item.label }}
+            </span>
           </NuxtLink>
         </template>
 
@@ -342,7 +357,16 @@ const handleSearchClick = () => go('/search')
                     isActive(item.to) ? 'font-semibold' : ''
                   ]"
                 >
-                  {{ item.label }}
+                  <!-- 与上面两处同构：DynamicIcon 的根是多分支条件节点，data-icon 之类的
+                       透传属性不保证落到图标元素上，所以统一用一层 span 收住「图标 + 标签」。 -->
+                  <span class="inline-flex items-center gap-1.5">
+                    <DynamicIcon
+                      v-if="item.icon"
+                      :icon="item.icon"
+                      class="size-4 shrink-0 opacity-80"
+                    />
+                    {{ item.label }}
+                  </span>
                 </NuxtLink>
               </DropdownMenuItem>
             </DropdownMenuContent>
@@ -555,7 +579,14 @@ const handleSearchClick = () => go('/search')
                       isActive(item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
                     ]"
                   >
-                    {{ item.label }}
+                    <span class="inline-flex items-center gap-1.5">
+                      <DynamicIcon
+                        v-if="item.icon"
+                        :icon="item.icon"
+                        class="size-3.5 shrink-0 opacity-80"
+                      />
+                      {{ item.label }}
+                    </span>
                   </NuxtLink>
                 </SheetClose>
               </nav>

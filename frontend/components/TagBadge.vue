@@ -16,12 +16,17 @@
       :style="chipStyle"
     >
       <span
-        v-if="showDot"
+        v-if="showDot && !icon"
         class="tag-dot"
         aria-hidden="true"
       />
+      <DynamicIcon
+        v-if="icon"
+        :icon="icon"
+        class="tag-icon"
+      />
       <svg
-        v-if="showIcon"
+        v-else-if="showIcon"
         xmlns="http://www.w3.org/2000/svg"
         viewBox="0 0 24 24"
         fill="none"
@@ -47,12 +52,17 @@
     :style="chipStyle"
   >
     <span
-      v-if="showDot"
+      v-if="showDot && !icon"
       class="tag-dot"
       aria-hidden="true"
     />
+    <DynamicIcon
+      v-if="icon"
+      :icon="icon"
+      class="tag-icon"
+    />
     <svg
-      v-if="showIcon"
+      v-else-if="showIcon"
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 24 24"
       fill="none"
@@ -74,12 +84,18 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
+import DynamicIcon from '~~/components/DynamicIcon.vue'
 import { hexToHsl } from '~~/lib/utils'
 
 interface Props {
   color?: string | null
   label?: string
   to?: string
+  /**
+   * 标签图标（`TagResponse.icon`，heroicons 名或 emoji）。有值才渲染，且顶掉左侧圆点，
+   * 免得点位 + 图标 + 文字三样挤在胶囊里。
+   */
+  icon?: string | null
   showIcon?: boolean
   showDot?: boolean
   size?: 'sm' | 'md'
@@ -89,6 +105,7 @@ const props = withDefaults(defineProps<Props>(), {
   color: null,
   label: '',
   to: undefined,
+  icon: null,
   showIcon: false,
   showDot: true,
   size: 'md'

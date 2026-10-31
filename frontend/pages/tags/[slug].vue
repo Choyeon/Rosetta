@@ -28,6 +28,7 @@
             <TagBadge
               v-if="!tagNotFound"
               :color="tagColor"
+              :icon="tagIcon"
               :label="tagName"
               size="md"
               show-icon
@@ -218,7 +219,7 @@ const pageSize = computed(() => site.reading.value.posts_per_page)
 
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
-interface TagDetail { id?: number | string, slug?: string, name?: unknown, description?: unknown, color?: string | null, post_count?: number, postsCount?: number, posts?: unknown[] }
+interface TagDetail { id?: number | string, slug?: string, name?: unknown, description?: unknown, color?: string | null, icon?: string | null, post_count?: number, postsCount?: number, posts?: unknown[] }
 
 interface TagPostRow {
   id: number | string
@@ -268,6 +269,7 @@ const { data: postsRaw, pending, error: postsErr } = useAPI<{ items?: TagPostRow
 const tagDetailSettled = computed(() => tagStatus.value === 'success' || tagStatus.value === 'error')
 const tagName = computed(() => pickLocalized(tagRaw.value?.name) || (tagDetailSettled.value ? t('error.notFoundTitle') : ''))
 const tagColor = computed<string | null>(() => (tagRaw.value?.color ?? null) as string | null)
+const tagIcon = computed<string | null>(() => (tagRaw.value?.icon ?? null) as string | null)
 const tagDesc = computed(() => pickLocalized(tagRaw.value?.description))
 const postCount = computed<number>(() => {
   const c = tagRaw.value as TagDetail | null | undefined

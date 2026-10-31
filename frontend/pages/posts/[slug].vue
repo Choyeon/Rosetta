@@ -474,6 +474,7 @@
                 v-for="tag in normalizedTags"
                 :key="tag.id"
                 :color="tag.color"
+                :icon="tag.icon"
                 :label="tag.name"
                 :to="localeHref(`/tags/${tag.slug}`)"
                 show-icon
@@ -1122,6 +1123,7 @@ interface PostDetailTag {
   slug: string
   name: unknown
   color?: string | null
+  icon?: string | null
 }
 
 interface PostDetail {
@@ -1721,7 +1723,8 @@ const normalizedTags = computed(() => {
     id: tag.id,
     slug: tag.slug,
     name: pickLocalized(tag.name),
-    color: (tag.color ?? null) as string | null
+    color: (tag.color ?? null) as string | null,
+    icon: (tag.icon ?? null) as string | null
   })).filter(tag => tag.id && tag.slug)
 })
 

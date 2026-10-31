@@ -53,6 +53,7 @@
           v-for="tag in compactTags"
           :key="tag.id"
           :color="tag.color"
+          :icon="tag.icon"
           :label="tag.name"
           :to="localeHref(`/tags/${tag.slug}`)"
           size="sm"
@@ -168,6 +169,7 @@
           v-for="tag in compactTags"
           :key="tag.id"
           :color="tag.color"
+          :icon="tag.icon"
           :label="tag.name"
           :to="localeHref(`/tags/${tag.slug}`)"
         />
@@ -292,6 +294,7 @@
         v-for="tag in normalizedTags"
         :key="tag.id"
         :color="tag.color"
+        :icon="tag.icon"
         :label="tag.name"
         :to="localeHref(`/tags/${tag.slug}`)"
       />
@@ -370,6 +373,7 @@ interface TagLike {
   name: string | Record<string, string>
   slug: string
   color?: string | null
+  icon?: string | null
 }
 
 interface Props {
@@ -462,13 +466,14 @@ const excerptText = computed(() => postExcerpt.value || t('post.noExcerpt'))
 const postSlug = computed(() => props.post.slug)
 
 /** 把 tags 解析为"i18n aware + 已解析 color"的扁平数组。 */
-const normalizedTags = computed<Array<{ id: number | string, slug: string, name: string, color: string | null }>>(() => {
+const normalizedTags = computed<Array<{ id: number | string, slug: string, name: string, color: string | null, icon: string | null }>>(() => {
   if (!props.post.tags?.length) return []
   return props.post.tags.map(t => ({
     id: t.id,
     slug: t.slug,
     name: resolveLocalized(t.name),
-    color: t.color ?? null
+    color: t.color ?? null,
+    icon: t.icon ?? null
   })).filter(t => t.name.trim().length > 0)
 })
 

@@ -147,7 +147,8 @@ const save = async () => {
       name: form.name,
       slug: form.slug || undefined,
       color: form.color || undefined,
-      icon: form.icon || undefined,
+      // 始终带上：空串会被 wrapper 归成 null（= 清掉图标），省略键则清不掉
+      icon: form.icon || null,
       is_active: form.is_active
     }
     if (dialogMode.value === 'edit' && editingId.value) {

@@ -240,7 +240,8 @@ const save = async () => {
       slug: form.slug || undefined,
       description: form.description,
       color: form.color || undefined,
-      icon: form.icon || undefined,
+      // 始终带上：空串会被 wrapper 归成 null（= 清掉图标），省略键则清不掉
+      icon: form.icon || null,
       // 始终带上：空串会被 wrapper 归成 null（= 清掉封面），省略键则清不掉
       cover_image: form.cover_image,
       // 同样始终带上：null = 明确提到顶级，省略键在 exclude_unset 下清不掉父级

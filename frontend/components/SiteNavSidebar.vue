@@ -24,6 +24,7 @@ import {
   SheetClose
 } from '~~/components/ui/sheet'
 import { Separator } from '~~/components/ui/separator'
+import DynamicIcon from '~~/components/DynamicIcon.vue'
 import { flattenNavLinks, isNavActive, navRowsToLinks, withoutDuplicateTos, type NavApiRow, type NavLink } from '~~/lib/navigation'
 import { pickLocalizedText } from '~~/composables/useI18nHelpers'
 
@@ -119,7 +120,14 @@ const catCount = (c: CategoryRow) => c.post_count ?? c.postsCount ?? 0
               isNavActive(route.path, item.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
             ]"
           >
-            {{ item.label }}
+            <span class="inline-flex items-center gap-1.5">
+              <DynamicIcon
+                v-if="item.icon"
+                :icon="item.icon"
+                class="size-3.5 shrink-0 opacity-80"
+              />
+              {{ item.label }}
+            </span>
           </NuxtLink>
         </SheetClose>
       </nav>
@@ -149,7 +157,14 @@ const catCount = (c: CategoryRow) => c.post_count ?? c.postsCount ?? 0
                 isNavActive(route.path, link.to) ? 'bg-accent text-accent-foreground' : 'text-foreground/60 hover:text-foreground'
               ]"
             >
-              {{ link.label }}
+              <span class="inline-flex items-center gap-1.5">
+                <DynamicIcon
+                  v-if="link.icon"
+                  :icon="link.icon"
+                  class="size-3.5 shrink-0 opacity-80"
+                />
+                {{ link.label }}
+              </span>
             </NuxtLink>
           </SheetClose>
         </nav>

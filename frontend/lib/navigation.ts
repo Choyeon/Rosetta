@@ -12,6 +12,12 @@ export interface NavLink {
   to: string
   target?: string
   /**
+   * 菜单图标（`NavigationResponse.icon`，heroicons 名或 emoji）。
+   * 后台一直能写这一栏，但此前四个渲染面一个都不读——图标只存在于后台表格里。
+   * 空值时这个键不存在（渲染面用 `v-if="item.icon"`，不要传空串给 DynamicIcon）。
+   */
+  icon?: string
+  /**
    * 二级菜单。后台 `parent_id` 指向本项的那些行；没有子项时这个键不存在
    * （渲染面用 `v-if="item.children?.length"`，不要写成 `children.length`）。
    */
@@ -36,6 +42,8 @@ export interface NavApiRow {
   is_external?: boolean
   target?: string
   target_blank?: boolean
+  /** 菜单图标（heroicons 名 / emoji / 纯文本），解析与降级在 DynamicIcon。 */
+  icon?: string | null
   /** 父导航行 id（`NavigationResponse.parent_id`）。同一批返回里没有这个 id 时按顶层渲染。 */
   parent_id?: number | string | null
 }
@@ -98,6 +106,8 @@ export function dedupeByTo<T extends { to: string }>(arr: ReadonlyArray<T>): T[]
  * — `includeExternal: false`（顶栏用）把外链整行丢掉：顶栏把链接交给 `<NuxtLink :to>`，
  *   外链会走内部路由解析；页脚/侧边栏保留原样透传。
  * — `parent_id` 折叠成两层（见 nestNavRows）。
+ * — `icon` 在这里（唯一构造点）归一后随链接一起下发：顶栏 / 页脚 / 侧边栏 / 移动抽屉
+ *   四个渲染面共用同一份 NavLink，任何一处自己再去读原始行就会与这里漂移。
  */
 export function navRowsToLinks(
   rows: unknown,
@@ -114,10 +124,15 @@ export function navRowsToLinks(
     if (!to) continue
     const external = /^https?:\/\//i.test(to) || raw.is_external === true || raw.link_type === 'external'
     if (external && !includeExternal) continue
+    const link: NavLink = { label, to }
+    if (isBlankTarget(raw)) link.target = '_blank'
+    // 空串 / 纯空白 / null 都当"没有图标"：键整个不存在，渲染面一个节点都不输出。
+    const icon = typeof raw.icon === 'string' ? raw.icon.trim() : ''
+    if (icon) link.icon = icon
     flat.push({
       id: positiveId(raw.id),
       parentId: positiveId(raw.parent_id),
-      link: isBlankTarget(raw) ? { label, to, target: '_blank' } : { label, to }
+      link
     })
   }
   return nestNavRows(flat)
@@ -228,6 +243,7 @@ export function withoutDuplicateTos(
     }
     const self: NavLink = { label: link.label, to: link.to }
     if (link.target) self.target = link.target
+    if (link.icon) self.icon = link.icon
     out.push(children.length > 0 ? { ...self, children } : self)
   }
   return out

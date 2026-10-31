@@ -7,6 +7,7 @@
 -->
 <script setup lang="ts">
 import { Separator } from '~~/components/ui/separator'
+import DynamicIcon from '~~/components/DynamicIcon.vue'
 import type { Category } from '~~/types/api'
 import { useAPI } from '~~/composables/useApi'
 import { useI18n } from 'vue-i18n'
@@ -474,7 +475,14 @@ const handleSetLocale = async (code: string) => {
                 :rel="link.target === '_blank' ? 'noopener noreferrer' : undefined"
                 class="text-sm text-muted-foreground hover:text-foreground transition-colors"
               >
-                {{ link.label }}
+                <span class="inline-flex items-center gap-1.5">
+                  <DynamicIcon
+                    v-if="link.icon"
+                    :icon="link.icon"
+                    class="size-3.5 shrink-0 opacity-80"
+                  />
+                  {{ link.label }}
+                </span>
               </NuxtLink>
             </li>
           </ul>
@@ -627,7 +635,14 @@ const handleSetLocale = async (code: string) => {
             link.depth > 0 ? 'pl-2' : ''
           ]"
         >
-          {{ link.label }}
+          <span class="inline-flex items-center gap-1.5">
+            <DynamicIcon
+              v-if="link.icon"
+              :icon="link.icon"
+              class="size-3.5 shrink-0 opacity-80"
+            />
+            {{ link.label }}
+          </span>
         </NuxtLink>
       </nav>
 

@@ -103,7 +103,7 @@
         <NuxtLink
           v-for="tag in visibleTags"
           :key="tag.id"
-          v-memo="[tag.id, tag.slug, tag.color]"
+          v-memo="[tag.id, tag.slug, tag.color, tag.icon]"
           :to="localeHref(`/tags/${tag.slug}`)"
           class="no-underline group block rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
@@ -111,6 +111,7 @@
             <div class="flex items-center justify-between gap-2">
               <TagBadge
                 :color="tag.color"
+                :icon="tag.icon"
                 :label="tagName(tag)"
                 size="md"
                 show-icon
@@ -195,6 +196,7 @@ interface TagRow {
   slug: string
   name?: string | Record<string, string>
   color?: string | null
+  icon?: string | null
   post_count?: number
   postsCount?: number
 }
