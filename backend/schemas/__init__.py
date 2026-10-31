@@ -1992,13 +1992,9 @@ class SiteConfigResponse(BaseModel):
     custom_css: str | None = None
     custom_js: str | None = None
 
-    # 关于页面内容（支持 Markdown）
-    about_content: str = ""
-    # 关于页面内容（HTML 直接渲染版，站点设置 basic 组中以 HTML 编辑器维护）
+    # 关于页面正文（HTML 直接渲染版，站点设置 basic 组中以 HTML 编辑器维护；纯 Markdown 的
+    # about_content 已随批次 #112 退役——前台 /about 只渲染这一份，两份来源会互相矛盾）
     about_page_html: str = ""
-
-    # 友链申请区域自定义 HTML 内容（留空则使用前端默认模板）
-    friends_apply_html: str = ""
 
     # 作者/侧边栏资料设置
     author_name: str = ""
@@ -2008,103 +2004,26 @@ class SiteConfigResponse(BaseModel):
 
     # 站点URL和运行信息
     site_url: str = ""
-    site_start_date: str = "2025-01-01"
 
     # 页脚自定义HTML
     footer_custom_html: str = ""
 
-    # 友情链接页面配置
-    friends_page_title: str = ""
-    friends_page_description: str = ""
-    friends_page_show_comment: bool = True
-    friends_page_show_custom_content: bool = True
-
-    # 动态页面配置
-    dynamic_page_title: str = ""
-    dynamic_page_description: str = ""
-    dynamic_page_items_per_page: int = 10
-    dynamic_page_show_comment: bool = True
-
-    # 赞助页面配置
-    sponsor_page_title: str = ""
-    sponsor_page_description: str = ""
-    sponsor_page_usage: str = ""
-    sponsor_methods_json: str = "[]"
-    sponsor_show_sponsors_list: bool = True
-    sponsor_page_show_comment: bool = True
-
-    # ========== 页面开关配置 ==========
-    page_friends_enabled: bool = True
-    page_sponsor_enabled: bool = True
-    page_guestbook_enabled: bool = True
-    page_bangumi_enabled: bool = True
-    page_gallery_enabled: bool = True
-    page_anime_enabled: bool = True
-    page_dynamic_enabled: bool = True
-
-    # ========== 导航栏显示配置 ==========
-    category_bar_enabled: bool = True
-
-    # ========== 归档页配置 ==========
-    archive_fold_old_articles: bool = True
-
-    # ========== 文章列表布局配置 ==========
-    post_list_default_mode: str = "list"
-    post_list_mobile_mode: str = "grid"
-    post_list_description_lines: int = 2
-    post_list_show_stats_icons: bool = True
-    post_list_tags_position: str = "bottom"
-
-    # ========== 文章详情页配置 ==========
-    post_show_last_modified: bool = True
-    post_outdated_threshold_days: int = 30
-    post_enable_share_poster: bool = True
-    post_generate_og_images: bool = False
-
-    # ========== 封面图配置 ==========
-    cover_enable_in_post: bool = True
-    cover_enable_overlay: bool = True
-    cover_show_loading: bool = False
-    cover_random_enable: bool = False
-    cover_random_apis_json: str = "[]"
-
-    # ========== 许可证配置 ==========
-    license_enable: bool = True
-    license_name: str = "CC BY-NC-SA 4.0"
-    license_url: str = "https://creativecommons.org/licenses/by-nc-sa/4.0/"
-    license_icon: str = ""
-
-    # ========== 评论系统配置 ==========
-    # 第三方评论 provider 的 26 个键已退役（前端无渲染器、PUT /api/config 的 config_map
-    # 也不收它们）。本站评论的唯一开关是 comments 分组的 enable，扁平 enable_comments
-    # 由它投影。守卫 tests/test_retired_third_party_comment_config_is_gone.py。
-
-    # ========== Bangumi配置 ==========
-    bangumi_user_id: str = ""
-    bangumi_mode: str = "dynamic"
-    bangumi_api_url: str = "https://bgmapi.anibt.net"
-    bangumi_subject_base_url: str = "https://bgmmi.anibt.net/subject/"
-    bangumi_category_order_json: str = '["anime","book","music","game"]'
-
-    # ========== 追番配置 ==========
-    anime_bilibili_uid: str = ""
-    anime_tmdb_api_key: str = ""
-    anime_tmdb_list_id: str = ""
-
-    # ========== 分页配置 ==========
-    pagination_posts_per_page: int = 10
-
-    # ========== 图像优化配置 ==========
-    image_opt_formats: str = "webp"
-    image_opt_quality: int = 85
-    image_opt_no_referrer_json: str = '["*.hdslb.com","*.bilibili.com"]'
-
-    # ========== Mermaid图表配置 ==========
-    mermaid_theme: str = "default"
-    mermaid_security_level: str = "strict"
-
-    # ========== PlantUML配置 ==========
-    plantuml_server_url: str = "https://www.plantuml.com/plantuml"
+    # 已退役的扁平站点配置键族（判据同一条：键必须走完「请求模型 → config_map → 公开投影
+    # → 真实消费点」四段，缺第四段就整族删除，而不是继续投影给匿名访客）：
+    #   · 批次 #109：第三方评论 provider 26 键（前端无渲染器，config_map 也不收）
+    #   · 批次 #110：music_* / wallpaper_* / sidebar_show_* / sakura_* / pio_spine_* 46 键
+    #   · 批次 #112：其余 59 键——friends_page_* + friends_apply_html、dynamic_page_*、
+    #     sponsor_page_* + sponsor_methods_json + sponsor_show_sponsors_list、about_content、
+    #     site_start_date（以上 17 个曾真的落库）、post_list_*、cover_*、license_*、
+    #     bangumi_*、anime_*、page_*_enabled、mermaid_*、plantuml_server_url、image_opt_*、
+    #     pagination_posts_per_page、category_bar_enabled、archive_fold_old_articles、
+    #     post_show_last_modified、post_outdated_threshold_days、post_enable_share_poster、
+    #     post_generate_og_images（以上 42 个只被写口声明，从未落库）。
+    # 每族的现存唯一真源写在守卫文件头部的对照表里：i18n 标题、donate 分组、
+    # basic.about_page_html、features.enable_guestbook、reading.posts_per_page、
+    # lib/post-cover.ts。守卫 tests/test_retired_third_party_comment_config_is_gone.py、
+    # tests/test_retired_flat_config_families_are_gone.py、
+    # tests/test_retired_flat_config_keys_are_gone.py。
 
 
 class SiteConfigUpdate(BaseModel):
@@ -2214,109 +2133,19 @@ class SiteConfigUpdate(BaseModel):
     custom_js: str | None = Field(None, max_length=50000)
 
     # 关于页面内容
-    about_content: str | None = Field(None, max_length=50000)
 
     # 友链申请区域自定义 HTML 内容
-    friends_apply_html: str | None = Field(None, max_length=50000)
 
     # 站点URL和运行信息
     site_url: str | None = Field(None, max_length=500)
-    site_start_date: str | None = Field(None, max_length=20)
 
     # 页脚自定义HTML
     footer_custom_html: str | None = Field(None, max_length=50000)
 
-    # 友情链接页面配置
-    friends_page_title: str | None = Field(None, max_length=200)
-    friends_page_description: str | None = Field(None, max_length=500)
-    friends_page_show_comment: bool | None = None
-    friends_page_show_custom_content: bool | None = None
-
-    # 动态页面配置
-    dynamic_page_title: str | None = Field(None, max_length=200)
-    dynamic_page_description: str | None = Field(None, max_length=500)
-    dynamic_page_items_per_page: int | None = Field(None, ge=1, le=100)
-    dynamic_page_show_comment: bool | None = None
-
-    # 赞助页面配置
-    sponsor_page_title: str | None = Field(None, max_length=200)
-    sponsor_page_description: str | None = Field(None, max_length=500)
-    sponsor_page_usage: str | None = Field(None, max_length=2000)
-    sponsor_methods_json: str | None = Field(None, max_length=50000)
-    sponsor_show_sponsors_list: bool | None = None
-    sponsor_page_show_comment: bool | None = None
-
-    # ========== 页面开关配置 ==========
-    page_friends_enabled: bool | None = None
-    page_sponsor_enabled: bool | None = None
-    page_guestbook_enabled: bool | None = None
-    page_bangumi_enabled: bool | None = None
-    page_gallery_enabled: bool | None = None
-    page_anime_enabled: bool | None = None
-    page_dynamic_enabled: bool | None = None
-
-    # ========== 导航栏显示配置 ==========
-    category_bar_enabled: bool | None = None
-
-    # ========== 归档页配置 ==========
-    archive_fold_old_articles: bool | None = None
-
-    # ========== 文章列表布局配置 ==========
-    post_list_default_mode: str | None = Field(None, max_length=50)
-    post_list_mobile_mode: str | None = Field(None, max_length=50)
-    post_list_description_lines: int | None = None
-    post_list_show_stats_icons: bool | None = None
-    post_list_tags_position: str | None = Field(None, max_length=50)
-
-    # ========== 文章详情页配置 ==========
-    post_show_last_modified: bool | None = None
-    post_outdated_threshold_days: int | None = None
-    post_enable_share_poster: bool | None = None
-    post_generate_og_images: bool | None = None
-
-    # ========== 封面图配置 ==========
-    cover_enable_in_post: bool | None = None
-    cover_enable_overlay: bool | None = None
-    cover_show_loading: bool | None = None
-    cover_random_enable: bool | None = None
-    cover_random_apis_json: str | None = Field(None, max_length=50000)
-
-    # ========== 许可证配置 ==========
-    license_enable: bool | None = None
-    license_name: str | None = Field(None, max_length=200)
-    license_url: str | None = Field(None, max_length=500)
-    license_icon: str | None = Field(None, max_length=500)
-
-    # ========== 评论系统配置 ==========
-    # 第三方评论 provider 一族已退役（见 SiteConfigResponse 同段注释）。
-    # 这里刻意留空：写口曾声明这些键，但 config_map 从不落库，属于"收键不落地"。
-
-    # ========== Bangumi配置 ==========
-    bangumi_user_id: str | None = Field(None, max_length=200)
-    bangumi_mode: str | None = Field(None, max_length=50)
-    bangumi_api_url: str | None = Field(None, max_length=500)
-    bangumi_subject_base_url: str | None = Field(None, max_length=500)
-    bangumi_category_order_json: str | None = Field(None, max_length=50000)
-
-    # ========== 追番配置 ==========
-    anime_bilibili_uid: str | None = Field(None, max_length=200)
-    anime_tmdb_api_key: str | None = Field(None, max_length=200)
-    anime_tmdb_list_id: str | None = Field(None, max_length=200)
-
-    # ========== 分页配置 ==========
-    pagination_posts_per_page: int | None = None
-
-    # ========== 图像优化配置 ==========
-    image_opt_formats: str | None = Field(None, max_length=100)
-    image_opt_quality: int | None = None
-    image_opt_no_referrer_json: str | None = Field(None, max_length=50000)
-
-    # ========== Mermaid图表配置 ==========
-    mermaid_theme: str | None = Field(None, max_length=50)
-    mermaid_security_level: str | None = Field(None, max_length=50)
-
-    # ========== PlantUML配置 ==========
-    plantuml_server_url: str | None = Field(None, max_length=500)
+    # 第三方评论 provider 一族（批次 #109）与 59 个零消费方扁平键（批次 #112，见
+    # SiteConfigResponse 同段注释）已退役。这里刻意留空：写口曾声明它们，但 `config_map`
+    # 从不转译落库，属于"假装保存"。现在带这些键的请求由 strict_config 的
+    # extra="forbid" 直接 422，而不是回 200 再什么都不做。
 
 
 class SiteSettingGroup(BaseModel):

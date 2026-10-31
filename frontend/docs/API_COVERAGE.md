@@ -427,6 +427,32 @@
      从来不在扁平配置里）、导航 `sidebar` 位置与站内评论系统必须原样活着；另有一条用例专门种下
      `MUSIC_ENABLED` / `WALLPAPER_MODE` / `SIDEBAR` 三行存量库数据，断言 `/api/config` 无视它们
      而不是把它们重新投影出来（生产 PG 里今天就躺着这类行）。
+   - **扁平死配置键族（本族收尾）**（**2026-10-31 已退役**，不是待接缺口）：上一段之后这一族还剩 59 个
+     零消费方的扁平键，`SiteConfigResponse` 由 147 个字段收敛到 **88**、`SiteConfigUpdate` 由 136 收敛到 **77**。
+     「存得进、没人读」的 17 个：`about_content`、`friends_page_title` / `friends_page_description` /
+     `friends_page_show_comment` / `friends_page_show_custom_content` / `friends_apply_html`、`dynamic_page_*`(4)、
+     `sponsor_page_title` / `sponsor_page_description` / `sponsor_page_show_comment` / `sponsor_page_usage` /
+     `sponsor_methods_json` / `sponsor_show_sponsors_list`、`site_start_date`——进 `config_map`、真落库、
+     `/api/config` 原样投影给匿名访客与 SSR，而前台一个渲染器都不读。「假装保存」的 42 个：`post_list_*`(5)、
+     `cover_*`(4)、`license_*`(4)、`bangumi_*`(5)、`anime_*`(3)、`page_*_enabled`(7)、`mermaid_*`(2) +
+     `plantuml_server_url`、`image_opt_*`(3)、`pagination_posts_per_page`、`category_bar_enabled`、
+     `archive_fold_old_articles`、`post_show_last_modified`、`post_outdated_threshold_days`、
+     `post_enable_share_poster`、`post_generate_og_images`——只被 `SiteConfigUpdate` 声明，`config_map`
+     从不转译，接口回 200 而库里一个字节没变。判据与上两段同一条：**键必须走完「请求模型 → 写口转译表
+     → 投影 → 真实消费点」四段**。**这一批选删不选接**，因为每一族都已经有一个在工作的单源：友链/动态/捐助页
+     标题来自 i18n（`t('friends.title')`、`t('activity.title')`）与 `donate.title`，捐助正文与名单来自
+     `donate.methods/sponsors/description/show_sponsors_list`，关于页正文来自 `basic.about_page_html`，
+     留言板与捐助页的开关来自 `features.enable_guestbook` 与 `donate.enable`（批次 #83/#210），每页条数来自
+     `reading.posts_per_page`，封面来自 `lib/post-cover.ts` 的展示/分享两档，「更新于」按
+     `updated > published` 判定（按值不按开关）；`bangumi_*` / `anime_*` 连页面都不存在（`frontend/pages/`
+     没有 bangumi/anime，后端也没有对应 router），`mermaid_*` / `plantuml_server_url` / `image_opt_*` /
+     `license_*` / `post_generate_og_images` 前端零实现零渲染。把它们接通只会让同一件事有两个配置源，
+     运营者改一个、渲染读另一个。写面行为同时从静默变成明确：`strict_config.apply_strict_extra_forbid`
+     给配置模型统一 `extra="forbid"`，带退役键的 `POST /api/admin/settings` 现在回 422（退役前是 200 +
+     什么都不做）。守卫 `tests/test_retired_flat_config_keys_are_gone.py`：59 键在两个模型 / `core.py`
+     三个区域（OOBE 默认值、公开投影、`config_map`）/ ENV 名 / OpenAPI / 前后端源码六面零命中，另钉三种
+     反空转与反删过头——种 6 行存量 UPPERCASE 库数据后 `/api/config` 必须无视、三个区域必须还带着
+     `site_name` 这类活键、写口对活键（`footer_text`）仍能 200 落库并回读。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 

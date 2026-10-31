@@ -944,10 +944,6 @@ async def get_site_config(db: DB):
             enable_rss_feed=True,
             pagination_page_size=12,
             code_theme="github",
-            # 关于页面内容
-            about_content="",
-            # 友链申请区域自定义 HTML 内容
-            friends_apply_html="",
             # 作者/侧边栏资料设置（与一键 OOBE 默认管理员昵称/bio 对齐，避免显示 ROSETTA 示例文案）
             author_name="Choyeon",
             author_bio="Full-Stack Development",
@@ -955,83 +951,7 @@ async def get_site_config(db: DB):
             author_links_json="[]",
             # ===== 新增字段 =====
             site_url="",
-            site_start_date="2025-01-01",
             footer_custom_html="",
-            friends_page_title="",
-            friends_page_description="",
-            friends_page_show_comment=True,
-            friends_page_show_custom_content=True,
-            dynamic_page_title="",
-            dynamic_page_description="",
-            dynamic_page_items_per_page=10,
-            dynamic_page_show_comment=True,
-            sponsor_page_title="",
-            sponsor_page_description="",
-            sponsor_page_usage="",
-            sponsor_methods_json="[]",
-            sponsor_show_sponsors_list=True,
-            sponsor_page_show_comment=True,
-            # ========== 页面开关配置 ==========
-            page_friends_enabled=True,
-            page_sponsor_enabled=True,
-            page_guestbook_enabled=True,
-            page_bangumi_enabled=True,
-            page_gallery_enabled=True,
-            page_anime_enabled=True,
-            page_dynamic_enabled=True,
-            # ========== 导航栏显示配置 ==========
-            category_bar_enabled=True,
-            # ========== 归档页配置 ==========
-            archive_fold_old_articles=True,
-            # ========== 文章列表布局配置 ==========
-            post_list_default_mode="list",
-            post_list_mobile_mode="grid",
-            post_list_description_lines=2,
-            post_list_show_stats_icons=True,
-            post_list_tags_position="bottom",
-            # ========== 文章详情页配置 ==========
-            post_show_last_modified=True,
-            post_outdated_threshold_days=30,
-            post_enable_share_poster=True,
-            post_generate_og_images=False,
-            # ========== 封面图配置 ==========
-            cover_enable_in_post=True,
-            cover_enable_overlay=True,
-            cover_show_loading=False,
-            cover_random_enable=False,
-            cover_random_apis_json="[]",
-            # ========== 许可证配置 ==========
-            license_enable=True,
-            license_name="CC BY-NC-SA 4.0",
-            license_url="https://creativecommons.org/licenses/by-nc-sa/4.0/",
-            license_icon="",
-            # ========== 评论系统配置 ==========
-            # 第三方评论 provider 的整族配置（26 个键）已于 2026-10-31 退役：
-            # 前端没有任何 provider 渲染器，PUT /api/config 的 config_map 也不收这些键
-            # （写了不落库），而本站评论由 comments 分组 + CommentService 单源接管。
-            # 清单、判定与守卫见 frontend/docs/API_COVERAGE.md 的「第三方评论假配置族」段
-            # 和 tests/test_retired_third_party_comment_config_is_gone.py。
-            # ========== Bangumi配置 ==========
-            bangumi_user_id="",
-            bangumi_mode="dynamic",
-            bangumi_api_url="https://bgmapi.anibt.net",
-            bangumi_subject_base_url="https://bgmmi.anibt.net/subject/",
-            bangumi_category_order_json='["anime","book","music","game"]',
-            # ========== 追番配置 ==========
-            anime_bilibili_uid="",
-            anime_tmdb_api_key="",
-            anime_tmdb_list_id="",
-            # ========== 分页配置 ==========
-            pagination_posts_per_page=10,
-            # ========== 图像优化配置 ==========
-            image_opt_formats="webp",
-            image_opt_quality=85,
-            image_opt_no_referrer_json='["*.hdslb.com","*.bilibili.com"]',
-            # ========== Mermaid图表配置 ==========
-            mermaid_theme="default",
-            mermaid_security_level="strict",
-            # ========== PlantUML配置 ==========
-            plantuml_server_url="https://www.plantuml.com/plantuml",
         )
         return SiteConfigResponse(**oobe_kwargs)
 
@@ -1245,10 +1165,6 @@ async def get_site_config(db: DB):
     # 这里构建一份全大写 key 的镜像表，保证 get_* 系列函数无论传入哪种大小写都能命中。
     _configs_ci: dict[str, str] = {k.upper(): v for k, v in configs.items()}
 
-    # 关于页纯文字正文：只兜历史 SiteConfig 行 / 环境变量；
-    # basic 分组里的 about_content 已删除（前台 /about 只渲染 about_page_html）。
-    about_content = _configs_ci.get("ABOUT_CONTENT", "") or configs.get("ABOUT_CONTENT", "")
-
     def get_bool(key: str, default: str = "true") -> bool:
         return _configs_ci.get(key.upper(), default).lower() == "true"
 
@@ -1364,14 +1280,10 @@ async def get_site_config(db: DB):
         custom_footer_code=get_str("CUSTOM_FOOTER_CODE"),
         custom_css=get_str("CUSTOM_CSS"),
         custom_js=get_str("CUSTOM_JS"),
-        # 关于页面内容
-        about_content=about_content or "",
         # 关于页面 HTML（优先从 basic 组 JSON 中读取 about_page_html；空时回退扁平 key）
         about_page_html=(
             _configs_ci.get("ABOUT_PAGE_HTML", "") or configs.get("about_page_html", "") or ""
         ),
-        # 友链申请区域自定义 HTML 内容
-        friends_apply_html=get_str("FRIENDS_APPLY_HTML", "") or "",
         # 作者/侧边栏资料设置
         author_name=get_str("AUTHOR_NAME", "") or "",
         author_bio=get_str("AUTHOR_BIO", "") or "",
@@ -1379,95 +1291,7 @@ async def get_site_config(db: DB):
         author_links_json=get_str("AUTHOR_LINKS_JSON", "[]") or "[]",
         # ===== 新增字段 =====
         site_url=get_str("SITE_URL", "") or "",
-        site_start_date=get_str("SITE_START_DATE", "2025-01-01") or "2025-01-01",
         footer_custom_html=get_str("FOOTER_CUSTOM_HTML", "") or "",
-        friends_page_title=get_str("FRIENDS_PAGE_TITLE", "") or "",
-        friends_page_description=get_str("FRIENDS_PAGE_DESCRIPTION", "") or "",
-        friends_page_show_comment=get_bool("FRIENDS_PAGE_SHOW_COMMENT", "true"),
-        friends_page_show_custom_content=get_bool("FRIENDS_PAGE_SHOW_CUSTOM_CONTENT", "true"),
-        dynamic_page_title=get_str("DYNAMIC_PAGE_TITLE", "") or "",
-        dynamic_page_description=get_str("DYNAMIC_PAGE_DESCRIPTION", "") or "",
-        dynamic_page_items_per_page=get_int("DYNAMIC_PAGE_ITEMS_PER_PAGE", "10"),
-        dynamic_page_show_comment=get_bool("DYNAMIC_PAGE_SHOW_COMMENT", "true"),
-        sponsor_page_title=get_str("SPONSOR_PAGE_TITLE", "") or "",
-        sponsor_page_description=get_str("SPONSOR_PAGE_DESCRIPTION", "") or "",
-        sponsor_page_usage=get_str("SPONSOR_PAGE_USAGE", "") or "",
-        sponsor_methods_json=get_str("SPONSOR_METHODS_JSON", "[]") or "[]",
-        sponsor_show_sponsors_list=get_bool("SPONSOR_SHOW_SPONSORS_LIST", "true"),
-        sponsor_page_show_comment=get_bool("SPONSOR_PAGE_SHOW_COMMENT", "true"),
-        # ========== 页面开关配置 ==========
-        page_friends_enabled=get_bool("PAGE_FRIENDS_ENABLED", "true"),
-        page_sponsor_enabled=get_bool("PAGE_SPONSOR_ENABLED", "true"),
-        page_guestbook_enabled=get_bool("PAGE_GUESTBOOK_ENABLED", "true"),
-        page_bangumi_enabled=get_bool("PAGE_BANGUMI_ENABLED", "true"),
-        page_gallery_enabled=get_bool("PAGE_GALLERY_ENABLED", "true"),
-        page_anime_enabled=get_bool("PAGE_ANIME_ENABLED", "true"),
-        page_dynamic_enabled=get_bool("PAGE_DYNAMIC_ENABLED", "true"),
-        # ========== 导航栏显示配置 ==========
-        category_bar_enabled=get_bool("CATEGORY_BAR_ENABLED", "true"),
-        # ========== 归档页配置 ==========
-        archive_fold_old_articles=get_bool("ARCHIVE_FOLD_OLD_ARTICLES", "true"),
-        # ========== 文章列表布局配置 ==========
-        post_list_default_mode=get_str("POST_LIST_DEFAULT_MODE", "list") or "list",
-        post_list_mobile_mode=get_str("POST_LIST_MOBILE_MODE", "grid") or "grid",
-        post_list_description_lines=get_int("POST_LIST_DESCRIPTION_LINES", "2"),
-        post_list_show_stats_icons=get_bool("POST_LIST_SHOW_STATS_ICONS", "true"),
-        post_list_tags_position=get_str("POST_LIST_TAGS_POSITION", "bottom") or "bottom",
-        # ========== 文章详情页配置 ==========
-        post_show_last_modified=get_bool("POST_SHOW_LAST_MODIFIED", "true"),
-        post_outdated_threshold_days=get_int("POST_OUTDATED_THRESHOLD_DAYS", "30"),
-        post_enable_share_poster=get_bool("POST_ENABLE_SHARE_POSTER", "true"),
-        post_generate_og_images=get_bool("POST_GENERATE_OG_IMAGES", "false"),
-        # ========== 封面图配置 ==========
-        cover_enable_in_post=get_bool("COVER_ENABLE_IN_POST", "true"),
-        cover_enable_overlay=get_bool("COVER_ENABLE_OVERLAY", "true"),
-        cover_show_loading=get_bool("COVER_SHOW_LOADING", "false"),
-        cover_random_enable=get_bool("COVER_RANDOM_ENABLE", "false"),
-        cover_random_apis_json=get_str("COVER_RANDOM_APIS_JSON", "[]") or "[]",
-        # ========== 许可证配置 ==========
-        license_enable=get_bool("LICENSE_ENABLE", "true"),
-        license_name=get_str("LICENSE_NAME", "CC BY-NC-SA 4.0") or "CC BY-NC-SA 4.0",
-        license_url=get_str("LICENSE_URL", "https://creativecommons.org/licenses/by-nc-sa/4.0/")
-        or "https://creativecommons.org/licenses/by-nc-sa/4.0/",
-        license_icon=get_str("LICENSE_ICON", "") or "",
-        # ========== 评论系统配置 ==========
-        # 第三方评论 provider 一族（含 provider 选择键）已退役，理由见上方默认值处的注释。
-        # ========== Bangumi配置 ==========
-        bangumi_user_id=get_str("BANGUMI_USER_ID", "") or "",
-        bangumi_mode=get_str("BANGUMI_MODE", "dynamic") or "dynamic",
-        bangumi_api_url=get_str("BANGUMI_API_URL", "https://bgmapi.anibt.net")
-        or "https://bgmapi.anibt.net",
-        bangumi_subject_base_url=get_str(
-            "BANGUMI_SUBJECT_BASE_URL", "https://bgmmi.anibt.net/subject/"
-        )
-        or "https://bgmmi.anibt.net/subject/",
-        bangumi_category_order_json=get_str(
-            "BANGUMI_CATEGORY_ORDER_JSON", '["anime","book","music","game"]'
-        )
-        or '["anime","book","music","game"]',
-        # ========== 追番配置 ==========
-        anime_bilibili_uid=get_str("ANIME_BILIBILI_UID", "") or "",
-        # 安全：TMDB API Key 是第三方凭据，而 /api/config 匿名可读、且会被 CDN/Nitro
-        # 缓存，一旦下发等于公开。全仓无任何消费方（前端不读、后端不用），
-        # 需要从后台查看时走 CurrentStaff 的 GET /api/config/full。
-        # （保持模型字段存在以便向后兼容前端类型，公开口恒为空串）
-        anime_tmdb_api_key="",
-        anime_tmdb_list_id=get_str("ANIME_TMDB_LIST_ID", "") or "",
-        # ========== 分页配置 ==========
-        pagination_posts_per_page=get_int("PAGINATION_POSTS_PER_PAGE", "10"),
-        # ========== 图像优化配置 ==========
-        image_opt_formats=get_str("IMAGE_OPT_FORMATS", "webp") or "webp",
-        image_opt_quality=get_int("IMAGE_OPT_QUALITY", "85"),
-        image_opt_no_referrer_json=get_str(
-            "IMAGE_OPT_NO_REFERRER_JSON", '["*.hdslb.com","*.bilibili.com"]'
-        )
-        or '["*.hdslb.com","*.bilibili.com"]',
-        # ========== Mermaid图表配置 ==========
-        mermaid_theme=get_str("MERMAID_THEME", "default") or "default",
-        mermaid_security_level=get_str("MERMAID_SECURITY_LEVEL", "strict") or "strict",
-        # ========== PlantUML配置 ==========
-        plantuml_server_url=get_str("PLANTUML_SERVER_URL", "https://www.plantuml.com/plantuml")
-        or "https://www.plantuml.com/plantuml",
     )
     # 把后台 14 组 settings 合并进 /api/config 公开返回
     response_dict = _apply_settings_groups(response_dict)
@@ -2205,28 +2029,9 @@ async def update_site_settings(
         "author_bio": "AUTHOR_BIO",
         "author_avatar": "AUTHOR_AVATAR",
         "author_links_json": "AUTHOR_LINKS_JSON",
-        # 关于页面内容
-        "about_content": "ABOUT_CONTENT",
-        # 友链申请区域自定义 HTML 内容
-        "friends_apply_html": "FRIENDS_APPLY_HTML",
         # ===== 新增字段映射 =====
         "site_url": "SITE_URL",
-        "site_start_date": "SITE_START_DATE",
         "footer_custom_html": "FOOTER_CUSTOM_HTML",
-        "friends_page_title": "FRIENDS_PAGE_TITLE",
-        "friends_page_description": "FRIENDS_PAGE_DESCRIPTION",
-        "friends_page_show_comment": "FRIENDS_PAGE_SHOW_COMMENT",
-        "friends_page_show_custom_content": "FRIENDS_PAGE_SHOW_CUSTOM_CONTENT",
-        "dynamic_page_title": "DYNAMIC_PAGE_TITLE",
-        "dynamic_page_description": "DYNAMIC_PAGE_DESCRIPTION",
-        "dynamic_page_items_per_page": "DYNAMIC_PAGE_ITEMS_PER_PAGE",
-        "dynamic_page_show_comment": "DYNAMIC_PAGE_SHOW_COMMENT",
-        "sponsor_page_title": "SPONSOR_PAGE_TITLE",
-        "sponsor_page_description": "SPONSOR_PAGE_DESCRIPTION",
-        "sponsor_page_usage": "SPONSOR_PAGE_USAGE",
-        "sponsor_methods_json": "SPONSOR_METHODS_JSON",
-        "sponsor_show_sponsors_list": "SPONSOR_SHOW_SPONSORS_LIST",
-        "sponsor_page_show_comment": "SPONSOR_PAGE_SHOW_COMMENT",
     }
 
     update_data = data.model_dump(exclude_unset=True)

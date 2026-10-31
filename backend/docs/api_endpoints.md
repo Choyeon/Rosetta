@@ -3751,24 +3751,13 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| about_content | string \| null | 否 |  |
 | accent_color | string \| null | 否 |  |
 | allow_password_reset | boolean \| null | 否 |  |
 | allowed_file_types | string \| null | 否 |  |
 | allowed_image_types | string \| null | 否 |  |
-| anime_bilibili_uid | string \| null | 否 |  |
-| anime_tmdb_api_key | string \| null | 否 |  |
-| anime_tmdb_list_id | string \| null | 否 |  |
-| archive_fold_old_articles | boolean \| null | 否 |  |
 | baidu_analytics_id | string \| null | 否 |  |
 | baidu_site_verification | string \| null | 否 |  |
-| bangumi_api_url | string \| null | 否 |  |
-| bangumi_category_order_json | string \| null | 否 |  |
-| bangumi_mode | string \| null | 否 |  |
-| bangumi_subject_base_url | string \| null | 否 |  |
-| bangumi_user_id | string \| null | 否 |  |
 | bilibili_url | string \| null | 否 |  |
-| category_bar_enabled | boolean \| null | 否 |  |
 | code_theme | string \| null | 否 |  |
 | code_theme_dark | string \| null | 否 |  |
 | comment_allow_guest | boolean \| null | 否 |  |
@@ -3779,11 +3768,6 @@ _无路径 / query 参数_
 | contact_qq | string \| null | 否 |  |
 | contact_wechat | string \| null | 否 |  |
 | copyright_text | string \| null | 否 |  |
-| cover_enable_in_post | boolean \| null | 否 |  |
-| cover_enable_overlay | boolean \| null | 否 |  |
-| cover_random_apis_json | string \| null | 否 |  |
-| cover_random_enable | boolean \| null | 否 |  |
-| cover_show_loading | boolean \| null | 否 |  |
 | custom_css | string \| null | 否 |  |
 | custom_footer_code | string \| null | 否 |  |
 | custom_header_code | string \| null | 否 |  |
@@ -3791,28 +3775,33 @@ _无路径 / query 参数_
 | default_avatar | string \| null | 否 |  |
 | default_category_cover | string \| null | 否 |  |
 | default_og_image | string \| null | 否 |  |
-| … 其余 131 个字段 | | | 见 `/docs` |
+| default_post_cover | string \| null | 否 |  |
+| default_theme | string \| null | 否 |  |
+| enable_comments | boolean \| null | 否 |  |
+| enable_dark_mode | boolean \| null | 否 |  |
+| enable_guestbook | boolean \| null | 否 |  |
+| enable_like_button | boolean \| null | 否 |  |
+| enable_reading_time | boolean \| null | 否 |  |
+| enable_registration | boolean \| null | 否 |  |
+| enable_rss_feed | boolean \| null | 否 |  |
+| enable_search | boolean \| null | 否 |  |
+| enable_share_buttons | boolean \| null | 否 |  |
+| enable_sitemap | boolean \| null | 否 |  |
+| enable_toc | boolean \| null | 否 |  |
+| enable_word_count | boolean \| null | 否 |  |
+| font_family | string \| null | 否 |  |
+| footer_custom_html | string \| null | 否 |  |
+| … 其余 37 个字段 | | | 见 `/docs` |
 
 ```json
 {
-  "about_content": "string",
   "accent_color": "string",
   "allow_password_reset": "string",
   "allowed_file_types": "string",
   "allowed_image_types": "string",
-  "anime_bilibili_uid": "string",
-  "anime_tmdb_api_key": "string",
-  "anime_tmdb_list_id": "string",
-  "archive_fold_old_articles": "string",
   "baidu_analytics_id": "string",
   "baidu_site_verification": "string",
-  "bangumi_api_url": "string",
-  "bangumi_category_order_json": "string",
-  "bangumi_mode": "string",
-  "bangumi_subject_base_url": "string",
-  "bangumi_user_id": "string",
   "bilibili_url": "string",
-  "category_bar_enabled": "string",
   "code_theme": "string",
   "code_theme_dark": "string",
   "comment_allow_guest": "string",
@@ -3823,11 +3812,6 @@ _无路径 / query 参数_
   "contact_qq": "string",
   "contact_wechat": "string",
   "copyright_text": "string",
-  "cover_enable_in_post": "string",
-  "cover_enable_overlay": "string",
-  "cover_random_apis_json": "string",
-  "cover_random_enable": "string",
-  "cover_show_loading": "string",
   "custom_css": "string",
   "custom_footer_code": "string",
   "custom_header_code": "string",
@@ -3837,10 +3821,6 @@ _无路径 / query 参数_
   "default_og_image": "string",
   "default_post_cover": "string",
   "default_theme": "string",
-  "dynamic_page_description": "string",
-  "dynamic_page_items_per_page": "string",
-  "dynamic_page_show_comment": "string",
-  "dynamic_page_title": "string",
   "enable_comments": "string",
   "enable_dark_mode": "string",
   "enable_guestbook": "string",
@@ -3857,22 +3837,10 @@ _无路径 / query 参数_
   "footer_custom_html": "string",
   "footer_slogan": "string",
   "footer_text": "string",
-  "friends_apply_html": "string",
-  "friends_page_description": "string",
-  "friends_page_show_comment": "string",
-  "friends_page_show_custom_content": "string",
-  "friends_page_title": "string",
   "github_url": "string",
   "google_analytics_id": "string",
   "google_site_verification": "string",
   "icp_number": "string",
-  "image_opt_formats": "string",
-  "image_opt_no_referrer_json": "string",
-  "image_opt_quality": "string",
-  "license_enable": "string",
-  "license_icon": "string",
-  "license_name": "string",
-  "license_url": "string",
   "linkedin_url": "string",
   "login_lockout_duration": "string",
   "maintenance_end_time": "string",
@@ -3880,57 +3848,12 @@ _无路径 / query 参数_
   "maintenance_mode": "string",
   "max_login_attempts": "string",
   "max_upload_size": "string",
-  "mermaid_security_level": "string",
-  "mermaid_theme": "string",
-  "music_enabled": "string",
-  "music_meting_api": "string",
-  "music_meting_id": "string",
-  "music_meting_server": "string",
-  "music_meting_type": "string",
-  "music_mode": "string",
-  "music_play_mode": "string",
-  "music_show_in_navbar": "string",
-  "music_show_in_sidebar": "string",
-  "music_show_lyrics": "string",
-  "music_volume": "string",
-  "page_anime_enabled": "string",
-  "page_bangumi_enabled": "string",
-  "page_dynamic_enabled": "string",
-  "page_friends_enabled": "string",
-  "page_gallery_enabled": "string",
-  "page_guestbook_enabled": "string",
-  "page_sponsor_enabled": "string",
   "pagination_max_page_size": "string",
   "pagination_page_size": "string",
-  "pagination_posts_per_page": "string",
-  "pio_spine_enable": "string",
-  "pio_spine_height": "string",
-  "pio_spine_model_path": "string",
-  "pio_spine_position_corner": "string",
-  "pio_spine_scale": "string",
-  "pio_spine_width": "string",
-  "pio_spine_z_index": "string",
-  "plantuml_server_url": "string",
   "police_icp_number": "string",
-  "post_enable_share_poster": "string",
-  "post_generate_og_images": "string",
-  "post_list_default_mode": "string",
-  "post_list_description_lines": "string",
-  "post_list_mobile_mode": "string",
-  "post_list_show_stats_icons": "string",
-  "post_list_tags_position": "string",
-  "post_outdated_threshold_days": "string",
-  "post_show_last_modified": "string",
   "primary_color": "string",
   "require_email_verification": "string",
   "robots_txt": "string",
-  "sakura_count": "string",
-  "sakura_enable": "string",
-  "sakura_max_opacity": "string",
-  "sakura_max_scale": "string",
-  "sakura_min_opacity": "string",
-  "sakura_min_scale": "string",
-  "sakura_z_index": "string",
   "session_timeout": "string",
   "site_author": "string",
   "site_description": "string",
@@ -3940,28 +3863,11 @@ _无路径 / query 参数_
   "site_keywords": "string",
   "site_logo": "string",
   "site_name": "string",
-  "site_start_date": "string",
   "site_subtitle": "string",
   "site_url": "string",
-  "sponsor_methods_json": "string",
-  "sponsor_page_description": "string",
-  "sponsor_page_show_comment": "string",
-  "sponsor_page_title": "string",
-  "sponsor_page_usage": "string",
-  "sponsor_show_sponsors_list": "string",
   "telegram_url": "string",
   "theme_accent": "string",
   "theme_primary": "string",
-  "wallpaper_bing_days": "string",
-  "wallpaper_desktop": "string",
-  "wallpaper_dim_opacity": "string",
-  "wallpaper_home_subtitle": "string",
-  "wallpaper_home_title": "string",
-  "wallpaper_mobile": "string",
-  "wallpaper_mode": "string",
-  "wallpaper_player_enable": "string",
-  "wallpaper_use_bing": "string",
-  "wallpaper_video": "string",
   "weibo_url": "string",
   "x_url": "string",
   "youtube_url": "string",
@@ -4010,29 +3916,18 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| about_content | string | 否 |  |
 | about_page_html | string | 否 |  |
 | accent_color | string | 否 |  |
 | allow_password_reset | boolean | 否 |  |
 | allowed_file_types | string | 否 |  |
 | allowed_image_types | string | 否 |  |
-| anime_bilibili_uid | string | 否 |  |
-| anime_tmdb_api_key | string | 否 |  |
-| anime_tmdb_list_id | string | 否 |  |
-| archive_fold_old_articles | boolean | 否 |  |
 | author_avatar | string | 否 |  |
 | author_bio | string | 否 |  |
 | author_links_json | string | 否 |  |
 | author_name | string | 否 |  |
 | baidu_analytics_id | string \| null | 否 |  |
 | baidu_site_verification | string \| null | 否 |  |
-| bangumi_api_url | string | 否 |  |
-| bangumi_category_order_json | string | 否 |  |
-| bangumi_mode | string | 否 |  |
-| bangumi_subject_base_url | string | 否 |  |
-| bangumi_user_id | string | 否 |  |
 | bilibili_url | string \| null | 否 |  |
-| category_bar_enabled | boolean | 否 |  |
 | code_theme | string | 否 |  |
 | code_theme_dark | string | 否 |  |
 | comment_allow_guest | boolean | 否 |  |
@@ -4043,42 +3938,42 @@ _无路径 / query 参数_
 | contact_qq | string \| null | 否 |  |
 | contact_wechat | string \| null | 否 |  |
 | copyright_text | string \| null | 否 |  |
-| cover_enable_in_post | boolean | 否 |  |
-| cover_enable_overlay | boolean | 否 |  |
-| cover_random_apis_json | string | 否 |  |
-| cover_random_enable | boolean | 否 |  |
-| cover_show_loading | boolean | 否 |  |
 | custom_css | string \| null | 否 |  |
 | custom_footer_code | string \| null | 否 |  |
-| … 其余 153 个字段 | | | 见 `/docs` |
+| custom_header_code | string \| null | 否 |  |
+| custom_js | string \| null | 否 |  |
+| default_avatar | string \| null | 否 |  |
+| default_category_cover | string \| null | 否 |  |
+| default_cover_image | string | 否 |  |
+| default_og_image | string \| null | 否 |  |
+| default_post_cover | string \| null | 否 |  |
+| default_theme | string | 否 |  |
+| email_configured | boolean | 否 |  |
+| email_from | string \| null | 否 |  |
+| email_from_name | string \| null | 否 |  |
+| enable_bing_wallpaper | boolean | 否 |  |
+| enable_comments | boolean | 否 |  |
+| enable_dark_mode | boolean | 否 |  |
+| enable_guestbook | boolean | 否 |  |
+| enable_like_button | boolean | 否 |  |
+| … 其余 48 个字段 | | | 见 `/docs` |
 
 响应示例：
 
 ```json
 {
-  "about_content": "",
   "about_page_html": "",
   "accent_color": "#0284C7",
   "allow_password_reset": true,
   "allowed_file_types": "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
   "allowed_image_types": "jpg,jpeg,png,gif,webp,svg",
-  "anime_bilibili_uid": "",
-  "anime_tmdb_api_key": "",
-  "anime_tmdb_list_id": "",
-  "archive_fold_old_articles": true,
   "author_avatar": "",
   "author_bio": "",
   "author_links_json": "[]",
   "author_name": "",
   "baidu_analytics_id": "string",
   "baidu_site_verification": "string",
-  "bangumi_api_url": "https://bgmapi.anibt.net",
-  "bangumi_category_order_json": "[\"anime\",\"book\",\"music\",\"game\"]",
-  "bangumi_mode": "dynamic",
-  "bangumi_subject_base_url": "https://bgmmi.anibt.net/subject/",
-  "bangumi_user_id": "",
   "bilibili_url": "string",
-  "category_bar_enabled": true,
   "code_theme": "github",
   "code_theme_dark": "github-dark",
   "comment_allow_guest": false,
@@ -4089,11 +3984,6 @@ _无路径 / query 参数_
   "contact_qq": "string",
   "contact_wechat": "string",
   "copyright_text": "string",
-  "cover_enable_in_post": true,
-  "cover_enable_overlay": true,
-  "cover_random_apis_json": "[]",
-  "cover_random_enable": false,
-  "cover_show_loading": false,
   "custom_css": "string",
   "custom_footer_code": "string",
   "custom_header_code": "string",
@@ -4104,10 +3994,6 @@ _无路径 / query 参数_
   "default_og_image": "string",
   "default_post_cover": "string",
   "default_theme": "system",
-  "dynamic_page_description": "",
-  "dynamic_page_items_per_page": 10,
-  "dynamic_page_show_comment": true,
-  "dynamic_page_title": "",
   "email_configured": false,
   "email_from": "string",
   "email_from_name": "string",
@@ -4129,22 +4015,10 @@ _无路径 / query 参数_
   "footer_custom_html": "",
   "footer_slogan": "string",
   "footer_text": "string",
-  "friends_apply_html": "",
-  "friends_page_description": "",
-  "friends_page_show_comment": true,
-  "friends_page_show_custom_content": true,
-  "friends_page_title": "",
   "github_url": "string",
   "google_analytics_id": "string",
   "google_site_verification": "string",
   "icp_number": "string",
-  "image_opt_formats": "webp",
-  "image_opt_no_referrer_json": "[\"*.hdslb.com\",\"*.bilibili.com\"]",
-  "image_opt_quality": 85,
-  "license_enable": true,
-  "license_icon": "",
-  "license_name": "CC BY-NC-SA 4.0",
-  "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
   "linkedin_url": "string",
   "login_lockout_duration": 1800,
   "maintenance_end_time": "string",
@@ -4152,79 +4026,13 @@ _无路径 / query 参数_
   "maintenance_mode": false,
   "max_login_attempts": 5,
   "max_upload_size": 10485760,
-  "mermaid_security_level": "strict",
-  "mermaid_theme": "default",
-  "music_enabled": true,
-  "music_meting_api": "",
-  "music_meting_id": "",
-  "music_meting_server": "netease",
-  "music_meting_type": "playlist",
-  "music_mode": "meting",
-  "music_play_mode": "list",
-  "music_show_in_navbar": true,
-  "music_show_in_sidebar": true,
-  "music_show_lyrics": true,
-  "music_volume": 0.7,
-  "page_anime_enabled": true,
-  "page_bangumi_enabled": true,
-  "page_dynamic_enabled": true,
-  "page_friends_enabled": true,
-  "page_gallery_enabled": true,
-  "page_guestbook_enabled": true,
-  "page_sponsor_enabled": true,
   "pagination_max_page_size": 100,
   "pagination_page_size": 12,
-  "pagination_posts_per_page": 10,
-  "pio_spine_enable": false,
-  "pio_spine_height": 165,
-  "pio_spine_model_path": "",
-  "pio_spine_position_corner": "bottom-left",
-  "pio_spine_scale": 1.0,
-  "pio_spine_width": 135,
-  "pio_spine_z_index": 1000,
-  "plantuml_server_url": "https://www.plantuml.com/plantuml",
   "police_icp_number": "string",
-  "post_enable_share_poster": true,
-  "post_generate_og_images": false,
-  "post_list_default_mode": "list",
-  "post_list_description_lines": 2,
-  "post_list_mobile_mode": "grid",
-  "post_list_show_stats_icons": true,
-  "post_list_tags_position": "bottom",
-  "post_outdated_threshold_days": 30,
-  "post_show_last_modified": true,
   "primary_color": "#3B82F6",
   "require_email_verification": false,
   "robots_txt": "string",
-  "sakura_count": 21,
-  "sakura_enable": false,
-  "sakura_max_opacity": 0.9,
-  "sakura_max_scale": 1.1,
-  "sakura_min_opacity": 0.3,
-  "sakura_min_scale": 0.5,
-  "sakura_z_index": 100,
   "session_timeout": 3600,
-  "sidebar_show_categories": true,
-  "sidebar_show_dynamics": true,
-  "sidebar_show_music": true,
-  "sidebar_show_profile": true,
-  "sidebar_show_recent_comments": true,
-  "sidebar_show_recent_posts": true,
-  "sidebar_show_site_info": true,
-  "sidebar_show_statistics": true,
-  "sidebar_show_tag_cloud": true,
-  "sidebar_show_tags": true,
-  "sidebar_widget_order": [
-    "profile",
-    "site_info",
-    "statistics",
-    "dynamics",
-    "music",
-    "categories",
-    "tags",
-    "recent_posts",
-    "recent_comments"
-  ],
   "site_author": "string",
   "site_description": "string",
   "site_email": "string",
@@ -4233,28 +4041,11 @@ _无路径 / query 参数_
   "site_keywords": "string",
   "site_logo": "string",
   "site_name": "string",
-  "site_start_date": "2025-01-01",
   "site_subtitle": "",
   "site_url": "",
-  "sponsor_methods_json": "[]",
-  "sponsor_page_description": "",
-  "sponsor_page_show_comment": true,
-  "sponsor_page_title": "",
-  "sponsor_page_usage": "",
-  "sponsor_show_sponsors_list": true,
   "telegram_url": "string",
   "theme_accent": "#0284C7",
   "theme_primary": "#0EA5A9",
-  "wallpaper_bing_days": 30,
-  "wallpaper_desktop": "",
-  "wallpaper_dim_opacity": 0.2,
-  "wallpaper_home_subtitle": "",
-  "wallpaper_home_title": "Welcome",
-  "wallpaper_mobile": "",
-  "wallpaper_mode": "banner",
-  "wallpaper_player_enable": true,
-  "wallpaper_use_bing": true,
-  "wallpaper_video": "",
   "weibo_url": "string",
   "x_url": "string",
   "youtube_url": "string",
