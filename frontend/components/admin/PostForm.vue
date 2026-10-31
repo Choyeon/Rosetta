@@ -42,6 +42,7 @@ import { useToast } from '~~/composables/useToast'
 import { EMPTY_I18N_DICT, getLocalizedStr, normalizeI18nDict, toI18nPayload, slugify } from '~~/composables/useAdminI18n'
 import { toDateTimeLocal, fromDateTimeLocal } from '~~/lib/datetime'
 import { estimateContentStats, slugSourceTitle, scheduledAtError } from '~~/lib/postEditor'
+import { postMediaErrors } from '~~/lib/post-media'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { Textarea } from '~~/components/ui/textarea'
@@ -120,6 +121,11 @@ const form = reactive({
   source_url: '',
   excerpt: { ...EMPTY_I18N_DICT } as Record<string, string>,
   cover_image: '',
+  // 文章级音视频：三列都始终发送，空串在后端归成 None（= 清掉）。
+  // 省略键在 exclude_unset 语义下是"不动它"，作者删掉音频就会"保存成功但旧音轨还在"。
+  audio: '',
+  video: '',
+  video_url: '',
   meta_title: { ...EMPTY_I18N_DICT } as Record<string, string>,
   meta_description: { ...EMPTY_I18N_DICT } as Record<string, string>,
   meta_keywords: { ...EMPTY_I18N_DICT } as Record<string, string>,
@@ -419,6 +425,13 @@ const sourceUrlError = computed(() => {
   return '原文链接必须以 http:// 或 https:// 开头'
 })
 
+/**
+ * 音视频三列的形态在写入口、渲染侧、这里共一套口径（`lib/post-media.ts`）：
+ * 音频/视频必须站内（CSP media-src 只放 'self'），嵌入地址必须能解析出 YouTube ID
+ * （渲染只用解析出的 ID 拼 iframe src，裸串不进 DOM）。后端也会再拒一次。
+ */
+const mediaErrors = computed(() => postMediaErrors(form))
+
 let slugManualEdit = false
 // 只盯 form.title.zh 时，作者先写英文（或繁体）标题就永远拿不到 slug，然后被
 // "请输入 slug" 卡住。取"约定顺序里第一个非空的语言"，zh 仍是首选。
@@ -492,6 +505,10 @@ const applyInitialData = (data: Post) => {
   form.source_url = data.source_url ?? ''
   form.excerpt = normalizeI18nDict(data.excerpt)
   form.cover_image = data.cover_image || ''
+  // 必须回填：不回填则每次 PUT 把三列提交成空串，作者改一次标题就清掉了音频/视频/嵌入
+  form.audio = data.audio ?? ''
+  form.video = data.video ?? ''
+  form.video_url = data.video_url ?? ''
   form.meta_title = normalizeI18nDict(data.meta_title)
   form.meta_description = normalizeI18nDict(data.meta_description)
   form.meta_keywords = normalizeI18nDict(data.meta_keywords)
@@ -651,6 +668,11 @@ const buildPayload = (overrideStatus?: string): PostCreate => {
     source: form.source.trim() || '原创',
     // 空串归 null：与分类/封面同一套"显式清空"口径，省略键则清不掉旧出处
     source_url: form.source_url.trim() || null,
+    // 音视频三列同一条口径：始终发送，空串归 null（= 清掉）。
+    // 省略键在 exclude_unset 下等于"不动它"——作者删掉音频会"保存成功、旧音轨仍在详情页播放"。
+    audio: form.audio.trim() || null,
+    video: form.video.trim() || null,
+    video_url: form.video_url.trim() || null,
     // 摘要与三个 SEO meta 同副标题一条口径：始终发送、全空兜回 null。
     // `toI18nPayload()` 空 dict 返回 undefined，键就不在 PUT 体里，exclude_unset 语义下
     // 等于"不改它"——作者删掉摘要保存成功、再打开还是旧的，RSS 与 og:description 也继续用旧摘要。
@@ -702,6 +724,13 @@ const validateBase = (): boolean => {
   const srcErr = sourceUrlError.value
   if (srcErr) {
     toast.error(srcErr)
+    return false
+  }
+  // 音视频三列不合形态时后端会 422，但整页保存失败的 toast 说不清是哪一列——
+  // 这里提前拦住，字段级原因同时显示在输入框下方。
+  const mediaErrKeys = Object.keys(mediaErrors.value)
+  if (mediaErrKeys.length) {
+    toast.error(`音视频地址格式不正确：${mediaErrKeys.join(' / ')}`)
     return false
   }
   if (form.visibility === 'password' && !form.password.trim() && !initiallyPasswordProtected.value) {
@@ -1660,6 +1689,62 @@ onBeforeUnmount(() => {
                 </AdminFormField>
               </div>
             </div>
+          </div>
+        </AdminFormSection>
+
+        <AdminFormSection
+          title="音频 / 视频"
+          description="留空则文章页不显示任何播放器。音频与视频填媒体库中的站内地址，嵌入地址接受常见 YouTube 链接形态。"
+        >
+          <div class="flex flex-col gap-3">
+            <div class="flex flex-wrap gap-3">
+              <div class="flex-1 min-w-0">
+                <AdminFormField
+                  label="音频地址"
+                  for="post-form-audio"
+                  :error="mediaErrors.audio || undefined"
+                  hint="如 /media/2026/03/podcast.mp3，文章页正文上方渲染 <audio controls>。"
+                >
+                  <Input
+                    id="post-form-audio"
+                    v-model="form.audio"
+                    maxlength="500"
+                    placeholder="/media/xxx.mp3"
+                    class="h-10 rounded-[10px] text-sm"
+                  />
+                </AdminFormField>
+              </div>
+              <div class="flex-1 min-w-0">
+                <AdminFormField
+                  label="视频地址"
+                  for="post-form-video"
+                  :error="mediaErrors.video || undefined"
+                  hint="只收站内路径：CSP 的 media-src 没有放行任何外链，填外部地址会「保存成功但前台一片黑」。"
+                >
+                  <Input
+                    id="post-form-video"
+                    v-model="form.video"
+                    maxlength="500"
+                    placeholder="/media/xxx.mp4"
+                    class="h-10 rounded-[10px] text-sm"
+                  />
+                </AdminFormField>
+              </div>
+            </div>
+            <AdminFormField
+              label="YouTube 嵌入地址"
+              for="post-form-video-url"
+              :error="mediaErrors.video_url || undefined"
+              hint="watch?v= / youtu.be / embed / shorts 任一形态都可；文章页只用解析出的 11 位视频 ID 拼 youtube-nocookie 嵌入，原始串不直接进 iframe。"
+            >
+              <Input
+                id="post-form-video-url"
+                v-model="form.video_url"
+                maxlength="500"
+                placeholder="https://www.youtube.com/watch?v=…"
+                class="h-10 rounded-[10px] text-sm"
+              />
+            </AdminFormField>
           </div>
         </AdminFormSection>
 

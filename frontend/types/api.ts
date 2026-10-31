@@ -80,6 +80,11 @@ export interface Post {
   source?: string
   /** 原文出处；后端严格档只收 http(s)，渲染侧仍要再判一次 scheme。 */
   source_url?: string | null
+  /** 站内音视频（后端第四档只收 `/...` 路径，外链会被 CSP media-src 拦掉）。 */
+  audio?: string | null
+  video?: string | null
+  /** YouTube 嵌入地址；渲染侧只允许用解析出的 11 位 ID 拼 iframe src。 */
+  video_url?: string | null
   content: string | Record<string, string>
   /** null = 库里没有摘要（清空后的行就是 JSON null），回落口径在读侧处理。 */
   excerpt?: string | Record<string, string> | null
@@ -124,6 +129,10 @@ export interface PostCreate {
   source?: string
   /** 显式 null = 清掉原文链接（后端 PUT 是 exclude_unset 增量语义）。 */
   source_url?: string | null
+  /** 音视频三列同一条「清空要显式发送」口径：null = 清掉，省略 = 不动它。 */
+  audio?: string | null
+  video?: string | null
+  video_url?: string | null
   content: string | Record<string, string>
   /** null = 清掉摘要；省略等于"不动它"（后端 PUT 是 exclude_unset 增量语义）。 */
   excerpt?: string | Record<string, string> | null

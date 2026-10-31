@@ -105,12 +105,15 @@ T = TypeVar("T")
 # 漏一处就出现"注册要求 8 位 + 大写、改密码只查长度"这类同字段不同 schema 互相判逆。
 # 装饰器仍按 schema 声明（Pydantic 需要它绑定具体字段名），但**规则只在这里改**。
 
-# 这两条叶子模块导入都要在**定义期**取值（field_validator 的装饰器要函数、字段注解要 `I18nDict`），
+# 这几条叶子模块导入都要在**定义期**取值（field_validator 的装饰器要函数、字段注解要 `I18nDict`），
 # 所以它们不能住在正在执行的包 __init__ 里：
-# - `_url_policy` 是第三档（只挡可执行协议）规则的唯一清单，这里只做 re-export；
+# - `_url_policy` 是第三档（只挡可执行协议）与第四档（站内媒体路径）规则的唯一清单，这里只做 re-export；
+# - `_youtube` 是 YouTube ID 解析的单源（兄弟模块 `hero.py` 也用它，反向 import 它会拖进包初始化链）；
 # - `_i18n_dict` 的口径与禁令见它自己的模块文档。
 from backend.schemas._i18n_dict import I18nDict
 from backend.schemas._url_policy import reject_pseudo_url_scheme as _reject_pseudo_url_scheme
+from backend.schemas._url_policy import require_internal_media_path as _require_internal_media_path
+from backend.schemas._youtube import extract_youtube_id as _extract_youtube_id
 
 # 访客身份字段（评论 / 留言板的 `qq` / `github`）的形态与头像解析器共用一份定义，
 # 真源在 `backend/utils/ugc_fields.py`（理由见那里的注释）。
@@ -148,6 +151,26 @@ def _require_absolute_url(v: str | None, *, max_len: int = 200) -> str | None:
     if len(v) > max_len:
         raise ValueError(f"链接长度不能超过 {max_len} 字符")
     return v
+
+
+def _require_embeddable_video_url(v: str | None) -> str | None:
+    """文章的视频嵌入地址：必须能解析出 YouTube 视频 ID，空串归 None（= 清掉）。
+
+    这条值最终变成 iframe 的 src。存一条解析不出 ID 的地址等于给作者留一块空白嵌入框，
+    而"把原始串直接拼进 iframe src"会把任意站外页面嵌进访客页面——所以写口按 ID 拒，
+    渲染侧只允许用解析出来的 ID 拼 `youtube-nocookie.com/embed/<id>`（同一口径的前端副本
+    见 `frontend/lib/hero-media.ts::extractYoutubeId`）。
+    """
+    if v is None:
+        return None
+    value = v.strip()
+    if not value:
+        return None
+    if _extract_youtube_id(value) is None:
+        raise ValueError(
+            "视频嵌入地址必须能解析出 YouTube 视频 ID（支持 watch?v= / youtu.be / embed / shorts）"
+        )
+    return value
 
 
 def _check_password_strength(v: str) -> str:
@@ -946,6 +969,15 @@ class PostBase(BaseModel):
     slug: str | None = Field(None, max_length=200, pattern=CONTENT_SLUG_PATTERN)
     source: str = Field(default="原创", max_length=50)
     source_url: str | None = Field(None, max_length=500)
+    audio: str | None = Field(
+        None, max_length=500, description="站内音频地址（/media/...），详情页渲染 <audio controls>"
+    )
+    video: str | None = Field(
+        None, max_length=500, description="站内视频地址（/media/...），详情页渲染 <video controls>"
+    )
+    video_url: str | None = Field(
+        None, max_length=500, description="YouTube 视频地址，详情页渲染 youtube-nocookie 嵌入"
+    )
     content: dict[str, str] = Field(..., description="多语言文章内容")
     excerpt: dict[str, str] | None = Field(None, description="多语言摘要")
     cover_image: str | None = Field(None, max_length=500)
@@ -985,6 +1017,17 @@ class PostBase(BaseModel):
     def _validate_source_url(cls, v: str | None) -> str | None:
         """原文链接会渲染成访客页面上的 `<a href>`，所以走严格档（口径单源见 _require_absolute_url）。"""
         return _require_absolute_url(v, max_len=500)
+
+    @field_validator("audio", "video")
+    @classmethod
+    def _validate_internal_media(cls, v: str | None) -> str | None:
+        """详情页用 `<audio>` / `<video>` 直接吃这两个值，CSP media-src 只放站内（见第四档）。"""
+        return _require_internal_media_path(v, label="音视频")
+
+    @field_validator("video_url")
+    @classmethod
+    def _validate_video_embed(cls, v: str | None) -> str | None:
+        return _require_embeddable_video_url(v)
 
 
 class PostCreate(PostBase):
@@ -1032,6 +1075,18 @@ class PostUpdate(BaseModel):
     def _validate_source_url(cls, v: str | None) -> str | None:
         """与 PostBase 同档：空串归 None（= 清掉），非空必须是 http(s)（口径单源见 _require_absolute_url）。"""
         return _require_absolute_url(v, max_len=500)
+
+    # PUT 走 exclude_unset，"没提交"与"提交了空值"是两件事：空串在这里归 None 才清得掉，
+    # 而字段缺省不会触发验证器，库里的旧值保持不动。
+    @field_validator("audio", "video")
+    @classmethod
+    def _validate_internal_media(cls, v: str | None) -> str | None:
+        return _require_internal_media_path(v, label="音视频")
+
+    @field_validator("video_url")
+    @classmethod
+    def _validate_video_embed(cls, v: str | None) -> str | None:
+        return _require_embeddable_video_url(v)
 
 
 class BatchPostStatusUpdate(BaseModel):

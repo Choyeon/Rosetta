@@ -33,3 +33,26 @@ def reject_pseudo_url_scheme(v: str | None) -> str | None:
     if isinstance(v, str) and PSEUDO_URL_SCHEME_RE.match(_URL_STRIP_RE.sub("", v)):
         raise ValueError("链接不能以可执行协议开头")
     return v
+
+
+def require_internal_media_path(v: str | None, *, label: str = "媒体") -> str | None:
+    """第四档：**音频/视频源地址**。空串归 None（= 清掉），非空必须是站内路径。
+
+    和严格档相反：这里不是"必须绝对"，而是"必须相对到站内"。CSP 的 `media-src` 只有
+    `'self' blob: data:`（`backend/core/security_middleware.py` ↔ `deploy/nginx-site.conf`
+    两处同口径），外链音视频会被浏览器直接拦掉——写入口不拒，运营者看到的就是
+    "后台保存成功、前台一个播放器都不显示"。`//host/x` 是协议相对外链，同样逃出 `'self'`。
+
+    只挂写口：库里可能躺着导入 ZIP / 直连 SQL 留下的外链，读侧拒绝等于把详情口变成 500。
+    """
+    if v is None:
+        return None
+    value = v.strip()
+    if not value:
+        return None
+    reject_pseudo_url_scheme(value)
+    if not value.startswith("/") or value.startswith("//"):
+        raise ValueError(
+            f"{label}地址必须是站内路径（如 /media/xxx.mp4），外链会被 CSP 的 media-src 拦截"
+        )
+    return value

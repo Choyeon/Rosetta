@@ -301,6 +301,34 @@
                   </a>
                 </nav>
               </details>
+              <!-- 文章级音视频：后台「音频 / 视频」三格的真实消费面。三个地址都不合规
+                   （或没填）时整段不渲染，不留一个点不动的空播放器；密码未解锁时后端
+                   已经把这三列投影成 null，所以不用在这里另判 needPassword。 -->
+              <div
+                v-if="postAudioSrc || postVideoSrc || postEmbedSrc"
+                class="mt-8 flex flex-col gap-4"
+              >
+                <audio
+                  v-if="postAudioSrc"
+                  controls
+                  :src="postAudioSrc"
+                  class="w-full"
+                />
+                <video
+                  v-if="postVideoSrc"
+                  controls
+                  :src="postVideoSrc"
+                  class="aspect-video w-full rounded-xl bg-black"
+                />
+                <iframe
+                  v-if="postEmbedSrc"
+                  :src="postEmbedSrc"
+                  :title="postTitle || t('post.untitled', '未命名文章')"
+                  class="aspect-video w-full rounded-xl border-0"
+                  loading="lazy"
+                  allowfullscreen
+                />
+              </div>
               <article
                 v-show="!!post"
                 ref="articleEl"
@@ -1070,6 +1098,7 @@ import { useReadingProgress, extractTOC, useTOCScrollSpy, estimateReadingStats }
 import type { TocItem } from '~~/composables/useReadingUX'
 import { formatCount } from '~~/lib/utils'
 import { resolvePostSource } from '~~/lib/post-source'
+import { internalMediaSrc, youtubePlayerSrc } from '~~/lib/post-media'
 import {
   findContentType,
   parseContentTypes,
@@ -1133,6 +1162,10 @@ interface PostDetail {
   content: unknown
   cover_image?: string
   coverImage?: string
+  /** 文章级音视频：后端只在正文已解锁时给出这三列，未解锁是 null（整段不渲染播放器）。 */
+  audio?: string | null
+  video?: string | null
+  video_url?: string | null
   published_at?: string
   publishedAt?: string
   created_at?: string
@@ -1661,6 +1694,13 @@ const postSubtitle = computed(() => {
   if (!sub || sub === postTitle.value) return ''
   return sub
 })
+// ===== 文章级音视频：与后台表单共用 lib/post-media 的同一份取值口径 =====
+// audio/video 只接受站内路径、嵌入地址只认解析出的 YouTube ID。判据不放在模板里，
+// 否则库里躺着外链时 `<video src>` / `<iframe src>` 会带着任意地址发出去（外链会被
+// CSP 拦成空白播放器，而 iframe 那一路根本不该存在）。
+const postAudioSrc = computed(() => internalMediaSrc(post.value?.audio))
+const postVideoSrc = computed(() => internalMediaSrc(post.value?.video))
+const postEmbedSrc = computed(() => youtubePlayerSrc(post.value?.video_url))
 const coverImage = computed(() => postCoverUrl(post.value, POST_COVER_BANNER))
 /**
  * 分享图（og:image / twitter:image / JSON-LD）单独取值：无封面文章的展示面回落
