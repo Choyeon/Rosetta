@@ -385,6 +385,14 @@ fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_c
    会用 `s-maxage=<maxAge>[, stale-while-revalidate=<staleMaxAge>]` 整条覆写（与 §2.3 那条 HTML 被覆写同源），
    写在 headers 里的完整串线上不落地。守卫 `frontend/tests/unit/feedRouteCacheRules.spec.ts` 按目录反扫
    （handler 集合 ⇔ routeRules 键集合）+ 逐条对账这两个数与 Content-Type。
+   **llms.txt 的 `CORE_PAGES` 与后端 `_STATIC_SITEMAP_ROUTES` 是同一批「恒存在且恒可索引」的公开
+   目录页**（实测漏过一轮：`/posts/hot` `/activity` `/friends` 在 sitemap 里有、在 AI 抓取器读的
+   纯文本索引里没有）。口径由 `tests/test_llms_core_pages_match_sitemap.py` 按**集合相等**钉住，
+   已知例外只有两类：feed 出口（`/rss.xml` `/sitemap.xml`）与三个分类学根目录（`/categories` `/tags`
+   `/series`，由 `generate_taxonomy_sitemap` 输出、不在那张固定表里）。**可索引性由运行时配置或内容
+   决定的页不得写进 CORE_PAGES**（`/sponsor` 看捐助配置、`/gallery` 与 `/wallpapers` 看有没有内容）——
+   那等于把动态答案烘进带 3600s 缓存的静态文本，而这份文本正是不执行 JS 的抓取器唯一的站点索引。
+   新增固定公开路由时两处同改；漏一处的表现是「页面进了 sitemap、AI 侧的索引永远少这一条」。
 2. **security.txt 只有一条生成路径**：`server/routes/.well-known/security.txt.get.ts`。nitropack
    `scanDir` 的 globby 带 `dot:true`，点目录会被收录，所以**不要**再补 `server/routes/security.txt.get.ts`
    或 `/.well-known` 别名中间件（两条口会让正文分叉，`geoDeliveryRoutes.spec.ts` 反向断言它们不存在）。

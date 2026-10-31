@@ -18,15 +18,30 @@
 
 import { DEFAULT_LOCALE_CODE, LOCALE_PATH_PREFIX_VARIANTS, NON_DEFAULT_LOCALE_CODES } from '../../lib/rosetta-themes'
 
-/** 核心页面清单：[显示名, 中性路径]。默认语言（zh）裸路径，四语入口在首页一节单列。 */
+/**
+ * 核心页面清单：[显示名, 中性路径]。默认语言（zh）裸路径，四语入口在首页一节单列。
+ *
+ * 口径 = 后端 `_STATIC_SITEMAP_ROUTES`（「恒存在且恒可索引」的固定公开路由）+ 三个分类学
+ * 根目录（`/categories` `/tags` `/series`，它们由 `generate_taxonomy_sitemap` 输出，所以不在
+ * 那张表里，但同样是目录页）+ 两个 feed 出口。**那张表是本清单的判据之一**：往 sitemap 固定
+ * 路由里加一页而 llms.txt 没跟上，等于给爬虫一份少了条目的站点索引——由
+ * `tests/test_llms_core_pages_match_sitemap.py` 跨语言对账钉住（集合相等，例外只有上面两类）。
+ * 反过来，可索引性由运行时配置决定的页面（/sponsor 看捐助配置、/gallery 与 /wallpapers 看有没有
+ * 内容）不写在这里：把动态答案写死进一份带 3600s 缓存的静态索引，等于让 llms.txt 替 sitemap
+ * 做它做不了的判断。
+ */
 const CORE_PAGES = [
   ['Home', '/'],
   ['Posts', '/posts'],
+  ['Hot posts', '/posts/hot'],
   ['Archive', '/archive'],
   ['Categories', '/categories'],
   ['Tags', '/tags'],
+  ['Series', '/series'],
   ['Authors', '/authors'],
+  ['Activity', '/activity'],
   ['Guestbook', '/guestbook'],
+  ['Friends', '/friends'],
   ['About', '/about'],
   ['RSS', '/rss.xml'],
   ['Sitemap', '/sitemap.xml']
