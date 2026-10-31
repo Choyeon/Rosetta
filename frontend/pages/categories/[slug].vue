@@ -299,7 +299,6 @@ interface CategoryDetail {
   /** 父分类 ID；null/缺键都是顶级分类（旧缓存的载荷整键缺失） */
   parent_id?: number | string | null
   post_count?: number
-  postsCount?: number
   posts?: unknown[]
 }
 
@@ -404,7 +403,6 @@ const coverBroken = ref(false)
 const postCount = computed<number>(() => {
   const c = catRaw.value as CategoryDetail | null | undefined
   if (c && typeof c.post_count === 'number') return c.post_count
-  if (c && typeof c.postsCount === 'number') return c.postsCount
   if (c && Array.isArray(c.posts)) return c.posts.length
   return postsRaw.value?.total ?? 0
 })

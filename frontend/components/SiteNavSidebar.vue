@@ -43,7 +43,6 @@ interface CategoryRow {
   slug: string
   name?: string | Record<string, string>
   post_count?: number
-  postsCount?: number
 }
 
 /**
@@ -86,7 +85,7 @@ const categories = computed<CategoryRow[]>(() =>
   Array.isArray(catsData.value) ? catsData.value.slice(0, 10) : []
 )
 const catName = (c: CategoryRow) => pickLocalizedText(c.name, locale.value as string)
-const catCount = (c: CategoryRow) => c.post_count ?? c.postsCount ?? 0
+const catCount = (c: CategoryRow) => c.post_count ?? 0
 </script>
 
 <template>

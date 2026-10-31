@@ -7,7 +7,7 @@
   关键词只看本地化名称与 slug，输入框是即时过滤（不是草稿态），因此不需要提交按钮。
   排序 chip 是真实 <a href>（走 localeHrefWith，带齐当前 ?q=）：SSR 页把视图切换做成
   <Button @click> 等于 ?sort=name 在爬虫的链接图里不存在（批次 #127，AGENTS §2.3.3）。
-  name 缺失兜底 slug，post_count 兼容 postsCount 两种命名。
+  name 缺失兜底 slug；post_count 只认后端的 snake_case（camelCase 兜底从不命中，已删）。
 -->
 <template>
   <div class="container py-16">
@@ -199,7 +199,6 @@ interface TagRow {
   color?: string | null
   icon?: string | null
   post_count?: number
-  postsCount?: number
 }
 
 // SSR 与客户端首渲染统一为空数组（空 = 无标签占位，避免显示假数据）。
@@ -249,7 +248,7 @@ const tagName = (tag: TagRow): string => {
 }
 
 const tagPostsCount = (tag: TagRow): number => {
-  return tag.post_count ?? tag.postsCount ?? 0
+  return tag.post_count ?? 0
 }
 
 // ===== 过滤 / 排序：状态全在地址栏（?q= / ?sort=），SSR 首屏与分享链接同口径 =====

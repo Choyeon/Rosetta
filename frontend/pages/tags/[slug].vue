@@ -219,7 +219,7 @@ const pageSize = computed(() => site.reading.value.posts_per_page)
 
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 
-interface TagDetail { id?: number | string, slug?: string, name?: unknown, description?: unknown, color?: string | null, icon?: string | null, post_count?: number, postsCount?: number, posts?: unknown[] }
+interface TagDetail { id?: number | string, slug?: string, name?: unknown, description?: unknown, color?: string | null, icon?: string | null, post_count?: number, posts?: unknown[] }
 
 interface TagPostRow {
   id: number | string
@@ -274,7 +274,6 @@ const tagDesc = computed(() => pickLocalized(tagRaw.value?.description))
 const postCount = computed<number>(() => {
   const c = tagRaw.value as TagDetail | null | undefined
   if (c && typeof c.post_count === 'number') return c.post_count
-  if (c && typeof c.postsCount === 'number') return c.postsCount
   if (c && Array.isArray(c.posts)) return c.posts.length
   return postsRaw.value?.total ?? 0
 })

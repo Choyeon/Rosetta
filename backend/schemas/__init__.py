@@ -863,7 +863,6 @@ class CategoryLocalizedResponse(BaseModel):
     color: str
     cover_image: str | None = None
     created_at: datetime
-    post_count: int = 0
 
     @classmethod
     def from_category(cls, category, lang: str = "zh") -> "CategoryLocalizedResponse":
@@ -879,7 +878,6 @@ class CategoryLocalizedResponse(BaseModel):
             color=category.color,
             cover_image=category.cover_image,
             created_at=category.created_at,
-            post_count=getattr(category, "post_count", 0),
         )
 
 
@@ -941,7 +939,6 @@ class TagLocalizedResponse(BaseModel):
     icon: str | None = None
     is_active: bool
     created_at: datetime
-    post_count: int = 0
 
     @classmethod
     def from_tag(cls, tag, lang: str = "zh") -> "TagLocalizedResponse":
@@ -954,7 +951,6 @@ class TagLocalizedResponse(BaseModel):
             icon=tag.icon,
             is_active=tag.is_active,
             created_at=tag.created_at,
-            post_count=getattr(tag, "post_count", 0),
         )
 
 

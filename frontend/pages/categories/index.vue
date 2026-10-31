@@ -1,6 +1,6 @@
 <!--
   分类列表页：GET /blog/categories 卡片网格，name/description 按四语 dict 取值，
-  post_count 兼容 postsCount 两种命名。
+  post_count 只认后端的 snake_case：驼峰兜底那一支从未命中过（后端一个 camelCase 键都不发），已删。
   契约（2026-10 防双发改造后）：键与查询都是 setup 期静态字面量，切语言的刷新
   靠「切换器必然跳同页目标语言 URL → NuxtPage 按 path 重挂载本页 → setup 以新
   locale 重新请求」。不再写 watch(locale)+refresh()：旧写法里 key watcher 那一发
@@ -100,7 +100,7 @@
       <NuxtLink
         v-for="cat in sortedCategories"
         :key="cat.id"
-        v-memo="[cat.id, cat.slug, cat.post_count ?? cat.postsCount]"
+        v-memo="[cat.id, cat.slug, cat.post_count]"
         :to="localeHref(`/categories/${cat.slug}`)"
         class="block rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
       >
@@ -181,7 +181,7 @@ const router = useRouter()
 const pickLocalized = (val: unknown): string => pickLocalizedText(val, locale.value)
 const getCatName = (c: { name?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.name)
 const getCatDesc = (c: { description?: string | Record<string, string> } | null | undefined) => pickLocalized(c?.description)
-const getPostsCount = (c: { post_count?: number, postsCount?: number } | null | undefined) => c?.post_count ?? c?.postsCount ?? 0
+const getPostsCount = (c: { post_count?: number } | null | undefined) => c?.post_count ?? 0
 
 interface CategoryRow {
   id: number | string
@@ -191,7 +191,6 @@ interface CategoryRow {
   icon?: string
   color?: string
   post_count?: number
-  postsCount?: number
 }
 
 // 真实接口：GET /api/blog/categories。SSR + 客户端同源，失败时回退空数组，不显示示例分类。
