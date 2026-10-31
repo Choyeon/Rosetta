@@ -345,8 +345,8 @@
 
 ### bing / bing_image（壁纸代理体系）
 
-- ✅：`GET /api/bing/wallpapers`（ubw:221,285，登录页/OOBE 背景）、`GET /api/bing/image`（ubw:156 拼 `<img>` 直链，流式代理+本地缓存）
-- ❌（3）：`GET /api/bing/wallpaper`（单数版与复数版重复——**建议统一**）、`GET /api/bing/image/today · /archive`（归档骨架未接，Nitro 侧 `server/api/bing-wallpaper.get.ts` 直连 cn.bing.com 未走此接口）
+- ✅：`GET /api/bing/wallpapers`（ubw:221,285，登录页/OOBE 背景）、`GET /api/bing/image`（ubw 拼 `<img>` 直链，流式代理+本地缓存；扫描器把它记成 ❌ 是已知盲区②——URL 由 `lib/bing-image.ts::bingProxyUrl` 变量拼装）、`GET /api/bing/image/archive`（**2026-10-31 接通**：`pages/wallpapers.vue` 是唯一消费方，归档口同时从"按天串行打上游 + 服务器时钟猜日期"改成"一次批量 + 上游 `startdate` + 3600s 缓存"）
+- ❌（2）：`GET /api/bing/wallpaper`（单数版与复数版重复——**建议统一**）、`GET /api/bing/image/today`（今日单张；前台走 Nitro BFF `server/api/bing-wallpaper.get.ts` 直连 cn.bing.com，归档页走 `/archive`，这一条口目前没有第二个消费方）
 
 ### docs（/api/docs）— 2/2 ✅ · translate — 1/1 ✅ · ranking/stats — 全覆盖 ✅
 
