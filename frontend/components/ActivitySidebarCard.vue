@@ -9,6 +9,8 @@
     （sidebarPosition 可左可右），组件化才能一处定义两处挂载。
   - 日期只取 ISO 串的日期部分，不做 new Date() 本地化：SSR 机与访客浏览器时区不同，
     任何依赖本地时区的格式化都是首屏字节不一致的 hydration 隐患（本仓 §2.4 铁律）。
+  - 点赞数与 /activity 整页同源（`likes_count`，公开分页口已投影）：这里只有展示，
+    没有点赞按钮——侧栏那三行不该出现一个点了却没反馈的爱心，写口仍只在整页。
 -->
 <script setup lang="ts">
 import { Card, CardContent, CardHeader, CardTitle } from '~~/components/ui/card'
@@ -17,7 +19,7 @@ import { Skeleton } from '~~/components/ui/skeleton'
 import { useAPI } from '~~/composables/useApi'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import type { AdminUserTitle } from '~~/composables/useAdminManage'
-import { ArrowRight } from '~~/lib/lucide-svg-icons'
+import { ArrowRight, Heart } from '~~/lib/lucide-svg-icons'
 
 interface ActivityAuthor {
   nickname?: string | null
@@ -134,8 +136,18 @@ const isoDate = (value: string) => (typeof value === 'string' ? value.slice(0, 1
             <p class="mt-1 text-sm text-muted-foreground line-clamp-2 whitespace-pre-wrap">
               {{ item.content }}
             </p>
-            <div class="mt-1 text-xs text-muted-foreground/70 tabular-nums">
-              {{ isoDate(item.created_at) }}
+            <div class="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground/70 tabular-nums">
+              <span>{{ isoDate(item.created_at) }}</span>
+              <span
+                class="inline-flex items-center gap-1"
+                :title="t('activity.like')"
+              >
+                <Heart
+                  class="size-3 shrink-0"
+                  aria-hidden="true"
+                />
+                {{ item.likes_count ?? 0 }}
+              </span>
             </div>
           </div>
         </li>

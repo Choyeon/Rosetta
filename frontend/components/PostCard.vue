@@ -8,6 +8,8 @@
   compact 变体 Tag 封顶 4 个属有意的排版契约。
   「预计阅读 N 分钟」走 PostReadingTime —— 分钟数只读后端 reading_time 持久化列，
   卡片与详情页共用同一个数，前端不再复算（列表口 defer(content)，正文不在载荷里）。
+  浏览/评论/点赞三档同进同退：计数由列表口聚合进载荷（likes_count / comments_count），
+  卡片只读不写——点赞是详情页的动作，卡片上没有按钮却显示旧计数会误导读者。
 -->
 <template>
   <article
@@ -125,6 +127,13 @@
               aria-hidden="true"
             />
             {{ commentsCount }}
+          </span>
+          <span class="inline-flex items-center gap-1 tabular-nums">
+            <Heart
+              class="size-3.5 shrink-0"
+              aria-hidden="true"
+            />
+            {{ likes }}
           </span>
         </div>
       </div>
@@ -359,6 +368,13 @@
           />
           {{ commentsCount }}
         </span>
+        <span class="inline-flex items-center gap-1 tabular-nums">
+          <Heart
+            class="size-3.5 shrink-0"
+            aria-hidden="true"
+          />
+          {{ likes }}
+        </span>
       </div>
     </footer>
   </article>
@@ -366,7 +382,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Calendar, Eye, MessageCircle, ArrowRight } from '@lucide/vue'
+import { Calendar, Eye, Heart, MessageCircle, ArrowRight } from '@lucide/vue'
 import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
@@ -466,6 +482,7 @@ const coverImage = computed(() => postCoverUrl(
 const publishedAt = computed(() => props.post.published_at || props.post.publishedAt || props.post.created_at || '')
 const views = computed(() => props.post.views ?? props.post.views_count ?? 0)
 const commentsCount = computed(() => props.post.comments_count ?? props.post.commentsCount ?? 0)
+const likes = computed(() => props.post.likes_count ?? props.post.likesCount ?? 0)
 const isPinned = computed(() => props.post.is_pinned === true)
 const authorName = computed(() => {
   const a = props.post.author
