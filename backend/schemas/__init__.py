@@ -2069,11 +2069,8 @@ class SiteConfigResponse(BaseModel):
     enable_sitemap: bool = True
     enable_guestbook: bool = True
     enable_dark_mode: bool = True
-    enable_reading_time: bool = True
-    enable_word_count: bool = True
     enable_like_button: bool = True
     enable_share_buttons: bool = True
-    enable_toc: bool = True
     # OOBE 种子写的独立能力开关（与 settings_groups 字段并存，保证前端直接可用）
     enable_bing_wallpaper: bool = True
     # 兼容别名：前端有些地方读 enable_rss（与 enable_rss_feed 等价）
@@ -2220,11 +2217,8 @@ class SiteConfigUpdate(BaseModel):
     enable_sitemap: bool | None = None
     enable_guestbook: bool | None = None
     enable_dark_mode: bool | None = None
-    enable_reading_time: bool | None = None
-    enable_word_count: bool | None = None
     enable_like_button: bool | None = None
     enable_share_buttons: bool | None = None
-    enable_toc: bool | None = None
 
     # 分页设置
     pagination_page_size: int | None = Field(None, ge=1, le=100)

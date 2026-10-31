@@ -1,7 +1,7 @@
 """扁平站点配置的最后 59 个零消费方键退役后的守卫（批次 #112）。
 
 批次 #109（第三方评论 26 键）、#110（music/wallpaper/sidebar/sakura/pio 46 键）之后，
-`/api/config` 这一族剩下的形状是：**147 个响应字段里只有 88 个真的有人读**。本批删掉其余 59 个，
+`/api/config` 这一族剩下的形状是：**147 个响应字段里只有 88 个真的有人读**。首批删掉其余 59 个（#155 后为 62 个、85 个活字段），
 它们分两种缺陷（同一份判据，断点位置不同）：
 
 * **「存得进、没人读」17 个**——`about_content`、`dynamic_page_*`(4)、`friends_page_*` +
@@ -34,9 +34,19 @@
 | `bangumi_*` / `anime_*` / `page_bangumi_enabled` / `page_anime_enabled` | 整族无实现：`frontend/pages/` 没有 bangumi/anime 页，后端也没有对应 router |
 | `mermaid_*` / `plantuml_server_url` / `image_opt_*` / `license_*` / `post_generate_og_images` / `post_outdated_threshold_days` / `category_bar_enabled` / `archive_fold_old_articles` / `site_start_date` / `post_list_*` / `page_*_enabled` 其余项 | 零消费方，且不存在"另一份配置"——前端要么固定实现，要么根本没有这个功能 |
 
+**批次 #155 追加的 3 个是第三种形态**（`enable_toc` / `enable_reading_time` / `enable_word_count`）：
+  「两个写口、一份真相」的形态：后台「环境变量」面板里那三把开关写的是扁平 UPPERCASE 行，
+  `/api/config` 再原样投影回来，而前台目录/阅读时间/字数三处只读 `reading` 分组的
+  `show_toc` / `show_reading_time` / `show_word_count`（`useSite.ts` 的 reading 投影）。
+  所以拨扁平面那三把＝接口 200、前台纹丝不动。同批退役的还有 `backend/api/toc.py`
+  那三个零消费方的公开 POST（`/api/toc/generate`·`/extract`·`/add-ids`）——
+  目录锚点的唯一实现是 `frontend/lib/toc.ts`（`tocAnchors.spec.ts` 钉住），
+  后端那份的 id 生成规则与它不一致，属同族重复实现。守卫见
+  tests/test_retired_toc_api_is_gone.py。
+
 另一半断言防"把删死键做成删活功能"：i18n 标题、`donate` 分组、`basic.about_page_html`、
 `features.enable_guestbook`、`reading.posts_per_page`、详情页的「更新于」判定必须原样活着；
-`/api/config` 的字段总数按声明模型收敛（88/77），不再随库里的存量行膨胀。
+`/api/config` 的字段总数按声明模型收敛（首批 88/77，#155 后 85/74），不再随库里的存量行膨胀。
 """
 
 import re
@@ -72,6 +82,9 @@ DEAD_KEYS: tuple[str, ...] = (
     "dynamic_page_items_per_page",
     "dynamic_page_show_comment",
     "dynamic_page_title",
+    "enable_reading_time",
+    "enable_toc",
+    "enable_word_count",
     "friends_apply_html",
     "friends_page_description",
     "friends_page_show_comment",
@@ -122,6 +135,9 @@ STORED_BEFORE = (
     "dynamic_page_items_per_page",
     "dynamic_page_show_comment",
     "dynamic_page_title",
+    "enable_reading_time",
+    "enable_toc",
+    "enable_word_count",
     "friends_apply_html",
     "friends_page_description",
     "friends_page_show_comment",
@@ -182,13 +198,13 @@ def _isolate_site_config_cache():
 
 
 # ---------------------------------------------------------
-# 59 个键不得在任何一段链路上回潮
+# 62 个键不得在任何一段链路上回潮
 # ---------------------------------------------------------
-def test_the_retired_list_is_the_planned_59_and_covers_both_defect_halves():
+def test_the_retired_list_is_the_planned_62_and_covers_both_defect_halves():
     """清单本身要有硬数字：少写一个键＝那个键悄悄回潮也没人报。"""
-    assert len(DEAD_KEYS) == 59
-    assert len(set(DEAD_KEYS)) == 59
-    assert len(STORED_BEFORE) == 17
+    assert len(DEAD_KEYS) == 62
+    assert len(set(DEAD_KEYS)) == 62
+    assert len(STORED_BEFORE) == 20
     assert set(STORED_BEFORE) <= set(DEAD_KEYS)
     assert all(key == key.lower() for key in DEAD_KEYS)
 
@@ -204,14 +220,14 @@ def test_dead_keys_are_gone_from_both_config_models():
             assert key not in model.model_fields, f"{key} {why}"
 
 
-def test_surviving_field_counts_are_the_converged_88_and_77():
+def test_surviving_field_counts_are_the_converged_85_and_74():
     """收敛后的字段数必须是**读侧全字段投影**的口径：再多一个键就是有人偷偷加回扁平项。"""
     from backend.schemas import SiteConfigResponse, SiteConfigUpdate
 
     resp = set(SiteConfigResponse.model_fields)
     upd = set(SiteConfigUpdate.model_fields)
-    assert len(resp) == 88, f"响应字段数漂移：{len(resp)}"
-    assert len(upd) == 77, f"写口字段数漂移：{len(upd)}"
+    assert len(resp) == 85, f"响应字段数漂移：{len(resp)}"
+    assert len(upd) == 74, f"写口字段数漂移：{len(upd)}"
     assert not (resp & set(DEAD_KEYS))
     assert not (upd & set(DEAD_KEYS))
     # 反向：活键必须还在（删过头的判据）
@@ -245,7 +261,7 @@ def test_core_py_carries_neither_kwarg_nor_env_form():
         assert live in text, f"{live} 不在core.py 里：区域被删过头"
 
 
-def test_config_map_drops_the_17_stored_keys():
+def test_config_map_drops_the_stored_keys():
     """`config_map` 是「写了就落库」的唯一清单。"""
     text = _core_text()
     block = text[text.index("config_map = {") :]
@@ -278,7 +294,7 @@ def test_backend_outside_the_models_has_zero_consumers():
     assert hits == [], f"后端别处又出现退役键（新增读取点的信号）：{hits}"
 
 
-def test_openapi_drops_all_59():
+def test_openapi_drops_all_62():
     body = str(app.openapi()["components"]["schemas"])
     for key in DEAD_KEYS:
         assert key not in body, f"{key} 又回到接口文档了"
@@ -299,6 +315,7 @@ async def test_legacy_db_rows_do_not_resurrect_the_keys(client):
         "SPONSOR_PAGE_TITLE",
         "BANGUMI_USER_ID",
         "LICENSE_NAME",
+        "ENABLE_TOC",
         "ABOUT_CONTENT",
         "FRIENDS_APPLY_HTML",
     )
@@ -453,6 +470,28 @@ def test_the_real_page_size_knob_is_reading_group():
     assert "posts_per_page" in _default_reading()
     assert "pagination_posts_per_page" not in SiteConfigResponse.model_fields
     assert "pagination_page_size" in SiteConfigResponse.model_fields
+
+
+def test_the_toc_and_reading_switches_have_exactly_one_live_source():
+    """批次 #155：enable_toc / enable_reading_time / enable_word_count 是扁平镜像，
+    真源是 reading 分组的 show_* —— 退役镜像时活的那一半必须一个不少。
+
+    两个写口对着同一个开关（后台「环境变量」里的 ENABLE_TOC 与站点设置 reading 分组），
+    运营者拨哪一个都回 200，但前台只读 reading 那一份：扁平面是第二份假真相。
+    """
+    from backend.api.settings_groups import _default_reading
+
+    reading = _default_reading()
+    for live in ("show_reading_time", "show_word_count", "show_toc", "toc_depth"):
+        assert live in reading, f"reading 分组缺少 {live}：镜像退役时把活开关一起删了"
+    assert "enable_toc" not in reading, "reading 分组里长出扁平键＝两份来源又开始了"
+
+    site = (FRONTEND / "composables" / "useSite.ts").read_text(encoding="utf-8")
+    for live in ("show_reading_time", "show_word_count", "show_toc", "toc_depth"):
+        assert live in site, f"useSite 不再投影 reading.{live}"
+
+    detail = (FRONTEND / "pages" / "posts" / "[slug].vue").read_text(encoding="utf-8")
+    assert "showToc" in detail, "详情页的目录开关判据消失＝删过头"
 
 
 def test_post_detail_still_decides_last_modified_by_value():

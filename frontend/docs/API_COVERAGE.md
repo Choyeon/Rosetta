@@ -32,9 +32,9 @@
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
-> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 366 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 363 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：366 个端点操作；✅ 313 + 🟡 6 = 已消费 319 个，未消费 47 个，覆盖率 87.2%。**
+**总计：363 个端点操作；✅ 313 + 🟡 6 = 已消费 319 个，未消费 44 个，覆盖率 87.9%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -76,7 +76,6 @@
 | comment_reactions | 3 | 3 | 0 | 0 | 100% |
 | comment_report | 3 | 3 | 0 | 0 | 100% |
 | scheduled_posts | 3 | 3 | 0 | 0 | 100% |
-| toc | 3 | 0 | 0 | 3 | 0% |
 | bing | 2 | 1 | 0 | 1 | 50% |
 | captcha | 2 | 1 | 0 | 1 | 50% |
 | docs | 2 | 2 | 0 | 0 | 100% |
@@ -87,7 +86,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 47 条）
+## 未消费清单（自动生成，共 44 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -109,7 +108,6 @@
 - **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
 - **themes_ext**（2）：`GET /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`
 - **title**（3）：`GET /api/admin/titles/{title_id}`、`PATCH /api/admin/titles/{title_id}`、`GET /api/admin/users/{user_id}/title`
-- **toc**（3）：`POST /api/toc/add-ids`、`POST /api/toc/extract`、`POST /api/toc/generate`
 - **users**（4）：`PUT /api/users/me/avatar`、`POST /api/users/me/change-password`、`PUT /api/users/me/cover`、`GET /api/users/username/{username}/preferences`
 - **voting**（1）：`GET /api/voting/polls/{poll_id}`
 <!-- COVERAGE-AUTO:END -->
@@ -333,7 +331,6 @@
 | monitoring（/api/monitoring） | 9 | **2026-10-28 全部接入，2026-10-29 补第 9 条**：`pages/admin/tools/monitoring.vue` 消费八条指标口（health / stats / visits/summary / performance / performance/summary / database / cache / trends?days=），`pages/admin/tools/visits.vue`（访客记录）消费明细口 `GET /visits`——同一族接口两个页面各取一段，集合相等由 `tests/unit/monitoringEndpointsWired.spec.ts` 按「后端 `@router.get` 声明集 ⇔ 两个页面 `section()` 请求集」双向对账钉住。原判定「刻意保留（运维经工具页直访）」已作废——后端一直在算指标，后台一个都看不到才是问题。四条读数口径记在页面头注释与 spec：`database` 的 `database_url` 是掩码串但**不得上屏**；`performance` 环形缓冲无样本时不回 `sample_count` 键（按键存在性区分「没样本」与 0ms）；`visit_logs` 受 `LOG_RETENTION_DAYS` 清理，`retention_days <` 窗口天数时读数只能标成下界并给 `data_since`；`/visits` 的 IP 只有配了 `TRUSTED_PROXY_IPS` 才是真实访客 IP（否则 nginx 反代下全是回环，页面会显式警告），UA 解析在服务端读取时算，cookie 只落**名称**不落值（值是会话凭证）。第 10 条 `POST /api/monitoring/pageviews`（批次 #59 边缘上报）落在 ❌ 是**盲区 2 的实例、不是死口**：消费方是 `frontend/server/middleware/09-pageview-report.ts`，路径写成常量 `PAGEVIEW_PATH = '/monitoring/pageviews'` 后交给 `resolveBackendEndpoint(...)` 拼 baseURL 再 `fetch`，字面量不在请求调用的紧邻位置（扫描器只认 `apiFetch/useAPI/…` 实参位与紧邻 fetch 的字面量）。它有没有真的发出去，线上判据见 `tests/test_pageview_reporting.py` 与 `frontend/tests/unit/pageviewReport.spec.ts`（后者把「载荷键集合 ⇔ 后端 `PageviewReport` 字段集合」钉成相等） |
 | captcha（/api/captcha） | 2 | ✅ `GET /captcha` 由 `components/CaptchaField.vue` 消费（留言板写入口，开关 `features.enable_captcha`）。❌ `POST /captcha/verify` 刻意不接：写入侧闸门 `services/captcha_service.ensure_captcha_for_guest` 已经在同一次请求里校验，前端再预校验一次是第二个真相源，且"预校验通过→提交"之间有竞态（答案一次性消费）。 |
 | shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
-| toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |
 | scheduled_posts（/api） | 3 | **2026-10-28 全部接入**：`pages/admin/content/scheduled.vue`（待发布队列）是唯一消费方——`GET /admin/posts/scheduled` 列表、`PUT /admin/posts/{id}/schedule` 改期/重新排队、`DELETE /admin/posts/{id}/schedule` 取消（取消即回 `draft`，不是停在 `scheduled`）。原判定「前端以 `status=scheduled` + PUT 文章实现，重复入口」**已作废**：状态机口径（`scheduled` 必须带未来 `published_at`、`draft` 不接受定时、到点由调度器发布）由该页与 `tests/unit/scheduledQueueWired.spec.ts` + `tests/test_post_batch_hooks.py` 钉住，生产机探针 2026-10-28 逐条验过（排队→改期→取消回草稿→草稿被 400 拒）。注意 `GET /admin/posts/scheduled` **有写副作用**（顺带发布到期文章），运维脚本不要把它当纯读口轮询 |
 | admin_logs（/api/admin/logs/retention） | 1 | 手动清理早于 N 天的**操作留痕**（`operation_logs`）。已接：`pages/admin/tools/audit-logs.vue`。`visit_logs` / `performance_metrics` 不在这条口的职责里——它们由服务端按 `LOG_RETENTION_DAYS` 的保留循环清理（先睡后删，短生命周期进程不会误删） |
 
@@ -351,7 +348,7 @@
 **总体：352 端点 / 46 模块，前端已覆盖 222（63.1%；= 上表 ✅214 + 🟡8，🟡 是仅 Nitro/直链消费），未覆盖 130。**（本行与上表同源；未覆盖数从 133 降到 130 是删掉了 3 条僵尸端点，不是新接了 3 条。上一版写的 351/208 是漏了后来新增的端点，已按表重算。）未覆盖的 130 个可分三类：
 
 1. **刻意保留的后端能力（约六成，不算债）**：
-   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、`…/{id}/toggle` 里未被消费的 `announcements` 与 `activities` 两条、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（前端本地生成）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）、`GET /voting/polls/{poll_id}`（列表口 `GET /voting/polls` 已内嵌 choices 与票数，前台卡片直接从列表取票，详情口没有第二个消费方）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
+   - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、`…/{id}/toggle` 里未被消费的 `announcements` 与 `activities` 两条、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（**2026-11-01 二选一已执行**：删后端那三个无鉴权 POST，目录锚点唯一实现是 `frontend/lib/toc.ts` + `composables/useReadingUX.ts::extractTOC`，守卫 `tests/test_retired_toc_api_is_gone.py`）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）、`GET /voting/polls/{poll_id}`（列表口 `GET /voting/polls` 已内嵌 choices 与票数，前台卡片直接从列表取票，详情口没有第二个消费方）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
    - `…/{id}/toggle` 一族要分两半看，不能整族判成"刻意不用"。后端共 4 条 `PUT …/{id}/toggle`：`hero/slides` 与 `series` 已接（`toggleAdminHeroSlide` / `toggleAdminSeries`，卡片状态徽标点一下就翻值并清前台页面缓存，拿到 200 后回读、不用本地取反）；`announcements` 与 `activities` 那两条刻意不接——列表里的开关是"写成我看到的目标值"，而翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以未接的两条不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
    - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。（原列在此处的 `admin_logs retention` 已于 2026-10-29 移出：`pages/admin/tools/audit-logs.vue` 接了手动清理入口。）
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
@@ -427,7 +424,7 @@
      从来不在扁平配置里）、导航 `sidebar` 位置与站内评论系统必须原样活着；另有一条用例专门种下
      `MUSIC_ENABLED` / `WALLPAPER_MODE` / `SIDEBAR` 三行存量库数据，断言 `/api/config` 无视它们
      而不是把它们重新投影出来（生产 PG 里今天就躺着这类行）。
-   - **扁平死配置键族（本族收尾）**（**2026-10-31 已退役**，不是待接缺口）：上一段之后这一族还剩 59 个
+   - **扁平死配置键族（本族收尾）**（**2026-10-31 已退役**，不是待接缺口）：上一段之后这一族还剩 59 个（批次 #155 又追加 3 个 `enable_toc` / `enable_reading_time` / `enable_word_count`，共 62 个，字段数收敛到 **85 / 74**——那两个写口对着同一个开关，后台「环境变量」那三把拨下去接口回 200 而前台纹丝不动，前台只认 `reading.show_*`）
      零消费方的扁平键，`SiteConfigResponse` 由 147 个字段收敛到 **88**、`SiteConfigUpdate` 由 136 收敛到 **77**。
      「存得进、没人读」的 17 个：`about_content`、`friends_page_title` / `friends_page_description` /
      `friends_page_show_comment` / `friends_page_show_custom_content` / `friends_apply_html`、`dynamic_page_*`(4)、
@@ -453,6 +450,7 @@
      三个区域（OOBE 默认值、公开投影、`config_map`）/ ENV 名 / OpenAPI / 前后端源码六面零命中，另钉三种
      反空转与反删过头——种 6 行存量 UPPERCASE 库数据后 `/api/config` 必须无视、三个区域必须还带着
      `site_name` 这类活键、写口对活键（`footer_text`）仍能 200 落库并回读。
+   - **批次 #155 追加的 3 个是「两个写口、一份真相」**：`enable_toc` / `enable_reading_time` / `enable_word_count` 曾在三处同时存在——后台「环境变量」面板的三把 `SiteSettingItem` 开关（写了就落库）、`/api/config` 的扁平投影、以及 `reading` 分组到扁平键的映射；而前台目录/阅读时间/字数的判据一直是 `useSite.ts` 投影出来的 `reading.show_toc` / `show_reading_time` / `show_word_count`（`pages/posts/[slug].vue` 消费）。扁平面那三把拨下去＝接口 200、前台纹丝不动，所以退役的是镜像不是功能。同批退役 `backend/api/toc.py`（3 个公开无鉴权 POST，零消费方，且它的标题 id 规则与前台单源不一致）。守卫 `tests/test_retired_flat_config_keys_are_gone.py::test_the_toc_and_reading_switches_have_exactly_one_live_source` + `tests/test_retired_toc_api_is_gone.py`。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 

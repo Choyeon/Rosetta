@@ -115,14 +115,11 @@ omit = [
 
     # --- 真正实验性 / 可裁剪功能模块（启用需 feature flag）
     "backend/api/performance.py",
-    "backend/api/post_crypto.py",
-    "backend/api/post_encryption.py",
     "backend/api/post_series.py",
     "backend/api/ranking.py",
     "backend/api/scheduled_posts.py",
     "backend/api/settings_groups.py",
     "backend/api/title.py",
-    "backend/api/toc.py",
     "backend/api/translate.py",
     "backend/api/voting.py",
     "backend/api/admin_logs.py",

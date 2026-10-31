@@ -592,11 +592,8 @@ export interface SiteConfig {
   enable_sitemap: boolean
   enable_guestbook: boolean
   enable_dark_mode: boolean
-  enable_reading_time: boolean
-  enable_word_count: boolean
   enable_like_button: boolean
   enable_share_buttons: boolean
-  enable_toc: boolean
   // 分页设置
   pagination_page_size: number
   pagination_max_page_size: number
@@ -683,11 +680,8 @@ export interface SiteConfigUpdate {
   enable_sitemap?: boolean
   enable_guestbook?: boolean
   enable_dark_mode?: boolean
-  enable_reading_time?: boolean
-  enable_word_count?: boolean
   enable_like_button?: boolean
   enable_share_buttons?: boolean
-  enable_toc?: boolean
   // 分页设置
   pagination_page_size?: number
   pagination_max_page_size?: number

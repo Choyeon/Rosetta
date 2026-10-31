@@ -1256,7 +1256,8 @@ async def get_site_config(db: DB):
                     for k in ("allowed_image_types", "allowed_file_types"):
                         if parsed.get(k):
                             cfg_base[k] = str(parsed[k])
-            # reading（文章列表每页条数 + 目录/阅读时间/字数三处 UI 开关）
+            # reading（文章列表每页条数；目录/阅读时间/字数的开关只走 reading 分组本身，
+            # 曾经的 enable_* 扁平镜像零消费方，已随批次 #155 退役）
             raw_reading = _cfg_raw("reading")
             if raw_reading:
                 parsed = _parse_group(raw_reading)
@@ -1265,13 +1266,6 @@ async def get_site_config(db: DB):
                         n = _int_of(parsed["posts_per_page"], "reading.posts_per_page")
                         if n is not None:
                             cfg_base["pagination_page_size"] = n
-                    for gk, ck in (
-                        ("show_reading_time", "enable_reading_time"),
-                        ("show_word_count", "enable_word_count"),
-                        ("show_toc", "enable_toc"),
-                    ):
-                        if parsed.get(gk) is not None:
-                            cfg_base[ck] = bool(parsed[gk])
             # seo（验证码/统计码/robots 正文：分组是设置页唯一写口，扁平 key 只兜历史数据）
             raw_seo_full = _cfg_raw("seo")
             if raw_seo_full:
@@ -1354,11 +1348,8 @@ async def get_site_config(db: DB):
         enable_sitemap=get_bool("ENABLE_SITEMAP", "true"),
         enable_guestbook=get_bool("ENABLE_GUESTBOOK", "true"),
         enable_dark_mode=get_bool("ENABLE_DARK_MODE", "true"),
-        enable_reading_time=get_bool("ENABLE_READING_TIME", "true"),
-        enable_word_count=get_bool("ENABLE_WORD_COUNT", "true"),
         enable_like_button=get_bool("ENABLE_LIKE_BUTTON", "true"),
         enable_share_buttons=get_bool("ENABLE_SHARE_BUTTONS", "true"),
-        enable_toc=get_bool("ENABLE_TOC", "true"),
         # OOBE 种子里额外写入的一组能力开关（与上面 14 组 settings_groups 里的独立域做兼容）
         enable_bing_wallpaper=get_bool("ENABLE_BING_WALLPAPER", "true"),
         # OOBE 兼容别名：前端有些地方用 enable_rss，有些用 enable_rss_feed，统一暴露
@@ -1720,20 +1711,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     default=True,
                 ),
                 SiteSettingItem(
-                    key="ENABLE_READING_TIME",
-                    label="显示阅读时间",
-                    type="switch",
-                    value=get_bool_val("ENABLE_READING_TIME", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="ENABLE_WORD_COUNT",
-                    label="显示字数统计",
-                    type="switch",
-                    value=get_bool_val("ENABLE_WORD_COUNT", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
                     key="ENABLE_LIKE_BUTTON",
                     label="启用点赞按钮",
                     type="switch",
@@ -1745,13 +1722,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     label="启用分享按钮",
                     type="switch",
                     value=get_bool_val("ENABLE_SHARE_BUTTONS", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="ENABLE_TOC",
-                    label="启用文章目录",
-                    type="switch",
-                    value=get_bool_val("ENABLE_TOC", "true"),
                     default=True,
                 ),
             ],
@@ -2115,11 +2085,8 @@ async def update_site_settings(
         "enable_sitemap": "ENABLE_SITEMAP",
         "enable_guestbook": "ENABLE_GUESTBOOK",
         "enable_dark_mode": "ENABLE_DARK_MODE",
-        "enable_reading_time": "ENABLE_READING_TIME",
-        "enable_word_count": "ENABLE_WORD_COUNT",
         "enable_like_button": "ENABLE_LIKE_BUTTON",
         "enable_share_buttons": "ENABLE_SHARE_BUTTONS",
-        "enable_toc": "ENABLE_TOC",
         # 分页设置
         "pagination_page_size": "PAGINATION_PAGE_SIZE",
         "pagination_max_page_size": "PAGINATION_MAX_PAGE_SIZE",

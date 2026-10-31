@@ -776,11 +776,8 @@ GET /api/config
   "enable_sitemap": true,
   "enable_guestbook": true,
   "enable_dark_mode": true,
-  "enable_reading_time": true,
-  "enable_word_count": true,
   "enable_like_button": true,
   "enable_share_buttons": true,
-  "enable_toc": true,
   "pagination_page_size": 12,
   "pagination_max_page_size": 100,
   "code_theme": "github",
@@ -853,7 +850,7 @@ Content-Type: application/json
 | 页脚设置 | footer_text, footer_slogan, copyright_text, icp_number, police_icp_number |
 | 社交媒体 | github_url, x_url, bilibili_url, weibo_url, zhihu_url, youtube_url, linkedin_url, telegram_url |
 | 联系方式 | contact_email, contact_qq, contact_wechat |
-| 功能开关 | enable_comments, enable_registration, enable_rss_feed, enable_search, enable_sitemap, enable_guestbook, enable_dark_mode, enable_reading_time, enable_word_count, enable_like_button, enable_share_buttons, enable_toc |
+| 功能开关 | enable_comments, enable_registration, enable_rss_feed, enable_search, enable_sitemap, enable_guestbook, enable_dark_mode, enable_like_button, enable_share_buttons |
 | 分页设置 | pagination_page_size, pagination_max_page_size |
 | 外观设置 | code_theme, code_theme_dark, default_theme, primary_color, font_family |
 | 维护模式 | maintenance_mode, maintenance_message, maintenance_end_time |
@@ -1642,7 +1639,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **366 个操作 / 292 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **363 个操作 / 289 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -1936,14 +1933,6 @@ API 实现了请求限流保护：
 | `GET` | `/api/monitoring/trends` | 趋势数据 |
 | `GET` | `/api/monitoring/visits` | 访客记录明细 |
 | `GET` | `/api/monitoring/visits/summary` | 访问量汇总 |
-
-### TOC（3）
-
-| 方法 | 路径 | 摘要 |
-| --- | --- | --- |
-| `POST` | `/api/toc/add-ids` | 添加标题 ID |
-| `POST` | `/api/toc/extract` | 提取标题 |
-| `POST` | `/api/toc/generate` | 生成目录 |
 
 ### 短代码（5）
 

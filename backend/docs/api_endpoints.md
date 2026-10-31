@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **366 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **363 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -3864,17 +3864,17 @@ _无路径 / query 参数_
 | enable_dark_mode | boolean \| null | 否 |  |
 | enable_guestbook | boolean \| null | 否 |  |
 | enable_like_button | boolean \| null | 否 |  |
-| enable_reading_time | boolean \| null | 否 |  |
 | enable_registration | boolean \| null | 否 |  |
 | enable_rss_feed | boolean \| null | 否 |  |
 | enable_search | boolean \| null | 否 |  |
 | enable_share_buttons | boolean \| null | 否 |  |
 | enable_sitemap | boolean \| null | 否 |  |
-| enable_toc | boolean \| null | 否 |  |
-| enable_word_count | boolean \| null | 否 |  |
 | font_family | string \| null | 否 |  |
 | footer_custom_html | string \| null | 否 |  |
-| … 其余 37 个字段 | | | 见 `/docs` |
+| footer_slogan | string \| null | 否 |  |
+| footer_text | string \| null | 否 |  |
+| github_url | string \| null | 否 |  |
+| … 其余 34 个字段 | | | 见 `/docs` |
 
 ```json
 {
@@ -3908,14 +3908,11 @@ _无路径 / query 参数_
   "enable_dark_mode": "string",
   "enable_guestbook": "string",
   "enable_like_button": "string",
-  "enable_reading_time": "string",
   "enable_registration": "string",
   "enable_rss_feed": "string",
   "enable_search": "string",
   "enable_share_buttons": "string",
   "enable_sitemap": "string",
-  "enable_toc": "string",
-  "enable_word_count": "string",
   "font_family": "string",
   "footer_custom_html": "string",
   "footer_slogan": "string",
@@ -4039,7 +4036,7 @@ _无路径 / query 参数_
 | enable_dark_mode | boolean | 否 |  |
 | enable_guestbook | boolean | 否 |  |
 | enable_like_button | boolean | 否 |  |
-| … 其余 48 个字段 | | | 见 `/docs` |
+| … 其余 45 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -4085,15 +4082,12 @@ _无路径 / query 参数_
   "enable_dark_mode": true,
   "enable_guestbook": true,
   "enable_like_button": true,
-  "enable_reading_time": true,
   "enable_registration": true,
   "enable_rss": true,
   "enable_rss_feed": true,
   "enable_search": true,
   "enable_share_buttons": true,
   "enable_sitemap": true,
-  "enable_toc": true,
-  "enable_word_count": true,
   "font_family": "string",
   "footer_custom_html": "",
   "footer_slogan": "string",
@@ -11197,168 +11191,6 @@ _无路径 / query 参数_
 **错误码**
 
 _除下方“全局通用错误码”外，本接口未声明自定义错误响应_
-
----
-
-## TOC（3）
-
-文章目录生成
-
-### `POST /api/toc/add-ids`
-
-- **摘要**：添加标题 ID
-- **鉴权**：公开接口（无需鉴权）
-
-为 Markdown 内容中的标题添加 ID 属性。公开接口、无需鉴权。逐行匹配 ATX 标题并改写为带 id 的原生 HTML 标题标签，锚点 id 的推导规则与标题提取接口一致，id 与文本都做 HTML 转义以防注入；非标题行与 max_depth 无关（本接口不截断层级）。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `Body_add_heading_ids_api_toc_add_ids_post`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string | 是 |  |
-
-```json
-{
-  "content": "string"
-}
-```
-
-**出参**
-
-`200` · 模型 `TOCAddIdsResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string | 是 | 改写后的整篇内容：行首的 Markdown 标题被替换成带 id 属性的原生 h1–h6 HTML 标签（文本与 id 均已 HTML 转义），其余行原样保留；没有标题时与入参完全相同 |
-
-响应示例：
-
-```json
-{
-  "content": "string"
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `POST /api/toc/extract`
-
-- **摘要**：提取标题
-- **鉴权**：公开接口（无需鉴权）
-
-从 Markdown 内容中提取所有标题。公开接口、无需鉴权，纯文本解析不落库。只认 ATX 形式（行首 1–6 个 # 加空格），max_depth 指定保留的最大层级（更深的标题整条丢弃）。返回的是按文中顺序排列的扁平列表，不构建树结构（要树请用本模块的目录生成接口）。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `Body_extract_toc_api_toc_extract_post`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string | 是 |  |
-| max_depth | integer | 否 |  |
-
-```json
-{
-  "content": "string",
-  "max_depth": 3
-}
-```
-
-**出参**
-
-`200` · 模型 `TOCExtractResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| count | integer | 否 | 标题条数，等于 headings 长度 |
-| headings | object[] | 否 | 按文中出现顺序排列的扁平标题列表，无命中时是空数组 |
-
-响应示例：
-
-```json
-{
-  "count": 0,
-  "headings": [
-    {
-      "id": "string",
-      "level": 0,
-      "text": "string"
-    }
-  ]
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `POST /api/toc/generate`
-
-- **摘要**：生成目录
-- **鉴权**：公开接口（无需鉴权）
-
-从 Markdown 内容中生成文章目录。公开接口、无需鉴权。提取 ATX 标题（max_depth 控制保留层级）后按层级嵌套成树，并渲染成 toc-list 结构的无序列表 HTML；标题文本与锚点 id 均已 HTML 转义。无命中标题时 items 为空数组、html 为空字符串。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `TOCRequest`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string | 是 |  |
-| max_depth | integer | 否 |  |
-
-```json
-{
-  "content": "string",
-  "max_depth": 3
-}
-```
-
-**出参**
-
-`200` · 模型 `TOCResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| html | string | 是 |  |
-| items | object[] | 是 |  |
-
-响应示例：
-
-```json
-{
-  "html": "string",
-  "items": [
-    {
-      "children": [],
-      "id": "string",
-      "level": 0,
-      "text": "string"
-    }
-  ]
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
 
 ---
 

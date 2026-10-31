@@ -70,7 +70,6 @@ from backend.api import (
     themes,
     themes_ext,
     title,
-    toc,
     translate,
     users,
     voting,
@@ -903,7 +902,6 @@ def create_application() -> FastAPI:
     app.include_router(seo.router, prefix="/api/seo")
     app.include_router(advanced.router, prefix="/api")
     app.include_router(monitoring.router, prefix="/api/monitoring")
-    app.include_router(toc.router, prefix="/api/toc")
     app.include_router(shortcodes.router, prefix="/api")
     app.include_router(title.router, prefix="/api/admin")
     app.include_router(captcha.router, prefix="/api/captcha")
