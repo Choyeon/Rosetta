@@ -284,6 +284,10 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    表现是界面上"看着筛了"却没有出口，或"清除筛选"后仍留在排序视图）。移除动作复位的是各键自己的
    缺省值（`ALL_TYPES` / `ALL_MEDIA` / 空串）而不是统一空串，并把页码送回第 1 页。
    `pages/search.vue` 是同族先例（批次 #215，chip 用 `<button>` 因为那页 ssr:false）。
+   **反过来，SSR 页的筛选控件一律不得是 `<Button @click>`**：`pages/activity.vue` 的类型 chip
+   曾做成 `role="radio"` 按钮，五个 `?type=` 在爬虫读到的 HTML 里一个都不存在（批次 #126 改成
+   真实锚点，`href` 与该页分页锚点共用 `queryWith`/`hrefWith`，激活项用 `aria-current`；
+   `role="radiogroup"` 本身也是假的——没有方向键语义，改成 `role="group"` 才是诚实的）。
    守卫 `frontend/tests/unit/postsFilterChips.spec.ts`（真实锚点 + 位置在最后一条 `</ClientOnly>` 之后
    + 键集合与 removeFilter 复位值 + 四语文案键齐全 + `FilterChipKey` 联合类型逐个在册）。
 

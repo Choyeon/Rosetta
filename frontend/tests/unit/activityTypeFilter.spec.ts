@@ -78,12 +78,20 @@ describe('activity 类型筛选', () => {
     expect(src).toContain('ssrEvent.node.res.setHeader(\'location\', hrefWith(queryWith(1, currentType.value)))')
   })
 
-  it('chip 组用 radiogroup + aria-checked，且只在 SSR 渲染壳之外出现一次', () => {
-    expect(src).toContain('role="radiogroup"')
+  it('chip 组是真实锚点：href 与分页共用 queryWith/hrefWith 单源，激活项用 aria-current', () => {
+    expect(src).toContain('role="group"')
     expect(src).toContain(':aria-label="t(\'activity.filterLabel\')"')
+    const start = src.indexOf('v-for="opt in typeOptions"')
     const chips = src.match(/v-for="opt in typeOptions"/g) ?? []
     expect(chips.length).toBe(1)
-    expect(src).toContain(':aria-checked="currentType === opt.value"')
+    const chipBlock = src.slice(start, src.indexOf('</a>', start))
+    expect(chipBlock).toContain(':href="typeHref(opt.value)"')
+    expect(chipBlock).toContain('@click.prevent="setType(opt.value)"')
+    expect(chipBlock).toMatch(/:aria-current="currentType === opt\.value \? 'true' : undefined"/)
+    // <Button role="radio"> 的旧形态：SSR HTML 里一个 ?type= 都读不到
+    expect(chipBlock).not.toContain(':variant')
+    expect(src).not.toContain('role="radio"')
+    expect(src).toContain('const typeHref = (type: ActivityType | null) => hrefWith(queryWith(1, type))')
     // 选项来自同一个枚举（「全部」+ 五种类型），不是手写的第二个清单
     const options = src.match(/const typeOptions = computed\(\(\) => \[[\s\S]*?\n\]/)?.[0] ?? ''
     expect(options).toContain('String(t(\'activity.filterAll\'))')

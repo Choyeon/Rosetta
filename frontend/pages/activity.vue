@@ -2,6 +2,8 @@
   动态时间线页：GET /activities 按 ?page=N 分页（每页 20，真实 <a href> 翻页；越界页码
   SSR 期 301 回带当前筛选的第一页），?type=say|article|update|notice|link 按类型筛选
   （chip 组，状态在地址栏；未知值一律按「全部」处理，与服务端归一口径一致）。
+  分页锚点与筛选 chip 共用 queryWith/hrefWith 单源，两者都是真实 <a href>：这页 ssr:true，
+  筛选做成 <Button @click> 等于五个 ?type= 只存在于 SPA（批次 #126，口径见 AGENTS §2.3.3）。
   图标必须是本文件内联 ICONS 常量而非 lucide 组件：SSR 与客户端首字节要逐字节一致，
   组件形态的首子差异会直接造成水合错位。后端新增活动类型时，ICONS + backendToIconKey
   白名单 + ACTIVITY_TYPES + i18n 的 activity.type_* 四处必须同步补，漏一处就静默显示成"说说"。
@@ -64,23 +66,24 @@
       </ClientOnly>
 
       <!-- 类型筛选：状态进地址栏（?type=），刷新/分享/后退可还原；切换回第 1 页，
-           因为每种类型的条数不同，停在第 3 页换筛选会落进对方不存在的页码。 -->
+           因为每种类型的条数不同，停在第 3 页换筛选会落进对方不存在的页码。
+           必须是真实 <a href>（AGENTS §2.3.3 第 2 条）：这页是 SSR，做成 <Button @click>
+           时五个 ?type= 在爬虫读到的 HTML 里一个都不存在，筛选组合只能靠站内碰运气发现。 -->
       <div
-        role="radiogroup"
+        role="group"
         :aria-label="t('activity.filterLabel')"
         class="mb-8 flex flex-wrap items-center gap-2"
       >
-        <Button
+        <a
           v-for="opt in typeOptions"
           :key="opt.value ?? 'all'"
-          :variant="currentType === opt.value ? 'default' : 'outline'"
-          size="sm"
-          role="radio"
-          :aria-checked="currentType === opt.value"
-          @click="setType(opt.value)"
+          :href="typeHref(opt.value)"
+          :class="pageLinkClass(currentType === opt.value ? 'default' : 'outline')"
+          :aria-current="currentType === opt.value ? 'true' : undefined"
+          @click.prevent="setType(opt.value)"
         >
           {{ opt.label }}
-        </Button>
+        </a>
       </div>
 
       <div
@@ -434,6 +437,8 @@ const hrefWith = (query: Record<string, string>) => {
   return search ? `${activityBaseHref()}?${search}` : activityBaseHref()
 }
 const pageHref = (page: number) => hrefWith(queryWith(page, currentType.value))
+// 筛选 chip 的目标地址与分页锚点同一份单源，页码固定回 1（见 setType 的注释）。
+const typeHref = (type: ActivityType | null) => hrefWith(queryWith(1, type))
 const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
   buttonVariants({ variant, size: 'sm' })
 
