@@ -5,6 +5,8 @@
   排序与关键词过滤都是纯函数（不调接口、不掺随机/时间因子），条件落在 ?q= / ?sort= 上：
   SSR 首屏按 query 过滤（分享链接打开即是同一视图），改条件走 replace 不堆历史。
   关键词只看本地化名称与 slug，输入框是即时过滤（不是草稿态），因此不需要提交按钮。
+  排序 chip 是真实 <a href>（走 localeHrefWith，带齐当前 ?q=）：SSR 页把视图切换做成
+  <Button @click> 等于 ?sort=name 在爬虫的链接图里不存在（批次 #127，AGENTS §2.3.3）。
   name 缺失兜底 slug，post_count 兼容 postsCount 两种命名。
 -->
 <template>
@@ -70,21 +72,20 @@
           />
         </div>
         <div
-          role="radiogroup"
+          role="group"
           :aria-label="t('posts.sortLabel')"
           class="flex gap-2"
         >
-          <Button
+          <a
             v-for="opt in sortOptions"
             :key="opt.value"
-            :variant="sortMode === opt.value ? 'default' : 'outline'"
-            size="sm"
-            role="radio"
-            :aria-checked="sortMode === opt.value"
-            @click="setSort(opt.value)"
+            :href="sortHref(opt.value)"
+            :class="buttonVariants({ variant: sortMode === opt.value ? 'default' : 'outline', size: 'sm' })"
+            :aria-current="sortMode === opt.value ? 'true' : undefined"
+            @click.prevent="setSort(opt.value)"
           >
             {{ opt.label }}
-          </Button>
+          </a>
         </div>
       </div>
 
@@ -178,7 +179,7 @@
 <script setup lang="ts">
 import { Tags, RefreshCw, Search } from '@lucide/vue'
 import TagBadge from '~~/components/TagBadge.vue'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import { compareText } from '~~/lib/sortText'
 import { computed, ref, watch } from 'vue'
@@ -187,7 +188,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
-const { localeHref } = useLocaleLink()
+const { localeHref, localeHrefWith } = useLocaleLink()
 const route = useRoute()
 const router = useRouter()
 
@@ -265,6 +266,14 @@ const sortOptions = computed(() => [
   { value: 'count' as const, label: String(t('tags.sortCount')) },
   { value: 'name' as const, label: String(t('tags.sortName')) }
 ])
+
+// 排序 chip 是真实 <a href>，且必须带齐当前关键词（批次 #127）：只挂 sort 的 href 会让
+// 「在 `q=foo` 的结果里换成按名称排」变成一次丢筛选的跳转——地址栏与 chip 用的是同一份条件。
+const sortHref = (mode: 'count' | 'name') =>
+  localeHrefWith('/tags', {
+    q: filterQuery.value.trim(),
+    sort: mode === 'count' ? '' : mode
+  })
 
 const syncUrl = () => {
   const query: Record<string, string> = {}

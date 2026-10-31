@@ -63,11 +63,23 @@ describe('标签页过滤状态', () => {
 })
 
 describe('标签页过滤 UI', () => {
-  it('工具栏：输入框 + 排序单选组 + 清除入口', () => {
+  it('工具栏：输入框 + 排序锚点组 + 清除入口', () => {
     expect(src).toContain('v-model="filterQuery"')
-    expect(src).toContain('role="radiogroup"')
-    expect(src).toContain('@click="setSort(opt.value)"')
     expect(src).toContain('@click="clearFilter"')
+  })
+
+  it('排序 chip 是真实锚点，且 href 带齐当前关键词（批次 #127）', () => {
+    expect(src).toContain('role="group"')
+    expect(src).not.toContain('role="radio"')
+    const start = src.indexOf('v-for="opt in sortOptions"')
+    const chip = src.slice(start, src.indexOf('</a>', start))
+    expect(chip).toContain(':href="sortHref(opt.value)"')
+    expect(chip).toContain('@click.prevent="setSort(opt.value)"')
+    expect(chip).toMatch(/:aria-current="sortMode === opt\.value \? 'true' : undefined"/)
+    // 只挂 sort 不挂 q = 换排序时把筛选丢了
+    expect(src).toContain('q: filterQuery.value.trim()')
+    expect(src).toContain('localeHrefWith(\'/tags\', {')
+    expect(src).toContain('sort: mode === \'count\' ? \'\' : mode')
   })
 
   it('网格渲染过滤结果，空结果有独立空态', () => {

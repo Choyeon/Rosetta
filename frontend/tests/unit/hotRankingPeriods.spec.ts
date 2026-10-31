@@ -40,10 +40,19 @@ describe('hot 页榜单周期切换', () => {
     expect(src).toContain('published_at: row.published_at ?? row.created_at ?? null')
   })
 
-  it('切换器是 radiogroup 语义（整块内容随选择替换，不是 Tab 面板）', () => {
-    expect(src).toContain('role="radiogroup"')
-    expect(src).toContain('role="radio"')
-    expect(src).toContain(':aria-checked="period === opt.value"')
+  it('切换器是真实锚点组（批次 #127：SSR 页的视图切换必须是爬虫读得到的 href）', () => {
+    expect(src).toContain('role="group"')
+    expect(src).not.toContain('role="radio"')
+    const start = src.indexOf('v-for="opt in rankOptions"')
+    const chip = src.slice(start, src.indexOf('</a>', start))
+    expect(chip).toContain(':href="periodHref(opt.value)"')
+    expect(chip).toContain('@click.prevent="setPeriod(opt.value)"')
+    expect(chip).toMatch(/:aria-current="period === opt\.value \? 'true' : undefined"/)
+    expect(chip).not.toContain(':variant')
+    // 缺省档不挂键：?rank=hot 与 /posts/hot 是同一个视图的两个地址
+    expect(src).toContain('localeHrefWith(\'/posts/hot\', { rank: p === \'hot\' ? \'\' : p })')
+    // chip 地址栏口径与 setPeriod 写 URL 的口径同源（都只挂 rank）
+    expect(src).toContain('router.replace({ query: next === \'hot\' ? {} : { rank: next } })')
   })
 
   it('四种语言的档位文案齐全（缺 key 界面会显示裸 key）', () => {

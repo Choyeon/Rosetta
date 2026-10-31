@@ -288,6 +288,12 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    曾做成 `role="radio"` 按钮，五个 `?type=` 在爬虫读到的 HTML 里一个都不存在（批次 #126 改成
    真实锚点，`href` 与该页分页锚点共用 `queryWith`/`hrefWith`，激活项用 `aria-current`；
    `role="radiogroup"` 本身也是假的——没有方向键语义，改成 `role="group"` 才是诚实的）。
+   同一族剩下的三处在批次 #127 收口（`/categories` 与 `/tags` 的排序 chip、`/posts/hot` 的榜单
+   周期 chip），它们共用 `useLocaleLink` 的 **`localeHrefWith(中性路径, 查询对象)`**：值为空串/
+   null 的键**不挂进地址**，所以"按数量排序"和"综合榜"这些缺省档不会产出 `?sort=count` /
+   `?rank=hot` 这种同一视图的第二个 URL；带其它条件的页（`/tags` 的 `?q=`）必须在 chip 的 href
+   里把现条件一起带上，否则换排序会把筛选丢了。守卫分别在各页的 spec 里钉
+   （`categoriesIndexSort` / `tagsIndexFilter` / `hotRankingPeriods`）。
    守卫 `frontend/tests/unit/postsFilterChips.spec.ts`（真实锚点 + 位置在最后一条 `</ClientOnly>` 之后
    + 键集合与 removeFilter 复位值 + 四语文案键齐全 + `FilterChipKey` 联合类型逐个在册）。
 

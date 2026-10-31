@@ -8,6 +8,8 @@
   每切一次语言白送后端两次注定被丢弃的 /blog/categories 查询。
   排序（?sort=name，缺省按文章数倒序）是纯函数，条件落在地址栏：SSR 首屏与分享链接
   同一视图，改条件走 replace 不堆历史；名称比较走 lib/sortText（码位序，SSR/浏览器一致）。
+  排序 chip 与分页同为真实 <a href>（走 localeHrefWith，缺省档不挂查询键）：SSR 页把视图
+  切换做成 <Button @click> 等于该视图在爬虫的链接图里不存在（批次 #127，AGENTS §2.3.3）。
 -->
 <template>
   <div class="container py-16">
@@ -72,21 +74,20 @@
         {{ t('categories.showingCount', { n: categories.length }) }}
       </span>
       <div
-        role="radiogroup"
+        role="group"
         :aria-label="t('posts.sortLabel')"
         class="flex gap-2"
       >
-        <Button
+        <a
           v-for="opt in sortOptions"
           :key="opt.value"
-          :variant="sortMode === opt.value ? 'default' : 'outline'"
-          size="sm"
-          role="radio"
-          :aria-checked="sortMode === opt.value"
-          @click="setSort(opt.value)"
+          :href="sortHref(opt.value)"
+          :class="buttonVariants({ variant: sortMode === opt.value ? 'default' : 'outline', size: 'sm' })"
+          :aria-current="sortMode === opt.value ? 'true' : undefined"
+          @click.prevent="setSort(opt.value)"
         >
           {{ opt.label }}
-        </Button>
+        </a>
       </div>
     </div>
 
@@ -163,7 +164,7 @@ import {
   CardTitle
 } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
-import { Button } from '~~/components/ui/button'
+import { Button, buttonVariants } from '~~/components/ui/button'
 import { useI18n } from 'vue-i18n'
 import { FolderOpen, ArrowRight, RefreshCw } from '@lucide/vue'
 import { compareText } from '~~/lib/sortText'
@@ -173,7 +174,7 @@ definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
 const site = useSite()
-const { localeHref } = useLocaleLink()
+const { localeHref, localeHrefWith } = useLocaleLink()
 const route = useRoute()
 const router = useRouter()
 
@@ -223,6 +224,11 @@ const sortOptions = computed(() => [
   { value: 'count' as const, label: String(t('categories.sortCount')) },
   { value: 'name' as const, label: String(t('categories.sortName')) }
 ])
+
+// 排序 chip 是真实 <a href>（AGENTS §2.3.3 第 2 条）：这页 SSR，做成 <Button @click>
+// 时 ?sort=name 在爬虫读到的 HTML 里根本不存在。缺省档不挂查询键，避免同一个视图两个 URL。
+const sortHref = (mode: 'count' | 'name') =>
+  localeHrefWith('/categories', { sort: mode === 'count' ? '' : mode })
 
 watch(sortMode, (next) => {
   const query = next === 'count' ? {} : { sort: next }

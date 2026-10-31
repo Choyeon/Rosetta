@@ -42,9 +42,21 @@ describe('分类页排序状态', () => {
 
   it('网格渲染的是排序后的列表，工具栏与网格同源', () => {
     expect(src).toContain('v-for="cat in sortedCategories"')
-    expect(src).toContain('role="radiogroup"')
-    expect(src).toContain('@click="setSort(opt.value)"')
-    expect(src).toContain(':aria-checked="sortMode === opt.value"')
+  })
+
+  it('排序 chip 是真实锚点：href 走 localeHrefWith，缺省档不挂查询键（批次 #127）', () => {
+    expect(src).toContain('role="group"')
+    expect(src).not.toContain('role="radio"')
+    const start = src.indexOf('v-for="opt in sortOptions"')
+    const chip = src.slice(start, src.indexOf('</a>', start))
+    expect(chip).toContain(':href="sortHref(opt.value)"')
+    expect(chip).toContain('@click.prevent="setSort(opt.value)"')
+    expect(chip).toMatch(/:aria-current="sortMode === opt\.value \? 'true' : undefined"/)
+    expect(chip).not.toContain(':variant')
+    expect(src).toContain('localeHrefWith(\'/categories\', { sort: mode === \'count\' ? \'\' : mode })')
+    // 缺省档写成空串而不是省键：让「按数量」与「不带参数」落到同一个 URL，不给同一视图两个地址
+    expect(src).not.toMatch(/localeHrefWith\('\/categories', \{ sort: mode \}/)
+    expect(src).toContain('const { localeHref, localeHrefWith } = useLocaleLink()')
   })
 
   it('空态只在确认为空时显示，加载中不出现「暂无分类」', () => {

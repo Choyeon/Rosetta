@@ -3,6 +3,8 @@
   后端当前返回裸数组，代码同时兼容 { items } 信封 —— 收紧成单一形状前先确认端点行为。
   本路由带 swr 60s 缓存，排名变动会滞后显示属预期，别为"立即生效"加客户端轮询；
   同步解构不加 await 是为避开 Suspense 水合 mismatch（全仓列表页同一约定）。
+  榜单周期 chip 是真实 <a href>（走 localeHrefWith，缺省档不挂 ?rank=）：SSR 页把视图切换
+  做成 <Button @click> 等于四个周期档在爬虫的链接图里不存在（批次 #127，AGENTS §2.3.3）。
 -->
 <template>
   <div class="container py-16">
@@ -25,24 +27,25 @@
       </div>
     </header>
 
-    <!-- 榜单口径切换：radiogroup 而非 Tab（内容随选择整块替换，键盘语义是单选）。
-         当前项渲染成 aria-checked 的实心按钮，其余是描边按钮。 -->
+    <!-- 榜单口径切换：内容随选择整块替换，缺省档（综合榜）不挂查询键。
+         必须是真实 <a href>（AGENTS §2.3.3 第 2 条）：这页是 SSR，做成 <Button @click>
+         时 ?rank=day/week/month/all 在爬虫读到的 HTML 里一条都不存在。
+         role 用 group 而不是 radiogroup：那套语义要求方向键切换，这里从未实现。 -->
     <div
-      role="radiogroup"
+      role="group"
       :aria-label="t('posts.rankAria')"
       class="flex flex-wrap gap-2 mb-8 -mt-2"
     >
-      <Button
+      <a
         v-for="opt in rankOptions"
         :key="opt.value"
-        :variant="period === opt.value ? 'default' : 'outline'"
-        size="sm"
-        role="radio"
-        :aria-checked="period === opt.value"
-        @click="setPeriod(opt.value)"
+        :href="periodHref(opt.value)"
+        :class="buttonVariants({ variant: period === opt.value ? 'default' : 'outline', size: 'sm' })"
+        :aria-current="period === opt.value ? 'true' : undefined"
+        @click.prevent="setPeriod(opt.value)"
       >
         {{ opt.label }}
-      </Button>
+      </a>
     </div>
 
     <template v-if="loading && posts.length === 0">
@@ -133,7 +136,7 @@ const { t } = useI18n()
 const site = useSite()
 const route = useRoute()
 const router = useRouter()
-const { localeHref } = useLocaleLink()
+const { localeHref, localeHrefWith } = useLocaleLink()
 
 // ===== SEO（useSeo composable）=====
 const hotTitle = computed(() => t('posts.hotTitle') || '热门榜单')
@@ -185,6 +188,12 @@ const RANK_LABEL_KEYS: Record<RankPeriod, string> = {
 const rankOptions = computed(() =>
   RANK_PERIODS.map(p => ({ value: p, label: String(t(RANK_LABEL_KEYS[p])) }))
 )
+
+// 周期 chip 是真实 <a href>（AGENTS §2.3.3 第 2 条）：这页 SSR 且带 swr 60，做成
+// <Button @click> 时 ?rank=day/week/month/all 在爬虫读到的 HTML 里一条都不存在。
+// 缺省档（hot）不挂查询键，与 setPeriod 写地址栏的口径一致。
+const periodHref = (p: RankPeriod) =>
+  localeHrefWith('/posts/hot', { rank: p === 'hot' ? '' : p })
 
 const setPeriod = (next: RankPeriod) => {
   if (period.value === next) return

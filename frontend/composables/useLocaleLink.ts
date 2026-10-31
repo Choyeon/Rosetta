@@ -21,5 +21,25 @@ export function useLocaleLink() {
   /** 中性路径（或已带前缀的路径）→ 当前语言的真实 href；外链/锚点原样透传 */
   const localeHref = (path: string) => applyLocalePrefix(path || '', locale.value)
 
-  return { localeHref }
+  /**
+   * 中性路径 + 查询对象 → 当前语言带查询串的真实 href（全空时不挂裸 `?`）。
+   * 视图切换 chip（排序 / 榜单周期 / 关键词）必须写成 `<a :href>` 才有 SSR 链接图，
+   * 而它们的地址正是"路径 + 一两个查询键"，所以这里给一个够用的最小构造口：
+   * 值为空串/undefined 的键直接不出现（`?sort=count` 这种"缺省也写出来"的形态
+   * 会把同一个视图分成两个 URL）。顺序按调用方给的对象键序，调用方按固定顺序拼。
+   */
+  const localeHrefWith = (
+    path: string,
+    query: Record<string, string | undefined | null>
+  ) => {
+    const search = new URLSearchParams()
+    for (const [key, value] of Object.entries(query)) {
+      if (value !== undefined && value !== null && value !== '') search.set(key, value)
+    }
+    const qs = search.toString()
+    const href = localeHref(path)
+    return qs ? `${href}?${qs}` : href
+  }
+
+  return { localeHref, localeHrefWith }
 }
