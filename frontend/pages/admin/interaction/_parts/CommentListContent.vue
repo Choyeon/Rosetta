@@ -1,5 +1,6 @@
 <!--
   评论/留言审核共用列表组件：isGuestbook prop 切换两套请求通道与文案；置顶/精华/回收站为留言专属，回复走文章评论接口故留言隐藏。
+  评论专属的 parent_ref / user_ref 投影只在评论通道渲染（留言板两套模型都没有这两个键）。
   契约：列表、分页、选择权全部由本组件持有（status prop 变化即重置页码并清空选择）；回收站移入/恢复没有单条 API，单条即长度为 1 的批量通道。
 -->
 <template>
@@ -201,6 +202,30 @@
                   >
                     {{ comment.author_email }}
                   </span>
+                  <!-- user_ref：登录账号的唯一标识。author_name 是昵称（可空、可重复），
+                       @username 才是能在用户管理里对上的那个人；这两档徽标让审核时一眼看出
+                       这条来自已停用的账号或本站成员。批次 #151 之前后端一直投影、前端零消费。 -->
+                  <span
+                    v-if="!isGuestbook && comment.user_ref"
+                    class="text-xs text-muted-foreground truncate max-w-[160px]"
+                    :title="`登录账号 @${comment.user_ref.username}`"
+                  >
+                    @{{ comment.user_ref.username }}
+                  </span>
+                  <Badge
+                    v-if="comment.user_ref && !comment.user_ref.is_active"
+                    variant="destructive"
+                    class="gap-1"
+                  >
+                    <UserRoundX class="size-3" />账号已停用
+                  </Badge>
+                  <Badge
+                    v-if="comment.user_ref?.is_staff"
+                    variant="outline"
+                    class="gap-1"
+                  >
+                    <ShieldCheck class="size-3" />本站成员
+                  </Badge>
                   <span class="text-xs text-muted-foreground">
                     {{ formatAdminDateTime(comment.created_at) }}
                   </span>
@@ -212,6 +237,23 @@
                   >
                     评论于：{{ comment.post_ref.title }}
                   </a>
+                  <!-- parent_ref：被回复的那条评论。列表只按 parent_id 缩进、父条常在别的页，
+                       没有这行管理员看不出这条回复的是谁（后端一直投影，批次 #151 前零消费）。 -->
+                  <span
+                    v-if="!isGuestbook && comment.parent_ref"
+                    class="text-xs text-muted-foreground truncate max-w-[180px]"
+                    :title="`回复 #${comment.parent_ref.id}`"
+                  >
+                    回复 @{{ comment.parent_ref.nickname || '匿名' }}
+                  </span>
+                  <!-- parent_ref：回复对象的昵称。列表只按 parent_id 缩进，被回复的那条常在
+                       另一页/已被筛掉，没有这行管理员看不出这条在回复谁。 -->
+                  <span
+                    v-if="!isGuestbook && comment.parent_ref"
+                    class="text-xs text-muted-foreground truncate max-w-[160px]"
+                  >
+                    回复 @{{ comment.parent_ref.nickname || '匿名' }}
+                  </span>
                 </div>
               </div>
               <div class="flex items-center gap-2 shrink-0">
@@ -463,7 +505,7 @@ import { Separator } from '~~/components/ui/separator'
 import { Label } from '~~/components/ui/label'
 import {
   Search, Check, X, Trash2, MoreVertical, Flag, ThumbsUp, Loader2, RotateCcw,
-  MessageCircle, Reply, Send, Info, Pin, Sparkles, AlertTriangle
+  MessageCircle, Reply, Send, Info, Pin, Sparkles, AlertTriangle, UserRoundX, ShieldCheck
 } from '@lucide/vue'
 import {
   fetchAdminComments,

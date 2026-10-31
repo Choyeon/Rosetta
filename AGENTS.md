@@ -869,6 +869,17 @@ pnpm test          # 全绿（108 个 spec 文件；1762 用例，2026-10-29 本
   `frontend/tests/unit/navigationDeadDiscriminators.spec.ts` 三处钉住（lib 不再属性访问、`NavApiRow` 不再声明、
   后端导航 schema 反向钉住不得新增），并断言拆除前后 `/page/<slug>`、纯 slug、`target_blank` 三类真实行为一致。
   新写一个"响应里可能有的字段"前先 grep 后端 schema，不要在前端补一条永远走不到的分支。
+- **反向的同罪：后端投影了、前端一个消费方都没有**：`GET/PATCH /api/admin/comments` 一直输出
+  `parent_ref`（被回复评论的 id + 昵称）与 `user_ref`（登录作者的完整 `UserResponse` 投影），
+  `CommentAdminItemDoc` 也照实声明，但审核列表既不渲染也不参与判定——于是昵称重复时管理员看不出
+  这条在回复谁、也看不出评论来自一个已停用的账号，而"改这个字段没人知道、删它也没人报警"。
+  批次 #151 给两者接上真实消费者（回复上下文行 + `@username` + 停用/成员两档徽标），type 只声明
+  模板真正读走的三个键（`username / is_active / is_staff`）——**把后端十几个键全抄进来就是下一份死清单**。
+  守卫 `frontend/tests/unit/commentAdminRefsWired.spec.ts` 双向对账：后端产出 ⇔ 文档模型声明 ⇔ 前端 type ⇔
+  模板渲染四段都要命中，且 `AdminCommentUserRef` 里每个键都必须被模板读走（新死声明直接红）、
+  模板从 `user_ref` / `parent_ref` 上读的每个子键都必须在文档模型里声明（新的恒假读直接红）。
+  另注意 `UserResponse` **没有** `is_banned`（那是 `User` 上的列，没进投影），要按封禁状态判读先得把字段补进
+  「写口 → 存储 → 响应模型 → 消费方」四段，不要在后台直接读一个响应里不存在的键。
 - **取数失败按段隔离**：多端点页面用 `Promise.all` + 每段自己的 `silentToast: true` 错误串，
   一段挂掉不清空整页读数（`apiFetch` 不静默就会与页内 banner 双报）。取数函数带泛型实参
   （`section<LatencyShape>(…)`）：不传时 `T` 推断成 `unknown`，赋给 typed ref 就是整排 TS2322。

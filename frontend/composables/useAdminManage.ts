@@ -260,6 +260,25 @@ export interface AdminCommentPostRef {
   title: string | null
 }
 
+/** 后端 CommentParentRefDoc：父评论摘要（顶级评论为 null）。 */
+export interface AdminCommentParentRef {
+  id: number
+  nickname: string | null
+}
+
+/**
+ * 后端 CommentUserRefDoc（= `UserResponse.model_dump()`）的登录作者投影。
+ *
+ * 这里**只声明本组件真实消费的三个键**：后端投影里还有 email / avatar / 时间戳等
+ * 十几个字段，把它们全抄进 type 等于在这里再造一份"声明了但没人读"的死清单
+ * （批次 #149/#150 拆的就是这种东西）。要读新键先找到消费方，再往这里加。
+ */
+export interface AdminCommentUserRef {
+  username: string
+  is_active: boolean
+  is_staff: boolean
+}
+
 /**
  * 审核列表的共用行形状：评论（Comment）与留言（GuestbookEntry）两套后端模型
  * 在列表 UI 上消费同一组字段，评论专属字段（post/parent/reply）为可选。
@@ -278,6 +297,10 @@ export interface AdminCommentRow {
   post_id?: number | null
   parent_id?: number | null
   post_ref?: AdminCommentPostRef | null
+  /** 评论专属：被回复的那条评论摘要，顶级评论与留言板为 null。 */
+  parent_ref?: AdminCommentParentRef | null
+  /** 评论专属：登录作者账号投影；游客/匿名评论为 null。 */
+  user_ref?: AdminCommentUserRef | null
   active?: boolean
   /** 两族都有列：留言走 toggle 路由，评论走 PATCH 的 is_pinned 位。精华仅留言。 */
   is_pinned?: boolean
