@@ -499,7 +499,8 @@ class TestFrontendHasARealControlPoint:
         block = block[: block.index("\n\n") if "\n\n" in block[:900] else len(block)]
         assert "commentsAPI.deleteComment(commentId)" in block
         assert "deletingCommentId.value = commentId" in block
-        assert "comments.value = comments.value.filter" in block
+        assert "comments.value = visibleComments.value.filter" in block
+        assert "commentsFromClient.value = true" in block
         assert "window.confirm" in block
         assert "toast.success" in block
         assert not any(token in block for token in ["toast.error", "toast.warning"]), (

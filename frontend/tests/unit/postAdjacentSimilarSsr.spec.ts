@@ -24,18 +24,18 @@ function fnBody(name: string): string {
 
 describe('文章页上下篇/相关推荐的 SSR 直出', () => {
   it('载荷类型把三块绑成一次取数', () => {
-    expect(src).toMatch(/interface PostDetailPayload \{ detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow\[\] \}/)
+    expect(src).toMatch(/interface PostDetailPayload \{ detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow\[\]/)
     expect(src).toMatch(/const EMPTY_ADJACENT: AdjacentPair = \{ previous: null, next: null \}/)
   })
 
   it('取数函数内部并行拉上下篇与推荐，失败各自降级为空', () => {
     const body = fnBody('fetchPostPayload')
-    expect(body).toContain('const [adjacent, similar] = await Promise.all([')
+    expect(body).toMatch(/const \[adjacent, similar[^\]]*\] = await Promise\.all\(\[/)
     expect(body).toContain('fetchAdjacent(),')
     expect(body).toContain('fetchSimilarPosts(pid)')
-    expect(body).toContain('return { detail, adjacent, similar }')
+    expect(body).toMatch(/return \{ detail, adjacent, similar/)
     // 没有 pid（详情还没出来 / 404）就不打推荐口
-    expect(body).toMatch(/pid === undefined \|\| pid === null \? Promise\.resolve\(\[\] as SimilarPostRow\[\]\)/)
+    expect(body).toMatch(/pid === undefined \|\| pid === null\s*\?\s*Promise\.resolve\(\[\] as SimilarPostRow\[\]\)/)
   })
 
   it('详情口只有一条请求路径（旧的第二份 $fetch 副本必须删净）', () => {
@@ -45,6 +45,16 @@ describe('文章页上下篇/相关推荐的 SSR 直出', () => {
 
   it('useAsyncData 用的就是那个具名函数，返回的是载荷', () => {
     expect(src).toMatch(/useAsyncData<PostDetailPayload>\(\s*\n?\s*cacheKey,\s*\n?\s*fetchPostPayload,/)
+  })
+
+  it('载荷内的装饰请求走 setup 期抓好的 baseURL（handler 里用封装＝SSR 拿到空 base 静默降级）', () => {
+    // 本仓未开 nitroAsyncContext：await 之后再 useRuntimeConfig() 取不到上下文，
+    // 封装内部 baseURL 为空 → guardServerBase 抛 → catch 吞成空值 → HTML 里一个链接都没有。
+    expect(src).toMatch(/async function payloadFetch<T>\(\s*\n *path: string,/)
+    expect(src).toMatch(/const baseURL = import\.meta\.server \? runtimeConfig\.apiBase : runtimeConfig\.public\.apiBase\s*\n *return await \$fetch<T>\(path, \{ baseURL, \.\.\.opts \}\)/)
+    expect(fnBody('fetchAdjacent')).toContain('payloadFetch')
+    expect(fnBody('fetchSimilarPosts')).toContain('payloadFetch')
+    expect(src).not.toMatch(/const raw = await silentApiFetch/)
   })
 
   it('消费面是 computed，不是「异步回调写 ref」', () => {

@@ -412,6 +412,8 @@ async def admin_approve(_staff: CurrentStaff, comment_id: int, db: DB):
         await db.commit()
         await bus.do_action("comment.approved", r, db=db)
         await invalidate_post_caches_by_ids(db, [r.post_id])
+        # 评论正文现在烘在文章页 SSR HTML 里：只清后端响应缓存，前台 SWR 窗口内访客仍看不到这条。
+        purge_frontend_page_cache("评论批准")
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
@@ -433,6 +435,8 @@ async def admin_reject(_staff: CurrentStaff, comment_id: int, db: DB):
         r = await CommentService.admin_reject(db, comment_id)
         await db.commit()
         await invalidate_post_caches_by_ids(db, [r.post_id])
+        # 下架后前台 HTML 里仍带着这条正文 = 审核动作在最坏窗口内不生效。
+        purge_frontend_page_cache("评论拒绝")
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e
@@ -455,6 +459,7 @@ async def admin_spam(_staff: CurrentStaff, comment_id: int, db: DB):
         await db.commit()
         await bus.do_action("comment.spam", r, db=db)
         await invalidate_post_caches_by_ids(db, [r.post_id])
+        purge_frontend_page_cache("评论标记垃圾")
     except ValueError as e:
         await db.rollback()
         raise _service_err_to_http(e) from e

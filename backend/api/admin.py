@@ -1166,6 +1166,9 @@ async def admin_update_comment(
     # status/active 一改动就改变文章的可见评论数。列表缓存读侧不重算 comments_count，
     # 不清就是最长 TTL 的旧计数；详情键一并失效保持两层快照一致。
     await invalidate_post_caches_by_ids(db, [comment.post_id])
+    # 评论正文与审核状态都烘在文章页的 SSR HTML 里（pages/posts/[slug].vue 的载荷），
+    # 改状态或改正文后不清前台页面缓存，访客与爬虫在整个 SWR 窗口内仍读到旧那一条。
+    purge_frontend_page_cache("评论审核状态/内容变更")
 
     # --- 2. 组装严格对齐 CommentResponse schema 的返回 ---
     user_data = None

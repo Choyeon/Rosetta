@@ -51,7 +51,7 @@ describe('密码文章评论区 · 解锁正文后线程必须跟着出来', () 
   })
 
   it('详情页两处评论读取调用都把已存密码传下去（一处漏了就还是空线程）', () => {
-    const calls = page.match(/fetchComments\(post\.value\.id, 1, 20, articleStoredPwd\.value\)/g) ?? []
+    const calls = page.match(/fetchComments\(post\.value\.id, 1, COMMENT_PAGE_SIZE, articleStoredPwd\.value\)/g) ?? []
     expect(calls.length).toBe(2)
     // 不允许残留"不带钥匙"的旧调用形态
     expect(page).not.toMatch(/fetchComments\(post\.value\.id\)/)

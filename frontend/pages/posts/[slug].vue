@@ -2,10 +2,12 @@
   文章详情（SSR）：刻意不用 useAPI / useFetch 封装，直接 useAsyncData + 确定性纯字符串 cacheKey
   （post:detail:<slug>:<locale>），handler 内按 import.meta.server 选 baseURL 并手动补 Bearer/Accept-Language，
   让两端精确命中同一条 payload，不依赖 headers / 函数 toString 这类会漂移的输入。
-  载荷 = 正文 + 上一篇/下一篇 + 相关推荐：后两块全是 <NuxtLink>，只在 onMounted 补取就等于
-  「文章→文章」这条站内链接图从不进 HTML，而文章页是站内被链最多的页面类型。
-  Hydrate 锚点：h1 无条件渲染 + 标题同步写入 useState(`post-detail-title:<slug>`)；onMounted 只刷评论/TOC，
-  禁止 refreshPost（客户端接管会 abort 仍在传输的 SSR 请求，表现为正文大的文章 ERR_ABORTED）。
+  载荷 = 正文 + 上一篇/下一篇 + 相关推荐 + 评论首页：中间两块全是 <NuxtLink>，评论是访客要读的正文，
+  只在 onMounted 补取就等于「文章→文章」的站内链接图与整段线程从不进 HTML，
+  而文章页是站内被链最多的页面类型。
+  Hydrate 锚点：h1 无条件渲染 + 标题同步写入 useState(`post-detail-title:<slug>`)；onMounted 仍刷一次评论
+  （登录态下的归属/反应字段只有客户端拿得到），但渲染源统一走 visibleComments，载荷那份先顶上，
+  不会出现「首屏是空评论骨架」。禁止 refreshPost（客户端接管会 abort 仍在传输的 SSR 请求，表现为正文大的文章 ERR_ABORTED）。
 -->
 
 <template>
@@ -704,7 +706,7 @@
             <section v-if="showCommentsSection">
               <h3 class="font-display text-2xl font-bold tracking-tight mt-12 mb-6 flex items-center gap-2">
                 <MessageSquare class="size-5 text-primary" />
-                {{ t('post.comments') }} ({{ comments.length }})
+                {{ t('post.comments') }} ({{ visibleComments.length }})
               </h3>
 
               <Card
@@ -862,16 +864,16 @@
               </Alert>
 
               <div class="flex flex-col gap-4">
-                <template v-if="loadingComments && comments.length === 0">
+                <template v-if="loadingComments && visibleComments.length === 0">
                   <Skeleton
                     v-for="i in 3"
                     :key="i"
                     class="h-[120px] rounded-xl"
                   />
                 </template>
-                <template v-else-if="comments.length > 0">
+                <template v-else-if="visibleComments.length > 0">
                   <CommentItem
-                    v-for="comment in comments"
+                    v-for="comment in visibleComments"
                     :key="comment.id"
                     :comment="comment"
                     :can-reply="canReply"
@@ -1248,6 +1250,12 @@ type PostComment = {
 }
 
 const comments = ref<PostComment[]>([])
+/**
+ * 客户端是否已经亲自拉过评论列表。拉过之前渲染的是正文载荷里那份（SSR 直出的匿名视角），
+ * 拉过之后以客户端为准——登录态下的归属/反应字段只有客户端拿得到。
+ * 模板统一读 visibleComments，不再直接读这个 ref。
+ */
+const commentsFromClient = ref(false)
 const loadingComments = ref(false)
 const commentsError = ref(false)
 const submittingComment = ref(false)
@@ -1298,14 +1306,17 @@ interface SimilarPostRow {
 interface AdjacentRef { slug: string, title: string }
 interface AdjacentPair { previous: AdjacentRef | null, next: AdjacentRef | null }
 /**
- * 详情载荷 = 正文 + 上下篇 + 相关推荐。三者同进一条 useAsyncData，是因为
- * 这两块全是 `<NuxtLink>`：只在 onMounted 里补取，SSR HTML 就一条链接都没有，
- * 而文章详情页是站内被链最多的页面类型——「文章 → 文章」这条链接图此前只存在于
- * 执行了 JS 的那一侧。放进同一次取数的载荷里，payload 会传给客户端，
- * hydration 首渲染读到的是同一份值（写成 ref + 异步赋值会在 renderToString 之后才落值）。
+ * 详情载荷 = 正文 + 上下篇 + 相关推荐 + 评论首页。四者同进一条 useAsyncData，是因为
+ * 它们全是访客要看的内容：只在 onMounted 里补取，SSR HTML 就没有一条评论、
+ * 也没有「文章 → 文章」的链接图——而文章详情页是站内被链最多的页面类型。
+ * payload 会传给客户端，hydration 首渲染读到的是同一份值
+ * （写成 ref + 异步赋值会在 renderToString 之后才落值）。
  */
-interface PostDetailPayload { detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow[] }
+interface PostDetailPayload { detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow[], comments: CommentRaw[] }
 const EMPTY_ADJACENT: AdjacentPair = { previous: null, next: null }
+const EMPTY_COMMENT_ROWS: CommentRaw[] = []
+/** 评论首屏条数：与客户端 loadCommentsForCurrentPost 用同一个数，两端才不会各切一段。 */
+const COMMENT_PAGE_SIZE = 20
 // 全局投票 MVP：Poll 未与 Post 关联，仅客户端挂载后拉一次激活中的投票；
 // 密码闸门未解锁时不拉，避免把 poll 露在闸门上方。
 const activePolls = ref<Poll[]>([])
@@ -1363,20 +1374,12 @@ async function handleToggleFavorite() {
 // 相似文章（辅助推荐，失败静默降级为空）——与上下篇、收藏状态互不依赖，三者并行发起。
 async function fetchSimilarPosts(pid: number | string): Promise<SimilarPostRow[]> {
   try {
-    const raw = await silentApiFetch<{ success: boolean, data?: SimilarPostRow[] }>(
+    // 公开口回裸数组（response_model=list[PostListItemLocalized]）
+    const raw = await payloadFetch<SimilarPostRow[]>(
       `/blog/posts/${pid}/similar`,
       { query: { lang: locale.value || 'zh', limit: 6 } }
     )
-    let list: SimilarPostRow[] = []
-    if (raw && typeof raw === 'object') {
-      const rawObj = raw as Record<string, unknown>
-      if (Array.isArray(rawObj.data)) {
-        list = rawObj.data as SimilarPostRow[]
-      } else if (Array.isArray(raw)) {
-        list = raw as unknown as SimilarPostRow[]
-      }
-    }
-    return list
+    return Array.isArray(raw) ? raw : []
   } catch {
     return []
   }
@@ -1385,7 +1388,7 @@ async function fetchSimilarPosts(pid: number | string): Promise<SimilarPostRow[]
 // 上一篇/下一篇（按当前 slug 查询，失败静默不渲染）
 async function fetchAdjacent(): Promise<{ previous: AdjacentRef | null, next: AdjacentRef | null }> {
   try {
-    const raw = await silentApiFetch<{ success: boolean, data?: { previous?: AdjacentRef | null, next?: AdjacentRef | null } }>(
+    const raw = await payloadFetch<{ success: boolean, data?: { previous?: AdjacentRef | null, next?: AdjacentRef | null } }>(
       `/blog/posts/${encodeURIComponent(postSlug.value)}/adjacent`,
       { query: { lang: locale.value || 'zh' } }
     )
@@ -1393,6 +1396,30 @@ async function fetchAdjacent(): Promise<{ previous: AdjacentRef | null, next: Ad
     return { previous: d?.previous ?? null, next: d?.next ?? null }
   } catch {
     return { previous: null, next: null }
+  }
+}
+
+// 评论首页（载荷用）：GET /blog/posts/{id}/comments，匿名可读，失败降级成空数组。
+// SSR 期没有 sessionStorage，密码带不上 → 锁着的正文那侧后端按「还没解锁」回空列表，
+// 这正是想要的形态：闸门页不会先把评论正文烘进公开 HTML。
+async function fetchCommentRows(pid: number | string): Promise<CommentRaw[]> {
+  try {
+    const headers: Record<string, string> = {}
+    if (articleStoredPwd.value && !import.meta.server) {
+      headers['X-Post-Password'] = articleStoredPwd.value
+    }
+    // 后端这一口是裸数组（response_model=list[CommentResponse]），分页/语言参数与
+    // useComments.fetchComments 同形发送，保持两处请求可互相替换。
+    const raw = await payloadFetch<CommentRaw[]>(
+      `/blog/posts/${pid}/comments`,
+      {
+        query: { page: 1, page_size: COMMENT_PAGE_SIZE, lang: postFetchLocaleStr.value },
+        headers
+      }
+    )
+    return Array.isArray(raw) ? raw : EMPTY_COMMENT_ROWS
+  } catch {
+    return EMPTY_COMMENT_ROWS
   }
 }
 
@@ -1487,6 +1514,23 @@ const cacheKey = `post:detail:${postSlug.value || ''}:${postFetchLocaleStr.value
 const runtimeConfig = useRuntimeConfig()
 
 /**
+ * 载荷内三个装饰请求（上下篇 / 相关推荐 / 评论首页）的取数口。
+ *
+ * 必须是这个形态，不能在 handler 里调 silentApiFetch：本仓未开 nitroAsyncContext，
+ * useAsyncData handler 里第一个 await 之后再 useRuntimeConfig() 就取不到上下文，
+ * 封装内部拿到的是空 baseURL → guardServerBase 抛错 → 三个 catch 把它吞成空值。
+ * 线上实测（批次 #132 首版）：正文直出了，上下篇/相关推荐在爬虫 HTML 里一条都没有。
+ * 所以和正文一样，用 setup 期抓好的 runtimeConfig 直接 $fetch。
+ */
+async function payloadFetch<T>(
+  path: string,
+  opts: { query?: Record<string, unknown>, headers?: Record<string, string> }
+): Promise<T> {
+  const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
+  return await $fetch<T>(path, { baseURL, ...opts })
+}
+
+/**
  * 正文 + 上下篇 + 相关推荐的一次取数。
  * SSR 首帧（useAsyncData handler）与「本地存有旧密码」的客户端补取共用这一条：
  * 后者刻意不调 refreshPost——历史上客户端接管会 abort 仍在传输的 SSR 请求
@@ -1514,14 +1558,19 @@ async function fetchPostPayload(): Promise<PostDetailPayload> {
   const detail = (raw && typeof raw === 'object' && 'data' in raw)
     ? raw.data
     : raw as unknown as PostDetail
-  // 上下篇与相关推荐跟着正文一起取（理由见 PostDetailPayload 的注释）。两个请求互不依赖，
+  // 上下篇、相关推荐、评论首页跟着正文一起取（理由见 PostDetailPayload 的注释）。三个请求互不依赖，
   // 并行发起；各自的 catch 已经把失败降级成空值——装饰性区块，不能把正文页拖成错误态。
   const pid = (detail as unknown as { id?: number | string } | null)?.id
-  const [adjacent, similar] = await Promise.all([
+  const [adjacent, similar, commentRows] = await Promise.all([
     fetchAdjacent(),
-    pid === undefined || pid === null ? Promise.resolve([] as SimilarPostRow[]) : fetchSimilarPosts(pid)
+    pid === undefined || pid === null
+      ? Promise.resolve([] as SimilarPostRow[])
+      : fetchSimilarPosts(pid),
+    pid === undefined || pid === null
+      ? Promise.resolve(EMPTY_COMMENT_ROWS)
+      : fetchCommentRows(pid)
   ])
-  return { detail, adjacent, similar }
+  return { detail, adjacent, similar, comments: commentRows }
 }
 
 const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
@@ -2181,7 +2230,20 @@ const normalizeComment = (raw: CommentRaw): PostComment => {
   }
 }
 
-// 首屏由 SSR + payload 注入文章详情；这里只刷新评论。
+/**
+ * 载荷里那份评论首屏（SSR 期 = 匿名视角）：正文页 HTML 因此带着真实线程，
+ * 而不是「暂无评论」的骨架——评论正文与作者名同样是爬虫要读到的内容。
+ * 密码锁着的文章后端回空数组，所以闸门页不会把评论（常引用正文）先漏出去。
+ */
+const payloadComments = computed<PostComment[]>(() =>
+  (postData.value?.comments ?? EMPTY_COMMENT_ROWS).map(normalizeComment)
+)
+/** 页面实际渲染的评论列表：客户端拉过（或增删过）用它，否则用载荷直出的那份。 */
+const visibleComments = computed<PostComment[]>(() =>
+  commentsFromClient.value ? comments.value : payloadComments.value
+)
+
+// 首屏由 SSR + payload 注入文章详情与评论；客户端这里刷新评论（登录态字段只有客户端拿得到）。
 // 注意：不要在 onMounted 里 refresh() 文章本身——客户端接管时会取消 SSR 发起的、仍在传输中的请求，
 // 浏览器 Network 面板里就会看到 net::ERR_ABORTED（尤其是正文较大的中/长文）。
 /**
@@ -2208,16 +2270,22 @@ async function recordReadHistory() {
   }
 }
 
+/** 一次评论拉取的结果落成"客户端视角"的列表（两处调用点共用：进页刷新 / 提交后刷新）。 */
+const applyClientComments = (rows: CommentRaw[]) => {
+  comments.value = rows.map(normalizeComment)
+  commentsFromClient.value = true
+}
+
 const loadCommentsForCurrentPost = async () => {
   if (!import.meta.client) return
   loadingComments.value = true
   commentsError.value = false
   try {
     if (post.value?.id && commentsAPI.fetchComments) {
-      await commentsAPI.fetchComments(post.value.id, 1, 20, articleStoredPwd.value)
-      comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
+      await commentsAPI.fetchComments(post.value.id, 1, COMMENT_PAGE_SIZE, articleStoredPwd.value)
+      applyClientComments((commentsAPI.comments?.value || []) as unknown as CommentRaw[])
     } else {
-      comments.value = []
+      applyClientComments([])
     }
   } catch (e) {
     console.warn('[post detail] comments fetch error:', e)
@@ -2393,8 +2461,8 @@ const handleSubmitComment = async () => {
       ? 'post.commentPending'
       : 'post.commentSubmitted')))
     if (commentsAPI.fetchComments) {
-      await commentsAPI.fetchComments(post.value.id, 1, 20, articleStoredPwd.value)
-      comments.value = ((commentsAPI.comments?.value || []) as unknown as CommentRaw[]).map(normalizeComment)
+      await commentsAPI.fetchComments(post.value.id, 1, COMMENT_PAGE_SIZE, articleStoredPwd.value)
+      applyClientComments((commentsAPI.comments?.value || []) as unknown as CommentRaw[])
     }
   } catch (err: unknown) {
     const e = (err ?? {}) as Record<string, unknown>
@@ -2443,7 +2511,10 @@ const handleDeleteComment = async (commentId: number | string) => {
   deletingCommentId.value = commentId
   try {
     await commentsAPI.deleteComment(commentId)
-    comments.value = comments.value.filter(item => String(item.id) !== String(commentId))
+    // 从"当前看得到的那份"里摘掉：载荷直出时 comments ref 还是空的，
+    // 直接 filter(comments) 会把整条评论列表清成空白，所以要先取 visibleComments 再切到客户端源。
+    comments.value = visibleComments.value.filter(item => String(item.id) !== String(commentId))
+    commentsFromClient.value = true
     if (String(replyingTo.value ?? '') === String(commentId)) replyingTo.value = null
     toast.success(t('comment.deleted'))
   } catch {
@@ -2456,7 +2527,7 @@ const handleDeleteComment = async (commentId: number | string) => {
 // 回复横幅：显示被回复评论者昵称；X / 提交成功后清除 replyingTo
 const replyTargetName = computed(() => {
   if (replyingTo.value === null) return ''
-  const target = comments.value.find(c => String(c.id) === String(replyingTo.value))
+  const target = visibleComments.value.find(c => String(c.id) === String(replyingTo.value))
   return String(target?.author?.name ?? '')
 })
 const cancelReply = () => {
