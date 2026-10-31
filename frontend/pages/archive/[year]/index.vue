@@ -150,6 +150,7 @@
                 </NuxtLink>
               </div>
               <div class="ml-3 flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
+                <PostMediaFlags :post="post" />
                 <span
                   v-if="categoryOf(post)"
                   class="hidden items-center gap-1 sm:inline-flex"
@@ -175,6 +176,7 @@ import { ArrowLeft, CalendarDays, Eye, FolderOpen, RefreshCw } from '@lucide/vue
 import { Badge } from '~~/components/ui/badge'
 import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
@@ -190,6 +192,10 @@ interface ArchivePostItem {
   created_at?: string | null
   published_at?: string | null
   views?: number
+  // 存在性三位（批次 #120 口径）：归档投影带出，缺键按「没有徽标」处理。
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
   category?: { id?: number | string, name?: string | Record<string, string>, slug?: string }
 }
 interface ArchiveMonthGroup {

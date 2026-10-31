@@ -34,6 +34,11 @@ class ArchivePostItem(BaseModel):
     )
     category: ArchivePostCategory | None = Field(None, description="所属分类，未归类时为 null")
     views: int = Field(0, description="累计浏览量")
+    # 存在性三位（批次 #120 口径）：只说"有没有"，不带地址。归档页把这三键交给
+    # 同一个 PostMediaFlags 组件；一律给默认值——归档响应进缓存，TTL 内的旧载荷没这三键。
+    has_audio: bool = Field(False, description="是否带站内音频")
+    has_video: bool = Field(False, description="是否带站内视频")
+    has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
 
 
 class ArchiveMonthGroup(BaseModel):

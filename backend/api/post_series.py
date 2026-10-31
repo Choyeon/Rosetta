@@ -30,7 +30,7 @@ from backend.schemas.post_series import (
     PostSeriesUpdate,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
-from backend.services.post_access import publicly_listable_posts
+from backend.services.post_access import media_flags, publicly_listable_posts
 from backend.services.post_cache import invalidate_series_chapter_caches
 from backend.utils.i18n_query import i18n_contains
 
@@ -44,7 +44,7 @@ router = APIRouter(tags=["文章系列"])
 
 
 class SeriesPostItemDoc(BaseModel):
-    """系列详情页文章列表的单条投影（列级 select，只取渲染所需的 7 个字段）。"""
+    """系列详情页文章列表的单条投影（列级 select，只取渲染所需的列）。"""
 
     id: int = Field(..., description="文章 ID")
     title: dict[str, str] = Field(
@@ -59,6 +59,11 @@ class SeriesPostItemDoc(BaseModel):
     published_at: datetime | None = Field(
         None, description="发布时间，尚未发布（草稿入镜等历史态）时为 null"
     )
+    # 存在性三位（批次 #120 口径）：只说"有没有"，不带地址；目录行据此挂徽标。
+    # 给默认值：本响应进缓存，TTL 内的旧载荷没这三键，必填等于让读口整口 500。
+    has_audio: bool = Field(False, description="是否带站内音频")
+    has_video: bool = Field(False, description="是否带站内视频")
+    has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
 
 
 class SeriesDetailDoc(BaseModel):
@@ -162,7 +167,8 @@ async def get_series(slug: str, db: DB):
         )
 
     # 只投影系列页真正渲染的列。`select(Post)` 会把每篇文章的正文与 excerpt 一并读进
-    # 内存——一个 200 篇的系列就是几百 KB 到几 MB 的无效 IO，而响应用到的只有下面 7 个字段。
+    # 内存——一个 200 篇的系列就是几百 KB 到几 MB 的无效 IO，而响应用到的只有下面这几列。
+    # 三个媒体列只用于产出存在性三位，地址不进目录载荷（口径同批次 #120）。
     posts_result = await db.execute(
         select(
             Post.id,
@@ -172,6 +178,9 @@ async def get_series(slug: str, db: DB):
             Post.series_order,
             Post.views,
             Post.published_at,
+            Post.audio,
+            Post.video,
+            Post.video_url,
         )
         .where(
             Post.series_id == series.id,
@@ -200,6 +209,7 @@ async def get_series(slug: str, db: DB):
                 "series_order": r.series_order,
                 "views": r.views,
                 "published_at": r.published_at,
+                **media_flags(audio=r.audio, video=r.video, video_url=r.video_url),
             }
             for r in rows
         ],

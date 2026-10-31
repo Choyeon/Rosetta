@@ -19,7 +19,7 @@ from backend.core.concurrency import concurrent_query
 from backend.core.i18n import get_i18n_value
 from backend.models.blog import Category, Comment, Post, Tag, post_likes
 from backend.repositories.base import BaseRepository, PaginationResult
-from backend.services.post_access import publicly_listable_posts
+from backend.services.post_access import media_flags, publicly_listable_posts
 
 # ==================== 归档的 UTC 边界 ====================
 # `extract("year"/"month", Post.published_at)` 不能用：它按**数据库会话时区**求值，
@@ -765,6 +765,9 @@ class PostRepository(BaseRepository[Post]):
                 Post.created_at,
                 Post.published_at,
                 Post.views,
+                Post.audio,
+                Post.video,
+                Post.video_url,
                 Category.id,
                 Category.name,
                 Category.color,
@@ -787,6 +790,9 @@ class PostRepository(BaseRepository[Post]):
             created_at,
             published_at,
             views,
+            audio,
+            video,
+            video_url,
             category_id,
             category_name_i18n,
             category_color,
@@ -827,6 +833,9 @@ class PostRepository(BaseRepository[Post]):
                         "published_at": (published_at or created_at).isoformat(),
                         "category": category_data,
                         "views": views,
+                        # 归档行也要能显示「这篇带音频/视频」：这三列在 select 里点名取，
+                        # 键名与取值单源是 services/post_access.py::media_flags。
+                        **media_flags(audio=audio, video=video, video_url=video_url),
                     }
                 )
 

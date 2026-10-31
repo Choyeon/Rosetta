@@ -16,11 +16,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import defer
 
-from backend.api.blog import _media_flags
 from backend.core.auth import DB
 from backend.core.cache import cache, make_cache_key
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes
-from backend.services.post_access import publicly_listable_posts
+from backend.services.post_access import post_media_flags, publicly_listable_posts
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["热门排行"])
@@ -221,7 +220,7 @@ async def get_hot_posts(
                 "score": score,
                 "published_at": p.published_at.isoformat() if p.published_at else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
-                **_media_flags(p),
+                **post_media_flags(p),
             }
         )
 

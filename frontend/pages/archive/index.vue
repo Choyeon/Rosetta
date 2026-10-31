@@ -121,6 +121,7 @@
               </NuxtLink>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3 text-xs text-muted-foreground">
+              <PostMediaFlags :post="post" />
               <span
                 v-if="getCategoryName(post)"
                 class="hidden sm:inline-flex items-center gap-1"
@@ -156,6 +157,7 @@
 import { Badge } from '~~/components/ui/badge'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
 import { useI18n } from 'vue-i18n'
 import { CalendarDays, Eye, FolderOpen } from '@lucide/vue'
 
@@ -193,6 +195,10 @@ interface PostItem {
   created_at?: string
   views?: number
   views_count?: number
+  // 存在性三位（批次 #120 口径）：归档投影带出这三个键，缺键按「没有徽标」处理。
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
   category?: { id: number | string, name?: string | Record<string, string>, slug: string }
 }
 interface ArchiveGroupItem {

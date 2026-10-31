@@ -28,7 +28,21 @@ from backend.utils.compat import utc_now_naive
 SERIES = "/api/series"
 BLOG = "/api/blog"
 
-CHAPTER_KEYS = {"id", "title", "slug", "cover_image", "series_order", "views", "published_at"}
+# 批次 #122 起，章节行还产出媒体存在性三位（`has_audio` / `has_video` / `has_embed`）——
+# 系列目录用同一个 `PostMediaFlags` 组件亮徽标，所以这三键是"页面真正渲染的列"。
+# 注意进来的只是三位布尔：三个媒体列在 select 里点名取，但地址不进目录载荷。
+CHAPTER_KEYS = {
+    "id",
+    "title",
+    "slug",
+    "cover_image",
+    "series_order",
+    "views",
+    "published_at",
+    "has_audio",
+    "has_video",
+    "has_embed",
+}
 
 
 def _unwrap(body):

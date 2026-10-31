@@ -56,6 +56,7 @@ from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import (
     post_content_unlocked,
     post_is_publicly_visible,
+    post_media_flags,
     private_posts_excluded,
     publicly_listable_posts,
 )
@@ -439,22 +440,6 @@ def _build_author_data(author: User | None) -> dict | None:
     }
 
 
-def _media_flags(post: Post) -> dict[str, bool]:
-    """列表项的「带不带音频/视频/嵌入」三位（批次 #120）。
-
-    四个手写构造点共用这一个函数：每处各写一遍字段清单，正是批次 #118 里"创建口漏三列"
-    的同一族错法。`PostListItemLocalized.from_post` 是同类的第五个构造点，但当前无调用方，
-    所以不在这里重复；它靠模型默认值拿 False，由 tests/test_post_media_list_flags.py 钉住
-    "每个真实列表口都带 True"而不是"每处代码都写了这三个键"。
-    只带存在性，不带地址：地址仍只有详情口回。
-    """
-    return {
-        "has_audio": bool(post.audio),
-        "has_video": bool(post.video),
-        "has_embed": bool(post.video_url),
-    }
-
-
 async def _build_post_list_item_from_row(
     row: tuple,
     language: str,
@@ -496,7 +481,7 @@ async def _build_post_list_item_from_row(
         published_at=post.published_at,
         updated_at=post.updated_at,
         reading_time=post.reading_time or 1,
-        **_media_flags(post),
+        **post_media_flags(post),
     )
 
 
@@ -929,7 +914,7 @@ async def get_recommended_posts(
                 published_at=post.published_at,
                 updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
-                **_media_flags(post),
+                **post_media_flags(post),
             )
         )
 
@@ -1011,7 +996,7 @@ async def get_similar_posts(
                 published_at=post.published_at,
                 updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
-                **_media_flags(post),
+                **post_media_flags(post),
             )
         )
 
@@ -1085,7 +1070,7 @@ async def list_hot_posts(
                 published_at=post.published_at,
                 updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
-                **_media_flags(post),
+                **post_media_flags(post),
             )
         )
     return items
@@ -2745,6 +2730,7 @@ async def get_archive_by_year(
                 else None,
                 "category": category_data,
                 "views": post.views,
+                **post_media_flags(post),
             }
         )
 
@@ -2850,6 +2836,7 @@ async def get_archive_by_month(
                 else None,
                 "category": category_data,
                 "views": post.views,
+                **post_media_flags(post),
             }
         )
 

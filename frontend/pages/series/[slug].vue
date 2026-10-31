@@ -179,6 +179,7 @@
                         <Eye class="size-3" />
                         {{ p.views }}
                       </span>
+                      <PostMediaFlags :post="p" />
                     </div>
                   </div>
                   <ArrowUpRight class="size-4 text-muted-foreground/60 shrink-0 mt-2 group-hover:text-primary group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" />
@@ -208,6 +209,7 @@ import { Alert, AlertDescription } from '~~/components/ui/alert'
 import { Button } from '~~/components/ui/button'
 import { AlertCircle, ArrowUpRight, CalendarDays, Eye, ListOrdered, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 
 definePageMeta({ layout: 'default' })
@@ -225,6 +227,10 @@ interface SeriesPostRow {
   series_order?: number | null
   views?: number
   published_at?: string | null
+  // 存在性三位（批次 #120 口径）：目录投影带出，缺键按「没有徽标」处理。
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
 }
 interface SeriesDetail {
   id: number | string

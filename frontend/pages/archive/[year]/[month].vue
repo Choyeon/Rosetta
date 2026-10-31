@@ -114,6 +114,7 @@
                 v-if="categoryOf(post)"
                 class="hidden sm:inline"
               >{{ categoryOf(post) }}</span>
+              <PostMediaFlags :post="post" />
               <span class="inline-flex items-center gap-1">
                 <Eye class="size-3.5" />
                 {{ post.views ?? 0 }}
@@ -160,6 +161,7 @@ import { ArrowLeft, CalendarDays, ChevronLeft, ChevronRight, Eye, RefreshCw } fr
 import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { toBcp47Locale } from '~~/composables/useSeo'
@@ -173,6 +175,10 @@ interface ArchivePostItem {
   created_at?: string | null
   published_at?: string | null
   views?: number
+  // 存在性三位（批次 #120 口径）：归档投影带出，缺键按「没有徽标」处理。
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
   category?: { name?: string | Record<string, string> }
 }
 interface ArchiveMonthPage {

@@ -14,6 +14,11 @@
    status/密码都合规时才会分叉，所以私密档必须单独有一条判据，而集合口（列表 / RSS /
    sitemap / 归档 / 热榜 / 系列 / 推荐）要有能进 SQL 的谓词形态。
 
+本模块还兼管**列表面的媒体三位**（``media_flags`` / ``post_media_flags``）的唯一产出点：
+归档那一族走列投影（不实例化 Post）、热榜与推荐走 ORM 行，两边都要产出同一组键，
+所以这个 helper 放在两边都能导入的底层，而不是某个 api 模块里（repository 反向 import
+api 会成环）。
+
 与文章详情端点的差异是刻意的：详情口对加密文章返回 200 并置
 ``is_password_protected=true``、正文留空，由客户端出解锁界面；派生资源没有"部分可见"
 这种形态，只能整体给或不给。
@@ -46,6 +51,34 @@ def _ensure_aware(value: datetime | None) -> datetime | None:
 def is_private_post(post: Post) -> bool:
     """对象级私密判定；NULL/空串按 public 处理（迁移 0482c6771d47 之前留下的行）。"""
     return (getattr(post, "visibility", None) or "public") == PRIVATE_VISIBILITY
+
+
+def media_flags(*, audio, video, video_url) -> dict[str, bool]:
+    """
+    列表面的「带不带音频 / 视频 / 嵌入」三位：键名与取值的唯一产出点。
+
+    只带存在性，**不带地址**——列表载荷被更多缓存键位与更多消费方复用，带上路径等于把
+    媒体文件名摊开；地址仍只有详情口回。三个键在响应模型里一律给默认值 `False`
+    （载荷进响应缓存，新增**必填**字段等于让 TTL 内的旧载荷整口 500）。
+
+    取值按参数而不是按 ORM 实例：`/blog/archive` 那一族走的是列投影（不实例化 Post），
+    而热榜/推荐/相似走 ORM 行——两处都要产出同一组键，就不能只有一种入口。
+    """
+    return {
+        "has_audio": bool(audio),
+        "has_video": bool(video),
+        "has_embed": bool(video_url),
+    }
+
+
+def post_media_flags(post: Post) -> dict[str, bool]:
+    """ORM 行形态的便捷入口（列投影用 ``media_flags``）。
+
+    每处各写一遍字段清单，正是批次 #118"创建口漏三列"的同一族错法，所以四个手写
+    ``PostListItemLocalized`` 构造点、榜单口与归档口都走这里。``PostListItemLocalized.from_post``
+    是同类的第五个构造点，但当前无调用方，靠模型默认值拿 False。
+    """
+    return media_flags(audio=post.audio, video=post.video, video_url=post.video_url)
 
 
 def private_posts_excluded() -> ColumnElement[bool]:
