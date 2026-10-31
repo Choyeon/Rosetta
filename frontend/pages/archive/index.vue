@@ -121,6 +121,7 @@
               </NuxtLink>
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3 text-xs text-muted-foreground">
+              <PostLockBadge :post="post" />
               <PostMediaFlags :post="post" />
               <PostReadingTime :post="post" />
               <span
@@ -159,6 +160,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostLockBadge from '~~/components/PostLockBadge.vue'
 import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { useI18n } from 'vue-i18n'
 import { CalendarDays, Eye, FolderOpen } from '@lucide/vue'
@@ -203,6 +205,8 @@ interface PostItem {
   has_embed?: boolean
   // 预计阅读分钟数（批次 #138）：读后端持久化列，缺键按「不显示」处理。
   reading_time?: number | null
+  // 这篇是否需要访问密码（批次 #139）：只带存在性，密码哈希从不进列表载荷。
+  is_password_protected?: boolean | null
   category?: { id: number | string, name?: string | Record<string, string>, slug: string }
 }
 interface ArchiveGroupItem {

@@ -19,7 +19,11 @@ from sqlalchemy.orm import defer
 from backend.core.auth import DB
 from backend.core.cache import cache, make_cache_key
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes
-from backend.services.post_access import post_media_flags, publicly_listable_posts
+from backend.services.post_access import (
+    post_access_flags,
+    post_media_flags,
+    publicly_listable_posts,
+)
 from backend.utils.compat import UTC
 
 router = APIRouter(tags=["热门排行"])
@@ -67,6 +71,7 @@ class HotPostItemDoc(BaseModel):
     # 预计阅读分钟数（批次 #137）：持久化列，卡片与详情页共用同一个数。
     # 这条口漏一个键就是"综合榜有分钟数、日/周/月/总四个页签整排没有"（同批 #121 媒体徽标）。
     reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
+    is_password_protected: bool = Field(False, description="是否需要访问密码（不输出密码本身）")
 
 
 class HotPostsRankingResponseDoc(BaseModel):
@@ -225,6 +230,7 @@ async def get_hot_posts(
                 "created_at": p.created_at.isoformat() if p.created_at else None,
                 **post_media_flags(p),
                 "reading_time": p.reading_time or 1,
+                **post_access_flags(p),
             }
         )
 

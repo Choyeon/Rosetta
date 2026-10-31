@@ -215,6 +215,8 @@ interface RankingRow {
   has_video?: boolean
   has_embed?: boolean
   reading_time?: number | null
+  // 这篇是否需要访问密码（批次 #139）：只带存在性，密码哈希从不进列表载荷。
+  is_password_protected?: boolean | null
 }
 
 const {
@@ -263,7 +265,8 @@ const posts = computed<Post[]>(() => {
     has_video: row.has_video ?? false,
     has_embed: row.has_embed ?? false,
     // 分钟数同批透传：后端按持久化列下发，缺键（60s 内的旧缓存载荷）时不显示 chip
-    reading_time: row.reading_time ?? null
+    reading_time: row.reading_time ?? null,
+    is_password_protected: row.is_password_protected ?? null
   }) as unknown as Post)
 })
 </script>

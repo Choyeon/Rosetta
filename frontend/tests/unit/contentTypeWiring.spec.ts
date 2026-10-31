@@ -219,7 +219,10 @@ describe('内容类型：列表可见性（默认全部类型 + ?post_type= 显�
     // 只截这个类自己的类体：`post_type: str = "post"` 在同文件里是合法形态（详情响应模型），
     // 全文正则会把别的类一起读进来，判成"给了默认值"或反过来被后来新增的类糊过去
     const body = classBody(schemasPy, 'PostListItemLocalized')
-    expect(body).toMatch(/\n {4}post_type: str\n/)
+    // `\r?\n` 而不是 `\n`：Windows 签出（core.autocrlf）下源码文本是 CRLF，
+    // 写成裸 `\n` 会让这条断言只在某种行尾的机器上过——它判的是"模型体里这一行没有默认值"，
+    // 与仓库检出时的换行符无关。
+    expect(body).toMatch(/\r?\n {4}post_type: str\r?\n/)
     // 带默认值时漏传的那一处不会报错，只会一直显示"标准文章"
     expect(body).not.toMatch(/post_type: str = /)
     const projections = blogPy.match(/post_type=post\.post_type or "post",/g) ?? []

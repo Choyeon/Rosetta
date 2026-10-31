@@ -55,6 +55,7 @@ from backend.services.content_type_service import resolve_post_type_and_meta
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.post_access import (
     media_presence_filter,
+    post_access_flags,
     post_content_unlocked,
     post_is_publicly_visible,
     post_media_flags,
@@ -522,6 +523,7 @@ async def _build_post_list_item_from_row(
         updated_at=post.updated_at,
         reading_time=post.reading_time or 1,
         **post_media_flags(post),
+        **post_access_flags(post),
     )
 
 
@@ -580,6 +582,7 @@ async def _build_post_list_item(
         "created_at": post.created_at,
         "published_at": post.published_at,
         "reading_time": post.reading_time or 1,
+        **post_access_flags(post),
     }
 
 
@@ -970,6 +973,7 @@ async def get_recommended_posts(
                 updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
                 **post_media_flags(post),
+                **post_access_flags(post),
             )
         )
 
@@ -1052,6 +1056,7 @@ async def get_similar_posts(
                 updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
                 **post_media_flags(post),
+                **post_access_flags(post),
             )
         )
 
@@ -1126,6 +1131,7 @@ async def list_hot_posts(
                 updated_at=post.updated_at,
                 reading_time=post.reading_time or 1,
                 **post_media_flags(post),
+                **post_access_flags(post),
             )
         )
     return items
@@ -2789,6 +2795,7 @@ async def get_archive_by_year(
                 # 批次 #138：归档与列表/详情读同一个持久化列，漏这键的表现是
                 # "列表卡片有分钟数、归档那一列整排没有"（同族构造点漏写）。
                 "reading_time": post.reading_time or 1,
+                **post_access_flags(post),
             }
         )
 
@@ -2898,6 +2905,7 @@ async def get_archive_by_month(
                 # 批次 #138：归档与列表/详情读同一个持久化列，漏这键的表现是
                 # "列表卡片有分钟数、归档那一列整排没有"（同族构造点漏写）。
                 "reading_time": post.reading_time or 1,
+                **post_access_flags(post),
             }
         )
 

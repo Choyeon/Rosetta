@@ -107,6 +107,7 @@
             v-if="publishedAt"
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
+          <PostLockBadge :post="post" />
           <PostMediaFlags :post="post" />
           <PostReadingTime :post="post" />
         </div>
@@ -213,6 +214,7 @@
             v-if="publishedAt"
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
+          <PostLockBadge :post="post" />
           <PostMediaFlags :post="post" />
           <PostReadingTime :post="post" />
         </div>
@@ -338,6 +340,7 @@
           v-if="publishedAt"
           class="shrink-0 tabular-nums"
         >{{ formatDate(publishedAt) }}</span>
+        <PostLockBadge :post="post" />
         <PostMediaFlags :post="post" />
         <PostReadingTime :post="post" />
       </div>
@@ -368,6 +371,7 @@ import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostLockBadge from '~~/components/PostLockBadge.vue'
 import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
@@ -435,6 +439,8 @@ interface Props {
     has_embed?: boolean
     /** 预计阅读分钟数（批次 #136）：后端持久化列，列表与详情共用同一个数。 */
     reading_time?: number | null
+    /** 这篇是否需要访问密码（批次 #139）：只带存在性，密码哈希从不进列表载荷。 */
+    is_password_protected?: boolean | null
   }
   variant?: PostCardVariant
   /** 命中关键词（搜索结果页传入）：标题与摘要里的命中片段包成 <mark>；空串＝不高亮。 */

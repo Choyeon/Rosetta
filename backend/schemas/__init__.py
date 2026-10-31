@@ -1405,6 +1405,10 @@ class PostListItemLocalized(BaseModel):
     has_audio: bool = False
     has_video: bool = False
     has_embed: bool = False
+    # 这篇是否需要访问密码（批次 #139）：详情口的闸门在 SSR 首帧之后才出现，列表卡片
+    # 此前一个信号都没有——读者的体验是"卡片写着预计 4 分钟，点进去要密码"。
+    # 只带存在性，哈希从不进列表载荷；默认值口径同上（旧缓存载荷缺键不得整口 500）。
+    is_password_protected: bool = False
 
     @classmethod
     def from_post(cls, post, lang: str = "zh", comments_count: int = 0) -> "PostListItemLocalized":
@@ -1439,6 +1443,7 @@ class PostListItemLocalized(BaseModel):
             published_at=post.published_at,
             updated_at=getattr(post, "updated_at", None),
             reading_time=1,
+            is_password_protected=bool(post.password),
         )
 
 

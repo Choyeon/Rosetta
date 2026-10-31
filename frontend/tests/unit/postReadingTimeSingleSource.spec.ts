@@ -1,5 +1,5 @@
 /**
- * 「预计阅读 N 分钟」的单源契约（批次 #136 / #137 / #138）。
+ * 「预计阅读 N 分钟」的单源契约（批次 #136 / #137 / #138 / #139）。
  *
  * 分钟数只有一个真源：`Post.reading_time` 持久化列（写入侧 `utils/reading_time.py` 算好）。
  * 这组断言各挡一次"两处数字打架"：
@@ -59,9 +59,17 @@ describe('详情页侧（posts/[slug]）', () => {
     expect(detail).toContain('Number(post.value?.reading_time)')
   })
 
-  it('两个渲染点都按「有值才显示」收：锁定文章不报分钟数', () => {
+  it('两个渲染点都按「有值才显示」收，且密码稿不再被单独收起（批次 #139）', () => {
     expect((detail.match(/showReadingTime && readingTime !== null/g) ?? []).length).toBe(2)
-    expect(detail).toMatch(/if \(needPassword\.value\) return null/)
+    // 上一版这里写的是 `if (needPassword.value) return null`，表现是「卡片写着 4 分钟、
+    // 点进去什么都不显示」。分钟数是文章列里的元数据，不是正文：同一行的日期与阅读量
+    // 本来就在密码闸门上方给访客看，没有理由让分钟数单独缺席。
+    expect(detail).not.toMatch(/if \(needPassword\.value\) return null/)
+    const block = detail.slice(
+      detail.indexOf('const readingTime = computed'),
+      detail.indexOf('const wordCount')
+    )
+    expect(block).not.toContain('needPassword')
   })
 
   it('估算器只作兜底，不再是展示值的主源', () => {

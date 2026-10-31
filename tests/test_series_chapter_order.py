@@ -33,6 +33,8 @@ BLOG = "/api/blog"
 # 注意进来的只是三位布尔：三个媒体列在 select 里点名取，但地址不进目录载荷。
 # 批次 #138 起再加上 `reading_time`：同一族的 `PostReadingTime` chip 读的就是这个持久化列，
 # 正文依旧不进投影（一个系列要返回全部章节）。
+# 批次 #139 起再加 `is_password_protected`：同一族的 `PostLockBadge` 读的就是这一位存在性
+# 布尔（「这一章要不要密码」是目录要回答的问题），密码本身从不进投影。
 CHAPTER_KEYS = {
     "id",
     "title",
@@ -45,6 +47,7 @@ CHAPTER_KEYS = {
     "has_video",
     "has_embed",
     "reading_time",
+    "is_password_protected",
 }
 
 

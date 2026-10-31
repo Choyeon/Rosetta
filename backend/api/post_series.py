@@ -30,7 +30,7 @@ from backend.schemas.post_series import (
     PostSeriesUpdate,
 )
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
-from backend.services.post_access import media_flags, publicly_listable_posts
+from backend.services.post_access import access_flags, media_flags, publicly_listable_posts
 from backend.services.post_cache import invalidate_series_chapter_caches
 from backend.utils.i18n_query import i18n_contains
 
@@ -66,6 +66,8 @@ class SeriesPostItemDoc(BaseModel):
     has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
     # 预计阅读分钟数（批次 #138）：持久化列，目录行与列表/详情页共用同一个数。
     reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
+    # 批次 #139：目录行与卡片同口径——这篇要不要密码，读者在点之前就该知道。
+    is_password_protected: bool = Field(False, description="是否需要访问密码（不输出密码本身）")
 
 
 class SeriesDetailDoc(BaseModel):
@@ -185,6 +187,7 @@ async def get_series(slug: str, db: DB):
             Post.video,
             Post.video_url,
             Post.reading_time,
+            Post.password,
         )
         .where(
             Post.series_id == series.id,
@@ -216,6 +219,7 @@ async def get_series(slug: str, db: DB):
                 **media_flags(audio=r.audio, video=r.video, video_url=r.video_url),
                 # 批次 #138：点名取列就要点名给键，目录行缺它就没有分钟数
                 "reading_time": r.reading_time or 1,
+                **access_flags(password=r.password),
             }
             for r in rows
         ],

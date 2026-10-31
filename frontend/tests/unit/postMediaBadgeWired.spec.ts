@@ -35,6 +35,21 @@ const archiveMonth = readFileSync(resolve(root, 'frontend/pages/archive/[year]/[
 const seriesPage = readFileSync(resolve(root, 'frontend/pages/series/[slug].vue'), 'utf8')
 const postsPage = readFileSync(resolve(root, 'frontend/pages/posts/index.vue'), 'utf8')
 
+/**
+ * 该符号是否由 `services/post_access` 这个单源模块导入。
+ *
+ * 批次 #139 起这一族还会继续加符号（锁位 `access_flags` / `post_access_flags`），
+ * 整行字面量比对会在每次加位时红一次——那不是在描述"有没有复用单源"，而是在描述
+ * "导入行的字符顺序恰好是什么"。所以按语句取导入清单，再判符号在里面。
+ */
+function importsFromPostAccess(src: string, symbol: string): boolean {
+  const stmt = src.match(
+    /from backend\.services\.post_access import \([\s\S]*?\)|from backend\.services\.post_access import [^\n]+/
+  )
+  if (!stmt) return false
+  return new RegExp(`\\b${symbol}\\b`).test(stmt[0])
+}
+
 describe('列表媒体徽标的消费面', () => {
   it('徽标只读存在性三位，不读媒体地址', () => {
     expect(flags).toContain('props.post.has_audio')
@@ -94,7 +109,7 @@ describe('榜单口（/ranking/posts）的媒体三位', () => {
   // 这条口不经过 PostListItemLocalized：它自己拼 dict，而热门页的日/周/月/总榜
   // 四个页签把条目补齐成 PostCard 认得的形状。漏一处就是"综合榜有徽标、周期榜没有"。
   it('后端条目复用同一个产出点，不另写一份字段清单', () => {
-    expect(rankingApi).toContain('from backend.services.post_access import post_media_flags')
+    expect(importsFromPostAccess(rankingApi, 'post_media_flags')).toBe(true)
     expect(rankingApi).toContain('**post_media_flags(p),')
     // 自己重写字段清单＝两处会漂移（批次 #118 的创建口漏三列同族）
     expect(rankingApi).not.toMatch(/"has_audio": bool\(/)
@@ -127,7 +142,7 @@ describe('归档三面与系列目录的媒体三位（批次 #122）', () => {
   })
 
   it('归档仓储（列投影）点名取三列并复用 media_flags', () => {
-    expect(repo).toContain('from backend.services.post_access import media_flags')
+    expect(importsFromPostAccess(repo, 'media_flags')).toBe(true)
     for (const col of ['Post.audio', 'Post.video', 'Post.video_url']) {
       expect(repo, col).toContain(col)
     }
@@ -145,7 +160,7 @@ describe('归档三面与系列目录的媒体三位（批次 #122）', () => {
   })
 
   it('系列目录（列投影）复用 media_flags 并在文档模型声明三键', () => {
-    expect(seriesApi).toContain('media_flags, publicly_listable_posts')
+    expect(importsFromPostAccess(seriesApi, 'media_flags')).toBe(true)
     expect(seriesApi).toContain('**media_flags(audio=r.audio, video=r.video, video_url=r.video_url),')
     for (const col of ['Post.audio,', 'Post.video,', 'Post.video_url,']) {
       expect(seriesApi, col).toContain(col)

@@ -82,6 +82,25 @@ def post_media_flags(post: Post) -> dict[str, bool]:
     return media_flags(audio=post.audio, video=post.video, video_url=post.video_url)
 
 
+def access_flags(*, password) -> dict[str, bool]:
+    """列表面的「这篇要访问密码」一位：键名与取值的唯一产出点。
+
+    只带存在性，**绝不带哈希**——`Post.password` 存的是 argon2id/bcrypt 摘要，
+    列表载荷被更多缓存键位与更多消费方复用（SSR HTML 里还会整份进 __NUXT_DATA__）。
+    给默认值的理由与媒体三位同批：响应进缓存，TTL 内的旧载荷没这个键，必填等于让读口整口 500。
+    """
+    return {"is_password_protected": bool(password)}
+
+
+def post_access_flags(post: Post) -> dict[str, bool]:
+    """ORM 行形态的便捷入口（列投影用 ``access_flags``）。
+
+    判据与详情口同源（``bool(post.password)``），所以列表卡片贴的锁徽标和详情页的
+    密码闸门永远判同一批文章；两边各写一套的表现是"卡片没锁、点进去要密码"。
+    """
+    return access_flags(password=post.password)
+
+
 MEDIA_FILTER_KINDS = ("audio", "video")
 
 

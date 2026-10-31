@@ -19,7 +19,7 @@ from backend.core.concurrency import concurrent_query
 from backend.core.i18n import get_i18n_value
 from backend.models.blog import Category, Comment, Post, Tag, post_likes
 from backend.repositories.base import BaseRepository, PaginationResult
-from backend.services.post_access import media_flags, publicly_listable_posts
+from backend.services.post_access import access_flags, media_flags, publicly_listable_posts
 
 # ==================== 归档的 UTC 边界 ====================
 # `extract("year"/"month", Post.published_at)` 不能用：它按**数据库会话时区**求值，
@@ -769,6 +769,7 @@ class PostRepository(BaseRepository[Post]):
                 Post.video,
                 Post.video_url,
                 Post.reading_time,
+                Post.password,
                 Category.id,
                 Category.name,
                 Category.color,
@@ -795,6 +796,7 @@ class PostRepository(BaseRepository[Post]):
             video,
             video_url,
             reading_time,
+            password,
             category_id,
             category_name_i18n,
             category_color,
@@ -841,6 +843,7 @@ class PostRepository(BaseRepository[Post]):
                         # 批次 #138：分钟数同样点名取列。归档与列表/详情页读同一个持久化列，
                         # 少这一个键的表现是"列表卡片有分钟数、归档页整列没有"。
                         "reading_time": reading_time or 1,
+                        **access_flags(password=password),
                     }
                 )
 

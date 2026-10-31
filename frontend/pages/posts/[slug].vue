@@ -2212,10 +2212,12 @@ const readingStats = computed(() => {
 })
 // 分钟数与列表卡片同源：读后端持久化的 `reading_time`。本页曾自己按 380 字/分钟复算，
 // 于是同一篇文章卡片 6 分钟、正文页 4 分钟。估算只在后端键缺失时兜底（旧缓存载荷
-// / 正文未落列），锁着的文章一律不显示——正文都没解锁，「预计 4 分钟」既无法验证
-// 也是在催访客猜内容。
+// / 正文未落列）。
+// 批次 #139 起密码稿也显示：分钟数是文章列里的元数据，不是正文——日期、阅读量本来
+// 就在闸门上方给访客看，同一行的分钟数没有理由例外；卡片（#139 的锁徽标）与本页
+// 从此判同一批文章。上一版这里 `if (needPassword) return null` 的口径是"卡片写着
+// 4 分钟、点进去什么都没有"，那才是让读者以为自己打开了另一篇。
 const readingTime = computed<number | null>(() => {
-  if (needPassword.value) return null
   const stored = Number(post.value?.reading_time)
   if (Number.isInteger(stored) && stored > 0) return stored
   return readingStats.value.minutes > 0 ? readingStats.value.minutes : null

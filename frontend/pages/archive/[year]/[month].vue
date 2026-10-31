@@ -114,6 +114,7 @@
                 v-if="categoryOf(post)"
                 class="hidden sm:inline"
               >{{ categoryOf(post) }}</span>
+              <PostLockBadge :post="post" />
               <PostMediaFlags :post="post" />
               <PostReadingTime :post="post" />
               <span class="inline-flex items-center gap-1">
@@ -163,6 +164,7 @@ import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostLockBadge from '~~/components/PostLockBadge.vue'
 import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
@@ -183,6 +185,8 @@ interface ArchivePostItem {
   has_embed?: boolean
   // 预计阅读分钟数（批次 #138）：读后端持久化列，缺键按「不显示」处理。
   reading_time?: number | null
+  // 这篇是否需要访问密码（批次 #139）：只带存在性，密码哈希从不进列表载荷。
+  is_password_protected?: boolean | null
   category?: { name?: string | Record<string, string> }
 }
 interface ArchiveMonthPage {

@@ -42,6 +42,8 @@ class ArchivePostItem(BaseModel):
     # 预计阅读分钟数（批次 #138）：持久化列，归档三面与列表/详情共用同一个数。
     # 同默认值口径——归档响应进缓存，TTL 内的旧载荷没这个键。
     reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
+    # 批次 #139：归档三面的行与卡片是同一套徽标；同样给默认值（归档响应进缓存）。
+    is_password_protected: bool = Field(False, description="是否需要访问密码（不输出密码本身）")
 
 
 class ArchiveMonthGroup(BaseModel):
