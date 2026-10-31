@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
@@ -888,6 +889,32 @@ async def delete_search_placeholder(placeholder_id: int, current_user: CurrentSt
     return BaseResponse(message="搜索占位符已删除")
 
 
+def _site_config_from_cached(cached: dict) -> SiteConfigResponse | None:
+    """缓存命中必须"还能按当前模型解出来"才算命中，否则回 None 让调用方重算。
+
+    `site_config` 的载荷存在 Redis 里（TTL 3600，且跨进程、跨重启存活），它比代码旧是
+    常态：退役一族配置字段（批次 #108 删的 OOBE 幽灵开关就是这一类）之后，旧载荷多带键，
+    而 `SiteConfigResponse` 经 `apply_strict_extra_forbid` 是 `extra="forbid"` 的
+    ——直接 `**cached` 构造会 ValidationError，公开配置口整个 500 到 TTL 到期。
+    更要命的是预热 `cache_warmer._warmup_site_config` 委托的也是这同一个函数，
+    重启救不回来（2026-10-31 批次 #108 上线实测：`GET /api/config` 稳定 500 一小时，
+    首页/文章页的配置驱动功能跟着退化）。
+
+    新增字段的反方向同一条路：旧载荷少带必填键同样 ValidationError。
+    判不出来就重算一次并在返回前覆写缓存，漂移自愈且只发生一次。
+    """
+    fields = SiteConfigResponse.model_fields
+    stale = sorted(k for k in cached if k not in fields)
+    if stale:
+        logger.warning("site_config 缓存载荷带着已退役的键，按重算处理：%s", stale)
+        return None
+    try:
+        return SiteConfigResponse(**cached)
+    except ValidationError as exc:
+        logger.warning("site_config 缓存载荷与当前模型不符，按重算处理：%s", exc)
+        return None
+
+
 @router.get(
     "/config",
     response_model=SiteConfigResponse,
@@ -1301,7 +1328,9 @@ async def get_site_config(db: DB):
     cache_key = make_cache_key("site_config")
     cached = await cache.get(cache_key)
     if cached:
-        return SiteConfigResponse(**cached)
+        hit = _site_config_from_cached(cached)
+        if hit is not None:
+            return hit
 
     # 单次查询获取所有配置
     result = await db.execute(select(SiteConfig))
