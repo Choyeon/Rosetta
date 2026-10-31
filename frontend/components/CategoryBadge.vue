@@ -6,9 +6,10 @@
   左侧 2px .cat-accent 是分类/标签的刻意视觉区分（不受 Admin 禁彩条约束），hover 只换色不位移——位移会与卡片 .lift-hover 抢 transform。
 -->
 <script setup lang="ts">
+import { FolderOpen } from '@lucide/vue'
 import { computed } from 'vue'
-import { hexToHsl } from '~~/lib/utils'
 import DynamicIcon from '~~/components/DynamicIcon.vue'
+import { hexToHsl } from '~~/lib/utils'
 
 interface Props {
   color?: string | null
@@ -56,18 +57,10 @@ const chipStyle = computed(() => {
         :icon="icon"
         class="cat-icon"
       />
-      <svg
+      <FolderOpen
         v-else
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-        stroke-width="2"
         class="cat-icon"
-        aria-hidden="true"
-      ><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2" /></svg>
+      />
       <span class="cat-label"><slot>{{ label }}</slot></span>
     </span>
   </NuxtLink>
@@ -86,18 +79,10 @@ const chipStyle = computed(() => {
       :icon="icon"
       class="cat-icon"
     />
-    <svg
+    <FolderOpen
       v-else
-      xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      stroke-width="2"
       class="cat-icon"
-      aria-hidden="true"
-    ><path d="m6 14 1.45-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.55 6a2 2 0 0 1-1.94 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.93a2 2 0 0 1 1.66.9l.82 1.2a2 2 0 0 0 1.66.9H18a2 2 0 0 1 2 2v2" /></svg>
+    />
     <span class="cat-label"><slot>{{ label }}</slot></span>
   </span>
 </template>

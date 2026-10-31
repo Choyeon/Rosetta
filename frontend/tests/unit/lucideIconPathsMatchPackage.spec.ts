@@ -11,8 +11,8 @@
  * 包里保留旧导出名指向新文件，所以"包自己承认的导出名"是唯一不会烂的别名来源。
  * 升级 @lucide/vue 而没同步这份抄件 ⇒ 本文件直接红，而不是等访客发现两个爱心。
  */
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { readdirSync, readFileSync } from 'node:fs'
+import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const ROOT = join(__dirname, '..', '..')
@@ -118,5 +118,85 @@ describe('lib/lucide-svg-icons 与 @lucide/vue 的字形数据对账', () => {
     const heart = repo.get('Heart')?.join('\n') ?? ''
     expect(heart).toContain('M2 9.5a5.5 5.5')
     expect(heart).not.toContain('M19 14c1.49')
+  })
+})
+
+/**
+ * 模板里手写 `d="…"` 的组件是唯一清单（批次 #145）。
+ *
+ * 为什么钉这条：lib 与组件包同源之后，第三份来源是**抄进模板的字形**——
+ * CategoryBadge 的文件夹、TagBadge 的标签、activity 的闪电都各抄了一份旧版 path，
+ * 于是同一图标在同一页有两种画法（包里 folder-open 现为 `m6 14 1.5-2.9…`，抄件是 `m6 14 1.45-2.9…`）。
+ * 值写包内的图标文件名 ⇒ 该文件每个内联 d 必须逐字节等于那个图标；填 null 的只有品牌标记
+ * （octocat 与实心 RSS 用 fill，不是 lucide 的 stroke 图标，无组件可换）。
+ * 新抄一个字形而不登记＝本用例红，改图标只能走 <FolderOpen /> 这类组件。
+ */
+const INLINE_GLYPH_FILES: Record<string, string | null> = {
+  'components/AppFooter.vue': null,
+  'components/ui/accordion/AccordionTrigger.vue': 'chevron-down',
+  'components/ui/breadcrumb/BreadcrumbSeparator.vue': 'chevron-right'
+}
+
+function listVue(dir: string, acc: string[] = []): string[] {
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    if (['node_modules', '.nuxt', 'dist', '.output'].includes(entry.name))
+      continue
+    const p = join(dir, entry.name)
+    if (entry.isDirectory())
+      listVue(p, acc)
+    else if (entry.name.endsWith('.vue'))
+      acc.push(p)
+  }
+  return acc
+}
+
+/** 包内某个图标的 path 数据（逐字节，不做归一——归一就是把漂移藏起来）。 */
+function packagePathData(file: string): string[] {
+  const src = readFileSync(join(PKG_ESM, 'icons', `${file}.mjs`), 'utf8')
+  return [...src.matchAll(/\bd:\s*"([^"]*)"/g)].map(m => m[1]).filter(Boolean) as string[]
+}
+
+describe('模板内联字形必须有登记且与包内数据一致', () => {
+  const found = new Map<string, string[]>()
+  for (const abs of ['components', 'pages', 'layouts'].flatMap(d => listVue(join(ROOT, d)))) {
+    const rel = relative(ROOT, abs).split('\\').join('/')
+    const ds = [...readFileSync(abs, 'utf8').matchAll(/\sd="([^"]+)"/g)].map(m => m[1]).filter(Boolean) as string[]
+    if (ds.length > 0)
+      found.set(rel, ds)
+  }
+
+  it('内联字形清单非空且解析到位（恒真守卫先排除）', () => {
+    expect(found.size).toBe(Object.keys(INLINE_GLYPH_FILES).length)
+    expect(packagePathData('chevron-down')).toEqual(['m6 9 6 6 6-6'])
+  })
+
+  it('没有未登记的抄件字形（新增一处即红，逼它改走图标组件）', () => {
+    expect([...found.keys()].sort()).toEqual(Object.keys(INLINE_GLYPH_FILES).sort())
+  })
+
+  it('已登记抄件的每一条 path 与包内该图标逐字节相等', () => {
+    const drifted: string[] = []
+    for (const [rel, ds] of found) {
+      const icon = INLINE_GLYPH_FILES[rel]
+      if (!icon)
+        continue
+      const theirs = packagePathData(icon)
+      for (const d of ds) {
+        if (!theirs.includes(d))
+          drifted.push(`${rel}: ${d.slice(0, 24)}…`)
+      }
+    }
+    expect(drifted).toEqual([])
+  })
+
+  it('批次 #145 的三处抄件已改走组件（源码里不再有旧字形）', () => {
+    for (const f of ['components/CategoryBadge.vue', 'components/TagBadge.vue', 'pages/activity.vue']) {
+      const src = readFileSync(join(ROOT, f), 'utf8')
+      expect(src, f).not.toMatch(/\sd="M/)
+    }
+    const cat = readFileSync(join(ROOT, 'components', 'CategoryBadge.vue'), 'utf8')
+    expect(cat).toContain('import { FolderOpen } from \'@lucide/vue\'')
+    const act = readFileSync(join(ROOT, 'pages', 'activity.vue'), 'utf8')
+    expect(act).toContain('<Zap class="size-7 text-primary" />')
   })
 })

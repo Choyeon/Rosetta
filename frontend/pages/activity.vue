@@ -12,17 +12,7 @@
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
       <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-primary/10 mb-5">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="size-7 text-primary"
-        >
-          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
-        </svg>
+        <Zap class="size-7 text-primary" />
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
         {{ t('activity.title') }}
@@ -303,6 +293,7 @@
 </template>
 
 <script setup lang="ts">
+import { Zap } from '@lucide/vue'
 import { Card, CardContent } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
 import { Button, buttonVariants } from '~~/components/ui/button'
