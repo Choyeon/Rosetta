@@ -55,7 +55,6 @@ DEFAULT_INSTALL_PAYLOAD = {
     "enable_rss": False,
     "enable_bing_wallpaper": False,
     "enable_pagefind_search": False,
-    "enable_encrypted_posts": False,
     "enable_music_player": False,
     "environment": "development",
 }

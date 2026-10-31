@@ -2,7 +2,7 @@
 
 四条各自对应一类可复用的缺陷（都不是风格问题，而是能写出复现步骤的读取错误）：
 
-1. **加密状态翻转必须清公开详情缓存。** `GET /blog/posts/{slug}` 的缓存命中发生在
+1. **访问密码状态翻转必须清公开详情缓存。** `GET /blog/posts/{slug}` 的缓存命中发生在
    密码/状态判定**之前**（性能换来的次序），所以"先公开读过、管理员后加密码"这条路
    若不清键，访客在 TTL 内照读全文——密码门形同虚设。同口径见
    `core.cache.invalidate_post_detail_cache` 的说明。
@@ -50,10 +50,10 @@ async def draft_in_category(db_session: AsyncSession, test_user, test_category) 
     return draft
 
 
-class TestEncryptEvictsPublicDetailCache:
+class TestPasswordGateFlipEvictsPublicDetailCache:
     @pytest.mark.asyncio
     async def test_setting_a_password_drops_the_cached_plaintext(
-        self, client: AsyncClient, test_post: Post, staff_headers: dict
+        self, client: AsyncClient, test_post: Post, admin_headers: dict
     ):
         key = make_cache_key("post", test_post.slug, "zh")
 
@@ -62,12 +62,12 @@ class TestEncryptEvictsPublicDetailCache:
         assert _unwrap(first.json())["content"], "前置条件：公开文章应返回全文"
         assert await cache.get(key) is not None, "前置条件：匿名公开读必须已写入详情缓存"
 
-        encrypt = await client.post(
-            f"/api/admin/posts/{test_post.id}/encrypt",
-            json={"password": "correct horse", "content": "仅订阅者可见的正文"},
-            headers=staff_headers,
+        lock = await client.put(
+            f"/api/blog/posts/{test_post.id}",
+            json={"password": "correct horse"},
+            headers=admin_headers,
         )
-        assert encrypt.status_code == 200, encrypt.text
+        assert lock.status_code == 200, lock.text
         assert await cache.get(key) is None, "加密码后旧明文缓存必须被清掉"
 
         # 清完再匿名读：要么明确"需要密码"，总之不得吐正文。
@@ -79,21 +79,21 @@ class TestEncryptEvictsPublicDetailCache:
 
     @pytest.mark.asyncio
     async def test_removing_the_password_also_drops_the_stale_entry(
-        self, client: AsyncClient, test_post: Post, staff_headers: dict
+        self, client: AsyncClient, test_post: Post, admin_headers: dict
     ):
-        """关闭加密同样要清键：否则缓存里那份"隐藏内容"的空壳会在 TTL 内继续糊住刚公开的正文。"""
-        setup = await client.post(
-            f"/api/admin/posts/{test_post.id}/encrypt",
-            json={"password": "correct horse", "content": "仅订阅者可见的正文"},
-            headers=staff_headers,
+        """清空密码同样要清键：否则缓存里那份"隐藏内容"的空壳会在 TTL 内继续糊住刚公开的正文。"""
+        setup = await client.put(
+            f"/api/blog/posts/{test_post.id}",
+            json={"password": "correct horse"},
+            headers=admin_headers,
         )
         assert setup.status_code == 200, setup.text
 
         hidden = await client.get(f"/api/blog/posts/{test_post.slug}", params={"lang": "zh"})
         assert not _unwrap(hidden.json())["content"]
 
-        disable = await client.delete(
-            f"/api/admin/posts/{test_post.id}/encrypt", headers=staff_headers
+        disable = await client.put(
+            f"/api/blog/posts/{test_post.id}", json={"password": ""}, headers=admin_headers
         )
         assert disable.status_code == 200, disable.text
 

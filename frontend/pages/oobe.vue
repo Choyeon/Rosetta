@@ -1303,19 +1303,12 @@
                           </div>
                           <Switch v-model="siteForm.enableBingWallpaper" />
                         </label>
-                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
+                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors sm:col-span-2 text-foreground">
                           <div>
                             <div class="text-sm font-medium">{{ t('oobe.fPagefind', '站内搜索') }}</div>
                             <div class="text-xs text-foreground/70">{{ t('oobe.fPagefindDesc', '启用 Pagefind 客户端全文搜索') }}</div>
                           </div>
                           <Switch v-model="siteForm.enablePagefindSearch" />
-                        </label>
-                        <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors text-foreground">
-                          <div>
-                            <div class="text-sm font-medium">{{ t('oobe.fCrypto', '加密文章') }}</div>
-                            <div class="text-xs text-foreground/70">{{ t('oobe.fCryptoDesc', '发布受密码保护的加密文章') }}</div>
-                          </div>
-                          <Switch v-model="siteForm.enableEncryptedPosts" />
                         </label>
                         <label class="flex items-center justify-between p-3 rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] cursor-pointer hover:bg-zinc-900/[0.08] dark:hover:bg-white/[0.08] transition-colors sm:col-span-2 text-foreground">
                           <div>
@@ -2530,7 +2523,6 @@ interface SiteForm {
   enableRss: boolean
   enableBingWallpaper: boolean
   enablePagefindSearch: boolean
-  enableEncryptedPosts: boolean
   enableMusicPlayer: boolean
 }
 const siteForm = reactive<SiteForm>({
@@ -2556,7 +2548,6 @@ const siteForm = reactive<SiteForm>({
   enableRss: true,
   enableBingWallpaper: true,
   enablePagefindSearch: true,
-  enableEncryptedPosts: false,
   enableMusicPlayer: true
 })
 
@@ -3071,7 +3062,6 @@ const nextStep = async () => {
         enableRss: siteForm.enableRss,
         enableBingWallpaper: siteForm.enableBingWallpaper,
         enablePagefindSearch: siteForm.enablePagefindSearch,
-        enableEncryptedPosts: siteForm.enableEncryptedPosts,
         enableMusicPlayer: siteForm.enableMusicPlayer
       })
       // 离开 Step3 前跑一次服务端预检：把「提交后被 422 弹回」提前成「当场指出哪一格有问题」。

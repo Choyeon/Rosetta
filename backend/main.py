@@ -60,8 +60,6 @@ from backend.api import (
     oobe,
     performance,
     plugins,
-    post_crypto,
-    post_encryption,
     post_series,
     ranking,
     scheduled_posts,
@@ -163,8 +161,6 @@ TAG_METADATA: list[dict[str, str]] = [
     {"name": "网站动态", "description": "用户活动时间线"},
     {"name": "Hero轮播", "description": "首页 Hero 区轮播图配置"},
     {"name": "文章系列", "description": "系列文章的组织与展示"},
-    {"name": "内容加密", "description": "文章内容加密访问"},
-    {"name": "文章加密工具", "description": "文章加密的管理工具"},
     {"name": "定时发布", "description": "定时发布任务管理"},
     {"name": "评论表情反应", "description": "评论表情互动"},
     {"name": "评论举报", "description": "评论举报的提交与后台裁决"},
@@ -919,8 +915,6 @@ def create_application() -> FastAPI:
     app.include_router(hero.router, prefix="/api")
     app.include_router(content_type.router, prefix="/api")
     app.include_router(post_series.router, prefix="/api")
-    app.include_router(post_encryption.router, prefix="/api")
-    app.include_router(post_crypto.router, prefix="/api")
     app.include_router(scheduled_posts.router, prefix="/api")
     app.include_router(comment_reactions.router, prefix="/api")
     app.include_router(comment_report.router, prefix="/api")

@@ -400,41 +400,7 @@ class TestModeration:
 
 
 # ---------------------------------------------------------
-# 5. crypto AES-GCM
-# ---------------------------------------------------------
-class TestCrypto:
-    def test_roundtrip(self):
-        from backend.core.crypto import decrypt_content, encrypt_content
-
-        ct = encrypt_content("hello 世界", "secret")
-        assert decrypt_content(ct, "secret") == "hello 世界"
-
-    def test_decrypt_invalid_base64(self):
-        from backend.core.crypto import DecryptionError, decrypt_content
-
-        with pytest.raises(DecryptionError, match="密文格式无效"):
-            decrypt_content("@@not-base64@@", "x")
-
-    def test_decrypt_too_short(self):
-        import base64
-
-        from backend.core.crypto import DecryptionError, decrypt_content
-
-        # 长度 < 16+12 = 28
-        blob = base64.b64encode(b"too short").decode("ascii")
-        with pytest.raises(DecryptionError, match="密文长度不足"):
-            decrypt_content(blob, "x")
-
-    def test_decrypt_wrong_password(self):
-        from backend.core.crypto import DecryptionError, decrypt_content, encrypt_content
-
-        ct = encrypt_content("msg", "correct")
-        with pytest.raises(DecryptionError, match="密码错误"):
-            decrypt_content(ct, "wrong")
-
-
-# ---------------------------------------------------------
-# 6. exceptions + exception_handler
+# 5. exceptions + exception_handler
 # ---------------------------------------------------------
 class TestExceptions:
     @pytest.mark.parametrize(
@@ -638,7 +604,7 @@ class TestExceptions:
 
 
 # ---------------------------------------------------------
-# 7. config：secret_key_validator + is_sqlite/postgresql + db_info
+# 6. config：secret_key_validator + is_sqlite/postgresql + db_info
 # ---------------------------------------------------------
 class TestConfig:
     def test_secret_key_short_warns(self):
@@ -669,7 +635,7 @@ class TestConfig:
 
 
 # ---------------------------------------------------------
-# 8. deps：pagination/search/filter + is_oobe_complete (非 true 分支)
+# 7. deps：pagination/search/filter + is_oobe_complete (非 true 分支)
 # ---------------------------------------------------------
 class TestDeps:
     def test_pagination_calc(self):
@@ -729,7 +695,7 @@ class TestDeps:
 
 
 # ---------------------------------------------------------
-# 9. auth：纯函数 (get_password_hash/verify_password/create_access_token/decode_token + jti 黑名单内存分支)
+# 8. auth：纯函数 (get_password_hash/verify_password/create_access_token/decode_token + jti 黑名单内存分支)
 # ---------------------------------------------------------
 class TestAuthPureFunctions:
     def test_password_hash_short_and_long(self):

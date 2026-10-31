@@ -123,7 +123,6 @@ class CombinedInstallRequest(BaseModel):
     enable_rss: bool = True
     enable_bing_wallpaper: bool = True
     enable_pagefind_search: bool = True
-    enable_encrypted_posts: bool = False
     enable_music_player: bool = True
 
     environment: Literal["development", "production"] = "production"
@@ -1129,7 +1128,6 @@ async def _run_combined_install(req: CombinedInstallRequest):
             {
                 "enable_bing_wallpaper": req.enable_bing_wallpaper,
                 "enable_pagefind_search": req.enable_pagefind_search,
-                "enable_encrypted_posts": req.enable_encrypted_posts,
                 "enable_music_player": req.enable_music_player,
                 "footer_text": "",
                 "default_cover_image": "",
@@ -1203,7 +1201,6 @@ async def _run_combined_install(req: CombinedInstallRequest):
             ),
             ("enable_bing_wallpaper", str(req.enable_bing_wallpaper).lower(), "启用Bing壁纸"),
             ("enable_pagefind_search", str(req.enable_pagefind_search).lower(), "启用Pagefind搜索"),
-            ("enable_encrypted_posts", str(req.enable_encrypted_posts).lower(), "启用加密文章"),
             ("enable_music_player", str(req.enable_music_player).lower(), "启用音乐播放器"),
             ("default_cover_image", full_config["default_cover_image"], "默认封面图"),
             # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐，避免前端 fallback 为 ROSETTA 示例文案

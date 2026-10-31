@@ -1643,7 +1643,7 @@ API 实现了请求限流保护：
 
 ## 端点总索引（自动生成）
 
-本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **371 个操作 / 295 条路径**。
+本区块由 `backend/scripts/gen_api_index.py` 从运行时 `app.openapi()` 生成，共 **364 个操作 / 290 条路径**。
 上面各章节是手写的重点说明（请求体、响应口径、坑），本区块是完整清单；两者互补，字段级契约以 `/openapi.json` 为准。
 
 - 插件自带的路由（tag 为 `Plugin:*` / `Plugin-Public:*`）不在本清单内：它们只在对应插件启用后存在，需要实时清单就看 `/docs` 或 `/openapi.json`。
@@ -2062,23 +2062,6 @@ API 实现了请求限流保护：
 | `POST` | `/api/post_series/complete` | 编辑器 autocomplete 同系列文章 |
 | `GET` | `/api/series` | 获取文章系列列表 |
 | `GET` | `/api/series/{slug}` | 获取系列详情 |
-
-### 内容加密（4）
-
-| 方法 | 路径 | 摘要 |
-| --- | --- | --- |
-| `POST` | `/api/admin/posts/{post_id}/encrypt` | 设置文章加密内容 |
-| `PUT` | `/api/admin/posts/{post_id}/encrypt` | 更新文章加密内容（换密码/内容） |
-| `DELETE` | `/api/admin/posts/{post_id}/encrypt` | 关闭文章内容加密 |
-| `POST` | `/api/posts/{post_id}/decrypt` | 解密文章内容 |
-
-### 文章加密工具（3）
-
-| 方法 | 路径 | 摘要 |
-| --- | --- | --- |
-| `POST` | `/api/post_crypto/derive_keys` | 派生加密元数据 |
-| `GET` | `/api/post_crypto/encrypted/{post_id}/preview` | 后台预览加密文章摘要 |
-| `POST` | `/api/post_crypto/verify_access` | 验证文章访问密码 |
 
 ### 定时发布（3）
 

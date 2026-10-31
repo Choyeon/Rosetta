@@ -602,8 +602,6 @@
     "fBingDesc": "Show Bing daily wallpaper as home background.",
     "fPagefind": "Client-side search",
     "fPagefindDesc": "Enable Pagefind full-text client search.",
-    "fCrypto": "Encrypted posts",
-    "fCryptoDesc": "Publish posts protected by a password.",
     "fMusic": "Background music player",
     "fMusicDesc": "Show a music player in the sidebar (configure sources in the admin panel).",
     "installingDesc": "Initializing database, writing config, seeding sample data — please wait.",

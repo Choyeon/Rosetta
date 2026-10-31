@@ -139,11 +139,12 @@ describe('密码门真相：在用的是 Post.password，不是 post_encryption 
     expect(commentsApi).toMatch(/'X-Post-Password': postPassword/)
   })
 
-  it('文档不再把 post_encryption 判成"编辑器无加密设置 UI"的待接缺口', () => {
-    for (const line of docLinesMentioning('编辑器无加密设置 UI')) {
-      expect(line).toContain('旧判定')
-    }
-    expect(doc).toContain('退役候选')
+  it('文档把 post_encryption 一族写成已执行的退役决定，而不是待接缺口', () => {
+    expect(doc).toContain('已整族退役')
+    // 「退役候选」与「编辑器无加密设置 UI」都是执行前的说法：决定已落地还留着它们，
+    // 等于让下一个人以为这一族仍在待排期清单里，会照着旧缺口重接一遍。
+    expect(doc).not.toContain('退役候选')
+    expect(doc).not.toContain('编辑器无加密设置 UI')
   })
 })
 

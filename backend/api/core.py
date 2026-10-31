@@ -1391,7 +1391,6 @@ async def get_site_config(db: DB):
         # OOBE 种子里额外写入的一组能力开关（与上面 14 组 settings_groups 里的独立域做兼容）
         enable_bing_wallpaper=get_bool("ENABLE_BING_WALLPAPER", "true"),
         enable_pagefind_search=get_bool("ENABLE_PAGEFIND_SEARCH", "true"),
-        enable_encrypted_posts=get_bool("ENABLE_ENCRYPTED_POSTS", "false"),
         enable_music_player=get_bool("ENABLE_MUSIC_PLAYER", "true"),
         # OOBE 兼容别名：前端有些地方用 enable_rss，有些用 enable_rss_feed，统一暴露
         enable_rss=get_bool("ENABLE_RSS_FEED", "true"),

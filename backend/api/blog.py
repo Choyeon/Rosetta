@@ -1519,10 +1519,6 @@ async def create_post(
         allow_comments=post_data.allow_comments,
         series_id=post_data.series_id,
         series_order=post_data.series_order,
-        encryption_enabled=bool(post_data.encryption_enabled),
-        encryption_salt=post_data.encryption_salt,
-        encryption_verifier=post_data.encryption_verifier,
-        encryption_algorithm=post_data.encryption_algorithm or "AES-256-GCM",
         encryption_hint=post_data.encryption_hint,
         meta_title=post_data.meta_title,
         meta_description=post_data.meta_description,
@@ -1709,11 +1705,6 @@ async def update_post(
 
     if new_status == "published" and not post.published_at:
         post.published_at = datetime.now(UTC)
-
-    if "encryption_enabled" in update_data and not update_data["encryption_enabled"]:
-        post.encryption_salt = None
-        post.encryption_verifier = None
-        post.encryption_hint = None
 
     # 内容/标题/摘要真的变了才落快照：编辑器每次 PUT 整份表单，只比键存在会造出
     # 一堆与上一版字节相同的空版本。快照记录的是「改动前」的状态，故必须在赋值之前。

@@ -602,8 +602,6 @@
     "fBingDesc": "首页展示 Bing 每日壁纸背景",
     "fPagefind": "站内搜索",
     "fPagefindDesc": "启用 Pagefind 客户端全文搜索",
-    "fCrypto": "加密文章",
-    "fCryptoDesc": "发布受密码保护的加密文章",
     "fMusic": "背景音乐播放器",
     "fMusicDesc": "侧边栏显示音乐播放组件（需在后台配置播放源）",
     "installingDesc": "数据库初始化、写入配置、创建示例数据，请稍候。",

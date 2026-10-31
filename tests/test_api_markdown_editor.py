@@ -1,10 +1,9 @@
 """
 Task 7 - 后台 Markdown 编辑器相关后端 API 测试
 
-包含 3 条用例：
-1. test_encrypted_post_save_and_verify
-2. test_scheduled_publish_then_autolive
-3. test_series_autocomplete_returns_8max
+包含 2 条用例：
+1. test_scheduled_publish_then_autolive
+2. test_series_autocomplete_returns_8max
 """
 
 from __future__ import annotations
@@ -12,7 +11,6 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
 
 import pytest
 import pytest_asyncio
@@ -143,84 +141,6 @@ async def _ensure_admin(client: AsyncClient, db_session) -> tuple[User, str]:
         await db_session.refresh(u)
     token = await _login_admin(client, "t7admin", "T7Admin@123")
     return u, token
-
-
-@pytest.mark.asyncio
-async def test_encrypted_post_save_and_verify(
-    client: AsyncClient,
-    db_session,
-):
-    """
-    调用 derive_keys 得到 salt/verifier → PostCreate 启用加密 status=published →
-    verify_access 用正确密码 ok=true，错误密码 ok=false
-    """
-    admin, token = await _ensure_admin(client, db_session)
-    authz = {"Authorization": f"Bearer {token}"}
-
-    # 1. 派生加密元数据
-    pwd = "MySecurePassword@2026"
-    r_der = await client.post("/api/post_crypto/derive_keys", json={"password": pwd})
-    assert r_der.status_code == 200, r_der.text
-    derived = r_der.json()
-    salt = derived["salt"]
-    verifier = derived["verifier"]
-    algo = derived["algorithm"]
-    assert salt and len(salt) >= 32
-    assert verifier and len(verifier) == 64
-    assert algo == "AES-256-GCM"
-
-    # 2. 创建带加密元数据的文章
-    payload: dict[str, Any] = {
-        "title": {"zh": "加密示例文章", "en": "Encrypted Example"},
-        "content": {
-            "zh": ":::encrypted\n这是加密正文\n:::\n## 普通段落\n正文其余内容也需密码访问。",
-            "en": "Encrypted body content (demo).",
-        },
-        "slug": "encrypted-demo-post",
-        "status": "published",
-        "encryption_enabled": True,
-        "encryption_salt": salt,
-        "encryption_verifier": verifier,
-        "encryption_algorithm": algo,
-        "encryption_hint": "16字符+数字+符号",
-        "allow_comments": True,
-        "is_pinned": False,
-    }
-    r_cr = await client.post("/api/blog/posts", json=payload, headers=authz)
-    assert r_cr.status_code in (200, 201), r_cr.text
-    post = r_cr.json()
-    post_id = int(post.get("id") or (post.get("data") or {}).get("id"))
-    assert post_id > 0
-
-    # 3. 校验：用正确密码 verify_access → ok=true
-    r_ok = await client.post(
-        "/api/post_crypto/verify_access",
-        json={"post_id": post_id, "password": pwd},
-    )
-    assert r_ok.status_code == 200, r_ok.text
-    j_ok = r_ok.json()
-    assert j_ok["ok"] is True, f"正确密码应该 ok=true，实际={j_ok}"
-    assert "token" in j_ok and len(j_ok["token"]) > 0
-
-    # 4. 校验：错误密码 verify_access → ok=false
-    r_bad = await client.post(
-        "/api/post_crypto/verify_access",
-        json={"post_id": post_id, "password": "WrongP@ssword"},
-    )
-    assert r_bad.status_code == 200, r_bad.text
-    j_bad = r_bad.json()
-    assert j_bad["ok"] is False, f"错误密码应该 ok=false，实际={j_bad}"
-    assert (j_bad.get("token") or "") == ""
-
-    # 5. 作者/管理员可以查看加密文章的预览摘要
-    r_pv = await client.get(f"/api/post_crypto/encrypted/{post_id}/preview", headers=authz)
-    assert r_pv.status_code == 200, r_pv.text
-    pv = r_pv.json()
-    assert (
-        pv.get("post_id") == post_id
-        or (pv.get("data") or {}).get("post_id") == post_id
-        or (pv.get("id") == post_id)
-    )
 
 
 @pytest.mark.asyncio

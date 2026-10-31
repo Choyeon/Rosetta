@@ -871,7 +871,6 @@ export const useOOBE = () => {
     enableRss?: boolean
     enableBingWallpaper?: boolean
     enablePagefindSearch?: boolean
-    enableEncryptedPosts?: boolean
     enableMusicPlayer?: boolean
   }) => {
     loading.value = true
@@ -973,7 +972,6 @@ export const useOOBE = () => {
         enableRss?: boolean
         enableBingWallpaper?: boolean
         enablePagefindSearch?: boolean
-        enableEncryptedPosts?: boolean
         enableMusicPlayer?: boolean
       }
       interface OOBEAdminUser {
@@ -1034,7 +1032,6 @@ export const useOOBE = () => {
         enable_rss: siteSettings.enableRss ?? true,
         enable_bing_wallpaper: siteSettings.enableBingWallpaper ?? true,
         enable_pagefind_search: siteSettings.enablePagefindSearch ?? true,
-        enable_encrypted_posts: siteSettings.enableEncryptedPosts ?? false,
         enable_music_player: siteSettings.enableMusicPlayer ?? true,
         environment: (siteSettings.environment as 'development' | 'production') || 'development'
       }

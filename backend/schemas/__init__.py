@@ -941,10 +941,6 @@ class PostBase(BaseModel):
     scheduled_at: datetime | None = Field(None, description="定时发布时间，status=scheduled 时生效")
     password: str | None = Field(None, max_length=100)
     view_password: str | None = Field(None, description="(保留字段，请勿使用明文)")
-    encryption_enabled: bool = False
-    encryption_salt: str | None = Field(None, max_length=128)
-    encryption_verifier: str | None = Field(None, max_length=256)
-    encryption_algorithm: str = Field(default="AES-256-GCM", max_length=50)
     encryption_hint: str | None = Field(None, max_length=200)
     is_pinned: bool = False
     allow_comments: bool = True
@@ -998,10 +994,6 @@ class PostUpdate(BaseModel):
     scheduled_at: datetime | None = None
     password: str | None = Field(None, max_length=100)
     view_password: str | None = None
-    encryption_enabled: bool | None = None
-    encryption_salt: str | None = Field(None, max_length=128)
-    encryption_verifier: str | None = Field(None, max_length=256)
-    encryption_algorithm: str | None = Field(None, max_length=50)
     encryption_hint: str | None = Field(None, max_length=200)
     is_pinned: bool | None = None
     allow_comments: bool | None = None
@@ -1934,7 +1926,6 @@ class SiteConfigResponse(BaseModel):
     # OOBE 种子写的独立能力开关（与 settings_groups 字段并存，保证前端直接可用）
     enable_bing_wallpaper: bool = True
     enable_pagefind_search: bool = True
-    enable_encrypted_posts: bool = False
     enable_music_player: bool = True
     # 兼容别名：前端有些地方读 enable_rss（与 enable_rss_feed 等价）
     enable_rss: bool = True

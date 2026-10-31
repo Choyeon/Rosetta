@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **371 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **364 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -1922,11 +1922,7 @@ _无路径 / query 参数_
 | category_id | integer \| null | 否 |  |
 | content | object<string, string> | 是 | 多语言文章内容 |
 | cover_image | string \| null | 否 |  |
-| encryption_algorithm | string | 否 |  |
-| encryption_enabled | boolean | 否 |  |
 | encryption_hint | string \| null | 否 |  |
-| encryption_salt | string \| null | 否 |  |
-| encryption_verifier | string \| null | 否 |  |
 | excerpt | object<string, string> \| null | 否 | 多语言摘要 |
 | is_pinned | boolean | 否 |  |
 | meta_description | object<string, string> \| null | 否 | 多语言 SEO 描述 |
@@ -1954,11 +1950,7 @@ _无路径 / query 参数_
   "category_id": "string",
   "content": {},
   "cover_image": "string",
-  "encryption_algorithm": "AES-256-GCM",
-  "encryption_enabled": false,
   "encryption_hint": "string",
-  "encryption_salt": "string",
-  "encryption_verifier": "string",
   "excerpt": "string",
   "is_pinned": false,
   "meta_description": "string",
@@ -2388,11 +2380,7 @@ _无路径 / query 参数_
 | category_id | integer \| null | 否 |  |
 | content | object<string, string> \| null | 否 |  |
 | cover_image | string \| null | 否 |  |
-| encryption_algorithm | string \| null | 否 |  |
-| encryption_enabled | boolean \| null | 否 |  |
 | encryption_hint | string \| null | 否 |  |
-| encryption_salt | string \| null | 否 |  |
-| encryption_verifier | string \| null | 否 |  |
 | excerpt | object<string, string> \| null | 否 |  |
 | is_pinned | boolean \| null | 否 |  |
 | meta_description | object<string, string> \| null | 否 |  |
@@ -2423,11 +2411,7 @@ _无路径 / query 参数_
   "category_id": "string",
   "content": "string",
   "cover_image": "string",
-  "encryption_algorithm": "string",
-  "encryption_enabled": "string",
   "encryption_hint": "string",
-  "encryption_salt": "string",
-  "encryption_verifier": "string",
   "excerpt": "string",
   "is_pinned": "string",
   "meta_description": "string",
@@ -4092,7 +4076,7 @@ _无路径 / query 参数_
 | comment_giscus_mapping | string | 否 |  |
 | comment_giscus_reactions_enabled | string | 否 |  |
 | comment_giscus_repo | string | 否 |  |
-| … 其余 182 个字段 | | | 见 `/docs` |
+| … 其余 181 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -4182,7 +4166,6 @@ _无路径 / query 参数_
   "enable_bing_wallpaper": true,
   "enable_comments": true,
   "enable_dark_mode": true,
-  "enable_encrypted_posts": false,
   "enable_guestbook": true,
   "enable_like_button": true,
   "enable_music_player": true,
@@ -13120,7 +13103,6 @@ _无路径 / query 参数_
 | db_user | string | 否 |  |
 | enable_bing_wallpaper | boolean | 否 |  |
 | enable_comments | boolean | 否 |  |
-| enable_encrypted_posts | boolean | 否 |  |
 | enable_music_player | boolean | 否 |  |
 | enable_pagefind_search | boolean | 否 |  |
 | enable_registration | boolean | 否 |  |
@@ -13157,7 +13139,6 @@ _无路径 / query 参数_
   "db_user": "",
   "enable_bing_wallpaper": true,
   "enable_comments": true,
-  "enable_encrypted_posts": false,
   "enable_music_player": true,
   "enable_pagefind_search": true,
   "enable_registration": true,
@@ -15489,349 +15470,6 @@ _无路径 / query 参数_
   "sort_order": 0,
   "title": {},
   "updated_at": "string"
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
----
-
-## 内容加密（4）
-
-文章内容加密访问
-
-### `POST /api/admin/posts/{post_id}/encrypt`
-
-- **摘要**：设置文章加密内容
-- **鉴权**：需鉴权：`HTTPBearer`
-
-管理员使用指定密码对内容进行 AES-GCM 加密并存储，同时标记文章为加密状态。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `EncryptRequest`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string | 是 | 待加密的明文内容 |
-| hint | string \| null | 否 | 密码提示文案 |
-| password | string | 是 | 加密密码（明文） |
-
-```json
-{
-  "content": "string",
-  "hint": "string",
-  "password": "string"
-}
-```
-
-**出参**
-
-`200` · 模型 `BaseResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| message | string | 否 |  |
-| success | boolean | 否 |  |
-
-响应示例：
-
-```json
-{
-  "message": "操作成功",
-  "success": true
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `PUT /api/admin/posts/{post_id}/encrypt`
-
-- **摘要**：更新文章加密内容（换密码/内容）
-- **鉴权**：需鉴权：`HTTPBearer`
-
-使用旧密码验证后，重新加密内容或更换访问密码。若 old_password 为空则跳过验证（需管理员权限）。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `UpdateEncryptionRequest`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string \| null | 否 | 新的明文内容；为空时使用旧内容解密后重新加密 |
-| hint | string \| null | 否 | 密码提示文案 |
-| new_password | string | 是 | 新密码（明文） |
-| old_password | string \| null | 否 | 旧密码（用于验证）；为空时跳过验证 |
-
-```json
-{
-  "content": "string",
-  "hint": "string",
-  "new_password": "string",
-  "old_password": "string"
-}
-```
-
-**出参**
-
-`200` · 模型 `BaseResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| message | string | 否 |  |
-| success | boolean | 否 |  |
-
-响应示例：
-
-```json
-{
-  "message": "操作成功",
-  "success": true
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `DELETE /api/admin/posts/{post_id}/encrypt`
-
-- **摘要**：关闭文章内容加密
-- **鉴权**：需鉴权：`HTTPBearer`
-
-关闭加密并清除密文、密码哈希与提示。文章内容将恢复为公开可读（仍受 Post.content 字段控制）。
-
-**入参**
-
-_无路径 / query 参数_
-
-**出参**
-
-`200` · 模型 `BaseResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| message | string | 否 |  |
-| success | boolean | 否 |  |
-
-响应示例：
-
-```json
-{
-  "message": "操作成功",
-  "success": true
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `POST /api/posts/{post_id}/decrypt`
-
-- **摘要**：解密文章内容
-- **鉴权**：公开接口（无需鉴权）
-
-提交访问密码，校验通过后返回文章的解密内容。仅对已启用加密的文章有效。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `DecryptRequest`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| password | string | 是 | 访问密码（明文） |
-
-```json
-{
-  "password": "string"
-}
-```
-
-**出参**
-
-`200` · 模型 `DecryptResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| content | string | 是 |  |
-| hint | string \| null | 否 |  |
-
-响应示例：
-
-```json
-{
-  "content": "string",
-  "hint": "string"
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
----
-
-## 文章加密工具（3）
-
-文章加密的管理工具
-
-### `POST /api/post_crypto/derive_keys`
-
-- **摘要**：派生加密元数据
-- **鉴权**：公开接口（无需鉴权）
-
-给定密码，生成随机 salt 与 verifier（HMAC-SHA256(salt, password)）。前端将这三个字段与 PostCreate 一起发送，后端不保存明文密码。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `DeriveKeysRequest`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| password | string | 是 | 用户输入的明文密码 |
-
-```json
-{
-  "password": "string"
-}
-```
-
-**出参**
-
-`200` · 模型 `DeriveKeysResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| algorithm | string | 否 |  |
-| salt | string | 是 |  |
-| verifier | string | 是 |  |
-
-响应示例：
-
-```json
-{
-  "algorithm": "AES-256-GCM",
-  "salt": "string",
-  "verifier": "string"
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `GET /api/post_crypto/encrypted/{post_id}/preview`
-
-- **摘要**：后台预览加密文章摘要
-- **鉴权**：需鉴权：`HTTPBearer`
-
-作者或管理员获取加密文章的基本信息（标题/创建时间/加密状态），用于编辑器预览加密效果。
-
-**入参**
-
-_无路径 / query 参数_
-
-**出参**
-
-`200` · 模型 `EncryptedPreviewResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| created_at | string | 是 |  |
-| encryption_enabled | boolean | 是 |  |
-| encryption_hint | string \| null | 否 |  |
-| id | integer | 是 |  |
-| scheduled_at | string \| null | 否 |  |
-| slug | string | 是 |  |
-| title | object \| string | 是 |  |
-
-响应示例：
-
-```json
-{
-  "created_at": "string",
-  "encryption_enabled": false,
-  "encryption_hint": "string",
-  "id": 0,
-  "scheduled_at": "string",
-  "slug": "string",
-  "title": "string"
-}
-```
-
-**错误码**
-
-| 状态码 | 说明 |
-| --- | --- |
-| `422` | Validation Error |
-
-### `POST /api/post_crypto/verify_access`
-
-- **摘要**：验证文章访问密码
-- **鉴权**：公开接口（无需鉴权）
-
-给定文章 ID 与密码，重新计算 verifier 并与数据库比对。成功返回 ok=true 和 1h 短期 JWT（scope=post_access）。
-
-**入参**
-
-_无路径 / query 参数_
-
-**请求体**（`application/json`，模型 `VerifyAccessRequest`）
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| password | string | 是 | 访问密码（明文） |
-| post_id | integer | 是 | 目标文章 ID |
-
-```json
-{
-  "password": "string",
-  "post_id": 0
-}
-```
-
-**出参**
-
-`200` · 模型 `VerifyAccessResponse`
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| message | string \| null | 否 |  |
-| ok | boolean | 是 |  |
-| token | string \| null | 否 |  |
-
-响应示例：
-
-```json
-{
-  "message": "string",
-  "ok": false,
-  "token": "string"
 }
 ```
 

@@ -602,8 +602,6 @@
     "fBingDesc": "トップページに Bing デイリー壁紙を背景表示します",
     "fPagefind": "サイト内検索",
     "fPagefindDesc": "Pagefind クライアント全文検索を有効化",
-    "fCrypto": "暗号化記事",
-    "fCryptoDesc": "パスワードで保護された記事を投稿できます",
     "fMusic": "BGM プレーヤー",
     "fMusicDesc": "サイドバーに音楽プレーヤーを表示（管理画面で再生元設定要）",
     "installingDesc": "データベース初期化・設定書き込み・サンプルデータ作成中。お待ちください。",

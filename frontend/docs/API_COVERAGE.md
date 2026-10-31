@@ -32,9 +32,9 @@
 
 ## 全模块汇总表
 <!-- COVERAGE-AUTO:BEGIN 由 backend/scripts/gen_api_coverage.py 生成，勿手改 -->
-> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 371 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
+> 本区块由 `backend/scripts/gen_api_coverage.py` 扫描生成（后端 364 条 operation × 前端 `frontend/**` 字面量）。**勿手改**：改接口或接线后执行 `PYTHONPATH=. python backend/scripts/gen_api_coverage.py --write` 重算。
 
-**总计：371 个端点操作；✅ 311 + 🟡 6 = 已消费 317 个，未消费 54 个，覆盖率 85.4%。**
+**总计：364 个端点操作；✅ 311 + 🟡 6 = 已消费 317 个，未消费 47 个，覆盖率 87.1%。**
 
 > 归不到 `backend/api/*.py` 模块的 3 条挂在 `app` 上（根级路由）：`GET /`、`GET /api/health`、`GET /health`
 
@@ -70,13 +70,11 @@
 | admin_tools | 4 | 4 | 0 | 0 | 100% |
 | migration | 4 | 4 | 0 | 0 | 100% |
 | performance | 4 | 4 | 0 | 0 | 100% |
-| post_encryption | 4 | 0 | 0 | 4 | 0% |
 | settings_groups | 4 | 4 | 0 | 0 | 100% |
 | app | 3 | 1 | 0 | 2 | 33% |
 | bing_image | 3 | 1 | 0 | 2 | 33% |
 | comment_reactions | 3 | 3 | 0 | 0 | 100% |
 | comment_report | 3 | 3 | 0 | 0 | 100% |
-| post_crypto | 3 | 0 | 0 | 3 | 0% |
 | scheduled_posts | 3 | 3 | 0 | 0 | 100% |
 | toc | 3 | 0 | 0 | 3 | 0% |
 | bing | 2 | 1 | 0 | 1 | 50% |
@@ -89,7 +87,7 @@
 | themes | 1 | 1 | 0 | 0 | 100% |
 | translate | 1 | 1 | 0 | 0 | 100% |
 
-## 未消费清单（自动生成，共 54 条）
+## 未消费清单（自动生成，共 47 条）
 
 > 判据是「前端源码里没有这条 URL 字面量」。接线前逐条人工确认它是不是
 > 刻意不消费（后台口、内部口、被别的口覆盖），确认后在对应模块小节写一句理由。
@@ -107,8 +105,6 @@
 - **monitoring**（1）：`POST /api/monitoring/pageviews`
 - **oobe**（9）：`POST /api/oobe/admin-account`、`POST /api/oobe/database-config`、`POST /api/oobe/environment`、`GET /api/oobe/install-dependencies/stream`、`GET /api/oobe/install/stream`、`POST /api/oobe/reset`、`POST /api/oobe/site-config`、`GET /api/oobe/state`、`GET /api/oobe/test-database`
 - **plugins**（2）：`POST /api/admin/plugins/{slug}/activate`、`POST /api/admin/plugins/{slug}/deactivate`
-- **post_crypto**（3）：`POST /api/post_crypto/derive_keys`、`GET /api/post_crypto/encrypted/{post_id}/preview`、`POST /api/post_crypto/verify_access`
-- **post_encryption**（4）：`DELETE /api/admin/posts/{post_id}/encrypt`、`POST /api/admin/posts/{post_id}/encrypt`、`PUT /api/admin/posts/{post_id}/encrypt`、`POST /api/posts/{post_id}/decrypt`
 - **seo**（3）：`GET /api/seo/config`、`PUT /api/seo/config`、`GET /api/seo/sitemap.xml`
 - **shortcodes**（2）：`DELETE /api/admin/shortcodes/{tag}`、`POST /api/shortcodes/render`
 - **themes_ext**（2）：`GET /api/admin/themes/{slug}/mods`、`PUT /api/admin/themes/{slug}/mods`
@@ -339,8 +335,6 @@
 | shortcodes（/api） | 5 | 渲染/注册/管理短代码。管理面板已接入 `pages/admin/system/shortcodes.vue`（列表 / 注册模板 / 删除 / 预览四个消费点）；`POST /api/shortcodes/render` 仍无前端消费者——编辑器预览刻意走管理员口，因为公开口不接受 `context`。契约（2026-09-28 修）：`POST /api/shortcodes/render` 公开无鉴权、带 20/min/IP 专属限流、正文上限 200000 字符、**请求体不接受 `context`**（唯一能带 ctx 的入口是管理员预览 `POST /api/admin/shortcodes`）；插件自带 tag 归插件所有，运行时注册/删除一律 409 `SHORTCODE_PLUGIN_OWNED`；API 方式注册的模板短代码落 KV `shortcode_templates` 并在启动/列表时重放（多 worker 与重启后仍可见），但插件页语义不变——插件代码仍是同名 tag 的权威；改注册表会同步抹掉 `post:` / `posts` / `archive` 与前端页面缓存 |
 | toc（/api/toc） | 3 | 目录生成/抽取/加锚点。前端 Markdown 渲染本地生成目录，未调后端——重复能力，建议二选一 |
 | scheduled_posts（/api） | 3 | **2026-10-28 全部接入**：`pages/admin/content/scheduled.vue`（待发布队列）是唯一消费方——`GET /admin/posts/scheduled` 列表、`PUT /admin/posts/{id}/schedule` 改期/重新排队、`DELETE /admin/posts/{id}/schedule` 取消（取消即回 `draft`，不是停在 `scheduled`）。原判定「前端以 `status=scheduled` + PUT 文章实现，重复入口」**已作废**：状态机口径（`scheduled` 必须带未来 `published_at`、`draft` 不接受定时、到点由调度器发布）由该页与 `tests/unit/scheduledQueueWired.spec.ts` + `tests/test_post_batch_hooks.py` 钉住，生产机探针 2026-10-28 逐条验过（排队→改期→取消回草稿→草稿被 400 拒）。注意 `GET /admin/posts/scheduled` **有写副作用**（顺带发布到期文章），运维脚本不要把它当纯读口轮询 |
-| post_encryption（/api） | 4 | 另一套并行设计（独立表 + 独立 CRUD）。**不是"待接 UI 的缺口"**：真正在用的密码门是 `Post.password` 列 + `visibility=password`，编辑器（`components/admin/PostForm.vue`）与读者侧（`X-Post-Password`，正文与评论树同闸门）都已上线并有回归；下面 352 行那条「这两族不接 UI」才是当前口径，本行旧判定「编辑器无加密设置 UI」已作废。这 4 条属**退役候选**（同 2026-10-28 的旧调色板族），删不删由运营决策，不再当作待办 |
-| post_crypto（/api/post_crypto） | 3 | 配套上一行的读者侧流程（派生密钥 / 验证访问 / 加密预览）。同上：并行设计、零消费方、退役候选，不是待接入的缺口 |
 | admin_logs（/api/admin/logs/retention） | 1 | 手动清理早于 N 天的**操作留痕**（`operation_logs`）。已接：`pages/admin/tools/audit-logs.vue`。`visit_logs` / `performance_metrics` 不在这条口的职责里——它们由服务端按 `LOG_RETENTION_DAYS` 的保留循环清理（先睡后删，短生命周期进程不会误删） |
 
 ### bing / bing_image（壁纸代理体系）
@@ -365,12 +359,20 @@
    - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；2026-10-29 又接上 `DELETE /api/users/me`（同一页的注销危险区，口径见上表 users 段）；users 一族剩下的 7 条见上表 ❌ 行的逐条判定，全部是**重复入口、旧别名或形态变体**而不是缺功能——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）
 
    - **写入口缺唯一性护栏**（voting / favorite 同族）：`POST /api/voting/polls/{id}/vote` 现对登录用户补了「每人一票」（重复 409），`favorites` 的三个 by-post 端点改成容忍重复行（不再 500），但**两张表都还没有** DB 级唯一索引（`votes.poll_id+user_id` / `favorites.user_id+post_id`）：根治要先去重历史行，且 `user_id` 可空（匿名票）使唯一约束不能直接照抄。接入这些域的 UI 前请补这条。**状态（2026-10-16）**：favorite 的 UI 已接入，靠的是「读全部行 + 写全部行」的容忍口径（不是唯一索引），所以界面暂时不会出现「取消没生效」；投票的全局 MVP 也已接入（2026-10-28 补齐另两半：`Poll.post_id` 绑定文章，前台按当前文章取票，投票不再无条件挂在每篇文章下方；`PUT /voting/polls/{id}` 让管理员结束/重新开启与改标题，不再只能连票数一起删）。DB 级唯一索引仍是待办，补上后可以把 by-row 那两个变体一并删掉。   - **后台运维增强**：~~hero 轮播管理（×5）~~（2026-10-18 已落地 `pages/admin/content/hero.vue`，本项不再是缺口）；
-   - **内容保护与防滥用**：文章加密（post_encryption + post_crypto ×7）、~~captcha 接入（×2）~~（2026-10-18 留言板写入口已接，见上 captcha 行；评论侧只有服务端闸门）。
-     **2026-10-16 判定：加密这两族不接 UI。** 真实在用的加密链路是 `Post.password` 列 +
-     `GET /blog/posts/{slug}` 的 `X-Post-Password` 头（`backend/api/blog.py:1238-1252`，
-     前端密码门已上线并有回归），而 post_encryption / post_crypto 是另一套并行设计（独立表 + 独立接口）。
-     给第二个真相源做界面，等于让"同一篇文章有两个密码来源、改一个另一个不生效"变成用户可见的 bug；
-     要收敛应该先在后端二选一并删表，那是一项独立工程，不属于"补前端消费点"。
+   - **内容保护与防滥用**：~~文章加密并行族（×7）~~（**2026-10-31 已整族退役**，见下）、~~captcha 接入（×2）~~（2026-10-18 留言板写入口已接，见上 captcha 行；评论侧只有服务端闸门）。
+     **2026-10-16 判定「不接 UI」→ 2026-10-31 执行退役。** 真实在用的密码门只有一条：
+     `Post.password` 列（`backend/api/blog.py` 的 `update_post` 哈希落值）+
+     `GET /blog/posts/{slug}` 的 `X-Post-Password` 头（判据单源
+     `backend/services/post_access.py::post_content_unlocked`，正文与评论树同闸门），
+     前端密码门已上线并有回归。被删的那一族是另一套并行设计（`encryption_enabled` +
+     `encrypted_content` 密文 + salt/verifier/algorithm + 7 条端点 + `core/crypto.py`）：
+     详情响应模型从不带密文，所以任何访客路径都拿不到它，前端零调用，
+     `verify_access` 铸的 `scope=post_access` JWT 也没有任何端点认。给第二个真相源做界面，
+     等于让"同一篇文章有两个密码来源、改一个另一个不生效"变成用户可见的 bug。
+     退役边界是**接口与写口**：生产库 5 个列、四处 `defer(Post.encrypted_content)` 读侧护栏、
+     以及 ZIP 导出/导入对密文的原样往返都保留（历史备份里可能有密文，删表是另一项独立工程）。
+     退役前置探针实测 `encryption_enabled=true` 与 `encrypted_content` 非空的行数都是 0。
+     守卫 `tests/test_retired_post_crypto_family_is_gone.py`（含"活路径不得被一起删掉"的两侧断言）。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 
