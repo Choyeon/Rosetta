@@ -1992,31 +1992,6 @@ class SiteConfigResponse(BaseModel):
     custom_css: str | None = None
     custom_js: str | None = None
 
-    # 音乐播放器设置
-    music_enabled: bool = True
-    music_show_in_navbar: bool = True
-    music_show_in_sidebar: bool = True
-    music_mode: str = "meting"
-    music_volume: float = 0.7
-    music_play_mode: str = "list"
-    music_show_lyrics: bool = True
-    music_meting_api: str = ""
-    music_meting_server: str = "netease"
-    music_meting_type: str = "playlist"
-    music_meting_id: str = ""
-
-    # 壁纸/Banner设置
-    wallpaper_mode: str = "banner"
-    wallpaper_player_enable: bool = True
-    wallpaper_desktop: str = ""
-    wallpaper_mobile: str = ""
-    wallpaper_video: str = ""
-    wallpaper_use_bing: bool = True
-    wallpaper_bing_days: int = 30
-    wallpaper_dim_opacity: float = 0.2
-    wallpaper_home_title: str = "Welcome"
-    wallpaper_home_subtitle: str = ""
-
     # 关于页面内容（支持 Markdown）
     about_content: str = ""
     # 关于页面内容（HTML 直接渲染版，站点设置 basic 组中以 HTML 编辑器维护）
@@ -2030,29 +2005,6 @@ class SiteConfigResponse(BaseModel):
     author_bio: str = ""
     author_avatar: str = ""
     author_links_json: str = "[]"
-
-    # 侧边栏卡片显隐设置
-    sidebar_show_profile: bool = True
-    sidebar_show_categories: bool = True
-    sidebar_show_tags: bool = True
-    sidebar_show_recent_posts: bool = True
-    sidebar_show_recent_comments: bool = True
-    sidebar_show_tag_cloud: bool = True
-    sidebar_show_site_info: bool = True
-    sidebar_show_music: bool = True
-    sidebar_show_statistics: bool = True
-    sidebar_show_dynamics: bool = True
-    sidebar_widget_order: list[str] = [
-        "profile",
-        "site_info",
-        "statistics",
-        "dynamics",
-        "music",
-        "categories",
-        "tags",
-        "recent_posts",
-        "recent_comments",
-    ]
 
     # 站点URL和运行信息
     site_url: str = ""
@@ -2146,24 +2098,6 @@ class SiteConfigResponse(BaseModel):
     image_opt_formats: str = "webp"
     image_opt_quality: int = 85
     image_opt_no_referrer_json: str = '["*.hdslb.com","*.bilibili.com"]'
-
-    # ========== 樱花特效配置 ==========
-    sakura_enable: bool = False
-    sakura_count: int = 21
-    sakura_min_scale: float = 0.5
-    sakura_max_scale: float = 1.1
-    sakura_min_opacity: float = 0.3
-    sakura_max_opacity: float = 0.9
-    sakura_z_index: int = 100
-
-    # ========== 看板娘/Spine模型配置 ==========
-    pio_spine_enable: bool = False
-    pio_spine_model_path: str = ""
-    pio_spine_scale: float = 1.0
-    pio_spine_position_corner: str = "bottom-left"
-    pio_spine_width: int = 135
-    pio_spine_height: int = 165
-    pio_spine_z_index: int = 1000
 
     # ========== Mermaid图表配置 ==========
     mermaid_theme: str = "default"
@@ -2279,31 +2213,6 @@ class SiteConfigUpdate(BaseModel):
     custom_css: str | None = Field(None, max_length=50000)
     custom_js: str | None = Field(None, max_length=50000)
 
-    # 音乐播放器设置
-    music_enabled: bool | None = None
-    music_show_in_navbar: bool | None = None
-    music_show_in_sidebar: bool | None = None
-    music_mode: str | None = Field(None, max_length=20)
-    music_volume: float | None = Field(None, ge=0, le=1)
-    music_play_mode: str | None = Field(None, max_length=20)
-    music_show_lyrics: bool | None = None
-    music_meting_api: str | None = Field(None, max_length=500)
-    music_meting_server: str | None = Field(None, max_length=20)
-    music_meting_type: str | None = Field(None, max_length=20)
-    music_meting_id: str | None = Field(None, max_length=100)
-
-    # 壁纸/Banner设置
-    wallpaper_mode: str | None = Field(None, max_length=20)
-    wallpaper_player_enable: bool | None = None
-    wallpaper_desktop: str | None = Field(None, max_length=1000)
-    wallpaper_mobile: str | None = Field(None, max_length=1000)
-    wallpaper_video: str | None = Field(None, max_length=1000)
-    wallpaper_use_bing: bool | None = None
-    wallpaper_bing_days: int | None = Field(None, ge=1, le=30)
-    wallpaper_dim_opacity: float | None = Field(None, ge=0, le=1)
-    wallpaper_home_title: str | None = Field(None, max_length=200)
-    wallpaper_home_subtitle: str | None = Field(None, max_length=500)
-
     # 关于页面内容
     about_content: str | None = Field(None, max_length=50000)
 
@@ -2401,24 +2310,6 @@ class SiteConfigUpdate(BaseModel):
     image_opt_formats: str | None = Field(None, max_length=100)
     image_opt_quality: int | None = None
     image_opt_no_referrer_json: str | None = Field(None, max_length=50000)
-
-    # ========== 樱花特效配置 ==========
-    sakura_enable: bool | None = None
-    sakura_count: int | None = None
-    sakura_min_scale: float | None = None
-    sakura_max_scale: float | None = None
-    sakura_min_opacity: float | None = None
-    sakura_max_opacity: float | None = None
-    sakura_z_index: int | None = None
-
-    # ========== 看板娘/Spine模型配置 ==========
-    pio_spine_enable: bool | None = None
-    pio_spine_model_path: str | None = Field(None, max_length=500)
-    pio_spine_scale: float | None = None
-    pio_spine_position_corner: str | None = Field(None, max_length=50)
-    pio_spine_width: int | None = None
-    pio_spine_height: int | None = None
-    pio_spine_z_index: int | None = None
 
     # ========== Mermaid图表配置 ==========
     mermaid_theme: str | None = Field(None, max_length=50)

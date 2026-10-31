@@ -405,6 +405,28 @@
      与站内审核/举报/表情反应体系的取舍），不属于本表里的「差一个入口」。守卫
      `tests/test_retired_third_party_comment_config_is_gone.py`（含「活评论系统不得被一起删掉」的两侧断言，
      以及「config_map 里那四条真落库的旧评论键必须原样可用」）。
+   - **扁平死配置族**（**2026-10-31 已退役**，不是待接缺口）：`music_*`（11 键）、`wallpaper_*`（10 键，
+     旧 Banner 体系，**与 Bing 每日壁纸无关**）、`sidebar_show_*` / `sidebar_widget_order`（11 键）、
+     `sakura_*`（7 键）、`pio_spine_*`（7 键）共 46 个扁平键，加上它们在 `SiteConfigResponse` /
+     `SiteConfigUpdate` / OOBE 默认值 / `/api/config` 投影里的全部痕迹。这一族的形状与上一族不同，
+     是「**存得进、没人读**」：`music_*` / `wallpaper_*` / `sidebar_*` 在 `PUT /api/config` 的
+     `config_map` 里有转译，写了真的落库，`/api/config` 又原样投影给匿名访客与 SSR 页面，一整条链
+     都在认真搬运一个不存在的功能；`sakura_*` / `pio_spine_*` 更糟一档，连 `config_map` 都不收，
+     写了就丢（「假装保存」）。三者共同的最后一环是**前端零命中**：`frontend/` 全量源码里没有
+     APlayer / MetingJS / 樱花 canvas / Spine 运行时的一行代码，也没有任何组件读这些键，
+     后台真正的设置口 `/api/settings`（`settings_groups.py`）里没有这五组（sidebar 分组早已删掉，
+     侧边栏显隐与位置归主题 Customizer 的 `show_sidebar` / `sidebar_position` mods，
+     导航的 header/footer/sidebar 归 `navigation` 表的 `location`），运营者连"把它打开"的按钮都没有。
+     唯一还提它们的地方是 `/api/config/full` 里两组死开关声明，而那个端点自身在前端零消费方
+     （`useAdminManage` 走的是 `/api/settings`）。
+     要真做音乐播放器 / 桌面壁纸 / 樱花特效 / 看板娘，是四套独立的前端运行时工程（含 CSP
+     `script-src`、`media-src`、`img-src` 三处同改），不是「差一个后台入口」。守卫
+     `tests/test_retired_flat_config_families_are_gone.py`，含「活功能不得被一起删掉」的另一半：
+     Bing 壁纸（`enable_bing_wallpaper` + `services/site_settings.bing_wallpaper_enabled` +
+     `/api/bing/wallpaper` + 公开 `/wallpapers` 归档页）、首页轮播（`hero_slides` 表 + `/api/hero/*`，
+     从来不在扁平配置里）、导航 `sidebar` 位置与站内评论系统必须原样活着；另有一条用例专门种下
+     `MUSIC_ENABLED` / `WALLPAPER_MODE` / `SIDEBAR` 三行存量库数据，断言 `/api/config` 无视它们
+     而不是把它们重新投影出来（生产 PG 里今天就躺着这类行）。
 
 > 建议：① 优先补齐 users/favorite 系（注册功能已有账号，缺"我的"页面是最大体验空洞）（① 已部分完成：2026-09-28 个人中心 /account 接上 blog users/me 系，users 模块自身的改密/偏好设置仍无 UI）；② 对"重复入口"做一次后端归并 + 本表同步，压缩端点分母；③ ~~主题/插件市场只差前端 Tab~~（2026-09-27 已接入，本项完成）。
 

@@ -925,41 +925,12 @@ async def get_site_config(db: DB):
     """
     获取站点配置（先查缓存；未命中时只读一次 SiteConfig 表，其余为内存拼装默认值）
     """
-    # 侧边栏默认配置
-    default_sidebar: dict[str, Any] = {
-        "show_profile": True,
-        "show_categories": True,
-        "show_tags": True,
-        "show_recent_posts": True,
-        "show_recent_comments": True,
-        "show_tag_cloud": True,
-        "show_site_info": True,
-        "show_music": True,
-        "show_statistics": True,
-        "show_dynamics": True,
-        "widget_order": [
-            "profile",
-            "site_info",
-            "statistics",
-            "dynamics",
-            "music",
-            "categories",
-            "tags",
-            "recent_posts",
-            "recent_comments",
-        ],
-    }
-
-    def _sidebar_dict_to_flat(sb: dict[str, Any]) -> dict[str, Any]:
-        """把 sidebar 分组字典打平成 SiteConfigResponse 的 sidebar_* 字段"""
-        out: dict[str, Any] = {}
-        for k, v in sb.items():
-            if k == "widget_order":
-                out["sidebar_widget_order"] = v
-            else:
-                out[f"sidebar_{k}"] = v
-        return out
-
+    # 侧边栏小工具（sidebar_* 11 键）、音乐播放器（music_* 11 键）、壁纸/Banner 旧体系
+    # （wallpaper_* 10 键）、樱花特效（sakura_* 7 键）与 Live2D 看板娘（pio_spine_* 7 键）
+    # 已于 2026-10-31 整族退役：前端没有任何渲染器读它们，后台真正的设置口（/api/settings）
+    # 也早已删掉 sidebar 分组、且从未有过这四组——运营面只剩 /api/config/full 里的一组
+    # 死开关声明，而那个端点本身零消费方。清单与守卫见
+    # tests/test_retired_flat_config_families_are_gone.py。
     if not is_oobe_complete():
         oobe_kwargs = dict(
             site_name="Rosetta",
@@ -973,25 +944,6 @@ async def get_site_config(db: DB):
             enable_rss_feed=True,
             pagination_page_size=12,
             code_theme="github",
-            # 音乐播放器默认设置（不内置歌单，请到管理后台填写）
-            music_enabled=True,
-            music_show_in_navbar=True,
-            music_show_in_sidebar=True,
-            music_mode="meting",
-            music_volume=0.7,
-            music_play_mode="list",
-            music_show_lyrics=True,
-            music_meting_api="",
-            music_meting_server="netease",
-            music_meting_type="playlist",
-            music_meting_id="",
-            # 壁纸默认设置（默认开启 Bing 每日壁纸）
-            wallpaper_mode="banner",
-            wallpaper_player_enable=True,
-            wallpaper_use_bing=True,
-            wallpaper_bing_days=30,
-            wallpaper_dim_opacity=0.2,
-            wallpaper_home_title="Welcome",
             # 关于页面内容
             about_content="",
             # 友链申请区域自定义 HTML 内容
@@ -1075,29 +1027,12 @@ async def get_site_config(db: DB):
             image_opt_formats="webp",
             image_opt_quality=85,
             image_opt_no_referrer_json='["*.hdslb.com","*.bilibili.com"]',
-            # ========== 樱花特效配置 ==========
-            sakura_enable=False,
-            sakura_count=21,
-            sakura_min_scale=0.5,
-            sakura_max_scale=1.1,
-            sakura_min_opacity=0.3,
-            sakura_max_opacity=0.9,
-            sakura_z_index=100,
-            # ========== 看板娘/Spine模型配置 ==========
-            pio_spine_enable=False,
-            pio_spine_model_path="",
-            pio_spine_scale=1.0,
-            pio_spine_position_corner="bottom-left",
-            pio_spine_width=135,
-            pio_spine_height=165,
-            pio_spine_z_index=1000,
             # ========== Mermaid图表配置 ==========
             mermaid_theme="default",
             mermaid_security_level="strict",
             # ========== PlantUML配置 ==========
             plantuml_server_url="https://www.plantuml.com/plantuml",
         )
-        oobe_kwargs.update(_sidebar_dict_to_flat(default_sidebar))
         return SiteConfigResponse(**oobe_kwargs)
 
     # 合并 14 组设置 JSON 进入 /api/config 返回值。分组不是独立的表：
@@ -1219,16 +1154,6 @@ async def get_site_config(db: DB):
                         cfg_base["icp_number"] = str(parsed["icp_number"])
                     if parsed.get("police_icp_number") is not None:
                         cfg_base["police_icp_number"] = str(parsed["police_icp_number"]) or None
-            # sidebar（已经由后续 _sidebar_dict_to_flat 读取默认，这里覆盖）
-            raw_sb = _cfg_raw("sidebar")
-            if raw_sb:
-                parsed_sb = _parse_group(raw_sb)
-                if parsed_sb:
-                    for k, v in parsed_sb.items():
-                        if k == "widget_order" and isinstance(v, list):
-                            cfg_base["sidebar_widget_order"] = v
-                        else:
-                            cfg_base[f"sidebar_{k}"] = bool(v) if isinstance(v, bool) else v
             # comments（执行点在 CommentService.create_comment 读同一份分组，这里只下发给 UI）
             raw_comments = _cfg_raw("comments")
             if raw_comments:
@@ -1319,23 +1244,6 @@ async def get_site_config(db: DB):
     # 而 /api/config 读取习惯用大写键（SITE_NAME、ENABLE_COMMENTS）。
     # 这里构建一份全大写 key 的镜像表，保证 get_* 系列函数无论传入哪种大小写都能命中。
     _configs_ci: dict[str, str] = {k.upper(): v for k, v in configs.items()}
-
-    # 尝试读取 settings_groups 中保存的 sidebar 分组（JSON 格式）
-    sidebar = dict(default_sidebar)
-    raw_sidebar_json = configs.get("sidebar") or _configs_ci.get("SIDEBAR")
-    if raw_sidebar_json:
-        try:
-            import json as _json
-
-            parsed_sb = _json.loads(raw_sidebar_json)
-            if isinstance(parsed_sb, dict):
-                for k, v in parsed_sb.items():
-                    if k in default_sidebar:
-                        sidebar[k] = v
-        except (ValueError, TypeError):
-            # SiteConfig 里的 JSON 是用户可写字段：解析失败回退默认侧栏即可。
-            # 只收窄到 JSON/类型错误，NameError 等真实缺陷必须照样抛出。
-            pass
 
     # 关于页纯文字正文：只兜历史 SiteConfig 行 / 环境变量；
     # basic 分组里的 about_content 已删除（前台 /about 只渲染 about_page_html）。
@@ -1456,33 +1364,6 @@ async def get_site_config(db: DB):
         custom_footer_code=get_str("CUSTOM_FOOTER_CODE"),
         custom_css=get_str("CUSTOM_CSS"),
         custom_js=get_str("CUSTOM_JS"),
-        # 音乐播放器设置
-        music_enabled=get_bool("MUSIC_ENABLED", "true"),
-        music_show_in_navbar=get_bool("MUSIC_SHOW_IN_NAVBAR", "true"),
-        music_show_in_sidebar=get_bool("MUSIC_SHOW_IN_SIDEBAR", "true"),
-        music_mode=get_str("MUSIC_MODE", "meting") or "meting",
-        music_volume=float(_configs_ci.get("MUSIC_VOLUME", "0.7")),
-        music_play_mode=get_str("MUSIC_PLAY_MODE", "list") or "list",
-        music_show_lyrics=get_bool("MUSIC_SHOW_LYRICS", "true"),
-        music_meting_api=get_str(
-            "MUSIC_METING_API",
-            "",
-        )
-        or "",
-        music_meting_server=get_str("MUSIC_METING_SERVER", "netease") or "netease",
-        music_meting_type=get_str("MUSIC_METING_TYPE", "playlist") or "playlist",
-        music_meting_id=get_str("MUSIC_METING_ID", "") or "",
-        # 壁纸/Banner设置
-        wallpaper_mode=get_str("WALLPAPER_MODE", "banner") or "banner",
-        wallpaper_player_enable=get_bool("WALLPAPER_PLAYER_ENABLE", "true"),
-        wallpaper_desktop=get_str("WALLPAPER_DESKTOP", "") or "",
-        wallpaper_mobile=get_str("WALLPAPER_MOBILE", "") or "",
-        wallpaper_video=get_str("WALLPAPER_VIDEO", "") or "",
-        wallpaper_use_bing=get_bool("WALLPAPER_USE_BING", "true"),
-        wallpaper_bing_days=get_int("WALLPAPER_BING_DAYS", "30"),
-        wallpaper_dim_opacity=float(_configs_ci.get("WALLPAPER_DIM_OPACITY", "0.2")),
-        wallpaper_home_title=get_str("WALLPAPER_HOME_TITLE", "Welcome") or "Welcome",
-        wallpaper_home_subtitle=get_str("WALLPAPER_HOME_SUBTITLE", "") or "",
         # 关于页面内容
         about_content=about_content or "",
         # 关于页面 HTML（优先从 basic 组 JSON 中读取 about_page_html；空时回退扁平 key）
@@ -1581,23 +1462,6 @@ async def get_site_config(db: DB):
             "IMAGE_OPT_NO_REFERRER_JSON", '["*.hdslb.com","*.bilibili.com"]'
         )
         or '["*.hdslb.com","*.bilibili.com"]',
-        # ========== 樱花特效配置 ==========
-        sakura_enable=get_bool("SAKURA_ENABLE", "false"),
-        sakura_count=get_int("SAKURA_COUNT", "21"),
-        sakura_min_scale=float(_configs_ci.get("SAKURA_MIN_SCALE", "0.5")),
-        sakura_max_scale=float(_configs_ci.get("SAKURA_MAX_SCALE", "1.1")),
-        sakura_min_opacity=float(_configs_ci.get("SAKURA_MIN_OPACITY", "0.3")),
-        sakura_max_opacity=float(_configs_ci.get("SAKURA_MAX_OPACITY", "0.9")),
-        sakura_z_index=get_int("SAKURA_Z_INDEX", "100"),
-        # ========== 看板娘/Spine模型配置 ==========
-        pio_spine_enable=get_bool("PIO_SPINE_ENABLE", "false"),
-        pio_spine_model_path=get_str("PIO_SPINE_MODEL_PATH", "") or "",
-        pio_spine_scale=float(_configs_ci.get("PIO_SPINE_SCALE", "1.0")),
-        pio_spine_position_corner=get_str("PIO_SPINE_POSITION_CORNER", "bottom-left")
-        or "bottom-left",
-        pio_spine_width=get_int("PIO_SPINE_WIDTH", "135"),
-        pio_spine_height=get_int("PIO_SPINE_HEIGHT", "165"),
-        pio_spine_z_index=get_int("PIO_SPINE_Z_INDEX", "1000"),
         # ========== Mermaid图表配置 ==========
         mermaid_theme=get_str("MERMAID_THEME", "default") or "default",
         mermaid_security_level=get_str("MERMAID_SECURITY_LEVEL", "strict") or "strict",
@@ -1605,7 +1469,6 @@ async def get_site_config(db: DB):
         plantuml_server_url=get_str("PLANTUML_SERVER_URL", "https://www.plantuml.com/plantuml")
         or "https://www.plantuml.com/plantuml",
     )
-    response_dict.update(_sidebar_dict_to_flat(sidebar))
     # 把后台 14 组 settings 合并进 /api/config 公开返回
     response_dict = _apply_settings_groups(response_dict)
     response = SiteConfigResponse(**response_dict)
@@ -2217,217 +2080,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                 ),
             ],
         ),
-        SiteSettingGroup(
-            name="music",
-            label="音乐播放器",
-            icon="music",
-            settings=[
-                SiteSettingItem(
-                    key="MUSIC_ENABLED",
-                    label="启用音乐播放器",
-                    type="switch",
-                    value=get_bool_val("MUSIC_ENABLED", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="MUSIC_SHOW_IN_NAVBAR",
-                    label="在导航栏显示",
-                    type="switch",
-                    value=get_bool_val("MUSIC_SHOW_IN_NAVBAR", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="MUSIC_SHOW_IN_SIDEBAR",
-                    label="在侧边栏显示",
-                    type="switch",
-                    value=get_bool_val("MUSIC_SHOW_IN_SIDEBAR", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="MUSIC_MODE",
-                    label="音乐模式",
-                    type="select",
-                    value=get_val("MUSIC_MODE", "meting"),
-                    default="meting",
-                    options=[
-                        {"value": "meting", "label": "Meting API"},
-                        {"value": "local", "label": "本地音乐"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="MUSIC_VOLUME",
-                    label="默认音量",
-                    type="number",
-                    value=float(get_val("MUSIC_VOLUME", "0.7")),
-                    default=0.7,
-                    min_value=0,
-                    max_value=1,
-                ),
-                SiteSettingItem(
-                    key="MUSIC_PLAY_MODE",
-                    label="播放模式",
-                    type="select",
-                    value=get_val("MUSIC_PLAY_MODE", "list"),
-                    default="list",
-                    options=[
-                        {"value": "list", "label": "列表循环"},
-                        {"value": "one", "label": "单曲循环"},
-                        {"value": "random", "label": "随机播放"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="MUSIC_SHOW_LYRICS",
-                    label="显示歌词",
-                    type="switch",
-                    value=get_bool_val("MUSIC_SHOW_LYRICS", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="MUSIC_METING_API",
-                    label="Meting API 地址",
-                    type="text",
-                    value=get_val(
-                        "MUSIC_METING_API",
-                        "https://api.i-meto.com/meting/api?server=:server&type=:type&id=:id&r=:r",
-                    ),
-                    default="https://api.i-meto.com/meting/api?server=:server&type=:type&id=:id&r=:r",
-                ),
-                SiteSettingItem(
-                    key="MUSIC_METING_SERVER",
-                    label="音乐平台",
-                    type="select",
-                    value=get_val("MUSIC_METING_SERVER", "netease"),
-                    default="netease",
-                    options=[
-                        {"value": "netease", "label": "网易云音乐"},
-                        {"value": "tencent", "label": "QQ音乐"},
-                        {"value": "kugou", "label": "酷狗音乐"},
-                        {"value": "xiami", "label": "虾米音乐"},
-                        {"value": "baidu", "label": "百度音乐"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="MUSIC_METING_TYPE",
-                    label="类型",
-                    type="select",
-                    value=get_val("MUSIC_METING_TYPE", "playlist"),
-                    default="playlist",
-                    options=[
-                        {"value": "song", "label": "单曲"},
-                        {"value": "playlist", "label": "歌单"},
-                        {"value": "album", "label": "专辑"},
-                        {"value": "search", "label": "搜索"},
-                        {"value": "artist", "label": "艺术家"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="MUSIC_METING_ID",
-                    label="歌单/专辑 ID",
-                    type="text",
-                    value=get_val("MUSIC_METING_ID", ""),
-                    default="",
-                    placeholder="例如网易云歌单 ID（在后台设置后生效）",
-                ),
-            ],
-        ),
-        SiteSettingGroup(
-            name="wallpaper",
-            label="壁纸/Banner",
-            icon="image",
-            settings=[
-                SiteSettingItem(
-                    key="WALLPAPER_MODE",
-                    label="壁纸模式",
-                    type="select",
-                    value=get_val("WALLPAPER_MODE", "banner"),
-                    default="banner",
-                    options=[
-                        {"value": "banner", "label": "横幅壁纸"},
-                        {"value": "fullscreen", "label": "全屏壁纸"},
-                        {"value": "overlay", "label": "全屏透明"},
-                        {"value": "none", "label": "纯色背景"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_PLAYER_ENABLE",
-                    label="启用背景视频播放",
-                    type="switch",
-                    value=get_bool_val("WALLPAPER_PLAYER_ENABLE", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_USE_BING",
-                    label="使用 Bing 每日壁纸",
-                    description="开启后当自定义桌面壁纸为空时，默认加载 Bing 每日壁纸",
-                    type="switch",
-                    value=get_bool_val("WALLPAPER_USE_BING", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_BING_DAYS",
-                    label="Bing 壁纸天数范围",
-                    description="从最近多少天内随机选择 Bing 壁纸",
-                    type="number",
-                    value=get_int_val("WALLPAPER_BING_DAYS", "30"),
-                    default=30,
-                    min_value=1,
-                    max_value=30,
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_DESKTOP",
-                    label="桌面壁纸地址",
-                    description="支持单张图片、多张图片（JSON数组）或单张图片 URL。留空并开启 Bing 每日壁纸即可加载必应背景图。",
-                    type="textarea",
-                    value=get_val("WALLPAPER_DESKTOP", ""),
-                    default="",
-                    placeholder='["/images/bg1.jpg", "/images/bg2.jpg"]',
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_MOBILE",
-                    label="移动端壁纸地址",
-                    description="支持单张图片或多张图片（JSON数组），留空则使用桌面壁纸或 Bing 每日壁纸",
-                    type="textarea",
-                    value=get_val("WALLPAPER_MOBILE", ""),
-                    default="",
-                    placeholder='["/images/m_bg1.jpg", "/images/m_bg2.jpg"]',
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_VIDEO",
-                    label="背景视频地址",
-                    description="支持单个视频或多个视频（JSON数组）",
-                    type="textarea",
-                    value=get_val("WALLPAPER_VIDEO", ""),
-                    default="",
-                    placeholder='["/videos/bg1.mp4", "/videos/bg2.mp4"]',
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_DIM_OPACITY",
-                    label="壁纸遮罩暗度",
-                    description="值越大越暗，有助于文字显示，范围 0-1",
-                    type="number",
-                    value=float(get_val("WALLPAPER_DIM_OPACITY", "0.2")),
-                    default=0.2,
-                    min_value=0,
-                    max_value=1,
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_HOME_TITLE",
-                    label="主页横幅主标题",
-                    type="text",
-                    value=get_val("WALLPAPER_HOME_TITLE", "Welcome"),
-                    default="Welcome",
-                ),
-                SiteSettingItem(
-                    key="WALLPAPER_HOME_SUBTITLE",
-                    label="主页横幅副标题",
-                    description="多个副标题请用 | 分隔",
-                    type="text",
-                    value=get_val("WALLPAPER_HOME_SUBTITLE", ""),
-                    default="",
-                    placeholder="副标题1 | 副标题2 | 副标题3",
-                ),
-            ],
-        ),
     ]
 
     return SiteConfigFullResponse(groups=groups)
@@ -2548,29 +2200,6 @@ async def update_site_settings(
         "custom_footer_code": "CUSTOM_FOOTER_CODE",
         "custom_css": "CUSTOM_CSS",
         "custom_js": "CUSTOM_JS",
-        # 音乐播放器设置
-        "music_enabled": "MUSIC_ENABLED",
-        "music_show_in_navbar": "MUSIC_SHOW_IN_NAVBAR",
-        "music_show_in_sidebar": "MUSIC_SHOW_IN_SIDEBAR",
-        "music_mode": "MUSIC_MODE",
-        "music_volume": "MUSIC_VOLUME",
-        "music_play_mode": "MUSIC_PLAY_MODE",
-        "music_show_lyrics": "MUSIC_SHOW_LYRICS",
-        "music_meting_api": "MUSIC_METING_API",
-        "music_meting_server": "MUSIC_METING_SERVER",
-        "music_meting_type": "MUSIC_METING_TYPE",
-        "music_meting_id": "MUSIC_METING_ID",
-        # 壁纸/Banner设置
-        "wallpaper_mode": "WALLPAPER_MODE",
-        "wallpaper_player_enable": "WALLPAPER_PLAYER_ENABLE",
-        "wallpaper_desktop": "WALLPAPER_DESKTOP",
-        "wallpaper_mobile": "WALLPAPER_MOBILE",
-        "wallpaper_video": "WALLPAPER_VIDEO",
-        "wallpaper_use_bing": "WALLPAPER_USE_BING",
-        "wallpaper_bing_days": "WALLPAPER_BING_DAYS",
-        "wallpaper_dim_opacity": "WALLPAPER_DIM_OPACITY",
-        "wallpaper_home_title": "WALLPAPER_HOME_TITLE",
-        "wallpaper_home_subtitle": "WALLPAPER_HOME_SUBTITLE",
         # 作者/侧边栏资料设置
         "author_name": "AUTHOR_NAME",
         "author_bio": "AUTHOR_BIO",
