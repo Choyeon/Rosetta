@@ -155,6 +155,17 @@
             <CardContent class="p-5">
               <div class="flex items-start justify-between gap-3 mb-3">
                 <div class="flex items-center gap-2 flex-wrap">
+                  <!-- 头像取后端解析链的 resolved_avatar_url（归一化在 author_avatar 单源里）：
+                       用 GitHub/QQ/Gravatar 的作者 avatar 列是 null，不接这一位就一律掉到字母兜底。 -->
+                  <UserAvatar
+                    v-if="item.author_name"
+                    :avatar="item.author_avatar"
+                    :seed="item.author_name"
+                    :name="item.author_name"
+                    :size="28"
+                    :show-title="false"
+                    class="shrink-0"
+                  />
                   <Badge
                     variant="default"
                     class="text-xs"
@@ -299,6 +310,7 @@ import { Textarea } from '~~/components/ui/textarea'
 import { apiFetch } from '~~/composables/useApi'
 import { pageWindow } from '~~/lib/pagination'
 import { useAuthStore } from '~~/stores/auth'
+import UserAvatar from '~~/components/UserAvatar.vue'
 import { useI18n } from 'vue-i18n'
 
 /**

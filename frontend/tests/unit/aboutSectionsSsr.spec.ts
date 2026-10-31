@@ -46,7 +46,7 @@ describe('关于页分区：SSR 直出', () => {
       expect(
         template,
         `缺少 <section id="${id}">`
-      ).toMatch(new RegExp(`<section\\s+id="${id}"\\s+class="scroll-mt-\\d+`))
+      ).toMatch(new RegExp(`<section\\s+(?:v-if="[^"]*"\\s+)?id="${id}"\\s+class="scroll-mt-\\d+`))
     }
     // 每个分区一条 h2：文档大纲里四个分区都是真标题，爬虫按标题而非按 tab 标签理解结构
     const h2Count = (template.match(/<h2\b/g) ?? []).length
@@ -54,7 +54,9 @@ describe('关于页分区：SSR 直出', () => {
   })
 
   it('导航是真实 <a href="#id">，且条目集合与 section 的 id 集合相等', () => {
-    expect(template).toContain('v-for="section in aboutSections"')
+    // 批次 #141 起导航走 visibleSections：数据源为空的「技能」分区不进导航（集合仍是这四个，
+    // 少的是"渲染出来的那几颗"，不是清单本身）
+    expect(template).toContain('v-for="section in visibleSections"')
     expect(template).toContain(':href="`#${section.id}`"')
     const ids = [...src.matchAll(/\{ id: '(\w+)', labelKey: 'about\.\w+'/g)].map(m => m[1] ?? '')
     expect(ids.sort()).toEqual([...SECTIONS].sort())

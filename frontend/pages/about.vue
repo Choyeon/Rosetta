@@ -3,7 +3,9 @@
   与页头/页脚共用同一份配置副本，避免各自拉 /config 产生差异。
   双模式：basic.about_page_html 非空 → sanitizeTrustedAdminHtml 后 v-html（仍禁 script/iframe/on*/javascript:），
   sanitize 结果为空串时自动落回内置 i18n 分区结构。
-  techStack / skillGroups 是刻意的空常量：后端无该字段，宁可「技能」分区只有标题也不编造履历数据。
+  techStack / skillGroups 是刻意的空常量：后端无该字段，宁可「技能」分区整段不渲染也不编造履历数据。
+  联系方式里 QQ / 微信是纯展示值（没有可点的公开 URL），与 mailto:/站外链接共用同一份 contacts 源，
+  按 href 是否为 null 分别渲染 <div> / <a target="_blank">。
 -->
 
 <template>
@@ -75,7 +77,7 @@
           :aria-label="t('about.title')"
         >
           <a
-            v-for="section in aboutSections"
+            v-for="section in visibleSections"
             :key="section.id"
             :href="`#${section.id}`"
             :class="buttonVariants({ variant: 'outline', size: 'sm' })"
@@ -115,6 +117,7 @@
         </section>
 
         <section
+          v-if="hasSkills"
           id="skills"
           class="scroll-mt-24 mb-10"
         >
@@ -175,13 +178,15 @@
           <Card>
             <CardContent class="p-6 md:p-8">
               <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <a
+                <component
+                  v-bind="contactRowAttrs(contact)"
+                  :is="contact.href ? 'a' : 'div'"
                   v-for="contact in contacts"
                   :key="contact.label"
-                  :href="contact.href"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  class="flex items-center gap-4 p-4 rounded-xl border border-border/60 hover:shadow-soft hover:bg-accent/30 transition-all duration-300"
+                  :class="[
+                    'flex items-center gap-4 p-4 rounded-xl border border-border/60 transition-all duration-300',
+                    contact.href ? 'hover:shadow-soft hover:bg-accent/30' : ''
+                  ]"
                 >
                   <div
                     class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-primary/10"
@@ -192,10 +197,14 @@
                     />
                   </div>
                   <div class="min-w-0">
-                    <div class="text-xs text-muted-foreground mb-0.5">{{ contact.label }}</div>
-                    <div class="font-medium truncate">{{ contact.value }}</div>
+                    <div class="text-xs text-muted-foreground mb-0.5">
+                      {{ contact.label }}
+                    </div>
+                    <div class="font-medium truncate">
+                      {{ contact.value }}
+                    </div>
                   </div>
-                </a>
+                </component>
               </div>
 
               <div
@@ -310,7 +319,9 @@ import {
   Rss,
   Map,
   ExternalLink,
-  Globe
+  Globe,
+  MessageCircle,
+  MessageSquare
 } from '@lucide/vue'
 
 definePageMeta({ layout: 'default' })
@@ -432,7 +443,8 @@ const skillGroups: SkillGroupItem[] = []
 interface ContactItem {
   label: string
   value: string
-  href: string
+  // null = 只有展示价值的联系方式（QQ 号 / 微信号），没有能点的链接
+  href: string | null
   icon: Component
 }
 
@@ -448,6 +460,13 @@ const contacts = computed<ContactItem[]>(() => {
       icon: Mail
     })
   }
+  // QQ 号 / 微信号：后台早就投影了、页面也早就读进 config 了，唯独这里从不 push——
+  // 运营者填了却永远显示不出来。两个都是"号"而不是链接（微信没有可点的公开 URL，
+  // QQ 的 wpa 跳转串要拼客户端参数），所以 href 给 null 走纯展示行，不编造可点地址。
+  const qq = (cfg.contact_qq ?? '').trim()
+  if (qq) list.push({ label: 'QQ', value: qq, href: null, icon: MessageCircle })
+  const wechat = (cfg.contact_wechat ?? '').trim()
+  if (wechat) list.push({ label: 'WeChat', value: wechat, href: null, icon: MessageSquare })
   if (cfg.github_url) {
     let display = cfg.github_url
     try {
@@ -522,6 +541,21 @@ const contacts = computed<ContactItem[]>(() => {
   }
   return list
 })
+
+// QQ 号 / 微信号没有可点开的公开 URL（邮件走 mailto:、社交链接走站外地址，这两类才配当锚点），
+// 所以整行包进 <a target="_blank"> 会得到一条"点了什么也不会发生"的死链，还会被爬虫收进链接图。
+// 判据落在同一个 href 上：可点的行渲染 <a>，纯展示的行渲染 <div>，两种形态共用同一份数据源。
+const contactRowAttrs = (contact: ContactItem): Record<string, string> | null =>
+  contact.href === null ? null : { href: contact.href, target: '_blank', rel: 'noopener noreferrer' }
+
+// 「技能」分区的数据源是刻意的空常量（后端没有该字段，宁可空着也不编造履历），
+// 但分区与导航项此前是无条件渲染的：导航里永远有一颗点了只会跳到一张空卡的锚，
+// 爬虫读到的 HTML 里则多出一个有 h2 标题、有"技术栈"文案、却没有任何内容的分区。
+// 空就整段收起，等后端真给出这个字段时它自己会回来。
+const hasSkills = techStack.length + skillGroups.length > 0
+const visibleSections = computed(() =>
+  hasSkills ? aboutSections : aboutSections.filter(section => section.id !== 'skills')
+)
 
 useSeo({
   title: computed(() => t('about.title') as string || '关于'),
