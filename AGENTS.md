@@ -309,6 +309,19 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    与 `galleryMediaContract.spec.ts`。**线上探针要点**：`albums` / `photos` 两张表实测都是空的，
    空表会让「没有 role=button / 没有 ?album 链接」这类判据恒真，探针必须临时种一条已发布相册、
    跑完删掉，并核对 `ROW_DELETED` 与 `RESIDUE_API` / `RESIDUE_PAGE`。
+   同族的第三种形态是**整块内容只在客户端存在**：`pages/about.vue` 的回退模式曾把四个分区包在
+   `ClientOnly` + reka `Tabs` 里（批次 #129），因为 reka 的 TabsRoot 在 SSR 产物里渲染成空注释节点，
+   `#fallback` 只手工复刻了「假 `role="tablist"` + 默认 bio 面板」——线上实测爬虫读到的 HTML 里
+   技能 / 联系方式 / 订阅三个分区一条都没有，连联系方式那批真实外链也一起从链接图里消失。
+   口径是**文档分区不是视图切换，不做成可切换面板**：四个带 id 的 `<section>` SSR 全量直出，
+   导航是一排真实 `<a href="#id">`（hash 不上送服务器、也不进 canonical，所以既不会产出同一分区的
+   第二个 URL，也不会把筛选位写进规范地址），每条分区一个 `<h2>`，`scroll-mt-*` 让锚点落位不被吸顶
+   导航盖住；撤下 `ClientOnly` 同时消掉了那段"复刻"代码与它的 hydration mismatch 前提。订阅区两个出口
+   同理从 `Button @click="navigateTo('/rss.xml')"` 改成 `<a href="/rss.xml">`（点击才跳转的链接爬虫看不见）。
+   守卫 `aboutSectionsSsr.spec.ts`（模板段内断言，脚本段说什么都没用）+ 线上探针 `p129probe.py`。
+   **探针的恒真陷阱**：页脚本来就有一条 `/rss.xml` 链接，所以"整页 HTML 里出现 href=/rss.xml"
+   这种判据旧产物也能过——必须按 `id="rss"` 到该分区自己的 `</section>` 切片，正文与出口都要落在
+   **它自己的分区里**才算证据。
 
 契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
 `contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·
