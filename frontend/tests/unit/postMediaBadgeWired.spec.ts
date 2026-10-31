@@ -8,6 +8,8 @@
  *   "首页有徽标、列表页没有"这种没人报的缺陷。
  * - 后端构造点数 == 媒体位产出点数：`PostListItemLocalized` 有四个手写构造点，
  *   批次 #118 的"创建口漏三列"就是这个形状（按接口断言在 pytest 侧，这里按源码对账）。
+ * - 榜单口（`/ranking/posts`）不经过那个模型，它自己拼 dict 喂给同一套卡片，
+ *   所以它必须复用同一个 `_media_flags`，否则"综合榜有徽标、周期榜整排没有"。
  */
 
 import { readFileSync } from 'node:fs'
@@ -19,6 +21,8 @@ const card = readFileSync(resolve(root, 'frontend/components/PostCard.vue'), 'ut
 const flags = readFileSync(resolve(root, 'frontend/components/PostMediaFlags.vue'), 'utf8')
 const apiTypes = readFileSync(resolve(root, 'frontend/types/api.ts'), 'utf8')
 const blogApi = readFileSync(resolve(root, 'backend/api/blog.py'), 'utf8')
+const rankingApi = readFileSync(resolve(root, 'backend/api/ranking.py'), 'utf8')
+const hotPage = readFileSync(resolve(root, 'frontend/pages/posts/hot.vue'), 'utf8')
 const schemas = readFileSync(resolve(root, 'backend/schemas/__init__.py'), 'utf8')
 
 describe('列表媒体徽标的消费面', () => {
@@ -70,6 +74,34 @@ describe('后端列表投影的构造点对账', () => {
     )
     for (const key of ['has_audio', 'has_video', 'has_embed']) {
       expect(body).toContain(`${key}: bool = False`)
+    }
+  })
+})
+
+describe('榜单口（/ranking/posts）的媒体三位', () => {
+  // 这条口不经过 PostListItemLocalized：它自己拼 dict，而热门页的日/周/月/总榜
+  // 四个页签把条目补齐成 PostCard 认得的形状。漏一处就是"综合榜有徽标、周期榜没有"。
+  it('后端条目复用同一个 _media_flags，不另写一份字段清单', () => {
+    expect(rankingApi).toContain('from backend.api.blog import _media_flags')
+    expect(rankingApi).toContain('**_media_flags(p),')
+    // 自己重写字段清单＝两处会漂移（批次 #118 的创建口漏三列同族）
+    expect(rankingApi).not.toMatch(/"has_audio": bool\(/)
+  })
+
+  it('文档模型声明这三个键且都带默认值', () => {
+    const body = rankingApi.slice(
+      rankingApi.indexOf('class HotPostItemDoc('),
+      rankingApi.indexOf('class HotPostsRankingResponseDoc(')
+    )
+    for (const key of ['has_audio', 'has_video', 'has_embed']) {
+      expect(body, key).toContain(`${key}: bool = Field(False`)
+    }
+  })
+
+  it('热门页把三位透传给同一套卡片渲染', () => {
+    for (const key of ['has_audio', 'has_video', 'has_embed']) {
+      expect(hotPage).toContain(`${key}?: boolean`)
+      expect(hotPage).toContain(`${key}: row.${key} ?? false`)
     }
   })
 })

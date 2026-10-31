@@ -164,6 +164,58 @@ class TestEveryListSurface:
         assert item["has_audio"] is True
 
     @pytest.mark.asyncio
+    async def test_ranking_surface_carries_media_flags(
+        self,
+        client: AsyncClient,
+        db_session: AsyncSession,
+        test_user: User,
+        test_category: Category,
+    ):
+        """榜单口（/ranking/posts）自己手搭 dict，不经过 PostListItemLocalized。
+
+        热门页的日/周/月/总榜四个页签都吃这条口，并把条目补齐成 PostCard 认得的形状，
+        所以这里漏三位 = 「综合榜有徽标，切到周期榜整排消失」——构造点漏写的同一族。
+        """
+        await _make_post(db_session, test_user, test_category, slug="flags-ranking")
+        await _make_post(
+            db_session,
+            test_user,
+            test_category,
+            slug="flags-ranking-plain",
+            audio=None,
+            video=None,
+            video_url=None,
+        )
+        await cache.clear()
+        # period=all 按累计 views 排序；周期榜走另一条候选查询，两条都要带三位
+        for period in ("all", "week"):
+            response = await client.get(
+                "/api/ranking/posts", params={"period": period, "limit": 50}
+            )
+            assert response.status_code == 200, response.text
+            items = _items(response.json())
+            assert items, f"{period} 榜回空，候选查询没跑到（假通过）"
+            for item in items:
+                for addr in ("audio", "video", "video_url"):
+                    assert addr not in item, f"{period} 榜不得带地址"
+            media = _find(items, "flags-ranking")
+            plain = _find(items, "flags-ranking-plain")
+            assert media["has_audio"] is True, f"{period} 榜徽标永远不亮"
+            assert media["has_embed"] is True
+            assert media["has_video"] is False
+            for key in MEDIA_KEYS:
+                assert plain[key] is False, f"{period} 榜的 {key} 恒真"
+
+    def test_ranking_doc_model_declares_the_three_keys(self):
+        """文档模型漏声明 = OpenAPI 与真实载荷分叉，后台契约页看不到这三键。"""
+        from backend.api.ranking import HotPostItemDoc
+
+        fields = HotPostItemDoc.model_fields
+        for key in MEDIA_KEYS:
+            assert key in fields, f"HotPostItemDoc 缺 {key}"
+            assert fields[key].is_required() is False, f"{key} 必填会让旧缓存载荷解不过去"
+
+    @pytest.mark.asyncio
     async def test_similar_surface_declares_the_three_keys(
         self,
         client: AsyncClient,

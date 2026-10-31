@@ -202,6 +202,9 @@ interface RankingRow {
   comments_count?: number
   published_at?: string | null
   created_at?: string | null
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
 }
 
 const {
@@ -243,7 +246,12 @@ const posts = computed<Post[]>(() => {
     likes_count: row.likes_count ?? 0,
     comments_count: row.comments_count ?? 0,
     published_at: row.published_at ?? row.created_at ?? null,
-    created_at: row.created_at ?? null
+    created_at: row.created_at ?? null,
+    // 存在性三位一起透传：榜单自带 60s 缓存，旧载荷没这三个键时按"没徽标"处理，
+    // 但不能因为"这一族自己搭 dict"就永远不带（表现是只有综合榜亮）。
+    has_audio: row.has_audio ?? false,
+    has_video: row.has_video ?? false,
+    has_embed: row.has_embed ?? false
   }) as unknown as Post)
 })
 </script>

@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import defer
 
+from backend.api.blog import _media_flags
 from backend.core.auth import DB
 from backend.core.cache import cache, make_cache_key
 from backend.models.blog import Comment, Post, PostViewHistory, post_likes
@@ -59,6 +60,11 @@ class HotPostItemDoc(BaseModel):
     created_at: str | None = Field(
         None, description="创建时间 ISO 8601 字符串（handler isoformat()），缺失为 null"
     )
+    # 存在性三位（批次 #120 口径）：只说"有没有"，不带地址。榜单页把这些条目补齐成
+    # PostCard 的形状渲染，缺这三键就是"综合榜有徽标、周期榜整排没有"。
+    has_audio: bool = Field(False, description="是否带站内音频")
+    has_video: bool = Field(False, description="是否带站内视频")
+    has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
 
 
 class HotPostsRankingResponseDoc(BaseModel):
@@ -215,6 +221,7 @@ async def get_hot_posts(
                 "score": score,
                 "published_at": p.published_at.isoformat() if p.published_at else None,
                 "created_at": p.created_at.isoformat() if p.created_at else None,
+                **_media_flags(p),
             }
         )
 
