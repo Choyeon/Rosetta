@@ -86,6 +86,19 @@ describe('导航菜单位置（location）', () => {
     }
   })
 
+  it('侧边栏那一档自带 server: false（ClientOnly 里的 default 会让请求永不发出）', () => {
+    // 线上实测：抽屉打开后 sidebar 一节永久为空，CDP 网络面板里根本没有这条请求，
+    // 而同一 URL 手工 fetch 正常返回行。原因是 SiteNavSidebar 挂在 <ClientOnly> 内，
+    // hydration 期 Nuxt 命中 `fetchOnServer && isHydrating && data.value !== void 0`
+    // 这一支——`default: () => []` 已经把 data 填成空数组，于是状态直接标成 success、
+    // handler 一次都不跑。只有 `server: false` 能让它走到 initialFetch()。
+    // 分类那一节是巧合存活：它与 AppFooter 共用 blog:categories 键，SSR 已把该键填好。
+    const sidebar = read(resolve(ROOT, 'components/SiteNavSidebar.vue'))
+    const call = sidebar.match(/useAPI<NavApiRow\[\]>\('\/navigations', \{[\s\S]*?\n\}\)/)?.[0] ?? ''
+    expect(call, '找不到侧边栏读 /navigations 的 useAPI').not.toBe('')
+    expect(call, '侧边栏的 sidebar 档读口必须 server: false').toContain('server: false')
+  })
+
   it('页脚与侧边栏在两套骨架里都渲染（少一副就是换主题后菜单项消失）', () => {
     // 遍历的是 flattenNavLinks(...)：二级项必须和父项一起进同一批循环，
     // 否则"只渲染一级"会让挂在 parent_id 下的那一条在这两面彻底消失。

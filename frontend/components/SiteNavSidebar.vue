@@ -9,6 +9,10 @@
   分类的 useAPI 键与 AppFooter / 分类页共用 `blog:categories:<locale>`（Nuxt 按 key
   去重，同页只发一条）。抽屉里的链接只在展开时进 DOM，爬虫的链接图仍由顶栏
   SSR 输出承担，所以这里不追求 SSR 可见性。
+
+  但「不追求 SSR」不等于可以不取数：本组件挂在 <ClientOnly> 里，sidebar 档这条读口没有任何
+  SSR 侧的同键喂数方，所以必须写 `server: false`（见下方注释），否则运营者存进 sidebar 的项
+  在真实浏览器里一条都不显示。
 -->
 <script setup lang="ts">
 import { computed } from 'vue'
@@ -46,10 +50,18 @@ interface CategoryRow {
  * 后台导航管理把 location 分成 header / footer / sidebar 三档，每一档都必须有消费方，
  * 否则运营者存进 sidebar 的项会静默消失（顶栏只读 header，页脚只读 footer）。
  * 这里读 sidebar 档，与注入的 items（header 档）分节显示，两者 URL 归一化共用 lib/navigation.ts。
+ *
+ * `server: false` 不是风格选择，是线上实测修出来的。ClientOnly 组件在 hydration 期调用带
+ * `default` 的 useAPI 时，Nuxt（见 node_modules/nuxt/dist/app/composables/asyncData.js 的
+ * `fetchOnServer && nuxtApp.isHydrating && asyncData.data.value !== void 0` 分支）会因为
+ * `default` 已把 data 填成 `[]` 而直接把状态标成 success、handler 一次都不跑——表现是抽屉里
+ * sidebar 那一节永久为空、CDP 网络面板看不见这条请求，接口本身却完全正常。
+ * 分类那一节能显示只是巧合：它和 AppFooter 共用 `blog:categories:<locale>`，SSR 已把该键填好。
  */
 const { data: sidebarNavRows } = useAPI<NavApiRow[]>('/navigations', {
   query: { location: 'sidebar' },
   key: `public:navigations:sidebar:${locale.value}`,
+  server: false,
   default: () => []
 })
 const sidebarNavLinks = computed<NavLink[]>(() => {
