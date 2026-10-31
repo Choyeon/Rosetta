@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **365 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **366 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -113,7 +113,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 
 ---
 
-## 用户（23）
+## 用户（24）
 
 注册、登录、令牌刷新、个人资料与密码管理
 
@@ -1204,6 +1204,49 @@ _无路径 / query 参数_
 | --- | --- |
 | `422` | Validation Error |
 
+### `GET /api/users/username/{username}/stats`
+
+- **摘要**：按用户名获取用户统计信息
+- **鉴权**：需鉴权：`HTTPBearer`
+
+按用户名读取统计，口径与 `GET /users/{user_id}/stats` 完全一致（同一个`_user_stats_payload`），存在这一条的理由是**前台作者主页按用户名寻址**：统计口只认 id 的话，页面必须等资料请求回来再发第二次请求（SSR 串行两跳）或在 URL 里带上内部主键。用户名按资料口的同一规则不区分大小写解析；`user_id` 回显解析到的账号。用户不存在、或作者关了「公开资料」→ 404（同资料接口，防枚举）。
+
+**入参**
+
+_无路径 / query 参数_
+
+**出参**
+
+`200` · 模型 `UserStatsDoc`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| comments_count | integer | 是 | 已过审评论数（active=True；作者隐藏评论时为 0），无数据为 0 |
+| joined_at | string \| null | 否 | 注册时间：handler 手工 isoformat() 的字符串，无创建时间时为 null |
+| posts_count | integer | 是 | 对外可见的文章数（匿名视角谓词，无数据或作者隐藏文章时为 0） |
+| total_likes | integer | 是 | 本人对外可见文章收到的点赞总数（草稿不计），无数据为 0 |
+| total_views | integer | 是 | 本人对外可见文章的 views 列求和（SUM 无行为 null，兜底成 0） |
+| user_id | integer | 是 | 用户 ID（by-username 口回显解析到的账号） |
+
+响应示例：
+
+```json
+{
+  "comments_count": 0,
+  "joined_at": "string",
+  "posts_count": 0,
+  "total_likes": 0,
+  "total_views": 0,
+  "user_id": 0
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
 ### `GET /api/users/{user_id}`
 
 - **摘要**：获取用户信息
@@ -1348,7 +1391,7 @@ _无路径 / query 参数_
 - **摘要**：用户统计信息
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取指定用户的统计数据。公开接口、无需鉴权。响应为裸 dict（user_id/posts_count/comments_count/total_views/total_likes/joined_at，无信封）；计数在无数据时兜底为 0，joined_at 为 ISO 8601 字符串或 null。用户不存在返回 404。隐私口径：作者关闭「公开资料」（`public_profile=False`）时返回 404（同资料接口）；只关闭「显示统计」（`show_stats=False`）时返回 200 + 全零计数，与「还没有任何活动」不可区分正是隐藏语义，且此时不再执行任何聚合查询。
+获取指定用户的统计数据。公开接口、无需鉴权。响应为裸 dict（user_id/posts_count/comments_count/total_views/total_likes/joined_at，无信封）；计数在无数据时兜底为 0，joined_at 为 ISO 8601 字符串或 null。用户不存在返回 404。隐私口径见 `_user_stats_payload`：`public_profile=False` → 404（同资料接口）；`show_stats=False` → 200 全零；`show_posts` / `show_comments` 各自把自己那族归零。
 
 **入参**
 
@@ -1360,12 +1403,12 @@ _无路径 / query 参数_
 
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
-| comments_count | integer | 是 | 已过审评论数（active=True，无数据为 0） |
+| comments_count | integer | 是 | 已过审评论数（active=True；作者隐藏评论时为 0），无数据为 0 |
 | joined_at | string \| null | 否 | 注册时间：handler 手工 isoformat() 的字符串，无创建时间时为 null |
-| posts_count | integer | 是 | 已发布文章数（status=published，无数据为 0） |
-| total_likes | integer | 是 | 本人全部文章（含草稿）收到的点赞总数，无数据为 0 |
-| total_views | integer | 是 | 本人已发布文章的 views 列求和（SUM 无行为 null，兜底成 0） |
-| user_id | integer | 是 | 用户 ID（路径参数回显） |
+| posts_count | integer | 是 | 对外可见的文章数（匿名视角谓词，无数据或作者隐藏文章时为 0） |
+| total_likes | integer | 是 | 本人对外可见文章收到的点赞总数（草稿不计），无数据为 0 |
+| total_views | integer | 是 | 本人对外可见文章的 views 列求和（SUM 无行为 null，兜底成 0） |
+| user_id | integer | 是 | 用户 ID（by-username 口回显解析到的账号） |
 
 响应示例：
 
@@ -1422,8 +1465,13 @@ _无路径 / query 参数_
       {
         "category": "…",
         "created_at": "…",
+        "has_audio": "…",
+        "has_embed": "…",
+        "has_video": "…",
         "id": "…",
+        "is_password_protected": "…",
         "published_at": "…",
+        "reading_time": "…",
         "slug": "…",
         "title": "…",
         "views": "…"
@@ -1509,8 +1557,13 @@ _无路径 / query 参数_
       {
         "category": "…",
         "created_at": "…",
+        "has_audio": "…",
+        "has_embed": "…",
+        "has_video": "…",
         "id": "…",
+        "is_password_protected": "…",
         "published_at": "…",
+        "reading_time": "…",
         "slug": "…",
         "title": "…",
         "views": "…"
@@ -1564,8 +1617,13 @@ _无路径 / query 参数_
     {
       "category": "string",
       "created_at": "string",
+      "has_audio": false,
+      "has_embed": false,
+      "has_video": false,
       "id": 0,
+      "is_password_protected": false,
       "published_at": "string",
+      "reading_time": 1,
       "slug": "string",
       "title": "string",
       "views": 0
@@ -1930,6 +1988,7 @@ _无路径 / query 参数_
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | allow_comments | boolean | 否 |  |
+| audio | string \| null | 否 | 站内音频地址（/media/...），详情页渲染 <audio controls> |
 | category_id | integer \| null | 否 |  |
 | content | object<string, string> | 是 | 多语言文章内容 |
 | cover_image | string \| null | 否 |  |
@@ -1952,12 +2011,15 @@ _无路径 / query 参数_
 | subtitle | object<string, string> \| null | 否 | 多语言副标题 |
 | tag_ids | integer[] | 否 |  |
 | title | object<string, string> | 是 | 多语言文章标题 |
+| video | string \| null | 否 | 站内视频地址（/media/...），详情页渲染 <video controls> |
+| video_url | string \| null | 否 | YouTube 视频地址，详情页渲染 youtube-nocookie 嵌入 |
 | view_password | string \| null | 否 | (保留字段，请勿使用明文) |
 | visibility | string | 否 | 可见性: public(公开)/password(密码保护)/private(私密仅作者可见) |
 
 ```json
 {
   "allow_comments": true,
+  "audio": "string",
   "category_id": "string",
   "content": {},
   "cover_image": "string",
@@ -1982,6 +2044,8 @@ _无路径 / query 参数_
     0
   ],
   "title": {},
+  "video": "string",
+  "video_url": "string",
   "view_password": "string",
   "visibility": "public"
 }
@@ -2188,7 +2252,11 @@ _无路径 / query 参数_
     "cover_image": "string",
     "created_at": "string",
     "excerpt": "string",
+    "has_audio": false,
+    "has_embed": false,
+    "has_video": false,
     "id": 0,
+    "is_password_protected": false,
     "is_pinned": false,
     "likes_count": 0,
     "post_type": "string",
@@ -2814,7 +2882,11 @@ _无路径 / query 参数_
     "cover_image": "string",
     "created_at": "string",
     "excerpt": "string",
+    "has_audio": false,
+    "has_embed": false,
+    "has_video": false,
     "id": 0,
+    "is_password_protected": false,
     "is_pinned": false,
     "likes_count": 0,
     "post_type": "string",
@@ -3033,7 +3105,7 @@ _无路径 / query 参数_
 - **摘要**：RSS 订阅
 - **鉴权**：公开接口（无需鉴权）
 
-获取 RSS 2.0 格式的文章订阅源。
+获取 RSS 2.0 格式的文章订阅源。可选 ``category`` / ``tag`` 按分类或标签 slug 收窄，频道的 title / link / atom:self 跟着该分类的归档页走；slug 不存在时返回合法的空 feed（200，不缓存），而不是 404——阅读器与抓取器对 4xx 的处理是「这个源坏了」，而空源是「这个源还没内容」。
 
 **入参**
 
@@ -5511,7 +5583,7 @@ _无路径 / query 参数_
 - **摘要**：媒体库统计
 - **鉴权**：需鉴权：`HTTPBearer`
 
-获取媒体库的统计信息：总文件数、总占用字节数与人类可读体积，并按文件格式分类给出计数。需 staff 及以上权限（未登录 401，非管理员 403）。单次请求内跑三条聚合查询，未做缓存。
+获取媒体库的统计信息：总文件数、总占用字节数，以及按文件格式分类的计数与占用体积。需 staff 及以上权限（未登录 401，非管理员 403）。单次请求内跑三条聚合查询，未做缓存。
 
 **入参**
 
@@ -5531,7 +5603,6 @@ _无路径 / query 参数_
 | data.total_files | integer | 否 | 与 ``total_count`` 同值的前端别名 |
 | data.total_size | integer | 否 | 全部文件占用字节数 |
 | data.total_size_bytes | integer | 否 | 与 ``total_size`` 同值的字节数别名 |
-| data.total_size_formatted | string | 否 | 人类可读体积（B/KB/MB/GB/TB/PB，保留两位小数） |
 | data.type_stats | object<string, object> | 否 | 按文件格式分类的统计，键为 image / video / audio / document（仅出现库里实际存在的类型） |
 | data.videos | integer | 否 | video 分类文件数 |
 | message | string | 否 | 人类可读结果 |
@@ -5549,7 +5620,6 @@ _无路径 / query 参数_
     "total_files": 0,
     "total_size": 0,
     "total_size_bytes": 0,
-    "total_size_formatted": "0.00 B",
     "type_stats": {},
     "videos": 0
   },
@@ -8124,12 +8194,14 @@ _无路径 / query 参数_
 | --- | --- | --- | --- |
 | active | boolean \| null | 否 |  |
 | content | string \| null | 否 |  |
+| is_pinned | boolean \| null | 否 | 置顶位：公开线程按 desc(is_pinned) 排在最前，所以这一位改变访客看到的顺序 |
 | status | enum(`approved`, `pending`, `rejected`, `spam`) \| null | 否 |  |
 
 ```json
 {
   "active": "string",
   "content": "string",
+  "is_pinned": "string",
   "status": "string"
 }
 ```
@@ -15263,8 +15335,13 @@ _无路径 / query 参数_
   "posts": [
     {
       "cover_image": "string",
+      "has_audio": false,
+      "has_embed": false,
+      "has_video": false,
       "id": 0,
+      "is_password_protected": false,
       "published_at": "string",
+      "reading_time": 1,
       "series_order": "string",
       "slug": "string",
       "title": {},
@@ -16093,9 +16170,14 @@ _无路径 / query 参数_
       "comments_count": 0,
       "cover_image": "string",
       "created_at": "string",
+      "has_audio": false,
+      "has_embed": false,
+      "has_video": false,
       "id": 0,
+      "is_password_protected": false,
       "likes_count": 0,
       "published_at": "string",
+      "reading_time": 1,
       "recent_views": "string",
       "score": 0,
       "slug": "string",

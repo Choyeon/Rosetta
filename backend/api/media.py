@@ -892,9 +892,6 @@ class MediaStatsData(BaseModel):
 
     total_count: int = Field(0, description="媒体文件总数")
     total_size: int = Field(0, description="全部文件占用字节数")
-    total_size_formatted: str = Field(
-        "0.00 B", description="人类可读体积（B/KB/MB/GB/TB/PB，保留两位小数）"
-    )
     type_stats: dict[str, MediaTypeStat] = Field(
         default_factory=dict,
         description="按文件格式分类的统计，键为 image / video / audio / document（仅出现库里实际存在的类型）",
@@ -1302,8 +1299,8 @@ async def list_media_library(
     "/library/stats",
     summary="媒体库统计",
     description=(
-        "获取媒体库的统计信息：总文件数、总占用字节数与人类可读体积，"
-        "并按文件格式分类给出计数。需 staff 及以上权限（未登录 401，非管理员 403）。"
+        "获取媒体库的统计信息：总文件数、总占用字节数，以及按文件格式分类的计数与占用体积。"
+        "需 staff 及以上权限（未登录 401，非管理员 403）。"
         "单次请求内跑三条聚合查询，未做缓存。"
     ),
     responses={200: {"model": MediaStatsResponse}},
@@ -1346,7 +1343,6 @@ async def get_media_stats(
         "data": {
             "total_count": total_count or 0,
             "total_size": total_size or 0,
-            "total_size_formatted": format_file_size(total_size or 0),
             "type_stats": type_statistics,
             # 前端 AdminMediaStats 别名字段（total_files / total_size_bytes / 分类型计数）
             "total_files": total_count or 0,
@@ -2032,15 +2028,6 @@ async def delete_image(
     await async_delete_file(filepath)
 
     return {"success": True, "message": "图片已删除"}
-
-
-def format_file_size(size: int) -> str:
-    """格式化文件大小"""
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if size < 1024:
-            return f"{size:.2f} {unit}"
-        size /= 1024
-    return f"{size:.2f} PB"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

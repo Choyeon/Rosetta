@@ -86,6 +86,49 @@
       </AdminCard>
     </div>
 
+    <AdminCard
+      v-if="typeStatRows.length"
+      class="overflow-hidden p-0"
+    >
+      <div class="p-4">
+        <h3 class="text-sm font-semibold">
+          按格式占用
+        </h3>
+        <p class="text-xs text-muted-foreground mt-0.5">
+          体积与占比来自后端 type_stats 的真实字节数，按占用从大到小排列
+        </p>
+        <ul class="mt-3 flex flex-col gap-2.5">
+          <li
+            v-for="row in typeStatRows"
+            :key="row.key"
+            class="flex flex-col gap-1"
+          >
+            <div class="flex items-center justify-between gap-3 text-sm">
+              <span class="font-medium">
+                {{ row.label }}
+              </span>
+              <span class="text-muted-foreground tabular-nums">
+                {{ row.sizeText }} · {{ row.count }} 个 · {{ row.percent }}%
+              </span>
+            </div>
+            <div
+              class="h-1.5 rounded-full bg-muted overflow-hidden"
+              role="progressbar"
+              :aria-label="`${row.label}占用`"
+              :aria-valuemin="0"
+              :aria-valuemax="100"
+              :aria-valuenow="row.percent"
+            >
+              <div
+                class="h-full rounded-full bg-primary/60"
+                :style="{ width: `${row.percent}%` }"
+              />
+            </div>
+          </li>
+        </ul>
+      </div>
+    </AdminCard>
+
     <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center justify-between">
       <div class="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center flex-1">
         <div class="relative flex-1 max-w-sm">
@@ -552,7 +595,32 @@ const stats = ref<AdminMediaStats>({
   images: 0,
   videos: 0,
   audios: 0,
-  documents: 0
+  documents: 0,
+  type_stats: {}
+})
+/**
+ * 四个分类型计数别名只给得出「个数」，体积只有 type_stats 里有（后端按 file_type 分组时同时 SUM(file_size)）。
+ * 行按后端回来的键生成，所以新增一个 file_type 不会静默丢行；没登记的键直接显示原始名。
+ */
+const TYPE_STAT_LABELS: Record<string, string> = {
+  image: '图片',
+  video: '视频',
+  audio: '音频',
+  document: '文档',
+  other: '其他'
+}
+const typeStatRows = computed(() => {
+  const total = stats.value.total_size_bytes || 0
+  return Object.entries(stats.value.type_stats)
+    .map(([key, stat]) => ({
+      key,
+      label: TYPE_STAT_LABELS[key] ?? key,
+      count: stat.count,
+      size: stat.size,
+      sizeText: formatSize(stat.size),
+      percent: total > 0 ? Math.round((stat.size / total) * 100) : 0
+    }))
+    .sort((a, b) => b.size - a.size)
 })
 const searchQuery = ref('')
 const mimeFilter = ref('all')

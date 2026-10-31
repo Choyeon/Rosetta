@@ -1415,6 +1415,13 @@ export interface AdminMediaStats {
   /** 后端 media.py 以 type_statistics["audio"] 单列音频计数，不与 videos 合并 */
   audios: number
   documents: number
+  /**
+   * 按文件格式分类的「计数 + 占用字节」，键是后端的 ``Media.file_type``
+   * （``image`` / ``video`` / ``audio`` / ``document``，导入工具还可能写 ``other``），
+   * 且只包含库里实际存在的类型。
+   * 四个分类型计数别名是后端为旧页面留的兼容投影，**体积只有这里给得出**。
+   */
+  type_stats: Record<string, { count: number, size: number }>
 }
 
 /** GET /api/media/library/stats —— media.router @router.get("/library/stats")，响应为 envelope */

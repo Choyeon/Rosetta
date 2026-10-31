@@ -1063,7 +1063,6 @@ Authorization: Bearer <access_token>
 {
   "total_count": 100,
   "total_size": 524288000,
-  "total_size_formatted": "500.00 MB",
   "type_stats": {
     "image": {"count": 80, "size": 419430400},
     "video": {"count": 10, "size": 104857600},
