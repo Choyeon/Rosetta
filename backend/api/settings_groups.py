@@ -245,6 +245,9 @@ def _default_features() -> dict:
         # 默认 False = 存量站点行为不变；打开后匿名提交必须带 captcha_key/captcha_code，
         # 登录用户始终免验。它同时管评论和留言，所以留在跨模块的 features 组。
         "enable_captcha": False,
+        # 友链公开申请（api/core.py::apply_friend_link 的执行点 + /friends 页表单的渲染条件）。
+        # 默认关闭：这是一个匿名可写入口，存量站点没有勾过它就不该突然开始收申请。
+        "enable_friend_apply": False,
     }
 
 

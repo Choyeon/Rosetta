@@ -4,7 +4,7 @@
 > 本文件由 `backend/scripts/gen_api_detail.py` 从运行时 `app.openapi()` 生成，**请勿手改**。
 > 接口有增删 → 重跑 `uv run python -m backend.scripts.gen_api_detail --write`。
 
-共 **364 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
+共 **365 个操作**，字段级契约以本文件为准；语义错误码清单见 [error_codes.md](./error_codes.md)，重点接口的背景与坑见 [api_reference.md](./api_reference.md)。
 
 ## 通用约定
 
@@ -3645,7 +3645,7 @@ _除下方“全局通用错误码”外，本接口未声明自定义错误响�
 
 ---
 
-## 核心（24）
+## 核心（25）
 
 站点公开配置、导航、友情链接等前台核心数据
 
@@ -4210,6 +4210,67 @@ _无路径 / query 参数_
   "status": "string",
   "target_blank": false,
   "url": "string"
+}
+```
+
+**错误码**
+
+| 状态码 | 说明 |
+| --- | --- |
+| `422` | Validation Error |
+
+### `POST /api/friend-links/apply`
+
+- **摘要**：申请友情链接（匿名可提交）
+- **鉴权**：需鉴权：`HTTPBearer`
+
+公开写入口，受后台「功能开关 → 友链申请」（features.enable_friend_apply，默认关闭）控制，关闭时返回 403 FRIEND_APPLY_DISABLED。提交的内容一律以 **pending** 入审核队列：档位、排序、是否新窗口打开都是管理员在 /admin/friend-links 的裁决权，请求体带不进来（FriendLinkApply 是 FriendLinkCreate 的子集 + extra=forbid）。地址必须是 http(s) 绝对 URL；名称与介绍拒含尖括号。同地址已有 pending/approved 行时不新建，返回 200 + duplicate=true（rejected 后可再报，与评论举报同一口径）。后台打开图形验证码时匿名提交必须带 captcha_key/captcha_code，登录用户免验。受敏感接口限流保护（按 IP），过于频繁返回 429。**不清任何缓存**：pending 行不在公开读口的 SQL 谓词里，公示列表与 /friends 页面 HTML 都没变。
+
+**入参**
+
+_无路径 / query 参数_
+
+**请求体**（`application/json`，模型 `FriendLinkApply`）
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| captcha_code | string \| null | 否 | 图形验证码答案 |
+| captcha_key | string \| null | 否 | 图形验证码句柄（开关打开时必填） |
+| description | string \| null | 否 | 一句话介绍（可选） |
+| logo | string \| null | 否 | 站点 Logo 图片地址（可选，同样必须绝对） |
+| name | string | 是 | 站点名称（提交者填写的原文，按请求语言入库） |
+| url | string | 是 | 站点地址，必须以 http:// 或 https:// 开头 |
+
+```json
+{
+  "captcha_code": "string",
+  "captcha_key": "string",
+  "description": "string",
+  "logo": "string",
+  "name": "string",
+  "url": "string"
+}
+```
+
+**出参**
+
+`201` · 模型 `FriendLinkApplyReceipt`
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| duplicate | boolean | 否 | 是否命中去重（命中时未新建行，HTTP 也是 200） |
+| id | integer | 是 | 友链行 ID（新建的那条，或命中去重的那条） |
+| message | string | 是 | 可直接上屏的人类可读结果 |
+| status | string | 是 | pending=新申请已入队 / approved=该地址早已公示（此时 duplicate 必为 true） |
+
+响应示例：
+
+```json
+{
+  "duplicate": false,
+  "id": 0,
+  "message": "string",
+  "status": "string"
 }
 ```
 

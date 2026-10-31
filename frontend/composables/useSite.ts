@@ -315,7 +315,10 @@ export function useSite() {
       enable_share_buttons: flag('enable_share_buttons'),
       enable_reading_progress: flag('enable_reading_progress'),
       // 默认关：老站点没勾过这一项，评论/留言必须保持"无需验证码也能发"。
-      enable_captcha: flag('enable_captcha', false)
+      enable_captcha: flag('enable_captcha', false),
+      // 默认关：这是一个匿名可写入口（POST /friend-links/apply），
+      // 没在后台勾过的站点不该突然开始收友链申请。
+      enable_friend_apply: flag('enable_friend_apply', false)
     }
   })
 

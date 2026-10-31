@@ -1054,7 +1054,8 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
     enable_sitemap: '站点地图', enable_guestbook: '留言板',
     enable_dark_mode: '深色模式切换', enable_like_button: '文章点赞按钮',
     enable_share_buttons: '社交分享按钮', enable_reading_progress: '阅读进度条',
-    enable_captcha: '评论与留言图形验证码',
+    enable_captcha: '评论/留言/友链申请图形验证码',
+    enable_friend_apply: '友情链接公开申请',
     primary_color: '主色调 Primary',
     page_width_px: '内容区最大宽度（px）',
     accent_color: '强调色 Accent', show_copyright: '显示版权声明',
@@ -1078,8 +1079,11 @@ function inferSchema(key: string, value: SettingsValue, defaults: Record<string,
   // 开关类设置只有一句话能说清的是"它到底管哪些写口、对谁生效"。
   // enable_captcha 必须有这句：验证码只挡未登录访客，登录用户与后台不受影响，
   // 关掉它不影响已经提交的留言；少了这句，管理员会以为它能挡注册机以外的一切。
+  // enable_friend_apply 同理：它的"副作用"是 /friends 页会多出一张公开表单，
+  // 而提交进来的行一律 pending（不会直接公示），管理员必须知道这一点。
   const BOOL_HELP: Record<string, string> = {
-    enable_captcha: '只要求未登录访客在提交评论与留言前通过图形验证码；登录用户与后台不受影响，默认关闭',
+    enable_captcha: '只要求未登录访客在提交评论、留言与友链申请前通过图形验证码；登录用户与后台不受影响，默认关闭',
+    enable_friend_apply: '开启后 /friends 页出现「申请友链」表单，任何人都能提交（登录用户免验证码）。提交的内容一律进入待审核队列，不会直接公示；关闭时该页不渲染表单，后端接口也会拒绝（403）',
     dry_run: '开启后所有邮件只写后端日志、不连接 SMTP。联调评论/回复通知时打开它：测试邮件一旦真实发往不存在的地址，退信会全部回到「发件人邮箱」',
     show_sponsors_list: '同时管两侧：关闭后前台 /sponsor 的打赏墙不渲染，公开接口 GET /api/sponsors 也返回空列表——名单属于展示内容，关掉就不该继续对外输出'
   }
@@ -1241,7 +1245,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     seo: { default_title: '', default_description: '', default_keywords: '', og_image: '', default_og_image: '/og-default.png', twitter_handle: '', google_verification: '', baidu_verification: '', robots_txt: '', indexnow_enabled: false, indexnow_key: '' },
     email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false, dry_run: false },
     security: { max_login_attempts: 5, lockout_duration_sec: 1800 },
-    features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true, enable_captcha: false },
+    features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true, enable_captcha: false, enable_friend_apply: false },
     appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
     navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true },
     // 多语言字段的本地兜底必须是完整四语 dict：inferSchema 靠它识别 i18n 类型，

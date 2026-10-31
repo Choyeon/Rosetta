@@ -57,13 +57,13 @@
 
 ## 错误码清单（自动生成）
 
-本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **78 个真实存在的错误码**。
+本区块由 `backend/scripts/gen_error_codes.py` 扫描 `backend/**/*.py` 生成，共 **79 个真实存在的错误码**。
 
 - 出处列只列到文件级：同一个码可能出现在多个端点，具体判定看源码。
 - HTTP 列为该码在当前源码里能推断出的状态码；`—` 表示该码由 AppException 子类外的路径抛出且附近没有 `status_code=`（以调用点为准）。
 - 新增/删除错误码后跑 `uv run python -m backend.scripts.gen_error_codes --write`，否则 `tests/test_docs_error_codes_sync.py` 会失败。
 
-### 通用与状态码回退（33）
+### 通用与状态码回退（34）
 
 | 错误码 | HTTP | 说明 | 出处 |
 | --- | --- | --- | --- |
@@ -79,6 +79,7 @@
 | `DB_UNKNOWN` | — | — | `backend/core/setup_database.py` |
 | `DB_UNREACHABLE` | — | — | `backend/core/setup_database.py` |
 | `FORBIDDEN` | 403 | — | `backend/core/exceptions.py`<br>`backend/main.py` |
+| `FRIEND_APPLY_DISABLED` | — | 本站未开放友情链接申请 | `backend/api/core.py` |
 | `GUESTBOOK_DISABLED` | 403 | 留言板已关闭 | `backend/api/guestbook.py` |
 | `INTERNAL` | 500 | 服务器错误 | `backend/api/comments.py`<br>`backend/api/guestbook.py` |
 | `INTERNAL_SERVER_ERROR` | — | — | `backend/main.py` |

@@ -214,6 +214,19 @@ export interface FriendLink {
   target_blank: boolean
 }
 
+/**
+ * `POST /friend-links/apply` 的回执（后端 `FriendLinkApplyReceipt` 同构）。
+ *
+ * `duplicate=true` 时接口回的是 **200** 且没有新建行（库里已有同地址的 pending/approved），
+ * 前端据此把文案切成「已经提交过了」，不必为冲突另写一个错误分支。
+ */
+export interface FriendLinkApplyReceipt {
+  id: number
+  status: 'pending' | 'approved'
+  duplicate: boolean
+  message: string
+}
+
 // Page Types
 export interface Page {
   id: number

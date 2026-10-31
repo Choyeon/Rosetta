@@ -1642,6 +1642,10 @@ class NavigationLocalizedResponse(BaseModel):
 
 _FRIEND_STATUS_PATTERN = f"^({'|'.join(FriendLink.VALID_STATUSES)})$"
 
+# 匿名可写、且会渲染到访客页面上的短字符串字段一律起标记字符（AGENTS §12.8）。
+# 与 api/title.py 的 _ICON_PATTERN 同一条判据；schemas 层不能反向依赖 api，所以在此声明。
+_NO_MARKUP_PATTERN = r"^[^<>]*$"
+
 
 def _status_to_active(status: str | None, is_active: bool | None) -> tuple[str, bool]:
     """status 和 is_active 双向归一化：以 status 为主，is_active 作为兼容镜像。
@@ -1722,6 +1726,61 @@ class FriendLinkUpdate(BaseModel):
                 data["status"] = st
                 data["is_active"] = act
         return data
+
+
+class FriendLinkApply(BaseModel):
+    """友链公开申请表单（``POST /api/friend-links/apply``）。
+
+    刻意是 ``FriendLinkCreate`` 的**子集**而不是同一份模型：档位（status/is_active）、
+    排序权重（order）、新窗口打开（target_blank）都不在这里——它们是管理员的裁决权，
+    能从请求体里带进来就等于让提交者自己批准自己。``extra="forbid"`` 把这条判据
+    钉在类型层面：带 ``status`` 的提交直接 422，而不是静默丢掉后再也看不出有人试过。
+
+    URL 走严格档（``_require_absolute_url``）而不是友链管理口的宽容档：这个值最终会
+    进访客页面上的 ``<a href>`` 与 ``<img src>``，匿名提交填 "example.com" 补出来的
+    scheme 是替别人猜一个出站地址，而 ``javascript:`` 这类伪协议只有严格档才真挡住。
+    名称与介绍同样带 ``^[^<>]*$``（AGENTS §12.8：会渲染到访客页面上的短字符串字段，
+    写入侧就得起标记字符）——现在的前台只做插值转义，但脏数据一旦入库，
+    下一个消费点（导出、通知、后台表格）就会替这次提交付 XSS 的账。
+    """
+
+    model_config = {"extra": "forbid"}
+
+    name: str = Field(
+        ...,
+        min_length=2,
+        max_length=100,
+        pattern=_NO_MARKUP_PATTERN,
+        description="站点名称（提交者填写的原文，按请求语言入库）",
+    )
+    url: str = Field(..., max_length=500, description="站点地址，必须以 http:// 或 https:// 开头")
+    description: str | None = Field(
+        None, max_length=200, pattern=_NO_MARKUP_PATTERN, description="一句话介绍（可选）"
+    )
+    logo: str | None = Field(
+        None, max_length=500, description="站点 Logo 图片地址（可选，同样必须绝对）"
+    )
+    captcha_key: str | None = Field(
+        None, max_length=64, description="图形验证码句柄（开关打开时必填）"
+    )
+    captcha_code: str | None = Field(None, max_length=10, description="图形验证码答案")
+
+    @field_validator("url", "logo")
+    @classmethod
+    def validate_absolute_url(cls, v: str | None) -> str | None:
+        return _require_absolute_url(v, max_len=500)
+
+
+class FriendLinkApplyReceipt(BaseModel):
+    """申请回执：``duplicate=true`` 表示库里已有同地址的待审核/已通过记录，没有新建行。"""
+
+    id: int = Field(..., description="友链行 ID（新建的那条，或命中去重的那条）")
+    status: str = Field(
+        ...,
+        description="pending=新申请已入队 / approved=该地址早已公示（此时 duplicate 必为 true）",
+    )
+    duplicate: bool = Field(False, description="是否命中去重（命中时未新建行，HTTP 也是 200）")
+    message: str = Field(..., description="可直接上屏的人类可读结果")
 
 
 class FriendLinkResponse(BaseModel):

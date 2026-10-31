@@ -19,13 +19,23 @@ import math
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query, Request, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from backend.core.auth import DB, CurrentStaff, CurrentUserOptional
 from backend.core.cache import CACHE_TTL, cache, invalidate_cache, make_cache_key
 from backend.core.i18n import get_i18n_value, get_language_from_request
+from backend.core.rate_limit import rate_limit_sensitive
 from backend.core.site_config import invalidate_site_config_caches
 from backend.models.core import FriendLink, Navigation, Page, SearchPlaceholder, SiteConfig
 
@@ -38,6 +48,8 @@ from backend.core.deps import is_oobe_complete  # noqa: E402
 from backend.core.partial_update import apply_partial_update
 from backend.schemas import (
     BaseResponse,
+    FriendLinkApply,
+    FriendLinkApplyReceipt,
     FriendLinkCreate,
     FriendLinkResponse,
     FriendLinkUpdate,
@@ -58,6 +70,7 @@ from backend.schemas import (
     SiteSettingItem,
 )
 from backend.schemas._i18n_dict import as_i18n_dict
+from backend.services.captcha_service import ensure_captcha_for_guest
 from backend.services.content_renderer import render_content
 from backend.services.frontend_cache_purge import purge_frontend_page_cache
 from backend.services.trash import page_trash_payload, snapshot_to_trash
@@ -716,6 +729,132 @@ async def update_friend_link(
     purge_frontend_page_cache("友情链接变更")
 
     return FriendLinkResponse.model_validate(link)
+
+
+# 图形验证码闸门抛的三码（api/comments.py 与 api/guestbook.py 同一映射，语义相同）。
+# 400 而不是 401：验证码错不等于登录凭证失效（AGENTS §7.2 用 401 会把用户整站登出）。
+_CAPTCHA_ERROR_MESSAGES = {
+    "CAPTCHA_REQUIRED": "请填写验证码",
+    "CAPTCHA_EXPIRED": "验证码已过期，请重新获取",
+    "CAPTCHA_INVALID": "验证码错误，请重试",
+}
+
+
+@router.post(
+    "/friend-links/apply",
+    response_model=FriendLinkApplyReceipt,
+    status_code=status.HTTP_201_CREATED,
+    responses={
+        200: {
+            "model": FriendLinkApplyReceipt,
+            "description": "重复申请：库里已有同地址的待审核/已通过行，未新建（duplicate=true）",
+        }
+    },
+    summary="申请友情链接（匿名可提交）",
+    description=(
+        "公开写入口，受后台「功能开关 → 友链申请」（features.enable_friend_apply，默认关闭）控制，"
+        "关闭时返回 403 FRIEND_APPLY_DISABLED。提交的内容一律以 **pending** 入审核队列："
+        "档位、排序、是否新窗口打开都是管理员在 /admin/friend-links 的裁决权，请求体带不进来"
+        "（FriendLinkApply 是 FriendLinkCreate 的子集 + extra=forbid）。"
+        "地址必须是 http(s) 绝对 URL；名称与介绍拒含尖括号。"
+        "同地址已有 pending/approved 行时不新建，返回 200 + duplicate=true（rejected 后可再报，"
+        "与评论举报同一口径）。"
+        "后台打开图形验证码时匿名提交必须带 captcha_key/captcha_code，登录用户免验。"
+        "受敏感接口限流保护（按 IP），过于频繁返回 429。"
+        "**不清任何缓存**：pending 行不在公开读口的 SQL 谓词里，公示列表与 /friends 页面 HTML 都没变。"
+    ),
+    dependencies=[Depends(rate_limit_sensitive("friend_link_apply"))],
+)
+async def apply_friend_link(
+    data: FriendLinkApply,
+    request: Request,
+    response: Response,
+    db: DB,
+    current_user: CurrentUserOptional = None,
+):
+    """匿名友链申请：过开关与验证码闸门后落一条 pending。"""
+    from backend.services.site_settings import bool_of, read_group
+
+    feats = await read_group("features", db)
+    if not bool_of(feats, "enable_friend_apply", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "success": False,
+                "message": "本站未开放友情链接申请",
+                "error_code": "FRIEND_APPLY_DISABLED",
+            },
+        )
+
+    try:
+        await ensure_captcha_for_guest(
+            db,
+            current_user=current_user,
+            captcha_key=data.captcha_key,
+            captcha_code=data.captcha_code,
+        )
+    except ValueError as exc:
+        code = str(exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "success": False,
+                "message": _CAPTCHA_ERROR_MESSAGES.get(code, "验证码校验失败"),
+                "error_code": code,
+            },
+        ) from exc
+
+    # 去重只看 pending/approved：管理员驳回后再申请是正常诉求，不该被历史记录挡住
+    # （与 comment_report 的 open 状态去重同构）。
+    existing = (
+        await db.execute(
+            select(FriendLink)
+            .where(
+                FriendLink.url == data.url,
+                FriendLink.status.in_((FriendLink.STATUS_PENDING, FriendLink.STATUS_APPROVED)),
+            )
+            .order_by(FriendLink.id.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        response.status_code = status.HTTP_200_OK
+        approved = existing.status == FriendLink.STATUS_APPROVED
+        return FriendLinkApplyReceipt(
+            id=existing.id,
+            status=existing.status,
+            duplicate=True,
+            message=(
+                "这个地址已经在友情链接里了"
+                if approved
+                else "这个地址已在待审核队列里，管理员会尽快处理"
+            ),
+        )
+
+    lang = get_language_from_request(request)
+    link = FriendLink(
+        # 原文按请求语言入库：四个读取面（公开口 / 管理口 / RSS / 后台编辑器）都带
+        # "取不到当前语言就回退"的链（core/i18n.get_i18n_value、前端 pickLocalizedText），
+        # 所以单语 dict 在任何语言下都能显示，而四语复制只会把短字段白存四份。
+        name={lang: data.name},
+        url=data.url,
+        description={lang: data.description} if data.description else None,
+        logo=data.logo,
+        order=0,
+        status=FriendLink.STATUS_PENDING,
+        is_active=False,
+        target_blank=False,
+    )
+    db.add(link)
+    await db.flush()
+    await db.refresh(link)
+
+    return FriendLinkApplyReceipt(
+        id=link.id,
+        status=link.status,
+        duplicate=False,
+        message="申请已提交，管理员审核通过后会出现在友链页",
+    )
 
 
 # ==================== 其他接口 ====================
