@@ -43,6 +43,11 @@ export interface FavoritePostRef {
   views?: number
   category?: { id: number, name: string | Record<string, string>, color?: string } | null
   published_at?: string | null
+  reading_time?: number | null
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
+  is_password_protected?: boolean | null
 }
 
 export interface FavoriteRow {

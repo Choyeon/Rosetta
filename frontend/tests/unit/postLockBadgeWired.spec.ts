@@ -111,3 +111,24 @@ describe('四语文案', () => {
     }
   })
 })
+
+describe('登录态四档也带这一位（批次 #140）', () => {
+  const account = read('frontend/pages/account/index.vue')
+  const favorites = read('frontend/composables/useFavorites.ts')
+
+  it('「我的文章/点赞」「收藏」「阅读历史」三档各挂一次锁徽标', () => {
+    expect((account.match(/<PostLockBadge :post=/g) ?? []).length).toBe(3)
+    expect(account).toContain('import PostLockBadge from \'~~/components/PostLockBadge.vue\'')
+    expect(account).toContain('is_password_protected?: boolean | null')
+  })
+
+  it('收藏引用类型声明这一位（徽标 props 是全可选弱类型，不声明会被 TS 拒）', () => {
+    expect(favorites).toContain('is_password_protected?: boolean | null')
+  })
+
+  it('详情页相关推荐卡也挂一次，且渲染面只读存在性、不读密码列', () => {
+    expect((detailPage.match(/<PostLockBadge :post="sp\.raw" \/>/g) ?? []).length).toBe(1)
+    expect(account).not.toMatch(/post\.password\b/)
+    expect(favorites).not.toMatch(/\bpassword: string\b/)
+  })
+})

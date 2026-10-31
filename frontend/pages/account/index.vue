@@ -219,6 +219,9 @@
               </NuxtLink>
               <span class="flex items-center gap-3 text-sm text-muted-foreground tabular-nums">
                 <span>{{ formatDate(post.published_at || post.created_at) }}</span>
+                <PostLockBadge :post="post" />
+                <PostMediaFlags :post="post" />
+                <PostReadingTime :post="post" />
                 <Badge
                   v-if="item.value === 'posts'"
                   :variant="post.status === 'published' ? 'secondary' : 'outline'"
@@ -345,6 +348,14 @@
                 <span class="flex items-center gap-3 text-xs text-muted-foreground tabular-nums">
                   <span>{{ formatDate(row.created_at) }}</span>
                   <span
+                    v-if="row.post"
+                    class="inline-flex items-center gap-3"
+                  >
+                    <PostLockBadge :post="row.post" />
+                    <PostMediaFlags :post="row.post" />
+                    <PostReadingTime :post="row.post" />
+                  </span>
+                  <span
                     v-if="row.post?.views != null"
                     class="inline-flex items-center gap-1"
                   >
@@ -428,6 +439,14 @@
               </NuxtLink>
               <span class="flex items-center gap-3 text-sm text-muted-foreground tabular-nums">
                 <span>{{ t('account.viewedAt', { time: formatDate(history.viewed_at) }) }}</span>
+                <span
+                  v-if="history.post"
+                  class="flex items-center gap-3"
+                >
+                  <PostLockBadge :post="history.post" />
+                  <PostMediaFlags :post="history.post" />
+                  <PostReadingTime :post="history.post" />
+                </span>
                 <span class="inline-flex items-center gap-1">
                   <Eye class="size-3.5" />
                   {{ history.post?.views ?? 0 }}
@@ -664,6 +683,9 @@ import {
   TabsList,
   TabsTrigger
 } from '~~/components/ui/tabs'
+import PostLockBadge from '~~/components/PostLockBadge.vue'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import { fetchNotificationStats } from '~~/composables/useAdminManage'
 import { apiFetch, useAPI } from '~~/composables/useApi'
@@ -692,6 +714,11 @@ interface AccountPostRow {
   comments_count?: number
   published_at?: string | null
   created_at?: string | null
+  reading_time?: number | null
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
+  is_password_protected?: boolean | null
 }
 interface AccountCommentRow {
   id: number | string

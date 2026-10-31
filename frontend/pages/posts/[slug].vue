@@ -935,7 +935,7 @@
                 <NuxtLink
                   v-for="sp in similarCards"
                   :key="sp.id"
-                  v-memo="[sp.id, sp.title, sp.excerpt, sp.cover, sp.href]"
+                  v-memo="[sp.id, sp.title, sp.excerpt, sp.cover, sp.href, sp.raw]"
                   :to="sp.href"
                   class="group rounded-2xl border border-border/60 bg-card/60 hover:bg-accent/30 transition-colors duration-[var(--motion-duration-base)] overflow-hidden"
                 >
@@ -963,6 +963,14 @@
                     >
                       {{ sp.excerpt }}
                     </p>
+                    <div
+                      v-if="sp.hasMeta"
+                      class="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground"
+                    >
+                      <PostLockBadge :post="sp.raw" />
+                      <PostMediaFlags :post="sp.raw" />
+                      <PostReadingTime :post="sp.raw" />
+                    </div>
                   </div>
                 </NuxtLink>
               </div>
@@ -1046,6 +1054,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator
 } from '~~/components/ui/breadcrumb'
+import PostLockBadge from '~~/components/PostLockBadge.vue'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Card, CardContent } from '~~/components/ui/card'
@@ -1304,6 +1315,11 @@ interface SimilarPostRow {
   cover_image?: string
   coverImage?: string
   excerpt?: string | Record<string, string>
+  reading_time?: number | null
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
+  is_password_protected?: boolean | null
 }
 interface AdjacentRef { slug: string, title: string }
 interface AdjacentPair { previous: AdjacentRef | null, next: AdjacentRef | null }
@@ -1821,6 +1837,8 @@ interface SimilarCard {
   href: string
   /** 原始行：@error 兜底要按同一标识（id/slug）派生占位槽位，不能只有卡面字段 */
   raw: SimilarPostRow
+  /** 元信息行是否有任何一位可展示（后台关掉分钟数且这篇又没锁没媒体时整行收起） */
+  hasMeta: boolean
 }
 const similarCards = computed<SimilarCard[]>(() =>
   similarPosts.value.map(sp => ({
@@ -1829,7 +1847,14 @@ const similarCards = computed<SimilarCard[]>(() =>
     excerpt: pickLocalized(sp.excerpt),
     cover: similarCover(sp),
     href: localeHref(`/posts/${sp.slug}`),
-    raw: sp
+    raw: sp,
+    hasMeta: !!(
+      sp.is_password_protected
+      || sp.has_audio
+      || sp.has_video
+      || sp.has_embed
+      || (showReadingTime.value && sp.reading_time)
+    )
   }))
 )
 const publishedAt = computed(() => post.value?.published_at || post.value?.publishedAt || post.value?.created_at || '')

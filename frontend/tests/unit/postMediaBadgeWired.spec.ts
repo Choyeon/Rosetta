@@ -89,9 +89,11 @@ describe('后端列表投影的构造点对账', () => {
     const constructions = (blogApi.match(/PostListItemLocalized\(/g) ?? []).length
     const flagSpreads = (blogApi.match(/\*\*post_media_flags\(post\),/g) ?? []).length
     expect(constructions).toBe(4)
-    // 4 个模型构造点 + 归档年/月两个裸 dict 构造点：产出点比构造点多 2 个是预期，
-    // 少任何一处就是那一族的徽标永远不亮。
-    expect(flagSpreads).toBe(constructions + 2)
+    // 构造点之外每一处"手搭的文章行"也必须产出三位，这个数就是那份清单：
+    // 归档年/月（2）+ 我的点赞走的 _build_post_list_item（1）+ 我的文章（1）+ 阅读历史（1）。
+    // 新增一个手搭出口而没补这一处＝那一族的徽标永远不亮；补了出口就得同步改这里，
+    // 让"又一个读口没带位"必须在门禁响一次，而不是等到读者发现收藏里没有锁标。
+    expect(flagSpreads).toBe(constructions + 5)
   })
 
   it('模型里这三个键都带默认值（旧缓存载荷不得因缺必填整口 500）', () => {
@@ -251,5 +253,33 @@ describe('列表按媒体档位筛选（批次 #123）', () => {
         expect(text, `${locale}.${key}`).toContain(`"${key}"`)
       }
     }
+  })
+})
+
+describe('登录态四档与相关文章卡（批次 #140）', () => {
+  const accountPage = readFileSync(resolve(root, 'frontend/pages/account/index.vue'), 'utf8')
+  const detailPage = readFileSync(resolve(root, 'frontend/pages/posts/[slug].vue'), 'utf8')
+  const favorites = readFileSync(resolve(root, 'frontend/composables/useFavorites.ts'), 'utf8')
+  const favoriteApi = readFileSync(resolve(root, 'backend/api/favorite.py'), 'utf8')
+
+  it('账号页三档各挂一次媒体徽标并声明三位', () => {
+    expect((accountPage.match(/<PostMediaFlags :post=/g) ?? []).length).toBe(3)
+    expect((accountPage.match(/<PostReadingTime :post=/g) ?? []).length).toBe(3)
+    expect((accountPage.match(/<PostLockBadge :post=/g) ?? []).length).toBe(3)
+    expect(accountPage).toContain('import PostMediaFlags from \'~~/components/PostMediaFlags.vue\'')
+    expect(accountPage).toContain('has_audio?: boolean')
+  })
+
+  it('详情页相关推荐卡挂一次三兄弟（载荷早就有三位，缺的是渲染）', () => {
+    expect(detailPage).toContain('<PostMediaFlags :post="sp.raw" />')
+    expect(detailPage).toContain('<PostLockBadge :post="sp.raw" />')
+    expect(detailPage).toContain('<PostReadingTime :post="sp.raw" />')
+  })
+
+  it('收藏口复用单源产出点，不自己写一遍三位 dict', () => {
+    expect(favoriteApi).toContain('**post_media_flags(post),')
+    expect(favoriteApi).toContain('**post_access_flags(post),')
+    expect(favoriteApi).not.toContain('"has_audio": bool(')
+    expect(favorites).toContain('has_audio?: boolean')
   })
 })

@@ -29,7 +29,11 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, selectinload
 from backend.core.auth import DB, CurrentUser
 from backend.core.concurrency import concurrent_query
 from backend.core.database import AsyncSession, Base
-from backend.services.post_access import private_posts_excluded
+from backend.services.post_access import (
+    post_access_flags,
+    post_media_flags,
+    private_posts_excluded,
+)
 from backend.utils.compat import utc_now_naive
 
 if TYPE_CHECKING:
@@ -171,6 +175,12 @@ class FavoritePostOut(BaseModel):
     slug: str = Field(..., description="文章 slug，用于 URL")
     cover_image: str | None = Field(None, description="封面图 URL，无封面时为 null")
     views: int = Field(..., description="浏览量")
+    # 批次 #140：徽标三族与公开列表同源，收藏行也是"文章行"。
+    reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
+    has_audio: bool = Field(False, description="是否带音频")
+    has_video: bool = Field(False, description="是否带站内视频")
+    has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
+    is_password_protected: bool = Field(False, description="是否需要访问密码（不输出密码本身）")
     category: FavoritePostCategoryOut | None = Field(None, description="所属分类，未归类时为 null")
     published_at: str | None = Field(
         None, description="发布时间（ISO 8601 字符串），未发布（草稿）时为 null"
@@ -496,6 +506,11 @@ async def list_favorites(
                     "slug": post.slug,
                     "cover_image": post.cover_image,
                     "views": post.views,
+                    # 批次 #140：收藏行同样是文章行——「我的收藏」里点开一篇要密码的文章
+                    # 之前，读者应该和列表卡片上看到同一套信号。密码位只带存在性。
+                    "reading_time": post.reading_time or 1,
+                    **post_media_flags(post),
+                    **post_access_flags(post),
                     "category": {
                         "id": post.category.id,
                         "name": post.category.name,

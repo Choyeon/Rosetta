@@ -582,6 +582,9 @@ async def _build_post_list_item(
         "created_at": post.created_at,
         "published_at": post.published_at,
         "reading_time": post.reading_time or 1,
+        # 批次 #140：这条手搭 dict 只被「我的点赞」消费，三族存在性位一位都不能少——
+        # 少哪位的表现都是那一个档位整列没有徽标，而其它档位照常显示。
+        **post_media_flags(post),
         **post_access_flags(post),
     }
 
@@ -3508,6 +3511,11 @@ async def get_my_posts(
                 "views": post.views,
                 "published_at": post.published_at.isoformat() if post.published_at else None,
                 "created_at": post.created_at.isoformat() if post.created_at else None,
+                # 批次 #140：这一档同样是"文章行"，徽标三族与公开列表同源。
+                # 「我的文章」里带锁位的用处是给作者自己看哪几篇还藏着（草稿也可能带密码）。
+                "reading_time": post.reading_time or 1,
+                **post_media_flags(post),
+                **post_access_flags(post),
                 "category": {
                     "id": post.category.id,
                     "name": get_i18n_value(post.category.name, language),
@@ -3579,6 +3587,11 @@ async def get_my_history(
                         "slug": post.slug,
                         "cover_image": post.cover_image,
                         "views": post.views,
+                        # 批次 #140：阅读历史也是文章行，徽标与列表同源；
+                        # 「上次读过的那篇要密码」正是这一档最该提前说清的事。
+                        "reading_time": post.reading_time or 1,
+                        **post_media_flags(post),
+                        **post_access_flags(post),
                         "category": {
                             "id": post.category.id,
                             "name": get_i18n_value(post.category.name, language),

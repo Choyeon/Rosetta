@@ -160,3 +160,23 @@ describe('四语文案', () => {
     expect(text).not.toContain('阅读')
   })
 })
+
+describe('登录态四档与相关文章卡（批次 #140）', () => {
+  const accountPage = readFileSync(resolve(root, 'frontend/pages/account/index.vue'), 'utf8')
+  const favorites = readFileSync(resolve(root, 'frontend/composables/useFavorites.ts'), 'utf8')
+
+  it('「我的文章/点赞」「收藏」「阅读历史」三档各挂一次分钟数 chip', () => {
+    expect((accountPage.match(/<PostReadingTime :post=/g) ?? []).length).toBe(3)
+    expect(accountPage).toContain('import PostReadingTime from \'~~/components/PostReadingTime.vue\'')
+    expect(accountPage).toContain('reading_time?: number | null')
+  })
+
+  it('收藏引用类型声明这一位（chip 的 props 是全可选的弱类型，不声明会被 TS 拒）', () => {
+    expect(favorites).toContain('reading_time?: number | null')
+  })
+
+  it('详情页相关推荐卡挂一次 chip：后端那三位早就在载荷里，缺的只是渲染', () => {
+    expect(detail).toContain('<PostReadingTime :post="sp.raw" />')
+    expect(detail).toContain('reading_time?: number | null')
+  })
+})
