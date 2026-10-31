@@ -908,7 +908,8 @@
     "loadFailed": "Failed to load albums",
     "noAlbums": "No albums yet",
     "hint": "Click any photo to view it enlarged.",
-    "openAlbum": "Open album: {title}"
+    "openAlbum": "Open album: {title}",
+    "albumNotFound": "This album does not exist or is not public."
   },
   "friends": {
     "applyTitle": "Request a link exchange",

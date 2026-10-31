@@ -3,6 +3,10 @@
   （每页 12，后端 page_size 上限 100），第 2 页起有真实 <a href> 入口；越界页码 SSR 期 301
   回裸相册页（200 空页会被判 soft 404，且自指 canonical 等于承认垃圾页码是独立页面）。
   点开才用 apiFetch('/gallery/albums/{id}') 取照片，靠 Album.loaded + albumLoading 双守卫防重复请求。
+  「打开哪个相册」的唯一真值是 ?album=<id>（批次 #128）：卡片是真实 <a href>，openAlbum 只改地址栏，
+  watch(route.query.album) 才驱动对话框——刷新、后退、中键新标签都还原同一个相册；深链到不在当页的
+  相册由详情响应自建成兜底对象（列表里没有也能开）；id 不存在/未公开走 404 分支显式给文案并清参数，
+  而不是转圈后一片空白。canonical 只带 page，?album= 进链接图但不承认独立页面（口径见 AGENTS §2.3.3）。
   每张照片带 url（原图）+ thumb（后端从 Media.sizes 派生的缩略档，可能为空）：网格下 thumb、灯箱放大 url，
   所以 Viewer 必须显式 url: 'data-original'（viewerjs 默认读 src，不指就会把 150px 小图放到全屏）。
   详情响应可能是 {data} 信封（手工解包），没有原图地址的项直接丢掉，故"有照片数却空网格"是脏数据表现。
@@ -55,45 +59,49 @@
           <article
             v-for="album in albums"
             :key="album.id"
-            class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            role="button"
-            tabindex="0"
-            :aria-label="t('gallery.openAlbum', { title: album.title })"
-            @click="openAlbum(album.id)"
-            @keydown.enter.prevent="openAlbum(album.id)"
-            @keydown.space.prevent="openAlbum(album.id)"
+            class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300"
           >
-            <div class="relative aspect-[4/3] overflow-hidden bg-muted">
-              <img
-                v-if="album.cover"
-                :src="album.cover"
-                :alt="album.title"
-                width="800"
-                height="600"
-                class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-                loading="lazy"
-              >
-              <div
-                v-else
-                class="size-full flex items-center justify-center bg-muted"
-              >
-                <Images class="size-12 text-muted-foreground/40" />
+            <!-- 真实 <a href>：SSR 里爬虫读到的只有这一份链接图，且访客要能右键新标签打开
+                 （上一版是 role="button" + tabindex 的 article，新标签打开只会拿到没有相册的列表页）。
+                 点击仍走 openAlbum → 只改 ?album=，由 watch 打开对话框，地址栏与界面不会分叉。 -->
+            <a
+              :href="albumHref(album.id)"
+              class="block cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+              :aria-label="t('gallery.openAlbum', { title: album.title })"
+              @click.prevent="openAlbum(album.id)"
+            >
+              <div class="relative aspect-[4/3] overflow-hidden bg-muted">
+                <img
+                  v-if="album.cover"
+                  :src="album.cover"
+                  :alt="album.title"
+                  width="800"
+                  height="600"
+                  class="size-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
+                  loading="lazy"
+                >
+                <div
+                  v-else
+                  class="size-full flex items-center justify-center bg-muted"
+                >
+                  <Images class="size-12 text-muted-foreground/40" />
+                </div>
+                <div class="absolute top-3 left-3">
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
+                    <ImageIcon class="size-3.5" />
+                    {{ album.photosCount }}
+                  </span>
+                </div>
               </div>
-              <div class="absolute top-3 left-3">
-                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 text-white text-xs font-medium backdrop-blur-sm">
-                  <ImageIcon class="size-3.5" />
-                  {{ album.photosCount }}
-                </span>
+              <div class="p-5">
+                <h3 class="font-display text-lg font-semibold tracking-tight truncate group-hover:text-primary transition-colors">
+                  {{ album.title }}
+                </h3>
+                <p class="text-sm text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
+                  {{ album.description || t('gallery.noDesc') }}
+                </p>
               </div>
-            </div>
-            <div class="p-5">
-              <h3 class="font-display text-lg font-semibold tracking-tight truncate group-hover:text-primary transition-colors">
-                {{ album.title }}
-              </h3>
-              <p class="text-sm text-muted-foreground mt-1.5 line-clamp-2 leading-relaxed min-h-[2.5rem]">
-                {{ album.description || t('gallery.noDesc') }}
-              </p>
-            </div>
+            </a>
           </article>
         </div>
       </template>
@@ -268,7 +276,20 @@
                 v-else
                 class="text-center py-16"
               >
-                <template v-if="detailError">
+                <template v-if="albumNotFound">
+                  <Images class="size-12 text-muted-foreground/40 mx-auto mb-3" />
+                  <p class="text-sm text-muted-foreground mb-4">
+                    {{ t('gallery.albumNotFound') }}
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    @click="closeAlbum"
+                  >
+                    {{ t('common.back') }}
+                  </Button>
+                </template>
+                <template v-else-if="detailError">
                   <AlertCircle class="size-12 text-destructive/60 mx-auto mb-3" />
                   <p class="text-sm text-muted-foreground mb-4">
                     {{ t('common.error') }}
@@ -298,7 +319,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onBeforeUnmount, nextTick } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Badge } from '~~/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~~/components/ui/dialog'
 import { ScrollArea } from '~~/components/ui/scroll-area'
@@ -311,6 +332,7 @@ import { pageWindow } from '~~/lib/pagination'
 definePageMeta({ layout: 'default' })
 
 const { t, locale } = useI18n()
+const { localeHrefWith } = useLocaleLink()
 
 // viewerjs 懒加载
 type ViewerModule = typeof import('viewerjs')
@@ -377,14 +399,19 @@ interface AlbumResp {
 const albums = reactive<Album[]>([])
 const dialogOpen = ref(false)
 const activeAlbumId = ref<number | null>(null)
+/** 深链进来的相册可能不在当前这一页的列表里（第 3 页的相册 / 列表还没回）：详情响应自建成这一个兜底对象 */
+const linkedAlbum = ref<Album | null>(null)
 const albumLoading = ref(false)
 /** 详情请求失败与「相册本来就没照片」必须区分：后者不是错误 */
 const detailError = ref(false)
+/** 地址栏带的 id 不存在或未公开（详情 404）：给明确文案，别转圈后一片空白、也别报「操作失败」 */
+const albumNotFound = ref(false)
 const viewerContainerRef = ref<HTMLElement | null>(null)
 let viewerInstance: { destroy: () => void } | null = null
 
 const currentAlbum = computed(() =>
-  albums.find(a => a.id === activeAlbumId.value) ?? null
+  albums.find(a => a.id === activeAlbumId.value)
+  ?? (linkedAlbum.value?.id === activeAlbumId.value ? linkedAlbum.value : null)
 )
 const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
 
@@ -417,14 +444,40 @@ const pageHref = (page: number) => `${applyLocalePrefix('/gallery', locale.value
 const pageLinkClass = (variant: 'default' | 'outline' | 'ghost') =>
   buttonVariants({ variant, size: 'icon' })
 
+/** 只保留本页真正认识的查询键：垃圾参数不该被复读到下一个链接上 */
+const albumQuery = (page: number | null, albumId: number | null = activeAlbumId.value) => {
+  const query: Record<string, string> = {}
+  if (page !== null && page > 1) query.page = String(page)
+  if (albumId !== null) query.album = String(albumId)
+  return query
+}
+
 const handlePageChange = (page: number) => {
   if (page < 1 || page > totalPages.value) return
   currentPage.value = page
   if (import.meta.client) {
-    router.replace({ query: page > 1 ? { page: String(page) } : {} })
+    // 翻页不带上 ?album：换页意味着换一批相册，继续挂着上一页的相册 id 会让
+    // 「地址栏里有相册、界面上开着另一个」分叉；watch 见到空 album 顺手把对话框收掉。
+    router.replace({ query: albumQuery(page, null) })
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 }
+
+// 打开哪个相册的唯一真值是 ?album=<id>（批次 #128）。上一版它是纯 ref：刷新即回到列表、
+// 后退直接离开相册页、中键"新标签打开"拿到的是一页没有相册的列表（卡片是 role="button"）。
+// 现在卡片是真 <a href>，openAlbum 只改地址栏，真正把手交给下面的 watch——界面与 URL 不分叉。
+// canonical 仍只带 page（CANONICAL_QUERY_KEYS），所以这些链接进链接图但不承认独立页面。
+const albumIdFromQuery = (raw: unknown): number | null => {
+  const n = Number(raw)
+  return Number.isInteger(n) && n > 0 ? n : null
+}
+activeAlbumId.value = albumIdFromQuery(route.query.album)
+
+const albumHref = (id: number) =>
+  localeHrefWith('/gallery', {
+    page: currentPage.value > 1 ? String(currentPage.value) : '',
+    album: String(id)
+  })
 
 // 分享链接上的页码可能已越界（比如相册被删掉一批）：拉回来再请求，
 // 否则访客拿到"第 9 页，共 3 页"的空网格且无从自救。
@@ -476,12 +529,16 @@ watch(
 
 // 加载相册详情
 async function loadAlbumDetail(id: number) {
-  const album = albums.find(a => a.id === id)
-  if (!album || album.loaded || albumLoading.value) return
+  if (albumLoading.value) return
+  const listed = albums.find(a => a.id === id)
+  const target = listed ?? (linkedAlbum.value?.id === id ? linkedAlbum.value : null)
+  if (target?.loaded) return
   albumLoading.value = true
   try {
     const raw = await apiFetchDirect<unknown>(`/gallery/albums/${id}`, {
-      query: { lang: locale.value }
+      query: { lang: locale.value },
+      // 深链上的 id 很可能是错的（手输 / 相册已删）：这一路的提示权归页内文案，不再另弹 toast
+      silentToast: true
     })
     const unwrapped
       = raw && typeof raw === 'object' && 'data' in raw
@@ -489,7 +546,7 @@ async function loadAlbumDetail(id: number) {
         : raw
     const data = (unwrapped ?? {}) as Record<string, unknown>
     const photosArr = Array.isArray(data.photos) ? data.photos : []
-    album.photos = photosArr
+    const photos = photosArr
       .map((p) => {
         const obj = (p ?? {}) as AlbumDetail
         // 没有原图地址就整条丢掉：网格可以只放缩略图，灯箱却没有可放大的源
@@ -500,15 +557,28 @@ async function loadAlbumDetail(id: number) {
         return { url, thumb: obj.thumbnail_url ?? '' }
       })
       .filter((p): p is AlbumPhoto => p !== null)
-    album.loaded = true
-    const photoCount = data.photo_count
-    if (typeof photoCount === 'number') album.photosCount = photoCount
-    const cover = data.cover
-    if (!album.cover && typeof cover === 'string') album.cover = cover
+    const next: Album = {
+      id,
+      title: typeof data.title === 'string' ? data.title : (target?.title ?? ''),
+      description: typeof data.description === 'string' ? data.description : (target?.description ?? ''),
+      cover: typeof data.cover === 'string' ? data.cover : (target?.cover ?? ''),
+      photosCount: typeof data.photo_count === 'number' ? data.photo_count : (target?.photosCount ?? 0),
+      photos,
+      loaded: true
+    }
+    // 列表里有这一张就原地更新（保住 reactive 身份），没有就用详情响应自建：
+    // 深链到第 3 页的相册时 albums 里根本没有它，上一版在找不到 album 时直接 return，
+    // 表现是「链接没错、点开是一片空网格」。
+    if (target) Object.assign(target, next)
+    else linkedAlbum.value = next
   } catch (err) {
     // 不能静默：失败的表现是「点了相册，对话框里一直转圈然后空空如也」，
     // 详情页没有任何别的提示渠道，必须显式给一个错误态。
-    detailError.value = true
+    // 404 与「请求挂了」分开说——前者重试一万次也不会回来，后者也许只是这一次抖动。
+    const errObj = err as { status?: number, statusCode?: number }
+    const status = errObj.status ?? errObj.statusCode
+    if (status === 404) albumNotFound.value = true
+    else detailError.value = true
     console.error('[gallery] 相册详情加载失败', id, err)
   } finally {
     albumLoading.value = false
@@ -517,24 +587,53 @@ async function loadAlbumDetail(id: number) {
 
 /** 重试：清掉 loaded 守卫，否则 loadAlbumDetail 会直接短路返回 */
 function retryDetail() {
-  const album = albums.find(a => a.id === activeAlbumId.value)
-  if (!album) return
+  const id = activeAlbumId.value
+  if (id === null) return
   detailError.value = false
-  album.loaded = false
-  void loadAlbumDetail(album.id).then(() => nextTick(() => initViewer()))
+  albumNotFound.value = false
+  if (currentAlbum.value) currentAlbum.value.loaded = false
+  void loadAlbumDetail(id).then(() => nextTick(() => initViewer()))
+}
+
+/** 只改地址栏：URL 才是「开着哪个相册」的真值，下面的 watch 负责让界面跟上 */
+function setAlbumQuery(id: number | null) {
+  if (!import.meta.client) return
+  router.replace({ query: albumQuery(currentPage.value, id) })
 }
 
 // 打开相册
 function openAlbum(id: number) {
+  setAlbumQuery(id)
+}
+
+/** 「相册不存在」分支的出口：把坏参数从地址栏一起带走 */
+function closeAlbum() {
+  dialogOpen.value = false
+}
+
+// 地址栏 → 界面：刷新、后退、中键新标签都从这里把相册开回来
+async function applyAlbumFromQuery() {
+  const id = albumIdFromQuery(route.query.album)
+  if (id === null) {
+    dialogOpen.value = false
+    return
+  }
   activeAlbumId.value = id
   detailError.value = false
+  albumNotFound.value = false
   dialogOpen.value = true
-  nextTick(() => {
-    loadAlbumDetail(id).then(() => {
-      nextTick(() => initViewer())
-    })
-  })
+  await loadAlbumDetail(id)
+  await nextTick()
+  await initViewer()
 }
+
+watch(() => route.query.album, () => {
+  void applyAlbumFromQuery()
+})
+
+onMounted(() => {
+  void applyAlbumFromQuery()
+})
 
 // 初始化 viewerjs
 async function initViewer() {
@@ -615,6 +714,9 @@ watch(dialogOpen, (open) => {
       }
       viewerInstance = null
     }
+    // 用 ESC / 关闭按钮收掉相册时，地址栏的 ?album= 必须跟着走：留着它，下一次刷新
+    // 会「凭空」重开一个访客已经关掉的相册（界面与 URL 分叉正是本批次要修的东西）。
+    if (activeAlbumId.value !== null) setAlbumQuery(null)
   }
 })
 

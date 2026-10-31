@@ -189,10 +189,13 @@ describe('公开画廊页：详情加载失败必须可见', () => {
 
   it('提供重试入口，并先清掉 loaded 守卫', () => {
     expect(publicGallery).toMatch(/function retryDetail\(\)/)
-    expect(publicGallery).toMatch(/album\.loaded = false/)
+    // 批次 #128 之后深链进来的相册可能不在 albums 里，改走 currentAlbum（列表项或自建兜底对象）
+    expect(publicGallery).toMatch(/currentAlbum\.value\.loaded = false/)
   })
 
   it('错误态与「相册本来就没有照片」区分开', () => {
-    expect(publicGallery).toMatch(/v-if="detailError"/)
+    // #128 在 detailError 之前插了 albumNotFound（404）分支，两者都必须是独立分支而不是同一句"操作失败"
+    expect(publicGallery).toMatch(/v-(?:else-)?if="detailError"/)
+    expect(publicGallery).toMatch(/v-if="albumNotFound"/)
   })
 })

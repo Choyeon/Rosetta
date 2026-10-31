@@ -908,7 +908,8 @@
     "loadFailed": "相册加载失败",
     "noAlbums": "还没有上传相册",
     "hint": "点击任意图片可放大查看。",
-    "openAlbum": "打开相册：{title}"
+    "openAlbum": "打开相册：{title}",
+    "albumNotFound": "该相册不存在或未公开"
   },
   "friends": {
     "applyTitle": "申请交换友链",

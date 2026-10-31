@@ -970,7 +970,8 @@
     "loadFailed": "アルバムの読み込みに失敗しました",
     "noAlbums": "アルバムはまだありません",
     "hint": "画像をクリックすると拡大表示できます。",
-    "openAlbum": "アルバムを開く：{title}"
+    "openAlbum": "アルバムを開く：{title}",
+    "albumNotFound": "このアルバムは存在しないか公開されていません。"
   },
   "friends": {
     "applyTitle": "相互リンク申請",

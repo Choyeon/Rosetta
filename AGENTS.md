@@ -296,6 +296,19 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    （`categoriesIndexSort` / `tagsIndexFilter` / `hotRankingPeriods`）。
    守卫 `frontend/tests/unit/postsFilterChips.spec.ts`（真实锚点 + 位置在最后一条 `</ClientOnly>` 之后
    + 键集合与 removeFilter 复位值 + 四语文案键齐全 + `FilterChipKey` 联合类型逐个在册）。
+   同族最后一处不是「筛选」而是「打开哪一条」：`pages/gallery.vue` 的相册卡片曾是 `role="button"`
+   的 article + 纯 ref 状态（批次 #128）——SSR 里一个相册链接都没有，刷新回到列表、后退直接离开相册页、
+   中键「新标签打开」拿到的是没有相册的一页。口径是**详情型状态同样进 URL**：`?album=<id>` 走
+   `localeHrefWith`（canonical 仍只带 `page`，所以相册链接只进链接图、不承认每个相册是独立页面），
+   `openAlbum` 只 `router.replace`，真正开对话框的是 `watch(route.query.album)`。另外三条：
+   ① **深链不得依赖「这一条在不在当前列表页里」**——旧代码在 `albums.find` 落空时直接 return，
+   表现是「链接没错、点开是一片空网格」，现在详情响应自建成兜底对象（`linkedAlbum`）；
+   ② 坏 id 走详情口的 404 分支（`silentToast` + 「相册不存在或未公开」+ 出口把参数清掉），
+   与「请求挂了」分开，别拿一句「操作失败」混掉；③ 关掉对话框与翻页都要带走 `?album=`，
+   否则下一次刷新会「凭空」重开一个访客已经关掉的相册。守卫见 `galleryAlbumDeepLink.spec.ts`
+   与 `galleryMediaContract.spec.ts`。**线上探针要点**：`albums` / `photos` 两张表实测都是空的，
+   空表会让「没有 role=button / 没有 ?album 链接」这类判据恒真，探针必须临时种一条已发布相册、
+   跑完删掉，并核对 `ROW_DELETED` 与 `RESIDUE_API` / `RESIDUE_PAGE`。
 
 契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
 `contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·

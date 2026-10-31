@@ -970,7 +970,8 @@
     "loadFailed": "相簿載入失敗",
     "noAlbums": "尚無相簿",
     "hint": "點擊任意圖片可放大查看。",
-    "openAlbum": "開啟相簿：{title}"
+    "openAlbum": "開啟相簿：{title}",
+    "albumNotFound": "該相簿不存在或未公開。"
   },
   "friends": {
     "applyTitle": "申請交換友鏈",
