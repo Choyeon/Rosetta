@@ -122,6 +122,7 @@
             </div>
             <div class="flex items-center gap-3 shrink-0 ml-3 text-xs text-muted-foreground">
               <PostMediaFlags :post="post" />
+              <PostReadingTime :post="post" />
               <span
                 v-if="getCategoryName(post)"
                 class="hidden sm:inline-flex items-center gap-1"
@@ -158,6 +159,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { useI18n } from 'vue-i18n'
 import { CalendarDays, Eye, FolderOpen } from '@lucide/vue'
 
@@ -199,6 +201,8 @@ interface PostItem {
   has_audio?: boolean
   has_video?: boolean
   has_embed?: boolean
+  // 预计阅读分钟数（批次 #138）：读后端持久化列，缺键按「不显示」处理。
+  reading_time?: number | null
   category?: { id: number | string, name?: string | Record<string, string>, slug: string }
 }
 interface ArchiveGroupItem {

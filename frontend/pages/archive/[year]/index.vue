@@ -151,6 +151,7 @@
               </div>
               <div class="ml-3 flex shrink-0 items-center gap-3 text-xs text-muted-foreground">
                 <PostMediaFlags :post="post" />
+                <PostReadingTime :post="post" />
                 <span
                   v-if="categoryOf(post)"
                   class="hidden items-center gap-1 sm:inline-flex"
@@ -177,6 +178,7 @@ import { Badge } from '~~/components/ui/badge'
 import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
@@ -196,6 +198,8 @@ interface ArchivePostItem {
   has_audio?: boolean
   has_video?: boolean
   has_embed?: boolean
+  // 预计阅读分钟数（批次 #138）：读后端持久化列，缺键按「不显示」处理。
+  reading_time?: number | null
   category?: { id?: number | string, name?: string | Record<string, string>, slug?: string }
 }
 interface ArchiveMonthGroup {

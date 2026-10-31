@@ -115,6 +115,7 @@
                 class="hidden sm:inline"
               >{{ categoryOf(post) }}</span>
               <PostMediaFlags :post="post" />
+              <PostReadingTime :post="post" />
               <span class="inline-flex items-center gap-1">
                 <Eye class="size-3.5" />
                 {{ post.views ?? 0 }}
@@ -162,6 +163,7 @@ import { Button } from '~~/components/ui/button'
 import { Separator } from '~~/components/ui/separator'
 import Skeleton from '~~/components/ui/skeleton/Skeleton.vue'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 import { toBcp47Locale } from '~~/composables/useSeo'
@@ -179,6 +181,8 @@ interface ArchivePostItem {
   has_audio?: boolean
   has_video?: boolean
   has_embed?: boolean
+  // 预计阅读分钟数（批次 #138）：读后端持久化列，缺键按「不显示」处理。
+  reading_time?: number | null
   category?: { name?: string | Record<string, string> }
 }
 interface ArchiveMonthPage {

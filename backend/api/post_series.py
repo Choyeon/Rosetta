@@ -64,6 +64,8 @@ class SeriesPostItemDoc(BaseModel):
     has_audio: bool = Field(False, description="是否带站内音频")
     has_video: bool = Field(False, description="是否带站内视频")
     has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
+    # 预计阅读分钟数（批次 #138）：持久化列，目录行与列表/详情页共用同一个数。
+    reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
 
 
 class SeriesDetailDoc(BaseModel):
@@ -168,7 +170,8 @@ async def get_series(slug: str, db: DB):
 
     # 只投影系列页真正渲染的列。`select(Post)` 会把每篇文章的正文与 excerpt 一并读进
     # 内存——一个 200 篇的系列就是几百 KB 到几 MB 的无效 IO，而响应用到的只有下面这几列。
-    # 三个媒体列只用于产出存在性三位，地址不进目录载荷（口径同批次 #120）。
+    # 三个媒体列只用于产出存在性三位，地址不进目录载荷（口径同批次 #120）；
+    # reading_time 同理——只给分钟数，正文不进这个投影（批次 #138）。
     posts_result = await db.execute(
         select(
             Post.id,
@@ -181,6 +184,7 @@ async def get_series(slug: str, db: DB):
             Post.audio,
             Post.video,
             Post.video_url,
+            Post.reading_time,
         )
         .where(
             Post.series_id == series.id,
@@ -210,6 +214,8 @@ async def get_series(slug: str, db: DB):
                 "views": r.views,
                 "published_at": r.published_at,
                 **media_flags(audio=r.audio, video=r.video, video_url=r.video_url),
+                # 批次 #138：点名取列就要点名给键，目录行缺它就没有分钟数
+                "reading_time": r.reading_time or 1,
             }
             for r in rows
         ],

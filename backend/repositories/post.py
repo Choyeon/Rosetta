@@ -768,6 +768,7 @@ class PostRepository(BaseRepository[Post]):
                 Post.audio,
                 Post.video,
                 Post.video_url,
+                Post.reading_time,
                 Category.id,
                 Category.name,
                 Category.color,
@@ -793,6 +794,7 @@ class PostRepository(BaseRepository[Post]):
             audio,
             video,
             video_url,
+            reading_time,
             category_id,
             category_name_i18n,
             category_color,
@@ -836,6 +838,9 @@ class PostRepository(BaseRepository[Post]):
                         # 归档行也要能显示「这篇带音频/视频」：这三列在 select 里点名取，
                         # 键名与取值单源是 services/post_access.py::media_flags。
                         **media_flags(audio=audio, video=video, video_url=video_url),
+                        # 批次 #138：分钟数同样点名取列。归档与列表/详情页读同一个持久化列，
+                        # 少这一个键的表现是"列表卡片有分钟数、归档页整列没有"。
+                        "reading_time": reading_time or 1,
                     }
                 )
 

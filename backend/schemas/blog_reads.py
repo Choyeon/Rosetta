@@ -39,6 +39,9 @@ class ArchivePostItem(BaseModel):
     has_audio: bool = Field(False, description="是否带站内音频")
     has_video: bool = Field(False, description="是否带站内视频")
     has_embed: bool = Field(False, description="是否带 YouTube 嵌入")
+    # 预计阅读分钟数（批次 #138）：持久化列，归档三面与列表/详情共用同一个数。
+    # 同默认值口径——归档响应进缓存，TTL 内的旧载荷没这个键。
+    reading_time: int = Field(1, description="预计阅读分钟数（Post.reading_time 持久化列）")
 
 
 class ArchiveMonthGroup(BaseModel):

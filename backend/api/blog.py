@@ -2786,6 +2786,9 @@ async def get_archive_by_year(
                 "category": category_data,
                 "views": post.views,
                 **post_media_flags(post),
+                # 批次 #138：归档与列表/详情读同一个持久化列，漏这键的表现是
+                # "列表卡片有分钟数、归档那一列整排没有"（同族构造点漏写）。
+                "reading_time": post.reading_time or 1,
             }
         )
 
@@ -2892,6 +2895,9 @@ async def get_archive_by_month(
                 "category": category_data,
                 "views": post.views,
                 **post_media_flags(post),
+                # 批次 #138：归档与列表/详情读同一个持久化列，漏这键的表现是
+                # "列表卡片有分钟数、归档那一列整排没有"（同族构造点漏写）。
+                "reading_time": post.reading_time or 1,
             }
         )
 

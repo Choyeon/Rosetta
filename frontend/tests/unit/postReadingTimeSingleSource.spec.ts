@@ -1,5 +1,5 @@
 /**
- * 「预计阅读 N 分钟」的单源契约（批次 #136）。
+ * 「预计阅读 N 分钟」的单源契约（批次 #136 / #137 / #138）。
  *
  * 分钟数只有一个真源：`Post.reading_time` 持久化列（写入侧 `utils/reading_time.py` 算好）。
  * 这组断言各挡一次"两处数字打架"：
@@ -23,6 +23,13 @@ const schemas = readFileSync(resolve(root, 'backend/schemas/__init__.py'), 'utf8
 const blogApi = readFileSync(resolve(root, 'backend/api/blog.py'), 'utf8')
 const rankingApi = readFileSync(resolve(root, 'backend/api/ranking.py'), 'utf8')
 const hotPage = readFileSync(resolve(root, 'frontend/pages/posts/hot.vue'), 'utf8')
+const repoApi = readFileSync(resolve(root, 'backend/repositories/post.py'), 'utf8')
+const blogReads = readFileSync(resolve(root, 'backend/schemas/blog_reads.py'), 'utf8')
+const seriesApi = readFileSync(resolve(root, 'backend/api/post_series.py'), 'utf8')
+const archiveIndex = readFileSync(resolve(root, 'frontend/pages/archive/index.vue'), 'utf8')
+const archiveYear = readFileSync(resolve(root, 'frontend/pages/archive/[year]/index.vue'), 'utf8')
+const archiveMonth = readFileSync(resolve(root, 'frontend/pages/archive/[year]/[month].vue'), 'utf8')
+const seriesPage = readFileSync(resolve(root, 'frontend/pages/series/[slug].vue'), 'utf8')
 const util = readFileSync(resolve(root, 'backend/utils/reading_time.py'), 'utf8')
 
 describe('卡片侧（PostCard）', () => {
@@ -102,6 +109,31 @@ describe('周期榜族（/ranking/posts → 热榜页周期页签，批次 #137�
   it('热榜页把分钟数透传给同一套卡片渲染，缺键按不显示处理', () => {
     expect(hotPage).toContain('reading_time?: number | null')
     expect(hotPage).toContain('reading_time: row.reading_time ?? null')
+  })
+})
+
+describe('归档 / 系列族（批次 #138）', () => {
+  // 归档三面（全量 / 年 / 月）与系列章节目录都是手搭投影：仓储点名取列、端点自己拼 dict。
+  // 漏一处的表现和 #122 的媒体徽标一样——「列表卡片有分钟数，归档那一列整排没有」。
+  it('仓储归档投影点名取列并落进同一行载荷', () => {
+    expect(repoApi).toContain('Post.reading_time,')
+    expect(repoApi).toContain('"reading_time": reading_time or 1,')
+  })
+
+  it('后端四条投影都带出该键，文档模型给默认值（旧缓存载荷不能整口 500）', () => {
+    expect((blogApi.match(/"reading_time": post\.reading_time or 1/g) ?? []).length)
+      .toBeGreaterThanOrEqual(2)
+    expect(blogReads).toContain('reading_time: int = Field(1')
+    expect(seriesApi).toContain('"reading_time": r.reading_time or 1,')
+    expect(seriesApi).toContain('reading_time: int = Field(1')
+  })
+
+  it('四个渲染面各挂一次 chip，且项类型允许缺键', () => {
+    for (const src of [archiveIndex, archiveYear, archiveMonth, seriesPage]) {
+      expect((src.match(/<PostReadingTime :post=/g) ?? []).length).toBe(1)
+      expect(src).toContain('import PostReadingTime from \'~~/components/PostReadingTime.vue\'')
+      expect(src).toContain('reading_time?: number | null')
+    }
   })
 })
 

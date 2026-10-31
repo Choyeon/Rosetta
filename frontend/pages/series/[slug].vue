@@ -180,6 +180,7 @@
                         {{ p.views }}
                       </span>
                       <PostMediaFlags :post="p" />
+                      <PostReadingTime :post="p" />
                     </div>
                   </div>
                   <ArrowUpRight class="size-4 text-muted-foreground/60 shrink-0 mt-2 group-hover:text-primary group-hover:-translate-y-0.5 group-hover:translate-x-0.5 transition-all" />
@@ -210,6 +211,7 @@ import { Button } from '~~/components/ui/button'
 import { AlertCircle, ArrowUpRight, CalendarDays, Eye, ListOrdered, RefreshCw } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
 
 definePageMeta({ layout: 'default' })
@@ -231,6 +233,8 @@ interface SeriesPostRow {
   has_audio?: boolean
   has_video?: boolean
   has_embed?: boolean
+  // 预计阅读分钟数（批次 #138）：目录投影带出，缺键按「不显示」处理。
+  reading_time?: number | null
 }
 interface SeriesDetail {
   id: number | string
