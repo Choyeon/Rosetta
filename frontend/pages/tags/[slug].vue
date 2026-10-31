@@ -348,4 +348,11 @@ useBreadcrumbJsonLd([
   { name: t('nav.tags', '标签') as string, url: '/tags' },
   { name: tagName.value || slug.value, url: `/tags/${slug.value}` }
 ])
+// 本标签的订阅源入口（与分类页同构）：不存在态页面自身 noindex，这条 link 一起收起。
+useRssFeedLink({
+  kind: 'tag',
+  slug,
+  label: computed(() => tagName.value),
+  active: computed(() => !tagNotFound.value)
+})
 </script>

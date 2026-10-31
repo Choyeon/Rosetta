@@ -189,8 +189,25 @@ def _rss_language(code: str) -> str:
     return (code or "en").replace("_", "-")
 
 
+# 频道 <description> 的后缀：此前恒写中文「最新文章」，en/ja/zh_Hant 三种 feed
+# 的频道描述一直是中文（条目正文已按语言解析，唯独频道这行漏了）。
+_RSS_LATEST_SUFFIX: dict[str, str] = {
+    "zh": "最新文章",
+    "en": "Latest posts",
+    "ja": "最新の記事",
+    "zh_Hant": "最新文章",
+}
+
+
 async def generate_rss_feed(
-    posts: list[Post], language: str, site_url: str, site_title: str
+    posts: list[Post],
+    language: str,
+    site_url: str,
+    site_title: str,
+    *,
+    taxonomy_label: str | None = None,
+    taxonomy_path: str | None = None,
+    feed_query: str = "",
 ) -> str:
     """生成 RSS 2.0 订阅源（最佳实践版）。
 
@@ -202,6 +219,12 @@ async def generate_rss_feed(
       两者混用会让阅读器按"最新内容时间"判断是否重拉——缓存里 TTL 到点重建的 feed
       若 lastBuildDate 纹丝不动，聚合器就永远不会取到新条目
 
+    ``taxonomy_label`` / ``taxonomy_path`` / ``feed_query`` 三个入参给"分类订阅源 /
+    标签订阅源"用（``GET /blog/rss?category=<slug>``）：频道的 title / link /
+    ``atom:link self`` 必须跟着收窄后的范围走，否则阅读器把分类 feed 当成全站 feed
+    的另一份副本，去重后只保留一份——订阅者以为自己在跟分类，实际收到的是最新文章。
+    缺省（三者都不传）即全站 feed，行为与历史一致。
+
     正文/摘要走统一渲染管线（短代码 + ``the_content`` / ``the_excerpt`` filter），
     与文章详情口径一致，插件的正文过滤器在订阅源里同样生效。刻意不触发
     ``post.rendered`` action：一次抓取最多涉及 ``limit``（≤100）篇文章，
@@ -210,6 +233,20 @@ async def generate_rss_feed(
     site_url = site_url.rstrip("/")
     rss_lang = _rss_language(language)
     now_rfc = _rfc822(datetime.now(_tz.utc))
+    latest_suffix = _RSS_LATEST_SUFFIX.get(language, _RSS_LATEST_SUFFIX["en"])
+    channel_title = f"{site_title} · {taxonomy_label}" if taxonomy_label else site_title
+    channel_description = (
+        f"{taxonomy_label} · {latest_suffix}"
+        if taxonomy_label
+        else f"{site_title} · {latest_suffix}"
+    )
+    # 频道 link 指向该分类/标签的归档页（阅读器里"回到站点"的那一下点击）；
+    # self 指向本次请求的真实 URL（含 query），两者都走 _xml_url：本站 slug 允许中文，
+    # 原样写进 XML 会让按协议校验的抓取器判 invalid 并丢弃整条 feed。
+    self_href = _xml_url(f"{site_url}/rss.xml{f'?{feed_query}' if feed_query else ''}")
+    channel_link = (
+        _xml_url(f"{site_url}{taxonomy_path}") if taxonomy_path else f"{_xml_escape(site_url)}/"
+    )
 
     lines: list[str] = ['<?xml version="1.0" encoding="UTF-8"?>']
     lines.append(
@@ -220,15 +257,12 @@ async def generate_rss_feed(
         f'xmlns:media="{_MEDIA_NS}">'
     )
     lines.append("  <channel>")
-    lines.append(f"    <title>{_xml_escape(site_title)}</title>")
-    lines.append(f"    <link>{_xml_escape(site_url)}/</link>")
-    lines.append(f"    <description>{_cdata(f'{site_title} 最新文章')}</description>")
+    lines.append(f"    <title>{_xml_escape(channel_title)}</title>")
+    lines.append(f"    <link>{channel_link}</link>")
+    lines.append(f"    <description>{_cdata(channel_description)}</description>")
     lines.append(f"    <language>{rss_lang}</language>")
     # Atom self 链接：指向本 feed 的稳定 URL
-    lines.append(
-        f'    <atom:link href="{_xml_escape(site_url)}/rss.xml" '
-        'rel="self" type="application/rss+xml" />'
-    )
+    lines.append(f'    <atom:link href="{self_href}" rel="self" type="application/rss+xml" />')
     # 构建时刻：与 channel 级 pubDate 同源，恒 >= 任何条目的 pubDate
     lines.append(f"    <lastBuildDate>{now_rfc}</lastBuildDate>")
     lines.append(f"    <pubDate>{now_rfc}</pubDate>")
@@ -3625,7 +3659,12 @@ async def _ensure_seo_feed_enabled(db, key: str, env_key: str) -> None:
 @router.get(
     "/rss",
     summary="RSS 订阅",
-    description="获取 RSS 2.0 格式的文章订阅源。",
+    description=(
+        "获取 RSS 2.0 格式的文章订阅源。可选 ``category`` / ``tag`` 按分类或标签 slug 收窄，"
+        "频道的 title / link / atom:self 跟着该分类的归档页走；"
+        "slug 不存在时返回合法的空 feed（200，不缓存），而不是 404——"
+        "阅读器与抓取器对 4xx 的处理是「这个源坏了」，而空源是「这个源还没内容」。"
+    ),
     responses=raw_content_response("application/rss+xml", "RSS 2.0 XML 文档。"),
     response_class=Response,
 )
@@ -3634,8 +3673,12 @@ async def get_rss_feed(
     db: DB,
     lang: str | None = Query(None, description="语言代码（zh/en/ja/zh_Hant）"),
     limit: int = Query(20, ge=1, le=100, description="文章数量"),
+    category: str | None = Query(None, max_length=100, description="按分类 slug 订阅"),
+    tag: str | None = Query(None, max_length=100, description="按标签 slug 订阅"),
 ):
-    """获取 RSS 2.0 订阅源"""
+    """获取 RSS 2.0 订阅源（全站 / 单分类 / 单标签）"""
+    from urllib.parse import urlencode
+
     from fastapi.responses import Response
 
     from backend.core.config import settings
@@ -3644,11 +3687,39 @@ async def get_rss_feed(
 
     language = get_language_from_request(request, lang)
 
+    # 空串 / 全空白按"没传"处理：`?category=` 是前端 chip 移除筛选的常见形态，
+    # 让它落进缓存键会造出一个与全站 feed 内容相同、键位不同的副本。
+    cat_slug = (category or "").strip() or None
+    tag_slug = (tag or "").strip() or None
+
+    taxonomy_label: str | None = None
+    taxonomy_path: str | None = None
+    taxonomy_known = True
+    if cat_slug:
+        row = (
+            (await db.execute(select(Category).where(Category.slug == cat_slug))).scalars().first()
+        )
+        taxonomy_known = row is not None
+        if row is not None:
+            taxonomy_label = get_i18n_value(row.name, language) or row.slug
+            taxonomy_path = f"/categories/{row.slug}"
+    if tag_slug:
+        row = (await db.execute(select(Tag).where(Tag.slug == tag_slug))).scalars().first()
+        taxonomy_known = taxonomy_known and row is not None
+        if row is not None:
+            # 同时带 category 与 tag 时按"交集"收窄（与 GET /blog/posts 同口径），
+            # 频道标签取后一个（更细的那一层）。
+            taxonomy_label = get_i18n_value(row.name, language) or row.slug
+            taxonomy_path = f"/tags/{row.slug}"
+
     # RSS 是匿名+爬虫流量，内容却与"最新已发布文章"同频；列表缓存本来就是 300s 口径，
     # 这里同 TTL 顺带把订阅源的 DB 压力摊平。
     # 键刻意挂在 "posts:" 前缀下：文章的增删改统一走 invalidate_cache("posts")，
     # 换成独立的 "rss:" 前缀就再没人负责失效它，删掉的文章会一直挂在订阅源里。
-    cache_key = make_cache_key("posts", "rss", language, str(limit))
+    # category/tag 是真正进 WHERE 的判别位，必须进键（漏了=分类 feed 与全站 feed 互相串味）。
+    cache_key = make_cache_key(
+        "posts", "rss", language, str(limit), cat_slug or "-", tag_slug or "-"
+    )
     cached_xml = await cache.get(cache_key)
     if isinstance(cached_xml, str) and cached_xml:
         return Response(content=cached_xml, media_type="application/rss+xml")
@@ -3660,9 +3731,12 @@ async def get_rss_feed(
         select(Post)
         .options(selectinload(Post.author), selectinload(Post.category))
         .where(publicly_listable_posts())
-        .order_by(Post.is_pinned.desc(), Post.published_at.desc())
-        .limit(limit)
     )
+    if cat_slug:
+        query = query.join(Category).where(Category.slug == cat_slug)
+    if tag_slug:
+        query = query.join(Post.tags).where(Tag.slug == tag_slug)
+    query = query.order_by(Post.is_pinned.desc(), Post.published_at.desc()).limit(limit)
     result = await db.execute(query)
     posts = result.scalars().all()
 
@@ -3672,9 +3746,29 @@ async def get_rss_feed(
     cfg = await _effective_site_meta()
     site_url = cfg["site_url"] or settings.site_url
     site_title = cfg["site_name"] or settings.app_name
-    rss_content = await generate_rss_feed(posts, language, site_url, site_title)
 
-    await cache.set(cache_key, rss_content, CACHE_TTL["post_list"])
+    # atom:self 里的 query 与本次请求同形（lang / limit / category / tag），
+    # 阅读器据此判断"我订阅的是哪一个源"；写成裸 /rss.xml 会让所有分类 feed 自认是全站 feed。
+    self_params: dict[str, str] = {"lang": language}
+    if cat_slug:
+        self_params["category"] = cat_slug
+    if tag_slug:
+        self_params["tag"] = tag_slug
+    self_params["limit"] = str(limit)
+
+    rss_content = await generate_rss_feed(
+        posts,
+        language,
+        site_url,
+        site_title,
+        taxonomy_label=taxonomy_label,
+        taxonomy_path=taxonomy_path,
+        feed_query=urlencode(self_params),
+    )
+    # 不缓存"查无此分类/标签"的空 feed：slug 是调用方自备的任意串，
+    # 缓存它等于给匿名请求开一个无界键空间（每个乱码 slug 各占一份 300s 条目）。
+    if taxonomy_known:
+        await cache.set(cache_key, rss_content, CACHE_TTL["post_list"])
     return Response(content=rss_content, media_type="application/rss+xml")
 
 

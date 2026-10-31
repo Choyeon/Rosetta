@@ -131,6 +131,14 @@
    只提交默认语言那条会让三个语言变体只剩"页面内 hreflang"这一个发现入口。
    守卫见 `tests/test_api_seo.py::test_sitemap_children_have_no_duplicate_loc`。
    **RSS** 仍是单语言（默认语言）源，语言入口靠 sitemap 与页面 hreflang，不重复挂 `<xhtml:link>`。
+   **RSS 可按分类/标签收窄**（`/rss.xml?category=<slug>` / `?tag=<slug>`，两端同参数名）：`lang` / `category` / `tag`
+   是频道级判别位，**必须同时进 channel 的 `<title>`/`<link>`/`<atom:link rel=self>` 与后端缓存键**——频道口径仍写站名
+   时，阅读器会把分类源判成"全站源的副本"去重；channel 的 `<description>` 后缀按 feed 自己的语言取
+   （`_RSS_LATEST_SUFFIX`，恒写中文会让 en/ja/zh_Hant 源整条串语）。归档页那条发现链接由
+   `composables/useRssFeedLink.ts` 单源产出，三条不输出闸门（slug 空 / 页面处于 `*NotFound` / `features.enable_rss`
+   关掉）少一条就是给爬虫发假信号；Nitro 侧 `feedSlug()` 先过形状闸门（长度 + 控制字符 + XML 定界符），
+   查无此 slug 时后端回 200 零条目**且不写缓存**（调用方自备的任意串不得换缓存条目）。契约见
+   `frontend/tests/unit/rssFeedDiscovery.spec.ts` 与 `tests/test_rss_taxonomy_feed.py`。
 
 ### 2.3 公开页 SWR / Cache 头
 

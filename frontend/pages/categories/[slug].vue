@@ -473,6 +473,15 @@ useSeo({
   type: 'website'
 })
 useWebsiteJsonLd()
+// 本分类的订阅源入口：阅读器/浏览器扩展在 SSR HTML 里读这条 link 就能只跟这个分类。
+// active 用 catNotFound 的反面——不存在态页面自身 noindex，却又 advertise 一个该分类的源，
+// 等于给爬虫两份互相矛盾的"这个分类存在"信号。
+useRssFeedLink({
+  kind: 'category',
+  slug,
+  label: computed(() => categoryName.value),
+  active: computed(() => !catNotFound.value)
+})
 // 面包屑必须跟着层级走：子分类页只写「首页 / 分类 / 当前」等于把父级那一跳从结构化数据里
 // 抹掉，爬虫读到的层级与页面上那行导航各说一套。
 // 传 computed 而不是静态数组：详情请求在 setup 期还没落值，静态取会在 SSR 那一趟定死成"无父级"。
