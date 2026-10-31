@@ -462,6 +462,22 @@ fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_c
 3. 首渲染字节级一致：`ref()` 初始值两端相同；客户端独有状态在 `onMounted` 赋值或用 `useState` 序列化
 4. Pinia token/user：`auth.ts` 使用 `skipHydrate`，仅在客户端写 localStorage
 5. 明/暗主题首渲染：`useTheme.ts` 首帧 useState 恒为 light；`plugins/theme.client.ts` Hydrate 后才真正应用
+6. **访客/爬虫要看到的公开内容只能来自 `useAsyncData` 载荷**，不是 `onMounted` 里补取的 ref：后者写在
+   `renderToString` 之后，SSR HTML 与爬虫（含 Google 的"文章→文章"链接图）读到的是空壳。文章页的
+   上下篇 / 相关推荐 / 评论首页因此都并进同一条 `PostDetailPayload`（批次 #132/#133），消费面一律是
+   computed（`adjacent` / `similarPosts` / `visibleComments`），客户端拉过之后才切到客户端那份。
+   **同一个 handler 里的请求不得用 `silentApiFetch`/`useRuntimeConfig()`**：本仓未开 `nitroAsyncContext`，
+   handler 里第一个 `await` 之后再取 composable 上下文已丢失，baseURL 为空会被 `guardServerBase` 抛错、
+   再被装饰区块各自的 `catch` 吞成空值——线上实测表现是"正文直出、上下篇/推荐/评论一条都没有"，
+   一个错都不报。正确形态是同 `fetchPostPayload` 一样，用 **setup 期抓好的 `runtimeConfig`** 直接
+   `$fetch(path, { baseURL: import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase })`
+   （文章页收口成 `payloadFetch` 单源）。契约见 `postAdjacentSimilarSsr.spec.ts` · `postCommentsSsr.spec.ts`。
+   `payloadFetch` 内部**必须**沿用 `useApi.ts::apiFetch` 那一条把 `$fetch` 擦成普通函数类型
+   （`$fetch as unknown as (url, opts) => Promise<…>`）：开放泛型直接写 `$fetch<T>(…)` 会撞上
+   Nitro `TypedInternalResponse` 的路由条件类型，prod `pnpm typecheck` 出 TS2322（本地 typecheck 是空转，看不见）。
+   **评论正文一旦进 SSR HTML，审核写口就背上清页面缓存的义务**：批准/拒绝/标记垃圾/后台 PATCH 状态或正文
+   都必须 `purge_frontend_page_cache`，否则"后台下架了、访客在 600s 窗口内仍读到那条"（守卫
+   `tests/test_comment_moderation_page_purge.py`，口径同 §2.2.3）。
 
 ***
 

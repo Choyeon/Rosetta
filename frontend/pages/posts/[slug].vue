@@ -1526,8 +1526,12 @@ async function payloadFetch<T>(
   path: string,
   opts: { query?: Record<string, unknown>, headers?: Record<string, string> }
 ): Promise<T> {
+  // 同 apiFetch / silentApiFetch 的口径：把 $fetch 擦成普通函数类型。
+  // 开放泛型 T 直接写 $fetch<T>(...) 会撞上 Nitro TypedInternalResponse 的路由条件类型，
+  // 线上表现为 prod typecheck TS2322（'T' could be instantiated with an arbitrary type）。
   const baseURL = import.meta.server ? runtimeConfig.apiBase : runtimeConfig.public.apiBase
-  return await $fetch<T>(path, { baseURL, ...opts })
+  const _fetch = $fetch as unknown as (url: string, options?: Record<string, unknown>) => Promise<T>
+  return await _fetch(path, { baseURL, ...opts })
 }
 
 /**

@@ -51,7 +51,8 @@ describe('文章页上下篇/相关推荐的 SSR 直出', () => {
     // 本仓未开 nitroAsyncContext：await 之后再 useRuntimeConfig() 取不到上下文，
     // 封装内部 baseURL 为空 → guardServerBase 抛 → catch 吞成空值 → HTML 里一个链接都没有。
     expect(src).toMatch(/async function payloadFetch<T>\(\s*\n *path: string,/)
-    expect(src).toMatch(/const baseURL = import\.meta\.server \? runtimeConfig\.apiBase : runtimeConfig\.public\.apiBase\s*\n *return await \$fetch<T>\(path, \{ baseURL, \.\.\.opts \}\)/)
+    expect(src).toMatch(/const baseURL = import\.meta\.server \? runtimeConfig\.apiBase : runtimeConfig\.public\.apiBase\s*\n *const _fetch = \$fetch as unknown as/)
+    expect(src).toMatch(/return await _fetch\(path, \{ baseURL, \.\.\.opts \}\)/)
     expect(fnBody('fetchAdjacent')).toContain('payloadFetch')
     expect(fnBody('fetchSimilarPosts')).toContain('payloadFetch')
     expect(src).not.toMatch(/const raw = await silentApiFetch/)
