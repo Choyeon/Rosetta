@@ -78,6 +78,7 @@ _PARAM_SAMPLES = {
     "poll_id": "1",
     "post_id": "1",
     "post_id_or_slug": "1",
+    "report_id": "1",
     "revision_id": "1",
     "series_id": "1",
     "slide_id": "1",
