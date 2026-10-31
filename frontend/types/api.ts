@@ -119,6 +119,10 @@ export interface Post {
   published_at?: string
   updated_at?: string
   reading_time: number
+  /** 列表项的媒体存在性三位（批次 #120）：只带"有没有"，地址仍只有详情口回。 */
+  has_audio?: boolean
+  has_video?: boolean
+  has_embed?: boolean
 }
 
 export interface PostCreate {

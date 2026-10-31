@@ -103,6 +103,8 @@
     "relatedPosts": "Related posts",
     "toc": "Table of contents",
     "noExcerpt": "No excerpt available",
+    "hasAudio": "Contains audio",
+    "hasVideo": "Contains video",
     "share": "Share",
     "authorBox": "Author info",
     "authorBoxLabel": "About the author",

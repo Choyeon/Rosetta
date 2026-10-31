@@ -1391,6 +1391,15 @@ class PostListItemLocalized(BaseModel):
     # 只看 created_at 会误判成"刚建好就没管过"。公开列表同样带上，字段是加性的。
     updated_at: datetime | None = None
     reading_time: int = 1
+    # 列表页要能回答"这篇带不带音频/视频"——批次 #118 接通了详情页的播放器，但读者在列表里
+    # 看不出来，音频稿（长文朗读）就失去了"值得点进去"的提示。只带**存在性**，不带地址：
+    # 地址仍只有详情口回，列表载荷被更多缓存与更多消费方复用，带上路径等于把媒体文件名摊开。
+    # 值由 `api/blog.py::_media_flags` 一处产出（四个列表构造点共用）。
+    # 三个键**必须有默认值**：列表载荷是进响应缓存的，旧载荷没这三个键时
+    # `model_validate` 会因为缺必填而整口 500（同 §「新增必填字段是反向同一条路」）。
+    has_audio: bool = False
+    has_video: bool = False
+    has_embed: bool = False
 
     @classmethod
     def from_post(cls, post, lang: str = "zh", comments_count: int = 0) -> "PostListItemLocalized":

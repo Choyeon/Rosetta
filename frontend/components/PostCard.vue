@@ -105,6 +105,7 @@
             v-if="publishedAt"
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
+          <PostMediaFlags :post="post" />
         </div>
         <div class="flex items-center gap-3 shrink-0 ml-auto">
           <span class="inline-flex items-center gap-1 tabular-nums">
@@ -209,6 +210,7 @@
             v-if="publishedAt"
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
+          <PostMediaFlags :post="post" />
         </div>
         <NuxtLink
           :to="localeHref(`/posts/${postSlug}`)"
@@ -332,6 +334,7 @@
           v-if="publishedAt"
           class="shrink-0 tabular-nums"
         >{{ formatDate(publishedAt) }}</span>
+        <PostMediaFlags :post="post" />
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <span class="inline-flex items-center gap-1 tabular-nums">
@@ -359,6 +362,7 @@ import { Calendar, Eye, MessageCircle, ArrowRight } from '@lucide/vue'
 import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
+import PostMediaFlags from '~~/components/PostMediaFlags.vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
@@ -419,6 +423,10 @@ interface Props {
     likes_count?: number
     likesCount?: number
     is_pinned?: boolean
+    /** 媒体存在性三位（批次 #120）：列表口带出，地址仍只在详情口回。 */
+    has_audio?: boolean
+    has_video?: boolean
+    has_embed?: boolean
   }
   variant?: PostCardVariant
   /** 命中关键词（搜索结果页传入）：标题与摘要里的命中片段包成 <mark>；空串＝不高亮。 */

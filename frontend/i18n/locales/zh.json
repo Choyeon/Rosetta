@@ -116,6 +116,8 @@
     "requiresPassword": "这篇文章需要访问密码",
     "clearSavedPassword": "清除本地已保存的密码",
     "noExcerpt": "本文暂无摘要",
+    "hasAudio": "本文含音频",
+    "hasVideo": "本文含视频",
     "home": "首页",
     "posts": "文章",
     "noComments": "暂无评论，来抢沙发吧。",
