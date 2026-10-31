@@ -3,6 +3,9 @@
   （每页 12，后端 page_size 上限 100），第 2 页起有真实 <a href> 入口；越界页码 SSR 期 301
   回裸相册页（200 空页会被判 soft 404，且自指 canonical 等于承认垃圾页码是独立页面）。
   点开才用 apiFetch('/gallery/albums/{id}') 取照片，靠 Album.loaded + albumLoading 双守卫防重复请求。
+  网格是 albumsResp 的纯投影（displayAlbums），取到的详情按 id 覆盖进 loadedAlbums——**不要**改回
+  「watch 把列表项搬进一个 reactive 数组」：SSR 期 useFetch 的 data 在 setup 之后才落值，watch 回调不会
+  在渲染前 flush，那种写法爬虫只会读到「还没有上传相册」（批次 #128 线上实测：接口回 2 条、HTML 里零链接）。
   「打开哪个相册」的唯一真值是 ?album=<id>（批次 #128）：卡片是真实 <a href>，openAlbum 只改地址栏，
   watch(route.query.album) 才驱动对话框——刷新、后退、中键新标签都还原同一个相册；深链到不在当页的
   相册由详情响应自建成兜底对象（列表里没有也能开）；id 不存在/未公开走 404 分支显式给文案并清参数，
@@ -32,7 +35,7 @@
     <section class="container py-12 md:py-16">
       <!-- Skeleton -->
       <div
-        v-if="pending && albums.length === 0"
+        v-if="pending && displayAlbums.length === 0"
         class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6"
       >
         <div
@@ -49,7 +52,7 @@
       </div>
 
       <!-- Albums -->
-      <template v-else-if="albums.length > 0">
+      <template v-else-if="displayAlbums.length > 0">
         <!-- 「点击图片可放大」只在真的有图可点时出现：上一版把它写在空态里，
              屏幕上于是同时存在「还没有上传相册」和「点击任意图片可放大查看」两句互相矛盾的话。 -->
         <p class="mb-4 text-center text-xs text-muted-foreground">
@@ -57,7 +60,7 @@
         </p>
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           <article
-            v-for="album in albums"
+            v-for="album in displayAlbums"
             :key="album.id"
             class="group rounded-xl overflow-hidden border border-border/60 bg-card shadow-sm hover:shadow-lg transition-all duration-300"
           >
@@ -319,7 +322,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { Badge } from '~~/components/ui/badge'
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '~~/components/ui/dialog'
 import { ScrollArea } from '~~/components/ui/scroll-area'
@@ -396,11 +399,16 @@ interface AlbumResp {
 }
 
 // --- State ---
-const albums = reactive<Album[]>([])
 const dialogOpen = ref(false)
 const activeAlbumId = ref<number | null>(null)
-/** 深链进来的相册可能不在当前这一页的列表里（第 3 页的相册 / 列表还没回）：详情响应自建成这一个兜底对象 */
-const linkedAlbum = ref<Album | null>(null)
+/**
+ * 点开相册后取到的详情，按 id 存在这里——唯一带 photos / loaded 的源。
+ * 网格本身是 albumsResp 的纯投影（下面的 displayAlbums），不是「搬进一个 reactive 数组」：
+ * SSR 期 useFetch 的 data 在 setup 之后才落值，watch 回调不会在渲染前 flush，所以靠 watch
+ * 填网格的写法会让爬虫永远读到空态（批次 #128 线上实测：接口回 2 条，SSR HTML 里一个相册
+ * 链接都没有，只有「还没有上传相册」）。
+ */
+const loadedAlbums = ref(new Map<number, Album>())
 const albumLoading = ref(false)
 /** 详情请求失败与「相册本来就没照片」必须区分：后者不是错误 */
 const detailError = ref(false)
@@ -408,12 +416,6 @@ const detailError = ref(false)
 const albumNotFound = ref(false)
 const viewerContainerRef = ref<HTMLElement | null>(null)
 let viewerInstance: { destroy: () => void } | null = null
-
-const currentAlbum = computed(() =>
-  albums.find(a => a.id === activeAlbumId.value)
-  ?? (linkedAlbum.value?.id === activeAlbumId.value ? linkedAlbum.value : null)
-)
-const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
 
 // 每页 12 = 3 列网格 × 4 行；后端 page_size 只认 1–100，越界即 422。
 const PAGE_SIZE = 12
@@ -424,7 +426,7 @@ const currentPage = ref(Math.max(1, Number(route.query.page) || 1))
 const requestedPage = Math.max(1, Number(route.query.page) || 1)
 
 // 拉取相册列表
-// error 必须单独渲染：后端故障时 albums 是空数组，走 v-else 会显示
+// error 必须单独渲染：后端故障时 displayAlbums 是空数组，走 v-else 会显示
 // "还没有相册"——访客据此判定站主没上传照片，而真实情况只是这次请求挂了。
 const { data: albumsResp, pending, error: albumsError, refresh: refreshAlbums } = useAPI<{ items: AlbumResp[], total?: number, total_pages?: number }>(
   '/gallery/albums',
@@ -500,38 +502,40 @@ if (import.meta.server) {
   })
 }
 
-watch(
-  [albumsResp],
-  () => {
-    const items = (albumsResp.value?.items || []) as AlbumResp[]
-    const existingMap = new Map(albums.map(a => [a.id, a]))
-    albums.splice(
-      0,
-      albums.length,
-      ...items.map((raw) => {
-        const prev = existingMap.get(raw.id)
-        return {
-          id: raw.id,
-          title: raw.title || '',
-          description: raw.description || '',
-          cover: raw.cover || '',
-          photosCount: typeof raw.photo_count === 'number' ? raw.photo_count : (prev?.photosCount ?? 0),
-          photos: prev?.photos ?? [],
-          loaded: prev?.loaded ?? false
-        }
-      })
-    )
-  },
-  // useAPI 返回的 data ref 是整体替换（非深 mutate），无需 deep:true
-  // 避免 Vue 递归遍历整个 albums 树造成不必要的 CPU 开销
-  { immediate: true }
-)
+/**
+ * 网格的唯一数据源：列表响应的纯投影 + 已取到的详情覆盖。
+ * 必须是 computed 而不是「watch 往数组里搬」——SSR 期只有前者能在渲染前拿到值。
+ */
+const displayAlbums = computed<Album[]>(() => {
+  const items = (albumsResp.value?.items || []) as AlbumResp[]
+  return items.map((raw) => {
+    const cached = loadedAlbums.value.get(raw.id)
+    if (cached) return cached
+    return {
+      id: raw.id,
+      title: raw.title || '',
+      description: raw.description || '',
+      cover: raw.cover || '',
+      photosCount: typeof raw.photo_count === 'number' ? raw.photo_count : 0,
+      photos: [],
+      loaded: false
+    }
+  })
+})
+
+const currentAlbum = computed<Album | null>(() => {
+  const id = activeAlbumId.value
+  if (id === null) return null
+  // 详情优先（带照片），其次列表项（只有封面/计数）：
+  // 深链到不在当页的相册时，详情响应就是那个兜底对象，不必它在列表里。
+  return loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null
+})
+const currentPhotos = computed(() => currentAlbum.value?.photos ?? [])
 
 // 加载相册详情
 async function loadAlbumDetail(id: number) {
   if (albumLoading.value) return
-  const listed = albums.find(a => a.id === id)
-  const target = listed ?? (linkedAlbum.value?.id === id ? linkedAlbum.value : null)
+  const target = loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null
   if (target?.loaded) return
   albumLoading.value = true
   try {
@@ -566,11 +570,10 @@ async function loadAlbumDetail(id: number) {
       photos,
       loaded: true
     }
-    // 列表里有这一张就原地更新（保住 reactive 身份），没有就用详情响应自建：
-    // 深链到第 3 页的相册时 albums 里根本没有它，上一版在找不到 album 时直接 return，
+    // 详情按 id 覆盖进 loadedAlbums：网格（displayAlbums）与对话框（currentAlbum）都读这一份，
+    // 所以深链到「不在当页列表里」的相册也能开——上一版找不到列表项就 return，
     // 表现是「链接没错、点开是一片空网格」。
-    if (target) Object.assign(target, next)
-    else linkedAlbum.value = next
+    loadedAlbums.value.set(id, next)
   } catch (err) {
     // 不能静默：失败的表现是「点了相册，对话框里一直转圈然后空空如也」，
     // 详情页没有任何别的提示渠道，必须显式给一个错误态。
@@ -591,7 +594,7 @@ function retryDetail() {
   if (id === null) return
   detailError.value = false
   albumNotFound.value = false
-  if (currentAlbum.value) currentAlbum.value.loaded = false
+  loadedAlbums.value.delete(id)
   void loadAlbumDetail(id).then(() => nextTick(() => initViewer()))
 }
 
@@ -732,7 +735,7 @@ onBeforeUnmount(() => {
 })
 
 // 空目录页 = 没有可索引内容（与 /sponsor 的 sponsorEmpty 同口径），后端 sitemap 同步跳过。
-// 判据用接口给的 total（= 已发布相册数），不用本地拼接的 albums：翻到空页不等于目录为空。
+// 判据用接口给的 total（= 已发布相册数），不用本地投影的 displayAlbums：翻到空页不等于目录为空。
 // 只在「确实取到 0 个相册」时 noindex：加载中或请求失败仍保持可索引——一次网络故障不该把
 // 有内容的目录页从索引里摘掉，而本页 600s swr 会把判错的结果缓存十分钟。
 const galleryEmpty = computed(

@@ -203,6 +203,15 @@
    看不到它 → 整个 ComputedRef 被当裸字符串交给 `applyLocalePrefix` → `.startsWith` 抛
    TypeError，而这段跑在 `useHead` 求值路径上 = 整页 500（实测独立页口）。同一坑的
    另一种表现见 §2.3.3 第 1 条，`seoLocaleUrl.spec.ts` 钉住解包写法。
+6. **SSR 列表页的网格必须是接口响应的 `computed` 投影，不得用 `watch` 把 items「搬」进一个
+   `reactive` 数组**：`useFetch`（=`useAPI`）在服务端是在 setup **之后**才落 `data.value` 的，而
+   `watch` 回调（含 `{ immediate: true }`）的 pre-flush 作业在 SSR 渲染前不会执行——于是爬虫读到的
+   永远是初始空数组那一边：空态文案或骨架屏，且**接口本身完全正常**（同一个 URL 直接 curl 有数据）。
+   实测（批次 #128）：`/api/gallery/albums` 回 2 条，`/gallery` 的原始 HTML 里 `?album=` 锚点数量为
+   **0**，只有「还没有上传相册」——整个"卡片是真实 `<a href>` 给爬虫读"的目标在源码全对的前提下静默失效。
+   口径：模板 `v-for` 直接吃 `computed(() => resp.value?.items.map(...))`；客户端懒取的详情（照片、
+   灯箱状态）另存一份按 id 的 `Map`，在投影里覆盖，别把它们塞回 SSR 数据面。守卫是源码断言
+   `galleryAlbumDeepLink.spec.ts`（投影形态 + 反向清点 `watch([albumsResp]` / `albums.splice(` 不得再现）。
 
 清单由 `frontend/tests/unit/contentNotFoundStatus.spec.ts` 递归清点 `pages/` 下带动态段的
 公开页来兜：新增一页若没接闸门（也没挂 `archive-year` 这类命名中间件），测试直接红。

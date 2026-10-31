@@ -189,8 +189,8 @@ describe('公开画廊页：详情加载失败必须可见', () => {
 
   it('提供重试入口，并先清掉 loaded 守卫', () => {
     expect(publicGallery).toMatch(/function retryDetail\(\)/)
-    // 批次 #128 之后深链进来的相册可能不在 albums 里，改走 currentAlbum（列表项或自建兜底对象）
-    expect(publicGallery).toMatch(/currentAlbum\.value\.loaded = false/)
+    // 批次 #128 之后详情按 id 存在 loadedAlbums 里，重试就是删掉那一条（深链的相册本来就不在列表页里）
+    expect(publicGallery).toMatch(/loadedAlbums\.value\.delete\(id\)/)
   })
 
   it('错误态与「相册本来就没有照片」区分开', () => {

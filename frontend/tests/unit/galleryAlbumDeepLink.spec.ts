@@ -46,11 +46,20 @@ describe('相册页 ?album= 深链', () => {
     expect(src).toContain('activeAlbumId.value = albumIdFromQuery(route.query.album)')
   })
 
-  it('深链到不在当页的相册：详情响应自建兜底对象，不再因找不到列表项而短路', () => {
-    expect(src).toContain('const target = listed ?? (linkedAlbum.value?.id === id ? linkedAlbum.value : null)')
-    expect(src).toContain('if (target) Object.assign(target, next)')
-    expect(src).toContain('else linkedAlbum.value = next')
-    expect(src).toContain('?? (linkedAlbum.value?.id === activeAlbumId.value ? linkedAlbum.value : null)')
+  it('深链到不在当页的相册：详情响应就是那一条，不依赖列表里有没有它', () => {
+    expect(src).toContain('const target = loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null')
+    expect(src).toContain('loadedAlbums.value.set(id, next)')
+    expect(src).toContain('return loadedAlbums.value.get(id) ?? displayAlbums.value.find(a => a.id === id) ?? null')
+  })
+
+  it('网格是 albumsResp 的纯投影：SSR 期 watch 回调不会在渲染前 flush，搬数组等于让爬虫读到空态', () => {
+    expect(src).toMatch(/const displayAlbums = computed<Album\[\]>\(\(\) => \{/)
+    expect(src).toContain('const items = (albumsResp.value?.items || []) as AlbumResp[]')
+    expect(src).toContain('v-for="album in displayAlbums"')
+    // 反向清点：不得再有任何「watch 写数组」的形态
+    expect(src).not.toMatch(/watch\(\s*\[albumsResp\]/)
+    expect(src).not.toContain('const albums = reactive<Album[]>([])')
+    expect(src).not.toContain('albums.splice(')
   })
 
   it('坏 id 走 404 分支：明确文案 + 出口，且不与「请求挂了」混成一类', () => {
