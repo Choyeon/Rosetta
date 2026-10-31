@@ -274,6 +274,18 @@ i18n 走 `prefix_except_default`（zh 裸路径，en/ja/zh_Hant 挂前缀）且*
    "进 href 是链接图、进 canonical 是重复页"是两件事。守卫 `frontend/tests/unit/postsPaginationLinks.spec.ts`
    （`pageHref` 由 `filterQuery` 派生 + 五个筛选键逐个在场 + 基址走 `applyLocalePrefix` 单源 +
    负向断言"锚点只写 `?page=`"的旧形态）。
+8. **筛选控件在 `<ClientOnly>` 里的页面，「已应用筛选」chip 必须是真实 `<a href>`**（批次 #125）。
+   `/posts` 的分类/类型/媒体/排序四个下拉框本体都在 `ClientOnly` 内（SSR HTML 里只有回落 `<button>`
+   与 `t('posts.selectMedia')` 那类静态文案），所以按第 2 条的口径，**chip 是爬虫、右键新标签与
+   "复制链接"唯一能发现筛选组合的入口**；做成 `<Button @click>` 等于筛选 URL 图谱只存在于 SPA。
+   两条派生判据：① `href` 由同一份 `filterQuery` **去掉那一个键**得来（共用 `listHref`，另写一遍
+   的表现是"移除一个筛选顺手清掉其余全部"）；② chip 的键集合必须与 `hasActiveFilter`、`clearFilters`
+   数的是同一批（`/posts` 是 search/category/post_type/media 四项，**排序不算筛选**——三处口径分叉的
+   表现是界面上"看着筛了"却没有出口，或"清除筛选"后仍留在排序视图）。移除动作复位的是各键自己的
+   缺省值（`ALL_TYPES` / `ALL_MEDIA` / 空串）而不是统一空串，并把页码送回第 1 页。
+   `pages/search.vue` 是同族先例（批次 #215，chip 用 `<button>` 因为那页 ssr:false）。
+   守卫 `frontend/tests/unit/postsFilterChips.spec.ts`（真实锚点 + 位置在最后一条 `</ClientOnly>` 之后
+   + 键集合与 removeFilter 复位值 + 四语文案键齐全 + `FilterChipKey` 联合类型逐个在册）。
 
 契约分别钉在 `seoLocaleUrl.spec.ts` · `archiveYearRoute.spec.ts` · `routeRulesSsr.spec.ts` ·
 `contentNotFoundStatus.spec.ts`；窄屏外壳与首页 hero 另有 `mobileShellLayout.spec.ts` ·

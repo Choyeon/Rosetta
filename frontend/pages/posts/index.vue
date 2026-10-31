@@ -14,6 +14,8 @@
   4. 分页锚点的 href 与地址栏共用同一个不带页码的 filterQuery（模板注释解释了 href 为什么必须是真实
      <a>）。两串分开写的表现是「SPA 里点分页筛选还在，右键新标签 / 复制链接 / 爬虫读到的 href 却把
      筛选整批丢掉」，越界 301 也一并落回「同一筛选的第 1 页」而不是全量列表。
+  5. 「已应用筛选」chip 同样是真实 <a>，href 走 filterQuery 去掉那一个键（批次 #125）：下拉框在
+     ClientOnly 内，SSR 里没有它们，chip 是爬虫与右键新标签唯一能发现筛选组合的地方。
 -->
 <template>
   <div class="container py-16">
@@ -233,6 +235,28 @@
           <X class="size-3.5" />
           {{ t('posts.clearFilters') }}
         </button>
+      </div>
+
+      <!-- 生效中的筛选做成"可单独移除"的锚点：下拉框要点开才看得见当前选了什么，
+           而「清除筛选」是全清。叠了两三个筛选时用户要的是"只去掉这一个"。
+           这里必须是真实 <a href>（§2.3.3 第 2 条）：带筛选的地址此前在 SSR 里只有
+           分页锚点一个来源，chip 同时让筛选组合本身可被抓取、可右键新标签。 -->
+      <div
+        v-if="activeFilterChips.length > 0"
+        class="mt-3 flex flex-wrap items-center gap-2"
+      >
+        <a
+          v-for="chip in activeFilterChips"
+          :key="chip.key"
+          :href="removeFilterHref(chip.key)"
+          :aria-label="t('search.removeFilter', { name: chip.label })"
+          :class="chipLinkClass"
+          @click.prevent="removeFilter(chip.key)"
+        >
+          <span class="opacity-70">{{ chip.prefix }}</span>
+          <span class="font-medium text-foreground">{{ chip.label }}</span>
+          <X class="size-3" />
+        </a>
       </div>
     </header>
 
@@ -616,6 +640,69 @@ const clearFilters = () => {
   selectedCategory.value = ''
   selectedType.value = ALL_TYPES
   selectedMedia.value = ALL_MEDIA
+  currentPage.value = 1
+  syncUrl()
+}
+
+// ===== 生效中的筛选 chips =====
+// 判据与 filterQuery / hasActiveFilter 同一批：排序不算"筛选"（clearFilters 也不重置它），
+// 所以 chip 的键集合就是 hasActiveFilter 数的那四项。
+type FilterChipKey = 'search' | 'category' | 'post_type' | 'media'
+
+const chipLinkClass = 'inline-flex items-center gap-1.5 rounded-full border border-input bg-background px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground'
+
+const activeFilterChips = computed<Array<{ key: FilterChipKey, prefix: string, label: string }>>(() => {
+  const chips: Array<{ key: FilterChipKey, prefix: string, label: string }> = []
+  if (searchQuery.value) {
+    chips.push({ key: 'search', prefix: String(t('common.search')), label: searchQuery.value })
+  }
+  if (selectedCategory.value && selectedCategory.value !== ALL_CATEGORIES) {
+    const hit = (categories.value ?? []).find(cat => cat.slug === selectedCategory.value)
+    chips.push({
+      key: 'category',
+      prefix: String(t('nav.categories')),
+      label: hit ? pickLocalized(hit.name) : selectedCategory.value
+    })
+  }
+  if (selectedType.value !== ALL_TYPES) {
+    const hit = contentTypes.value.find(ct => ct.key === selectedType.value)
+    let label = selectedType.value
+    if (hit) label = String(hit.name)
+    else if (selectedType.value === 'post') label = String(t('posts.typePost'))
+    chips.push({ key: 'post_type', prefix: String(t('posts.selectType')), label })
+  }
+  if (selectedMedia.value !== ALL_MEDIA) {
+    chips.push({
+      key: 'media',
+      prefix: String(t('posts.selectMedia')),
+      label: String(
+        selectedMedia.value === 'audio' ? t('posts.mediaAudio') : t('posts.mediaVideo')
+      )
+    })
+  }
+  return chips
+})
+
+// 移除一个筛选＝其余筛选保持、页码回第 1 页（换了集合就没有"当前页"可言）。
+// href 与点击共用同一份 filterQuery：漏一份的表现是右键新标签拿到"没去掉的那个筛选"。
+const removeFilterHref = (key: FilterChipKey) => {
+  const kept = Object.fromEntries(
+    Object.entries(filterQuery.value).filter(([name]) => name !== key)
+  )
+  return listHref(kept)
+}
+
+const removeFilter = (key: FilterChipKey) => {
+  if (key === 'search') {
+    searchInput.value = ''
+    searchQuery.value = ''
+  } else if (key === 'category') {
+    selectedCategory.value = ''
+  } else if (key === 'post_type') {
+    selectedType.value = ALL_TYPES
+  } else {
+    selectedMedia.value = ALL_MEDIA
+  }
   currentPage.value = 1
   syncUrl()
 }
