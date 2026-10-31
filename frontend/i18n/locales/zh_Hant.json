@@ -914,6 +914,7 @@
   },
   "categories": {
     "title": "分類",
+    "subcategories": "子分類",
     "desc": "依主題瀏覽內容",
     "posts": "篇",
     "noDesc": "暫無描述",

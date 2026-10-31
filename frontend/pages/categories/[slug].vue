@@ -3,6 +3,10 @@
   详情请求的 URL 与 query 都是 setup 期一次性取值（只有 key 是 computed），换 slug 不会自动重取；
   列表 refresh 一律带 import.meta.client 守卫 —— SSR 阶段 useFetch 已取过数，服务端再 refresh
   等于重复请求。分类名取不到时兜底显示 slug，是刻意保留的可辨识占位而不是数据缺失。
+  层级（Category.parent_id）从公开列表 `GET /blog/categories` 现算（与页脚同一把缓存键）：
+  面包屑补全部祖先、页头下方挂直接子分类入口，JSON-LD 面包屑走 computed 跟着同一份祖先链走。
+  祖先与子分类都只认"公开列表里真实存在的那几行"——父级被停用即整段收起，绝不链去一个
+  访客读不到的分类页；取值算术单源在 lib/category-tree.ts（含环与悬空父级的兜底）。
 -->
 <template>
   <div class="container py-16">
@@ -34,6 +38,18 @@
           :to="localeHref('/categories')"
           class="hover:text-foreground transition-colors"
         >{{ t('categories.title', '分类') }}</NuxtLink>
+        <!-- 祖先链按由远及近顺序补在中间，末尾那条 `/` 指向本页 h1（当前分类）。
+             父级被停用时整条自然收起（公开列表取不到那一行），不会链去访客打不开的分类页。 -->
+        <template
+          v-for="ancestor in ancestorTrail"
+          :key="ancestor.id"
+        >
+          <span>/</span>
+          <NuxtLink
+            :to="localeHref(`/categories/${ancestor.slug}`)"
+            class="hover:text-foreground transition-colors"
+          >{{ pickLocalized(ancestor.name) || ancestor.slug }}</NuxtLink>
+        </template>
         <span>/</span>
       </div>
       <div class="flex flex-wrap items-end justify-between gap-4">
@@ -72,6 +88,35 @@
         </div>
       </div>
     </header>
+
+    <!-- 子分类入口：层级在前台不能只有"往上"没有"往下"。少了这一块，子分类页除了
+         直接 URL 与后台列表就是零入链——爬虫发现不了这个页面，访客也走不到，
+         运营者在后台建的第二层分类等于没建。 -->
+    <div
+      v-if="!catNotFound && childCategories.length > 0"
+      class="mb-10"
+      data-testid="category-children"
+    >
+      <div class="mb-3 text-xs uppercase tracking-[0.16em] text-muted-foreground">
+        {{ t('categories.subcategories', '子分类') }}
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <NuxtLink
+          v-for="child in childCategories"
+          :key="child.id"
+          :to="localeHref(`/categories/${child.slug}`)"
+          class="inline-flex items-center gap-1.5 rounded-full border border-border/60 bg-card/60 px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:border-primary/40 hover:text-foreground"
+          data-testid="category-child-link"
+        >
+          <FolderOpen class="size-3.5 shrink-0" />
+          <span>{{ pickLocalized(child.name) || child.slug }}</span>
+          <span
+            v-if="typeof child.post_count === 'number'"
+            class="text-xs opacity-70"
+          >{{ child.post_count }}</span>
+        </NuxtLink>
+      </div>
+    </div>
 
     <template v-if="pending && posts.length === 0">
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -214,6 +259,8 @@
 <script setup lang="ts">
 import { useAPI } from '~~/composables/useApi'
 import { isContentMissing, useContentStatus } from '~~/composables/useContentStatus'
+import type { BreadcrumbItem } from '~~/composables/useSeo'
+import { categoryAncestorPath, categoryChildren } from '~~/lib/category-tree'
 import PostCard from '~~/components/PostCard.vue'
 import PostSkeleton from '~~/components/PostSkeleton.vue'
 import { Button, buttonVariants } from '~~/components/ui/button'
@@ -249,9 +296,20 @@ interface CategoryDetail {
   color?: string
   /** 后台「分类 → 封面图」写入的站内 URL；null/空串都按"没有封面"处理 */
   cover_image?: string | null
+  /** 父分类 ID；null/缺键都是顶级分类（旧缓存的载荷整键缺失） */
+  parent_id?: number | string | null
   post_count?: number
   postsCount?: number
   posts?: unknown[]
+}
+
+/** `GET /blog/categories` 的行形态：祖先面包屑与子分类入口都从这份公开列表取。 */
+interface CategoryListRow {
+  id: number | string
+  slug: string
+  name?: unknown
+  parent_id?: number | string | null
+  post_count?: number
 }
 
 interface CategoryPostRow {
@@ -284,6 +342,38 @@ const { data: catRaw, error: catError, status: catStatus } = useAPI<CategoryDeta
   key: `category:detail:${slug.value}:${locale.value}`,
   default: () => ({} as CategoryDetail)
 })
+
+// 层级分类的公开面：祖先面包屑 + 子分类入口都从 `GET /blog/categories` 这一份列表算。
+// 键与其它前台面（页脚 / 首页 / 列表页 / 目录页）共用 `blog:categories:<locale>`——
+// 页脚常驻默认布局，所以这里按 key 去重后并不会多打一次后端。
+// 列表只含启用的分类（后台 is_active 是公开列表的真实强制点），因此"父级被停用"时
+// 面包屑自然收起到更早的启用祖先，而不是链去一个访客看不见的分类页。
+const { data: catsListRaw } = useAPI<CategoryListRow[]>('/blog/categories', {
+  query: { lang: locale.value },
+  key: `blog:categories:${locale.value}`,
+  default: () => []
+})
+const catList = computed<CategoryListRow[]>(() =>
+  Array.isArray(catsListRaw.value) ? catsListRaw.value : []
+)
+
+// 父级按详情页自己的 parent_id 定位（不是"先在本页于列表里找到自身"）：
+// 停用分类的直接 URL 仍然可用，那时它不在这份列表里，面包屑照样要显出它还启用的父级。
+const parentCategory = computed<CategoryListRow | null>(() => {
+  const pid = catRaw.value?.parent_id
+  if (pid == null || pid === 0) return null
+  return catList.value.find(row => String(row.id) === String(pid)) ?? null
+})
+/** 由远及近的祖先链（不含自身），父级本身排在最后。 */
+const ancestorTrail = computed<CategoryListRow[]>(() => {
+  const p = parentCategory.value
+  if (!p) return []
+  return [...categoryAncestorPath(catList.value, p.id), p]
+})
+/** 直接子分类：只在公开列表里的那些（停用的不该从子分类入口被带出来）。 */
+const childCategories = computed<CategoryListRow[]>(() =>
+  categoryChildren(catList.value, catRaw.value?.id)
+)
 
 // 分类文章：复用 /blog/posts?category=slug。失败回空数组，绝不造示例列表。
 // query/key 都是 computed：翻页是页内状态（不同步 URL path，不重挂载），靠 Nuxt
@@ -383,9 +473,16 @@ useSeo({
   type: 'website'
 })
 useWebsiteJsonLd()
-useBreadcrumbJsonLd([
+// 面包屑必须跟着层级走：子分类页只写「首页 / 分类 / 当前」等于把父级那一跳从结构化数据里
+// 抹掉，爬虫读到的层级与页面上那行导航各说一套。
+// 传 computed 而不是静态数组：详情请求在 setup 期还没落值，静态取会在 SSR 那一趟定死成"无父级"。
+useBreadcrumbJsonLd(computed<BreadcrumbItem[]>(() => [
   { name: t('nav.home', '首页') as string, url: '/' },
   { name: t('nav.categories', '分类') as string, url: '/categories' },
+  ...ancestorTrail.value.map(row => ({
+    name: pickLocalized(row.name) || row.slug,
+    url: `/categories/${row.slug}`
+  })),
   { name: categoryName.value || slug.value, url: `/categories/${slug.value}` }
-])
+]))
 </script>

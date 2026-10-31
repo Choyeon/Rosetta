@@ -731,6 +731,16 @@ class CategoryBase(BaseModel):
     # 于是"新建分类"永远拿不到封面、只能建完再 PUT 补一次。这与 is_active 当年的
     # 「只能创建时定」是同一族陷阱的反向版本（这里是「创建时定不了」）。
     cover_image: str | None = Field(None, max_length=500)
+    # Category.parent_id 这一列早已在模型/迁移里（还配了 parent/children 关系），
+    # 但 schema 不认、后台不填、前台不读——等于层级分类从未存在过。
+    # None = 顶级分类；父分类必须存在且不能构成环，判据在写入口（api/blog.py）。
+    parent_id: int | None = Field(None, description="父分类 ID（层级分类），None 为顶级分类")
+
+    @field_validator("parent_id", mode="before")
+    @classmethod
+    def _zero_parent_to_none(cls, v: int | None) -> int | None:
+        """与 CategoryUpdate 同口径：0 视为"没有父级"（自增 id 从 1 起，0 不是合法分类）。"""
+        return None if v == 0 else v
 
     @field_validator("cover_image", mode="before")
     @classmethod
@@ -776,6 +786,15 @@ class CategoryUpdate(BaseModel):
     # PG 则在 flush 时抛 value too long → HTTP 500。
     cover_image: str | None = Field(None, max_length=500)
     is_active: bool | None = None
+    # exclude_unset 语义下"没提这个键"= 不动它，显式 null = 移为顶级分类。
+    # 后台的父分类下拉用 0 表示"顶级分类"（HTML select 的 value 不能是 null），
+    # 这里归一次：id 自增从 1 起，0 永远不可能是真实分类，当成"没有父级"处理。
+    parent_id: int | None = Field(None, description="父分类 ID；None 或 0 为顶级分类")
+
+    @field_validator("parent_id", mode="before")
+    @classmethod
+    def _zero_parent_to_none(cls, v: int | None) -> int | None:
+        return None if v == 0 else v
 
     @field_validator("cover_image", mode="before")
     @classmethod
@@ -797,6 +816,9 @@ class CategoryResponse(BaseModel):
     color: str
     cover_image: str | None = None
     is_active: bool
+    # 默认 None 而不是必填：分类列表整份进响应缓存（CACHE_KEY_CATEGORIES），
+    # 上线前烘好的旧载荷没有这个键，缺省值缺失会让读缓存直接校验失败。
+    parent_id: int | None = None
     created_at: datetime
     post_count: int = 0
 

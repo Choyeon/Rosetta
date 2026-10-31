@@ -663,6 +663,8 @@ export interface AdminCategory {
   cover_image: string | null
   /** 停用＝前台分类列表/导航/sitemap 不再出现，但直接 URL 与文章上的分类链接保持可用 */
   is_active: boolean
+  /** 父分类 id（层级分类）；null / 缺键 = 顶级分类。标签没有这一列。 */
+  parent_id?: number | string | null
   created_at: string | null
   post_count: number
 }
@@ -693,6 +695,9 @@ export interface AdminTaxonomyPayload {
    *  空串或 null = 清掉封面（后端把空串归成 None）。标签没有这一列，不要传。 */
   cover_image?: string | null
   is_active?: boolean
+  /** 父分类（层级分类）。`undefined` = 不发这个键（后端 exclude_unset = 不动层级）；
+   *  null 或 0 = 移为顶级分类。标签没有这一列，不要传。 */
+  parent_id?: number | string | null
 }
 
 /** 把多语言字段规整为后端期望的 dict：收到 string 视为 zh，收到 dict 原样保留（不覆盖其他语言） */
@@ -725,6 +730,9 @@ function localizedBody(payload: AdminTaxonomyPayload): Record<string, unknown> {
   // （提交空串被丢掉 → 后端按未提处理 → 旧封面还在，界面上"点了清除但没变化"）。
   if (payload.cover_image !== undefined) body.cover_image = payload.cover_image || null
   if (payload.is_active !== undefined) body.is_active = payload.is_active
+  // 层级与封面同一条口径：`undefined` 与 `null` 是两回事（后者 = 移为顶级分类）。
+  // 0 原样发给后端，由 CategoryUpdate 的归一器当顶级处理——select 的 value 装不下 null。
+  if (payload.parent_id !== undefined) body.parent_id = payload.parent_id
   return body
 }
 

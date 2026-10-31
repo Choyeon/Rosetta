@@ -6,11 +6,15 @@
   但直接 URL 与文章上的分类链接保持可用），列表数据源因此必须带 ?all=true，否则停用是单向按钮；
   封面图（Category.cover_image）走"上传→站内 URL"，提交时始终带这个键：空串归 null 才是
   "清掉封面"，省略键在 PUT 的 exclude_unset 语义下等于"不改它"（清除按钮会点了没反应）；
+  层级（Category.parent_id）同一条增量口径：下拉的"顶级分类"提交 null（不是省略键），
+  候选必须排除自己与自己的全部后代——选中后代在后端是 400，让运营者撞那次 400 等于把
+  环的判定推给服务端再靠 toast 解释；列表按"父在前、子缩进"的深度序渲染，且库里躺着悬空
+  parent_id 或环时那些行一律按顶级落进列表（少一行就等于那条分类再也改不动）；
   失败提示由 apiFetch 统一 toast，页面 catch 内禁止二次弹错（双 toast 是回归）。
 -->
 <script setup lang="ts">
 import { ref, reactive, watch, onMounted } from 'vue'
-import { FolderTree, Plus, Pencil, Trash2, Image as ImageIcon } from '@lucide/vue'
+import { FolderTree, Plus, Pencil, Trash2, Image as ImageIcon, CornerDownRight } from '@lucide/vue'
 import { useI18n } from 'vue-i18n'
 import {
   fetchAdminCategories,
@@ -22,11 +26,13 @@ import {
 } from '~~/composables/useAdminManage'
 import { useToast } from '~~/composables/useToast'
 import { useMediaUploadCover } from '~~/composables/useMedia'
+import { buildCategoryTree, categoryDescendantIds } from '~~/lib/category-tree'
 import { Button } from '~~/components/ui/button'
 import { Input } from '~~/components/ui/input'
 import AdminFormField from '~~/components/admin/AdminFormField.vue'
 import { Badge } from '~~/components/ui/badge'
 import { Label } from '~~/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~~/components/ui/select'
 import { Switch } from '~~/components/ui/switch'
 import I18nTabsEditor from '~~/components/admin/I18nTabsEditor.vue'
 import AdminRowActions from '~~/components/admin/AdminRowActions.vue'
@@ -53,6 +59,7 @@ const form = reactive<{
   color: string
   icon: string
   cover_image: string
+  parent_id: number | null
   is_active: boolean
 }>({
   name: { ...EMPTY_I18N_DICT },
@@ -61,6 +68,7 @@ const form = reactive<{
   color: '#94a3b8',
   icon: '',
   cover_image: '',
+  parent_id: null,
   is_active: true
 })
 
@@ -104,6 +112,46 @@ const loadData = async () => {
 }
 
 /**
+ * 列表按「父在前、子紧随并缩进」的深度序渲染。数据源仍是一条条真实的分类行
+ * （`AdminDataTable` 的 `rowKey="id"` 与各插槽的 `row as AdminCategory` 都不变），
+ * 缩进靠 id → depth 的映射查，不把 `{item, depth}` 包装塞进表格。
+ * 悬空父级 / 自指 / 环上的行由 `buildCategoryTree` 兜成顶级行，一条都不会从列表里消失。
+ */
+const treeEntries = computed(() => buildCategoryTree(categories.value))
+const categoryRows = computed(() => treeEntries.value.map(entry => entry.item))
+const depthById = computed(() => {
+  const map = new Map<string, number>()
+  for (const entry of treeEntries.value) map.set(String(entry.item.id), entry.depth)
+  return map
+})
+const indentOf = (cat: AdminCategory): number => depthById.value.get(String(cat.id)) ?? 0
+
+/**
+ * 父级候选排除自己与自己的全部后代：选中后代在后端是 400（会成环），
+ * 而把环的判定留给服务端 + toast 等于让运营者反复猜"为什么改不动"。
+ */
+const parentOptions = computed(() => {
+  const excluded = categoryDescendantIds(categories.value, editingId.value)
+  const selfKey = editingId.value == null ? '' : String(editingId.value)
+  return categories.value.filter((cat) => {
+    const key = String(cat.id)
+    return key !== selfKey && !excluded.has(key)
+  })
+})
+
+/**
+ * 父分类只认"候选里真实存在的项"：库里躺着悬空 parent_id（父级已删但缓存还是旧形状）时，
+ * Select 认不出这个值，回填成它会让每次 PUT 都提交一个不存在的父级并撞 400。
+ * 归成顶级是唯一安全解——显示与提交同口径，也正好是后端 SET NULL 想要的状态。
+ */
+const normalizeParentId = (raw: unknown): number | null => {
+  const key = raw == null ? '' : String(raw)
+  if (!key) return null
+  const hit = parentOptions.value.find(cat => String(cat.id) === key)
+  return hit ? Number(hit.id) : null
+}
+
+/**
  * 封面只走"上传→拿回站内 URL"，不提供手填地址的输入框：
  * 这个值最终会成为访客页面上 `<img src>` 的一部分，让自由文本进来就多一个注入面。
  */
@@ -140,6 +188,7 @@ const resetForm = () => {
   form.color = '#94a3b8'
   form.icon = ''
   form.cover_image = ''
+  form.parent_id = null
   form.is_active = true
   editingId.value = null
   slugManualEdit = false
@@ -153,6 +202,8 @@ const openNew = () => {
 
 const openEdit = (cat: AdminCategory) => {
   dialogMode.value = 'edit'
+  // 先落 editingId：parentOptions 的「排除自己与后代」依赖它，回填必须按同一份候选判定
+  editingId.value = cat.id
   form.name = normalizeI18nDict(cat.name)
   form.slug = cat.slug
   form.description = normalizeI18nDict(cat.description)
@@ -160,10 +211,11 @@ const openEdit = (cat: AdminCategory) => {
   form.icon = cat.icon || ''
   // 必须回填：不回填则每次 PUT 把封面提交成空 → 已有封面被"改一次名字"抹掉
   form.cover_image = cat.cover_image || ''
+  // 层级同样必须回填：不回填则 PUT 提交 null，子分类在"改一次名字"后被静默提到顶级
+  form.parent_id = normalizeParentId(cat.parent_id)
   // 响应缓存可能还留着上线前写入的旧形状（没有这一项）；缺键按启用处理，
   // 否则编辑一次就把没动的分类判成停用。
   form.is_active = cat.is_active ?? true
-  editingId.value = cat.id
   slugManualEdit = true
   dialogOpen.value = true
 }
@@ -191,6 +243,8 @@ const save = async () => {
       icon: form.icon || undefined,
       // 始终带上：空串会被 wrapper 归成 null（= 清掉封面），省略键则清不掉
       cover_image: form.cover_image,
+      // 同样始终带上：null = 明确提到顶级，省略键在 exclude_unset 下清不掉父级
+      parent_id: form.parent_id,
       is_active: form.is_active
     }
     if (editingId.value) {
@@ -255,7 +309,7 @@ onMounted(() => {
 
     <AdminDataTable
       :columns="columns"
-      :data="categories"
+      :data="categoryRows"
       :loading="loading"
       row-key="id"
     >
@@ -263,7 +317,14 @@ onMounted(() => {
         #{{ row.id }}
       </template>
       <template #cell-name="{ row }">
-        <div class="flex items-center gap-2">
+        <div
+          class="flex items-center gap-2"
+          :style="{ marginLeft: `${indentOf(row as AdminCategory) * 1.25}rem` }"
+        >
+          <CornerDownRight
+            v-if="indentOf(row as AdminCategory) > 0"
+            class="size-3.5 shrink-0 text-muted-foreground/60"
+          />
           <img
             v-if="(row as AdminCategory).cover_image"
             :src="(row as AdminCategory).cover_image!"
@@ -276,6 +337,13 @@ onMounted(() => {
             :style="{ background: (row as AdminCategory).color || '#94a3b8' }"
           />
           <span class="font-medium">{{ getLocalizedStr((row as AdminCategory).name) }}</span>
+          <Badge
+            v-if="(row as AdminCategory).parent_id"
+            variant="outline"
+            class="rounded-[10px] font-normal text-xs"
+          >
+            子分类
+          </Badge>
           <DynamicIcon
             v-if="(row as AdminCategory).icon"
             :icon="(row as AdminCategory).icon!"
@@ -354,6 +422,32 @@ onMounted(() => {
           :rows="3"
           flat
         />
+        <AdminFormField
+          label="父分类"
+          for="category-form-parent"
+          hint="留空为顶级分类；子分类会出现在父分类落地页与后台列表的缩进层级里。"
+        >
+          <Select v-model="form.parent_id">
+            <SelectTrigger
+              id="category-form-parent"
+              class="h-10 rounded-[10px]"
+            >
+              <SelectValue placeholder="无（顶级分类）" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem :value="null">
+                无（顶级分类）
+              </SelectItem>
+              <SelectItem
+                v-for="opt in parentOptions"
+                :key="opt.id"
+                :value="opt.id"
+              >
+                {{ getLocalizedStr(opt.name) || opt.slug }}
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </AdminFormField>
         <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <AdminFormField
             label="颜色"

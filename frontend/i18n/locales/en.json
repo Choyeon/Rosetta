@@ -852,6 +852,7 @@
   },
   "categories": {
     "title": "Categories",
+    "subcategories": "Subcategories",
     "desc": "Browse content by topic",
     "posts": "posts",
     "noDesc": "No description",

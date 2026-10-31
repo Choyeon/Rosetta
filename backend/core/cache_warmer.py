@@ -304,6 +304,7 @@ class CacheWarmer:
                     color=row.Category.color,
                     cover_image=row.Category.cover_image,
                     is_active=row.Category.is_active,
+                    parent_id=row.Category.parent_id,
                     created_at=row.Category.created_at,
                     post_count=row.post_count or 0,
                 )

@@ -914,6 +914,7 @@
   },
   "categories": {
     "title": "カテゴリー",
+    "subcategories": "サブカテゴリー",
     "desc": "テーマ別にコンテンツを閲覧",
     "posts": "記事",
     "noDesc": "説明なし",

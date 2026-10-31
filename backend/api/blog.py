@@ -1970,6 +1970,7 @@ async def record_post_view(post_id: int, current_user: CurrentUser, db: DB):
     summary="分类列表",
     description=(
         "获取分类及其文章数量（返回多语言原始dict，前端自行本地化显示）。"
+        "每条带 `parent_id`（null = 顶级分类），前台的分类页祖先面包屑与子分类入口据此建树。"
         "默认只返回启用中的分类；``?all=true`` 连已停用的一并返回，供后台管理页使用"
         "（否则「停用」是单向按钮：一关就从后台消失，再无法打开）。"
     ),
@@ -2015,6 +2016,7 @@ async def list_categories(
             color=row.Category.color,
             cover_image=row.Category.cover_image,
             is_active=row.Category.is_active,
+            parent_id=row.Category.parent_id,
             created_at=row.Category.created_at,
             post_count=row.post_count or 0,
         )
@@ -2033,7 +2035,7 @@ async def list_categories(
     response_model=CategoryResponse,
     summary="获取分类详情",
     description=(
-        "根据 slug 获取分类详情（返回完整 i18n dict）。"
+        "根据 slug 获取分类详情（返回完整 i18n dict，含 `parent_id`）。"
         "已停用分类的直接 URL 仍可访问（与标签同口径）：停用只是把它从公开列表与 sitemap 里"
         "摘掉，已发布文章上的分类链接不能因此变成 404。"
     ),
@@ -2074,6 +2076,7 @@ async def get_category_by_slug(
         color=category.color,
         cover_image=category.cover_image,
         is_active=category.is_active,
+        parent_id=category.parent_id,
         created_at=category.created_at,
         post_count=post_count,
     )
@@ -2082,6 +2085,45 @@ async def get_category_by_slug(
 async def _category_post_slugs(db: AsyncSession, category_id: int) -> list[str]:
     rows = await db.execute(select(Post.slug).where(Post.category_id == category_id))
     return list(rows.scalars().all())
+
+
+async def _validate_category_parent(
+    db: AsyncSession,
+    parent_id: int | None,
+    self_id: int | None = None,
+) -> None:
+    """层级分类的写入闸门：父分类必须存在、不能是自己、且不能是自己的后代。
+
+    三条判据都只在写口做，读口不设防（库里躺着脏链条时前台按"顶级"渲染，不该 500）。
+    成环本身不会被数据库拦住——`categories.parent_id` 只有外键、没有检查约束，
+    而环一旦成立，前台祖先面包屑与后台树形缩进都会在某一天转进死循环。
+    """
+    if parent_id is None:
+        return
+    if self_id is not None and parent_id == self_id:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="父分类不能是自己",
+        )
+    # 一次取全量的 (id, parent_id) 再在内存里上溯：分类数量是几十的量级，
+    # 逐跳 SELECT 会让"改一次父分类"打出 N 条查询，且循环次数没上限。
+    rows = (await db.execute(select(Category.id, Category.parent_id))).all()
+    parents = {row.id: row.parent_id for row in rows}
+    if parent_id not in parents:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="父分类不存在",
+        )
+    seen = {parent_id}
+    cursor = parents.get(parent_id)
+    while cursor is not None:
+        if cursor == self_id or cursor in seen:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="父分类不能是自己的子分类（会形成循环层级）",
+            )
+        seen.add(cursor)
+        cursor = parents.get(cursor)
 
 
 async def _tag_post_slugs(db: AsyncSession, tag_id: int) -> list[str]:
@@ -2098,7 +2140,11 @@ async def _tag_post_slugs(db: AsyncSession, tag_id: int) -> list[str]:
     response_model=CategoryResponse,
     status_code=status.HTTP_201_CREATED,
     summary="创建分类",
-    description="创建新分类，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。",
+    description=(
+        "创建新分类，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。"
+        "`parent_id` 建立层级分类（省略或 null = 顶级分类，`0` 同样按顶级处理）；"
+        "父分类不存在时返回 400，不会创建一条指向虚空的子分类。"
+    ),
 )
 async def create_category(
     request: Request,
@@ -2118,6 +2164,8 @@ async def create_category(
             detail="分类别名已存在",
         )
 
+    await _validate_category_parent(db, data.parent_id)
+
     category = Category(
         name=data.name,
         slug=slug,
@@ -2125,6 +2173,7 @@ async def create_category(
         icon=data.icon,
         color=data.color,
         cover_image=data.cover_image,
+        parent_id=data.parent_id,
         is_active=data.is_active,
     )
     db.add(category)
@@ -2143,6 +2192,7 @@ async def create_category(
         color=category.color,
         cover_image=category.cover_image,
         is_active=category.is_active,
+        parent_id=category.parent_id,
         created_at=category.created_at,
         post_count=0,
     )
@@ -2803,6 +2853,9 @@ async def get_archive_by_month(
     summary="更新分类",
     description=(
         "更新分类信息，需要管理员权限。返回完整 i18n dict 供 I18nTabsEditor 回填。"
+        "`parent_id` 是层级分类的唯一写入口：显式 null（或 0）= 移为顶级分类，"
+        "省略这个键 = 不动它（exclude_unset）；父分类不存在、是自己、或落在自己的后代上"
+        "（会形成环）一律 400，判定在写入之前完成。"
         "改名/改色会同步失效该分类下所有文章的详情缓存（`post:{slug}:{lang}`）与列表/RSS 缓存，"
         "避免前台文章页在 TTL 内继续显示旧分类名/颜色。"
         "`is_active=false` 即停用：分类从公开列表、导航与 sitemap 投递面里摘掉，"
@@ -2828,6 +2881,10 @@ async def update_category(
         )
 
     update_data = data.model_dump(exclude_unset=True)
+    # 闸门必须排在 apply_partial_update 之前：写进去再回滚等于把环短暂地落进了库，
+    # 而同一次请求后面还要用这张图画祖先链。
+    if "parent_id" in update_data:
+        await _validate_category_parent(db, update_data["parent_id"], self_id=category.id)
     apply_partial_update(category, update_data)
 
     await db.flush()
@@ -2849,6 +2906,7 @@ async def update_category(
         color=category.color,
         cover_image=category.cover_image,
         is_active=category.is_active,
+        parent_id=category.parent_id,
         created_at=category.created_at,
         post_count=post_count,
     )
@@ -2861,6 +2919,7 @@ async def update_category(
     description=(
         "删除分类，需要管理员权限。删除会把该分类下文章的 category_id 置空（SET NULL），"
         "并失效这些文章的详情/列表/RSS 缓存，使前台立即回落到「无分类」而非旧分类。"
+        "子分类不会被连带删除——`parent_id` 同为 SET NULL，它们整批升为顶级分类。"
     ),
 )
 async def delete_category(

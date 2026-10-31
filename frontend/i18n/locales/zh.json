@@ -852,6 +852,7 @@
   },
   "categories": {
     "title": "文章分类",
+    "subcategories": "子分类",
     "desc": "按分类浏览不同主题的内容",
     "posts": "篇文章",
     "noDesc": "暂无分类描述",
