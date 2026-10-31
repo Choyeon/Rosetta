@@ -311,12 +311,15 @@
                 <audio
                   v-if="postAudioSrc"
                   controls
+                  preload="metadata"
                   :src="postAudioSrc"
                   class="w-full"
                 />
                 <video
                   v-if="postVideoSrc"
                   controls
+                  playsinline
+                  preload="metadata"
                   :src="postVideoSrc"
                   class="aspect-video w-full rounded-xl bg-black"
                 />

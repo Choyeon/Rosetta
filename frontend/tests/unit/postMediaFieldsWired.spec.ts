@@ -109,6 +109,16 @@ describe('详情页消费面', () => {
     expect(block).toContain(':src="postEmbedSrc"')
   })
 
+  it('播放器按"读文章"的代价加载：metadata 预载、不自动播、视频内联', () => {
+    const block = detail.match(/v-if="postAudioSrc \|\| postVideoSrc \|\| postEmbedSrc"[\s\S]*?<\/div>/)?.[0] ?? ''
+    // 一进页面就下整条媒体＝把首屏带宽花在一个可能根本不播的元素上（audio 还会抢跑网络队列）
+    expect((block.match(/preload="metadata"/g) ?? []).length).toBe(2)
+    // iOS Safari 没有 playsinline 会弹成全屏播放器，文章页的阅读上下文整块丢掉
+    expect(block).toContain('playsinline')
+    expect(block).not.toMatch(/autoplay/)
+    expect(block).toContain('loading="lazy"')
+  })
+
   it('库里的原始串不得直接进 src / srcdoc（iframe 只吃解析出的 ID）', () => {
     expect(detail).not.toMatch(/:src="post(\.value)?\??\.(audio|video|video_url)"/)
     expect(detail).not.toContain('srcdoc')
