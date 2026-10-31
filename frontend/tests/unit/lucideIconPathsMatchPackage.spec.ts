@@ -199,4 +199,41 @@ describe('模板内联字形必须有登记且与包内数据一致', () => {
     const act = readFileSync(join(ROOT, 'pages', 'activity.vue'), 'utf8')
     expect(act).toContain('<Zap class="size-7 text-primary" />')
   })
+
+  it('动态页的类型图标字典只留真正被取用的键，且不再抄任何 path 数据', () => {
+    const act = readFileSync(join(ROOT, 'pages', 'activity.vue'), 'utf8')
+    // TYPE_ICONS 的键只能来自 ACTIVITY_TYPES：backendToIconKey 只会喂进那五个值
+    const dictStart = act.indexOf('const TYPE_ICONS')
+    expect(dictStart).toBeGreaterThanOrEqual(0)
+    const dict = act.slice(dictStart, dictStart + 400)
+    const keys = [...dict.matchAll(/^ {2}(\w+): ([A-Z]\w+),?/gm)].map(m => m[1]!)
+    expect(keys.length).toBe(5)
+    const typesSource = /const ACTIVITY_TYPES = \[([^\]]*)\]/.exec(act)?.[1]
+    expect(typesSource).toBeTruthy()
+    const types = typesSource!
+      .split(',')
+      .map(s => s.trim().replace(/'/g, ''))
+      .filter(Boolean)
+    expect(keys.sort()).toEqual(types.sort())
+
+    // 第四份抄件的入口封掉：字典里只有组件名，没有任何 d / viewBox 字面量
+    expect(act).not.toMatch(/\bd:\s*'[MJ]/)
+    expect(act).not.toContain('viewBox:')
+    expect(act).not.toContain('getIcon')
+    // 旧版闪电（手抄的那种）在整个前端源码里都不该再出现
+    expect(act).not.toContain('M13 2 3 14h7l-1 8')
+  })
+
+  it('动态页每类型一枚 @lucide/vue 组件，导入名都是包的真实导出（批次 #146）', () => {
+    const act = readFileSync(join(ROOT, 'pages', 'activity.vue'), 'utf8')
+    const barrel = barrelFiles()
+    const imported = /import \{([^}]*)\} from '@lucide\/vue'/.exec(act)?.[1] ?? ''
+    const names = imported.split(',').map(s => s.trim()).filter(Boolean)
+    expect(names.length).toBeGreaterThanOrEqual(6)
+    expect(names.filter(n => !barrel.has(n))).toEqual([])
+    for (const n of ['MessageCircle', 'Newspaper', 'History', 'Bell', 'Link2'])
+      expect(names).toContain(n)
+    expect(act).toContain('const TYPE_ICONS: Record<string, Component> =')
+    expect(act).toContain(':is="typeIcon(activityIconKey(item.type))"')
+  })
 })

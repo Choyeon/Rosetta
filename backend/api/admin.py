@@ -79,6 +79,10 @@ class CommentAdminUpdate(BaseModel):
     status: Literal["approved", "pending", "rejected", "spam"] | None = None
     active: bool | None = None
     content: str | None = Field(default=None, max_length=5000)
+    is_pinned: bool | None = Field(
+        default=None,
+        description="置顶位：公开线程按 desc(is_pinned) 排在最前，所以这一位改变访客看到的顺序",
+    )
 
 
 class CommentResponse(BaseModel):
@@ -1156,6 +1160,10 @@ async def admin_update_comment(
 
     if new_content is not None:
         comment.content = new_content
+
+    # 置顶位单独一段：它是"排序判据"而不是"状态"，不参与 status ↔ active 同步。
+    if data.is_pinned is not None:
+        comment.is_pinned = bool(data.is_pinned)
 
     await db.flush()
     await db.refresh(comment)

@@ -46,6 +46,14 @@
             {{ ugcLinkLabel(authorWebsite) }}
           </a>
           <span class="text-xs text-muted-foreground shrink-0">{{ formatRelativeTime(comment.createdAt) }}</span>
+          <!-- 后端把置顶行排在最前，但线程里没有任何说明；留言板同一族早就有这枚徽标 -->
+          <Badge
+            v-if="comment.isPinned"
+            variant="default"
+            class="text-[10px] px-1.5 py-0.5 shrink-0"
+          >
+            {{ t('common.pinned') }}
+          </Badge>
         </div>
       </div>
 
@@ -230,6 +238,7 @@
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import { Button } from '~~/components/ui/button'
+import { Badge } from '~~/components/ui/badge'
 import { Textarea } from '~~/components/ui/textarea'
 import { AlertTriangle, Heart, Loader2, MessageSquare, Smile, Trash2 } from '~~/lib/lucide-svg-icons'
 import { useI18n } from 'vue-i18n'
@@ -265,6 +274,8 @@ interface Props {
     createdAt: string
     parentId?: number | string | null
     likesCount?: number
+    /** CommentResponse.is_pinned：后台置顶过的根评论 */
+    isPinned?: boolean
   }
   /** 回复嵌套层级（0=根评论）。仅用于视觉缩进，最多 2 级。 */
   depth?: number

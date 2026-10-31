@@ -35,9 +35,10 @@ describe('activity 类型筛选', () => {
   it('类型清单是单源常量，且图标 / 白名单判定都从它派生', () => {
     expect(src).toContain(`const ACTIVITY_TYPES = [${TYPES.map(v => `'${v}'`).join(', ')}] as const`)
     // 图标表必须为每一种类型备一个键：漏一个即「筛得出来但图标掉回说说」
-    const iconsBlock = src.match(/const ICONS = \{[\s\S]*?\n\} as const/)?.[0] ?? ''
+    // （批次 #146 起值不再是抄的 path，而是 @lucide/vue 的组件名）
+    const iconsBlock = src.match(/const TYPE_ICONS: Record<string, Component> = \{[\s\S]*?\n\}/)?.[0] ?? ''
     for (const type of TYPES) {
-      expect(iconsBlock, `ICONS 缺少 ${type} 图标`).toContain(`  ${type}: {`)
+      expect(iconsBlock, `TYPE_ICONS 缺少 ${type} 图标`).toContain(`  ${type}: `)
     }
     // 未知值一律回落 say，不再手写一串 if
     expect(src).toContain('const backendToIconKey = (type: string): string => (isActivityType(type) ? type : \'say\')')

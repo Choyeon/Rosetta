@@ -4,8 +4,13 @@
   （chip 组，状态在地址栏；未知值一律按「全部」处理，与服务端归一口径一致）。
   分页锚点与筛选 chip 共用 queryWith/hrefWith 单源，两者都是真实 <a href>：这页 ssr:true，
   筛选做成 <Button @click> 等于五个 ?type= 只存在于 SPA（批次 #126，口径见 AGENTS §2.3.3）。
-  图标必须是本文件内联 ICONS 常量而非 lucide 组件：SSR 与客户端首字节要逐字节一致，
-  组件形态的首子差异会直接造成水合错位。后端新增活动类型时，ICONS + backendToIconKey
+  五个类型图标（每行左侧小圆点里的字形）与空态闪电都取 @lucide/vue 的组件，本文件不再抄
+  path 数据：批次 #146 对账时发现原来那份字典里五条 d 有四条在包里逐字找不到，而
+  message-circle / newspaper / bell 各带 circle、rect 或第二条 path，单 d 形态本来就
+  表达不了官方字形——注释里"抄自 @lucide/vue，不手搓"并不成立。
+  点赞爱心取 lib/lucide-svg-icons 的 Heart（与首页「最新动态」侧栏同一枚，
+  批次 #144 的症状就是两处各抄一个画法）。
+  后端新增活动类型时，TYPE_ICONS + backendToIconKey
   白名单 + ACTIVITY_TYPES + i18n 的 activity.type_* 四处必须同步补，漏一处就静默显示成"说说"。
 -->
 <template>
@@ -128,17 +133,10 @@
           <div
             class="absolute -left-8 top-1.5 size-6 rounded-full border-2 border-background flex items-center justify-center shrink-0 bg-primary/10"
           >
-            <svg
-              :viewBox="getIcon(activityIconKey(item.type)).viewBox"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
+            <component
+              :is="typeIcon(activityIconKey(item.type))"
               class="size-3 shrink-0 text-primary"
-            >
-              <path :d="getIcon(activityIconKey(item.type)).d" />
-            </svg>
+            />
           </div>
 
           <Card class="transition-all hover:shadow-soft duration-300">
@@ -184,17 +182,7 @@
                   :aria-label="t('activity.like')"
                   @click="likeActivity(item.id)"
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    fill="currentColor"
-                    stroke="currentColor"
-                    stroke-width="1.5"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    class="fill-error text-error"
-                  >
-                    <path :d="ICONS.heart?.d ?? ''" />
-                  </svg>
+                  <Heart class="fill-error text-error" />
                   {{ item.likes_count ?? 0 }}
                 </Button>
               </div>
@@ -273,17 +261,7 @@
       class="text-center py-20"
     >
       <div class="inline-flex items-center justify-center size-16 rounded-2xl bg-muted mb-4">
-        <svg
-          :viewBox="ICONS.zap?.viewBox ?? '0 0 24 24'"
-          fill="none"
-          stroke="currentColor"
-          stroke-width="2"
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          class="size-8 text-muted-foreground"
-        >
-          <path :d="ICONS.zap?.d ?? ''" />
-        </svg>
+        <Zap class="size-8 text-muted-foreground" />
       </div>
       <h3 class="font-display text-xl font-semibold">
         {{ t('activity.noActivity') }}
@@ -293,7 +271,9 @@
 </template>
 
 <script setup lang="ts">
-import { Zap } from '@lucide/vue'
+import { Bell, History, Link2, MessageCircle, Newspaper, Zap } from '@lucide/vue'
+import type { Component } from 'vue'
+import { Heart } from '~~/lib/lucide-svg-icons'
 import { Card, CardContent } from '~~/components/ui/card'
 import { Badge } from '~~/components/ui/badge'
 import { Button, buttonVariants } from '~~/components/ui/button'
@@ -305,45 +285,17 @@ import UserAvatar from '~~/components/UserAvatar.vue'
 import { useI18n } from 'vue-i18n'
 
 /**
- * 内联 SVG 常量，保证 SSR/客户端输出逐字节一致，避免 Hydration 串台。
+ * 每个活动类型一枚官方图标组件（不再抄第四份 path 数据）。
+ * 键集合必须与 ACTIVITY_TYPES 相等：多出来的键没人取用，缺的键会静默回落成"说说"那枚。
  */
-const ICONS = {
-  say: {
-    viewBox: '0 0 24 24',
-    d: 'M21 12a8.001 8.001 0 0 0-8-8A8.001 8.001 0 0 0 5 8.122 6.95 6.95 0 0 0 3 12a6.95 6.95 0 0 0 .309 2A8.001 8.001 0 0 0 3 20l2-1.185A7.96 7.96 0 0 0 13 20a8.001 8.001 0 0 0 8-8ZM8 10h8v2H8v-2Zm0 3h5v2H8v-2Z'
-  },
-  article: {
-    viewBox: '0 0 24 24',
-    d: 'M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2H6Zm0-2h12V8h-3.6a.4.4 0 0 1-.4-.4V4H6v16Zm2-11h8v2H8v-2Zm0 4h8v2H8v-2Zm0 4h5v2H8v-2Z'
-  },
-  update: {
-    viewBox: '0 0 24 24',
-    d: 'M3 12a9 9 0 1 0 3-6.7L3 8V3h5L6.17 4.83A11 11 0 1 1 1 12h2Zm10-5v6l5 3'
-  },
-  notice: {
-    viewBox: '0 0 24 24',
-    d: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9Zm4.3 11a2.5 2.5 0 0 0 5.4 0Z'
-  },
-  zap: {
-    viewBox: '0 0 24 24',
-    d: 'M13 2 3 14h7l-1 8 10-12h-7l1-8Z'
-  },
-  heart: {
-    viewBox: '0 0 24 24',
-    d: 'M12 21s-7-4.5-9.5-9A5.5 5.5 0 0 1 12 6.5 5.5 5.5 0 0 1 21.5 12c-2.5 4.5-9.5 9-9.5 9Z'
-  },
-  // lucide「link-2」官方两段路径合并进一个 d（同一段里的子路径 stroke 行为与两个
-  // <path> 元素一致），保持 ICONS 的单 d 形态；路径字节抄自 @lucide/vue，不手搓。
-  link: {
-    viewBox: '0 0 24 24',
-    d: 'M9 17H7A5 5 0 0 1 7 7h2 M15 7h2a5 5 0 1 1 0 10h-2'
-  }
-} as const
-
-type IconKey = keyof typeof ICONS
-interface IconDef { viewBox: string, d: string }
-const ICON_FALLBACK: IconDef = ICONS.say
-const getIcon = (key: string): IconDef => ((ICONS as Record<IconKey, IconDef>)[key as IconKey] ?? ICON_FALLBACK)
+const TYPE_ICONS: Record<string, Component> = {
+  say: MessageCircle,
+  article: Newspaper,
+  update: History,
+  notice: Bell,
+  link: Link2
+}
+const typeIcon = (key: string): Component => TYPE_ICONS[key] ?? MessageCircle
 
 definePageMeta({ layout: 'default' })
 

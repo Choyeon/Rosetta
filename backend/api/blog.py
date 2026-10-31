@@ -2486,8 +2486,9 @@ async def list_comments(
     def build(parent_pid: int | None) -> list[CommentResponse]:
         nodes = by_parent.get(parent_pid, [])
         result: list[CommentResponse] = []
-        # 按创建时间倒序
-        for c in sorted(nodes, key=lambda x: x.created_at, reverse=True):
+        # 置顶位优先，其次创建时间倒序。is_pinned 是后台 PATCH 能改的位，
+        # 只排序不改这里等于置顶只对 comment_service 那条口生效：访客看到的仍是时间序。
+        for c in sorted(nodes, key=lambda x: (bool(x.is_pinned), x.created_at), reverse=True):
             children = build(c.id)
             resp = _comment_to_response(c, reply_total=len(children))
             resp.replies = children

@@ -279,7 +279,7 @@ export interface AdminCommentRow {
   parent_id?: number | null
   post_ref?: AdminCommentPostRef | null
   active?: boolean
-  /** 留言专属：评论模型无对应列，故为可选。 */
+  /** 两族都有列：留言走 toggle 路由，评论走 PATCH 的 is_pinned 位。精华仅留言。 */
   is_pinned?: boolean
   is_featured?: boolean
   /** 评论专属：仍挂着待处理举报时的时间戳（后端 Comment.reported_at），无举报为 null。 */
@@ -323,6 +323,18 @@ export function updateAdminCommentStatus(
   return apiFetch<AdminComment>(`/admin/comments/${commentId}`, {
     method: 'PATCH',
     body: { status }
+  })
+}
+
+/** 评论置顶走同一个 PATCH 口（显式赋值，不是留言那种 toggle 路由）：
+ *  公开线程按 desc(is_pinned) 排序，这一位改变访客看到的顺序，故界面必须有出口。 */
+export function updateAdminCommentPin(
+  commentId: number,
+  isPinned: boolean
+): Promise<AdminComment> {
+  return apiFetch<AdminComment>(`/admin/comments/${commentId}`, {
+    method: 'PATCH',
+    body: { is_pinned: isPinned }
   })
 }
 

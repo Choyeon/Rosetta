@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { defineComponent, h } from 'vue'
 import CategoryBadge from '~/components/CategoryBadge.vue'
 import { CodeBracketIcon } from '@heroicons/vue/24/outline'
+import { FolderOpen } from '@lucide/vue'
 
 function pathFingerprint(html: string): string {
   return (html.match(/\sd="[^"]*"/g) ?? []).join('|')
@@ -74,6 +75,8 @@ describe('CategoryBadge', () => {
     const wrapper = mount(CategoryBadge, { props: { label: '技术' } })
     expect(wrapper.find('svg').exists()).toBe(true)
     expect(wrapper.find('svg').classes()).toContain('cat-icon')
+    // the real @lucide/vue FolderOpen, not a hand-copied path
+    expect(pathFingerprint(wrapper.html())).toBe(pathFingerprint(realSvg(FolderOpen)))
   })
 
   it('renders the accent bar', () => {

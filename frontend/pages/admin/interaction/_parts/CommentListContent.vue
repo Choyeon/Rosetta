@@ -280,12 +280,16 @@
                         标为垃圾
                       </DropdownMenuItem>
                     </template>
-                    <!-- 置顶/精华是留言专属能力，评论模型没有对应列；回收站条目先恢复再排版 -->
+                    <!-- 精华是留言专属；置顶两族都有列（comments.is_pinned / guestbook_entries 的），
+                         且都是"改变访客看到的顺序"的判据，回收站条目先恢复再排版 -->
+                    <DropdownMenuItem
+                      v-if="!isTrashedView"
+                      @click="togglePinOrFeature(comment.id, 'pin', !comment.is_pinned)"
+                    >
+                      <Pin data-icon="inline-start" />
+                      {{ comment.is_pinned ? '取消置顶' : '置顶' }}
+                    </DropdownMenuItem>
                     <template v-if="isGuestbook && !isTrashedView">
-                      <DropdownMenuItem @click="togglePinOrFeature(comment.id, 'pin')">
-                        <Pin data-icon="inline-start" />
-                        {{ comment.is_pinned ? '取消置顶' : '置顶' }}
-                      </DropdownMenuItem>
                       <DropdownMenuItem @click="togglePinOrFeature(comment.id, 'feature')">
                         <Sparkles data-icon="inline-start" />
                         {{ comment.is_featured ? '取消精华' : '设为精华' }}
@@ -465,6 +469,7 @@ import {
   fetchAdminComments,
   fetchAdminGuestbook,
   updateAdminCommentStatus,
+  updateAdminCommentPin,
   updateAdminGuestbookStatus,
   deleteAdminComment,
   deleteAdminGuestbook,
@@ -615,12 +620,16 @@ async function updateStatus(id: number, status: AdminCommentStatus) {
   }
 }
 
-async function togglePinOrFeature(id: number, kind: 'pin' | 'feature') {
+async function togglePinOrFeature(id: number, kind: 'pin' | 'feature', nextPinned?: boolean) {
   try {
-    const res = kind === 'pin'
-      ? await toggleAdminGuestbookPin(id)
-      : await toggleAdminGuestbookFeature(id)
-    // 后端是 toggle，用回包的新状态措辞，不猜
+    // 留言的 pin/feature 是切换型路由（幂等于翻转）；评论的置顶是 PATCH 上的显式一位，
+    // 由调用方把"点之后应该是怎样"传进来（模板里传 !comment.is_pinned）。
+    const res = kind === 'feature'
+      ? await toggleAdminGuestbookFeature(id)
+      : props.isGuestbook
+        ? await toggleAdminGuestbookPin(id)
+        : await updateAdminCommentPin(id, Boolean(nextPinned))
+    // 后端两族都回新状态，措辞跟着回包走，不猜
     const on = kind === 'pin' ? Boolean(res?.is_pinned) : Boolean(res?.is_featured)
     if (kind === 'pin') toast.success(on ? '已置顶' : '已取消置顶')
     else toast.success(on ? '已设为精华' : '已取消精华')

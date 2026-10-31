@@ -1261,6 +1261,8 @@ type PostComment = {
   createdAt: string
   parentId?: number | string | null
   likesCount?: number
+  /** CommentResponse.is_pinned：后端排序已把它顶到最前，界面要说明为什么它在最上面 */
+  isPinned?: boolean
 }
 
 const comments = ref<PostComment[]>([])
@@ -2304,7 +2306,8 @@ const normalizeComment = (raw: CommentRaw): PostComment => {
     content: rawText(raw.content),
     createdAt: rawText(raw.created_at) || rawText(raw.createdAt),
     parentId: rawId(raw.parent_id) ?? rawId(raw.parentId) ?? null,
-    likesCount: rawCount(raw.likes_count ?? raw.likesCount)
+    likesCount: rawCount(raw.likes_count ?? raw.likesCount),
+    isPinned: Boolean(raw.is_pinned ?? raw.isPinned)
   }
 }
 
