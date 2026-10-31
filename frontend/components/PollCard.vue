@@ -1,6 +1,6 @@
 <!--
-  全局投票卡片（MVP）：backend/api/voting.py 目前不与 Post 关联，所以每篇文章下方展示的是
-  全站激活中的投票。选择项按 allow_multiple 走 radio / checkbox；投票后：
+  投票卡片：poll 用 post_id 绑定文章（为空 = 全站投票，出现在每一篇下方），文章页把
+  「本篇专属 + 全站」的活动投票随正文载荷一起 SSR 直出。投票选择项按 allow_multiple 走 radio / checkbox；投票后：
   - 若 poll.show_results=true，用条形 + 计数 + 百分比渲染结果；
   - 若 show_results=false 且非 staff，后端把 votes_count 抹成 null，前端只回显"感谢参与"，
     不伪造百分比。
@@ -8,7 +8,7 @@
   命中即直接把卡片切到"已投票"态，不再显示提交按钮。这不是防刷，是防手滑。
 -->
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Button } from '~~/components/ui/button'
 import { Card } from '~~/components/ui/card'
@@ -23,7 +23,14 @@ const { vote, readVotedPollIds } = usePolls()
 const selection = ref<number[]>([])
 const submitting = ref(false)
 const errorMessage = ref<string | null>(null)
-const alreadyVoted = ref(readVotedPollIds().has(props.poll.id))
+// 已投票态存在 localStorage，服务端读不到。卡片现在随正文载荷 SSR 直出，
+// 若在 setup 期取值就是「SSR 未投票 / 客户端已投票」两套首渲染（hydration mismatch），
+// 所以两端都先按未投票出牌，挂载后再同步一次。
+const alreadyVoted = ref(false)
+
+onMounted(() => {
+  alreadyVoted.value = readVotedPollIds().has(props.poll.id)
+})
 
 watch(() => props.poll.id, (id) => {
   selection.value = []

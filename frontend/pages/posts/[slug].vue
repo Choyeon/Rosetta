@@ -691,9 +691,9 @@
               </NuxtLink>
             </nav>
 
-            <!-- ========= 全局投票 MVP：Poll 与 Post 尚未建关联，此处展示全站激活中的投票 ========= -->
+            <!-- ========= 本页活动投票：本篇专属 + 全站（post_id 为空）；SSR 载荷已带上 ========= -->
             <PollCard
-              v-for="poll in activePolls"
+              v-for="poll in visiblePolls"
               :key="poll.id"
               :poll="poll"
             />
@@ -1306,20 +1306,23 @@ interface SimilarPostRow {
 interface AdjacentRef { slug: string, title: string }
 interface AdjacentPair { previous: AdjacentRef | null, next: AdjacentRef | null }
 /**
- * 详情载荷 = 正文 + 上下篇 + 相关推荐 + 评论首页。四者同进一条 useAsyncData，是因为
- * 它们全是访客要看的内容：只在 onMounted 里补取，SSR HTML 就没有一条评论、
+ * 详情载荷 = 正文 + 上下篇 + 相关推荐 + 评论首页 + 活动投票。它们同进一条 useAsyncData，
+ * 因为全是访客要看的内容：只在 onMounted 里补取，SSR HTML 就没有一条评论、
  * 也没有「文章 → 文章」的链接图——而文章详情页是站内被链最多的页面类型。
  * payload 会传给客户端，hydration 首渲染读到的是同一份值
  * （写成 ref + 异步赋值会在 renderToString 之后才落值）。
  */
-interface PostDetailPayload { detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow[], comments: CommentRaw[] }
+interface PostDetailPayload { detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow[], comments: CommentRaw[], polls: Poll[] }
 const EMPTY_ADJACENT: AdjacentPair = { previous: null, next: null }
 const EMPTY_COMMENT_ROWS: CommentRaw[] = []
+const EMPTY_POLL_ROWS: Poll[] = []
 /** 评论首屏条数：与客户端 loadCommentsForCurrentPost 用同一个数，两端才不会各切一段。 */
 const COMMENT_PAGE_SIZE = 20
-// 全局投票 MVP：Poll 未与 Post 关联，仅客户端挂载后拉一次激活中的投票；
-// 密码闸门未解锁时不拉，避免把 poll 露在闸门上方。
+/** 投票卡片首屏条数：与客户端 fetchActivePolls 的 limit 同数，两端切的是同一段。 */
+const POLL_CARD_LIMIT = 3
+// 投票：载荷里带 SSR 那一份（可见性口径见 fetchPollRows），客户端仍按登录/解锁态刷新。
 const activePolls = ref<Poll[]>([])
+const pollsFromClient = ref(false)
 const pollsAPI = usePolls()
 const likeCount = ref<number>(0)
 const likedByMe = ref<boolean>(false)
@@ -1420,6 +1423,30 @@ async function fetchCommentRows(pid: number | string): Promise<CommentRaw[]> {
     return Array.isArray(raw) ? raw : EMPTY_COMMENT_ROWS
   } catch {
     return EMPTY_COMMENT_ROWS
+  }
+}
+
+// 活动投票（载荷用）：GET /voting/polls?is_active=true，匿名可读，失败降级成空数组。
+// 参数与 usePolls.fetchActivePolls 同形（分页字段在顶层，不带 {success,data} 信封），
+// 保持两处请求可互相替换。post_id 必带：不传就退化成「全站投票」，
+// 别的文章的专属投票会串到本页来（客户端那条同理）。
+async function fetchPollRows(pid: number | string | null): Promise<Poll[]> {
+  try {
+    const raw = await payloadFetch<{ items?: Poll[] }>(
+      '/voting/polls',
+      {
+        query: {
+          is_active: 'true',
+          page: '1',
+          page_size: String(POLL_CARD_LIMIT),
+          ...(pid === null || pid === undefined ? {} : { post_id: String(pid) })
+        }
+      }
+    )
+    const items = raw?.items
+    return Array.isArray(items) ? items : EMPTY_POLL_ROWS
+  } catch {
+    return EMPTY_POLL_ROWS
   }
 }
 
@@ -1562,19 +1589,27 @@ async function fetchPostPayload(): Promise<PostDetailPayload> {
   const detail = (raw && typeof raw === 'object' && 'data' in raw)
     ? raw.data
     : raw as unknown as PostDetail
-  // 上下篇、相关推荐、评论首页跟着正文一起取（理由见 PostDetailPayload 的注释）。三个请求互不依赖，
-  // 并行发起；各自的 catch 已经把失败降级成空值——装饰性区块，不能把正文页拖成错误态。
+  // 上下篇、相关推荐、评论首页、活动投票跟着正文一起取（理由见 PostDetailPayload 的注释）。
+  // 四个请求互不依赖，并行发起；各自的 catch 已经把失败降级成空值——装饰性区块，不能把正文页拖成错误态。
   const pid = (detail as unknown as { id?: number | string } | null)?.id
-  const [adjacent, similar, commentRows] = await Promise.all([
+  // 密码闸门：SSR 期带不上 sessionStorage 里的密码，所以锁着的这一趟按「未解锁」取数。
+  // 投票与评论同判据（正文都还没公开，专属内容不能先烘进闸门页 HTML）。
+  const gateLocked = Boolean(
+    (detail as unknown as { is_password_protected?: boolean } | null)?.is_password_protected
+  ) && !String((detail as unknown as { content?: unknown } | null)?.content ?? '')
+  const [adjacent, similar, commentRows, polls] = await Promise.all([
     fetchAdjacent(),
     pid === undefined || pid === null
       ? Promise.resolve([] as SimilarPostRow[])
       : fetchSimilarPosts(pid),
     pid === undefined || pid === null
       ? Promise.resolve(EMPTY_COMMENT_ROWS)
-      : fetchCommentRows(pid)
+      : fetchCommentRows(pid),
+    gateLocked || pid === undefined || pid === null
+      ? Promise.resolve(EMPTY_POLL_ROWS)
+      : fetchPollRows(pid)
   ])
-  return { detail, adjacent, similar, comments: commentRows }
+  return { detail, adjacent, similar, comments: commentRows, polls }
 }
 
 const { data: postData, pending: loadingPost, error: fetchError, refresh: refreshPost }
@@ -2247,6 +2282,18 @@ const visibleComments = computed<PostComment[]>(() =>
   commentsFromClient.value ? comments.value : payloadComments.value
 )
 
+/** 载荷里那份活动投票（SSR = 匿名视角、且闸门未解锁时本就不取）。 */
+const payloadPolls = computed<Poll[]>(() => postData.value?.polls ?? EMPTY_POLL_ROWS)
+/** 页面实际渲染的投票卡片：客户端拉过用它，否则用载荷直出的那份。 */
+const visiblePolls = computed<Poll[]>(() =>
+  pollsFromClient.value ? activePolls.value : payloadPolls.value
+)
+/** 客户端取数写入口：同时立起「以客户端为准」的标记，之后不再回落到载荷。 */
+function setClientPolls(rows: Poll[]) {
+  activePolls.value = rows
+  pollsFromClient.value = true
+}
+
 // 首屏由 SSR + payload 注入文章详情与评论；客户端这里刷新评论（登录态字段只有客户端拿得到）。
 // 注意：不要在 onMounted 里 refresh() 文章本身——客户端接管时会取消 SSR 发起的、仍在传输中的请求，
 // 浏览器 Network 面板里就会看到 net::ERR_ABORTED（尤其是正文较大的中/长文）。
@@ -2320,7 +2367,7 @@ onMounted(async () => {
   // 带 post_id 是必需的——不传就退化成"全站投票"，别的文章的专属投票会串到本页来。
   // 与评论/相似/TOC 互不依赖，先拿到 promise 再并入下面的 Promise.all，
   // 不单独 await 一个 RTT（旧写法让整页 hydration 后的收尾多等一轮往返）。
-  const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
+  const pollsPromise = needPassword.value ? null : pollsAPI.fetchActivePolls(POLL_CARD_LIMIT, post.value?.id ?? null)
   // 独立任务并行执行：评论、TOC 重建、阅读历史互不依赖
   // （上下篇与相关推荐已在 SSR 载荷里，不再由这里补取）
   await Promise.all([
@@ -2330,7 +2377,7 @@ onMounted(async () => {
     recordReadHistory(),
     pollsPromise
   ])
-  if (pollsPromise) activePolls.value = await pollsPromise
+  if (pollsPromise) setClientPolls(await pollsPromise)
   if (import.meta.client && typeof window !== 'undefined') {
     // 字体 / 懒加载图片导致布局变化后的兜底刷新（3 秒内再补几次）。
     const retries = [400, 1200, 3000]
@@ -2339,8 +2386,8 @@ onMounted(async () => {
 })
 // 密码解锁后 needPassword 由 true→false，此时才允许拉本页的投票卡片。
 watch(needPassword, async (locked, prev) => {
-  if (prev && !locked && !activePolls.value.length) {
-    activePolls.value = await pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
+  if (prev && !locked && !visiblePolls.value.length) {
+    setClientPolls(await pollsAPI.fetchActivePolls(POLL_CARD_LIMIT, post.value?.id ?? null))
   }
 })
 onActivated(async () => {
@@ -2361,10 +2408,10 @@ watch(() => authStore.isAuthenticated, recordReadHistory)
  */
 const reloadActivePolls = async () => {
   if (needPassword.value) {
-    activePolls.value = []
+    setClientPolls([])
     return
   }
-  activePolls.value = await pollsAPI.fetchActivePolls(3, post.value?.id ?? null)
+  setClientPolls(await pollsAPI.fetchActivePolls(POLL_CARD_LIMIT, post.value?.id ?? null))
 }
 
 watch([slug, locale, () => post.value?.id], async () => {

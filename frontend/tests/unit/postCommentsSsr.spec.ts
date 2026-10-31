@@ -30,16 +30,16 @@ function arrowBody(name: string): string {
 
 describe('文章页评论线程的 SSR 直出', () => {
   it('载荷类型把评论绑进同一次取数', () => {
-    expect(src).toMatch(/interface PostDetailPayload \{ detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow\[\], comments: CommentRaw\[\] \}/)
+    expect(src).toMatch(/interface PostDetailPayload \{ detail: PostDetail, adjacent: AdjacentPair, similar: SimilarPostRow\[\], comments: CommentRaw\[\], polls: Poll\[\] \}/)
     expect(src).toMatch(/const EMPTY_COMMENT_ROWS: CommentRaw\[\] = \[\]/)
     expect(src).toMatch(/const COMMENT_PAGE_SIZE = \d+/)
   })
 
   it('评论首页与上下篇/推荐同进一条 Promise.all，失败各自降级为空', () => {
     const body = fnBody('fetchPostPayload')
-    expect(body).toMatch(/const \[adjacent, similar, commentRows\] = await Promise\.all\(\[/)
+    expect(body).toMatch(/const \[adjacent, similar, commentRows, polls\] = await Promise\.all\(\[/)
     expect(body).toContain('fetchCommentRows(pid)')
-    expect(body).toMatch(/return \{ detail, adjacent, similar, comments: commentRows \}/)
+    expect(body).toMatch(/return \{ detail, adjacent, similar, comments: commentRows, polls \}/)
     // 没有 pid（详情还没出来 / 404）就不打评论口
     expect(body).toMatch(/pid === undefined \|\| pid === null\s*\?\s*Promise\.resolve\(EMPTY_COMMENT_ROWS\)/)
   })
