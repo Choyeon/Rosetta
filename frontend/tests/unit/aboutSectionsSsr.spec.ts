@@ -87,7 +87,7 @@ describe('关于页分区：SSR 直出', () => {
     for (const code of LOCALES) {
       const about = localeOf(code).about as Record<string, unknown>
       for (const key of labelKeys) {
-        const leaf = key.split('.')[1]
+        const leaf = key.split('.')[1] ?? ''
         expect(about[leaf], `${code} 缺少 ${key}`).toBeTruthy()
       }
     }
