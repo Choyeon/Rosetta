@@ -6,6 +6,8 @@
   seed 两端派生，改成随机器或本地时态会直接造成水合 mismatch；picsum 不可达时
   @error 切站内占位封面（handlePostCoverError）。feature 取 DETAIL 尺寸（通栏宽度下 CARD 尺寸会糊）。
   compact 变体 Tag 封顶 4 个属有意的排版契约。
+  「预计阅读 N 分钟」走 PostReadingTime —— 分钟数只读后端 reading_time 持久化列，
+  卡片与详情页共用同一个数，前端不再复算（列表口 defer(content)，正文不在载荷里）。
 -->
 <template>
   <article
@@ -106,6 +108,7 @@
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
           <PostMediaFlags :post="post" />
+          <PostReadingTime :post="post" />
         </div>
         <div class="flex items-center gap-3 shrink-0 ml-auto">
           <span class="inline-flex items-center gap-1 tabular-nums">
@@ -211,6 +214,7 @@
             class="shrink-0 tabular-nums"
           >{{ formatDate(publishedAt) }}</span>
           <PostMediaFlags :post="post" />
+          <PostReadingTime :post="post" />
         </div>
         <NuxtLink
           :to="localeHref(`/posts/${postSlug}`)"
@@ -335,6 +339,7 @@
           class="shrink-0 tabular-nums"
         >{{ formatDate(publishedAt) }}</span>
         <PostMediaFlags :post="post" />
+        <PostReadingTime :post="post" />
       </div>
       <div class="flex items-center gap-3 shrink-0">
         <span class="inline-flex items-center gap-1 tabular-nums">
@@ -363,6 +368,7 @@ import { Badge } from '~~/components/ui/badge'
 import UserAvatar from '~~/components/UserAvatar.vue'
 import TitleBadge from '~~/components/TitleBadge.vue'
 import PostMediaFlags from '~~/components/PostMediaFlags.vue'
+import PostReadingTime from '~~/components/PostReadingTime.vue'
 import { useI18n } from 'vue-i18n'
 import TagBadge from '~~/components/TagBadge.vue'
 import CategoryBadge from '~~/components/CategoryBadge.vue'
@@ -427,6 +433,8 @@ interface Props {
     has_audio?: boolean
     has_video?: boolean
     has_embed?: boolean
+    /** 预计阅读分钟数（批次 #136）：后端持久化列，列表与详情共用同一个数。 */
+    reading_time?: number | null
   }
   variant?: PostCardVariant
   /** 命中关键词（搜索结果页传入）：标题与摘要里的命中片段包成 <mark>；空串＝不高亮。 */

@@ -146,7 +146,7 @@
                   {{ formatDate(publishedAt) }}
                 </span>
                 <span
-                  v-if="showReadingTime"
+                  v-if="showReadingTime && readingTime !== null"
                   class="inline-flex items-center gap-1.5"
                 >
                   <Clock3 class="size-3.5" />
@@ -1013,7 +1013,7 @@
           >
             <CardContent class="flex flex-col gap-2.5 p-4 text-sm">
               <div
-                v-if="showReadingTime"
+                v-if="showReadingTime && readingTime !== null"
                 class="flex items-center justify-between"
               >
                 <span class="text-muted-foreground inline-flex items-center gap-1.5"><Clock3 class="size-3.5" />{{ t('post.readingTime', '阅读时间') }}</span>
@@ -1185,6 +1185,8 @@ interface PostDetail {
   source_url?: string | null
   views?: number
   views_count?: number
+  /** 预计阅读分钟数：后端持久化列（写入时按正文算好），列表卡片与本页共用同一个数。 */
+  reading_time?: number | null
   author?: {
     nickname?: string
     name?: string
@@ -2208,7 +2210,16 @@ const readingStats = computed(() => {
   const localeStr = (locale.value || 'zh').startsWith('zh') ? 'zh' : (locale.value === 'ja' ? 'ja' : 'en')
   return estimateReadingStats(content, localeStr)
 })
-const readingTime = computed(() => readingStats.value.minutes)
+// 分钟数与列表卡片同源：读后端持久化的 `reading_time`。本页曾自己按 380 字/分钟复算，
+// 于是同一篇文章卡片 6 分钟、正文页 4 分钟。估算只在后端键缺失时兜底（旧缓存载荷
+// / 正文未落列），锁着的文章一律不显示——正文都没解锁，「预计 4 分钟」既无法验证
+// 也是在催访客猜内容。
+const readingTime = computed<number | null>(() => {
+  if (needPassword.value) return null
+  const stored = Number(post.value?.reading_time)
+  if (Number.isInteger(stored) && stored > 0) return stored
+  return readingStats.value.minutes > 0 ? readingStats.value.minutes : null
+})
 const wordCount = computed(() => readingStats.value.words)
 const charCount = computed(() => readingStats.value.chars)
 

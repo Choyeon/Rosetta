@@ -1353,11 +1353,16 @@ class PostLocalizedResponse(BaseModel):
 
     @staticmethod
     def _calculate_reading_time(content: str) -> int:
-        """计算阅读时间（分钟）"""
-        if not content:
-            return 1
-        word_count = len(content)
-        return max(1, word_count // 500)
+        """阅读分钟数：与持久化列 `Post.reading_time` 同一个函数。
+
+        此前这里是就地按「字符数 ÷ 500」估算——把 Markdown 标记与半个词都当字数算，
+        于是同一篇文章在详情（`from_post` 的出口）与列表（读持久化列）上是两个数字，
+        而卡片与详情页现在都要把这个数显示给读者（批次 #136）。
+        留空/纯空白仍按 1 分钟：列表与卡片都不该显示「0 分钟」。
+        """
+        from backend.utils.reading_time import calculate_reading_time
+
+        return calculate_reading_time(content or "")
 
 
 class PostListItemLocalized(BaseModel):
