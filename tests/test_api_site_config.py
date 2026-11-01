@@ -222,7 +222,6 @@ class TestSiteConfigUpdate:
             json={
                 "pagination_page_size": 25,
                 "max_upload_size": 20971520,
-                "session_timeout": 7200,
             },
         )
         assert response.status_code == 200
@@ -231,26 +230,21 @@ class TestSiteConfigUpdate:
         config_data = config_response.json()
         assert config_data["pagination_page_size"] == 25
         assert config_data["max_upload_size"] == 20971520
-        assert config_data["session_timeout"] == 7200
 
     @pytest.mark.asyncio
-    async def test_update_default_post_cover(
+    async def test_retired_flat_keys_are_rejected_not_fakely_saved(
         self,
         client: AsyncClient,
         admin_headers: dict,
     ):
-        """测试更新默认文章封面"""
-        response = await client.post(
-            "/api/admin/settings",
-            headers=admin_headers,
-            json={
-                "default_post_cover": "/media/covers/default.jpg",
-            },
-        )
-        assert response.status_code == 200
-
-        config_response = await client.get("/api/config")
-        assert config_response.json()["default_post_cover"] == "/media/covers/default.jpg"
+        """批次 #156 退役的扁平键不再「回 200 但库里什么都不做」：写口按 extra=forbid 拦成 422。"""
+        for key in ("default_post_cover", "custom_css", "session_timeout", "google_analytics_id"):
+            response = await client.post(
+                "/api/admin/settings",
+                headers=admin_headers,
+                json={key: "x"},
+            )
+            assert response.status_code == 422, f"{key} 又被写口收下了：{response.status_code}"
 
     @pytest.mark.asyncio
     async def test_update_social_links(
@@ -315,28 +309,5 @@ class TestSiteConfigValidation:
             "/api/admin/settings",
             headers=admin_headers,
             json={"pagination_page_size": 100},
-        )
-        assert response.status_code == 200
-
-    @pytest.mark.asyncio
-    async def test_session_timeout_bounds(
-        self,
-        client: AsyncClient,
-        admin_headers: dict,
-    ):
-        """测试会话超时边界"""
-        # 测试最小值
-        response = await client.post(
-            "/api/admin/settings",
-            headers=admin_headers,
-            json={"session_timeout": 300},
-        )
-        assert response.status_code == 200
-
-        # 测试最大值
-        response = await client.post(
-            "/api/admin/settings",
-            headers=admin_headers,
-            json={"session_timeout": 86400},
         )
         assert response.status_code == 200

@@ -44,9 +44,22 @@
   后端那份的 id 生成规则与它不一致，属同族重复实现。守卫见
   tests/test_retired_toc_api_is_gone.py。
 
+**批次 #156 追加的 19 个是同一族的「只拆了一半」**：`tests/test_settings_group_consumers.py`
+的 `_INERT_KEYS` 早就按「能存、能回显，但 read_group / 分组覆写 / 前端消费方三处全空」删掉了
+**分组侧**的 `code_theme_dark`、`default_post_cover`、`default_avatar`、`google_analytics_id`、
+`baidu_analytics_id`、`session_timeout_sec`、`require_email_verification`、`allow_password_reset`，
+而 `/api/config` 的**扁平镜像 + 后台「环境变量」面板那 14 把开关**原封不动留在那里——
+分组已经没人写了，扁平那张就成了唯一还挂着的假开关。另三类同判据：
+`custom_header_code` / `custom_footer_code` / `custom_css` / `custom_js`（全仓没有任何 head/style/script
+注入口；补注入口要放松 CSP，AGENTS §12.6 禁止）、`maintenance_end_time`（`core/maintenance.py`
+只判 mode 与 message）、`pagination_max_page_size`（分页上限由代码常量给），
+以及 `email_configured` / `email_from` / `email_from_name`——这三条只在投影里出现、`config_map`
+从不转译，等于**把发信地址与"邮件是否配好"原样念给匿名访客听**，而真正的发信判据是
+`services/email_service.py::resolved_smtp()` 读的 `.env` + `email` 分组。
+
 另一半断言防"把删死键做成删活功能"：i18n 标题、`donate` 分组、`basic.about_page_html`、
 `features.enable_guestbook`、`reading.posts_per_page`、详情页的「更新于」判定必须原样活着；
-`/api/config` 的字段总数按声明模型收敛（首批 88/77，#155 后 85/74），不再随库里的存量行膨胀。
+`/api/config` 的字段总数按声明模型收敛（首批 88/77，#155 后 85/74，#156 后 66/58），不再随库里的存量行膨胀。
 """
 
 import re
@@ -63,25 +76,38 @@ FRONTEND = REPO / "frontend"
 
 DEAD_KEYS: tuple[str, ...] = (
     "about_content",
+    "allow_password_reset",
     "anime_bilibili_uid",
     "anime_tmdb_api_key",
     "anime_tmdb_list_id",
     "archive_fold_old_articles",
+    "baidu_analytics_id",
     "bangumi_api_url",
     "bangumi_category_order_json",
     "bangumi_mode",
     "bangumi_subject_base_url",
     "bangumi_user_id",
     "category_bar_enabled",
+    "code_theme_dark",
     "cover_enable_in_post",
     "cover_enable_overlay",
     "cover_random_apis_json",
     "cover_random_enable",
     "cover_show_loading",
+    "custom_css",
+    "custom_footer_code",
+    "custom_header_code",
+    "custom_js",
+    "default_avatar",
+    "default_category_cover",
+    "default_post_cover",
     "dynamic_page_description",
     "dynamic_page_items_per_page",
     "dynamic_page_show_comment",
     "dynamic_page_title",
+    "email_configured",
+    "email_from",
+    "email_from_name",
     "enable_reading_time",
     "enable_toc",
     "enable_word_count",
@@ -90,6 +116,7 @@ DEAD_KEYS: tuple[str, ...] = (
     "friends_page_show_comment",
     "friends_page_show_custom_content",
     "friends_page_title",
+    "google_analytics_id",
     "image_opt_formats",
     "image_opt_no_referrer_json",
     "image_opt_quality",
@@ -97,6 +124,8 @@ DEAD_KEYS: tuple[str, ...] = (
     "license_icon",
     "license_name",
     "license_url",
+    "login_lockout_duration",
+    "maintenance_end_time",
     "mermaid_security_level",
     "mermaid_theme",
     "page_anime_enabled",
@@ -106,6 +135,7 @@ DEAD_KEYS: tuple[str, ...] = (
     "page_gallery_enabled",
     "page_guestbook_enabled",
     "page_sponsor_enabled",
+    "pagination_max_page_size",
     "pagination_posts_per_page",
     "plantuml_server_url",
     "post_enable_share_poster",
@@ -117,6 +147,8 @@ DEAD_KEYS: tuple[str, ...] = (
     "post_list_tags_position",
     "post_outdated_threshold_days",
     "post_show_last_modified",
+    "require_email_verification",
+    "session_timeout",
     "site_start_date",
     "sponsor_methods_json",
     "sponsor_page_description",
@@ -128,9 +160,19 @@ DEAD_KEYS: tuple[str, ...] = (
 
 DEAD_ENVS = tuple(key.upper() for key in DEAD_KEYS)
 
-# 这 17 个曾在 config_map 里（写了就落库）；其余 42 个连转译表都不收
+# 这批里 36 个曾在 config_map 里（写了就落库）；其余连转译表都不收
 STORED_BEFORE = (
     "about_content",
+    "allow_password_reset",
+    "baidu_analytics_id",
+    "code_theme_dark",
+    "custom_css",
+    "custom_footer_code",
+    "custom_header_code",
+    "custom_js",
+    "default_avatar",
+    "default_category_cover",
+    "default_post_cover",
     "dynamic_page_description",
     "dynamic_page_items_per_page",
     "dynamic_page_show_comment",
@@ -143,6 +185,12 @@ STORED_BEFORE = (
     "friends_page_show_comment",
     "friends_page_show_custom_content",
     "friends_page_title",
+    "google_analytics_id",
+    "login_lockout_duration",
+    "maintenance_end_time",
+    "pagination_max_page_size",
+    "require_email_verification",
+    "session_timeout",
     "site_start_date",
     "sponsor_methods_json",
     "sponsor_page_description",
@@ -198,13 +246,13 @@ def _isolate_site_config_cache():
 
 
 # ---------------------------------------------------------
-# 62 个键不得在任何一段链路上回潮
+# 81 个键不得在任何一段链路上回潮
 # ---------------------------------------------------------
-def test_the_retired_list_is_the_planned_62_and_covers_both_defect_halves():
+def test_the_retired_list_is_the_planned_81_and_covers_both_defect_halves():
     """清单本身要有硬数字：少写一个键＝那个键悄悄回潮也没人报。"""
-    assert len(DEAD_KEYS) == 62
-    assert len(set(DEAD_KEYS)) == 62
-    assert len(STORED_BEFORE) == 20
+    assert len(DEAD_KEYS) == 81
+    assert len(set(DEAD_KEYS)) == 81
+    assert len(STORED_BEFORE) == 36
     assert set(STORED_BEFORE) <= set(DEAD_KEYS)
     assert all(key == key.lower() for key in DEAD_KEYS)
 
@@ -220,14 +268,14 @@ def test_dead_keys_are_gone_from_both_config_models():
             assert key not in model.model_fields, f"{key} {why}"
 
 
-def test_surviving_field_counts_are_the_converged_85_and_74():
+def test_surviving_field_counts_are_the_converged_66_and_58():
     """收敛后的字段数必须是**读侧全字段投影**的口径：再多一个键就是有人偷偷加回扁平项。"""
     from backend.schemas import SiteConfigResponse, SiteConfigUpdate
 
     resp = set(SiteConfigResponse.model_fields)
     upd = set(SiteConfigUpdate.model_fields)
-    assert len(resp) == 85, f"响应字段数漂移：{len(resp)}"
-    assert len(upd) == 74, f"写口字段数漂移：{len(upd)}"
+    assert len(resp) == 66, f"响应字段数漂移：{len(resp)}"
+    assert len(upd) == 58, f"写口字段数漂移：{len(upd)}"
     assert not (resp & set(DEAD_KEYS))
     assert not (upd & set(DEAD_KEYS))
     # 反向：活键必须还在（删过头的判据）
@@ -239,7 +287,7 @@ def test_surviving_field_counts_are_the_converged_85_and_74():
         "enable_bing_wallpaper",
         "enable_guestbook",
         "pagination_page_size",
-        "custom_css",
+        "footer_text",
     ):
         assert live in resp, f"{live} 被一起删掉了"
 
@@ -268,7 +316,7 @@ def test_config_map_drops_the_stored_keys():
     for key in STORED_BEFORE:
         assert f'"{key}":' not in block, f"{key} 又被 config_map 转译落库"
     # 活键仍在这张表里（删过头的反证）
-    for live in ("site_name", "comment_allow_guest", "custom_css", "enable_guestbook"):
+    for live in ("site_name", "comment_allow_guest", "footer_text", "enable_guestbook"):
         assert f'"{live}":' in block, f"{live} 从转译表消失了"
 
 
@@ -277,7 +325,14 @@ def test_front_end_has_zero_consumers():
     key_pat = re.compile(rf"\b({'|'.join(DEAD_KEYS)})\b")
     hits = []
     for path in _sources(FRONTEND):
-        if key_pat.search(path.read_text(encoding="utf-8", errors="ignore")):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if path.suffix == ".py":
+            # 整行注释是退役台账，不是读取点：settings_groups.py 里「某某键已删除」的
+            # 说明必须留着，否则下一个人不知道该不该把它接回来。代码行照旧严格。
+            text = "\n".join(
+                line for line in text.splitlines() if not line.lstrip().startswith("#")
+            )
+        if key_pat.search(text):
             hits.append(path.relative_to(REPO).as_posix())
     assert hits == [], f"前端又引用了退役的扁平键：{hits}"
 
@@ -289,16 +344,59 @@ def test_backend_outside_the_models_has_zero_consumers():
     for path in _sources(BACKEND):
         if path in (BACKEND / "api" / "core.py", BACKEND / "schemas" / "__init__.py"):
             continue
-        if key_pat.search(path.read_text(encoding="utf-8", errors="ignore")):
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        if path.suffix == ".py":
+            # 整行注释是退役台账，不是读取点：settings_groups.py 里「某某键已删除」的
+            # 说明必须留着，否则下一个人不知道该不该把它接回来。代码行照旧严格。
+            text = "\n".join(
+                line for line in text.splitlines() if not line.lstrip().startswith("#")
+            )
+        if key_pat.search(text):
             hits.append(path.relative_to(REPO).as_posix())
     assert hits == [], f"后端别处又出现退役键（新增读取点的信号）：{hits}"
 
 
-def test_openapi_drops_all_62():
+def test_openapi_drops_all_retired_keys():
     body = str(app.openapi()["components"]["schemas"])
     for key in DEAD_KEYS:
         assert key not in body, f"{key} 又回到接口文档了"
     assert "about_page_html" in body, "文档里连活键都不见了＝断言在空转"
+
+
+def test_static_api_docs_do_not_re_describe_the_retired_keys():
+    """`backend/docs/` 是第四个面：手抄的字段清单会在键退役后继续教运营者去拨一个不存在的开关。
+
+    `api_endpoints.md` 与 `types.ts` 由脚本从运行时 spec 生成（改接口要重跑 `--write`），
+    `api_reference.md` 是手写的——它此前既列过退役键，也漏过新增键，两个方向都没人管。
+    """
+    docs = sorted((BACKEND / "docs").glob("*.md")) + [BACKEND / "docs" / "types.ts"]
+    assert docs, "backend/docs 扫不到文件＝断言在空转"
+    for path in docs:
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        hits = [key for key in DEAD_KEYS if re.search(rf"\b{key}\b", text)]
+        assert not hits, f"{path.name} 仍在描述退役键：{hits}"
+
+
+def test_reference_doc_config_example_matches_the_live_response_model():
+    """`api_reference.md` 里那份 `/api/config` 响应示例必须与 `SiteConfigResponse` 字段集合相等。
+
+    手抄一份字段清单本身是漂移源：少抄＝新键不上文档，多抄＝退役键还在教人拨。把它钉成
+    集合相等，下一次退役/新增时按 `SiteConfigResponse.model_fields` 重写那个代码块就是一条 diff。
+    """
+    import json
+
+    from backend.schemas import SiteConfigResponse
+
+    text = (BACKEND / "docs" / "api_reference.md").read_text(encoding="utf-8")
+    anchor = text.index("GET /api/config\n")
+    match = re.search(r"```json\n(\{.*?\n\})\n```", text[anchor:], re.S)
+    assert match, "api_reference.md 里找不到 /api/config 的响应示例"
+    example = json.loads(match.group(1))
+    live = set(SiteConfigResponse.model_fields)
+    assert set(example) == live, (
+        f"文档示例与模型字段不再相等：文档多 {sorted(set(example) - live)}、"
+        f"缺 {sorted(live - set(example))}"
+    )
 
 
 # ---------------------------------------------------------

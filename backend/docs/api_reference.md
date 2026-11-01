@@ -778,32 +778,25 @@ GET /api/config
   "enable_dark_mode": true,
   "enable_like_button": true,
   "enable_share_buttons": true,
+  "enable_bing_wallpaper": true,
+  "enable_rss": true,
+  "default_cover_image": "string",
   "pagination_page_size": 12,
-  "pagination_max_page_size": 100,
   "code_theme": "github",
-  "code_theme_dark": "github-dark",
   "default_theme": "system",
   "primary_color": "#3B82F6",
+  "accent_color": "string",
+  "theme_primary": "string",
+  "theme_accent": "string",
   "font_family": null,
+  "default_og_image": "string",
+  "site_subtitle": "string",
   "maintenance_mode": false,
   "maintenance_message": "Site is under maintenance",
-  "maintenance_end_time": null,
-  "default_post_cover": "/media/default/cover.jpg",
-  "default_avatar": "/media/default/avatar.png",
-  "default_category_cover": "/media/default/category.jpg",
-  "google_analytics_id": "G-XXXXXXXXXX",
-  "baidu_analytics_id": "xxxxxxxxxx",
   "google_site_verification": "xxxxx",
   "baidu_site_verification": "xxxxx",
   "robots_txt": "User-agent: *\nAllow: /",
-  "require_email_verification": false,
-  "allow_password_reset": true,
-  "session_timeout": 3600,
   "max_login_attempts": 5,
-  "login_lockout_duration": 1800,
-  "email_configured": false,
-  "email_from": "noreply@rosetta.dev",
-  "email_from_name": "Rosetta Blog",
   "max_upload_size": 10485760,
   "allowed_image_types": "jpg,jpeg,png,gif,webp,svg",
   "allowed_file_types": "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
@@ -811,10 +804,13 @@ GET /api/config
   "comment_allow_guest": false,
   "comment_max_length": 1000,
   "comment_antispam": true,
-  "custom_header_code": null,
-  "custom_footer_code": null,
-  "custom_css": null,
-  "custom_js": null
+  "about_page_html": "string",
+  "author_name": "string",
+  "author_bio": "string",
+  "author_avatar": "string",
+  "author_links_json": "string",
+  "site_url": "string",
+  "footer_custom_html": "string"
 }
 ```
 
@@ -837,29 +833,24 @@ Content-Type: application/json
 {
   "site_name": "新站点名称",
   "enable_comments": true,
-  "default_post_cover": "/media/covers/default.jpg",
+  "site_logo": "/media/brand/logo.png",
   "primary_color": "#10B981"
 }
 ```
 
-**支持的配置项分组**:
+**写口有两条，各自的清单都不在本文档里抄一份**（抄了就必然漂移——本节此前手抄的 13 行分组表里有 9 个键名在模型上早已不存在）:
 
-| 分组 | 配置项 |
-|------|--------|
-| 基础设置 | site_name, site_description, site_keywords, site_author, site_email, site_logo, site_favicon, site_icon |
-| 页脚设置 | footer_text, footer_slogan, copyright_text, icp_number, police_icp_number |
-| 社交媒体 | github_url, x_url, bilibili_url, weibo_url, zhihu_url, youtube_url, linkedin_url, telegram_url |
-| 联系方式 | contact_email, contact_qq, contact_wechat |
-| 功能开关 | enable_comments, enable_registration, enable_rss_feed, enable_search, enable_sitemap, enable_guestbook, enable_dark_mode, enable_like_button, enable_share_buttons |
-| 分页设置 | pagination_page_size, pagination_max_page_size |
-| 外观设置 | code_theme, code_theme_dark, default_theme, primary_color, font_family |
-| 维护模式 | maintenance_mode, maintenance_message, maintenance_end_time |
-| 默认图片 | default_post_cover, default_avatar, default_category_cover |
-| SEO设置 | google_analytics_id, baidu_analytics_id, google_site_verification, baidu_site_verification, robots_txt |
-| 安全设置 | require_email_verification, allow_password_reset, session_timeout, max_login_attempts, login_lockout_duration |
-| 上传设置 | max_upload_size, allowed_image_types, allowed_file_types |
-| 评论设置 | comment_require_approval, comment_allow_guest, comment_max_length, comment_antispam |
-| 自定义代码 | custom_header_code, custom_footer_code, custom_css, custom_js |
+- **扁平通道** `POST /api/admin/settings`：每收一个键都要在 `backend/api/core.py::config_map` 里有一条
+  指向 UPPERCASE `SiteConfig` 行的转译才会真的落库，**那张表就是扁平写口的唯一清单**。只被
+  `SiteConfigUpdate` 声明、不在表里的键＝回 200 而库里什么都不做（这类假配置已按批次 #112 / #155 / #156
+  整族退役，共 81 键）。键的类型与默认值看上面那份响应示例——它由 `SiteConfigResponse` 逐键生成，
+  并由 `tests/test_retired_flat_config_keys_are_gone.py` 钉成**与模型字段集合相等**。
+- **分组通道**（运营者实际用的那张写面）：`PATCH /api/settings/{group}`，14 个分组，唯一清单是
+  `backend/api/settings_groups.py::SETTING_GROUPS`（`basic` · `reading` · `comments` · `media` · `seo` ·
+  `email` · `security` · `features` · `appearance` · `navigation` · `hero` · `notice` · `footer` · `donate`），
+  匿名可读的公开白名单是同文件 `PUBLIC_SETTING_GROUPS`（11 组，`email` / `security` / `media` 不在内）。
+  **组内键的唯一清单是同文件的 `_default_<group>()`**，读写两侧都按它过滤（`_only_known_keys`），
+  所以库里残留的旧键不会再被回显；数值键还必须同时在 `_NUMERIC_BOUNDS` 登记区间。
 
 **写入语义（`SiteConfig.value` 是字符串 KV）**：请求走 `exclude_unset` 局部更新。
 - 省略某字段 → 不改动它。

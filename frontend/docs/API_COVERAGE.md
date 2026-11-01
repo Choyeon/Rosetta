@@ -297,10 +297,11 @@
 - migration ✅4：`POST /start`、`GET /status`、`POST /cancel`、`GET /presets`（uam:1741–1768）
 - performance ✅4：`GET /performance/summary`（uam:1569）、`GET /slow · /storage`、`DELETE /cleanup`（pages/admin/tools/performance.vue:672,794,812）
 
-### import_export（/api/admin）— 4/7
+### import_export（/api/admin）— 7/7
 
 ✅：`GET /export/posts|markdown`、`POST /import/posts|markdown`（uam:1465,1493；pages/admin/tools/import-export.vue:760,818）
-❌（3，**运维保留**）：`GET /backup/info`、`GET /backup/full`、`POST /backup/restore`——整库备份 UI 未建（有意留给部署脚本，防止误操作）。三端已由 `tests/test_import_export_api.py` 覆盖（含"备份包不含密码哈希"断言）；`POST /import/posts` 与 `/backup/restore` 的标签关联语义同见该测试：标签只能在 `Post(...)` 构造器一次性传入，flush 后 `post.tags.append()` 在 async 会话里必抛 `MissingGreenlet`（旧实现即如此，导入带标签的文章从未成功过）。
+✅（3，补记 2026-11-01）：`GET /backup/info`、`GET /backup/full`、`POST /backup/restore`——`pages/admin/tools/import-export.vue` 的「整站备份」标签是三条口的唯一消费方（信息表逐表 COUNT、ZIP 下载带时间戳文件名、恢复走 `FormData` + 二次确认 + 体积上限拦截）。旧判定「整库备份 UI 未建（有意留给部署脚本）」已作废：那三端此前只有服务端与 `tests/test_import_export_api.py`，管理员在界面上看不到自己有多大一份备份、也无法恢复。契约由 `frontend/tests/unit/backupAdminLanding.spec.ts` 钉（三条路径逐个在场 + `apiFetch<Blob>('/admin/backup/full'` 的取法）。
+`POST /import/posts` 与 `/backup/restore` 的标签关联语义见 `tests/test_import_export_api.py`：标签只能在 `Post(...)` 构造器一次性传入，flush 后 `post.tags.append()` 在 async 会话里必抛 `MissingGreenlet`（旧实现即如此，导入带标签的文章从未成功过）。
 
 ### seo（/api/seo）— 7/9
 
@@ -350,7 +351,7 @@
 1. **刻意保留的后端能力（约六成，不算债）**：
    - 重复入口族（**建议统一，长期二选一**）：comments.py 的 posts 别名 ×2、`seo GET/PUT /config`、plugins `activate/deactivate` ×2、`PATCH /titles/{id}`、`/archive` 单数 bing wallpaper、`…/{id}/toggle` 里未被消费的 `announcements` 与 `activities` 两条、`GET /titles/{id}`、`GET /settings/{group}`、`media /library/upload`、toc ×3（**2026-11-01 二选一已执行**：删后端那三个无鉴权 POST，目录锚点唯一实现是 `frontend/lib/toc.ts` + `composables/useReadingUX.ts::extractTOC`，守卫 `tests/test_retired_toc_api_is_gone.py`）、`users` 的 `PUT /me/avatar` · `PUT /me/cover`（与 `PUT /me` 的 `avatar` / `cover_image` 是同一次写入的两个入口）、`POST /me/change-password`（`POST /me/password` 的旧路径别名，同一 service、同为 400、同踢下线）、`GET /voting/polls/{poll_id}`（列表口 `GET /voting/polls` 已内嵌 choices 与票数，前台卡片直接从列表取票，详情口没有第二个消费方）。原列在此处的**旧调色板 ×3 已不再是待选项**：2026-10-28 直接删除（它连"另一个入口"都算不上——写进去的键没有任何读取方）。
    - `…/{id}/toggle` 一族要分两半看，不能整族判成"刻意不用"。后端共 4 条 `PUT …/{id}/toggle`：`hero/slides` 与 `series` 已接（`toggleAdminHeroSlide` / `toggleAdminSeries`，卡片状态徽标点一下就翻值并清前台页面缓存，拿到 200 后回读、不用本地取反）；`announcements` 与 `activities` 那两条刻意不接——列表里的开关是"写成我看到的目标值"，而翻转在重试、双击、两个管理员并发时不收敛（一次重放就得到相反状态），显式写值幂等。两侧都走同一个 service + 同一组缓存失效与 `do_action` 钩子，所以未接的两条不是功能缺口，是入口收敛。（`scheduled_posts` ×3 已从本项移除：2026-10-28 待发布队列页面把它们全部接成真实消费方。）
-   - 运维/脚本面：admin tools ×5、`import_export backup` ×3、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。（原列在此处的 `admin_logs retention` 已于 2026-10-29 移出：`pages/admin/tools/audit-logs.vue` 接了手动清理入口。）
+   - 运维/脚本面：admin tools ×5、`oobe` 旧分步 ×8（合并进单 `POST /install`，reset 为恢复工具；`/complete` 已于 2026-09-26 删除）。（原列在此处的 `admin_logs retention` 已于 2026-10-29 移出：`pages/admin/tools/audit-logs.vue` 接了手动清理入口。原列在此处的 `import_export backup` ×3 已于 2026-11-01 移出：整站备份/恢复标签页建在 `pages/admin/tools/import-export.vue`，见上 import_export 段。）
 2. **半成品（后端就绪、UI 半接入）**：（主题/插件市场 market UI 2026-09-27 已接入两侧安装弹窗「市场索引」来源，移出此项；主题 upgrade 便捷壳 2026-09-27 已接进主题卡片，移出此项。）（webhook 原列此项，2026-09-26 已补齐投递日志与密钥轮换 UI，转 100%；主题/插件 zip 上传安装 2026-09-27 复核确认两侧 UI 均已接入，移出此项。）
 3. **真实缺口（需要排期的功能面）**，最突出的三块：
    - **用户体系外围**（users 15 个 + messages 6；favorite 12 条已于 2026-10-16 接入 10 条，剩下 2 条按收藏行 ID 的变体属「刻意不消费」，见上表 favorite 行；messages 6 条已于同日接入 5 条，见上表 messages 行）。（原列的 `PUT /me`、`GET/PUT /me/preferences`、`POST /me/password` 已在 `pages/account/settings.vue` 落地并由 `tests/unit/accountSettingsPage.spec.ts` 钉住，本项**不再是缺口**；2026-10-29 又接上 `DELETE /api/users/me`（同一页的注销危险区，口径见上表 users 段）；users 一族剩下的 7 条见上表 ❌ 行的逐条判定，全部是**重复入口、旧别名或形态变体**而不是缺功能——`PUT /me/cover` 与 `PUT /me` 的 `cover_image` 是同一次写入的两个入口，只保留一个写入口）

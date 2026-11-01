@@ -596,37 +596,22 @@ export interface SiteConfig {
   enable_share_buttons: boolean
   // 分页设置
   pagination_page_size: number
-  pagination_max_page_size: number
   // 外观设置
   code_theme: string
-  code_theme_dark: string
   default_theme: string
   primary_color: string
   font_family: string | null
   // 维护模式
   maintenance_mode: boolean
   maintenance_message: string | null
-  maintenance_end_time: string | null
   // 默认图片
-  default_post_cover: string | null
-  default_avatar: string | null
-  default_category_cover: string | null
   // SEO 设置
-  google_analytics_id: string | null
-  baidu_analytics_id: string | null
   google_site_verification: string | null
   baidu_site_verification: string | null
   robots_txt: string | null
   // 安全设置
-  require_email_verification: boolean
-  allow_password_reset: boolean
-  session_timeout: number
   max_login_attempts: number
-  login_lockout_duration: number
   // 邮件设置
-  email_configured: boolean
-  email_from: string | null
-  email_from_name: string | null
   // 文件上传设置
   max_upload_size: number
   allowed_image_types: string
@@ -637,10 +622,6 @@ export interface SiteConfig {
   comment_max_length: number
   comment_antispam: boolean
   // 自定义代码
-  custom_header_code: string | null
-  custom_footer_code: string | null
-  custom_css: string | null
-  custom_js: string | null
 }
 
 export interface SiteConfigUpdate {
@@ -684,33 +665,21 @@ export interface SiteConfigUpdate {
   enable_share_buttons?: boolean
   // 分页设置
   pagination_page_size?: number
-  pagination_max_page_size?: number
   // 外观设置
   code_theme?: string
-  code_theme_dark?: string
   default_theme?: string
   primary_color?: string
   font_family?: string
   // 维护模式
   maintenance_mode?: boolean
   maintenance_message?: string
-  maintenance_end_time?: string
   // 默认图片
-  default_post_cover?: string
-  default_avatar?: string
-  default_category_cover?: string
   // SEO 设置
-  google_analytics_id?: string
-  baidu_analytics_id?: string
   google_site_verification?: string
   baidu_site_verification?: string
   robots_txt?: string
   // 安全设置
-  require_email_verification?: boolean
-  allow_password_reset?: boolean
-  session_timeout?: number
   max_login_attempts?: number
-  login_lockout_duration?: number
   // 文件上传设置
   max_upload_size?: number
   allowed_image_types?: string
@@ -721,10 +690,6 @@ export interface SiteConfigUpdate {
   comment_max_length?: number
   comment_antispam?: boolean
   // 自定义代码
-  custom_header_code?: string
-  custom_footer_code?: string
-  custom_css?: string
-  custom_js?: string
 }
 
 export interface SiteSettingItem {

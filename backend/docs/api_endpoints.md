@@ -3835,14 +3835,11 @@ _无路径 / query 参数_
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | accent_color | string \| null | 否 |  |
-| allow_password_reset | boolean \| null | 否 |  |
 | allowed_file_types | string \| null | 否 |  |
 | allowed_image_types | string \| null | 否 |  |
-| baidu_analytics_id | string \| null | 否 |  |
 | baidu_site_verification | string \| null | 否 |  |
 | bilibili_url | string \| null | 否 |  |
 | code_theme | string \| null | 否 |  |
-| code_theme_dark | string \| null | 否 |  |
 | comment_allow_guest | boolean \| null | 否 |  |
 | comment_antispam | boolean \| null | 否 |  |
 | comment_max_length | integer \| null | 否 |  |
@@ -3851,14 +3848,7 @@ _无路径 / query 参数_
 | contact_qq | string \| null | 否 |  |
 | contact_wechat | string \| null | 否 |  |
 | copyright_text | string \| null | 否 |  |
-| custom_css | string \| null | 否 |  |
-| custom_footer_code | string \| null | 否 |  |
-| custom_header_code | string \| null | 否 |  |
-| custom_js | string \| null | 否 |  |
-| default_avatar | string \| null | 否 |  |
-| default_category_cover | string \| null | 否 |  |
 | default_og_image | string \| null | 否 |  |
-| default_post_cover | string \| null | 否 |  |
 | default_theme | string \| null | 否 |  |
 | enable_comments | boolean \| null | 否 |  |
 | enable_dark_mode | boolean \| null | 否 |  |
@@ -3874,19 +3864,26 @@ _无路径 / query 参数_
 | footer_slogan | string \| null | 否 |  |
 | footer_text | string \| null | 否 |  |
 | github_url | string \| null | 否 |  |
-| … 其余 34 个字段 | | | 见 `/docs` |
+| google_site_verification | string \| null | 否 |  |
+| icp_number | string \| null | 否 |  |
+| linkedin_url | string \| null | 否 |  |
+| maintenance_message | string \| null | 否 |  |
+| maintenance_mode | boolean \| null | 否 |  |
+| max_login_attempts | integer \| null | 否 |  |
+| max_upload_size | integer \| null | 否 |  |
+| pagination_page_size | integer \| null | 否 |  |
+| police_icp_number | string \| null | 否 |  |
+| primary_color | string \| null | 否 |  |
+| … 其余 18 个字段 | | | 见 `/docs` |
 
 ```json
 {
   "accent_color": "string",
-  "allow_password_reset": "string",
   "allowed_file_types": "string",
   "allowed_image_types": "string",
-  "baidu_analytics_id": "string",
   "baidu_site_verification": "string",
   "bilibili_url": "string",
   "code_theme": "string",
-  "code_theme_dark": "string",
   "comment_allow_guest": "string",
   "comment_antispam": "string",
   "comment_max_length": "string",
@@ -3895,14 +3892,7 @@ _无路径 / query 参数_
   "contact_qq": "string",
   "contact_wechat": "string",
   "copyright_text": "string",
-  "custom_css": "string",
-  "custom_footer_code": "string",
-  "custom_header_code": "string",
-  "custom_js": "string",
-  "default_avatar": "string",
-  "default_category_cover": "string",
   "default_og_image": "string",
-  "default_post_cover": "string",
   "default_theme": "string",
   "enable_comments": "string",
   "enable_dark_mode": "string",
@@ -3918,23 +3908,17 @@ _无路径 / query 参数_
   "footer_slogan": "string",
   "footer_text": "string",
   "github_url": "string",
-  "google_analytics_id": "string",
   "google_site_verification": "string",
   "icp_number": "string",
   "linkedin_url": "string",
-  "login_lockout_duration": "string",
-  "maintenance_end_time": "string",
   "maintenance_message": "string",
   "maintenance_mode": "string",
   "max_login_attempts": "string",
   "max_upload_size": "string",
-  "pagination_max_page_size": "string",
   "pagination_page_size": "string",
   "police_icp_number": "string",
   "primary_color": "string",
-  "require_email_verification": "string",
   "robots_txt": "string",
-  "session_timeout": "string",
   "site_author": "string",
   "site_description": "string",
   "site_email": "string",
@@ -3998,18 +3982,15 @@ _无路径 / query 参数_
 | --- | --- | --- | --- |
 | about_page_html | string | 否 |  |
 | accent_color | string | 否 |  |
-| allow_password_reset | boolean | 否 |  |
 | allowed_file_types | string | 否 |  |
 | allowed_image_types | string | 否 |  |
 | author_avatar | string | 否 |  |
 | author_bio | string | 否 |  |
 | author_links_json | string | 否 |  |
 | author_name | string | 否 |  |
-| baidu_analytics_id | string \| null | 否 |  |
 | baidu_site_verification | string \| null | 否 |  |
 | bilibili_url | string \| null | 否 |  |
 | code_theme | string | 否 |  |
-| code_theme_dark | string | 否 |  |
 | comment_allow_guest | boolean | 否 |  |
 | comment_antispam | boolean | 否 |  |
 | comment_max_length | integer | 否 |  |
@@ -4018,25 +3999,28 @@ _无路径 / query 参数_
 | contact_qq | string \| null | 否 |  |
 | contact_wechat | string \| null | 否 |  |
 | copyright_text | string \| null | 否 |  |
-| custom_css | string \| null | 否 |  |
-| custom_footer_code | string \| null | 否 |  |
-| custom_header_code | string \| null | 否 |  |
-| custom_js | string \| null | 否 |  |
-| default_avatar | string \| null | 否 |  |
-| default_category_cover | string \| null | 否 |  |
 | default_cover_image | string | 否 |  |
 | default_og_image | string \| null | 否 |  |
-| default_post_cover | string \| null | 否 |  |
 | default_theme | string | 否 |  |
-| email_configured | boolean | 否 |  |
-| email_from | string \| null | 否 |  |
-| email_from_name | string \| null | 否 |  |
 | enable_bing_wallpaper | boolean | 否 |  |
 | enable_comments | boolean | 否 |  |
 | enable_dark_mode | boolean | 否 |  |
 | enable_guestbook | boolean | 否 |  |
 | enable_like_button | boolean | 否 |  |
-| … 其余 45 个字段 | | | 见 `/docs` |
+| enable_registration | boolean | 否 |  |
+| enable_rss | boolean | 否 |  |
+| enable_rss_feed | boolean | 否 |  |
+| enable_search | boolean | 否 |  |
+| enable_share_buttons | boolean | 否 |  |
+| enable_sitemap | boolean | 否 |  |
+| font_family | string \| null | 否 |  |
+| footer_custom_html | string | 否 |  |
+| footer_slogan | string \| null | 否 |  |
+| footer_text | string \| null | 否 |  |
+| github_url | string \| null | 否 |  |
+| google_site_verification | string \| null | 否 |  |
+| icp_number | string \| null | 否 |  |
+| … 其余 26 个字段 | | | 见 `/docs` |
 
 响应示例：
 
@@ -4044,18 +4028,15 @@ _无路径 / query 参数_
 {
   "about_page_html": "",
   "accent_color": "#0284C7",
-  "allow_password_reset": true,
   "allowed_file_types": "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
   "allowed_image_types": "jpg,jpeg,png,gif,webp,svg",
   "author_avatar": "",
   "author_bio": "",
   "author_links_json": "[]",
   "author_name": "",
-  "baidu_analytics_id": "string",
   "baidu_site_verification": "string",
   "bilibili_url": "string",
   "code_theme": "github",
-  "code_theme_dark": "github-dark",
   "comment_allow_guest": false,
   "comment_antispam": true,
   "comment_max_length": 1000,
@@ -4064,19 +4045,9 @@ _无路径 / query 参数_
   "contact_qq": "string",
   "contact_wechat": "string",
   "copyright_text": "string",
-  "custom_css": "string",
-  "custom_footer_code": "string",
-  "custom_header_code": "string",
-  "custom_js": "string",
-  "default_avatar": "string",
-  "default_category_cover": "string",
   "default_cover_image": "",
   "default_og_image": "string",
-  "default_post_cover": "string",
   "default_theme": "system",
-  "email_configured": false,
-  "email_from": "string",
-  "email_from_name": "string",
   "enable_bing_wallpaper": true,
   "enable_comments": true,
   "enable_dark_mode": true,
@@ -4093,23 +4064,17 @@ _无路径 / query 参数_
   "footer_slogan": "string",
   "footer_text": "string",
   "github_url": "string",
-  "google_analytics_id": "string",
   "google_site_verification": "string",
   "icp_number": "string",
   "linkedin_url": "string",
-  "login_lockout_duration": 1800,
-  "maintenance_end_time": "string",
   "maintenance_message": "string",
   "maintenance_mode": false,
   "max_login_attempts": 5,
   "max_upload_size": 10485760,
-  "pagination_max_page_size": 100,
   "pagination_page_size": 12,
   "police_icp_number": "string",
   "primary_color": "#3B82F6",
-  "require_email_verification": false,
   "robots_txt": "string",
-  "session_timeout": 3600,
   "site_author": "string",
   "site_description": "string",
   "site_email": "string",

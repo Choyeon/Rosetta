@@ -1356,12 +1356,10 @@ async def get_site_config(db: DB):
         enable_rss=get_bool("ENABLE_RSS_FEED", "true"),
         # 默认封面图（OOBE 种子写 default_cover_image）
         default_cover_image=get_str("DEFAULT_COVER_IMAGE", "") or "",
-        # 分页设置
+        # 分页设置（pagination_max_page_size 批次 #156 退役：上限由代码常量给）
         pagination_page_size=get_int("PAGINATION_PAGE_SIZE", "12"),
-        pagination_max_page_size=get_int("PAGINATION_MAX_PAGE_SIZE", "100"),
-        # 外观设置
+        # 外观设置（code_theme_dark 批次 #156 退役：暗色档由 localStorage.theme 与 --hljs-* 令牌给）
         code_theme=get_str("CODE_THEME", "github") or "github",
-        code_theme_dark=get_str("CODE_THEME_DARK", "github-dark") or "github-dark",
         default_theme=get_str("DEFAULT_THEME", "system") or "system",
         primary_color=get_str("PRIMARY_COLOR", "#3B82F6") or "#3B82F6",
         accent_color=get_str("ACCENT_COLOR", "#0284C7") or "#0284C7",
@@ -1373,27 +1371,18 @@ async def get_site_config(db: DB):
         # 维护模式
         maintenance_mode=get_bool("MAINTENANCE_MODE", "false"),
         maintenance_message=get_str("MAINTENANCE_MESSAGE", "Site is under maintenance"),
-        maintenance_end_time=get_str("MAINTENANCE_END_TIME"),
-        # 默认图片
-        default_post_cover=get_str("DEFAULT_POST_COVER"),
-        default_avatar=get_str("DEFAULT_AVATAR"),
-        default_category_cover=get_str("DEFAULT_CATEGORY_COVER"),
-        # SEO 设置
-        google_analytics_id=get_str("GOOGLE_ANALYTICS_ID"),
-        baidu_analytics_id=get_str("BAIDU_ANALYTICS_ID"),
+        # 默认图片三项（default_post_cover / default_avatar / default_category_cover）批次 #156 退役：
+        # 封面单源在 frontend/lib/post-cover.ts、头像在 core/avatar_resolver，全仓没有读取点。
+        # SEO 设置（google_analytics_id / baidu_analytics_id 批次 #156 退役：没有统计脚本注入口）
         google_site_verification=get_str("GOOGLE_SITE_VERIFICATION"),
         baidu_site_verification=get_str("BAIDU_SITE_VERIFICATION"),
         robots_txt=get_str("ROBOTS_TXT"),
-        # 安全设置
-        require_email_verification=get_bool("REQUIRE_EMAIL_VERIFICATION", "false"),
-        allow_password_reset=get_bool("ALLOW_PASSWORD_RESET", "true"),
-        session_timeout=get_int("SESSION_TIMEOUT", "3600"),
+        # 安全设置（session_timeout / login_lockout_duration / require_email_verification /
+        # allow_password_reset 批次 #156 退役：全仓零读取方，真实阈值在 settings.login_lockout_minutes
+        # 与 core/rate_limit.py 的 DEFAULT_LOCKOUT_SECONDS）
         max_login_attempts=get_int("MAX_LOGIN_ATTEMPTS", "5"),
-        login_lockout_duration=get_int("LOGIN_LOCKOUT_DURATION", "1800"),
-        # 邮件设置
-        email_configured=get_bool("EMAIL_CONFIGURED", "false"),
-        email_from=get_str("EMAIL_FROM"),
-        email_from_name=get_str("EMAIL_FROM_NAME"),
+        # 邮件三键（email_configured / email_from / email_from_name）批次 #156 退役：只投影不转译，
+        # 等于把发信地址与「邮件配好没」念给匿名访客听；发信判据是 email_service.resolved_smtp()。
         # 文件上传设置
         max_upload_size=get_int("MAX_UPLOAD_SIZE", "10485760"),
         allowed_image_types=get_str("ALLOWED_IMAGE_TYPES", "jpg,jpeg,png,gif,webp,svg")
@@ -1405,11 +1394,8 @@ async def get_site_config(db: DB):
         comment_allow_guest=get_bool("COMMENT_ALLOW_GUEST", "false"),
         comment_max_length=get_int("COMMENT_MAX_LENGTH", "1000"),
         comment_antispam=get_bool("COMMENT_ANTISPAM", "true"),
-        # 自定义代码
-        custom_header_code=get_str("CUSTOM_HEADER_CODE"),
-        custom_footer_code=get_str("CUSTOM_FOOTER_CODE"),
-        custom_css=get_str("CUSTOM_CSS"),
-        custom_js=get_str("CUSTOM_JS"),
+        # 自定义代码四键（custom_header_code / custom_footer_code / custom_css / custom_js）批次 #156 退役：
+        # 全仓没有 head/style/script 注入口，补注入口要放松 CSP（AGENTS §12.6 禁止）。
         # 关于页面 HTML（优先从 basic 组 JSON 中读取 about_page_html；空时回退扁平 key）
         about_page_html=(
             _configs_ci.get("ABOUT_PAGE_HTML", "") or configs.get("about_page_html", "") or ""
@@ -1746,20 +1732,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     ],
                 ),
                 SiteSettingItem(
-                    key="CODE_THEME_DARK",
-                    label="代码高亮主题（暗色）",
-                    type="select",
-                    value=get_val("CODE_THEME_DARK", "github-dark"),
-                    default="github-dark",
-                    options=[
-                        {"value": "github-dark", "label": "GitHub Dark"},
-                        {"value": "monokai", "label": "Monokai"},
-                        {"value": "one-dark", "label": "One Dark"},
-                        {"value": "dracula", "label": "Dracula"},
-                        {"value": "nord", "label": "Nord"},
-                    ],
-                ),
-                SiteSettingItem(
                     key="DEFAULT_THEME",
                     label="默认主题",
                     type="select",
@@ -1793,19 +1765,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
             icon="search",
             settings=[
                 SiteSettingItem(
-                    key="GOOGLE_ANALYTICS_ID",
-                    label="Google Analytics ID",
-                    type="text",
-                    value=get_val("GOOGLE_ANALYTICS_ID"),
-                    placeholder="G-XXXXXXXXXX",
-                ),
-                SiteSettingItem(
-                    key="BAIDU_ANALYTICS_ID",
-                    label="百度统计 ID",
-                    type="text",
-                    value=get_val("BAIDU_ANALYTICS_ID"),
-                ),
-                SiteSettingItem(
                     key="GOOGLE_SITE_VERIFICATION",
                     label="Google 站点验证",
                     type="text",
@@ -1832,29 +1791,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
             icon="shield",
             settings=[
                 SiteSettingItem(
-                    key="REQUIRE_EMAIL_VERIFICATION",
-                    label="要求邮箱验证",
-                    type="switch",
-                    value=get_bool_val("REQUIRE_EMAIL_VERIFICATION", "false"),
-                    default=False,
-                ),
-                SiteSettingItem(
-                    key="ALLOW_PASSWORD_RESET",
-                    label="允许密码重置",
-                    type="switch",
-                    value=get_bool_val("ALLOW_PASSWORD_RESET", "true"),
-                    default=True,
-                ),
-                SiteSettingItem(
-                    key="SESSION_TIMEOUT",
-                    label="会话超时时间（秒）",
-                    type="number",
-                    value=get_int_val("SESSION_TIMEOUT", "3600"),
-                    default=3600,
-                    min_value=300,
-                    max_value=86400,
-                ),
-                SiteSettingItem(
                     key="MAX_LOGIN_ATTEMPTS",
                     label="最大登录尝试次数",
                     type="number",
@@ -1862,15 +1798,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     default=5,
                     min_value=1,
                     max_value=20,
-                ),
-                SiteSettingItem(
-                    key="LOGIN_LOCKOUT_DURATION",
-                    label="登录锁定时长（秒）",
-                    type="number",
-                    value=get_int_val("LOGIN_LOCKOUT_DURATION", "1800"),
-                    default=1800,
-                    min_value=60,
-                    max_value=86400,
                 ),
             ],
         ),
@@ -1901,18 +1828,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     type="text",
                     value=get_val("ALLOWED_FILE_TYPES", "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar"),
                     default="pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
-                ),
-                SiteSettingItem(
-                    key="DEFAULT_POST_COVER",
-                    label="默认文章封面",
-                    type="image",
-                    value=get_val("DEFAULT_POST_COVER"),
-                ),
-                SiteSettingItem(
-                    key="DEFAULT_AVATAR",
-                    label="默认用户头像",
-                    type="image",
-                    value=get_val("DEFAULT_AVATAR"),
                 ),
             ],
         ),
@@ -1971,45 +1886,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     type="textarea",
                     value=get_val("MAINTENANCE_MESSAGE", "Site is under maintenance"),
                     default="Site is under maintenance",
-                ),
-                SiteSettingItem(
-                    key="MAINTENANCE_END_TIME",
-                    label="预计结束时间",
-                    type="datetime",
-                    value=get_val("MAINTENANCE_END_TIME"),
-                ),
-            ],
-        ),
-        SiteSettingGroup(
-            name="custom_code",
-            label="自定义代码",
-            icon="code",
-            settings=[
-                SiteSettingItem(
-                    key="CUSTOM_HEADER_CODE",
-                    label="头部代码",
-                    description="插入到 <head> 标签内的代码",
-                    type="textarea",
-                    value=get_val("CUSTOM_HEADER_CODE"),
-                ),
-                SiteSettingItem(
-                    key="CUSTOM_FOOTER_CODE",
-                    label="底部代码",
-                    description="插入到 </body> 标签前的代码",
-                    type="textarea",
-                    value=get_val("CUSTOM_FOOTER_CODE"),
-                ),
-                SiteSettingItem(
-                    key="CUSTOM_CSS",
-                    label="自定义 CSS",
-                    type="textarea",
-                    value=get_val("CUSTOM_CSS"),
-                ),
-                SiteSettingItem(
-                    key="CUSTOM_JS",
-                    label="自定义 JavaScript",
-                    type="textarea",
-                    value=get_val("CUSTOM_JS"),
                 ),
             ],
         ),
@@ -2088,34 +1964,22 @@ async def update_site_settings(
         "enable_like_button": "ENABLE_LIKE_BUTTON",
         "enable_share_buttons": "ENABLE_SHARE_BUTTONS",
         # 分页设置
+        # pagination_max_page_size 批次 #156 退役：上限由代码常量给，没有读取方
         "pagination_page_size": "PAGINATION_PAGE_SIZE",
-        "pagination_max_page_size": "PAGINATION_MAX_PAGE_SIZE",
         # 外观设置
         "code_theme": "CODE_THEME",
-        "code_theme_dark": "CODE_THEME_DARK",
         "default_theme": "DEFAULT_THEME",
         "primary_color": "PRIMARY_COLOR",
         "font_family": "FONT_FAMILY",
         # 维护模式
         "maintenance_mode": "MAINTENANCE_MODE",
         "maintenance_message": "MAINTENANCE_MESSAGE",
-        "maintenance_end_time": "MAINTENANCE_END_TIME",
-        # 默认图片
-        "default_post_cover": "DEFAULT_POST_COVER",
-        "default_avatar": "DEFAULT_AVATAR",
-        "default_category_cover": "DEFAULT_CATEGORY_COVER",
         # SEO 设置
-        "google_analytics_id": "GOOGLE_ANALYTICS_ID",
-        "baidu_analytics_id": "BAIDU_ANALYTICS_ID",
         "google_site_verification": "GOOGLE_SITE_VERIFICATION",
         "baidu_site_verification": "BAIDU_SITE_VERIFICATION",
         "robots_txt": "ROBOTS_TXT",
         # 安全设置
-        "require_email_verification": "REQUIRE_EMAIL_VERIFICATION",
-        "allow_password_reset": "ALLOW_PASSWORD_RESET",
-        "session_timeout": "SESSION_TIMEOUT",
         "max_login_attempts": "MAX_LOGIN_ATTEMPTS",
-        "login_lockout_duration": "LOGIN_LOCKOUT_DURATION",
         # 文件上传设置
         "max_upload_size": "MAX_UPLOAD_SIZE",
         "allowed_image_types": "ALLOWED_IMAGE_TYPES",
@@ -2125,11 +1989,6 @@ async def update_site_settings(
         "comment_allow_guest": "COMMENT_ALLOW_GUEST",
         "comment_max_length": "COMMENT_MAX_LENGTH",
         "comment_antispam": "COMMENT_ANTISPAM",
-        # 自定义代码
-        "custom_header_code": "CUSTOM_HEADER_CODE",
-        "custom_footer_code": "CUSTOM_FOOTER_CODE",
-        "custom_css": "CUSTOM_CSS",
-        "custom_js": "CUSTOM_JS",
         # 作者/侧边栏资料设置
         "author_name": "AUTHOR_NAME",
         "author_bio": "AUTHOR_BIO",

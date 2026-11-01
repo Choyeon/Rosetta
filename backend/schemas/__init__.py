@@ -2080,11 +2080,9 @@ class SiteConfigResponse(BaseModel):
 
     # 分页设置
     pagination_page_size: int = 12
-    pagination_max_page_size: int = 100
 
     # 外观设置
     code_theme: str = "github"
-    code_theme_dark: str = "github-dark"
     default_theme: str = "system"
     primary_color: str = "#3B82F6"
     accent_color: str = "#0284C7"
@@ -2097,31 +2095,14 @@ class SiteConfigResponse(BaseModel):
     # 维护模式
     maintenance_mode: bool = False
     maintenance_message: str | None = None
-    maintenance_end_time: str | None = None
-
-    # 默认图片
-    default_post_cover: str | None = None
-    default_avatar: str | None = None
-    default_category_cover: str | None = None
 
     # SEO 设置
-    google_analytics_id: str | None = None
-    baidu_analytics_id: str | None = None
     google_site_verification: str | None = None
     baidu_site_verification: str | None = None
     robots_txt: str | None = None
 
     # 安全设置
-    require_email_verification: bool = False
-    allow_password_reset: bool = True
-    session_timeout: int = 3600
     max_login_attempts: int = 5
-    login_lockout_duration: int = 1800
-
-    # 邮件设置（只读，不返回敏感信息）
-    email_configured: bool = False
-    email_from: str | None = None
-    email_from_name: str | None = None
 
     # 文件上传设置
     max_upload_size: int = 10485760
@@ -2133,12 +2114,6 @@ class SiteConfigResponse(BaseModel):
     comment_allow_guest: bool = False
     comment_max_length: int = 1000
     comment_antispam: bool = True
-
-    # 自定义代码
-    custom_header_code: str | None = None
-    custom_footer_code: str | None = None
-    custom_css: str | None = None
-    custom_js: str | None = None
 
     # 关于页面正文（HTML 直接渲染版，站点设置 basic 组中以 HTML 编辑器维护；纯 Markdown 的
     # about_content 已随批次 #112 退役——前台 /about 只渲染这一份，两份来源会互相矛盾）
@@ -2167,6 +2142,14 @@ class SiteConfigResponse(BaseModel):
     #     pagination_posts_per_page、category_bar_enabled、archive_fold_old_articles、
     #     post_show_last_modified、post_outdated_threshold_days、post_enable_share_poster、
     #     post_generate_og_images（以上 42 个只被写口声明，从未落库）。
+    #   · 批次 #156：再 19 键——同一批假开关的另一半。分组侧（`test_settings_group_consumers.py`
+    #     的 `_INERT_KEYS`）早已按「没人读」删掉 code_theme_dark / default_post_cover / default_avatar /
+    #     *_analytics_id / session_timeout_sec / require_email_verification / allow_password_reset，
+    #     而扁平投影与后台「环境变量」面板那 14 把开关原样留着；同批退役 custom_* 四键（无任何
+    #     head/style/script 注入口，补注入口要放松 CSP）、maintenance_end_time（`core/maintenance.py`
+    #     只判 mode 与 message）、pagination_max_page_size，以及三条**只投影不转译**的邮件键
+    #     （email_configured / email_from / email_from_name——把发信地址念给匿名访客听，而真判据是
+    #     `email_service.resolved_smtp()` 读的 `.env` + `email` 分组）。
     # 每族的现存唯一真源写在守卫文件头部的对照表里：i18n 标题、donate 分组、
     # basic.about_page_html、features.enable_guestbook、reading.posts_per_page、
     # lib/post-cover.ts。守卫 tests/test_retired_third_party_comment_config_is_gone.py、
@@ -2222,11 +2205,9 @@ class SiteConfigUpdate(BaseModel):
 
     # 分页设置
     pagination_page_size: int | None = Field(None, ge=1, le=100)
-    pagination_max_page_size: int | None = Field(None, ge=10, le=500)
 
     # 外观设置
     code_theme: str | None = Field(None, max_length=50)
-    code_theme_dark: str | None = Field(None, max_length=50)
     default_theme: str | None = Field(None, max_length=20)
     primary_color: str | None = Field(None, max_length=20)
     accent_color: str | None = Field(None, max_length=20)
@@ -2239,26 +2220,14 @@ class SiteConfigUpdate(BaseModel):
     # 维护模式
     maintenance_mode: bool | None = None
     maintenance_message: str | None = Field(None, max_length=500)
-    maintenance_end_time: str | None = Field(None, max_length=50)
-
-    # 默认图片
-    default_post_cover: str | None = Field(None, max_length=500)
-    default_avatar: str | None = Field(None, max_length=500)
-    default_category_cover: str | None = Field(None, max_length=500)
 
     # SEO 设置
-    google_analytics_id: str | None = Field(None, max_length=50)
-    baidu_analytics_id: str | None = Field(None, max_length=50)
     google_site_verification: str | None = Field(None, max_length=100)
     baidu_site_verification: str | None = Field(None, max_length=100)
     robots_txt: str | None = Field(None, max_length=5000)
 
     # 安全设置
-    require_email_verification: bool | None = None
-    allow_password_reset: bool | None = None
-    session_timeout: int | None = Field(None, ge=300, le=86400)
     max_login_attempts: int | None = Field(None, ge=1, le=20)
-    login_lockout_duration: int | None = Field(None, ge=60, le=86400)
 
     # 文件上传设置
     max_upload_size: int | None = Field(None, ge=1024, le=104857600)
@@ -2270,12 +2239,6 @@ class SiteConfigUpdate(BaseModel):
     comment_allow_guest: bool | None = None
     comment_max_length: int | None = Field(None, ge=100, le=10000)
     comment_antispam: bool | None = None
-
-    # 自定义代码
-    custom_header_code: str | None = Field(None, max_length=10000)
-    custom_footer_code: str | None = Field(None, max_length=10000)
-    custom_css: str | None = Field(None, max_length=50000)
-    custom_js: str | None = Field(None, max_length=50000)
 
     # 关于页面内容
 
@@ -2291,6 +2254,10 @@ class SiteConfigUpdate(BaseModel):
     # SiteConfigResponse 同段注释）已退役。这里刻意留空：写口曾声明它们，但 `config_map`
     # 从不转译落库，属于"假装保存"。现在带这些键的请求由 strict_config 的
     # extra="forbid" 直接 422，而不是回 200 再什么都不做。
+
+    # 批次 #156 再退役 19 个（见 SiteConfigResponse 同段注释）：分组侧早就按「没人读」删掉的
+    # 那些键，扁平镜像与环境变量面板那半边还留着；外加 custom_* 四键、maintenance_end_time、
+    # pagination_max_page_size 与三条只投影不转译的邮件键。
 
 
 class SiteSettingGroup(BaseModel):
