@@ -49,12 +49,9 @@ class SiteConfig:
     enable_comments: bool = True
     enable_registration: bool = True
     enable_rss: bool = True
-    default_cover_image: str = ""
-    # 作者/侧边栏资料：默认值取 admin_nickname/admin_bio（在 OOBE install 步骤填充）
-    author_name: str = ""
-    author_bio: str = ""
-    author_avatar: str = ""
-    author_links_json: str = "[]"
+    # default_cover_image 与作者资料四键（author_name / author_bio / author_avatar /
+    # author_links_json）批次 #157 退役：`/api/config` 不再投影它们，真源是
+    # frontend/lib/post-cover.ts（封面）与 OOBE 建出来的管理员 User 行 + site_author（资料）。
     # 额外功能开关（非持久化到 SiteConfig 表，仅用于生成配置文件）
     extra_features: dict = field(default_factory=dict)
 
@@ -273,90 +270,10 @@ class ConfigService:
             "enable_comments",
             "enable_registration",
             "enable_rss",
-            "default_cover_image",
         ):
             val = getattr(req, attr, None)
             if val is not None:
                 setattr(sc, attr, val)
-        # 作者 / 侧边栏 profile 信息：
-        # 优先从请求 admin_nickname / admin_bio / admin_avatar_source 推断，
-        # 避免前端 fallback 成 "ROSETTA" 这样的示例文案。
-        admin_nickname = getattr(req, "admin_nickname", None) or getattr(req, "nickname", None)
-        admin_username = getattr(req, "admin_username", None) or getattr(req, "username", None)
-        admin_bio = getattr(req, "admin_bio", None)
-        admin_github = getattr(req, "admin_github", None)
-        admin_qq = getattr(req, "admin_qq", None)
-        admin_website = getattr(req, "admin_website", None)
-        admin_email = getattr(req, "admin_email", None) or getattr(req, "email", None)
-        sc.author_name = getattr(req, "author_name", None) or admin_nickname or admin_username or ""
-        sc.author_bio = getattr(req, "author_bio", None) or admin_bio or ""
-        sc.author_avatar = getattr(req, "author_avatar", None) or ""
-        author_links_val = getattr(req, "author_links_json", None)
-        if isinstance(author_links_val, str) and author_links_val:
-            sc.author_links_json = author_links_val
-        elif admin_github or admin_qq or admin_website or admin_email:
-            # 基于 OOBE 管理员信息构造默认作者社交链接数组（JSON 字符串）
-            try:
-                import json as _json
-
-                links: list[dict] = []
-                if admin_qq:
-                    qq_url = (
-                        admin_qq if "://" in str(admin_qq) else f"https://qm.qq.com/q/{admin_qq}"
-                    )
-                    links.append(
-                        {
-                            "name": "qq",
-                            "icon": "fa7-brands:qq",
-                            "url": qq_url,
-                            "showName": False,
-                        }
-                    )
-                if admin_github:
-                    gh_url = (
-                        admin_github
-                        if "://" in str(admin_github)
-                        else f"https://github.com/{admin_github}"
-                    )
-                    links.append(
-                        {
-                            "name": "GitHub",
-                            "icon": "fa7-brands:github",
-                            "url": gh_url,
-                            "showName": False,
-                        }
-                    )
-                if admin_email:
-                    links.append(
-                        {
-                            "name": "Email",
-                            "icon": "fa7-solid:envelope",
-                            "url": f"mailto:{admin_email}",
-                            "showName": False,
-                        }
-                    )
-                links.append(
-                    {
-                        "name": "RSS",
-                        "icon": "fa7-solid:rss",
-                        "url": "/rss/",
-                        "showName": False,
-                    }
-                )
-                if admin_website:
-                    # 个人站点放在 RSS 之前
-                    links.insert(
-                        -1,
-                        {
-                            "name": "Website",
-                            "icon": "material-symbols:language",
-                            "url": admin_website,
-                            "showName": False,
-                        },
-                    )
-                sc.author_links_json = _json.dumps(links, ensure_ascii=False)
-            except Exception:
-                sc.author_links_json = "[]"
         return sc
 
     @staticmethod
@@ -387,11 +304,6 @@ class ConfigService:
             "enable_comments": state.site_config.enable_comments,
             "enable_registration": state.site_config.enable_registration,
             "enable_rss": state.site_config.enable_rss,
-            "default_cover_image": state.site_config.default_cover_image,
-            "author_name": state.site_config.author_name,
-            "author_bio": state.site_config.author_bio,
-            "author_avatar": state.site_config.author_avatar,
-            "author_links_json": state.site_config.author_links_json,
             "admin_username": state.admin_config.username,
             "admin_email": state.admin_config.email,
             "admin_nickname": state.admin_config.nickname,
@@ -518,9 +430,6 @@ BILIBILI_URL={config.get("bilibili_url", "")}
 ENABLE_COMMENTS={str(config["enable_comments"]).lower()}
 ENABLE_REGISTRATION={str(config["enable_registration"]).lower()}
 ENABLE_RSS_FEED={str(config["enable_rss"]).lower()}
-
-# 默认封面图
-DEFAULT_COVER_IMAGE={config.get("default_cover_image", "")}
 """
 
         return env_content

@@ -169,8 +169,15 @@ def test_live_comments_group_is_intact():
     } == set(_default_comments()), "评论分组被改动了：这一组才是评论系统的真源"
 
 
-def test_live_comment_config_keys_still_round_trip():
-    """PUT /api/config 里那四条**有转译**的旧评论键必须原样可用。"""
+def test_flat_comment_mirrors_retired_with_the_group_as_only_source():
+    """批次 #157：这四条扁平镜像不是"活键"，而是与分组键**不同名**的影子（comment_* ≠ comments.*）。
+
+    本用例原先钉的是"四条有转译的旧评论键必须原样可用"，判据当时成立——写口收下、
+    config_map 转译落库、/api/config 原样投影，三段齐全。缺的是第四段：**没有任何执行点读它们**。
+    真正的审核/游客/长度/反垃圾判据一直是 comments 分组本身（`CommentService.create_comment`
+    与 `guestbook_service` 都是「分组优先、Settings 兜底」，前台读 `site.comments.value.*`）。
+    所以这一族的正确动作是删，而"能存能回显"的三段一起撤：
+    """
     from backend.schemas import SiteConfigResponse, SiteConfigUpdate
 
     text = _backend_text("api/core.py")
@@ -180,9 +187,19 @@ def test_live_comment_config_keys_still_round_trip():
         ("comment_max_length", "COMMENT_MAX_LENGTH"),
         ("comment_antispam", "COMMENT_ANTISPAM"),
     ):
-        assert f'"{field}": "{env}"' in text, f"config_map 丢了 {field}：后台保存不再落库"
-        assert field in SiteConfigUpdate.model_fields, f"{field} 不再是写口字段"
-        assert field in SiteConfigResponse.model_fields, f"{field} 不再被投影"
+        assert f'"{field}": "{env}"' not in text, f"{field} 又被 config_map 转译落库（写了没人读）"
+        assert f"{field}=" not in text, f"{field} 又回到 /api/config 的投影参数里"
+        assert field not in SiteConfigUpdate.model_fields, f"{field} 又被写口收下＝对管理员假装保存"
+        assert field not in SiteConfigResponse.model_fields, f"{field} 又被投影给匿名访客"
+    # 活路径必须还在（删过头的反证）：执行点读分组，唯一保留的镜像是与分组同名的 enable_comments
+    from backend.api.settings_groups import _default_comments
+
+    assert {"require_approval", "allow_guest", "max_length", "enable_antispam"} <= set(
+        _default_comments()
+    ), "评论分组的四个真判据键被一起删掉了"
+    assert 'cfg_base["enable_comments"] = bool(parsed["enable"])' in text, (
+        "enable_comments 的分组投影消失了：评论区开关失去唯一对外出口"
+    )
 
 
 def test_flat_enable_comments_is_still_projected_from_the_group():

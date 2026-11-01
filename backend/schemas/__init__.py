@@ -2075,31 +2075,18 @@ class SiteConfigResponse(BaseModel):
     enable_bing_wallpaper: bool = True
     # 兼容别名：前端有些地方读 enable_rss（与 enable_rss_feed 等价）
     enable_rss: bool = True
-    # 默认封面图（OOBE 种子里写 default_cover_image）
-    default_cover_image: str = ""
 
-    # 分页设置
-    pagination_page_size: int = 12
-
-    # 外观设置
-    code_theme: str = "github"
-    default_theme: str = "system"
-    primary_color: str = "#3B82F6"
-    accent_color: str = "#0284C7"
+    # 外观设置（code_theme / default_theme / primary_color / accent_color / font_family
+    # 批次 #157 退役：明暗首帧归 localStorage.theme、代码配色归 --hljs-* 令牌、字体族归
+    # Tailwind preset、站点主色归 appearance 分组 + 主题 mods，扁平键零读取点）
     theme_primary: str = "#0EA5A9"
     theme_accent: str = "#0284C7"
-    font_family: str | None = None
     default_og_image: str | None = None
     site_subtitle: str = ""
 
     # 维护模式
     maintenance_mode: bool = False
     maintenance_message: str | None = None
-
-    # SEO 设置
-    google_site_verification: str | None = None
-    baidu_site_verification: str | None = None
-    robots_txt: str | None = None
 
     # 安全设置
     max_login_attempts: int = 5
@@ -2109,21 +2096,13 @@ class SiteConfigResponse(BaseModel):
     allowed_image_types: str = "jpg,jpeg,png,gif,webp,svg"
     allowed_file_types: str = "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar"
 
-    # 评论设置
-    comment_require_approval: bool = False
-    comment_allow_guest: bool = False
-    comment_max_length: int = 1000
-    comment_antispam: bool = True
+    # 评论设置（comment_require_approval / comment_allow_guest / comment_max_length /
+    # comment_antispam 批次 #157 退役：执行点是 comments 分组，见 CommentService.create_comment；
+    # 扁平镜像只有分组名不同的这几个，零读取点）
 
     # 关于页面正文（HTML 直接渲染版，站点设置 basic 组中以 HTML 编辑器维护；纯 Markdown 的
     # about_content 已随批次 #112 退役——前台 /about 只渲染这一份，两份来源会互相矛盾）
     about_page_html: str = ""
-
-    # 作者/侧边栏资料设置
-    author_name: str = ""
-    author_bio: str = ""
-    author_avatar: str = ""
-    author_links_json: str = "[]"
 
     # 站点URL和运行信息
     site_url: str = ""
@@ -2150,6 +2129,19 @@ class SiteConfigResponse(BaseModel):
     #     只判 mode 与 message）、pagination_max_page_size，以及三条**只投影不转译**的邮件键
     #     （email_configured / email_from / email_from_name——把发信地址念给匿名访客听，而真判据是
     #     `email_service.resolved_smtp()` 读的 `.env` + `email` 分组）。
+    #   · 批次 #157：再 18 键——「分组侧活着、扁平镜像零读取点」的最后一族。判据是**扁平键名与
+    #     分组键名不同**（reading.posts_per_page ≠ pagination_page_size、comments.allow_guest ≠
+    #     comment_allow_guest、seo.google_verification ≠ google_site_verification、
+    #     appearance.primary_color ≠ primary_color），于是分组成了唯一真源而扁平键成了影子：
+    #     pagination_page_size、primary_color、accent_color、code_theme、default_theme、font_family、
+    #     google_site_verification、baidu_site_verification、robots_txt、comment_require_approval、
+    #     comment_allow_guest、comment_max_length、comment_antispam、default_cover_image、
+    #     author_name、author_bio、author_avatar、author_links_json。
+    #     作者四键的真源是 User 行（OOBE 建管理员时写的 nickname/bio/avatar）+ 扁平 site_author，
+    #     封面真源是 frontend/lib/post-cover.ts，robots 真源是 api/seo.py::get_robots_txt 读的
+    #     seo 分组，评论四键的真源是 comments 分组（CommentService.create_comment 读同一份）。
+    #     另一半是「名字与分组键相同」的投影镜像（enable_dark_mode ↔ features.enable_dark_mode、
+    #     theme_primary、default_og_image）——它们有明确的读取点，留着。
     # 每族的现存唯一真源写在守卫文件头部的对照表里：i18n 标题、donate 分组、
     # basic.about_page_html、features.enable_guestbook、reading.posts_per_page、
     # lib/post-cover.ts。守卫 tests/test_retired_third_party_comment_config_is_gone.py、
@@ -2203,28 +2195,16 @@ class SiteConfigUpdate(BaseModel):
     enable_like_button: bool | None = None
     enable_share_buttons: bool | None = None
 
-    # 分页设置
-    pagination_page_size: int | None = Field(None, ge=1, le=100)
-
-    # 外观设置
-    code_theme: str | None = Field(None, max_length=50)
-    default_theme: str | None = Field(None, max_length=20)
-    primary_color: str | None = Field(None, max_length=20)
-    accent_color: str | None = Field(None, max_length=20)
+    # 外观设置（code_theme / default_theme / primary_color / accent_color / font_family
+    # 批次 #157 退役，见 SiteConfigResponse 同段注释）
     theme_primary: str | None = Field(None, max_length=20)
     theme_accent: str | None = Field(None, max_length=20)
-    font_family: str | None = Field(None, max_length=100)
     default_og_image: str | None = Field(None, max_length=500)
     site_subtitle: str | None = Field(None, max_length=200)
 
     # 维护模式
     maintenance_mode: bool | None = None
     maintenance_message: str | None = Field(None, max_length=500)
-
-    # SEO 设置
-    google_site_verification: str | None = Field(None, max_length=100)
-    baidu_site_verification: str | None = Field(None, max_length=100)
-    robots_txt: str | None = Field(None, max_length=5000)
 
     # 安全设置
     max_login_attempts: int | None = Field(None, ge=1, le=20)
@@ -2234,11 +2214,7 @@ class SiteConfigUpdate(BaseModel):
     allowed_image_types: str | None = Field(None, max_length=500)
     allowed_file_types: str | None = Field(None, max_length=500)
 
-    # 评论设置
-    comment_require_approval: bool | None = None
-    comment_allow_guest: bool | None = None
-    comment_max_length: int | None = Field(None, ge=100, le=10000)
-    comment_antispam: bool | None = None
+    # 评论设置（comment_* 四键批次 #157 退役，见 SiteConfigResponse 同段注释）
 
     # 关于页面内容
 

@@ -200,6 +200,85 @@ STORED_BEFORE = (
     "sponsor_show_sponsors_list",
 )
 
+# ==================== 批次 #157：扁平镜像族（18 键）====================
+# 这一族与 DEAD_KEYS 的判据同源但**不能并进 DEAD_KEYS 的全局词边界扫描**：它们的**分组侧同名/近名
+# 对象是活的**——`appearance.primary_color`、`comments.require_approval`、`seo.robots_txt`、
+# `Comment.author_name`（UGC 昵称列）、主题 mods 的 `primary_color`，以及 `frontend/composables/`
+# 里同名的本地变量。全局扫描会在这些活对象上直接红，所以本族按**面**清点：
+# 两个配置模型的字段集、`core.py` 的关键字参数 / 转译表 / ENV 串 / 后台面板项、以及这两个模型自己的
+# OpenAPI 组件（不是整份 components——seo 分组 schema 里的 robots_txt 是真字段）。
+FLAT_MIRROR_KEYS: tuple[str, ...] = (
+    "accent_color",
+    "author_avatar",
+    "author_bio",
+    "author_links_json",
+    "author_name",
+    "baidu_site_verification",
+    "code_theme",
+    "comment_allow_guest",
+    "comment_antispam",
+    "comment_max_length",
+    "comment_require_approval",
+    "default_cover_image",
+    "default_theme",
+    "font_family",
+    "google_site_verification",
+    "pagination_page_size",
+    "primary_color",
+    "robots_txt",
+)
+
+FLAT_MIRROR_ENVS = tuple(key.upper() for key in FLAT_MIRROR_KEYS)
+
+# 16 个曾在 config_map 里（拨动即落一行无人读取的 UPPERCASE）；accent_color / default_cover_image
+# 只投影不转译，pagination_page_size 之外的三条作者键与封面键走的是 OOBE 那条种子链。
+MIRROR_STORED_BEFORE = (
+    "author_avatar",
+    "author_bio",
+    "author_links_json",
+    "author_name",
+    "baidu_site_verification",
+    "code_theme",
+    "comment_allow_guest",
+    "comment_antispam",
+    "comment_max_length",
+    "comment_require_approval",
+    "default_theme",
+    "font_family",
+    "google_site_verification",
+    "pagination_page_size",
+    "primary_color",
+    "robots_txt",
+)
+
+# 15 个曾挂在后台「环境变量」面板（`GET /config/full` 的 SiteSettingItem）上。
+MIRROR_IN_ENV_PANEL = (
+    "author_avatar",
+    "author_bio",
+    "author_links_json",
+    "author_name",
+    "baidu_site_verification",
+    "code_theme",
+    "comment_allow_guest",
+    "comment_antispam",
+    "comment_max_length",
+    "comment_require_approval",
+    "default_theme",
+    "font_family",
+    "google_site_verification",
+    "primary_color",
+    "robots_txt",
+)
+
+# 5 个曾被 OOBE 写口/装种链路带上（请求模型字段 + site_configs 行 + .env 行）。
+MIRROR_OOBE_SEEDED = (
+    "author_avatar",
+    "author_bio",
+    "author_links_json",
+    "author_name",
+    "default_cover_image",
+)
+
 _SKIP_DIR_NAMES = {
     "node_modules",
     ".output",
@@ -268,26 +347,33 @@ def test_dead_keys_are_gone_from_both_config_models():
             assert key not in model.model_fields, f"{key} {why}"
 
 
-def test_surviving_field_counts_are_the_converged_66_and_58():
+def test_surviving_field_counts_are_the_converged_48_and_45():
     """收敛后的字段数必须是**读侧全字段投影**的口径：再多一个键就是有人偷偷加回扁平项。"""
     from backend.schemas import SiteConfigResponse, SiteConfigUpdate
 
     resp = set(SiteConfigResponse.model_fields)
     upd = set(SiteConfigUpdate.model_fields)
-    assert len(resp) == 66, f"响应字段数漂移：{len(resp)}"
-    assert len(upd) == 58, f"写口字段数漂移：{len(upd)}"
+    assert len(resp) == 48, f"响应字段数漂移：{len(resp)}"
+    assert len(upd) == 45, f"写口字段数漂移：{len(upd)}"
     assert not (resp & set(DEAD_KEYS))
     assert not (upd & set(DEAD_KEYS))
+    assert not (resp & set(FLAT_MIRROR_KEYS))
+    assert not (upd & set(FLAT_MIRROR_KEYS))
     # 反向：活键必须还在（删过头的判据）
     for live in (
         "site_name",
         "about_page_html",
         "enable_comments",
-        "comment_allow_guest",
         "enable_bing_wallpaper",
         "enable_guestbook",
-        "pagination_page_size",
         "footer_text",
+        # 批次 #157 保留下来的是「扁平名与分组键同名」的那批真镜像
+        "theme_primary",
+        "theme_accent",
+        "default_og_image",
+        "max_upload_size",
+        "allowed_image_types",
+        "site_url",
     ):
         assert live in resp, f"{live} 被一起删掉了"
 
@@ -316,7 +402,7 @@ def test_config_map_drops_the_stored_keys():
     for key in STORED_BEFORE:
         assert f'"{key}":' not in block, f"{key} 又被 config_map 转译落库"
     # 活键仍在这张表里（删过头的反证）
-    for live in ("site_name", "comment_allow_guest", "footer_text", "enable_guestbook"):
+    for live in ("site_name", "site_url", "footer_text", "enable_guestbook", "max_upload_size"):
         assert f'"{live}":' in block, f"{live} 从转译表消失了"
 
 
@@ -561,13 +647,14 @@ def test_the_live_page_gates_are_still_enforced():
 
 
 def test_the_real_page_size_knob_is_reading_group():
-    """`pagination_posts_per_page` 是死的，每页条数的真源是 reading.posts_per_page。"""
+    """`pagination_posts_per_page` 与 `pagination_page_size` 都是死的，每页条数真源是 reading.posts_per_page。"""
     from backend.api.settings_groups import _default_reading
     from backend.schemas import SiteConfigResponse
 
     assert "posts_per_page" in _default_reading()
     assert "pagination_posts_per_page" not in SiteConfigResponse.model_fields
-    assert "pagination_page_size" in SiteConfigResponse.model_fields
+    # 批次 #157：扁平镜像 pagination_page_size 退役（前台四处分页读 site.reading.value.posts_per_page）
+    assert "pagination_page_size" not in SiteConfigResponse.model_fields
 
 
 def test_the_toc_and_reading_switches_have_exactly_one_live_source():
@@ -599,6 +686,25 @@ def test_post_detail_still_decides_last_modified_by_value():
     assert "updated > published" in text, "详情页的更新标记判据消失＝删过头"
 
 
+def test_types_ts_does_not_declare_the_retired_mirrors():
+    """`backend/docs/types.ts` 手抄的两个配置接口不得再声明这批镜像键。
+
+    只按**成员名**核对，不做全文扫描：`robots_txt` / `primary_color` 是 seo、appearance 分组的
+    真字段名，全文扫会把分组的说明一起判红；而台账注释（整行 `//`）必须留着。
+    """
+    text = (BACKEND / "docs" / "types.ts").read_text(encoding="utf-8")
+    for iface in ("SiteConfig", "SiteConfigUpdate"):
+        block = text[text.index(f"export interface {iface} {{") :]
+        block = block[: block.index("\n}")]
+        members = set(re.findall(r"^\s{2}([a-z_]+)\??\s*:", block, re.M))
+        assert members, f"types.ts 的 {iface} 解析不到成员＝断言在空转"
+        for key in FLAT_MIRROR_KEYS:
+            assert key not in members, f"{key} 又回到 types.ts 的 {iface} 声明里"
+        assert "site_name" in members and "enable_comments" in members, (
+            f"{iface} 的活键也不见了＝解析跑偏"
+        )
+
+
 def test_coverage_doc_records_the_retirement():
     doc = (FRONTEND / "docs" / "API_COVERAGE.md").read_text(encoding="utf-8")
     blocks = [b for b in doc.split("\n   - ") if "扁平死配置键" in b]
@@ -607,3 +713,221 @@ def test_coverage_doc_records_the_retirement():
     assert "59" in block and "不是待接缺口" in block
     for family in ("post_list_", "cover_", "license_", "bangumi_", "sponsor_page_", "page_"):
         assert family in block, f"退役记录没有点名 {family}"
+
+
+# ---------------------------------------------------------
+# 批次 #157：扁平镜像族按面清点
+# ---------------------------------------------------------
+def test_the_flat_mirror_list_is_the_planned_18_and_has_its_ledgers():
+    """三份台账（转译表 / 后台面板 / OOBE 种子）都必须落在 18 键之内——
+    台账就是「这个键退役前挂在哪个面上」的证据，超出清单＝有人新加了一把没人读的开关。"""
+    assert len(FLAT_MIRROR_KEYS) == 18
+    assert len(set(FLAT_MIRROR_KEYS)) == 18
+    assert all(key == key.lower() for key in FLAT_MIRROR_KEYS)
+    assert not (set(FLAT_MIRROR_KEYS) & set(DEAD_KEYS)), (
+        "同一键进两份台账＝下一个人不知道以哪份为准"
+    )
+    for ledger, count in (
+        (MIRROR_STORED_BEFORE, 16),
+        (MIRROR_IN_ENV_PANEL, 15),
+        (MIRROR_OOBE_SEEDED, 5),
+    ):
+        assert len(ledger) == count, f"台账 {ledger[:1]}… 条目数漂移"
+        assert set(ledger) <= set(FLAT_MIRROR_KEYS)
+
+
+def test_flat_mirrors_are_gone_from_both_config_models():
+    from backend.schemas import SiteConfigResponse, SiteConfigUpdate
+
+    resp, upd = SiteConfigResponse.model_fields, SiteConfigUpdate.model_fields
+    for key in FLAT_MIRROR_KEYS:
+        assert key not in resp, f"{key} 又回到 /api/config 的投影里"
+        assert key not in upd, f"{key} 又被写口收下"
+
+
+def test_core_py_drops_every_flat_mirror_surface():
+    """四面：投影关键字参数、config_map 转译、ENV 读取/面板键。
+
+    `primary_color` / `accent_color` 在 core.py 里**仍然出现**，那是 appearance 分组的
+    分组键（`parsed.get("primary_color")` → 投影成 `theme_primary`），属于活路径；
+    所以本族只按形态清点，不做词边界全扫。
+    """
+    text = _core_text()
+    block = text[text.index("config_map = {") :]
+    for key in FLAT_MIRROR_KEYS:
+        assert f"{key}=" not in text, f"core.py 又把它塞回投影关键字参数：{key}="
+        assert f'"{key}":' not in block, f"core.py 又把它列进转译表：{key}"
+    for env in FLAT_MIRROR_ENVS:
+        assert f'"{env}"' not in text, (
+            f"core.py 又去读/写环境变量 {env}（含后台面板 SiteSettingItem）"
+        )
+    # 反空转：appearance 分组仍在投影 theme_primary，否则上面三条对 primary_color 恒真
+    assert 'cfg_base["theme_primary"] = str(parsed["primary_color"])' in text
+    assert 'cfg_base["theme_accent"] = str(parsed["accent_color"])' in text
+
+
+def test_the_three_env_panel_groups_are_retired_wholesale():
+    """后台「环境变量」面板的 appearance / seo / comment 三组整组退役：
+    它们挂的 11 条键全是零读取点镜像，留着就是给运营者第二张假写面。"""
+    text = _core_text()
+    for name in ("appearance", "seo", "comment"):
+        assert f'name="{name}",' not in text, (
+            f"/config/full 又长出 {name} 分组：与 PATCH 分组同名冲突"
+        )
+    # 活分组仍在（删过头的反证）
+    for live in ("basic", "footer", "security", "maintenance", "upload", "social", "features"):
+        assert f'name="{live}"' in text, f"/config/full 的 {live} 分组消失＝面板整体被误删"
+
+
+def test_flat_mirrors_leave_the_two_model_schemas_in_openapi():
+    """按**这两个模型的组件**核对，不按整份 components：
+    seo 分组的 schema 里 `robots_txt` 是真字段，全局扫会假红。"""
+    schemas = app.openapi()["components"]["schemas"]
+    for model in ("SiteConfigResponse", "SiteConfigUpdate"):
+        props = set(schemas[model]["properties"])
+        for key in FLAT_MIRROR_KEYS:
+            assert key not in props, f"{key} 又出现在 {model} 的接口文档里"
+        assert "theme_primary" in props, f"{model} 的活键也不见了＝断言在空转"
+
+
+@pytest.mark.asyncio
+async def test_legacy_flat_rows_are_ignored_by_the_read_surface(client):
+    """存量库里这些 UPPERCASE 行还在（生产 PG 就有）：读口必须无视，而不是 500 也不是回吐。"""
+    from backend.core.database import async_session_maker
+    from backend.models.core import SiteConfig
+
+    seed_envs = (
+        "PAGINATION_PAGE_SIZE",
+        "PRIMARY_COLOR",
+        "CODE_THEME",
+        "ROBOTS_TXT",
+        "GOOGLE_SITE_VERIFICATION",
+        "COMMENT_MAX_LENGTH",
+        "AUTHOR_BIO",
+        "DEFAULT_COVER_IMAGE",
+    )
+    seeded: list[int] = []
+    async with async_session_maker() as session:
+        for env in seed_envs:
+            row = (
+                await session.execute(select(SiteConfig).where(SiteConfig.key == env))
+            ).scalar_one_or_none()
+            if row is None:
+                row = SiteConfig(key=env, value="stale-157", description="")
+                session.add(row)
+            else:
+                row.value = "stale-157"
+            await session.flush()
+            seeded.append(row.id)
+        await session.commit()
+    try:
+        from backend.core.cache import invalidate_cache
+
+        await invalidate_cache("site_config")
+        resp = await client.get("/api/config")
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        for key in FLAT_MIRROR_KEYS:
+            assert key not in body, f"{key} 被存量库行重新投影出来了"
+        # 活的那一半必须还活着：分组仍然是唯一真源
+        assert "site_name" in body, "读口连活键都不返回＝这条断言在空转"
+    finally:
+        async with async_session_maker() as session:
+            await session.execute(delete(SiteConfig).where(SiteConfig.id.in_(seeded)))
+            await session.commit()
+        from backend.core.cache import invalidate_cache
+
+        await invalidate_cache("site_config")
+
+
+@pytest.mark.asyncio
+async def test_the_write_surface_rejects_retired_mirrors(client, admin_headers):
+    """退役前 `POST /api/admin/settings` 收下这些键并落一行没人读的 UPPERCASE；
+    现在必须明确 422，而不是继续回 200。"""
+    from backend.core.database import async_session_maker
+    from backend.models.core import SiteConfig
+
+    payload = {
+        "pagination_page_size": 20,
+        "primary_color": "#111111",
+        "comment_max_length": 500,
+        "robots_txt": "User-agent: *\nDisallow: /",
+        "author_bio": "合成签名",
+    }
+    resp = await client.post("/api/admin/settings", headers=admin_headers, json=payload)
+    assert resp.status_code == 422, resp.text
+    fields = {e["field"].split(".")[-1] for e in resp.json()["errors"]}
+    assert fields == set(payload)
+
+    async with async_session_maker() as session:
+        rows = (
+            await session.execute(
+                select(func.count(SiteConfig.id)).where(
+                    SiteConfig.key.in_([key.upper() for key in payload])
+                )
+            )
+        ).scalar_one()
+    assert rows == 0, "退役镜像又被写口落库了"
+
+
+# ---------------------------------------------------------
+# 五族的真源必须一个不少（删镜像 ≠ 删功能）
+# ---------------------------------------------------------
+def test_pagination_true_source_is_the_reading_group():
+    from backend.api.settings_groups import _default_reading
+
+    assert _default_reading()["posts_per_page"]
+    site = (FRONTEND / "composables" / "useSite.ts").read_text(encoding="utf-8")
+    assert "posts_per_page" in site, "useSite 不再投影 reading.posts_per_page"
+    listing = (FRONTEND / "pages" / "posts" / "index.vue").read_text(encoding="utf-8")
+    assert "posts_per_page" in listing, "列表页不再按 reading 分组取每页条数"
+
+
+def test_appearance_true_source_is_the_group_plus_theme_mods():
+    from backend.api.settings_groups import _default_appearance
+
+    appearance = _default_appearance()
+    for live in ("primary_color", "accent_color", "page_width_px"):
+        assert live in appearance, f"appearance 分组缺少 {live}"
+    theme = (FRONTEND / "composables" / "useFrontendTheme.ts").read_text(encoding="utf-8")
+    assert "primary_color" in theme, "主题 mods 的主色消费点消失＝删过头"
+    assert "--hljs" in (FRONTEND / "assets" / "css" / "main.css").read_text(encoding="utf-8"), (
+        "代码配色令牌不在了：code_theme 退役的前提（配色归 --hljs-* 令牌）失效"
+    )
+
+
+def test_seo_true_source_is_the_seo_group():
+    from backend.api.settings_groups import _default_seo
+
+    seo = _default_seo()
+    for live in ("robots_txt", "google_verification", "baidu_verification", "default_og_image"):
+        assert live in seo, f"seo 分组缺少 {live}"
+    seo_api = (BACKEND / "api" / "seo.py").read_text(encoding="utf-8")
+    assert "robots_txt" in seo_api, "robots 正文不再读 seo 分组"
+    use_seo = (FRONTEND / "composables" / "useSeo.ts").read_text(encoding="utf-8")
+    assert "google_verification" in use_seo and "baidu_site_verification" not in use_seo, (
+        "验证码消费点口径变了：真源应是 seo.google_verification"
+    )
+
+
+def test_comments_true_source_is_the_comments_group():
+    from backend.api.settings_groups import _default_comments
+
+    comments = _default_comments()
+    for live in ("enable", "require_approval", "allow_guest", "max_length", "enable_antispam"):
+        assert live in comments, f"comments 分组缺少 {live}"
+    text = _core_text()
+    assert 'cfg_base["enable_comments"] = bool(parsed["enable"])' in text
+    service = (BACKEND / "services" / "comment_service.py").read_text(encoding="utf-8")
+    assert "require_approval" in service and "allow_guest" in service, "执行点不再读 comments 分组"
+
+
+def test_author_true_source_is_the_user_row_plus_site_author():
+    """author_* 四键死的是配置面；作者资料本身仍有两个真源，别把它们一起删了。"""
+    from backend.schemas import SiteConfigResponse
+
+    assert "site_author" in SiteConfigResponse.model_fields
+    rows = (FRONTEND / "pages" / "about.vue").read_text(encoding="utf-8")
+    assert "site_author" in rows, "关于页不再读 site_author"
+    oobe = (BACKEND / "api" / "oobe.py").read_text(encoding="utf-8")
+    assert "nickname=req.admin_nickname" in oobe, "OOBE 不再把昵称写进管理员 User 行"

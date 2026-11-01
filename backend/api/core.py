@@ -1081,13 +1081,10 @@ async def get_site_config(db: DB):
             enable_comments=True,
             enable_registration=True,
             enable_rss_feed=True,
-            pagination_page_size=12,
-            code_theme="github",
-            # 作者/侧边栏资料设置（与一键 OOBE 默认管理员昵称/bio 对齐，避免显示 ROSETTA 示例文案）
-            author_name="Choyeon",
-            author_bio="Full-Stack Development",
-            author_avatar="",
-            author_links_json="[]",
+            # 分页（pagination_page_size）、代码配色（code_theme）与作者资料四键
+            # （author_name / author_bio / author_avatar / author_links_json）批次 #157 退役：
+            # 每页条数归 reading.posts_per_page、配色归 main.css 的 --hljs-* 令牌、
+            # 作者资料归装完后建出来的管理员 User 行，这套 OOBE 默认值没有读取点。
             # ===== 新增字段 =====
             site_url="",
             footer_custom_html="",
@@ -1185,11 +1182,9 @@ async def get_site_config(db: DB):
                 parsed = _parse_group(raw_appearance)
                 if parsed:
                     if parsed.get("primary_color"):
-                        cfg_base["primary_color"] = str(parsed["primary_color"])
                         cfg_base["theme_primary"] = str(parsed["primary_color"])
                     if parsed.get("accent_color"):
                         cfg_base["theme_accent"] = str(parsed["accent_color"])
-                        cfg_base["accent_color"] = str(parsed["accent_color"])
                     # 不再覆写 default_theme / code_theme / code_theme_dark / font_family：
                     # 这四个分组键已从 _default_appearance 删除（没有任何渲染点读它们），
                     # 留着这段覆写等于让库里残留的旧键继续改写 /api/config。
@@ -1213,24 +1208,20 @@ async def get_site_config(db: DB):
                         cfg_base["icp_number"] = str(parsed["icp_number"])
                     if parsed.get("police_icp_number") is not None:
                         cfg_base["police_icp_number"] = str(parsed["police_icp_number"]) or None
-            # comments（执行点在 CommentService.create_comment 读同一份分组，这里只下发给 UI）
+            # comments 组只投影 enable_comments（批次 #157）：它的扁平镜像与分组键**同名**，
+            # 是有读取点的真镜像（SiteConfigResponse.enable_comments）。
+            # 其余四键（require_approval / allow_guest / max_length / enable_antispam）
+            # 的扁平镜像名与分组键名不同（comment_* ≠ comments.*），而扁平镜像全仓零读取点——
+            # 执行点读的始终是分组本身（CommentService.create_comment 读 comments 组，
+            # 前台读 site.comments.value.*）。留着投影只会在 /api/config 里多出一批
+            # "改了没人看"的影子键，且这些键已随 #157 从 SiteConfigResponse 删除
+            # （extra=forbid 会让残留覆写整口 500）。
             raw_comments = _cfg_raw("comments")
             if raw_comments:
                 parsed = _parse_group(raw_comments)
                 if parsed:
                     if parsed.get("enable") is not None:
                         cfg_base["enable_comments"] = bool(parsed["enable"])
-                    for gk, ck in (
-                        ("require_approval", "comment_require_approval"),
-                        ("allow_guest", "comment_allow_guest"),
-                        ("enable_antispam", "comment_antispam"),
-                    ):
-                        if parsed.get(gk) is not None:
-                            cfg_base[ck] = bool(parsed[gk])
-                    if parsed.get("max_length"):
-                        n = _int_of(parsed["max_length"], "comments.max_length")
-                        if n is not None:
-                            cfg_base["comment_max_length"] = n
             # features（后台「功能开关」分组 —— 此前只读扁平 ENABLE_*，分组存了没人读）
             raw_features = _cfg_raw("features")
             if raw_features:
@@ -1256,28 +1247,12 @@ async def get_site_config(db: DB):
                     for k in ("allowed_image_types", "allowed_file_types"):
                         if parsed.get(k):
                             cfg_base[k] = str(parsed[k])
-            # reading（文章列表每页条数；目录/阅读时间/字数的开关只走 reading 分组本身，
-            # 曾经的 enable_* 扁平镜像零消费方，已随批次 #155 退役）
-            raw_reading = _cfg_raw("reading")
-            if raw_reading:
-                parsed = _parse_group(raw_reading)
-                if parsed:
-                    if parsed.get("posts_per_page"):
-                        n = _int_of(parsed["posts_per_page"], "reading.posts_per_page")
-                        if n is not None:
-                            cfg_base["pagination_page_size"] = n
-            # seo（验证码/统计码/robots 正文：分组是设置页唯一写口，扁平 key 只兜历史数据）
-            raw_seo_full = _cfg_raw("seo")
-            if raw_seo_full:
-                parsed = _parse_group(raw_seo_full)
-                if parsed:
-                    for gk, ck in (
-                        ("google_verification", "google_site_verification"),
-                        ("baidu_verification", "baidu_site_verification"),
-                        ("robots_txt", "robots_txt"),
-                    ):
-                        if parsed.get(gk):
-                            cfg_base[ck] = str(parsed[gk])
+            # reading（文章列表每页条数）批次 #157 起不再往扁平面投影：
+            # 扁平镜像名 pagination_page_size 与分组键名 reading.posts_per_page 不同，
+            # 零读取点——前台四处分页读的都是 site.reading.value.posts_per_page。
+            # seo 组同理：robots_txt / google_site_verification / baidu_site_verification
+            # 三个扁平镜像零读取点，真源是 seo 分组（robots 文本由 api/seo.py::get_robots_txt
+            # 读同一份分组，两个验证码由前端 composables/useSeo.ts 读 site.seo.value.*）。
         except Exception as exc:  # 任何合并异常不影响核心配置返回
             logger.warning("merge settings_groups into /config failed: %s", exc)
         return cfg_base
@@ -1354,18 +1329,14 @@ async def get_site_config(db: DB):
         enable_bing_wallpaper=get_bool("ENABLE_BING_WALLPAPER", "true"),
         # OOBE 兼容别名：前端有些地方用 enable_rss，有些用 enable_rss_feed，统一暴露
         enable_rss=get_bool("ENABLE_RSS_FEED", "true"),
-        # 默认封面图（OOBE 种子写 default_cover_image）
-        default_cover_image=get_str("DEFAULT_COVER_IMAGE", "") or "",
-        # 分页设置（pagination_max_page_size 批次 #156 退役：上限由代码常量给）
-        pagination_page_size=get_int("PAGINATION_PAGE_SIZE", "12"),
-        # 外观设置（code_theme_dark 批次 #156 退役：暗色档由 localStorage.theme 与 --hljs-* 令牌给）
-        code_theme=get_str("CODE_THEME", "github") or "github",
-        default_theme=get_str("DEFAULT_THEME", "system") or "system",
-        primary_color=get_str("PRIMARY_COLOR", "#3B82F6") or "#3B82F6",
-        accent_color=get_str("ACCENT_COLOR", "#0284C7") or "#0284C7",
+        # 默认封面图 / 每页条数 / 字体族批次 #157 退役：封面单源 frontend/lib/post-cover.ts，
+        # 分页单源 reading.posts_per_page 分组（前台四处分页读 site.reading.value.posts_per_page），
+        # 字体族单源 Tailwind preset（main.css 的 --font-sans）。
+        # 外观设置（code_theme / default_theme / primary_color / accent_color / font_family
+        # 与 default_cover_image 批次 #157 退役：真源分别是 localStorage.theme / --hljs-* 令牌 /
+        # Tailwind preset、appearance 分组 + 主题 mods、frontend/lib/post-cover.ts）
         theme_primary=get_str("THEME_PRIMARY", "#0EA5A9") or "#0EA5A9",
         theme_accent=get_str("THEME_ACCENT", "#0284C7") or "#0284C7",
-        font_family=get_str("FONT_FAMILY"),
         default_og_image=get_str("DEFAULT_OG_IMAGE"),
         site_subtitle=get_str("SITE_SUBTITLE", "") or "",
         # 维护模式
@@ -1373,10 +1344,9 @@ async def get_site_config(db: DB):
         maintenance_message=get_str("MAINTENANCE_MESSAGE", "Site is under maintenance"),
         # 默认图片三项（default_post_cover / default_avatar / default_category_cover）批次 #156 退役：
         # 封面单源在 frontend/lib/post-cover.ts、头像在 core/avatar_resolver，全仓没有读取点。
-        # SEO 设置（google_analytics_id / baidu_analytics_id 批次 #156 退役：没有统计脚本注入口）
-        google_site_verification=get_str("GOOGLE_SITE_VERIFICATION"),
-        baidu_site_verification=get_str("BAIDU_SITE_VERIFICATION"),
-        robots_txt=get_str("ROBOTS_TXT"),
+        # SEO 设置（google_site_verification / baidu_site_verification / robots_txt 批次 #157 退役：
+        # 真源是 seo 分组——验证码由前端 composables/useSeo.ts 读 site.seo.value.*，robots 正文由
+        # api/seo.py::get_robots_txt 读同一份分组；baidu_analytics_id 已随 #156 退役）
         # 安全设置（session_timeout / login_lockout_duration / require_email_verification /
         # allow_password_reset 批次 #156 退役：全仓零读取方，真实阈值在 settings.login_lockout_minutes
         # 与 core/rate_limit.py 的 DEFAULT_LOCKOUT_SECONDS）
@@ -1389,22 +1359,19 @@ async def get_site_config(db: DB):
         or "jpg,jpeg,png,gif,webp,svg",
         allowed_file_types=get_str("ALLOWED_FILE_TYPES", "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar")
         or "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
-        # 评论设置
-        comment_require_approval=get_bool("COMMENT_REQUIRE_APPROVAL", "false"),
-        comment_allow_guest=get_bool("COMMENT_ALLOW_GUEST", "false"),
-        comment_max_length=get_int("COMMENT_MAX_LENGTH", "1000"),
-        comment_antispam=get_bool("COMMENT_ANTISPAM", "true"),
+        # 评论设置（comment_require_approval / comment_allow_guest / comment_max_length /
+        # comment_antispam 批次 #157 退役：执行点读 comments 分组本身（CommentService.create_comment
+        # 与 guestbook_service 都是「分组优先、Settings 兜底」），扁平镜像名与分组键名不同且零读取点）
         # 自定义代码四键（custom_header_code / custom_footer_code / custom_css / custom_js）批次 #156 退役：
         # 全仓没有 head/style/script 注入口，补注入口要放松 CSP（AGENTS §12.6 禁止）。
         # 关于页面 HTML（优先从 basic 组 JSON 中读取 about_page_html；空时回退扁平 key）
         about_page_html=(
             _configs_ci.get("ABOUT_PAGE_HTML", "") or configs.get("about_page_html", "") or ""
         ),
-        # 作者/侧边栏资料设置
-        author_name=get_str("AUTHOR_NAME", "") or "",
-        author_bio=get_str("AUTHOR_BIO", "") or "",
-        author_avatar=get_str("AUTHOR_AVATAR", "") or "",
-        author_links_json=get_str("AUTHOR_LINKS_JSON", "[]") or "[]",
+        # 作者/侧边栏资料四键（author_name / author_bio / author_avatar / author_links_json）
+        # 批次 #157 退役：作者资料真源是 User 行（OOBE 建管理员时的 nickname/bio/avatar）+
+        # 扁平 site_author；前台 about.vue 读的是 site_author，activity 流的 author_avatar
+        # 是**评论/动态行字段**，与这份配置无关。
         # ===== 新增字段 =====
         site_url=get_str("SITE_URL", "") or "",
         footer_custom_html=get_str("FOOTER_CUSTOM_HTML", "") or "",
@@ -1506,40 +1473,10 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     type="image",
                     value=get_val("SITE_FAVICON"),
                 ),
-                SiteSettingItem(
-                    key="AUTHOR_AVATAR",
-                    label="作者头像",
-                    description="侧边栏资料卡片显示的头像。可上传图片或填写 URL，留空显示占位图。",
-                    type="image",
-                    value=get_val("AUTHOR_AVATAR"),
-                    default="",
-                ),
-                SiteSettingItem(
-                    key="AUTHOR_NAME",
-                    label="作者名称",
-                    description="侧边栏资料卡片显示的名字，留空使用一键 OOBE 的管理员昵称。",
-                    type="text",
-                    value=get_val("AUTHOR_NAME", "Choyeon"),
-                    default="Choyeon",
-                    placeholder="Choyeon",
-                ),
-                SiteSettingItem(
-                    key="AUTHOR_BIO",
-                    label="作者简介 / 签名",
-                    description="侧边栏资料卡片上显示的一句个性签名或简介。",
-                    type="textarea",
-                    value=get_val("AUTHOR_BIO", "Full-Stack Development"),
-                    default="Full-Stack Development",
-                ),
-                SiteSettingItem(
-                    key="AUTHOR_LINKS_JSON",
-                    label="作者社交链接（JSON）",
-                    description="JSON 数组格式，每项包含 name / icon / url / showName 字段。留空使用 profileConfig 默认。",
-                    type="json",
-                    value=get_val("AUTHOR_LINKS_JSON", "[]"),
-                    default="[]",
-                    placeholder='[{"name":"GitHub","icon":"fa7-brands:github","url":"https://github.com/","showName":false}]',
-                ),
+                # 作者资料四键（AUTHOR_AVATAR / AUTHOR_NAME / AUTHOR_BIO / AUTHOR_LINKS_JSON）
+                # 批次 #157 退役：作者名/简介/头像的真源是 OOBE 建出来的管理员 User 行
+                # （nickname / bio / avatar）+ 上面的 SITE_AUTHOR；侧边栏资料卡走
+                # profileConfig，没有读这四条扁平键的消费点。
             ],
         ),
         SiteSettingGroup(
@@ -1712,79 +1649,12 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                 ),
             ],
         ),
-        SiteSettingGroup(
-            name="appearance",
-            label="外观设置",
-            icon="palette",
-            settings=[
-                SiteSettingItem(
-                    key="CODE_THEME",
-                    label="代码高亮主题（亮色）",
-                    type="select",
-                    value=get_val("CODE_THEME", "github"),
-                    default="github",
-                    options=[
-                        {"value": "github", "label": "GitHub"},
-                        {"value": "monokai", "label": "Monokai"},
-                        {"value": "one-dark", "label": "One Dark"},
-                        {"value": "dracula", "label": "Dracula"},
-                        {"value": "nord", "label": "Nord"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="DEFAULT_THEME",
-                    label="默认主题",
-                    type="select",
-                    value=get_val("DEFAULT_THEME", "system"),
-                    default="system",
-                    options=[
-                        {"value": "system", "label": "跟随系统"},
-                        {"value": "light", "label": "亮色"},
-                        {"value": "dark", "label": "暗色"},
-                    ],
-                ),
-                SiteSettingItem(
-                    key="PRIMARY_COLOR",
-                    label="主题色",
-                    type="color",
-                    value=get_val("PRIMARY_COLOR", "#3B82F6"),
-                    default="#3B82F6",
-                ),
-                SiteSettingItem(
-                    key="FONT_FAMILY",
-                    label="字体",
-                    type="text",
-                    value=get_val("FONT_FAMILY"),
-                    placeholder="如: 'Noto Sans SC', sans-serif",
-                ),
-            ],
-        ),
-        SiteSettingGroup(
-            name="seo",
-            label="SEO 设置",
-            icon="search",
-            settings=[
-                SiteSettingItem(
-                    key="GOOGLE_SITE_VERIFICATION",
-                    label="Google 站点验证",
-                    type="text",
-                    value=get_val("GOOGLE_SITE_VERIFICATION"),
-                ),
-                SiteSettingItem(
-                    key="BAIDU_SITE_VERIFICATION",
-                    label="百度站点验证",
-                    type="text",
-                    value=get_val("BAIDU_SITE_VERIFICATION"),
-                ),
-                SiteSettingItem(
-                    key="ROBOTS_TXT",
-                    label="robots.txt 内容",
-                    type="textarea",
-                    value=get_val("ROBOTS_TXT"),
-                    placeholder="User-agent: *\nAllow: /",
-                ),
-            ],
-        ),
+        # appearance / seo / comment 三个分组字面量批次 #157 整组退役：它们挂的就是
+        # CODE_THEME、DEFAULT_THEME、PRIMARY_COLOR、FONT_FAMILY、GOOGLE_SITE_VERIFICATION、
+        # BAIDU_SITE_VERIFICATION、ROBOTS_TXT、COMMENT_REQUIRE_APPROVAL、COMMENT_ALLOW_GUEST、
+        # COMMENT_MAX_LENGTH、COMMENT_ANTISPAM 这 11 条零读取点的扁平镜像。
+        # 运营面只剩带执行点的分组（PATCH /api/settings/{appearance,seo,comments}），
+        # 本端点在前端零消费方（见 frontend/docs/API_COVERAGE.md）。
         SiteSettingGroup(
             name="security",
             label="安全设置",
@@ -1828,43 +1698,6 @@ async def get_site_config_full(current_user: CurrentStaff, db: DB):
                     type="text",
                     value=get_val("ALLOWED_FILE_TYPES", "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar"),
                     default="pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
-                ),
-            ],
-        ),
-        SiteSettingGroup(
-            name="comment",
-            label="评论设置",
-            icon="message-square",
-            settings=[
-                SiteSettingItem(
-                    key="COMMENT_REQUIRE_APPROVAL",
-                    label="评论需要审核",
-                    type="switch",
-                    value=get_bool_val("COMMENT_REQUIRE_APPROVAL", "false"),
-                    default=False,
-                ),
-                SiteSettingItem(
-                    key="COMMENT_ALLOW_GUEST",
-                    label="允许游客评论",
-                    type="switch",
-                    value=get_bool_val("COMMENT_ALLOW_GUEST", "false"),
-                    default=False,
-                ),
-                SiteSettingItem(
-                    key="COMMENT_MAX_LENGTH",
-                    label="评论最大长度",
-                    type="number",
-                    value=get_int_val("COMMENT_MAX_LENGTH", "1000"),
-                    default=1000,
-                    min_value=100,
-                    max_value=10000,
-                ),
-                SiteSettingItem(
-                    key="COMMENT_ANTISPAM",
-                    label="启用反垃圾",
-                    type="switch",
-                    value=get_bool_val("COMMENT_ANTISPAM", "true"),
-                    default=True,
                 ),
             ],
         ),
@@ -1963,37 +1796,21 @@ async def update_site_settings(
         "enable_dark_mode": "ENABLE_DARK_MODE",
         "enable_like_button": "ENABLE_LIKE_BUTTON",
         "enable_share_buttons": "ENABLE_SHARE_BUTTONS",
-        # 分页设置
-        # pagination_max_page_size 批次 #156 退役：上限由代码常量给，没有读取方
-        "pagination_page_size": "PAGINATION_PAGE_SIZE",
-        # 外观设置
-        "code_theme": "CODE_THEME",
-        "default_theme": "DEFAULT_THEME",
-        "primary_color": "PRIMARY_COLOR",
-        "font_family": "FONT_FAMILY",
+        # 分页 / 外观 / SEO / 评论 / 作者资料五族批次 #157 退役（pagination_page_size、
+        # code_theme、default_theme、primary_color、font_family、google_site_verification、
+        # baidu_site_verification、robots_txt、comment_* 四键、author_* 四键）：
+        # 请求模型已不再声明它们，转译表留着只会写进一批无人读取的 UPPERCASE 行。
+        # 每族的现存唯一真源写在守卫文件头部的对照表里（reading.comments.seo.appearance 分组、
+        # lib/post-cover.ts、User 行 + site_author）。
         # 维护模式
         "maintenance_mode": "MAINTENANCE_MODE",
         "maintenance_message": "MAINTENANCE_MESSAGE",
-        # SEO 设置
-        "google_site_verification": "GOOGLE_SITE_VERIFICATION",
-        "baidu_site_verification": "BAIDU_SITE_VERIFICATION",
-        "robots_txt": "ROBOTS_TXT",
         # 安全设置
         "max_login_attempts": "MAX_LOGIN_ATTEMPTS",
         # 文件上传设置
         "max_upload_size": "MAX_UPLOAD_SIZE",
         "allowed_image_types": "ALLOWED_IMAGE_TYPES",
         "allowed_file_types": "ALLOWED_FILE_TYPES",
-        # 评论设置
-        "comment_require_approval": "COMMENT_REQUIRE_APPROVAL",
-        "comment_allow_guest": "COMMENT_ALLOW_GUEST",
-        "comment_max_length": "COMMENT_MAX_LENGTH",
-        "comment_antispam": "COMMENT_ANTISPAM",
-        # 作者/侧边栏资料设置
-        "author_name": "AUTHOR_NAME",
-        "author_bio": "AUTHOR_BIO",
-        "author_avatar": "AUTHOR_AVATAR",
-        "author_links_json": "AUTHOR_LINKS_JSON",
         # ===== 新增字段映射 =====
         "site_url": "SITE_URL",
         "footer_custom_html": "FOOTER_CUSTOM_HTML",

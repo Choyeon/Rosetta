@@ -1126,7 +1126,6 @@ async def _run_combined_install(req: CombinedInstallRequest):
             {
                 "enable_bing_wallpaper": req.enable_bing_wallpaper,
                 "footer_text": "",
-                "default_cover_image": "",
             }
         )
 
@@ -1196,24 +1195,11 @@ async def _run_combined_install(req: CombinedInstallRequest):
                 "启用RSS",
             ),
             ("enable_bing_wallpaper", str(req.enable_bing_wallpaper).lower(), "启用Bing壁纸"),
-            ("default_cover_image", full_config["default_cover_image"], "默认封面图"),
-            # 作者 / 侧边栏资料：与 OOBE 管理员昵称/bio 对齐，避免前端 fallback 为 ROSETTA 示例文案
-            (
-                "author_name",
-                full_config.get("author_name") or req.admin_nickname or req.admin_username,
-                "作者昵称",
-            ),
-            (
-                "author_bio",
-                full_config.get("author_bio") or getattr(req, "admin_bio", "") or "",
-                "作者签名",
-            ),
-            ("author_avatar", full_config.get("author_avatar", "") or "", "作者头像"),
-            (
-                "author_links_json",
-                full_config.get("author_links_json", "[]") or "[]",
-                "作者社交链接",
-            ),
+            # 默认封面图与作者资料四键（author_name / author_bio / author_avatar /
+            # author_links_json）批次 #157 停种：这四条扁平键在 /api/config 的投影与
+            # SiteConfigResponse 里已一起退役，再往 site_configs 写就是"存得进、没人读"。
+            # 作者名/简介/头像的活路径是上面真正建出来的管理员 User 行（nickname / bio /
+            # avatar_source）与扁平 site_author；封面兜底单源 frontend/lib/post-cover.ts。
         ]
         await _broadcast_progress(steps[3][0], f"正在{steps[3][1]}...", max(0, _pct(3) - 6))
         async with async_session_maker() as session:
@@ -1737,7 +1723,6 @@ class SiteConfigRequest(BaseModel):
     enable_comments: bool = True
     enable_registration: bool = True
     enable_rss: bool = True
-    default_cover_image: str = ""
 
 
 class AdminAccountRequest(BaseModel):
@@ -1885,7 +1870,6 @@ async def save_site_config(request: SiteConfigRequest):
     state.site_config.enable_comments = request.enable_comments
     state.site_config.enable_registration = request.enable_registration
     state.site_config.enable_rss = request.enable_rss
-    state.site_config.default_cover_image = request.default_cover_image
     config_service.save_state()
 
     return {"success": True}

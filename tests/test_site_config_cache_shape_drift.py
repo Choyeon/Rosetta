@@ -54,6 +54,9 @@ class TestRetiredKeysInCachedPayload:
     async def test_public_config_survives_a_retired_key(self, client):
         stale = await _warm_payload(client)
         stale.update({"enable_pagefind_search": True, "enable_music_player": False})
+        # 批次 #157 那一版的线上载荷真的带着这 18 个键：Redis 跨进程、跨重启存活（TTL 3600），
+        # 部署后第一次读命中旧载荷，extra=forbid 会把整个配置口打成 500 直到 TTL 结束。
+        stale.update({"pagination_page_size": 12, "robots_txt": "User-agent: *", "author_bio": "x"})
         await cache.set(_CACHE_KEY, stale, CACHE_TTL["site_config"])
 
         response = await client.get("/api/config")
@@ -63,8 +66,10 @@ class TestRetiredKeysInCachedPayload:
         body = response.json()
         assert "enable_pagefind_search" not in body
         assert "enable_music_player" not in body
+        for mirror in ("pagination_page_size", "robots_txt", "author_bio"):
+            assert mirror not in body, f"{mirror} 从陈旧载荷里被原样回吐了"
         assert body["site_name"], "重算路径没产出配置，200 只是空壳"
-        assert body["pagination_page_size"] > 0
+        assert body["max_upload_size"] > 0
 
     @pytest.mark.asyncio
     async def test_drifted_entry_is_overwritten_not_recomputed_every_time(self, client):

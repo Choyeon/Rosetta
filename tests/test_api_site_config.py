@@ -23,7 +23,9 @@ class TestSiteConfig:
         assert "site_name" in data
         assert "site_description" in data
         assert "enable_comments" in data
-        assert "pagination_page_size" in data
+        # 批次 #157：pagination_page_size 退役，每页条数唯一真源是 reading.posts_per_page 分组
+        assert "max_upload_size" in data
+        assert "pagination_page_size" not in data
 
     @pytest.mark.asyncio
     async def test_site_config_has_default_values(
@@ -35,7 +37,7 @@ class TestSiteConfig:
         assert response.status_code == 200
         data = response.json()
         assert data["site_name"] != ""
-        assert data["pagination_page_size"] > 0
+        assert data["max_upload_size"] > 0
 
     @pytest.mark.asyncio
     async def test_site_config_caching(
@@ -170,7 +172,7 @@ class TestSiteConfigUpdate:
                 "site_name": "多字段测试",
                 "site_description": "测试描述",
                 "enable_comments": False,
-                "pagination_page_size": 20,
+                "site_url": "https://multi-field.test",
             },
         )
         assert response.status_code == 200
@@ -183,7 +185,7 @@ class TestSiteConfigUpdate:
         assert config_data["site_name"] == "多字段测试"
         assert config_data["site_description"] == "测试描述"
         assert config_data["enable_comments"] is False
-        assert config_data["pagination_page_size"] == 20
+        assert config_data["site_url"] == "https://multi-field.test"
 
     @pytest.mark.asyncio
     async def test_update_boolean_settings(
@@ -220,7 +222,7 @@ class TestSiteConfigUpdate:
             "/api/admin/settings",
             headers=admin_headers,
             json={
-                "pagination_page_size": 25,
+                "max_login_attempts": 7,
                 "max_upload_size": 20971520,
             },
         )
@@ -228,7 +230,7 @@ class TestSiteConfigUpdate:
 
         config_response = await client.get("/api/config")
         config_data = config_response.json()
-        assert config_data["pagination_page_size"] == 25
+        assert config_data["max_login_attempts"] == 7
         assert config_data["max_upload_size"] == 20971520
 
     @pytest.mark.asyncio
@@ -290,24 +292,28 @@ class TestSiteConfigValidation:
     """测试站点配置验证"""
 
     @pytest.mark.asyncio
-    async def test_pagination_page_size_bounds(
+    async def test_retired_flat_mirrors_are_rejected(
         self,
         client: AsyncClient,
         admin_headers: dict,
     ):
-        """测试分页大小边界"""
-        # 测试最小值
-        response = await client.post(
-            "/api/admin/settings",
-            headers=admin_headers,
-            json={"pagination_page_size": 1},
-        )
-        assert response.status_code == 200
+        """批次 #157 退役的扁平镜像：写口必须 422，而不是继续 200 + 落一行没人读的 UPPERCASE。
 
-        # 测试最大值
-        response = await client.post(
-            "/api/admin/settings",
-            headers=admin_headers,
-            json={"pagination_page_size": 100},
-        )
-        assert response.status_code == 200
+        原先这条用例是 `pagination_page_size` 的边界测试（1 与 100 都回 200），
+        那个字段已随镜像族一起删除——留着它等于在文档里教运营者拨一把不存在的开关。
+        每页条数的区间闸门在分组写口那一侧（`_NUMERIC_BOUNDS` 的 `reading.posts_per_page`，
+        守卫 tests/test_settings_numeric_bounds.py）。
+        """
+        for key in (
+            "pagination_page_size",
+            "code_theme",
+            "google_site_verification",
+            "comment_max_length",
+            "author_bio",
+        ):
+            response = await client.post(
+                "/api/admin/settings",
+                headers=admin_headers,
+                json={key: 1},
+            )
+            assert response.status_code == 422, f"{key} 又被写口收下了：{response.status_code}"

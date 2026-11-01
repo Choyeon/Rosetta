@@ -853,9 +853,12 @@ async def test_corrupt_group_row_only_skips_its_own_group(db_session, client):
     ``_apply_settings_groups`` 曾把 10 个分组的解析全包在同一个 try 里，而
     ``_json_.loads`` 抛的是 JSONDecodeError（ValueError 的子类），直接落到最外层
     ``except Exception``——于是 reading 那一行坏掉时，它后面本来还要叠的 seo
-    （google_site_verification / robots_txt）整段没执行，且日志只有一行 warning。
+    整段没执行，且日志只有一行 warning。
     同一条路径还有第二种坏法：分组里躺着字符串数值（历史库、手改库），
     投影里的 ``int()`` 抛 ValueError，牵连面一模一样。
+
+    批次 #157 起 reading / seo 两组不再往扁平面投影（扁平镜像零读取点），
+    所以探针换成分组顺序里**仍然存在**的三段：basic → footer → comments（坏行）→ features / media。
     """
     import json
 
@@ -865,7 +868,7 @@ async def test_corrupt_group_row_only_skips_its_own_group(db_session, client):
     from backend.models.core import SiteConfig
 
     marker_name = "坏行不牵连其它分组"
-    marker_seo = "https://example.com/after-corrupt-row.js"
+    marker_footer = "坏行之前的页脚文本"
 
     async def _set_row(key: str, value: str) -> None:
         await db_session.execute(delete(SiteConfig).where(SiteConfig.key == key))
@@ -880,26 +883,33 @@ async def test_corrupt_group_row_only_skips_its_own_group(db_session, client):
 
     try:
         await _set_row("basic", json.dumps({"site_name": marker_name}, ensure_ascii=False))
-        await _set_row("seo", json.dumps({"google_verification": marker_seo}))
+        await _set_row("footer", json.dumps({"text": marker_footer}, ensure_ascii=False))
         baseline = await _config()
-        assert baseline["google_site_verification"] == marker_seo, "夹具前提：seo 分组能投影"
+        assert baseline["site_name"] == marker_name, "夹具前提：basic 分组能投影"
+        assert baseline["footer_text"] == marker_footer, "夹具前提：footer 分组能投影"
 
-        await _set_row("reading", "{这一行不是合法 JSON")
+        await _set_row("comments", "{这一行不是合法 JSON")
         broken = await _config()
         assert broken["site_name"] == marker_name
-        assert broken["google_site_verification"] == marker_seo, (
-            "reading 一行坏了就把后面的 seo 分组一起摘掉＝一个分组毁掉全站设置"
+        assert broken["footer_text"] == marker_footer, (
+            "comments 一行坏了就把排在它前面的 footer 一起摘掉＝一个分组毁掉全站设置"
         )
-        assert broken["pagination_page_size"] == baseline["pagination_page_size"], (
+        # 排在坏行之后的 media 分组必须仍然叠进来（原用例靠 seo 证明这一点）
+        assert broken["max_upload_size"] == baseline["max_upload_size"], (
+            "坏行之后的分组被一起跳过＝单组容错没生效"
+        )
+        assert isinstance(broken["enable_comments"], bool), (
             "坏行那一组应回退到默认值，而不是把异常抛给整段投影"
         )
 
-        await _set_row("reading", json.dumps({"posts_per_page": "九"}))
+        await _set_row("media", json.dumps({"max_upload_size": "十兆"}))
         typed = await _config()
-        assert typed["google_site_verification"] == marker_seo, "int() 抛错同样不该牵连后续分组"
-        assert typed["pagination_page_size"] == baseline["pagination_page_size"]
+        assert typed["footer_text"] == marker_footer, "int() 抛错同样不该牵连其它分组"
+        assert typed["max_upload_size"] == baseline["max_upload_size"], (
+            "坏数值只该让这一个键回退到扁平默认，而不是整组消失"
+        )
     finally:
-        for key in ("basic", "reading", "seo"):
+        for key in ("basic", "footer", "comments", "media"):
             await db_session.execute(delete(SiteConfig).where(SiteConfig.key == key))
         await db_session.commit()
         await invalidate_cache("site_config")

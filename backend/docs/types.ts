@@ -594,21 +594,10 @@ export interface SiteConfig {
   enable_dark_mode: boolean
   enable_like_button: boolean
   enable_share_buttons: boolean
-  // 分页设置
-  pagination_page_size: number
-  // 外观设置
-  code_theme: string
-  default_theme: string
-  primary_color: string
-  font_family: string | null
   // 维护模式
   maintenance_mode: boolean
   maintenance_message: string | null
   // 默认图片
-  // SEO 设置
-  google_site_verification: string | null
-  baidu_site_verification: string | null
-  robots_txt: string | null
   // 安全设置
   max_login_attempts: number
   // 邮件设置
@@ -616,12 +605,14 @@ export interface SiteConfig {
   max_upload_size: number
   allowed_image_types: string
   allowed_file_types: string
-  // 评论设置
-  comment_require_approval: boolean
-  comment_allow_guest: boolean
-  comment_max_length: number
-  comment_antispam: boolean
   // 自定义代码
+  //
+  // 批次 #157 退役的扁平镜像（每族的唯一真源写在 backend/schemas/__init__.py 的台账里）：
+  // 分页 pagination_page_size → reading.posts_per_page；外观 code_theme / default_theme /
+  // primary_color / accent_color / font_family → appearance 分组 + 主题 mods + --hljs-* 令牌；
+  // SEO google_site_verification / baidu_site_verification / robots_txt → seo 分组；
+  // 评论 comment_require_approval / comment_allow_guest / comment_max_length / comment_antispam
+  // → comments 分组。这些键在 /api/config 里不再出现，带它们提交 /api/admin/settings 是 422。
 }
 
 export interface SiteConfigUpdate {
@@ -663,33 +654,17 @@ export interface SiteConfigUpdate {
   enable_dark_mode?: boolean
   enable_like_button?: boolean
   enable_share_buttons?: boolean
-  // 分页设置
-  pagination_page_size?: number
-  // 外观设置
-  code_theme?: string
-  default_theme?: string
-  primary_color?: string
-  font_family?: string
   // 维护模式
   maintenance_mode?: boolean
   maintenance_message?: string
   // 默认图片
-  // SEO 设置
-  google_site_verification?: string
-  baidu_site_verification?: string
-  robots_txt?: string
   // 安全设置
   max_login_attempts?: number
   // 文件上传设置
   max_upload_size?: number
   allowed_image_types?: string
   allowed_file_types?: string
-  // 评论设置
-  comment_require_approval?: boolean
-  comment_allow_guest?: boolean
-  comment_max_length?: number
-  comment_antispam?: boolean
-  // 自定义代码
+  // 自定义代码（批次 #157 退役的扁平镜像见 SiteConfig 末尾的台账）
 }
 
 export interface SiteSettingItem {

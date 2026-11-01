@@ -780,35 +780,17 @@ GET /api/config
   "enable_share_buttons": true,
   "enable_bing_wallpaper": true,
   "enable_rss": true,
-  "default_cover_image": "string",
-  "pagination_page_size": 12,
-  "code_theme": "github",
-  "default_theme": "system",
-  "primary_color": "#3B82F6",
-  "accent_color": "string",
   "theme_primary": "string",
   "theme_accent": "string",
-  "font_family": null,
   "default_og_image": "string",
   "site_subtitle": "string",
   "maintenance_mode": false,
   "maintenance_message": "Site is under maintenance",
-  "google_site_verification": "xxxxx",
-  "baidu_site_verification": "xxxxx",
-  "robots_txt": "User-agent: *\nAllow: /",
   "max_login_attempts": 5,
   "max_upload_size": 10485760,
   "allowed_image_types": "jpg,jpeg,png,gif,webp,svg",
   "allowed_file_types": "pdf,doc,docx,xls,xlsx,ppt,pptx,zip,rar",
-  "comment_require_approval": false,
-  "comment_allow_guest": false,
-  "comment_max_length": 1000,
-  "comment_antispam": true,
   "about_page_html": "string",
-  "author_name": "string",
-  "author_bio": "string",
-  "author_avatar": "string",
-  "author_links_json": "string",
   "site_url": "string",
   "footer_custom_html": "string"
 }
@@ -834,7 +816,7 @@ Content-Type: application/json
   "site_name": "新站点名称",
   "enable_comments": true,
   "site_logo": "/media/brand/logo.png",
-  "primary_color": "#10B981"
+  "footer_text": "新页脚文本"
 }
 ```
 
@@ -842,8 +824,11 @@ Content-Type: application/json
 
 - **扁平通道** `POST /api/admin/settings`：每收一个键都要在 `backend/api/core.py::config_map` 里有一条
   指向 UPPERCASE `SiteConfig` 行的转译才会真的落库，**那张表就是扁平写口的唯一清单**。只被
-  `SiteConfigUpdate` 声明、不在表里的键＝回 200 而库里什么都不做（这类假配置已按批次 #112 / #155 / #156
-  整族退役，共 81 键）。键的类型与默认值看上面那份响应示例——它由 `SiteConfigResponse` 逐键生成，
+  `SiteConfigUpdate` 声明、不在表里的键＝回 200 而库里什么都不做（这类假配置已按批次 #112 / #155 /
+  #156 整族退役 81 键，批次 #157 再退役 18 条「分组侧活着、扁平镜像零读取点」的镜像键：
+  `pagination_page_size`、`code_theme` / `default_theme` / `primary_color` / `accent_color` / `font_family`、
+  `google_site_verification` / `baidu_site_verification` / `robots_txt`、`comment_*` 四键、`author_*` 四键
+  与 `default_cover_image`——每族的唯一真源写在 `backend/schemas/__init__.py` 的台账注释里）。键的类型与默认值看上面那份响应示例——它由 `SiteConfigResponse` 逐键生成，
   并由 `tests/test_retired_flat_config_keys_are_gone.py` 钉成**与模型字段集合相等**。
 - **分组通道**（运营者实际用的那张写面）：`PATCH /api/settings/{group}`，14 个分组，唯一清单是
   `backend/api/settings_groups.py::SETTING_GROUPS`（`basic` · `reading` · `comments` · `media` · `seo` ·
