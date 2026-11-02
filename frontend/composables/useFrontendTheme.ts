@@ -76,7 +76,7 @@ const MODS_DEFAULTS: ThemeModsRuntime = {
  */
 export const DEFAULT_THEME_SLUG = 'editorial-wp-style'
 export const DEFAULT_THEME_NAME = '默认主题'
-export const DEFAULT_THEME_VERSION = '1.1.3'
+export const DEFAULT_THEME_VERSION = '1.2.0'
 
 const useThemeState = () =>
   useState<FrontendThemeInfo>('frontend-theme:state', () => ({

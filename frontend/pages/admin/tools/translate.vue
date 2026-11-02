@@ -201,7 +201,7 @@
           </div>
           <Button
             :disabled="batchSubmitting || form.postIds.length === 0 || form.targetLangs.length === 0"
-            class="text-white w-full shadow-sm bg-primary hover:bg-primary/90"
+            class="text-primary-foreground w-full shadow-sm bg-primary hover:bg-primary-hover"
             @click="handleBatchTranslate"
           >
             <Loader2

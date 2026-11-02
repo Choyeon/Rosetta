@@ -220,7 +220,7 @@
               <div class="mt-7 sm:mt-8 flex flex-wrap items-center gap-3">
                 <NuxtLink
                   :to="localeHref(heroCtaUrl)"
-                  class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-black/30 hover:bg-primary/90 active:scale-[0.98] transition-[background-color,transform] duration-200"
+                  class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-xl shadow-black/30 hover:bg-primary-hover active:scale-[0.98] transition-[background-color,transform] duration-200"
                 >
                   {{ heroCtaText || t('home.readArticle') }}
                   <ArrowRight class="size-4" />

@@ -13,7 +13,7 @@
       class="mb-12"
     >
       <div class="inline-flex items-center gap-2 text-xs uppercase tracking-[0.16em] text-muted-foreground mb-3">
-        <span class="size-1.5 rounded-full bg-cyan-500" />
+        <span class="size-1.5 rounded-full bg-primary" />
         <NuxtLink
           :to="localeHref('/tags')"
           class="hover:text-foreground transition-colors"

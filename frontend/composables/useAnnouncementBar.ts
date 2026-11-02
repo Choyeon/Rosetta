@@ -58,14 +58,19 @@ export function visibleAnnouncements(
     .filter(ann => Boolean(ann.title || ann.content))
 }
 
-/** 四种公告类型的底色方案；未知 type 落回 info，绝不因脏数据渲染出无色条。 */
+/**
+ * 四种公告类型的底色方案；未知 type 落回 info，绝不因脏数据渲染出无色条。
+ * 只准用语义令牌类（`-muted` 淡彩底 + `-muted-foreground` 深字）：Tailwind 具名色阶
+ * 没有明暗两档，同一串 class 在深色模式里要么过亮要么看不见，而 `-muted` 对是成对定义的，
+ * 明暗各档的底色与文字色已经一起调过，消费点不需要再写 `dark:` 分支。
+ */
 export function announcementVariantClass(type?: string): string {
   switch (type) {
-    case 'warning': return 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-b border-amber-500/20'
-    case 'error': return 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border-b border-rose-500/20'
-    case 'success': return 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-b border-emerald-500/20'
+    case 'warning': return 'bg-warning-muted text-warning-muted-foreground border-b border-warning/20'
+    case 'error': return 'bg-error-muted text-error-muted-foreground border-b border-error/20'
+    case 'success': return 'bg-success-muted text-success-muted-foreground border-b border-success/20'
     case 'info':
-    default: return 'bg-sky-500/10 text-sky-700 dark:text-sky-300 border-b border-sky-500/20'
+    default: return 'bg-info-muted text-info-muted-foreground border-b border-info/20'
   }
 }
 
@@ -154,11 +159,11 @@ export function bannerIsSticky(notice?: SiteNoticeConfig | null): boolean {
  */
 export function announcementDotClass(type?: string): string {
   switch (type) {
-    case 'warning': return 'bg-amber-500'
-    case 'error': return 'bg-rose-500'
-    case 'success': return 'bg-emerald-500'
+    case 'warning': return 'bg-warning'
+    case 'error': return 'bg-error'
+    case 'success': return 'bg-success'
     case 'info':
-    default: return 'bg-sky-500'
+    default: return 'bg-info'
   }
 }
 

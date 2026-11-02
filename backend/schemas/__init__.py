@@ -2079,8 +2079,8 @@ class SiteConfigResponse(BaseModel):
     # 外观设置（code_theme / default_theme / primary_color / accent_color / font_family
     # 批次 #157 退役：明暗首帧归 localStorage.theme、代码配色归 --hljs-* 令牌、字体族归
     # Tailwind preset、站点主色归 appearance 分组 + 主题 mods，扁平键零读取点）
-    theme_primary: str = "#0EA5A9"
-    theme_accent: str = "#0284C7"
+    theme_primary: str = "#0073A8"
+    theme_accent: str = "#00AEFF"
     default_og_image: str | None = None
     site_subtitle: str = ""
 

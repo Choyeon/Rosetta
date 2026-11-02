@@ -161,7 +161,7 @@ useHead(() => ({
   },
   meta: [
     { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-    { name: 'theme-color', content: 'hsl(201 96% 52%)' }
+    { name: 'theme-color', content: 'hsl(199 100% 50%)' }
   ],
   link: [
     { rel: 'icon', href: '/favicon.ico' },

@@ -82,7 +82,7 @@
           </div>
           <div
             v-else-if="item.status === 'success'"
-            class="absolute top-1.5 right-1.5 size-5 rounded-full bg-green-500 flex items-center justify-center"
+            class="absolute top-1.5 right-1.5 size-5 rounded-full bg-success flex items-center justify-center"
           >
             <Check class="size-3 text-white" />
           </div>
@@ -107,7 +107,7 @@
             {{ formatBytes(item.size) }}
             <span
               v-if="item.compressedSize && item.compressedSize < item.size"
-              class="text-green-600"
+              class="text-success"
             >
               → {{ formatBytes(item.compressedSize) }}
             </span>

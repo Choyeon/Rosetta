@@ -65,7 +65,7 @@ const form = reactive<{
   name: { ...EMPTY_I18N_DICT },
   slug: '',
   description: { ...EMPTY_I18N_DICT },
-  color: '#94a3b8',
+  color: '#00AEFF',
   icon: '',
   cover_image: '',
   parent_id: null,
@@ -185,7 +185,7 @@ const resetForm = () => {
   form.name = { ...EMPTY_I18N_DICT }
   form.slug = ''
   form.description = { ...EMPTY_I18N_DICT }
-  form.color = '#94a3b8'
+  form.color = '#00AEFF'
   form.icon = ''
   form.cover_image = ''
   form.parent_id = null
@@ -207,7 +207,7 @@ const openEdit = (cat: AdminCategory) => {
   form.name = normalizeI18nDict(cat.name)
   form.slug = cat.slug
   form.description = normalizeI18nDict(cat.description)
-  form.color = cat.color || '#94a3b8'
+  form.color = cat.color || '#00AEFF'
   form.icon = cat.icon || ''
   // 必须回填：不回填则每次 PUT 把封面提交成空 → 已有封面被"改一次名字"抹掉
   form.cover_image = cat.cover_image || ''
@@ -335,7 +335,7 @@ onMounted(() => {
           >
           <span
             class="size-3 rounded-full inline-block border border-white shadow-sm"
-            :style="{ background: (row as AdminCategory).color || '#94a3b8' }"
+            :style="{ background: (row as AdminCategory).color || '#00AEFF' }"
           />
           <span class="font-medium">{{ getLocalizedStr((row as AdminCategory).name) }}</span>
           <Badge

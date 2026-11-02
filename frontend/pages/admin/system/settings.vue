@@ -376,7 +376,7 @@
                       :id="`set-${key}`"
                       v-model="colorRef(key).value"
                       class="rounded-xl font-mono text-xs uppercase w-32"
-                      placeholder="#0EA5A9"
+                      placeholder="#0073A8"
                     />
                   </div>
                   <p
@@ -1249,7 +1249,7 @@ function getDefaultsFor(group: string): Record<string, SettingsValue> {
     email: { smtp_host: '', smtp_port: 465, smtp_user: '', smtp_password: '', use_tls: true, from_address: '', from_name: '', enable_notifications: false, dry_run: false },
     security: { max_login_attempts: 5, lockout_duration_sec: 1800 },
     features: { enable_registration: true, enable_rss: true, enable_search: true, enable_sitemap: true, enable_guestbook: true, enable_dark_mode: true, enable_like_button: true, enable_share_buttons: true, enable_reading_progress: true, enable_captcha: false, enable_friend_apply: false },
-    appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0EA5A9', accent_color: '#0284C7' },
+    appearance: { page_width_px: 1200, show_copyright: true, show_powered_by: true, primary_color: '#0073A8', accent_color: '#00AEFF' },
     navigation: { header_style: 'sticky', show_search: true, show_language_switch: true, show_theme_toggle: true },
     // 多语言字段的本地兜底必须是完整四语 dict：inferSchema 靠它识别 i18n 类型，
     // 写成 {} 会让「库里还没有这条值」的字段退回裸 JSON 文本域。

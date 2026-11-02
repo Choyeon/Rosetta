@@ -153,8 +153,11 @@
   >
     <!-- 默认壁纸玻璃卡登录（非极简主题） -->
     <!-- 背景：整屏 Bing 每日壁纸（Bing/Unsplash 失败时后面的渐变兜底自动可见） -->
+    <!-- 壁纸没取到时露出的兜底渐变：三段必须都是不透明且够深的色。alpha 色标会透出 --background，
+         亮色模式等于把白字压在白底上；直接用 --primary 则在暗色模式是一档亮天青（#33BEFF），
+         白字压上去只有 2.11:1。这一层的文字全是白色的，所以中间色标走恒深的 --primary-deep。 -->
     <div
-      class="absolute inset-0 -z-20 bg-gradient-to-br from-sky-950 via-indigo-950 to-slate-900"
+      class="absolute inset-0 -z-20 bg-gradient-to-br from-black via-primary-deep to-black"
     />
     <div
       class="absolute inset-0 -z-20 bg-cover bg-center bg-no-repeat transition-opacity duration-700"
@@ -235,15 +238,17 @@
             </div>
 
             <!-- 错误提示：显式红（无实 border，靠背景+内阴影+顶部高光） -->
+            <!-- 底色由主题皮肤 .ed-auth-alert 给，文字走 --error-on-scrim：这一层底图是任意壁纸，
+                 --error 在亮色模式是压暗档（给白字用的），挂到深 scrim 上会读不出"报错"这一层。 -->
             <div
               v-if="errorMessage"
               role="alert"
-              class="ed-auth-alert mb-5 rounded-xl text-red-50 px-4 py-3 text-sm"
+              class="ed-auth-alert mb-5 rounded-xl text-error-on-scrim px-4 py-3 text-sm"
             >
-              <div class="font-semibold text-red-100">
+              <div class="font-semibold">
                 {{ t('auth.error') }}
               </div>
-              <div class="mt-0.5 text-red-100/95">
+              <div class="mt-0.5 text-error-on-scrim/90">
                 {{ errorMessage }}
               </div>
             </div>
@@ -340,10 +345,10 @@
                 </NuxtLink>
               </div>
 
-              <!-- 登录按钮：白底黑字高对比，绝对可见 -->
+              <!-- 登录按钮：主色亮档底 + 黑字，深底图上既跳字又保对比 -->
               <button
                 type="submit"
-                class="ed-auth-submit relative mt-2 w-full h-11 rounded-lg font-semibold text-zinc-900 bg-white hover:bg-white/95 active:bg-white/90 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
+                class="ed-auth-submit relative mt-2 w-full h-11 rounded-lg font-semibold text-black bg-primary-on-scrim hover:bg-primary-on-scrim/90 active:bg-primary-on-scrim/85 transition-all disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2"
                 :disabled="loading || lockSeconds > 0"
               >
                 <Loader2
@@ -364,7 +369,7 @@
                 <span class="text-white/70">{{ t('auth.noAccount') }}</span>
                 <NuxtLink
                   to="/register"
-                  class="ml-1.5 font-semibold text-white hover:text-sky-200 underline-offset-2 hover:underline transition-colors"
+                  class="ml-1.5 font-semibold text-primary-on-scrim hover:text-white underline-offset-2 hover:underline transition-colors"
                 >
                   {{ t('auth.goRegister') }}
                 </NuxtLink>
@@ -400,7 +405,7 @@
         </span>
         <span
           v-show="thumbError"
-          class="shrink-0 size-8 rounded-full overflow-hidden ring-1 ring-white/15 bg-gradient-to-br from-sky-500/30 via-indigo-500/30 to-fuchsia-500/30 inline-flex items-center justify-center"
+          class="shrink-0 size-8 rounded-full overflow-hidden ring-1 ring-white/15 bg-gradient-to-br from-primary-on-scrim/40 via-primary/30 to-transparent inline-flex items-center justify-center"
           :title="currentImage?.title || 'Bing daily wallpaper'"
         >
           <img
@@ -410,7 +415,8 @@
           >
         </span>
         <div class="flex items-center gap-2 min-w-0">
-          <span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-400/25 text-sky-100 border border-sky-300/30">
+          <!-- Bing · Daily 徽标签：深底图上的胶囊，文字走主色亮档，底色用同色相低透明 -->
+          <span class="shrink-0 text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-full bg-primary-on-scrim/20 text-primary-on-scrim border border-primary-on-scrim/35">
             Bing · Daily
           </span>
           <span class="truncate text-xs text-white/90">

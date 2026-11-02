@@ -308,7 +308,7 @@
                   <Button
                     variant="default"
                     size="sm"
-                    class="mt-3 rounded-lg bg-success text-success-foreground hover:bg-success/90"
+                    class="mt-3 rounded-lg bg-success text-success-foreground hover:bg-success-hover"
                     @click="doDownload"
                   >
                     <Download data-icon="inline-start" /> 立即下载
@@ -768,7 +768,7 @@
                   <Button
                     variant="default"
                     size="sm"
-                    class="mt-3 rounded-lg bg-success text-success-foreground hover:bg-success/90"
+                    class="mt-3 rounded-lg bg-success text-success-foreground hover:bg-success-hover"
                     @click="downloadBlob(backupDownload.blob, backupDownload.fileName)"
                   >
                     <Download data-icon="inline-start" /> 立即下载

@@ -243,8 +243,8 @@
               <div class="rounded-xl border border-border/60 p-5">
                 <div class="flex items-center justify-between flex-wrap gap-3">
                   <div class="flex items-center gap-3">
-                    <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-orange-100 dark:bg-orange-950/40">
-                      <Rss class="size-5 text-orange-600 dark:text-orange-400" />
+                    <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-warning-muted">
+                      <Rss class="size-5 text-warning-muted-foreground" />
                     </div>
                     <div>
                       <div class="font-medium">
@@ -269,8 +269,8 @@
               <div class="rounded-xl border border-border/60 p-5">
                 <div class="flex items-center justify-between flex-wrap gap-3">
                   <div class="flex items-center gap-3">
-                    <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-emerald-100 dark:bg-emerald-950/40">
-                      <Map class="size-5 text-emerald-600 dark:text-emerald-400" />
+                    <div class="size-11 shrink-0 rounded-xl flex items-center justify-center bg-success-muted">
+                      <Map class="size-5 text-success-muted-foreground" />
                     </div>
                     <div>
                       <div class="font-medium">

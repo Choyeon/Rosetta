@@ -10,7 +10,10 @@
   <div class="container py-16">
     <header class="mb-10">
       <div class="flex items-center gap-3">
-        <div class="inline-flex items-center justify-center size-11 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-background shadow-sm">
+        <!-- 火焰徽标走 warning 一对：实心深琥珀 + 配对前景。
+             原来是一串亮琥珀→橙的具名色阶渐变配 text-background，而 --background 在亮色模式是**近白**，
+             白火焰压在亮琥珀上只有 ~1.8:1（图标看不见）；令牌配对在明暗两边都是"深底白字 / 亮底墨字"。 -->
+        <div class="inline-flex items-center justify-center size-11 rounded-2xl bg-warning text-warning-foreground shadow-sm">
           <Flame
             data-icon="inline-start"
             class="size-6"
@@ -82,9 +85,9 @@
             <div
               class="absolute -left-2 -top-3 z-10 size-8 rounded-full bg-card border border-border shadow flex items-center justify-center font-display text-sm font-bold"
               :class="{
-                'text-amber-600 dark:text-amber-400': idx === 0,
+                'text-warning': idx === 0,
                 'text-muted-foreground': idx === 1,
-                'text-orange-700 dark:text-orange-400': idx === 2
+                'text-warning/60': idx === 2
               }"
             >
               #{{ idx + 1 }}

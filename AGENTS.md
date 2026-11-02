@@ -508,6 +508,16 @@ fire-and-forget purge → 再 GET 立刻是新内容。回归 `tests/test_page_c
 - Admin 装饰样式只允许写在 `admin-ui.css`（`html[data-layout-scope="admin"]` 前缀），**禁止**把新装饰加回 main.css
 - Admin 保留 shadcn 原生 Tailwind 原子类，禁止为"视觉统一"套主题自定义
 - 禁止给 Admin 卡片加左侧彩条 `.border-l-4 border-primary/…`
+- **前后台的颜色只能来自 `main.css` 的语义令牌，禁止 Tailwind 具名色阶（`bg-sky-500` 那类）**：具名色阶不在
+  `@theme` 表里，主题改 `primary_color`、切深色模式时它一个都不跟着变，而它没有明暗两档配对，写 `dark:` 分支
+  等于每加一种状态就手工维护两套读数。淡彩底一律 `-muted` + `-muted-foreground`（成对定义，明暗各档一起调过）。
+  三档派生按角色分工，都从 `hsl(var(--X))` 走 `color-mix(in oklab, …)` 而不是写死数字（否则不跟主题）：
+  ① `--color-X-on-scrim`（向白混合）＝恒白文字压在任意壁纸/scrim 上的**前景**档；
+  ② `--color-primary-deep`（向黑混合 70%）＝ auth 兜底渐变这种**恒深底色**，直接用 `--primary` 时暗色模式那档是
+  #33BEFF、白字压上去只有 2.11:1；③ `--color-X-hover`（向黑混合 88%）＝实心按钮的悬停档，**禁止**用
+  `hover:bg-X/90`——alpha 是把底色往近白的 `--background` 抬，实测 `--primary` 实心 5.23:1 抬到 /90 只剩
+  4.36:1，悬停那一下反而比静止更难读（AA 要 4.5）。守卫 `frontend/tests/unit/publicUiTokenColors.spec.ts`
+  按目录反扫公开页 + 逐条钉这三档的注册、派生式与真实消费点，并保留两份必须"仍在违规"的豁免文件理由（修完即删例外）。
 
 ***
 

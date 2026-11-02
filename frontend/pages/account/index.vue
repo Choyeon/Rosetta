@@ -505,7 +505,7 @@
           <AlertDialogTitle class="flex items-center gap-2">
             <Trash2
               data-icon="inline-start"
-              class="size-5 text-amber-500"
+              class="size-5 text-error"
             />
             {{ t('account.clearHistoryTitle') }}
           </AlertDialogTitle>

@@ -10,13 +10,13 @@ import { brandFloorTitle, hexToHsl, SPA_SHELL_TITLE_PLACEHOLDER } from '~~/lib/u
 function applyAppearance(primary: string, accent: string) {
   if (!import.meta.client) return
   const root = document.documentElement
-  const a = hexToHsl(String(accent || '#0284C7'))
+  const a = hexToHsl(String(accent || '#00AEFF'))
   if (a) {
     root.style.setProperty('--theme-accent-hue', String(Math.round(a.h)))
     root.style.setProperty('--theme-accent-sat', `${Math.round(a.s)}%`)
     root.style.setProperty('--theme-accent-light', `${Math.round(a.l)}%`)
   }
-  const p = hexToHsl(String(primary || '#0EA5A9'))
+  const p = hexToHsl(String(primary || '#0073A8'))
   if (p) {
     root.style.setProperty('--primary', `${Math.round(p.h)} ${Math.round(p.s)}% ${Math.round(p.l)}%`)
     const ringL = Math.min(96, p.l * 1.12)
@@ -32,7 +32,7 @@ interface BrandInfo {
 }
 
 async function loadBrand(): Promise<BrandInfo> {
-  const fallback: BrandInfo = { siteName: 'Rosetta', siteSub: '', primary: '#0EA5A9', accent: '#0284C7' }
+  const fallback: BrandInfo = { siteName: 'Rosetta', siteSub: '', primary: '#0073A8', accent: '#00AEFF' }
   if (!import.meta.client) return fallback
   try {
     // 客户端相对路径 /api/config，经浏览器 devProxy → FastAPI :8000
@@ -109,7 +109,7 @@ const getBrand = (): Promise<BrandInfo> => {
 export default defineNuxtPlugin(async () => {
   if (!import.meta.client) return
 
-  const defaults: BrandInfo = { siteName: 'Rosetta', siteSub: '', primary: '#0EA5A9', accent: '#0284C7' }
+  const defaults: BrandInfo = { siteName: 'Rosetta', siteSub: '', primary: '#0073A8', accent: '#00AEFF' }
   let siteName = defaults.siteName
   let siteSub = defaults.siteSub
 

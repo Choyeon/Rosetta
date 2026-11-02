@@ -258,9 +258,9 @@ def _default_appearance() -> dict:
     #   - 字体族由 Tailwind preset 管理。
     # 四个键写进库、下发到 /api/config，却没有任何渲染点读它们——纯假开关，删除。
     return {
-        "primary_color": "#0EA5A9",
+        "primary_color": "#0073A8",
         "page_width_px": 1200,
-        "accent_color": "#8B5CF6",
+        "accent_color": "#00AEFF",
         "show_copyright": True,
         "show_powered_by": True,
     }
@@ -285,7 +285,7 @@ def _default_hero() -> dict:
         "cta_text": {"zh": "开始阅读", "en": "Start Reading"},
         "cta_url": "/posts",
         "bg_image": "",
-        "bg_gradient": "linear-gradient(135deg, #0EA5A9 0%, #06B6D4 100%)",
+        "bg_gradient": "linear-gradient(135deg, #0073A8 0%, #00AEFF 100%)",
     }
 
 

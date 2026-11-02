@@ -9,8 +9,8 @@
   <div class="container py-16 max-w-3xl mx-auto">
     <header class="mb-12">
       <div class="flex items-center gap-3 mb-4">
-        <div class="inline-flex items-center justify-center size-12 rounded-xl bg-gradient-to-br from-slate-100 to-zinc-100 dark:from-slate-800 dark:to-zinc-800">
-          <CalendarDays class="size-6 text-slate-600 dark:text-slate-300" />
+        <div class="inline-flex items-center justify-center size-12 rounded-xl bg-muted">
+          <CalendarDays class="size-6 text-muted-foreground" />
         </div>
         <div>
           <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">

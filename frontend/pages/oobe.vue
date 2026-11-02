@@ -5,8 +5,11 @@
   Step1 的 canNext 硬门 = 探测成功且 apiBase 已应用（之后才自动 checkSystem）；Step2/3 在 nextStep 内即时 createAdmin / saveSiteSettings，回退再前进就是重复提交。
   收尾必须 clearOOBEApiBaseOverrideFromStorage() + resetOOBECache(true)，否则 middleware/oobe.global 的 60s 缓存仍把人锁回 /oobe；prod + 明文 HTTP 时 finishSetup 先弹 TLS 二次确认再安装。
   页面完整跟随全局明暗主题（<html>.dark 驱动 Tailwind dark: 变体与语义令牌，ThemeToggle 在
-  OOBENavbar 中可用）：表面层一律「亮色值 + dark:暗色值」双轨书写，强调文字亮色取深色调、
-  暗色取浅色调保证对比度；壁纸与三束色光叠层两种主题共用。仅渐变兜底/暗角/网格三个背景层
+  OOBENavbar 中可用）。配色分两类写法：**颜色**一律用语义令牌（品牌面 bg-primary / ring-primary，
+  状态面 success / warning / error / info），它们在 :root 与 .dark 各有取值，因此单条类就够，
+  不要再写 dark: 分支；只有**表面层**（玻璃卡片、输入底、分隔线）仍是「亮色值 + dark:暗色值」双轨，
+  因为 bg-white/70 与 bg-zinc-950/60 是压在任意亮度壁纸上的透明度配方、不是色板成员。
+  日志控制台与署名胶囊是恒深底，文字取 *-on-scrim 档。仅渐变兜底/暗角/网格三个背景层
   因含照片级叠加无法用语义类表达，抽成 .oobe-bg-fallback / .oobe-vignette / .oobe-grid
   （页尾 style 块内亮暗各一套）。守卫见 tests/unit/oobeThemeScope.spec.ts。
 -->
@@ -19,11 +22,11 @@
     />
     <!-- 渐变兜底（Bing 壁纸未加载或失败时显示）：亮暗两套见页尾 style 块 -->
     <div class="oobe-bg-fallback absolute inset-0 -z-30" />
-    <!-- 色光叠层：三束径向柔光，主色 emerald/teal/cyan（后台系统色调） -->
+    <!-- 色光叠层：三束径向柔光，走品牌令牌（primary / info 天青族，跟随站点主色） -->
     <div class="pointer-events-none absolute inset-0 -z-10">
-      <div class="absolute -top-40 -left-40 h-[42rem] w-[42rem] rounded-full bg-emerald-500/25 blur-[140px]" />
-      <div class="absolute -bottom-40 -right-40 h-[42rem] w-[42rem] rounded-full bg-teal-500/25 blur-[140px]" />
-      <div class="absolute top-1/2 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-500/15 blur-[140px]" />
+      <div class="absolute -top-40 -left-40 h-[42rem] w-[42rem] rounded-full bg-primary/25 blur-[140px]" />
+      <div class="absolute -bottom-40 -right-40 h-[42rem] w-[42rem] rounded-full bg-info/25 blur-[140px]" />
+      <div class="absolute top-1/2 left-1/2 h-[36rem] w-[36rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary-on-scrim/15 blur-[140px]" />
     </div>
     <!-- 对比度增强：暗角 + 网格纸感（亮暗两套见页尾 style 块） -->
     <div class="oobe-vignette pointer-events-none absolute inset-0 -z-10" />
@@ -56,15 +59,15 @@
               :key="idx"
               class="flex items-center gap-3 p-3 rounded-xl transition-colors"
               :class="{
-                'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 ring-1 ring-emerald-400/30': step === idx + 1,
+                'bg-primary/15 text-primary ring-1 ring-primary/30': step === idx + 1,
                 'text-foreground/85': step !== idx + 1
               }"
             >
               <div
                 class="size-8 rounded-full flex items-center justify-center shrink-0 border text-sm font-semibold transition-colors"
                 :class="{
-                  'border-emerald-600/55 dark:border-emerald-400/60 bg-emerald-500 text-zinc-950': step > idx + 1,
-                  'border-emerald-600/55 dark:border-emerald-400/60 bg-emerald-500/15 text-emerald-800 dark:text-emerald-200': step === idx + 1,
+                  'border-success/55 bg-success text-success-foreground': step > idx + 1,
+                  'border-primary/55 bg-primary/15 text-primary': step === idx + 1,
                   'border-zinc-900/10 dark:border-white/10 bg-zinc-900/5 dark:bg-white/5 text-foreground/70': step < idx + 1
                 }"
               >
@@ -113,10 +116,10 @@
                 <span>{{ t('oobe.step') }} {{ step }}/4</span>
               </div>
               <div class="font-display text-2xl md:text-3xl tracking-tight flex items-center gap-3 text-foreground">
-                <div class="size-9 rounded-xl bg-gradient-to-br from-emerald-400/25 via-teal-400/25 to-cyan-400/25 ring-1 ring-zinc-900/10 dark:ring-white/10 flex items-center justify-center">
+                <div class="size-9 rounded-xl bg-gradient-to-br from-primary/25 via-info/25 to-primary-on-scrim/25 ring-1 ring-zinc-900/10 dark:ring-white/10 flex items-center justify-center">
                   <component
                     :is="steps[step - 1]?.icon"
-                    class="size-5 text-emerald-700 dark:text-emerald-300"
+                    class="size-5 text-primary"
                   />
                 </div>
                 <span>{{ t('oobe.stepN', { n: step, total: 4 }) }}：{{ steps[step - 1]?.title }}</span>
@@ -142,8 +145,8 @@
                     <div class="flex flex-col gap-4 p-5 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
                       <div class="flex items-center justify-between gap-3 flex-wrap">
                         <div class="flex items-center gap-3 min-w-0">
-                          <div class="size-10 rounded-xl bg-gradient-to-br from-emerald-400/25 via-teal-400/25 to-cyan-400/25 ring-1 ring-zinc-900/10 dark:ring-white/10 flex items-center justify-center shrink-0">
-                            <Server class="size-5 text-emerald-700 dark:text-emerald-300" />
+                          <div class="size-10 rounded-xl bg-gradient-to-br from-primary/25 via-info/25 to-primary-on-scrim/25 ring-1 ring-zinc-900/10 dark:ring-white/10 flex items-center justify-center shrink-0">
+                            <Server class="size-5 text-primary" />
                           </div>
                           <div class="min-w-0">
                             <div class="font-semibold text-foreground">
@@ -181,7 +184,7 @@
                         <div class="flex items-center gap-3">
                           <div
                             class="font-semibold text-sm transition-colors select-none cursor-pointer"
-                            :class="connMode === 'dev' ? 'text-emerald-800 dark:text-emerald-200' : 'text-foreground/70'"
+                            :class="connMode === 'dev' ? 'text-success' : 'text-foreground/70'"
                             @click="onConnModeChange('dev')"
                           >
                             {{ t('oobe.connModeDev') }}
@@ -202,7 +205,7 @@
                           />
                           <div
                             class="font-semibold text-sm transition-colors select-none cursor-pointer"
-                            :class="connMode === 'prod' ? 'text-emerald-800 dark:text-emerald-200' : 'text-foreground/70'"
+                            :class="connMode === 'prod' ? 'text-success' : 'text-foreground/70'"
                             @click="onConnModeChange('prod')"
                           >
                             {{ t('oobe.connModeProd') }}
@@ -234,13 +237,13 @@
                               :placeholder="connMode === 'dev' ? 'http://127.0.0.1:8000/api' : '/api'"
                               :aria-invalid="connApiUrlInvalid"
                               class="bg-zinc-900/[0.04] dark:bg-white/[0.04] !border-zinc-900/15 dark:!border-white/15 placeholder:text-foreground/40 text-foreground"
-                              :class="connApiUrlInvalid ? '!border-rose-600/45 dark:!border-rose-400/40 focus-visible:!ring-rose-400/40' : ''"
+                              :class="connApiUrlInvalid ? '!border-error/45 focus-visible:!ring-error/40' : ''"
                               @input="resetProbeStateOnEdit"
                               @keydown.enter.prevent="runProbeBackend"
                             />
                             <p
                               class="text-[11px] mt-1.5 leading-relaxed"
-                              :class="connApiUrlInvalid ? 'text-rose-700 dark:text-rose-300' : 'text-foreground/60'"
+                              :class="connApiUrlInvalid ? 'text-error' : 'text-foreground/60'"
                             >
                               {{ connApiUrlHintText }}
                             </p>
@@ -296,7 +299,7 @@
                                 :key="p"
                                 :value="p"
                                 size="sm"
-                                class="!border-zinc-900/15 dark:!border-white/15 aria-pressed:!bg-emerald-500/15 aria-pressed:!text-emerald-800 dark:aria-pressed:!text-emerald-200 aria-pressed:!border-emerald-600/40 dark:aria-pressed:!border-emerald-400/30"
+                                class="!border-zinc-900/15 dark:!border-white/15 aria-pressed:!bg-primary/15 aria-pressed:!text-primary aria-pressed:!border-primary/40"
                               >
                                 :{{ p }}
                               </ToggleGroupItem>
@@ -340,15 +343,15 @@
                         <!-- 当前生效地址 -->
                         <div
                           v-if="backendProbeApplied && effectiveApiBase"
-                          class="flex items-start gap-2 p-3 rounded-xl border border-emerald-600/35 dark:border-emerald-400/25 bg-emerald-500/[0.06]"
+                          class="flex items-start gap-2 p-3 rounded-xl border border-success/35 bg-success/[0.06]"
                         >
-                          <CheckCircle2 class="size-4 text-emerald-700 dark:text-emerald-300 mt-0.5 shrink-0" />
+                          <CheckCircle2 class="size-4 text-success mt-0.5 shrink-0" />
                           <div class="min-w-0">
-                            <div class="text-[11px] uppercase tracking-wider text-emerald-800/85 dark:text-emerald-200/80">
+                            <div class="text-[11px] uppercase tracking-wider text-success">
                               {{ t('oobe.connCurrentHint') }} · {{ t('oobe.connAppliedHint') }}
                             </div>
                             <div
-                              class="text-sm font-mono text-emerald-900 dark:text-emerald-100 truncate mt-0.5"
+                              class="text-sm font-mono text-success truncate mt-0.5"
                               :title="String(effectiveApiBase)"
                             >
                               {{ effectiveApiBase }}
@@ -364,7 +367,7 @@
                           <div class="flex items-center gap-2 flex-wrap">
                             <Badge
                               :variant="backendProbeResult.ok ? 'default' : 'destructive'"
-                              :class="backendProbeResult.ok ? 'bg-emerald-500/90 text-zinc-950 hover:bg-emerald-500/90' : ''"
+                              :class="backendProbeResult.ok ? 'bg-success text-success-foreground' : ''"
                             >
                               <CheckCircle2
                                 v-if="backendProbeResult.ok"
@@ -379,7 +382,7 @@
                             <Badge
                               v-if="backendProbeResult.oobeRequired"
                               variant="outline"
-                              class="!border-amber-600/40 dark:!border-amber-400/30 text-amber-800 dark:text-amber-200"
+                              class="!border-warning/40 text-warning"
                             >
                               <AlertTriangle data-icon="inline-start" />
                               {{ t('oobe.connProbeOOBERequired') }}
@@ -387,7 +390,7 @@
                             <Badge
                               v-else-if="backendProbeResult.oobeComplete"
                               variant="outline"
-                              class="!border-emerald-600/40 dark:!border-emerald-400/30 text-emerald-800 dark:text-emerald-200"
+                              class="!border-success/40 text-success"
                             >
                               <CheckCircle2 data-icon="inline-start" />
                               {{ t('oobe.connProbeAlreadyDone') }}
@@ -402,13 +405,13 @@
                           </div>
                           <div
                             v-if="!backendProbeResult.ok && watchProbeFailText"
-                            class="text-xs text-rose-200/90 leading-relaxed p-3 rounded-xl bg-rose-500/[0.08] border border-rose-600/30 dark:border-rose-400/20"
+                            class="text-xs text-error leading-relaxed p-3 rounded-xl bg-error/[0.08] border border-error/30"
                           >
                             {{ watchProbeFailText }}
                           </div>
                           <div
                             v-if="!backendProbeResult.ok"
-                            class="text-xs text-amber-800/90 dark:text-amber-200/85 flex items-center gap-1.5"
+                            class="text-xs text-warning flex items-center gap-1.5"
                           >
                             <AlertTriangle class="size-3.5 shrink-0" />
                             <span>{{ t('oobe.connProbeHintNext') }}</span>
@@ -484,19 +487,19 @@
                         <div class="flex items-center gap-3 min-w-0">
                           <div
                             class="size-9 rounded-xl flex items-center justify-center shrink-0"
-                            :class="check.status === 'ok' ? 'bg-emerald-500/20 ring-1 ring-emerald-400/30' : check.status === 'warn' ? 'bg-amber-500/20 ring-1 ring-amber-400/30' : 'bg-rose-500/20 ring-1 ring-rose-400/30'"
+                            :class="check.status === 'ok' ? 'bg-success/20 ring-1 ring-success/30' : check.status === 'warn' ? 'bg-warning/20 ring-1 ring-warning/30' : 'bg-error/20 ring-1 ring-error/30'"
                           >
                             <CheckCircle2
                               v-if="check.status === 'ok'"
-                              class="size-4 text-emerald-700 dark:text-emerald-300"
+                              class="size-4 text-success"
                             />
                             <AlertTriangle
                               v-else-if="check.status === 'warn'"
-                              class="size-4 text-amber-700 dark:text-amber-300"
+                              class="size-4 text-warning"
                             />
                             <XCircle
                               v-else
-                              class="size-4 text-rose-700 dark:text-rose-300"
+                              class="size-4 text-error"
                             />
                           </div>
                           <div class="min-w-0">
@@ -511,7 +514,7 @@
                         <Badge
                           :variant="check.status === 'ok' ? 'default' : check.status === 'warn' ? 'secondary' : 'destructive'"
                           class="shrink-0"
-                          :class="check.status === 'ok' ? 'bg-emerald-500/90 hover:bg-emerald-500/90 text-zinc-950' : ''"
+                          :class="check.status === 'ok' ? 'bg-success text-success-foreground' : ''"
                         >
                           {{ check.statusText }}
                         </Badge>
@@ -558,8 +561,8 @@
                     <div class="flex flex-col gap-3 rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] p-4">
                       <div class="flex items-center justify-between gap-3 flex-wrap">
                         <div class="flex items-center gap-3 min-w-0">
-                          <div class="size-9 rounded-xl bg-emerald-500/15 ring-1 ring-emerald-400/25 flex items-center justify-center shrink-0">
-                            <Wrench class="size-4 text-emerald-700 dark:text-emerald-300" />
+                          <div class="size-9 rounded-xl bg-primary/15 ring-1 ring-primary/25 flex items-center justify-center shrink-0">
+                            <Wrench class="size-4 text-primary" />
                           </div>
                           <div class="min-w-0">
                             <div class="font-semibold text-sm text-foreground">
@@ -604,7 +607,7 @@
                       >
                         <div class="h-2 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
                           <div
-                            class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 transition-all duration-500"
+                            class="h-full rounded-full bg-gradient-to-r from-primary via-info to-primary-on-scrim transition-all duration-500"
                             :style="{ width: `${installPercent}%` }"
                           />
                         </div>
@@ -639,7 +642,7 @@
                         </div>
                         <div
                           ref="logBoxRef"
-                          class="h-56 overflow-auto rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-950/70 backdrop-blur text-emerald-300/90 font-mono text-xs p-3 leading-relaxed whitespace-pre-wrap break-words select-all"
+                          class="h-56 overflow-auto rounded-xl border border-zinc-900/10 dark:border-white/10 bg-zinc-950/70 backdrop-blur text-success-on-scrim/90 font-mono text-xs p-3 leading-relaxed whitespace-pre-wrap break-words select-all"
                         >
                           <template v-if="depLogLines.length === 0">
                             <span class="text-zinc-500">{{ t('oobe.logsEmpty', '（等待日志输出…）') }}</span>
@@ -647,7 +650,7 @@
                           <div
                             v-for="(ln, i) in depLogLines"
                             :key="i"
-                            :class="ln.level === 'error' ? 'text-rose-600 dark:text-rose-400' : ln.level === 'success' ? 'text-emerald-600 dark:text-emerald-400' : ln.level === 'warn' ? 'text-amber-700 dark:text-amber-300' : ''"
+                            :class="ln.level === 'error' ? 'text-error-on-scrim' : ln.level === 'success' ? 'text-success-on-scrim' : ln.level === 'warn' ? 'text-warning-on-scrim' : ''"
                           >
                             <span class="text-zinc-500 mr-2 select-none">{{ ln.time }}</span>{{ ln.text }}
                           </div>
@@ -682,7 +685,7 @@
                           autocapitalize="none"
                           spellcheck="false"
                           :placeholder="t('oobe.adminNamePlaceholder')"
-                          class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                          class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                         />
                       </div>
 
@@ -702,7 +705,7 @@
                       </p>
                       <p
                         v-else-if="usernameCheckState === 'ok'"
-                        class="flex items-center gap-1.5 text-xs text-emerald-700 dark:text-emerald-300"
+                        class="flex items-center gap-1.5 text-xs text-success"
                         aria-live="polite"
                       >
                         <CheckCircle2 class="size-3" />
@@ -710,7 +713,7 @@
                       </p>
                       <p
                         v-else-if="adminDisplayErrors.name || usernameCheckState === 'invalid'"
-                        class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                        class="flex items-center gap-1.5 text-xs text-error"
                         role="alert"
                       >
                         <XCircle class="size-3" />
@@ -732,13 +735,13 @@
                           type="email"
                           autocomplete="email"
                           :placeholder="t('oobe.adminEmailPlaceholder')"
-                          class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                          class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                         />
                       </div>
 
                       <p
                         v-if="adminDisplayErrors.email"
-                        class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                        class="flex items-center gap-1.5 text-xs text-error"
                         role="alert"
                       >
                         <XCircle class="size-3" />
@@ -761,7 +764,7 @@
                             :type="showAdminPassword ? 'text' : 'password'"
                             autocomplete="new-password"
                             :placeholder="t('oobe.adminPasswordPlaceholder')"
-                            class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                           />
                           <button
                             type="button"
@@ -803,7 +806,7 @@
                               v-for="rule in passwordStrength.rules"
                               :key="rule.id"
                               class="inline-flex items-center gap-1 text-[11px]"
-                              :class="rule.passed ? 'text-emerald-700/90 dark:text-emerald-300/90' : 'text-foreground/55'"
+                              :class="rule.passed ? 'text-success' : 'text-foreground/55'"
                             >
                               <CheckCircle2
                                 v-if="rule.passed"
@@ -820,7 +823,7 @@
 
                         <p
                           v-if="adminDisplayErrors.password"
-                          class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                          class="flex items-center gap-1.5 text-xs text-error"
                           role="alert"
                         >
                           <XCircle class="size-3" />
@@ -842,7 +845,7 @@
                             :type="showAdminConfirmPassword ? 'text' : 'password'"
                             autocomplete="new-password"
                             :placeholder="t('oobe.adminConfirmPasswordPlaceholder')"
-                            class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            class="pl-9 pr-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                           />
                           <button
                             type="button"
@@ -863,7 +866,7 @@
 
                         <p
                           v-if="adminDisplayErrors.confirmPassword"
-                          class="flex items-center gap-1.5 text-xs text-rose-700 dark:text-rose-300"
+                          class="flex items-center gap-1.5 text-xs text-error"
                           role="alert"
                         >
                           <XCircle class="size-3" />
@@ -875,7 +878,7 @@
                     <!-- 分步提交失败的可见反馈（以前只进 console，用户点了没反应） -->
                     <p
                       v-if="stepError && step === 2"
-                      class="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300"
+                      class="flex items-start gap-2 text-xs text-error"
                       role="alert"
                     >
                       <XCircle class="size-3.5 shrink-0 mt-0.5" />
@@ -890,7 +893,7 @@
                     <!-- 站点信息 -->
                     <div class="flex flex-col gap-4">
                       <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <Globe2 class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        <Globe2 class="size-4 text-success" />
                         <span>{{ t('oobe.groupSite', '站点信息') }}</span>
                       </div>
 
@@ -906,7 +909,7 @@
                             id="oobe-site-name"
                             v-model="siteForm.name"
                             :placeholder="t('oobe.siteNamePlaceholder')"
-                            class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                           />
                         </div>
                       </div>
@@ -924,7 +927,7 @@
                             v-model="siteForm.siteUrl"
                             type="url"
                             :placeholder="t('oobe.siteUrlPlaceholder')"
-                            class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                           />
                         </div>
 
@@ -944,7 +947,7 @@
                           v-model="siteForm.description"
                           :placeholder="t('oobe.siteDescriptionPlaceholder')"
                           rows="3"
-                          class="resize-none !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                          class="resize-none !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                         />
                       </div>
 
@@ -957,7 +960,7 @@
                           <Select v-model="siteForm.locale">
                             <SelectTrigger
                               id="oobe-default-language"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-emerald-400/40"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-primary/40"
                             >
                               <SelectValue />
                             </SelectTrigger>
@@ -990,7 +993,7 @@
                               id="oobe-seo-keywords"
                               v-model="siteForm.keywords"
                               :placeholder="t('oobe.seoKeywordsPlaceholder')"
-                              class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="pl-9 h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                             />
                           </div>
                         </div>
@@ -1002,7 +1005,7 @@
                     <div class="flex flex-col gap-4">
                       <div class="flex items-center justify-between gap-3 flex-wrap">
                         <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                          <Database class="size-4 text-emerald-700 dark:text-emerald-300" />
+                          <Database class="size-4 text-success" />
                           <span>{{ t('oobe.groupEnv', '运行环境与数据库') }}</span>
                         </div>
                         <div class="flex items-center gap-2">
@@ -1027,7 +1030,7 @@
                           <Select v-model="siteForm.databaseType">
                             <SelectTrigger
                               id="oobe-db-type"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-emerald-400/40"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 text-foreground focus:!ring-primary/40"
                             >
                               <SelectValue />
                             </SelectTrigger>
@@ -1079,7 +1082,7 @@
                             <Input
                               id="oobe-db-host"
                               v-model="siteForm.dbHost"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                               placeholder="localhost"
                             />
                           </div>
@@ -1093,7 +1096,7 @@
                               id="oobe-db-port"
                               v-model.number="siteForm.dbPort"
                               type="number"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                               placeholder="5432"
                             />
                           </div>
@@ -1106,7 +1109,7 @@
                             <Input
                               id="oobe-db-name"
                               v-model="siteForm.dbName"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                               placeholder="rosetta"
                             />
                           </div>
@@ -1119,7 +1122,7 @@
                             <Input
                               id="oobe-db-user"
                               v-model="siteForm.dbUser"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                               placeholder="postgres"
                             />
                           </div>
@@ -1133,7 +1136,7 @@
                               id="oobe-db-password"
                               v-model="siteForm.dbPassword"
                               type="password"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                             />
                           </div>
                         </div>
@@ -1169,23 +1172,23 @@
                             v-if="dbTest.status === 'ok' || dbTest.status === 'error'"
                             class="flex items-start gap-2.5 p-3 rounded-xl border"
                             :class="dbTest.status === 'ok'
-                              ? 'border-emerald-400/35 bg-emerald-500/[0.07]'
-                              : 'border-rose-400/35 bg-rose-500/[0.07]'"
+                              ? 'border-success/35 bg-success/[0.07]'
+                              : 'border-error/35 bg-error/[0.07]'"
                             role="status"
                             aria-live="polite"
                           >
                             <CheckCircle2
                               v-if="dbTest.status === 'ok'"
-                              class="size-4 shrink-0 mt-0.5 text-emerald-700 dark:text-emerald-300"
+                              class="size-4 shrink-0 mt-0.5 text-success"
                             />
                             <XCircle
                               v-else
-                              class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300"
+                              class="size-4 shrink-0 mt-0.5 text-error"
                             />
                             <div class="flex-1 min-w-0 space-y-1">
                               <div
                                 class="text-sm font-medium"
-                                :class="dbTest.status === 'ok' ? 'text-emerald-800 dark:text-emerald-200' : 'text-rose-800 dark:text-rose-200'"
+                                :class="dbTest.status === 'ok' ? 'text-success' : 'text-error'"
                               >
                                 {{ dbTest.message }}
                               </div>
@@ -1215,7 +1218,7 @@
                           <Input
                             id="oobe-db-path"
                             v-model="siteForm.dbPath"
-                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                            class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                             placeholder="rosetta.db"
                           />
                         </div>
@@ -1232,7 +1235,7 @@
                             <Input
                               id="oobe-redis-host"
                               v-model="siteForm.redisHost"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                               placeholder="localhost"
                             />
                           </div>
@@ -1246,7 +1249,7 @@
                               id="oobe-redis-port"
                               v-model.number="siteForm.redisPort"
                               type="number"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                               placeholder="6379"
                             />
                           </div>
@@ -1260,7 +1263,7 @@
                               id="oobe-redis-password"
                               v-model="siteForm.redisPassword"
                               type="password"
-                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-emerald-400/40 text-foreground placeholder:text-foreground/45"
+                              class="h-11 !bg-zinc-900/[0.05] dark:!bg-white/[0.05] !border-zinc-900/10 dark:!border-white/10 focus-visible:!ring-primary/40 text-foreground placeholder:text-foreground/45"
                             />
                           </div>
                         </div>
@@ -1271,7 +1274,7 @@
                     <Separator class="my-1 !bg-zinc-900/10 dark:!bg-white/10" />
                     <div class="flex flex-col gap-4">
                       <div class="flex items-center gap-2 text-sm font-semibold text-foreground">
-                        <Sparkles class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        <Sparkles class="size-4 text-success" />
                         <span>{{ t('oobe.groupFeatures', '功能开关') }}</span>
                       </div>
                       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1314,12 +1317,12 @@
                       <div
                         v-for="issue in preflightErrors"
                         :key="`e-${issue.field}-${issue.code}`"
-                        class="flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07]"
+                        class="flex items-start gap-2.5 p-3 rounded-xl border border-error/35 bg-error/[0.07]"
                         role="alert"
                       >
-                        <XCircle class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300" />
+                        <XCircle class="size-4 shrink-0 mt-0.5 text-error" />
                         <div class="flex-1 min-w-0 space-y-1">
-                          <div class="text-sm font-medium text-rose-800 dark:text-rose-200">
+                          <div class="text-sm font-medium text-error">
                             {{ issue.message }}
                           </div>
                           <div
@@ -1341,12 +1344,12 @@
                       <div
                         v-for="issue in preflightWarns"
                         :key="`w-${issue.field}-${issue.code}`"
-                        class="flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07]"
+                        class="flex items-start gap-2.5 p-3 rounded-xl border border-warning/35 bg-warning/[0.07]"
                         role="status"
                       >
-                        <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
+                        <AlertTriangle class="size-4 shrink-0 mt-0.5 text-warning" />
                         <div class="flex-1 min-w-0 space-y-1">
-                          <div class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                          <div class="text-sm font-medium text-warning">
                             {{ issue.message }}
                           </div>
                           <div
@@ -1361,7 +1364,7 @@
 
                     <p
                       v-if="stepError && step === 3"
-                      class="flex items-start gap-2 text-xs text-rose-700 dark:text-rose-300"
+                      class="flex items-start gap-2 text-xs text-error"
                       role="alert"
                     >
                       <XCircle class="size-3.5 shrink-0 mt-0.5" />
@@ -1378,8 +1381,8 @@
                     class="flex flex-col gap-5 py-2"
                   >
                     <div class="text-center">
-                      <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
-                        <Loader2 class="size-10 text-emerald-700 dark:text-emerald-300 animate-spin" />
+                      <div class="inline-flex items-center justify-center size-20 rounded-full bg-primary/15 ring-1 ring-primary/30 mb-6">
+                        <Loader2 class="size-10 text-primary animate-spin" />
                       </div>
                       <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
                         {{ t('oobe.installing', '正在配置您的站点…') }}
@@ -1396,7 +1399,7 @@
                       </div>
                       <div class="h-2.5 w-full rounded-full bg-zinc-900/10 dark:bg-white/10 overflow-hidden">
                         <div
-                          class="h-full rounded-full bg-gradient-to-r from-emerald-400 via-teal-400 to-cyan-400 transition-all duration-500 relative"
+                          class="h-full rounded-full bg-gradient-to-r from-primary via-info to-primary-on-scrim transition-all duration-500 relative"
                           :style="{ width: `${installPercent}%` }"
                         >
                           <div class="absolute inset-0 bg-[linear-gradient(45deg,rgba(255,255,255,0.15)_25%,transparent_25%,transparent_50%,rgba(255,255,255,0.15)_50%,rgba(255,255,255,0.15)_75%,transparent_75%)] bg-[length:20px_20px] animate-progress-stripe" />
@@ -1411,16 +1414,16 @@
                         :key="st.id"
                         class="flex items-center gap-3 p-3 rounded-xl border"
                         :class="{
-                          'bg-emerald-500/10 border-emerald-400/40': installStepIndex === idx,
-                          'bg-emerald-500/5 border-emerald-600/40 dark:border-emerald-400/30': st.done,
+                          'bg-primary/10 border-primary/40': installStepIndex === idx,
+                          'bg-success/5 border-success/40': st.done,
                           'border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05]': !st.done && installStepIndex !== idx
                         }"
                       >
                         <div
                           class="size-7 rounded-full flex items-center justify-center shrink-0 text-xs font-semibold transition-colors"
                           :class="{
-                            'bg-emerald-500 text-zinc-950': st.done,
-                            'bg-emerald-500/15 text-emerald-800 dark:text-emerald-200 animate-pulse ring-1 ring-emerald-400/40': installStepIndex === idx && !st.done,
+                            'bg-success text-success-foreground': st.done,
+                            'bg-primary/15 text-primary animate-pulse ring-1 ring-primary/40': installStepIndex === idx && !st.done,
                             'bg-zinc-900/10 dark:bg-white/10 text-foreground/70': installStepIndex !== idx && !st.done
                           }"
                         >
@@ -1437,7 +1440,7 @@
                         <div class="flex-1 min-w-0">
                           <div
                             class="text-sm font-medium"
-                            :class="installStepIndex === idx ? 'text-emerald-800 dark:text-emerald-200' : st.done ? 'text-foreground' : 'text-foreground/75'"
+                            :class="installStepIndex === idx ? 'text-primary' : st.done ? 'text-foreground' : 'text-foreground/75'"
                           >
                             {{ st.label }}
                           </div>
@@ -1458,15 +1461,15 @@
                       v-if="installSnapshotState === 'timeout' || installSnapshotState === 'polling'"
                       class="flex items-start gap-3 p-3 rounded-xl border"
                       :class="installSnapshotState === 'timeout'
-                        ? 'border-amber-400/35 bg-amber-500/[0.07]'
-                        : 'border-sky-600/40 bg-sky-500/[0.06] dark:border-sky-400/30'"
+                        ? 'border-warning/35 bg-warning/[0.07]'
+                        : 'border-info/40 bg-info/[0.06]'"
                       role="status"
                       aria-live="polite"
                     >
                       <AlertTriangle
                         data-icon="inline-start"
                         class="size-4 shrink-0 mt-0.5"
-                        :class="installSnapshotState === 'timeout' ? 'text-amber-700 dark:text-amber-300' : 'text-sky-700 dark:text-sky-300'"
+                        :class="installSnapshotState === 'timeout' ? 'text-warning' : 'text-info'"
                       />
                       <div class="flex-1 min-w-0 space-y-1">
                         <div class="text-sm font-medium text-foreground">
@@ -1501,8 +1504,8 @@
                     v-else-if="installed"
                     class="text-center py-6 animate-in fade-in"
                   >
-                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
-                      <CheckCircle2 class="size-10 text-emerald-700 dark:text-emerald-300" />
+                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-success/15 ring-1 ring-success/30 mb-6">
+                      <CheckCircle2 class="size-10 text-success" />
                     </div>
                     <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
                       {{ t('oobe.completeTitle') }}
@@ -1513,24 +1516,24 @@
 
                     <div class="mt-8 grid grid-cols-3 gap-3 max-w-lg mx-auto">
                       <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                        <div class="size-8 rounded-xl bg-emerald-500/20 ring-1 ring-emerald-400/30 flex items-center justify-center mx-auto mb-2">
-                          <Settings2 class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        <div class="size-8 rounded-xl bg-success/20 ring-1 ring-success/30 flex items-center justify-center mx-auto mb-2">
+                          <Settings2 class="size-4 text-success" />
                         </div>
                         <div class="text-xs font-semibold text-foreground/90">
                           {{ t('oobe.completeSummary1') }}
                         </div>
                       </div>
                       <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                        <div class="size-8 rounded-xl bg-cyan-500/20 ring-1 ring-cyan-400/30 flex items-center justify-center mx-auto mb-2">
-                          <UserPlus class="size-4 text-cyan-700 dark:text-cyan-300" />
+                        <div class="size-8 rounded-xl bg-info/20 ring-1 ring-info/30 flex items-center justify-center mx-auto mb-2">
+                          <UserPlus class="size-4 text-info" />
                         </div>
                         <div class="text-xs font-semibold text-foreground/90">
                           {{ t('oobe.completeSummary2') }}
                         </div>
                       </div>
                       <div class="rounded-2xl border border-zinc-900/10 dark:border-white/10 p-4 bg-zinc-900/[0.05] dark:bg-white/[0.05]">
-                        <div class="size-8 rounded-xl bg-teal-500/20 ring-1 ring-teal-400/30 flex items-center justify-center mx-auto mb-2">
-                          <Globe2 class="size-4 text-teal-700 dark:text-teal-300" />
+                        <div class="size-8 rounded-xl bg-primary/20 ring-1 ring-primary/30 flex items-center justify-center mx-auto mb-2">
+                          <Globe2 class="size-4 text-primary" />
                         </div>
                         <div class="text-xs font-semibold text-foreground/90">
                           {{ t('oobe.completeSummary3') }}
@@ -1542,7 +1545,7 @@
                        密码只显示一次（输入框内容仍在内存里），所以只回显账号与入口，不回显明文口令。 -->
                     <div class="mt-6 max-w-lg mx-auto rounded-2xl border border-zinc-900/10 dark:border-white/10 bg-zinc-900/[0.05] dark:bg-white/[0.05] p-4 text-left">
                       <div class="flex items-center gap-2 mb-3 text-sm font-semibold text-foreground">
-                        <ShieldCheck class="size-4 text-emerald-700 dark:text-emerald-300" />
+                        <ShieldCheck class="size-4 text-success" />
                         {{ t('oobe.credTitle', '请记下你的登录信息') }}
                       </div>
                       <dl class="flex flex-col gap-2 text-xs">
@@ -1586,7 +1589,7 @@
                            用户点「进入后台」被弹回 /login，只能回头猜自己刚设的密码。 -->
                       <p
                         class="mt-1 text-[11px] leading-relaxed"
-                        :class="adminAutoLoggedIn ? 'text-foreground/60' : 'text-amber-700 dark:text-amber-300'"
+                        :class="adminAutoLoggedIn ? 'text-foreground/60' : 'text-warning'"
                       >
                         {{ adminAutoLoggedIn ? t('oobe.credAutoLoginOk', '系统已自动为你登录，可直接进入后台。') : t('oobe.credAutoLoginFailed', '自动登录未成功，请使用上面的账号手动登录后台。') }}
                       </p>
@@ -1598,8 +1601,8 @@
                     v-else
                     class="text-center py-8"
                   >
-                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-emerald-500/15 ring-1 ring-emerald-400/30 mb-6">
-                      <Rocket class="size-10 text-emerald-700 dark:text-emerald-300" />
+                    <div class="inline-flex items-center justify-center size-20 rounded-full bg-primary/15 ring-1 ring-primary/30 mb-6">
+                      <Rocket class="size-10 text-primary" />
                     </div>
                     <h3 class="font-display text-2xl font-bold tracking-tight mb-2 text-foreground">
                       {{ t('oobe.readyTitle', '配置已准备就绪') }}
@@ -1611,12 +1614,12 @@
                     <!-- 安装失败：展示后端给的结构化 error_code + hint（已脱敏，不含数据库口令） -->
                     <div
                       v-if="installError"
-                      class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-rose-400/35 bg-rose-500/[0.07] text-left"
+                      class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-error/35 bg-error/[0.07] text-left"
                       role="alert"
                     >
-                      <XCircle class="size-4 shrink-0 mt-0.5 text-rose-700 dark:text-rose-300" />
+                      <XCircle class="size-4 shrink-0 mt-0.5 text-error" />
                       <div class="flex-1 min-w-0 space-y-1">
-                        <div class="text-sm font-medium text-rose-800 dark:text-rose-200">
+                        <div class="text-sm font-medium text-error">
                           {{ installError.message }}
                         </div>
                         <div
@@ -1634,12 +1637,12 @@
                     <!-- 安装前预检结论 -->
                     <div
                       v-else-if="preflightState.done && preflightErrors.length"
-                      class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-amber-400/35 bg-amber-500/[0.07] text-left"
+                      class="mt-6 max-w-lg mx-auto flex items-start gap-2.5 p-3 rounded-xl border border-warning/35 bg-warning/[0.07] text-left"
                       role="alert"
                     >
-                      <AlertTriangle class="size-4 shrink-0 mt-0.5 text-amber-700 dark:text-amber-300" />
+                      <AlertTriangle class="size-4 shrink-0 mt-0.5 text-warning" />
                       <div class="flex-1 min-w-0 space-y-1">
-                        <div class="text-sm font-medium text-amber-800 dark:text-amber-200">
+                        <div class="text-sm font-medium text-warning">
                           {{ t('oobe.preflightBlocked', '有 {n} 项配置需要修正后才能安装').replace('{n}', String(preflightErrors.length)) }}
                         </div>
                         <ul class="text-xs text-foreground/70 leading-relaxed list-disc pl-4 space-y-0.5">
@@ -1696,7 +1699,7 @@
                 <Button
                   v-if="step < 4"
                   variant="default"
-                  class="!bg-emerald-500 !text-zinc-950 hover:!bg-emerald-400"
+                  class="!bg-primary !text-primary-foreground hover:!bg-primary-hover"
                   :disabled="!canNext || loading || installRunning"
                   :loading="loading"
                   @click="nextStep"
@@ -1713,7 +1716,7 @@
                     v-if="!installed"
                     variant="default"
                     size="lg"
-                    class="!bg-emerald-500 !text-zinc-950 hover:!bg-emerald-400"
+                    class="!bg-primary !text-primary-foreground hover:!bg-primary-hover"
                     :disabled="installing || loading || preflightState.running"
                     @click="finishSetup"
                   >
@@ -1743,7 +1746,7 @@
                     v-else
                     variant="default"
                     size="lg"
-                    class="!bg-emerald-500 !text-zinc-950 hover:!bg-emerald-400"
+                    class="!bg-primary !text-primary-foreground hover:!bg-primary-hover"
                     :loading="loading"
                     @click="goAdmin"
                   >
@@ -1782,7 +1785,7 @@
         <div class="pointer-events-none absolute inset-0 rounded-full ring-[3px] ring-white/0 group-hover:ring-zinc-900/10 dark:group-hover:ring-white/10 transition-all" />
       </div>
       <div class="min-w-0 flex-1">
-        <div class="text-[11px] font-semibold uppercase tracking-wider text-emerald-200/90">
+        <div class="text-[11px] font-semibold uppercase tracking-wider text-primary-on-scrim/90">
           Bing · Daily
         </div>
         <div
@@ -1840,7 +1843,7 @@
             <AlertDialogTitle class="flex items-center gap-2">
               <ShieldAlert
                 data-icon="inline-start"
-                class="size-5 text-amber-600 dark:text-amber-500"
+                class="size-5 text-warning"
               />
               {{ t('oobe.tlsTitle') }}
             </AlertDialogTitle>
@@ -1854,7 +1857,7 @@
                   <li>
                     {{ t('oobe.tlsHintConfigureReverseProxy') }}
                   </li>
-                  <li class="text-rose-600/90 dark:text-rose-400/90">
+                  <li class="text-error">
                     {{ t('oobe.tlsHintRisk') }}
                   </li>
                 </ul>
@@ -2573,16 +2576,16 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const passwordStrength = computed(() => evaluatePasswordStrength(adminForm.password))
 const strengthPercent = computed(() => passwordStrengthPercent(passwordStrength.value))
 const strengthBarClass = computed(() => ({
-  weak: 'bg-rose-500',
-  fair: 'bg-amber-400',
-  good: 'bg-teal-400',
-  strong: 'bg-emerald-400'
+  weak: 'bg-error',
+  fair: 'bg-warning',
+  good: 'bg-primary',
+  strong: 'bg-success'
 })[passwordStrength.value.level])
 const strengthTextClass = computed(() => ({
-  weak: 'text-rose-700 dark:text-rose-300',
-  fair: 'text-amber-700 dark:text-amber-300',
-  good: 'text-teal-700 dark:text-teal-300',
-  strong: 'text-emerald-700 dark:text-emerald-300'
+  weak: 'text-error',
+  fair: 'text-warning',
+  good: 'text-primary',
+  strong: 'text-success'
 })[passwordStrength.value.level])
 const strengthLabel = computed(() => ({
   weak: t('oobe.pwWeak', '弱'),

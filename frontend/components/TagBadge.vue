@@ -1,7 +1,12 @@
 <!--
-  标签胶囊（淡色底 + 原色文字 + 无边框）：hex 经 hexToHsl 写入 --tag-h/s/l 局部令牌，
-  scoped 样式再由这组令牌派生底/字/点色；color 为空时回落内置的 --primary-* 兜底值。
-  暗色覆写挂在 html.dark 下、与 useTheme 写入的属性名绑定，改令牌名要两处同步。
+  标签胶囊（同色相浓涂）：后端 hex 直接写进一个局部令牌 --tag-c，其余底/字/点/描边
+  全部用 color-mix(in oklab) 从它派生；color 为空时 --tag-c 回落 hsl(var(--primary))，
+  所以未配色的标签跟随主题主色。暗色覆写挂在 html.dark 下、与 useTheme 写入的属性名绑定，
+  改令牌名要两处同步。
+  为什么不用 h/s/l 三变量：:root 的 --primary 是"一个不带分隔符的 HSL 三元组"
+  （`--primary: 199 100% 33%`），CSS 侧拆不出 h/s/l，任何 `calc(var(--tag-s) * .85)` 式的
+  减饱和派生都只能靠 JS 先解一遍——那套 --tag-h/--tag-s/--tag-l 还顺手引用了仓库里
+  根本不存在的 --primary-h/-s/-l，于是没配色的标签永远渲染成同一个褪色的蓝。
   hover 禁止加 transform 位移：卡片容器已有 .lift-hover，嵌套变换会叠加错位。
 -->
 <template>
@@ -86,25 +91,30 @@ const props = withDefaults(defineProps<Props>(), {
   size: 'md'
 })
 
-const hsl = computed(() => (props.color ? hexToHsl(props.color) : null))
-
+/**
+ * hexToHsl 在这里同时充当"合法性闸门"：非 `#RRGGBB`（含库里历史脏值）直接返回 null，
+ * 于是进 DOM 的永远是一段规范化的 `hsl(h s% l%)`，而不是调用方自备的任意字符串。
+ * 取整是纯函数、两端同值，不会引入 hydration 差异。
+ */
 const chipStyle = computed(() => {
-  if (!hsl.value) return {}
-  const { h, s, l } = hsl.value
-  return { '--tag-h': String(h), '--tag-s': `${s}%`, '--tag-l': `${l}%` }
+  const hsl = props.color ? hexToHsl(props.color) : null
+  if (!hsl) return {}
+  return { '--tag-c': `hsl(${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%)` }
 })
 </script>
 
 <style scoped>
 .tag-chip {
-  --tag-h: var(--primary-h, 200);
-  --tag-s: var(--primary-s, 80%);
-  --tag-l: var(--primary-l, 50%);
+  /* 一个颜色真相：--tag-c（后端配色的规范化 hex），没配色就跟随主题主色。 */
+  --_c: var(--tag-c, hsl(var(--primary)));
 
-  --_bg: hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.08);
-  --_fg: hsl(var(--tag-h) calc(var(--tag-s) * 0.85) calc(var(--tag-l) * 0.55));
-  --_border: hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.16);
-  --_dot: hsl(var(--tag-h) calc(var(--tag-s) * 0.9) calc(var(--tag-l) * 0.8));
+  /* 同色相浓涂：底是色本身摊到卡面上 18%，字是色本身往黑压 55%。
+     14 色抽样实测最坏 5.75:1（最浅的 yellow-300），hover 摊到 26% 仍 5.63:1。
+     这里不能再走 `hsl(h s*0.85 l*0.55)` 那类减饱和——那正是"灰蒙蒙"的来源。 */
+  --_bg: color-mix(in oklab, var(--_c) 18%, hsl(var(--card)));
+  --_fg: color-mix(in oklab, var(--_c) 55%, black);
+  --_border: color-mix(in oklab, var(--_c) 30%, transparent);
+  --_dot: var(--_c);
 
   display: inline-flex;
   align-items: center;
@@ -118,7 +128,7 @@ const chipStyle = computed(() => {
   color: var(--_fg);
   background: var(--_bg);
   border: 1px solid var(--_border);
-  box-shadow: inset 0 1px 2px hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.06);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--_c) 10%, transparent);
 
   transition:
     background-color 200ms var(--motion-ease-standard, cubic-bezier(0.22, 1, 0.36, 1)),
@@ -155,27 +165,29 @@ const chipStyle = computed(() => {
   opacity: 0.7;
 }
 
-/* ===== Dark mode ===== */
+/* ===== Dark mode =====
+ * 同一套派生，只把"往哪边压"反过来：底摊到暗卡面上 22%，字往白提 50%。
+ * 实测最坏 5.76:1（最深的那枚 slate-800 标签色），hover 32% 仍 5.62:1。 */
 html.dark .tag-chip {
-  --_bg: hsl(var(--tag-h) calc(var(--tag-s) * 0.75) calc(var(--tag-l) * 0.55) / 0.18);
-  --_fg: hsl(var(--tag-h) calc(var(--tag-s) * 0.5) calc(65% + var(--tag-l) * 0.25));
-  --_border: hsl(var(--tag-h) calc(var(--tag-s) * 0.65) calc(var(--tag-l) * 0.65) / 0.22);
-  --_dot: hsl(var(--tag-h) calc(var(--tag-s) * 0.65) calc(var(--tag-l) * 0.75));
+  --_bg: color-mix(in oklab, var(--_c) 22%, hsl(var(--card)));
+  --_fg: color-mix(in oklab, var(--_c) 50%, white);
+  --_border: color-mix(in oklab, var(--_c) 40%, transparent);
+  --_dot: color-mix(in oklab, var(--_c) 78%, white);
 }
 
 /* ===== Hover =====
  * 卡片内嵌套变换会与 .lift-hover 冲突，这里只做颜色/描边过渡，不做位移。 */
 .tag-chip:hover {
-  --_bg: hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.14);
-  --_border: hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.28);
+  --_bg: color-mix(in oklab, var(--_c) 26%, hsl(var(--card)));
+  --_border: color-mix(in oklab, var(--_c) 45%, transparent);
   filter: brightness(1.04);
-  box-shadow: inset 0 1px 2px hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.1);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--_c) 14%, transparent);
 }
 
 html.dark .tag-chip:hover {
-  --_bg: hsl(var(--tag-h) calc(var(--tag-s) * 0.75) calc(var(--tag-l) * 0.55) / 0.28);
-  --_border: hsl(var(--tag-h) calc(var(--tag-s) * 0.65) calc(var(--tag-l) * 0.65) / 0.35);
-  box-shadow: inset 0 1px 2px hsl(var(--tag-h) var(--tag-s) var(--tag-l) / 0.14);
+  --_bg: color-mix(in oklab, var(--_c) 32%, hsl(var(--card)));
+  --_border: color-mix(in oklab, var(--_c) 52%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--_c) 20%, transparent);
 }
 
 /* NuxtLink wrapper should not add default underline */

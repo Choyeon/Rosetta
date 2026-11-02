@@ -161,15 +161,15 @@ export default defineNuxtConfig({
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
         { name: 'description', content: 'Rosetta · 穿越语言的边界 · Modern personal blog system with Nuxt 4 + FastAPI' },
-        { name: 'theme-color', content: '#0ea5e9', media: '(prefers-color-scheme: light)' },
-        { name: 'theme-color', content: '#0c4a6e', media: '(prefers-color-scheme: dark)' },
+        { name: 'theme-color', content: '#0073a8', media: '(prefers-color-scheme: light)' },
+        { name: 'theme-color', content: '#004d70', media: '(prefers-color-scheme: dark)' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         // 标准 W3C mobile-web-app-capable：替换已废弃的 apple-mobile-web-app-capable（旧 iOS 仍需要上面那条，所以保留两条）
         { name: 'mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'default' },
         { name: 'apple-mobile-web-app-title', content: 'Rosetta' },
         { name: 'application-name', content: 'Rosetta' },
-        { name: 'msapplication-TileColor', content: '#0ea5e9' }
+        { name: 'msapplication-TileColor', content: '#0073a8' }
       ],
       link: [
         // === 外链资源 warm-up：preconnect + dns-prefetch 双层策略，降低首屏 RTT + CLS ===

@@ -1,6 +1,7 @@
 <!--
   分类 chip（消费方：PostCard 两副骨架各一处 + pages/index.vue 两处），与 TagBadge 是「同色引擎、异形」兄弟：
-  color 只收后端 hex 串，hexToHsl 解出 H/S/L 写进局部 --cat-* 三变量，为 null 或非法时整套回落 --primary-* 令牌；
+  color 只收后端 hex 串，经 hexToHsl 规范化成一段 `hsl(h s% l%)` 写进局部 --cat-c 令牌，
+  为 null 或非法时整套回落 hsl(var(--primary))（与 TagBadge 同一个引擎，异形而已）；
   暗色前景不是 dark: 变体，而是本文件 html.dark 段重算的 --_fg，改令牌名要两处同步。
   label 必须是调用方已按当前语言解析好的纯字符串（resolveLocalized(post.category.name)），不要传 i18n dict；
   左侧 2px .cat-accent 是分类/标签的刻意视觉区分（不受 Admin 禁彩条约束），hover 只换色不位移——位移会与卡片 .lift-hover 抢 transform。
@@ -28,12 +29,11 @@ const props = withDefaults(defineProps<Props>(), {
   size: 'md'
 })
 
-const hsl = computed(() => (props.color ? hexToHsl(props.color) : null))
-
+/** hexToHsl 同时是合法性闸门：非 `#RRGGBB` 返回 null，进 DOM 的永远是规范化的 hsl() 串。 */
 const chipStyle = computed(() => {
-  if (!hsl.value) return {}
-  const { h, s, l } = hsl.value
-  return { '--cat-h': String(h), '--cat-s': `${s}%`, '--cat-l': `${l}%` }
+  const hsl = props.color ? hexToHsl(props.color) : null
+  if (!hsl) return {}
+  return { '--cat-c': `hsl(${Math.round(hsl.h)} ${Math.round(hsl.s)}% ${Math.round(hsl.l)}%)` }
 })
 </script>
 
@@ -89,21 +89,19 @@ const chipStyle = computed(() => {
 
 <style scoped>
 /*
- * Colour engine mirrors TagBadge on purpose (same HSL custom-property approach)
+ * Colour engine mirrors TagBadge on purpose (one --cat-c token + oklab mixes)
  * so both chips react identically to light/dark. The *appearance* is kept
  * deliberately different:
  *   · TagBadge      -> pill (rounded-full), leading dot, tag glyph
  *   · CategoryBadge -> rounded rectangle, leading colour bar, category's own icon
  */
 .cat-chip {
-  --cat-h: var(--primary-h, 200);
-  --cat-s: var(--primary-s, 80%);
-  --cat-l: var(--primary-l, 50%);
+  --_c: var(--cat-c, hsl(var(--primary)));
 
-  --_bg: hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.1);
-  --_fg: hsl(var(--cat-h) calc(var(--cat-s) * 0.9) calc(var(--cat-l) * 0.48));
-  --_border: hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.22);
-  --_accent: hsl(var(--cat-h) calc(var(--cat-s) * 0.95) calc(var(--cat-l) * 0.6));
+  --_bg: color-mix(in oklab, var(--_c) 18%, hsl(var(--card)));
+  --_fg: color-mix(in oklab, var(--_c) 55%, black);
+  --_border: color-mix(in oklab, var(--_c) 30%, transparent);
+  --_accent: var(--_c);
 
   position: relative;
   display: inline-flex;
@@ -118,7 +116,7 @@ const chipStyle = computed(() => {
   color: var(--_fg);
   background: var(--_bg);
   border: 1px solid var(--_border);
-  box-shadow: inset 0 1px 2px hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.05);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--_c) 10%, transparent);
 
   transition:
     background-color 200ms var(--motion-ease-standard, cubic-bezier(0.22, 1, 0.36, 1)),
@@ -165,27 +163,28 @@ const chipStyle = computed(() => {
 
 /* ===== Dark mode ===== */
 html.dark .cat-chip {
-  --_bg: hsl(var(--cat-h) calc(var(--cat-s) * 0.7) calc(var(--cat-l) * 0.55) / 0.2);
-  --_fg: hsl(var(--cat-h) calc(var(--cat-s) * 0.45) calc(68% + var(--cat-l) * 0.2));
-  --_border: hsl(var(--cat-h) calc(var(--cat-s) * 0.6) calc(var(--cat-l) * 0.6) / 0.3);
-  --_accent: hsl(var(--cat-h) calc(var(--cat-s) * 0.7) calc(var(--cat-l) * 0.72));
+  --_bg: color-mix(in oklab, var(--_c) 22%, hsl(var(--card)));
+  --_fg: color-mix(in oklab, var(--_c) 50%, white);
+  --_border: color-mix(in oklab, var(--_c) 40%, transparent);
+  /* 深色分类色（如 slate-800）在暗卡上几乎看不见，彩条先往白提一档再用 */
+  --_accent: color-mix(in oklab, var(--_c) 78%, white);
 }
 
 /* ===== Hover =====
  * 卡片内嵌套变换会与 .lift-hover 冲突，这里只做颜色/描边过渡，不做位移。 */
 a:hover > .cat-chip,
 .cat-chip:hover {
-  --_bg: hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.17);
-  --_border: hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.36);
+  --_bg: color-mix(in oklab, var(--_c) 26%, hsl(var(--card)));
+  --_border: color-mix(in oklab, var(--_c) 45%, transparent);
   filter: brightness(1.04);
-  box-shadow: inset 0 1px 2px hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.09);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--_c) 14%, transparent);
 }
 
 html.dark a:hover > .cat-chip,
 html.dark .cat-chip:hover {
-  --_bg: hsl(var(--cat-h) calc(var(--cat-s) * 0.7) calc(var(--cat-l) * 0.55) / 0.3);
-  --_border: hsl(var(--cat-h) calc(var(--cat-s) * 0.6) calc(var(--cat-l) * 0.6) / 0.45);
-  box-shadow: inset 0 1px 2px hsl(var(--cat-h) var(--cat-s) var(--cat-l) / 0.14);
+  --_bg: color-mix(in oklab, var(--_c) 32%, hsl(var(--card)));
+  --_border: color-mix(in oklab, var(--_c) 52%, transparent);
+  box-shadow: inset 0 1px 2px color-mix(in oklab, var(--_c) 20%, transparent);
 }
 
 /* keep NuxtLink from underlining the chip */

@@ -42,6 +42,36 @@
   --color-primary-foreground:  hsl(var(--primary-foreground) );
   --color-primary-muted:       hsl(var(--primary-muted)            );
   --color-primary-muted-foreground: hsl(var(--primary-muted-foreground));
+  /* 「主色在深色底图上的可读形态」：登录/注册/安装向导把表单放在壁纸或深色 scrim 上，
+     而 --primary 在亮色模式是压暗档（只有配合白字才过 AA），直接挂到深底上会糊成一片黑蓝；
+     按同色相向白混合出一档，主题改 primary_color 时自动跟随，消费点不需要写 dark: 分支。
+     注意底图的色标必须是不透明色——alpha 色标会透出 --background，亮色模式等于把
+     「白字 + 白底」叠在一起。 */
+  --color-primary-on-scrim:    color-mix(in oklab, hsl(var(--primary)) 58%, white);
+  /* 「主色作为深色底图本身」：登录/注册在壁纸取不到时露出兜底渐变，而这一层的文字全是白色的，
+     所以底图的色标必须是"无论明暗模式都够深"的一档。直接用 --primary 不行：暗色模式它是
+     199 100% 60%（#33BEFF），白字压在它上面只有 2.11:1；向黑混合 70% 后亮色 #004567（10.26:1）、
+     暗色 #1C759E（5.14:1）都过 AA，且色相仍是天青，不会退成一块中性黑。 */
+  --color-primary-deep:        color-mix(in oklab, hsl(var(--primary)) 70%, black);
+  /* 语义状态色在深色底图上的同族形态（auth 的错误提示等：底图是任意壁纸，
+     --error 那类压暗档挂上去读不出层级，-muted-foreground 又只在 -muted 淡彩底上成立）。 */
+  --color-info-on-scrim:       color-mix(in oklab, hsl(var(--info)) 60%, white);
+  --color-success-on-scrim:    color-mix(in oklab, hsl(var(--success)) 62%, white);
+  --color-warning-on-scrim:    color-mix(in oklab, hsl(var(--warning)) 62%, white);
+  --color-error-on-scrim:      color-mix(in oklab, hsl(var(--error)) 62%, white);
+  /* 「实心主色按钮的悬停档」：不要再用 hover:bg-primary/90 那类透明度悬停。
+     实心按钮上的文字是白色，而 alpha 是把底色往亮色页面的 --background（近白）方向抬，
+     等于同时把白字对比度往下压——实测亮色模式 #0073A8 实心底 5.23:1，/95 只剩 4.78，
+     /90 是 4.36，/85 是 3.98，AA（4.5:1）在 /90 这一档就已经不达标，而按钮正是文字最密集的地方。
+     悬停改成向黑混合 88%：亮色 6.87:1（destructive 7.30:1），比静止态更清楚。
+     暗色模式的 -foreground 是深墨字，压黑会让对比从 9.55 降到 6.82（destructive 6.75→4.92），
+     仍然都在 AA 之上；不做按模式分叉是因为那需要第二个 @theme 机制，而本文件只有一处
+     注册点、且它已有"两套产物"的历史坑（见 OOBENavbar.vue 头注释）。 */
+  --color-primary-hover:       color-mix(in oklab, hsl(var(--primary)) 88%, black);
+  --color-destructive-hover:   color-mix(in oklab, hsl(var(--destructive)) 88%, black);
+  /* 同一条规则在成功色实心按钮上成立（后台导入导出页的两枚实心按钮），所以它也要有自己的
+     悬停档；info/warning/error 目前没有实心按钮消费点，不给它们预注册死令牌。 */
+  --color-success-hover:       color-mix(in oklab, hsl(var(--success)) 88%, black);
   --color-secondary:           hsl(var(--secondary)          );
   --color-secondary-foreground:hsl(var(--secondary-foreground) / <alpha-value>);
   --color-accent:              hsl(var(--accent)             );
@@ -131,8 +161,11 @@
    Rosetta 全站统一主题令牌
    ---------------------------------------------------------
    所有颜色集中管理，只改这一处，全站统一生效：
-   - 主色 primary：天青 sky 201°（主题皮肤可在 themes/<slug>/style.css 内覆盖，
+   - 主色 primary：天青 azure 199°、S=100（主题皮肤可在 themes/<slug>/style.css 内覆盖，
      例：astro-paper-inspired 换成墨色；主题主色由 mods_schema 的 primary_color 提供）
+   - 注意：primary_color / accent_color 是 hex，经 hexToHsl 后由 useSite.ts、
+     useFrontendTheme.ts、site-title.global.ts 以 inline style / SSR :root 写回，
+     inline 优先级高于本文件——线上看到的 --primary 不在此处时，先查那三处与主题 mods。
    - 语义状态色 info / success / warning / error
      → 与 primary 同色系，明/暗各自一套，对比度符合 WCAG AA
    - destructive = error 别名（与 shadcn 默认命名保持一致）
@@ -156,13 +189,16 @@
     --border: 214 32% 91%;
     --input: 214 32% 91%;
 
-    /* ---- 主色：天青（L=35% 为 AA 下限：白字 5.16:1 / 白底文字 5.16:1 / muted 底 4.70:1）---- */
-    --primary: 201 96% 35%;
+    /* ---- 主色：天青（饱和度拉满 S=100，L=33% 是"够艳又不掉 AA"的档位：
+       白字 5.22:1 / 实心当白底文字 5.22:1）。悬停不靠 alpha，见 @theme 里的
+       --color-primary-hover（alpha 会同时把白字对比压到 4.36，低于 AA）。
+       同色相更亮的形态只用于 --ring（焦点环不承载文字对比，见下）---- */
+    --primary: 199 100% 33%;
     --primary-foreground: 0 0% 100%;
     /* 淡主色底 + 主色深字（图标磁贴 / 软标签用）；
        注意 -muted 背景必须配 -muted-foreground 文字，配 -foreground 会得到白底白字 */
-    --primary-muted: 201 96% 95%;
-    --primary-muted-foreground: 201 94% 20%;
+    --primary-muted: 199 100% 92%;
+    --primary-muted-foreground: 199 100% 24%;
 
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
@@ -170,49 +206,52 @@
     --accent: 210 40% 96%;
     --accent-foreground: 222 47% 11%;
 
-    --ring: 201 96% 35%;
+    --ring: 199 100% 45%;
     --radius: 0.75rem;
 
-    /* ---- 语义状态色：由天青推导演算 ----
-       明度统一压到 AA 下限：同一枚色值既能做实心背景（配白色 -foreground ≥4.5:1），
-       也能直接当白底文字/图标色（≥4.5:1）。调暗是刻意的，勿再提回高亮度版本。 */
-    /* info：主色直接衍生，更淡更清爽的提示色 */
-    --info: 199 89% 35%;
+    /* ---- 语义状态色：全套 S 拉满，色相各自定死 ----
+       明度按"同一枚色值既能做实心背景（配白色 -foreground ≥4.5:1），也能直接当
+       白底文字/图标色（≥4.5:1）"反解出来，每条后面的数字就是实测比值。
+       各色的明度上限差别很大（黄色天生亮），所以 L 不是一个统一值：
+       info 得压到 38%、success 26%、warning 30% 才刚过界，error 可以到 43%。
+       调暗是刻意的，勿再提回高亮度版本；要更艳请提 S，S 已经贴着 100。 */
+    /* info：蓝青 205°，与主色同族但更偏蓝，实心白字 5.07:1 */
+    --info: 205 100% 38%;
     --info-foreground: 0 0% 100%;
-    --info-muted: 199 90% 94%;
-    --info-muted-foreground: 199 74% 22%;
+    --info-muted: 205 100% 92%;
+    --info-muted-foreground: 205 98% 26%;
 
-    /* success：青绿 172°，与天青同冷色，和谐不突兀 */
-    --success: 172 76% 28%;
+    /* success：祖母绿 163°（原 172° 偏灰青，压不住艳度），实心白字 4.98:1 */
+    --success: 163 92% 26%;
     --success-foreground: 0 0% 100%;
-    --success-muted: 172 70% 94%;
-    --success-muted-foreground: 172 80% 24%;
+    --success-muted: 163 85% 92%;
+    --success-muted-foreground: 163 90% 22%;
 
-    /* warning：琥珀 38°，降低饱和贴合天青整体干净感 */
-    --warning: 38 92% 31%;
+    /* warning：琥珀 36°，饱和拉满后靠压暗保住对比，实心白字 5.41:1 */
+    --warning: 36 100% 30%;
     --warning-foreground: 0 0% 100%;
-    --warning-muted: 38 92% 94%;
-    --warning-muted-foreground: 38 70% 26%;
+    --warning-muted: 36 100% 91%;
+    --warning-muted-foreground: 36 95% 25%;
 
-    /* error / destructive：玫瑰红 355°，一个名字双入口兼容 */
-    --error: 355 82% 47%;
+    /* error / destructive：胭脂红 352°，一个名字双入口兼容，实心白字 5.58:1 */
+    --error: 352 90% 43%;
     --error-foreground: 0 0% 100%;
-    --error-muted: 355 80% 95%;
-    --error-muted-foreground: 355 70% 28%;
-    --destructive: 355 82% 47%;
+    --error-muted: 352 92% 93%;
+    --error-muted-foreground: 352 88% 27%;
+    --destructive: 352 90% 43%;
     --destructive-foreground: 0 0% 100%;
-    --destructive-muted: 355 80% 95%;
-    --destructive-muted-foreground: 355 70% 28%;
+    --destructive-muted: 352 92% 93%;
+    --destructive-muted-foreground: 352 88% 27%;
 
     /* ---- Sidebar ---- */
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 240 5% 26%;
-    --sidebar-primary: 201 96% 35%;
+    --sidebar-primary: 199 100% 33%;
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 5% 96%;
     --sidebar-accent-foreground: 240 6% 10%;
     --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 201 96% 35%;
+    --sidebar-ring: 199 100% 45%;
   }
 
   /* ---- 暗色模式：对应每一个亮色 token，确保色相关系一致，对比 AA ---- */
@@ -235,10 +274,14 @@
     --border: 216 34% 17%;
     --input: 216 34% 17%;
 
-    --primary: 201 98% 76%;
+    /* 暗色这套与亮色同色相、同饱和取向，只是把明度抬到"深色卡面上够亮"那一档：
+       --primary 199/100/60 = #33BEFF，在 --card 224 71% 4% 上 9.58:1（既是链接文字色
+       也是实心按钮底，配 --primary-foreground 深墨字同一个读数）。
+       亮色那套"压暗保 AA"的规则在这里反过来成立：暗色提亮才是安全方向，别往下压。 */
+    --primary: 199 100% 60%;
     --primary-foreground: 224 71% 4%;
-    --primary-muted: 201 45% 18%;
-    --primary-muted-foreground: 201 90% 82%;
+    --primary-muted: 199 55% 18%;
+    --primary-muted-foreground: 199 100% 82%;
 
     --secondary: 222 47% 11%;
     --secondary-foreground: 210 40% 98%;
@@ -246,40 +289,42 @@
     --accent: 216 34% 17%;
     --accent-foreground: 210 40% 98%;
 
-    --ring: 201 98% 76%;
+    --ring: 199 100% 62%;
 
-    --info: 199 88% 70%;
+    /* 语义状态色：色相与亮色一套对齐（205/163→160/38/352），明度按暗底重推。
+       warning 的 -foreground 仍是深墨：琥珀抬到 L=60 之后白字对比不足。 */
+    --info: 205 100% 66%;
     --info-foreground: 224 71% 4%;
-    --info-muted: 199 48% 20%;
-    --info-muted-foreground: 199 92% 90%;
+    --info-muted: 205 55% 20%;
+    --info-muted-foreground: 205 100% 84%;
 
-    --success: 172 72% 62%;
+    --success: 160 90% 52%;
     --success-foreground: 224 71% 4%;
-    --success-muted: 172 42% 18%;
-    --success-muted-foreground: 172 88% 86%;
+    --success-muted: 163 50% 16%;
+    --success-muted-foreground: 160 90% 80%;
 
-    --warning: 38 95% 68%;
+    --warning: 38 100% 60%;
     --warning-foreground: 30 40% 10%;
-    --warning-muted: 38 48% 20%;
-    --warning-muted-foreground: 38 96% 90%;
+    --warning-muted: 38 55% 18%;
+    --warning-muted-foreground: 38 100% 82%;
 
-    --error: 355 84% 72%;
+    --error: 352 95% 68%;
     --error-foreground: 224 71% 4%;
-    --error-muted: 355 44% 22%;
-    --error-muted-foreground: 355 92% 90%;
-    --destructive: 355 84% 72%;
+    --error-muted: 352 50% 20%;
+    --error-muted-foreground: 352 100% 85%;
+    --destructive: 352 95% 68%;
     --destructive-foreground: 224 71% 4%;
-    --destructive-muted: 355 44% 22%;
-    --destructive-muted-foreground: 355 92% 90%;
+    --destructive-muted: 352 50% 20%;
+    --destructive-muted-foreground: 352 100% 85%;
 
     --sidebar-background: 240 6% 10%;
     --sidebar-foreground: 240 5% 96%;
-    --sidebar-primary: 201 98% 72%;
+    --sidebar-primary: 199 100% 60%;
     --sidebar-primary-foreground: 224 71% 4%;
     --sidebar-accent: 240 4% 16%;
     --sidebar-accent-foreground: 240 5% 96%;
     --sidebar-border: 240 4% 16%;
-    --sidebar-ring: 201 98% 76%;
+    --sidebar-ring: 199 100% 62%;
   }
 }
 
@@ -855,16 +900,10 @@
   .chip {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium transition-colors;
   }
-  /* 标签 Chip：当后端给 color 时，内联 style="--tag-color:#xx" 会渲染到
-     .tag-colored 上，保持文字对比度（用 WCAG 自动选择白/黑前景）。
-     不再渲染 "#" 前缀（在组件层去掉）。 */
-  .tag-colored {
-    position: relative;
-    color: hsl(var(--foreground));
-    background: color-mix(in oklab, hsl(var(--tag-color, var(--primary))) 16%, hsl(var(--muted)));
-    border: 1px solid color-mix(in oklab, hsl(var(--tag-color, var(--primary))) 26%, transparent);
-  }
-  .tag-colored::selection { background: hsl(var(--tag-color, var(--primary)) / 0.3); }
+  /* 标签/分类胶囊不在这里：它们各自的 --tag-c / --cat-c 引擎在
+     components/TagBadge.vue 与 components/CategoryBadge.vue 的 scoped 样式里
+     （min 一层 --_bg/--_fg/--_border 派生 + html.dark 覆写），主题要改观感就在
+     自己的 style.css 里覆写 .tag-chip / .cat-chip 这四个类名。 */
 }
 
 @keyframes fade-in-up {

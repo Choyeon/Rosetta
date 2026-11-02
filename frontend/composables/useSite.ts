@@ -60,8 +60,8 @@ const PUBLIC_CONFIG_FALLBACK: Record<string, unknown> = {
   footer_slogan: 'Share knowledge, inspire creativity',
   copyright_text: null,
   footer_custom_html: '',
-  theme_primary: '#0EA5A9',
-  theme_accent: '#0284C7'
+  theme_primary: '#0073A8',
+  theme_accent: '#00AEFF'
 }
 
 const mergePublic = (p: Record<string, unknown> | null | undefined): Record<string, unknown> => ({
@@ -172,8 +172,8 @@ export function useSite() {
 
   const appearance = computed(() => {
     const base = readGroup(state.value, 'appearance', {
-      primary_color: (state.value.publicConfig?.theme_primary as string) || '#0EA5A9',
-      accent_color: (state.value.publicConfig?.theme_accent as string) || '#0284C7',
+      primary_color: (state.value.publicConfig?.theme_primary as string) || '#0073A8',
+      accent_color: (state.value.publicConfig?.theme_accent as string) || '#00AEFF',
       page_width_px: 1200,
       show_copyright: true,
       show_powered_by: true
@@ -446,14 +446,14 @@ export function useSite() {
     const root = document.documentElement
     const { primary_color, accent_color } = appearance.value
 
-    const accent = hexToHsl(String(accent_color || '#0284C7'))
+    const accent = hexToHsl(String(accent_color || '#00AEFF'))
     if (accent) {
       root.style.setProperty('--theme-accent-hue', String(Math.round(accent.h)))
       root.style.setProperty('--theme-accent-sat', `${Math.round(accent.s)}%`)
       root.style.setProperty('--theme-accent-light', `${Math.round(accent.l)}%`)
     }
 
-    const primary = hexToHsl(String(primary_color || '#0EA5A9'))
+    const primary = hexToHsl(String(primary_color || '#0073A8'))
     if (primary) {
       root.style.setProperty('--primary', `${Math.round(primary.h)} ${Math.round(primary.s)}% ${Math.round(primary.l)}%`)
       const ringL = Math.min(96, primary.l * 1.12)

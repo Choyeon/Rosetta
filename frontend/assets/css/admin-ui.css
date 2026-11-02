@@ -34,9 +34,9 @@
 
 /* ---- Admin 卡片 tokens（亮） ---- */
 html[data-layout-scope="admin"] {
-  --theme-accent-hue: 201;
-  --theme-accent-sat: 96%;
-  --theme-accent-light: 52%;
+  --theme-accent-hue: 199;
+  --theme-accent-sat: 100%;
+  --theme-accent-light: 50%;
   --card-ambient: 0 1px 0 hsl(0 0% 100% / 0.6) inset,
                   0 -1px 0 hsl(224 71% 4% / 0.06) inset;
   --card-shadow-sm:
@@ -145,12 +145,12 @@ html[data-layout-scope="admin"] .glow-ring::after {
   background:
     conic-gradient(
       from var(--gr-angle, 0deg),
-      #a5f3fc 0%,
-      #67e8f9 1.5%,
-      #22d3ee 3.5%,
-      #06b6d4 6%,
-      #0ea5e9 9%,
-      hsl(199 95% 60% / 0.85) 12%,
+      #b2eeff 0%,
+      #7adcff 1.5%,
+      #47c8ff 3.5%,
+      #1ab6ff 6%,
+      #00a0f0 9%,
+      hsl(199 100% 60% / 0.85) 12%,
       hsl(var(--ring) / 0.72) 16%,
       hsl(var(--ring) / 0.48) 20%,
       hsl(var(--ring) / 0.22) 25%,
@@ -173,7 +173,7 @@ html[data-layout-scope="admin"] .glow-ring::after {
     filter  var(--motion-duration-base) var(--motion-ease-standard);
   filter:
     brightness(var(--gr-bright, 1))
-    drop-shadow(0 0 0 hsl(199 89% 55% / 0));
+    drop-shadow(0 0 0 hsl(199 100% 55% / 0));
   z-index: 5;
 }
 html[data-layout-scope="admin"] .card-surface.lift-hover:hover::after,
@@ -186,10 +186,10 @@ html[data-layout-scope="admin"] .glow-ring:focus-within::after {
     gr-pulse 1.8s ease-in-out infinite;
   filter:
     brightness(var(--gr-bright, 1))
-    drop-shadow(0 0 1.5px hsl(199 98% 72% / 0.92))
-    drop-shadow(0 0 5px   hsl(197 96% 62% / 0.62))
-    drop-shadow(0 0 12px  hsl(198 95% 58% / 0.34))
-    drop-shadow(0 0 24px  hsl(200 95% 55% / 0.14));
+    drop-shadow(0 0 1.5px hsl(196 100% 82% / 0.92))
+    drop-shadow(0 0 5px   hsl(198 100% 68% / 0.62))
+    drop-shadow(0 0 12px  hsl(199 100% 58% / 0.34))
+    drop-shadow(0 0 24px  hsl(200 100% 52% / 0.14));
 }
 html[data-layout-scope="admin"].dark
   .card-surface.lift-hover:hover::after,
@@ -199,10 +199,10 @@ html[data-layout-scope="admin"].dark .glow-ring:hover::after,
 html[data-layout-scope="admin"].dark .glow-ring:focus-within::after {
   filter:
     brightness(calc(var(--gr-bright, 1) * 1.05))
-    drop-shadow(0 0 1.5px hsl(190 100% 85% / 0.95))
-    drop-shadow(0 0 5px   hsl(194 100% 76% / 0.72))
+    drop-shadow(0 0 1.5px hsl(194 100% 85% / 0.95))
+    drop-shadow(0 0 5px   hsl(197 100% 76% / 0.72))
     drop-shadow(0 0 13px  hsl(199 100% 66% / 0.46))
-    drop-shadow(0 0 26px  hsl(202 100% 62% / 0.26));
+    drop-shadow(0 0 26px  hsl(201 100% 62% / 0.26));
 }
 html[data-layout-scope="admin"] .no-glow::after,
 html[data-layout-scope="admin"] .no-glow > *::after,
@@ -220,7 +220,7 @@ html[data-layout-scope="admin"] .glow-ring:focus-within {
   box-shadow:
     var(--card-shadow-lg),
     0 0 0 1px hsl(var(--ring) / 0.18),
-    0 10px 40px -18px hsl(199 95% 55% / 0.28) !important;
+    0 10px 40px -18px hsl(199 100% 55% / 0.28) !important;
 }
 html[data-layout-scope="admin"].dark .card-surface.lift-hover:hover,
 html[data-layout-scope="admin"].dark .card-surface.lift-hover:focus-within,
@@ -229,5 +229,5 @@ html[data-layout-scope="admin"].dark .glow-ring:focus-within {
   box-shadow:
     var(--card-shadow-lg),
     0 0 0 1px hsl(var(--ring) / 0.28),
-    0 18px 60px -22px hsl(200 100% 62% / 0.32) !important;
+    0 18px 60px -22px hsl(199 100% 62% / 0.32) !important;
 }

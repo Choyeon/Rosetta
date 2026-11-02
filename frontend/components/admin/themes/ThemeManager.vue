@@ -813,7 +813,7 @@ onMounted(() => {
                 <Badge
                   v-if="theme.is_active"
                   variant="default"
-                  class="rounded-full shadow-pop backdrop-blur bg-primary/90"
+                  class="rounded-full shadow-pop backdrop-blur bg-primary"
                 >
                   <Check class="size-3 mr-1" />
                   {{ t('admin.themes.current', '当前主题') }}

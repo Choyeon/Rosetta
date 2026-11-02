@@ -114,12 +114,12 @@ describe('顶部横幅与侧栏卡是两个表面', () => {
   })
 
   it('侧栏卡的类型点是实色（size-2 圆点用 10% alpha 底色会看不见）', () => {
-    expect(announcementDotClass('warning')).toBe('bg-amber-500')
-    expect(announcementDotClass('error')).toBe('bg-rose-500')
-    expect(announcementDotClass('success')).toBe('bg-emerald-500')
+    expect(announcementDotClass('warning')).toBe('bg-warning')
+    expect(announcementDotClass('error')).toBe('bg-error')
+    expect(announcementDotClass('success')).toBe('bg-success')
     expect(announcementDotClass('bogus')).toBe(announcementDotClass('info'))
-    expect(announcementDotClass(undefined)).toBe('bg-sky-500')
-    expect(announcementDotClass('info')).not.toContain('/10')
+    expect(announcementDotClass(undefined)).toBe('bg-info')
+    expect(announcementDotClass('info')).not.toContain('/')
   })
 
   it('日期只截 ISO 串的日期段，不做本地化（SSR 与访客浏览器时区不同）', () => {
@@ -139,8 +139,20 @@ describe('类型与关闭语义', () => {
 
   it('未知 type 落回 info 配色，脏数据不会渲染出无底色横幅', () => {
     expect(announcementVariantClass('bogus')).toBe(announcementVariantClass('info'))
-    expect(announcementVariantClass(undefined)).toContain('bg-sky-500/10')
-    expect(announcementVariantClass('error')).toContain('bg-rose-500/10')
+    expect(announcementVariantClass(undefined)).toContain('bg-info-muted')
+    expect(announcementVariantClass('error')).toContain('bg-error-muted')
+  })
+
+  it('横幅底色只用语义令牌类，不得出现 Tailwind 具名色阶', () => {
+    // 具名色阶没有明暗两档配对：写 `dark:` 分支等于每加一种类型就手工维护两套读数，
+    // 而 -muted / -muted-foreground 是成对定义的，明暗各档已经一起调过。
+    const named = /(?:bg|text|border)-(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-/
+    for (const type of ['warning', 'error', 'success', 'info', undefined]) {
+      const cls = announcementVariantClass(type)
+      expect(named.test(cls), `type=${String(type)}: ${cls}`).toBe(false)
+      expect(cls, `type=${String(type)}: ${cls}`).not.toContain('dark:')
+      expect(cls).toContain('-muted-foreground')
+    }
   })
 
   it('关闭记录 key 与后端响应字段无关，是前端自有存储位', () => {

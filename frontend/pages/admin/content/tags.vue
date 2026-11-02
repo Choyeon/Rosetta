@@ -51,7 +51,7 @@ const form = reactive<{
 }>({
   name: { ...EMPTY_I18N_DICT },
   slug: '',
-  color: '#0EA5E9',
+  color: '#0073A8',
   icon: '',
   is_active: true
 })
@@ -109,7 +109,7 @@ const openNew = () => {
   editingId.value = null
   form.name = { ...EMPTY_I18N_DICT }
   form.slug = ''
-  form.color = '#0EA5E9'
+  form.color = '#0073A8'
   form.icon = ''
   form.is_active = true
   slugManualEdit = false
@@ -121,7 +121,7 @@ const openEdit = (t: AdminTag) => {
   editingId.value = t.id
   form.name = normalizeI18nDict(t.name)
   form.slug = t.slug
-  form.color = t.color || '#0EA5E9'
+  form.color = t.color || '#0073A8'
   form.icon = t.icon || ''
   form.is_active = t.is_active
   slugManualEdit = true
@@ -138,7 +138,7 @@ const save = async () => {
     return
   }
   if (form.color && !/^#[0-9a-fA-F]{6}$/.test(form.color)) {
-    toast.error('颜色需为 6 位十六进制值，如 #0EA5E9')
+    toast.error('颜色需为 6 位十六进制值，如 #0073A8')
     return
   }
   saving.value = true

@@ -1335,8 +1335,8 @@ async def get_site_config(db: DB):
         # 外观设置（code_theme / default_theme / primary_color / accent_color / font_family
         # 与 default_cover_image 批次 #157 退役：真源分别是 localStorage.theme / --hljs-* 令牌 /
         # Tailwind preset、appearance 分组 + 主题 mods、frontend/lib/post-cover.ts）
-        theme_primary=get_str("THEME_PRIMARY", "#0EA5A9") or "#0EA5A9",
-        theme_accent=get_str("THEME_ACCENT", "#0284C7") or "#0284C7",
+        theme_primary=get_str("THEME_PRIMARY", "#0073A8") or "#0073A8",
+        theme_accent=get_str("THEME_ACCENT", "#00AEFF") or "#00AEFF",
         default_og_image=get_str("DEFAULT_OG_IMAGE"),
         site_subtitle=get_str("SITE_SUBTITLE", "") or "",
         # 维护模式

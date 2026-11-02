@@ -6,8 +6,8 @@
 <template>
   <div class="container py-16">
     <header class="mb-12 text-center max-w-2xl mx-auto">
-      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-gradient-to-br from-indigo-100 to-sky-100 dark:from-indigo-900/30 dark:to-sky-900/30 mb-5">
-        <BookOpen class="size-7 text-indigo-600 dark:text-indigo-300" />
+      <div class="inline-flex items-center justify-center size-14 rounded-2xl bg-primary-muted mb-5">
+        <BookOpen class="size-7 text-primary-muted-foreground" />
       </div>
       <h1 class="font-display text-3xl md:text-4xl font-bold tracking-tight">
         {{ t('series.title', '系列文章') }}
@@ -74,7 +74,7 @@
             >
             <div
               v-else
-              class="size-full flex items-center justify-center bg-gradient-to-br from-sky-500/20 via-cyan-500/10 to-transparent"
+              class="size-full flex items-center justify-center bg-gradient-to-br from-primary/20 via-info/10 to-transparent"
             >
               <BookOpen class="size-10 text-primary/40" />
             </div>

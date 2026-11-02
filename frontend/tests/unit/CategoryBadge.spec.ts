@@ -46,20 +46,26 @@ describe('CategoryBadge', () => {
     expect(wrapper.text()).toContain('随笔')
   })
 
-  it('derives HSL custom properties from the category colour', () => {
-    const wrapper = mount(CategoryBadge, {
-      props: { label: '技术', color: '#3b82f6' }
+  it('derives one colour token from the category colour', () => {
+    const wrapper = mountBadge({
+      label: '技术',
+      color: '#3b82f6'
     })
     const style = wrapper.find('.cat-chip').attributes('style') ?? ''
-    expect(style).toContain('--cat-h')
-    expect(style).toContain('--cat-s')
-    expect(style).toContain('--cat-l')
+    expect(style).toContain('--cat-c')
+    expect(style).toContain('hsl(217 91% 60%)')
   })
 
-  it('omits colour vars when no colour is given (falls back to theme)', () => {
+  it('omits the colour token when no colour is given (chip falls back to --primary)', () => {
     const wrapper = mount(CategoryBadge, { props: { label: '技术' } })
     const style = wrapper.find('.cat-chip').attributes('style') ?? ''
-    expect(style).not.toContain('--cat-h')
+    expect(style).not.toContain('--cat-c')
+  })
+
+  it('refuses a malformed stored colour instead of pasting it into the DOM', () => {
+    const wrapper = mountBadge({ label: '技术', color: 'red; } body { color:' })
+    const style = wrapper.find('.cat-chip').attributes('style') ?? ''
+    expect(style).not.toContain('--cat-c')
   })
 
   it('renders the heroicon when an icon name is provided', () => {
