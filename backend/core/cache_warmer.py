@@ -319,14 +319,19 @@ class CacheWarmer:
             return 1
 
     async def _warmup_tags(self) -> int:
-        """预热标签列表（键/形态与 ``GET /blog/tags`` 读侧一致）"""
+        """预热标签列表（键/形态与 ``GET /blog/tags`` 读侧一致）
+
+        ``post_count`` 与读侧同一条谓词：预热写的正是匿名请求会直接回放的键位，
+        这里数了草稿/私密档，整个 TTL 内前台标签目录就稳定地多报几篇。
+        """
         async with async_session_maker() as db:
             result = await db.execute(
                 select(
                     Tag,
-                    func.count(post_tags.c.post_id).label("post_count"),
+                    func.count(Post.id).filter(publicly_listable_posts()).label("post_count"),
                 )
                 .outerjoin(post_tags, Tag.id == post_tags.c.tag_id)
+                .outerjoin(Post, Post.id == post_tags.c.post_id)
                 .where(Tag.is_active.is_(True))
                 .group_by(Tag.id)
                 .order_by(Tag.created_at)

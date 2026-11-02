@@ -92,14 +92,27 @@ async def invalidate_post_caches_by_ids(db: AsyncSession, post_ids: Iterable[int
 # 只随"文章行本身增删改"变化的聚合缓存前缀。``archive`` 同时覆盖 ``archive:*``
 # 与 ``archive_stats``（前缀匹配）。sitemap 有三种历史键位，全部列出：
 # ``sitemap:*`` / ``blog:sitemap*`` / ``seo:sitemap``。
-_AGGREGATE_PREFIXES = ("archive", "site_stats", "sitemap", "blog:sitemap", "seo:sitemap")
+# ``categories`` / ``tags`` 覆盖 ``*:raw-i18n`` 与 ``*:raw-i18n-all`` 两份列表缓存：
+# 它们的 ``post_count`` 是按 ``publicly_listable_posts()`` 现算的聚合列，文章行
+# 增删改（含转草稿、改分类、换标签）都会让它变陈旧，而这两个前缀此前只有
+# 分类/标签自身的 CRUD 端点会清——发一篇文章不会，于是后台标签下拉与前台
+# 分类/标签目录在整个 TTL 内报旧章数。
+_AGGREGATE_PREFIXES = (
+    "archive",
+    "site_stats",
+    "sitemap",
+    "blog:sitemap",
+    "seo:sitemap",
+    "categories",
+    "tags",
+)
 
 
 async def invalidate_post_aggregate_caches() -> None:
-    """失效归档计数、站点统计与 sitemap 三类聚合缓存。
+    """失效归档计数、站点统计、sitemap 与分类/标签列表四类聚合缓存。
 
     刻意**不**并进 ``invalidate_post_caches_by_slugs``：那条路径评论/分类/标签/作者
-    写操作都会走（频率比发文高一个数量级），而这三份聚合只随文章行变化；
+    写操作都会走（频率比发文高一个数量级），而这些聚合只随文章行变化；
     顺手抹掉会让 ``site_stats`` 的全量统计在每次评论后重新回源。
     """
     for prefix in _AGGREGATE_PREFIXES:

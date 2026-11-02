@@ -1771,7 +1771,16 @@ async def update_post(
         if _ensure_aware(post.scheduled_at) <= datetime.now(UTC):
             new_status = "published"
             update_data["status"] = "published"
-    elif new_status == "published":
+            # 与上面"提交的时间已过"那一支同构：既然这次 PUT 已经判定立即发布，
+            # 计划时间就必须当场清掉。留着它，`GET /admin/posts/scheduled`
+            # （判据是 scheduled_at 非空，不看 status）会继续把这篇已发布的文章
+            # 摆在待发布队列里，最长一整个 60s 扫描周期，管理员看到的就是
+            # 「已发布却还在排队」。
+            post.scheduled_at = None
+    elif new_status in ("published", "draft"):
+        # 转草稿同样要清计划时间：`PUT /posts/{id}/schedule` 对 draft 直接 400，
+        # 草稿不参与定时发布，残留值只会让它挂在待发布列表里并被 `GET /edit` 原样
+        # 回读——下次把状态切回 scheduled 却没重填时间，就会拿这个陈旧值去提交。
         post.scheduled_at = None
 
     if new_status == "published" and not post.published_at:
@@ -2277,7 +2286,9 @@ async def create_category(
     response_model=list[TagResponse],
     summary="标签列表",
     description=(
-        "获取标签及其文章数量（返回多语言原始dict）。默认只返回启用中的标签；"
+        "获取标签及其文章数量（返回多语言原始dict）。``post_count`` 只计对外可见的文章"
+        "（已发布 + 非私密档 + 已到点），与点进 /tags/<slug> 看到的列表同一口径。"
+        "默认只返回启用中的标签；"
         "``?all=true`` 连已停用的一并返回，供后台管理页使用（否则「停用」是单向按钮）。"
     ),
 )
@@ -2302,9 +2313,13 @@ async def list_tags(
     query = (
         select(
             Tag,
-            func.count(post_tags.c.post_id).label("post_count"),
+            func.count(Post.id).filter(publicly_listable_posts()).label("post_count"),
         )
         .outerjoin(post_tags, Tag.id == post_tags.c.tag_id)
+        # 计数必须过匿名可见性判据：只数 post_tags 关联行会把草稿 / 私密档 / 未到点的
+        # 定时稿一并算进来，而点进 /tags/<slug> 走的是 publicly_listable_posts() 的列表口。
+        # 分类列表早已是这个口径（``list_categories``），标签此前是唯一多报的一族。
+        .outerjoin(Post, Post.id == post_tags.c.post_id)
         .group_by(Tag.id)
         .order_by(Tag.created_at)
     )

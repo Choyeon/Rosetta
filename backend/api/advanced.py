@@ -437,6 +437,7 @@ class BatchActionResponse(BaseModel):
     summary="批量操作文章",
     description=(
         "需 CurrentStaff。对多篇文章执行同一种动作，成功后失效 posts 列表与详情缓存。"
+        "staff 与超级管理员可跨作者操作（与单篇写口的归属口径一致）。"
         "delete 为软删除（移入回收站，30 天后自动清除）；其余动作幂等。"
         "未选中任何文章返回 400，全部找不到返回 404。"
     ),
@@ -498,6 +499,10 @@ async def batch_action_posts(
             if post.status != "published":
                 post.status = "published"
                 post.published_at = post.published_at or datetime.now(UTC)
+                # 清空计划时间：`GET /admin/posts/scheduled` 的判据是
+                # `scheduled_at is not None`（不看 status），留着它这篇已发布的文章
+                # 会一直挂在待发布队列里，60s 扫描器也会反复把它当到期定时稿重发一遍。
+                post.scheduled_at = None
                 affected_count += 1
                 changed_posts.append(post)
 
@@ -505,6 +510,9 @@ async def batch_action_posts(
         for post in posts:
             if post.status == "published":
                 post.status = "draft"
+                # 同上：草稿不参与定时发布（PUT /posts/{id}/schedule 对 draft 直接 400），
+                # 计划时间不清就会让一篇草稿出现在管理端的待发布列表里。
+                post.scheduled_at = None
                 affected_count += 1
                 changed_posts.append(post)
 
