@@ -42,16 +42,16 @@ describe('顶部横幅只渲染设置页 notice 分组那一条', () => {
     expect(at).toBeGreaterThan(-1)
     const window = layoutSource.slice(at, at + 400)
     expect(window).toContain('bannerIsSticky(site.notice.value)')
-    expect(window).toContain("sticky top-16 z-30")
-    expect(window).toContain("sticky top-0 z-30")
+    expect(window).toContain('sticky top-16 z-30')
+    expect(window).toContain('sticky top-0 z-30')
     // 顶栏自身是 sticky top-0（高 16），横幅必须让开它，否则粘顶时盖住导航
-    expect(window).toContain("header_style === 'sticky'")
+    expect(window).toContain('header_style === \'sticky\'')
   })
 })
 
 describe('侧栏卡渲染公告表的多条公告', () => {
   it('数据源是公开口 /announcements，并按语言分键', () => {
-    expect(cardSource).toContain("useAPI<AnnouncementRow[]>('/announcements'")
+    expect(cardSource).toContain('useAPI<AnnouncementRow[]>(\'/announcements\'')
     expect(cardSource).toContain('sidebar:announcements:${locale.value}')
   })
 
@@ -99,7 +99,7 @@ describe('侧栏卡渲染公告表的多条公告', () => {
     for (const locale of ['zh', 'en', 'ja', 'zh_Hant']) {
       const dict = JSON.parse(
         readFileSync(resolve(ROOT, `i18n/locales/${locale}.json`), 'utf-8')
-      ) as Record<string, any>
+      ) as Record<string, Record<string, unknown>>
       for (const key of used) {
         const [ns, leaf] = key.split('.')
         expect(dict?.[ns]?.[leaf], `${locale} 缺少 ${key}`).toBeTruthy()
@@ -110,7 +110,7 @@ describe('侧栏卡渲染公告表的多条公告', () => {
 
 describe('后台两处描述要说清各自的前台落点', () => {
   it('设置页公告分组描述写明顶部横幅与公告管理的分工', () => {
-    const at = settingsSource.indexOf("{ key: 'notice', label:")
+    const at = settingsSource.indexOf('{ key: \'notice\', label:')
     expect(at).toBeGreaterThan(-1)
     const window = settingsSource.slice(at, at + 300)
     expect(window).toContain('顶部横幅')
@@ -119,7 +119,7 @@ describe('后台两处描述要说清各自的前台落点', () => {
 
   it('设置页 notice.enable 的标签不再谎称"公告接口回空"', () => {
     expect(settingsSource).not.toContain('公告接口回空')
-    const at = settingsSource.indexOf("sticky: '滚动时")
+    const at = settingsSource.indexOf('sticky: \'滚动时')
     expect(at).toBeGreaterThan(-1)
     expect(settingsSource.slice(at, at + 120)).toContain('吸')
   })

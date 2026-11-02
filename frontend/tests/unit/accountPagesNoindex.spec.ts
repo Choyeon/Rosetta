@@ -37,13 +37,13 @@ describe('个人中心四页的 robots 口径一致', () => {
     for (const name of pageFiles) {
       const source = readFileSync(resolve(ACCOUNT_DIR, name), 'utf-8')
       expect(source, `pages/account/${name} 没有 auth-required 中间件`).toContain(
-        "middleware: 'auth-required'"
+        'middleware: \'auth-required\''
       )
     }
   })
 
   it('/account 前缀在服务端空壳名单里（否则声明只存在于 hydration 之后）', () => {
     const shell = readFileSync(resolve(ROOT, 'server/utils/noindex-shell.ts'), 'utf-8')
-    expect(shell).toContain("'/account'")
+    expect(shell).toContain('\'/account\'')
   })
 })

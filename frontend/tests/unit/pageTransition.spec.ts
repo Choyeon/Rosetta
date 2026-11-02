@@ -70,8 +70,8 @@ describe('页面/布局过渡配置：只允许 name', () => {
     const layout = transitionConfigBody('layoutTransition')
     expect(page, 'app.pageTransition 必须保留').not.toBeNull()
     expect(layout, 'app.layoutTransition 必须保留').not.toBeNull()
-    expect(page).toContain("'page-fade'")
-    expect(layout).toContain("'layout-fade'")
+    expect(page).toContain('\'page-fade\'')
+    expect(layout).toContain('\'layout-fade\'')
     for (const name of ['page-fade', 'layout-fade']) {
       expect(cssSource, `main.css 缺少 .${name}-enter-active`).toContain(
         `.${name}-enter-active`
@@ -89,8 +89,8 @@ describe('页面/布局过渡配置：只允许 name', () => {
       expect(body!.toLowerCase(), `${key} 不得带 appear`).not.toMatch(/\bappear\b\s*:/)
     }
     // 注释里提 out-in 是文档，配置体提 out-in 是回归；这里只按字面量再钉一次配置行。
-    expect(configSource).toContain("pageTransition: { name: 'page-fade' }")
-    expect(configSource).toContain("layoutTransition: { name: 'layout-fade' }")
+    expect(configSource).toContain('pageTransition: { name: \'page-fade\' }')
+    expect(configSource).toContain('layoutTransition: { name: \'layout-fade\' }')
   })
 })
 
@@ -107,7 +107,7 @@ describe('离场副本必须退出正常流', () => {
   it('进场侧不得被顺手 absolute（新页要正常撑开文档高度）', () => {
     expect(cssRuleBody('.page-fade-enter-active')).not.toContain('position:')
     expect(cssRuleBody('.layout-fade-enter-active')).not.toContain('position:')
-  }
+  })
 
   it('离场比进场快，页面内容不得两套同时半透明地叠着', () => {
     expect(cssRuleBody('.page-fade-enter-active')).toContain('--motion-duration-base')
@@ -134,7 +134,7 @@ describe('reduced-motion 走全局归零，不在每个过渡类上重复', () =
   }
 
   it('存在一条通配的全局归零块（过渡类靠它降级，不再各写一份）', () => {
-    const global = reduceBlocks().find((b) => b.includes('transition-duration'))
+    const global = reduceBlocks().find(b => b.includes('transition-duration'))
     expect(global, 'main.css 必须有 prefers-reduced-motion 归零块').toBeTruthy()
     expect(global).toContain('*, *::before, *::after')
     expect(global).toContain('transition-duration: 0.001ms !important')

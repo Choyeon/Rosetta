@@ -24,16 +24,16 @@ const src = readFileSync(resolve(ROOT, 'pages/activity.vue'), 'utf-8').replace(/
 // 根 `<template>` 之后还有三层插槽用的 `</template>`，切到 `<script>` 才覆盖整段模板
 const template = src.slice(0, src.indexOf('<script'))
 // 注释里提 `new Date()` 是解释「为什么不能这么兜底」，所以只查代码行
-const codeLines = src.split('\n').filter((line) => !/^\s*(\/\/|\*|<!--)/.test(line))
+const codeLines = src.split('\n').filter(line => !/^\s*(\/\/|\*|<!--)/.test(line))
 
 const activityOf = (data: Record<string, unknown>): Record<string, string> =>
   (data.activity ?? {}) as Record<string, string>
 
-const locales = ['zh', 'en', 'ja', 'zh_Hant'].map((code) => ({
+const locales = ['zh', 'en', 'ja', 'zh_Hant'].map(code => ({
   code,
   data: JSON.parse(
-    readFileSync(resolve(ROOT, `i18n/locales/${code}.json`), 'utf-8'),
-  ) as Record<string, unknown>,
+    readFileSync(resolve(ROOT, `i18n/locales/${code}.json`), 'utf-8')
+  ) as Record<string, unknown>
 }))
 
 describe('动态流的作者名是真实锚点', () => {
@@ -49,13 +49,13 @@ describe('动态流的作者名是真实锚点', () => {
 
   it('行数据声明 author_url，缺 handle 时是空串', () => {
     expect(src).toContain('author_url?: string')
-    expect(src).toContain("typeof author.username === 'string' ? author.username.trim() : ''")
+    expect(src).toContain('typeof author.username === \'string\' ? author.username.trim() : \'\'')
   })
 })
 
 describe('created_at 兜底不得含时间', () => {
   it('代码行里不再出现 new Date(', () => {
-    expect(codeLines.filter((line) => line.includes('new Date('))).toEqual([])
+    expect(codeLines.filter(line => line.includes('new Date('))).toEqual([])
   })
 
   it('缺 created_at 时留空串，模板侧用 v-if 守卫', () => {
@@ -80,8 +80,8 @@ describe('长动态折叠：判据必须是纯字符串函数', () => {
   })
 
   it('折叠类只在「够长且未展开」时给出，模板两端共用同一判据', () => {
-    expect(src).toContain("isLongActivity(item.content) && !isExpandedActivity(item.id) ? 'line-clamp-6' : ''")
-    expect(template).toContain(":class=\"isExpandedActivity(item.id) ? '' : activityClampClass(item)\"")
+    expect(src).toContain('isLongActivity(item.content) && !isExpandedActivity(item.id) ? \'line-clamp-6\' : \'\'')
+    expect(template).toContain(':class="isExpandedActivity(item.id) ? \'\' : activityClampClass(item)"')
     expect(template).toContain('v-if="isLongActivity(item.content)"')
     expect(template).toContain(':aria-expanded=')
   })
@@ -89,7 +89,7 @@ describe('长动态折叠：判据必须是纯字符串函数', () => {
 
 describe('按类型筛空不等于没有动态', () => {
   it('空态文案按 currentType 二选一', () => {
-    expect(template).toContain("currentType ? t('activity.emptyFiltered') : t('activity.noActivity')")
+    expect(template).toContain('currentType ? t(\'activity.emptyFiltered\') : t(\'activity.noActivity\')')
   })
 
   it('带筛选时出口是真实 <a href>，指向 typeHref(null)', () => {
@@ -97,7 +97,7 @@ describe('按类型筛空不等于没有动态', () => {
     expect(exitAt).toBeGreaterThan(-1)
     const exitBlock = template.slice(exitAt - 400, exitAt + 400)
     expect(exitBlock).toContain('<a')
-    expect(exitBlock).toContain("t('activity.viewAll')")
+    expect(exitBlock).toContain('t(\'activity.viewAll\')')
     expect(exitBlock).toContain('@click.prevent')
     expect(exitBlock).toContain('v-if="currentType"')
   })
