@@ -35,11 +35,13 @@ const SOURCE_DIRS = [
   'nuxt.config.ts',
   'i18n.config.ts'
 ]
-/** 只有这三个命名空间存在 `t(反引号 + 前缀 + 变量)` 形态的动态拼装：AppFooter 的 nav.末段、
- *  account 的 tab / empty / avatarSource 三族、activity 的 type_ 前缀。它们的字面量不在
- *  源码里，不能按孤儿键处理。common. 与 footer. 曾一并豁免，实测这两个命名空间共 49 个键
- *  没有任何消费点，已从豁免名单移出并删除——全仓动态拼装点只有上述三处，可用同一扫描复核。 */
-const PROTECT = ['nav.', 'account.', 'activity.type_']
+/** 只有这四个命名空间存在 `t(反引号 + 前缀 + 变量)` 形态的动态拼装：AppFooter 的 nav.末段、
+ *  account 的 tab / empty / avatarSource 三族、activity 的 type_ 前缀、
+ *  AnnouncementSidebarCard 的 type_ 前缀。它们的字面量不在源码里，不能按孤儿键处理。
+ *  common. 与 footer. 曾一并豁免，实测这两个命名空间共 49 个键没有任何消费点，已从豁免名单移出
+ *  并删除。豁免名单由下面那条"每个前缀都得有真实动态拼装点"的反向断言钉住——调用点被删掉时，
+ *  留在名单里就等于给这一族的孤儿键开了永久免检。 */
+const PROTECT = ['nav.', 'account.', 'activity.type_', 'announcement.type_']
 
 function walkSources(): string[] {
   const out: string[] = []
@@ -115,6 +117,21 @@ describe('i18n 语言包不得有孤儿键', () => {
       orphans.slice(0, 30),
       `这 ${orphans.length} 个键没有任何消费点，却仍然打进客户端语言包，请从四语 JSON 一起删除：${orphans.join(', ')}`
     ).toEqual([])
+  })
+})
+
+describe('豁免名单必须对应真实的动态拼装点', () => {
+  it('PROTECT 里每个前缀都能在源码里找到 t(`前缀…${`) 调用', () => {
+    // `t(` 之后到第一个 `${` 之间的字面量就是这一族键的命名空间前缀。
+    const dynamic = new Set<string>()
+    for (const { text } of sources) {
+      for (const m of text.matchAll(/(?<![\w$])\$?t\(`([^`$]*)\$\{/gu)) {
+        const prefix = m[1]
+        if (prefix !== undefined) dynamic.add(prefix)
+      }
+    }
+    const stale = PROTECT.filter(p => ![...dynamic].some(d => d.startsWith(p))).sort()
+    expect(stale, '动态拼装点已删除，豁免名单要一起撤掉，否则这族孤儿键永久免检').toEqual([])
   })
 })
 

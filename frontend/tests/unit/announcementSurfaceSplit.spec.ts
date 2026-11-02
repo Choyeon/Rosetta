@@ -101,7 +101,7 @@ describe('侧栏卡渲染公告表的多条公告', () => {
         readFileSync(resolve(ROOT, `i18n/locales/${locale}.json`), 'utf-8')
       ) as Record<string, Record<string, unknown>>
       for (const key of used) {
-        const [ns, leaf] = key.split('.')
+        const [ns = '', leaf = ''] = key.split('.')
         expect(dict?.[ns]?.[leaf], `${locale} 缺少 ${key}`).toBeTruthy()
       }
     }

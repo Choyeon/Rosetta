@@ -33,8 +33,7 @@ const defaultLayoutSource = readFileSync(resolve(ROOT, 'layouts/default.vue'), '
 
 /** 取 `app.<key>` 的过渡配置体（`{ ... }` 内部），不存在则返回 null。 */
 function transitionConfigBody(key: string): string | null {
-  const m = configSource.match(new RegExp(`${key}:\\s*\\{([^}]*)\\}`))
-  return m ? m[1] : null
+  return configSource.match(new RegExp(`${key}:\\s*\\{([^}]*)\\}`))?.[1] ?? null
 }
 
 /** 取某个 CSS 选择器**最后一次**出现的规则体（同名选择器可能出现在注释里）。 */
