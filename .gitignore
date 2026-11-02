@@ -124,3 +124,7 @@ temp/
 
 # 市场索引本地缓存（运行时自举，见 backend/core/market.py）
 backend/data/market_cache/
+
+# --- 本地暂存区：线上探针脚本（AGENTS.md 里按文件名引用，不入库） ---
+scripts_tmp/
+.env.pre-oobe-backup
