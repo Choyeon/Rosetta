@@ -447,6 +447,11 @@ async function handleDelete(row: AdminNotification) {
   }
 }
 
+// 个人中心四页里唯一漏声明的一页：/account 前缀在服务端空壳里有 noindex（server/utils/noindex-shell.ts），
+// 但 SPA 内部从可索引页跳过来时，客户端 <head> 里那条 robots 是从无到有的——
+// Google 会渲染 JS，它读的是这份 DOM。与 /account、/account/messages、/account/settings 同口径。
+useNoindexPage()
+
 onMounted(() => {
   void load()
 })
